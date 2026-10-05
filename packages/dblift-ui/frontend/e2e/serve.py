@@ -1,7 +1,7 @@
-"""Serve the interface with three seeded SQLite projects, for the browser tests only.
+"""Serve the interface with seeded SQLite projects, for the browser tests only.
 
 A second argument names a folder where fixture repositories are built for the tests
-that add projects.
+that add projects, and for the git tests, whose repository is also a seeded project.
 """
 
 import contextlib
@@ -64,6 +64,53 @@ def build_fixtures(folder: Path) -> None:
         "CREATE TABLE things (id INTEGER PRIMARY KEY);\n"
     )
     build_flyway(folder / "flywayapp")
+    build_gitapp(folder / "gitapp", folder / "gitapp.git")
+
+
+def build_gitapp(app: Path, remote: Path) -> None:
+    """A repository on main, with a local bare remote that also holds feature/reporting.
+
+    The identity is in the repository's own config; no template, so no hook, and nothing in the
+    config makes git run a program.
+    """
+    config = "database:\n  type: sqlite\n  path: ./dev.db\nmigrations:\n  directory: ./migrations\n"
+    files = {
+        "dblift.yaml": config,
+        "migrations/V1_0_0__create_accounts.sql": "CREATE TABLE accounts (id INTEGER PRIMARY KEY);\n",
+        # SQLite writes a journal beside the database while dblift reads it.
+        ".gitignore": "*.db\n*.db-journal\n",
+    }
+    for relative, text in files.items():
+        path = app / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text)
+
+    def git(*args: str) -> None:
+        subprocess.run(["git", "-C", str(app), *args], check=True)
+
+    subprocess.run(["git", "init", "-q", "--template=", "-b", "main", str(app)], check=True)
+    git("config", "user.email", "e2e@example.com")
+    git("config", "user.name", "E2E")
+    git("config", "commit.gpgsign", "false")
+    git("add", ".")
+    git("commit", "-q", "-m", "init")
+    subprocess.run(
+        ["git", "init", "-q", "--bare", "--template=", "-b", "main", str(remote)], check=True
+    )
+    git("remote", "add", "origin", str(remote))
+    git("push", "-q", "-u", "origin", "main")
+    # A branch that exists only on the remote, with a second config.
+    git("switch", "-q", "-c", "feature/reporting")
+    (app / "reporting" / "migrations").mkdir(parents=True)
+    (app / "reporting" / "dblift.yaml").write_text(config)
+    (app / "reporting" / "migrations" / "V1_0_0__create_reports.sql").write_text(
+        "CREATE TABLE reports (id INTEGER PRIMARY KEY);\n"
+    )
+    git("add", ".")
+    git("commit", "-q", "-m", "reporting")
+    git("push", "-q", "origin", "feature/reporting")
+    git("switch", "-q", "main")
+    git("branch", "-q", "-D", "feature/reporting")
 
 
 def build_flyway(app: Path) -> None:
@@ -141,6 +188,8 @@ def main() -> None:
                 )
             ),
         )
+        if len(sys.argv) > 2:
+            registry.add("gitapp", str(Path(sys.argv[2]) / "gitapp" / "dblift.yaml"))
         # Playwright stops the server with SIGINT; uvicorn shuts down, then re-raises it
         # as KeyboardInterrupt, and leaving this block removes the seeded projects.
         with contextlib.suppress(KeyboardInterrupt):

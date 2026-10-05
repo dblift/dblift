@@ -4,7 +4,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from dblift_ui import discovery
+from dblift_ui import discovery, gitops
 from dblift_ui.discovery import DiscoveryError, discover
 
 CONFIG = "database:\n  type: sqlite\n  path: ./dev.db\nmigrations:\n  directory: ./migrations\n"
@@ -234,7 +234,7 @@ def test_git_runs_with_repository_configured_programs_turned_off(tmp_path, monke
         calls.append(list(command))
         return real_run(command, *args, **kwargs)
 
-    monkeypatch.setattr(discovery.subprocess, "run", spy)
+    monkeypatch.setattr(gitops.subprocess, "run", spy)
 
     found = discover(str(root))
 

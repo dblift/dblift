@@ -1,18 +1,20 @@
 """HTTP application: security guard and route wiring."""
 
 import json
+import os
 import secrets
 import shutil
-from contextlib import asynccontextmanager
+import threading
+from contextlib import asynccontextmanager, contextmanager
 from dataclasses import asdict
 from pathlib import Path
-from typing import Any, AsyncIterator, Awaitable, Callable, Dict, Iterator, List, Optional
+from typing import Any, AsyncIterator, Awaitable, Callable, Dict, Iterator, List, Optional, Set
 
 import yaml
-from dblift_ui import __version__, configs, flyway
+from dblift_ui import __version__, configs, flyway, gitops
 from dblift_ui.clone import CloneError, clone
 from dblift_ui.discovery import DiscoveryError, discover
-from dblift_ui.jobs import JobRunner, ProjectBusy
+from dblift_ui.jobs import MUTATING, Job, JobRunner, ProjectBusy
 from dblift_ui.registry import (
     Project,
     ProjectRegistry,
@@ -87,6 +89,15 @@ class FlywayRead(BaseModel):
     path: str = ""
 
 
+class BranchName(BaseModel):
+    name: str = ""
+
+
+class GitCommit(BaseModel):
+    paths: List[str] = []
+    message: str = ""
+
+
 def engine_of(data: Dict[str, Any]) -> str:
     """The engine a config declares: its ``database.type``, else its URL scheme."""
     database = data.get("database")
@@ -146,6 +157,62 @@ def describe(project: Project) -> Dict[str, Any]:
     }
 
 
+class RepositoryGuard:
+    """The one place that decides whether a database change or a git verb may start.
+
+    Both decisions are taken under one lock, so a job and a git verb starting at the
+    same instant never both pass. Git verbs on one repository also run one at a time.
+    """
+
+    # Jobs that read the scripts while a git verb could be rewriting them.
+    _JOBS_READING_SCRIPTS = MUTATING | {"preview"}
+
+    def __init__(self, runner: JobRunner, projects: ProjectRegistry) -> None:
+        self._runner = runner
+        self._projects = projects
+        self._lock = threading.Lock()
+        self._serial: Dict[Path, threading.Lock] = {}
+        self._rewriting: Set[Path] = set()
+
+    def start_job(self, project: Project, command: str, start: Callable[[], Job]) -> Job:
+        """Run *start* unless a git verb is rewriting the files of *project*'s repository."""
+        if command not in self._JOBS_READING_SCRIPTS:
+            return start()
+        with self._lock:
+            if repository_of(Path(project.config_path)) in self._rewriting:
+                raise HTTPException(
+                    status_code=409,
+                    detail="A git operation is running on this repository. Wait for it to finish.",
+                )
+            return start()
+
+    @contextmanager
+    def git_verb(self, root: Path, rewrites_files: bool) -> Iterator[None]:
+        """Hold *root* for one git verb; refused while a database change runs in it."""
+        with self._lock:
+            serial = self._serial.setdefault(root, threading.Lock())
+        with serial:
+            if rewrites_files:
+                with self._lock:
+                    if any(
+                        self._runner.is_changing(p.id)
+                        for p in self._projects.list()
+                        if repository_of(Path(p.config_path)) == root
+                    ):
+                        raise HTTPException(
+                            status_code=409,
+                            detail="A change is running on a project of this repository. "
+                            "Try again once it has finished.",
+                        )
+                    self._rewriting.add(root)
+            try:
+                yield
+            finally:
+                if rewrites_files:
+                    with self._lock:
+                        self._rewriting.discard(root)
+
+
 def create_app(
     token: str,
     port: int,
@@ -163,6 +230,7 @@ def create_app(
     """
     projects = registry or ProjectRegistry.default()
     runner = JobRunner(projects)
+    repositories = RepositoryGuard(runner, projects)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
@@ -268,7 +336,11 @@ def create_app(
     @app.post("/api/projects/{project_id}/jobs", status_code=202)
     def start_job(project_id: str, body: NewJob) -> Dict[str, str]:
         try:
-            job = runner.start(project_id, body.command, body.environment, body.params)
+            job = repositories.start_job(
+                projects.get(project_id),
+                body.command,
+                lambda: runner.start(project_id, body.command, body.environment, body.params),
+            )
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="unknown project") from exc
         except ProjectBusy as exc:
@@ -334,7 +406,41 @@ def create_app(
 
     @app.get("/api/projects/{project_id}/scripts")
     def list_scripts(project_id: str) -> List[Dict[str, Any]]:
-        return [asdict(script) for script in store_of(project_id).list()]
+        project = project_of(project_id)
+        store = ScriptStore(project.config_path)
+        scripts = store.list()
+        home = repository_of(Path(project.config_path))
+        inside = gitops.is_repository(home)
+        changes: Dict[str, str] = {}
+        if inside:
+            try:
+                changes = {f.path: f.state for f in gitops.status(home).files}
+            except gitops.GitError:
+                changes = {}  # the list still shows; only the marks are missing
+        top = home.resolve()
+        undos = store.undo_paths()
+
+        def in_repository(path: Optional[Path]) -> str:
+            """*path* relative to the repository's root, as git names it; "" when it has none."""
+            if not inside or path is None:
+                return ""
+            relative = Path(os.path.relpath(path, top))
+            return "" if relative.parts[:1] == ("..",) else relative.as_posix()
+
+        listed = []
+        for script in scripts:
+            path = in_repository(store.path_of(script))
+            undo_path = in_repository(undos.get(script.name)) if script.has_undo else ""
+            listed.append(
+                {
+                    **asdict(script),
+                    "path": path,
+                    "change": changes.get(path, "") if path else "",
+                    "undo_path": undo_path,
+                    "undo_change": changes.get(undo_path, "") if undo_path else "",
+                }
+            )
+        return listed
 
     @app.post("/api/projects/{project_id}/scripts", status_code=201)
     def create_scripts(project_id: str, body: NewScripts) -> Dict[str, List[str]]:
@@ -353,6 +459,73 @@ def create_app(
         refuse_during_change(project_id)
         store.write(name, body.content)
         return asdict(store.describe(name))
+
+    def repository(project_id: str) -> Path:
+        root = repository_of(Path(project_of(project_id).config_path))
+        if not gitops.is_repository(root):
+            raise HTTPException(status_code=400, detail="This project is not in a git repository.")
+        return root
+
+    def git_call(verb: Callable[..., Any], *args: Any) -> Any:
+        try:
+            return verb(*args)
+        except gitops.GitError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    def git_state(root: Path) -> Dict[str, Any]:
+        return {"repository": True, "root": str(root), **asdict(git_call(gitops.status, root))}
+
+    def git_change(
+        project_id: str, verb: Callable[..., None], *args: Any, files: bool = True
+    ) -> Dict[str, Any]:
+        """Run *verb* on the project's repository; *files* when it rewrites the working tree."""
+        root = repository(project_id)
+        with repositories.git_verb(root, rewrites_files=files):
+            git_call(verb, root, *args)
+            return git_state(root)
+
+    @app.get("/api/projects/{project_id}/scripts/{name}/diff")
+    def script_diff(project_id: str, name: str) -> Dict[str, str]:
+        store = store_of(project_id)
+        path = store.path_of(store.describe(name))
+        root = repository(project_id)
+        relative = Path(os.path.relpath(path, root.resolve())).as_posix()
+        return {"diff": git_call(gitops.diff, root, relative)}
+
+    @app.get("/api/projects/{project_id}/git")
+    def git_status(project_id: str) -> Dict[str, Any]:
+        root = repository_of(Path(project_of(project_id).config_path))
+        if not gitops.is_repository(root):
+            return {"repository": False}
+        return git_state(root)
+
+    @app.get("/api/projects/{project_id}/git/branches")
+    def git_branches(project_id: str) -> List[Dict[str, Any]]:
+        return [asdict(b) for b in git_call(gitops.branches, repository(project_id))]
+
+    @app.post("/api/projects/{project_id}/git/switch")
+    def git_switch(project_id: str, body: BranchName) -> Dict[str, Any]:
+        return git_change(project_id, gitops.switch, body.name)
+
+    @app.post("/api/projects/{project_id}/git/create")
+    def git_create(project_id: str, body: BranchName) -> Dict[str, Any]:
+        return git_change(project_id, gitops.create, body.name)
+
+    @app.post("/api/projects/{project_id}/git/fetch")
+    def git_fetch(project_id: str) -> Dict[str, Any]:
+        return git_change(project_id, gitops.fetch, files=False)
+
+    @app.post("/api/projects/{project_id}/git/pull")
+    def git_pull(project_id: str) -> Dict[str, Any]:
+        return git_change(project_id, gitops.pull)
+
+    @app.post("/api/projects/{project_id}/git/push")
+    def git_push(project_id: str) -> Dict[str, Any]:
+        return git_change(project_id, gitops.push, files=False)
+
+    @app.post("/api/projects/{project_id}/git/commit")
+    def git_commit(project_id: str, body: GitCommit) -> Dict[str, Any]:
+        return git_change(project_id, gitops.commit, body.paths, body.message)
 
     def config_text(project_id: str) -> str:
         try:

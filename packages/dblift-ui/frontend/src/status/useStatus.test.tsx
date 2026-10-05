@@ -77,3 +77,15 @@ it("ignores the answer of a run that was superseded", async () => {
 
   expect(hook.current.result?.current_version).toBe("2.0.0");
 });
+
+it("calls onRead once each read has finished, failed ones too", async () => {
+  runJob.mockResolvedValueOnce(result).mockRejectedValueOnce(new Error("stream broke"));
+  const onRead = vi.fn();
+
+  const { result: hook } = renderHook(() => useStatus("p1", "", onRead));
+  await waitFor(() => expect(onRead).toHaveBeenCalledTimes(1));
+  act(() => hook.current.refresh());
+
+  await waitFor(() => expect(onRead).toHaveBeenCalledTimes(2));
+  expect(hook.current.phase).toBe("error");
+});

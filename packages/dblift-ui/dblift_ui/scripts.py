@@ -232,6 +232,21 @@ class ScriptStore:
         repeatable = sorted((s for s in scripts if s.kind == "repeatable"), key=lambda s: s.name)
         return versioned + repeatable
 
+    def path_of(self, script: Script) -> Path:
+        """The file *script* was listed under: the path git knows it by, even when a link."""
+        return Path(os.path.normpath(self.root / script.directory / script.name))
+
+    def undo_paths(self) -> Dict[str, Path]:
+        """The file of each undo script, by its migration's name, as ``path_of`` gives it.
+
+        An undo script whose name two files share is left out: which one counts is unknown.
+        """
+        return {
+            f"V{name[1:]}": Path(os.path.normpath(found[0][0]))
+            for name, found in self._files().items()
+            if name.startswith("U") and len(found) == 1
+        }
+
     def describe(self, name: str) -> Script:
         files = self._files()
         listed, _ = self._find(name, files)

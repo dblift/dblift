@@ -98,6 +98,14 @@ it("lists what a folder holds, with the usable configs selected", async () => {
   expect(screen.getByText("legacy/sql")).toBeInTheDocument();
 });
 
+it("opens already looking for configs in the folder it is given", async () => {
+  dialog({ initialFolder: "/work/platform" });
+
+  expect(await screen.findByRole("checkbox", { name: "dblift.yaml" })).toBeChecked();
+  expect(discoveryApi.discoverFolder).toHaveBeenCalledWith("/work/platform");
+  expect(screen.getByText("/work/platform")).toBeInTheDocument();
+});
+
 it("proposes names and adds the selected configs", async () => {
   const props = dialog();
   await userEvent.type(screen.getByLabelText("Folder path"), "/work/platform");
@@ -126,6 +134,17 @@ it("renames to the plain folder name when one config is left selected", async ()
 
   expect(screen.getByLabelText("Name for dblift.yaml")).toHaveValue("platform");
   expect(screen.getByRole("button", { name: "Add 1 project" })).toBeEnabled();
+});
+
+it("does not offer the name of a project already in the list", async () => {
+  dialog({ projects: [project("id-1", "platform", "/work/platform")] });
+  await userEvent.type(screen.getByLabelText("Folder path"), "/work/platform");
+  await userEvent.click(screen.getByRole("button", { name: "Look for configs" }));
+  await screen.findByText("/work/platform");
+
+  await userEvent.click(box("config/database.yaml"));
+
+  expect(screen.getByLabelText("Name for dblift.yaml")).toHaveValue("platform · dblift");
 });
 
 it("keeps the dialog open and shows which one failed", async () => {

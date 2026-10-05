@@ -37,6 +37,21 @@ configuration form (its password is never copied), and the project view then
 offers to import its Flyway history, after a preview, so that what Flyway
 already applied is not offered again.
 
+For a project in a git repository, the header shows the current branch with
+the number of uncommitted files and of commits ahead of and behind its remote
+branch. Its menu lists the local and remote branches to switch to (a remote
+one becomes a local branch that tracks it), creates a branch, fetches, pulls
+when that needs no merge (fast-forward only), pushes the current branch
+(publishing it to `origin` the first time), and commits: the changed files are
+listed with the project's own changed scripts and config ticked, and only the
+ticked files are committed. Uncommitted migrations are marked in the
+migration list, and a script open in the editor shows its changes since the
+last commit. After a switch or a pull, configs the branch brought in are
+offered as new projects, and a project whose config is not on the current
+branch is shown as such. Merging, rebasing, stashing and forced pushes are
+deliberately absent: when a pull would need a merge, or git refuses a switch,
+the interface says why and leaves the rest to your own git tool.
+
 ## Development
 
 The interface lives in `frontend/` (React, TypeScript, Vite). It is built into

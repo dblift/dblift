@@ -1,14 +1,18 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { forwardRef, useImperativeHandle, useRef, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 
+import { commitFiles, createBranch, fetchRepo, getBranches, pullRepo, pushRepo, switchBranch } from "../api/git";
 import { listScripts } from "../api/scripts";
-import type { Project, SqlPreview } from "../api/types";
+import type { Project, RepoStatus, SqlPreview } from "../api/types";
 import { liveStates } from "../commands/live";
 import { useCommand } from "../commands/useCommand";
+import { useRepo } from "../git/useRepo";
 import { describeActivity } from "../status/activity";
-import { isApplied, latestPerScript, summarize } from "../status/model";
+import { isApplied, latestPerScript, summarize, undoNameOf } from "../status/model";
 import { useStatus } from "../status/useStatus";
+import BranchChip from "./BranchChip";
 import CommandBar from "./CommandBar";
+import CommitDialog from "./CommitDialog";
 import EngineLogo from "./EngineLogo";
 import FlywayImport from "./FlywayImport";
 import MigrationGrid from "./MigrationGrid";
@@ -24,6 +28,11 @@ interface Props {
   onEnvironmentChange: (environment: string) => void | Promise<unknown>;
   /** Open the project's configuration; without it, the header offers no "Configuration" button. */
   onConfigure?: () => void;
+  /**
+   * Called after a switch, a new branch or a pull: the working tree may hold other files now.
+   * The app then re-reads its projects and this view; without it, the view re-reads itself.
+   */
+  onMoved?: () => void;
 }
 
 /** Lets the app ask before it replaces the view, as the editor's own controls do. */
@@ -33,19 +42,38 @@ export interface StatusViewHandle {
   reread(): void;
 }
 
-const StatusView = forwardRef<StatusViewHandle, Props>(function StatusView({ project, onEnvironmentChange, onConfigure }, ref) {
+const StatusView = forwardRef<StatusViewHandle, Props>(function StatusView({ project, onEnvironmentChange, onConfigure, onMoved }, ref) {
   const [environment, setEnvironment] = useState(project.last_environment);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const { phase, result, error, activity, refresh } = useStatus(project.id, environment);
+  // Every finished job reads the repository again: a file it left while running (a SQLite
+  // journal) must not stay listed as uncommitted.
+  const { phase, result, error, activity, refresh } = useStatus(project.id, environment, () => git.refresh());
   const queryClient = useQueryClient();
-  const { data: scripts = [] } = useQuery({ queryKey: ["scripts", project.id], queryFn: () => listScripts(project.id) });
+  // Re-read on focus too: the uncommitted marks follow commits made with another tool.
+  const { data: scripts = [], dataUpdatedAt: scriptsRead } = useQuery({
+    queryKey: ["scripts", project.id],
+    queryFn: () => listScripts(project.id),
+    refetchOnWindowFocus: true,
+  });
   const rereadScripts = () => queryClient.invalidateQueries({ queryKey: ["scripts", project.id] });
-  // The script list changes with the files, so it is re-read whenever the status is.
+  // The script list and the repository change with the files, so they are re-read whenever the status is.
   const refreshAll = () => {
     refresh();
     void rereadScripts();
+    git.refresh();
   };
-  const { run, busy, start, dismiss } = useCommand(project.id, environment, refreshAll);
+  // After a move, the open script is read again from the new files, or closed when it is not there.
+  const followMove = useRef(false);
+  const [moves, setMoves] = useState(0);
+  const git = useRepo(project.id, () => {
+    followMove.current = true;
+    if (onMoved) {
+      onMoved();
+    } else {
+      refreshAll();
+    }
+  });
+  const { run, busy, start, dismiss } = useCommand(project.id, environment, refreshAll, git.refresh);
   const [openScript, setOpenScript] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   // Opening another script or a new one replaces the editor: it asks first when there are unsaved edits.
@@ -62,6 +90,40 @@ const StatusView = forwardRef<StatusViewHandle, Props>(function StatusView({ pro
   );
   const counts = summarize(migrations);
   const opened = migrations.find((m) => m.script === openScript);
+
+  // Runs on each new read of the script list; only the first one after a move acts.
+  useEffect(() => {
+    if (!followMove.current) {
+      return;
+    }
+    followMove.current = false;
+    setOpenScript((current) => (current && scripts.some((s) => s.name === current) ? current : null));
+    setMoves((n) => n + 1);
+  }, [scriptsRead]);
+
+  const moveWith = (verb: () => Promise<RepoStatus>) => leaveEditor(() => void git.act(verb, true));
+
+  const [committing, setCommitting] = useState(false);
+  // The names of the project's scripts, migrations and undo scripts, not committed as they are.
+  const changedScripts = scripts.flatMap((s) => [...(s.change ? [s.name] : []), ...(s.undo_change ? [undoNameOf(s.name)] : [])]);
+  // Ticked when the commit opens: this project's changed scripts and its config file.
+  const ownChanges = () => {
+    const root = (git.repo?.root ?? "").replaceAll("\\", "/");
+    const config = project.config_path.replaceAll("\\", "/");
+    const configFile = root && config.startsWith(`${root}/`) ? config.slice(root.length + 1) : null;
+    const own = new Set(scripts.flatMap((s) => [s.change && s.path, s.undo_change && s.undo_path]).filter(Boolean));
+    return (git.repo?.files ?? []).filter((f) => f.path === configFile || own.has(f.path)).map((f) => f.path);
+  };
+  const commit = async (paths: string[], message: string) => {
+    if (await git.act(() => commitFiles(project.id, paths, message))) {
+      setCommitting(false);
+      void rereadScripts();
+    }
+  };
+  const closeCommit = () => {
+    setCommitting(false);
+    git.dismissError();
+  };
 
   const openPreview = async () => {
     const answer = await start("preview");
@@ -97,6 +159,25 @@ const StatusView = forwardRef<StatusViewHandle, Props>(function StatusView({ pro
           </p>
         </div>
         <div className="status__actions">
+          {git.repo?.repository && (
+            <BranchChip
+              repo={git.repo}
+              busy={git.busy}
+              error={committing ? null : git.error}
+              locked={changing || previewing}
+              loadBranches={() => getBranches(project.id)}
+              onSwitch={(name) => moveWith(() => switchBranch(project.id, name))}
+              onCreate={(name) => moveWith(() => createBranch(project.id, name))}
+              onFetch={() => void git.act(() => fetchRepo(project.id))}
+              onPull={() => moveWith(() => pullRepo(project.id))}
+              onPush={() => void git.act(() => pushRepo(project.id))}
+              onCommit={() => {
+                git.dismissError();
+                setCommitting(true);
+              }}
+              onDismissError={git.dismissError}
+            />
+          )}
           <div className="segmented" role="tablist" aria-label="Environment">
             {["", ...project.environments].map((name) => (
               <button
@@ -227,7 +308,7 @@ const StatusView = forwardRef<StatusViewHandle, Props>(function StatusView({ pro
       {/* Outside the status block: a failed re-read must not drop the edits in progress. */}
       {openScript && (
         <ScriptPanel
-          key={openScript}
+          key={`${openScript}:${moves}`}
           ref={panel}
           projectId={project.id}
           script={openScript}
@@ -235,8 +316,21 @@ const StatusView = forwardRef<StatusViewHandle, Props>(function StatusView({ pro
           hasUndo={scripts.some((s) => s.name === openScript && s.has_undo)}
           locked={changing}
           previewing={previewing}
+          changed={changedScripts}
           onClose={() => setOpenScript(null)}
           onSaved={refreshAll}
+        />
+      )}
+
+      {committing && git.repo?.repository && (
+        <CommitDialog
+          files={git.repo.files ?? []}
+          preselected={ownChanges()}
+          busy={git.busy}
+          error={git.error}
+          truncated={git.repo.truncated}
+          onCommit={(paths, message) => void commit(paths, message)}
+          onClose={closeCommit}
         />
       )}
 

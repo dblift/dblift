@@ -1,7 +1,9 @@
 import { forwardRef, lazy, Suspense, useEffect, useImperativeHandle, useRef, useState } from "react";
 
+import { scriptDiff } from "../api/git";
 import { useScript } from "../scripts/useScript";
 import { undoNameOf } from "../status/model";
+import DiffView from "./DiffView";
 
 // The editor is most of the app's code: it loads the first time a script is opened.
 const CodeEditor = lazy(() => import("./CodeEditor"));
@@ -16,6 +18,8 @@ interface Props {
   locked: boolean;
   /** True while the SQL preview is read or shown: what is applied must be what was shown. */
   previewing?: boolean;
+  /** Names of the project's scripts not committed as they are: those offer their changes. */
+  changed?: string[];
   onClose: () => void;
   onSaved: () => void;
 }
@@ -27,8 +31,11 @@ export interface ScriptPanelHandle {
 
 type Tab = "migration" | "undo";
 
+/** The changes of the file shown since the last commit, while the "Changes" toggle is on. */
+type Changes = { phase: "loading" } | { phase: "ready"; diff: string } | { phase: "error"; error: string };
+
 const ScriptPanel = forwardRef<ScriptPanelHandle, Props>(function ScriptPanel(
-  { projectId, script, applied, hasUndo, locked, previewing = false, onClose, onSaved },
+  { projectId, script, applied, hasUndo, locked, previewing = false, changed = [], onClose, onSaved },
   ref,
 ) {
   const [tab, setTab] = useState<Tab>("migration");
@@ -39,6 +46,26 @@ const ScriptPanel = forwardRef<ScriptPanelHandle, Props>(function ScriptPanel(
   const { phase, file, content, dirty, saving, error, edit, save } = useScript(projectId, name);
   // Where focus was when the question came up, to return there on "Keep editing".
   const asker = useRef<HTMLElement | null>(null);
+  const [showChanges, setShowChanges] = useState(false);
+  const [changes, setChanges] = useState<Changes>({ phase: "loading" });
+  const [saves, setSaves] = useState(0);
+  const hasChanges = changed.includes(name);
+  const showing = showChanges && hasChanges;
+
+  // Read when the toggle is turned on, for the file of the tab shown, and again after a save.
+  useEffect(() => {
+    if (!showing) {
+      return;
+    }
+    let current = true;
+    setChanges({ phase: "loading" });
+    scriptDiff(projectId, name)
+      .then((diff) => current && setChanges({ phase: "ready", diff }))
+      .catch((failure: Error) => current && setChanges({ phase: "error", error: failure.message }));
+    return () => {
+      current = false;
+    };
+  }, [showing, projectId, name, saves]);
 
   // Leaving unsaved edits needs a second click.
   const leave = (action: () => void) => {
@@ -69,6 +96,7 @@ const ScriptPanel = forwardRef<ScriptPanelHandle, Props>(function ScriptPanel(
   };
   const saveNow = async () => {
     if (await save()) {
+      setSaves((n) => n + 1);
       onSaved();
     }
   };
@@ -90,6 +118,11 @@ const ScriptPanel = forwardRef<ScriptPanelHandle, Props>(function ScriptPanel(
           {name}
         </span>
         <div className="script__actions">
+          {hasChanges && (
+            <button className="button button--quiet" aria-pressed={showing} onClick={() => setShowChanges(!showing)}>
+              Changes
+            </button>
+          )}
           <button className="button button--primary" disabled={!dirty || saving || locked || previewing} onClick={() => void saveNow()}>
             Save
           </button>
@@ -129,6 +162,12 @@ const ScriptPanel = forwardRef<ScriptPanelHandle, Props>(function ScriptPanel(
       ) : (
         previewing && <p className="script__lock">Close the SQL preview before editing: what is applied must be what was shown.</p>
       )}
+      {showing && changes.phase === "error" && (
+        <p className="notice notice--error" role="alert">
+          {changes.error}
+        </p>
+      )}
+      {showing && dirty && <p className="script__lock">Unsaved edits are not part of these changes until they are saved.</p>}
       {error && phase !== "missing" && (
         <p className="notice notice--error" role="alert">
           {error}
@@ -136,12 +175,15 @@ const ScriptPanel = forwardRef<ScriptPanelHandle, Props>(function ScriptPanel(
       )}
 
       <div className="script__body">
-        {phase === "loading" && <p className="script__message">Opening…</p>}
+        {!showing && phase === "loading" && <p className="script__message">Opening…</p>}
         {phase === "missing" && tab === "undo" && (
           <p className="script__message">This migration has no undo script.{hasUndo ? " It may have been removed." : ""}</p>
         )}
         {phase === "missing" && tab === "migration" && <p className="script__message">This file is no longer in the project.</p>}
-        {phase === "ready" && file && (
+        {showing && changes.phase === "loading" && <p className="script__message">Reading the changes…</p>}
+        {showing && changes.phase === "ready" &&
+          (changes.diff ? <DiffView diff={changes.diff} /> : <p className="script__message">No change since the last commit.</p>)}
+        {!showing && phase === "ready" && file && (
           <Suspense fallback={<p className="script__message">Opening…</p>}>
             <CodeEditor value={content} language={file.language} label={`Content of ${file.name}`} readOnly={saving || previewing} onChange={edit} />
           </Suspense>

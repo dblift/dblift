@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
 
@@ -13,12 +13,14 @@ vi.mock("./CodeEditor", () => ({
 }));
 const api = vi.hoisted(() => ({ readScript: vi.fn(), saveScript: vi.fn() }));
 vi.mock("../api/scripts", () => api);
+const git = vi.hoisted(() => ({ scriptDiff: vi.fn() }));
+vi.mock("../api/git", () => git);
 
 const V = "V1_0_1__create_orders.sql";
 const U = "U1_0_1__create_orders.sql";
 const file = (name: string, content: string): ScriptFile => ({
   name, kind: name.startsWith("U") ? "undo" : "versioned", version: "1.0.1", description: "create_orders",
-  language: "sql", directory: "migrations", has_undo: true, content,
+  language: "sql", directory: "migrations", has_undo: true, path: "", change: "", undo_path: "", undo_change: "", content,
 });
 
 function panel(overrides: Partial<Parameters<typeof ScriptPanel>[0]> = {}) {
@@ -37,6 +39,7 @@ beforeEach(() => {
     name === V ? file(V, "CREATE TABLE orders (id INTEGER);\n") : file(U, "DROP TABLE orders;\n"),
   );
   api.saveScript.mockResolvedValue(file(V, ""));
+  git.scriptDiff.mockReset();
 });
 
 it("opens the migration and lets the user edit and save it", async () => {
@@ -165,4 +168,70 @@ it("cannot save while the SQL preview is open, and says why", async () => {
   expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
   expect(screen.getByText(/Close the SQL preview before editing/)).toBeInTheDocument();
   expect(screen.queryByText(/A change is running/)).not.toBeInTheDocument();
+});
+
+it("offers the changes only for a file that is not committed as it is", async () => {
+  panel({ changed: [] });
+  await screen.findByLabelText(`Content of ${V}`);
+  expect(screen.queryByRole("button", { name: "Changes" })).not.toBeInTheDocument();
+});
+
+it("offers the changes of the migration, and of its undo script on its tab", async () => {
+  panel({ changed: [U] });
+  await screen.findByLabelText(`Content of ${V}`);
+  expect(screen.queryByRole("button", { name: "Changes" })).not.toBeInTheDocument();
+
+  await userEvent.click(screen.getByRole("tab", { name: "Undo script" }));
+  await screen.findByLabelText(`Content of ${U}`);
+
+  expect(screen.getByRole("button", { name: "Changes" })).toBeInTheDocument();
+});
+
+it("shows the changes since the last commit, then the editor again", async () => {
+  git.scriptDiff.mockResolvedValue("--- a/migrations/V.sql\n+++ b/migrations/V.sql\n@@ -1 +1,2 @@\n CREATE TABLE orders (id INTEGER);\n+-- note\n");
+  panel({ changed: [V] });
+  await screen.findByLabelText(`Content of ${V}`);
+
+  await userEvent.click(screen.getByRole("button", { name: "Changes" }));
+
+  expect(git.scriptDiff).toHaveBeenCalledWith("p1", V);
+  const diff = await screen.findByLabelText("Changes since the last commit");
+  expect(within(diff).getByText("+-- note")).toHaveClass("diff-add");
+  expect(screen.getByRole("button", { name: "Changes" })).toHaveAttribute("aria-pressed", "true");
+  expect(screen.queryByLabelText(`Content of ${V}`)).not.toBeInTheDocument();
+
+  await userEvent.click(screen.getByRole("button", { name: "Changes" }));
+  expect(await screen.findByLabelText(`Content of ${V}`)).toBeInTheDocument();
+});
+
+it("says when the file has no change since the last commit", async () => {
+  git.scriptDiff.mockResolvedValue("");
+  panel({ changed: [V] });
+  await screen.findByLabelText(`Content of ${V}`);
+
+  await userEvent.click(screen.getByRole("button", { name: "Changes" }));
+
+  expect(await screen.findByText("No change since the last commit.")).toBeInTheDocument();
+});
+
+it("says why the changes could not be read", async () => {
+  git.scriptDiff.mockRejectedValue(new ApiError(400, "This project is not in a git repository."));
+  panel({ changed: [V] });
+  await screen.findByLabelText(`Content of ${V}`);
+
+  await userEvent.click(screen.getByRole("button", { name: "Changes" }));
+
+  expect(await screen.findByRole("alert")).toHaveTextContent("not in a git repository");
+});
+
+it("keeps unsaved edits while the changes are shown", async () => {
+  git.scriptDiff.mockResolvedValue("");
+  panel({ changed: [V] });
+  await userEvent.type(await screen.findByLabelText(`Content of ${V}`), "x");
+
+  await userEvent.click(screen.getByRole("button", { name: "Changes" }));
+  await screen.findByText("No change since the last commit.");
+  await userEvent.click(screen.getByRole("button", { name: "Changes" }));
+
+  expect(await screen.findByLabelText(`Content of ${V}`)).toHaveValue("CREATE TABLE orders (id INTEGER);\nx");
 });

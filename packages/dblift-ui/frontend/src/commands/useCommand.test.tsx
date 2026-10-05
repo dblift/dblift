@@ -145,3 +145,16 @@ it("does not re-read the status when a command that changes nothing fails", asyn
   expect(result.current.run?.phase).toBe("failed");
   expect(onChanged).not.toHaveBeenCalled();
 });
+
+it("calls onFinished after any command, whether it changed something, failed or was refused", async () => {
+  const onFinished = vi.fn();
+  const { result } = renderHook(() => useCommand("p1", "", vi.fn(), onFinished));
+
+  runJob.mockResolvedValueOnce(ok);
+  await act(async () => void (await result.current.start("validate")));
+  expect(onFinished).toHaveBeenCalledTimes(1);
+
+  runJob.mockRejectedValueOnce(new ApiError(409, "busy"));
+  await act(async () => void (await result.current.start("migrate")));
+  expect(onFinished).toHaveBeenCalledTimes(2);
+});

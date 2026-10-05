@@ -6,9 +6,12 @@ function where(path: string): string {
   return slash < 0 ? path.replace(/\.ya?ml$/i, "") : path.slice(0, slash);
 }
 
-/** A name for each selected config: the folder's name, made distinct when there are several. */
-export function defaultNames(discovery: Discovery, paths: string[]): Record<string, string> {
-  if (paths.length === 1) {
+/**
+ * A name for each selected config: the folder's name, made distinct when there are several, or
+ * when a project in the list already has that name.
+ */
+export function defaultNames(discovery: Discovery, paths: string[], taken: string[] = []): Record<string, string> {
+  if (paths.length === 1 && !taken.includes(discovery.name)) {
     return { [paths[0]]: discovery.name };
   }
   return Object.fromEntries(paths.map((path) => [path, `${discovery.name} · ${where(path)}`]));

@@ -36,6 +36,10 @@ def test_list_scripts(client, auth, project_id):
         "language": "sql",
         "directory": "migrations",
         "has_undo": True,
+        "path": "",
+        "change": "",
+        "undo_path": "",
+        "undo_change": "",
     }
 
 

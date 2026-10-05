@@ -20,22 +20,6 @@ def _finish(client, auth, job_id):
         return [json.loads(l[6:]) for l in response.iter_lines() if l.startswith("data: ")][-1]
 
 
-@pytest.fixture
-def held_migrate(monkeypatch):
-    """Make `migrate` block until released, so a job can be caught mid-run."""
-    entered, release = threading.Event(), threading.Event()
-    real = JobRunner.COMMANDS["migrate"]
-
-    def slow(client, params):
-        entered.set()
-        assert release.wait(timeout=10), "test never released the held migrate"
-        return real(client, params)
-
-    monkeypatch.setitem(JobRunner.COMMANDS, "migrate", slow)
-    yield entered, release
-    release.set()
-
-
 def test_second_change_on_the_same_project_is_refused(
     client, auth, sqlite_project, held_migrate, monkeypatch, tmp_path
 ):

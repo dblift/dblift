@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { type FormEvent, useId, useState } from "react";
+import { type FormEvent, useEffect, useId, useState } from "react";
 
 import { cloneRepository, discoverFolder, getDefaults } from "../api/discovery";
 import { readFlyway } from "../api/flyway";
@@ -14,6 +14,8 @@ interface Props {
   /** Open the configuration form for a folder that has migrations but no config, pre-filled when converting. */
   onConfigure: (target: { folder: string; migrations: string; name: string; initial?: ConfigFormData; notes?: string[] }) => void;
   onClose: () => void;
+  /** When given, the dialog opens already looking for configs in this folder. */
+  initialFolder?: string;
 }
 
 type Source = "folder" | "clone";
@@ -26,12 +28,12 @@ const KIND_NOTE: Record<FoundConfig["kind"], string | null> = {
 
 const usable = (config: FoundConfig) => !config.registered && config.problem === null;
 
-export default function AddProject({ projects, onAdded, onConfigure, onClose }: Props) {
+export default function AddProject({ projects, onAdded, onConfigure, onClose, initialFolder }: Props) {
   const queryClient = useQueryClient();
   const orphans = useId();
   const { data: defaults } = useQuery({ queryKey: ["defaults"], queryFn: getDefaults });
   const [source, setSource] = useState<Source>("folder");
-  const [folder, setFolder] = useState("");
+  const [folder, setFolder] = useState(initialFolder ?? "");
   const [address, setAddress] = useState("");
   const [parent, setParent] = useState<string | null>(null);
   const [working, setWorking] = useState<string | null>(null);
@@ -46,7 +48,7 @@ export default function AddProject({ projects, onAdded, onConfigure, onClose }: 
 
   const cloneParent = parent ?? defaults?.clone_parent ?? "";
   const repositories = [...new Set(projects.map((p) => p.repository_path))].sort();
-  const names = found ? { ...defaultNames(found, selected), ...typed } : typed;
+  const names = found ? { ...defaultNames(found, selected, projects.map((p) => p.name)), ...typed } : typed;
 
   const scan = async (path: string) => {
     setWorking("Looking for configs…");
@@ -82,6 +84,13 @@ export default function AddProject({ projects, onAdded, onConfigure, onClose }: 
       setWorking(null);
     }
   };
+
+  useEffect(() => {
+    if (initialFolder) {
+      void scan(initialFolder);
+    }
+    // Once, on opening: a later folder is the user's to scan.
+  }, []);
 
   const toggle = (path: string) => {
     if (!found) {

@@ -1,11 +1,13 @@
 import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 
+import { discoverFolder } from "./api/discovery";
 import { listProjects, setEnvironment } from "./api/projects";
 import type { Project } from "./api/types";
 import AddProject from "./components/AddProject";
 import ConfigForm, { type ConfigTarget } from "./components/ConfigForm";
 import EmptyState from "./components/EmptyState";
+import NewConfigsNotice from "./components/NewConfigsNotice";
 import Sidebar from "./components/Sidebar";
 import StatusView, { type StatusViewHandle } from "./components/StatusView";
 
@@ -17,6 +19,9 @@ function Shell() {
   const { data: projects = [], error, isPending } = useQuery({ queryKey: ["projects"], queryFn: listProjects });
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
+  // Set when Add project opens on a folder already: the configs a branch brought in.
+  const [addFolder, setAddFolder] = useState<string | undefined>(undefined);
+  const [newConfigs, setNewConfigs] = useState<{ folder: string; count: number } | null>(null);
   const [configuring, setConfiguring] = useState<ConfigTarget | null>(null);
   const selected = projects.find((p) => p.id === selectedId) ?? projects[0] ?? null;
   const client = useQueryClient();
@@ -25,7 +30,10 @@ function Shell() {
   const leave = (action: () => void) => (view.current ? view.current.leave(action) : action());
   const select = (id: string) => {
     if (id !== selected?.id) {
-      leave(() => setSelectedId(id));
+      leave(() => {
+        setSelectedId(id);
+        setNewConfigs(null);
+      });
     }
   };
 
@@ -51,13 +59,33 @@ function Shell() {
     setConfiguring(null);
   };
 
+  // After a switch or a pull the files are another branch's: the list and the open view are read
+  // again, and configs that are not projects yet are offered.
+  const followBranch = async (project: Project) => {
+    void client.invalidateQueries({ queryKey: ["projects"] });
+    view.current?.reread();
+    try {
+      const found = await discoverFolder(project.repository_path);
+      const count = found.configs.filter((c) => !c.registered && c.kind !== "template" && c.problem === null).length;
+      setNewConfigs(count > 0 ? { folder: project.repository_path, count } : null);
+    } catch {
+      // The offer is a convenience: without it, Add project still finds them.
+      setNewConfigs(null);
+    }
+  };
+
   return (
     <div className="app" role="application" aria-label="DBLift UI">
       <Sidebar
         projects={projects}
         selectedId={selected?.id ?? null}
         onSelect={select}
-        onAdd={() => leave(() => setAdding(true))}
+        onAdd={() =>
+          leave(() => {
+            setAddFolder(undefined);
+            setAdding(true);
+          })
+        }
         onLeave={leave}
       />
       <main className="app__main">
@@ -68,6 +96,19 @@ function Shell() {
           </p>
         )}
         {!error && !isPending && !selected && <EmptyState />}
+        {newConfigs && (
+          <NewConfigsNotice
+            count={newConfigs.count}
+            onAdd={() =>
+              leave(() => {
+                setAddFolder(newConfigs.folder);
+                setNewConfigs(null);
+                setAdding(true);
+              })
+            }
+            onDismiss={() => setNewConfigs(null)}
+          />
+        )}
         {selected && (
           <StatusView
             key={selected.id}
@@ -75,16 +116,22 @@ function Shell() {
             project={selected}
             onEnvironmentChange={(environment) => changeEnvironment(selected.id, environment)}
             onConfigure={() => setConfiguring({ kind: "edit", project: selected })}
+            onMoved={() => void followBranch(selected)}
           />
         )}
       </main>
       {adding && (
         <AddProject
           projects={projects}
-          onClose={() => setAdding(false)}
+          initialFolder={addFolder}
+          onClose={() => {
+            setAdding(false);
+            setAddFolder(undefined);
+          }}
           onAdded={(ids) => setSelectedId(ids[0])}
           onConfigure={(target) => {
             setAdding(false);
+            setAddFolder(undefined);
             setConfiguring({ kind: "create", ...target });
           }}
         />

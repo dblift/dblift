@@ -23,6 +23,13 @@ it("tells several projects of one folder apart", () => {
   });
 });
 
+it("tells a single project apart from one of the list that has the folder's name", () => {
+  expect(defaultNames(discovery("gitapp"), ["reporting/dblift.yaml"], ["shop", "gitapp"])).toEqual({
+    "reporting/dblift.yaml": "gitapp · reporting",
+  });
+  expect(defaultNames(discovery("gitapp"), ["reporting/dblift.yaml"], ["shop"])).toEqual({ "reporting/dblift.yaml": "gitapp" });
+});
+
 it("returns nothing for no selection", () => {
   expect(defaultNames(discovery("x"), [])).toEqual({});
 });

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { runJob } from "../api/jobs";
 import type { JobResult } from "../api/types";
@@ -14,10 +14,12 @@ interface Status {
 
 const LOADING: Status = { phase: "loading", result: null, error: null, activity: "" };
 
-/** Run the status job for a project and environment; re-run on demand. */
-export function useStatus(projectId: string, environment: string) {
+/** Run the status job for a project and environment; re-run on demand. *onRead* runs after each read. */
+export function useStatus(projectId: string, environment: string, onRead?: () => void) {
   const [status, setStatus] = useState<Status>(LOADING);
   const [run, setRun] = useState(0);
+  const read = useRef(onRead);
+  read.current = onRead;
 
   useEffect(() => {
     let current = true;
@@ -41,7 +43,8 @@ export function useStatus(projectId: string, environment: string) {
         if (current) {
           setStatus({ phase: "error", result: null, error: failure.message, activity: "" });
         }
-      });
+      })
+      .finally(() => read.current?.());
     return () => {
       current = false;
     };
