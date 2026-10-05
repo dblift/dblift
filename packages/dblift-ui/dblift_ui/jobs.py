@@ -189,6 +189,10 @@ class JobRunner:
         with self._lock:
             return self._jobs[job_id]
 
+    def is_changing(self, project_id: str) -> bool:
+        with self._lock:
+            return project_id in self._changing
+
     def drain(self) -> int:
         """Wait for every running change to finish; return how many there were."""
         with self._lock:
