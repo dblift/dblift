@@ -11,6 +11,8 @@ const discoveryApi = vi.hoisted(() => ({ getDefaults: vi.fn(), discoverFolder: v
 vi.mock("../api/discovery", () => discoveryApi);
 const projectsApi = vi.hoisted(() => ({ addProject: vi.fn() }));
 vi.mock("../api/projects", () => projectsApi);
+const flywayApi = vi.hoisted(() => ({ readFlyway: vi.fn() }));
+vi.mock("../api/flyway", () => flywayApi);
 
 const found: Discovery = {
   root: "/work/platform", name: "platform", repository: true, branch: "main", truncated: false,
@@ -27,6 +29,7 @@ const found: Discovery = {
 const project = (id: string, name: string, repositoryPath: string): Project => ({
   id, name, config_path: `${repositoryPath}/dblift.yaml`, last_environment: "", environments: [], engine: "sqlite",
   error: null, missing: false, repository: repositoryPath.split("/").pop()!, repository_path: repositoryPath,
+  flyway_table: null,
 });
 
 function dialog(overrides: Partial<Parameters<typeof AddProject>[0]> = {}) {
@@ -45,6 +48,7 @@ beforeEach(() => {
   discoveryApi.cloneRepository.mockReset();
   projectsApi.addProject.mockReset();
   projectsApi.addProject.mockImplementation(async (name: string) => ({ ...project(`id-${name}`, name, "/work/platform") }));
+  flywayApi.readFlyway.mockReset();
 });
 
 it("is a dialog that Escape closes", async () => {
@@ -176,6 +180,37 @@ it("offers to create a configuration when none was found", async () => {
   await userEvent.click(await screen.findByRole("button", { name: "Create a configuration" }));
 
   expect(props.onConfigure).toHaveBeenCalledWith({ folder: "/work/platform", migrations: "./migrations", name: "platform" });
+});
+
+it("converts a Flyway project into a pre-filled configuration", async () => {
+  const form = { engine: "sqlite", migrations_directory: "./sql" };
+  flywayApi.readFlyway.mockResolvedValue({ folder: "/work/platform/legacy", form, table: "flyway_schema_history", notes: ["Check it."] });
+  const props = dialog();
+  await userEvent.type(screen.getByLabelText("Folder path"), "/work/platform");
+  await userEvent.click(screen.getByRole("button", { name: "Look for configs" }));
+  await screen.findByText("/work/platform");
+
+  await userEvent.click(screen.getByRole("button", { name: "Convert legacy/flyway.conf" }));
+
+  expect(flywayApi.readFlyway).toHaveBeenCalledWith("/work/platform", "legacy/flyway.conf");
+  await waitFor(() =>
+    expect(props.onConfigure).toHaveBeenCalledWith({
+      folder: "/work/platform/legacy", migrations: "./sql", name: "legacy", initial: form, notes: ["Check it."],
+    }),
+  );
+});
+
+it("says why a Flyway project cannot be converted", async () => {
+  flywayApi.readFlyway.mockRejectedValue(new Error("the file is too large to read"));
+  const props = dialog();
+  await userEvent.type(screen.getByLabelText("Folder path"), "/work/platform");
+  await userEvent.click(screen.getByRole("button", { name: "Look for configs" }));
+  await screen.findByText("/work/platform");
+
+  await userEvent.click(screen.getByRole("button", { name: "Convert legacy/flyway.conf" }));
+
+  expect(await screen.findByRole("alert")).toHaveTextContent("too large");
+  expect(props.onConfigure).not.toHaveBeenCalled();
 });
 
 it("says when the folder was too large to scan entirely", async () => {

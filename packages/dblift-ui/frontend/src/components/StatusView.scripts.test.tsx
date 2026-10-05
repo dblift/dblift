@@ -19,7 +19,7 @@ vi.mock("../api/scripts", () => scripts);
 
 const project: Project = {
   id: "p1", name: "shop-api", config_path: "/w/dblift.yaml", last_environment: "", environments: [], engine: "sqlite", error: null,
-  missing: false, repository: "w", repository_path: "/w",
+  missing: false, repository: "w", repository_path: "/w", flyway_table: null,
 };
 const A = "V1_0_0__create_customers.sql";
 const B = "V1_0_1__create_orders.sql";
@@ -34,7 +34,7 @@ function script(name: string, hasUndo: boolean): Script {
   return { name, kind: "versioned", version: version.replaceAll("_", "."), description, language: "sql", directory: "migrations", has_undo: hasUndo };
 }
 function status(migrations: Migration[]): JobResult {
-  return { success: true, error: null, current_version: "1.0.0", migrations, sql: [], repaired: null, baseline_version: null, job_id: "j1", has_log: false };
+  return { success: true, error: null, current_version: "1.0.0", migrations, sql: [], repaired: null, baseline_version: null, job_id: "j1", has_log: false, message: null };
 }
 function view(children: ReactNode) {
   return <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>{children}</QueryClientProvider>;

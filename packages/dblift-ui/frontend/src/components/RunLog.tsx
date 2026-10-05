@@ -11,6 +11,8 @@ const TITLES: Record<string, string> = {
   repair: "dblift repair",
   baseline: "dblift baseline",
   preview: "dblift migrate --dry-run",
+  flyway_preview: "dblift import-flyway --dry-run",
+  flyway_import: "dblift import-flyway",
 };
 
 export default function RunLog({ run, onDismiss }: { run: CommandRun; onDismiss: () => void }) {
@@ -53,7 +55,7 @@ export default function RunLog({ run, onDismiss }: { run: CommandRun; onDismiss:
           </p>
         ))}
         {run.phase === "running" && <p className="runlog__line runlog__line--muted">…</p>}
-        {run.phase === "done" && <p className="runlog__line runlog__line--ok">✓ done</p>}
+        {run.phase === "done" && <p className="runlog__line runlog__line--ok">✓ {run.result?.message ?? "done"}</p>}
         {run.phase === "failed" && <p className="runlog__line runlog__line--error">✗ {run.error}</p>}
       </div>
       {full.open && full.error && (

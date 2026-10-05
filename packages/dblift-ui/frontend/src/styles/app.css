@@ -682,6 +682,35 @@ input {
   padding: 8px 16px;
 }
 
+/* Flyway history import */
+.flyway {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+}
+
+.flyway h2 {
+  font-size: 1.05rem;
+}
+
+.flyway p {
+  margin: 0;
+}
+
+.flyway__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.flyway__question {
+  flex: 1 1 18rem;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
 /* SQL preview */
 .preview__head {
   display: flex;
@@ -1109,6 +1138,11 @@ input {
 
 .found__folders .mono {
   min-width: 0;
+}
+
+.found__folders li > p {
+  flex-basis: 100%;
+  margin: 0;
 }
 
 /* Sidebar: projects of one repository */

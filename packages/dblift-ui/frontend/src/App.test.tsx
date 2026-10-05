@@ -39,7 +39,7 @@ vi.mock("./components/CodeEditor", () => ({
 const sqlite: EngineSpec = { id: "sqlite", label: "SQLite", scheme: "sqlite", port: null, fields: ["path"] };
 const first = {
   id: "p1", name: "shop-api", config_path: "/w/dblift.yaml", last_environment: "", environments: [], engine: "sqlite", error: null,
-  missing: false, repository: "w", repository_path: "/w",
+  missing: false, repository: "w", repository_path: "/w", flyway_table: null,
 };
 
 beforeEach(() => {
@@ -51,7 +51,7 @@ beforeEach(() => {
   scripts.readScript.mockReset();
   runJob.mockReset();
   runJob.mockResolvedValue({
-    success: true, error: null, current_version: null, migrations: [], sql: [], repaired: null, baseline_version: null, job_id: "j1", has_log: false,
+    success: true, error: null, current_version: null, migrations: [], sql: [], repaired: null, baseline_version: null, job_id: "j1", has_log: false, message: null,
   });
 });
 
@@ -93,7 +93,7 @@ it("explains a rejected token instead of showing an empty screen", async () => {
 });
 
 it("keeps the chosen environment when the user comes back to a project", async () => {
-  const alpha = { id: "a1", name: "alpha", config_path: "/a/dblift.yaml", last_environment: "", environments: ["staging"], engine: "sqlite", error: null, missing: false, repository: "a", repository_path: "/a" };
+  const alpha = { id: "a1", name: "alpha", config_path: "/a/dblift.yaml", last_environment: "", environments: ["staging"], engine: "sqlite", error: null, missing: false, repository: "a", repository_path: "/a", flyway_table: null };
   const beta = { ...alpha, id: "b1", name: "beta" };
   api.listProjects.mockResolvedValue([alpha, beta]);
   api.setEnvironment.mockResolvedValue({ ...alpha, last_environment: "staging" });
@@ -113,7 +113,7 @@ it("keeps the chosen environment when the user comes back to a project", async (
 });
 
 it("says so when the chosen environment cannot be saved", async () => {
-  const gamma = { id: "g1", name: "gamma", config_path: "/g/dblift.yaml", last_environment: "", environments: ["staging"], engine: "sqlite", error: null, missing: false, repository: "g", repository_path: "/g" };
+  const gamma = { id: "g1", name: "gamma", config_path: "/g/dblift.yaml", last_environment: "", environments: ["staging"], engine: "sqlite", error: null, missing: false, repository: "g", repository_path: "/g", flyway_table: null };
   api.listProjects.mockResolvedValue([gamma]);
   api.setEnvironment.mockRejectedValue(new Error("registry file is read-only"));
   render(<App />);
@@ -127,14 +127,14 @@ it("says so when the chosen environment cannot be saved", async () => {
 });
 
 describe("unsaved edits in the open script", () => {
-  const delta = { id: "d1", name: "delta", config_path: "/d/dblift.yaml", last_environment: "", environments: [], engine: "sqlite", error: null, missing: false, repository: "d", repository_path: "/d" };
+  const delta = { id: "d1", name: "delta", config_path: "/d/dblift.yaml", last_environment: "", environments: [], engine: "sqlite", error: null, missing: false, repository: "d", repository_path: "/d", flyway_table: null };
   const epsilon = { ...delta, id: "e1", name: "epsilon", config_path: "/e/dblift.yaml", repository: "e", repository_path: "/e" };
   const A = "V1_0_0__create_accounts.sql";
 
   beforeEach(() => {
     api.listProjects.mockResolvedValue([delta, epsilon]);
     runJob.mockResolvedValue({
-      success: true, error: null, current_version: null, sql: [], repaired: null, baseline_version: null, job_id: "j1", has_log: false,
+      success: true, error: null, current_version: null, sql: [], repaired: null, baseline_version: null, job_id: "j1", has_log: false, message: null,
       migrations: [{ script: A, version: "1.0.0", description: "create_accounts", type: "SQL", status: "PENDING", installed_on: "", installed_by: "", execution_time: 0 }],
     });
     const listed = { name: A, kind: "versioned", version: "1.0.0", description: "create_accounts", language: "sql", directory: "migrations", has_undo: false };

@@ -2,16 +2,17 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { type FormEvent, useId, useState } from "react";
 
 import { cloneRepository, discoverFolder, getDefaults } from "../api/discovery";
+import { readFlyway } from "../api/flyway";
 import { addProject } from "../api/projects";
-import type { Discovery, FoundConfig, Project } from "../api/types";
+import type { ConfigFormData, Discovery, FoundConfig, Project } from "../api/types";
 import { defaultNames } from "../projects/naming";
 import Dialog from "./Dialog";
 
 interface Props {
   projects: Project[];
   onAdded: (ids: string[]) => void;
-  /** Open the configuration form for a folder that has migrations but no config. */
-  onConfigure: (target: { folder: string; migrations: string; name: string }) => void;
+  /** Open the configuration form for a folder that has migrations but no config, pre-filled when converting. */
+  onConfigure: (target: { folder: string; migrations: string; name: string; initial?: ConfigFormData; notes?: string[] }) => void;
   onClose: () => void;
 }
 
@@ -41,6 +42,7 @@ export default function AddProject({ projects, onAdded, onConfigure, onClose }: 
   const [typed, setTyped] = useState<Record<string, string>>({});
   const [failures, setFailures] = useState<Record<string, string>>({});
   const [added, setAdded] = useState<string[]>([]);
+  const [unconverted, setUnconverted] = useState<Record<string, string>>({});
 
   const cloneParent = parent ?? defaults?.clone_parent ?? "";
   const repositories = [...new Set(projects.map((p) => p.repository_path))].sort();
@@ -54,6 +56,7 @@ export default function AddProject({ projects, onAdded, onConfigure, onClose }: 
       setFound(discovery);
       setTyped({});
       setFailures({});
+      setUnconverted({});
       setAdded([]);
       setSelected(discovery.configs.filter((c) => c.kind !== "template" && usable(c)).map((c) => c.path));
     } catch (failure) {
@@ -120,6 +123,21 @@ export default function AddProject({ projects, onAdded, onConfigure, onClose }: 
     setFailures(failed);
     setAdded((previous) => [...previous, ...done]);
     setSelected(selected.filter((path) => path in failed));
+  };
+
+  // A Flyway project opens the configuration form with what its settings say.
+  const convert = async (root: string, path: string) => {
+    setWorking("Reading the Flyway settings…");
+    setUnconverted((previous) => ({ ...previous, [path]: "" }));
+    try {
+      const { folder, form, notes } = await readFlyway(root, path);
+      const name = folder.split(/[\\/]/).filter(Boolean).pop() ?? "";
+      onConfigure({ folder, migrations: form.migrations_directory, name, initial: form, notes });
+    } catch (failure) {
+      setUnconverted((previous) => ({ ...previous, [path]: (failure as Error).message }));
+    } finally {
+      setWorking(null);
+    }
   };
 
   const count = selected.length;
@@ -272,10 +290,23 @@ export default function AddProject({ projects, onAdded, onConfigure, onClose }: 
           {found.flyway.length > 0 && (
             <section className="found__other">
               <h3>Flyway projects</h3>
-              <ul>
+              <ul className="found__folders">
                 {found.flyway.map((path) => (
-                  <li key={path} className="mono">
-                    {path}
+                  <li key={path}>
+                    <span className="mono">{path}</span>
+                    <button
+                      className="button"
+                      aria-label={`Convert ${path}`}
+                      disabled={working !== null}
+                      onClick={() => void convert(found.root, path)}
+                    >
+                      Convert
+                    </button>
+                    {unconverted[path] && (
+                      <p className="error-text" role="alert">
+                        {unconverted[path]}
+                      </p>
+                    )}
                   </li>
                 ))}
               </ul>

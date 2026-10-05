@@ -22,7 +22,7 @@ function view(children: ReactNode) {
 
 const project: Project = {
   id: "p1", name: "shop-api", config_path: "/work/shop/dblift.yaml", last_environment: "",
-  environments: ["staging"], engine: "sqlite", error: null, missing: false, repository: "shop", repository_path: "/work/shop",
+  environments: ["staging"], engine: "sqlite", error: null, missing: false, repository: "shop", repository_path: "/work/shop", flyway_table: null,
 };
 
 function migration(script: string, status: string): Migration {
@@ -34,7 +34,7 @@ function migration(script: string, status: string): Migration {
 }
 
 function result(migrations: Migration[], extra: Partial<JobResult> = {}): JobResult {
-  return { success: true, error: null, current_version: null, migrations, sql: [], repaired: null, baseline_version: null, job_id: "j1", has_log: false, ...extra };
+  return { success: true, error: null, current_version: null, migrations, sql: [], repaired: null, baseline_version: null, job_id: "j1", has_log: false, message: null, ...extra };
 }
 
 const A = "V1_0_0__create_customers.sql";

@@ -10,6 +10,7 @@ import { isApplied, latestPerScript, summarize } from "../status/model";
 import { useStatus } from "../status/useStatus";
 import CommandBar from "./CommandBar";
 import EngineLogo from "./EngineLogo";
+import FlywayImport from "./FlywayImport";
 import MigrationGrid from "./MigrationGrid";
 import NewMigration from "./NewMigration";
 import PreviewPanel from "./PreviewPanel";
@@ -151,6 +152,16 @@ const StatusView = forwardRef<StatusViewHandle, Props>(function StatusView({ pro
               setCreating(true);
             })
           }
+        />
+      )}
+
+      {!project.error && result && phase !== "error" && project.flyway_table && counts.applied === 0 && (
+        <FlywayImport
+          table={project.flyway_table}
+          busy={busy || preview !== null}
+          run={run}
+          onPreview={() => void start("flyway_preview", { table: project.flyway_table })}
+          onImport={() => void start("flyway_import", { table: project.flyway_table })}
         />
       )}
 
