@@ -410,22 +410,37 @@ def create_app(
         store = ScriptStore(project.config_path)
         scripts = store.list()
         home = repository_of(Path(project.config_path))
+        inside = gitops.is_repository(home)
         changes: Dict[str, str] = {}
-        if gitops.is_repository(home):
+        if inside:
             try:
                 changes = {f.path: f.state for f in gitops.status(home).files}
             except gitops.GitError:
                 changes = {}  # the list still shows; only the marks are missing
         top = home.resolve()
-        return [
-            {
-                **asdict(script),
-                "change": changes.get(
-                    Path(os.path.relpath(store.path_of(script), top)).as_posix(), ""
-                ),
-            }
-            for script in scripts
-        ]
+        undos = store.undo_paths()
+
+        def in_repository(path: Optional[Path]) -> str:
+            """*path* relative to the repository's root, as git names it; "" when it has none."""
+            if not inside or path is None:
+                return ""
+            relative = Path(os.path.relpath(path, top))
+            return "" if relative.parts[:1] == ("..",) else relative.as_posix()
+
+        listed = []
+        for script in scripts:
+            path = in_repository(store.path_of(script))
+            undo_path = in_repository(undos.get(script.name)) if script.has_undo else ""
+            listed.append(
+                {
+                    **asdict(script),
+                    "path": path,
+                    "change": changes.get(path, "") if path else "",
+                    "undo_path": undo_path,
+                    "undo_change": changes.get(undo_path, "") if undo_path else "",
+                }
+            )
+        return listed
 
     @app.post("/api/projects/{project_id}/scripts", status_code=201)
     def create_scripts(project_id: str, body: NewScripts) -> Dict[str, List[str]]:

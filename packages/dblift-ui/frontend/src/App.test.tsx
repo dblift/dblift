@@ -144,7 +144,7 @@ describe("unsaved edits in the open script", () => {
       success: true, error: null, current_version: null, sql: [], repaired: null, baseline_version: null, job_id: "j1", has_log: false, message: null,
       migrations: [{ script: A, version: "1.0.0", description: "create_accounts", type: "SQL", status: "PENDING", installed_on: "", installed_by: "", execution_time: 0 }],
     });
-    const listed = { name: A, kind: "versioned", version: "1.0.0", description: "create_accounts", language: "sql", directory: "migrations", has_undo: false, change: "" };
+    const listed = { name: A, kind: "versioned", version: "1.0.0", description: "create_accounts", language: "sql", directory: "migrations", has_undo: false, path: "", change: "", undo_path: "", undo_change: "" };
     scripts.listScripts.mockResolvedValue([listed]);
     scripts.readScript.mockResolvedValue({ ...listed, content: "-- accounts\n" });
   });

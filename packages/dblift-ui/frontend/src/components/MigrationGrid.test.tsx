@@ -12,9 +12,12 @@ function migration(script: string): Migration {
   const [version, name] = script.slice(1).replace(".sql", "").split("__");
   return { script, version: version.replaceAll("_", "."), description: name, type: "SQL", status: "PENDING", installed_on: "", installed_by: "", execution_time: 0 };
 }
-function script(name: string, change: string): Script {
+function script(name: string, change: string, undoChange = ""): Script {
   const [version, description] = name.slice(1).replace(".sql", "").split("__");
-  return { name, kind: "versioned", version: version.replaceAll("_", "."), description, language: "sql", directory: "migrations", has_undo: false, change };
+  return {
+    name, kind: "versioned", version: version.replaceAll("_", "."), description, language: "sql", directory: "migrations", has_undo: true,
+    path: `migrations/${name}`, change, undo_path: `migrations/U${name.slice(1)}`, undo_change: undoChange,
+  };
 }
 
 it("marks the migrations whose script is not committed as it is, with the git state as title", () => {
@@ -29,9 +32,27 @@ it("marks the migrations whose script is not committed as it is, with the git st
   const grid = screen.getByRole("table", { name: "Migrations" });
 
   expect(within(grid).getByRole("row", { name: /create accounts/ })).not.toHaveTextContent("Uncommitted");
-  expect(within(within(grid).getByRole("row", { name: /create orders/ })).getByText("Uncommitted")).toHaveAttribute("title", "modified");
-  expect(within(within(grid).getByRole("row", { name: /add phone/ })).getByText("Uncommitted")).toHaveAttribute("title", "untracked");
+  expect(within(within(grid).getByRole("row", { name: /create orders/ })).getByText("Uncommitted")).toHaveAttribute("title", "Migration: modified");
+  expect(within(within(grid).getByRole("row", { name: /add phone/ })).getByText("Uncommitted")).toHaveAttribute("title", "Migration: untracked");
   expect(within(grid).getAllByText("Uncommitted")).toHaveLength(2);
+});
+
+it("marks a migration whose undo script is not committed, and says which file", () => {
+  render(
+    <MigrationGrid
+      migrations={[A, B].map(migration)}
+      scripts={[script(A, "", "untracked"), script(B, "modified", "modified")]}
+      openScript={null}
+      onOpen={vi.fn()}
+    />,
+  );
+  const grid = screen.getByRole("table", { name: "Migrations" });
+
+  expect(within(within(grid).getByRole("row", { name: /create accounts/ })).getByText("Uncommitted")).toHaveAttribute("title", "Undo script: untracked");
+  expect(within(within(grid).getByRole("row", { name: /create orders/ })).getByText("Uncommitted")).toHaveAttribute(
+    "title",
+    "Migration: modified; Undo script: modified",
+  );
 });
 
 it("puts the mark in the description cell", () => {

@@ -186,6 +186,23 @@ def test_two_files_with_the_same_name_are_reported(sqlite_project):
         ScriptStore(str(sqlite_project)).read("V1_0_0__create_customers.sql")
 
 
+def test_undo_paths_name_each_undo_file_by_its_migration(sqlite_project):
+    migrations = sqlite_project.parent / "migrations"
+    (migrations / "undo").mkdir()
+    (migrations / "U1_0_1__create_orders.sql").rename(
+        migrations / "undo" / "U1_0_1__create_orders.sql"
+    )
+    (migrations / "other").mkdir()
+    (migrations / "other" / "U1_0_0__create_customers.sql").write_text("SELECT 0;\n")
+
+    paths = ScriptStore(str(sqlite_project)).undo_paths()
+
+    # Two files share the first undo name: which one counts is unknown, so neither is given.
+    assert paths == {
+        "V1_0_1__create_orders.sql": (migrations / "undo" / "U1_0_1__create_orders.sql").resolve()
+    }
+
+
 def test_create_versioned_sql_takes_the_next_version_and_adds_an_undo(sqlite_project):
     store = ScriptStore(str(sqlite_project))
 

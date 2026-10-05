@@ -14,8 +14,15 @@ interface Props {
 export default function MigrationGrid({ migrations, scripts, openScript, onOpen }: Props) {
   const withUndo = new Set(scripts.filter((s) => s.has_undo).map((s) => s.name));
   const onDisk = new Set(scripts.map((s) => s.name));
-  // The git state of the scripts not committed as they are.
-  const changes = new Map(scripts.filter((s) => s.change).map((s) => [s.name, s.change]));
+  // Which of a migration's files are not committed as they are, and their git state.
+  const changes = new Map(
+    scripts
+      .filter((s) => s.change || s.undo_change)
+      .map((s) => [
+        s.name,
+        [s.change && `Migration: ${s.change}`, s.undo_change && `Undo script: ${s.undo_change}`].filter(Boolean).join("; "),
+      ]),
+  );
   return (
     <div className="grid-scroll">
       <table className="grid" aria-label="Migrations">

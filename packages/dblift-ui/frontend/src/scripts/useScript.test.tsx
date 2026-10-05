@@ -10,7 +10,7 @@ vi.mock("../api/scripts", () => api);
 
 const file: ScriptFile = {
   name: "V1_0_0__a.sql", kind: "versioned", version: "1.0.0", description: "a", language: "sql",
-  directory: "migrations", has_undo: true, change: "", content: "CREATE TABLE a (id INTEGER);\n",
+  directory: "migrations", has_undo: true, path: "", change: "", undo_path: "", undo_change: "", content: "CREATE TABLE a (id INTEGER);\n",
 };
 
 beforeEach(() => {

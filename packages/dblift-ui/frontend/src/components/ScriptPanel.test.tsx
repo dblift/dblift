@@ -20,7 +20,7 @@ const V = "V1_0_1__create_orders.sql";
 const U = "U1_0_1__create_orders.sql";
 const file = (name: string, content: string): ScriptFile => ({
   name, kind: name.startsWith("U") ? "undo" : "versioned", version: "1.0.1", description: "create_orders",
-  language: "sql", directory: "migrations", has_undo: true, change: "", content,
+  language: "sql", directory: "migrations", has_undo: true, path: "", change: "", undo_path: "", undo_change: "", content,
 });
 
 function panel(overrides: Partial<Parameters<typeof ScriptPanel>[0]> = {}) {

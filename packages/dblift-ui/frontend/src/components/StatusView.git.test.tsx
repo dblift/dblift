@@ -42,7 +42,7 @@ function migration(script: string): Migration {
 }
 function script(name: string): Script {
   const [version, description] = name.slice(1).replace(".sql", "").split("__");
-  return { name, kind: "versioned", version: version.replaceAll("_", "."), description, language: "sql", directory: "migrations", has_undo: false, change: "" };
+  return { name, kind: "versioned", version: version.replaceAll("_", "."), description, language: "sql", directory: "migrations", has_undo: false, path: `migrations/${name}`, change: "", undo_path: "", undo_change: "" };
 }
 function status(names: string[]): JobResult {
   return { success: true, error: null, current_version: null, migrations: names.map(migration), sql: [], repaired: null, baseline_version: null, job_id: "j1", has_log: false, message: null };
@@ -242,22 +242,35 @@ describe("committing", () => {
     expect(within(dialog).getByRole("checkbox", { name: "notes.txt" })).not.toBeChecked();
   });
 
-  // The script list holds migrations only; an undo script is known by its migration.
+  // The script list holds migrations only; the server reports each one's undo script with it.
   describe("with a changed undo script", () => {
     const U = "U1_0_1__create_orders.sql";
 
     beforeEach(() => {
-      checkedOut = { ...main, files: [...changedFiles, { path: `migrations/${U}`, state: "untracked" }] };
+      checkedOut = {
+        ...main,
+        files: [
+          ...changedFiles,
+          { path: `migrations/${U}`, state: "untracked" },
+          // Another project's undo script of the same name, in the same repository.
+          { path: `reporting/migrations/${U}`, state: "untracked" },
+        ],
+      };
       scripts.listScripts.mockImplementation(async () =>
-        onDisk.map((name) => ({ ...script(name), has_undo: name === B, change: name === B ? "untracked" : "" })),
+        onDisk.map((name) =>
+          name === B
+            ? { ...script(name), has_undo: true, change: "modified", undo_path: `migrations/${U}`, undo_change: "untracked" }
+            : script(name),
+        ),
       );
     });
 
-    it("ticks it in the commit", async () => {
+    it("ticks exactly its file in the commit", async () => {
       const dialog = await openCommit();
 
       expect(within(dialog).getByRole("checkbox", { name: `migrations/${B}` })).toBeChecked();
       expect(within(dialog).getByRole("checkbox", { name: `migrations/${U}` })).toBeChecked();
+      expect(within(dialog).getByRole("checkbox", { name: `reporting/migrations/${U}` })).not.toBeChecked();
     });
 
     it("offers its changes on the editor's undo tab", async () => {

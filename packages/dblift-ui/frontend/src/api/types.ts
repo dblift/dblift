@@ -83,8 +83,14 @@ export interface Script {
   language: "sql" | "python";
   directory: string;
   has_undo: boolean;
+  /** The file's path relative to the repository's root, or "" outside a repository. */
+  path: string;
   /** The file's git state ("modified", "untracked"…), or "" when it is committed as is. */
   change: string;
+  /** The undo script's path relative to the repository's root, or "" when there is none. */
+  undo_path: string;
+  /** The undo script's git state, or "" when it is committed as is or there is none. */
+  undo_change: string;
 }
 
 export interface ChangedFile {

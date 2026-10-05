@@ -298,6 +298,55 @@ def test_scripts_outside_a_repository_have_no_change(client, auth, outside_id):
     scripts = client.get(f"/api/projects/{outside_id}/scripts", headers=auth).json()
 
     assert scripts and all(s["change"] == "" for s in scripts)
+    assert all(s["path"] == "" and s["undo_path"] == "" and s["undo_change"] == "" for s in scripts)
+
+
+def test_scripts_carry_their_paths_in_the_repository(client, auth, repo, project_id):
+    (repo / "migrations" / "U1_0_0__create_accounts.sql").write_text("DROP TABLE accounts;\n")
+
+    (script,) = client.get(f"/api/projects/{project_id}/scripts", headers=auth).json()
+
+    assert script["path"] == SCRIPT
+    assert script["undo_path"] == "migrations/U1_0_0__create_accounts.sql"
+
+
+def test_a_new_undo_script_is_untracked(client, auth, repo, project_id):
+    (repo / "migrations" / "U1_0_0__create_accounts.sql").write_text("DROP TABLE accounts;\n")
+
+    (script,) = client.get(f"/api/projects/{project_id}/scripts", headers=auth).json()
+
+    assert script["change"] == ""
+    assert script["undo_change"] == "untracked"
+
+
+def test_a_script_without_an_undo_script_has_no_undo_change(client, auth, repo, project_id):
+    (repo / SCRIPT).write_text("-- changed\n")
+
+    (script,) = client.get(f"/api/projects/{project_id}/scripts", headers=auth).json()
+
+    assert (script["change"], script["undo_path"], script["undo_change"]) == ("modified", "", "")
+
+
+def test_undo_scripts_of_the_same_name_in_two_projects_are_told_apart(client, auth, repo):
+    config = "database:\n  type: sqlite\n  path: ./dev.db\nmigrations:\n  directory: ./migrations\n"
+    for folder in ("billing", "shop"):
+        (repo / folder / "migrations").mkdir(parents=True)
+        (repo / folder / "dblift.yaml").write_text(config)
+        (repo / folder / "migrations" / "V1_0_0__init.sql").write_text("SELECT 1;\n")
+        (repo / folder / "migrations" / "U1_0_0__init.sql").write_text("SELECT 0;\n")
+    repo.git("add", ".")
+    repo.git("commit", "-q", "-m", "two projects")
+    (repo / "shop" / "migrations" / "U1_0_0__init.sql").write_text("SELECT 2;\n")
+    billing = _add(client, auth, repo / "billing" / "dblift.yaml", name="billing")
+    shop = _add(client, auth, repo / "shop" / "dblift.yaml", name="shop")
+
+    (billing_script,) = client.get(f"/api/projects/{billing}/scripts", headers=auth).json()
+    (shop_script,) = client.get(f"/api/projects/{shop}/scripts", headers=auth).json()
+
+    assert billing_script["undo_path"] == "billing/migrations/U1_0_0__init.sql"
+    assert billing_script["undo_change"] == ""
+    assert shop_script["undo_path"] == "shop/migrations/U1_0_0__init.sql"
+    assert shop_script["undo_change"] == "modified"
 
 
 def test_the_diff_of_a_script(client, auth, repo, project_id):
