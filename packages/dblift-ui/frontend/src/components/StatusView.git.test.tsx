@@ -183,11 +183,37 @@ it("reads the git status again after a script is saved", async () => {
   render(view(<StatusView project={project} onEnvironmentChange={() => {}} />));
   await userEvent.click(await screen.findByRole("button", { name: `Open ${B}` }));
   await userEvent.type(await screen.findByLabelText(`Content of ${B}`), "x");
-  await waitFor(() => expect(git.getRepo).toHaveBeenCalledTimes(1));
+  // Read on opening, then again once the status read has finished.
+  await waitFor(() => expect(git.getRepo).toHaveBeenCalledTimes(2));
 
   await userEvent.click(screen.getByRole("button", { name: "Save" }));
 
+  await waitFor(() => expect(git.getRepo.mock.calls.length).toBeGreaterThan(2));
+});
+
+// A job can leave files git sees while it runs, such as a SQLite journal: none may linger.
+it("reads the git status again once a status read has finished", async () => {
+  let finish: (result: JobResult) => void = () => {};
+  runJob.mockImplementation((_p: string, command: string) =>
+    command === "info" ? new Promise<JobResult>((resolve) => (finish = resolve)) : Promise.resolve(status(onDisk)),
+  );
+  render(view(<StatusView project={project} onEnvironmentChange={() => {}} />));
+  await waitFor(() => expect(runJob).toHaveBeenCalledWith("p1", "info", "", expect.any(Function)));
+  await waitFor(() => expect(git.getRepo).toHaveBeenCalledTimes(1));
+
+  finish(status(onDisk));
+
   await waitFor(() => expect(git.getRepo).toHaveBeenCalledTimes(2));
+});
+
+it("reads the git status again after a command that changes nothing", async () => {
+  render(view(<StatusView project={project} onEnvironmentChange={() => {}} />));
+  await waitFor(() => expect(git.getRepo).toHaveBeenCalledTimes(2));
+
+  await userEvent.click(await screen.findByRole("button", { name: "Validate" }));
+
+  await waitFor(() => expect(runJob).toHaveBeenCalledWith("p1", "validate", "", expect.any(Function), {}));
+  await waitFor(() => expect(git.getRepo).toHaveBeenCalledTimes(3));
 });
 
 it("fetches and pushes without asking about unsaved edits", async () => {

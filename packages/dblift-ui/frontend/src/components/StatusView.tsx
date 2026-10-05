@@ -45,7 +45,9 @@ export interface StatusViewHandle {
 const StatusView = forwardRef<StatusViewHandle, Props>(function StatusView({ project, onEnvironmentChange, onConfigure, onMoved }, ref) {
   const [environment, setEnvironment] = useState(project.last_environment);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const { phase, result, error, activity, refresh } = useStatus(project.id, environment);
+  // Every finished job reads the repository again: a file it left while running (a SQLite
+  // journal) must not stay listed as uncommitted.
+  const { phase, result, error, activity, refresh } = useStatus(project.id, environment, () => git.refresh());
   const queryClient = useQueryClient();
   // Re-read on focus too: the uncommitted marks follow commits made with another tool.
   const { data: scripts = [], dataUpdatedAt: scriptsRead } = useQuery({
@@ -71,7 +73,7 @@ const StatusView = forwardRef<StatusViewHandle, Props>(function StatusView({ pro
       refreshAll();
     }
   });
-  const { run, busy, start, dismiss } = useCommand(project.id, environment, refreshAll);
+  const { run, busy, start, dismiss } = useCommand(project.id, environment, refreshAll, git.refresh);
   const [openScript, setOpenScript] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   // Opening another script or a new one replaces the editor: it asks first when there are unsaved edits.

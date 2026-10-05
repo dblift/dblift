@@ -18,11 +18,16 @@ export interface CommandRun {
   error: string | null;
 }
 
-/** Run one command at a time for a project and keep what it reported. */
-export function useCommand(projectId: string, environment: string, onChanged: () => void) {
+/**
+ * Run one command at a time for a project and keep what it reported. *onChanged* runs after a
+ * command that may have changed the database, *onFinished* after any command.
+ */
+export function useCommand(projectId: string, environment: string, onChanged: () => void, onFinished?: () => void) {
   const [run, setRun] = useState<CommandRun | null>(null);
   const changed = useRef(onChanged);
   changed.current = onChanged;
+  const finished = useRef(onFinished);
+  finished.current = onFinished;
 
   const start = useCallback(
     async (command: string, params: Record<string, unknown> = {}): Promise<JobResult | null> => {
@@ -54,6 +59,8 @@ export function useCommand(projectId: string, environment: string, onChanged: ()
           changed.current();
         }
         return null;
+      } finally {
+        finished.current?.();
       }
     },
     [projectId, environment],
