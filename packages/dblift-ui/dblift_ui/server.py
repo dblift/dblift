@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any, AsyncIterator, Awaitable, Callable, Dict, Iterator, List, Optional, Set
 
 import yaml
-from dblift_ui import __version__, configs, flyway, gitops
+from dblift_ui import __version__, configs, flyway, gitops, scratch
 from dblift_ui.clone import CloneError, clone
 from dblift_ui.discovery import DiscoveryError, discover
 from dblift_ui.jobs import MUTATING, Job, JobRunner, ProjectBusy
@@ -394,6 +394,10 @@ def create_app(
                 status_code=409,
                 detail="A change is running on this project. Save once it has finished.",
             )
+
+    @app.get("/api/projects/{project_id}/scratch")
+    def scratch_plan(project_id: str) -> Dict[str, Any]:
+        return asdict(scratch.plan(project_of(project_id).config_path))
 
     # Starlette picks the handler of the closest class, so a missing script is a 404.
     @app.exception_handler(ScriptNotFound)
