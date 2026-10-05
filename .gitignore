@@ -72,6 +72,7 @@ coverage-*.json
 # Database configuration files with credentials
 dblift-*.yaml
 node_modules/
+packages/dblift-ui/dblift_ui/static/app/
 
 # Internal documentation (licensing, business plans, etc.)
 LICENSING_IMPLEMENTATION.md
