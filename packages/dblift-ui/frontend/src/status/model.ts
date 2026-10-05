@@ -6,25 +6,32 @@ interface StateInfo {
   label: string;
   tone: Tone;
   hint: string;
+  /** True when the migration's effect is present in the database. */
+  applied: boolean;
 }
 
-// Keyed by the state string the engine reports. Only the first four have been
-// observed; the others are best guesses, and anything unlisted is shown as is.
+// Keyed by the state string the engine reports, with spaces as underscores.
+// FUTURE and IGNORED have not been observed; anything unlisted is shown as is.
 const STATES: Record<string, StateInfo> = {
-  SUCCESS: { label: "Applied", tone: "ok", hint: "Ran successfully on this database." },
-  PENDING: { label: "Pending", tone: "warn", hint: "Not yet run on this database." },
-  FAILED: { label: "Failed", tone: "error", hint: "Stopped with an error. Repair before migrating again." },
-  UNDONE: { label: "Undone", tone: "muted", hint: "Was applied, then reverted by its undo script." },
-  MISSING: { label: "Missing", tone: "error", hint: "Recorded in the database, but its file is not in this folder." },
-  OUT_OF_ORDER: { label: "Out of order", tone: "warn", hint: "Applied after a later version." },
-  FUTURE: { label: "Future", tone: "info", hint: "Applied to the database by a newer set of scripts." },
-  BASELINE: { label: "Baseline", tone: "info", hint: "Marks where history starts for an existing database." },
-  IGNORED: { label: "Ignored", tone: "muted", hint: "Skipped by the current filters." },
+  SUCCESS: { label: "Applied", tone: "ok", applied: true, hint: "Ran successfully on this database." },
+  PENDING: { label: "Pending", tone: "warn", applied: false, hint: "Not yet run on this database." },
+  RUNNING: { label: "Running", tone: "info", applied: false, hint: "Being applied right now." },
+  FAILED: { label: "Failed", tone: "error", applied: false, hint: "Stopped with an error. Repair before migrating again." },
+  UNDONE: { label: "Undone", tone: "muted", applied: false, hint: "Was applied, then reverted by its undo script." },
+  MISSING: { label: "Missing", tone: "error", applied: true, hint: "Applied to the database, but its file is not in this folder." },
+  OUT_OF_ORDER: { label: "Out of order", tone: "warn", applied: true, hint: "Applied after a later version." },
+  BASELINE: { label: "Baseline", tone: "info", applied: true, hint: "Marks where history starts for an existing database." },
+  BELOW_BASELINE: { label: "Below baseline", tone: "muted", applied: false, hint: "Older than the baseline, so it is not run." },
+  FUTURE: { label: "Future", tone: "info", applied: true, hint: "Applied to the database by a newer set of scripts." },
+  IGNORED: { label: "Ignored", tone: "muted", applied: false, hint: "Skipped by the current filters." },
 };
 
 export function stateInfo(status: string): StateInfo {
-  return STATES[status.toUpperCase()] ?? { label: status, tone: "info", hint: "" };
+  const key = status.trim().toUpperCase().replaceAll(" ", "_");
+  return STATES[key] ?? { label: status, tone: "info", applied: false, hint: "" };
 }
+
+export const isApplied = (status: string) => stateInfo(status).applied;
 
 /** History can list a script several times (run, undone, run again): keep its latest entry. */
 export function latestPerScript(migrations: Migration[]): Migration[] {
@@ -37,11 +44,15 @@ export function latestPerScript(migrations: Migration[]): Migration[] {
 
 export function summarize(migrations: Migration[]) {
   const count = (status: string) => migrations.filter((m) => m.status === status).length;
-  return { applied: count("SUCCESS"), pending: count("PENDING"), failed: count("FAILED") };
+  return {
+    applied: migrations.filter((m) => isApplied(m.status)).length,
+    pending: count("PENDING"),
+    failed: count("FAILED"),
+  };
 }
 
 /** How far the rail is filled: to the middle of the last applied node. */
 export function railFill(migrations: Migration[]): number {
-  const last = migrations.map((m) => m.status).lastIndexOf("SUCCESS");
+  const last = migrations.map((m) => isApplied(m.status)).lastIndexOf(true);
   return last < 0 ? 0 : (last + 0.5) / migrations.length;
 }

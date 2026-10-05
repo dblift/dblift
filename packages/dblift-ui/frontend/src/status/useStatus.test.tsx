@@ -7,7 +7,9 @@ import { useStatus } from "./useStatus";
 const runJob = vi.hoisted(() => vi.fn());
 vi.mock("../api/jobs", () => ({ runJob }));
 
-const result: JobResult = { success: true, error: null, current_version: "1.0.0", migrations: [] };
+const result: JobResult = {
+  success: true, error: null, current_version: "1.0.0", migrations: [], sql: [], repaired: null, baseline_version: null,
+};
 
 beforeEach(() => {
   runJob.mockReset();
