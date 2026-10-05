@@ -30,7 +30,7 @@ const project = (id: string, name: string, repositoryPath: string): Project => (
 });
 
 function dialog(overrides: Partial<Parameters<typeof AddProject>[0]> = {}) {
-  const props = { projects: [] as Project[], onAdded: vi.fn(), onClose: vi.fn(), ...overrides };
+  const props = { projects: [] as Project[], onAdded: vi.fn(), onConfigure: vi.fn(), onClose: vi.fn(), ...overrides };
   const wrap = (children: ReactNode) => <QueryClientProvider client={new QueryClient()}>{children}</QueryClientProvider>;
   render(wrap(<AddProject {...props} />));
   return props;
@@ -153,6 +153,29 @@ it("has nothing to add when nothing usable was found", async () => {
   expect(await screen.findByText("No config file was found in this folder.")).toBeInTheDocument();
   expect(screen.getByText("migrations")).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: /^Add \d/ })).not.toBeInTheDocument();
+});
+
+it("offers to create a configuration for a migration folder without one", async () => {
+  const props = dialog();
+  await userEvent.type(screen.getByLabelText("Folder path"), "/work/platform");
+  await userEvent.click(screen.getByRole("button", { name: "Look for configs" }));
+  await screen.findByText("/work/platform");
+
+  const orphans = screen.getByRole("region", { name: "Migration folders no config points at" });
+  await userEvent.click(within(orphans).getByRole("button", { name: "Create configuration" }));
+
+  expect(props.onConfigure).toHaveBeenCalledWith({ folder: "/work/platform", migrations: "./legacy/sql", name: "platform" });
+});
+
+it("offers to create a configuration when none was found", async () => {
+  discoveryApi.discoverFolder.mockResolvedValue({ ...found, configs: [], flyway: [], script_folders: [] });
+  const props = dialog();
+  await userEvent.type(screen.getByLabelText("Folder path"), "/work/empty");
+  await userEvent.click(screen.getByRole("button", { name: "Look for configs" }));
+
+  await userEvent.click(await screen.findByRole("button", { name: "Create a configuration" }));
+
+  expect(props.onConfigure).toHaveBeenCalledWith({ folder: "/work/platform", migrations: "./migrations", name: "platform" });
 });
 
 it("says when the folder was too large to scan entirely", async () => {

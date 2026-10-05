@@ -3,6 +3,7 @@ import threading
 import time
 from types import SimpleNamespace
 
+import pytest
 from dblift_ui.jobs import EVENT_FIELDS, FINISHED, JobRunner, redact, serialize_event
 
 SECRET_URL = "postgresql+psycopg://app:s3cret@db.local:5432/shop"
@@ -216,3 +217,26 @@ def test_failed_job_does_not_leak_the_password(client, auth, sqlite_project, tmp
     assert events[-1]["result"]["success"] is False
     assert "app:***@db.local" in events[-1]["result"]["error"]
     assert "s3cret" not in json.dumps(events)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "cannot reach postgresql://app:p@ss@db.local/shop",
+        "cannot reach postgresql://app:pa/ss@db.local/shop",
+        "cannot reach postgresql://app@corp:s3cret@db.local/shop",
+    ],
+)
+def test_redact_masks_passwords_holding_separators(text):
+    masked = redact(text)
+
+    assert "s3cret" not in masked and "ss@" not in masked
+    assert masked.endswith("***@db.local/shop")
+
+
+def test_redact_stays_linear_on_a_long_line_of_url_fragments():
+    text = "://x:" * 40_000  # 200 KB, no "@"
+    started = time.perf_counter()
+
+    assert redact(text) == text
+    assert time.perf_counter() - started < 1

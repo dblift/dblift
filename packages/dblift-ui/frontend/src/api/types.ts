@@ -86,3 +86,59 @@ export interface Script {
 export interface ScriptFile extends Script {
   content: string;
 }
+
+export interface EngineSpec {
+  id: string;
+  label: string;
+  scheme: string;
+  port: number | null;
+  fields: string[];
+}
+
+export interface PasswordForm {
+  mode: "env" | "literal" | "keep" | "none";
+  value: string;
+}
+
+export interface ConnectionForm {
+  mode: "fields" | "url";
+  url: string;
+  host: string;
+  port: number | null;
+  database: string;
+  service_name: string;
+  account: string;
+  warehouse: string;
+  path: string;
+  username: string;
+  schema: string;
+  password: PasswordForm;
+}
+
+export interface EnvironmentForm {
+  name: string;
+  connection: ConnectionForm;
+}
+
+export interface ConfigFormData {
+  engine: string;
+  connection: ConnectionForm;
+  migrations_directory: string;
+  recursive: boolean;
+  log_level: string;
+  strict_mode: boolean;
+  clean_disabled: boolean;
+  environments: EnvironmentForm[];
+}
+
+export interface ConfigPreview {
+  yaml: string;
+  problems: string[];
+  warnings: string[];
+}
+
+export interface ConfigDocument {
+  form: ConfigFormData;
+  revision: string;
+  notes: string[];
+}

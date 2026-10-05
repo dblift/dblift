@@ -80,6 +80,15 @@ it("offers the environments and reports the one chosen", async () => {
   expect(onEnvironmentChange).toHaveBeenCalledWith("staging");
 });
 
+it("opens the configuration from the header", async () => {
+  const onConfigure = vi.fn();
+  render(view(<StatusView project={project} onEnvironmentChange={() => {}} onConfigure={onConfigure} />));
+
+  await userEvent.click(await screen.findByRole("button", { name: "Configuration" }));
+
+  expect(onConfigure).toHaveBeenCalledTimes(1);
+});
+
 it("runs the status for the remembered environment", async () => {
   render(view(<StatusView project={{ ...project, last_environment: "staging" }} onEnvironmentChange={() => {}} />));
   await screen.findByRole("table", { name: "Migrations" });

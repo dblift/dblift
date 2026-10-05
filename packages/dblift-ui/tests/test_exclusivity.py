@@ -72,6 +72,31 @@ def test_reading_is_allowed_while_a_change_runs(
     _finish(client, auth, first.json()["job_id"])
 
 
+def test_the_config_is_not_saved_while_a_change_runs(
+    client, auth, sqlite_project, held_migrate, monkeypatch, tmp_path
+):
+    monkeypatch.chdir(tmp_path)
+    entered, release = held_migrate
+    project_id = _add(client, auth, sqlite_project)
+    read = client.get(f"/api/projects/{project_id}/config", headers=auth).json()
+    read["form"]["connection"]["path"] = "./other.db"
+    before = sqlite_project.read_text()
+    first = _start(client, auth, project_id, "migrate")
+    assert entered.wait(timeout=10)
+
+    refused = client.put(
+        f"/api/projects/{project_id}/config",
+        headers=auth,
+        json={"form": read["form"], "revision": read["revision"]},
+    )
+
+    assert refused.status_code == 409
+    assert "A change is running" in refused.json()["detail"]
+    assert sqlite_project.read_text() == before
+    release.set()
+    _finish(client, auth, first.json()["job_id"])
+
+
 def test_a_refused_job_does_not_block_the_project_afterwards(
     client, auth, sqlite_project, monkeypatch, tmp_path
 ):

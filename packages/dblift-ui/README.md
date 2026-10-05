@@ -25,6 +25,13 @@ undo script beside them) or repeatable, are created from the interface. Only
 files in the project's configured migration directories can be read or
 written, and job logs are kept out of the project folder.
 
+A configuration can be created for a folder that has migrations but no config
+file, and edited from the project view. Both go through a form with a live
+preview of the file, checked by the DBLift config loader before it can be
+saved; editing keeps the file's comments. A password defaults to an
+environment-variable placeholder, and a password already saved in the file is
+never displayed.
+
 ## Development
 
 The interface lives in `frontend/` (React, TypeScript, Vite). It is built into
