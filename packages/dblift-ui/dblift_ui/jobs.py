@@ -9,7 +9,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterator, List, Optional
 
-from dblift_ui.masking import mask_passwords
+from dblift_ui.flyway import TABLE_NAME
+from dblift_ui.masking import redact
 from dblift_ui.registry import Project, ProjectRegistry
 
 from dblift.api import DBLiftClient
@@ -40,11 +41,6 @@ class ProjectBusy(Exception):
     """A change is already running on this project."""
 
 
-def redact(text: str) -> str:
-    """Mask passwords that engine error messages may echo back."""
-    return mask_passwords(text, "***")
-
-
 def read_log(folder: Path) -> str:
     """The engine's text log for one job: redacted, and only its tail when very long."""
     parts = []
@@ -63,9 +59,6 @@ def check_params(command: str, params: Dict[str, Any]) -> None:
         if not _VERSION.match(version):
             raise ValueError("baseline needs a version made of numbers and dots, like 1.4.0")
     if command in ("flyway_preview", "flyway_import"):
-        # Imported here: the Flyway reader uses the config form, which imports this module.
-        from dblift_ui.flyway import TABLE_NAME
-
         if not TABLE_NAME.match(str(params.get("table") or "")):
             raise ValueError("the history table name must be a plain identifier")
 

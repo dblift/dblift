@@ -6,7 +6,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from dblift_ui.jobs import redact
+from dblift_ui.masking import redact
 
 # https, ssh, and the scp-like git@host:path form. Everything else (http, git, ext, …) is refused.
 _REMOTE = re.compile(r"^(?:https://|ssh://|[\w.-]+@[\w.-]+:)[^\s\x00-\x1f]+\Z")
