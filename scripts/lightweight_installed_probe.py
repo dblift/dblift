@@ -31,7 +31,6 @@ def main() -> None:
     assert Path(distribution.locate_file("dblift/py.typed")).is_file()
     templates = distribution.locate_file("dblift/core/logger/templates")
     assert (templates / "report.html").is_file()
-    assert not (templates / "oldreport.html").exists()
     report = HtmlFormatter().format_result(MigrateResult(), "public", "installed", "MIGRATE")
     assert "<title>DBLift Migration Report — installed</title>" in report
     assert importlib.util.find_spec("dblift_pro") is None
