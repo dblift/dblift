@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any, AsyncIterator, Awaitable, Callable, Dict, Iterator, List, Optional, Set
 
 import yaml
-from dblift_ui import __version__, configs, flyway, gitops
+from dblift_ui import __version__, configs, flyway, gitops, scratch
 from dblift_ui.clone import CloneError, clone
 from dblift_ui.discovery import DiscoveryError, discover
 from dblift_ui.jobs import MUTATING, Job, JobRunner, ProjectBusy
@@ -96,6 +96,11 @@ class BranchName(BaseModel):
 class GitCommit(BaseModel):
     paths: List[str] = []
     message: str = ""
+
+
+class PullRequest(BaseModel):
+    title: str = ""
+    body: str = ""
 
 
 def engine_of(data: Dict[str, Any]) -> str:
@@ -395,6 +400,10 @@ def create_app(
                 detail="A change is running on this project. Save once it has finished.",
             )
 
+    @app.get("/api/projects/{project_id}/scratch")
+    def scratch_plan(project_id: str) -> Dict[str, Any]:
+        return asdict(scratch.plan(project_of(project_id).config_path))
+
     # Starlette picks the handler of the closest class, so a missing script is a 404.
     @app.exception_handler(ScriptNotFound)
     async def script_not_found(request: Request, exc: ScriptNotFound) -> JSONResponse:
@@ -526,6 +535,19 @@ def create_app(
     @app.post("/api/projects/{project_id}/git/commit")
     def git_commit(project_id: str, body: GitCommit) -> Dict[str, Any]:
         return git_change(project_id, gitops.commit, body.paths, body.message)
+
+    @app.post("/api/projects/{project_id}/git/pull-request")
+    def git_pull_request(project_id: str, body: PullRequest) -> Dict[str, Any]:
+        root = repository(project_id)
+        found = git_call(gitops.status, root)
+        if found.detached or not found.branch:
+            raise HTTPException(status_code=400, detail="Switch to a branch first.")
+        remote = gitops.remote_web(root)
+        if remote is None:
+            return {"url": None, "kind": None, "branch": found.branch}
+        kind, base = remote
+        url = gitops.pull_request_url(kind, base, found.branch, body.title, body.body)
+        return {"url": url, "kind": kind, "branch": found.branch}
 
     def config_text(project_id: str) -> str:
         try:

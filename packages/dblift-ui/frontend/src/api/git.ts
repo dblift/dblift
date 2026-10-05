@@ -1,5 +1,5 @@
 import { request } from "./client";
-import type { Branch, RepoStatus } from "./types";
+import type { Branch, PullRequestLink, RepoStatus } from "./types";
 
 const base = (projectId: string) => `/projects/${projectId}/git`;
 
@@ -26,6 +26,10 @@ export const pushRepo = (projectId: string) => verb(projectId, "push");
 
 export const commitFiles = (projectId: string, paths: string[], message: string) =>
   verb(projectId, "commit", { paths, message });
+
+/** The address of a pre-filled "new pull request" page for the current branch, built from the origin remote. */
+export const pullRequestLink = (projectId: string, title: string, body: string) =>
+  request<PullRequestLink>(`${base(projectId)}/pull-request`, { method: "POST", body: JSON.stringify({ title, body }) });
 
 /** The unified diff of a script against the last commit; "" when it is unchanged. */
 export const scriptDiff = (projectId: string, name: string) =>

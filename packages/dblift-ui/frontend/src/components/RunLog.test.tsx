@@ -11,7 +11,7 @@ vi.mock("../api/jobs", () => api);
 function run(hasLog: boolean): CommandRun {
   return {
     command: "migrate", phase: "done", events: [{ event: "migration.completed" }], error: null,
-    result: { success: true, error: null, current_version: "1.0.1", migrations: [], sql: [], repaired: null, baseline_version: null, job_id: "j1", has_log: hasLog, message: null },
+    result: { success: true, error: null, current_version: "1.0.1", migrations: [], sql: [], repaired: null, baseline_version: null, job_id: "j1", has_log: hasLog, message: null, scratch: null },
   };
 }
 

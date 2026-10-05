@@ -996,6 +996,12 @@ input {
   font-size: 1.15rem;
 }
 
+.dialog__busy {
+  margin-left: auto;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
 .dialog__body {
   display: grid;
   gap: 14px;
@@ -1803,6 +1809,449 @@ button.branch__item:disabled {
 
 .diff-hunk:first-child {
   margin-top: 0;
+}
+
+/* New-change wizard */
+.wizard {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+}
+
+.wizard__guard,
+.wizard__confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--warn-border);
+  border-radius: var(--radius-card);
+  background: var(--warn-tint);
+  padding: 8px 12px;
+  color: var(--warn);
+  font-size: 14px;
+}
+
+.wizard__guard > span,
+.wizard__confirm > span {
+  margin-right: auto;
+}
+
+/* The steps: a compact numbered rail; under 700px, one line says where the developer is. */
+.wizard__rail ol {
+  display: flex;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.wizard__rail li {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.wizard__stop {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  border: 0;
+  border-bottom: 2px solid var(--border);
+  background: transparent;
+  padding: 4px 4px 8px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.wizard__stop:hover:not(:disabled) {
+  color: var(--text-strong);
+}
+
+.wizard__stop:disabled {
+  color: var(--text-faint);
+  cursor: default;
+}
+
+.wizard__stop[aria-current="step"] {
+  border-bottom-color: var(--accent);
+  color: var(--text-strong);
+}
+
+.wizard__mark {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--border-strong);
+  border-radius: 9999px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.wizard__stop[aria-current="step"] .wizard__mark {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.wizard__mark--done {
+  border-color: var(--accent-border);
+  background: var(--accent-tint);
+  color: var(--accent);
+}
+
+.wizard__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wizard__compact {
+  display: none;
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+@media (max-width: 700px) {
+  .wizard__rail {
+    display: none;
+  }
+
+  .wizard__compact {
+    display: block;
+  }
+}
+
+.wizard__step {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+/* The display above would otherwise show a step that is not the current one. */
+.wizard__step[hidden] {
+  display: none;
+}
+
+.wizard__title {
+  font-size: 1rem;
+}
+
+.wizard__form,
+.wizard__write,
+.wizard__test {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.wizard__form > p,
+.wizard__test > p {
+  margin: 0;
+}
+
+.wizard__description {
+  min-height: 5rem;
+  resize: vertical;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-button);
+  background: var(--surface-inset);
+  color: var(--text-strong);
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 14px;
+}
+
+.wizard__description:read-only {
+  color: var(--text-secondary);
+}
+
+.wizard__branch {
+  display: grid;
+  gap: 10px;
+}
+
+.wizard__branch .field {
+  max-width: 28rem;
+}
+
+.wizard__created {
+  color: var(--text-secondary);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.wizard__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+
+.wizard__back {
+  margin-right: auto;
+}
+
+/* On a phone the actions wrap: each row fills the width instead of leaving one button stranded. */
+@media (max-width: 520px) {
+  .wizard__actions > .button {
+    flex: 1 1 auto;
+  }
+}
+
+/* Write: the two editors take most of the dialog's height, side by side, stacked under 900px. */
+.wizard__editors {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.wizard__editor {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface-inset);
+}
+
+.wizard__editor-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-panel);
+  padding: 8px 12px;
+}
+
+.wizard__editor-head h4 {
+  margin: 0;
+  color: var(--text-strong);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.wizard__file {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wizard__editor > .notice {
+  border-width: 0 0 1px;
+  border-radius: 0;
+  font-size: 13px;
+}
+
+.wizard__code {
+  height: max(14rem, calc(88vh - 20rem));
+}
+
+.wizard__hint {
+  margin: 0;
+  border-top: 1px solid var(--border);
+  background: var(--surface-panel);
+  padding: 8px 12px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+@media (max-width: 900px) {
+  .wizard__editors {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .wizard__code {
+    height: 16rem;
+  }
+}
+
+/* Test: the plan, then the phases as a short list, each with its sign and its state in words. */
+.wizard__plan {
+  display: grid;
+  gap: 6px;
+}
+
+.wizard__plan p {
+  margin: 0;
+}
+
+.wizard__warning {
+  border: 1px solid var(--warn-border);
+  border-radius: var(--radius-card);
+  background: var(--warn-tint);
+  padding: 8px 12px;
+  color: var(--warn);
+  font-size: 13px;
+}
+
+.phases {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface-inset);
+  padding: 6px;
+  list-style: none;
+}
+
+.phase {
+  display: grid;
+  grid-template-columns: 1.25rem minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 2px 10px;
+  padding: 6px 8px;
+}
+
+.phase__icon {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  text-align: center;
+}
+
+.phase__name {
+  color: var(--text-strong);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.phase__state {
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.phase--running .phase__icon,
+.phase--running .phase__state {
+  color: var(--info);
+}
+
+.phase--passed .phase__icon,
+.phase--passed .phase__state {
+  color: var(--ok);
+}
+
+.phase--failed .phase__icon,
+.phase--failed .phase__state {
+  color: var(--error);
+}
+
+.phase__detail,
+.phase > .wizard__failure {
+  grid-column: 2 / -1;
+}
+
+.phase__detail {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.wizard__failure {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.wizard__failure p {
+  margin: 0;
+  color: var(--error);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.wizard__failure pre {
+  max-height: 14rem;
+  margin: 0;
+  overflow: auto;
+  border: 1px solid var(--error-border);
+  border-radius: var(--radius-button);
+  background: var(--surface-deep);
+  padding: 10px 12px;
+  color: var(--text-code);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.wizard__outcome:empty {
+  display: none;
+}
+
+.wizard__retry {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* Wizard: commit and publish */
+.wizard__commit,
+.wizard__publish,
+.wizard__pr {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.wizard__form .dialog__actions {
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+
+.wizard__done,
+.wizard__branch-line,
+.wizard__pr > p,
+.wizard__publish > p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.wizard__done {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.wizard__done-icon {
+  color: var(--ok);
+  font-family: var(--font-mono);
+}
+
+.wizard__copy {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+
+.wizard__copy input,
+.wizard__copy textarea {
+  flex: 1;
+  min-width: 0;
+}
+
+.wizard__copy textarea {
+  font-size: 12px;
+}
+
+.wizard__copied:empty {
+  display: none;
+}
+
+.wizard__copied {
+  color: var(--text-secondary);
+  font-size: 13px;
 }
 
 @media (prefers-reduced-motion: reduce) {

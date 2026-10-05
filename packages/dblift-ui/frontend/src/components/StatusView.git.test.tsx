@@ -45,7 +45,7 @@ function script(name: string): Script {
   return { name, kind: "versioned", version: version.replaceAll("_", "."), description, language: "sql", directory: "migrations", has_undo: false, path: `migrations/${name}`, change: "", undo_path: "", undo_change: "" };
 }
 function status(names: string[]): JobResult {
-  return { success: true, error: null, current_version: null, migrations: names.map(migration), sql: [], repaired: null, baseline_version: null, job_id: "j1", has_log: false, message: null };
+  return { success: true, error: null, current_version: null, migrations: names.map(migration), sql: [], repaired: null, baseline_version: null, job_id: "j1", has_log: false, message: null, scratch: null };
 }
 function view(children: ReactNode) {
   return <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>{children}</QueryClientProvider>;

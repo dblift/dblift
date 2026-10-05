@@ -6,6 +6,7 @@ import { listScripts } from "../api/scripts";
 import type { Project, RepoStatus, SqlPreview } from "../api/types";
 import { liveStates } from "../commands/live";
 import { useCommand } from "../commands/useCommand";
+import { changedScriptFiles } from "../git/changes";
 import { useRepo } from "../git/useRepo";
 import { describeActivity } from "../status/activity";
 import { isApplied, latestPerScript, summarize, undoNameOf } from "../status/model";
@@ -21,6 +22,7 @@ import PreviewPanel from "./PreviewPanel";
 import Rail from "./Rail";
 import RunLog from "./RunLog";
 import ScriptPanel, { type ScriptPanelHandle } from "./ScriptPanel";
+import Wizard from "./wizard/Wizard";
 
 interface Props {
   project: Project;
@@ -76,6 +78,7 @@ const StatusView = forwardRef<StatusViewHandle, Props>(function StatusView({ pro
   const { run, busy, start, dismiss } = useCommand(project.id, environment, refreshAll, git.refresh);
   const [openScript, setOpenScript] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [wizard, setWizard] = useState(false);
   // Opening another script or a new one replaces the editor: it asks first when there are unsaved edits.
   const panel = useRef<ScriptPanelHandle>(null);
   const leaveEditor = (action: () => void) => (panel.current ? panel.current.leave(action) : action());
@@ -111,8 +114,8 @@ const StatusView = forwardRef<StatusViewHandle, Props>(function StatusView({ pro
     const root = (git.repo?.root ?? "").replaceAll("\\", "/");
     const config = project.config_path.replaceAll("\\", "/");
     const configFile = root && config.startsWith(`${root}/`) ? config.slice(root.length + 1) : null;
-    const own = new Set(scripts.flatMap((s) => [s.change && s.path, s.undo_change && s.undo_path]).filter(Boolean));
-    return (git.repo?.files ?? []).filter((f) => f.path === configFile || own.has(f.path)).map((f) => f.path);
+    const files = git.repo?.files ?? [];
+    return [...files.filter((f) => f.path === configFile).map((f) => f.path), ...changedScriptFiles(files, scripts)];
   };
   const commit = async (paths: string[], message: string) => {
     if (await git.act(() => commitFiles(project.id, paths, message))) {
@@ -237,6 +240,12 @@ const StatusView = forwardRef<StatusViewHandle, Props>(function StatusView({ pro
           busy={busy || preview !== null}
           onMigrate={() => void openPreview()}
           onCommand={(command, params) => void start(command, params)}
+          onNewChange={() =>
+            leaveEditor(() => {
+              setOpenScript(null);
+              setWizard(true);
+            })
+          }
           onNew={() =>
             leaveEditor(() => {
               setOpenScript(null);
@@ -259,6 +268,8 @@ const StatusView = forwardRef<StatusViewHandle, Props>(function StatusView({ pro
           }}
         />
       )}
+
+      {wizard && <Wizard project={project} onClose={() => setWizard(false)} onChanged={refreshAll} />}
 
       {preview && <PreviewPanel preview={preview} busy={busy} onApply={apply} onCancel={() => setPreview(null)} />}
 

@@ -5,13 +5,15 @@ interface Props {
   onClose: () => void;
   /** A wider panel, for a form with a side pane. */
   wide?: boolean;
+  /** While set, the dialog cannot be closed, and says why. */
+  busy?: string | null;
   children: ReactNode;
 }
 
 const FOCUSABLE =
   "button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [href], [tabindex]:not([tabindex='-1'])";
 
-export default function Dialog({ title, onClose, wide = false, children }: Props) {
+export default function Dialog({ title, onClose, wide = false, busy = null, children }: Props) {
   const heading = useId();
   const box = useRef<HTMLDivElement>(null);
   // Read while rendering: a child may take focus before this dialog's effects run.
@@ -30,13 +32,16 @@ export default function Dialog({ title, onClose, wide = false, children }: Props
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        onClose();
+        if (!busy) {
+          onClose();
+        }
         return;
       }
       if (event.key !== "Tab" || !box.current) {
         return;
       }
-      const controls = [...box.current.querySelectorAll<HTMLElement>(FOCUSABLE)];
+      // A control inside a hidden part (a step not shown) cannot take focus: it does not count.
+      const controls = [...box.current.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((control) => !control.closest("[hidden]"));
       if (controls.length === 0) {
         return;
       }
@@ -53,7 +58,7 @@ export default function Dialog({ title, onClose, wide = false, children }: Props
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [onClose, busy]);
 
   return (
     <div className="dialog-scrim">
@@ -67,7 +72,8 @@ export default function Dialog({ title, onClose, wide = false, children }: Props
       >
         <header className="dialog__head">
           <h2 id={heading}>{title}</h2>
-          <button className="button button--quiet" onClick={onClose}>
+          {busy && <span className="dialog__busy">{busy}</span>}
+          <button className="button button--quiet" disabled={busy !== null} onClick={onClose}>
             Close
           </button>
         </header>

@@ -1,16 +1,23 @@
 """A narrow set of git verbs for the interface. Never a shell, never a prompt, never a forced change."""
 
 import os
+import re
 import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
+from urllib.parse import quote, urlsplit
 
 from dblift_ui.masking import redact
 
 MAX_FILES = 2_000
 MAX_DIFF = 400_000
+MAX_PULL_REQUEST_BODY = 4_000
+_HOST = re.compile(r"^[A-Za-z0-9.-]+$")
+_SEGMENT = re.compile(r"^[A-Za-z0-9._-]+$")
+# ``[user@]host:path``, git's short form of an ssh address: no slash before the colon.
+_SCP = re.compile(r"^(?:[^@/:]+@)?(?P<host>[^@/:]+):(?P<path>.+)$")
 
 ENVIRONMENT: Dict[str, str] = {
     "GIT_TERMINAL_PROMPT": "0",
@@ -331,3 +338,91 @@ def commit(root: Path, paths: Sequence[str], message: str) -> None:
         if untracked:  # untracked again, as they were
             run(root, _LITERAL, "rm", "--cached", "--quiet", "--", *untracked, timeout=120)
         raise
+
+
+def _web_base(host: str, port: Optional[int], path: str) -> Optional[str]:
+    """``https://host[:port]/owner/repo`` when every part is plain, else None."""
+    labels = host.split(".")
+    if not _HOST.match(host) or any(
+        not label or label.startswith("-") or label.endswith("-") for label in labels
+    ):
+        return None
+    path = path[:-1] if path.endswith("/") else path
+    path = path[:-4] if path.endswith(".git") else path
+    segments = path.split("/")
+    if path.startswith("/"):
+        segments = segments[1:]
+    if len(segments) < 2 or any(
+        not _SEGMENT.match(segment) or segment in (".", "..") for segment in segments
+    ):
+        return None
+    authority = host.lower() if port is None else f"{host.lower()}:{port}"
+    return f"https://{authority}/{'/'.join(segments)}"
+
+
+def _kind(host: str) -> str:
+    host = host.lower()
+    if host == "github.com":
+        return "github"
+    if host == "gitlab.com" or host.startswith("gitlab."):
+        return "gitlab"
+    if host == "bitbucket.org":
+        return "bitbucket"
+    return "other"
+
+
+def remote_web(root: Path) -> Optional[Tuple[str, str]]:
+    """``(kind, web address)`` of the ``origin`` remote; None for a local or unusual one.
+
+    Credentials and ssh ports are dropped. Anything that is not plain letters, digits,
+    dots, hyphens and underscores in the host or a path segment gives None, so a remote
+    can never turn into a link to some other place.
+    """
+    if not is_repository(root):
+        return None
+    try:
+        url = run(root, "remote", "get-url", "origin").strip()
+    except GitError:
+        return None
+    if not url.isprintable() or any(c.isspace() or c == "\\" for c in url):
+        return None
+    if "://" in url:
+        try:
+            parts = urlsplit(url)
+            port = parts.port
+        except ValueError:
+            return None
+        if parts.scheme not in ("https", "ssh") or "?" in url or "#" in url:
+            return None
+        host = parts.hostname or ""
+        base = _web_base(host, port if parts.scheme == "https" else None, parts.path)
+    else:
+        match = _SCP.match(url)
+        if match is None or match["path"].startswith("/"):
+            return None
+        host = match["host"]
+        base = _web_base(host, None, match["path"])
+    return None if base is None else (_kind(host), base)
+
+
+def pull_request_url(kind: str, base: str, branch: str, title: str, body: str) -> Optional[str]:
+    """A link opening a new pull (or merge) request for *branch*, or None for another host."""
+    if not base.startswith("https://") or not branch:
+        return None
+
+    def encoded(value: str) -> str:
+        return quote(value, safe="")
+
+    if kind == "github":
+        return (
+            f"{base}/compare/{quote(branch, safe='/')}?expand=1"
+            f"&title={encoded(title)}&body={encoded(body[:MAX_PULL_REQUEST_BODY])}"
+        )
+    if kind == "gitlab":
+        return (
+            f"{base}/-/merge_requests/new?merge_request%5Bsource_branch%5D={encoded(branch)}"
+            f"&merge_request%5Btitle%5D={encoded(title)}"
+        )
+    if kind == "bitbucket":
+        return f"{base}/pull-requests/new?source={encoded(branch)}"
+    return None

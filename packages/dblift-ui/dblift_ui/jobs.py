@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterator, List, Optional
 
+from dblift_ui import scratch
 from dblift_ui.flyway import TABLE_NAME
 from dblift_ui.masking import redact
 from dblift_ui.registry import Project, ProjectRegistry
@@ -31,7 +32,7 @@ EVENT_FIELDS = (
 )
 FINISHED = "job.finished"
 _KEPT_JOBS = 50
-MUTATING = frozenset({"migrate", "undo", "repair", "baseline", "flyway_import"})
+MUTATING = frozenset({"migrate", "undo", "repair", "baseline", "flyway_import", "scratch_test"})
 _VERSION = re.compile(r"^\d+(\.\d+)*$")
 # The most of a run's text log the browser receives: its last characters.
 LOG_LIMIT = 200_000
@@ -61,6 +62,8 @@ def check_params(command: str, params: Dict[str, Any]) -> None:
     if command in ("flyway_preview", "flyway_import"):
         if not TABLE_NAME.match(str(params.get("table") or "")):
             raise ValueError("the history table name must be a plain identifier")
+    if command == "scratch_test":
+        scratch.check_script(params.get("script"))
 
 
 def _baseline(client: DBLiftClient, params: Dict[str, Any]) -> Any:
@@ -81,6 +84,22 @@ def serialize_event(event: Any) -> Dict[str, Any]:
         if value is not None:
             payload[name] = redact(value) if name == "error" else value
     return payload
+
+
+def blank_result(**fields: Any) -> Dict[str, Any]:
+    """A final result that no client produced, with *fields* set."""
+    return {
+        "success": False,
+        "error": None,
+        "message": None,
+        "current_version": None,
+        "repaired": None,
+        "baseline_version": None,
+        "sql": [],
+        "migrations": [],
+        "scratch": None,
+        **fields,
+    }
 
 
 def serialize_result(result: Any) -> Dict[str, Any]:
@@ -108,7 +127,46 @@ def serialize_result(result: Any) -> Dict[str, Any]:
             }
             for m in getattr(result, "migrations", [])
         ],
+        "scratch": None,
     }
+
+
+# A command that opens its own clients: it receives the project, the job's parameters, the
+# job's own folder and the job's publish function, and returns the final result.
+SelfDriven = Callable[
+    [Project, Dict[str, Any], Path, Callable[[Dict[str, Any]], None]], Dict[str, Any]
+]
+
+
+def _scratch_test(
+    project: Project,
+    params: Dict[str, Any],
+    folder: Path,
+    publish: Callable[[Dict[str, Any]], None],
+) -> Dict[str, Any]:
+    """Prove a migration and its undo on a scratch database; never the selected environment."""
+
+    def phase(step: scratch.Phase, status: str) -> None:
+        publish(
+            {"event": "scratch.phase", "phase": step.name, "status": status, "detail": step.detail}
+        )
+
+    folder.mkdir(parents=True, exist_ok=True)
+    outcome = scratch.run_test(
+        project.config_path,
+        str(params["script"]),
+        folder,
+        folder,
+        phase,
+        lambda event: publish(serialize_event(event)),
+    )
+    failed = next((p for p in outcome["phases"] if p["ok"] is False), None)
+    error = None
+    if failed is not None:
+        error = f"{failed['name']}: {(failed['detail'].splitlines() or [''])[0]}"
+    return blank_result(
+        success=bool(outcome["passed"] or outcome["skipped"]), error=error, scratch=outcome
+    )
 
 
 @dataclass
@@ -144,6 +202,7 @@ class JobRunner:
         "flyway_preview": _flyway(True),
         "flyway_import": _flyway(False),
     }
+    SELF_DRIVEN: Dict[str, SelfDriven] = {"scratch_test": _scratch_test}
 
     def __init__(self, registry: ProjectRegistry, runs_dir: Optional[Path] = None) -> None:
         self._registry = registry
@@ -162,7 +221,7 @@ class JobRunner:
         params: Optional[Dict[str, Any]] = None,
     ) -> Job:
         project = self._registry.get(project_id)
-        if command not in self.COMMANDS:
+        if command not in self.COMMANDS and command not in self.SELF_DRIVEN:
             raise ValueError(f"unknown command: {command}")
         params = dict(params or {})
         check_params(command, params)
@@ -219,25 +278,9 @@ class JobRunner:
         folder = self._runs / job.id
         try:
             try:
-                with DBLiftClient.from_config_file(
-                    project.config_path,
-                    environment=environment,
-                    relative_to_config=True,
-                    log_dir=str(folder),
-                ) as client:
-                    client.events.on("*", lambda event: job.publish(serialize_event(event)))
-                    result = serialize_result(self.COMMANDS[job.command](client, job.params))
+                result = self._execute(job, project, environment, folder)
             except BaseException as exc:  # the browser must always receive a final event
-                failure = {
-                    "success": False,
-                    "error": redact(str(exc) or type(exc).__name__),
-                    "message": None,
-                    "current_version": None,
-                    "repaired": None,
-                    "baseline_version": None,
-                    "sql": [],
-                    "migrations": [],
-                }
+                failure = blank_result(error=redact(str(exc) or type(exc).__name__))
                 self._finish(job, failure, folder)
                 # An ordinary failure is fully reported by the final event and a worker
                 # thread has nobody to re-raise to; SystemExit/KeyboardInterrupt still reach
@@ -253,6 +296,21 @@ class JobRunner:
                 if self._changing.get(job.project_id) is job:
                     del self._changing[job.project_id]
                 self._threads.pop(job.id, None)
+
+    def _execute(
+        self, job: Job, project: Project, environment: Optional[str], folder: Path
+    ) -> Dict[str, Any]:
+        """The final result of *job*: from a command given a client, or one opening its own."""
+        if job.command in self.SELF_DRIVEN:
+            return self.SELF_DRIVEN[job.command](project, job.params, folder, job.publish)
+        with DBLiftClient.from_config_file(
+            project.config_path,
+            environment=environment,
+            relative_to_config=True,
+            log_dir=str(folder),
+        ) as client:
+            client.events.on("*", lambda event: job.publish(serialize_event(event)))
+            return serialize_result(self.COMMANDS[job.command](client, job.params))
 
     @staticmethod
     def _finish(job: Job, result: Dict[str, Any], folder: Path) -> None:
