@@ -2,17 +2,17 @@
 
 import os
 import re
-import shutil
-import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, List, Optional, Set, Tuple
 
 import yaml
+from dblift_ui.gitops import GitError, run
 from dblift_ui.scripts import SCRIPT_NAME, ScriptError, ScriptStore, yaml_problem
 
 MAX_FILES = 20_000
 MAX_YAML_BYTES = 200_000
+_LISTING_LIMIT = 50_000_000
 
 _CONFIG_NAME = re.compile(
     r"^dblift.*\.ya?ml(?P<template>\.(?:template|example|sample))?\Z", re.IGNORECASE
@@ -54,28 +54,11 @@ class Discovery:
 
 def _git(root: Path, *args: str) -> Optional[str]:
     """Output of a read-only git command in *root*, or None when git cannot answer."""
-    if shutil.which("git") is None:
-        return None
     try:
-        done = subprocess.run(
-            # A repository's own config must not make git run a program of its choosing.
-            [
-                "git",
-                "-C",
-                str(root),
-                "-c",
-                "core.fsmonitor=false",
-                "-c",
-                "core.untrackedCache=false",
-                *args,
-            ],
-            capture_output=True,
-            timeout=30,
-            env={**os.environ, "GIT_TERMINAL_PROMPT": "0", "GIT_OPTIONAL_LOCKS": "0"},
-        )
-    except (OSError, subprocess.SubprocessError):
+        # A large repository's file list may be long; it is still bounded.
+        return run(root, *args, limit=_LISTING_LIMIT)
+    except GitError:
         return None
-    return done.stdout.decode("utf-8", errors="replace") if done.returncode == 0 else None
 
 
 def _list(root: Path) -> Tuple[List[str], bool, bool]:

@@ -6,6 +6,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from dblift_ui.gitops import ENVIRONMENT
 from dblift_ui.masking import redact
 
 # https, ssh, and the scp-like git@host:path form. Everything else (http, git, ext, …) is refused.
@@ -56,12 +57,7 @@ def clone(url: str, parent: str) -> Path:
     if target.exists():
         raise CloneError(f"{target} already exists")
     target.parent.mkdir(parents=True, exist_ok=True)
-    environment = {
-        **os.environ,
-        "GIT_TERMINAL_PROMPT": "0",
-        "GIT_ALLOW_PROTOCOL": "https:ssh:file",
-        "GIT_SSH_COMMAND": "ssh -oBatchMode=yes",
-    }
+    environment = {**os.environ, **ENVIRONMENT}
     try:
         done = subprocess.run(
             [
