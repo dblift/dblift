@@ -1,0 +1,61 @@
+name: ui-frontend
+
+on:
+  pull_request:
+    paths:
+      - "packages/dblift-ui/**"
+      - ".github/workflows/ui-frontend.yml"
+  push:
+    branches: [main]
+    paths:
+      - "packages/dblift-ui/**"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/dblift-ui/frontend
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24" # jsdom 30 requires Node ^22.22.2 || ^24.15.0 || >=26
+          cache: npm
+          cache-dependency-path: packages/dblift-ui/frontend/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Built interface makes no outbound request
+        working-directory: packages/dblift-ui/dblift_ui/static/app
+        run: |
+          # Hosts allowed to appear as text in the build. None is ever fetched:
+          # www.w3.org is the XML/SVG/MathML namespace identifier, reactjs.org
+          # is the documentation link inside React's error messages.
+          # Any other host (a font, script, style or data host) fails the job.
+          allowed='^https?://(www\.w3\.org|reactjs\.org)$'
+          unexpected=$(grep -Eoh 'https?://[a-zA-Z0-9.-]+' index.html assets/*.js assets/*.css assets/*.svg \
+            | sort -u | grep -Ev "$allowed" || true)
+          if [ -n "$unexpected" ]; then
+            echo "Unexpected remote host in the built interface:"
+            echo "$unexpected"
+            exit 1
+          fi
