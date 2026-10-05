@@ -2,7 +2,7 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 
 import type { Project } from "../../api/types";
 import { useRepo } from "../../git/useRepo";
-import { START, STEPS, type WizardContext, type WizardData, type WizardStep } from "../../wizard/steps";
+import { START, STEPS, type Update, type WizardContext, type WizardData, type WizardStep } from "../../wizard/steps";
 import Dialog from "../Dialog";
 
 interface Props {
@@ -33,7 +33,10 @@ export default function Wizard({ project, onClose, onChanged, steps = STEPS }: P
   const [wanted, setWanted] = useState<string | null>(null);
   // The question asked before closing over something not kept yet, while it is asked.
   const [asking, setAsking] = useState<string | null>(null);
-  const update = useCallback((partial: Partial<WizardData>) => setData((current) => ({ ...current, ...partial })), []);
+  const update = useCallback(
+    (partial: Update) => setData((current) => ({ ...current, ...(typeof partial === "function" ? partial(current) : partial) })),
+    [],
+  );
   const context: WizardContext = { ...data, project, repo, update, changed: onChanged };
 
   // A step opens only once every step before it is done: the furthest one reachable bounds the active one.

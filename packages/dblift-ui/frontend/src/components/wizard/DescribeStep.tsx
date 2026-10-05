@@ -30,7 +30,8 @@ export default function DescribeStep({ context, onNext, last }: StepProps) {
     }
     decided.current = true;
     if (repo.repository && !scripts) {
-      update({ branch: { ...branch, create: !repo.detached && MAIN_LINES.has(repo.branch ?? "") } });
+      const create = !repo.detached && MAIN_LINES.has(repo.branch ?? "");
+      update((current) => ({ branch: { ...current.branch, create } }));
     }
   }, [repo]);
 
@@ -39,8 +40,9 @@ export default function DescribeStep({ context, onNext, last }: StepProps) {
   const wantsBranch = inRepo && branch.create;
   const ready = description.trim() !== "" && (!wantsBranch || branch.name.trim() !== "") && !busy && !git.busy;
 
+  // Built on the branch as it is when applied: a change of the box landing just before is kept.
   const describe = (text: string) =>
-    update({ description: text, ...(named ? {} : { branch: { ...branch, name: `feature/${slug(text)}` } }) });
+    update((current) => ({ description: text, ...(named ? {} : { branch: { ...current.branch, name: `feature/${slug(text)}` } }) }));
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -106,7 +108,10 @@ export default function DescribeStep({ context, onNext, last }: StepProps) {
               type="checkbox"
               checked={branch.create}
               disabled={branchFixed}
-              onChange={(e) => update({ branch: { ...branch, create: e.target.checked } })}
+              onChange={(e) => {
+                const create = e.target.checked;
+                update((current) => ({ branch: { ...current.branch, create } }));
+              }}
             />
             Create a branch
           </label>
@@ -120,7 +125,8 @@ export default function DescribeStep({ context, onNext, last }: StepProps) {
                 value={branch.name}
                 onChange={(e) => {
                   setNamed(true);
-                  update({ branch: { ...branch, name: e.target.value } });
+                  const name = e.target.value;
+                  update((current) => ({ branch: { ...current.branch, name } }));
                 }}
               />
             </label>

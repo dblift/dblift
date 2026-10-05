@@ -26,11 +26,14 @@ export interface WizardData {
   busy: string | null;
 }
 
+export type Update = Partial<WizardData> | ((current: WizardData) => Partial<WizardData>);
+
 /** Everything the steps share. */
 export interface WizardContext extends WizardData {
   project: Project;
   repo: RepoStatus | undefined;
-  update(partial: Partial<WizardData>): void;
+  /** Merge *partial* in; a function gets the data as it is then, for a change built on a part of it. */
+  update(partial: Update): void;
   /** Files or git state may have changed: the view behind reads them again. */
   changed(): void;
 }

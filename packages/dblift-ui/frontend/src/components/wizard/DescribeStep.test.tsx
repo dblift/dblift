@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
 
@@ -65,6 +65,20 @@ it("offers a branch named after the description, following it until the name is 
 it.each(["main", "master", "develop"])("ticks Create a branch by default on %s", (branch) => {
   renderStep(DescribeStep, { repo: on(branch) });
 
+  expect(branchBox()).toBeChecked();
+});
+
+it("keeps a branch change that lands just before the description is typed", () => {
+  const { context } = renderStep(DescribeStep, { repo: on("topic") });
+  expect(branchBox()).not.toBeChecked();
+
+  // The box's default arrives while the step still shows the earlier state: typing must not undo it.
+  act(() => {
+    context().update({ branch: { ...context().branch, create: true } });
+    fireEvent.change(describe_(), { target: { value: "Add invoices" } });
+  });
+
+  expect(context().branch).toEqual({ create: true, name: "feature/add-invoices" });
   expect(branchBox()).toBeChecked();
 });
 

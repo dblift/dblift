@@ -34,7 +34,8 @@ export function renderStep(Step: (props: StepProps) => JSX.Element, { data = {},
   function Harness() {
     const [state, setState] = useState<WizardData>({ ...START, ...data });
     const context: WizardContext = {
-      ...state, project, repo, changed, update: (partial) => setState((current) => ({ ...current, ...partial })),
+      ...state, project, repo, changed,
+      update: (partial) => setState((current) => ({ ...current, ...(typeof partial === "function" ? partial(current) : partial) })),
     };
     latest.context = context;
     return <Step context={context} onNext={onNext} onBack={onBack} last={last} />;
