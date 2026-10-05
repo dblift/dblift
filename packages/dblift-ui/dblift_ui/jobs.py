@@ -30,7 +30,7 @@ EVENT_FIELDS = (
 )
 FINISHED = "job.finished"
 _KEPT_JOBS = 50
-MUTATING = frozenset({"migrate", "undo", "repair", "baseline"})
+MUTATING = frozenset({"migrate", "undo", "repair", "baseline", "flyway_import"})
 _VERSION = re.compile(r"^\d+(\.\d+)*$")
 # The most of a run's text log the browser receives: its last characters.
 LOG_LIMIT = 200_000
@@ -62,11 +62,23 @@ def check_params(command: str, params: Dict[str, Any]) -> None:
         version = str(params.get("version") or "").strip()
         if not _VERSION.match(version):
             raise ValueError("baseline needs a version made of numbers and dots, like 1.4.0")
+    if command in ("flyway_preview", "flyway_import"):
+        # Imported here: the Flyway reader uses the config form, which imports this module.
+        from dblift_ui.flyway import TABLE_NAME
+
+        if not TABLE_NAME.match(str(params.get("table") or "")):
+            raise ValueError("the history table name must be a plain identifier")
 
 
 def _baseline(client: DBLiftClient, params: Dict[str, Any]) -> Any:
     description = str(params.get("description") or "").strip() or None
     return client.baseline(version=str(params["version"]).strip(), description=description)
+
+
+def _flyway(dry_run: bool) -> Callable[[DBLiftClient, Dict[str, Any]], Any]:
+    return lambda client, params: client.import_flyway(
+        dry_run=dry_run, flyway_table=str(params["table"])
+    )
 
 
 def serialize_event(event: Any) -> Dict[str, Any]:
@@ -82,6 +94,7 @@ def serialize_result(result: Any) -> Dict[str, Any]:
     return {
         "success": bool(result.success),
         "error": redact(result.error_message) if result.error_message else None,
+        "message": redact(message) if (message := getattr(result, "message", None)) else None,
         "current_version": getattr(result, "current_schema_version", None),
         "repaired": getattr(result, "failed_migrations_removed", None),
         "baseline_version": getattr(result, "baseline_version", None),
@@ -135,6 +148,8 @@ class JobRunner:
         "undo": lambda client, params: client.undo(),
         "repair": lambda client, params: client.repair(),
         "baseline": _baseline,
+        "flyway_preview": _flyway(True),
+        "flyway_import": _flyway(False),
     }
 
     def __init__(self, registry: ProjectRegistry, runs_dir: Optional[Path] = None) -> None:
@@ -223,6 +238,7 @@ class JobRunner:
                 failure = {
                     "success": False,
                     "error": redact(str(exc) or type(exc).__name__),
+                    "message": None,
                     "current_version": None,
                     "repaired": None,
                     "baseline_version": None,

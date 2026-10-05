@@ -192,3 +192,32 @@ def test_unfinished_jobs_survive_the_job_cap(
     assert runner.get(held.id) is held
     release.set()
     assert held.done.wait(timeout=10)
+
+
+@pytest.mark.parametrize("command, holds", [("flyway_import", True), ("flyway_preview", False)])
+def test_a_flyway_import_holds_the_project_and_its_preview_does_not(
+    client, auth, sqlite_project, monkeypatch, tmp_path, command, holds
+):
+    monkeypatch.chdir(tmp_path)
+    entered, release = threading.Event(), threading.Event()
+
+    def slow(client, params):
+        entered.set()
+        assert release.wait(timeout=10), "test never released the held command"
+        return client.info()
+
+    monkeypatch.setitem(JobRunner.COMMANDS, command, slow)
+    project_id = _add(client, auth, sqlite_project)
+    first = client.post(
+        f"/api/projects/{project_id}/jobs",
+        headers=auth,
+        json={"command": command, "params": {"table": "flyway_schema_history"}},
+    )
+    assert first.status_code == 202
+    assert entered.wait(timeout=10)
+
+    try:
+        assert _start(client, auth, project_id, "migrate").status_code == (409 if holds else 202)
+    finally:
+        release.set()
+    _finish(client, auth, first.json()["job_id"])
