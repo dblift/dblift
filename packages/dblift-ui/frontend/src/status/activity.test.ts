@@ -33,3 +33,15 @@ it("has plain words for operation-level events and a fallback", () => {
   expect(describeEvent({ event: "undo.failed", error: "No undo script found" })).toBe("Undo failed: No undo script found");
   expect(describeEvent({ event: "something.else" })).toBe("something.else");
 });
+
+it("words the events of an undo script as such", () => {
+  expect(describeEvent({ event: "migration.script.started", script: "U1_0_4__add_loyalty_points.sql" })).toBe(
+    "Running undo script U1_0_4__add_loyalty_points.sql",
+  );
+  expect(
+    describeEvent({ event: "migration.script.completed", script: "U1_0_4__add_loyalty_points.sql", execution_time: 2 }),
+  ).toBe("Ran undo script U1_0_4__add_loyalty_points.sql in 2 ms");
+  expect(
+    describeEvent({ event: "migration.script.failed", script: "U1_0_4__add_loyalty_points.sql", error: "no such column" }),
+  ).toBe("Undo script U1_0_4__add_loyalty_points.sql failed: no such column");
+});

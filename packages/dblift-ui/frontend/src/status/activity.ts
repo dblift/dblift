@@ -33,13 +33,16 @@ const OPERATIONS: Record<string, string> = {
 /** One line of the run log for an event. */
 export function describeEvent(event: JobEvent): string {
   const { script, error } = event;
+  // An undo runs its U… script through the same events as a migration.
+  const undo = script?.startsWith("U");
+  const time = event.execution_time === undefined ? "" : ` in ${event.execution_time} ms`;
   switch (event.event) {
     case "migration.script.started":
-      return `Running ${script}`;
+      return undo ? `Running undo script ${script}` : `Running ${script}`;
     case "migration.script.completed":
-      return `Applied ${script}${event.execution_time === undefined ? "" : ` in ${event.execution_time} ms`}`;
+      return undo ? `Ran undo script ${script}${time}` : `Applied ${script}${time}`;
     case "migration.script.failed":
-      return `Failed ${script}: ${error}`;
+      return undo ? `Undo script ${script} failed: ${error}` : `Failed ${script}: ${error}`;
     case "undo.script.rolled_back":
       return `Reverted with ${script}`;
   }

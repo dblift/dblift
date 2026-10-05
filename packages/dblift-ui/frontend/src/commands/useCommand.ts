@@ -1,9 +1,14 @@
 import { useCallback, useRef, useState } from "react";
 
+import { ApiError } from "../api/client";
 import { runJob } from "../api/jobs";
 import type { JobEvent, JobResult } from "../api/types";
 
 const MUTATING = new Set(["migrate", "undo", "repair", "baseline"]);
+
+// The server answers these before starting a job: nothing ran, so nothing changed.
+const NOT_STARTED = new Set([400, 404, 409]);
+const refused = (failure: unknown) => failure instanceof ApiError && NOT_STARTED.has(failure.status);
 
 export interface CommandRun {
   command: string;
@@ -44,6 +49,10 @@ export function useCommand(projectId: string, environment: string, onChanged: ()
         return result;
       } catch (failure) {
         setRun((current) => current && { ...current, phase: "failed", error: (failure as Error).message });
+        // Any other failure may have come after the job started: the database may have changed.
+        if (MUTATING.has(command) && !refused(failure)) {
+          changed.current();
+        }
         return null;
       }
     },

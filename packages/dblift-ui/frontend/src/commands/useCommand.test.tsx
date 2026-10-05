@@ -1,6 +1,7 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
 
+import { ApiError } from "../api/client";
 import type { JobEvent, JobResult } from "../api/types";
 import { useCommand } from "./useCommand";
 
@@ -66,7 +67,7 @@ it("reports a command that finished unsuccessfully", async () => {
 });
 
 it("reports a refused command without calling onChanged", async () => {
-  runJob.mockRejectedValue(new Error("Another change is running on this project. Wait for it to finish."));
+  runJob.mockRejectedValue(new ApiError(409, "Another change is running on this project. Wait for it to finish."));
   const onChanged = vi.fn();
   const { result } = renderHook(() => useCommand("p1", "", onChanged));
 
@@ -104,4 +105,43 @@ it("passes parameters and can be dismissed", async () => {
 
   act(() => result.current.dismiss());
   expect(result.current.run).toBeNull();
+});
+
+it("re-reads the status when a change's stream breaks after the job started", async () => {
+  runJob.mockRejectedValue(new ApiError(0, "job stream ended before the job finished"));
+  const onChanged = vi.fn();
+  const { result } = renderHook(() => useCommand("p1", "", onChanged));
+
+  await act(async () => {
+    await result.current.start("migrate");
+  });
+
+  expect(result.current.run).toMatchObject({ phase: "failed", error: "job stream ended before the job finished" });
+  expect(onChanged).toHaveBeenCalledTimes(1);
+});
+
+it("re-reads the status when a change fails for an unknown reason", async () => {
+  runJob.mockRejectedValue(new Error("network down"));
+  const onChanged = vi.fn();
+  const { result } = renderHook(() => useCommand("p1", "", onChanged));
+
+  await act(async () => {
+    await result.current.start("migrate");
+  });
+
+  expect(result.current.run).toMatchObject({ phase: "failed", error: "network down" });
+  expect(onChanged).toHaveBeenCalledTimes(1);
+});
+
+it("does not re-read the status when a command that changes nothing fails", async () => {
+  runJob.mockRejectedValue(new ApiError(0, "job stream ended before the job finished"));
+  const onChanged = vi.fn();
+  const { result } = renderHook(() => useCommand("p1", "", onChanged));
+
+  await act(async () => {
+    await result.current.start("validate");
+  });
+
+  expect(result.current.run?.phase).toBe("failed");
+  expect(onChanged).not.toHaveBeenCalled();
 });

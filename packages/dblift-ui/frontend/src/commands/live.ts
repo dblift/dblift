@@ -7,7 +7,9 @@ import type { JobEvent } from "../api/types";
 export function liveStates(events: JobEvent[]): Record<string, string> {
   const states: Record<string, string> = {};
   for (const { event, script } of events) {
-    if (!script) {
+    // An undo runs its U… script through the same events as a migration: those say
+    // nothing about the migration itself, which only its rollback (below) changes.
+    if (!script || (script.startsWith("U") && event.startsWith("migration.script."))) {
       continue;
     }
     if (event === "migration.script.started") {
