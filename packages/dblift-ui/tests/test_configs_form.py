@@ -467,3 +467,76 @@ def test_emptying_an_environment_drops_its_database_but_keeps_other_sections():
     assert yaml.safe_load(render(form, existing=ENVIRONMENTS))["environments"]["staging"] == {
         "logging": {"level": "DEBUG"}
     }
+
+
+def test_switching_from_sqlite_to_a_server_engine_drops_type_and_path():
+    existing = "database:\n  type: sqlite\n  path: ./dev.db\n  busy_timeout: 5\n"
+
+    assert yaml.safe_load(render(_form(), existing=existing))["database"] == {
+        "url": "postgresql://db.example.com:5432/shop",
+        "username": "app",
+        "schema": "public",
+        "password": "${DBLIFT_DB_PASSWORD}",
+        "busy_timeout": 5,
+    }
+
+
+def test_a_type_naming_the_same_engine_is_kept():
+    existing = "database:\n  type: PostgreSQL\n  url: postgresql://h:5432/shop\n"
+
+    assert yaml.safe_load(render(_form(), existing=existing))["database"]["type"] == "PostgreSQL"
+
+
+def test_switching_to_sqlite_drops_the_server_keys():
+    existing = (
+        "database:\n  type: postgresql\n  host: h\n  port: 5433\n  database: shop\n"
+        "  username: app\n  password: x\n  connection_timeout: 15\n"
+    )
+    form = ConfigForm(
+        engine="sqlite", connection=Connection(path="./dev.db", password=Password(mode="none"))
+    )
+
+    assert yaml.safe_load(render(form, existing=existing))["database"] == {
+        "type": "sqlite",
+        "path": "./dev.db",
+        "connection_timeout": 15,
+    }
+
+
+def test_a_url_connection_leaves_type_and_path_alone():
+    existing = (
+        "database:\n  type: postgresql\n  path: ./unused\n  url: postgresql+psycopg://h/shop\n"
+    )
+    form, _ = read_form(existing)
+
+    data = yaml.safe_load(render(form, existing=existing))["database"]
+    assert (data["type"], data["path"]) == ("postgresql", "./unused")
+
+
+def test_a_lower_case_level_survives_a_round_trip_as_written():
+    existing = "database:\n  url: mysql://h/shop\nlogging:\n  level: warn\n"
+    form, _ = read_form(existing)
+    assert form.log_level == "WARN"
+
+    form.connection.host = "other"
+    assert "level: warn\n" in render(form, existing=existing)
+
+
+@pytest.mark.parametrize("level", ["DEBUG", "info", "Warning", "WARN", "ERROR", "critical"])
+def test_every_known_level_is_accepted(level):
+    form = _form()
+    form.log_level = level
+
+    assert yaml.safe_load(render(form)).get("logging", {"level": "INFO"})["level"] == level.upper()
+
+
+def test_an_unknown_level_in_the_file_survives_but_cannot_be_chosen():
+    existing = "database:\n  url: mysql://h/shop\nlogging:\n  level: verbose\n"
+    form, _ = read_form(existing)
+    assert form.log_level == "VERBOSE"
+
+    form.connection.host = "other"
+    assert yaml.safe_load(render(form, existing=existing))["logging"] == {"level": "verbose"}
+    form.log_level = "LOUD"
+    with pytest.raises(ConfigError, match="log level"):
+        render(form, existing=existing)

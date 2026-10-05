@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Literal, Optional, Tuple, cast
 from urllib.parse import quote, unquote
 
+from dblift_ui.masking import mask_passwords
 from dblift_ui.scripts import yaml_problem
 from pydantic import BaseModel, ConfigDict, Field
 from ruamel.yaml import YAML
@@ -21,16 +22,11 @@ _HOST = re.compile(r"^[A-Za-z0-9._-]+\Z")
 _VARIABLE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*\Z")
 _PLACEHOLDER = re.compile(r"^\$\{([A-Za-z_][A-Za-z0-9_]*)\}\Z")
 _ENVIRONMENT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*\Z")
-# The password of a ``scheme://user:password@host`` URL. URL parsers disagree on where it
-# ends: up to the last ``@`` before the path, or up to the first ``@`` even past a ``/``.
-# Both readings are masked, and the user itself may hold an ``@``.
-_CREDENTIALS = re.compile(r"(://[^:/\s]*:)(?:[^/?#\s]*|[^@\s]*)@")
-_PASSWORD_PARAMETER = re.compile(r"((?:password|pwd)=)[^&;#\s]*", re.IGNORECASE)
 _PLAIN_URL = re.compile(
     r"^(?P<scheme>[a-z0-9]+)://(?P<host>[A-Za-z0-9._-]+)(?::(?P<port>\d+))?/(?P<name>[^/?#@]*)(?:\?(?P<query>[^#]*))?\Z"
 )
 _LOOSE_KEYS = ("host", "port", "database", "service_name", "account", "warehouse")
-_LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR")
+_LEVELS = ("DEBUG", "INFO", "WARNING", "WARN", "ERROR", "CRITICAL")
 
 
 class ConfigError(Exception):
@@ -123,11 +119,6 @@ def _yaml() -> YAML:
     yaml.preserve_quotes = True
     yaml.indent(mapping=2, sequence=4, offset=2)
     return yaml
-
-
-def _hide(url: str) -> str:
-    """*url* with any password in it, before the host or as a parameter, masked."""
-    return _PASSWORD_PARAMETER.sub(rf"\g<1>{MASK}", _CREDENTIALS.sub(rf"\g<1>{MASK}@", url))
 
 
 def _load(text: str) -> CommentedMap:
@@ -232,7 +223,10 @@ def _read_connection(
             return Connection(host=plain["host"], port=port, database=name, **common), spec
     # Anything else is edited as one raw URL; a password inside it is not shown.
     scheme = _BY_SCHEME.get(url.split("://", 1)[0].split("+", 1)[0])
-    return Connection(mode="url", url=_hide(url), **common), declared or scheme or engine
+    return (
+        Connection(mode="url", url=mask_passwords(url, MASK), **common),
+        declared or scheme or engine,
+    )
 
 
 def read_form(text: str) -> Tuple[ConfigForm, List[str]]:
@@ -293,7 +287,7 @@ def _write_connection(
     if connection.mode == "url":
         if MASK in connection.url:
             # The browser only ever saw the masked form: unchanged means "keep what is stored".
-            if _hide(str(section.get("url") or "")) != connection.url:
+            if mask_passwords(str(section.get("url") or ""), MASK) != connection.url:
                 raise ConfigError(
                     "the URL still holds a masked password: type the real one or use the password field"
                 )
@@ -307,13 +301,17 @@ def _write_connection(
         if connection.path:
             section["type"] = "sqlite"
             section["path"] = connection.path
-            section.pop("url", None)
+            for key in ("url", *_LOOSE_KEYS):
+                section.pop(key, None)
         elif base:
             raise ConfigError("the database file path is required")
     elif filled or base:
         section["url"] = build_url(engine, connection)
-        for key in _LOOSE_KEYS:
+        for key in ("path", *_LOOSE_KEYS):
             section.pop(key, None)
+        # The URL's scheme names the engine; a ``type`` naming another one would contradict it.
+        if str(section.get("type", engine)).lower() != engine:
+            del section["type"]
     else:
         section.pop("url", None)
     for key, value in (("username", connection.username), ("schema", connection.schema_)):
@@ -344,14 +342,12 @@ def _mask(section: Any) -> None:
     ):
         section["password"] = MASK
     if section.get("url"):
-        section["url"] = _hide(str(section["url"]))
+        section["url"] = mask_passwords(str(section["url"]), MASK)
 
 
 def render(form: ConfigForm, existing: Optional[str] = None, mask: bool = False) -> str:
     if form.engine not in _BY_ID:
         raise ConfigError(f"unknown engine: {form.engine}")
-    if form.log_level not in _LEVELS:
-        raise ConfigError("unknown log level")
     if not form.migrations_directory.strip():
         raise ConfigError("the migrations folder is required")
     names = [environment.name for environment in form.environments]
@@ -366,8 +362,15 @@ def render(form: ConfigForm, existing: Optional[str] = None, mask: bool = False)
     migrations = _section(document, "migrations")
     migrations["directory"] = form.migrations_directory.strip()
     _put(migrations, "recursive", form.recursive, True)
-    if form.log_level != "INFO" or isinstance(document.get("logging"), dict):
-        _put(_section(document, "logging"), "level", form.log_level, "INFO")
+    level = form.log_level.upper()
+    logging = document.get("logging")
+    written = logging.get("level") if isinstance(logging, dict) else None
+    # An unchanged level stays as written, even one this form does not offer.
+    if written is None or str(written).upper() != level:
+        if level not in _LEVELS:
+            raise ConfigError("unknown log level")
+        if level != "INFO" or isinstance(logging, dict):
+            _put(_section(document, "logging"), "level", level, "INFO")
     _put(document, "strict_mode", form.strict_mode, False)
     _put(document, "clean_disabled", form.clean_disabled, True)
 

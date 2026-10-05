@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterator, List, Optional
 
+from dblift_ui.masking import mask_passwords
 from dblift_ui.registry import Project, ProjectRegistry
 
 from dblift.api import DBLiftClient
@@ -29,12 +30,6 @@ EVENT_FIELDS = (
 )
 FINISHED = "job.finished"
 _KEPT_JOBS = 50
-# The password of a ``scheme://user:password@host`` URL: everything after the
-# user's colon up to the last ``@`` before the path, so a password containing
-# ``@`` is masked whole. The scheme's length is bounded so a long run of word
-# characters, as a whole run log may hold, costs linear time, not quadratic.
-_URL_PASSWORD = re.compile(r"([A-Za-z][\w+.-]{0,63}://[^:/@\s]*:)[^\s/]*@")
-_PASSWORD_PARAMETER = re.compile(r"(password|pwd)=[^&;\s]*", re.IGNORECASE)
 MUTATING = frozenset({"migrate", "undo", "repair", "baseline"})
 _VERSION = re.compile(r"^\d+(\.\d+)*$")
 # The most of a run's text log the browser receives: its last characters.
@@ -47,8 +42,7 @@ class ProjectBusy(Exception):
 
 def redact(text: str) -> str:
     """Mask passwords that engine error messages may echo back."""
-    text = _URL_PASSWORD.sub(r"\1***@", text)
-    return _PASSWORD_PARAMETER.sub(r"\1=***", text)
+    return mask_passwords(text, "***")
 
 
 def read_log(folder: Path) -> str:
