@@ -9,8 +9,11 @@ The command starts a server on `127.0.0.1`, prints a one-time URL and opens it
 in the browser. Nothing is sent anywhere else.
 
 Status: early development. The interface shows a list of projects, added by
-the path of their config file, and a read-only status view for each project
-and environment.
+the path of their config file, and the migration status of each project per
+environment. From the status view you can preview the SQL of pending migrations
+and apply them, undo the last migration, validate, repair the history after a
+failed run, and baseline a database that has no history yet. Nothing that
+changes a database runs without a confirming click.
 
 ## Development
 
@@ -29,6 +32,8 @@ In another terminal:
 Checks:
 
     npm run typecheck && npm test          # interface
+    npx playwright install chromium        # once, before the first browser test run
+    npm run build && npm run e2e           # browser tests; set PYTHON to an interpreter with dblift-ui installed
     python -m pytest packages/dblift-ui/tests   # server
 
 Without a build, the server shows a placeholder page.
