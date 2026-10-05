@@ -51,7 +51,7 @@ export default function RunLog({ run, onDismiss }: { run: CommandRun; onDismiss:
       <div className="runlog__body mono" role="log" aria-live="polite">
         {lines.map((event, index) => (
           <p key={index} className={event.error ? "runlog__line runlog__line--error" : "runlog__line"}>
-            {describeEvent(event)}
+            {describeEvent(event, run.command)}
           </p>
         ))}
         {run.phase === "running" && <p className="runlog__line runlog__line--muted">…</p>}

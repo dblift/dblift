@@ -45,3 +45,12 @@ it("words the events of an undo script as such", () => {
     describeEvent({ event: "migration.script.failed", script: "U1_0_4__add_loyalty_points.sql", error: "no such column" }),
   ).toBe("Undo script U1_0_4__add_loyalty_points.sql failed: no such column");
 });
+
+it("does not call a Flyway history import an application of migrations", () => {
+  expect(describeEvent({ event: "migration.started" }, "flyway_preview")).toBe("Reading the Flyway history…");
+  expect(describeEvent({ event: "migration.completed" }, "flyway_import")).toBe("Flyway history read");
+  expect(describeEvent({ event: "migration.failed", error: "table not found" }, "flyway_import")).toBe(
+    "Flyway history import stopped: table not found",
+  );
+  expect(describeEvent({ event: "migration.completed" }, "migrate")).toBe("Migrations applied");
+});

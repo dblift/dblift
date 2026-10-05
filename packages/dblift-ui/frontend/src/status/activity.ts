@@ -30,8 +30,15 @@ const OPERATIONS: Record<string, string> = {
   "baseline.failed": "Baseline failed",
 };
 
-/** One line of the run log for an event. */
-export function describeEvent(event: JobEvent): string {
+// A Flyway history import reports through the migration events, but runs no migration.
+const FLYWAY: Record<string, string> = {
+  "migration.started": "Reading the Flyway history…",
+  "migration.completed": "Flyway history read",
+  "migration.failed": "Flyway history import stopped",
+};
+
+/** One line of the run log for an event of the given command. */
+export function describeEvent(event: JobEvent, command = ""): string {
   const { script, error } = event;
   // An undo runs its U… script through the same events as a migration.
   const undo = script?.startsWith("U");
@@ -46,6 +53,6 @@ export function describeEvent(event: JobEvent): string {
     case "undo.script.rolled_back":
       return `Reverted with ${script}`;
   }
-  const words = OPERATIONS[event.event] ?? event.event;
+  const words = (command.startsWith("flyway_") ? FLYWAY[event.event] : undefined) ?? OPERATIONS[event.event] ?? event.event;
   return error ? `${words}: ${error}` : words;
 }
