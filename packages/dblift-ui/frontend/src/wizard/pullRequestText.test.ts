@@ -46,6 +46,13 @@ it("describes a test passed on the scratch environment", () => {
   expect(text).toBe(body("Passed on the scratch environment: build from zero, undo, re-apply."));
 });
 
+it("describes a test passed on a throwaway database in a container", () => {
+  const phases = [ok("start"), ok("build"), ok("undo"), ok("reapply")];
+  const { body: text } = pullRequestText(context({ test: { outcome: "passed", result: result("container", phases) } }));
+
+  expect(text).toBe(body("Passed on a throwaway database in a container: build from zero, undo, re-apply."));
+});
+
 it("says undo and re-apply were not run when there is no undo script", () => {
   const phases: ScratchPhase[] = [
     ok("build"),

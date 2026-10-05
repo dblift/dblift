@@ -7,6 +7,7 @@ import type { JobEvent, ScratchPhase, ScratchPlan } from "../../api/types";
 import type { Outcome, StepProps } from "../../wizard/steps";
 
 export const PHASE_LABELS: Record<ScratchPhase["name"], string> = {
+  start: "Start the scratch database",
   clean: "Empty the scratch database",
   build: "Build from zero",
   undo: "Undo the new migration",
@@ -42,6 +43,8 @@ export default function TestStep({ context, onNext, onBack, last }: StepProps) {
   const [refused, setRefused] = useState<string | null>(null);
   // The job failed before the test could report anything.
   const [broken, setBroken] = useState<string | null>(null);
+  // The scratch container of the last run could not be removed, or its removal checked.
+  const [cleanup, setCleanup] = useState<string | null>(null);
   const [asking, setAsking] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
 
@@ -74,23 +77,27 @@ export default function TestStep({ context, onNext, onBack, last }: StepProps) {
     setPhases((list) => (list.some((p) => p.name === shown.name) ? list.map((p) => (p.name === shown.name ? shown : p)) : [...list, shown]));
   };
 
-  const run = async () => {
-    const before = { phases, ended };
+  // Only the button that says "Download and run" passes pull: no other path downloads an image.
+  const run = async (pull: boolean) => {
+    const before = { phases, ended, cleanup };
     setAsking(false);
     setConfirmed(true);
     setPhases([]);
     setEnded(null);
     setRefused(null);
     setBroken(null);
+    setCleanup(null);
     setRunning(true);
     // The job goes on on the server if the wizard closes, and holds the project: the wizard stays open until it ends.
     update({ busy: "The test is running…" });
     try {
-      const result = await runJob(project.id, "scratch_test", "", report, { script: scripts?.migration });
+      const params = pull ? { script: scripts?.migration, pull: true } : { script: scripts?.migration };
+      const result = await runJob(project.id, "scratch_test", "", report, params);
       const found = result.scratch;
       const outcome: Outcome = found ? (found.passed ? "passed" : found.skipped ? "skipped" : "failed") : "failed";
       if (found) {
         setPhases(found.phases.map((p) => ({ name: p.name, state: stateOf(p.ok), detail: p.detail })));
+        setCleanup(found.cleanup ?? null);
       } else {
         setBroken(result.error ?? "The test could not be run.");
       }
@@ -103,16 +110,23 @@ export default function TestStep({ context, onNext, onBack, last }: StepProps) {
       if (failure instanceof ApiError && NOT_STARTED.has(failure.status)) {
         setPhases(before.phases);
         setEnded(before.ended);
+        setCleanup(before.cleanup);
       }
     } finally {
       setRunning(false);
       update({ busy: null });
+      // A run may have downloaded the image, or the image may have gone: the next run follows the plan as it is now.
+      getScratchPlan(project.id).then(
+        (found) => setPlan({ phase: "ready", plan: found }),
+        () => {},
+      );
     }
   };
 
   const strategy = plan.phase === "ready" ? plan.plan.strategy : null;
-  const runnable = strategy === "file" || strategy === "environment";
-  const start = () => (strategy === "environment" && !confirmed ? setAsking(true) : void run());
+  const runnable = strategy === "file" || strategy === "environment" || strategy === "container";
+  const missing = plan.phase === "ready" && strategy === "container" && plan.plan.image_present === false ? plan.plan : null;
+  const start = () => (strategy === "environment" && !confirmed ? setAsking(true) : void run(missing !== null));
   const cancel = () => {
     returnFocus.current = true;
     setAsking(false);
@@ -137,7 +151,22 @@ export default function TestStep({ context, onNext, onBack, last }: StepProps) {
       {plan.phase === "ready" && (
         <div className="wizard__plan">
           <p>{plan.plan.summary}</p>
+          {strategy === "container" && (
+            <ul className="wizard__facts" aria-label="What the test starts">
+              <li>
+                <span className="wizard__fact">Runtime</span> <span>{plan.plan.runtime}</span>
+              </li>
+              <li>
+                <span className="wizard__fact">Image</span> <span className="mono">{plan.plan.image}</span>
+              </li>
+            </ul>
+          )}
           {runnable && <p className="dialog__hint">The test builds the database from zero, undoes the new migration, then applies it again.</p>}
+          {missing && (
+            <p className="notice" role="note">
+              {`The image ${missing.image} is not on this machine${missing.image_size_mb === null ? "" : ` (about ${missing.image_size_mb} MB)`}.`}
+            </p>
+          )}
           {plan.plan.warning && (
             <p className="wizard__warning" role="note">
               {plan.plan.warning}
@@ -167,6 +196,11 @@ export default function TestStep({ context, onNext, onBack, last }: StepProps) {
           ))}
         </ol>
       )}
+      {cleanup && (
+        <p className="wizard__warning" role="note">
+          The scratch container could not be removed: {cleanup}
+        </p>
+      )}
       {broken && (
         <div className="wizard__failure" role="alert">
           <p>The test could not run.</p>
@@ -191,7 +225,7 @@ export default function TestStep({ context, onNext, onBack, last }: StepProps) {
             Back to the scripts
           </button>
           <button ref={runButton} className="button button--primary" onClick={start}>
-            Run again
+            {missing ? "Download and run" : "Run again"}
           </button>
         </div>
       )}
@@ -210,7 +244,7 @@ export default function TestStep({ context, onNext, onBack, last }: StepProps) {
           <button className="button button--quiet" autoFocus onClick={cancel}>
             Cancel
           </button>
-          <button className="button button--danger" aria-describedby={question} onClick={() => void run()}>
+          <button className="button button--danger" aria-describedby={question} onClick={() => void run(false)}>
             Empty and run
           </button>
         </div>
@@ -233,7 +267,7 @@ export default function TestStep({ context, onNext, onBack, last }: StepProps) {
             disabled={running}
             onClick={start}
           >
-            {runs > 0 ? "Run again" : "Run the test"}
+            {missing ? "Download and run" : runs > 0 ? "Run again" : "Run the test"}
           </button>
         )}
         {(runnable || test.outcome === "passed") && (
