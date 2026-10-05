@@ -2,18 +2,26 @@
 
 import hashlib
 import io
+import os
 import re
+import stat
+import tempfile
+import threading
 from dataclasses import dataclass
-from typing import Any, Dict, List, Literal, Optional, Tuple, cast
+from pathlib import Path
+from typing import Any, Dict, List, Literal, Optional, Sequence, Tuple, cast
 from urllib.parse import quote, unquote
 
+from dblift_ui.jobs import redact
 from dblift_ui.masking import mask_passwords
-from dblift_ui.scripts import yaml_problem
+from dblift_ui.scripts import atomic_write, yaml_problem
 from pydantic import BaseModel, ConfigDict, Field
 from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap
 from ruamel.yaml.constructor import DuplicateKeyError
 from ruamel.yaml.error import YAMLError
+
+from dblift.api import DBLiftClient
 
 MASK = "********"
 ENV_DEFAULT = "DBLIFT_DB_PASSWORD"
@@ -27,10 +35,22 @@ _PLAIN_URL = re.compile(
 )
 _LOOSE_KEYS = ("host", "port", "database", "service_name", "account", "warehouse")
 _LEVELS = ("DEBUG", "INFO", "WARNING", "WARN", "ERROR", "CRITICAL")
+# A key whose value is a secret: ``password``, ``sslpassword``, ``account_key``, ``token``...
+_SECRET_KEY = re.compile(
+    r"pass|pwd|(?:^|[_-])(?:secret|token|key|apikey|credentials?|private)(?:$|[_-])",
+    re.IGNORECASE,
+)
+CONFIG_FILE = re.compile(r"^dblift[A-Za-z0-9._-]*\.ya?ml\Z")
+_UNSET = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
+_UPDATING = threading.Lock()
 
 
 class ConfigError(Exception):
     """The form or the file cannot be used; the message is for the user."""
+
+
+class StaleConfig(ConfigError):
+    """The file changed on disk since the form was read."""
 
 
 @dataclass(frozen=True)
@@ -334,15 +354,22 @@ def _write_connection(
         raise ConfigError("there is no saved password to keep: choose a variable or type one")
 
 
-def _mask(section: Any) -> None:
-    if not isinstance(section, dict):
-        return
-    if section.get("password") not in (None, "") and not _PLACEHOLDER.match(
-        str(section["password"])
-    ):
-        section["password"] = MASK
-    if section.get("url"):
-        section["url"] = mask_passwords(str(section["url"]), MASK)
+def _mask(node: Any) -> None:
+    """Hide every secret stored under *node*: values of secret-looking keys, URL passwords."""
+    items = node.items() if isinstance(node, dict) else enumerate(node)
+    for key, value in list(items):
+        if isinstance(value, (dict, list)):
+            _mask(value)
+        elif (
+            isinstance(key, str)
+            and _SECRET_KEY.search(key)
+            and value not in (None, "")
+            and not isinstance(value, bool)
+            and not _PLACEHOLDER.match(str(value))
+        ):
+            node[key] = MASK
+        elif isinstance(value, str):
+            node[key] = mask_passwords(value, MASK)
 
 
 def render(form: ConfigForm, existing: Optional[str] = None, mask: bool = False) -> str:
@@ -391,9 +418,126 @@ def render(form: ConfigForm, existing: Optional[str] = None, mask: bool = False)
             del document["environments"]
 
     if mask:
-        _mask(document.get("database"))
-        for block in (document.get("environments") or {}).values():
-            _mask(block.get("database") if isinstance(block, dict) else None)
+        _mask(document)
     out = io.StringIO()
     _yaml().dump(document, out)
     return out.getvalue()
+
+
+@dataclass(frozen=True)
+class Check:
+    problems: List[str]
+    warnings: List[str]
+
+
+def check(text: str, environments: Sequence[str]) -> Check:
+    """What the real loader says about *text*, without connecting and without touching the project."""
+    problems: List[str] = []
+    warnings: List[str] = []
+    if "secrets" in (_load(text) if text.strip() else {}):
+        return Check([], ["This config uses a secrets section, so it is not checked here."])
+    unset = sorted({name for name in _UNSET.findall(text) if name not in os.environ})
+    for name in unset:
+        warnings.append(
+            f"The variable {name} is not set where this interface runs; "
+            "commands will fail until it is."
+        )
+    # The loader would report an unset variable as a missing value; that is the shell's
+    # business, not the file's.
+    candidate = _UNSET.sub(lambda m: "unset" if m[1] in unset else m[0], text)
+    with tempfile.TemporaryDirectory(prefix="dblift-ui-config-") as created:
+        folder = os.path.realpath(created)
+        path = os.path.join(folder, "dblift.yaml")
+        # Private: the copy may hold a literal password.
+        with open(
+            os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "w", encoding="utf-8"
+        ) as handle:
+            handle.write(candidate)
+        for environment in [None, *environments]:
+            label = f"{environment}: " if environment else ""
+            try:
+                # Relative paths resolve inside the temporary folder, and the log goes
+                # there whatever log file or folder the config names.
+                DBLiftClient.from_config_file(
+                    path,
+                    environment=environment,
+                    relative_to_config=True,
+                    log_dir=os.path.join(folder, "logs"),
+                    log_file=os.path.join(folder, "logs", "check.log"),
+                ).close()
+            except ModuleNotFoundError as exc:
+                warning = (
+                    f"The driver for this engine is not installed here ({exc.name}), "
+                    "so the config is not fully checked."
+                )
+                if warning not in warnings:
+                    warnings.append(warning)
+            except Exception as exc:  # the loader's error type is not public
+                message = redact(str(exc) or type(exc).__name__)
+                for prefix in (folder + os.sep, folder, created + os.sep, created):
+                    message = message.replace(prefix, "")
+                problems.append(label + message)
+    return Check(problems, warnings)
+
+
+def _checked(form: ConfigForm, existing: Optional[str]) -> Tuple[str, int]:
+    """The file text for *form*, and the mode it gets; refused while the loader sees a problem."""
+    text = render(form, existing)
+    verdict = check(text, [environment.name for environment in form.environments])
+    if verdict.problems:
+        raise ConfigError(verdict.problems[0])
+    # Masking changes the text exactly when the file itself holds a password.
+    private = render(form, existing, mask=True) != text
+    return text, 0o600 if private else 0o644
+
+
+def create_file(folder: str, filename: str, form: ConfigForm) -> Path:
+    if not CONFIG_FILE.match(str(filename or "")):
+        raise ConfigError("the file name must look like dblift.yaml or dblift-<something>.yaml")
+    base = Path(str(folder or "").strip()).expanduser()
+    if not str(folder or "").strip() or not base.is_absolute() or not base.is_dir():
+        raise ConfigError("give the full path of an existing folder")
+    root = base.resolve()
+    text, mode = _checked(form, None)
+    target = root / filename
+    try:
+        # Exclusive and not through a link: never over a file that is already there.
+        descriptor = os.open(
+            target, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), mode
+        )
+    except FileExistsError as exc:
+        raise ConfigError(f"{target} already exists") from exc
+    except OSError as exc:
+        raise ConfigError(exc.strerror or "the file cannot be written") from exc
+    with open(descriptor, "w", encoding="utf-8") as handle:
+        handle.write(text)
+    migrations = (root / form.migrations_directory).resolve()
+    if root in migrations.parents:
+        migrations.mkdir(parents=True, exist_ok=True)
+    return target
+
+
+def _current(target: Path, expected_revision: str) -> str:
+    """The file's text, as long as it is still the revision the form was read from."""
+    try:
+        existing = target.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        raise ConfigError(getattr(exc, "strerror", None) or "the file cannot be read") from exc
+    if revision(existing) != expected_revision:
+        raise StaleConfig("the file changed on disk since it was opened: reopen it")
+    return existing
+
+
+def update_file(path: str, form: ConfigForm, expected_revision: str) -> None:
+    target = Path(path)
+    # One save at a time: of two saves made from the same revision, only the first lands.
+    with _UPDATING:
+        text, mode = _checked(form, _current(target, expected_revision))
+        # Checking takes a while: an edit another program made meanwhile is not overwritten.
+        _current(target, expected_revision)
+        try:
+            if mode != 0o600:
+                mode = stat.S_IMODE(target.stat().st_mode)
+            atomic_write(target, text.encode("utf-8"), mode)
+        except OSError as exc:
+            raise ConfigError(exc.strerror or "the file cannot be written") from exc

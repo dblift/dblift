@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, AsyncIterator, Awaitable, Callable, Dict, Iterator, List, Optional
 
 import yaml
-from dblift_ui import __version__
+from dblift_ui import __version__, configs
 from dblift_ui.clone import CloneError, clone
 from dblift_ui.discovery import DiscoveryError, discover
 from dblift_ui.jobs import JobRunner, ProjectBusy
@@ -63,6 +63,23 @@ class DiscoverRequest(BaseModel):
 class CloneRequest(BaseModel):
     url: str = ""
     parent: str = ""
+
+
+class ConfigPreview(BaseModel):
+    form: configs.ConfigForm
+    project_id: str = ""
+
+
+class NewConfig(BaseModel):
+    folder: str = ""
+    filename: str = "dblift.yaml"
+    name: str = ""
+    form: configs.ConfigForm
+
+
+class ConfigUpdate(BaseModel):
+    form: configs.ConfigForm
+    revision: str = ""
 
 
 def engine_of(data: Dict[str, Any]) -> str:
@@ -271,11 +288,14 @@ def create_app(
             raise HTTPException(status_code=404, detail="this job has no log")
         return PlainTextResponse(text, headers={"Cache-Control": "no-store"})
 
-    def store_of(project_id: str) -> ScriptStore:
+    def project_of(project_id: str) -> Project:
         try:
-            return ScriptStore(projects.get(project_id).config_path)
+            return projects.get(project_id)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="unknown project") from exc
+
+    def store_of(project_id: str) -> ScriptStore:
+        return ScriptStore(project_of(project_id).config_path)
 
     def refuse_during_change(project_id: str) -> None:
         if runner.is_changing(project_id):
@@ -314,6 +334,68 @@ def create_app(
         refuse_during_change(project_id)
         store.write(name, body.content)
         return asdict(store.describe(name))
+
+    def config_text(project_id: str) -> str:
+        try:
+            return Path(project_of(project_id).config_path).read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as exc:
+            reason = getattr(exc, "strerror", None) or "the config cannot be read"
+            raise HTTPException(status_code=400, detail=reason) from exc
+
+    @app.get("/api/config/engines")
+    def config_engines() -> List[Dict[str, Any]]:
+        return [asdict(engine) for engine in configs.ENGINES]
+
+    @app.post("/api/config/preview")
+    def config_preview(body: ConfigPreview) -> Dict[str, Any]:
+        existing = config_text(body.project_id) if body.project_id else None
+        try:
+            text = configs.render(body.form, existing)
+            masked = configs.render(body.form, existing, mask=True)
+        except configs.ConfigError as exc:
+            return {"yaml": "", "problems": [str(exc)], "warnings": []}
+        verdict = configs.check(text, [e.name for e in body.form.environments])
+        return {"yaml": masked, "problems": verdict.problems, "warnings": verdict.warnings}
+
+    @app.post("/api/config", status_code=201)
+    def config_create(body: NewConfig) -> Dict[str, Any]:
+        try:
+            path = configs.create_file(body.folder, body.filename, body.form)
+        except configs.ConfigError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        try:
+            return describe(projects.add(body.name.strip() or path.parent.name, str(path)))
+        except RegistryError as exc:
+            # Reported like POST /api/projects; the new file stays where it was written.
+            raise HTTPException(
+                status_code=500 if isinstance(exc, RegistryFileError) else 400,
+                detail=f"the file was written but the project could not be added: {exc}",
+            ) from exc
+
+    @app.get("/api/projects/{project_id}/config")
+    def config_read(project_id: str) -> Dict[str, Any]:
+        text = config_text(project_id)
+        try:
+            form, notes = configs.read_form(text)
+        except configs.ConfigError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {
+            "form": form.model_dump(by_alias=True),
+            "revision": configs.revision(text),
+            "notes": notes,
+        }
+
+    @app.put("/api/projects/{project_id}/config")
+    def config_update(project_id: str, body: ConfigUpdate) -> Dict[str, Any]:
+        project = project_of(project_id)
+        refuse_during_change(project_id)
+        try:
+            configs.update_file(project.config_path, body.form, body.revision)
+        except configs.StaleConfig as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except configs.ConfigError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return describe(project)
 
     @app.get("/assets/{asset_path:path}")
     def asset(asset_path: str) -> FileResponse:

@@ -68,6 +68,29 @@ def yaml_problem(exc: yaml.YAMLError) -> str:
     return f"line {mark.line + 1}, column {mark.column + 1}: {problem}"
 
 
+def atomic_write(path: Path, data: bytes, mode: int) -> None:
+    """Atomically replace *path* with *data*, giving it *mode*.
+
+    The temporary file gets a fresh, exclusively created name beside the target, so
+    nothing already there (a link especially) is ever written through. It is created
+    private, so a mode the platform cannot set leaves it private.
+    """
+    descriptor, temporary = tempfile.mkstemp(
+        dir=path.parent, prefix=f".{path.name}.", suffix=".tmp"
+    )
+    try:
+        with open(descriptor, "wb") as handle:
+            handle.write(data)
+        try:
+            os.chmod(temporary, mode)
+        except OSError:
+            pass  # a mode the platform cannot set must not cost the user the save
+        os.replace(temporary, path)
+    except BaseException:
+        Path(temporary).unlink(missing_ok=True)
+        raise
+
+
 def _parse(name: Any) -> "re.Match[str]":
     match = SCRIPT_NAME.match(name) if isinstance(name, str) else None
     if match is None:
@@ -248,26 +271,8 @@ class ScriptStore:
 
     @staticmethod
     def _replace(path: Path, data: bytes) -> None:
-        """Atomically give the checked real file *path* new content, keeping its mode.
-
-        The temporary file gets a fresh, exclusively created name beside the target, so
-        nothing already there (a link especially) is ever written through.
-        """
-        mode = stat.S_IMODE(path.stat().st_mode)
-        descriptor, temporary = tempfile.mkstemp(
-            dir=path.parent, prefix=f".{path.name}.", suffix=".tmp"
-        )
-        try:
-            with open(descriptor, "wb") as handle:
-                handle.write(data)
-            try:
-                os.chmod(temporary, mode)
-            except OSError:
-                pass  # a mode the platform cannot set must not cost the user the save
-            os.replace(temporary, path)
-        except BaseException:
-            Path(temporary).unlink(missing_ok=True)
-            raise
+        """Atomically give the checked real file *path* new content, keeping its mode."""
+        atomic_write(path, data, stat.S_IMODE(path.stat().st_mode))
 
     def create(self, kind: str, language: str, description: str) -> List[str]:
         if kind not in ("versioned", "repeatable"):
