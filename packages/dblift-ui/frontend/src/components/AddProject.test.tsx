@@ -98,6 +98,14 @@ it("lists what a folder holds, with the usable configs selected", async () => {
   expect(screen.getByText("legacy/sql")).toBeInTheDocument();
 });
 
+it("opens already looking for configs in the folder it is given", async () => {
+  dialog({ initialFolder: "/work/platform" });
+
+  expect(await screen.findByRole("checkbox", { name: "dblift.yaml" })).toBeChecked();
+  expect(discoveryApi.discoverFolder).toHaveBeenCalledWith("/work/platform");
+  expect(screen.getByText("/work/platform")).toBeInTheDocument();
+});
+
 it("proposes names and adds the selected configs", async () => {
   const props = dialog();
   await userEvent.type(screen.getByLabelText("Folder path"), "/work/platform");

@@ -31,7 +31,7 @@ function migration(script: string, status: string): Migration {
 }
 function script(name: string, hasUndo: boolean): Script {
   const [version, description] = name.slice(1).replace(".sql", "").split("__");
-  return { name, kind: "versioned", version: version.replaceAll("_", "."), description, language: "sql", directory: "migrations", has_undo: hasUndo };
+  return { name, kind: "versioned", version: version.replaceAll("_", "."), description, language: "sql", directory: "migrations", has_undo: hasUndo, change: "" };
 }
 function status(migrations: Migration[]): JobResult {
   return { success: true, error: null, current_version: "1.0.0", migrations, sql: [], repaired: null, baseline_version: null, job_id: "j1", has_log: false, message: null };

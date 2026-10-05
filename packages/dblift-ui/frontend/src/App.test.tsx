@@ -30,6 +30,11 @@ const configs = vi.hoisted(() => ({
   getEngines: vi.fn(), previewConfig: vi.fn(), createConfig: vi.fn(), readConfig: vi.fn(), updateConfig: vi.fn(),
 }));
 vi.mock("./api/configs", () => configs);
+const git = vi.hoisted(() => ({
+  getRepo: vi.fn(), getBranches: vi.fn(), switchBranch: vi.fn(), createBranch: vi.fn(), fetchRepo: vi.fn(),
+  pullRepo: vi.fn(), pushRepo: vi.fn(), commitFiles: vi.fn(), scriptDiff: vi.fn(),
+}));
+vi.mock("./api/git", () => git);
 vi.mock("./components/CodeEditor", () => ({
   default: ({ value, onChange, label }: { value: string; onChange: (v: string) => void; label: string }) => (
     <textarea aria-label={label} value={value} onChange={(e) => onChange(e.target.value)} />
@@ -53,6 +58,8 @@ beforeEach(() => {
   runJob.mockResolvedValue({
     success: true, error: null, current_version: null, migrations: [], sql: [], repaired: null, baseline_version: null, job_id: "j1", has_log: false, message: null,
   });
+  Object.values(git).forEach((mock) => mock.mockReset());
+  git.getRepo.mockResolvedValue({ repository: false });
 });
 
 it("invites the user to add a project when there is none", async () => {
@@ -137,7 +144,7 @@ describe("unsaved edits in the open script", () => {
       success: true, error: null, current_version: null, sql: [], repaired: null, baseline_version: null, job_id: "j1", has_log: false, message: null,
       migrations: [{ script: A, version: "1.0.0", description: "create_accounts", type: "SQL", status: "PENDING", installed_on: "", installed_by: "", execution_time: 0 }],
     });
-    const listed = { name: A, kind: "versioned", version: "1.0.0", description: "create_accounts", language: "sql", directory: "migrations", has_undo: false };
+    const listed = { name: A, kind: "versioned", version: "1.0.0", description: "create_accounts", language: "sql", directory: "migrations", has_undo: false, change: "" };
     scripts.listScripts.mockResolvedValue([listed]);
     scripts.readScript.mockResolvedValue({ ...listed, content: "-- accounts\n" });
   });
@@ -277,5 +284,68 @@ describe("the configuration form", () => {
     expect(within(dialog).getAllByRole("button").map((b) => b.textContent)).toEqual(["Close"]);
     await userEvent.click(within(dialog).getByRole("button", { name: "Close" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+});
+
+describe("following the branch", () => {
+  const platform = {
+    ...first, id: "pl", name: "platform", config_path: "/work/platform/dblift.yaml", repository: "platform", repository_path: "/work/platform",
+  };
+  const main = {
+    repository: true, root: "/work/platform", branch: "main", detached: false, upstream: "origin/main", ahead: 0, behind: 0, files: [], truncated: false,
+  };
+
+  beforeEach(() => {
+    api.listProjects.mockResolvedValue([platform]);
+    let checkedOut: object = main;
+    git.getRepo.mockImplementation(async () => checkedOut);
+    git.getBranches.mockResolvedValue([
+      { name: "main", current: true, remote: false, upstream: "origin/main" },
+      { name: "origin/feature/reporting", current: false, remote: true, upstream: "" },
+    ]);
+    git.switchBranch.mockImplementation(async () => (checkedOut = { ...main, branch: "feature/reporting", upstream: "origin/feature/reporting" }));
+    discovery.discoverFolder.mockReset();
+    discovery.discoverFolder.mockResolvedValue({
+      root: "/work/platform", name: "platform", repository: true, branch: "feature/reporting", truncated: false, flyway: [], script_folders: [],
+      configs: [
+        { path: "dblift.yaml", kind: "named", problem: null, registered: true },
+        { path: "reporting/dblift.yaml", kind: "named", problem: null, registered: false },
+        { path: "dblift.yaml.template", kind: "template", problem: null, registered: false },
+        { path: "broken/dblift.yaml", kind: "named", problem: "line 1: not a mapping", registered: false },
+      ],
+    });
+  });
+
+  it("offers to add the configs a switch brought in, and opens Add project on them", async () => {
+    render(<App />);
+    await screen.findByRole("heading", { name: "platform" });
+    await userEvent.click(await screen.findByRole("button", { name: "Branch main" }));
+    await userEvent.click(await screen.findByRole("button", { name: "origin/feature/reporting" }));
+
+    expect(await screen.findByRole("button", { name: "Branch feature/reporting" })).toBeInTheDocument();
+    const notice = await screen.findByText("1 configuration on this branch is not a project yet.");
+    expect(discovery.discoverFolder).toHaveBeenCalledWith("/work/platform");
+    await waitFor(() => expect(api.listProjects).toHaveBeenCalledTimes(2));
+
+    await userEvent.click(within(notice.closest("[role=status]") as HTMLElement).getByRole("button", { name: "Add" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "Add project" });
+    expect(await within(dialog).findByRole("checkbox", { name: "reporting/dblift.yaml" })).toBeChecked();
+    expect(within(dialog).getByRole("checkbox", { name: "dblift.yaml" })).toBeDisabled();
+    expect(screen.queryByText("1 configuration on this branch is not a project yet.")).not.toBeInTheDocument();
+  });
+
+  it("says nothing when the branch brings no new config", async () => {
+    discovery.discoverFolder.mockResolvedValue({
+      root: "/work/platform", name: "platform", repository: true, branch: "feature/reporting", truncated: false, flyway: [], script_folders: [],
+      configs: [{ path: "dblift.yaml", kind: "named", problem: null, registered: true }],
+    });
+    render(<App />);
+    await screen.findByRole("heading", { name: "platform" });
+    await userEvent.click(await screen.findByRole("button", { name: "Branch main" }));
+    await userEvent.click(await screen.findByRole("button", { name: "origin/feature/reporting" }));
+
+    await waitFor(() => expect(discovery.discoverFolder).toHaveBeenCalledWith("/work/platform"));
+    expect(screen.queryByText(/on this branch/)).not.toBeInTheDocument();
   });
 });

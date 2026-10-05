@@ -83,6 +83,32 @@ export interface Script {
   language: "sql" | "python";
   directory: string;
   has_undo: boolean;
+  /** The file's git state ("modified", "untracked"…), or "" when it is committed as is. */
+  change: string;
+}
+
+export interface ChangedFile {
+  path: string;
+  state: "untracked" | "modified" | "added" | "deleted" | "renamed" | "conflicted";
+}
+
+export interface RepoStatus {
+  repository: boolean;
+  root?: string;
+  branch?: string;
+  detached?: boolean;
+  upstream?: string;
+  ahead?: number;
+  behind?: number;
+  files?: ChangedFile[];
+  truncated?: boolean;
+}
+
+export interface Branch {
+  name: string;
+  current: boolean;
+  remote: boolean;
+  upstream: string;
 }
 
 export interface ScriptFile extends Script {
