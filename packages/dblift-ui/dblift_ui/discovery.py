@@ -58,7 +58,17 @@ def _git(root: Path, *args: str) -> Optional[str]:
         return None
     try:
         done = subprocess.run(
-            ["git", "-C", str(root), *args],
+            # A repository's own config must not make git run a program of its choosing.
+            [
+                "git",
+                "-C",
+                str(root),
+                "-c",
+                "core.fsmonitor=false",
+                "-c",
+                "core.untrackedCache=false",
+                *args,
+            ],
             capture_output=True,
             timeout=30,
             env={**os.environ, "GIT_TERMINAL_PROMPT": "0", "GIT_OPTIONAL_LOCKS": "0"},
@@ -90,10 +100,12 @@ def _list(root: Path) -> Tuple[List[str], bool, bool]:
 def _shape(path: Path) -> Tuple[bool, bool, Optional[str]]:
     """(has a database mapping, has a migrations mapping, problem) for a YAML file."""
     try:
-        if path.stat().st_size > MAX_YAML_BYTES:
-            return False, False, "too large to inspect"
+        # The read itself is bounded: the size on disk may change after it is measured.
         with open(path, "rb") as handle:
-            data = yaml.safe_load(handle.read().decode("utf-8", errors="replace"))
+            raw = handle.read(MAX_YAML_BYTES + 1)
+        if len(raw) > MAX_YAML_BYTES:
+            return False, False, "too large to inspect"
+        data = yaml.safe_load(raw.decode("utf-8", errors="replace"))
     except OSError as exc:
         return False, False, exc.strerror or "cannot be read"
     except yaml.YAMLError as exc:

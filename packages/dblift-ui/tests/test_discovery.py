@@ -1,5 +1,7 @@
 import os
+import stat
 import subprocess
+from pathlib import Path
 
 import pytest
 from dblift_ui import discovery
@@ -200,6 +202,54 @@ def test_a_huge_yaml_file_is_not_read(tmp_path, monkeypatch):
 
     assert "config/database.yaml" not in by_path
     assert by_path["dblift.yaml"].problem == "too large to inspect"
+
+
+def test_the_yaml_read_is_bounded_even_when_the_size_on_disk_looks_small(tmp_path, monkeypatch):
+    monkeypatch.setattr(discovery, "MAX_YAML_BYTES", 50)
+    root = tmp_path / "shop"
+    _write(root, "dblift.yaml", CONFIG + "# " + "x" * 200 + "\n")
+    real_stat = Path.stat
+
+    def small(self, *args, **kwargs):
+        # A file that grew after being measured: the size reported is under the cap.
+        result = real_stat(self, *args, **kwargs)
+        fields = list(result[:10])
+        fields[stat.ST_SIZE] = 10
+        return os.stat_result(fields)
+
+    monkeypatch.setattr(Path, "stat", small)
+
+    by_path = {c.path: c for c in discover(str(root)).configs}
+
+    assert by_path["dblift.yaml"].problem == "too large to inspect"
+
+
+def test_git_runs_with_repository_configured_programs_turned_off(tmp_path, monkeypatch):
+    root = _repo(tmp_path / "shop")
+    _write(root, "dblift.yaml", CONFIG)
+    calls = []
+    real_run = subprocess.run
+
+    def spy(command, *args, **kwargs):
+        calls.append(list(command))
+        return real_run(command, *args, **kwargs)
+
+    monkeypatch.setattr(discovery.subprocess, "run", spy)
+
+    found = discover(str(root))
+
+    assert _kinds(found) == [("dblift.yaml", "named")]
+    assert calls
+    for command in calls:
+        assert command[:7] == [
+            "git",
+            "-C",
+            str(root.resolve()),
+            "-c",
+            "core.fsmonitor=false",
+            "-c",
+            "core.untrackedCache=false",
+        ], command
 
 
 @pytest.mark.parametrize("folder", ["", "   ", "relative/path", "/definitely/not/here"])
