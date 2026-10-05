@@ -2,6 +2,7 @@
 
 import json
 import secrets
+import shutil
 from contextlib import asynccontextmanager
 from dataclasses import asdict
 from pathlib import Path
@@ -9,6 +10,8 @@ from typing import Any, AsyncIterator, Awaitable, Callable, Dict, Iterator, List
 
 import yaml
 from dblift_ui import __version__
+from dblift_ui.clone import CloneError, clone
+from dblift_ui.discovery import DiscoveryError, discover
 from dblift_ui.jobs import JobRunner, ProjectBusy
 from dblift_ui.registry import (
     Project,
@@ -53,6 +56,15 @@ class NewScripts(BaseModel):
     description: str = ""
 
 
+class DiscoverRequest(BaseModel):
+    path: str = ""
+
+
+class CloneRequest(BaseModel):
+    url: str = ""
+    parent: str = ""
+
+
 def engine_of(data: Dict[str, Any]) -> str:
     """The engine a config declares: its ``database.type``, else its URL scheme."""
     database = data.get("database")
@@ -67,26 +79,48 @@ def engine_of(data: Dict[str, Any]) -> str:
     return ""
 
 
+def repository_of(config: Path) -> Path:
+    """The git repository that holds *config*, else the config's own folder."""
+    for folder in config.parents:
+        if (folder / ".git").exists():
+            return folder
+    return config.parent
+
+
 def describe(project: Project) -> Dict[str, Any]:
     """A project as the browser sees it: registry fields plus what its config declares."""
     environments: List[str] = []
     engine = ""
     error: Optional[str] = None
-    try:
-        data = yaml.safe_load(Path(project.config_path).read_text()) or {}
-        if not isinstance(data, dict):
-            error = "config is not a mapping"
-        elif not isinstance(data.get("environments") or {}, dict):
-            error = "environments is not a mapping"
-            engine = engine_of(data)
-        else:
-            environments = list((data.get("environments") or {}).keys())
-            engine = engine_of(data)
-    except yaml.YAMLError as exc:
-        error = yaml_problem(exc)
-    except OSError as exc:
-        error = str(exc)
-    return {**asdict(project), "environments": environments, "engine": engine, "error": error}
+    config = Path(project.config_path)
+    missing = not config.is_file()
+    home = repository_of(config)
+    if missing:
+        error = "This config file is not in the folder right now. It may be on another branch."
+    else:
+        try:
+            data = yaml.safe_load(config.read_text()) or {}
+            if not isinstance(data, dict):
+                error = "config is not a mapping"
+            elif not isinstance(data.get("environments") or {}, dict):
+                error = "environments is not a mapping"
+                engine = engine_of(data)
+            else:
+                environments = list((data.get("environments") or {}).keys())
+                engine = engine_of(data)
+        except yaml.YAMLError as exc:
+            error = yaml_problem(exc)
+        except OSError as exc:
+            error = str(exc)
+    return {
+        **asdict(project),
+        "environments": environments,
+        "engine": engine,
+        "error": error,
+        "missing": missing,
+        "repository": home.name,
+        "repository_path": str(home),
+    }
 
 
 def create_app(
@@ -173,6 +207,27 @@ def create_app(
             return describe(projects.set_environment(project_id, body.last_environment))
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="unknown project") from exc
+
+    @app.get("/api/defaults")
+    def defaults() -> Dict[str, Any]:
+        return {
+            "clone_parent": str(Path.home() / "dblift-projects"),
+            "git": shutil.which("git") is not None,
+        }
+
+    @app.post("/api/discover")
+    def discover_folder(body: DiscoverRequest) -> Dict[str, Any]:
+        try:
+            return asdict(discover(body.path, registered=[p.config_path for p in projects.list()]))
+        except DiscoveryError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/clone")
+    def clone_repository(body: CloneRequest) -> Dict[str, str]:
+        try:
+            return {"path": str(clone(body.url, body.parent))}
+        except CloneError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.post("/api/projects/{project_id}/jobs", status_code=202)
     def start_job(project_id: str, body: NewJob) -> Dict[str, str]:
