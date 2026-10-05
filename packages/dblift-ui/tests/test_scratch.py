@@ -14,6 +14,13 @@ GOOD = {
     "U1_1_0__create_invoices.sql": "DROP TABLE invoices;\n",
 }
 NEW = "V1_1_0__create_invoices.sql"
+SECRETS_ROOT = (
+    PG_ROOT + "secrets:\n  vault:\n    url: https://vault.invalid:8200\n    token: none\n"
+)
+PROD_ENV = (
+    "  prod:\n    database:\n      url: postgresql://app@prod.invalid:5432/shop\n"
+    "      password: ${PROD_PASSWORD}\n      username: vault://secret/prod#user\n"
+)
 
 
 def _project(tmp_path, root=SQLITE_ROOT, environments="", scripts=None):
@@ -135,13 +142,24 @@ def test_a_config_that_is_not_yaml_is_skipped_with_the_reason(tmp_path):
     assert "line" in found.summary and "hunter2" not in found.summary
 
 
-def test_a_config_the_loader_refuses_is_skipped_with_the_reason(tmp_path):
-    config = _project(tmp_path, "database:\n  url: postgresql://app@db.invalid/shop\n")
+def test_the_plan_is_read_from_the_file_alone(tmp_path, spy, monkeypatch):
+    built, _ = spy
+    monkeypatch.delenv("PROD_PASSWORD", raising=False)
+    config = _project(tmp_path, SECRETS_ROOT, PROD_ENV + _scratch_env())
 
     found = scratch.plan(str(config))
 
-    assert found.strategy == "skip"
-    assert "password" in found.summary.lower()
+    assert found.strategy == "environment" and found.engine == "postgresql"
+    assert built == []
+
+
+def test_a_config_too_large_to_read_is_skipped(tmp_path):
+    config = _project(tmp_path)
+    config.write_text(config.read_text() + "#" * (scratch.MAX_CONFIG_BYTES + 1))
+
+    found = scratch.plan(str(config))
+
+    assert found == scratch.Plan("skip", "", "the config is too large to read", "")
 
 
 def test_a_missing_config_is_skipped(tmp_path):
@@ -444,18 +462,74 @@ def test_scratch_on_the_database_of_another_environment_is_refused(tmp_path, spy
     assert cleaned == []
 
 
-def test_an_environment_that_cannot_be_resolved_refuses_the_test(tmp_path, spy):
-    _, cleaned = spy
-    environments = "  prod:\n    database:\n      url: postgresql://app@prod.invalid/shop\n"
-    config = _project(tmp_path, PG_ROOT, environments + _scratch_env())
+def test_an_unset_production_password_and_secrets_do_not_block_the_test(tmp_path, spy, monkeypatch):
+    built, cleaned = spy
+    monkeypatch.delenv("PROD_PASSWORD", raising=False)
+    config = _project(tmp_path, SECRETS_ROOT, PROD_ENV + _scratch_env())
 
     outcome = _run(config, tmp_path)
 
-    assert outcome["passed"] is False
+    assert outcome["passed"] is True, outcome
+    assert _phases(outcome)[0] == ("clean", True)
+    assert built and [kwargs.get("environment") for kwargs in built] == ["scratch"] * len(built)
+    assert cleaned == ["scratch"]
+
+
+def test_a_scratch_falling_back_to_the_root_database_is_caught_by_the_last_check(
+    tmp_path, spy, monkeypatch
+):
+    # The engine replaces an unset variable with nothing and then keeps the root's value:
+    # the file comparison sees a placeholder, the resolved client sees the root database.
+    _, cleaned = spy
+    monkeypatch.delenv("DBLIFT_UI_TEST_SCRATCH_URL", raising=False)
+    config = _project(tmp_path, PG_ROOT, _scratch_env("${DBLIFT_UI_TEST_SCRATCH_URL}"))
+    recorder = Recorder()
+
+    outcome = _run(config, tmp_path, recorder=recorder)
+
     assert _phases(outcome)[0] == ("clean", False)
-    assert "the environment prod could not be checked" in _detail(outcome, "clean")
+    assert _detail(outcome, "clean") == (
+        "The scratch environment points at the same database as default. Nothing was done."
+    )
+    assert cleaned == [] and recorder.events == []
+
+
+@pytest.mark.parametrize(
+    "scratch_block",
+    [
+        "  scratch:\n    migrations:\n      table: x\n",
+        "  scratch: [1, 2]\n",
+        "  scratch:\n    database: nonsense\n",
+    ],
+)
+def test_a_scratch_environment_without_an_identifiable_database_is_refused(
+    tmp_path, spy, scratch_block
+):
+    _, cleaned = spy
+    config = _project(tmp_path, root="", environments=scratch_block)
+
+    outcome = _run(config, tmp_path)
+
+    assert outcome["strategy"] == "environment"
+    assert _phases(outcome)[0] == ("clean", False)
+    assert _detail(outcome, "clean") == (
+        "The scratch environment's database could not be identified. Nothing was done."
+    )
     assert cleaned == []
-    assert not (config.parent / "scratch.db").exists()
+
+
+def test_an_environment_that_cannot_be_read_is_ignored(tmp_path, spy):
+    _, cleaned = spy
+    environments = (
+        "  staging: just text\n"
+        "  qa:\n    database: [1, 2]\n"
+        "  ci:\n    database:\n      url: 'not a url'\n"
+    )
+    config = _project(tmp_path, PG_ROOT, environments + _scratch_env())
+
+    assert scratch.same_database(str(config)) is None
+    assert _run(config, tmp_path)["passed"] is True
+    assert cleaned == ["scratch"]
 
 
 def test_same_database_names_the_default_for_a_sqlite_alias(tmp_path):
@@ -502,6 +576,84 @@ def test_same_database_cannot_be_decided_on_an_unreadable_config(tmp_path):
 
     with pytest.raises(scratch.NotChecked):
         scratch.same_database(str(config))
+
+
+def _same(tmp_path, root, scratch_database, others=""):
+    """same_database for a config whose scratch environment's database section is given."""
+    block = "".join(f"      {line}\n" for line in scratch_database)
+    environments = others + "  scratch:\n    database:\n" + block
+    return scratch.same_database(str(_project(tmp_path, root, environments)))
+
+
+@pytest.mark.parametrize(
+    "spelling",
+    [
+        ["path: dev.db"],
+        ["path: ./dev.db"],
+        ["path: ./sub/../dev.db"],
+        ["path: {absolute}"],
+        ["url: sqlite:///dev.db"],
+        ["url: sqlite:///./dev.db"],
+        ["url: sqlite:///{absolute}"],
+    ],
+)
+def test_the_same_file_spelled_differently_is_the_same_database(tmp_path, spelling):
+    absolute = tmp_path / "shop" / "dev.db"
+
+    found = _same(tmp_path, SQLITE_ROOT, [line.format(absolute=absolute) for line in spelling])
+
+    assert found == "default"
+
+
+def test_a_url_and_separate_keys_naming_one_database_are_the_same(tmp_path):
+    root = "database:\n  type: postgresql\n  host: db.invalid\n  port: 5432\n  database: shop\n"
+
+    assert _same(tmp_path, root, ["url: postgresql://x:y@DB.invalid:5432/shop"]) == "default"
+
+
+def test_localhost_and_its_address_are_the_same_server(tmp_path):
+    root = "database:\n  url: postgresql://app:pw@localhost:5432/shop\n"
+
+    assert _same(tmp_path, root, ["url: postgresql://app:pw@127.0.0.1:5432/shop"]) == "default"
+
+
+def test_the_same_url_with_another_schema_is_another_database(tmp_path):
+    root = "database:\n  url: postgresql://app:pw@db.invalid:5432/shop\n  schema: public\n"
+
+    assert _same(tmp_path, root, ["schema: scratch"]) is None
+
+
+def test_the_same_unset_variable_is_the_same_database(tmp_path, monkeypatch):
+    monkeypatch.delenv("DBLIFT_UI_TEST_URL", raising=False)
+    root = "database:\n  url: ${DBLIFT_UI_TEST_URL}\n"
+
+    assert _same(tmp_path, root, ["schema: other", "url: ${DBLIFT_UI_TEST_URL}"]) == "default"
+
+
+def test_two_different_unset_variables_are_different_databases(tmp_path, monkeypatch):
+    monkeypatch.delenv("DBLIFT_UI_TEST_A_URL", raising=False)
+    monkeypatch.delenv("DBLIFT_UI_TEST_B_URL", raising=False)
+    others = "  qa:\n    database:\n      url: ${DBLIFT_UI_TEST_A_URL}\n"
+
+    assert _same(tmp_path, PG_ROOT, ["url: ${DBLIFT_UI_TEST_B_URL}"], others) is None
+
+
+@pytest.mark.parametrize(
+    "scratch_url",
+    [
+        "${DBLIFT_UI_TEST_B_URL}",
+        "${DBLIFT_UI_TEST_UNSET:-postgresql://z:z@db.invalid/shop}",
+        "postgresql://app:pw@${DBLIFT_UI_TEST_HOST}/shop",
+    ],
+)
+def test_variables_are_filled_in_before_comparing(tmp_path, monkeypatch, scratch_url):
+    monkeypatch.setenv("DBLIFT_UI_TEST_A_URL", "postgresql://a:a@db.invalid:5432/shop")
+    monkeypatch.setenv("DBLIFT_UI_TEST_B_URL", "postgresql://b:b@db.invalid:5432/shop")
+    monkeypatch.setenv("DBLIFT_UI_TEST_HOST", "DB.invalid")
+    monkeypatch.delenv("DBLIFT_UI_TEST_UNSET", raising=False)
+    root = "database:\n  url: ${DBLIFT_UI_TEST_A_URL}\n"
+
+    assert _same(tmp_path, root, [f"url: '{scratch_url}'"]) == "default"
 
 
 def test_a_password_in_a_failing_detail_is_redacted(tmp_path, monkeypatch):

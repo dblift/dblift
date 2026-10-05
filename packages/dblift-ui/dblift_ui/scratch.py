@@ -6,10 +6,11 @@ again. It runs on a temporary SQLite file, or on the config's environment named
 """
 
 import os
-import tempfile
+import re
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
+from urllib.parse import parse_qs, urlsplit
 
 import yaml
 from dblift_ui.masking import redact
@@ -19,8 +20,14 @@ from dblift.api import DBLiftClient
 
 SCRATCH = "scratch"
 _SQLITE = frozenset({"sqlite", "sqlite3"})
+_FILES = _SQLITE | {"duckdb"}
 _LOOPBACK = frozenset({"localhost", "127.0.0.1", "::1", "[::1]"})
+# The engine's own placeholder syntax: ${VAR} or ${VAR:-default}.
+_PLACEHOLDER = re.compile(r"\$\{([^}:]+)(?::-(.*?))?\}")
+MAX_CONFIG_BYTES = 200_000
 NOT_RUN = "Not run."
+NOTHING_DONE = "Nothing was done."
+UNIDENTIFIED = "The scratch environment's database could not be identified."
 
 
 class NotChecked(Exception):
@@ -53,51 +60,82 @@ def check_script(name: Any) -> str:
     return str(match["version"]).replace("_", ".")
 
 
-def _environments(config_path: str) -> Dict[Any, Any]:
-    """The ``environments`` mapping of the config; ValueError with the reason when unreadable."""
+def _read(config_path: str) -> Dict[Any, Any]:
+    """The config as a mapping; ValueError with the reason when it cannot be read."""
     try:
-        data = yaml.safe_load(Path(config_path).read_text(encoding="utf-8")) or {}
+        # The read itself is bounded: the size on disk may change after it is measured.
+        with open(config_path, "rb") as handle:
+            raw = handle.read(MAX_CONFIG_BYTES + 1)
+    except OSError as exc:
+        reason = exc.strerror or "it cannot be opened"
+        raise ValueError(f"the config cannot be read: {reason}") from exc
+    if len(raw) > MAX_CONFIG_BYTES:
+        raise ValueError("the config is too large to read")
+    try:
+        data = yaml.safe_load(raw.decode("utf-8", errors="replace")) or {}
     except yaml.YAMLError as exc:
         raise ValueError(f"the config cannot be read: {yaml_problem(exc)}") from exc
-    except (OSError, UnicodeDecodeError) as exc:
-        reason = getattr(exc, "strerror", None) or "it is not UTF-8 text"
-        raise ValueError(f"the config cannot be read: {reason}") from exc
     if not isinstance(data, dict):
         raise ValueError("the config is not a mapping")
-    environments = data.get("environments") or {}
-    if not isinstance(environments, dict):
+    if not isinstance(data.get("environments") or {}, dict):
         raise ValueError("the config's environments are not a mapping")
-    return environments
+    return data
 
 
-def _database(config_path: str, environment: Optional[str], folder: Optional[Path]) -> Any:
-    """The database section the loader resolves for *environment*, without connecting."""
-    with tempfile.TemporaryDirectory(prefix="dblift-ui-scratch-", dir=folder) as logs:
-        client = DBLiftClient.from_config_file(
-            config_path,
-            environment=environment,
-            relative_to_config=True,
-            log_dir=logs,
-            log_file=os.path.join(logs, "resolve.log"),
-        )
-        try:
-            return client.config.database
-        finally:
-            client.close()
+def _substitute(value: Any) -> Any:
+    """*value* with ``${VAR}`` and ``${VAR:-default}`` filled in from the process environment.
+
+    A variable that is unset and has no default stays as its placeholder text, so two
+    environments naming the same unset variable still compare as the same database.
+    """
+    if not isinstance(value, str):
+        return value
+
+    def fill(match: "re.Match[str]") -> str:
+        found = os.environ.get(match[1])
+        if found is not None:
+            return found
+        return match[2] if match[2] is not None else match[0]
+
+    return _PLACEHOLDER.sub(fill, value)
 
 
-def _reason(exc: BaseException) -> str:
-    return redact(str(exc) or type(exc).__name__).splitlines()[0]
+def _section(data: Dict[Any, Any], environment: Optional[str]) -> Optional[Dict[str, Any]]:
+    """The effective ``database`` mapping of the root (None) or of *environment*.
+
+    The environment's keys go over the root's, empty ones left out, as the engine merges
+    them. None when the environment's block or its database section is not a mapping.
+    """
+    root = data.get("database")
+    merged: Dict[str, Any] = dict(root) if isinstance(root, dict) else {}
+    if environment is not None:
+        block = (data.get("environments") or {}).get(environment)
+        if not isinstance(block, dict):
+            return None
+        override = block.get("database") or {}
+        if not isinstance(override, dict):
+            return None
+        merged.update({k: v for k, v in override.items() if v not in (None, "")})
+    return {str(key): _substitute(value) for key, value in merged.items()}
 
 
-def plan(config_path: str, *, folder: Optional[Path] = None) -> Plan:
-    """How a scratch test of this project would run; *folder* holds the loader's temporary log."""
+def _engine(database: Dict[str, Any]) -> str:
+    """The engine a database mapping declares: its ``type``, else its URL's scheme."""
+    declared = str(database.get("type") or "").lower()
+    url = database.get("url")
+    if not declared and isinstance(url, str) and "://" in url:
+        declared = url.split("://", 1)[0].split("+", 1)[0].lower()
+    return "sqlite" if declared in _SQLITE else declared
+
+
+def plan(config_path: str) -> Plan:
+    """How a scratch test of this project would run, read from the config file alone."""
     try:
-        environments = _environments(config_path)
-        engine = str(_database(config_path, None, folder).type or "").lower()
-    except Exception as exc:  # the loader's error types are not public
-        return Plan("skip", "", _reason(exc), "")
-    if engine in _SQLITE:
+        data = _read(config_path)
+    except ValueError as exc:
+        return Plan("skip", "", str(exc), "")
+    engine = _engine(_section(data, None) or {})
+    if engine == "sqlite":
         return Plan(
             "file",
             "sqlite",
@@ -105,7 +143,7 @@ def plan(config_path: str, *, folder: Optional[Path] = None) -> Plan:
             "Your databases are not touched.",
             "",
         )
-    if SCRATCH in environments:
+    if SCRATCH in (data.get("environments") or {}):
         return Plan(
             "environment",
             engine,
@@ -122,62 +160,118 @@ def plan(config_path: str, *, folder: Optional[Path] = None) -> Plan:
 
 
 # Where a database lives: ("file", real path), ("server", host/database, port, schema),
-# or ("memory",) for an in-memory database, which never shares anything with another one.
+# ("text", placeholder text) when an unset variable hides it, or ("memory",) for an
+# in-memory database, which never shares anything with another one.
 _Where = Tuple[Any, ...]
 
 
-def _where(database: Any) -> _Where:
-    path = getattr(database, "path", None)
-    if path:
-        if str(path) == ":memory:" or str(path).startswith("file::memory:"):
-            return ("memory",)
-        return ("file", os.path.realpath(str(path)))
-    host = str(database.host or "").lower()
-    name = str(database.database or "").lower()
+def _file(path: str, folder: Path) -> Optional[_Where]:
+    if not path:
+        return None
+    if path == ":memory:" or path.startswith("file::memory:"):
+        return ("memory",)
+    if "${" in path:
+        return ("text", path)
+    found = Path(path).expanduser()
+    return ("file", os.path.realpath(found if found.is_absolute() else folder / found))
+
+
+def _server(host: str, port: Any, name: str, schema: str) -> Optional[_Where]:
+    host, name = host.lower(), name.lower()
     if not host and not name:
-        raise NotChecked("its database cannot be identified")
-    port = database.port if isinstance(database.port, int) else None
-    host = "localhost" if host in _LOOPBACK else host
-    return ("server", f"{host}/{name}", port, str(database.schema or "").lower())
+        return None
+    if isinstance(port, str) and port.strip().isdigit():
+        port = int(port)
+    port = port if isinstance(port, int) or (isinstance(port, str) and port) else None
+    # No host means the local server to the drivers.
+    host = "localhost" if not host or host in _LOOPBACK else host
+    return ("server", f"{host}/{name}", port, schema.lower())
+
+
+def _identity(database: Dict[str, Any], folder: Path) -> Optional[_Where]:
+    """Where *database* lives, credentials left out; None when that cannot be told.
+
+    Relative file paths resolve from *folder*, the config's folder, as the engine does.
+    """
+
+    def text(key: str) -> str:
+        value = database.get(key)
+        return "" if value is None or isinstance(value, (dict, list)) else str(value).strip()
+
+    url, engine = text("url"), _engine(database)
+    if url:
+        if "://" not in url:
+            return ("text", url) if "${" in url else None
+        try:
+            parts = urlsplit(url)
+        except ValueError:
+            return ("text", url) if "${" in url else None
+        try:
+            port: Any = parts.port
+        except ValueError:  # a placeholder, say: compared as its text
+            port = parts.netloc.rpartition("@")[2].rpartition(":")[2]
+        if engine in _FILES:
+            # SQLAlchemy's reading: three slashes start a relative path, four an absolute one.
+            return _file(parts.path[1:] if parts.path.startswith("/") else parts.path, folder)
+        query = parse_qs(parts.query)
+        name = parts.path.strip("/").split("/")[0] or (query.get("service_name") or [""])[0]
+        schema = text("schema") or (query.get("schema") or [""])[0]
+        return _server(parts.hostname or "", port, name, schema)
+    if engine in _FILES:
+        return _file(text("path") or text("database"), folder)
+    if not engine:
+        return None
+    return _server(
+        text("host") or text("account"),
+        database.get("port"),
+        text("database") or text("service_name"),
+        text("schema"),
+    )
+
+
+def _resolved(database: Any) -> Dict[str, Any]:
+    """The identity keys of a database section the loader has resolved."""
+    return {
+        key: getattr(database, key, None)
+        for key in ("type", "host", "port", "database", "path", "schema")
+    }
 
 
 def _same(a: _Where, b: _Where) -> bool:
     """Whether *a* and *b* may be one database; a missing port or schema matches any."""
     if a[0] == "memory" or a[:2] != b[:2]:
         return False
-    if a[0] == "file":
+    if a[0] != "server":
         return True
     ports = a[2] is None or b[2] is None or a[2] == b[2]
     schemas = not a[3] or not b[3] or a[3] == b[3]
     return ports and schemas
 
 
-def same_database(config_path: str, *, folder: Optional[Path] = None) -> Optional[str]:
+def same_database(config_path: str) -> Optional[str]:
     """The environment (``default`` for the root) sharing the scratch environment's database.
 
-    NotChecked when that cannot be told for any environment: the test must not run then.
+    Read from the config file alone: no client, no secrets, no connection. An environment
+    that cannot be read is left out; NotChecked when the scratch environment itself cannot
+    be identified, in which case the test must not run.
     """
     try:
-        environments = _environments(config_path)
+        data = _read(config_path)
     except ValueError as exc:
-        raise NotChecked(str(exc)) from exc
+        raise NotChecked(f"The test was not run: {exc}.") from exc
+    environments = data.get("environments") or {}
     if SCRATCH not in environments:
-        raise NotChecked("the config has no environment named scratch")
-    others: List[Optional[str]] = [None, *(str(n) for n in environments if n != SCRATCH)]
-    try:
-        target = _where(_database(config_path, SCRATCH, folder))
-    except Exception as exc:
-        raise NotChecked(f"the environment scratch could not be checked: {_reason(exc)}") from exc
-    for name in others:
-        label = name or "default"
-        try:
-            where = _where(_database(config_path, name, folder))
-        except Exception as exc:
-            raise NotChecked(
-                f"the environment {label} could not be checked: {_reason(exc)}"
-            ) from exc
-        if _same(target, where):
-            return label
+        raise NotChecked("The config has no environment named scratch.")
+    folder = Path(config_path).resolve().parent
+    scratch = _section(data, SCRATCH)
+    target = _identity(scratch, folder) if scratch is not None else None
+    if target is None:
+        raise NotChecked(UNIDENTIFIED)
+    for name in [None, *(n for n in environments if n != SCRATCH)]:
+        section = _section(data, name)
+        where = _identity(section, folder) if section is not None else None
+        if where is not None and _same(target, where):
+            return "default" if name is None else str(name)
     return None
 
 
@@ -211,7 +305,7 @@ def run_test(
     """Build, undo *script* and apply it again on a scratch database; report each phase."""
     version = check_script(script)
     workdir.mkdir(parents=True, exist_ok=True)
-    found = plan(config_path, folder=workdir)
+    found = plan(config_path)
     if found.strategy == "skip":
         return {
             "strategy": "skip",
@@ -251,17 +345,31 @@ def run_test(
             opened.append(built)
         return opened[0]
 
+    def shared_with(name: str) -> Tuple[Optional[bool], str]:
+        return (
+            False,
+            f"The scratch environment points at the same database as {name}. {NOTHING_DONE}",
+        )
+
     def clean() -> Tuple[Optional[bool], str]:
         try:
-            shared = same_database(config_path, folder=workdir)
+            shared = same_database(config_path)
         except NotChecked as exc:
-            return False, f"The test was not run: {exc}. Nothing was done."
+            return False, f"{exc} {NOTHING_DONE}"
         if shared is not None:
-            return (
-                False,
-                f"The scratch environment points at the same database as {shared}. "
-                "Nothing was done.",
-            )
+            return shared_with(shared)
+        # A last check that needs no other environment: what the loader resolved for
+        # scratch must not be the root's database, whatever the file comparison said.
+        folder = Path(config_path).resolve().parent
+        resolved = _identity(_resolved(client().config.database), folder)
+        if resolved is None:
+            return False, f"{UNIDENTIFIED} {NOTHING_DONE}"
+        try:
+            root = _identity(_section(_read(config_path), None) or {}, folder)
+        except ValueError as exc:
+            return False, f"The test was not run: {exc}. {NOTHING_DONE}"
+        if root is not None and _same(resolved, root):
+            return shared_with("default")
         result = client().clean(clean_enabled=True)
         if not result.success:
             return False, result.error_message or "The scratch database could not be emptied."
