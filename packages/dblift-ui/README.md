@@ -89,7 +89,11 @@ Where it runs is chosen from the configuration and shown before anything runs:
 - **Any other engine** is tested on the environment literally named `scratch`
   in the configuration. That environment's database is **emptied first**, after
   a confirming click.
-- Without either, the test is not available.
+- **Without a `scratch` environment**, an engine of the catalogue below is
+  tested in a throwaway local container (see "Scratch containers").
+- Otherwise the test is not available, and the step says why: no container
+  runtime found, no image known for the engine, the engine's driver not
+  installed, or a schema name that cannot be used.
 
 Safety rules:
 
@@ -113,6 +117,74 @@ To skip the test, choose "Continue without the test". The pull request then
 says "Skipped. CI should run the migrations before this is merged." If the
 developer goes on after a failed run, it says the test failed and why.
 
+### Scratch containers
+
+When the configuration has no `scratch` environment, the test starts an empty
+database of the configured engine in a container, runs the test on it and
+removes it. The project's own databases are never contacted.
+
+**Runtimes.** Docker, Podman and Apple `container`, tried in that order; the
+first that answers is used. To choose one, start the interface with
+`DBLIFT_UI_CONTAINER_RUNTIME` set to `docker`, `podman` or `container`. Set it
+to `none` to turn containers off.
+
+**Engines covered.** Each image below has run the whole test (build, undo,
+re-apply, and a broken undo) in a container:
+
+| Engine | Image | Download, about |
+|---|---|---|
+| PostgreSQL | `postgres:16` | 160 MB |
+| MySQL | `mysql:8` | 235 MB |
+| MariaDB | `mariadb:11` | 105 MB |
+| SQL Server | `mcr.microsoft.com/mssql/server:2022-latest` | 620 MB |
+| Oracle | `gvenzl/oracle-free:slim-faststart` | 1.2 GB |
+
+**The driver.** The test connects with dblift's own driver for the engine, so
+that driver must be installed where `dblift ui` runs, for example
+`pip install "dblift[postgresql]"` (or `mysql`, `mariadb`, `sqlserver`,
+`oracle`). Without it the step says the driver is not installed.
+
+**What is started and removed.** One container per run, named
+`dblift-ui-<launch>-<job>`, with a database named `scratch`, the
+configuration's schema created in it, and a random password made for that run.
+Docker and Podman publish its port on `127.0.0.1` only; Apple `container` gives
+it its own local address. The container is removed after the last phase,
+whether the test passed or failed, and any container of the same launch left
+behind is removed when the interface stops. If a removal fails, the result says
+so under the phases.
+
+**The image question.** Before anything runs, the step names the runtime and
+the image. When the image is on the machine, "Run the test" starts it. When it
+is not, the step says "The image … is not on this machine (about N MB)" and
+offers "Download and run": nothing is downloaded without that click.
+
+**A leftover container.** A server stopped normally removes its containers. A
+server killed hard (for example with `kill -9`) can leave one behind; the next
+launch never touches it, since its name has another launch's prefix. Find and
+remove it by its name:
+
+    docker ps -a --filter name=dblift-ui-          # or podman
+    docker rm -f <name>
+    container list --all | grep dblift-ui-         # Apple container
+    container delete --force <name>
+
+Known limits:
+
+- The first start of some images is slow (Oracle, SQL Server); their
+  readiness deadlines are 300 and 240 seconds.
+- SQL Server's image exists for `amd64` only, so on Apple Silicon it runs
+  emulated, and more slowly.
+- The database is bare: migrations that need an extension, a role, another
+  schema or any object created outside the migrations fail in it.
+- Podman resolves short image names such as `postgres:16` only when a search
+  registry is configured (`unqualified-search-registries` in
+  `registries.conf`); some installations have none.
+- Apple `container` has no "never pull" option: if the image disappears
+  between the check and the start, the runtime downloads it itself.
+- The password reaches the runtime on its command line, where other local
+  users could see it while the command runs. It never appears in the events,
+  the result or the job log.
+
 ## Development
 
 The interface lives in `frontend/` (React, TypeScript, Vite). It is built into
@@ -133,6 +205,16 @@ Checks:
     npx playwright install chromium        # once, before the first browser test run
     npm run build && npm run e2e           # browser tests; set PYTHON to an interpreter with dblift-ui installed
     python -m pytest packages/dblift-ui/tests   # server
+
+The server tests never start a container. The real container runs are opt-in:
+`DBLIFT_UI_CONTAINER_TESTS` names the runtime (`docker`, `podman` or
+`container`), `DBLIFT_UI_CONTAINER_ENGINES` limits them to some engines
+(`postgresql,mysql`; all by default), and `DBLIFT_UI_CONTAINER_PULL=1` lets
+them download missing images. The `ui-containers` workflow runs them with
+Docker for every engine and with Podman for PostgreSQL.
+
+    DBLIFT_UI_CONTAINER_TESTS=docker DBLIFT_UI_CONTAINER_ENGINES=postgresql \
+      python -m pytest packages/dblift-ui/tests/test_scratch_container.py
 
 Without a build, the server shows a placeholder page.
 

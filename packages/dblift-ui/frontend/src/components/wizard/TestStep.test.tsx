@@ -1,6 +1,6 @@
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "../../api/client";
 import type { JobEvent, JobResult, ScratchPhase, ScratchPlan, ScratchResult } from "../../api/types";
@@ -14,20 +14,29 @@ vi.mock("../../api/scratch", () => scratch);
 const git = vi.hoisted(() => ({ getRepo: vi.fn() }));
 vi.mock("../../api/git", () => git);
 
+// What the server sends for the strategies that start no container.
+const NO_CONTAINER = { runtime: "", image: "", image_present: null, image_size_mb: null };
 const FILE: ScratchPlan = {
   strategy: "file", engine: "sqlite",
-  summary: "A temporary SQLite database is created, used and deleted. Your databases are not touched.", warning: "",
+  summary: "A temporary SQLite database is created, used and deleted. Your databases are not touched.", warning: "", ...NO_CONTAINER,
 };
 const ENVIRONMENT: ScratchPlan = {
   strategy: "environment", engine: "postgresql",
   summary: "The environment named scratch is emptied, then used for the test.",
-  warning: "Everything in the scratch environment's database is deleted first.",
+  warning: "Everything in the scratch environment's database is deleted first.", ...NO_CONTAINER,
 };
 const SKIP: ScratchPlan = {
   strategy: "skip", engine: "postgresql",
   summary: "No scratch database is available for this engine yet. Add an environment named scratch to the config, or continue without the test.",
-  warning: "",
+  warning: "", ...NO_CONTAINER,
 };
+const PRESENT: ScratchPlan = {
+  strategy: "container", engine: "postgresql",
+  summary: "A throwaway PostgreSQL database is started in a container (Apple container, image postgres:16), used for the test and removed. Your databases are not touched.",
+  warning: "", runtime: "Apple container", image: "postgres:16", image_present: true, image_size_mb: 160,
+};
+const ABSENT: ScratchPlan = { ...PRESENT, image_present: false };
+const ABSENT_NOTICE = "The image postgres:16 is not on this machine (about 160 MB).";
 
 const BUILT = "3 migrations applied from an empty database.";
 const NO_TABLE = "Failed to execute statement 1 in U1_0_2__add_invoices.sql: no such table: invoice\nDROP TABLE invoice;";
@@ -353,4 +362,119 @@ it("goes back", async () => {
   await userEvent.click(screen.getByRole("button", { name: "Back" }));
 
   expect(onBack).toHaveBeenCalledTimes(1);
+});
+
+describe("with a container", () => {
+  const startPassed = phase("start", true, "Ready in 2 s.");
+
+  it("shows the summary, the runtime and the image before anything runs", async () => {
+    scratch.getScratchPlan.mockResolvedValue(PRESENT);
+    renderStep(TestStep, { data: written });
+
+    expect(await screen.findByText(PRESENT.summary)).toBeInTheDocument();
+    const facts = screen.getByRole("list", { name: "What the test starts" });
+    expect(within(facts).getByText("Apple container")).toBeInTheDocument();
+    expect(within(facts).getByText("postgres:16")).toBeInTheDocument();
+    expect(runJob).not.toHaveBeenCalled();
+  });
+
+  it("runs the test without downloading anything when the image is on this machine", async () => {
+    scratch.getScratchPlan.mockResolvedValue(PRESENT);
+    answers([startPassed, ...allPassed]);
+    renderStep(TestStep, { data: written });
+
+    await userEvent.click(await screen.findByRole("button", { name: "Run the test" }));
+
+    expect(await screen.findByText("The test passed.")).toBeInTheDocument();
+    expect(runJob).toHaveBeenCalledWith("p1", "scratch_test", "", expect.any(Function), { script: V });
+    expect(screen.queryByText(ABSENT_NOTICE)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Download and run" })).not.toBeInTheDocument();
+  });
+
+  it("says when the image is not on this machine, and downloads it only from Download and run", async () => {
+    scratch.getScratchPlan.mockResolvedValue(ABSENT);
+    answers([startPassed, ...allPassed]);
+    renderStep(TestStep, { data: written });
+
+    expect(await screen.findByText(ABSENT_NOTICE)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Run the test" })).not.toBeInTheDocument();
+    expect(runJob).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByRole("button", { name: "Download and run" }));
+
+    expect(runJob).toHaveBeenCalledWith("p1", "scratch_test", "", expect.any(Function), { script: V, pull: true });
+  });
+
+  it("says in the start phase that the image is downloading, and keeps the wizard open meanwhile", async () => {
+    scratch.getScratchPlan.mockResolvedValue(ABSENT);
+    const run = controlled();
+    const { context } = renderStep(TestStep, { data: written });
+    await userEvent.click(await screen.findByRole("button", { name: "Download and run" }));
+
+    run.send({ event: "scratch.phase", phase: "start", status: "started", detail: "Downloading postgres:16…" });
+
+    expect(item("Start the scratch database")).toHaveTextContent("running");
+    expect(item("Start the scratch database")).toHaveTextContent("Downloading postgres:16…");
+    expect(context().busy).toBe("The test is running…");
+    expect(screen.getByRole("button", { name: "Continue without the test" })).toBeDisabled();
+    run.finish(finished([startPassed, ...allPassed]));
+    expect(await screen.findByText("The test passed.")).toBeInTheDocument();
+    expect(context().busy).toBeNull();
+  });
+
+  it("reads the plan again after a run: Run again does not download an image that is now here", async () => {
+    scratch.getScratchPlan.mockResolvedValueOnce(ABSENT).mockResolvedValue(PRESENT);
+    answers([startPassed, ...undoFailed]);
+    answers([startPassed, ...allPassed]);
+    renderStep(TestStep, { data: written });
+    await userEvent.click(await screen.findByRole("button", { name: "Download and run" }));
+    await screen.findByText("Undo the new migration failed.");
+
+    await waitFor(() => expect(screen.queryByText(ABSENT_NOTICE)).not.toBeInTheDocument());
+    await userEvent.click(screen.getByRole("button", { name: "Run again" }));
+
+    await screen.findByText("The test passed.");
+    expect(runJob).toHaveBeenLastCalledWith("p1", "scratch_test", "", expect.any(Function), { script: V });
+    await waitFor(() => expect(scratch.getScratchPlan).toHaveBeenCalledTimes(3));
+  });
+
+  it("offers Download and run again when the image is still missing after a failed run", async () => {
+    const missing = "The image postgres:16 is not on this machine.";
+    scratch.getScratchPlan.mockResolvedValueOnce(PRESENT).mockResolvedValue(ABSENT);
+    answers([phase("start", false, missing), phase("build", null, "Not run."), phase("undo", null, "Not run."), phase("reapply", null, "Not run.")]);
+    renderStep(TestStep, { data: written });
+    await userEvent.click(await screen.findByRole("button", { name: "Run the test" }));
+    expect(await screen.findByText("Start the scratch database failed.")).toBeInTheDocument();
+
+    expect(await screen.findByText(ABSENT_NOTICE)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Run again" })).not.toBeInTheDocument();
+    answers([startPassed, ...allPassed]);
+    await userEvent.click(screen.getByRole("button", { name: "Download and run" }));
+
+    expect(runJob).toHaveBeenLastCalledWith("p1", "scratch_test", "", expect.any(Function), { script: V, pull: true });
+  });
+
+  it("warns under the phases when the container could not be removed", async () => {
+    const cleanup = "The container dblift-ui-1-2 could not be removed. Remove it with Apple container.";
+    const warning = `The scratch container could not be removed: ${cleanup}`;
+    scratch.getScratchPlan.mockResolvedValue(PRESENT);
+    answers([startPassed, ...allPassed], { cleanup });
+    renderStep(TestStep, { data: written });
+
+    await userEvent.click(await screen.findByRole("button", { name: "Run the test" }));
+
+    expect(await screen.findByText(warning)).toBeInTheDocument();
+    expect(phases().compareDocumentPosition(screen.getByText(warning)) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("shows the server's reason when no container can be used, as it is", async () => {
+    const reason = "No container runtime was found (Docker, Podman or Apple container).";
+    scratch.getScratchPlan.mockResolvedValue({ ...SKIP, summary: reason });
+    renderStep(TestStep, { data: written });
+
+    expect(await screen.findByText(reason)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Run the test" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Download and run" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Continue without the test" })).toBeEnabled();
+  });
 });

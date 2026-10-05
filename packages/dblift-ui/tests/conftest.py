@@ -13,6 +13,75 @@ PORT = 8765
 TOKEN = "test-token"
 
 
+@pytest.fixture(autouse=True)
+def no_containers(monkeypatch):
+    """No test reaches a container runtime unless it asks for one itself."""
+    monkeypatch.setenv("DBLIFT_UI_CONTAINER_RUNTIME", "none")
+
+
+class FakeRuntime:
+    """A container runtime that records what it is asked and starts nothing."""
+
+    name = "Fake"
+
+    def __init__(self, present=True):
+        self.present = present
+        self.pulled = []
+        self.started = []
+        self.executed = []
+        self.removed = []
+        self.existing = []
+        # Replies to ``execute`` by the command's first word: a list is consumed in order.
+        self.replies = {}
+        self.stopped = False
+        self.output = ""
+        self.keeps_containers = False
+
+    def available(self):
+        return True
+
+    def has_image(self, image):
+        return self.present
+
+    def pull(self, image):
+        self.pulled.append(image)
+        self.present = True
+
+    def start(self, name, spec, environment):
+        self.started.append((name, spec.image, dict(environment)))
+        self.existing.append(name)
+
+    def address(self, name, port):
+        return "127.0.0.1", port
+
+    def execute(self, name, argv, timeout, stdin=""):
+        self.executed.append((list(argv), stdin, timeout))
+        reply = self.replies.get(argv[0], (0, ""))
+        if isinstance(reply, list):
+            reply = reply.pop(0) if len(reply) > 1 else reply[0]
+        return reply
+
+    def running(self, name):
+        return not self.stopped
+
+    def logs(self, name):
+        return self.output
+
+    def remove(self, name):
+        self.removed.append(name)
+        if not self.keeps_containers and name in self.existing:
+            self.existing.remove(name)
+
+    def names(self, prefix):
+        return [name for name in self.existing if name.startswith(prefix)]
+
+
+@pytest.fixture
+def fake_runtime():
+    """The FakeRuntime class: call it to make one."""
+    return FakeRuntime
+
+
 @pytest.fixture
 def port() -> int:
     return PORT

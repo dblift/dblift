@@ -19,6 +19,9 @@ function testLine({ test, scripts }: WizardContext): string {
     if (!undone) {
       return "Passed (no undo script: undo and re-apply were not run).";
     }
+    if (result?.strategy === "container") {
+      return "Passed on a throwaway database in a container: build from zero, undo, re-apply.";
+    }
     return result?.strategy === "environment"
       ? "Passed on the scratch environment: build from zero, undo, re-apply."
       : "Passed on a temporary SQLite database: build from zero, undo, re-apply.";

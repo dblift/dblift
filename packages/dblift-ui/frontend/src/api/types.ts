@@ -68,14 +68,19 @@ export interface JobResult {
 
 /** How the scratch test would run for a project, read before anything runs. */
 export interface ScratchPlan {
-  strategy: "file" | "environment" | "skip";
+  strategy: "file" | "environment" | "container" | "skip";
   engine: string;
   summary: string;
   warning: string;
+  /** The container strategy only (empty or null otherwise): the runtime, the image, whether it is on this machine, its approximate size. */
+  runtime: string;
+  image: string;
+  image_present: boolean | null;
+  image_size_mb: number | null;
 }
 
 export interface ScratchPhase {
-  name: "clean" | "build" | "undo" | "reapply";
+  name: "start" | "clean" | "build" | "undo" | "reapply";
   /** null: the phase was skipped. */
   ok: boolean | null;
   detail: string;
@@ -87,6 +92,8 @@ export interface ScratchResult {
   skipped: boolean;
   phases: ScratchPhase[];
   script: string;
+  /** Present only when the scratch container could not be removed, or its removal checked. */
+  cleanup?: string;
 }
 
 export interface JobEvent {

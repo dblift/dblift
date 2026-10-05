@@ -2086,6 +2086,25 @@ button.branch__item:disabled {
   margin: 0;
 }
 
+/* The container a test starts: the runtime and the image, one per line. */
+.wizard__facts {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  font-size: 13px;
+  list-style: none;
+  overflow-wrap: anywhere;
+}
+
+.wizard__fact {
+  display: inline-block;
+  min-width: 4.5rem;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
 .wizard__warning {
   border: 1px solid var(--warn-border);
   border-radius: var(--radius-card);
