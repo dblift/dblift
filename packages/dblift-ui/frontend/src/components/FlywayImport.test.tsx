@@ -23,6 +23,7 @@ it("explains and names the table", () => {
   const region = screen.getByRole("region", { name: "Flyway history" });
   expect(region).toHaveTextContent(/comes from Flyway/);
   expect(region).toHaveTextContent("schema_version");
+  expect(region).toHaveTextContent(/before migrating/);
 });
 
 it("previews", async () => {

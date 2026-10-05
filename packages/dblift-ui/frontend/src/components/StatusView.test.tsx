@@ -144,6 +144,8 @@ it("offers to import the Flyway history while nothing is applied", async () => {
   render(view(<StatusView project={fromFlyway} onEnvironmentChange={() => {}} />));
 
   const banner = await screen.findByRole("region", { name: "Flyway history" });
+  // Above the command bar: the import comes before migrating.
+  expect(banner.compareDocumentPosition(screen.getByRole("button", { name: "Migrate" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   await userEvent.click(within(banner).getByRole("button", { name: "Preview the import" }));
 
   expect(runJob).toHaveBeenCalledWith("p1", "flyway_preview", "", expect.any(Function), { table: "flyway_schema_history" });

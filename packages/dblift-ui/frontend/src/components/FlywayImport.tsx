@@ -37,7 +37,8 @@ export default function FlywayImport({ table, busy, run, onPreview, onImport }: 
       <h2 id={title}>Flyway history</h2>
       <p>
         This project comes from Flyway. Import its history (table <span className="mono">{table}</span>) so that what
-        Flyway already applied is not offered again. Nothing is removed from the Flyway table.
+        Flyway already applied is not offered again. Import it before migrating: otherwise the migrations Flyway
+        already applied would be run again. Nothing is removed from the Flyway table.
       </p>
       {mine?.error && (
         <p className="error-text" role="alert">

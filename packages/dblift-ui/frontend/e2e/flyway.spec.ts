@@ -22,6 +22,7 @@ test("convert a Flyway project, preview and import its history", async ({ page }
   await expect(page.getByRole("heading", { name: "flywayapp" })).toBeVisible();
   const banner = page.getByRole("region", { name: "Flyway history" });
   await expect(banner).toContainText("flyway_schema_history");
+  await expect(banner).toContainText("before migrating");
   await expect(page.getByRole("row", { name: /create c/ })).toContainText("Pending");
 
   await banner.getByRole("button", { name: "Preview the import" }).click();

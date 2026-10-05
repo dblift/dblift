@@ -139,6 +139,16 @@ const StatusView = forwardRef<StatusViewHandle, Props>(function StatusView({ pro
         </p>
       )}
 
+      {!project.error && result && phase !== "error" && project.flyway_table && counts.applied === 0 && (
+        <FlywayImport
+          table={project.flyway_table}
+          busy={busy || preview !== null}
+          run={run}
+          onPreview={() => void start("flyway_preview", { table: project.flyway_table })}
+          onImport={() => void start("flyway_import", { table: project.flyway_table })}
+        />
+      )}
+
       {!project.error && result && phase !== "error" && (
         <CommandBar
           counts={counts}
@@ -152,16 +162,6 @@ const StatusView = forwardRef<StatusViewHandle, Props>(function StatusView({ pro
               setCreating(true);
             })
           }
-        />
-      )}
-
-      {!project.error && result && phase !== "error" && project.flyway_table && counts.applied === 0 && (
-        <FlywayImport
-          table={project.flyway_table}
-          busy={busy || preview !== null}
-          run={run}
-          onPreview={() => void start("flyway_preview", { table: project.flyway_table })}
-          onImport={() => void start("flyway_import", { table: project.flyway_table })}
         />
       )}
 
