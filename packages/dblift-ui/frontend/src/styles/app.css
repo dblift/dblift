@@ -1461,8 +1461,11 @@ input {
   z-index: 5;
 }
 
+/* Stretched to the row, so the chip is as tall as the buttons beside it. */
 .branch {
   position: relative;
+  display: flex;
+  align-self: stretch;
   max-width: 100%;
 }
 
@@ -1479,6 +1482,14 @@ input {
   font-size: 14px;
   cursor: pointer;
   transition: border-color 0.15s var(--ease-quick);
+}
+
+.branch__icon {
+  flex: none;
+  fill: none;
+  stroke: var(--text-muted);
+  stroke-width: 1.5;
+  stroke-linecap: round;
 }
 
 .branch__chip:hover,
@@ -1525,17 +1536,17 @@ input {
   color: var(--text-muted);
 }
 
+/* Opens from the chip's left edge: the chip starts the header actions, so the menu stays clear of
+   the sidebar, and on a narrow screen it spans the main area within its 16px gutters. */
 .branch__menu {
   position: absolute;
   top: calc(100% + 6px);
-  right: 0;
+  left: 0;
   z-index: 10;
   display: flex;
   flex-direction: column;
   gap: 10px;
-  width: 22rem;
-  min-width: 280px;
-  max-width: 92vw;
+  width: min(22rem, calc(100vw - 32px));
   max-height: 70vh;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-card);
@@ -1719,9 +1730,10 @@ button.branch__item:disabled {
   padding: 4px 6px;
 }
 
+/* Narrow enough that the state chip stays on the path's line at 380px. */
 .commit__pick {
   display: flex;
-  flex: 1 1 14rem;
+  flex: 1 1 10rem;
   align-items: center;
   gap: 8px;
   min-width: 0;
@@ -1791,22 +1803,6 @@ button.branch__item:disabled {
 
 .diff-hunk:first-child {
   margin-top: 0;
-}
-
-/* A narrow screen: the menu takes the width of the header. */
-@media (max-width: 520px) {
-  .branch {
-    position: static;
-  }
-
-  .branch__menu {
-    top: 100%;
-    left: 0;
-    right: 0;
-    width: auto;
-    min-width: 0;
-    max-width: none;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {

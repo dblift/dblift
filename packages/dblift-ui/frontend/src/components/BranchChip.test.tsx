@@ -45,6 +45,13 @@ it("is a button named after the branch, or after a detached HEAD", () => {
   expect(screen.getByRole("button", { name: "Branch detached" })).toHaveTextContent("detached");
 });
 
+it("marks the chip with a branch icon that assistive technology skips", () => {
+  chip();
+  const button = screen.getByRole("button", { name: "Branch main" });
+  expect(button.querySelector("svg.branch__icon")).toHaveAttribute("aria-hidden", "true");
+  expect(button.textContent).toBe("main");
+});
+
 it("shows the uncommitted files, ahead and behind counts only when they are not zero", () => {
   chip({ repo: repo({ files: twoChanged, ahead: 1, behind: 3 }) });
   const button = screen.getByRole("button", { name: "Branch main" });

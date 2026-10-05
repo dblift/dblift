@@ -129,6 +129,13 @@ export default function BranchChip({
           aria-busy={busy}
           onClick={() => (open ? setOpen(false) : openMenu())}
         >
+          {/* Tells the chip apart from the environment tabs beside it. */}
+          <svg className="branch__icon" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false">
+            <circle cx="4.5" cy="3.5" r="1.75" />
+            <circle cx="4.5" cy="12.5" r="1.75" />
+            <circle cx="11.5" cy="5" r="1.75" />
+            <path d="M4.5 5.25v5.5M11.5 6.75c0 3-7 2.25-7 4" />
+          </svg>
           <span className="branch__name mono">{name}</span>
           <span id={countsId} className="branch__counts">
             {files.length > 0 && (
