@@ -1107,6 +1107,289 @@ input {
   text-transform: uppercase;
 }
 
+/* Configuration form */
+.dialog--wide {
+  width: min(1080px, 100%);
+  /* Clips the rounded corners without becoming a scroll container, so the preview can stick. */
+  overflow: clip;
+}
+
+.config {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 0.8fr);
+  align-items: start;
+  gap: 16px;
+  padding: 16px;
+}
+
+.config__form {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.config__form > p {
+  margin: 0;
+}
+
+.config fieldset {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  margin: 0;
+  border: 0;
+  padding: 0;
+}
+
+/* Floated, a legend is laid out like any other item of the grid. */
+.config legend {
+  float: left;
+  width: 100%;
+  padding: 0 0 4px;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.config .config__section + .config__section {
+  border-top: 1px solid var(--border);
+  padding-top: 14px;
+}
+
+.config .dialog__hint {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.field select {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-button);
+  background: var(--surface-inset);
+  color: var(--text-strong);
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 14px;
+}
+
+.config .field input {
+  min-width: 0;
+}
+
+.config .field input::placeholder {
+  color: var(--text-faint);
+}
+
+.dialog--wide .dialog__head h2 {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.field-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 12px;
+}
+
+.field-row > .field {
+  flex: 1 1 140px;
+  min-width: 0;
+}
+
+.field-row > .field--wide {
+  flex-grow: 2;
+}
+
+.field-row > .field--port {
+  flex: 0 1 140px;
+}
+
+.field--level {
+  justify-self: start;
+  min-width: 140px;
+}
+
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  justify-self: start;
+}
+
+.check input,
+.config__modes input {
+  accent-color: var(--accent);
+}
+
+/* Engine picker */
+.engine-picker {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 8px;
+}
+
+.engine-option {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface-inset);
+  padding: 8px 10px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.3;
+  cursor: pointer;
+  transition: border-color 0.15s var(--ease-quick), background 0.15s var(--ease-quick), color 0.15s var(--ease-quick);
+}
+
+.engine-option span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.engine-option:hover {
+  border-color: var(--border-strong);
+  color: var(--text-strong);
+}
+
+.engine-option:has(:checked) {
+  border-color: var(--accent);
+  background: var(--accent-tint);
+  color: var(--text-strong);
+}
+
+.engine-option:has(:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Password */
+.config__modes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+}
+
+.config__modes label,
+.config__keep {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.config__keep {
+  gap: 10px;
+}
+
+.config__keep .mono {
+  color: var(--text-muted);
+}
+
+.config__warning {
+  margin: 0;
+  border: 1px solid var(--warn-border);
+  border-radius: var(--radius-chip);
+  background: var(--warn-tint);
+  padding: 6px 10px;
+  color: var(--warn);
+  font-size: 13px;
+}
+
+/* Environments */
+.config fieldset.config__environment {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: 10px 12px 12px;
+}
+
+.config__environment-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px 12px;
+}
+
+.config__environment-head .field {
+  flex: 1 1 180px;
+}
+
+.config__environment-head .button {
+  margin-left: auto;
+}
+
+/* Preview */
+.config__preview {
+  position: sticky;
+  top: 16px;
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface-inset);
+  padding: 12px 14px;
+}
+
+.config__preview-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.config__preview-head h3 {
+  font-size: 0.95rem;
+}
+
+.config__status {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.config__preview pre {
+  margin: 0;
+  color: var(--text-code);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.config__problems,
+.config__warnings {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  border: 1px solid var(--error-border);
+  border-radius: var(--radius-chip);
+  background: var(--error-tint);
+  padding: 8px 10px 8px 26px;
+  color: var(--error);
+  font-size: 13px;
+}
+
+.config__warnings {
+  border-color: var(--warn-border);
+  background: var(--warn-tint);
+  color: var(--warn);
+}
+
+@media (max-width: 860px) {
+  .config {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .config__preview {
+    position: static;
+    max-height: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
