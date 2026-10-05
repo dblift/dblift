@@ -1,17 +1,21 @@
-import { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useRef, useState } from "react";
 
+import { listScripts } from "../api/scripts";
 import type { Project, SqlPreview } from "../api/types";
 import { liveStates } from "../commands/live";
 import { useCommand } from "../commands/useCommand";
 import { describeActivity } from "../status/activity";
-import { latestPerScript, summarize } from "../status/model";
+import { isApplied, latestPerScript, summarize } from "../status/model";
 import { useStatus } from "../status/useStatus";
 import CommandBar from "./CommandBar";
 import EngineLogo from "./EngineLogo";
 import MigrationGrid from "./MigrationGrid";
+import NewMigration from "./NewMigration";
 import PreviewPanel from "./PreviewPanel";
 import Rail from "./Rail";
 import RunLog from "./RunLog";
+import ScriptPanel, { type ScriptPanelHandle } from "./ScriptPanel";
 
 interface Props {
   project: Project;
@@ -23,7 +27,20 @@ export default function StatusView({ project, onEnvironmentChange }: Props) {
   const [environment, setEnvironment] = useState(project.last_environment);
   const [saveError, setSaveError] = useState<string | null>(null);
   const { phase, result, error, activity, refresh } = useStatus(project.id, environment);
-  const { run, busy, start, dismiss } = useCommand(project.id, environment, refresh);
+  const queryClient = useQueryClient();
+  const { data: scripts = [] } = useQuery({ queryKey: ["scripts", project.id], queryFn: () => listScripts(project.id) });
+  const rereadScripts = () => queryClient.invalidateQueries({ queryKey: ["scripts", project.id] });
+  // The script list changes with the files, so it is re-read whenever the status is.
+  const refreshAll = () => {
+    refresh();
+    void rereadScripts();
+  };
+  const { run, busy, start, dismiss } = useCommand(project.id, environment, refreshAll);
+  const [openScript, setOpenScript] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+  // Opening another script or a new one replaces the editor: it asks first when there are unsaved edits.
+  const panel = useRef<ScriptPanelHandle>(null);
+  const leaveEditor = (action: () => void) => (panel.current ? panel.current.leave(action) : action());
   const [preview, setPreview] = useState<SqlPreview[] | null>(null);
   const changing = busy && run !== null && run.command !== "validate" && run.command !== "preview";
   // The SQL shown must be the SQL that runs: the environment stays put while it is read or shown.
@@ -33,6 +50,7 @@ export default function StatusView({ project, onEnvironmentChange }: Props) {
     live[m.script] ? { ...m, status: live[m.script] } : m,
   );
   const counts = summarize(migrations);
+  const opened = migrations.find((m) => m.script === openScript);
 
   const openPreview = async () => {
     const answer = await start("preview");
@@ -82,7 +100,7 @@ export default function StatusView({ project, onEnvironmentChange }: Props) {
               </button>
             ))}
           </div>
-          <button className="button" onClick={refresh} disabled={phase === "loading" || changing}>
+          <button className="button" onClick={refreshAll} disabled={phase === "loading" || changing}>
             Refresh
           </button>
         </div>
@@ -112,12 +130,31 @@ export default function StatusView({ project, onEnvironmentChange }: Props) {
           busy={busy || preview !== null}
           onMigrate={() => void openPreview()}
           onCommand={(command, params) => void start(command, params)}
+          onNew={() =>
+            leaveEditor(() => {
+              setOpenScript(null);
+              setCreating(true);
+            })
+          }
+        />
+      )}
+
+      {creating && (
+        <NewMigration
+          projectId={project.id}
+          locked={changing}
+          onCancel={() => setCreating(false)}
+          onCreated={(names) => {
+            setCreating(false);
+            setOpenScript(names[0]);
+            refreshAll();
+          }}
         />
       )}
 
       {preview && <PreviewPanel preview={preview} busy={busy} onApply={apply} onCancel={() => setPreview(null)} />}
 
-      {run && (run.command !== "preview" || run.phase === "failed") && <RunLog run={run} onDismiss={dismiss} />}
+      {run && (run.command !== "preview" || run.phase === "failed") && <RunLog key={run.result?.job_id ?? run.command} run={run} onDismiss={dismiss} />}
 
       {result && phase !== "error" && (
         <>
@@ -147,12 +184,32 @@ export default function StatusView({ project, onEnvironmentChange }: Props) {
 
           {migrations.length > 0 ? (
             <div className="panel rise" style={{ "--order": 2 } as React.CSSProperties}>
-              <MigrationGrid migrations={migrations} />
+              <MigrationGrid
+                migrations={migrations}
+                scripts={scripts}
+                openScript={openScript}
+                onOpen={(name) => name !== openScript && leaveEditor(() => setOpenScript(name))}
+              />
             </div>
           ) : (
             <p className="notice">No migrations found in this project.</p>
           )}
         </>
+      )}
+
+      {/* Outside the status block: a failed re-read must not drop the edits in progress. */}
+      {openScript && (
+        <ScriptPanel
+          key={openScript}
+          ref={panel}
+          projectId={project.id}
+          script={openScript}
+          applied={opened ? isApplied(opened.status) : false}
+          hasUndo={scripts.some((s) => s.name === openScript && s.has_undo)}
+          locked={changing}
+          onClose={() => setOpenScript(null)}
+          onSaved={refreshAll}
+        />
       )}
 
       <p className="status__activity mono" aria-live="polite">

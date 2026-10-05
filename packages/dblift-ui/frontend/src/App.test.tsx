@@ -13,6 +13,12 @@ const api = vi.hoisted(() => ({
 vi.mock("./api/projects", () => api);
 const runJob = vi.hoisted(() => vi.fn());
 vi.mock("./api/jobs", () => ({ runJob }));
+vi.mock("./api/scripts", () => ({ listScripts: vi.fn().mockResolvedValue([]) }));
+vi.mock("./components/CodeEditor", () => ({
+  default: ({ value, onChange, label }: { value: string; onChange: (v: string) => void; label: string }) => (
+    <textarea aria-label={label} value={value} onChange={(e) => onChange(e.target.value)} />
+  ),
+}));
 
 beforeEach(() => {
   api.listProjects.mockReset();

@@ -784,6 +784,164 @@ input {
   animation: rail-running 1.2s var(--ease-quick) infinite;
 }
 
+/* Grid: open button and open row */
+.grid__open {
+  border: 0;
+  border-radius: var(--radius-chip);
+  background: transparent;
+  color: var(--accent);
+  padding: 2px 4px;
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.grid__open:hover {
+  color: var(--accent-hover);
+}
+
+.grid__row--open td {
+  background: var(--accent-tint);
+}
+
+/* Script editor */
+.script__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  border-bottom: 1px solid var(--border);
+  padding: 8px 12px;
+}
+
+.script__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.script__actions {
+  display: flex;
+  gap: 8px;
+}
+
+.script__guard {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px solid var(--border);
+  background: var(--warn-tint);
+  padding: 8px 12px;
+  color: var(--warn);
+}
+
+.script__warning {
+  margin: 0;
+  border-bottom: 1px solid var(--warn-border);
+  background: var(--warn-tint);
+  padding: 8px 12px;
+  color: var(--warn);
+  font-size: 13px;
+}
+
+.script__lock,
+.script__message {
+  margin: 0;
+  padding: 10px 12px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.script__body {
+  height: 22rem;
+  background: var(--surface-inset);
+}
+
+.code-editor {
+  height: 100%;
+}
+
+.code-editor .cm-editor {
+  height: 100%;
+}
+
+.code-editor .cm-scroller {
+  overflow: auto;
+}
+
+/* New migration */
+.newmigration {
+  display: grid;
+  gap: 12px;
+  padding: 14px 16px;
+}
+
+.newmigration__choice {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  margin: 0;
+  border: 0;
+  padding: 0;
+}
+
+.newmigration__choice legend {
+  padding: 0 0 4px;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.newmigration__choice label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.newmigration__choice input {
+  accent-color: var(--accent);
+}
+
+.newmigration__hint {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.newmigration__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* Run log: full log */
+.runlog__full {
+  max-height: 20rem;
+  margin: 0;
+  overflow: auto;
+  border-top: 1px solid var(--border);
+  padding: 10px 14px;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Three items in the header now: the title takes the free space, and the buttons wrap on a narrow screen. */
+.runlog__head {
+  flex-wrap: wrap;
+}
+
+.runlog__title {
+  margin-right: auto;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

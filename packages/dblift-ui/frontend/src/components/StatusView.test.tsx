@@ -1,5 +1,7 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type { ReactNode } from "react";
 import { beforeEach, expect, it, vi } from "vitest";
 
 import type { JobResult, Project } from "../api/types";
@@ -7,6 +9,16 @@ import StatusView from "./StatusView";
 
 const runJob = vi.hoisted(() => vi.fn());
 vi.mock("../api/jobs", () => ({ runJob }));
+vi.mock("../api/scripts", () => ({ listScripts: vi.fn().mockResolvedValue([]) }));
+vi.mock("./CodeEditor", () => ({
+  default: ({ value, onChange, label }: { value: string; onChange: (v: string) => void; label: string }) => (
+    <textarea aria-label={label} value={value} onChange={(e) => onChange(e.target.value)} />
+  ),
+}));
+
+function view(children: ReactNode) {
+  return <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>{children}</QueryClientProvider>;
+}
 
 const project: Project = {
   id: "p1",
@@ -40,7 +52,7 @@ beforeEach(() => {
 });
 
 it("shows the project, its counts, the rail and the grid", async () => {
-  render(<StatusView project={project} onEnvironmentChange={() => {}} />);
+  render(view(<StatusView project={project} onEnvironmentChange={() => {}} />));
 
   expect(screen.getByRole("heading", { name: "shop-api" })).toBeInTheDocument();
   const grid = await screen.findByRole("table", { name: "Migrations" });
@@ -56,7 +68,7 @@ it("shows the project, its counts, the rail and the grid", async () => {
 
 it("offers the environments and reports the one chosen", async () => {
   const onEnvironmentChange = vi.fn();
-  render(<StatusView project={project} onEnvironmentChange={onEnvironmentChange} />);
+  render(view(<StatusView project={project} onEnvironmentChange={onEnvironmentChange} />));
   await screen.findByRole("table", { name: "Migrations" });
 
   expect(screen.getByRole("tab", { name: "default" })).toHaveAttribute("aria-selected", "true");
@@ -66,7 +78,7 @@ it("offers the environments and reports the one chosen", async () => {
 });
 
 it("runs the status for the remembered environment", async () => {
-  render(<StatusView project={{ ...project, last_environment: "staging" }} onEnvironmentChange={() => {}} />);
+  render(view(<StatusView project={{ ...project, last_environment: "staging" }} onEnvironmentChange={() => {}} />));
   await screen.findByRole("table", { name: "Migrations" });
 
   expect(runJob).toHaveBeenCalledWith("p1", "info", "staging", expect.any(Function));
@@ -77,7 +89,7 @@ it("shows the error and lets the user retry", async () => {
   runJob.mockResolvedValueOnce({
     success: false, error: "cannot connect to db.local", current_version: null, migrations: [], sql: [], repaired: null, baseline_version: null, job_id: "j1", has_log: false,
   });
-  render(<StatusView project={project} onEnvironmentChange={() => {}} />);
+  render(view(<StatusView project={project} onEnvironmentChange={() => {}} />));
 
   expect(await screen.findByRole("alert")).toHaveTextContent("cannot connect to db.local");
   await userEvent.click(screen.getByRole("button", { name: "Refresh" }));
@@ -87,7 +99,7 @@ it("shows the error and lets the user retry", async () => {
 
 it("says so when a project has no migration yet", async () => {
   runJob.mockResolvedValue({ ...status, current_version: null, migrations: [] });
-  render(<StatusView project={project} onEnvironmentChange={() => {}} />);
+  render(view(<StatusView project={project} onEnvironmentChange={() => {}} />));
 
   expect(await screen.findByText("No migrations found in this project.")).toBeInTheDocument();
 });
@@ -97,14 +109,14 @@ it("describes the running job in words", async () => {
     onEvent({ event: "info.started" });
     return new Promise(() => {});
   });
-  render(<StatusView project={project} onEnvironmentChange={() => {}} />);
+  render(view(<StatusView project={project} onEnvironmentChange={() => {}} />));
 
   expect(await screen.findByText("Reading migration status…")).toBeInTheDocument();
   expect(screen.queryByText("info.started")).not.toBeInTheDocument();
 });
 
 it("shows a config problem reported by the server", () => {
-  render(<StatusView project={{ ...project, error: "config is not a mapping" }} onEnvironmentChange={() => {}} />);
+  render(view(<StatusView project={{ ...project, error: "config is not a mapping" }} onEnvironmentChange={() => {}} />));
 
   expect(screen.getByRole("alert")).toHaveTextContent("config is not a mapping");
 });
