@@ -11,7 +11,9 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
 import App from "./App";
+import { takeToken } from "./api/token";
 
+takeToken();
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <App />
