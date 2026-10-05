@@ -1,12 +1,17 @@
 import { useState } from "react";
 
-import type { Project } from "../api/types";
+import type { Project, SqlPreview } from "../api/types";
+import { liveStates } from "../commands/live";
+import { useCommand } from "../commands/useCommand";
 import { describeActivity } from "../status/activity";
 import { latestPerScript, summarize } from "../status/model";
 import { useStatus } from "../status/useStatus";
+import CommandBar from "./CommandBar";
 import EngineLogo from "./EngineLogo";
 import MigrationGrid from "./MigrationGrid";
+import PreviewPanel from "./PreviewPanel";
 import Rail from "./Rail";
+import RunLog from "./RunLog";
 
 interface Props {
   project: Project;
@@ -18,8 +23,28 @@ export default function StatusView({ project, onEnvironmentChange }: Props) {
   const [environment, setEnvironment] = useState(project.last_environment);
   const [saveError, setSaveError] = useState<string | null>(null);
   const { phase, result, error, activity, refresh } = useStatus(project.id, environment);
-  const migrations = latestPerScript(result?.migrations ?? []);
+  const { run, busy, start, dismiss } = useCommand(project.id, environment, refresh);
+  const [preview, setPreview] = useState<SqlPreview[] | null>(null);
+  const changing = busy && run !== null && run.command !== "validate" && run.command !== "preview";
+  // The SQL shown must be the SQL that runs: the environment stays put while it is read or shown.
+  const previewing = preview !== null || (busy && run?.command === "preview");
+  const live = run && run.phase === "running" ? liveStates(run.events) : {};
+  const migrations = latestPerScript(result?.migrations ?? []).map((m) =>
+    live[m.script] ? { ...m, status: live[m.script] } : m,
+  );
   const counts = summarize(migrations);
+
+  const openPreview = async () => {
+    const answer = await start("preview");
+    if (answer?.success) {
+      setPreview(answer.sql);
+      dismiss();
+    }
+  };
+  const apply = () => {
+    setPreview(null);
+    void start("migrate");
+  };
 
   const choose = (name: string) => {
     setEnvironment(name);
@@ -50,13 +75,14 @@ export default function StatusView({ project, onEnvironmentChange }: Props) {
                 role="tab"
                 aria-selected={name === environment}
                 className="segmented__item"
+                disabled={changing || previewing}
                 onClick={() => choose(name)}
               >
                 {name || "default"}
               </button>
             ))}
           </div>
-          <button className="button" onClick={refresh} disabled={phase === "loading"}>
+          <button className="button" onClick={refresh} disabled={phase === "loading" || changing}>
             Refresh
           </button>
         </div>
@@ -78,6 +104,20 @@ export default function StatusView({ project, onEnvironmentChange }: Props) {
           {saveError}
         </p>
       )}
+
+      {!project.error && result && phase !== "error" && (
+        <CommandBar
+          counts={counts}
+          hasVersion={result.current_version !== null}
+          busy={busy || preview !== null}
+          onMigrate={() => void openPreview()}
+          onCommand={(command, params) => void start(command, params)}
+        />
+      )}
+
+      {preview && <PreviewPanel preview={preview} busy={busy} onApply={apply} onCancel={() => setPreview(null)} />}
+
+      {run && (run.command !== "preview" || run.phase === "failed") && <RunLog run={run} onDismiss={dismiss} />}
 
       {result && phase !== "error" && (
         <>
