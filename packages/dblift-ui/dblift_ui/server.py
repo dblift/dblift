@@ -5,16 +5,16 @@ import os
 import secrets
 import shutil
 import threading
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, contextmanager
 from dataclasses import asdict
 from pathlib import Path
-from typing import Any, AsyncIterator, Awaitable, Callable, Dict, Iterator, List, Optional
+from typing import Any, AsyncIterator, Awaitable, Callable, Dict, Iterator, List, Optional, Set
 
 import yaml
 from dblift_ui import __version__, configs, flyway, gitops
 from dblift_ui.clone import CloneError, clone
 from dblift_ui.discovery import DiscoveryError, discover
-from dblift_ui.jobs import JobRunner, ProjectBusy
+from dblift_ui.jobs import MUTATING, Job, JobRunner, ProjectBusy
 from dblift_ui.registry import (
     Project,
     ProjectRegistry,
@@ -157,6 +157,62 @@ def describe(project: Project) -> Dict[str, Any]:
     }
 
 
+class RepositoryGuard:
+    """The one place that decides whether a database change or a git verb may start.
+
+    Both decisions are taken under one lock, so a job and a git verb starting at the
+    same instant never both pass. Git verbs on one repository also run one at a time.
+    """
+
+    # Jobs that read the scripts while a git verb could be rewriting them.
+    _JOBS_READING_SCRIPTS = MUTATING | {"preview"}
+
+    def __init__(self, runner: JobRunner, projects: ProjectRegistry) -> None:
+        self._runner = runner
+        self._projects = projects
+        self._lock = threading.Lock()
+        self._serial: Dict[Path, threading.Lock] = {}
+        self._rewriting: Set[Path] = set()
+
+    def start_job(self, project: Project, command: str, start: Callable[[], Job]) -> Job:
+        """Run *start* unless a git verb is rewriting the files of *project*'s repository."""
+        if command not in self._JOBS_READING_SCRIPTS:
+            return start()
+        with self._lock:
+            if repository_of(Path(project.config_path)) in self._rewriting:
+                raise HTTPException(
+                    status_code=409,
+                    detail="A git operation is running on this repository. Wait for it to finish.",
+                )
+            return start()
+
+    @contextmanager
+    def git_verb(self, root: Path, rewrites_files: bool) -> Iterator[None]:
+        """Hold *root* for one git verb; refused while a database change runs in it."""
+        with self._lock:
+            serial = self._serial.setdefault(root, threading.Lock())
+        with serial:
+            if rewrites_files:
+                with self._lock:
+                    if any(
+                        self._runner.is_changing(p.id)
+                        for p in self._projects.list()
+                        if repository_of(Path(p.config_path)) == root
+                    ):
+                        raise HTTPException(
+                            status_code=409,
+                            detail="A change is running on a project of this repository. "
+                            "Try again once it has finished.",
+                        )
+                    self._rewriting.add(root)
+            try:
+                yield
+            finally:
+                if rewrites_files:
+                    with self._lock:
+                        self._rewriting.discard(root)
+
+
 def create_app(
     token: str,
     port: int,
@@ -174,6 +230,7 @@ def create_app(
     """
     projects = registry or ProjectRegistry.default()
     runner = JobRunner(projects)
+    repositories = RepositoryGuard(runner, projects)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
@@ -279,7 +336,11 @@ def create_app(
     @app.post("/api/projects/{project_id}/jobs", status_code=202)
     def start_job(project_id: str, body: NewJob) -> Dict[str, str]:
         try:
-            job = runner.start(project_id, body.command, body.environment, body.params)
+            job = repositories.start_job(
+                projects.get(project_id),
+                body.command,
+                lambda: runner.start(project_id, body.command, body.environment, body.params),
+            )
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="unknown project") from exc
         except ProjectBusy as exc:
@@ -384,10 +445,6 @@ def create_app(
         store.write(name, body.content)
         return asdict(store.describe(name))
 
-    # One changing git verb at a time per repository: a second one waits for the first.
-    git_locks: Dict[Path, threading.Lock] = {}
-    git_locks_guard = threading.Lock()
-
     def repository(project_id: str) -> Path:
         root = repository_of(Path(project_of(project_id).config_path))
         if not gitops.is_repository(root):
@@ -403,28 +460,12 @@ def create_app(
     def git_state(root: Path) -> Dict[str, Any]:
         return {"repository": True, "root": str(root), **asdict(git_call(gitops.status, root))}
 
-    def changing(root: Path) -> bool:
-        """Whether a database change runs on any project kept in repository *root*."""
-        return any(
-            runner.is_changing(p.id)
-            for p in projects.list()
-            if repository_of(Path(p.config_path)) == root
-        )
-
     def git_change(
         project_id: str, verb: Callable[..., None], *args: Any, files: bool = True
     ) -> Dict[str, Any]:
         """Run *verb* on the project's repository; *files* when it rewrites the working tree."""
         root = repository(project_id)
-        with git_locks_guard:
-            lock = git_locks.setdefault(root, threading.Lock())
-        with lock:
-            if files and changing(root):
-                raise HTTPException(
-                    status_code=409,
-                    detail="A change is running on a project of this repository. "
-                    "Try again once it has finished.",
-                )
+        with repositories.git_verb(root, rewrites_files=files):
             git_call(verb, root, *args)
             return git_state(root)
 

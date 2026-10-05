@@ -352,3 +352,83 @@ def test_a_conflicted_file_is_not_committed(repo):
         commit(repo, ["migrations/V1_0_0__create_accounts.sql"], "x")
 
     assert [f.state for f in status(repo).files] == ["conflicted"]
+
+
+def _porcelain(repo):
+    return subprocess.run(
+        ["git", "-C", str(repo), "status", "--porcelain=v2", "--branch", "-z"],
+        check=True,
+        capture_output=True,
+    ).stdout
+
+
+def test_a_mixed_commit_takes_exactly_the_selected_files(repo):
+    (repo / "migrations" / "V1_2_0__new.sql").write_text("SELECT 1;\n")
+    (repo / "migrations" / "V1_0_0__create_accounts.sql").write_text("-- changed\n")
+    (repo / "dblift.yaml").unlink()
+    (repo / "left-alone.txt").write_text("x")
+
+    commit(
+        repo,
+        ["migrations/V1_2_0__new.sql", "migrations/V1_0_0__create_accounts.sql", "dblift.yaml"],
+        "Mixed",
+    )
+
+    assert _log(repo, "-1", "--name-status", "--format=").split("\n")[:3] == [
+        "D\tdblift.yaml",
+        "M\tmigrations/V1_0_0__create_accounts.sql",
+        "A\tmigrations/V1_2_0__new.sql",
+    ]
+    assert [(f.path, f.state) for f in status(repo).files] == [("left-alone.txt", "untracked")]
+
+
+def test_a_commit_refused_by_git_leaves_the_index_as_it_was(repo, tmp_path, monkeypatch):
+    # No identity anywhere: git refuses to commit ("Please tell me who you are").
+    home = tmp_path / "home"
+    home.mkdir()
+    for name in ("GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL", "GIT_COMMITTER_NAME", "EMAIL"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.delenv("GIT_COMMITTER_EMAIL", raising=False)
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(home))
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(home / "none"))
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+    repo.git("config", "--unset", "user.email")
+    repo.git("config", "--unset", "user.name")
+    repo.git("config", "user.useConfigOnly", "true")
+    (repo / "migrations" / "V1_2_0__new.sql").write_text("SELECT 1;\n")
+    (repo / "migrations" / "V1_0_0__create_accounts.sql").write_text("-- changed\n")
+    (repo / "dblift.yaml").unlink()
+    (repo / "staged-by-hand.txt").write_text("x")
+    repo.git("add", "staged-by-hand.txt")
+    before = _porcelain(repo)
+    head = _log(repo, "-1", "--format=%H")
+
+    with pytest.raises(GitError, match="email"):
+        commit(
+            repo,
+            ["migrations/V1_2_0__new.sql", "migrations/V1_0_0__create_accounts.sql", "dblift.yaml"],
+            "Refused",
+        )
+
+    assert _porcelain(repo) == before
+    assert _log(repo, "-1", "--format=%H") == head
+
+
+def test_a_file_staged_by_hand_and_not_selected_stays_staged_and_uncommitted(repo):
+    (repo / "staged-by-hand.txt").write_text("by hand")
+    repo.git("add", "staged-by-hand.txt")
+    (repo / "migrations" / "V1_0_0__create_accounts.sql").write_text("-- changed\n")
+    (repo / "migrations" / "V1_2_0__new.sql").write_text("SELECT 1;\n")
+
+    commit(repo, ["migrations/V1_0_0__create_accounts.sql", "migrations/V1_2_0__new.sql"], "x")
+
+    assert "staged-by-hand.txt" not in _log(repo, "-1", "--name-only", "--format=")
+    assert [(f.path, f.state) for f in status(repo).files] == [("staged-by-hand.txt", "added")]
+    staged = subprocess.run(
+        ["git", "-C", str(repo), "diff", "--cached", "--name-only"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.split()
+    assert staged == ["staged-by-hand.txt"]

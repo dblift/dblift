@@ -305,20 +305,29 @@ def commit(root: Path, paths: Sequence[str], message: str) -> None:
     for path in paths:
         if path not in changed:
             raise GitError(f"{path} has no change to commit")
-        # Adding it would mark the conflict resolved, markers and all.
+        # Committing it would record the conflict markers and end the conflict.
         if changed[path] == "conflicted":
             raise GitError(f"{path} has a conflict; resolve it with your own git tool first.")
     selected = list(dict.fromkeys(paths))
-    run(root, _LITERAL, "add", "--", *selected, timeout=120)
-    run(
-        root,
-        _LITERAL,
-        "commit",
-        "--only",
-        "-F",
-        "-",
-        "--",
-        *selected,
-        stdin=message.strip() + "\n",
-        timeout=120,
-    )
+    # "--only" takes tracked files as they are in the working tree and leaves the index as it
+    # was when the commit is refused. Only untracked files must be known to the index first.
+    untracked = [path for path in selected if changed[path] == "untracked"]
+    if untracked:
+        run(root, _LITERAL, "add", "--intent-to-add", "--", *untracked, timeout=120)
+    try:
+        run(
+            root,
+            _LITERAL,
+            "commit",
+            "--only",
+            "-F",
+            "-",
+            "--",
+            *selected,
+            stdin=message.strip() + "\n",
+            timeout=120,
+        )
+    except GitError:
+        if untracked:  # untracked again, as they were
+            run(root, _LITERAL, "rm", "--cached", "--quiet", "--", *untracked, timeout=120)
+        raise
