@@ -139,6 +139,13 @@ export interface RepoStatus {
   truncated?: boolean;
 }
 
+/** A "new pull request" page for the current branch; url is null when the host is unknown. */
+export interface PullRequestLink {
+  url: string | null;
+  kind: string | null;
+  branch: string;
+}
+
 export interface Branch {
   name: string;
   current: boolean;

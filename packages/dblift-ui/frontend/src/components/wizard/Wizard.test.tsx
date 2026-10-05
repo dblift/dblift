@@ -6,7 +6,7 @@ import { beforeEach, expect, it, vi } from "vitest";
 
 import type { RepoStatus } from "../../api/types";
 import { onMain, project, U, V } from "../../test/wizard";
-import { STEPS, type StepProps, type WizardStep } from "../../wizard/steps";
+import { START, STEPS, type StepProps, type WizardStep } from "../../wizard/steps";
 import Wizard from "./Wizard";
 
 const git = vi.hoisted(() => ({
@@ -75,6 +75,26 @@ const next = () => userEvent.click(screen.getByRole("button", { name: "Next" }))
 it("ships describe, write and test as its first steps", () => {
   expect(STEPS.slice(0, 3).map((s) => s.id)).toEqual(["describe", "write", "test"]);
   expect(STEPS.slice(0, 3).map((s) => s.title)).toEqual(["Describe", "Write", "Test"]);
+});
+
+it("ends with commit and publish, offered only in a git repository", () => {
+  expect(STEPS.map((s) => s.id)).toEqual(["describe", "write", "test", "commit", "publish"]);
+  expect(STEPS.map((s) => s.title)).toEqual(["Describe", "Write", "Test", "Commit", "Publish"]);
+  const base = { ...START, project, update: () => {}, changed: () => {} };
+  const inside = { ...base, repo: onMain };
+  const outside = { ...base, repo: { repository: false } };
+  expect(STEPS.filter((s) => s.available(inside)).map((s) => s.id)).toEqual(["describe", "write", "test", "commit", "publish"]);
+  expect(STEPS.filter((s) => s.available(outside)).map((s) => s.id)).toEqual(["describe", "write", "test"]);
+  expect(STEPS.filter((s) => s.available({ ...base, repo: undefined })).map((s) => s.id)).toEqual(["describe", "write", "test"]);
+});
+
+it("counts commit done once committed, and publish once published", () => {
+  const base = { ...START, project, repo: onMain, update: () => {}, changed: () => {} };
+  const [commit, publish] = STEPS.slice(3);
+  expect(commit.done(base)).toBe(false);
+  expect(commit.done({ ...base, committed: true })).toBe(true);
+  expect(publish.done(base)).toBe(false);
+  expect(publish.done({ ...base, published: true })).toBe(true);
 });
 
 it("is a dialog named New change, listing the steps in order with their numbers", () => {

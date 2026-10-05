@@ -1,7 +1,9 @@
 import type { JSX } from "react";
 
 import type { Project, RepoStatus, ScratchResult } from "../api/types";
+import CommitStep from "../components/wizard/CommitStep";
 import DescribeStep from "../components/wizard/DescribeStep";
+import PublishStep from "../components/wizard/PublishStep";
 import TestStep from "../components/wizard/TestStep";
 import WriteStep from "../components/wizard/WriteStep";
 
@@ -59,10 +61,14 @@ export const START: WizardData = {
 };
 
 const always = () => true;
+// Outside a git repository the wizard ends after the test.
+const inRepository = (context: WizardContext) => context.repo?.repository === true;
 
 /** The wizard's steps, in order; the shell shows those available and knows none by name. */
 export const STEPS: WizardStep[] = [
   { id: "describe", title: "Describe", Component: DescribeStep, available: always, done: (c) => c.scripts !== null },
   { id: "write", title: "Write", Component: WriteStep, available: always, done: (c) => c.written && !c.unsaved },
   { id: "test", title: "Test", Component: TestStep, available: always, done: (c) => c.test.outcome !== null },
+  { id: "commit", title: "Commit", Component: CommitStep, available: inRepository, done: (c) => c.committed },
+  { id: "publish", title: "Publish", Component: PublishStep, available: inRepository, done: (c) => c.published },
 ];

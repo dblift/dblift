@@ -2182,6 +2182,65 @@ button.branch__item:disabled {
   gap: 8px;
 }
 
+/* Wizard: commit and publish */
+.wizard__commit,
+.wizard__publish,
+.wizard__pr {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.wizard__form .dialog__actions {
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+
+.wizard__done,
+.wizard__branch-line,
+.wizard__pr > p,
+.wizard__publish > p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.wizard__done {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.wizard__done-icon {
+  color: var(--ok);
+  font-family: var(--font-mono);
+}
+
+.wizard__copy {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+
+.wizard__copy input,
+.wizard__copy textarea {
+  flex: 1;
+  min-width: 0;
+}
+
+.wizard__copy textarea {
+  font-size: 12px;
+}
+
+.wizard__copied:empty {
+  display: none;
+}
+
+.wizard__copied {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
