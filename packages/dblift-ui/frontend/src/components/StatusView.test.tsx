@@ -85,6 +85,17 @@ it("says so when a project has no migration yet", async () => {
   expect(await screen.findByText("No migrations found in this project.")).toBeInTheDocument();
 });
 
+it("describes the running job in words", async () => {
+  runJob.mockImplementation((_p: string, _c: string, _e: string, onEvent: (event: { event: string }) => void) => {
+    onEvent({ event: "info.started" });
+    return new Promise(() => {});
+  });
+  render(<StatusView project={project} onEnvironmentChange={() => {}} />);
+
+  expect(await screen.findByText("Reading migration status…")).toBeInTheDocument();
+  expect(screen.queryByText("info.started")).not.toBeInTheDocument();
+});
+
 it("shows a config problem reported by the server", () => {
   render(<StatusView project={{ ...project, error: "config is not a mapping" }} onEnvironmentChange={() => {}} />);
 

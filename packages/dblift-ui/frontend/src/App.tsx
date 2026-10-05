@@ -1,7 +1,8 @@
-import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { listProjects, setEnvironment } from "./api/projects";
+import type { Project } from "./api/types";
 import EmptyState from "./components/EmptyState";
 import Sidebar from "./components/Sidebar";
 import StatusView from "./components/StatusView";
@@ -14,6 +15,14 @@ function Shell() {
   const { data: projects = [], error, isPending } = useQuery({ queryKey: ["projects"], queryFn: listProjects });
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selected = projects.find((p) => p.id === selectedId) ?? projects[0] ?? null;
+  const client = useQueryClient();
+
+  // Keep the cached list in step with the server, so the project re-opens on the
+  // environment it was left on.
+  const changeEnvironment = async (id: string, environment: string) => {
+    const updated = await setEnvironment(id, environment);
+    client.setQueryData<Project[]>(["projects"], (list) => list?.map((p) => (p.id === updated.id ? updated : p)));
+  };
 
   return (
     <div className="app" role="application" aria-label="DBLift UI">
@@ -30,7 +39,7 @@ function Shell() {
           <StatusView
             key={selected.id}
             project={selected}
-            onEnvironmentChange={(environment) => void setEnvironment(selected.id, environment)}
+            onEnvironmentChange={(environment) => changeEnvironment(selected.id, environment)}
           />
         )}
       </main>

@@ -65,11 +65,41 @@ it("shows the server's reason when adding fails", async () => {
   expect(await screen.findByRole("alert")).toHaveTextContent("config file not found: /nope.yaml");
 });
 
-it("removes a project", async () => {
+it("removes a project after a confirmation in place", async () => {
   api.removeProject.mockResolvedValue(undefined);
   render(wrap(<Sidebar projects={[shop]} selectedId="p1" onSelect={() => {}} />));
 
   await userEvent.click(screen.getByRole("button", { name: "Remove shop-api" }));
+  expect(api.removeProject).not.toHaveBeenCalled();
+
+  const confirm = screen.getByRole("button", { name: "Remove" });
+  expect(confirm).toHaveAccessibleDescription(/only from this list.*No file is deleted/);
+  await userEvent.click(confirm);
 
   expect(api.removeProject).toHaveBeenCalledWith("p1");
+});
+
+it("keeps the project when the removal is cancelled or the user clicks elsewhere", async () => {
+  render(wrap(<Sidebar projects={[shop]} selectedId="p1" onSelect={() => {}} />));
+
+  await userEvent.click(screen.getByRole("button", { name: "Remove shop-api" }));
+  await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+  expect(screen.queryByRole("button", { name: "Remove" })).not.toBeInTheDocument();
+
+  await userEvent.click(screen.getByRole("button", { name: "Remove shop-api" }));
+  await userEvent.click(screen.getByText("Projects"));
+  expect(screen.queryByRole("button", { name: "Remove" })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Remove shop-api" })).toBeInTheDocument();
+
+  expect(api.removeProject).not.toHaveBeenCalled();
+});
+
+it("shows the server's reason when removing fails", async () => {
+  api.removeProject.mockRejectedValue(new Error("registry file is read-only"));
+  render(wrap(<Sidebar projects={[shop]} selectedId="p1" onSelect={() => {}} />));
+
+  await userEvent.click(screen.getByRole("button", { name: "Remove shop-api" }));
+  await userEvent.click(screen.getByRole("button", { name: "Remove" }));
+
+  expect(await screen.findByRole("alert")).toHaveTextContent("registry file is read-only");
 });

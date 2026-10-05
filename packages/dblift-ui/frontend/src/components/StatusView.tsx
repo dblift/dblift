@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import type { Project } from "../api/types";
+import { describeActivity } from "../status/activity";
 import { latestPerScript, summarize } from "../status/model";
 import { useStatus } from "../status/useStatus";
 import EngineLogo from "./EngineLogo";
@@ -9,18 +10,23 @@ import Rail from "./Rail";
 
 interface Props {
   project: Project;
-  onEnvironmentChange: (environment: string) => void;
+  /** May return a promise; a rejection is shown to the user. */
+  onEnvironmentChange: (environment: string) => void | Promise<unknown>;
 }
 
 export default function StatusView({ project, onEnvironmentChange }: Props) {
   const [environment, setEnvironment] = useState(project.last_environment);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const { phase, result, error, activity, refresh } = useStatus(project.id, environment);
   const migrations = latestPerScript(result?.migrations ?? []);
   const counts = summarize(migrations);
 
   const choose = (name: string) => {
     setEnvironment(name);
-    onEnvironmentChange(name);
+    setSaveError(null);
+    Promise.resolve(onEnvironmentChange(name)).catch((failure: Error) => {
+      setSaveError(`The chosen environment could not be remembered: ${failure.message}`);
+    });
   };
 
   return (
@@ -67,6 +73,12 @@ export default function StatusView({ project, onEnvironmentChange }: Props) {
         </p>
       )}
 
+      {saveError && (
+        <p className="notice notice--error" role="alert">
+          {saveError}
+        </p>
+      )}
+
       {result && phase !== "error" && (
         <>
           <div className="summary rise" style={{ "--order": 1 } as React.CSSProperties}>
@@ -104,7 +116,7 @@ export default function StatusView({ project, onEnvironmentChange }: Props) {
       )}
 
       <p className="status__activity mono" aria-live="polite">
-        {phase === "loading" ? activity || "reading status…" : ""}
+        {phase === "loading" ? (activity ? describeActivity(activity) : "Reading migration status…") : ""}
       </p>
     </section>
   );

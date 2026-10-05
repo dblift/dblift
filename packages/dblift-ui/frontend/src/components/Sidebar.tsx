@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useEffect, useRef, useState } from "react";
 
 import { addProject, removeProject } from "../api/projects";
 import type { Project } from "../api/types";
@@ -16,6 +16,8 @@ export default function Sidebar({ projects, selectedId, onSelect }: Props) {
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState("");
   const [configPath, setConfigPath] = useState("");
+  const [confirming, setConfirming] = useState<string | null>(null);
+  const confirmBox = useRef<HTMLSpanElement>(null);
   const refreshList = () => queryClient.invalidateQueries({ queryKey: ["projects"] });
 
   const add = useMutation({
@@ -29,6 +31,25 @@ export default function Sidebar({ projects, selectedId, onSelect }: Props) {
     },
   });
   const remove = useMutation({ mutationFn: (id: string) => removeProject(id), onSuccess: refreshList });
+
+  // A pending confirmation is dropped as soon as the user clicks anywhere else.
+  useEffect(() => {
+    if (!confirming) {
+      return;
+    }
+    const dismiss = (event: PointerEvent) => {
+      if (!confirmBox.current?.contains(event.target as Node)) {
+        setConfirming(null);
+      }
+    };
+    document.addEventListener("pointerdown", dismiss);
+    return () => document.removeEventListener("pointerdown", dismiss);
+  }, [confirming]);
+
+  const confirmRemoval = (id: string) => {
+    setConfirming(null);
+    remove.mutate(id);
+  };
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -55,16 +76,41 @@ export default function Sidebar({ projects, selectedId, onSelect }: Props) {
                 <span className="mono">{project.error ? "config problem" : project.engine || "unknown engine"}</span>
               </span>
             </button>
-            <button
-              className="button button--quiet"
-              aria-label={`Remove ${project.name}`}
-              onClick={() => remove.mutate(project.id)}
-            >
-              ✕
-            </button>
+            {confirming === project.id ? (
+              <span className="sidebar__confirm" ref={confirmBox}>
+                <span className="visually-hidden" id={`remove-note-${project.id}`}>
+                  Removes {project.name} only from this list. No file is deleted.
+                </span>
+                <button
+                  className="button button--danger"
+                  aria-describedby={`remove-note-${project.id}`}
+                  title="Remove from this list. No file is deleted."
+                  onClick={() => confirmRemoval(project.id)}
+                >
+                  Remove
+                </button>
+                <button className="button button--quiet" onClick={() => setConfirming(null)} autoFocus>
+                  Cancel
+                </button>
+              </span>
+            ) : (
+              <button
+                className="button button--quiet"
+                aria-label={`Remove ${project.name}`}
+                title="Remove from this list. No file is deleted."
+                onClick={() => setConfirming(project.id)}
+              >
+                ✕
+              </button>
+            )}
           </li>
         ))}
       </ul>
+      {remove.isError && (
+        <p className="error-text sidebar__error" role="alert">
+          Could not remove the project: {remove.error.message}
+        </p>
+      )}
 
       {adding ? (
         <form className="sidebar__form" onSubmit={submit}>

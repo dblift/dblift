@@ -297,6 +297,37 @@ input {
   gap: 8px;
 }
 
+.sidebar__confirm {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.sidebar__error {
+  margin: 0 4px;
+}
+
+.button--danger {
+  border-color: var(--error-border);
+  background: var(--error-tint);
+  color: var(--error);
+  padding: 4px 10px;
+}
+
+.button--danger:hover:not(:disabled) {
+  border-color: var(--error);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 /* Empty state */
 .empty {
   max-width: 34rem;
@@ -600,9 +631,17 @@ input {
     margin: 0 8px 0 0;
   }
 
+  /* Brand and "Add project" share the first row; the list gets a row of its own. */
   .sidebar__list {
-    flex: 1;
+    order: 1;
+    flex: 1 0 100%;
     flex-direction: row;
+    padding-bottom: 2px;
+  }
+
+  .sidebar__item {
+    flex: none;
+    max-width: 100%;
   }
 
   .sidebar__add,
@@ -610,7 +649,13 @@ input {
     margin-top: 0;
   }
 
-  .sidebar__form {
+  .sidebar__add {
+    margin-left: auto;
+  }
+
+  .sidebar__form,
+  .sidebar__error {
+    order: 2;
     flex-basis: 100%;
   }
 
