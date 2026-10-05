@@ -134,7 +134,7 @@ def test_published_docs_and_templates_do_not_reference_removed_tier_surfaces():
         ROOT / "docs" / "user-guide" / "getting-started.md",
         ROOT / "docs" / "index.md",
         ROOT / "docs" / "api-reference" / "core.md",
-        ROOT / "dblift" / "core" / "logger" / "templates" / "oldreport.html",
+        ROOT / "dblift" / "core" / "logger" / "templates" / "report.html",
     ]
     forbidden = (
         "--license-key",

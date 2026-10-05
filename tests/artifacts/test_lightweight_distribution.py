@@ -163,6 +163,17 @@ def candidate_wheel(tmp_path_factory):
     return next(directory.glob("*.whl"))
 
 
+def test_wheel_contains_only_active_html_report_template(candidate_wheel):
+    with zipfile.ZipFile(candidate_wheel) as archive:
+        templates = {
+            name
+            for name in archive.namelist()
+            if name.startswith("dblift/core/logger/templates/") and name.endswith(".html")
+        }
+
+    assert templates == {"dblift/core/logger/templates/report.html"}
+
+
 def test_wrong_distribution_cannot_qualify(candidate_wheel, tmp_path):
     wrong_wheel = tmp_path / "other-1.0.0-py3-none-any.whl"
     wrong_wheel.write_bytes(candidate_wheel.read_bytes())
