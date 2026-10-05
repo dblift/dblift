@@ -4,7 +4,9 @@ Most tests use a fake runtime and a fake engine whose "container" is a SQLite fi
 whole cycle runs for real without a database server. The tests at the end start real
 containers; they run only with DBLIFT_UI_CONTAINER_TESTS set to a runtime name
 (docker, podman or container), and download a missing image only with
-DBLIFT_UI_CONTAINER_PULL=1.
+DBLIFT_UI_CONTAINER_PULL=1. DBLIFT_UI_CONTAINER_ENGINES, a comma-separated list of
+catalogue keys (postgresql,mysql,...), limits them to those engines; by default every
+catalogue engine runs.
 """
 
 import dataclasses
@@ -563,6 +565,11 @@ def test_the_plan_route_returns_the_container_fields(tmp_path, engine, client, a
 
 REAL = os.environ.get("DBLIFT_UI_CONTAINER_TESTS", "")
 PULL = os.environ.get("DBLIFT_UI_CONTAINER_PULL", "") == "1"
+SELECTED = {
+    key.strip()
+    for key in os.environ.get("DBLIFT_UI_CONTAINER_ENGINES", "").split(",")
+    if key.strip()
+}
 REAL_ENGINES = {
     "postgresql": "url: postgresql://app:hunter2@db.invalid:5432/shop",
     "mysql": "url: mysql://app:hunter2@db.invalid:3306/shop",
@@ -610,12 +617,18 @@ def test_every_catalogue_engine_has_a_real_run():
     }
 
 
+def test_the_selected_engines_are_catalogue_engines():
+    assert SELECTED <= set(REAL_ENGINES)
+
+
 def _key(spec):
     return next(key for key, known in containers.CATALOGUE.items() if known is spec)
 
 
 @pytest.mark.parametrize("key", sorted(REAL_ENGINES))
 def test_a_real_container_runs_the_whole_cycle(tmp_path, real_runtime, passwords, key, capsys):
+    if SELECTED and key not in SELECTED:
+        pytest.skip(f"{key} is not in DBLIFT_UI_CONTAINER_ENGINES")
     spec = containers.CATALOGUE[key]
     pytest.importorskip(spec.driver)
     if not PULL and not real_runtime.has_image(spec.image):
