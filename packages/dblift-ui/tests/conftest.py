@@ -55,6 +55,8 @@ def sqlite_project(tmp_path: Path) -> Path:
     (project / "migrations" / "V1_0_1__create_orders.sql").write_text(
         "CREATE TABLE orders (id INTEGER PRIMARY KEY);\n"
     )
+    (project / "migrations" / "U1_0_0__create_customers.sql").write_text("DROP TABLE customers;\n")
+    (project / "migrations" / "U1_0_1__create_orders.sql").write_text("DROP TABLE orders;\n")
     config = project / "dblift.yaml"
     config.write_text(
         "database:\n"

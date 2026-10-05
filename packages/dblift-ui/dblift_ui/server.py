@@ -33,6 +33,7 @@ class NewProject(BaseModel):
 class NewJob(BaseModel):
     command: str
     environment: str = ""
+    params: Dict[str, Any] = {}
 
 
 class ProjectPatch(BaseModel):
@@ -151,7 +152,7 @@ def create_app(
     @app.post("/api/projects/{project_id}/jobs", status_code=202)
     def start_job(project_id: str, body: NewJob) -> Dict[str, str]:
         try:
-            job = runner.start(project_id, body.command, body.environment)
+            job = runner.start(project_id, body.command, body.environment, body.params)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="unknown project") from exc
         except ValueError as exc:
