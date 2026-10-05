@@ -24,7 +24,17 @@ const LEVELS = ["DEBUG", "INFO", "WARNING", "ERROR"];
 // The fields that hold a long value get more of the row.
 const WIDE = ["host", "account", "path"];
 
-export type ConfigTarget = { kind: "create"; folder: string; migrations: string; name: string } | { kind: "edit"; project: Project };
+export type ConfigTarget =
+  | {
+      kind: "create";
+      folder: string;
+      migrations: string;
+      name: string;
+      /** A form to start from instead of an empty one, and what was noted while reading it. */
+      initial?: ConfigFormData;
+      notes?: string[];
+    }
+  | { kind: "edit"; project: Project };
 
 interface Props {
   target: ConfigTarget;
@@ -196,6 +206,7 @@ function Editor({ engines, initial, document: loaded, target, onSaved, onClose }
   const projectId = loaded?.projectId;
   const engine = engines.find((e) => e.id === form.engine) ?? engines[0];
   const key = JSON.stringify(form);
+  const notes = loaded?.notes ?? (target.kind === "create" ? target.notes : undefined) ?? [];
 
   // Creating starts at the engine choice; editing starts at the connection.
   const editing = loaded !== null;
@@ -269,7 +280,7 @@ function Editor({ engines, initial, document: loaded, target, onSaved, onClose }
   return (
     <div className="config">
       <form ref={formRef} className="config__form" onSubmit={(e) => void save(e)}>
-        {loaded?.notes.map((note) => (
+        {notes.map((note) => (
           <p key={note} className="notice">
             {note}
           </p>
@@ -451,6 +462,7 @@ export default function ConfigForm({ target, onSaved, onClose }: Props) {
   });
   const failure = engines.error ?? stored.error;
   const ready = engines.data !== undefined && (editing === null || stored.data !== undefined);
+  const created = target.kind === "create" ? target : null;
 
   // A new configuration opens on the form: the engine list is local and arrives at once.
   if (!editing && !ready && !failure) {
@@ -463,7 +475,7 @@ export default function ConfigForm({ target, onSaved, onClose }: Props) {
     body = (
       <Editor
         engines={list}
-        initial={editing ? stored.data!.form : emptyForm(list[0], target.kind === "create" ? target.migrations : "")}
+        initial={editing ? stored.data!.form : (created?.initial ?? emptyForm(list[0], created?.migrations ?? ""))}
         document={editing ? { projectId: editing.id, revision: stored.data!.revision, notes: stored.data!.notes } : null}
         target={target}
         onSaved={onSaved}

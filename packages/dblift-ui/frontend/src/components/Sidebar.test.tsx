@@ -10,7 +10,7 @@ import Sidebar from "./Sidebar";
 const api = vi.hoisted(() => ({ removeProject: vi.fn() }));
 vi.mock("../api/projects", () => api);
 
-const shop: Project = { id: "p1", name: "shop-api", config_path: "/work/shop/dblift.yaml", last_environment: "", environments: [], engine: "sqlite", error: null, missing: false, repository: "shop", repository_path: "/work/shop" };
+const shop: Project = { id: "p1", name: "shop-api", config_path: "/work/shop/dblift.yaml", last_environment: "", environments: [], engine: "sqlite", error: null, missing: false, repository: "shop", repository_path: "/work/shop", flyway_table: null };
 const billing: Project = { ...shop, id: "p2", name: "billing", engine: "postgresql" };
 
 function wrap(children: ReactNode) {

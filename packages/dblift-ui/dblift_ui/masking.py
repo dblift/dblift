@@ -15,3 +15,8 @@ def mask_passwords(text: str, marker: str) -> str:
     """*text* with every URL password and ``password=`` / ``pwd=`` value replaced by *marker*."""
     text = _URL_PASSWORD.sub(lambda match: f"{match[1]}{marker}@", text)
     return _PASSWORD_PARAMETER.sub(lambda match: f"{match[1]}{marker}", text)
+
+
+def redact(text: str) -> str:
+    """Mask passwords that engine error messages may echo back."""
+    return mask_passwords(text, "***")

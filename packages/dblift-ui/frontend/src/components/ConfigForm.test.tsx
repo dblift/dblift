@@ -21,7 +21,7 @@ const engines: EngineSpec[] = [
 ];
 const project: Project = {
   id: "p1", name: "shop-api", config_path: "/work/shop/dblift.yaml", last_environment: "", environments: [],
-  engine: "postgresql", error: null, missing: false, repository: "shop", repository_path: "/work/shop",
+  engine: "postgresql", error: null, missing: false, repository: "shop", repository_path: "/work/shop", flyway_table: null,
 };
 const good = { yaml: "database:\n  url: postgresql://db:5432/shop\n", problems: [], warnings: [] };
 
@@ -151,6 +151,17 @@ it("keeps the dialog open when the server refuses", async () => {
 
   expect(await screen.findByRole("alert")).toHaveTextContent("already exists");
   expect(props.onSaved).not.toHaveBeenCalled();
+});
+
+it("starts from a given form and shows its notes", async () => {
+  const initial = emptyForm(engines[2], "./sql");
+  initial.connection.path = "./legacy.db";
+  open({ ...create, initial, notes: ["The migrations folder could not be told from the Flyway locations. Check it."] });
+
+  expect(await screen.findByLabelText("Database file")).toHaveValue("./legacy.db");
+  expect(screen.getByRole("radio", { name: "SQLite" })).toBeChecked();
+  expect(screen.getByLabelText("Migrations folder")).toHaveValue("./sql");
+  expect(screen.getByText(/could not be told from the Flyway locations/)).toBeInTheDocument();
 });
 
 it("adds and removes environments", async () => {

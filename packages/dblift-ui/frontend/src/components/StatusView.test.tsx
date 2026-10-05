@@ -31,6 +31,7 @@ const project: Project = {
   missing: false,
   repository: "shop",
   repository_path: "/work/shop",
+  flyway_table: null,
 };
 
 const status: JobResult = {
@@ -46,7 +47,7 @@ const status: JobResult = {
   repaired: null,
   baseline_version: null,
   job_id: "j1",
-  has_log: false,
+  has_log: false, message: null,
 };
 
 beforeEach(() => {
@@ -99,7 +100,7 @@ it("runs the status for the remembered environment", async () => {
 
 it("shows the error and lets the user retry", async () => {
   runJob.mockResolvedValueOnce({
-    success: false, error: "cannot connect to db.local", current_version: null, migrations: [], sql: [], repaired: null, baseline_version: null, job_id: "j1", has_log: false,
+    success: false, error: "cannot connect to db.local", current_version: null, migrations: [], sql: [], repaired: null, baseline_version: null, job_id: "j1", has_log: false, message: null,
   });
   render(view(<StatusView project={project} onEnvironmentChange={() => {}} />));
 
@@ -131,4 +132,37 @@ it("shows a config problem reported by the server", () => {
   render(view(<StatusView project={{ ...project, error: "config is not a mapping" }} onEnvironmentChange={() => {}} />));
 
   expect(screen.getByRole("alert")).toHaveTextContent("config is not a mapping");
+});
+
+const pending = { ...status, current_version: null, migrations: status.migrations.map((m) => ({ ...m, status: "PENDING", installed_on: "" })) };
+const fromFlyway = { ...project, flyway_table: "flyway_schema_history" };
+
+it("offers to import the Flyway history while nothing is applied", async () => {
+  runJob.mockImplementation((_p: string, command: string) =>
+    Promise.resolve(command === "flyway_preview" ? { ...status, message: "2 entries would be imported from flyway_schema_history" } : pending),
+  );
+  render(view(<StatusView project={fromFlyway} onEnvironmentChange={() => {}} />));
+
+  const banner = await screen.findByRole("region", { name: "Flyway history" });
+  // Above the command bar: the import comes before migrating.
+  expect(banner.compareDocumentPosition(screen.getByRole("button", { name: "Migrate" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  await userEvent.click(within(banner).getByRole("button", { name: "Preview the import" }));
+
+  expect(runJob).toHaveBeenCalledWith("p1", "flyway_preview", "", expect.any(Function), { table: "flyway_schema_history" });
+  expect(await within(banner).findByRole("status")).toHaveTextContent("2 entries would be imported");
+});
+
+it("offers no Flyway import once a migration is applied", async () => {
+  render(view(<StatusView project={fromFlyway} onEnvironmentChange={() => {}} />));
+  await screen.findByRole("table", { name: "Migrations" });
+
+  expect(screen.queryByRole("region", { name: "Flyway history" })).not.toBeInTheDocument();
+});
+
+it("offers no Flyway import for a project that does not come from Flyway", async () => {
+  runJob.mockResolvedValue(pending);
+  render(view(<StatusView project={project} onEnvironmentChange={() => {}} />));
+  await screen.findByRole("table", { name: "Migrations" });
+
+  expect(screen.queryByRole("region", { name: "Flyway history" })).not.toBeInTheDocument();
 });

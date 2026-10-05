@@ -12,8 +12,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional, Sequence, Tuple, cast
 from urllib.parse import quote, unquote
 
-from dblift_ui.jobs import redact
-from dblift_ui.masking import mask_passwords
+from dblift_ui.masking import mask_passwords, redact
 from dblift_ui.scripts import atomic_write, yaml_problem
 from pydantic import BaseModel, ConfigDict, Field
 from ruamel.yaml import YAML

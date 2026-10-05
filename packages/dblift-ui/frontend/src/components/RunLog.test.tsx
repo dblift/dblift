@@ -11,7 +11,7 @@ vi.mock("../api/jobs", () => api);
 function run(hasLog: boolean): CommandRun {
   return {
     command: "migrate", phase: "done", events: [{ event: "migration.completed" }], error: null,
-    result: { success: true, error: null, current_version: "1.0.1", migrations: [], sql: [], repaired: null, baseline_version: null, job_id: "j1", has_log: hasLog },
+    result: { success: true, error: null, current_version: "1.0.1", migrations: [], sql: [], repaired: null, baseline_version: null, job_id: "j1", has_log: hasLog, message: null },
   };
 }
 
@@ -44,4 +44,12 @@ it("says so when the full log cannot be loaded", async () => {
   await userEvent.click(screen.getByRole("button", { name: "Full log" }));
 
   expect(await screen.findByRole("alert")).toHaveTextContent("this job has no log");
+});
+
+it("states what a finished run reported", () => {
+  const imported = run(false);
+  render(<RunLog run={{ ...imported, command: "flyway_import", result: { ...imported.result!, message: "2 entries imported from flyway_schema_history" } }} onDismiss={() => {}} />);
+
+  expect(screen.getByText("✓ 2 entries imported from flyway_schema_history")).toBeInTheDocument();
+  expect(screen.getByText("$ dblift import-flyway")).toBeInTheDocument();
 });

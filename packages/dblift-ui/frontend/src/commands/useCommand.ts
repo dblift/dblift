@@ -4,7 +4,7 @@ import { ApiError } from "../api/client";
 import { runJob } from "../api/jobs";
 import type { JobEvent, JobResult } from "../api/types";
 
-const MUTATING = new Set(["migrate", "undo", "repair", "baseline"]);
+const MUTATING = new Set(["migrate", "undo", "repair", "baseline", "flyway_import"]);
 
 // The server answers these before starting a job: nothing ran, so nothing changed.
 const NOT_STARTED = new Set([400, 404, 409]);

@@ -9,6 +9,7 @@ export interface Project {
   repository: string;
   repository_path: string;
   missing: boolean;
+  flyway_table: string | null;
 }
 
 export interface FoundConfig {
@@ -60,6 +61,7 @@ export interface JobResult {
   baseline_version: string | null;
   job_id: string;
   has_log: boolean;
+  message: string | null;
 }
 
 export interface JobEvent {
@@ -135,6 +137,13 @@ export interface ConfigPreview {
   yaml: string;
   problems: string[];
   warnings: string[];
+}
+
+export interface FlywayRead {
+  folder: string;
+  form: ConfigFormData;
+  table: string;
+  notes: string[];
 }
 
 export interface ConfigDocument {

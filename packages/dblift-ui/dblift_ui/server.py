@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, AsyncIterator, Awaitable, Callable, Dict, Iterator, List, Optional
 
 import yaml
-from dblift_ui import __version__, configs
+from dblift_ui import __version__, configs, flyway
 from dblift_ui.clone import CloneError, clone
 from dblift_ui.discovery import DiscoveryError, discover
 from dblift_ui.jobs import JobRunner, ProjectBusy
@@ -82,6 +82,11 @@ class ConfigUpdate(BaseModel):
     revision: str = ""
 
 
+class FlywayRead(BaseModel):
+    root: str = ""
+    path: str = ""
+
+
 def engine_of(data: Dict[str, Any]) -> str:
     """The engine a config declares: its ``database.type``, else its URL scheme."""
     database = data.get("database")
@@ -137,6 +142,7 @@ def describe(project: Project) -> Dict[str, Any]:
         "missing": missing,
         "repository": home.name,
         "repository_path": str(home),
+        "flyway_table": None if missing else flyway.table_beside(project.config_path),
     }
 
 
@@ -245,6 +251,19 @@ def create_app(
             return {"path": str(clone(body.url, body.parent))}
         except CloneError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/flyway/read")
+    def flyway_read(body: FlywayRead) -> Dict[str, Any]:
+        try:
+            found = flyway.read_project(body.root, body.path)
+        except flyway.FlywayError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {
+            "folder": found.folder,
+            "form": found.form.model_dump(by_alias=True),
+            "table": found.table,
+            "notes": found.notes,
+        }
 
     @app.post("/api/projects/{project_id}/jobs", status_code=202)
     def start_job(project_id: str, body: NewJob) -> Dict[str, str]:
