@@ -177,8 +177,12 @@ def create_app(
 
     @app.get("/assets/{asset_path:path}")
     def asset(asset_path: str) -> FileResponse:
-        target = (assets / asset_path).resolve()
-        if assets not in target.parents or not target.is_file():
+        try:
+            target = (assets / asset_path).resolve()
+            servable = assets in target.parents and target.is_file()
+        except (ValueError, OSError):
+            servable = False
+        if not servable:
             raise HTTPException(status_code=404, detail="not found")
         return FileResponse(target)
 

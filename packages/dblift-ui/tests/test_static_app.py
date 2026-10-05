@@ -45,3 +45,9 @@ def test_assets_still_require_the_right_host(port, token, registry, tmp_path):
     foreign = TestClient(app, base_url="http://attacker.example")
 
     assert foreign.get("/assets/index-abc.js").status_code == 403
+
+
+def test_unresolvable_asset_path_is_a_404(port, token, registry, tmp_path):
+    client = _client(port, token, registry, _built_app(tmp_path / "app"))
+
+    assert client.get("/assets/a%00b").status_code == 404
