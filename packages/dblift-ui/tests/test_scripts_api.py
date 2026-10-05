@@ -203,3 +203,91 @@ def test_names_reaching_the_store_are_refused_by_it(client, auth, project_id, na
     assert received, f"{name!r} never reached the store"
     assert (read.status_code, write.status_code) == (400, 400)
     assert read.json()["detail"] == "not a script name"
+
+
+# Review fixes.
+
+
+def test_creating_is_refused_while_a_change_runs(
+    client, auth, project_id, sqlite_project, monkeypatch, tmp_path
+):
+    monkeypatch.chdir(tmp_path)
+    migrations = sqlite_project.parent / "migrations"
+    before = sorted(p.name for p in migrations.iterdir())
+    entered, release = threading.Event(), threading.Event()
+    real = JobRunner.COMMANDS["migrate"]
+
+    def slow(client_, params):
+        entered.set()
+        assert release.wait(timeout=10)
+        return real(client_, params)
+
+    monkeypatch.setitem(JobRunner.COMMANDS, "migrate", slow)
+    job_id = client.post(
+        f"/api/projects/{project_id}/jobs", headers=auth, json={"command": "migrate"}
+    ).json()["job_id"]
+    assert entered.wait(timeout=10)
+    try:
+        creating = client.post(
+            f"/api/projects/{project_id}/scripts",
+            headers=auth,
+            json={"kind": "versioned", "language": "sql", "description": "add invoices"},
+        )
+        saving = client.put(
+            f"/api/projects/{project_id}/scripts/V1_0_1__create_orders.sql",
+            headers=auth,
+            json={"content": "SELECT 1;\n"},
+        )
+        listed = sorted(p.name for p in migrations.iterdir())
+    finally:
+        release.set()
+    with client.stream("GET", f"/api/jobs/{job_id}/events", headers=auth) as response:
+        list(response.iter_lines())
+
+    assert creating.status_code == 409
+    assert creating.json()["detail"] == saving.json()["detail"]
+    assert listed == before
+
+
+def test_a_huge_migrations_directory_is_a_400_and_nothing_is_written(
+    client, auth, project_id, sqlite_project, monkeypatch
+):
+    monkeypatch.setattr("dblift_ui.scripts.MAX_ENTRIES", 3)
+    migrations = sqlite_project.parent / "migrations"
+    before = {p.name: p.read_text() for p in migrations.iterdir()}
+    base = f"/api/projects/{project_id}/scripts"
+
+    responses = [
+        client.get(base, headers=auth),
+        client.get(f"{base}/V1_0_0__create_customers.sql", headers=auth),
+        client.put(
+            f"{base}/V1_0_0__create_customers.sql", headers=auth, json={"content": "SELECT 2;\n"}
+        ),
+        client.post(
+            base, headers=auth, json={"kind": "versioned", "language": "sql", "description": "x"}
+        ),
+    ]
+
+    for response in responses:
+        assert response.status_code == 400
+        assert response.json()["detail"].startswith(
+            "the migrations directory holds too many files to list here"
+        )
+    assert {p.name: p.read_text() for p in migrations.iterdir()} == before
+
+
+def test_config_errors_never_quote_the_config(client, auth, sqlite_project):
+    sqlite_project.write_text(
+        "database:\n  type: sqlite\n  path: ./dev.db\n  password: s3cret-value: oops\n"
+    )
+    project_id = client.post(
+        "/api/projects", headers=auth, json={"name": "shop", "config_path": str(sqlite_project)}
+    ).json()["id"]
+
+    listed = client.get("/api/projects", headers=auth).json()[0]["error"]
+    scripts = client.get(f"/api/projects/{project_id}/scripts", headers=auth)
+
+    assert scripts.status_code == 400
+    for error in (listed, scripts.json()["detail"]):
+        assert "line" in error
+        assert "s3cret-value" not in error

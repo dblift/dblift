@@ -2,7 +2,14 @@ import ast
 import os
 
 import pytest
-from dblift_ui.scripts import MAX_BYTES, ScriptError, ScriptNotFound, ScriptStore
+import yaml
+from dblift_ui.scripts import (
+    MAX_BYTES,
+    ScriptError,
+    ScriptNotFound,
+    ScriptStore,
+    yaml_problem,
+)
 
 
 def _names(store):
@@ -452,3 +459,84 @@ def test_a_description_cannot_break_out_of_the_sql_comment(sqlite_project):
     created = store.create("repeatable", "sql", "view\nDROP TABLE customers;\r --")
 
     assert store.read(created[0]) == "-- view DROP TABLE customers; --\n"
+
+
+# Review fixes: a bounded walk, safe config errors, platforms without O_NOFOLLOW/fchmod.
+
+TOO_MANY = "the migrations directory holds too many files to list here"
+
+
+def test_a_huge_migrations_directory_is_refused_before_anything_is_written(
+    sqlite_project, monkeypatch
+):
+    monkeypatch.setattr("dblift_ui.scripts.MAX_ENTRIES", 3)
+    migrations = sqlite_project.parent / "migrations"
+    before = {p.name: p.read_text() for p in migrations.iterdir()}
+    store = ScriptStore(str(sqlite_project))
+
+    for attempt in (
+        store.list,
+        lambda: store.read("V1_0_0__create_customers.sql"),
+        lambda: store.write("V1_0_0__create_customers.sql", "SELECT 2;\n"),
+        lambda: store.create("versioned", "sql", "more"),
+    ):
+        with pytest.raises(ScriptError, match=TOO_MANY):
+            attempt()
+
+    assert {p.name: p.read_text() for p in migrations.iterdir()} == before
+
+
+def test_the_walk_limit_counts_every_directory_together(sqlite_project, monkeypatch):
+    extra = sqlite_project.parent / "more"
+    extra.mkdir()
+    (extra / "V2_0_0__extra.sql").write_text("SELECT 2;\n")
+    sqlite_project.write_text(
+        "database:\n  type: sqlite\n  path: ./dev.db\n"
+        "migrations:\n  directories:\n    - ./migrations\n    - ./more\n"
+    )
+    monkeypatch.setattr("dblift_ui.scripts.MAX_ENTRIES", 4)
+
+    with pytest.raises(ScriptError, match=TOO_MANY):
+        ScriptStore(str(sqlite_project)).list()
+
+
+def test_a_config_error_never_quotes_the_config(sqlite_project):
+    sqlite_project.write_text(
+        "database:\n  type: sqlite\n  path: ./dev.db\n  password: s3cret-value: oops\n"
+    )
+
+    with pytest.raises(ScriptError) as error:
+        ScriptStore(str(sqlite_project))
+
+    assert "line 4" in str(error.value)
+    assert "s3cret-value" not in str(error.value)
+
+
+def test_yaml_problem_falls_back_without_details():
+    assert yaml_problem(yaml.YAMLError("raw text s3cret")) == "the file is not valid YAML"
+
+
+def test_works_without_o_nofollow_and_fchmod(sqlite_project, monkeypatch):
+    script = sqlite_project.parent / "migrations" / "V1_0_0__create_customers.sql"
+    script.chmod(0o644)
+    monkeypatch.delattr(os, "O_NOFOLLOW", raising=False)
+    monkeypatch.delattr(os, "fchmod", raising=False)
+    store = ScriptStore(str(sqlite_project))
+
+    store.write("V1_0_0__create_customers.sql", "SELECT 2;\n")
+
+    assert store.read("V1_0_0__create_customers.sql") == "SELECT 2;\n"
+    assert script.stat().st_mode & 0o777 == 0o644
+
+
+def test_a_mode_that_cannot_be_set_does_not_fail_the_save(sqlite_project, monkeypatch):
+    def refused(*args, **kwargs):
+        raise PermissionError(1, "Operation not permitted")
+
+    monkeypatch.setattr("dblift_ui.scripts.os.chmod", refused)
+    store = ScriptStore(str(sqlite_project))
+
+    store.write("V1_0_0__create_customers.sql", "SELECT 2;\n")
+    monkeypatch.undo()
+
+    assert store.read("V1_0_0__create_customers.sql") == "SELECT 2;\n"

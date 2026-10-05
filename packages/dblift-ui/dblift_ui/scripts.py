@@ -18,6 +18,9 @@ SCRIPT_NAME = re.compile(
     r"__(?P<description>[A-Za-z0-9_]+)\.(?P<extension>sql|py)\Z"
 )
 MAX_BYTES = 1_000_000
+# Directory entries one listing may visit, all configured directories together: a config
+# pointing at a home folder or a whole repository must not stall a request.
+MAX_ENTRIES = 20_000
 _SKIPPED_FOLDERS = frozenset({"__pycache__", ".git", "node_modules"})
 _LANGUAGES = {"sql": "sql", "python": "py"}
 
@@ -54,6 +57,17 @@ class Script:
 _Found = Tuple[Path, Path]
 
 
+def yaml_problem(exc: yaml.YAMLError) -> str:
+    """What is wrong with a YAML file and where, never the quoted line (it may hold a secret)."""
+    problem = getattr(exc, "problem", None)
+    mark = getattr(exc, "problem_mark", None)
+    if not problem:
+        return "the file is not valid YAML"
+    if mark is None:
+        return str(problem)
+    return f"line {mark.line + 1}, column {mark.column + 1}: {problem}"
+
+
 def _parse(name: Any) -> "re.Match[str]":
     match = SCRIPT_NAME.match(name) if isinstance(name, str) else None
     if match is None:
@@ -79,7 +93,9 @@ class ScriptStore:
         self.root = config.parent
         try:
             data = yaml.safe_load(config.read_text(encoding="utf-8")) or {}
-        except (OSError, UnicodeDecodeError, yaml.YAMLError) as exc:
+        except yaml.YAMLError as exc:
+            raise ScriptError(f"cannot read the project's config: {yaml_problem(exc)}") from exc
+        except (OSError, UnicodeDecodeError) as exc:
             raise ScriptError(f"cannot read the project's config: {exc}") from exc
         if not isinstance(data, dict):
             raise ScriptError("the project's config is not a mapping")
@@ -113,9 +129,16 @@ class ScriptStore:
     def _files(self) -> Dict[str, List[_Found]]:
         """Every script file, by name. A name seen twice keeps both."""
         index: Dict[str, List[_Found]] = {}
+        visited = 0
         for folder, recursive in self.directories:
             # os.walk does not descend into linked folders and lists only what it can read.
             for current, folders, names in os.walk(folder):
+                visited += len(folders) + len(names)
+                if visited > MAX_ENTRIES:
+                    raise ScriptError(
+                        "the migrations directory holds too many files to list here; "
+                        "point the config at the folder that contains the scripts"
+                    )
                 if recursive:
                     folders[:] = [
                         f for f in folders if f not in _SKIPPED_FOLDERS and not f.startswith(".")
@@ -194,8 +217,9 @@ class ScriptStore:
     def read(self, name: str) -> str:
         path = self._locate(name)
         try:
-            # O_NOFOLLOW: the checked file, not a link swapped in since.
-            handle = open(os.open(path, os.O_RDONLY | os.O_NOFOLLOW), "rb")
+            # O_NOFOLLOW where the platform has it: the checked file, not a link swapped in since.
+            flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_BINARY", 0)
+            handle = open(os.open(path, flags), "rb")
         except OSError as exc:
             raise ScriptError(f"cannot open {name}: {exc.strerror or exc}") from exc
         with handle:
@@ -236,7 +260,10 @@ class ScriptStore:
         try:
             with open(descriptor, "wb") as handle:
                 handle.write(data)
-                os.fchmod(handle.fileno(), mode)
+            try:
+                os.chmod(temporary, mode)
+            except OSError:
+                pass  # a mode the platform cannot set must not cost the user the save
             os.replace(temporary, path)
         except BaseException:
             Path(temporary).unlink(missing_ok=True)
