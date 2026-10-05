@@ -36,6 +36,10 @@ MUTATING = frozenset({"migrate", "undo", "repair", "baseline"})
 _VERSION = re.compile(r"^\d+(\.\d+)*$")
 
 
+class ProjectBusy(Exception):
+    """A change is already running on this project."""
+
+
 def redact(text: str) -> str:
     """Mask passwords that engine error messages may echo back."""
     text = _URL_PASSWORD.sub(r"\1***@", text)
@@ -101,11 +105,14 @@ class Job:
     # replay it from the start; ``changed`` is notified on each append.
     events: List[Dict[str, Any]] = field(default_factory=list)
     changed: threading.Condition = field(default_factory=threading.Condition)
+    done: threading.Event = field(default_factory=threading.Event)
 
     def publish(self, payload: Dict[str, Any]) -> None:
         with self.changed:
             self.events.append(payload)
             self.changed.notify_all()
+        if payload["event"] == FINISHED:
+            self.done.set()
 
 
 class JobRunner:
@@ -123,6 +130,8 @@ class JobRunner:
         self._registry = registry
         self._jobs: "OrderedDict[str, Job]" = OrderedDict()
         self._lock = threading.Lock()
+        self._changing: Dict[str, Job] = {}
+        self._threads: Dict[str, threading.Thread] = {}
 
     def start(
         self,
@@ -137,18 +146,40 @@ class JobRunner:
         params = dict(params or {})
         check_params(command, params)
         job = Job(id=uuid.uuid4().hex, project_id=project_id, command=command, params=params)
+        mutating = command in MUTATING
+        # A change must never be cut off by the process exiting: not a daemon.
+        thread = threading.Thread(
+            target=self._run, args=(job, project, environment or None), daemon=not mutating
+        )
         with self._lock:
+            if mutating:
+                if project_id in self._changing:
+                    raise ProjectBusy(project_id)
+                self._changing[project_id] = job
+                # Registered and started under the lock, so ``drain`` never
+                # misses a change nor joins a thread that has not started.
+                self._threads[job.id] = thread
             self._jobs[job.id] = job
-            while len(self._jobs) > _KEPT_JOBS:
-                self._jobs.popitem(last=False)
-        threading.Thread(
-            target=self._run, args=(job, project, environment or None), daemon=True
-        ).start()
+            finished = [key for key, known in self._jobs.items() if known.done.is_set()]
+            for key in finished[: max(0, len(self._jobs) - _KEPT_JOBS)]:
+                del self._jobs[key]
+            thread.start()
         return job
 
-    def stream(self, job_id: str) -> Iterator[Dict[str, Any]]:
+    def get(self, job_id: str) -> Job:
         with self._lock:
-            job = self._jobs[job_id]
+            return self._jobs[job_id]
+
+    def drain(self) -> int:
+        """Wait for every running change to finish; return how many there were."""
+        with self._lock:
+            running = list(self._threads.values())
+        for thread in running:
+            thread.join()
+        return len(running)
+
+    def stream(self, job_id: str) -> Iterator[Dict[str, Any]]:
+        job = self.get(job_id)
         index = 0
         while True:
             with job.changed:
@@ -161,19 +192,26 @@ class JobRunner:
 
     def _run(self, job: Job, project: Project, environment: Optional[str]) -> None:
         try:
-            with DBLiftClient.from_config_file(
-                project.config_path, environment=environment, relative_to_config=True
-            ) as client:
-                client.events.on("*", lambda event: job.publish(serialize_event(event)))
-                result = serialize_result(self.COMMANDS[job.command](client, job.params))
-        except Exception as exc:  # the browser must always receive a final event
-            result = {
-                "success": False,
-                "error": redact(str(exc)),
-                "current_version": None,
-                "repaired": None,
-                "baseline_version": None,
-                "sql": [],
-                "migrations": [],
-            }
-        job.publish({"event": FINISHED, "result": result})
+            try:
+                with DBLiftClient.from_config_file(
+                    project.config_path, environment=environment, relative_to_config=True
+                ) as client:
+                    client.events.on("*", lambda event: job.publish(serialize_event(event)))
+                    result = serialize_result(self.COMMANDS[job.command](client, job.params))
+            except Exception as exc:  # the browser must always receive a final event
+                result = {
+                    "success": False,
+                    "error": redact(str(exc)),
+                    "current_version": None,
+                    "repaired": None,
+                    "baseline_version": None,
+                    "sql": [],
+                    "migrations": [],
+                }
+            job.publish({"event": FINISHED, "result": result})
+        finally:
+            # Released only once the last event exists, whatever happened above.
+            with self._lock:
+                if self._changing.get(job.project_id) is job:
+                    del self._changing[job.project_id]
+                self._threads.pop(job.id, None)

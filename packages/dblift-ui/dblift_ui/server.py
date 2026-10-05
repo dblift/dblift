@@ -2,13 +2,14 @@
 
 import json
 import secrets
+from contextlib import asynccontextmanager
 from dataclasses import asdict
 from pathlib import Path
-from typing import Any, Awaitable, Callable, Dict, Iterator, List, Optional
+from typing import Any, AsyncIterator, Awaitable, Callable, Dict, Iterator, List, Optional
 
 import yaml
 from dblift_ui import __version__
-from dblift_ui.jobs import JobRunner
+from dblift_ui.jobs import JobRunner, ProjectBusy
 from dblift_ui.registry import (
     Project,
     ProjectRegistry,
@@ -16,6 +17,7 @@ from dblift_ui.registry import (
     RegistryFileError,
 )
 from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
@@ -89,9 +91,19 @@ def create_app(
     *app_dir* is the folder holding the built interface; it defaults to the
     one shipped inside the package.
     """
-    app = FastAPI(title="DBLift UI", docs_url=None, redoc_url=None, openapi_url=None)
     projects = registry or ProjectRegistry.default()
     runner = JobRunner(projects)
+
+    @asynccontextmanager
+    async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+        yield
+        # A migration in flight is finished, never dropped, when the server stops.
+        await run_in_threadpool(runner.drain)
+
+    app = FastAPI(
+        title="DBLift UI", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan
+    )
+    app.state.runner = runner
     built = Path(app_dir) if app_dir is not None else APP_DIR
     assets = (built / "assets").resolve()
     hosts = frozenset({f"127.0.0.1:{port}", f"localhost:{port}"})
@@ -155,6 +167,11 @@ def create_app(
             job = runner.start(project_id, body.command, body.environment, body.params)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="unknown project") from exc
+        except ProjectBusy as exc:
+            raise HTTPException(
+                status_code=409,
+                detail="Another change is running on this project. Wait for it to finish.",
+            ) from exc
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return {"job_id": job.id}
