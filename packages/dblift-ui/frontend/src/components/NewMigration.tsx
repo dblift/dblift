@@ -8,9 +8,11 @@ interface Props {
   onCancel: () => void;
   /** True while a change runs on the project: nothing may be created. */
   locked?: boolean;
+  /** True while the SQL preview is read or shown: what is applied must be what was shown. */
+  previewing?: boolean;
 }
 
-export default function NewMigration({ projectId, onCreated, onCancel, locked = false }: Props) {
+export default function NewMigration({ projectId, onCreated, onCancel, locked = false, previewing = false }: Props) {
   const [kind, setKind] = useState<NewScripts["kind"]>("versioned");
   const [language, setLanguage] = useState<NewScripts["language"]>("sql");
   const [description, setDescription] = useState("");
@@ -19,7 +21,7 @@ export default function NewMigration({ projectId, onCreated, onCancel, locked = 
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    if (locked) {
+    if (locked || previewing) {
       return;
     }
     setBusy(true);
@@ -66,7 +68,13 @@ export default function NewMigration({ projectId, onCreated, onCancel, locked = 
           ? "Gets the next version number, and an empty undo script beside it."
           : "Has no version: it runs again whenever its content changes."}
       </p>
-      {locked && <p className="newmigration__hint">A change is running on this project. Creating is paused until it ends.</p>}
+      {locked ? (
+        <p className="newmigration__hint">A change is running on this project. Creating is paused until it ends.</p>
+      ) : (
+        previewing && (
+          <p className="newmigration__hint">Close the SQL preview before creating a migration: what is applied must be what was shown.</p>
+        )
+      )}
       {error && (
         <p className="error-text" role="alert">
           {error}
@@ -76,7 +84,7 @@ export default function NewMigration({ projectId, onCreated, onCancel, locked = 
         <button type="button" className="button button--quiet" onClick={onCancel}>
           Cancel
         </button>
-        <button className="button button--primary" disabled={busy || locked}>
+        <button className="button button--primary" disabled={busy || locked || previewing}>
           Create
         </button>
       </div>

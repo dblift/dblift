@@ -140,3 +140,29 @@ it("shows why a save failed and keeps the edits", async () => {
   expect(screen.getByLabelText(`Content of ${V}`)).toHaveValue("CREATE TABLE orders (id INTEGER);\nx");
   expect(props.onSaved).not.toHaveBeenCalled();
 });
+
+it("lets the browser ask before leaving the page only while there are unsaved edits", async () => {
+  const leavingIsStopped = () => {
+    const event = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(event);
+    return event.defaultPrevented;
+  };
+  panel();
+  const editor = await screen.findByLabelText(`Content of ${V}`);
+  expect(leavingIsStopped()).toBe(false);
+
+  await userEvent.type(editor, "x");
+  expect(leavingIsStopped()).toBe(true);
+
+  await userEvent.click(screen.getByRole("button", { name: "Save" }));
+  await waitFor(() => expect(leavingIsStopped()).toBe(false));
+});
+
+it("cannot save while the SQL preview is open, and says why", async () => {
+  panel({ previewing: true });
+  await screen.findByLabelText(`Content of ${V}`);
+
+  expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+  expect(screen.getByText(/Close the SQL preview before editing/)).toBeInTheDocument();
+  expect(screen.queryByText(/A change is running/)).not.toBeInTheDocument();
+});

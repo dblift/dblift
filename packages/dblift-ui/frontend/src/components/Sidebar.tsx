@@ -9,9 +9,11 @@ interface Props {
   projects: Project[];
   selectedId: string | null;
   onSelect: (id: string) => void;
+  /** Runs an action that closes the open project, once the open project agrees to be left. */
+  onLeave?: (action: () => void) => void;
 }
 
-export default function Sidebar({ projects, selectedId, onSelect }: Props) {
+export default function Sidebar({ projects, selectedId, onSelect, onLeave = (action) => action() }: Props) {
   const queryClient = useQueryClient();
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState("");
@@ -48,7 +50,11 @@ export default function Sidebar({ projects, selectedId, onSelect }: Props) {
 
   const confirmRemoval = (id: string) => {
     setConfirming(null);
-    remove.mutate(id);
+    if (id === selectedId) {
+      onLeave(() => remove.mutate(id));
+    } else {
+      remove.mutate(id);
+    }
   };
 
   const submit = (event: FormEvent) => {

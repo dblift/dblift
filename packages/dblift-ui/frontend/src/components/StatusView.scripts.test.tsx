@@ -149,3 +149,22 @@ it("asks before starting a new migration over unsaved edits", async () => {
   expect(screen.getByLabelText("What does it change?")).toBeInTheDocument();
   expect(screen.queryByLabelText(`Content of ${B}`)).not.toBeInTheDocument();
 });
+
+it("locks saving and creating while the SQL preview is open", async () => {
+  render(view(<StatusView project={project} onEnvironmentChange={() => {}} />));
+  await screen.findByRole("table", { name: "Migrations" });
+  await userEvent.click(screen.getByRole("button", { name: `Open ${B}` }));
+  await userEvent.type(await screen.findByLabelText(`Content of ${B}`), "x");
+  expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
+
+  await userEvent.click(screen.getByRole("button", { name: "Migrate" }));
+  const preview = await screen.findByRole("region", { name: "SQL to be applied" });
+
+  expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+  expect(screen.getByText(/Close the SQL preview before editing/)).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "New migration" })).toBeDisabled();
+
+  await userEvent.click(within(preview).getByRole("button", { name: "Cancel" }));
+  expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
+  expect(screen.queryByText(/Close the SQL preview before editing/)).not.toBeInTheDocument();
+});

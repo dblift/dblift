@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useRef, useState } from "react";
+import { forwardRef, useImperativeHandle, useRef, useState } from "react";
 
 import { listScripts } from "../api/scripts";
 import type { Project, SqlPreview } from "../api/types";
@@ -23,7 +23,12 @@ interface Props {
   onEnvironmentChange: (environment: string) => void | Promise<unknown>;
 }
 
-export default function StatusView({ project, onEnvironmentChange }: Props) {
+/** Lets the app ask before it replaces the view, as the editor's own controls do. */
+export interface StatusViewHandle {
+  leave(action: () => void): void;
+}
+
+const StatusView = forwardRef<StatusViewHandle, Props>(function StatusView({ project, onEnvironmentChange }, ref) {
   const [environment, setEnvironment] = useState(project.last_environment);
   const [saveError, setSaveError] = useState<string | null>(null);
   const { phase, result, error, activity, refresh } = useStatus(project.id, environment);
@@ -41,6 +46,7 @@ export default function StatusView({ project, onEnvironmentChange }: Props) {
   // Opening another script or a new one replaces the editor: it asks first when there are unsaved edits.
   const panel = useRef<ScriptPanelHandle>(null);
   const leaveEditor = (action: () => void) => (panel.current ? panel.current.leave(action) : action());
+  useImperativeHandle(ref, () => ({ leave: leaveEditor }));
   const [preview, setPreview] = useState<SqlPreview[] | null>(null);
   const changing = busy && run !== null && run.command !== "validate" && run.command !== "preview";
   // The SQL shown must be the SQL that runs: the environment stays put while it is read or shown.
@@ -143,6 +149,7 @@ export default function StatusView({ project, onEnvironmentChange }: Props) {
         <NewMigration
           projectId={project.id}
           locked={changing}
+          previewing={previewing}
           onCancel={() => setCreating(false)}
           onCreated={(names) => {
             setCreating(false);
@@ -207,6 +214,7 @@ export default function StatusView({ project, onEnvironmentChange }: Props) {
           applied={opened ? isApplied(opened.status) : false}
           hasUndo={scripts.some((s) => s.name === openScript && s.has_undo)}
           locked={changing}
+          previewing={previewing}
           onClose={() => setOpenScript(null)}
           onSaved={refreshAll}
         />
@@ -217,4 +225,6 @@ export default function StatusView({ project, onEnvironmentChange }: Props) {
       </p>
     </section>
   );
-}
+});
+
+export default StatusView;

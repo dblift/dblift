@@ -1,6 +1,6 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import App from "./App";
 
@@ -13,7 +13,8 @@ const api = vi.hoisted(() => ({
 vi.mock("./api/projects", () => api);
 const runJob = vi.hoisted(() => vi.fn());
 vi.mock("./api/jobs", () => ({ runJob }));
-vi.mock("./api/scripts", () => ({ listScripts: vi.fn().mockResolvedValue([]) }));
+const scripts = vi.hoisted(() => ({ listScripts: vi.fn(), readScript: vi.fn() }));
+vi.mock("./api/scripts", () => scripts);
 vi.mock("./components/CodeEditor", () => ({
   default: ({ value, onChange, label }: { value: string; onChange: (v: string) => void; label: string }) => (
     <textarea aria-label={label} value={value} onChange={(e) => onChange(e.target.value)} />
@@ -23,6 +24,10 @@ vi.mock("./components/CodeEditor", () => ({
 beforeEach(() => {
   api.listProjects.mockReset();
   api.setEnvironment.mockReset();
+  api.removeProject.mockReset();
+  scripts.listScripts.mockReset();
+  scripts.listScripts.mockResolvedValue([]);
+  scripts.readScript.mockReset();
   runJob.mockReset();
   runJob.mockResolvedValue({
     success: true, error: null, current_version: null, migrations: [], sql: [], repaired: null, baseline_version: null, job_id: "j1", has_log: false,
@@ -85,4 +90,57 @@ it("says so when the chosen environment cannot be saved", async () => {
   expect(await screen.findByRole("alert")).toHaveTextContent("registry file is read-only");
   expect(screen.getByRole("tab", { name: "staging" })).toHaveAttribute("aria-selected", "true");
   expect(runJob).toHaveBeenLastCalledWith("g1", "info", "staging", expect.any(Function));
+});
+
+describe("unsaved edits in the open script", () => {
+  const delta = { id: "d1", name: "delta", config_path: "/d/dblift.yaml", last_environment: "", environments: [], engine: "sqlite", error: null };
+  const epsilon = { ...delta, id: "e1", name: "epsilon", config_path: "/e/dblift.yaml" };
+  const A = "V1_0_0__create_accounts.sql";
+
+  beforeEach(() => {
+    api.listProjects.mockResolvedValue([delta, epsilon]);
+    runJob.mockResolvedValue({
+      success: true, error: null, current_version: null, sql: [], repaired: null, baseline_version: null, job_id: "j1", has_log: false,
+      migrations: [{ script: A, version: "1.0.0", description: "create_accounts", type: "SQL", status: "PENDING", installed_on: "", installed_by: "", execution_time: 0 }],
+    });
+    const listed = { name: A, kind: "versioned", version: "1.0.0", description: "create_accounts", language: "sql", directory: "migrations", has_undo: false };
+    scripts.listScripts.mockResolvedValue([listed]);
+    scripts.readScript.mockResolvedValue({ ...listed, content: "-- accounts\n" });
+  });
+
+  async function editInDelta() {
+    render(<App />);
+    expect(await screen.findByRole("heading", { name: "delta" })).toBeInTheDocument();
+    await userEvent.click(await screen.findByRole("button", { name: `Open ${A}` }));
+    await userEvent.type(await screen.findByLabelText(`Content of ${A}`), "x");
+  }
+
+  it("asks before switching project, keeps editing or discards and switches", async () => {
+    await editInDelta();
+
+    await userEvent.click(screen.getByRole("button", { name: /^epsilon/ }));
+    expect(screen.getByText("Discard your changes?")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Keep editing" })).toHaveFocus();
+    await userEvent.click(screen.getByRole("button", { name: "Keep editing" }));
+    expect(screen.getByRole("heading", { name: "delta" })).toBeInTheDocument();
+    expect(screen.getByLabelText(`Content of ${A}`)).toHaveValue("-- accounts\nx");
+
+    await userEvent.click(screen.getByRole("button", { name: /^epsilon/ }));
+    await userEvent.click(screen.getByRole("button", { name: "Discard" }));
+    expect(await screen.findByRole("heading", { name: "epsilon" })).toBeInTheDocument();
+    expect(screen.queryByLabelText(`Content of ${A}`)).not.toBeInTheDocument();
+  });
+
+  it("asks before removing the open project", async () => {
+    api.removeProject.mockResolvedValue(undefined);
+    await editInDelta();
+
+    await userEvent.click(screen.getByRole("button", { name: "Remove delta" }));
+    await userEvent.click(screen.getByRole("button", { name: "Remove" }));
+    expect(screen.getByText("Discard your changes?")).toBeInTheDocument();
+    expect(api.removeProject).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByRole("button", { name: "Discard" }));
+    await waitFor(() => expect(api.removeProject).toHaveBeenCalledWith("d1"));
+  });
 });

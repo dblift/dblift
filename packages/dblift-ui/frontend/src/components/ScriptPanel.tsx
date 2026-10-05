@@ -1,4 +1,4 @@
-import { forwardRef, lazy, Suspense, useImperativeHandle, useRef, useState } from "react";
+import { forwardRef, lazy, Suspense, useEffect, useImperativeHandle, useRef, useState } from "react";
 
 import { useScript } from "../scripts/useScript";
 import { undoNameOf } from "../status/model";
@@ -14,6 +14,8 @@ interface Props {
   hasUndo: boolean;
   /** True while a change runs on the project: nothing may be saved. */
   locked: boolean;
+  /** True while the SQL preview is read or shown: what is applied must be what was shown. */
+  previewing?: boolean;
   onClose: () => void;
   onSaved: () => void;
 }
@@ -26,7 +28,7 @@ export interface ScriptPanelHandle {
 type Tab = "migration" | "undo";
 
 const ScriptPanel = forwardRef<ScriptPanelHandle, Props>(function ScriptPanel(
-  { projectId, script, applied, hasUndo, locked, onClose, onSaved },
+  { projectId, script, applied, hasUndo, locked, previewing = false, onClose, onSaved },
   ref,
 ) {
   const [tab, setTab] = useState<Tab>("migration");
@@ -48,6 +50,19 @@ const ScriptPanel = forwardRef<ScriptPanelHandle, Props>(function ScriptPanel(
     }
   };
   useImperativeHandle(ref, () => ({ leave }));
+
+  // Reloading or closing the page with unsaved edits gets the browser's own question.
+  useEffect(() => {
+    if (!dirty) {
+      return;
+    }
+    const ask = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", ask);
+    return () => window.removeEventListener("beforeunload", ask);
+  }, [dirty]);
   const keepEditing = () => {
     setPending(null);
     asker.current?.focus();
@@ -75,7 +90,7 @@ const ScriptPanel = forwardRef<ScriptPanelHandle, Props>(function ScriptPanel(
           {name}
         </span>
         <div className="script__actions">
-          <button className="button button--primary" disabled={!dirty || saving || locked} onClick={() => void saveNow()}>
+          <button className="button button--primary" disabled={!dirty || saving || locked || previewing} onClick={() => void saveNow()}>
             Save
           </button>
           <button className="button button--quiet" onClick={() => leave(onClose)}>
@@ -109,7 +124,11 @@ const ScriptPanel = forwardRef<ScriptPanelHandle, Props>(function ScriptPanel(
           validation will fail until the database and the file agree again.
         </p>
       )}
-      {locked && <p className="script__lock">A change is running on this project. Saving is paused until it ends.</p>}
+      {locked ? (
+        <p className="script__lock">A change is running on this project. Saving is paused until it ends.</p>
+      ) : (
+        previewing && <p className="script__lock">Close the SQL preview before editing: what is applied must be what was shown.</p>
+      )}
       {error && phase !== "missing" && (
         <p className="notice notice--error" role="alert">
           {error}
@@ -124,7 +143,7 @@ const ScriptPanel = forwardRef<ScriptPanelHandle, Props>(function ScriptPanel(
         {phase === "missing" && tab === "migration" && <p className="script__message">This file is no longer in the project.</p>}
         {phase === "ready" && file && (
           <Suspense fallback={<p className="script__message">Opening…</p>}>
-            <CodeEditor value={content} language={file.language} label={`Content of ${file.name}`} readOnly={saving} onChange={edit} />
+            <CodeEditor value={content} language={file.language} label={`Content of ${file.name}`} readOnly={saving || previewing} onChange={edit} />
           </Suspense>
         )}
       </div>

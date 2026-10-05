@@ -63,3 +63,13 @@ it("can be cancelled", async () => {
 
   expect(onCancel).toHaveBeenCalledTimes(1);
 });
+
+it("cannot create while a change runs or the SQL preview is open, and says why", () => {
+  const { rerender } = render(<NewMigration projectId="p1" onCreated={() => {}} onCancel={() => {}} locked />);
+  expect(screen.getByRole("button", { name: "Create" })).toBeDisabled();
+  expect(screen.getByText(/A change is running/)).toBeInTheDocument();
+
+  rerender(<NewMigration projectId="p1" onCreated={() => {}} onCancel={() => {}} previewing />);
+  expect(screen.getByRole("button", { name: "Create" })).toBeDisabled();
+  expect(screen.getByText(/Close the SQL preview before creating/)).toBeInTheDocument();
+});
