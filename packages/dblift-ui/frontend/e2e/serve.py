@@ -56,6 +56,12 @@ def build_fixtures(folder: Path) -> None:
         [*git, "clone", "-q", "--bare", str(repo), str(folder / "monorepo.git")], check=True
     )
     (folder / "clones").mkdir()
+    # Migrations and no config, outside any repository: the configuration form creates one.
+    bare = folder / "bare" / "sql"
+    bare.mkdir(parents=True)
+    (bare / "V1_0_0__create_things.sql").write_text(
+        "CREATE TABLE things (id INTEGER PRIMARY KEY);\n"
+    )
 
 
 def main() -> None:
