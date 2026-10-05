@@ -221,10 +221,23 @@ it("keeps a failed outcome when the developer goes on without the test after a f
   await userEvent.click(await screen.findByRole("button", { name: "Run the test" }));
   await screen.findByRole("alert");
 
+  expect(context().test.continued).toBeUndefined();
   await userEvent.click(screen.getByRole("button", { name: "Continue without the test" }));
 
   expect(context().test.outcome).toBe("failed");
+  expect(context().test.continued).toBe(true);
   expect(onNext).toHaveBeenCalledTimes(1);
+});
+
+it("offers no way to skip a test that passed, until the scripts change", async () => {
+  answers(allPassed);
+  const { context } = renderStep(TestStep, { data: written });
+  await userEvent.click(await screen.findByRole("button", { name: "Run the test" }));
+  await screen.findByText("The test passed.");
+
+  expect(screen.queryByRole("button", { name: "Continue without the test" })).not.toBeInTheDocument();
+  act(() => context().update({ test: { outcome: null, result: context().test.result } }));
+  expect(screen.getByRole("button", { name: "Continue without the test" })).toBeEnabled();
 });
 
 it("offers only the explanation and Continue without the test when no scratch database exists", async () => {

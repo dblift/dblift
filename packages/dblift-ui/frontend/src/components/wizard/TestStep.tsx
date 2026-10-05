@@ -119,7 +119,7 @@ export default function TestStep({ context, onNext, onBack, last }: StepProps) {
   };
   // After a failed run, going on without the test keeps it failed: it is never described as skipped.
   const goOn = () => {
-    update({ test: { ...test, outcome: ended === "failed" || test.outcome === "failed" ? "failed" : "skipped" } });
+    update({ test: { ...test, outcome: ended === "failed" || test.outcome === "failed" ? "failed" : "skipped", continued: true } });
     onNext();
   };
   // The scripts were saved again since the last run: its result is about the earlier content.
@@ -220,9 +220,12 @@ export default function TestStep({ context, onNext, onBack, last }: StepProps) {
         <button type="button" className="button button--quiet wizard__back" onClick={onBack}>
           Back
         </button>
-        <button className="button" disabled={running} onClick={goOn}>
-          Continue without the test
-        </button>
+        {/* A test that passed is never described as skipped. */}
+        {test.outcome !== "passed" && (
+          <button className="button" disabled={running} onClick={goOn}>
+            Continue without the test
+          </button>
+        )}
         {runnable && !failed && !asking && (
           <button
             ref={runButton}

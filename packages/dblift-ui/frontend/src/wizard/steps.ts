@@ -15,7 +15,8 @@ export interface WizardData {
   branch: { create: boolean; name: string };
   /** The files created for this change, once they exist. */
   scripts: { migration: string; undo: string | null } | null;
-  test: { outcome: Outcome | null; result: ScratchResult | null };
+  /** *continued*: the developer went on with "Continue without the test", past a failed run if there was one. */
+  test: { outcome: Outcome | null; result: ScratchResult | null; continued?: boolean };
   committed: boolean;
   published: boolean;
   /** The developer went past the editors with both scripts saved. */
@@ -74,7 +75,14 @@ const inRepository = (context: WizardContext) => context.repo?.repository === tr
 export const STEPS: WizardStep[] = [
   { id: "describe", title: "Describe", Component: DescribeStep, available: always, done: (c) => c.scripts !== null },
   { id: "write", title: "Write", Component: WriteStep, available: always, done: (c) => c.written && !c.unsaved },
-  { id: "test", title: "Test", Component: TestStep, available: always, done: (c) => c.test.outcome !== null },
+  // A failed run does not finish the step: only going on without the test does.
+  {
+    id: "test",
+    title: "Test",
+    Component: TestStep,
+    available: always,
+    done: (c) => c.test.outcome !== null && (c.test.outcome !== "failed" || c.test.continued === true),
+  },
   { id: "commit", title: "Commit", Component: CommitStep, available: inRepository, done: (c) => c.committed },
   { id: "publish", title: "Publish", Component: PublishStep, available: inRepository, done: (c) => c.published },
 ];

@@ -100,6 +100,17 @@ it("counts commit done once committed, and publish once published", () => {
   expect(publish.done({ ...base, published: true })).toBe(true);
 });
 
+it("counts the test done once passed or skipped, and a failed one only once the developer went on without it", () => {
+  const base = { ...START, project, repo: onMain, update: () => {}, changed: () => {} };
+  const test = STEPS[2];
+  expect(test.done(base)).toBe(false);
+  expect(test.done({ ...base, test: { outcome: "passed", result: null } })).toBe(true);
+  expect(test.done({ ...base, test: { outcome: "skipped", result: null } })).toBe(true);
+  expect(test.done({ ...base, test: { outcome: "failed", result: null } })).toBe(false);
+  expect(test.done({ ...base, test: { outcome: "failed", result: null, continued: true } })).toBe(true);
+  expect(test.done({ ...base, test: { outcome: null, result: null, continued: true } })).toBe(false);
+});
+
 it("is a dialog named New change, listing the steps in order with their numbers", () => {
   wizard();
 
