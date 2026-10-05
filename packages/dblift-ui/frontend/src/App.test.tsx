@@ -1,8 +1,10 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import App from "./App";
+import type { Discovery, EngineSpec } from "./api/types";
+import { emptyForm } from "./config/defaults";
 
 const api = vi.hoisted(() => ({
   listProjects: vi.fn(),
@@ -17,19 +19,24 @@ const scripts = vi.hoisted(() => ({ listScripts: vi.fn(), readScript: vi.fn() })
 vi.mock("./api/scripts", () => scripts);
 const discovery = vi.hoisted(() => ({
   getDefaults: vi.fn(async () => ({ clone_parent: "/home/dev/dblift-projects", git: true })),
-  discoverFolder: vi.fn(async () => ({
+  discoverFolder: vi.fn(async (): Promise<Discovery> => ({
     root: "/work/platform", name: "platform", repository: true, branch: "main", truncated: false, flyway: [], script_folders: [],
     configs: [{ path: "dblift.yaml", kind: "named", problem: null, registered: false }],
   })),
   cloneRepository: vi.fn(),
 }));
 vi.mock("./api/discovery", () => discovery);
+const configs = vi.hoisted(() => ({
+  getEngines: vi.fn(), previewConfig: vi.fn(), createConfig: vi.fn(), readConfig: vi.fn(), updateConfig: vi.fn(),
+}));
+vi.mock("./api/configs", () => configs);
 vi.mock("./components/CodeEditor", () => ({
   default: ({ value, onChange, label }: { value: string; onChange: (v: string) => void; label: string }) => (
     <textarea aria-label={label} value={value} onChange={(e) => onChange(e.target.value)} />
   ),
 }));
 
+const sqlite: EngineSpec = { id: "sqlite", label: "SQLite", scheme: "sqlite", port: null, fields: ["path"] };
 const first = {
   id: "p1", name: "shop-api", config_path: "/w/dblift.yaml", last_environment: "", environments: [], engine: "sqlite", error: null,
   missing: false, repository: "w", repository_path: "/w",
@@ -169,6 +176,21 @@ describe("unsaved edits in the open script", () => {
     expect(screen.getByRole("dialog", { name: "Add project" })).toBeInTheDocument();
   });
 
+  it("asks before opening the configuration", async () => {
+    configs.getEngines.mockReset();
+    configs.getEngines.mockResolvedValue([sqlite]);
+    configs.readConfig.mockReset();
+    configs.readConfig.mockReturnValue(new Promise(() => {}));
+    await editInDelta();
+
+    await userEvent.click(screen.getByRole("button", { name: "Configuration" }));
+    expect(screen.getByText("Discard your changes?")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Discard" }));
+    expect(await screen.findByRole("dialog", { name: "Configuration of delta" })).toBeInTheDocument();
+  });
+
   it("asks before removing the open project", async () => {
     api.removeProject.mockResolvedValue(undefined);
     await editInDelta();
@@ -180,5 +202,80 @@ describe("unsaved edits in the open script", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Discard" }));
     await waitFor(() => expect(api.removeProject).toHaveBeenCalledWith("d1"));
+  });
+});
+
+describe("the configuration form", () => {
+  const form = { ...emptyForm(sqlite, "./migrations"), connection: { ...emptyForm(sqlite, "").connection, path: "./dev.db" } };
+
+  beforeEach(() => {
+    Object.values(configs).forEach((mock) => mock.mockReset());
+    configs.getEngines.mockResolvedValue([sqlite]);
+    configs.readConfig.mockResolvedValue({ form, revision: "r1", notes: [] });
+    configs.previewConfig.mockResolvedValue({ yaml: "database:\n  type: sqlite\n", problems: [], warnings: [] });
+  });
+
+  it("edits the open project's configuration, then shows its new environments and reads its status again", async () => {
+    const staged = { ...first, environments: ["staging"] };
+    api.listProjects.mockResolvedValueOnce([first]).mockResolvedValue([staged]);
+    configs.updateConfig.mockResolvedValue(staged);
+    render(<App />);
+    await screen.findByRole("heading", { name: "shop-api" });
+    await screen.findByText("No migrations found in this project.");
+    runJob.mockClear();
+
+    await userEvent.click(screen.getByRole("button", { name: "Configuration" }));
+    const dialog = await screen.findByRole("dialog", { name: "Configuration of shop-api" });
+    expect(await within(dialog).findByLabelText("Database file")).toHaveValue("./dev.db");
+    const save = within(dialog).getByRole("button", { name: "Save" });
+    await waitFor(() => expect(save).toBeEnabled());
+    await userEvent.click(save);
+
+    expect(await screen.findByRole("tab", { name: "staging" })).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(configs.updateConfig).toHaveBeenCalledWith("p1", form, "r1");
+    await waitFor(() => expect(runJob).toHaveBeenCalledWith("p1", "info", "", expect.any(Function)));
+  });
+
+  it("creates a configuration from the add-project dialog and opens the new project", async () => {
+    const bare = { ...first, id: "b1", name: "bare", config_path: "/work/bare/dblift.yaml", repository: "bare", repository_path: "/work/bare" };
+    api.listProjects.mockResolvedValueOnce([first]).mockResolvedValue([first, bare]);
+    discovery.discoverFolder.mockResolvedValueOnce({
+      root: "/work/bare", name: "bare", repository: false, branch: "", truncated: false, flyway: [], script_folders: ["sql"], configs: [],
+    });
+    configs.createConfig.mockResolvedValue(bare);
+    render(<App />);
+    await screen.findByRole("heading", { name: "shop-api" });
+
+    await userEvent.click(screen.getByRole("button", { name: "Add project" }));
+    await userEvent.type(screen.getByLabelText("Folder path"), "/work/bare");
+    await userEvent.click(screen.getByRole("button", { name: "Look for configs" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Create configuration" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "New configuration" });
+    expect(screen.queryByRole("dialog", { name: "Add project" })).not.toBeInTheDocument();
+    expect(within(dialog).getByLabelText("Migrations folder")).toHaveValue("./sql");
+    const create = within(dialog).getByRole("button", { name: "Create" });
+    await waitFor(() => expect(create).toBeEnabled());
+    await userEvent.click(create);
+
+    expect(await screen.findByRole("heading", { name: "bare" })).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(configs.createConfig).toHaveBeenCalledWith("/work/bare", "dblift.yaml", "bare", expect.objectContaining({ migrations_directory: "./sql" }));
+  });
+
+  it("explains a configuration that cannot be read, and offers only to close", async () => {
+    api.listProjects.mockResolvedValue([{ ...first, error: "config file not found" }]);
+    configs.readConfig.mockRejectedValue(new Error("config file not found: /w/dblift.yaml"));
+    render(<App />);
+    await screen.findByRole("heading", { name: "shop-api" });
+
+    await userEvent.click(screen.getByRole("button", { name: "Configuration" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "Configuration of shop-api" });
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("config file not found: /w/dblift.yaml");
+    expect(within(dialog).getAllByRole("button").map((b) => b.textContent)).toEqual(["Close"]);
+    await userEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 });

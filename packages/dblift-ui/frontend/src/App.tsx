@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { listProjects, setEnvironment } from "./api/projects";
 import type { Project } from "./api/types";
 import AddProject from "./components/AddProject";
+import ConfigForm, { type ConfigTarget } from "./components/ConfigForm";
 import EmptyState from "./components/EmptyState";
 import Sidebar from "./components/Sidebar";
 import StatusView, { type StatusViewHandle } from "./components/StatusView";
@@ -16,6 +17,7 @@ function Shell() {
   const { data: projects = [], error, isPending } = useQuery({ queryKey: ["projects"], queryFn: listProjects });
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
+  const [configuring, setConfiguring] = useState<ConfigTarget | null>(null);
   const selected = projects.find((p) => p.id === selectedId) ?? projects[0] ?? null;
   const client = useQueryClient();
   // Leaving the open project goes through its view, which asks first when a script has unsaved edits.
@@ -32,6 +34,21 @@ function Shell() {
   const changeEnvironment = async (id: string, environment: string) => {
     const updated = await setEnvironment(id, environment);
     client.setQueryData<Project[]>(["projects"], (list) => list?.map((p) => (p.id === updated.id ? updated : p)));
+  };
+
+  // The saved project shows at once (its new environments, or the new project selected); the list is
+  // then read again, and an edited project re-reads its status and scripts from the new file.
+  const configSaved = (saved: Project) => {
+    const edited = projects.some((p) => p.id === saved.id);
+    client.setQueryData<Project[]>(["projects"], (list = []) =>
+      edited ? list.map((p) => (p.id === saved.id ? saved : p)) : [...list, saved],
+    );
+    void client.invalidateQueries({ queryKey: ["projects"] });
+    if (edited && saved.id === selected?.id) {
+      view.current?.reread();
+    }
+    setSelectedId(saved.id);
+    setConfiguring(null);
   };
 
   return (
@@ -57,12 +74,22 @@ function Shell() {
             ref={view}
             project={selected}
             onEnvironmentChange={(environment) => changeEnvironment(selected.id, environment)}
+            onConfigure={() => setConfiguring({ kind: "edit", project: selected })}
           />
         )}
       </main>
       {adding && (
-        <AddProject projects={projects} onClose={() => setAdding(false)} onAdded={(ids) => setSelectedId(ids[0])} />
+        <AddProject
+          projects={projects}
+          onClose={() => setAdding(false)}
+          onAdded={(ids) => setSelectedId(ids[0])}
+          onConfigure={(target) => {
+            setAdding(false);
+            setConfiguring({ kind: "create", ...target });
+          }}
+        />
       )}
+      {configuring && <ConfigForm target={configuring} onSaved={configSaved} onClose={() => setConfiguring(null)} />}
     </div>
   );
 }

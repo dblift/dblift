@@ -1092,6 +1092,25 @@ input {
   overflow-wrap: anywhere;
 }
 
+.found__other .found__folders {
+  display: grid;
+  gap: 6px;
+  padding-left: 0;
+  list-style: none;
+}
+
+.found__folders li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 12px;
+}
+
+.found__folders .mono {
+  min-width: 0;
+}
+
 /* Sidebar: projects of one repository */
 .sidebar__repo {
   flex: 1;

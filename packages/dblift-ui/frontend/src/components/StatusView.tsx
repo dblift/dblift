@@ -21,14 +21,18 @@ interface Props {
   project: Project;
   /** May return a promise; a rejection is shown to the user. */
   onEnvironmentChange: (environment: string) => void | Promise<unknown>;
+  /** Open the project's configuration; without it, the header offers no "Configuration" button. */
+  onConfigure?: () => void;
 }
 
 /** Lets the app ask before it replaces the view, as the editor's own controls do. */
 export interface StatusViewHandle {
   leave(action: () => void): void;
+  /** Read the status and the scripts again, after the project's configuration changed. */
+  reread(): void;
 }
 
-const StatusView = forwardRef<StatusViewHandle, Props>(function StatusView({ project, onEnvironmentChange }, ref) {
+const StatusView = forwardRef<StatusViewHandle, Props>(function StatusView({ project, onEnvironmentChange, onConfigure }, ref) {
   const [environment, setEnvironment] = useState(project.last_environment);
   const [saveError, setSaveError] = useState<string | null>(null);
   const { phase, result, error, activity, refresh } = useStatus(project.id, environment);
@@ -46,7 +50,7 @@ const StatusView = forwardRef<StatusViewHandle, Props>(function StatusView({ pro
   // Opening another script or a new one replaces the editor: it asks first when there are unsaved edits.
   const panel = useRef<ScriptPanelHandle>(null);
   const leaveEditor = (action: () => void) => (panel.current ? panel.current.leave(action) : action());
-  useImperativeHandle(ref, () => ({ leave: leaveEditor }));
+  useImperativeHandle(ref, () => ({ leave: leaveEditor, reread: refreshAll }));
   const [preview, setPreview] = useState<SqlPreview[] | null>(null);
   const changing = busy && run !== null && run.command !== "validate" && run.command !== "preview";
   // The SQL shown must be the SQL that runs: the environment stays put while it is read or shown.
@@ -109,6 +113,11 @@ const StatusView = forwardRef<StatusViewHandle, Props>(function StatusView({ pro
           <button className="button" onClick={refreshAll} disabled={phase === "loading" || changing}>
             Refresh
           </button>
+          {onConfigure && (
+            <button className="button" onClick={() => leaveEditor(onConfigure)} disabled={changing || previewing}>
+              Configuration
+            </button>
+          )}
         </div>
       </header>
 

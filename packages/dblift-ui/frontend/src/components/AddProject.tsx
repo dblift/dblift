@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useId, useState } from "react";
 
 import { cloneRepository, discoverFolder, getDefaults } from "../api/discovery";
 import { addProject } from "../api/projects";
@@ -10,6 +10,8 @@ import Dialog from "./Dialog";
 interface Props {
   projects: Project[];
   onAdded: (ids: string[]) => void;
+  /** Open the configuration form for a folder that has migrations but no config. */
+  onConfigure: (target: { folder: string; migrations: string; name: string }) => void;
   onClose: () => void;
 }
 
@@ -23,8 +25,9 @@ const KIND_NOTE: Record<FoundConfig["kind"], string | null> = {
 
 const usable = (config: FoundConfig) => !config.registered && config.problem === null;
 
-export default function AddProject({ projects, onAdded, onClose }: Props) {
+export default function AddProject({ projects, onAdded, onConfigure, onClose }: Props) {
   const queryClient = useQueryClient();
+  const orphans = useId();
   const { data: defaults } = useQuery({ queryKey: ["defaults"], queryFn: getDefaults });
   const [source, setSource] = useState<Source>("folder");
   const [folder, setFolder] = useState("");
@@ -279,12 +282,19 @@ export default function AddProject({ projects, onAdded, onClose }: Props) {
             </section>
           )}
           {found.script_folders.length > 0 && (
-            <section className="found__other">
-              <h3>Migration folders no config points at</h3>
-              <ul>
+            <section className="found__other" aria-labelledby={orphans}>
+              <h3 id={orphans}>Migration folders no config points at</h3>
+              <ul className="found__folders">
                 {found.script_folders.map((path) => (
-                  <li key={path} className="mono">
-                    {path}
+                  <li key={path}>
+                    <span className="mono">{path}</span>
+                    <button
+                      className="button"
+                      disabled={working !== null}
+                      onClick={() => onConfigure({ folder: found.root, migrations: "./" + path, name: found.name })}
+                    >
+                      Create configuration
+                    </button>
                   </li>
                 ))}
               </ul>
@@ -300,6 +310,21 @@ export default function AddProject({ projects, onAdded, onClose }: Props) {
             <button className="button button--quiet" disabled={working !== null} onClick={() => setFound(null)}>
               Back
             </button>
+            {found.configs.length === 0 && (
+              <button
+                className="button button--primary"
+                disabled={working !== null}
+                onClick={() =>
+                  onConfigure({
+                    folder: found.root,
+                    migrations: found.script_folders[0] ? "./" + found.script_folders[0] : "./migrations",
+                    name: found.name,
+                  })
+                }
+              >
+                Create a configuration
+              </button>
+            )}
             {found.configs.length > 0 && (
               <button className="button button--primary" disabled={count === 0 || working !== null} onClick={() => void addSelected()}>
                 Add {count} {count === 1 ? "project" : "projects"}

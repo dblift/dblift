@@ -132,6 +132,30 @@ it("shows a script as running, then applied, while the run is in flight", async 
   await waitFor(() => expect(screen.getByRole("tab", { name: "staging" })).toBeEnabled());
 });
 
+it("keeps the configuration closed while the SQL preview is open or a change runs", async () => {
+  let release: () => void = () => {};
+  script({
+    info: result([migration(A, "PENDING")]),
+    preview: result([], { sql: [{ script: A, statements: ["x"] }] }),
+    migrate: () => new Promise<JobResult>((resolve) => (release = () => resolve(result([])))),
+  });
+  render(view(<StatusView project={project} onEnvironmentChange={() => {}} onConfigure={() => {}} />));
+  await screen.findByRole("table", { name: "Migrations" });
+  const configuration = screen.getByRole("button", { name: "Configuration" });
+  expect(configuration).toBeEnabled();
+
+  await userEvent.click(screen.getByRole("button", { name: "Migrate" }));
+  await screen.findByRole("region", { name: "SQL to be applied" });
+  expect(configuration).toBeDisabled();
+
+  await userEvent.click(screen.getByRole("button", { name: "Apply 1 migration" }));
+  await waitFor(() => expect(screen.queryByRole("region", { name: "SQL to be applied" })).not.toBeInTheDocument());
+  expect(configuration).toBeDisabled();
+
+  release();
+  await waitFor(() => expect(configuration).toBeEnabled());
+});
+
 it("shows why a migration failed and offers repair afterwards", async () => {
   let failed = false;
   script({

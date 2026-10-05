@@ -24,10 +24,10 @@ const LEVELS = ["DEBUG", "INFO", "WARNING", "ERROR"];
 // The fields that hold a long value get more of the row.
 const WIDE = ["host", "account", "path"];
 
-type Target = { kind: "create"; folder: string; migrations: string; name: string } | { kind: "edit"; project: Project };
+export type ConfigTarget = { kind: "create"; folder: string; migrations: string; name: string } | { kind: "edit"; project: Project };
 
 interface Props {
-  target: Target;
+  target: ConfigTarget;
   onSaved: (project: Project) => void;
   onClose: () => void;
 }
@@ -168,7 +168,7 @@ interface EditorProps {
   initial: ConfigFormData;
   /** Set when editing: the file's revision and what the server noted while reading it. */
   document: { projectId: string; revision: string; notes: string[] } | null;
-  target: Target;
+  target: ConfigTarget;
   onSaved: (project: Project) => void;
   onClose: () => void;
 }
