@@ -9,7 +9,7 @@ const runJob = vi.hoisted(() => vi.fn());
 vi.mock("../api/jobs", () => ({ runJob }));
 
 const ok: JobResult = {
-  success: true, error: null, current_version: "1.0.1", migrations: [], sql: [], repaired: null, baseline_version: null,
+  success: true, error: null, current_version: "1.0.1", migrations: [], sql: [], repaired: null, baseline_version: null, job_id: "j1", has_log: false,
 };
 
 beforeEach(() => {

@@ -24,6 +24,7 @@ const STATES: Record<string, StateInfo> = {
   BELOW_BASELINE: { label: "Below baseline", tone: "muted", applied: false, hint: "Older than the baseline, so it is not run." },
   FUTURE: { label: "Future", tone: "info", applied: true, hint: "Applied to the database by a newer set of scripts." },
   IGNORED: { label: "Ignored", tone: "muted", applied: false, hint: "Skipped by the current filters." },
+  OUTDATED: { label: "Outdated", tone: "warn", applied: true, hint: "A repeatable script that changed since it last ran; it will run again." },
 };
 
 export function stateInfo(status: string): StateInfo {
@@ -56,3 +57,8 @@ export function railFill(migrations: Migration[]): number {
   const last = migrations.map((m) => isApplied(m.status)).lastIndexOf(true);
   return last < 0 ? 0 : (last + 0.5) / migrations.length;
 }
+
+/** The undo script that belongs to a versioned migration file. */
+export const undoNameOf = (script: string) => `U${script.slice(1)}`;
+
+export const versionLabel = (migration: { version: string }) => migration.version || "repeatable";

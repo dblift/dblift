@@ -1,11 +1,11 @@
 import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { listProjects, setEnvironment } from "./api/projects";
 import type { Project } from "./api/types";
 import EmptyState from "./components/EmptyState";
 import Sidebar from "./components/Sidebar";
-import StatusView from "./components/StatusView";
+import StatusView, { type StatusViewHandle } from "./components/StatusView";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
@@ -16,6 +16,14 @@ function Shell() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selected = projects.find((p) => p.id === selectedId) ?? projects[0] ?? null;
   const client = useQueryClient();
+  // Leaving the open project goes through its view, which asks first when a script has unsaved edits.
+  const view = useRef<StatusViewHandle>(null);
+  const leave = (action: () => void) => (view.current ? view.current.leave(action) : action());
+  const select = (id: string) => {
+    if (id !== selected?.id) {
+      leave(() => setSelectedId(id));
+    }
+  };
 
   // Keep the cached list in step with the server, so the project re-opens on the
   // environment it was left on.
@@ -26,7 +34,7 @@ function Shell() {
 
   return (
     <div className="app" role="application" aria-label="DBLift UI">
-      <Sidebar projects={projects} selectedId={selected?.id ?? null} onSelect={setSelectedId} />
+      <Sidebar projects={projects} selectedId={selected?.id ?? null} onSelect={select} onLeave={leave} />
       <main className="app__main">
         {error && (
           <p className="notice notice--error" role="alert">
@@ -38,6 +46,7 @@ function Shell() {
         {selected && (
           <StatusView
             key={selected.id}
+            ref={view}
             project={selected}
             onEnvironmentChange={(environment) => changeEnvironment(selected.id, environment)}
           />

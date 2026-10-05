@@ -32,6 +32,8 @@ export interface JobResult {
   sql: SqlPreview[];
   repaired: number | null;
   baseline_version: string | null;
+  job_id: string;
+  has_log: boolean;
 }
 
 export interface JobEvent {
@@ -43,4 +45,18 @@ export interface JobEvent {
   execution_time?: number;
   error?: string;
   result?: JobResult;
+}
+
+export interface Script {
+  name: string;
+  kind: "versioned" | "undo" | "repeatable";
+  version: string;
+  description: string;
+  language: "sql" | "python";
+  directory: string;
+  has_undo: boolean;
+}
+
+export interface ScriptFile extends Script {
+  content: string;
 }

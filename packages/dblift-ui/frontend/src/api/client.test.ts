@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from "vitest";
 
-import { ApiError, request, TOKEN_HEADER } from "./client";
+import { ApiError, request, requestText, TOKEN_HEADER } from "./client";
 
 function respond(status: number, body: unknown) {
   return new Response(body === undefined ? null : JSON.stringify(body), { status });
@@ -35,4 +35,24 @@ it("returns undefined for an empty 204 response", async () => {
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue(respond(204, undefined)));
 
   expect(await request<void>("/projects/1", { method: "DELETE" })).toBeUndefined();
+});
+
+it("returns text bodies as they are and still sends the token", async () => {
+  sessionStorage.setItem("dblift-ui-token", "tok");
+  const fetchMock = vi.fn().mockResolvedValue(new Response("line 1\nline 2\n", { status: 200 }));
+  vi.stubGlobal("fetch", fetchMock);
+
+  expect(await requestText("/jobs/j1/log")).toBe("line 1\nline 2\n");
+  expect(fetchMock.mock.calls[0][0]).toBe("/api/jobs/j1/log");
+  expect(fetchMock.mock.calls[0][1].headers[TOKEN_HEADER]).toBe("tok");
+});
+
+it("turns a failed text request into an ApiError", async () => {
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ detail: "this job has no log" }), { status: 404 })));
+
+  const failure = (await requestText("/jobs/j1/log").catch((e) => e)) as ApiError;
+
+  expect(failure).toBeInstanceOf(ApiError);
+  expect(failure.status).toBe(404);
+  expect(failure.message).toBe("this job has no log");
 });

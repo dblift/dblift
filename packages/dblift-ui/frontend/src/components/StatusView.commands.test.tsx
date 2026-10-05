@@ -1,5 +1,7 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type { ReactNode } from "react";
 import { beforeEach, expect, it, vi } from "vitest";
 
 import type { JobEvent, JobResult, Migration, Project } from "../api/types";
@@ -7,6 +9,16 @@ import StatusView from "./StatusView";
 
 const runJob = vi.hoisted(() => vi.fn());
 vi.mock("../api/jobs", () => ({ runJob }));
+vi.mock("../api/scripts", () => ({ listScripts: vi.fn().mockResolvedValue([]) }));
+vi.mock("./CodeEditor", () => ({
+  default: ({ value, onChange, label }: { value: string; onChange: (v: string) => void; label: string }) => (
+    <textarea aria-label={label} value={value} onChange={(e) => onChange(e.target.value)} />
+  ),
+}));
+
+function view(children: ReactNode) {
+  return <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>{children}</QueryClientProvider>;
+}
 
 const project: Project = {
   id: "p1", name: "shop-api", config_path: "/work/shop/dblift.yaml", last_environment: "",
@@ -22,7 +34,7 @@ function migration(script: string, status: string): Migration {
 }
 
 function result(migrations: Migration[], extra: Partial<JobResult> = {}): JobResult {
-  return { success: true, error: null, current_version: null, migrations, sql: [], repaired: null, baseline_version: null, ...extra };
+  return { success: true, error: null, current_version: null, migrations, sql: [], repaired: null, baseline_version: null, job_id: "j1", has_log: false, ...extra };
 }
 
 const A = "V1_0_0__create_customers.sql";
@@ -60,7 +72,7 @@ it("previews the SQL, then applies only after confirmation", async () => {
       return result([], { current_version: "1.0.1" });
     },
   });
-  render(<StatusView project={project} onEnvironmentChange={() => {}} />);
+  render(view(<StatusView project={project} onEnvironmentChange={() => {}} />));
   await screen.findByRole("table", { name: "Migrations" });
 
   await userEvent.click(screen.getByRole("button", { name: "Migrate" }));
@@ -83,7 +95,7 @@ it("cancelling the preview applies nothing", async () => {
     info: result([migration(A, "PENDING")]),
     preview: result([], { sql: [{ script: A, statements: ["CREATE TABLE customers (id INTEGER PRIMARY KEY);"] }] }),
   });
-  render(<StatusView project={project} onEnvironmentChange={() => {}} />);
+  render(view(<StatusView project={project} onEnvironmentChange={() => {}} />));
   await screen.findByRole("table", { name: "Migrations" });
 
   await userEvent.click(screen.getByRole("button", { name: "Migrate" }));
@@ -105,7 +117,7 @@ it("shows a script as running, then applied, while the run is in flight", async 
         release = () => resolve(result([]));
       }),
   });
-  render(<StatusView project={project} onEnvironmentChange={() => {}} />);
+  render(view(<StatusView project={project} onEnvironmentChange={() => {}} />));
   const grid = await screen.findByRole("table", { name: "Migrations" });
   await userEvent.click(screen.getByRole("button", { name: "Migrate" }));
   await userEvent.click(await screen.findByRole("button", { name: "Apply 2 migrations" }));
@@ -131,7 +143,7 @@ it("shows why a migration failed and offers repair afterwards", async () => {
       return result([], { success: false, error: `Failed to execute statement 1 in ${A}: near "SELEC": syntax error` });
     },
   });
-  render(<StatusView project={project} onEnvironmentChange={() => {}} />);
+  render(view(<StatusView project={project} onEnvironmentChange={() => {}} />));
   await screen.findByRole("table", { name: "Migrations" });
   await userEvent.click(screen.getByRole("button", { name: "Migrate" }));
   await userEvent.click(await screen.findByRole("button", { name: "Apply 1 migration" }));
@@ -147,7 +159,7 @@ it("explains a refused command", async () => {
     info: result([migration(A, "SUCCESS")], { current_version: "1.0.0" }),
     undo: () => Promise.reject(new Error("Another change is running on this project. Wait for it to finish.")),
   });
-  render(<StatusView project={project} onEnvironmentChange={() => {}} />);
+  render(view(<StatusView project={project} onEnvironmentChange={() => {}} />));
   await screen.findByRole("table", { name: "Migrations" });
 
   await userEvent.click(screen.getByRole("button", { name: "Undo last migration" }));
@@ -158,7 +170,7 @@ it("explains a refused command", async () => {
 
 it("lets the user close the run log", async () => {
   script({ info: result([migration(A, "SUCCESS")], { current_version: "1.0.0" }), validate: result([]) });
-  render(<StatusView project={project} onEnvironmentChange={() => {}} />);
+  render(view(<StatusView project={project} onEnvironmentChange={() => {}} />));
   await screen.findByRole("table", { name: "Migrations" });
 
   await userEvent.click(screen.getByRole("button", { name: "Validate" }));

@@ -16,9 +16,10 @@ from dblift_ui.registry import (
     RegistryError,
     RegistryFileError,
 )
+from dblift_ui.scripts import ScriptError, ScriptNotFound, ScriptStore, yaml_problem
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, StreamingResponse
 from pydantic import BaseModel
 
 TOKEN_HEADER = "X-DBLift-Token"
@@ -40,6 +41,16 @@ class NewJob(BaseModel):
 
 class ProjectPatch(BaseModel):
     last_environment: str = ""
+
+
+class ScriptContent(BaseModel):
+    content: str
+
+
+class NewScripts(BaseModel):
+    kind: str = "versioned"
+    language: str = "sql"
+    description: str = ""
 
 
 def engine_of(data: Dict[str, Any]) -> str:
@@ -71,7 +82,9 @@ def describe(project: Project) -> Dict[str, Any]:
         else:
             environments = list((data.get("environments") or {}).keys())
             engine = engine_of(data)
-    except (OSError, yaml.YAMLError) as exc:
+    except yaml.YAMLError as exc:
+        error = yaml_problem(exc)
+    except OSError as exc:
         error = str(exc)
     return {**asdict(project), "environments": environments, "engine": engine, "error": error}
 
@@ -192,6 +205,60 @@ def create_app(
         return StreamingResponse(
             lines(), media_type="text/event-stream", headers={"Cache-Control": "no-store"}
         )
+
+    @app.get("/api/jobs/{job_id}/log")
+    def job_log(job_id: str) -> PlainTextResponse:
+        try:
+            text = runner.get(job_id).log_text
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="unknown job") from exc
+        if not text:
+            raise HTTPException(status_code=404, detail="this job has no log")
+        return PlainTextResponse(text, headers={"Cache-Control": "no-store"})
+
+    def store_of(project_id: str) -> ScriptStore:
+        try:
+            return ScriptStore(projects.get(project_id).config_path)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="unknown project") from exc
+
+    def refuse_during_change(project_id: str) -> None:
+        if runner.is_changing(project_id):
+            raise HTTPException(
+                status_code=409,
+                detail="A change is running on this project. Save once it has finished.",
+            )
+
+    # Starlette picks the handler of the closest class, so a missing script is a 404.
+    @app.exception_handler(ScriptNotFound)
+    async def script_not_found(request: Request, exc: ScriptNotFound) -> JSONResponse:
+        return JSONResponse({"detail": str(exc)}, status_code=404)
+
+    @app.exception_handler(ScriptError)
+    async def script_error(request: Request, exc: ScriptError) -> JSONResponse:
+        return JSONResponse({"detail": str(exc)}, status_code=400)
+
+    @app.get("/api/projects/{project_id}/scripts")
+    def list_scripts(project_id: str) -> List[Dict[str, Any]]:
+        return [asdict(script) for script in store_of(project_id).list()]
+
+    @app.post("/api/projects/{project_id}/scripts", status_code=201)
+    def create_scripts(project_id: str, body: NewScripts) -> Dict[str, List[str]]:
+        store = store_of(project_id)
+        refuse_during_change(project_id)
+        return {"created": store.create(body.kind, body.language, body.description)}
+
+    @app.get("/api/projects/{project_id}/scripts/{name}")
+    def read_script(project_id: str, name: str) -> Dict[str, Any]:
+        store = store_of(project_id)
+        return {**asdict(store.describe(name)), "content": store.read(name)}
+
+    @app.put("/api/projects/{project_id}/scripts/{name}")
+    def write_script(project_id: str, name: str, body: ScriptContent) -> Dict[str, Any]:
+        store = store_of(project_id)
+        refuse_during_change(project_id)
+        store.write(name, body.content)
+        return asdict(store.describe(name))
 
     @app.get("/assets/{asset_path:path}")
     def asset(asset_path: str) -> FileResponse:

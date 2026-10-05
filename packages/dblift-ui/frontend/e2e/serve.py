@@ -1,4 +1,4 @@
-"""Serve the interface with two seeded SQLite projects, for the browser tests only."""
+"""Serve the interface with three seeded SQLite projects, for the browser tests only."""
 
 import contextlib
 import sys
@@ -53,6 +53,19 @@ def main() -> None:
                     {
                         "V1_0_0__create_events.sql": "CREATE TABLE events (id INTEGER PRIMARY KEY);\n",
                         "V1_0_1__typo.sql": "SELEC nonsense;\n",
+                    },
+                )
+            ),
+        )
+        registry.add(
+            "notes",
+            str(
+                seed(
+                    root,
+                    "notes",
+                    {
+                        "V1_0_0__create_notes.sql": "CREATE TABLE notes (id INTEGER PRIMARY KEY);\n",
+                        "U1_0_0__create_notes.sql": "DROP TABLE notes;\n",
                     },
                 )
             ),

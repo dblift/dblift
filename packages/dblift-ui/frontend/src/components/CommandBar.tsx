@@ -9,9 +9,11 @@ interface Props {
   busy: boolean;
   onMigrate: () => void;
   onCommand: (command: Simple, params?: Record<string, unknown>) => void;
+  /** Shown first when given: starts a new migration file. */
+  onNew?: () => void;
 }
 
-export default function CommandBar({ counts, hasVersion, busy, onMigrate, onCommand }: Props) {
+export default function CommandBar({ counts, hasVersion, busy, onMigrate, onCommand, onNew }: Props) {
   const [confirming, setConfirming] = useState<Asking | null>(null);
   const [version, setVersion] = useState("");
   const [description, setDescription] = useState("");
@@ -102,6 +104,11 @@ export default function CommandBar({ counts, hasVersion, busy, onMigrate, onComm
 
   return (
     <div key="bar" className="commands">
+      {onNew && (
+        <button className="button" disabled={busy} onClick={onNew}>
+          New migration
+        </button>
+      )}
       {canBaseline && (
         <button
           ref={(node) => {

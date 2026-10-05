@@ -1,10 +1,12 @@
 """Run a client operation in a worker thread and expose what happens as events."""
 
 import re
+import shutil
 import threading
 import uuid
 from collections import OrderedDict
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Callable, Dict, Iterator, List, Optional
 
 from dblift_ui.registry import Project, ProjectRegistry
@@ -29,11 +31,14 @@ FINISHED = "job.finished"
 _KEPT_JOBS = 50
 # The password of a ``scheme://user:password@host`` URL: everything after the
 # user's colon up to the last ``@`` before the path, so a password containing
-# ``@`` is masked whole.
-_URL_PASSWORD = re.compile(r"([A-Za-z][\w+.-]*://[^:/@\s]*:)[^\s/]*@")
+# ``@`` is masked whole. The scheme's length is bounded so a long run of word
+# characters, as a whole run log may hold, costs linear time, not quadratic.
+_URL_PASSWORD = re.compile(r"([A-Za-z][\w+.-]{0,63}://[^:/@\s]*:)[^\s/]*@")
 _PASSWORD_PARAMETER = re.compile(r"(password|pwd)=[^&;\s]*", re.IGNORECASE)
 MUTATING = frozenset({"migrate", "undo", "repair", "baseline"})
 _VERSION = re.compile(r"^\d+(\.\d+)*$")
+# The most of a run's text log the browser receives: its last characters.
+LOG_LIMIT = 200_000
 
 
 class ProjectBusy(Exception):
@@ -44,6 +49,17 @@ def redact(text: str) -> str:
     """Mask passwords that engine error messages may echo back."""
     text = _URL_PASSWORD.sub(r"\1***@", text)
     return _PASSWORD_PARAMETER.sub(r"\1=***", text)
+
+
+def read_log(folder: Path) -> str:
+    """The engine's text log for one job: redacted, and only its tail when very long."""
+    parts = []
+    for path in sorted(folder.glob("*.log")):
+        try:
+            parts.append(path.read_text(encoding="utf-8", errors="replace"))
+        except OSError:
+            continue
+    return redact("".join(parts))[-LOG_LIMIT:]
 
 
 def check_params(command: str, params: Dict[str, Any]) -> None:
@@ -106,6 +122,7 @@ class Job:
     events: List[Dict[str, Any]] = field(default_factory=list)
     changed: threading.Condition = field(default_factory=threading.Condition)
     done: threading.Event = field(default_factory=threading.Event)
+    log_text: str = ""
 
     def publish(self, payload: Dict[str, Any]) -> None:
         with self.changed:
@@ -126,8 +143,10 @@ class JobRunner:
         "baseline": _baseline,
     }
 
-    def __init__(self, registry: ProjectRegistry) -> None:
+    def __init__(self, registry: ProjectRegistry, runs_dir: Optional[Path] = None) -> None:
         self._registry = registry
+        # Each job's engine log goes to its own folder here, never into the project.
+        self._runs = Path(runs_dir) if runs_dir is not None else registry.path.parent / "runs"
         self._jobs: "OrderedDict[str, Job]" = OrderedDict()
         self._lock = threading.Lock()
         self._changing: Dict[str, Job] = {}
@@ -170,6 +189,10 @@ class JobRunner:
         with self._lock:
             return self._jobs[job_id]
 
+    def is_changing(self, project_id: str) -> bool:
+        with self._lock:
+            return project_id in self._changing
+
     def drain(self) -> int:
         """Wait for every running change to finish; return how many there were."""
         with self._lock:
@@ -191,10 +214,14 @@ class JobRunner:
                 return
 
     def _run(self, job: Job, project: Project, environment: Optional[str]) -> None:
+        folder = self._runs / job.id
         try:
             try:
                 with DBLiftClient.from_config_file(
-                    project.config_path, environment=environment, relative_to_config=True
+                    project.config_path,
+                    environment=environment,
+                    relative_to_config=True,
+                    log_dir=str(folder),
                 ) as client:
                     client.events.on("*", lambda event: job.publish(serialize_event(event)))
                     result = serialize_result(self.COMMANDS[job.command](client, job.params))
@@ -208,17 +235,31 @@ class JobRunner:
                     "sql": [],
                     "migrations": [],
                 }
-                job.publish({"event": FINISHED, "result": failure})
+                self._finish(job, failure, folder)
                 # An ordinary failure is fully reported by the final event and a worker
                 # thread has nobody to re-raise to; SystemExit/KeyboardInterrupt still reach
                 # the interpreter, harmlessly: in a thread they end only that thread.
                 if not isinstance(exc, Exception):
                     raise
             else:
-                job.publish({"event": FINISHED, "result": result})
+                self._finish(job, result, folder)
         finally:
+            shutil.rmtree(folder, ignore_errors=True)
             # Released only once the last event exists, whatever happened above.
             with self._lock:
                 if self._changing.get(job.project_id) is job:
                     del self._changing[job.project_id]
                 self._threads.pop(job.id, None)
+
+    @staticmethod
+    def _finish(job: Job, result: Dict[str, Any], folder: Path) -> None:
+        """Keep the run's log on the job, remove its folder, then publish the final event."""
+        job.log_text = read_log(folder) if folder.is_dir() else ""
+        # Removed before the final event, so whoever sees the job finished finds no folder.
+        shutil.rmtree(folder, ignore_errors=True)
+        job.publish(
+            {
+                "event": FINISHED,
+                "result": {**result, "job_id": job.id, "has_log": bool(job.log_text)},
+            }
+        )
