@@ -102,6 +102,17 @@ it("gives the text to copy, and where to paste it, when the host is unknown", as
   expect(await navigator.clipboard.readText()).toBe(BODY);
 });
 
+it("shows the whole description, down to the test's result, without scrolling", async () => {
+  const long = { ...done, description: "Add invoices\n\nInvoices are kept per customer.\nTotals are in cents.\nOne currency per invoice." };
+  renderStep(PublishStep, { data: long, repo: local, last: true });
+
+  await userEvent.click(publish());
+
+  const body = await screen.findByRole("textbox", { name: "Pull request description" });
+  const lines = (body as HTMLTextAreaElement).value.split("\n").length;
+  expect(Number(body.getAttribute("rows"))).toBeGreaterThanOrEqual(lines);
+});
+
 it("tells the developer to copy by hand when the clipboard refuses", async () => {
   git.pullRequestLink.mockResolvedValue({ url: null, kind: null, branch: BRANCH });
   const user = userEvent.setup();

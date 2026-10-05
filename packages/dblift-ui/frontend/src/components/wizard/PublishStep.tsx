@@ -5,6 +5,9 @@ import { useRepo } from "../../git/useRepo";
 import { pullRequestText } from "../../wizard/pullRequestText";
 import type { StepProps } from "../../wizard/steps";
 
+// The description shows whole, down to the test's result, up to this many lines.
+const MAX_ROWS = 24;
+
 // Only a web page of the repository's host may be linked: never another scheme.
 const linkable = (url: string | null): url is string => url !== null && url.startsWith("https://");
 
@@ -109,7 +112,13 @@ export default function PublishStep({ context, onNext, onBack, last }: StepProps
           <div className="field">
             <label htmlFor={`${ids}-body`}>Pull request description</label>
             <div className="wizard__copy">
-              <textarea id={`${ids}-body`} className="wizard__description mono" readOnly rows={10} value={text.body} />
+              <textarea
+                id={`${ids}-body`}
+                className="wizard__description mono"
+                readOnly
+                rows={Math.min(text.body.split("\n").length, MAX_ROWS)}
+                value={text.body}
+              />
               {!url && (
                 <button type="button" className="button" aria-label="Copy the description" onClick={() => void copy(text.body)}>
                   Copy

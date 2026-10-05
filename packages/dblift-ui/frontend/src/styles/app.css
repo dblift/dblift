@@ -1999,6 +1999,13 @@ button.branch__item:disabled {
   margin-right: auto;
 }
 
+/* On a phone the actions wrap: each row fills the width instead of leaving one button stranded. */
+@media (max-width: 520px) {
+  .wizard__actions > .button {
+    flex: 1 1 auto;
+  }
+}
+
 /* Write: the two editors take most of the dialog's height, side by side, stacked under 900px. */
 .wizard__editors {
   display: grid;
