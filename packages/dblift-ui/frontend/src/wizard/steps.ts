@@ -22,6 +22,8 @@ export interface WizardData {
   written: boolean;
   /** The editors hold edits not saved yet. */
   unsaved: boolean;
+  /** Work a step started that goes on even if the wizard closes, so it cannot close: what it says meanwhile. */
+  busy: string | null;
 }
 
 /** Everything the steps share. */
@@ -58,6 +60,7 @@ export const START: WizardData = {
   published: false,
   written: false,
   unsaved: false,
+  busy: null,
 };
 
 const always = () => true;

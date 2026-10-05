@@ -83,6 +83,8 @@ export default function TestStep({ context, onNext, onBack, last }: StepProps) {
     setRefused(null);
     setBroken(null);
     setRunning(true);
+    // The job goes on on the server if the wizard closes, and holds the project: the wizard stays open until it ends.
+    update({ busy: "The test is running…" });
     try {
       const result = await runJob(project.id, "scratch_test", "", report, { script: scripts?.migration });
       const found = result.scratch;
@@ -104,6 +106,7 @@ export default function TestStep({ context, onNext, onBack, last }: StepProps) {
       }
     } finally {
       setRunning(false);
+      update({ busy: null });
     }
   };
 

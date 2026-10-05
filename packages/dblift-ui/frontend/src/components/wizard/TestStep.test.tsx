@@ -137,6 +137,22 @@ it("cannot run twice at once nor continue while the test runs", async () => {
   expect(await screen.findByRole("button", { name: "Run again" })).toBeEnabled();
 });
 
+it("keeps the wizard open while the test runs, whatever its end", async () => {
+  const run = controlled();
+  const { context } = renderStep(TestStep, { data: written });
+  await userEvent.click(await screen.findByRole("button", { name: "Run the test" }));
+
+  expect(context().busy).toBe("The test is running…");
+  run.finish(finished(undoFailed));
+  await screen.findByRole("button", { name: "Run again" });
+  expect(context().busy).toBeNull();
+
+  runJob.mockRejectedValueOnce(new Error("stream lost"));
+  await userEvent.click(screen.getByRole("button", { name: "Run again" }));
+  expect(await screen.findByText("stream lost")).toBeInTheDocument();
+  expect(context().busy).toBeNull();
+});
+
 it("enables Next once the test passed, and records the outcome", async () => {
   answers(allPassed);
   const { context, onNext } = renderStep(TestStep, { data: written });

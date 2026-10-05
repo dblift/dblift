@@ -105,7 +105,7 @@ export default function Wizard({ project, onClose, onChanged, steps = STEPS }: P
   }
 
   return (
-    <Dialog title="New change" wide onClose={close}>
+    <Dialog title="New change" wide busy={data.busy} onClose={close}>
       <div className="wizard">
         {asking && (
           <div className="wizard__guard">

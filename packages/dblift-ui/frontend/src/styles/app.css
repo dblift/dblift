@@ -996,6 +996,12 @@ input {
   font-size: 1.15rem;
 }
 
+.dialog__busy {
+  margin-left: auto;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
 .dialog__body {
   display: grid;
   gap: 14px;

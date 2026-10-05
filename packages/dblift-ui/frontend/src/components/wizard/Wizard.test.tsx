@@ -36,6 +36,8 @@ function fake(id: string, title: string, available: WizardStep["available"] = ()
         <button onClick={onBack}>Back</button>
         <button onClick={() => context.update({ unsaved: true })}>Edit without saving</button>
         <button onClick={() => context.update({ description: "Add invoices" })}>Type a description</button>
+        <button onClick={() => context.update({ busy: "The test is running…" })}>Start a long task</button>
+        <button onClick={() => context.update({ busy: null })}>End the long task</button>
         <button onClick={() => context.update({ scripts: { migration: V, undo: U } })}>Create the files</button>
         <button onClick={() => context.changed()}>Change a file</button>
         <button
@@ -280,6 +282,22 @@ it("asks nothing about the description once the scripts exist", async () => {
   await userEvent.keyboard("{Escape}");
 
   expect(screen.queryByText("Discard what you typed?")).not.toBeInTheDocument();
+  expect(onClose).toHaveBeenCalledTimes(1);
+});
+
+it("cannot be closed while a step's work runs, and says why", async () => {
+  const { onClose } = wizard();
+  await userEvent.click(screen.getByRole("button", { name: "Start a long task" }));
+
+  expect(screen.getByText("The test is running…")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Close" })).toBeDisabled();
+  await userEvent.keyboard("{Escape}");
+  expect(onClose).not.toHaveBeenCalled();
+
+  await userEvent.click(screen.getByRole("button", { name: "End the long task" }));
+  expect(screen.queryByText("The test is running…")).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Close" })).toBeEnabled();
+  await userEvent.keyboard("{Escape}");
   expect(onClose).toHaveBeenCalledTimes(1);
 });
 
