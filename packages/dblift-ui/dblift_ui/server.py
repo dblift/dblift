@@ -18,7 +18,7 @@ from dblift_ui.registry import (
 )
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, StreamingResponse
 from pydantic import BaseModel
 
 TOKEN_HEADER = "X-DBLift-Token"
@@ -192,6 +192,16 @@ def create_app(
         return StreamingResponse(
             lines(), media_type="text/event-stream", headers={"Cache-Control": "no-store"}
         )
+
+    @app.get("/api/jobs/{job_id}/log")
+    def job_log(job_id: str) -> PlainTextResponse:
+        try:
+            text = runner.get(job_id).log_text
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="unknown job") from exc
+        if not text:
+            raise HTTPException(status_code=404, detail="this job has no log")
+        return PlainTextResponse(text, headers={"Cache-Control": "no-store"})
 
     @app.get("/assets/{asset_path:path}")
     def asset(asset_path: str) -> FileResponse:
