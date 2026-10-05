@@ -58,6 +58,16 @@ def test_candidate_wheel_excludes_retired_storage_modules(candidate_wheel):
         assert not set(retired).intersection(archive.namelist())
 
 
+def test_candidate_wheel_excludes_generation_only_modules(candidate_wheel):
+    retired = {
+        "dblift/core/state/sql_statement.py",
+        "dblift/db/generator_protocol.py",
+        "dblift/extensions/sql_generation.py",
+    }
+    with zipfile.ZipFile(candidate_wheel) as archive:
+        assert not retired.intersection(archive.namelist())
+
+
 def test_corpus_probe_uses_the_installed_wheel_and_neutral_workdir(candidate_wheel, tmp_path):
     probe = tmp_path / "corpus_probe.py"
     probe.write_text(

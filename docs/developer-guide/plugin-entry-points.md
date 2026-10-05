@@ -4,19 +4,19 @@ DBLift uses setuptools entry points for provider and extension discovery.
 
 ## Stable Python Imports
 
-Plugin code should import logging, provider, SQL-generation, and schema-model
+Plugin code should import logging, provider, and schema-model
 contracts from the stable extension surfaces, not from implementation modules:
 
 ```python
 from dblift.extensions.logging import Log, LogLevel, OperationResult, OutputFormatter
 from dblift.extensions.providers import PluginInfo, ProviderRegistry, ProviderTransport
-from dblift.extensions.sql_generation import GenerationOptions, SqlStatement
 from dblift.extensions.sql_model import ConstraintType, Index, Table, View
 ```
 
-`sql_generation.SqlStatement` describes generated migration SQL. Parsed
-statements returned in `sql_model.ParseResult.statements` use a separate
-model; the two classes are not interchangeable.
+The former `dblift.extensions.sql_generation` category and its generated-SQL
+statement and options types have been retired from OSS. Extensions that
+generate SQL must supply those contracts themselves. Parsed statements
+returned in `sql_model.ParseResult.statements` remain available.
 
 The complete supported surfaces are listed in each extension module's
 `__all__` and covered by the semantic-versioning policy.

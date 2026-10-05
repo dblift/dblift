@@ -2,12 +2,9 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional, Type
+from typing import Optional
 
 from dblift.db.base_quirks import BaseQuirks
-
-if TYPE_CHECKING:
-    from dblift.db.generator_protocol import AlterGeneratorProtocol, SqlGeneratorProtocol
 
 
 class DuckDBQuirks(BaseQuirks):
@@ -56,15 +53,6 @@ class DuckDBQuirks(BaseQuirks):
             from dblift.db.plugins.duckdb.parser.duckdb_regex_parser import DuckDBRegexParser
 
             return DuckDBRegexParser
-        return None
-
-    # Optional hooks — registered by an installed extension package.
-    def ddl_generator_class(self) -> Optional[Type["SqlGeneratorProtocol"]]:
-        """DDL generator is supplied by an installed extension package."""
-        return None
-
-    def alter_generator_class(self) -> Optional[Type["AlterGeneratorProtocol"]]:
-        """ALTER generator is supplied by an installed extension package."""
         return None
 
     def type_equivalents(self) -> "dict[str, str]":

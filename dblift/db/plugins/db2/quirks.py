@@ -3,14 +3,10 @@
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Type
+from typing import Any, Dict, List, Optional, Tuple
 
 from dblift.db.base_quirks import BaseQuirks
 from dblift.db.error import ErrorCategory
-
-if TYPE_CHECKING:
-    from dblift.db.generator_protocol import AlterGeneratorProtocol, SqlGeneratorProtocol
-
 
 # Each entry: (compiled regex, ErrorCategory). Sourced by
 # ``DatabaseErrorClassifier`` via ``error_patterns()`` (ADR-26 A2).
@@ -122,14 +118,6 @@ class Db2Quirks(BaseQuirks):
     def error_patterns(self) -> "List[Tuple[re.Pattern[str], ErrorCategory]]":
         """DB2 SQLSTATE / errorcode error-classification patterns (ADR-26 A2)."""
         return _ERROR_PATTERNS
-
-    def ddl_generator_class(self) -> Optional[Type["SqlGeneratorProtocol"]]:
-        """DDL generator is supplied by an installed extension package."""
-        return None
-
-    def alter_generator_class(self) -> Optional[Type["AlterGeneratorProtocol"]]:
-        """ALTER generator is supplied by an installed extension package."""
-        return None
 
     def parser_class(self, parser_type: str) -> Optional[type]:
         """Return the Db2 parser class for ``parser_type``, or ``None``.

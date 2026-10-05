@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import re
 from typing import (
-    TYPE_CHECKING,
     Any,
     ClassVar,
     Dict,
@@ -31,9 +30,6 @@ from dblift.db.dml_analysis import (
     updates_restore_key,
 )
 from dblift.db.feature_gate import FeatureGate
-
-if TYPE_CHECKING:
-    from dblift.db.generator_protocol import AlterGeneratorProtocol, SqlGeneratorProtocol
 
 
 class BaseQuirks:
@@ -474,16 +470,8 @@ class BaseQuirks:
         return {}
 
     # ------------------------------------------------------------------
-    # DdlQuirks
+    # ParserQuirks
     # ------------------------------------------------------------------
-
-    def ddl_generator_class(self) -> Optional[Type["SqlGeneratorProtocol"]]:
-        """Default: no dialect-specific DDL generator is provided."""
-        return None
-
-    def alter_generator_class(self) -> Optional[Type["AlterGeneratorProtocol"]]:
-        """Default: no dialect-specific ALTER generator (factory raises)."""
-        return None
 
     def parser_class(self, parser_type: str) -> Optional[type]:
         """Return the parser class for ``parser_type``, or ``None``.

@@ -84,7 +84,6 @@ from dblift.extensions.providers import (
     ProviderRegistry,
     ProviderTransport,
 )
-from dblift.extensions.sql_generation import GenerationOptions, SqlStatement
 from dblift.extensions.sql_model import (
     ConstraintType,
     DatabaseLink,
@@ -127,6 +126,12 @@ from dblift.extensions.sql_model import (
 These names are enumerated in each module's `__all__`, and the top-level
 package ships a PEP 561 `py.typed` marker so downstream type checkers pick up
 annotations across every public subpackage.
+
+The previously documented `dblift.extensions.sql_generation` category was
+removed. This changes a stable extension import path and therefore requires
+a major release under this policy. `dblift.extensions.sql_model.SqlStatementType`
+and the parser's internal `SqlStatement` are separate parsing contracts and
+remain available.
 
 ### 1.2 What is NOT public
 

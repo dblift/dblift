@@ -40,10 +40,8 @@ def test_uses_ordinary_credentials():
     assert quirks.requires_credentials is False
 
 
-def test_no_generators_or_parsers():
+def test_no_parsers():
     quirks = MongodbQuirks()
-    assert quirks.ddl_generator_class() is None
-    assert quirks.alter_generator_class() is None
     assert quirks.parser_class("hybrid") is None
     assert quirks.parser_class("regex") is None
     assert quirks.parser_class("sqlglot") is None

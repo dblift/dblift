@@ -48,7 +48,7 @@ SQLite-only distribution.
 | `dblift/db/` | Provider contract and registry, plus one plugin per engine under `db/plugins/<engine>/` (provider, quirks, parser, history and lock managers). | `config`, `core` (constants, sql_model, sql_parser, logger, utils, migration, among others) |
 | `dblift/api/` | `DBLiftClient` and the async client: the programmatic surface, events and callbacks. | `core`, `config`, `db` |
 | `dblift/cli/` | argparse setup, command dispatch, the MCP server. The only package that may import everything else. | all of the above except `db` (see the layer rules below) |
-| `dblift/extensions/` | Stable import paths for third-party plugin code (`logging`, `providers`, `sql_generation`, `sql_model`). Re-exports only. | `core`, `db` |
+| `dblift/extensions/` | Stable import paths for third-party plugin code (`logging`, `providers`, `sql_model`). Re-exports only. | `core`, `db` |
 | `dblift/integrations/` | Thin helpers for Django, Flask, FastAPI and OpenTelemetry. | `api`, `core.exceptions` |
 
 `core` and `db` import each other; for a fork they are one unit.
