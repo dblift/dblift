@@ -52,6 +52,67 @@ branch is shown as such. Merging, rebasing, stashing and forced pushes are
 deliberately absent: when a pull would need a merge, or git refuses a switch,
 the interface says why and leaves the rest to your own git tool.
 
+## A new change, step by step
+
+"New change" in the project view opens a guided flow for one schema change:
+
+1. **Describe** what the change does. The first line names the migration and
+   its undo script, the commit and the pull request. In a git repository on
+   `main`, `master` or `develop`, a branch named after that line is offered
+   (`feature/add-invoices`) and created before the scripts.
+2. **Write** the migration and its undo script, side by side. They are saved
+   when you go on.
+3. **Test** them on a scratch database (see below), or continue without the
+   test.
+4. **Commit**: the changed files are listed with the two new scripts ticked,
+   and the message is the description's first line.
+5. **Publish** the branch to `origin` (or push it, once it has a remote
+   branch). For a GitHub, GitLab or Bitbucket remote, a link opens the host's
+   pull-request page with the title and the description filled in. For any
+   other remote, the title and the description are shown, ready to copy.
+
+The last two steps appear only in a git repository. The description of the
+pull request lists the two scripts and says how the scratch test ended.
+
+### The scratch test
+
+The test never touches the project's own databases. It builds a database
+from zero by applying every migration, the new one included, then runs the
+new migration's undo script, then applies the new migration again. A failure
+shows the phase that failed and the database's own error. The scripts can then
+be fixed and the test run again.
+
+Where it runs is chosen from the configuration and shown before anything runs:
+
+- **A SQLite project** is tested on a temporary SQLite file. The file is
+  created, used and deleted.
+- **Any other engine** is tested on the environment literally named `scratch`
+  in the configuration. That environment's database is **emptied first**, after
+  a confirming click.
+- Without either, the test is not available.
+
+Safety rules:
+
+- Only the environment named `scratch` is ever emptied.
+- The test refuses to run, and changes nothing, when `scratch` points at the
+  same database as the default connection or another environment. It also
+  refuses when its database cannot be identified.
+- The `scratch` environment must be a database of its own. The comparison
+  reads the configured addresses, so two different addresses for one server
+  (a host name and its IP address, say) are not detected.
+
+Known limits:
+
+- The undo check undoes the last applied migration, so the new migration
+  must have the highest version.
+- Migrations that hard-code schema names can fail on, or reach outside, the
+  scratch environment.
+- Replaying every migration from zero can take long on a very large project.
+
+To skip the test, choose "Continue without the test". The pull request then
+says "Skipped. CI should run the migrations before this is merged." If the
+developer goes on after a failed run, it says the test failed and why.
+
 ## Development
 
 The interface lives in `frontend/` (React, TypeScript, Vite). It is built into

@@ -1,7 +1,8 @@
 """Serve the interface with seeded SQLite projects, for the browser tests only.
 
 A second argument names a folder where fixture repositories are built for the tests
-that add projects, and for the git tests, whose repository is also a seeded project.
+that add projects, and for the git and new-change tests, whose repositories are also
+seeded projects.
 """
 
 import contextlib
@@ -11,6 +12,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from typing import Callable
 
 import uvicorn
 from dblift_ui.registry import ProjectRegistry
@@ -65,22 +67,26 @@ def build_fixtures(folder: Path) -> None:
     )
     build_flyway(folder / "flywayapp")
     build_gitapp(folder / "gitapp", folder / "gitapp.git")
+    build_wizardapp(folder / "wizardapp", folder / "wizardapp.git")
+    build_wizardhub(folder / "wizardhub", folder / "wizardhub.git")
 
 
-def build_gitapp(app: Path, remote: Path) -> None:
-    """A repository on main, with a local bare remote that also holds feature/reporting.
+SQLITE_CONFIG = (
+    "database:\n  type: sqlite\n  path: ./dev.db\nmigrations:\n  directory: ./migrations\n"
+)
+
+
+def build_repository(app: Path, files: dict[str, str], remote: Path) -> Callable[..., None]:
+    """A repository on main holding *files* in one commit, with a local bare repository as origin.
 
     The identity is in the repository's own config; no template, so no hook, and nothing in the
-    config makes git run a program.
+    config makes git run a program. Returns a function that runs git in the repository.
     """
-    config = "database:\n  type: sqlite\n  path: ./dev.db\nmigrations:\n  directory: ./migrations\n"
-    files = {
-        "dblift.yaml": config,
-        "migrations/V1_0_0__create_accounts.sql": "CREATE TABLE accounts (id INTEGER PRIMARY KEY);\n",
+    for relative, text in {
+        **files,
         # SQLite writes a journal beside the database while dblift reads it.
         ".gitignore": "*.db\n*.db-journal\n",
-    }
-    for relative, text in files.items():
+    }.items():
         path = app / relative
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text)
@@ -99,10 +105,23 @@ def build_gitapp(app: Path, remote: Path) -> None:
     )
     git("remote", "add", "origin", str(remote))
     git("push", "-q", "-u", "origin", "main")
+    return git
+
+
+def build_gitapp(app: Path, remote: Path) -> None:
+    """A repository on main, with a local bare remote that also holds feature/reporting."""
+    git = build_repository(
+        app,
+        {
+            "dblift.yaml": SQLITE_CONFIG,
+            "migrations/V1_0_0__create_accounts.sql": "CREATE TABLE accounts (id INTEGER PRIMARY KEY);\n",
+        },
+        remote,
+    )
     # A branch that exists only on the remote, with a second config.
     git("switch", "-q", "-c", "feature/reporting")
     (app / "reporting" / "migrations").mkdir(parents=True)
-    (app / "reporting" / "dblift.yaml").write_text(config)
+    (app / "reporting" / "dblift.yaml").write_text(SQLITE_CONFIG)
     (app / "reporting" / "migrations" / "V1_0_0__create_reports.sql").write_text(
         "CREATE TABLE reports (id INTEGER PRIMARY KEY);\n"
     )
@@ -111,6 +130,38 @@ def build_gitapp(app: Path, remote: Path) -> None:
     git("push", "-q", "origin", "feature/reporting")
     git("switch", "-q", "main")
     git("branch", "-q", "-D", "feature/reporting")
+
+
+def build_wizardapp(app: Path, remote: Path) -> None:
+    """The new-change wizard's repository: on main, one migration with its undo script, applied nowhere."""
+    build_repository(
+        app,
+        {
+            "dblift.yaml": SQLITE_CONFIG,
+            "migrations/V1_0_0__create_accounts.sql": "CREATE TABLE accounts (id INTEGER PRIMARY KEY);\n",
+            "migrations/U1_0_0__create_accounts.sql": "DROP TABLE accounts;\n",
+        },
+        remote,
+    )
+
+
+def build_wizardhub(app: Path, remote: Path) -> None:
+    """A repository on feature/add-invoices whose origin is a GitHub address, never contacted.
+
+    Only its pull-request link is read. Pushes would go to the local bare repository, should a
+    test ever push, and nothing in the tests fetches.
+    """
+    git = build_repository(
+        app,
+        {
+            "dblift.yaml": SQLITE_CONFIG,
+            "migrations/V1_0_0__create_accounts.sql": "CREATE TABLE accounts (id INTEGER PRIMARY KEY);\n",
+        },
+        remote,
+    )
+    git("remote", "set-url", "origin", "https://github.com/example-org/example-repo.git")
+    git("config", "remote.origin.pushurl", str(remote))
+    git("switch", "-q", "-c", "feature/add-invoices")
 
 
 def build_flyway(app: Path) -> None:
@@ -189,7 +240,8 @@ def main() -> None:
             ),
         )
         if len(sys.argv) > 2:
-            registry.add("gitapp", str(Path(sys.argv[2]) / "gitapp" / "dblift.yaml"))
+            for name in ("gitapp", "wizardapp", "wizardhub"):
+                registry.add(name, str(Path(sys.argv[2]) / name / "dblift.yaml"))
         # Playwright stops the server with SIGINT; uvicorn shuts down, then re-raises it
         # as KeyboardInterrupt, and leaving this block removes the seeded projects.
         with contextlib.suppress(KeyboardInterrupt):
