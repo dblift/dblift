@@ -43,8 +43,6 @@ class TestDuckDBRegistration:
         from dblift.db.plugins.duckdb.quirks import DuckDBQuirks
 
         q = DuckDBQuirks()
-        assert q.ddl_generator_class() is None
-        assert q.alter_generator_class() is None
         assert q.introspector_class() is None
         assert q.vendor_queries_class() is None
 

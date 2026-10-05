@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Type
+from typing import Any, Dict, List, Optional, Tuple
 
 from dblift.db.base_quirks import BaseQuirks
 from dblift.db.error import ErrorCategory
@@ -33,9 +33,6 @@ _DROP_TRIGGER_ON_RE = re.compile(
     r"\s+ON\s+",
     re.IGNORECASE,
 )
-
-if TYPE_CHECKING:
-    from dblift.db.generator_protocol import AlterGeneratorProtocol, SqlGeneratorProtocol
 
 
 class PostgresqlQuirks(BaseQuirks):
@@ -110,14 +107,6 @@ class PostgresqlQuirks(BaseQuirks):
         if _value("url"):
             return True
         return bool(_value("host") and _value("database"))
-
-    def ddl_generator_class(self) -> Optional[Type["SqlGeneratorProtocol"]]:
-        """DDL generator is supplied by an installed extension package."""
-        return None
-
-    def alter_generator_class(self) -> Optional[Type["AlterGeneratorProtocol"]]:
-        """ALTER generator is supplied by an installed extension package."""
-        return None
 
     def parser_class(self, parser_type: str) -> Optional[type]:
         """PostgreSQL parser dispatch: hybrid → :class:`HybridParser`, sqlglot →

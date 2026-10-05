@@ -2,12 +2,9 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Dict, Optional, Type
+from typing import Dict, Optional
 
 from dblift.db.base_quirks import BaseQuirks
-
-if TYPE_CHECKING:
-    from dblift.db.generator_protocol import AlterGeneratorProtocol, SqlGeneratorProtocol
 
 
 class MongodbQuirks(BaseQuirks):
@@ -56,14 +53,6 @@ class MongodbQuirks(BaseQuirks):
     def __init__(self, dialect_name: str = "mongodb") -> None:
         """Initialize MongoDB quirks with the dialect name."""
         super().__init__(dialect_name=dialect_name)
-
-    def ddl_generator_class(self) -> Optional[Type["SqlGeneratorProtocol"]]:
-        """No SQL-DDL generator — collections are created through the driver."""
-        return None
-
-    def alter_generator_class(self) -> Optional[Type["AlterGeneratorProtocol"]]:
-        """ALTER generator is supplied by an installed extension package."""
-        return None
 
     def parser_class(self, parser_type: str) -> Optional[type]:
         """No parser — MongoDB has no SQL for dblift to read.

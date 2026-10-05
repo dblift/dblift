@@ -3,16 +3,12 @@
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Type
+from typing import Any, Dict, List, Optional, Tuple
 
 from dblift.core.utils.database_url_parser import DatabaseUrlParser
 from dblift.db.base_quirks import BaseQuirks
 from dblift.db.error import ErrorCategory
 from dblift.db.feature_gate import FeatureGate
-
-if TYPE_CHECKING:
-    from dblift.db.generator_protocol import AlterGeneratorProtocol, SqlGeneratorProtocol
-
 
 # Each entry: (compiled regex, ErrorCategory). Sourced by
 # ``DatabaseErrorClassifier`` via ``error_patterns()`` (ADR-26 A2).
@@ -132,14 +128,6 @@ class MysqlQuirks(BaseQuirks):
     def engine_pool_options(self) -> "dict[str, Any]":
         """MySQL/MariaDB: disable pool reset-on-return to avoid connection-state churn."""
         return {"pool_reset_on_return": None}
-
-    def ddl_generator_class(self) -> Optional[Type["SqlGeneratorProtocol"]]:
-        """DDL generator is supplied by an installed extension package."""
-        return None
-
-    def alter_generator_class(self) -> Optional[Type["AlterGeneratorProtocol"]]:
-        """ALTER generator is supplied by an installed extension package."""
-        return None
 
     def parser_class(self, parser_type: str) -> Optional[type]:
         """MySQL parser dispatch: hybrid → :class:`HybridParser`, sqlglot →

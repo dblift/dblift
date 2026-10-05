@@ -3,16 +3,13 @@
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple, Type
+from typing import Any, Dict, Optional, Tuple
 
 from dblift.db.base_quirks import BaseQuirks
 from dblift.db.feature_gate import FeatureGate
 
 _PK_CLUSTERED_RE = re.compile(r"(PRIMARY\s+KEY)\s+(CLUSTERED|NONCLUSTERED)", re.IGNORECASE)
 _UNIQUE_CLUSTERED_RE = re.compile(r"(UNIQUE)\s+(CLUSTERED|NONCLUSTERED)", re.IGNORECASE)
-
-if TYPE_CHECKING:
-    from dblift.db.generator_protocol import AlterGeneratorProtocol, SqlGeneratorProtocol
 
 
 class SqlserverQuirks(BaseQuirks):
@@ -145,14 +142,6 @@ class SqlserverQuirks(BaseQuirks):
     def __init__(self, dialect_name: str = "sqlserver") -> None:
         """Initialize SQL Server quirks with the dialect name."""
         super().__init__(dialect_name=dialect_name)
-
-    def ddl_generator_class(self) -> Optional[Type["SqlGeneratorProtocol"]]:
-        """DDL generator is supplied by an installed extension package."""
-        return None
-
-    def alter_generator_class(self) -> Optional[Type["AlterGeneratorProtocol"]]:
-        """ALTER generator is supplied by an installed extension package."""
-        return None
 
     def parser_class(self, parser_type: str) -> Optional[type]:
         """SQL Server parser dispatch: hybrid → :class:`HybridParser`, sqlglot →

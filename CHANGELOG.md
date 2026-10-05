@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- Retired the OSS SQL-generation contracts: `dblift.extensions.sql_generation`,
+  `dblift.core.state.sql_statement`, `dblift.db.generator_protocol`, and the
+  `ddl_generator_class()` / `alter_generator_class()` quirks hooks. Generation
+  extensions now own their statement, options, protocol, and factory contracts.
+  Parsed SQL models, migration execution, and undo generation remain in OSS.
+  The removed `dblift.extensions.sql_generation` import was a documented stable
+  extension surface, so this removal requires a major release.
+
 ### Added
 
 - **`DBLiftClient.from_config_file(..., relative_to_config=True)`.** A keyword-only argument. Relative paths in the configuration file (migration directories, a file database such as SQLite, the log directory) resolve from the folder that holds the file instead of the working directory. Lets a long-running process open several projects without changing directory. Off by default; existing behaviour is unchanged.
@@ -20,7 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   undo without loading Rich or Jinja2, writing presentation output, or creating
   reports; results and migration history remain available.
 - Importing `dblift.extensions` now loads its category modules only when accessed.
-  The existing category exports and their module identities remain unchanged.
+  The remaining category exports retain their module identities.
 - Importing provider contracts no longer loads Rich, Jinja2, or sqlglot through
   logger and DML helpers. HTML formatting and SQL analysis still load these
   libraries when called.

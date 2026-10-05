@@ -4,9 +4,9 @@ from importlib import import_module
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from dblift.extensions import logging, providers, sql_generation, sql_model
+    from dblift.extensions import logging, providers, sql_model
 
-__all__ = ["logging", "providers", "sql_generation", "sql_model"]
+__all__ = ["logging", "providers", "sql_model"]
 
 
 def __getattr__(name: str) -> Any:
