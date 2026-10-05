@@ -68,6 +68,15 @@ it.each(["main", "master", "develop"])("ticks Create a branch by default on %s",
   expect(branchBox()).toBeChecked();
 });
 
+it("names the branch after the first line only, as the scripts are", () => {
+  const { context } = renderStep(DescribeStep, { repo: onMain });
+
+  fireEvent.change(describe_(), { target: { value: "Add invoices\n\nInvoices are kept per customer." } });
+
+  expect(branchName()).toHaveValue("feature/add-invoices");
+  expect(context().description).toBe("Add invoices\n\nInvoices are kept per customer.");
+});
+
 it("keeps a branch change that lands just before the description is typed", () => {
   const { context } = renderStep(DescribeStep, { repo: on("topic") });
   expect(branchBox()).not.toBeChecked();
@@ -104,8 +113,8 @@ it("creates the branch first, then the migration and its undo script, stores the
   await userEvent.click(next());
 
   await waitFor(() => expect(onNext).toHaveBeenCalledTimes(1));
-  expect(calls).toEqual(["branch feature/add-invoices-with-their-lines", "scripts"]);
-  expect(git.createBranch).toHaveBeenCalledWith("p1", "feature/add-invoices-with-their-lines");
+  expect(calls).toEqual(["branch feature/add-invoices", "scripts"]);
+  expect(git.createBranch).toHaveBeenCalledWith("p1", "feature/add-invoices");
   // The file names come from the first line, the title of the change.
   expect(scripts.createScripts).toHaveBeenCalledWith("p1", { kind: "versioned", language: "sql", description: "Add invoices" });
   expect(context().scripts).toEqual({ migration: V, undo: U });

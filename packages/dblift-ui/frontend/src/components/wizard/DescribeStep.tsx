@@ -15,7 +15,7 @@ export default function DescribeStep({ context, onNext, last }: StepProps) {
   const git = useRepo(project.id, changed);
   const hint = useId();
   const inRepo = repo?.repository === true;
-  // The branch name follows the description until the developer types one.
+  // The branch name follows the description's first line, as the scripts do, until the developer types one.
   const [named, setNamed] = useState(false);
   // The branch this step created: a retry after a refused script does not create it again.
   const [made, setMade] = useState<string | null>(null);
@@ -42,7 +42,7 @@ export default function DescribeStep({ context, onNext, last }: StepProps) {
 
   // Built on the branch as it is when applied: a change of the box landing just before is kept.
   const describe = (text: string) =>
-    update((current) => ({ description: text, ...(named ? {} : { branch: { ...current.branch, name: `feature/${slug(text)}` } }) }));
+    update((current) => ({ description: text, ...(named ? {} : { branch: { ...current.branch, name: `feature/${slug(firstLine(text))}` } }) }));
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
