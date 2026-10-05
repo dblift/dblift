@@ -32,6 +32,11 @@ saved; editing keeps the file's comments. A password defaults to an
 environment-variable placeholder, and a password already saved in the file is
 never displayed.
 
+A Flyway project found in a folder can be converted: its settings pre-fill the
+configuration form (its password is never copied), and the project view then
+offers to import its Flyway history, after a preview, so that what Flyway
+already applied is not offered again.
+
 ## Development
 
 The interface lives in `frontend/` (React, TypeScript, Vite). It is built into

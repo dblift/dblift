@@ -6,6 +6,7 @@ that add projects.
 
 import contextlib
 import shutil
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -62,6 +63,34 @@ def build_fixtures(folder: Path) -> None:
     (bare / "V1_0_0__create_things.sql").write_text(
         "CREATE TABLE things (id INTEGER PRIMARY KEY);\n"
     )
+    build_flyway(folder / "flywayapp")
+
+
+def build_flyway(app: Path) -> None:
+    """A Flyway project with no config, whose database Flyway took to version 2."""
+    (app / "sql").mkdir(parents=True)
+    for number, name in ((1, "a"), (2, "b"), (3, "c")):
+        (app / "sql" / f"V{number}__create_{name}.sql").write_text(
+            f"CREATE TABLE {name} (id INTEGER PRIMARY KEY);\n"
+        )
+    (app / "flyway.conf").write_text(
+        "flyway.url=jdbc:sqlite:legacy.db\nflyway.user=sa\nflyway.password=hunter2\n"
+        "flyway.locations=filesystem:sql\n"
+    )
+    database = sqlite3.connect(app / "legacy.db")
+    database.executescript("""
+        CREATE TABLE a (id INTEGER PRIMARY KEY);
+        CREATE TABLE b (id INTEGER PRIMARY KEY);
+        CREATE TABLE flyway_schema_history (
+            installed_rank INT PRIMARY KEY, version VARCHAR(50), description VARCHAR(200), type VARCHAR(20),
+            script VARCHAR(1000), checksum INT, installed_by VARCHAR(100),
+            installed_on TIMESTAMP DEFAULT CURRENT_TIMESTAMP, execution_time INT, success BOOLEAN
+        );
+        INSERT INTO flyway_schema_history VALUES (1, '1', 'create a', 'SQL', 'V1__create_a.sql', 123, 'fw', '2026-01-01 10:00:00', 5, 1);
+        INSERT INTO flyway_schema_history VALUES (2, '2', 'create b', 'SQL', 'V2__create_b.sql', 456, 'fw', '2026-01-02 10:00:00', 5, 1);
+        """)
+    database.commit()
+    database.close()
 
 
 def main() -> None:
