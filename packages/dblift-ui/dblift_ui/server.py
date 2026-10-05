@@ -1,15 +1,17 @@
 """HTTP application: security guard and route wiring."""
 
 import json
+import os
 import secrets
 import shutil
+import threading
 from contextlib import asynccontextmanager
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any, AsyncIterator, Awaitable, Callable, Dict, Iterator, List, Optional
 
 import yaml
-from dblift_ui import __version__, configs, flyway
+from dblift_ui import __version__, configs, flyway, gitops
 from dblift_ui.clone import CloneError, clone
 from dblift_ui.discovery import DiscoveryError, discover
 from dblift_ui.jobs import JobRunner, ProjectBusy
@@ -85,6 +87,15 @@ class ConfigUpdate(BaseModel):
 class FlywayRead(BaseModel):
     root: str = ""
     path: str = ""
+
+
+class BranchName(BaseModel):
+    name: str = ""
+
+
+class GitCommit(BaseModel):
+    paths: List[str] = []
+    message: str = ""
 
 
 def engine_of(data: Dict[str, Any]) -> str:
@@ -334,7 +345,26 @@ def create_app(
 
     @app.get("/api/projects/{project_id}/scripts")
     def list_scripts(project_id: str) -> List[Dict[str, Any]]:
-        return [asdict(script) for script in store_of(project_id).list()]
+        project = project_of(project_id)
+        store = ScriptStore(project.config_path)
+        scripts = store.list()
+        home = repository_of(Path(project.config_path))
+        changes: Dict[str, str] = {}
+        if gitops.is_repository(home):
+            try:
+                changes = {f.path: f.state for f in gitops.status(home).files}
+            except gitops.GitError:
+                changes = {}  # the list still shows; only the marks are missing
+        top = home.resolve()
+        return [
+            {
+                **asdict(script),
+                "change": changes.get(
+                    Path(os.path.relpath(store.path_of(script), top)).as_posix(), ""
+                ),
+            }
+            for script in scripts
+        ]
 
     @app.post("/api/projects/{project_id}/scripts", status_code=201)
     def create_scripts(project_id: str, body: NewScripts) -> Dict[str, List[str]]:
@@ -353,6 +383,93 @@ def create_app(
         refuse_during_change(project_id)
         store.write(name, body.content)
         return asdict(store.describe(name))
+
+    # One changing git verb at a time per repository: a second one waits for the first.
+    git_locks: Dict[Path, threading.Lock] = {}
+    git_locks_guard = threading.Lock()
+
+    def repository(project_id: str) -> Path:
+        root = repository_of(Path(project_of(project_id).config_path))
+        if not gitops.is_repository(root):
+            raise HTTPException(status_code=400, detail="This project is not in a git repository.")
+        return root
+
+    def git_call(verb: Callable[..., Any], *args: Any) -> Any:
+        try:
+            return verb(*args)
+        except gitops.GitError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    def git_state(root: Path) -> Dict[str, Any]:
+        return {"repository": True, "root": str(root), **asdict(git_call(gitops.status, root))}
+
+    def changing(root: Path) -> bool:
+        """Whether a database change runs on any project kept in repository *root*."""
+        return any(
+            runner.is_changing(p.id)
+            for p in projects.list()
+            if repository_of(Path(p.config_path)) == root
+        )
+
+    def git_change(
+        project_id: str, verb: Callable[..., None], *args: Any, files: bool = True
+    ) -> Dict[str, Any]:
+        """Run *verb* on the project's repository; *files* when it rewrites the working tree."""
+        root = repository(project_id)
+        with git_locks_guard:
+            lock = git_locks.setdefault(root, threading.Lock())
+        with lock:
+            if files and changing(root):
+                raise HTTPException(
+                    status_code=409,
+                    detail="A change is running on a project of this repository. "
+                    "Try again once it has finished.",
+                )
+            git_call(verb, root, *args)
+            return git_state(root)
+
+    @app.get("/api/projects/{project_id}/scripts/{name}/diff")
+    def script_diff(project_id: str, name: str) -> Dict[str, str]:
+        store = store_of(project_id)
+        path = store.path_of(store.describe(name))
+        root = repository(project_id)
+        relative = Path(os.path.relpath(path, root.resolve())).as_posix()
+        return {"diff": git_call(gitops.diff, root, relative)}
+
+    @app.get("/api/projects/{project_id}/git")
+    def git_status(project_id: str) -> Dict[str, Any]:
+        root = repository_of(Path(project_of(project_id).config_path))
+        if not gitops.is_repository(root):
+            return {"repository": False}
+        return git_state(root)
+
+    @app.get("/api/projects/{project_id}/git/branches")
+    def git_branches(project_id: str) -> List[Dict[str, Any]]:
+        return [asdict(b) for b in git_call(gitops.branches, repository(project_id))]
+
+    @app.post("/api/projects/{project_id}/git/switch")
+    def git_switch(project_id: str, body: BranchName) -> Dict[str, Any]:
+        return git_change(project_id, gitops.switch, body.name)
+
+    @app.post("/api/projects/{project_id}/git/create")
+    def git_create(project_id: str, body: BranchName) -> Dict[str, Any]:
+        return git_change(project_id, gitops.create, body.name)
+
+    @app.post("/api/projects/{project_id}/git/fetch")
+    def git_fetch(project_id: str) -> Dict[str, Any]:
+        return git_change(project_id, gitops.fetch, files=False)
+
+    @app.post("/api/projects/{project_id}/git/pull")
+    def git_pull(project_id: str) -> Dict[str, Any]:
+        return git_change(project_id, gitops.pull)
+
+    @app.post("/api/projects/{project_id}/git/push")
+    def git_push(project_id: str) -> Dict[str, Any]:
+        return git_change(project_id, gitops.push, files=False)
+
+    @app.post("/api/projects/{project_id}/git/commit")
+    def git_commit(project_id: str, body: GitCommit) -> Dict[str, Any]:
+        return git_change(project_id, gitops.commit, body.paths, body.message)
 
     def config_text(project_id: str) -> str:
         try:

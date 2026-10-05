@@ -16,57 +16,6 @@ from dblift_ui.gitops import (
 )
 
 
-@pytest.fixture
-def repo(tmp_path):
-    """A repository with one commit, an origin, and a second branch on the remote only."""
-
-    def git(cwd, *args):
-        subprocess.run(
-            [
-                "git",
-                "-c",
-                "user.email=dev@example.com",
-                "-c",
-                "user.name=Dev",
-                "-C",
-                str(cwd),
-                *args,
-            ],
-            check=True,
-            capture_output=True,
-        )
-
-    class Repository(type(tmp_path)):  # a path that can also run git in itself
-        def git(self, *args):
-            git(self, *args)
-
-    work = Repository(tmp_path / "work")
-    (work / "migrations").mkdir(parents=True)
-    (work / "dblift.yaml").write_text("database:\n  type: sqlite\n  path: ./dev.db\n")
-    (work / "migrations" / "V1_0_0__create_accounts.sql").write_text(
-        "CREATE TABLE accounts (id INTEGER PRIMARY KEY);\n"
-    )
-    subprocess.run(["git", "init", "-q", "-b", "main", str(work)], check=True)
-    git(work, "config", "user.email", "dev@example.com")
-    git(work, "config", "user.name", "Dev")
-    git(work, "add", ".")
-    git(work, "commit", "-q", "-m", "init")
-    bare = tmp_path / "origin.git"
-    subprocess.run(["git", "clone", "-q", "--bare", str(work), str(bare)], check=True)
-    git(work, "remote", "add", "origin", str(bare))
-    git(work, "switch", "-q", "-c", "feature/remote-only")
-    (work / "migrations" / "V1_1_0__add_emails.sql").write_text(
-        "ALTER TABLE accounts ADD email TEXT;\n"
-    )
-    git(work, "add", ".")
-    git(work, "commit", "-q", "-m", "emails")
-    git(work, "push", "-q", "-u", "origin", "feature/remote-only")
-    git(work, "switch", "-q", "main")
-    git(work, "branch", "-q", "-D", "feature/remote-only")
-    git(work, "push", "-q", "-u", "origin", "main")
-    return work
-
-
 def test_is_repository(repo, tmp_path):
     assert is_repository(repo) is True
     assert is_repository(tmp_path) is False

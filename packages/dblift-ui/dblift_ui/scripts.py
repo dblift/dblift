@@ -232,6 +232,10 @@ class ScriptStore:
         repeatable = sorted((s for s in scripts if s.kind == "repeatable"), key=lambda s: s.name)
         return versioned + repeatable
 
+    def path_of(self, script: Script) -> Path:
+        """The file *script* was listed under: the path git knows it by, even when a link."""
+        return Path(os.path.normpath(self.root / script.directory / script.name))
+
     def describe(self, name: str) -> Script:
         files = self._files()
         listed, _ = self._find(name, files)

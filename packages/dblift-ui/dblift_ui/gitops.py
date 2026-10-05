@@ -5,7 +5,7 @@ import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 from dblift_ui.masking import redact
 
@@ -208,3 +208,117 @@ def diff(root: Path, path: str) -> str:
     if len(text) > MAX_DIFF:
         raise GitError("the change is too large to show")
     return redact(text)
+
+
+def check_branch(root: Path, name: str) -> str:
+    """*name* when git accepts it as a branch name and it cannot be read as an option."""
+    if not isinstance(name, str) or not name or name.startswith("-"):
+        raise GitError("that is not a branch name")
+    # "@{-1}" and "@" name another commit, "refs/…" a full reference: never a branch the user typed.
+    if any(c in name for c in "\0\n\r") or "@{" in name or name == "@" or name.startswith("refs/"):
+        raise GitError("that is not a branch name")
+    run(root, "check-ref-format", "--branch", name)
+    return name
+
+
+def switch(root: Path, name: str) -> None:
+    """Go to branch *name*; a remote one (``origin/x``) becomes the local tracking branch ``x``."""
+    check_branch(root, name)
+    known = branches(root)
+    if name in {b.name for b in known if b.remote}:
+        local = name.split("/", 1)[1]
+        if local in {b.name for b in known if not b.remote}:
+            run(root, "switch", "--no-guess", local, timeout=120)
+        else:
+            run(root, "switch", "--track", name, timeout=120)
+    else:
+        run(root, "switch", "--no-guess", name, timeout=120)
+
+
+def create(root: Path, name: str) -> None:
+    """Create branch *name* where ``HEAD`` is and go to it."""
+    check_branch(root, name)
+    # A local "origin/x" would make "origin/x" mean two things.
+    remotes = run(root, "remote").split()
+    if name.split("/", 1)[0] in remotes:
+        raise GitError("a branch name may not start with the name of a remote")
+    run(root, "switch", "-c", name, timeout=120)
+
+
+def fetch(root: Path) -> None:
+    run(root, "fetch", "--prune", timeout=120)
+
+
+def pull(root: Path) -> None:
+    """Bring the branch up to its remote when that needs no merge; otherwise change nothing."""
+    if not status(root).upstream:
+        raise GitError("This branch has no remote branch to pull from.")
+    try:
+        # Never a rebase, never a stash, whatever the repository's config says.
+        run(root, "pull", "--ff-only", "--no-rebase", "--no-autostash", timeout=120)
+    except GitError as exc:
+        if "Not possible to fast-forward" in str(exc) or "Diverging branches" in str(exc):
+            raise GitError(
+                "This branch and its remote have both moved. "
+                "Merge or rebase with your own git tool, then come back."
+            ) from exc
+        raise
+
+
+def push(root: Path) -> None:
+    """Publish the current branch; a branch without a remote one is published to origin."""
+    found = status(root)
+    if found.detached or not found.branch:
+        raise GitError("Switch to a branch before pushing.")
+    source = f"refs/heads/{found.branch}"
+    if found.upstream:
+        remote, target = (
+            run(
+                root,
+                "for-each-ref",
+                "--format=%(upstream:remotename)%00%(upstream:remoteref)",
+                source,
+            ).strip()
+            + "\0"
+        ).split("\0")[:2]
+        if remote == ".":
+            raise GitError("This branch follows a local branch; there is no remote to push to.")
+        if not remote or not target:
+            raise GitError("This branch's remote branch cannot be found.")
+        # An explicit refspec without "+": a configured forcing refspec never applies.
+        run(root, "push", "--", remote, f"{source}:{target}", timeout=120)
+        return
+    if "origin" not in run(root, "remote").split():
+        raise GitError("This repository has no remote named origin.")
+    run(root, "push", "-u", "--", "origin", f"{source}:{source}", timeout=120)
+
+
+def commit(root: Path, paths: Sequence[str], message: str) -> None:
+    """Commit exactly *paths* (changed files) with *message*; whatever else is staged stays."""
+    if not paths:
+        raise GitError("Choose the files to commit.")
+    if not isinstance(message, str) or not message.strip():
+        raise GitError("Write a commit message.")
+    for path in paths:
+        check_path(root, path)
+    changed = {changed.path: changed.state for changed in status(root).files}
+    for path in paths:
+        if path not in changed:
+            raise GitError(f"{path} has no change to commit")
+        # Adding it would mark the conflict resolved, markers and all.
+        if changed[path] == "conflicted":
+            raise GitError(f"{path} has a conflict; resolve it with your own git tool first.")
+    selected = list(dict.fromkeys(paths))
+    run(root, _LITERAL, "add", "--", *selected, timeout=120)
+    run(
+        root,
+        _LITERAL,
+        "commit",
+        "--only",
+        "-F",
+        "-",
+        "--",
+        *selected,
+        stdin=message.strip() + "\n",
+        timeout=120,
+    )
