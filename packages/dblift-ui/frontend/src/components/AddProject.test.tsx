@@ -136,6 +136,17 @@ it("renames to the plain folder name when one config is left selected", async ()
   expect(screen.getByRole("button", { name: "Add 1 project" })).toBeEnabled();
 });
 
+it("does not offer the name of a project already in the list", async () => {
+  dialog({ projects: [project("id-1", "platform", "/work/platform")] });
+  await userEvent.type(screen.getByLabelText("Folder path"), "/work/platform");
+  await userEvent.click(screen.getByRole("button", { name: "Look for configs" }));
+  await screen.findByText("/work/platform");
+
+  await userEvent.click(box("config/database.yaml"));
+
+  expect(screen.getByLabelText("Name for dblift.yaml")).toHaveValue("platform · dblift");
+});
+
 it("keeps the dialog open and shows which one failed", async () => {
   projectsApi.addProject.mockImplementation(async (name: string) => {
     if (name === "platform · config") {

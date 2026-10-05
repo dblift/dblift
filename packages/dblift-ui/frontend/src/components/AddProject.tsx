@@ -48,7 +48,7 @@ export default function AddProject({ projects, onAdded, onConfigure, onClose, in
 
   const cloneParent = parent ?? defaults?.clone_parent ?? "";
   const repositories = [...new Set(projects.map((p) => p.repository_path))].sort();
-  const names = found ? { ...defaultNames(found, selected), ...typed } : typed;
+  const names = found ? { ...defaultNames(found, selected, projects.map((p) => p.name)), ...typed } : typed;
 
   const scan = async (path: string) => {
     setWorking("Looking for configs…");
