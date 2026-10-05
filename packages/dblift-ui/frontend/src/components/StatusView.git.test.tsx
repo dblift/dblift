@@ -242,6 +242,33 @@ describe("committing", () => {
     expect(within(dialog).getByRole("checkbox", { name: "notes.txt" })).not.toBeChecked();
   });
 
+  // The script list holds migrations only; an undo script is known by its migration.
+  describe("with a changed undo script", () => {
+    const U = "U1_0_1__create_orders.sql";
+
+    beforeEach(() => {
+      checkedOut = { ...main, files: [...changedFiles, { path: `migrations/${U}`, state: "untracked" }] };
+      scripts.listScripts.mockImplementation(async () =>
+        onDisk.map((name) => ({ ...script(name), has_undo: name === B, change: name === B ? "untracked" : "" })),
+      );
+    });
+
+    it("ticks it in the commit", async () => {
+      const dialog = await openCommit();
+
+      expect(within(dialog).getByRole("checkbox", { name: `migrations/${B}` })).toBeChecked();
+      expect(within(dialog).getByRole("checkbox", { name: `migrations/${U}` })).toBeChecked();
+    });
+
+    it("offers its changes on the editor's undo tab", async () => {
+      render(view(<StatusView project={project} onEnvironmentChange={() => {}} />));
+      await userEvent.click(await screen.findByRole("button", { name: `Open ${B}` }));
+      await userEvent.click(await screen.findByRole("tab", { name: "Undo script" }));
+
+      expect(await screen.findByRole("button", { name: "Changes" })).toBeInTheDocument();
+    });
+  });
+
   it("commits, closes the dialog and reads the scripts again", async () => {
     const dialog = await openCommit();
     const reads = scripts.listScripts.mock.calls.length;

@@ -8,7 +8,7 @@ import { liveStates } from "../commands/live";
 import { useCommand } from "../commands/useCommand";
 import { useRepo } from "../git/useRepo";
 import { describeActivity } from "../status/activity";
-import { isApplied, latestPerScript, summarize } from "../status/model";
+import { isApplied, latestPerScript, summarize, undoNameOf } from "../status/model";
 import { useStatus } from "../status/useStatus";
 import BranchChip from "./BranchChip";
 import CommandBar from "./CommandBar";
@@ -41,6 +41,9 @@ export interface StatusViewHandle {
   /** Read the status and the scripts again, after the project's configuration changed. */
   reread(): void;
 }
+
+/** True when the repository-relative *path* names a file called *name*. */
+const bears = (path: string, name: string) => path === name || path.endsWith(`/${name}`);
 
 const StatusView = forwardRef<StatusViewHandle, Props>(function StatusView({ project, onEnvironmentChange, onConfigure, onMoved }, ref) {
   const [environment, setEnvironment] = useState(project.last_environment);
@@ -102,14 +105,19 @@ const StatusView = forwardRef<StatusViewHandle, Props>(function StatusView({ pro
   const moveWith = (verb: () => Promise<RepoStatus>) => leaveEditor(() => void git.act(verb, true));
 
   const [committing, setCommitting] = useState(false);
-  const changedScripts = scripts.filter((s) => s.change).map((s) => s.name);
+  // The script list holds migrations only: an undo script counts as changed when one of the
+  // repository's changed files bears its name.
+  const changedScripts = scripts.flatMap((s) => [
+    ...(s.change ? [s.name] : []),
+    ...(s.has_undo && (git.repo?.files ?? []).some((f) => bears(f.path, undoNameOf(s.name))) ? [undoNameOf(s.name)] : []),
+  ]);
   // Ticked when the commit opens: this project's changed scripts and its config file.
   const ownChanges = () => {
     const root = (git.repo?.root ?? "").replaceAll("\\", "/");
     const config = project.config_path.replaceAll("\\", "/");
     const configFile = root && config.startsWith(`${root}/`) ? config.slice(root.length + 1) : null;
     return (git.repo?.files ?? [])
-      .filter((f) => f.path === configFile || changedScripts.some((name) => f.path === name || f.path.endsWith(`/${name}`)))
+      .filter((f) => f.path === configFile || changedScripts.some((name) => bears(f.path, name)))
       .map((f) => f.path);
   };
   const commit = async (paths: string[], message: string) => {
