@@ -198,17 +198,24 @@ class JobRunner:
                 ) as client:
                     client.events.on("*", lambda event: job.publish(serialize_event(event)))
                     result = serialize_result(self.COMMANDS[job.command](client, job.params))
-            except Exception as exc:  # the browser must always receive a final event
-                result = {
+            except BaseException as exc:  # the browser must always receive a final event
+                failure = {
                     "success": False,
-                    "error": redact(str(exc)),
+                    "error": redact(str(exc) or type(exc).__name__),
                     "current_version": None,
                     "repaired": None,
                     "baseline_version": None,
                     "sql": [],
                     "migrations": [],
                 }
-            job.publish({"event": FINISHED, "result": result})
+                job.publish({"event": FINISHED, "result": failure})
+                # An ordinary failure is fully reported by the final event and a worker
+                # thread has nobody to re-raise to; SystemExit/KeyboardInterrupt still reach
+                # the interpreter, harmlessly: in a thread they end only that thread.
+                if not isinstance(exc, Exception):
+                    raise
+            else:
+                job.publish({"event": FINISHED, "result": result})
         finally:
             # Released only once the last event exists, whatever happened above.
             with self._lock:

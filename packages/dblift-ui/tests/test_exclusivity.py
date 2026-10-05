@@ -101,6 +101,36 @@ def test_a_crashing_change_frees_the_project(client, auth, sqlite_project, monke
     assert _start(client, auth, project_id, "repair").status_code == 202
 
 
+# The job's thread re-raises the SystemExit after its final event, by design.
+@pytest.mark.filterwarnings("ignore::pytest.PytestUnhandledThreadExceptionWarning")
+def test_a_change_that_exits_still_ends_with_its_final_event(
+    client, auth, sqlite_project, monkeypatch, tmp_path
+):
+    monkeypatch.chdir(tmp_path)
+
+    def bail(client, params):
+        raise SystemExit("driver bailed out")
+
+    monkeypatch.setitem(JobRunner.COMMANDS, "migrate", bail)
+    project_id = _add(client, auth, sqlite_project)
+    job_id = _start(client, auth, project_id, "migrate").json()["job_id"]
+
+    # Read in a thread so a job that never ends fails the test instead of hanging it.
+    outcome = []
+    reader = threading.Thread(
+        target=lambda: outcome.append(_finish(client, auth, job_id)), daemon=True
+    )
+    reader.start()
+    reader.join(5)
+    assert outcome, "the job's events never ended"
+
+    last = outcome[0]
+    assert last["event"] == "job.finished"
+    assert last["result"]["success"] is False
+    assert "driver bailed out" in last["result"]["error"]
+    assert _start(client, auth, project_id, "repair").status_code == 202
+
+
 def test_shutdown_waits_for_a_running_change(
     make_client, auth, sqlite_project, held_migrate, monkeypatch, tmp_path, port
 ):
