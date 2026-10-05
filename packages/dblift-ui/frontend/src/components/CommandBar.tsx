@@ -9,11 +9,13 @@ interface Props {
   busy: boolean;
   onMigrate: () => void;
   onCommand: (command: Simple, params?: Record<string, unknown>) => void;
-  /** Shown first when given: starts a new migration file. */
+  /** Shown first when given: opens the guided new change. */
+  onNewChange?: () => void;
+  /** Shown when given: starts a new migration file. */
   onNew?: () => void;
 }
 
-export default function CommandBar({ counts, hasVersion, busy, onMigrate, onCommand, onNew }: Props) {
+export default function CommandBar({ counts, hasVersion, busy, onMigrate, onCommand, onNewChange, onNew }: Props) {
   const [confirming, setConfirming] = useState<Asking | null>(null);
   const [version, setVersion] = useState("");
   const [description, setDescription] = useState("");
@@ -104,6 +106,11 @@ export default function CommandBar({ counts, hasVersion, busy, onMigrate, onComm
 
   return (
     <div key="bar" className="commands">
+      {onNewChange && (
+        <button className="button" disabled={busy} onClick={onNewChange}>
+          New change
+        </button>
+      )}
       {onNew && (
         <button className="button" disabled={busy} onClick={onNew}>
           New migration

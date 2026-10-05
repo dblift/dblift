@@ -62,6 +62,31 @@ export interface JobResult {
   job_id: string;
   has_log: boolean;
   message: string | null;
+  /** What the scratch test found; null for every other job, and when the test itself could not run. */
+  scratch: ScratchResult | null;
+}
+
+/** How the scratch test would run for a project, read before anything runs. */
+export interface ScratchPlan {
+  strategy: "file" | "environment" | "skip";
+  engine: string;
+  summary: string;
+  warning: string;
+}
+
+export interface ScratchPhase {
+  name: "clean" | "build" | "undo" | "reapply";
+  /** null: the phase was skipped. */
+  ok: boolean | null;
+  detail: string;
+}
+
+export interface ScratchResult {
+  strategy: string;
+  passed: boolean;
+  skipped: boolean;
+  phases: ScratchPhase[];
+  script: string;
 }
 
 export interface JobEvent {
@@ -73,6 +98,10 @@ export interface JobEvent {
   execution_time?: number;
   error?: string;
   result?: JobResult;
+  /** A "scratch.phase" event: which phase, and whether it started, passed, failed or was skipped. */
+  phase?: ScratchPhase["name"];
+  status?: "started" | "passed" | "failed" | "skipped";
+  detail?: string;
 }
 
 export interface Script {

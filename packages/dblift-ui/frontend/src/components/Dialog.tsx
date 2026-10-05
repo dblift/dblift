@@ -36,7 +36,8 @@ export default function Dialog({ title, onClose, wide = false, children }: Props
       if (event.key !== "Tab" || !box.current) {
         return;
       }
-      const controls = [...box.current.querySelectorAll<HTMLElement>(FOCUSABLE)];
+      // A control inside a hidden part (a step not shown) cannot take focus: it does not count.
+      const controls = [...box.current.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((control) => !control.closest("[hidden]"));
       if (controls.length === 0) {
         return;
       }

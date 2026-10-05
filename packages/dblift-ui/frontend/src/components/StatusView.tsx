@@ -21,6 +21,7 @@ import PreviewPanel from "./PreviewPanel";
 import Rail from "./Rail";
 import RunLog from "./RunLog";
 import ScriptPanel, { type ScriptPanelHandle } from "./ScriptPanel";
+import Wizard from "./wizard/Wizard";
 
 interface Props {
   project: Project;
@@ -76,6 +77,7 @@ const StatusView = forwardRef<StatusViewHandle, Props>(function StatusView({ pro
   const { run, busy, start, dismiss } = useCommand(project.id, environment, refreshAll, git.refresh);
   const [openScript, setOpenScript] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [wizard, setWizard] = useState(false);
   // Opening another script or a new one replaces the editor: it asks first when there are unsaved edits.
   const panel = useRef<ScriptPanelHandle>(null);
   const leaveEditor = (action: () => void) => (panel.current ? panel.current.leave(action) : action());
@@ -237,6 +239,12 @@ const StatusView = forwardRef<StatusViewHandle, Props>(function StatusView({ pro
           busy={busy || preview !== null}
           onMigrate={() => void openPreview()}
           onCommand={(command, params) => void start(command, params)}
+          onNewChange={() =>
+            leaveEditor(() => {
+              setOpenScript(null);
+              setWizard(true);
+            })
+          }
           onNew={() =>
             leaveEditor(() => {
               setOpenScript(null);
@@ -259,6 +267,8 @@ const StatusView = forwardRef<StatusViewHandle, Props>(function StatusView({ pro
           }}
         />
       )}
+
+      {wizard && <Wizard project={project} onClose={() => setWizard(false)} onChanged={refreshAll} />}
 
       {preview && <PreviewPanel preview={preview} busy={busy} onApply={apply} onCancel={() => setPreview(null)} />}
 

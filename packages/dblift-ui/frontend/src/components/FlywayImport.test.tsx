@@ -5,7 +5,7 @@ import { expect, it, vi } from "vitest";
 import type { CommandRun } from "../commands/useCommand";
 import FlywayImport from "./FlywayImport";
 
-const result = { success: true, error: null, current_version: null, migrations: [], sql: [], repaired: null, baseline_version: null, job_id: "j", has_log: true, message: null };
+const result = { success: true, error: null, current_version: null, migrations: [], sql: [], repaired: null, baseline_version: null, job_id: "j", has_log: true, message: null, scratch: null };
 const finished = (command: string, message: string | null, error: string | null = null): CommandRun => ({
   command, phase: error ? "failed" : "done", events: [], error,
   result: { ...result, success: !error, error, message },

@@ -114,3 +114,24 @@ it("puts focus on Cancel when it asks to confirm, and back on the button when ca
     expect(screen.getByRole("button", { name: ask })).toHaveFocus();
   }
 });
+
+it("offers New change first when asked, as a normal button disabled while a command runs", async () => {
+  const onNewChange = vi.fn();
+  const { rerender } = render(
+    <CommandBar counts={{ applied: 2, pending: 1, failed: 0 }} hasVersion busy={false} onMigrate={vi.fn()} onCommand={vi.fn()} onNewChange={onNewChange} />,
+  );
+
+  const button = screen.getByRole("button", { name: "New change" });
+  expect(screen.getAllByRole("button")[0]).toBe(button);
+  expect(button).not.toHaveClass("button--primary");
+  await userEvent.click(button);
+  expect(onNewChange).toHaveBeenCalledTimes(1);
+
+  rerender(<CommandBar counts={{ applied: 2, pending: 1, failed: 0 }} hasVersion busy onMigrate={vi.fn()} onCommand={vi.fn()} onNewChange={onNewChange} />);
+  expect(screen.getByRole("button", { name: "New change" })).toBeDisabled();
+});
+
+it("offers no New change without a handler", () => {
+  bar();
+  expect(screen.queryByRole("button", { name: "New change" })).not.toBeInTheDocument();
+});
