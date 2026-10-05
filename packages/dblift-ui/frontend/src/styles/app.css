@@ -1244,7 +1244,8 @@ input {
 /* Engine picker */
 .engine-picker {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  /* Wide enough for the longest engine name on one line; still two columns at 380 px. */
+  grid-template-columns: repeat(auto-fill, minmax(144px, 1fr));
   gap: 8px;
 }
 
@@ -1266,9 +1267,19 @@ input {
   transition: border-color 0.15s var(--ease-quick), background 0.15s var(--ease-quick), color 0.15s var(--ease-quick);
 }
 
+/* The radio covers its card, unseen: a click anywhere on the card lands on the control itself. */
+.engine-option input {
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  clip-path: none;
+  cursor: pointer;
+}
+
 .engine-option span {
   min-width: 0;
-  overflow-wrap: anywhere;
 }
 
 .engine-option:hover {
