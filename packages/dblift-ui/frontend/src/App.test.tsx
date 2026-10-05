@@ -19,7 +19,7 @@ beforeEach(() => {
   api.setEnvironment.mockReset();
   runJob.mockReset();
   runJob.mockResolvedValue({
-    success: true, error: null, current_version: null, migrations: [], sql: [], repaired: null, baseline_version: null,
+    success: true, error: null, current_version: null, migrations: [], sql: [], repaired: null, baseline_version: null, job_id: "j1", has_log: false,
   });
 });
 

@@ -1,7 +1,7 @@
 import { expect, it } from "vitest";
 
 import type { Migration } from "../api/types";
-import { isApplied, latestPerScript, railFill, stateInfo, summarize } from "./model";
+import { isApplied, latestPerScript, railFill, stateInfo, summarize, undoNameOf, versionLabel } from "./model";
 
 function migration(script: string, status: string, overrides: Partial<Migration> = {}): Migration {
   return {
@@ -82,4 +82,18 @@ it("counts out-of-order and missing migrations as applied", () => {
   expect(railFill(list)).toBeCloseTo(2.5 / 4);
   expect(isApplied("OUT OF ORDER")).toBe(true);
   expect(isApplied("BELOW BASELINE")).toBe(false);
+});
+
+it("knows the outdated state of a repeatable script", () => {
+  expect(stateInfo("OUTDATED")).toMatchObject({ label: "Outdated", tone: "warn", applied: true });
+});
+
+it("names the undo script of a migration", () => {
+  expect(undoNameOf("V1_0_2__add_phone.sql")).toBe("U1_0_2__add_phone.sql");
+  expect(undoNameOf("V3__seed.py")).toBe("U3__seed.py");
+});
+
+it("labels a script without version as repeatable", () => {
+  expect(versionLabel({ version: "1.0.2" })).toBe("1.0.2");
+  expect(versionLabel({ version: "" })).toBe("repeatable");
 });

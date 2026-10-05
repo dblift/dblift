@@ -1,4 +1,4 @@
-import { ApiError, authHeaders, request } from "./client";
+import { ApiError, authHeaders, request, requestText } from "./client";
 import type { JobEvent, JobResult } from "./types";
 
 const FINISHED = "job.finished";
@@ -61,3 +61,5 @@ export async function runJob(
   }
   throw new ApiError(0, "job stream ended before the job finished");
 }
+
+export const readJobLog = (jobId: string) => requestText(`/jobs/${jobId}/log`);

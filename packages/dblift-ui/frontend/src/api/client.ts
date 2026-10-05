@@ -30,3 +30,12 @@ export async function request<T>(path: string, init: RequestInit = {}): Promise<
   }
   return body as T;
 }
+
+export async function requestText(path: string): Promise<string> {
+  const response = await fetch(`/api${path}`, { headers: authHeaders() });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new ApiError(response.status, body.detail ?? response.statusText);
+  }
+  return response.text();
+}

@@ -22,7 +22,7 @@ function migration(script: string, status: string): Migration {
 }
 
 function result(migrations: Migration[], extra: Partial<JobResult> = {}): JobResult {
-  return { success: true, error: null, current_version: null, migrations, sql: [], repaired: null, baseline_version: null, ...extra };
+  return { success: true, error: null, current_version: null, migrations, sql: [], repaired: null, baseline_version: null, job_id: "j1", has_log: false, ...extra };
 }
 
 const A = "V1_0_0__create_customers.sql";

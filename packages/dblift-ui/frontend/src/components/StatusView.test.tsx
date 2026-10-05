@@ -30,6 +30,8 @@ const status: JobResult = {
   sql: [],
   repaired: null,
   baseline_version: null,
+  job_id: "j1",
+  has_log: false,
 };
 
 beforeEach(() => {
@@ -73,7 +75,7 @@ it("runs the status for the remembered environment", async () => {
 
 it("shows the error and lets the user retry", async () => {
   runJob.mockResolvedValueOnce({
-    success: false, error: "cannot connect to db.local", current_version: null, migrations: [], sql: [], repaired: null, baseline_version: null,
+    success: false, error: "cannot connect to db.local", current_version: null, migrations: [], sql: [], repaired: null, baseline_version: null, job_id: "j1", has_log: false,
   });
   render(<StatusView project={project} onEnvironmentChange={() => {}} />);
 
