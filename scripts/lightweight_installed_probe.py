@@ -10,6 +10,8 @@ from importlib import metadata
 from pathlib import Path
 
 import dblift
+from dblift.core.logger.formatters.htmlformatter import HtmlFormatter
+from dblift.core.logger.results import MigrateResult
 
 
 def run(args: list[str], cwd: Path) -> str:
@@ -29,7 +31,8 @@ def main() -> None:
     assert Path(distribution.locate_file("dblift/py.typed")).is_file()
     templates = distribution.locate_file("dblift/core/logger/templates")
     assert (templates / "report.html").is_file()
-    assert (templates / "oldreport.html").is_file()
+    report = HtmlFormatter().format_result(MigrateResult(), "public", "installed", "MIGRATE")
+    assert "<title>DBLift Migration Report — installed</title>" in report
     assert importlib.util.find_spec("dblift_pro") is None
     assert importlib.util.find_spec("dblift_enterprise") is None
     names = {ep.name for ep in metadata.entry_points(group="dblift.providers")}
@@ -84,6 +87,7 @@ def main() -> None:
                 "origin": str(origin),
                 "installed": installed,
                 "providers": sorted(names),
+                "html_report_rendered": True,
                 "sqlite_migrate": bool(migrate),
             }
         )
