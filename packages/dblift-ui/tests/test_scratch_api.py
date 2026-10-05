@@ -58,6 +58,10 @@ def test_the_scratch_plan_of_a_project(client, auth, sqlite_project):
         "summary": "A temporary SQLite database is created, used and deleted. "
         "Your databases are not touched.",
         "warning": "",
+        "runtime": "",
+        "image": "",
+        "image_present": None,
+        "image_size_mb": None,
     }
 
 
@@ -239,7 +243,7 @@ def test_a_crashing_scratch_test_still_cleans_up(
 ):
     monkeypatch.chdir(tmp_path)
 
-    def crash(config_path, script, workdir, log_dir, on_phase, on_event):
+    def crash(config_path, script, workdir, log_dir, on_phase, on_event, **options):
         (workdir / "scratch.db").write_bytes(b"half")
         raise RuntimeError("the test crashed")
 

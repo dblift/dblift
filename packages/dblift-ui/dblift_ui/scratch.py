@@ -1,18 +1,24 @@
 """Prove a new migration and its undo script on a database that holds nothing of value.
 
 The cycle is: build from zero (apply every migration), undo the new migration, apply it
-again. It runs on a temporary SQLite file, or on the config's environment named
-``scratch`` once that environment is known not to share a database with any other.
+again. It runs on a temporary SQLite file, on the config's environment named ``scratch``
+once that environment is known not to share a database with any other, or on a new
+database in a local container that is removed afterwards.
 """
 
+import importlib.util
 import os
 import re
+import secrets
+import time
+from contextlib import ExitStack
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 from urllib.parse import parse_qs, urlsplit
 
 import yaml
+from dblift_ui import containers
 from dblift_ui.masking import redact
 from dblift_ui.scripts import SCRIPT_NAME, ScriptError, ScriptStore, yaml_problem
 
@@ -40,6 +46,16 @@ class Plan:
     engine: str
     summary: str
     warning: str
+    # The container strategy only: the runtime's name, the image, whether it is on this
+    # machine and roughly how large it is to download.
+    runtime: str = ""
+    image: str = ""
+    image_present: Optional[bool] = None
+    image_size_mb: Optional[int] = None
+
+
+# What the container strategy runs with: the runtime, the engine's image and the schema.
+_Container = Tuple[containers.Runtime, containers.EngineSpec, str]
 
 
 @dataclass
@@ -128,35 +144,105 @@ def _engine(database: Dict[str, Any]) -> str:
     return "sqlite" if declared in _SQLITE else declared
 
 
+def _driver_installed(module: str) -> bool:
+    try:
+        return importlib.util.find_spec(module) is not None
+    except (ImportError, ValueError):
+        return False
+
+
+def _container(data: Dict[Any, Any], engine: str) -> Tuple[Plan, Optional[_Container]]:
+    """The container strategy for *engine*, or a skip saying why it cannot be used."""
+    if containers.turned_off():
+        return (
+            Plan(
+                "skip",
+                engine,
+                "No scratch database is available for this engine yet. Add an environment "
+                "named scratch to the config, or continue without the test.",
+                "",
+            ),
+            None,
+        )
+    spec = containers.CATALOGUE.get(engine)
+    if spec is None:
+        return Plan("skip", engine, f"No scratch image is known for {engine} yet.", ""), None
+    schema = (_section(data, None) or {}).get("schema")
+    schema = "" if schema is None else schema
+    if not isinstance(schema, str) or (schema and not containers.IDENTIFIER.match(schema)):
+        return Plan("skip", engine, containers.SCHEMA_REFUSED, ""), None
+    if not _driver_installed(spec.driver):
+        return (
+            Plan(
+                "skip",
+                engine,
+                f"The {spec.engine} driver is not installed where this interface runs.",
+                "",
+            ),
+            None,
+        )
+    runtime = containers.detect()
+    if runtime is None:
+        return (
+            Plan(
+                "skip",
+                engine,
+                "No container runtime was found (Docker, Podman or Apple container).",
+                "",
+            ),
+            None,
+        )
+    summary = (
+        f"A throwaway {spec.engine} database is started in a container ({runtime.name}, "
+        f"image {spec.image}), used for the test and removed. Your databases are not touched."
+    )
+    found = Plan(
+        "container",
+        engine,
+        summary,
+        "",
+        runtime=runtime.name,
+        image=spec.image,
+        image_present=runtime.has_image(spec.image),
+        image_size_mb=spec.size_mb,
+    )
+    return found, (runtime, spec, schema)
+
+
 def plan(config_path: str) -> Plan:
     """How a scratch test of this project would run, read from the config file alone."""
+    return _choose(config_path)[0]
+
+
+def _choose(config_path: str) -> Tuple[Plan, Optional[_Container]]:
+    """The plan, and what the container strategy needs when it is the one chosen."""
     try:
         data = _read(config_path)
     except ValueError as exc:
-        return Plan("skip", "", str(exc), "")
+        return Plan("skip", "", str(exc), ""), None
     engine = _engine(_section(data, None) or {})
     if engine == "sqlite":
-        return Plan(
-            "file",
-            "sqlite",
-            "A temporary SQLite database is created, used and deleted. "
-            "Your databases are not touched.",
-            "",
+        return (
+            Plan(
+                "file",
+                "sqlite",
+                "A temporary SQLite database is created, used and deleted. "
+                "Your databases are not touched.",
+                "",
+            ),
+            None,
         )
     if SCRATCH in (data.get("environments") or {}):
-        return Plan(
-            "environment",
-            engine,
-            "The environment named scratch is emptied, then used for the test.",
-            "Everything in the scratch environment's database is deleted first.",
+        return (
+            Plan(
+                "environment",
+                engine,
+                "The environment named scratch is emptied, then used for the test.",
+                "Everything in the scratch environment's database is deleted first.",
+            ),
+            None,
         )
-    return Plan(
-        "skip",
-        engine,
-        "No scratch database is available for this engine yet. Add an environment named "
-        "scratch to the config, or continue without the test.",
-        "",
-    )
+    return _container(data, engine)
 
 
 # Where a database lives: ("file", real path), ("server", host/database, port, schema),
@@ -294,6 +380,17 @@ def _ran(result: Any) -> List[str]:
     return [str(entry.script) for entry in (getattr(result, "migrations", None) or [])]
 
 
+def _leftover(runtime: containers.Runtime, name: str) -> str:
+    """What is wrong after container *name* was removed; empty when it is gone."""
+    try:
+        remaining = name in runtime.names(name)
+    except containers.ContainerError as exc:
+        return f"Whether the container {name} was removed could not be checked: {exc}"
+    if remaining:
+        return f"The container {name} could not be removed. Remove it with {runtime.name}."
+    return ""
+
+
 def run_test(
     config_path: str,
     script: str,
@@ -301,11 +398,18 @@ def run_test(
     log_dir: Path,
     on_phase: Callable[[Phase, str], None],
     on_event: Callable[[Any], None],
+    *,
+    pull: bool = False,
+    container_name: str = "",
 ) -> Dict[str, Any]:
-    """Build, undo *script* and apply it again on a scratch database; report each phase."""
+    """Build, undo *script* and apply it again on a scratch database; report each phase.
+
+    With the container strategy the database runs in container *container_name*, removed
+    after the last phase; its image is downloaded first only when *pull* is true.
+    """
     version = check_script(script)
     workdir.mkdir(parents=True, exist_ok=True)
-    found = plan(config_path)
+    found, chosen = _choose(config_path)
     if found.strategy == "skip":
         return {
             "strategy": "skip",
@@ -316,10 +420,38 @@ def run_test(
         }
     undo_name = _undo_script(config_path, script, version)
     opened: List[DBLiftClient] = []
+    started: List[containers.Database] = []
+    attempted: List[str] = []
+    removal = ExitStack()
+    name = container_name or f"dblift-ui-{secrets.token_hex(4)}-{secrets.token_hex(8)}"
+    folder = Path(config_path).resolve().parent
+
+    def hide(text: str) -> str:
+        for database in started:
+            text = text.replace(database.password, "***")
+        return redact(text)
 
     def client() -> DBLiftClient:
         if not opened:
-            if found.strategy == "environment":
+            if found.strategy == "container":
+                container = started[0]
+                built = DBLiftClient.from_config_file(
+                    config_path,
+                    relative_to_config=True,
+                    database_url=container.url,
+                    database_username=container.username,
+                    database_password=container.password,
+                    log_dir=str(log_dir),
+                )
+                # Never on the word of an override alone: the client must name the container.
+                expected = _identity({"url": container.url}, folder)
+                chosen_one = _identity(_resolved(built.config.database), folder)
+                if expected is None or chosen_one is None or not _same(expected, chosen_one):
+                    built.close()
+                    raise RuntimeError(
+                        "The scratch database could not be selected. Nothing was done."
+                    )
+            elif found.strategy == "environment":
                 built = DBLiftClient.from_config_file(
                     config_path,
                     environment=SCRATCH,
@@ -396,6 +528,25 @@ def run_test(
             )
         return True, f"{undo_name} reverted {script}."
 
+    def start() -> Tuple[Optional[bool], str]:
+        assert chosen is not None
+        runtime, spec, schema = chosen
+        if not present:
+            if not pull:
+                return False, f"The image {spec.image} is not on this machine."
+            runtime.pull(spec.image)
+        began = time.monotonic()
+        attempted.append(name)
+        try:
+            database = removal.enter_context(
+                containers.scratch_database(runtime, spec, name, schema)
+            )
+        except containers.NameTaken:
+            attempted.clear()  # someone else's container: not ours to check either
+            raise
+        started.append(database)
+        return True, f"Ready in {round(time.monotonic() - began)} s."
+
     def reapply() -> Tuple[Optional[bool], str]:
         if undo_name is None:
             return None, "Nothing was undone, so nothing is applied again."
@@ -416,32 +567,53 @@ def run_test(
         ("undo", undo),
         ("reapply", reapply),
     ]
+    # What a phase says when it starts, when it has something to say.
+    opening: Dict[str, str] = {}
+    present = True
     if found.strategy == "environment":
         steps.insert(0, ("clean", clean))
+    if chosen is not None:
+        runtime, spec, _ = chosen
+        present = runtime.has_image(spec.image)
+        steps.insert(0, ("start", start))
+        opening["start"] = (
+            f"Downloading {spec.image}…"
+            if not present and pull
+            else f"{spec.image} via {runtime.name}"
+        )
     phases: List[Phase] = []
     failed = False
+    cleanup = ""
     try:
-        for name, step in steps:
+        for phase_name, step in steps:
             if failed:
-                phase = Phase(name, None, NOT_RUN)
+                phase = Phase(phase_name, None, NOT_RUN)
             else:
-                on_phase(Phase(name, None, ""), "started")
+                on_phase(Phase(phase_name, None, opening.get(phase_name, "")), "started")
                 try:
                     ok, detail = step()
                 except Exception as exc:  # the engine's error types are not public
                     ok, detail = False, str(exc) or type(exc).__name__
-                phase = Phase(name, ok, redact(detail))
+                phase = Phase(phase_name, ok, hide(detail))
                 failed = ok is False
             phases.append(phase)
             status = {True: "passed", False: "failed", None: "skipped"}[phase.ok]
             on_phase(phase, status)
     finally:
-        for opened_client in opened:
-            opened_client.close()
-    return {
+        try:
+            for opened_client in opened:
+                opened_client.close()
+        finally:
+            removal.close()
+        if chosen is not None and attempted:
+            cleanup = hide(_leftover(chosen[0], name))
+    outcome: Dict[str, Any] = {
         "strategy": found.strategy,
         "passed": not failed,
         "skipped": False,
         "phases": [asdict(phase) for phase in phases],
         "script": script,
     }
+    if cleanup:
+        outcome["cleanup"] = cleanup
+    return outcome

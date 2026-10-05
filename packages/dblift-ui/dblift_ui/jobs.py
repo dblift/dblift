@@ -1,6 +1,7 @@
 """Run a client operation in a worker thread and expose what happens as events."""
 
 import re
+import secrets
 import shutil
 import threading
 import uuid
@@ -9,7 +10,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterator, List, Optional
 
-from dblift_ui import scratch
+from dblift_ui import containers, scratch
 from dblift_ui.flyway import TABLE_NAME
 from dblift_ui.masking import redact
 from dblift_ui.registry import Project, ProjectRegistry
@@ -64,6 +65,8 @@ def check_params(command: str, params: Dict[str, Any]) -> None:
             raise ValueError("the history table name must be a plain identifier")
     if command == "scratch_test":
         scratch.check_script(params.get("script"))
+        if not isinstance(params.get("pull", False), bool):
+            raise ValueError("pull must be true or false")
 
 
 def _baseline(client: DBLiftClient, params: Dict[str, Any]) -> Any:
@@ -132,9 +135,10 @@ def serialize_result(result: Any) -> Dict[str, Any]:
 
 
 # A command that opens its own clients: it receives the project, the job's parameters, the
-# job's own folder and the job's publish function, and returns the final result.
+# job's own folder, the job's publish function and the name a container it starts must
+# have, and returns the final result.
 SelfDriven = Callable[
-    [Project, Dict[str, Any], Path, Callable[[Dict[str, Any]], None]], Dict[str, Any]
+    [Project, Dict[str, Any], Path, Callable[[Dict[str, Any]], None], str], Dict[str, Any]
 ]
 
 
@@ -143,6 +147,7 @@ def _scratch_test(
     params: Dict[str, Any],
     folder: Path,
     publish: Callable[[Dict[str, Any]], None],
+    container_name: str,
 ) -> Dict[str, Any]:
     """Prove a migration and its undo on a scratch database; never the selected environment."""
 
@@ -159,6 +164,8 @@ def _scratch_test(
         folder,
         phase,
         lambda event: publish(serialize_event(event)),
+        pull=params.get("pull") is True,
+        container_name=container_name,
     )
     failed = next((p for p in outcome["phases"] if p["ok"] is False), None)
     error = None
@@ -212,6 +219,10 @@ class JobRunner:
         self._lock = threading.Lock()
         self._changing: Dict[str, Job] = {}
         self._threads: Dict[str, threading.Thread] = {}
+        # Every container this launch starts is named with this prefix, and only those
+        # are ever removed by it.
+        self.prefix = f"dblift-ui-{secrets.token_hex(4)}-"
+        self._scratch_tests = False
 
     def start(
         self,
@@ -240,6 +251,7 @@ class JobRunner:
                 # misses a change nor joins a thread that has not started.
                 self._threads[job.id] = thread
             self._jobs[job.id] = job
+            self._scratch_tests = self._scratch_tests or command == "scratch_test"
             finished = [key for key, known in self._jobs.items() if known.done.is_set()]
             for key in finished[: max(0, len(self._jobs) - _KEPT_JOBS)]:
                 del self._jobs[key]
@@ -255,12 +267,29 @@ class JobRunner:
             return project_id in self._changing
 
     def drain(self) -> int:
-        """Wait for every running change to finish; return how many there were."""
+        """Wait for every running change to finish; return how many there were.
+
+        Then remove any container of this launch still there, should a removal have failed.
+        """
         with self._lock:
             running = list(self._threads.values())
         for thread in running:
             thread.join()
+        if self._scratch_tests:
+            self._remove_containers()
         return len(running)
+
+    def _remove_containers(self) -> None:
+        runtime = containers.detect()
+        if runtime is None:
+            return
+        try:
+            names = runtime.names(self.prefix)
+        except containers.ContainerError:
+            return
+        for name in names:
+            if name.startswith(self.prefix):
+                runtime.remove(name)
 
     def stream(self, job_id: str) -> Iterator[Dict[str, Any]]:
         job = self.get(job_id)
@@ -302,7 +331,9 @@ class JobRunner:
     ) -> Dict[str, Any]:
         """The final result of *job*: from a command given a client, or one opening its own."""
         if job.command in self.SELF_DRIVEN:
-            return self.SELF_DRIVEN[job.command](project, job.params, folder, job.publish)
+            return self.SELF_DRIVEN[job.command](
+                project, job.params, folder, job.publish, f"{self.prefix}{job.id}"
+            )
         with DBLiftClient.from_config_file(
             project.config_path,
             environment=environment,
