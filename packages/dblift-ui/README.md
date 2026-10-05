@@ -13,7 +13,15 @@ the path of their config file, and the migration status of each project per
 environment. From the status view you can preview the SQL of pending migrations
 and apply them, undo the last migration, validate, repair the history after a
 failed run, and baseline a database that has no history yet. Nothing that
-changes a database runs without a confirming click.
+changes a database runs without a confirming click. A run's full log can be
+opened from its run log.
+
+A migration opens in a code editor from the status view, with its undo script
+on a second tab; a migration that is already applied opens with a warning
+about its checksum. New migrations, SQL or Python, versioned (with an empty
+undo script beside them) or repeatable, are created from the interface. Only
+files in the project's configured migration directories can be read or
+written, and job logs are kept out of the project folder.
 
 ## Development
 
