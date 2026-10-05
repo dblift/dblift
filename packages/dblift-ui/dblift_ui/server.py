@@ -98,6 +98,11 @@ class GitCommit(BaseModel):
     message: str = ""
 
 
+class PullRequest(BaseModel):
+    title: str = ""
+    body: str = ""
+
+
 def engine_of(data: Dict[str, Any]) -> str:
     """The engine a config declares: its ``database.type``, else its URL scheme."""
     database = data.get("database")
@@ -530,6 +535,19 @@ def create_app(
     @app.post("/api/projects/{project_id}/git/commit")
     def git_commit(project_id: str, body: GitCommit) -> Dict[str, Any]:
         return git_change(project_id, gitops.commit, body.paths, body.message)
+
+    @app.post("/api/projects/{project_id}/git/pull-request")
+    def git_pull_request(project_id: str, body: PullRequest) -> Dict[str, Any]:
+        root = repository(project_id)
+        found = git_call(gitops.status, root)
+        if found.detached or not found.branch:
+            raise HTTPException(status_code=400, detail="Switch to a branch first.")
+        remote = gitops.remote_web(root)
+        if remote is None:
+            return {"url": None, "kind": None, "branch": found.branch}
+        kind, base = remote
+        url = gitops.pull_request_url(kind, base, found.branch, body.title, body.body)
+        return {"url": url, "kind": kind, "branch": found.branch}
 
     def config_text(project_id: str) -> str:
         try:
