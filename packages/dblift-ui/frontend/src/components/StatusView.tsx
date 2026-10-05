@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 
-import { createBranch, fetchRepo, getBranches, pullRepo, pushRepo, switchBranch } from "../api/git";
+import { commitFiles, createBranch, fetchRepo, getBranches, pullRepo, pushRepo, switchBranch } from "../api/git";
 import { listScripts } from "../api/scripts";
 import type { Project, RepoStatus, SqlPreview } from "../api/types";
 import { liveStates } from "../commands/live";
@@ -12,6 +12,7 @@ import { isApplied, latestPerScript, summarize } from "../status/model";
 import { useStatus } from "../status/useStatus";
 import BranchChip from "./BranchChip";
 import CommandBar from "./CommandBar";
+import CommitDialog from "./CommitDialog";
 import EngineLogo from "./EngineLogo";
 import FlywayImport from "./FlywayImport";
 import MigrationGrid from "./MigrationGrid";
@@ -100,6 +101,28 @@ const StatusView = forwardRef<StatusViewHandle, Props>(function StatusView({ pro
 
   const moveWith = (verb: () => Promise<RepoStatus>) => leaveEditor(() => void git.act(verb, true));
 
+  const [committing, setCommitting] = useState(false);
+  const changedScripts = scripts.filter((s) => s.change).map((s) => s.name);
+  // Ticked when the commit opens: this project's changed scripts and its config file.
+  const ownChanges = () => {
+    const root = (git.repo?.root ?? "").replaceAll("\\", "/");
+    const config = project.config_path.replaceAll("\\", "/");
+    const configFile = root && config.startsWith(`${root}/`) ? config.slice(root.length + 1) : null;
+    return (git.repo?.files ?? [])
+      .filter((f) => f.path === configFile || changedScripts.some((name) => f.path === name || f.path.endsWith(`/${name}`)))
+      .map((f) => f.path);
+  };
+  const commit = async (paths: string[], message: string) => {
+    if (await git.act(() => commitFiles(project.id, paths, message))) {
+      setCommitting(false);
+      void rereadScripts();
+    }
+  };
+  const closeCommit = () => {
+    setCommitting(false);
+    git.dismissError();
+  };
+
   const openPreview = async () => {
     const answer = await start("preview");
     if (answer?.success) {
@@ -138,7 +161,7 @@ const StatusView = forwardRef<StatusViewHandle, Props>(function StatusView({ pro
             <BranchChip
               repo={git.repo}
               busy={git.busy}
-              error={git.error}
+              error={committing ? null : git.error}
               locked={changing || previewing}
               loadBranches={() => getBranches(project.id)}
               onSwitch={(name) => moveWith(() => switchBranch(project.id, name))}
@@ -146,7 +169,10 @@ const StatusView = forwardRef<StatusViewHandle, Props>(function StatusView({ pro
               onFetch={() => void git.act(() => fetchRepo(project.id))}
               onPull={() => moveWith(() => pullRepo(project.id))}
               onPush={() => void git.act(() => pushRepo(project.id))}
-              onCommit={() => {}}
+              onCommit={() => {
+                git.dismissError();
+                setCommitting(true);
+              }}
               onDismissError={git.dismissError}
             />
           )}
@@ -288,8 +314,21 @@ const StatusView = forwardRef<StatusViewHandle, Props>(function StatusView({ pro
           hasUndo={scripts.some((s) => s.name === openScript && s.has_undo)}
           locked={changing}
           previewing={previewing}
+          changed={changedScripts}
           onClose={() => setOpenScript(null)}
           onSaved={refreshAll}
+        />
+      )}
+
+      {committing && git.repo?.repository && (
+        <CommitDialog
+          files={git.repo.files ?? []}
+          preselected={ownChanges()}
+          busy={git.busy}
+          error={git.error}
+          truncated={git.repo.truncated}
+          onCommit={(paths, message) => void commit(paths, message)}
+          onClose={closeCommit}
         />
       )}
 

@@ -14,6 +14,8 @@ interface Props {
 export default function MigrationGrid({ migrations, scripts, openScript, onOpen }: Props) {
   const withUndo = new Set(scripts.filter((s) => s.has_undo).map((s) => s.name));
   const onDisk = new Set(scripts.map((s) => s.name));
+  // The git state of the scripts not committed as they are.
+  const changes = new Map(scripts.filter((s) => s.change).map((s) => [s.name, s.change]));
   return (
     <div className="grid-scroll">
       <table className="grid" aria-label="Migrations">
@@ -47,6 +49,11 @@ export default function MigrationGrid({ migrations, scripts, openScript, onOpen 
                 </td>
                 <td className="grid__description" title={migration.script}>
                   {readable(migration.description)}
+                  {changes.has(migration.script) && (
+                    <span className="chip grid__change" title={changes.get(migration.script)}>
+                      Uncommitted
+                    </span>
+                  )}
                 </td>
                 <td>
                   <StatePill status={migration.status} />

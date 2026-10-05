@@ -1677,6 +1677,122 @@ button.branch__item:disabled {
   flex: 1 1 16rem;
 }
 
+/* Uncommitted mark in the grid */
+.grid__change {
+  margin-left: 8px;
+  vertical-align: 1px;
+  white-space: nowrap;
+}
+
+/* Commit dialog */
+.commit__select {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.commit__count {
+  margin-right: auto;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.commit__files {
+  display: grid;
+  gap: 2px;
+  max-height: 40vh;
+  margin: 0;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface-inset);
+  padding: 6px;
+  list-style: none;
+}
+
+.commit__file {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  padding: 4px 6px;
+}
+
+.commit__pick {
+  display: flex;
+  flex: 1 1 14rem;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.commit__pick input {
+  flex: none;
+  accent-color: var(--accent);
+}
+
+.commit__state--conflicted {
+  border-color: var(--warn-border);
+  color: var(--warn);
+}
+
+.commit__note {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.commit__message {
+  min-height: 5.5rem;
+  resize: vertical;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-button);
+  background: var(--surface-inset);
+  color: var(--text-strong);
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 14px;
+}
+
+/* A script's changes since the last commit */
+.diff {
+  height: 100%;
+  margin: 0;
+  overflow: auto;
+  padding: 8px 0;
+  color: var(--text-code);
+  line-height: 1.55;
+  white-space: pre;
+}
+
+.diff-line {
+  display: block;
+  min-width: max-content;
+  border-left: 3px solid transparent;
+  padding: 0 12px 0 9px;
+}
+
+/* The "+" and "-" stay in the text: the colour is never the only sign. */
+.diff-add {
+  border-left-color: var(--ok-border);
+  background: var(--ok-tint);
+}
+
+.diff-del {
+  border-left-color: var(--error-border);
+  background: var(--error-tint);
+}
+
+.diff-hunk {
+  margin-top: 6px;
+  color: var(--text-muted);
+}
+
+.diff-hunk:first-child {
+  margin-top: 0;
+}
+
 /* A narrow screen: the menu takes the width of the header. */
 @media (max-width: 520px) {
   .branch {

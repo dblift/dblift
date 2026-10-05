@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
-import { beforeEach, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Branch, JobResult, Migration, Project, RepoStatus, Script } from "../api/types";
 import StatusView from "./StatusView";
@@ -202,4 +202,69 @@ it("fetches and pushes without asking about unsaved edits", async () => {
   await waitFor(() => expect(git.fetchRepo).toHaveBeenCalledWith("p1"));
   expect(screen.queryByText("Discard your changes?")).not.toBeInTheDocument();
   expect(await screen.findByRole("button", { name: "Branch main" })).toHaveTextContent("↓1");
+});
+
+describe("committing", () => {
+  const changedFiles: RepoStatus["files"] = [
+    { path: `migrations/${B}`, state: "modified" },
+    { path: "dblift.yaml", state: "modified" },
+    { path: "notes.txt", state: "untracked" },
+  ];
+
+  beforeEach(() => {
+    checkedOut = { ...main, files: changedFiles };
+    scripts.listScripts.mockImplementation(async () => onDisk.map((name) => ({ ...script(name), change: checkedOut.files?.some((f) => f.path === `migrations/${name}`) ? "modified" : "" })));
+    git.commitFiles.mockImplementation(async () => (checkedOut = { ...main, files: [{ path: "notes.txt", state: "untracked" }], ahead: 1 }));
+  });
+
+  async function openCommit() {
+    render(view(<StatusView project={project} onEnvironmentChange={() => {}} />));
+    await screen.findByRole("table", { name: "Migrations" });
+    await waitFor(() => expect(screen.getByText("Uncommitted")).toBeInTheDocument());
+    await userEvent.click(screen.getByRole("button", { name: "Branch main" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Commit…" }));
+    return screen.getByRole("dialog", { name: "Commit" });
+  }
+
+  it("marks the uncommitted migration in the grid", async () => {
+    render(view(<StatusView project={project} onEnvironmentChange={() => {}} />));
+    const grid = await screen.findByRole("table", { name: "Migrations" });
+
+    await waitFor(() => expect(within(grid).getByRole("row", { name: /create orders/ })).toHaveTextContent("Uncommitted"));
+    expect(within(grid).getByRole("row", { name: /create customers/ })).not.toHaveTextContent("Uncommitted");
+  });
+
+  it("opens the commit with the project's changed scripts and its config ticked", async () => {
+    const dialog = await openCommit();
+
+    expect(within(dialog).getByRole("checkbox", { name: `migrations/${B}` })).toBeChecked();
+    expect(within(dialog).getByRole("checkbox", { name: "dblift.yaml" })).toBeChecked();
+    expect(within(dialog).getByRole("checkbox", { name: "notes.txt" })).not.toBeChecked();
+  });
+
+  it("commits, closes the dialog and reads the scripts again", async () => {
+    const dialog = await openCommit();
+    const reads = scripts.listScripts.mock.calls.length;
+    await userEvent.type(within(dialog).getByRole("textbox", { name: "Message" }), "Add orders");
+
+    await userEvent.click(within(dialog).getByRole("button", { name: "Commit 2 files" }));
+
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Commit" })).not.toBeInTheDocument());
+    expect(git.commitFiles).toHaveBeenCalledWith("p1", [`migrations/${B}`, "dblift.yaml"], "Add orders");
+    await waitFor(() => expect(scripts.listScripts.mock.calls.length).toBeGreaterThan(reads));
+    expect(await screen.findByRole("button", { name: "Branch main" })).toHaveTextContent("↑1");
+    await waitFor(() => expect(screen.queryByText("Uncommitted")).not.toBeInTheDocument());
+  });
+
+  it("keeps the dialog open with the refusal shown there only", async () => {
+    git.commitFiles.mockRejectedValue(new Error("Author identity unknown. Set user.name and user.email with your own git tool."));
+    const dialog = await openCommit();
+    await userEvent.type(within(dialog).getByRole("textbox", { name: "Message" }), "Add orders");
+
+    await userEvent.click(within(dialog).getByRole("button", { name: "Commit 2 files" }));
+
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("Author identity unknown");
+    expect(screen.getAllByRole("alert")).toHaveLength(1);
+    expect(within(dialog).getByRole("textbox", { name: "Message" })).toHaveValue("Add orders");
+  });
 });
