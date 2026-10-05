@@ -97,3 +97,51 @@ def test_add_with_a_damaged_registry_file_is_a_500(client, auth, registry, sqlit
 
     assert response.status_code == 500
     assert str(registry.path) in response.json()["detail"]
+
+
+def test_engine_comes_from_database_type(client, auth, sqlite_project):
+    body = client.post(
+        "/api/projects", headers=auth, json={"name": "shop", "config_path": str(sqlite_project)}
+    ).json()
+    assert body["engine"] == "sqlite"
+
+
+def test_engine_falls_back_to_the_url_scheme(client, auth, sqlite_project):
+    sqlite_project.write_text(
+        "database:\n"
+        "  url: postgresql+psycopg://db.local:5432/shop\n"
+        "  schema: public\n"
+        "migrations:\n"
+        "  directory: ./migrations\n"
+    )
+    body = client.post(
+        "/api/projects", headers=auth, json={"name": "shop", "config_path": str(sqlite_project)}
+    ).json()
+    assert body["engine"] == "postgresql"
+
+
+def test_engine_is_empty_when_unknown(client, auth, sqlite_project):
+    sqlite_project.write_text("migrations:\n  directory: ./migrations\n")
+    body = client.post(
+        "/api/projects", headers=auth, json={"name": "shop", "config_path": str(sqlite_project)}
+    ).json()
+    assert body["engine"] == ""
+
+
+def test_patch_remembers_the_environment(client, auth, sqlite_project):
+    project_id = client.post(
+        "/api/projects", headers=auth, json={"name": "shop", "config_path": str(sqlite_project)}
+    ).json()["id"]
+
+    patched = client.patch(
+        f"/api/projects/{project_id}", headers=auth, json={"last_environment": "staging"}
+    )
+
+    assert patched.status_code == 200
+    assert patched.json()["last_environment"] == "staging"
+    assert client.get("/api/projects", headers=auth).json()[0]["last_environment"] == "staging"
+
+
+def test_patch_unknown_project_is_a_404(client, auth):
+    response = client.patch("/api/projects/nope", headers=auth, json={"last_environment": "x"})
+    assert response.status_code == 404

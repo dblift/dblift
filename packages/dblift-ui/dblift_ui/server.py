@@ -21,6 +21,7 @@ from pydantic import BaseModel
 
 TOKEN_HEADER = "X-DBLift-Token"
 STATIC_DIR = Path(__file__).resolve().parent / "static"
+APP_DIR = STATIC_DIR / "app"
 _SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 
 
@@ -34,9 +35,28 @@ class NewJob(BaseModel):
     environment: str = ""
 
 
+class ProjectPatch(BaseModel):
+    last_environment: str = ""
+
+
+def engine_of(data: Dict[str, Any]) -> str:
+    """The engine a config declares: its ``database.type``, else its URL scheme."""
+    database = data.get("database")
+    if not isinstance(database, dict):
+        return ""
+    declared = database.get("type")
+    if isinstance(declared, str) and declared:
+        return declared
+    url = database.get("url")
+    if isinstance(url, str) and "://" in url:
+        return url.split("://", 1)[0].split("+", 1)[0]
+    return ""
+
+
 def describe(project: Project) -> Dict[str, Any]:
     """A project as the browser sees it: registry fields plus what its config declares."""
     environments: List[str] = []
+    engine = ""
     error: Optional[str] = None
     try:
         data = yaml.safe_load(Path(project.config_path).read_text()) or {}
@@ -44,24 +64,35 @@ def describe(project: Project) -> Dict[str, Any]:
             error = "config is not a mapping"
         elif not isinstance(data.get("environments") or {}, dict):
             error = "environments is not a mapping"
+            engine = engine_of(data)
         else:
             environments = list((data.get("environments") or {}).keys())
+            engine = engine_of(data)
     except (OSError, yaml.YAMLError) as exc:
         error = str(exc)
-    return {**asdict(project), "environments": environments, "error": error}
+    return {**asdict(project), "environments": environments, "engine": engine, "error": error}
 
 
-def create_app(token: str, port: int, registry: Optional[ProjectRegistry] = None) -> FastAPI:
+def create_app(
+    token: str,
+    port: int,
+    registry: Optional[ProjectRegistry] = None,
+    app_dir: Optional[Path] = None,
+) -> FastAPI:
     """Build the application for one launch.
 
     *token* is the per-launch secret every ``/api/`` call must present.
     *port* is the port the server listens on; requests whose ``Host`` header
     names anything else are refused, which blocks DNS rebinding.
     *registry* defaults to the per-user registry file.
+    *app_dir* is the folder holding the built interface; it defaults to the
+    one shipped inside the package.
     """
     app = FastAPI(title="DBLift UI", docs_url=None, redoc_url=None, openapi_url=None)
     projects = registry or ProjectRegistry.default()
     runner = JobRunner(projects)
+    built = Path(app_dir) if app_dir is not None else APP_DIR
+    assets = (built / "assets").resolve()
     hosts = frozenset({f"127.0.0.1:{port}", f"localhost:{port}"})
     origins = frozenset(f"http://{host}" for host in hosts)
 
@@ -110,6 +141,13 @@ def create_app(token: str, port: int, registry: Optional[ProjectRegistry] = None
             raise HTTPException(status_code=404, detail="unknown project") from exc
         return Response(status_code=204)
 
+    @app.patch("/api/projects/{project_id}")
+    def patch_project(project_id: str, body: ProjectPatch) -> Dict[str, Any]:
+        try:
+            return describe(projects.set_environment(project_id, body.last_environment))
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="unknown project") from exc
+
     @app.post("/api/projects/{project_id}/jobs", status_code=202)
     def start_job(project_id: str, body: NewJob) -> Dict[str, str]:
         try:
@@ -137,8 +175,20 @@ def create_app(token: str, port: int, registry: Optional[ProjectRegistry] = None
             lines(), media_type="text/event-stream", headers={"Cache-Control": "no-store"}
         )
 
+    @app.get("/assets/{asset_path:path}")
+    def asset(asset_path: str) -> FileResponse:
+        try:
+            target = (assets / asset_path).resolve()
+            servable = assets in target.parents and target.is_file()
+        except (ValueError, OSError):
+            servable = False
+        if not servable:
+            raise HTTPException(status_code=404, detail="not found")
+        return FileResponse(target)
+
     @app.get("/")
     def index() -> FileResponse:
-        return FileResponse(STATIC_DIR / "index.html")
+        page = built / "index.html"
+        return FileResponse(page if page.is_file() else STATIC_DIR / "index.html")
 
     return app

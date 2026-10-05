@@ -35,4 +35,4 @@ ui = "dblift_ui.cli:terminal_commands"
 include = ["dblift_ui*"]
 
 [tool.setuptools.package-data]
-dblift_ui = ["static/*"]
+dblift_ui = ["static/*", "static/app/*", "static/app/assets/*"]

@@ -8,5 +8,30 @@ Local web interface for DBLift migrations.
 The command starts a server on `127.0.0.1`, prints a one-time URL and opens it
 in the browser. Nothing is sent anywhere else.
 
-Status: early development. The interface is not usable yet; the server exposes
-a project registry and a status stream.
+Status: early development. The interface shows a list of projects, added by
+the path of their config file, and a read-only status view for each project
+and environment.
+
+## Development
+
+The interface lives in `frontend/` (React, TypeScript, Vite). It is built into
+`dblift_ui/static/app/`, which the server serves. That folder is not committed.
+
+    cd packages/dblift-ui/frontend
+    npm ci
+    npm run build:watch        # rebuilds on change
+
+In another terminal:
+
+    pip install -e "packages/dblift-ui[dev]"
+    dblift ui
+
+Checks:
+
+    npm run typecheck && npm test          # interface
+    python -m pytest packages/dblift-ui/tests   # server
+
+Without a build, the server shows a placeholder page.
+
+The interface loads nothing from the network: fonts are bundled, and it talks
+only to the local server that started it.
