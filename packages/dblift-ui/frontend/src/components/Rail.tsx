@@ -10,10 +10,18 @@ export default function Rail({ migrations }: { migrations: Migration[] }) {
         <div className="rail__fill" style={{ width: `${railFill(migrations) * 100}%` }} />
         <ol className="rail__nodes" aria-label="Migration timeline">
           {migrations.map((migration, index) => {
-            const { label, tone } = stateInfo(migration.status);
-            const next = index === firstPending ? " rail__node--next" : "";
+            const { label, tone, applied } = stateInfo(migration.status);
+            const classes = [
+              "rail__node",
+              `rail__node--${tone}`,
+              applied ? "rail__node--applied" : "",
+              migration.status === "RUNNING" ? "rail__node--running" : "",
+              index === firstPending ? "rail__node--next" : "",
+            ]
+              .filter(Boolean)
+              .join(" ");
             return (
-              <li key={migration.script} className={`rail__node rail__node--${tone}${next}`}>
+              <li key={migration.script} className={classes}>
                 <span className="rail__dot" aria-hidden="true" />
                 <span className="rail__version mono">{migration.version}</span>
                 <span className="rail__state">{label}</span>

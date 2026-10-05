@@ -34,10 +34,11 @@ export async function runJob(
   command: string,
   environment: string,
   onEvent: (event: JobEvent) => void,
+  params: Record<string, unknown> = {},
 ): Promise<JobResult> {
   const { job_id } = await request<{ job_id: string }>(`/projects/${projectId}/jobs`, {
     method: "POST",
-    body: JSON.stringify({ command, environment }),
+    body: JSON.stringify({ command, environment, params }),
   });
   const response = await fetch(`/api/jobs/${job_id}/events`, { headers: authHeaders() });
   if (!response.ok || !response.body) {

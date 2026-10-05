@@ -18,7 +18,9 @@ beforeEach(() => {
   api.listProjects.mockReset();
   api.setEnvironment.mockReset();
   runJob.mockReset();
-  runJob.mockResolvedValue({ success: true, error: null, current_version: null, migrations: [] });
+  runJob.mockResolvedValue({
+    success: true, error: null, current_version: null, migrations: [], sql: [], repaired: null, baseline_version: null,
+  });
 });
 
 it("invites the user to add a project when there is none", async () => {

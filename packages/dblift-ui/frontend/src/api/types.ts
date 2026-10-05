@@ -19,11 +19,19 @@ export interface Migration {
   execution_time: number;
 }
 
+export interface SqlPreview {
+  script: string;
+  statements: string[];
+}
+
 export interface JobResult {
   success: boolean;
   error: string | null;
   current_version: string | null;
   migrations: Migration[];
+  sql: SqlPreview[];
+  repaired: number | null;
+  baseline_version: string | null;
 }
 
 export interface JobEvent {

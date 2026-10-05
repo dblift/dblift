@@ -1,7 +1,7 @@
 import { expect, it } from "vitest";
 
 import type { Migration } from "../api/types";
-import { latestPerScript, railFill, stateInfo, summarize } from "./model";
+import { isApplied, latestPerScript, railFill, stateInfo, summarize } from "./model";
 
 function migration(script: string, status: string, overrides: Partial<Migration> = {}): Migration {
   return {
@@ -56,12 +56,30 @@ it("fills the rail up to the middle of the last applied node", () => {
   expect(railFill(list.map((m) => ({ ...m, status: "PENDING" })))).toBe(0);
 });
 
-it("describes known states and falls back for unknown ones", () => {
-  expect(stateInfo("SUCCESS")).toMatchObject({ label: "Applied", tone: "ok" });
-  expect(stateInfo("PENDING")).toMatchObject({ label: "Pending", tone: "warn" });
-  expect(stateInfo("FAILED")).toMatchObject({ label: "Failed", tone: "error" });
-  expect(stateInfo("UNDONE")).toMatchObject({ label: "Undone", tone: "muted" });
-  expect(stateInfo("OUT_OF_ORDER").label).toBe("Out of order");
-  expect(stateInfo("something new")).toMatchObject({ label: "something new", tone: "info" });
+it("describes the states the engine reports, including the ones with spaces", () => {
+  expect(stateInfo("SUCCESS")).toMatchObject({ label: "Applied", tone: "ok", applied: true });
+  expect(stateInfo("PENDING")).toMatchObject({ label: "Pending", tone: "warn", applied: false });
+  expect(stateInfo("FAILED")).toMatchObject({ label: "Failed", tone: "error", applied: false });
+  expect(stateInfo("UNDONE")).toMatchObject({ label: "Undone", tone: "muted", applied: false });
+  expect(stateInfo("OUT OF ORDER")).toMatchObject({ label: "Out of order", tone: "warn", applied: true });
+  expect(stateInfo("MISSING")).toMatchObject({ label: "Missing", tone: "error", applied: true });
+  expect(stateInfo("BASELINE")).toMatchObject({ label: "Baseline", tone: "info", applied: true });
+  expect(stateInfo("BELOW BASELINE")).toMatchObject({ label: "Below baseline", tone: "muted", applied: false });
+  expect(stateInfo("RUNNING")).toMatchObject({ label: "Running", tone: "info", applied: false });
+  expect(stateInfo("something new")).toMatchObject({ label: "something new", tone: "info", applied: false });
   expect(stateInfo("SUCCESS").hint).not.toBe("");
+});
+
+it("counts out-of-order and missing migrations as applied", () => {
+  const list = [
+    migration("V1_0_0__a.sql", "SUCCESS"),
+    migration("V1_0_2__c.sql", "MISSING"),
+    migration("V1_0_1__b.sql", "OUT OF ORDER"),
+    migration("V1_0_3__d.sql", "PENDING"),
+  ];
+
+  expect(summarize(list)).toEqual({ applied: 3, pending: 1, failed: 0 });
+  expect(railFill(list)).toBeCloseTo(2.5 / 4);
+  expect(isApplied("OUT OF ORDER")).toBe(true);
+  expect(isApplied("BELOW BASELINE")).toBe(false);
 });

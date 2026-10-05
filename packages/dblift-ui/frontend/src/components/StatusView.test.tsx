@@ -27,6 +27,9 @@ const status: JobResult = {
     { script: "V1_0_1__create_orders.sql", version: "1.0.1", description: "create_orders", type: "SQL", status: "SUCCESS", installed_on: "2026-10-04 21:24:55", installed_by: "dev", execution_time: 3 },
     { script: "V1_0_2__add_phone.sql", version: "1.0.2", description: "add_phone", type: "SQL", status: "PENDING", installed_on: "", installed_by: "", execution_time: 0 },
   ],
+  sql: [],
+  repaired: null,
+  baseline_version: null,
 };
 
 beforeEach(() => {
@@ -69,7 +72,9 @@ it("runs the status for the remembered environment", async () => {
 });
 
 it("shows the error and lets the user retry", async () => {
-  runJob.mockResolvedValueOnce({ success: false, error: "cannot connect to db.local", current_version: null, migrations: [] });
+  runJob.mockResolvedValueOnce({
+    success: false, error: "cannot connect to db.local", current_version: null, migrations: [], sql: [], repaired: null, baseline_version: null,
+  });
   render(<StatusView project={project} onEnvironmentChange={() => {}} />);
 
   expect(await screen.findByRole("alert")).toHaveTextContent("cannot connect to db.local");

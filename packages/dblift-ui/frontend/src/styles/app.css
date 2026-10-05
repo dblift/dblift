@@ -132,15 +132,6 @@ input {
   animation-delay: calc(var(--order, 0) * 60ms);
 }
 
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation: none !important;
-    transition: none !important;
-  }
-}
-
 .app {
   position: relative;
   display: grid;
@@ -411,6 +402,11 @@ input {
   transition: background 0.15s var(--ease-quick), color 0.15s var(--ease-quick);
 }
 
+.segmented__item:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 .segmented__item[aria-selected="true"] {
   background: var(--accent-tint);
   box-shadow: inset 0 0 0 1px var(--accent-border);
@@ -511,7 +507,7 @@ input {
   transition: background 0.4s var(--ease), border-color 0.4s var(--ease), box-shadow 0.4s var(--ease);
 }
 
-.rail__node--ok .rail__dot {
+.rail__node--applied .rail__dot {
   border-color: var(--accent);
   background: var(--accent);
   box-shadow: 0 0 0 4px var(--accent-tint);
@@ -668,4 +664,131 @@ input {
 .engine-logo {
   flex: none;
   object-fit: contain;
+}
+
+/* Commands */
+.commands {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.commands--form {
+  align-items: flex-end;
+}
+
+.commands__hint {
+  flex: 1 1 14rem;
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+/* Same size as the other buttons of the bar; the sidebar keeps its compact one. */
+.commands .button--danger {
+  padding: 8px 16px;
+}
+
+/* SQL preview */
+.preview__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-bottom: 1px solid var(--border);
+  padding: 12px 16px;
+}
+
+.preview__head h2 {
+  font-size: 1.05rem;
+}
+
+.preview__actions {
+  display: flex;
+  gap: 8px;
+}
+
+.preview__body {
+  max-height: 22rem;
+  overflow: auto;
+  padding: 12px 16px;
+}
+
+.preview__name {
+  margin: 0 0 4px;
+  color: var(--accent);
+}
+
+.preview__sql {
+  margin: 0 0 14px;
+  overflow-x: auto;
+  color: var(--text-code);
+  white-space: pre;
+}
+
+/* Run log */
+.runlog {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-terminal);
+  background: var(--surface-inset);
+  overflow: hidden;
+}
+
+.runlog__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-panel);
+  padding: 6px 8px 6px 14px;
+  color: var(--text-secondary);
+}
+
+.runlog__body {
+  max-height: 14rem;
+  overflow: auto;
+  padding: 10px 14px;
+}
+
+.runlog__line {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.runlog__line--ok {
+  color: var(--ok);
+}
+
+.runlog__line--error {
+  color: var(--error);
+}
+
+.runlog__line--muted {
+  color: var(--text-muted);
+}
+
+/* Rail: running node */
+@keyframes rail-running {
+  50% {
+    box-shadow: 0 0 0 7px transparent;
+  }
+}
+
+.rail__node--running .rail__dot {
+  border-color: var(--info);
+  box-shadow: 0 0 0 0 var(--info-border);
+  animation: rail-running 1.2s var(--ease-quick) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
 }
