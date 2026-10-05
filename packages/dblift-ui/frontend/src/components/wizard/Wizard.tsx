@@ -14,13 +14,25 @@ interface Props {
   steps?: WizardStep[];
 }
 
+/** What closing would lose, as a question, or null when it loses nothing. */
+function question(data: WizardData): string | null {
+  if (data.unsaved) {
+    return "Discard the unsaved edits?";
+  }
+  if (data.scripts === null && data.description.trim() !== "") {
+    return "Discard what you typed?";
+  }
+  return null;
+}
+
 /** A guided change, step by step, in a wide dialog. */
 export default function Wizard({ project, onClose, onChanged, steps = STEPS }: Props) {
   const ids = useId();
   const { repo } = useRepo(project.id, onChanged);
   const [data, setData] = useState<WizardData>(START);
   const [wanted, setWanted] = useState<string | null>(null);
-  const [asking, setAsking] = useState(false);
+  // The question asked before closing over something not kept yet, while it is asked.
+  const [asking, setAsking] = useState<string | null>(null);
   const update = useCallback((partial: Partial<WizardData>) => setData((current) => ({ ...current, ...partial })), []);
   const context: WizardContext = { ...data, project, repo, update, changed: onChanged };
 
@@ -45,7 +57,7 @@ export default function Wizard({ project, onClose, onChanged, steps = STEPS }: P
     const list = latest.current;
     const at = list.findIndex((step) => step.id === id);
     if (at === list.length - 1) {
-      close();
+      finish();
     } else {
       setWanted(list[at + 1].id);
     }
@@ -68,7 +80,8 @@ export default function Wizard({ project, onClose, onChanged, steps = STEPS }: P
     }
   }, [active.id]);
 
-  // The files are on disk once created, so closing asks nothing about them; only unsaved edits are asked about.
+  // The files are on disk once created, so closing asks nothing about them: only a description typed before
+  // they exist, and unsaved edits, are asked about. The last step's Next has done its work: it never asks.
   const asker = useRef<HTMLElement | null>(null);
   const finish = () => {
     if (now.current.scripts) {
@@ -79,15 +92,15 @@ export default function Wizard({ project, onClose, onChanged, steps = STEPS }: P
   function close() {
     if (asking) {
       keepEditing();
-    } else if (now.current.unsaved) {
+    } else if (question(now.current)) {
       asker.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-      setAsking(true);
+      setAsking(question(now.current));
     } else {
       finish();
     }
   }
   function keepEditing() {
-    setAsking(false);
+    setAsking(null);
     asker.current?.focus();
   }
 
@@ -96,7 +109,7 @@ export default function Wizard({ project, onClose, onChanged, steps = STEPS }: P
       <div className="wizard">
         {asking && (
           <div className="wizard__guard">
-            <span>Discard the unsaved edits?</span>
+            <span>{asking}</span>
             <button className="button button--quiet" autoFocus onClick={keepEditing}>
               Keep editing
             </button>

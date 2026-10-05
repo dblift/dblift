@@ -35,6 +35,7 @@ function fake(id: string, title: string, available: WizardStep["available"] = ()
         </label>
         <button onClick={onBack}>Back</button>
         <button onClick={() => context.update({ unsaved: true })}>Edit without saving</button>
+        <button onClick={() => context.update({ description: "Add invoices" })}>Type a description</button>
         <button onClick={() => context.update({ scripts: { migration: V, undo: U } })}>Create the files</button>
         <button onClick={() => context.changed()}>Change a file</button>
         <button
@@ -250,6 +251,35 @@ it("asks before closing over unsaved edits", async () => {
 
   await userEvent.keyboard("{Escape}");
   await userEvent.click(screen.getByRole("button", { name: "Discard and close" }));
+  expect(onClose).toHaveBeenCalledTimes(1);
+});
+
+it("asks before closing over a typed description, with Escape or Close", async () => {
+  const { onClose } = wizard();
+  await userEvent.click(screen.getByRole("button", { name: "Type a description" }));
+
+  await userEvent.keyboard("{Escape}");
+  expect(screen.getByText("Discard what you typed?")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Keep editing" })).toHaveFocus();
+  await userEvent.click(screen.getByRole("button", { name: "Keep editing" }));
+  expect(onClose).not.toHaveBeenCalled();
+  expect(screen.queryByText("Discard what you typed?")).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Type a description" })).toHaveFocus();
+
+  await userEvent.click(screen.getByRole("button", { name: "Close" }));
+  expect(screen.getByText("Discard what you typed?")).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "Discard and close" }));
+  expect(onClose).toHaveBeenCalledTimes(1);
+});
+
+it("asks nothing about the description once the scripts exist", async () => {
+  const { onClose } = wizard();
+  await userEvent.click(screen.getByRole("button", { name: "Type a description" }));
+  await userEvent.click(screen.getByRole("button", { name: "Create the files" }));
+
+  await userEvent.keyboard("{Escape}");
+
+  expect(screen.queryByText("Discard what you typed?")).not.toBeInTheDocument();
   expect(onClose).toHaveBeenCalledTimes(1);
 });
 
