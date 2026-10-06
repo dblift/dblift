@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, NoReturn, Optional, Tuple
 
 from dblift.cli._constants import EXIT_LICENSE_REQUIRED
 from dblift.cli.extensions import load_command_handlers, load_terminal_commands
@@ -79,6 +79,17 @@ _AVAILABLE_COMMANDS = (
 )
 
 
+def exit_license_required(error: CapabilityDeniedError, log: Any) -> NoReturn:
+    """Report a capability rejection and exit with ``EXIT_LICENSE_REQUIRED``.
+
+    Capability rejections map to the same exit code as premium stubs so
+    scripts/CI can branch on entitlement without parsing stderr.
+    """
+    message = str(error).strip() or "This command requires a license that is not available."
+    log.error(message)
+    raise SystemExit(EXIT_LICENSE_REQUIRED) from error
+
+
 def execute_single_command(
     client: Any,
     command: str,
@@ -111,11 +122,7 @@ def execute_single_command(
     try:
         return handler(ctx)
     except CapabilityDeniedError as e:
-        # Capability rejections map to the same exit code as premium stubs so
-        # scripts/CI can branch on entitlement without parsing stderr.
-        message = str(e).strip() or "This command requires a license that is not available."
-        log.error(message)
-        raise SystemExit(EXIT_LICENSE_REQUIRED) from e
+        exit_license_required(e, log)
 
 
 def _validate_migrate_options(cmd_args: Any, parser: Any) -> None:

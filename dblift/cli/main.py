@@ -27,6 +27,7 @@ from dblift.cli._command_handlers import (  # noqa: F401
     _extract_version_filters,
     _validate_migrate_options,
     execute_single_command,
+    exit_license_required,
 )
 from dblift.cli._config_helpers import (  # noqa: F401
     _GLOBAL_BOOLEAN_FLAGS,
@@ -48,8 +49,10 @@ from dblift.cli.extensions import load_terminal_commands
 from dblift.cli.handlers._shared import reported_exception_name
 from dblift.cli.premium_manifest import render_upsell
 from dblift.config.property_registry import PROPERTY_REGISTRY
+from dblift.core.seams.capabilities import CapabilityDeniedError
 from dblift.core.seams.feature_loading import load_feature_extensions
 from dblift.core.seams.license_info import get_license_info
+from dblift.core.seams.tier_resolver import resolve_tier
 
 # Module-level placeholder; main() uses a local 'log' variable (no global declaration)
 log = None
@@ -522,6 +525,26 @@ def _command_handler_attr(command: Optional[str], attr_name: str, default: Any =
     return getattr(handler, attr_name, default)
 
 
+def _connect_if_needed(client: Any, log: Any, command: str, args: Any) -> None:
+    """Connect before ``command`` unless its handler opts out for these ``args``.
+
+    A handler may declare ``_dblift_pre_connection_check(args, license_tier)``,
+    run first so a refusal (``CapabilityDeniedError``) happens before any
+    credential is used, and ``_dblift_needs_connection(args) -> bool``, which
+    returning False skips the connection for an invocation that runs from files.
+    """
+    check = _command_handler_attr(command, "_dblift_pre_connection_check")
+    if callable(check):
+        try:
+            check(args, resolve_tier(args))
+        except CapabilityDeniedError as e:
+            exit_license_required(e, log)
+    needs_connection = _command_handler_attr(command, "_dblift_needs_connection")
+    if callable(needs_connection) and not needs_connection(args):
+        return
+    _ensure_connection(client, log, command)
+
+
 def _build_command_client(ctx: "_CliContext") -> Any:
     """Build the client the command handlers receive.
 
@@ -708,7 +731,7 @@ def _dispatch_command(ctx: _CliContext, command_output: CommandOutput) -> int:
             else:
                 cmd_args = ctx.args
 
-            _ensure_connection(client, ctx.log, command)
+            _connect_if_needed(client, ctx.log, command, cmd_args)
             if command == "migrate":
                 _validate_migrate_options(cmd_args, ctx.parser)
 
