@@ -4,7 +4,7 @@ import os
 from typing import Any, List, Optional
 
 from dblift.core.constants import ENV_PREFIX
-from dblift.core.exceptions import UnsupportedMetaCommandError
+from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
 from dblift.core.logger import Log
 from dblift.core.migration.sql.execution_contracts import ExecutionSqlParser
 
@@ -61,7 +61,7 @@ def parse_migration_sql(analyzer: ExecutionSqlParser, content: str, log: Log) ->
         statements = analyzer.split_statements(content)
         log.debug(f"SqlAnalyzer split returned {len(statements)} statements")
         return [statement for statement in statements if statement.strip()]
-    except UnsupportedMetaCommandError:
+    except (UnsafeStatementSplitError, UnsupportedMetaCommandError):
         # A deliberate refusal, not a splitting failure -- the semicolon
         # fallback below has no notion of meta-commands either and would
         # reproduce the exact defect the refusal exists to surface instead.

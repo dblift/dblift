@@ -75,7 +75,7 @@ class Sequence(SqlObject):
         Returns:
             Sequence object
         """
-        return cls(
+        sequence = cls(
             name=data["name"],
             schema=data.get("schema"),
             start_with=data.get("start_with"),
@@ -90,6 +90,10 @@ class Sequence(SqlObject):
             owned_by_column=data.get("owned_by_column"),
             data_type=data.get("data_type"),
         )
+        for plugin, options in (data.get("dialect_options") or {}).items():
+            for key, value in options.items():
+                sequence.set_dialect_option(plugin, key, value)
+        return sequence
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert sequence to dictionary representation.
@@ -97,7 +101,7 @@ class Sequence(SqlObject):
         Returns:
             Dictionary with sequence attributes
         """
-        return {
+        result: Dict[str, Any] = {
             "name": self.name,
             "schema": self.schema,
             "object_type": self.object_type.value,
@@ -113,3 +117,6 @@ class Sequence(SqlObject):
             "owned_by_column": self.owned_by_column,
             "data_type": self.data_type,
         }
+        if self.dialect_options:
+            result["dialect_options"] = self.dialect_options
+        return result

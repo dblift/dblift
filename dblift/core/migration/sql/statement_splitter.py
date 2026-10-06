@@ -6,7 +6,7 @@ import inspect
 import logging as _logging
 from typing import Callable, List, Optional, Union
 
-from dblift.core.exceptions import UnsupportedMetaCommandError
+from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
 from dblift.core.logger import Log
 from dblift.core.migration.sql.execution_statement import is_comment_only_statement
 from dblift.core.sql_parser.enhanced_regex_parser import EnhancedRegexParser
@@ -75,7 +75,7 @@ class StatementSplitter:
                 self.logger.warning(
                     f"{self.dialect}-specific statement splitter did not accept strict mode"
                 )
-        except UnsupportedMetaCommandError:
+        except (UnsafeStatementSplitError, UnsupportedMetaCommandError):
             # A deliberate refusal from the dialect parser, not a splitting
             # failure -- the fallback below cannot be trusted to reproduce
             # it, so it must not be swallowed here regardless of

@@ -856,10 +856,13 @@ class MigrateCommand(BaseCommand):
                     if not self.provider.acquire_migration_lock(
                         self.config.database.schema, wait_timeout_seconds=60
                     ):
-                        result.set_error(
+                        refusal = (
                             "Could not acquire migration lock - another migration may be running"
                         )
+                        self.log.error(refusal)
+                        result.set_error(refusal)
                         result.complete()
+                        self._log_command_completion("migrate", result)
                         return result
 
                     lock_acquired = True
