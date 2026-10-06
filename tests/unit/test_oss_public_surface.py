@@ -479,6 +479,9 @@ def test_no_database_driver_is_a_mandatory_dependency():
     driver_names: set[str] = set()
     for extra in engine_extras:
         driver_names |= _requirement_names(table[extra])
+    # An engine extra may narrow the SQL toolkit every install already uses;
+    # that pin does not make the toolkit an engine client library.
+    driver_names -= {canonicalize_name("SQLAlchemy")}
 
     offenders: list[str] = []
 

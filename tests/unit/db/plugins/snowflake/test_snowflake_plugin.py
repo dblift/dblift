@@ -537,7 +537,7 @@ def test_snowflake_schema_helpers_quote_identifiers(monkeypatch) -> None:
         fake_base_execute_statement,
     )
 
-    provider.create_schema_if_not_exists('mixed"schema')
+    provider.create_schema_if_not_exists('"mixed""schema"')
     provider.set_current_schema("APP")
 
     schema_stmt = 'CREATE SCHEMA IF NOT EXISTS "mixed""schema"'
@@ -619,11 +619,11 @@ def test_snowflake_table_exists_and_version_queries() -> None:
 def test_snowflake_quoted_identifiers_keep_catalog_case() -> None:
     provider = _SnowflakeProvider()
 
-    assert provider.get_schema_qualified_name("MixedCase", 'order"items') == (
+    assert provider.get_schema_qualified_name('"MixedCase"', '"order""items"') == (
         '"MixedCase"."order""items"'
     )
 
-    provider.table_exists("MixedCase", "order")
+    provider.table_exists('"MixedCase"', '"order"')
     sql, params = provider.queries[-1]
     assert "UPPER(?)" not in sql
     assert params == ["MixedCase", "order"]
@@ -1173,7 +1173,7 @@ def test_snowflake_unordered_history_identity_warns_once_with_detection_hint() -
 
     assert len(provider.log.warnings) == 1
     warning = provider.log.warnings[0]
-    assert '"app"."DBLIFT_SCHEMA_HISTORY"' in warning
+    assert '"APP"."DBLIFT_SCHEMA_HISTORY"' in warning
     assert "unique but may not follow application order" in warning
     assert "ORDER BY installed_on" in warning
 
@@ -1433,7 +1433,7 @@ def test_snowflake_clean_preview_lists_function_overloads_by_signature() -> None
 def test_snowflake_clean_preview_scopes_show_commands_to_the_database_and_schema() -> None:
     provider = _SnowflakeProvider(_clean_catalog_handler())
 
-    provider.get_clean_preview("My Schema")
+    provider.get_clean_preview('"My Schema"')
 
     shows = [sql.strip() for sql, _ in provider.queries if sql.strip().startswith("SHOW")]
     assert shows == [
@@ -1730,9 +1730,9 @@ def test_snowflake_clean_drops_objects_by_their_literal_catalog_names() -> None:
 def test_snowflake_caller_quote_stripping_never_touches_whitespace_or_partial_quotes() -> None:
     provider = SnowflakeProvider.__new__(SnowflakeProvider)
 
-    assert provider.get_schema_qualified_name("S", " padded ") == '"S"." padded "'
-    assert provider.get_schema_qualified_name("S", '"half') == '"S"."""half"'
-    assert provider.get_schema_qualified_name("S", 'a"b"') == '"S"."a""b"""'
+    assert provider.get_schema_qualified_name("S", " padded ") == '"S"." PADDED "'
+    assert provider.get_schema_qualified_name("S", '"half') == '"S"."""HALF"'
+    assert provider.get_schema_qualified_name("S", 'a"b"') == '"S"."A""B"""'
     assert provider.get_schema_qualified_name("S", '"a""b"') == '"S"."a""b"'
 
 
@@ -1834,7 +1834,7 @@ def test_snowflake_clean_schema_warns_about_objects_that_survive() -> None:
 def test_snowflake_clean_through_drop_object_warns_once_after_the_last_drop() -> None:
     provider = _residue_provider([{"name": "STUCK", "kind": "VIEW"}])
 
-    objects = provider.list_droppable_objects("My Schema")
+    objects = provider.list_droppable_objects('"My Schema"')
     for obj in objects[:-1]:
         provider.drop_object(obj)
     assert provider.log.warnings == []
@@ -2024,10 +2024,10 @@ def test_snowflake_failing_last_drop_still_completes_and_disarms_the_clean() -> 
 def test_snowflake_caller_identifier_unwraps_only_one_whole_quoted_identifier() -> None:
     assert _caller_identifier('"a"') == "a"
     assert _caller_identifier('"a""b"') == 'a"b'
-    assert _caller_identifier('"a"."b"') == '"a"."b"'
-    assert _caller_identifier('"a" "b"') == '"a" "b"'
+    assert _caller_identifier('"a"."b"') == '"A"."B"'
+    assert _caller_identifier('"a" "b"') == '"A" "B"'
     assert _caller_identifier('"') == '"'
-    assert _caller_identifier("a") == "a"
+    assert _caller_identifier("a") == "A"
 
 
 def test_snowflake_routine_argument_types_edge_cases() -> None:
@@ -2101,8 +2101,8 @@ def test_snowflake_rank_identity_check_uses_the_same_table_name_as_the_existence
 
     exists = [p for sql, p in provider.queries if "INFORMATION_SCHEMA.TABLES" in sql]
     columns = [p for sql, p in provider.queries if "INFORMATION_SCHEMA.COLUMNS" in sql]
-    assert exists[0] == ["app", "MY_HIST"]
-    assert columns == [["app", "MY_HIST"]]
+    assert exists[0] == ["APP", "MY_HIST"]
+    assert columns == [["APP", "MY_HIST"]]
 
 
 # ---------------------------------------------------------------------------
@@ -2161,3 +2161,219 @@ def test_snowflake_lock_refusal_reaches_the_user_through_migrate() -> None:
     cmd.log.error.assert_any_call(
         "Could not acquire migration lock - another migration may be running"
     )
+
+
+# ---------------------------------------------------------------------------
+# Names supplied by the caller follow Snowflake's rule: unquoted folds to upper
+# case, a name wrapped in double quotes keeps the text inside the quotes
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "supplied,resolved",
+    [
+        ("app", "APP"),
+        ("Orders", "ORDERS"),
+        ("APP", "APP"),
+        ('"app"', "app"),
+        ('"MyS"', "MyS"),
+        ('"a""b"', 'a"b'),
+    ],
+)
+def test_snowflake_caller_identifier_folds_unquoted_names_only(supplied, resolved) -> None:
+    assert _caller_identifier(supplied) == resolved
+
+
+def _schema_statements(schema: str, monkeypatch) -> list[str]:
+    """Every statement the schema-level helpers emit for *schema*."""
+    base_calls: list[str] = []
+    monkeypatch.setattr(
+        SqlAlchemyProvider,
+        "execute_statement",
+        lambda self, sql, schema=None, params=None: base_calls.append(sql),
+    )
+    provider = _SnowflakeProvider()
+    provider.create_schema_if_not_exists(schema)
+    provider.set_current_schema(schema)
+    return [sql for sql, _s, _p in provider.statements] + base_calls
+
+
+@pytest.mark.parametrize(
+    "supplied,resolved",
+    [("app", "APP"), ('"app"', "app"), ('"MyS"', "MyS")],
+)
+def test_snowflake_schema_statements_use_the_resolved_schema(
+    supplied, resolved, monkeypatch
+) -> None:
+    assert _schema_statements(supplied, monkeypatch) == [
+        f'CREATE SCHEMA IF NOT EXISTS "{resolved}"',
+        f'USE SCHEMA "{resolved}"',
+    ]
+
+
+@pytest.mark.parametrize(
+    "schema,table,expected",
+    [
+        ("app", "orders", '"APP"."ORDERS"'),
+        ('"app"', "orders", '"app"."ORDERS"'),
+        ('"MyS"', '"Orders"', '"MyS"."Orders"'),
+        ("app", '"orders"', '"APP"."orders"'),
+    ],
+)
+def test_snowflake_qualified_name_resolves_schema_and_object(schema, table, expected) -> None:
+    provider = SnowflakeProvider.__new__(SnowflakeProvider)
+
+    assert provider.get_schema_qualified_name(schema, table) == expected
+
+
+def test_snowflake_table_exists_binds_the_resolved_names() -> None:
+    provider = _SnowflakeProvider()
+
+    provider.table_exists("app", "orders")
+    assert provider.queries[-1][1] == ["APP", "ORDERS"]
+    provider.table_exists('"app"', '"orders"')
+    assert provider.queries[-1][1] == ["app", "orders"]
+    provider.table_exists('"MyS"', "orders")
+    assert provider.queries[-1][1] == ["MyS", "ORDERS"]
+
+
+def test_snowflake_set_current_schema_cache_compares_resolved_schemas(monkeypatch) -> None:
+    base_calls: list[str] = []
+    monkeypatch.setattr(
+        SqlAlchemyProvider,
+        "execute_statement",
+        lambda self, sql, schema=None, params=None: base_calls.append(sql),
+    )
+    provider = SnowflakeProvider.__new__(SnowflakeProvider)
+
+    provider.set_current_schema("app")
+    provider.set_current_schema("APP")
+    provider.set_current_schema('"app"')
+
+    assert base_calls == ['USE SCHEMA "APP"', 'USE SCHEMA "app"']
+
+
+@pytest.mark.parametrize(
+    "supplied,resolved",
+    [("app", "APP"), ('"app"', "app"), ('"MyS"', "MyS")],
+)
+def test_snowflake_clean_targets_the_resolved_schema(supplied, resolved) -> None:
+    provider = _SnowflakeProvider(
+        _clean_catalog_handler(
+            {
+                "INFORMATION_SCHEMA.TABLES": [{"object_name": "Case"}],
+                "INFORMATION_SCHEMA.VIEWS": [],
+                "INFORMATION_SCHEMA.SEQUENCES": [{"object_name": "Seq"}],
+                "SHOW STAGES": [{"name": "Stage"}],
+            }
+        )
+    )
+
+    statements = provider.get_clean_preview(supplied).statements
+
+    assert f'DROP TABLE IF EXISTS "{resolved}"."Case" CASCADE' in statements
+    assert f'DROP SEQUENCE IF EXISTS "{resolved}"."Seq"' in statements
+    assert f'DROP STAGE IF EXISTS "{resolved}"."Stage"' in statements
+    assert all(f'"{resolved}".' in sql for sql in statements)
+    catalog_binds = [params for sql, params in provider.queries if "INFORMATION_SCHEMA" in sql]
+    assert catalog_binds and all(params == [resolved] for params in catalog_binds)
+    shows = [sql.strip() for sql, _ in provider.queries if sql.strip().startswith("SHOW")]
+    assert shows and all(sql.endswith(f'IN SCHEMA "ANALYTICS"."{resolved}"') for sql in shows)
+
+
+def test_snowflake_clean_residue_check_targets_the_resolved_schema() -> None:
+    provider = _SnowflakeProvider(_clean_catalog_handler())
+    provider.log = _RecordingLog()
+
+    provider.clean_schema("app")
+
+    show_objects = [sql.strip() for sql, _ in provider.queries if "SHOW OBJECTS" in sql]
+    assert show_objects == ['SHOW OBJECTS IN SCHEMA "ANALYTICS"."APP"']
+    schemata_binds = [p for sql, p in provider.queries if "SCHEMATA" in sql]
+    assert schemata_binds == [["APP"], ["APP"]]
+
+
+def test_snowflake_clean_through_drop_object_checks_the_resolved_schema() -> None:
+    provider = _residue_provider([{"name": "STUCK", "kind": "VIEW"}])
+
+    objects = provider.list_droppable_objects('"app"')
+    for obj in objects:
+        provider.drop_object(obj)
+
+    (warning,) = provider.log.warnings
+    assert '"app"' in warning
+    shows = [sql for sql, _ in provider.queries if "SHOW OBJECTS" in sql]
+    assert shows == ['SHOW OBJECTS IN SCHEMA "ANALYTICS"."app"']
+
+
+def test_snowflake_lock_statements_use_the_resolved_schema() -> None:
+    provider = _SnowflakeProvider()
+
+    provider.create_migration_lock_table_if_not_exists("app")
+    quoted_provider = _SnowflakeProvider()
+    quoted_provider.create_migration_lock_table_if_not_exists('"app"')
+
+    unquoted = [sql for sql, _s, _p in provider.statements]
+    quoted = [sql for sql, _s, _p in quoted_provider.statements]
+    assert unquoted[0] == 'CREATE SCHEMA IF NOT EXISTS "APP"'
+    assert quoted[0] == 'CREATE SCHEMA IF NOT EXISTS "app"'
+    assert all('"APP"."DBLIFT_MIGRATION_LOCK"' in sql for sql in unquoted[1:])
+    assert all('"app"."DBLIFT_MIGRATION_LOCK"' in sql for sql in quoted[1:])
+    assert '"APP"."DBLIFT_MIGRATION_LOCK"' in provider.acquire_migration_lock_sql("app")
+    assert '"app"."DBLIFT_MIGRATION_LOCK"' in provider.acquire_migration_lock_sql('"app"')
+
+
+@pytest.mark.parametrize(
+    "supplied,resolved",
+    [("app", "APP"), ('"app"', "app"), ('"MyS"', "MyS")],
+)
+def test_snowflake_history_operations_use_the_resolved_schema(supplied, resolved) -> None:
+    def handler(sql, params):
+        if "INFORMATION_SCHEMA.TABLES" in sql:
+            return [{"present": 1}]
+        return []
+
+    provider = _SnowflakeProvider(handler)
+
+    provider.get_applied_migrations(supplied)
+    provider.record_migration(supplied, {"version": "1", "script": "V1__a.sql", "checksum": 1})
+    provider.repair_migration_history(supplied, "V1__a.sql", 2)
+    provider.create_migration_history_table_if_not_exists(supplied, create_schema=True)
+
+    qualified = f'"{resolved}"."DBLIFT_SCHEMA_HISTORY"'
+    selects = [sql for sql, _ in provider.queries if "ORDER BY installed_rank" in sql]
+    assert selects and all(qualified in sql for sql in selects)
+    written = [sql for sql, _s, _p in provider.statements if "DBLIFT_SCHEMA_HISTORY" in sql]
+    assert written and all(qualified in sql for sql in written)
+    assert f'CREATE SCHEMA IF NOT EXISTS "{resolved}"' in [
+        sql for sql, _s, _p in provider.statements
+    ]
+    binds = [
+        params
+        for sql, params in provider.queries
+        if "INFORMATION_SCHEMA.TABLES" in sql or "INFORMATION_SCHEMA.COLUMNS" in sql
+    ]
+    assert binds and all(params[0] == resolved for params in binds)
+
+
+@pytest.mark.parametrize("database", ["my db", "Analytics"])
+def test_snowflake_show_scope_keeps_the_catalog_database_name_exact(database) -> None:
+    provider = _SnowflakeProvider(
+        _clean_catalog_handler({"SELECT CURRENT_DATABASE()": [{"db": database}]})
+    )
+
+    provider.get_clean_preview("app")
+
+    shows = [sql.strip() for sql, _ in provider.queries if sql.strip().startswith("SHOW")]
+    assert shows and all(sql.endswith(f'IN SCHEMA "{database}"."APP"') for sql in shows)
+
+
+@pytest.mark.parametrize("supplied,resolved", [("app", "APP"), ('"app"', "app"), ('"MyS"', "MyS")])
+def test_snowflake_survivor_warning_names_the_resolved_schema(supplied, resolved) -> None:
+    provider = _residue_provider([{"name": "STUCK", "kind": "VIEW"}])
+
+    for obj in provider.list_droppable_objects(supplied):
+        provider.drop_object(obj)
+
+    (warning,) = provider.log.warnings
+    assert warning == f'Schema "{resolved}" after clean: 1 object(s) remain: view STUCK.'

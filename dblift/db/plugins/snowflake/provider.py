@@ -22,18 +22,18 @@ def _quote_identifier(identifier: str) -> str:
 
 
 def _caller_identifier(name: str) -> str:
-    """Return the identifier text of a name the caller wrapped in double quotes.
+    """Return the identifier a caller-supplied name refers to, as Snowflake reads it.
 
-    Only a name that is entirely one quoted identifier (``"flyway_schema_history"``,
-    inner quotes doubled) is unwrapped; anything else, whitespace included,
-    is returned as written. Names read from the catalog never go through
-    this: they are already the exact stored spelling.
+    A name that is entirely one quoted identifier (``"flyway_schema_history"``,
+    inner quotes doubled) keeps the text inside the quotes; anything else is
+    unquoted, so it is upper-cased (``app`` is ``APP``). Names read from the
+    catalog never go through this: they are already the exact stored spelling.
     """
     if len(name) >= 2 and name[0] == '"' and name[-1] == '"':
         inner = name[1:-1]
         if '"' not in inner.replace('""', ""):
             return inner.replace('""', '"')
-    return name
+    return name.upper()
 
 
 def _routine_argument_types(name: str, arguments: str) -> str:
@@ -250,7 +250,7 @@ class SnowflakeProvider(SqlAlchemyProvider):
 
     def create_schema_if_not_exists(self, schema: str) -> None:
         """Create a Snowflake schema if it is missing."""
-        schema_name = _quote_identifier(schema)
+        schema_name = _quote_identifier(_caller_identifier(schema))
         self.execute_statement(f"CREATE SCHEMA IF NOT EXISTS {schema_name}")
 
     def table_exists(self, schema: str, table_name: str) -> bool:
@@ -262,7 +262,7 @@ class SnowflakeProvider(SqlAlchemyProvider):
             WHERE TABLE_SCHEMA = ?
               AND TABLE_NAME = ?
             """,
-            [schema, _caller_identifier(table_name)],
+            [_caller_identifier(schema), _caller_identifier(table_name)],
         )
         return bool(rows)
 
@@ -285,6 +285,7 @@ class SnowflakeProvider(SqlAlchemyProvider):
         reset back — see ``_schema_applied_for``. Unverified: there is no
         local Snowflake engine to confirm this against.
         """
+        schema = _caller_identifier(schema)
         if self._schema_applied_for == schema:
             return
         super().execute_statement(f"USE SCHEMA {_quote_identifier(schema)}")
@@ -293,15 +294,18 @@ class SnowflakeProvider(SqlAlchemyProvider):
     def get_schema_qualified_name(self, schema: str, object_name: str) -> str:
         """Return a quoted schema-qualified object name.
 
-        A name the caller already wrapped in double quotes (a Flyway source
-        table spelled exactly) keeps the text inside the quotes.
+        Both names are caller-supplied: unquoted ones are upper-cased, a name
+        wrapped in double quotes keeps the text inside the quotes.
         """
         return self._literal_qualified_name(schema, _caller_identifier(object_name))
 
     @staticmethod
     def _literal_qualified_name(schema: str, object_name: str) -> str:
-        """Quote *object_name* exactly as given, for names read from the catalog."""
-        return f"{_quote_identifier(schema)}.{_quote_identifier(object_name)}"
+        """Qualify *object_name* exactly as given, for names read from the catalog.
+
+        *schema* is still the caller's and is resolved; *object_name* is not.
+        """
+        return f"{_quote_identifier(_caller_identifier(schema))}.{_quote_identifier(object_name)}"
 
     def clean_schema(self, schema: str) -> CleanExecutionSummary:
         """Drop the schema's Snowflake objects, in dependency order."""
@@ -331,7 +335,7 @@ class SnowflakeProvider(SqlAlchemyProvider):
     def _schema_exists(self, schema: str) -> bool:
         rows = self.execute_query(
             "SELECT 1 AS present FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME = ?",
-            [schema],
+            [_caller_identifier(schema)],
         )
         return bool(rows)
 
@@ -430,7 +434,7 @@ class SnowflakeProvider(SqlAlchemyProvider):
         """Return the ``<database>.<schema>`` scope SHOW commands list objects in."""
         rows = self.execute_query("SELECT CURRENT_DATABASE() AS db")
         database = _row_value(rows[0], "db") if rows else None
-        quoted_schema = _quote_identifier(schema)
+        quoted_schema = _quote_identifier(_caller_identifier(schema))
         return f"{_quote_identifier(str(database))}.{quoted_schema}" if database else quoted_schema
 
     def _show_rows(
@@ -499,7 +503,7 @@ class SnowflakeProvider(SqlAlchemyProvider):
         except Exception as exc:
             self.log.debug(f"Could not check the schema for objects left after clean: {exc}")
             return
-        quoted = _quote_identifier(schema)
+        quoted = _quote_identifier(_caller_identifier(schema))
         if temporary:
             self.log.info(
                 f"Session temporary tables in schema {quoted} are not managed by clean: "
@@ -553,7 +557,7 @@ class SnowflakeProvider(SqlAlchemyProvider):
                     self._warn_about_clean_survivors(run[0])
 
     def _object_names(self, query: str, schema: str) -> List[str]:
-        rows = self.execute_query(query, [schema])
+        rows = self.execute_query(query, [_caller_identifier(schema)])
         return [
             str(row.get("object_name") or row.get("OBJECT_NAME"))
             for row in rows
@@ -602,7 +606,7 @@ class SnowflakeProvider(SqlAlchemyProvider):
                 VALUES (source.lock_name, source.locked_at)
             """
         return [
-            f"CREATE SCHEMA IF NOT EXISTS {_quote_identifier(schema)}",
+            f"CREATE SCHEMA IF NOT EXISTS {_quote_identifier(_caller_identifier(schema))}",
             self.create_migration_lock_table_sql(schema),
             seed,
         ]
@@ -771,7 +775,7 @@ class SnowflakeProvider(SqlAlchemyProvider):
                   AND TABLE_NAME = ?
                   AND COLUMN_NAME = 'INSTALLED_RANK'
                 """,
-                [schema, table_name],
+                [_caller_identifier(schema), table_name],
             )
         except Exception as exc:
             self.log.debug(f"Could not check the rank identity of {qualified_table}: {exc}")
