@@ -79,6 +79,19 @@ The OSS package declares the group so third-party packages can add commands.
 Value: a callable returning `dict[str, CommandHandler]`, where
 `CommandHandler = Callable[[Any], tuple[bool, Any]]`.
 
+By default dblift opens the database connection before running a handler. A
+handler can change that with two optional function attributes:
+
+- `handler._dblift_needs_connection = lambda args: ...` returns `False` when the
+  command, for these parsed `args`, runs purely from files and configuration.
+  The connection is then not opened (no login, no SQLite/DuckDB file created).
+- `handler._dblift_pre_connection_check = lambda args, license_tier: ...` runs
+  before the connection. Raising `CapabilityDeniedError` refuses the command
+  with the same message and exit code as raising it inside the handler, but
+  without having used the credentials.
+
+A handler declaring neither connects as before.
+
 ### `dblift.terminal_commands`
 
 Value: a callable returning `dict[str, TerminalCommand]`, where

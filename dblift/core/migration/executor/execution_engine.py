@@ -41,8 +41,9 @@ from dblift.core.migration.sql.migration_sql_parser import (
 )
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.migration.sql.sql_execution_service import SqlExecutionService
+from dblift.core.sql_parser.redaction import describe_statement
 from dblift.db.base_provider import BaseProvider
-from dblift.db.error import clean_driver_error_message
+from dblift.db.error import clean_driver_error_message, strip_sql_statement_block
 from dblift.db.provider_interfaces import TransactionalProvider
 from dblift.db.provider_registry import ProviderRegistry
 from dblift.db.value_utils import to_python_string
@@ -733,7 +734,8 @@ class ExecutionEngine:
                     )
                 ):
                     self.log.warning(
-                        f"Statement {i + 1} failed (WHENEVER SQLERROR CONTINUE): {stmt_error}"
+                        f"Statement {i + 1} failed (WHENEVER SQLERROR CONTINUE): "
+                        f"{strip_sql_statement_block(str(stmt_error))}"
                     )
                     continue
 
@@ -758,7 +760,9 @@ class ExecutionEngine:
         Sequence: result.set_error -> result.add_migration(FAILED) -> rollback ->
         begin_transaction + record_migration(success=False) + commit.
         """
-        error_msg = clean_driver_error_message(to_python_string(error) or str(error))
+        error_msg = strip_sql_statement_block(
+            clean_driver_error_message(to_python_string(error) or str(error))
+        )
         self.log.error(
             f"Failed to execute statement {stmt_index+1} from {migration.script_name}: {error_msg}"
         )
@@ -1275,8 +1279,12 @@ class ExecutionEngine:
                             self.log.info("Statement executed successfully")
 
                 except Exception as e:
-                    self.log.error(f"Error executing callback SQL statement: {to_python_string(e)}")
-                    self.log.error(f"Failed statement: {statement}")
+                    self.log.error(
+                        "Error executing callback SQL statement: "
+                        f"{strip_sql_statement_block(str(e))}"
+                    )
+                    self.log.error(f"SQL: {describe_statement(statement)}")
+                    self.log.debug(f"Failed statement: {statement}")
                     raise
 
             if transaction_started and isinstance(self.provider, TransactionalProvider):

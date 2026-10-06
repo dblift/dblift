@@ -98,31 +98,12 @@ class TestDBLiftClientContextManager(unittest.TestCase):
             result = client.__enter__()
             self.assertIs(result, client)
 
-    def test_enter_creates_connection_when_not_connected(self):
-        from dblift.db.provider_interfaces import ConnectionProvider
-
+    def test_enter_does_not_open_a_connection(self):
         with TemporaryDirectory() as tmpdir:
             client, provider, *_ = _make_client(tmpdir)
-            # Make provider pass isinstance check for ConnectionProvider
-            provider.__class__ = type("MockConnectionProvider", (MagicMock, ConnectionProvider), {})
             provider.is_connected.return_value = False
             client.__enter__()
-            # Connection attempt made when not connected
-            self.assertIsNotNone(client)
-
-    def test_enter_skips_connection_when_already_connected(self):
-        with TemporaryDirectory() as tmpdir:
-            client, provider, *_ = _make_client(tmpdir)
-            provider.is_connected.return_value = True
-            client.__enter__()
             provider.create_connection.assert_not_called()
-
-    def test_enter_handles_is_connected_exception(self):
-        with TemporaryDirectory() as tmpdir:
-            client, provider, *_ = _make_client(tmpdir)
-            provider.is_connected.side_effect = RuntimeError("conn error")
-            # Should not raise — creates connection as fallback
-            client.__enter__()
 
     def test_exit_no_exception(self):
         with TemporaryDirectory() as tmpdir:
