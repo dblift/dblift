@@ -1327,34 +1327,13 @@ class DBLiftClient:
     # Phase 2.4: Context Manager Support
 
     def __enter__(self) -> "DBLiftClient":
-        """Context manager entry: ensure provider connection.
+        """Context manager entry. Opens no connection; operations connect on demand.
 
         Example:
             >>> with DBLiftClient.from_config_file("dblift.yaml") as client:
             ...     result = client.migrate()
             ...     # Connection automatically closed on exit
-
-        Takes ``self._operation_lock``, like every operation. Harmless to
-        nest, unlike ``__exit__``, so it does not refuse a reentrant call.
         """
-        lock = getattr(self, "_operation_lock", None)
-        if lock is None:
-            return self._enter_unlocked()
-        with lock:
-            return self._enter_unlocked()
-
-    def _enter_unlocked(self) -> "DBLiftClient":
-        # Ensure provider has a connection (avoid creating when already connected)
-        if isinstance(self.provider, ConnectionProvider):
-            try:
-                is_conn = self.provider.is_connected()
-            except Exception as e:
-                # is_connected() raised (e.g. state unknown) — log and try to connect
-                self.logger.debug(f"Could not check connection state in __enter__: {e}")
-                self.provider.create_connection()
-            else:
-                if not is_conn:
-                    self.provider.create_connection()
         return self
 
     def __exit__(

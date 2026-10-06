@@ -51,9 +51,8 @@ def test_from_sqlalchemy_in_memory_shares_database(tmp_path):
 def test_from_sqlalchemy_in_memory_context_manager_shares_database(tmp_path):
     """Regression: the ``with DBLiftClient.from_sqlalchemy(...)`` path.
 
-    ``__enter__`` calls ``provider.create_connection()`` when ``is_connected()``
-    is false; the native sqlite3 provider must not open a fresh connection that
-    discards the injected engine (separate in-memory DB otherwise).
+    The native sqlite3 provider must not open a fresh connection that discards
+    the injected engine (separate in-memory DB otherwise).
     """
     migrations = tmp_path / "migrations"
     migrations.mkdir()
