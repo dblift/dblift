@@ -38,6 +38,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   shaping stays available without presentation libraries; table rendering is
   loaded when requested.
 
+### Fixed
+
+- `info` reports **Missing** for a migration that was undone, applied again, and whose
+  script has since left the migration folder (for example after switching to a branch
+  that does not carry it). Such rows showed **Success**, because the undo-then-reapply
+  check returned before the script lookup ran.
+- Out-of-order detection now forgets a version once its undo succeeds. Undoing several
+  migrations and running `migrate` again no longer marks the re-applied versions
+  **Out of order** against the rows that were undone in between.
+
 ## [4.10.0] - 2026-10-03
 
 ### Added
