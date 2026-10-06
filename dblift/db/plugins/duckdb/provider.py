@@ -384,12 +384,22 @@ class DuckDBProvider(SqlAlchemyProvider):
         qualified = self.get_schema_qualified_name(schema, self.MIGRATION_LOCK_TABLE)
         deadline = time.monotonic() + wait_timeout_seconds
         while True:
+            # Only roll back a transaction opened below; an open one is the caller's.
+            conn = self._ensure_connection()
+            opened_here = (
+                self._tx is None
+                and not getattr(self, "_external_connection", False)
+                and not conn.in_transaction()
+            )
             try:
                 self.execute_statement(
                     f"INSERT INTO {qualified} (lock_name) VALUES (?)", params=["migration"]
                 )
                 return True
             except IntegrityError:
+                # A failed INSERT aborts DuckDB's transaction; retrying needs a clean one.
+                if opened_here:
+                    conn.rollback()
                 if time.monotonic() >= deadline:
                     return False
                 time.sleep(0.2)

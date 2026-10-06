@@ -163,6 +163,20 @@ class TestDuckDBRoundTrip:
 
 
 @pytest.mark.unit
+class TestDuckDBMigrationLock:
+    def test_contended_lock_times_out_with_false(self, duckdb_provider) -> None:
+        provider, _ = duckdb_provider
+        assert provider.acquire_migration_lock("main") is True
+
+        assert provider.acquire_migration_lock("main", wait_timeout_seconds=1) is False
+
+        # The failed attempt must not leave the connection in an aborted state.
+        assert provider.execute_query("SELECT 1 AS one") == [{"one": 1}]
+        assert provider.release_migration_lock("main") is True
+        assert provider.acquire_migration_lock("main", wait_timeout_seconds=1) is True
+
+
+@pytest.mark.unit
 class TestDuckDBDmlRowcount:
     def _provider(self, tmp_path: Path) -> "DuckDBProvider":
         from dblift.config import DatabaseConfig, DbliftConfig
