@@ -652,6 +652,17 @@ def _effective_scripts_dir_for_log(client: Any, fallback: Optional[Path]) -> Any
         return fallback
 
 
+def _close_client(client: Any, log: Any) -> None:
+    """Release the client's provider; a failing close never changes the exit code."""
+    close = getattr(client, "close", None)
+    if not callable(close):
+        return
+    try:
+        close()
+    except Exception as e:
+        log.debug(f"Error closing client: {e}")
+
+
 def _dispatch_command(ctx: _CliContext, command_output: CommandOutput) -> int:
     """Phase 4: build full workflow context and run the command loop.
 
@@ -771,6 +782,8 @@ def _dispatch_command(ctx: _CliContext, command_output: CommandOutput) -> int:
         ctx.log.error_with_exception("Command execution failed", e)
         _close_logs(ctx.log)
         return 1
+    finally:
+        _close_client(client, ctx.log)
 
 
 if __name__ == "__main__":
