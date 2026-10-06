@@ -85,3 +85,7 @@ def _handle_migrate(ctx: CliCommandContext) -> Tuple[bool, Any]:
     return run_json_guarded(
         ctx, "MIGRATE", migrate_call, lambda r: _migrate_result_to_dict(r, dry_run)
     )
+
+
+# The client connects on demand, after the pre-migrate checks have run.
+_handle_migrate._dblift_needs_connection = lambda args: False  # type: ignore[attr-defined]
