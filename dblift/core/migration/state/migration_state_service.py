@@ -95,14 +95,10 @@ class MigrationStateService:
             if migration_type == "UNDO_SQL":
                 return MigrationDisplayState.SUCCESS
 
-            # Check if migration was undone
-            if version in undone_versions:
-                # Check if it was reapplied after being undone
-                if version in reapplied_versions:
-                    # If reapplied successfully, show as success
-                    return MigrationDisplayState.SUCCESS
-                else:
-                    return MigrationDisplayState.UNDONE
+            # Check if migration was undone (a version reapplied after its undo
+            # is an ordinary applied row and goes through the checks below)
+            if version in undone_versions and version not in reapplied_versions:
+                return MigrationDisplayState.UNDONE
 
             # Check for out-of-order migrations
             if version in out_of_order_migrations:

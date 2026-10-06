@@ -134,6 +134,21 @@ class TestMigrationStateService:
         result = service.determine_state(migration, context)
         assert result == MigrationDisplayState.SUCCESS
 
+    def test_determine_state_reapplied_then_script_removed_is_missing(self, service):
+        """A version undone and reapplied is still Missing once its script leaves the folder."""
+        migration = Mock()
+        migration.success = True
+        migration.type = "SQL"
+        migration.version = "1.3.0"
+        migration.resolved = False
+        context = {
+            "undone_versions": {"1.3.0"},
+            "reapplied_versions": {"1.3.0"},
+            "current_version": "1.4.0",
+        }
+        result = service.determine_state(migration, context)
+        assert result == MigrationDisplayState.MISSING
+
     def test_determine_state_success_out_of_order(self, service):
         """Test determine_state for out-of-order migration."""
         migration = Mock()
