@@ -68,6 +68,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   behind, and the next `migrate` waited 60 seconds and failed.
 - The CLI closes its database connection when a command finishes, including after a
   failure.
+- `dblift migrate` no longer opens the database before its registered pre-migrate checks
+  run. A check that refuses the run now does so without a connection, as it already did
+  through the Python API.
 - DuckDB: waiting for a held migration lock now times out with `Could not acquire
   migration lock` instead of failing at once with `Current transaction is aborted`.
 - DuckDB: `clean` also drops macros, table macros and user-defined types. They
