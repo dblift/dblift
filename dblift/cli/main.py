@@ -1,10 +1,13 @@
 """Main CLI module for dblift."""
 
 import argparse
+import signal
 import sys
+import threading
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, List, Optional, Set
+from typing import Any, Iterator, List, Optional, Set
 
 # Add project root to Python path when running as a script
 # This allows imports to work when running: python3 cli/main.py
@@ -309,6 +312,28 @@ def _format_version() -> str:
     return "\n".join(lines)
 
 
+@contextmanager
+def _sigterm_unwinds() -> Iterator[None]:
+    """Make SIGTERM unwind the stack (``finally`` blocks run) and exit 143.
+
+    Without it SIGTERM kills the process in place, leaving a held migration
+    lock behind. Only installed on the main thread; the previous handler is
+    restored on exit.
+    """
+    if threading.current_thread() is not threading.main_thread():
+        yield
+        return
+
+    def _exit(signum: int, _frame: Any) -> None:
+        raise SystemExit(128 + signum)
+
+    previous = signal.signal(signal.SIGTERM, _exit)
+    try:
+        yield
+    finally:
+        signal.signal(signal.SIGTERM, previous)
+
+
 def main() -> None:
     """Main entry point for DBLift CLI application.
 
@@ -329,7 +354,8 @@ def main() -> None:
 
     ctx = _parse_argv_and_load_config(sys.argv[1:])
     command_output = _setup_logging_and_output(ctx)
-    exit_code = _dispatch_command(ctx, command_output)
+    with _sigterm_unwinds():
+        exit_code = _dispatch_command(ctx, command_output)
     # Preserve the pre-refactor exit contract: return None on success so
     # the outer `sys.exit(main())` in the launcher script does not see a
     # raised SystemExit on the happy path. Tests that ``@patch("sys.exit")``
