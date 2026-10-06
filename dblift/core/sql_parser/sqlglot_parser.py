@@ -14,6 +14,7 @@ import sqlglot
 from sqlglot import exp, parse_one
 from sqlglot.errors import ParseError
 
+from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.core.sql_model.base import (
     ParseResult,
     SqlObject,
@@ -179,6 +180,8 @@ class SqlGlotParser(SqlParserInterface):
                     regex_parser = regex_cls()
                     result: list[str] = regex_parser.split_statements(sql_content)
                     return result
+                except UnsafeStatementSplitError:
+                    raise
                 except Exception as fallback_error:
                     logger.warning(
                         f"Regex fallback parser also failed: {str(fallback_error)}, using simple split"

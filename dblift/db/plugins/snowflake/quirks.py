@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Optional
 
 from dblift.db.base_quirks import BaseQuirks
 
@@ -20,6 +20,9 @@ class SnowflakeQuirks(BaseQuirks):
     drop_supports_if_exists = True
     unquoted_identifier_case = "uppercase"
     quote_qualified_folds_to_uppercase = True
+    # Flyway creates ``"flyway_schema_history"`` quoted lowercase, which the
+    # uppercase-folded history lookup cannot find.
+    flyway_source_table_case_sensitive = True
     connection_identifier_attrs = ("url", "account")
     missing_connection_identifier_hint = "Snowflake requires url or account"
     native_url_schema_params = ("schema",)
@@ -41,6 +44,22 @@ class SnowflakeQuirks(BaseQuirks):
                 database_config, "host", None
             )
         return bool(str(url or "").strip() or str(account or "").strip())
+
+    def parser_class(self, parser_type: str) -> Optional[type]:
+        """Use Snowflake's sqlglot grammar for AST and current hybrid callers.
+
+        Migration splitting preserves Snowflake quoting and refuses unquoted
+        scripting blocks until their grammar is qualified.
+        """
+        if parser_type in {"hybrid", "sqlglot"}:
+            from dblift.core.sql_parser.sqlglot_parser import SqlGlotParser
+
+            return SqlGlotParser
+        if parser_type == "regex":
+            from dblift.db.plugins.snowflake.statement_parser import SnowflakeStatementParser
+
+            return SnowflakeStatementParser
+        return None
 
 
 __all__ = ["SnowflakeQuirks"]

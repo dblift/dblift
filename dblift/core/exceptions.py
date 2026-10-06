@@ -29,6 +29,10 @@ class UnsupportedMetaCommandError(ParserError):
     """Raised for a client meta-command line with no safe no-op interpretation."""
 
 
+class UnsafeStatementSplitError(ParserError):
+    """Raised when a SQL script cannot be split without changing its meaning."""
+
+
 # --- Execution exceptions ---
 
 

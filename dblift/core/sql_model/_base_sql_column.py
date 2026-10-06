@@ -40,6 +40,8 @@ class SqlColumn:
         ordinal_position: Optional[int] = None,
         # Collation metadata
         collation: Optional[str] = None,
+        # Identity ordering guarantee, when the dialect reports it
+        identity_ordered: Optional[bool] = None,
     ):
         """Initialize a SQL column.
 
@@ -63,6 +65,7 @@ class SqlColumn:
             comment: Column comment/description
             ordinal_position: Position of column in table (1-based)
             collation: Column collation (character set collation for text columns)
+            identity_ordered: Whether generated identity values preserve order
         """
         self.name = name
         self.data_type = data_type
@@ -78,6 +81,7 @@ class SqlColumn:
         self.identity_generation = identity_generation
         self.identity_seed = identity_seed
         self.identity_increment = identity_increment
+        self.identity_ordered = identity_ordered
 
         # Computed column metadata
         self.is_computed = is_computed
@@ -167,6 +171,11 @@ class SqlColumn:
             # re-exporting a model file written before it existed appends a
             # line per column rather than splitting every column object.
             "constraints": [constraint.to_dict() for constraint in self.constraints],
+            **(
+                {"identity_ordered": self.identity_ordered}
+                if self.identity_ordered is not None
+                else {}
+            ),
         }
 
     @classmethod
@@ -195,6 +204,7 @@ class SqlColumn:
             identity_generation=data.get("identity_generation"),
             identity_seed=data.get("identity_seed"),
             identity_increment=data.get("identity_increment"),
+            identity_ordered=data.get("identity_ordered"),
             is_computed=data.get("is_computed", False),
             computed_expression=data.get("computed_expression"),
             computed_stored=data.get("computed_stored", False),

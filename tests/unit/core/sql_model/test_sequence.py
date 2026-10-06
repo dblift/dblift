@@ -205,6 +205,15 @@ class TestSequence:
 
         assert result == expected
 
+    def test_dialect_options_survive_sequence_serialization(self):
+        sequence = Sequence(name="ordered_seq", dialect="snowflake")
+        sequence.set_dialect_option("snowflake", "ordered", False)
+
+        data = sequence.to_dict()
+
+        assert data["dialect_options"] == {"snowflake": {"ordered": False}}
+        assert Sequence.from_dict(data).get_dialect_option("snowflake", "ordered") is False
+
     def test_to_dict_with_negative_values(self):
         """Test converting sequence with negative values to dictionary."""
         sequence = Sequence(name="negative_seq", start_with=-50, increment_by=-2, min_value=-1000)
