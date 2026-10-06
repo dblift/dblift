@@ -20,6 +20,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **`DBLiftClient.from_config_file(..., relative_to_config=True)`.** A keyword-only argument. Relative paths in the configuration file (migration directories, a file database such as SQLite, the log directory) resolve from the folder that holds the file instead of the working directory. Lets a long-running process open several projects without changing directory. Off by default; existing behaviour is unchanged.
+- Command handlers registered through the `dblift.command_handlers` entry point can
+  declare `_dblift_needs_connection(args)` to skip the database connection the CLI
+  opens before a command, for invocations that run purely from files, and
+  `_dblift_pre_connection_check(args, license_tier)` to refuse a command with
+  `CapabilityDeniedError` before any connection is opened. A refused or file-only
+  command then uses no credentials and creates no empty SQLite or DuckDB file.
+  Handlers that declare neither behave as before.
 
 ### Changed
 
@@ -37,6 +44,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Importing `dblift.api` no longer loads Rich or Jinja2. Query-result data
   shaping stays available without presentation libraries; table rendering is
   loaded when requested.
+- `with DBLiftClient(...)` no longer opens a database connection on entry. The first
+  operation opens it, so a connection error surfaces there, and a block that runs no
+  operation creates no SQLite or DuckDB file.
+- A failing migration statement is no longer echoed with its text. The console and
+  log file identify it by its leading verb and target (for example
+  `INSERT INTO missing_table`); `error_message`, the migration `error` field and the
+  run journal no longer carry the driver's `[SQL: ...]` block, and the journal masks
+  string literals and passwords given after `IDENTIFIED BY` or `PASSWORD`. The full
+  statement is logged only at DEBUG.
 
 ### Fixed
 
@@ -47,6 +63,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Out-of-order detection now forgets a version once its undo succeeds. Undoing several
   migrations and running `migrate` again no longer marks the re-applied versions
   **Out of order** against the rows that were undone in between.
+- `dblift migrate` releases the migration lock when the process receives SIGTERM (for
+  example a cancelled CI job) and exits with status 143. The lock row used to stay
+  behind, and the next `migrate` waited 60 seconds and failed.
+- The CLI closes its database connection when a command finishes, including after a
+  failure.
+- DuckDB: waiting for a held migration lock now times out with `Could not acquire
+  migration lock` instead of failing at once with `Current transaction is aborted`.
+- DuckDB: `clean` also drops macros, table macros and user-defined types. They
+  survived while `clean` reported success, and the next `migrate` failed with
+  `Type ... already exists`.
 
 ## [4.10.0] - 2026-10-03
 
