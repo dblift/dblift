@@ -1304,28 +1304,25 @@ class TestHandleStatementFailure(unittest.TestCase):
         warning_calls = [str(c) for c in engine.log.warning.call_args_list]
         self.assertTrue(any("Could not rollback transaction" in c for c in warning_calls))
 
-    def test_preserves_embedded_sql_for_migration_script_statement_errors(self):
-        """Regression guard: unlike format_connection_error (which hides
-        dblift's own schema-setup SQL from connection/setup errors),
-        _handle_statement_failure reports failures in a *user's own*
-        migration script, so the failing '[SQL: ...]' statement must stay
-        visible in the message so they can tell which statement broke.
-
-        clean_driver_error_message (shared with format_connection_error)
-        must not gain SQL-block stripping — that behavior belongs only to
-        strip_sql_statement_block, used for connection and setup errors.
-        """
+    def test_statement_error_omits_embedded_sql_block(self):
+        """The ``[SQL: ...]`` block carries the statement's literals, which can
+        be secrets; the statement is identified by script and index instead."""
         engine = _make_engine(with_history=False)
         migration = _make_sql_migration()
         result = MagicMock()
         raw_error = OperationalError(
-            "CREATE TABLE users (id INT)", None, Exception("ORA-00001: unique constraint violated")
+            "CREATE USER app PASSWORD 'SENTINEL-SECRET-42'",
+            None,
+            Exception("ORA-00001: unique constraint violated"),
         )
 
         engine._handle_statement_failure(migration, raw_error, 0, 100, result)
 
         error_message = result.set_error.call_args[0][0]
-        self.assertIn("CREATE TABLE users (id INT)", error_message)
+        self.assertIn("ORA-00001: unique constraint violated", error_message)
+        self.assertNotIn("SENTINEL-SECRET-42", error_message)
+        logged = " ".join(str(c) for c in engine.log.error.call_args_list)
+        self.assertNotIn("SENTINEL-SECRET-42", logged)
 
 
 # ---------------------------------------------------------------------------

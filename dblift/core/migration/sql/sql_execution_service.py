@@ -11,8 +11,14 @@ from dblift.core.constants import (
 )
 from dblift.core.logger import NullLog
 from dblift.core.sql_model.base import SqlStatementType
+from dblift.core.sql_parser.redaction import describe_statement, mask_string_literals
 from dblift.db.base_quirks import BaseQuirks
-from dblift.db.error import clean_driver_error_message, extract_error_code, extract_sqlstate
+from dblift.db.error import (
+    clean_driver_error_message,
+    extract_error_code,
+    extract_sqlstate,
+    strip_sql_statement_block,
+)
 from dblift.db.provider_interfaces import TransactionalProvider
 from dblift.db.value_utils import to_python_string
 
@@ -24,7 +30,7 @@ def _format_execution_error(exc: BaseException) -> str:
     expose them via attributes or getSQLState() / getErrorCode().
     """
     fragments: List[str] = []
-    base = clean_driver_error_message(to_python_string(exc) or str(exc))
+    base = strip_sql_statement_block(clean_driver_error_message(to_python_string(exc) or str(exc)))
     if base:
         fragments.append(base)
     sqlstate = extract_sqlstate(exc)
@@ -81,6 +87,10 @@ class SqlExecutionService:
                 provider_quirks if isinstance(provider_quirks, BaseQuirks) else BaseQuirks()
             )
         return self._quirks
+
+    def _dialect_name(self) -> Optional[str]:
+        dialect = getattr(self.sql_analyzer, "dialect", None)
+        return dialect if isinstance(dialect, str) else None
 
     def prepare_analysis(self) -> None:
         """Prepare dependencies required by the active object-change journal."""
@@ -321,18 +331,23 @@ class SqlExecutionService:
             # Record statement failure in journal if enabled
             if self.journal and hasattr(self.journal, "record_statement_failed"):
                 execution_time = int((time.time() - stmt_start_time) * SECONDS_TO_MILLISECONDS)
-                error_message = clean_driver_error_message(to_python_string(e) or str(e))
+                error_message = strip_sql_statement_block(
+                    clean_driver_error_message(to_python_string(e) or str(e))
+                )
                 self.journal.record_statement_failed(
-                    statement, stmt_index, error_message, execution_time
+                    mask_string_literals(statement, self._dialect_name()),
+                    stmt_index,
+                    error_message,
+                    execution_time,
                 )
 
             try:
                 formatted = _format_execution_error(e)
             except Exception:
                 formatted = ""
-            sql_snippet = statement.strip().splitlines()[0][:120]
-            self.log.error(f"SQL: {sql_snippet}")
-            self.log.error(formatted or str(e))
+            self.log.error(f"SQL: {describe_statement(statement, self._dialect_name())}")
+            self.log.debug(f"Failed statement: {statement}")
+            self.log.error(formatted or strip_sql_statement_block(str(e)))
 
             # Re-raise the exception
             raise
