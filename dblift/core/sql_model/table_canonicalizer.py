@@ -33,6 +33,7 @@ class TableCanonicalizer:
                 constraint.is_enabled = None
             if constraint.is_validated is True:
                 constraint.is_validated = None
+            # rely is not collapsed: False is an explicit NORELY, None is "not reported".
 
         return table
 
