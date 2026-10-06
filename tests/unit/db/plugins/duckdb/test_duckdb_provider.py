@@ -150,6 +150,33 @@ class TestDuckDBRoundTrip:
         provider.clean_schema("main")
         assert provider.get_clean_preview("main").objects == []
 
+    def test_clean_drops_macros_and_user_types(self, duckdb_provider) -> None:
+        provider, _ = duckdb_provider
+        provider.execute_statement("CREATE TYPE mood AS ENUM ('sad', 'happy')")
+        provider.execute_statement("CREATE MACRO add_one(x) AS x + 1, (x, y) AS x + y")
+        provider.execute_statement("CREATE MACRO one_row(x) AS TABLE SELECT x AS v")
+        provider.execute_statement("CREATE TABLE person (m mood)")
+
+        preview = provider.get_clean_preview("main")
+        assert sorted((o.object_type, o.name) for o in preview.objects) == [
+            ("MACRO", "add_one"),
+            ("TABLE", "person"),
+            ("TABLE MACRO", "one_row"),
+            ("TYPE", "mood"),
+        ]
+        assert [o.drop_sql for o in provider.list_droppable_objects("main")] == preview.statements
+
+        provider.clean_schema("main")
+
+        assert provider.execute_query("SELECT 1 FROM duckdb_types() WHERE type_name = 'mood'") == []
+        assert (
+            provider.execute_query(
+                "SELECT 1 FROM duckdb_functions() WHERE function_name IN ('add_one', 'one_row')"
+            )
+            == []
+        )
+        provider.execute_statement("CREATE TYPE mood AS ENUM ('sad', 'happy')")
+
     def test_clean_drops_fk_referenced_table(self, duckdb_provider) -> None:
         # DuckDB DROP TABLE CASCADE does not drop FKs held by other tables, so
         # a referenced table must be dropped after its referencing table.

@@ -258,7 +258,7 @@ class DuckDBProvider(SqlAlchemyProvider):
         """Drop all objects in a schema (native strategy).
 
         Order is set by :meth:`get_clean_preview` (views, then tables in
-        FK-dependency order, then sequences), so a plain in-order execution
+        FK-dependency order, then sequences, macros and types), so a plain in-order execution
         drops everything.
         """
         summary = self.get_clean_preview(schema)
@@ -324,7 +324,7 @@ class DuckDBProvider(SqlAlchemyProvider):
         objects: List[Any] = []
         statements: List[str] = []
         # Views first (they depend on tables), then tables in FK-dependency
-        # order, then sequences.
+        # order, then sequences, macros and user types.
         for row in self.execute_query(
             "SELECT table_name FROM information_schema.tables "
             "WHERE table_schema = ? AND table_type = 'VIEW'",
@@ -349,6 +349,36 @@ class DuckDBProvider(SqlAlchemyProvider):
             statements.append(
                 f"DROP SEQUENCE IF EXISTS {self.get_schema_qualified_name(schema, name)}"
             )
+        # Macros (one duckdb_functions() row per overload) then user types, which
+        # a macro or table may reference.
+        for kind, drop_kw, query in (
+            (
+                "MACRO",
+                "MACRO",
+                "SELECT DISTINCT function_name AS name FROM duckdb_functions() "
+                "WHERE NOT internal AND function_type = 'macro' "
+                "AND schema_name = ? AND database_name = current_database()",
+            ),
+            (
+                "TABLE MACRO",
+                "MACRO TABLE",
+                "SELECT DISTINCT function_name AS name FROM duckdb_functions() "
+                "WHERE NOT internal AND function_type = 'table_macro' "
+                "AND schema_name = ? AND database_name = current_database()",
+            ),
+            (
+                "TYPE",
+                "TYPE",
+                "SELECT type_name AS name FROM duckdb_types() WHERE NOT internal "
+                "AND schema_name = ? AND database_name = current_database()",
+            ),
+        ):
+            for row in self.execute_query(query, [schema]):
+                name = row["name"]
+                objects.append(DroppableObject(name=name, object_type=kind, drop_sql=""))
+                statements.append(
+                    f"DROP {drop_kw} IF EXISTS {self.get_schema_qualified_name(schema, name)}"
+                )
         return CleanExecutionSummary(objects=objects, statements=statements)
 
     def list_droppable_objects(self, schema: str) -> List[DroppableObject]:
