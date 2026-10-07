@@ -77,6 +77,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - DuckDB: `clean` also drops macros, table macros and user-defined types. They
   survived while `clean` reported success, and the next `migrate` failed with
   `Type ... already exists`.
+- `repair --dry-run` now reports the repairs it would make
+  (`RepairResult.repaired_migrations`, `removed_migrations`, `aligned_migrations` and the
+  counters), and a real `repair` fills the same lists.
 
 ## [4.10.0] - 2026-10-03
 
