@@ -54,6 +54,11 @@ def _norm_constraint_deferrable(x: Optional[bool]) -> bool:
     return x if x is not None else False
 
 
+def _norm_constraint_rely(x: Optional[bool]) -> bool:
+    """Normalize rely: None = default = False (NORELY)."""
+    return x if x is not None else False
+
+
 class SqlConstraint:
     """Represents a constraint in a database table."""
 
@@ -74,6 +79,8 @@ class SqlConstraint:
         # Deferrable constraints (PostgreSQL, Oracle) - Diff-relevant
         is_deferrable: Optional[bool] = None,
         initially_deferred: Optional[bool] = None,
+        # Optimizer reliance (Snowflake, Oracle) - Diff-relevant
+        rely: Optional[bool] = None,
         # Constraint comment - SQL-generation-only
         comment: Optional[str] = None,
     ):
@@ -93,6 +100,7 @@ class SqlConstraint:
             is_validated: Whether constraint is validated (Oracle) - Diff-relevant
             is_deferrable: Whether constraint is deferrable (PostgreSQL, Oracle) - Diff-relevant
             initially_deferred: Whether constraint is initially deferred - Diff-relevant
+            rely: Whether the optimizer may rely on the constraint (Snowflake, Oracle) - Diff-relevant
             comment: Constraint comment/description - SQL-generation-only
         """
         # Handle both enum and string constraint types
@@ -121,6 +129,8 @@ class SqlConstraint:
         # Deferrable constraints (PostgreSQL, Oracle) - Diff-relevant
         self.is_deferrable = is_deferrable
         self.initially_deferred = initially_deferred
+        # Optimizer reliance (Snowflake, Oracle) - Diff-relevant
+        self.rely = rely
         # Constraint comment - SQL-generation-only
         self.comment = comment
 
@@ -177,6 +187,9 @@ class SqlConstraint:
             other.initially_deferred
         ):
             return False
+        # rely: None = default = False (NORELY)
+        if _norm_constraint_rely(self.rely) != _norm_constraint_rely(other.rely):
+            return False
         return True
 
     def __hash__(self) -> int:
@@ -184,7 +197,7 @@ class SqlConstraint:
         cols = self.column_names or []
         ref_cols = self.reference_columns or []
         # Normalize for hash (must match __eq__)
-        # is_enabled/is_validated: None -> True; is_deferrable/initially_deferred: None -> False
+        # is_enabled/is_validated: None -> True; is_deferrable/initially_deferred/rely: None -> False
         return hash(
             (
                 self.constraint_type,
@@ -200,6 +213,7 @@ class SqlConstraint:
                 _norm_constraint_enabled(self.is_validated),
                 _norm_constraint_deferrable(self.is_deferrable),
                 _norm_constraint_deferrable(self.initially_deferred),
+                _norm_constraint_rely(self.rely),
             )
         )
 
@@ -232,6 +246,7 @@ class SqlConstraint:
             "comment": self.comment,
             "dialect": self.dialect,
             "explicit_properties": self.explicit_properties,
+            **({"rely": self.rely} if self.rely is not None else {}),
         }
 
     @classmethod
@@ -263,6 +278,7 @@ class SqlConstraint:
             is_validated=data.get("is_validated"),
             is_deferrable=data.get("is_deferrable"),
             initially_deferred=data.get("initially_deferred"),
+            rely=data.get("rely"),
             comment=data.get("comment"),
         )
         constraint.reference_schema = data.get("reference_schema")

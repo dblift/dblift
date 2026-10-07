@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`SqlConstraint.rely`.** Optional flag recording whether the optimizer may rely on a constraint (`RELY` / `NORELY`, as in Snowflake and Oracle). `None` (not reported) and `False` compare equal, matching the engine default `NORELY`; the key is serialised only when set, so existing model files are unchanged.
 - **`DBLiftClient.from_config_file(..., relative_to_config=True)`.** A keyword-only argument. Relative paths in the configuration file (migration directories, a file database such as SQLite, the log directory) resolve from the folder that holds the file instead of the working directory. Lets a long-running process open several projects without changing directory. Off by default; existing behaviour is unchanged.
 - Command handlers registered through the `dblift.command_handlers` entry point can
   declare `_dblift_needs_connection(args)` to skip the database connection the CLI
