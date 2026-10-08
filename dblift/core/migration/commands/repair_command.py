@@ -9,15 +9,15 @@ if TYPE_CHECKING:
     pass
 
 from dblift.core.exceptions import ExecutionError
-from dblift.core.logger.results import MigrationInfo, RepairResult
+from dblift.core.logger.results import RepairResult
 from dblift.core.migration._type_match import is_versioned
 from dblift.core.migration.migration import Migration, MigrationType
 from dblift.core.migration.state.migration_state import MigrationState
 from dblift.db.provider_capabilities import ensure_provider_connection
 from dblift.db.provider_interfaces import TransactionalProvider
 
+from ._repair_records import record_repair
 from .base_command import BaseCommand
-from .info_command import normalize_migration_info_status
 
 
 class RepairSafetyError(Exception):
@@ -142,7 +142,7 @@ class RepairCommand(BaseCommand):
                         removed.script == script for removed in result.removed_migrations
                     ):
                         continue
-                    self._record_repair(result, kind, repair, migration_state)
+                    record_repair(result, kind, repair, migration_state)
                 self._log_command_completion("repair", result)
                 return result
 
@@ -444,55 +444,6 @@ class RepairCommand(BaseCommand):
 
         return repairs
 
-    def _record_repair(
-        self,
-        result: RepairResult,
-        kind: str,
-        repair: Dict[str, Any],
-        migration_state: Any = None,
-    ) -> None:
-        """Add one repair to the result list for its kind and recount the counters.
-
-        ``CHECKSUM_MISMATCH`` goes to ``aligned_migrations``, ``FAILED_MIGRATION``
-        to ``removed_migrations`` and ``MISSING_SCRIPT`` to ``repaired_migrations``.
-        The counters are the lengths of those lists, set here only.
-        """
-        targets = {
-            "CHECKSUM_MISMATCH": result.add_aligned_migration,
-            "FAILED_MIGRATION": result.add_removed_migration,
-            "MISSING_SCRIPT": result.add_repaired_migration,
-        }
-        targets[kind](self._repair_info(repair, migration_state))
-        result.checksums_fixed = len(result.aligned_migrations)
-        result.failed_migrations_removed = len(result.removed_migrations)
-        result.deleted_migrations_marked = len(result.repaired_migrations)
-
-    @staticmethod
-    def _repair_info(repair: Dict[str, Any], migration_state: Any) -> MigrationInfo:
-        """Describe the history row a repair targets, as it was before the repair."""
-        script = str(repair.get("script", ""))
-        entry = None
-        # The latest history row for the script, a failed row taking precedence.
-        for rows in (
-            getattr(migration_state, "applied", None),
-            getattr(migration_state, "failed", None),
-        ):
-            for candidate in rows if isinstance(rows, list) else []:
-                if getattr(candidate, "script", None) == script:
-                    entry = candidate
-        original_type = repair.get("original_type")
-        # An enum names its member; a plain string is kept as it is.
-        fallback_type = getattr(original_type, "name", None) or (
-            original_type if isinstance(original_type, str) else ""
-        )
-        return MigrationInfo(
-            script=script,
-            version=getattr(entry, "version", None) or repair.get("version"),
-            description=getattr(entry, "description", None) or repair.get("description") or "",
-            type=getattr(entry, "type", None) or fallback_type or "SQL",
-            status=normalize_migration_info_status(getattr(entry, "status", None)),
-        )
-
     def _is_failed_migration(self, script: str, migration_state: Any) -> bool:
         """Return True if `script` is in the failed_objects set of `migration_state`."""
         if not script or migration_state is None:
@@ -533,7 +484,7 @@ class RepairCommand(BaseCommand):
             row_removed = self.history_manager.delete_failed_migration_entry(script_name)
 
             if row_removed:
-                self._record_repair(result, "FAILED_MIGRATION", repair, migration_state)
+                record_repair(result, "FAILED_MIGRATION", repair, migration_state)
                 # Warn about non-transactional DDL databases
                 if (
                     isinstance(self.provider, TransactionalProvider)
@@ -626,7 +577,7 @@ class RepairCommand(BaseCommand):
                             "Repair may require manual intervention."
                         )
                     repairs_executed += 1
-                    self._record_repair(result, "CHECKSUM_MISMATCH", repair, migration_state)
+                    record_repair(result, "CHECKSUM_MISMATCH", repair, migration_state)
                     self.log.info(f"Updated checksum for {repair['script']}")
 
                 elif repair["type"] == "MISSING_SCRIPT":
@@ -682,7 +633,7 @@ class RepairCommand(BaseCommand):
                         )
 
                         repairs_executed += 1
-                        self._record_repair(result, "MISSING_SCRIPT", repair, migration_state)
+                        record_repair(result, "MISSING_SCRIPT", repair, migration_state)
                         self.log.info(
                             f"Marked migration as deleted: {script_name} - "
                             f"DELETE entry created in history"
