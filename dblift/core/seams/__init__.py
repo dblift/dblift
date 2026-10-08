@@ -51,7 +51,8 @@ Seam map — module, entry-point group, and where the core calls it:
 
 Related hooks outside this package: ``cli/extensions.py`` (groups
 ``dblift.commands``, ``dblift.command_handlers``, ``dblift.terminal_commands``),
-``cli/mcp/registry.py`` (group ``dblift.mcp_tools``) and
+``cli/mcp/registry.py`` (group ``dblift.mcp_tools``),
+``config/dblift_config.py`` (group ``dblift.config_keys``) and
 ``core/premium_manifest.py`` (the catalogue behind the command stubs that
 ``cli/_parser_setup.py`` and ``api/client.py`` create when no add-on
 registered the command). ``pyproject.toml`` also declares ``dblift.differ``,

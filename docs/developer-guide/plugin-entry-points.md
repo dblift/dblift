@@ -97,6 +97,30 @@ A handler declaring neither connects as before.
 Value: a callable returning `dict[str, TerminalCommand]`, where
 `TerminalCommand = Callable[[Any], int]`.
 
+### `dblift.config_keys`
+
+Value: a no-arg callable returning an iterable of the top-level configuration
+section names your package owns. `dblift db validate-config` reports a
+top-level key it does not recognize as a likely typo; keys declared by
+installed extensions are recognized instead.
+
+```python
+def config_keys():
+    return ["preflight"]
+```
+
+```toml
+[project.entry-points."dblift.config_keys"]
+my_package = "my_package.config:config_keys"
+```
+
+Declaring a section only stops the warning: dblift does not read it, so your
+package reads it from the configuration file itself. The section may also
+appear inside an `environments.<name>` block, which is merged over the root
+for the selected environment. Entry points are loaded once per process; one
+that fails to load or call is logged as a warning and skipped, and validation
+continues.
+
 ### `dblift.features`
 
 Reserved extension point. OSS treats this as neutral metadata.

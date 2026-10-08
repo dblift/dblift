@@ -82,6 +82,10 @@ snowflake = "dblift.db.plugins.snowflake.plugin:PLUGIN"
 # MCP tool registrars: callables receiving the ``dblift mcp`` server object.
 [project.entry-points."dblift.mcp_tools"]
 
+# Configuration sections owned by installed extensions: callables returning
+# the top-level section names, so ``validate-config`` does not flag them.
+[project.entry-points."dblift.config_keys"]
+
 [project.optional-dependencies]
 dev = [
     "pytest>=7.3.1",
