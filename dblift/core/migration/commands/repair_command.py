@@ -481,12 +481,15 @@ class RepairCommand(BaseCommand):
                 if getattr(candidate, "script", None) == script:
                     entry = candidate
         original_type = repair.get("original_type")
-        fallback_type = getattr(original_type, "name", original_type)
+        # An enum names its member; a plain string is kept as it is.
+        fallback_type = getattr(original_type, "name", None) or (
+            original_type if isinstance(original_type, str) else ""
+        )
         return MigrationInfo(
             script=script,
             version=getattr(entry, "version", None) or repair.get("version"),
             description=getattr(entry, "description", None) or repair.get("description") or "",
-            type=getattr(entry, "type", None) or (str(fallback_type) if fallback_type else "SQL"),
+            type=getattr(entry, "type", None) or fallback_type or "SQL",
             status=normalize_migration_info_status(getattr(entry, "status", None)),
         )
 
