@@ -1,10 +1,13 @@
 import fnmatch
+import functools
 import json
+import logging
 import os
 import re
 from dataclasses import dataclass, field
+from importlib import metadata
 from pathlib import Path
-from typing import Any, Dict, FrozenSet, List, Mapping, Optional, Tuple, Type, Union, cast
+from typing import Any, Dict, FrozenSet, List, Mapping, Optional, Set, Tuple, Type, Union, cast
 
 import yaml
 
@@ -16,6 +19,8 @@ from dblift.core.constants import (
     DEFAULT_HISTORY_TABLE,
     ENV_PREFIX,
 )
+
+_log = logging.getLogger(__name__)
 
 ENV_PLACEHOLDER_PATTERN = re.compile(r"\$\{([^}:]+)(?::-(.*?))?\}")
 
@@ -92,15 +97,41 @@ KNOWN_TOP_LEVEL_CONFIG_KEYS: FrozenSet[str] = frozenset(
 )
 
 
+#: Entry-point group through which an installed extension declares the
+#: top-level configuration sections it owns.
+CONFIG_KEYS_ENTRY_POINT_GROUP = "dblift.config_keys"
+
+
+@functools.lru_cache(maxsize=None)
+def extension_config_keys() -> FrozenSet[str]:
+    """Return the top-level config sections declared by installed extensions.
+
+    Each ``dblift.config_keys`` entry point resolves to a no-arg callable
+    returning an iterable of section names. Loaded once per process; an entry
+    point that fails to load or call is logged as a warning and skipped.
+    """
+    keys: Set[str] = set()
+    for entry_point in metadata.entry_points(group=CONFIG_KEYS_ENTRY_POINT_GROUP):
+        try:
+            keys.update(str(key) for key in entry_point.load()())
+        except Exception as exc:  # a broken extension must not break validation
+            _log.warning(
+                "%s '%s' failed to load: %s", CONFIG_KEYS_ENTRY_POINT_GROUP, entry_point.name, exc
+            )
+    return frozenset(keys)
+
+
 def unrecognized_top_level_keys(data: Dict[str, Any]) -> List[str]:
     """Return the top-level keys in *data* that the config schema doesn't recognize, sorted.
 
     Used by ``db validate-config`` to warn about likely typos instead of
-    silently ignoring the key, as plain config loading does.
+    silently ignoring the key, as plain config loading does. Sections declared
+    by installed extensions (see :func:`extension_config_keys`) are recognized.
     """
     if not isinstance(data, dict):
         return []
-    return sorted(key for key in data if key not in KNOWN_TOP_LEVEL_CONFIG_KEYS)
+    known = KNOWN_TOP_LEVEL_CONFIG_KEYS | extension_config_keys()
+    return sorted(key for key in data if key not in known)
 
 
 # ``validate-sql`` only needs a dialect-typed DbliftConfig; connection is never opened.
