@@ -6,6 +6,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tarfile
 import tomllib
 import zipfile
 from pathlib import Path
@@ -51,42 +52,27 @@ def test_missing_wheel_fails_without_pass_result(tmp_path):
 
 @pytest.mark.parametrize("artifact", ["wheel", "sdist"])
 def test_standard_distribution_outside_checkout(tmp_path, artifact):
-    """The wheel built from the sdist gets its own fresh target environment."""
-    build = tmp_path / "build"
-    build.mkdir()
-    source = archived_source(ROOT, tmp_path / "source")
-    if artifact == "wheel":
-        subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "pip",
-                "wheel",
-                "--no-deps",
-                "--wheel-dir",
-                str(build),
-                str(source),
-            ],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-    else:
-        subprocess.run(
-            [sys.executable, "-m", "build", "--sdist", "--outdir", str(build), str(source)],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-        import tarfile
-
-        archive = next(build.glob("*.tar.gz"))
-        _retain(archive, f"standard-sdist/{archive.name}")
-        extracted = tmp_path / "extracted"
-        extracted.mkdir()
-        with tarfile.open(archive) as tar:
-            tar.extractall(extracted, filter="data")
-        source = next(extracted.iterdir())
+    """Both independently built wheels reach a fresh standard installation."""
+    archived = archived_source(ROOT, tmp_path / "source")
+    wheels = {}
+    for name, original in (("core", archived), ("bundle", archived / "packages" / "dblift")):
+        build = tmp_path / f"{name}-build"
+        build.mkdir()
+        source = original
+        if artifact == "sdist":
+            subprocess.run(
+                [sys.executable, "-m", "build", "--sdist", "--outdir", str(build), str(source)],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            archive = next(build.glob("*.tar.gz"))
+            _retain(archive, f"{name}-sdist/{archive.name}")
+            extracted = tmp_path / f"{name}-extracted"
+            extracted.mkdir()
+            with tarfile.open(archive) as tar:
+                tar.extractall(extracted, filter="data")
+            source = next(extracted.iterdir())
         subprocess.run(
             [
                 sys.executable,
@@ -103,11 +89,15 @@ def test_standard_distribution_outside_checkout(tmp_path, artifact):
             text=True,
             cwd=tmp_path,
         )
-    wheel = next(build.glob("*.whl"))
-    _retain(wheel, f"standard-{artifact}/{wheel.name}")
+        wheels[name] = next(build.glob("*.whl"))
+        _retain(wheels[name], f"{name}-{artifact}/{wheels[name].name}")
+    wheel = wheels["bundle"]
     output = tmp_path / "result.json"
     run = subprocess.run(
-        [sys.executable, str(QUALIFIER), "--wheel", str(wheel.resolve()), "--output", str(output)],
+        [
+            sys.executable, str(QUALIFIER), "--wheel", str(wheel.resolve()),
+            "--core-wheel", str(wheels["core"].resolve()), "--output", str(output),
+        ],
         cwd=tmp_path,
         capture_output=True,
         text=True,
@@ -117,6 +107,7 @@ def test_standard_distribution_outside_checkout(tmp_path, artifact):
     assert result["status"] == "pass"
     _retain(output, f"{artifact}-distribution.json")
     assert result["installed"]["dblift"]
+    assert result["installed"]["dblift-core"] == result["installed"]["dblift"]
     assert result["probes"]["installed"]["returncode"] == 0
     if artifact == "wheel":
         failing_probe = tmp_path / "failing_probe.py"
@@ -128,6 +119,8 @@ def test_standard_distribution_outside_checkout(tmp_path, artifact):
                 str(QUALIFIER),
                 "--wheel",
                 str(wheel.resolve()),
+                "--core-wheel",
+                str(wheels["core"].resolve()),
                 "--output",
                 str(failed_output),
                 "--probe",

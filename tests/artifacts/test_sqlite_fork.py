@@ -143,11 +143,17 @@ def test_sqlite_fork_wheel_and_source_integrity(tmp_path):
     wheel = Path(result["wheel"])
     assert wheel.is_file() and wheel.parent == tmp_path
     assert hashlib.sha256(wheel.read_bytes()).hexdigest() == result["wheel_sha256"]
+    core_wheel = Path(result["core_wheel"])
+    assert core_wheel.is_file() and core_wheel.parent == tmp_path
+    assert hashlib.sha256(core_wheel.read_bytes()).hexdigest() == result["core_wheel_sha256"]
     diff = Path(result["diff"])
     assert diff.is_file()
     assert hashlib.sha256(diff.read_bytes()).hexdigest() == result["diff_sha256"]
     assert set(result["removed_plugins"]) == set(result["original_plugins"]) - {"sqlite"}
-    assert result["installed"]["distributions"] == ["dblift-sqlite-fork-fixture"]
+    assert result["installed"]["distributions"] == [
+        "dblift-sqlite-fork-fixture", "dblift-sqlite-fork-fixture-core"
+    ]
+    assert result["installed"]["code_owner"] == "dblift-sqlite-fork-fixture-core"
     assert result["installed"]["providers"] == ["sqlite"]
     assert result["installed"]["sqlite_migrate"] is True
     assert result["installed"]["history_table"] == "forklift_schema_history"
@@ -156,14 +162,14 @@ def test_sqlite_fork_wheel_and_source_integrity(tmp_path):
     assert result["installed"]["original_env_ignored"] is True
     assert "/site-packages/dblift/" in result["installed"]["origin"]
     assert "core-lightweight-e3" not in result["installed"]["origin"]
-    with zipfile.ZipFile(wheel) as archive:
+    with zipfile.ZipFile(core_wheel) as archive:
         names = archive.namelist()
         metadata = Parser().parsestr(
             archive.read(
                 next(name for name in names if name.endswith(".dist-info/METADATA"))
             ).decode()
         )
-        assert metadata["Name"] == "dblift-sqlite-fork-fixture"
+        assert metadata["Name"] == "dblift-sqlite-fork-fixture-core"
         assert any(name.endswith("/premium_manifest.py") for name in names)
         assert any(name.startswith("dblift/db/plugins/sqlite/") for name in names)
         assert any(name.startswith("dblift/db/plugins/nosql_base/") for name in names)
@@ -174,14 +180,23 @@ def test_sqlite_fork_wheel_and_source_integrity(tmp_path):
         ).decode()
         parsed_entries = ConfigParser()
         parsed_entries.read_string(entries)
-        assert dict(parsed_entries.items("console_scripts")) == {
-            "dblift-fork-fixture": "dblift.cli.main:main"
-        }
+        assert not parsed_entries.has_section("console_scripts")
         assert dict(parsed_entries.items("dblift.providers")) == {
             "sqlite": "dblift.db.plugins.sqlite.plugin:PLUGIN"
         }
         assert dict(parsed_entries.items("dblift.provider_descriptors")) == {
             "sqlite": "dblift.db.plugins.sqlite.descriptor:DESCRIPTOR"
+        }
+    with zipfile.ZipFile(wheel) as archive:
+        names = archive.namelist()
+        assert not any(name.startswith("dblift/") for name in names)
+        entries = archive.read(
+            next(name for name in names if name.endswith(".dist-info/entry_points.txt"))
+        ).decode()
+        parsed_entries = ConfigParser()
+        parsed_entries.read_string(entries)
+        assert dict(parsed_entries.items("console_scripts")) == {
+            "dblift-fork-fixture": "dblift.cli.main:main"
         }
     after = subprocess.run(
         ["git", "status", "--short"], cwd=ROOT, capture_output=True, text=True, check=True

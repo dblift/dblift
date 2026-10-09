@@ -75,6 +75,31 @@ def test_fresh_core_uses_only_minimal_dependencies(wheels, tmp_path):
     assert details["versions"]["dblift"] is None
     assert details["modules"] == {"sqlglot": None, "rich": None, "Jinja2": None}
     _assert_origins(details, python)
+    script = """
+import sys
+from pathlib import Path
+from dblift.api import DBLiftClient
+from dblift.config import DbliftConfig
+from dblift.core.logger import NullLog
+
+work = Path.cwd()
+migrations = work / "sql"
+migrations.mkdir()
+(migrations / "V1__create.sql").write_text("CREATE TABLE t (id INTEGER);", encoding="utf-8")
+(migrations / "U1__create.sql").write_text("DROP TABLE t;", encoding="utf-8")
+config = DbliftConfig.from_dict({"database": {
+    "type": "sqlite", "path": str(work / "db.sqlite"), "schema": "main"
+}})
+with DBLiftClient.from_config(config, migrations_dir=migrations,
+                              logger=NullLog(), analysis_mode="execution") as client:
+    assert client.migrate().success
+    assert client.validate().success
+    assert client.undo(target_version="0.0.0").success
+assert not any(name == "sqlglot" or name.startswith("sqlglot.") for name in sys.modules)
+assert not any(name == "rich" or name.startswith("rich.") for name in sys.modules)
+assert not any(name == "jinja2" or name.startswith("jinja2.") for name in sys.modules)
+"""
+    _run([str(python), "-I", "-c", script], work)
 
 
 def test_core_to_standard_and_bundle_reinstall(wheels, tmp_path):
