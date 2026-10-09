@@ -259,7 +259,9 @@ class MigrationHistoryManager:
 
         self.provider.record_migration(self.schema, migration_info, self.history_table)
 
-    def create_schema_and_history_table(self, create_schema: bool = False) -> None:
+    def create_schema_and_history_table(
+        self, create_schema: bool = False, *, ensure_schema: bool = False
+    ) -> None:
         """Ensure schema and history table exist.
 
         Transparently retries when a concurrent process is racing to create
@@ -277,7 +279,8 @@ class MigrationHistoryManager:
         vendor error-code check instead of driver message text.
 
         Args:
-            create_schema: True when called from baseline command, False for regular migrations
+            create_schema: True for baseline, including its history safety checks.
+            ensure_schema: Create a missing schema without baseline safety checks.
         """
         import random
         import time
@@ -292,7 +295,7 @@ class MigrationHistoryManager:
                         f"table={self.history_table}, create_schema={create_schema}, "
                         f"attempt={attempt + 1}/{MAX_ATTEMPTS}"
                     )
-                if create_schema:
+                if create_schema or ensure_schema:
                     self.provider.create_schema_if_not_exists(self.schema)
                 self.provider.create_history_table_if_not_exists(
                     self.schema, create_schema, self.history_table
