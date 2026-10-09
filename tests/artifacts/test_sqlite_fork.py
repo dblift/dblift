@@ -7,11 +7,14 @@ import json
 import subprocess
 import sys
 import tarfile
+import tomllib
 import zipfile
+from configparser import ConfigParser
 from email.parser import Parser
 from pathlib import Path
 
 import pytest
+import tomlkit
 
 from scripts.qualify_sqlite_fork import _transform, replace_once
 
@@ -73,6 +76,52 @@ def test_transformation_refuses_a_drifted_constant(tmp_path):
     assert not list(tmp_path.rglob("*.whl"))
 
 
+def test_transformation_keeps_only_sqlite_descriptor(tmp_path):
+    revision = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True, text=True, check=True
+    ).stdout.strip()
+    source = tmp_path / "source"
+    source.mkdir()
+    archive = subprocess.run(
+        ["git", "archive", "--format=tar", revision],
+        cwd=ROOT,
+        capture_output=True,
+        check=True,
+    )
+    tar_path = tmp_path / "source.tar"
+    tar_path.write_bytes(archive.stdout)
+    with tarfile.open(tar_path) as tar:
+        tar.extractall(source, filter="data")
+    _transform(source)
+    project = tomllib.loads((source / "pyproject.toml").read_text(encoding="utf-8"))
+    assert list(project["project"]["entry-points"]["dblift.provider_descriptors"]) == ["sqlite"]
+
+
+def test_transformation_accepts_revision_before_descriptors(tmp_path):
+    revision = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True, text=True, check=True
+    ).stdout.strip()
+    source = tmp_path / "source"
+    source.mkdir()
+    archive = subprocess.run(
+        ["git", "archive", "--format=tar", revision],
+        cwd=ROOT,
+        capture_output=True,
+        check=True,
+    )
+    tar_path = tmp_path / "source.tar"
+    tar_path.write_bytes(archive.stdout)
+    with tarfile.open(tar_path) as tar:
+        tar.extractall(source, filter="data")
+    pyproject = source / "pyproject.toml"
+    document = tomlkit.parse(pyproject.read_text(encoding="utf-8"))
+    del document["project"]["entry-points"]["dblift.provider_descriptors"]
+    pyproject.write_text(tomlkit.dumps(document), encoding="utf-8")
+    _transform(source)
+    project = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+    assert "dblift.provider_descriptors" not in project["project"]["entry-points"]
+
+
 def test_sqlite_fork_wheel_and_source_integrity(tmp_path):
     before = subprocess.run(
         ["git", "status", "--short"], cwd=ROOT, capture_output=True, text=True, check=True
@@ -123,9 +172,17 @@ def test_sqlite_fork_wheel_and_source_integrity(tmp_path):
         entries = archive.read(
             next(name for name in names if name.endswith(".dist-info/entry_points.txt"))
         ).decode()
-        assert "dblift-fork-fixture = dblift.cli.main:main" in entries
-        assert "sqlite = dblift.db.plugins.sqlite.plugin:PLUGIN" in entries
-        assert "mysql =" not in entries
+        parsed_entries = ConfigParser()
+        parsed_entries.read_string(entries)
+        assert dict(parsed_entries.items("console_scripts")) == {
+            "dblift-fork-fixture": "dblift.cli.main:main"
+        }
+        assert dict(parsed_entries.items("dblift.providers")) == {
+            "sqlite": "dblift.db.plugins.sqlite.plugin:PLUGIN"
+        }
+        assert dict(parsed_entries.items("dblift.provider_descriptors")) == {
+            "sqlite": "dblift.db.plugins.sqlite.descriptor:DESCRIPTOR"
+        }
     after = subprocess.run(
         ["git", "status", "--short"], cwd=ROOT, capture_output=True, text=True, check=True
     ).stdout
