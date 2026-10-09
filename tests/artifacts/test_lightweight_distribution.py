@@ -195,6 +195,48 @@ def test_wheel_contains_provider_descriptors_and_legacy_entry_points(candidate_w
     assert legacy == source_points["dblift.providers"]
 
 
+def test_installed_provider_descriptors_preserve_legacy_group(candidate_wheel, tmp_path):
+    environment = tmp_path / "venv"
+    subprocess.run(
+        [sys.executable, "-m", "virtualenv", str(environment)],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    python = environment / "bin" / "python"
+    subprocess.run(
+        [str(python), "-m", "pip", "install", str(candidate_wheel)],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    script = """
+import sys
+from importlib import metadata
+from pathlib import Path
+
+descriptors = metadata.entry_points(group="dblift.provider_descriptors")
+legacy = metadata.entry_points(group="dblift.providers")
+assert {ep.name for ep in descriptors} == {ep.name for ep in legacy}
+for ep in descriptors:
+    descriptor = ep.load()
+    assert descriptor.factory == next(old.value for old in legacy if old.name == ep.name)
+    assert Path(sys.modules[type(descriptor).__module__].__file__).resolve().is_relative_to(sys.prefix)
+assert not any(name.startswith("dblift.db.plugins.") and name.endswith(".provider") for name in sys.modules)
+for ep in legacy:
+    plugin = ep.load()
+    assert tuple(plugin.dialects) == next(new.load().dialects for new in descriptors if new.name == ep.name)
+"""
+    run = subprocess.run(
+        [str(python), "-I", "-c", script],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+    )
+    assert run.returncode == 0, run.stderr
+
+
 def test_wrong_distribution_cannot_qualify(candidate_wheel, tmp_path):
     wrong_wheel = tmp_path / "other-1.0.0-py3-none-any.whl"
     wrong_wheel.write_bytes(candidate_wheel.read_bytes())
