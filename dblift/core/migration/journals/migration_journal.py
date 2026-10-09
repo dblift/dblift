@@ -69,13 +69,14 @@ class MigrationJournal:
 
     _lock = threading.Lock()  # Thread lock for access
 
-    def __init__(self, enabled: bool = True):
+    def __init__(self, enabled: bool = True, capture_objects: bool = True):
         """Initialize the migration journal
 
         Args:
             enabled: Whether journaling is enabled
         """
         self.enabled = enabled
+        self.capture_objects = capture_objects
         self.current_migration_id: Optional[str] = None
         # Journal data is kept only in memory (no file persistence)
 
@@ -105,7 +106,11 @@ class MigrationJournal:
         entry = JournalEntry(
             migration_id=migration_id,
             entry_type=EntryType.MIGRATION_START,
-            details=details or {},
+            details=(
+                (details or {})
+                if self.capture_objects
+                else {**(details or {}), "object_analysis": "disabled"}
+            ),
             timestamp=datetime.now(),
         )
 
@@ -619,7 +624,7 @@ class MigrationJournal:
             }
 
         if not statement_times:
-            return {
+            summary: Dict[str, Any] = {
                 "migration_id": actual_migration_id,
                 "version": str(version) if version is not None else None,
                 "total_statements": 0,
@@ -631,9 +636,12 @@ class MigrationJournal:
                 "statements": [],
                 "object_operations": object_operations,
             }
+            if not self.capture_objects:
+                summary["object_analysis"] = "disabled"
+            return summary
 
         # Calculate summary metrics
-        return {
+        summary = {
             "migration_id": actual_migration_id,
             "version": str(version) if version is not None else None,
             "total_statements": len(statement_times),
@@ -645,3 +653,6 @@ class MigrationJournal:
             "statements": [_statement_dict(entry) for entry in executed],
             "object_operations": object_operations,
         }
+        if not self.capture_objects:
+            summary["object_analysis"] = "disabled"
+        return summary

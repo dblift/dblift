@@ -700,6 +700,12 @@ table.t{width:100%;border-collapse:separate;border-spacing:0;font-size:12.5px}
     </div>
     {% endif %}
 
+    {% if cmd.result.journal and cmd.result.journal.capture_objects is sameas false %}
+    <div class="banner" style="margin:0 0 14px 0">
+      <div style="flex:1;min-width:0">Object analysis disabled in execution mode. Statement timing and errors remain available.</div>
+    </div>
+    {% endif %}
+
     <div class="panel">
       <div class="panel-h">
         <div class="title">{{ icon_branch() }} Per-migration execution</div>
