@@ -3,6 +3,7 @@
 import configparser
 import subprocess
 import sys
+import tarfile
 import zipfile
 from email.parser import Parser
 from pathlib import Path
@@ -79,3 +80,42 @@ def test_minimal_and_standard_requirements(wheels):
     assert standard.name == "dblift-core"
     assert standard.extras == {"analysis", "presentation"}
     assert str(standard.specifier) == f"=={bundle['Version']}"
+
+
+@pytest.mark.parametrize("source_name", ("core", "bundle"))
+def test_each_sdist_rebuilds_without_checkout_files(tmp_path, source_name):
+    source = ROOT if source_name == "core" else ROOT / "packages" / "dblift"
+    archives = tmp_path / "archives"
+    archives.mkdir()
+    subprocess.run(
+        [sys.executable, "-m", "build", "--sdist", "--outdir", str(archives), str(source)],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    sdist = next(archives.glob("*.tar.gz"))
+    extracted = tmp_path / "extracted"
+    extracted.mkdir()
+    with tarfile.open(sdist) as archive:
+        tar_names = archive.getnames()
+        assert any(name.endswith("/LICENSE") for name in tar_names)
+        assert any(name.endswith("/README.md") for name in tar_names)
+        archive.extractall(extracted, filter="data")
+    project = next(extracted.iterdir())
+    wheels = tmp_path / "wheels"
+    wheels.mkdir()
+    subprocess.run(
+        [sys.executable, "-m", "pip", "wheel", "--no-deps", "--wheel-dir", str(wheels), str(project)],
+        check=True,
+        capture_output=True,
+        text=True,
+        cwd=tmp_path,
+    )
+    files, metadata, _ = _wheel_metadata(next(wheels.glob("*.whl")))
+    assert any(name.endswith(".dist-info/licenses/LICENSE") for name in files)
+    if source_name == "core":
+        assert metadata["Name"] == "dblift-core"
+        assert "dblift/py.typed" in files
+    else:
+        assert metadata["Name"] == "dblift"
+        assert not any(name.startswith("dblift/") for name in files)
