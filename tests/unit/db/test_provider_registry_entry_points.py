@@ -335,6 +335,96 @@ def test_all_invalid_entry_points_do_not_prevent_later_legacy_discovery(_reset_r
         assert ProviderRegistry.get_plugin_info("fakedb") is _FAKE_PLUGIN
 
 
+def test_failed_filesystem_descriptor_does_not_rediscover_during_same_lookup(_reset_registry):
+    from dblift.db.provider_discovery import filesystem_descriptor
+
+    broken = PluginDescriptor("sqlite", ("sqlite", "sqlite3"), "missing_factory:PLUGIN")
+    sqlite_scans = []
+
+    def descriptor_for(plugin_dir):
+        if plugin_dir.name == "sqlite":
+            sqlite_scans.append(plugin_dir)
+            return broken
+        return filesystem_descriptor(plugin_dir)
+
+    with (
+        patch("importlib.metadata.entry_points", return_value=[]),
+        patch("dblift.db.provider_registry.filesystem_descriptor", side_effect=descriptor_for),
+    ):
+        assert ProviderRegistry.get_plugin_info("sqlite3") is None
+        assert len(sqlite_scans) == 1
+        assert ProviderRegistry.get_plugin_info("postgresql") is not None
+
+
+def test_failed_duplicate_descriptor_alias_restores_earlier_plugin(_reset_registry):
+    earlier = dataclasses.replace(_FAKE_PLUGIN, name="sqlite", dialects=["sqlite", "sqlite3"])
+    legacy = SimpleNamespace(name="sqlite", value="legacy:PLUGIN", load=lambda: earlier)
+    descriptor = SimpleNamespace(
+        name="sqlite",
+        load=lambda: PluginDescriptor("sqlite", ("sqlite", "sqlite3"), "missing_factory:PLUGIN"),
+    )
+
+    def entry_points(*, group):
+        return [descriptor] if group == "dblift.provider_descriptors" else [legacy]
+
+    with (
+        patch("importlib.metadata.entry_points", side_effect=entry_points),
+        patch(
+            "dblift.db.provider_registry.load_factory", side_effect=RuntimeError("broken")
+        ) as load,
+    ):
+        assert ProviderRegistry.get_plugin_info("sqlite") is earlier
+        assert ProviderRegistry.get_plugin_info("sqlite3") is earlier
+    load.assert_called_once()
+
+
+@pytest.mark.parametrize("paired", [False, True])
+def test_failed_descriptor_only_discovery_allows_later_plugin(_reset_registry, paired):
+    owner = object()
+    factory = "missing_factory:PLUGIN"
+    broken = SimpleNamespace(
+        name="broken",
+        dist=owner,
+        load=lambda: PluginDescriptor("broken", ("broken",), factory),
+    )
+    legacy = SimpleNamespace(name="broken", value=factory, dist=owner)
+
+    def entry_points(*, group):
+        return [broken] if group == "dblift.provider_descriptors" else [legacy] if paired else []
+
+    with (
+        patch("importlib.metadata.entry_points", side_effect=entry_points),
+        patch.object(ProviderRegistry, "_discover_via_filesystem"),
+    ):
+        assert ProviderRegistry.get_plugin_info("broken") is None
+        assert ProviderRegistry._discovered is False
+
+    valid = SimpleNamespace(name="fakedb", value="valid:PLUGIN", load=lambda: _FAKE_PLUGIN)
+    with (
+        patch("importlib.metadata.entry_points", return_value=[valid]),
+        patch.object(ProviderRegistry, "_discover_via_filesystem"),
+    ):
+        assert ProviderRegistry.get_plugin_info("fakedb") is _FAKE_PLUGIN
+
+
+def test_malformed_filesystem_descriptor_does_not_hide_other_plugins(_reset_registry):
+    import importlib
+
+    malformed = PluginDescriptor("oracle", (123,), "oracle:PLUGIN")  # type: ignore[arg-type]
+    original_import = importlib.import_module
+
+    def import_module(name):
+        if name == "dblift.db.plugins.oracle.descriptor":
+            return SimpleNamespace(DESCRIPTOR=malformed)
+        return original_import(name)
+
+    with (
+        patch("importlib.metadata.entry_points", return_value=[]),
+        patch("dblift.db.provider_discovery.importlib.import_module", side_effect=import_module),
+    ):
+        assert ProviderRegistry.get_plugin_info("sqlite3").name == "sqlite"
+
+
 def test_concurrent_descriptor_lookup_loads_factory_once(_reset_registry):
     module = ModuleType("fixture_factory_module")
     loads = []

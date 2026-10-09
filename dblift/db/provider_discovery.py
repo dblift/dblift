@@ -11,6 +11,18 @@ from dblift.db.provider_metadata import PluginDescriptor
 _logger = logging.getLogger(__name__)
 
 
+def _valid_descriptor(descriptor: Any) -> bool:
+    return (
+        isinstance(descriptor, PluginDescriptor)
+        and isinstance(descriptor.name, str)
+        and bool(descriptor.name)
+        and isinstance(descriptor.dialects, tuple)
+        and all(isinstance(alias, str) and alias for alias in descriptor.dialects)
+        and isinstance(descriptor.factory, str)
+        and ":" in descriptor.factory
+    )
+
+
 def _same_distribution(first: Any, second: Any) -> bool:
     a, b = getattr(first, "dist", None), getattr(second, "dist", None)
     if a is None or b is None:
@@ -28,15 +40,7 @@ def _same_distribution(first: Any, second: Any) -> bool:
 def _load_descriptor(ep: Any) -> Optional[PluginDescriptor]:
     try:
         descriptor = ep.load()
-        if (
-            isinstance(descriptor, PluginDescriptor)
-            and isinstance(descriptor.name, str)
-            and descriptor.name
-            and isinstance(descriptor.dialects, tuple)
-            and all(isinstance(alias, str) and alias for alias in descriptor.dialects)
-            and isinstance(descriptor.factory, str)
-            and ":" in descriptor.factory
-        ):
+        if _valid_descriptor(descriptor):
             return descriptor
         _logger.warning(f"Invalid provider descriptor entry-point {ep.name!r}; ignoring.")
     except Exception as exc:
@@ -97,7 +101,9 @@ def filesystem_descriptor(plugin_dir: Path) -> Optional[PluginDescriptor]:
         descriptor = importlib.import_module(
             f"dblift.db.plugins.{plugin_dir.name}.descriptor"
         ).DESCRIPTOR
-        return descriptor if isinstance(descriptor, PluginDescriptor) else None
+        if _valid_descriptor(descriptor):
+            return descriptor
+        _logger.warning(f"Invalid provider descriptor from {plugin_dir}; ignoring.")
     except Exception as exc:
         _logger.warning(f"Failed to load descriptor from {plugin_dir}: {exc}")
         return None

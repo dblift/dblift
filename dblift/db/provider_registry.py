@@ -178,8 +178,7 @@ class ProviderRegistry:
     @classmethod
     def _register_descriptor(cls, descriptor: PluginDescriptor) -> None:
         pending = _LazyPlugin(descriptor)
-        for key in (descriptor.name, *descriptor.dialects):
-            key = key.lower()
+        for key in dict.fromkeys(key.lower() for key in (descriptor.name, *descriptor.dialects)):
             if key in cls._pending:
                 pending.previous[key] = cls._pending[key]
             cls._pending[key] = pending
@@ -191,30 +190,35 @@ class ProviderRegistry:
             if not cls._discovered:
                 cls.discover_plugins()
             key = (db_type or "").lower()
-            pending = cls._pending.get(key)
-            if pending is None:
+            while True:
+                pending = cls._pending.get(key)
+                if pending is None:
+                    return cls._plugins.get(key)
+                if pending.loaded is None:
+                    try:
+                        plugin = load_factory(pending.descriptor, cls.ENTRY_POINT_GROUP)
+                        if not isinstance(plugin, PluginInfo):
+                            raise TypeError("factory did not return PluginInfo")
+                        pending.loaded = plugin
+                    except Exception as exc:
+                        _logger.warning(
+                            f"Failed to load provider {pending.descriptor.name!r}: {exc}"
+                        )
+                        for alias, entry in list(cls._pending.items()):
+                            if entry is pending:
+                                previous = pending.previous.get(alias)
+                                if previous is None:
+                                    del cls._pending[alias]
+                                else:
+                                    cls._pending[alias] = previous
+                        if not cls._pending and not cls._plugins:
+                            cls._discovered = False
+                        continue
+                for alias, entry in list(cls._pending.items()):
+                    if entry is pending:
+                        cls._plugins[alias] = pending.loaded
+                        del cls._pending[alias]
                 return cls._plugins.get(key)
-            if pending.loaded is None:
-                try:
-                    plugin = load_factory(pending.descriptor, cls.ENTRY_POINT_GROUP)
-                    if not isinstance(plugin, PluginInfo):
-                        raise TypeError("factory did not return PluginInfo")
-                    pending.loaded = plugin
-                except Exception as exc:
-                    _logger.warning(f"Failed to load provider {pending.descriptor.name!r}: {exc}")
-                    for alias, entry in list(cls._pending.items()):
-                        if entry is pending:
-                            previous = pending.previous.get(alias)
-                            if previous is None:
-                                del cls._pending[alias]
-                            else:
-                                cls._pending[alias] = previous
-                    return cls._resolve_plugin(key)
-            for alias, entry in list(cls._pending.items()):
-                if entry is pending:
-                    cls._plugins[alias] = pending.loaded
-                    del cls._pending[alias]
-            return cls._plugins.get(key)
 
     @classmethod
     def _discover_via_filesystem(cls) -> None:
