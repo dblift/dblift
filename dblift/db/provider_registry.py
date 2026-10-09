@@ -1,11 +1,15 @@
 """Provider registry for auto-discovery and registration of database provider plugins."""
 
 import dataclasses
+import importlib
 import importlib.util
 import logging
 from dataclasses import dataclass
 from pathlib import Path
+from threading import RLock
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Literal, Optional, Tuple, Type
+
+from dblift.db.provider_metadata import PluginDescriptor
 
 if TYPE_CHECKING:
     from dblift.config import DbliftConfig
@@ -17,6 +21,13 @@ from dblift.db.base_quirks import BaseQuirks
 ProviderTransport = Literal["native"]
 
 _logger = logging.getLogger(__name__)
+
+
+class _LazyPlugin:
+    def __init__(self, descriptor: PluginDescriptor) -> None:
+        self.descriptor = descriptor
+        self.loaded: Optional[PluginInfo] = None
+        self.previous: Dict[str, _LazyPlugin] = {}
 
 
 @dataclass
@@ -123,6 +134,8 @@ class ProviderRegistry:
     """Registry for database provider plugins with auto-discovery."""
 
     _plugins: Dict[str, PluginInfo] = {}
+    _pending: Dict[str, _LazyPlugin] = {}
+    _lock = RLock()
     _discovered: bool = False
     # PR #241: cache resolved Quirks instances per
     # dialect string. Quirks subclasses are stateless behaviour
@@ -132,6 +145,7 @@ class ProviderRegistry:
     _quirks_cache: Dict[str, BaseQuirks] = {}
 
     ENTRY_POINT_GROUP = "dblift.providers"
+    DESCRIPTOR_ENTRY_POINT_GROUP = "dblift.provider_descriptors"
 
     @classmethod
     def discover_plugins(cls) -> None:
@@ -152,13 +166,12 @@ class ProviderRegistry:
            installing the package) and old plugin layouts that
            predate the entry-point group.
         """
-        if cls._discovered:
-            return
-
-        found_entry_points = cls._discover_via_entry_points()
-        cls._discover_via_filesystem()
-
-        cls._discovered = found_entry_points
+        with cls._lock:
+            if cls._discovered:
+                return
+            found_entry_points = cls._discover_via_entry_points()
+            cls._discover_via_filesystem()
+            cls._discovered = found_entry_points
 
     @classmethod
     def _discover_via_entry_points(cls) -> bool:
@@ -174,11 +187,29 @@ class ProviderRegistry:
 
         try:
             entry_points: List[Any] = list(metadata.entry_points(group=cls.ENTRY_POINT_GROUP))
+            descriptor_points: List[Any] = list(
+                metadata.entry_points(group=cls.DESCRIPTOR_ENTRY_POINT_GROUP)
+            )
         except Exception as exc:  # pragma: no cover - defensive
             _logger.warning(f"Failed to read entry-points for {cls.ENTRY_POINT_GROUP}: {exc}")
             return False
 
+        paired = set()
+        registered_any = False
         for ep in entry_points:
+            descriptor = None
+            for candidate in descriptor_points:
+                if candidate.name != ep.name or not cls._same_distribution(ep, candidate):
+                    continue
+                loaded = cls._load_descriptor(candidate)
+                if loaded and loaded.name == ep.name and loaded.factory == ep.value:
+                    descriptor = loaded
+                    paired.add(id(candidate))
+                    break
+            if descriptor is not None:
+                cls._register_descriptor(descriptor)
+                registered_any = True
+                continue
             try:
                 plugin_info = ep.load()
             except Exception as exc:
@@ -191,8 +222,97 @@ class ProviderRegistry:
                 )
                 continue
             cls.register_plugin(plugin_info)
+            registered_any = True
 
-        return bool(entry_points)
+        for ep in descriptor_points:
+            if id(ep) in paired:
+                continue
+            descriptor = cls._load_descriptor(ep)
+            if descriptor is not None:
+                cls._register_descriptor(descriptor)
+                registered_any = True
+
+        return registered_any
+
+    @staticmethod
+    def _same_distribution(first: Any, second: Any) -> bool:
+        a, b = getattr(first, "dist", None), getattr(second, "dist", None)
+        if a is None or b is None:
+            return False
+        if a is b:
+            return True
+        first_path, second_path = getattr(a, "_path", None), getattr(b, "_path", None)
+        return bool(
+            first_path is not None
+            and second_path is not None
+            and Path(first_path).resolve() == Path(second_path).resolve()
+        )
+
+    @staticmethod
+    def _load_descriptor(ep: Any) -> Optional[PluginDescriptor]:
+        try:
+            descriptor = ep.load()
+            if (
+                isinstance(descriptor, PluginDescriptor)
+                and isinstance(descriptor.name, str)
+                and descriptor.name
+                and isinstance(descriptor.dialects, tuple)
+                and all(isinstance(alias, str) and alias for alias in descriptor.dialects)
+                and isinstance(descriptor.factory, str)
+                and ":" in descriptor.factory
+            ):
+                return descriptor
+            _logger.warning(f"Invalid provider descriptor entry-point {ep.name!r}; ignoring.")
+        except Exception as exc:
+            _logger.warning(f"Failed to load provider descriptor {ep.name!r}: {exc}")
+        return None
+
+    @classmethod
+    def _register_descriptor(cls, descriptor: PluginDescriptor) -> None:
+        pending = _LazyPlugin(descriptor)
+        for key in (descriptor.name, *descriptor.dialects):
+            key = key.lower()
+            if key in cls._pending:
+                pending.previous[key] = cls._pending[key]
+            cls._pending[key] = pending
+            cls._quirks_cache.pop(key, None)
+
+    @classmethod
+    def _resolve_plugin(cls, db_type: str) -> Optional[PluginInfo]:
+        with cls._lock:
+            if not cls._discovered:
+                cls.discover_plugins()
+            key = (db_type or "").lower()
+            pending = cls._pending.get(key)
+            if pending is None:
+                return cls._plugins.get(key)
+            if pending.loaded is None:
+                try:
+                    from importlib import metadata
+
+                    plugin = metadata.EntryPoint(
+                        name=pending.descriptor.name,
+                        value=pending.descriptor.factory,
+                        group=cls.ENTRY_POINT_GROUP,
+                    ).load()
+                    if not isinstance(plugin, PluginInfo):
+                        raise TypeError("factory did not return PluginInfo")
+                    pending.loaded = plugin
+                except Exception as exc:
+                    _logger.warning(f"Failed to load provider {pending.descriptor.name!r}: {exc}")
+                    for alias, entry in list(cls._pending.items()):
+                        if entry is pending:
+                            previous = pending.previous.get(alias)
+                            if previous is None:
+                                del cls._pending[alias]
+                            else:
+                                cls._pending[alias] = previous
+                    return cls._resolve_plugin(key)
+            for alias, entry in list(cls._pending.items()):
+                if entry is pending:
+                    cls._plugins[alias] = pending.loaded
+                    del cls._pending[alias]
+            return cls._plugins.get(key)
 
     @classmethod
     def _discover_via_filesystem(cls) -> None:
@@ -224,6 +344,23 @@ class ProviderRegistry:
         for plugin_dir in plugins_dir.iterdir():
             if not plugin_dir.is_dir() or plugin_dir.name.startswith("_"):
                 continue
+
+            descriptor_file = plugin_dir / "descriptor.py"
+            if descriptor_file.exists():
+                try:
+                    descriptor = importlib.import_module(
+                        f"dblift.db.plugins.{plugin_dir.name}.descriptor"
+                    ).DESCRIPTOR
+                    if isinstance(descriptor, PluginDescriptor):
+                        keys = (descriptor.name, *descriptor.dialects)
+                        if not any(
+                            key.lower() in cls._plugins or key.lower() in cls._pending
+                            for key in keys
+                        ):
+                            cls._register_descriptor(descriptor)
+                        continue
+                except Exception as exc:
+                    _logger.warning(f"Failed to load descriptor from {plugin_dir}: {exc}")
 
             try:
                 plugin_info = cls._load_plugin(plugin_dir)
@@ -456,12 +593,12 @@ class ProviderRegistry:
         Args:
             plugin_info: Plugin metadata
         """
-        # Register by primary name
-        cls._plugins[plugin_info.name.lower()] = plugin_info
-
-        # Register by all dialects
-        for dialect in plugin_info.dialects:
-            cls._plugins[dialect.lower()] = plugin_info
+        with cls._lock:
+            for key in (plugin_info.name, *plugin_info.dialects):
+                key = key.lower()
+                cls._pending.pop(key, None)
+                cls._plugins[key] = plugin_info
+                cls._quirks_cache.pop(key, None)
 
     @classmethod
     def get_provider_class(cls, db_type: str) -> Optional[Type[BaseProvider]]:
@@ -474,10 +611,7 @@ class ProviderRegistry:
             Provider class if found, None otherwise
         """
         # Ensure plugins are discovered
-        if not cls._discovered:
-            cls.discover_plugins()
-
-        plugin_info = cls._plugins.get(db_type.lower())
+        plugin_info = cls._resolve_plugin(db_type)
         if plugin_info:
             return plugin_info.provider_class
 
@@ -494,9 +628,7 @@ class ProviderRegistry:
         Returns:
             The plugin metadata, or ``None`` if *db_type* is unregistered.
         """
-        if not cls._discovered:
-            cls.discover_plugins()
-        return cls._plugins.get((db_type or "").lower())
+        return cls._resolve_plugin(db_type)
 
     @classmethod
     def get_provider_by_url(cls, database_url: str) -> Optional[Type[BaseProvider]]:
@@ -530,6 +662,8 @@ class ProviderRegistry:
         re-instantiating on every call.
         """
         normalized = db_type.lower()
+        if not cls._discovered:
+            cls.discover_plugins()
         cached = cls._quirks_cache.get(normalized)
         if cached is not None:
             return cached
@@ -548,9 +682,7 @@ class ProviderRegistry:
         The plugin's declared ``quirks_class``, or :class:`BaseQuirks` for
         plugins that declare none and for unregistered dialects.
         """
-        if not cls._discovered:
-            cls.discover_plugins()
-        plugin_info = cls._plugins.get(db_type.lower())
+        plugin_info = cls._resolve_plugin(db_type)
         if plugin_info is not None and plugin_info.quirks_class is not None:
             return plugin_info.quirks_class
         return BaseQuirks
@@ -571,9 +703,7 @@ class ProviderRegistry:
         Replaces hand-rolled alias maps in ``cli/`` and other top-level
         layers.
         """
-        if not cls._discovered:
-            cls.discover_plugins()
-        plugin_info = cls._plugins.get((alias or "").lower())
+        plugin_info = cls._resolve_plugin(alias)
         if plugin_info is None:
             return None
         return plugin_info.name
@@ -647,9 +777,7 @@ class ProviderRegistry:
         Used by config/loader paths that need to identify first-class native
         providers (CosmosDB, SQLite, and SQLAlchemy-backed dialects).
         """
-        if not cls._discovered:
-            cls.discover_plugins()
-        plugin_info = cls._plugins.get((db_type or "").lower())
+        plugin_info = cls._resolve_plugin(db_type)
         if plugin_info is None:
             return False
         return getattr(plugin_info, "transport", "native") == "native"
@@ -660,9 +788,7 @@ class ProviderRegistry:
         db_type = (getattr(database_config, "type", "") or "").lower()
         if not db_type:
             raise ValueError("Database type is required to build a SQLAlchemy URL")
-        if not cls._discovered:
-            cls.discover_plugins()
-        plugin_info = cls._plugins.get(db_type)
+        plugin_info = cls._resolve_plugin(db_type)
         builder = plugin_info.sqlalchemy_url_builder if plugin_info is not None else None
         if builder is None:
             raise ValueError(
@@ -680,6 +806,9 @@ class ProviderRegistry:
         # Ensure plugins are discovered
         if not cls._discovered:
             cls.discover_plugins()
+
+        for key in list(cls._pending):
+            cls._resolve_plugin(key)
 
         # Return unique plugins (by name)
         seen = set()
@@ -785,6 +914,6 @@ class ProviderRegistry:
             )
 
         # O(1) direct lookup — db_type is already lowercase and is a valid _plugins key
-        plugin_info = cls._plugins.get(db_type)
+        plugin_info = cls._resolve_plugin(db_type)
 
         return NativeDriverManager.validate_driver_for_type(db_type, plugin_info)
