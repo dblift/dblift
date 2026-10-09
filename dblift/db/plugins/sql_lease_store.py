@@ -29,7 +29,9 @@ from dataclasses import dataclass
 from typing import Callable, Iterable, List, Mapping, Optional, Protocol, Sequence, Tuple, Union
 
 from sqlalchemy.engine import Connection
+from sqlalchemy.pool import SingletonThreadPool, StaticPool
 
+from dblift.db.native_connection_manager import NativeConnectionManager
 from dblift.db.plugins import lease_lock
 from dblift.db.plugins.lease_lock import (
     UNREFRESHED_TOKEN_PREFIX,
@@ -379,19 +381,27 @@ class SqlLeaseLockingProvider(SqlAlchemyProvider):
     def _migration_lease_on_own_connection(self) -> bool:
         """Whether the lock row must stay on the provider's own connection.
 
-        True for a private (in-memory) database, which cannot have
-        contenders on another connection, and for a caller's connection
-        (``from_sqlalchemy(connection=...)``), which does not commit what
-        dblift runs on it: another connection would not see the lock table
-        created there. The lock row is written through that connection and
-        committed or rolled back with the caller's work (the migration engine
-        rolls the connection back before each migration). No heartbeat can
-        use it, so the lease is held without one; a committed row of such a
-        lease is reclaimable only after the legacy expiry.
+        A private (in-memory) database cannot have contenders on another
+        connection. All other databases use a dedicated, committed lease so
+        a caller-owned migration transaction cannot prevent its heartbeat.
         """
-        return self._migration_lease_is_private() or bool(
-            getattr(self, "_external_connection", False)
+        return self._migration_lease_is_private()
+
+    def _ensure_migration_lock_table_for_external_connection(self, schema: str) -> None:
+        """Prepare the lock table without committing the caller's transaction."""
+        if isinstance(self.engine.pool, (StaticPool, SingletonThreadPool)):
+            raise RuntimeError(
+                "Migration lease requires an independent connection; "
+                "the caller's SQLAlchemy pool reuses one DBAPI connection"
+            )
+        provider = type(self)(self.config, self.log)
+        provider._conn_mgr = NativeConnectionManager(
+            self.config, self.log, engine=self.engine, owns_engine=False
         )
+        try:
+            provider.create_migration_lock_table_if_not_exists(schema)
+        finally:
+            provider.close()
 
     def _acquire_migration_lease(
         self,
@@ -416,7 +426,10 @@ class SqlLeaseLockingProvider(SqlAlchemyProvider):
         """
         if self._migration_lease is not None:
             return True
-        self.create_migration_lock_table_if_not_exists(schema)
+        if getattr(self, "_external_connection", False) and not self._migration_lease_is_private():
+            self._ensure_migration_lock_table_for_external_connection(schema)
+        else:
+            self.create_migration_lock_table_if_not_exists(schema)
         if self._migration_lease_on_own_connection():
             session = SqlAlchemyLeaseSession(self._ensure_connection())
             return self._acquire_migration_lease(

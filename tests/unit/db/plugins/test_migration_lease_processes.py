@@ -329,10 +329,8 @@ def test_forked_child_exiting_normally_keeps_the_parents_lock(tmp_path):
         client.close()
 
 
-def test_caller_committed_lock_row_without_heartbeat_is_not_stolen(tmp_path, monkeypatch):
-    """With ``from_sqlalchemy(connection=...)`` the lock row lives on the
-    caller's connection, where no heartbeat can run. If the caller commits
-    it, the row must not look like a dead lease after the short expiry."""
+def test_live_borrowed_duckdb_lock_is_not_stolen_after_short_expiry(tmp_path, monkeypatch):
+    """The dedicated heartbeat keeps a borrowed-connection holder's lease alive."""
     pytest.importorskip("duckdb_engine")
     from sqlalchemy import create_engine
 
@@ -363,6 +361,139 @@ def test_caller_committed_lock_row_without_heartbeat_is_not_stolen(tmp_path, mon
         contender.close()
         holder.close()
         caller_conn.close()
+
+
+def test_killed_borrowed_duckdb_connection_is_reclaimed_within_one_lease_window(
+    tmp_path, monkeypatch
+):
+    """A committed lock row must not survive a killed borrowed-connection holder."""
+    pytest.importorskip("duckdb_engine")
+    from dblift.api.client import DBLiftClient
+
+    monkeypatch.setattr("dblift.db.plugins.lease_lock.LEASE_EXPIRY_SECONDS", 0.5)
+    monkeypatch.setattr("dblift.db.plugins.lease_lock.POLL_INTERVAL_SECONDS", 0.1)
+    config, db_file = _project(tmp_path, "duckdb")
+    holder_code = textwrap.dedent("""
+        import sys, time
+        from sqlalchemy import create_engine
+        from dblift.api.client import DBLiftClient
+        engine = create_engine(f"duckdb:///{sys.argv[1]}")
+        connection = engine.connect()
+        client = DBLiftClient.from_sqlalchemy(connection=connection, migrations_dir=sys.argv[2])
+        schema = client.config.database.schema
+        assert client.provider.acquire_migration_lock(schema, wait_timeout_seconds=2)
+        connection.commit()
+        print("HELD", flush=True)
+        while True:
+            time.sleep(1)
+    """)
+    holder = subprocess.Popen(
+        [sys.executable, "-c", holder_code, str(db_file), str(tmp_path / "migrations")],
+        cwd=REPO_ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        assert holder.stdout.readline().strip() == "HELD"
+        holder.send_signal(signal.SIGKILL)
+        holder.wait(timeout=10)
+
+        contender = DBLiftClient.from_config_file(str(config))
+        schema = contender.config.database.schema
+        try:
+            assert contender.provider.acquire_migration_lock(schema, wait_timeout_seconds=3)
+            assert contender.provider.release_migration_lock(schema)
+        finally:
+            contender.close()
+    finally:
+        if holder.poll() is None:
+            holder.kill()
+            holder.wait(timeout=10)
+
+
+def test_borrowed_duckdb_heartbeat_does_not_commit_caller_work(tmp_path, monkeypatch):
+    """Preparing and renewing the lease must leave the caller's transaction alone."""
+    pytest.importorskip("duckdb_engine")
+    from sqlalchemy import create_engine
+
+    from dblift.api.client import DBLiftClient
+
+    monkeypatch.setattr("dblift.db.plugins.lease_lock.LEASE_EXPIRY_SECONDS", 0.5)
+    monkeypatch.setattr("dblift.db.plugins.lease_lock.POLL_INTERVAL_SECONDS", 0.1)
+    engine = create_engine(f"duckdb:///{tmp_path / 'app.duckdb'}")
+    with engine.begin() as connection:
+        connection.exec_driver_sql("CREATE TABLE user_work (id INTEGER)")
+    caller = engine.connect()
+    client = DBLiftClient.from_sqlalchemy(connection=caller, migrations_dir=tmp_path)
+    contender = DBLiftClient.from_sqlalchemy(engine=engine, migrations_dir=tmp_path)
+    schema = client.config.database.schema
+    try:
+        caller.exec_driver_sql("INSERT INTO user_work VALUES (1)")
+        assert client.provider.acquire_migration_lock(schema, wait_timeout_seconds=2)
+        time.sleep(1.5)
+        assert contender.provider.acquire_migration_lock(schema, wait_timeout_seconds=1) is False
+        assert client.provider.migration_lock_lost() is False
+        with engine.connect() as observer:
+            assert observer.exec_driver_sql("SELECT COUNT(*) FROM user_work").scalar() == 0
+        caller.rollback()
+        assert client.provider.release_migration_lock(schema)
+    finally:
+        contender.close()
+        client.close()
+        caller.close()
+        engine.dispose()
+
+
+def test_borrowed_duckdb_connection_migrates_with_dedicated_lease(tmp_path):
+    pytest.importorskip("duckdb_engine")
+    from sqlalchemy import create_engine
+
+    from dblift.api.client import DBLiftClient
+
+    _, db_file = _project(tmp_path, "duckdb")
+    engine = create_engine(f"duckdb:///{db_file}")
+    caller = engine.connect()
+    client = DBLiftClient.from_sqlalchemy(connection=caller, migrations_dir=tmp_path / "migrations")
+    try:
+        assert client.migrate().success
+        caller.commit()
+        assert (
+            caller.exec_driver_sql(
+                "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = 't1'"
+            ).scalar()
+            == 1
+        )
+    finally:
+        client.close()
+        caller.close()
+        engine.dispose()
+
+
+def test_borrowed_duckdb_lease_rejects_single_connection_pool(tmp_path):
+    """A shared DBAPI connection cannot isolate lease commits from caller work."""
+    pytest.importorskip("duckdb_engine")
+    from sqlalchemy import create_engine
+    from sqlalchemy.pool import StaticPool
+
+    from dblift.api.client import DBLiftClient
+
+    engine = create_engine(f"duckdb:///{tmp_path / 'app.duckdb'}", poolclass=StaticPool)
+    with engine.begin() as connection:
+        connection.exec_driver_sql("CREATE TABLE user_work (id INTEGER)")
+    caller = engine.connect()
+    client = DBLiftClient.from_sqlalchemy(connection=caller, migrations_dir=tmp_path)
+    schema = client.config.database.schema
+    try:
+        caller.exec_driver_sql("INSERT INTO user_work VALUES (1)")
+        with pytest.raises(RuntimeError, match="independent connection"):
+            client.provider.acquire_migration_lock(schema, wait_timeout_seconds=2)
+        assert caller.in_transaction()
+        caller.rollback()
+    finally:
+        client.close()
+        caller.close()
+        engine.dispose()
 
 
 def test_forked_child_closing_its_client_keeps_the_parents_lock(tmp_path):
