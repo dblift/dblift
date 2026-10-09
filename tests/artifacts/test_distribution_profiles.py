@@ -73,6 +73,7 @@ def test_minimal_and_standard_requirements(wheels):
     _, core, _ = _wheel_metadata(wheels["dblift_core"])
     _, bundle, _ = _wheel_metadata(wheels["dblift"])
     core_reqs = [Requirement(value) for value in core.get_all("Requires-Dist", [])]
+    assert all(req.name != "dblift" for req in core_reqs)
     plain = {req.name.lower() for req in core_reqs if req.marker is None}
     assert plain == {"pyyaml", "sqlalchemy"}
     extras = {name.lower(): set() for name in core.get_all("Provides-Extra", [])}
@@ -88,6 +89,16 @@ def test_minimal_and_standard_requirements(wheels):
     assert standard.name == "dblift-core"
     assert standard.extras == {"analysis", "presentation"}
     assert str(standard.specifier) == f"=={bundle['Version']}"
+    historical_extras = set(core.get_all("Provides-Extra", [])) - {"analysis", "presentation"}
+    assert set(bundle.get_all("Provides-Extra", [])) == historical_extras
+    for extra in historical_extras:
+        forwarded = [
+            req for req in bundle_reqs if req.marker and req.marker.evaluate({"extra": extra})
+        ]
+        assert len(forwarded) == 1, extra
+        assert forwarded[0].name == "dblift-core"
+        assert forwarded[0].extras == {extra}
+        assert str(forwarded[0].specifier) == f"=={bundle['Version']}"
 
 
 @pytest.mark.parametrize("source_name", ("core", "bundle"))

@@ -212,7 +212,11 @@ def main() -> int:
     parser.add_argument("--corpus-fixtures", type=Path)
     args = parser.parse_args()
     return qualify(
-        args.wheel, args.output, args.probe, args.corpus_probe, args.corpus_fixtures,
+        args.wheel,
+        args.output,
+        args.probe,
+        args.corpus_probe,
+        args.corpus_fixtures,
         args.core_wheel,
     )
 

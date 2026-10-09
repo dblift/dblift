@@ -188,7 +188,8 @@ mcp = ["mcp>=2.2,<3"]
 # it as "whatever dblift can talk to". Enforced by
 # ``tests/unit/test_oss_public_surface.py::
 # test_all_extra_covers_every_engine_extra``, which derives the engine set from
-# this table (everything except dev / django / flask / fastapi / otel / all) and
+# this table (everything except dev / analysis / presentation / django / flask /
+# fastapi / otel / mcp / all) and
 # fails if a new engine extra is added without being listed here.
 #
 # The PostgreSQL-compatible distributions are named explicitly even though they

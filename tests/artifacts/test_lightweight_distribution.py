@@ -95,8 +95,14 @@ def test_standard_distribution_outside_checkout(tmp_path, artifact):
     output = tmp_path / "result.json"
     run = subprocess.run(
         [
-            sys.executable, str(QUALIFIER), "--wheel", str(wheel.resolve()),
-            "--core-wheel", str(wheels["core"].resolve()), "--output", str(output),
+            sys.executable,
+            str(QUALIFIER),
+            "--wheel",
+            str(wheel.resolve()),
+            "--core-wheel",
+            str(wheels["core"].resolve()),
+            "--output",
+            str(output),
         ],
         cwd=tmp_path,
         capture_output=True,
