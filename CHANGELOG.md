@@ -87,6 +87,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `migrate --db-schema` creates a missing target schema before its history table on a
   fresh database. Dry runs still leave the database unchanged, and existing
   migration history does not trigger baseline safety checks.
+- `info` and `undo` now treat a missing history table as empty history, including
+  when the target schema does not exist. Neither command creates the schema or
+  history table, including `undo --dry-run`.
 - `info` marks a version Undoable when its companion undo script is in any
   configured scripts directory, regardless of directory order.
 - Snowflake migration locking refuses an ambiguous lock table with multiple

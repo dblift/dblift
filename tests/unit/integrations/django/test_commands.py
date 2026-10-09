@@ -1,5 +1,6 @@
 """Django management commands + system check, per-test settings via override."""
 
+import sqlite3
 from io import StringIO
 from pathlib import Path
 
@@ -191,7 +192,7 @@ _PREFLIGHT_COMMANDS = ["dblift_info", "dblift_migrate", "dblift_validate"]
 
 
 @pytest.mark.filterwarnings("error::DeprecationWarning")
-@pytest.mark.parametrize("name", _PREFLIGHT_COMMANDS)
+@pytest.mark.parametrize("name", ["dblift_migrate", "dblift_validate"])
 def test_dblift_history_table_failure_is_command_error_without_traceback(name, tmp_path, capsys):
     """A role that cannot create the history table must not dump a traceback.
 
@@ -220,6 +221,32 @@ def test_dblift_history_table_failure_is_command_error_without_traceback(name, t
     assert "Traceback" not in combined
     assert "Could not create the schema-history table" in combined
     assert denial in combined
+
+
+def test_dblift_info_reads_pending_without_creating_history(tmp_path):
+    """Django info works on an empty database without CREATE privilege."""
+    from unittest.mock import patch
+
+    settings = _settings(tmp_path)
+    with (
+        override_settings(**settings),
+        patch(
+            "dblift.core.migration.history.migration_history_manager."
+            "MigrationHistoryManager.create_schema_and_history_table",
+            side_effect=RuntimeError("permission denied for schema main"),
+        ),
+    ):
+        out = StringIO()
+        call_command("dblift_info", stdout=out)
+
+    assert "1 pending" in out.getvalue()
+    with sqlite3.connect(tmp_path / "db.sqlite") as connection:
+        assert (
+            connection.execute(
+                "SELECT name FROM sqlite_master WHERE name = 'dblift_schema_history'"
+            ).fetchall()
+            == []
+        )
 
 
 @pytest.mark.filterwarnings("error::DeprecationWarning")

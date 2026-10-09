@@ -235,7 +235,7 @@ class InfoCommand(BaseCommand):
                 "info",
                 result,
                 _body,
-                preflight=lambda: self._run_preflight(result, ensure_history=True),
+                preflight=lambda: self._run_preflight(result),
                 header_kwargs={"read_snapshot": read_snapshot},
                 error_message_prefix="Info operation failed",
             ),

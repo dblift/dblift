@@ -741,9 +741,8 @@ class BaseCommand:
              any metadata read or DDL.
           2. ``create_schema_and_history_table()`` when
              ``ensure_history=True`` AND not ``dry_run`` — commands that
-             require the history table (``migrate``, ``info``, ``undo``,
-             ``baseline``, ``validate``, ``repair``, ``import-flyway``)
-             call this idempotently; dry-run
+             initialize history (``migrate``, ``baseline``, ``validate``,
+             ``repair``, ``import-flyway``) call this idempotently; dry-run
              skips it (PR-02 byte-identical contract). A failure here names
              the step (``Could not create the schema-history table: ...``)
              rather than reusing ``_ensure_connected``'s generic
@@ -764,18 +763,16 @@ class BaseCommand:
         Args:
             result: OperationResult to populate with database metadata.
             ensure_history: If True, create the schema history table when
-                not in dry-run. ``migrate``, ``info``, ``undo``,
-                ``baseline``, ``validate``, ``repair`` and ``import-flyway``
-                pass True; ``clean`` passes False (it doesn't need history).
+                not in dry-run. ``migrate``, ``baseline``, ``validate``,
+                ``repair`` and ``import-flyway`` pass True; ``info`` and
+                ``undo`` read missing history as empty.
             dry_run: Skip history-table creation when True, regardless
                 of ``ensure_history``. ``_ensure_connected`` and
                 ``_populate_database_info`` still run — dry-run must
                 still produce accurate output. Pass the command's own
                 dry-run flag only when that command must skip the
                 history table as a dry-run side effect (``migrate``,
-                ``baseline``); leave it at the default when the command
-                always needs the history table regardless of its own
-                dry-run mode (``undo``).
+                ``baseline``).
             create_schema: Forwarded to
                 ``create_schema_and_history_table(create_schema=...)``.
                 ``baseline`` passes True to enable its history safety checks.

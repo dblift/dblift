@@ -77,7 +77,7 @@ class TestPreflightOrdering:
         assert order == ["_ensure_connected", "_populate_database_info"]
 
     def test_with_history_inserts_create_between_connect_and_populate(self, monkeypatch, recorder):
-        """migrate/info: connect → create_history → populate (strict order)."""
+        """migrate/baseline: connect → create_history → populate (strict order)."""
         cmd = _make_minimal_command()
         _patch_preflight(monkeypatch, cmd, recorder)
 
