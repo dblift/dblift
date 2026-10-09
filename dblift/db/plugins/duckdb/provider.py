@@ -1,6 +1,5 @@
 """DuckDB provider backed by SQLAlchemy Core (duckdb_engine driver)."""
 
-import time
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy import text
@@ -11,15 +10,25 @@ from dblift.core.constants import MIGRATION_LOCK_TABLE as _MIGRATION_LOCK_TABLE
 from dblift.core.logger import Log
 from dblift.core.migration.clean_summary import CleanExecutionSummary
 from dblift.db.plugins.base_history_manager import UNDO_HISTORY_TYPE, installed_on_to_bind
+from dblift.db.plugins.sql_lease_store import (
+    OWNER_COLUMN,
+    SqlLeaseDialect,
+    SqlLeaseLockingProvider,
+    interval_before,
+)
 from dblift.db.provider_interfaces import DroppableObject
-from dblift.db.sqlalchemy_provider import SqlAlchemyProvider
 
 
 def _quote_identifier(identifier: str) -> str:
     return '"' + identifier.replace('"', '""') + '"'
 
 
-class DuckDBProvider(SqlAlchemyProvider):
+def _is_transaction_conflict(error: BaseException) -> bool:
+    """A write-write conflict with another connection: someone is writing right now."""
+    return "conflict" in str(error).lower()
+
+
+class DuckDBProvider(SqlLeaseLockingProvider):
     """DuckDB provider implementation using SQLAlchemy (duckdb_engine)."""
 
     canonical_dialect_key = "duckdb"
@@ -389,60 +398,42 @@ class DuckDBProvider(SqlAlchemyProvider):
             for obj, drop_sql in zip(summary.objects, summary.statements)
         ]
 
-    # --- locking (table-based; DuckDB has no advisory locks) -------------
+    # --- locking (lease in the lock table; DuckDB has no advisory locks) --
     def create_migration_lock_table_if_not_exists(self, schema: str) -> None:
-        """Create the DuckDB migration lock table if it is missing."""
+        """Create the DuckDB migration lock table if it is missing.
+
+        A table created before the lease lacks the owner column; it is added.
+        """
         self.create_schema_if_not_exists(schema)
+        table = self.get_schema_qualified_name(schema, self.MIGRATION_LOCK_TABLE)
         self.execute_statement(f"""
-            CREATE TABLE IF NOT EXISTS {self.get_schema_qualified_name(schema, self.MIGRATION_LOCK_TABLE)} (
+            CREATE TABLE IF NOT EXISTS {table} (
                 lock_name VARCHAR PRIMARY KEY,
-                locked_at TIMESTAMP DEFAULT now()
+                locked_at TIMESTAMP DEFAULT now(),
+                {OWNER_COLUMN} VARCHAR
             )
             """)
+        self.execute_statement(
+            f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {OWNER_COLUMN} VARCHAR"
+        )
 
-    def acquire_migration_lock(self, schema: str, wait_timeout_seconds: int = 60) -> bool:
-        """Acquire the migration lock by inserting the lock row.
+    def _migration_lease_dialect(self, schema: str) -> SqlLeaseDialect:
+        """Describe the DuckDB lock table; rows before the lease used local ``now()``."""
+        return SqlLeaseDialect(
+            table=self.get_schema_qualified_name(schema, self.MIGRATION_LOCK_TABLE),
+            lock_name="migration",
+            now_utc="timezone('UTC', now())",
+            legacy_now="CAST(now() AS TIMESTAMP)",
+            seconds_before=interval_before,
+            is_busy=_is_transaction_conflict,
+            # duckdb_engine reports no row count for DML.
+            count_with_returning=True,
+        )
 
-        A primary-key conflict (``IntegrityError``) means the lock is held —
-        retry until the timeout. Any other error (connection loss, permissions,
-        a dropped lock table) is unexpected and propagates rather than being
-        masked as routine contention.
-        """
-        from sqlalchemy.exc import IntegrityError
-
-        self.create_migration_lock_table_if_not_exists(schema)
-        qualified = self.get_schema_qualified_name(schema, self.MIGRATION_LOCK_TABLE)
-        deadline = time.monotonic() + wait_timeout_seconds
-        while True:
-            # Only roll back a transaction opened below; an open one is the caller's.
-            conn = self._ensure_connection()
-            opened_here = (
-                self._tx is None
-                and not getattr(self, "_external_connection", False)
-                and not conn.in_transaction()
-            )
-            try:
-                self.execute_statement(
-                    f"INSERT INTO {qualified} (lock_name) VALUES (?)", params=["migration"]
-                )
-                return True
-            except IntegrityError:
-                # A failed INSERT aborts DuckDB's transaction; retrying needs a clean one.
-                if opened_here:
-                    conn.rollback()
-                if time.monotonic() >= deadline:
-                    return False
-                time.sleep(0.2)
-
-    def release_migration_lock(self, schema: str) -> bool:
-        """Release the migration lock by deleting the lock row.
-
-        DuckDB reports ``-1`` rowcount for DML, so success is "the DELETE
-        executed" rather than a rowcount check.
-        """
-        qualified = self.get_schema_qualified_name(schema, self.MIGRATION_LOCK_TABLE)
-        self.execute_statement(f"DELETE FROM {qualified} WHERE lock_name = ?", params=["migration"])
-        return True
+    def _migration_lease_is_private(self) -> bool:
+        """An in-memory DuckDB database exists only on the provider's own connection."""
+        database = str(self.engine.url.database or "")
+        return not database or database.startswith(":memory:")
 
     # --- migration history ----------------------------------------------
     def get_applied_migrations(

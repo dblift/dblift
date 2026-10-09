@@ -255,8 +255,11 @@ class SQLiteProvider(NativeProvider, TransactionalProvider):
         self._ensure_connection()
         if self.connection:
             # SQLite with isolation_level=None is in autocommit mode
-            # We need to explicitly begin a transaction
-            self.connection.execute("BEGIN TRANSACTION")
+            # We need to explicitly begin a transaction. IMMEDIATE takes the
+            # write lock up front, waiting out the lock heartbeat's brief
+            # write: a deferred transaction that reads first would be refused
+            # its later write (no busy wait) or lose its WAL read snapshot.
+            self.connection.execute("BEGIN IMMEDIATE")
             self._in_transaction = True
             self.log.debug("Transaction started")
 
@@ -318,6 +321,10 @@ class SQLiteProvider(NativeProvider, TransactionalProvider):
         """
         connection = self._get_connection()
         return self.locking_manager.release_migration_lock(connection, schema)
+
+    def migration_lock_lost(self) -> bool:
+        """Whether the held migration lock lease was reclaimed or could not be renewed."""
+        return self.locking_manager.migration_lock_lost()
 
     def set_busy_timeout(self, seconds: float) -> None:
         """Raise (or restore) this connection's SQLite busy_timeout.
@@ -554,7 +561,10 @@ class SQLiteProvider(NativeProvider, TransactionalProvider):
                 self.connection = None
 
     def close(self) -> None:
-        """Close the SQLite connection."""
-        self._close_connection_impl()
+        """Release a migration lock still held, then close the SQLite connection."""
+        try:
+            self.locking_manager.close()
+        finally:
+            self._close_connection_impl()
         if self.connection_manager:
             self.connection_manager.close()

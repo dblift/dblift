@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-from sqlalchemy.engine import Connection, Transaction
+from sqlalchemy.engine import Connection
 
 from dblift.config import DbliftConfig
 from dblift.core.constants import DEFAULT_HISTORY_TABLE
@@ -13,8 +13,14 @@ from dblift.core.constants import MIGRATION_LOCK_TABLE as _MIGRATION_LOCK_TABLE
 from dblift.core.logger import Log
 from dblift.core.migration.clean_summary import CleanExecutionSummary
 from dblift.db.plugins.base_history_manager import UNDO_HISTORY_TYPE, installed_on_to_bind
+from dblift.db.plugins.sql_lease_store import (
+    OWNER_COLUMN,
+    OWNER_COLUMN_TYPE,
+    SqlAlchemyLeaseSession,
+    SqlLeaseDialect,
+    SqlLeaseLockingProvider,
+)
 from dblift.db.provider_interfaces import DroppableObject
-from dblift.db.sqlalchemy_provider import SqlAlchemyProvider
 
 
 def _quote_identifier(identifier: str) -> str:
@@ -128,7 +134,11 @@ def _row_value(row: Dict[str, Any], key: str) -> Any:
     return None
 
 
-def _is_lock_timeout_error(error: Exception) -> bool:
+def _seconds_before(clock: str, seconds: str) -> str:
+    return f"DATEADD(second, -{seconds}, {clock})"
+
+
+def _is_lock_timeout_error(error: BaseException) -> bool:
     message = " ".join(
         str(value or "").lower()
         for value in (
@@ -146,16 +156,11 @@ def _is_lock_timeout_error(error: Exception) -> bool:
     return any(marker in message for marker in markers)
 
 
-class SnowflakeProvider(SqlAlchemyProvider):
+class SnowflakeProvider(SqlLeaseLockingProvider):
     """Snowflake provider using the Snowflake SQLAlchemy dialect."""
 
     canonical_dialect_key = "snowflake"
     MIGRATION_LOCK_TABLE = _MIGRATION_LOCK_TABLE.upper()
-    _migration_lock_connection: Connection | None = None
-    _migration_lock_transaction: Transaction | None = None
-    #: ``LOCK_TIMEOUT`` the lock session had before :meth:`acquire_migration_lock`
-    #: changed it; ``None`` means unknown, so the parameter is unset on restore.
-    _migration_lock_prior_timeout: Optional[str] = None
 
     #: Schema this session was last ``USE SCHEMA``'d into. Lets
     #: :meth:`set_current_schema` skip re-issuing ``USE SCHEMA`` on every
@@ -573,12 +578,18 @@ class SnowflakeProvider(SqlAlchemyProvider):
         return f"""
             CREATE TABLE IF NOT EXISTS {qualified} (
                 lock_name VARCHAR(128) NOT NULL,
-                locked_at TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP()
+                locked_at TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP(),
+                {OWNER_COLUMN} {OWNER_COLUMN_TYPE}
             )
         """
 
     def acquire_migration_lock_sql(self, schema: str) -> str:
-        """Return the DML statement holding the migration lock row."""
+        """Return the DML statement earlier dblift versions held the lock row with.
+
+        Such a version keeps this statement's row lock in an open transaction
+        for the whole migration; the lease waits for it (see
+        :meth:`acquire_migration_lock`).
+        """
         qualified = self.get_schema_qualified_name(
             schema,
             self.MIGRATION_LOCK_TABLE,
@@ -608,6 +619,8 @@ class SnowflakeProvider(SqlAlchemyProvider):
         return [
             f"CREATE SCHEMA IF NOT EXISTS {_quote_identifier(_caller_identifier(schema))}",
             self.create_migration_lock_table_sql(schema),
+            # A table created before the lease lacks the owner column.
+            f"ALTER TABLE {qualified} ADD COLUMN IF NOT EXISTS {OWNER_COLUMN} {OWNER_COLUMN_TYPE}",
             seed,
         ]
 
@@ -621,40 +634,54 @@ class SnowflakeProvider(SqlAlchemyProvider):
         schema: str,
         wait_timeout_seconds: int = 60,
     ) -> bool:
-        """Acquire the migration lock with a DML transaction.
+        """Acquire the migration lock as a committed lease on the seeded lock row.
 
-        The lock table is created and seeded on the lock session itself,
-        after ``LOCK_TIMEOUT`` is set: the seeding MERGE waits behind the
-        session holding the lock row, and on any other session it would wait
-        for the 12 hour default instead of the requested timeout.
+        The lease runs on its own session with ``LOCK_TIMEOUT`` set, so a
+        wait behind an earlier dblift version holding the row lock in an
+        open transaction stays bounded. The lock table is created and seeded
+        on that session too: the seeding MERGE also waits behind such a
+        holder, and on any other session it would wait for the 12 hour
+        default instead of the requested timeout.
         """
-        if self._migration_lock_transaction is not None:
+        if self._migration_lease is not None:
             return True
 
         connection = self.engine.connect()
+        prior_timeout: Optional[str] = None
         try:
             timeout = max(0, int(wait_timeout_seconds))
-            self._migration_lock_prior_timeout = self._session_lock_timeout(connection)
+            prior_timeout = self._session_lock_timeout(connection)
             connection.exec_driver_sql(f"ALTER SESSION SET LOCK_TIMEOUT = {timeout}")
             connection.commit()
             for statement in self._lock_table_setup_statements(schema):
                 connection.exec_driver_sql(statement)
             connection.commit()
-            transaction = connection.begin()
-            connection.exec_driver_sql(self.acquire_migration_lock_sql(schema))
         except Exception as exc:
             try:
                 connection.rollback()
             except Exception as rollback_error:
                 self.log.debug(f"Rollback of the lock session failed: {rollback_error}")
-            self._close_lock_connection(connection)
+            self._close_lock_connection(connection, prior_timeout)
             if _is_lock_timeout_error(exc):
                 return False
             raise
 
-        self._migration_lock_connection = connection
-        self._migration_lock_transaction = transaction
-        return True
+        def close_session(lock_connection: Connection) -> None:
+            self._close_lock_connection(lock_connection, prior_timeout)
+
+        session = SqlAlchemyLeaseSession(connection, on_close=close_session)
+        return self._acquire_migration_lease(schema, session, wait_timeout_seconds)
+
+    def _migration_lease_dialect(self, schema: str) -> SqlLeaseDialect:
+        """Describe the seeded Snowflake lock row (``SYSDATE()`` is UTC)."""
+        return SqlLeaseDialect(
+            table=self.get_schema_qualified_name(schema, self.MIGRATION_LOCK_TABLE),
+            lock_name="migration",
+            now_utc="SYSDATE()",
+            seconds_before=_seconds_before,
+            is_busy=_is_lock_timeout_error,
+            seeded_row=True,
+        )
 
     @staticmethod
     def _session_lock_timeout(connection: Connection) -> Optional[str]:
@@ -666,20 +693,19 @@ class SnowflakeProvider(SqlAlchemyProvider):
         )
         return str(rows[0]["value"]) if len(rows) == 1 else None
 
-    def _close_lock_connection(self, connection: Connection) -> None:
+    def _close_lock_connection(self, connection: Connection, prior_timeout: Optional[str]) -> None:
         """Put the session's ``LOCK_TIMEOUT`` back, then close the lock connection.
 
         The connection returns to the engine's pool, so a timeout left on it
         would apply to whatever statement borrows it next; when the restore
         fails the connection is invalidated instead of being returned.
+        ``prior_timeout`` ``None`` means unknown, so the parameter is unset.
         """
-        prior = self._migration_lock_prior_timeout
-        self._migration_lock_prior_timeout = None
         try:
-            if prior is None:
+            if prior_timeout is None:
                 connection.exec_driver_sql("ALTER SESSION UNSET LOCK_TIMEOUT")
             else:
-                connection.exec_driver_sql(f"ALTER SESSION SET LOCK_TIMEOUT = {int(prior)}")
+                connection.exec_driver_sql(f"ALTER SESSION SET LOCK_TIMEOUT = {int(prior_timeout)}")
         except Exception as exc:
             self.log.debug(f"Could not restore session LOCK_TIMEOUT: {exc}")
             # A session still carrying the short timeout must not be reused.
@@ -687,37 +713,11 @@ class SnowflakeProvider(SqlAlchemyProvider):
         finally:
             connection.close()
 
-    def release_migration_lock(self, schema: str) -> bool:
-        """Release the Snowflake migration lock by ending its transaction."""
-        transaction = self._migration_lock_transaction
-        connection = self._migration_lock_connection
-        if transaction is None or connection is None:
-            return True
-
-        try:
-            transaction.commit()
-            return True
-        except Exception:
-            try:
-                transaction.rollback()
-            except Exception:
-                pass
-            return False
-        finally:
-            try:
-                self._close_lock_connection(connection)
-            finally:
-                self._migration_lock_connection = None
-                self._migration_lock_transaction = None
-
     def close(self) -> None:
         """Close SQLAlchemy resources and release any held migration lock."""
         self._clean_listing = None
         self._clean_run = None
-        try:
-            self.release_migration_lock("")
-        finally:
-            super().close()
+        super().close()
 
     def get_applied_migrations(
         self, schema: str, table_name: str = DEFAULT_HISTORY_TABLE

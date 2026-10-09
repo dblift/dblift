@@ -16,6 +16,7 @@ pytest.importorskip("pymongo")
 from pymongo.errors import DuplicateKeyError  # noqa: E402
 
 from dblift.db.plugins.mongodb.mongodb import MongoDbLockingManager
+from dblift.db.plugins.mongodb.mongodb.locking_manager import _MongoLeaseStore
 
 
 def _manager():
@@ -72,8 +73,12 @@ def test_expired_lease_is_reclaimed(monkeypatch):
 
 def test_release_reports_removal():
     manager, collection = _manager()
+    assert manager.acquire_migration_lock("ignored", wait_timeout_seconds=1) is True
+    token = collection.insert_one.call_args.args[0]["owner_token"]
     collection.delete_one.return_value = MagicMock(deleted_count=1)
+
     assert manager.release_migration_lock("ignored") is True
+    collection.delete_one.assert_called_once_with({"_id": "migration_lock", "owner_token": token})
 
 
 def test_releasing_an_absent_lock_is_not_an_error():
@@ -83,38 +88,23 @@ def test_releasing_an_absent_lock_is_not_an_error():
     assert manager.release_migration_lock("ignored") is False
 
 
-def test_expired_lease_race_another_process_reclaims_first(monkeypatch):
+def test_expired_lease_race_another_process_reclaims_first():
     """When two processes both see an expired lease, only the one whose
-    delete filter matches (acquired_at match) should proceed to insert.
-    If another process reclaims first, this process's delete finds no match
-    and correctly retries rather than inserting on top of the new lease."""
-    monkeypatch.setattr("time.sleep", lambda _seconds: None)
+    delete filter matches (acquired_at match) frees it. If another process
+    reclaimed first, this process's delete finds no match and nothing is
+    freed; its next insert then fails on the new holder's ``_id`` instead of
+    replacing that lease."""
     manager, collection = _manager()
     stale_lease = _lease(age_seconds=10_000)
-    fresh_lease = _lease(age_seconds=1)
+    collection.find_one.return_value = stale_lease
+    collection.delete_one.return_value = MagicMock(deleted_count=0)
+    store = _MongoLeaseStore(manager._collection, manager.LOCK_DOCUMENT_ID)
 
-    # Simulate the race: both processes see the stale lease, but only one
-    # can delete it. The other's delete filter (with the old acquired_at)
-    # won't match because the document was already deleted and re-inserted.
-    collection.insert_one.side_effect = [
-        DuplicateKeyError("duplicate"),  # First insert attempt fails (lease held)
-    ]
-    collection.find_one.side_effect = [
-        stale_lease,  # First find sees the stale lease
-        fresh_lease,  # After delete fails, find sees the fresh lease (another process won)
-    ]
-    collection.delete_one.return_value = MagicMock(
-        deleted_count=0
-    )  # Delete fails (acquired_at mismatch)
-
-    # Should timeout waiting for the fresh lease, not insert on top of it
-    assert manager.acquire_migration_lock("ignored", wait_timeout_seconds=0) is False
-    # Verify delete was attempted with the stale acquired_at
+    assert store.reclaim_expired(30) is False
     collection.delete_one.assert_called_once_with(
         {"_id": "migration_lock", "acquired_at": stale_lease["acquired_at"]}
     )
-    # Verify insert was NOT called after the failed delete
-    collection.insert_one.assert_called_once()  # Only the initial attempt
+    collection.insert_one.assert_not_called()
 
 
 def test_container_creation_adds_the_unique_index():

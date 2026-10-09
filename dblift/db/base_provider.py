@@ -240,6 +240,16 @@ class BaseProvider(
         )
         return int(affected) if affected is not None else 0
 
+    def migration_lock_lost(self) -> bool:
+        """Whether the migration lock this provider holds has been lost.
+
+        Providers whose lock is a lease (a lock row or document kept alive by
+        a heartbeat) report ``True`` once the lease was reclaimed by another
+        process or could not be renewed for a whole lease window. Locks the
+        server frees with the session can never be lost this way.
+        """
+        return False
+
     def close(self) -> None:
         """Close the database connection if it exists.
 

@@ -41,6 +41,16 @@ class BaseLockingManager(ABC):
             - ``process_id``   VARCHAR(64) — OS-level process identifier.
             - ``lock_mode``    INTEGER — lock mode flag (default 1 = exclusive).
 
+        Lease column (required where the lock is a committed row):
+            - ``owner_token``  VARCHAR(64), nullable — token of the holder's
+              lease (see ``dblift.db.plugins.lease_lock``). Heartbeat and
+              release only touch the row carrying the caller's token; the
+              timestamp column is refreshed by the heartbeat and compared with
+              the server clock in UTC. A row without an owner was written by a
+              dblift version from before the lease and is reclaimed only after
+              24 hours. Creating the lock table adds the column to a table
+              that lacks it.
+
         Naming conventions:
             - Database providers use lowercase column names (e.g. ``lock_name``).
             - Oracle and DB2 use UPPERCASE by SQL convention (e.g. ``LOCK_NAME``).

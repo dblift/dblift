@@ -2,7 +2,6 @@
 
 import os
 import socket
-import time
 from typing import Any, Dict, List, Optional, cast
 
 from dblift.config import DbliftConfig
@@ -15,12 +14,33 @@ from dblift.core.sql_parser.common.comment_stripping import strip_comments_prese
 from dblift.db.object_naming import configured_identifier_text, get_normalized_object_name
 from dblift.db.plugins.base_history_manager import UNDO_HISTORY_TYPE, installed_on_to_bind
 from dblift.db.plugins.db2.db2.schema_operations import Db2SchemaOperations
+from dblift.db.plugins.lease_lock import LEGACY_LEASE_EXPIRY_SECONDS
+from dblift.db.plugins.sql_lease_store import (
+    OWNER_COLUMN,
+    OWNER_COLUMN_TYPE,
+    SqlLeaseDialect,
+    SqlLeaseLockingProvider,
+    ensure_owner_column,
+)
 from dblift.db.provider_interfaces import DroppableObject
-from dblift.db.sqlalchemy_provider import SqlAlchemyProvider
 
 _HISTORY_TABLE = DEFAULT_HISTORY_TABLE.upper()
 
-DB2_LOCK_STALE_SECONDS = 24 * 60 * 60
+#: Age after which a lock row written by a dblift version without the lease
+#: (no owner) is reclaimed.
+DB2_LOCK_STALE_SECONDS = LEGACY_LEASE_EXPIRY_SECONDS
+
+_OWNER_COLUMN = OWNER_COLUMN.upper()
+
+
+def _seconds_before(clock: str, seconds: str) -> str:
+    return f"{clock} - {seconds} SECONDS"
+
+
+def _is_lock_conflict(error: BaseException) -> bool:
+    """A deadlock or lock timeout (SQL0911N/SQL0913N): another writer is active."""
+    message = str(error).lower()
+    return any(marker in message for marker in ("sql0911n", "sql0913n", "57033"))
 
 
 def _q(name: str) -> str:
@@ -125,7 +145,7 @@ class _Db2NativeSchemaOperations(Db2SchemaOperations):
         self._provider.create_schema_if_not_exists(schema)
 
 
-class Db2Provider(SqlAlchemyProvider):
+class Db2Provider(SqlLeaseLockingProvider):
     """DB2 provider implementation using native SQLAlchemy/ibm_db_sa."""
 
     canonical_dialect_key = "db2"
@@ -273,71 +293,49 @@ class Db2Provider(SqlAlchemyProvider):
         return ", ".join(["?" for _ in range(count)])
 
     def create_migration_lock_table_if_not_exists(self, schema: str) -> None:
-        """Create the DB2 migration lock table if it is missing."""
+        """Create the DB2 migration lock table if it is missing.
+
+        A table created before the lease lacks the owner column; it is added.
+        """
         self.create_schema_if_not_exists(schema)
-        if self.table_exists(schema, self.MIGRATION_LOCK_TABLE):
+        table = self.MIGRATION_LOCK_TABLE
+        if self.table_exists(schema, table):
+            ensure_owner_column(
+                self.execute_query,
+                self.execute_statement,
+                self.get_columns_query(schema, table),
+                self.get_add_column_sql(schema, table, _OWNER_COLUMN, OWNER_COLUMN_TYPE),
+                column=_OWNER_COLUMN,
+            )
             return
         self.execute_statement(f"""
-            CREATE TABLE {_schema_object(schema, self.MIGRATION_LOCK_TABLE)} (
+            CREATE TABLE {_schema_object(schema, table)} (
                 LOCK_NAME VARCHAR(128) NOT NULL PRIMARY KEY,
                 ACQUIRED_AT TIMESTAMP NOT NULL,
-                ACQUIRED_BY VARCHAR(128) NOT NULL
+                ACQUIRED_BY VARCHAR(128) NOT NULL,
+                {_OWNER_COLUMN} {OWNER_COLUMN_TYPE}
             )
             """)
 
-    def acquire_migration_lock(self, schema: str, wait_timeout_seconds: int = 60) -> bool:
-        """Acquire a table-backed DB2 migration lock."""
-        self.create_migration_lock_table_if_not_exists(schema)
+    def _migration_lease_dialect(self, schema: str) -> SqlLeaseDialect:
+        """Describe the DB2 lock table; rows before the lease used local ``CURRENT TIMESTAMP``."""
         lock_identity = (
             f"{os.environ.get('USER', os.environ.get('USERNAME', 'unknown'))}"
             f"@{socket.gethostname()}:{os.getpid()}"
         )
-        timeout = max(0, int(wait_timeout_seconds))
-        deadline = time.monotonic() + timeout
-        stale_cleanup_sql = (
-            f"DELETE FROM {_schema_object(schema, self.MIGRATION_LOCK_TABLE)} "
-            "WHERE LOCK_NAME = ? "
-            f"AND ACQUIRED_AT < CURRENT TIMESTAMP - {DB2_LOCK_STALE_SECONDS} SECONDS"
+        return SqlLeaseDialect(
+            table=_schema_object(schema, self.MIGRATION_LOCK_TABLE),
+            lock_name="migration",
+            name_column="LOCK_NAME",
+            timestamp_column="ACQUIRED_AT",
+            owner_column=_OWNER_COLUMN,
+            now_utc="(CURRENT TIMESTAMP - CURRENT TIMEZONE)",
+            legacy_now="CURRENT TIMESTAMP",
+            seconds_before=_seconds_before,
+            is_busy=_is_lock_conflict,
+            insert_values=(("ACQUIRED_BY", "?"),),
+            insert_params=(lock_identity,),
         )
-        insert_sql = f"""
-            INSERT INTO {_schema_object(schema, self.MIGRATION_LOCK_TABLE)}
-                (LOCK_NAME, ACQUIRED_AT, ACQUIRED_BY)
-            VALUES (?, CURRENT TIMESTAMP, ?)
-            """
-
-        try:
-            self.execute_statement(stale_cleanup_sql, params=["migration"])
-        except Exception as e:
-            self.log.debug(f"Could not clean stale DB2 migration locks: {e}")
-
-        while True:
-            try:
-                self.execute_statement(
-                    insert_sql,
-                    params=["migration", lock_identity],
-                )
-                return True
-            except Exception as e:
-                connection = getattr(self, "_connection", None)
-                if connection is not None:
-                    try:
-                        connection.rollback()
-                    except Exception as rollback_error:
-                        self.log.debug(f"Could not rollback DB2 lock attempt: {rollback_error}")
-                if time.monotonic() >= deadline:
-                    self.log.debug(f"Could not acquire DB2 migration lock: {e}")
-                    return False
-                time.sleep(min(1, max(0, deadline - time.monotonic())))
-
-    def release_migration_lock(self, schema: str) -> bool:
-        """Release the table-backed DB2 migration lock."""
-        if not self.table_exists(schema, self.MIGRATION_LOCK_TABLE):
-            return True
-        affected = self.execute_statement(
-            f"DELETE FROM {_schema_object(schema, self.MIGRATION_LOCK_TABLE)} WHERE LOCK_NAME = ?",
-            params=["migration"],
-        )
-        return affected > 0
 
     def create_migration_history_table_if_not_exists(
         self,
