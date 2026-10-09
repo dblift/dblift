@@ -237,6 +237,7 @@ def test_info_result_to_dict_payload_is_unchanged():
         "installed_by",
         "execution_time",
         "error",
+        "analysis",
     ]
 
 
@@ -266,6 +267,7 @@ def test_validate_result_to_dict_shape():
             "checksum mismatch",
             "Validation failed. Detected modified migration scripts.",
         ],
+        "warnings": [],
         "validated_migrations": [_migration_info_to_dict(result.validated_migrations[0])],
         "failed_migrations": [_migration_info_to_dict(result.failed_migrations[0])],
     }
@@ -726,3 +728,11 @@ def test_validate_result_to_dict_error_is_null_on_success_like_info_and_migrate(
     )
 
     assert _validate_result_to_dict(result)["error"] is None
+
+
+@pytest.mark.unit
+def test_migration_info_to_dict_carries_analysis_or_null():
+    analysis = {"statements": [], "cautions": [], "errors": []}
+
+    assert _migration_info_to_dict(_migration(analysis=analysis))["analysis"] == analysis
+    assert _migration_info_to_dict(_migration(analysis=None))["analysis"] is None

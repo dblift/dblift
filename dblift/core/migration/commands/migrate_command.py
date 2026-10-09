@@ -28,6 +28,7 @@ from dblift.core.migration.migration import (
 )
 from dblift.core.migration.rules.migration_rules import MigrationRules
 from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
+from dblift.core.migration.sql.script_analysis import analyse_pending_scripts, dialect_of
 from dblift.core.migration.state.migration_state import MigrationReadSnapshot
 from dblift.core.migration.state.migration_state_manager import (
     MigrationStateManager,
@@ -164,6 +165,9 @@ class MigrateCommand(BaseCommand):
                 self._log_command_completion("migrate", result)
                 return result
 
+        dialect = dialect_of(self.config)
+        analysed = analyse_pending_scripts(pending_migrations, dialect, self.log) if dialect else {}
+
         self.log.info("DRY RUN: Would execute the following migrations:")
         for migration in pending_migrations:
             self.log.info(f"  - {migration.script_name}")
@@ -178,6 +182,7 @@ class MigrateCommand(BaseCommand):
                     type=migration.type.value if migration.type else "SQL",
                     status="PENDING",
                     checksum=migration.checksum,
+                    analysis=analysed.get(migration.script_name),
                 )
             )
         result.dry_run_count = len(pending_migrations)
