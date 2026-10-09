@@ -7,6 +7,130 @@ import pytest
 from tests.unit.lightweight_core._support import run_python
 
 
+@pytest.mark.parametrize("mode", ["full", "execution"])
+def test_inprocess_mode_preserves_selected_migration_and_undo_semantics(tmp_path, mode):
+    """Coverage-visible execution retains selected SQL, callbacks, and journal events."""
+    from dblift.api import DBLiftClient
+    from dblift.config import DbliftConfig
+    from dblift.core.logger import NullLog
+    from dblift.core.migration.journals.migration_journal import EntryType
+
+    migrations = tmp_path / "sql"
+    migrations.mkdir()
+    (migrations / "beforeMigrate__audit.sql").write_text(
+        "CREATE TABLE IF NOT EXISTS audit (event TEXT);"
+    )
+    (migrations / "beforeEach__audit.py").write_text(
+        "def migrate(context):\n    context.execute(\"INSERT INTO audit VALUES ('before')\")\n"
+    )
+    (migrations / "V1__create.sql").write_text("CREATE TABLE t (id INTEGER PRIMARY KEY);")
+    (migrations / "V2__insert.sql").write_text(
+        "WITH seed AS (SELECT 7 AS id) INSERT INTO t SELECT id FROM seed;"
+    )
+    (migrations / "U2__insert.sql").write_text("DELETE FROM t WHERE id = 7;")
+    (migrations / "U1__create.sql").write_text("DROP VIEW IF EXISTS report; DROP TABLE t;")
+    (migrations / "R__view.sql").write_text("CREATE VIEW report AS SELECT id FROM t;")
+    config = DbliftConfig.from_dict(
+        {"database": {"type": "sqlite", "path": str(tmp_path / "db.sqlite"), "schema": "main"}}
+    )
+    with DBLiftClient.from_config(
+        config, migrations_dir=migrations, logger=NullLog(), analysis_mode=mode
+    ) as client:
+        for preview in (client.info(), client.migrate(dry_run=True)):
+            pending = next(m for m in preview.migrations if m.script == "V1__create.sql")
+            if mode == "execution":
+                assert pending.analysis["status"] == "disabled"
+            else:
+                assert pending.analysis.get("status") != "disabled"
+        applied = client.migrate()
+        assert applied.success, applied.error_message
+        assert client.validate().success
+        assert [
+            tuple(row.values()) for row in client.provider.execute_query("SELECT id FROM t")
+        ] == [(7,)]
+        journal = applied.journal
+        assert journal.capture_objects == (mode == "full")
+        summary = journal.get_migration_performance_summary("V1__create.sql")
+        assert bool(summary["object_operations"]) == (mode == "full")
+        if mode == "execution":
+            assert summary["object_analysis"] == "disabled"
+        entries = journal.get_migration_journal("V1__create.sql")
+        assert any(entry.entry_type == EntryType.STATEMENT_COMPLETE for entry in entries)
+        assert [
+            tuple(row.values()) for row in client.provider.execute_query("SELECT event FROM audit")
+        ] == [
+            ("before",),
+            ("before",),
+            ("before",),
+        ]
+        assert client.undo(target_version="0.0.0").success
+
+
+def test_inprocess_execution_selection_skips_ambiguous_unselected_sql(tmp_path):
+    from dblift.api import DBLiftClient
+    from dblift.config import DbliftConfig
+    from dblift.core.logger import NullLog
+
+    migrations = tmp_path / "sql"
+    migrations.mkdir()
+    (migrations / "V1__create.sql").write_text("CREATE TABLE t (id INTEGER);")
+    (migrations / "V99__later.sql").write_text("WITH x AS (SELECT 1)")
+    (migrations / "U1__create.sql").write_text("DROP TABLE t;")
+    (migrations / "U99__later.sql").write_text("WITH x AS (SELECT 1)")
+    config = DbliftConfig.from_dict(
+        {"database": {"type": "sqlite", "path": str(tmp_path / "db.sqlite"), "schema": "main"}}
+    )
+    with DBLiftClient.from_config(
+        config, migrations_dir=migrations, logger=NullLog(), analysis_mode="execution"
+    ) as client:
+        assert client.migrate(versions="1").success
+        assert client.migrate(versions="1").success  # Already applied SQL is not scanned.
+        assert client.undo(target_version="0.0.0").success
+
+
+def test_inprocess_async_factories_forward_selected_mode(tmp_path):
+    import asyncio
+
+    from sqlalchemy import create_engine
+
+    from dblift.api.async_client import AsyncDBLiftClient
+    from dblift.config import DbliftConfig
+    from dblift.core.logger import NullLog
+
+    config = DbliftConfig.from_dict(
+        {"database": {"type": "sqlite", "path": str(tmp_path / "db.sqlite"), "schema": "main"}}
+    )
+    config_file = tmp_path / "dblift.yml"
+    config_file.write_text(
+        f"database:\n  type: sqlite\n  path: {tmp_path / 'db.sqlite'}\n  schema: main\n"
+    )
+    engine = create_engine(f"sqlite:///{tmp_path / 'engine.db'}")
+
+    async def run():
+        clients = (
+            AsyncDBLiftClient.from_config(
+                config, migrations_dir=tmp_path, logger=NullLog(), analysis_mode="execution"
+            ),
+            AsyncDBLiftClient.from_config_file(
+                str(config_file),
+                migrations_dir=tmp_path,
+                logger=NullLog(),
+                analysis_mode="execution",
+            ),
+            AsyncDBLiftClient.from_sqlalchemy(
+                engine, migrations_dir=tmp_path, logger=NullLog(), analysis_mode="execution"
+            ),
+        )
+        for client in clients:
+            async with client:
+                assert client.analysis_mode == "execution"
+
+    try:
+        asyncio.run(run())
+    finally:
+        engine.dispose()
+
+
 @pytest.mark.parametrize("factory", ["from_config", "from_sqlalchemy"])
 def test_default_full_preserves_strict_legacy_subclass_constructor(factory, tmp_path):
     from sqlalchemy import create_engine
