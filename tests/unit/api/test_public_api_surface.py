@@ -273,6 +273,7 @@ class TestExtensionLoggingSurface:
 
 class TestExtensionProvidersSurface:
     EXPECTED_EXPORTS = {
+        "PluginDescriptor",
         "PluginInfo",
         "ProviderRegistry",
         "ProviderTransport",
@@ -285,10 +286,11 @@ class TestExtensionProvidersSurface:
 
     @pytest.mark.parametrize("symbol_name", sorted(EXPECTED_EXPORTS))
     def test_provider_surface_reexports_existing_objects(self, symbol_name):
-        from dblift.db import provider_registry
+        from dblift.db import provider_metadata, provider_registry
         from dblift.extensions import providers
 
-        assert getattr(providers, symbol_name) is getattr(provider_registry, symbol_name)
+        source = provider_metadata if symbol_name == "PluginDescriptor" else provider_registry
+        assert getattr(providers, symbol_name) is getattr(source, symbol_name)
 
 
 class TestApiPackageSurface:

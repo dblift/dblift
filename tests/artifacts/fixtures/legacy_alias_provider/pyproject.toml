@@ -1,0 +1,10 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dblift-legacy-alias-fixture"
+version = "1.0.0"
+
+[project.entry-points."dblift.providers"]
+different_entry_point = "legacy_alias_provider:PLUGIN"

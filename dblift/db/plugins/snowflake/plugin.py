@@ -8,11 +8,13 @@ from dblift.db.plugins.snowflake.quirks import SnowflakeQuirks
 from dblift.db.plugins.snowflake.sqlalchemy_url import build_sqlalchemy_url
 from dblift.db.provider_registry import PluginInfo
 
+from .descriptor import DESCRIPTOR
+
 PLUGIN: PluginInfo = PluginInfo(
-    name="snowflake",
+    name=DESCRIPTOR.name,
     version="1.0.0",
     description="Snowflake database provider",
-    dialects=["snowflake"],
+    dialects=list(DESCRIPTOR.dialects),
     provider_class=SnowflakeProvider,
     transport="native",
     quirks_class=SnowflakeQuirks,

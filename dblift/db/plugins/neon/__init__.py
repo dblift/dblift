@@ -5,8 +5,10 @@ The provider and quirks classes are built by the shared factory invoked in
 ships no ``provider.py`` / ``quirks.py``.
 """
 
-__plugin_name__ = "neon"
+from .descriptor import DESCRIPTOR
+
+__plugin_name__ = DESCRIPTOR.name
 __plugin_version__ = "1.0.0"
 __plugin_description__ = "Neon (serverless PostgreSQL) database provider"
-__plugin_dialects__ = ["neon"]
+__plugin_dialects__ = list(DESCRIPTOR.dialects)
 __plugin_transport__ = "native"

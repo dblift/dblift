@@ -264,10 +264,6 @@ def test_updates_restore_key_is_configurable():
 def test_base_quirks_exposes_dml_analysis():
     quirks = BaseQuirks(dialect_name="postgresql")
     assert quirks.analyze_dml("UPDATE t SET id = 1 WHERE id = 1;").events == {"UPDATE"}
-    assert quirks.statement_updates_restore_key("UPDATE t SET id = 1 WHERE id = 1;", _DEFAULT_KEYS)
-    assert not quirks.statement_updates_restore_key(
-        "UPDATE t SET status = 'x' WHERE id = 1;", _DEFAULT_KEYS
-    )
 
 
 def test_analyze_dml_routes_by_sqlglot_dialect():

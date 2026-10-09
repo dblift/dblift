@@ -15,11 +15,13 @@ from dblift.db.plugins.postgresql.quirks import PostgresqlQuirks
 from dblift.db.plugins.postgresql.sqlalchemy_url import build_sqlalchemy_url
 from dblift.db.provider_registry import PluginInfo
 
+from .descriptor import DESCRIPTOR
+
 PLUGIN: PluginInfo = PluginInfo(
-    name="postgresql",
+    name=DESCRIPTOR.name,
     version="1.0.0",
     description="PostgreSQL database provider",
-    dialects=["postgresql", "postgres"],
+    dialects=list(DESCRIPTOR.dialects),
     provider_class=PostgreSqlProvider,
     transport="native",
     quirks_class=PostgresqlQuirks,

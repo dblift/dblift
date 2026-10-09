@@ -258,6 +258,23 @@ def test_quirks_failures_never_raise(monkeypatch):
     assert [c.level for c in analysis.cautions] == [CHANGES_ROWS]
 
 
+def test_full_table_dml_respects_provider_quirks_override(monkeypatch):
+    real = script_analysis.ProviderRegistry.get_quirks("postgresql")
+
+    class OverrideQuirks(type(real)):
+        def is_full_table_dml(self, statement):
+            return False
+
+    monkeypatch.setattr(
+        script_analysis.ProviderRegistry, "get_quirks", lambda dialect: OverrideQuirks(dialect)
+    )
+
+    analysis = analyse_script("DELETE FROM sessions;", "postgresql")
+
+    assert analysis.statements[0].full_table is False
+    assert [c.level for c in analysis.cautions] == [CHANGES_ROWS]
+
+
 def test_lint_pending_scripts_skips_nameless_and_logs_read_and_analysis_failures(monkeypatch):
     log = MagicMock()
     nameless = SimpleNamespace(script_name="", type=MigrationType.SQL, content="DROP TABLE a;")

@@ -375,8 +375,8 @@ def test_snowflake_quirks_connection_identifier_variants() -> None:
         SimpleNamespace(url="", account=None, host="xy12345.us-east-1")
     )
     assert not quirks.has_connection_identifier({"url": " ", "account": ""})
-    assert quirks.introspector_class() is None
-    assert quirks.vendor_queries_class() is None
+    assert not hasattr(quirks, "introspector_class")
+    assert not hasattr(quirks, "vendor_queries_class")
 
 
 def test_snowflake_history_table_uses_autoincrement_not_serial() -> None:

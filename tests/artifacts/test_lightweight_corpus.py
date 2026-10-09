@@ -1,5 +1,6 @@
 """Qualify the functional corpus inside the installed wheel's environment."""
 
+import ast
 import hashlib
 import json
 import os
@@ -66,6 +67,70 @@ def test_candidate_wheel_excludes_generation_only_modules(candidate_wheel):
     }
     with zipfile.ZipFile(candidate_wheel) as archive:
         assert not retired.intersection(archive.namelist())
+
+
+def test_candidate_wheel_excludes_builtin_catalog_hooks(candidate_wheel, tmp_path):
+    with zipfile.ZipFile(candidate_wheel) as archive:
+        assert "dblift/db/plugins/oracle/introspection/oracle_utils.py" not in archive.namelist()
+
+    probe = tmp_path / "catalog_probe.py"
+    probe.write_text(
+        "import importlib.util\n"
+        "import json\n"
+        "from pathlib import Path\n"
+        "import dblift\n"
+        "from dblift.db.base_quirks import BaseQuirks\n"
+        "from dblift.db.plugins.oracle.quirks import OracleQuirks\n"
+        "from dblift.db.plugins.postgresql.quirks import PostgresqlQuirks\n"
+        "for cls in (BaseQuirks, OracleQuirks, PostgresqlQuirks):\n"
+        "    for name in ('enrich_view_from_row', 'fetch_unique_constraints', "
+        "'index_no_sort_types', 'introspector_class', 'vendor_queries_class'):\n"
+        "        assert not hasattr(cls, name), (cls.__name__, name)\n"
+        "assert importlib.util.find_spec('dblift.db.plugins.oracle.introspection') is None\n"
+        "print(json.dumps({'status': 'pass', 'origin': str(Path(dblift.__file__).resolve()), "
+        "'workdir': str(Path.cwd().resolve())}))\n",
+        encoding="utf-8",
+    )
+    output = tmp_path / "catalog_result.json"
+    run = subprocess.run(
+        [
+            sys.executable,
+            str(QUALIFIER),
+            "--wheel",
+            str(candidate_wheel.resolve()),
+            "--output",
+            str(output),
+            "--corpus-probe",
+            str(probe),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+    )
+    assert run.returncode == 0, run.stderr
+    assert json.loads(output.read_text(encoding="utf-8"))["status"] == "pass"
+
+
+def test_candidate_wheel_excludes_private_helper_methods(candidate_wheel):
+    retired = {
+        "dblift/core/sql_model/trigger.py": ("Trigger", {"_format_body"}),
+        "dblift/db/base_quirks.py": (
+            "BaseQuirks",
+            {"wrap_trigger_body", "statement_updates_restore_key"},
+        ),
+        "dblift/db/plugins/oracle/quirks.py": ("OracleQuirks", {"wrap_trigger_body"}),
+        "dblift/core/dialect_boundary.py": ("ModelQuirks", {"wrap_trigger_body"}),
+    }
+    with zipfile.ZipFile(candidate_wheel) as archive:
+        for module, (class_name, methods) in retired.items():
+            tree = ast.parse(archive.read(module))
+            owner = next(
+                node
+                for node in tree.body
+                if isinstance(node, ast.ClassDef) and node.name == class_name
+            )
+            present = {node.name for node in owner.body if isinstance(node, ast.FunctionDef)}
+            assert not methods.intersection(present), module
 
 
 def test_corpus_probe_uses_the_installed_wheel_and_neutral_workdir(candidate_wheel, tmp_path):

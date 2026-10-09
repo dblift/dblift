@@ -262,8 +262,7 @@ def _resolve_config_class(
 
     from dblift.db.provider_registry import ProviderRegistry
 
-    ProviderRegistry.discover_plugins()
-    plugin = ProviderRegistry._plugins.get(db_type)
+    plugin = ProviderRegistry.get_plugin_info(db_type)
     if plugin is None:
         return None
 
