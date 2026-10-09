@@ -14,7 +14,6 @@ from typing import (
     ClassVar,
     Dict,
     Optional,
-    Sequence,
     Tuple,
 )
 
@@ -25,8 +24,6 @@ from dblift.db.dml_analysis import (
     DEFAULT_UPSERT_SET_MARKERS,
     DmlMutation,
     analyze_dml,
-    is_full_table_dml,
-    updates_restore_key,
 )
 from dblift.db.feature_gate import FeatureGate
 
@@ -117,26 +114,6 @@ class BaseQuirks:
             quote_pairs=self.sql_scan_quote_pairs,
             upsert_set_markers=self.upsert_update_set_markers,
             upsert_marker_pairs=self.upsert_update_marker_pairs,
-        )
-
-    def statement_updates_restore_key(
-        self, statement: str, restore_key_columns: Sequence[str]
-    ) -> bool:
-        """Whether the statement assigns any of ``restore_key_columns``."""
-        return updates_restore_key(
-            statement,
-            restore_key_columns,
-            sqlglot_dialect=self.sqlglot_dialect,
-            quote_pairs=self.sql_scan_quote_pairs,
-            upsert_set_markers=self.upsert_update_set_markers,
-        )
-
-    def is_full_table_dml(self, statement: str) -> bool:
-        """Whether the statement is an UPDATE/DELETE with no top-level WHERE."""
-        return is_full_table_dml(
-            statement,
-            sqlglot_dialect=self.sqlglot_dialect,
-            quote_pairs=self.sql_scan_quote_pairs,
         )
 
     def is_sqlglot_opaque_valid_ddl(self, sql_content: str) -> bool:
@@ -304,8 +281,7 @@ class BaseQuirks:
 
     # ------------------------------------------------------------------
     # Trigger DDL hooks.
-    # Drive ``Trigger._generate_basic_create_statement`` and
-    # ``Trigger._format_body``.
+    # Drive ``Trigger._generate_basic_create_statement``.
     # ------------------------------------------------------------------
 
     #: ``CREATE DEFINER = user@host TRIGGER`` is valid (MySQL/MariaDB).
@@ -313,18 +289,6 @@ class BaseQuirks:
     #: Statement terminator appended after the trigger body. Oracle
     #: SQL*Plus blocks end with ``\n/``; everyone else uses empty.
     trigger_terminator: str = ""
-
-    def wrap_trigger_body(self, body: str) -> str:
-        """Wrap a trigger body in dialect-specific delimiters.
-
-        Default: strip surrounding whitespace and normalise empty input
-        to an empty string. The pre-PR-C3 ``Trigger._format_body``
-        always did this, regardless of dialect, so the base behaviour
-        preserves that contract. Oracle overrides to additionally wrap
-        the stripped body in ``BEGIN`` / ``END;`` when missing (valid
-        PL/SQL block).
-        """
-        return (body or "").strip()
 
     # ------------------------------------------------------------------
     # Misc DDL flags.

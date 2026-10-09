@@ -264,10 +264,6 @@ def test_updates_restore_key_is_configurable():
 def test_base_quirks_exposes_dml_analysis():
     quirks = BaseQuirks(dialect_name="postgresql")
     assert quirks.analyze_dml("UPDATE t SET id = 1 WHERE id = 1;").events == {"UPDATE"}
-    assert quirks.statement_updates_restore_key("UPDATE t SET id = 1 WHERE id = 1;", _DEFAULT_KEYS)
-    assert not quirks.statement_updates_restore_key(
-        "UPDATE t SET status = 'x' WHERE id = 1;", _DEFAULT_KEYS
-    )
 
 
 def test_analyze_dml_routes_by_sqlglot_dialect():
@@ -497,12 +493,6 @@ def test_cte_outer_statement_type_ignores_outer_returning_even_when_sqlglot_pars
     # existing, accepted one to unparseable input too.
     sql = "WITH x AS (SELECT 1) DELETE FROM t WHERE id IN (SELECT 1 FROM x) RETURNING id"
     assert cte_outer_statement_type(sql, sqlglot_dialect="postgres") == "DML"
-
-
-def test_base_quirks_exposes_is_full_table_dml():
-    quirks = BaseQuirks(dialect_name="sqlite")
-    assert quirks.is_full_table_dml("-- c\nUPDATE t SET a = 1;")
-    assert not quirks.is_full_table_dml("UPDATE t SET a = 1 WHERE id = 1;")
 
 
 def test_dml_where_predicate_extracts_update_and_delete_conditions():

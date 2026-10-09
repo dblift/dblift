@@ -125,26 +125,6 @@ class OracleQuirks(BaseQuirks):
         "DR$",
     )
 
-    def wrap_trigger_body(self, body: str) -> str:
-        """Oracle: wrap body in a valid PL/SQL block.
-
-        Prepends ``BEGIN\\n`` if the body doesn't already start with
-        ``DECLARE`` / ``BEGIN``; appends ``END;`` if missing, or fixes a
-        trailing ``END`` without semicolon.
-        """
-        text = body.strip()
-        if not text:
-            return ""
-        upper = text.upper()
-        if not upper.startswith(("DECLARE", "BEGIN")):
-            text = f"BEGIN\n{text}"
-        trimmed = text.rstrip()
-        if not re.search(r"\bEND\b\s*;?\s*$", trimmed, re.IGNORECASE):
-            text = f"{text}\nEND;"
-        elif not trimmed.endswith(";"):
-            text = f"{trimmed};"
-        return text
-
     # Table DDL.
     table_supports_storage_params = True
     supports_sqlplus_preprocessing = True
