@@ -12,7 +12,9 @@ from __future__ import annotations
 from dblift.db.plugins._pg_compatible import make_pg_compatible_plugin
 from dblift.db.provider_registry import PluginInfo
 
+from .descriptor import DESCRIPTOR
+
 PLUGIN: PluginInfo = make_pg_compatible_plugin(
-    "alloydb",
+    DESCRIPTOR.name,
     "Google AlloyDB for PostgreSQL database provider",
 )

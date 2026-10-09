@@ -8,11 +8,13 @@ from dblift.db.plugins.db2.quirks import Db2Quirks
 from dblift.db.plugins.db2.sqlalchemy_url import build_sqlalchemy_url
 from dblift.db.provider_registry import PluginInfo
 
+from .descriptor import DESCRIPTOR
+
 PLUGIN: PluginInfo = PluginInfo(
-    name="db2",
+    name=DESCRIPTOR.name,
     version="1.0.0",
     description="DB2 database provider",
-    dialects=["db2", "ibm_db_sa"],
+    dialects=list(DESCRIPTOR.dialects),
     provider_class=Db2Provider,
     transport="native",
     quirks_class=Db2Quirks,

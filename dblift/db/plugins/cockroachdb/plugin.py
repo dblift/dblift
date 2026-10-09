@@ -15,14 +15,16 @@ from dblift.db.plugins.cockroachdb.sqlalchemy_dialect import register_cockroach_
 from dblift.db.plugins.cockroachdb.sqlalchemy_url import build_sqlalchemy_url
 from dblift.db.provider_registry import PluginInfo
 
+from .descriptor import DESCRIPTOR
+
 # Register before any create_engine call can race plugin discovery.
 register_cockroach_dialect()
 
 PLUGIN: PluginInfo = PluginInfo(
-    name="cockroachdb",
+    name=DESCRIPTOR.name,
     version="1.0.0",
     description="CockroachDB database provider",
-    dialects=["cockroachdb"],
+    dialects=list(DESCRIPTOR.dialects),
     provider_class=CockroachdbProvider,
     transport="native",
     quirks_class=CockroachdbQuirks,
