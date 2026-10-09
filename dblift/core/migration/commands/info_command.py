@@ -197,7 +197,10 @@ class InfoCommand(BaseCommand):
             dialect = dialect_of(self.config)
             if dialect:
                 analysed = lint_pending_scripts(
-                    getattr(migration_state, "pending_objects", None) or [], dialect, self.log
+                    getattr(migration_state, "pending_objects", None) or [],
+                    dialect,
+                    self.log,
+                    enabled=self._capture_objects,
                 )
                 for info in all_migration_infos:
                     info.analysis = analysed.get(info.script)

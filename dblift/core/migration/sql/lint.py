@@ -9,7 +9,11 @@ from typing import TYPE_CHECKING, Any, Dict, FrozenSet, Iterable, List, Sequence
 
 from dblift.core.migration.migration_types import MigrationType
 from dblift.core.migration.placeholders.placeholder_service import PlaceholderService
-from dblift.core.migration.sql.script_analysis import ScriptAnalysis, analyse_script
+from dblift.core.migration.sql.script_analysis import (
+    DISABLED_ANALYSIS,
+    ScriptAnalysis,
+    analyse_script,
+)
 
 # ``lint_rules`` needs sqlglot, so it is imported where a rule runs: ``info`` and ``migrate``
 # import this module and must load without sqlglot.
@@ -93,10 +97,13 @@ def lint_files(
 
 
 def lint_pending_scripts(
-    migrations: Iterable[Any], dialect: str, log: Any
+    migrations: Iterable[Any], dialect: str, log: Any, *, enabled: bool = True
 ) -> Dict[str, Dict[str, Any]]:
     """``{script_name: analysis}`` for the SQL and repeatable scripts of *migrations*
     that have text, each analysis carrying the script's ``verdict`` and ``findings``.
+
+    With ``enabled=False`` (execution-only analysis mode) each script gets
+    ``DISABLED_ANALYSIS`` and nothing is read.
     """
     analysed: Dict[str, Dict[str, Any]] = {}
     for migration in migrations:
@@ -104,6 +111,9 @@ def lint_pending_scripts(
             continue
         name = getattr(migration, "script_name", None)
         if not name:
+            continue
+        if not enabled:
+            analysed[name] = dict(DISABLED_ANALYSIS)
             continue
         content = getattr(migration, "content", None)
         if not content and hasattr(migration, "load_content"):

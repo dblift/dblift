@@ -56,6 +56,10 @@ _ROW_HOLDERS = frozenset(
 _DDL = frozenset({"CREATE", "ALTER", "DROP", "TRUNCATE", "COMMENT", "GRANT", "REVOKE", "DDL"})
 _DML = frozenset({"INSERT", "UPDATE", "DELETE", "MERGE", "CALL", "EXECUTE", "DML"})
 _QUERY = frozenset({"SELECT", "QUERY"})
+DISABLED_ANALYSIS = {
+    "status": "disabled",
+    "reason": "Object analysis disabled in execution mode",
+}
 
 
 @dataclass(frozen=True)

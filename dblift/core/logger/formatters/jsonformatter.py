@@ -275,6 +275,8 @@ class JsonFormatter:
 
         # Add performance statistics if journal is available
         if hasattr(result, "journal") and result.journal:
+            if getattr(result.journal, "capture_objects", True) is False:
+                output["object_analysis"] = "disabled"
             migration_id = None
             if hasattr(result, "migrations") and result.migrations:
                 for migration in result.migrations:
