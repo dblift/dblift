@@ -11,7 +11,7 @@ import logging
 import re
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Any, Dict, FrozenSet, Iterable, Iterator, List, Optional, Set
+from typing import Any, Dict, Iterable, Iterator, List, Optional, Set
 
 import sqlglot
 from sqlglot import exp
@@ -24,15 +24,12 @@ from dblift.core.migration.sql.execution_statement import (
 from dblift.core.migration.sql.script_analysis import AnalysedStatement, ScriptAnalysis
 from dblift.core.sql_model.dialect import get_sqlglot_dialect
 from dblift.db.dml_analysis import strip_leading_sql_comments
+from dblift.db.provider_registry import ProviderRegistry
 
 ERROR = "error"
 WARNING = "warning"
 INFO = "info"
 SIZE_NOTE = " (row count unknown — severity not adjusted for table size)"
-
-PG_LOCK_DIALECTS: FrozenSet[str] = frozenset(
-    {"postgresql", "neon", "supabase", "aurora-postgresql", "alloydb", "timescaledb", "citus"}
-)
 
 SEVERITY: Dict[str, str] = {
     "drop-table": ERROR,
@@ -91,6 +88,8 @@ _LOCK_TIMEOUT = re.compile(r"^\s*SET\s+(?:LOCAL\s+|SESSION\s+)?lock_timeout\b", 
 
 @dataclass(frozen=True)
 class Finding:
+    """One rule a statement breaks; ``allowed`` when the script accepts it with ``dblift:allow``."""
+
     code: str
     severity: str
     statement: int
@@ -99,6 +98,7 @@ class Finding:
     allowed: bool = False
 
     def to_dict(self) -> Dict[str, Any]:
+        """JSON-ready form of the finding."""
         return {
             "code": self.code,
             "severity": self.severity,
@@ -112,7 +112,7 @@ class Finding:
 def find_issues(analysis: ScriptAnalysis, dialect: str) -> List[Finding]:
     """Every finding for one analysed script, sorted by statement then code."""
     sqlglot_dialect = get_sqlglot_dialect(dialect)
-    pg_locks = dialect.lower() in PG_LOCK_DIALECTS
+    pg_locks = ProviderRegistry.get_quirks(dialect).postgresql_lock_rules
     snippets = {s.index: s.snippet for s in analysis.statements}
     findings = [
         Finding(c.code, SEVERITY[c.code], c.statement, c.reason, snippets.get(c.statement, ""))

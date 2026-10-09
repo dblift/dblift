@@ -268,6 +268,12 @@ class BaseQuirks:
     #: still requires a syntactically-valid URL of the right shape.
     #: ``None`` means the dialect can't be linted offline.
     lint_placeholder_url: Optional[str] = None
+    #: ``validate-sql`` applies its PostgreSQL lock rules (CREATE INDEX
+    #: without CONCURRENTLY, constraints without NOT VALID, SET NOT NULL,
+    #: no ``lock_timeout``). True only for engines that share PostgreSQL's
+    #: lock behaviour; a PG-wire engine with its own storage layer
+    #: (CockroachDB, Redshift, YugabyteDB) resets it to ``False``.
+    postgresql_lock_rules: bool = False
 
     # ------------------------------------------------------------------
     # Procedure / function DDL hooks.

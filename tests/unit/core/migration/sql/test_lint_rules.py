@@ -8,6 +8,7 @@ import pytest
 
 from dblift.core.migration.sql.lint_rules import ERROR, INFO, SEVERITY, WARNING, find_issues
 from dblift.core.migration.sql.script_analysis import analyse_script
+from dblift.db.provider_registry import ProviderRegistry
 
 pytestmark = pytest.mark.unit
 
@@ -96,6 +97,27 @@ def test_postgresql_rules(sql, expected):
 @pytest.mark.parametrize("dialect", ["cockroachdb", "redshift", "yugabytedb", "mysql"])
 def test_lock_rules_stay_on_the_postgresql_list(dialect):
     assert _codes("CREATE INDEX idx ON users (email);", dialect) == []
+
+
+@pytest.mark.parametrize(
+    "dialect, expected",
+    [
+        ("postgresql", True),
+        ("neon", True),
+        ("supabase", True),
+        ("aurora-postgresql", True),
+        ("alloydb", True),
+        ("timescaledb", True),
+        ("citus", True),
+        ("cockroachdb", False),
+        ("redshift", False),
+        ("yugabytedb", False),
+        ("mysql", False),
+        ("sqlite", False),
+    ],
+)
+def test_postgresql_lock_rules_quirk_per_dialect(dialect, expected):
+    assert ProviderRegistry.get_quirks(dialect).postgresql_lock_rules is expected
 
 
 def test_mixed_transaction_modes_is_an_error():

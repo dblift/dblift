@@ -10,6 +10,8 @@ class CockroachdbQuirks(PostgresqlQuirks):
 
     is_ansi_reference_dialect = False
     is_default_sqlglot_read_fallback = False
+    # Its own storage engine: PostgreSQL's lock behaviour does not transfer.
+    postgresql_lock_rules = False
 
     # Opt out of PostgreSQL's feature gates: CockroachDB versions its own
     # engine (v23.x reads as ">= 12" to a naive comparison) and PG

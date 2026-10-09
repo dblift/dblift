@@ -20,6 +20,9 @@ PLUGIN: PluginInfo = make_pg_compatible_plugin(
         # still leaves CREATE TABLE objects behind. Do not inherit
         # PostgreSQL's transactional-DDL claim.
         "supports_transactional_ddl": False,
+        # Its own storage engine (DocDB): PostgreSQL's lock behaviour does
+        # not transfer, so validate-sql skips the PostgreSQL lock rules.
+        "postgresql_lock_rules": False,
     },
 )
 

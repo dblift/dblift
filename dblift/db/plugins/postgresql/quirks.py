@@ -84,6 +84,9 @@ class PostgresqlQuirks(BaseQuirks):
     # (CockroachDB, Redshift, Citus, YugabyteDB, Neon, Supabase, AlloyDB,
     # Aurora PostgreSQL, TimescaleDB) — they all keep the postgresql:// scheme.
     lint_placeholder_url = "postgresql://localhost/dblift_validate_sql"
+    # validate-sql lock rules. Inherited by Neon, Supabase, Aurora PostgreSQL,
+    # AlloyDB, TimescaleDB and Citus; CockroachDB, Redshift and YugabyteDB reset it.
+    postgresql_lock_rules = True
 
     def __init__(self, dialect_name: str = "postgresql") -> None:
         """Initialize PostgreSQL quirks with the dialect name."""

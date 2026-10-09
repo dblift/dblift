@@ -12,6 +12,8 @@ class RedshiftQuirks(PostgresqlQuirks):
 
     is_ansi_reference_dialect = False
     is_default_sqlglot_read_fallback = False
+    # Its own storage engine: PostgreSQL's lock behaviour does not transfer.
+    postgresql_lock_rules = False
 
     # Redshift's DDL diverges from plain Postgres syntax (e.g. the
     # DISTKEY/SORTKEY table-distribution clauses below), and sqlglot ships a
