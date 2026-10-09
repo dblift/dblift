@@ -157,12 +157,15 @@ def _table_exists(engine: str, db_file: Path, table: str) -> bool:
 
 
 @pytest.mark.parametrize("engine", ["sqlite", "duckdb"])
-def test_lock_of_a_sigkilled_holder_is_reclaimed_within_one_lease_window(tmp_path, engine):
+@pytest.mark.parametrize("termination", [signal.SIGTERM, signal.SIGKILL])
+def test_lock_of_a_terminated_api_holder_is_reclaimed_within_one_lease_window(
+    tmp_path, engine, termination
+):
     if engine == "duckdb":
         pytest.importorskip("duckdb_engine")
     config, db_file = _project(tmp_path, engine)
     holder = _start_holder(config, db_file, "sleep")
-    holder.send_signal(signal.SIGKILL)
+    holder.send_signal(termination)
     holder.wait(timeout=10)
 
     started = time.monotonic()

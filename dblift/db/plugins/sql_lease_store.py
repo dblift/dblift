@@ -234,10 +234,11 @@ class SqlLeaseStore(LeaseStore):
         if d.seeded_row:
             claimed = self._run(
                 f"UPDATE {d.table} SET {d.owner_column} = ?, {d.timestamp_column} = {d.now_utc} "
-                f"WHERE {d.name_column} = ? AND {d.owner_column} IS NULL",
-                [token, d.lock_name],
+                f"WHERE {d.name_column} = ? AND {d.owner_column} IS NULL "
+                f"AND (SELECT COUNT(*) FROM {d.table} WHERE {d.name_column} = ?) = 1",
+                [token, d.lock_name, d.lock_name],
             )
-            return claimed > 0
+            return claimed == 1
         columns = [d.name_column, d.timestamp_column, d.owner_column]
         values = ["?", d.now_utc, "?"]
         for column, value in d.insert_values:
