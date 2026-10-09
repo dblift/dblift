@@ -10,6 +10,7 @@ from typing import (
     Callable,
     Dict,
     List,
+    Literal,
     Optional,
     Self,
     Tuple,
@@ -273,6 +274,7 @@ class DBLiftClient:
         log_level: Optional[str] = None,
         log_format: Optional[str] = None,
         log_file: Optional[str] = None,
+        analysis_mode: Literal["full", "execution"] = "full",
         **kwargs: Any,
     ):
         """Initialize DBLift client.
@@ -287,6 +289,10 @@ class DBLiftClient:
             log_file: Optional log file path; omit to keep ``config`` values
             **kwargs: Additional configuration options
         """
+        if analysis_mode not in ("full", "execution"):
+            raise ValueError("analysis_mode must be 'full' or 'execution'")
+        self.analysis_mode = analysis_mode
+
         # Feature registrations from installed add-on packages must load for
         # every client construction path, not just CLI startup — otherwise the
         # runtime-check and tier-resolver seams would silently no-op for
@@ -312,6 +318,7 @@ class DBLiftClient:
             provider=self.provider,
             config=config,
             log=logger,  # Inject provider
+            analysis_mode=analysis_mode,
         )
 
         # Normalize dialect once at boundary; methods use self.dialect directly
@@ -1211,6 +1218,7 @@ class DBLiftClient:
         config: "DbliftConfig",
         logger: Optional[Any] = None,
         migrations_dir: Optional[Union[str, Path, List[Union[str, Path]]]] = None,
+        analysis_mode: Literal["full", "execution"] = "full",
         **kwargs: Any,
     ) -> Self:
         """Create a client instance from existing configuration.
@@ -1236,7 +1244,11 @@ class DBLiftClient:
         return cast(
             Self,
             client_from_config(
-                config, logger, client_cls=cls._resolve_factory_client_cls(), **kwargs
+                config,
+                logger,
+                client_cls=cls._resolve_factory_client_cls(),
+                analysis_mode=analysis_mode,
+                **kwargs,
             ),
         )
 
@@ -1248,6 +1260,7 @@ class DBLiftClient:
         environment: Optional[str] = None,
         *,
         relative_to_config: bool = False,
+        analysis_mode: Literal["full", "execution"] = "full",
         **overrides: Any,
     ) -> Self:
         """Create a client instance from config file path.
@@ -1274,6 +1287,7 @@ class DBLiftClient:
                 logger,
                 client_cls=cls._resolve_factory_client_cls(),
                 relative_to_config=relative_to_config,
+                analysis_mode=analysis_mode,
                 **overrides,
             ),
         )
@@ -1291,6 +1305,7 @@ class DBLiftClient:
         *,
         connection: Any = None,
         config: Optional["DbliftConfig"] = None,
+        analysis_mode: Literal["full", "execution"] = "full",
         **kwargs: Any,
     ) -> Self:
         """Create DBLiftClient from an existing SQLAlchemy Engine (or Connection).
@@ -1320,6 +1335,7 @@ class DBLiftClient:
                 connection=connection,
                 config=config,
                 client_cls=cls._resolve_factory_client_cls(),
+                analysis_mode=analysis_mode,
                 **kwargs,
             ),
         )

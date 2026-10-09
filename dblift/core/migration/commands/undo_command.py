@@ -323,6 +323,28 @@ class UndoCommand(BaseCommand):
                     return result
                 undo_plan.append((migration, undo_migration))
 
+            if not dry_run and not self._capture_objects:
+                callback_snapshot = self.state_manager.new_callback_snapshot()
+                callbacks = [
+                    callback
+                    for event in (
+                        "beforeUndo",
+                        "afterUndo",
+                        "afterUndoError",
+                        "beforeEach",
+                        "afterEach",
+                    )
+                    for callback in self.state_manager.get_callbacks_by_event(
+                        scripts_dir,
+                        event,
+                        read_snapshot=callback_snapshot,
+                        recursive=use_recursive,
+                        additional_dirs=use_additional_dirs,
+                        dir_recursive_map=dir_recursive_map,
+                    )
+                ]
+                self._preflight_execution_sql([undo for _, undo in undo_plan] + callbacks)
+
             if dry_run:
                 for migration, undo_migration in undo_plan:
                     if show_sql:

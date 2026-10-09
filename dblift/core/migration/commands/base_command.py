@@ -263,6 +263,11 @@ class BaseCommand:
         self.placeholder_service = ctx.placeholder_service
         self._callback_snapshot: Optional[CallbackReadSnapshot] = None
 
+    @property
+    def _capture_objects(self) -> bool:
+        """Keep legacy journals without a mode flag on the full-analysis path."""
+        return getattr(self.journal, "capture_objects", True)
+
     def _reset_callback_catalog(self) -> None:
         """Discard the manager snapshot reference before a command execution."""
         self._callback_snapshot = None
@@ -676,6 +681,18 @@ class BaseCommand:
         if prepare is not None:
             prepare()
 
+    def _preflight_execution_sql(self, migrations: List[Any]) -> None:
+        """Reject ambiguous SQL in scripts selected for this command."""
+        if self._capture_objects:
+            return
+        for migration in migrations:
+            if migration.format != MigrationFormat.SQL:
+                continue
+            statements = self.execution_engine._prepare_sql_statements(
+                migration, placeholder_service=self.placeholder_service
+            )
+            self.execution_engine._classify_execution_statements(statements)
+
     def _prepare_analysis_for_sql_callbacks(
         self,
         scripts_dir: Path,
@@ -696,9 +713,16 @@ class BaseCommand:
                 additional_dirs=additional_dirs,
                 dir_recursive_map=dir_recursive_map,
             )
-            if any(callback.format == MigrationFormat.SQL for callback in callbacks):
+            sql_callbacks = [c for c in callbacks if c.format == MigrationFormat.SQL]
+            if sql_callbacks:
                 self._prepare_required_analysis()
-                return
+                if self._capture_objects:
+                    return
+                for callback in sql_callbacks:
+                    statements = self.execution_engine._prepare_sql_statements(
+                        callback, placeholder_service=self.placeholder_service
+                    )
+                    self.execution_engine._classify_execution_statements(statements)
 
     def _run_preflight(
         self,

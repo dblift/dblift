@@ -377,7 +377,11 @@ class ExecutionEngine:
         analyzer = self.sql_analyzer
         if analyzer.dialect != dialect_key:
             try:
-                analyzer = SqlAnalyzer(dialect=dialect_key, logger=self.log)
+                analyzer = SqlAnalyzer(
+                    dialect=dialect_key,
+                    logger=self.log,
+                    analysis_mode=getattr(self.sql_analyzer, "analysis_mode", "full"),
+                )
             except Exception as exc:
                 return fallback_migration_sql(content, self.log, exc)
         return parse_migration_sql(analyzer, content, self.log)

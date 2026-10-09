@@ -429,6 +429,16 @@ def cte_outer_statement_type(
             return "DML"
         if isinstance(ast, (exp.Select, exp.Union)):
             return "QUERY"
+    return scan_cte_outer_statement_type(text, quote_pairs=quote_pairs)
+
+
+def scan_cte_outer_statement_type(
+    statement: str, *, quote_pairs: Dict[str, str] = DEFAULT_QUOTE_PAIRS, strict: bool = False
+) -> Optional[str]:
+    """Classify a CTE's outer verb with the existing quote-aware lexical scan."""
+    text = strip_leading_sql_comments(statement).lstrip()
+    if not text or (strict and not _cte_scan_is_balanced(text, quote_pairs)):
+        return None
     positions = {
         keyword: _find_top_level_keyword(text, keyword, quote_pairs)
         for keyword in (*_CTE_OUTER_DML_KEYWORDS, *_CTE_OUTER_QUERY_KEYWORDS)
@@ -438,6 +448,46 @@ def cte_outer_statement_type(
         return None
     first_keyword = min(found, key=lambda keyword: found[keyword])
     return "DML" if first_keyword in _CTE_OUTER_DML_KEYWORDS else "QUERY"
+
+
+def _cte_scan_is_balanced(text: str, quote_pairs: Dict[str, str]) -> bool:
+    """Refuse a lexical CTE decision when quoted text or parentheses are open."""
+    depth = 0
+    quote = ""
+    i = 0
+    while i < len(text):
+        if quote:
+            i, quote = _skip_quote(text, i, quote)
+            continue
+        if text.startswith("/*", i):
+            end = text.find("*/", i + 2)
+            if end < 0 or text.find("/*", i + 2, end) >= 0:
+                return False  # Nested comments are dialect-specific; do not guess their extent.
+            i = end + 2
+            continue
+        comment_end = _skip_comment(text, i)
+        if comment_end >= 0:
+            i = comment_end
+            continue
+        if text[i] == "$":
+            match = _DOLLAR_QUOTE_OPEN_RE.match(text, i)
+            if match:
+                end = text.find(match.group(0), match.end())
+                if end < 0:
+                    return False
+                i = end + len(match.group(0))
+                continue
+        char = text[i]
+        if char in quote_pairs:
+            quote = quote_pairs[char]
+        elif char == "(":
+            depth += 1
+        elif char == ")":
+            depth -= 1
+            if depth < 0:
+                return False
+        i += 1
+    return not quote and depth == 0
 
 
 def extract_dml_table_name(statement: str) -> str:
@@ -520,7 +570,7 @@ def _sqlglot_dml_table_sql(text: str, dialect: str) -> str:
     return table.sql(dialect=dialect)
 
 
-def strip_leading_sql_comments(statement: str) -> str:
+def strip_leading_sql_comments(statement: str, *, strict: bool = False) -> str:
     """Drop leading line/block comments so the first keyword is reachable."""
     text = statement
     while True:
@@ -535,6 +585,8 @@ def strip_leading_sql_comments(statement: str) -> str:
             end = stripped.find("*/", 2)
             if end < 0:
                 return ""
+            if strict and stripped.find("/*", 2, end) >= 0:
+                raise ValueError("Cannot classify nested leading SQL comment")
             text = stripped[end + 2 :]
             continue
         return stripped
