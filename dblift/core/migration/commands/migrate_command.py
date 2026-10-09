@@ -115,7 +115,9 @@ class MigrateCommand(BaseCommand):
         # Connect before reading state. Execution mode delays history creation
         # until selected SQL is classified; dry-run leaves the database untouched.
         defer_history = not dry_run and not mark_as_executed and not self._capture_objects
-        self._run_preflight(result, ensure_history=not defer_history, dry_run=dry_run)
+        self._run_preflight(
+            result, ensure_history=not defer_history, dry_run=dry_run, ensure_schema=True
+        )
 
         # Log command execution with filters and connection info
         self._log_command_header_update(
@@ -624,6 +626,16 @@ class MigrateCommand(BaseCommand):
         )
         with migration_progress(self.log, len(pending_migrations)) as progress:
             for migration in pending_migrations:
+                if self._migration_lock_lost():
+                    # Another migrate may already be running; the migration in
+                    # flight could not be interrupted safely, the next must not start.
+                    message = (
+                        "The migration lock was lost (taken over by another process or "
+                        f"not renewable); stopping before {migration.script_name}"
+                    )
+                    self.log.error(message)
+                    result.set_error(message)
+                    break
                 progress.describe(f"{migration.script_name}")
                 self.log.debug(
                     f"About to execute migration: {migration.script_name} (version: {migration.version})"
@@ -646,6 +658,11 @@ class MigrateCommand(BaseCommand):
                     # completed. Stop without advancing.
                     break
                 progress.advance()
+
+    def _migration_lock_lost(self) -> bool:
+        """Whether the provider reports the migration lock it holds as lost."""
+        lock_lost = getattr(self.provider, "migration_lock_lost", None)
+        return callable(lock_lost) and lock_lost() is True
 
     def _update_final_state(
         self,
@@ -847,7 +864,7 @@ class MigrateCommand(BaseCommand):
                         )
                     ]
                     self._preflight_execution_sql(pending_migrations + callbacks)
-                self._run_preflight(result, ensure_history=True)
+                self._run_preflight(result, ensure_history=True, ensure_schema=True)
 
             if getattr(self, "validator", None) is None:
                 validation_success, validation_errors, validation_time = True, None, 0.0
@@ -1014,8 +1031,16 @@ class MigrateCommand(BaseCommand):
                     # Always release the migration lock if it was acquired
                     if lock_acquired:
                         try:
-                            self.provider.release_migration_lock(self.config.database.schema)
-                            self.log.debug("Migration lock released successfully")
+                            released = self.provider.release_migration_lock(
+                                self.config.database.schema
+                            )
+                            if released is False:
+                                self.log.warning(
+                                    "The migration lock was no longer held by this run "
+                                    "(lost or already released); nothing to release"
+                                )
+                            else:
+                                self.log.debug("Migration lock released successfully")
                         except Exception as release_e:
                             self.log.warning(f"Could not release migration lock: {release_e}")
 

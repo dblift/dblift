@@ -1,6 +1,6 @@
 """Pure Flyway compatibility rules over HistoryManager table snapshots."""
 
-from typing import TYPE_CHECKING, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, Mapping, Optional
 
 if TYPE_CHECKING:
     from dblift.core.sql_validator.migration_validator import ValidationResult
@@ -33,6 +33,11 @@ FLYWAY_TYPE_TO_MIGRATION_TYPE: Dict[str, str] = {
 }
 
 
+def is_flyway_schema_marker(row: Mapping[str, Any]) -> bool:
+    """Flyway's SCHEMA history row records schema creation, not a migration."""
+    return row.get("type") == "SCHEMA"
+
+
 def dblift_type_for_flyway_row(flyway_type: str, version: object) -> Optional[str]:
     """Return the Dblift ``MigrationType`` name a Flyway history row maps to.
 
@@ -50,12 +55,15 @@ def dblift_type_for_flyway_row(flyway_type: str, version: object) -> Optional[st
 
 def validate_flyway_compatibility(snapshot: FlywayCompatibilitySnapshot) -> Dict[str, object]:
     """Compare the supplied histories without database access or caching verdicts."""
+    flyway_migrations = tuple(
+        row for row in snapshot.flyway_migrations if not is_flyway_schema_marker(row)
+    )
     result: Dict[str, object] = {
         "flyway_exists": snapshot.flyway_exists,
         "Dblift_exists": snapshot.dblift_exists,
         "compatible": True,
         "error_message": "",
-        "flyway_count": len(snapshot.flyway_migrations),
+        "flyway_count": len(flyway_migrations),
         "Dblift_count": len(snapshot.dblift_migrations),
     }
     if snapshot.collection_error:
@@ -66,7 +74,6 @@ def validate_flyway_compatibility(snapshot: FlywayCompatibilitySnapshot) -> Dict
         return result
     if not snapshot.flyway_exists or not snapshot.dblift_exists:
         return result
-    flyway_migrations = snapshot.flyway_migrations
     Dblift_migrations = snapshot.dblift_migrations
     try:
         # Compare migration counts

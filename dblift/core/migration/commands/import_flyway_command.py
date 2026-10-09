@@ -7,7 +7,10 @@ from dblift.core.constants import DEFAULT_HISTORY_TABLE
 from dblift.core.logger.results import OperationResult
 from dblift.core.migration.commands.base_command import BaseCommand
 from dblift.core.migration.migration import success_to_bool
-from dblift.core.sql_validator._flyway_compatibility import dblift_type_for_flyway_row
+from dblift.core.sql_validator._flyway_compatibility import (
+    dblift_type_for_flyway_row,
+    is_flyway_schema_marker,
+)
 
 
 class ImportFlywayCommand(BaseCommand):
@@ -81,6 +84,9 @@ class ImportFlywayCommand(BaseCommand):
                 self._log_command_completion("import-flyway", result)
                 return result
 
+            schema_marker_count = sum(is_flyway_schema_marker(row) for row in flyway_rows)
+            flyway_rows = [row for row in flyway_rows if not is_flyway_schema_marker(row)]
+
             rows_to_import, skipped_count = self._filter_existing_rows(
                 schema, target_table, flyway_rows
             )
@@ -127,6 +133,9 @@ class ImportFlywayCommand(BaseCommand):
             if skipped_count:
                 skip_noun = "duplicate" if skipped_count == 1 else "duplicates"
                 result.message += f" ({skipped_count} {skip_noun} skipped)"
+            if schema_marker_count:
+                marker_noun = "marker" if schema_marker_count == 1 else "markers"
+                result.message += f" ({schema_marker_count} Flyway schema {marker_noun} skipped)"
             result.complete()
             self._log_command_completion("import-flyway", result)
             return result

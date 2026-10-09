@@ -1,19 +1,64 @@
 """
 SQLite migration locking manager.
 
-This module handles SQLite-specific migration locking using a table-based
-approach. SQLite doesn't have native advisory locks like PostgreSQL,
-so we use a simple lock table mechanism.
+SQLite has no advisory locks, so the migration lock is a lease in a lock
+table: a row that exists while the lock is held, refreshed by a heartbeat
+and reclaimed once its holder stops refreshing it (see
+:mod:`dblift.db.plugins.lease_lock`).
 """
 
 import os
 import sqlite3
-import time
+from functools import partial
 from typing import Any, Optional
 
 from dblift.core.constants import MIGRATION_LOCK_TABLE
 from dblift.core.logger import Log, NullLog
 from dblift.db.plugins.base_locking_manager import BaseLockingManager
+from dblift.db.plugins.lease_lock import LeaseLock
+from dblift.db.plugins.sql_lease_store import (
+    OWNER_COLUMN,
+    LeaseSession,
+    Sqlite3LeaseSession,
+    SqlLeaseDialect,
+    SqlLeaseStore,
+    ensure_owner_column,
+)
+
+from .schema_operations import SQLiteSchemaOperations
+
+#: How long a lease statement waits for another connection's write lock
+#: before reporting the store busy. Short: the heartbeat must not stall, and
+#: a busy store is itself proof that a writer is alive.
+LEASE_BUSY_TIMEOUT_SECONDS = 2.0
+
+
+def _seconds_before(clock: str, seconds: str) -> str:
+    return f"datetime({clock}, '-{seconds} seconds')"
+
+
+def _is_database_locked(error: BaseException) -> bool:
+    """``database is locked``: another connection holds the write lock right now."""
+    if not isinstance(error, sqlite3.OperationalError):
+        return False
+    message = str(error).lower()
+    return "locked" in message or "busy" in message
+
+
+def _database_file(connection: sqlite3.Connection) -> str:
+    """Return the file behind the connection's main database ('' when in memory)."""
+    for row in connection.execute("PRAGMA database_list").fetchall():
+        if row[1] == "main":
+            return str(row[2] or "")
+    return ""
+
+
+def _lock_row_present(connection: sqlite3.Connection, dialect: SqlLeaseDialect) -> bool:
+    """Whether *connection* sees a lock row (held, or left by a dead holder)."""
+    row = connection.execute(
+        f"SELECT 1 FROM {dialect.table} WHERE {dialect.name_column} = ?", [dialect.lock_name]
+    ).fetchone()
+    return row is not None
 
 
 class SQLiteLockingManager(BaseLockingManager):
@@ -31,11 +76,14 @@ class SQLiteLockingManager(BaseLockingManager):
         """
         self.query_executor: Any = query_executor
         self.log: Log = log if log is not None else NullLog()
+        self._lease: Optional[LeaseLock] = None
 
     def create_migration_lock_table_if_not_exists(
         self, connection: sqlite3.Connection, schema: str
     ) -> None:
         """Create the migration lock table if it doesn't exist.
+
+        A table created before the lease lacks the owner column; it is added.
 
         Args:
             connection: Active SQLite connection (provided by Provider)
@@ -50,11 +98,21 @@ class SQLiteLockingManager(BaseLockingManager):
                 acquired_at TEXT DEFAULT (datetime('now')) NOT NULL,
                 acquired_by TEXT NOT NULL,
                 process_id TEXT,
-                lock_mode INTEGER DEFAULT 1 NOT NULL
+                lock_mode INTEGER DEFAULT 1 NOT NULL,
+                {OWNER_COLUMN} TEXT
             )
             """
 
             self.query_executor.execute_statement(connection, create_table_sql)
+            schema_operations = SQLiteSchemaOperations(self.query_executor, self.log)
+            ensure_owner_column(
+                partial(self.query_executor.execute_query, connection),
+                partial(self.query_executor.execute_statement, connection),
+                schema_operations.get_columns_query(schema, MIGRATION_LOCK_TABLE),
+                schema_operations.get_add_column_sql(
+                    schema, MIGRATION_LOCK_TABLE, OWNER_COLUMN, "TEXT"
+                ),
+            )
             self.log.debug("Migration lock table ensured")
 
         except Exception as e:
@@ -62,13 +120,35 @@ class SQLiteLockingManager(BaseLockingManager):
             self.log.error(error_msg)
             raise
 
+    def _lease_dialect(self, schema: str) -> SqlLeaseDialect:
+        """Describe the SQLite lock table; ``datetime('now')`` is UTC."""
+        user = os.environ.get("USER", os.environ.get("USERNAME", "dblift"))
+        return SqlLeaseDialect(
+            table=f'"{MIGRATION_LOCK_TABLE}"',
+            lock_name=f"{MIGRATION_LOCK_TABLE}_{schema}",
+            timestamp_column="acquired_at",
+            now_utc="datetime('now')",
+            legacy_now="datetime('now')",
+            seconds_before=_seconds_before,
+            is_busy=_is_database_locked,
+            insert_values=(("acquired_by", "?"), ("process_id", "?"), ("lock_mode", "1")),
+            insert_params=(user, str(os.getpid())),
+        )
+
     def acquire_migration_lock(
         self, connection: sqlite3.Connection, schema: str, wait_timeout_seconds: int = 60
     ) -> bool:
         """Acquire an exclusive migration lock.
 
-        Uses a table-based locking mechanism since SQLite doesn't support
-        advisory locks like PostgreSQL.
+        The lease runs on its own connection to the same file, so its
+        heartbeat commits beside a migration transaction. An in-memory
+        database cannot be reached by any other connection: its lock row is
+        kept on *connection* itself, with no heartbeat.
+
+        A caller's transaction still open on *connection* (``from_sqlalchemy``)
+        holds SQLite's write lock, which would block the lease connection.
+        When the lock is free, that pending work is committed first, as taking
+        the lock always did; when the lock is held, it is left untouched.
 
         Args:
             connection: Active SQLite connection (provided by Provider)
@@ -79,111 +159,36 @@ class SQLiteLockingManager(BaseLockingManager):
             bool: True if lock was acquired successfully, False otherwise
         """
         self.log.debug(f"Attempting to acquire migration lock for schema: {schema}")
+        if self._lease is not None:
+            return True
+        callers_transaction = connection.in_transaction
+        self.create_migration_lock_table_if_not_exists(connection, schema)
+        dialect = self._lease_dialect(schema)
+        if callers_transaction and not _lock_row_present(connection, dialect):
+            connection.commit()
 
-        try:
-            # Ensure lock table exists
-            self.create_migration_lock_table_if_not_exists(connection, schema)
+        path = _database_file(connection)
+        session: LeaseSession
+        if path:
+            lease_connection = sqlite3.connect(
+                path,
+                timeout=LEASE_BUSY_TIMEOUT_SECONDS,
+                isolation_level=None,
+                check_same_thread=False,
+            )
+            session = Sqlite3LeaseSession(lease_connection, owns_connection=True)
+        else:
+            session = Sqlite3LeaseSession(connection, owns_connection=False)
 
-            lock_name = f"{MIGRATION_LOCK_TABLE}_{schema}"
-            start_time = time.time()
-
-            while time.time() - start_time < wait_timeout_seconds:
-                # Only roll back a transaction we open below; one already open
-                # here belongs to the caller (from_sqlalchemy(connection=...)).
-                opened_here = not connection.in_transaction
-                try:
-                    # First, clean up any stale locks from crashed processes
-                    self._cleanup_stale_locks(connection, lock_name)
-
-                    # Try to insert lock record (will fail if lock already exists)
-                    insert_sql = f"""
-                    INSERT INTO "{MIGRATION_LOCK_TABLE}"
-                    (lock_name, acquired_at, acquired_by, process_id, lock_mode)
-                    VALUES (?, datetime('now'), ?, ?, 1)
-                    """
-
-                    process_id = str(os.getpid())
-                    user = os.environ.get("USER", os.environ.get("USERNAME", "dblift"))
-
-                    # Execute directly on the connection, not via query_executor:
-                    # losing this race is the expected outcome for a waiter, and
-                    # query_executor logs every exception at ERROR level with the
-                    # full SQL/params, which would fire on every routine poll.
-                    connection.execute(insert_sql, [lock_name, user, process_id])
-
-                    # Commit the lock immediately
-                    connection.commit()
-
-                    self.log.debug(f"Successfully acquired migration lock for: {schema}")
-                    return True
-
-                except sqlite3.IntegrityError:
-                    # Drop our own transaction before sleeping, or it holds
-                    # SQLite's write lock and blocks the lock holder.
-                    if opened_here:
-                        connection.rollback()
-                    elapsed = int(time.time() - start_time)
-                    self.log.debug(
-                        f"Lock held by another process, waiting... (elapsed: {elapsed}s)"
-                    )
-                    time.sleep(1)
-                    continue
-
-                except Exception as e:
-                    if opened_here:
-                        connection.rollback()
-                    error_str = str(e).lower()
-                    if "unique" in error_str or "constraint" in error_str:
-                        # Lock is held by another process
-                        elapsed = int(time.time() - start_time)
-                        self.log.debug(f"Lock held, waiting... (elapsed: {elapsed}s)")
-                        time.sleep(1)
-                        continue
-                    else:
-                        # Unexpected error
-                        self.log.warning(f"Error during lock acquisition: {str(e)}")
-                        time.sleep(1)
-                        continue
-
-            # Timeout exceeded
+        lease = LeaseLock(SqlLeaseStore(dialect, session), log=self.log, heartbeat=bool(path))
+        if not lease.acquire(wait_timeout_seconds):
             self.log.warning(
                 f"Failed to acquire migration lock within {wait_timeout_seconds} seconds"
             )
             return False
-
-        except Exception as e:
-            error_msg = f"Error acquiring migration lock: {str(e)}"
-            self.log.error(error_msg)
-            return False
-
-    def _cleanup_stale_locks(self, connection: sqlite3.Connection, lock_name: str) -> None:
-        """Clean up stale locks from crashed processes.
-
-        In SQLite, we can't easily detect if a process is still alive,
-        so we use a timeout-based approach for stale lock detection.
-
-        Args:
-            connection: Active SQLite connection
-            lock_name: Name of the lock to check
-        """
-        try:
-            # Consider locks older than 24 hours as stale
-            # This is a conservative timeout to avoid accidentally cleaning up valid locks
-            delete_sql = f"""
-            DELETE FROM "{MIGRATION_LOCK_TABLE}"
-            WHERE lock_name = ?
-            AND datetime(acquired_at) < datetime('now', '-24 hours')
-            """
-
-            rows_deleted = self.query_executor.execute_statement(
-                connection, delete_sql, params=[lock_name]
-            )
-
-            if rows_deleted > 0 and self.log:
-                self.log.debug(f"Cleaned up {rows_deleted} stale lock(s)")
-
-        except Exception as e:
-            self.log.debug(f"Could not cleanup stale locks: {str(e)}")
+        self._lease = lease
+        self.log.debug(f"Successfully acquired migration lock for: {schema}")
+        return True
 
     def release_migration_lock(self, connection: sqlite3.Connection, schema: str) -> bool:
         """Release the migration lock.
@@ -193,35 +198,21 @@ class SQLiteLockingManager(BaseLockingManager):
             schema: Target schema name
 
         Returns:
-            bool: True if lock was released successfully, False otherwise
+            bool: True if this process's lock was released, False when none
+            was held or another process had reclaimed it
         """
-        self.log.debug(f"Attempting to release migration lock for schema: {schema}")
+        lease, self._lease = self._lease, None
+        released = lease.release() if lease is not None else False
+        if not released:
+            self.log.debug(f"Lock was not held by this process for: {schema}")
+        return released
 
-        try:
-            lock_name = f"{MIGRATION_LOCK_TABLE}_{schema}"
-            process_id = str(os.getpid())
+    def migration_lock_lost(self) -> bool:
+        """Whether the held lease was reclaimed or could not be renewed in time."""
+        return self._lease is not None and self._lease.lost
 
-            # Only delete lock if we own it (same process_id)
-            delete_sql = f"""
-            DELETE FROM "{MIGRATION_LOCK_TABLE}"
-            WHERE lock_name = ? AND process_id = ?
-            """
-
-            rows_deleted = self.query_executor.execute_statement(
-                connection, delete_sql, params=[lock_name, process_id]
-            )
-
-            # Commit the deletion
-            connection.commit()
-
-            if rows_deleted > 0:
-                self.log.debug(f"Successfully released migration lock for: {schema}")
-                return True
-            else:
-                self.log.debug(f"Lock was not held by this process for: {schema}")
-                return False
-
-        except Exception as e:
-            error_msg = f"Error releasing migration lock: {str(e)}"
-            self.log.error(error_msg)
-            return False
+    def close(self) -> None:
+        """Release a lease still held (the provider is closing)."""
+        lease, self._lease = self._lease, None
+        if lease is not None:
+            lease.release()

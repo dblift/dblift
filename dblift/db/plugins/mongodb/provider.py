@@ -47,8 +47,11 @@ class MongoDbProvider(NativeProvider):
         return self.connection_manager.database is not None
 
     def close(self) -> None:
-        """Close the driver connection."""
-        self.connection_manager.close()
+        """Release a migration lock still held, then close the driver connection."""
+        try:
+            self.locking_manager.close()
+        finally:
+            self.connection_manager.close()
 
     def get_database_url(self) -> str:
         """Return the masked connection URI."""
@@ -210,3 +213,7 @@ class MongoDbProvider(NativeProvider):
     def release_migration_lock(self, schema: str) -> bool:
         """Release the migration lease."""
         return self.locking_manager.release_migration_lock(schema)
+
+    def migration_lock_lost(self) -> bool:
+        """Whether the held migration lease was reclaimed or could not be renewed."""
+        return self.locking_manager.migration_lock_lost()
