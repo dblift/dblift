@@ -62,7 +62,10 @@ def main() -> None:
     assert origin.is_relative_to(Path(sys.prefix).resolve())
     assert "/site-packages/dblift/" in str(origin)
     distribution = metadata.distribution("dblift-sqlite-fork-fixture")
-    core_distribution = metadata.distribution("dblift-sqlite-fork-fixture-core")
+    try:
+        core_distribution = metadata.distribution("dblift-sqlite-fork-fixture-core")
+    except metadata.PackageNotFoundError:
+        core_distribution = distribution  # Historical one-wheel fork.
     own = sorted(
         {
             d.metadata["Name"].lower()
@@ -70,9 +73,13 @@ def main() -> None:
             if d.metadata["Name"].lower().startswith("dblift")
         }
     )
-    assert own == ["dblift-sqlite-fork-fixture", "dblift-sqlite-fork-fixture-core"]
+    expected = ["dblift-sqlite-fork-fixture"]
+    if core_distribution is not distribution:
+        expected.append("dblift-sqlite-fork-fixture-core")
+    assert own == expected
     assert "dblift/py.typed" in {str(file) for file in core_distribution.files or ()}
-    assert not any(str(file).startswith("dblift/") for file in distribution.files or ())
+    if core_distribution is not distribution:
+        assert not any(str(file).startswith("dblift/") for file in distribution.files or ())
     assert importlib.util.find_spec("dblift_pro") is None
     assert importlib.util.find_spec("dblift_enterprise") is None
     assert importlib.util.find_spec("dblift.core.premium_manifest") is not None

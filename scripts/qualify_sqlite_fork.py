@@ -71,17 +71,19 @@ def _run(args: list[str], cwd: Path, timeout: int = 300) -> subprocess.Completed
 def _transform(source: Path) -> tuple[list[str], list[str], str]:
     pyproject = source / "pyproject.toml"
     bundle_project = source / "packages" / "dblift" / "pyproject.toml"
+    paired = bundle_project.is_file()
     original_toml = pyproject.read_text(encoding="utf-8")
-    original_bundle_toml = bundle_project.read_text(encoding="utf-8")
+    original_bundle_toml = bundle_project.read_text(encoding="utf-8") if paired else ""
     original = tomllib.loads(original_toml)
-    original_bundle = tomllib.loads(original_bundle_toml)
-    if original["project"]["name"] != "dblift-core":
-        raise ValueError("Expected original dblift-core distribution")
+    original_bundle = tomllib.loads(original_bundle_toml) if paired else original
+    expected_core_name = "dblift-core" if paired else "dblift"
+    if original["project"]["name"] != expected_core_name:
+        raise ValueError(f"Expected original {expected_core_name} distribution")
     if original_bundle["project"]["name"] != "dblift":
         raise ValueError("Expected original dblift bundle")
     if original_bundle["project"]["scripts"] != {"dblift": "dblift.cli.main:main"}:
         raise ValueError("Expected one original dblift console script")
-    if original["project"]["version"] != original_bundle["project"]["version"]:
+    if paired and original["project"]["version"] != original_bundle["project"]["version"]:
         raise ValueError("Core and bundle versions differ")
     providers = original["project"]["entry-points"]["dblift.providers"]
     if "sqlite" not in providers or not providers["sqlite"].startswith("dblift.db.plugins.sqlite."):
@@ -100,10 +102,11 @@ def _transform(source: Path) -> tuple[list[str], list[str], str]:
         replace_once(constants, old, new)
     document = tomlkit.parse(original_toml)
     project = document["project"]
-    project["name"] = FORK_CORE_NAME
-    bundle_document = tomlkit.parse(original_bundle_toml)
+    project["name"] = FORK_CORE_NAME if paired else FORK_NAME
+    bundle_document = tomlkit.parse(original_bundle_toml) if paired else document
     bundle = bundle_document["project"]
-    bundle["name"] = FORK_NAME
+    if paired:
+        bundle["name"] = FORK_NAME
     scripts = bundle["scripts"]
     del scripts["dblift"]
     scripts[FORK_CLI] = "dblift.cli.main:main"
@@ -124,7 +127,7 @@ def _transform(source: Path) -> tuple[list[str], list[str], str]:
     original_all = original["project"]["optional-dependencies"]["all"]
     referenced = set()
     for requirement in original_all:
-        match = re.fullmatch(r"dblift-core\[([^]]+)\]", requirement)
+        match = re.fullmatch(rf"{expected_core_name}\[([^]]+)\]", requirement)
         if match is None:
             raise ValueError("Unexpected original all-extra requirement")
         referenced.update(match.group(1).split(","))
@@ -132,25 +135,29 @@ def _transform(source: Path) -> tuple[list[str], list[str], str]:
         raise ValueError("Original all extra does not cover exactly the removable engines")
     extras["all"] = tomlkit.array()
     rewritten_toml = tomlkit.dumps(document)
-    bundle["dependencies"] = [
-        f"{FORK_CORE_NAME}[analysis,presentation]=={original['project']['version']}"
-    ]
-    bundle_extras = bundle["optional-dependencies"]
-    for key in list(bundle_extras):
-        if key in engine_extras:
-            del bundle_extras[key]
-        else:
-            bundle_extras[key] = [
-                str(requirement).replace("dblift-core[", f"{FORK_CORE_NAME}[")
-                for requirement in bundle_extras[key]
-            ]
-    rewritten_bundle_toml = tomlkit.dumps(bundle_document)
+    if paired:
+        bundle["dependencies"] = [
+            f"{FORK_CORE_NAME}[analysis,presentation]=={original['project']['version']}"
+        ]
+        bundle_extras = bundle["optional-dependencies"]
+        for key in list(bundle_extras):
+            if key in engine_extras:
+                del bundle_extras[key]
+            else:
+                bundle_extras[key] = [
+                    str(requirement).replace("dblift-core[", f"{FORK_CORE_NAME}[")
+                    for requirement in bundle_extras[key]
+                ]
+    rewritten_bundle_toml = tomlkit.dumps(bundle_document) if paired else ""
     parsed = tomllib.loads(rewritten_toml)
-    assert parsed["project"]["name"] == FORK_CORE_NAME
-    assert "scripts" not in parsed["project"]
-    parsed_bundle = tomllib.loads(rewritten_bundle_toml)
-    assert parsed_bundle["project"]["name"] == FORK_NAME
-    assert parsed_bundle["project"]["scripts"] == {FORK_CLI: "dblift.cli.main:main"}
+    assert parsed["project"]["name"] == (FORK_CORE_NAME if paired else FORK_NAME)
+    if paired:
+        assert "scripts" not in parsed["project"]
+        parsed_bundle = tomllib.loads(rewritten_bundle_toml)
+        assert parsed_bundle["project"]["name"] == FORK_NAME
+        assert parsed_bundle["project"]["scripts"] == {FORK_CLI: "dblift.cli.main:main"}
+    else:
+        assert parsed["project"]["scripts"] == {FORK_CLI: "dblift.cli.main:main"}
     assert parsed["project"]["entry-points"]["dblift.providers"] == {"sqlite": providers["sqlite"]}
     original_descriptors = original["project"]["entry-points"].get("dblift.provider_descriptors")
     if original_descriptors is not None:
@@ -164,17 +171,22 @@ def _transform(source: Path) -> tuple[list[str], list[str], str]:
     if "license" in original["project"]:
         assert parsed["project"]["license"] == original["project"]["license"]
     pyproject.write_text(rewritten_toml, encoding="utf-8")
-    bundle_project.write_text(rewritten_bundle_toml, encoding="utf-8")
+    if paired:
+        bundle_project.write_text(rewritten_bundle_toml, encoding="utf-8")
     for plugin in removed:
         shutil.rmtree(source / "dblift" / "db" / "plugins" / plugin)
     if not (source / "dblift" / "core" / "premium_manifest.py").is_file():
         raise ValueError("Premium manifest disappeared from the fork")
     changes = [f"Removed provider directory dblift/db/plugins/{plugin}/\n" for plugin in removed]
-    for filename, before, after in (
+    changed_files = [
         ("dblift/core/constants.py", old_constants, constants.read_text(encoding="utf-8")),
         ("pyproject.toml", original_toml, rewritten_toml),
-        ("packages/dblift/pyproject.toml", original_bundle_toml, rewritten_bundle_toml),
-    ):
+    ]
+    if paired:
+        changed_files.append(
+            ("packages/dblift/pyproject.toml", original_bundle_toml, rewritten_bundle_toml)
+        )
+    for filename, before, after in changed_files:
         changes.extend(
             difflib.unified_diff(
                 before.splitlines(keepends=True),
@@ -218,6 +230,7 @@ def qualify(
             source.mkdir()
             with tarfile.open(fileobj=io.BytesIO(archive)) as tar:
                 tar.extractall(source, filter="data")
+            paired = (source / "packages" / "dblift" / "pyproject.toml").is_file()
             original_plugins, removed, diff = _transform(source)
             dist = work / "dist"
             dist.mkdir()
@@ -234,24 +247,39 @@ def qualify(
                 ],
                 work,
             )
-            _run(
-                [
-                    sys.executable, "-m", "pip", "wheel", "--no-deps", "--wheel-dir",
-                    str(dist), str(source / "packages" / "dblift"),
-                ],
-                work,
-            )
+            if paired:
+                _run(
+                    [
+                        sys.executable,
+                        "-m",
+                        "pip",
+                        "wheel",
+                        "--no-deps",
+                        "--wheel-dir",
+                        str(dist),
+                        str(source / "packages" / "dblift"),
+                    ],
+                    work,
+                )
             wheels = list(dist.glob("*.whl"))
             bundle_wheels = [p for p in wheels if p.name.startswith("dblift_sqlite_fork_fixture-")]
-            core_wheels = [p for p in wheels if p.name.startswith("dblift_sqlite_fork_fixture_core-")]
-            if len(wheels) != 2 or len(bundle_wheels) != 1 or len(core_wheels) != 1:
-                raise ValueError("Fork build did not produce exactly one core and bundle wheel")
-            bundle_wheel, core_wheel = bundle_wheels[0], core_wheels[0]
+            core_wheels = [
+                p for p in wheels if p.name.startswith("dblift_sqlite_fork_fixture_core-")
+            ]
+            if (
+                len(bundle_wheels) != 1
+                or len(core_wheels) != int(paired)
+                or len(wheels) != 1 + int(paired)
+            ):
+                raise ValueError("Fork build did not produce the expected wheel set")
+            bundle_wheel = bundle_wheels[0]
+            core_wheel = core_wheels[0] if paired else None
             venv = work / "venv"
             _run([sys.executable, "-m", "venv", str(venv)], work)
             python = venv / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
             # Installation logs can contain index credentials; never copy them into the report.
-            _run([str(python), "-m", "pip", "install", str(core_wheel), str(bundle_wheel)], work)
+            install_wheels = [str(core_wheel)] if core_wheel is not None else []
+            _run([str(python), "-m", "pip", "install", *install_wheels, str(bundle_wheel)], work)
             _run([str(python), "-m", "pip", "check"], work)
             probe = Path(__file__).with_name("sqlite_fork_installed_probe.py")
             if not probe.is_file():
@@ -294,17 +322,26 @@ def qualify(
                 raise ValueError("Source checkout changed during fork qualification")
             output.parent.mkdir(parents=True, exist_ok=True)
             destination = output.parent / bundle_wheel.name
-            core_destination = output.parent / core_wheel.name
+            core_destination = output.parent / core_wheel.name if core_wheel else None
             diff_path = output.with_suffix(".diff")
             shutil.copy2(bundle_wheel, destination)
-            shutil.copy2(core_wheel, core_destination)
+            if core_wheel and core_destination:
+                shutil.copy2(core_wheel, core_destination)
             diff_path.write_text(diff, encoding="utf-8")
             result.update(
                 status="pass",
                 wheel=str(destination.resolve()),
                 wheel_sha256=hashlib.sha256(destination.read_bytes()).hexdigest(),
-                core_wheel=str(core_destination.resolve()),
-                core_wheel_sha256=hashlib.sha256(core_destination.read_bytes()).hexdigest(),
+                **(
+                    {
+                        "core_wheel": str(core_destination.resolve()),
+                        "core_wheel_sha256": hashlib.sha256(
+                            core_destination.read_bytes()
+                        ).hexdigest(),
+                    }
+                    if core_destination
+                    else {}
+                ),
                 diff=str(diff_path.resolve()),
                 diff_sha256=hashlib.sha256(diff_path.read_bytes()).hexdigest(),
                 original_plugins=original_plugins,

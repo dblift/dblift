@@ -1,6 +1,7 @@
 """The two built distributions preserve one owner for every Python file."""
 
 import configparser
+import json
 import subprocess
 import sys
 import tarfile
@@ -20,7 +21,16 @@ def wheels(tmp_path_factory):
     for source in (ROOT, ROOT / "packages" / "dblift"):
         assert (source / "pyproject.toml").is_file(), f"missing distribution project: {source}"
         subprocess.run(
-            [sys.executable, "-m", "pip", "wheel", "--no-deps", "--wheel-dir", str(output), str(source)],
+            [
+                sys.executable,
+                "-m",
+                "pip",
+                "wheel",
+                "--no-deps",
+                "--wheel-dir",
+                str(output),
+                str(source),
+            ],
             check=True,
             capture_output=True,
             text=True,
@@ -53,9 +63,7 @@ def test_core_owns_code_and_bundle_owns_console(wheels):
     assert "dblift/core/logger/templates/report.html" in core_files
     assert not any(name.startswith("dblift/") for name in bundle_files)
     assert not core_entries.has_section("console_scripts")
-    assert dict(bundle_entries.items("console_scripts")) == {
-        "dblift": "dblift.cli.main:main"
-    }
+    assert dict(bundle_entries.items("console_scripts")) == {"dblift": "dblift.cli.main:main"}
     for group in ("dblift.providers", "dblift.provider_descriptors"):
         assert core_entries.has_section(group)
         assert not bundle_entries.has_section(group)
@@ -105,7 +113,16 @@ def test_each_sdist_rebuilds_without_checkout_files(tmp_path, source_name):
     wheels = tmp_path / "wheels"
     wheels.mkdir()
     subprocess.run(
-        [sys.executable, "-m", "pip", "wheel", "--no-deps", "--wheel-dir", str(wheels), str(project)],
+        [
+            sys.executable,
+            "-m",
+            "pip",
+            "wheel",
+            "--no-deps",
+            "--wheel-dir",
+            str(wheels),
+            str(project),
+        ],
         check=True,
         capture_output=True,
         text=True,
@@ -119,3 +136,34 @@ def test_each_sdist_rebuilds_without_checkout_files(tmp_path, source_name):
     else:
         assert metadata["Name"] == "dblift"
         assert not any(name.startswith("dblift/") for name in files)
+
+
+def test_qualification_candidate_changes_only_archived_version_sites(tmp_path):
+    revision = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
+    output = tmp_path / "candidate"
+    run = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "build_core_candidate.py"),
+            "--revision",
+            revision,
+            "--output",
+            str(output),
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert run.returncode == 0, run.stderr
+    manifest = json.loads((output / "manifest.json").read_text())
+    assert manifest["revision"] == revision
+    assert manifest["candidate_version"] == "999.0.0.dev1"
+    assert set(manifest["transforms"]) == {
+        "pyproject.toml",
+        "packages/dblift/pyproject.toml",
+        "dblift/__init__.py",
+    }
+    artifacts = sorted(output.glob("*.whl")) + sorted(output.glob("*.tar.gz"))
+    assert len(artifacts) == 4
+    assert {path.name for path in artifacts} == set(manifest["sha256"])
+    for path in artifacts:
+        assert "999.0.0.dev1" in path.name

@@ -20,6 +20,7 @@ from scripts.qualify_sqlite_fork import _transform, replace_once
 
 ROOT = Path(__file__).resolve().parents[2]
 QUALIFIER = ROOT / "scripts" / "qualify_sqlite_fork.py"
+HISTORICAL_SINGLE_WHEEL = "5117d9f90102dee4ea9695f7f8cccb55421e09f7"
 
 
 def test_replace_once_rejects_an_unexpected_identity_constant(tmp_path):
@@ -151,7 +152,8 @@ def test_sqlite_fork_wheel_and_source_integrity(tmp_path):
     assert hashlib.sha256(diff.read_bytes()).hexdigest() == result["diff_sha256"]
     assert set(result["removed_plugins"]) == set(result["original_plugins"]) - {"sqlite"}
     assert result["installed"]["distributions"] == [
-        "dblift-sqlite-fork-fixture", "dblift-sqlite-fork-fixture-core"
+        "dblift-sqlite-fork-fixture",
+        "dblift-sqlite-fork-fixture-core",
     ]
     assert result["installed"]["code_owner"] == "dblift-sqlite-fork-fixture-core"
     assert result["installed"]["providers"] == ["sqlite"]
@@ -202,3 +204,26 @@ def test_sqlite_fork_wheel_and_source_integrity(tmp_path):
         ["git", "status", "--short"], cwd=ROOT, capture_output=True, text=True, check=True
     ).stdout
     assert after == before
+
+
+def test_historical_single_distribution_fork_still_qualifies(tmp_path):
+    output = tmp_path / "historical.json"
+    run = subprocess.run(
+        [
+            sys.executable,
+            str(QUALIFIER),
+            "--revision",
+            HISTORICAL_SINGLE_WHEEL,
+            "--output",
+            str(output),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+    )
+    assert run.returncode == 0, run.stderr + output.read_text()
+    result = json.loads(output.read_text())
+    assert result["status"] == "pass"
+    assert "core_wheel" not in result
+    assert result["installed"]["distributions"] == ["dblift-sqlite-fork-fixture"]
+    assert result["installed"]["providers"] == ["sqlite"]

@@ -24,7 +24,19 @@ def _run(args, cwd):
 def wheels(tmp_path_factory):
     output = tmp_path_factory.mktemp("transition-wheels")
     for source in (ROOT, ROOT / "packages" / "dblift"):
-        _run([sys.executable, "-m", "pip", "wheel", "--no-deps", "--wheel-dir", str(output), str(source)], output)
+        _run(
+            [
+                sys.executable,
+                "-m",
+                "pip",
+                "wheel",
+                "--no-deps",
+                "--wheel-dir",
+                str(output),
+                str(source),
+            ],
+            output,
+        )
     return {path.name.split("-", 1)[0]: path for path in output.glob("*.whl")}
 
 
@@ -44,12 +56,12 @@ def _installed(python, cwd):
                 "import json,sys; from importlib import metadata; import dblift; "
                 "from pathlib import Path; "
                 "names=['dblift-core','dblift']; "
-                "versions={name:metadata.version(name) if any(" 
+                "versions={name:metadata.version(name) if any("
                 "d.metadata['Name'].lower()==name for d in metadata.distributions()) "
                 "else None for name in names}; "
                 "origins={name:str(Path(module.__file__).resolve()) for name,module in sys.modules.items() "
                 "if name=='dblift' or name.startswith('dblift.') if getattr(module,'__file__',None)}; "
-                "print(json.dumps({'versions':versions,'origins':origins,'modules':" 
+                "print(json.dumps({'versions':versions,'origins':origins,'modules':"
                 "{name:metadata.version(name) if any(d.metadata['Name'].lower()==name.lower() "
                 "for d in metadata.distributions()) else None for name in ['sqlglot','rich','Jinja2']}}))",
             ],
@@ -100,6 +112,17 @@ assert not any(name == "rich" or name.startswith("rich.") for name in sys.module
 assert not any(name == "jinja2" or name.startswith("jinja2.") for name in sys.modules)
 """
     _run([str(python), "-I", "-c", script], work)
+    _run([str(python), "-m", "pip", "install", f"{wheels['dblift_core']}[otel]"], work)
+    _run([str(python), "-m", "pip", "check"], work)
+    _run(
+        [
+            str(python),
+            "-I",
+            "-c",
+            "from dblift.integrations.opentelemetry import _dblift_version; assert _dblift_version() == '4.10.0'",
+        ],
+        work,
+    )
 
 
 def test_core_to_standard_and_bundle_reinstall(wheels, tmp_path):
