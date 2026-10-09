@@ -54,10 +54,8 @@ it was opened, so calls within the same second still land in one file.
 unsupported formats) and, once migrations have been applied, compares them
 against the recorded history too — checksums. Pass `strict: true` to also fail
 when a previously applied migration is now missing from disk and to require
-strict version order. It reads each pending SQL script to warn about statements
-that destroy data or change rows (`warnings`); `info` and `migrate_dry_run` carry
-the same reading as `analysis` on each pending row. It does not check the SQL for
-validity: a script with invalid SQL passes both `validate` and `migrate_dry_run`.
+strict version order. It does not parse or check the SQL inside them; a script
+with invalid SQL passes both `validate` and `migrate_dry_run`.
 
 Pass `show_sql: true` to `migrate_dry_run` to also run with `--show-sql`; the
 result then carries a `sql` array with each pending migration's rendered

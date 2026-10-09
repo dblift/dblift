@@ -267,7 +267,6 @@ def test_validate_result_to_dict_shape():
             "checksum mismatch",
             "Validation failed. Detected modified migration scripts.",
         ],
-        "warnings": [],
         "validated_migrations": [_migration_info_to_dict(result.validated_migrations[0])],
         "failed_migrations": [_migration_info_to_dict(result.failed_migrations[0])],
     }
