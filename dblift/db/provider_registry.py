@@ -1,7 +1,6 @@
 """Provider registry for auto-discovery and registration of database provider plugins."""
 
 import dataclasses
-import importlib
 import importlib.util
 import logging
 from dataclasses import dataclass
@@ -9,6 +8,7 @@ from pathlib import Path
 from threading import RLock
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Literal, Optional, Tuple, Type
 
+from dblift.db.provider_discovery import entry_point_candidates, filesystem_descriptor, load_factory
 from dblift.db.provider_metadata import PluginDescriptor
 
 if TYPE_CHECKING:
@@ -149,22 +149,10 @@ class ProviderRegistry:
 
     @classmethod
     def discover_plugins(cls) -> None:
-        """Auto-discover provider plugins.
+        """Index installed entry points, then scan bundled plugins as a checkout fallback.
 
-        Discovery happens in two passes.
-
-        1. Entry-point pass — reads ``importlib.metadata.entry_points
-           (group="dblift.providers")``. First-party plugins are
-           registered here when the wheel is installed (``pip install
-           dblift``); third-party plugins (``pip install
-           dblift-snowflake``) are registered the same way without
-           modifying ``core/``.
-
-        2. Filesystem fallback — scans ``db/plugins/<X>/`` for any
-           dialect not already registered. Covers in-tree development
-           (e.g. running tests against a source checkout without
-           installing the package) and old plugin layouts that
-           predate the entry-point group.
+        Legacy-only entry points load now to reveal their aliases; paired
+        descriptors defer their full provider until a matching lookup.
         """
         with cls._lock:
             if cls._discovered:
@@ -175,97 +163,17 @@ class ProviderRegistry:
 
     @classmethod
     def _discover_via_entry_points(cls) -> bool:
-        """Read ``dblift.providers`` entry-points and register each one.
-
-        Returns whether any entry points were found, so ``discover_plugins``
-        can decide whether this pass is safe to latch (see Defect: a call
-        whose entry-point pass found nothing must not close the
-        ``_discovered`` latch, or a late-arriving third-party plugin never
-        gets a second chance).
-        """
-        from importlib import metadata
-
-        try:
-            entry_points: List[Any] = list(metadata.entry_points(group=cls.ENTRY_POINT_GROUP))
-            descriptor_points: List[Any] = list(
-                metadata.entry_points(group=cls.DESCRIPTOR_ENTRY_POINT_GROUP)
-            )
-        except Exception as exc:  # pragma: no cover - defensive
-            _logger.warning(f"Failed to read entry-points for {cls.ENTRY_POINT_GROUP}: {exc}")
-            return False
-
-        paired = set()
-        registered_any = False
-        for ep in entry_points:
-            descriptor = None
-            for candidate in descriptor_points:
-                if candidate.name != ep.name or not cls._same_distribution(ep, candidate):
-                    continue
-                loaded = cls._load_descriptor(candidate)
-                if loaded and loaded.name == ep.name and loaded.factory == ep.value:
-                    descriptor = loaded
-                    paired.add(id(candidate))
-                    break
-            if descriptor is not None:
-                cls._register_descriptor(descriptor)
-                registered_any = True
-                continue
-            try:
-                plugin_info = ep.load()
-            except Exception as exc:
-                _logger.warning(f"Failed to load plugin entry-point {ep.name!r}: {exc}")
-                continue
-            if not isinstance(plugin_info, PluginInfo):
-                _logger.warning(
-                    f"Entry-point {ep.name!r} returned {type(plugin_info).__name__}, "
-                    "expected PluginInfo; ignoring."
-                )
-                continue
-            cls.register_plugin(plugin_info)
-            registered_any = True
-
-        for ep in descriptor_points:
-            if id(ep) in paired:
-                continue
-            descriptor = cls._load_descriptor(ep)
-            if descriptor is not None:
-                cls._register_descriptor(descriptor)
-                registered_any = True
-
-        return registered_any
-
-    @staticmethod
-    def _same_distribution(first: Any, second: Any) -> bool:
-        a, b = getattr(first, "dist", None), getattr(second, "dist", None)
-        if a is None or b is None:
-            return False
-        if a is b:
-            return True
-        first_path, second_path = getattr(a, "_path", None), getattr(b, "_path", None)
-        return bool(
-            first_path is not None
-            and second_path is not None
-            and Path(first_path).resolve() == Path(second_path).resolve()
-        )
-
-    @staticmethod
-    def _load_descriptor(ep: Any) -> Optional[PluginDescriptor]:
-        try:
-            descriptor = ep.load()
-            if (
-                isinstance(descriptor, PluginDescriptor)
-                and isinstance(descriptor.name, str)
-                and descriptor.name
-                and isinstance(descriptor.dialects, tuple)
-                and all(isinstance(alias, str) and alias for alias in descriptor.dialects)
-                and isinstance(descriptor.factory, str)
-                and ":" in descriptor.factory
-            ):
-                return descriptor
-            _logger.warning(f"Invalid provider descriptor entry-point {ep.name!r}; ignoring.")
-        except Exception as exc:
-            _logger.warning(f"Failed to load provider descriptor {ep.name!r}: {exc}")
-        return None
+        """Register valid legacy plugins and index descriptors in entry-point order."""
+        found = False
+        for candidate in entry_point_candidates(
+            cls.ENTRY_POINT_GROUP, cls.DESCRIPTOR_ENTRY_POINT_GROUP
+        ):
+            if isinstance(candidate, PluginDescriptor):
+                cls._register_descriptor(candidate)
+            else:
+                cls.register_plugin(candidate)
+            found = True
+        return found
 
     @classmethod
     def _register_descriptor(cls, descriptor: PluginDescriptor) -> None:
@@ -288,13 +196,7 @@ class ProviderRegistry:
                 return cls._plugins.get(key)
             if pending.loaded is None:
                 try:
-                    from importlib import metadata
-
-                    plugin = metadata.EntryPoint(
-                        name=pending.descriptor.name,
-                        value=pending.descriptor.factory,
-                        group=cls.ENTRY_POINT_GROUP,
-                    ).load()
+                    plugin = load_factory(pending.descriptor, cls.ENTRY_POINT_GROUP)
                     if not isinstance(plugin, PluginInfo):
                         raise TypeError("factory did not return PluginInfo")
                     pending.loaded = plugin
@@ -316,26 +218,10 @@ class ProviderRegistry:
 
     @classmethod
     def _discover_via_filesystem(cls) -> None:
-        """Scan ``db/plugins/<X>/`` for plugins not already registered.
+        """Index bundled descriptors, or load older layouts without one.
 
-        Used as a fallback in source-checkout scenarios where
-        entry-points are not available. Plugins already registered by
-        the entry-point pass are skipped.
-
-        The "already registered" check is made against the plugin's own
-        *declared* identity (``PluginInfo.name`` and ``PluginInfo.dialects``,
-        the same keys :meth:`register_plugin` indexes by) rather than the
-        directory name. A directory-name check is only a proxy for identity,
-        and the proxy can be wrong: Python package names can't contain
-        hyphens, so a plugin whose dialect key has one (e.g.
-        ``aurora-postgresql``) necessarily lives in a differently-spelled
-        directory (``aurora_postgresql/``). Comparing the directory name
-        against registered keys verbatim missed that case, so a plugin
-        already registered by the entry-point pass with richer metadata was
-        reloaded from the filesystem and silently overwritten with a plainer
-        reconstruction. Loading first and checking the loaded identity
-        instead makes the skip check correct for any future naming
-        divergence, not just this one.
+        Compare declared name and aliases when skipping an installed plugin;
+        directory names can differ from dialect keys such as ``aurora-postgresql``.
         """
         plugins_dir = Path(__file__).parent / "plugins"
         if not plugins_dir.exists():
@@ -345,22 +231,14 @@ class ProviderRegistry:
             if not plugin_dir.is_dir() or plugin_dir.name.startswith("_"):
                 continue
 
-            descriptor_file = plugin_dir / "descriptor.py"
-            if descriptor_file.exists():
-                try:
-                    descriptor = importlib.import_module(
-                        f"dblift.db.plugins.{plugin_dir.name}.descriptor"
-                    ).DESCRIPTOR
-                    if isinstance(descriptor, PluginDescriptor):
-                        keys = (descriptor.name, *descriptor.dialects)
-                        if not any(
-                            key.lower() in cls._plugins or key.lower() in cls._pending
-                            for key in keys
-                        ):
-                            cls._register_descriptor(descriptor)
-                        continue
-                except Exception as exc:
-                    _logger.warning(f"Failed to load descriptor from {plugin_dir}: {exc}")
+            descriptor = filesystem_descriptor(plugin_dir)
+            if descriptor is not None:
+                keys = (descriptor.name, *descriptor.dialects)
+                if not any(
+                    key.lower() in cls._plugins or key.lower() in cls._pending for key in keys
+                ):
+                    cls._register_descriptor(descriptor)
+                continue
 
             try:
                 plugin_info = cls._load_plugin(plugin_dir)

@@ -39,3 +39,16 @@ def test_silent_sqlite_client_resolves_without_foreign_providers():
             assert module not in sys.modules, module
         """ % (FOREIGN_PROVIDERS,))
     assert result.returncode == 0, result.stderr
+
+
+def test_source_checkout_fallback_uses_descriptor_without_entry_points():
+    result = run_python("""
+        import sys
+        from unittest.mock import patch
+        from dblift.db.provider_registry import ProviderRegistry
+        with patch('importlib.metadata.entry_points', return_value=[]):
+            assert ProviderRegistry.get_plugin_info('sqlite3').name == 'sqlite'
+        for module in %r:
+            assert module not in sys.modules, module
+        """ % (FOREIGN_PROVIDERS,))
+    assert result.returncode == 0, result.stderr
