@@ -8,11 +8,13 @@ from dblift.db.plugins.sqlite.quirks import SqliteQuirks
 from dblift.db.plugins.sqlite.sqlalchemy_url import build_sqlalchemy_url
 from dblift.db.provider_registry import PluginInfo
 
+from .descriptor import DESCRIPTOR
+
 PLUGIN: PluginInfo = PluginInfo(
-    name="sqlite",
+    name=DESCRIPTOR.name,
     version="1.0.0",
     description="SQLite database provider (native Python sqlite3)",
-    dialects=["sqlite", "sqlite3"],
+    dialects=list(DESCRIPTOR.dialects),
     provider_class=SQLiteProvider,
     transport="native",
     quirks_class=SqliteQuirks,

@@ -1,10 +1,12 @@
 """Installed distribution checks, including the qualifier's failure contract."""
 
+import configparser
 import json
 import os
 import shutil
 import subprocess
 import sys
+import tomllib
 import zipfile
 from pathlib import Path
 
@@ -172,6 +174,79 @@ def test_wheel_contains_only_active_html_report_template(candidate_wheel):
         }
 
     assert templates == {"dblift/core/logger/templates/report.html"}
+
+
+def test_wheel_contains_provider_descriptors_and_legacy_entry_points(candidate_wheel):
+    with zipfile.ZipFile(candidate_wheel) as archive:
+        metadata_path = next(
+            name for name in archive.namelist() if name.endswith(".dist-info/entry_points.txt")
+        )
+        parser = configparser.ConfigParser()
+        parser.read_string(archive.read(metadata_path).decode())
+        legacy = dict(parser.items("dblift.providers"))
+        descriptors = dict(parser.items("dblift.provider_descriptors"))
+        assert set(descriptors) == set(legacy)
+        for name, reference in descriptors.items():
+            module, attribute = reference.split(":")
+            assert attribute == "DESCRIPTOR"
+            assert module.replace(".", "/") + ".py" in archive.namelist(), name
+
+    source_points = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]["entry-points"]
+    assert legacy == source_points["dblift.providers"]
+
+
+def test_installed_provider_descriptors_preserve_legacy_group(candidate_wheel, tmp_path):
+    environment = tmp_path / "venv"
+    subprocess.run(
+        [sys.executable, "-m", "venv", str(environment)],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    python = environment / "bin" / "python"
+    subprocess.run(
+        [str(python), "-m", "pip", "install", str(candidate_wheel)],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    subprocess.run(
+        [str(python), "-m", "pip", "check"],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    script = """
+import sys
+from importlib import metadata
+from pathlib import Path
+
+descriptors = metadata.entry_points(group="dblift.provider_descriptors")
+legacy = metadata.entry_points(group="dblift.providers")
+assert {ep.name for ep in descriptors} == {ep.name for ep in legacy}
+for ep in descriptors:
+    descriptor = ep.load()
+    assert descriptor.factory == next(old.value for old in legacy if old.name == ep.name)
+    assert Path(sys.modules[type(descriptor).__module__].__file__).resolve().is_relative_to(sys.prefix)
+assert not any(name.startswith("dblift.db.plugins.") and name.endswith(".provider") for name in sys.modules)
+for ep in legacy:
+    plugin = ep.load()
+    assert tuple(plugin.dialects) == next(new.load().dialects for new in descriptors if new.name == ep.name)
+for name, module in sys.modules.items():
+    if name == "dblift" or name.startswith("dblift."):
+        origin = getattr(module, "__file__", None)
+        if origin:
+            assert Path(origin).resolve().is_relative_to(sys.prefix), origin
+"""
+    run = subprocess.run(
+        [str(python), "-I", "-c", script],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+    )
+    assert run.returncode == 0, run.stderr
 
 
 def test_wrong_distribution_cannot_qualify(candidate_wheel, tmp_path):
