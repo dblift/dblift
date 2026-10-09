@@ -21,12 +21,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   own their rendering or DML policy.
 - Retired the OSS SQL-generation contracts: `dblift.extensions.sql_generation`,
   `dblift.core.state.sql_statement`, `dblift.db.generator_protocol`, and the
-  `ddl_generator_class()` / `alter_generator_class()` quirks hooks. Generation
-  extensions now own their statement, options, protocol, and factory contracts.
-  Parsed SQL models, migration execution, and undo generation remain in OSS.
-  `dblift.extensions.sql_generation` was a documented stable import in 4.10.0;
-  its removal in 4.11.0 is an intentional compatibility break. Extensions that
-  imported these metadata types must define their own equivalents.
+  `ddl_generator_class()` / `alter_generator_class()` quirks hooks. This retires
+  the generation-only import path documented in 4.10.0; extensions using it
+  must provide their own statement, options, protocol, and factory contracts.
+  Parsed SQL models, migration CLI and API behavior, execution, and undo
+  generation remain in OSS.
 
 ### Added
 
