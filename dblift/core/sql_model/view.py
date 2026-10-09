@@ -52,6 +52,7 @@ class View(SqlObject):
         dependencies: Optional[
             List[str]
         ] = None,  # List of dependent tables/views - SQL-generation-only
+        comment: Optional[str] = None,
     ):
         """Initialize a view.
 
@@ -82,6 +83,7 @@ class View(SqlObject):
         self.columns = columns or []
         self.is_updatable = is_updatable
         self.check_option = check_option
+        self.comment = comment
         self.materialized = materialized
 
         # Materialized view specific properties (dialect-neutral)
@@ -116,6 +118,7 @@ class View(SqlObject):
             and self.materialized == other.materialized
             and self.is_updatable == other.is_updatable
             and self.check_option == other.check_option
+            and self.comment == other.comment
             and self.is_populated == other.is_populated
             and self.refresh_method == other.refresh_method
             and self.refresh_mode == other.refresh_mode
@@ -153,6 +156,7 @@ class View(SqlObject):
         dialect: Optional[str] = None,
         is_updatable: Optional[bool] = None,
         check_option: Optional[str] = None,
+        comment: Optional[str] = None,
     ) -> "View":
         """Build a ``View`` from the typed ``ViewOptions`` surface.
 
@@ -172,6 +176,7 @@ class View(SqlObject):
             dialect=dialect,
             is_updatable=is_updatable,
             check_option=check_option,
+            comment=comment,
             **opts.to_kwargs(),
         )
 
@@ -243,6 +248,7 @@ class View(SqlObject):
             security_definer=data.get("security_definer"),
             security_invoker=data.get("security_invoker"),
             dependencies=data.get("dependencies", []),
+            comment=data.get("comment"),
         )
         # Restore plugin-owned dialect options (mirrors Table.from_dict).
         for plugin, opts in (data.get("dialect_options") or {}).items():
@@ -270,6 +276,8 @@ class View(SqlObject):
             result["is_updatable"] = self.is_updatable
         if self.check_option:
             result["check_option"] = self.check_option
+        if self.comment is not None:
+            result["comment"] = self.comment
         # Add materialized view specific properties if present
         if self.is_populated is not None:
             result["is_populated"] = self.is_populated
