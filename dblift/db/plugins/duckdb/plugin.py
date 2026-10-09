@@ -8,11 +8,13 @@ from dblift.db.plugins.duckdb.quirks import DuckDBQuirks
 from dblift.db.plugins.duckdb.sqlalchemy_url import build_sqlalchemy_url
 from dblift.db.provider_registry import PluginInfo
 
+from .descriptor import DESCRIPTOR
+
 PLUGIN: PluginInfo = PluginInfo(
-    name="duckdb",
+    name=DESCRIPTOR.name,
     version="1.0.0",
     description="DuckDB database provider (SQLAlchemy via duckdb_engine)",
-    dialects=["duckdb"],
+    dialects=list(DESCRIPTOR.dialects),
     provider_class=DuckDBProvider,
     transport="native",
     quirks_class=DuckDBQuirks,

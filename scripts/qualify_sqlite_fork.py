@@ -100,6 +100,11 @@ def _transform(source: Path) -> tuple[list[str], list[str], str]:
     for key in list(entry_points):
         if key != "sqlite":
             del entry_points[key]
+    descriptors = project["entry-points"].get("dblift.provider_descriptors")
+    if descriptors is not None:
+        for key in list(descriptors):
+            if key != "sqlite":
+                del descriptors[key]
     extras = project["optional-dependencies"]
     engine_extras = set(providers) - {"sqlite"}
     for key in list(extras):
@@ -120,6 +125,11 @@ def _transform(source: Path) -> tuple[list[str], list[str], str]:
     assert parsed["project"]["name"] == FORK_NAME
     assert parsed["project"]["scripts"] == {FORK_CLI: "dblift.cli.main:main"}
     assert parsed["project"]["entry-points"]["dblift.providers"] == {"sqlite": providers["sqlite"]}
+    original_descriptors = original["project"]["entry-points"].get("dblift.provider_descriptors")
+    if original_descriptors is not None:
+        assert parsed["project"]["entry-points"]["dblift.provider_descriptors"] == {
+            "sqlite": original_descriptors["sqlite"]
+        }
     assert parsed["project"]["optional-dependencies"]["all"] == []
     assert not any(key in parsed["project"]["optional-dependencies"] for key in engine_extras)
     for key in ("dependencies", "classifiers"):

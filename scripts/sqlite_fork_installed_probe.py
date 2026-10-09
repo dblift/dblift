@@ -75,6 +75,10 @@ def main() -> None:
     assert importlib.util.find_spec("dblift.core.premium_manifest") is not None
     providers = sorted(ep.name for ep in metadata.entry_points(group="dblift.providers"))
     assert providers == ["sqlite"]
+    descriptors = sorted(
+        ep.name for ep in metadata.entry_points(group="dblift.provider_descriptors")
+    )
+    assert descriptors in ([], ["sqlite"])
     assert [p.name for p in ProviderRegistry.list_plugins()] == ["sqlite"]
     assert ENV_PREFIX == "FORKLIFT_"
     assert DEFAULT_HISTORY_TABLE == "forklift_schema_history"

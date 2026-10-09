@@ -8,11 +8,13 @@ from dblift.db.plugins.mysql.quirks import MysqlQuirks
 from dblift.db.plugins.mysql.sqlalchemy_url import build_sqlalchemy_url
 from dblift.db.provider_registry import PluginInfo
 
+from .descriptor import DESCRIPTOR
+
 PLUGIN: PluginInfo = PluginInfo(
-    name="mysql",
+    name=DESCRIPTOR.name,
     version="1.0.0",
     description="MySQL database provider",
-    dialects=["mysql"],
+    dialects=list(DESCRIPTOR.dialects),
     provider_class=MySqlProvider,
     transport="native",
     quirks_class=MysqlQuirks,

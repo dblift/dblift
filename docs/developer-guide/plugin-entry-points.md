@@ -43,6 +43,21 @@ snowflake = "dblift.db.plugins.snowflake.plugin:PLUGIN"
 The plugin supplies provider classes, URL builders, optional quirks/config
 classes, native driver metadata, and dialect aliases.
 
+### `dblift.provider_descriptors`
+
+An optional, additive entry point returns a frozen `PluginDescriptor` with
+`name`, `dialects` and `factory`. The factory is the `module:attribute`
+reference to the same `PluginInfo` exposed by `dblift.providers`. Importing
+the descriptor must not load a provider class or optional database driver.
+The legacy group remains available, including for plugins that do not supply
+a descriptor. Provider lookup still uses the legacy group until deferred
+resolution is introduced separately.
+
+```toml
+[project.entry-points."dblift.provider_descriptors"]
+postgresql = "dblift.db.plugins.postgresql.descriptor:DESCRIPTOR"
+```
+
 An installed provider package can also expose a dialect alias while reusing
 an existing provider implementation. The test fixture under
 `tests/fixtures/lightweight_extension/` registers `fixture_sqlite` this way;

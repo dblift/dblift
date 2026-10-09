@@ -18,7 +18,7 @@ python scripts/qualify_sqlite_fork.py --revision "$(git rev-parse HEAD)" --outpu
 
 The script archives that revision into a temporary directory, keeps SQLite and
 the common files under `dblift/db/plugins/`, removes the other provider
-directories and entry points in that copy, then builds
+directories and both provider entry-point groups in that copy, then builds
 `dblift-sqlite-fork-fixture` with the `dblift-fork-fixture` executable. It
 retains the Python `dblift` namespace and all shared dependencies. The JSON
 result records the wheel hash, removed plugin directories, installed origin,
@@ -178,8 +178,9 @@ once they are gone; regenerate it with the command in section 2.
 ## 4. Keeping only some engines
 
 Each engine is self-contained under `dblift/db/plugins/<engine>/` and
-registered in `pyproject.toml` under `dblift.providers` with a matching
-extra. To drop an engine, delete its directory, its entry-point line, its
+registered in `pyproject.toml` under `dblift.providers` and
+`dblift.provider_descriptors`, with a matching extra. To drop an engine,
+delete its directory, its entry-point lines in both groups, its
 extra (and its line in the `all` extra), and its tests: a directory
 `tests/unit/db/plugins/<engine>/` where one exists, otherwise the engine's
 entries in the parametrised tables of
