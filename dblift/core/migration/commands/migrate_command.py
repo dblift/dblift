@@ -111,9 +111,10 @@ class MigrateCommand(BaseCommand):
         Returns:
             Tuple of (validation_success, use_recursive, use_additional_dirs)
         """
-        # Canonical preflight (ADR-0011): connect → ensure history (skipped
-        # in dry-run to preserve byte-identical DB) → populate.
-        self._run_preflight(result, ensure_history=True, dry_run=dry_run)
+        # Connect before reading state. Execution mode delays history creation
+        # until selected SQL is classified; dry-run leaves the database untouched.
+        defer_history = not dry_run and not mark_as_executed and not self._capture_objects
+        self._run_preflight(result, ensure_history=not defer_history, dry_run=dry_run)
 
         # Log command execution with filters and connection info
         self._log_command_header_update(
@@ -166,7 +167,16 @@ class MigrateCommand(BaseCommand):
                 return result
 
         dialect = dialect_of(self.config)
-        analysed = analyse_pending_scripts(pending_migrations, dialect, self.log) if dialect else {}
+        analysed = (
+            analyse_pending_scripts(
+                pending_migrations,
+                dialect,
+                self.log,
+                enabled=self._capture_objects,
+            )
+            if dialect
+            else {}
+        )
 
         self.log.info("DRY RUN: Would execute the following migrations:")
         for migration in pending_migrations:
@@ -791,6 +801,40 @@ class MigrateCommand(BaseCommand):
                 exclude_versions=exclude_versions,
             )
             self._enforce_strict_ordering(pending_migrations, current_version, strict_mode)
+
+            if not dry_run and not mark_as_executed and not self._capture_objects:
+                if pending_migrations:
+                    events = [
+                        "beforeMigrate",
+                        "afterMigrate",
+                        "afterMigrateError",
+                        "beforeEach",
+                        "afterEach",
+                        "beforeEachMigrate",
+                        "afterEachMigrate",
+                    ]
+                    if any(
+                        getattr(m.type, "value", m.type) in VERSIONED_SCRIPT_TYPES
+                        for m in pending_migrations
+                    ):
+                        events.extend(("beforeVersioned", "afterVersioned"))
+                    if any(m.type == MigrationType.REPEATABLE for m in pending_migrations):
+                        events.extend(("beforeRepeatable", "afterRepeatable"))
+                    callback_snapshot = self.state_manager.new_callback_snapshot()
+                    callbacks = [
+                        callback
+                        for event in events
+                        for callback in self.state_manager.get_callbacks_by_event(
+                            scripts_dir,
+                            event,
+                            read_snapshot=callback_snapshot,
+                            recursive=use_recursive,
+                            additional_dirs=use_additional_dirs,
+                            dir_recursive_map=dir_recursive_map,
+                        )
+                    ]
+                    self._preflight_execution_sql(pending_migrations + callbacks)
+                self._run_preflight(result, ensure_history=True)
 
             if getattr(self, "validator", None) is None:
                 validation_success, validation_errors, validation_time = True, None, 0.0

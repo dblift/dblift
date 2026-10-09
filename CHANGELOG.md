@@ -19,6 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Python clients can opt into `analysis_mode="execution"` when running migrations without
+  SQL object analysis. SQL execution, history, validation, callbacks, and undo remain
+  available; reports label object analysis as disabled. The default remains `"full"`.
 - **`info` and `migrate --dry-run` say what each pending SQL script does.** Every migration row of `info --format json` and `migrate --dry-run --format json` carries `analysis` (`null` for applied rows and Python scripts): the script's statements with their operation, kind and the objects they name, read by the database dialect's parser without connecting, and `cautions` for statements that destroy data (DROP TABLE, VIEW or SCHEMA, TRUNCATE, DROP COLUMN, UPDATE or DELETE without WHERE) or change rows (UPDATE, DELETE, MERGE). The recorded `info --format json` contract gains the `analysis` key. The SQL is still not checked for validity.
 - Extensions can declare the configuration sections they own (`dblift.config_keys` entry point); `validate-config` no longer reports them as unknown.
 - **`SqlConstraint.rely`.** Optional flag recording whether the optimizer may rely on a constraint (`RELY` / `NORELY`, as in Snowflake and Oracle). `None` (not reported) and `False` compare equal, matching the engine default `NORELY`; the key is serialised only when set, so existing model files are unchanged.

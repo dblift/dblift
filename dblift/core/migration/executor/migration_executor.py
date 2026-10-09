@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional
 
 if TYPE_CHECKING:
     from dblift.core.migration.commands.base_command import BaseCommandContext
@@ -49,7 +49,13 @@ class MigrationExecutor:
     across multiple database operations.
     """
 
-    def __init__(self, provider: "BaseProvider", config: DbliftConfig, log: Log):
+    def __init__(
+        self,
+        provider: "BaseProvider",
+        config: DbliftConfig,
+        log: Log,
+        analysis_mode: Literal["full", "execution"] = "full",
+    ):
         """Initialize the executor with injected provider.
 
         Args:
@@ -61,6 +67,9 @@ class MigrationExecutor:
             raise ValueError("provider is required (must be injected via dependency injection)")
         if config is None or log is None:
             raise ValueError("config and log are required")
+        if analysis_mode not in ("full", "execution"):
+            raise ValueError("analysis_mode must be 'full' or 'execution'")
+        self.analysis_mode = analysis_mode
 
         # Store injected provider
         self.provider = provider
@@ -130,9 +139,9 @@ class MigrationExecutor:
         self.migration_ui = self.ui  # Alias for backward compatibility/consistency
 
         # Initialize SQL analyzer and execution engine
-        self.sql_analyzer = SqlAnalyzer(dialect=config.database.type)
+        self.sql_analyzer = SqlAnalyzer(dialect=config.database.type, analysis_mode=analysis_mode)
         # In-process statement journal is always on (not user-configurable).
-        self.journal = MigrationJournal(enabled=True)
+        self.journal = MigrationJournal(enabled=True, capture_objects=analysis_mode == "full")
 
         # Initialize SqlExecutionService for journal support
         from ..sql.sql_execution_service import SqlExecutionService

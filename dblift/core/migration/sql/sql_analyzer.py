@@ -2,7 +2,7 @@
 
 import logging
 import re
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Literal, Optional, Tuple
 
 from dblift.core.exceptions import ParserNotAvailableError
 from dblift.core.logger import Log
@@ -24,6 +24,7 @@ from dblift.db.dml_analysis import (
     DEFAULT_QUOTE_PAIRS,
     _find_top_level_keyword,
     cte_outer_statement_type,
+    scan_cte_outer_statement_type,
     strip_leading_sql_comments,
 )
 from dblift.db.provider_registry import ProviderRegistry
@@ -331,6 +332,7 @@ class SqlAnalyzer:
         logger: Optional[Log] = None,
         parser_factory: Any = None,
         statement_splitter: Optional[StatementSplitter] = None,
+        analysis_mode: Literal["full", "execution"] = "full",
     ):
         """Initialize SQL analyzer.
 
@@ -341,6 +343,7 @@ class SqlAnalyzer:
             parser_factory: Optional parser factory to use
         """
         self.dialect = dialect.lower()
+        self.analysis_mode = analysis_mode
         self.logger = logger or logging.getLogger(__name__)
 
         # Statement execution only needs regex/tokenizer splitting. Rich parser
@@ -403,6 +406,21 @@ class SqlAnalyzer:
 
         if not sql:
             return "UNKNOWN"
+
+        execution_sql = sql.lstrip("\ufeff").lstrip() if self.analysis_mode == "execution" else sql
+        if self.analysis_mode == "execution" and re.match(
+            r"WITH\b", strip_leading_sql_comments(execution_sql).lstrip(), flags=re.IGNORECASE
+        ):
+            outer = scan_cte_outer_statement_type(
+                execution_sql,
+                quote_pairs=ProviderRegistry.get_quirks(self.dialect).sql_scan_quote_pairs,
+                strict=True,
+            )
+            if outer is None:
+                raise ValueError(
+                    "Cannot classify WITH statement in execution mode; use analysis_mode='full'"
+                )
+            return "DML" if outer == "QUERY" and is_select_into(execution_sql) else outer
 
         # Starts like a query but returns no rows; checked ahead of the
         # dialect parsers, which classify by the leading keyword.

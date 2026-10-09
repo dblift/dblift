@@ -95,7 +95,9 @@ class SqlExecutionService:
     def prepare_analysis(self) -> None:
         """Prepare dependencies required by the active object-change journal."""
         if self._analysis_prepared or not (
-            self.journal and hasattr(self.journal, "record_object_changes")
+            self.journal
+            and getattr(self.journal, "capture_objects", True)
+            and hasattr(self.journal, "record_object_changes")
         ):
             return
 
@@ -195,10 +197,15 @@ class SqlExecutionService:
                     # Extract and record object changes for DDL and DML statements
                     # DDL: CREATE, ALTER, DROP, COMMENT, etc.
                     # DML: INSERT, UPDATE, DELETE (affect TABLE objects)
-                    if statement_type in (
-                        SqlStatementType.DDL.value,
-                        SqlStatementType.DML.value,
-                    ) and hasattr(self.journal, "record_object_changes"):
+                    if (
+                        statement_type
+                        in (
+                            SqlStatementType.DDL.value,
+                            SqlStatementType.DML.value,
+                        )
+                        and getattr(self.journal, "capture_objects", True)
+                        and hasattr(self.journal, "record_object_changes")
+                    ):
                         try:
                             objects_affected = []
 

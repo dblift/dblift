@@ -122,7 +122,22 @@ def _sqlglot() -> dict:
             )
         ]
     assert objects == []
-    return {"failure": failure, "tables_after_failure": objects}
+    (migrations / "R__seed.sql").write_text(
+        "INSERT INTO standard_client_target VALUES (9);\n", encoding="utf-8"
+    )
+    (migrations / "U1__create.sql").write_text(
+        "DROP TABLE standard_client_target;\n", encoding="utf-8"
+    )
+    with DBLiftClient.from_config(
+        standard_config, migrations_dir=migrations, logger=NullLog(), analysis_mode="execution"
+    ) as client:
+        migrated = client.migrate()
+        assert migrated.success, migrated.error_message
+        assert migrated.journal.capture_objects is False
+        assert client.provider.execute_query("SELECT * FROM standard_client_target") == [{"id": 9}]
+        assert client.validate().success
+        assert client.undo(target_version="0.0.0").success
+    return {"failure": failure, "tables_after_failure": objects, "execution_cycle": True}
 
 
 def main() -> None:
@@ -163,6 +178,7 @@ def main() -> None:
                 "low_level_v_u": profile == "sqlglot",
                 "standard_client_failed_before_mutation": profile == "sqlglot",
                 "standard_client_failure": sqlglot_evidence,
+                "execution_cycle": bool(sqlglot_evidence and sqlglot_evidence["execution_cycle"]),
             }
         )
     )
