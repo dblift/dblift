@@ -16,6 +16,7 @@ and are the same for every engine.
 from __future__ import annotations
 
 import atexit
+import os
 import threading
 import time
 import uuid
@@ -38,8 +39,15 @@ POLL_INTERVAL_SECONDS: float = 1.0
 #: cannot be told apart from a dead one sooner without risking a live run.
 LEGACY_LEASE_EXPIRY_SECONDS: float = 24 * 60 * 60
 
-# Leases still held, released at interpreter exit. Weak so a lease that is
-# garbage-collected unreleased is simply left to expire.
+#: Prefix of the owner token of a lease held without a heartbeat (its lock
+#: row lives on a connection no heartbeat can use). Such a row is never
+#: refreshed, so stores treat it like a row without an owner: reclaimable
+#: only after ``LEGACY_LEASE_EXPIRY_SECONDS``.
+UNREFRESHED_TOKEN_PREFIX = "unrefreshed-"
+
+# Leases still held, released at interpreter exit. A held lease with a
+# heartbeat stays referenced by its heartbeat thread until released, so it is
+# never collected; the set is weak only so it never keeps anything else alive.
 _HELD_LEASES: "weakref.WeakSet[LeaseLock]" = weakref.WeakSet()
 _atexit_lock = threading.Lock()
 _atexit_registered = False
@@ -56,9 +64,15 @@ def _busy_retry_delay() -> float:
 
 
 def _release_held_leases() -> None:
-    """Release every lease still held when the interpreter exits."""
+    """Release every lease this process still holds when the interpreter exits.
+
+    A forked child inherits its parent's leases but does not hold them: its
+    exit leaves them to the parent.
+    """
+    pid = os.getpid()
     for lease in list(_HELD_LEASES):
-        lease.release()
+        if lease.holder_pid == pid:
+            lease.release()
 
 
 def _register_atexit() -> None:
@@ -124,12 +138,16 @@ class LeaseLock:
     def __init__(
         self, store: LeaseStore, log: Optional[Log] = None, heartbeat: bool = True
     ) -> None:
-        """Wrap *store*; ``heartbeat=False`` for a store nobody else can reach
-        (a private in-memory database), where the lease can never be contended."""
+        """Wrap *store*; ``heartbeat=False`` when no heartbeat can reach the
+        lock row (it lives on a private in-memory database or on a caller's
+        connection). Such a lease's token carries ``UNREFRESHED_TOKEN_PREFIX``,
+        so its row is not mistaken for a dead lease after the short expiry."""
         self._store = store
         self.log: Log = log if log is not None else NullLog()
         self._heartbeat_enabled = heartbeat
         self.token: Optional[str] = None
+        #: Process that took the lease (a forked child does not hold it).
+        self.holder_pid: Optional[int] = None
         self._held = False
         self._lost = False
         self._stop: Optional[threading.Event] = None
@@ -151,7 +169,9 @@ class LeaseLock:
         first reaches the lock table just as it ends. A failed acquire closes
         the store.
         """
-        self.token = uuid.uuid4().hex
+        prefix = "" if self._heartbeat_enabled else UNREFRESHED_TOKEN_PREFIX
+        self.token = prefix + uuid.uuid4().hex
+        self.holder_pid = os.getpid()
         deadline = time.monotonic() + max(wait_timeout_seconds, 0)
         last_busy: Optional[float] = None
         first_attempt = True
@@ -262,6 +282,7 @@ __all__ = [
     "LEASE_EXPIRY_SECONDS",
     "LEGACY_LEASE_EXPIRY_SECONDS",
     "POLL_INTERVAL_SECONDS",
+    "UNREFRESHED_TOKEN_PREFIX",
     "LeaseBusy",
     "LeaseLock",
     "LeaseStore",

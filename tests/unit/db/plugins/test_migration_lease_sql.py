@@ -265,6 +265,14 @@ def _lock_writes(log: list) -> list:
     ]
 
 
+def _assert_where_owned(sql: str) -> None:
+    """The statement's WHERE clause requires the caller's owner token."""
+    where = _norm(sql).split(" where ", 1)[-1]
+    assert " where " in f" {_norm(sql)} ", sql
+    assert re.search(r"owner_token\s*=\s*\?", where), sql
+    assert " or " not in f" {where} ", sql
+
+
 def _no_client_timestamps(log: list) -> None:
     for sql, params in log:
         for value in _values(params):
@@ -377,7 +385,7 @@ def test_release_only_touches_the_callers_own_lease(engine):
     assert releases, log[before:]
     sql, _ = releases[-1]
     assert _verb(sql) == ("update" if engine.seeded_row else "delete"), sql
-    assert "owner_token" in _norm(sql), sql
+    _assert_where_owned(sql)
     unowned = [
         sql
         for sql, params in _lock_writes(log[before:])
@@ -403,7 +411,7 @@ def test_heartbeat_refreshes_only_the_callers_lease_with_the_server_clock(engine
         assert beats, log[before:]
         for sql in beats:
             assert _uses_clock(engine, sql), sql
-            assert "owner_token" in _norm(sql), sql
+            _assert_where_owned(sql)
     finally:
         provider.release_migration_lock(engine.schema)
 
@@ -460,5 +468,37 @@ def test_lease_lost_is_reported_to_the_caller(engine, monkeypatch):
         state["taken_over"] = True
         time.sleep(0.45)
         assert provider.migration_lock_lost() is True
+    finally:
+        provider.release_migration_lock(engine.schema)
+
+
+_BUSY_ERRORS = {
+    "cockroachdb": "restart transaction: TransactionRetryWithProtoRefreshError (SQLSTATE 40001)",
+    "duckdb": "TransactionContext Error: Conflict on tuple deletion!",
+    "db2": "SQL0911N The current transaction has been rolled back because of a deadlock "
+    'or timeout. Reason code "68". SQLSTATE=40001',
+    "oracle": "ORA-00054: resource busy and acquire with NOWAIT specified or timeout expired",
+    "snowflake": "000625 (57014): Statement was aborted because the lock timeout was exceeded",
+}
+
+
+@pytest.mark.parametrize("engine", ENGINES, ids=IDS)
+def test_write_conflict_on_the_lock_table_is_contention_not_an_error(engine):
+    """A lock-table write that collides with another live writer (conflict,
+    serialization retry, lock wait timeout) means the lock is busy: keep
+    waiting rather than failing the migration."""
+    state = {"failed": False}
+
+    def handler(sql, params):
+        if _is_lock_table(sql) and _tokens(params) and not state["failed"]:
+            if _verb(sql) in ("insert", "update"):
+                state["failed"] = True
+                raise RuntimeError(_BUSY_ERRORS[engine.name])
+        return _Result(rowcount=1)
+
+    provider, log, acquired = _acquire(engine, handler)
+    try:
+        assert state["failed"] is True
+        assert acquired is True
     finally:
         provider.release_migration_lock(engine.schema)

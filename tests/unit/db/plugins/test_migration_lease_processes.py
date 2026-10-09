@@ -256,3 +256,107 @@ def test_stale_duckdb_holder_cannot_release_the_lease_that_replaced_it(tmp_path)
     finally:
         successor.close()
         stale.close()
+
+
+@pytest.mark.parametrize("journal", ["delete", "wal"])
+def test_sqlite_read_first_migrations_are_not_failed_by_their_own_heartbeat(tmp_path, journal):
+    """A migration transaction that reads before it writes must not lose its
+    write to the holder's own heartbeat. With a deferred ``BEGIN`` SQLite
+    refuses the read-to-write upgrade at once (``database is locked``, no
+    busy wait) while the heartbeat holds the write lock, and in WAL mode the
+    heartbeat's commit invalidates the transaction's read snapshot."""
+    config, db_file = _project(tmp_path, "sqlite")
+    migrations = tmp_path / "migrations"
+    (migrations / "V1__create_t1.sql").unlink()
+    with sqlite3.connect(db_file) as conn:
+        conn.execute(f"PRAGMA journal_mode={journal}")
+        conn.execute("CREATE TABLE seed (x INTEGER)")
+        conn.execute("INSERT INTO seed VALUES (1)")
+    count = 8
+    slow_read = (
+        "SELECT COUNT(*) FROM seed, (WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL "
+        "SELECT x + 1 FROM c WHERE x < 3000000) SELECT x FROM c);\n"
+    )
+    for i in range(1, count + 1):
+        (migrations / f"V{i}__read_then_write.sql").write_text(
+            f"{slow_read}CREATE TABLE r{i} (id INTEGER);\n"
+        )
+
+    # Heartbeat every 0.2 s: it fires inside most read phases.
+    result = subprocess.run(
+        [sys.executable, "-c", _MIGRATE, "0.6", str(config)],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        timeout=100,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    with sqlite3.connect(db_file) as conn:
+        applied = conn.execute(
+            "SELECT COUNT(*) FROM dblift_schema_history WHERE success = 1"
+        ).fetchone()[0]
+    assert applied == count
+
+
+def test_forked_child_exiting_normally_keeps_the_parents_lock(tmp_path):
+    """A child forked while the parent holds the lock inherits the lease
+    object; its interpreter exit must not release the parent's lease."""
+    from dblift.api.client import DBLiftClient
+    from dblift.db.plugins import lease_lock
+
+    config, db_file = _project(tmp_path, "sqlite")
+    client = DBLiftClient.from_config_file(str(config))
+    schema = client.config.database.schema
+    try:
+        assert client.provider.acquire_migration_lock(schema, wait_timeout_seconds=2) is True
+        pid = os.fork()
+        if pid == 0:  # child: run the lease's exit hook as a normal exit would
+            try:
+                lease_lock._release_held_leases()
+            finally:
+                os._exit(0)
+        os.waitpid(pid, 0)
+        with sqlite3.connect(db_file) as conn:
+            rows = conn.execute("SELECT COUNT(*) FROM dblift_migration_lock").fetchone()[0]
+        assert rows == 1
+        assert client.provider.release_migration_lock(schema) is True
+    finally:
+        client.close()
+
+
+def test_caller_committed_lock_row_without_heartbeat_is_not_stolen(tmp_path, monkeypatch):
+    """With ``from_sqlalchemy(connection=...)`` the lock row lives on the
+    caller's connection, where no heartbeat can run. If the caller commits
+    it, the row must not look like a dead lease after the short expiry."""
+    pytest.importorskip("duckdb_engine")
+    from sqlalchemy import create_engine
+
+    from dblift.api.client import DBLiftClient
+
+    if importlib.util.find_spec("dblift.db.plugins.lease_lock") is not None:
+        monkeypatch.setattr("dblift.db.plugins.lease_lock.LEASE_EXPIRY_SECONDS", 0.5)
+        monkeypatch.setattr("dblift.db.plugins.lease_lock.POLL_INTERVAL_SECONDS", 0.1)
+    db_file = tmp_path / "app.duckdb"
+    (tmp_path / "migrations").mkdir()
+    caller_engine = create_engine(f"duckdb:///{db_file}")
+    caller_conn = caller_engine.connect()
+    holder = DBLiftClient.from_sqlalchemy(
+        migrations_dir=str(tmp_path / "migrations"), connection=caller_conn
+    )
+    contender = DBLiftClient.from_sqlalchemy(
+        create_engine(f"duckdb:///{db_file}"), migrations_dir=str(tmp_path / "migrations")
+    )
+    schema = holder.config.database.schema
+    try:
+        assert holder.provider.acquire_migration_lock(schema, wait_timeout_seconds=2) is True
+        caller_conn.commit()
+        time.sleep(1.5)
+
+        assert contender.provider.acquire_migration_lock(schema, wait_timeout_seconds=2) is False
+        assert holder.provider.release_migration_lock(schema) is True
+    finally:
+        contender.close()
+        holder.close()
+        caller_conn.close()

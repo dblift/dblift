@@ -47,3 +47,16 @@ def test_held_lease_runs_every_migration() -> None:
     executed = [call.args[0].version for call in cmd.execution_engine.execute_migration.mock_calls]
     assert executed == ["1", "2"]
     assert result.error_message is None
+
+
+def test_lost_lease_is_not_reported_as_released() -> None:
+    cmd = _cmd([_versioned("1"), _versioned("2")], applied_after_lock=[])
+    cmd.provider.migration_lock_lost.side_effect = [False, True, True]
+    cmd.provider.release_migration_lock.return_value = False
+
+    _run(cmd)
+
+    debug = [str(call.args[0]) for call in cmd.log.debug.call_args_list if call.args]
+    assert "Migration lock released successfully" not in debug
+    warnings = [str(call.args[0]) for call in cmd.log.warning.call_args_list if call.args]
+    assert any("lock" in w.lower() for w in warnings), warnings

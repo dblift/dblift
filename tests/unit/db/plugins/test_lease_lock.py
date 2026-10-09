@@ -280,3 +280,23 @@ def test_lease_installs_no_signal_handlers():
 
     assert during == before
     assert after == before
+
+
+def test_holder_renews_as_soon_as_its_busy_store_frees_up():
+    """SQLite: the holder's own long write transaction blocks its heartbeat
+    past the expiry, and a waiter that was blocked by the same transaction
+    reaches the lock only when it ends, without having seen the store busy.
+    The holder must renew before that waiter is allowed to reclaim."""
+    slot = _slot()
+    holder = _lock(slot)
+    assert holder.acquire(wait_timeout_seconds=1) is True
+    slot.busy_tokens.add(holder.token)
+    time.sleep(EXPIRY * 1.5)  # the stored timestamp is now stale
+
+    slot.busy_tokens.discard(holder.token)
+    waiter = _lock(slot)
+    assert waiter.acquire(wait_timeout_seconds=EXPIRY) is False
+
+    assert slot.owner == holder.token
+    assert holder.lost is False
+    assert holder.release() is True

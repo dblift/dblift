@@ -47,10 +47,11 @@ class _MongoLeaseStore(LeaseStore):
 
         The delete matches the timestamp read, so when two processes see the
         same expired lease only one deletes it; the other finds a fresh one.
+        An absent document reclaims nothing (``False``).
         """
         existing = self._collection().find_one({"_id": self._document_id})
         if existing is None:
-            return True
+            return False
         if not MongoDbLockingManager._is_expired(existing, expiry_seconds):
             return False
         result = self._collection().delete_one(

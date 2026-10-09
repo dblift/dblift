@@ -96,6 +96,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     migrates the same Snowflake schema should run a version with the lease.
   - `DBLiftClient.close()`, leaving a `with DBLiftClient(...)` block and interpreter exit
     release a migration lock the client still holds.
+  - SQLite migration transactions now start with `BEGIN IMMEDIATE`, so a migration that
+    reads before it writes is not refused its write by the lock's own heartbeat.
 
 - `info` reports **Missing** for a migration that was undone, applied again, and whose
   script has since left the migration folder (for example after switching to a branch

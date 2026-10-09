@@ -31,7 +31,12 @@ from typing import Callable, Iterable, List, Mapping, Optional, Protocol, Sequen
 from sqlalchemy.engine import Connection
 
 from dblift.db.plugins import lease_lock
-from dblift.db.plugins.lease_lock import LeaseBusy, LeaseLock, LeaseStore
+from dblift.db.plugins.lease_lock import (
+    UNREFRESHED_TOKEN_PREFIX,
+    LeaseBusy,
+    LeaseLock,
+    LeaseStore,
+)
 from dblift.db.sqlalchemy_provider import SqlAlchemyProvider
 
 #: Column holding the token of the process that holds the lease. Nullable: a
@@ -254,33 +259,35 @@ class SqlLeaseStore(LeaseStore):
     def reclaim_expired(self, expiry_seconds: float) -> bool:
         """Free a lease whose timestamp is older than *expiry_seconds* on the server clock.
 
-        A row without an owner was written by a dblift version that never
-        refreshes it; it is freed only after the legacy expiry, measured on
-        the clock it was written with.
+        A row that is never refreshed is freed only after the legacy expiry:
+        a row without an owner (written by a dblift version without the
+        lease, measured on the clock it was written with) and a lease held
+        without a heartbeat (``UNREFRESHED_TOKEN_PREFIX``, server UTC clock).
         """
         d = self.dialect
-        expired = (
-            f"{d.timestamp_column} < "
-            f"{d.seconds_before(d.now_utc, seconds_literal(expiry_seconds))}"
-        )
-        if d.seeded_row:
-            freed = self._run(
-                f"UPDATE {d.table} SET {d.owner_column} = NULL "
-                f"WHERE {d.name_column} = ? AND {d.owner_column} IS NOT NULL AND {expired}",
-                [d.lock_name],
-            )
-            return freed > 0
-        condition = f"({d.owner_column} IS NOT NULL AND {expired})"
+        legacy_age = seconds_literal(lease_lock.LEGACY_LEASE_EXPIRY_SECONDS)
+        prefix = f"'{UNREFRESHED_TOKEN_PREFIX}%'"
+        unrefreshed = f"{d.owner_column} LIKE {prefix}"
+        conditions = [
+            f"({d.owner_column} NOT LIKE {prefix} AND {d.timestamp_column} < "
+            f"{d.seconds_before(d.now_utc, seconds_literal(expiry_seconds))})",
+            f"({unrefreshed} AND {d.timestamp_column} < "
+            f"{d.seconds_before(d.now_utc, legacy_age)})",
+        ]
         if d.legacy_now is not None:
-            legacy_age = seconds_literal(lease_lock.LEGACY_LEASE_EXPIRY_SECONDS)
-            condition = (
-                f"({condition} OR ({d.owner_column} IS NULL AND {d.timestamp_column} < "
-                f"{d.seconds_before(d.legacy_now, legacy_age)}))"
+            conditions.append(
+                f"({d.owner_column} IS NULL AND {d.timestamp_column} < "
+                f"{d.seconds_before(d.legacy_now, legacy_age)})"
             )
-        freed = self._run(
-            f"DELETE FROM {d.table} WHERE {d.name_column} = ? AND {condition}", [d.lock_name]
-        )
-        return freed > 0
+        condition = f"({' OR '.join(conditions)})"
+        if d.seeded_row:
+            sql = (
+                f"UPDATE {d.table} SET {d.owner_column} = NULL "
+                f"WHERE {d.name_column} = ? AND {condition}"
+            )
+        else:
+            sql = f"DELETE FROM {d.table} WHERE {d.name_column} = ? AND {condition}"
+        return self._run(sql, [d.lock_name]) > 0
 
     def refresh(self, token: str) -> bool:
         """Move the caller's lease timestamp to the server's current time."""
@@ -373,10 +380,13 @@ class SqlLeaseLockingProvider(SqlAlchemyProvider):
 
         True for a private (in-memory) database, which cannot have
         contenders on another connection, and for a caller's connection
-        (``from_sqlalchemy(connection=...)``), whose open transaction holds
-        the lock table it creates. Another connection would not see that
-        table; the lock row is kept on the provider's connection, with no
-        heartbeat, as part of the caller's transaction.
+        (``from_sqlalchemy(connection=...)``), which does not commit what
+        dblift runs on it: another connection would not see the lock table
+        created there. The lock row is written through that connection and
+        committed or rolled back with the caller's work (the migration engine
+        rolls the connection back before each migration). No heartbeat can
+        use it, so the lease is held without one; a committed row of such a
+        lease is reclaimable only after the legacy expiry.
         """
         return self._migration_lease_is_private() or bool(
             getattr(self, "_external_connection", False)

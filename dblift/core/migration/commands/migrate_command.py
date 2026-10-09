@@ -1026,8 +1026,16 @@ class MigrateCommand(BaseCommand):
                     # Always release the migration lock if it was acquired
                     if lock_acquired:
                         try:
-                            self.provider.release_migration_lock(self.config.database.schema)
-                            self.log.debug("Migration lock released successfully")
+                            released = self.provider.release_migration_lock(
+                                self.config.database.schema
+                            )
+                            if released is False:
+                                self.log.warning(
+                                    "The migration lock was no longer held by this run "
+                                    "(lost or already released); nothing to release"
+                                )
+                            else:
+                                self.log.debug("Migration lock released successfully")
                         except Exception as release_e:
                             self.log.warning(f"Could not release migration lock: {release_e}")
 
