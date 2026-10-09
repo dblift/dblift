@@ -9,21 +9,6 @@ from typing import Any, Dict, Optional
 from dblift.core.sql_model.base import SqlObject, SqlObjectType
 
 
-def _quirks_for(dialect: Optional[str]) -> Any:
-    """Resolve quirks for *dialect* via the registry.
-
-    Trigger DDL paths dispatch via plugin Quirks instead of inline
-    ``if dialect in {...}`` branches.
-    """
-    from dblift.db.base_quirks import BaseQuirks
-    from dblift.db.provider_registry import ProviderRegistry
-
-    canonical = ProviderRegistry.canonical_dialect_name(dialect or "")
-    if canonical:
-        return ProviderRegistry.get_quirks(canonical)
-    return BaseQuirks()
-
-
 class Trigger(SqlObject):
     """Represents a database trigger."""
 
@@ -243,14 +228,3 @@ class Trigger(SqlObject):
             "follows_trigger": self.follows_trigger,
             "precedes_trigger": self.precedes_trigger,
         }
-
-    def _format_body(self, body: str) -> str:
-        """Normalize trigger body text.
-
-        BEGIN/END / DECLARE wrapping is handled by the
-        per-dialect ``ModelQuirks.wrap_trigger_body`` hook. Default
-        passes the body through unchanged; Oracle wraps it in a
-        valid PL/SQL block.
-        """
-        wrapped: str = _quirks_for(self.dialect).wrap_trigger_body(body or "")
-        return wrapped
