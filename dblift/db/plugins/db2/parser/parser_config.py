@@ -8,6 +8,15 @@ import re
 from typing import Any, Dict, List, Optional, Pattern, Set
 
 from dblift.core.sql_parser.dialects.base_config import DialectConfig
+from dblift.core.sql_parser.dialects.identifier_tokens import (
+    DOUBLE_QUOTED_IDENTIFIER,
+    strip_identifier_quotes,
+)
+
+# A double-quoted identifier, captured together with its quotes so that
+# normalize_identifier keeps its exact text instead of folding it like a
+# bare name. Interpolated into the object patterns below.
+_QUOTED = f"({DOUBLE_QUOTED_IDENTIFIER})"
 
 
 def _is_identifier_char(char: str) -> bool:
@@ -326,11 +335,11 @@ class DB2Config(DialectConfig):
         """Compile DB2 object extraction patterns."""
         return {
             "table": re.compile(
-                r"\b(?:CREATE|DROP|ALTER)\s+(?:GLOBAL\s+TEMPORARY\s+|AUXILIARY\s+)?TABLE\s+(?:IF\s+(?:NOT\s+)?EXISTS\s+)?(?:(?:\"([^\"]+)\")|([a-zA-Z0-9_$#@]+))(?:\.(?:(?:\"([^\"]+)\")|([a-zA-Z0-9_$#@]+)))?",
+                rf"\b(?:CREATE|DROP|ALTER)\s+(?:GLOBAL\s+TEMPORARY\s+|AUXILIARY\s+)?TABLE\s+(?:IF\s+(?:NOT\s+)?EXISTS\s+)?(?:{_QUOTED}|([a-zA-Z0-9_$#@]+))(?:\.(?:{_QUOTED}|([a-zA-Z0-9_$#@]+)))?",
                 re.IGNORECASE,
             ),
             "view": re.compile(
-                r"\b(?:CREATE|DROP|ALTER)\s+(?:OR\s+REPLACE\s+)?VIEW\s+(?:IF\s+(?:NOT\s+)?EXISTS\s+)?(?:(?:\"([^\"]+)\")|([a-zA-Z0-9_$#@]+))(?:\.(?:(?:\"([^\"]+)\")|([a-zA-Z0-9_$#@]+)))?",
+                rf"\b(?:CREATE|DROP|ALTER)\s+(?:OR\s+REPLACE\s+)?VIEW\s+(?:IF\s+(?:NOT\s+)?EXISTS\s+)?(?:{_QUOTED}|([a-zA-Z0-9_$#@]+))(?:\.(?:{_QUOTED}|([a-zA-Z0-9_$#@]+)))?",
                 re.IGNORECASE,
             ),
             # A Db2 index is independently schema-qualified
@@ -341,68 +350,68 @@ class DB2Config(DialectConfig):
             # while the ON-target is matched but never captured.
             "index": re.compile(
                 r"\b(?:CREATE|DROP|ALTER)\s+(?:UNIQUE\s+)?INDEX\s+(?:IF\s+(?:NOT\s+)?EXISTS\s+)?"
-                r"(?:(?:\"([^\"]+)\")|([a-zA-Z0-9_$#@]+))"
-                r"(?:\.(?:(?:\"([^\"]+)\")|([a-zA-Z0-9_$#@]+)))?"
+                rf"(?:{_QUOTED}|([a-zA-Z0-9_$#@]+))"
+                rf"(?:\.(?:{_QUOTED}|([a-zA-Z0-9_$#@]+)))?"
                 r"(?:\s+ON\s+(?:\"[^\"]+\"|[a-zA-Z0-9_$#@]+)(?:\.(?:\"[^\"]+\"|[a-zA-Z0-9_$#@]+))?)?",
                 re.IGNORECASE,
             ),
             "sequence": re.compile(
-                r"\b(?:CREATE|DROP|ALTER)\s+(?:OR\s+REPLACE\s+)?SEQUENCE\s+(?:IF\s+(?:NOT\s+)?EXISTS\s+)?(?:(?:\"([^\"]+)\")|([a-zA-Z0-9_$#@]+))(?:\.(?:(?:\"([^\"]+)\")|([a-zA-Z0-9_$#@]+)))?",
+                rf"\b(?:CREATE|DROP|ALTER)\s+(?:OR\s+REPLACE\s+)?SEQUENCE\s+(?:IF\s+(?:NOT\s+)?EXISTS\s+)?(?:{_QUOTED}|([a-zA-Z0-9_$#@]+))(?:\.(?:{_QUOTED}|([a-zA-Z0-9_$#@]+)))?",
                 re.IGNORECASE,
             ),
             "procedure": re.compile(
-                r"\b(?:CREATE|DROP|ALTER)\s+(?:OR\s+REPLACE\s+)?PROCEDURE\s+(?:IF\s+(?:NOT\s+)?EXISTS\s+)?(?:(?:\"([^\"]+)\")|([a-zA-Z0-9_$#@]+))(?:\.(?:(?:\"([^\"]+)\")|([a-zA-Z0-9_$#@]+)))?",
+                rf"\b(?:CREATE|DROP|ALTER)\s+(?:OR\s+REPLACE\s+)?PROCEDURE\s+(?:IF\s+(?:NOT\s+)?EXISTS\s+)?(?:{_QUOTED}|([a-zA-Z0-9_$#@]+))(?:\.(?:{_QUOTED}|([a-zA-Z0-9_$#@]+)))?",
                 re.IGNORECASE,
             ),
             "function": re.compile(
-                r"\b(?:CREATE|DROP|ALTER)\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+(?:IF\s+(?:NOT\s+)?EXISTS\s+)?(?:(?:\"([^\"]+)\")|([a-zA-Z0-9_$#@]+))(?:\.(?:(?:\"([^\"]+)\")|([a-zA-Z0-9_$#@]+)))?",
+                rf"\b(?:CREATE|DROP|ALTER)\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+(?:IF\s+(?:NOT\s+)?EXISTS\s+)?(?:{_QUOTED}|([a-zA-Z0-9_$#@]+))(?:\.(?:{_QUOTED}|([a-zA-Z0-9_$#@]+)))?",
                 re.IGNORECASE,
             ),
             "trigger": re.compile(
-                r"\b(?:CREATE|DROP|ALTER)\s+(?:OR\s+REPLACE\s+)?TRIGGER\s+(?:IF\s+(?:NOT\s+)?EXISTS\s+)?(?:(?:\"([^\"]+)\")|([a-zA-Z0-9_$#@]+))(?:\.(?:(?:\"([^\"]+)\")|([a-zA-Z0-9_$#@]+)))?",
+                rf"\b(?:CREATE|DROP|ALTER)\s+(?:OR\s+REPLACE\s+)?TRIGGER\s+(?:IF\s+(?:NOT\s+)?EXISTS\s+)?(?:{_QUOTED}|([a-zA-Z0-9_$#@]+))(?:\.(?:{_QUOTED}|([a-zA-Z0-9_$#@]+)))?",
                 re.IGNORECASE,
             ),
             "database": re.compile(
-                r"\b(?:CREATE|DROP|ALTER)\s+DATABASE\s+(?:IF\s+(?:NOT\s+)?EXISTS\s+)?(?:(?:\"([^\"]+)\")|([a-zA-Z0-9_$#@]+))",
+                rf"\b(?:CREATE|DROP|ALTER)\s+DATABASE\s+(?:IF\s+(?:NOT\s+)?EXISTS\s+)?(?:{_QUOTED}|([a-zA-Z0-9_$#@]+))",
                 re.IGNORECASE,
             ),
             "tablespace": re.compile(
-                r"\b(?:CREATE|DROP|ALTER)\s+(?:LOB\s+)?TABLESPACE\s+(?:(?:\"([^\"]+)\")|([a-zA-Z0-9_$#@]+))",
+                rf"\b(?:CREATE|DROP|ALTER)\s+(?:LOB\s+)?TABLESPACE\s+(?:{_QUOTED}|([a-zA-Z0-9_$#@]+))",
                 re.IGNORECASE,
             ),
             "stogroup": re.compile(
-                r"\b(?:CREATE|DROP|ALTER)\s+STOGROUP\s+(?:(?:\"([^\"]+)\")|([a-zA-Z0-9_$#@]+))",
+                rf"\b(?:CREATE|DROP|ALTER)\s+STOGROUP\s+(?:{_QUOTED}|([a-zA-Z0-9_$#@]+))",
                 re.IGNORECASE,
             ),
             "alias": re.compile(
-                r"\b(?:CREATE|DROP)\s+ALIAS\s+(?:(?:\"([^\"]+)\")|([a-zA-Z0-9_$#@]+))(?:\.(?:(?:\"([^\"]+)\")|([a-zA-Z0-9_$#@]+)))?",
+                rf"\b(?:CREATE|DROP)\s+ALIAS\s+(?:{_QUOTED}|([a-zA-Z0-9_$#@]+))(?:\.(?:{_QUOTED}|([a-zA-Z0-9_$#@]+)))?",
                 re.IGNORECASE,
             ),
             "role": re.compile(
-                r"\b(?:CREATE|DROP)\s+ROLE\s+(?:(?:\"([^\"]+)\")|([a-zA-Z0-9_$#@]+))", re.IGNORECASE
+                rf"\b(?:CREATE|DROP)\s+ROLE\s+(?:{_QUOTED}|([a-zA-Z0-9_$#@]+))", re.IGNORECASE
             ),
             "mask": re.compile(
-                r"\b(?:CREATE|DROP|ALTER)\s+(?:OR\s+REPLACE\s+)?MASK\s+(?:(?:\"([^\"]+)\")|([a-zA-Z0-9_$#@]+))(?:\.(?:(?:\"([^\"]+)\")|([a-zA-Z0-9_$#@]+)))?",
+                rf"\b(?:CREATE|DROP|ALTER)\s+(?:OR\s+REPLACE\s+)?MASK\s+(?:{_QUOTED}|([a-zA-Z0-9_$#@]+))(?:\.(?:{_QUOTED}|([a-zA-Z0-9_$#@]+)))?",
                 re.IGNORECASE,
             ),
             "permission": re.compile(
-                r"\b(?:CREATE|DROP|ALTER)\s+(?:OR\s+REPLACE\s+)?PERMISSION\s+(?:(?:\"([^\"]+)\")|([a-zA-Z0-9_$#@]+))(?:\.(?:(?:\"([^\"]+)\")|([a-zA-Z0-9_$#@]+)))?",
+                rf"\b(?:CREATE|DROP|ALTER)\s+(?:OR\s+REPLACE\s+)?PERMISSION\s+(?:{_QUOTED}|([a-zA-Z0-9_$#@]+))(?:\.(?:{_QUOTED}|([a-zA-Z0-9_$#@]+)))?",
                 re.IGNORECASE,
             ),
             "trusted_context": re.compile(
-                r"\b(?:CREATE|DROP|ALTER)\s+TRUSTED\s+CONTEXT\s+(?:(?:\"([^\"]+)\")|([a-zA-Z0-9_$#@]+))",
+                rf"\b(?:CREATE|DROP|ALTER)\s+TRUSTED\s+CONTEXT\s+(?:{_QUOTED}|([a-zA-Z0-9_$#@]+))",
                 re.IGNORECASE,
             ),
             "type": re.compile(
-                r"\b(?:CREATE|DROP)\s+(?:OR\s+REPLACE\s+)?TYPE\s+(?:(?:\"([^\"]+)\")|([a-zA-Z0-9_$#@]+))(?:\.(?:(?:\"([^\"]+)\")|([a-zA-Z0-9_$#@]+)))?",
+                rf"\b(?:CREATE|DROP)\s+(?:OR\s+REPLACE\s+)?TYPE\s+(?:{_QUOTED}|([a-zA-Z0-9_$#@]+))(?:\.(?:{_QUOTED}|([a-zA-Z0-9_$#@]+)))?",
                 re.IGNORECASE,
             ),
             "variable": re.compile(
-                r"\b(?:CREATE|DROP)\s+(?:OR\s+REPLACE\s+)?VARIABLE\s+(?:(?:\"([^\"]+)\")|([a-zA-Z0-9_$#@]+))(?:\.(?:(?:\"([^\"]+)\")|([a-zA-Z0-9_$#@]+)))?",
+                rf"\b(?:CREATE|DROP)\s+(?:OR\s+REPLACE\s+)?VARIABLE\s+(?:{_QUOTED}|([a-zA-Z0-9_$#@]+))(?:\.(?:{_QUOTED}|([a-zA-Z0-9_$#@]+)))?",
                 re.IGNORECASE,
             ),
             "synonym": re.compile(
-                r"\b(?:CREATE|DROP)\s+(?:OR\s+REPLACE\s+)?SYNONYM\s+(?:(?:\"([^\"]+)\")|([a-zA-Z0-9_$#@]+))(?:\.(?:(?:\"([^\"]+)\")|([a-zA-Z0-9_$#@]+)))?",
+                rf"\b(?:CREATE|DROP)\s+(?:OR\s+REPLACE\s+)?SYNONYM\s+(?:{_QUOTED}|([a-zA-Z0-9_$#@]+))(?:\.(?:{_QUOTED}|([a-zA-Z0-9_$#@]+)))?",
                 re.IGNORECASE,
             ),
         }
@@ -523,7 +532,7 @@ class DB2Config(DialectConfig):
 
         # Remove quotes if present
         if identifier.startswith('"') and identifier.endswith('"'):
-            identifier = identifier[1:-1]
+            identifier = strip_identifier_quotes(identifier)
             is_quoted = True
 
         # DB2 identifiers are case-insensitive unless quoted
