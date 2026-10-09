@@ -150,3 +150,14 @@ def test_provider_close_releases_a_held_lease():
     provider.close()
 
     assert collection.docs == {}
+
+
+def test_reclaiming_an_absent_lease_reports_nothing_reclaimed():
+    """No lease document means nothing was reclaimed: a waiter must not log a
+    dead holder's takeover after an ordinary release."""
+    from dblift.db.plugins.mongodb.mongodb.locking_manager import _MongoLeaseStore
+
+    collection = _Collection()
+    store = _MongoLeaseStore(lambda: collection, "migration_lock")
+
+    assert store.reclaim_expired(30) is False

@@ -64,15 +64,13 @@ def _busy_retry_delay() -> float:
 
 
 def _release_held_leases() -> None:
-    """Release every lease this process still holds when the interpreter exits.
+    """Release every lease still held when the interpreter exits.
 
-    A forked child inherits its parent's leases but does not hold them: its
-    exit leaves them to the parent.
+    In a forked child, :meth:`LeaseLock.release` leaves the parent's leases
+    alone, so the child's exit does not release them.
     """
-    pid = os.getpid()
     for lease in list(_HELD_LEASES):
-        if lease.holder_pid == pid:
-            lease.release()
+        lease.release()
 
 
 def _register_atexit() -> None:
@@ -263,11 +261,17 @@ class LeaseLock:
 
         A lease that was reclaimed by another process is left in place and
         ``False`` is returned. The store is closed either way.
+
+        In a forked child the lease belongs to the parent: it is only marked
+        not held here, and ``False`` is returned without touching the store,
+        whose connection the child shares with the parent.
         """
         if not self._held:
             return False
         self._held = False
         _HELD_LEASES.discard(self)
+        if os.getpid() != self.holder_pid:
+            return False
         self._stop_heartbeat()
         try:
             return self._store.release(self.token or "")

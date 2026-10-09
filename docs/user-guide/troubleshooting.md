@@ -145,6 +145,9 @@ the holder refreshes it every 10 seconds, and a lock not refreshed for 30 second
 is taken over by the next `migrate`. A lock left by a killed process therefore
 clears itself within about 30 seconds. A row with no `owner_token`, written by a
 dblift version from before the lease, is taken over only once it is 24 hours old.
+The same 24 hours apply to a lock held without a heartbeat: on a database private
+to one connection (in memory), or taken through a caller-supplied connection with
+`from_sqlalchemy(connection=...)`.
 
 **Solution**:
 1. Confirm no active DBLift process is still running. A running holder keeps its

@@ -360,3 +360,29 @@ def test_caller_committed_lock_row_without_heartbeat_is_not_stolen(tmp_path, mon
         contender.close()
         holder.close()
         caller_conn.close()
+
+
+def test_forked_child_closing_its_client_keeps_the_parents_lock(tmp_path):
+    """A child forked inside the parent's ``with DBLiftClient(...)`` block
+    unwinds that block when it exits normally; closing the inherited client
+    must not release the parent's lease."""
+    from dblift.api.client import DBLiftClient
+
+    config, db_file = _project(tmp_path, "sqlite")
+    client = DBLiftClient.from_config_file(str(config))
+    schema = client.config.database.schema
+    try:
+        assert client.provider.acquire_migration_lock(schema, wait_timeout_seconds=2) is True
+        pid = os.fork()
+        if pid == 0:
+            try:
+                client.close()
+            finally:
+                os._exit(0)
+        os.waitpid(pid, 0)
+        with sqlite3.connect(db_file) as conn:
+            rows = conn.execute("SELECT COUNT(*) FROM dblift_migration_lock").fetchone()[0]
+        assert rows == 1
+        assert client.provider.release_migration_lock(schema) is True
+    finally:
+        client.close()
