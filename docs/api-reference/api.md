@@ -49,12 +49,6 @@ client = DBLiftClient.from_config_file("dblift.yaml")
 
 ### Analysis mode for embedded execution
 
-Install `dblift-core` for the minimal embedded profile. It keeps the `dblift`
-Python import path and requires PyYAML and SQLAlchemy. `dblift` remains the
-standard CLI bundle and installs the core with `analysis` (sqlglot) and
-`presentation` (Rich/Jinja2) extras. Add either core extra explicitly if an
-embedded application needs that capability.
-
 The client and its three factories accept `analysis_mode="full"` (default) or
 `analysis_mode="execution"`. The async factories forward the same choice.
 Execution mode keeps SQL dispatch, transactions, runtime checks, events, and

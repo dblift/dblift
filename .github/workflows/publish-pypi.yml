@@ -1,4 +1,4 @@
-name: Build release artifacts (publication paused)
+name: Build OSS release artifacts (publication paused)
 
 on:
   release:
@@ -23,7 +23,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -e ".[dev,postgresql,mysql,mariadb,oracle,sqlserver,db2,cosmosdb,django]" -e packages/dblift
+          python -m pip install -e ".[dev,postgresql,mysql,mariadb,oracle,sqlserver,db2,cosmosdb,django]"
 
       - name: Run unit tests
         run: |
@@ -56,11 +56,10 @@ jobs:
           python-version: "3.11"
           cache: pip
 
-      - name: Build core and bundle distributions
+      - name: Build dblift distributions
         run: |
           python -m pip install --upgrade pip build
-          python -m build --outdir dist/core
-          python -m build packages/dblift --outdir dist/bundle
+          python -m build --outdir dist/dblift
 
       - name: Build pytest-dblift distributions
         run: python -m build packages/pytest-dblift
@@ -74,7 +73,7 @@ jobs:
         run: |
           python -m venv /tmp/pytest-dblift-smoke-venv
           /tmp/pytest-dblift-smoke-venv/bin/python -m pip install --upgrade pip
-          /tmp/pytest-dblift-smoke-venv/bin/python -m pip install dist/core/*.whl dist/bundle/*.whl packages/pytest-dblift/dist/*.whl
+          /tmp/pytest-dblift-smoke-venv/bin/python -m pip install dist/dblift/*.whl packages/pytest-dblift/dist/*.whl
           mkdir -p /tmp/pytest-dblift-smoke/migrations
           cat > /tmp/pytest-dblift-smoke/migrations/V1__init.sql <<'EOF'
           create table t (id integer primary key);
@@ -86,15 +85,11 @@ jobs:
           cd /tmp/pytest-dblift-smoke
           /tmp/pytest-dblift-smoke-venv/bin/python -m pytest test_smoke.py
 
-      # All PyPI publication, including the independent pytest-dblift publisher,
-      # is paused until the paired distribution and migration are approved. The
-      # old dblift wheel owns files that dblift-core now owns; direct upgrades
-      # can erase them. This workflow only retains candidate artifacts.
+      # Publication remains paused while the 4.11 candidate is qualified.
       - name: Retain built distributions for release qualification
         uses: actions/upload-artifact@v4
         with:
           name: dblift-release-artifacts
           path: |
-            dist/core/*
-            dist/bundle/*
+            dist/dblift/*
             packages/pytest-dblift/dist/*

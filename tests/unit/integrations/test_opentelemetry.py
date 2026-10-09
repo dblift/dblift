@@ -1,6 +1,5 @@
 """OTel span instrumentation driven off the dblift event bus."""
 
-from importlib.metadata import PackageNotFoundError
 from pathlib import Path
 
 import pytest
@@ -13,41 +12,7 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
 from sqlalchemy import create_engine
 
 from dblift.api import DBLiftClient
-from dblift.integrations.opentelemetry import _dblift_version, instrument
-
-
-def test_version_prefers_core_metadata(monkeypatch):
-    names = []
-
-    def version(name):
-        names.append(name)
-        return "5.0.0"
-
-    monkeypatch.setattr("importlib.metadata.version", version)
-    assert _dblift_version() == "5.0.0"
-    assert names == ["dblift-core"]
-
-
-def test_version_falls_back_to_legacy_bundle_metadata(monkeypatch):
-    names = []
-
-    def version(name):
-        names.append(name)
-        if name == "dblift-core":
-            raise PackageNotFoundError(name)
-        return "4.10.0"
-
-    monkeypatch.setattr("importlib.metadata.version", version)
-    assert _dblift_version() == "4.10.0"
-    assert names == ["dblift-core", "dblift"]
-
-
-def test_version_is_unknown_without_either_distribution(monkeypatch):
-    def missing(name):
-        raise PackageNotFoundError(name)
-
-    monkeypatch.setattr("importlib.metadata.version", missing)
-    assert _dblift_version() == "unknown"
+from dblift.integrations.opentelemetry import instrument
 
 
 @pytest.fixture()

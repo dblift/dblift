@@ -20,16 +20,8 @@ python scripts/create_release.py --push X.Y.Z
 ```
 
 Rolls `## [Unreleased]` in `CHANGELOG.md` into a dated `## [X.Y.Z]` section,
-bumps the version in both distribution projects, their exact dependency pins,
-and `dblift/__init__.py`, commits, and tags
+bumps the version in `pyproject.toml`/`__init__.py`, commits, and tags
 `vX.Y.Z`.
-
-The release workflow currently builds and retains the core, bundle, and
-`pytest-dblift` artifacts for qualification. Publishing remains a separate
-release decision because the previous `dblift` wheel owned files now owned by
-`dblift-core`. For a local unpublished candidate pair, run
-`python scripts/build_core_candidate.py --revision "$(git rev-parse HEAD)" --output /tmp/dblift-candidate`.
-Its manifest records the three version-site transforms and artifact hashes.
 
 ## Checking the Upgrade Path
 

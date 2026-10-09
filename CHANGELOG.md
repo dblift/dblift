@@ -24,8 +24,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `ddl_generator_class()` / `alter_generator_class()` quirks hooks. Generation
   extensions now own their statement, options, protocol, and factory contracts.
   Parsed SQL models, migration execution, and undo generation remain in OSS.
-  The removed `dblift.extensions.sql_generation` import was a documented stable
-  extension surface, so this removal requires a major release.
+  `dblift.extensions.sql_generation` was a documented stable import in 4.10.0;
+  its removal in 4.11.0 is an intentional compatibility break. Extensions that
+  imported these metadata types must define their own equivalents.
 
 ### Added
 
@@ -39,12 +40,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   warning even when the same text was just logged. `MultiLog` passes it on to the
   sinks that accept it. `migrate --dry-run` uses it, so the same finding in two
   scripts is printed for each of them.
-- The unreleased distribution split makes `dblift-core` the sole owner of the
-  `dblift` Python package; a same-version, metadata-only `dblift` bundle retains
-  the CLI, SQL analysis, presentation, and historical extras. Release builds
-  retain core, bundle, and `pytest-dblift` artifacts. All PyPI publishers,
-  including the independent `pytest-dblift` publisher, are temporarily held
-  while paired publication and the single-wheel upgrade path are reviewed.
 - Python clients can opt into `analysis_mode="execution"` when running migrations without
   SQL object analysis. SQL execution, history, validation, callbacks, and undo remain
   available; reports label object analysis as disabled. The default remains `"full"`.

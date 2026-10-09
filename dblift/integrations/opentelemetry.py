@@ -123,12 +123,9 @@ def _marker_attrs(event: Event) -> dict:
 
 def _dblift_version() -> str:
     try:
-        from importlib.metadata import PackageNotFoundError, version
+        from importlib.metadata import version
 
-        try:
-            return version("dblift-core")
-        except PackageNotFoundError:
-            return version("dblift")
+        return version("dblift")
     except Exception:
         return "unknown"
 
