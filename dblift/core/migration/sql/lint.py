@@ -41,7 +41,9 @@ _ANALYSED_TYPES = (MigrationType.SQL, MigrationType.REPEATABLE)
 # Undo, baseline and callback scripts are not linted unless named explicitly:
 # an undo script destroys what its migration created by design.
 _LINTED_PREFIXES = ("V", "R")
-_ALLOW = re.compile(r"--\s*dblift:allow\s+([A-Za-z0-9-]+(?:\s*,\s*[A-Za-z0-9-]+)*)", re.IGNORECASE)
+_ALLOW = re.compile(
+    r"--\s*dblift:allow\s+([A-Za-z0-9_.-]+(?:\s*,\s*[A-Za-z0-9_.-]+)*)", re.IGNORECASE
+)
 
 
 @dataclass(frozen=True)

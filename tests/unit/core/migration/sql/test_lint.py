@@ -49,6 +49,13 @@ def test_allow_directive_accepts_named_codes_for_the_whole_script():
     }
 
 
+def test_allowed_codes_accept_underscores_and_dots():
+    """Codes added by extensions use underscores and dots; the directive names them as written."""
+    assert allowed_codes("-- dblift:allow no_select_star, my_rule.exception\n") == frozenset(
+        {"no_select_star", "my_rule.exception"}
+    )
+
+
 def test_allowed_codes_are_case_insensitive_and_comma_separated():
     assert allowed_codes("-- DBLIFT:ALLOW Truncate,drop-table\n") == frozenset(
         {"truncate", "drop-table"}
