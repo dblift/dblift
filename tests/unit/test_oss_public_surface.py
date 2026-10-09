@@ -370,6 +370,8 @@ def test_core_secrets_docs_do_not_advertise_external_provider_uris():
 NON_ENGINE_EXTRAS = frozenset(
     {
         "all",  # the meta-extra itself
+        "analysis",  # SQL analysis is not a database driver
+        "presentation",  # CLI/report rendering is not a database driver
         "dev",  # test / lint toolchain
         "django",  # web framework integrations
         "fastapi",
@@ -391,7 +393,7 @@ def _project_dependencies() -> list[str]:
 
 
 def _extras_reachable_from(extra: str, table: dict[str, list[str]]) -> set[str]:
-    """Extras named by ``extra`` through ``dblift[...]`` self-references.
+    """Extras named by ``extra`` through ``dblift-core[...]`` self-references.
 
     Resolved transitively, because that is how pip resolves them: nothing stops
     a future ``all`` from delegating through an intermediate meta-extra.
@@ -402,7 +404,7 @@ def _extras_reachable_from(extra: str, table: dict[str, list[str]]) -> set[str]:
         current = pending.pop()
         for spec in table.get(current, []):
             requirement = Requirement(spec)
-            if canonicalize_name(requirement.name) != canonicalize_name("dblift"):
+            if canonicalize_name(requirement.name) != canonicalize_name("dblift-core"):
                 continue
             for named in requirement.extras:
                 if named not in seen:
@@ -412,9 +414,9 @@ def _extras_reachable_from(extra: str, table: dict[str, list[str]]) -> set[str]:
 
 
 def _requirement_names(specs: list[str]) -> set[str]:
-    """Canonical distribution names in ``specs``, ignoring ``dblift`` self-refs."""
+    """Canonical distribution names in ``specs``, ignoring core self-refs."""
     names = {canonicalize_name(Requirement(spec).name) for spec in specs}
-    return names - {canonicalize_name("dblift")}
+    return names - {canonicalize_name("dblift-core")}
 
 
 def test_all_extra_covers_every_engine_extra():
