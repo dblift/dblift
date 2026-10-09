@@ -8,7 +8,6 @@ __plugin_description__ = "DB2 database provider"
 __plugin_dialects__ = list(DESCRIPTOR.dialects)
 __plugin_class__ = "Db2Provider"
 
-from importlib import import_module
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -18,7 +17,9 @@ if TYPE_CHECKING:
 def __getattr__(name: str) -> Any:
     if name != "Db2Provider":
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-    value = getattr(import_module(f"{__name__}.provider"), "Db2Provider")
+    from .provider import Db2Provider
+
+    value = Db2Provider
     globals()[name] = value
     return value
 
