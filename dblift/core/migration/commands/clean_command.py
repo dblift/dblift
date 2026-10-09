@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from dblift.core.exceptions import FixedDboSchemaError
+from dblift.core.logger._null import NullLog
 from dblift.core.logger.results import CleanResult
 from dblift.db.provider_interfaces import TransactionalProvider
 
@@ -240,6 +241,9 @@ class CleanCommand(BaseCommand):
 
     def _log_clean_summary(self, result: CleanResult) -> None:
         """Log summary of cleaned objects grouped by type."""
+        if isinstance(self.log, NullLog):
+            return
+
         from rich.tree import Tree
 
         from dblift.core.logger.console import render_tree_to_str

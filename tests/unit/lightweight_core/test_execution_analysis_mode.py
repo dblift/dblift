@@ -64,6 +64,10 @@ def test_inprocess_mode_preserves_selected_migration_and_undo_semantics(tmp_path
             ("before",),
         ]
         assert client.undo(target_version="0.0.0").success
+        assert client.clean(clean_enabled=True).success
+        assert not client.provider.execute_query(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='audit'"
+        )
 
 
 def test_inprocess_execution_selection_skips_ambiguous_unselected_sql(tmp_path):
@@ -188,6 +192,44 @@ with DBLiftClient.from_config(config, migrations_dir=migrations,
     assert client.migrate().success
     assert client.validate().success
     assert client.undo(target_version='0.0.0').success
+""",
+        blocked=("sqlglot", "rich", "jinja2"),
+        cwd=tmp_path,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_clean_with_null_log_without_presentation_packages(tmp_path):
+    result = run_python(
+        """
+import asyncio
+import sqlite3
+from pathlib import Path
+from dblift.api.async_client import AsyncDBLiftClient
+from dblift.config import DbliftConfig
+from dblift.core.constants import MIGRATION_LOCK_TABLE
+from dblift.core.logger import NullLog
+
+sql = Path('sql')
+sql.mkdir()
+(sql / 'V1__create.sql').write_text('CREATE TABLE t (id INTEGER);')
+config = DbliftConfig.from_dict({'database': {
+    'type': 'sqlite', 'path': 'db.sqlite', 'schema': 'main'
+}})
+async def run():
+    async with AsyncDBLiftClient.from_config(
+        config, migrations_dir=sql, logger=NullLog(), analysis_mode='execution'
+    ) as client:
+        assert (await client.migrate()).success
+        cleaned = await client.clean(clean_enabled=True)
+        assert cleaned.success, cleaned.error_message
+asyncio.run(run())
+with sqlite3.connect('db.sqlite') as connection:
+    tables = {row[0] for row in connection.execute(
+        "SELECT name FROM sqlite_master WHERE type='table'")}
+    assert 't' not in tables
+    if MIGRATION_LOCK_TABLE in tables:
+        assert connection.execute(f'SELECT COUNT(*) FROM {MIGRATION_LOCK_TABLE}').fetchone()[0] == 0
 """,
         blocked=("sqlglot", "rich", "jinja2"),
         cwd=tmp_path,
