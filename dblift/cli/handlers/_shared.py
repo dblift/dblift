@@ -187,7 +187,8 @@ def _migration_info_to_dict(m: Any) -> Dict[str, Any]:
     """Serialise one ``MigrationInfo`` row for ``--format json`` payloads.
 
     Shared by ``info``, ``validate`` and ``migrate`` so the row shape is one
-    contract, not three.
+    contract, not three. ``analysis`` is what ``script_analysis`` read from a
+    pending script, or ``None``.
     """
     installed_on = getattr(m, "installed_on", None)
     return {
@@ -205,6 +206,7 @@ def _migration_info_to_dict(m: Any) -> Dict[str, Any]:
         "installed_by": m.installed_by,
         "execution_time": m.execution_time,
         "error": getattr(m, "error", None),
+        "analysis": getattr(m, "analysis", None),
     }
 
 

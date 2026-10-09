@@ -150,8 +150,9 @@ class MigrationInfo:
         checksum: Optional[int] = None,
         execution_time: int = 0,
         error: Optional[str] = None,
+        analysis: Optional[Dict[str, Any]] = None,
     ) -> None:
-        """Store the per-migration descriptor (script, version, status, timing, error)."""
+        """Store the per-migration descriptor (script, version, status, timing, error, analysis)."""
         self.script = script
         self.version = version
         self.description = description
@@ -162,6 +163,7 @@ class MigrationInfo:
         self.checksum = checksum
         self.execution_time = execution_time  # milliseconds
         self.error = error
+        self.analysis = analysis
 
     def __str__(self) -> str:
         return (
