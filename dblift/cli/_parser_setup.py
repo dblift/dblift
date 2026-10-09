@@ -32,6 +32,18 @@ def _native_dialect_choices() -> List[str]:
     )
 
 
+def _lintable_dialect_choices() -> List[str]:
+    """The native dialects ``validate-sql`` can read offline: those whose quirks give a
+    ``lint_placeholder_url`` (the configuration a lint-only run needs)."""
+    from dblift.api._cli_support import ProviderRegistry
+
+    return [
+        name
+        for name in _native_dialect_choices()
+        if ProviderRegistry.get_quirks(name).lint_placeholder_url
+    ]
+
+
 def parse_with_selective_errors(
     parser: argparse.ArgumentParser,
 ) -> Tuple[Optional[argparse.Namespace], List[str], bool]:
@@ -395,7 +407,7 @@ def _register_default_validate_sql_parser(
     )
     command.add_argument(
         "--dialect",
-        choices=_native_dialect_choices(),
+        choices=_lintable_dialect_choices(),
         help="SQL dialect to read the files in (default: the configured database type)",
     )
     command.add_argument(

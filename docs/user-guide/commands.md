@@ -101,7 +101,8 @@ script is read.
 
 **Dialect.** Scripts are read in the dialect given by `--dialect`, or else in the
 configured database type (`database.type`, or the scheme of the database URL). With neither,
-the command stops and asks for `--dialect`. The database flags (`--db-url`, …) are accepted
+the command stops and asks for `--dialect`. `--dialect` accepts the SQL dialects; MongoDB and
+Cosmos DB scripts cannot be checked. The database flags (`--db-url`, …) are accepted
 but nothing connects.
 
 **Rules.** Each finding has a code and a fixed severity:

@@ -198,3 +198,17 @@ def test_default_handler_is_registered_and_no_stub_remains():
 
     assert _COMMAND_HANDLERS["validate-sql"] is _handle_validate_sql
     assert "validate-sql" not in PREMIUM_STUB_COMMANDS
+
+
+def test_dialect_choices_are_the_dialects_that_can_be_read_offline(monkeypatch):
+    import dblift.cli.extensions as extensions
+    from dblift.api._cli_support import ProviderRegistry
+    from dblift.cli._parser_setup import create_parser
+
+    monkeypatch.setattr(extensions, "load_command_extensions", lambda parser: None)
+    sub = next(a for a in create_parser()._actions if a.__class__.__name__ == "_SubParsersAction")
+    dialect = next(a for a in sub.choices["validate-sql"]._actions if a.dest == "dialect")
+
+    assert "postgresql" in dialect.choices
+    assert all(ProviderRegistry.get_quirks(d).lint_placeholder_url for d in dialect.choices)
+    assert not {"mongodb", "cosmosdb"} & set(dialect.choices)
