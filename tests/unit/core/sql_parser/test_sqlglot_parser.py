@@ -396,6 +396,18 @@ class TestSqlGlotParser:
         assert objects == []
         assert any(record.levelname == "WARNING" for record in caplog.records)
 
+    def test_extract_objects_warning_has_no_ansi_escape_codes(self, caplog):
+        parser = SqlGlotParser(dialect="postgresql")
+
+        with caplog.at_level("WARNING", logger="dblift.core.sql_parser.sqlglot_parser"):
+            parser.extract_objects("DROP TRIGGER IF EXISTS trg_items_touch ON public.items;")
+
+        warning = caplog.records[-1].getMessage()
+        assert "SqlGlot parse failed for object extraction" in warning
+        assert "Unexpected token" in warning
+        assert "public" in warning
+        assert "\x1b" not in warning
+
     # ==================== Affected Objects Tests ====================
 
     def test_affected_objects_create_table(self):

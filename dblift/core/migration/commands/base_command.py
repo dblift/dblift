@@ -731,6 +731,7 @@ class BaseCommand:
         ensure_history: bool = False,
         dry_run: bool = False,
         create_schema: bool = False,
+        ensure_schema: bool = False,
     ) -> None:
         """Run the canonical pre-execute lifecycle for every command.
 
@@ -777,15 +778,21 @@ class BaseCommand:
                 dry-run mode (``undo``).
             create_schema: Forwarded to
                 ``create_schema_and_history_table(create_schema=...)``.
-                ``migrate``/``info``/``undo`` pass False (schema is
-                expected to already exist); ``baseline`` passes True
-                (it may be the first command run against a fresh
-                database).
+                ``baseline`` passes True to enable its history safety checks.
+            ensure_schema: Create a missing target schema for ``migrate``
+                without enabling baseline history safety checks.
         """
         self._preflight_connect(result)
         if ensure_history and not dry_run:
             try:
-                self.history_manager.create_schema_and_history_table(create_schema=create_schema)
+                if ensure_schema:
+                    self.history_manager.create_schema_and_history_table(
+                        create_schema=create_schema, ensure_schema=True
+                    )
+                else:
+                    self.history_manager.create_schema_and_history_table(
+                        create_schema=create_schema
+                    )
             except Exception as exc:
                 from dblift.core.migration.sql.sql_execution_service import (
                     _format_execution_error,

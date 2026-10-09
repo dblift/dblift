@@ -167,8 +167,8 @@ class MigrationDataCollector:
             logger = self.log
             self.script_manager = MigrationScriptManager(logger, "utf-8")
 
-        # Get undo script versions from filesystem
-        undo_versions = self._find_undo_versions(scripts_dir)
+        # Use the same resolved undo catalogue that the undo command consumes.
+        undo_versions = self._find_undo_versions(scripts_dir, migration_state)
 
         # Sort all migrations by installed_rank to show complete sequential history
         sorted_applied_migrations = sorted(
@@ -299,7 +299,9 @@ class MigrationDataCollector:
 
         return migrations_data
 
-    def _find_undo_versions(self, scripts_dir: Optional[Path]) -> Set[str]:
+    def _find_undo_versions(
+        self, scripts_dir: Optional[Path], migration_state: Optional[MigrationState] = None
+    ) -> Set[str]:
         """Find versions that have undo capability available.
 
         A version is undoable if it has a separate undo companion script:
@@ -307,6 +309,14 @@ class MigrationDataCollector:
         Python undo companions use the same ``def migrate(context)`` contract
         as versioned scripts; they are not selected by an inline ``undo`` on ``V*``.
         """
+        if migration_state is not None:
+            return {
+                str(migration.version)
+                for migration in migration_state.pending_objects
+                if self._is_migration_type_equal(getattr(migration, "type", None), "UNDO_SQL")
+                and getattr(migration, "version", None) is not None
+            }
+
         undo_versions = set()
         if scripts_dir and scripts_dir.exists() and self.script_manager is not None:
             for pattern in ("U*.sql", "U*.py"):

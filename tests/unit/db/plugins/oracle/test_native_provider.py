@@ -6,6 +6,7 @@ from types import SimpleNamespace
 import pytest
 
 from dblift.db.plugins.oracle.provider import OracleProvider
+from tests.unit.db.plugins.lease_support import route_lease_to
 
 
 class DummyOracleProvider(OracleProvider):
@@ -213,32 +214,29 @@ def test_lock_table_creation_treats_already_exists_as_success() -> None:
     provider.create_migration_lock_table_if_not_exists("APP")
 
 
-def test_release_table_migration_lock_deletes_row_and_keeps_table() -> None:
+def test_release_table_migration_lock_deletes_own_row_and_keeps_table() -> None:
     provider = DummyOracleProvider()
     provider._lock_handles = {}
-    provider._lock_handles[provider.get_lock_key("APP")] = None
-    provider.table_exists = lambda schema, table_name: True
+    provider.create_migration_lock_table_if_not_exists = lambda schema: None
     provider.execute_statement = (
         lambda sql, schema=None, params=None: provider.calls.append(
             ("statement", sql, schema, params)
         )
         or 1
     )
+    route_lease_to(provider)
+    # DBMS_LOCK reports no result here, so the lock falls back to the table.
+    assert provider.acquire_migration_lock("APP", wait_timeout_seconds=1) is True
+    assert provider._migration_lease is not None
 
     assert provider.release_migration_lock("APP") is True
 
-    assert (
-        "statement",
-        'DELETE FROM "APP"."DBLIFT_MIGRATION_LOCK" WHERE LOCK_NAME = ?',
-        None,
-        ["DBLIFT_MIG_LOCK_APP"],
-    ) in provider.calls
-    assert (
-        "statement",
-        'DROP TABLE "APP"."DBLIFT_MIGRATION_LOCK"',
-        None,
-        None,
-    ) not in provider.calls
+    deletes = [call for call in provider.calls if "DELETE FROM" in call[1]]
+    assert deletes[-1][1] == (
+        'DELETE FROM "APP"."DBLIFT_MIGRATION_LOCK" WHERE LOCK_NAME = ? AND OWNER_TOKEN = ?'
+    )
+    assert deletes[-1][3][0] == "DBLIFT_MIG_LOCK_APP"
+    assert not any("DROP TABLE" in call[1] for call in provider.calls)
 
 
 def test_existing_history_table_checks_baseline_safety() -> None:

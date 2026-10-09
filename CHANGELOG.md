@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- View and sequence models retain optional comments through serialization.
 - **`dblift validate-sql` checks migration SQL files without connecting.** It reads the `V` and `R` scripts of the migration directories, or the files given with `--files`, and reports statements that destroy data (`DROP TABLE`, `DROP COLUMN`, `TRUNCATE`, `UPDATE`/`DELETE` without `WHERE`), break the application already deployed (renames, type changes, `NOT NULL` columns without a default), mix autocommit-only and transactional statements, or — on PostgreSQL — lock a table (`CREATE INDEX` without `CONCURRENTLY`, constraints without `NOT VALID`, `SET NOT NULL`, no `lock_timeout`). Each script gets a verdict, `SAFE`, `REVIEW` or `UNSAFE`; the command exits 1 when a script is `UNSAFE`. `-- dblift:allow <code>` in a script accepts a finding. `--format json` prints the findings. The command previously printed a notice and exited 4; it takes `--files`, `--dialect` (the SQL dialects; MongoDB and Cosmos DB scripts cannot be checked), `--format` and `--placeholders` instead of any argument. `migrate --dry-run` shows each pending script's verdict and its findings, and the `analysis` of `info --format json` and `migrate --dry-run --format json` rows carries `verdict` and `findings`; each of its `cautions` entries now names its rule (`code`); neither command's exit code changes.
 - Extensions can reuse the SQL checks `validate-sql` runs through
   `dblift.extensions.lint` (`lint_script`, `lint_files`, `lint_targets`, the
@@ -87,6 +88,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `import-flyway` and Flyway compatibility checks skip Flyway's `SCHEMA`
+  creation markers while retaining migration ranks and rejecting unknown
+  migration types. Object extraction warnings from sqlglot no longer include
+  ANSI escape codes in logs.
+- `migrate --db-schema` creates a missing target schema before its history table on a
+  fresh database. Dry runs still leave the database unchanged, and existing
+  migration history does not trigger baseline safety checks.
+- `info` marks a version Undoable when its companion undo script is in any
+  configured scripts directory, regardless of directory order.
+- A migration lock left behind by a process that was killed (SIGKILL, or SIGTERM while
+  dblift runs embedded through the Python API) is now reclaimed automatically. On
+  SQLite, DuckDB, CockroachDB, Db2, Snowflake, MongoDB and the Oracle table fallback,
+  the lock is a lease: the holder refreshes it every 10 seconds, and a lock not
+  refreshed for 30 seconds is taken over by the next `migrate`. Such a lock used to stay
+  held for good, and every later `migrate` waited 60 seconds and failed. The lock also
+  records its holder, so a holder whose lock was taken over can neither renew nor
+  release the new holder's lock, and `migrate` stops before its next migration once it
+  has lost its lock.
+  - Existing lock tables gain a nullable `owner_token` column (`OWNER_TOKEN` on Db2 and
+    Oracle) the first time a new version takes the lock. A lock row without an owner,
+    written by an earlier version, is taken over only once it is 24 hours old.
+  - A lock held without a heartbeat (on a database private to one connection, or taken
+    through a caller-supplied connection with `from_sqlalchemy(connection=...)`) is
+    likewise taken over only once it is 24 hours old.
+  - Snowflake now holds the lock as a committed lease on the lock row instead of an open
+    transaction. An earlier version does not see that lease, so every runner that
+    migrates the same Snowflake schema should run a version with the lease.
+  - `DBLiftClient.close()`, leaving a `with DBLiftClient(...)` block and interpreter exit
+    release a migration lock the client still holds.
+  - SQLite migration transactions now start with `BEGIN IMMEDIATE`, so a migration that
+    reads before it writes is not refused its write by the lock's own heartbeat.
+
 - `info` reports **Missing** for a migration that was undone, applied again, and whose
   script has since left the migration folder (for example after switching to a branch
   that does not carry it). Such rows showed **Success**, because the undo-then-reapply
@@ -110,6 +143,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `repair --dry-run` now reports the repairs it would make
   (`RepairResult.repaired_migrations`, `removed_migrations`, `aligned_migrations` and the
   counters), and a real `repair` fills the same lists.
+- PostgreSQL and Db2: a double-quoted object name keeps its exact spelling when
+  a statement is read by the regex fallback (for example `CREATE TABLE "Case" ...
+  TABLESPACE ts`, which sqlglot does not parse). It was folded like an unquoted
+  name (`case` on PostgreSQL, `CASE` on Db2), and a doubled quote (`"a""b"`) cut
+  the name short. Unquoted names are folded as before.
 
 ## [4.10.0] - 2026-10-03
 

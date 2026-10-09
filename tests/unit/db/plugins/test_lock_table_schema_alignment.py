@@ -15,6 +15,7 @@ import pytest
 
 from dblift.db.plugins.db2.provider import Db2Provider
 from dblift.db.plugins.mysql.provider import MySqlProvider
+from tests.unit.db.plugins.lease_support import route_lease_to
 
 
 def _provider(provider_class):
@@ -75,7 +76,9 @@ class TestDb2LockTableSchema:
     @pytest.mark.parametrize("column", ["lock_name", "acquired_at", "acquired_by"])
     def test_acquire_dml_uses_the_same_columns(self, column):
         provider = _provider(Db2Provider)
+        route_lease_to(provider)  # the lease runs on its own connection
         with patch("dblift.db.plugins.db2.provider.socket.gethostname", return_value="host"):
             provider.acquire_migration_lock("myschema", wait_timeout_seconds=0)
+        provider.release_migration_lock("myschema")
 
         assert column in _executed_sql(provider)

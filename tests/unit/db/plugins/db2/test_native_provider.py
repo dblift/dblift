@@ -10,6 +10,7 @@ from dblift.config import DbliftConfig
 from dblift.core.migration.clean_summary import CleanExecutionSummary
 from dblift.db.plugins.db2.provider import DB2_LOCK_STALE_SECONDS, Db2Provider
 from dblift.db.sqlalchemy_provider import SqlAlchemyProvider
+from tests.unit.db.plugins.lease_support import route_lease_to
 
 
 class DummyDb2Provider(Db2Provider):
@@ -170,11 +171,18 @@ def test_lock_table_creation_uses_db2_catalog_and_uppercase_table() -> None:
     )
 
 
-def test_acquire_migration_lock_inserts_lock_row_without_overwriting_holder() -> None:
+def _lease_provider() -> DummyDb2Provider:
     provider = DummyDb2Provider()
     provider.create_migration_lock_table_if_not_exists = lambda schema: None
+    route_lease_to(provider)
+    return provider
+
+
+def test_acquire_migration_lock_inserts_lock_row_without_overwriting_holder() -> None:
+    provider = _lease_provider()
 
     assert provider.acquire_migration_lock("APP", wait_timeout_seconds=1) is True
+    provider.release_migration_lock("APP")
 
     statements = [call[1] for call in provider.calls if call[0] == "statement"]
     lock_insert = next(stmt for stmt in statements if "INSERT INTO" in stmt)
@@ -183,8 +191,7 @@ def test_acquire_migration_lock_inserts_lock_row_without_overwriting_holder() ->
 
 
 def test_acquire_migration_lock_treats_unreported_rowcount_as_success() -> None:
-    provider = DummyDb2Provider()
-    provider.create_migration_lock_table_if_not_exists = lambda schema: None
+    provider = _lease_provider()
 
     def execute_statement(sql, schema=None, params=None):
         provider.calls.append(("statement", sql, schema, params))
@@ -193,58 +200,64 @@ def test_acquire_migration_lock_treats_unreported_rowcount_as_success() -> None:
     provider.execute_statement = execute_statement
 
     assert provider.acquire_migration_lock("APP", wait_timeout_seconds=1) is True
+    provider.release_migration_lock("APP")
 
 
-def test_acquire_migration_lock_uses_separate_stale_cleanup_threshold() -> None:
-    provider = DummyDb2Provider()
-    provider.create_migration_lock_table_if_not_exists = lambda schema: None
+def test_acquire_migration_lock_reclaims_ownerless_rows_after_the_stale_threshold(
+    monkeypatch,
+) -> None:
+    """A row an earlier dblift wrote (no owner) is reclaimed only after
+    ``DB2_LOCK_STALE_SECONDS``; a lease row after the short lease expiry."""
+    monkeypatch.setattr("dblift.db.plugins.lease_lock.POLL_INTERVAL_SECONDS", 0.01)
+    provider = _lease_provider()
+    attempts = {"insert": 0}
 
-    provider.acquire_migration_lock("APP", wait_timeout_seconds=1)
+    def execute_statement(sql, schema=None, params=None):
+        provider.calls.append(("statement", sql, schema, params))
+        if "INSERT INTO" in sql:
+            attempts["insert"] += 1
+            if attempts["insert"] == 1:
+                raise RuntimeError("SQL0803N duplicate values for the index key")
+        return 1
+
+    provider.execute_statement = execute_statement
+
+    assert provider.acquire_migration_lock("APP", wait_timeout_seconds=1) is True
+    provider.release_migration_lock("APP")
 
     statements = [call[1] for call in provider.calls if call[0] == "statement"]
-    cleanup_statements = [stmt for stmt in statements if "DELETE FROM" in stmt]
-    assert len(cleanup_statements) == 1
-    assert f"{DB2_LOCK_STALE_SECONDS} SECONDS" in cleanup_statements[0]
-    assert " 1 SECONDS" not in cleanup_statements[0]
+    reclaim = next(stmt for stmt in statements if "DELETE FROM" in stmt)
+    assert f"CURRENT TIMESTAMP - {DB2_LOCK_STALE_SECONDS} SECONDS" in reclaim
+    assert "OWNER_TOKEN IS NULL" in reclaim
 
 
 def test_acquire_migration_lock_honors_timeout_when_row_is_held(monkeypatch) -> None:
-    provider = DummyDb2Provider()
-    provider.create_migration_lock_table_if_not_exists = lambda schema: None
-
-    clock = iter([0.0, 0.0, 0.5, 2.0])
-    monkeypatch.setattr("dblift.db.plugins.db2.provider.time.monotonic", lambda: next(clock))
-    monkeypatch.setattr("dblift.db.plugins.db2.provider.time.sleep", lambda _seconds: None)
+    monkeypatch.setattr("dblift.db.plugins.lease_lock.POLL_INTERVAL_SECONDS", 0.01)
+    provider = _lease_provider()
 
     def fail_insert(sql, schema=None, params=None):
         provider.calls.append(("statement", sql, schema, params))
         if "INSERT INTO" in sql:
-            raise RuntimeError("duplicate lock")
+            raise RuntimeError("SQL0803N duplicate values for the index key")
         return 0
 
     provider.execute_statement = fail_insert
 
-    assert provider.acquire_migration_lock("APP", wait_timeout_seconds=1) is False
+    assert provider.acquire_migration_lock("APP", wait_timeout_seconds=0.1) is False
 
 
-def test_release_migration_lock_deletes_row_and_keeps_table() -> None:
-    provider = DummyDb2Provider()
-    provider.table_exists = lambda schema, table_name: True
+def test_release_migration_lock_deletes_own_row_and_keeps_table() -> None:
+    provider = _lease_provider()
+    assert provider.acquire_migration_lock("APP", wait_timeout_seconds=1) is True
 
     assert provider.release_migration_lock("APP") is True
 
-    assert (
-        "statement",
-        'DELETE FROM "APP"."DBLIFT_MIGRATION_LOCK" WHERE LOCK_NAME = ?',
-        None,
-        ["migration"],
-    ) in provider.calls
-    assert (
-        "statement",
-        'DROP TABLE "APP"."DBLIFT_MIGRATION_LOCK"',
-        None,
-        None,
-    ) not in provider.calls
+    deletes = [call for call in provider.calls if "DELETE FROM" in call[1]]
+    assert deletes[-1][1] == (
+        'DELETE FROM "APP"."DBLIFT_MIGRATION_LOCK" WHERE LOCK_NAME = ? AND OWNER_TOKEN = ?'
+    )
+    assert deletes[-1][3][0] == "migration"
+    assert not any("DROP TABLE" in call[1] for call in provider.calls)
 
 
 def test_native_provider_exposes_schema_operations_adapter() -> None:
