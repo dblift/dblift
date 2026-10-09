@@ -223,3 +223,56 @@ def test_oracle_scripts_are_checked_without_a_parser_progress_line(tmp_path):
     output = proc.stdout + proc.stderr
     assert "V1__orders.sql: UNSAFE" in output, output
     assert "Successfully parsed" not in output, output
+
+
+def test_dialect_option_wins_over_the_configured_database_type(tmp_path):
+    config = tmp_path / "dblift.yaml"
+    config.write_text(
+        "database:\n  type: mysql\n  url: mysql://localhost:3306/app\n"
+        "  username: app\n  password: secret\n"
+    )
+    script = tmp_path / "V1__index.sql"
+    script.write_text("CREATE INDEX idx_users_email ON users (email);\n")
+
+    proc = _run(
+        tmp_path,
+        "--config",
+        str(config),
+        "validate-sql",
+        "--dialect",
+        "postgresql",
+        "--format",
+        "json",
+        "--files",
+        str(script),
+    )
+
+    payload = json.loads(proc.stdout)
+    assert payload["dialect"] == "postgresql", proc.stderr
+    codes = [f["code"] for f in payload["scripts"][0]["findings"]]
+    assert "pg-index-not-concurrent" in codes
+
+
+def test_configured_database_type_is_used_without_the_dialect_option(tmp_path):
+    config = tmp_path / "dblift.yaml"
+    config.write_text(
+        "database:\n  type: mysql\n  url: mysql://localhost:3306/app\n"
+        "  username: app\n  password: secret\n"
+    )
+    script = tmp_path / "V1__index.sql"
+    script.write_text("CREATE INDEX idx_users_email ON users (email);\n")
+
+    proc = _run(
+        tmp_path,
+        "--config",
+        str(config),
+        "validate-sql",
+        "--format",
+        "json",
+        "--files",
+        str(script),
+    )
+
+    payload = json.loads(proc.stdout)
+    assert payload["dialect"] == "mysql", proc.stderr
+    assert payload["scripts"][0]["findings"] == []
