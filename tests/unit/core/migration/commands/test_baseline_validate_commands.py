@@ -30,6 +30,7 @@ from dblift.core.logger.results import BaselineResult, ValidateResult
 from dblift.core.migration.commands.base_command import PreflightConnectionError
 from dblift.core.migration.commands.baseline_command import BaselineCommand
 from dblift.core.migration.commands.validate_command import ValidateCommand
+from dblift.core.migration.migration_types import MigrationType
 from dblift.db.provider_interfaces import TransactionalProvider
 
 # ---------------------------------------------------------------------------
@@ -468,6 +469,35 @@ class TestValidateCommandHappyPath(unittest.TestCase):
         self.assertEqual(call_kwargs.get("target_version"), "3.0")
         self.assertEqual(call_kwargs.get("tags"), "feature")
         self.assertEqual(call_kwargs.get("exclude_tags"), "wip")
+
+    def test_warns_once_per_caution_of_pending_scripts_and_skips_without_dialect(self):
+        log = MagicMock()
+        cmd = _make_validate_cmd(
+            log=log, config=SimpleNamespace(database=SimpleNamespace(schema="main", type="sqlite"))
+        )
+        applied = SimpleNamespace(
+            script_name="V1__a.sql", type=MigrationType.SQL, content="CREATE TABLE a (id INT);"
+        )
+        pending = SimpleNamespace(
+            script_name="V2__drop.sql", type=MigrationType.SQL, content="DROP TABLE a;"
+        )
+        snapshot = SimpleNamespace(
+            resolved_migrations=(applied, pending), scoped_applied_migrations=(applied,)
+        )
+        result = ValidateResult()
+
+        cmd._warn_about_cautions(snapshot, result)
+
+        assert len(result.warnings) == 1
+        assert result.warnings[0].startswith("V2__drop.sql: DROP TABLE")
+        log.warning.assert_called_once_with(result.warnings[0])
+
+        no_dialect = _make_validate_cmd(
+            config=SimpleNamespace(database=SimpleNamespace(schema="main", type=None))
+        )
+        untouched = ValidateResult()
+        no_dialect._warn_about_cautions(snapshot, untouched)
+        assert untouched.warnings == []
 
 
 class TestValidateCommandFailurePaths(unittest.TestCase):

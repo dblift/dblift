@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+import dblift.core.migration.sql.script_analysis as script_analysis
 from dblift.core.migration.migration_types import MigrationType
 from dblift.core.migration.sql.script_analysis import (
     CHANGES_ROWS,
@@ -180,3 +181,106 @@ def test_dialect_of_reads_the_configured_database_type():
     assert dialect_of(SimpleNamespace(database=SimpleNamespace(type="PostgreSQL"))) == "postgresql"
     assert dialect_of(SimpleNamespace(database=SimpleNamespace(type=None))) is None
     assert dialect_of(None) is None
+
+
+def test_parser_failure_yields_an_error_and_no_statements(monkeypatch):
+    class Boom:
+        def __init__(self, dialect):
+            raise RuntimeError("no parser")
+
+    monkeypatch.setattr(script_analysis, "SqlParserFactory", Boom)
+
+    analysis = analyse_script("DROP TABLE a;", "postgresql")
+
+    assert analysis.statements == ()
+    assert analysis.cautions == ()
+    assert analysis.errors == ("parser error: no parser",)
+
+
+def test_blank_statements_are_skipped_and_unknown_text_has_unknown_kind(monkeypatch):
+    parsed = SimpleNamespace(
+        statements=[
+            SimpleNamespace(sql_text="   ", statement_type=None, affected_objects=[], objects=[]),
+            SimpleNamespace(
+                sql_text="FROBNICATE x", statement_type=None, affected_objects=[], objects=[]
+            ),
+        ],
+        errors=[],
+    )
+    monkeypatch.setattr(
+        script_analysis,
+        "SqlParserFactory",
+        lambda dialect: SimpleNamespace(parse_sql=lambda text: parsed),
+    )
+
+    analysis = analyse_script("ignored", "postgresql")
+
+    assert [(s.index, s.operation, s.kind) for s in analysis.statements] == [
+        (0, "FROBNICATE", "UNKNOWN")
+    ]
+    assert analysis.cautions == ()
+
+
+def test_cte_delete_is_dml_and_names_its_table():
+    analysis = analyse_script(
+        "WITH old AS (SELECT id FROM sessions WHERE ts < now()) "
+        "DELETE FROM sessions WHERE id IN (SELECT id FROM old);",
+        "postgresql",
+    )
+
+    statement = analysis.statements[0]
+    assert (statement.operation, statement.kind, statement.full_table) == ("WITH", "DML", False)
+    assert [o.name for o in statement.objects] == ["sessions"]
+    assert [c.level for c in analysis.cautions] == [CHANGES_ROWS]
+
+
+def test_quirks_failures_never_raise(monkeypatch):
+    real = script_analysis.ProviderRegistry.get_quirks("postgresql")
+
+    class BrokenQuirks(type(real)):  # the parser still needs the real quirks' parser class
+        def is_full_table_dml(self, statement):
+            raise RuntimeError("broken")
+
+    monkeypatch.setattr(
+        script_analysis.ProviderRegistry, "get_quirks", lambda dialect: BrokenQuirks(dialect)
+    )
+    monkeypatch.setattr(
+        script_analysis, "statement_dml_table", MagicMock(side_effect=RuntimeError("broken"))
+    )
+
+    analysis = analyse_script("DELETE FROM sessions;", "postgresql")
+
+    statement = analysis.statements[0]
+    assert statement.full_table is False
+    assert statement.objects == ()
+    assert [c.level for c in analysis.cautions] == [CHANGES_ROWS]
+
+
+def test_analyse_pending_scripts_skips_nameless_and_logs_read_and_analysis_failures(monkeypatch):
+    log = MagicMock()
+    nameless = SimpleNamespace(script_name="", type=MigrationType.SQL, content="DROP TABLE a;")
+    unreadable = MagicMock()
+    unreadable.script_name = "V1__a.sql"
+    unreadable.type = MigrationType.SQL
+    unreadable.content = ""
+    unreadable.load_content.side_effect = OSError("gone")
+    readable = SimpleNamespace(
+        script_name="V2__b.sql", type=MigrationType.SQL, content="DROP TABLE b;"
+    )
+    monkeypatch.setattr(
+        script_analysis, "analyse_script", MagicMock(side_effect=RuntimeError("boom"))
+    )
+
+    analysed = analyse_pending_scripts([nameless, unreadable, readable], "postgresql", log)
+
+    assert analysed == {}
+    messages = [call.args[0] for call in log.debug.call_args_list]
+    assert any("V1__a.sql" in m and "gone" in m for m in messages)
+    assert any("V2__b.sql" in m and "boom" in m for m in messages)
+
+
+def test_select_is_a_query_and_raises_no_caution():
+    analysis = analyse_script("SELECT 1;", "postgresql")
+
+    assert [(s.operation, s.kind) for s in analysis.statements] == [("SELECT", "QUERY")]
+    assert analysis.cautions == ()

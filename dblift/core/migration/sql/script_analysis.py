@@ -50,6 +50,8 @@ _ANALYSED_TYPES = (MigrationType.SQL, MigrationType.REPEATABLE)
 
 @dataclass(frozen=True)
 class AnalysedObject:
+    """An object a statement names: its type (a ``SqlObjectType`` value), name and schema."""
+
     type: str
     name: str
     schema: Optional[str]
@@ -57,6 +59,8 @@ class AnalysedObject:
 
 @dataclass(frozen=True)
 class AnalysedStatement:
+    """One statement of a script: its leading keyword, kind, objects and full-table DML flag."""
+
     index: int
     operation: str
     kind: str
@@ -67,6 +71,8 @@ class AnalysedStatement:
 
 @dataclass(frozen=True)
 class Caution:
+    """Why a statement deserves a second look: ``destroys`` or ``changes_rows``, and the reason."""
+
     level: str
     statement: int
     reason: str
@@ -74,11 +80,14 @@ class Caution:
 
 @dataclass(frozen=True)
 class ScriptAnalysis:
+    """What a script does: its statements, the cautions among them, and the parser's errors."""
+
     statements: Tuple[AnalysedStatement, ...]
     cautions: Tuple[Caution, ...]
     errors: Tuple[str, ...]
 
     def to_dict(self) -> Dict[str, Any]:
+        """The analysis as plain lists and dicts, ready for ``--format json``."""
         return {
             "statements": [
                 {
