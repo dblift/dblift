@@ -15,9 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   removed. Third-party provider classes may still define their own hooks;
   integrations that called the retired built-in methods must update.
 - Removed the internal `Trigger._format_body` and quirks helpers
-  `wrap_trigger_body`, `statement_updates_restore_key`, and `is_full_table_dml`.
-  Trigger model fields and serialization, `analyze_dml`, and the shared DML
-  scanning functions remain. Extensions calling these removed helpers need to
+  `wrap_trigger_body` and `statement_updates_restore_key`. Trigger model fields
+  and serialization, `analyze_dml`, `is_full_table_dml`, and the shared DML
+  scanning functions remain. Extensions calling the removed helpers need to
   own their rendering or DML policy.
 - Retired the OSS SQL-generation contracts: `dblift.extensions.sql_generation`,
   `dblift.core.state.sql_statement`, `dblift.db.generator_protocol`, and the

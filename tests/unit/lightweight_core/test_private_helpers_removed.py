@@ -16,8 +16,8 @@ def test_private_trigger_body_helpers_are_absent():
 def test_private_dml_helpers_are_absent_but_shared_analysis_remains():
     quirks = BaseQuirks(dialect_name="sqlite")
     assert not hasattr(quirks, "statement_updates_restore_key")
-    assert not hasattr(quirks, "is_full_table_dml")
     assert quirks.analyze_dml("UPDATE t SET value = 1 WHERE id = 2").events == {"UPDATE"}
+    assert quirks.is_full_table_dml("DELETE FROM t")
 
 
 def test_trigger_model_fields_and_serialization_remain():

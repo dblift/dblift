@@ -495,6 +495,12 @@ def test_cte_outer_statement_type_ignores_outer_returning_even_when_sqlglot_pars
     assert cte_outer_statement_type(sql, sqlglot_dialect="postgres") == "DML"
 
 
+def test_base_quirks_exposes_is_full_table_dml():
+    quirks = BaseQuirks(dialect_name="sqlite")
+    assert quirks.is_full_table_dml("-- c\nUPDATE t SET a = 1;")
+    assert not quirks.is_full_table_dml("UPDATE t SET a = 1 WHERE id = 1;")
+
+
 def test_dml_where_predicate_extracts_update_and_delete_conditions():
     assert dml_where_predicate("UPDATE t SET x = 1 WHERE id = 5;") == "id = 5"
     assert (

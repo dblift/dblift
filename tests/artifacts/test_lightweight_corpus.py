@@ -116,7 +116,7 @@ def test_candidate_wheel_excludes_private_helper_methods(candidate_wheel):
         "dblift/core/sql_model/trigger.py": ("Trigger", {"_format_body"}),
         "dblift/db/base_quirks.py": (
             "BaseQuirks",
-            {"wrap_trigger_body", "statement_updates_restore_key", "is_full_table_dml"},
+            {"wrap_trigger_body", "statement_updates_restore_key"},
         ),
         "dblift/db/plugins/oracle/quirks.py": ("OracleQuirks", {"wrap_trigger_body"}),
         "dblift/core/dialect_boundary.py": ("ModelQuirks", {"wrap_trigger_body"}),

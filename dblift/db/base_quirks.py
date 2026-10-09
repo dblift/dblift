@@ -24,6 +24,7 @@ from dblift.db.dml_analysis import (
     DEFAULT_UPSERT_SET_MARKERS,
     DmlMutation,
     analyze_dml,
+    is_full_table_dml,
 )
 from dblift.db.feature_gate import FeatureGate
 
@@ -114,6 +115,14 @@ class BaseQuirks:
             quote_pairs=self.sql_scan_quote_pairs,
             upsert_set_markers=self.upsert_update_set_markers,
             upsert_marker_pairs=self.upsert_update_marker_pairs,
+        )
+
+    def is_full_table_dml(self, statement: str) -> bool:
+        """Whether the statement is an UPDATE/DELETE with no top-level WHERE."""
+        return is_full_table_dml(
+            statement,
+            sqlglot_dialect=self.sqlglot_dialect,
+            quote_pairs=self.sql_scan_quote_pairs,
         )
 
     def is_sqlglot_opaque_valid_ddl(self, sql_content: str) -> bool:
