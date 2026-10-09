@@ -198,7 +198,7 @@ def test_wheel_contains_provider_descriptors_and_legacy_entry_points(candidate_w
 def test_installed_provider_descriptors_preserve_legacy_group(candidate_wheel, tmp_path):
     environment = tmp_path / "venv"
     subprocess.run(
-        [sys.executable, "-m", "virtualenv", str(environment)],
+        [sys.executable, "-m", "venv", str(environment)],
         check=True,
         capture_output=True,
         text=True,
