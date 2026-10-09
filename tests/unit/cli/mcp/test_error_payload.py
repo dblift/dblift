@@ -42,18 +42,7 @@ async def _session(fn):
 
 
 def _make_database_read_only(project):
-    """Make ``t.sqlite`` a read-only file with no history table.
-
-    A malformed-but-existing history table (wrong columns) does *not* crash
-    `info` at the runner's level: `InfoCommand`'s own body-level try/except
-    (`_run_command_lifecycle`) catches that failure and returns a normal
-    `InfoResult(success=False, error_message=...)` — a result object, hence a
-    verdict, not a crash. A read-only file fails earlier, in preflight
-    (`create_schema_and_history_table`, trying to create the table), which
-    `_run_command_lifecycle` does *not* wrap — the exception propagates all
-    the way to `run_json_guarded`'s own handler, which is the only path that
-    returns `(False, None)`.
-    """
+    """Make ``t.sqlite`` a read-only file with no history table."""
     geteuid = getattr(os, "geteuid", None)
     if geteuid is not None and geteuid() == 0:
         # CAP_DAC_OVERRIDE (root) ignores the write-permission bit, so the
@@ -66,13 +55,8 @@ def _make_database_read_only(project):
 
 
 @pytest.mark.unit
-def test_crashed_command_is_an_error_result_with_its_payload(project):
-    """`info` fails in preflight (a read-only database file, no history
-    table) before building a result: `run_json_guarded` returns `(False,
-    None)`, so the runner raises instead of returning that payload. The
-    SDK's `ToolError` path carries the CLI's message as text; there is no
-    `structured_content` to assert on — the exception payload had nothing
-    else worth keeping."""
+def test_info_reads_pending_scripts_from_read_only_database(project):
+    """Info needs no CREATE privilege when the history table is absent."""
     _make_database_read_only(project)
 
     async def scenario(client):
@@ -80,8 +64,8 @@ def test_crashed_command_is_an_error_result_with_its_payload(project):
 
     result = anyio.run(_session, scenario)
 
-    assert result.is_error is True
-    assert "readonly database" in result.content[0].text
+    assert result.is_error is False
+    assert result.structured_content["migrations"][0]["status"] == "PENDING"
 
 
 @pytest.mark.unit
@@ -190,19 +174,13 @@ def test_text_mode_success_false_is_not_an_error():
 
 
 @pytest.mark.unit
-def test_resource_over_a_crashed_command_refuses(project):
-    """`dblift://history` over a crashed `info` must raise the SDK's
-    client-side error, carrying the CLI's message, instead of quietly
-    returning `[]` — which would read as "no history"."""
-    from mcp.shared.exceptions import MCPError
-
+def test_history_resource_reads_pending_scripts_from_read_only_database(project):
+    """History resource uses the same read-only info path."""
     _make_database_read_only(project)
 
     async def scenario(client):
-        with pytest.raises(MCPError) as exc_info:
-            await client.read_resource("dblift://history")
-        return str(exc_info.value)
+        return await client.read_resource("dblift://history")
 
-    message = anyio.run(_session, scenario)
+    history = anyio.run(_session, scenario)
 
-    assert "readonly database" in message
+    assert '"V1__init.sql"' in history.contents[0].text

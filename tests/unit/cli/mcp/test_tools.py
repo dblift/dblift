@@ -406,35 +406,30 @@ def test_unreachable_database_is_an_error_for_migrate_dry_run_and_pending(unreac
 
 @pytest.mark.unit
 @pytest.mark.filterwarnings("error::DeprecationWarning")
-def test_uncreatable_history_table_is_an_error_for_info_validate_and_history(project):
-    """A schema-history table that cannot be created is an error result for
-    `info` and `validate` and a failed read for `dblift://history`, worded as
-    `ConnectionError: Could not create the schema-history table: ...`.
-    `migrate_dry_run` and `dblift://pending` never create the table."""
+def test_uncreatable_history_table_does_not_block_read_only_info(project):
+    """Info and its history resource read pending scripts without CREATE privilege."""
     from unittest.mock import patch
-
-    from mcp.shared.exceptions import MCPError
 
     async def scenario(client):
         info = await client.call_tool("info", {})
         validate = await client.call_tool("validate", {})
-        with pytest.raises(MCPError) as exc_info:
-            await client.read_resource("dblift://history")
-        return info, validate, str(exc_info.value)
+        history = await client.read_resource("dblift://history")
+        return info, validate, history
 
     with patch(
         "dblift.core.migration.history.migration_history_manager."
         "MigrationHistoryManager.create_schema_and_history_table",
         side_effect=RuntimeError("permission denied for schema main"),
     ):
-        info, validate, history_error = anyio.run(_session, scenario)
+        info, validate, history = anyio.run(_session, scenario)
 
     expected = "ConnectionError: Could not create the schema-history table: "
-    for result in (info, validate):
-        assert result.is_error is True
-        assert expected in result.content[0].text
-        assert "permission denied for schema main" in result.content[0].text
-    assert expected in history_error
+    assert info.is_error is False
+    assert info.structured_content["migrations"][0]["status"] == "PENDING"
+    assert '"V1__init.sql"' in history.contents[0].text
+    assert validate.is_error is True
+    assert expected in validate.content[0].text
+    assert "permission denied for schema main" in validate.content[0].text
 
 
 @pytest.mark.unit
