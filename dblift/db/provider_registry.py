@@ -222,11 +222,7 @@ class ProviderRegistry:
 
     @classmethod
     def _discover_via_filesystem(cls) -> None:
-        """Index bundled descriptors, or load older layouts without one.
-
-        Compare declared name and aliases when skipping an installed plugin;
-        directory names can differ from dialect keys such as ``aurora-postgresql``.
-        """
+        """Index bundled descriptors, loading older layouts without one."""
         plugins_dir = Path(__file__).parent / "plugins"
         if not plugins_dir.exists():
             return

@@ -4,14 +4,14 @@ import importlib
 import logging
 from importlib import metadata
 from pathlib import Path
-from typing import Any, Iterator, Optional
+from typing import Any, Iterator, Optional, TypeGuard
 
 from dblift.db.provider_metadata import PluginDescriptor
 
 _logger = logging.getLogger(__name__)
 
 
-def _valid_descriptor(descriptor: Any) -> bool:
+def _valid_descriptor(descriptor: Any) -> TypeGuard[PluginDescriptor]:
     return (
         isinstance(descriptor, PluginDescriptor)
         and isinstance(descriptor.name, str)
@@ -106,7 +106,7 @@ def filesystem_descriptor(plugin_dir: Path) -> Optional[PluginDescriptor]:
         _logger.warning(f"Invalid provider descriptor from {plugin_dir}; ignoring.")
     except Exception as exc:
         _logger.warning(f"Failed to load descriptor from {plugin_dir}: {exc}")
-        return None
+    return None
 
 
 def load_factory(descriptor: PluginDescriptor, legacy_group: str) -> Any:
