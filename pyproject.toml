@@ -423,7 +423,6 @@ module = [
     "dblift.db.base_provider",
     "dblift.db.feature_gate",
     "dblift.db.provider_registry",
-    "dblift.db.plugins.oracle.introspection",
 ]
 disallow_any_generics = true
 disallow_subclassing_any = true

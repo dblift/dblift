@@ -68,6 +68,48 @@ def test_candidate_wheel_excludes_generation_only_modules(candidate_wheel):
         assert not retired.intersection(archive.namelist())
 
 
+def test_candidate_wheel_excludes_builtin_catalog_hooks(candidate_wheel, tmp_path):
+    with zipfile.ZipFile(candidate_wheel) as archive:
+        assert "dblift/db/plugins/oracle/introspection/oracle_utils.py" not in archive.namelist()
+
+    probe = tmp_path / "catalog_probe.py"
+    probe.write_text(
+        "import importlib.util\n"
+        "import json\n"
+        "from pathlib import Path\n"
+        "import dblift\n"
+        "from dblift.db.base_quirks import BaseQuirks\n"
+        "from dblift.db.plugins.oracle.quirks import OracleQuirks\n"
+        "from dblift.db.plugins.postgresql.quirks import PostgresqlQuirks\n"
+        "for cls in (BaseQuirks, OracleQuirks, PostgresqlQuirks):\n"
+        "    for name in ('enrich_view_from_row', 'fetch_unique_constraints', "
+        "'index_no_sort_types', 'introspector_class', 'vendor_queries_class'):\n"
+        "        assert not hasattr(cls, name), (cls.__name__, name)\n"
+        "assert importlib.util.find_spec('dblift.db.plugins.oracle.introspection') is None\n"
+        "print(json.dumps({'status': 'pass', 'origin': str(Path(dblift.__file__).resolve()), "
+        "'workdir': str(Path.cwd().resolve())}))\n",
+        encoding="utf-8",
+    )
+    output = tmp_path / "catalog_result.json"
+    run = subprocess.run(
+        [
+            sys.executable,
+            str(QUALIFIER),
+            "--wheel",
+            str(candidate_wheel.resolve()),
+            "--output",
+            str(output),
+            "--corpus-probe",
+            str(probe),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+    )
+    assert run.returncode == 0, run.stderr
+    assert json.loads(output.read_text(encoding="utf-8"))["status"] == "pass"
+
+
 def test_corpus_probe_uses_the_installed_wheel_and_neutral_workdir(candidate_wheel, tmp_path):
     probe = tmp_path / "corpus_probe.py"
     probe.write_text(
