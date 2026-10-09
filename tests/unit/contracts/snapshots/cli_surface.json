@@ -329,6 +329,8 @@
   "validate-sql :: --format :: _StoreAction|nargs=None|choices=['console', 'json']|default='console'",
   "validate-sql :: --help",
   "validate-sql :: --help :: _HelpAction|nargs=0|choices=None|default=suppress",
+  "validate-sql :: --placeholders",
+  "validate-sql :: --placeholders :: _AppendAction|nargs=+|choices=None|default=None",
   "validate-sql :: -h",
   "validate-sql :: -h :: _HelpAction|nargs=0|choices=None|default=suppress",
   "validate-sql :: <command>"

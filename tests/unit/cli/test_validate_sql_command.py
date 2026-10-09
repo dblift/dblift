@@ -107,6 +107,28 @@ def test_dialect_alone_lints_offline_without_a_config(tmp_path, scripts, dialect
     assert [f["code"] for f in payload["scripts"][0]["findings"]] == ["drop-table"]
 
 
+def test_placeholders_option_is_substituted_before_linting(tmp_path):
+    script = tmp_path / "V1__drop.sql"
+    script.write_text("DROP TABLE ${table};")
+
+    proc = _run(
+        tmp_path,
+        "validate-sql",
+        "--dialect",
+        "mysql",
+        "--format",
+        "json",
+        "--placeholders",
+        "table=users",
+        "--files",
+        str(script),
+    )
+
+    payload = json.loads(proc.stdout)
+    assert proc.returncode == 1, proc.stderr
+    assert [f["snippet"] for f in payload["scripts"][0]["findings"]] == ["DROP TABLE users"]
+
+
 def test_missing_file_fails(tmp_path):
     proc = _run(
         tmp_path,
