@@ -69,24 +69,9 @@ class ParserQuirks(Protocol):
 
 @runtime_checkable
 class ModelQuirks(Protocol):
-    """Domain-model rendering hooks.
-
-    First hook: how a dialect wraps a trigger body when rendering to
-    SQL. Oracle requires ``BEGIN`` / ``END`` blocks; other dialects
-    pass the body through unchanged. The framework calls
-    ``provider.quirks.wrap_trigger_body(body)`` from
-    :meth:`dblift.core.sql_model.trigger.Trigger._format_body`.
-    """
+    """Domain-model rendering hooks."""
 
     event_supports_mysql_schedule: bool
-
-    def wrap_trigger_body(self, body: str) -> str:
-        """Wrap a trigger body in dialect-specific delimiters.
-
-        Default: return ``body`` unchanged. Oracle prepends ``BEGIN\\n``
-        when the body doesn't already start with ``DECLARE`` or
-        ``BEGIN``.
-        """
 
 
 @runtime_checkable

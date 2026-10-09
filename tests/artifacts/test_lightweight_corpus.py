@@ -1,5 +1,6 @@
 """Qualify the functional corpus inside the installed wheel's environment."""
 
+import ast
 import hashlib
 import json
 import os
@@ -108,6 +109,28 @@ def test_candidate_wheel_excludes_builtin_catalog_hooks(candidate_wheel, tmp_pat
     )
     assert run.returncode == 0, run.stderr
     assert json.loads(output.read_text(encoding="utf-8"))["status"] == "pass"
+
+
+def test_candidate_wheel_excludes_private_helper_methods(candidate_wheel):
+    retired = {
+        "dblift/core/sql_model/trigger.py": ("Trigger", {"_format_body"}),
+        "dblift/db/base_quirks.py": (
+            "BaseQuirks",
+            {"wrap_trigger_body", "statement_updates_restore_key"},
+        ),
+        "dblift/db/plugins/oracle/quirks.py": ("OracleQuirks", {"wrap_trigger_body"}),
+        "dblift/core/dialect_boundary.py": ("ModelQuirks", {"wrap_trigger_body"}),
+    }
+    with zipfile.ZipFile(candidate_wheel) as archive:
+        for module, (class_name, methods) in retired.items():
+            tree = ast.parse(archive.read(module))
+            owner = next(
+                node
+                for node in tree.body
+                if isinstance(node, ast.ClassDef) and node.name == class_name
+            )
+            present = {node.name for node in owner.body if isinstance(node, ast.FunctionDef)}
+            assert not methods.intersection(present), module
 
 
 def test_corpus_probe_uses_the_installed_wheel_and_neutral_workdir(candidate_wheel, tmp_path):
