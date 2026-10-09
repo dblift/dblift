@@ -148,11 +148,12 @@ These names are enumerated in each module's `__all__`, and the top-level
 package ships a PEP 561 `py.typed` marker so downstream type checkers pick up
 annotations across every public subpackage.
 
-The previously documented `dblift.extensions.sql_generation` category was
-removed in 4.11.0. This is an intentional exception to the stable-import
-policy: extensions using its generation-only metadata types must provide their
-own. `dblift.extensions.sql_model.SqlStatementType` and the parser's internal
-`SqlStatement` are separate parsing contracts and remain available.
+The `dblift.extensions.sql_generation` category documented in 4.10.0 was
+retired during the SQL-generation ownership cleanup. Extensions using its
+generation-only metadata types must provide their own. The former import path
+no longer resolves. `dblift.extensions.sql_model.SqlStatementType` and the
+parser's internal `SqlStatement` are separate parsing contracts and remain
+available.
 
 ### 1.2 What is NOT public
 
