@@ -408,8 +408,15 @@ class SqlAnalyzer:
             return "UNKNOWN"
 
         execution_sql = sql.lstrip("\ufeff").lstrip() if self.analysis_mode == "execution" else sql
+        if self.analysis_mode == "execution":
+            try:
+                execution_head = strip_leading_sql_comments(execution_sql, strict=True).lstrip()
+            except ValueError as exc:
+                raise ValueError(f"{exc}; use analysis_mode='full'") from exc
+        else:
+            execution_head = ""
         if self.analysis_mode == "execution" and re.match(
-            r"WITH\b", strip_leading_sql_comments(execution_sql).lstrip(), flags=re.IGNORECASE
+            r"WITH\b", execution_head, flags=re.IGNORECASE
         ):
             outer = scan_cte_outer_statement_type(
                 execution_sql,

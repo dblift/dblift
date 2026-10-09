@@ -459,8 +459,12 @@ def _cte_scan_is_balanced(text: str, quote_pairs: Dict[str, str]) -> bool:
         if quote:
             i, quote = _skip_quote(text, i, quote)
             continue
-        if text.startswith("/*", i) and text.find("*/", i + 2) < 0:
-            return False
+        if text.startswith("/*", i):
+            end = text.find("*/", i + 2)
+            if end < 0 or text.find("/*", i + 2, end) >= 0:
+                return False  # Nested comments are dialect-specific; do not guess their extent.
+            i = end + 2
+            continue
         comment_end = _skip_comment(text, i)
         if comment_end >= 0:
             i = comment_end
@@ -566,7 +570,7 @@ def _sqlglot_dml_table_sql(text: str, dialect: str) -> str:
     return table.sql(dialect=dialect)
 
 
-def strip_leading_sql_comments(statement: str) -> str:
+def strip_leading_sql_comments(statement: str, *, strict: bool = False) -> str:
     """Drop leading line/block comments so the first keyword is reachable."""
     text = statement
     while True:
@@ -581,6 +585,8 @@ def strip_leading_sql_comments(statement: str) -> str:
             end = stripped.find("*/", 2)
             if end < 0:
                 return ""
+            if strict and stripped.find("/*", 2, end) >= 0:
+                raise ValueError("Cannot classify nested leading SQL comment")
             text = stripped[end + 2 :]
             continue
         return stripped

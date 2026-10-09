@@ -23,6 +23,7 @@ from tests.unit.lightweight_core._support import run_python
         ("WITH x AS (SELECT 1) SELECT ('unterminated'", None),
         ("WITH x AS (SELECT 1) SELECT $tag$unterminated", None),
         ("WITH x AS (SELECT 1) SELECT 'unterminated", None),
+        ("WITH x AS (SELECT 1) /* outer /* inner */ INSERT INTO t */ SELECT * FROM x", None),
     ],
 )
 def test_scan_identifies_outer_verb_without_ast(sql, expected):
@@ -65,6 +66,16 @@ def test_execution_analyzer_classifies_bom_prefixed_cte_insert():
             == "DML"
         )
     scan.assert_called_once()
+
+
+def test_execution_refuses_ambiguous_nested_leading_comment_before_with():
+    from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+
+    analyzer = SqlAnalyzer("postgresql", analysis_mode="execution")
+    with pytest.raises(ValueError, match="analysis_mode='full'"):
+        analyzer.get_statement_type(
+            "/* outer /* inner */ trailing */ WITH x AS (SELECT 1) INSERT INTO t SELECT * FROM x"
+        )
 
 
 @pytest.mark.parametrize(

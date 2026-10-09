@@ -2,7 +2,44 @@
 
 import json
 
+import pytest
+
 from tests.unit.lightweight_core._support import run_python
+
+
+@pytest.mark.parametrize("factory", ["from_config", "from_sqlalchemy"])
+def test_default_full_preserves_strict_legacy_subclass_constructor(factory, tmp_path):
+    from sqlalchemy import create_engine
+
+    from dblift.api import DBLiftClient
+    from dblift.config import DbliftConfig
+    from dblift.core.logger import NullLog
+
+    class LegacyClient(DBLiftClient):
+        def __init__(self, provider, migrations_dir, config=None, logger=None):
+            super().__init__(provider, migrations_dir, config, logger)
+
+    config = DbliftConfig.from_dict(
+        {"database": {"type": "sqlite", "path": str(tmp_path / "legacy.db"), "schema": "main"}}
+    )
+    engine = create_engine(f"sqlite:///{tmp_path / 'legacy.db'}")
+    try:
+
+        def create(**kwargs):
+            if factory == "from_config":
+                return LegacyClient.from_config(
+                    config, migrations_dir=tmp_path, logger=NullLog(), **kwargs
+                )
+            return LegacyClient.from_sqlalchemy(
+                engine, migrations_dir=tmp_path, logger=NullLog(), **kwargs
+            )
+
+        with create() as client:
+            assert client.analysis_mode == "full"
+        with pytest.raises(TypeError, match="analysis_mode"):
+            create(analysis_mode="execution")
+    finally:
+        engine.dispose()
 
 
 def test_sqlite_versioned_validate_and_undo_without_analysis_packages(tmp_path):
@@ -506,6 +543,72 @@ with DBLiftClient.from_config(config, migrations_dir=sql, logger=NullLog(), anal
     outcome = client.migrate()
     assert outcome.success, outcome.error_message
     assert client.provider.execute_query('SELECT id FROM t') == [{'id': 7}]
+""",
+        blocked=("sqlglot", "rich", "jinja2"),
+        cwd=tmp_path,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_nested_leading_comment_refusal_precedes_history_and_user_writes(tmp_path):
+    result = run_python(
+        """
+import sqlite3
+from pathlib import Path
+from dblift.api import DBLiftClient
+from dblift.config import DbliftConfig
+from dblift.core.logger import NullLog
+
+sql = Path('sql')
+sql.mkdir()
+(sql / 'V1__create.sql').write_text('CREATE TABLE t (id INTEGER);')
+(sql / 'V2__ambiguous.sql').write_text(
+    '/* outer /* inner */ trailing */ WITH x AS (SELECT 1) INSERT INTO t SELECT * FROM x;'
+)
+config = DbliftConfig.from_dict({'database': {
+    'type': 'sqlite', 'path': 'db.sqlite', 'schema': 'main'
+}})
+with DBLiftClient.from_config(config, migrations_dir=sql, logger=NullLog(), analysis_mode='execution') as client:
+    outcome = client.migrate()
+    assert not outcome.success
+    assert "analysis_mode='full'" in outcome.error_message
+with sqlite3.connect('db.sqlite') as connection:
+    assert connection.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall() == []
+""",
+        blocked=("sqlglot", "rich", "jinja2"),
+        cwd=tmp_path,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_deprecated_text_undo_request_does_not_claim_success_without_sqlglot(tmp_path):
+    result = run_python(
+        """
+import warnings
+from pathlib import Path
+from dblift.api import DBLiftClient
+from dblift.config import DbliftConfig
+from dblift.core.logger import NullLog
+
+sql = Path('sql')
+sql.mkdir()
+script = sql / 'V1__create.sql'
+script.write_text('CREATE TABLE t (id INTEGER);')
+config = DbliftConfig.from_dict({'database': {
+    'type': 'sqlite', 'path': 'db.sqlite', 'schema': 'main'
+}})
+with DBLiftClient.from_config(config, migrations_dir=sql, logger=NullLog(), analysis_mode='execution') as client:
+    with warnings.catch_warnings(record=True) as recorded:
+        warnings.simplefilter('always', DeprecationWarning)
+        try:
+            generated = client.generate_undo_script(script)
+        except ModuleNotFoundError as exc:
+            assert exc.name == 'sqlglot'
+        else:
+            assert not generated.success
+            assert 'sqlglot' in (generated.error_message or '').lower()
+    assert any(issubclass(item.category, DeprecationWarning) for item in recorded)
+assert not (sql / 'U1__create.sql').exists()
 """,
         blocked=("sqlglot", "rich", "jinja2"),
         cwd=tmp_path,

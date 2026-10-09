@@ -290,7 +290,7 @@ def client_from_config(
         migrations_dir=migrations_dir,
         config=client_config,
         logger=logger,
-        analysis_mode=analysis_mode,
+        **({} if analysis_mode == "full" else {"analysis_mode": analysis_mode}),
         **kwargs,
     )
 
@@ -453,6 +453,6 @@ def client_from_sqlalchemy(
         migrations_dir=migrations_dir or getattr(derived.migrations, "directory", None),
         config=derived,
         logger=logger,
-        analysis_mode=analysis_mode,
+        **({} if analysis_mode == "full" else {"analysis_mode": analysis_mode}),
         **kwargs,
     )
