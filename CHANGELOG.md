@@ -29,6 +29,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The unreleased distribution split makes `dblift-core` the sole owner of the
+  `dblift` Python package; a same-version, metadata-only `dblift` bundle retains
+  the CLI, SQL analysis, presentation, and historical extras. Release builds
+  retain core, bundle, and `pytest-dblift` artifacts. All PyPI publishers,
+  including the independent `pytest-dblift` publisher, are temporarily held
+  while paired publication and the single-wheel upgrade path are reviewed.
 - Python clients can opt into `analysis_mode="execution"` when running migrations without
   SQL object analysis. SQL execution, history, validation, callbacks, and undo remain
   available; reports label object analysis as disabled. The default remains `"full"`.

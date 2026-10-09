@@ -52,7 +52,7 @@ def _record(result: dict, name: str, args: list[str], cwd: Path) -> bool:
     return True
 
 
-def _candidate_version(wheel: Path) -> str | None:
+def _candidate_version(wheel: Path, name: str = "dblift") -> str | None:
     try:
         with zipfile.ZipFile(wheel) as archive:
             metadata_files = [
@@ -64,11 +64,12 @@ def _candidate_version(wheel: Path) -> str | None:
     except (OSError, ValueError, zipfile.BadZipFile, UnicodeError):
         return None
     version = message.get("Version")
-    if message.get("Name", "").lower().replace("_", "-") != "dblift" or not version:
+    if message.get("Name", "").lower().replace("_", "-") != name or not version:
         return None
-    if not wheel.name.startswith(f"dblift-{version}-"):
+    wheel_name = name.replace("-", "_")
+    if not wheel.name.startswith(f"{wheel_name}-{version}-"):
         return None
-    if metadata_files[0].split("/", 1)[0] != f"dblift-{version}.dist-info":
+    if metadata_files[0].split("/", 1)[0] != f"{wheel_name}-{version}.dist-info":
         return None
     return version
 
@@ -79,6 +80,7 @@ def qualify(
     probe: Path,
     corpus_probe: Path | None = None,
     corpus_fixtures: Path | None = None,
+    core_wheel: Path | None = None,
 ) -> int:
     result: dict = {
         "artifact_sha256": None,
@@ -104,6 +106,15 @@ def qualify(
         if candidate_version is None:
             result["error"] = "candidate distribution is not dblift"
             return 1
+        if core_wheel is not None:
+            if (
+                not core_wheel.is_absolute()
+                or not core_wheel.is_file()
+                or _candidate_version(core_wheel, "dblift-core") != candidate_version
+            ):
+                result["error"] = "matching absolute dblift-core wheel is required"
+                return 1
+            result["core_artifact_sha256"] = hashlib.sha256(core_wheel.read_bytes()).hexdigest()
         result["artifact_sha256"] = hashlib.sha256(wheel.read_bytes()).hexdigest()
         with tempfile.TemporaryDirectory(prefix="dblift-qualify-") as root:
             root_path = Path(root)
@@ -115,7 +126,9 @@ def qualify(
             result["python"] = checked_run([str(python), "--version"], work).stdout.strip()
             # Installation output can contain index credentials; record only its status.
             try:
-                checked_run([str(python), "-m", "pip", "install", str(wheel)], work)
+                wheels = [str(core_wheel)] if core_wheel is not None else []
+                checked_run([str(python), "-m", "pip", "install", *wheels, str(wheel)], work)
+                checked_run([str(python), "-m", "pip", "check"], work)
             except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
                 result["error"] = f"wheel installation failed ({type(exc).__name__})"
                 return 1
@@ -133,6 +146,8 @@ def qualify(
                         or installed.get("dblift") != candidate_version
                     ):
                         raise ValueError("installed version does not match candidate")
+                    if core_wheel is not None and installed.get("dblift-core") != candidate_version:
+                        raise ValueError("installed core version does not match candidate")
                     required = ("dblift", "PyYAML", "rich", "Jinja2", "sqlglot", "SQLAlchemy")
                     if not all(
                         isinstance(installed.get(name), str) and installed[name]
@@ -188,6 +203,7 @@ def qualify(
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--wheel", required=True, type=Path)
+    parser.add_argument("--core-wheel", type=Path)
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument(
         "--probe", type=Path, default=Path(__file__).with_name("lightweight_installed_probe.py")
@@ -195,7 +211,14 @@ def main() -> int:
     parser.add_argument("--corpus-probe", type=Path)
     parser.add_argument("--corpus-fixtures", type=Path)
     args = parser.parse_args()
-    return qualify(args.wheel, args.output, args.probe, args.corpus_probe, args.corpus_fixtures)
+    return qualify(
+        args.wheel,
+        args.output,
+        args.probe,
+        args.corpus_probe,
+        args.corpus_fixtures,
+        args.core_wheel,
+    )
 
 
 if __name__ == "__main__":

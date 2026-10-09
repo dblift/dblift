@@ -56,3 +56,28 @@ def test_reports_failure_when_the_package_marker_is_missing(tmp_path, monkeypatc
 
     assert _load_create_release().update_version_in_files("4.0.0") is False
     assert "not found" in capsys.readouterr().out
+
+
+def test_bumps_bundle_version_and_exact_core_references(tmp_path, monkeypatch):
+    _write_tree(tmp_path)
+    root_project = tmp_path / "pyproject.toml"
+    root_project.write_text(
+        root_project.read_text().replace('name = "dblift"', 'name = "dblift-core"')
+    )
+    bundle = tmp_path / "packages" / "dblift"
+    bundle.mkdir(parents=True)
+    (bundle / "pyproject.toml").write_text(
+        '[project]\nname = "dblift"\nversion = "3.10.1"\n'
+        'dependencies = ["dblift-core[analysis,presentation]==3.10.1"]\n'
+        "[project.optional-dependencies]\n"
+        'postgresql = ["dblift-core[postgresql]==3.10.1"]\n'
+    )
+    monkeypatch.chdir(tmp_path)
+
+    assert _load_create_release().update_version_in_files("4.0.0") is True
+
+    text = (bundle / "pyproject.toml").read_text()
+    assert 'version = "4.0.0"' in text
+    assert "dblift-core[analysis,presentation]==4.0.0" in text
+    assert "dblift-core[postgresql]==4.0.0" in text
+    assert "3.10.1" not in text

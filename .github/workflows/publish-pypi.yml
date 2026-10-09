@@ -1,4 +1,4 @@
-name: Publish to PyPI
+name: Build release artifacts (publication paused)
 
 on:
   release:
@@ -7,7 +7,6 @@ on:
 
 permissions:
   contents: read
-  id-token: write
 
 jobs:
   # Gate: never publish to PyPI unless the unit suite passes on the released ref.
@@ -24,7 +23,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -e ".[dev,postgresql,mysql,mariadb,oracle,sqlserver,db2,cosmosdb,django]"
+          python -m pip install -e ".[dev,postgresql,mysql,mariadb,oracle,sqlserver,db2,cosmosdb,django]" -e packages/dblift
 
       - name: Run unit tests
         run: |
@@ -45,12 +44,9 @@ jobs:
             -p no:benchmark \
             --timeout=120
 
-  publish:
+  build:
     needs: test
     runs-on: ubuntu-latest
-    environment: pypi
-    outputs:
-      publish-pytest-dblift: ${{ steps.pytest_dblift_pypi.outputs.publish }}
 
     steps:
       - uses: actions/checkout@v6
@@ -60,10 +56,11 @@ jobs:
           python-version: "3.11"
           cache: pip
 
-      - name: Build dblift distributions
+      - name: Build core and bundle distributions
         run: |
           python -m pip install --upgrade pip build
-          python -m build
+          python -m build --outdir dist/core
+          python -m build packages/dblift --outdir dist/bundle
 
       - name: Build pytest-dblift distributions
         run: python -m build packages/pytest-dblift
@@ -77,7 +74,7 @@ jobs:
         run: |
           python -m venv /tmp/pytest-dblift-smoke-venv
           /tmp/pytest-dblift-smoke-venv/bin/python -m pip install --upgrade pip
-          /tmp/pytest-dblift-smoke-venv/bin/python -m pip install dist/*.whl packages/pytest-dblift/dist/*.whl
+          /tmp/pytest-dblift-smoke-venv/bin/python -m pip install dist/core/*.whl dist/bundle/*.whl packages/pytest-dblift/dist/*.whl
           mkdir -p /tmp/pytest-dblift-smoke/migrations
           cat > /tmp/pytest-dblift-smoke/migrations/V1__init.sql <<'EOF'
           create table t (id integer primary key);
@@ -89,59 +86,15 @@ jobs:
           cd /tmp/pytest-dblift-smoke
           /tmp/pytest-dblift-smoke-venv/bin/python -m pytest test_smoke.py
 
-      - name: Check whether pytest-dblift version is on PyPI
-        id: pytest_dblift_pypi
-        run: |
-          VERSION=$(python -c "import tomllib; print(tomllib.load(open('packages/pytest-dblift/pyproject.toml','rb'))['project']['version'])")
-          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-          set +e
-          CODE=$(curl -sS -o /tmp/pypi-pytest-dblift.json -w "%{http_code}" \
-            "https://pypi.org/pypi/pytest-dblift/${VERSION}/json")
-          CURL_STATUS=$?
-          set -e
-          if [ "$CURL_STATUS" -ne 0 ]; then
-            echo "PyPI lookup failed (curl exit ${CURL_STATUS})"
-            exit 1
-          fi
-          echo "PyPI HTTP ${CODE} for pytest-dblift==${VERSION}"
-          if [ "$CODE" = "200" ]; then
-            echo "publish=false" >> "$GITHUB_OUTPUT"
-          elif [ "$CODE" = "404" ]; then
-            echo "publish=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "Unexpected PyPI status ${CODE}"
-            cat /tmp/pypi-pytest-dblift.json || true
-            exit 1
-          fi
-
-      - name: Publish dblift
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          skip-existing: true
-
-      - name: Upload pytest-dblift distributions
-        if: steps.pytest_dblift_pypi.outputs.publish == 'true'
+      # All PyPI publication, including the independent pytest-dblift publisher,
+      # is paused until the paired distribution and migration are approved. The
+      # old dblift wheel owns files that dblift-core now owns; direct upgrades
+      # can erase them. This workflow only retains candidate artifacts.
+      - name: Retain built distributions for release qualification
         uses: actions/upload-artifact@v4
         with:
-          name: pytest-dblift-dist
-          path: packages/pytest-dblift/dist
-
-  publish-pytest-dblift:
-    needs: publish
-    if: needs.publish.outputs.publish-pytest-dblift == 'true'
-    runs-on: ubuntu-latest
-    # Separate environment from the dblift publish job: PyPI trusted-publisher
-    # claims (repo + workflow + environment) must be unique per project, or it
-    # mints a token scoped to the wrong project.
-    environment: pypi-pytest-dblift
-
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: pytest-dblift-dist
-          path: packages/pytest-dblift/dist
-
-      - name: Publish pytest-dblift
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          packages-dir: packages/pytest-dblift/dist
+          name: dblift-release-artifacts
+          path: |
+            dist/core/*
+            dist/bundle/*
+            packages/pytest-dblift/dist/*

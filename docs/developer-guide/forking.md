@@ -9,7 +9,7 @@ one of them moves, so the lists stay current.
 ## Executed SQLite-only fork fixture
 
 The reproducible recipe is `scripts/qualify_sqlite_fork.py`. In a development
-environment installed with `pip install -e '.[dev]'` (which supplies the
+environment installed with `pip install -e '.[dev]' -e packages/dblift` (which supplies the
 qualification-only TOML writer), run it from a committed revision:
 
 ```bash
@@ -19,9 +19,11 @@ python scripts/qualify_sqlite_fork.py --revision "$(git rev-parse HEAD)" --outpu
 The script archives that revision into a temporary directory, keeps SQLite and
 the common files under `dblift/db/plugins/`, removes the other provider
 directories and both provider entry-point groups in that copy, then builds
-`dblift-sqlite-fork-fixture` with the `dblift-fork-fixture` executable. It
-retains the Python `dblift` namespace and all shared dependencies. The JSON
-result records the wheel hash, removed plugin directories, installed origin,
+`dblift-sqlite-fork-fixture-core` and the metadata-only
+`dblift-sqlite-fork-fixture` bundle with the `dblift-fork-fixture` executable.
+The core owns the Python `dblift` namespace; the bundle owns the console
+entry point and standard extras. Historical one-distribution revisions still
+build as one wheel. The JSON result records both wheel hashes, removed plugin directories, installed origin,
 SQLite migration result and a transformation diff beside the result file.
 The fixture is **not published**. Because the Python namespace stays `dblift`,
 install the fixture in a **separate environment** from the original DBLift
@@ -83,9 +85,11 @@ the expected strings in that test.
 Then the identifiers that are not constants, because each is a public
 contract of its own:
 
-- **The package name.** `dblift/` is the import root; `pyproject.toml`
-  declares the distribution name, the `dblift` console script and the
-  `dblift.*` entry-point groups. Renaming the directory means rewriting every
+- **The package name.** `dblift/` is the import root; the root `pyproject.toml`
+  declares `dblift-core` and the `dblift.*` entry-point groups, while
+  `packages/dblift/pyproject.toml` declares the bundle and `dblift` console
+  script. Rename both distributions and keep their version pins aligned.
+  Renaming the directory means rewriting every
   `from dblift.` import (a `sed` over `dblift/`, `tests/`, `packages/` and
   `docs/`) and the entry-point values.
 - **Migration placeholders.** `dblift/core/migration/executor/placeholder_manager.py`
