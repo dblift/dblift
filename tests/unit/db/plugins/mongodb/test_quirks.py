@@ -45,7 +45,7 @@ def test_no_parsers():
     assert quirks.parser_class("hybrid") is None
     assert quirks.parser_class("regex") is None
     assert quirks.parser_class("sqlglot") is None
-    assert quirks.introspector_class() is None
+    assert not hasattr(quirks, "introspector_class")
 
 
 def test_default_dialect_name():

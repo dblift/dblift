@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- Built-in `BaseQuirks` and provider classes no longer define catalog
+  enrichment methods, catalog-only fields, or `introspector_class()` and
+  `vendor_queries_class()`. The unused Oracle catalog helper package is also
+  removed. Third-party provider classes may still define their own hooks;
+  integrations that called the retired built-in methods must update.
 - Retired the OSS SQL-generation contracts: `dblift.extensions.sql_generation`,
   `dblift.core.state.sql_statement`, `dblift.db.generator_protocol`, and the
   `ddl_generator_class()` / `alter_generator_class()` quirks hooks. Generation
