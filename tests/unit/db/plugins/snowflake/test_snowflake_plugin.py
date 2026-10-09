@@ -726,7 +726,8 @@ def test_snowflake_acquire_migration_lock_commits_a_lease_on_the_seeded_row() ->
     assert connection.sql[1] == "ALTER SESSION SET LOCK_TIMEOUT = 0"
     assert connection.sql[-1] == (
         'UPDATE "APP"."DBLIFT_MIGRATION_LOCK" SET owner_token = ?, locked_at = SYSDATE() '
-        "WHERE lock_name = ? AND owner_token IS NULL"
+        "WHERE lock_name = ? AND owner_token IS NULL AND (SELECT COUNT(*) FROM "
+        '"APP"."DBLIFT_MIGRATION_LOCK" WHERE lock_name = ?) = 1'
     )
     assert connection.committed is True
     assert provider._migration_lease is not None

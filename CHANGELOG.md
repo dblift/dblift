@@ -89,6 +89,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   migration history does not trigger baseline safety checks.
 - `info` marks a version Undoable when its companion undo script is in any
   configured scripts directory, regardless of directory order.
+- Snowflake migration locking refuses an ambiguous lock table with multiple
+  `migration` rows. Standard Snowflake tables do not enforce unique keys, so a
+  free duplicate beside a held row could previously let another runner claim
+  the lock at the same time.
 - A migration lock left behind by a process that was killed (SIGKILL, or SIGTERM while
   dblift runs embedded through the Python API) is now reclaimed automatically. On
   SQLite, DuckDB, CockroachDB, Db2, Snowflake, MongoDB and the Oracle table fallback,

@@ -19,6 +19,7 @@ from __future__ import annotations
 import datetime
 import importlib.util
 import re
+import sqlite3
 import threading
 import time
 from dataclasses import dataclass, field
@@ -32,6 +33,43 @@ from sqlalchemy.exc import IntegrityError
 from dblift.core.logger import NullLog
 
 pytestmark = [pytest.mark.unit]
+
+
+@pytest.mark.parametrize("owners", [("other", None), (None, None)])
+def test_seeded_lock_refuses_duplicate_rows(owners) -> None:
+    """A free duplicate must not let a second holder claim the same lock."""
+    from dblift.db.plugins.sql_lease_store import (
+        Sqlite3LeaseSession,
+        SqlLeaseDialect,
+        SqlLeaseStore,
+    )
+
+    connection = sqlite3.connect(":memory:")
+    try:
+        connection.execute("CREATE TABLE locks (lock_name TEXT, locked_at TEXT, owner_token TEXT)")
+        connection.executemany(
+            "INSERT INTO locks VALUES ('migration', datetime('now'), ?)",
+            [(owner,) for owner in owners],
+        )
+        connection.commit()
+        store = SqlLeaseStore(
+            SqlLeaseDialect(
+                table="locks",
+                lock_name="migration",
+                now_utc="datetime('now')",
+                seconds_before=lambda clock, seconds: f"datetime({clock}, '-{seconds} seconds')",
+                is_busy=lambda error: False,
+                seeded_row=True,
+            ),
+            Sqlite3LeaseSession(connection, owns_connection=False),
+        )
+
+        assert store.try_acquire("new-owner") is False
+        assert [row[0] for row in connection.execute("SELECT owner_token FROM locks")] == list(
+            owners
+        )
+    finally:
+        connection.close()
 
 
 @dataclass
