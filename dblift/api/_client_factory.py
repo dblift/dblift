@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Protocol, Union
+from typing import Any, Dict, List, Literal, Optional, Protocol, Union
 
 from dblift.api._engine_config import config_from_engine
 from dblift.config import DbliftConfig
@@ -222,6 +222,7 @@ def client_from_config(
     logger: Optional[Any] = None,
     *,
     client_cls: Optional[type] = None,
+    analysis_mode: Literal["full", "execution"] = "full",
     **kwargs: Any,
 ) -> Any:
     """Create a client instance from existing configuration.
@@ -289,6 +290,7 @@ def client_from_config(
         migrations_dir=migrations_dir,
         config=client_config,
         logger=logger,
+        analysis_mode=analysis_mode,
         **kwargs,
     )
 
@@ -299,6 +301,7 @@ def client_from_config_file(
     *,
     client_cls: Optional[type] = None,
     relative_to_config: bool = False,
+    analysis_mode: Literal["full", "execution"] = "full",
     **overrides: Any,
 ) -> Any:
     """Create a client instance from config file path.
@@ -323,7 +326,9 @@ def client_from_config_file(
     passthrough = {
         k: v for k, v in overrides.items() if k not in ConfigBuilder.CONFIG_BUILD_KWARG_KEYS
     }
-    return client_from_config(config, logger, client_cls=client_cls, **passthrough)
+    return client_from_config(
+        config, logger, client_cls=client_cls, analysis_mode=analysis_mode, **passthrough
+    )
 
 
 def _attach_external_sqlite_connection(provider: Any, engine: Any, connection: Any) -> None:
@@ -350,6 +355,7 @@ def client_from_sqlalchemy(
     connection: Any = None,
     config: Optional[DbliftConfig] = None,
     client_cls: Optional[type[Any]] = None,
+    analysis_mode: Literal["full", "execution"] = "full",
     **kwargs: Any,
 ) -> Any:
     """Create DBLiftClient from an existing SQLAlchemy Engine or Connection.
@@ -447,5 +453,6 @@ def client_from_sqlalchemy(
         migrations_dir=migrations_dir or getattr(derived.migrations, "directory", None),
         config=derived,
         logger=logger,
+        analysis_mode=analysis_mode,
         **kwargs,
     )

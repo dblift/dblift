@@ -47,6 +47,27 @@ config = DbliftConfig.from_file("dblift.yaml")
 client = DBLiftClient.from_config_file("dblift.yaml")
 ```
 
+### Analysis mode for embedded execution
+
+The client and its three factories accept `analysis_mode="full"` (default) or
+`analysis_mode="execution"`. The async factories forward the same choice.
+Execution mode keeps SQL dispatch, transactions, runtime checks, events, and
+statement timing/error journal entries while disabling object extraction. Its
+journal has `capture_objects=False`, and `info()`/dry-run results explicitly
+mark pending script object analysis as disabled. Use an explicit undo script;
+text-based undo generation still needs its analysis dependencies.
+
+```python
+with DBLiftClient.from_config_file(
+    "dblift.yaml", analysis_mode="execution"
+) as client:
+    result = client.migrate()
+```
+
+If a `WITH` statement cannot be classified lexically, execution mode raises a
+clear error before applying the script. Select full mode for that SQL. Full mode
+retains the existing enriched reports and requires its analysis packages.
+
 ## Main Methods
 
 ### migrate()

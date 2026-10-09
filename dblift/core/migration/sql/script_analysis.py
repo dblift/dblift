@@ -46,6 +46,10 @@ _DDL = frozenset({"CREATE", "ALTER", "DROP", "TRUNCATE", "COMMENT", "GRANT", "RE
 _DML = frozenset({"INSERT", "UPDATE", "DELETE", "MERGE", "CALL", "EXECUTE", "DML"})
 _QUERY = frozenset({"SELECT", "QUERY"})
 _ANALYSED_TYPES = (MigrationType.SQL, MigrationType.REPEATABLE)
+DISABLED_ANALYSIS = {
+    "status": "disabled",
+    "reason": "Object analysis disabled in execution mode",
+}
 
 
 @dataclass(frozen=True)
@@ -156,7 +160,7 @@ def analyse_script(text: str, dialect: str) -> ScriptAnalysis:
 
 
 def analyse_pending_scripts(
-    migrations: Iterable[Any], dialect: str, log: Any
+    migrations: Iterable[Any], dialect: str, log: Any, *, enabled: bool = True
 ) -> Dict[str, Dict[str, Any]]:
     """``{script_name: analysis}`` for the SQL and repeatable scripts of *migrations*
     that have text.
@@ -167,6 +171,9 @@ def analyse_pending_scripts(
             continue
         name = getattr(migration, "script_name", None)
         if not name:
+            continue
+        if not enabled:
+            analysed[name] = dict(DISABLED_ANALYSIS)
             continue
         content = getattr(migration, "content", None)
         if not content and hasattr(migration, "load_content"):

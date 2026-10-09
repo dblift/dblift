@@ -384,6 +384,7 @@ def test_installed_low_level_sqlite_without_sqlglot(candidate_wheel, tmp_path):
     assert "sqlglot" in diagnostic["pip_check_output"].lower()
     assert diagnostic["low_level_v_u"] is True
     assert diagnostic["standard_client_failed_before_mutation"] is True
+    assert diagnostic["execution_cycle"] is True
     assert "sqlglot" in diagnostic["standard_client_failure"]["failure"].lower()
     assert diagnostic["standard_client_failure"]["tables_after_failure"] == []
 
