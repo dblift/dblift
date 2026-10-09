@@ -365,6 +365,42 @@ def _register_premium_stub_parsers(parser: argparse.ArgumentParser) -> None:
         stub.add_argument("stub_args", nargs=argparse.REMAINDER, help=argparse.SUPPRESS)
 
 
+def _register_default_validate_sql_parser(
+    parser: argparse.ArgumentParser, db_parent: argparse.ArgumentParser
+) -> None:
+    """Add the built-in ``validate-sql`` parser unless an installed extension added one.
+
+    Runs after ``load_command_extensions``: an extension that registers the
+    name keeps it, exactly as with the stubs.
+    """
+    subparsers = next(a for a in parser._actions if isinstance(a, argparse._SubParsersAction))
+    if "validate-sql" in subparsers.choices:
+        return
+    command = subparsers.add_parser(
+        "validate-sql",
+        help="Check migration SQL files, without connecting, for statements that destroy "
+        "data, break the deployed application or lock tables",
+        parents=[db_parent],
+    )
+    command.add_argument(
+        "--files",
+        nargs="+",
+        metavar="FILE",
+        help="Check these files instead of the V and R scripts of the migration directories",
+    )
+    command.add_argument(
+        "--dialect",
+        choices=_native_dialect_choices(),
+        help="SQL dialect to read the files in (default: the configured database type)",
+    )
+    command.add_argument(
+        "--format",
+        choices=["console", "json"],
+        default="console",
+        help="Output format (default: console)",
+    )
+
+
 def create_parser(
     exit_on_error: bool = True, suppress_errors: bool = False
 ) -> argparse.ArgumentParser:
@@ -654,6 +690,7 @@ def create_parser(
         ),
     )
     import_module("dblift.cli.extensions").load_command_extensions(parser)
+    _register_default_validate_sql_parser(parser, db_parent)
     # Stubs fill whatever gaps the extensions left — never the reverse.
     _register_premium_stub_parsers(parser)
     # Emit registry-derived flags LAST, after every subparser (built-in and
