@@ -5,7 +5,11 @@ import importlib.util
 import logging
 from dataclasses import dataclass
 from pathlib import Path
+from threading import RLock
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Literal, Optional, Tuple, Type
+
+from dblift.db.provider_discovery import entry_point_candidates, filesystem_descriptor, load_factory
+from dblift.db.provider_metadata import PluginDescriptor
 
 if TYPE_CHECKING:
     from dblift.config import DbliftConfig
@@ -17,6 +21,13 @@ from dblift.db.base_quirks import BaseQuirks
 ProviderTransport = Literal["native"]
 
 _logger = logging.getLogger(__name__)
+
+
+class _LazyPlugin:
+    def __init__(self, descriptor: PluginDescriptor) -> None:
+        self.descriptor = descriptor
+        self.loaded: Optional[PluginInfo] = None
+        self.previous: Dict[str, _LazyPlugin] = {}
 
 
 @dataclass
@@ -123,6 +134,8 @@ class ProviderRegistry:
     """Registry for database provider plugins with auto-discovery."""
 
     _plugins: Dict[str, PluginInfo] = {}
+    _pending: Dict[str, _LazyPlugin] = {}
+    _lock = RLock()
     _discovered: bool = False
     # PR #241: cache resolved Quirks instances per
     # dialect string. Quirks subclasses are stateless behaviour
@@ -132,97 +145,99 @@ class ProviderRegistry:
     _quirks_cache: Dict[str, BaseQuirks] = {}
 
     ENTRY_POINT_GROUP = "dblift.providers"
+    DESCRIPTOR_ENTRY_POINT_GROUP = "dblift.provider_descriptors"
 
     @classmethod
     def discover_plugins(cls) -> None:
-        """Auto-discover provider plugins.
+        """Index installed entry points, then scan bundled plugins as a checkout fallback.
 
-        Discovery happens in two passes.
-
-        1. Entry-point pass — reads ``importlib.metadata.entry_points
-           (group="dblift.providers")``. First-party plugins are
-           registered here when the wheel is installed (``pip install
-           dblift``); third-party plugins (``pip install
-           dblift-snowflake``) are registered the same way without
-           modifying ``core/``.
-
-        2. Filesystem fallback — scans ``db/plugins/<X>/`` for any
-           dialect not already registered. Covers in-tree development
-           (e.g. running tests against a source checkout without
-           installing the package) and old plugin layouts that
-           predate the entry-point group.
+        Legacy-only entry points load now to reveal their aliases; paired
+        descriptors defer their full provider until a matching lookup.
         """
-        if cls._discovered:
-            return
-
-        found_entry_points = cls._discover_via_entry_points()
-        cls._discover_via_filesystem()
-
-        cls._discovered = found_entry_points
+        with cls._lock:
+            if cls._discovered:
+                return
+            found_entry_points = cls._discover_via_entry_points()
+            cls._discover_via_filesystem()
+            cls._discovered = found_entry_points
 
     @classmethod
     def _discover_via_entry_points(cls) -> bool:
-        """Read ``dblift.providers`` entry-points and register each one.
+        """Register valid legacy plugins and index descriptors in entry-point order."""
+        found = False
+        for candidate in entry_point_candidates(
+            cls.ENTRY_POINT_GROUP, cls.DESCRIPTOR_ENTRY_POINT_GROUP
+        ):
+            if isinstance(candidate, PluginDescriptor):
+                cls._register_descriptor(candidate)
+            else:
+                cls.register_plugin(candidate)
+            found = True
+        return found
 
-        Returns whether any entry points were found, so ``discover_plugins``
-        can decide whether this pass is safe to latch (see Defect: a call
-        whose entry-point pass found nothing must not close the
-        ``_discovered`` latch, or a late-arriving third-party plugin never
-        gets a second chance).
-        """
-        from importlib import metadata
+    @classmethod
+    def _register_descriptor(cls, descriptor: PluginDescriptor) -> None:
+        pending = _LazyPlugin(descriptor)
+        for key in dict.fromkeys(key.lower() for key in (descriptor.name, *descriptor.dialects)):
+            if key in cls._pending:
+                pending.previous[key] = cls._pending[key]
+            cls._pending[key] = pending
+            cls._quirks_cache.pop(key, None)
 
-        try:
-            entry_points: List[Any] = list(metadata.entry_points(group=cls.ENTRY_POINT_GROUP))
-        except Exception as exc:  # pragma: no cover - defensive
-            _logger.warning(f"Failed to read entry-points for {cls.ENTRY_POINT_GROUP}: {exc}")
-            return False
-
-        for ep in entry_points:
-            try:
-                plugin_info = ep.load()
-            except Exception as exc:
-                _logger.warning(f"Failed to load plugin entry-point {ep.name!r}: {exc}")
-                continue
-            if not isinstance(plugin_info, PluginInfo):
-                _logger.warning(
-                    f"Entry-point {ep.name!r} returned {type(plugin_info).__name__}, "
-                    "expected PluginInfo; ignoring."
-                )
-                continue
-            cls.register_plugin(plugin_info)
-
-        return bool(entry_points)
+    @classmethod
+    def _resolve_plugin(cls, db_type: str) -> Optional[PluginInfo]:
+        with cls._lock:
+            if not cls._discovered:
+                cls.discover_plugins()
+            key = (db_type or "").lower()
+            while True:
+                pending = cls._pending.get(key)
+                if pending is None:
+                    return cls._plugins.get(key)
+                if pending.loaded is None:
+                    try:
+                        plugin = load_factory(pending.descriptor, cls.ENTRY_POINT_GROUP)
+                        if not isinstance(plugin, PluginInfo):
+                            raise TypeError("factory did not return PluginInfo")
+                        pending.loaded = plugin
+                    except Exception as exc:
+                        _logger.warning(
+                            f"Failed to load provider {pending.descriptor.name!r}: {exc}"
+                        )
+                        for alias, entry in list(cls._pending.items()):
+                            if entry is pending:
+                                previous = pending.previous.get(alias)
+                                if previous is None:
+                                    del cls._pending[alias]
+                                else:
+                                    cls._pending[alias] = previous
+                        if not cls._pending and not cls._plugins:
+                            cls._discovered = False
+                        continue
+                for alias, entry in list(cls._pending.items()):
+                    if entry is pending:
+                        cls._plugins[alias] = pending.loaded
+                        del cls._pending[alias]
+                return cls._plugins.get(key)
 
     @classmethod
     def _discover_via_filesystem(cls) -> None:
-        """Scan ``db/plugins/<X>/`` for plugins not already registered.
-
-        Used as a fallback in source-checkout scenarios where
-        entry-points are not available. Plugins already registered by
-        the entry-point pass are skipped.
-
-        The "already registered" check is made against the plugin's own
-        *declared* identity (``PluginInfo.name`` and ``PluginInfo.dialects``,
-        the same keys :meth:`register_plugin` indexes by) rather than the
-        directory name. A directory-name check is only a proxy for identity,
-        and the proxy can be wrong: Python package names can't contain
-        hyphens, so a plugin whose dialect key has one (e.g.
-        ``aurora-postgresql``) necessarily lives in a differently-spelled
-        directory (``aurora_postgresql/``). Comparing the directory name
-        against registered keys verbatim missed that case, so a plugin
-        already registered by the entry-point pass with richer metadata was
-        reloaded from the filesystem and silently overwritten with a plainer
-        reconstruction. Loading first and checking the loaded identity
-        instead makes the skip check correct for any future naming
-        divergence, not just this one.
-        """
+        """Index bundled descriptors, loading older layouts without one."""
         plugins_dir = Path(__file__).parent / "plugins"
         if not plugins_dir.exists():
             return
 
         for plugin_dir in plugins_dir.iterdir():
             if not plugin_dir.is_dir() or plugin_dir.name.startswith("_"):
+                continue
+
+            descriptor = filesystem_descriptor(plugin_dir)
+            if descriptor is not None:
+                keys = (descriptor.name, *descriptor.dialects)
+                if not any(
+                    key.lower() in cls._plugins or key.lower() in cls._pending for key in keys
+                ):
+                    cls._register_descriptor(descriptor)
                 continue
 
             try:
@@ -456,12 +471,12 @@ class ProviderRegistry:
         Args:
             plugin_info: Plugin metadata
         """
-        # Register by primary name
-        cls._plugins[plugin_info.name.lower()] = plugin_info
-
-        # Register by all dialects
-        for dialect in plugin_info.dialects:
-            cls._plugins[dialect.lower()] = plugin_info
+        with cls._lock:
+            for key in (plugin_info.name, *plugin_info.dialects):
+                key = key.lower()
+                cls._pending.pop(key, None)
+                cls._plugins[key] = plugin_info
+                cls._quirks_cache.pop(key, None)
 
     @classmethod
     def get_provider_class(cls, db_type: str) -> Optional[Type[BaseProvider]]:
@@ -474,10 +489,7 @@ class ProviderRegistry:
             Provider class if found, None otherwise
         """
         # Ensure plugins are discovered
-        if not cls._discovered:
-            cls.discover_plugins()
-
-        plugin_info = cls._plugins.get(db_type.lower())
+        plugin_info = cls._resolve_plugin(db_type)
         if plugin_info:
             return plugin_info.provider_class
 
@@ -494,9 +506,7 @@ class ProviderRegistry:
         Returns:
             The plugin metadata, or ``None`` if *db_type* is unregistered.
         """
-        if not cls._discovered:
-            cls.discover_plugins()
-        return cls._plugins.get((db_type or "").lower())
+        return cls._resolve_plugin(db_type)
 
     @classmethod
     def get_provider_by_url(cls, database_url: str) -> Optional[Type[BaseProvider]]:
@@ -530,6 +540,8 @@ class ProviderRegistry:
         re-instantiating on every call.
         """
         normalized = db_type.lower()
+        if not cls._discovered:
+            cls.discover_plugins()
         cached = cls._quirks_cache.get(normalized)
         if cached is not None:
             return cached
@@ -548,9 +560,7 @@ class ProviderRegistry:
         The plugin's declared ``quirks_class``, or :class:`BaseQuirks` for
         plugins that declare none and for unregistered dialects.
         """
-        if not cls._discovered:
-            cls.discover_plugins()
-        plugin_info = cls._plugins.get(db_type.lower())
+        plugin_info = cls._resolve_plugin(db_type)
         if plugin_info is not None and plugin_info.quirks_class is not None:
             return plugin_info.quirks_class
         return BaseQuirks
@@ -571,9 +581,7 @@ class ProviderRegistry:
         Replaces hand-rolled alias maps in ``cli/`` and other top-level
         layers.
         """
-        if not cls._discovered:
-            cls.discover_plugins()
-        plugin_info = cls._plugins.get((alias or "").lower())
+        plugin_info = cls._resolve_plugin(alias)
         if plugin_info is None:
             return None
         return plugin_info.name
@@ -647,9 +655,7 @@ class ProviderRegistry:
         Used by config/loader paths that need to identify first-class native
         providers (CosmosDB, SQLite, and SQLAlchemy-backed dialects).
         """
-        if not cls._discovered:
-            cls.discover_plugins()
-        plugin_info = cls._plugins.get((db_type or "").lower())
+        plugin_info = cls._resolve_plugin(db_type)
         if plugin_info is None:
             return False
         return getattr(plugin_info, "transport", "native") == "native"
@@ -660,9 +666,7 @@ class ProviderRegistry:
         db_type = (getattr(database_config, "type", "") or "").lower()
         if not db_type:
             raise ValueError("Database type is required to build a SQLAlchemy URL")
-        if not cls._discovered:
-            cls.discover_plugins()
-        plugin_info = cls._plugins.get(db_type)
+        plugin_info = cls._resolve_plugin(db_type)
         builder = plugin_info.sqlalchemy_url_builder if plugin_info is not None else None
         if builder is None:
             raise ValueError(
@@ -680,6 +684,9 @@ class ProviderRegistry:
         # Ensure plugins are discovered
         if not cls._discovered:
             cls.discover_plugins()
+
+        for key in list(cls._pending):
+            cls._resolve_plugin(key)
 
         # Return unique plugins (by name)
         seen = set()
@@ -785,6 +792,6 @@ class ProviderRegistry:
             )
 
         # O(1) direct lookup — db_type is already lowercase and is a valid _plugins key
-        plugin_info = cls._plugins.get(db_type)
+        plugin_info = cls._resolve_plugin(db_type)
 
         return NativeDriverManager.validate_driver_for_type(db_type, plugin_info)

@@ -8,8 +8,10 @@ can opt in without modifying ``core/`` or ``db/plugins/``.
 from __future__ import annotations
 
 import dataclasses
+import sys
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -17,6 +19,7 @@ import pytest
 import dblift.db.plugins
 from dblift.db.base_provider import BaseProvider
 from dblift.db.base_quirks import BaseQuirks
+from dblift.db.provider_metadata import PluginDescriptor
 from dblift.db.provider_registry import PluginInfo, ProviderRegistry
 
 # Fields that ``_load_plugin`` derives itself from the filesystem/package
@@ -60,19 +63,29 @@ _FAKE_PLUGIN = PluginInfo(
     quirks_class=_FakeQuirks,
 )
 
+_COLLIDING_PLUGIN = dataclasses.replace(_FAKE_PLUGIN, name="second", dialects=["second", "shared"])
+
+
+class _PluginContainer:
+    PLUGIN = _COLLIDING_PLUGIN
+
 
 @pytest.fixture
 def _reset_registry():
     """Snapshot + restore ProviderRegistry global state across the test."""
     saved_plugins = dict(ProviderRegistry._plugins)
+    saved_pending = dict(ProviderRegistry._pending)
     saved_quirks_cache = dict(ProviderRegistry._quirks_cache)
     saved_discovered = ProviderRegistry._discovered
     ProviderRegistry._plugins.clear()
+    ProviderRegistry._pending.clear()
     ProviderRegistry._quirks_cache.clear()
     ProviderRegistry._discovered = False
     yield
     ProviderRegistry._plugins.clear()
     ProviderRegistry._plugins.update(saved_plugins)
+    ProviderRegistry._pending.clear()
+    ProviderRegistry._pending.update(saved_pending)
     ProviderRegistry._quirks_cache.clear()
     ProviderRegistry._quirks_cache.update(saved_quirks_cache)
     ProviderRegistry._discovered = saved_discovered
@@ -235,6 +248,212 @@ def test_a_later_call_with_entry_points_available_succeeds_after_an_earlier_empt
     assert ProviderRegistry._discovered is True
 
 
+def test_late_plugin_replaces_cached_unknown_quirks(_reset_registry):
+    with patch("importlib.metadata.entry_points", return_value=[]):
+        assert type(ProviderRegistry.get_quirks("fakedb")) is BaseQuirks
+
+    fake_ep = SimpleNamespace(name="fakedb", value="x:y", load=lambda: _FAKE_PLUGIN)
+    with patch("importlib.metadata.entry_points", return_value=[fake_ep]):
+        assert type(ProviderRegistry.get_quirks("fakedb")) is _FakeQuirks
+
+
+def test_failed_later_descriptor_keeps_earlier_alias_provider(_reset_registry):
+    owner = object()
+
+    def broken_factory():
+        raise RuntimeError("factory failed")
+
+    good = SimpleNamespace(name="fakedb", value="good:PLUGIN", load=lambda: _FAKE_PLUGIN)
+    broken = SimpleNamespace(name="broken", value="broken:PLUGIN", dist=owner, load=broken_factory)
+    descriptor = SimpleNamespace(
+        name="broken",
+        dist=owner,
+        load=lambda: PluginDescriptor("broken", ("fakedb",), "broken:PLUGIN"),
+    )
+
+    def entry_points(*, group):
+        return [descriptor] if group == "dblift.provider_descriptors" else [good, broken]
+
+    with patch("importlib.metadata.entry_points", side_effect=entry_points):
+        assert ProviderRegistry.get_plugin_info("fakedb") is _FAKE_PLUGIN
+
+
+@pytest.mark.parametrize("first_lookup", ["shared", "fakedb"])
+def test_valid_later_descriptor_wins_shared_alias_in_either_lookup_order(
+    _reset_registry, first_lookup
+):
+    owner = object()
+    earlier = dataclasses.replace(_FAKE_PLUGIN, dialects=["fakedb", "shared"])
+    first = SimpleNamespace(name="fakedb", value="first:PLUGIN", load=lambda: earlier)
+    second = SimpleNamespace(
+        name="second",
+        value="tests.unit.db.test_provider_registry_entry_points:_COLLIDING_PLUGIN",
+        dist=owner,
+        load=lambda: _COLLIDING_PLUGIN,
+    )
+    descriptor = SimpleNamespace(
+        name="second",
+        dist=owner,
+        load=lambda: PluginDescriptor("second", ("second", "shared"), second.value),
+    )
+
+    def entry_points(*, group):
+        return [descriptor] if group == "dblift.provider_descriptors" else [first, second]
+
+    with patch("importlib.metadata.entry_points", side_effect=entry_points):
+        ProviderRegistry.get_plugin_info(first_lookup)
+        assert ProviderRegistry.get_plugin_info("shared") is _COLLIDING_PLUGIN
+        assert ProviderRegistry.get_plugin_info("fakedb") is earlier
+        assert {plugin.name for plugin in ProviderRegistry.list_plugins()} >= {"fakedb", "second"}
+
+
+def test_paired_descriptor_factory_supports_dotted_entry_point_attribute(_reset_registry):
+    owner = object()
+    factory = "tests.unit.db.test_provider_registry_entry_points:_PluginContainer.PLUGIN"
+    legacy = SimpleNamespace(name="second", value=factory, dist=owner)
+    descriptor = SimpleNamespace(
+        name="second",
+        dist=owner,
+        load=lambda: PluginDescriptor("second", ("second", "shared"), factory),
+    )
+
+    def entry_points(*, group):
+        return [descriptor] if group == "dblift.provider_descriptors" else [legacy]
+
+    with patch("importlib.metadata.entry_points", side_effect=entry_points):
+        assert ProviderRegistry.get_plugin_info("shared") is _COLLIDING_PLUGIN
+
+
+def test_all_invalid_entry_points_do_not_prevent_later_legacy_discovery(_reset_registry):
+    invalid = SimpleNamespace(name="broken", value="broken:PLUGIN", load=lambda: object())
+    with patch("importlib.metadata.entry_points", return_value=[invalid]):
+        assert ProviderRegistry.get_plugin_info("fakedb") is None
+        assert ProviderRegistry._discovered is False
+
+    valid = SimpleNamespace(name="fakedb", value="valid:PLUGIN", load=lambda: _FAKE_PLUGIN)
+    with patch("importlib.metadata.entry_points", return_value=[valid]):
+        assert ProviderRegistry.get_plugin_info("fakedb") is _FAKE_PLUGIN
+
+
+def test_failed_filesystem_descriptor_does_not_rediscover_during_same_lookup(_reset_registry):
+    from dblift.db.provider_discovery import filesystem_descriptor
+
+    broken = PluginDescriptor("sqlite", ("sqlite", "sqlite3"), "missing_factory:PLUGIN")
+    sqlite_scans = []
+
+    def descriptor_for(plugin_dir):
+        if plugin_dir.name == "sqlite":
+            sqlite_scans.append(plugin_dir)
+            return broken
+        return filesystem_descriptor(plugin_dir)
+
+    with (
+        patch("importlib.metadata.entry_points", return_value=[]),
+        patch("dblift.db.provider_registry.filesystem_descriptor", side_effect=descriptor_for),
+    ):
+        assert ProviderRegistry.get_plugin_info("sqlite3") is None
+        assert len(sqlite_scans) == 1
+        assert ProviderRegistry.get_plugin_info("postgresql") is not None
+
+
+def test_failed_duplicate_descriptor_alias_restores_earlier_plugin(_reset_registry):
+    earlier = dataclasses.replace(_FAKE_PLUGIN, name="sqlite", dialects=["sqlite", "sqlite3"])
+    legacy = SimpleNamespace(name="sqlite", value="legacy:PLUGIN", load=lambda: earlier)
+    descriptor = SimpleNamespace(
+        name="sqlite",
+        load=lambda: PluginDescriptor("sqlite", ("sqlite", "sqlite3"), "missing_factory:PLUGIN"),
+    )
+
+    def entry_points(*, group):
+        return [descriptor] if group == "dblift.provider_descriptors" else [legacy]
+
+    with (
+        patch("importlib.metadata.entry_points", side_effect=entry_points),
+        patch(
+            "dblift.db.provider_registry.load_factory", side_effect=RuntimeError("broken")
+        ) as load,
+    ):
+        assert ProviderRegistry.get_plugin_info("sqlite") is earlier
+        assert ProviderRegistry.get_plugin_info("sqlite3") is earlier
+    load.assert_called_once()
+
+
+@pytest.mark.parametrize("paired", [False, True])
+def test_failed_descriptor_only_discovery_allows_later_plugin(_reset_registry, paired):
+    owner = object()
+    factory = "missing_factory:PLUGIN"
+    broken = SimpleNamespace(
+        name="broken",
+        dist=owner,
+        load=lambda: PluginDescriptor("broken", ("broken",), factory),
+    )
+    legacy = SimpleNamespace(name="broken", value=factory, dist=owner)
+
+    def entry_points(*, group):
+        return [broken] if group == "dblift.provider_descriptors" else [legacy] if paired else []
+
+    with (
+        patch("importlib.metadata.entry_points", side_effect=entry_points),
+        patch.object(ProviderRegistry, "_discover_via_filesystem"),
+    ):
+        assert ProviderRegistry.get_plugin_info("broken") is None
+        assert ProviderRegistry._discovered is False
+
+    valid = SimpleNamespace(name="fakedb", value="valid:PLUGIN", load=lambda: _FAKE_PLUGIN)
+    with (
+        patch("importlib.metadata.entry_points", return_value=[valid]),
+        patch.object(ProviderRegistry, "_discover_via_filesystem"),
+    ):
+        assert ProviderRegistry.get_plugin_info("fakedb") is _FAKE_PLUGIN
+
+
+def test_malformed_filesystem_descriptor_does_not_hide_other_plugins(_reset_registry):
+    import importlib
+
+    malformed = PluginDescriptor("oracle", (123,), "oracle:PLUGIN")  # type: ignore[arg-type]
+    original_import = importlib.import_module
+
+    def import_module(name):
+        if name == "dblift.db.plugins.oracle.descriptor":
+            return SimpleNamespace(DESCRIPTOR=malformed)
+        return original_import(name)
+
+    with (
+        patch("importlib.metadata.entry_points", return_value=[]),
+        patch("dblift.db.provider_discovery.importlib.import_module", side_effect=import_module),
+    ):
+        assert ProviderRegistry.get_plugin_info("sqlite3").name == "sqlite"
+
+
+def test_concurrent_descriptor_lookup_loads_factory_once(_reset_registry):
+    module = ModuleType("fixture_factory_module")
+    loads = []
+
+    def load(name):
+        assert name == "PLUGIN"
+        loads.append(name)
+        return _FAKE_PLUGIN
+
+    module.__getattr__ = load  # type: ignore[attr-defined]
+    descriptor = SimpleNamespace(
+        name="fakedb",
+        load=lambda: PluginDescriptor("fakedb", ("fakedb",), "fixture_factory_module:PLUGIN"),
+    )
+
+    def entry_points(*, group):
+        return [descriptor] if group == "dblift.provider_descriptors" else []
+
+    with (
+        patch("importlib.metadata.entry_points", side_effect=entry_points),
+        patch.dict(sys.modules, {"fixture_factory_module": module}),
+        ThreadPoolExecutor(max_workers=8) as pool,
+    ):
+        assert (
+            list(pool.map(ProviderRegistry.get_plugin_info, ["fakedb"] * 24)) == [_FAKE_PLUGIN] * 24
+        )
+    assert loads == ["PLUGIN"]
+
+
 def test_non_empty_entry_points_still_latches_as_before(_reset_registry):
     """Regression guard: this fix only targets the empty-entry-points case,
     not every call -- a normal, successful discovery (the common case: OSS's
@@ -278,4 +497,4 @@ def test_first_party_plugins_round_trip_through_full_discovery(_reset_registry):
         "redshift",
         "snowflake",
     ):
-        assert dialect in ProviderRegistry._plugins, f"{dialect} not registered"
+        assert dialect in ProviderRegistry._plugins or dialect in ProviderRegistry._pending
