@@ -30,6 +30,9 @@ jobs:
       E4_EVIDENCE_DIR: ${{ github.workspace }}/e4-evidence/${{ matrix.python-version }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          # The archived historical single-wheel fork test needs its old commit.
+          fetch-depth: 0
       - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
