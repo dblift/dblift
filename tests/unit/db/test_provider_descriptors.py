@@ -71,6 +71,35 @@ def test_legacy_provider_class_import_remains_canonical():
     assert SQLiteProvider is ConcreteSQLiteProvider
 
 
+@pytest.mark.parametrize(
+    ("plugin", "class_name"),
+    [
+        ("cockroachdb", "CockroachdbProvider"),
+        ("cosmosdb", "CosmosDbProvider"),
+        ("db2", "Db2Provider"),
+        ("duckdb", "DuckDBProvider"),
+        ("mariadb", "MariadbProvider"),
+        ("mongodb", "MongoDbProvider"),
+        ("mysql", "MySqlProvider"),
+        ("oracle", "OracleProvider"),
+        ("postgresql", "PostgreSqlProvider"),
+        ("redshift", "RedshiftProvider"),
+        ("snowflake", "SnowflakeProvider"),
+        ("sqlite", "SQLiteProvider"),
+        ("sqlserver", "SqlServerProvider"),
+    ],
+)
+def test_legacy_provider_package_export_is_lazy_and_canonical(plugin, class_name):
+    package = importlib.import_module(f"dblift.db.plugins.{plugin}")
+    concrete = importlib.import_module(f"dblift.db.plugins.{plugin}.provider")
+    package.__dict__.pop(class_name, None)
+    assert class_name in dir(package)
+    assert getattr(package, class_name) is getattr(concrete, class_name)
+    assert getattr(package, class_name) is getattr(concrete, class_name)
+    with pytest.raises(AttributeError, match="missing_provider"):
+        getattr(package, "missing_provider")
+
+
 def test_cockroach_package_import_registers_sqlalchemy_dialect():
     run = run_python("""
 import dblift.db.plugins.cockroachdb

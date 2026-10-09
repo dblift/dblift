@@ -1,6 +1,5 @@
 """CockroachDB database provider plugin (PostgreSQL-compatible)."""
 
-from importlib import import_module
 from typing import TYPE_CHECKING, Any
 
 from .descriptor import DESCRIPTOR
@@ -23,7 +22,9 @@ if TYPE_CHECKING:
 def __getattr__(name: str) -> Any:
     if name != "CockroachdbProvider":
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-    value = getattr(import_module(f"{__name__}.provider"), "CockroachdbProvider")
+    from .provider import CockroachdbProvider
+
+    value = CockroachdbProvider
     globals()[name] = value
     return value
 
