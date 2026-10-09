@@ -69,3 +69,16 @@ def test_info_fills_analysis_on_pending_sql_rows_only(tmp_path, project):
         }
     ]
     assert "a" in analysis["cautions"][0]["reason"]
+
+
+def test_migrate_dry_run_fills_analysis_on_pending_rows(tmp_path, project):
+    scripts, db = project
+
+    payload = _payload(
+        _run(tmp_path, "migrate", "--dry-run", "--format", "json", scripts=scripts, db=db)
+    )
+
+    rows = {m["script"]: m for m in payload["migrations"]}
+    assert payload["dry_run"] is True
+    assert rows["V2__drop.sql"]["analysis"]["cautions"][0]["level"] == "destroys"
+    assert rows["V3__py.py"]["analysis"] is None
