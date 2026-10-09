@@ -187,7 +187,8 @@ class MigrateCommand(BaseCommand):
             for finding in (analysis or {}).get("findings", []):
                 if not finding["allowed"]:
                     self.log.warning(
-                        f"      {finding['severity']} {finding['code']}: {finding['message']}"
+                        f"      {finding['severity']} {finding['code']}, "
+                        f"statement {finding['statement'] + 1}: {finding['message']}"
                     )
             # Appended directly (not via `result.add_migration`): that method
             # flips `result.success` to False for any non-SUCCESS status,

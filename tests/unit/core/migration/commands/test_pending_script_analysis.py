@@ -117,3 +117,18 @@ def test_dry_run_console_shows_the_verdict_and_the_finding(tmp_path, project):
     assert "V2__drop.sql [UNSAFE]" in output
     assert "drop-table" in output
     assert "dblift validate-sql" in output
+
+
+def test_dry_run_console_prints_one_line_per_finding_with_its_statement(tmp_path, project):
+    # Identical findings must not be collapsed by the logger's repeated-message filter.
+    scripts, db = project
+    (scripts / "V2__drop.sql").write_text("DROP TABLE IF EXISTS a;\nDROP TABLE IF EXISTS a;")
+
+    proc = _run(tmp_path, "migrate", "--dry-run", scripts=scripts, db=db)
+
+    output = proc.stdout + proc.stderr
+    lines = [line.replace("WARNING:", "").strip() for line in output.splitlines()]
+    assert [line for line in lines if line.startswith("error drop-table")] == [
+        "error drop-table, statement 1: DROP TABLE discards a and its rows",
+        "error drop-table, statement 2: DROP TABLE discards a and its rows",
+    ], output
