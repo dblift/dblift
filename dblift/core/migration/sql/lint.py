@@ -26,12 +26,15 @@ _ALLOW = re.compile(r"--\s*dblift:allow\s+([A-Za-z0-9-]+(?:\s*,\s*[A-Za-z0-9-]+)
 
 @dataclass(frozen=True)
 class ScriptLint:
+    """The verdict for one script, with the findings and parse errors behind it."""
+
     script: str
     verdict: str
     findings: Tuple[Finding, ...]
     errors: Tuple[str, ...]
 
     def to_dict(self) -> Dict[str, Any]:
+        """JSON-ready form of the script's verdict."""
         return {
             "script": self.script,
             "verdict": self.verdict,
@@ -49,6 +52,8 @@ def allowed_codes(text: str) -> FrozenSet[str]:
 
 
 def verdict_of(findings: Sequence[Finding], errors: Sequence[str]) -> str:
+    """UNSAFE on an error finding not allowed, REVIEW on any other finding or a parse
+    error, SAFE otherwise."""
     from dblift.core.migration.sql.lint_rules import ERROR
 
     counted = [f for f in findings if not f.allowed]
@@ -62,6 +67,7 @@ def verdict_of(findings: Sequence[Finding], errors: Sequence[str]) -> str:
 def lint_analysis(
     analysis: ScriptAnalysis, text: str, dialect: str, script: str = ""
 ) -> ScriptLint:
+    """Verdict for a script already analysed, honouring its ``dblift:allow`` comments."""
     from dblift.core.migration.sql.lint_rules import find_issues
 
     allowed = allowed_codes(text)
@@ -70,6 +76,7 @@ def lint_analysis(
 
 
 def lint_script(text: str, dialect: str, script: str = "") -> ScriptLint:
+    """Analyse *text* and return its verdict."""
     return lint_analysis(analyse_script(text, dialect), text, dialect, script)
 
 
