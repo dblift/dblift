@@ -158,13 +158,16 @@ def test_published_docs_and_templates_do_not_reference_removed_tier_surfaces():
     assert offenders == []
 
 
-def test_pypi_publish_workflow_uses_trusted_publishing():
+def test_pypi_publish_workflow_holds_publication_during_distribution_split():
     workflow = ROOT / ".github" / "workflows" / "publish-pypi.yml"
 
     text = workflow.read_text(encoding="utf-8")
 
-    assert "id-token: write" in text
-    assert "pypa/gh-action-pypi-publish" in text
+    assert "id-token: write" not in text
+    assert "pypa/gh-action-pypi-publish" not in text
+    assert "dist/core/*" in text
+    assert "dist/bundle/*" in text
+    assert "packages/pytest-dblift/dist/*" in text
     assert "password:" not in text
 
 
