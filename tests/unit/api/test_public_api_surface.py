@@ -136,16 +136,91 @@ class TestExtensionSqlModelSurface:
 class TestExtensionPackageSurface:
     def test_extension_package_exposes_only_named_categories(self):
         import dblift.extensions as extensions
-        from dblift.extensions import logging, providers, sql_model
+        from dblift.extensions import lint, logging, providers, sql_model
 
         assert extensions.__all__ == [
+            "lint",
             "logging",
             "providers",
             "sql_model",
         ]
+        assert extensions.lint is lint
         assert extensions.logging is logging
         assert extensions.providers is providers
         assert extensions.sql_model is sql_model
+
+
+class TestExtensionLintSurface:
+    EAGER_EXPORTS = {
+        "REVIEW": "dblift.core.migration.sql.lint",
+        "SAFE": "dblift.core.migration.sql.lint",
+        "UNSAFE": "dblift.core.migration.sql.lint",
+        "ScriptAnalysis": "dblift.core.migration.sql.script_analysis",
+        "ScriptLint": "dblift.core.migration.sql.lint",
+        "allowed_codes": "dblift.core.migration.sql.lint",
+        "analyse_script": "dblift.core.migration.sql.script_analysis",
+        "lint_analysis": "dblift.core.migration.sql.lint",
+        "lint_files": "dblift.core.migration.sql.lint",
+        "lint_pending_scripts": "dblift.core.migration.sql.lint",
+        "lint_script": "dblift.core.migration.sql.lint",
+        "lint_targets": "dblift.core.migration.sql.lint",
+        "verdict_of": "dblift.core.migration.sql.lint",
+    }
+    # Defined in ``lint_rules``, which needs sqlglot: resolved on first access.
+    LAZY_EXPORTS = {"ERROR", "Finding", "INFO", "SEVERITY", "WARNING", "find_issues"}
+
+    def test_lint_exports_are_explicit(self):
+        from dblift.extensions import lint
+
+        assert lint.__all__ == sorted(set(self.EAGER_EXPORTS) | self.LAZY_EXPORTS)
+
+    @pytest.mark.parametrize("symbol_name", sorted(EAGER_EXPORTS))
+    def test_lint_reexports_existing_objects(self, symbol_name):
+        from dblift.extensions import lint
+
+        source_module = importlib.import_module(self.EAGER_EXPORTS[symbol_name])
+
+        assert getattr(lint, symbol_name) is getattr(source_module, symbol_name)
+
+    @pytest.mark.parametrize("symbol_name", sorted(LAZY_EXPORTS))
+    def test_lint_reexports_rule_objects_lazily(self, symbol_name):
+        from dblift.core.migration.sql import lint_rules
+        from dblift.extensions import lint
+
+        assert getattr(lint, symbol_name) is getattr(lint_rules, symbol_name)
+
+    def test_unknown_name_raises_attribute_error(self):
+        from dblift.extensions import lint
+
+        with pytest.raises(AttributeError):
+            lint.no_such_name  # noqa: B018
+
+    def test_lint_script_gives_a_verdict(self):
+        from dblift.extensions.lint import ERROR, UNSAFE, lint_script
+
+        result = lint_script("DROP TABLE users;", "mysql", "V2__drop.sql")
+
+        assert result.verdict == UNSAFE
+        assert [(f.code, f.severity) for f in result.findings] == [("drop-table", ERROR)]
+
+    def test_import_does_not_need_sqlglot(self):
+        from tests.unit.lightweight_core._support import run_python
+
+        result = run_python(
+            """
+import dblift.extensions.lint as lint
+assert lint.SAFE == 'SAFE'
+try:
+    lint.find_issues
+except ModuleNotFoundError:
+    pass
+else:
+    raise AssertionError('find_issues resolved without sqlglot')
+""",
+            blocked=("sqlglot",),
+        )
+
+        assert result.returncode == 0, result.stderr
 
 
 class TestExtensionLoggingSurface:

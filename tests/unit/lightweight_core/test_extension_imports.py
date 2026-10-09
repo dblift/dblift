@@ -8,7 +8,7 @@ def test_package_does_not_load_implementations():
         """
         import sys
         import dblift.extensions as ext
-        assert ext.__all__ == ['logging', 'providers', 'sql_model']
+        assert ext.__all__ == ['lint', 'logging', 'providers', 'sql_model']
         assert not any(n.startswith('dblift.db.plugins.') for n in sys.modules)
         assert not any(n.startswith('dblift.core.sql_parser.') for n in sys.modules)
         assert set(ext.__all__) <= set(dir(ext))
@@ -27,7 +27,8 @@ def test_package_does_not_load_implementations():
 def test_category_access_keeps_module_identity():
     result = run_python("""
         import dblift.extensions as ext
-        from dblift.extensions import logging, providers, sql_model
+        from dblift.extensions import lint, logging, providers, sql_model
+        assert ext.lint is lint
         assert ext.logging is logging
         assert ext.providers is providers
         assert ext.sql_model is sql_model

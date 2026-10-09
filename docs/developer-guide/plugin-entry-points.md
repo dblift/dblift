@@ -8,6 +8,7 @@ Plugin code should import logging, provider, and schema-model
 contracts from the stable extension surfaces, not from implementation modules:
 
 ```python
+from dblift.extensions.lint import Finding, ScriptLint, lint_script, lint_targets
 from dblift.extensions.logging import Log, LogLevel, OperationResult, OutputFormatter
 from dblift.extensions.providers import PluginInfo, ProviderRegistry, ProviderTransport
 from dblift.extensions.sql_model import ConstraintType, Index, Table, View
@@ -17,6 +18,11 @@ The former `dblift.extensions.sql_generation` category and its generated-SQL
 statement and options types have been retired from OSS. Extensions that
 generate SQL must supply those contracts themselves. Parsed statements
 returned in `sql_model.ParseResult.statements` remain available.
+
+`dblift.extensions.lint` exposes the SQL checks `validate-sql` runs, so an extension
+can check scripts the same way instead of re-implementing the rules. Importing it does
+not need sqlglot; the rule names (`Finding`, `find_issues`, `SEVERITY`, `ERROR`,
+`WARNING`, `INFO`) and checking a script do.
 
 The complete supported surfaces are listed in each extension module's
 `__all__` and covered by the semantic-versioning policy.
