@@ -89,6 +89,24 @@ def test_allow_directive_turns_unsafe_into_safe(tmp_path, scripts):
     assert json.loads(proc.stdout)["scripts"][0]["verdict"] == "SAFE"
 
 
+@pytest.mark.parametrize("dialect", ["snowflake", "oracle"])
+def test_dialect_alone_lints_offline_without_a_config(tmp_path, scripts, dialect):
+    proc = _run(
+        tmp_path,
+        "validate-sql",
+        "--dialect",
+        dialect,
+        "--format",
+        "json",
+        "--files",
+        str(scripts / "notes.sql"),
+    )
+
+    payload = json.loads(proc.stdout)
+    assert proc.returncode == 1, proc.stderr
+    assert [f["code"] for f in payload["scripts"][0]["findings"]] == ["drop-table"]
+
+
 def test_missing_file_fails(tmp_path):
     proc = _run(
         tmp_path,
