@@ -82,3 +82,15 @@ def test_migrate_dry_run_fills_analysis_on_pending_rows(tmp_path, project):
     assert payload["dry_run"] is True
     assert rows["V2__drop.sql"]["analysis"]["cautions"][0]["level"] == "destroys"
     assert rows["V3__py.py"]["analysis"] is None
+
+
+def test_validate_warns_about_each_caution_of_a_pending_script(tmp_path, project):
+    scripts, db = project
+
+    proc = _run(tmp_path, "validate", "--format", "json", scripts=scripts, db=db)
+    payload = _payload(proc)
+
+    assert payload["success"] is True
+    assert len(payload["warnings"]) == 1
+    assert payload["warnings"][0].startswith("V2__drop.sql: ")
+    assert "DROP TABLE" in payload["warnings"][0]

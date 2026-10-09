@@ -3,17 +3,38 @@ Validate command implementation.
 """
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Dict, List, Optional, Set
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set
 
 if TYPE_CHECKING:
     pass
 from dblift.core.logger.results import MigrationInfo, ValidateResult
+from dblift.core.migration.sql.script_analysis import analyse_pending_scripts, dialect_of
 
 from .base_command import BaseCommand
 
 
 class ValidateCommand(BaseCommand):
     """Handles the 'validate' command execution."""
+
+    def _warn_about_cautions(self, snapshot: Any, result: ValidateResult) -> None:
+        """One warning per caution of a pending SQL script; never fails the validation."""
+        dialect = dialect_of(self.config)
+        if not dialect:
+            return
+        applied = {
+            getattr(m, "script_name", None)
+            for m in getattr(snapshot, "scoped_applied_migrations", None) or ()
+        }
+        pending = [
+            m
+            for m in getattr(snapshot, "resolved_migrations", None) or ()
+            if getattr(m, "script_name", None) not in applied
+        ]
+        for script_name, analysis in analyse_pending_scripts(pending, dialect, self.log).items():
+            for caution in analysis.get("cautions", []):
+                message = f"{script_name}: {caution['reason']}"
+                result.add_warning(message)
+                self.log.warning(message)
 
     @staticmethod
     def _record_validated_migrations(result: ValidateResult, validation_result: object) -> None:
@@ -144,6 +165,7 @@ class ValidateCommand(BaseCommand):
             )
 
             validation_result = self.validator.validate_snapshot(validation_snapshot, "validate")
+            self._warn_about_cautions(validation_snapshot, result)
 
             self._execute_callbacks(
                 scripts_dir,
@@ -161,7 +183,7 @@ class ValidateCommand(BaseCommand):
             # execution_time is calculated automatically by the base class
 
             if validation_result.success:
-                self.log.info("Migration validation passed (SQL not parsed)")
+                self.log.info("Migration validation passed")
             else:
                 # Log all validation issues
                 if hasattr(validation_result, "issues") and validation_result.issues:
