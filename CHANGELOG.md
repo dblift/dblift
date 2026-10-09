@@ -84,7 +84,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   creation markers while retaining migration ranks and rejecting unknown
   migration types. Object extraction warnings from sqlglot no longer include
   ANSI escape codes in logs.
-
+- `migrate --db-schema` creates a missing target schema before its history table on a
+  fresh database. Dry runs still leave the database unchanged, and existing
+  migration history does not trigger baseline safety checks.
+- `info` marks a version Undoable when its companion undo script is in any
+  configured scripts directory, regardless of directory order.
 - A migration lock left behind by a process that was killed (SIGKILL, or SIGTERM while
   dblift runs embedded through the Python API) is now reclaimed automatically. On
   SQLite, DuckDB, CockroachDB, Db2, Snowflake, MongoDB and the Oracle table fallback,

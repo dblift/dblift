@@ -115,7 +115,9 @@ class MigrateCommand(BaseCommand):
         # Connect before reading state. Execution mode delays history creation
         # until selected SQL is classified; dry-run leaves the database untouched.
         defer_history = not dry_run and not mark_as_executed and not self._capture_objects
-        self._run_preflight(result, ensure_history=not defer_history, dry_run=dry_run)
+        self._run_preflight(
+            result, ensure_history=not defer_history, dry_run=dry_run, ensure_schema=True
+        )
 
         # Log command execution with filters and connection info
         self._log_command_header_update(
@@ -859,7 +861,7 @@ class MigrateCommand(BaseCommand):
                         )
                     ]
                     self._preflight_execution_sql(pending_migrations + callbacks)
-                self._run_preflight(result, ensure_history=True)
+                self._run_preflight(result, ensure_history=True, ensure_schema=True)
 
             if getattr(self, "validator", None) is None:
                 validation_success, validation_errors, validation_time = True, None, 0.0
