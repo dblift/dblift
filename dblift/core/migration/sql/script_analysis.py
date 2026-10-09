@@ -149,7 +149,9 @@ def analyse_script(text: str, dialect: str) -> ScriptAnalysis:
 def analyse_pending_scripts(
     migrations: Iterable[Any], dialect: str, log: Any
 ) -> Dict[str, Dict[str, Any]]:
-    """``{script_name: analysis}`` for the SQL and repeatable scripts of *migrations* that have text."""
+    """``{script_name: analysis}`` for the SQL and repeatable scripts of *migrations*
+    that have text.
+    """
     analysed: Dict[str, Dict[str, Any]] = {}
     for migration in migrations:
         if getattr(migration, "type", None) not in _ANALYSED_TYPES:
