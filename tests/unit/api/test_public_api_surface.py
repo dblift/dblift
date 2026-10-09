@@ -195,6 +195,11 @@ class TestExtensionLintSurface:
         with pytest.raises(AttributeError):
             lint.no_such_name  # noqa: B018
 
+    def test_dir_lists_every_export_before_first_access(self):
+        from dblift.extensions import lint
+
+        assert set(lint.__all__) <= set(dir(lint))
+
     def test_lint_script_gives_a_verdict(self):
         from dblift.extensions.lint import ERROR, UNSAFE, lint_script
 
