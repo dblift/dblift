@@ -621,6 +621,16 @@ class MigrateCommand(BaseCommand):
         )
         with migration_progress(self.log, len(pending_migrations)) as progress:
             for migration in pending_migrations:
+                if self._migration_lock_lost():
+                    # Another migrate may already be running; the migration in
+                    # flight could not be interrupted safely, the next must not start.
+                    message = (
+                        "The migration lock was lost (taken over by another process or "
+                        f"not renewable); stopping before {migration.script_name}"
+                    )
+                    self.log.error(message)
+                    result.set_error(message)
+                    break
                 progress.describe(f"{migration.script_name}")
                 self.log.debug(
                     f"About to execute migration: {migration.script_name} (version: {migration.version})"
@@ -643,6 +653,11 @@ class MigrateCommand(BaseCommand):
                     # completed. Stop without advancing.
                     break
                 progress.advance()
+
+    def _migration_lock_lost(self) -> bool:
+        """Whether the provider reports the migration lock it holds as lost."""
+        lock_lost = getattr(self.provider, "migration_lock_lost", None)
+        return callable(lock_lost) and lock_lost() is True
 
     def _update_final_state(
         self,

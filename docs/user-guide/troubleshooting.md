@@ -136,11 +136,33 @@ The repair command will:
 
 **Problem**: A migration reports that another migration may be running.
 
+**How the lock is released**: PostgreSQL advisory locks, SQL Server application
+locks, MySQL named locks, Oracle `DBMS_LOCK` locks and the Redshift table lock end
+with the database session, so the server frees them when the holding process dies.
+On SQLite, DuckDB, CockroachDB, Db2, Snowflake, MongoDB and the Oracle table
+fallback, the lock is a lease in the `dblift_migration_lock` table (or collection):
+the holder refreshes it every 10 seconds, and a lock not refreshed for 30 seconds
+is taken over by the next `migrate`. A lock left by a killed process therefore
+clears itself within about 30 seconds. A row with no `owner_token`, written by a
+dblift version from before the lease, is taken over only once it is 24 hours old.
+
 **Solution**:
-1. Confirm no active DBLift process is still running.
+1. Confirm no active DBLift process is still running. A running holder keeps its
+   lock for as long as it runs, however long its migrations take.
 2. Check database-native locks first: PostgreSQL advisory locks, SQL Server application locks, MySQL named locks, Oracle/DB2 lock mechanisms, or CosmosDB lock documents.
-3. For table-based fallback locks, inspect the `dblift_migration_lock` table in the target schema and remove only rows whose owning process/session is confirmed dead.
-4. Re-run `dblift info` before retrying `dblift migrate`.
+3. For a lock row left by a dblift version from before the lease (empty
+   `owner_token`), inspect the `dblift_migration_lock` table in the target schema
+   and remove the row only once its owning process/session is confirmed dead.
+4. On Snowflake, make sure every runner that migrates the schema runs a dblift
+   version with the lease: an earlier version holds the lock as an open
+   transaction that a newer version waits behind, and does not see the newer
+   version's lease.
+5. Re-run `dblift info` before retrying `dblift migrate`.
+
+If `migrate` stops with "The migration lock was lost", its lock was taken over
+while it ran (the process was paused, or could not reach the database, for longer
+than the lease). The migration that was running completed; the following ones did
+not start. Check that no other `migrate` is running, then run `migrate` again.
 
 ## SQL Syntax Errors
 

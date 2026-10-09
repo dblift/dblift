@@ -79,6 +79,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A migration lock left behind by a process that was killed (SIGKILL, or SIGTERM while
+  dblift runs embedded through the Python API) is now reclaimed automatically. On
+  SQLite, DuckDB, CockroachDB, Db2, Snowflake, MongoDB and the Oracle table fallback,
+  the lock is a lease: the holder refreshes it every 10 seconds, and a lock not
+  refreshed for 30 seconds is taken over by the next `migrate`. Such a lock used to stay
+  held for good, and every later `migrate` waited 60 seconds and failed. The lock also
+  records its holder, so a holder whose lock was taken over can neither renew nor
+  release the new holder's lock, and `migrate` stops before its next migration once it
+  has lost its lock.
+  - Existing lock tables gain a nullable `owner_token` column (`OWNER_TOKEN` on Db2 and
+    Oracle) the first time a new version takes the lock. A lock row without an owner,
+    written by an earlier version, is taken over only once it is 24 hours old.
+  - Snowflake now holds the lock as a committed lease on the lock row instead of an open
+    transaction. An earlier version does not see that lease, so every runner that
+    migrates the same Snowflake schema should run a version with the lease.
+  - `DBLiftClient.close()`, leaving a `with DBLiftClient(...)` block and interpreter exit
+    release a migration lock the client still holds.
+
 - `info` reports **Missing** for a migration that was undone, applied again, and whose
   script has since left the migration folder (for example after switching to a branch
   that does not carry it). Such rows showed **Success**, because the undo-then-reapply

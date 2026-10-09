@@ -2,30 +2,73 @@
 
 from __future__ import annotations
 
-import threading
-import time
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from dblift.core.constants import DEFAULT_MIGRATION_LOCK_TIMEOUT_SECONDS, MIGRATION_LOCK_TABLE
 from dblift.core.logger import Log
+from dblift.db.plugins import lease_lock
+from dblift.db.plugins.lease_lock import LEASE_EXPIRY_SECONDS, LeaseLock, LeaseStore
 from dblift.db.plugins.nosql_base import DocumentLockingManager
 
-#: How long a lease stays valid without a refresh before another process may
-#: reclaim it. Deliberately short: a live holder renews well before this
-#: elapses (see ``_HEARTBEAT_INTERVAL_SECONDS``), so the expiry only ever
-#: fires for a holder that has actually stopped — a crashed or killed
-#: process is detected and reclaimable within seconds, not after guessing
-#: how long the longest migration might run.
-LEASE_EXPIRY_SECONDS = 30
+#: Document field holding the token of the process that holds the lease.
+OWNER_FIELD = "owner_token"
 
-#: Gap between acquisition attempts while another process holds the lease.
-_POLL_INTERVAL_SECONDS = 1.0
 
-#: How often the current holder refreshes ``acquired_at`` while it still
-#: holds the lease. A third of LEASE_EXPIRY_SECONDS gives two missed beats
-#: of slack for a slow network round trip before the lease looks stale.
-_HEARTBEAT_INTERVAL_SECONDS = LEASE_EXPIRY_SECONDS / 3
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+class _MongoLeaseStore(LeaseStore):
+    """The lease document, keyed by a fixed ``_id``.
+
+    Timestamps come from the client clock: a clock skewed by more than the
+    lease expiry against another runner can make a live lease look expired.
+    """
+
+    def __init__(self, collection: Callable[[], Any], document_id: str) -> None:
+        self._collection = collection
+        self._document_id = document_id
+
+    def try_acquire(self, token: str) -> bool:
+        """Insert the lease document; ``False`` when another process already holds it."""
+        from dblift.db.plugins.mongodb.mongodb._sdk import DuplicateKeyError
+
+        try:
+            self._collection().insert_one(
+                {"_id": self._document_id, "acquired_at": _now(), OWNER_FIELD: token}
+            )
+            return True
+        except DuplicateKeyError:
+            return False
+
+    def reclaim_expired(self, expiry_seconds: float) -> bool:
+        """Delete the lease document when it was not refreshed for *expiry_seconds*.
+
+        The delete matches the timestamp read, so when two processes see the
+        same expired lease only one deletes it; the other finds a fresh one.
+        """
+        existing = self._collection().find_one({"_id": self._document_id})
+        if existing is None:
+            return True
+        if not MongoDbLockingManager._is_expired(existing, expiry_seconds):
+            return False
+        result = self._collection().delete_one(
+            {"_id": self._document_id, "acquired_at": existing.get("acquired_at")}
+        )
+        return int(result.deleted_count) > 0
+
+    def refresh(self, token: str) -> bool:
+        """Renew the caller's lease document."""
+        result = self._collection().update_one(
+            {"_id": self._document_id, OWNER_FIELD: token}, {"$set": {"acquired_at": _now()}}
+        )
+        return int(result.matched_count) > 0
+
+    def release(self, token: str) -> bool:
+        """Delete the caller's lease document; another holder's is left in place."""
+        result = self._collection().delete_one({"_id": self._document_id, OWNER_FIELD: token})
+        return int(result.deleted_count) > 0
 
 
 class MongoDbLockingManager(DocumentLockingManager):
@@ -43,6 +86,8 @@ class MongoDbLockingManager(DocumentLockingManager):
     go stale, so migration duration cannot cause a lock to be stolen out
     from under it, while a holder that crashes or is killed is detected
     and reclaimed within one lease window instead of an arbitrary timeout.
+    The document carries the holder's token, so a holder whose lease was
+    reclaimed can neither renew nor delete its successor's lease.
     """
 
     LOCK_CONTAINER_NAME = MIGRATION_LOCK_TABLE
@@ -51,38 +96,10 @@ class MongoDbLockingManager(DocumentLockingManager):
     def __init__(self, query_executor: Any, log: Optional[Log] = None) -> None:
         """Store the executor and the logger."""
         super().__init__(query_executor=query_executor, log=log)
-        self._heartbeat_thread: Optional[threading.Thread] = None
-        self._heartbeat_stop: Optional[threading.Event] = None
+        self._lease: Optional[LeaseLock] = None
 
     def _collection(self) -> Any:
         return self.query_executor.connection_manager.get_collection(self.LOCK_CONTAINER_NAME)
-
-    def _start_heartbeat(self) -> None:
-        """Refresh the held lease on a timer so a still-running holder is
-        never mistaken for a dead one by ``_is_expired``."""
-        stop = threading.Event()
-        self._heartbeat_stop = stop
-
-        def _refresh() -> None:
-            while not stop.wait(_HEARTBEAT_INTERVAL_SECONDS):
-                try:
-                    self._collection().update_one(
-                        {"_id": self.LOCK_DOCUMENT_ID},
-                        {"$set": {"acquired_at": datetime.now(timezone.utc).isoformat()}},
-                    )
-                except Exception as exc:  # best-effort refresh; next tick retries
-                    self.log.warning(f"Failed to refresh migration lock lease: {exc}")
-
-        self._heartbeat_thread = threading.Thread(target=_refresh, daemon=True)
-        self._heartbeat_thread.start()
-
-    def _stop_heartbeat(self) -> None:
-        if self._heartbeat_stop is not None:
-            self._heartbeat_stop.set()
-        if self._heartbeat_thread is not None:
-            self._heartbeat_thread.join(timeout=1)
-        self._heartbeat_thread = None
-        self._heartbeat_stop = None
 
     def create_migration_lock_container_if_not_exists(self, schema: str) -> None:
         """Create the lock collection if it is missing. Idempotent.
@@ -98,7 +115,9 @@ class MongoDbLockingManager(DocumentLockingManager):
         self.log.debug(f"Ensured lock collection exists: {self.LOCK_CONTAINER_NAME}")
 
     @staticmethod
-    def _is_expired(lease: Optional[dict[str, Any]]) -> bool:
+    def _is_expired(
+        lease: Optional[dict[str, Any]], expiry_seconds: Optional[float] = None
+    ) -> bool:
         """Whether *lease* is old enough to reclaim.
 
         An unreadable or absent timestamp counts as expired: a lease nobody
@@ -116,61 +135,38 @@ class MongoDbLockingManager(DocumentLockingManager):
         if acquired.tzinfo is None:
             acquired = acquired.replace(tzinfo=timezone.utc)
         age = (datetime.now(timezone.utc) - acquired).total_seconds()
-        return age > LEASE_EXPIRY_SECONDS
-
-    def _try_insert_lease(self) -> bool:
-        """Attempt the insert; ``False`` when another process already holds it."""
-        from dblift.db.plugins.mongodb.mongodb._sdk import DuplicateKeyError
-
-        try:
-            self._collection().insert_one(
-                {
-                    "_id": self.LOCK_DOCUMENT_ID,
-                    "acquired_at": datetime.now(timezone.utc).isoformat(),
-                }
-            )
-            return True
-        except DuplicateKeyError:
-            return False
+        limit = lease_lock.LEASE_EXPIRY_SECONDS if expiry_seconds is None else expiry_seconds
+        return age > limit
 
     def acquire_migration_lock(
         self, schema: str, wait_timeout_seconds: int = DEFAULT_MIGRATION_LOCK_TIMEOUT_SECONDS
     ) -> bool:
         """Take the lease, waiting up to *wait_timeout_seconds*."""
-        deadline = time.monotonic() + max(wait_timeout_seconds, 0)
-
-        while True:
-            if self._try_insert_lease():
-                self.log.debug("Acquired migration lock")
-                self._start_heartbeat()
-                return True
-
-            existing = self._collection().find_one({"_id": self.LOCK_DOCUMENT_ID})
-            if self._is_expired(existing):
-                self.log.warning("Reclaiming an expired migration lock lease")
-                if existing is not None:
-                    result = self._collection().delete_one(
-                        {"_id": self.LOCK_DOCUMENT_ID, "acquired_at": existing.get("acquired_at")}
-                    )
-                    if result.deleted_count > 0 and self._try_insert_lease():
-                        self._start_heartbeat()
-                        return True
-                else:
-                    # No lease document exists, try to acquire it
-                    if self._try_insert_lease():
-                        self._start_heartbeat()
-                        return True
-
-            if time.monotonic() >= deadline:
-                self.log.warning(f"Could not acquire migration lock within {wait_timeout_seconds}s")
-                return False
-            time.sleep(_POLL_INTERVAL_SECONDS)
+        if self._lease is not None:
+            return True
+        lease = LeaseLock(_MongoLeaseStore(self._collection, self.LOCK_DOCUMENT_ID), log=self.log)
+        if not lease.acquire(wait_timeout_seconds):
+            self.log.warning(f"Could not acquire migration lock within {wait_timeout_seconds}s")
+            return False
+        self._lease = lease
+        self.log.debug("Acquired migration lock")
+        return True
 
     def release_migration_lock(self, schema: str) -> bool:
-        """Release the lease; ``True`` when one was removed."""
-        self._stop_heartbeat()
-        result = self._collection().delete_one({"_id": self.LOCK_DOCUMENT_ID})
-        released = int(result.deleted_count) > 0
+        """Release the lease; ``True`` when this process's lease was removed."""
+        lease, self._lease = self._lease, None
+        released = lease.release() if lease is not None else False
         if released:
             self.log.debug("Released migration lock")
         return released
+
+    def migration_lock_lost(self) -> bool:
+        """Whether the held lease was reclaimed or could not be renewed in time."""
+        return self._lease is not None and self._lease.lost
+
+    def close(self) -> None:
+        """Release a lease still held (the provider is closing)."""
+        self.release_migration_lock("")
+
+
+__all__ = ["LEASE_EXPIRY_SECONDS", "MongoDbLockingManager"]

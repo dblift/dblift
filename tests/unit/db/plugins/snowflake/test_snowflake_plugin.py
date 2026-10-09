@@ -45,36 +45,12 @@ class _DriverError(Exception):
         self.raw_msg = raw_msg
 
 
-class _FakeTransaction:
-    def __init__(
-        self,
-        commit_error: Exception | None = None,
-        rollback_error: Exception | None = None,
-    ) -> None:
-        self.commit_error = commit_error
-        self.rollback_error = rollback_error
-        self.committed = False
-        self.rolled_back = False
-
-    def commit(self) -> None:
-        self.committed = True
-        if self.commit_error:
-            raise self.commit_error
-
-    def rollback(self) -> None:
-        self.rolled_back = True
-        if self.rollback_error:
-            raise self.rollback_error
-
-
 class _FakeConnection:
     def __init__(
         self,
-        transaction: _FakeTransaction | None = None,
         fail_on: str | None = None,
         error: Exception | None = None,
     ) -> None:
-        self.transaction = transaction or _FakeTransaction()
         self.fail_on = fail_on
         self.error = error or RuntimeError("lock timeout")
         self.sql: list[str] = []
@@ -83,9 +59,14 @@ class _FakeConnection:
         self.closed = False
         self.session_lock_timeout: str | None = "43200"
         self.invalidated = False
+        self.dialect = SimpleNamespace(paramstyle="qmark")
+        self.params: list[object] = []
+        #: Row count the lease statements report.
+        self.rowcount = 1
 
-    def exec_driver_sql(self, sql: str) -> Any:
+    def exec_driver_sql(self, sql: str, params: object = None) -> Any:
         self.sql.append(sql)
+        self.params.append(params)
         if self.fail_on and self.fail_on in sql:
             raise self.error
         if sql.startswith("SHOW PARAMETERS LIKE 'LOCK_TIMEOUT'"):
@@ -93,16 +74,16 @@ class _FakeConnection:
                 [] if self.session_lock_timeout is None else [{"value": self.session_lock_timeout}]
             )
             return SimpleNamespace(mappings=lambda: SimpleNamespace(all=lambda: rows))
-        return None
+        return SimpleNamespace(rowcount=self.rowcount)
+
+    def in_transaction(self) -> bool:
+        return False
 
     def commit(self) -> None:
         self.committed = True
 
     def rollback(self) -> None:
         self.rolled_back = True
-
-    def begin(self) -> _FakeTransaction:
-        return self.transaction
 
     def invalidate(self) -> None:
         self.invalidated = True
@@ -131,8 +112,6 @@ class _SnowflakeProvider(SnowflakeProvider):
         self.fake_engine = engine
         self.queries: list[tuple[str, object]] = []
         self.statements: list[tuple[str, object, object]] = []
-        self._migration_lock_connection = None
-        self._migration_lock_transaction = None
         self.log = NullLog()
 
     @property
@@ -735,9 +714,8 @@ def test_snowflake_migration_lock_table_creation_is_seeded() -> None:
     assert "WHERE NOT EXISTS" not in statement_sql
 
 
-def test_snowflake_acquire_migration_lock_holds_transaction() -> None:
-    transaction = _FakeTransaction()
-    connection = _FakeConnection(transaction)
+def test_snowflake_acquire_migration_lock_commits_a_lease_on_the_seeded_row() -> None:
+    connection = _FakeConnection()
     provider = _SnowflakeProvider(engine=_FakeEngine(connection))
 
     acquired = provider.acquire_migration_lock("APP", wait_timeout_seconds=-5)
@@ -747,12 +725,12 @@ def test_snowflake_acquire_migration_lock_holds_transaction() -> None:
 
     assert connection.sql[1] == "ALTER SESSION SET LOCK_TIMEOUT = 0"
     assert connection.sql[-1] == (
-        'UPDATE "APP"."DBLIFT_MIGRATION_LOCK" '
-        "SET locked_at = CURRENT_TIMESTAMP() WHERE lock_name = 'migration'"
+        'UPDATE "APP"."DBLIFT_MIGRATION_LOCK" SET owner_token = ?, locked_at = SYSDATE() '
+        "WHERE lock_name = ? AND owner_token IS NULL"
     )
     assert connection.committed is True
-    assert provider._migration_lock_connection is connection
-    assert provider._migration_lock_transaction is transaction
+    assert provider._migration_lease is not None
+    provider.release_migration_lock("APP")
 
 
 def test_snowflake_lock_table_seed_runs_under_the_requested_lock_timeout() -> None:
@@ -788,18 +766,17 @@ def test_snowflake_lock_timeout_while_seeding_returns_false_and_restores_the_ses
     assert connection.rolled_back is True
     assert connection.sql[-1] == "ALTER SESSION SET LOCK_TIMEOUT = 600"
     assert connection.closed is True
-    assert provider._migration_lock_connection is None
+    assert provider._migration_lease is None
 
 
 def test_snowflake_release_restores_the_session_lock_timeout_before_closing() -> None:
-    transaction = _FakeTransaction()
-    connection = _FakeConnection(transaction)
+    connection = _FakeConnection()
     provider = _SnowflakeProvider(engine=_FakeEngine(connection))
     provider.acquire_migration_lock("APP", wait_timeout_seconds=5)
 
     assert provider.release_migration_lock("APP") is True
 
-    assert transaction.committed is True
+    assert "SET owner_token = NULL" in connection.sql[-2]
     assert connection.sql[-1] == "ALTER SESSION SET LOCK_TIMEOUT = 43200"
     assert connection.closed is True
 
@@ -827,7 +804,7 @@ def test_snowflake_lock_connection_is_invalidated_when_the_timeout_cannot_be_res
 
     assert connection.invalidated is True
     assert connection.closed is True
-    assert provider._migration_lock_connection is None
+    assert provider._migration_lease is None
 
 
 def test_snowflake_lock_connection_is_kept_poolable_when_the_timeout_is_restored() -> None:
@@ -883,55 +860,44 @@ def test_snowflake_acquire_migration_lock_reraises_non_timeout_error() -> None:
     assert connection.closed is True
 
 
-def test_snowflake_release_migration_lock_commit_and_failure_paths() -> None:
+def test_snowflake_release_migration_lock_owned_and_reclaimed_paths() -> None:
     provider = _SnowflakeProvider()
+    assert provider.release_migration_lock("app") is False
+
+    held = _FakeConnection()
+    provider.fake_engine = _FakeEngine(held)
+    assert provider.acquire_migration_lock("app", wait_timeout_seconds=1) is True
+
     assert provider.release_migration_lock("app") is True
+    assert held.closed is True
+    assert provider._migration_lease is None
 
-    success_tx = _FakeTransaction()
-    success_conn = _FakeConnection(success_tx)
-    provider._migration_lock_transaction = success_tx
-    provider._migration_lock_connection = success_conn
-
-    assert provider.release_migration_lock("app") is True
-    assert success_tx.committed is True
-    assert success_conn.closed is True
-    assert provider._migration_lock_transaction is None
-    assert provider._migration_lock_connection is None
-
-    failed_tx = _FakeTransaction(
-        commit_error=RuntimeError("commit failed"),
-        rollback_error=RuntimeError("rollback failed"),
-    )
-    failed_conn = _FakeConnection(failed_tx)
-    provider._migration_lock_transaction = failed_tx
-    provider._migration_lock_connection = failed_conn
+    reclaimed = _FakeConnection()
+    provider.fake_engine = _FakeEngine(reclaimed)
+    assert provider.acquire_migration_lock("app", wait_timeout_seconds=1) is True
+    reclaimed.rowcount = 0  # another process now owns the lease
 
     assert provider.release_migration_lock("app") is False
-    assert failed_tx.rolled_back is True
-    assert failed_conn.closed is True
-    assert provider._migration_lock_transaction is None
-    assert provider._migration_lock_connection is None
+    assert reclaimed.closed is True
+    assert provider._migration_lease is None
 
 
 def test_snowflake_close_releases_held_lock(monkeypatch) -> None:
-    provider = _SnowflakeProvider()
-    transaction = _FakeTransaction()
-    connection = _FakeConnection(transaction)
+    connection = _FakeConnection()
+    provider = _SnowflakeProvider(engine=_FakeEngine(connection))
     base_close_calls: list[SnowflakeProvider] = []
 
     def fake_base_close(self):
         base_close_calls.append(self)
 
     monkeypatch.setattr(SqlAlchemyProvider, "close", fake_base_close)
-    provider._migration_lock_transaction = transaction
-    provider._migration_lock_connection = connection
+    assert provider.acquire_migration_lock("APP", wait_timeout_seconds=1) is True
 
     provider.close()
 
-    assert transaction.committed is True
+    assert "SET owner_token = NULL" in connection.sql[-2]
     assert connection.closed is True
-    assert provider._migration_lock_transaction is None
-    assert provider._migration_lock_connection is None
+    assert provider._migration_lease is None
     assert base_close_calls == [provider]
 
 
@@ -2131,7 +2097,7 @@ def test_snowflake_lock_limit_error_from_the_driver_is_a_refusal(blocked) -> Non
     assert provider.acquire_migration_lock("APP", wait_timeout_seconds=5) is False
 
     assert connection.closed is True
-    assert provider._migration_lock_connection is None
+    assert provider._migration_lease is None
 
 
 def test_snowflake_lock_refusal_reaches_the_user_through_migrate() -> None:
