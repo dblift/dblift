@@ -8,6 +8,15 @@ import re
 from typing import Any, Dict, List, Pattern, Set
 
 from dblift.core.sql_parser.dialects.base_config import DialectConfig
+from dblift.core.sql_parser.dialects.identifier_tokens import (
+    DOUBLE_QUOTED_IDENTIFIER,
+    strip_identifier_quotes,
+)
+
+# A double-quoted identifier, captured together with its quotes so that
+# normalize_identifier keeps its exact text instead of folding it like a
+# bare name. Interpolated into the object patterns below.
+_QUOTED = f"({DOUBLE_QUOTED_IDENTIFIER})"
 
 # Identifier alternation used by the drop_table / alter_table patterns
 # below ONLY (not the other ~47 object patterns in this file, which still
@@ -18,7 +27,7 @@ from dblift.core.sql_parser.dialects.base_config import DialectConfig
 # character was used rather than losing the object entirely. Whether the
 # same leniency is worth extending to the rest of the object patterns is a
 # separate, broader change — see the PR description.
-_QUOTED_OR_BARE_IDENTIFIER = r'"([^"]+)"|`([^`]+)`|\[([^\]]+)\]|([a-zA-Z_][a-zA-Z0-9_$]*)'
+_QUOTED_OR_BARE_IDENTIFIER = rf"{_QUOTED}|`([^`]+)`|\[([^\]]+)\]|([a-zA-Z_][a-zA-Z0-9_$]*)"
 
 
 class PostgreSqlConfig(DialectConfig):
@@ -444,7 +453,7 @@ class PostgreSqlConfig(DialectConfig):
 
         # Remove double quotes if present
         if identifier.startswith('"') and identifier.endswith('"'):
-            identifier = identifier[1:-1]
+            identifier = strip_identifier_quotes(identifier)
             is_quoted = True
 
         if is_quoted:
@@ -505,85 +514,85 @@ class PostgreSqlConfig(DialectConfig):
             # CREATE TABLE: supports TEMP, IF NOT EXISTS, $ in identifiers
             "create_table": re.compile(
                 r"CREATE\s+(?:TEMP(?:ORARY)?\s+)?TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?"
-                r'(?:(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?'
-                r'(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))',
+                rf"(?:(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?"
+                rf"(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))",
                 re.IGNORECASE,
             ),
             # CREATE VIEW: supports OR REPLACE, IF NOT EXISTS, $ in identifiers
             "create_view": re.compile(
                 r"CREATE\s+(?:OR\s+REPLACE\s+)?VIEW\s+(?:IF\s+NOT\s+EXISTS\s+)?"
-                r'(?:(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?'
-                r'(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))',
+                rf"(?:(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?"
+                rf"(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))",
                 re.IGNORECASE,
             ),
             # CREATE MATERIALIZED VIEW: supports UNLOGGED, IF NOT EXISTS, $ in identifiers
             # Grammar-based: CREATE optnolog? MATERIALIZED VIEW (IF_P NOT EXISTS)?
             "create_materialized_view": re.compile(
                 r"CREATE\s+(?:UNLOGGED\s+)?MATERIALIZED\s+VIEW\s+(?:IF\s+NOT\s+EXISTS\s+)?"
-                r'(?:(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?'
-                r'(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))',
+                rf"(?:(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?"
+                rf"(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))",
                 re.IGNORECASE,
             ),
             # CREATE INDEX: supports IF NOT EXISTS, CONCURRENTLY, $ in identifiers
             "create_index": re.compile(
                 r"CREATE\s+(?:UNIQUE\s+)?INDEX\s+(?:CONCURRENTLY\s+)?(?:IF\s+NOT\s+EXISTS\s+)?"
-                r'(?:(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?'
-                r'(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))',
+                rf"(?:(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?"
+                rf"(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))",
                 re.IGNORECASE,
             ),
             # Grammar-based: CREATE SEQUENCE supports IF NOT EXISTS and $ in identifiers
             "create_sequence": re.compile(
                 r"CREATE\s+(?:TEMP(?:ORARY)?\s+)?SEQUENCE\s+(?:IF\s+NOT\s+EXISTS\s+)?"
-                r'(?:(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?'
-                r'(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))',
+                rf"(?:(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?"
+                rf"(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))",
                 re.IGNORECASE,
             ),
             # Grammar-based: Support $ in identifiers and quoted identifiers
             "create_function": re.compile(
                 r"CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+"
-                r'(?:(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?'
-                r'(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))',
+                rf"(?:(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?"
+                rf"(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))",
                 re.IGNORECASE,
             ),
             "create_procedure": re.compile(
                 r"CREATE\s+(?:OR\s+REPLACE\s+)?PROCEDURE\s+"
-                r'(?:(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?'
-                r'(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))',
+                rf"(?:(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?"
+                rf"(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))",
                 re.IGNORECASE,
             ),
             # Grammar-based: CREATE TRIGGER supports CONSTRAINT TRIGGER and $ in identifiers
             "create_trigger": re.compile(
                 r"CREATE\s+(?:CONSTRAINT\s+)?TRIGGER\s+"
-                r'(?:(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?'
-                r'(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))',
+                rf"(?:(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?"
+                rf"(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))",
                 re.IGNORECASE,
             ),
             # Grammar-based: Support $ in identifiers and quoted identifiers
             # Grammar-based: Support $ in identifiers and quoted identifiers
             "create_type": re.compile(
                 r"CREATE\s+(?:OR\s+REPLACE\s+)?(?:DISTINCT\s+)?TYPE\s+"
-                r'(?:(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?'
-                r'(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))',
+                rf"(?:(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?"
+                rf"(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))",
                 re.IGNORECASE,
             ),
             "create_domain": re.compile(
                 r"CREATE\s+DOMAIN\s+"
-                r'(?:(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?'
-                r'(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))',
+                rf"(?:(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?"
+                rf"(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))",
                 re.IGNORECASE,
             ),
             # Grammar-based: CREATE COLLATION supports IF NOT EXISTS and FROM clause
             "create_collation": re.compile(
                 r"CREATE\s+COLLATION\s+(?:IF\s+NOT\s+EXISTS\s+)?"
-                r'(?:(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?'
-                r'(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))',
+                rf"(?:(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?"
+                rf"(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))",
                 re.IGNORECASE,
             ),
             # Grammar-based: CREATE STATISTICS supports IF NOT EXISTS
             "create_statistics": re.compile(
                 r"CREATE\s+STATISTICS\s+(?:IF\s+NOT\s+EXISTS\s+)?"
-                r'(?:(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?'
-                r'(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))',
+                rf"(?:(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?"
+                rf"(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))",
                 re.IGNORECASE,
             ),
             # Grammar-based: CREATE CAST syntax (special syntax with parentheses)
@@ -594,45 +603,45 @@ class PostgreSqlConfig(DialectConfig):
             # Grammar-based: CREATE OPERATOR
             "create_operator": re.compile(
                 r"CREATE\s+OPERATOR\s+"
-                r'(?:(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?'
-                r'(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))',
+                rf"(?:(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?"
+                rf"(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))",
                 re.IGNORECASE,
             ),
             # Grammar-based: CREATE OPERATOR CLASS
             "create_operator_class": re.compile(
                 r"CREATE\s+OPERATOR\s+CLASS\s+"
-                r'(?:(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?'
-                r'(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))',
+                rf"(?:(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?"
+                rf"(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))",
                 re.IGNORECASE,
             ),
             # Grammar-based: CREATE OPERATOR FAMILY
             "create_operator_family": re.compile(
                 r"CREATE\s+OPERATOR\s+FAMILY\s+"
-                r'(?:(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?'
-                r'(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))',
+                rf"(?:(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?"
+                rf"(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))",
                 re.IGNORECASE,
             ),
             # Grammar-based: CREATE SCHEMA supports IF NOT EXISTS
             "create_schema": re.compile(
                 r"CREATE\s+SCHEMA\s+(?:IF\s+NOT\s+EXISTS\s+)?"
-                r'(?:(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?'
-                r'(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))',
+                rf"(?:(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?"
+                rf"(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))",
                 re.IGNORECASE,
             ),
             # Grammar-based: CREATE EXTENSION supports IF NOT EXISTS and $ in identifiers
             "create_extension": re.compile(
                 r"CREATE\s+EXTENSION\s+(?:IF\s+NOT\s+EXISTS\s+)?"
-                r'(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))',
+                rf"(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))",
                 re.IGNORECASE,
             ),
             # Grammar-based: Support $ in identifiers and quoted identifiers
             "create_foreign_data_wrapper": re.compile(
-                r"CREATE\s+FOREIGN\s+DATA\s+WRAPPER\s+" r'(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))',
+                r"CREATE\s+FOREIGN\s+DATA\s+WRAPPER\s+" rf"(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))",
                 re.IGNORECASE,
             ),
             "create_foreign_server": re.compile(
                 r"CREATE\s+SERVER\s+(?:IF\s+NOT\s+EXISTS\s+)?"
-                r'(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))',
+                rf"(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))",
                 re.IGNORECASE,
             ),
             # ALTER patterns
@@ -648,65 +657,65 @@ class PostgreSqlConfig(DialectConfig):
             ),
             "alter_view": re.compile(
                 r"ALTER\s+VIEW\s+(?:IF\s+EXISTS\s+)?"
-                r'(?:(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?'
-                r'(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))',
+                rf"(?:(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?"
+                rf"(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))",
                 re.IGNORECASE,
             ),
             "alter_index": re.compile(
                 r"ALTER\s+INDEX\s+(?:IF\s+EXISTS\s+)?"
-                r'(?:(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?'
-                r'(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))',
+                rf"(?:(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?"
+                rf"(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))",
                 re.IGNORECASE,
             ),
             "alter_sequence": re.compile(
                 r"ALTER\s+SEQUENCE\s+(?:IF\s+EXISTS\s+)?"
-                r'(?:(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?'
-                r'(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))',
+                rf"(?:(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?"
+                rf"(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))",
                 re.IGNORECASE,
             ),
             # Grammar-based: Support $ in identifiers and quoted identifiers for ALTER statements
             "alter_function": re.compile(
                 r"ALTER\s+FUNCTION\s+"
-                r'(?:(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?'
-                r'(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))',
+                rf"(?:(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?"
+                rf"(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))",
                 re.IGNORECASE,
             ),
             "alter_procedure": re.compile(
                 r"ALTER\s+PROCEDURE\s+"
-                r'(?:(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?'
-                r'(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))',
+                rf"(?:(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?"
+                rf"(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))",
                 re.IGNORECASE,
             ),
             "alter_trigger": re.compile(
                 r"ALTER\s+TRIGGER\s+"
-                r'(?:(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?'
-                r'(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))',
+                rf"(?:(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?"
+                rf"(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))",
                 re.IGNORECASE,
             ),
             "alter_type": re.compile(
                 r"ALTER\s+TYPE\s+"
-                r'(?:(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?'
-                r'(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))',
+                rf"(?:(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?"
+                rf"(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))",
                 re.IGNORECASE,
             ),
             "alter_domain": re.compile(
                 r"ALTER\s+DOMAIN\s+"
-                r'(?:(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?'
-                r'(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))',
+                rf"(?:(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?"
+                rf"(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))",
                 re.IGNORECASE,
             ),
             # Grammar-based: Support $ in identifiers and quoted identifiers
             "alter_schema": re.compile(
                 r"ALTER\s+SCHEMA\s+"
-                r'(?:(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?'
-                r'(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))',
+                rf"(?:(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?"
+                rf"(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))",
                 re.IGNORECASE,
             ),
             # Grammar-based: ALTER STATISTICS supports IF EXISTS
             "alter_statistics": re.compile(
                 r"ALTER\s+STATISTICS\s+(?:IF\s+EXISTS\s+)?"
-                r'(?:(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?'
-                r'(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))',
+                rf"(?:(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?"
+                rf"(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))",
                 re.IGNORECASE,
             ),
             # DROP patterns - Grammar-based: Support IF EXISTS, $ in identifiers
@@ -719,79 +728,79 @@ class PostgreSqlConfig(DialectConfig):
             # Grammar-based: Support $ in identifiers and quoted identifiers for DROP statements
             "drop_view": re.compile(
                 r"DROP\s+VIEW\s+(?:IF\s+EXISTS\s+)?"
-                r'(?:(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?'
-                r'(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))',
+                rf"(?:(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?"
+                rf"(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))",
                 re.IGNORECASE,
             ),
             "drop_materialized_view": re.compile(
                 r"DROP\s+MATERIALIZED\s+VIEW\s+(?:IF\s+EXISTS\s+)?"
-                r'(?:(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?'
-                r'(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))',
+                rf"(?:(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?"
+                rf"(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))",
                 re.IGNORECASE,
             ),
             "drop_index": re.compile(
                 r"DROP\s+INDEX\s+(?:CONCURRENTLY\s+)?(?:IF\s+EXISTS\s+)?"
-                r'(?:(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?'
-                r'(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))',
+                rf"(?:(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?"
+                rf"(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))",
                 re.IGNORECASE,
             ),
             "drop_sequence": re.compile(
                 r"DROP\s+SEQUENCE\s+(?:IF\s+EXISTS\s+)?"
-                r'(?:(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?'
-                r'(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))',
+                rf"(?:(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?"
+                rf"(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))",
                 re.IGNORECASE,
             ),
             "drop_function": re.compile(
                 r"DROP\s+FUNCTION\s+(?:IF\s+EXISTS\s+)?"
-                r'(?:(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?'
-                r'(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))',
+                rf"(?:(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?"
+                rf"(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))",
                 re.IGNORECASE,
             ),
             "drop_procedure": re.compile(
                 r"DROP\s+PROCEDURE\s+(?:IF\s+EXISTS\s+)?"
-                r'(?:(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?'
-                r'(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))',
+                rf"(?:(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?"
+                rf"(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))",
                 re.IGNORECASE,
             ),
             "drop_trigger": re.compile(
                 r"DROP\s+TRIGGER\s+(?:IF\s+EXISTS\s+)?"
-                r'(?:(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?'
-                r'(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))'
+                rf"(?:(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?"
+                rf"(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))"
                 r'(?:\s+ON\s+(?:(?:"[^"]+"|[a-zA-Z_][a-zA-Z0-9_$]*)\.)?'
                 r'(?:"[^"]+"|[a-zA-Z_][a-zA-Z0-9_$]*))?',
                 re.IGNORECASE,
             ),
             "drop_type": re.compile(
                 r"DROP\s+TYPE\s+(?:IF\s+EXISTS\s+)?"
-                r'(?:(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?'
-                r'(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))',
+                rf"(?:(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?"
+                rf"(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))",
                 re.IGNORECASE,
             ),
             "drop_domain": re.compile(
                 r"DROP\s+DOMAIN\s+(?:IF\s+EXISTS\s+)?"
-                r'(?:(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?'
-                r'(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))',
+                rf"(?:(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?"
+                rf"(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))",
                 re.IGNORECASE,
             ),
             "drop_schema": re.compile(
                 r"DROP\s+SCHEMA\s+(?:IF\s+EXISTS\s+)?"
-                r'(?:(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?'
-                r'(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))',
+                rf"(?:(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?"
+                rf"(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))",
                 re.IGNORECASE,
             ),
             "drop_extension": re.compile(
                 r"DROP\s+EXTENSION\s+(?:IF\s+EXISTS\s+)?"
-                r'(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))',
+                rf"(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))",
                 re.IGNORECASE,
             ),
             # Grammar-based: Support $ in identifiers and quoted identifiers
             "drop_foreign_data_wrapper": re.compile(
                 r"DROP\s+FOREIGN\s+DATA\s+WRAPPER\s+(?:IF\s+EXISTS\s+)?"
-                r'(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))',
+                rf"(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))",
                 re.IGNORECASE,
             ),
             "drop_foreign_server": re.compile(
-                r"DROP\s+SERVER\s+(?:IF\s+EXISTS\s+)?" r'(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))',
+                r"DROP\s+SERVER\s+(?:IF\s+EXISTS\s+)?" rf"(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))",
                 re.IGNORECASE,
             ),
             # Grammar-based: DROP OPERATOR supports IF EXISTS
@@ -802,15 +811,15 @@ class PostgreSqlConfig(DialectConfig):
             # Grammar-based: DROP OPERATOR CLASS supports IF EXISTS
             "drop_operator_class": re.compile(
                 r"DROP\s+OPERATOR\s+CLASS\s+(?:IF\s+EXISTS\s+)?"
-                r'(?:(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?'
-                r'(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))',
+                rf"(?:(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?"
+                rf"(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))",
                 re.IGNORECASE,
             ),
             # Grammar-based: DROP OPERATOR FAMILY supports IF EXISTS
             "drop_operator_family": re.compile(
                 r"DROP\s+OPERATOR\s+FAMILY\s+(?:IF\s+EXISTS\s+)?"
-                r'(?:(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?'
-                r'(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))',
+                rf"(?:(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?"
+                rf"(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))",
                 re.IGNORECASE,
             ),
             # Grammar-based: DROP CAST supports IF EXISTS
@@ -821,36 +830,36 @@ class PostgreSqlConfig(DialectConfig):
             # Grammar-based: DROP COLLATION supports IF EXISTS
             "drop_collation": re.compile(
                 r"DROP\s+COLLATION\s+(?:IF\s+EXISTS\s+)?"
-                r'(?:(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?'
-                r'(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))',
+                rf"(?:(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?"
+                rf"(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))",
                 re.IGNORECASE,
             ),
             # Grammar-based: DROP STATISTICS supports IF EXISTS
             "drop_statistics": re.compile(
                 r"DROP\s+STATISTICS\s+(?:IF\s+EXISTS\s+)?"
-                r'(?:(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?'
-                r'(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))',
+                rf"(?:(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?"
+                rf"(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))",
                 re.IGNORECASE,
             ),
             # COMMENT patterns (also DDL operations that affect objects)
             # Grammar-based: Support $ in identifiers and quoted identifiers
             "comment_table": re.compile(
                 r"COMMENT\s+ON\s+TABLE\s+"
-                r'(?:(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?'
-                r'(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))',
+                rf"(?:(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?"
+                rf"(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))",
                 re.IGNORECASE,
             ),
             "comment_column": re.compile(
                 r"COMMENT\s+ON\s+COLUMN\s+"
-                r'(?:(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?'
-                r'(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))\.'
-                r'(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))',
+                rf"(?:(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?"
+                rf"(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))\."
+                rf"(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))",
                 re.IGNORECASE,
             ),
             "comment_view": re.compile(
                 r"COMMENT\s+ON\s+VIEW\s+"
-                r'(?:(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?'
-                r'(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))',
+                rf"(?:(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?"
+                rf"(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))",
                 re.IGNORECASE,
             ),
             "comment_index": re.compile(r"COMMENT\s+ON\s+INDEX\s+(?:(\w+)\.)?(\w+)", re.IGNORECASE),
@@ -858,7 +867,7 @@ class PostgreSqlConfig(DialectConfig):
                 r"COMMENT\s+ON\s+SEQUENCE\s+(?:(\w+)\.)?(\w+)", re.IGNORECASE
             ),
             "comment_function": re.compile(
-                r'COMMENT\s+ON\s+FUNCTION\s+(?:(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?(?:"([^"]+)"|([a-zA-Z_][a-zA-Z0-9_$]*))',
+                rf"COMMENT\s+ON\s+FUNCTION\s+(?:(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))\.)?(?:{_QUOTED}|([a-zA-Z_][a-zA-Z0-9_$]*))",
                 re.IGNORECASE,
             ),
             "comment_procedure": re.compile(

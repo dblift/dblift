@@ -102,6 +102,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `repair --dry-run` now reports the repairs it would make
   (`RepairResult.repaired_migrations`, `removed_migrations`, `aligned_migrations` and the
   counters), and a real `repair` fills the same lists.
+- PostgreSQL and Db2: a double-quoted object name keeps its exact spelling when
+  a statement is read by the regex fallback (for example `CREATE TABLE "Case" ...
+  TABLESPACE ts`, which sqlglot does not parse). It was folded like an unquoted
+  name (`case` on PostgreSQL, `CASE` on Db2), and a doubled quote (`"a""b"`) cut
+  the name short. Unquoted names are folded as before.
 
 ## [4.10.0] - 2026-10-03
 
