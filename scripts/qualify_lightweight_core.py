@@ -116,6 +116,7 @@ def qualify(
             # Installation output can contain index credentials; record only its status.
             try:
                 checked_run([str(python), "-m", "pip", "install", str(wheel)], work)
+                checked_run([str(python), "-m", "pip", "check"], work)
             except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
                 result["error"] = f"wheel installation failed ({type(exc).__name__})"
                 return 1

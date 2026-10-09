@@ -10,7 +10,7 @@ from tests.artifacts._clean_source import archived_source
 
 ROOT = Path(__file__).resolve().parents[2]
 PUBLISHED_4100_SHA256 = "b979a3ff5abb84a75e751c105b5c4fceb597e094e4e996f6df31f281ccd26dc5"
-CANDIDATE_VERSION = "999.0.0.dev1"
+CANDIDATE_VERSION = "4.11.0"
 
 
 def _run(*args: str, cwd: Path) -> str:
@@ -40,7 +40,17 @@ def test_published_wheel_upgrades_to_single_wheel_candidate(tmp_path):
     )
     wheels = tmp_path / "wheels"
     wheels.mkdir()
-    _run(sys.executable, "-m", "pip", "wheel", "--no-deps", "-w", str(wheels), str(source), cwd=tmp_path)
+    _run(
+        sys.executable,
+        "-m",
+        "pip",
+        "wheel",
+        "--no-deps",
+        "-w",
+        str(wheels),
+        str(source),
+        cwd=tmp_path,
+    )
     candidate = next(wheels.glob("dblift-*.whl"))
 
     published = tmp_path / "published"
