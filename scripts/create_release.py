@@ -29,7 +29,6 @@ import datetime
 import re
 import subprocess
 import sys
-import tomllib
 from pathlib import Path
 
 
@@ -109,33 +108,6 @@ def update_version_in_files(version, dry_run=False):
     success = True
 
     pyproject = Path("pyproject.toml")
-    bundle_project = Path("packages/dblift/pyproject.toml")
-    bundle_update = None
-    if pyproject.exists():
-        core_data = tomllib.loads(pyproject.read_text())
-        if core_data["project"]["name"] == "dblift-core":
-            if not bundle_project.is_file():
-                print(f"Warning: {bundle_project} not found")
-                return False
-            bundle_text = bundle_project.read_text()
-            bundle_data = tomllib.loads(bundle_text)
-            old_version = core_data["project"]["version"]
-            if bundle_data["project"]["version"] != old_version:
-                print("Warning: core and bundle versions differ")
-                return False
-            old_reference = f"=={old_version}"
-            expected = 1 + len(bundle_data["project"].get("optional-dependencies", {}))
-            if bundle_text.count(old_reference) != expected:
-                print("Warning: bundle core references do not match its extras")
-                return False
-            bundle_update = bundle_text.replace(old_reference, f"=={version}")
-            bundle_update = re.sub(
-                r'^version = "\d+\.\d+\.\d+"',
-                f'version = "{version}"',
-                bundle_update,
-                count=1,
-                flags=re.MULTILINE,
-            )
     if pyproject.exists():
         text = pyproject.read_text()
         # Only the [project] version line (first occurrence at line start)
@@ -179,13 +151,6 @@ def update_version_in_files(version, dry_run=False):
     else:
         print(f"Warning: {init_py} not found")
         success = False
-
-    if bundle_update is not None:
-        if dry_run:
-            print(f"Would update version in {bundle_project}")
-        else:
-            bundle_project.write_text(bundle_update)
-            print(f"Updated version in {bundle_project}")
 
     return success
 

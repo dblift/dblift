@@ -43,31 +43,9 @@ def candidate_wheel(tmp_path_factory):
         capture_output=True,
         text=True,
     )
-    subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "pip",
-            "wheel",
-            "--no-deps",
-            "--wheel-dir",
-            str(dist),
-            str(source / "packages" / "dblift"),
-        ],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    wheel = next(dist.glob("dblift_core-*.whl"))
+    wheel = next(dist.glob("dblift-*.whl"))
     _retain(wheel, wheel.name)
-    bundle = next(dist.glob("dblift-*.whl"))
-    _retain(bundle, bundle.name)
     return wheel
-
-
-def _candidate_qualifier_args(core_wheel):
-    bundle = next(core_wheel.parent.glob("dblift-*.whl"))
-    return ["--wheel", str(bundle.resolve()), "--core-wheel", str(core_wheel.resolve())]
 
 
 def test_candidate_wheel_excludes_retired_storage_modules(candidate_wheel):
@@ -118,7 +96,8 @@ def test_candidate_wheel_excludes_builtin_catalog_hooks(candidate_wheel, tmp_pat
         [
             sys.executable,
             str(QUALIFIER),
-            *_candidate_qualifier_args(candidate_wheel),
+            "--wheel",
+            str(candidate_wheel.resolve()),
             "--output",
             str(output),
             "--corpus-probe",
@@ -169,7 +148,8 @@ def test_corpus_probe_uses_the_installed_wheel_and_neutral_workdir(candidate_whe
         [
             sys.executable,
             str(QUALIFIER),
-            *_candidate_qualifier_args(candidate_wheel),
+            "--wheel",
+            str(candidate_wheel.resolve()),
             "--output",
             str(output),
             "--corpus-probe",
@@ -207,7 +187,8 @@ def test_corpus_fixtures_are_copied_outside_the_checkout(candidate_wheel, tmp_pa
         [
             sys.executable,
             str(QUALIFIER),
-            *_candidate_qualifier_args(candidate_wheel),
+            "--wheel",
+            str(candidate_wheel.resolve()),
             "--output",
             str(output),
             "--corpus-probe",
@@ -235,7 +216,7 @@ def test_corpus_copy_failure_cannot_report_pass(candidate_wheel, tmp_path):
         "import dblift\n"
         f"Path({str(corpus)!r}).unlink()\n"
         "names = ('PyYAML', 'rich', 'Jinja2', 'sqlglot', 'SQLAlchemy')\n"
-        "installed = {'dblift': sys.argv[1], 'dblift-core': sys.argv[1]}\n"
+        "installed = {'dblift': sys.argv[1]}\n"
         "installed.update({name: metadata.version(name) for name in names})\n"
         "print(json.dumps({'origin': str(Path(dblift.__file__).resolve()), "
         "'installed': installed, 'providers': ['sqlite'], 'sqlite_migrate': True}))\n",
@@ -246,7 +227,8 @@ def test_corpus_copy_failure_cannot_report_pass(candidate_wheel, tmp_path):
         [
             sys.executable,
             str(QUALIFIER),
-            *_candidate_qualifier_args(candidate_wheel),
+            "--wheel",
+            str(candidate_wheel.resolve()),
             "--output",
             str(output),
             "--probe",
@@ -269,7 +251,8 @@ def test_real_sqlite_corpus_runs_from_installed_wheel(candidate_wheel, tmp_path)
         [
             sys.executable,
             str(QUALIFIER),
-            *_candidate_qualifier_args(candidate_wheel),
+            "--wheel",
+            str(candidate_wheel.resolve()),
             "--output",
             str(output),
             "--corpus-probe",
@@ -342,11 +325,8 @@ def test_sqlite_corpus_matches_published_4100(candidate_wheel, tmp_path):
             [
                 sys.executable,
                 str(QUALIFIER),
-                *(
-                    ["--wheel", str(wheel.resolve())]
-                    if label == "baseline"
-                    else _candidate_qualifier_args(wheel)
-                ),
+                "--wheel",
+                str(wheel.resolve()),
                 "--output",
                 str(output),
                 "--corpus-probe",
@@ -374,7 +354,8 @@ def test_installed_silent_api_without_presentation_dependencies(candidate_wheel,
         [
             sys.executable,
             str(QUALIFIER),
-            *_candidate_qualifier_args(candidate_wheel),
+            "--wheel",
+            str(candidate_wheel.resolve()),
             "--output",
             str(output),
             "--corpus-probe",
@@ -390,8 +371,9 @@ def test_installed_silent_api_without_presentation_dependencies(candidate_wheel,
     diagnostic = json.loads(output.read_text(encoding="utf-8"))["corpus"]
     assert diagnostic["status"] == "pass"
     assert diagnostic["missing"] == ["Jinja2", "rich"]
-    assert diagnostic["split_distribution"] is True
+    assert diagnostic["pip_check_returncode"] != 0
     assert diagnostic["venv_verified_before_uninstall"] is True
+    assert "rich" in diagnostic["pip_check_output"].lower()
     assert diagnostic["silent_sqlite"] is True
     assert diagnostic["no_implicit_report_files"] is True
 
@@ -404,7 +386,8 @@ def test_installed_low_level_sqlite_without_sqlglot(candidate_wheel, tmp_path):
         [
             sys.executable,
             str(QUALIFIER),
-            *_candidate_qualifier_args(candidate_wheel),
+            "--wheel",
+            str(candidate_wheel.resolve()),
             "--output",
             str(output),
             "--corpus-probe",
@@ -421,7 +404,7 @@ def test_installed_low_level_sqlite_without_sqlglot(candidate_wheel, tmp_path):
     assert diagnostic["profile"] == "sqlglot"
     assert diagnostic["missing"] == ["sqlglot"]
     assert diagnostic["venv_verified_before_uninstall"] is True
-    assert diagnostic["split_distribution"] is True
+    assert "sqlglot" in diagnostic["pip_check_output"].lower()
     assert diagnostic["low_level_v_u"] is True
     assert diagnostic["standard_client_failed_before_mutation"] is True
     assert diagnostic["execution_cycle"] is True
@@ -435,7 +418,8 @@ def test_fork_runs_the_same_installed_sqlite_corpus(candidate_wheel, tmp_path):
         [
             sys.executable,
             str(QUALIFIER),
-            *_candidate_qualifier_args(candidate_wheel),
+            "--wheel",
+            str(candidate_wheel.resolve()),
             "--output",
             str(candidate_output),
             "--corpus-probe",

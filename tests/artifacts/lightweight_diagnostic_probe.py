@@ -10,7 +10,6 @@ import os
 import sqlite3
 import subprocess
 import sys
-from importlib import metadata
 from pathlib import Path
 
 
@@ -154,12 +153,7 @@ def main() -> None:
     uninstall = _run([sys.executable, "-m", "pip", "uninstall", "-y", *removed])
     assert uninstall.returncode == 0
     pip_check = _run([sys.executable, "-m", "pip", "check"])
-    try:
-        metadata.version("dblift-core")
-        split_distribution = True
-    except metadata.PackageNotFoundError:
-        split_distribution = False
-        assert pip_check.returncode != 0
+    assert pip_check.returncode != 0
     sqlglot_evidence = None
     if profile == "presentation":
         presentation_verified = _presentation()
@@ -178,7 +172,6 @@ def main() -> None:
                 "missing": removed,
                 "venv_verified_before_uninstall": True,
                 "pip_check_returncode": pip_check.returncode,
-                "split_distribution": split_distribution,
                 "pip_check_output": pip_check.stdout + pip_check.stderr,
                 "silent_sqlite": profile == "presentation",
                 "no_implicit_report_files": presentation_verified,
