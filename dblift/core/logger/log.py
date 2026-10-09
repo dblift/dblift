@@ -152,9 +152,9 @@ class AbstractLog(Log):
         """Emit ``message`` at INFO level, honouring console-only and dedup flags."""
         self._log(LogLevel.INFO, message, console_only, dedupe=dedupe)
 
-    def warn(self, message: str) -> None:
+    def warn(self, message: str, *, dedupe: bool = True) -> None:
         """Emit ``message`` at WARN level via the shared ``_log`` pipeline."""
-        self._log(LogLevel.WARN, message)
+        self._log(LogLevel.WARN, message, dedupe=dedupe)
 
     def error(self, message: str) -> None:
         """Emit ``message`` at ERROR level via the shared ``_log`` pipeline."""

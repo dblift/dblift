@@ -34,6 +34,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `dblift.extensions.lint` (`lint_script`, `lint_files`, `lint_targets`, the
   verdicts and the findings) instead of re-implementing them; importing it does
   not need sqlglot.
+- `Log.warn` and `Log.warning` accept `dedupe=False`, as `Log.info` does, to log a
+  warning even when the same text was just logged. `MultiLog` passes it on to the
+  sinks that accept it. `migrate --dry-run` uses it, so the same finding in two
+  scripts is printed for each of them.
 - The unreleased distribution split makes `dblift-core` the sole owner of the
   `dblift` Python package; a same-version, metadata-only `dblift` bundle retains
   the CLI, SQL analysis, presentation, and historical extras. Release builds

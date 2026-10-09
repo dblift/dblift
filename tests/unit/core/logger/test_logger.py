@@ -302,3 +302,79 @@ def test_multilog_set_current_command():
     multi_log.set_current_command("migrate")
 
     assert getattr(console, "command_type") == "migrate"
+
+
+class _Recorder:
+    """Collect what a sink would write."""
+
+    def __init__(self):
+        self.written = []
+
+
+def _abstract_log(recorder):
+    from dblift.core.logger.log import AbstractLog
+
+    class _Sink(AbstractLog):
+        def _write_log_event(self, event, console_only=False):
+            recorder.written.append((event.level, event.message))
+
+    return _Sink("sink")
+
+
+def test_warning_is_deduplicated_unless_asked_not_to():
+    recorder = _Recorder()
+    log = _abstract_log(recorder)
+
+    log.warning("same")
+    log.warning("same")
+    log.warning("same", dedupe=False)
+    log.warn("same", dedupe=False)
+
+    assert recorder.written == [(LogLevel.WARN, "same")] * 3
+
+
+def test_base_log_warning_honours_dedupe(monkeypatch):
+    log = Log("base")
+    written = []
+    monkeypatch.setattr(log, "_log_direct", lambda level, msg: written.append((level, msg)))
+
+    log.warning("same")
+    log.warning("same")
+    log.warning("same", dedupe=False)
+
+    assert written == [(LogLevel.WARN, "same")] * 2
+
+
+def test_multilog_forwards_dedupe_to_sinks_that_accept_it():
+    recorder = _Recorder()
+    legacy = []
+
+    class _LegacySink(Log):
+        def __init__(self):
+            super().__init__("legacy")
+
+        def warning(self, message):
+            legacy.append(message)
+
+    log = MultiLog([_abstract_log(recorder), _LegacySink()])
+
+    log.warning("same", dedupe=False)
+    log.warning("same", dedupe=False)
+
+    assert recorder.written == [(LogLevel.WARN, "same")] * 2
+    assert legacy == ["same", "same"]
+
+
+def test_dblift_logger_and_null_log_accept_dedupe():
+    from unittest.mock import MagicMock
+
+    from dblift.core.logger import NullLog
+
+    logger = DbliftLogger(name="test")
+    logger.log = MagicMock()
+    logger.warning("w", dedupe=False)
+    logger.warn("w", dedupe=False)
+
+    assert [c.kwargs for c in logger.log.warning.call_args_list] == [{"dedupe": False}] * 2
+    NullLog().warning("w", dedupe=False)
+    NullLog().warn("w", dedupe=False)

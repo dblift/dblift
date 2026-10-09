@@ -132,3 +132,15 @@ def test_dry_run_console_prints_one_line_per_finding_with_its_statement(tmp_path
         "error drop-table, statement 1: DROP TABLE discards a and its rows",
         "error drop-table, statement 2: DROP TABLE discards a and its rows",
     ], output
+
+
+def test_dry_run_console_repeats_a_finding_found_in_two_scripts(tmp_path, project):
+    scripts, db = project
+    (scripts / "V2__drop.sql").write_text("DROP TABLE IF EXISTS a;")
+    (scripts / "V4__drop_again.sql").write_text("DROP TABLE IF EXISTS a;")
+
+    proc = _run(tmp_path, "migrate", "--dry-run", scripts=scripts, db=db)
+
+    output = proc.stdout + proc.stderr
+    line = "error drop-table, statement 1: DROP TABLE discards a and its rows"
+    assert output.count(line) == 2, output
