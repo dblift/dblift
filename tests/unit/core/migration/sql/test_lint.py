@@ -14,6 +14,7 @@ from dblift.core.migration.sql.lint import (
     allowed_codes,
     lint_files,
     lint_script,
+    lint_targets,
 )
 
 pytestmark = pytest.mark.unit
@@ -68,3 +69,60 @@ def test_lint_files_substitutes_placeholders(tmp_path: Path):
     [result] = lint_files([script], "mysql", {"table": "users"}, MagicMock())
     assert result.script == "V3__p.sql"
     assert "users" in result.findings[0].message
+
+
+@pytest.fixture
+def migration_tree(tmp_path: Path) -> Path:
+    root = tmp_path / "migrations"
+    nested = root / "later"
+    nested.mkdir(parents=True)
+    for name in (
+        "V2__b.sql",
+        "V1__a.sql",
+        "R__view.sql",
+        "v3__lower.sql",
+        "U1__undo_a.sql",
+        "B1__baseline.sql",
+        "afterMigrate__notify.sql",
+        "notes.sql",
+        "V4__script.py",
+    ):
+        (root / name).write_text("SELECT 1;")
+    (nested / "V5__nested.sql").write_text("SELECT 1;")
+    return root
+
+
+def test_lint_targets_are_the_v_and_r_sql_scripts_sorted(migration_tree):
+    names = [p.name for p in lint_targets([migration_tree], recursive=False)]
+
+    assert names == ["R__view.sql", "V1__a.sql", "V2__b.sql", "v3__lower.sql"]
+
+
+def test_lint_targets_recurse_when_asked(migration_tree):
+    paths = lint_targets([migration_tree], recursive=True)
+
+    assert migration_tree / "later" / "V5__nested.sql" in paths
+    assert paths == sorted(paths)
+
+
+def test_lint_targets_per_directory_recursion_overrides_the_default(migration_tree, tmp_path):
+    other = tmp_path / "other"
+    (other / "deep").mkdir(parents=True)
+    (other / "V9__top.sql").write_text("SELECT 1;")
+    (other / "deep" / "V8__deep.sql").write_text("SELECT 1;")
+
+    paths = lint_targets([migration_tree, other], recursive=False, recursive_by_dir={other: True})
+
+    names = [p.name for p in paths]
+    assert names == [
+        "R__view.sql",
+        "V1__a.sql",
+        "V2__b.sql",
+        "v3__lower.sql",
+        "V9__top.sql",
+        "V8__deep.sql",
+    ]
+
+
+def test_lint_targets_of_no_directory_is_empty():
+    assert lint_targets([], recursive=True) == []

@@ -8,14 +8,17 @@ from typing import Any, Dict, List, Tuple
 
 from dblift.api._cli_support import ProviderRegistry
 from dblift.cli._output import from_args
-from dblift.cli.handlers._shared import CliCommandContext, _is_migration_sql_file, run_json_guarded
+from dblift.cli.handlers._shared import CliCommandContext, run_json_guarded
 from dblift.core.logger.results import OperationResult
-from dblift.core.migration.sql.lint import REVIEW, SAFE, UNSAFE, ScriptLint, lint_files
+from dblift.core.migration.sql.lint import (
+    REVIEW,
+    SAFE,
+    UNSAFE,
+    ScriptLint,
+    lint_files,
+    lint_targets,
+)
 from dblift.core.migration.sql.script_analysis import dialect_of
-
-# Undo, baseline and callback scripts are not linted unless named with --files:
-# an undo script destroys what its migration created by design.
-_LINTED_PREFIXES = ("V", "R")
 
 
 def _target_files(ctx: CliCommandContext) -> List[Path]:
@@ -24,17 +27,9 @@ def _target_files(ctx: CliCommandContext) -> List[Path]:
     directories = [d for d in (ctx.scripts_dir, *ctx.additional_scripts_dirs) if d is not None]
     if not directories and ctx.client.config.migrations.directory:
         directories = [Path(ctx.client.config.migrations.directory)]
-    files: List[Path] = []
-    for directory in directories:
-        pattern = "**/*.sql" if ctx.dir_recursive_map.get(directory, ctx.recursive) else "*.sql"
-        files.extend(
-            sorted(
-                path
-                for path in directory.glob(pattern)
-                if _is_migration_sql_file(path) and path.name[:1].upper() in _LINTED_PREFIXES
-            )
-        )
-    return files
+    return lint_targets(
+        directories, recursive=ctx.recursive, recursive_by_dir=ctx.dir_recursive_map
+    )
 
 
 def _dialect(ctx: CliCommandContext) -> str:
