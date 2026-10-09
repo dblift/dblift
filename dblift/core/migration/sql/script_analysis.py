@@ -9,7 +9,7 @@ here raises into a command: a script the parser cannot read yields ``errors`` an
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from dblift.core.migration.migration_types import MigrationType
@@ -31,6 +31,9 @@ _DROP_COLUMN = re.compile(r"\bDROP\s+COLUMN\b", re.IGNORECASE)
 _TRUNCATE_TARGET = re.compile(
     r"^\s*TRUNCATE\s+(?:TABLE\s+)?([A-Za-z_][\w$.\"`\[\]]*)", re.IGNORECASE
 )
+_DROP_SCHEMA = re.compile(
+    r"^\s*DROP\s+(SCHEMA|DATABASE)\s+(?:IF\s+EXISTS\s+)?([^\s;,]+)", re.IGNORECASE
+)
 # Objects whose DROP discards rows; dropping an index, a sequence or a routine does not.
 _DATA_HOLDERS = frozenset(
     {
@@ -40,6 +43,14 @@ _DATA_HOLDERS = frozenset(
         SqlObjectType.MATERIALIZED_VIEW.value,
         SqlObjectType.SCHEMA.value,
         SqlObjectType.DATABASE.value,
+    }
+)
+_SCHEMA_HOLDERS = frozenset({SqlObjectType.SCHEMA.value, SqlObjectType.DATABASE.value})
+_ROW_HOLDERS = frozenset(
+    {
+        SqlObjectType.TABLE.value,
+        SqlObjectType.VIRTUAL_TABLE.value,
+        SqlObjectType.MATERIALIZED_VIEW.value,
     }
 )
 _DDL = frozenset({"CREATE", "ALTER", "DROP", "TRUNCATE", "COMMENT", "GRANT", "REVOKE", "DDL"})
@@ -67,6 +78,8 @@ class AnalysedStatement:
     objects: Tuple[AnalysedObject, ...]
     full_table: bool
     snippet: str
+    # The whole statement, for rules that parse it; not part of the JSON payload.
+    sql: str = field(default="", repr=False, compare=False)
 
 
 @dataclass(frozen=True)
@@ -76,6 +89,8 @@ class Caution:
     level: str
     statement: int
     reason: str
+    # The ``validate-sql`` rule this caution stands for, or None when it only describes.
+    code: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -103,7 +118,7 @@ class ScriptAnalysis:
                 for s in self.statements
             ],
             "cautions": [
-                {"level": c.level, "statement": c.statement, "reason": c.reason}
+                {"level": c.level, "statement": c.statement, "reason": c.reason, "code": c.code}
                 for c in self.cautions
             ],
             "errors": list(self.errors),
@@ -147,7 +162,10 @@ def analyse_script(text: str, dialect: str) -> ScriptAnalysis:
         objects = tuple(_object_of(o) for o in found)
         if not objects:
             objects = _fallback_objects(operation, kind, body, quirks)
-        analysed = AnalysedStatement(index, operation, kind, objects, full_table, _snippet(body))
+        objects = _schema_drop_objects(operation, body, objects)
+        analysed = AnalysedStatement(
+            index, operation, kind, objects, full_table, _snippet(body), sql=body
+        )
         statements.append(analysed)
         caution = _caution_for(analysed, body)
         if caution is not None:
@@ -236,6 +254,22 @@ def _fallback_objects(
     return (AnalysedObject("TABLE", name, None),) if name else ()
 
 
+def _schema_drop_objects(
+    operation: str, body: str, objects: Tuple[AnalysedObject, ...]
+) -> Tuple[AnalysedObject, ...]:
+    """Type the target of DROP SCHEMA / DATABASE, which the regex parser leaves untyped."""
+    match = _DROP_SCHEMA.match(strip_leading_sql_comments(body)) if operation == "DROP" else None
+    if match is None:
+        return objects
+    kind = match.group(1).upper()
+    if not objects:
+        return (AnalysedObject(kind, match.group(2), None),)
+    return tuple(
+        AnalysedObject(kind, o.name, o.schema) if o.type == SqlObjectType.UNKNOWN.value else o
+        for o in objects
+    )
+
+
 def _snippet(body: str) -> str:
     flat = " ".join(body.split())
     return flat if len(flat) <= SNIPPET else flat[: SNIPPET - 1] + "…"
@@ -249,17 +283,29 @@ def _names(objects: Tuple[AnalysedObject, ...]) -> str:
 def _caution_for(stmt: AnalysedStatement, body: str) -> Optional[Caution]:
     op = stmt.operation
     if op == "TRUNCATE":
-        return Caution(DESTROYS, stmt.index, f"TRUNCATE empties {_names(stmt.objects)}")
+        return Caution(DESTROYS, stmt.index, f"TRUNCATE empties {_names(stmt.objects)}", "truncate")
     if op == "DROP":
         held = tuple(o for o in stmt.objects if o.type in _DATA_HOLDERS)
-        if held:
-            return Caution(
-                DESTROYS, stmt.index, f"DROP {held[0].type} discards {_names(held)} and its rows"
-            )
-        return None
+        if not held:
+            return None
+        if any(o.type in _SCHEMA_HOLDERS for o in held):
+            code: Optional[str] = "drop-schema"
+        elif any(o.type in _ROW_HOLDERS for o in held):
+            code = "drop-table"
+        else:
+            code = None
+        return Caution(
+            DESTROYS,
+            stmt.index,
+            f"DROP {held[0].type} discards {_names(held)} and its rows",
+            code,
+        )
     if op == "ALTER" and _DROP_COLUMN.search(body):
         return Caution(
-            DESTROYS, stmt.index, f"DROP COLUMN discards a column of {_names(stmt.objects)}"
+            DESTROYS,
+            stmt.index,
+            f"DROP COLUMN discards a column of {_names(stmt.objects)}",
+            "drop-column",
         )
     if op in ("UPDATE", "DELETE") or (op == "WITH" and stmt.kind == "DML"):
         if stmt.full_table:
@@ -267,6 +313,7 @@ def _caution_for(stmt: AnalysedStatement, body: str) -> Optional[Caution]:
                 DESTROYS,
                 stmt.index,
                 f"{op} without WHERE rewrites every row of {_names(stmt.objects)}",
+                "dml-no-where",
             )
         return Caution(CHANGES_ROWS, stmt.index, f"{op} changes rows of {_names(stmt.objects)}")
     if op == "MERGE":

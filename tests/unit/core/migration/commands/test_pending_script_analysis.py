@@ -66,6 +66,7 @@ def test_info_fills_analysis_on_pending_sql_rows_only(tmp_path, project):
             "level": "destroys",
             "statement": 0,
             "reason": analysis["cautions"][0]["reason"],
+            "code": "drop-table",
         }
     ]
     assert "a" in analysis["cautions"][0]["reason"]

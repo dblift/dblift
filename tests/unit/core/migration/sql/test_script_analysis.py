@@ -129,6 +129,7 @@ def test_to_dict_has_the_three_keys_and_plain_values():
         "level": DESTROYS,
         "statement": 0,
         "reason": data["cautions"][0]["reason"],
+        "code": "drop-table",
     }
     assert data["errors"] == []
 
@@ -284,3 +285,48 @@ def test_select_is_a_query_and_raises_no_caution():
 
     assert [(s.operation, s.kind) for s in analysis.statements] == [("SELECT", "QUERY")]
     assert analysis.cautions == ()
+
+
+@pytest.mark.parametrize(
+    "sql, code",
+    [
+        ("DROP TABLE users;", "drop-table"),
+        ("DROP SCHEMA reporting CASCADE;", "drop-schema"),
+        ("TRUNCATE TABLE audit_log;", "truncate"),
+        ("ALTER TABLE users DROP COLUMN email;", "drop-column"),
+        ("DELETE FROM users;", "dml-no-where"),
+        ("UPDATE users SET active = false;", "dml-no-where"),
+        ("DELETE FROM users WHERE id = 1;", None),
+        ("DROP VIEW active_users;", None),
+    ],
+)
+def test_each_caution_names_its_rule_code(sql, code):
+    analysis = analyse_script(sql, "postgresql")
+
+    assert [c.code for c in analysis.cautions] == [code]
+
+
+def test_statement_keeps_its_full_sql_but_does_not_serialise_it():
+    long_tail = ", ".join(f"c{i} INTEGER" for i in range(40))
+    analysis = analyse_script(f"CREATE TABLE wide ({long_tail});\nDROP TABLE wide;", "postgresql")
+
+    assert "c39 INTEGER" in analysis.statements[0].sql
+    assert analysis.statements[0].snippet.endswith("…")
+    assert "DROP TABLE wide" in analysis.statements[1].sql
+    payload = analysis.to_dict()
+    assert "sql" not in payload["statements"][0]
+    assert payload["cautions"][0]["code"] == "drop-table"
+
+
+@pytest.mark.parametrize(
+    "sql, kind, name",
+    [
+        ("DROP SCHEMA reporting CASCADE;", "SCHEMA", "reporting"),
+        ("DROP DATABASE IF EXISTS archive;", "DATABASE", "archive"),
+    ],
+)
+def test_schema_level_drop_names_its_target_and_destroys(sql, kind, name):
+    analysis = analyse_script(sql, "postgresql")
+
+    assert [(o.type, o.name) for o in analysis.statements[0].objects] == [(kind, name)]
+    assert [(c.level, c.code) for c in analysis.cautions] == [(DESTROYS, "drop-schema")]
