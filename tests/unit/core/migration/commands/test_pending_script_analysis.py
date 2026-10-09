@@ -97,6 +97,16 @@ def test_dry_run_rows_carry_the_verdict(tmp_path, project):
     assert [f["code"] for f in analysis["findings"]] == ["drop-table"]
 
 
+def test_info_rows_carry_the_verdict(tmp_path, project):
+    scripts, db = project
+
+    payload = _payload(_run(tmp_path, "info", "--format", "json", scripts=scripts, db=db))
+
+    analysis = {m["script"]: m for m in payload["migrations"]}["V2__drop.sql"]["analysis"]
+    assert analysis["verdict"] == "UNSAFE"
+    assert [f["code"] for f in analysis["findings"]] == ["drop-table"]
+
+
 def test_dry_run_console_shows_the_verdict_and_the_finding(tmp_path, project):
     scripts, db = project
 
