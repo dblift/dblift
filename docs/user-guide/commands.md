@@ -46,8 +46,7 @@ SQL script's row, in `info` and in `migrate --dry-run`, carries `analysis`: its 
 without WHERE) and `cautions`, each `destroys` (DROP TABLE, VIEW or SCHEMA, TRUNCATE,
 DROP COLUMN, UPDATE or DELETE without WHERE) or `changes_rows` (UPDATE, DELETE, MERGE),
 read from the file in the database's dialect without connecting; `analysis` is `null` on
-applied rows and on Python scripts. `validate` reports the same cautions as `warnings`.
-The SQL is not checked for validity:
+applied rows and on Python scripts. The SQL is not checked for validity:
 
 ```bash
 dblift migrate --dry-run --format json

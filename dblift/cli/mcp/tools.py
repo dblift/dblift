@@ -54,7 +54,7 @@ def validate_argv(
     exclude_versions: "str | list[str] | None" = None,
     strict: bool = False,
 ) -> List[str]:
-    """Validate scripts for consistency and against history; flag destructive pending statements.
+    """Validate scripts for consistency and, once applied, against history (SQL not parsed).
 
     ``strict`` adds ``--strict``: a previously applied migration now missing
     from disk fails validation, and migrations are required in strict version
