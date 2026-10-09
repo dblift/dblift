@@ -116,9 +116,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Existing lock tables gain a nullable `owner_token` column (`OWNER_TOKEN` on Db2 and
     Oracle) the first time a new version takes the lock. A lock row without an owner,
     written by an earlier version, is taken over only once it is 24 hours old.
-  - A lock held without a heartbeat (on a database private to one connection, or taken
-    through a caller-supplied connection with `from_sqlalchemy(connection=...)`) is
-    likewise taken over only once it is 24 hours old.
+  - A lock held without a heartbeat on a database private to one connection is
+    likewise taken over only once it is 24 hours old. With a caller-supplied
+    connection to a shared database, the lock now uses a separate connection and
+    heartbeat, so a killed holder can be replaced after 30 seconds without
+    committing the caller's transaction. A single-connection SQLAlchemy pool
+    cannot provide that isolation and is rejected before acquiring the lock.
   - Snowflake now holds the lock as a committed lease on the lock row instead of an open
     transaction. An earlier version does not see that lease, so every runner that
     migrates the same Snowflake schema should run a version with the lease.
