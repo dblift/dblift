@@ -27,6 +27,7 @@ class SnowflakeQuirks(BaseQuirks):
     missing_connection_identifier_hint = "Snowflake requires url or account"
     native_url_schema_params = ("schema",)
     native_driver_display = "snowflake-connector-python"
+    lint_placeholder_url = "snowflake://localhost/DBLIFT_VALIDATE_SQL/PUBLIC"
 
     def __init__(self, dialect_name: str = "snowflake") -> None:
         super().__init__(dialect_name=dialect_name)

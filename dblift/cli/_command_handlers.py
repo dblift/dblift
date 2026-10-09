@@ -24,6 +24,7 @@ from dblift.cli.handlers.migrate import _handle_migrate
 from dblift.cli.handlers.repair import _handle_repair
 from dblift.cli.handlers.undo import _handle_undo
 from dblift.cli.handlers.validate import _handle_validate
+from dblift.cli.handlers.validate_sql import _handle_validate_sql
 from dblift.cli.premium_manifest import PremiumCommand, premium_stub_index, render_upsell
 from dblift.core.seams.capabilities import CapabilityDeniedError
 from dblift.core.seams.tier_resolver import resolve_tier
@@ -47,6 +48,8 @@ if _builtin_conflicts:
         f"Extension command handler(s) conflict with builtins: {sorted(_builtin_conflicts)}"
     )
 _COMMAND_HANDLERS.update(_extension_handlers)
+# Built-in default an installed extension may replace (same gap-fill rule as the stubs).
+_COMMAND_HANDLERS.setdefault("validate-sql", _handle_validate_sql)
 del _extension_handlers, _builtin_conflicts
 
 

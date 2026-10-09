@@ -60,7 +60,8 @@ def main() -> None:
     cli = [sys.executable, "-I", str(console)]
     help_text = run([*cli, "--help"], cwd)
     assert "migrate" in help_text and "validate" in help_text
-    for command in ("diff", "export-schema", "snapshot", "validate-sql", "plan", "preflight"):
+    assert "validate-sql" in help_text
+    for command in ("diff", "export-schema", "snapshot", "plan", "preflight"):
         assert command in help_text
         try:
             run([*cli, command, "--help"], cwd)

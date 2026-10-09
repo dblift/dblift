@@ -9,7 +9,8 @@ if TYPE_CHECKING:
     pass
 from dblift.core.logger.results import InfoResult, MigrationInfo, is_failed_migration_status
 from dblift.core.migration.migration import VERSIONED_SCRIPT_TYPES, MigrationType
-from dblift.core.migration.sql.script_analysis import analyse_pending_scripts, dialect_of
+from dblift.core.migration.sql.lint import lint_pending_scripts
+from dblift.core.migration.sql.script_analysis import dialect_of
 from dblift.core.utils.url_masking import mask_database_url
 from dblift.db.provider_capabilities import get_provider_display_url, get_provider_driver_display
 
@@ -195,7 +196,7 @@ class InfoCommand(BaseCommand):
             # Python scripts and undo scripts keep analysis=None.
             dialect = dialect_of(self.config)
             if dialect:
-                analysed = analyse_pending_scripts(
+                analysed = lint_pending_scripts(
                     getattr(migration_state, "pending_objects", None) or [],
                     dialect,
                     self.log,

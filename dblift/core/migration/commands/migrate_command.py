@@ -28,7 +28,8 @@ from dblift.core.migration.migration import (
 )
 from dblift.core.migration.rules.migration_rules import MigrationRules
 from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
-from dblift.core.migration.sql.script_analysis import analyse_pending_scripts, dialect_of
+from dblift.core.migration.sql.lint import SAFE, lint_pending_scripts
+from dblift.core.migration.sql.script_analysis import dialect_of
 from dblift.core.migration.state.migration_state import MigrationReadSnapshot
 from dblift.core.migration.state.migration_state_manager import (
     MigrationStateManager,
@@ -168,7 +169,7 @@ class MigrateCommand(BaseCommand):
 
         dialect = dialect_of(self.config)
         analysed = (
-            analyse_pending_scripts(
+            lint_pending_scripts(
                 pending_migrations,
                 dialect,
                 self.log,
@@ -180,7 +181,14 @@ class MigrateCommand(BaseCommand):
 
         self.log.info("DRY RUN: Would execute the following migrations:")
         for migration in pending_migrations:
-            self.log.info(f"  - {migration.script_name}")
+            analysis = analysed.get(migration.script_name)
+            verdict = f" [{analysis['verdict']}]" if analysis and "verdict" in analysis else ""
+            self.log.info(f"  - {migration.script_name}{verdict}")
+            for finding in (analysis or {}).get("findings", []):
+                if not finding["allowed"]:
+                    self.log.warning(
+                        f"      {finding['severity']} {finding['code']}: {finding['message']}"
+                    )
             # Appended directly (not via `result.add_migration`): that method
             # flips `result.success` to False for any non-SUCCESS status,
             # which would wrongly mark a clean dry run as failed.
@@ -192,9 +200,11 @@ class MigrateCommand(BaseCommand):
                     type=migration.type.value if migration.type else "SQL",
                     status="PENDING",
                     checksum=migration.checksum,
-                    analysis=analysed.get(migration.script_name),
+                    analysis=analysis,
                 )
             )
+        if any(a.get("verdict", SAFE) != SAFE for a in analysed.values()):
+            self.log.info("Run `dblift validate-sql` to see the statement behind each finding.")
         result.dry_run_count = len(pending_migrations)
         # Note: Callbacks are NOT executed in dry-run mode
         self._log_command_completion("migrate", result)

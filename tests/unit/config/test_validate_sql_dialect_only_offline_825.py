@@ -38,6 +38,7 @@ def _validate_sql_args(dialect: str) -> Namespace:
         ("oracle", "oracle://"),
         ("sqlserver", "mssql://"),
         ("db2", "db2://"),
+        ("snowflake", "snowflake://"),
     ],
 )
 def test_dialect_only_resolves_offline_without_config_or_db_url(

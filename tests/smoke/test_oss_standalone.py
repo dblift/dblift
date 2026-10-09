@@ -109,5 +109,12 @@ def test_oss_builtin_cli_exposes_relocated_paid_commands_only_as_stubs(monkeypat
 def test_oss_builtin_cli_exposes_remaining_paid_commands_only_as_stubs(monkeypatch):
     choices = _oss_builtin_command_choices(monkeypatch)
 
-    for word in ("validate-sql", "plan", "preflight"):
+    for word in ("plan", "preflight"):
         _assert_present_only_as_stub(choices, word)
+
+
+def test_oss_builtin_cli_has_a_real_validate_sql(monkeypatch):
+    choices = _oss_builtin_command_choices(monkeypatch)
+
+    flags = {opt for action in choices["validate-sql"]._actions for opt in action.option_strings}
+    assert {"--files", "--dialect", "--format"} <= flags

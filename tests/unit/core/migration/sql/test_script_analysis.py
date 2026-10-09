@@ -7,13 +7,14 @@ from unittest.mock import MagicMock
 
 import pytest
 
+import dblift.core.migration.sql.lint as lint
 import dblift.core.migration.sql.script_analysis as script_analysis
 from dblift.core.migration.migration_types import MigrationType
+from dblift.core.migration.sql.lint import lint_pending_scripts
 from dblift.core.migration.sql.script_analysis import (
     CHANGES_ROWS,
     DESTROYS,
     ScriptAnalysis,
-    analyse_pending_scripts,
     analyse_script,
     dialect_of,
     operation_of,
@@ -129,6 +130,7 @@ def test_to_dict_has_the_three_keys_and_plain_values():
         "level": DESTROYS,
         "statement": 0,
         "reason": data["cautions"][0]["reason"],
+        "code": "drop-table",
     }
     assert data["errors"] == []
 
@@ -138,7 +140,7 @@ def test_operation_of_skips_leading_comments():
     assert operation_of("   ") == "UNKNOWN"
 
 
-def test_analyse_pending_scripts_keeps_sql_and_repeatable_with_content():
+def test_lint_pending_scripts_keeps_sql_and_repeatable_with_content():
     log = MagicMock()
     migrations = [
         SimpleNamespace(script_name="V1__a.sql", type=MigrationType.SQL, content="DROP TABLE a;"),
@@ -154,14 +156,14 @@ def test_analyse_pending_scripts_keeps_sql_and_repeatable_with_content():
         SimpleNamespace(script_name="V3__empty.sql", type=MigrationType.SQL, content=""),
     ]
 
-    analysed = analyse_pending_scripts(migrations, "postgresql", log)
+    analysed = lint_pending_scripts(migrations, "postgresql", log)
 
     assert set(analysed) == {"V1__a.sql", "R__view.sql"}
     assert analysed["V1__a.sql"]["cautions"][0]["level"] == DESTROYS
     assert analysed["R__view.sql"]["cautions"] == []
 
 
-def test_analyse_pending_scripts_loads_content_when_the_object_can():
+def test_lint_pending_scripts_loads_content_when_the_object_can():
     migration = MagicMock()
     migration.script_name = "V1__a.sql"
     migration.type = MigrationType.SQL
@@ -172,7 +174,7 @@ def test_analyse_pending_scripts_loads_content_when_the_object_can():
 
     migration.load_content.side_effect = load_content
 
-    analysed = analyse_pending_scripts([migration], "postgresql", MagicMock())
+    analysed = lint_pending_scripts([migration], "postgresql", MagicMock())
 
     assert analysed["V1__a.sql"]["cautions"][0]["level"] == DESTROYS
 
@@ -273,7 +275,7 @@ def test_full_table_dml_respects_provider_quirks_override(monkeypatch):
     assert [c.level for c in analysis.cautions] == [CHANGES_ROWS]
 
 
-def test_analyse_pending_scripts_skips_nameless_and_logs_read_and_analysis_failures(monkeypatch):
+def test_lint_pending_scripts_skips_nameless_and_logs_read_and_analysis_failures(monkeypatch):
     log = MagicMock()
     nameless = SimpleNamespace(script_name="", type=MigrationType.SQL, content="DROP TABLE a;")
     unreadable = MagicMock()
@@ -284,11 +286,9 @@ def test_analyse_pending_scripts_skips_nameless_and_logs_read_and_analysis_failu
     readable = SimpleNamespace(
         script_name="V2__b.sql", type=MigrationType.SQL, content="DROP TABLE b;"
     )
-    monkeypatch.setattr(
-        script_analysis, "analyse_script", MagicMock(side_effect=RuntimeError("boom"))
-    )
+    monkeypatch.setattr(lint, "analyse_script", MagicMock(side_effect=RuntimeError("boom")))
 
-    analysed = analyse_pending_scripts([nameless, unreadable, readable], "postgresql", log)
+    analysed = lint_pending_scripts([nameless, unreadable, readable], "postgresql", log)
 
     assert analysed == {}
     messages = [call.args[0] for call in log.debug.call_args_list]
@@ -301,3 +301,88 @@ def test_select_is_a_query_and_raises_no_caution():
 
     assert [(s.operation, s.kind) for s in analysis.statements] == [("SELECT", "QUERY")]
     assert analysis.cautions == ()
+
+
+@pytest.mark.parametrize(
+    "sql, code",
+    [
+        ("DROP TABLE users;", "drop-table"),
+        ("DROP SCHEMA reporting CASCADE;", "drop-schema"),
+        ("TRUNCATE TABLE audit_log;", "truncate"),
+        ("ALTER TABLE users DROP COLUMN email;", "drop-column"),
+        ("DELETE FROM users;", "dml-no-where"),
+        ("UPDATE users SET active = false;", "dml-no-where"),
+        ("DELETE FROM users WHERE id = 1;", None),
+        ("DROP VIEW active_users;", None),
+    ],
+)
+def test_each_caution_names_its_rule_code(sql, code):
+    analysis = analyse_script(sql, "postgresql")
+
+    assert [c.code for c in analysis.cautions] == [code]
+
+
+def test_statement_keeps_its_full_sql_but_does_not_serialise_it():
+    long_tail = ", ".join(f"c{i} INTEGER" for i in range(40))
+    analysis = analyse_script(f"CREATE TABLE wide ({long_tail});\nDROP TABLE wide;", "postgresql")
+
+    assert "c39 INTEGER" in analysis.statements[0].sql
+    assert analysis.statements[0].snippet.endswith("…")
+    assert "DROP TABLE wide" in analysis.statements[1].sql
+    payload = analysis.to_dict()
+    assert "sql" not in payload["statements"][0]
+    assert payload["cautions"][0]["code"] == "drop-table"
+
+
+@pytest.mark.parametrize(
+    "sql, kind, name",
+    [
+        ("DROP SCHEMA reporting CASCADE;", "SCHEMA", "reporting"),
+        ("DROP DATABASE IF EXISTS archive;", "DATABASE", "archive"),
+    ],
+)
+def test_schema_level_drop_names_its_target_and_destroys(sql, kind, name):
+    analysis = analyse_script(sql, "postgresql")
+
+    assert [(o.type, o.name) for o in analysis.statements[0].objects] == [(kind, name)]
+    assert [(c.level, c.code) for c in analysis.cautions] == [(DESTROYS, "drop-schema")]
+
+
+_SQL_DIALECTS = [
+    "postgresql",
+    "mysql",
+    "mariadb",
+    "oracle",
+    "sqlserver",
+    "sqlite",
+    "duckdb",
+    "snowflake",
+    "redshift",
+    "db2",
+    "cockroachdb",
+    "yugabytedb",
+    "timescaledb",
+    "citus",
+    "neon",
+    "supabase",
+    "aurora-postgresql",
+    "alloydb",
+]
+
+
+@pytest.mark.parametrize("sql", ["DROP TABLE t;", "DROP TABLE IF EXISTS s.t;"])
+@pytest.mark.parametrize("dialect", _SQL_DIALECTS)
+def test_drop_table_is_flagged_in_every_dialect(dialect, sql):
+    analysis = analyse_script(sql, dialect)
+
+    assert [(c.level, c.code) for c in analysis.cautions] == [(DESTROYS, "drop-table")]
+    assert [o.name.lower() for o in analysis.statements[0].objects] == ["t"]
+
+
+@pytest.mark.parametrize("dialect", ["postgresql", "oracle", "snowflake"])
+def test_drop_materialized_view_is_flagged_and_a_plain_view_is_not(dialect):
+    analysis = analyse_script("DROP MATERIALIZED VIEW mv;\nDROP VIEW v;", dialect)
+
+    assert analysis.statements[0].objects[0].type == "MATERIALIZED_VIEW"
+    assert [c.code for c in analysis.cautions if c.statement == 0] == ["drop-table"]
+    assert [c.code for c in analysis.cautions if c.statement == 1 and c.code] == []

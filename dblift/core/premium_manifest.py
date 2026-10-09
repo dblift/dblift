@@ -23,7 +23,7 @@ The ``api_method`` field on ``PremiumCommand`` names the corresponding OSS
 programmatic-API equivalent. It is used to build the API's own paid-tier
 stub methods (``diff``, ``export_schema``, ``snapshot``, ``plan``,
 ``preflight``), mirroring the CLI stubs one layer down. Commands with no
-API equivalent (``validate-sql``, ``data``) leave it ``None``.
+API equivalent (``data``) leave it ``None``.
 
 ``_register_premium_stub_parsers`` (``cli/_parser_setup.py``) decides
 whether to create a stub purely by string-matching catalog names against
@@ -66,11 +66,6 @@ PREMIUM_COMMANDS: Tuple[PremiumCommand, ...] = (
         "Pro",
         "Export database schema to SQL migration file(s)",
         api_method="export_schema",
-    ),
-    PremiumCommand(
-        "validate-sql",
-        "Pro",
-        "Validate SQL files with business rules and performance analysis",
     ),
     PremiumCommand(
         "data",
