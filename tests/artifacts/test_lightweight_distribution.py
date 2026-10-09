@@ -211,6 +211,13 @@ def test_installed_provider_descriptors_preserve_legacy_group(candidate_wheel, t
         capture_output=True,
         text=True,
     )
+    subprocess.run(
+        [str(python), "-m", "pip", "check"],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
     script = """
 import sys
 from importlib import metadata
@@ -227,6 +234,11 @@ assert not any(name.startswith("dblift.db.plugins.") and name.endswith(".provide
 for ep in legacy:
     plugin = ep.load()
     assert tuple(plugin.dialects) == next(new.load().dialects for new in descriptors if new.name == ep.name)
+for name, module in sys.modules.items():
+    if name == "dblift" or name.startswith("dblift."):
+        origin = getattr(module, "__file__", None)
+        if origin:
+            assert Path(origin).resolve().is_relative_to(sys.prefix), origin
 """
     run = subprocess.run(
         [str(python), "-I", "-c", script],
