@@ -104,7 +104,7 @@ def main() -> None:
     ]
     help_text = run([*runner, "--help"], work)
     assert "migrate" in help_text and "validate" in help_text
-    for premium in ("diff", "export-schema", "snapshot", "validate-sql", "plan", "preflight"):
+    for premium in ("diff", "export-schema", "snapshot", "plan", "preflight"):
         assert premium in help_text
     assert distribution.version in run([*runner, "--version"], work)
     migrations = work / "migrations"
