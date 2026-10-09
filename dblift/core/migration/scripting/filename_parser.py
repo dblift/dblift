@@ -2,6 +2,7 @@
 
 import re
 from dataclasses import dataclass
+from pathlib import Path
 from typing import List, Optional, Tuple
 
 from dblift.core.migration.migration_types import MigrationType
@@ -161,6 +162,20 @@ _NEAR_MISS_RE = re.compile(r"^[VUR](?:[0-9_]|[A-Za-z]?[0-9.]*__)", re.IGNORECASE
 def _looks_like_migration(script_name: str) -> bool:
     """True if *script_name* looks like a failed attempt at the convention."""
     return _NEAR_MISS_RE.match(script_name) is not None
+
+
+# Flyway-compatible migration SQL filename, used to skip non-migration SQL files when a
+# directory is scanned for SQL checks (leftover temp files, schema dumps), so only
+# intentional migration scripts are checked. Explicitly listed files bypass it.
+MIGRATION_SQL_FILENAME_RE = re.compile(
+    r"^[VRUBvrub][\d_.]*__.*\.sql$",
+    re.IGNORECASE,
+)
+
+
+def is_migration_sql_file(path: Path) -> bool:
+    """Return True iff the filename matches the Flyway migration naming convention."""
+    return bool(MIGRATION_SQL_FILENAME_RE.match(path.name))
 
 
 def _matches_callback_event(base_name: str, event_prefix: str) -> bool:

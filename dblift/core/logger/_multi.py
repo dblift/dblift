@@ -43,10 +43,14 @@ class MultiLog(Log):
             else:
                 log.info(message)
 
-    def warn(self, message: str) -> None:
-        """Forward a warning message to every child sink (each receives ``warning``)."""
+    def warn(self, message: str, *, dedupe: bool = True) -> None:
+        """Forward a warning message to every child sink (each receives ``warning``),
+        passing ``dedupe`` to the sinks that accept it."""
         for log in self.logs:
-            log.warning(message)
+            if "dedupe" in inspect.signature(log.warning).parameters:
+                log.warning(message, dedupe=dedupe)
+            else:
+                log.warning(message)
 
     def error(self, message: str) -> None:
         """Forward an error message to every child sink."""

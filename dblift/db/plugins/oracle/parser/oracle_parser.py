@@ -80,7 +80,7 @@ class OracleParser(RegexBasedParser):
             statements = split_statements_regex(
                 cleaned_sql, extract_plsql_block=extract_plsql_block
             )
-            logger.info(
+            logger.debug(
                 f"Oracle: Successfully parsed {len(statements)} statements using regex-based parsing"
             )
 

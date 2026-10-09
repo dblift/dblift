@@ -101,7 +101,8 @@ script is read.
 
 **Dialect.** Scripts are read in the dialect given by `--dialect`, or else in the
 configured database type (`database.type`, or the scheme of the database URL). With neither,
-the command stops and asks for `--dialect`. The database flags (`--db-url`, …) are accepted
+the command stops and asks for `--dialect`. `--dialect` accepts the SQL dialects; MongoDB and
+Cosmos DB scripts cannot be checked. The database flags (`--db-url`, …) are accepted
 but nothing connects.
 
 **Rules.** Each finding has a code and a fixed severity:
@@ -154,11 +155,11 @@ with `--files` does not exist. A `REVIEW` verdict does not fail the command.
 ```
 V2__drop_legacy.sql: UNSAFE
   error   drop-column, statement 1: DROP COLUMN discards a column of users
-          ALTER TABLE users DROP COLUMN legacy_flag;
+          ALTER TABLE users DROP COLUMN legacy_flag
   warning pg-missing-lock-timeout, statement 1: takes a table lock with no lock_timeout set earlier in the script, so queries on the table can queue behind it; start with SET LOCAL lock_timeout = '5s'
-          ALTER TABLE users DROP COLUMN legacy_flag;
+          ALTER TABLE users DROP COLUMN legacy_flag
   warning pg-index-not-concurrent, statement 2: CREATE INDEX without CONCURRENTLY blocks writes to the table while the index builds (row count unknown — severity not adjusted for table size)
-          CREATE INDEX idx_users_email ON users (email);
+          CREATE INDEX idx_users_email ON users (email)
 1 script(s): 0 SAFE, 0 REVIEW, 1 UNSAFE
 ```
 
@@ -183,7 +184,7 @@ carries `code`, `severity`, `statement` (numbered from 0), `message`, `snippet` 
           "severity": "error",
           "statement": 0,
           "message": "DROP COLUMN discards a column of users",
-          "snippet": "ALTER TABLE users DROP COLUMN legacy_flag;",
+          "snippet": "ALTER TABLE users DROP COLUMN legacy_flag",
           "allowed": false
         },
         {
@@ -191,7 +192,7 @@ carries `code`, `severity`, `statement` (numbered from 0), `message`, `snippet` 
           "severity": "warning",
           "statement": 0,
           "message": "takes a table lock with no lock_timeout set earlier in the script, so queries on the table can queue behind it; start with SET LOCAL lock_timeout = '5s'",
-          "snippet": "ALTER TABLE users DROP COLUMN legacy_flag;",
+          "snippet": "ALTER TABLE users DROP COLUMN legacy_flag",
           "allowed": false
         }
       ],

@@ -169,7 +169,7 @@ def test_console_prints_the_statement_under_every_finding_on_it(tmp_path, script
     )
 
     output = proc.stdout + proc.stderr
-    assert output.count("ALTER TABLE users DROP COLUMN email;") == 2, output
+    assert output.count("ALTER TABLE users DROP COLUMN email\n") == 2, output
 
 
 def test_without_a_dialect_or_config_the_command_explains_what_it_needs(tmp_path, scripts):
@@ -198,3 +198,81 @@ def test_default_handler_is_registered_and_no_stub_remains():
 
     assert _COMMAND_HANDLERS["validate-sql"] is _handle_validate_sql
     assert "validate-sql" not in PREMIUM_STUB_COMMANDS
+
+
+def test_dialect_choices_are_the_dialects_that_can_be_read_offline(monkeypatch):
+    import dblift.cli.extensions as extensions
+    from dblift.api._cli_support import ProviderRegistry
+    from dblift.cli._parser_setup import create_parser
+
+    monkeypatch.setattr(extensions, "load_command_extensions", lambda parser: None)
+    sub = next(a for a in create_parser()._actions if a.__class__.__name__ == "_SubParsersAction")
+    dialect = next(a for a in sub.choices["validate-sql"]._actions if a.dest == "dialect")
+
+    assert "postgresql" in dialect.choices
+    assert all(ProviderRegistry.get_quirks(d).lint_placeholder_url for d in dialect.choices)
+    assert not {"mongodb", "cosmosdb"} & set(dialect.choices)
+
+
+def test_oracle_scripts_are_checked_without_a_parser_progress_line(tmp_path):
+    script = tmp_path / "V1__orders.sql"
+    script.write_text("CREATE TABLE orders (id NUMBER PRIMARY KEY);\nDROP TABLE orders;\n")
+
+    proc = _run(tmp_path, "validate-sql", "--dialect", "oracle", "--files", str(script))
+
+    output = proc.stdout + proc.stderr
+    assert "V1__orders.sql: UNSAFE" in output, output
+    assert "Successfully parsed" not in output, output
+
+
+def test_dialect_option_wins_over_the_configured_database_type(tmp_path):
+    config = tmp_path / "dblift.yaml"
+    config.write_text(
+        "database:\n  type: mysql\n  url: mysql://localhost:3306/app\n"
+        "  username: app\n  password: secret\n"
+    )
+    script = tmp_path / "V1__index.sql"
+    script.write_text("CREATE INDEX idx_users_email ON users (email);\n")
+
+    proc = _run(
+        tmp_path,
+        "--config",
+        str(config),
+        "validate-sql",
+        "--dialect",
+        "postgresql",
+        "--format",
+        "json",
+        "--files",
+        str(script),
+    )
+
+    payload = json.loads(proc.stdout)
+    assert payload["dialect"] == "postgresql", proc.stderr
+    codes = [f["code"] for f in payload["scripts"][0]["findings"]]
+    assert "pg-index-not-concurrent" in codes
+
+
+def test_configured_database_type_is_used_without_the_dialect_option(tmp_path):
+    config = tmp_path / "dblift.yaml"
+    config.write_text(
+        "database:\n  type: mysql\n  url: mysql://localhost:3306/app\n"
+        "  username: app\n  password: secret\n"
+    )
+    script = tmp_path / "V1__index.sql"
+    script.write_text("CREATE INDEX idx_users_email ON users (email);\n")
+
+    proc = _run(
+        tmp_path,
+        "--config",
+        str(config),
+        "validate-sql",
+        "--format",
+        "json",
+        "--files",
+        str(script),
+    )
+
+    payload = json.loads(proc.stdout)
+    assert payload["dialect"] == "mysql", proc.stderr
+    assert payload["scripts"][0]["findings"] == []

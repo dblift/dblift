@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -386,3 +387,17 @@ def test_drop_materialized_view_is_flagged_and_a_plain_view_is_not(dialect):
     assert analysis.statements[0].objects[0].type == "MATERIALIZED_VIEW"
     assert [c.code for c in analysis.cautions if c.statement == 0] == ["drop-table"]
     assert [c.code for c in analysis.cautions if c.statement == 1 and c.code] == []
+
+
+@pytest.mark.parametrize("dialect", ["postgresql", "mysql", "sqlserver", "oracle", "sqlite"])
+def test_snippet_drops_the_trailing_semicolon_in_every_dialect(dialect):
+    analysis = analyse_script("ALTER TABLE users\n  DROP COLUMN legacy_flag ;\n", dialect)
+
+    assert [s.snippet for s in analysis.statements] == ["ALTER TABLE users DROP COLUMN legacy_flag"]
+
+
+def test_analysis_does_not_let_sqlglot_log_its_fallback_warnings(caplog):
+    with caplog.at_level(logging.WARNING, logger="sqlglot"):
+        analyse_script("ALTER TABLE users ADD COLUMN a INT, DROP COLUMN b;", "postgresql")
+
+    assert not [r for r in caplog.records if r.name.startswith("sqlglot")]

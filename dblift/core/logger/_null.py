@@ -28,10 +28,10 @@ class NullLog(Log):
     def info(self, message: str, console_only: bool = False, *, dedupe: bool = True) -> None:
         pass
 
-    def warn(self, message: str) -> None:
+    def warn(self, message: str, *, dedupe: bool = True) -> None:
         pass
 
-    def warning(self, message: str) -> None:
+    def warning(self, message: str, *, dedupe: bool = True) -> None:
         pass
 
     def error(self, message: str) -> None:

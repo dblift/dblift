@@ -79,9 +79,9 @@ def test_oracle_keeps_configured_logger_with_rich_available():
     result = run_python("""
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from dblift.core.logger.log import FileLog, LogFactory
+from dblift.core.logger.log import FileLog, LogFactory, LogLevel
 with TemporaryDirectory() as temp:
-    LogFactory.configure(Path(temp), use_console=False, use_file=True)
+    LogFactory.configure(Path(temp), log_level=LogLevel.DEBUG, use_console=False, use_file=True)
     from dblift.db.plugins.oracle.parser.oracle_parser import OracleParser, logger
     assert isinstance(logger, FileLog)
     OracleParser().parse_sql('CREATE TABLE t (id NUMBER)')

@@ -57,6 +57,27 @@ from dblift.core.logger import (
     RepairResult,
     ValidateResult,
 )
+from dblift.extensions.lint import (
+    ERROR,
+    Finding,
+    INFO,
+    REVIEW,
+    SAFE,
+    SEVERITY,
+    ScriptAnalysis,
+    ScriptLint,
+    UNSAFE,
+    WARNING,
+    allowed_codes,
+    analyse_script,
+    find_issues,
+    lint_analysis,
+    lint_files,
+    lint_pending_scripts,
+    lint_script,
+    lint_targets,
+    verdict_of,
+)
 from dblift.extensions.logging import (
     ConsoleLog,
     DbliftLogger,

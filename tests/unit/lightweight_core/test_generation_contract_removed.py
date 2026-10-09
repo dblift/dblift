@@ -30,7 +30,7 @@ def test_generation_only_modules_are_absent(module):
 def test_extension_categories_exclude_sql_generation():
     import dblift.extensions as extensions
 
-    assert extensions.__all__ == ["logging", "providers", "sql_model"]
+    assert extensions.__all__ == ["lint", "logging", "providers", "sql_model"]
     assert "sql_generation" not in dir(extensions)
     with pytest.raises(AttributeError):
         extensions.sql_generation

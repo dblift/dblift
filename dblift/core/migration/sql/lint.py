@@ -5,10 +5,23 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, FrozenSet, Iterable, List, Sequence, Set, Tuple
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Dict,
+    FrozenSet,
+    Iterable,
+    List,
+    Mapping,
+    Optional,
+    Sequence,
+    Set,
+    Tuple,
+)
 
 from dblift.core.migration.migration_types import MigrationType
 from dblift.core.migration.placeholders.placeholder_service import PlaceholderService
+from dblift.core.migration.scripting.filename_parser import is_migration_sql_file
 from dblift.core.migration.sql.script_analysis import (
     DISABLED_ANALYSIS,
     ScriptAnalysis,
@@ -25,7 +38,12 @@ REVIEW = "REVIEW"
 UNSAFE = "UNSAFE"
 
 _ANALYSED_TYPES = (MigrationType.SQL, MigrationType.REPEATABLE)
-_ALLOW = re.compile(r"--\s*dblift:allow\s+([A-Za-z0-9-]+(?:\s*,\s*[A-Za-z0-9-]+)*)", re.IGNORECASE)
+# Undo, baseline and callback scripts are not linted unless named explicitly:
+# an undo script destroys what its migration created by design.
+_LINTED_PREFIXES = ("V", "R")
+_ALLOW = re.compile(
+    r"--\s*dblift:allow\s+([A-Za-z0-9_.-]+(?:\s*,\s*[A-Za-z0-9_.-]+)*)", re.IGNORECASE
+)
 
 
 @dataclass(frozen=True)
@@ -82,6 +100,31 @@ def lint_analysis(
 def lint_script(text: str, dialect: str, script: str = "") -> ScriptLint:
     """Analyse *text* and return its verdict."""
     return lint_analysis(analyse_script(text, dialect), text, dialect, script)
+
+
+def lint_targets(
+    directories: Sequence[Path],
+    *,
+    recursive: bool,
+    recursive_by_dir: Optional[Mapping[Path, bool]] = None,
+) -> List[Path]:
+    """The V and R migration SQL files of *directories* that validate-sql reads by default.
+
+    Each directory is searched recursively per ``recursive_by_dir`` (default *recursive*);
+    its files come sorted, directory after directory.
+    """
+    overrides = recursive_by_dir or {}
+    files: List[Path] = []
+    for directory in directories:
+        pattern = "**/*.sql" if overrides.get(directory, recursive) else "*.sql"
+        files.extend(
+            sorted(
+                path
+                for path in directory.glob(pattern)
+                if is_migration_sql_file(path) and path.name[:1].upper() in _LINTED_PREFIXES
+            )
+        )
+    return files
 
 
 def lint_files(

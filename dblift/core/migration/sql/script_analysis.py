@@ -8,9 +8,11 @@ here raises into a command: a script the parser cannot read yields ``errors`` an
 
 from __future__ import annotations
 
+import logging
 import re
+from contextlib import contextmanager
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 from dblift.core.sql_model.base import SqlObject, SqlObjectType
 from dblift.core.sql_parser.parser_factory import SqlParserFactory
@@ -60,6 +62,7 @@ DISABLED_ANALYSIS = {
     "status": "disabled",
     "reason": "Object analysis disabled in execution mode",
 }
+_SQLGLOT_LOG = logging.getLogger("sqlglot")
 
 
 @dataclass(frozen=True)
@@ -142,8 +145,27 @@ def dialect_of(config: Any) -> Optional[str]:
     return str(kind).lower() if kind else None
 
 
+@contextmanager
+def quiet_sqlglot() -> Iterator[None]:
+    """Keep sqlglot's warnings (one per statement it falls back on) off the caller's log.
+
+    The analysis reports what it could not read; it needs no sqlglot import to do this.
+    """
+    previous = _SQLGLOT_LOG.level
+    _SQLGLOT_LOG.setLevel(logging.ERROR)
+    try:
+        yield
+    finally:
+        _SQLGLOT_LOG.setLevel(previous)
+
+
 def analyse_script(text: str, dialect: str) -> ScriptAnalysis:
     """Analyse one script's text in *dialect*; never raises."""
+    with quiet_sqlglot():
+        return _analyse(text, dialect)
+
+
+def _analyse(text: str, dialect: str) -> ScriptAnalysis:
     try:
         parsed = SqlParserFactory(dialect).parse_sql(text)
         quirks = ProviderRegistry.get_quirks(dialect)
@@ -248,7 +270,8 @@ def _drop_target_objects(
 
 
 def _snippet(body: str) -> str:
-    flat = " ".join(body.split())
+    # Some splitters keep the statement's ``;`` and some drop it; the snippet never shows it.
+    flat = " ".join(body.rstrip().rstrip(";").split())
     return flat if len(flat) <= SNIPPET else flat[: SNIPPET - 1] + "…"
 
 

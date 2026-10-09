@@ -188,8 +188,11 @@ class MigrateCommand(BaseCommand):
             self.log.info(f"  - {migration.script_name}{verdict}")
             for finding in (analysis or {}).get("findings", []):
                 if not finding["allowed"]:
+                    # dedupe=False: the same finding can recur in another script.
                     self.log.warning(
-                        f"      {finding['severity']} {finding['code']}: {finding['message']}"
+                        f"      {finding['severity']} {finding['code']}, "
+                        f"statement {finding['statement'] + 1}: {finding['message']}",
+                        dedupe=False,
                     )
             # Appended directly (not via `result.add_migration`): that method
             # flips `result.success` to False for any non-SUCCESS status,

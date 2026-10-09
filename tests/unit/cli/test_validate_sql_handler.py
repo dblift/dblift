@@ -123,3 +123,16 @@ def test_json_format_writes_only_the_payload(capsys, scripts):
     assert payload["dialect"] == "postgresql"
     assert payload["scripts"][0]["verdict"] == "UNSAFE"
     ctx.log.info.assert_not_called()
+
+
+def test_dialect_option_is_canonicalised_and_wins_over_the_config(tmp_path):
+    script = tmp_path / "V1__index.sql"
+    script.write_text("CREATE INDEX idx_users_email ON users (email);")
+    ctx = _ctx(_config(dialect="mysql"), files=[str(script)])
+    ctx.args.dialect = "postgres"
+
+    _, result = validate_sql._handle_validate_sql(ctx)
+
+    assert result.data["dialect"] == "postgresql"
+    codes = [f["code"] for f in result.data["scripts"][0]["findings"]]
+    assert "pg-index-not-concurrent" in codes
