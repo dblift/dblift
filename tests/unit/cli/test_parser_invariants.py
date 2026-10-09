@@ -259,13 +259,14 @@ def test_info_accepts_target_version():
     assert args.target_version == "4"
 
 
-def test_validate_help_states_sql_is_not_parsed():
+def test_validate_help_states_what_it_checks():
     """`dblift --help` must not let `validate` promise more than it checks.
 
     validate compares applied history to resolved scripts (checksums,
-    versions, ordering) and never parses the migration SQL, so a file
-    `migrate` refuses to parse can still pass. This is where someone decides
-    whether `validate` is the gate they want, so it must say so.
+    versions, ordering) and warns about destructive pending statements; it
+    never checks the migration SQL for validity. This is where someone decides
+    whether `validate` is the gate they want, so the help names exactly those
+    two things and does not claim the scripts will run.
     """
     parser = create_parser()
     subparsers = next(
@@ -277,8 +278,9 @@ def test_validate_help_states_sql_is_not_parsed():
 
     help_text = (validate_pseudo_action.help or "").lower()
 
-    assert "sql" in help_text
-    assert "not parsed" in help_text or "does not parse" in help_text
+    assert "against history" in help_text
+    assert "warn about pending statements" in help_text
+    assert "valid" not in help_text.replace("validate", "")
 
 
 def test_db_url_flag_documented_in_migrate_help():

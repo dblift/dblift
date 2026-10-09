@@ -21,6 +21,7 @@
   "info_json :: native_driver",
   "info_json :: success",
   "info_json :: target_schema",
+  "info_json.migrations[] :: analysis",
   "info_json.migrations[] :: checksum",
   "info_json.migrations[] :: description",
   "info_json.migrations[] :: error",

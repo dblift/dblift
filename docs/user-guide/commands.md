@@ -40,7 +40,14 @@ This shows you what would happen without actually making changes.
 
 Both `validate` and `migrate` accept `--format json` for scripts and agents. The payload
 carries `success`, `error` and the per-migration rows (`script`, `version`, `status`,
-`checksum`, …); `migrate --dry-run --format json` also reports `dry_run_count`:
+`checksum`, …); `migrate --dry-run --format json` also reports `dry_run_count`. A pending
+SQL script's row, in `info` and in `migrate --dry-run`, carries `analysis`: its statements
+(`operation`, `kind`, the `objects` each names, `full_table` for an UPDATE or DELETE
+without WHERE) and `cautions`, each `destroys` (DROP TABLE, VIEW or SCHEMA, TRUNCATE,
+DROP COLUMN, UPDATE or DELETE without WHERE) or `changes_rows` (UPDATE, DELETE, MERGE),
+read from the file in the database's dialect without connecting; `analysis` is `null` on
+applied rows and on Python scripts. `validate` reports the same cautions as `warnings`.
+The SQL is not checked for validity:
 
 ```bash
 dblift migrate --dry-run --format json
