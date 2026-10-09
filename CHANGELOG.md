@@ -79,6 +79,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `import-flyway` and Flyway compatibility checks skip Flyway's `SCHEMA`
+  creation markers while retaining migration ranks and rejecting unknown
+  migration types. Object extraction warnings from sqlglot no longer include
+  ANSI escape codes in logs.
+
 - A migration lock left behind by a process that was killed (SIGKILL, or SIGTERM while
   dblift runs embedded through the Python API) is now reclaimed automatically. On
   SQLite, DuckDB, CockroachDB, Db2, Snowflake, MongoDB and the Oracle table fallback,

@@ -8,7 +8,10 @@ from unittest.mock import MagicMock
 import pytest
 
 from dblift.core.logger import NullLog
-from dblift.core.migration.history.migration_history_manager import MigrationHistoryManager
+from dblift.core.migration.history.migration_history_manager import (
+    FlywayCompatibilitySnapshot,
+    MigrationHistoryManager,
+)
 from dblift.core.sql_validator._flyway_compatibility import validate_flyway_compatibility
 from dblift.core.sql_validator.migration_validator import MigrationValidator
 
@@ -43,6 +46,28 @@ def _row(
         "installed_rank": 1,
         "success": True,
     }
+
+
+@pytest.mark.unit
+def test_schema_creation_marker_does_not_count_as_migration():
+    marker = {
+        **_row(version=None, script='"app","vector"', checksum=None),
+        "installed_rank": 0,
+        "description": "<< Flyway Schema Creation >>",
+        "type": "SCHEMA",
+    }
+    migration = _row()
+    snapshot = FlywayCompatibilitySnapshot(
+        flyway_exists=True,
+        dblift_exists=True,
+        flyway_migrations=(marker, migration),
+        dblift_migrations=(migration,),
+    )
+
+    result = validate_flyway_compatibility(snapshot)
+
+    assert result["compatible"] is True, result["error_message"]
+    assert result["flyway_count"] == result["Dblift_count"] == 1
 
 
 @pytest.mark.unit
