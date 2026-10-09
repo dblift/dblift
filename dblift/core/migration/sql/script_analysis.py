@@ -248,7 +248,8 @@ def _drop_target_objects(
 
 
 def _snippet(body: str) -> str:
-    flat = " ".join(body.split())
+    # Some splitters keep the statement's ``;`` and some drop it; the snippet never shows it.
+    flat = " ".join(body.rstrip().rstrip(";").split())
     return flat if len(flat) <= SNIPPET else flat[: SNIPPET - 1] + "…"
 
 

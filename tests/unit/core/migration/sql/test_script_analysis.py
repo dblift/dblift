@@ -386,3 +386,10 @@ def test_drop_materialized_view_is_flagged_and_a_plain_view_is_not(dialect):
     assert analysis.statements[0].objects[0].type == "MATERIALIZED_VIEW"
     assert [c.code for c in analysis.cautions if c.statement == 0] == ["drop-table"]
     assert [c.code for c in analysis.cautions if c.statement == 1 and c.code] == []
+
+
+@pytest.mark.parametrize("dialect", ["postgresql", "mysql", "sqlserver", "oracle", "sqlite"])
+def test_snippet_drops_the_trailing_semicolon_in_every_dialect(dialect):
+    analysis = analyse_script("ALTER TABLE users\n  DROP COLUMN legacy_flag ;\n", dialect)
+
+    assert [s.snippet for s in analysis.statements] == ["ALTER TABLE users DROP COLUMN legacy_flag"]

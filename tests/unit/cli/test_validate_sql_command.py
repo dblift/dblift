@@ -169,7 +169,7 @@ def test_console_prints_the_statement_under_every_finding_on_it(tmp_path, script
     )
 
     output = proc.stdout + proc.stderr
-    assert output.count("ALTER TABLE users DROP COLUMN email;") == 2, output
+    assert output.count("ALTER TABLE users DROP COLUMN email\n") == 2, output
 
 
 def test_without_a_dialect_or_config_the_command_explains_what_it_needs(tmp_path, scripts):
