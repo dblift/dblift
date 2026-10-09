@@ -7,11 +7,9 @@ reported (``statement-not-analysed``) rather than passed. Nothing connects to a 
 
 from __future__ import annotations
 
-import logging
 import re
-from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Any, Dict, Iterable, Iterator, List, Optional, Set
+from typing import Any, Dict, Iterable, List, Optional, Set
 
 import sqlglot
 from sqlglot import exp
@@ -21,7 +19,11 @@ from dblift.core.migration.sql.execution_statement import (
     classify_execution_statement,
     is_comment_only_statement,
 )
-from dblift.core.migration.sql.script_analysis import AnalysedStatement, ScriptAnalysis
+from dblift.core.migration.sql.script_analysis import (
+    AnalysedStatement,
+    ScriptAnalysis,
+    quiet_sqlglot,
+)
 from dblift.core.sql_model.dialect import get_sqlglot_dialect
 from dblift.db.dml_analysis import strip_leading_sql_comments
 from dblift.db.provider_registry import ProviderRegistry
@@ -69,7 +71,6 @@ _MESSAGES: Dict[str, str] = {
     "statement-not-analysed": "this ALTER statement could not be analysed; review it by hand",
 }
 
-_SQLGLOT_LOG = logging.getLogger("sqlglot")
 # ``ModifyColumn`` (MySQL MODIFY / CHANGE) exists from sqlglot 30.18; older releases
 # parse MODIFY as ``AlterColumn``.
 _TYPE_CHANGE = tuple(
@@ -145,22 +146,11 @@ def _finding(code: str, stmt: AnalysedStatement) -> Finding:
     return Finding(code, SEVERITY[code], stmt.index, _MESSAGES[code], stmt.snippet)
 
 
-@contextmanager
-def _quiet_sqlglot() -> Iterator[None]:
-    """sqlglot logs a warning for each statement it falls back on; the finding says it."""
-    previous = _SQLGLOT_LOG.level
-    _SQLGLOT_LOG.setLevel(logging.ERROR)
-    try:
-        yield
-    finally:
-        _SQLGLOT_LOG.setLevel(previous)
-
-
 def _parse(sql: str, sqlglot_dialect: Optional[str]) -> Optional[exp.Expression]:
     if not sqlglot_dialect:
         return None
     try:
-        with _quiet_sqlglot():
+        with quiet_sqlglot():
             tree = sqlglot.parse_one(sql, read=sqlglot_dialect)
     except (ParseError, TokenError):
         return None
