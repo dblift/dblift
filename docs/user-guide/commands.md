@@ -96,7 +96,8 @@ dblift validate-sql --dialect postgresql --format json     # machine-readable fi
 (`migrations.directory`, or each `--scripts` directory). Undo, baseline and callback
 scripts are read only when you name them with `--files`: an undo script destroys what its
 migration created by design. Placeholders (`${name}`) from the `placeholders` section of
-your configuration file are substituted before a script is read.
+your configuration file, or given with `--placeholders key=value`, are substituted before a
+script is read.
 
 **Dialect.** Scripts are read in the dialect given by `--dialect`, or else in the
 configured database type (`database.type`, or the scheme of the database URL). With neither,
@@ -107,7 +108,7 @@ but nothing connects.
 
 | Code | What it detects | Severity | Dialects |
 |---|---|---|---|
-| `drop-table` | `DROP TABLE` | error | all |
+| `drop-table` | `DROP TABLE` or `DROP MATERIALIZED VIEW` | error | all |
 | `drop-schema` | `DROP SCHEMA` or `DROP DATABASE` | error | all |
 | `drop-column` | `ALTER TABLE … DROP COLUMN` | error | all |
 | `truncate` | `TRUNCATE` | error | all |
