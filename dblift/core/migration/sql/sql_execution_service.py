@@ -100,6 +100,8 @@ class SqlExecutionService:
             and hasattr(self.journal, "record_object_changes")
         ):
             return
+        if not self.quirks.supports_sql_migrations:
+            return
 
         prepare = getattr(self.sql_analyzer, "prepare_object_analysis", None)
         if prepare is not None:

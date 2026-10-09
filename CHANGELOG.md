@@ -82,6 +82,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Default MongoDB and Cosmos DB migration and undo preparation no longer asks
+  for an SQL parser that these Python-only providers do not support.
 - `import-flyway` and Flyway compatibility checks skip Flyway's `SCHEMA`
   creation markers while retaining migration ranks and rejecting unknown
   migration types. Object extraction warnings from sqlglot no longer include
