@@ -27,6 +27,14 @@
 
 DBLift applies versioned `.sql` files to your database and remembers what ran. Same file convention as Flyway (`V1__create_users.sql`), installed with `pip`, usable as a CLI or as a Python library. Preview, undo, checksums and locking are part of the open-source package. Apache 2.0.
 
+The planned `dblift` bundle includes SQL analysis, terminal output, HTML
+reports and the CLI. The distribution split is unreleased; the current PyPI
+`dblift` wheel remains a single distribution. Once the pair is released,
+embedded applications can install `dblift-core` with only
+PyYAML and SQLAlchemy, then explicitly select `analysis_mode="execution"` and
+provide a logger such as `NullLog`. Both distributions use the Python import
+name `dblift`; only `dblift-core` owns those files.
+
 ## Try it in 60 seconds
 
 No database server needed — this runs against a local SQLite file.
@@ -132,6 +140,15 @@ Alembic is the right choice when your schema is driven by SQLAlchemy models and 
 ## Databases
 
 20 engines. SQLite works with a bare `pip install dblift`; every other engine has its own install extra, e.g. `pip install "dblift[postgresql]"`.
+
+When moving an existing environment from the published single-wheel `dblift`
+layout to the core/bundle layout, uninstall the old `dblift` distribution
+before installing the new bundle, then run `pip check` and your migration
+smoke test. A direct pip upgrade can erase shared `dblift` files during the
+ownership transfer. Keep the application's lockfile and migration files; no
+database history is removed by the package uninstall.
+`pip check` verifies required metadata but does not verify dependencies of
+requested extras, so also import and exercise the features your application uses.
 
 PostgreSQL · MySQL · MariaDB · SQL Server · Oracle · DB2 · SQLite · DuckDB · CockroachDB · Redshift · Snowflake · Neon · Supabase · Aurora PostgreSQL · AlloyDB · YugabyteDB · TimescaleDB · Citus · Azure Cosmos DB · MongoDB
 

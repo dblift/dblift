@@ -42,6 +42,7 @@ def wheels(tmp_path_factory):
     source = archived_source(ROOT, wheel_dir / "source")
     for package in (
         source,
+        source / "packages" / "dblift",
         source / "tests" / "fixtures" / "lightweight_extension",
         source / "tests" / "fixtures" / "lightweight_listener",
     ):
@@ -62,6 +63,7 @@ def wheels(tmp_path_factory):
     wheels = {
         name: next(wheel_dir.glob(pattern))
         for name, pattern in {
+            "core": "dblift_core-*.whl",
             "dblift": "dblift-[0-9]*.whl",
             "provider": "dblift_lightweight_fixture-*.whl",
             "listener": "dblift_lightweight_listener_fixture-*.whl",
@@ -78,8 +80,12 @@ def test_installed_extension_adds_provider_and_independent_listeners(wheels, tmp
     result = _run([sys.executable, "-m", "venv", str(environment)], tmp_path)
     assert result.returncode == 0, result.stderr
     python = environment / "bin" / "python"
-    result = _run([str(python), "-m", "pip", "install", str(wheels["dblift"])], tmp_path)
+    result = _run(
+        [str(python), "-m", "pip", "install", str(wheels["core"]), str(wheels["dblift"])],
+        tmp_path,
+    )
     assert result.returncode == 0, result.stderr
+    assert _run([str(python), "-m", "pip", "check"], tmp_path).returncode == 0
 
     before = _run([str(python), "-I", str(PROBE), "before"], tmp_path)
     assert before.returncode == 0, before.stderr

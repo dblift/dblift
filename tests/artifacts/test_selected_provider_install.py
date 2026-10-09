@@ -17,12 +17,22 @@ def test_installed_legacy_alias_and_modern_descriptor_resolve_in_either_order(tm
     source = archived_source(ROOT, tmp_path / "source")
     build = tmp_path / "build"
     build.mkdir()
-    subprocess.run(
-        [sys.executable, "-m", "pip", "wheel", "--no-deps", "--wheel-dir", str(build), str(source)],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
+    for package in (source, source / "packages" / "dblift"):
+        subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "pip",
+                "wheel",
+                "--no-deps",
+                "--wheel-dir",
+                str(build),
+                str(package),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
     environment = tmp_path / "venv"
     subprocess.run(
         [sys.executable, "-m", "venv", str(environment)],
@@ -31,9 +41,10 @@ def test_installed_legacy_alias_and_modern_descriptor_resolve_in_either_order(tm
         text=True,
     )
     python = environment / "bin" / "python"
-    wheel = next(build.glob("dblift-*.whl"))
+    core = next(build.glob("dblift_core-*.whl"))
+    bundle = next(build.glob("dblift-*.whl"))
     subprocess.run(
-        [str(python), "-m", "pip", "install", str(wheel)],
+        [str(python), "-m", "pip", "install", str(core), str(bundle)],
         cwd=tmp_path,
         check=True,
         capture_output=True,

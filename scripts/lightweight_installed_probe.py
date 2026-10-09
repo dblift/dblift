@@ -6,7 +6,7 @@ import sqlite3
 import subprocess
 import sys
 import sysconfig
-from importlib import metadata
+from importlib import metadata, resources
 from pathlib import Path
 
 import dblift
@@ -28,14 +28,24 @@ def main() -> None:
     version = metadata.version("dblift")
     assert version == sys.argv[1]
     distribution = metadata.distribution("dblift")
-    assert Path(distribution.locate_file("dblift/py.typed")).is_file()
-    templates = distribution.locate_file("dblift/core/logger/templates")
-    assert (templates / "report.html").is_file()
+    try:
+        core_distribution = metadata.distribution("dblift-core")
+    except metadata.PackageNotFoundError:
+        core_distribution = distribution  # Published single-wheel baseline.
+    core_files = {str(path) for path in core_distribution.files or ()}
+    bundle_files = {str(path) for path in distribution.files or ()}
+    assert "dblift/py.typed" in core_files
+    assert "dblift/core/logger/templates/report.html" in core_files
+    assert resources.files("dblift").joinpath("py.typed").is_file()
+    assert resources.files("dblift.core.logger").joinpath("templates/report.html").is_file()
+    if core_distribution is not distribution:
+        assert metadata.version("dblift-core") == version
+        assert not any(path.startswith("dblift/") for path in bundle_files)
     report = HtmlFormatter().format_result(MigrateResult(), "public", "installed", "MIGRATE")
     assert "<title>DBLift Migration Report — installed</title>" in report
     assert importlib.util.find_spec("dblift_pro") is None
     assert importlib.util.find_spec("dblift_enterprise") is None
-    names = {ep.name for ep in metadata.entry_points(group="dblift.providers")}
+    names = {ep.name for ep in core_distribution.entry_points if ep.group == "dblift.providers"}
     assert "sqlite" in names
     scripts = [
         ep
@@ -80,6 +90,8 @@ def main() -> None:
     run([*cli, "validate", "--config", str(config), "--scripts", str(migrations)], cwd)
 
     installed = {"dblift": version}
+    if core_distribution is not distribution:
+        installed["dblift-core"] = core_distribution.version
     for name in ("PyYAML", "rich", "Jinja2", "sqlglot", "SQLAlchemy"):
         installed[name] = metadata.version(name)
     print(
@@ -90,6 +102,10 @@ def main() -> None:
                 "providers": sorted(names),
                 "html_report_rendered": True,
                 "sqlite_migrate": bool(migrate),
+                "record_owners": {
+                    "code": core_distribution.metadata["Name"],
+                    "console": distribution.metadata["Name"],
+                },
             }
         )
     )
