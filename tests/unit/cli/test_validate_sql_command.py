@@ -212,3 +212,14 @@ def test_dialect_choices_are_the_dialects_that_can_be_read_offline(monkeypatch):
     assert "postgresql" in dialect.choices
     assert all(ProviderRegistry.get_quirks(d).lint_placeholder_url for d in dialect.choices)
     assert not {"mongodb", "cosmosdb"} & set(dialect.choices)
+
+
+def test_oracle_scripts_are_checked_without_a_parser_progress_line(tmp_path):
+    script = tmp_path / "V1__orders.sql"
+    script.write_text("CREATE TABLE orders (id NUMBER PRIMARY KEY);\nDROP TABLE orders;\n")
+
+    proc = _run(tmp_path, "validate-sql", "--dialect", "oracle", "--files", str(script))
+
+    output = proc.stdout + proc.stderr
+    assert "V1__orders.sql: UNSAFE" in output, output
+    assert "Successfully parsed" not in output, output
