@@ -83,3 +83,27 @@ def test_migrate_dry_run_fills_analysis_on_pending_rows(tmp_path, project):
     assert payload["dry_run"] is True
     assert rows["V2__drop.sql"]["analysis"]["cautions"][0]["level"] == "destroys"
     assert rows["V3__py.py"]["analysis"] is None
+
+
+def test_dry_run_rows_carry_the_verdict(tmp_path, project):
+    scripts, db = project
+
+    payload = _payload(
+        _run(tmp_path, "migrate", "--dry-run", "--format", "json", scripts=scripts, db=db)
+    )
+
+    analysis = {m["script"]: m for m in payload["migrations"]}["V2__drop.sql"]["analysis"]
+    assert analysis["verdict"] == "UNSAFE"
+    assert [f["code"] for f in analysis["findings"]] == ["drop-table"]
+
+
+def test_dry_run_console_shows_the_verdict_and_the_finding(tmp_path, project):
+    scripts, db = project
+
+    proc = _run(tmp_path, "migrate", "--dry-run", scripts=scripts, db=db)
+
+    output = proc.stdout + proc.stderr
+    assert proc.returncode == 0
+    assert "V2__drop.sql [UNSAFE]" in output
+    assert "drop-table" in output
+    assert "dblift validate-sql" in output

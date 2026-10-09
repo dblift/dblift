@@ -10,9 +10,8 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
-from dblift.core.migration.migration_types import MigrationType
 from dblift.core.sql_model.base import SqlObject, SqlObjectType
 from dblift.core.sql_parser.parser_factory import SqlParserFactory
 from dblift.db.base_quirks import BaseQuirks
@@ -56,7 +55,6 @@ _ROW_HOLDERS = frozenset(
 _DDL = frozenset({"CREATE", "ALTER", "DROP", "TRUNCATE", "COMMENT", "GRANT", "REVOKE", "DDL"})
 _DML = frozenset({"INSERT", "UPDATE", "DELETE", "MERGE", "CALL", "EXECUTE", "DML"})
 _QUERY = frozenset({"SELECT", "QUERY"})
-_ANALYSED_TYPES = (MigrationType.SQL, MigrationType.REPEATABLE)
 
 
 @dataclass(frozen=True)
@@ -171,35 +169,6 @@ def analyse_script(text: str, dialect: str) -> ScriptAnalysis:
         if caution is not None:
             cautions.append(caution)
     return ScriptAnalysis(tuple(statements), tuple(cautions), tuple(parsed.errors or []))
-
-
-def analyse_pending_scripts(
-    migrations: Iterable[Any], dialect: str, log: Any
-) -> Dict[str, Dict[str, Any]]:
-    """``{script_name: analysis}`` for the SQL and repeatable scripts of *migrations*
-    that have text.
-    """
-    analysed: Dict[str, Dict[str, Any]] = {}
-    for migration in migrations:
-        if getattr(migration, "type", None) not in _ANALYSED_TYPES:
-            continue
-        name = getattr(migration, "script_name", None)
-        if not name:
-            continue
-        content = getattr(migration, "content", None)
-        if not content and hasattr(migration, "load_content"):
-            try:
-                migration.load_content()
-            except Exception as error:
-                log.debug(f"Could not read {name} for analysis: {error}")
-            content = getattr(migration, "content", None)
-        if not content:
-            continue
-        try:
-            analysed[name] = analyse_script(content, dialect).to_dict()
-        except Exception as error:
-            log.debug(f"Could not analyse {name}: {error}")
-    return analysed
 
 
 def _kind_of(statement_type: Any, operation: str, body: str, quirks: BaseQuirks) -> str:

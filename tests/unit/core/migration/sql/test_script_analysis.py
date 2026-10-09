@@ -7,13 +7,14 @@ from unittest.mock import MagicMock
 
 import pytest
 
+import dblift.core.migration.sql.lint as lint
 import dblift.core.migration.sql.script_analysis as script_analysis
 from dblift.core.migration.migration_types import MigrationType
+from dblift.core.migration.sql.lint import lint_pending_scripts
 from dblift.core.migration.sql.script_analysis import (
     CHANGES_ROWS,
     DESTROYS,
     ScriptAnalysis,
-    analyse_pending_scripts,
     analyse_script,
     dialect_of,
     operation_of,
@@ -139,7 +140,7 @@ def test_operation_of_skips_leading_comments():
     assert operation_of("   ") == "UNKNOWN"
 
 
-def test_analyse_pending_scripts_keeps_sql_and_repeatable_with_content():
+def test_lint_pending_scripts_keeps_sql_and_repeatable_with_content():
     log = MagicMock()
     migrations = [
         SimpleNamespace(script_name="V1__a.sql", type=MigrationType.SQL, content="DROP TABLE a;"),
@@ -155,14 +156,14 @@ def test_analyse_pending_scripts_keeps_sql_and_repeatable_with_content():
         SimpleNamespace(script_name="V3__empty.sql", type=MigrationType.SQL, content=""),
     ]
 
-    analysed = analyse_pending_scripts(migrations, "postgresql", log)
+    analysed = lint_pending_scripts(migrations, "postgresql", log)
 
     assert set(analysed) == {"V1__a.sql", "R__view.sql"}
     assert analysed["V1__a.sql"]["cautions"][0]["level"] == DESTROYS
     assert analysed["R__view.sql"]["cautions"] == []
 
 
-def test_analyse_pending_scripts_loads_content_when_the_object_can():
+def test_lint_pending_scripts_loads_content_when_the_object_can():
     migration = MagicMock()
     migration.script_name = "V1__a.sql"
     migration.type = MigrationType.SQL
@@ -173,7 +174,7 @@ def test_analyse_pending_scripts_loads_content_when_the_object_can():
 
     migration.load_content.side_effect = load_content
 
-    analysed = analyse_pending_scripts([migration], "postgresql", MagicMock())
+    analysed = lint_pending_scripts([migration], "postgresql", MagicMock())
 
     assert analysed["V1__a.sql"]["cautions"][0]["level"] == DESTROYS
 
@@ -257,7 +258,7 @@ def test_quirks_failures_never_raise(monkeypatch):
     assert [c.level for c in analysis.cautions] == [CHANGES_ROWS]
 
 
-def test_analyse_pending_scripts_skips_nameless_and_logs_read_and_analysis_failures(monkeypatch):
+def test_lint_pending_scripts_skips_nameless_and_logs_read_and_analysis_failures(monkeypatch):
     log = MagicMock()
     nameless = SimpleNamespace(script_name="", type=MigrationType.SQL, content="DROP TABLE a;")
     unreadable = MagicMock()
@@ -268,11 +269,9 @@ def test_analyse_pending_scripts_skips_nameless_and_logs_read_and_analysis_failu
     readable = SimpleNamespace(
         script_name="V2__b.sql", type=MigrationType.SQL, content="DROP TABLE b;"
     )
-    monkeypatch.setattr(
-        script_analysis, "analyse_script", MagicMock(side_effect=RuntimeError("boom"))
-    )
+    monkeypatch.setattr(lint, "analyse_script", MagicMock(side_effect=RuntimeError("boom")))
 
-    analysed = analyse_pending_scripts([nameless, unreadable, readable], "postgresql", log)
+    analysed = lint_pending_scripts([nameless, unreadable, readable], "postgresql", log)
 
     assert analysed == {}
     messages = [call.args[0] for call in log.debug.call_args_list]
