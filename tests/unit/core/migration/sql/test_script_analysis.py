@@ -329,3 +329,43 @@ def test_schema_level_drop_names_its_target_and_destroys(sql, kind, name):
 
     assert [(o.type, o.name) for o in analysis.statements[0].objects] == [(kind, name)]
     assert [(c.level, c.code) for c in analysis.cautions] == [(DESTROYS, "drop-schema")]
+
+
+_SQL_DIALECTS = [
+    "postgresql",
+    "mysql",
+    "mariadb",
+    "oracle",
+    "sqlserver",
+    "sqlite",
+    "duckdb",
+    "snowflake",
+    "redshift",
+    "db2",
+    "cockroachdb",
+    "yugabytedb",
+    "timescaledb",
+    "citus",
+    "neon",
+    "supabase",
+    "aurora-postgresql",
+    "alloydb",
+]
+
+
+@pytest.mark.parametrize("sql", ["DROP TABLE t;", "DROP TABLE IF EXISTS s.t;"])
+@pytest.mark.parametrize("dialect", _SQL_DIALECTS)
+def test_drop_table_is_flagged_in_every_dialect(dialect, sql):
+    analysis = analyse_script(sql, dialect)
+
+    assert [(c.level, c.code) for c in analysis.cautions] == [(DESTROYS, "drop-table")]
+    assert [o.name.lower() for o in analysis.statements[0].objects] == ["t"]
+
+
+@pytest.mark.parametrize("dialect", ["postgresql", "oracle", "snowflake"])
+def test_drop_materialized_view_is_flagged_and_a_plain_view_is_not(dialect):
+    analysis = analyse_script("DROP MATERIALIZED VIEW mv;\nDROP VIEW v;", dialect)
+
+    assert analysis.statements[0].objects[0].type == "MATERIALIZED_VIEW"
+    assert [c.code for c in analysis.cautions if c.statement == 0] == ["drop-table"]
+    assert [c.code for c in analysis.cautions if c.statement == 1 and c.code] == []

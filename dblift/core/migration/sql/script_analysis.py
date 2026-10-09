@@ -30,8 +30,9 @@ _DROP_COLUMN = re.compile(r"\bDROP\s+COLUMN\b", re.IGNORECASE)
 _TRUNCATE_TARGET = re.compile(
     r"^\s*TRUNCATE\s+(?:TABLE\s+)?([A-Za-z_][\w$.\"`\[\]]*)", re.IGNORECASE
 )
-_DROP_SCHEMA = re.compile(
-    r"^\s*DROP\s+(SCHEMA|DATABASE)\s+(?:IF\s+EXISTS\s+)?([^\s;,]+)", re.IGNORECASE
+_DROP_TARGET = re.compile(
+    r"^\s*DROP\s+(TABLE|MATERIALIZED\s+VIEW|SCHEMA|DATABASE)\s+(?:IF\s+EXISTS\s+)?([^\s;,(]+)",
+    re.IGNORECASE,
 )
 # Objects whose DROP discards rows; dropping an index, a sequence or a routine does not.
 _DATA_HOLDERS = frozenset(
@@ -160,7 +161,7 @@ def analyse_script(text: str, dialect: str) -> ScriptAnalysis:
         objects = tuple(_object_of(o) for o in found)
         if not objects:
             objects = _fallback_objects(operation, kind, body, quirks)
-        objects = _schema_drop_objects(operation, body, objects)
+        objects = _drop_target_objects(operation, body, objects)
         analysed = AnalysedStatement(
             index, operation, kind, objects, full_table, _snippet(body), sql=body
         )
@@ -223,20 +224,23 @@ def _fallback_objects(
     return (AnalysedObject("TABLE", name, None),) if name else ()
 
 
-def _schema_drop_objects(
+def _drop_target_objects(
     operation: str, body: str, objects: Tuple[AnalysedObject, ...]
 ) -> Tuple[AnalysedObject, ...]:
-    """Type the target of DROP SCHEMA / DATABASE, which the regex parser leaves untyped."""
-    match = _DROP_SCHEMA.match(strip_leading_sql_comments(body)) if operation == "DROP" else None
+    """Type the targets of DROP TABLE / MATERIALIZED VIEW / SCHEMA / DATABASE from the keyword.
+
+    Some regex parsers leave these targets out or untyped, or type a materialized view as a view.
+    """
+    match = _DROP_TARGET.match(strip_leading_sql_comments(body)) if operation == "DROP" else None
     if match is None:
         return objects
-    kind = match.group(1).upper()
-    if not objects:
-        return (AnalysedObject(kind, match.group(2), None),)
-    return tuple(
-        AnalysedObject(kind, o.name, o.schema) if o.type == SqlObjectType.UNKNOWN.value else o
-        for o in objects
-    )
+    kind = "_".join(match.group(1).upper().split())
+    if objects:
+        return tuple(AnalysedObject(kind, o.name, o.schema) for o in objects)
+    parts = [part.strip('"`[]') for part in match.group(2).split(".")]
+    if kind in _SCHEMA_HOLDERS or len(parts) == 1:
+        return (AnalysedObject(kind, ".".join(parts), None),)
+    return (AnalysedObject(kind, parts[-1], ".".join(parts[:-1])),)
 
 
 def _snippet(body: str) -> str:
@@ -266,7 +270,7 @@ def _caution_for(stmt: AnalysedStatement, body: str) -> Optional[Caution]:
         return Caution(
             DESTROYS,
             stmt.index,
-            f"DROP {held[0].type} discards {_names(held)} and its rows",
+            f"DROP {held[0].type.replace('_', ' ')} discards {_names(held)} and its rows",
             code,
         )
     if op == "ALTER" and _DROP_COLUMN.search(body):
