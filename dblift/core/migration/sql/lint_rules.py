@@ -133,18 +133,28 @@ class Finding:
 
 
 def find_issues(
-    analysis: ScriptAnalysis, dialect: str, *, created_before: AbstractSet[str] = frozenset()
+    analysis: ScriptAnalysis,
+    dialect: str,
+    *,
+    created_before: AbstractSet[str] = frozenset(),
+    existing_tables: Optional[AbstractSet[str]] = None,
 ) -> List[Finding]:
     """Every finding for one analysed script, sorted by statement then code.
 
-    *created_before* names the tables earlier scripts of the delta created, as
-    ``issues_and_created_tables`` returns them.
+    *created_before* names the tables earlier scripts of the delta created, and
+    *existing_tables* the tables known to exist, as ``issues_and_created_tables`` reads them.
     """
-    return issues_and_created_tables(analysis, dialect, created_before)[0]
+    return issues_and_created_tables(
+        analysis, dialect, created_before, existing_tables=existing_tables
+    )[0]
 
 
 def issues_and_created_tables(
-    analysis: ScriptAnalysis, dialect: str, created_before: AbstractSet[str] = frozenset()
+    analysis: ScriptAnalysis,
+    dialect: str,
+    created_before: AbstractSet[str] = frozenset(),
+    *,
+    existing_tables: Optional[AbstractSet[str]] = None,
 ) -> Tuple[List[Finding], FrozenSet[str]]:
     """The script's findings, and the tables it creates.
 
@@ -153,7 +163,9 @@ def issues_and_created_tables(
     script, is new: a table-scoped finding on a statement whose target tables are all new
     is not reported. A target is new when its name matches a new table and either side
     names no schema or both name the same one: offline the search path is unknown, so
-    ``CREATE TABLE users`` also covers ``x.users``.
+    ``CREATE TABLE users`` also covers ``x.users``. ``CREATE TABLE IF NOT EXISTS`` creates
+    nothing new, since the table may already exist with rows, and neither does a
+    ``CREATE TABLE`` of a table matching *existing_tables*, the tables known to exist.
     """
     sqlglot_dialect = get_sqlglot_dialect(dialect)
     pg_locks = ProviderRegistry.get_quirks(dialect).postgresql_lock_rules
@@ -164,6 +176,7 @@ def issues_and_created_tables(
         if c.code
     ]
     new: Set[_TableKey] = {_key_from_text(name) for name in created_before}
+    existing = {_key_from_text(name) for name in existing_tables or ()}
     created: Set[_TableKey] = set()
     on_new_tables: Set[int] = set()
     lock_timeout_set = False
@@ -172,7 +185,7 @@ def issues_and_created_tables(
         body = strip_leading_sql_comments(stmt.sql)
         tree = _parse(body, sqlglot_dialect)
         targets = _targets(tree)
-        if targets and all(_is_new(target, new) for target in targets):
+        if targets and all(_matches(target, new) for target in targets):
             on_new_tables.add(stmt.index)
         for code in _statement_codes(body, tree, pg_locks=pg_locks):
             findings.append(_finding(code, stmt))
@@ -188,7 +201,7 @@ def issues_and_created_tables(
             findings.append(_finding("pg-missing-lock-timeout", stmt))
             lock_timeout_reported = True
         table = _created_table(tree)
-        if table:
+        if table and not _matches(table, existing):
             created.add(table)
             new.add(table)
     findings = [
@@ -226,11 +239,11 @@ def _key_from_text(text: str) -> _TableKey:
     return (schema or None, name)
 
 
-def _is_new(target: _TableKey, new: AbstractSet[_TableKey]) -> bool:
+def _matches(target: _TableKey, tables: AbstractSet[_TableKey]) -> bool:
     schema, name = target
     return any(
-        name == new_name and (schema is None or new_schema is None or schema == new_schema)
-        for new_schema, new_name in new
+        name == other_name and (schema is None or other_schema is None or schema == other_schema)
+        for other_schema, other_name in tables
     )
 
 
@@ -333,7 +346,11 @@ def _locks_table(tree: Optional[exp.Expression]) -> bool:
 
 
 def _created_table(tree: Optional[exp.Expression]) -> Optional[_TableKey]:
-    if isinstance(tree, exp.Create) and str(tree.args.get("kind") or "").upper() == "TABLE":
+    if (
+        isinstance(tree, exp.Create)
+        and str(tree.args.get("kind") or "").upper() == "TABLE"
+        and not tree.args.get("exists")
+    ):
         return _table_of(tree)
     return None
 
