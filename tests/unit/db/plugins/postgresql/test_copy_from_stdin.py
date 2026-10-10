@@ -182,3 +182,12 @@ def test_split_copy_from_stdin_restores_the_row_terminator() -> None:
         "1\t\n",
     )
     assert _split_copy_from_stdin("COPY t FROM STDIN;") == ("COPY t FROM STDIN", "")
+
+
+def test_split_copy_from_stdin_restores_the_row_terminator_in_crlf_style() -> None:
+    from dblift.db.plugins.postgresql.provider import _split_copy_from_stdin
+
+    assert _split_copy_from_stdin("COPY t (a) FROM STDIN;\r\n1\r\n2") == (
+        "COPY t (a) FROM STDIN",
+        "1\r\n2\r\n",
+    )

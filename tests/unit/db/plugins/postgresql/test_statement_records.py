@@ -79,3 +79,11 @@ def test_copy_data_running_to_end_of_input_has_no_terminator() -> None:
     assert records == [
         Statement(text="COPY t (a) FROM STDIN;\n1\n2", line=1, terminator=None, kind="copy_stdin")
     ]
+
+
+def test_copy_stdin_record_with_crlf_line_endings() -> None:
+    records = _split("COPY t (a) FROM STDIN;\r\n1\r\n2\r\n\\.\r\nSELECT 1;")
+    assert records[0] == Statement(
+        text="COPY t (a) FROM STDIN;\r\n1\r\n2", line=1, terminator="\\.", kind="copy_stdin"
+    )
+    assert records[1].text == "SELECT 1"

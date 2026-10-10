@@ -59,7 +59,7 @@ def _split_copy_from_stdin(sql: str) -> Optional[Tuple[str, str]]:
     )
     data = data_token.text if data_token else ""
     if data and not data.endswith("\n"):
-        data += "\n"
+        data += "\r\n" if "\r\n" in data else "\n"
     return header, data
 
 
