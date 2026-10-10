@@ -95,8 +95,7 @@ class DuckDBProvider(SqlLeaseLockingProvider):
         rewritten = f"{stripped} RETURNING 1"
         conn = self._ensure_connection()
         if params is None:
-            driver_sql = self._escape_driver_percent_literals(rewritten, conn.dialect.paramstyle)
-            result = conn.exec_driver_sql(driver_sql)
+            result = self._exec_unbound(conn, rewritten)
         else:
             named_sql, bound_params = self._bind(rewritten, params)
             result = conn.execute(text(named_sql), bound_params)
