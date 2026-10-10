@@ -75,7 +75,12 @@ class _FakeConnection:
         self.log.append("savepoint")
         return savepoint
 
-    def exec_driver_sql(self, sql: str, params: Optional[object] = None) -> _FakeResult:
+    def exec_driver_sql(
+        self,
+        sql: str,
+        params: Optional[object] = None,
+        execution_options: Optional[object] = None,
+    ) -> _FakeResult:
         if self.aborted:
             raise RuntimeError("current transaction is aborted, commands ignored")
         if sql in self.failing_sql:

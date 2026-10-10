@@ -100,7 +100,7 @@ def test_missing_file_fails_and_is_reported(scripts):
 def test_allowed_finding_and_unread_statement_are_printed(monkeypatch, scripts):
     finding = Finding("drop-table", ERROR, 0, "drops a table", "DROP TABLE users", allowed=True)
     lint = ScriptLint("V1__users.sql", REVIEW, (finding,), ("parser error: boom",))
-    monkeypatch.setattr(validate_sql, "lint_files", lambda *args: [lint])
+    monkeypatch.setattr(validate_sql, "lint_files", lambda *args, **kwargs: [lint])
     ctx = _ctx(_config(), files=[str(scripts / "V1__users.sql")])
 
     ok, _ = validate_sql._handle_validate_sql(ctx)
@@ -136,3 +136,33 @@ def test_dialect_option_is_canonicalised_and_wins_over_the_config(tmp_path):
     assert result.data["dialect"] == "postgresql"
     codes = [f["code"] for f in result.data["scripts"][0]["findings"]]
     assert "pg-index-not-concurrent" in codes
+
+
+@pytest.fixture
+def new_table(tmp_path: Path) -> Path:
+    folder = tmp_path / "delta"
+    folder.mkdir()
+    (folder / "V1__orders.sql").write_text("CREATE TABLE orders (id INT);")
+    (folder / "V2__index.sql").write_text("CREATE INDEX idx_orders_id ON orders (id);")
+    return folder
+
+
+def test_migration_directories_lint_each_script_alone(new_table):
+    ctx = _ctx(_config(), scripts_dir=new_table)
+
+    _, result = validate_sql._handle_validate_sql(ctx)
+
+    verdicts = {s["script"]: s["verdict"] for s in result.data["scripts"]}
+    assert verdicts == {"V1__orders.sql": "SAFE", "V2__index.sql": "REVIEW"}
+
+
+def test_named_files_are_one_delta_listed_in_apply_order(new_table):
+    files = [str(new_table / "V2__index.sql"), str(new_table / "V1__orders.sql")]
+    ctx = _ctx(_config(), files=files)
+
+    _, result = validate_sql._handle_validate_sql(ctx)
+
+    assert [(s["script"], s["verdict"]) for s in result.data["scripts"]] == [
+        ("V1__orders.sql", "SAFE"),
+        ("V2__index.sql", "SAFE"),
+    ]

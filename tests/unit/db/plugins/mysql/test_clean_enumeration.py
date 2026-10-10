@@ -26,7 +26,7 @@ def test_mysql_list_droppable_objects_uses_clean_preview_order_without_dropping(
         {
             "TRIGGERS": [{"TRIGGER_NAME": "audit_orders"}],
             "VIEWS": [{"TABLE_NAME": "recent_orders"}],
-            "TABLES": [{"TABLE_NAME": "orders"}, {"TABLE_NAME": "customers"}],
+            "'BASE TABLE'": [{"TABLE_NAME": "orders"}, {"TABLE_NAME": "customers"}],
             "'FUNCTION'": [{"ROUTINE_NAME": "order_total"}],
             "'PROCEDURE'": [{"ROUTINE_NAME": "archive_orders"}],
             "EVENTS": [{"EVENT_NAME": "nightly_archive"}],

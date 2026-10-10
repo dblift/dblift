@@ -33,13 +33,13 @@ class _SqlAlchemyQueryExecutor:
     ) -> List[Dict[str, Any]]:
         """Execute a vendor metadata query on a SQLAlchemy connection."""
         if params is None:
-            driver_sql = SqlAlchemyProvider._escape_driver_percent_literals(
-                sql, connection.dialect.paramstyle
-            )
-            result = connection.exec_driver_sql(driver_sql)
+            result = SqlAlchemyProvider._exec_unbound(connection, sql)
         else:
             driver_sql, bound_params = self._provider._driver_bind(
-                sql, params, connection.dialect.paramstyle
+                sql,
+                params,
+                connection.dialect.paramstyle,
+                escape_percent=SqlAlchemyProvider._escapes_percent(connection.dialect),
             )
             result = connection.exec_driver_sql(driver_sql, bound_params)
         return [dict(row) for row in result.mappings()]
@@ -49,13 +49,13 @@ class _SqlAlchemyQueryExecutor:
     ) -> int:
         """Execute a vendor statement on a SQLAlchemy connection."""
         if params is None:
-            driver_sql = SqlAlchemyProvider._escape_driver_percent_literals(
-                sql, connection.dialect.paramstyle
-            )
-            result = connection.exec_driver_sql(driver_sql)
+            result = SqlAlchemyProvider._exec_unbound(connection, sql)
         else:
             driver_sql, bound_params = self._provider._driver_bind(
-                sql, params, connection.dialect.paramstyle
+                sql,
+                params,
+                connection.dialect.paramstyle,
+                escape_percent=SqlAlchemyProvider._escapes_percent(connection.dialect),
             )
             result = connection.exec_driver_sql(driver_sql, bound_params)
         if (
@@ -257,11 +257,20 @@ class SqlAlchemyProvider(NativeProvider, TransactionalProvider):
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _escape_driver_percent_literals(sql: str, paramstyle: str) -> str:
-        """Escape literal percent signs for drivers that use percent placeholders."""
-        if paramstyle in ("format", "pyformat"):
-            return sql.replace("%", "%%")
-        return sql
+    def _exec_unbound(connection: Connection, sql: str) -> Any:
+        """Run *sql* without any parameter argument, so no driver reads ``%`` as special."""
+        return connection.exec_driver_sql(sql, execution_options={"no_parameters": True})
+
+    @staticmethod
+    def _escapes_percent(dialect: Any) -> bool:
+        """Whether a literal ``%`` must be doubled once ``%s`` placeholders are bound.
+
+        pymssql substitutes ``%s``/``%(name)s`` but defines no ``%%`` escape, so doubling
+        would reach the server as two percent signs. SQLAlchemy records this per dialect in
+        ``identifier_preparer._double_percents``, but that attribute is private, so the one
+        driver this is known to matter for is named here instead.
+        """
+        return getattr(dialect, "driver", None) != "pymssql"
 
     @staticmethod
     def _bind(sql: str, params: Optional[List[Any]]) -> Tuple[str, Any]:
@@ -296,7 +305,9 @@ class SqlAlchemyProvider(NativeProvider, TransactionalProvider):
         return named_sql, bound
 
     @staticmethod
-    def _driver_bind(sql: str, params: Optional[List[Any]], paramstyle: str) -> Tuple[str, Any]:
+    def _driver_bind(
+        sql: str, params: Optional[List[Any]], paramstyle: str, *, escape_percent: bool = True
+    ) -> Tuple[str, Any]:
         """Translate DBLift ``?`` params to the connection's DBAPI paramstyle."""
         if params is None:
             return sql, None
@@ -307,7 +318,7 @@ class SqlAlchemyProvider(NativeProvider, TransactionalProvider):
         if paramstyle == "qmark":
             return sql, values
         if paramstyle in ("format", "pyformat"):
-            escaped_sql = sql.replace("%", "%%")
+            escaped_sql = sql.replace("%", "%%") if escape_percent else sql
             return re.sub(r"\?", "%s", escaped_sql), values
         if paramstyle == "numeric":
             numeric_names = iter(str(index) for index in range(1, len(values) + 1))
@@ -345,8 +356,7 @@ class SqlAlchemyProvider(NativeProvider, TransactionalProvider):
         with self._lock:
             conn = self._ensure_connection()
             if params is None:
-                driver_sql = self._escape_driver_percent_literals(sql, conn.dialect.paramstyle)
-                result = conn.exec_driver_sql(driver_sql)
+                result = self._exec_unbound(conn, sql)
             else:
                 named_sql, bound_params = self._bind(sql, params)
                 result = conn.execute(text(named_sql), bound_params)
@@ -367,8 +377,7 @@ class SqlAlchemyProvider(NativeProvider, TransactionalProvider):
         with self._lock:
             conn = self._ensure_connection()
             if params is None:
-                driver_sql = self._escape_driver_percent_literals(sql, conn.dialect.paramstyle)
-                result = conn.exec_driver_sql(driver_sql)
+                result = self._exec_unbound(conn, sql)
             else:
                 named_sql, bound_params = self._bind(sql, params)
                 result = conn.execute(text(named_sql), bound_params)

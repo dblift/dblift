@@ -77,7 +77,15 @@ def _handle_validate_sql(ctx: CliCommandContext) -> Tuple[bool, Any]:
         dialect = _dialect(ctx)
         paths = _target_files(ctx)
         missing = [p for p in paths if not p.is_file()]
-        scripts = lint_files([p for p in paths if p.is_file()], dialect, ctx.placeholders, ctx.log)
+        # Files named with --files are applied together: one delta. A directory holds
+        # scripts already applied, so each of its scripts is read alone.
+        scripts = lint_files(
+            [p for p in paths if p.is_file()],
+            dialect,
+            ctx.placeholders,
+            ctx.log,
+            as_delta=bool(ctx.args.files),
+        )
         result = OperationResult(
             success=not missing and all(s.verdict != UNSAFE for s in scripts),
             error_message=(

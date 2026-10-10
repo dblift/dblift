@@ -99,6 +99,14 @@ migration created by design. Placeholders (`${name}`) from the `placeholders` se
 your configuration file, or given with `--placeholders key=value`, are substituted before a
 script is read.
 
+**Scripts read together.** The files named with `--files` form one delta: the scripts you
+are about to apply together. They are read, and listed, in the order `migrate` applies
+them: versioned scripts by version (`V2` before `V10`), then repeatable scripts by name,
+then any other file in the order given. A table one of them creates is new for every later
+statement of the delta, in the same file or a later one. Without `--files`, each script of
+the migration directories is read alone: those scripts are applied over time, so a table an
+old script created already has rows when a new script changes it.
+
 **Dialect.** Scripts are read in the dialect given by `--dialect`, or else in the
 configured database type (`database.type`, or the scheme of the database URL). With neither,
 the command stops and asks for `--dialect`. `--dialect` accepts the SQL dialects; MongoDB and
@@ -115,19 +123,26 @@ but nothing connects.
 | `truncate` | `TRUNCATE` | error | all |
 | `mixed-transaction-modes` | A statement that needs autocommit (for example `CREATE INDEX CONCURRENTLY`) in a script whose other statements run in a transaction: `migrate` refuses such a script | error | all |
 | `dml-no-where` | `UPDATE` or `DELETE` without `WHERE` | warning | all |
-| `add-not-null-no-default` | `ADD COLUMN … NOT NULL` without a `DEFAULT`, on a table the script did not create | warning | all |
+| `add-not-null-no-default` | `ADD COLUMN … NOT NULL` without a `DEFAULT` | warning | all |
 | `rename-column` | A column rename (`RENAME COLUMN`, `sp_rename … 'COLUMN'`) | warning | all |
 | `rename-table` | A table rename (`RENAME TO`, `RENAME TABLE`, `sp_rename`) | warning | all |
 | `alter-column-type` | A column type change (`ALTER COLUMN … TYPE`, `MODIFY`, `CHANGE`) | warning | all |
-| `pg-index-not-concurrent` | `CREATE INDEX` without `CONCURRENTLY` on a table the script did not create | warning | PostgreSQL family |
+| `pg-index-not-concurrent` | `CREATE INDEX` without `CONCURRENTLY` | warning | PostgreSQL family |
 | `pg-constraint-not-valid` | `ADD CONSTRAINT … FOREIGN KEY` or `CHECK` without `NOT VALID` | warning | PostgreSQL family |
 | `pg-set-not-null` | `ALTER COLUMN … SET NOT NULL` | warning | PostgreSQL family |
-| `pg-missing-lock-timeout` | The first statement that locks an existing table (`ALTER TABLE`, `CREATE INDEX`, `DROP TABLE`, `TRUNCATE`) with no `SET lock_timeout` earlier in the script; reported once per script | warning | PostgreSQL family |
+| `pg-missing-lock-timeout` | The first statement that locks a table (`ALTER TABLE`, `CREATE INDEX`, `DROP TABLE`, `TRUNCATE`) with no `SET lock_timeout` earlier in the script; reported once per script | warning | PostgreSQL family |
 | `statement-not-analysed` | An `ALTER` statement the SQL parser could not structure, so no rule could check it | info | all |
 
 The PostgreSQL family is `postgresql`, `neon`, `supabase`, `aurora-postgresql`, `alloydb`,
-`timescaledb` and `citus`. The `add-not-null-no-default` and `pg-` rules skip a table
-created earlier in the same script: it has no rows yet and nothing else uses it.
+`timescaledb` and `citus`. Every rule except `drop-schema`, `mixed-transaction-modes` and
+`statement-not-analysed` skips a statement whose tables were all created earlier in the
+same delta: they have no rows yet and nothing deployed uses them. A `DROP TABLE` naming a
+new table and an existing one is still reported. Tables match by name, and by schema when
+both statements name one: after `CREATE TABLE a.users`, `ALTER TABLE users` and
+`ALTER TABLE a.users` are on the new table, `ALTER TABLE b.users` is not. The search path
+is unknown without a connection, so `CREATE TABLE users` also covers `x.users`. A table
+created with `CREATE TABLE IF NOT EXISTS` is not new: it may already exist with rows, and
+then the statement does nothing.
 
 **Verdict.** Each script gets one verdict:
 

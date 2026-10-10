@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+### Changed
+
+### Fixed
+
+### Removed
+
+## [4.11.1] - 2026-10-10
+
+### Fixed
+
+- `clean` on MariaDB now drops system-versioned tables (`CREATE TABLE ... WITH SYSTEM VERSIONING`) and lists them in the `clean` preview and dry run. MariaDB reports them as `TABLE_TYPE = 'SYSTEM VERSIONED'` in `information_schema.TABLES`, and only `'BASE TABLE'` was matched, so they survived `clean` while it reported success and re-running migrations failed with `already exists`. The table listing used by the schema operations now includes them too. MySQL is unchanged.
+- `clean` on MariaDB now drops sequences and lists them in the `clean` preview and dry run. Before, only base tables, views, triggers, routines and events were listed, so every `CREATE SEQUENCE` object survived `clean` and re-running migrations failed with `already exists` or continued from stale values. Sequences are found through `information_schema.TABLES` (`TABLE_TYPE = 'SEQUENCE'`, available on every MariaDB version with sequences) and dropped with `DROP SEQUENCE IF EXISTS` after the tables and views. MySQL has no sequences and is unchanged.
+- On SQL Server (pymssql), a literal `%` in a migration was stored as `%%`: `CREATE VIEW v AS SELECT 'a%b'` produced the literal `'a%%b'`, `LIKE 'a%'` became `LIKE 'a%%'`, and `INSERT ... VALUES ('50%')` stored `50%%`. The statement was escaped as if the driver would unescape it, but pymssql has no `%%` escape. SQL without bound parameters is now sent to every driver exactly as written, with no parameter argument, and SQL with bound parameters is no longer `%`-escaped for pymssql. PostgreSQL and MySQL were not affected and behave as before.
+- The target table of a DML statement is now found when a modifier precedes it or the `FROM` is omitted. `statement_dml_table` returned `ONLY app.t` for PostgreSQL `UPDATE ONLY` / `DELETE FROM ONLY`, an empty string for T-SQL `UPDATE TOP (n)` / `DELETE TOP (n) t`, and `LOW_PRIORITY` for MySQL `UPDATE LOW_PRIORITY t`; it and `analyze_dml` raised `AttributeError` on Oracle and T-SQL `DELETE t WHERE ...`. The MySQL modifiers valid after each verb (`LOW_PRIORITY` and `IGNORE` after `UPDATE`; those plus `QUICK` after `DELETE`; `LOW_PRIORITY`, `HIGH_PRIORITY`, `DELAYED` and `IGNORE` after `INSERT`), T-SQL `TOP (n) [PERCENT]` and Oracle hints are skipped, and a table that is named like a modifier (`quick.t`, `ignore$x`, `UPDATE quick x SET ...`) is still found. The result keeps the dialect's quoting.
+- Building a configuration for `mariadb` (and the other dialects that reuse a parent dialect's configuration class: `redshift`, `cockroachdb`, `neon`, `supabase`, `citus`, `alloydb`, `aurora-postgresql`, `timescaledb`, `yugabytedb`) failed with `Unsupported database type` in a fresh interpreter, for example `DBLiftClient.from_sqlalchemy` with a `mariadb+pymysql://` engine. The parent's configuration class is now resolved through the same lookup as any other dialect, so the result no longer depends on which modules were imported first.
+- `clean` on Redshift now also drops materialized views, late-binding views, stored procedures and user-defined functions, and lists them in the `clean` preview and dry run. Before, only tables and views from `information_schema` were dropped, so those objects survived `clean` and a later migration failed to recreate them. Drops run in this order: materialized views, views, tables, procedures, functions. A catalog that cannot be read on a cluster (missing system view, missing privilege) is reported as a warning and skipped; the rest of the schema is still cleaned. Redshift has no sequences or user-defined types, so there is nothing to drop for them. Not verified against a live Redshift cluster.
+- `validate-sql` no longer reports a statement on a table created earlier in the same delta: the table has no rows and nothing deployed uses it. Every table rule is skipped for such a statement (`drop-table`, `drop-column`, `truncate`, `dml-no-where`, the renames, `alter-column-type`, `add-not-null-no-default` and the PostgreSQL lock rules); before, only some rules were, and only within one script. Tables match by name, and by schema when both statements name one. A table created with `CREATE TABLE IF NOT EXISTS` is not new, since it may already exist with rows. The files named with `--files` form one delta, read and listed in apply order (versioned scripts by version, then repeatable scripts by name, then the other files as given); the scripts of the migration directories are still read one by one. The pending scripts of `info` and `migrate --dry-run` form one delta. `lint_files` takes `as_delta`, `lint_pending_scripts` takes `as_delta` (on by default), `lint_script`, `lint_analysis` and `find_issues` take `created_before`, and `ScriptLint.created_tables` lists the tables a script creates. `find_issues`, `lint_analysis`, `lint_script`, `lint_files` and `lint_pending_scripts` take `existing_tables`, the tables known to exist: such a table is never new, even when a script creates it.
+
 ## [4.11.0] - 2026-10-09
 
 ### Removed

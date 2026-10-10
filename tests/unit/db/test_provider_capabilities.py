@@ -9,6 +9,7 @@ import pytest
 
 from dblift.db.provider_capabilities import (
     ensure_provider_connection,
+    get_clean_listing_warnings,
     get_clean_preview,
     get_provider_display_url,
 )
@@ -66,3 +67,16 @@ def test_ensure_provider_connection_calls_optional_hook_only_when_present():
 @pytest.mark.unit
 def test_clean_preview_returns_none_when_provider_has_no_preview_hook():
     assert get_clean_preview(object(), "schema") is None
+
+
+@pytest.mark.unit
+def test_clean_listing_warnings_come_from_the_provider_hook():
+    provider = SimpleNamespace(clean_listing_warnings=lambda: ["could not list routines"])
+
+    assert get_clean_listing_warnings(provider) == ["could not list routines"]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("provider", [object(), MagicMock()])
+def test_clean_listing_warnings_default_to_none(provider):
+    assert get_clean_listing_warnings(provider) == []

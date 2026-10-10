@@ -258,6 +258,27 @@ class TestDuckDBDmlRowcount:
         assert provider.execute_statement("INSERT INTO t VALUES (1, 'a'), (2, 'b'), (3, 'c')") == 3
         assert provider.execute_statement("DELETE FROM t WHERE id >= 2") == 2
 
+    def test_returning_rewrite_runs_unbound_sql_through_exec_unbound(self, tmp_path: Path) -> None:
+        """The RETURNING rewrite sends unbound SQL with no parameter argument."""
+        from unittest.mock import patch
+
+        from dblift.db.sqlalchemy_provider import SqlAlchemyProvider
+
+        provider = self._provider(tmp_path)
+        provider.execute_statement("CREATE TABLE t (id INTEGER PRIMARY KEY, v VARCHAR)")
+        provider.execute_statement("INSERT INTO t VALUES (1, 'a')")
+        real = SqlAlchemyProvider.__dict__["_exec_unbound"].__func__
+        sent: list = []
+
+        def spy(connection, sql):
+            sent.append(sql)
+            return real(connection, sql)
+
+        with patch.object(SqlAlchemyProvider, "_exec_unbound", staticmethod(spy)):
+            assert provider.execute_statement("UPDATE t SET v = '50%' WHERE id = 1") == 1
+
+        assert sent == ["UPDATE t SET v = '50%' WHERE id = 1 RETURNING 1"]
+
     def test_params_update_reports_positive_rowcount(self, tmp_path: Path) -> None:
         """Parameterized DML uses RETURNING rewrite (undo restore / bind paths)."""
         provider = self._provider(tmp_path)

@@ -239,7 +239,7 @@ def _apply_url_overrides(cls: Type["BaseDatabaseConfig"], data: Dict[str, Any]) 
 
 
 def _resolve_config_class(
-    cls: Type["BaseDatabaseConfig"], db_type: str
+    cls: Type["BaseDatabaseConfig"], db_type: str, _seen: frozenset[str] = frozenset()
 ) -> Optional[Type["BaseDatabaseConfig"]]:
     """Look up the registered config subclass for ``db_type``.
 
@@ -250,8 +250,9 @@ def _resolve_config_class(
     2. ``PluginInfo.config_class`` declared directly on the plugin metadata
        (roadmap action #11). Lets third-party plugins ship a config class
        without modifying ``config/_subclasses/``.
-    3. The plugin's ``config_dialect`` pointer, which falls back to the
-       parent dialect's registry entry (e.g. ``mariadb`` → ``mysql``).
+    3. The plugin's ``config_dialect`` pointer, resolved through this same
+       function so a parent whose class comes from its own plugin metadata
+       also works (e.g. ``mariadb`` → ``mysql``).
 
     Returns ``None`` when no class is found — the caller decides between the
     incomplete-stub path and ``ValueError``.
@@ -275,8 +276,8 @@ def _resolve_config_class(
 
     # Path 3: alias to a parent dialect's registration.
     parent = getattr(plugin, "config_dialect", None)
-    if parent:
-        return cls._registry.get(parent)
+    if parent and parent not in _seen | {db_type}:
+        return _resolve_config_class(cls, parent, _seen | {db_type})
     return None
 
 

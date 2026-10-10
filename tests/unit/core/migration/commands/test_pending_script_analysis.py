@@ -144,3 +144,19 @@ def test_dry_run_console_repeats_a_finding_found_in_two_scripts(tmp_path, projec
     output = proc.stdout + proc.stderr
     line = "error drop-table, statement 1: DROP TABLE discards a and its rows"
     assert output.count(line) == 2, output
+
+
+def test_dry_run_reads_pending_scripts_as_one_delta(tmp_path, project):
+    # A table created by an earlier pending script has no rows yet.
+    scripts, db = project
+    (scripts / "V2__drop.sql").write_text("CREATE TABLE b (id INTEGER, x INTEGER);")
+    (scripts / "V4__b.sql").write_text(
+        "CREATE INDEX idx_b_id ON b (id);\nALTER TABLE b RENAME COLUMN x TO y;\nDELETE FROM b;"
+    )
+
+    payload = _payload(
+        _run(tmp_path, "migrate", "--dry-run", "--format", "json", scripts=scripts, db=db)
+    )
+
+    analysis = {m["script"]: m for m in payload["migrations"]}["V4__b.sql"]["analysis"]
+    assert (analysis["verdict"], analysis["findings"]) == ("SAFE", [])

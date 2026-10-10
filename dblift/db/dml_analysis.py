@@ -36,6 +36,30 @@ _IDENTIFIER = (
     r'(?:\s*\.\s*(?:`[^`]+`|"[^"]+"|\[[^\]]+\]|[A-Za-z_][\w$]*))*'
 )
 
+_DML_VERB = re.compile(r"(?:UPDATE|DELETE|INSERT)\b", re.IGNORECASE)
+# MySQL words valid after each verb, and Oracle optimizer hints, before the target.
+# A word that continues an identifier (``quick.t``, ``ignore$x``) or is followed by
+# the next clause keyword is the table itself, not a modifier.
+_DML_MODIFIER_WORDS = {
+    "UPDATE": "LOW_PRIORITY|IGNORE",
+    "DELETE": "LOW_PRIORITY|QUICK|IGNORE",
+    "INSERT": "LOW_PRIORITY|HIGH_PRIORITY|DELAYED|IGNORE",
+}
+_DML_MODIFIER = {
+    verb: re.compile(
+        rf"\s*(?:/\*.*?\*/|(?:{words})(?![\w$#])(?!\s*(?:\.|SET\b|WHERE\b|VALUES\b|\(|;|$)))",
+        re.IGNORECASE | re.DOTALL,
+    )
+    for verb, words in _DML_MODIFIER_WORDS.items()
+}
+# The ONLY keyword right after ``UPDATE`` / ``DELETE FROM``; ``only.t`` is a qualified name.
+_DML_ONLY = re.compile(
+    r"(?:UPDATE|DELETE(?:\s|/\*.*?\*/)+FROM)(?:\s|/\*.*?\*/)*ONLY(?![\w$#]|\s*\.)",
+    re.IGNORECASE | re.DOTALL,
+)
+_DML_TOP = re.compile(r"\s*TOP\s*\(", re.IGNORECASE)
+_DML_PERCENT = re.compile(r"\s*PERCENT\b", re.IGNORECASE)
+
 
 @dataclass(frozen=True)
 class DmlMutation:
@@ -75,9 +99,36 @@ def analyze_dml(
     )
 
 
+def _without_dml_modifiers(text: str) -> str:
+    """Drop what sits between the DML verb and its target (``LOW_PRIORITY``,
+    ``IGNORE``, T-SQL ``TOP (n)``, Oracle hints) so every parser sees the target first."""
+    verb = _DML_VERB.match(text)
+    if verb is None:
+        return text
+    pos = verb.end()
+    while True:
+        modifier = _DML_MODIFIER[verb.group().upper()].match(text, pos)
+        if modifier:
+            pos = modifier.end()
+            continue
+        top = _DML_TOP.match(text, pos)
+        if top is None:
+            break
+        depth = 1
+        end = top.end()
+        while end < len(text) and depth:
+            depth += {"(": 1, ")": -1}.get(text[end], 0)
+            end += 1
+        if depth:
+            break
+        percent = _DML_PERCENT.match(text, end)
+        pos = percent.end() if percent else end
+    return text if pos == verb.end() else f"{text[: verb.end()]} {text[pos:].lstrip()}"
+
+
 def _analyze_dml_sqlglot(statement: str, dialect: Optional[str]) -> Optional[DmlMutation]:
     """AST-based analysis via sqlglot, or ``None`` to defer to the regex scanner."""
-    text = strip_leading_sql_comments(statement).lstrip()
+    text = _without_dml_modifiers(strip_leading_sql_comments(statement).lstrip())
     if not text:
         return DmlMutation(table="", events=set(), updated_columns=[])
     import sqlglot
@@ -108,7 +159,11 @@ def _dml_target_table(ast: "exp.Expression") -> Optional["exp.Table"]:
     ``UPDATE <alias> ... FROM <table> AS <alias>`` (T-SQL) targets to the table."""
     from sqlglot import exp
 
-    source: Optional[exp.Expression] = ast.this
+    targets = ast.args.get("tables") if isinstance(ast, exp.Delete) else None
+    source = ast.this
+    if not isinstance(source, exp.Expression):
+        # ``DELETE t WHERE ...`` (no FROM; Oracle, T-SQL) keeps its target in ``tables``.
+        source = targets[0] if targets else None
     if source is None:
         return None
     if (
@@ -127,7 +182,6 @@ def _dml_target_table(ast: "exp.Expression") -> Optional["exp.Table"]:
     candidates: List[exp.Table] = list(source.find_all(exp.Table))
     if not candidates:
         return None
-    targets = ast.args.get("tables") if isinstance(ast, exp.Delete) else None
     if targets:
         wanted = targets[0].name
         for table in candidates:
@@ -498,13 +552,17 @@ def extract_dml_table_name(statement: str) -> str:
     # is what lets quoted/bracketed INSERT and DELETE targets resolve (the UPDATE
     # pattern is unaffected because it ends in ``SET``).
     _after = r"(?=\s|;|\(|$)"
+    statement = _without_dml_modifiers(statement.lstrip())
     patterns = (
         # ``UPDATE a SET … FROM t AS a`` / ``DELETE a FROM t a``: the table behind the alias.
         rf"^\s*(?:UPDATE|DELETE)\s+([A-Za-z_][\w$]*)\s+(?:SET|FROM)\b[\s\S]*?(?<![\w$.`\]\"])"
         rf"(?!(?:FROM|JOIN|ON|AND|OR|WHERE|SET|AS)\b)({_IDENTIFIER})\s+(?:AS\s+)?\1(?=[\s;,)]|$)",
-        rf"^\s*UPDATE\s+({_IDENTIFIER})\s+SET\b",
-        rf"^\s*DELETE\s+FROM\s+({_IDENTIFIER}){_after}",
+        rf"^\s*UPDATE\s+(?:ONLY\s+)?({_IDENTIFIER})\s+SET\b",
+        rf"^\s*DELETE\s+FROM\s+(?:ONLY\s+(?!WHERE\b))?({_IDENTIFIER}){_after}",
         rf"^\s*DELETE\s+({_IDENTIFIER})\s+FROM\s+{_IDENTIFIER}{_after}",
+        # No FROM (Oracle, T-SQL): ``DELETE t [alias] WHERE ...``.
+        rf"^\s*DELETE\s+(?!(?:FROM|WHERE)\b)({_IDENTIFIER})(?:\s+(?:AS\s+)?(?!WHERE\b)[A-Za-z_][\w$]*)?"
+        r"\s*(?:WHERE\b|;|$)",
         rf"^\s*INSERT\s+INTO\s+({_IDENTIFIER}){_after}",
     )
     for pattern in patterns:
@@ -525,7 +583,7 @@ def statement_dml_table(statement: str, dialect: Optional[str] = None) -> str:
     parse the statement — mirroring the hybrid-parser philosophy used by
     :func:`analyze_dml`.
     """
-    text = strip_leading_sql_comments(statement).lstrip()
+    text = _without_dml_modifiers(strip_leading_sql_comments(statement).lstrip())
     if dialect:
         from dblift.core.sql_model.dialect import get_sqlglot_dialect
 
@@ -563,10 +621,13 @@ def _sqlglot_dml_table_sql(text: str, dialect: str) -> str:
     table = _dml_target_table(ast)
     if table is None:
         return ""
-    if table.args.get("alias") or table.args.get("joins"):
+    if table.args.get("only") and not _DML_ONLY.match(text):
+        return ""  # ``only.t`` is a schema-qualified name sqlglot read as the ONLY keyword
+    if table.args.get("alias") or table.args.get("joins") or table.args.get("only"):
         table = table.copy()
         table.set("alias", None)
         table.set("joins", None)
+        table.set("only", None)
     return table.sql(dialect=dialect)
 
 
