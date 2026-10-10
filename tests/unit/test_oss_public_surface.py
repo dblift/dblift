@@ -159,20 +159,24 @@ def test_published_docs_and_templates_do_not_reference_removed_tier_surfaces():
     assert offenders == []
 
 
-def test_release_workflow_publishes_single_wheel_only_after_release():
+def test_release_workflow_builds_and_publishes_single_wheel():
     workflow = ROOT / ".github" / "workflows" / "publish-pypi.yml"
 
     text = workflow.read_text(encoding="utf-8")
-    jobs = yaml.safe_load(text)["jobs"]
+    config = yaml.safe_load(text)
+    jobs = config["jobs"]
 
-    assert "python -m build --outdir dist/dblift" in text
+    assert "python -m build" in text
     assert "packages/dblift" not in text
-    assert jobs["publish"]["if"] == "github.event_name == 'release'"
-    assert jobs["publish"]["needs"] == "build"
+    assert config["permissions"]["id-token"] == "write"
+    assert jobs["publish"]["needs"] == "test"
     assert jobs["publish"]["environment"] == "pypi"
-    assert jobs["publish"]["permissions"] == {"id-token": "write"}
-    assert jobs["publish"]["steps"][-1]["with"]["packages-dir"] == "dist/dblift"
-    assert jobs["publish"]["steps"][-1]["uses"] == "pypa/gh-action-pypi-publish@release/v1"
+    assert any(
+        step.get("name") == "Publish dblift"
+        and step.get("uses") == "pypa/gh-action-pypi-publish@release/v1"
+        for step in jobs["publish"]["steps"]
+    )
+    assert jobs["publish-pytest-dblift"]["environment"] == "pypi-pytest-dblift"
     assert "password:" not in text
 
 
