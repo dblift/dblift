@@ -13,6 +13,9 @@ from dblift.core.logger import Log, NullLog
 from dblift.core.migration.clean_summary import CleanExecutionSummary
 from dblift.db.plugins.base_schema_operations import BaseSchemaOperations
 
+# MariaDB reports a ``WITH SYSTEM VERSIONING`` table with its own TABLE_TYPE.
+_TABLE_TYPES_FILTER = "TABLE_TYPE IN ('BASE TABLE', 'SYSTEM VERSIONED')"
+
 # MariaDB lists a sequence in information_schema.TABLES with this type
 # (information_schema.SEQUENCES exists only from 11.5).
 _SEQUENCES_QUERY = (
@@ -151,7 +154,7 @@ class MySqlSchemaOperations(BaseSchemaOperations):
             # 3. Drop tables (except history table)
             self._drop_tables(connection, schema, summary)
 
-            # 4. Drop sequences (MariaDB), after the tables that default to them
+            # 4. Drop sequences (MariaDB)
             self._drop_sequences(connection, schema, summary)
 
             # 5. Drop functions
@@ -272,7 +275,7 @@ class MySqlSchemaOperations(BaseSchemaOperations):
             "table",
             (
                 "SELECT TABLE_NAME FROM information_schema.TABLES "
-                "WHERE TABLE_SCHEMA = ? AND TABLE_TYPE = 'BASE TABLE'"
+                f"WHERE TABLE_SCHEMA = ? AND {_TABLE_TYPES_FILTER}"
             ),
             [schema],
             "TABLE_NAME",
@@ -396,10 +399,10 @@ class MySqlSchemaOperations(BaseSchemaOperations):
 
     def _drop_tables(self, connection: Any, schema: str, summary: CleanExecutionSummary) -> None:
         """Drop all tables in the database (excluding migration lock table)."""
-        tables_query = """
+        tables_query = f"""
         SELECT TABLE_NAME
         FROM information_schema.TABLES
-        WHERE TABLE_SCHEMA = ? AND TABLE_TYPE = 'BASE TABLE'
+        WHERE TABLE_SCHEMA = ? AND {_TABLE_TYPES_FILTER}
         """
         self._drop_objects_by_type(
             connection,
@@ -560,10 +563,10 @@ class MySqlSchemaOperations(BaseSchemaOperations):
 
         try:
             # Use information_schema to get table names
-            query = """
+            query = f"""
             SELECT TABLE_NAME as table_name
             FROM information_schema.TABLES
-            WHERE TABLE_SCHEMA = ? AND TABLE_TYPE = 'BASE TABLE'
+            WHERE TABLE_SCHEMA = ? AND {_TABLE_TYPES_FILTER}
             ORDER BY TABLE_NAME
             """
 
