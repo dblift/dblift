@@ -19,16 +19,12 @@ ROWS = [row for row in load_conformance_rows(SPEC_DIR) if row.dialect == "oracle
 
 KNOWN_GAPS: frozenset[str] = frozenset(
     {
-        "4",
-        "8",
         "11",
         "16",
         "17",
         "18",
         "19",
-        "20",
         "23",
-        "24",
     }
 )
 

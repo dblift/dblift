@@ -1,7 +1,7 @@
 """Oracle-specific statement parser.
 
 This module provides Oracle-specific statement parsing including
-slash delimiter handling, package bodies, and PL/SQL block detection.
+slash delimiter handling and PL/SQL unit detection from the statement head.
 """
 
 from typing import List, Optional, Tuple
@@ -14,23 +14,19 @@ from dblift.core.sql_parser.tokens import Token, TokenType
 from dblift.db.plugins.oracle.parser._sqlplus import (
     is_sqlplus_command as _shared_is_sqlplus_command,
 )
+from dblift.db.plugins.oracle.parser._unit_heads import MAX_HEAD_TOKENS, head_decided
 
 
 class OracleStatementParser(BaseStatementParser):
     """Oracle-specific statement parser.
 
-    Handles Oracle-specific features:
-    - Dynamic delimiter switching (semicolon vs slash)
-    - Package body handling with nested procedures/functions
-    - PL/SQL block detection
-    - Control flow vs block-terminating END
-    - Wrapped PL/SQL blocks
+    A statement is a PL/SQL unit or not from its first tokens
+    (``_unit_heads.head_decided``). A unit ends only at a ``/`` alone on its
+    line; any other statement ends at a ``;`` that is last on its line or at
+    such a ``/``. Nothing inside a unit is counted.
     """
 
     TERMINATOR_RESPECTS_PARENS = True
-
-    # Maximum number of keywords to look back when checking for FOR/WHILE
-    _MAX_KEYWORD_LOOKBACK = 15
 
     def __init__(
         self,
@@ -47,12 +43,9 @@ class OracleStatementParser(BaseStatementParser):
                 ``BaseStatementParser.__init__``)
         """
         super().__init__(tokens, context, source)
-        self.in_plsql_block = False
-        self.package_name: Optional[str] = None
-        self.in_package = False  # Tracks package bodies, specs, and compound triggers
-        self.package_body_depth = 0
-        self.in_declaration_section = False  # Between AS/IS and BEGIN
-        self._seen_create = False  # Cached flag: True once CREATE is seen in current statement
+        # Head of the statement being read; ``_unit`` stays None until it decides.
+        self._head: List[Token] = []
+        self._unit: Optional[bool] = None
         # Text of the delimiter that ended the previous statement (a "/" right
         # after a ";"-ended statement re-executes it).
         self._last_terminator: Optional[str] = None
@@ -102,18 +95,16 @@ class OracleStatementParser(BaseStatementParser):
                 current_statement_tokens = []
                 # Reset parser context
                 self.context.reset_for_new_statement()
-                # Oracle always resets delimiter to semicolon (unlike MySQL)
-                self.context.delimiter = ";"
-                # Reset Oracle-specific parser flags
-                self.in_plsql_block = False
-                self.in_declaration_section = False
-                self.in_package = False
-                self.package_body_depth = 0
-                self.package_name = None
-                self._seen_create = False
+                self._head = []
+                self._unit = None
 
         # Handle any remaining tokens
         if current_statement_tokens:
+            if self._unit:
+                raise UnsafeStatementSplitError(
+                    f"PL/SQL unit starting at line {self._head[0].line} is not terminated by "
+                    "a '/' line before the end of the script"
+                )
             emit(None, is_tail=True)
 
         return records
@@ -171,11 +162,22 @@ class OracleStatementParser(BaseStatementParser):
             stmt_stripped = stmt_stripped[:-1].strip()
         return stmt_stripped
 
+    def _adjust_context(self, token: Token) -> None:
+        """Track tokens and parentheses, and classify the statement from its head."""
+        self.context.tokens.append(token)
+        if token.type == TokenType.SYMBOL:
+            self._adjust_parens_depth(token)
+        if self._unit is None and token.type != TokenType.COMMENT:
+            self._head.append(token)
+            self._unit = head_decided(self._head)
+            if self._unit is None and len(self._head) >= MAX_HEAD_TOKENS:
+                self._unit = False
+
     def _is_statement_end(self, token: Token) -> bool:
         """Check if token marks statement end in Oracle (docs/sql-parsing/oracle.md §4).
 
         ``/`` alone on its line ends any statement; ``;`` ends a statement
-        that is not a PL/SQL unit, outside parentheses, and only as the last
+        that is not a PL/SQL unit (decided by its head, §5), outside parentheses, and only as the last
         text on its line. A ``/`` with nothing buffered after a ``;``-ended
         statement, or a ``.`` alone on a line, is refused.
         """
@@ -191,12 +193,7 @@ class OracleStatementParser(BaseStatementParser):
         if token.text == "/":
             return self._slash_ends_statement(token)
 
-        if (
-            self.context.block_depth != 0
-            or self.in_declaration_section
-            or token.text != self.context.delimiter
-            or token.parens_depth > 0
-        ):
+        if self._unit or token.text != ";" or token.parens_depth > 0:
             return False
 
         following = self.tokens[self.current_idx + 1 :]
@@ -210,16 +207,6 @@ class OracleStatementParser(BaseStatementParser):
 
     def _slash_ends_statement(self, token: Token) -> bool:
         """Whether a ``/`` alone on its line ends the statement being read."""
-        # GAP 2 fix: package body (and compound trigger) initialization section support.
-        # Flyway: "Package bodies can have an unbalanced BEGIN without END in the
-        # initialisation section." When inside a package/compound trigger and the
-        # slash delimiter arrives with residual block depth, force-terminate.
-        if self.in_package and self.context.block_depth > 0:
-            while self.context.block_depth > 0:
-                self.context.decrease_block_depth()
-        elif self.context.block_depth != 0:
-            return False
-
         if all(t is token or t.type == TokenType.COMMENT for t in self.context.tokens):
             if self._last_terminator == ";":
                 raise UnsafeStatementSplitError(
@@ -243,267 +230,3 @@ class OracleStatementParser(BaseStatementParser):
         this delegation introduces on the tokenizer path.
         """
         return _shared_is_sqlplus_command(stmt)
-
-    def _adjust_delimiter(self, token: Token) -> None:
-        """Adjust delimiter based on statement type.
-
-        Oracle uses:
-        - Semicolon (;) for regular SQL
-        - Slash (/) for PL/SQL blocks
-
-        Args:
-            token: Current keyword token
-        """
-        # GAP 6 fix: skip delimiter adjustment when inside parentheses.
-        # Prevents PROCEDURE/FUNCTION in ACCESSIBLE BY (...) from triggering PL/SQL detection.
-        if self.context.parens_depth > 0:
-            return
-
-        keyword = token.text.upper()
-
-        # Check if we're starting a PL/SQL block
-        if self._is_plsql_block_start(keyword):
-            self.context.delimiter = "/"
-            self.in_plsql_block = True
-
-    def _is_plsql_block_start(self, keyword: str) -> bool:
-        """Check if keyword starts a PL/SQL block.
-
-        Args:
-            keyword: Keyword to check
-
-        Returns:
-            True if keyword starts PL/SQL block
-        """
-        if keyword in ("DECLARE", "BEGIN"):
-            return True
-
-        if keyword in ("PROCEDURE", "FUNCTION", "TRIGGER", "TYPE", "PACKAGE"):
-            # Use the cached flag set when CREATE was first encountered in this statement.
-            # Handles complex headers (ACCESSIBLE BY clauses) without O(n) rescanning.
-            return self._seen_create
-
-        return False
-
-    def _adjust_block_depth(self, token: Token) -> None:
-        """Adjust block depth for Oracle PL/SQL.
-
-        Handles:
-        - BEGIN/END pairs
-        - Control flow keywords (IF, LOOP, CASE)
-        - Package bodies with nested procedures/functions
-        - Compound triggers (COMPOUND TRIGGER ... END name;)
-        - END/END IF/END LOOP/END CASE decrease block depth (keywords after END
-          are treated as closers for readability, not as new block starters)
-
-        Args:
-            token: Keyword token
-        """
-        # GAP 6 fix: skip block depth adjustments when inside parentheses.
-        # Prevents PROCEDURE/FUNCTION in ACCESSIBLE BY (...) from triggering PL/SQL detection.
-        if self.context.parens_depth > 0:
-            return
-
-        keyword = token.text.upper()
-
-        # Cache the CREATE keyword so _is_plsql_block_start() can check O(1) instead of O(n).
-        if keyword == "CREATE":
-            self._seen_create = True
-            return
-
-        # GAP 7 fix: COMPOUND TRIGGER – the second TRIGGER keyword (in "COMPOUND TRIGGER")
-        # marks the start of the compound trigger body, analogous to PACKAGE BODY ... AS.
-        if keyword == "TRIGGER" and self._preceded_by_compound():
-            if not self.in_package:
-                self.context.increase_block_depth("COMPOUND_TRIGGER")
-                self.in_package = True
-                self.in_compound_trigger = True
-            return
-
-        # Handle control flow keywords
-        if keyword in ("IF", "CASE"):
-            # IF [NOT] EXISTS in a DDL header is not a procedural block.
-            # Procedural IF can only occur inside an active PL/SQL body;
-            # CASE expressions, however, also occur in standalone SQL.
-            if keyword == "IF" and self.context.block_depth == 0:
-                return
-            # Only increase if not preceded by END
-            if not self._preceded_by_end():
-                self.context.increase_block_depth(keyword)
-
-        # Handle FOR and WHILE loops
-        elif keyword in ("FOR", "WHILE"):
-            # FOR/WHILE start loop constructs only inside an active BEGIN...END block.
-            # Before any BEGIN (e.g. in trigger header "FOR EACH ROW", "FOR INSERT ON"),
-            # or in ACCESSIBLE BY clauses, these are not loop starters.
-            if self.context.block_depth == 0:
-                return
-
-            # Check if FOR is followed by EACH (trigger syntax: "FOR EACH ROW")
-            if keyword == "FOR":
-                next_token = self._peek_next_token()
-                if next_token and next_token.text.upper() == "EACH":
-                    return
-            self.context.increase_block_depth(keyword)
-
-        # Handle LOOP specially - don't increase depth if preceded by FOR or WHILE
-        elif keyword == "LOOP":
-            if not self._preceded_by_end() and not self._preceded_by_for_or_while():
-                self.context.increase_block_depth(keyword)
-
-        # Handle BEGIN
-        elif keyword == "BEGIN":
-            # BEGIN marks end of declaration section
-            self.in_declaration_section = False
-            self.context.increase_block_depth(keyword)
-            if self.in_package:
-                self.package_body_depth += 1
-
-        # Handle END
-        elif keyword == "END":
-            # All END keywords decrease block depth (END, END IF, END LOOP, END CASE, etc.)
-            if self.context.block_depth > 0:
-                self.context.decrease_block_depth()
-                if self.in_package:
-                    if self.package_body_depth > 0:
-                        self.package_body_depth -= 1
-                    # Don't clear in_package here: let the slash delimiter handle termination
-                    # (supports initialization sections and compound trigger sections).
-
-        # Handle AS/IS for procedures/functions/packages
-        elif keyword in ("AS", "IS"):
-            # These mark the start of PL/SQL body for CREATE statements, or
-            # section bodies inside COMPOUND TRIGGER.
-            if self._seen_create:
-                # Search all statement tokens for context keywords (not a fixed window —
-                # ACCESSIBLE BY clauses can push CREATE many tokens back).
-                keywords = [
-                    t.text.upper() for t in self.context.tokens if t.type == TokenType.KEYWORD
-                ]
-
-                # PACKAGE BODY: increase block depth once to keep entire body together
-                if "PACKAGE" in keywords and "BODY" in keywords and not self.in_package:
-                    self.context.increase_block_depth("PACKAGE_BODY")
-                    self.in_package = True
-                # PACKAGE spec
-                elif "PACKAGE" in keywords and "BODY" not in keywords and not self.in_package:
-                    self.context.increase_block_depth("PACKAGE_SPEC")
-                    self.in_package = True
-                # Standalone PROCEDURE/FUNCTION/TRIGGER or compound trigger sections
-                elif any(kw in keywords for kw in ("PROCEDURE", "FUNCTION", "TRIGGER")):
-                    self.in_plsql_block = True
-                    self.in_declaration_section = True
-
-    def _preceded_by_compound(self) -> bool:
-        """Check if the current TRIGGER token is preceded by the COMPOUND keyword.
-
-        Used to detect the COMPOUND TRIGGER body start pattern.
-        Skips IDENTIFIER tokens to handle `CREATE ... COMPOUND TRIGGER my_name`
-        where the trigger name sits between COMPOUND and TRIGGER.
-
-        Returns:
-            True if the immediately preceding keyword is COMPOUND
-        """
-        skip_first = True
-        for token in reversed(self.context.tokens):
-            if token.type in (TokenType.COMMENT, TokenType.IDENTIFIER):
-                continue
-            if skip_first and token.type == TokenType.KEYWORD:
-                skip_first = False
-                continue
-            if token.type == TokenType.KEYWORD:
-                return token.text.upper() == "COMPOUND"
-            break
-        return False
-
-    def _preceded_by_end(self) -> bool:
-        """Check if current token is preceded by END keyword.
-
-        Note: This is called from _adjust_block_depth, which is called
-        AFTER the current token is added to context.tokens. So we need
-        to look at the second-to-last keyword, not the last one.
-
-        Returns:
-            True if preceded by END
-        """
-        # Look back through tokens, skipping the current token (last in list)
-        token_count = 0
-        for token in reversed(self.context.tokens):
-            # Skip comments
-            if token.type == TokenType.COMMENT:
-                continue
-
-            # Skip the first keyword (current token)
-            if token.type == TokenType.KEYWORD:
-                token_count += 1
-                if token_count == 1:
-                    continue  # Skip current token
-                # Check the previous keyword
-                return token.text.upper() == "END"
-
-            # If we hit a non-keyword non-comment, stop
-            if token.type not in (TokenType.COMMENT, TokenType.KEYWORD):
-                break
-
-        return False
-
-    def _preceded_by_for_or_while(self) -> bool:
-        """Check if current token is preceded by FOR or WHILE keyword.
-
-        This is used to detect FOR...LOOP and WHILE...LOOP constructs.
-
-        Note: This is called AFTER the current token is added to context.tokens,
-        so we need to skip the current token when looking back.
-
-        Returns:
-            True if preceded by FOR or WHILE
-        """
-        # Look back through tokens, skipping the current token
-        skip_first = True
-        keywords_checked = 0  # Track how many keywords we've examined
-        for token in reversed(self.context.tokens):
-            # Skip comments
-            if token.type == TokenType.COMMENT:
-                continue
-
-            # Skip the first keyword (current token)
-            if skip_first and token.type == TokenType.KEYWORD:
-                skip_first = False
-                continue
-
-            if token.type == TokenType.KEYWORD:
-                keyword = token.text.upper()
-                keywords_checked += 1  # Increment counter for each keyword checked
-
-                if keyword in ("FOR", "WHILE"):
-                    return True
-                # Stop if we hit END, BEGIN, or another major keyword
-                # END is important to stop at because LOOP after END is part of "END LOOP"
-                if keyword in ("END", "BEGIN", "THEN", "ELSE"):
-                    return False
-
-                # Stop if we've looked back far enough
-                # (to avoid looking back through the entire statement)
-                if keywords_checked > self._MAX_KEYWORD_LOOKBACK:
-                    break
-
-        return False
-
-    def _is_control_flow_end(self) -> bool:
-        """Check if END is followed by control flow keyword.
-
-        Control flow END patterns:
-        - END IF
-        - END LOOP
-        - END CASE
-
-        Returns:
-            True if this is a control flow END
-        """
-        next_token = self._peek_next_token()
-        if next_token and next_token.type == TokenType.KEYWORD:
-            keyword = next_token.text.upper()
-            if keyword in ("IF", "LOOP", "CASE"):
-                return True
-
-        return False
