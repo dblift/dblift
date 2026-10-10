@@ -28,6 +28,8 @@ class PostgreSQLStatementParser(BaseStatementParser):
     #: silently skipped.
     SAFE_META_COMMANDS = frozenset({"\\restrict", "\\unrestrict"})
 
+    TERMINATOR_RESPECTS_PARENS = True
+
     # Statements that cannot run in transactions
     NO_TRANSACTION_PATTERNS = [
         "CREATE DATABASE",
