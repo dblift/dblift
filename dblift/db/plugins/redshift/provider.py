@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Dict, List, Optional
 
 from dblift.core.migration.clean_summary import CleanExecutionSummary
 from dblift.db.plugins.postgresql.provider import PostgreSqlProvider
@@ -26,59 +26,109 @@ class RedshiftProvider(PostgreSqlProvider):
 
     def clean_schema(self, schema: str) -> CleanExecutionSummary:
         """Drop Redshift objects without querying PostgreSQL-only catalogs."""
-        summary = CleanExecutionSummary()
-        object_names = self._redshift_clean_object_names
-        qualified_name = self.get_schema_qualified_name
-
-        for view_name in object_names(_REDSHIFT_VIEWS_QUERY, schema):
-            qualified_view = qualified_name(schema, view_name)
-            drop_sql = f"DROP VIEW IF EXISTS {qualified_view} CASCADE"
-            self.execute_statement(drop_sql)
-            summary.record_drop(
-                drop_sql,
-                object_type="view",
-                name=view_name,
-                schema=schema,
-            )
-
-        for table_name in object_names(_REDSHIFT_TABLES_QUERY, schema):
-            qualified_table = qualified_name(schema, table_name)
-            drop_sql = f"DROP TABLE IF EXISTS {qualified_table} CASCADE"
-            self.execute_statement(drop_sql)
-            summary.record_drop(
-                drop_sql,
-                object_type="table",
-                name=table_name,
-                schema=schema,
-            )
-
+        summary = self.get_clean_preview(schema)
+        for sql in summary.statements:
+            self.execute_statement(sql)
         return summary
 
     def get_clean_preview(self, schema: str) -> CleanExecutionSummary:
-        """Preview Redshift objects clean would drop."""
+        """Preview Redshift objects clean would drop, in drop order.
+
+        Materialized views go first (a view may read one, and one may read a
+        view), then views, tables, and finally procedures and functions, which
+        nothing the earlier drops need. Redshift has no sequences or user
+        types. A catalog that cannot be read is reported and skipped, so the
+        rest of the schema is still cleaned.
+        """
         summary = CleanExecutionSummary()
-        object_names = self._redshift_clean_object_names
         qualified_name = self.get_schema_qualified_name
 
-        for view_name in object_names(_REDSHIFT_VIEWS_QUERY, schema):
-            qualified_view = qualified_name(schema, view_name)
+        materialized = self._optional_clean_rows(
+            "materialized view", _MATERIALIZED_VIEWS_QUERY, schema, summary
+        )
+        materialized_names = {str(row["object_name"]) for row in materialized or []}
+        for name in sorted(materialized_names):
             summary.record_drop(
-                f"DROP VIEW IF EXISTS {qualified_view} CASCADE",
+                f"DROP MATERIALIZED VIEW IF EXISTS {qualified_name(schema, name)} CASCADE",
+                object_type="materialized view",
+                name=name,
+                schema=schema,
+            )
+
+        views = self._redshift_clean_object_names(_REDSHIFT_VIEWS_QUERY, schema)
+        # Late-binding views are absent from information_schema.views.
+        late_binding = self._optional_clean_rows(
+            "late-binding view", _LATE_BINDING_VIEWS_QUERY, schema, summary
+        )
+        views += [str(row["object_name"]) for row in late_binding or []]
+        for view_name in dict.fromkeys(views):
+            if view_name in materialized_names:
+                continue
+            summary.record_drop(
+                f"DROP VIEW IF EXISTS {qualified_name(schema, view_name)} CASCADE",
                 object_type="view",
                 name=view_name,
                 schema=schema,
             )
 
-        for table_name in object_names(_REDSHIFT_TABLES_QUERY, schema):
-            qualified_table = qualified_name(schema, table_name)
+        for table_name in self._redshift_clean_object_names(_REDSHIFT_TABLES_QUERY, schema):
             summary.record_drop(
-                f"DROP TABLE IF EXISTS {qualified_table} CASCADE",
+                f"DROP TABLE IF EXISTS {qualified_name(schema, table_name)} CASCADE",
                 object_type="table",
                 name=table_name,
                 schema=schema,
             )
 
+        routines = self._optional_clean_rows(
+            "routine (function or procedure)", _ROUTINES_QUERY, schema, summary
+        )
+        for kind in ("procedure", "function"):
+            for row in routines or []:
+                if _routine_kind(row) != kind:
+                    continue
+                name = str(row["object_name"])
+                signature = f"{name}({row.get('argument_type') or ''})"
+                # DROP FUNCTION / DROP PROCEDURE have no IF EXISTS, and need the
+                # argument types to tell overloads apart. Only DROP FUNCTION
+                # takes CASCADE.
+                drop_sql = f"DROP {kind.upper()} {qualified_name(schema, name)}({row.get('argument_type') or ''})"
+                summary.record_drop(
+                    drop_sql + (" CASCADE" if kind == "function" else ""),
+                    object_type=kind,
+                    name=signature,
+                    schema=schema,
+                )
+
         return summary
+
+    def _optional_clean_rows(
+        self,
+        kind: str,
+        query: str,
+        schema: str,
+        summary: CleanExecutionSummary,
+    ) -> Optional[List[Dict[str, Any]]]:
+        """Return the rows of a catalog query clean can do without, or ``None``.
+
+        Older clusters or limited users may not see these catalogs; that must
+        not stop the tables and views from being cleaned.
+        """
+        try:
+            return list(self.execute_query(query, [schema] * query.count("?")))
+        except Exception as exc:
+            message = (
+                f"Could not list {kind}s in schema '{schema}'; they will not be dropped: {exc}"
+            )
+            log = getattr(self, "log", None)
+            if log is not None:
+                log.warning(message)
+            summary.add_error(message)
+            try:
+                # A failed statement aborts a Redshift transaction block.
+                self.rollback_transaction()
+            except Exception:
+                pass
+            return None
 
     def _redshift_clean_object_names(
         self,
@@ -183,3 +233,48 @@ _REDSHIFT_TABLES_QUERY = """
       AND table_type = 'BASE TABLE'
     ORDER BY table_name
 """
+
+# SVV_MV_INFO: "a row for every materialized view" (name and schema_name are CHAR).
+_MATERIALIZED_VIEWS_QUERY = """
+    SELECT TRIM(name) AS object_name
+    FROM svv_mv_info
+    WHERE database_name = current_database()
+      AND TRIM(schema_name) = ?
+    ORDER BY 1
+"""
+
+# SHOW TABLES lists late-binding and materialized views with table_type VIEW;
+# the sub-select leaves out the materialized ones.
+_LATE_BINDING_VIEWS_QUERY = """
+    SELECT table_name AS object_name
+    FROM svv_redshift_tables
+    WHERE database_name = current_database()
+      AND schema_name = ?
+      AND table_type = 'VIEW'
+      AND table_name NOT IN (
+          SELECT TRIM(name)
+          FROM svv_mv_info
+          WHERE database_name = current_database()
+            AND TRIM(schema_name) = ?
+      )
+    ORDER BY table_name
+"""
+
+# SVV_REDSHIFT_FUNCTIONS: argument_type is the list of input types, as text.
+_ROUTINES_QUERY = """
+    SELECT function_name AS object_name, function_type, argument_type
+    FROM svv_redshift_functions
+    WHERE database_name = current_database()
+      AND schema_name = ?
+    ORDER BY function_name, argument_type
+"""
+
+
+def _routine_kind(row: Dict[str, Any]) -> Optional[str]:
+    """Return ``procedure`` or ``function``; aggregates and unknown kinds are left alone."""
+    function_type = str(row.get("function_type") or "").upper()
+    if "PROCEDURE" in function_type:
+        return "procedure"
+    if "REGULAR" in function_type:
+        return "function"
+    return None
