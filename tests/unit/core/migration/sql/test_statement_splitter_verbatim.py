@@ -269,16 +269,14 @@ class TestPostgresMetaCommand:
             "SELECT 1;",
         ]
 
-    def test_backslash_mid_line_is_not_a_meta_command(self):
-        """Only a '\\' as the first non-whitespace character on a line is a
-        meta-command; the unclaimed-character path handles this one
-        unchanged, same as before this fix."""
-        sql = "SELECT 1 \\restrict fake;\nSELECT 2;\n"
+    def test_backslash_mid_line_is_a_meta_command(self):
+        """psql processes an unquoted '\\' anywhere in SQL state, mid-line
+        included (docs/sql-parsing/postgresql.md §6, row 15), so it is refused
+        by name rather than sent to the server as SQL."""
+        sql = "SELECT 1 \\set fake 1\nSELECT 2;\n"
 
-        with pytest.warns(UserWarning, match="unclaimed character"):
-            stmts = StatementSplitter("postgresql").split_statements(sql)
-
-        assert stmts == ["SELECT 1 \\restrict fake;", "SELECT 2;"]
+        with pytest.raises(UnsupportedMetaCommandError, match=r"\\set.*line 1"):
+            StatementSplitter("postgresql").split_statements(sql)
 
     def test_copy_null_marker_stays_data(self):
         """'\\N' — SQL NULL in COPY's data format — must not be mistaken for

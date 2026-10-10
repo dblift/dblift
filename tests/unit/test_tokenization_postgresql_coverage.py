@@ -58,45 +58,6 @@ SELECT 1;"""
         # Should tokenize without error
         assert len(tokens) > 0
 
-    def test_is_at_line_start_after_newline(self):
-        """Test _is_at_line_start method (lines 236-248)."""
-        sql = "\ntext"
-        tokenizer = PostgreSQLTokenizer(sql)
-
-        # At start of file
-        assert tokenizer._is_at_line_start()
-
-        # After reading newline
-        tokenizer.read()
-        assert tokenizer._is_at_line_start()
-
-        # After reading text
-        tokenizer.read()
-        assert not tokenizer._is_at_line_start()
-
-    def test_is_at_line_start_with_whitespace(self):
-        """Test _is_at_line_start with whitespace before text."""
-        sql = "\n   text"
-        tokenizer = PostgreSQLTokenizer(sql)
-
-        # Read newline
-        tokenizer.read()
-        assert tokenizer._is_at_line_start()
-
-        # Read spaces
-        tokenizer.read(3)
-        # Still at line start (only whitespace)
-        assert tokenizer._is_at_line_start()
-
-    def test_is_at_line_start_with_carriage_return(self):
-        """Test _is_at_line_start with \\r."""
-        sql = "\rtext"
-        tokenizer = PostgreSQLTokenizer(sql)
-
-        # Read carriage return
-        tokenizer.read()
-        assert tokenizer._is_at_line_start()
-
     def test_is_copy_from_stdin_detection(self):
         """Test _is_copy_from_stdin method (lines 169)."""
         sql = "COPY users (id, name) FROM STDIN;"

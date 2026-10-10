@@ -74,11 +74,22 @@ class PostgreSQLTokenizer(BaseTokenizer):
 
         char = self.peek()
 
-        # psql client meta-command (e.g. \restrict, \i): a line whose first
-        # non-whitespace character is '\' at the top level. Not inside a COPY
-        # header (up to its ';'), which stays one unit with its data block;
-        # the data block itself (rows may start with \N) is read whole above.
-        if char == "\\" and self._copy_header is None and self._is_at_line_start():
+        # psql's ``\;`` adds a ';' to the query buffer without ending the
+        # statement (spec §4): one token, so the parser can combine around it.
+        if char == "\\" and self._copy_header is None and self.peek(2) == "\\;":
+            start_pos, start_line, start_col = self.pos, self.line, self.col
+            text = self.read(2)
+            return Token(
+                TokenType.SYMBOL, text, start_pos, start_line, start_col, self.parens_depth
+            )
+
+        # psql client meta-command (e.g. \restrict, \set): any unquoted '\'
+        # in SQL state, mid-line included (spec §6). Quoted text, comments and
+        # dollar-quotes are consumed whole by their handlers, so a backslash
+        # reaching here is unquoted. Not inside a COPY header (up to its ';'),
+        # which stays one unit with its data block; the data block itself
+        # (rows may start with \N) is read whole above.
+        if char == "\\" and self._copy_header is None:
             return self._handle_meta_command()
 
         # Flyway / DBLift placeholders ${name} or ${name:default} — not PostgreSQL
@@ -370,16 +381,6 @@ class PostgreSQLTokenizer(BaseTokenizer):
             start_col,
             self.parens_depth,
         )
-
-    def _is_at_line_start(self) -> bool:
-        """Check if we're at the start of a line.
-
-        Returns:
-            True if at line start
-        """
-        # Look back to find if we're after a newline or at file start
-        if self.pos == 0:
-            return True
 
         check_pos = self.pos - 1
         while check_pos >= 0:

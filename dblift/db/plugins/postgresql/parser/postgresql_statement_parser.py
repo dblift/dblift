@@ -161,7 +161,8 @@ class PostgreSQLStatementParser(BaseStatementParser):
                 command = token.text.split(None, 1)[0]
                 if command not in self.SAFE_META_COMMANDS:
                     raise UnsupportedMetaCommandError(
-                        f"Unsupported psql meta-command {command!r}; dblift does not run it"
+                        f"Unsupported psql meta-command {command!r} at line {token.line}; "
+                        "dblift does not run it"
                     )
                 records.append(
                     Statement(text=token.text, line=token.line, terminator=None, kind="directive")
@@ -180,8 +181,14 @@ class PostgreSQLStatementParser(BaseStatementParser):
     def _record(self, tokens: List[Token], rendered: str, terminator: Optional[Token]) -> Statement:
         """Build the record for one rendered statement, stripping its terminator."""
         first = next(t for t in tokens if t.type != TokenType.COMMENT)
+        combinators = [t for t in tokens if t.type == TokenType.SYMBOL and t.text == "\\;"]
+        multi = bool(combinators)
+        if combinators and self.source is not None:
+            for t in reversed(combinators):
+                rel = t.pos - first.pos
+                rendered = rendered[:rel] + ";" + rendered[rel + 2 :]
         if terminator is None:
-            return Statement(text=rendered, line=first.line, terminator=None)
+            return Statement(text=rendered, line=first.line, terminator=None, multi=multi)
         if terminator.type == TokenType.COPY_DATA:
             if self.source is None:
                 return Statement(
@@ -197,7 +204,7 @@ class PostgreSQLStatementParser(BaseStatementParser):
             )
         if rendered.endswith(terminator.text):
             rendered = rendered[: -len(terminator.text)].rstrip()
-        return Statement(text=rendered, line=first.line, terminator=terminator.text)
+        return Statement(text=rendered, line=first.line, terminator=terminator.text, multi=multi)
 
     def split_statements(self) -> List[str]:
         """Statement strings as execution receives them (``;`` kept, directives dropped)."""
