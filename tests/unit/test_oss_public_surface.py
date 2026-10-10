@@ -17,6 +17,7 @@ import tomllib
 from pathlib import Path
 
 import pytest
+import yaml
 from packaging.requirements import Requirement
 from packaging.specifiers import SpecifierSet
 from packaging.utils import canonicalize_name
@@ -158,15 +159,20 @@ def test_published_docs_and_templates_do_not_reference_removed_tier_surfaces():
     assert offenders == []
 
 
-def test_release_workflow_builds_single_wheel_without_publishing():
+def test_release_workflow_publishes_single_wheel_only_after_release():
     workflow = ROOT / ".github" / "workflows" / "publish-pypi.yml"
 
     text = workflow.read_text(encoding="utf-8")
+    jobs = yaml.safe_load(text)["jobs"]
 
     assert "python -m build --outdir dist/dblift" in text
     assert "packages/dblift" not in text
-    assert "id-token: write" not in text
-    assert "pypa/gh-action-pypi-publish" not in text
+    assert jobs["publish"]["if"] == "github.event_name == 'release'"
+    assert jobs["publish"]["needs"] == "build"
+    assert jobs["publish"]["environment"] == "pypi"
+    assert jobs["publish"]["permissions"] == {"id-token": "write"}
+    assert jobs["publish"]["steps"][-1]["with"]["packages-dir"] == "dist/dblift"
+    assert jobs["publish"]["steps"][-1]["uses"] == "pypa/gh-action-pypi-publish@release/v1"
     assert "password:" not in text
 
 
