@@ -166,3 +166,74 @@ def test_finding_serialises():
         "snippet": "TRUNCATE users",
         "allowed": False,
     }
+
+
+@pytest.mark.parametrize(
+    "dialect, sql",
+    [
+        ("postgresql", "CREATE TABLE t (id INT);\nDROP TABLE t;"),
+        ("postgresql", "CREATE TABLE t (id INT);\nTRUNCATE t;"),
+        ("postgresql", "CREATE TABLE t (id INT, a INT);\nALTER TABLE t DROP COLUMN a;"),
+        ("postgresql", "CREATE TABLE t (id INT);\nDELETE FROM t;"),
+        ("postgresql", "CREATE TABLE t (id INT);\nUPDATE t SET id = 1;"),
+        ("postgresql", "CREATE TABLE t (a INT);\nALTER TABLE t RENAME COLUMN a TO b;"),
+        ("postgresql", "CREATE TABLE t (a INT);\nALTER TABLE t RENAME TO u;"),
+        ("postgresql", "CREATE TABLE t (a INT);\nALTER TABLE t ALTER COLUMN a TYPE BIGINT;"),
+        ("postgresql", "CREATE TABLE t (a INT);\nALTER TABLE t ALTER COLUMN a SET NOT NULL;"),
+        ("postgresql", "CREATE TABLE IF NOT EXISTS t (a INT);\nTRUNCATE TABLE t;"),
+        ("postgresql", "CREATE TABLE t AS SELECT 1 AS a;\nDROP TABLE t;"),
+        ("postgresql", "CREATE TABLE app.T (a INT);\nDROP TABLE app.t;"),
+        ("mysql", "CREATE TABLE t (a INT);\nALTER TABLE t MODIFY COLUMN a BIGINT;"),
+        ("mysql", "CREATE TABLE t (a INT);\nDELETE FROM t;"),
+    ],
+)
+def test_a_table_created_earlier_in_the_script_is_exempt(dialect, sql):
+    assert _codes(sql, dialect) == []
+
+
+def test_a_statement_before_the_create_is_still_reported():
+    assert _codes("DROP TABLE t;\nCREATE TABLE t (id INT);", "mysql") == ["drop-table"]
+
+
+def test_a_drop_of_a_new_and_an_existing_table_is_reported():
+    codes = _codes("CREATE TABLE t (id INT);\nDROP TABLE t, users;", "postgresql")
+    assert sorted(codes) == ["drop-table", "pg-missing-lock-timeout"]
+
+
+def test_drop_schema_is_not_exempt():
+    assert _codes("CREATE TABLE s (id INT);\nDROP SCHEMA s;", "mysql") == ["drop-schema"]
+
+
+@pytest.mark.parametrize("name", ["t", "T", "app.t"])
+def test_tables_created_before_the_script_are_exempt(name):
+    analysis = analyse_script(f"DROP TABLE {name};\nCREATE INDEX i ON t (id);", "postgresql")
+    assert find_issues(analysis, "postgresql", created_before={"t"}) == []
+
+
+def test_tables_created_before_the_script_do_not_exempt_other_tables():
+    analysis = analyse_script("CREATE INDEX i ON users (id);", "postgresql")
+    codes = [f.code for f in find_issues(analysis, "postgresql", created_before={"t"})]
+    assert codes == ["pg-index-not-concurrent", "pg-missing-lock-timeout"]
+
+
+@pytest.mark.parametrize(
+    "sql, expected",
+    [
+        ("CREATE TABLE a.users (id INT);\nALTER TABLE users RENAME COLUMN id TO uid;", []),
+        ("CREATE TABLE a.users (id INT);\nALTER TABLE a.users RENAME COLUMN id TO uid;", []),
+        (
+            "CREATE TABLE a.users (id INT);\nALTER TABLE b.users RENAME COLUMN id TO uid;",
+            ["rename-column"],
+        ),
+        ("CREATE TABLE users (id INT);\nALTER TABLE x.users RENAME COLUMN id TO uid;", []),
+        ("CREATE TABLE a.users (id INT);\nDROP TABLE a.users, b.users;", ["drop-table"]),
+    ],
+)
+def test_created_tables_match_by_schema_when_both_name_one(sql, expected):
+    assert _codes(sql, "mysql") == expected
+
+
+def test_tables_created_before_match_by_schema():
+    analysis = analyse_script("DROP TABLE b.users;", "mysql")
+    codes = [f.code for f in find_issues(analysis, "mysql", created_before={"a.users"})]
+    assert codes == ["drop-table"]

@@ -3,13 +3,16 @@
 Each statement is the one the hybrid parser split (``script_analysis``); sqlglot parses
 it again for the rules that need its structure. A statement sqlglot cannot structure is
 reported (``statement-not-analysed``) rather than passed. Nothing connects to a database.
+
+A table created earlier in the same delta (the scripts applied together) has no rows and
+nothing deployed uses it yet, so the findings about that table alone are not reported.
 """
 
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any, Dict, Iterable, List, Optional, Set
+from typing import AbstractSet, Any, Dict, FrozenSet, Iterable, List, Optional, Set, Tuple
 
 import sqlglot
 from sqlglot import exp
@@ -76,6 +79,25 @@ _MESSAGES: Dict[str, str] = {
 _TYPE_CHANGE = tuple(
     node for node in (exp.AlterColumn, exp.__dict__.get("ModifyColumn")) if node is not None
 )
+# Findings about one table's rows or its users: not reported for a table new in the delta.
+_TABLE_CODES = frozenset(
+    {
+        "drop-table",
+        "drop-column",
+        "truncate",
+        "dml-no-where",
+        "rename-column",
+        "rename-table",
+        "alter-column-type",
+        "add-not-null-no-default",
+        "pg-set-not-null",
+        "pg-constraint-not-valid",
+        "pg-index-not-concurrent",
+        "pg-missing-lock-timeout",
+    }
+)
+# A table as (schema or None, name), lower-cased.
+_TableKey = Tuple[Optional[str], str]
 _NOT_NULL_EXEMPT = (
     exp.DefaultColumnConstraint,
     exp.ComputedColumnConstraint,
@@ -110,8 +132,29 @@ class Finding:
         }
 
 
-def find_issues(analysis: ScriptAnalysis, dialect: str) -> List[Finding]:
-    """Every finding for one analysed script, sorted by statement then code."""
+def find_issues(
+    analysis: ScriptAnalysis, dialect: str, *, created_before: AbstractSet[str] = frozenset()
+) -> List[Finding]:
+    """Every finding for one analysed script, sorted by statement then code.
+
+    *created_before* names the tables earlier scripts of the delta created, as
+    ``issues_and_created_tables`` returns them.
+    """
+    return issues_and_created_tables(analysis, dialect, created_before)[0]
+
+
+def issues_and_created_tables(
+    analysis: ScriptAnalysis, dialect: str, created_before: AbstractSet[str] = frozenset()
+) -> Tuple[List[Finding], FrozenSet[str]]:
+    """The script's findings, and the tables it creates.
+
+    A table is named ``schema.name``, or ``name`` when the statement gives no schema,
+    lower-cased. A table in *created_before*, or created by an earlier statement of the
+    script, is new: a table-scoped finding on a statement whose target tables are all new
+    is not reported. A target is new when its name matches a new table and either side
+    names no schema or both name the same one: offline the search path is unknown, so
+    ``CREATE TABLE users`` also covers ``x.users``.
+    """
     sqlglot_dialect = get_sqlglot_dialect(dialect)
     pg_locks = ProviderRegistry.get_quirks(dialect).postgresql_lock_rules
     snippets = {s.index: s.snippet for s in analysis.statements}
@@ -120,26 +163,41 @@ def find_issues(analysis: ScriptAnalysis, dialect: str) -> List[Finding]:
         for c in analysis.cautions
         if c.code
     ]
-    created: Set[str] = set()
+    new: Set[_TableKey] = {_key_from_text(name) for name in created_before}
+    created: Set[_TableKey] = set()
+    on_new_tables: Set[int] = set()
     lock_timeout_set = False
     lock_timeout_reported = not pg_locks
     for stmt in analysis.statements:
         body = strip_leading_sql_comments(stmt.sql)
         tree = _parse(body, sqlglot_dialect)
-        for code in _statement_codes(body, tree, pg_locks=pg_locks, created=created):
+        targets = _targets(tree)
+        if targets and all(_is_new(target, new) for target in targets):
+            on_new_tables.add(stmt.index)
+        for code in _statement_codes(body, tree, pg_locks=pg_locks):
             findings.append(_finding(code, stmt))
         if stmt.operation == "ALTER" and tree is None:
             findings.append(_finding("statement-not-analysed", stmt))
         if _LOCK_TIMEOUT.match(body):
             lock_timeout_set = True
-        elif not (lock_timeout_set or lock_timeout_reported) and _locks_table(tree, created):
+        elif (
+            not (lock_timeout_set or lock_timeout_reported)
+            and stmt.index not in on_new_tables
+            and _locks_table(tree)
+        ):
             findings.append(_finding("pg-missing-lock-timeout", stmt))
             lock_timeout_reported = True
-        name = _created_table(tree)
-        if name:
-            created.add(name)
+        table = _created_table(tree)
+        if table:
+            created.add(table)
+            new.add(table)
+    findings = [
+        f for f in findings if not (f.code in _TABLE_CODES and f.statement in on_new_tables)
+    ]
     findings.extend(_mixed_transaction_modes(analysis.statements, dialect))
-    return sorted(findings, key=lambda f: (f.statement, f.code))
+    return sorted(findings, key=lambda f: (f.statement, f.code)), frozenset(
+        f"{schema}.{name}" if schema else name for schema, name in created
+    )
 
 
 def _finding(code: str, stmt: AnalysedStatement) -> Finding:
@@ -159,9 +217,38 @@ def _parse(sql: str, sqlglot_dialect: Optional[str]) -> Optional[exp.Expression]
     return tree
 
 
-def _table_of(tree: exp.Expression) -> str:
+def _key_of(table: exp.Table) -> _TableKey:
+    return (table.db.lower() or None, table.name.lower())
+
+
+def _key_from_text(text: str) -> _TableKey:
+    schema, _, name = text.lower().rpartition(".")
+    return (schema or None, name)
+
+
+def _is_new(target: _TableKey, new: AbstractSet[_TableKey]) -> bool:
+    schema, name = target
+    return any(
+        name == new_name and (schema is None or new_schema is None or schema == new_schema)
+        for new_schema, new_name in new
+    )
+
+
+def _table_of(tree: exp.Expression) -> Optional[_TableKey]:
     table = tree.find(exp.Table)
-    return table.name.lower() if table is not None else ""
+    return _key_of(table) if table is not None and table.name else None
+
+
+def _targets(tree: Optional[exp.Expression]) -> FrozenSet[_TableKey]:
+    """The tables a statement acts on: every table a DROP or TRUNCATE names, else its first.
+
+    Read from the sqlglot tree only: the analysed objects keep the first table of
+    ``DROP TABLE a, b``. A statement sqlglot cannot structure has no targets.
+    """
+    if isinstance(tree, (exp.Drop, exp.TruncateTable)):
+        return frozenset(_key_of(t) for t in tree.find_all(exp.Table) if t.name)
+    table = _table_of(tree) if tree is not None else None
+    return frozenset({table}) if table else frozenset()
 
 
 def _actions(tree: exp.Expression) -> List[exp.Expression]:
@@ -183,9 +270,7 @@ def _adds_not_null_without_default(column: exp.ColumnDef) -> bool:
     )
 
 
-def _statement_codes(
-    sql: str, tree: Optional[exp.Expression], *, pg_locks: bool, created: Set[str]
-) -> List[str]:
+def _statement_codes(sql: str, tree: Optional[exp.Expression], *, pg_locks: bool) -> List[str]:
     codes: List[str] = []
     rename = _SP_RENAME.search(sql)
     if rename:
@@ -196,7 +281,6 @@ def _statement_codes(
         codes.append("rename-table")
     if tree is None:
         return codes
-    new_table = _table_of(tree) in created
     for action in _actions(tree):
         if isinstance(action, exp.RenameColumn):
             codes.append("rename-column")
@@ -206,8 +290,6 @@ def _statement_codes(
             action.args.get("dtype") is not None or not isinstance(action, exp.AlterColumn)
         ):
             codes.append("alter-column-type")
-        if new_table:
-            continue
         if any(_adds_not_null_without_default(c) for c in _added_columns(action)):
             codes.append("add-not-null-no-default")
         if (
@@ -231,15 +313,14 @@ def _statement_codes(
         and isinstance(tree, exp.Create)
         and str(tree.args.get("kind") or "").upper() == "INDEX"
         and not tree.args.get("concurrently")
-        and not new_table
     ):
         codes.append("pg-index-not-concurrent")
     return codes
 
 
-def _locks_table(tree: Optional[exp.Expression], created: Set[str]) -> bool:
-    """True for a statement that takes a strong lock on a table the script did not create."""
-    if tree is None or _table_of(tree) in created:
+def _locks_table(tree: Optional[exp.Expression]) -> bool:
+    """True for a statement that takes a strong lock on a table."""
+    if tree is None:
         return False
     kind = str(tree.args.get("kind") or "").upper()
     if isinstance(tree, exp.Alter):
@@ -251,10 +332,10 @@ def _locks_table(tree: Optional[exp.Expression], created: Set[str]) -> bool:
     return isinstance(tree, exp.TruncateTable)
 
 
-def _created_table(tree: Optional[exp.Expression]) -> str:
+def _created_table(tree: Optional[exp.Expression]) -> Optional[_TableKey]:
     if isinstance(tree, exp.Create) and str(tree.args.get("kind") or "").upper() == "TABLE":
         return _table_of(tree)
-    return ""
+    return None
 
 
 def _mixed_transaction_modes(
