@@ -3,10 +3,12 @@
 from importlib import import_module
 from typing import TYPE_CHECKING, Any
 
+from dblift.core.sql_parser.statement import Statement, StatementKind
+
 if TYPE_CHECKING:
     from dblift.core.sql_parser.parser_factory import SqlParserFactory
 
-__all__ = ["SqlParserFactory"]
+__all__ = ["SqlParserFactory", "Statement", "StatementKind"]
 
 
 def __getattr__(name: str) -> Any:
