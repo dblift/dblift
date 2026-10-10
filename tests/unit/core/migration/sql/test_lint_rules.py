@@ -84,14 +84,18 @@ def test_generic_rules(dialect, sql, expected):
             "CREATE TABLE t (id INT);\nCREATE INDEX i ON t (id);\nALTER TABLE t ADD COLUMN a INT NOT NULL;",
             [],
         ),
-        (
-            "ALTER TABLE users ADD COLUMN a INT, DROP COLUMN b;",
-            ["drop-column", "statement-not-analysed"],
-        ),
     ],
 )
 def test_postgresql_rules(sql, expected):
     assert sorted(_codes(sql, "postgresql")) == sorted(expected)
+
+
+def test_postgresql_compound_alter_reports_drop_column():
+    # sqlglot 30.18 cannot parse this form; 30.22 can and checks its table lock.
+    assert set(_codes("ALTER TABLE users ADD COLUMN a INT, DROP COLUMN b;", "postgresql")) in (
+        {"drop-column", "statement-not-analysed"},
+        {"drop-column", "pg-missing-lock-timeout"},
+    )
 
 
 @pytest.mark.parametrize("dialect", ["cockroachdb", "redshift", "yugabytedb", "mysql"])
