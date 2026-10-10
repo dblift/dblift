@@ -48,7 +48,9 @@ class TestExecuteStatement:
 
         assert ("create_schema", "APP") in provider.calls
         assert ("set_schema", "APP") in provider.calls
-        connection.exec_driver_sql.assert_called_once_with("SELECT 1")
+        connection.exec_driver_sql.assert_called_once_with(
+            "SELECT 1", execution_options={"no_parameters": True}
+        )
 
     def _sent(self, sql: str) -> str:
         provider = DummyDb2Provider()

@@ -261,10 +261,10 @@ def test_execute_statement_without_params_does_not_parse_colon_tokens(provider: 
     ]
 
 
-def test_execute_statement_without_params_escapes_percent_for_format_driver(
+def test_execute_statement_without_params_sends_sql_verbatim_to_format_driver(
     cfg: DbliftConfig,
 ) -> None:
-    """Raw SQL with literal percent signs is safe for format/pyformat DBAPIs."""
+    """Unbound SQL is never %-escaped: the driver gets it as written, with no parameters."""
 
     class _Result:
         rowcount = 1
@@ -276,8 +276,10 @@ def test_execute_statement_without_params_escapes_percent_for_format_driver(
             self.driver_calls: List[Any] = []
             self.commit_called = 0
 
-        def exec_driver_sql(self, sql: str, params: Any = None) -> _Result:
-            self.driver_calls.append((sql, params))
+        def exec_driver_sql(
+            self, sql: str, params: Any = None, execution_options: Any = None
+        ) -> _Result:
+            self.driver_calls.append((sql, params, execution_options))
             return _Result()
 
         def commit(self) -> None:
@@ -293,7 +295,11 @@ def test_execute_statement_without_params_escapes_percent_for_format_driver(
 
     assert rowcount == 1
     assert connection.driver_calls == [
-        ("CREATE TABLE users (email TEXT CHECK (email LIKE '%%@%%'))", None)
+        (
+            "CREATE TABLE users (email TEXT CHECK (email LIKE '%@%'))",
+            None,
+            {"no_parameters": True},
+        )
     ]
     assert connection.commit_called == 1
 
@@ -371,8 +377,8 @@ def test_catalog_query_executor_executes_statements_with_driver_params(
     assert connection.driver_calls == [("DELETE FROM lock_table WHERE name = %s", ("migration",))]
 
 
-def test_catalog_query_executor_without_params_escapes_percent_for_format_driver() -> None:
-    """Unbound catalog SQL also escapes literal percent signs for format DBAPIs."""
+def test_catalog_query_executor_without_params_sends_sql_verbatim_to_format_driver() -> None:
+    """Unbound catalog SQL is likewise sent as written, with no parameters."""
 
     class _Result:
         def mappings(self) -> List[Dict[str, Any]]:
@@ -384,8 +390,10 @@ def test_catalog_query_executor_without_params_escapes_percent_for_format_driver
         def __init__(self) -> None:
             self.driver_calls: List[Any] = []
 
-        def exec_driver_sql(self, sql: str, params: Any = None) -> _Result:
-            self.driver_calls.append((sql, params))
+        def exec_driver_sql(
+            self, sql: str, params: Any = None, execution_options: Any = None
+        ) -> _Result:
+            self.driver_calls.append((sql, params, execution_options))
             return _Result()
 
     provider = SimpleNamespace(_tx=None, _external_connection=False)
@@ -395,7 +403,193 @@ def test_catalog_query_executor_without_params_escapes_percent_for_format_driver
     rows = executor.execute_query(connection, "SELECT 1 WHERE email LIKE '%@%'")
 
     assert rows == [{"value": "ok"}]
-    assert connection.driver_calls == [("SELECT 1 WHERE email LIKE '%%@%%'", None)]
+    assert connection.driver_calls == [
+        ("SELECT 1 WHERE email LIKE '%@%'", None, {"no_parameters": True})
+    ]
+
+
+def test_catalog_query_executor_execute_statement_without_params_is_unbound() -> None:
+    """Unbound catalog statements are sent as written, with no parameter argument."""
+
+    class _Result:
+        rowcount = 2
+
+    class _Connection:
+        dialect = SimpleNamespace(paramstyle="pyformat")
+
+        def __init__(self) -> None:
+            self.driver_calls: List[Any] = []
+
+        def exec_driver_sql(
+            self, sql: str, params: Any = None, execution_options: Any = None
+        ) -> _Result:
+            self.driver_calls.append((sql, params, execution_options))
+            return _Result()
+
+    provider = SimpleNamespace(_tx=None, _external_connection=True)
+    connection = _Connection()
+
+    affected = _SqlAlchemyQueryExecutor(provider).execute_statement(  # type: ignore[arg-type]
+        connection, "DELETE FROM t WHERE c LIKE 'a%'"
+    )
+
+    assert affected == 2
+    assert connection.driver_calls == [
+        ("DELETE FROM t WHERE c LIKE 'a%'", None, {"no_parameters": True})
+    ]
+
+
+def test_driver_bind_doubles_percent_by_default_and_not_when_told_not_to() -> None:
+    """``%`` is doubled for ``%s`` paramstyles unless the caller opts out."""
+    sql = "SELECT ? AS a WHERE c LIKE 'a%'"
+
+    assert SqlAlchemyProvider._driver_bind(sql, ["v"], "pyformat") == (
+        "SELECT %s AS a WHERE c LIKE 'a%%'",
+        ("v",),
+    )
+    assert SqlAlchemyProvider._driver_bind(sql, ["v"], "pyformat", escape_percent=False) == (
+        "SELECT %s AS a WHERE c LIKE 'a%'",
+        ("v",),
+    )
+
+
+def test_catalog_query_executor_bound_statement_doubles_percent_except_for_pymssql() -> None:
+    """The executor's bound path asks the dialect whether ``%`` must be doubled."""
+
+    class _Result:
+        rowcount = 1
+
+    class _Connection:
+        def __init__(self, driver: str) -> None:
+            self.dialect = SimpleNamespace(paramstyle="pyformat", driver=driver)
+            self.driver_calls: List[Any] = []
+
+        def exec_driver_sql(self, sql: str, params: Any = None) -> _Result:
+            self.driver_calls.append((sql, params))
+            return _Result()
+
+    provider = SimpleNamespace(
+        _tx=None, _external_connection=True, _driver_bind=SqlAlchemyProvider._driver_bind
+    )
+    executor = _SqlAlchemyQueryExecutor(provider)  # type: ignore[arg-type]
+    sql = "UPDATE t SET c = ? WHERE d LIKE 'a%'"
+
+    for driver, expected in (
+        ("psycopg", "UPDATE t SET c = %s WHERE d LIKE 'a%%'"),
+        ("pymssql", "UPDATE t SET c = %s WHERE d LIKE 'a%'"),
+    ):
+        connection = _Connection(driver)
+        executor.execute_statement(connection, sql, ["v"])
+        assert connection.driver_calls == [(expected, ("v",))], driver
+
+
+class _RecordingCursor:
+    """DB-API cursor recording the exact ``execute`` arguments it is given."""
+
+    description = None
+    rowcount = 1
+
+    def __init__(self, calls: List[Any]) -> None:
+        self._calls = calls
+        self._rows: List[Any] = []
+
+    def execute(self, *args: Any) -> None:
+        self._calls.append(args)
+        self.description = None
+        self._rows = []
+        if args[0].lstrip().upper().startswith("SELECT"):
+            self.description = [("c", None, None, None, None, None, None)]
+            self._rows = [("Microsoft SQL Server 2022 (RTM) - 16.0.4135.4 (X64)",)]
+
+    def fetchone(self) -> Any:
+        return self._rows.pop(0) if self._rows else None
+
+    def fetchmany(self, size: int = 1) -> Any:
+        rows, self._rows = self._rows[:size], self._rows[size:]
+        return rows
+
+    def fetchall(self) -> Any:
+        rows, self._rows = self._rows, []
+        return rows
+
+    def close(self) -> None:
+        pass
+
+
+class _RecordingDbapiConnection:
+    def __init__(self, calls: List[Any]) -> None:
+        self._calls = calls
+
+    def cursor(self) -> _RecordingCursor:
+        return _RecordingCursor(self._calls)
+
+    def commit(self) -> None:
+        pass
+
+    def rollback(self) -> None:
+        pass
+
+    def close(self) -> None:
+        pass
+
+
+@pytest.fixture
+def pymssql_driver_calls(cfg: DbliftConfig) -> Any:
+    """Yield ``(provider, calls)`` on a real ``mssql+pymssql`` engine over a recording DB-API.
+
+    ``calls`` holds the exact positional arguments each ``cursor.execute`` receives, i.e.
+    what pymssql would be handed. pymssql substitutes ``%s``/``%(name)s`` placeholders but
+    has no ``%%`` escape, so a doubled percent sign reaches the server as two characters.
+    """
+    import sqlalchemy as sa
+
+    calls: List[Any] = []
+    dbapi = SimpleNamespace(paramstyle="pyformat", Error=Exception, version="2.3.0")
+    engine = sa.create_engine(
+        "mssql+pymssql://u:p@h/db",
+        creator=lambda: _RecordingDbapiConnection(calls),
+        module=dbapi,
+    )
+    p = _Concrete(cfg, engine=engine, owns_engine=False)
+    p.create_connection()
+    calls.clear()  # drop the dialect's own start-up probes
+    yield p, calls
+    p.close()
+    engine.dispose()
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "CREATE VIEW v4 AS SELECT 'a%b' AS x WHERE 'abc' LIKE 'a%'",
+        "INSERT INTO t (c) VALUES ('50%')",
+        "SELECT FORMAT(0.5, 'P0') AS f, 'a%b' AS x",
+    ],
+)
+def test_pymssql_receives_unbound_sql_exactly_as_written(
+    pymssql_driver_calls: Any, sql: str
+) -> None:
+    """A literal percent sign in unbound SQL reaches pymssql unchanged and parameter-less."""
+    provider, calls = pymssql_driver_calls
+
+    provider.execute_statement(sql)
+    if sql.startswith("SELECT"):
+        provider.execute_query(sql)
+        assert calls == [(sql,), (sql,)]
+    else:
+        assert calls == [(sql,)]
+
+
+def test_pymssql_receives_bound_sql_with_single_percent_signs(
+    pymssql_driver_calls: Any,
+) -> None:
+    """Bound catalog SQL keeps its literal ``%`` too: pymssql has no ``%%`` escape."""
+    provider, calls = pymssql_driver_calls
+    connection = provider.create_connection()
+
+    _SqlAlchemyQueryExecutor(provider).execute_query(connection, "SELECT ? AS a, 'a%b' AS b", ["v"])
+
+    assert calls == [("SELECT %s AS a, 'a%b' AS b", ("v",))]
 
 
 # ---------------------------------------------------------------------------
@@ -844,9 +1038,9 @@ def test_concurrent_execute_query_from_several_threads_does_not_race(tmp_path: A
     ``NativeConnectionManager.create_connection`` (the swap-in of a fresh
     connection onto the provider's cached ``self._connection``) widens the
     window in which several threads that all saw "no connection yet" are
-    still creating one together. ``_escape_driver_percent_literals`` (called
-    immediately before every ``exec_driver_sql``, i.e. right after a thread
-    has *obtained* a connection and is about to use it) widens the window in
+    still creating one together. ``_exec_unbound`` (which runs
+    the statement, i.e. right after a thread has *obtained* a connection and
+    is about to use it) widens the window in
     which a thread is actively using a connection a sibling could still tear
     down. Several independent rounds, each against a fresh never-yet-connected
     provider so every thread's first call is the racy one, drive the odds of
@@ -873,11 +1067,11 @@ def test_concurrent_execute_query_from_several_threads_does_not_race(tmp_path: A
         time.sleep(0.02)
         return real_create_connection(self)
 
-    real_escape = SqlAlchemyProvider.__dict__["_escape_driver_percent_literals"].__func__
+    real_exec = SqlAlchemyProvider.__dict__["_exec_unbound"].__func__
 
-    def slow_escape(sql: str, paramstyle: str) -> str:
+    def slow_exec(connection: Any, sql: str) -> Any:
         time.sleep(0.02)
-        return real_escape(sql, paramstyle)
+        return real_exec(connection, sql)
 
     thread_count = 5
     rounds = 15
@@ -886,9 +1080,7 @@ def test_concurrent_execute_query_from_several_threads_does_not_race(tmp_path: A
 
     with (
         patch.object(NativeConnectionManager, "create_connection", slow_create_connection),
-        patch.object(
-            SqlAlchemyProvider, "_escape_driver_percent_literals", staticmethod(slow_escape)
-        ),
+        patch.object(SqlAlchemyProvider, "_exec_unbound", staticmethod(slow_exec)),
     ):
         for _ in range(rounds):
             # A fresh, never-yet-connected provider each round: every
@@ -938,27 +1130,25 @@ def test_concurrent_close_races_readers_without_raising(tmp_path: Any) -> None:
     reach the query path instead of finding ``is_connected() is False`` and
     stopping) and a wide-enough window inside the locked section for the
     closer to land its unlocked ``close()`` mid-flight — provided here by
-    patching ``_escape_driver_percent_literals`` (called from inside
+    patching ``_exec_unbound`` (called from inside
     ``execute_query``'s critical section, right before the connection is
     used) to sleep. Many independent short-lived providers (one per round),
     each racing several readers against one closer via a barrier plus a
     short closer-side delay, drive the odds of missing the window to
     effectively zero: this reproduces on every round pre-fix.
     """
-    real_escape = SqlAlchemyProvider.__dict__["_escape_driver_percent_literals"].__func__
+    real_exec = SqlAlchemyProvider.__dict__["_exec_unbound"].__func__
 
-    def slow_escape(sql: str, paramstyle: str) -> str:
+    def slow_exec(connection: Any, sql: str) -> Any:
         time.sleep(0.05)
-        return real_escape(sql, paramstyle)
+        return real_exec(connection, sql)
 
     reader_count = 6
     rounds = 25
     errors: List[BaseException] = []
     errors_lock = threading.Lock()
 
-    with patch.object(
-        SqlAlchemyProvider, "_escape_driver_percent_literals", staticmethod(slow_escape)
-    ):
+    with patch.object(SqlAlchemyProvider, "_exec_unbound", staticmethod(slow_exec)):
         for round_index in range(rounds):
             db_path = tmp_path / f"race_close_{round_index}.db"
             file_cfg = DbliftConfig.from_dict(
