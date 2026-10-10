@@ -180,7 +180,7 @@ def test_finding_serialises():
         ("postgresql", "CREATE TABLE t (a INT);\nALTER TABLE t RENAME TO u;"),
         ("postgresql", "CREATE TABLE t (a INT);\nALTER TABLE t ALTER COLUMN a TYPE BIGINT;"),
         ("postgresql", "CREATE TABLE t (a INT);\nALTER TABLE t ALTER COLUMN a SET NOT NULL;"),
-        ("postgresql", "CREATE TABLE IF NOT EXISTS t (a INT);\nTRUNCATE TABLE t;"),
+        ("postgresql", "CREATE TABLE t (a INT);\nTRUNCATE TABLE t;"),
         ("postgresql", "CREATE TABLE t AS SELECT 1 AS a;\nDROP TABLE t;"),
         ("postgresql", "CREATE TABLE app.T (a INT);\nDROP TABLE app.t;"),
         ("mysql", "CREATE TABLE t (a INT);\nALTER TABLE t MODIFY COLUMN a BIGINT;"),
@@ -237,3 +237,33 @@ def test_tables_created_before_match_by_schema():
     analysis = analyse_script("DROP TABLE b.users;", "mysql")
     codes = [f.code for f in find_issues(analysis, "mysql", created_before={"a.users"})]
     assert codes == ["drop-table"]
+
+
+@pytest.mark.parametrize(
+    "dialect, sql, expected",
+    [
+        (
+            "postgresql",
+            "CREATE TABLE IF NOT EXISTS t (a INT);\nCREATE INDEX i ON t (a);",
+            ["pg-index-not-concurrent", "pg-missing-lock-timeout"],
+        ),
+        ("mysql", "CREATE TABLE IF NOT EXISTS tmp (a INT);\nDROP TABLE tmp;", ["drop-table"]),
+        ("mysql", "CREATE TABLE IF NOT EXISTS t (a INT);\nTRUNCATE TABLE t;", ["truncate"]),
+        ("mysql", "CREATE TABLE IF NOT EXISTS t AS SELECT 1 AS a;\nDROP TABLE t;", ["drop-table"]),
+    ],
+)
+def test_create_table_if_not_exists_does_not_make_a_table_new(dialect, sql, expected):
+    assert _codes(sql, dialect) == expected
+
+
+def test_existing_tables_are_never_new():
+    analysis = analyse_script("CREATE TABLE t (a INT);\nCREATE INDEX i ON t (a);", "postgresql")
+    codes = [f.code for f in find_issues(analysis, "postgresql", existing_tables={"t"})]
+    assert codes == ["pg-index-not-concurrent", "pg-missing-lock-timeout"]
+
+
+@pytest.mark.parametrize("existing, expected", [({"a.t"}, []), ({"b.t"}, ["drop-table"])])
+def test_existing_tables_match_by_schema(existing, expected):
+    analysis = analyse_script("CREATE TABLE b.t (a INT);\nDROP TABLE b.t;", "mysql")
+    codes = [f.code for f in find_issues(analysis, "mysql", existing_tables=existing)]
+    assert codes == expected

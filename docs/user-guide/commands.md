@@ -140,7 +140,9 @@ same delta: they have no rows yet and nothing deployed uses them. A `DROP TABLE`
 new table and an existing one is still reported. Tables match by name, and by schema when
 both statements name one: after `CREATE TABLE a.users`, `ALTER TABLE users` and
 `ALTER TABLE a.users` are on the new table, `ALTER TABLE b.users` is not. The search path
-is unknown without a connection, so `CREATE TABLE users` also covers `x.users`.
+is unknown without a connection, so `CREATE TABLE users` also covers `x.users`. A table
+created with `CREATE TABLE IF NOT EXISTS` is not new: it may already exist with rows, and
+then the statement does nothing.
 
 **Verdict.** Each script gets one verdict:
 

@@ -86,7 +86,7 @@ def test_lint_script_reports_the_tables_it_creates():
     result = lint_script(
         "CREATE TABLE app.Users (id INT);\nCREATE TABLE IF NOT EXISTS t (a INT);", "mysql"
     )
-    assert result.created_tables == frozenset({"app.users", "t"})
+    assert result.created_tables == frozenset({"app.users"})
     assert "created_tables" not in result.to_dict()
 
 
@@ -98,6 +98,27 @@ def test_lint_analysis_takes_the_tables_created_before():
         analyse_script(text, "postgresql"), text, "postgresql", created_before={"orders"}
     )
     assert (result.verdict, result.findings) == (SAFE, ())
+
+
+def test_lint_script_never_reports_an_existing_table_as_created():
+    result = lint_script(
+        "CREATE TABLE orders (id INT);\nCREATE INDEX i ON orders (id);",
+        "postgresql",
+        existing_tables={"orders"},
+    )
+    assert result.created_tables == frozenset()
+    assert [f.code for f in result.findings] == [
+        "pg-index-not-concurrent",
+        "pg-missing-lock-timeout",
+    ]
+
+
+def test_lint_analysis_takes_the_existing_tables():
+    from dblift.core.migration.sql.script_analysis import analyse_script
+
+    text = "CREATE TABLE orders (id INT);\nDROP TABLE orders;"
+    result = lint_analysis(analyse_script(text, "mysql"), text, "mysql", existing_tables={"orders"})
+    assert (result.verdict, [f.code for f in result.findings]) == (UNSAFE, ["drop-table"])
 
 
 _CREATE_ORDERS = "CREATE TABLE orders (id INT);"
@@ -119,6 +140,17 @@ def test_lint_files_as_a_delta_knows_the_tables_earlier_files_created(delta):
     assert [(r.script, r.verdict, r.findings) for r in results] == [
         ("V1__orders.sql", SAFE, ()),
         ("V2__index.sql", SAFE, ()),
+    ]
+
+
+def test_lint_files_as_a_delta_does_not_carry_existing_tables(delta):
+    results = lint_files(
+        delta, "postgresql", {}, MagicMock(), as_delta=True, existing_tables={"orders"}
+    )
+
+    assert [(r.script, r.verdict) for r in results] == [
+        ("V1__orders.sql", SAFE),
+        ("V2__index.sql", REVIEW),
     ]
 
 
@@ -160,6 +192,14 @@ def test_pending_scripts_are_one_delta():
 
     assert analysed["V3__i.sql"]["verdict"] == SAFE
     assert analysed["V3__i.sql"]["findings"] == []
+
+
+def test_pending_scripts_do_not_carry_existing_tables():
+    pending = [_pending("V2__orders.sql", _CREATE_ORDERS), _pending("V3__i.sql", _INDEX_ORDERS)]
+
+    analysed = lint_pending_scripts(pending, "postgresql", MagicMock(), existing_tables={"orders"})
+
+    assert analysed["V3__i.sql"]["verdict"] == REVIEW
 
 
 def test_pending_scripts_can_be_linted_alone():

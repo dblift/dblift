@@ -106,17 +106,21 @@ def lint_analysis(
     script: str = "",
     *,
     created_before: Optional[AbstractSet[str]] = None,
+    existing_tables: Optional[AbstractSet[str]] = None,
 ) -> ScriptLint:
     """Verdict for a script already analysed, honouring its ``dblift:allow`` comments.
 
     *created_before* names the tables earlier scripts of the delta created (the union of
-    their ``created_tables``); a table matches by name, and by schema when both sides
-    name one.
+    their ``created_tables``); *existing_tables* names tables known to exist, which are
+    never new even when the script creates them. A table matches by name, and by schema
+    when both sides name one.
     """
     from dblift.core.migration.sql.lint_rules import issues_and_created_tables
 
     allowed = allowed_codes(text)
-    issues, created = issues_and_created_tables(analysis, dialect, created_before or frozenset())
+    issues, created = issues_and_created_tables(
+        analysis, dialect, created_before or frozenset(), existing_tables=existing_tables
+    )
     findings = tuple(replace(f, allowed=f.code in allowed) for f in issues)
     return ScriptLint(
         script, verdict_of(findings, analysis.errors), findings, analysis.errors, created
@@ -129,10 +133,17 @@ def lint_script(
     script: str = "",
     *,
     created_before: Optional[AbstractSet[str]] = None,
+    existing_tables: Optional[AbstractSet[str]] = None,
 ) -> ScriptLint:
-    """Analyse *text* and return its verdict; *created_before* as for ``lint_analysis``."""
+    """Analyse *text* and return its verdict; *created_before* and *existing_tables* as for
+    ``lint_analysis``."""
     return lint_analysis(
-        analyse_script(text, dialect), text, dialect, script, created_before=created_before
+        analyse_script(text, dialect),
+        text,
+        dialect,
+        script,
+        created_before=created_before,
+        existing_tables=existing_tables,
     )
 
 
@@ -190,19 +201,23 @@ def lint_files(
     log: Any,
     *,
     as_delta: bool = False,
+    existing_tables: Optional[AbstractSet[str]] = None,
 ) -> List[ScriptLint]:
     """Lint each file after substituting the configured placeholders.
 
     By default each file is linted alone, in the order given. With ``as_delta`` the files
     are one delta, linted and returned in apply order: versioned scripts by version, then
-    repeatable scripts by name, then any other file in the order given.
+    repeatable scripts by name, then any other file in the order given. *existing_tables*
+    as for ``lint_analysis``.
     """
     substitution = PlaceholderService(placeholders, log)
     created: Set[str] = set()
     results = []
     for path in _apply_order(paths) if as_delta else paths:
         text = substitution.replace_placeholders(path.read_text(encoding="utf-8"))
-        result = lint_script(text, dialect, path.name, created_before=created)
+        result = lint_script(
+            text, dialect, path.name, created_before=created, existing_tables=existing_tables
+        )
         if as_delta:
             created |= result.created_tables
         results.append(result)
@@ -216,13 +231,15 @@ def lint_pending_scripts(
     *,
     enabled: bool = True,
     as_delta: bool = True,
+    existing_tables: Optional[AbstractSet[str]] = None,
 ) -> Dict[str, Dict[str, Any]]:
     """``{script_name: analysis}`` for the SQL and repeatable scripts of *migrations*
     that have text, each analysis carrying the script's ``verdict`` and ``findings``.
 
     With ``as_delta`` (the default) *migrations*, in the order given, are one delta;
-    otherwise each script is linted alone. With ``enabled=False`` (execution-only
-    analysis mode) each script gets ``DISABLED_ANALYSIS`` and nothing is read.
+    otherwise each script is linted alone. *existing_tables* as for ``lint_analysis``.
+    With ``enabled=False`` (execution-only analysis mode) each script gets
+    ``DISABLED_ANALYSIS`` and nothing is read.
     """
     analysed: Dict[str, Dict[str, Any]] = {}
     created: Set[str] = set()
@@ -246,7 +263,14 @@ def lint_pending_scripts(
             continue
         try:
             analysis = analyse_script(content, dialect)
-            verdict = lint_analysis(analysis, content, dialect, name, created_before=created)
+            verdict = lint_analysis(
+                analysis,
+                content,
+                dialect,
+                name,
+                created_before=created,
+                existing_tables=existing_tables,
+            )
             if as_delta:
                 created |= verdict.created_tables
             analysed[name] = {
