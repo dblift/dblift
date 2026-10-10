@@ -32,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A dialect without a statement parser splits through the generic scanner again instead of raising "Unsupported dialect" (regression from the PostgreSQL splitter change in this release).
 - PostgreSQL splitting matches psql on: `$1` positional parameters (not
   dollar-quote tags); a `;` inside parentheses; psql's `\;` combinator; the
   COPY end-of-data `\.` line (exact line only, consumed as the terminator;
