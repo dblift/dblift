@@ -66,7 +66,11 @@ class PostgreSQLStatementParser(BaseStatementParser):
                 ``BaseStatementParser.__init__``)
         """
         super().__init__(tokens, context, source)
-        self.in_atomic_block = False
+
+    @property
+    def in_atomic_block(self) -> bool:
+        """True while a BEGIN ATOMIC body is open."""
+        return "ATOMIC" in self.context.block_initiators
 
     def _adjust_block_depth(self, token: Token) -> None:
         """Adjust block depth for PostgreSQL.
@@ -100,7 +104,6 @@ class PostgreSQLStatementParser(BaseStatementParser):
                     continue
                 if token.type == TokenType.KEYWORD and token.text.upper() == "BEGIN":
                     self.context.increase_block_depth("ATOMIC")
-                    self.in_atomic_block = True
                 break  # Stop at first non-comment token
 
         # Handle CASE within ATOMIC blocks
@@ -113,10 +116,6 @@ class PostgreSQLStatementParser(BaseStatementParser):
                 initiator = self.context.get_block_initiator()
                 if initiator in ("ATOMIC", "CASE"):
                     self.context.decrease_block_depth()
-
-                    # Check if we're exiting ATOMIC block
-                    if initiator == "ATOMIC":
-                        self.in_atomic_block = False
 
     def _is_statement_end(self, token: Token) -> bool:
         """A COPY data block ends its own statement — no ``;`` follows its ``\\.`` line.
@@ -144,11 +143,14 @@ class PostgreSQLStatementParser(BaseStatementParser):
         current: List[Token] = []
 
         def flush(terminator: Optional[Token], end_pos: Optional[int]) -> None:
+            if current and all(t.type in (TokenType.COMMENT, TokenType.DELIMITER) for t in current):
+                current.clear()
             if current:
                 text = self._render_statement(current, terminator, end_pos)
                 if text.strip():
                     records.append(self._record(current, text, terminator))
             current.clear()
+            self.context.reset_for_new_statement()
 
         for idx, token in enumerate(self.tokens):
             self.current_idx = idx

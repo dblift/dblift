@@ -87,3 +87,18 @@ def test_copy_stdin_record_with_crlf_line_endings() -> None:
         text="COPY t (a) FROM STDIN;\r\n1\r\n2", line=1, terminator="\\.", kind="copy_stdin"
     )
     assert records[1].text == "SELECT 1"
+
+
+def test_bare_semicolons_and_comment_only_segments_yield_no_record() -> None:
+    assert [r.text for r in _split("SELECT 1;\n;\n;\n/* x */ ;")] == ["SELECT 1"]
+
+
+def test_block_state_does_not_leak_into_the_next_statement() -> None:
+    script = (
+        "CREATE FUNCTION h() RETURNS int BEGIN ATOMIC "
+        "SELECT CASE WHEN true THEN CASE WHEN true THEN 1 END END; SELECT 2; END;\n"
+        "SELECT 9;"
+    )
+    records = _split(script)
+    assert [r.line for r in records] == [1, 2]
+    assert records[1].text == "SELECT 9"
