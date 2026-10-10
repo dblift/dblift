@@ -6,7 +6,7 @@ Shared command code should use these helpers instead of scattering
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any, List, Optional
 
 from dblift.config import DbliftConfig
 from dblift.core.migration.clean_summary import CleanExecutionSummary
@@ -82,3 +82,12 @@ def get_clean_preview(provider: Any, schema: str) -> Optional[CleanExecutionSumm
         result: Optional[CleanExecutionSummary] = hook(schema)
         return result
     return None
+
+
+def get_clean_listing_warnings(provider: Any) -> List[str]:
+    """Return what the provider's last clean listing could not read, if it says."""
+    hook = getattr(provider, "clean_listing_warnings", None)
+    warnings = hook() if callable(hook) else None
+    if isinstance(warnings, (list, tuple)):
+        return [str(warning) for warning in warnings]
+    return []

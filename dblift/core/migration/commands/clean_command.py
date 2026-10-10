@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional
 from dblift.core.exceptions import FixedDboSchemaError
 from dblift.core.logger._null import NullLog
 from dblift.core.logger.results import CleanResult
+from dblift.db.provider_capabilities import get_clean_listing_warnings
 from dblift.db.provider_interfaces import TransactionalProvider
 
 from ._script_events import emit_script_event as _emit_script_event
@@ -105,7 +106,10 @@ class CleanCommand(BaseCommand):
                 schema = self.config.database.schema
                 objects_found = False
 
-                for obj in self.provider.list_droppable_objects(schema):
+                droppable = self.provider.list_droppable_objects(schema)
+                for warning in get_clean_listing_warnings(self.provider):
+                    result.add_warning(warning)
+                for obj in droppable:
                     if not obj.record_result:
                         continue
                     self.log.info(f"  Would drop {obj.object_type}: {obj.name}")
@@ -147,7 +151,10 @@ class CleanCommand(BaseCommand):
 
             executed_statements: List[str] = []
             drop_errors: List[str] = []
-            for obj in self.provider.list_droppable_objects(self.config.database.schema):
+            droppable = self.provider.list_droppable_objects(self.config.database.schema)
+            for warning in get_clean_listing_warnings(self.provider):
+                result.add_warning(warning)
+            for obj in droppable:
                 try:
                     self.provider.drop_object(obj)
                     executed_statements.append(obj.drop_sql)
