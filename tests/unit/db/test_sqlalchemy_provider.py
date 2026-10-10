@@ -408,6 +408,81 @@ def test_catalog_query_executor_without_params_sends_sql_verbatim_to_format_driv
     ]
 
 
+def test_catalog_query_executor_execute_statement_without_params_is_unbound() -> None:
+    """Unbound catalog statements are sent as written, with no parameter argument."""
+
+    class _Result:
+        rowcount = 2
+
+    class _Connection:
+        dialect = SimpleNamespace(paramstyle="pyformat")
+
+        def __init__(self) -> None:
+            self.driver_calls: List[Any] = []
+
+        def exec_driver_sql(
+            self, sql: str, params: Any = None, execution_options: Any = None
+        ) -> _Result:
+            self.driver_calls.append((sql, params, execution_options))
+            return _Result()
+
+    provider = SimpleNamespace(_tx=None, _external_connection=True)
+    connection = _Connection()
+
+    affected = _SqlAlchemyQueryExecutor(provider).execute_statement(  # type: ignore[arg-type]
+        connection, "DELETE FROM t WHERE c LIKE 'a%'"
+    )
+
+    assert affected == 2
+    assert connection.driver_calls == [
+        ("DELETE FROM t WHERE c LIKE 'a%'", None, {"no_parameters": True})
+    ]
+
+
+def test_driver_bind_doubles_percent_by_default_and_not_when_told_not_to() -> None:
+    """``%`` is doubled for ``%s`` paramstyles unless the caller opts out."""
+    sql = "SELECT ? AS a WHERE c LIKE 'a%'"
+
+    assert SqlAlchemyProvider._driver_bind(sql, ["v"], "pyformat") == (
+        "SELECT %s AS a WHERE c LIKE 'a%%'",
+        ("v",),
+    )
+    assert SqlAlchemyProvider._driver_bind(sql, ["v"], "pyformat", escape_percent=False) == (
+        "SELECT %s AS a WHERE c LIKE 'a%'",
+        ("v",),
+    )
+
+
+def test_catalog_query_executor_bound_statement_doubles_percent_except_for_pymssql() -> None:
+    """The executor's bound path asks the dialect whether ``%`` must be doubled."""
+
+    class _Result:
+        rowcount = 1
+
+    class _Connection:
+        def __init__(self, driver: str) -> None:
+            self.dialect = SimpleNamespace(paramstyle="pyformat", driver=driver)
+            self.driver_calls: List[Any] = []
+
+        def exec_driver_sql(self, sql: str, params: Any = None) -> _Result:
+            self.driver_calls.append((sql, params))
+            return _Result()
+
+    provider = SimpleNamespace(
+        _tx=None, _external_connection=True, _driver_bind=SqlAlchemyProvider._driver_bind
+    )
+    executor = _SqlAlchemyQueryExecutor(provider)  # type: ignore[arg-type]
+    sql = "UPDATE t SET c = ? WHERE d LIKE 'a%'"
+
+    for driver, expected in (
+        ("psycopg", "UPDATE t SET c = %s WHERE d LIKE 'a%%'"),
+        ("pymssql", "UPDATE t SET c = %s WHERE d LIKE 'a%'"),
+    ):
+        connection = _Connection(driver)
+        executor.execute_statement(connection, sql, ["v"])
+        assert connection.driver_calls == [(expected, ("v",))], driver
+
+
 class _RecordingCursor:
     """DB-API cursor recording the exact ``execute`` arguments it is given."""
 

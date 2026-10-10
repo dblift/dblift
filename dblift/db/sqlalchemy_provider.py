@@ -266,7 +266,9 @@ class SqlAlchemyProvider(NativeProvider, TransactionalProvider):
         """Whether a literal ``%`` must be doubled once ``%s`` placeholders are bound.
 
         pymssql substitutes ``%s``/``%(name)s`` but defines no ``%%`` escape, so doubling
-        would reach the server as two percent signs.
+        would reach the server as two percent signs. SQLAlchemy records this per dialect in
+        ``identifier_preparer._double_percents``, but that attribute is private, so the one
+        driver this is known to matter for is named here instead.
         """
         return getattr(dialect, "driver", None) != "pymssql"
 

@@ -117,10 +117,7 @@ class SqlAlchemyLeaseSession:
         connection = self._connection
         opened_here = not connection.in_transaction()
         driver_sql, bound = SqlAlchemyProvider._driver_bind(
-            sql,
-            list(params),
-            connection.dialect.paramstyle,
-            escape_percent=SqlAlchemyProvider._escapes_percent(connection.dialect),
+            sql, list(params), connection.dialect.paramstyle
         )
         try:
             result = connection.exec_driver_sql(driver_sql, bound)
