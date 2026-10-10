@@ -40,7 +40,14 @@ class StatementSplitter:
         """Split SQL content into executable statement strings."""
         parser = self._parser
         if parser is None:
-            parser = self.parser_factory.get_parser()
+            try:
+                parser = self.parser_factory.get_parser()
+            except Exception as exc:  # no parser for this dialect: the caller's fallback decides
+                if strict_tokenizer:
+                    raise
+                if self.logger:
+                    self.logger.warning(f"{self.dialect}-specific statement splitter failed: {exc}")
+                return list(fallback(sql)) if fallback is not None else []
             self._parser = parser
 
         if isinstance(parser, EnhancedRegexParser) and parser.SPLITS_WITHOUT_FALLBACK:
