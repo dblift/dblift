@@ -6,6 +6,7 @@ wrapped PL/SQL detection, and slash delimiters.
 
 from typing import List
 
+from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.core.sql_parser.base_tokenizer import BaseTokenizer
 from dblift.core.sql_parser.tokens import Token, TokenType
 
@@ -104,6 +105,10 @@ class OracleTokenizer(BaseTokenizer):
 
         # Get delimiter character
         delimiter_char = self.read()
+        if delimiter_char in " \t\r\n":
+            raise UnsafeStatementSplitError(
+                f"q-quote delimiter cannot be whitespace at line {start_line}, column {start_col}"
+            )
         string_text += delimiter_char
 
         # Map opening delimiter to closing delimiter
@@ -123,11 +128,17 @@ class OracleTokenizer(BaseTokenizer):
             close_quote = delimiter_char + "'"
 
         # Read until closing delimiter
+        closed = False
         while self.pos < len(self.sql):
             if self.peek(len(close_quote)) == close_quote:
                 string_text += self.read(len(close_quote))
+                closed = True
                 break
             string_text += self.read()
+        if not closed:
+            raise UnsafeStatementSplitError(
+                f"unterminated q-quoted string opened at line {start_line}, column {start_col}"
+            )
 
         return Token(
             TokenType.STRING,
@@ -153,6 +164,7 @@ class OracleTokenizer(BaseTokenizer):
         identifier_text += self.read()  # Opening quote
 
         # Read until closing quote
+        closed = False
         while self.pos < len(self.sql):
             char = self.peek()
             if char == '"':
@@ -161,9 +173,14 @@ class OracleTokenizer(BaseTokenizer):
                     identifier_text += self.read(2)
                 else:
                     identifier_text += self.read()  # Closing quote
+                    closed = True
                     break
             else:
                 identifier_text += self.read()
+        if not closed:
+            raise UnsafeStatementSplitError(
+                f"unterminated quoted identifier opened at line {start_line}, column {start_col}"
+            )
 
         return Token(
             TokenType.IDENTIFIER,
