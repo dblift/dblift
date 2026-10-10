@@ -7,7 +7,7 @@
 | Covers | PostgreSQL 12+; AlloyDB, Aurora PostgreSQL, Citus, CockroachDB, Neon, Supabase, TimescaleDB, YugabyteDB (all inherit this spec unchanged, see §13) |
 | Code facts taken from | OSS `develop` `61b1d83f` |
 | Vendor references, fetched 2026-10-10 | *PostgreSQL 18 documentation*, §4.1.1 Identifiers, §4.1.2.1–4.1.2.5 Constants, §4.1.5 Comments; *psql* reference, "Meta-Commands" and `\;` |
-| Live differential harness | not part of this repository's test suite |
+| Live verification | psql against PostgreSQL 15 and 16, 2026-10-10 (rows 16, 21, 25) |
 | Engine subclass | dollar-quote tags |
 
 ## 1. String literals
@@ -175,4 +175,4 @@ The string projection `split_statements()` keeps the trailing `;`; the
 | AlloyDB, Aurora PostgreSQL, Citus, Neon, Supabase, TimescaleDB | none | `make_pg_compatible_plugin` with no parser override |
 | YugabyteDB | none | `yugabytedb/plugin.py:31-39` records a live check that block comments nest |
 | CockroachDB | none | `cockroachdb/quirks.py:24-32` records a live check that block comments nest |
-| Redshift | separate spec: [redshift.md](redshift.md) | string escapes and comment nesting differ or are unverified |
+| Redshift | a separate Redshift specification (not in this repository) | string escapes and comment nesting differ or are unverified |

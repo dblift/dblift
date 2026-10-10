@@ -42,7 +42,7 @@ the extractor's concern and is covered by the model snapshot corpus, not here.
   documented equivalent, *dropped and recorded* as a `kind="directive"` entry
   in the statement list, or *rejected* with an error naming the directive.
   "Stripped" without a record is not an option.
-- **No fallback.** An input the rules do not cover raises
+- **No fallback (PostgreSQL family today).** An input the rules do not cover raises
   `UnsafeStatementSplitError` with line and column. The spec's *Not handled*
   section is the list of such inputs the authors know about.
 - **The terminator is consumed, not returned.** A statement's text excludes
@@ -52,8 +52,8 @@ the extractor's concern and is covered by the model snapshot corpus, not here.
   terminator of a raw block (`\.` after `COPY … FROM STDIN` data).
 - **An empty statement is not a statement.** Nothing but whitespace and
   comments between two terminators (a bare `;`, a `GO` after a `GO`) yields
-  no entry; a comment-only segment is dropped. Every dialect follows this
-  rule; a spec states it only where the client's behaviour is worth citing.
+  no entry; a comment-only segment is dropped. PostgreSQL follows this
+  rule today; other dialects adopt it as their specifications land; a spec states it only where the client's behaviour is worth citing.
 - **Examples are tests.** Every row of the conformance table is a test case.
   A bug report adds a row before a fix changes the engine.
 
