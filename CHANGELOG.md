@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.11.0] - 2026-10-09
+
 ### Removed
 
 - Built-in `BaseQuirks` and provider classes no longer define catalog
