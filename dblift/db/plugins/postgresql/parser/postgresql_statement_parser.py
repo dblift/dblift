@@ -183,8 +183,18 @@ class PostgreSQLStatementParser(BaseStatementParser):
         if terminator is None:
             return Statement(text=rendered, line=first.line, terminator=None)
         if terminator.type == TokenType.COPY_DATA:
-            # The data block is part of the COPY and ends with its ``\.`` line.
-            return Statement(text=rendered, line=first.line, terminator="\\.", kind="copy_stdin")
+            if self.source is None:
+                return Statement(
+                    text=rendered, line=first.line, terminator="\\.", kind="copy_stdin"
+                )
+            end = terminator.pos + len(terminator.text)
+            text = self.source[first.pos : end]
+            if not terminator.text:
+                text = text.rstrip()
+            ended = self.source[end:].lstrip().startswith("\\.")
+            return Statement(
+                text=text, line=first.line, terminator="\\." if ended else None, kind="copy_stdin"
+            )
         if rendered.endswith(terminator.text):
             rendered = rendered[: -len(terminator.text)].rstrip()
         return Statement(text=rendered, line=first.line, terminator=terminator.text)

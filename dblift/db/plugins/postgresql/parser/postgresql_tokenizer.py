@@ -307,48 +307,36 @@ class PostgreSQLTokenizer(BaseTokenizer):
         return token
 
     def handle_copy_data(self) -> Token:
-        r"""Handle a COPY FROM STDIN data block, ending at \. on its own line.
+        r"""Read COPY FROM STDIN rows up to the line that is exactly ``\.``.
 
-        The newline that ends the header's ``;`` is formatting, not data, and
-        is dropped before the token starts — otherwise a row whose first
-        column is empty (a leading tab) would lose that tab to whitespace
-        skipping.
-
-        Returns:
-            COPY_DATA token containing the data block, terminator included
+        The newline ending the header line is framing and is dropped. The token
+        text is the rows without the newline that precedes the ``\.`` line and
+        without that line; the statement parser treats that line as the
+        terminator. A line with blanks before ``\.`` is data (psql compares the
+        whole line). Rows running to the end of the script without a ``\.``
+        line are the whole remainder, as psql ends COPY at end of input.
         """
         if self.peek() == "\r":
             self.read()
         if self.peek() == "\n":
             self.read()
-
-        start_pos = self.pos
-        start_line = self.line
-        start_col = self.col
-
-        # Capture entire COPY data block
-        data_text = ""
-
-        # Read until \. on its own line
+        start_pos, start_line, start_col = self.pos, self.line, self.col
+        data_end = len(self.sql)
         while self.pos < len(self.sql):
-            # Check for \. at start of line
-            if self._is_at_line_start() and self.peek(2) == "\\.":
-                # Read the \. marker
-                data_text += self.read(2)
-                # Skip to end of line
-                while self.pos < len(self.sql) and self.peek() not in ("\n", "\r"):
-                    data_text += self.read()
-                if self.pos < len(self.sql):
-                    data_text += self.read()  # Read the newline
+            line_start = self.pos
+            newline = self.sql.find("\n", line_start)
+            line_end = len(self.sql) if newline == -1 else newline
+            if self.sql[line_start:line_end].rstrip("\r") == "\\.":
+                data_end = max(start_pos, line_start - 1)
+                if data_end > start_pos and self.sql[data_end - 1] == "\r":
+                    data_end -= 1
+                self.read(line_end - line_start + (0 if newline == -1 else 1))
                 break
-
-            # Read character
-            data_text += self.read()
-
+            self.read(line_end - line_start + (0 if newline == -1 else 1))
         self.in_copy_data = False
         return Token(
             TokenType.COPY_DATA,
-            data_text,
+            self.sql[start_pos:data_end],
             start_pos,
             start_line,
             start_col,

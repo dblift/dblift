@@ -42,7 +42,7 @@
     "sql": "COPY t (id) FROM stdin;\n1\n\\.\nSELECT 1;\n",
     "strict": false,
     "statements": [
-      "COPY t (id) FROM stdin;\n1\n\\.",
+      "COPY t (id) FROM stdin;\n1",
       "SELECT 1;"
     ],
     "error_type": null

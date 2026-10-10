@@ -45,3 +45,37 @@ def test_safe_meta_command_is_a_directive_record_hidden_from_split_statements() 
         ("sql", "SELECT 1"),
     ]
     assert parser.split_statements() == ["SELECT 1;"]
+
+
+def test_copy_stdin_record_keeps_header_and_rows_and_consumes_the_terminator_line() -> None:
+    records = _split("COPY t (a) FROM STDIN;\n1\n2\n\\.\nSELECT count(*) FROM t;")
+    assert records[0] == Statement(
+        text="COPY t (a) FROM STDIN;\n1\n2", line=1, terminator="\\.", kind="copy_stdin"
+    )
+    assert records[1].text == "SELECT count(*) FROM t"
+
+
+def test_copy_data_line_with_leading_blanks_before_backslash_period_is_data() -> None:
+    records = _split("COPY t (a) FROM STDIN;\n1\n  \\.\n\\.\nSELECT 1;")
+    assert records[0].text == "COPY t (a) FROM STDIN;\n1\n  \\."
+    assert records[0].kind == "copy_stdin"
+    assert records[1].text == "SELECT 1"
+
+
+def test_copy_data_trailing_tab_is_kept() -> None:
+    records = _split("COPY t (a, b) FROM STDIN;\n1\t\n\\.\n")
+    assert records[0].text == "COPY t (a, b) FROM STDIN;\n1\t"
+
+
+def test_copy_with_no_rows() -> None:
+    records = _split("COPY t FROM STDIN;\n\\.\nSELECT 1;")
+    assert records[0] == Statement(
+        text="COPY t FROM STDIN;", line=1, terminator="\\.", kind="copy_stdin"
+    )
+
+
+def test_copy_data_running_to_end_of_input_has_no_terminator() -> None:
+    records = _split("COPY t (a) FROM STDIN;\n1\n2")
+    assert records == [
+        Statement(text="COPY t (a) FROM STDIN;\n1\n2", line=1, terminator=None, kind="copy_stdin")
+    ]
