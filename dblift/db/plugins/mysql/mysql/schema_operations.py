@@ -13,6 +13,13 @@ from dblift.core.logger import Log, NullLog
 from dblift.core.migration.clean_summary import CleanExecutionSummary
 from dblift.db.plugins.base_schema_operations import BaseSchemaOperations
 
+# MariaDB lists a sequence in information_schema.TABLES with this type
+# (information_schema.SEQUENCES exists only from 11.5).
+_SEQUENCES_QUERY = (
+    "SELECT TABLE_NAME FROM information_schema.TABLES "
+    "WHERE TABLE_SCHEMA = ? AND TABLE_TYPE = 'SEQUENCE'"
+)
+
 
 class MySqlSchemaOperations(BaseSchemaOperations):
     """Handles MySQL schema operations and metadata queries."""
@@ -144,13 +151,16 @@ class MySqlSchemaOperations(BaseSchemaOperations):
             # 3. Drop tables (except history table)
             self._drop_tables(connection, schema, summary)
 
-            # 4. Drop functions
+            # 4. Drop sequences (MariaDB), after the tables that default to them
+            self._drop_sequences(connection, schema, summary)
+
+            # 5. Drop functions
             self._drop_functions(connection, schema, summary)
 
-            # 5. Drop procedures
+            # 6. Drop procedures
             self._drop_procedures(connection, schema, summary)
 
-            # 6. Drop events (MySQL-specific)
+            # 7. Drop events (MySQL-specific)
             self._drop_events(connection, schema, summary)
 
             # Re-enable foreign key checks
@@ -218,9 +228,9 @@ class MySqlSchemaOperations(BaseSchemaOperations):
 
         Dry-run must mirror ``clean_schema`` exactly so the user sees
         every object that will be dropped, including dblift-internal tables
-        (history / lock). Enumerates the same six kinds
-        ``clean_schema`` processes: triggers, views, tables, functions,
-        procedures, events.
+        (history / lock). Enumerates the same seven kinds
+        ``clean_schema`` processes: triggers, views, tables, sequences,
+        functions, procedures, events.
         """
         summary = CleanExecutionSummary()
 
@@ -268,6 +278,21 @@ class MySqlSchemaOperations(BaseSchemaOperations):
             "TABLE_NAME",
             lambda n: (
                 f"DROP TABLE IF EXISTS "
+                f"{self.query_executor.get_schema_qualified_name(schema, n)}"
+            ),
+            summary,
+            schema=schema,
+        )
+
+        # Sequences (MariaDB; MySQL has none, so this returns no rows there)
+        self._enumerate_objects_by_type(
+            connection,
+            "sequence",
+            _SEQUENCES_QUERY,
+            [schema],
+            "TABLE_NAME",
+            lambda n: (
+                f"DROP SEQUENCE IF EXISTS "
                 f"{self.query_executor.get_schema_qualified_name(schema, n)}"
             ),
             summary,
@@ -390,6 +415,22 @@ class MySqlSchemaOperations(BaseSchemaOperations):
             schema=schema,
             # OBS-04: lock table is dropped during clean; lock manager
             # auto-recreates it on the next acquire_migration_lock call.
+        )
+
+    def _drop_sequences(self, connection: Any, schema: str, summary: CleanExecutionSummary) -> None:
+        """Drop all sequences in the database (MariaDB 10.3+)."""
+        self._drop_objects_by_type(
+            connection,
+            "sequence",
+            _SEQUENCES_QUERY,
+            [schema],
+            "TABLE_NAME",
+            lambda n: (
+                f"DROP SEQUENCE IF EXISTS "
+                f"{self.query_executor.get_schema_qualified_name(schema, n)}"
+            ),
+            summary,
+            schema=schema,
         )
 
     def _drop_functions(self, connection: Any, schema: str, summary: CleanExecutionSummary) -> None:
