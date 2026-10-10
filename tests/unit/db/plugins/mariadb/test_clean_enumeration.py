@@ -29,7 +29,7 @@ def test_list_droppable_objects_returns_clean_preview_order_without_dropping() -
         {
             "TRIGGERS": [{"TRIGGER_NAME": "audit_trg"}],
             "VIEWS": [{"TABLE_NAME": "active_users_v"}],
-            "TABLES": [{"TABLE_NAME": "users"}],
+            "'BASE TABLE'": [{"TABLE_NAME": "users"}],
             "'FUNCTION'": [{"ROUTINE_NAME": "calc_total"}],
             "'PROCEDURE'": [{"ROUTINE_NAME": "do_thing"}],
             "EVENTS": [{"EVENT_NAME": "nightly_purge"}],
