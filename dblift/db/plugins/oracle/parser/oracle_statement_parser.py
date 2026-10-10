@@ -4,10 +4,11 @@ This module provides Oracle-specific statement parsing including
 slash delimiter handling, package bodies, and PL/SQL block detection.
 """
 
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from dblift.core.sql_parser.base_statement_parser import BaseStatementParser
 from dblift.core.sql_parser.parser_context import ParserContext
+from dblift.core.sql_parser.statement import Statement
 from dblift.core.sql_parser.tokens import Token, TokenType
 from dblift.db.plugins.oracle.parser._sqlplus import (
     is_sqlplus_command as _shared_is_sqlplus_command,
@@ -55,18 +56,29 @@ class OracleStatementParser(BaseStatementParser):
         # only at a ";" that is the last thing on its line.
         self._sqlplus_line_buffering = False
 
+    def split(self) -> List[Statement]:
+        """Cut the token stream into Statement records (see ``_split_with_rendered``)."""
+        return [record for record, _ in self._split_with_rendered()]
+
     def split_statements(self) -> List[str]:
-        """Split tokens into statements with Oracle-specific handling.
+        """Statement strings as execution receives them (``;`` of a SQL statement kept)."""
+        return [rendered for _, rendered in self._split_with_rendered()]
 
-        Overrides base implementation to:
-        1. Reset parser state after each statement
-        2. Filter standalone slash delimiters and empty statements
+    def _split_with_rendered(self) -> List[Tuple[Statement, str]]:
+        """Cut the token stream into ``(Statement, rendered)`` pairs.
 
-        Returns:
-            List of SQL statement strings
+        Resets parser state after each statement, filters standalone ``/`` and
+        ``;`` and SQL*Plus commands. ``rendered`` is the string execution
+        receives: SQL keeps its ``;``, a trailing ``/`` is never included.
         """
-        statements = []
+        records: List[Tuple[Statement, str]] = []
         current_statement_tokens: List[Token] = []
+
+        def emit(terminator: Optional[Token], is_tail: bool) -> None:
+            rendered = self._statement_text(current_statement_tokens, is_tail=is_tail)
+            if rendered and rendered not in ("/", ";"):
+                if not self._is_sqlplus_command(rendered):
+                    records.append(self._record(current_statement_tokens, rendered, terminator))
 
         for idx, token in enumerate(self.tokens):
             self.current_idx = idx
@@ -83,13 +95,7 @@ class OracleStatementParser(BaseStatementParser):
 
             # Check if this marks end of statement
             if self._is_statement_end(token):
-                stmt_stripped = self._statement_text(current_statement_tokens)
-
-                # Filter out standalone slashes, semicolons, and SQL*Plus commands
-                # SQL*Plus commands are not valid Oracle SQL for native execution
-                if stmt_stripped and stmt_stripped not in ("/", ";"):
-                    if not self._is_sqlplus_command(stmt_stripped):
-                        statements.append(stmt_stripped)
+                emit(token, is_tail=False)
 
                 # Reset for next statement
                 current_statement_tokens = []
@@ -108,14 +114,31 @@ class OracleStatementParser(BaseStatementParser):
 
         # Handle any remaining tokens
         if current_statement_tokens:
-            stmt_stripped = self._statement_text(current_statement_tokens, is_tail=True)
+            emit(None, is_tail=True)
 
-            # Filter out SQL*Plus commands
-            if stmt_stripped and stmt_stripped not in ("/", ";"):
-                if not self._is_sqlplus_command(stmt_stripped):
-                    statements.append(stmt_stripped)
+        return records
 
-        return statements
+    def _record(
+        self, tokens: List[Token], rendered: str, terminator: Optional[Token]
+    ) -> Tuple[Statement, str]:
+        """Build the record for one rendered statement and its execution string.
+
+        The record's text has the terminator removed, except that a PL/SQL
+        unit keeps its closing ``END;``: its ``;`` belongs to the unit and the
+        ``/`` that ended it is the terminator.
+        """
+        first = next(t for t in tokens if t.type != TokenType.COMMENT and t.text != "/")
+        end = terminator.text if terminator is not None else None
+        if end is None:
+            # A "/" after a SQL statement is not a statement end for the
+            # tokenizer (the delimiter is ";"), so it arrives in the tail.
+            last = next((t for t in reversed(tokens) if t.type != TokenType.COMMENT), None)
+            if last is not None and last.text == "/":
+                end = "/"
+        text = rendered
+        if end == ";" and text.endswith(";"):
+            text = text[:-1].rstrip()
+        return Statement(text=text, line=first.line, terminator=end), rendered
 
     def _statement_text(self, tokens: List[Token], is_tail: bool = False) -> str:
         """Render one statement, verbatim from source when source is known.
