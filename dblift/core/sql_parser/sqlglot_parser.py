@@ -8,12 +8,14 @@ Note: DB2 is not supported by sqlglot and uses a separate regex-based parser.
 """
 
 import logging
+import re
 from typing import Any, Dict, List, Optional, cast
 
 import sqlglot
 from sqlglot import exp, parse_one
 from sqlglot.errors import ParseError
 
+from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.core.sql_model.base import (
     ParseResult,
     SqlObject,
@@ -179,6 +181,8 @@ class SqlGlotParser(SqlParserInterface):
                     regex_parser = regex_cls()
                     result: list[str] = regex_parser.split_statements(sql_content)
                     return result
+                except UnsafeStatementSplitError:
+                    raise
                 except Exception as fallback_error:
                     logger.warning(
                         f"Regex fallback parser also failed: {str(fallback_error)}, using simple split"
@@ -269,7 +273,10 @@ class SqlGlotParser(SqlParserInterface):
             # ``_sqlglot_builders.py`` (``_build_table_model_from_sqlglot``,
             # ``_build_index_from_sqlglot``, ``_build_view_from_sqlglot``) — those are unaffected
             # by this change (dblift/dblift#379).
-            logger.warning(f"SqlGlot parse failed for object extraction (use regex fallback): {e}")
+            message = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", str(e))
+            logger.warning(
+                f"SqlGlot parse failed for object extraction (use regex fallback): {message}"
+            )
         except Exception as e:
             logger.error(f"Error extracting objects: {str(e)}")
 

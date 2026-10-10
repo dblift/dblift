@@ -8,13 +8,14 @@ from __future__ import annotations
 
 from copy import deepcopy
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Protocol, Union
+from typing import Any, Dict, List, Literal, Optional, Protocol, Union
 
 from dblift.api._engine_config import config_from_engine
 from dblift.config import DbliftConfig
 from dblift.config.config_builder import ConfigBuilder
 from dblift.config.database_config import BaseDatabaseConfig
 from dblift.config.errors import ConfigurationError
+from dblift.config.path_anchoring import anchor_config_paths
 from dblift.core.logger import DbliftLogger, LogFormat, LogLevel
 from dblift.db.native_connection_manager import NativeConnectionManager
 from dblift.db.provider_registry import ProviderRegistry
@@ -221,6 +222,7 @@ def client_from_config(
     logger: Optional[Any] = None,
     *,
     client_cls: Optional[type] = None,
+    analysis_mode: Literal["full", "execution"] = "full",
     **kwargs: Any,
 ) -> Any:
     """Create a client instance from existing configuration.
@@ -288,6 +290,7 @@ def client_from_config(
         migrations_dir=migrations_dir,
         config=client_config,
         logger=logger,
+        **({} if analysis_mode == "full" else {"analysis_mode": analysis_mode}),
         **kwargs,
     )
 
@@ -297,6 +300,8 @@ def client_from_config_file(
     logger: Optional[Any] = None,
     *,
     client_cls: Optional[type] = None,
+    relative_to_config: bool = False,
+    analysis_mode: Literal["full", "execution"] = "full",
     **overrides: Any,
 ) -> Any:
     """Create a client instance from config file path.
@@ -305,18 +310,25 @@ def client_from_config_file(
         config_path: Path to configuration file
         logger: Optional logger instance
         client_cls: Concrete client class (defaults to :class:`~api.client.DBLiftClient`)
+        relative_to_config: Resolve the file's relative paths (migration
+            directories, file database, log directory) from the folder that
+            holds ``config_path`` instead of the working directory.
         **overrides: Configuration overrides (database_url, database_schema, etc.)
 
     Returns:
         An instance of ``client_cls`` (or ``DBLiftClient`` when ``client_cls`` is omitted)
     """
     config = ConfigBuilder.build(file_path=config_path, **overrides)
+    if relative_to_config:
+        anchor_config_paths(config, Path(config_path).expanduser().resolve().parent)
     # Keys already merged into ``config`` by ConfigBuilder.build must not be passed again
     # to DBLiftClient (would re-apply or confuse nested database_* aliases).
     passthrough = {
         k: v for k, v in overrides.items() if k not in ConfigBuilder.CONFIG_BUILD_KWARG_KEYS
     }
-    return client_from_config(config, logger, client_cls=client_cls, **passthrough)
+    return client_from_config(
+        config, logger, client_cls=client_cls, analysis_mode=analysis_mode, **passthrough
+    )
 
 
 def _attach_external_sqlite_connection(provider: Any, engine: Any, connection: Any) -> None:
@@ -343,6 +355,7 @@ def client_from_sqlalchemy(
     connection: Any = None,
     config: Optional[DbliftConfig] = None,
     client_cls: Optional[type[Any]] = None,
+    analysis_mode: Literal["full", "execution"] = "full",
     **kwargs: Any,
 ) -> Any:
     """Create DBLiftClient from an existing SQLAlchemy Engine or Connection.
@@ -440,5 +453,6 @@ def client_from_sqlalchemy(
         migrations_dir=migrations_dir or getattr(derived.migrations, "directory", None),
         config=derived,
         logger=logger,
+        **({} if analysis_mode == "full" else {"analysis_mode": analysis_mode}),
         **kwargs,
     )

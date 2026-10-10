@@ -1,6 +1,7 @@
 """Unit tests for CLI db_utils functionality."""
 
 import argparse
+import importlib.metadata
 import json
 import os
 import tempfile
@@ -207,6 +208,43 @@ history_table: my_history
         assert result == 0
         captured = capsys.readouterr()
         assert "unrecognized" not in captured.err.lower()
+
+    def test_extension_declared_sections_are_not_reported(self, tmp_path, capsys, monkeypatch):
+        from dblift.config.dblift_config import extension_config_keys
+
+        entry_point = MagicMock()
+        entry_point.name = "ext"
+        entry_point.load.return_value = lambda: ["preflight"]
+        monkeypatch.setattr(
+            importlib.metadata,
+            "entry_points",
+            lambda group: [entry_point] if group == "dblift.config_keys" else [],
+        )
+        extension_config_keys.cache_clear()
+        config_path = self._write_config(
+            tmp_path,
+            """
+database:
+  type: sqlite
+  path: ./test.db
+preflight:
+  enabled: true
+environments:
+  prod:
+    preflight:
+      enabled: false
+preflihgt: {}
+""",
+        )
+
+        try:
+            result = validate_config(self._make_args(config_path))
+        finally:
+            extension_config_keys.cache_clear()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "unrecognized configuration key(s): preflihgt." in captured.err
 
 
 class TestDiagnoseConnection:

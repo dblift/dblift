@@ -564,6 +564,27 @@ class TestExecuteSingleMigration(unittest.TestCase):
 
 
 class TestExecuteMigrationLoop(unittest.TestCase):
+    def test_second_failure_advances_once_and_skips_third(self):
+        from contextlib import nullcontext
+
+        cmd = _make_cmd()
+        migrations = [_make_migration(f"V{i}__step.sql") for i in range(1, 4)]
+        cmd._execute_single_migration = MagicMock(side_effect=[True, False])
+        sink = MagicMock()
+
+        with patch(
+            "dblift.core.migration.commands.migrate_command.migration_progress",
+            return_value=nullcontext(sink),
+        ) as progress:
+            cmd._execute_migration_loop(
+                migrations, Path("/migrations"), True, None, None, MigrateResult()
+            )
+
+        progress.assert_called_once_with(cmd.log, 3)
+        self.assertEqual(cmd._execute_single_migration.call_count, 2)
+        self.assertEqual(sink.describe.call_count, 2)
+        sink.advance.assert_called_once_with()
+
     def test_stops_after_first_failure(self):
         """Migration loop should break after a failure (not execute next migration)."""
         cmd = _make_cmd()

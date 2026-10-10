@@ -73,6 +73,7 @@ Everything below ships in the open-source package.
 | **Preview** | `migrate --dry-run --show-sql` prints every statement that would run. Same for `undo`. |
 | **Undo** | Pair `V3__x.sql` with `U3__x.sql`; `dblift undo` rolls back one step or to a target version. [Undo model →](https://docs.dblift.com/undo-model/) |
 | **Checksums** | `dblift validate` fails when an applied file was edited, a recorded file is missing, or two files claim the same version. |
+| **SQL checks** | `dblift validate-sql` reads your migration SQL without connecting and gives each script a verdict, `SAFE`, `REVIEW` or `UNSAFE`, for statements that destroy data, break the deployed application or lock a table. [SQL checks →](https://docs.dblift.com/commands/#checking-migration-sql) |
 | **Baseline** | Adopt a database that already exists: declare "this one is at version N" and carry on from there. |
 | **Repeatable migrations** | `R__views.sql` re-runs when its content changes — a home for views, functions, grants and seed data. |
 | **Locking** | A lock table serialises concurrent runs; a second runner waits, then skips what the first one applied. |
@@ -143,7 +144,6 @@ roll back, and import from Flyway. When review risk grows, the Pro tier adds:
 
 | Feature | Command | What it does |
 |---|---|---|
-| Static SQL analysis | `dblift validate-sql` | Lints migration files with rule-based checks — catches issues before they reach the database. Built-in rule profiles (core, enterprise, strict). CI-friendly output formats (GitHub Actions, SARIF, GitLab). |
 | Schema drift detection | `dblift diff` | Compares live database state with what your migrations define. Surfaces objects that have drifted. |
 | Schema export | `dblift export-schema` | Exports the current schema to SQL migration files. Useful for brownfield onboarding. |
 

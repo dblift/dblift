@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import contextlib
 import io
-import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Protocol, Tuple, TypeVar
@@ -18,20 +17,14 @@ from dblift.core.migration.commands.base_command import (
     PreflightConnectionError,
     reported_exception_name,
 )
-
-# Flyway-compatible migration filename patterns — used by SQL-file validation to
-# skip non-migration SQL files when scanning a directory (e.g. leftover
-# temp files, schema dumps) so only intentional migration scripts are
-# checked. Explicitly-listed files are always validated regardless of name.
-_MIGRATION_FILENAME_RE = re.compile(
-    r"^[VRUBvrub][\d_.]*__.*\.sql$",
-    re.IGNORECASE,
+from dblift.core.migration.scripting.filename_parser import (
+    MIGRATION_SQL_FILENAME_RE,
+    is_migration_sql_file,
 )
 
-
-def _is_migration_sql_file(path: Path) -> bool:
-    """Return True iff the filename matches the Flyway migration naming convention."""
-    return bool(_MIGRATION_FILENAME_RE.match(path.name))
+# The migration SQL filename rule lives in core; these names stay for existing importers.
+_MIGRATION_FILENAME_RE = MIGRATION_SQL_FILENAME_RE
+_is_migration_sql_file = is_migration_sql_file
 
 
 def _minimal_result(success: bool) -> Any:
@@ -187,7 +180,8 @@ def _migration_info_to_dict(m: Any) -> Dict[str, Any]:
     """Serialise one ``MigrationInfo`` row for ``--format json`` payloads.
 
     Shared by ``info``, ``validate`` and ``migrate`` so the row shape is one
-    contract, not three.
+    contract, not three. ``analysis`` is what ``script_analysis`` read from a
+    pending script, or ``None``.
     """
     installed_on = getattr(m, "installed_on", None)
     return {
@@ -205,6 +199,7 @@ def _migration_info_to_dict(m: Any) -> Dict[str, Any]:
         "installed_by": m.installed_by,
         "execution_time": m.execution_time,
         "error": getattr(m, "error", None),
+        "analysis": getattr(m, "analysis", None),
     }
 
 

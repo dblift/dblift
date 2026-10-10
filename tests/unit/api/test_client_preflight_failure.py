@@ -235,8 +235,8 @@ class TestClientPreflightFailureRealCommands:
     # clean does not need the schema-history table, so it has no such failure.
     @pytest.mark.parametrize(
         "method,executor_method,kwargs,result_cls,failed_event",
-        [command for command in _COMMANDS if command[0] != "clean"],
-        ids=[name for name in _IDS if name != "clean"],
+        [command for command in _COMMANDS if command[0] not in ("clean", "info", "undo")],
+        ids=[name for name in _IDS if name not in ("clean", "info", "undo")],
     )
     def test_history_table_creation_failure(
         self, tmp_path, monkeypatch, method, executor_method, kwargs, result_cls, failed_event

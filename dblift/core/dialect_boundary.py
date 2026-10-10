@@ -49,26 +49,12 @@ only the deltas.
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING, Any, Optional, Protocol, Type, runtime_checkable
-
-if TYPE_CHECKING:
-    from dblift.db.generator_protocol import AlterGeneratorProtocol, SqlGeneratorProtocol
+from typing import Any, Protocol, runtime_checkable
 
 
 @runtime_checkable
 class DdlQuirks(Protocol):
-    """DDL / SQL-rendering hooks.
-
-    First hooks: the DDL generator class and the ALTER generator class
-    for this dialect, consumed by a ``SqlGeneratorProtocol`` implementation.
-    Returning ``None`` means no dialect-specific generator is provided.
-    """
-
-    def ddl_generator_class(self) -> Optional[Type["SqlGeneratorProtocol"]]:
-        """Return the dialect-specific DDL generator class, or ``None``."""
-
-    def alter_generator_class(self) -> Optional[Type["AlterGeneratorProtocol"]]:
-        """Return the dialect-specific ALTER generator class, or ``None``."""
+    """DDL execution and connection capability fields."""
 
     non_transactional_sql_patterns: "tuple[tuple[str, str], ...]"
     native_driver_display: str
@@ -83,24 +69,9 @@ class ParserQuirks(Protocol):
 
 @runtime_checkable
 class ModelQuirks(Protocol):
-    """Domain-model rendering hooks.
-
-    First hook: how a dialect wraps a trigger body when rendering to
-    SQL. Oracle requires ``BEGIN`` / ``END`` blocks; other dialects
-    pass the body through unchanged. The framework calls
-    ``provider.quirks.wrap_trigger_body(body)`` from
-    :meth:`dblift.core.sql_model.trigger.Trigger._format_body`.
-    """
+    """Domain-model rendering hooks."""
 
     event_supports_mysql_schedule: bool
-
-    def wrap_trigger_body(self, body: str) -> str:
-        """Wrap a trigger body in dialect-specific delimiters.
-
-        Default: return ``body`` unchanged. Oracle prepends ``BEGIN\\n``
-        when the body doesn't already start with ``DECLARE`` or
-        ``BEGIN``.
-        """
 
 
 @runtime_checkable

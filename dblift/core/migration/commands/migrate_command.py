@@ -28,6 +28,8 @@ from dblift.core.migration.migration import (
 )
 from dblift.core.migration.rules.migration_rules import MigrationRules
 from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
+from dblift.core.migration.sql.lint import SAFE, lint_pending_scripts
+from dblift.core.migration.sql.script_analysis import dialect_of
 from dblift.core.migration.state.migration_state import MigrationReadSnapshot
 from dblift.core.migration.state.migration_state_manager import (
     MigrationStateManager,
@@ -35,6 +37,7 @@ from dblift.core.migration.state.migration_state_manager import (
 )
 from dblift.core.migration.state.rank_wins import installed_rank, latest_successful_ranks
 from dblift.core.migration.ui.migration_ui import MigrationUI
+from dblift.core.migration.ui.progress import migration_progress
 from dblift.core.migration.version_utils import compare_versions, is_migration_success
 from dblift.core.sql_validator.migration_validator import MigrationValidator
 from dblift.db.base_provider import BaseProvider
@@ -109,9 +112,12 @@ class MigrateCommand(BaseCommand):
         Returns:
             Tuple of (validation_success, use_recursive, use_additional_dirs)
         """
-        # Canonical preflight (ADR-0011): connect → ensure history (skipped
-        # in dry-run to preserve byte-identical DB) → populate.
-        self._run_preflight(result, ensure_history=True, dry_run=dry_run)
+        # Connect before reading state. Execution mode delays history creation
+        # until selected SQL is classified; dry-run leaves the database untouched.
+        defer_history = not dry_run and not mark_as_executed and not self._capture_objects
+        self._run_preflight(
+            result, ensure_history=not defer_history, dry_run=dry_run, ensure_schema=True
+        )
 
         # Log command execution with filters and connection info
         self._log_command_header_update(
@@ -163,9 +169,31 @@ class MigrateCommand(BaseCommand):
                 self._log_command_completion("migrate", result)
                 return result
 
+        dialect = dialect_of(self.config)
+        analysed = (
+            lint_pending_scripts(
+                pending_migrations,
+                dialect,
+                self.log,
+                enabled=self._capture_objects,
+            )
+            if dialect
+            else {}
+        )
+
         self.log.info("DRY RUN: Would execute the following migrations:")
         for migration in pending_migrations:
-            self.log.info(f"  - {migration.script_name}")
+            analysis = analysed.get(migration.script_name)
+            verdict = f" [{analysis['verdict']}]" if analysis and "verdict" in analysis else ""
+            self.log.info(f"  - {migration.script_name}{verdict}")
+            for finding in (analysis or {}).get("findings", []):
+                if not finding["allowed"]:
+                    # dedupe=False: the same finding can recur in another script.
+                    self.log.warning(
+                        f"      {finding['severity']} {finding['code']}, "
+                        f"statement {finding['statement'] + 1}: {finding['message']}",
+                        dedupe=False,
+                    )
             # Appended directly (not via `result.add_migration`): that method
             # flips `result.success` to False for any non-SUCCESS status,
             # which would wrongly mark a clean dry run as failed.
@@ -177,8 +205,11 @@ class MigrateCommand(BaseCommand):
                     type=migration.type.value if migration.type else "SQL",
                     status="PENDING",
                     checksum=migration.checksum,
+                    analysis=analysis,
                 )
             )
+        if any(a.get("verdict", SAFE) != SAFE for a in analysed.values()):
+            self.log.info("Run `dblift validate-sql` to see the statement behind each finding.")
         result.dry_run_count = len(pending_migrations)
         # Note: Callbacks are NOT executed in dry-run mode
         self._log_command_completion("migrate", result)
@@ -590,33 +621,22 @@ class MigrateCommand(BaseCommand):
         result: MigrateResult,
     ) -> None:
         """Execute the main migration loop."""
-        from rich.progress import (
-            BarColumn,
-            MofNCompleteColumn,
-            Progress,
-            SpinnerColumn,
-            TextColumn,
-            TimeElapsedColumn,
-        )
-
-        from dblift.core.logger.console import get_stderr_console, is_progress_disabled
-
         self.log.debug(
             f"Starting execution loop for {len(pending_migrations)} pending migration(s)"
         )
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            MofNCompleteColumn(),
-            TimeElapsedColumn(),
-            console=get_stderr_console(),
-            transient=True,
-            disable=is_progress_disabled(),
-        ) as progress:
-            task = progress.add_task("Migrating", total=len(pending_migrations))
+        with migration_progress(self.log, len(pending_migrations)) as progress:
             for migration in pending_migrations:
-                progress.update(task, description=f"{migration.script_name}")
+                if self._migration_lock_lost():
+                    # Another migrate may already be running; the migration in
+                    # flight could not be interrupted safely, the next must not start.
+                    message = (
+                        "The migration lock was lost (taken over by another process or "
+                        f"not renewable); stopping before {migration.script_name}"
+                    )
+                    self.log.error(message)
+                    result.set_error(message)
+                    break
+                progress.describe(f"{migration.script_name}")
                 self.log.debug(
                     f"About to execute migration: {migration.script_name} (version: {migration.version})"
                 )
@@ -637,7 +657,12 @@ class MigrateCommand(BaseCommand):
                     # the bar would read "3/5 done" while only 2 actually
                     # completed. Stop without advancing.
                     break
-                progress.advance(task)
+                progress.advance()
+
+    def _migration_lock_lost(self) -> bool:
+        """Whether the provider reports the migration lock it holds as lost."""
+        lock_lost = getattr(self.provider, "migration_lock_lost", None)
+        return callable(lock_lost) and lock_lost() is True
 
     def _update_final_state(
         self,
@@ -722,6 +747,9 @@ class MigrateCommand(BaseCommand):
         """
         from dblift.core.seams.runtime_checks import run_checks
 
+        if not dry_run and not mark_as_executed:
+            self._prepare_required_analysis()
+
         # A dry run applies nothing, so the pre-migrate checks that gate
         # applying a migration do not run for it — the same reason the
         # per-statement migration.pre_execution checks never fire in dry-run.
@@ -804,6 +832,40 @@ class MigrateCommand(BaseCommand):
             )
             self._enforce_strict_ordering(pending_migrations, current_version, strict_mode)
 
+            if not dry_run and not mark_as_executed and not self._capture_objects:
+                if pending_migrations:
+                    events = [
+                        "beforeMigrate",
+                        "afterMigrate",
+                        "afterMigrateError",
+                        "beforeEach",
+                        "afterEach",
+                        "beforeEachMigrate",
+                        "afterEachMigrate",
+                    ]
+                    if any(
+                        getattr(m.type, "value", m.type) in VERSIONED_SCRIPT_TYPES
+                        for m in pending_migrations
+                    ):
+                        events.extend(("beforeVersioned", "afterVersioned"))
+                    if any(m.type == MigrationType.REPEATABLE for m in pending_migrations):
+                        events.extend(("beforeRepeatable", "afterRepeatable"))
+                    callback_snapshot = self.state_manager.new_callback_snapshot()
+                    callbacks = [
+                        callback
+                        for event in events
+                        for callback in self.state_manager.get_callbacks_by_event(
+                            scripts_dir,
+                            event,
+                            read_snapshot=callback_snapshot,
+                            recursive=use_recursive,
+                            additional_dirs=use_additional_dirs,
+                            dir_recursive_map=dir_recursive_map,
+                        )
+                    ]
+                    self._preflight_execution_sql(pending_migrations + callbacks)
+                self._run_preflight(result, ensure_history=True, ensure_schema=True)
+
             if getattr(self, "validator", None) is None:
                 validation_success, validation_errors, validation_time = True, None, 0.0
             else:
@@ -873,10 +935,13 @@ class MigrateCommand(BaseCommand):
                     if not self.provider.acquire_migration_lock(
                         self.config.database.schema, wait_timeout_seconds=60
                     ):
-                        result.set_error(
+                        refusal = (
                             "Could not acquire migration lock - another migration may be running"
                         )
+                        self.log.error(refusal)
+                        result.set_error(refusal)
                         result.complete()
+                        self._log_command_completion("migrate", result)
                         return result
 
                     lock_acquired = True
@@ -966,8 +1031,16 @@ class MigrateCommand(BaseCommand):
                     # Always release the migration lock if it was acquired
                     if lock_acquired:
                         try:
-                            self.provider.release_migration_lock(self.config.database.schema)
-                            self.log.debug("Migration lock released successfully")
+                            released = self.provider.release_migration_lock(
+                                self.config.database.schema
+                            )
+                            if released is False:
+                                self.log.warning(
+                                    "The migration lock was no longer held by this run "
+                                    "(lost or already released); nothing to release"
+                                )
+                            else:
+                                self.log.debug("Migration lock released successfully")
                         except Exception as release_e:
                             self.log.warning(f"Could not release migration lock: {release_e}")
 

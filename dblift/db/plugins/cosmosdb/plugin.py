@@ -7,11 +7,13 @@ from dblift.db.plugins.cosmosdb.provider import CosmosDbProvider
 from dblift.db.plugins.cosmosdb.quirks import CosmosdbQuirks
 from dblift.db.provider_registry import PluginInfo
 
+from .descriptor import DESCRIPTOR
+
 PLUGIN: PluginInfo = PluginInfo(
-    name="cosmosdb",
+    name=DESCRIPTOR.name,
     version="1.0.0",
     description="Azure Cosmos DB provider",
-    dialects=["cosmosdb", "cosmos", "nosql"],
+    dialects=list(DESCRIPTOR.dialects),
     provider_class=CosmosDbProvider,
     transport="native",
     quirks_class=CosmosdbQuirks,

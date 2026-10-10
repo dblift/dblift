@@ -15,6 +15,7 @@ from dblift.db.plugins.oracle.provider import (
     _schema_object,
 )
 from dblift.db.sqlalchemy_provider import SqlAlchemyProvider
+from tests.unit.db.plugins.lease_support import route_lease_to
 
 
 def _raise(exc):
@@ -57,6 +58,8 @@ class _Provider(OracleProvider):
         self.log = MagicMock()
         self.config = SimpleNamespace(database=SimpleNamespace(type="oracle", username=username))
         self._lock_handles = {}
+        # The table-fallback lease runs on its own connection; record it too.
+        route_lease_to(self)
 
     def execute_query(self, sql, params=None):
         self.queries.append((sql, params))
@@ -616,6 +619,7 @@ class TestAcquireMigrationLock:
 
         assert p.acquire_migration_lock("MYSCHEMA") is True
         assert any("INSERT INTO" in s[0] for s in p.statements)
+        p.release_migration_lock("MYSCHEMA")
 
     def test_exception_during_request_falls_back_to_table_lock(self):
         p = _Provider(username="MYSCHEMA")
@@ -625,6 +629,7 @@ class TestAcquireMigrationLock:
         p.query_results["DBMS_LOCK.REQUEST"] = _raise(Exception("DBMS_LOCK not available"))
 
         assert p.acquire_migration_lock("MYSCHEMA") is True
+        p.release_migration_lock("MYSCHEMA")
 
     def test_timeout_returns_false(self):
         p = _Provider()
@@ -637,20 +642,27 @@ class TestAcquireMigrationLock:
 
 
 class TestAcquireTableLock:
-    def test_succeeds_first_try(self):
-        p = _Provider(username="MYSCHEMA")
+    """The table fallback, reached when DBMS_LOCK is unavailable, is a lease."""
+
+    @staticmethod
+    def _without_dbms_lock(p):
+        p.query_results["GET_HASH_VALUE"] = _raise(Exception("PLS-00201: DBMS_UTILITY"))
         p.query_results["FROM ALL_USERS WHERE username"] = [{"user_count": 1}]
         p.query_results["TABLE_NAME = ?"] = [{"cnt": 1}]
+        return p
 
-        result = p._acquire_table_lock("MYSCHEMA", "LOCK1", "LOCK1", 60)
+    def test_succeeds_first_try(self):
+        p = self._without_dbms_lock(_Provider(username="MYSCHEMA"))
+
+        result = p.acquire_migration_lock("MYSCHEMA", 60)
 
         assert result is True
-        assert p._lock_handles["LOCK1"] is None
+        assert p._migration_lease is not None
+        assert p.get_lock_key("MYSCHEMA") not in p._lock_handles
+        p.release_migration_lock("MYSCHEMA")
 
     def test_retries_on_unique_violation_then_succeeds(self):
-        p = _Provider(username="MYSCHEMA")
-        p.query_results["FROM ALL_USERS WHERE username"] = [{"user_count": 1}]
-        p.query_results["TABLE_NAME = ?"] = [{"cnt": 1}]
+        p = self._without_dbms_lock(_Provider(username="MYSCHEMA"))
         attempts = iter([Exception("ORA-00001: unique constraint violated"), 1])
 
         def insert_result(_sql, _schema, _params):
@@ -661,27 +673,24 @@ class TestAcquireTableLock:
 
         p.statement_results["INSERT INTO"] = insert_result
 
-        result = p._acquire_table_lock("MYSCHEMA", "LOCK1", "LOCK1", 60)
+        result = p.acquire_migration_lock("MYSCHEMA", 60)
 
         assert result is True
+        p.release_migration_lock("MYSCHEMA")
 
-    def test_non_retryable_error_returns_false(self):
-        p = _Provider(username="MYSCHEMA")
-        p.query_results["FROM ALL_USERS WHERE username"] = [{"user_count": 1}]
-        p.query_results["TABLE_NAME = ?"] = [{"cnt": 1}]
+    def test_non_retryable_error_propagates(self):
+        p = self._without_dbms_lock(_Provider(username="MYSCHEMA"))
         p.statement_results["INSERT INTO"] = Exception("ORA-00942: table or view does not exist")
 
-        result = p._acquire_table_lock("MYSCHEMA", "LOCK1", "LOCK1", 60)
-
-        assert result is False
-        p.log.warning.assert_called()
+        with pytest.raises(Exception, match="ORA-00942"):
+            p.acquire_migration_lock("MYSCHEMA", 60)
 
     def test_timeout_returns_false(self):
-        p = _Provider(username="MYSCHEMA")
-        p.query_results["FROM ALL_USERS WHERE username"] = [{"user_count": 1}]
-        p.query_results["TABLE_NAME = ?"] = [{"cnt": 1}]
+        p = self._without_dbms_lock(_Provider(username="MYSCHEMA"))
+        p.statement_results["INSERT INTO"] = Exception("ORA-00001: unique constraint violated")
+        p.statement_results["DELETE FROM"] = 0
 
-        result = p._acquire_table_lock("MYSCHEMA", "LOCK1", "LOCK1", 0)
+        result = p.acquire_migration_lock("MYSCHEMA", 0)
 
         assert result is False
 
@@ -699,7 +708,9 @@ class TestReleaseMigrationLock:
         assert result is True
         assert lock_key not in p._lock_handles
 
-    def test_native_release_nonzero_and_table_delete_succeeds(self):
+    def test_native_release_nonzero_leaves_the_lock_table_alone(self):
+        """A DBMS_LOCK holder never deletes a row of the table fallback: that
+        row belongs to whichever process holds the table lease."""
         p = _Provider()
         lock_key = p.get_lock_key("MYSCHEMA")
         p._lock_handles[lock_key] = 555
@@ -709,7 +720,8 @@ class TestReleaseMigrationLock:
 
         result = p.release_migration_lock("MYSCHEMA")
 
-        assert result is True
+        assert result is False
+        assert not any("DELETE FROM" in s[0] for s in p.statements)
 
     def test_native_release_raises_is_handled(self):
         p = _Provider()
@@ -732,7 +744,7 @@ class TestReleaseMigrationLock:
 
         assert result is False
 
-    def test_table_exists_check_raises_is_handled(self):
+    def test_native_release_does_not_consult_the_lock_table(self):
         p = _Provider()
         lock_key = p.get_lock_key("MYSCHEMA")
         p._lock_handles[lock_key] = 555
@@ -742,7 +754,7 @@ class TestReleaseMigrationLock:
         result = p.release_migration_lock("MYSCHEMA")
 
         assert result is True
-        p.log.debug.assert_called()
+        assert not any("TABLE_NAME = ?" in q[0] for q in p.queries)
 
 
 class TestCreateHistoryTable:
@@ -797,26 +809,6 @@ class TestCheckBaselineSafety:
         p.query_results["SELECT COUNT(1) AS count"] = [{"count": 0}]
 
         p._check_baseline_safety("MYSCHEMA", "dblift_schema_history")  # no exception
-
-
-class TestCreateSnapshotTableIfNotExists:
-    def test_creates_when_missing(self):
-        p = _Provider(username="MYSCHEMA")
-        p.query_results["FROM ALL_USERS WHERE username"] = [{"user_count": 1}]
-        p.query_results["TABLE_NAME = ?"] = [{"cnt": 0}]
-
-        p.create_snapshot_table_if_not_exists("MYSCHEMA")
-
-        assert any("MODEL_DATA CLOB" in s[0] for s in p.statements)
-
-    def test_skips_when_exists(self):
-        p = _Provider(username="MYSCHEMA")
-        p.query_results["FROM ALL_USERS WHERE username"] = [{"user_count": 1}]
-        p.query_results["TABLE_NAME = ?"] = [{"cnt": 1}]
-
-        p.create_snapshot_table_if_not_exists("MYSCHEMA")
-
-        assert p.statements == []
 
 
 class TestRecordMigration:

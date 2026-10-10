@@ -14,9 +14,14 @@ from dblift.core.migration.clean_summary import CleanExecutionSummary
 from dblift.core.migration.migration import success_to_bool
 from dblift.db.object_naming import dictionary_identifier, get_normalized_object_name
 from dblift.db.plugins.base_history_manager import UNDO_HISTORY_TYPE, installed_on_to_bind
+from dblift.db.plugins.sql_lease_store import (
+    OWNER_COLUMN,
+    SqlLeaseDialect,
+    SqlLeaseLockingProvider,
+    ensure_owner_column,
+)
 from dblift.db.provider_interfaces import DroppableObject
 from dblift.db.provider_registry import ProviderRegistry
-from dblift.db.sqlalchemy_provider import SqlAlchemyProvider
 
 
 def _q(name: str) -> str:
@@ -85,6 +90,19 @@ def _row_value(row: Dict[str, Any], *names: str, default: Any = None) -> Any:
     return default
 
 
+_OWNER_COLUMN = OWNER_COLUMN.upper()
+
+
+def _seconds_before(clock: str, seconds: str) -> str:
+    return f"{clock} - NUMTODSINTERVAL({seconds}, 'SECOND')"
+
+
+def _is_resource_busy(error: BaseException) -> bool:
+    """ORA-00054 / ORA-30006: the lock row is held by another writer right now."""
+    message = str(error).lower()
+    return "ora-00054" in message or "ora-30006" in message
+
+
 def _is_already_exists_error(error: Exception) -> bool:
     msg = str(error).lower()
     return (
@@ -97,7 +115,7 @@ def _is_already_exists_error(error: Exception) -> bool:
     )
 
 
-class OracleProvider(SqlAlchemyProvider):
+class OracleProvider(SqlLeaseLockingProvider):
     """Oracle provider implementation using native SQLAlchemy/python-oracledb."""
 
     canonical_dialect_key = "oracle"
@@ -447,11 +465,21 @@ class OracleProvider(SqlAlchemyProvider):
         return [str(_row_value(row, "username")) for row in rows]
 
     def create_migration_lock_table_if_not_exists(self, schema: str) -> None:
-        """Create the fallback Oracle migration lock table if missing."""
+        """Create the fallback Oracle migration lock table if missing.
+
+        A table created before the lease lacks the owner column; it is added.
+        """
         self._guard_unquoted_existing_schema(schema)
         self.create_schema_if_not_exists(schema)
         table = self.MIGRATION_LOCK_TABLE
         if self.table_exists(schema, table):
+            ensure_owner_column(
+                self.execute_query,
+                self.execute_statement,
+                self.get_columns_query(schema, table),
+                self.get_add_column_sql(schema, table, _OWNER_COLUMN, "VARCHAR2(64)"),
+                column=_OWNER_COLUMN,
+            )
             return
         try:
             self.execute_statement(f"""
@@ -461,7 +489,8 @@ class OracleProvider(SqlAlchemyProvider):
                     ACQUIRED_BY VARCHAR2(256) DEFAULT USER NOT NULL,
                     SESSION_ID NUMBER DEFAULT SYS_CONTEXT('USERENV','SID') NOT NULL,
                     PROCESS_ID VARCHAR2(64),
-                    LOCK_MODE NUMBER DEFAULT {self.LOCK_X_MODE} NOT NULL
+                    LOCK_MODE NUMBER DEFAULT {self.LOCK_X_MODE} NOT NULL,
+                    {_OWNER_COLUMN} VARCHAR2(64)
                 )
                 """)
         except Exception as e:
@@ -471,7 +500,11 @@ class OracleProvider(SqlAlchemyProvider):
             raise
 
     def acquire_migration_lock(self, schema: str, wait_timeout_seconds: int = 60) -> bool:
-        """Acquire an Oracle migration lock using DBMS_LOCK with table fallback."""
+        """Acquire an Oracle migration lock using DBMS_LOCK with table fallback.
+
+        The fallback is a lease in the lock table, reclaimed once its holder
+        stops refreshing it (DBMS_LOCK locks end with the session).
+        """
         lock_name = self.get_lock_name(schema)
         lock_key = self.get_lock_key(schema)
         try:
@@ -503,65 +536,44 @@ class OracleProvider(SqlAlchemyProvider):
         except Exception as e:
             self.log.debug(f"Oracle DBMS_LOCK unavailable; falling back to table lock: {e}")
 
-        return self._acquire_table_lock(schema, lock_name, lock_key, wait_timeout_seconds)
+        return super().acquire_migration_lock(schema, wait_timeout_seconds)
 
-    def _acquire_table_lock(
-        self, schema: str, lock_name: str, lock_key: str, wait_timeout_seconds: int
-    ) -> bool:
-        """Acquire the fallback table-based Oracle migration lock."""
-        self.create_migration_lock_table_if_not_exists(schema)
-        start_time = time.time()
-        process_id = str(os.getpid())
-        while time.time() - start_time < wait_timeout_seconds:
-            try:
-                self.execute_statement(
-                    f"""
-                    INSERT INTO {_schema_object(schema, self.MIGRATION_LOCK_TABLE)}
-                    (LOCK_NAME, ACQUIRED_AT, ACQUIRED_BY, SESSION_ID, PROCESS_ID, LOCK_MODE)
-                    VALUES (?, CURRENT_TIMESTAMP, USER, SYS_CONTEXT('USERENV','SID'), ?, ?)
-                    """,
-                    params=[lock_name, process_id, self.LOCK_X_MODE],
-                )
-                self._lock_handles[lock_key] = None
-                return True
-            except Exception as e:
-                msg = str(e).lower()
-                if "unique" in msg or "ora-00001" in msg or "integrity" in msg:
-                    time.sleep(1)
-                    continue
-                self.log.warning(f"Table-based Oracle lock insert failed: {e}")
-                return False
-        return False
+    def _migration_lease_dialect(self, schema: str) -> SqlLeaseDialect:
+        """Describe the fallback lock table; rows before the lease used ``CURRENT_TIMESTAMP``."""
+        return SqlLeaseDialect(
+            table=_schema_object(schema, self.MIGRATION_LOCK_TABLE),
+            lock_name=self.get_lock_name(schema),
+            name_column="LOCK_NAME",
+            timestamp_column="ACQUIRED_AT",
+            owner_column=_OWNER_COLUMN,
+            now_utc="SYS_EXTRACT_UTC(SYSTIMESTAMP)",
+            legacy_now="CURRENT_TIMESTAMP",
+            seconds_before=_seconds_before,
+            is_busy=_is_resource_busy,
+            insert_values=(
+                ("ACQUIRED_BY", "USER"),
+                ("SESSION_ID", "SYS_CONTEXT('USERENV','SID')"),
+                ("PROCESS_ID", "?"),
+                ("LOCK_MODE", "?"),
+            ),
+            insert_params=(str(os.getpid()), self.LOCK_X_MODE),
+        )
 
     def release_migration_lock(self, schema: str) -> bool:
-        """Release DBMS_LOCK or fallback table lock for a schema."""
-        lock_name = self.get_lock_name(schema)
-        lock_key = self.get_lock_key(schema)
-        lock_handle = self._lock_handles.get(lock_key)
-        released = False
-
-        if lock_handle is not None:
-            try:
-                rows = self.execute_query(
-                    "SELECT DBMS_LOCK.RELEASE(?) AS result FROM DUAL", [lock_handle]
-                )
-                released = bool(rows and int(_row_value(rows[0], "result", default=-1)) == 0)
-            except Exception as e:
-                self.log.debug(f"Could not release Oracle DBMS_LOCK: {e}")
-
+        """Release the fallback table lease or the DBMS_LOCK held for a schema."""
+        lock_handle = self._lock_handles.pop(self.get_lock_key(schema), None)
+        if self._migration_lease is not None:
+            return super().release_migration_lock(schema)
+        if lock_handle is None:
+            return False
         try:
-            if self.table_exists(schema, self.MIGRATION_LOCK_TABLE):
-                affected = self.execute_statement(
-                    f"DELETE FROM {_schema_object(schema, self.MIGRATION_LOCK_TABLE)} "
-                    "WHERE LOCK_NAME = ?",
-                    params=[lock_name],
-                )
-                released = released or affected > 0
+            rows = self.execute_query(
+                "SELECT DBMS_LOCK.RELEASE(?) AS result FROM DUAL", [lock_handle]
+            )
         except Exception as e:
-            self.log.debug(f"Could not release Oracle table lock: {e}")
-
-        self._lock_handles.pop(lock_key, None)
-        return released
+            self.log.debug(f"Could not release Oracle DBMS_LOCK: {e}")
+            return False
+        return bool(rows and int(_row_value(rows[0], "result", default=-1)) == 0)
 
     def create_history_table(self, schema: str, table_name: str = DEFAULT_HISTORY_TABLE) -> str:
         """Return the DDL for the Oracle migration history table."""

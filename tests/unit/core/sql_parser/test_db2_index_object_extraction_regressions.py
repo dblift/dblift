@@ -65,13 +65,11 @@ class TestDb2IndexObjectSchemaRegexParser:
         assert objects[0].schema == "IDXSCHEMA"
 
     def test_create_index_quoted_name(self):
-        # Quoting does not preserve case here - the same is true for every
-        # other Db2 object pattern (e.g. a quoted table name uppercases
-        # too), a pre-existing behavior this fix does not change.
+        # A quoted name keeps its exact text; Db2 only folds unquoted names.
         objects = self.parser.extract_objects('CREATE INDEX "idx 1" ON "myschema"."mytable" (col);')
 
         assert len(objects) == 1
-        assert objects[0].name == "IDX 1"
+        assert objects[0].name == "idx 1"
         assert objects[0].schema == "SYSIBM"
 
     def test_drop_index_unqualified(self):

@@ -17,7 +17,7 @@ import asyncio
 import warnings
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
-from typing import Any, Callable, TypeVar
+from typing import Any, Callable, Literal, TypeVar
 
 from dblift.api.client import (
     _TEXT_UNDO_DEPRECATION_MESSAGE,
@@ -52,19 +52,40 @@ class AsyncDBLiftClient:
         self._closed = False
 
     @classmethod
-    def from_sqlalchemy(cls, engine: Any = None, **kwargs: Any) -> "AsyncDBLiftClient":
+    def from_sqlalchemy(
+        cls,
+        engine: Any = None,
+        *,
+        analysis_mode: Literal["full", "execution"] = "full",
+        **kwargs: Any,
+    ) -> "AsyncDBLiftClient":
         """Create an async client from a SQLAlchemy engine or connection."""
-        return cls(DBLiftClient.from_sqlalchemy(engine, **kwargs))
+        return cls(DBLiftClient.from_sqlalchemy(engine, analysis_mode=analysis_mode, **kwargs))
 
     @classmethod
-    def from_config(cls, config: Any, **kwargs: Any) -> "AsyncDBLiftClient":
+    def from_config(
+        cls, config: Any, *, analysis_mode: Literal["full", "execution"] = "full", **kwargs: Any
+    ) -> "AsyncDBLiftClient":
         """Create an async client from a DBLift config object."""
-        return cls(DBLiftClient.from_config(config, **kwargs))
+        return cls(DBLiftClient.from_config(config, analysis_mode=analysis_mode, **kwargs))
 
     @classmethod
-    def from_config_file(cls, config_path: str, **kwargs: Any) -> "AsyncDBLiftClient":
+    def from_config_file(
+        cls,
+        config_path: str,
+        *,
+        analysis_mode: Literal["full", "execution"] = "full",
+        **kwargs: Any,
+    ) -> "AsyncDBLiftClient":
         """Create an async client from a DBLift config file path."""
-        return cls(DBLiftClient.from_config_file(config_path, **kwargs))
+        return cls(
+            DBLiftClient.from_config_file(config_path, analysis_mode=analysis_mode, **kwargs)
+        )
+
+    @property
+    def analysis_mode(self) -> Literal["full", "execution"]:
+        """Selected analysis mode of the underlying client."""
+        return self._sync.analysis_mode
 
     @property
     def events(self) -> EventEmitter:

@@ -39,13 +39,17 @@ class Log:
         """Log an info message."""
         self._log(LogLevel.INFO, message, dedupe=dedupe)
 
-    def warn(self, message: str) -> None:
-        """Log a warning message."""
-        self._log(LogLevel.WARN, message)
+    def warn(self, message: str, *, dedupe: bool = True) -> None:
+        """Log a warning message; ``dedupe=False`` logs it even if it was just logged."""
+        self._log(LogLevel.WARN, message, dedupe=dedupe)
 
-    def warning(self, message: str) -> None:
+    def warning(self, message: str, *, dedupe: bool = True) -> None:
         """Log a warning message (alias for warn)."""
-        self.warn(message)
+        if dedupe:
+            # Subclasses may override ``warn(message)`` without the keyword.
+            self.warn(message)
+        else:
+            self.warn(message, dedupe=False)
 
     def error(self, message: str) -> None:
         """Log an error message."""

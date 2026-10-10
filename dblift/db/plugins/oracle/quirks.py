@@ -3,15 +3,13 @@
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Type
+from typing import TYPE_CHECKING, Any, List, Optional, Tuple
 
 from dblift.db.base_quirks import BaseQuirks
 from dblift.db.error import ErrorCategory
 from dblift.db.feature_gate import FeatureGate
-from dblift.db.object_naming import configured_identifier_text, dictionary_identifier
 
 if TYPE_CHECKING:
-    from dblift.db.generator_protocol import AlterGeneratorProtocol, SqlGeneratorProtocol
     from dblift.db.version import DatabaseVersion
 
 
@@ -75,20 +73,6 @@ class OracleQuirks(BaseQuirks):
     # import-flyway reads the verbatim-cased Flyway source table directly,
     # because get_applied_migrations would uppercase the name and miss it.
     flyway_source_table_case_sensitive = True
-    # Data-set ledger DDL: Oracle has no TEXT type (use CLOB) and defaults the
-    # install timestamp from SYSTIMESTAMP.
-    data_history_text_type = "CLOB"
-    data_change_set_blob_type = "CLOB"
-    data_timestamp_column_ddl = "TIMESTAMP DEFAULT SYSTIMESTAMP"
-
-    def is_data_history_table_already_exists_error(self, error_message: str) -> bool:
-        """The data-history ledger DDL doesn't use IF NOT EXISTS (shared across
-        dialects); Oracle raises ORA-00955 when the table already exists."""
-        return "ORA-00955" in (error_message or "")
-
-    def is_data_change_set_table_already_exists_error(self, error_message: str) -> bool:
-        """Same ORA-00955 detection as the data history table."""
-        return self.is_data_history_table_already_exists_error(error_message)
 
     def is_schema_history_race_error(self, error_message: str) -> bool:
         """Oracle's ``CREATE TABLE`` for the migration history table has no
@@ -141,33 +125,12 @@ class OracleQuirks(BaseQuirks):
         "DR$",
     )
 
-    def wrap_trigger_body(self, body: str) -> str:
-        """Oracle: wrap body in a valid PL/SQL block.
-
-        Prepends ``BEGIN\\n`` if the body doesn't already start with
-        ``DECLARE`` / ``BEGIN``; appends ``END;`` if missing, or fixes a
-        trailing ``END`` without semicolon.
-        """
-        text = body.strip()
-        if not text:
-            return ""
-        upper = text.upper()
-        if not upper.startswith(("DECLARE", "BEGIN")):
-            text = f"BEGIN\n{text}"
-        trimmed = text.rstrip()
-        if not re.search(r"\bEND\b\s*;?\s*$", trimmed, re.IGNORECASE):
-            text = f"{text}\nEND;"
-        elif not trimmed.endswith(";"):
-            text = f"{trimmed};"
-        return text
-
     # Table DDL.
     table_supports_storage_params = True
     supports_sqlplus_preprocessing = True
     # Wave B hooks.
     native_driver_display = "python-oracledb"
     # Oracle TIMESTAMP / TIME accept only fractional-seconds precision.
-    time_type_supports_only_fractional_precision = True
     # validate-sql offline placeholder — a service_name is required, so a
     # bare host/port URL is not enough (see build_sqlalchemy_url).
     lint_placeholder_url = "oracle://localhost:1521/?service_name=XEPDB1"
@@ -179,27 +142,6 @@ class OracleQuirks(BaseQuirks):
     def error_patterns(self) -> "List[Tuple[re.Pattern[str], ErrorCategory]]":
         """Oracle ORA-code error-classification patterns (ADR-26 A2)."""
         return _ERROR_PATTERNS
-
-    def build_snapshot_table_ddl(
-        self,
-        qualified_table: str,
-        snapshot_id_size: int,
-        checksum_size: int,
-    ) -> str:
-        """Oracle snapshot table DDL is not owned by the Oracle plugin."""
-        raise NotImplementedError("Oracle snapshot table DDL is not plugin-owned")
-
-    def build_provider_compat_snapshot_ddl(
-        self, qualified_table: str, snapshot_id_size: int, checksum_size: int
-    ) -> "Optional[str]":
-        """Legacy Oracle provider-compat snapshot DDL (VARCHAR2/CLOB, uppercase)."""
-        return (
-            f"CREATE TABLE {qualified_table} ("
-            f"SNAPSHOT_ID VARCHAR2({snapshot_id_size}) PRIMARY KEY, "
-            f"CAPTURED_AT VARCHAR2({snapshot_id_size}) NOT NULL, "
-            f"CHECKSUM VARCHAR2({checksum_size}) NOT NULL, "
-            "MODEL_DATA CLOB NOT NULL)"
-        )
 
     # ------------------------------------------------------------------
     # Migration-script preprocessing hooks (Tier 1 plugin-isolation).
@@ -250,14 +192,6 @@ class OracleQuirks(BaseQuirks):
 
         read_dbms_output(connection, log)
 
-    def ddl_generator_class(self) -> Optional[Type["SqlGeneratorProtocol"]]:
-        """DDL generator is supplied by an installed extension package."""
-        return None
-
-    def alter_generator_class(self) -> Optional[Type["AlterGeneratorProtocol"]]:
-        """ALTER generator is supplied by an installed extension package."""
-        return None
-
     def parser_class(self, parser_type: str) -> Optional[type]:
         """Oracle parser dispatch: hybrid → :class:`HybridParser`, sqlglot →
         :class:`SqlGlotParser` (``oracle`` dialect), regex → :class:`OracleParser`."""
@@ -274,253 +208,6 @@ class OracleQuirks(BaseQuirks):
 
             return OracleParser
         return None
-
-    def enhance_columns(
-        self, extractor: Any, schema: str, table: str, columns: "list[Any]"
-    ) -> None:
-        """Capture the generation kind for columns identified as identity columns."""
-        identity_columns = {col.name: col for col in columns if col.is_identity}
-        if not identity_columns:
-            return
-        # GENERATION_TYPE reports ALWAYS/BY DEFAULT; DEFAULT_ON_NULL distinguishes
-        # the ON NULL variant. These identity catalog fields require Oracle 12c+.
-        # https://docs.oracle.com/en/database/oracle/oracle-database/19/refrn/ALL_TAB_IDENTITY_COLS.html
-        # https://docs.oracle.com/en/database/oracle/oracle-database/19/refrn/ALL_TAB_COLUMNS.html
-        query = """
-            SELECT i.COLUMN_NAME, i.GENERATION_TYPE, c.DEFAULT_ON_NULL
-            FROM ALL_TAB_IDENTITY_COLS i
-            JOIN ALL_TAB_COLUMNS c
-              ON c.OWNER = i.OWNER AND c.TABLE_NAME = i.TABLE_NAME
-             AND c.COLUMN_NAME = i.COLUMN_NAME
-            WHERE i.OWNER = ? AND i.TABLE_NAME = ?
-        """
-        rows = extractor.provider.query_executor.execute_query(
-            extractor.connection,
-            query,
-            [dictionary_identifier(schema, "oracle"), configured_identifier_text(table)],
-        )
-        for row in rows:
-            column = identity_columns.get(extractor.get_row_value(row, "column_name"))
-            generation = extractor.get_row_value(row, "generation_type")
-            if column is None or not generation:
-                continue
-            generation = str(generation).strip().upper()
-            if (
-                generation == "BY DEFAULT"
-                and extractor.get_row_value(row, "default_on_null") == "YES"
-            ):
-                generation = "BY DEFAULT ON NULL"
-            column.identity_generation = generation
-
-    def is_internal_sequence(self, sequence: Any) -> bool:
-        """Oracle ``IDENTITY`` columns auto-generate backing sequences named
-        ``ISEQ$$_<oid>`` that live in the user schema but aren't user-
-        authored — filter them out of introspection results so they
-        don't appear in generated output."""
-        name = (getattr(sequence, "name", "") or "").upper()
-        return name.startswith("ISEQ$$_")
-
-    def should_skip_index(self, name: str) -> bool:
-        """Drop Oracle system-generated index names (``SYS_*`` / ``SYS$*``)."""
-        if not name:
-            return False
-        normalized = name.strip().upper()
-        return normalized.startswith("SYS_") or normalized.startswith("SYS$")
-
-    def is_generated_not_null_check(self, row: Dict[str, Any], check_expr: str) -> bool:
-        """Drop Oracle's implicit ``"<col>" IS NOT NULL`` check constraints.
-
-        Oracle materializes a ``GENERATED NAME`` check constraint for every
-        ``NOT NULL`` column; these are noise in introspection output, so the
-        extractor skips them when this returns ``True``."""
-        generated = str(row.get("generated") or row.get("GENERATED") or "").upper()
-        if generated != "GENERATED NAME":
-            return False
-        return (
-            re.match(r'^\s*\(?\s*"?[A-Z0-9_$#]+"?\s+IS\s+NOT\s+NULL\s*\)?\s*$', check_expr, re.I)
-            is not None
-        )
-
-    def is_index_hidden_column(self, name: str) -> bool:
-        """Oracle function-based indexes materialize expression columns under
-        ``SYS_NCxxx``-style names. The extractor substitutes the original
-        expression text when this returns ``True``."""
-        from dblift.db.plugins.oracle.introspection.oracle_utils import is_hidden_column
-
-        return bool(is_hidden_column(name))
-
-    def apply_index_vendor_properties(
-        self, idx_data: Dict[str, Any], index_kwargs: Dict[str, Any]
-    ) -> None:
-        """Oracle: surface ``BITMAP`` index type, tablespace placement, and
-        partition locality (``LOCAL`` / ``GLOBAL``)."""
-        if idx_data.get("type"):
-            index_type = idx_data["type"].upper()
-            if index_type == "BITMAP":
-                index_kwargs["type"] = "BITMAP"
-        if idx_data.get("tablespace"):
-            index_kwargs["tablespace"] = idx_data["tablespace"]
-        if idx_data.get("is_local") is not None:
-            index_kwargs["is_local"] = idx_data["is_local"]
-
-    def apply_vendor_table_properties(self, table: Any, row: Dict[str, Any]) -> None:
-        """Apply Oracle tablespace + storage params.
-
-        Falls back through several column-name variants because Oracle's
-        catalog queries returned different aliases historically (``tablespace``,
-        ``tablespace_name``, raw uppercase ``TABLESPACE_NAME``). Marks the
-        ``tablespace`` property explicit so downstream comparators don't
-        treat the default as a diff.
-        """
-        from dblift.core.utils.row_access import get_row_value
-
-        tablespace = (
-            get_row_value(row, "tablespace")
-            or get_row_value(row, "tablespace_name")
-            or row.get("TABLESPACE_NAME")
-        )
-        if tablespace:
-            table.tablespace = tablespace
-            if hasattr(table, "mark_property_explicit"):
-                table.mark_property_explicit("tablespace")
-        for attr, col in (
-            ("pctfree", "pctfree_value"),
-            ("pctused", "pctused_value"),
-            ("initial", "initial_value"),
-            ("next", "next_extent_size"),
-        ):
-            val = get_row_value(row, col)
-            if val is not None:
-                try:
-                    table.set_dialect_option("oracle", attr, int(val))
-                except (ValueError, TypeError):
-                    pass
-
-    def fetch_unique_constraints(
-        self, extractor: Any, schema: str, table: str
-    ) -> "Optional[list[Any]]":
-        """Oracle UNIQUE constraints — iterate the vendor indexes query
-        and select non-PK unique entries. Names are run through
-        :meth:`sanitize_constraint_name` to drop ``SYS_*`` patterns."""
-        from dblift.core.utils.metadata_helpers import (
-            _build_unique_constraints_from_dict,
-        )
-
-        if not getattr(extractor, "vendor_queries", None):
-            return None
-        try:
-            unique_indexes = extractor._get_unique_constraints_oracle(schema, table)
-        except Exception as e:
-            extractor.log.warning(f"Error getting unique constraints for {schema}.{table}: {e}")
-            return []
-        return _build_unique_constraints_from_dict(extractor, unique_indexes)
-
-    def sanitize_constraint_name(self, name: "Optional[str]") -> "Optional[str]":
-        """Oracle drops ``SYS_*`` and ``SYS$*`` system-generated constraint
-        names (e.g. ``SYS_C0013220``)."""
-        if not name:
-            return name
-        normalized = name.strip().upper()
-        if normalized.startswith("SYS_") or normalized.startswith("SYS$"):
-            return None
-        return name
-
-    def fetch_routine_parameters_fallback(
-        self, extractor: Any, schema: str, name: str, kind: str
-    ) -> "list[Any]":
-        """Oracle: ``ALL_ARGUMENTS`` fallback for procedure parameters.
-
-        The procedure flow may call this when the JSON-aggregate column
-        in the main query was empty. The function flow has its own
-        DBMS_METADATA + regex-parse path and doesn't route through here."""
-        if kind != "procedure":
-            return []
-        result: "list[Any]" = extractor._fetch_oracle_procedure_parameters(schema, name)
-        return result
-
-    def fetch_routine_full_definition(
-        self,
-        extractor: Any,
-        schema: str,
-        name: str,
-        kind: str,
-        routine: Any,
-        status: Any = None,
-    ) -> None:
-        """Oracle: ``DBMS_METADATA.GET_DDL`` reconstruction is authoritative.
-        Always issue the query (even if the row carries a body), replace
-        ``routine.definition`` on success, and clear ``routine.body`` —
-        the DDL is self-contained."""
-        object_type = "PROCEDURE" if kind == "procedure" else "FUNCTION"
-        ddl = extractor._fetch_oracle_ddl(object_type, name, schema)
-        if ddl:
-            routine.definition = ddl
-            routine.body = None
-
-    def clean_source_text(self, text: "Optional[str]") -> "Optional[str]":
-        """Strip the ``<E>...</E>`` XML aggregator markup and unescape
-        entities that ``DBMS_METADATA`` injects when concatenating PL/SQL
-        rows from ``ALL_SOURCE``."""
-        from dblift.db.plugins.oracle.introspection.oracle_utils import clean_source_text
-
-        return clean_source_text(text)
-
-    def normalize_partition_bound(self, value: Any) -> Any:
-        """Collapse ``TO_DATE(...,'SYYYY-MM-DD HH24:MI:SS',
-        'NLS_CALENDAR=...')`` partition bounds into a plain
-        ``YYYY-MM-DD`` literal when the time component is midnight."""
-        from dblift.db.plugins.oracle.introspection.oracle_utils import normalize_partition_bound
-
-        return normalize_partition_bound(value)
-
-    def extract_partition_scheme_from_row(
-        self, extractor: Any, row: Dict[str, Any], table: Any
-    ) -> None:
-        """Oracle: ``partitioning_type`` (RANGE / LIST / HASH / …)
-        and a comma-separated ``partition_columns`` projection."""
-        from dblift.core.utils.row_access import get_row_value
-
-        part_type = get_row_value(row, "partitioning_type")
-        part_cols = get_row_value(row, "partition_columns")
-        if part_type:
-            table.partition_method = part_type.upper()
-        if part_cols:
-            table.partition_columns = [c.strip() for c in part_cols.split(",")]
-
-    def postprocess_routine(self, extractor: Any, schema: str, routine: Any) -> None:
-        """Oracle: strip embedded ``CREATE OR REPLACE PACKAGE`` specs from
-        procedure / function definitions; the spec text is cached for the
-        misc-object pass to reuse."""
-        if not routine.definition:
-            return
-        stripped = extractor._strip_embedded_oracle_package_spec(schema, routine.definition)
-        routine.definition = stripped
-
-    def enrich_packages_from_catalog(
-        self, extractor: Any, schema: str, packages: "list[Any]"
-    ) -> None:
-        """Oracle: backfill missing ``PACKAGE`` / ``PACKAGE BODY`` source.
-
-        Procedure scans cache the spec text for package lookup
-        (extracted from embedded ``CREATE OR
-        REPLACE PACKAGE`` blocks); anything still missing is fetched
-        from ``ALL_SOURCE``."""
-        for package in packages:
-            schema_key = dictionary_identifier(schema or "", "oracle")
-            cache_key = (schema_key, (package.name or "").upper())
-            cached_spec = extractor._oracle_package_specs.get(cache_key)
-            if cached_spec:
-                package.spec = cached_spec
-            elif not package.spec:
-                source = extractor._fetch_oracle_source_text(schema, package.name, "PACKAGE")
-                if source:
-                    package.spec = source
-            if not package.body:
-                source_body = extractor._fetch_oracle_source_text(
-                    schema, package.name, "PACKAGE BODY"
-                )
-                if source_body:
-                    package.body = source_body
 
     def type_equivalents(self) -> "dict[str, str]":
         """Oracle alias → canonical type map.

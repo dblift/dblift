@@ -12,14 +12,19 @@ from __future__ import annotations
 from dblift.db.plugins._pg_compatible import make_pg_compatible_plugin
 from dblift.db.provider_registry import PluginInfo
 
+from .descriptor import DESCRIPTOR
+
 PLUGIN: PluginInfo = make_pg_compatible_plugin(
-    "yugabytedb",
+    DESCRIPTOR.name,
     "YugabyteDB (PostgreSQL-compatible) database provider",
     quirks_overrides={
         # YSQL auto-commits DDL (like Oracle/MySQL): a rolled-back migration
         # still leaves CREATE TABLE objects behind. Do not inherit
         # PostgreSQL's transactional-DDL claim.
         "supports_transactional_ddl": False,
+        # Its own storage engine (DocDB): PostgreSQL's lock behaviour does
+        # not transfer, so validate-sql skips the PostgreSQL lock rules.
+        "postgresql_lock_rules": False,
     },
 )
 

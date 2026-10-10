@@ -2,12 +2,9 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Optional, Type
+from typing import Any, Optional
 
 from dblift.db.base_quirks import BaseQuirks
-
-if TYPE_CHECKING:
-    from dblift.db.generator_protocol import AlterGeneratorProtocol, SqlGeneratorProtocol
 
 
 class SnowflakeQuirks(BaseQuirks):
@@ -23,10 +20,14 @@ class SnowflakeQuirks(BaseQuirks):
     drop_supports_if_exists = True
     unquoted_identifier_case = "uppercase"
     quote_qualified_folds_to_uppercase = True
+    # Flyway creates ``"flyway_schema_history"`` quoted lowercase, which the
+    # uppercase-folded history lookup cannot find.
+    flyway_source_table_case_sensitive = True
     connection_identifier_attrs = ("url", "account")
     missing_connection_identifier_hint = "Snowflake requires url or account"
     native_url_schema_params = ("schema",)
     native_driver_display = "snowflake-connector-python"
+    lint_placeholder_url = "snowflake://localhost/DBLIFT_VALIDATE_SQL/PUBLIC"
 
     def __init__(self, dialect_name: str = "snowflake") -> None:
         super().__init__(dialect_name=dialect_name)
@@ -45,12 +46,20 @@ class SnowflakeQuirks(BaseQuirks):
             )
         return bool(str(url or "").strip() or str(account or "").strip())
 
-    def ddl_generator_class(self) -> Optional[Type["SqlGeneratorProtocol"]]:
-        """Snowflake rich DDL generation is registered by higher tiers."""
-        return None
+    def parser_class(self, parser_type: str) -> Optional[type]:
+        """Use Snowflake's sqlglot grammar for AST and current hybrid callers.
 
-    def alter_generator_class(self) -> Optional[Type["AlterGeneratorProtocol"]]:
-        """Snowflake ALTER generation is registered by higher tiers."""
+        Migration splitting preserves Snowflake quoting and refuses unquoted
+        scripting blocks until their grammar is qualified.
+        """
+        if parser_type in {"hybrid", "sqlglot"}:
+            from dblift.core.sql_parser.sqlglot_parser import SqlGlotParser
+
+            return SqlGlotParser
+        if parser_type == "regex":
+            from dblift.db.plugins.snowflake.statement_parser import SnowflakeStatementParser
+
+            return SnowflakeStatementParser
         return None
 
 

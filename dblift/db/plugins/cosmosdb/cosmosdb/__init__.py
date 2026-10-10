@@ -9,7 +9,6 @@ from .history_manager import CosmosDbHistoryManager
 from .locking_manager import CosmosDbLockingManager
 from .query_executor import CosmosDbQueryExecutor
 from .schema_operations import CosmosDbSchemaOperations
-from .snapshot_manager import CosmosDbSnapshotManager
 
 __all__ = [
     "CosmosDbConnectionManager",
@@ -17,5 +16,4 @@ __all__ = [
     "CosmosDbLockingManager",
     "CosmosDbSchemaOperations",
     "CosmosDbHistoryManager",
-    "CosmosDbSnapshotManager",
 ]

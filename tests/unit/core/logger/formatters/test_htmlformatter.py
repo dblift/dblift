@@ -363,6 +363,31 @@ class TestHtmlFormatter:
         assert "Schema: test_schema" in html_output
         assert "Database: test_db" in html_output
 
+    def test_failed_sql_result_survives_template_render_error(self):
+        formatter = HtmlFormatter()
+        result = MigrateResult()
+        result.set_error("no such table: missing_table")
+        result.migrations.append(
+            MigrationInfo("V2__bad.sql", status="FAILED", error="no such table: missing_table")
+        )
+        result.show_sql = True
+        result.add_sql_migration(
+            MigrationSqlInfo("V2__bad.sql", statements=["INSERT INTO missing_table VALUES (1);"])
+        )
+
+        with patch.object(
+            formatter.env, "get_template", side_effect=RuntimeError("template unavailable")
+        ):
+            html = formatter.format_result(result, "main", "db", "MIGRATE")
+
+        assert result.success is False
+        assert result.error_message == "no such table: missing_table"
+        assert result.migrations[0].status == "FAILED"
+        assert result.migrations[0].error == "no such table: missing_table"
+        assert result.sql[0].statements == ["INSERT INTO missing_table VALUES (1);"]
+        assert "Error Generating Report" in html
+        assert "template unavailable" in html
+
     @patch("jinja2.Environment.get_template")
     def test_format_result_with_migrations(self, mock_get_template):
         """Test format_result with migration data."""

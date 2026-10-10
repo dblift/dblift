@@ -41,7 +41,6 @@ def test_skips_pending_undo_sql_rows_and_keeps_undoable_from_companion():
         ],
     )
     collector = MigrationDataCollector(NullLog())
-    collector._find_undo_versions = lambda scripts_dir: {"2"}  # type: ignore[method-assign]
 
     rows = collector._get_migration_data_from_state(
         migration_state=state,

@@ -40,7 +40,17 @@ This shows you what would happen without actually making changes.
 
 Both `validate` and `migrate` accept `--format json` for scripts and agents. The payload
 carries `success`, `error` and the per-migration rows (`script`, `version`, `status`,
-`checksum`, …); `migrate --dry-run --format json` also reports `dry_run_count`:
+`checksum`, …); `migrate --dry-run --format json` also reports `dry_run_count`. A pending
+SQL script's row, in `info` and in `migrate --dry-run`, carries `analysis`: its statements
+(`operation`, `kind`, the `objects` each names, `full_table` for an UPDATE or DELETE
+without WHERE) and `cautions`, each `destroys` (DROP TABLE, VIEW or SCHEMA, TRUNCATE,
+DROP COLUMN, UPDATE or DELETE without WHERE) or `changes_rows` (UPDATE, DELETE, MERGE)
+and naming its rule in `code` (`null` when no rule applies); and the script's `verdict`
+and `findings`, as [`validate-sql`](#checking-migration-sql) reports them. All of it is
+read from the file in the database's dialect without connecting; `analysis` is `null` on
+applied rows and on Python scripts. The console output of `migrate --dry-run` shows each
+pending script's verdict and the findings it does not allow. Neither command's exit code
+depends on the verdict, and the SQL is not checked for validity:
 
 ```bash
 dblift migrate --dry-run --format json
@@ -69,6 +79,145 @@ The **Undoable** column tells you whether there's a matching undo migration read
 
 !!! tip "Tip"
     Every CLI command now ends with a completion banner like the one above, including the total execution time. This makes automation logs much easier to scan.
+
+### Checking Migration SQL
+
+`dblift validate` checks your scripts against the applied history; it does not read the
+SQL. `dblift validate-sql` reads the SQL, without connecting to a database, and reports
+statements that destroy data, break the application already deployed, or lock a table:
+
+```bash
+dblift validate-sql                                        # V and R scripts of the migration directories
+dblift validate-sql --files migrations/V7__drop_legacy.sql # only these files
+dblift validate-sql --dialect postgresql --format json     # machine-readable findings
+```
+
+**What it reads.** Without `--files`, the `V` and `R` scripts of the migration directories
+(`migrations.directory`, or each `--scripts` directory). Undo, baseline and callback
+scripts are read only when you name them with `--files`: an undo script destroys what its
+migration created by design. Placeholders (`${name}`) from the `placeholders` section of
+your configuration file, or given with `--placeholders key=value`, are substituted before a
+script is read.
+
+**Dialect.** Scripts are read in the dialect given by `--dialect`, or else in the
+configured database type (`database.type`, or the scheme of the database URL). With neither,
+the command stops and asks for `--dialect`. `--dialect` accepts the SQL dialects; MongoDB and
+Cosmos DB scripts cannot be checked. The database flags (`--db-url`, …) are accepted
+but nothing connects.
+
+**Rules.** Each finding has a code and a fixed severity:
+
+| Code | What it detects | Severity | Dialects |
+|---|---|---|---|
+| `drop-table` | `DROP TABLE` or `DROP MATERIALIZED VIEW` | error | all |
+| `drop-schema` | `DROP SCHEMA` or `DROP DATABASE` | error | all |
+| `drop-column` | `ALTER TABLE … DROP COLUMN` | error | all |
+| `truncate` | `TRUNCATE` | error | all |
+| `mixed-transaction-modes` | A statement that needs autocommit (for example `CREATE INDEX CONCURRENTLY`) in a script whose other statements run in a transaction: `migrate` refuses such a script | error | all |
+| `dml-no-where` | `UPDATE` or `DELETE` without `WHERE` | warning | all |
+| `add-not-null-no-default` | `ADD COLUMN … NOT NULL` without a `DEFAULT`, on a table the script did not create | warning | all |
+| `rename-column` | A column rename (`RENAME COLUMN`, `sp_rename … 'COLUMN'`) | warning | all |
+| `rename-table` | A table rename (`RENAME TO`, `RENAME TABLE`, `sp_rename`) | warning | all |
+| `alter-column-type` | A column type change (`ALTER COLUMN … TYPE`, `MODIFY`, `CHANGE`) | warning | all |
+| `pg-index-not-concurrent` | `CREATE INDEX` without `CONCURRENTLY` on a table the script did not create | warning | PostgreSQL family |
+| `pg-constraint-not-valid` | `ADD CONSTRAINT … FOREIGN KEY` or `CHECK` without `NOT VALID` | warning | PostgreSQL family |
+| `pg-set-not-null` | `ALTER COLUMN … SET NOT NULL` | warning | PostgreSQL family |
+| `pg-missing-lock-timeout` | The first statement that locks an existing table (`ALTER TABLE`, `CREATE INDEX`, `DROP TABLE`, `TRUNCATE`) with no `SET lock_timeout` earlier in the script; reported once per script | warning | PostgreSQL family |
+| `statement-not-analysed` | An `ALTER` statement the SQL parser could not structure, so no rule could check it | info | all |
+
+The PostgreSQL family is `postgresql`, `neon`, `supabase`, `aurora-postgresql`, `alloydb`,
+`timescaledb` and `citus`. The `add-not-null-no-default` and `pg-` rules skip a table
+created earlier in the same script: it has no rows yet and nothing else uses it.
+
+**Verdict.** Each script gets one verdict:
+
+- `UNSAFE`: at least one `error` finding.
+- `REVIEW`: no error, but at least one `warning` or `info` finding (a statement that could
+  not be analysed counts), or a part of the script that could not be read.
+- `SAFE`: no finding left.
+
+**Accepting a finding.** A comment `-- dblift:allow code[, code]` anywhere in a script
+accepts those codes for the whole script. The findings are still listed, marked
+`(allowed)` in the console and `"allowed": true` in JSON, but they no longer count toward the
+verdict:
+
+```sql
+-- dblift:allow drop-column, pg-missing-lock-timeout
+ALTER TABLE users DROP COLUMN legacy_flag;
+```
+
+**Exit code.** `0` when no script is `UNSAFE`; `1` when a script is `UNSAFE` or a path given
+with `--files` does not exist. A `REVIEW` verdict does not fail the command.
+
+**Console output.** Each script, its verdict, then each finding with its statement
+(numbered from 1) under it:
+
+```
+V2__drop_legacy.sql: UNSAFE
+  error   drop-column, statement 1: DROP COLUMN discards a column of users
+          ALTER TABLE users DROP COLUMN legacy_flag
+  warning pg-missing-lock-timeout, statement 1: takes a table lock with no lock_timeout set earlier in the script, so queries on the table can queue behind it; start with SET LOCAL lock_timeout = '5s'
+          ALTER TABLE users DROP COLUMN legacy_flag
+  warning pg-index-not-concurrent, statement 2: CREATE INDEX without CONCURRENTLY blocks writes to the table while the index builds (row count unknown — severity not adjusted for table size)
+          CREATE INDEX idx_users_email ON users (email)
+1 script(s): 0 SAFE, 0 REVIEW, 1 UNSAFE
+```
+
+**JSON output.** `--format json` prints `success`, `error` (a missing `--files` path, or
+`null`), the `dialect`, one entry per script (`script`, `verdict`, `findings`, and `errors`
+for the parts that could not be read) and a `summary` counting the verdicts. Each finding
+carries `code`, `severity`, `statement` (numbered from 0), `message`, `snippet` and
+`allowed`. For the script above (the third finding left out):
+
+```json
+{
+  "success": false,
+  "error": null,
+  "dialect": "postgresql",
+  "scripts": [
+    {
+      "script": "V2__drop_legacy.sql",
+      "verdict": "UNSAFE",
+      "findings": [
+        {
+          "code": "drop-column",
+          "severity": "error",
+          "statement": 0,
+          "message": "DROP COLUMN discards a column of users",
+          "snippet": "ALTER TABLE users DROP COLUMN legacy_flag",
+          "allowed": false
+        },
+        {
+          "code": "pg-missing-lock-timeout",
+          "severity": "warning",
+          "statement": 0,
+          "message": "takes a table lock with no lock_timeout set earlier in the script, so queries on the table can queue behind it; start with SET LOCAL lock_timeout = '5s'",
+          "snippet": "ALTER TABLE users DROP COLUMN legacy_flag",
+          "allowed": false
+        }
+      ],
+      "errors": []
+    }
+  ],
+  "summary": {
+    "SAFE": 0,
+    "REVIEW": 0,
+    "UNSAFE": 1
+  }
+}
+```
+
+**In CI.** Check only the migrations a pull request adds or changes:
+
+```bash
+dblift validate-sql --dialect postgresql --files $(git diff --name-only origin/main -- 'migrations/V*.sql')
+```
+
+`--files` needs at least one path, and a deleted file counts as missing: skip the step when
+the diff is empty, or add `--diff-filter=d` to `git diff` to leave deleted files out.
+
+`migrate --dry-run` shows the same verdict next to each pending script, with the findings
+not allowed, without changing its exit code.
 
 ### Rolling Back Changes
 
@@ -134,6 +283,7 @@ Here are the commands you'll use most often:
 | `dblift migrate --dry-run` | Preview without applying | Check what will happen before doing it |
 | `dblift undo --target-version=X` | Rolls back to a specific version | Reverse recent changes |
 | `dblift validate` | Checks migration history and metadata consistency | Before applying changes |
+| `dblift validate-sql` | Checks migration SQL for destructive, breaking or locking statements, without connecting | Before merging a new migration |
 | `dblift baseline --baseline-version=X` | Mark migrations as already applied | Working with existing databases |
 
 **Quick Examples:**
@@ -334,6 +484,7 @@ dblift info                                         # Check status
 dblift validate                                     # Validate migrations
 dblift migrate                                      # Apply changes
 dblift migrate --dry-run                           # Preview changes
+dblift validate-sql                                 # Check migration SQL offline
 
 # Working with existing databases
 dblift baseline --baseline-version=1.0.0           # Set starting point

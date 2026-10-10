@@ -370,7 +370,7 @@ class TestExceptionHandling(unittest.TestCase):
         journal.record_statement_failed.assert_called_once()
 
     def test_journal_records_driver_error_without_wrapping(self):
-        """The journal keeps the same message the command reports, not str(exc)."""
+        """The journal keeps the driver's reason, without wrapping or the SQL block."""
         from sqlalchemy.exc import ProgrammingError
 
         svc, provider, _, _, journal = _make_service(
@@ -383,7 +383,23 @@ class TestExceptionHandling(unittest.TestCase):
             svc.execute_statement("DROP TABLE missing", stmt_index=1)
 
         _statement, _index, message, _ms = journal.record_statement_failed.call_args[0]
-        assert message == 'table "missing" does not exist\n[SQL: DROP TABLE missing]'
+        assert message == 'table "missing" does not exist'
+
+    def test_failure_masks_literals_in_journal_and_logs_at_error(self):
+        svc, provider, _, logger, journal = _make_service(
+            stmt_type=SqlStatementType.DML.value, has_journal=True
+        )
+        provider.execute_statement.side_effect = RuntimeError("no such table")
+        statement = "INSERT INTO t VALUES ('SENTINEL-SECRET-42')"
+        with pytest.raises(RuntimeError):
+            svc.execute_statement(statement, stmt_index=1)
+
+        journal_statement = journal.record_statement_failed.call_args[0][0]
+        assert journal_statement == "INSERT INTO t VALUES ('?')"
+        logged = " ".join(str(c) for c in logger.error.call_args_list)
+        assert "SENTINEL-SECRET-42" not in logged
+        assert "SQL: INSERT INTO t" in logged
+        logger.debug.assert_any_call(f"Failed statement: {statement}")
 
     def test_sqlstate_included_in_error_when_available(self):
         svc, provider, _, logger, _ = _make_service(stmt_type=SqlStatementType.DDL.value)

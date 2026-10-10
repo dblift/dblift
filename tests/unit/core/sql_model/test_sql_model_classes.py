@@ -550,6 +550,49 @@ class TestSqlConstraintDeferrable:
         assert hash(a) == hash(b)
 
 
+@pytest.mark.unit
+class TestSqlConstraintRely:
+    """SqlConstraint.rely: None = not reported = NORELY, the engine default."""
+
+    def test_rely_defaults_to_none(self):
+        assert SqlConstraint(ConstraintType.PRIMARY_KEY, "pk1", ["id"]).rely is None
+
+    def test_rely_none_vs_false_equal(self):
+        a = SqlConstraint(ConstraintType.PRIMARY_KEY, "pk1", ["id"])
+        b = SqlConstraint(ConstraintType.PRIMARY_KEY, "pk1", ["id"], rely=False)
+        assert a == b
+        assert hash(a) == hash(b)
+
+    def test_rely_true_vs_false_not_equal(self):
+        a = SqlConstraint(ConstraintType.PRIMARY_KEY, "pk1", ["id"], rely=True)
+        b = SqlConstraint(ConstraintType.PRIMARY_KEY, "pk1", ["id"], rely=False)
+        assert a != b
+
+    def test_rely_true_vs_none_not_equal(self):
+        a = SqlConstraint(ConstraintType.PRIMARY_KEY, "pk1", ["id"], rely=True)
+        b = SqlConstraint(ConstraintType.PRIMARY_KEY, "pk1", ["id"])
+        assert a != b
+
+    def test_rely_true_equal_to_true(self):
+        a = SqlConstraint(ConstraintType.PRIMARY_KEY, "pk1", ["id"], rely=True)
+        b = SqlConstraint(ConstraintType.PRIMARY_KEY, "pk1", ["id"], rely=True)
+        assert a == b
+        assert hash(a) == hash(b)
+
+    def test_to_dict_omits_rely_when_not_reported(self):
+        assert "rely" not in SqlConstraint(ConstraintType.UNIQUE, "u1", ["id"]).to_dict()
+
+    @pytest.mark.parametrize("rely", [True, False])
+    def test_rely_round_trips_through_dict(self, rely):
+        constraint = SqlConstraint(ConstraintType.UNIQUE, "u1", ["id"], rely=rely)
+        assert constraint.to_dict()["rely"] is rely
+        assert SqlConstraint.from_dict(constraint.to_dict()).rely is rely
+
+    def test_from_dict_without_rely_reads_none(self):
+        data = SqlConstraint(ConstraintType.UNIQUE, "u1", ["id"]).to_dict()
+        assert SqlConstraint.from_dict(data).rely is None
+
+
 class TestTable:
     """Test Table functionality."""
 

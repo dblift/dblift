@@ -5,9 +5,10 @@ This module contains the low-level execution logic for individual migrations,
 callbacks, and SQL statements.
 """
 
+import sys
 import time
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from dblift.config.dblift_config import DbliftConfig
 from dblift.core.constants import (
@@ -17,8 +18,8 @@ from dblift.core.constants import (
 )
 from dblift.core.exceptions import CallbackExecutionError, TransactionAbortedError
 from dblift.core.logger import Log, NullLog
-from dblift.core.logger.console import render_records_table, rows_to_columns_and_values
 from dblift.core.logger.results import CallbackExecution, MigrationInfo, OperationResult
+from dblift.core.logger.tabular_data import rows_to_columns_and_values
 from dblift.core.migration.executor.transaction_policy import (
     TransactionPolicy,
     TransactionPolicyDecision,
@@ -40,11 +41,24 @@ from dblift.core.migration.sql.migration_sql_parser import (
 )
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.migration.sql.sql_execution_service import SqlExecutionService
+from dblift.core.sql_parser.redaction import describe_statement
 from dblift.db.base_provider import BaseProvider
-from dblift.db.error import clean_driver_error_message
+from dblift.db.error import clean_driver_error_message, strip_sql_statement_block
 from dblift.db.provider_interfaces import TransactionalProvider
 from dblift.db.provider_registry import ProviderRegistry
 from dblift.db.value_utils import to_python_string
+
+if TYPE_CHECKING:
+    from dblift.core.logger.console import render_records_table  # noqa: F401
+
+
+def __getattr__(name: str) -> Any:
+    if name == "render_records_table":
+        from dblift.core.logger.console import render_records_table as renderer
+
+        globals()[name] = renderer
+        return renderer
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def _is_ddl_statement_for_success_log(statement: str) -> bool:
@@ -363,7 +377,11 @@ class ExecutionEngine:
         analyzer = self.sql_analyzer
         if analyzer.dialect != dialect_key:
             try:
-                analyzer = SqlAnalyzer(dialect=dialect_key, logger=self.log)
+                analyzer = SqlAnalyzer(
+                    dialect=dialect_key,
+                    logger=self.log,
+                    analysis_mode=getattr(self.sql_analyzer, "analysis_mode", "full"),
+                )
             except Exception as exc:
                 return fallback_migration_sql(content, self.log, exc)
         return parse_migration_sql(analyzer, content, self.log)
@@ -663,13 +681,17 @@ class ExecutionEngine:
                                 columns,
                                 table_rows,
                             )
-                            self.log.info(
-                                render_records_table(
-                                    [(c, "left") for c in columns],
-                                    table_rows,
-                                    title=f"Query result ({len(table_rows)} rows)",
+                            if not isinstance(self.log, NullLog):
+                                render_table = getattr(
+                                    sys.modules[__name__], "render_records_table"
                                 )
-                            )
+                                self.log.info(
+                                    render_table(
+                                        [(c, "left") for c in columns],
+                                        table_rows,
+                                        title=f"Query result ({len(table_rows)} rows)",
+                                    )
+                                )
                     else:
                         if not isinstance(result_data, int):
                             raise TypeError(
@@ -716,7 +738,8 @@ class ExecutionEngine:
                     )
                 ):
                     self.log.warning(
-                        f"Statement {i + 1} failed (WHENEVER SQLERROR CONTINUE): {stmt_error}"
+                        f"Statement {i + 1} failed (WHENEVER SQLERROR CONTINUE): "
+                        f"{strip_sql_statement_block(str(stmt_error))}"
                     )
                     continue
 
@@ -741,7 +764,9 @@ class ExecutionEngine:
         Sequence: result.set_error -> result.add_migration(FAILED) -> rollback ->
         begin_transaction + record_migration(success=False) + commit.
         """
-        error_msg = clean_driver_error_message(to_python_string(error) or str(error))
+        error_msg = strip_sql_statement_block(
+            clean_driver_error_message(to_python_string(error) or str(error))
+        )
         self.log.error(
             f"Failed to execute statement {stmt_index+1} from {migration.script_name}: {error_msg}"
         )
@@ -1179,9 +1204,12 @@ class ExecutionEngine:
                                     columns,
                                     table_rows,
                                 )
-                                if table_rows:
+                                if table_rows and not isinstance(self.log, NullLog):
+                                    render_table = getattr(
+                                        sys.modules[__name__], "render_records_table"
+                                    )
                                     self.log.info(
-                                        render_records_table(
+                                        render_table(
                                             [(c, "left") for c in columns],
                                             table_rows,
                                             title=f"Query result ({len(table_rows)} rows)",
@@ -1226,9 +1254,12 @@ class ExecutionEngine:
                                     columns,
                                     table_rows,
                                 )
-                                if table_rows:
+                                if table_rows and not isinstance(self.log, NullLog):
+                                    render_table = getattr(
+                                        sys.modules[__name__], "render_records_table"
+                                    )
                                     self.log.info(
-                                        render_records_table(
+                                        render_table(
                                             [(c, "left") for c in columns],
                                             table_rows,
                                             title=f"Query result ({len(table_rows)} rows)",
@@ -1252,8 +1283,12 @@ class ExecutionEngine:
                             self.log.info("Statement executed successfully")
 
                 except Exception as e:
-                    self.log.error(f"Error executing callback SQL statement: {to_python_string(e)}")
-                    self.log.error(f"Failed statement: {statement}")
+                    self.log.error(
+                        "Error executing callback SQL statement: "
+                        f"{strip_sql_statement_block(str(e))}"
+                    )
+                    self.log.error(f"SQL: {describe_statement(statement)}")
+                    self.log.debug(f"Failed statement: {statement}")
                     raise
 
             if transaction_started and isinstance(self.provider, TransactionalProvider):

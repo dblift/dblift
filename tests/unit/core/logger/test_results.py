@@ -650,3 +650,11 @@ class TestUndoResult:
         assert result.undone_count == 1
         assert [(m.script, m.status) for m in result.failed_migrations] == [("U2__b.sql", "FAILED")]
         assert [m.script for m in result.migrations] == ["U3__c.sql", "U2__b.sql"]
+
+
+@pytest.mark.unit
+def test_migration_info_analysis_defaults_to_none():
+    from dblift.core.logger.results import MigrationInfo
+
+    assert MigrationInfo("V1__a.sql").analysis is None
+    assert MigrationInfo("V1__a.sql", analysis={"cautions": []}).analysis == {"cautions": []}

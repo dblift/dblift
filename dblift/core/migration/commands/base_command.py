@@ -27,6 +27,7 @@ from dblift.core.logger.log import LogFormat
 from dblift.core.logger.results import CallbackExecution
 from dblift.core.migration.executor.execution_engine import ExecutionEngine
 from dblift.core.migration.executor.migration_helpers import MigrationHelpers
+from dblift.core.migration.formats.migration_format import MigrationFormat
 from dblift.core.migration.history.migration_history_manager import MigrationHistoryManager
 from dblift.core.migration.rules.migration_rules import MigrationRules
 from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
@@ -135,20 +136,9 @@ class BaseCommandContext:
 
 def _props_text(*lines: str) -> Text:
     """Build a multi-line Text where 'Key: value' lines have bold keys."""
-    from rich.text import Text
+    from dblift.core.migration.ui.command_panels import props_text
 
-    body = Text()
-    for i, line in enumerate(lines):
-        line = str(line) if line is not None else ""
-        if ": " in line:
-            key, _, val = line.partition(": ")
-            body.append(key + ": ", style="bold")
-            body.append(val)
-        else:
-            body.append(line)
-        if i < len(lines) - 1:
-            body.append("\n")
-    return body
+    return props_text(*lines)
 
 
 def _render_main_header_panel(raw_header: str) -> str:
@@ -157,23 +147,9 @@ def _render_main_header_panel(raw_header: str) -> str:
     Shared by BaseCommand._print_main_header_once and higher-tier command
     modules so they render the same styled banner.
     """
-    from rich import box
-    from rich.panel import Panel
+    from dblift.core.migration.ui.command_panels import render_main_header_panel
 
-    from dblift.core.logger.console import render_panel_to_str
-
-    _skip = {"DBLIFT DATABASE MIGRATION LOG"}
-    body_lines = [
-        line
-        for line in raw_header.splitlines()
-        if line and not line.startswith("=") and not line.startswith("-") and line not in _skip
-    ]
-    return render_panel_to_str(
-        Panel(
-            "\n".join(body_lines), title="DBLIFT DATABASE MIGRATION LOG", box=box.HEAVY, expand=True
-        ),
-        width=80,
-    )
+    return render_main_header_panel(raw_header)
 
 
 # Maps ``_execute_callbacks``' ``event_prefix`` argument to the matching
@@ -286,6 +262,11 @@ class BaseCommand:
         self.journal = ctx.journal
         self.placeholder_service = ctx.placeholder_service
         self._callback_snapshot: Optional[CallbackReadSnapshot] = None
+
+    @property
+    def _capture_objects(self) -> bool:
+        """Keep legacy journals without a mode flag on the full-analysis path."""
+        return getattr(self.journal, "capture_objects", True)
 
     def _reset_callback_catalog(self) -> None:
         """Discard the manager snapshot reference before a command execution."""
@@ -440,6 +421,9 @@ class BaseCommand:
         if result.end_time is None:
             result.complete()
 
+        if isinstance(self.log, NullLog):
+            return
+
         execution_time_ms = result.execution_time()
 
         # Format execution time appropriately
@@ -560,40 +544,11 @@ class BaseCommand:
         applied_scripts: Optional[List[Any]] = None,
     ) -> "Panel":
         """Build the footer Rich Panel. Returns (Panel, border_style)."""
-        from rich import box
-        from rich.panel import Panel
-        from rich.text import Text
+        from dblift.core.migration.ui.command_panels import build_footer_panel
 
-        _STATUS_STYLE = {"SUCCESS": "bold green", "WARNING": "yellow", "FAILED": "bold red"}
-
-        title = "SUCCESS" if success else "FAILED"
-        border_style = _STATUS_STYLE.get(title, "default")
-
-        status_msg = (
-            f"Command {command_name.upper()} completed successfully (Execution time: {execution_time})"
-            if success
-            else f"Command {command_name.upper()} failed (Execution time: {execution_time})"
+        return build_footer_panel(
+            command_name, success, execution_time, error_message, schema_version, applied_scripts
         )
-
-        body = Text()
-        if applied_scripts:
-            for script in applied_scripts:
-                body.append(f"  - {script}\n")
-        body.append(str(status_msg))
-        if not success and error_message:
-            body.append("\n")
-            body.append("Error: ", style="bold")
-            fmt = str(error_message).rstrip()
-            if "\n" in fmt:
-                body.append("\n" + "\n".join("  " + ln for ln in fmt.splitlines()))
-            else:
-                body.append(fmt)
-        if schema_version:
-            body.append("\n")
-            body.append("Schema Version: ", style="bold")
-            body.append(str(schema_version))
-
-        return Panel(body, title=title, box=box.HEAVY, border_style=border_style, expand=True)
 
     def _format_command_footer(
         self,
@@ -719,6 +674,56 @@ class BaseCommand:
             exc.result = result
             raise
 
+    def _prepare_required_analysis(self) -> None:
+        """Prepare enriched SQL journaling before this command can write."""
+        service = getattr(getattr(self, "execution_engine", None), "sql_execution_service", None)
+        prepare = getattr(service, "prepare_analysis", None)
+        if prepare is not None:
+            prepare()
+
+    def _preflight_execution_sql(self, migrations: List[Any]) -> None:
+        """Reject ambiguous SQL in scripts selected for this command."""
+        if self._capture_objects:
+            return
+        for migration in migrations:
+            if migration.format != MigrationFormat.SQL:
+                continue
+            statements = self.execution_engine._prepare_sql_statements(
+                migration, placeholder_service=self.placeholder_service
+            )
+            self.execution_engine._classify_execution_statements(statements)
+
+    def _prepare_analysis_for_sql_callbacks(
+        self,
+        scripts_dir: Path,
+        events: tuple[str, ...],
+        recursive: bool,
+        additional_dirs: Optional[List[Path]],
+        dir_recursive_map: Optional[Dict[Path, bool]],
+    ) -> None:
+        """Prepare only when this command's callback catalog contains SQL."""
+        snapshot = self.state_manager.new_callback_snapshot()
+        self._callback_snapshot = snapshot
+        for event in events:
+            callbacks = self.state_manager.get_callbacks_by_event(
+                scripts_dir,
+                event,
+                read_snapshot=snapshot,
+                recursive=recursive,
+                additional_dirs=additional_dirs,
+                dir_recursive_map=dir_recursive_map,
+            )
+            sql_callbacks = [c for c in callbacks if c.format == MigrationFormat.SQL]
+            if sql_callbacks:
+                self._prepare_required_analysis()
+                if self._capture_objects:
+                    return
+                for callback in sql_callbacks:
+                    statements = self.execution_engine._prepare_sql_statements(
+                        callback, placeholder_service=self.placeholder_service
+                    )
+                    self.execution_engine._classify_execution_statements(statements)
+
     def _run_preflight(
         self,
         result: Any,
@@ -726,6 +731,7 @@ class BaseCommand:
         ensure_history: bool = False,
         dry_run: bool = False,
         create_schema: bool = False,
+        ensure_schema: bool = False,
     ) -> None:
         """Run the canonical pre-execute lifecycle for every command.
 
@@ -735,9 +741,8 @@ class BaseCommand:
              any metadata read or DDL.
           2. ``create_schema_and_history_table()`` when
              ``ensure_history=True`` AND not ``dry_run`` — commands that
-             require the history table (``migrate``, ``info``, ``undo``,
-             ``baseline``, ``validate``, ``repair``, ``import-flyway``)
-             call this idempotently; dry-run
+             initialize history (``migrate``, ``baseline``, ``validate``,
+             ``repair``, ``import-flyway``) call this idempotently; dry-run
              skips it (PR-02 byte-identical contract). A failure here names
              the step (``Could not create the schema-history table: ...``)
              rather than reusing ``_ensure_connected``'s generic
@@ -758,29 +763,33 @@ class BaseCommand:
         Args:
             result: OperationResult to populate with database metadata.
             ensure_history: If True, create the schema history table when
-                not in dry-run. ``migrate``, ``info``, ``undo``,
-                ``baseline``, ``validate``, ``repair`` and ``import-flyway``
-                pass True; ``clean`` passes False (it doesn't need history).
+                not in dry-run. ``migrate``, ``baseline``, ``validate``,
+                ``repair`` and ``import-flyway`` pass True; ``info`` and
+                ``undo`` read missing history as empty.
             dry_run: Skip history-table creation when True, regardless
                 of ``ensure_history``. ``_ensure_connected`` and
                 ``_populate_database_info`` still run — dry-run must
                 still produce accurate output. Pass the command's own
                 dry-run flag only when that command must skip the
                 history table as a dry-run side effect (``migrate``,
-                ``baseline``); leave it at the default when the command
-                always needs the history table regardless of its own
-                dry-run mode (``undo``).
+                ``baseline``).
             create_schema: Forwarded to
                 ``create_schema_and_history_table(create_schema=...)``.
-                ``migrate``/``info``/``undo`` pass False (schema is
-                expected to already exist); ``baseline`` passes True
-                (it may be the first command run against a fresh
-                database).
+                ``baseline`` passes True to enable its history safety checks.
+            ensure_schema: Create a missing target schema for ``migrate``
+                without enabling baseline history safety checks.
         """
         self._preflight_connect(result)
         if ensure_history and not dry_run:
             try:
-                self.history_manager.create_schema_and_history_table(create_schema=create_schema)
+                if ensure_schema:
+                    self.history_manager.create_schema_and_history_table(
+                        create_schema=create_schema, ensure_schema=True
+                    )
+                else:
+                    self.history_manager.create_schema_and_history_table(
+                        create_schema=create_schema
+                    )
             except Exception as exc:
                 from dblift.core.migration.sql.sql_execution_service import (
                     _format_execution_error,
@@ -943,41 +952,17 @@ class BaseCommand:
         schema_name: Optional[str] = None,
     ) -> "Panel":
         """Build the command header as a Rich Panel (with bold keys, no color strip)."""
-        from rich import box
-        from rich.panel import Panel
+        from dblift.core.migration.ui.command_panels import build_command_header_panel
 
-        lines: List[str] = []
-
-        if connection_info:
-            lines.append(connection_info)
-
-        if database_name:
-            lines.append(f"Database: {database_name}")
-        elif hasattr(self, "config") and hasattr(self.config, "database"):
-            db_name = getattr(self.config.database, "database_name", None) or getattr(
-                self.config.database, "database", None
-            )
-            if db_name:
-                lines.append(f"Database: {db_name}")
-
-        if schema_name:
-            lines.append(f"Schema: {schema_name}")
-        elif hasattr(self, "config") and hasattr(self.config, "database"):
-            schema = getattr(self.config.database, "schema", None)
-            if schema:
-                lines.append(f"Schema: {schema}")
-
-        lines.append(f"Schema Version: {schema_version or '<none>'}")
-        lines.append(f"Database URL: {database_url or '<not available>'}")
-
-        if filters:
-            lines.append(f"Filtering Options: {' '.join(filters)}")
-
-        return Panel(
-            _props_text(*lines),
-            title=f"DBLIFT COMMAND: {command_name.upper()}",
-            box=box.HEAVY,
-            expand=True,
+        return build_command_header_panel(
+            command_name,
+            filters,
+            schema_version,
+            database_url,
+            connection_info,
+            database_name,
+            schema_name,
+            getattr(getattr(self, "config", None), "database", None),
         )
 
     def _build_filters_list(
@@ -1177,6 +1162,9 @@ class BaseCommand:
         )
         database_url = self._resolve_database_url_masked()
         connection_info = self._resolve_connection_info()
+
+        if isinstance(self.log, NullLog):
+            return
 
         should_print_header = self._is_console_output()
         if should_print_header:

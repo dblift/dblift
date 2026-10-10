@@ -16,7 +16,6 @@ from dblift.db.plugins.mongodb.mongodb import (
     MongoDbLockingManager,
     MongoDbQueryExecutor,
     MongoDbSchemaOperations,
-    MongoDbSnapshotManager,
 )
 from dblift.db.provider_interfaces import DroppableObject
 
@@ -36,7 +35,6 @@ class MongoDbProvider(NativeProvider):
             self.query_executor, self.schema_operations, config, log=self.log
         )
         self.locking_manager = MongoDbLockingManager(self.query_executor, log=self.log)
-        self.snapshot_manager = MongoDbSnapshotManager(self, log=self.log)
 
     # --- connection -------------------------------------------------------
 
@@ -49,8 +47,11 @@ class MongoDbProvider(NativeProvider):
         return self.connection_manager.database is not None
 
     def close(self) -> None:
-        """Close the driver connection."""
-        self.connection_manager.close()
+        """Release a migration lock still held, then close the driver connection."""
+        try:
+            self.locking_manager.close()
+        finally:
+            self.connection_manager.close()
 
     def get_database_url(self) -> str:
         """Return the masked connection URI."""
@@ -140,12 +141,6 @@ class MongoDbProvider(NativeProvider):
         """Whether *table_name* exists as a collection."""
         return self.schema_operations.collection_exists(table_name)
 
-    def create_snapshot_table_if_not_exists(
-        self, schema: str, table_name: Optional[str] = None
-    ) -> None:
-        """Create the snapshot collection through the driver, never via DDL."""
-        self.snapshot_manager.create_snapshot_table_if_not_exists(schema, table_name)
-
     # --- schema (no schema layer) ------------------------------------------
 
     def create_schema_if_not_exists(self, schema: str) -> None:
@@ -218,3 +213,7 @@ class MongoDbProvider(NativeProvider):
     def release_migration_lock(self, schema: str) -> bool:
         """Release the migration lease."""
         return self.locking_manager.release_migration_lock(schema)
+
+    def migration_lock_lost(self) -> bool:
+        """Whether the held migration lease was reclaimed or could not be renewed."""
+        return self.locking_manager.migration_lock_lost()

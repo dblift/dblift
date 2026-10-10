@@ -12,11 +12,13 @@ from dblift.db.plugins.redshift.quirks import RedshiftQuirks
 from dblift.db.plugins.redshift.sqlalchemy_url import build_sqlalchemy_url
 from dblift.db.provider_registry import PluginInfo
 
+from .descriptor import DESCRIPTOR
+
 PLUGIN: PluginInfo = PluginInfo(
-    name="redshift",
+    name=DESCRIPTOR.name,
     version="1.0.0",
     description="Redshift database provider",
-    dialects=["redshift"],
+    dialects=list(DESCRIPTOR.dialects),
     provider_class=RedshiftProvider,
     transport="native",
     quirks_class=RedshiftQuirks,

@@ -12,6 +12,7 @@ from dblift.db.plugins.db2.quirks import Db2Quirks
 from dblift.db.plugins.mysql.quirks import MysqlQuirks
 from dblift.db.plugins.oracle.quirks import OracleQuirks
 from dblift.db.plugins.postgresql.quirks import PostgresqlQuirks
+from dblift.db.plugins.snowflake.quirks import SnowflakeQuirks
 from dblift.db.plugins.sqlite.quirks import SqliteQuirks
 from dblift.db.plugins.sqlserver.quirks import SqlserverQuirks
 
@@ -25,6 +26,7 @@ def test_uppercase_folding_dialects_true():
     # get_applied_migrations (uppercasing the name) cannot find.
     assert OracleQuirks().flyway_source_table_case_sensitive is True
     assert Db2Quirks().flyway_source_table_case_sensitive is True
+    assert SnowflakeQuirks().flyway_source_table_case_sensitive is True
 
 
 def test_other_dialects_false():

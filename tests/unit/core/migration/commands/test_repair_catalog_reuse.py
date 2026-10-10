@@ -61,8 +61,10 @@ def test_noop_and_preview_load_catalog_once(database_client, extension, drift):
     ) as load:
         result = client.repair(dry_run=drift)
     assert result.success
-    assert result.checksums_fixed == result.failed_migrations_removed == 0
-    assert result.deleted_migrations_marked == 0
+    # A dry run reports the realignment it would make.
+    assert result.checksums_fixed == int(drift)
+    assert [m.script for m in result.aligned_migrations] == ([script.name] if drift else [])
+    assert result.failed_migrations_removed == result.deleted_migrations_marked == 0
     assert _history(database) == before_history
     assert database.read_bytes() == before
     assert load.call_count == 1

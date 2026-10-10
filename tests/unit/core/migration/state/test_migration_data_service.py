@@ -223,6 +223,38 @@ class TestDetectOutOfOrderMigrations:
         result = service._detect_out_of_order_migrations(migrations)
         assert "1_2" in result
 
+    def test_reapplying_after_an_undo_is_in_order(self, service):
+        # undo back to 1, then migrate again: 2 and 3 follow nothing higher
+        migrations = [
+            make_migration(version="1", type="SQL", installed_rank=1),
+            make_migration(version="2", type="SQL", installed_rank=2),
+            make_migration(version="3", type="SQL", installed_rank=3),
+            make_migration(version="3", type="UNDO_SQL", installed_rank=4),
+            make_migration(version="2", type="UNDO_SQL", installed_rank=5),
+            make_migration(version="2", type="SQL", installed_rank=6),
+            make_migration(version="3", type="SQL", installed_rank=7),
+        ]
+        assert service._detect_out_of_order_migrations(migrations) == set()
+
+    def test_reapplying_below_a_version_still_applied_is_out_of_order(self, service):
+        migrations = [
+            make_migration(version="1", type="SQL", installed_rank=1),
+            make_migration(version="3", type="SQL", installed_rank=2),
+            make_migration(version="2", type="SQL", installed_rank=3),
+            make_migration(version="2", type="UNDO_SQL", installed_rank=4),
+            make_migration(version="2", type="SQL", installed_rank=5),
+        ]
+        assert service._detect_out_of_order_migrations(migrations) == {"2"}
+
+    def test_failed_undo_keeps_the_version_applied(self, service):
+        migrations = [
+            make_migration(version="1", type="SQL", installed_rank=1),
+            make_migration(version="3", type="SQL", installed_rank=2),
+            make_migration(version="3", type="UNDO_SQL", success=False, installed_rank=3),
+            make_migration(version="2", type="SQL", installed_rank=4),
+        ]
+        assert service._detect_out_of_order_migrations(migrations) == {"2"}
+
 
 # ---------- _sort_applied_migrations ----------
 

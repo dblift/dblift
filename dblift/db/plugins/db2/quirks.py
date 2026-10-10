@@ -3,14 +3,10 @@
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Type
+from typing import Any, List, Optional, Tuple
 
 from dblift.db.base_quirks import BaseQuirks
 from dblift.db.error import ErrorCategory
-
-if TYPE_CHECKING:
-    from dblift.db.generator_protocol import AlterGeneratorProtocol, SqlGeneratorProtocol
-
 
 # Each entry: (compiled regex, ErrorCategory). Sourced by
 # ``DatabaseErrorClassifier`` via ``error_patterns()`` (ADR-26 A2).
@@ -59,46 +55,6 @@ class Db2Quirks(BaseQuirks):
     # import-flyway reads Flyway's quoted lowercase source table directly, as on
     # Oracle; get_applied_migrations would uppercase the name and miss it.
     flyway_source_table_case_sensitive = True
-    # Data-set ledger DDL: DB2 has no TEXT type (use CLOB) and defaults the
-    # install timestamp from the CURRENT TIMESTAMP special register.
-    data_history_text_type = "CLOB"
-    data_change_set_blob_type = "CLOB"
-    data_timestamp_column_ddl = "TIMESTAMP DEFAULT CURRENT TIMESTAMP"
-
-    def is_data_history_table_already_exists_error(self, error_message: str) -> bool:
-        """DB2 reports a duplicate object with SQLSTATE 42710 (SQL0601N)."""
-        return "42710" in (error_message or "")
-
-    def is_data_change_set_table_already_exists_error(self, error_message: str) -> bool:
-        """Same SQLSTATE 42710 detection as the data history table."""
-        return self.is_data_history_table_already_exists_error(error_message)
-
-    def build_data_history_table_ddl(
-        self,
-        qualified_table: str,
-        id_size: int = 100,
-        checksum_size: int = 128,
-    ) -> str:
-        """Render the ``CREATE TABLE`` SQL for a per-dataset data history ledger.
-
-        DB2 requires an explicit ``NOT NULL`` on a ``PRIMARY KEY`` column
-        (SQL0542N otherwise) — unlike the base dialects, where ``PRIMARY KEY``
-        implies it. Otherwise identical to :meth:`BaseQuirks.build_data_history_table_ddl`.
-        """
-        return (
-            f"CREATE TABLE {qualified_table} ("
-            f"id VARCHAR({id_size}) NOT NULL PRIMARY KEY, "
-            f"dataset VARCHAR(100), "
-            f"sql_checksum VARCHAR({checksum_size}), "
-            f"installed_by VARCHAR(100), "
-            f"installed_on {self.data_timestamp_column_ddl}, "
-            f"status VARCHAR(20), "
-            f"plan_fingerprint VARCHAR(128), "
-            f"summary {self.data_history_text_type}, "
-            f"vcs_ref VARCHAR(200), "
-            f"note {self.data_history_text_type}"
-            ")"
-        )
 
     def is_schema_history_race_error(self, error_message: str) -> bool:
         """DB2 has no ``CREATE TABLE IF NOT EXISTS``; a concurrent migration
@@ -120,26 +76,12 @@ class Db2Quirks(BaseQuirks):
     native_driver_display = "ibm_db_sa"
     # validate-sql offline placeholder.
     lint_placeholder_url = "db2://localhost:50000/DBLIFT_VALIDATE_SQL"
+
     # DB2 TIMESTAMP / TIME accept only fractional-seconds precision,
     # not the generic ``(width, scale)`` pair.
-    time_type_supports_only_fractional_precision = True
     # DB2 identity metadata needs a catalog fallback in addition to the
     # projected column flag; ColumnExtractor consults a preloaded identity
     # column set when this is True.
-    identity_uses_catalog_fallback = True
-
-    def correct_computed_column_flag(
-        self, is_generated: bool, column_def: "Optional[str]", is_identity: bool
-    ) -> bool:
-        """DB2 catalog rows can mark IDENTITY columns as generated/computed — that's
-        wrong, IDENTITY is a separate concept. Suppress the false flag
-        when ``is_identity`` is true; trust the catalog flag otherwise so
-        the SYSCAT enrichment can still flip real GENERATED-AS columns
-        on later."""
-        if is_generated and is_identity:
-            return False
-        return is_generated
-
     def has_connection_identifier(self, database_config: Any) -> bool:
         """DB2 accepts a URL or a complete host/database pair."""
 
@@ -163,23 +105,6 @@ class Db2Quirks(BaseQuirks):
         """DB2 SQLSTATE / errorcode error-classification patterns (ADR-26 A2)."""
         return _ERROR_PATTERNS
 
-    def build_snapshot_table_ddl(
-        self,
-        qualified_table: str,
-        snapshot_id_size: int,
-        checksum_size: int,
-    ) -> str:
-        """DB2 does not support DBLift snapshot table creation."""
-        raise NotImplementedError("DB2 does not support DBLift snapshot table creation")
-
-    def ddl_generator_class(self) -> Optional[Type["SqlGeneratorProtocol"]]:
-        """DDL generator is supplied by an installed extension package."""
-        return None
-
-    def alter_generator_class(self) -> Optional[Type["AlterGeneratorProtocol"]]:
-        """ALTER generator is supplied by an installed extension package."""
-        return None
-
     def parser_class(self, parser_type: str) -> Optional[type]:
         """Return the Db2 parser class for ``parser_type``, or ``None``.
 
@@ -197,136 +122,6 @@ class Db2Quirks(BaseQuirks):
 
             return DB2RegexParser
         return None
-
-    def normalize_view_name(self, name: str) -> str:
-        """DB2 returns view names uppercase from SYSCAT.VIEWS but
-        downstream catalog lookups use lowercase keys."""
-        return name.lower()
-
-    def apply_vendor_table_properties(self, table: Any, row: Dict[str, Any]) -> None:
-        """Apply DB2 tablespace + compression + storage params."""
-        from dblift.core.utils.row_access import get_row_value
-
-        tablespace = get_row_value(row, "tablespace_name")
-        if tablespace:
-            table.tablespace = tablespace
-        is_compressed = get_row_value(row, "is_compressed")
-        if is_compressed == "YES":
-            table.compress = True
-            compress_type = get_row_value(row, "compress_type")
-            if compress_type and compress_type != "N":
-                table.compress_type = compress_type
-        elif is_compressed == "NO":
-            table.compress = False
-        # DB2 storage parameters share the Oracle ``dialect_options`` namespace
-        # (both render PCTFREE/PCTUSED/INITIAL/NEXT). Resolve that canonical
-        # namespace from the registry via the storage-params capability so this
-        # plugin names no foreign dialect (ADR-26 E).
-        from dblift.db.provider_registry import ProviderRegistry
-
-        storage_ns = ProviderRegistry.canonical_dialect_name_for_capability(
-            "table_supports_storage_params"
-        )
-        for attr, col in (
-            ("pctfree", "pctfree_value"),
-            ("pctused", "pctused_value"),
-            ("initial", "initial_value"),
-            ("next", "next_extent_size"),
-        ):
-            val = get_row_value(row, col)
-            if val is not None and storage_ns:
-                try:
-                    table.set_dialect_option(storage_ns, attr, int(val))
-                except (ValueError, TypeError):
-                    pass
-
-    def fetch_unique_constraints(
-        self, extractor: Any, schema: str, table: str
-    ) -> "Optional[list[Any]]":
-        """DB2 UNIQUE constraints come from ``SYSCAT.TABCONST`` (``TYPE='U'``)
-        — more reliable than indexes for multi-column constraints.
-        Names are not sanitized: TABCONST already represents
-        user-meaningful constraints."""
-        if not getattr(extractor, "vendor_queries", None):
-            return None
-        result: "list[Any]" = extractor._get_unique_constraints_via_vendor_queries(schema, table)
-        return result
-
-    def sanitize_constraint_name(self, name: "Optional[str]") -> "Optional[str]":
-        """DB2 drops constraint names matching ``SQL\\d+`` (system-generated
-        in SYSCAT for unnamed constraints, e.g. ``SQL251208171332370``)."""
-        import re
-
-        if not name:
-            return name
-        normalized = name.strip().upper()
-        if re.match(r"^SQL\d+$", normalized):
-            return None
-        return name
-
-    def extract_partition_scheme_from_row(
-        self, extractor: Any, row: Dict[str, Any], table: Any
-    ) -> None:
-        """DB2: ``partition_definition`` (from ``SYSCAT.DATAPARTITIONS``).
-        DB2 only supports range partitioning."""
-        import re
-
-        from dblift.core.utils.row_access import get_row_value
-
-        part_def = get_row_value(row, "partition_definition")
-        if not part_def:
-            return
-        table.partition_method = "RANGE"
-        cols = re.findall(r"\b([a-zA-Z_][a-zA-Z0-9_]*)\b", part_def)
-        if cols:
-            table.partition_columns = cols
-
-    def extract_computed_column_expression(self, text: "Optional[str]") -> "Optional[str]":
-        """DB2 SYSCAT.COLUMNS.TEXT wraps computed expressions in
-        ``GENERATED ALWAYS AS (...)`` (sometimes with extra ``AS`` /
-        outer parens). Pull out the inner expression so it can be
-        compared against the source DDL."""
-        import re
-
-        if not text:
-            return text
-        expr = text
-        match = re.search(
-            r"GENERATED\s+ALWAYS\s+AS\s*\((.+?)\)",
-            expr,
-            re.IGNORECASE | re.DOTALL,
-        )
-        if match:
-            expr = match.group(1).strip()
-            # Strip leading "AS " that may slip through the regex.
-            expr = re.sub(r"^\s*AS\s+", "", expr, flags=re.IGNORECASE).strip()
-            # Handle nested "AS (...)" wrappers.
-            as_paren_match = re.match(
-                r"^\s*AS\s*\((.*)\)\s*$",
-                expr,
-                re.IGNORECASE | re.DOTALL,
-            )
-            if as_paren_match:
-                expr = as_paren_match.group(1).strip()
-            elif expr.startswith("(") and expr.endswith(")"):
-                if expr.count("(") == 1 and expr.count(")") == 1:
-                    expr = expr[1:-1].strip()
-            return expr
-        # No GENERATED-AS wrapper — try the trailing "AS <expr>" fallback.
-        # Matches the legacy behaviour exactly: take the text after the
-        # final ``AS``, strip outer parens and any further leading
-        # ``AS ``, and return the (possibly empty) result so the
-        # enricher's ``if not computation_expr: continue`` guard skips
-        # columns whose ``AS`` wrapper produced no actual expression.
-        if "AS" in expr.upper():
-            parts = expr.rsplit("AS", 1)
-            if len(parts) > 1:
-                tail = parts[1].strip()
-                if tail.startswith("(") and tail.endswith(")"):
-                    tail = tail[1:-1].strip()
-                tail = re.sub(r"^\s*AS\s+", "", tail, flags=re.IGNORECASE).strip()
-                return tail
-        return expr
 
     def type_equivalents(self) -> "dict[str, str]":
         """Db2 alias → canonical type map.

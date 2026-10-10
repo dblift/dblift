@@ -6,6 +6,7 @@ import pytest
 
 from dblift.db.plugins.cockroachdb.provider import CockroachdbProvider
 from dblift.db.plugins.redshift.provider import RedshiftProvider
+from tests.unit.db.plugins.lease_support import route_lease_to
 
 DUPLICATE_KEY_MESSAGE = "duplicate key value violates unique constraint"
 
@@ -93,6 +94,9 @@ class _CockroachProvider(CockroachdbProvider):
         self.statement_errors: list[tuple[str, Exception]] = []
         self.table_exists_value = True
         self._connection = MagicMock()
+        self.log = MagicMock()
+        # The lock lease runs on its own connection; record it with the rest.
+        self.lease_connections = route_lease_to(self)
 
     def create_schema_if_not_exists(self, schema: str) -> None:
         self.statements.append(("create_schema", schema, None))
@@ -240,24 +244,26 @@ def test_cockroachdb_lock_contention_returns_false_after_timeout() -> None:
     )
 
     assert acquired is False
-    provider._connection.rollback.assert_called_once()
+    assert provider.lease_connections[0].events == ["rollback", "close"]
 
 
 @pytest.mark.unit
-def test_cockroachdb_lock_rollback_failure_is_explicit() -> None:
+def test_cockroachdb_lock_rollback_failure_does_not_mask_the_statement_error() -> None:
     provider = _CockroachProvider()
+    provider.lease_connections = route_lease_to(provider, RuntimeError("rollback failed"))
     provider.statement_errors = [
-        ("INSERT INTO", RuntimeError(DUPLICATE_KEY_MESSAGE)),
+        ("INSERT INTO", RuntimeError("connection reset by peer")),
     ]
-    provider._connection.rollback.side_effect = RuntimeError("rollback failed")
 
-    with pytest.raises(RuntimeError, match="Could not rollback"):
+    with pytest.raises(RuntimeError, match="connection reset"):
         provider.acquire_migration_lock("public", wait_timeout_seconds=0)
+    assert provider.lease_connections[0].events == ["rollback", "close"]
 
 
 @pytest.mark.unit
-def test_cockroachdb_release_missing_lock_table_is_success() -> None:
+def test_cockroachdb_release_without_a_held_lease_touches_nothing() -> None:
     provider = _CockroachProvider()
     provider.table_exists_value = False
 
-    assert provider.release_migration_lock("public") is True
+    assert provider.release_migration_lock("public") is False
+    assert provider.statements == []

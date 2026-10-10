@@ -18,6 +18,7 @@ For detailed API documentation of command implementations, see:
 - `dblift.cli.handlers.baseline` - Baseline management
 - `dblift.cli.handlers.info` - Status information
 - `dblift.cli.handlers.validate` - Validation operations
+- `dblift.cli.handlers.validate_sql` - Offline checks of migration SQL
 - `dblift.cli.handlers.clean` - Clean operations
 - `dblift.cli.handlers.repair` - History repair
 - `dblift.cli.handlers.import_flyway` - Flyway history import

@@ -4,10 +4,9 @@ import os
 import traceback
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Callable, Dict, Generator, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, Generator, List, Optional
 
 from dblift.core.logger.formatters import OutputFormatter, OutputFormatterFactory
-from dblift.core.logger.formatters.htmlformatter import HtmlFormatter
 from dblift.core.logger.log import (
     AbstractLog,
     ConsoleLog,
@@ -32,6 +31,22 @@ from dblift.core.logger.results import (
     ValidateResult,
 )
 from dblift.core.utils.url_masking import mask_database_url
+
+if TYPE_CHECKING:
+    from dblift.core.logger.formatters.htmlformatter import HtmlFormatter
+
+
+def __getattr__(name: str) -> Any:
+    if name == "HtmlFormatter":
+        from dblift.core.logger.formatters.htmlformatter import HtmlFormatter
+
+        globals()[name] = HtmlFormatter
+        return HtmlFormatter
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def __dir__() -> List[str]:
+    return sorted(set(globals()) | set(__all__))
 
 
 class DbliftLogger(Log):
@@ -281,10 +296,10 @@ class DbliftLogger(Log):
             dedupe = kwargs.pop("dedupe", True)
             self.log.info(message, console_only=console_only, dedupe=dedupe)
 
-    def warn(self, message: str) -> None:
-        """Log a warning message."""
+    def warn(self, message: str, *, dedupe: bool = True) -> None:
+        """Log a warning message; ``dedupe=False`` logs it even if it was just logged."""
         if self.log is not None:
-            self.log.warning(message)
+            self.log.warning(message, dedupe=dedupe)
 
     def error(self, message: str, **kwargs) -> None:
         """Log an error message.
@@ -331,10 +346,11 @@ class DbliftLogger(Log):
 
         Args:
             message: The message to log
-            **kwargs: Additional fields to include in the log
+            **kwargs: Additional fields to include in the log (e.g. dedupe=False)
         """
         if self.log is not None:
-            self.log.warning(message)
+            dedupe = kwargs.pop("dedupe", True)
+            self.log.warning(message, dedupe=dedupe)
 
     def exception(self, message: str, exc_info: bool = True, **kwargs) -> None:
         """Log an exception with traceback.

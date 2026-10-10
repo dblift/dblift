@@ -7,11 +7,13 @@ from dblift.db.plugins.mongodb.provider import MongoDbProvider
 from dblift.db.plugins.mongodb.quirks import MongodbQuirks
 from dblift.db.provider_registry import PluginInfo
 
+from .descriptor import DESCRIPTOR
+
 PLUGIN: PluginInfo = PluginInfo(
-    name="mongodb",
+    name=DESCRIPTOR.name,
     version="1.0.0",
     description="MongoDB provider",
-    dialects=["mongodb", "mongo"],
+    dialects=list(DESCRIPTOR.dialects),
     provider_class=MongoDbProvider,
     transport="native",
     quirks_class=MongodbQuirks,

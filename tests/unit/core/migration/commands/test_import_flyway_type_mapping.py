@@ -146,6 +146,45 @@ class TestImportFlywayJdbcTypeMapping:
         assert rows[0]["type"] == "SQL"
 
 
+@pytest.mark.parametrize("schema_script", ['"app"', '"app","vector"'])
+def test_import_skips_flyway_schema_marker_without_changing_migration_rank(
+    tmp_path: Path, schema_script: str
+) -> None:
+    client = _make_client(tmp_path)
+    with create_engine(f"sqlite:///{tmp_path / 'db.sqlite'}").begin() as conn:
+        conn.execute(
+            text("""
+                INSERT INTO flyway_schema_history
+                (installed_rank, version, description, type, script, checksum,
+                 installed_by, installed_on, execution_time, success)
+                VALUES (0, NULL, '<< Flyway Schema Creation >>', 'SCHEMA',
+                        :script, NULL, 'flyway', '2026-01-01 00:00:00', 0, 1)
+                """),
+            {"script": schema_script},
+        )
+
+    result = client.import_flyway()
+
+    assert result.success is True, result.error_message
+    assert "1 entry imported" in result.message
+    assert "1 Flyway schema marker skipped" in result.message
+    rows = client.provider.execute_query(
+        "SELECT installed_rank, version, description, type, script, checksum "
+        "FROM dblift_schema_history ORDER BY installed_rank"
+    )
+    assert [
+        (
+            row["installed_rank"],
+            row["version"],
+            row["description"],
+            row["type"],
+            row["script"],
+            row["checksum"],
+        )
+        for row in rows
+    ] == [(1, "1", "a", "SQL", "V1__a.sql", str(_SCRIPT_CHECKSUM))]
+
+
 class TestImportFlywayRepeatableTypeMapping:
     """Flyway's own convention for a repeatable migration is ``type=SQL`` with
     no ``version`` — not a distinct ``type`` value. Before this fix,

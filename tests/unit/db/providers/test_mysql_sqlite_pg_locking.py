@@ -35,7 +35,10 @@ class TestSQLiteLockingManagerCreateTable(unittest.TestCase):
         mgr, qe = self._make()
         conn = MagicMock()
         mgr.create_migration_lock_table_if_not_exists(conn, "main")
-        qe.execute_statement.assert_called_once()
+        statements = [call.args[1] for call in qe.execute_statement.call_args_list]
+        self.assertIn("CREATE TABLE IF NOT EXISTS", statements[0])
+        # The catalog (a mock here) reports no owner column: it is added.
+        self.assertIn("ADD COLUMN", statements[1])
 
     def test_raises_on_error(self):
         mgr, qe = self._make()
@@ -81,9 +84,17 @@ class TestSQLiteLockingManagerLostRaceLogging(unittest.TestCase):
         qe = MagicMock()
         mgr = SQLiteLockingManager(qe, MagicMock())
         conn = MagicMock()
-        conn.execute.side_effect = sqlite3.IntegrityError(
-            "UNIQUE constraint failed: dblift_migration_lock.lock_name"
-        )
+
+        def execute(sql, *_params):
+            if sql.startswith("PRAGMA database_list"):
+                return MagicMock(fetchall=lambda: [])  # in memory: lease on this connection
+            if sql.startswith("INSERT"):
+                raise sqlite3.IntegrityError(
+                    "UNIQUE constraint failed: dblift_migration_lock.lock_name"
+                )
+            return MagicMock(rowcount=0)
+
+        conn.execute.side_effect = execute
 
         # wait_timeout_seconds=1 with a losing attempt every time: one real
         # `time.sleep(1)` inside the loop, then the elapsed-time check ends
@@ -111,7 +122,8 @@ class TestSQLiteLockWaiterTransaction(unittest.TestCase):
 
     LOCK_DDL = (
         'CREATE TABLE "dblift_migration_lock" (lock_name TEXT PRIMARY KEY, '
-        "acquired_at TEXT, acquired_by TEXT, process_id TEXT, lock_mode INTEGER)"
+        "acquired_at TEXT, acquired_by TEXT, process_id TEXT, lock_mode INTEGER, "
+        "owner_token TEXT)"
     )
 
     def setUp(self):
@@ -129,7 +141,7 @@ class TestSQLiteLockWaiterTransaction(unittest.TestCase):
     def _hold_lock_row(self):
         self.holder.execute(
             'INSERT INTO "dblift_migration_lock" VALUES '
-            "('dblift_migration_lock_main', datetime('now'), 'other', '1', 1)"
+            "('dblift_migration_lock_main', datetime('now'), 'other', '1', 1, 'other-owner')"
         )
 
     def test_lost_race_does_not_leave_a_transaction_open(self):

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dblift"
-version = "4.10.0"
+version = "4.11.0"
 description = "Flyway-style raw-SQL migrations for Python teams. No JVM, and you see the exact SQL before it runs."
 keywords = ["flyway", "migrations", "python", "sql", "postgresql", "mysql"]
 readme = "README.md"
@@ -60,6 +60,29 @@ cockroachdb = "dblift.db.plugins.cockroachdb.plugin:PLUGIN"
 redshift = "dblift.db.plugins.redshift.plugin:PLUGIN"
 snowflake = "dblift.db.plugins.snowflake.plugin:PLUGIN"
 
+# Provider discovery metadata without importing implementations.
+[project.entry-points."dblift.provider_descriptors"]
+postgresql = "dblift.db.plugins.postgresql.descriptor:DESCRIPTOR"
+mysql = "dblift.db.plugins.mysql.descriptor:DESCRIPTOR"
+mariadb = "dblift.db.plugins.mariadb.descriptor:DESCRIPTOR"
+oracle = "dblift.db.plugins.oracle.descriptor:DESCRIPTOR"
+sqlserver = "dblift.db.plugins.sqlserver.descriptor:DESCRIPTOR"
+db2 = "dblift.db.plugins.db2.descriptor:DESCRIPTOR"
+sqlite = "dblift.db.plugins.sqlite.descriptor:DESCRIPTOR"
+cosmosdb = "dblift.db.plugins.cosmosdb.descriptor:DESCRIPTOR"
+mongodb = "dblift.db.plugins.mongodb.descriptor:DESCRIPTOR"
+duckdb = "dblift.db.plugins.duckdb.descriptor:DESCRIPTOR"
+neon = "dblift.db.plugins.neon.descriptor:DESCRIPTOR"
+supabase = "dblift.db.plugins.supabase.descriptor:DESCRIPTOR"
+aurora-postgresql = "dblift.db.plugins.aurora_postgresql.descriptor:DESCRIPTOR"
+alloydb = "dblift.db.plugins.alloydb.descriptor:DESCRIPTOR"
+yugabytedb = "dblift.db.plugins.yugabytedb.descriptor:DESCRIPTOR"
+timescaledb = "dblift.db.plugins.timescaledb.descriptor:DESCRIPTOR"
+citus = "dblift.db.plugins.citus.descriptor:DESCRIPTOR"
+cockroachdb = "dblift.db.plugins.cockroachdb.descriptor:DESCRIPTOR"
+redshift = "dblift.db.plugins.redshift.descriptor:DESCRIPTOR"
+snowflake = "dblift.db.plugins.snowflake.descriptor:DESCRIPTOR"
+
 # CLI command parser extensions (third-party packages can add subcommands
 # by loading a function that receives the top-level ArgumentParser).
 [project.entry-points."dblift.commands"]
@@ -81,6 +104,10 @@ snowflake = "dblift.db.plugins.snowflake.plugin:PLUGIN"
 
 # MCP tool registrars: callables receiving the ``dblift mcp`` server object.
 [project.entry-points."dblift.mcp_tools"]
+
+# Configuration sections owned by installed extensions: callables returning
+# the top-level section names, so ``validate-config`` does not flag them.
+[project.entry-points."dblift.config_keys"]
 
 [project.optional-dependencies]
 dev = [
@@ -104,6 +131,8 @@ dev = [
     "docker>=6.1.2",
     "types-PyYAML>=6.0.12.12",
     "types-setuptools",
+    # Qualification script rewrites the archived fork's TOML; not a runtime dependency.
+    "tomlkit>=0.13",
     "pre-commit>=4.0.0",
     "Cython>=3.0.0",
     # Security and quality tooling (see .github/workflows/security.yml,
@@ -151,7 +180,7 @@ timescaledb = ["psycopg[binary]>=3.1"]
 citus = ["psycopg[binary]>=3.1"]
 cockroachdb = ["psycopg[binary]>=3.1"]
 redshift = ["sqlalchemy-redshift>=1.0.0", "redshift-connector>=2.1.0"]
-snowflake = ["snowflake-sqlalchemy>=1.11.0"]
+snowflake = ["snowflake-sqlalchemy>=1.11.0,<2", "SQLAlchemy>=2.0,<2.1"]
 fastapi = ["fastapi>=0.100"]
 flask = ["flask>=2.3"]
 django = ["Django>=4.2"]
@@ -394,7 +423,6 @@ module = [
     "dblift.db.base_provider",
     "dblift.db.feature_gate",
     "dblift.db.provider_registry",
-    "dblift.db.plugins.oracle.introspection",
 ]
 disallow_any_generics = true
 disallow_subclassing_any = true
@@ -861,7 +889,6 @@ module = [
     "dblift.db.plugins.mongodb.mongodb.locking_manager",
     "dblift.db.plugins.mongodb.mongodb.query_executor",
     "dblift.db.plugins.mongodb.mongodb.schema_operations",
-    "dblift.db.plugins.mongodb.mongodb.snapshot_manager",
 ]
 disallow_any_generics = true
 disallow_subclassing_any = true

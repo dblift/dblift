@@ -17,6 +17,7 @@ import tomllib
 from pathlib import Path
 
 import pytest
+import yaml
 from packaging.requirements import Requirement
 from packaging.specifiers import SpecifierSet
 from packaging.utils import canonicalize_name
@@ -134,7 +135,7 @@ def test_published_docs_and_templates_do_not_reference_removed_tier_surfaces():
         ROOT / "docs" / "user-guide" / "getting-started.md",
         ROOT / "docs" / "index.md",
         ROOT / "docs" / "api-reference" / "core.md",
-        ROOT / "dblift" / "core" / "logger" / "templates" / "oldreport.html",
+        ROOT / "dblift" / "core" / "logger" / "templates" / "report.html",
     ]
     forbidden = (
         "--license-key",
@@ -158,13 +159,24 @@ def test_published_docs_and_templates_do_not_reference_removed_tier_surfaces():
     assert offenders == []
 
 
-def test_pypi_publish_workflow_uses_trusted_publishing():
+def test_release_workflow_builds_and_publishes_single_wheel():
     workflow = ROOT / ".github" / "workflows" / "publish-pypi.yml"
 
     text = workflow.read_text(encoding="utf-8")
+    config = yaml.safe_load(text)
+    jobs = config["jobs"]
 
-    assert "id-token: write" in text
-    assert "pypa/gh-action-pypi-publish" in text
+    assert "python -m build" in text
+    assert "packages/dblift" not in text
+    assert config["permissions"]["id-token"] == "write"
+    assert jobs["publish"]["needs"] == "test"
+    assert jobs["publish"]["environment"] == "pypi"
+    assert any(
+        step.get("name") == "Publish dblift"
+        and step.get("uses") == "pypa/gh-action-pypi-publish@release/v1"
+        for step in jobs["publish"]["steps"]
+    )
+    assert jobs["publish-pytest-dblift"]["environment"] == "pypi-pytest-dblift"
     assert "password:" not in text
 
 
@@ -479,6 +491,9 @@ def test_no_database_driver_is_a_mandatory_dependency():
     driver_names: set[str] = set()
     for extra in engine_extras:
         driver_names |= _requirement_names(table[extra])
+    # An engine extra may narrow the SQL toolkit every install already uses;
+    # that pin does not make the toolkit an engine client library.
+    driver_names -= {canonicalize_name("SQLAlchemy")}
 
     offenders: list[str] = []
 

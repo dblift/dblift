@@ -11,8 +11,14 @@ from dblift.core.constants import (
 )
 from dblift.core.logger import NullLog
 from dblift.core.sql_model.base import SqlStatementType
+from dblift.core.sql_parser.redaction import describe_statement, mask_string_literals
 from dblift.db.base_quirks import BaseQuirks
-from dblift.db.error import clean_driver_error_message, extract_error_code, extract_sqlstate
+from dblift.db.error import (
+    clean_driver_error_message,
+    extract_error_code,
+    extract_sqlstate,
+    strip_sql_statement_block,
+)
 from dblift.db.provider_interfaces import TransactionalProvider
 from dblift.db.value_utils import to_python_string
 
@@ -24,7 +30,7 @@ def _format_execution_error(exc: BaseException) -> str:
     expose them via attributes or getSQLState() / getErrorCode().
     """
     fragments: List[str] = []
-    base = clean_driver_error_message(to_python_string(exc) or str(exc))
+    base = strip_sql_statement_block(clean_driver_error_message(to_python_string(exc) or str(exc)))
     if base:
         fragments.append(base)
     sqlstate = extract_sqlstate(exc)
@@ -70,6 +76,7 @@ class SqlExecutionService:
         self.journal = journal
         self.schema = schema
         self._quirks: Optional[BaseQuirks] = quirks
+        self._analysis_prepared = False
 
     @property
     def quirks(self) -> BaseQuirks:
@@ -80,6 +87,33 @@ class SqlExecutionService:
                 provider_quirks if isinstance(provider_quirks, BaseQuirks) else BaseQuirks()
             )
         return self._quirks
+
+    def _dialect_name(self) -> Optional[str]:
+        dialect = getattr(self.sql_analyzer, "dialect", None)
+        return dialect if isinstance(dialect, str) else None
+
+    def prepare_analysis(self) -> None:
+        """Prepare dependencies required by the active object-change journal."""
+        if self._analysis_prepared or not (
+            self.journal
+            and getattr(self.journal, "capture_objects", True)
+            and hasattr(self.journal, "record_object_changes")
+        ):
+            return
+        if not self.quirks.supports_sql_migrations:
+            return
+
+        prepare = getattr(self.sql_analyzer, "prepare_object_analysis", None)
+        if prepare is not None:
+            prepare()
+
+        # Native quirks use the shared AST-first DML analyzer, including on
+        # dialects whose DDL parser is regex-only. Plugin overrides own this path.
+        analyze_dml = self.quirks.analyze_dml
+        if getattr(analyze_dml, "__func__", analyze_dml) is BaseQuirks.analyze_dml:
+            import sqlglot  # noqa: F401 - fail before any user or history write
+
+        self._analysis_prepared = True
 
     def execute_statement(
         self,
@@ -107,6 +141,8 @@ class SqlExecutionService:
         if self.quirks.is_batch_separator(statement):
             self.log.debug("Skipping dialect batch separator statement")
             return False, 0
+
+        self.prepare_analysis()
 
         # Log statement for debugging
         if len(statement) > LOG_STATEMENT_PREVIEW_LENGTH:
@@ -163,10 +199,15 @@ class SqlExecutionService:
                     # Extract and record object changes for DDL and DML statements
                     # DDL: CREATE, ALTER, DROP, COMMENT, etc.
                     # DML: INSERT, UPDATE, DELETE (affect TABLE objects)
-                    if statement_type in (
-                        SqlStatementType.DDL.value,
-                        SqlStatementType.DML.value,
-                    ) and hasattr(self.journal, "record_object_changes"):
+                    if (
+                        statement_type
+                        in (
+                            SqlStatementType.DDL.value,
+                            SqlStatementType.DML.value,
+                        )
+                        and getattr(self.journal, "capture_objects", True)
+                        and hasattr(self.journal, "record_object_changes")
+                    ):
                         try:
                             objects_affected = []
 
@@ -299,18 +340,23 @@ class SqlExecutionService:
             # Record statement failure in journal if enabled
             if self.journal and hasattr(self.journal, "record_statement_failed"):
                 execution_time = int((time.time() - stmt_start_time) * SECONDS_TO_MILLISECONDS)
-                error_message = clean_driver_error_message(to_python_string(e) or str(e))
+                error_message = strip_sql_statement_block(
+                    clean_driver_error_message(to_python_string(e) or str(e))
+                )
                 self.journal.record_statement_failed(
-                    statement, stmt_index, error_message, execution_time
+                    mask_string_literals(statement, self._dialect_name()),
+                    stmt_index,
+                    error_message,
+                    execution_time,
                 )
 
             try:
                 formatted = _format_execution_error(e)
             except Exception:
                 formatted = ""
-            sql_snippet = statement.strip().splitlines()[0][:120]
-            self.log.error(f"SQL: {sql_snippet}")
-            self.log.error(formatted or str(e))
+            self.log.error(f"SQL: {describe_statement(statement, self._dialect_name())}")
+            self.log.debug(f"Failed statement: {statement}")
+            self.log.error(formatted or strip_sql_statement_block(str(e)))
 
             # Re-raise the exception
             raise

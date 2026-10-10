@@ -99,3 +99,7 @@ cli/**/*.c
 
 # Written by scripts/create_release.py for the GitHub release body.
 RELEASE_NOTES.md
+
+# agent specific files
+CLAUDE.md
+AGENTS.md

@@ -1,6 +1,7 @@
 """Extended tests for core/logger/__init__.py DbliftLogger."""
 
 import unittest
+from datetime import datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import MagicMock, patch
@@ -90,6 +91,64 @@ class TestDbliftLoggerSetCommandCompleted(unittest.TestCase):
 
 
 class TestDbliftLoggerHtmlFinalize(unittest.TestCase):
+    def test_render_exception_propagates_without_changing_failed_result(self):
+        from dblift.core.logger import DbliftLogger, FileLog, LogFormat
+        from dblift.core.logger.results import MigrateResult
+
+        with TemporaryDirectory() as tmpdir:
+            logger = DbliftLogger("test", format=LogFormat.HTML, logfile_dir=Path(tmpdir))
+            file_log = next(log for log in logger.logs if isinstance(log, FileLog))
+            result = MigrateResult()
+            result.set_error("no such table: missing_table")
+            result.complete()
+
+            with patch.object(
+                file_log.formatter,
+                "format_result",
+                side_effect=RuntimeError("renderer failed"),
+            ):
+                with self.assertRaisesRegex(RuntimeError, "renderer failed"):
+                    logger.set_command_completed(False, command_type="MIGRATE", result=result)
+
+            self.assertFalse(result.success)
+            self.assertEqual(result.error_message, "no such table: missing_table")
+            self.assertIs(file_log.operation_result, result)
+
+    def test_two_same_second_html_loggers_keep_distinct_complete_reports(self):
+        from dblift.core.logger import DbliftLogger, LogFormat
+        from dblift.core.logger.results import OperationResult
+
+        fixed_time = datetime(2026, 10, 4, 12, 0, 0)
+
+        class FrozenDatetime:
+            @staticmethod
+            def now():
+                return fixed_time
+
+        with TemporaryDirectory() as tmpdir:
+            directory = Path(tmpdir)
+            with patch("dblift.core.logger.log.datetime", FrozenDatetime):
+                reports = []
+                for command, marker in (
+                    ("MIGRATE", "FIRST_OP_MARKER"),
+                    ("VALIDATE", "SECOND_OP_MARKER"),
+                ):
+                    logger = DbliftLogger(command, format=LogFormat.HTML, logfile_dir=directory)
+                    result = OperationResult(success=False, error_message=marker)
+                    result.complete()
+                    logger.set_command_completed(False, command_type=command, result=result)
+                    logger.close()
+                    reports.append(logger.current_log_file)
+
+            assert reports[0] != reports[1]
+            assert sorted(directory.glob("*.html")) == sorted(reports)
+            first = reports[0].read_text(encoding="utf-8")
+            second = reports[1].read_text(encoding="utf-8")
+            assert "FIRST_OP_MARKER" in first and "SECOND_OP_MARKER" not in first
+            assert "SECOND_OP_MARKER" in second and "FIRST_OP_MARKER" not in second
+            assert "temporary file" not in first.lower()
+            assert "temporary file" not in second.lower()
+
     def test_set_command_completed_finalizes_html_file_log_via_log_format(self):
         """FileLog stores format on ``log_format``; completed HTML reports must
         still run the finalize/close path."""

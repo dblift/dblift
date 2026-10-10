@@ -115,18 +115,13 @@ class UndoCommand(BaseCommand):
         result.show_query_results = show_query_results
         result.target_schema = self.config.database.schema
 
+        if not dry_run:
+            self._prepare_required_analysis()
+
         try:
-            # Canonical preflight (ADR-0011): connect → ensure schema/history
-            # table → populate connection info. undo() has no prior
-            # migrate()/info() call to rely on, so it must run this itself --
-            # some providers (e.g. CosmosDB) have no lazy-reconnect hook and
-            # raise instead of connecting on demand, which previously left
-            # this command reading an empty, connection-less history and
-            # reporting a false "nothing to undo". The history table is
-            # always ensured here (not skipped in dry-run) since undo's own
-            # dry-run branch only affects whether migrations are executed,
-            # not whether the history table needs to exist to read it.
-            self._run_preflight(result, ensure_history=True, create_schema=False)
+            # Connect before reading history; a missing history table means
+            # there are no applied migrations and must not create anything.
+            self._run_preflight(result)
 
             # Log command execution with connection info (after connection is established)
             self._log_command_header_update(
@@ -139,9 +134,6 @@ class UndoCommand(BaseCommand):
                 exclude_versions=exclude_versions,
                 show_sql=show_sql,
             )
-
-            # Display current schema version
-            self._log_current_schema_version()
 
             # Setup parameters
             use_recursive, use_additional_dirs = self.migration_helpers.setup_migration_parameters(
@@ -319,6 +311,28 @@ class UndoCommand(BaseCommand):
                     self._log_command_completion("undo", result)
                     return result
                 undo_plan.append((migration, undo_migration))
+
+            if not dry_run and not self._capture_objects:
+                callback_snapshot = self.state_manager.new_callback_snapshot()
+                callbacks = [
+                    callback
+                    for event in (
+                        "beforeUndo",
+                        "afterUndo",
+                        "afterUndoError",
+                        "beforeEach",
+                        "afterEach",
+                    )
+                    for callback in self.state_manager.get_callbacks_by_event(
+                        scripts_dir,
+                        event,
+                        read_snapshot=callback_snapshot,
+                        recursive=use_recursive,
+                        additional_dirs=use_additional_dirs,
+                        dir_recursive_map=dir_recursive_map,
+                    )
+                ]
+                self._preflight_execution_sql([undo for _, undo in undo_plan] + callbacks)
 
             if dry_run:
                 for migration, undo_migration in undo_plan:

@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dblift-lightweight-fixture"
+version = "0.0.1"
+requires-python = ">=3.11"
+dependencies = ["dblift"]
+
+[project.entry-points."dblift.providers"]
+fixture_sqlite = "fixture_sqlite:PLUGIN"
+
+[project.entry-points."dblift.event_listeners"]
+fixture_sqlite_events = "fixture_sqlite:register"
+
+[tool.setuptools.packages.find]
+include = ["fixture_sqlite*"]

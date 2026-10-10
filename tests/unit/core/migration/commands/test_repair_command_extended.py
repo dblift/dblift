@@ -910,6 +910,28 @@ class TestRepairCommandExecute(unittest.TestCase):
         info_calls = " ".join(str(c) for c in log.info.call_args_list)
         self.assertIn("DRY RUN", info_calls)
 
+    def test_dry_run_reports_checksum_change_on_failed_row_as_one_removal(self):
+        """Mirrors the repair loop: the failed row is deleted once, not realigned."""
+        cmd = self._make_execute_cmd()
+        state = MigrationState()
+        state.checksum_changes = [
+            SimpleNamespace(script_name="R__x.sql", previous_checksum=1, current_checksum=2)
+        ]
+        state.failed_objects = [SimpleNamespace(script_name="R__x.sql", version=None)]
+        cmd.state_manager.build_state.return_value = state
+
+        with patch.object(cmd, "_populate_database_info"):
+            with patch.object(cmd, "_log_command_header_update"):
+                with patch.object(cmd, "_log_command_completion"):
+                    result = cmd.execute(Path("/migrations"), dry_run=True)
+
+        self.assertTrue(result.success)
+        self.assertEqual([m.script for m in result.removed_migrations], ["R__x.sql"])
+        self.assertEqual(result.aligned_migrations, [])
+        self.assertEqual(result.failed_migrations_removed, 1)
+        self.assertEqual(result.checksums_fixed, 0)
+        cmd.history_manager.delete_failed_migration_entry.assert_not_called()
+
     def test_history_table_failure_raises_preflight_error(self):
         cmd = self._make_execute_cmd()
         cmd.history_manager.create_schema_and_history_table.side_effect = RuntimeError("no DB")

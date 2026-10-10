@@ -1,5 +1,8 @@
+import importlib.metadata
+import logging
 import os
 import tempfile
+from unittest.mock import MagicMock
 
 import pytest
 import yaml
@@ -12,6 +15,7 @@ from dblift.config.dblift_config import (
     DirectoryConfig,
     LoggingConfig,
     MigrationsConfig,
+    extension_config_keys,
     unrecognized_top_level_keys,
 )
 
@@ -347,3 +351,56 @@ class TestUnrecognizedTopLevelKeys:
     def test_non_dict_input_returns_no_keys(self):
         assert unrecognized_top_level_keys(None) == []
         assert unrecognized_top_level_keys([]) == []
+
+
+def _fake_entry_point(name, load):
+    entry_point = MagicMock()
+    entry_point.name = name
+    entry_point.load = load
+    return entry_point
+
+
+@pytest.fixture
+def extension_entry_points(monkeypatch):
+    """Install fake ``dblift.config_keys`` entry points for one test."""
+
+    def install(*entry_points):
+        monkeypatch.setattr(
+            importlib.metadata,
+            "entry_points",
+            lambda group: list(entry_points) if group == "dblift.config_keys" else [],
+        )
+        extension_config_keys.cache_clear()
+
+    yield install
+    extension_config_keys.cache_clear()
+
+
+class TestExtensionConfigKeys:
+    def test_declared_key_accepted_at_root_and_under_an_environment(self, extension_entry_points):
+        extension_entry_points(_fake_entry_point("ext", lambda: lambda: ["preflight"]))
+        d = {
+            "database": {},
+            "preflight": {},
+            "environments": {"prod": {"preflight": {}}},
+        }
+        assert unrecognized_top_level_keys(d) == []
+
+    def test_undeclared_key_still_reported(self, extension_entry_points):
+        extension_entry_points(_fake_entry_point("ext", lambda: lambda: ("preflight",)))
+        d = {"preflight": {}, "preflihgt": {}}
+        assert unrecognized_top_level_keys(d) == ["preflihgt"]
+
+    def test_failing_entry_point_is_tolerated_and_warned_once(self, extension_entry_points, caplog):
+        def broken():
+            raise ImportError("missing module")
+
+        extension_entry_points(
+            _fake_entry_point("broken", broken),
+            _fake_entry_point("ext", lambda: lambda: ["preflight"]),
+        )
+        with caplog.at_level(logging.WARNING, logger="dblift.config.dblift_config"):
+            assert unrecognized_top_level_keys({"preflight": {}, "typo": 1}) == ["typo"]
+            assert unrecognized_top_level_keys({"preflight": {}}) == []
+        warnings = [r for r in caplog.records if "dblift.config_keys 'broken'" in r.getMessage()]
+        assert len(warnings) == 1

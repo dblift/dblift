@@ -5,6 +5,7 @@ This module provides services for preparing and analyzing migration data
 for display and processing purposes.
 """
 
+from functools import cmp_to_key
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
@@ -116,24 +117,46 @@ class MigrationDataService:
             Set of version strings that were applied out of order
         """
         out_of_order = set()
-        last_version: Optional[str] = None
+        # Versions currently applied while walking the history, and the highest
+        # of them. A successful undo removes its version, so a later re-run is
+        # measured against what is still applied, not against a row undone in
+        # between.
+        applied_versions: Set[str] = set()
+        highest_version: Optional[str] = None
 
         for migration in applied_migrations:
-            if self._get_migration_type(migration) not in VERSIONED_SCRIPT_TYPES:
-                continue
-
+            migration_type = self._get_migration_type(migration)
             version = str(getattr(migration, "version", ""))
             if not version:
                 continue
 
             try:
-                # Check if this version is lower than the previous one. Uses the
-                # shared comparator: a local int-only parse scored every alpha
-                # segment as 0, so a VB -> VA regression looked in-order.
-                if last_version is not None and _compare_versions_shared(version, last_version) < 0:
+                if migration_type == "UNDO_SQL":
+                    if self._is_migration_successful(migration):
+                        applied_versions.discard(version)
+                        if version == highest_version:
+                            highest_version = (
+                                max(applied_versions, key=cmp_to_key(_compare_versions_shared))
+                                if applied_versions
+                                else None
+                            )
+                    continue
+
+                if migration_type not in VERSIONED_SCRIPT_TYPES:
+                    continue
+
+                # Check if this version is lower than the highest still applied.
+                # Uses the shared comparator: a local int-only parse scored every
+                # alpha segment as 0, so a VB -> VA regression looked in-order.
+                if (
+                    highest_version is None
+                    or _compare_versions_shared(version, highest_version) > 0
+                ):
+                    highest_version = version
+                elif _compare_versions_shared(version, highest_version) < 0:
                     out_of_order.add(version)
 
-                last_version = version
+                applied_versions.add(version)
 
             except Exception as e:
                 self.logger.debug(f"Could not parse version for out-of-order detection: {e}")

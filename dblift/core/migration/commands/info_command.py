@@ -9,6 +9,8 @@ if TYPE_CHECKING:
     pass
 from dblift.core.logger.results import InfoResult, MigrationInfo, is_failed_migration_status
 from dblift.core.migration.migration import VERSIONED_SCRIPT_TYPES, MigrationType
+from dblift.core.migration.sql.lint import lint_pending_scripts
+from dblift.core.migration.sql.script_analysis import dialect_of
 from dblift.core.utils.url_masking import mask_database_url
 from dblift.db.provider_capabilities import get_provider_display_url, get_provider_driver_display
 
@@ -190,6 +192,19 @@ class InfoCommand(BaseCommand):
 
             result.migrations = all_migration_infos
 
+            # What each pending SQL script does, read from its file; applied rows,
+            # Python scripts and undo scripts keep analysis=None.
+            dialect = dialect_of(self.config)
+            if dialect:
+                analysed = lint_pending_scripts(
+                    getattr(migration_state, "pending_objects", None) or [],
+                    dialect,
+                    self.log,
+                    enabled=self._capture_objects,
+                )
+                for info in all_migration_infos:
+                    info.analysis = analysed.get(info.script)
+
             # Add database connection information to the result
             # (This is already done by _populate_database_info, but keeping for compatibility)
             try:
@@ -220,7 +235,7 @@ class InfoCommand(BaseCommand):
                 "info",
                 result,
                 _body,
-                preflight=lambda: self._run_preflight(result, ensure_history=True),
+                preflight=lambda: self._run_preflight(result),
                 header_kwargs={"read_snapshot": read_snapshot},
                 error_message_prefix="Info operation failed",
             ),

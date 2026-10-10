@@ -16,6 +16,7 @@ from dblift.core.migration.state.migration_state import MigrationState
 from dblift.db.provider_capabilities import ensure_provider_connection
 from dblift.db.provider_interfaces import TransactionalProvider
 
+from ._repair_records import record_repair
 from .base_command import BaseCommand
 
 
@@ -129,6 +130,19 @@ class RepairCommand(BaseCommand):
                 self.log.info("DRY RUN: the following repairs would be executed:")
                 for repair in repairs_needed:
                     self.log.info(f"  - {repair['type']}: {repair['script']}")
+                    script = str(repair.get("script", ""))
+                    kind = repair["type"]
+                    # Same routing as the repair loop: a checksum repair on a
+                    # failed row deletes the row, and a row is removed once.
+                    if kind == "CHECKSUM_MISMATCH" and self._is_failed_migration(
+                        script, migration_state
+                    ):
+                        kind = "FAILED_MIGRATION"
+                    if kind == "FAILED_MIGRATION" and any(
+                        removed.script == script for removed in result.removed_migrations
+                    ):
+                        continue
+                    record_repair(result, kind, repair, migration_state)
                 self._log_command_completion("repair", result)
                 return result
 
@@ -440,7 +454,9 @@ class RepairCommand(BaseCommand):
                 return True
         return False
 
-    def _delete_failed_migration_entry(self, repair: Dict[str, Any], result: RepairResult) -> bool:
+    def _delete_failed_migration_entry(
+        self, repair: Dict[str, Any], result: RepairResult, migration_state: Any = None
+    ) -> bool:
         """Delete a failed migration row from history so it can be retried.
 
         Shared by the FAILED_MIGRATION branch and the CHECKSUM_MISMATCH-on-failed-row branch
@@ -468,9 +484,7 @@ class RepairCommand(BaseCommand):
             row_removed = self.history_manager.delete_failed_migration_entry(script_name)
 
             if row_removed:
-                result.failed_migrations_removed = (
-                    getattr(result, "failed_migrations_removed", 0) + 1
-                )
+                record_repair(result, "FAILED_MIGRATION", repair, migration_state)
                 # Warn about non-transactional DDL databases
                 if (
                     isinstance(self.provider, TransactionalProvider)
@@ -534,7 +548,7 @@ class RepairCommand(BaseCommand):
                     # leave the row in a permanently-failed state that subsequent `migrate`
                     # calls skip. Delete it instead so the migration can be retried cleanly.
                     if self._is_failed_migration(script, migration_state):
-                        if self._delete_failed_migration_entry(repair, result):
+                        if self._delete_failed_migration_entry(repair, result, migration_state):
                             repairs_executed += 1
                             self.log.info(
                                 f"Removed failed migration entry: {script} - "
@@ -563,7 +577,7 @@ class RepairCommand(BaseCommand):
                             "Repair may require manual intervention."
                         )
                     repairs_executed += 1
-                    result.checksums_fixed += 1
+                    record_repair(result, "CHECKSUM_MISMATCH", repair, migration_state)
                     self.log.info(f"Updated checksum for {repair['script']}")
 
                 elif repair["type"] == "MISSING_SCRIPT":
@@ -619,9 +633,7 @@ class RepairCommand(BaseCommand):
                         )
 
                         repairs_executed += 1
-                        result.deleted_migrations_marked = (
-                            getattr(result, "deleted_migrations_marked", 0) + 1
-                        )
+                        record_repair(result, "MISSING_SCRIPT", repair, migration_state)
                         self.log.info(
                             f"Marked migration as deleted: {script_name} - "
                             f"DELETE entry created in history"
@@ -635,7 +647,7 @@ class RepairCommand(BaseCommand):
                 elif repair["type"] == "FAILED_MIGRATION":
                     # Remove failed migration entry from history to allow retry
                     # (same approach as Flyway: repair deletes FAILED entries).
-                    if self._delete_failed_migration_entry(repair, result):
+                    if self._delete_failed_migration_entry(repair, result, migration_state):
                         repairs_executed += 1
                         self.log.info(
                             f"Removed failed migration entry: {repair.get('script', '')} - "

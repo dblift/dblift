@@ -120,11 +120,8 @@ def _command_key(name: str) -> str:
 # ---------------------------------------------------------------------------
 # Pre-existing violations of check (2), frozen at their current counts.
 #
-# One catalog command is named in comments and in ``lint_placeholder_url``
-# values across nine plugin quirks files. That predates this guard and is
-# part of a wider situation in the config layer (``config/dblift_config.py``
-# consumes ``lint_placeholder_url``), so it is out of scope here and is NOT
-# fixed by this module.
+# None remain: the command once named in nine plugin quirks files left the
+# catalog. The map stays so a future exception is recorded, not silent.
 #
 # The map is per-file, per-command *counts*, not line numbers: line-level
 # entries churn on every unrelated edit above them, file-level entries would
@@ -134,17 +131,7 @@ def _command_key(name: str) -> str:
 # failing on. Numbers may only go down, and lowering one is part of the
 # commit that removes the site. Inner keys come from ``_command_key``.
 # ---------------------------------------------------------------------------
-FROZEN_COMMAND_NAME_SITES: Dict[str, Dict[str, int]] = {
-    "dblift/db/plugins/cosmosdb/quirks.py": {"3f18d50d7936": 1},
-    "dblift/db/plugins/db2/quirks.py": {"3f18d50d7936": 2},
-    "dblift/db/plugins/duckdb/quirks.py": {"3f18d50d7936": 1},
-    "dblift/db/plugins/mongodb/quirks.py": {"3f18d50d7936": 1},
-    "dblift/db/plugins/mysql/quirks.py": {"3f18d50d7936": 2},
-    "dblift/db/plugins/oracle/quirks.py": {"3f18d50d7936": 1},
-    "dblift/db/plugins/postgresql/quirks.py": {"3f18d50d7936": 2},
-    "dblift/db/plugins/sqlite/quirks.py": {"3f18d50d7936": 1},
-    "dblift/db/plugins/sqlserver/quirks.py": {"3f18d50d7936": 2},
-}
+FROZEN_COMMAND_NAME_SITES: Dict[str, Dict[str, int]] = {}
 
 #: Names this repository legitimately mentions but does not define, because
 #: they belong to the standard library or a third-party package. Check (1)

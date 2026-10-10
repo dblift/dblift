@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, NoReturn, Optional, Tuple
 
 from dblift.cli._constants import EXIT_LICENSE_REQUIRED
 from dblift.cli.extensions import load_command_handlers, load_terminal_commands
@@ -24,6 +24,7 @@ from dblift.cli.handlers.migrate import _handle_migrate
 from dblift.cli.handlers.repair import _handle_repair
 from dblift.cli.handlers.undo import _handle_undo
 from dblift.cli.handlers.validate import _handle_validate
+from dblift.cli.handlers.validate_sql import _handle_validate_sql
 from dblift.cli.premium_manifest import PremiumCommand, premium_stub_index, render_upsell
 from dblift.core.seams.capabilities import CapabilityDeniedError
 from dblift.core.seams.tier_resolver import resolve_tier
@@ -47,6 +48,8 @@ if _builtin_conflicts:
         f"Extension command handler(s) conflict with builtins: {sorted(_builtin_conflicts)}"
     )
 _COMMAND_HANDLERS.update(_extension_handlers)
+# Built-in default an installed extension may replace (same gap-fill rule as the stubs).
+_COMMAND_HANDLERS.setdefault("validate-sql", _handle_validate_sql)
 del _extension_handlers, _builtin_conflicts
 
 
@@ -77,6 +80,17 @@ for _stub_cmd in PREMIUM_STUB_COMMANDS.values():
 _AVAILABLE_COMMANDS = (
     list(_COMMAND_HANDLERS.keys()) + ["db", "config"] + list(load_terminal_commands())
 )
+
+
+def exit_license_required(error: CapabilityDeniedError, log: Any) -> NoReturn:
+    """Report a capability rejection and exit with ``EXIT_LICENSE_REQUIRED``.
+
+    Capability rejections map to the same exit code as premium stubs so
+    scripts/CI can branch on entitlement without parsing stderr.
+    """
+    message = str(error).strip() or "This command requires a license that is not available."
+    log.error(message)
+    raise SystemExit(EXIT_LICENSE_REQUIRED) from error
 
 
 def execute_single_command(
@@ -111,11 +125,7 @@ def execute_single_command(
     try:
         return handler(ctx)
     except CapabilityDeniedError as e:
-        # Capability rejections map to the same exit code as premium stubs so
-        # scripts/CI can branch on entitlement without parsing stderr.
-        message = str(e).strip() or "This command requires a license that is not available."
-        log.error(message)
-        raise SystemExit(EXIT_LICENSE_REQUIRED) from e
+        exit_license_required(e, log)
 
 
 def _validate_migrate_options(cmd_args: Any, parser: Any) -> None:

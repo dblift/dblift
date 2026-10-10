@@ -75,7 +75,7 @@ def observe_reads(client, migrations):
     [
         ("migrate", False, 4, 2),
         ("migrate", True, 2, 1),
-        ("info", False, 2, 1),
+        ("info", False, 0, 1),
         ("info", True, 2, 1),
         ("validate", True, 2, 2),
     ],
@@ -461,7 +461,7 @@ def test_info_duplicate_warning_reuses_state_catalog(database_client):
     assert len(result.migrations) == 2
     assert any("Duplicate version 1" in call.args[0] for call in warnings.call_args_list)
     assert counts == {
-        "history": 2,
+        "history": 0,
         "files": {"V1__app.sql": 1, "V1__duplicate.sql": 1},
         "scans": 1,
     }
@@ -473,7 +473,7 @@ def test_empty_info_catalog_does_not_retry_discovery(database_client):
         result = client.info()
     assert result.success
     assert result.migrations == []
-    assert counts == {"history": 2, "files": {}, "scans": 1}
+    assert counts == {"history": 0, "files": {}, "scans": 1}
 
 
 def test_strict_empty_validate_reuses_header_history(database_client):
@@ -553,7 +553,9 @@ def test_commands_consume_history_through_state_manager(database_client, command
     command.script_manager.load_migration_scripts.assert_not_called()
     command.script_manager.get_migration_scripts.assert_not_called()
     command.script_manager.get_callbacks_by_event.assert_not_called()
-    assert counts["history"] == (4 if command_type is MigrateCommand else 2)
+    assert (
+        counts["history"] == {MigrateCommand: 4, InfoCommand: 0, ValidateCommand: 2}[command_type]
+    )
 
 
 def test_info_state_failure_does_not_use_fallback_catalog(database_client):
@@ -653,7 +655,7 @@ def test_manager_snapshot_retries_failed_reads_and_retains_successful_empty_hist
     assert counts["history"] == 1
 
 
-@pytest.mark.parametrize("operation", ["info", "validate", "migrate_dry_run"])
+@pytest.mark.parametrize("operation", ["info", "undo", "validate", "migrate_dry_run"])
 def test_unreadable_history_surfaces_the_read_error_not_an_aborted_transaction(
     database_client, operation
 ):

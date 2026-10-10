@@ -10,14 +10,11 @@ from __future__ import annotations
 
 import re
 from typing import (
-    TYPE_CHECKING,
     Any,
     ClassVar,
     Dict,
     Optional,
-    Sequence,
     Tuple,
-    Type,
 )
 
 from dblift.core.dialect_boundary import DialectQuirks
@@ -28,12 +25,8 @@ from dblift.db.dml_analysis import (
     DmlMutation,
     analyze_dml,
     is_full_table_dml,
-    updates_restore_key,
 )
 from dblift.db.feature_gate import FeatureGate
-
-if TYPE_CHECKING:
-    from dblift.db.generator_protocol import AlterGeneratorProtocol, SqlGeneratorProtocol
 
 
 class BaseQuirks:
@@ -122,18 +115,6 @@ class BaseQuirks:
             quote_pairs=self.sql_scan_quote_pairs,
             upsert_set_markers=self.upsert_update_set_markers,
             upsert_marker_pairs=self.upsert_update_marker_pairs,
-        )
-
-    def statement_updates_restore_key(
-        self, statement: str, restore_key_columns: Sequence[str]
-    ) -> bool:
-        """Whether the statement assigns any of ``restore_key_columns``."""
-        return updates_restore_key(
-            statement,
-            restore_key_columns,
-            sqlglot_dialect=self.sqlglot_dialect,
-            quote_pairs=self.sql_scan_quote_pairs,
-            upsert_set_markers=self.upsert_update_set_markers,
         )
 
     def is_full_table_dml(self, statement: str) -> bool:
@@ -272,6 +253,12 @@ class BaseQuirks:
     #: still requires a syntactically-valid URL of the right shape.
     #: ``None`` means the dialect can't be linted offline.
     lint_placeholder_url: Optional[str] = None
+    #: ``validate-sql`` applies its PostgreSQL lock rules (CREATE INDEX
+    #: without CONCURRENTLY, constraints without NOT VALID, SET NOT NULL,
+    #: no ``lock_timeout``). True only for engines that share PostgreSQL's
+    #: lock behaviour; a PG-wire engine with its own storage layer
+    #: (CockroachDB, Redshift, YugabyteDB) resets it to ``False``.
+    postgresql_lock_rules: bool = False
 
     # ------------------------------------------------------------------
     # Procedure / function DDL hooks.
@@ -290,9 +277,6 @@ class BaseQuirks:
     # Declare CREATE INDEX options and table-qualified/standalone DROP forms.
     # ------------------------------------------------------------------
 
-    #: Index types that do *not* accept ASC/DESC sort directions
-    #: (PostgreSQL: GIN/GIST/BRIN/HASH/SPGIST). Names are uppercase.
-    index_no_sort_types: "frozenset[str]" = frozenset()
     #: ``DROP INDEX idx ON tbl`` shape — index name is bound to the
     #: table (SQL Server, MySQL, MariaDB).
     index_drop_includes_table: bool = False
@@ -312,8 +296,7 @@ class BaseQuirks:
 
     # ------------------------------------------------------------------
     # Trigger DDL hooks.
-    # Drive ``Trigger._generate_basic_create_statement`` and
-    # ``Trigger._format_body``.
+    # Drive ``Trigger._generate_basic_create_statement``.
     # ------------------------------------------------------------------
 
     #: ``CREATE DEFINER = user@host TRIGGER`` is valid (MySQL/MariaDB).
@@ -321,18 +304,6 @@ class BaseQuirks:
     #: Statement terminator appended after the trigger body. Oracle
     #: SQL*Plus blocks end with ``\n/``; everyone else uses empty.
     trigger_terminator: str = ""
-
-    def wrap_trigger_body(self, body: str) -> str:
-        """Wrap a trigger body in dialect-specific delimiters.
-
-        Default: strip surrounding whitespace and normalise empty input
-        to an empty string. The pre-PR-C3 ``Trigger._format_body``
-        always did this, regardless of dialect, so the base behaviour
-        preserves that contract. Oracle overrides to additionally wrap
-        the stripped body in ``BEGIN`` / ``END;`` when missing (valid
-        PL/SQL block).
-        """
-        return (body or "").strip()
 
     # ------------------------------------------------------------------
     # Misc DDL flags.
@@ -474,16 +445,8 @@ class BaseQuirks:
         return {}
 
     # ------------------------------------------------------------------
-    # DdlQuirks
+    # ParserQuirks
     # ------------------------------------------------------------------
-
-    def ddl_generator_class(self) -> Optional[Type["SqlGeneratorProtocol"]]:
-        """Default: no dialect-specific DDL generator is provided."""
-        return None
-
-    def alter_generator_class(self) -> Optional[Type["AlterGeneratorProtocol"]]:
-        """Default: no dialect-specific ALTER generator (factory raises)."""
-        return None
 
     def parser_class(self, parser_type: str) -> Optional[type]:
         """Return the parser class for ``parser_type``, or ``None``.
@@ -500,42 +463,6 @@ class BaseQuirks:
         """
         return None
 
-    def normalize_view_name(self, name: str) -> str:
-        """Normalize a raw catalog view name before downstream lookups.
-
-        Default: return *name* unchanged. DB2 overrides to lowercase
-        the name because its catalog rows come back lowercased.
-        """
-        return name
-
-    def enrich_view_from_row(self, view: Any, row: Dict[str, Any], view_status: Any = None) -> None:
-        """Add dialect-specific attributes to *view* from a vendor-query row.
-
-        Called by the view extraction flow after the canonical ``View(...)``
-        is constructed. Default: no-op. Plugins override to capture attributes
-        that only exist on their dialect:
-
-          * MySQL / MariaDB pulls ``DEFINER`` (and elsewhere ``algorithm``,
-            ``sql_security``) from the catalog row.
-          * PostgreSQL pulls ``security_definer`` / ``security_invoker``
-            flags from ``pg_views`` + ``pg_proc`` joins.
-
-        ``view_status`` is an optional capture tracker. Plugins call
-        ``add_property_status(name, captured)`` when they look for a
-        dialect-specific attribute so the introspection summary can
-        report "definer captured: yes / no".
-        """
-        return None
-
-    def enrich_materialized_view_from_row(self, mview: Any, row: Dict[str, Any]) -> None:
-        """Add dialect-specific attributes to *mview* from a vendor-query row.
-
-        Default: no-op. PostgreSQL overrides — its
-        ``pg_matviews`` view exposes a ``relpersistence`` projection as
-        ``is_unlogged`` (``"YES"`` / ``"NO"``).
-        """
-        return None
-
     #: Vendor-specific table-name prefixes that identify objects
     #: created by the engine to support its own materialized-view
     #: machinery (Oracle: ``MLOG$``, ``MVIEW$_``, ``SNAP$``, ``AQ$``,
@@ -545,411 +472,6 @@ class BaseQuirks:
     #: preload materialized-view names so it can drop them from the
     #: vendor table listing. Default: empty tuple (no filtering).
     materialized_view_support_table_prefixes: Tuple[str, ...] = ()
-
-    def enrich_table_extra(self, extractor: Any, schema: str, table_name: str, table: Any) -> None:
-        """Apply dialect-specific table enrichment that needs extra catalog queries.
-
-        Default: no-op. PostgreSQL overrides to capture row-security
-        flags, single-table inheritance parents, and row-level security
-        policies. The *extractor* gives the hook access to
-        ``provider.query_executor``, ``connection``, ``vendor_queries``,
-        ``get_row_value`` / ``parse_json_array`` helpers, and the
-        ``track_warning`` sink.
-        """
-        return None
-
-    def supplement_table_list(
-        self, extractor: Any, schema: str, existing_tables: "list[Any]"
-    ) -> "list[Any]":
-        """Add tables that the dialect's base table query missed.
-
-        Default: returns *existing_tables* unchanged. PostgreSQL
-        overrides to append declarative-partitioned tables (``relkind
-        = 'p'``) — the generic table query doesn't report them as ``TABLE``,
-        so a vendor query is needed. The hook is responsible for
-        populating columns and constraints on any new tables it
-        creates by calling ``extractor.column_extractor`` /
-        ``extractor.constraint_extractor`` when those are available.
-        """
-        return existing_tables
-
-    def is_temporary_sequence(self, row: Dict[str, Any]) -> bool:
-        """Return ``True`` if the catalog *row* describes a temporary sequence.
-
-        Default: ``False``. PostgreSQL overrides — its
-        ``pg_catalog.pg_class`` view exposes a ``relpersistence``
-        column projected as ``is_temporary`` (``"YES"`` / ``"NO"``)
-        by the PG vendor query.
-        """
-        return False
-
-    def is_generated_not_null_check(self, row: Dict[str, Any], check_expr: str) -> bool:
-        """Whether *row* is a system-generated ``IS NOT NULL`` check constraint.
-
-        Default: ``False`` — non-Oracle dialects don't have this concept,
-        so their check constraints are always kept. Oracle overrides to
-        drop the implicit ``"<col>" IS NOT NULL`` constraints it creates
-        for ``NOT NULL`` columns (``GENERATED NAME`` in the catalog).
-        """
-        return False
-
-    def is_internal_sequence(self, sequence: Any) -> bool:
-        """Return ``True`` to exclude *sequence* from user-facing results.
-
-        Default: ``False``. Oracle overrides — its IDENTITY columns
-        auto-generate backing sequences named ``ISEQ$$_<oid>`` that
-        live in the user schema but aren't user-authored.
-        """
-        return False
-
-    def identity_owned_sequence_names(self, extractor: Any, schema: str) -> "set[str]":
-        """Return catalog names of sequences owned by identity columns.
-
-        Default: empty. PostgreSQL overrides via ``pg_depend`` with
-        ``deptype = 'i'`` (internal identity dependency). Those sequences
-        are created by ``GENERATED … AS IDENTITY`` and must not be
-        emitted as standalone ``CREATE SEQUENCE``. Free-standing
-        sequences (and SERIAL ``OWNED BY`` sequences, ``deptype = 'a'``)
-        are not in this set.
-        """
-        return set()
-
-    def should_skip_index(self, name: str) -> bool:
-        """Whether the catalog *name* identifies an engine-internal index.
-
-        Default: ``False``. Oracle overrides to drop ``SYS_*`` / ``SYS$*``
-        system-generated index names that show up in ``ALL_INDEXES``.
-        """
-        return False
-
-    def normalize_index_predicate(self, predicate: Optional[str]) -> Optional[str]:
-        """Normalize a partial-index WHERE clause before storing it.
-
-        Default: return *predicate* unchanged. PostgreSQL strips
-        redundant ``::TEXT`` and ``CAST(<col> AS TEXT)`` decorations
-        that the catalog re-introduces during introspection so the
-        predicate compares equal to the source DDL.
-        """
-        return predicate
-
-    def is_index_hidden_column(self, name: str) -> bool:
-        """Whether *name* is an engine-generated hidden column in an index.
-
-        Default: ``False``. Oracle overrides — function-based indexes
-        materialize their expression columns under ``SYS_NCxxx``-style
-        names which must be replaced by the original expression text
-        when building the ``Index`` row.
-        """
-        return False
-
-    def apply_index_vendor_properties(
-        self, idx_data: Dict[str, Any], index_kwargs: Dict[str, Any]
-    ) -> None:
-        """Copy dialect-specific index fields from *idx_data* into *index_kwargs*.
-
-        Default: no-op. Plugins override to surface their own knobs:
-
-          * PostgreSQL: ``concurrently`` flag + ``tablespace``.
-          * MySQL: carry over ``FULLTEXT`` / ``SPATIAL`` types.
-          * Oracle: ``BITMAP`` type, ``tablespace``, and partition
-            ``LOCAL`` / ``GLOBAL`` locality.
-        """
-        return None
-
-    def fetch_unique_constraints(
-        self, extractor: Any, schema: str, table: str
-    ) -> "Optional[list[Any]]":
-        """Fetch UNIQUE constraints for *table* using dialect-specific SQL.
-
-        Default: ``None`` → caller falls through to the generic vendor-query
-        path. Plugins override to use their richer catalog views:
-
-          * DB2: ``SYSCAT.TABCONST`` (``TYPE='U'``).
-          * SQL Server: ``sys.key_constraints`` (``type='UQ'``).
-          * Oracle: ``vendor_queries.get_indexes_query`` filtered to
-            unique non-PK indexes.
-          * PostgreSQL: ``pg_constraint`` (``contype='u'``) — required
-            so partial unique indexes stay in the *index* extractor
-            path instead of collapsing into named UNIQUE constraints.
-        """
-        return None
-
-    def sanitize_constraint_name(self, name: "Optional[str]") -> "Optional[str]":
-        """Strip engine-generated constraint names; return ``None`` to drop.
-
-        Default: returns *name* unchanged. Oracle drops ``SYS_*`` and
-        ``SYS$*``; DB2 drops the ``SQL\\d+`` constraint pattern used
-        for system-generated names in SYSCAT.
-        """
-        return name
-
-    #: ``TIMESTAMP`` / ``TIME`` types take only the fractional-seconds
-    #: argument (``TIMESTAMP(6)``), never a width-+-scale pair. PostgreSQL,
-    #: Oracle, and DB2 all behave this way; defaults to ``False`` so other
-    #: dialects fall through to the generic ``(width, scale)`` formatter.
-    time_type_supports_only_fractional_precision: bool = False
-
-    #: Catalog sentinels that the dialect uses to encode ``VARCHAR(MAX)`` /
-    #: ``NVARCHAR(MAX)``. SQL Server reports either ``-1`` or
-    #: ``2147483647`` for unbounded character types; when ``column_size``
-    #: matches an entry the extractor emits ``(MAX)``.
-    varchar_max_sentinel_sizes: Tuple[int, ...] = ()
-
-    #: DB2 catalog data can require an identity-column fallback path;
-    #: setting this to ``True`` enables a catalog-fallback path
-    #: (``column_name`` in the preloaded identity set). Only DB2 enables
-    #: this today.
-    identity_uses_catalog_fallback: bool = False
-
-    def correct_computed_column_flag(
-        self, is_generated: bool, column_def: "Optional[str]", is_identity: bool
-    ) -> bool:
-        """Correct the generated-column flag for known catalog quirks.
-
-        Default: returns *is_generated* unchanged. Plugins override to
-        suppress false positives:
-
-          * MySQL marks ``DEFAULT CURRENT_TIMESTAMP`` columns as
-            generated — drop the flag when the default isn't a
-            ``GENERATED ...`` clause.
-          * DB2 marks IDENTITY columns as generated — drop the
-            flag when ``is_identity`` is true.
-        """
-        return is_generated
-
-    def enhance_columns(
-        self, extractor: Any, schema: str, table: str, columns: "list[Any]"
-    ) -> None:
-        """Post-process the columns list with dialect-specific catalog data.
-
-        Default: no-op. Plugins override to plug in extra queries:
-
-          * SQL Server augments default values from ``sys.default_constraints``.
-          * MySQL / MariaDB replace bare ``ENUM`` with the full
-            ``enum('a','b',…)`` definition from ``COLUMN_TYPE``.
-        """
-        return None
-
-    def clean_source_text(self, text: "Optional[str]") -> "Optional[str]":
-        """Normalize raw routine / package source text.
-
-        Default: returns *text* unchanged. Oracle overrides to remove
-        the XML ``<E>...</E>`` aggregator markup and unescape entities
-        that ``DBMS_METADATA`` injects when concatenating PL/SQL source
-        rows across ``ALL_SOURCE``.
-        """
-        return text
-
-    def normalize_partition_bound(self, value: Any) -> Any:
-        """Normalize a partition boundary expression for readability.
-
-        Default: returns *value* unchanged. Oracle overrides to collapse
-        the ``TO_DATE(...,'SYYYY-MM-DD HH24:MI:SS','NLS_CALENDAR=...')``
-        expressions that ``ALL_TAB_PARTITIONS`` emits into a plain
-        ``YYYY-MM-DD`` literal when the time component is midnight.
-        """
-        return value
-
-    def extract_partition_scheme_from_row(
-        self, extractor: Any, row: Dict[str, Any], table: Any
-    ) -> None:
-        """Read partition method + columns from the vendor catalog row
-        and set them on *table*.
-
-        Default: no-op. Each plugin overrides because the projection
-        differs:
-
-          * Oracle: ``partitioning_type`` + ``partition_columns``
-          * PostgreSQL: ``partition_definition`` parsed
-            (``RANGE (col)`` etc.)
-          * MySQL: ``partition_method`` + ``partition_expression``
-            (with SQL-function stripping)
-          * DB2: ``partition_definition`` (always RANGE)
-          * SQL Server: ``partition_function`` + ``partition_type``
-            + ``partition_columns``
-        """
-        return None
-
-    #: Whether the dialect provides a view ``ALGORITHM`` clause that the
-    #: introspector should record as a per-property capture status. Only
-    #: MySQL / MariaDB (where the clause exists in the grammar) set this
-    #: to True; other dialects can skip the capture tracking entirely.
-    provides_view_algorithm: bool = False
-
-    def fetch_view_algorithm(self, extractor: Any, schema: str, view_name: str) -> "Optional[str]":
-        """Look up a view's algorithm (e.g. ``MERGE`` / ``TEMPTABLE``
-        / ``UNDEFINED``) from a vendor-specific call.
-
-        Default: ``None``. MySQL / MariaDB overrides via ``SHOW CREATE
-        VIEW`` because ``information_schema.VIEWS`` doesn't expose the
-        algorithm column.
-        """
-        return None
-
-    def extract_computed_column_expression(self, text: "Optional[str]") -> "Optional[str]":
-        """Strip the vendor's generation-clause wrapper from a
-        catalog-returned computed-column expression.
-
-        Default: returns *text* unchanged. DB2 overrides because its
-        SYSCAT.COLUMNS.TEXT projection embeds the bare expression
-        inside ``GENERATED ALWAYS AS (...)`` and the consumer needs
-        the inner expression only.
-        """
-        return text
-
-    def enrich_packages_from_catalog(
-        self, extractor: Any, schema: str, packages: "list[Any]"
-    ) -> None:
-        """Fill in package source code from a vendor-specific catalog.
-
-        Default: no-op. Oracle overrides to pull ``PACKAGE`` /
-        ``PACKAGE BODY`` text from ``ALL_SOURCE`` (and from the
-        per-extractor package-spec cache populated by the
-        procedure extractor) for packages that came back from the
-        vendor query without an attached definition.
-        """
-        return None
-
-    def filter_user_defined_types(
-        self,
-        extractor: Any,
-        schema: str,
-        user_defined_types: "list[Any]",
-        get_tables_fn: Any,
-    ) -> "list[Any]":
-        """Filter the vendor-returned UDT list before it leaves the extractor.
-
-        Default: returns *user_defined_types* unchanged. PostgreSQL
-        overrides to drop the auto-created composite types that
-        ``pg_type`` emits for every regular table — only explicitly
-        ``CREATE TYPE ... AS (...)`` composites should surface to the
-        user.
-        """
-        return user_defined_types
-
-    def fetch_routine_parameters_fallback(
-        self, extractor: Any, schema: str, name: str, kind: str
-    ) -> "list[Any]":
-        """Catalog-based parameter fallback for procedures and functions.
-
-        Default: empty list. Plugins override when the JSON parameter
-        payload from the main routines query comes back empty:
-
-          * MySQL queries ``information_schema.PARAMETERS``.
-          * Oracle queries ``ALL_ARGUMENTS`` (procedures only — the
-            function flow has its own DBMS_METADATA-driven path).
-
-        ``kind`` is ``"procedure"`` or ``"function"``.
-        """
-        return []
-
-    def fetch_routine_full_definition(
-        self,
-        extractor: Any,
-        schema: str,
-        name: str,
-        kind: str,
-        routine: Any,
-        status: Any = None,
-    ) -> None:
-        """Update ``routine.definition`` (and possibly ``routine.body``)
-        from a catalog-side DDL query.
-
-        Default: no-op. Plugins override:
-
-          * MySQL skips when ``routine.definition`` is already set,
-            otherwise issues ``SHOW CREATE PROCEDURE`` / ``SHOW CREATE
-            FUNCTION`` (``information_schema.ROUTINES`` exposes
-            only the body, not the full CREATE statement) and refreshes
-            ``routine.body`` from the ``BEGIN`` offset.
-          * Oracle always issues ``DBMS_METADATA.GET_DDL`` — its
-            authoritative reconstruction takes precedence over the row
-            text — and clears ``routine.body`` (DBMS_METADATA returns
-            the full DDL, ``body`` becomes redundant).
-
-        ``status`` is an optional capture tracker;
-        the override marks ``definition`` failures on it when needed.
-        """
-        return None
-
-    def apply_routine_volatility_from_row(
-        self, extractor: Any, routine: Any, row: Dict[str, Any]
-    ) -> None:
-        """Derive ``routine.volatility`` from a row column other than
-        ``volatility`` itself.
-
-        Called *before* the row's ``volatility`` projection is applied,
-        so plugin-side derivation acts as a fallback that the row can
-        still override. Default: no-op.
-
-        Plugins override:
-
-          * MySQL: empty / missing ``is_deterministic`` falls through
-            to ``VOLATILE``; ``YES`` maps to ``IMMUTABLE``.
-          * SQL Server: ``is_deterministic`` (``0`` / ``1`` / ``YES``
-            / ``TRUE``) → ``IMMUTABLE`` / ``VOLATILE`` for functions.
-        """
-        return None
-
-    def apply_routine_definer_from_row(
-        self, extractor: Any, routine: Any, row: Dict[str, Any]
-    ) -> None:
-        """Apply the row's ``definer`` column to ``routine.definer``.
-
-        Called *after* the generic ``execute_as_principal`` /
-        ``EXECUTE AS OWNER`` detection in the main flow, preserving
-        the legacy precedence in which MySQL's ``definer`` column had
-        final authority. Default: no-op.
-
-        Plugins override:
-
-          * MySQL / MariaDB: copy ``row['definer']`` (``user@host``).
-        """
-        return None
-
-    def postprocess_routine(self, extractor: Any, schema: str, routine: Any) -> None:
-        """Final cleanup pass on a built procedure / function.
-
-        Default: no-op. Oracle strips embedded ``CREATE OR REPLACE
-        PACKAGE`` specs from procedure definitions (they're cached for
-        later use during the misc-object pass)."""
-        return None
-
-    def enrich_trigger_from_row(
-        self, trigger: Any, row: Dict[str, Any], trigger_status: Any = None
-    ) -> None:
-        """Add dialect-specific attributes to *trigger* from a vendor-query row.
-
-        Called by the trigger extraction flow after the canonical
-        ``Trigger(name=..., schema=..., timing=..., events=[], ...)`` is
-        constructed. Default: no-op. Plugins override to capture attributes
-        that only exist on their dialect:
-
-          * MySQL / MariaDB pull ``DEFINER`` from the catalog row.
-
-        ``trigger_status`` is an optional capture tracker — when present, plugins call its
-        ``add_property_status(property_name, captured: bool)`` for any
-        dialect-specific attribute they look for, so the introspection
-        result summary can surface "definer captured: yes / no".
-        """
-        return None
-
-    def apply_vendor_table_properties(self, table: Any, row: Dict[str, Any]) -> None:
-        """Apply dialect-specific table properties from a vendor-query row.
-
-        Called after ``vendor_queries.get_table_properties_query`` returns a
-        result row. Default: no-op. Plugins override to enrich the
-        introspected ``Table`` with dialect-specific attributes (SQL Server
-        filegroup / memory-optimised / system-versioned, DB2 tablespace +
-        compression, Oracle tablespace + storage params, MySQL storage_engine
-        + row_format + collation + create_options).
-
-        ``table`` is typed ``Any`` because each plugin assigns to a
-        different set of attributes (filegroup, tablespace,
-        storage_engine, ...) — the structural-typing surface diverges
-        per dialect and pinning a Protocol here would be noise.
-        """
-        return None
 
     # ------------------------------------------------------------------
     # Type normalisation hooks.
@@ -976,54 +498,6 @@ class BaseQuirks:
     #: columns. PostgreSQL only supports ``STORED``; the validator warns when
     #: the source declares a ``VIRTUAL`` column for a PG target.
     supports_virtual_computed_columns: bool = True
-
-    def build_snapshot_table_ddl(
-        self,
-        qualified_table: str,
-        snapshot_id_size: int,
-        checksum_size: int,
-    ) -> str:
-        """Render the ``CREATE TABLE`` SQL for ``dblift_schema_snapshots``.
-
-        The default produces the lowercase-identifier / ``VARCHAR`` /
-        ``TEXT`` shape used by PostgreSQL, SQLite, and other dialects
-        without a wider text type. Plugins override for Oracle
-        (``VARCHAR2`` / ``CLOB`` / uppercase), SQL Server
-        (``NVARCHAR`` / ``NVARCHAR(MAX)``), MySQL family
-        (``LONGTEXT``), and DB2 (uppercase columns + explicit
-        ``NOT NULL PRIMARY KEY``).
-        """
-        return (
-            f"CREATE TABLE {qualified_table} ("
-            f"snapshot_id VARCHAR({snapshot_id_size}) PRIMARY KEY, "
-            f"captured_at VARCHAR({snapshot_id_size}) NOT NULL, "
-            f"checksum VARCHAR({checksum_size}) NOT NULL, "
-            f"model_data TEXT NOT NULL)"
-        )
-
-    # Whether the provider-compat snapshot DDL is self-guarding
-    # (CREATE ... IF NOT EXISTS), letting the manager skip its pre-existence
-    # check. Default False (the manager runs its normal existence short-circuit).
-    provider_compat_snapshot_skips_existence_check: bool = False
-
-    def build_provider_compat_snapshot_ddl(
-        self, qualified_table: str, snapshot_id_size: int, checksum_size: int
-    ) -> "Optional[str]":
-        """Legacy provider-owned snapshot DDL for native providers that predate
-        plugin-owned snapshot tables. Default None (no provider-compat DDL)."""
-        return None
-
-    def is_snapshot_table_already_exists_error(self, error_message: str) -> bool:
-        """Whether ``error_message`` indicates the snapshot table already exists.
-
-        Returning ``True`` lets ``BaseSnapshotManager`` swallow the
-        exception (idempotent create). The default is ``False`` —
-        ``CREATE TABLE IF NOT EXISTS`` covers most dialects so a real
-        failure should propagate. Oracle overrides because it has no
-        ``IF NOT EXISTS`` syntax and instead raises ORA-00955 (with
-        locale-translated message text) when the table already exists.
-        """
-        return False
 
     #: English-locale substrings indicating a concurrent process won the
     #: race to create the migration-history schema/table (see
@@ -1052,125 +526,6 @@ class BaseQuirks:
         """
         err = (error_message or "").lower()
         return any(marker in err for marker in self.schema_history_race_markers)
-
-    # --- Data sets / Lane B table DDL (per spec: reuse snapshot codec pattern for change_set) ---
-
-    #: Column type for the free-text ledger columns (``summary``/``note``).
-    #: ``TEXT`` works on PG/MySQL/SQLite; Oracle/DB2 have no ``TEXT`` type and
-    #: SQL Server prefers ``VARCHAR(MAX)``. Plugins override.
-    data_history_text_type: str = "TEXT"
-    #: Column type for the change-set payload (base64/gz row images, can be
-    #: large). ``TEXT`` on PG/SQLite; large-object types elsewhere.
-    data_change_set_blob_type: str = "TEXT"
-    #: DDL for the ``installed_on`` timestamp column. SQL Server's ``TIMESTAMP``
-    #: is a rowversion that rejects defaults (uses ``DATETIME2``); Oracle/DB2 use
-    #: their own special registers. Plugins override.
-    data_timestamp_column_ddl: str = "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
-
-    def build_data_history_table_ddl(
-        self,
-        qualified_table: str,
-        id_size: int = 100,
-        checksum_size: int = 128,
-    ) -> str:
-        """Render the ``CREATE TABLE`` SQL for a per-dataset data history ledger.
-
-        Used by data sets (Lane B) to track applied corrections.
-        """
-        return (
-            f"CREATE TABLE {qualified_table} ("
-            f"id VARCHAR({id_size}) PRIMARY KEY, "
-            f"dataset VARCHAR(100), "
-            f"sql_checksum VARCHAR({checksum_size}), "
-            f"installed_by VARCHAR(100), "
-            f"installed_on {self.data_timestamp_column_ddl}, "
-            f"status VARCHAR(20), "
-            f"plan_fingerprint VARCHAR(128), "
-            f"summary {self.data_history_text_type}, "
-            f"vcs_ref VARCHAR(200), "
-            f"note {self.data_history_text_type}"
-            ")"
-        )
-
-    def build_data_change_set_table_ddl(
-        self,
-        qualified_table: str,
-        history_id_size: int = 100,
-        checksum_size: int = 128,
-    ) -> str:
-        """Render the ``CREATE TABLE`` SQL for ``dblift_data_change_set``.
-
-        Stores before/after row images (b64/gz) using the same codec as snapshots.
-        The ``(dataset, history_id)`` primary key enforces exactly one change-set
-        row per applied correction (the table is shared across datasets, so the
-        key is composite), making the apply write idempotent and guarding against
-        duplicate change records.
-        """
-        return (
-            f"CREATE TABLE {qualified_table} ("
-            f"dataset VARCHAR(100) NOT NULL, "
-            f"history_id VARCHAR({history_id_size}) NOT NULL, "
-            f"checksum VARCHAR({checksum_size}), "
-            f"model_data {self.data_change_set_blob_type} NOT NULL, "
-            f"PRIMARY KEY (dataset, history_id)"
-            ")"
-        )
-
-    def build_data_audit_table_ddl(
-        self,
-        qualified_table: str,
-        history_id_size: int = 100,
-        checksum_size: int = 128,
-    ) -> str:
-        """Render the ``CREATE TABLE`` SQL for the append-only audit log.
-
-        An immutable, hash-chained record of apply/undo events (shared across
-        data sets, chained per data set via ``seq``/``prev_hash``/``row_hash``)
-        that makes ledger tampering — a deleted, reordered or edited event —
-        detectable. The ``(dataset, seq)`` primary key gives the per-dataset
-        ordering the chain is verified against.
-        """
-        return (
-            f"CREATE TABLE {qualified_table} ("
-            f"dataset VARCHAR(100) NOT NULL, "
-            f"seq INTEGER NOT NULL, "
-            f"history_id VARCHAR({history_id_size}) NOT NULL, "
-            f"event VARCHAR(20) NOT NULL, "
-            f"sql_checksum VARCHAR({checksum_size}), "
-            f"installed_by VARCHAR(100), "
-            f"recorded_on {self.data_timestamp_column_ddl}, "
-            f"prev_hash VARCHAR(64) NOT NULL, "
-            f"row_hash VARCHAR(64) NOT NULL, "
-            f"PRIMARY KEY (dataset, seq)"
-            ")"
-        )
-
-    def is_data_history_table_already_exists_error(self, error_message: str) -> bool:
-        """Whether the error indicates the data history table already exists.
-
-        Allows idempotent CREATE TABLE calls (mirrors snapshot handling).
-        """
-        return False
-
-    def is_data_change_set_table_already_exists_error(self, error_message: str) -> bool:
-        """Whether the error indicates the data change-set table already exists."""
-        return False
-
-    def introspector_class(self) -> "Optional[Type[Any]]":
-        """Return the dialect-specific introspector class, or None.
-
-        ``None`` means the plugin does not supply a catalog reader.
-        Plugins may override with a lazy import.
-        """
-        return None
-
-    def vendor_queries_class(self) -> "Optional[Type[Any]]":
-        """Return the dialect-specific VendorMetadataQueries class, or None.
-
-        ``None`` means the plugin does not supply catalog queries.
-        Plugins may override with a lazy import.
-        """
-        return None
 
     #: SQL patterns whose matched statements cannot run inside a transaction.
     #: Each entry: ``(regex_pattern: str, reason: str)``. Checked in order by

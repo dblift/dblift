@@ -3,7 +3,10 @@
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+import pytest
+
 from dblift.db.plugins.db2.provider import Db2Provider
+from tests.unit.db.plugins.lease_support import route_lease_to
 
 
 class DummyDb2Provider(Db2Provider):
@@ -137,31 +140,13 @@ class TestCreateMigrationLockTable:
 
 
 class TestAcquireMigrationLock:
-    def test_stale_cleanup_failure_logs_debug(self) -> None:
+    def test_failed_insert_is_rolled_back_on_the_lease_connection_then_retried(
+        self, monkeypatch
+    ) -> None:
+        monkeypatch.setattr("dblift.db.plugins.lease_lock.POLL_INTERVAL_SECONDS", 0.01)
         provider = DummyDb2Provider()
         provider.create_migration_lock_table_if_not_exists = lambda schema: None
-
-        def execute_statement(sql, schema=None, params=None):
-            provider.calls.append(("statement", sql, schema, params))
-            if "DELETE FROM" in sql:
-                raise RuntimeError("cleanup failed")
-            return 1
-
-        provider.execute_statement = execute_statement
-
-        assert provider.acquire_migration_lock("APP", wait_timeout_seconds=1) is True
-
-    def test_insert_failure_rolls_back_connection_then_retries(self, monkeypatch) -> None:
-        provider = DummyDb2Provider()
-        provider.create_migration_lock_table_if_not_exists = lambda schema: None
-        provider._connection = SimpleNamespace(
-            rollback=lambda: provider.calls.append(("rollback",))
-        )
-
-        clock = iter([0.0, 0.0, 0.5])
-        monkeypatch.setattr("dblift.db.plugins.db2.provider.time.monotonic", lambda: next(clock))
-        monkeypatch.setattr("dblift.db.plugins.db2.provider.time.sleep", lambda _seconds: None)
-
+        opened = route_lease_to(provider)
         attempts = {"count": 0}
 
         def execute_statement(sql, schema=None, params=None):
@@ -169,48 +154,44 @@ class TestAcquireMigrationLock:
             if "INSERT INTO" in sql:
                 attempts["count"] += 1
                 if attempts["count"] == 1:
-                    raise RuntimeError("duplicate lock")
-                return 1
+                    raise RuntimeError("SQL0803N duplicate values for the index key")
             return 1
 
         provider.execute_statement = execute_statement
 
         assert provider.acquire_migration_lock("APP", wait_timeout_seconds=1) is True
-        assert ("rollback",) in provider.calls
+        provider.release_migration_lock("APP")
+        assert "rollback" in opened[0].events
+        assert attempts["count"] == 2
 
-    def test_insert_failure_rollback_also_fails(self, monkeypatch) -> None:
+    def test_unexpected_insert_error_propagates_and_closes_the_lease_connection(self) -> None:
         provider = DummyDb2Provider()
         provider.create_migration_lock_table_if_not_exists = lambda schema: None
-
-        def failing_rollback():
-            raise RuntimeError("rollback error")
-
-        provider._connection = SimpleNamespace(rollback=failing_rollback)
-
-        monkeypatch.setattr("dblift.db.plugins.db2.provider.time.sleep", lambda _seconds: None)
+        opened = route_lease_to(provider)
 
         def execute_statement(sql, schema=None, params=None):
-            provider.calls.append(("statement", sql, schema, params))
-            if "INSERT INTO" in sql:
-                raise RuntimeError("duplicate lock")
-            return 1
+            raise RuntimeError("SQL0204N undefined name")
 
         provider.execute_statement = execute_statement
 
-        assert provider.acquire_migration_lock("APP", wait_timeout_seconds=0) is False
+        with pytest.raises(RuntimeError, match="SQL0204N"):
+            provider.acquire_migration_lock("APP", wait_timeout_seconds=0)
+        assert opened[0].events[-1] == "close"
 
 
 class TestReleaseMigrationLock:
-    def test_returns_true_when_table_missing(self) -> None:
-        provider = DummyDb2Provider()
-        provider.table_exists = lambda schema, table_name: False
-
-        assert provider.release_migration_lock("APP") is True
-        assert provider.calls == []
-
-    def test_returns_false_when_no_rows_deleted(self) -> None:
+    def test_without_a_held_lease_touches_nothing(self) -> None:
         provider = DummyDb2Provider()
         provider.table_exists = lambda schema, table_name: True
+
+        assert provider.release_migration_lock("APP") is False
+        assert provider.calls == []
+
+    def test_returns_false_when_the_lease_was_reclaimed(self) -> None:
+        provider = DummyDb2Provider()
+        provider.create_migration_lock_table_if_not_exists = lambda schema: None
+        route_lease_to(provider)
+        assert provider.acquire_migration_lock("APP", wait_timeout_seconds=1) is True
         provider.execute_statement = lambda sql, schema=None, params=None: 0
 
         assert provider.release_migration_lock("APP") is False
@@ -273,16 +254,6 @@ class TestCheckBaselineSafety:
         provider.execute_query = lambda sql, params=None: []
 
         provider._check_baseline_safety("APP", "DBLIFT_SCHEMA_HISTORY")  # no exception
-
-
-class TestCreateSnapshotTable:
-    def test_returns_early_when_table_exists(self) -> None:
-        provider = DummyDb2Provider()
-        provider.table_exists = lambda schema, table_name: True
-
-        provider.create_snapshot_table_if_not_exists("APP")
-
-        assert not any(c[0] == "statement" and "CREATE TABLE" in c[1] for c in provider.calls)
 
 
 class TestGetAppliedMigrations:

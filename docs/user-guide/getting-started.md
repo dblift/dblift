@@ -73,6 +73,12 @@ dblift validate
 `validate` checks that your migration files are internally consistent and, once you've applied migrations, that they match the recorded history — it does not parse the SQL, so it cannot catch a script `migrate` will refuse to run. Run it before applying.
 
 ```bash
+dblift validate-sql
+```
+
+`validate-sql` reads the SQL of your migrations without connecting and gives each script a verdict, `SAFE`, `REVIEW` or `UNSAFE`, for statements that destroy data, break the deployed application or lock a table. See [Checking Migration SQL](commands.md#checking-migration-sql).
+
+```bash
 dblift info
 ```
 
@@ -159,7 +165,6 @@ The commands in this guide are all OSS (Apache 2.0). When your team needs strong
 
 | Feature | Command | What it does |
 |---|---|---|
-| Static SQL analysis | `dblift validate-sql` | Lints migration files with rule-based checks — catches issues before they reach the database. Built-in rule profiles (core, enterprise, strict). CI-friendly output formats (GitHub Actions, SARIF, GitLab). |
 | Schema drift detection | `dblift diff` | Detects drift between the live database and what your migrations define. |
 | Schema export | `dblift export-schema` | Exports the current schema to SQL migration files — useful for brownfield onboarding. |
 

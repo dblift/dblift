@@ -7,6 +7,157 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.11.0] - 2026-10-09
+
+### Removed
+
+- Built-in `BaseQuirks` and provider classes no longer define catalog
+  enrichment methods, catalog-only fields, or `introspector_class()` and
+  `vendor_queries_class()`. The unused Oracle catalog helper package is also
+  removed. Third-party provider classes may still define their own hooks;
+  integrations that called the retired built-in methods must update.
+- Removed the internal `Trigger._format_body` and quirks helpers
+  `wrap_trigger_body` and `statement_updates_restore_key`. Trigger model fields
+  and serialization, `analyze_dml`, `is_full_table_dml`, and the shared DML
+  scanning functions remain. Extensions calling the removed helpers need to
+  own their rendering or DML policy.
+- Retired the OSS SQL-generation contracts: `dblift.extensions.sql_generation`,
+  `dblift.core.state.sql_statement`, `dblift.db.generator_protocol`, and the
+  `ddl_generator_class()` / `alter_generator_class()` quirks hooks. This retires
+  the generation-only import path documented in 4.10.0; extensions using it
+  must provide their own statement, options, protocol, and factory contracts.
+  Parsed SQL models, migration CLI and API behavior, execution, and undo
+  generation remain in OSS.
+
+### Added
+
+- View and sequence models retain optional comments through serialization.
+- **`dblift validate-sql` checks migration SQL files without connecting.** It reads the `V` and `R` scripts of the migration directories, or the files given with `--files`, and reports statements that destroy data (`DROP TABLE`, `DROP COLUMN`, `TRUNCATE`, `UPDATE`/`DELETE` without `WHERE`), break the application already deployed (renames, type changes, `NOT NULL` columns without a default), mix autocommit-only and transactional statements, or — on PostgreSQL — lock a table (`CREATE INDEX` without `CONCURRENTLY`, constraints without `NOT VALID`, `SET NOT NULL`, no `lock_timeout`). Each script gets a verdict, `SAFE`, `REVIEW` or `UNSAFE`; the command exits 1 when a script is `UNSAFE`. `-- dblift:allow <code>` in a script accepts a finding. `--format json` prints the findings. The command previously printed a notice and exited 4; it takes `--files`, `--dialect` (the SQL dialects; MongoDB and Cosmos DB scripts cannot be checked), `--format` and `--placeholders` instead of any argument. `migrate --dry-run` shows each pending script's verdict and its findings, and the `analysis` of `info --format json` and `migrate --dry-run --format json` rows carries `verdict` and `findings`; each of its `cautions` entries now names its rule (`code`); neither command's exit code changes.
+- Extensions can reuse the SQL checks `validate-sql` runs through
+  `dblift.extensions.lint` (`lint_script`, `lint_files`, `lint_targets`, the
+  verdicts and the findings) instead of re-implementing them; importing it does
+  not need sqlglot.
+- `Log.warn` and `Log.warning` accept `dedupe=False`, as `Log.info` does, to log a
+  warning even when the same text was just logged. `MultiLog` passes it on to the
+  sinks that accept it. `migrate --dry-run` uses it, so the same finding in two
+  scripts is printed for each of them.
+- Python clients can opt into `analysis_mode="execution"` when running migrations without
+  SQL object analysis. SQL execution, history, validation, callbacks, and undo remain
+  available; reports label object analysis as disabled. The default remains `"full"`.
+- **`info` and `migrate --dry-run` say what each pending SQL script does.** Every migration row of `info --format json` and `migrate --dry-run --format json` carries `analysis` (`null` for applied rows and Python scripts): the script's statements with their operation, kind and the objects they name, read by the database dialect's parser without connecting, and `cautions` for statements that destroy data (DROP TABLE, VIEW or SCHEMA, TRUNCATE, DROP COLUMN, UPDATE or DELETE without WHERE) or change rows (UPDATE, DELETE, MERGE). The recorded `info --format json` contract gains the `analysis` key. The SQL is still not checked for validity.
+- Extensions can declare the configuration sections they own (`dblift.config_keys` entry point); `validate-config` no longer reports them as unknown.
+- **`SqlConstraint.rely`.** Optional flag recording whether the optimizer may rely on a constraint (`RELY` / `NORELY`, as in Snowflake and Oracle). `None` (not reported) and `False` compare equal, matching the engine default `NORELY`; the key is serialised only when set, so existing model files are unchanged.
+- **`DBLiftClient.from_config_file(..., relative_to_config=True)`.** A keyword-only argument. Relative paths in the configuration file (migration directories, a file database such as SQLite, the log directory) resolve from the folder that holds the file instead of the working directory. Lets a long-running process open several projects without changing directory. Off by default; existing behaviour is unchanged.
+- Command handlers registered through the `dblift.command_handlers` entry point can
+  declare `_dblift_needs_connection(args)` to skip the database connection the CLI
+  opens before a command, for invocations that run purely from files, and
+  `_dblift_pre_connection_check(args, license_tier)` to refuse a command with
+  `CapabilityDeniedError` before any connection is opened. A refused or file-only
+  command then uses no credentials and creates no empty SQLite or DuckDB file.
+  Handlers that declare neither behave as before.
+
+### Changed
+
+- Provider contracts no longer carry internal schema-snapshot and data-storage
+  table creation. Migration history, cleanup names, and document snapshot
+  interfaces remain available.
+- An explicit `NullLog` now runs SQLite migrations and API info, validation, and
+  undo without loading Rich or Jinja2, writing presentation output, or creating
+  reports; results and migration history remain available.
+- Importing `dblift.extensions` now loads its category modules only when accessed.
+  The remaining category exports retain their module identities.
+- Importing provider contracts no longer loads Rich, Jinja2, or sqlglot through
+  logger and DML helpers. HTML formatting and SQL analysis still load these
+  libraries when called.
+- Importing `dblift.api` no longer loads Rich or Jinja2. Query-result data
+  shaping stays available without presentation libraries; table rendering is
+  loaded when requested.
+- `with DBLiftClient(...)` no longer opens a database connection on entry. The first
+  operation opens it, so a connection error surfaces there, and a block that runs no
+  operation creates no SQLite or DuckDB file.
+- A failing migration statement is no longer echoed with its text. The console and
+  log file identify it by its leading verb and target (for example
+  `INSERT INTO missing_table`); `error_message`, the migration `error` field and the
+  run journal no longer carry the driver's `[SQL: ...]` block, and the journal masks
+  string literals and passwords given after `IDENTIFIED BY` or `PASSWORD`. The full
+  statement is logged only at DEBUG.
+
+### Fixed
+
+- Default MongoDB and Cosmos DB migration and undo preparation no longer asks
+  for an SQL parser that these Python-only providers do not support.
+- `import-flyway` and Flyway compatibility checks skip Flyway's `SCHEMA`
+  creation markers while retaining migration ranks and rejecting unknown
+  migration types. Object extraction warnings from sqlglot no longer include
+  ANSI escape codes in logs.
+- `migrate --db-schema` creates a missing target schema before its history table on a
+  fresh database. Dry runs still leave the database unchanged, and existing
+  migration history does not trigger baseline safety checks.
+- `info` and `undo` now treat a missing history table as empty history, including
+  when the target schema does not exist. Neither command creates the schema or
+  history table, including `undo --dry-run`.
+- `info` marks a version Undoable when its companion undo script is in any
+  configured scripts directory, regardless of directory order.
+- Snowflake migration locking refuses an ambiguous lock table with multiple
+  `migration` rows. Standard Snowflake tables do not enforce unique keys, so a
+  free duplicate beside a held row could previously let another runner claim
+  the lock at the same time.
+- A migration lock left behind by a process that was killed (SIGKILL, or SIGTERM while
+  dblift runs embedded through the Python API) is now reclaimed automatically. On
+  SQLite, DuckDB, CockroachDB, Db2, Snowflake, MongoDB and the Oracle table fallback,
+  the lock is a lease: the holder refreshes it every 10 seconds, and a lock not
+  refreshed for 30 seconds is taken over by the next `migrate`. Such a lock used to stay
+  held for good, and every later `migrate` waited 60 seconds and failed. The lock also
+  records its holder, so a holder whose lock was taken over can neither renew nor
+  release the new holder's lock, and `migrate` stops before its next migration once it
+  has lost its lock.
+  - Existing lock tables gain a nullable `owner_token` column (`OWNER_TOKEN` on Db2 and
+    Oracle) the first time a new version takes the lock. A lock row without an owner,
+    written by an earlier version, is taken over only once it is 24 hours old.
+  - A lock held without a heartbeat on a database private to one connection is
+    likewise taken over only once it is 24 hours old. For SQLAlchemy-backed
+    row-lock providers, a caller-supplied connection to a shared database now
+    takes the lock on a separate connection with a heartbeat, so a killed holder
+    can be replaced after 30 seconds without committing the caller's transaction.
+    A single-connection SQLAlchemy pool cannot provide that isolation and is
+    rejected before acquiring the lock.
+  - Snowflake now holds the lock as a committed lease on the lock row instead of an open
+    transaction. An earlier version does not see that lease, so every runner that
+    migrates the same Snowflake schema should run a version with the lease.
+  - `DBLiftClient.close()`, leaving a `with DBLiftClient(...)` block and interpreter exit
+    release a migration lock the client still holds.
+  - SQLite migration transactions now start with `BEGIN IMMEDIATE`, so a migration that
+    reads before it writes is not refused its write by the lock's own heartbeat.
+
+- `info` reports **Missing** for a migration that was undone, applied again, and whose
+  script has since left the migration folder (for example after switching to a branch
+  that does not carry it). Such rows showed **Success**, because the undo-then-reapply
+  check returned before the script lookup ran.
+- Out-of-order detection now forgets a version once its undo succeeds. Undoing several
+  migrations and running `migrate` again no longer marks the re-applied versions
+  **Out of order** against the rows that were undone in between.
+- `dblift migrate` releases the migration lock when the process receives SIGTERM (for
+  example a cancelled CI job) and exits with status 143. The lock row used to stay
+  behind, and the next `migrate` waited 60 seconds and failed.
+- The CLI closes its database connection when a command finishes, including after a
+  failure.
+- `dblift migrate` no longer opens the database before its registered pre-migrate checks
+  run. A check that refuses the run now does so without a connection, as it already did
+  through the Python API.
+- DuckDB: waiting for a held migration lock now times out with `Could not acquire
+  migration lock` instead of failing at once with `Current transaction is aborted`.
+- DuckDB: `clean` also drops macros, table macros and user-defined types. They
+  survived while `clean` reported success, and the next `migrate` failed with
+  `Type ... already exists`.
+- `repair --dry-run` now reports the repairs it would make
+  (`RepairResult.repaired_migrations`, `removed_migrations`, `aligned_migrations` and the
+  counters), and a real `repair` fills the same lists.
+- PostgreSQL and Db2: a double-quoted object name keeps its exact spelling when
+  a statement is read by the regex fallback (for example `CREATE TABLE "Case" ...
+  TABLESPACE ts`, which sqlglot does not parse). It was folded like an unquoted
+  name (`case` on PostgreSQL, `CASE` on Db2), and a doubled quote (`"a""b"`) cut
+  the name short. Unquoted names are folded as before.
+
 ## [4.10.0] - 2026-10-03
 
 ### Added

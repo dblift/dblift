@@ -1,0 +1,1 @@
+CREATE TABLE cli_items (id INTEGER PRIMARY KEY);

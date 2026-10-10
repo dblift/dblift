@@ -4,19 +4,25 @@ DBLift uses setuptools entry points for provider and extension discovery.
 
 ## Stable Python Imports
 
-Plugin code should import logging, provider, SQL-generation, and schema-model
+Plugin code should import logging, provider, and schema-model
 contracts from the stable extension surfaces, not from implementation modules:
 
 ```python
+from dblift.extensions.lint import Finding, ScriptLint, lint_script, lint_targets
 from dblift.extensions.logging import Log, LogLevel, OperationResult, OutputFormatter
 from dblift.extensions.providers import PluginInfo, ProviderRegistry, ProviderTransport
-from dblift.extensions.sql_generation import GenerationOptions, SqlStatement
 from dblift.extensions.sql_model import ConstraintType, Index, Table, View
 ```
 
-`sql_generation.SqlStatement` describes generated migration SQL. Parsed
-statements returned in `sql_model.ParseResult.statements` use a separate
-model; the two classes are not interchangeable.
+The former `dblift.extensions.sql_generation` category and its generated-SQL
+statement and options types have been retired from OSS. Extensions that
+generate SQL must supply those contracts themselves. Parsed statements
+returned in `sql_model.ParseResult.statements` remain available.
+
+`dblift.extensions.lint` exposes the SQL checks `validate-sql` runs, so an extension
+can check scripts the same way instead of re-implementing the rules. Importing it does
+not need sqlglot; the rule names (`Finding`, `find_issues`, `SEVERITY`, `ERROR`,
+`WARNING`, `INFO`) and checking a script do.
 
 The complete supported surfaces are listed in each extension module's
 `__all__` and covered by the semantic-versioning policy.
@@ -43,6 +49,47 @@ snowflake = "dblift.db.plugins.snowflake.plugin:PLUGIN"
 The plugin supplies provider classes, URL builders, optional quirks/config
 classes, native driver metadata, and dialect aliases.
 
+### `dblift.provider_descriptors`
+
+An optional, additive entry point returns a frozen `PluginDescriptor` with
+`name`, `dialects` and `factory`. The factory is the `module:attribute`
+reference to the same `PluginInfo` exposed by `dblift.providers`. Importing
+the descriptor must not load a provider class or optional database driver.
+The legacy group remains available, including for plugins that do not supply
+a descriptor. Provider lookup still uses the legacy group until deferred
+resolution is introduced separately.
+
+```toml
+[project.entry-points."dblift.provider_descriptors"]
+postgresql = "dblift.db.plugins.postgresql.descriptor:DESCRIPTOR"
+```
+
+An installed provider package can also expose a dialect alias while reusing
+an existing provider implementation. The test fixture under
+`tests/fixtures/lightweight_extension/` registers `fixture_sqlite` this way;
+it delegates execution to SQLite and imports `PluginInfo` from
+`dblift.extensions.providers`. A new database engine needs its own provider.
+
+### `dblift.event_listeners`
+
+Value: a callable `register(emitter) -> None`. Use `EventEmitter.on` to subscribe
+to events; each `DBLiftClient` gets its own emitter. Independent installed
+packages can contribute listeners to the same client:
+
+```python
+from dblift.api.events import EventType
+
+def register(emitter):
+    emitter.on(EventType.MIGRATION_COMPLETED, on_completed)
+```
+
+Declare the registrar in the package metadata:
+
+```toml
+[project.entry-points."dblift.event_listeners"]
+my_events = "my_package:register"
+```
+
 ### `dblift.commands`
 
 Value: a callable that receives an `argparse.ArgumentParser` and mutates it.
@@ -53,10 +100,47 @@ The OSS package declares the group so third-party packages can add commands.
 Value: a callable returning `dict[str, CommandHandler]`, where
 `CommandHandler = Callable[[Any], tuple[bool, Any]]`.
 
+By default dblift opens the database connection before running a handler. A
+handler can change that with two optional function attributes:
+
+- `handler._dblift_needs_connection = lambda args: ...` returns `False` when the
+  command, for these parsed `args`, runs purely from files and configuration.
+  The connection is then not opened (no login, no SQLite/DuckDB file created).
+- `handler._dblift_pre_connection_check = lambda args, license_tier: ...` runs
+  before the connection. Raising `CapabilityDeniedError` refuses the command
+  with the same message and exit code as raising it inside the handler, but
+  without having used the credentials.
+
+A handler declaring neither connects as before.
+
 ### `dblift.terminal_commands`
 
 Value: a callable returning `dict[str, TerminalCommand]`, where
 `TerminalCommand = Callable[[Any], int]`.
+
+### `dblift.config_keys`
+
+Value: a no-arg callable returning an iterable of the top-level configuration
+section names your package owns. `dblift db validate-config` reports a
+top-level key it does not recognize as a likely typo; keys declared by
+installed extensions are recognized instead.
+
+```python
+def config_keys():
+    return ["preflight"]
+```
+
+```toml
+[project.entry-points."dblift.config_keys"]
+my_package = "my_package.config:config_keys"
+```
+
+Declaring a section only stops the warning: dblift does not read it, so your
+package reads it from the configuration file itself. The section may also
+appear inside an `environments.<name>` block, which is merged over the root
+for the selected environment. Entry points are loaded once per process; one
+that fails to load or call is logged as a warning and skipped, and validation
+continues.
 
 ### `dblift.features`
 

@@ -57,6 +57,27 @@ from dblift.core.logger import (
     RepairResult,
     ValidateResult,
 )
+from dblift.extensions.lint import (
+    ERROR,
+    Finding,
+    INFO,
+    REVIEW,
+    SAFE,
+    SEVERITY,
+    ScriptAnalysis,
+    ScriptLint,
+    UNSAFE,
+    WARNING,
+    allowed_codes,
+    analyse_script,
+    find_issues,
+    lint_analysis,
+    lint_files,
+    lint_pending_scripts,
+    lint_script,
+    lint_targets,
+    verdict_of,
+)
 from dblift.extensions.logging import (
     ConsoleLog,
     DbliftLogger,
@@ -84,7 +105,6 @@ from dblift.extensions.providers import (
     ProviderRegistry,
     ProviderTransport,
 )
-from dblift.extensions.sql_generation import GenerationOptions, SqlStatement
 from dblift.extensions.sql_model import (
     ConstraintType,
     DatabaseLink,
@@ -127,6 +147,13 @@ from dblift.extensions.sql_model import (
 These names are enumerated in each module's `__all__`, and the top-level
 package ships a PEP 561 `py.typed` marker so downstream type checkers pick up
 annotations across every public subpackage.
+
+The `dblift.extensions.sql_generation` category documented in 4.10.0 was
+retired during the SQL-generation ownership cleanup. Extensions using its
+generation-only metadata types must provide their own. The former import path
+no longer resolves. `dblift.extensions.sql_model.SqlStatementType` and the
+parser's internal `SqlStatement` are separate parsing contracts and remain
+available.
 
 ### 1.2 What is NOT public
 

@@ -150,8 +150,9 @@ class MigrationInfo:
         checksum: Optional[int] = None,
         execution_time: int = 0,
         error: Optional[str] = None,
+        analysis: Optional[Dict[str, Any]] = None,
     ) -> None:
-        """Store the per-migration descriptor (script, version, status, timing, error)."""
+        """Store the per-migration descriptor (script, version, status, timing, error, analysis)."""
         self.script = script
         self.version = version
         self.description = description
@@ -162,6 +163,7 @@ class MigrationInfo:
         self.checksum = checksum
         self.execution_time = execution_time  # milliseconds
         self.error = error
+        self.analysis = analysis
 
     def __str__(self) -> str:
         return (
@@ -553,7 +555,17 @@ class BaselineResult(OperationResult):
 
 
 class RepairResult(OperationResult):
-    """Result of a repair operation."""
+    """Result of a repair operation.
+
+    Each list holds the history rows a repair touched, as they were before it:
+    ``aligned_migrations`` the rows whose checksum was realigned with the
+    script, ``removed_migrations`` the failed rows deleted so the migration can
+    be retried, ``repaired_migrations`` the rows whose script is gone and that
+    were marked deleted. ``checksums_fixed``, ``failed_migrations_removed`` and
+    ``deleted_migrations_marked`` count those three lists. For a repair run with
+    ``dry_run``, the lists and counters describe what the repair would do, and
+    nothing is written.
+    """
 
     def __init__(self) -> None:
         """Initialize empty repaired/removed/aligned migration lists and repair counters."""

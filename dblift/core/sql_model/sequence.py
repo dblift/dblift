@@ -24,6 +24,7 @@ class Sequence(SqlObject):
         owned_by_table: Optional[str] = None,
         owned_by_column: Optional[str] = None,
         data_type: Optional[str] = None,
+        comment: Optional[str] = None,
     ):
         """Initialize a sequence.
 
@@ -48,6 +49,7 @@ class Sequence(SqlObject):
         self.cycle = cycle
         self.cache = cache
         self.data_type = data_type
+        self.comment = comment
         # PostgreSQL grammar-based sequence properties.
         self.temp = temp  # ``CREATE TEMPORARY SEQUENCE`` flag
         self.owned_by_table = owned_by_table  # ``OWNED BY <table>.<column>`` table
@@ -59,11 +61,12 @@ class Sequence(SqlObject):
             isinstance(other, Sequence)
             and super().__eq__(other)
             and self.data_type == other.data_type
+            and self.comment == other.comment
         )
 
     def __hash__(self) -> int:
         """Hash sequence identity and its captured data type."""
-        return hash((super().__hash__(), self.data_type))
+        return hash((super().__hash__(), self.data_type, self.comment))
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "Sequence":
@@ -75,7 +78,7 @@ class Sequence(SqlObject):
         Returns:
             Sequence object
         """
-        return cls(
+        sequence = cls(
             name=data["name"],
             schema=data.get("schema"),
             start_with=data.get("start_with"),
@@ -89,7 +92,12 @@ class Sequence(SqlObject):
             owned_by_table=data.get("owned_by_table"),
             owned_by_column=data.get("owned_by_column"),
             data_type=data.get("data_type"),
+            comment=data.get("comment"),
         )
+        for plugin, options in (data.get("dialect_options") or {}).items():
+            for key, value in options.items():
+                sequence.set_dialect_option(plugin, key, value)
+        return sequence
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert sequence to dictionary representation.
@@ -97,7 +105,7 @@ class Sequence(SqlObject):
         Returns:
             Dictionary with sequence attributes
         """
-        return {
+        result: Dict[str, Any] = {
             "name": self.name,
             "schema": self.schema,
             "object_type": self.object_type.value,
@@ -113,3 +121,8 @@ class Sequence(SqlObject):
             "owned_by_column": self.owned_by_column,
             "data_type": self.data_type,
         }
+        if self.dialect_options:
+            result["dialect_options"] = self.dialect_options
+        if self.comment is not None:
+            result["comment"] = self.comment
+        return result

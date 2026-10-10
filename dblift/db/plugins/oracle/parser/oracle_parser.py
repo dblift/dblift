@@ -1,5 +1,6 @@
 """Oracle SQL parser using tokenization-based parsing for complex PL/SQL."""
 
+import logging
 import re
 from typing import Any, Dict, List, Optional
 
@@ -24,7 +25,12 @@ from dblift.db.plugins.oracle.parser._statement_splitter import (
 from dblift.db.plugins.oracle.parser.oracle_statement_parser import OracleStatementParser
 from dblift.db.plugins.oracle.parser.oracle_tokenizer import OracleTokenizer
 
-logger = LogFactory.get_log(__name__)
+try:
+    logger: Any = LogFactory.get_log(__name__)
+except ModuleNotFoundError as exc:
+    if exc.name != "rich":
+        raise
+    logger = logging.getLogger(__name__)
 
 
 class OracleParser(RegexBasedParser):
@@ -74,7 +80,7 @@ class OracleParser(RegexBasedParser):
             statements = split_statements_regex(
                 cleaned_sql, extract_plsql_block=extract_plsql_block
             )
-            logger.info(
+            logger.debug(
                 f"Oracle: Successfully parsed {len(statements)} statements using regex-based parsing"
             )
 

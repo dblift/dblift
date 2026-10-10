@@ -61,6 +61,20 @@ class TestDeferrableNormalization:
 
 
 @pytest.mark.unit
+class TestRelyNormalization:
+    def test_rely_false_preserved(self):
+        """False is an explicit NORELY; None means not reported."""
+        c = _constraint(rely=False)
+        TableCanonicalizer().canonicalize(_table(constraints=[c]))
+        assert c.rely is False
+
+    def test_rely_true_preserved(self):
+        c = _constraint(rely=True)
+        TableCanonicalizer().canonicalize(_table(constraints=[c]))
+        assert c.rely is True
+
+
+@pytest.mark.unit
 class TestEnabledValidatedNormalization:
     def test_is_enabled_true_becomes_none(self):
         c = _constraint(is_enabled=True)

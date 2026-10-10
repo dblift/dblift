@@ -10,6 +10,7 @@ import pytest
 from sqlalchemy import create_engine
 
 from dblift.api.async_client import AsyncDBLiftClient
+from dblift.core.logger import DbliftLogger, LogFormat, NullLog
 
 
 def _make(tmp_path: Path) -> AsyncDBLiftClient:
@@ -55,6 +56,49 @@ async def test_events_property_exposes_bus(tmp_path):
     await client.migrate()
     assert "migration.started" in seen
     await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_two_async_clients_keep_events_output_and_external_engines_separate(tmp_path, capsys):
+    captures = []
+    event_lists = []
+    for name, logger in (
+        ("silent", NullLog()),
+        (
+            "text",
+            DbliftLogger("async-text", format=LogFormat.TEXT, logfile_dir=tmp_path / "logs"),
+        ),
+    ):
+        migrations = tmp_path / name / "migrations"
+        migrations.mkdir(parents=True)
+        (migrations / "V1__t.sql").write_text("CREATE TABLE t (id INTEGER PRIMARY KEY);")
+        (migrations / "U1__t.sql").write_text("DROP TABLE t;")
+        engine = create_engine(f"sqlite:///{tmp_path / name / 'db.sqlite'}")
+        events = []
+        capsys.readouterr()
+        async with AsyncDBLiftClient.from_sqlalchemy(
+            engine, migrations_dir=migrations, logger=logger
+        ) as client:
+            client.events.on("*", lambda event: events.append(event.event_type.value))
+            assert (await client.migrate()).success
+            assert (await client.info()).success
+            assert (await client.validate()).success
+            assert (await client.undo()).success
+        if isinstance(logger, DbliftLogger):
+            logger.close()
+        captures.append(capsys.readouterr())
+        event_lists.append(events)
+        with engine.connect() as connection:
+            assert connection.exec_driver_sql("SELECT 1").scalar_one() == 1
+        engine.dispose()
+
+    assert captures[0].out == captures[0].err == ""
+    assert captures[1].out or captures[1].err
+    for events in event_lists:
+        assert events.count("migration.started") == 1
+        assert events.count("migration.completed") == 1
+        assert events.count("undo.started") == 1
+        assert events.count("undo.completed") == 1
 
 
 @pytest.mark.asyncio

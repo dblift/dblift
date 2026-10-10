@@ -19,6 +19,7 @@ from rich.theme import Theme
 from rich.tree import Tree
 
 from dblift.core.constants import ENV_PREFIX
+from dblift.core.logger.tabular_data import rows_to_columns_and_values  # noqa: F401 - re-export
 
 DBLIFT_THEME = Theme(
     {
@@ -203,19 +204,6 @@ def render_tree_to_str(tree: Tree, width: int = 200) -> str:
 def render_panel_to_str(panel: Panel, width: int = 200) -> str:
     """Render a Rich Panel to plain text."""
     return render_to_str(panel, width=width)
-
-
-def rows_to_columns_and_values(
-    result_set: List[Dict[str, Any]],
-) -> Tuple[List[str], List[List[Any]]]:
-    """Convert a query result set (list of row dicts) into (columns, rows) form.
-
-    ``columns`` is taken from the first row's key order; ``rows`` is a list of
-    cell-value lists in that same column order, suitable for
-    ``render_records_table`` or JSON/HTML serialization.
-    """
-    columns = list(result_set[0].keys()) if result_set else []
-    return columns, [[row.get(c) for c in columns] for row in result_set]
 
 
 def render_records_table(

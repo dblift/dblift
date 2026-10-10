@@ -10,6 +10,7 @@ from typing import (
     Callable,
     Dict,
     List,
+    Literal,
     Optional,
     Self,
     Tuple,
@@ -273,6 +274,7 @@ class DBLiftClient:
         log_level: Optional[str] = None,
         log_format: Optional[str] = None,
         log_file: Optional[str] = None,
+        analysis_mode: Literal["full", "execution"] = "full",
         **kwargs: Any,
     ):
         """Initialize DBLift client.
@@ -287,6 +289,10 @@ class DBLiftClient:
             log_file: Optional log file path; omit to keep ``config`` values
             **kwargs: Additional configuration options
         """
+        if analysis_mode not in ("full", "execution"):
+            raise ValueError("analysis_mode must be 'full' or 'execution'")
+        self.analysis_mode = analysis_mode
+
         # Feature registrations from installed add-on packages must load for
         # every client construction path, not just CLI startup — otherwise the
         # runtime-check and tier-resolver seams would silently no-op for
@@ -312,6 +318,7 @@ class DBLiftClient:
             provider=self.provider,
             config=config,
             log=logger,  # Inject provider
+            analysis_mode=analysis_mode,
         )
 
         # Normalize dialect once at boundary; methods use self.dialect directly
@@ -1211,6 +1218,7 @@ class DBLiftClient:
         config: "DbliftConfig",
         logger: Optional[Any] = None,
         migrations_dir: Optional[Union[str, Path, List[Union[str, Path]]]] = None,
+        analysis_mode: Literal["full", "execution"] = "full",
         **kwargs: Any,
     ) -> Self:
         """Create a client instance from existing configuration.
@@ -1236,7 +1244,11 @@ class DBLiftClient:
         return cast(
             Self,
             client_from_config(
-                config, logger, client_cls=cls._resolve_factory_client_cls(), **kwargs
+                config,
+                logger,
+                client_cls=cls._resolve_factory_client_cls(),
+                analysis_mode=analysis_mode,
+                **kwargs,
             ),
         )
 
@@ -1246,6 +1258,9 @@ class DBLiftClient:
         config_path: str,
         logger: Optional[Any] = None,
         environment: Optional[str] = None,
+        *,
+        relative_to_config: bool = False,
+        analysis_mode: Literal["full", "execution"] = "full",
         **overrides: Any,
     ) -> Self:
         """Create a client instance from config file path.
@@ -1257,6 +1272,10 @@ class DBLiftClient:
                 section, deep-merged over the root sections before overrides.
                 When ``None``, selection still honors ``DBLIFT_ENV`` (or
                 ``resolve.env_var``) and ``resolve.branch_map``.
+            relative_to_config: When ``True``, relative paths in the file
+                (migration directories, a file database such as SQLite, the
+                log directory) resolve from the folder containing
+                ``config_path`` rather than the working directory.
             **overrides: Configuration overrides (database_url, ...).
         """
         if environment is not None:
@@ -1264,7 +1283,12 @@ class DBLiftClient:
         return cast(
             Self,
             client_from_config_file(
-                config_path, logger, client_cls=cls._resolve_factory_client_cls(), **overrides
+                config_path,
+                logger,
+                client_cls=cls._resolve_factory_client_cls(),
+                relative_to_config=relative_to_config,
+                analysis_mode=analysis_mode,
+                **overrides,
             ),
         )
 
@@ -1281,6 +1305,7 @@ class DBLiftClient:
         *,
         connection: Any = None,
         config: Optional["DbliftConfig"] = None,
+        analysis_mode: Literal["full", "execution"] = "full",
         **kwargs: Any,
     ) -> Self:
         """Create DBLiftClient from an existing SQLAlchemy Engine (or Connection).
@@ -1310,6 +1335,7 @@ class DBLiftClient:
                 connection=connection,
                 config=config,
                 client_cls=cls._resolve_factory_client_cls(),
+                analysis_mode=analysis_mode,
                 **kwargs,
             ),
         )
@@ -1317,34 +1343,13 @@ class DBLiftClient:
     # Phase 2.4: Context Manager Support
 
     def __enter__(self) -> "DBLiftClient":
-        """Context manager entry: ensure provider connection.
+        """Context manager entry. Opens no connection; operations connect on demand.
 
         Example:
             >>> with DBLiftClient.from_config_file("dblift.yaml") as client:
             ...     result = client.migrate()
             ...     # Connection automatically closed on exit
-
-        Takes ``self._operation_lock``, like every operation. Harmless to
-        nest, unlike ``__exit__``, so it does not refuse a reentrant call.
         """
-        lock = getattr(self, "_operation_lock", None)
-        if lock is None:
-            return self._enter_unlocked()
-        with lock:
-            return self._enter_unlocked()
-
-    def _enter_unlocked(self) -> "DBLiftClient":
-        # Ensure provider has a connection (avoid creating when already connected)
-        if isinstance(self.provider, ConnectionProvider):
-            try:
-                is_conn = self.provider.is_connected()
-            except Exception as e:
-                # is_connected() raised (e.g. state unknown) — log and try to connect
-                self.logger.debug(f"Could not check connection state in __enter__: {e}")
-                self.provider.create_connection()
-            else:
-                if not is_conn:
-                    self.provider.create_connection()
         return self
 
     def __exit__(

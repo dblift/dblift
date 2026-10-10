@@ -2,12 +2,9 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Dict, Optional, Type
+from typing import Dict, Optional
 
 from dblift.db.base_quirks import BaseQuirks
-
-if TYPE_CHECKING:
-    from dblift.db.generator_protocol import AlterGeneratorProtocol, SqlGeneratorProtocol
 
 
 class CosmosdbQuirks(BaseQuirks):
@@ -58,14 +55,6 @@ class CosmosdbQuirks(BaseQuirks):
     def __init__(self, dialect_name: str = "cosmosdb") -> None:
         """Initialize Cosmos DB quirks with the dialect name."""
         super().__init__(dialect_name=dialect_name)
-
-    def ddl_generator_class(self) -> Optional[Type["SqlGeneratorProtocol"]]:
-        """No SQL-DDL generator — Cosmos containers are created through the Azure SDK."""
-        return None
-
-    def alter_generator_class(self) -> Optional[Type["AlterGeneratorProtocol"]]:
-        """ALTER generator is supplied by an installed extension package."""
-        return None
 
     def parser_class(self, parser_type: str) -> Optional[type]:
         """No parser — Cosmos has no SQL for dblift to read.

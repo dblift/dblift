@@ -1,12 +1,4 @@
-"""Issue #849: undo() and baseline() must share the canonical
-``BaseCommand._run_preflight()`` instead of hand-rolling the
-connect / create-history-table / populate-info sequence themselves.
-
-These tests pin the exact ``_run_preflight`` arguments each command now
-uses, so a future edit can't silently drop back to hand-rolling (which is
-exactly the shape bug #821 was) or drift the ``create_schema``/``dry_run``
-values away from what the old inline code did.
-"""
+"""Undo and baseline use the canonical preflight with their distinct write policies."""
 
 from __future__ import annotations
 
@@ -104,69 +96,61 @@ def _make_baseline_cmd(history_manager=None, provider=None):
 
 @pytest.mark.unit
 class TestUndoUsesRunPreflight:
-    """undo()'s old hand-rolled sequence always called
-    ``create_schema_and_history_table(create_schema=False)`` unconditionally
-    (regardless of undo's own --dry-run flag, which only skips *executing*
-    undo scripts later). The shared preflight must reproduce that exactly.
-    """
+    """Undo connects before reading history and never initializes it."""
 
-    def test_calls_run_preflight_with_ensure_history_and_create_schema_false(self):
+    def test_calls_run_preflight_without_history_creation(self):
         cmd = _make_undo_cmd()
         with patch.object(cmd, "_run_preflight", wraps=cmd._run_preflight) as spy:
             cmd.execute(scripts_dir=MagicMock())
 
         spy.assert_called_once()
         _, kwargs = spy.call_args
-        assert kwargs.get("ensure_history") is True
-        assert kwargs.get("create_schema") is False
-        # undo never passes its own dry_run through to preflight: the history
-        # table must always be ensured, dry-run or not.
-        assert "dry_run" not in kwargs
+        assert kwargs == {}
 
-    def test_history_table_created_with_create_schema_false(self):
+    def test_history_table_not_created(self):
         hm = MagicMock()
         cmd = _make_undo_cmd(history_manager=hm)
         cmd.execute(scripts_dir=MagicMock())
 
-        hm.create_schema_and_history_table.assert_called_once_with(create_schema=False)
+        hm.create_schema_and_history_table.assert_not_called()
 
-    def test_history_table_still_created_when_undo_itself_is_a_dry_run(self):
-        """Parity with the old hand-rolled code: the connect/create-history
-        sequence ran before the dry_run branch was ever inspected."""
+    def test_history_table_not_created_in_dry_run(self):
         hm = MagicMock()
         cmd = _make_undo_cmd(history_manager=hm)
         cmd.execute(scripts_dir=MagicMock(), dry_run=True)
 
-        hm.create_schema_and_history_table.assert_called_once_with(create_schema=False)
+        hm.create_schema_and_history_table.assert_not_called()
 
-    def test_connects_before_creating_history_table(self):
+    def test_connects_before_reading_history(self):
         calls: list[str] = []
         provider = _OrderTrackingProvider(calls)
         hm = MagicMock()
-        hm.create_schema_and_history_table.side_effect = lambda **_: calls.append("create_history")
 
         cmd = _make_undo_cmd(history_manager=hm, provider=provider)
+        state = cmd.state_manager.build_state.return_value
+
+        def read_state(*args, **kwargs):
+            calls.append("read_history")
+            return state
+
+        cmd.state_manager.build_state.side_effect = read_state
         cmd.execute(scripts_dir=MagicMock())
 
-        assert calls == ["connect", "create_history"]
+        assert calls == ["connect", "read_history"]
 
-    @pytest.mark.parametrize("step", ["connect", "history"])
-    def test_preflight_failure_propagates_instead_of_failed_result(self, step):
+    def test_connection_failure_propagates_instead_of_failed_result(self):
         """Like info and validate, undo lets a preflight failure propagate
         rather than reporting it as "Undo operation failed: ..."."""
         hm = MagicMock()
         cmd = _make_undo_cmd(history_manager=hm)
-        if step == "connect":
-            patcher = patch.object(
+        with (
+            patch.object(
                 cmd,
                 "_ensure_connected",
                 side_effect=PreflightConnectionError("Connection failed: host unreachable"),
-            )
-        else:
-            hm.create_schema_and_history_table.side_effect = Exception("permission denied")
-            patcher = patch.object(cmd, "_ensure_connected")
-
-        with patcher, patch.object(cmd, "_execute_callbacks") as callbacks:
+            ),
+            patch.object(cmd, "_execute_callbacks") as callbacks,
+        ):
             with pytest.raises(PreflightConnectionError) as excinfo:
                 cmd.execute(scripts_dir=MagicMock())
 

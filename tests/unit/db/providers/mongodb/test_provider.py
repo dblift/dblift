@@ -32,7 +32,6 @@ def test_components_are_wired():
         "schema_operations",
         "history_manager",
         "locking_manager",
-        "snapshot_manager",
     ):
         assert getattr(provider, attribute) is not None
 

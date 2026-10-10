@@ -17,20 +17,15 @@ from abc import abstractmethod
 from typing import Any, Optional
 
 from dblift.config import DbliftConfig
-from dblift.core.constants import (
-    DBLIFT_DATA_AUDIT_TABLE,
-    DBLIFT_DATA_CHANGE_SET_TABLE,
-    DBLIFT_SCHEMA_SNAPSHOTS_TABLE,
-    DEFAULT_HISTORY_TABLE,
-)
+from dblift.core.constants import DEFAULT_HISTORY_TABLE
 from dblift.core.logger import Log, NullLog
 from dblift.db.base_quirks import BaseQuirks
+from dblift.db.provider_interfaces import TransactionalProvider  # noqa: F401
 from dblift.db.provider_interfaces import (
     ConnectionProvider,
     MigrationProvider,
     QueryProvider,
     SchemaProvider,
-    TransactionalProvider,
 )
 
 
@@ -164,84 +159,6 @@ class BaseProvider(
         """
         self.create_migration_history_table_if_not_exists(schema, create_schema, table_name)
 
-    def create_snapshot_table_if_not_exists(
-        self, schema: str, table_name: str = DBLIFT_SCHEMA_SNAPSHOTS_TABLE
-    ) -> None:
-        """Create the schema snapshot storage table if it does not exist.
-
-        Providers that still own snapshot storage may override this method.
-        The default implementation delegates to the shared snapshot manager,
-        which renders dialect-specific DDL through provider quirks.
-
-        Args:
-            schema: Schema name
-            table_name: Table name for snapshots (default: dblift_schema_snapshots)
-        """
-        from dblift.db.plugins.base_snapshot_manager import BaseSnapshotManager
-
-        BaseSnapshotManager(self).create_snapshot_table_if_not_exists(schema, table_name)
-
-    def create_data_history_table_if_not_exists(self, schema: str, table_name: str) -> None:
-        """Create the per-dataset data history table if it does not exist.
-
-        Default delegates to a simple implementation using quirks for DDL
-        (modeled on snapshot). Dialects may override.
-        """
-        self._create_data_table_if_not_exists(schema, table_name, kind="history")
-
-    def create_data_change_set_table_if_not_exists(
-        self, schema: str, table_name: str = DBLIFT_DATA_CHANGE_SET_TABLE
-    ) -> None:
-        """Create the data change-set table if it does not exist."""
-        self._create_data_table_if_not_exists(schema, table_name, kind="change_set")
-
-    def create_data_audit_table_if_not_exists(
-        self, schema: str, table_name: str = DBLIFT_DATA_AUDIT_TABLE
-    ) -> None:
-        """Create the append-only data audit table if it does not exist."""
-        self._create_data_table_if_not_exists(schema, table_name, kind="audit")
-
-    def _create_data_table_if_not_exists(
-        self, schema: str, table_name: str, kind: str = "history"
-    ) -> None:
-        """Internal helper (minimal, mirrors snapshot manager pattern).
-
-        ``kind`` selects the DDL builder: ``history`` | ``change_set`` | ``audit``.
-        Uses provider.quirks.build_*_table_ddl + execute + table_exists guard.
-        """
-        # Normalize first so the CREATE qualifies the same name the existence
-        # check (and later reads/writes) use — Oracle/DB2 fold unquoted names to
-        # upper-case, matching the migration history / lock tables.
-        normalized = self.get_normalized_object_name(table_name)
-        qualified = self.get_schema_qualified_name(schema, normalized)
-
-        if self.table_exists(schema, normalized):
-            return
-
-        quirks = self.quirks
-        if kind == "change_set":
-            # sizes from db.constants or snapshot reuse
-            ddl = quirks.build_data_change_set_table_ddl(qualified, 64, 128)
-        elif kind == "audit":
-            ddl = quirks.build_data_audit_table_ddl(qualified, 100, 128)
-        else:
-            ddl = quirks.build_data_history_table_ddl(qualified, 100, 128)
-
-        try:
-            self.execute_statement(ddl)
-            # best effort commit for some providers
-            if isinstance(self, TransactionalProvider):
-                try:
-                    self.commit_transaction()
-                except Exception:
-                    pass
-        except Exception as e:
-            is_existing_history = quirks.is_data_history_table_already_exists_error(str(e))
-            is_existing_change_set = quirks.is_data_change_set_table_already_exists_error(str(e))
-            if is_existing_history or is_existing_change_set:
-                return
-            raise
-
     def record_undo(
         self,
         schema: str,
@@ -322,6 +239,16 @@ class BaseProvider(
             params=[script_name],
         )
         return int(affected) if affected is not None else 0
+
+    def migration_lock_lost(self) -> bool:
+        """Whether the migration lock this provider holds has been lost.
+
+        Providers whose lock is a lease (a lock row or document kept alive by
+        a heartbeat) report ``True`` once the lease was reclaimed by another
+        process or could not be renewed for a whole lease window. Locks the
+        server frees with the session can never be lost this way.
+        """
+        return False
 
     def close(self) -> None:
         """Close the database connection if it exists.
