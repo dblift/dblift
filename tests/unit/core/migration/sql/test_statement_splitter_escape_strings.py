@@ -2,6 +2,7 @@
 
 import pytest
 
+from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.core.migration.sql.statement_splitter import StatementSplitter
 
 pytestmark = pytest.mark.unit
@@ -57,9 +58,9 @@ def test_redshift_plain_strings_use_backslash_escapes(literal):
 def test_redshift_escaped_final_quote_does_not_end_the_literal():
     sql = r"SELECT 'C:\'; SELECT 2;"
 
-    # Leave the unterminated literal for the database to reject, rather than
-    # inventing a statement boundary inside it.
-    assert StatementSplitter("redshift").split_statements(sql) == [sql]
+    # an unterminated string is refused, not swallowed
+    with pytest.raises(UnsafeStatementSplitError):
+        StatementSplitter("redshift").split_statements(sql)
 
 
 @pytest.mark.parametrize("dialect", ["postgresql", "cockroachdb", "redshift"])

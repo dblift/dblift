@@ -2,6 +2,7 @@
 
 import pytest
 
+from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.db.plugins.oracle.parser.sqlplus_context import (
     SqlplusContext,
     apply_define_substitution,
@@ -112,12 +113,9 @@ class TestExtractSqlplusContext:
         assert ctx.define_on is False
 
     def test_unclosed_block_comment_content_visible(self):
-        # strip_comments() uses regex requiring both /* and */ — unclosed comments
-        # are not matched, so content after /* remains and directives are processed.
-        # Unclosed block comments are malformed SQL and not a supported input.
-        ctx = extract_sqlplus_context("/* start\nSET DEFINE OFF\nSET SERVEROUTPUT ON")
-        assert ctx.define_on is False
-        assert ctx.serveroutput is True
+        # an unterminated block comment is refused, not swallowed
+        with pytest.raises(UnsafeStatementSplitError):
+            extract_sqlplus_context("/* start\nSET DEFINE OFF\nSET SERVEROUTPUT ON")
 
     def test_consecutive_block_comments_same_line(self):
         ctx = extract_sqlplus_context("/* a */ /* b */ SET SERVEROUTPUT ON")

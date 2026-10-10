@@ -105,8 +105,9 @@ class TestPostgresCopyFromStdin:
 
         stmts = StatementSplitter("postgresql").split_statements(sql)
 
+        # the \. line is the terminator and is consumed (docs/sql-parsing/postgresql.md §7, row 11)
         assert stmts == [
-            "COPY t (id, name) FROM stdin;\n1\talice\n2\tbob\n\\.",
+            "COPY t (id, name) FROM stdin;\n1\talice\n2\tbob",
             "SELECT 1;",
         ]
 
@@ -115,8 +116,9 @@ class TestPostgresCopyFromStdin:
 
         stmts = StatementSplitter("postgresql").split_statements(sql)
 
+        # the \. line is the terminator and is consumed (docs/sql-parsing/postgresql.md §7, row 11)
         assert stmts == [
-            "COPY t (id, name) FROM stdin;\n1\talice\n\\.",
+            "COPY t (id, name) FROM stdin;\n1\talice",
         ]
 
     def test_backslash_dot_mid_line_is_not_a_terminator(self):
@@ -126,8 +128,9 @@ class TestPostgresCopyFromStdin:
 
         stmts = StatementSplitter("postgresql").split_statements(sql)
 
+        # the \. line is the terminator and is consumed (docs/sql-parsing/postgresql.md §7, row 11)
         assert stmts == [
-            "COPY t (id, note) FROM stdin;\n1\tO'Brien said \\. wasn't done\n\\.",
+            "COPY t (id, note) FROM stdin;\n1\tO'Brien said \\. wasn't done",
             "SELECT 1;",
         ]
 
@@ -138,8 +141,9 @@ class TestPostgresCopyFromStdin:
 
         stmts = StatementSplitter("postgresql").split_statements(sql)
 
+        # the \. line is the terminator and is consumed (docs/sql-parsing/postgresql.md §7, row 11)
         assert stmts == [
-            "COPY t (id, cmd) FROM stdin;\n1\tSELECT 1; DROP TABLE t;\n\\.",
+            "COPY t (id, cmd) FROM stdin;\n1\tSELECT 1; DROP TABLE t;",
             "SELECT 2;",
         ]
 
@@ -148,8 +152,9 @@ class TestPostgresCopyFromStdin:
 
         stmts = StatementSplitter("postgresql").split_statements(sql)
 
+        # the \. line is the terminator and is consumed (docs/sql-parsing/postgresql.md §7, row 11)
         assert stmts == [
-            "COPY t (id) FROM stdin;\n\\.",
+            "COPY t (id) FROM stdin;",
             "SELECT 1;",
         ]
 
@@ -158,8 +163,9 @@ class TestPostgresCopyFromStdin:
 
         stmts = StatementSplitter("postgresql").split_statements(sql)
 
+        # the \. line is the terminator and is consumed (docs/sql-parsing/postgresql.md §7, row 11)
         assert stmts == [
-            "COPY t (id, name) FROM stdin;\r\n1\talice\r\n2\tbob\r\n\\.",
+            "COPY t (id, name) FROM stdin;\r\n1\talice\r\n2\tbob",
             "SELECT 1;",
         ]
 
@@ -179,7 +185,8 @@ class TestPostgresCopyFromStdin:
 
         stmts = StatementSplitter("postgresql").split_statements(sql)
 
-        assert stmts == [self.PG_DUMP_COPY.rstrip("\n"), "SELECT 1;"]
+        # the \. line is the terminator and is consumed (docs/sql-parsing/postgresql.md §7, row 11)
+        assert stmts == [self.PG_DUMP_COPY.removesuffix("\n\\.\n"), "SELECT 1;"]
 
     @pytest.mark.parametrize(
         "header",
@@ -196,7 +203,8 @@ class TestPostgresCopyFromStdin:
 
         stmts = StatementSplitter("postgresql").split_statements(sql)
 
-        assert stmts == [f"{header}\n1\n\\.", "SELECT 1;"]
+        # the \. line is the terminator and is consumed (docs/sql-parsing/postgresql.md §7, row 11)
+        assert stmts == [f"{header}\n1", "SELECT 1;"]
 
     def test_copy_header_detection_stops_at_its_semicolon(self):
         """A COPY that is not FROM stdin must not borrow the next statement's
@@ -205,9 +213,10 @@ class TestPostgresCopyFromStdin:
 
         stmts = StatementSplitter("postgresql").split_statements(sql)
 
+        # the \. line is the terminator and is consumed (docs/sql-parsing/postgresql.md §7, row 11)
         assert stmts == [
             "COPY a TO '/tmp/a.txt';",
-            "COPY b FROM stdin;\n1\n\\.",
+            "COPY b FROM stdin;\n1",
             "SELECT 1;",
         ]
 
@@ -260,16 +269,14 @@ class TestPostgresMetaCommand:
             "SELECT 1;",
         ]
 
-    def test_backslash_mid_line_is_not_a_meta_command(self):
-        """Only a '\\' as the first non-whitespace character on a line is a
-        meta-command; the unclaimed-character path handles this one
-        unchanged, same as before this fix."""
-        sql = "SELECT 1 \\restrict fake;\nSELECT 2;\n"
+    def test_backslash_mid_line_is_a_meta_command(self):
+        """psql processes an unquoted '\\' anywhere in SQL state, mid-line
+        included (docs/sql-parsing/postgresql.md §6, row 15), so it is refused
+        by name rather than sent to the server as SQL."""
+        sql = "SELECT 1 \\set fake 1\nSELECT 2;\n"
 
-        with pytest.warns(UserWarning, match="unclaimed character"):
-            stmts = StatementSplitter("postgresql").split_statements(sql)
-
-        assert stmts == ["SELECT 1 \\restrict fake;", "SELECT 2;"]
+        with pytest.raises(UnsupportedMetaCommandError, match=r"\\set.*line 1"):
+            StatementSplitter("postgresql").split_statements(sql)
 
     def test_copy_null_marker_stays_data(self):
         """'\\N' — SQL NULL in COPY's data format — must not be mistaken for
@@ -278,8 +285,9 @@ class TestPostgresMetaCommand:
 
         stmts = StatementSplitter("postgresql").split_statements(sql)
 
+        # the \. line is the terminator and is consumed (docs/sql-parsing/postgresql.md §7, row 11)
         assert stmts == [
-            "COPY t (id, name) FROM stdin;\n1\t\\N\n2\tbob\n\\.",
+            "COPY t (id, name) FROM stdin;\n1\t\\N\n2\tbob",
             "SELECT 1;",
         ]
 
@@ -288,7 +296,8 @@ class TestPostgresMetaCommand:
 
         stmts = StatementSplitter("postgresql").split_statements(sql)
 
-        assert stmts == ["COPY t (id) FROM stdin;\n1\n\\.", "SELECT 1;"]
+        # the \. line is the terminator and is consumed (docs/sql-parsing/postgresql.md §7, row 11)
+        assert stmts == ["COPY t (id) FROM stdin;\n1", "SELECT 1;"]
 
     def test_unsupported_meta_command_is_refused_by_default(self):
         """The refusal must reach the caller under the *default* (non-strict)

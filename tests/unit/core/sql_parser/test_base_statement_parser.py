@@ -809,3 +809,34 @@ class TestGetPreviousTokens:
     def test_empty_context(self):
         parser = BaseStatementParser([])
         assert parser._get_previous_tokens(1) == []
+
+
+def test_semicolon_inside_parentheses_ends_a_statement_unless_the_dialect_says_otherwise() -> None:
+    from dblift.core.sql_parser.base_statement_parser import BaseStatementParser
+    from dblift.core.sql_parser.base_tokenizer import BaseTokenizer
+    from dblift.core.sql_parser.parser_context import ParserContext
+
+    script = "CREATE RULE r AS ON INSERT TO t DO ALSO (INSERT INTO u VALUES (1); INSERT INTO v VALUES (2)); SELECT 1;"
+    tokens = BaseTokenizer(script).tokenize()
+    assert len(BaseStatementParser(tokens, ParserContext(), source=script).split_statements()) == 3
+
+    class ParenAware(BaseStatementParser):
+        TERMINATOR_RESPECTS_PARENS = True
+
+    assert ParenAware(tokens, ParserContext(), source=script).split_statements() == [
+        "CREATE RULE r AS ON INSERT TO t DO ALSO (INSERT INTO u VALUES (1); INSERT INTO v VALUES (2));",
+        "SELECT 1;",
+    ]
+
+
+def test_parenthesis_depth_ignores_what_strings_contain() -> None:
+    from dblift.core.sql_parser.parser_context import ParserContext
+    from dblift.db.plugins.postgresql.parser.postgresql_statement_parser import (
+        PostgreSQLStatementParser,
+    )
+    from dblift.db.plugins.postgresql.parser.postgresql_tokenizer import PostgreSQLTokenizer
+
+    script = "CREATE RULE r AS ON INSERT TO t DO ALSO (SELECT $$a;b)$$; SELECT ')');\nSELECT 1;"
+    tokens = PostgreSQLTokenizer(script).tokenize()
+    out = PostgreSQLStatementParser(tokens, ParserContext(), source=script).split_statements()
+    assert len(out) == 2 and out[1] == "SELECT 1;"

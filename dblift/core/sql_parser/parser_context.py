@@ -19,7 +19,7 @@ class ParserContext:
 
     Attributes:
         block_depth: Current nesting level of blocks (BEGIN/END, etc.)
-        block_initiator: The keyword that started the current block
+        block_initiators: Keywords of the open blocks, innermost last
         last_closed_block: The keyword from the most recently closed block
         delimiter: Current statement delimiter (; or / for Oracle, GO for SQL Server)
         statement_type: Type of the current statement (DDL, DML, PLSQL, etc.)
@@ -28,7 +28,7 @@ class ParserContext:
     """
 
     block_depth: int = 0
-    block_initiator: Optional[str] = None
+    block_initiators: List[str] = field(default_factory=list)
     last_closed_block: Optional[str] = None
     delimiter: str = ";"
     statement_type: Optional[str] = None
@@ -42,13 +42,15 @@ class ParserContext:
             initiator: The keyword that started this block (BEGIN, IF, LOOP, etc.)
         """
         self.last_closed_block = None
-        self.block_initiator = initiator
+        self.block_initiators.append(initiator)
         self.block_depth += 1
 
     def decrease_block_depth(self) -> None:
         """Decrease block depth and record the closed block."""
         if self.block_depth > 0:
-            self.last_closed_block = self.block_initiator
+            self.last_closed_block = self.get_block_initiator()
+            if self.block_initiators:
+                self.block_initiators.pop()
             self.block_depth -= 1
 
     def get_block_initiator(self) -> Optional[str]:
@@ -57,7 +59,12 @@ class ParserContext:
         Returns:
             The initiating keyword or None if at top level
         """
-        return self.block_initiator
+        return self.block_initiators[-1] if self.block_initiators else None
+
+    @property
+    def block_initiator(self) -> Optional[str]:
+        """Innermost open block's keyword (read-only view of the stack)."""
+        return self.get_block_initiator()
 
     def get_last_closed_block_initiator(self) -> Optional[str]:
         """Get the keyword from the most recently closed block.
@@ -72,7 +79,7 @@ class ParserContext:
         delimiter_backup = self.delimiter
         # Reset to defaults
         self.block_depth = 0
-        self.block_initiator = None
+        self.block_initiators = []
         self.last_closed_block = None
         self.statement_type = None
         self.parens_depth = 0

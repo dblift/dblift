@@ -6,6 +6,7 @@ and COPY FROM STDIN data block handling.
 
 from typing import Iterable, List, Optional
 
+from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.core.sql_parser.base_tokenizer import BaseTokenizer
 from dblift.core.sql_parser.tokens import Token, TokenType
 
@@ -73,11 +74,22 @@ class PostgreSQLTokenizer(BaseTokenizer):
 
         char = self.peek()
 
-        # psql client meta-command (e.g. \restrict, \i): a line whose first
-        # non-whitespace character is '\' at the top level. Not inside a COPY
-        # header (up to its ';'), which stays one unit with its data block;
-        # the data block itself (rows may start with \N) is read whole above.
-        if char == "\\" and self._copy_header is None and self._is_at_line_start():
+        # psql's ``\;`` adds a ';' to the query buffer without ending the
+        # statement (spec §4): one token, so the parser can combine around it.
+        if char == "\\" and self._copy_header is None and self.peek(2) == "\\;":
+            start_pos, start_line, start_col = self.pos, self.line, self.col
+            text = self.read(2)
+            return Token(
+                TokenType.SYMBOL, text, start_pos, start_line, start_col, self.parens_depth
+            )
+
+        # psql client meta-command (e.g. \restrict, \set): any unquoted '\'
+        # in SQL state, mid-line included (spec §6). Quoted text, comments and
+        # dollar-quotes are consumed whole by their handlers, so a backslash
+        # reaching here is unquoted. Not inside a COPY header (up to its ';'),
+        # which stays one unit with its data block; the data block itself
+        # (rows may start with \N) is read whole above.
+        if char == "\\" and self._copy_header is None:
             return self._handle_meta_command()
 
         # Flyway / DBLift placeholders ${name} or ${name:default} — not PostgreSQL
@@ -89,6 +101,17 @@ class PostgreSQLTokenizer(BaseTokenizer):
         # Check for double-quoted identifier BEFORE other checks
         if char == '"':
             return self._handle_quoted_identifier()
+
+        # '$' that does not open a dollar-quote: a positional parameter ($1)
+        # or a stray '$'.
+        if char == "$" and not self._is_alternative_string_start():
+            start_pos, start_line, start_col = self.pos, self.line, self.col
+            text = self.read()
+            while self.pos < len(self.sql) and self.peek().isdigit():
+                text += self.read()
+            return Token(
+                TokenType.SYMBOL, text, start_pos, start_line, start_col, self.parens_depth
+            )
 
         # Delegate to base class for other token types
         return super()._next_token()
@@ -128,8 +151,14 @@ class PostgreSQLTokenizer(BaseTokenizer):
             return not previous or not (previous.isalnum() or previous in "_$'\"")
         if self.peek() != "$":
             return False
-        # ${…} is handled in _next_token; do not treat as dollar-quoted string.
-        return len(self.sql) <= self.pos + 1 or self.sql[self.pos + 1] != "{"
+        previous = self.sql[self.pos - 1] if self.pos else ""
+        if previous and (previous.isalnum() or previous in "_$"):
+            return False  # part of an identifier such as a$b
+        after = self.peek(2)[1:]
+        if after == "$":
+            return True  # empty tag
+        # A tag starts like an unquoted identifier; $1 is a parameter, ${ a placeholder.
+        return bool(after) and (after.isalpha() or after == "_")
 
     def _handle_string(self) -> Token:
         """Handle standard strings, escape strings and dollar-quotes.
@@ -155,11 +184,17 @@ class PostgreSQLTokenizer(BaseTokenizer):
         """Read a backslash-escaped literal, including an optional E prefix."""
         start_pos, start_line, start_col = self.pos, self.line, self.col
         self.read(2 if self.peek(2) in ("E'", "e'") else 1)
+        closed = False
         while self.pos < len(self.sql):
             if self.peek() == "\\" or self.peek(2) == "''":
                 self.read(2)
             elif self.read() == "'":
+                closed = True
                 break
+        if not closed:
+            raise UnsafeStatementSplitError(
+                f"unterminated string opened at line {start_line}, column {start_col}"
+            )
         return Token(
             TokenType.STRING,
             self.sql[start_pos : self.pos],
@@ -203,13 +238,24 @@ class PostgreSQLTokenizer(BaseTokenizer):
             closing_dollar = self.read()
             tag += closing_dollar
             string_text += closing_dollar
+        else:
+            raise UnsafeStatementSplitError(
+                f"malformed dollar-quote tag at line {start_line}, column {start_col}"
+            )
 
         # Now read until matching closing tag
+        closed = False
         while self.pos < len(self.sql):
             if self.peek(len(tag)) == tag:
                 string_text += self.read(len(tag))
+                closed = True
                 break
             string_text += self.read()
+        if not closed:
+            raise UnsafeStatementSplitError(
+                f"unterminated dollar-quoted string opened at line {start_line}, "
+                f"column {start_col}"
+            )
 
         return Token(
             TokenType.STRING,
@@ -237,6 +283,7 @@ class PostgreSQLTokenizer(BaseTokenizer):
         identifier_text += self.read()
 
         # Read until closing quote
+        closed = False
         while self.pos < len(self.sql):
             char = self.peek()
             if char == '"':
@@ -245,9 +292,15 @@ class PostgreSQLTokenizer(BaseTokenizer):
                     identifier_text += self.read(2)
                 else:
                     identifier_text += self.read()  # Closing quote
+                    closed = True
                     break
             else:
                 identifier_text += self.read()
+        if not closed:
+            raise UnsafeStatementSplitError(
+                f"unterminated quoted identifier opened at line {start_line}, "
+                f"column {start_col}"
+            )
 
         return Token(
             TokenType.IDENTIFIER,
@@ -285,48 +338,36 @@ class PostgreSQLTokenizer(BaseTokenizer):
         return token
 
     def handle_copy_data(self) -> Token:
-        r"""Handle a COPY FROM STDIN data block, ending at \. on its own line.
+        r"""Read COPY FROM STDIN rows up to the line that is exactly ``\.``.
 
-        The newline that ends the header's ``;`` is formatting, not data, and
-        is dropped before the token starts — otherwise a row whose first
-        column is empty (a leading tab) would lose that tab to whitespace
-        skipping.
-
-        Returns:
-            COPY_DATA token containing the data block, terminator included
+        The newline ending the header line is framing and is dropped. The token
+        text is the rows without the newline that precedes the ``\.`` line and
+        without that line; the statement parser treats that line as the
+        terminator. A line with blanks before ``\.`` is data (psql compares the
+        whole line). Rows running to the end of the script without a ``\.``
+        line are the whole remainder, as psql ends COPY at end of input.
         """
         if self.peek() == "\r":
             self.read()
         if self.peek() == "\n":
             self.read()
-
-        start_pos = self.pos
-        start_line = self.line
-        start_col = self.col
-
-        # Capture entire COPY data block
-        data_text = ""
-
-        # Read until \. on its own line
+        start_pos, start_line, start_col = self.pos, self.line, self.col
+        data_end = len(self.sql)
         while self.pos < len(self.sql):
-            # Check for \. at start of line
-            if self._is_at_line_start() and self.peek(2) == "\\.":
-                # Read the \. marker
-                data_text += self.read(2)
-                # Skip to end of line
-                while self.pos < len(self.sql) and self.peek() not in ("\n", "\r"):
-                    data_text += self.read()
-                if self.pos < len(self.sql):
-                    data_text += self.read()  # Read the newline
+            line_start = self.pos
+            newline = self.sql.find("\n", line_start)
+            line_end = len(self.sql) if newline == -1 else newline
+            if self.sql[line_start:line_end].rstrip("\r") == "\\.":
+                data_end = max(start_pos, line_start - 1)
+                if data_end > start_pos and self.sql[data_end - 1] == "\r":
+                    data_end -= 1
+                self.read(line_end - line_start + (0 if newline == -1 else 1))
                 break
-
-            # Read character
-            data_text += self.read()
-
+            self.read(line_end - line_start + (0 if newline == -1 else 1))
         self.in_copy_data = False
         return Token(
             TokenType.COPY_DATA,
-            data_text,
+            self.sql[start_pos:data_end],
             start_pos,
             start_line,
             start_col,
@@ -360,27 +401,6 @@ class PostgreSQLTokenizer(BaseTokenizer):
             start_col,
             self.parens_depth,
         )
-
-    def _is_at_line_start(self) -> bool:
-        """Check if we're at the start of a line.
-
-        Returns:
-            True if at line start
-        """
-        # Look back to find if we're after a newline or at file start
-        if self.pos == 0:
-            return True
-
-        check_pos = self.pos - 1
-        while check_pos >= 0:
-            char = self.sql[check_pos]
-            if char in ("\n", "\r"):
-                return True
-            elif not char.isspace():
-                return False
-            check_pos -= 1
-
-        return True
 
 
 class NonNestingPostgreSQLTokenizer(PostgreSQLTokenizer):

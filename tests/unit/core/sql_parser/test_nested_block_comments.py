@@ -22,6 +22,7 @@ non-nesting as the unverified, safer-by-default reading.
 
 import unittest
 
+from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.core.sql_parser.base_tokenizer import BaseTokenizer
 from dblift.db.plugins.db2.parser.db2_regex_parser import DB2RegexParser
 from dblift.db.plugins.duckdb.parser.duckdb_regex_parser import DuckDBRegexParser
@@ -77,12 +78,14 @@ class TestPostgresNestedBlockComments(unittest.TestCase):
         self.assertEqual(stmts, ["SELECT 1;"])
 
     def test_unterminated_inner_comment_swallows_rest_of_file(self):
-        stmts = self.parser.split_statements(UNTERMINATED_INNER)
-        self.assertEqual(stmts, [])
+        # an unterminated block comment is refused, not swallowed
+        with self.assertRaises(UnsafeStatementSplitError):
+            self.parser.split_statements(UNTERMINATED_INNER)
 
     def test_three_deep_with_unterminated_middle_swallows_rest_of_file(self):
-        stmts = self.parser.split_statements(THREE_DEEP_UNTERMINATED_MIDDLE)
-        self.assertEqual(stmts, [])
+        # an unterminated block comment is refused, not swallowed
+        with self.assertRaises(UnsafeStatementSplitError):
+            self.parser.split_statements(THREE_DEEP_UNTERMINATED_MIDDLE)
 
     def test_slash_star_inside_string_literal_is_not_a_comment(self):
         sql = "SELECT '/*' AS marker; SELECT 2;"
@@ -136,12 +139,14 @@ class TestSqlServerNestedBlockComments(unittest.TestCase):
         self.assertEqual(stmts, ["SELECT 1;"])
 
     def test_unterminated_inner_comment_swallows_rest_of_file(self):
-        stmts = self.parser.split_statements(UNTERMINATED_INNER)
-        self.assertEqual(stmts, [])
+        # an unterminated block comment is refused, not swallowed
+        with self.assertRaises(UnsafeStatementSplitError):
+            self.parser.split_statements(UNTERMINATED_INNER)
 
     def test_three_deep_with_unterminated_middle_swallows_rest_of_file(self):
-        stmts = self.parser.split_statements(THREE_DEEP_UNTERMINATED_MIDDLE)
-        self.assertEqual(stmts, [])
+        # an unterminated block comment is refused, not swallowed
+        with self.assertRaises(UnsafeStatementSplitError):
+            self.parser.split_statements(THREE_DEEP_UNTERMINATED_MIDDLE)
 
 
 class TestDuckDBNestedBlockComments(unittest.TestCase):

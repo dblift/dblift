@@ -179,3 +179,15 @@ END test_pkg;"""
                     # Check if this is a control flow END
                     result = parser._is_control_flow_end()
                     assert isinstance(result, bool)
+
+
+class TestOracleNationalQQuote:
+    @pytest.mark.parametrize("prefix", ["nq", "NQ", "Nq", "nQ", "q"])
+    def test_alternative_quote_literal_with_embedded_quote_splits_cleanly(self, prefix):
+        from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+
+        script = f"SELECT {prefix}'[it's]' FROM dual;\nSELECT 1 FROM dual;"
+        assert SqlAnalyzer("oracle").split_statements(script) == [
+            f"SELECT {prefix}'[it's]' FROM dual;",
+            "SELECT 1 FROM dual;",
+        ]

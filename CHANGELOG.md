@@ -9,9 +9,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `Statement` records from `PostgreSQLStatementParser.split()`: the text
+  without its terminator, its line, the terminator, a kind (`sql`,
+  `directive` or `copy_stdin`), and `multi` for statements combined by
+  psql's `\;`.
+
 ### Changed
 
+- The PostgreSQL family (including Redshift) has no regex fallback: a script
+  the splitter cannot read is an error naming the construct. A script of
+  only `\restrict` / `\unrestrict` lines yields no statement.
+  `split_statements()` strings for a `COPY ... FROM STDIN` no longer carry
+  the `\.` line. The lexical rules are documented in
+  `docs/sql-parsing/postgresql.md`, whose conformance table is compiled into
+  the unit tests.
+- SQL Server and Oracle refuse an unterminated string or block comment with
+  `UnsafeStatementSplitError` and its position. SQL Server previously
+  dropped the rest of the file silently for an unterminated comment.
+- MySQL and MariaDB: an unterminated block comment now yields the remainder
+  as one statement (the server rejects it) instead of an empty result.
+  SQLite, DuckDB and Db2 log a warning and keep their previous output.
+
 ### Fixed
+
+- PostgreSQL splitting matches psql on: `$1` positional parameters (not
+  dollar-quote tags); a `;` inside parentheses; psql's `\;` combinator; the
+  COPY end-of-data `\.` line (exact line only, consumed as the terminator;
+  a data line with blanks before `\.` is data); psql meta-commands anywhere
+  on a line (refused by name and line); a bare `;` is dropped.
+- An unterminated comment, string, quoted identifier or dollar quote raises
+  `UnsafeStatementSplitError` with line and column instead of swallowing the
+  rest of the script.
+- Oracle: `nq'...'` literals are recognised.
 
 ### Removed
 

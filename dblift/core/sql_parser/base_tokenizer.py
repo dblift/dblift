@@ -7,6 +7,7 @@ that can be extended for dialect-specific behavior.
 import warnings
 from typing import List, Optional
 
+from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.core.sql_parser.tokens import Token, TokenType
 
 
@@ -384,6 +385,10 @@ class BaseTokenizer:
                         break
                     continue
                 self.read()
+            if depth > 0:
+                raise UnsafeStatementSplitError(
+                    f"unterminated block comment opened at line {start_line}, column {start_col}"
+                )
             return Token(
                 TokenType.COMMENT,
                 "",
@@ -411,6 +416,7 @@ class BaseTokenizer:
         string_text += quote_char
 
         # Read until closing quote
+        closed = False
         while self.pos < len(self.sql):
             char = self.peek()
             if char == quote_char:
@@ -419,9 +425,14 @@ class BaseTokenizer:
                     string_text += self.read(2)  # Skip both quotes
                 else:
                     string_text += self.read()  # Closing quote
+                    closed = True
                     break
             else:
                 string_text += self.read()
+        if not closed:
+            raise UnsafeStatementSplitError(
+                f"unterminated string opened at line {start_line}, column {start_col}"
+            )
 
         return Token(
             TokenType.STRING,
