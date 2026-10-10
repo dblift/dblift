@@ -184,34 +184,22 @@ class OracleTokenizer(BaseTokenizer):
         if char == ";":
             return True
 
-        # Check for slash delimiter (must be alone on line for PL/SQL)
-        if char == "/":
-            # Look back to see if we're at start of line
-            return self._is_slash_delimiter()
+        # ``/`` and ``.`` are SQL*Plus terminators only alone on their line.
+        if char in ("/", "."):
+            return self._is_alone_on_line()
 
         return False
 
-    def _is_slash_delimiter(self) -> bool:
-        """Check if slash is a PL/SQL delimiter (must be alone on line).
-
-        Returns:
-            True if slash is a valid delimiter
-        """
-        # Slash must be at start of line or preceded only by whitespace
-        # Look back from current position
-        check_pos = self.pos - 1
-        while check_pos >= 0:
-            char = self.sql[check_pos]
-            if char == "\n":
-                # Found newline - slash is at start of line
-                return True
-            elif not char.isspace():
-                # Found non-whitespace before slash - not a delimiter
-                return False
-            check_pos -= 1
-
-        # Reached start of file - slash is at start
-        return True
+    def _is_alone_on_line(self) -> bool:
+        """Whether the character at the cursor is the only non-blank text on its line."""
+        line_start = self.sql.rfind("\n", 0, self.pos) + 1
+        line_end = self.sql.find("\n", self.pos)
+        if line_end < 0:
+            line_end = len(self.sql)
+        return (
+            not self.sql[line_start : self.pos].strip()
+            and not self.sql[self.pos + 1 : line_end].strip()
+        )
 
     def _handle_delimiter(self) -> Token:
         """Handle Oracle delimiters (semicolon or slash).

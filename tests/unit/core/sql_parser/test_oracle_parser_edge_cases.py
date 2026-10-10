@@ -76,7 +76,8 @@ class TestOracleParserEdgeCases:
         parser = OracleParser()
 
         sql = """
-        CREATE TABLE test1 (id NUMBER); -- This is a comment; with semicolons;
+        -- This is a comment; with semicolons;
+        CREATE TABLE test1 (id NUMBER);
         CREATE TABLE test2 (name VARCHAR2(100));
         /* Block comment with semicolons;
            and multiple lines;
@@ -411,7 +412,8 @@ class TestOracleParserEdgeCases:
             -- Comment between columns
             name VARCHAR2(100) -- another inline
             -- Comment before closing paren
-        ); -- trailing comment
+        );
+        -- trailing comment (spec §4 row 16a: text after a ';' on its line is refused)
 
         /* Block comment before statement */
         CREATE /* mid-statement comment */ TABLE test2 (id NUMBER);

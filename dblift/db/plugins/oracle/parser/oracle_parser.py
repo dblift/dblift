@@ -4,6 +4,7 @@ import logging
 import re
 from typing import Any, Dict, List, Optional
 
+from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.core.logger.log import LogFactory
 from dblift.core.sql_model.base import (
     ParseResult,
@@ -134,6 +135,9 @@ class OracleParser(RegexBasedParser):
             logger.debug(f"Oracle: Tokenization split into {len(statements)} statements")
             return statements
 
+        except UnsafeStatementSplitError:
+            # A refusal is the answer: the regex fallback would split the very text refused.
+            raise
         except Exception as e:
             # Fallback to old regex-based splitting if tokenization fails
             logger.warning(f"Oracle tokenization failed, falling back to regex: {str(e)}")
