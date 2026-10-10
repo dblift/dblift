@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `validate-sql` no longer reports a statement on a table created earlier in the same delta: the table has no rows and nothing deployed uses it. Every table rule is skipped for such a statement (`drop-table`, `drop-column`, `truncate`, `dml-no-where`, the renames, `alter-column-type`, `add-not-null-no-default` and the PostgreSQL lock rules); before, only some rules were, and only within one script. The files named with `--files` form one delta, read and listed in apply order (versioned scripts by version, then repeatable scripts by name, then the other files as given); the scripts of the migration directories are still read one by one. The pending scripts of `info` and `migrate --dry-run` form one delta. `lint_files` takes `as_delta`, `lint_pending_scripts` takes `as_delta` (on by default), `lint_script`, `lint_analysis` and `find_issues` take `created_before`, and `ScriptLint.created_tables` lists the tables a script creates.
+
 ## [4.11.0] - 2026-10-09
 
 ### Removed

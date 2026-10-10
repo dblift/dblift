@@ -1,12 +1,18 @@
-"""``validate-sql``: a verdict for each migration script, from its findings."""
+"""``validate-sql``: a verdict for each migration script, from its findings.
+
+Scripts are linted alone, or as a delta: scripts applied together, in order, where a table
+an earlier script created is new for every later one (see ``lint_rules``).
+"""
 
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
+from functools import cmp_to_key
 from pathlib import Path
 from typing import (
     TYPE_CHECKING,
+    AbstractSet,
     Any,
     Dict,
     FrozenSet,
@@ -21,12 +27,16 @@ from typing import (
 
 from dblift.core.migration.migration_types import MigrationType
 from dblift.core.migration.placeholders.placeholder_service import PlaceholderService
-from dblift.core.migration.scripting.filename_parser import is_migration_sql_file
+from dblift.core.migration.scripting.filename_parser import (
+    is_migration_sql_file,
+    parse_migration_filename,
+)
 from dblift.core.migration.sql.script_analysis import (
     DISABLED_ANALYSIS,
     ScriptAnalysis,
     analyse_script,
 )
+from dblift.core.migration.version_utils import compare_versions
 
 # ``lint_rules`` needs sqlglot, so it is imported where a rule runs: ``info`` and ``migrate``
 # import this module and must load without sqlglot.
@@ -54,6 +64,9 @@ class ScriptLint:
     verdict: str
     findings: Tuple[Finding, ...]
     errors: Tuple[str, ...]
+    # Tables the script creates (lower-cased, unqualified), to carry to the next script
+    # of a delta; not part of the JSON payload.
+    created_tables: FrozenSet[str] = field(default=frozenset(), compare=False)
 
     def to_dict(self) -> Dict[str, Any]:
         """JSON-ready form of the script's verdict."""
@@ -87,19 +100,39 @@ def verdict_of(findings: Sequence[Finding], errors: Sequence[str]) -> str:
 
 
 def lint_analysis(
-    analysis: ScriptAnalysis, text: str, dialect: str, script: str = ""
+    analysis: ScriptAnalysis,
+    text: str,
+    dialect: str,
+    script: str = "",
+    *,
+    created_before: Optional[AbstractSet[str]] = None,
 ) -> ScriptLint:
-    """Verdict for a script already analysed, honouring its ``dblift:allow`` comments."""
-    from dblift.core.migration.sql.lint_rules import find_issues
+    """Verdict for a script already analysed, honouring its ``dblift:allow`` comments.
+
+    *created_before* names the tables earlier scripts of the delta created, lower-cased
+    and unqualified (the union of their ``created_tables``).
+    """
+    from dblift.core.migration.sql.lint_rules import issues_and_created_tables
 
     allowed = allowed_codes(text)
-    findings = tuple(replace(f, allowed=f.code in allowed) for f in find_issues(analysis, dialect))
-    return ScriptLint(script, verdict_of(findings, analysis.errors), findings, analysis.errors)
+    issues, created = issues_and_created_tables(analysis, dialect, created_before or frozenset())
+    findings = tuple(replace(f, allowed=f.code in allowed) for f in issues)
+    return ScriptLint(
+        script, verdict_of(findings, analysis.errors), findings, analysis.errors, created
+    )
 
 
-def lint_script(text: str, dialect: str, script: str = "") -> ScriptLint:
-    """Analyse *text* and return its verdict."""
-    return lint_analysis(analyse_script(text, dialect), text, dialect, script)
+def lint_script(
+    text: str,
+    dialect: str,
+    script: str = "",
+    *,
+    created_before: Optional[AbstractSet[str]] = None,
+) -> ScriptLint:
+    """Analyse *text* and return its verdict; *created_before* as for ``lint_analysis``."""
+    return lint_analysis(
+        analyse_script(text, dialect), text, dialect, script, created_before=created_before
+    )
 
 
 def lint_targets(
@@ -127,28 +160,71 @@ def lint_targets(
     return files
 
 
-def lint_files(
-    paths: Sequence[Path], dialect: str, placeholders: Dict[str, Any], log: Any
-) -> List[ScriptLint]:
-    """Lint each file after substituting the configured placeholders."""
-    substitution = PlaceholderService(placeholders, log)
-    results = []
+def _apply_order(paths: Sequence[Path]) -> List[Path]:
+    """Versioned scripts by version, then repeatable scripts by name, then the rest as given."""
+    versioned: List[Tuple[Optional[str], Path]] = []
+    repeatable: List[Path] = []
+    other: List[Path] = []
     for path in paths:
+        name = parse_migration_filename(path.name)
+        if name.migration_type is MigrationType.SQL:
+            versioned.append((name.version, path))
+        elif name.migration_type is MigrationType.REPEATABLE:
+            repeatable.append(path)
+        else:
+            other.append(path)
+
+    def by_version(left: Tuple[Optional[str], Path], right: Tuple[Optional[str], Path]) -> int:
+        return compare_versions(left[0], right[0])
+
+    versioned.sort(key=cmp_to_key(by_version))
+    repeatable.sort(key=lambda path: path.name.lower())
+    return [path for _, path in versioned] + repeatable + other
+
+
+def lint_files(
+    paths: Sequence[Path],
+    dialect: str,
+    placeholders: Dict[str, Any],
+    log: Any,
+    *,
+    as_delta: bool = False,
+) -> List[ScriptLint]:
+    """Lint each file after substituting the configured placeholders.
+
+    By default each file is linted alone, in the order given. With ``as_delta`` the files
+    are one delta, linted and returned in apply order: versioned scripts by version, then
+    repeatable scripts by name, then any other file in the order given.
+    """
+    substitution = PlaceholderService(placeholders, log)
+    created: Set[str] = set()
+    results = []
+    for path in _apply_order(paths) if as_delta else paths:
         text = substitution.replace_placeholders(path.read_text(encoding="utf-8"))
-        results.append(lint_script(text, dialect, path.name))
+        result = lint_script(text, dialect, path.name, created_before=created)
+        if as_delta:
+            created |= result.created_tables
+        results.append(result)
     return results
 
 
 def lint_pending_scripts(
-    migrations: Iterable[Any], dialect: str, log: Any, *, enabled: bool = True
+    migrations: Iterable[Any],
+    dialect: str,
+    log: Any,
+    *,
+    enabled: bool = True,
+    as_delta: bool = True,
 ) -> Dict[str, Dict[str, Any]]:
     """``{script_name: analysis}`` for the SQL and repeatable scripts of *migrations*
     that have text, each analysis carrying the script's ``verdict`` and ``findings``.
 
-    With ``enabled=False`` (execution-only analysis mode) each script gets
-    ``DISABLED_ANALYSIS`` and nothing is read.
+    With ``as_delta`` (the default) *migrations*, in the order given, are one delta;
+    otherwise each script is linted alone. With ``enabled=False`` (execution-only
+    analysis mode) each script gets ``DISABLED_ANALYSIS`` and nothing is read.
     """
     analysed: Dict[str, Dict[str, Any]] = {}
+    created: Set[str] = set()
     for migration in migrations:
         if getattr(migration, "type", None) not in _ANALYSED_TYPES:
             continue
@@ -169,7 +245,9 @@ def lint_pending_scripts(
             continue
         try:
             analysis = analyse_script(content, dialect)
-            verdict = lint_analysis(analysis, content, dialect, name)
+            verdict = lint_analysis(analysis, content, dialect, name, created_before=created)
+            if as_delta:
+                created |= verdict.created_tables
             analysed[name] = {
                 **analysis.to_dict(),
                 "verdict": verdict.verdict,

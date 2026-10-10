@@ -3,16 +3,20 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
 
+from dblift.core.migration.migration_types import MigrationType
 from dblift.core.migration.sql.lint import (
     REVIEW,
     SAFE,
     UNSAFE,
     allowed_codes,
+    lint_analysis,
     lint_files,
+    lint_pending_scripts,
     lint_script,
     lint_targets,
 )
@@ -76,6 +80,94 @@ def test_lint_files_substitutes_placeholders(tmp_path: Path):
     [result] = lint_files([script], "mysql", {"table": "users"}, MagicMock())
     assert result.script == "V3__p.sql"
     assert "users" in result.findings[0].message
+
+
+def test_lint_script_reports_the_tables_it_creates():
+    result = lint_script(
+        "CREATE TABLE app.Users (id INT);\nCREATE TABLE IF NOT EXISTS t (a INT);", "mysql"
+    )
+    assert result.created_tables == frozenset({"users", "t"})
+    assert "created_tables" not in result.to_dict()
+
+
+def test_lint_analysis_takes_the_tables_created_before():
+    from dblift.core.migration.sql.script_analysis import analyse_script
+
+    text = "CREATE INDEX i ON orders (id);"
+    result = lint_analysis(
+        analyse_script(text, "postgresql"), text, "postgresql", created_before={"orders"}
+    )
+    assert (result.verdict, result.findings) == (SAFE, ())
+
+
+_CREATE_ORDERS = "CREATE TABLE orders (id INT);"
+_INDEX_ORDERS = "CREATE INDEX idx_orders_id ON orders (id);"
+
+
+@pytest.fixture
+def delta(tmp_path: Path) -> list:
+    v1 = tmp_path / "V1__orders.sql"
+    v1.write_text(_CREATE_ORDERS)
+    v2 = tmp_path / "V2__index.sql"
+    v2.write_text(_INDEX_ORDERS)
+    return [v2, v1]
+
+
+def test_lint_files_as_a_delta_knows_the_tables_earlier_files_created(delta):
+    results = lint_files(delta, "postgresql", {}, MagicMock(), as_delta=True)
+
+    assert [(r.script, r.verdict, r.findings) for r in results] == [
+        ("V1__orders.sql", SAFE, ()),
+        ("V2__index.sql", SAFE, ()),
+    ]
+
+
+def test_lint_files_alone_lints_each_file_by_itself_in_the_order_given(delta):
+    results = lint_files(delta, "postgresql", {}, MagicMock())
+
+    assert [r.script for r in results] == ["V2__index.sql", "V1__orders.sql"]
+    assert [f.code for f in results[0].findings] == [
+        "pg-index-not-concurrent",
+        "pg-missing-lock-timeout",
+    ]
+
+
+def test_lint_files_as_a_delta_runs_in_apply_order(tmp_path: Path):
+    names = ["U3__undo.sql", "R__b.sql", "V10__ten.sql", "notes.sql", "R__A.sql", "V2__two.sql"]
+    for name in names:
+        (tmp_path / name).write_text("SELECT 1;")
+
+    results = lint_files([tmp_path / n for n in names], "mysql", {}, MagicMock(), as_delta=True)
+
+    assert [r.script for r in results] == [
+        "V2__two.sql",
+        "V10__ten.sql",
+        "R__A.sql",
+        "R__b.sql",
+        "U3__undo.sql",
+        "notes.sql",
+    ]
+
+
+def _pending(name: str, content: str) -> SimpleNamespace:
+    return SimpleNamespace(type=MigrationType.SQL, script_name=name, content=content)
+
+
+def test_pending_scripts_are_one_delta():
+    pending = [_pending("V2__orders.sql", _CREATE_ORDERS), _pending("V3__i.sql", _INDEX_ORDERS)]
+
+    analysed = lint_pending_scripts(pending, "postgresql", MagicMock())
+
+    assert analysed["V3__i.sql"]["verdict"] == SAFE
+    assert analysed["V3__i.sql"]["findings"] == []
+
+
+def test_pending_scripts_can_be_linted_alone():
+    pending = [_pending("V2__orders.sql", _CREATE_ORDERS), _pending("V3__i.sql", _INDEX_ORDERS)]
+
+    analysed = lint_pending_scripts(pending, "postgresql", MagicMock(), as_delta=False)
+
+    assert analysed["V3__i.sql"]["verdict"] == REVIEW
 
 
 @pytest.fixture
