@@ -21,6 +21,8 @@ class RedshiftProvider(PostgreSqlProvider):
     #: a failed drop the way PostgreSQL does — issue the drop directly rather
     #: than sending a statement the engine will reject.
     clean_drop_uses_savepoint: bool = False
+    #: Catalogs the last clean listing could not read, for the clean result.
+    _clean_listing_warnings: tuple[str, ...] = ()
     _migration_lock_connection: Any | None = None
     _migration_lock_transaction: Any | None = None
 
@@ -42,6 +44,7 @@ class RedshiftProvider(PostgreSqlProvider):
         """
         summary = CleanExecutionSummary()
         qualified_name = self.get_schema_qualified_name
+        self._clean_listing_warnings = ()
 
         materialized = self._optional_clean_rows(
             "materialized view", _MATERIALIZED_VIEWS_QUERY, schema, summary
@@ -88,18 +91,23 @@ class RedshiftProvider(PostgreSqlProvider):
                     continue
                 name = str(row["object_name"])
                 signature = f"{name}({row.get('argument_type') or ''})"
-                # DROP FUNCTION / DROP PROCEDURE have no IF EXISTS, and need the
-                # argument types to tell overloads apart. Only DROP FUNCTION
-                # takes CASCADE.
+                # DROP FUNCTION / DROP PROCEDURE have no IF EXISTS and need the
+                # argument types to tell overloads apart. No CASCADE: it would
+                # also drop views of other schemas that call the function.
                 drop_sql = f"DROP {kind.upper()} {qualified_name(schema, name)}({row.get('argument_type') or ''})"
                 summary.record_drop(
-                    drop_sql + (" CASCADE" if kind == "function" else ""),
+                    drop_sql,
                     object_type=kind,
                     name=signature,
                     schema=schema,
                 )
 
+        self._clean_listing_warnings = tuple(summary.errors)
         return summary
+
+    def clean_listing_warnings(self) -> list[str]:
+        """Return what the last clean listing could not read (reported by ``clean``)."""
+        return list(self._clean_listing_warnings)
 
     def _optional_clean_rows(
         self,
@@ -250,7 +258,7 @@ _LATE_BINDING_VIEWS_QUERY = """
     FROM svv_redshift_tables
     WHERE database_name = current_database()
       AND schema_name = ?
-      AND table_type = 'VIEW'
+      AND UPPER(table_type) = 'VIEW'
       AND table_name NOT IN (
           SELECT TRIM(name)
           FROM svv_mv_info

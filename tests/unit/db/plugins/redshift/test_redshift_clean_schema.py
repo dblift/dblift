@@ -71,10 +71,10 @@ EXPECTED_MV_DROP = 'DROP MATERIALIZED VIEW IF EXISTS "analytics"."daily_totals" 
 EXPECTED_LATE_BINDING_DROP = 'DROP VIEW IF EXISTS "analytics"."lbv_events" CASCADE'
 EXPECTED_PROCEDURE_DROP = 'DROP PROCEDURE "analytics"."refresh_totals"(integer, character varying)'
 EXPECTED_FUNCTION_DROPS = [
-    'DROP FUNCTION "analytics"."f_clean"(character varying) CASCADE',
-    'DROP FUNCTION "analytics"."f_clean"(integer, integer) CASCADE',
-    'DROP FUNCTION "analytics"."f_now"() CASCADE',
-    'DROP FUNCTION "analytics"."f_we""ird"(integer) CASCADE',
+    'DROP FUNCTION "analytics"."f_clean"(character varying)',
+    'DROP FUNCTION "analytics"."f_clean"(integer, integer)',
+    'DROP FUNCTION "analytics"."f_now"()',
+    'DROP FUNCTION "analytics"."f_we""ird"(integer)',
 ]
 
 
@@ -242,3 +242,68 @@ def test_unreadable_materialized_view_catalog_does_not_drop_views_blindly() -> N
 
     assert EXPECTED_LATE_BINDING_DROP not in summary.statements
     assert not any("MATERIALIZED" in statement for statement in summary.statements)
+
+
+def test_functions_are_dropped_without_cascade() -> None:
+    """CASCADE would drop views of other schemas that merely call the function."""
+    provider = _FullProvider()
+
+    summary = provider.get_clean_preview("analytics")
+
+    drops = [
+        sql for sql in summary.statements if sql.startswith(("DROP FUNCTION", "DROP PROCEDURE"))
+    ]
+    assert len(drops) == 5
+    assert not any("CASCADE" in sql for sql in drops)
+
+
+def test_every_new_catalog_query_is_limited_to_the_current_database() -> None:
+    """The system views also list datashare objects of remote clusters."""
+    provider = _FullProvider()
+
+    provider.get_clean_preview("analytics")
+
+    new_queries = [q for q, _ in provider.queries if "svv_" in q]
+    assert len(new_queries) == 3
+    for query in new_queries:
+        assert "database_name = current_database()" in query
+    assert provider.queries[-1][0].count("database_name = current_database()") == 1
+    late_binding = next(q for q in new_queries if "svv_redshift_tables" in q)
+    assert late_binding.count("database_name = current_database()") == 2
+
+
+def test_unreadable_catalog_is_reported_as_a_clean_warning() -> None:
+    provider = _FullProvider(failing=("svv_redshift_functions",))
+
+    provider.list_droppable_objects("analytics")
+
+    warnings = provider.clean_listing_warnings()
+    assert len(warnings) == 1 and "routine" in warnings[0]
+    provider.list_droppable_objects("analytics")
+    assert len(provider.clean_listing_warnings()) == 1  # not accumulated across listings
+    assert _FullProvider().clean_listing_warnings() == []
+
+
+def test_materialized_views_are_dropped_in_name_order() -> None:
+    class _TwoViews(_FullProvider):
+        def execute_query(self, sql, params=None):
+            if "svv_mv_info" in sql and "svv_redshift_tables" not in sql:
+                self.queries.append((sql, params))
+                return [{"object_name": "b_mv"}, {"object_name": "a_mv"}]
+            return super().execute_query(sql, params)
+
+    summary = _TwoViews().get_clean_preview("analytics")
+
+    assert summary.statements[:2] == [
+        'DROP MATERIALIZED VIEW IF EXISTS "analytics"."a_mv" CASCADE',
+        'DROP MATERIALIZED VIEW IF EXISTS "analytics"."b_mv" CASCADE',
+    ]
+
+
+def test_late_binding_query_matches_view_type_case_insensitively() -> None:
+    provider = _FullProvider()
+
+    provider.get_clean_preview("analytics")
+
+    query = next(q for q, _ in provider.queries if "svv_redshift_tables" in q)
+    assert "UPPER(table_type) = 'VIEW'" in query

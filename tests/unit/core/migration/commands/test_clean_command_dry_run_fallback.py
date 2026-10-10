@@ -73,3 +73,17 @@ class TestCleanCommandDryRunDroppableObjects:
 
         assert result.success is False
         assert "preview boom" in result.error_message
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("dry_run", [True, False])
+def test_clean_surfaces_provider_listing_warnings(dry_run):
+    provider = MagicMock()
+    provider.list_droppable_objects.return_value = []
+    provider.clean_listing_warnings.return_value = ["Could not list routines"]
+    cmd, _ = _make_command(provider)
+
+    result = cmd.execute(dry_run=dry_run, clean_enabled=True)
+
+    assert result.success is True
+    assert "Could not list routines" in result.warnings
