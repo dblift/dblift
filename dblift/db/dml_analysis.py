@@ -47,11 +47,16 @@ _DML_MODIFIER_WORDS = {
 }
 _DML_MODIFIER = {
     verb: re.compile(
-        rf"\s*(?:/\*.*?\*/|(?:{words})(?![\w$#.])(?!\s*(?:SET\b|WHERE\b|VALUES\b|\(|;|$)))",
+        rf"\s*(?:/\*.*?\*/|(?:{words})(?![\w$#])(?!\s*(?:\.|SET\b|WHERE\b|VALUES\b|\(|;|$)))",
         re.IGNORECASE | re.DOTALL,
     )
     for verb, words in _DML_MODIFIER_WORDS.items()
 }
+# The ONLY keyword right after ``UPDATE`` / ``DELETE FROM``; ``only.t`` is a qualified name.
+_DML_ONLY = re.compile(
+    r"(?:UPDATE|DELETE(?:\s|/\*.*?\*/)+FROM)(?:\s|/\*.*?\*/)*ONLY(?![\w$#]|\s*\.)",
+    re.IGNORECASE | re.DOTALL,
+)
 _DML_TOP = re.compile(r"\s*TOP\s*\(", re.IGNORECASE)
 _DML_PERCENT = re.compile(r"\s*PERCENT\b", re.IGNORECASE)
 
@@ -616,7 +621,7 @@ def _sqlglot_dml_table_sql(text: str, dialect: str) -> str:
     table = _dml_target_table(ast)
     if table is None:
         return ""
-    if table.args.get("only") and not re.search(r"\bONLY\s", text, re.IGNORECASE):
+    if table.args.get("only") and not _DML_ONLY.match(text):
         return ""  # ``only.t`` is a schema-qualified name sqlglot read as the ONLY keyword
     if table.args.get("alias") or table.args.get("joins") or table.args.get("only"):
         table = table.copy()

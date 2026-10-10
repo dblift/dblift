@@ -611,6 +611,16 @@ _MODIFIER_NAMED_TARGET_CASES = [
     ("mysql", "UPDATE low_priority.t SET a = 1", "low_priority.t"),
     ("postgres", "UPDATE only.t SET a = 1", "only.t"),
     ("mysql", "UPDATE delayed SET a = 1", "delayed"),
+    ("mysql", "UPDATE delayed t SET a = 1", "delayed"),
+    ("mysql", "UPDATE high_priority t SET a = 1", "high_priority"),
+    ("mysql", "UPDATE ignore . t SET a = 1", "ignore.t"),
+    ("mysql", "UPDATE ignore\n.t SET a = 1", "ignore.t"),
+    ("postgres", "UPDATE only.t SET a = 1 WHERE n = 'ONLY x'", "only.t"),
+    ("postgres", "UPDATE only . t SET a = 1", "only.t"),
+    ("postgres", 'UPDATE ONLY"T" SET a = 1', '"T"'),
+    ("postgres", "UPDATE ONLY/*c*/t SET a = 1", "t"),
+    ("postgres", 'DELETE FROM ONLY"T" WHERE a = 1', '"T"'),
+    ("postgres", "DELETE FROM /*c*/ ONLY t WHERE a = 1", "t"),
     ("mysql", "INSERT INTO quick (a) VALUES (1)", "quick"),
     ("mysql", "DELETE quick WHERE id = 1", "quick"),
     ("mysql", "UPDATE ignore$x SET a = 1", "ignore$x"),
@@ -655,6 +665,8 @@ def test_extract_dml_table_name_keeps_names_that_start_with_a_modifier(stmt, tab
         "UPDATE ignore;",
         "UPDATE ignore",
         "UPDATE ignore.t SET a = 1",
+        "UPDATE ignore . t SET a = 1",
+        "UPDATE ignore\n.t SET a = 1",
         "UPDATE ignorex SET a = 1",
         "UPDATE quick$t SET a = 1",
         "UPDATE ignore#x SET a = 1",
@@ -687,3 +699,10 @@ def test_modifier_words_are_dropped_before_the_target(stmt, stripped):
 @pytest.mark.parametrize("dialect", [None, "postgres", "tsql", "mysql", "oracle"])
 def test_statement_dml_table_is_empty_when_only_a_keyword_follows_the_verb(dialect):
     assert statement_dml_table("DELETE WHERE", dialect=dialect) == ""
+
+
+@pytest.mark.parametrize("dialect", [None, "postgres", "mysql"])
+@pytest.mark.parametrize("stmt", ["DELETE FROM", "INSERT quick INTO t (a) VALUES (1)"])
+def test_statement_dml_table_is_empty_without_a_target(dialect, stmt):
+    # QUICK is not an INSERT modifier, so the statement has no readable target.
+    assert statement_dml_table(stmt, dialect=dialect) == ""
