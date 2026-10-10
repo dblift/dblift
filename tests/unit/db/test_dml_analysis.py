@@ -4,6 +4,7 @@ import re
 
 import pytest
 
+from dblift.db import dml_analysis
 from dblift.db.base_quirks import BaseQuirks
 from dblift.db.dml_analysis import (
     analyze_dml,
@@ -601,3 +602,88 @@ def test_statement_dml_table_keeps_a_table_named_like_a_modifier(dialect, stmt, 
 def test_statement_dml_table_never_raises_on_a_truncated_statement(dialect, stmt):
     assert isinstance(statement_dml_table(stmt, dialect=dialect), str)
     assert isinstance(analyze_dml(stmt, sqlglot_dialect=dialect).table, str)
+
+
+# Identifiers that merely start with, or are, a modifier word are table names.
+_MODIFIER_NAMED_TARGET_CASES = [
+    ("mysql", "UPDATE quick.t SET a = 1", "quick.t"),
+    ("mysql", "UPDATE ignore.t SET a = 1", "ignore.t"),
+    ("mysql", "UPDATE low_priority.t SET a = 1", "low_priority.t"),
+    ("postgres", "UPDATE only.t SET a = 1", "only.t"),
+    ("mysql", "UPDATE delayed SET a = 1", "delayed"),
+    ("mysql", "INSERT INTO quick (a) VALUES (1)", "quick"),
+    ("mysql", "DELETE quick WHERE id = 1", "quick"),
+    ("mysql", "UPDATE ignore$x SET a = 1", "ignore$x"),
+    ("mysql", "UPDATE quick$t SET a = 1", "quick$t"),
+    ("mysql", "UPDATE delayed$jobs SET a = 1", "delayed$jobs"),
+    ("tsql", "UPDATE ignore#x SET a = 1", "ignore#x"),
+    ("oracle", "UPDATE ignore#x SET a = 1", "ignore#x"),
+    ("oracle", "DELETE t alias WHERE alias.a = 1", "t"),
+    ("mysql", "INSERT HIGH_PRIORITY INTO t (a) VALUES (1)", "t"),
+    ("oracle", "UPDATE /*+ INDEX(t\n   i) */ t SET a = 1", "t"),
+    ("oracle", "DELETE /*+ PARALLEL\n */ t WHERE a = 1", "t"),
+]
+
+
+@pytest.mark.parametrize(("dialect", "stmt", "table"), _MODIFIER_NAMED_TARGET_CASES)
+def test_statement_dml_table_keeps_names_that_start_with_a_modifier(dialect, stmt, table):
+    # The dialect may quote a reserved word (`delayed`); the name must survive.
+    assert statement_dml_table(stmt, dialect=dialect).replace("`", "") == table
+
+
+@pytest.mark.parametrize(
+    ("stmt", "table"),
+    [
+        ("UPDATE delayed SET a = 1", "delayed"),
+        ("DELETE FROM only WHERE a = 1", "only"),
+        ("DELETE t alias WHERE alias.a = 1", "t"),
+        ("INSERT HIGH_PRIORITY INTO t (a) VALUES (1)", "t"),
+        ("UPDATE /*+ INDEX(t\n   i) */ t SET a = 1", "t"),
+    ],
+)
+def test_extract_dml_table_name_keeps_names_that_start_with_a_modifier(stmt, table):
+    assert statement_dml_table(stmt) == table
+
+
+@pytest.mark.parametrize(
+    "stmt",
+    [
+        "DELETE quick WHERE id = 1",
+        "INSERT ignore VALUES (1)",
+        "INSERT ignore (a) VALUES (1)",
+        "UPDATE ignore SET a = 1",
+        "UPDATE ignore;",
+        "UPDATE ignore",
+        "UPDATE ignore.t SET a = 1",
+        "UPDATE ignorex SET a = 1",
+        "UPDATE quick$t SET a = 1",
+        "UPDATE ignore#x SET a = 1",
+        "UPDATE quick x SET a = 1",  # QUICK is valid after DELETE only
+        "UPDATE delayed SET a = 1",  # DELAYED is valid after INSERT only
+        "UPDATE high_priority SET a = 1",  # HIGH_PRIORITY is valid after INSERT only
+        "DELETE delayed FROM delayed",
+        "DELETE high_priority FROM high_priority",
+    ],
+)
+def test_modifier_words_are_kept_when_they_are_the_target(stmt):
+    assert dml_analysis._without_dml_modifiers(stmt) == stmt
+
+
+@pytest.mark.parametrize(
+    ("stmt", "stripped"),
+    [
+        ("INSERT HIGH_PRIORITY INTO t", "INSERT INTO t"),
+        ("INSERT DELAYED IGNORE INTO t", "INSERT INTO t"),
+        ("DELETE QUICK IGNORE FROM t", "DELETE FROM t"),
+        ("UPDATE LOW_PRIORITY IGNORE t SET a = 1", "UPDATE t SET a = 1"),
+        ("DELETE TOP (5) PERCENT t", "DELETE t"),
+        ("UPDATE /*+ INDEX(t\n i) */ t SET a = 1", "UPDATE t SET a = 1"),
+    ],
+)
+def test_modifier_words_are_dropped_before_the_target(stmt, stripped):
+    assert dml_analysis._without_dml_modifiers(stmt) == stripped
+
+
+@pytest.mark.parametrize("dialect", [None, "postgres", "tsql", "mysql", "oracle"])
+def test_statement_dml_table_is_empty_when_only_a_keyword_follows_the_verb(dialect):
+    assert statement_dml_table("DELETE WHERE", dialect=dialect) == ""

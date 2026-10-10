@@ -37,13 +37,21 @@ _IDENTIFIER = (
 )
 
 _DML_VERB = re.compile(r"(?:UPDATE|DELETE|INSERT)\b", re.IGNORECASE)
-# Words (MySQL) and optimizer hints (Oracle) between the DML verb and its target.
-# A word followed by the next clause keyword is the table itself, not a modifier.
-_DML_MODIFIER = re.compile(
-    r"\s*(?:/\*.*?\*/|(?:LOW_PRIORITY|HIGH_PRIORITY|DELAYED|QUICK|IGNORE)\b"
-    r"(?!\s*(?:SET\b|WHERE\b|VALUES\b|\(|;|$)))",
-    re.IGNORECASE | re.DOTALL,
-)
+# MySQL words valid after each verb, and Oracle optimizer hints, before the target.
+# A word that continues an identifier (``quick.t``, ``ignore$x``) or is followed by
+# the next clause keyword is the table itself, not a modifier.
+_DML_MODIFIER_WORDS = {
+    "UPDATE": "LOW_PRIORITY|IGNORE",
+    "DELETE": "LOW_PRIORITY|QUICK|IGNORE",
+    "INSERT": "LOW_PRIORITY|HIGH_PRIORITY|DELAYED|IGNORE",
+}
+_DML_MODIFIER = {
+    verb: re.compile(
+        rf"\s*(?:/\*.*?\*/|(?:{words})(?![\w$#.])(?!\s*(?:SET\b|WHERE\b|VALUES\b|\(|;|$)))",
+        re.IGNORECASE | re.DOTALL,
+    )
+    for verb, words in _DML_MODIFIER_WORDS.items()
+}
 _DML_TOP = re.compile(r"\s*TOP\s*\(", re.IGNORECASE)
 _DML_PERCENT = re.compile(r"\s*PERCENT\b", re.IGNORECASE)
 
@@ -94,7 +102,7 @@ def _without_dml_modifiers(text: str) -> str:
         return text
     pos = verb.end()
     while True:
-        modifier = _DML_MODIFIER.match(text, pos)
+        modifier = _DML_MODIFIER[verb.group().upper()].match(text, pos)
         if modifier:
             pos = modifier.end()
             continue
@@ -548,7 +556,7 @@ def extract_dml_table_name(statement: str) -> str:
         rf"^\s*DELETE\s+FROM\s+(?:ONLY\s+(?!WHERE\b))?({_IDENTIFIER}){_after}",
         rf"^\s*DELETE\s+({_IDENTIFIER})\s+FROM\s+{_IDENTIFIER}{_after}",
         # No FROM (Oracle, T-SQL): ``DELETE t [alias] WHERE ...``.
-        rf"^\s*DELETE\s+(?!FROM\b)({_IDENTIFIER})(?:\s+(?:AS\s+)?(?!WHERE\b)[A-Za-z_][\w$]*)?"
+        rf"^\s*DELETE\s+(?!(?:FROM|WHERE)\b)({_IDENTIFIER})(?:\s+(?:AS\s+)?(?!WHERE\b)[A-Za-z_][\w$]*)?"
         r"\s*(?:WHERE\b|;|$)",
         rf"^\s*INSERT\s+INTO\s+({_IDENTIFIER}){_after}",
     )
@@ -608,6 +616,8 @@ def _sqlglot_dml_table_sql(text: str, dialect: str) -> str:
     table = _dml_target_table(ast)
     if table is None:
         return ""
+    if table.args.get("only") and not re.search(r"\bONLY\s", text, re.IGNORECASE):
+        return ""  # ``only.t`` is a schema-qualified name sqlglot read as the ONLY keyword
     if table.args.get("alias") or table.args.get("joins") or table.args.get("only"):
         table = table.copy()
         table.set("alias", None)
