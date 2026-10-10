@@ -137,7 +137,10 @@ The PostgreSQL family is `postgresql`, `neon`, `supabase`, `aurora-postgresql`, 
 `timescaledb` and `citus`. Every rule except `drop-schema`, `mixed-transaction-modes` and
 `statement-not-analysed` skips a statement whose tables were all created earlier in the
 same delta: they have no rows yet and nothing deployed uses them. A `DROP TABLE` naming a
-new table and an existing one is still reported.
+new table and an existing one is still reported. Tables match by name, and by schema when
+both statements name one: after `CREATE TABLE a.users`, `ALTER TABLE users` and
+`ALTER TABLE a.users` are on the new table, `ALTER TABLE b.users` is not. The search path
+is unknown without a connection, so `CREATE TABLE users` also covers `x.users`.
 
 **Verdict.** Each script gets one verdict:
 

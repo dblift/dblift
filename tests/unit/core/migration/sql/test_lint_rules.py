@@ -214,3 +214,26 @@ def test_tables_created_before_the_script_do_not_exempt_other_tables():
     analysis = analyse_script("CREATE INDEX i ON users (id);", "postgresql")
     codes = [f.code for f in find_issues(analysis, "postgresql", created_before={"t"})]
     assert codes == ["pg-index-not-concurrent", "pg-missing-lock-timeout"]
+
+
+@pytest.mark.parametrize(
+    "sql, expected",
+    [
+        ("CREATE TABLE a.users (id INT);\nALTER TABLE users RENAME COLUMN id TO uid;", []),
+        ("CREATE TABLE a.users (id INT);\nALTER TABLE a.users RENAME COLUMN id TO uid;", []),
+        (
+            "CREATE TABLE a.users (id INT);\nALTER TABLE b.users RENAME COLUMN id TO uid;",
+            ["rename-column"],
+        ),
+        ("CREATE TABLE users (id INT);\nALTER TABLE x.users RENAME COLUMN id TO uid;", []),
+        ("CREATE TABLE a.users (id INT);\nDROP TABLE a.users, b.users;", ["drop-table"]),
+    ],
+)
+def test_created_tables_match_by_schema_when_both_name_one(sql, expected):
+    assert _codes(sql, "mysql") == expected
+
+
+def test_tables_created_before_match_by_schema():
+    analysis = analyse_script("DROP TABLE b.users;", "mysql")
+    codes = [f.code for f in find_issues(analysis, "mysql", created_before={"a.users"})]
+    assert codes == ["drop-table"]

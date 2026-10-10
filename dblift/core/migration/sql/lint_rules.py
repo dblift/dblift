@@ -96,6 +96,8 @@ _TABLE_CODES = frozenset(
         "pg-missing-lock-timeout",
     }
 )
+# A table as (schema or None, name), lower-cased.
+_TableKey = Tuple[Optional[str], str]
 _NOT_NULL_EXEMPT = (
     exp.DefaultColumnConstraint,
     exp.ComputedColumnConstraint,
@@ -135,8 +137,8 @@ def find_issues(
 ) -> List[Finding]:
     """Every finding for one analysed script, sorted by statement then code.
 
-    *created_before* names the tables earlier scripts of the delta created (lower-cased,
-    unqualified); see ``issues_and_created_tables``.
+    *created_before* names the tables earlier scripts of the delta created, as
+    ``issues_and_created_tables`` returns them.
     """
     return issues_and_created_tables(analysis, dialect, created_before)[0]
 
@@ -144,10 +146,14 @@ def find_issues(
 def issues_and_created_tables(
     analysis: ScriptAnalysis, dialect: str, created_before: AbstractSet[str] = frozenset()
 ) -> Tuple[List[Finding], FrozenSet[str]]:
-    """The script's findings, and the tables it creates (lower-cased, unqualified).
+    """The script's findings, and the tables it creates.
 
-    A table in *created_before*, or created by an earlier statement of the script, is new:
-    a table-scoped finding on a statement whose target tables are all new is not reported.
+    A table is named ``schema.name``, or ``name`` when the statement gives no schema,
+    lower-cased. A table in *created_before*, or created by an earlier statement of the
+    script, is new: a table-scoped finding on a statement whose target tables are all new
+    is not reported. A target is new when its name matches a new table and either side
+    names no schema or both name the same one: offline the search path is unknown, so
+    ``CREATE TABLE users`` also covers ``x.users``.
     """
     sqlglot_dialect = get_sqlglot_dialect(dialect)
     pg_locks = ProviderRegistry.get_quirks(dialect).postgresql_lock_rules
@@ -157,8 +163,8 @@ def issues_and_created_tables(
         for c in analysis.cautions
         if c.code
     ]
-    new: Set[str] = set(created_before)
-    created: Set[str] = set()
+    new: Set[_TableKey] = {_key_from_text(name) for name in created_before}
+    created: Set[_TableKey] = set()
     on_new_tables: Set[int] = set()
     lock_timeout_set = False
     lock_timeout_reported = not pg_locks
@@ -166,7 +172,7 @@ def issues_and_created_tables(
         body = strip_leading_sql_comments(stmt.sql)
         tree = _parse(body, sqlglot_dialect)
         targets = _targets(tree)
-        if targets and targets <= new:
+        if targets and all(_is_new(target, new) for target in targets):
             on_new_tables.add(stmt.index)
         for code in _statement_codes(body, tree, pg_locks=pg_locks):
             findings.append(_finding(code, stmt))
@@ -181,15 +187,17 @@ def issues_and_created_tables(
         ):
             findings.append(_finding("pg-missing-lock-timeout", stmt))
             lock_timeout_reported = True
-        name = _created_table(tree)
-        if name:
-            created.add(name)
-            new.add(name)
+        table = _created_table(tree)
+        if table:
+            created.add(table)
+            new.add(table)
     findings = [
         f for f in findings if not (f.code in _TABLE_CODES and f.statement in on_new_tables)
     ]
     findings.extend(_mixed_transaction_modes(analysis.statements, dialect))
-    return sorted(findings, key=lambda f: (f.statement, f.code)), frozenset(created)
+    return sorted(findings, key=lambda f: (f.statement, f.code)), frozenset(
+        f"{schema}.{name}" if schema else name for schema, name in created
+    )
 
 
 def _finding(code: str, stmt: AnalysedStatement) -> Finding:
@@ -209,21 +217,38 @@ def _parse(sql: str, sqlglot_dialect: Optional[str]) -> Optional[exp.Expression]
     return tree
 
 
-def _table_of(tree: exp.Expression) -> str:
+def _key_of(table: exp.Table) -> _TableKey:
+    return (table.db.lower() or None, table.name.lower())
+
+
+def _key_from_text(text: str) -> _TableKey:
+    schema, _, name = text.lower().rpartition(".")
+    return (schema or None, name)
+
+
+def _is_new(target: _TableKey, new: AbstractSet[_TableKey]) -> bool:
+    schema, name = target
+    return any(
+        name == new_name and (schema is None or new_schema is None or schema == new_schema)
+        for new_schema, new_name in new
+    )
+
+
+def _table_of(tree: exp.Expression) -> Optional[_TableKey]:
     table = tree.find(exp.Table)
-    return table.name.lower() if table is not None else ""
+    return _key_of(table) if table is not None and table.name else None
 
 
-def _targets(tree: Optional[exp.Expression]) -> FrozenSet[str]:
+def _targets(tree: Optional[exp.Expression]) -> FrozenSet[_TableKey]:
     """The tables a statement acts on: every table a DROP or TRUNCATE names, else its first.
 
     Read from the sqlglot tree only: the analysed objects keep the first table of
     ``DROP TABLE a, b``. A statement sqlglot cannot structure has no targets.
     """
     if isinstance(tree, (exp.Drop, exp.TruncateTable)):
-        return frozenset(t.name.lower() for t in tree.find_all(exp.Table))
-    name = _table_of(tree) if tree is not None else ""
-    return frozenset({name}) if name else frozenset()
+        return frozenset(_key_of(t) for t in tree.find_all(exp.Table) if t.name)
+    table = _table_of(tree) if tree is not None else None
+    return frozenset({table}) if table else frozenset()
 
 
 def _actions(tree: exp.Expression) -> List[exp.Expression]:
@@ -307,10 +332,10 @@ def _locks_table(tree: Optional[exp.Expression]) -> bool:
     return isinstance(tree, exp.TruncateTable)
 
 
-def _created_table(tree: Optional[exp.Expression]) -> str:
+def _created_table(tree: Optional[exp.Expression]) -> Optional[_TableKey]:
     if isinstance(tree, exp.Create) and str(tree.args.get("kind") or "").upper() == "TABLE":
         return _table_of(tree)
-    return ""
+    return None
 
 
 def _mixed_transaction_modes(

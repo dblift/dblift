@@ -64,8 +64,8 @@ class ScriptLint:
     verdict: str
     findings: Tuple[Finding, ...]
     errors: Tuple[str, ...]
-    # Tables the script creates (lower-cased, unqualified), to carry to the next script
-    # of a delta; not part of the JSON payload.
+    # Tables the script creates, ``schema.name`` or ``name`` when it gives no schema,
+    # lower-cased: carried to the next script of a delta; not part of the JSON payload.
     created_tables: FrozenSet[str] = field(default=frozenset(), compare=False)
 
     def to_dict(self) -> Dict[str, Any]:
@@ -109,8 +109,9 @@ def lint_analysis(
 ) -> ScriptLint:
     """Verdict for a script already analysed, honouring its ``dblift:allow`` comments.
 
-    *created_before* names the tables earlier scripts of the delta created, lower-cased
-    and unqualified (the union of their ``created_tables``).
+    *created_before* names the tables earlier scripts of the delta created (the union of
+    their ``created_tables``); a table matches by name, and by schema when both sides
+    name one.
     """
     from dblift.core.migration.sql.lint_rules import issues_and_created_tables
 

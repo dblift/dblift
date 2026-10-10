@@ -86,7 +86,7 @@ def test_lint_script_reports_the_tables_it_creates():
     result = lint_script(
         "CREATE TABLE app.Users (id INT);\nCREATE TABLE IF NOT EXISTS t (a INT);", "mysql"
     )
-    assert result.created_tables == frozenset({"users", "t"})
+    assert result.created_tables == frozenset({"app.users", "t"})
     assert "created_tables" not in result.to_dict()
 
 
