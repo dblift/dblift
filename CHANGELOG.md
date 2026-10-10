@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+### Changed
+
+### Fixed
+
+### Removed
+
+## [4.11.1] - 2026-10-10
+
 ### Fixed
 
 - `clean` on MariaDB now drops system-versioned tables (`CREATE TABLE ... WITH SYSTEM VERSIONING`) and lists them in the `clean` preview and dry run. MariaDB reports them as `TABLE_TYPE = 'SYSTEM VERSIONED'` in `information_schema.TABLES`, and only `'BASE TABLE'` was matched, so they survived `clean` while it reported success and re-running migrations failed with `already exists`. The table listing used by the schema operations now includes them too. MySQL is unchanged.
