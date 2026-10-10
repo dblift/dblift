@@ -9,9 +9,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The PostgreSQL splitter can return `Statement` records
+  (`PostgreSQLStatementParser.split()`): the text without its terminator, its
+  line, the terminator, a kind (`sql`, `directive` or `copy_stdin`), and
+  `multi` for statements combined by psql's `\;`.
+
 ### Changed
 
+- The PostgreSQL splitter has no regex fallback. A script it cannot split
+  is an error naming the construct; a script of only `\restrict` /
+  `\unrestrict` lines yields no statement. The lexical rules it follows
+  are documented in `docs/sql-parsing/postgresql.md`, whose conformance
+  table is compiled into the unit tests.
+- SQL Server now refuses an unterminated string or block comment with
+  `UnsafeStatementSplitError` and its position, instead of sending the
+  fragment to the server or silently dropping the rest of the file.
+- Redshift scripts follow the PostgreSQL splitting rules without a regex
+  fallback: unterminated lexemes and unsupported `psql` meta-commands are
+  refused.
+- The MySQL, MariaDB, SQLite, DuckDB, Db2 and BigQuery tokenizers now log a
+  warning and fall back when a lexeme is unterminated; their behavior is
+  otherwise unchanged.
+
 ### Fixed
+
+- PostgreSQL statement splitting now matches psql on five inputs it got
+  wrong: `$1` is a positional parameter, not a dollar-quote tag; a `;`
+  inside parentheses does not end a statement; a COPY data line with
+  blanks before `\.` is data; a psql meta-command after a `;` or at the end
+  of a query is refused by name instead of being sent to the server; a
+  bare `;` is dropped. An unterminated comment, string, quoted identifier
+  or dollar quote now raises `UnsafeStatementSplitError` with its position
+  instead of swallowing the rest of the script.
 
 ### Removed
 
