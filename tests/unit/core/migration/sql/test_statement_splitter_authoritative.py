@@ -56,3 +56,25 @@ def test_a_parser_bug_is_a_refusal_not_a_semicolon_split(monkeypatch) -> None:
         SqlAnalyzer("postgresql").split_statements(script)
     with pytest.raises(UnsafeStatementSplitError):
         parse_migration_sql(SqlAnalyzer("postgresql"), script, MagicMock())
+
+
+def test_the_oracle_parser_has_no_regex_splitting_path_behind_split_statements() -> None:
+    from dblift.db.plugins.oracle.parser import oracle_parser as module
+
+    assert module.OracleParser.SPLITS_WITHOUT_FALLBACK is True
+    with open(module.__file__) as handle:
+        source = handle.read().lower()
+    allowed = source.replace("there is no fallback", "").replace("splits_without_fallback", "")
+    assert "fallback" not in allowed
+
+
+def test_an_oracle_parser_bug_is_a_refusal_not_a_regex_split(monkeypatch) -> None:
+    from dblift.core.migration.sql.migration_sql_parser import parse_migration_sql
+    from dblift.db.plugins.oracle.parser.oracle_statement_parser import OracleStatementParser
+
+    monkeypatch.setattr(OracleStatementParser, "split_statements", _boom)
+    script = "SELECT 1 FROM dual;"
+    with pytest.raises(UnsafeStatementSplitError):
+        SqlAnalyzer("oracle").split_statements(script)
+    with pytest.raises(UnsafeStatementSplitError):
+        parse_migration_sql(SqlAnalyzer("oracle"), script, MagicMock())

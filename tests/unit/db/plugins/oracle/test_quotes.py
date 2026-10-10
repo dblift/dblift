@@ -12,7 +12,8 @@ def _split(script):
 
 def test_whitespace_q_quote_delimiter_is_refused():  # row 11
     with pytest.raises(
-        UnsafeStatementSplitError, match="q-quote delimiter cannot be whitespace at line 1, column 23"
+        UnsafeStatementSplitError,
+        match="q-quote delimiter cannot be whitespace at line 1, column 23",
     ):
         _split("INSERT INTO t VALUES (q' x ');")
 

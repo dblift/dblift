@@ -4,7 +4,6 @@ import logging
 import re
 from typing import Any, Dict, List, Optional
 
-from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.core.logger.log import LogFactory
 from dblift.core.sql_model.base import (
     ParseResult,
@@ -36,6 +35,8 @@ except ModuleNotFoundError as exc:
 
 class OracleParser(RegexBasedParser):
     """Oracle SQL parser using regex-based parsing for complex PL/SQL."""
+
+    SPLITS_WITHOUT_FALLBACK = True
 
     dialect_name = "oracle"  # lint: allow-dialect-string: dialect dispatch
 
@@ -89,7 +90,7 @@ class OracleParser(RegexBasedParser):
             error_msg = f"Oracle regex parsing failed: {str(e)}"
             logger.error(error_msg)
             error_messages.append(error_msg)
-            # Emergency fallback: treat entire input as single statement
+            # Last resort: treat entire input as single statement
             statements = [cleaned_sql]
 
         # Always return success with collected warnings
@@ -118,30 +119,15 @@ class OracleParser(RegexBasedParser):
         - Properly handle END IF, END LOOP, END CASE (control flow) vs block-terminating END
         - Handle Q-quotes and wrapped PL/SQL
 
-        Uses tokenization-based approach for robust parsing with fallback to regex.
+        A statement the tokenizer or parser cannot place raises (``UnsafeStatementSplitError``
+        from the caller's view); the regex splitter is never consulted here. There is no fallback.
         """
         if not sql_content or not sql_content.strip():
             return []
 
-        try:
-            # Use tokenization-based splitting
-            tokenizer = OracleTokenizer(sql_content)
-            tokens = tokenizer.tokenize()
-
-            context = ParserContext()
-            parser = OracleStatementParser(tokens, context, source=sql_content)
-
-            statements = parser.split_statements()
-            logger.debug(f"Oracle: Tokenization split into {len(statements)} statements")
-            return statements
-
-        except UnsafeStatementSplitError:
-            # A refusal is the answer: the regex fallback would split the very text refused.
-            raise
-        except Exception as e:
-            # Fallback to old regex-based splitting if tokenization fails
-            logger.warning(f"Oracle tokenization failed, falling back to regex: {str(e)}")
-            return split_statements_regex(sql_content, extract_plsql_block=extract_plsql_block)
+        tokenizer = OracleTokenizer(sql_content, strict_unknown_chars=strict_tokenizer)
+        parser = OracleStatementParser(tokenizer.tokenize(), ParserContext(), source=sql_content)
+        return parser.split_statements()
 
     def validate_sql(self, sql_content: str) -> Dict[str, Any]:
         """Validate SQL content using Oracle-specific regex-based validation."""
@@ -173,7 +159,7 @@ class OracleParser(RegexBasedParser):
     def extract_objects(self, sql: str, default_schema: Optional[str] = None) -> List[SqlObject]:
         """Extract objects from SQL using Oracle-specific regex patterns.
 
-        Overrides the generic ``RegexBasedParser`` fallback, which knows
+        Overrides the generic ``RegexBasedParser`` default, which knows
         nothing of Oracle syntax (sequences, quoted-identifier case rules).
         """
         return extract_objects(sql, default_schema)

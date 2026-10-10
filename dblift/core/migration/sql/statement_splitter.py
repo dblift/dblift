@@ -50,7 +50,7 @@ class StatementSplitter:
                 return list(fallback(sql)) if fallback is not None else []
             self._parser = parser
 
-        if isinstance(parser, EnhancedRegexParser) and parser.SPLITS_WITHOUT_FALLBACK:
+        if isinstance(parser, SqlParserInterface) and parser.SPLITS_WITHOUT_FALLBACK:
             # Authoritative: a splitter bug must refuse, never fall back to a guess.
             try:
                 return list(parser.split_statements(sql, strict_tokenizer=strict_tokenizer))
