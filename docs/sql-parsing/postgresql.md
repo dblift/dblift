@@ -153,43 +153,20 @@ pair table cannot express. Shared with DuckDB and Redshift.
 | `\copy` | rejected | its client-side file access has no server equivalent in the migration model; `COPY FROM STDIN` is supported |
 | Single-line mode (`-S`) | not modelled | psql option, not a property of the script |
 
-## 12. Current implementation and the gaps this spec closes
+## 12. Implementation
 
 Code: `dblift/db/plugins/postgresql/parser/postgresql_tokenizer.py`,
-`postgresql_statement_parser.py`, `postgresql_regex_parser.py`,
-`parser_config.py`; shared `core/sql_parser/base_tokenizer.py`,
-`base_statement_parser.py`; fallbacks in `postgresql_regex_parser.py:345-460`
-and `core/migration/sql/sql_analyzer.py:692-817`.
+`postgresql_statement_parser.py` and `postgresql_regex_parser.py`. The
+splitter returns `Statement` records (`dblift/core/sql_parser/statement.py`):
+text without its terminator, line, terminator, and kind. The conformance
+table in section 10 is compiled into
+`tests/unit/core/sql_parser/test_postgresql_spec_conformance.py`.
 
-- **`$1` is read as a dollar-quote tag** (`postgresql_tokenizer.py:192-212`):
-  `PREPARE q(int) AS SELECT $1; SELECT 2; SELECT 3;` comes back as one
-  statement (row 6). The vendor rule above forbids a tag starting with a digit.
-- **`;` inside parentheses ends a statement** (`base_statement_parser.py:140-142`
-  checks block depth only): `CREATE RULE … DO ALSO (…; …)` splits into three
-  (row 8).
-- Meta-commands are recognised only at line start; `SELECT 1; \connect db`
-  glues the command onto the next statement (row 15).
-- Bare `;` is returned as a statement (row 19).
-- `in_atomic_block` is never cleared after a body containing `CASE`
-  (`postgresql_statement_parser.py:114-116`); the single-slot
-  `block_initiator` is not a stack.
-- The non-strict fallback always nests comments and knows only uppercase `E'`;
-  the outer fallback knows neither COPY, meta-commands nor dollar quotes. A
-  script consisting only of `\restrict`/`\unrestrict` lines parses to `[]`,
-  is not comment-only, and would be handed to the fallback and sent to the
-  server (inferred from code, not run).
-- `NO_TRANSACTION_PATTERNS` and `can_execute_in_transaction` in the statement
-  parser are dead code; the live list is on the quirks.
-- `E'…'`, dollar quoting, nested comments, `COPY FROM STDIN`, `\restrict`
-  handling and `BEGIN ATOMIC` are correct today and are rows 2-4, 7, 9, 11, 13.
+Unterminated lexemes (comment, string, quoted identifier, dollar quote) and
+unsupported meta-commands are refusals, not input to a fallback.
 
-Tests to re-point (about 400 functions): `test_statement_splitter_verbatim.py`,
-`test_statement_splitter_escape_strings.py`, `test_statement_splitter_boundary.py`,
-`test_tokenization_postgresql*.py`, `test_postgresql_regex_parser_extended.py`
-(the fallback half disappears), `test_nested_block_comments.py`,
-`test_copy_from_stdin.py`, `test_postgresql_non_transactional.py`,
-`tests/integration/test_postgresql_statement_verbatim.py`,
-`tests/integration/test_postgresql_copy_from_stdin.py`.
+The string projection `split_statements()` keeps the trailing `;`; the
+`Statement.text` excludes it.
 
 ## 13. Family members
 
