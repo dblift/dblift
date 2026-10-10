@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock
+
 import pytest
 
 from dblift.core.exceptions import UnsafeStatementSplitError
@@ -36,3 +38,21 @@ def test_the_postgresql_parser_has_no_regex_splitting_path() -> None:
     # Tolerated: the docstring sentence and the attribute that declares it.
     allowed = source.replace("there is no fallback", "").replace("splits_without_fallback", "")
     assert "fallback" not in allowed
+
+
+def _boom(self):
+    raise ValueError("boom")
+
+
+def test_a_parser_bug_is_a_refusal_not_a_semicolon_split(monkeypatch) -> None:
+    from dblift.core.migration.sql.migration_sql_parser import parse_migration_sql
+    from dblift.db.plugins.postgresql.parser.postgresql_statement_parser import (
+        PostgreSQLStatementParser,
+    )
+
+    monkeypatch.setattr(PostgreSQLStatementParser, "split_statements", _boom)
+    script = "SELECT 1; SELECT $$a;b$$;"
+    with pytest.raises(UnsafeStatementSplitError):
+        SqlAnalyzer("postgresql").split_statements(script)
+    with pytest.raises(UnsafeStatementSplitError):
+        parse_migration_sql(SqlAnalyzer("postgresql"), script, MagicMock())

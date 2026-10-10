@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from dblift.core.sql_parser import Statement
 from dblift.core.sql_parser.parser_context import ParserContext
 from dblift.db.plugins.postgresql.parser.postgresql_statement_parser import (
@@ -102,3 +104,16 @@ def test_block_state_does_not_leak_into_the_next_statement() -> None:
     records = _split(script)
     assert [r.line for r in records] == [1, 2]
     assert records[1].text == "SELECT 9"
+
+
+@pytest.mark.parametrize(
+    "script, expected",
+    [
+        ("SELECT 1 -- it's\n;", ["SELECT 1 -- it's\n;"]),
+        ("SELECT 1 ;", ["SELECT 1 ;"]),
+        ("SELECT 1 /* c */ ;", ["SELECT 1 /* c */ ;"]),
+        ("SELECT 1 \\; SELECT 2;", ["SELECT 1 ; SELECT 2;"]),
+    ],
+)
+def test_split_statements_keeps_the_source_slice_verbatim(script: str, expected: list[str]) -> None:
+    assert _parser(script).split_statements() == expected

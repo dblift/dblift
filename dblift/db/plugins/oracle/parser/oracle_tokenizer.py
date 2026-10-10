@@ -52,8 +52,15 @@ class OracleTokenizer(BaseTokenizer):
         Returns:
             True if Q-quote is detected
         """
-        peek2 = self.peek(2)
-        return peek2.upper() == "Q'"
+        return self._q_quote_prefix_length() > 0
+
+    def _q_quote_prefix_length(self) -> int:
+        """Length of an ``q'`` / ``nq'`` opener at the cursor, else 0."""
+        if self.peek(2).upper() == "Q'":
+            return 2
+        if self.peek(3).upper() == "NQ'":
+            return 3
+        return 0
 
     def _handle_string(self) -> Token:
         """Handle string literals including Q-quotes.
@@ -62,7 +69,7 @@ class OracleTokenizer(BaseTokenizer):
             String token
         """
         # Check for Q-quote
-        if self.peek(2).upper() == "Q'":
+        if self._q_quote_prefix_length():
             return self._handle_q_quote()
 
         # Check for double-quoted identifier (not string in Oracle)
@@ -92,8 +99,8 @@ class OracleTokenizer(BaseTokenizer):
         # Capture entire Q-quote string
         string_text = ""
 
-        # Read Q'
-        string_text += self.read(2)
+        # Read Q' (or NQ')
+        string_text += self.read(self._q_quote_prefix_length())
 
         # Get delimiter character
         delimiter_char = self.read()

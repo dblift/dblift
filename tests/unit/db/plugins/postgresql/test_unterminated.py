@@ -1,3 +1,5 @@
+"""An unterminated comment, string, quoted identifier or dollar quote is refused with its position."""
+
 import pytest
 
 from dblift.core.exceptions import UnsafeStatementSplitError

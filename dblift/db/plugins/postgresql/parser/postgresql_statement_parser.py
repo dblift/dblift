@@ -4,7 +4,7 @@ This module provides PostgreSQL-specific statement parsing including
 BEGIN ATOMIC handling and transaction detection.
 """
 
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from dblift.core.exceptions import UnsupportedMetaCommandError
 from dblift.core.sql_parser.base_statement_parser import BaseStatementParser
@@ -132,20 +132,26 @@ class PostgreSQLStatementParser(BaseStatementParser):
         return next_token is None or next_token.type != TokenType.COPY_DATA
 
     def split(self) -> List[Statement]:
-        """Cut the token stream into Statement records.
+        """Cut the token stream into Statement records (see ``_split_with_rendered``)."""
+        return [record for record, _ in self._split_with_rendered()]
+
+    def _split_with_rendered(self) -> List[Tuple[Statement, str]]:
+        """Cut the token stream into ``(Statement, rendered)`` pairs.
+
+        ``rendered`` is the verbatim source slice of the statement, terminator included.
 
         A psql meta-command is not SQL and never joins the statement around
         it, so it is pulled out here rather than in ``_is_statement_end``
         (which only marks a boundary, it can't drop the token from output).
         A safe one is recorded as a ``directive``; any other is refused.
         """
-        records: List[Statement] = []
+        records: List[Tuple[Statement, str]] = []
         current: List[Token] = []
 
         def flush(terminator: Optional[Token], end_pos: Optional[int]) -> None:
-            if current and all(t.type in (TokenType.COMMENT, TokenType.DELIMITER) for t in current):
-                current.clear()
-            if current:
+            if current and not all(
+                t.type in (TokenType.COMMENT, TokenType.DELIMITER) for t in current
+            ):
                 text = self._render_statement(current, terminator, end_pos)
                 if text.strip():
                     records.append(self._record(current, text, terminator))
@@ -167,7 +173,12 @@ class PostgreSQLStatementParser(BaseStatementParser):
                         "dblift does not run it"
                     )
                 records.append(
-                    Statement(text=token.text, line=token.line, terminator=None, kind="directive")
+                    (
+                        Statement(
+                            text=token.text, line=token.line, terminator=None, kind="directive"
+                        ),
+                        token.text,
+                    )
                 )
                 continue
 
@@ -180,8 +191,13 @@ class PostgreSQLStatementParser(BaseStatementParser):
         flush(None, None)
         return records
 
-    def _record(self, tokens: List[Token], rendered: str, terminator: Optional[Token]) -> Statement:
-        """Build the record for one rendered statement, stripping its terminator."""
+    def _record(
+        self, tokens: List[Token], rendered: str, terminator: Optional[Token]
+    ) -> Tuple[Statement, str]:
+        """Build the record for one rendered statement and its verbatim string.
+
+        The record's text has the terminator stripped; the string keeps it.
+        """
         first = next(t for t in tokens if t.type != TokenType.COMMENT)
         combinators = [t for t in tokens if t.type == TokenType.SYMBOL and t.text == "\\;"]
         multi = bool(combinators)
@@ -190,31 +206,39 @@ class PostgreSQLStatementParser(BaseStatementParser):
                 rel = t.pos - first.pos
                 rendered = rendered[:rel] + ";" + rendered[rel + 2 :]
         if terminator is None:
-            return Statement(text=rendered, line=first.line, terminator=None, multi=multi)
+            return Statement(text=rendered, line=first.line, terminator=None, multi=multi), rendered
         if terminator.type == TokenType.COPY_DATA:
             if self.source is None:
-                return Statement(
+                record = Statement(
                     text=rendered, line=first.line, terminator="\\.", kind="copy_stdin"
                 )
+                return record, rendered
             end = terminator.pos + len(terminator.text)
             text = self.source[first.pos : end]
             if not terminator.text:
                 text = text.rstrip()
             ended = self.source[end:].lstrip().startswith("\\.")
-            return Statement(
+            record = Statement(
                 text=text, line=first.line, terminator="\\." if ended else None, kind="copy_stdin"
             )
-        if rendered.endswith(terminator.text):
-            rendered = rendered[: -len(terminator.text)].rstrip()
-        return Statement(text=rendered, line=first.line, terminator=terminator.text, multi=multi)
+            return record, rendered
+        text = rendered
+        if text.endswith(terminator.text):
+            text = text[: -len(terminator.text)].rstrip()
+        return (
+            Statement(text=text, line=first.line, terminator=terminator.text, multi=multi),
+            rendered,
+        )
 
     def split_statements(self) -> List[str]:
         """Statement strings as execution receives them (``;`` kept, directives dropped)."""
-        return [
-            record.text + (";" if record.terminator == ";" else "")
-            for record in self.split()
-            if record.kind != "directive"
-        ]
+        out: List[str] = []
+        for record, rendered in self._split_with_rendered():
+            if record.kind == "sql":
+                out.append(rendered)
+            elif record.kind != "directive":
+                out.append(record.text)
+        return out
 
     def can_execute_in_transaction(self) -> bool:
         """Check if current statement can execute in a transaction.

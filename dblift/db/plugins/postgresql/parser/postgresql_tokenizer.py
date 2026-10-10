@@ -402,17 +402,6 @@ class PostgreSQLTokenizer(BaseTokenizer):
             self.parens_depth,
         )
 
-        check_pos = self.pos - 1
-        while check_pos >= 0:
-            char = self.sql[check_pos]
-            if char in ("\n", "\r"):
-                return True
-            elif not char.isspace():
-                return False
-            check_pos -= 1
-
-        return True
-
 
 class NonNestingPostgreSQLTokenizer(PostgreSQLTokenizer):
     """PostgreSQL-syntax tokenizer for a wire-compatible engine kept

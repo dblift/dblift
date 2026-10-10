@@ -38,15 +38,23 @@ class StatementSplitter:
         fallback: Optional[FallbackSplitter] = None,
     ) -> List[str]:
         """Split SQL content into executable statement strings."""
-        try:
-            parser = self._parser
-            if parser is None:
-                parser = self.parser_factory.get_parser()
-                self._parser = parser
+        parser = self._parser
+        if parser is None:
+            parser = self.parser_factory.get_parser()
+            self._parser = parser
 
-            if isinstance(parser, EnhancedRegexParser) and parser.SPLITS_WITHOUT_FALLBACK:
+        if isinstance(parser, EnhancedRegexParser) and parser.SPLITS_WITHOUT_FALLBACK:
+            # Authoritative: a splitter bug must refuse, never fall back to a guess.
+            try:
                 return list(parser.split_statements(sql, strict_tokenizer=strict_tokenizer))
+            except (UnsafeStatementSplitError, UnsupportedMetaCommandError):
+                raise
+            except Exception as exc:
+                raise UnsafeStatementSplitError(
+                    f"{self.dialect} statement splitter failed: {exc}"
+                ) from exc
 
+        try:
             split_signature = inspect.signature(parser.split_statements)
             supports_strict = "strict_tokenizer" in split_signature.parameters
             if supports_strict:
