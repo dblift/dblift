@@ -6,6 +6,7 @@ and COPY FROM STDIN data block handling.
 
 from typing import Iterable, List, Optional
 
+from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.core.sql_parser.base_tokenizer import BaseTokenizer
 from dblift.core.sql_parser.tokens import Token, TokenType
 
@@ -90,6 +91,17 @@ class PostgreSQLTokenizer(BaseTokenizer):
         if char == '"':
             return self._handle_quoted_identifier()
 
+        # '$' that does not open a dollar-quote: a positional parameter ($1)
+        # or a stray '$'.
+        if char == "$" and not self._is_alternative_string_start():
+            start_pos, start_line, start_col = self.pos, self.line, self.col
+            text = self.read()
+            while self.pos < len(self.sql) and self.peek().isdigit():
+                text += self.read()
+            return Token(
+                TokenType.SYMBOL, text, start_pos, start_line, start_col, self.parens_depth
+            )
+
         # Delegate to base class for other token types
         return super()._next_token()
 
@@ -128,8 +140,14 @@ class PostgreSQLTokenizer(BaseTokenizer):
             return not previous or not (previous.isalnum() or previous in "_$'\"")
         if self.peek() != "$":
             return False
-        # ${…} is handled in _next_token; do not treat as dollar-quoted string.
-        return len(self.sql) <= self.pos + 1 or self.sql[self.pos + 1] != "{"
+        previous = self.sql[self.pos - 1] if self.pos else ""
+        if previous and (previous.isalnum() or previous in "_$"):
+            return False  # part of an identifier such as a$b
+        after = self.peek(2)[1:]
+        if after == "$":
+            return True  # empty tag
+        # A tag starts like an unquoted identifier; $1 is a parameter, ${ a placeholder.
+        return bool(after) and (after.isalpha() or after == "_")
 
     def _handle_string(self) -> Token:
         """Handle standard strings, escape strings and dollar-quotes.
@@ -203,6 +221,10 @@ class PostgreSQLTokenizer(BaseTokenizer):
             closing_dollar = self.read()
             tag += closing_dollar
             string_text += closing_dollar
+        else:
+            raise UnsafeStatementSplitError(
+                f"malformed dollar-quote tag at line {start_line}, column {start_col}"
+            )
 
         # Now read until matching closing tag
         while self.pos < len(self.sql):

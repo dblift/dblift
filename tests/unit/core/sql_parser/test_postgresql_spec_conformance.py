@@ -17,7 +17,7 @@ from tests.support.splitter_spec.splitting import split_script
 SPEC_DIR = Path(__file__).resolve().parents[4] / "docs" / "sql-parsing"
 ROWS = [row for row in load_conformance_rows(SPEC_DIR) if row.dialect == "postgresql"]
 
-KNOWN_GAPS: frozenset[str] = frozenset({"6", "8", "11", "15", "15a", "15b", "16", "19"})
+KNOWN_GAPS: frozenset[str] = frozenset({"8", "11", "15", "15a", "15b", "16", "19"})
 
 
 def test_spec_compiles_to_at_least_the_rows_it_had_on_2026_10_10() -> None:
