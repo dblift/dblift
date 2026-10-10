@@ -1,5 +1,7 @@
 """Tests for the dialect-agnostic DML undo-safety scanner."""
 
+import re
+
 import pytest
 
 from dblift.db.base_quirks import BaseQuirks
@@ -533,3 +535,69 @@ def test_insert_value_rows_omits_non_literals_and_rejects_unparseable():
     assert insert_value_rows("INSERT INTO t VALUES (1, 'x');") is None
     assert insert_value_rows("INSERT INTO t (id) SELECT id FROM other;") is None
     assert insert_value_rows("UPDATE t SET x = 1 WHERE id = 1;") is None
+
+
+# DML whose target is preceded by a dialect modifier (ONLY, TOP, LOW_PRIORITY,
+# IGNORE, an Oracle hint) or has no FROM keyword (Oracle/T-SQL ``DELETE t``).
+_TARGET_MODIFIER_CASES = [
+    ("postgres", "DELETE FROM ONLY app.t WHERE id = 1", "app.t"),
+    ("postgres", "UPDATE ONLY app.t SET a = 1 WHERE id = 1", "app.t"),
+    ("tsql", "DELETE [Cap Probe] WHERE id = 1", "[Cap Probe]"),
+    ("tsql", "DELETE TOP (5) FROM [Cap Probe] WHERE id = 1", "[Cap Probe]"),
+    ("tsql", "DELETE TOP (5) [Cap Probe] WHERE id = 1", "[Cap Probe]"),
+    ("tsql", "DELETE TOP (SELECT 5) PERCENT [s].[t] WHERE id = 1", "[s].[t]"),
+    ("tsql", "UPDATE TOP (10) [Cap Probe] SET b = 1", "[Cap Probe]"),
+    ("tsql", "INSERT TOP (5) INTO [Cap Probe] (a) SELECT 1", "[Cap Probe]"),
+    ("mysql", "UPDATE LOW_PRIORITY `Cap Probe` SET b = 1", "`Cap Probe`"),
+    ("mysql", "UPDATE LOW_PRIORITY IGNORE `s`.`t` SET b = 1", "`s`.`t`"),
+    ("mysql", "UPDATE IGNORE `Cap Probe` SET b = 1", "`Cap Probe`"),
+    ("mysql", "DELETE LOW_PRIORITY QUICK IGNORE FROM `Cap Probe` WHERE id = 1", "`Cap Probe`"),
+    ("mysql", "INSERT IGNORE INTO `Cap Probe` (a) VALUES (1)", "`Cap Probe`"),
+    ("mysql", "INSERT LOW_PRIORITY INTO `Cap Probe` (a) VALUES (1)", "`Cap Probe`"),
+    ("mysql", "INSERT DELAYED IGNORE INTO `Cap Probe` (a) VALUES (1)", "`Cap Probe`"),
+    ("oracle", "DELETE app.t WHERE id = 1", "app.t"),
+    ("oracle", 'DELETE "Cap Probe" WHERE id = 1', '"Cap Probe"'),
+    ("oracle", "DELETE /*+ PARALLEL */ app.t", "app.t"),
+    ("oracle", "DELETE /*+ PARALLEL */ FROM app.t", "app.t"),
+    ("oracle", 'UPDATE /*+ INDEX(t i) */ "Cap Probe" SET a = 1', '"Cap Probe"'),
+    ("oracle", "INSERT /*+ APPEND */ INTO app.t (a) VALUES (1)", "app.t"),
+]
+
+
+@pytest.mark.parametrize(("dialect", "stmt", "table"), _TARGET_MODIFIER_CASES)
+def test_statement_dml_table_skips_target_modifiers(dialect, stmt, table):
+    assert statement_dml_table(stmt, dialect=dialect) == table
+
+
+@pytest.mark.parametrize(("dialect", "stmt", "table"), _TARGET_MODIFIER_CASES)
+def test_statement_dml_table_without_dialect_skips_target_modifiers(dialect, stmt, table):
+    assert statement_dml_table(stmt) == table
+
+
+@pytest.mark.parametrize(("dialect", "stmt", "table"), _TARGET_MODIFIER_CASES)
+def test_analyze_dml_target_skips_modifiers(dialect, stmt, table):
+    bare = re.sub(r'[`"\[\]]', "", table)
+    assert analyze_dml(stmt, sqlglot_dialect=dialect).table == bare
+
+
+@pytest.mark.parametrize(
+    ("dialect", "stmt", "table"),
+    [
+        ("mysql", "UPDATE ignore SET a = 1", "ignore"),
+        ("tsql", "DELETE top WHERE id = 1", "top"),
+        ("postgres", "UPDATE only SET a = 1", "only"),
+    ],
+)
+def test_statement_dml_table_keeps_a_table_named_like_a_modifier(dialect, stmt, table):
+    assert statement_dml_table(stmt, dialect=dialect) == table
+    assert statement_dml_table(stmt) == table
+
+
+@pytest.mark.parametrize("dialect", [None, "postgres", "tsql", "mysql", "oracle"])
+@pytest.mark.parametrize(
+    "stmt",
+    ["DELETE TOP (", "DELETE TOP (5", "UPDATE IGNORE", "DELETE FROM ONLY", "INSERT", "DELETE"],
+)
+def test_statement_dml_table_never_raises_on_a_truncated_statement(dialect, stmt):
+    assert isinstance(statement_dml_table(stmt, dialect=dialect), str)
+    assert isinstance(analyze_dml(stmt, sqlglot_dialect=dialect).table, str)
