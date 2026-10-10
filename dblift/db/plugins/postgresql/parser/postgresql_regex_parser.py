@@ -8,7 +8,7 @@ import logging
 import re
 from typing import Any, Dict, List, Optional
 
-from dblift.core.exceptions import UnsupportedMetaCommandError
+from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
 from dblift.core.sql_model.base import (
     ParseResult,
     SqlStatement,
@@ -84,11 +84,12 @@ class PostgreSqlRegexParser(EnhancedRegexParser):
             logger.debug(f"PostgreSQL: Tokenization split into {len(statements)} statements")
             return statements
 
-        except UnsupportedMetaCommandError:
+        except (UnsafeStatementSplitError, UnsupportedMetaCommandError):
             # A deliberate refusal, not a tokenization failure. Falling back
-            # to the regex splitter here would silently glue the
-            # meta-command's line onto the next statement -- the exact
-            # defect this refusal exists to name instead of hiding.
+            # to the regex splitter here would silently reproduce the defect
+            # the refusal exists to name instead of hiding (a meta-command's
+            # line glued onto the next statement, an unterminated lexeme
+            # running to the end of the script).
             raise
         except Exception as e:
             if strict_tokenizer:

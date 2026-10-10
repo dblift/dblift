@@ -2,6 +2,7 @@
 
 import pytest
 
+from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.core.sql_parser.tokens import TokenType
 from dblift.db.plugins.postgresql.parser.postgresql_tokenizer import PostgreSQLTokenizer
 
@@ -72,10 +73,10 @@ SELECT 1;"""
         """Test dollar quote that reaches end of string."""
         sql = "$$incomplete"
         tokenizer = PostgreSQLTokenizer(sql)
-        tokens = tokenizer.tokenize()
 
-        # Should handle incomplete dollar quote gracefully
-        assert len(tokens) > 0
+        # an unterminated dollar-quoted string is refused, not swallowed
+        with pytest.raises(UnsafeStatementSplitError):
+            tokenizer.tokenize()
 
     def test_dollar_quote_with_alphanumeric_tag(self):
         """Test dollar quote with alphanumeric characters in tag."""

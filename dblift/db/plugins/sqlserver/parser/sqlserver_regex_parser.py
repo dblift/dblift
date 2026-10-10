@@ -8,6 +8,7 @@ import logging
 import re
 from typing import Any, Dict, List, Optional, Type
 
+from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.core.sql_model.base import (
     ParseResult,
 )
@@ -80,6 +81,10 @@ class SqlServerRegexParser(EnhancedRegexParser):
             logger.debug(f"SQL Server: Tokenization split into {len(statements)} statements")
             return statements
 
+        except UnsafeStatementSplitError:
+            # A deliberate refusal, not a tokenization failure: the regex
+            # fallback would run the unterminated lexeme to the end of the script.
+            raise
         except Exception as e:
             if strict_tokenizer:
                 raise

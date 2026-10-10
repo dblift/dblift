@@ -40,13 +40,13 @@ need not join them.
 | Block | `/*` | the matching `*/` | **yes** | §4.1.5: "These block comments nest, as specified in the SQL standard but unlike C" |
 
 No comment form carries directives. An unterminated block comment is an
-error (the engine rejects it; so does the splitter).
+error (the engine rejects it; so does the splitter). Verified 2026-10-10 against PostgreSQL 16.14 with the row 21 script.
 
 ## 4. Terminators
 
 | Terminator | Rule |
 | --- | --- |
-| `;` | ends a statement when **parenthesis depth is 0** and no block (§5) is open. psql applies the same parenthesis rule, which is what allows `CREATE RULE … DO ALSO (stmt; stmt);`. The `;` is consumed and recorded on the `Statement`. |
+| `;` | ends a statement when **parenthesis depth is 0** and no block (§5) is open. psql applies the same parenthesis rule, which is what allows `CREATE RULE … DO ALSO (stmt; stmt);`. The `;` is consumed and recorded on the `Statement`. An unclosed parenthesis at end of input does not split: the remainder is one statement, as psql sends its buffer at end of input. |
 | `\;` | psql: "simply causes a semicolon to be added to the query buffer without any further processing", so the statements before and after it "are effectively combined and sent to the server in one request". The splitter replaces `\;` by `;` and does **not** end the statement; the `Statement` records `multi=True`. Verified 2026-10-10 against PostgreSQL 15 with psql. |
 | `\g` | a psql meta-command (§6): rejected. |
 
@@ -138,6 +138,11 @@ pair table cannot express. Shared with DuckDB and Redshift.
 | 18 | `SELECT U&'d\0061t;a'; SELECT 2;` | `SELECT U&'d\0061t;a'` · `SELECT 2` |
 | 19 | `SELECT 1;\n;\n;` | `SELECT 1` only |
 | 20 | `SELECT 1 -- trailing\n` | `SELECT 1 -- trailing` (no terminator; last statement returned) |
+| 21 | `/*DELIMITER //*/ SELECT 1;` | `UnsafeStatementSplitError` (the `/*` inside the comment opens a nested comment that never closes; psql 16: `ERROR: unterminated /* comment`) |
+| 22 | `SELECT 'abc; SELECT 2;` | `UnsafeStatementSplitError` (unterminated string, line 1 column 8) |
+| 23 | `SELECT $$abc; SELECT 2;` | `UnsafeStatementSplitError` (unterminated dollar-quoted string, line 1 column 8) |
+| 24 | `SELECT "a;b FROM t;` | `UnsafeStatementSplitError` (unterminated quoted identifier) |
+| 25 | `SELECT (1; SELECT 2;` | `SELECT (1; SELECT 2;` (one statement, the text unchanged: psql sends the buffer at end of input at any parenthesis depth; the server rejects it, verified 2026-10-10 on PostgreSQL 15: syntax error at or near ";") |
 
 ## 11. Not handled
 

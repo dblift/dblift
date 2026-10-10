@@ -184,11 +184,17 @@ class PostgreSQLTokenizer(BaseTokenizer):
         """Read a backslash-escaped literal, including an optional E prefix."""
         start_pos, start_line, start_col = self.pos, self.line, self.col
         self.read(2 if self.peek(2) in ("E'", "e'") else 1)
+        closed = False
         while self.pos < len(self.sql):
             if self.peek() == "\\" or self.peek(2) == "''":
                 self.read(2)
             elif self.read() == "'":
+                closed = True
                 break
+        if not closed:
+            raise UnsafeStatementSplitError(
+                f"unterminated string opened at line {start_line}, column {start_col}"
+            )
         return Token(
             TokenType.STRING,
             self.sql[start_pos : self.pos],
@@ -238,11 +244,18 @@ class PostgreSQLTokenizer(BaseTokenizer):
             )
 
         # Now read until matching closing tag
+        closed = False
         while self.pos < len(self.sql):
             if self.peek(len(tag)) == tag:
                 string_text += self.read(len(tag))
+                closed = True
                 break
             string_text += self.read()
+        if not closed:
+            raise UnsafeStatementSplitError(
+                f"unterminated dollar-quoted string opened at line {start_line}, "
+                f"column {start_col}"
+            )
 
         return Token(
             TokenType.STRING,
@@ -270,6 +283,7 @@ class PostgreSQLTokenizer(BaseTokenizer):
         identifier_text += self.read()
 
         # Read until closing quote
+        closed = False
         while self.pos < len(self.sql):
             char = self.peek()
             if char == '"':
@@ -278,9 +292,15 @@ class PostgreSQLTokenizer(BaseTokenizer):
                     identifier_text += self.read(2)
                 else:
                     identifier_text += self.read()  # Closing quote
+                    closed = True
                     break
             else:
                 identifier_text += self.read()
+        if not closed:
+            raise UnsafeStatementSplitError(
+                f"unterminated quoted identifier opened at line {start_line}, "
+                f"column {start_col}"
+            )
 
         return Token(
             TokenType.IDENTIFIER,
