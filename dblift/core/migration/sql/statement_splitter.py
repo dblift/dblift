@@ -44,6 +44,9 @@ class StatementSplitter:
                 parser = self.parser_factory.get_parser()
                 self._parser = parser
 
+            if isinstance(parser, EnhancedRegexParser) and parser.SPLITS_WITHOUT_FALLBACK:
+                return list(parser.split_statements(sql, strict_tokenizer=strict_tokenizer))
+
             split_signature = inspect.signature(parser.split_statements)
             supports_strict = "strict_tokenizer" in split_signature.parameters
             if supports_strict:

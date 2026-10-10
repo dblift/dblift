@@ -46,6 +46,10 @@ class EnhancedRegexParser(RegexParser):
     #: so the two paths cannot disagree about the same dialect.
     tokenizer_class: Type[BaseTokenizer] = BaseTokenizer
 
+    #: True when ``split_statements`` is authoritative: it returns the split
+    #: (possibly empty) or raises, and callers must not re-split on failure.
+    SPLITS_WITHOUT_FALLBACK = False
+
     def __init__(self, dialect_config: DialectConfig):
         """Initialize enhanced parser with dialect-specific configuration.
 

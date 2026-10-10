@@ -1,14 +1,7 @@
 """Extended tests for PostgreSQL regex parser — targeting uncovered paths.
 
 Covers:
-- split_statements (tokenizer path, fallback path)
-- _extract_dollar_quoted_function
-- _extract_do_block
-- _extract_copy_statement
-- _split_by_semicolon (E-string, single-quoted, double-quoted, dollar-quoted)
-- _filter_empty_statements
-- _is_empty_or_comment
-- _remove_comments
+- split_statements
 - _identify_statement_type (DDL / DML / QUERY / transaction / unknown)
 - parse_sql (placeholders, errors)
 - validate_sql
@@ -18,13 +11,14 @@ Covers:
 import unittest
 from unittest.mock import patch
 
+from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.core.sql_model.base import SqlStatementType
 from dblift.core.sql_model.dialect import get_sqlglot_dialect
 from dblift.db.plugins.postgresql.parser.postgresql_regex_parser import PostgreSqlRegexParser
 
 
 class TestSplitStatements(unittest.TestCase):
-    """Tests for split_statements() — both tokenizer and regex-fallback paths."""
+    """Tests for split_statements(): the tokenizer split or a refusal."""
 
     def setUp(self):
         self.parser = PostgreSqlRegexParser()
@@ -94,273 +88,15 @@ CREATE TABLE t2 (id INT);
         stmts = self.parser.split_statements(sql)
         self.assertGreaterEqual(len(stmts), 2)
 
-    def test_fallback_strict_tokenizer_raises(self):
-        """strict_tokenizer=True should raise if tokenization fails."""
-        # A malformed input that won't crash the tokenizer normally —
-        # just verify the flag is accepted without raising for valid SQL.
-        sql = "SELECT 1;"
-        stmts = self.parser.split_statements(sql, strict_tokenizer=True)
+    def test_strict_tokenizer_flag_is_accepted_for_valid_sql(self):
+        stmts = self.parser.split_statements("SELECT 1;", strict_tokenizer=True)
         self.assertGreaterEqual(len(stmts), 1)
 
-
-class TestExtractDollarQuotedFunction(unittest.TestCase):
-    def setUp(self):
-        self.parser = PostgreSqlRegexParser()
-
-    def test_basic_dollar_quoted_function(self):
-        sql = "$$BEGIN RETURN 1; END;$$ LANGUAGE plpgsql;"
-        result = self.parser._extract_dollar_quoted_function(sql)
-        self.assertIsNotNone(result)
-
-    def test_named_dollar_tag(self):
-        sql = "$func$BEGIN RETURN 'hi'; END;$func$ LANGUAGE plpgsql;"
-        result = self.parser._extract_dollar_quoted_function(sql)
-        self.assertIsNotNone(result)
-        self.assertIn("LANGUAGE plpgsql", result)
-
-    def test_no_dollar_quote_returns_none(self):
-        sql = "SELECT 1;"
-        result = self.parser._extract_dollar_quoted_function(sql)
-        self.assertIsNone(result)
-
-    def test_unclosed_dollar_quote_returns_none(self):
-        sql = "$$BEGIN RETURN 1; END;"
-        result = self.parser._extract_dollar_quoted_function(sql)
-        self.assertIsNone(result)
-
-    def test_semicolon_terminator_fallback(self):
-        # No LANGUAGE clause but has semicolon
-        sql = "$$SELECT 1;$$;"
-        result = self.parser._extract_dollar_quoted_function(sql)
-        self.assertIsNotNone(result)
-
-
-class TestExtractDoBlock(unittest.TestCase):
-    def setUp(self):
-        self.parser = PostgreSqlRegexParser()
-
-    def test_basic_do_block(self):
-        sql = "DO $$ BEGIN RAISE NOTICE 'hi'; END $$;"
-        result = self.parser._extract_do_block(sql)
-        self.assertIsNotNone(result)
-
-    def test_do_block_with_language(self):
-        sql = "DO $$ BEGIN NULL; END $$ LANGUAGE plpgsql;"
-        result = self.parser._extract_do_block(sql)
-        self.assertIsNotNone(result)
-        self.assertIn("LANGUAGE plpgsql", result)
-
-    def test_non_do_returns_none(self):
-        sql = "SELECT 1;"
-        result = self.parser._extract_do_block(sql)
-        self.assertIsNone(result)
-
-    def test_unclosed_do_block_returns_none(self):
-        sql = "DO $$ BEGIN RAISE NOTICE 'hello';"
-        result = self.parser._extract_do_block(sql)
-        self.assertIsNone(result)
-
-
-class TestExtractCopyStatement(unittest.TestCase):
-    def setUp(self):
-        self.parser = PostgreSqlRegexParser()
-
-    def test_copy_from_stdin_with_data_block(self):
-        sql = "COPY users FROM STDIN;\n1\t2\n\\.\n"
-        result = self.parser._extract_copy_statement(sql)
-        self.assertIsNotNone(result)
-
-    def test_copy_to_file_with_semicolon(self):
-        sql = "COPY users TO '/tmp/users.csv' WITH (FORMAT CSV);"
-        result = self.parser._extract_copy_statement(sql)
-        self.assertIsNotNone(result)
-        self.assertIn("COPY users TO", result)
-
-    def test_non_copy_returns_none(self):
-        sql = "SELECT * FROM users;"
-        result = self.parser._extract_copy_statement(sql)
-        self.assertIsNone(result)
-
-    def test_copy_from_file_with_semicolon(self):
-        sql = "COPY employees FROM '/data/employees.csv' CSV HEADER;"
-        result = self.parser._extract_copy_statement(sql)
-        self.assertIsNotNone(result)
-
-    def test_copy_no_semicolon_returns_whole_content(self):
-        sql = "COPY employees TO STDOUT"
-        result = self.parser._extract_copy_statement(sql)
-        self.assertIsNotNone(result)
-
-
-class TestSplitBySemicolon(unittest.TestCase):
-    """Tests for _split_by_semicolon — the regex-fallback splitter."""
-
-    def setUp(self):
-        self.parser = PostgreSqlRegexParser()
-
-    def test_simple_statements(self):
-        sql = "SELECT 1; SELECT 2;"
-        stmts = self.parser._split_by_semicolon(sql)
-        self.assertEqual(len(stmts), 2)
-
-    def test_semicolon_inside_single_quote_not_split(self):
-        sql = "SELECT 'hello; world'; SELECT 1;"
-        stmts = self.parser._split_by_semicolon(sql)
-        # First statement has semicolon inside string, second is SELECT 1
-        self.assertEqual(len(stmts), 2)
-        self.assertIn("'hello; world'", stmts[0])
-
-    def test_escaped_single_quote_inside_string(self):
-        sql = "SELECT 'O''Brien'; SELECT 2;"
-        stmts = self.parser._split_by_semicolon(sql)
-        self.assertEqual(len(stmts), 2)
-        self.assertIn("O''Brien", stmts[0])
-
-    def test_double_quoted_identifier_with_semicolon(self):
-        sql = 'SELECT "col;name" FROM t; SELECT 1;'
-        stmts = self.parser._split_by_semicolon(sql)
-        self.assertEqual(len(stmts), 2)
-
-    def test_escape_string_literal(self):
-        # E-string: E'...'
-        sql = r"SELECT E'tab\there'; SELECT 2;"
-        stmts = self.parser._split_by_semicolon(sql)
-        self.assertEqual(len(stmts), 2)
-        self.assertIn("E'tab", stmts[0])
-
-    def test_dollar_quote_not_split(self):
-        sql = "SELECT $$hello; world$$; SELECT 1;"
-        stmts = self.parser._split_by_semicolon(sql)
-        self.assertEqual(len(stmts), 2)
-        self.assertIn("$$hello; world$$", stmts[0])
-
-    def test_empty_string_returns_empty(self):
-        self.assertEqual(self.parser._split_by_semicolon(""), [])
-
-    def test_no_semicolon_returns_single_item(self):
-        sql = "SELECT 1"
-        stmts = self.parser._split_by_semicolon(sql)
-        self.assertEqual(len(stmts), 1)
-
-    def test_dollar_sign_without_tag_not_dollar_quote(self):
-        sql = "SELECT $1; SELECT $2;"
-        stmts = self.parser._split_by_semicolon(sql)
-        self.assertEqual(len(stmts), 2)
-
-
-class TestFilterEmptyStatements(unittest.TestCase):
-    def setUp(self):
-        self.parser = PostgreSqlRegexParser()
-
-    def test_filters_empty_strings(self):
-        stmts = ["SELECT 1;", "", "   ", "SELECT 2;"]
-        result = self.parser._filter_empty_statements(stmts)
-        self.assertEqual(len(result), 2)
-
-    def test_filters_comment_only_statements(self):
-        stmts = ["-- comment", "SELECT 1;", "/* block */"]
-        result = self.parser._filter_empty_statements(stmts)
-        self.assertEqual(len(result), 1)
-
-    def test_filters_bare_semicolon(self):
-        stmts = [";", "SELECT 1;"]
-        result = self.parser._filter_empty_statements(stmts)
-        self.assertEqual(len(result), 1)
-
-    def test_keeps_valid_statements(self):
-        stmts = ["CREATE TABLE t (id INT);", "INSERT INTO t VALUES (1);"]
-        result = self.parser._filter_empty_statements(stmts)
-        self.assertEqual(len(result), 2)
-
-
-class TestIsEmptyOrComment(unittest.TestCase):
-    def setUp(self):
-        self.parser = PostgreSqlRegexParser()
-
-    def test_empty_string_is_empty(self):
-        self.assertTrue(self.parser._is_empty_or_comment(""))
-
-    def test_whitespace_only_is_empty(self):
-        self.assertTrue(self.parser._is_empty_or_comment("   "))
-
-    def test_line_comment_is_comment(self):
-        self.assertTrue(self.parser._is_empty_or_comment("-- this is a comment"))
-
-    def test_block_comment_on_single_line_is_comment(self):
-        self.assertTrue(self.parser._is_empty_or_comment("/* block */"))
-
-    def test_sql_statement_is_not_comment(self):
-        self.assertFalse(self.parser._is_empty_or_comment("SELECT 1"))
-
-    def test_multiline_comment_block_is_comment(self):
-        stmt = "-- line 1\n-- line 2"
-        self.assertTrue(self.parser._is_empty_or_comment(stmt))
-
-    def test_mixed_comment_and_code_is_not_comment(self):
-        stmt = "-- comment\nSELECT 1"
-        self.assertFalse(self.parser._is_empty_or_comment(stmt))
-
-
-class TestRemoveComments(unittest.TestCase):
-    def setUp(self):
-        self.parser = PostgreSqlRegexParser()
-
-    def test_removes_line_comment(self):
-        sql = "SELECT 1; -- line comment"
-        result = self.parser._remove_comments(sql)
-        self.assertNotIn("-- line comment", result)
-        self.assertIn("SELECT 1", result)
-
-    def test_removes_block_comment(self):
-        sql = "SELECT /* inline */ 1;"
-        result = self.parser._remove_comments(sql)
-        self.assertNotIn("/* inline */", result)
-        self.assertIn("SELECT", result)
-        self.assertIn("1", result)
-
-    def test_nested_block_comments(self):
-        sql = "SELECT /* outer /* inner */ end */ 1;"
-        result = self.parser._remove_comments(sql)
-        self.assertIn("SELECT", result)
-
-    def test_preserves_comment_inside_single_quote(self):
-        sql = "SELECT '-- not a comment' FROM t;"
-        result = self.parser._remove_comments(sql)
-        self.assertIn("-- not a comment", result)
-
-    def test_preserves_comment_inside_double_quote(self):
-        sql = 'SELECT "-- not a comment" FROM t;'
-        result = self.parser._remove_comments(sql)
-        self.assertIn("-- not a comment", result)
-
-    def test_preserves_comment_inside_dollar_quote(self):
-        sql = "SELECT $$-- not removed$$ FROM t;"
-        result = self.parser._remove_comments(sql)
-        self.assertIn("-- not removed", result)
-
-    def test_removes_multiline_block_comment(self):
-        sql = "SELECT /*\n  multi\n  line\n*/ 1;"
-        result = self.parser._remove_comments(sql)
-        self.assertNotIn("multi", result)
-
-    def test_newline_preserved_after_line_comment(self):
-        sql = "SELECT 1; -- comment\nSELECT 2;"
-        result = self.parser._remove_comments(sql)
-        self.assertIn("\n", result)
-        self.assertIn("SELECT 2", result)
-
-    def test_empty_string_returns_empty(self):
-        self.assertEqual(self.parser._remove_comments(""), "")
-
-    def test_doubled_single_quote_inside_string(self):
-        sql = "SELECT 'O''Brien';"
-        result = self.parser._remove_comments(sql)
-        self.assertIn("O''Brien", result)
-
-    def test_doubled_double_quote_inside_identifier(self):
-        sql = 'SELECT "col""name";'
-        result = self.parser._remove_comments(sql)
-        self.assertIn('col""name', result)
+    def test_unterminated_string_is_refused_not_resplit(self):
+        # Spec rows 21-25: an unterminated lexeme is a refusal, never a regex re-split.
+        for strict in (False, True):
+            with self.assertRaises(UnsafeStatementSplitError):
+                self.parser.split_statements("SELECT 'abc; SELECT 2;", strict_tokenizer=strict)
 
 
 class TestIdentifyStatementType(unittest.TestCase):
