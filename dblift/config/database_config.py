@@ -239,7 +239,7 @@ def _apply_url_overrides(cls: Type["BaseDatabaseConfig"], data: Dict[str, Any]) 
 
 
 def _resolve_config_class(
-    cls: Type["BaseDatabaseConfig"], db_type: str
+    cls: Type["BaseDatabaseConfig"], db_type: str, _seen: frozenset[str] = frozenset()
 ) -> Optional[Type["BaseDatabaseConfig"]]:
     """Look up the registered config subclass for ``db_type``.
 
@@ -276,8 +276,8 @@ def _resolve_config_class(
 
     # Path 3: alias to a parent dialect's registration.
     parent = getattr(plugin, "config_dialect", None)
-    if parent and parent != db_type:
-        return _resolve_config_class(cls, parent)
+    if parent and parent not in _seen | {db_type}:
+        return _resolve_config_class(cls, parent, _seen | {db_type})
     return None
 
 
