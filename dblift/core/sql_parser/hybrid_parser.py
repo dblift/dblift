@@ -22,6 +22,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from sqlglot import exp, parse_one
 
+from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.core.sql_model.base import (
     ConstraintType,
     ParseResult,
@@ -220,6 +221,10 @@ class HybridParser(_SqlglotBuildersMixin, SqlParserInterface):
                 result.statements = enhanced_statements
 
             if not collected_objects:
+                try:
+                    self.split_statements(sql_content)
+                except UnsafeStatementSplitError as refusal:
+                    result.errors = [*(result.errors or []), str(refusal)]
                 fallback_objects = self.extract_objects(sql_content, default_schema)
                 if fallback_objects:
                     self._collect_objects(result, fallback_objects)
@@ -313,7 +318,13 @@ class HybridParser(_SqlglotBuildersMixin, SqlParserInterface):
         effective_schema = self._resolve_default_schema(default_schema)
 
         objects: List[SqlObject] = []
-        for stmt_text in self.split_statements(sql_content):
+        try:
+            statements = self.split_statements(sql_content)
+        except UnsafeStatementSplitError:
+            # an already-split statement may be refused by the execution splitter
+            # (e.g. a PL/SQL unit without its '/'); for extraction the text is one statement
+            statements = [sql_content]
+        for stmt_text in statements:
             if not stmt_text or not stmt_text.strip():
                 continue
             objects.extend(self._extract_objects_for_statement(stmt_text, effective_schema))
