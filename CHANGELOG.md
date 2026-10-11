@@ -193,6 +193,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   longer splits it. The `mysql` client itself rejects such a file unless the
   body is wrapped in `DELIMITER`, so a migration that runs here still needs
   `DELIMITER` lines to run with `mysql < file`.
+- `parse_sql` reports a script the splitter refuses as an error in `errors`, for
+  every dialect, instead of failing the parse; object extraction returns the
+  objects it finds in the text (none when there are none) instead of raising.
+  Execution still refuses the script.
 
 ## [4.11.1] - 2026-10-10
 
