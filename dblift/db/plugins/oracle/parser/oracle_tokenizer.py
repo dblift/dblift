@@ -103,7 +103,12 @@ class OracleTokenizer(BaseTokenizer):
         # Read Q' (or NQ')
         string_text += self.read(self._q_quote_prefix_length())
 
-        # Get delimiter character
+        # Get delimiter character; end of input is checked first because
+        # ``"" in " \t\r\n"`` is True.
+        if self.pos >= len(self.sql):
+            raise UnsafeStatementSplitError(
+                f"unterminated q-quoted string opened at line {start_line}, column {start_col}"
+            )
         delimiter_char = self.read()
         if delimiter_char in " \t\r\n":
             raise UnsafeStatementSplitError(
@@ -166,17 +171,13 @@ class OracleTokenizer(BaseTokenizer):
         # Read until closing quote
         closed = False
         while self.pos < len(self.sql):
-            char = self.peek()
+            # A quoted identifier cannot contain ``"`` (spec section 2), so
+            # ``""`` is not an escape: it closes at the first quote.
+            char = self.read()
+            identifier_text += char
             if char == '"':
-                # Check for doubled quote (escape)
-                if self.peek(2) == '""':
-                    identifier_text += self.read(2)
-                else:
-                    identifier_text += self.read()  # Closing quote
-                    closed = True
-                    break
-            else:
-                identifier_text += self.read()
+                closed = True
+                break
         if not closed:
             raise UnsafeStatementSplitError(
                 f"unterminated quoted identifier opened at line {start_line}, column {start_col}"
