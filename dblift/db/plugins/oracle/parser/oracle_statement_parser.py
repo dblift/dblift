@@ -101,7 +101,9 @@ class OracleStatementParser(BaseStatementParser):
         # Handle any remaining tokens
         if current_statement_tokens:
             if self._unit:
-                raise UnsafeStatementSplitError(self._unterminated_unit_message(current_statement_tokens))
+                raise UnsafeStatementSplitError(
+                    self._unterminated_unit_message(current_statement_tokens)
+                )
             emit(None, is_tail=True)
 
         return records
