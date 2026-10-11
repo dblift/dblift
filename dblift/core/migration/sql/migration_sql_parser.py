@@ -55,10 +55,20 @@ def fallback_migration_sql(content: str, log: Log, error: Exception) -> List[str
     return statements
 
 
-def parse_migration_sql(analyzer: ExecutionSqlParser, content: str, log: Log) -> List[str]:
-    """Split the supplied content without modifying migration state."""
+def parse_migration_sql(
+    analyzer: ExecutionSqlParser, content: str, log: Log, *, for_analysis: bool = False
+) -> List[str]:
+    """Split the supplied content without modifying migration state.
+
+    ``for_analysis`` asks for the statements a statement-by-statement reader needs (a T-SQL batch
+    divided) instead of what execution sends.
+    """
     try:
-        statements = analyzer.split_statements(content)
+        statements = (
+            analyzer.split_statements_for_analysis(content)
+            if for_analysis
+            else analyzer.split_statements(content)
+        )
         log.debug(f"SqlAnalyzer split returned {len(statements)} statements")
         return [statement for statement in statements if statement.strip()]
     except (UnsafeStatementSplitError, UnsupportedMetaCommandError):

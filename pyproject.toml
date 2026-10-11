@@ -801,6 +801,7 @@ module = [
     "dblift.db.plugins.sqlserver.quirks",
     "dblift.db.plugins.sqlserver.sqlserver",
     "dblift.db.plugins.sqlserver.sqlserver.schema_operations",
+    "dblift.db.plugins.sqlserver.parser._batches",
     "dblift.db.plugins.sqlserver.parser.parser_config",
     "dblift.db.plugins.sqlserver.parser.sqlserver_regex_parser",
     "dblift.db.plugins.sqlserver.parser.sqlserver_statement_parser",

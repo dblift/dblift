@@ -20,6 +20,7 @@ from dblift.core.sql_parser.dialects.identifier_tokens import (
     strip_identifier_quotes as _strip_identifier_quotes,
 )
 from dblift.core.sql_parser.parser_factory import SqlParserFactory
+from dblift.core.sql_parser.parser_interface import SqlParserInterface
 from dblift.db.dml_analysis import (
     DEFAULT_QUOTE_PAIRS,
     _find_top_level_keyword,
@@ -676,6 +677,21 @@ class SqlAnalyzer:
             )
 
         return list(statements)
+
+    def split_statements_for_analysis(self, sql: str, strict_tokenizer: bool = False) -> List[str]:
+        """The statements of ``sql`` for callers that read a script statement by statement.
+
+        ``split_statements`` returns what the server receives, and a T-SQL batch holds several
+        statements: a dialect that divides its batches does it here, after the same refusals.
+        Every other dialect: the execution split.
+        """
+        parser = self._db_specific_parser
+        if (
+            parser is not None
+            and type(parser).split_for_analysis is not SqlParserInterface.split_for_analysis
+        ):
+            return list(parser.split_for_analysis(sql, strict_tokenizer=strict_tokenizer))
+        return self.split_statements(sql, strict_tokenizer=strict_tokenizer)
 
     def _split_statements_with_regex(self, sql: str) -> List[str]:
         """Split SQL statements using regex.

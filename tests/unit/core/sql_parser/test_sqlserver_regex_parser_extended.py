@@ -47,8 +47,10 @@ class TestSplitStatements(unittest.TestCase):
 
     def test_multiple_ddl_statements(self):
         sql = "CREATE TABLE a (id INT);\n" "CREATE TABLE b (id INT);\n"
-        stmts = self.parser.split_statements(sql)
-        self.assertGreaterEqual(len(stmts), 2)
+        # a ';' does not end a batch: execution receives one request ...
+        self.assertEqual(len(self.parser.split_statements(sql)), 1)
+        # ... and extraction still reads two statements
+        self.assertEqual(len(self.parser.split_for_extraction(sql)), 2)
 
     def test_go_with_trailing_comment(self):
         sql = "SELECT 1\nGO -- end of batch\nSELECT 2"
@@ -398,12 +400,12 @@ ALTER TABLE users ADD email NVARCHAR(255);
 ALTER TABLE users ADD phone NVARCHAR(20);
 ALTER TABLE users ADD created_at DATETIME DEFAULT GETDATE();
 """
-        stmts = self.parser.split_statements(sql)
+        stmts = self.parser.split_for_extraction(sql)
         self.assertGreaterEqual(len(stmts), 3)
 
     def test_create_view_and_select(self):
         sql = "CREATE VIEW active_users AS SELECT * FROM users WHERE active = 1;\nSELECT * FROM active_users;"
-        stmts = self.parser.split_statements(sql)
+        stmts = self.parser.split_for_extraction(sql)
         self.assertGreaterEqual(len(stmts), 2)
 
     def test_transaction_statements(self):

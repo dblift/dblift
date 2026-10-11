@@ -263,6 +263,16 @@ class HybridParser(_SqlglotBuildersMixin, SqlParserInterface):
             )
         return self.regex_parser.split_statements(sql_content)
 
+    def split_for_extraction(self, sql_content: str, strict_tokenizer: bool = False) -> List[str]:
+        """Statements for extraction: the regex parser's own extraction split."""
+        return self.regex_parser.split_for_extraction(
+            sql_content, strict_tokenizer=strict_tokenizer
+        )
+
+    def split_for_analysis(self, sql_content: str, strict_tokenizer: bool = False) -> List[str]:
+        """Statements for analysis: the regex parser's own analysis split."""
+        return self.regex_parser.split_for_analysis(sql_content, strict_tokenizer=strict_tokenizer)
+
     def validate_sql(self, sql_content: str) -> Dict[str, Any]:
         """Validate SQL using both parsers.
 
@@ -319,7 +329,7 @@ class HybridParser(_SqlglotBuildersMixin, SqlParserInterface):
 
         objects: List[SqlObject] = []
         try:
-            statements = self.split_statements(sql_content)
+            statements = self.split_for_extraction(sql_content)
         except UnsafeStatementSplitError:
             # an already-split statement may be refused by the execution splitter
             # (e.g. a PL/SQL unit without its '/'); for extraction the text is one statement
@@ -378,7 +388,7 @@ class HybridParser(_SqlglotBuildersMixin, SqlParserInterface):
             return deps
 
         try:
-            for stmt_text in self.split_statements(sql_content):
+            for stmt_text in self.split_for_extraction(sql_content):
                 if self._should_skip_dependency_statement(stmt_text):
                     continue
                 try:

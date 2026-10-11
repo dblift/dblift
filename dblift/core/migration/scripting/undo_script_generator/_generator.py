@@ -184,7 +184,10 @@ class UndoScriptGenerator(_UndoReversersMixin, _UndoExtractorsMixin):
         if not parse_result.success or not parse_result.statements:
             # Fallback to simple statement splitting
             statements = parse_migration_sql(
-                self.sql_analyzer, migration.content, self.logger or DbliftLogger()
+                self.sql_analyzer,
+                migration.content,
+                self.logger or DbliftLogger(),
+                for_analysis=True,
             )
             undo_statements = []
             for statement in reversed(statements):

@@ -125,28 +125,37 @@ class TestPostgresNestedBlockComments(unittest.TestCase):
 
 
 class TestSqlServerNestedBlockComments(unittest.TestCase):
-    """T-SQL documents that nested comments are supported."""
+    """The server nests block comments, sqlcmd's lexer does not (docs/sql-parsing/sqlserver.md §3).
+
+    The splitter reads as the client does: a batch ends at a ``GO`` line only, so a script
+    without ``GO`` is one batch and its text goes to the server verbatim. The server reads the
+    nested comment, so ``DROP TABLE victim`` never runs; an inner ``/*`` without its ``*/`` is
+    the server's ``Msg 113``. Extraction still reads nested comments
+    (``test_extraction_nested_block_comments.py``).
+    """
 
     def setUp(self):
         self.parser = SqlServerRegexParser()
 
-    def test_issue_example_keeps_drop_inside_the_comment(self):
-        stmts = self.parser.split_statements(ISSUE_EXAMPLE)
-        self.assertEqual(stmts, ["SELECT 1;"])
+    def test_issue_example_is_one_batch_the_server_reads_as_a_comment_and_a_select(self):
+        self.assertEqual(self.parser.split_statements(ISSUE_EXAMPLE), [ISSUE_EXAMPLE])
 
     def test_three_deep(self):
-        stmts = self.parser.split_statements(THREE_DEEP)
-        self.assertEqual(stmts, ["SELECT 1;"])
+        self.assertEqual(self.parser.split_statements(THREE_DEEP), [THREE_DEEP])
 
-    def test_unterminated_inner_comment_swallows_rest_of_file(self):
-        # an unterminated block comment is refused, not swallowed
-        with self.assertRaises(UnsafeStatementSplitError):
-            self.parser.split_statements(UNTERMINATED_INNER)
+    def test_unterminated_inner_comment_is_one_batch_the_server_rejects(self):
+        self.assertEqual(self.parser.split_statements(UNTERMINATED_INNER), [UNTERMINATED_INNER])
 
-    def test_three_deep_with_unterminated_middle_swallows_rest_of_file(self):
-        # an unterminated block comment is refused, not swallowed
-        with self.assertRaises(UnsafeStatementSplitError):
-            self.parser.split_statements(THREE_DEEP_UNTERMINATED_MIDDLE)
+    def test_three_deep_with_unterminated_middle_is_one_batch_the_server_rejects(self):
+        self.assertEqual(
+            self.parser.split_statements(THREE_DEEP_UNTERMINATED_MIDDLE),
+            [THREE_DEEP_UNTERMINATED_MIDDLE],
+        )
+
+    def test_a_go_cut_inside_a_comment_the_server_holds_open_leaves_it_unclosed(self):
+        # sqlcmd cuts at the second GO; the first half still has an open comment for the server
+        script = "SELECT 1 /* a\nGO\n/* b */\nGO\n*/"
+        self.assertEqual(self.parser.split_statements(script), ["SELECT 1 /* a\nGO\n/* b */", "*/"])
 
 
 class TestDuckDBNestedBlockComments(unittest.TestCase):
