@@ -343,12 +343,11 @@ class ExecutionEngine:
         if placeholder_service:
             content_override = placeholder_service.replace_placeholders(migration.content)
 
-        # Dialects with script-level preprocessing (Oracle SQL*Plus today) get their
-        # context extracted + variable substitution applied via quirks hooks. Must
-        # run after placeholder substitution so ${...} fragments are already
-        # resolved. Directive lines are not touched here: the dialect splitter
-        # reads them (a ``PROMPT`` or ``SET`` line never merges with the next
-        # statement, and ``WHENEVER SQLERROR`` reaches ``_execute_statements``).
+        # Dialects with script-level context (Oracle SQL*Plus today) get it
+        # extracted via the quirks hook, after placeholder substitution so ${...}
+        # fragments are already resolved. The script text is not touched here:
+        # the dialect splitter reads directive lines and substitutes variables
+        # (``WHENEVER SQLERROR`` reaches ``_execute_statements``).
         self._current_sqlplus_ctx = None
         quirks = ProviderRegistry.get_quirks(dialect_key)
         if quirks.supports_sqlplus_preprocessing:
@@ -357,9 +356,6 @@ class ExecutionEngine:
             self._current_sqlplus_ctx = ctx
             for msg in getattr(ctx, "prompts", []) or []:
                 self.log.info(f"[PROMPT] {msg}")
-            substituted = quirks.apply_script_substitution(base, ctx)
-            if substituted != base:
-                content_override = substituted
 
         content = content_override if content_override is not None else migration.content
         if not content:

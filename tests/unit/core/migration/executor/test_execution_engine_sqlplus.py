@@ -55,30 +55,16 @@ class TestSqlplusContextExtraction:
 
         assert engine._current_sqlplus_ctx is None
 
-    def test_define_substitution_applied_before_parsing(self):
+    def test_script_text_reaches_the_splitter_unsubstituted(self):
         engine = _make_engine("oracle")
         migration = _make_sql_migration("DEFINE owner = APP_SCHEMA\nSELECT * FROM &owner.users;")
         result = MagicMock()
 
         engine._parse_sql_statements(migration, result)
 
-        # The analyzer receives script text after SQLPlus substitution.
+        # Variables are the splitter's (positional), not a whole-script pre-pass.
         content_arg = engine.sql_analyzer.split_statements.call_args.args[0]
-        assert content_arg is not None
-        assert "&owner" not in content_arg
-        assert "APP_SCHEMA" in content_arg
-
-    def test_define_off_skips_substitution(self):
-        engine = _make_engine("oracle")
-        migration = _make_sql_migration(
-            "SET DEFINE OFF\nDEFINE owner = APP\nSELECT * FROM &owner.t;"
-        )
-        result = MagicMock()
-
-        engine._parse_sql_statements(migration, result)
-
-        ctx = engine._current_sqlplus_ctx
-        assert ctx.define_on is False
+        assert content_arg == migration.content
 
     def test_prompt_messages_logged(self):
         engine = _make_engine("oracle")
@@ -211,7 +197,6 @@ class TestSqlplusDirectiveApostrophes:
 
         statements = engine._parse_sql_statements(migration, MagicMock())
 
-        assert engine._current_sqlplus_ctx.defines == {"OWNER": "APP"}
         assert engine._current_sqlplus_ctx.prompts == ["Loading"]
         assert statements == ["WHENEVER SQLERROR CONTINUE;", "SELECT * FROM APP.t;"]
 
@@ -253,6 +238,7 @@ class TestDirectivesAreTheSplittersNotThePrePass:
     """Directive lines reach the splitter intact: it records, rewrites or refuses them."""
 
     def test_include_directive_fails_the_migration_instead_of_being_dropped(self):
+        """Section 6: `@@file` is rejected, naming the directive and line, never dropped."""
         engine = _make_engine("oracle")
         engine.sql_analyzer = SqlAnalyzer(dialect="oracle", logger=engine.log)
         result = MagicMock()
@@ -265,11 +251,13 @@ class TestDirectivesAreTheSplittersNotThePrePass:
         assert "'@@'" in result.set_error.call_args.args[0]
 
     def test_statements_after_exit_are_not_executed(self):
+        """Section 6: everything after `EXIT` is not executed (row 17)."""
         statements = _oracle_statements("CREATE TABLE a (id NUMBER);\nEXIT\nDROP TABLE a;\n")
 
         assert statements == ["CREATE TABLE a (id NUMBER);"]
 
     def test_serveroutput_still_read_from_the_context(self):
+        """Section 6: `SET SERVEROUTPUT` (abbreviated as SQL*Plus allows) is recorded; execution reads it."""
         engine = _make_engine("oracle")
         engine.sql_analyzer = SqlAnalyzer(dialect="oracle", logger=engine.log)
 

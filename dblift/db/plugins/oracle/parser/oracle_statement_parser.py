@@ -5,7 +5,8 @@ slash delimiter handling and PL/SQL unit detection from the statement head.
 """
 
 import logging
-from typing import Callable, List, Optional, Tuple
+import re
+from typing import Callable, Dict, List, Optional, Tuple
 
 from dblift.core.exceptions import (
     ParserError,
@@ -22,6 +23,11 @@ from dblift.db.plugins.oracle.parser._unit_heads import MAX_HEAD_TOKENS, head_de
 
 logger = logging.getLogger(__name__)
 
+_SET_DEFINE_ARG = re.compile(r"^\s*\w+\s+\w+\s+(\S+)")
+_DEFINE_ASSIGN = re.compile(r"^\s*\w+\s+(\w+)\s*=\s*(.*?)\s*;?\s*$", re.DOTALL)
+_UNDEFINE_NAMES = re.compile(r"^\s*\w+\s+(.*?)\s*;?\s*$", re.DOTALL)
+_EXEC_BODY = re.compile(r"^\s*\w+\s*(.*?)\s*$", re.DOTALL)
+
 
 class OracleStatementParser(BaseStatementParser):
     """Oracle-specific statement parser.
@@ -29,12 +35,16 @@ class OracleStatementParser(BaseStatementParser):
     A statement is a PL/SQL unit or not from its first tokens
     (``_unit_heads.head_decided``). A unit ends only at a ``/`` alone on its
     line; any other statement ends at a ``;`` that is last on its line or at
-    such a ``/``. Nothing inside a unit is counted.
+    such a ``/``. Nothing inside a unit is counted. Statement text is verbatim
+    except for SQL*Plus substitution variables (``&x``, ``&&x``, ``&x.suffix``),
+    which ``DEFINE`` / ``SET DEFINE`` / ``UNDEFINE`` lines govern from where
+    they stand to the end of the script.
 
     A ``DIRECTIVE`` token (a SQL*Plus client line, section 6 of the spec) ends
     whatever statement was being read and is recorded, never sent to the
     server: ``WHENEVER SQLERROR`` is also projected to its string, because the
-    executor applies that policy positionally.
+    executor applies that policy positionally. ``EXEC[UTE] stmt`` is rewritten to
+    the unit ``BEGIN stmt; END;`` and sent to the server.
     """
 
     TERMINATOR_RESPECTS_PARENS = True
@@ -60,6 +70,10 @@ class OracleStatementParser(BaseStatementParser):
         # Text of the delimiter that ended the previous statement (a "/" right
         # after a ";"-ended statement re-executes it).
         self._last_terminator: Optional[str] = None
+        # SQL*Plus substitution state: ON with "&" until a SET DEFINE says otherwise.
+        self._define_on = True
+        self._define_char = "&"
+        self._defines: Dict[str, str] = {}
 
     def split(self) -> List[Statement]:
         """Cut the token stream into Statement records (see ``_split_with_rendered``)."""
@@ -83,6 +97,7 @@ class OracleStatementParser(BaseStatementParser):
         def emit(terminator: Optional[Token], is_tail: bool) -> None:
             rendered = self._statement_text(current_statement_tokens, is_tail=is_tail)
             if rendered and rendered not in ("/", ";"):
+                rendered = self._substitute(rendered, self._first_line(current_statement_tokens))
                 records.append(self._record(current_statement_tokens, rendered, terminator))
 
         for idx, token in enumerate(self.tokens):
@@ -154,6 +169,10 @@ class OracleStatementParser(BaseStatementParser):
         """
         directive = classify_directive(token.text)
         assert directive is not None  # the tokenizer only emits recognised directives
+        if directive.action is DirectiveAction.EXEC:
+            return self._exec_record(token)
+        if directive.action is DirectiveAction.DEFINE:
+            self._apply_define(directive.name, token.text)
         if directive.action is DirectiveAction.REJECT:
             raise UnsupportedMetaCommandError(
                 f"Unsupported SQL*Plus directive {directive.name!r} at line {token.line}; "
@@ -168,6 +187,73 @@ class OracleStatementParser(BaseStatementParser):
                 "expected EXIT or CONTINUE"
             )
         return record, token.text if token.text.endswith(";") else token.text + ";"
+
+    @staticmethod
+    def _first_line(tokens: List[Token]) -> int:
+        first = next(t for t in tokens if t.type != TokenType.COMMENT and t.text != "/")
+        return first.line
+
+    def _exec_record(self, token: Token) -> Tuple[Statement, str]:
+        """``EXEC[UTE] stmt[;]`` is the PL/SQL unit ``BEGIN stmt; END;`` (spec section 6)."""
+        body = _EXEC_BODY.match(token.text)
+        stmt = body.group(1) if body else ""
+        if stmt.endswith(";"):
+            stmt = stmt[:-1].rstrip()
+        if not stmt:
+            raise UnsupportedMetaCommandError(
+                f"EXECUTE on line {token.line} has no statement to run"
+            )
+        text = self._substitute(f"BEGIN {stmt}; END;", token.line)
+        return Statement(text=text, line=token.line, terminator=None, kind="sql"), text
+
+    def _apply_define(self, name: str, line: str) -> None:
+        """Update the substitution state from a ``DEFINE``-action directive line."""
+        if name == "SET DEFINE":
+            arg = _SET_DEFINE_ARG.match(line)
+            value = arg.group(1).rstrip(";") if arg else ""
+            if value.upper() == "OFF":
+                self._define_on = False
+            elif value.upper() == "ON":
+                self._define_on = True
+            elif len(value) == 1:
+                self._define_on = True
+                self._define_char = value
+        elif name == "UNDEFINE":
+            names = _UNDEFINE_NAMES.match(line)
+            for var in (names.group(1) if names else "").replace(";", " ").split():
+                self._defines.pop(var.upper(), None)
+        else:
+            assign = _DEFINE_ASSIGN.match(line)
+            if assign:
+                value = assign.group(2)
+                if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
+                    value = value[1:-1]
+                self._defines[assign.group(1).upper()] = value
+
+    def _substitute(self, text: str, line: int) -> str:
+        """Replace ``&x`` / ``&&x`` / ``&x.`` with the defined values.
+
+        SQL*Plus substitutes variables before sending the command to the
+        server, so a reference inside a literal is replaced too. The ``.``
+        after a name ends it and is consumed. A reference to an undefined
+        variable would make SQL*Plus prompt, which a migration cannot answer:
+        refused (so ``&&x`` never has an undefined value to define).
+        """
+        if not self._define_on or self._define_char not in text:
+            return text
+        char = re.escape(self._define_char)
+
+        def replace(m: "re.Match[str]") -> str:
+            var = m.group(2).upper()
+            if var not in self._defines:
+                where = line + text.count("\n", 0, m.start())
+                raise UnsafeStatementSplitError(
+                    f"{self._define_char}{m.group(2)} on line {where} is undefined; "
+                    "SQL*Plus would prompt for it"
+                )
+            return self._defines[var]
+
+        return re.sub(f"({char}{char}?)(\\w+)\\.?", replace, text)
 
     def _warn_ignored(self, rest: List[Token], exit_token: Token) -> None:
         """Log what follows an ``EXIT``/``QUIT``: SQL*Plus never runs it."""

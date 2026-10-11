@@ -8,22 +8,17 @@ ends a statement on ``;`` or ``/``. Any directive without a trailing
 user's real statement (when ``is_sqlplus_command`` matched the merged
 text) or pushed an invalid blob to the execution provider.
 
-The runtime fix added :func:`terminate_sqlplus_directives` to append
-``;`` to every directive line. That kept the regex / tokenizer paths
-in sync only as long as both sides remembered to use the same
-directive corpus — which is exactly the kind of drift PR-E warned
-about.
+The first fix appended ``;`` to every directive line in a pre-pass; the
+splitter now reads directives itself (see below).
 
 The structural fix is :data:`SQLPLUS_DIRECTIVES` — a single tuple
 that both ``is_sqlplus_command`` and the corpus this test walks are
 derived from. For each entry we assert:
 
 1. each ``examples`` entry matches the directive's own pattern,
-2. each example, when fed through ``terminate_sqlplus_directives``
-   followed by ``CREATE TABLE t (id NUMBER);`` on a separate line,
-   produces a script in which the trailing CREATE TABLE survives —
-   i.e. the directive is recognised, terminated, and stripped before
-   the SQL statement.
+2. each example, followed by ``CREATE TABLE t (id NUMBER);`` on a separate
+   line, is recorded, refused or ends the script, and never swallows the
+   CREATE TABLE.
 
 Adding a directive without an example is a hard error here: the test
 asserts every entry in ``SQLPLUS_DIRECTIVES`` has at least one
@@ -118,9 +113,14 @@ class TestSqlplusDirectiveTerminationCorpus(unittest.TestCase):
                     # The directive's own text reaches execution only for the
                     # WHENEVER SQLERROR policy line.
                     for stmt in stmts:
-                        if not stmt.startswith("CREATE TABLE"):
-                            self.assertFalse(d.filter_from_execution, stmts)
-                            self.assertIn("WHENEVER SQLERROR", stmt)
+                        if stmt.startswith("CREATE TABLE"):
+                            continue
+                        if action is DirectiveAction.EXEC:
+                            # EXEC[UTE] is rewritten to a PL/SQL unit (spec section 6).
+                            self.assertTrue(stmt.startswith("BEGIN "), stmts)
+                            continue
+                        self.assertFalse(d.filter_from_execution, stmts)
+                        self.assertIn("WHENEVER SQLERROR", stmt)
 
     def test_at_script_directives_do_not_emit_tokenizer_warning(self) -> None:
         raw = "@ /tmp/other_script.sql\n@@ relative_script.sql\nCREATE TABLE t_at (id NUMBER);\n"

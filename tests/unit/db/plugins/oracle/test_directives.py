@@ -158,8 +158,6 @@ def test_whenever_sqlerror_with_an_unknown_action_is_refused():
         "WHENEVER OSERROR EXIT",
         "DEFINE x = 1",
         "UNDEFINE x",
-        "EXEC null",
-        "EXECUTE null",
     ],
 )
 def test_recognised_directives_are_recorded_not_sent_to_the_server(line):
