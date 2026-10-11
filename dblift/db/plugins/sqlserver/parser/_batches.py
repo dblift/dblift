@@ -163,8 +163,11 @@ class _Scanner:
             )
         tail = _GO_TAIL.match(rest, word.end())
         if tail is None:
+            variable = _VARIABLE_REFERENCE.search(rest, word.end())
+            hint = f"; {variable.group()} is not substituted" if variable else ""
             raise UnsafeStatementSplitError(
                 f"text after GO on line {line_no}: only a count and a '--' comment may follow it"
+                f"{hint}"
             )
         if commented:
             raise UnsafeStatementSplitError(

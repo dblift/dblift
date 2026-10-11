@@ -155,7 +155,9 @@ def test_the_refusal_names_the_line_of_a_reference_inside_a_multi_line_string():
 
 
 def test_go_n_with_a_variable_is_refused_as_text_after_go_not_substituted():
-    with pytest.raises(UnsafeStatementSplitError, match="text after GO"):
+    with pytest.raises(
+        UnsafeStatementSplitError, match=r"text after GO.*\$\(n\) is not substituted"
+    ):
         scan_batches("SELECT 1\nGO $(n)\n")
 
 

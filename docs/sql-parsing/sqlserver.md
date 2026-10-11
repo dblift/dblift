@@ -140,6 +140,10 @@ One consequence is the server's, not the splitter's: `CREATE PROCEDURE`,
 A directive is recognised only at the first token of a line, outside strings
 and comments.
 
+A command word after a comment on its line (`/* c */ EXIT`), followers other
+than blank, end of line, `- = ( [ ' /`, and the `$(name)` grammar beyond
+`$ (x)` were not measured; the splitter refuses them, the safe direction.
+
 ## 7. Raw blocks
 
 None.
@@ -229,49 +233,27 @@ count and comment, a directive prefix list.
 | `GO` with a count above 1 000 000 | rejected (row 30) | `split_statements` returns the batch that many times; sqlcmd accepts any count |
 | Per-statement error location inside a batch | the error names the batch and the server's line number within it | consequence of the batch decision; the extractor may annotate statement spans for reports |
 
-## 12. Current implementation and the gaps this spec closes
+## 12. Current implementation
 
-Code in `dblift/db/plugins/sqlserver/parser/`: `sqlserver_tokenizer.py`,
-`sqlserver_statement_parser.py`, `sqlserver_regex_parser.py`,
-`tsql_batch_separator.py`; shared `core/sql_parser/base_tokenizer.py`,
-`base_statement_parser.py`; fallbacks in `common/base_parser.py` and
-`core/migration/sql/sql_analyzer.py`.
+Code in `dblift/db/plugins/sqlserver/parser/`:
 
-Facts established by reading it; each is a conformance row above or a reason
-for a rule:
+- `_batches.py`: `scan_batches(script)` is the only function `split_statements` calls. It reproduces
+  the client's lexer: strings, bracketed and quoted identifiers, `--` comments, block comments that
+  end at the first `*/`, a command word as the first token of a line, the `GO` line grammar of §4 and
+  the refusals of §6. A `GO n` batch carries its count; the scanner never reads a `;`.
+- `sqlserver_regex_parser.py`: `SqlServerRegexParser.split()` returns one `Statement` per batch
+  (`terminator="GO"` or none, `repeat`); `split_statements()` is its projection (`GO n` returns the
+  batch n times, `GO 0` is logged and returns nothing) and has no fallback;
+  `split_for_analysis()` divides each batch into its statements for callers that read a script
+  statement by statement; `split_for_extraction()` is the previous tokenizer-based splitter,
+  unchanged, and still serves `parse_sql`, object extraction and the sqlglot fallback. It still
+  carries the defects of rows 13, 15 and 16 (it cuts `SELECT 1 AS go;` at the alias).
+- `sqlserver_tokenizer.py`, `sqlserver_statement_parser.py`, `tsql_batch_separator.py`: kept only for
+  that extraction path.
+- `quirks.py` `non_transactional_sql_patterns` (§8) and `execution_statement.classify_execution_statement`,
+  which divides a batch so that any statement matching a pattern makes the batch non-transactional.
 
-- `GO` is recognised at **any** token position when followed by whitespace or
-  `;` (`sqlserver_tokenizer.py:44-62`): `SELECT 1 AS go;` returns `SELECT 1 AS`
-  and `SELECT go INT FROM t;` returns `SELECT` · `INT FROM t;` (rows 15, 16;
-  measured). `GO 5` leaves `5` as the first token of the next statement
-  (row 8). `GO;` is accepted where sqlcmd errors (row 14).
-- Every `;` at block depth 0 ends a statement
-  (`sqlserver_statement_parser.py:126-144`), so batch-scoped state is broken
-  (row 3) and a procedure body without `BEGIN` is cut at its first `;` (row 4).
-- `CASE … END` inside a `BEGIN` block decrements the depth, closing the body
-  early; `BEGIN DISTRIBUTED TRANSACTION` opens a block that never closes
-  because the look-ahead re-reads `DISTRIBUTED`
-  (`sqlserver_statement_parser.py:118-122`); `END CONVERSATION` decrements.
-  Depth is never reset across `GO`. All moot under the batch decision.
-- `$` is an unknown character (`sqlserver_tokenizer.py:32`): under strict
-  mode `OUTPUT $action` and `$PARTITION.fn()` are rejected (row 10).
-- sqlcmd directives are glued onto the following statement and sent to the
-  server (§6).
-- The non-strict fallback `_split_batch_intelligently`
-  (`sqlserver_regex_parser.py:158-228`) splits at line-start DDL keywords and
-  **drops the text before the first match** when there are two or more.
-- A second copy of the GO and batch helpers lives in
-  `common/base_parser.py:421-570`, reachable only from tests, with a different
-  GO regex and an `OR REPLACE` (not `OR ALTER`) procedure pattern.
-- The live not-transactional list (`quirks.py:125-142`) is the four FULLTEXT
-  patterns; `can_execute_in_transaction` in the statement parser is a
-  separate, dead list.
-
-Tests that pin current behaviour and must be re-pointed at the conformance
-table: `tests/unit/test_tokenization_sqlserver.py` (17),
-`test_tokenization_sqlserver_coverage.py` (15),
-`tests/unit/core/sql_parser/test_sqlserver_regex_parser_extended.py` (61,
-mostly fallback helpers that disappear),
-`tests/unit/core/migration/sql/test_statement_splitter_verbatim.py::TestSqlServerVerbatim`
-(6), `test_nested_block_comments.py` (4),
-`tests/integration/parsers/test_sqlserver_parser.py` (16, live).
+Tests that pin it: `tests/unit/core/sql_parser/test_sqlserver_spec_conformance.py` (every row of §10),
+`tests/unit/db/plugins/sqlserver/` (`test_batches.py`, `test_go_line.py`, `test_client_commands.py`,
+`test_split_for_analysis.py`, `test_extraction_keeps_statements.py`,
+`test_non_transactional_statements.py`).
