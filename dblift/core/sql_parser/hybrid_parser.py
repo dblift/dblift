@@ -269,6 +269,10 @@ class HybridParser(_SqlglotBuildersMixin, SqlParserInterface):
             sql_content, strict_tokenizer=strict_tokenizer
         )
 
+    def split_for_analysis(self, sql_content: str, strict_tokenizer: bool = False) -> List[str]:
+        """Statements for analysis: the regex parser's own analysis split."""
+        return self.regex_parser.split_for_analysis(sql_content, strict_tokenizer=strict_tokenizer)
+
     def validate_sql(self, sql_content: str) -> Dict[str, Any]:
         """Validate SQL using both parsers.
 

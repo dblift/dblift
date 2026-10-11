@@ -24,6 +24,10 @@ MAX_GO_COUNT = 1_000_000
 #: (``go.id``, ``quit;``).
 _COMMAND_FOLLOWERS = frozenset(" \t\r-=(['/")
 
+#: Blanks sqlcmd was not measured on: it may or may not take ``GO`` followed by one as a command.
+_UNMEASURED_BLANKS = frozenset("\x0b\x0c")
+_LONE_CR_GO = re.compile(r"\r(?!\Z)[ \t]*GO(?![A-Za-z0-9_@#$])", re.IGNORECASE)
+
 _WORD = re.compile(r"[A-Za-z_@#$][A-Za-z0-9_@#$]*")
 _GO_TAIL = re.compile(r"[ \t\r]*(?:([0-9]+)[ \t\r]*)?(?:--.*)?\Z", re.DOTALL)
 _OPENER = re.compile(r"'|\[|\"|/\*|--")
@@ -82,6 +86,11 @@ class _Scanner:
 
     def _scan_line(self, line: str, line_no: int) -> Optional[int]:
         """Advance the lexical state over one line; the ``GO`` count when the line is a ``GO``."""
+        if self.state is None and _LONE_CR_GO.search(line):
+            raise UnsafeStatementSplitError(
+                f"text after GO on line {line_no}: a lone carriage return is not a line "
+                "break sqlcmd was measured on; end the line with a newline"
+            )
         i, size = 0, len(line)
         at_head = self.state in (None, "/*")
         commented = False
@@ -126,6 +135,10 @@ class _Scanner:
         if word is None or word.group().upper() != "GO":
             return None
         follower = rest[word.end() : word.end() + 1]
+        if follower in _UNMEASURED_BLANKS:
+            raise UnsafeStatementSplitError(
+                f"text after GO on line {line_no}: only a count and a '--' comment may follow it"
+            )
         if follower and follower not in _COMMAND_FOLLOWERS and follower != ";":
             return None
         tail = _GO_TAIL.match(rest, word.end())

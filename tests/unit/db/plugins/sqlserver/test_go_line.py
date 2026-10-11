@@ -172,3 +172,16 @@ def test_a_count_with_more_digits_than_the_limit_allows_is_refused_not_a_crash(d
 
 def test_a_count_of_only_zeros_is_go_zero_however_long():
     assert scan_batches("SELECT 1\nGO " + "0" * 5000 + "\n")[0].repeat == 0
+
+
+@pytest.mark.parametrize(
+    "script",
+    [
+        "SELECT 1\nGO\x0b\nSELECT 2",
+        "SELECT 1\nGO\x0c\nSELECT 2",
+        "SELECT 1\rGO\rSELECT 2",
+    ],
+)
+def test_go_followed_by_an_unmeasured_blank_or_a_lone_cr_is_refused(script):
+    with pytest.raises(UnsafeStatementSplitError, match="text after GO"):
+        scan_batches(script)
