@@ -177,7 +177,7 @@ None. The scanner (`_script.py`) is one reader for both engines: it holds the ac
 | 62 | `help 'contents';\nSELECT 1;` | `help 'contents'` · `SELECT 1` help with an argument is the server's HELP statement |
 | 63 | `use db\nSELECT 1;` | `UnsupportedMetaCommandError` line 1, `use` without a terminator is a client command that ends at the end of the line |
 | 64 | `USE db;\nSELECT 1;` | `USE db` · `SELECT 1` with its terminator USE db goes to the server like any statement (a live run would have to name the database, so this row has no live script) |
-| 65 | `SET sql_mode = 'NO_BACKSLASH_ESCAPES';\nSELECT 'C:\\';` | `UnsafeStatementSplitError` line 1: the mysql client follows the session's NO_BACKSLASH_ESCAPES and reads `'C:\'` as a complete string; a splitter that cannot see the session refuses the script |
+| 65 | `SET sql_mode = 'NO_BACKSLASH_ESCAPES';\nSELECT 'C:\\';` | `UnsafeStatementSplitError` line 1: the mysql client follows the session's NO_BACKSLASH_ESCAPES and reads `'C:\'` as a complete string; the splitter, reading the literal in the default mode, finds it unterminated and refuses the script |
 | 66 | `CREATE FUNCTION f() RETURNS INT DETERMINISTIC BEGIN DECLARE x INT; SET x = 1; RETURN x; END; SELECT 2;` | `CREATE FUNCTION f() RETURNS INT DETERMINISTIC BEGIN DECLARE x INT; SET x = 1; RETURN x; END` · `SELECT 2` extension (§5) |
 | 67 | `CREATE EVENT ev ON SCHEDULE EVERY 1 DAY DO BEGIN SELECT 1; SELECT 2; END; SELECT 3;` | `CREATE EVENT ev ON SCHEDULE EVERY 1 DAY DO BEGIN SELECT 1; SELECT 2; END` · `SELECT 3` extension (§5) |
 | 68 | `ALTER EVENT ev DO BEGIN SELECT 3; SELECT 4; END; SELECT 5;` | `ALTER EVENT ev DO BEGIN SELECT 3; SELECT 4; END` · `SELECT 5` extension (§5) |

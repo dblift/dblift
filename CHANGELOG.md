@@ -199,8 +199,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `DELIMITER` lines to run with `mysql < file`.
 - Objects and statements extracted from a MariaDB script carry the dialect
   `mariadb` instead of `mysql`.
-- `parse_sql` reports a script the splitter refuses as an error in `errors`, for
-  every dialect, instead of failing the parse; object extraction returns the
+- `parse_sql` reports a script the splitter refuses as an error in `errors` on
+  Oracle, SQL Server, MySQL and MariaDB, instead of failing the parse (PostgreSQL
+  already reported it that way); object extraction returns the
   objects it finds in the text (none when there are none) instead of raising.
   Execution still refuses the script.
 

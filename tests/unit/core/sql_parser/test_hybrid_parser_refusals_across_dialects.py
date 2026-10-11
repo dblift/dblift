@@ -1,7 +1,7 @@
 """A script the splitter refuses is reported, never raised, by parse_sql and extract_objects.
 
 Both refusal classes (``UnsupportedMetaCommandError``, ``UnsafeStatementSplitError``) behave the
-same, for every dialect: ``parse_sql`` keeps the parse and puts the refusal message in ``errors``;
+same on Oracle, SQL Server, MySQL and MariaDB (PostgreSQL's own parser reports it first): ``parse_sql`` keeps the parse and puts the refusal message in ``errors``;
 ``extract_objects`` reads the text as one statement (as it does for an already-split statement),
 so it returns the objects found there, none when there are none. Execution still refuses.
 """
