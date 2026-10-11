@@ -14,8 +14,18 @@ from typing import List, Optional, Tuple
 
 from dblift.core.exceptions import UnsafeStatementSplitError
 
+#: ``GO n`` hands the batch to the server n times; a count above this is refused
+#: (``split_statements`` returns one string per repetition).
+MAX_GO_COUNT = 1_000_000
+
+#: What may follow a command word for sqlcmd to take the line as a command (measured): a blank, the
+#: end of the line, ``-``, ``=``, ``(``, ``[``, ``'`` or ``/``. After ``.``, ``,``, ``;``, ``+``,
+#: ``)``, ``*``, ``:``, ``|``, ``<`` or a letter it sends the line to the server as text
+#: (``go.id``, ``quit;``).
+_COMMAND_FOLLOWERS = frozenset(" \t\r-=(['/")
+
 _WORD = re.compile(r"[A-Za-z_@#$][A-Za-z0-9_@#$]*")
-_GO_LINE_END = re.compile(r"[ \t\r]*(?:--.*)?\Z", re.DOTALL)
+_GO_TAIL = re.compile(r"[ \t\r]*(?:([0-9]+)[ \t\r]*)?(?:--.*)?\Z", re.DOTALL)
 _OPENER = re.compile(r"'|\[|\"|/\*|--")
 _CLOSER = {"'": "'", "[": "]", '"': '"'}
 _LEXEME = {
@@ -38,7 +48,7 @@ class Batch:
 
 def scan_batches(script: str) -> List[Batch]:
     """The batches of ``script``; refuses what ``sqlcmd`` would reject or silently act on."""
-    return _Scanner(script[1:] if script.startswith("﻿") else script).run()
+    return _Scanner(script[1:] if script.startswith("\ufeff") else script).run()
 
 
 class _Scanner:
@@ -74,12 +84,13 @@ class _Scanner:
         """Advance the lexical state over one line; the ``GO`` count when the line is a ``GO``."""
         i, size = 0, len(line)
         at_head = self.state in (None, "/*")
+        commented = False
         while i < size:
             if self.state == "/*":
                 close = line.find("*/", i)
                 if close < 0:
                     return None
-                self.state, i = None, close + 2
+                self.state, i, commented = None, close + 2, True
                 continue
             if self.state is not None:
                 i = self._close_lexeme(line, i)
@@ -95,7 +106,7 @@ class _Scanner:
                 if line.startswith("--", i):
                     return None
                 at_head = False
-                count = self._command(line, i)
+                count = self._command(line, i, line_no, commented)
                 if count is not None:
                     return count
             opener = _OPENER.search(line, i)
@@ -108,13 +119,36 @@ class _Scanner:
         return None
 
     @staticmethod
-    def _command(line: str, i: int) -> Optional[int]:
-        """``GO`` alone on its line, a ``--`` comment allowed after it: a batch separator."""
+    def _command(line: str, i: int, line_no: int, commented: bool) -> Optional[int]:
+        """``GO`` as the first token of a line: its count; a refusal when the line is not a clean ``GO``."""
         rest = line[i:]
         word = _WORD.match(rest)
-        if word and word.group().upper() == "GO" and _GO_LINE_END.match(rest, word.end()):
-            return 1
-        return None
+        if word is None or word.group().upper() != "GO":
+            return None
+        follower = rest[word.end() : word.end() + 1]
+        if follower and follower not in _COMMAND_FOLLOWERS and follower != ";":
+            return None
+        if commented:
+            raise UnsafeStatementSplitError(
+                f"GO after a comment on line {line_no}: sqlcmd takes it as a command after one "
+                "comment and as text after two; put it first on its line"
+            )
+        if rest.startswith("--", word.end()):
+            raise UnsafeStatementSplitError(
+                f"GO on line {line_no}: GO must be followed by a blank, a count or end of line; "
+                "'--' directly after GO is read differently by sqlcmd clients"
+            )
+        tail = _GO_TAIL.match(rest, word.end())
+        if tail is None:
+            raise UnsafeStatementSplitError(
+                f"text after GO on line {line_no}: only a count and a '--' comment may follow it"
+            )
+        count = int(tail.group(1)) if tail.group(1) else 1
+        if count > MAX_GO_COUNT:
+            raise UnsafeStatementSplitError(
+                f"GO {count} on line {line_no} exceeds the limit of {MAX_GO_COUNT}"
+            )
+        return count
 
     def _open(self, lexeme: str, line_no: int, index: int) -> None:
         self.state, self.opened = lexeme, (line_no, index + 1)

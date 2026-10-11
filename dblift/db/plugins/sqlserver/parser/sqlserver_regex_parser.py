@@ -70,7 +70,14 @@ class SqlServerRegexParser(EnhancedRegexParser):
 
         The scanner has no unknown characters, so ``strict_tokenizer`` changes nothing.
         """
-        return [s.text for s in self.split(sql_content) for _ in range(s.repeat)]
+        statements: List[str] = []
+        for record in self.split(sql_content):
+            if record.repeat == 0:
+                logger.info(
+                    "GO 0 follows the batch starting on line %d: it is not run", record.line
+                )
+            statements.extend([record.text] * record.repeat)
+        return statements
 
     def split_for_extraction(self, sql_content: str, strict_tokenizer: bool = False) -> List[str]:
         """Split SQL content using tokenization-based logic.

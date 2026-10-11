@@ -113,7 +113,7 @@ def test_an_unterminated_lexeme_is_refused_with_its_position(script, what, line,
 
 
 def test_a_utf8_byte_order_mark_is_not_part_of_the_first_batch():
-    assert _texts("﻿SELECT 1\nGO\nSELECT 2") == ["SELECT 1", "SELECT 2"]
+    assert _texts("\ufeffSELECT 1\nGO\nSELECT 2") == ["SELECT 1", "SELECT 2"]
 
 
 def test_crlf_line_ends_keep_the_text_verbatim_and_still_separate():
