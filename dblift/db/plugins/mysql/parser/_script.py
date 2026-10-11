@@ -2,8 +2,8 @@
 
 docs/sql-parsing/mysql.md. A statement ends at the active delimiter (``;`` at first), which the
 client matches as a plain string outside quotes and comments; ``DELIMITER`` changes it. A few words
-at the start of a line (``exit``, ``source``, ...) and every backslash outside a quote or comment
-are client commands or client errors, never SQL. One documented extension goes beyond the client:
+at the start of a line are client commands; ``DELIMITER`` is the one read so far, the others pass
+through as text. One documented extension goes beyond the client:
 while the delimiter is ``;``, the ``BEGIN ... END`` body of a stored program stays whole.
 """
 
@@ -278,10 +278,16 @@ class _Scanner:
                 i += len(delimiter)
                 continue
             if ch == "#" or (text.startswith("--", i) and (i + 2 >= end or text[i + 2] in _BLANKS)):
+                if "\r" in text[i:end]:
+                    raise UnsafeStatementSplitError(
+                        f"comment on line {line_no} ends in a carriage return that is not part of "
+                        f"a line end: the {self.client} client reads the rest of the script as "
+                        "part of the comment and drops the statements in it"
+                    )
                 self._flush_word()
                 return
             if ch == "/" and text.startswith("/*", i):
-                i = self._open_comment(i, line_no)
+                i = self._open_comment(i, pos, line_no)
                 continue
             if self.exec_comment and text.startswith("*/", i):
                 self.exec_comment = False
@@ -345,7 +351,7 @@ class _Scanner:
             else:
                 self.program.word(word.upper())
 
-    def _open_comment(self, i: int, line_no: int) -> int:
+    def _open_comment(self, i: int, pos: int, line_no: int) -> int:
         text = self.text
         third = text[i + 2 : i + 3]
         executable = third == "!" or (self.mariadb and text.startswith("M!", i + 2))
@@ -361,9 +367,9 @@ class _Scanner:
             return i + (3 if third == "!" else 4)
         self._flush_word()
         self.block = "/*+" if third == "+" else "/*"
-        self.block_at = (line_no, i)
+        self.block_at = (line_no, i - pos)
         if third == "+" and not self.mariadb:
-            self.open_hint = (line_no, i)
+            self.open_hint = (line_no, i - pos)
         return i + (3 if third == "+" else 2)
 
     def _in_block(self, i: int, end: int, line_no: int) -> int:
@@ -419,6 +425,11 @@ class _Scanner:
                 f"unterminated block comment starting at line {line}, column {col + 1}"
             )
         self._flush_word()
+        if self.code and self.delimiter == ";" and self.program.open:
+            raise UnsafeStatementSplitError(
+                f"stored-program body opened at line {self.start_line} is not closed before the "
+                "end of the script"
+            )
         if self.code:
             self._emit(self.text[self.start :], None)
         return self.statements

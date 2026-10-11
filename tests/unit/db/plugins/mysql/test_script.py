@@ -378,10 +378,17 @@ def test_the_extension_is_off_under_a_custom_delimiter() -> None:
     assert sql(script) == ["CREATE PROCEDURE p() BEGIN SELECT 1; END; SELECT 2"]
 
 
-def test_a_body_without_its_end_runs_to_the_end_of_the_script() -> None:
-    assert sql("CREATE PROCEDURE p() BEGIN SELECT 1; SELECT 2;") == [
-        "CREATE PROCEDURE p() BEGIN SELECT 1; SELECT 2;"
-    ]
+def test_a_body_without_its_end_is_refused_at_the_end_of_the_script() -> None:
+    script = "SELECT 0;\nCREATE PROCEDURE p() BEGIN SELECT 1; SELECT 2;\nSELECT 3;"
+    with pytest.raises(UnsafeStatementSplitError, match="opened at line 2 is not closed"):
+        scan_script(script)
+
+
+def test_the_column_of_an_unterminated_comment_or_hint_is_in_its_line() -> None:
+    with pytest.raises(UnsafeStatementSplitError, match="line 3, column 3"):
+        scan_script("SELECT 1;\nSELECT 2;\n  /* open")
+    with pytest.raises(UnsafeStatementSplitError, match="hint starting at line 3, column 3"):
+        scan_script("SELECT 1;\nSELECT 2;\n  /*+ open")
 
 
 def test_the_statement_after_a_body_gets_its_own_line() -> None:
@@ -406,8 +413,20 @@ def test_crlf_becomes_lf_inside_strings_and_bodies_as_the_client_sends_it() -> N
 def test_a_carriage_return_alone_is_not_a_line_end_and_stays_in_a_literal() -> None:
     assert sql("SELECT 'a\rb';\r\n") == ["SELECT 'a\rb'"]
     assert sql("SELECT 1;\rSELECT 2;\r") == ["SELECT 1", "SELECT 2"]
-    assert sql("SELECT 1; # c\rSELECT 2;\r") == ["SELECT 1"]
-    assert sql("SELECT 1; -- c\rSELECT 2;\r") == ["SELECT 1"]
+
+
+@pytest.mark.parametrize("comment", ["# c", "-- c", "--", "/*! # c", "/*! -- c"])
+@pytest.mark.parametrize("mariadb", [False, True])
+def test_a_comment_line_that_holds_a_carriage_return_alone_is_refused(
+    comment: str, mariadb: bool
+) -> None:
+    script = f"SELECT 1;\nSELECT 2; {comment}\rSELECT 3;\r"
+    with pytest.raises(
+        UnsafeStatementSplitError, match="comment on line 2 ends in a carriage"
+    ) as e:
+        scan_script(script, mariadb=mariadb)
+    assert "client reads the rest of the script as part of the comment" in str(e.value)
+    assert sql("SELECT 1; # c\r\nSELECT 2;\r\n") == ["SELECT 1", "SELECT 2"]
 
 
 @pytest.mark.parametrize(
