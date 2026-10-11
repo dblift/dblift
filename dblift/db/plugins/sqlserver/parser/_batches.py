@@ -1,9 +1,11 @@
 """Cut a T-SQL script into the batches ``sqlcmd`` sends to the server.
 
-docs/sql-parsing/sqlserver.md sections 3 and 4. A batch ends at a ``GO`` line and
+docs/sql-parsing/sqlserver.md sections 3, 4 and 6. A batch ends at a ``GO`` line and
 nothing else: ``;`` never ends one and no ``BEGIN``/``END`` is counted. The scanner
 reproduces the *client's* lexer, which is simpler than the server's: a block comment
-ends at the first ``*/`` (the server nests them; its text is passed through verbatim).
+ends at the first ``*/`` (the server nests them; its text is passed through verbatim),
+and a command word that is the first token of a line is a client command or a client
+error, never SQL.
 """
 
 from __future__ import annotations
@@ -12,7 +14,7 @@ import re
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
-from dblift.core.exceptions import UnsafeStatementSplitError
+from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
 
 #: ``GO n`` hands the batch to the server n times; a count above this is refused
 #: (``split_statements`` returns one string per repetition).
@@ -28,8 +30,14 @@ _COMMAND_FOLLOWERS = frozenset(" \t\r-=(['/")
 _UNMEASURED_BLANKS = frozenset("\x0b\x0c")
 _LONE_CR_GO = re.compile(r"\r(?!\Z)[ \t]*GO(?![A-Za-z0-9_@#$])", re.IGNORECASE)
 
+_COLON_COMMAND = re.compile(
+    r":(?:!!|(?:setvar|r|connect|on|exit|quit|list|listvar|error|out|perftrace|help|serverlist"
+    r"|xml|reset|ed)(?![A-Za-z0-9_@#$]))",
+    re.IGNORECASE,
+)
 _WORD = re.compile(r"[A-Za-z_@#$][A-Za-z0-9_@#$]*")
 _GO_TAIL = re.compile(r"[ \t\r]*(?:([0-9]+)[ \t\r]*)?(?:--.*)?\Z", re.DOTALL)
+_VARIABLE_REFERENCE = re.compile(r"\$\(([A-Za-z_][A-Za-z0-9_]*)\)")
 _OPENER = re.compile(r"'|\[|\"|/\*|--")
 _CLOSER = {"'": "'", "[": "]", '"': '"'}
 _LEXEME = {
@@ -38,6 +46,8 @@ _LEXEME = {
     '"': "quoted identifier",
     "/*": "block comment",
 }
+#: osql-compatible commands that need no colon.
+_BARE_COMMANDS = frozenset({"EXIT", "QUIT", "RESET", "ED"})
 
 
 @dataclass(frozen=True)
@@ -102,7 +112,7 @@ class _Scanner:
                 self.state, i, commented = None, close + 2, True
                 continue
             if self.state is not None:
-                i = self._close_lexeme(line, i)
+                i = self._close_lexeme(line, i, line_no)
                 continue
             if line[i] in " \t\r":
                 i += 1
@@ -120,7 +130,7 @@ class _Scanner:
                     return count
             opener = _OPENER.search(line, i)
             stop = opener.start() if opener else size
-            self._code(line[i:stop])
+            self._code(line[i:stop], line_no)
             if opener is None or opener.group() == "--":
                 return None
             self._open(opener.group(), line_no, stop)
@@ -129,18 +139,28 @@ class _Scanner:
 
     @staticmethod
     def _command(line: str, i: int, line_no: int, commented: bool) -> Optional[int]:
-        """``GO`` as the first token of a line: its count; a refusal when the line is not a clean ``GO``."""
+        """A client command at the first token of a line: the ``GO`` count, or a refusal."""
         rest = line[i:]
+        if rest.startswith("!!") or _COLON_COMMAND.match(rest):
+            name = rest.split(None, 1)[0]
+            raise UnsupportedMetaCommandError(
+                f"sqlcmd command {name!r} on line {line_no}: dblift does not run client commands"
+            )
         word = _WORD.match(rest)
-        if word is None or word.group().upper() != "GO":
+        if word is None or word.group().upper() not in _BARE_COMMANDS | {"GO"}:
             return None
+        name = word.group().upper()
         follower = rest[word.end() : word.end() + 1]
-        if follower in _UNMEASURED_BLANKS:
+        if name == "GO" and follower in _UNMEASURED_BLANKS:
             raise UnsafeStatementSplitError(
                 f"text after GO on line {line_no}: only a count and a '--' comment may follow it"
             )
-        if follower and follower not in _COMMAND_FOLLOWERS and follower != ";":
+        if follower and follower not in _COMMAND_FOLLOWERS and (name, follower) != ("GO", ";"):
             return None
+        if name != "GO":
+            raise UnsupportedMetaCommandError(
+                f"sqlcmd command {name!r} on line {line_no}: dblift does not run client commands"
+            )
         tail = _GO_TAIL.match(rest, word.end())
         if tail is None:
             raise UnsafeStatementSplitError(
@@ -176,23 +196,35 @@ class _Scanner:
         if lexeme != "/*":
             self.has_code = True
 
-    def _close_lexeme(self, line: str, i: int) -> int:
+    def _close_lexeme(self, line: str, i: int, line_no: int) -> int:
         """Consume a string or identifier up to its closer (a doubled closer is an escape)."""
         closer = _CLOSER[self.state or ""]
         j = i
         while True:
             j = line.find(closer, j)
             if j < 0:
+                self._variables(line[i:], line_no)
                 return len(line)
             if line.startswith(closer * 2, j):
                 j += 2
                 continue
+            self._variables(line[i:j], line_no)
             self.state = None
             return j + 1
 
-    def _code(self, segment: str) -> None:
+    def _code(self, segment: str, line_no: int) -> None:
         if segment.strip(" \t\r;"):
             self.has_code = True
+        self._variables(segment, line_no)
+
+    @staticmethod
+    def _variables(segment: str, line_no: int) -> None:
+        reference = _VARIABLE_REFERENCE.search(segment)
+        if reference:
+            raise UnsupportedMetaCommandError(
+                f"scripting variable {reference.group()} on line {line_no}: sqlcmd substitutes it "
+                "before the batch is sent, dblift sends the text as it is"
+            )
 
     def _cut(self, line_start: int, following: int, count: int, line_no: int) -> None:
         self._flush(line_start, repeat=count, terminated=True)
