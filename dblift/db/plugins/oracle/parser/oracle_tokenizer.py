@@ -333,37 +333,3 @@ class OracleTokenizer(BaseTokenizer):
             start_col,
             self.parens_depth,
         )
-
-    def is_wrapped_plsql(self, tokens: List[Token]) -> bool:
-        """Detect wrapped PL/SQL (encrypted code).
-
-        Wrapped PL/SQL has pattern: CREATE [OR REPLACE] ... WRAPPED
-
-        Args:
-            tokens: Tokens processed so far
-
-        Returns:
-            True if wrapped PL/SQL is detected
-        """
-        # Look for CREATE followed by WRAPPED keyword
-        if len(tokens) < 3:
-            return False
-
-        # Look back through last 10 tokens for CREATE
-        create_idx = -1
-        check_tokens = tokens[-10:] if len(tokens) >= 10 else tokens
-
-        for i, token in enumerate(check_tokens):
-            if token.type == TokenType.KEYWORD and token.text.upper() == "CREATE":
-                create_idx = i
-                break
-
-        if create_idx < 0:
-            return False
-
-        # Check if WRAPPED appears after CREATE
-        for token in check_tokens[create_idx:]:
-            if token.type == TokenType.KEYWORD and token.text.upper() == "WRAPPED":
-                return True
-
-        return False
