@@ -62,7 +62,9 @@ def test_anything_but_a_count_and_a_dash_comment_after_go_is_refused(line):
         scan_batches(f"SELECT 1\n{line}\nSELECT 2")
 
 
-@pytest.mark.parametrize("line", ["GO--c", "GO--", "go--end", "  GO--c", "GO--c --d"])
+@pytest.mark.parametrize(
+    "line", ["GO--c", "GO--", "go--end", "  GO--c", "GO--c --d", "GO 2--c", "GO 0--"]
+)
 def test_a_comment_glued_to_go_is_refused(line):
     # The ODBC sqlcmd takes GO--c as a separator; go-sqlcmd sends GO to the server as text, which a
     # batch ending in an expression turns into an alias. Refuse what the two clients read differently.
@@ -107,7 +109,6 @@ def test_a_longer_word_or_a_quoted_name_is_text_not_a_command(word):
         "SELECT 1\n/* c */ GO\nSELECT 2",
         "SELECT 1\n/* a */ /* b */ GO\nSELECT 2",
         "/* a\nb */ GO\nSELECT 2",
-        "/* a /* b */ GO */\nSELECT 1\nGO",
     ],
 )
 def test_a_go_that_follows_a_comment_on_its_line_is_refused(script):
@@ -156,3 +157,18 @@ def test_go_zero_is_logged_not_dropped_silently(caplog):
 def test_a_go_line_inside_an_open_block_comment_is_not_cut():
     with pytest.raises(UnsafeStatementSplitError, match="GO after a comment"):
         scan_batches("SELECT /* a\n b */ GO\nSELECT 2")
+
+
+def test_text_after_go_on_a_line_that_a_comment_closed_names_the_text_row_6():
+    with pytest.raises(UnsafeStatementSplitError, match="text after GO on line 1"):
+        scan_batches("/* a /* b */ GO */\nSELECT 1\nGO")
+
+
+@pytest.mark.parametrize("digits", ["9" * 5000, "0" * 5000 + "9" * 7, "1" + "0" * 7])
+def test_a_count_with_more_digits_than_the_limit_allows_is_refused_not_a_crash(digits):
+    with pytest.raises(UnsafeStatementSplitError, match="exceeds the limit"):
+        scan_batches(f"SELECT 1\nGO {digits}\n")
+
+
+def test_a_count_of_only_zeros_is_go_zero_however_long():
+    assert scan_batches("SELECT 1\nGO " + "0" * 5000 + "\n")[0].repeat == 0

@@ -128,22 +128,30 @@ class _Scanner:
         follower = rest[word.end() : word.end() + 1]
         if follower and follower not in _COMMAND_FOLLOWERS and follower != ";":
             return None
-        if commented:
-            raise UnsafeStatementSplitError(
-                f"GO after a comment on line {line_no}: sqlcmd takes it as a command after one "
-                "comment and as text after two; put it first on its line"
-            )
-        if rest.startswith("--", word.end()):
-            raise UnsafeStatementSplitError(
-                f"GO on line {line_no}: GO must be followed by a blank, a count or end of line; "
-                "'--' directly after GO is read differently by sqlcmd clients"
-            )
         tail = _GO_TAIL.match(rest, word.end())
         if tail is None:
             raise UnsafeStatementSplitError(
                 f"text after GO on line {line_no}: only a count and a '--' comment may follow it"
             )
-        count = int(tail.group(1)) if tail.group(1) else 1
+        if commented:
+            raise UnsafeStatementSplitError(
+                f"GO after a comment on line {line_no}: sqlcmd takes it as a command after one "
+                "comment and as text after two; put it first on its line"
+            )
+        glued = rest.startswith("--", word.end()) or (
+            tail.group(1) is not None and rest.startswith("--", tail.end(1))
+        )
+        if glued:
+            raise UnsafeStatementSplitError(
+                f"GO on line {line_no}: GO must be followed by a blank, a count or end of line; "
+                "'--' directly after GO is read differently by sqlcmd clients"
+            )
+        digits = (tail.group(1) or "").lstrip("0")
+        if len(digits) > len(str(MAX_GO_COUNT)):
+            raise UnsafeStatementSplitError(
+                f"GO count on line {line_no} exceeds the limit of {MAX_GO_COUNT}"
+            )
+        count = int(digits) if digits else (0 if tail.group(1) else 1)
         if count > MAX_GO_COUNT:
             raise UnsafeStatementSplitError(
                 f"GO {count} on line {line_no} exceeds the limit of {MAX_GO_COUNT}"
