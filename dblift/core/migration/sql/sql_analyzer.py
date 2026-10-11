@@ -661,22 +661,10 @@ class SqlAnalyzer:
         Returns:
             List of individual SQL statements
         """
-        # Dialects with script-level preprocessing (Oracle SQL*Plus today) go
-        # through the same quirks hooks ``migrate`` uses (see
-        # ``ExecutionEngine._parse_sql_statements``), so a directive like
-        # ``PROMPT Creating the customer's table`` is terminated before the
-        # tokeniser sees it instead of merging with (and corrupting) the next
-        # statement. Reusing the quirks hooks keeps directive handling in one
-        # place rather than duplicating it here.
-        quirks = ProviderRegistry.get_quirks(self.dialect)
-        sql_to_split = sql
-        if quirks.supports_sqlplus_preprocessing:
-            ctx = quirks.extract_script_context(sql_to_split)
-            terminated = quirks.terminate_script_directives(sql_to_split)
-            sql_to_split = quirks.apply_script_substitution(terminated, ctx)
-
+        # Directive lines (``PROMPT``, ``SET``, ``DEFINE``, ``WHENEVER`` ...) and
+        # SQL*Plus variables are the dialect splitter's, not a pre-pass.
         statements = self.statement_splitter.split_statements(
-            sql_to_split,
+            sql,
             strict_tokenizer=strict_tokenizer,
             fallback=self._split_statements_with_regex,
         )

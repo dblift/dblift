@@ -72,8 +72,8 @@ class SqlplusDirective:
             done with ``Pattern.match``.
         examples: Realistic SQL*Plus lines that *must* be classified by this
             directive. The structural corpus test asserts each example matches
-            the directive's pattern *and* round-trips through
-            ``terminate_sqlplus_directives`` + ``is_sqlplus_command``.
+            the directive's pattern *and* is recognised by
+            ``is_sqlplus_command``.
         filter_from_execution: When ``True`` (default) the directive is dropped
             from the executor-bound statement stream. ``False`` for
             ``WHENEVER SQLERROR …`` — those flow through to the executor
@@ -365,7 +365,7 @@ class _DirectiveLineTokenizer(OracleTokenizer):
     """
 
     def __init__(self, sql: str):
-        super().__init__(sql)
+        super().__init__(sql, directives=False)
         self.directive_lines: List[Tuple[int, int]] = []
         self._at_statement_start = True
         self._in_plsql = False

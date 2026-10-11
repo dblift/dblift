@@ -22,6 +22,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (...); -- note` and two statements on one line are no longer accepted;
   SQL*Plus rejects them with ORA-03405. Move the comment or the second
   statement to its own line.
+- **Oracle: `&name` is a SQL*Plus substitution variable everywhere on a line,
+  comments inside a statement included, when `SET DEFINE` is on (the
+  default).** `SELECT 1 -- R&D` + newline + `FROM dual` or `'a&b'` without a
+  `DEFINE` is refused because SQL*Plus would prompt for the value; write `SET
+  DEFINE OFF` first, or define the variable. A comment-only line before a
+  statement is not substituted, as in SQL*Plus. `DEFINE b = &a` stores the
+  value of `a`.
+- **Oracle: SQL*Plus directives are recorded or refused, never dropped.**
+  `@file`, `@@file`, `START`, `HOST`, `!`, `ACCEPT`, `PAUSE`, `CONNECT`,
+  `CONN`, `DISCONNECT`, `PASSWORD` and `SET SQLTERMINATOR`, `BLOCKTERMINATOR`,
+  `SQLBLANKLINES`, `SQLPREFIX`, `CMDSEP` now fail the script with an error
+  naming the directive and line instead of being silently skipped. `EXIT` and
+  `QUIT` end the script as in SQL*Plus: the statements after them are not run
+  and a warning names the first one. A directive after a `;` on the same line
+  is refused. Directives may be abbreviated as SQL*Plus allows (`SET
+  SERVEROUT ON`, `SET FEED OFF`), and a directive line ending in `-` continues
+  on the next line, and a `--` or trailing `-` inside quotes is text. A
+  directive may follow a block comment on its line. `SET ESCAPE` and `SET
+  CONCAT` are refused because they change how `&` and `.` are read, and `SET
+  SCAN` acts as `SET DEFINE`. An exit status on `EXIT` / `QUIT` (`EXIT
+  FAILURE`, `EXIT 3`) is recorded and not modelled: migration status is
+  dblift's.
+- `WHENEVER SQLERROR` is still recorded and handed to execution, which applies
+  its policy to the statements that follow; an unrecognised `WHENEVER SQLERROR`
+  action is refused instead of being ignored. `EXEC` / `EXECUTE` is rewritten
+  to `BEGIN ...; END;`.
 - The PostgreSQL family (including Redshift) has no regex fallback: a script
   the splitter cannot read is an error naming the construct. A script of
   only `\restrict` / `\unrestrict` lines yields no statement.
@@ -40,8 +66,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   as one statement (the server rejects it) instead of an empty result.
   SQLite, DuckDB and Db2 log a warning and keep their previous output.
 
+### Removed
+
+- The unused wrapped-PL/SQL detector on the Oracle tokenizer is gone.
+- The `terminate_script_directives` and `apply_script_substitution` quirks
+  hooks are gone: SQL*Plus directives are handled by the Oracle statement
+  splitter itself, which records, rewrites or refuses them.
+- `SqlplusContext` (`dblift.db.plugins.oracle.parser`) no longer carries
+  `define_on` or `defines`, and `apply_define_substitution` and
+  `terminate_sqlplus_directives` are gone; `DEFINE` is resolved by the splitter,
+  line by line.
+
 ### Fixed
 
+- Oracle: `DEFINE`, `SET DEFINE` and `UNDEFINE` apply from the line where they
+  stand, not to the whole script; `&x`, `&&x` and `&x.suffix` are replaced
+  (inside string literals too, as SQL*Plus does), and a reference to an
+  undefined variable is refused instead of being sent as it stands. `EXEC` /
+  `EXECUTE` runs the call as `BEGIN ... END;` instead of dropping it and the
+  statement after it.
 - A dialect without a statement parser splits through the generic scanner again instead of raising "Unsupported dialect" (regression from the PostgreSQL splitter change in this release).
 - PostgreSQL splitting matches psql on: `$1` positional parameters (not
   dollar-quote tags); a `;` inside parentheses; psql's `\;` combinator; the
@@ -71,8 +114,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the splitter refuses; object extraction treats
   an already-split statement as one statement, so a PL/SQL unit without its
   `/` is still recorded.
-
-### Removed
 
 ## [4.11.1] - 2026-10-10
 

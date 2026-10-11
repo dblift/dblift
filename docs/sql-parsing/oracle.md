@@ -112,19 +112,37 @@ a hyphen at the end of the line and pressing Return."
 
 A directive is recognised only where a statement can begin (top of script,
 after a statement-ending `;`, after a `/` line, after another directive),
-with only blanks before it on the line. It runs to the end of the line; a
-trailing `-` continues it on the next line. Its text is **never lexed as
-SQL**: `REM don't` opens no literal.
+with only blanks and block comments before it on the line. Block comments
+before the directive on the same line are allowed (sqlplus 23.x, Oracle Free
+23ai, 2026-10-10: `/* c */ PROMPT hi` printed `hi`). It runs to the end of
+the line; a trailing `-` continues it on the next line (sqlplus 23.x, Oracle
+Free 23ai, 2026-10-10: `REM a -` followed by `SELECT 2 ...;` swallowed the
+`SELECT`, only the next statement ran). Its text is **never lexed as SQL**:
+`REM don't` opens no literal. In the text of other directives a `--` ends the
+directive and starts a comment, and a trailing `-` continues it, except inside
+a single- or double-quoted span (`EXEC p('a -- b')`, `DEFINE x = 'a--b'`); an
+unclosed quote on a line means neither a comment nor a continuation there. For
+`PROMPT`, `REM` and `REMARK` the whole rest of the line is the text, `--` and
+quotes included. A `--` in unquoted text of any other directive starts a
+comment (kept from the previous rule; not measured).
+
+Substitution variables apply on the `DEFINE` line itself: `DEFINE b = &a`
+stores the value of `a` (sqlplus 23.x, Oracle Free 23ai, 2026-10-10: `DEFINE a
+= q`, `DEFINE b = &a`, `SELECT '&b'` gave `q`). A comment-only line before a
+statement is not substituted: no prompt and the statement ran (sqlplus 23.x,
+Oracle Free 23ai, 2026-10-10: `-- R&D` before a statement); a comment inside a
+statement is.
 
 | Directive | Splitter action |
 | --- | --- |
 | `SET` (all options except those below), `SHOW`, `SPOOL`, `PROMPT`, `REM`/`REMARK`, `COLUMN`/`COL`, `TTITLE`/`BTITLE`, `REPHEADER`/`REPFOOTER`, `BREAK`, `COMPUTE`, `CLEAR`, `TIMING`, `VARIABLE`, `PRINT`, `DESC`/`DESCRIBE`, `WHENEVER OSERROR` | **drop and record** (`kind="directive"`); `PROMPT` text is logged |
-| `SET DEFINE {ON|OFF|char}`, `DEFINE x = v`, `UNDEFINE x` | **record and apply positionally** to `&x`/`&&x` substitution in the statements that follow; a `.` ends a reference (`&x.suffix`) |
+| `SET DEFINE {ON|OFF|char}`, `SET SCAN {ON|OFF}`, `DEFINE x = v`, `UNDEFINE x` | **record and apply positionally** to `&x`/`&&x` substitution in the statements that follow; a `.` ends a reference (`&x.suffix`). `SET SCAN` is obsolete in favour of `SET DEFINE` (SQL\*Plus reference) and acts as `SET DEFINE ON|OFF` |
 | `SET SERVEROUTPUT ON|OFF` | record; execution enables `DBMS_OUTPUT` retrieval |
-| `WHENEVER SQLERROR {EXIT … | CONTINUE …}` | record; execution applies the policy to the statements that follow |
+| `WHENEVER SQLERROR {EXIT … | CONTINUE …}` | record; execution applies the policy to the statements that follow. An unrecognised `WHENEVER SQLERROR` action is refused. |
 | `EXEC[UTE] stmt[;]` | **rewrite** to the PL/SQL unit `BEGIN stmt; END;` after stripping one trailing `;` from `stmt`; never dropped. SQL\*Plus documents only "Executes a single PL/SQL statement"; EXEC runs the call (sqlplus 23.x, Oracle Free 23ai, 2026-10-10: row 16, two EXEC lines → T16 has 2 rows); the `BEGIN stmt; END;` rewrite is the splitter's choice of equivalent, not a measured client behaviour |
-| `EXIT` / `QUIT` | everything after it is **not executed**; the remainder is recorded with a warning naming the first ignored line (sqlplus 23.x, Oracle Free 23ai, 2026-10-10: row 17, rc 0, `T17` empty: the `INSERT` after `EXIT` never ran) |
-| `@file`, `@@file`, `START file`, `HOST`, `!cmd`, `ACCEPT`, `PAUSE`, `CONNECT`, `CONN`, `DISCONNECT`, `PASSWORD`, `SET SQLTERMINATOR`, `SET BLOCKTERMINATOR`, `SET SQLBLANKLINES`, `SET SQLPREFIX`, `SET CMDSEP` | **reject** with `UnsupportedMetaCommandError` naming the directive and line |
+| `EXIT` / `QUIT` | everything after it is **not executed**; the remainder is not recorded: the parser stops and logs a warning naming the count and the first ignored line (sqlplus 23.x, Oracle Free 23ai, 2026-10-10: row 17, rc 0, `T17` empty: the `INSERT` after `EXIT` never ran). An exit status (`EXIT FAILURE`, `EXIT n`, `EXIT ROLLBACK`) is recorded with the directive and not modelled: the statements before it ran; migration status is dblift's (sqlplus 23.x, Oracle Free 23ai, 2026-10-10: `EXIT FAILURE` exit code 1, `EXIT 3` exit code 3) |
+| `@file`, `@@file`, `START file`, `HOST`, `!cmd`, `ACCEPT`, `PAUSE`, `CONNECT`, `CONN`, `DISCONNECT`, `PASSWORD`, `SET SQLTERMINATOR`, `SET BLOCKTERMINATOR`, `SET SQLBLANKLINES`, `SET SQLPREFIX`, `SET CMDSEP`, `SET ESCAPE`, `SET CONCAT` | **reject** with `UnsupportedMetaCommandError` naming the directive and line |
+| `SET ESCAPE`, `SET CONCAT` (rows above) | they change how `&` and `.` are read (sqlplus 23.x, Oracle Free 23ai, 2026-10-10: `SET DEFINE ON`, `DEFINE x = v`, `SET ESCAPE ON`, `SELECT '\&x' FROM dual` gave `&x`: the escape suppresses substitution) |
 | a directive after a `;` on the **same** line | **reject**: SQL\*Plus sends the whole line to the server, which fails with ORA-03405 (§4; sqlplus 23.x, Oracle Free 23ai, 2026-10-10: row 19, rc 1, ORA-03405 "End of query reached; no additional text should follow."); the current code silently loses the following statement |
 
 `CONNECT` is a directive only when not followed by `TO` (`CREATE DATABASE LINK
@@ -177,7 +195,7 @@ else in this spec is data.
 | 20 | `CREATE OR REPLACE PROCEDURE p AS BEGIN NULL; END;\nCREATE TABLE t (id NUMBER);` | `error`: PL/SQL unit not terminated by a slash before end of input (SQL\*Plus would hang waiting for it) |
 | 21 | `BEGIN\n  EXECUTE IMMEDIATE 'CREATE TABLE x (\n  id NUMBER)';\nEND;\n/` | `BEGIN\n  EXECUTE IMMEDIATE 'CREATE TABLE x (\n  id NUMBER)';\nEND;` (one unit: the line starting with id NUMBER is inside a literal, not a directive) |
 | 22 | `CREATE TABLE t (id NUMBER);\n/\n` | `error`: the slash would re-execute the previous statement |
-| 23 | `WHENEVER SQLERROR EXIT FAILURE\nCREATE TABLE t (id NUMBER);` | directive (policy recorded) · `CREATE TABLE t (id NUMBER)` |
+| 23 | `WHENEVER SQLERROR EXIT FAILURE\nCREATE TABLE t (id NUMBER);` | `WHENEVER SQLERROR EXIT FAILURE;` (a directive: recorded, and handed to execution, which applies the policy to the statements that follow) · `CREATE TABLE t (id NUMBER)` |
 | 24 | `CREATE OR REPLACE AND COMPILE JAVA SOURCE NAMED "H" AS\npublic class H { int f() { return 1; } }\n/` | `CREATE OR REPLACE AND COMPILE JAVA SOURCE NAMED "H" AS\npublic class H { int f() { return 1; } }` (one unit) (Oracle Free: ORA-29538, unverifiable there) |
 | 25 | `CREATE TABLE t25 (id NUMBER)\n/ -- done\nINSERT INTO t25 VALUES (1);` | `CREATE TABLE t25 (id NUMBER)\n/ -- done\nINSERT INTO t25 VALUES (1)` (the slash line is text, the semicolon ends it; the server rejects it, as it rejected it for SQL\*Plus) |
 | 26 | `BEGIN\n  NULL;\nEND;\n.\nCREATE TABLE t26 (id NUMBER);` | `error`: a `.` alone discards the buffered unit in SQL\*Plus; the splitter rejects rather than silently dropping a block |
@@ -194,49 +212,27 @@ else in this spec is data.
 | Interactive directives (`ACCEPT`, `PAUSE`, `CONNECT`, `HOST`) | rejected | no terminal, no second connection |
 | A PL/SQL unit without `/` | error | SQL\*Plus does not run it either; the current code's depth-counting acceptance is what this spec removes |
 
-## 12. Current implementation and the gaps this spec closes
+## 12. Implementation
 
 Code: `dblift/db/plugins/oracle/parser/` (`oracle_tokenizer.py`,
-`oracle_statement_parser.py`, `oracle_parser.py`, `_statement_splitter.py`,
-`_plsql_block.py`, `_sqlplus.py`, `sqlplus_context.py`, `_comments.py`) and
-`quirks.py`; two splitters (tokenizer path, regex path as its fallback; the
-regex path is also what `parse_sql` and `validate_sql` always use).
+`oracle_statement_parser.py`, `_unit_heads.py`, `_directives.py`,
+`oracle_parser.py`) and `quirks.py`. The regex path (`_statement_splitter.py`,
+`_plsql_block.py`) remains behind `parse_sql` for object extraction only.
 
-Facts established by reading and running the current code; each is a row
-above or the reason for a rule:
+Facts established by reading and running the code; each is a row above or the
+reason for a rule:
 
 - A SQL statement ended only by `/` (row 2) is merged with the next statement
-  in both paths.
-- `OPEN c FOR SELECT …` or `SELECT … FOR UPDATE` inside a block adds depth
-  that never closes; the `/` is then ignored and the rest of the file becomes
-  one statement (row 4).
+  in the regex path.
+- `OPEN c FOR SELECT ...` or `SELECT ... FOR UPDATE` inside a block adds depth
+  that never closes in the regex path; the `/` is then ignored (row 4).
 - A column named `TYPE`, `PACKAGE`, `FUNCTION`, `PROCEDURE` or `TRIGGER` at
   parenthesis depth 0 in any `CREATE`, or a column named `begin`, switches
-  the delimiter to `/` and merges up to the next `/` (row 8).
-- Two splitters disagree. The **tokenizer path** (what `migrate` runs)
-  handles `q'…'` and `nq'…'` (row 9 passes today) and `CREATE TYPE … AS
-  OBJECT` (row 6 passes, dropping the `/`). The **regex path** (the fallback
-  on any exception, and what `parse_sql` and `validate_sql` always use) does
-  not know alternative quoting at all and cuts both `q'[it's; fine]'` and
-  `nq'{x;y}'` at the inner `;`; it scans `CREATE TYPE … AS OBJECT` to end of
-  file and splits `CREATE TYPE BODY` after its first member (row 7).
-  Whitespace q-quote delimiters are accepted by both (row 11).
-- `CREATE JAVA SOURCE` is cut at the first `;` in the tokenizer path (row 24).
-- `EXEC p\nSELECT 1 FROM dual;` returns **no statements at all** from the
-  tokenizer path: the call is dropped and the following `SELECT` with it
-  (row 16). `@file` is dropped silently; `EXIT` does not stop later statements
-  (rows 17, 18). `START`, `SET AUTOCOMMIT` and abbreviations such as
-  `SET SERVEROUT` are not recognised and are sent to the server.
-- A directive after `;` on the same line merges with the next statement,
-  which the directive filter then drops: `SELECT 2` is lost (row 19).
-- `DEFINE` / `SET DEFINE` apply to the whole script with last-wins semantics,
-  not positionally (row 15).
-- A `/` at the start of a line inside an expression force-terminates a package
-  body in both paths (row 5).
-- The regex fallback collapses runs of spaces inside string literals and drops
-  hints; its text is what the fallback path executes. The Oracle
-  preprocessing runs twice per migration (engine and `SqlAnalyzer`).
-- `is_wrapped_plsql` is dead code.
+  the regex path's delimiter to `/` (row 8).
+- The regex path does not know alternative quoting and cuts `q'[it's; fine]'`
+  and `nq'{x;y}'` at the inner `;`; it scans `CREATE TYPE ... AS OBJECT` to end
+  of file and splits `CREATE TYPE BODY` after its first member (row 7).
+- `CREATE JAVA SOURCE` is cut at the first `;` (row 24).
 
 Tests to re-point (about 470 functions): `tests/unit/core/sql_parser/oracle/*`,
 `tests/unit/core/sql_parser/test_oracle_parser*.py`,

@@ -87,45 +87,6 @@ class TestOracleTokenizerCoverage:
         with pytest.raises(UnsafeStatementSplitError, match="unterminated q-quoted string"):
             OracleTokenizer("SELECT q'").tokenize()
 
-    def test_is_wrapped_plsql_with_few_tokens(self):
-        """Test is_wrapped_plsql with less than 3 tokens."""
-        tokenizer = OracleTokenizer("SELECT 1")
-        tokens = tokenizer.tokenize()
-
-        # Less than 3 tokens - should return False (covers line 212)
-        result = tokenizer.is_wrapped_plsql(tokens[:2])
-        assert result is False
-
-    def test_is_wrapped_plsql_without_create(self):
-        """Test is_wrapped_plsql without CREATE keyword."""
-        sql = "SELECT * FROM wrapped_table"
-        tokenizer = OracleTokenizer(sql)
-        tokens = tokenizer.tokenize()
-
-        # No CREATE keyword - should return False (covers line 224)
-        result = tokenizer.is_wrapped_plsql(tokens)
-        assert result is False
-
-    def test_is_wrapped_plsql_create_without_wrapped(self):
-        """Test is_wrapped_plsql with CREATE but no WRAPPED."""
-        sql = "CREATE TABLE test (id NUMBER)"
-        tokenizer = OracleTokenizer(sql)
-        tokens = tokenizer.tokenize()
-
-        # CREATE but no WRAPPED - should return False (covers line 231)
-        result = tokenizer.is_wrapped_plsql(tokens)
-        assert result is False
-
-    def test_is_wrapped_plsql_with_create_and_wrapped(self):
-        """Test is_wrapped_plsql with CREATE and WRAPPED."""
-        sql = "CREATE PROCEDURE test WRAPPED a000000"
-        tokenizer = OracleTokenizer(sql)
-        tokens = tokenizer.tokenize()
-
-        # CREATE followed by WRAPPED - should return True (covers lines 227-229)
-        result = tokenizer.is_wrapped_plsql(tokens)
-        assert result is True
-
     def test_percent_rowtype_not_dropped(self):
         sql = "DECLARE v employees%ROWTYPE; BEGIN NULL; END;\n/"
         tokenizer = OracleTokenizer(sql)

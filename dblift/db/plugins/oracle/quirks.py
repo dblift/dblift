@@ -155,25 +155,6 @@ class OracleQuirks(BaseQuirks):
 
         return extract_sqlplus_context(sql)
 
-    def terminate_script_directives(self, sql: str) -> str:
-        """Keep SQL*Plus directive lines from merging with the next statement."""
-        from dblift.db.plugins.oracle.parser.sqlplus_context import terminate_sqlplus_directives
-
-        return terminate_sqlplus_directives(sql)
-
-    def apply_script_substitution(self, sql: str, ctx: Optional[object]) -> str:
-        """Apply SQL*Plus ``&var`` / ``&&var`` substitution using *ctx*."""
-        if ctx is None:
-            return sql
-        from dblift.db.plugins.oracle.parser.sqlplus_context import (
-            SqlplusContext,
-            apply_define_substitution,
-        )
-
-        if not isinstance(ctx, SqlplusContext):
-            return sql
-        return apply_define_substitution(sql, ctx)
-
     def parse_error_policy_directive(self, stmt: str) -> Optional[str]:
         """Return the Oracle ``WHENEVER SQLERROR`` policy encoded in *stmt*, or ``None``."""
         from dblift.db.plugins.oracle.parser._sqlplus import parse_whenever_sqlerror

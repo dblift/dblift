@@ -4,11 +4,13 @@ This module provides Oracle-specific tokenization including Q-quotes,
 wrapped PL/SQL detection, and slash delimiters.
 """
 
-from typing import List
+from typing import List, Optional, Tuple
 
 from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.core.sql_parser.base_tokenizer import BaseTokenizer
 from dblift.core.sql_parser.tokens import Token, TokenType
+from dblift.db.plugins.oracle.parser._directives import classify_directive
+from dblift.db.plugins.oracle.parser._unit_heads import MAX_HEAD_TOKENS, head_decided
 
 
 def has_stray_comment_close(tokens: List[Token]) -> bool:
@@ -42,6 +44,28 @@ def is_alone_on_line(sql: str, pos: int) -> bool:
     return True
 
 
+def _scan_line(sql: str, start: int, eol: int) -> Tuple[int, bool]:
+    """Find the ``--`` that starts a comment on ``sql[start:eol]``, outside quotes.
+
+    Returns ``(index or -1, closed)``; ``closed`` is False when a quote is
+    still open at the end of the line, which means neither a comment nor a
+    ``-`` continuation (a doubled quote is read as close-then-open).
+    """
+    quote = ""
+    i = start
+    while i < eol:
+        char = sql[i]
+        if quote:
+            if char == quote:
+                quote = ""
+        elif char in "'\"":
+            quote = char
+        elif char == "-" and sql.startswith("--", i):
+            return i, True
+        i += 1
+    return -1, not quote
+
+
 class OracleTokenizer(BaseTokenizer):
     """Oracle-specific tokenizer with Q-quote and wrapped PL/SQL support.
 
@@ -56,6 +80,106 @@ class OracleTokenizer(BaseTokenizer):
 
     # ``%`` and ``@`` were added here when only Oracle needed them; both are in
     # ``BaseTokenizer.SYMBOL_CHARS`` now, so the override would be a no-op.
+
+    def __init__(self, sql: str, strict_unknown_chars: bool = False, directives: bool = True):
+        """Initialize the tokenizer.
+
+        Args:
+            sql: SQL content to tokenize
+            strict_unknown_chars: see ``BaseTokenizer``
+            directives: read SQL*Plus directive lines as ``DIRECTIVE`` tokens
+                (docs/sql-parsing/oracle.md section 6). Off for the callers
+                that still handle directives themselves.
+        """
+        super().__init__(sql, strict_unknown_chars)
+        self._directives = directives
+        # Whether a statement can begin at the cursor, and the statement being
+        # read: its head, and whether that head makes it a PL/SQL unit.
+        self._at_start = True
+        self._head: List[Token] = []
+        self._unit: Optional[bool] = None
+        # End of a block comment read where a directive could begin: a
+        # directive may follow it on the same line.
+        self._clear_from: Optional[int] = None
+
+    def _next_token(self) -> Optional[Token]:
+        if not self._directives:
+            return super()._next_token()
+        self._skip_whitespace()
+        if self._at_start and self.pos < len(self.sql):
+            directive = self._directive_token()
+            if directive is not None:
+                return directive
+        clear = self._at_start and self._line_is_clear(self.pos)
+        token = super()._next_token()
+        if token is not None:
+            if clear and token.type == TokenType.COMMENT and self.sql.startswith("/*", token.pos):
+                self._clear_from = self.pos
+            self._track(token)
+        return token
+
+    def _track(self, token: Token) -> None:
+        """Follow where statements end, as the statement parser does (section 4)."""
+        if token.type in (TokenType.COMMENT, TokenType.EOF):
+            return
+        if self._at_start:
+            self._at_start = False
+            self._head = []
+            self._unit = None
+        if self._unit is None:
+            self._head.append(token)
+            self._unit = head_decided(self._head)
+            if self._unit is None and len(self._head) >= MAX_HEAD_TOKENS:
+                self._unit = False
+        if token.type != TokenType.DELIMITER:
+            return
+        if token.text == "/" or (token.text == ";" and not self._unit and token.parens_depth == 0):
+            self._at_start = True
+
+    def _directive_token(self) -> Optional[Token]:
+        """Consume a directive line (and its ``-`` continuations) at the cursor.
+
+        Only blanks and block comments may precede it on its line. A ``--``
+        outside quotes ends the directive; the rest of the line is a comment
+        and tokenized as one. The text is not lexed: ``REM don't`` opens no
+        literal, and for ``PROMPT`` / ``REM`` / ``REMARK`` the whole line is
+        the text.
+        """
+        if not self._line_is_clear(self.pos):
+            return None
+        first = self.sql[self.pos : self._eol(self.pos)].strip()
+        found = classify_directive(first)
+        free_text = found is not None and found.name in ("PROMPT", "REMARK")
+        parts: List[str] = []
+        cursor = self.pos
+        while True:
+            eol = self._eol(cursor)
+            comment, closed = (-1, True) if free_text else _scan_line(self.sql, cursor, eol)
+            end = comment if comment != -1 else eol
+            part = self.sql[cursor:end].strip()
+            if comment == -1 and closed and part.endswith("-") and eol < len(self.sql):
+                parts.append(part[:-1].rstrip())
+                cursor = eol + 1
+                continue
+            parts.append(part)
+            break
+        text = " ".join(p for p in parts if p)
+        if classify_directive(text) is None:
+            return None
+        token = Token(TokenType.DIRECTIVE, text, self.pos, self.line, self.col, self.parens_depth)
+        self.read(end - self.pos)
+        return token
+
+    def _eol(self, start: int) -> int:
+        eol = self.sql.find("\n", start)
+        return eol if eol != -1 else len(self.sql)
+
+    def _line_is_clear(self, pos: int) -> bool:
+        """Whether only blanks and block comments precede ``pos`` on its line."""
+        line_start = self.sql.rfind("\n", 0, pos) + 1
+        if not self.sql[line_start:pos].strip():
+            return True
+        return self._clear_from is not None and not self.sql[self._clear_from : pos].strip()
 
     def _is_string_start(self) -> bool:
         """Treat double quotes like string starts so _handle_string runs.
@@ -251,37 +375,3 @@ class OracleTokenizer(BaseTokenizer):
             start_col,
             self.parens_depth,
         )
-
-    def is_wrapped_plsql(self, tokens: List[Token]) -> bool:
-        """Detect wrapped PL/SQL (encrypted code).
-
-        Wrapped PL/SQL has pattern: CREATE [OR REPLACE] ... WRAPPED
-
-        Args:
-            tokens: Tokens processed so far
-
-        Returns:
-            True if wrapped PL/SQL is detected
-        """
-        # Look for CREATE followed by WRAPPED keyword
-        if len(tokens) < 3:
-            return False
-
-        # Look back through last 10 tokens for CREATE
-        create_idx = -1
-        check_tokens = tokens[-10:] if len(tokens) >= 10 else tokens
-
-        for i, token in enumerate(check_tokens):
-            if token.type == TokenType.KEYWORD and token.text.upper() == "CREATE":
-                create_idx = i
-                break
-
-        if create_idx < 0:
-            return False
-
-        # Check if WRAPPED appears after CREATE
-        for token in check_tokens[create_idx:]:
-            if token.type == TokenType.KEYWORD and token.text.upper() == "WRAPPED":
-                return True
-
-        return False
