@@ -18,6 +18,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Oracle: text after a `;` on the same line is refused.** `CREATE TABLE t
+  (...); -- note` and two statements on one line are no longer accepted;
+  SQL*Plus rejects them with ORA-03405. Move the comment or the second
+  statement to its own line.
 - The PostgreSQL family (including Redshift) has no regex fallback: a script
   the splitter cannot read is an error naming the construct. A script of
   only `\restrict` / `\unrestrict` lines yields no statement.
@@ -50,7 +54,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Oracle: `nq'...'` literals are recognised.
 - Oracle splitting follows SQL*Plus. A `/` terminates only when alone on its
   line; a `;` must be the last text on its line (text after it is refused,
-  as SQL*Plus rejects it with ORA-03405). A PL/SQL unit (DECLARE, BEGIN,
+  as SQL*Plus rejects it with ORA-03405; see Changed). A PL/SQL unit (DECLARE, BEGIN,
   labelled blocks, CREATE [OR REPLACE] FUNCTION, PROCEDURE, PACKAGE [BODY],
   TYPE [BODY], TRIGGER or LIBRARY, JAVA SOURCE, CLASS or RESOURCE, MLE
   MODULE) ends only at `/`, with no `BEGIN`/`END` counting, so cursors,
@@ -61,6 +65,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   an unterminated q-quote or quoted identifier are refused with their
   position. A `""` inside a quoted identifier is no longer read as an
   escape.
+- Oracle: a `/`-ended statement without a `;` no longer merges with the next
+  statement, and a `;` inside parentheses does not end a statement.
+- `validate-sql` and lint report the refusal message for an Oracle script
+  the splitter refuses; object extraction treats
+  an already-split statement as one statement, so a PL/SQL unit without its
+  `/` is still recorded.
 
 ### Removed
 
