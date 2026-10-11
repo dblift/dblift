@@ -39,6 +39,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is passed through unchanged.
 - **SQL Server: an unterminated string, identifier or comment is refused**
   with its line and column instead of falling back to a regex split.
+- **SQL Server: statements the server refuses inside a transaction run in
+  autocommit.** `ALTER FULLTEXT`, `CREATE`, `ALTER` and `DROP DATABASE` (not the
+  `SCOPED CREDENTIAL`, `ENCRYPTION KEY` and `AUDIT SPECIFICATION` forms),
+  `BACKUP DATABASE`, `BACKUP LOG`, `RESTORE DATABASE`, `RESTORE LOG`,
+  `RESTORE VERIFYONLY` and `RECONFIGURE` make their batch non-transactional,
+  wherever they stand among the `;`-terminated statements of the batch. A
+  statement of this kind must start a `;`-terminated statement or its own
+  batch; otherwise the server reports the error (Msg 226, 574 or 3021) and the
+  batch rolls back.
 - **Oracle: text after a `;` on the same line is refused.** `CREATE TABLE t
   (...); -- note` and two statements on one line are no longer accepted;
   SQL*Plus rejects them with ORA-03405. Move the comment or the second

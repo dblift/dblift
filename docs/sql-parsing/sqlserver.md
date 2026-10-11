@@ -151,19 +151,21 @@ None.
 ## 8. Transaction markers
 
 Statements the splitter flags as *not transactional*; execution runs them in
-autocommit. The flag is set from the first keywords of the batch after
+autocommit. The flag is set from the first keywords of a statement after
 comments; a batch is flagged as a whole when ANY of its statements is one of these
-(the batch is divided into statements to find out, with the extraction split: `CREATE TABLE a (id INT);\nCREATE FULLTEXT INDEX …` with no `GO` is flagged) and reported. Every pattern below is a statement SQL Server
-refuses inside a user transaction (measured 2026-10-11, sqlcmd 18.6.0002.1, SQL Server 16.0.4255.1: `BEGIN TRAN` … `COMMIT` around each, exit 1, nothing created):
+(the batch is divided into statements to find out, with the extraction split: `CREATE TABLE a (id INT);\nCREATE FULLTEXT INDEX …` with no `GO` is flagged) and reported. The division follows `;`: a statement SQL Server refuses in a transaction must start a `;`-terminated statement or its own batch; otherwise the server reports the error (Msg 226, 574 or 3021) and the batch rolls back. Every pattern below is a statement SQL Server
+refuses inside a user transaction (measured 2026-10-11, sqlcmd 18.6.0002.1, SQL Server 16.0.4255.1: `BEGIN TRANSACTION; <statement>; COMMIT;`), exit 1, nothing created:
 
-| Pattern (first keywords) | Measured error | In the current code (`quirks.py:125-142`) |
+| Pattern (first keywords) | Measured error | Flagged |
 | --- | --- | --- |
-| `CREATE FULLTEXT CATALOG`, `CREATE FULLTEXT INDEX`, `DROP FULLTEXT INDEX`, `DROP FULLTEXT CATALOG` | `Msg 574 … statement cannot be used inside a user transaction.` | yes, verified by `test_transaction_policy.py` |
-| `ALTER FULLTEXT CATALOG`, `ALTER FULLTEXT INDEX` | `Msg 574 … ALTER FULLTEXT CATALOG statement cannot be used inside a user transaction.` (the image has no Full-Text Search, `SERVERPROPERTY('IsFullTextInstalled')` is 0; the statements fail with 574 before anything else) | **no** |
-| `CREATE DATABASE`, `ALTER DATABASE` (`SET`, `MODIFY FILE`, `SCOPED CONFIGURATION` alike) | `Msg 226 … statement not allowed within multi-statement transaction.` | **no** |
-| `DROP DATABASE` | `Msg 574 … DROP DATABASE statement cannot be used inside a user transaction.` | **no** |
-| `BACKUP`, `RESTORE` (`RESTORE DATABASE`, `RESTORE VERIFYONLY`) | `Msg 3021 … Cannot perform a backup or restore operation within a transaction.` | **no** |
-| `RECONFIGURE` (also `WITH OVERRIDE`) | `Msg 574 … CONFIG statement cannot be used inside a user transaction.` | **no** |
+| `CREATE FULLTEXT CATALOG`, `CREATE FULLTEXT INDEX`, `DROP FULLTEXT INDEX`, `DROP FULLTEXT CATALOG` | `Msg 574 … statement cannot be used inside a user transaction.` | yes |
+| `ALTER FULLTEXT CATALOG`, `ALTER FULLTEXT INDEX` | `Msg 574 … ALTER FULLTEXT CATALOG statement cannot be used inside a user transaction.` (the image has no Full-Text Search, `SERVERPROPERTY('IsFullTextInstalled')` is 0; the statements fail with 574 before anything else) | yes |
+| `CREATE DATABASE`, `ALTER DATABASE` (`SET`, `MODIFY FILE`, `SCOPED CONFIGURATION` alike) | `Msg 226 … statement not allowed within multi-statement transaction.` | yes |
+| `DROP DATABASE` | `Msg 574 … DROP DATABASE statement cannot be used inside a user transaction.` | yes |
+| `BACKUP DATABASE`, `BACKUP LOG`, `RESTORE DATABASE`, `RESTORE LOG`, `RESTORE VERIFYONLY` | `Msg 3021 … Cannot perform a backup or restore operation within a transaction.` | yes |
+| `RECONFIGURE` (also `WITH OVERRIDE`) | `Msg 574 … CONFIG statement cannot be used inside a user transaction.` | yes |
+
+Accepted inside a user transaction, so **not** flagged (same measurement, exit 0): `RESTORE HEADERONLY`, `RESTORE FILELISTONLY`, `RESTORE LABELONLY`, `BACKUP MASTER KEY`, `CREATE DATABASE SCOPED CREDENTIAL`, `ALTER DATABASE SCOPED CREDENTIAL`, `DROP DATABASE SCOPED CREDENTIAL`, `CREATE DATABASE ENCRYPTION KEY`, `CREATE DATABASE AUDIT SPECIFICATION`. The `ALTER` and `DROP` forms of `DATABASE ENCRYPTION KEY` and `DATABASE AUDIT SPECIFICATION`, `BACKUP CERTIFICATE` and `BACKUP SERVICE MASTER KEY` were not measured and are treated as transactional. `RESTORE REWINDONLY` is a tape command (Msg 3216 on a disk device) and was not classified.
 
 ## 9. Engine subclass
 

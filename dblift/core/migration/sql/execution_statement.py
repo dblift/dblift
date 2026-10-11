@@ -70,14 +70,13 @@ def classify_execution_statement(
     """Classify transaction metadata for high-confidence dialect-specific cases."""
     from dblift.db.provider_registry import ProviderRegistry
 
-    # A comment in front of the statement (a migration's own notes, a
-    # generated script's header) is not part of it; the patterns are anchored
-    # at the statement's first keyword.
     quirks = ProviderRegistry.get_quirks(dialect.lower())
 
     # A batch is not transactional when any of its statements is not: SQL Server refuses that
     # statement inside the transaction the whole batch would run in.
     for statement in _statements_of(sql, dialect.lower()):
+        # A comment in front of the statement (a migration's own notes, a generated script's
+        # header) is not part of it; the patterns are anchored at the statement's first keyword.
         normalized = re.sub(r"\s+", " ", strip_leading_comments(statement).strip()).upper()
         for pattern, reason in quirks.non_transactional_sql_patterns:
             if re.match(pattern, normalized):

@@ -144,11 +144,12 @@ class SqlserverQuirks(BaseQuirks):
             "SQL Server ALTER FULLTEXT cannot run inside a user transaction",
         ),
         (
-            r"^(?:CREATE|ALTER|DROP)\s+DATABASE\b",
+            r"^(?:CREATE|ALTER|DROP)\s+DATABASE\b"
+            r"(?!\s+(?:SCOPED\s+CREDENTIAL|ENCRYPTION\s+KEY|AUDIT\s+SPECIFICATION)\b)",
             "SQL Server CREATE, ALTER and DROP DATABASE cannot run inside a user transaction",
         ),
         (
-            r"^(?:BACKUP\s+DATABASE|RESTORE\s+(?:DATABASE|VERIFYONLY))\b",
+            r"^(?:BACKUP\s+(?:DATABASE|LOG)|RESTORE\s+(?:DATABASE|LOG|VERIFYONLY))\b",
             "SQL Server BACKUP and RESTORE cannot run inside a user transaction",
         ),
         (
