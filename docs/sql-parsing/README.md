@@ -42,7 +42,7 @@ the extractor's concern and is covered by the model snapshot tests, not here.
   documented equivalent, *dropped and recorded* as a `kind="directive"` entry
   in the statement list, or *rejected* with an error naming the directive.
   "Stripped" without a record is not an option.
-- **No fallback (PostgreSQL family today).** An input the rules do not cover raises
+- **No fallback (PostgreSQL family, Oracle and SQL Server).** An input the rules do not cover raises
   `UnsafeStatementSplitError` with line and column. The spec's *Not handled*
   section is the list of such inputs the authors know about.
 - **The terminator is consumed, not returned.** A statement's text excludes
@@ -90,7 +90,7 @@ fails strictly (`xfail(strict=True)`): the list can only shrink honestly.
 | --- | --- | --- |
 | [postgresql.md](postgresql.md) | PostgreSQL and the compatible family: AlloyDB, Aurora PostgreSQL, Citus, CockroachDB, Neon, Supabase, TimescaleDB, YugabyteDB | dollar-quote tags |
 | [oracle.md](oracle.md) | Oracle Database 12c+ scripts written for SQL\*Plus / SQLcl | alternative quoting `q'…'` |
-| [sqlserver.md](sqlserver.md) | SQL Server and Azure SQL (T-SQL) | none |
+| [sqlserver.md](sqlserver.md) | SQL Server and Azure SQL (T-SQL) | none; the previous splitter still serves extraction and `parse_sql` |
 
 ## Verification sources
 

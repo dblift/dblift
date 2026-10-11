@@ -94,7 +94,7 @@ server rejects the first half.
 | Terminator | Rule |
 | --- | --- |
 | `GO` | **Batch separator.** A line whose first token is `GO` (leading blanks and tabs allowed, any case) followed on the same line only by blanks, an optional count (`GO 3`) and an optional `--` comment. `GO` is not sent to the server. It is recognised only outside strings, bracketed identifiers, quoted identifiers and block comments: a `GO` alone on a line inside any of them is text (measured 2026-10-11, sqlcmd 18.6.0002.1, SQL Server 16.0.4255.1: `'a\nGO\nb'`, `[a\nGO\nb]`, `"a\nGO\nb"` each leave one batch and the object exists; the same for `N'…'` and for a double-quoted string under `SET QUOTED_IDENTIFIER OFF`). A CRLF line end, a UTF-8 byte order mark at the start of the file, a tab between `GO` and the count (ODBC sqlcmd only: go-sqlcmd sends `GO\t2` to the server), and a last line without a newline (`GO -- c` at end of file) are all accepted (measured 2026-10-11, sqlcmd 18.6.0002.1, SQL Server 16.0.4255.1). **Only a `--` comment may follow**: `GO /* c */`, `GO /* c` and `GO // c` are client errors (measured 2026-10-11, sqlcmd 18.6.0002.1, SQL Server 16.0.4255.1: `Sqlcmd: Error: Syntax error at line 2 near command 'GO' in file …`, exit 1, the pending batch did not run, earlier batches did), as are `GO foo`, `GO 5x`, `GO -1`, `GO +2`, `GO 2 3` and `GO ;`; the splitter refuses each with `UnsafeStatementSplitError` naming the line. **`--` directly after `GO` (`GO--c`) is refused too**, for another reason: the ODBC sqlcmd takes it for a separator, go-sqlcmd sends `GO` to the server as text, so a batch that can take an alias absorbs `GO` and the next statement joins it (row 7b). **`GO;` with no blank is different**: sqlcmd does not take it for a command, the line goes to the server as text (measured 2026-10-11, sqlcmd 18.6.0002.1, SQL Server 16.0.4255.1: `CREATE TABLE t14 (id INT)\nGO;\nINSERT INTO t14 VALUES (1)` → `Msg 102 … Incorrect syntax near 'GO'`, exit 1; `SELECT 1\nGO;` runs and returns a column named `GO`). The splitter refuses `GO;` anyway, because the author meant a separator (row 14). **The first token of a line decides, and so does the character after it** (measured 2026-10-11, sqlcmd 18.6.0002.1, SQL Server 16.0.4255.1): after the word `go`, a blank, the end of the line, `-`, `=`, `(`, `[`, `'` or `/` make the line a command, or a client error where it is not a valid one (`go INT`, `go = 1`, `go(1)`, `go[1]`, `go'x'`, `go/*c*/`, `go-1` and `go ;` are `Sqlcmd: Error: Syntax error … near command 'go'`; `GO--c` is a command); after `.`, `,`, `;`, `+`, `)`, `*`, `:`, `|`, `<`, `@` or a letter the line goes to the server as text (`go.id`, `go,` and `go@x` run, `go+1`, `go)`, `go*2`, `go:x`, `go|1`, `go<1` and `GOO` fail as SQL with `Msg 102`; `GOTO` is a label statement). The splitter reads the same follower set; its one deliberate exception is `GO;`, refused (row 14). `GO` after the first token (`SELECT 1 AS go`, `SELECT 1 GO`, `SELECT go INT FROM t`, `[go]`) is an identifier. sqlcmd takes a `GO` that follows **exactly one** block comment on its line as a command and one that follows two as text (measured 2026-10-11, sqlcmd 18.6.0002.1, SQL Server 16.0.4255.1: `/* c */ GO` separates, `/* a */ /* b */ GO` → `Msg 102 … near 'GO'`); the splitter refuses a `GO` that follows a comment on its line rather than model that (row 23). |
-| where go-sqlcmd differs | go-sqlcmd 1.10.0 (same probes, same server). It **agrees** with the ODBC sqlcmd on `GO /* c */`, `GO foo`, `GO ;`, `GO;` (text for the server, `Msg 102`), `GO -1`, a column named `go`, `exit`, `quit` or `ed` at a line start (client error), the first-`*/` comment rule when no `GO` follows the `*/` on its line (rows 6b, 6c), and `$(var)` (substituted in text, strings and `[…]`, not in comments; the environment counts). It **differs**: `GO--c`, `GO\t2`, `GO 0` and a `GO` after a comment on its line (`/* c */ GO`, `b */ GO` after a multi-line comment) are not accepted as commands (`GO--c`, `GO\t2` and `/* c */ GO` reach the server as text, `Msg 102`; `GO 0` is `Sqlcmd: Error: Syntax error`); `GO 5x`, `GO +2` and `GO 2 3` are accepted (`GO 5x` ran the batch again and failed on the object that existed); `/* a /* b */ GO */` runs and creates the table (ODBC: client error); `[$(nope)]` with an undefined variable prints `'nope' scripting variable not defined.` **and runs**, creating a table literally named `$(nope)`; `RESET now` is accepted (the text ignored), `reset = 1` and `go/*c*/` are SQL; `:perftrace` and `:serverlist` are not commands (`Msg 102`). Of these, the ones go-sqlcmd runs and the ODBC sqlcmd rejects (`/* a /* b */ GO */`, `GO 2 3`, `GO +2`, `go/*c*/`, `reset = 1`, `RESET now`, `[$(nope)]`) are refused by dblift because the ODBC sqlcmd rejects them; the ones the ODBC sqlcmd runs and go-sqlcmd rejects loudly (`GO\t2`, `GO 0`) dblift follows the ODBC sqlcmd on, and records as known differences. `GO--c` is the third kind: go-sqlcmd fails loudly only when the batch cannot take an alias (`SELECT 1 AS a INTO ta`, `Msg 102`) and runs silently when it can: `DECLARE @v INT = 5`, `SELECT * FROM tr3`, `GO--end`, `INSERT INTO tr3 VALUES (@v)` exits 0 and inserts the row, because the batch is not cut, whereas the ODBC sqlcmd cuts it and fails with `Msg 137` (measured 2026-10-11, go-sqlcmd 1.10.0, sqlcmd 18.6.0002.1, SQL Server 16.0.4255.1). dblift refuses it (row 7b). |
+| where go-sqlcmd differs | go-sqlcmd 1.10.0 (same probes, same server). It **agrees** with the ODBC sqlcmd on `GO /* c */`, `GO foo`, `GO ;`, `GO;` (text for the server, `Msg 102`), `GO -1`, a column named `go`, `exit`, `quit` or `ed` at a line start (client error), the first-`*/` comment rule when no `GO` follows the `*/` on its line (rows 6b, 6c), and `$(var)` (substituted in text, strings and `[…]`, not in comments; the environment counts). It **differs**: `GO--c`, `GO\t2`, `GO 0` and a `GO` after a comment on its line (`/* c */ GO`, `b */ GO` after a multi-line comment) are not accepted as commands (`GO--c`, `GO\t2` and `/* c */ GO` reach the server as text, `Msg 102`; `GO 0` is `Sqlcmd: Error: Syntax error`); `GO 5x`, `GO +2` and `GO 2 3` are accepted; `/* a /* b */ GO */` runs and creates the table (ODBC: client error); `[$(nope)]` with an undefined variable prints `'nope' scripting variable not defined.` **and runs**, creating a table literally named `$(nope)`; `RESET now` is accepted (the text ignored), `reset = 1` and `go/*c*/` are SQL; `:perftrace` and `:serverlist` are not commands (`Msg 102`). Of these, the ones go-sqlcmd runs and the ODBC sqlcmd rejects (`/* a /* b */ GO */`, `GO 2 3`, `GO +2`, `go/*c*/`, `reset = 1`, `RESET now`, `[$(nope)]`) are refused by dblift because the ODBC sqlcmd rejects them; the ones the ODBC sqlcmd runs and go-sqlcmd rejects loudly (`GO\t2`, `GO 0`) dblift follows the ODBC sqlcmd on, and records as known differences. `GO--c` is the third kind: go-sqlcmd fails loudly only when the batch cannot take an alias (`SELECT 1 AS a INTO ta`, `Msg 102`) and runs silently when it can: `DECLARE @v INT = 5`, `SELECT * FROM tr3`, `GO--end`, `INSERT INTO tr3 VALUES (@v)` exits 0 (the objects it leaves were checked, the rows were not counted), whereas the ODBC sqlcmd cuts it and fails with `Msg 137` (measured 2026-10-11, go-sqlcmd 1.10.0, sqlcmd 18.6.0002.1, SQL Server 16.0.4255.1). dblift refuses it (row 7b). |
 | `GO n` | The batch is sent *n* times (measured 2026-10-11, sqlcmd 18.6.0002.1, SQL Server 16.0.4255.1: `GO 3` → three rows; `GO 002` → two; `GO\t2` and `GO 2 -- c` accepted; `GO 0` → the batch does not run). `split_statements` returns the batch *n* times, because execution sends what it receives; the `Statement` record is one entry with `repeat=n` (`GO 0`: no string is returned). sqlcmd puts no small limit on the count (`GO 99999999999` repeated the batch until the probe was killed after 30 s; the count actually executed is unknown). `split_statements` materialises one string per repetition, so the splitter refuses a count above 1 000 000 (about 8 MB of references; a count of 10⁹ would exhaust memory before anything ran): a bound of its own, not a sqlcmd rule, pinned by row 30. `GO 0` is logged, not dropped silently. go-sqlcmd: `GO 0` is a client syntax error, `GO\t2` is text. |
 | `;` | **Not a splitter terminator.** It stays in the batch text and the server reads it (measured 2026-10-11, sqlcmd 18.6.0002.1, SQL Server 16.0.4255.1: `CREATE TABLE ta (id INT);;\nINSERT INTO ta VALUES (1);\n;\nGO` runs; a bare `;` is harmless). A batch of nothing but `;`, blanks and comments is not a statement. |
 
@@ -112,7 +112,7 @@ The page's "the line can contain comments" is narrower in sqlcmd 18.6: `--`
 only (measured above).
 
 A script without `GO` is one batch, and a last batch without a trailing `GO`
-runs (measured 2026-10-11, sqlcmd 18.6.0002.1, SQL Server 16.0.4255.1: `CREATE TABLE t02 (id INT);\nGO\nGO\nINSERT INTO t02 VALUES (1);` creates the table and the row; `GO` as the last characters of the file, with no newline, separates).
+runs (measured 2026-10-11, sqlcmd 18.6.0002.1, SQL Server 16.0.4255.1: `CREATE TABLE t02 (id INT);\nGO\nGO\nINSERT INTO t02 VALUES (1);` creates the table and the row; `GO` as the last characters of the file, with no newline, runs the final batch: that the `GO` separated is not distinguishable from the end of the file flushing it, `row02` shows the flush happens anyway).
 
 ## 5. Blocks
 
@@ -140,6 +140,12 @@ One consequence is the server's, not the splitter's: `CREATE PROCEDURE`,
 A directive is recognised only at the first token of a line, outside strings
 and comments.
 
+A command word after a comment on its line (`/* c */ EXIT`, `/* c */ :setvar a b`) is refused: sqlcmd takes it as a command (measured 2026-10-11, sqlcmd 18.6.0002.1, SQL Server 16.0.4255.1, `-i`: after `/* c */ :setvar a b` the next statement ran without error, and `/* c */ EXIT` was not sent to the server as text).
+
+Any `$(` outside a comment is refused with `UnsupportedMetaCommandError` naming the text and line, strings and `[…]` included: sqlcmd reads `$(x-y)` as a variable reference (`'x-y' scripting variable not defined.`) and fails on `$()`, `$(1x)`, `$(a.b)`, `$(x y)`, `$(` and `$(x` (measured 2026-10-11, `sqlcmd -C -I -b -i file`, sqlcmd 18.6.0002.1, SQL Server 16.0.4255.1, each as `SELECT 1 AS a, '<text>' AS b` + `GO`: exit 1, e.g. `$(a.b)` gives `Sqlcmd: Error: Syntax error at line 1 near command '.' in file …`). `$ (x)` with a blank is text.
+
+A command word followed by a character other than a blank, the end of the line, `- = ( [ ' /` goes to the server as text (measured 2026-10-11 with the ODBC sqlcmd 18.6, SQL Server 2022 RTM-CU25, `-i`: `exit+1`, `exit)` and `exit|1` give Msg 156; `quit*2`, `reset<1` and `ed@x` give Msg 102; `GO` has the same follower set, §4).
+
 ## 7. Raw blocks
 
 None.
@@ -147,19 +153,24 @@ None.
 ## 8. Transaction markers
 
 Statements the splitter flags as *not transactional*; execution runs them in
-autocommit. The flag is set from the first keywords of the batch after
+autocommit. The flag is set from the first keywords of a statement after
 comments; a batch is flagged as a whole when ANY of its statements is one of these
-(the batch is divided into statements to find out, with the extraction split: `CREATE TABLE a (id INT);\nCREATE FULLTEXT INDEX …` with no `GO` is flagged) and reported. Every pattern below is a statement SQL Server
-refuses inside a user transaction (measured 2026-10-11, sqlcmd 18.6.0002.1, SQL Server 16.0.4255.1: `BEGIN TRAN` … `COMMIT` around each, exit 1, nothing created):
+(the batch is divided into statements to find out, with the extraction split: `CREATE TABLE a (id INT);\nCREATE FULLTEXT INDEX …` with no `GO` is flagged) and reported. The division follows `;`: a statement SQL Server refuses in a transaction must start a `;`-terminated statement or its own batch; otherwise the server reports the error (Msg 226, 574 or 3021) and the batch rolls back. Every pattern below is a statement SQL Server
+refuses inside a user transaction (measured 2026-10-11, sqlcmd 18.6.0002.1, SQL Server 16.0.4255.1: `BEGIN TRANSACTION; <statement>; COMMIT;`), exit 1, nothing created:
 
-| Pattern (first keywords) | Measured error | In the current code (`quirks.py:125-142`) |
+| Pattern (first keywords) | Measured error | Flagged |
 | --- | --- | --- |
-| `CREATE FULLTEXT CATALOG`, `CREATE FULLTEXT INDEX`, `DROP FULLTEXT INDEX`, `DROP FULLTEXT CATALOG` | `Msg 574 … statement cannot be used inside a user transaction.` | yes, verified by `test_transaction_policy.py` |
-| `ALTER FULLTEXT CATALOG`, `ALTER FULLTEXT INDEX` | `Msg 574 … ALTER FULLTEXT CATALOG statement cannot be used inside a user transaction.` (the image has no Full-Text Search, `SERVERPROPERTY('IsFullTextInstalled')` is 0; the statements fail with 574 before anything else) | **no** |
-| `CREATE DATABASE`, `ALTER DATABASE` (`SET`, `MODIFY FILE`, `SCOPED CONFIGURATION` alike) | `Msg 226 … statement not allowed within multi-statement transaction.` | **no** |
-| `DROP DATABASE` | `Msg 574 … DROP DATABASE statement cannot be used inside a user transaction.` | **no** |
-| `BACKUP`, `RESTORE` (`RESTORE DATABASE`, `RESTORE VERIFYONLY`) | `Msg 3021 … Cannot perform a backup or restore operation within a transaction.` | **no** |
-| `RECONFIGURE` (also `WITH OVERRIDE`) | `Msg 574 … CONFIG statement cannot be used inside a user transaction.` | **no** |
+| `CREATE FULLTEXT CATALOG`, `CREATE FULLTEXT INDEX`, `DROP FULLTEXT INDEX`, `DROP FULLTEXT CATALOG` | `Msg 574 … statement cannot be used inside a user transaction.` | yes |
+| `ALTER FULLTEXT CATALOG`, `ALTER FULLTEXT INDEX` | `Msg 574 … ALTER FULLTEXT CATALOG statement cannot be used inside a user transaction.` (the image has no Full-Text Search, `SERVERPROPERTY('IsFullTextInstalled')` is 0; the statements fail with 574 before anything else) | yes |
+| `CREATE DATABASE`, `ALTER DATABASE` (`SET`, `MODIFY FILE`, `SCOPED CONFIGURATION` alike) | `Msg 226 … statement not allowed within multi-statement transaction.` | yes |
+| `DROP DATABASE` | `Msg 574 … DROP DATABASE statement cannot be used inside a user transaction.` | yes |
+| `BACKUP DATABASE`, `BACKUP LOG`, `RESTORE DATABASE`, `RESTORE LOG`, `RESTORE VERIFYONLY` | `Msg 3021 … Cannot perform a backup or restore operation within a transaction.` | yes |
+| `RECONFIGURE` (also `WITH OVERRIDE`) | `Msg 574 … CONFIG statement cannot be used inside a user transaction.` | yes |
+| `KILL` (a session id, `STATS JOB n`, a unit-of-work GUID, `QUERY NOTIFICATION SUBSCRIPTION`) | `Msg 6115 …` (measured with `-i`, `BEGIN TRANSACTION; <statement>; ROLLBACK;`) | yes |
+| `ALTER SERVER CONFIGURATION`, `ALTER SERVER AUDIT` | `Msg 574 …` (`SET PROCESS AFFINITY CPU = AUTO`, `WITH (STATE = OFF)`) | yes |
+| `DROP FULLTEXT STOPLIST`, `DROP SEARCH PROPERTY LIST` | `Msg 574 …` | yes |
+
+Accepted inside a user transaction, so **not** flagged (same measurement, exit 0): `RESTORE HEADERONLY`, `RESTORE FILELISTONLY`, `RESTORE LABELONLY`, `BACKUP MASTER KEY`, `CREATE DATABASE SCOPED CREDENTIAL`, `ALTER DATABASE SCOPED CREDENTIAL`, `DROP DATABASE SCOPED CREDENTIAL`, `CREATE DATABASE ENCRYPTION KEY`, `CREATE DATABASE AUDIT SPECIFICATION`. The `ALTER` and `DROP` forms of `DATABASE ENCRYPTION KEY` and `DATABASE AUDIT SPECIFICATION`, `BACKUP CERTIFICATE` and `BACKUP SERVICE MASTER KEY` were not measured and are treated as transactional. `RESTORE REWINDONLY` is a tape command (Msg 3216 on a disk device) and was not classified. `ALTER FULLTEXT STOPLIST` answered Msg 7609 here (no Full-Text Search installed), which says nothing about transactions, and is not flagged.
 
 ## 9. Engine subclass
 
@@ -229,49 +240,27 @@ count and comment, a directive prefix list.
 | `GO` with a count above 1 000 000 | rejected (row 30) | `split_statements` returns the batch that many times; sqlcmd accepts any count |
 | Per-statement error location inside a batch | the error names the batch and the server's line number within it | consequence of the batch decision; the extractor may annotate statement spans for reports |
 
-## 12. Current implementation and the gaps this spec closes
+## 12. Current implementation
 
-Code in `dblift/db/plugins/sqlserver/parser/`: `sqlserver_tokenizer.py`,
-`sqlserver_statement_parser.py`, `sqlserver_regex_parser.py`,
-`tsql_batch_separator.py`; shared `core/sql_parser/base_tokenizer.py`,
-`base_statement_parser.py`; fallbacks in `common/base_parser.py` and
-`core/migration/sql/sql_analyzer.py`.
+Code in `dblift/db/plugins/sqlserver/parser/`:
 
-Facts established by reading it; each is a conformance row above or a reason
-for a rule:
+- `_batches.py`: `scan_batches(script)` is the only function `split_statements` calls. It reproduces
+  the client's lexer: strings, bracketed and quoted identifiers, `--` comments, block comments that
+  end at the first `*/`, a command word as the first token of a line, the `GO` line grammar of §4 and
+  the refusals of §6. A `GO n` batch carries its count; the scanner never reads a `;`.
+- `sqlserver_regex_parser.py`: `SqlServerRegexParser.split()` returns one `Statement` per batch
+  (`terminator="GO"` or none, `repeat`); `split_statements()` is its projection (`GO n` returns the
+  batch n times, `GO 0` is logged and returns nothing) and has no fallback;
+  `split_for_analysis()` divides each batch into its statements for callers that read a script
+  statement by statement; `split_for_extraction()` is the previous tokenizer-based splitter,
+  unchanged, and still serves `parse_sql`, object extraction and the sqlglot fallback. It still
+  carries the defects of rows 13, 15 and 16 (it cuts `SELECT 1 AS go;` at the alias).
+- `sqlserver_tokenizer.py`, `sqlserver_statement_parser.py`, `tsql_batch_separator.py`: kept only for
+  that extraction path.
+- `quirks.py` `non_transactional_sql_patterns` (§8) and `execution_statement.classify_execution_statement`,
+  which divides a batch so that any statement matching a pattern makes the batch non-transactional.
 
-- `GO` is recognised at **any** token position when followed by whitespace or
-  `;` (`sqlserver_tokenizer.py:44-62`): `SELECT 1 AS go;` returns `SELECT 1 AS`
-  and `SELECT go INT FROM t;` returns `SELECT` · `INT FROM t;` (rows 15, 16;
-  measured). `GO 5` leaves `5` as the first token of the next statement
-  (row 8). `GO;` is accepted where sqlcmd errors (row 14).
-- Every `;` at block depth 0 ends a statement
-  (`sqlserver_statement_parser.py:126-144`), so batch-scoped state is broken
-  (row 3) and a procedure body without `BEGIN` is cut at its first `;` (row 4).
-- `CASE … END` inside a `BEGIN` block decrements the depth, closing the body
-  early; `BEGIN DISTRIBUTED TRANSACTION` opens a block that never closes
-  because the look-ahead re-reads `DISTRIBUTED`
-  (`sqlserver_statement_parser.py:118-122`); `END CONVERSATION` decrements.
-  Depth is never reset across `GO`. All moot under the batch decision.
-- `$` is an unknown character (`sqlserver_tokenizer.py:32`): under strict
-  mode `OUTPUT $action` and `$PARTITION.fn()` are rejected (row 10).
-- sqlcmd directives are glued onto the following statement and sent to the
-  server (§6).
-- The non-strict fallback `_split_batch_intelligently`
-  (`sqlserver_regex_parser.py:158-228`) splits at line-start DDL keywords and
-  **drops the text before the first match** when there are two or more.
-- A second copy of the GO and batch helpers lives in
-  `common/base_parser.py:421-570`, reachable only from tests, with a different
-  GO regex and an `OR REPLACE` (not `OR ALTER`) procedure pattern.
-- The live not-transactional list (`quirks.py:125-142`) is the four FULLTEXT
-  patterns; `can_execute_in_transaction` in the statement parser is a
-  separate, dead list.
-
-Tests that pin current behaviour and must be re-pointed at the conformance
-table: `tests/unit/test_tokenization_sqlserver.py` (17),
-`test_tokenization_sqlserver_coverage.py` (15),
-`tests/unit/core/sql_parser/test_sqlserver_regex_parser_extended.py` (61,
-mostly fallback helpers that disappear),
-`tests/unit/core/migration/sql/test_statement_splitter_verbatim.py::TestSqlServerVerbatim`
-(6), `test_nested_block_comments.py` (4),
-`tests/integration/parsers/test_sqlserver_parser.py` (16, live).
+Tests that pin it: `tests/unit/core/sql_parser/test_sqlserver_spec_conformance.py` (every row of §10),
+`tests/unit/db/plugins/sqlserver/` (`test_batches.py`, `test_go_line.py`, `test_client_commands.py`,
+`test_split_for_analysis.py`, `test_extraction_keeps_statements.py`,
+`test_non_transactional_statements.py`).
