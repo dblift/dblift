@@ -49,7 +49,7 @@ the extractor's concern and is covered by the model snapshot tests, not here.
   its terminator; the `Statement` records which terminator ended it so
   execution can reproduce dialect-specific behaviour (Oracle's `/` after a
   PL/SQL block, for example) without re-scanning. This includes the
-  terminator of a raw block (`\.` after `COPY … FROM STDIN` data).
+  terminator of a raw block (`\.` after `COPY … FROM STDIN` data). `repeat` is how often execution sends the statement: 1, or the count of the `GO n` that ended a T-SQL batch (0 sends it never); `multi` stays psql's `\;`.
 - **An empty statement is not a statement.** Nothing but whitespace and
   comments between two terminators (a bare `;`, a `GO` after a `GO`) yields
   no entry; a comment-only segment is dropped. PostgreSQL follows this
@@ -61,8 +61,8 @@ the extractor's concern and is covered by the model snapshot tests, not here.
 
 Section 10 of every spec is compiled into tests by
 `tests/support/splitter_spec/spec_tables.py` and run by
-`test_postgresql_spec_conformance.py` and `test_oracle_spec_conformance.py` in
-`tests/unit/core/sql_parser/`. A row that the compiler cannot read is
+`test_postgresql_spec_conformance.py`, `test_oracle_spec_conformance.py` and
+`test_sqlserver_spec_conformance.py` in `tests/unit/core/sql_parser/`. A row that the compiler cannot read is
 a build error, so the tables keep this shape:
 
 | Column | Rule |
@@ -77,8 +77,8 @@ normalised statements: surrounding whitespace removed and one trailing
 terminator (`;`) removed; everything else is compared verbatim.
 
 Each row runs through `SqlAnalyzer.split_statements`, the entry point `migrate`
-uses, in `test_postgresql_spec_conformance.py` and `test_oracle_spec_conformance.py`
-(both in `tests/unit/core/sql_parser/`). A row
+uses, in `test_postgresql_spec_conformance.py`, `test_oracle_spec_conformance.py` and
+`test_sqlserver_spec_conformance.py` (all in `tests/unit/core/sql_parser/`). A row
 the current code gets wrong is listed by id in that module's list of known gaps and
 fails strictly (`xfail(strict=True)`): the list can only shrink honestly.
 
@@ -88,6 +88,7 @@ fails strictly (`xfail(strict=True)`): the list can only shrink honestly.
 | --- | --- | --- |
 | [postgresql.md](postgresql.md) | PostgreSQL and the compatible family: AlloyDB, Aurora PostgreSQL, Citus, CockroachDB, Neon, Supabase, TimescaleDB, YugabyteDB | dollar-quote tags |
 | [oracle.md](oracle.md) | Oracle Database 12c+ scripts written for SQL\*Plus / SQLcl | alternative quoting `q'…'` |
+| [sqlserver.md](sqlserver.md) | SQL Server and Azure SQL (T-SQL) | none |
 
 ## Verification sources
 
