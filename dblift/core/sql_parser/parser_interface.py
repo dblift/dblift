@@ -49,6 +49,14 @@ class SqlParserInterface(ABC):
         """
         return self.split_statements(sql_content, strict_tokenizer=strict_tokenizer)
 
+    def split_for_analysis(self, sql_content: str, strict_tokenizer: bool = False) -> List[str]:
+        """The statements of a whole script, for callers that read it statement by statement.
+
+        The execution split, unless the dialect executes batches (T-SQL): then each batch is divided
+        into its statements, and ``GO n`` is not repeated.
+        """
+        return self.split_statements(sql_content, strict_tokenizer=strict_tokenizer)
+
     @abstractmethod
     def validate_sql(self, sql_content: str) -> Dict[str, Any]:
         """Validate SQL syntax.

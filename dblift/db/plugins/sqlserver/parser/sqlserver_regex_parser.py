@@ -79,6 +79,15 @@ class SqlServerRegexParser(EnhancedRegexParser):
             statements.extend([record.text] * record.repeat)
         return statements
 
+    def split_for_analysis(self, sql_content: str, strict_tokenizer: bool = False) -> List[str]:
+        """The batches of a script (refusals included), each divided into its statements."""
+        return [
+            part
+            for record in self.split(sql_content)
+            if record.repeat
+            for part in self.split_for_extraction(record.text)
+        ]
+
     def split_for_extraction(self, sql_content: str, strict_tokenizer: bool = False) -> List[str]:
         """Split SQL content using tokenization-based logic.
 
@@ -403,7 +412,7 @@ class SqlServerRegexParser(EnhancedRegexParser):
             Dict with 'valid' (bool), 'statements_found' (int), and 'errors' (list)
         """
         try:
-            statements = self.split_statements(sql_content)
+            statements = self.split_for_analysis(sql_content)
             return {"valid": True, "statements_found": len(statements), "errors": []}
         except Exception as e:
             return {"valid": False, "statements_found": 0, "errors": [str(e)]}
