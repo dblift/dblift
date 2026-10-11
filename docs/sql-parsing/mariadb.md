@@ -6,7 +6,7 @@
 | --- | --- |
 | Covers | MariaDB 11.8.8, read through the `mariadb` command-line client 15.2 (the only version measured: other versions, 10.5 to 11.7 and later, are extrapolated) |
 | Relation to [mysql.md](mysql.md) | mysql.md is normative for both engines; this file lists only what MariaDB does differently and the conformance rows for it. A script that uses none of the constructs below splits the same way on both |
-| Code facts taken from | OSS `develop` `94384ff` (2026-10-11): MariaDB shares the MySQL splitter (`mariadb/quirks.py` inherits `parser_class`) |
+| Code facts taken from | OSS `develop` `94384ff` (2026-10-11): MariaDB shared the MySQL splitter (`mariadb/quirks.py` inherited `parser_class`) |
 | Live verification | measured 2026-10-11 with `mariadb from 11.8.8-MariaDB, client 15.2 for debian-linux-gnu (aarch64)` against MariaDB 11.8.8-MariaDB-ubu2404, the same probe set as the MySQL measurements (778 probes, run on both engines). Every "measured 2026-10-11" cell below is that pair |
 | Engine subclass | none: the scanner takes one flag, whether `/*M!` opens an executable comment |
 

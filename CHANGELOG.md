@@ -21,6 +21,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   callers that read it statement by statement (T-SQL batches divided, `GO n`
   not repeated). `SqlServerRegexParser.validate_sql` counts statements, not
   batches.
+- `Statement` records for MySQL and MariaDB (`MySqlRegexParser.split()`): the
+  text without its delimiter, its line, the delimiter that ended it, and
+  `DELIMITER` lines as `directive` records. MariaDB has its own parser class
+  (`MariaDbRegexParser`).
 
 ### Changed
 
@@ -156,6 +160,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   longer lose their `GO` column or alias; `GO 5` no longer leaves `5` glued
   onto the next statement; a procedure body without `BEGIN` is no longer cut
   at its first `;`; `DECLARE`d variables survive to the statements after them.
+- **MySQL and MariaDB: a script is cut where the `mysql` / `mariadb` client
+  cuts it.** The client's rules are now followed: `DELIMITER` is a command
+  only as the first word of a line (its argument is the first word, quotes
+  removed; longer than 15 characters, empty, containing a backslash, after a
+  terminator on the same line, or holding a carriage return that is not part
+  of a CRLF pair is refused); the delimiter is matched as plain text, so
+  `DELIMITER GO` also splits inside a word; `--` starts a comment only before
+  a blank, tab or end of line; `#` is a comment after an identifier;
+  `/*! ... */` is kept in the statement and a delimiter inside it splits;
+  `/*+ ... */` hides the delimiter (on MySQL on the line that opens the hint
+  only); `/*M! ... */` is code on MariaDB and a plain comment on MySQL; a
+  backslash is not an escape inside backticks.
+- **MySQL and MariaDB: a comment line that holds a carriage return which is
+  not part of a CRLF pair is refused.** The clients read a `#` or `--` comment
+  to the next line feed, so the statement after the carriage return would be
+  swallowed without an error; statements separated by a carriage return alone
+  are still cut at their delimiters.
+- **MySQL and MariaDB: the statements of a CRLF file have line feeds only,**
+  as the client sends them: a multi-line string literal or a stored-program
+  body in a CRLF migration is stored with line feeds, as `mysql < file` stores
+  it. The migration checksum is unchanged.
+- **MySQL and MariaDB: an unterminated string, backtick identifier, block
+  comment or optimizer hint is refused** with its line and column instead of
+  being returned as a statement (the client swallows an unterminated comment
+  and exits 0). A stored-program body still open at the end of the script is
+  refused with the line it opened on.
+- **MySQL and MariaDB: stored programs.** `CREATE [OR REPLACE] [DEFINER = ...]
+  [AGGREGATE] PROCEDURE|FUNCTION|TRIGGER|EVENT` and `ALTER EVENT` keep their
+  `BEGIN ... END` body whole under the `;` delimiter, including `REPEAT`,
+  `CASE`, labels, handlers and MariaDB `FOR` loops, so a `;` inside the body no
+  longer splits it. The `mysql` client itself rejects such a file unless the
+  body is wrapped in `DELIMITER`, so a migration that runs here still needs
+  `DELIMITER` lines to run with `mysql < file`.
 
 ## [4.11.1] - 2026-10-10
 

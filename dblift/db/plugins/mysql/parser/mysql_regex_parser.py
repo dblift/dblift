@@ -26,11 +26,12 @@ class MySqlRegexParser(EnhancedRegexParser):
 
     dialect_name = "mysql"  # lint: allow-dialect-string: dialect dispatch
 
-    #: Same tokenizer :meth:`split_statements` uses below, so extraction's
+    #: Same tokenizer :meth:`split_for_extraction` uses below, so extraction's
     #: comment stripper reads MySQL's non-nesting block-comment rule from
     #: the one place it is declared instead of assuming its own.
     tokenizer_class: Type[BaseTokenizer] = MySQLTokenizer
 
+    #: No regex fallback may re-split a script this splitter refused.
     SPLITS_WITHOUT_FALLBACK = True
 
     #: ``/*M! ... */`` is an executable comment to the mariadb client, a plain comment to mysql.

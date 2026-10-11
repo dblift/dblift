@@ -77,3 +77,14 @@ def test_parse_sql_reports_any_parser_refusal_instead_of_failing(
     result = HybridParser("mysql").parse_sql("SELECT 1;\n")
     assert result.success
     assert "client command refused" in " ".join(result.errors or [])
+
+
+def test_extract_objects_reads_the_script_whatever_refusal_the_split_raises(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def refuse(self: HybridParser, sql_content: str, strict_tokenizer: bool = False) -> list[str]:
+        raise UnsupportedMetaCommandError("client command refused")
+
+    monkeypatch.setattr(HybridParser, "split_for_extraction", refuse)
+    objects = HybridParser("mysql").extract_objects("CREATE TABLE a (id INT);\n")
+    assert [o.name for o in objects] == ["a"]
