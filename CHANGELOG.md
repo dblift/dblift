@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `Statement` records for Oracle (`OracleStatementParser.split()`): the text
+  without its terminator, its line, and the terminator (`;`, `/` or none).
 - `Statement` records from `PostgreSQLStatementParser.split()`: the text
   without its terminator, its line, the terminator, a kind (`sql`,
   `directive` or `copy_stdin`), and `multi` for statements combined by
@@ -23,6 +25,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the `\.` line. The lexical rules are documented in
   `docs/sql-parsing/postgresql.md`, whose conformance table is compiled into
   the unit tests.
+- The Oracle splitter has no regex fallback: a script it cannot read is an
+  error naming the construct (the regex path remains for object extraction
+  only). `split_statements()` strings are unchanged except where the rules
+  under Fixed ruled the old output wrong.
 - SQL Server and Oracle refuse an unterminated string or block comment with
   `UnsafeStatementSplitError` and its position. SQL Server previously
   dropped the rest of the file silently for an unterminated comment.
@@ -42,6 +48,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `UnsafeStatementSplitError` with line and column instead of swallowing the
   rest of the script.
 - Oracle: `nq'...'` literals are recognised.
+- Oracle splitting follows SQL*Plus. A `/` terminates only when alone on its
+  line; a `;` must be the last text on its line (text after it is refused,
+  as SQL*Plus rejects it with ORA-03405). A PL/SQL unit (DECLARE, BEGIN,
+  labelled blocks, CREATE [OR REPLACE] FUNCTION, PROCEDURE, PACKAGE [BODY],
+  TYPE [BODY], TRIGGER or LIBRARY, JAVA SOURCE, CLASS or RESOURCE, MLE
+  MODULE) ends only at `/`, with no `BEGIN`/`END` counting, so cursors,
+  `CASE ... END`, nested blocks and keyword-named columns cannot confuse the
+  split. A unit without a closing `/` is an error instead of being merged
+  with the next statement. A `/` that would re-execute the previous
+  statement and a `.` alone are refused. A whitespace `q'...'` delimiter and
+  an unterminated q-quote or quoted identifier are refused with their
+  position. A `""` inside a quoted identifier is no longer read as an
+  escape.
 
 ### Removed
 
