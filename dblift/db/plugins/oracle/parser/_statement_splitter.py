@@ -123,7 +123,9 @@ def extract_regular_statement(text: str, start_pos: int) -> Tuple[str, int]:
             eol = text.find("\n", i)
             rest_of_line = text[i : eol if eol != -1 else len(text)]
             if not line_buffering and "*/" in rest_of_line:
-                line_buffering = has_stray_comment_close(OracleTokenizer(rest_of_line).tokenize())
+                line_buffering = has_stray_comment_close(
+                    OracleTokenizer(rest_of_line, directives=False).tokenize()
+                )
             if line_buffering and rest_of_line.strip():
                 continue
 

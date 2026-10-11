@@ -4,11 +4,13 @@ This module provides Oracle-specific tokenization including Q-quotes,
 wrapped PL/SQL detection, and slash delimiters.
 """
 
-from typing import List
+from typing import List, Optional
 
 from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.core.sql_parser.base_tokenizer import BaseTokenizer
 from dblift.core.sql_parser.tokens import Token, TokenType
+from dblift.db.plugins.oracle.parser._directives import classify_directive
+from dblift.db.plugins.oracle.parser._unit_heads import MAX_HEAD_TOKENS, head_decided
 
 
 def has_stray_comment_close(tokens: List[Token]) -> bool:
@@ -56,6 +58,86 @@ class OracleTokenizer(BaseTokenizer):
 
     # ``%`` and ``@`` were added here when only Oracle needed them; both are in
     # ``BaseTokenizer.SYMBOL_CHARS`` now, so the override would be a no-op.
+
+    def __init__(self, sql: str, strict_unknown_chars: bool = False, directives: bool = True):
+        """Initialize the tokenizer.
+
+        Args:
+            sql: SQL content to tokenize
+            strict_unknown_chars: see ``BaseTokenizer``
+            directives: read SQL*Plus directive lines as ``DIRECTIVE`` tokens
+                (docs/sql-parsing/oracle.md section 6). Off for the callers
+                that still handle directives themselves.
+        """
+        super().__init__(sql, strict_unknown_chars)
+        self._directives = directives
+        # Whether a statement can begin at the cursor, and the statement being
+        # read: its head, and whether that head makes it a PL/SQL unit.
+        self._at_start = True
+        self._head: List[Token] = []
+        self._unit: Optional[bool] = None
+
+    def _next_token(self) -> Optional[Token]:
+        if not self._directives:
+            return super()._next_token()
+        self._skip_whitespace()
+        if self._at_start and self.pos < len(self.sql):
+            directive = self._directive_token()
+            if directive is not None:
+                return directive
+        token = super()._next_token()
+        if token is not None:
+            self._track(token)
+        return token
+
+    def _track(self, token: Token) -> None:
+        """Follow where statements end, as the statement parser does (section 4)."""
+        if token.type in (TokenType.COMMENT, TokenType.EOF):
+            return
+        if self._at_start:
+            self._at_start = False
+            self._head = []
+            self._unit = None
+        if self._unit is None:
+            self._head.append(token)
+            self._unit = head_decided(self._head)
+            if self._unit is None and len(self._head) >= MAX_HEAD_TOKENS:
+                self._unit = False
+        if token.type != TokenType.DELIMITER:
+            return
+        if token.text == "/" or (token.text == ";" and not self._unit and token.parens_depth == 0):
+            self._at_start = True
+
+    def _directive_token(self) -> Optional[Token]:
+        """Consume a directive line (and its ``-`` continuations) at the cursor.
+
+        Only blanks may precede it on its line. A ``--`` ends the directive;
+        the rest of the line is a comment and tokenized as one. The text is
+        not lexed: ``REM don't`` opens no literal.
+        """
+        line_start = self.sql.rfind("\n", 0, self.pos) + 1
+        if self.sql[line_start : self.pos].strip():
+            return None
+        parts: List[str] = []
+        cursor = self.pos
+        while True:
+            eol = self.sql.find("\n", cursor)
+            eol = eol if eol != -1 else len(self.sql)
+            comment = self.sql.find("--", cursor, eol)
+            end = comment if comment != -1 else eol
+            part = self.sql[cursor:end].strip()
+            if comment == -1 and part.endswith("-") and eol < len(self.sql):
+                parts.append(part[:-1].rstrip())
+                cursor = eol + 1
+                continue
+            parts.append(part)
+            break
+        text = " ".join(p for p in parts if p)
+        if classify_directive(text) is None:
+            return None
+        token = Token(TokenType.DIRECTIVE, text, self.pos, self.line, self.col, self.parens_depth)
+        self.read(end - self.pos)
+        return token
 
     def _is_string_start(self) -> bool:
         """Treat double quotes like string starts so _handle_string runs.

@@ -22,6 +22,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (...); -- note` and two statements on one line are no longer accepted;
   SQL*Plus rejects them with ORA-03405. Move the comment or the second
   statement to its own line.
+- **Oracle: SQL*Plus directives are recorded or refused, never dropped.**
+  `@file`, `@@file`, `START`, `HOST`, `!`, `ACCEPT`, `PAUSE`, `CONNECT`,
+  `CONN`, `DISCONNECT`, `PASSWORD` and `SET SQLTERMINATOR`, `BLOCKTERMINATOR`,
+  `SQLBLANKLINES`, `SQLPREFIX`, `CMDSEP` now fail the script with an error
+  naming the directive and line instead of being silently skipped. `EXIT` and
+  `QUIT` end the script as in SQL*Plus: the statements after them are not run
+  and a warning names the first one. A directive after a `;` on the same line
+  is refused. Directives may be abbreviated as SQL*Plus allows (`SET
+  SERVEROUT ON`, `SET FEED OFF`), and a directive line ending in `-` continues
+  on the next line.
 - The PostgreSQL family (including Redshift) has no regex fallback: a script
   the splitter cannot read is an error naming the construct. A script of
   only `\restrict` / `\unrestrict` lines yields no statement.

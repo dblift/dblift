@@ -20,10 +20,11 @@ __all__ = [
 ]
 
 # --- Directive detectors (line-level, case-insensitive) ---
-_SET_SERVEROUTPUT_ON = re.compile(r"^\s*SET\s+SERVEROUTPUT\s+ON\b", re.IGNORECASE)
-_SET_SERVEROUTPUT_OFF = re.compile(r"^\s*SET\s+SERVEROUTPUT\s+OFF\b", re.IGNORECASE)
-_SET_DEFINE_OFF = re.compile(r"^\s*SET\s+DEFINE\s+OFF\b", re.IGNORECASE)
-_SET_DEFINE_ON = re.compile(r"^\s*SET\s+DEFINE\s+ON\b", re.IGNORECASE)
+# SET options may be abbreviated to their documented minimum (spec section 6).
+_SET_SERVEROUTPUT_ON = re.compile(r"^\s*SET\s+SERVEROUT(?:P(?:U(?:T)?)?)?\s+ON\b", re.IGNORECASE)
+_SET_SERVEROUTPUT_OFF = re.compile(r"^\s*SET\s+SERVEROUT(?:P(?:U(?:T)?)?)?\s+OFF\b", re.IGNORECASE)
+_SET_DEFINE_OFF = re.compile(r"^\s*SET\s+DEF(?:I(?:N(?:E)?)?)?\s+OFF\b", re.IGNORECASE)
+_SET_DEFINE_ON = re.compile(r"^\s*SET\s+DEF(?:I(?:N(?:E)?)?)?\s+ON\b", re.IGNORECASE)
 _DEFINE_VAR = re.compile(r"^\s*DEFINE\s+(\w+)\s*=\s*(.+)", re.IGNORECASE)
 _PROMPT = re.compile(r"^\s*PROMPT\s+(.*)", re.IGNORECASE)
 _REMARK = re.compile(r"^\s*REM(?:ARK)?\s+(.*)", re.IGNORECASE)

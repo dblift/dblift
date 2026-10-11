@@ -28,6 +28,13 @@ derived from. For each entry we assert:
 Adding a directive without an example is a hard error here: the test
 asserts every entry in ``SQLPLUS_DIRECTIVES`` has at least one
 example so the corpus stays in lockstep with the registry.
+
+The splitter no longer pre-processes the text: it reads a directive line as a
+``DIRECTIVE`` token and records, rewrites or refuses it
+(docs/sql-parsing/oracle.md section 6). The end-to-end checks below therefore
+run the corpus through the splitter and expect, per directive, the action
+``classify_directive`` names; the regex-path functions (``is_sqlplus_command``)
+are still checked against the registry.
 """
 
 from __future__ import annotations
@@ -35,9 +42,12 @@ from __future__ import annotations
 import unittest
 import warnings
 
+from dblift.core.exceptions import UnsupportedMetaCommandError
 from dblift.core.sql_parser.base_tokenizer import TokenizerWarning
+from dblift.core.sql_parser.tokens import TokenType
+from dblift.db.plugins.oracle.parser._directives import DirectiveAction, classify_directive
 from dblift.db.plugins.oracle.parser._sqlplus import SQLPLUS_DIRECTIVES, is_sqlplus_command
-from dblift.db.plugins.oracle.parser.sqlplus_context import terminate_sqlplus_directives
+from dblift.db.plugins.oracle.parser.oracle_tokenizer import OracleTokenizer
 
 
 class TestSqlplusDirectiveRegistry(unittest.TestCase):
@@ -67,63 +77,62 @@ class TestSqlplusDirectiveRegistry(unittest.TestCase):
         )
 
 
-class TestSqlplusDirectiveTerminationCorpus(unittest.TestCase):
-    """Every example must let the trailing ``CREATE TABLE`` survive splitting.
+def _split(sql: str) -> list[str]:
+    from dblift.db.plugins.oracle.parser.oracle_statement_parser import OracleStatementParser
 
-    This is the end-to-end guarantee. If any directive is missing or its
-    pattern drifts, the merge corruption from BUG-02..05 reappears here:
-    the CREATE TABLE either disappears (because the merged text matched
-    a directive) or is mangled (because it now starts with the directive
-    text).
+    tokens = OracleTokenizer(sql).tokenize()
+    return [s for s in OracleStatementParser(tokens, source=sql).split_statements() if s.strip()]
+
+
+class TestSqlplusDirectiveTerminationCorpus(unittest.TestCase):
+    """Every example is classified, and the splitter does with it what the spec says.
+
+    This is the end-to-end guarantee. If a directive is missing from the
+    splitter's table the merge corruption from BUG-02..05 reappears here: the
+    CREATE TABLE after it disappears or is mangled by the directive's text.
     """
 
-    def _split(self, sql: str) -> list[str]:
-        from dblift.db.plugins.oracle.parser.oracle_statement_parser import OracleStatementParser
-        from dblift.db.plugins.oracle.parser.oracle_tokenizer import OracleTokenizer
-
-        tokens = OracleTokenizer(sql).tokenize()
-        return [s for s in OracleStatementParser(tokens).split_statements() if s.strip()]
-
-    def test_directive_followed_by_ddl_survives_split(self) -> None:
+    def test_every_example_is_a_directive_to_the_splitter(self) -> None:
         for d in SQLPLUS_DIRECTIVES:
             for example in d.examples:
                 with self.subTest(name=d.name, example=example):
-                    raw = f"{example}\nCREATE TABLE t_{d.name.lower()} (id NUMBER);\n"
-                    terminated = terminate_sqlplus_directives(raw)
-                    # A WHENEVER SQLERROR line must have gained a `;` (trailing
-                    # whitespace is rstripped first); any other directive line
-                    # is emptied, since it is never executed.
-                    if d.filter_from_execution:
-                        self.assertTrue(
-                            terminated.startswith("\nCREATE TABLE"),
-                            f"{d.name}: terminate_sqlplus_directives did not remove "
-                            f"{example!r}; merged script:\n{terminated}",
-                        )
-                    else:
-                        self.assertIn(
-                            f"{example.rstrip()};",
-                            terminated,
-                            f"{d.name}: terminate_sqlplus_directives did not append `;` "
-                            f"to {example!r}; merged script:\n{terminated}",
-                        )
-                    stmts = self._split(terminated)
-                    self.assertTrue(
-                        any(f"t_{d.name.lower()}" in s for s in stmts),
-                        f"{d.name}: trailing CREATE TABLE was lost after directive "
-                        f"{example!r}; statements after split:\n{stmts}",
+                    self.assertIsNotNone(
+                        classify_directive(example),
+                        f"{d.name}: the splitter does not recognise its own example {example!r}",
                     )
+
+    def test_directive_followed_by_ddl_is_recorded_refused_or_ends_the_script(self) -> None:
+        for d in SQLPLUS_DIRECTIVES:
+            for example in d.examples:
+                with self.subTest(name=d.name, example=example):
+                    action = classify_directive(example).action
+                    raw = f"{example}\nCREATE TABLE t_{d.name.lower()} (id NUMBER);\n"
+                    if action is DirectiveAction.REJECT:
+                        with self.assertRaises(UnsupportedMetaCommandError):
+                            _split(raw)
+                        continue
+                    stmts = _split(raw)
+                    survives = any(f"t_{d.name.lower()}" in s for s in stmts)
+                    # EXIT / QUIT end the script: SQL*Plus never runs what follows.
+                    self.assertEqual(survives, action is not DirectiveAction.EXIT, stmts)
+                    # The directive's own text reaches execution only for the
+                    # WHENEVER SQLERROR policy line.
+                    for stmt in stmts:
+                        if not stmt.startswith("CREATE TABLE"):
+                            self.assertFalse(d.filter_from_execution, stmts)
+                            self.assertIn("WHENEVER SQLERROR", stmt)
 
     def test_at_script_directives_do_not_emit_tokenizer_warning(self) -> None:
         raw = "@ /tmp/other_script.sql\n@@ relative_script.sql\nCREATE TABLE t_at (id NUMBER);\n"
-        terminated = terminate_sqlplus_directives(raw)
 
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always", TokenizerWarning)
-            stmts = self._split(terminated)
+            tokens = OracleTokenizer(raw).tokenize()
 
         assert not [w for w in caught if issubclass(w.category, TokenizerWarning)]
-        assert len(stmts) == 1
-        assert "CREATE TABLE t_at" in stmts[0]
+        assert [t.type for t in tokens[:2]] == [TokenType.DIRECTIVE, TokenType.DIRECTIVE]
+        with self.assertRaises(UnsupportedMetaCommandError):
+            _split(raw)
 
     def test_filtered_directives_match_is_sqlplus_command(self) -> None:
         for d in SQLPLUS_DIRECTIVES:
@@ -164,13 +173,6 @@ class TestConnectDirectiveExcludesDatabaseLinkSyntax(unittest.TestCase):
     out as exactly what this file exists to guard against.
     """
 
-    def _split(self, sql: str) -> list[str]:
-        from dblift.db.plugins.oracle.parser.oracle_statement_parser import OracleStatementParser
-        from dblift.db.plugins.oracle.parser.oracle_tokenizer import OracleTokenizer
-
-        tokens = OracleTokenizer(sql).tokenize()
-        return [s for s in OracleStatementParser(tokens).split_statements() if s.strip()]
-
     def test_create_database_link_connect_to_line_not_terminated(self) -> None:
         raw = (
             "CREATE DATABASE LINK mylink\n"
@@ -178,11 +180,7 @@ class TestConnectDirectiveExcludesDatabaseLinkSyntax(unittest.TestCase):
             "USING '(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=remotehost)(PORT=1521))"
             "(CONNECT_DATA=(SERVICE_NAME=remotedb)))';\n"
         )
-        terminated = terminate_sqlplus_directives(raw)
-        self.assertNotIn("remote_pass;", terminated)
-        self.assertEqual(terminated, raw)
-
-        stmts = self._split(terminated)
+        stmts = _split(raw)
         matching = [s for s in stmts if "CREATE DATABASE LINK" in s]
         self.assertEqual(len(matching), 1, f"expected one statement, got: {stmts}")
         self.assertIn("CONNECT TO remote_user IDENTIFIED BY remote_pass", matching[0])
@@ -195,21 +193,20 @@ class TestConnectDirectiveExcludesDatabaseLinkSyntax(unittest.TestCase):
             "USING '(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=remotehost)(PORT=1521))"
             "(CONNECT_DATA=(SERVICE_NAME=remotedb)))';\n"
         )
-        terminated = terminate_sqlplus_directives(raw)
-        self.assertEqual(terminated, raw)
-
-        stmts = self._split(terminated)
+        stmts = _split(raw)
         matching = [s for s in stmts if "CREATE DATABASE LINK" in s]
         self.assertEqual(len(matching), 1, f"expected one statement, got: {stmts}")
         self.assertIn("CONNECT TO remote_user IDENTIFIED BY remote_pass", matching[0])
         self.assertIn("USING '(DESCRIPTION=", matching[0])
 
-    def test_genuine_sqlplus_connect_command_still_removed(self) -> None:
+    def test_genuine_sqlplus_connect_command_is_refused(self) -> None:
         """Regression guard: real SQL*Plus ``CONNECT user/pass@db`` directives
-        (no ``TO``) are still recognised and kept away from the next statement.
+        (no ``TO``) are still recognised, and refused: a migration has no
+        second connection to open (spec section 6).
         """
         raw = "CONNECT app_user/app_pass@orcl\nSELECT 1 FROM dual;\n"
-        self.assertEqual(terminate_sqlplus_directives(raw), "\nSELECT 1 FROM dual;\n")
+        with self.assertRaises(UnsupportedMetaCommandError):
+            _split(raw)
 
 
 if __name__ == "__main__":

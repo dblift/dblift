@@ -769,6 +769,7 @@ module = [
     "dblift.db.plugins.oracle.parser.oracle_tokenizer",
     "dblift.db.plugins.oracle.parser.sqlplus_context",
     "dblift.db.plugins.oracle.parser._comments",
+    "dblift.db.plugins.oracle.parser._directives",
     "dblift.db.plugins.oracle.parser._object_extractor",
     "dblift.db.plugins.oracle.parser._plsql_block",
     "dblift.db.plugins.oracle.parser._sqlplus",

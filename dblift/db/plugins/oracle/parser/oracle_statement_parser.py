@@ -4,17 +4,23 @@ This module provides Oracle-specific statement parsing including
 slash delimiter handling and PL/SQL unit detection from the statement head.
 """
 
-from typing import List, Optional, Tuple
+import logging
+from typing import Callable, List, Optional, Tuple
 
-from dblift.core.exceptions import UnsafeStatementSplitError
+from dblift.core.exceptions import (
+    ParserError,
+    UnsafeStatementSplitError,
+    UnsupportedMetaCommandError,
+)
 from dblift.core.sql_parser.base_statement_parser import BaseStatementParser
 from dblift.core.sql_parser.parser_context import ParserContext
 from dblift.core.sql_parser.statement import Statement
 from dblift.core.sql_parser.tokens import Token, TokenType
-from dblift.db.plugins.oracle.parser._sqlplus import (
-    is_sqlplus_command as _shared_is_sqlplus_command,
-)
+from dblift.db.plugins.oracle.parser._directives import DirectiveAction, classify_directive
+from dblift.db.plugins.oracle.parser._sqlplus import parse_whenever_sqlerror
 from dblift.db.plugins.oracle.parser._unit_heads import MAX_HEAD_TOKENS, head_decided
+
+logger = logging.getLogger(__name__)
 
 
 class OracleStatementParser(BaseStatementParser):
@@ -24,6 +30,11 @@ class OracleStatementParser(BaseStatementParser):
     (``_unit_heads.head_decided``). A unit ends only at a ``/`` alone on its
     line; any other statement ends at a ``;`` that is last on its line or at
     such a ``/``. Nothing inside a unit is counted.
+
+    A ``DIRECTIVE`` token (a SQL*Plus client line, section 6 of the spec) ends
+    whatever statement was being read and is recorded, never sent to the
+    server: ``WHENEVER SQLERROR`` is also projected to its string, because the
+    executor applies that policy positionally.
     """
 
     TERMINATOR_RESPECTS_PARENS = True
@@ -56,14 +67,15 @@ class OracleStatementParser(BaseStatementParser):
 
     def split_statements(self) -> List[str]:
         """Statement strings as execution receives them (``;`` of a SQL statement kept)."""
-        return [rendered for _, rendered in self._split_with_rendered()]
+        return [rendered for _, rendered in self._split_with_rendered() if rendered]
 
     def _split_with_rendered(self) -> List[Tuple[Statement, str]]:
         """Cut the token stream into ``(Statement, rendered)`` pairs.
 
-        Resets parser state after each statement, filters standalone ``/`` and
-        ``;`` and SQL*Plus commands. ``rendered`` is the string execution
-        receives: SQL keeps its ``;``, a trailing ``/`` is never included.
+        Resets parser state after each statement and filters standalone ``/``
+        and ``;``. ``rendered`` is the string execution receives: SQL keeps its
+        ``;``, a trailing ``/`` is never included; a directive has none (empty)
+        except ``WHENEVER SQLERROR``.
         """
         records: List[Tuple[Statement, str]] = []
         current_statement_tokens: List[Token] = []
@@ -71,14 +83,25 @@ class OracleStatementParser(BaseStatementParser):
         def emit(terminator: Optional[Token], is_tail: bool) -> None:
             rendered = self._statement_text(current_statement_tokens, is_tail=is_tail)
             if rendered and rendered not in ("/", ";"):
-                if not self._is_sqlplus_command(rendered):
-                    records.append(self._record(current_statement_tokens, rendered, terminator))
+                records.append(self._record(current_statement_tokens, rendered, terminator))
 
         for idx, token in enumerate(self.tokens):
             self.current_idx = idx
 
             # Skip EOF tokens
             if token.type == TokenType.EOF:
+                continue
+
+            if token.type == TokenType.DIRECTIVE:
+                self._flush_before_directive(current_statement_tokens, emit)
+                current_statement_tokens = []
+                self.context.reset_for_new_statement()
+                self._head = []
+                self._unit = None
+                records.append(self._directive_record(token))
+                if self._is_exit(token):
+                    self._warn_ignored(self.tokens[idx + 1 :], token)
+                    break
                 continue
 
             # Adjust context based on token
@@ -107,6 +130,68 @@ class OracleStatementParser(BaseStatementParser):
             emit(None, is_tail=True)
 
         return records
+
+    def _flush_before_directive(
+        self, pending: List[Token], emit: Callable[[Optional[Token], bool], None]
+    ) -> None:
+        """End the statement being read where a directive begins (a statement can begin there)."""
+        if not any(t.type != TokenType.COMMENT for t in pending):
+            return
+        if self._unit:
+            raise UnsafeStatementSplitError(self._unterminated_unit_message(pending))
+        emit(None, False)
+
+    @staticmethod
+    def _is_exit(token: Token) -> bool:
+        directive = classify_directive(token.text)
+        return directive is not None and directive.action is DirectiveAction.EXIT
+
+    def _directive_record(self, token: Token) -> Tuple[Statement, str]:
+        """Record a directive line, or refuse it (spec section 6).
+
+        The string is empty, except for ``WHENEVER SQLERROR``: execution reads
+        that policy from the statement list, so it gets ``<line>;``.
+        """
+        directive = classify_directive(token.text)
+        assert directive is not None  # the tokenizer only emits recognised directives
+        if directive.action is DirectiveAction.REJECT:
+            raise UnsupportedMetaCommandError(
+                f"Unsupported SQL*Plus directive {directive.name!r} at line {token.line}; "
+                "dblift does not run it"
+            )
+        record = Statement(text=token.text, line=token.line, terminator=None, kind="directive")
+        if directive.name != "WHENEVER SQLERROR":
+            return record, ""
+        if parse_whenever_sqlerror(token.text) is None:
+            raise UnsupportedMetaCommandError(
+                f"Unsupported WHENEVER SQLERROR action at line {token.line}: "
+                "expected EXIT or CONTINUE"
+            )
+        return record, token.text if token.text.endswith(";") else token.text + ";"
+
+    def _warn_ignored(self, rest: List[Token], exit_token: Token) -> None:
+        """Log what follows an ``EXIT``/``QUIT``: SQL*Plus never runs it."""
+        first = next((t for t in rest if t.type not in (TokenType.COMMENT, TokenType.EOF)), None)
+        if first is None:
+            return
+        try:
+            count = str(
+                sum(
+                    1
+                    for record in OracleStatementParser(rest, source=self.source).split()
+                    if record.kind == "sql"
+                )
+            )
+        except ParserError:
+            count = "some"
+        logger.warning(
+            "%s statement(s) after %s on line %d ignored, as SQL*Plus does not run them "
+            "(first ignored line: %d)",
+            count,
+            exit_token.text.split(None, 1)[0].upper(),
+            exit_token.line,
+            first.line,
+        )
 
     def _unterminated_unit_message(self, tokens: List[Token]) -> str:
         """Refusal for a PL/SQL unit that reached the end of the script without its ``/``."""
@@ -211,6 +296,7 @@ class OracleStatementParser(BaseStatementParser):
 
         following = self.tokens[self.current_idx + 1 :]
         if following and following[0].type != TokenType.EOF and following[0].line == token.line:
+            self._refuse_directive_after_terminator(following[0])
             raise UnsafeStatementSplitError(
                 f"';' is not the last text on line {token.line}: SQL*Plus rejects the line "
                 "(ORA-03405); move the comment or the next statement to its own line"
@@ -229,17 +315,16 @@ class OracleStatementParser(BaseStatementParser):
             self._last_terminator = "/"
         return True
 
-    def _is_sqlplus_command(self, stmt: str) -> bool:
-        """Check if statement is a SQL*Plus command (not valid Oracle SQL for native execution).
-
-        SQL*Plus commands are client-side commands that are interpreted
-        by SQL*Plus but are not valid SQL statements that can be
-        executed by the native driver. Delegates to
-        :func:`dblift.db.plugins.oracle.parser._sqlplus.is_sqlplus_command` —
-        PR-E (ADR-0012 §Follow-ups) unified the two corpora so both
-        the regex and tokenizer statement paths share a single
-        authoritative list. See the ``_sqlplus`` module docstring for
-        the full set of recognised directives and the behaviour changes
-        this delegation introduces on the tokenizer path.
-        """
-        return _shared_is_sqlplus_command(stmt)
+    def _refuse_directive_after_terminator(self, next_token: Token) -> None:
+        """A directive after a ``;`` on the same line: SQL*Plus sends the line to the server."""
+        if self.source is None:
+            return
+        eol = self.source.find("\n", next_token.pos)
+        directive = classify_directive(
+            self.source[next_token.pos : eol if eol != -1 else len(self.source)]
+        )
+        if directive is not None:
+            raise UnsupportedMetaCommandError(
+                f"SQL*Plus directive {directive.name!r} follows a ';' on line {next_token.line}: "
+                "SQL*Plus rejects the line (ORA-03405); put it on its own line"
+            )

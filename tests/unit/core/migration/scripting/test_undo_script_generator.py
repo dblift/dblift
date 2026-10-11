@@ -659,6 +659,8 @@ def test_oracle_undo_keeps_statements_after_comment_marker_in_string(literal):
 # The SQL*Plus directive-stripping script from the release test protocol,
 # with apostrophes in the free-text directives, then literals holding comment
 # markers.
+# PAUSE is not in the block: it waits for a keypress, which a migration cannot give
+# (docs/sql-parsing/oracle.md section 6: refused, not dropped).
 SQLPLUS_DIRECTIVES_SCRIPT = """SET SERVEROUTPUT ON
 SET LINESIZE 200
 SET PAGESIZE 0
@@ -682,7 +684,6 @@ TTITLE 'Migration Report'
 BTITLE 'End'
 REPHEADER 'Header'
 REPFOOTER 'Footer'
-PAUSE
 VARIABLE v_count NUMBER
 PRINT v_count
 BREAK ON username

@@ -344,9 +344,11 @@ class ExecutionEngine:
             content_override = placeholder_service.replace_placeholders(migration.content)
 
         # Dialects with script-level preprocessing (Oracle SQL*Plus today) get their
-        # context extracted + variable substitution + directive termination applied
-        # via quirks hooks. Must run after placeholder substitution so ${...}
-        # fragments are already resolved.
+        # context extracted + variable substitution applied via quirks hooks. Must
+        # run after placeholder substitution so ${...} fragments are already
+        # resolved. Directive lines are not touched here: the dialect splitter
+        # reads them (a ``PROMPT`` or ``SET`` line never merges with the next
+        # statement, and ``WHENEVER SQLERROR`` reaches ``_execute_statements``).
         self._current_sqlplus_ctx = None
         quirks = ProviderRegistry.get_quirks(dialect_key)
         if quirks.supports_sqlplus_preprocessing:
@@ -355,13 +357,7 @@ class ExecutionEngine:
             self._current_sqlplus_ctx = ctx
             for msg in getattr(ctx, "prompts", []) or []:
                 self.log.info(f"[PROMPT] {msg}")
-            # Terminate or empty directive lines (SET, DEFINE, PROMPT, WHENEVER SQLERROR …)
-            # so the tokeniser does not merge them with the next DDL/DML. Without this,
-            # ``SET SERVEROUTPUT ON\nCREATE TABLE ...`` becomes a single statement that
-            # the driver rejects (or that directive filtering removes wholesale, dropping
-            # the user's CREATE TABLE).
-            terminated = quirks.terminate_script_directives(base)
-            substituted = quirks.apply_script_substitution(terminated, ctx)
+            substituted = quirks.apply_script_substitution(base, ctx)
             if substituted != base:
                 content_override = substituted
 

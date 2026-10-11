@@ -365,7 +365,7 @@ class _DirectiveLineTokenizer(OracleTokenizer):
     """
 
     def __init__(self, sql: str):
-        super().__init__(sql)
+        super().__init__(sql, directives=False)
         self.directive_lines: List[Tuple[int, int]] = []
         self._at_statement_start = True
         self._in_plsql = False

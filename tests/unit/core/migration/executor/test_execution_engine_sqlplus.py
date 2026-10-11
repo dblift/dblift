@@ -93,6 +93,8 @@ class TestSqlplusContextExtraction:
 
 # The directive-stripping script from the release test protocol, with
 # apostrophes in the free-text directives.
+# PAUSE is not in the block: it waits for a keypress, which a migration cannot give
+# (docs/sql-parsing/oracle.md section 6: refused, not dropped).
 SQLPLUS_DIRECTIVES_SCRIPT = """SET SERVEROUTPUT ON
 SET LINESIZE 200
 SET PAGESIZE 0
@@ -116,7 +118,6 @@ TTITLE 'Migration Report'
 BTITLE 'End'
 REPHEADER 'Header'
 REPFOOTER 'Footer'
-PAUSE
 VARIABLE v_count NUMBER
 PRINT v_count
 BREAK ON username
@@ -246,6 +247,37 @@ class TestSqlplusDirectiveApostrophes:
         statements = _oracle_statements(f"{insert}\nCREATE TABLE y (id NUMBER);\n")
 
         assert statements == [insert, "CREATE TABLE y (id NUMBER);"]
+
+
+class TestDirectivesAreTheSplittersNotThePrePass:
+    """Directive lines reach the splitter intact: it records, rewrites or refuses them."""
+
+    def test_include_directive_fails_the_migration_instead_of_being_dropped(self):
+        engine = _make_engine("oracle")
+        engine.sql_analyzer = SqlAnalyzer(dialect="oracle", logger=engine.log)
+        result = MagicMock()
+
+        statements = engine._parse_sql_statements(
+            _make_sql_migration("@@setup.sql\nCREATE TABLE a (id NUMBER);\n"), result
+        )
+
+        assert statements is None
+        assert "'@@'" in result.set_error.call_args.args[0]
+
+    def test_statements_after_exit_are_not_executed(self):
+        statements = _oracle_statements("CREATE TABLE a (id NUMBER);\nEXIT\nDROP TABLE a;\n")
+
+        assert statements == ["CREATE TABLE a (id NUMBER);"]
+
+    def test_serveroutput_still_read_from_the_context(self):
+        engine = _make_engine("oracle")
+        engine.sql_analyzer = SqlAnalyzer(dialect="oracle", logger=engine.log)
+
+        engine._parse_sql_statements(
+            _make_sql_migration("SET SERVEROUT ON\nSELECT 1 FROM DUAL;"), MagicMock()
+        )
+
+        assert engine._current_sqlplus_ctx.serveroutput is True
 
 
 class TestWheneverSqlerrorContinue:

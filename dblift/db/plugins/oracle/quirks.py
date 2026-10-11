@@ -155,12 +155,6 @@ class OracleQuirks(BaseQuirks):
 
         return extract_sqlplus_context(sql)
 
-    def terminate_script_directives(self, sql: str) -> str:
-        """Keep SQL*Plus directive lines from merging with the next statement."""
-        from dblift.db.plugins.oracle.parser.sqlplus_context import terminate_sqlplus_directives
-
-        return terminate_sqlplus_directives(sql)
-
     def apply_script_substitution(self, sql: str, ctx: Optional[object]) -> str:
         """Apply SQL*Plus ``&var`` / ``&&var`` substitution using *ctx*."""
         if ctx is None:

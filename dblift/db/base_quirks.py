@@ -373,20 +373,11 @@ class BaseQuirks:
         generic attributes ``wants_session_output: bool`` and
         ``prompts: list[str]`` that core reads via ``getattr``. Plugins
         may attach additional state used by their own
-        :meth:`terminate_script_directives` /
-        :meth:`apply_script_substitution` overrides.
+        :meth:`apply_script_substitution` override.
 
         Default: ``None`` (dialect has no script-level execution context).
         """
         return None
-
-    def terminate_script_directives(self, sql: str) -> str:
-        """Append statement terminators to dialect-specific directive lines.
-
-        Default: pass-through. Oracle overrides for SQL*Plus directives
-        that are line-terminated rather than ``;``-terminated.
-        """
-        return sql
 
     def apply_script_substitution(self, sql: str, ctx: Optional[object]) -> str:
         """Substitute dialect-specific script variables in *sql* using *ctx*.
