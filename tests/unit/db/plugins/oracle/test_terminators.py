@@ -57,3 +57,30 @@ def test_slash_inside_literal_at_line_start_is_text():
 
 def test_semicolon_inside_parentheses_does_not_end():
     assert len(_split("CREATE TABLE t (v VARCHAR2(10) DEFAULT (';')\n);\nSELECT 1 FROM dual;")) == 2
+
+
+def test_a_long_single_line_with_many_slashes_splits_in_linear_time():
+    import time
+
+    script = "SELECT " + ", ".join("a.b/c" for _ in range(80_000)) + " FROM dual;"
+    assert len(script) > 480_000
+
+    started = time.perf_counter()
+    statements = _split(script)
+    elapsed = time.perf_counter() - started
+
+    assert len(statements) == 1
+    assert elapsed < 8.0, f"{elapsed:.2f}s"
+
+
+@pytest.mark.parametrize("line", ["/", "  /  ", "\t/\t"])
+@pytest.mark.parametrize("newline", ["\n", "\r\n"])
+def test_slash_alone_between_blanks_still_terminates(line, newline):
+    script = f"BEGIN NULL; END;{newline}{line}{newline}SELECT 1 FROM dual;"
+    assert len(_split(script)) == 2
+
+
+def test_slash_followed_by_text_after_a_unit_says_so():
+    with pytest.raises(UnsafeStatementSplitError, match="followed by other text") as exc:
+        _split("BEGIN NULL; END;\n/ -- c\n")
+    assert "line 2" in str(exc.value)

@@ -23,6 +23,25 @@ def has_stray_comment_close(tokens: List[Token]) -> bool:
     )
 
 
+def is_alone_on_line(sql: str, pos: int) -> bool:
+    """Whether ``sql[pos]`` is the only non-blank text on its line.
+
+    Looks only at the blanks adjacent to ``pos``, so the cost does not grow
+    with the length of the line.
+    """
+    i = pos - 1
+    while i >= 0 and sql[i] != "\n":
+        if not sql[i].isspace():
+            return False
+        i -= 1
+    i = pos + 1
+    while i < len(sql) and sql[i] != "\n":
+        if not sql[i].isspace():
+            return False
+        i += 1
+    return True
+
+
 class OracleTokenizer(BaseTokenizer):
     """Oracle-specific tokenizer with Q-quote and wrapped PL/SQL support.
 
@@ -210,14 +229,7 @@ class OracleTokenizer(BaseTokenizer):
 
     def _is_alone_on_line(self) -> bool:
         """Whether the character at the cursor is the only non-blank text on its line."""
-        line_start = self.sql.rfind("\n", 0, self.pos) + 1
-        line_end = self.sql.find("\n", self.pos)
-        if line_end < 0:
-            line_end = len(self.sql)
-        return (
-            not self.sql[line_start : self.pos].strip()
-            and not self.sql[self.pos + 1 : line_end].strip()
-        )
+        return is_alone_on_line(self.sql, self.pos)
 
     def _handle_delimiter(self) -> Token:
         """Handle Oracle delimiters (semicolon or slash).

@@ -101,13 +101,24 @@ class OracleStatementParser(BaseStatementParser):
         # Handle any remaining tokens
         if current_statement_tokens:
             if self._unit:
-                raise UnsafeStatementSplitError(
-                    f"PL/SQL unit starting at line {self._head[0].line} is not terminated by "
-                    "a '/' line before the end of the script"
-                )
+                raise UnsafeStatementSplitError(self._unterminated_unit_message(current_statement_tokens))
             emit(None, is_tail=True)
 
         return records
+
+    def _unterminated_unit_message(self, tokens: List[Token]) -> str:
+        """Refusal for a PL/SQL unit that reached the end of the script without its ``/``."""
+        last_line = max(t.line for t in tokens if t.type != TokenType.EOF)
+        on_last_line = [t for t in tokens if t.line == last_line]
+        if len(on_last_line) > 1 and on_last_line[0].text == "/":
+            return (
+                f"PL/SQL unit starting at line {self._head[0].line}: a '/' followed by other "
+                f"text does not end the unit (line {last_line})"
+            )
+        return (
+            f"PL/SQL unit starting at line {self._head[0].line} is not terminated by "
+            "a '/' line before the end of the script"
+        )
 
     def _record(
         self, tokens: List[Token], rendered: str, terminator: Optional[Token]
@@ -177,8 +188,8 @@ class OracleStatementParser(BaseStatementParser):
         """Check if token marks statement end in Oracle (docs/sql-parsing/oracle.md §4).
 
         ``/`` alone on its line ends any statement; ``;`` ends a statement
-        that is not a PL/SQL unit (decided by its head, §5), outside parentheses, and only as the last
-        text on its line. A ``/`` with nothing buffered after a ``;``-ended
+        that is not a PL/SQL unit (decided by its head, §5), outside
+        parentheses, and only as the last text on its line. A ``/`` with nothing buffered after a ``;``-ended
         statement, or a ``.`` alone on a line, is refused.
         """
         if token.type != TokenType.DELIMITER:
@@ -199,8 +210,8 @@ class OracleStatementParser(BaseStatementParser):
         following = self.tokens[self.current_idx + 1 :]
         if following and following[0].type != TokenType.EOF and following[0].line == token.line:
             raise UnsafeStatementSplitError(
-                f"';' is not the last text on line {token.line}: SQL*Plus sends the whole "
-                "line to the server, which rejects it (ORA-03405)"
+                f"';' is not the last text on line {token.line}: SQL*Plus rejects the line "
+                "(ORA-03405); move the comment or the next statement to its own line"
             )
         self._last_terminator = ";"
         return True
