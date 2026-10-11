@@ -155,9 +155,7 @@ class TestSqlServerNestedBlockComments(unittest.TestCase):
     def test_a_go_cut_inside_a_comment_the_server_holds_open_leaves_it_unclosed(self):
         # sqlcmd cuts at the second GO; the first half still has an open comment for the server
         script = "SELECT 1 /* a\nGO\n/* b */\nGO\n*/"
-        self.assertEqual(
-            self.parser.split_statements(script), ["SELECT 1 /* a\nGO\n/* b */", "*/"]
-        )
+        self.assertEqual(self.parser.split_statements(script), ["SELECT 1 /* a\nGO\n/* b */", "*/"])
 
 
 class TestDuckDBNestedBlockComments(unittest.TestCase):
