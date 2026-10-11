@@ -30,6 +30,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `CREATE VIEW`, `CREATE FUNCTION`, `CREATE TRIGGER` and `CREATE SCHEMA` must
   be the first statement of their batch, as in `sqlcmd` and SSMS (SQL Server
   answers `Msg 111`): put a `GO` before them.
+- **SQL Server: a script with a `sqlcmd` command or a `$(variable)` is
+  refused.** `:setvar`, `:r`, `:connect`, `:on error`, `!!`, and `EXIT`,
+  `QUIT`, `RESET` or `ED` as the first word of a line, and any `$(` outside a
+  comment, now fail with the command or text and its line named, instead of
+  being sent to the server with the directive glued onto the next statement.
+  Use `-- ` comments or a placeholder service instead of `$(name)`.
 - **SQL Server: `GO` follows the `sqlcmd` grammar.** Only a count and a `--`
   comment may follow it; `GO 3` runs the batch three times, `GO 0` never;
   `GO;`, `GO foo`, `GO /* c */`, and a `GO` after a comment on its line are
