@@ -140,9 +140,11 @@ One consequence is the server's, not the splitter's: `CREATE PROCEDURE`,
 A directive is recognised only at the first token of a line, outside strings
 and comments.
 
-A command word after a comment on its line (`/* c */ EXIT`), followers other
-than blank, end of line, `- = ( [ ' /`, and the `$(name)` grammar beyond
-`$ (x)` were not measured; the splitter refuses them, the safe direction.
+A command word after a comment on its line (`/* c */ EXIT`, `/* c */ :setvar a b`) is refused: sqlcmd takes it as a command (measured 2026-10-11, sqlcmd 18.6.0002.1, SQL Server 16.0.4255.1, `-i`: after `/* c */ :setvar a b` the next statement ran without error, and `/* c */ EXIT` was not sent to the server as text).
+
+Any `$(` outside a comment is refused with `UnsupportedMetaCommandError` naming the text and line, strings and `[…]` included: sqlcmd reads `$(x-y)` as a variable reference (`'x-y' scripting variable not defined.`) and fails on `$()`, `$(1x)`, `$(a.b)`, `$(x y)`, `$(` and `$(x` (measured 2026-10-11, `sqlcmd -C -I -b -i file`, sqlcmd 18.6.0002.1, SQL Server 16.0.4255.1, each as `SELECT 1 AS a, '<text>' AS b` + `GO`: exit 1, e.g. `$(a.b)` gives `Sqlcmd: Error: Syntax error at line 1 near command '.' in file …`). `$ (x)` with a blank is text.
+
+A command word followed by a character other than a blank, the end of the line, `- = ( [ ' /` goes to the server as text (measured for `exit+1`, `exit)` and `exit|`: Msg 156; `GO` has the same follower set, §4).
 
 ## 7. Raw blocks
 

@@ -124,10 +124,15 @@ def test_a_command_line_inside_a_string_an_identifier_or_a_comment_is_text(scrip
         'SELECT "$(x)" FROM t',
         "SELECT 'a\n$(x)\nb'",
         "USE [$(db)]",
+        "SELECT $(x-y)",
+        "SELECT '$()' AS s",
+        "SELECT '$(1x)' AS s",
+        "SELECT $(a.b)",
+        "SELECT $(x y)",
     ],
 )
 def test_a_scripting_variable_reference_is_refused_outside_comments(script):
-    with pytest.raises(UnsupportedMetaCommandError, match=r"scripting variable \$\(\w+\) on line"):
+    with pytest.raises(UnsupportedMetaCommandError, match=r"scripting variable \$\(.* on line \d"):
         scan_batches(script + "\nGO")
 
 
@@ -139,8 +144,6 @@ def test_a_scripting_variable_reference_is_refused_outside_comments(script):
         "/* $(x) */ SELECT 1",
         "SELECT 1 /*\n$(x)\n*/",
         "SELECT '$ (x)' AS s",
-        "SELECT '$(1x)' AS s",
-        "SELECT '$()' AS s",
         "SELECT $action FROM t",
         "SELECT $IDENTITY FROM t",
     ],
@@ -165,3 +168,9 @@ def test_the_batch_of_a_refused_script_is_not_partially_returned():
     with pytest.raises(UnsupportedMetaCommandError):
         scan_batches("SELECT 1\nGO\n:setvar a b\nSELECT 2\nGO\n")
     assert scan_batches("SELECT 1\nGO\n") == [Batch("SELECT 1", 1, 1, True)]
+
+
+@pytest.mark.parametrize("script", ["SELECT $(", "SELECT $(x", "SELECT '$(' AS s"])
+def test_an_unfinished_dollar_paren_is_refused_like_a_reference(script):
+    with pytest.raises(UnsupportedMetaCommandError, match=r"scripting variable \$\(.* on line 1"):
+        scan_batches(script + "\nGO")

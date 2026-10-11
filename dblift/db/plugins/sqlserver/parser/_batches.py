@@ -37,7 +37,8 @@ _COLON_COMMAND = re.compile(
 )
 _WORD = re.compile(r"[A-Za-z_@#$][A-Za-z0-9_@#$]*")
 _GO_TAIL = re.compile(r"[ \t\r]*(?:([0-9]+)[ \t\r]*)?(?:--.*)?\Z", re.DOTALL)
-_VARIABLE_REFERENCE = re.compile(r"\$\(([A-Za-z_][A-Za-z0-9_]*)\)")
+#: Every ``$(`` outside a comment: sqlcmd reads it as a variable reference or fails on it.
+_VARIABLE_REFERENCE = re.compile(r"\$\([^)\r\n]{0,40}\)?")
 _OPENER = re.compile(r"'|\[|\"|/\*|--")
 _CLOSER = {"'": "'", "[": "]", '"': '"'}
 _LEXEME = {
