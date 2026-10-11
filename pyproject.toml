@@ -624,6 +624,7 @@ module = [
     "dblift.db.plugins.mariadb.plugin",
     "dblift.db.plugins.mariadb.provider",
     "dblift.db.plugins.mariadb.quirks",
+    "dblift.db.plugins.mariadb.regex_parser",
 ]
 disallow_any_generics = true
 disallow_subclassing_any = true
@@ -733,6 +734,7 @@ module = [
     "dblift.db.plugins.mysql.quirks",
     "dblift.db.plugins.mysql.mysql",
     "dblift.db.plugins.mysql.mysql.schema_operations",
+    "dblift.db.plugins.mysql.parser._script",
     "dblift.db.plugins.mysql.parser.parser_config",
     "dblift.db.plugins.mysql.parser.mysql_regex_parser",
     "dblift.db.plugins.mysql.parser.mysql_statement_parser",

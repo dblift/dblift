@@ -12,6 +12,8 @@ from dblift.core.sql_model.base import ParseResult, SqlStatement, SqlStatementTy
 from dblift.core.sql_parser.base_tokenizer import BaseTokenizer
 from dblift.core.sql_parser.enhanced_regex_parser import EnhancedRegexParser
 from dblift.core.sql_parser.parser_context import ParserContext
+from dblift.core.sql_parser.statement import Statement
+from dblift.db.plugins.mysql.parser._script import scan_script
 from dblift.db.plugins.mysql.parser.mysql_statement_parser import MySQLStatementParser
 from dblift.db.plugins.mysql.parser.mysql_tokenizer import MySQLTokenizer
 from dblift.db.plugins.mysql.parser.parser_config import MySqlConfig
@@ -29,14 +31,30 @@ class MySqlRegexParser(EnhancedRegexParser):
     #: the one place it is declared instead of assuming its own.
     tokenizer_class: Type[BaseTokenizer] = MySQLTokenizer
 
+    SPLITS_WITHOUT_FALLBACK = True
+
+    #: ``/*M! ... */`` is an executable comment to the mariadb client, a plain comment to mysql.
+    MARIADB = False
+
     def __init__(self) -> None:
         """Initialize MySQL regex parser."""
         config = MySqlConfig()
         super().__init__(config)  # type: ignore[arg-type]
         self.config: MySqlConfig = config  # type: ignore[assignment]
 
+    def split(self, sql_content: str) -> List[Statement]:
+        """The statements and ``DELIMITER`` directives of a script, as the client reads it."""
+        return scan_script(sql_content, mariadb=self.MARIADB)
+
     def split_statements(self, sql_content: str, strict_tokenizer: bool = False) -> List[str]:
-        """Split SQL content with MySQL-specific handling.
+        """The statements the server receives; refuses what the client would not run as SQL.
+
+        The scanner has no unknown characters, so ``strict_tokenizer`` changes nothing.
+        """
+        return [record.text for record in self.split(sql_content) if record.kind == "sql"]
+
+    def split_for_extraction(self, sql_content: str, strict_tokenizer: bool = False) -> List[str]:
+        """Split SQL content with MySQL-specific handling, for object extraction.
 
         Handles DELIMITER statements, backtick identifiers, and MySQL comments.
         Uses tokenization-based approach for robust parsing with fallback to regex.
@@ -415,7 +433,7 @@ class MySqlRegexParser(EnhancedRegexParser):
             cleaned_sql = self._clean_mysql_comments(sql_content)
 
             # Enhanced statement splitting
-            sql_statements = self.split_statements(cleaned_sql)
+            sql_statements = self.split_for_extraction(cleaned_sql)
 
             # Parse each statement with MySQL-specific handling
             for sql in sql_statements:

@@ -280,7 +280,7 @@ class _Scanner:
             if ch == "#" or (text.startswith("--", i) and (i + 2 >= end or text[i + 2] in _BLANKS)):
                 if "\r" in text[i:end]:
                     raise UnsafeStatementSplitError(
-                        f"comment on line {line_no} ends in a carriage return that is not part of "
+                        f"comment on line {line_no} holds a carriage return that is not part of "
                         f"a line end: the {self.client} client reads the rest of the script as "
                         "part of the comment and drops the statements in it"
                     )

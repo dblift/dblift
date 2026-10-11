@@ -421,9 +421,7 @@ def test_a_comment_line_that_holds_a_carriage_return_alone_is_refused(
     comment: str, mariadb: bool
 ) -> None:
     script = f"SELECT 1;\nSELECT 2; {comment}\rSELECT 3;\r"
-    with pytest.raises(
-        UnsafeStatementSplitError, match="comment on line 2 ends in a carriage"
-    ) as e:
+    with pytest.raises(UnsafeStatementSplitError, match="comment on line 2 holds a carriage") as e:
         scan_script(script, mariadb=mariadb)
     assert "client reads the rest of the script as part of the comment" in str(e.value)
     assert sql("SELECT 1; # c\r\nSELECT 2;\r\n") == ["SELECT 1", "SELECT 2"]
