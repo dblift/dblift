@@ -15,9 +15,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   without its terminator, its line, the terminator, a kind (`sql`,
   `directive` or `copy_stdin`), and `multi` for statements combined by
   psql's `\;`.
+- `Statement` records for SQL Server (`SqlServerRegexParser.split()`): the
+  batch, its first line, `terminator="GO"` or none, and `repeat` for `GO n`.
+- `SqlAnalyzer.split_statements_for_analysis`: the statements of a script for
+  callers that read it statement by statement (T-SQL batches divided, `GO n`
+  not repeated). `SqlServerRegexParser.validate_sql` counts statements, not
+  batches.
 
 ### Changed
 
+- **SQL Server: a script is cut into batches at `GO` lines, as `sqlcmd` cuts
+  it.** A `;` no longer ends a statement for execution: `DECLARE @x INT = 1;
+  SELECT @x;` runs as one request and `@x` stays declared. `CREATE PROCEDURE`,
+  `CREATE VIEW`, `CREATE FUNCTION`, `CREATE TRIGGER` and `CREATE SCHEMA` must
+  be the first statement of their batch, as in `sqlcmd` and SSMS (SQL Server
+  answers `Msg 111`): put a `GO` before them.
+- **SQL Server: `GO` follows the `sqlcmd` grammar.** Only a count and a `--`
+  comment may follow it; `GO 3` runs the batch three times, `GO 0` never;
+  `GO;`, `GO foo`, `GO /* c */`, and a `GO` after a comment on its line are
+  refused with the line number.
+- **SQL Server: block comments end at the first `*/` when the splitter looks
+  for `GO`**, as in `sqlcmd`; SQL Server itself still nests them, and the text
+  is passed through unchanged.
+- **SQL Server: an unterminated string, identifier or comment is refused**
+  with its line and column instead of falling back to a regex split.
 - **Oracle: text after a `;` on the same line is refused.** `CREATE TABLE t
   (...); -- note` and two statements on one line are no longer accepted;
   SQL*Plus rejects them with ORA-03405. Move the comment or the second
@@ -114,6 +135,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the splitter refuses; object extraction treats
   an already-split statement as one statement, so a PL/SQL unit without its
   `/` is still recorded.
+- SQL Server: `SELECT 1 AS go;`, `SELECT go INT FROM t;` and `SELECT 1 GO` no
+  longer lose their `GO` column or alias; `GO 5` no longer leaves `5` glued
+  onto the next statement; a procedure body without `BEGIN` is no longer cut
+  at its first `;`; `DECLARE`d variables survive to the statements after them.
 
 ## [4.11.1] - 2026-10-10
 
