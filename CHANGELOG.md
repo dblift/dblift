@@ -43,7 +43,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   autocommit.** `ALTER FULLTEXT`, `CREATE`, `ALTER` and `DROP DATABASE` (not the
   `SCOPED CREDENTIAL`, `ENCRYPTION KEY` and `AUDIT SPECIFICATION` forms),
   `BACKUP DATABASE`, `BACKUP LOG`, `RESTORE DATABASE`, `RESTORE LOG`,
-  `RESTORE VERIFYONLY` and `RECONFIGURE` make their batch non-transactional,
+  `RESTORE VERIFYONLY`, `RECONFIGURE`, `KILL <session id>`, `ALTER SERVER
+  CONFIGURATION`, `DROP FULLTEXT STOPLIST` and `DROP SEARCH PROPERTY LIST` make
+  their batch non-transactional,
   wherever they stand among the `;`-terminated statements of the batch. A
   statement of this kind must start a `;`-terminated statement or its own
   batch; otherwise the server reports the error (Msg 226, 574 or 3021) and the

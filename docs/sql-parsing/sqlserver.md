@@ -166,8 +166,11 @@ refuses inside a user transaction (measured 2026-10-11, sqlcmd 18.6.0002.1, SQL 
 | `DROP DATABASE` | `Msg 574 … DROP DATABASE statement cannot be used inside a user transaction.` | yes |
 | `BACKUP DATABASE`, `BACKUP LOG`, `RESTORE DATABASE`, `RESTORE LOG`, `RESTORE VERIFYONLY` | `Msg 3021 … Cannot perform a backup or restore operation within a transaction.` | yes |
 | `RECONFIGURE` (also `WITH OVERRIDE`) | `Msg 574 … CONFIG statement cannot be used inside a user transaction.` | yes |
+| `KILL <session id>` | `Msg 6115 …` (measured with `-i`, `BEGIN TRANSACTION; KILL 9999; ROLLBACK;`) | yes |
+| `ALTER SERVER CONFIGURATION` | `Msg 574 …` (`SET PROCESS AFFINITY CPU = AUTO`) | yes |
+| `DROP FULLTEXT STOPLIST`, `DROP SEARCH PROPERTY LIST` | `Msg 574 …` | yes |
 
-Accepted inside a user transaction, so **not** flagged (same measurement, exit 0): `RESTORE HEADERONLY`, `RESTORE FILELISTONLY`, `RESTORE LABELONLY`, `BACKUP MASTER KEY`, `CREATE DATABASE SCOPED CREDENTIAL`, `ALTER DATABASE SCOPED CREDENTIAL`, `DROP DATABASE SCOPED CREDENTIAL`, `CREATE DATABASE ENCRYPTION KEY`, `CREATE DATABASE AUDIT SPECIFICATION`. The `ALTER` and `DROP` forms of `DATABASE ENCRYPTION KEY` and `DATABASE AUDIT SPECIFICATION`, `BACKUP CERTIFICATE` and `BACKUP SERVICE MASTER KEY` were not measured and are treated as transactional. `RESTORE REWINDONLY` is a tape command (Msg 3216 on a disk device) and was not classified.
+Accepted inside a user transaction, so **not** flagged (same measurement, exit 0): `RESTORE HEADERONLY`, `RESTORE FILELISTONLY`, `RESTORE LABELONLY`, `BACKUP MASTER KEY`, `CREATE DATABASE SCOPED CREDENTIAL`, `ALTER DATABASE SCOPED CREDENTIAL`, `DROP DATABASE SCOPED CREDENTIAL`, `CREATE DATABASE ENCRYPTION KEY`, `CREATE DATABASE AUDIT SPECIFICATION`. The `ALTER` and `DROP` forms of `DATABASE ENCRYPTION KEY` and `DATABASE AUDIT SPECIFICATION`, `BACKUP CERTIFICATE` and `BACKUP SERVICE MASTER KEY` were not measured and are treated as transactional. `RESTORE REWINDONLY` is a tape command (Msg 3216 on a disk device) and was not classified. `ALTER FULLTEXT STOPLIST` answered Msg 7609 here (no Full-Text Search installed), which says nothing about transactions, and is not flagged.
 
 ## 9. Engine subclass
 
