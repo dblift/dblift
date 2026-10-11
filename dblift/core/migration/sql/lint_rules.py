@@ -20,6 +20,7 @@ from sqlglot.errors import ParseError, TokenError
 
 from dblift.core.migration.sql.execution_statement import (
     classify_execution_statement,
+    execution_units,
     is_comment_only_statement,
 )
 from dblift.core.migration.sql.script_analysis import (
@@ -138,6 +139,7 @@ def find_issues(
     *,
     created_before: AbstractSet[str] = frozenset(),
     existing_tables: Optional[AbstractSet[str]] = None,
+    text: Optional[str] = None,
 ) -> List[Finding]:
     """Every finding for one analysed script, sorted by statement then code.
 
@@ -145,7 +147,7 @@ def find_issues(
     *existing_tables* the tables known to exist, as ``issues_and_created_tables`` reads them.
     """
     return issues_and_created_tables(
-        analysis, dialect, created_before, existing_tables=existing_tables
+        analysis, dialect, created_before, existing_tables=existing_tables, text=text
     )[0]
 
 
@@ -155,6 +157,7 @@ def issues_and_created_tables(
     created_before: AbstractSet[str] = frozenset(),
     *,
     existing_tables: Optional[AbstractSet[str]] = None,
+    text: Optional[str] = None,
 ) -> Tuple[List[Finding], FrozenSet[str]]:
     """The script's findings, and the tables it creates.
 
@@ -166,6 +169,7 @@ def issues_and_created_tables(
     ``CREATE TABLE users`` also covers ``x.users``. ``CREATE TABLE IF NOT EXISTS`` creates
     nothing new, since the table may already exist with rows, and neither does a
     ``CREATE TABLE`` of a table matching *existing_tables*, the tables known to exist.
+    *text* is the script: a dialect that runs batches judges transaction modes per batch.
     """
     sqlglot_dialect = get_sqlglot_dialect(dialect)
     pg_locks = ProviderRegistry.get_quirks(dialect).postgresql_lock_rules
@@ -207,7 +211,7 @@ def issues_and_created_tables(
     findings = [
         f for f in findings if not (f.code in _TABLE_CODES and f.statement in on_new_tables)
     ]
-    findings.extend(_mixed_transaction_modes(analysis.statements, dialect))
+    findings.extend(_mixed_transaction_modes(analysis.statements, dialect, text))
     return sorted(findings, key=lambda f: (f.statement, f.code)), frozenset(
         f"{schema}.{name}" if schema else name for schema, name in created
     )
@@ -356,25 +360,33 @@ def _created_table(tree: Optional[exp.Expression]) -> Optional[_TableKey]:
 
 
 def _mixed_transaction_modes(
-    statements: Iterable[AnalysedStatement], dialect: str
+    statements: Iterable[AnalysedStatement], dialect: str, text: Optional[str] = None
 ) -> List[Finding]:
-    """The execution engine refuses a script mixing autocommit-only and transactional statements."""
+    """The execution engine refuses a script mixing autocommit-only and transactional units.
+
+    A unit is a statement, or a batch for a dialect that runs batches (*text* is the script).
+    """
+    statements = list(statements)
+    units = execution_units(text, dialect) if text else None
+    if units is None:
+        units = [stmt.sql for stmt in statements if stmt.sql]
     modes = [
-        (stmt, classify_execution_statement(stmt.sql, dialect=dialect))
-        for stmt in statements
-        if stmt.sql and not is_comment_only_statement(stmt.sql)
+        (unit, classify_execution_statement(unit, dialect=dialect))
+        for unit in units
+        if unit and not is_comment_only_statement(unit)
     ]
-    autocommit = [(stmt, mode) for stmt, mode in modes if not mode.can_execute_in_transaction]
+    autocommit = [(unit, mode) for unit, mode in modes if not mode.can_execute_in_transaction]
     if not autocommit or len(autocommit) == len(modes):
         return []
-    stmt, mode = autocommit[0]
+    unit, mode = autocommit[0]
+    stmt = next((s for s in statements if s.sql and s.sql.strip() in unit), None)
     reason = f"{mode.transaction_reason}: " if mode.transaction_reason else ""
     return [
         Finding(
             "mixed-transaction-modes",
             ERROR,
-            stmt.index,
+            stmt.index if stmt else 0,
             reason + _MESSAGES["mixed-transaction-modes"],
-            stmt.snippet,
+            stmt.snippet if stmt else "",
         )
     ]

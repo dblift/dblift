@@ -119,7 +119,7 @@ def lint_analysis(
 
     allowed = allowed_codes(text)
     issues, created = issues_and_created_tables(
-        analysis, dialect, created_before or frozenset(), existing_tables=existing_tables
+        analysis, dialect, created_before or frozenset(), existing_tables=existing_tables, text=text
     )
     findings = tuple(replace(f, allowed=f.code in allowed) for f in issues)
     return ScriptLint(

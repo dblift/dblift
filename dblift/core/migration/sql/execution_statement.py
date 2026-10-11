@@ -64,6 +64,22 @@ def _statements_of(sql: str, dialect: str) -> List[str]:
     return list(parser.split_for_extraction(sql)) or [sql]
 
 
+def execution_units(sql: str, dialect: str) -> Optional[List[str]]:
+    """The units execution sends for *sql* when the dialect runs batches, else None.
+
+    None also when the splitter refuses the script: the caller falls back to statements.
+    """
+    from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
+
+    parser = _batch_parser(dialect.lower())
+    if parser is None:
+        return None
+    try:
+        return [record.text for record in parser.split(sql)]
+    except (UnsafeStatementSplitError, UnsupportedMetaCommandError):
+        return None
+
+
 def classify_execution_statement(
     sql: str, *, dialect: str, statement_type: str = "UNKNOWN"
 ) -> ExecutionStatement:
