@@ -49,8 +49,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   autocommit.** `ALTER FULLTEXT`, `CREATE`, `ALTER` and `DROP DATABASE` (not the
   `SCOPED CREDENTIAL`, `ENCRYPTION KEY` and `AUDIT SPECIFICATION` forms),
   `BACKUP DATABASE`, `BACKUP LOG`, `RESTORE DATABASE`, `RESTORE LOG`,
-  `RESTORE VERIFYONLY`, `RECONFIGURE`, `KILL <session id>`, `ALTER SERVER
-  CONFIGURATION`, `DROP FULLTEXT STOPLIST` and `DROP SEARCH PROPERTY LIST` make
+  `RESTORE VERIFYONLY`, `RECONFIGURE`, `KILL`, `ALTER SERVER
+  CONFIGURATION`, `ALTER SERVER AUDIT`, `DROP FULLTEXT STOPLIST` and `DROP SEARCH PROPERTY LIST` make
   their batch non-transactional,
   wherever they stand among the `;`-terminated statements of the batch. A
   statement of this kind must start a `;`-terminated statement or its own

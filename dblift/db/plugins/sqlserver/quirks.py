@@ -157,12 +157,13 @@ class SqlserverQuirks(BaseQuirks):
             "SQL Server RECONFIGURE cannot run inside a user transaction",
         ),
         (
-            r"^KILL\s+\d+\b",
+            r"^KILL\b",
             "SQL Server KILL cannot run inside a user transaction",
         ),
         (
-            r"^ALTER\s+SERVER\s+CONFIGURATION\b",
-            "SQL Server ALTER SERVER CONFIGURATION cannot run inside a user transaction",
+            r"^ALTER\s+SERVER\s+(?:CONFIGURATION|AUDIT)\b",
+            "SQL Server ALTER SERVER CONFIGURATION and ALTER SERVER AUDIT cannot run inside a "
+            "user transaction",
         ),
         (
             r"^DROP\s+(?:FULLTEXT\s+STOPLIST|SEARCH\s+PROPERTY\s+LIST)\b",

@@ -144,7 +144,7 @@ A command word after a comment on its line (`/* c */ EXIT`, `/* c */ :setvar a b
 
 Any `$(` outside a comment is refused with `UnsupportedMetaCommandError` naming the text and line, strings and `[…]` included: sqlcmd reads `$(x-y)` as a variable reference (`'x-y' scripting variable not defined.`) and fails on `$()`, `$(1x)`, `$(a.b)`, `$(x y)`, `$(` and `$(x` (measured 2026-10-11, `sqlcmd -C -I -b -i file`, sqlcmd 18.6.0002.1, SQL Server 16.0.4255.1, each as `SELECT 1 AS a, '<text>' AS b` + `GO`: exit 1, e.g. `$(a.b)` gives `Sqlcmd: Error: Syntax error at line 1 near command '.' in file …`). `$ (x)` with a blank is text.
 
-A command word followed by a character other than a blank, the end of the line, `- = ( [ ' /` goes to the server as text (measured for `exit+1`, `exit)` and `exit|`: Msg 156; `GO` has the same follower set, §4).
+A command word followed by a character other than a blank, the end of the line, `- = ( [ ' /` goes to the server as text (measured 2026-10-11 with the ODBC sqlcmd 18.6, SQL Server 2022 RTM-CU25, `-i`: `exit+1`, `exit)` and `exit|1` give Msg 156; `quit*2`, `reset<1` and `ed@x` give Msg 102; `GO` has the same follower set, §4).
 
 ## 7. Raw blocks
 
@@ -166,8 +166,8 @@ refuses inside a user transaction (measured 2026-10-11, sqlcmd 18.6.0002.1, SQL 
 | `DROP DATABASE` | `Msg 574 … DROP DATABASE statement cannot be used inside a user transaction.` | yes |
 | `BACKUP DATABASE`, `BACKUP LOG`, `RESTORE DATABASE`, `RESTORE LOG`, `RESTORE VERIFYONLY` | `Msg 3021 … Cannot perform a backup or restore operation within a transaction.` | yes |
 | `RECONFIGURE` (also `WITH OVERRIDE`) | `Msg 574 … CONFIG statement cannot be used inside a user transaction.` | yes |
-| `KILL <session id>` | `Msg 6115 …` (measured with `-i`, `BEGIN TRANSACTION; KILL 9999; ROLLBACK;`) | yes |
-| `ALTER SERVER CONFIGURATION` | `Msg 574 …` (`SET PROCESS AFFINITY CPU = AUTO`) | yes |
+| `KILL` (a session id, `STATS JOB n`, a unit-of-work GUID, `QUERY NOTIFICATION SUBSCRIPTION`) | `Msg 6115 …` (measured with `-i`, `BEGIN TRANSACTION; <statement>; ROLLBACK;`) | yes |
+| `ALTER SERVER CONFIGURATION`, `ALTER SERVER AUDIT` | `Msg 574 …` (`SET PROCESS AFFINITY CPU = AUTO`, `WITH (STATE = OFF)`) | yes |
 | `DROP FULLTEXT STOPLIST`, `DROP SEARCH PROPERTY LIST` | `Msg 574 …` | yes |
 
 Accepted inside a user transaction, so **not** flagged (same measurement, exit 0): `RESTORE HEADERONLY`, `RESTORE FILELISTONLY`, `RESTORE LABELONLY`, `BACKUP MASTER KEY`, `CREATE DATABASE SCOPED CREDENTIAL`, `ALTER DATABASE SCOPED CREDENTIAL`, `DROP DATABASE SCOPED CREDENTIAL`, `CREATE DATABASE ENCRYPTION KEY`, `CREATE DATABASE AUDIT SPECIFICATION`. The `ALTER` and `DROP` forms of `DATABASE ENCRYPTION KEY` and `DATABASE AUDIT SPECIFICATION`, `BACKUP CERTIFICATE` and `BACKUP SERVICE MASTER KEY` were not measured and are treated as transactional. `RESTORE REWINDONLY` is a tape command (Msg 3216 on a disk device) and was not classified. `ALTER FULLTEXT STOPLIST` answered Msg 7609 here (no Full-Text Search installed), which says nothing about transactions, and is not flagged.
