@@ -30,11 +30,6 @@ def head_decided(tokens: Sequence[Token]) -> Optional[bool]:
         return None
 
 
-def is_plsql_unit_head(tokens: Sequence[Token]) -> bool:
-    """Final answer for a statement's head: an undecided prefix is not a unit."""
-    return head_decided(tokens) is True
-
-
 def _classify(w: List[str]) -> bool:
     if w[0] in _BLOCK_STARTS:
         return True

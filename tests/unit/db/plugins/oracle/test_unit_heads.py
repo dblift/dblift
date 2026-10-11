@@ -5,7 +5,7 @@ import pytest
 from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.sql_parser.tokens import TokenType
-from dblift.db.plugins.oracle.parser._unit_heads import head_decided, is_plsql_unit_head
+from dblift.db.plugins.oracle.parser._unit_heads import head_decided
 from dblift.db.plugins.oracle.parser.oracle_tokenizer import OracleTokenizer
 
 
@@ -51,12 +51,12 @@ NON_HEADS = [
 
 @pytest.mark.parametrize("sql", UNIT_HEADS)
 def test_unit_heads(sql):
-    assert is_plsql_unit_head(_head(sql)) is True
+    assert head_decided(_head(sql)) is True
 
 
 @pytest.mark.parametrize("sql", NON_HEADS)
 def test_non_heads(sql):
-    assert is_plsql_unit_head(_head(sql)) is False
+    assert head_decided(_head(sql)) is False
 
 
 def test_head_decided_is_undecided_on_a_short_prefix():

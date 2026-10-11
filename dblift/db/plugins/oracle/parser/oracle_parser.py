@@ -90,7 +90,7 @@ class OracleParser(RegexBasedParser):
             error_msg = f"Oracle regex parsing failed: {str(e)}"
             logger.error(error_msg)
             error_messages.append(error_msg)
-            # Last resort: treat entire input as single statement
+            # Emergency fallback: treat entire input as single statement
             statements = [cleaned_sql]
 
         # Always return success with collected warnings
@@ -159,7 +159,7 @@ class OracleParser(RegexBasedParser):
     def extract_objects(self, sql: str, default_schema: Optional[str] = None) -> List[SqlObject]:
         """Extract objects from SQL using Oracle-specific regex patterns.
 
-        Overrides the generic ``RegexBasedParser`` default, which knows
+        Overrides the generic ``RegexBasedParser`` fallback, which knows
         nothing of Oracle syntax (sequences, quoted-identifier case rules).
         """
         return extract_objects(sql, default_schema)
