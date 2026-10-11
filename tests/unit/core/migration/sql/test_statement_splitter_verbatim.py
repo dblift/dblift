@@ -372,9 +372,14 @@ class TestMySqlVerbatim:
     def test_mariadb_directive_comment_sent_verbatim(self):
         sql = "/*M!100001 SET STATEMENT sql_log_bin=0 FOR SET GLOBAL x=1 */;\n"
 
-        stmts = StatementSplitter("mysql").split_statements(sql)
+        stmts = StatementSplitter("mariadb").split_statements(sql)
 
         assert stmts == ["/*M!100001 SET STATEMENT sql_log_bin=0 FOR SET GLOBAL x=1 */"]
+
+    def test_mariadb_directive_comment_is_a_plain_comment_to_mysql(self):
+        sql = "/*M!100001 SET STATEMENT sql_log_bin=0 FOR SET GLOBAL x=1 */;\n"
+
+        assert StatementSplitter("mysql").split_statements(sql) == []
 
     def test_interior_comment_preserved(self):
         sql = "CREATE TABLE t (/* not nullable */ id INT NOT NULL);\n"

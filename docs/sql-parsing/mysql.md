@@ -1,0 +1,219 @@
+# MySQL and MariaDB — lexical specification for statement splitting
+
+## Status
+
+| Item | Value |
+| --- | --- |
+| Covers | the versions measured: MySQL 8.0.46 and 8.4.11, MariaDB 11.8.8 (clients `mysql` 8.0.46 / 8.4.11, `mariadb` 15.2). Other versions (8.1-8.3, 9.x, MariaDB before 11) are extrapolated, not measured. This file is normative for both engines; [mariadb.md](mariadb.md) lists where MariaDB differs (the `/*M!` comment, a few client commands, `CREATE OR REPLACE`, `AGGREGATE`, `FOR` loops) |
+| Code facts taken from | OSS `develop` `94384ff` (2026-10-11) |
+| Vendor references, fetched 2026-10-10 | *MySQL 8.4 Reference Manual* via the Oracle mirror (docs.oracle.com/cd/E17952_01/mysql-8.4-en/): §11.7 "Comments", §11.1.1 "String Literals", §11.2 "Schema Object Names", §6.5.1.2 "mysql Client Commands", §27.1 "Defining Stored Programs"; *MariaDB Server documentation*: "Comment Syntax", "String Literals"; the `mysql` client source `client/mysql.cc` (`com_delimiter`, `get_arg`, `find_command`, `add_line`, `read_and_execute`) for the client's own splitting rules. |
+| Live verification | measured 2026-10-11 with `mysql  Ver 8.0.46 for Linux on aarch64 (MySQL Community Server - GPL)` against MySQL 8.0.46 and `mariadb from 11.8.8-MariaDB, client 15.2 for debian-linux-gnu (aarch64)` against MariaDB 11.8.8-MariaDB-ubu2404, script on stdin (`mysql -uroot -D db < script`; a file and `-e "source file"` measured the same). The client strips comments by default (`--skip-comments`); the cells below say where `--comments` differs. The server received what the client cut, read from MariaDB's general log (before parsing) and, on MySQL, from the performance schema statement history (the general log omits statements that fail to parse and splits multi-statement queries). Every "measured 2026-10-11" cell is that pair. |
+| Second leg | the same probes against `mysql  Ver 8.4.11` and MySQL 8.4.11, under both comment modes. The mode is the main difference: 8.4's default is `--comments`, and in that mode a command word after any comment on its line is a command, `DELIMITER` after a comment runs, a comment inside an executable comment is read correctly and an unterminated block comment is sent to the server (error 1064); under `--skip-comments` it cuts like 8.0.46 except that `exit;` and `quit;` are commands in both modes. The splitter refuses each of those forms, so a script is read safely by either client; the live comparison runs each client in its own default mode, so the 8.4 leg is the `--comments` leg |
+| Engine subclass | none: one scanner reads the script the way the client does (§9) |
+
+## 1. String literals
+
+| Form | Opens | Closes | Escape inside | Vendor rule |
+| --- | --- | --- | --- | --- |
+| String | `'` | `'` | `''` and `\x` (a `\` consumes the next character, a newline included) | MySQL §11.1.1: "Within a string, certain sequences have special meaning unless the NO_BACKSLASH_ESCAPES SQL mode is enabled. Each of these sequences begins with a backslash (\), known as the escape character. … For all other escape sequences, backslash is ignored." A quote inside a string "may be written as ''" or preceded by the escape character; "A ' inside a string quoted with " needs no special treatment and need not be doubled or escaped. In the same way, " inside a string quoted with ' needs no special treatment." |
+| Double-quoted string | `"` | `"` | `""` and `\x` | §11.1.1: "If the ANSI_QUOTES SQL mode is enabled, string literals can be quoted only within single quotation marks because a string quoted within double quotation marks is interpreted as an identifier." The `mysql` client always reads `"` as a string with backslash escapes; the `mariadb` client follows ANSI_QUOTES (measured 2026-10-11, `CREATE TABLE "a\" (x INT);` under `ANSI_QUOTES`: mysql reads on to the end of the script, mariadb ends the statement at the `;`). `ANSI_QUOTES` is **not supported** (§11): the splitter reads the mysql way and refuses the script when that leaves a string open. |
+| Prefixed | `N'`, `_charset'`, `X'`, `B'` | `'` | as string | lexically a plain string after an identifier |
+| Hex / bit number | `0x…`, `0b…` | end of digits | — | contain no quote or terminator |
+
+**Line ends.** The client reads lines ending in a line feed and drops the carriage return of a CRLF pair, so a CRLF file reaches the server with line feeds only, inside strings, backtick identifiers and stored-program bodies too (measured 2026-10-11 on all three clients: a CRLF literal is stored as `x` LF `y`, a CRLF body is stored with LF only, rows 81 and 82); the splitter returns that text. A carriage return that is not part of a CRLF pair is not a line end: it stays in the text, a `--` or `#` comment runs past it to the next line feed, so a comment line that holds one is refused (row 80a: the statement after it is swallowed without an error) and so is a `DELIMITER` line that holds one (row 80); statements separated by a carriage return alone are cut at their delimiters and stay allowed.
+
+A string, a double-quoted string and a backtick identifier may span lines; a line that starts with `DELIMITER` or with a command word inside one is text (measured 2026-10-11, rows 28 and 61).
+
+## 2. Identifiers
+
+| Form | Opens | Closes | Escape inside |
+| --- | --- | --- | --- |
+| Backtick | `` ` `` | `` ` `` | ``` `` ``` only: a backslash is an ordinary character inside backticks (measured 2026-10-11, mysql 8.0.46 and mariadb 11.8.8: `` SELECT 1 AS `a\`; SELECT 2; `` ends the first statement at the `;`; row 47) |
+| Regular | letter, digit, `_`, `$` | end of `[A-Za-z0-9_$]` | — |
+| Variables | `@name`, `@@name`, `@@scope.name`, `@'quoted'`, `@"quoted"`, `` @`quoted` `` | — | — |
+
+## 3. Comments
+
+| Form | Opens | Closes | Nests | Vendor rule (MariaDB "Comment Syntax") |
+| --- | --- | --- | --- | --- |
+| Hash | `#` | end of line | — | MySQL §11.7: "From a # character to the end of the line." Glued to a token (`SELECT 1#c`) it is a comment too (measured 2026-10-11, row 13). |
+| Dash | `--` followed by a blank, a tab, a carriage return, a vertical tab, a form feed or the end of the line | end of line | — | §11.7: "the -- (double-dash) comment style requires the second dash to be followed by at least one whitespace or control character, such as a space or tab." `SELECT 1--1` is subtraction (row 11). **The client's rule is narrower than the manual's**: after `--` a control character such as U+0001 or a no-break space is not a comment to the client (measured 2026-10-11 on all three clients: `SELECT 1 --\x01c;` followed by a line `SELECT 2` sends `SELECT 1 --\x01c` and then `SELECT 2`, so the `;` splits; the same with U+00A0), while the server reads a control character as the end of the opener. The splitter follows the client (row 38). |
+| Block | `/*` | the first `*/` | **no** | §11.7: "Nested comments are not supported, and are deprecated; expect them to be removed in a future MySQL release. (Under some conditions, nested comments might be permitted, but usually are not, and users should avoid them.)" MariaDB: "Nested comments are possible in some situations, but they are not supported or recommended." Measured 2026-10-11: `/* a /* b */ ; */ SELECT 1;` sends `*/ SELECT 1` (row 17). An unterminated block comment swallows the rest of the script **without an error** (`SELECT 1; /* c ; SELECT 2;` sends only `SELECT 1`, exit 0; row 44): the splitter refuses it. |
+| Executable comment | `/*! … */`, `/*!NNNNN … */` (MariaDB also `/*M! … */`, [mariadb.md](mariadb.md)) | the first `*/` | — | §11.7: "MySQL Server parses and executes the code within the comment as it would any other SQL statement, but other SQL servers should ignore the extensions." It is **kept verbatim in the statement text**. The client does **not** treat it as a comment (`mysql.cc`, `add_line`: the block-comment state is entered only when the third character is neither `!` nor `+`), so the active delimiter splits inside it (measured 2026-10-11: `SELECT 1 /*! ; */ + 1; SELECT 2;` sends `SELECT 1 /*!`, then `*/ + 1`, then `SELECT 2`; row 15); MariaDB: "Statement delimiters cannot be used within executable comments." Inside it the client reads `#` and `-- ` as comments to the end of the line, runs a backslash command, and misreads a comment that opens inside it (`/*! + /* c */ 2 */` sends `INSERT … /*! +`): the splitter does the first two and refuses the third (row 42). The version number is the server's concern: `/*!99999 …*/` is a comment to the server and the statement is still returned (row 41); MariaDB's server does not run `/*!50700 …*/` either, where MySQL's does (measured 2026-10-11: `SET @a=2` inside it leaves `@a` NULL on mariadb 11.8.8 and sets it on mysql 8.0.46). |
+| Optimizer hint | `/*+ … */` | the first `*/` | — | measured 2026-10-11 on mysql 8.0.46, 8.4.11 and mariadb 11.8.8: both clients hide the delimiter inside it on one line (`SELECT /*+ ; */ 1; SELECT 2;` is two statements, row 39). **Across lines the clients differ**: the mysql client hides the delimiter on the line that opens the hint only (a `;` on the opening line is hidden, row 39c; a `;` on a later line ends the statement, row 39a, and a backslash command or a `DELIMITER` text on a later line is read as on any other line), the mariadb client reads the whole hint as a comment (row M7). A hint with no delimiter in it is one statement on both (row 39b). The text stays in the statement on both. A hint that is never closed is refused (row 43), and so is a backslash inside one on its opening line: the mysql client runs `\G` there, the mariadb client ignores it (row 54). |
+
+A comment before a statement, on its own line or after the previous terminator on the same line, belongs to no statement: it is dropped with the whitespace around it, and a segment that holds only comments is not a statement (rows 35, 36). A comment inside or at the end of a statement stays in the text, so the text is a slice of the script.
+
+## 4. Terminators
+
+| Terminator | Rule |
+| --- | --- |
+| the **active delimiter**, initially `;` | ends a statement where it appears outside strings, identifiers, comments (an executable comment is not one) and outside a stored program's body (§5). The client matches it as a **plain string**, not a token: `DELIMITER GO` then `SELECT 1 AS AGOB GO` sends `SELECT 1 AS A` and `B` (measured 2026-10-11, row 24). The client does not check parentheses and splits `SELECT (1;` at the `;`; so does the splitter. A delimiter longer than one character is read as written, `///` with the delimiter `//` leaves a `/` behind. Consumed and recorded. Empty statements (`;;`, a unit that holds nothing) are not statements (rows 32, 33). A last statement without a terminator is sent at the end of the script (row 34). |
+| `DELIMITER str` | **client command.** §6.5.1.2: "Change the string that mysql interprets as the separator between SQL statements. The default is the semicolon character (;). The delimiter string can be specified as an unquoted or quoted argument on the delimiter command line. Quoting can be done with either single quote ('), double quote ("), or backtick (`) characters. … For an unquoted argument, the delimiter is read up to the first space or end of line. For a quoted argument, the delimiter is read up to the matching quote on the line." Measured 2026-10-11: recognised as the first word of a line (leading blanks and tabs allowed, any case) followed by a blank, a tab or the end of the line, and only when no statement text is pending; a comment-only line before it is fine. With text pending it is text (row 26), after a terminator or a comment on its own line it is read unpredictably and refused (rows 25, 25a), as the first word inside a string, a comment or an executable comment it is text. The argument is read up to the first **space** (a tab stays in it) or the end of the line, the rest of the line is ignored (rows 19a, 19b); quotes are removed (also `"` and backticks). It is **dropped and recorded**, and becomes the active delimiter until the next `DELIMITER` (a sourced file's too). Refused with `UnsafeStatementSplitError` (**stricter than the clients**, which print an error, exit 0 and go on, or send the line as text; a refused script runs nothing): no argument or `DELIMITER;` (both clients print `ERROR at line n: DELIMITER must be followed by a 'delimiter' character or string` and go on with exit code 0, row 19), an empty or unclosed quoted argument (row 31; mysql prints the same bare error with exit code 0, mariadb sends the line to the server as text and the server answers 1064, exit code 1), a carriage return that is not part of a CRLF pair anywhere in the line (row 80: all three clients take the rest of the script, up to the next line feed, as part of that line and send nothing, exit code 0; a `DELIMITER` that follows such a carriage return on the same line is refused as not the first word of its line, rows 25 and 25a), a backslash in the argument (row 19c: "DELIMITER cannot contain a backslash character", exit code 0), more than 15 characters (the client keeps 15: `x` repeated 16 times leaves one behind, row 30). While a custom delimiter is active, `;` is ordinary text (row 27). |
+| `\g`, `\G`, `\c`, `\d str`, `\;` and every other backslash command | **client commands**; **refused**, §6 |
+
+The active delimiter is a property of the script, not of a statement: the `Statement` records which delimiter ended it so execution can report it.
+
+## 5. Blocks
+
+The `mysql` client tracks no blocks: a stored program written without `DELIMITER` fails at the first `;` of its body (measured 2026-10-11 for every body in rows 4-7 and 66-77: the client sends the text up to the first `;` and the server rejects it, exit code 1). This spec keeps **one documented extension** beyond the client, because existing migrations depend on it and the rule is finite:
+
+| Opener | Condition | Closer |
+| --- | --- | --- |
+| `BEGIN` | the statement head is `CREATE [OR REPLACE] [DEFINER = user@host] [AGGREGATE] { PROCEDURE \| FUNCTION \| TRIGGER \| EVENT } …` or `ALTER [DEFINER = …] EVENT`, the active delimiter is `;`, and the `BEGIN` is at parenthesis depth 0 | the `END` that empties the block stack, optionally followed by a label |
+| nested `BEGIN`, `IF`, `LOOP`, `WHILE`, `REPEAT`, `CASE` (statement form), MariaDB `FOR` | inside such a body, at the start of a statement (after `;`, `BEGIN`, `THEN`, `ELSE`, `DO`, `LOOP`, `REPEAT` or a label colon), at depth 0 and not inside a `CASE` expression; `BEGIN` also after a handler's `FOR …` | `END`, `END IF`, `END LOOP`, `END WHILE`, `END REPEAT`, `END CASE`, `END FOR`, each optionally followed by a label |
+| `CASE` expression | not at the start of a statement, or inside parentheses | its `END` (an `END` followed by none of the block words) |
+| labels | `lbl: BEGIN` … `END lbl` | — |
+
+`IF(` as a function, `REPEAT(` and `IF NOT EXISTS` open nothing; a `BEGIN`, `END` or `CASE` after `@`, `.` or inside a string, a comment or backticks is not a keyword; a body without `BEGIN` (`CREATE PROCEDURE p() SELECT 1;`, `… FOR EACH ROW SET NEW.id = 1;`) ends at its first `;` (rows 72, 61). `BEGIN` alone, `BEGIN WORK` and `START TRANSACTION` are statements (row 22), and MariaDB's `BEGIN NOT ATOMIC` is not a stored program: there is no extension for it (row 79).
+
+A body that is still open at the end of the script is refused, naming the line it opened on, as an unterminated string or comment is.
+
+With a custom delimiter active, none of this runs: the unit is text until the delimiter, exactly as in the client (rows 2, 3, 75). Each script that relies on the extension is checked by running the native client on the same script wrapped in `DELIMITER //` … `//`.
+
+## 6. Client directives
+
+Every line below is read by the client, never by the server; the splitter **refuses** each with `UnsupportedMetaCommandError` naming the command and the line (nothing is stripped and sent on). Measured 2026-10-11 on both clients, with and without a trailing `;`, with and without an argument:
+
+| Directive | When the client takes it as a command | Why it is refused |
+| --- | --- | --- |
+| `exit`, `quit`, `\q` | alone on its line, optionally followed by one `;` (`exit now` is text: the server rejects it, row 59a; `exit;` is text on mysql 8.0.46 and mariadb, whose server rejects it, and a command on mysql 8.4.11, row 59) | ends the script **without an error**: what follows never runs (rows 56, 56a, 59) |
+| `go`, `ego` | alone on its line, no `;` | sends the statement and prints it, a statement the splitter would have cut |
+| `status`, `help`, `?`, `rehash`, `print`, `nopager`, `notee`, `nowarning`, `warnings`, `clear`, `edit`, `resetconnection` (mariadb: text) | alone on its line, optionally followed by one `;` (`help 'x'` is the server's HELP statement and `status INT,` a column: text, rows 61, 62) | client side effects (rows 57) |
+| `source file`, `\. file`, `connect`, `system cmd`, `tee file`, `charset name`, `prompt str`, `pager cmd`, mysql also `query_attributes`, `ssl_session_data_print` | the word alone, or followed by a blank and an argument, or by `;` | runs a file or a shell command, changes the connection (rows 20, 58) |
+| `use db` | the word and a database name **without** a terminator at the end of the line | a client command that ends at the end of the line (row 63); `USE db;` with its terminator is an ordinary statement that goes to the server (row 64) |
+| `\g`, `\G`, `\c`, `\d`, `\p`, `\r`, `\u`, `\!`, `\#`, `\s`, `\T`, `\t`, `\w`, `\W`, `\n`, `\P`, `\R`, `\C`, `\e`, `\h`, `\?`, `\;` and any other backslash followed by a character, a backslash at the end of a line | anywhere outside a string, a backtick identifier or a comment (also inside an executable comment and a hint) | `\G` and `\g` end and print the statement, `\c` silently clears what was read, `\d` is `DELIMITER`, a backslash at the end of a line is dropped, an unknown one stops the client with "Unknown command" (rows 21, 49, 50, 51, 52, 52a, 54) |
+
+A command word is a command only as the first word of a line while no statement text is pending (a comment-only line before it is fine under `--skip-comments`; under `--comments`, the default of mysql 8.4.11, the comment is kept as pending statement text, so `DELIMITER` is text and the client fails with error 1064; the splitter reads it as a command, the script the author meant). **After a comment on the same line** the answer depends on the client's comment mode (`--skip-comments`, the default of mysql 8.0.46 and mariadb 11.8.8, or `--comments`, the default of mysql 8.4.11), and the splitter refuses every command word in that position (rows 56b, 59; measured on all three clients under both modes). Under `--skip-comments`, after a block comment (`/* c */ word`): `exit`, `quit`, `go`, `help` and a bare `status` are text for the server on all three clients, `status;`, `use`, `source`, `system`, `tee` and `DELIMITER` are commands (`DELIMITER` as a command that drops what follows, row 25a); after an executable comment (`/*!50000 */ word`) every word is text; after a hint (`/*+ x */ word`) every word is text on mysql and the mariadb client reads the hint as a block comment. Under `--comments`, mysql 8.4.11 reads every word after any of the three comments as a command, mysql 8.0.46 and mariadb read every one as text. `exit;` and `quit;` are commands on mysql 8.4.11 in every position and mode and text on the other two clients. Anywhere else it is text: after a terminator on the same line (`SELECT 1; exit`), in the middle of a statement, as a column or table name (`CREATE TABLE t (\nstatus INT,\nsource INT\n)`), a prefix of a longer word (`exiting`, `delimiters`, `use_x`). `\N` outside a string is text: the client leaves it alone and MariaDB's server reads NULL (row 48); MySQL's server rejects it. A NUL byte is refused (the client needs `--binary-mode`).
+
+## 7. Raw blocks
+
+None. `LOAD DATA LOCAL INFILE` reads a file, not inline data.
+
+## 8. Transaction markers
+
+None. DDL commits implicitly (`supports_transactional_ddl = False`); execution policy owns that knowledge.
+
+## 9. Engine subclass
+
+None. The scanner (`_script.py`) is one reader for both engines: it holds the active delimiter, reads strings, comments and executable comments the way the client does, refuses client commands, and carries the §5 stored-program rule. The only dialect switch is whether `/*M!` opens an executable comment (MariaDB, [mariadb.md](mariadb.md)).
+
+## 10. Conformance examples
+
+| # | Script | Statements returned |
+| --- | --- | --- |
+| 1 | `CREATE TABLE t (id INT); INSERT INTO t VALUES (1);` | `CREATE TABLE t (id INT)` · `INSERT INTO t VALUES (1)` |
+| 2 | `DELIMITER //\nCREATE PROCEDURE p() BEGIN SELECT 1; SELECT 2; END //\nDELIMITER ;\nCALL p();` | `CREATE PROCEDURE p() BEGIN SELECT 1; SELECT 2; END` · `CALL p()` the two DELIMITER lines are directive records |
+| 3 | `DELIMITER $$\nCREATE TRIGGER tr BEFORE INSERT ON t FOR EACH ROW BEGIN SET NEW.id = 1; END$$\nDELIMITER ;` | `CREATE TRIGGER tr BEFORE INSERT ON t FOR EACH ROW BEGIN SET NEW.id = 1; END` the two DELIMITER lines are directive records |
+| 4 | `CREATE PROCEDURE p() BEGIN SELECT 1; SELECT 2; END; CALL p();` | `CREATE PROCEDURE p() BEGIN SELECT 1; SELECT 2; END` · `CALL p()` extension (§5): the client cuts this at the first ; and the server rejects the first half |
+| 5 | ``CREATE DEFINER=`root`@`%` PROCEDURE p() BEGIN SELECT 1; END; SELECT 2;`` | ``CREATE DEFINER=`root`@`%` PROCEDURE p() BEGIN SELECT 1; END`` · `SELECT 2` extension (§5) |
+| 6 | `CREATE PROCEDURE p() BEGIN REPEAT SET @i = @i + 1; UNTIL @i > 3 END REPEAT; END; SELECT 2;` | `CREATE PROCEDURE p() BEGIN REPEAT SET @i = @i + 1; UNTIL @i > 3 END REPEAT; END` · `SELECT 2` extension (§5) |
+| 7 | `CREATE PROCEDURE p() BEGIN SELECT CASE WHEN 1 THEN 'a' END; END; SELECT 2;` | `CREATE PROCEDURE p() BEGIN SELECT CASE WHEN 1 THEN 'a' END; END` · `SELECT 2` extension (§5) |
+| 8 | `SELECT 'a\\'; b'; SELECT 2;` | `SELECT 'a\\'; b'` · `SELECT 2` |
+| 9 | `SELECT "it's; fine"; SELECT 2;` | `SELECT "it's; fine"` · `SELECT 2` |
+| 10 | ``SELECT `a;b` FROM t; SELECT 2;`` | ``SELECT `a;b` FROM t`` · `SELECT 2` |
+| 11 | `SELECT 1--1;\nSELECT 2;` | `SELECT 1--1` · `SELECT 2` -- without a blank after it is subtraction, not a comment |
+| 12 | `SELECT 1 -- c;\nFROM dual; SELECT 2;` | `SELECT 1 -- c;\nFROM dual` · `SELECT 2` |
+| 13 | `SELECT a#; x\nFROM t;` | `SELECT a#; x\nFROM t` one statement: the hash starts a comment |
+| 14 | `/*!40014 SET FOREIGN_KEY_CHECKS=0 */;\nSELECT 1;` | `/*!40014 SET FOREIGN_KEY_CHECKS=0 */` · `SELECT 1` |
+| 15 | `SELECT 1 /*! ; */ + 1; SELECT 2;` | `SELECT 1 /*!` · `*/ + 1` · `SELECT 2` the client splits inside an executable comment; the server rejects the first two statements, as it does for the client |
+| 16 | `/*M!100500 SELECT 1 */; SELECT 2;` | `SELECT 2` mysql reads /*M! as a plain comment: the first segment holds only a comment and is dropped (mariadb.md row M1 has the MariaDB reading) |
+| 17 | `/* a /* b */ ; */ SELECT 1;` | `*/ SELECT 1` the first close marker closes the comment; the bare semicolon before it ends nothing; the server rejects the stray marker, as it does for the client |
+| 18 | `SELECT delimiter FROM t; SELECT 2;` | `SELECT delimiter FROM t` · `SELECT 2` the word delimiter mid-line is an identifier |
+| 19 | `DELIMITER\nSELECT 1;` | `error` the client prints an error and keeps the old delimiter (measured: no argument, `DELIMITER;`, an empty or unclosed quote on mysql) |
+| 19a | `DELIMITER $$ -- switch for the trigger\nCREATE TRIGGER tr BEFORE INSERT ON t FOR EACH ROW BEGIN SET NEW.id = 1; END$$\nDELIMITER ;` | `CREATE TRIGGER tr BEFORE INSERT ON t FOR EACH ROW BEGIN SET NEW.id = 1; END` the dollar pair is the delimiter, the rest of the line is ignored |
+| 19b | `DELIMITER '//'\nSELECT 1//\nDELIMITER ;` | `SELECT 1` the quotes are removed from the argument (also "//" and backticks) |
+| 19c | `DELIMITER \\\nSELECT 1;` | `error` "DELIMITER cannot contain a backslash character"; the client goes on with the old delimiter |
+| 20 | `source other.sql;\nSELECT 1;` | `UnsupportedMetaCommandError` line 1, `source`; the client runs the file (or fails to open it) instead of sending anything |
+| 21 | `SELECT 1\\G\nSELECT 2;` | `UnsupportedMetaCommandError` line 1, `\G`; the client ends the statement and prints it vertically |
+| 22 | `BEGIN; INSERT INTO t VALUES (1); COMMIT;` | `BEGIN` · `INSERT INTO t VALUES (1)` · `COMMIT` |
+| 23 | `SELECT 0x3B3B; SELECT 2;` | `SELECT 0x3B3B` · `SELECT 2` |
+| 24 | `DELIMITER GO\nSELECT 1 AS AGOB GO\nDELIMITER ;` | `SELECT 1 AS A` · `B` the client matches the delimiter as a plain string anywhere outside quotes and comments, inside an identifier too; the server rejects B |
+| 25 | `SELECT 1; DELIMITER //\nSELECT 2//\nDELIMITER ;\nSELECT 3;` | `UnsafeStatementSplitError` line 1: DELIMITER is not the first word of its line; the client drops the statements that follow it without an error |
+| 25a | `/* c */ DELIMITER //\nSELECT 1//\nDELIMITER ;` | `UnsafeStatementSplitError` line 1: DELIMITER after a comment on its line; the client drops the statements that follow it without an error (measured with both comment modes: under `--comments` mysql 8.0 and mariadb send the DELIMITER line to the server as text and the server answers 1064, mysql 8.4 runs it as a command) |
+| 26 | `SELECT 1\nDELIMITER //\nSELECT 2//\nDELIMITER ;\nSELECT 3;` | `SELECT 1\nDELIMITER //\nSELECT 2//\nDELIMITER` · `SELECT 3` with a statement pending, a DELIMITER line is text; the server rejects the first statement, as it does for the client |
+| 27 | `DELIMITER //\nSELECT 1; SELECT 2//\nDELIMITER ;` | `SELECT 1; SELECT 2` under a custom delimiter the semicolon is text; the client sends both statements in one query (its connection allows several), a connection that does not rejects it |
+| 28 | ``DELIMITER //\nSELECT '//' AS x, `a//b` FROM t//\nDELIMITER ;`` | ``SELECT '//' AS x, `a//b` FROM t`` a delimiter inside a string or backticks is text |
+| 29 | `DELIMITER //\nSELECT 1 /*! // */ + 1//\nDELIMITER ;` | `SELECT 1 /*!` · `*/ + 1` the custom delimiter splits inside an executable comment too |
+| 30 | `DELIMITER xxxxxxxxxxxxxxxxx\nSELECT 1;` | `UnsafeStatementSplitError` 17 characters: the client keeps the first 15 (measured: 15 works, 16 leaves the rest behind) |
+| 31 | `DELIMITER ''\nSELECT 1;` | `UnsafeStatementSplitError` an empty or unclosed quoted argument: an error on the mysql client, text for the server on the mariadb client |
+| 32 | `DELIMITER //\n//\nSELECT 1//\nDELIMITER ;` | `SELECT 1` an empty unit is not a statement |
+| 33 | `SELECT 1;;SELECT 2;` | `SELECT 1` · `SELECT 2` an empty statement is not a statement |
+| 34 | `SELECT 1; SELECT 2` | `SELECT 1` · `SELECT 2` a last statement without a terminator runs |
+| 35 | `-- header\nSELECT 1; -- trailing\nSELECT 2; # last` | `SELECT 1` · `SELECT 2` a comment before a statement or after the last terminator is not part of any statement |
+| 36 | `-- only\n# comments\n/* here */` | `(empty)` |
+| 37 | `SELECT 1 /* a ; b */ + 1; SELECT 2;` | `SELECT 1 /* a ; b */ + 1` · `SELECT 2` |
+| 38 | `SELECT 1 --\n+ 1; SELECT 2;` | `SELECT 1 --\n+ 1` · `SELECT 2` -- at the end of a line is a comment (a blank, a tab, a newline or a form feed after it) |
+| 39 | `SELECT 1 /*+ ; */ + 1; SELECT 2;` | `SELECT 1 /*+ ; */ + 1` · `SELECT 2` an optimizer hint hides the semicolon and stays in the statement |
+| 39a | `SELECT /*+\n NO_BKA(t1) ;\n*/ 1 AS a;\nSELECT 2 AS b;` | `SELECT /*+\n NO_BKA(t1)` · `*/ 1 AS a` · `SELECT 2 AS b` MySQL only: a hint hides the delimiter on its opening line, not on the lines after it, so the semicolon on the second line ends the statement (the server rejects the first two statements, as it does for the client); mariadb.md row M7 has the MariaDB reading |
+| 39b | `SELECT /*+\n NO_BKA(t1)\n*/ 1 AS a;\nSELECT 2 AS b;` | `SELECT /*+\n NO_BKA(t1)\n*/ 1 AS a` · `SELECT 2 AS b` a hint may span lines; without a semicolon inside it nothing changes |
+| 39c | `SELECT /*+ ;\n NO_BKA(t1) */ 1 AS a;\nSELECT 2 AS b;` | `SELECT /*+ ;\n NO_BKA(t1) */ 1 AS a` · `SELECT 2 AS b` the semicolon on the opening line of a multi-line hint is hidden on both clients |
+| 40 | `SELECT 1 /*!+ 1 */ AS x; SELECT 2;` | `SELECT 1 /*!+ 1 */ AS x` · `SELECT 2` |
+| 41 | `/*!99999 SELECT 1 */;\nSELECT 2;` | `/*!99999 SELECT 1 */` · `SELECT 2` a version above the server's turns the statement into a comment for the server; the splitter still returns it |
+| 42 | `SELECT 1 /*! , /* c */ 2 */ AS a;` | `UnsafeStatementSplitError` a comment opens inside an executable comment; the client misreads it and the server rejects what it sends (mysql 8.4.11 with its default `--comments` reads it correctly; the splitter refuses it anyway) |
+| 43 | `SELECT /*+ x;\nSELECT 3;` | `UnsafeStatementSplitError` an unterminated optimizer hint |
+| 44 | `SELECT 1; /* c ; SELECT 2;` | `UnsafeStatementSplitError` an unterminated block comment: the client swallows the rest of the script and sends nothing for it (measured with both comment modes: under `--comments`, which is the default of mysql 8.4, it sends the comment as text and the server answers 1064) |
+| 45 | `SELECT 'abc;\nSELECT 2;` | `UnsafeStatementSplitError` an unterminated string; the client sends the rest of the script as one statement and the server rejects it |
+| 46 | ``SELECT 1 AS `abc;\nSELECT 2;`` | `UnsafeStatementSplitError` an unterminated backtick identifier |
+| 47 | ``SELECT 1 AS `a\\`; SELECT 2;`` | `` SELECT 1 AS `a\\` `` · `SELECT 2` inside backticks a backslash is an ordinary character |
+| 48 | `SELECT \\N AS n;` | `SELECT \\N AS n` \N outside a string is text for the server (MySQL rejects it, MariaDB reads NULL) |
+| 49 | `SELECT 1\\g\nSELECT 2;` | `UnsupportedMetaCommandError` line 1, `\g` |
+| 50 | `SELECT 1 \\c\nSELECT 2;` | `UnsupportedMetaCommandError` line 1, `\c`; the client clears what it has read of the statement |
+| 51 | `SELECT 1 AS a \\\nUNION SELECT 2;` | `UnsupportedMetaCommandError` line 1, a backslash at the end of a line; the client drops it and joins the lines |
+| 52 | `SELECT 1 \\z;` | `UnsupportedMetaCommandError` line 1, `\z`; the client stops with "Unknown command" (also `\k`, `\x` on mariadb, `\Q` on mysql) |
+| 52a | `\\d //\nSELECT 1//\n\\d ;` | `UnsupportedMetaCommandError` line 1, `\d`: the short form of DELIMITER works on both clients and is refused like every other backslash command |
+| 53 | `SELECT 'a\\c' AS x;` | `SELECT 'a\\c' AS x` a backslash inside a string is the string's own escape, not a client command |
+| 54 | `SELECT 1 /*! \\G */;` | `UnsupportedMetaCommandError` line 1, `\G` inside an executable comment: the client still runs it (inside a hint the mysql client runs it, the mariadb client ignores it: refused on both) |
+| 55 | `SELECT 1 -- \\G\n;\nSELECT 2 /* \\G */;` | `SELECT 1 -- \\G` · `SELECT 2 /* \\G */` a backslash inside a comment is text |
+| 56 | `exit\nSELECT 1;` | `UnsupportedMetaCommandError` line 1, `exit`; the client ends the script there without an error (also `quit`, `\q`) |
+| 56a | `SELECT 1;\nquit\nSELECT 2;` | `UnsupportedMetaCommandError` line 2, `quit` |
+| 57 | `SELECT 1;\nstatus\nSELECT 2;` | `UnsupportedMetaCommandError` line 2, `status`; also bare `go`, `ego`, `help`, `?`, `rehash`, `print`, `nopager`, `notee`, `nowarning`, `warnings`, `clear`, `edit`, `resetconnection` (each with or without a `;`, `go` and `ego` without), `query_attributes` and `ssl_session_data_print` on mysql |
+| 58 | `system echo hi\nSELECT 1;` | `UnsupportedMetaCommandError` line 1, `system`; also `tee`, `connect`, `charset`, `prompt`, `pager` with or without an argument |
+| 56b | `/* c */ exit\nSELECT 1;` | `UnsupportedMetaCommandError` line 1, `exit` after a comment on its line: mysql 8.4 with `--comments` (its default) takes it as a command and ends the script; with `--skip-comments`, and on mysql 8.0 and mariadb in either mode, it is text for the server (error 1064). Other words are commands in that position on every client under `--skip-comments` (`use`, `source`, `system`, `tee`, `status;`): section 6 has the matrix. A command word after a comment is refused whichever the client does |
+| 59 | `exit;\nSELECT 1;` | `UnsupportedMetaCommandError` line 1, `exit;`: mysql 8.0.46 and mariadb send `exit` to the server (error 1064), mysql 8.4.11 takes it as a command, with either comment mode, and ends the script without an error (also `quit;`, `exit ;`) |
+| 59a | `exit now\nSELECT 1;` | `exit now\nSELECT 1` exit now, go;, status x and a command word followed by anything else the client does not read as its argument are text: the server rejects them |
+| 60 | `SELECT 1\nexit\n;` | `SELECT 1\nexit` a command word on its own line is text while a statement is pending |
+| 61 | `CREATE TABLE t (\nstatus INT,\nsource INT,\nuse_x INT\n);` | `CREATE TABLE t (\nstatus INT,\nsource INT,\nuse_x INT\n)` command words as column names at the start of a line are text |
+| 62 | `help 'contents';\nSELECT 1;` | `help 'contents'` · `SELECT 1` help with an argument is the server's HELP statement |
+| 63 | `use db\nSELECT 1;` | `UnsupportedMetaCommandError` line 1, `use` without a terminator is a client command that ends at the end of the line |
+| 64 | `USE db;\nSELECT 1;` | `USE db` · `SELECT 1` with its terminator USE db goes to the server like any statement (a live run would have to name the database, so this row has no live script) |
+| 65 | `SET sql_mode = 'NO_BACKSLASH_ESCAPES';\nSELECT 'C:\\';` | `UnsafeStatementSplitError` line 1: the mysql client follows the session's NO_BACKSLASH_ESCAPES and reads `'C:\'` as a complete string; the splitter, reading the literal in the default mode, finds it unterminated and refuses the script |
+| 66 | `CREATE FUNCTION f() RETURNS INT DETERMINISTIC BEGIN DECLARE x INT; SET x = 1; RETURN x; END; SELECT 2;` | `CREATE FUNCTION f() RETURNS INT DETERMINISTIC BEGIN DECLARE x INT; SET x = 1; RETURN x; END` · `SELECT 2` extension (§5) |
+| 67 | `CREATE EVENT ev ON SCHEDULE EVERY 1 DAY DO BEGIN SELECT 1; SELECT 2; END; SELECT 3;` | `CREATE EVENT ev ON SCHEDULE EVERY 1 DAY DO BEGIN SELECT 1; SELECT 2; END` · `SELECT 3` extension (§5) |
+| 68 | `ALTER EVENT ev DO BEGIN SELECT 3; SELECT 4; END; SELECT 5;` | `ALTER EVENT ev DO BEGIN SELECT 3; SELECT 4; END` · `SELECT 5` extension (§5) |
+| 69 | `CREATE PROCEDURE p() BEGIN IF 1 = 1 THEN SELECT 1; ELSE SELECT 2; END IF; END; SELECT 3;` | `CREATE PROCEDURE p() BEGIN IF 1 = 1 THEN SELECT 1; ELSE SELECT 2; END IF; END` · `SELECT 3` extension (§5): END IF closes the IF |
+| 70 | `CREATE PROCEDURE p() lbl: BEGIN DECLARE i INT DEFAULT 0; w: WHILE i < 2 DO SET i = i + 1; END WHILE w; END lbl; SELECT 2;` | `CREATE PROCEDURE p() lbl: BEGIN DECLARE i INT DEFAULT 0; w: WHILE i < 2 DO SET i = i + 1; END WHILE w; END lbl` · `SELECT 2` extension (§5): labels, WHILE and LOOP |
+| 71 | `CREATE PROCEDURE p() BEGIN SELECT 'BEGIN; END;'; SELECT 2; END; SELECT 3;` | `CREATE PROCEDURE p() BEGIN SELECT 'BEGIN; END;'; SELECT 2; END` · `SELECT 3` extension (§5): the words inside strings are not read |
+| 72 | `CREATE PROCEDURE p() SELECT 1; SELECT 2;` | `CREATE PROCEDURE p() SELECT 1` · `SELECT 2` a body without BEGIN ends at the first ; |
+| 73 | `CREATE PROCEDURE p() BEGIN DECLARE CONTINUE HANDLER FOR SQLEXCEPTION BEGIN SELECT 'e'; END; SELECT 1; END; SELECT 2;` | `CREATE PROCEDURE p() BEGIN DECLARE CONTINUE HANDLER FOR SQLEXCEPTION BEGIN SELECT 'e'; END; SELECT 1; END` · `SELECT 2` extension (§5): a BEGIN block inside a handler |
+| 74 | `CREATE PROCEDURE p() BEGIN CASE WHEN 1 = 1 THEN SELECT 1; ELSE SELECT 2; END CASE; SELECT IF(1 = 1, 'a', 'b'); END; SELECT 3;` | `CREATE PROCEDURE p() BEGIN CASE WHEN 1 = 1 THEN SELECT 1; ELSE SELECT 2; END CASE; SELECT IF(1 = 1, 'a', 'b'); END` · `SELECT 3` extension (§5): END CASE closes a CASE statement, a CASE expression closes with its END, IF( is a function |
+| 75 | `DELIMITER //\nCREATE PROCEDURE p() BEGIN SELECT 1; END; SELECT 2//\nDELIMITER ;` | `CREATE PROCEDURE p() BEGIN SELECT 1; END; SELECT 2` under a custom delimiter the §5 extension does not run: the unit is text up to the delimiter |
+| 76 | `CREATE PROCEDURE IF NOT EXISTS p() BEGIN SELECT 1; SELECT 2; END; SELECT 3;` | `CREATE PROCEDURE IF NOT EXISTS p() BEGIN SELECT 1; SELECT 2; END` · `SELECT 3` extension (§5) |
+| 77 | `CREATE TRIGGER a BEFORE INSERT ON t FOR EACH ROW BEGIN SET NEW.id = 1; END; CREATE TRIGGER b BEFORE UPDATE ON t FOR EACH ROW BEGIN SET NEW.id = 2; END;` | `CREATE TRIGGER a BEFORE INSERT ON t FOR EACH ROW BEGIN SET NEW.id = 1; END` · `CREATE TRIGGER b BEFORE UPDATE ON t FOR EACH ROW BEGIN SET NEW.id = 2; END` extension (§5): the body ends at its END, the next statement starts after it |
+| 78 | `CREATE PROCEDURE p() BEGIN SELECT 1; END` | `CREATE PROCEDURE p() BEGIN SELECT 1; END` a body that ends the script without a terminator |
+| 79 | `BEGIN NOT ATOMIC SELECT 1; SELECT 2; END;` | `BEGIN NOT ATOMIC SELECT 1` · `SELECT 2` · `END` not a stored program: there is no extension, the cut is the client's (MariaDB only syntax; the server rejects the first statement) |
+| 80 | `DELIMITER //␍SELECT 1//␍DELIMITER ;␍SELECT 2;␍` | `UnsafeStatementSplitError` line 1: a carriage return that is not part of a CRLF pair inside a DELIMITER line; the client reads the rest of the script as part of that line, sends nothing and exits 0 (all three clients). The symbol shown for the carriage return is U+240D |
+| 80a | `SELECT 1; # c␍SELECT 2;␍` | `UnsafeStatementSplitError` line 1: a `#` or `--` comment line that holds a carriage return which is no line end; the comment runs to the next line feed on all three clients, so the statement after the carriage return is swallowed without an error (a carriage return between statements, `SELECT 1;<CR>SELECT 2;`, is cut at the delimiters and stays allowed) |
+| 81 | `CREATE TABLE t (a VARCHAR(20));␍\nINSERT INTO t VALUES ('x␍\ny');␍\n` | `CREATE TABLE t (a VARCHAR(20))` · `INSERT INTO t VALUES ('x\ny')` the client drops the carriage return of a CRLF pair, also inside a string, so the server stores x, a line feed and y; the returned text has the line feed only. A carriage return alone is kept (SELECT 'a<CR>b') |
+| 82 | `DELIMITER //␍\nCREATE PROCEDURE p()␍\nBEGIN␍\n  SELECT 1;␍\nEND//␍\nDELIMITER ;␍\n` | `CREATE PROCEDURE p()\nBEGIN\n  SELECT 1;\nEND` a stored-program body keeps line feeds only: the server stores the body without carriage returns whichever way the file was written; the two DELIMITER lines are directive records |
+
+## 11. Not handled
+
+| Construct | Behaviour | Why |
+| --- | --- | --- |
+| `ANSI_QUOTES` sql_mode | `"…"` is always a string with backslash escapes | a session setting the splitter cannot see; the lexical effect is identical unless a backslash precedes the closing `"`, which leaves a string open and the script is refused |
+| `NO_BACKSLASH_ESCAPES` sql_mode | `\` always escapes. A script that sets `NO_BACKSLASH_ESCAPES` or `ANSI_QUOTES` is not yet refused; until it is, backslashes in literals are read in the default mode (a literal that the mode leaves open is refused only because it is unterminated) | both clients follow the session's mode (measured 2026-10-11: `SET sql_mode='NO_BACKSLASH_ESCAPES'; SELECT 'C:\'; SELECT 2;` runs), the splitter cannot; a mode set outside the script (the server's default, the connection's) is not seen: write `'C:\\'` |
+| `--delimiter=str`, `--comments`, `--binary-mode`, interactive mode | not modelled | options of the client, not of the script |
+| Several statements in one query | the splitter returns the unit as one statement (row 27) | the clients allow it (their connection sets the multi-statement flag), dblift's connection does not: the server rejects the unit with error 1064 |
+| A stored-program body that is an `IF`, `WHILE`, `LOOP`, `REPEAT` or `CASE` statement without `BEGIN` | ends at its first `;` | the extension looks for `BEGIN` only |
+| Client shortcuts, `source`, `exit` | refused | not SQL |
+| `help x`, `? x` (a word with an argument that the client does not read as its own) | not refused: sent to the server glued to the next line, which rejects it (error 1064) | loud and harmless; row 59a |
+| `ANSI_QUOTES` identifiers ending in a backslash | not refused when the quotes balance by chance | absurd input; the limit above |
+
+## 12. Current implementation
+
+Code: `dblift/db/plugins/mysql/parser/_script.py` (the scanner: strings, comments, executable comments, the delimiter and the stored-program rule of section 5) and `mysql_regex_parser.py` (`split()` returns `Statement` records, `split_statements()` their text, both without a fallback). MariaDB uses the same scanner through `dblift/db/plugins/mariadb/regex_parser.py`, which only switches on `/*M!`. The tokenizer-based splitter that came before is kept as `split_for_extraction()` for object extraction and `parse_sql`, which read a chunk of text and must not refuse it.
+
+Client commands (section 6) are not refused yet: the conformance test lists rows 20, 21, 49-52a, 54, 56-59 and 63 as known gaps until they are.
+
+Tests: `tests/unit/core/sql_parser/test_mysql_spec_conformance.py` runs every row of section 10 through `SqlAnalyzer.split_statements` for both engines; `tests/unit/db/plugins/mysql/test_script.py` covers the scanner rule by rule.

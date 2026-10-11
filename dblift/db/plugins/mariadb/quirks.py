@@ -8,6 +8,8 @@ modern versions) get added here as the epic touches each subsystem.
 
 from __future__ import annotations
 
+from typing import Optional
+
 from dblift.db.feature_gate import FeatureGate
 from dblift.db.plugins.mysql.quirks import MysqlQuirks
 
@@ -50,6 +52,14 @@ class MariadbQuirks(MysqlQuirks):
             description="ALTER TABLE ... ADD COLUMN, ALGORITHM=INSTANT",
         ),
     }
+
+    def parser_class(self, parser_type: str) -> Optional[type]:
+        """MariaDB reads ``/*M! ... */`` as code: its own regex splitter, the rest as MySQL."""
+        if parser_type == "regex":
+            from dblift.db.plugins.mariadb.regex_parser import MariaDbRegexParser
+
+            return MariaDbRegexParser
+        return super().parser_class(parser_type)
 
     def __init__(self, dialect_name: str = "mariadb") -> None:
         """Initialize MariaDB quirks with the dialect name."""
