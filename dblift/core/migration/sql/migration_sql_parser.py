@@ -64,8 +64,11 @@ def parse_migration_sql(
     divided) instead of what execution sends.
     """
     try:
-        divide = getattr(analyzer, "split_statements_for_analysis", None) if for_analysis else None
-        statements = (divide or analyzer.split_statements)(content)
+        statements = (
+            analyzer.split_statements_for_analysis(content)
+            if for_analysis
+            else analyzer.split_statements(content)
+        )
         log.debug(f"SqlAnalyzer split returned {len(statements)} statements")
         return [statement for statement in statements if statement.strip()]
     except (UnsafeStatementSplitError, UnsupportedMetaCommandError):
