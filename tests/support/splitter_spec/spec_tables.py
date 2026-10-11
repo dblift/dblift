@@ -7,7 +7,9 @@ the README states in "Conformance table format":
 * ``#`` is the row id, unique within a spec;
 * ``Script`` holds exactly one code span (one or two backticks); inside it
   ``\\n`` is a newline, ``\\t`` a tab, ``\\\\`` a backslash and ``\\|`` a pipe
-  (GFM needs it for a pipe inside a table cell), nothing else is escaped;
+  (GFM needs it for a pipe inside a table cell), and the symbol U+240D is a
+  carriage return (a backslash and ``r`` is not an escape: ``\\restrict`` is a psql
+  command); nothing else is escaped;
 * ``Statements returned`` holds one code span per expected statement,
   separated by `` · ``, with the same escapes; `` `(empty)` `` alone means
   no statement. When the **first** code span names an exception
@@ -38,6 +40,7 @@ _ANY_SECTION = re.compile(r"^## ")
 _SEPARATOR_CELL = re.compile(r"^:?-+:?$")
 _TO_VERIFY = re.compile(r"to verify|depends on", re.IGNORECASE)
 _ESCAPE = re.compile(r"\\(.)", re.DOTALL)
+CARRIAGE_RETURN_SYMBOL = "\u240d"  # a carriage return in a Script or Statements cell
 _ESCAPES = {"n": "\n", "t": "\t", "\\": "\\", "|": "|"}
 
 
@@ -191,7 +194,8 @@ def _prose(cell: str, spans: list[str]) -> str:
 
 
 def _decode(text: str) -> str:
-    return _ESCAPE.sub(lambda m: _ESCAPES.get(m.group(1), m.group(0)), text)
+    decoded = _ESCAPE.sub(lambda m: _ESCAPES.get(m.group(1), m.group(0)), text)
+    return decoded.replace(CARRIAGE_RETURN_SYMBOL, "\r")
 
 
 def _single_code_span(cell: str, where: str) -> str:

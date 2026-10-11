@@ -63,14 +63,14 @@ the extractor's concern and is covered by the model snapshot tests, not here.
 
 Section 10 of every spec is compiled into tests by
 `tests/support/splitter_spec/spec_tables.py` and run by
-`test_postgresql_spec_conformance.py`, `test_oracle_spec_conformance.py` and
-`test_sqlserver_spec_conformance.py` in `tests/unit/core/sql_parser/`. A row that the compiler cannot read is
+`test_postgresql_spec_conformance.py`, `test_oracle_spec_conformance.py`,
+`test_sqlserver_spec_conformance.py` and `test_mysql_spec_conformance.py` in `tests/unit/core/sql_parser/`. A row that the compiler cannot read is
 a build error, so the tables keep this shape:
 
 | Column | Rule |
 | --- | --- |
 | `#` | a row id, unique within the spec (`1`, `15a`, `R3`) |
-| `Script` | exactly one code span (`` `…` `` or ``` `` … `` ``` when the script contains a backtick); `\n` and `\t` inside it are a newline and a tab, `\\` a backslash, `\|` a pipe; nothing else is escaped |
+| `Script` | exactly one code span (`` `…` `` or ``` `` … `` ``` when the script contains a backtick); `\n` and `\t` inside it are a newline and a tab, `\\` a backslash, `\|` a pipe, and the symbol `␍` (U+240D) a carriage return; nothing else is escaped (`\r` is not: `\restrict` is a psql command) |
 | `Statements returned` | the expected statements, each in its own code span, separated by ` · `; `\n`, `\t` and `\\` inside a span decode as in the Script cell; `` `(empty)` `` means no statement. An expected refusal is a code span naming the exception as the **first** span of the cell: `` `UnsupportedMetaCommandError` ``, `` `UnsafeStatementSplitError` ``, or `` `error` `` for any error; code spans after an error keyword are explanatory (the directive or line it names) and are not compared. An error keyword or `(empty)` anywhere else is a format error. Prose outside code spans is allowed and ignored by the compiler (it explains the row); a directive record is written in prose, never as a code span. |
 
 A row whose statements cell contains **to verify** or **depends on** is
@@ -79,8 +79,8 @@ normalised statements: surrounding whitespace removed and one trailing
 terminator (`;`) removed; everything else is compared verbatim.
 
 Each row runs through `SqlAnalyzer.split_statements`, the entry point `migrate`
-uses, in `test_postgresql_spec_conformance.py`, `test_oracle_spec_conformance.py` and
-`test_sqlserver_spec_conformance.py` (all in `tests/unit/core/sql_parser/`). A row
+uses, in `test_postgresql_spec_conformance.py`, `test_oracle_spec_conformance.py`,
+`test_sqlserver_spec_conformance.py` and `test_mysql_spec_conformance.py` (all in `tests/unit/core/sql_parser/`; the last runs `mysql.md` for both engines and `mariadb.md` for MariaDB). A row
 the current code gets wrong is listed by id in that module's list of known gaps and
 fails strictly (`xfail(strict=True)`): the list can only shrink honestly.
 
@@ -91,6 +91,8 @@ fails strictly (`xfail(strict=True)`): the list can only shrink honestly.
 | [postgresql.md](postgresql.md) | PostgreSQL and the compatible family: AlloyDB, Aurora PostgreSQL, Citus, CockroachDB, Neon, Supabase, TimescaleDB, YugabyteDB | dollar-quote tags |
 | [oracle.md](oracle.md) | Oracle Database 12c+ scripts written for SQL\*Plus / SQLcl | alternative quoting `q'…'` |
 | [sqlserver.md](sqlserver.md) | SQL Server and Azure SQL (T-SQL) | none; the previous splitter still serves extraction and `parse_sql` |
+| [mysql.md](mysql.md) | MySQL and MariaDB, read the way the `mysql` client reads a script: `DELIMITER`, client commands, executable comments, stored-program bodies | none; the previous splitter still serves extraction and `parse_sql` |
+| [mariadb.md](mariadb.md) | where MariaDB differs from MySQL: the `/*M!` comment, `CREATE OR REPLACE`, `AGGREGATE`, `FOR` loops | none; one flag of the MySQL scanner |
 
 ## Verification sources
 
