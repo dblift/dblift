@@ -62,15 +62,22 @@ def test_semicolon_inside_parentheses_does_not_end():
 def test_a_long_single_line_with_many_slashes_splits_in_linear_time():
     import time
 
-    script = "SELECT " + ", ".join("a.b/c" for _ in range(80_000)) + " FROM dual;"
-    assert len(script) > 480_000
+    # A size ratio, not a wall-clock bound: absolute time varies with the runner.
+    def best_time(tokens):
+        script = "SELECT " + ", ".join("a.b/c" for _ in range(tokens)) + " FROM dual;"
+        best = float("inf")
+        for _ in range(2):
+            started = time.perf_counter()
+            statements = _split(script)
+            best = min(best, time.perf_counter() - started)
+        assert len(statements) == 1
+        return best
 
-    started = time.perf_counter()
-    statements = _split(script)
-    elapsed = time.perf_counter() - started
+    t_n = best_time(5_000)
+    t_4n = best_time(20_000)
 
-    assert len(statements) == 1
-    assert elapsed < 8.0, f"{elapsed:.2f}s"
+    # Linear scaling gives ~4x for 4x the input; a quadratic scan gives ~16x.
+    assert t_4n < 8 * t_n, f"t_n={t_n:.3f}s t_4n={t_4n:.3f}s ratio={t_4n / t_n:.1f}"
 
 
 @pytest.mark.parametrize("line", ["/", "  /  ", "\t/\t"])
