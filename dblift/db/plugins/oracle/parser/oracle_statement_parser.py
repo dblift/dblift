@@ -172,7 +172,7 @@ class OracleStatementParser(BaseStatementParser):
         if directive.action is DirectiveAction.EXEC:
             return self._exec_record(token)
         if directive.action is DirectiveAction.DEFINE:
-            self._apply_define(directive.name, token.text)
+            self._apply_define(directive.name, token.text, token.line)
         if directive.action is DirectiveAction.REJECT:
             raise UnsupportedMetaCommandError(
                 f"Unsupported SQL*Plus directive {directive.name!r} at line {token.line}; "
@@ -206,16 +206,16 @@ class OracleStatementParser(BaseStatementParser):
         text = self._substitute(f"BEGIN {stmt}; END;", token.line)
         return Statement(text=text, line=token.line, terminator=None, kind="sql"), text
 
-    def _apply_define(self, name: str, line: str) -> None:
+    def _apply_define(self, name: str, line: str, line_no: int) -> None:
         """Update the substitution state from a ``DEFINE``-action directive line."""
-        if name == "SET DEFINE":
+        if name in ("SET DEFINE", "SET SCAN"):
             arg = _SET_DEFINE_ARG.match(line)
             value = arg.group(1).rstrip(";") if arg else ""
             if value.upper() == "OFF":
                 self._define_on = False
             elif value.upper() == "ON":
                 self._define_on = True
-            elif len(value) == 1:
+            elif len(value) == 1 and name == "SET DEFINE":
                 self._define_on = True
                 self._define_char = value
         elif name == "UNDEFINE":
@@ -225,7 +225,7 @@ class OracleStatementParser(BaseStatementParser):
         else:
             assign = _DEFINE_ASSIGN.match(line)
             if assign:
-                value = assign.group(2)
+                value = self._substitute(assign.group(2), line_no)
                 if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
                     value = value[1:-1]
                 self._defines[assign.group(1).upper()] = value
@@ -261,15 +261,17 @@ class OracleStatementParser(BaseStatementParser):
         if first is None:
             return
         try:
-            count = str(
-                sum(
-                    1
-                    for record in OracleStatementParser(rest, source=self.source).split()
-                    if record.kind == "sql"
-                )
+            n = sum(
+                1
+                for record in OracleStatementParser(rest, source=self.source).split()
+                if record.kind == "sql"
             )
         except ParserError:
             count = "some"
+        else:
+            if n == 0:
+                return
+            count = str(n)
         logger.warning(
             "%s statement(s) after %s on line %d ignored, as SQL*Plus does not run them "
             "(first ignored line: %d)",

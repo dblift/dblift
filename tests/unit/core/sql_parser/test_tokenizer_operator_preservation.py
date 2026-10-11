@@ -57,7 +57,7 @@ PORTABLE_CORPUS = [
     "SELECT a % -b FROM t;",
     "SELECT a || b FROM t;",
     "SELECT * FROM t WHERE name LIKE 'a%';",
-    # "& " not "&d": an Oracle "&d" in a literal is a substitution variable (spec section 6).
+    # "& " not "&d": an Oracle "&d" in a literal is a substitution variable (docs/sql-parsing/oracle.md section 6: substitution applies to the statement text).
     "SELECT * FROM t WHERE name LIKE '%a@b#c& d^e?f%';",
     "UPDATE t SET n = n % 7 WHERE id = 1;",
     "SELECT COUNT(*) % 3 FROM t;",

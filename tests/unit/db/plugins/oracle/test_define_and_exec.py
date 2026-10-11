@@ -113,3 +113,14 @@ def test_exec_without_a_semicolon(word):
 
 def test_exec_unit_is_substituted_too():
     assert _strings("DEFINE p = proc\nEXEC &p;") == ["BEGIN proc; END;"]
+
+
+def test_define_value_is_substituted_when_defined():
+    # sqlplus 23.x, Oracle Free 23ai, 2026-10-10: DEFINE a = q, DEFINE b = &a, SELECT '&b' -> q
+    assert _strings("DEFINE a = q\nDEFINE b = &a\nSELECT '&b' FROM dual;") == [
+        "SELECT 'q' FROM dual;"
+    ]
+
+
+def test_define_value_keeps_double_hyphen_inside_quotes():
+    assert _strings("DEFINE x = 'a--b'\nSELECT '&x' FROM dual;") == ["SELECT 'a--b' FROM dual;"]

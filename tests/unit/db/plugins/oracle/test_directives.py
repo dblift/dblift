@@ -285,3 +285,102 @@ def test_classify_directive(line, action, name):
         assert directive is None
     else:
         assert (directive.action, directive.name) == (action, name)
+
+
+@pytest.mark.parametrize(
+    "script, expected",
+    [
+        (
+            "EXEC dbms_output.put_line('-------')",
+            "BEGIN dbms_output.put_line('-------'); END;",
+        ),
+        (
+            "EXEC dbms_output.put_line('a -- b');",
+            "BEGIN dbms_output.put_line('a -- b'); END;",
+        ),
+        (
+            'EXEC p("x--y")',
+            'BEGIN p("x--y"); END;',
+        ),
+    ],
+)
+def test_comment_and_continuation_markers_inside_quotes_are_text(script, expected):
+    assert _strings(script) == [expected]
+
+
+def test_unquoted_double_hyphen_still_starts_a_comment():
+    assert _records("SET LINESIZE 100 -- wide\nSELECT 1 FROM dual;")[0] == _directive(
+        "SET LINESIZE 100", 1
+    )
+
+
+def test_unclosed_quote_means_no_comment_and_no_continuation():
+    records = _records("DEFINE x = it's -\nSELECT 1 FROM dual;")
+
+    assert records[0].text == "DEFINE x = it's -"
+    assert records[1].kind == "sql"
+
+
+@pytest.mark.parametrize("word", ["PROMPT", "REM", "REMARK"])
+def test_free_text_directives_keep_the_whole_line(word):
+    line = f"{word} it's -- x"
+    tokens = OracleTokenizer(f"{line}\nSELECT 1 FROM dual;").tokenize()
+
+    assert (tokens[0].type, tokens[0].text) == (TokenType.DIRECTIVE, line)
+
+
+def test_directive_after_a_same_line_block_comment_is_recognised():
+    records = _records("/* c */ PROMPT hi\nSELECT 1 FROM dual;")
+
+    assert [r.kind for r in records] == ["directive", "sql"]
+    assert records[0].text == "PROMPT hi"
+
+
+def test_directive_after_two_block_comments_is_recognised():
+    assert [r.kind for r in _records("/* a */ /* b */ SET LINESIZE 9\nSELECT 1 FROM dual;")] == [
+        "directive",
+        "sql",
+    ]
+
+
+def test_block_comment_then_sql_is_not_a_directive():
+    assert [r.kind for r in _records("/* c */ SELECT 1 FROM dual;")] == ["sql"]
+
+
+@pytest.mark.parametrize(
+    "line, name",
+    [
+        ("SET ESCAPE ON", "SET ESCAPE"),
+        ("SET ESC '\\'", "SET ESCAPE"),
+        ("SET CONCAT OFF", "SET CONCAT"),
+        ("SET CON '#'", "SET CONCAT"),
+    ],
+)
+def test_set_escape_and_concat_are_refused(line, name):
+    with pytest.raises(UnsupportedMetaCommandError, match=rf"{name!r}.*line 2"):
+        _strings(f"SELECT 1 FROM dual;\n{line}\nSELECT 2 FROM dual;")
+
+
+def test_set_scan_is_set_define():
+    assert classify_directive("SET SCAN OFF").action is DirectiveAction.DEFINE
+    assert _strings("SET SCAN OFF\nINSERT INTO t VALUES ('a&b');") == [
+        "INSERT INTO t VALUES ('a&b');"
+    ]
+    assert _strings("SET SCAN OFF\nSET SCAN ON\nDEFINE b = z\nSELECT '&b' FROM dual;") == [
+        "SELECT 'z' FROM dual;"
+    ]
+
+
+def test_exit_followed_only_by_directives_does_not_warn(caplog):
+    with caplog.at_level(logging.WARNING):
+        _records("SELECT 1 FROM dual;\nEXIT\nPROMPT bye\n")
+
+    assert not caplog.records
+
+
+def test_whenever_sqlerror_with_a_slash_on_its_line_is_still_a_policy():
+    # The "/" is part of the WHENEVER line, as SQL*Plus reads it.
+    strings = _strings("WHENEVER SQLERROR EXIT FAILURE /\nSELECT 1 FROM dual;")
+
+    assert strings[0] == "WHENEVER SQLERROR EXIT FAILURE /;"
+    assert OracleQuirks().parse_error_policy_directive(strings[0]) == "exit"

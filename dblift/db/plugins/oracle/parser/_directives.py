@@ -83,6 +83,9 @@ _COMMANDS: Tuple[Tuple[str, int, DirectiveAction], ...] = (
 _SET_OPTIONS: Tuple[Tuple[str, int, DirectiveAction], ...] = (
     ("SERVEROUTPUT", 9, _POLICY),
     ("DEFINE", 3, _DEFINE),
+    ("SCAN", 4, _DEFINE),
+    ("ESCAPE", 3, _REJECT),
+    ("CONCAT", 3, _REJECT),
     ("SQLTERMINATOR", 4, _REJECT),
     ("BLOCKTERMINATOR", 3, _REJECT),
     ("SQLBLANKLINES", 4, _REJECT),

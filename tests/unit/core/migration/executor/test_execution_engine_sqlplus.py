@@ -62,7 +62,8 @@ class TestSqlplusContextExtraction:
 
         engine._parse_sql_statements(migration, result)
 
-        # Variables are the splitter's (positional), not a whole-script pre-pass.
+        # Variables are the splitter's (positional, docs/sql-parsing/oracle.md section 6),
+        # not a whole-script pre-pass.
         content_arg = engine.sql_analyzer.split_statements.call_args.args[0]
         assert content_arg == migration.content
 
