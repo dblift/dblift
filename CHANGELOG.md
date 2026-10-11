@@ -177,10 +177,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   to the next line feed, so the statement after the carriage return would be
   swallowed without an error; statements separated by a carriage return alone
   are still cut at their delimiters.
-- **MySQL and MariaDB: the statements of a CRLF file have line feeds only,**
-  as the client sends them: a multi-line string literal or a stored-program
-  body in a CRLF migration is stored with line feeds, as `mysql < file` stores
-  it. The migration checksum is unchanged.
+- **MySQL and MariaDB: statements read from content with CRLF line ends have
+  line feeds only,** as the client sends them: a multi-line string literal or
+  a stored-program body is stored with line feeds, as `mysql < file` stores
+  it. This matters for content passed through the API: migration files are
+  read with newline normalisation, so a file never reaches the splitter with a
+  carriage return. The migration checksum is unchanged.
 - **MySQL and MariaDB: an unterminated string, backtick identifier, block
   comment or optimizer hint is refused** with its line and column instead of
   being returned as a statement (the client swallows an unterminated comment
@@ -189,10 +191,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **MySQL and MariaDB: stored programs.** `CREATE [OR REPLACE] [DEFINER = ...]
   [AGGREGATE] PROCEDURE|FUNCTION|TRIGGER|EVENT` and `ALTER EVENT` keep their
   `BEGIN ... END` body whole under the `;` delimiter, including `REPEAT`,
-  `CASE`, labels, handlers and MariaDB `FOR` loops, so a `;` inside the body no
-  longer splits it. The `mysql` client itself rejects such a file unless the
+  `CASE`, labels, handlers and MariaDB `FOR` loops. A `;` inside the body of
+  the `DEFINER`, `OR REPLACE`, `AGGREGATE`, `FOR` and `ALTER EVENT` forms no
+  longer splits it (a plain `CREATE PROCEDURE ... BEGIN ... END` was already
+  kept whole). The `mysql` client itself rejects such a file unless the
   body is wrapped in `DELIMITER`, so a migration that runs here still needs
   `DELIMITER` lines to run with `mysql < file`.
+- Objects and statements extracted from a MariaDB script carry the dialect
+  `mariadb` instead of `mysql`.
 - `parse_sql` reports a script the splitter refuses as an error in `errors`, for
   every dialect, instead of failing the parse; object extraction returns the
   objects it finds in the text (none when there are none) instead of raising.
