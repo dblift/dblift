@@ -23,9 +23,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   SQL*Plus rejects them with ORA-03405. Move the comment or the second
   statement to its own line.
 - **Oracle: `&name` is a SQL*Plus substitution variable everywhere on a line,
-  comments included, when `SET DEFINE` is on (the default).** `-- R&D` or
-  `'a&b'` without a `DEFINE` is refused because SQL*Plus would prompt for the
-  value; write `SET DEFINE OFF` first, or define the variable.
+  comments inside a statement included, when `SET DEFINE` is on (the
+  default).** `SELECT 1 -- R&D` + newline + `FROM dual` or `'a&b'` without a
+  `DEFINE` is refused because SQL*Plus would prompt for the value; write `SET
+  DEFINE OFF` first, or define the variable. A comment-only line before a
+  statement is not substituted, as in SQL*Plus. `DEFINE b = &a` stores the
+  value of `a`.
 - **Oracle: SQL*Plus directives are recorded or refused, never dropped.**
   `@file`, `@@file`, `START`, `HOST`, `!`, `ACCEPT`, `PAUSE`, `CONNECT`,
   `CONN`, `DISCONNECT`, `PASSWORD` and `SET SQLTERMINATOR`, `BLOCKTERMINATOR`,
@@ -35,7 +38,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and a warning names the first one. A directive after a `;` on the same line
   is refused. Directives may be abbreviated as SQL*Plus allows (`SET
   SERVEROUT ON`, `SET FEED OFF`), and a directive line ending in `-` continues
-  on the next line.
+  on the next line, and a `--` or trailing `-` inside quotes is text. A
+  directive may follow a block comment on its line. `SET ESCAPE` and `SET
+  CONCAT` are refused because they change how `&` and `.` are read, and `SET
+  SCAN` acts as `SET DEFINE`. An exit status on `EXIT` / `QUIT` (`EXIT
+  FAILURE`, `EXIT 3`) is recorded and not modelled: migration status is
+  dblift's.
 - `WHENEVER SQLERROR` is still recorded and handed to execution, which applies
   its policy to the statements that follow; an unrecognised `WHENEVER SQLERROR`
   action is refused instead of being ignored. `EXEC` / `EXECUTE` is rewritten
@@ -60,6 +68,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- The unused wrapped-PL/SQL detector on the Oracle tokenizer is gone.
 - The `terminate_script_directives` and `apply_script_substitution` quirks
   hooks are gone: SQL*Plus directives are handled by the Oracle statement
   splitter itself, which records, rewrites or refuses them.
