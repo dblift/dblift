@@ -179,7 +179,7 @@ class SqlGlotParser(SqlParserInterface):
             if regex_cls is not None:
                 try:
                     regex_parser = regex_cls()
-                    result: list[str] = regex_parser.split_statements(sql_content)
+                    result: list[str] = regex_parser.split_for_extraction(sql_content)
                     return result
                 except UnsafeStatementSplitError:
                     raise

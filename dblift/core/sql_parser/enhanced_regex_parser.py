@@ -147,7 +147,7 @@ class EnhancedRegexParser(RegexParser):
             cleaned_sql = self._clean_sql(sql_content)
 
             # Enhanced statement splitting
-            sql_statements = self.split_statements(cleaned_sql)
+            sql_statements = self.split_for_extraction(cleaned_sql)
 
             # Parse each statement with enhanced error handling
             for sql in sql_statements:

@@ -18,7 +18,7 @@ SPEC_DIR = Path(__file__).resolve().parents[4] / "docs" / "sql-parsing"
 ROWS = [row for row in load_conformance_rows(SPEC_DIR) if row.dialect == "sqlserver"]
 
 KNOWN_GAPS: frozenset[str] = frozenset(
-    "3 4 6 6c 7a 7b 8 8a 8b 11 12a 13 14 15 16 17 18 19 19b 22 23 24 24a 24b 24c 24d 29 30".split()
+    "6 7a 7b 8 8a 8b 11 14 17 18 19 19b 22 23 24 24a 24b 24c 30".split()
 )
 
 

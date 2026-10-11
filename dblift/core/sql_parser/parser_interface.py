@@ -41,6 +41,14 @@ class SqlParserInterface(ABC):
             List of SQL statement strings
         """
 
+    def split_for_extraction(self, sql_content: str, strict_tokenizer: bool = False) -> List[str]:
+        """Statements for object extraction and reporting.
+
+        The same as :meth:`split_statements` unless a dialect executes batches (T-SQL):
+        extraction still reads one statement at a time.
+        """
+        return self.split_statements(sql_content, strict_tokenizer=strict_tokenizer)
+
     @abstractmethod
     def validate_sql(self, sql_content: str) -> Dict[str, Any]:
         """Validate SQL syntax.

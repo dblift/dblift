@@ -15,6 +15,8 @@ from dblift.core.sql_model.base import (
 from dblift.core.sql_parser.base_tokenizer import BaseTokenizer
 from dblift.core.sql_parser.enhanced_regex_parser import EnhancedRegexParser
 from dblift.core.sql_parser.parser_context import ParserContext
+from dblift.core.sql_parser.statement import Statement
+from dblift.db.plugins.sqlserver.parser._batches import scan_batches
 from dblift.db.plugins.sqlserver.parser.parser_config import SqlServerConfig
 from dblift.db.plugins.sqlserver.parser.sqlserver_statement_parser import SQLServerStatementParser
 from dblift.db.plugins.sqlserver.parser.sqlserver_tokenizer import SQLServerTokenizer
@@ -39,6 +41,8 @@ class SqlServerRegexParser(EnhancedRegexParser):
     #: one place it is declared instead of assuming its own.
     tokenizer_class: Type[BaseTokenizer] = SQLServerTokenizer
 
+    SPLITS_WITHOUT_FALLBACK = True
+
     def __init__(self) -> None:
         """Initialize SQL Server regex parser."""
         super().__init__(SqlServerConfig())  # type: ignore[no-untyped-call,arg-type]
@@ -49,7 +53,26 @@ class SqlServerRegexParser(EnhancedRegexParser):
         """Return the dialect name."""
         return "sqlserver"  # lint: allow-dialect-string: dialect dispatch
 
+    def split(self, sql_content: str) -> List[Statement]:
+        """The batches of a script, as ``sqlcmd`` sends them (docs/sql-parsing/sqlserver.md)."""
+        return [
+            Statement(
+                text=batch.text,
+                line=batch.line,
+                terminator="GO" if batch.terminated else None,
+                repeat=batch.repeat,
+            )
+            for batch in scan_batches(sql_content)
+        ]
+
     def split_statements(self, sql_content: str, strict_tokenizer: bool = False) -> List[str]:
+        """Batches as execution receives them; ``GO n`` returns its batch n times.
+
+        The scanner has no unknown characters, so ``strict_tokenizer`` changes nothing.
+        """
+        return [s.text for s in self.split(sql_content) for _ in range(s.repeat)]
+
+    def split_for_extraction(self, sql_content: str, strict_tokenizer: bool = False) -> List[str]:
         """Split SQL content using tokenization-based logic.
 
         Uses tokenization to handle:

@@ -16,6 +16,8 @@ class Statement:
     COPY data block) or ``None`` when the script ended it. ``kind`` tells
     execution what it holds: SQL, a client directive dropped and recorded, or a
     COPY header with its data. ``multi`` is reserved for psql's ``\\;``.
+    ``repeat`` is how often execution sends the statement: 1, or the count of the
+    ``GO n`` that ended a T-SQL batch (0 sends it never).
     """
 
     text: str
@@ -23,3 +25,4 @@ class Statement:
     terminator: Optional[str]
     kind: StatementKind = "sql"
     multi: bool = False
+    repeat: int = 1
