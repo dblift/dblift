@@ -30,7 +30,7 @@ interprets SQL. Everything it must know about a dialect is lexical and finite:
 
 A fact that is not in one of these sections is not a splitting fact and does
 not belong in the spec. Object extraction (what a `CREATE TABLE` declares) is
-the extractor's concern and is covered by the model snapshot corpus, not here.
+the extractor's concern and is covered by the model snapshot tests, not here.
 
 ## Rules every specification follows
 
@@ -61,7 +61,8 @@ the extractor's concern and is covered by the model snapshot corpus, not here.
 
 Section 10 of every spec is compiled into tests by
 `tests/support/splitter_spec/spec_tables.py` and run by
-`tests/unit/core/sql_parser/test_postgresql_spec_conformance.py`. A row that the compiler cannot read is
+`test_postgresql_spec_conformance.py` and `test_oracle_spec_conformance.py` in
+`tests/unit/core/sql_parser/`. A row that the compiler cannot read is
 a build error, so the tables keep this shape:
 
 | Column | Rule |
@@ -76,7 +77,8 @@ normalised statements: surrounding whitespace removed and one trailing
 terminator (`;`) removed; everything else is compared verbatim.
 
 Each row runs through `SqlAnalyzer.split_statements`, the entry point `migrate`
-uses, in `tests/unit/core/sql_parser/test_postgresql_spec_conformance.py`. A row
+uses, in `test_postgresql_spec_conformance.py` and `test_oracle_spec_conformance.py`
+(both in `tests/unit/core/sql_parser/`). A row
 the current code gets wrong is listed by id in that module's list of known gaps and
 fails strictly (`xfail(strict=True)`): the list can only shrink honestly.
 
@@ -85,6 +87,7 @@ fails strictly (`xfail(strict=True)`): the list can only shrink honestly.
 | Spec | Covers | Engine subclass needed |
 | --- | --- | --- |
 | [postgresql.md](postgresql.md) | PostgreSQL and the compatible family: AlloyDB, Aurora PostgreSQL, Citus, CockroachDB, Neon, Supabase, TimescaleDB, YugabyteDB | dollar-quote tags |
+| [oracle.md](oracle.md) | Oracle Database 12c+ scripts written for SQL\*Plus / SQLcl | alternative quoting `q'…'` |
 
 ## Verification sources
 

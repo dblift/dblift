@@ -80,7 +80,8 @@ class TestOracleStatementParser:
 
     def test_simple_sql_split(self):
         """Test simple SQL statement splitting."""
-        sql = "SELECT * FROM table1; SELECT * FROM table2;"
+        # Spec §4 row 16b: two statements on one line are refused, so one per line.
+        sql = "SELECT * FROM table1;\nSELECT * FROM table2;"
         tokenizer = OracleTokenizer(sql)
         tokens = tokenizer.tokenize()
 
@@ -145,9 +146,11 @@ END;
 
     def test_multiple_ddl_with_slash(self):
         """Test multiple DDL statements with slash delimiters."""
-        sql = """CREATE TABLE test1 (id NUMBER);
+        # Spec §4 row 22: "/" after a ";"-ended statement is a re-execution and is
+        # refused, so "/" alone ends statements that have no ";".
+        sql = """CREATE TABLE test1 (id NUMBER)
 /
-CREATE TABLE test2 (id NUMBER);
+CREATE TABLE test2 (id NUMBER)
 /"""
         tokenizer = OracleTokenizer(sql)
         tokens = tokenizer.tokenize()

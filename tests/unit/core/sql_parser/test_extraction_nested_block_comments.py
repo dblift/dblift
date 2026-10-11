@@ -20,6 +20,7 @@ malformed or extra object as well as a missing one.
 import unittest
 from unittest import mock
 
+from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.db.plugins.db2.parser.db2_regex_parser import DB2RegexParser
 from dblift.db.plugins.duckdb.parser.duckdb_regex_parser import DuckDBRegexParser
 from dblift.db.plugins.duckdb.parser.duckdb_tokenizer import DuckDBTokenizer
@@ -131,7 +132,12 @@ class TestExtractionAgreesWithSplittingPerDialect(unittest.TestCase):
         self._assert_agree("db2")
 
     def test_oracle(self):
-        self._assert_agree("oracle")
+        # Spec §4 row 13: the splitter refuses a ";" followed by a stray "*/" on its
+        # line, so there is no live statement to agree with; extraction still
+        # reports the object the first "*/" exposes.
+        with self.assertRaises(UnsafeStatementSplitError):
+            _regex_parser_for("oracle").split_statements(NESTED_COMMENT_SQL)
+        _assert_extracts_exactly_victim_or_nothing(self, "oracle", True)
 
     def test_cockroachdb(self):
         self._assert_agree("cockroachdb")

@@ -522,11 +522,12 @@ class TestUndoScriptGenerator:
 
 
 def test_oracle_undo_keeps_statement_with_close_marker_in_string():
-    """A ``*/`` in a string after a same-line ``;`` does not join statements."""
+    """A ``*/`` in a string after a ``;`` does not join statements."""
     generator = UndoScriptGenerator(dialect="oracle", logger=LogFactory.get_log("test"))
     migration = Migration(
         script_name="V1__star.sql",
-        content="CREATE TABLE ua (id NUMBER); CREATE TABLE ub (v VARCHAR2(10) DEFAULT '*/');\n",
+        # One statement per line: spec §4 row 16b refuses two on a line.
+        content="CREATE TABLE ua (id NUMBER);\nCREATE TABLE ub (v VARCHAR2(10) DEFAULT '*/');\n",
         version="1",
         description="star",
         logger=generator.logger,
@@ -733,7 +734,7 @@ def _oracle_undo_sql(content):
 def test_oracle_undo_drops_every_table_around_directive_with_apostrophe(directive):
     undo_sql = _oracle_undo_sql(
         f"{directive}\nCREATE TABLE a (id NUMBER);\n{directive}\n"
-        "CREATE TABLE b (id NUMBER);\nCREATE TABLE c (id NUMBER); -- gone\n"
+        "CREATE TABLE b (id NUMBER);\n-- gone (spec §4 row 16a: no text after a ';')\nCREATE TABLE c (id NUMBER);\n"
     )
 
     assert len(undo_sql) == 3

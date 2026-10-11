@@ -773,6 +773,7 @@ module = [
     "dblift.db.plugins.oracle.parser._plsql_block",
     "dblift.db.plugins.oracle.parser._sqlplus",
     "dblift.db.plugins.oracle.parser._statement_splitter",
+    "dblift.db.plugins.oracle.parser._unit_heads",
 ]
 disallow_any_generics = true
 disallow_subclassing_any = true

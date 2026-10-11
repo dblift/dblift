@@ -108,7 +108,8 @@ def terminate_sqlplus_directives(raw_sql: str) -> str:
     line gets a ``;`` appended (unless already terminated by ``;`` / ``/``)
     so it reaches the executor as its own statement; every other directive
     is dropped before execution anyway, so its text is removed (a trailing
-    ``--`` comment and the newline stay).
+    ``--`` comment and the newline stay). A ``WHENEVER SQLERROR`` line loses its
+    trailing ``--`` comment, which would otherwise follow the appended ``;``.
     Other lines pass through unchanged, including lines inside a PL/SQL
     block or a multi-line literal that merely look like a directive
     (``EXECUTE IMMEDIATE '...``).
@@ -129,8 +130,13 @@ def terminate_sqlplus_directives(raw_sql: str) -> str:
         if directive.endswith(";") or directive.endswith("/"):
             out.append(line)
         else:
-            # Insert ';' before any trailing comment / line-ending whitespace.
             out.append(directive + ";" + line[len(directive) :])
+            # A "--" comment after the new ";" would put text after the
+            # terminator (spec §4); the comment is dead text, so drop it.
+            eol = raw_sql.find("\n", end)
+            eol = len(raw_sql) if eol == -1 else eol
+            if raw_sql[end:eol].lstrip().startswith("--"):
+                last = eol
     out.append(raw_sql[last:])
     return "".join(out)
 

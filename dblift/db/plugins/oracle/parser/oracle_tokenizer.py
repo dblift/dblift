@@ -6,6 +6,7 @@ wrapped PL/SQL detection, and slash delimiters.
 
 from typing import List
 
+from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.core.sql_parser.base_tokenizer import BaseTokenizer
 from dblift.core.sql_parser.tokens import Token, TokenType
 
@@ -20,6 +21,25 @@ def has_stray_comment_close(tokens: List[Token]) -> bool:
     return any(
         a.text == "*" and b.text == "/" and b.pos == a.pos + 1 for a, b in zip(tokens, tokens[1:])
     )
+
+
+def is_alone_on_line(sql: str, pos: int) -> bool:
+    """Whether ``sql[pos]`` is the only non-blank text on its line.
+
+    Looks only at the blanks adjacent to ``pos``, so the cost does not grow
+    with the length of the line.
+    """
+    i = pos - 1
+    while i >= 0 and sql[i] != "\n":
+        if not sql[i].isspace():
+            return False
+        i -= 1
+    i = pos + 1
+    while i < len(sql) and sql[i] != "\n":
+        if not sql[i].isspace():
+            return False
+        i += 1
+    return True
 
 
 class OracleTokenizer(BaseTokenizer):
@@ -102,8 +122,17 @@ class OracleTokenizer(BaseTokenizer):
         # Read Q' (or NQ')
         string_text += self.read(self._q_quote_prefix_length())
 
-        # Get delimiter character
+        # Get delimiter character; end of input is checked first because
+        # ``"" in " \t\r\n"`` is True.
+        if self.pos >= len(self.sql):
+            raise UnsafeStatementSplitError(
+                f"unterminated q-quoted string opened at line {start_line}, column {start_col}"
+            )
         delimiter_char = self.read()
+        if delimiter_char in " \t\r\n":
+            raise UnsafeStatementSplitError(
+                f"q-quote delimiter cannot be whitespace at line {start_line}, column {start_col}"
+            )
         string_text += delimiter_char
 
         # Map opening delimiter to closing delimiter
@@ -123,11 +152,17 @@ class OracleTokenizer(BaseTokenizer):
             close_quote = delimiter_char + "'"
 
         # Read until closing delimiter
+        closed = False
         while self.pos < len(self.sql):
             if self.peek(len(close_quote)) == close_quote:
                 string_text += self.read(len(close_quote))
+                closed = True
                 break
             string_text += self.read()
+        if not closed:
+            raise UnsafeStatementSplitError(
+                f"unterminated q-quoted string opened at line {start_line}, column {start_col}"
+            )
 
         return Token(
             TokenType.STRING,
@@ -153,17 +188,19 @@ class OracleTokenizer(BaseTokenizer):
         identifier_text += self.read()  # Opening quote
 
         # Read until closing quote
+        closed = False
         while self.pos < len(self.sql):
-            char = self.peek()
+            # A quoted identifier cannot contain ``"`` (spec section 2), so
+            # ``""`` is not an escape: it closes at the first quote.
+            char = self.read()
+            identifier_text += char
             if char == '"':
-                # Check for doubled quote (escape)
-                if self.peek(2) == '""':
-                    identifier_text += self.read(2)
-                else:
-                    identifier_text += self.read()  # Closing quote
-                    break
-            else:
-                identifier_text += self.read()
+                closed = True
+                break
+        if not closed:
+            raise UnsafeStatementSplitError(
+                f"unterminated quoted identifier opened at line {start_line}, column {start_col}"
+            )
 
         return Token(
             TokenType.IDENTIFIER,
@@ -184,34 +221,15 @@ class OracleTokenizer(BaseTokenizer):
         if char == ";":
             return True
 
-        # Check for slash delimiter (must be alone on line for PL/SQL)
-        if char == "/":
-            # Look back to see if we're at start of line
-            return self._is_slash_delimiter()
+        # ``/`` and ``.`` are SQL*Plus terminators only alone on their line.
+        if char in ("/", "."):
+            return self._is_alone_on_line()
 
         return False
 
-    def _is_slash_delimiter(self) -> bool:
-        """Check if slash is a PL/SQL delimiter (must be alone on line).
-
-        Returns:
-            True if slash is a valid delimiter
-        """
-        # Slash must be at start of line or preceded only by whitespace
-        # Look back from current position
-        check_pos = self.pos - 1
-        while check_pos >= 0:
-            char = self.sql[check_pos]
-            if char == "\n":
-                # Found newline - slash is at start of line
-                return True
-            elif not char.isspace():
-                # Found non-whitespace before slash - not a delimiter
-                return False
-            check_pos -= 1
-
-        # Reached start of file - slash is at start
-        return True
+    def _is_alone_on_line(self) -> bool:
+        """Whether the character at the cursor is the only non-blank text on its line."""
+        return is_alone_on_line(self.sql, self.pos)
 
     def _handle_delimiter(self) -> Token:
         """Handle Oracle delimiters (semicolon or slash).

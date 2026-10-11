@@ -2,6 +2,7 @@
 
 import pytest
 
+from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.core.sql_parser.parser_context import ParserContext
 from dblift.core.sql_parser.tokens import TokenType
 from dblift.db.plugins.oracle.parser.oracle_statement_parser import OracleStatementParser
@@ -51,15 +52,40 @@ class TestOracleTokenizerCoverage:
         # Verify we have identifiers (may or may not include quotes depending on implementation)
         assert len(identifier_tokens) > 0
 
-    def test_double_quoted_identifier_with_multiple_escapes(self):
-        """Test double-quoted identifier with multiple escaped quotes."""
-        sql = 'SELECT "id""with""quotes" FROM dual;'
-        tokenizer = OracleTokenizer(sql)
-        tokens = tokenizer.tokenize()
+    def test_doubled_quote_in_identifier_is_not_an_escape(self):
+        """``""`` is not an escape: an identifier cannot contain ``"`` (spec section 2)."""
+        tokens = OracleTokenizer('SELECT "id""with""quotes" FROM dual;').tokenize()
 
-        identifier_tokens = [t for t in tokens if t.type == TokenType.IDENTIFIER]
-        # Should have at least one identifier
-        assert len(identifier_tokens) >= 1
+        identifiers = [t.text for t in tokens if t.type == TokenType.IDENTIFIER]
+        assert identifiers[:3] == ['"id"', '"with"', '"quotes"']
+
+    def test_doubled_quote_identifier_splits_into_two_statements(self):
+        """Spec section 2: the first ``"`` closes, so ``"a""b"`` is two identifiers.
+
+        The server rejects the first statement; the client splits the same way.
+        """
+        script = 'SELECT "a""b" FROM t;\nSELECT 1 FROM dual;'
+        tokens = OracleTokenizer(script).tokenize()
+
+        identifiers = [t.text for t in tokens if t.type == TokenType.IDENTIFIER]
+        assert identifiers[:2] == ['"a"', '"b"']
+        assert len(OracleStatementParser(tokens).split_statements()) == 2
+
+    def test_semicolon_after_doubled_quote_stays_inside_the_second_identifier(self):
+        """In ``"a"";b"`` the second ``"`` opens a new identifier ``";b"``.
+
+        So the ``;`` is inside a quoted identifier, not a terminator (spec section 2).
+        """
+        script = 'SELECT "a"";b" FROM t;\nSELECT 1 FROM dual;'
+        tokens = OracleTokenizer(script).tokenize()
+
+        identifiers = [t.text for t in tokens if t.type == TokenType.IDENTIFIER]
+        assert identifiers[:2] == ['"a"', '";b"']
+        assert len(OracleStatementParser(tokens).split_statements()) == 2
+
+    def test_q_quote_at_end_of_input_is_unterminated(self):
+        with pytest.raises(UnsafeStatementSplitError, match="unterminated q-quoted string"):
+            OracleTokenizer("SELECT q'").tokenize()
 
     def test_is_wrapped_plsql_with_few_tokens(self):
         """Test is_wrapped_plsql with less than 3 tokens."""
@@ -118,67 +144,29 @@ class TestOracleTokenizerCoverage:
 class TestOracleStatementParserCoverage:
     """Tests to cover remaining Oracle statement parser lines."""
 
-    def test_package_body_detection_method(self):
-        """Test _is_package_body method."""
+    def test_package_body_without_slash_is_refused(self):
+        """A PACKAGE BODY ends only at ``/`` (docs/sql-parsing/oracle.md section 11, row 20)."""
         sql = """CREATE OR REPLACE PACKAGE BODY test_pkg AS
     PROCEDURE proc1 AS BEGIN NULL; END;
 END test_pkg;"""
         tokenizer = OracleTokenizer(sql)
         tokens = tokenizer.tokenize()
         parser = OracleStatementParser(tokens)
-        statements = parser.split_statements()
 
-        # Should detect package body
-        assert len(statements) == 1
+        with pytest.raises(UnsafeStatementSplitError, match="not terminated by a '/' line"):
+            parser.split_statements()
 
-    def test_package_spec_method(self):
-        """Test _is_package_spec method."""
+    def test_package_spec_without_slash_is_refused(self):
+        """A PACKAGE spec ends only at ``/`` (docs/sql-parsing/oracle.md section 11, row 20)."""
         sql = """CREATE PACKAGE test_pkg AS
     PROCEDURE proc1;
 END test_pkg;"""
         tokenizer = OracleTokenizer(sql)
         tokens = tokenizer.tokenize()
         parser = OracleStatementParser(tokens)
-        statements = parser.split_statements()
 
-        # Should detect package spec
-        assert len(statements) == 1
-
-    def test_preceded_by_end_method(self):
-        """Test _preceded_by_end method."""
-        sql = "BEGIN IF x THEN NULL; END IF; END;"
-        tokenizer = OracleTokenizer(sql)
-        tokens = tokenizer.tokenize()
-        parser = OracleStatementParser(tokens)
-
-        # Process tokens until we hit IF
-        for idx, token in enumerate(tokens):
-            parser.current_idx = idx
-            if token.type != TokenType.EOF:
-                parser._adjust_context(token)
-                if token.text.upper() == "IF" and idx > 0:
-                    # Check if IF is preceded by END
-                    result = parser._preceded_by_end()
-                    # May or may not be preceded by END depending on position
-                    assert isinstance(result, bool)
-                    break
-
-    def test_is_control_flow_end_method(self):
-        """Test _is_control_flow_end method."""
-        sql = "BEGIN IF x THEN NULL; END IF; END;"
-        tokenizer = OracleTokenizer(sql)
-        tokens = tokenizer.tokenize()
-        parser = OracleStatementParser(tokens)
-
-        # Process tokens until END IF
-        for idx, token in enumerate(tokens):
-            parser.current_idx = idx
-            if token.type != TokenType.EOF:
-                parser._adjust_context(token)
-                if token.text.upper() == "END":
-                    # Check if this is a control flow END
-                    result = parser._is_control_flow_end()
-                    assert isinstance(result, bool)
+        with pytest.raises(UnsafeStatementSplitError, match="not terminated by a '/' line"):
+            parser.split_statements()
 
 
 class TestOracleNationalQQuote:
