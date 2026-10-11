@@ -139,6 +139,22 @@ class SqlserverQuirks(BaseQuirks):
             r"^DROP\s+FULLTEXT\s+CATALOG\b",
             "SQL Server DROP FULLTEXT CATALOG cannot run inside a user transaction",
         ),
+        (
+            r"^ALTER\s+FULLTEXT\s+(?:CATALOG|INDEX)\b",
+            "SQL Server ALTER FULLTEXT cannot run inside a user transaction",
+        ),
+        (
+            r"^(?:CREATE|ALTER|DROP)\s+DATABASE\b",
+            "SQL Server CREATE, ALTER and DROP DATABASE cannot run inside a user transaction",
+        ),
+        (
+            r"^(?:BACKUP\s+DATABASE|RESTORE\s+(?:DATABASE|VERIFYONLY))\b",
+            "SQL Server BACKUP and RESTORE cannot run inside a user transaction",
+        ),
+        (
+            r"^RECONFIGURE\b",
+            "SQL Server RECONFIGURE cannot run inside a user transaction",
+        ),
     )
 
     def type_equivalents(self) -> "dict[str, str]":

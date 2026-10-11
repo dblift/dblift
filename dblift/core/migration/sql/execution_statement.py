@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Optional
+from functools import lru_cache
+from typing import Any, List, Optional
 
 from dblift.core.sql_parser.common.comment_stripping import strip_comments_preserving_quotes
 from dblift.core.utils.row_access import strip_leading_comments
@@ -45,6 +46,24 @@ def is_comment_only_statement(sql: str, *, nested_block_comments: bool = False) 
     return not body.strip()
 
 
+@lru_cache(maxsize=None)
+def _batch_parser(dialect: str) -> Any:
+    """The dialect's regex parser when its statements arrive as batches (T-SQL), else None."""
+    from dblift.db.provider_registry import ProviderRegistry
+
+    quirks = ProviderRegistry.get_quirks(dialect)
+    parser_class = quirks.parser_class("regex") if quirks.supports_go_batch_separator else None
+    return parser_class() if parser_class is not None else None
+
+
+def _statements_of(sql: str, dialect: str) -> List[str]:
+    """The statements of one execution unit: a T-SQL batch holds several, any other unit is one."""
+    parser = _batch_parser(dialect)
+    if parser is None:
+        return [sql]
+    return list(parser.split_for_extraction(sql)) or [sql]
+
+
 def classify_execution_statement(
     sql: str, *, dialect: str, statement_type: str = "UNKNOWN"
 ) -> ExecutionStatement:
@@ -54,16 +73,19 @@ def classify_execution_statement(
     # A comment in front of the statement (a migration's own notes, a
     # generated script's header) is not part of it; the patterns are anchored
     # at the statement's first keyword.
-    normalized = re.sub(r"\s+", " ", strip_leading_comments(sql).strip()).upper()
     quirks = ProviderRegistry.get_quirks(dialect.lower())
 
-    for pattern, reason in quirks.non_transactional_sql_patterns:
-        if re.match(pattern, normalized):
-            return ExecutionStatement(
-                sql=sql,
-                statement_type=statement_type,
-                can_execute_in_transaction=False,
-                transaction_reason=reason,
-            )
+    # A batch is not transactional when any of its statements is not: SQL Server refuses that
+    # statement inside the transaction the whole batch would run in.
+    for statement in _statements_of(sql, dialect.lower()):
+        normalized = re.sub(r"\s+", " ", strip_leading_comments(statement).strip()).upper()
+        for pattern, reason in quirks.non_transactional_sql_patterns:
+            if re.match(pattern, normalized):
+                return ExecutionStatement(
+                    sql=sql,
+                    statement_type=statement_type,
+                    can_execute_in_transaction=False,
+                    transaction_reason=reason,
+                )
 
     return ExecutionStatement(sql=sql, statement_type=statement_type)
