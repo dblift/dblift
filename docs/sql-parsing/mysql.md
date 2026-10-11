@@ -202,7 +202,7 @@ None. The scanner (`_script.py`) is one reader for both engines: it holds the ac
 | Construct | Behaviour | Why |
 | --- | --- | --- |
 | `ANSI_QUOTES` sql_mode | `"…"` is always a string with backslash escapes | a session setting the splitter cannot see; the lexical effect is identical unless a backslash precedes the closing `"`, which leaves a string open and the script is refused |
-| `NO_BACKSLASH_ESCAPES` sql_mode | `\` always escapes. A script that sets `NO_BACKSLASH_ESCAPES` or `ANSI_QUOTES` is not yet refused; until it is, backslashes in literals are read in the default mode (a literal that the mode leaves open is refused only because it is unterminated) | both clients follow the session's mode (measured 2026-10-11: `SET sql_mode='NO_BACKSLASH_ESCAPES'; SELECT 'C:\'; SELECT 2;` runs), the splitter cannot; a mode set outside the script (the server's default, the connection's) is not seen: write `'C:\\'` |
+| `NO_BACKSLASH_ESCAPES` sql_mode | `\` always escapes; a statement of the script that sets the mode (a `SET` that names `NO_BACKSLASH_ESCAPES` outside its comments and literals; `SET sql_mode = REPLACE(@@sql_mode, 'NO_BACKSLASH_ESCAPES', '')` names it too and is refused) is refused with `UnsafeStatementSplitError`; `ANSI_QUOTES` is not refused by name | both clients follow the session's mode (measured 2026-10-11: `SET sql_mode='NO_BACKSLASH_ESCAPES'; SELECT 'C:\'; SELECT 2;` runs), the splitter cannot; a mode set outside the script (the server's default, the connection's) is not seen: write `'C:\\'` |
 | `--delimiter=str`, `--comments`, `--binary-mode`, interactive mode | not modelled | options of the client, not of the script |
 | Several statements in one query | the splitter returns the unit as one statement (row 27) | the clients allow it (their connection sets the multi-statement flag), dblift's connection does not: the server rejects the unit with error 1064 |
 | A stored-program body that is an `IF`, `WHILE`, `LOOP`, `REPEAT` or `CASE` statement without `BEGIN` | ends at its first `;` | the extension looks for `BEGIN` only |
@@ -214,6 +214,6 @@ None. The scanner (`_script.py`) is one reader for both engines: it holds the ac
 
 Code: `dblift/db/plugins/mysql/parser/_script.py` (the scanner: strings, comments, executable comments, the delimiter and the stored-program rule of section 5) and `mysql_regex_parser.py` (`split()` returns `Statement` records, `split_statements()` their text, both without a fallback). MariaDB uses the same scanner through `dblift/db/plugins/mariadb/regex_parser.py`, which only switches on `/*M!`. The tokenizer-based splitter that came before is kept as `split_for_extraction()` for object extraction and `parse_sql`, which read a chunk of text and must not refuse it.
 
-Client commands (section 6) are not refused yet: the conformance test lists rows 20, 21, 49-52a, 54, 56-59 and 63 as known gaps until they are.
+Client commands (section 6) are refused by name with their line (`UnsupportedMetaCommandError`); a script that sets `NO_BACKSLASH_ESCAPES` outside its comments is refused (`UnsafeStatementSplitError`).
 
 Tests: `tests/unit/core/sql_parser/test_mysql_spec_conformance.py` runs every row of section 10 through `SqlAnalyzer.split_statements` for both engines; `tests/unit/db/plugins/mysql/test_script.py` covers the scanner rule by rule.
