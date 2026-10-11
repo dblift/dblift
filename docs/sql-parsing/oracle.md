@@ -112,7 +112,8 @@ a hyphen at the end of the line and pressing Return."
 
 A directive is recognised only where a statement can begin (top of script,
 after a statement-ending `;`, after a `/` line, after another directive),
-with only blanks before it on the line. It runs to the end of the line; a
+with only blanks before it on the line (a comment before the directive on the
+same line makes the line SQL text). It runs to the end of the line; a
 trailing `-` continues it on the next line. Its text is **never lexed as
 SQL**: `REM don't` opens no literal.
 
@@ -121,7 +122,7 @@ SQL**: `REM don't` opens no literal.
 | `SET` (all options except those below), `SHOW`, `SPOOL`, `PROMPT`, `REM`/`REMARK`, `COLUMN`/`COL`, `TTITLE`/`BTITLE`, `REPHEADER`/`REPFOOTER`, `BREAK`, `COMPUTE`, `CLEAR`, `TIMING`, `VARIABLE`, `PRINT`, `DESC`/`DESCRIBE`, `WHENEVER OSERROR` | **drop and record** (`kind="directive"`); `PROMPT` text is logged |
 | `SET DEFINE {ON|OFF|char}`, `DEFINE x = v`, `UNDEFINE x` | **record and apply positionally** to `&x`/`&&x` substitution in the statements that follow; a `.` ends a reference (`&x.suffix`) |
 | `SET SERVEROUTPUT ON|OFF` | record; execution enables `DBMS_OUTPUT` retrieval |
-| `WHENEVER SQLERROR {EXIT … | CONTINUE …}` | record; execution applies the policy to the statements that follow |
+| `WHENEVER SQLERROR {EXIT … | CONTINUE …}` | record; execution applies the policy to the statements that follow. An unrecognised `WHENEVER SQLERROR` action is refused. |
 | `EXEC[UTE] stmt[;]` | **rewrite** to the PL/SQL unit `BEGIN stmt; END;` after stripping one trailing `;` from `stmt`; never dropped. SQL\*Plus documents only "Executes a single PL/SQL statement"; EXEC runs the call (sqlplus 23.x, Oracle Free 23ai, 2026-10-10: row 16, two EXEC lines → T16 has 2 rows); the `BEGIN stmt; END;` rewrite is the splitter's choice of equivalent, not a measured client behaviour |
 | `EXIT` / `QUIT` | everything after it is **not executed**; the remainder is recorded with a warning naming the first ignored line (sqlplus 23.x, Oracle Free 23ai, 2026-10-10: row 17, rc 0, `T17` empty: the `INSERT` after `EXIT` never ran) |
 | `@file`, `@@file`, `START file`, `HOST`, `!cmd`, `ACCEPT`, `PAUSE`, `CONNECT`, `CONN`, `DISCONNECT`, `PASSWORD`, `SET SQLTERMINATOR`, `SET BLOCKTERMINATOR`, `SET SQLBLANKLINES`, `SET SQLPREFIX`, `SET CMDSEP` | **reject** with `UnsupportedMetaCommandError` naming the directive and line |
@@ -229,14 +230,10 @@ above or the reason for a rule:
   `SET SERVEROUT` are not recognised and are sent to the server.
 - A directive after `;` on the same line merges with the next statement,
   which the directive filter then drops: `SELECT 2` is lost (row 19).
-- `DEFINE` / `SET DEFINE` apply to the whole script with last-wins semantics,
-  not positionally (row 15).
 - A `/` at the start of a line inside an expression force-terminates a package
   body in both paths (row 5).
 - The regex fallback collapses runs of spaces inside string literals and drops
-  hints; its text is what the fallback path executes. The Oracle
-  preprocessing runs twice per migration (engine and `SqlAnalyzer`).
-- `is_wrapped_plsql` is dead code.
+  hints; its text is what the fallback path executes.
 
 Tests to re-point (about 470 functions): `tests/unit/core/sql_parser/oracle/*`,
 `tests/unit/core/sql_parser/test_oracle_parser*.py`,

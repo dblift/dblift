@@ -50,8 +50,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   as one statement (the server rejects it) instead of an empty result.
   SQLite, DuckDB and Db2 log a warning and keep their previous output.
 
+### Removed
+
+- The `terminate_script_directives` and `apply_script_substitution` quirks
+  hooks are gone: SQL*Plus directives are handled by the Oracle statement
+  splitter itself, which records, rewrites or refuses them.
+
 ### Fixed
 
+- Oracle: `DEFINE`, `SET DEFINE` and `UNDEFINE` apply from the line where they
+  stand, not to the whole script; `&x`, `&&x` and `&x.suffix` are replaced
+  (inside string literals too, as SQL*Plus does), and a reference to an
+  undefined variable is refused instead of being sent as it stands. `EXEC` /
+  `EXECUTE` runs the call as `BEGIN ... END;` instead of dropping it and the
+  statement after it.
 - A dialect without a statement parser splits through the generic scanner again instead of raising "Unsupported dialect" (regression from the PostgreSQL splitter change in this release).
 - PostgreSQL splitting matches psql on: `$1` positional parameters (not
   dollar-quote tags); a `;` inside parentheses; psql's `\;` combinator; the
