@@ -22,6 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (...); -- note` and two statements on one line are no longer accepted;
   SQL*Plus rejects them with ORA-03405. Move the comment or the second
   statement to its own line.
+- **Oracle: `&name` is a SQL*Plus substitution variable everywhere on a line,
+  comments included, when `SET DEFINE` is on (the default).** `-- R&D` or
+  `'a&b'` without a `DEFINE` is refused because SQL*Plus would prompt for the
+  value; write `SET DEFINE OFF` first, or define the variable.
 - **Oracle: SQL*Plus directives are recorded or refused, never dropped.**
   `@file`, `@@file`, `START`, `HOST`, `!`, `ACCEPT`, `PAUSE`, `CONNECT`,
   `CONN`, `DISCONNECT`, `PASSWORD` and `SET SQLTERMINATOR`, `BLOCKTERMINATOR`,
@@ -32,6 +36,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is refused. Directives may be abbreviated as SQL*Plus allows (`SET
   SERVEROUT ON`, `SET FEED OFF`), and a directive line ending in `-` continues
   on the next line.
+- `WHENEVER SQLERROR` is still recorded and handed to execution, which applies
+  its policy to the statements that follow; an unrecognised `WHENEVER SQLERROR`
+  action is refused instead of being ignored. `EXEC` / `EXECUTE` is rewritten
+  to `BEGIN ...; END;`.
 - The PostgreSQL family (including Redshift) has no regex fallback: a script
   the splitter cannot read is an error naming the construct. A script of
   only `\restrict` / `\unrestrict` lines yields no statement.
@@ -55,6 +63,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The `terminate_script_directives` and `apply_script_substitution` quirks
   hooks are gone: SQL*Plus directives are handled by the Oracle statement
   splitter itself, which records, rewrites or refuses them.
+- `SqlplusContext` (`dblift.db.plugins.oracle.parser`) no longer carries
+  `define_on` or `defines`, and `apply_define_substitution` and
+  `terminate_sqlplus_directives` are gone; `DEFINE` is resolved by the splitter,
+  line by line.
 
 ### Fixed
 
@@ -93,8 +105,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the splitter refuses; object extraction treats
   an already-split statement as one statement, so a PL/SQL unit without its
   `/` is still recorded.
-
-### Removed
 
 ## [4.11.1] - 2026-10-10
 
