@@ -49,7 +49,9 @@ the extractor's concern and is covered by the model snapshot tests, not here.
   its terminator; the `Statement` records which terminator ended it so
   execution can reproduce dialect-specific behaviour (Oracle's `/` after a
   PL/SQL block, for example) without re-scanning. This includes the
-  terminator of a raw block (`\.` after `COPY … FROM STDIN` data). `repeat` is how often execution sends the statement: 1, or the count of the `GO n` that ended a T-SQL batch (0 sends it never); `multi` stays psql's `\;`.
+  terminator of a raw block (`\.` after `COPY … FROM STDIN` data).
+  `repeat` is how often execution sends the statement: 1, or the count of the
+  `GO n` that ended a T-SQL batch (0 sends it never); `multi` stays psql's `\;`.
 - **An empty statement is not a statement.** Nothing but whitespace and
   comments between two terminators (a bare `;`, a `GO` after a `GO`) yields
   no entry; a comment-only segment is dropped. PostgreSQL follows this
