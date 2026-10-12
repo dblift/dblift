@@ -221,7 +221,78 @@ def test_a_last_statement_without_a_terminator_is_returned_with_no_terminator() 
 
 def test_a_comment_after_the_last_terminator_is_not_a_statement() -> None:
     assert texts("SELECT 1;\n/* bye */\n") == ["SELECT 1"]
-    assert texts("SELECT 1;\n/* bye\n") == ["SELECT 1"]
+
+
+@pytest.mark.parametrize(
+    "script",
+    [
+        "SELECT 1;\n/* bye\n",
+        "SELECT 1;\n/* oops\nCREATE TABLE t (id INT);\n",
+        "SELECT 1 /* a\nSELECT 2;",
+        "--#SET TERMINATOR @\n/* oops\nCREATE TABLE t (id INT)@",
+    ],
+)
+def test_a_block_comment_that_is_never_closed_is_refused_with_the_line_it_opened_on(
+    script: str,
+) -> None:
+    with pytest.raises(UnsafeStatementSplitError, match="not closed"):
+        scan_script(script)
+
+
+def test_the_message_names_the_line_the_comment_opened_on() -> None:
+    with pytest.raises(UnsafeStatementSplitError, match="line 2"):
+        scan_script("SELECT 1;\n/* oops\nCREATE TABLE t (id INT);")
+
+
+@pytest.mark.parametrize("terminator", ["/", "*/"])
+@pytest.mark.parametrize("body", ["/* header */", "CREATE TABLE t (id INT) /* x */"])
+def test_a_terminator_that_completes_a_comment_close_is_refused_not_read_as_a_comment(
+    terminator: str, body: str
+) -> None:
+    script = f"--#SET TERMINATOR {terminator}\n{body}\nCREATE TABLE u (id INT)\n{terminator}\n"
+    with pytest.raises(UnsafeStatementSplitError, match="line 2"):
+        scan_script(script)
+
+
+def test_a_terminator_that_shares_a_character_with_a_comment_but_closes_nothing_is_fine() -> None:
+    assert texts("--#SET TERMINATOR /\nSELECT 1 /* a */ FROM t\n/\nSELECT 2\n/") == [
+        "SELECT 1 /* a */ FROM t",
+        "SELECT 2",
+    ]
+
+
+@pytest.mark.parametrize(
+    "script, expected",
+    [
+        ("SELECT 1 /* a\n b */", "SELECT 1 /* a\n b */"),
+        ("SELECT 'a\nb'", "SELECT 'a\nb'"),
+        ('SELECT "a\nb"', 'SELECT "a\nb"'),
+        ("SELECT 1\n\n  \n", "SELECT 1"),
+        ("SELECT 1\n-- why\n", "SELECT 1\n-- why"),
+    ],
+)
+def test_the_last_statement_is_returned_whole(script: str, expected: str) -> None:
+    assert texts(script) == [expected]
+
+
+def test_a_terminator_at_a_line_end_inside_a_string_in_a_body_is_refused_too() -> None:
+    script = "CREATE PROCEDURE p()\nBEGIN\n  INSERT INTO t VALUES ('a;\nb');\nEND;"
+    with pytest.raises(UnsafeStatementSplitError, match="inside a string"):
+        scan_script(script)
+
+
+def test_the_semicolon_refusal_names_the_line_holding_the_semicolon() -> None:
+    with pytest.raises(UnsafeStatementSplitError, match="line 3"):
+        scan_script("CREATE TABLE t (\n  id INT\n); SELECT 1;\nSELECT 2;")
+
+
+@pytest.mark.parametrize("line", ["--#SET TERMINATORX @", "--#SET TERMINATORS @"])
+def test_a_comment_that_merely_starts_like_the_directive_is_text(line: str) -> None:
+    assert texts(f"{line}\nSELECT 1;") == ["SELECT 1"]
+
+
+def test_a_statement_line_is_the_first_line_with_something_on_it() -> None:
+    assert [u.line for u in scan_script("\x0c\nSELECT 1;")] == [2]
 
 
 def test_a_comment_alone_before_a_terminator_is_not_a_statement() -> None:

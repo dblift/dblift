@@ -1,6 +1,6 @@
 """Cut a Db2 script into the statements the command line processor (CLP) sends to the server.
 
-docs/sql-parsing/db2.md sections 3 to 6. The CLP reads a script line by line and looks at
+docs/sql-parsing/db2.md sections 3 to 5. The CLP reads a script line by line and looks at
 nothing else: a statement ends at a line whose last non-blank characters are the active
 terminator, whatever the line holds (a string, a comment, a quoted identifier), and a line
 that starts with ``--`` is a comment. The scanner reproduces that, with two additions that
@@ -12,6 +12,7 @@ rejects it, the ``ibm_db`` driver runs the text before the ``;`` and drops the r
 
 from __future__ import annotations
 
+import copy
 import re
 from dataclasses import dataclass
 from typing import List, Optional
@@ -22,7 +23,7 @@ from dblift.core.sql_parser.statement import StatementKind
 DEFAULT_TERMINATOR = ";"
 
 #: A ``--#SET TERMINATOR`` line: upper case, blanks (not tabs) between the words (measured).
-_DIRECTIVE = re.compile(r"[ \t]*--#SET +TERMINATOR")
+_DIRECTIVE = re.compile(r"[ \t]*--#SET +TERMINATOR(?!\w)")
 _DIRECTIVE_VALUE = re.compile(r" +(\S{1,2})[ \t]*\Z")
 _WORD = re.compile(r"[A-Za-z_][A-Za-z0-9_$#@]*")
 
@@ -183,7 +184,8 @@ class _Scanner:
         self.buf: List[str] = []
         self.start = 0
         self.reader = _Reader()
-        self.last_code = 0
+        self.block_line = 0
+        self.stray_line = 0
 
     def run(self) -> List[Unit]:
         last = len(self.pieces)
@@ -197,55 +199,71 @@ class _Scanner:
             self._line(piece, line, number)
         if self.buf:
             self.reader.settle()
+            if self.reader.block:
+                raise UnsafeStatementSplitError(
+                    f"the block comment opened on line {self.block_line} is not closed before "
+                    "the end of the script: the statements inside it would be dropped"
+                )
             if self.reader.inside:
                 raise UnsafeStatementSplitError(
                     f"the routine body starting on line {self.start} is not closed "
                     "before the end of the script"
                 )
-            # Comment lines after the last code are not part of an unterminated statement.
-            self._end(None, self.buf[: self.last_code])
+            self._end(None, self.buf)
         return self.units
 
+    def _feed(self, text: str, number: int) -> None:
+        """Feed a line to the reader, remembering where a block comment opened and a ';' strayed."""
+        reader = self.reader
+        was_block, was_stray = reader.block, reader.stray
+        reader.feed(text)
+        if reader.block and not was_block:
+            self.block_line = number
+        if reader.stray and not was_stray:
+            self.stray_line = number
+
     def _line(self, raw: str, line: str, number: int) -> None:
-        if _DIRECTIVE.match(line):
+        keyword = _DIRECTIVE.match(line)
+        if keyword:
             if self.buf and (self.reader.quote or self.reader.block):
                 raise UnsafeStatementSplitError(
                     f"--#SET TERMINATOR on line {number} stands inside a string, "
-                    "a quoted identifier "
-                    "or a comment: the CLP honours it there and cuts the statement; close it first"
+                    "a quoted identifier or a comment: the CLP honours it there and cuts "
+                    "the statement; close it first"
                 )
-            self._directive(line, number)
+            self._directive(line, keyword, number)
             return
         stripped = line.strip(" \t")
         if stripped.startswith("--"):
             if self.buf:
                 self.buf.append(raw)
-                self.reader.feed(line)
+                self._feed(line, number)
             return
         if not self.buf:
             if not stripped:
                 return
             self.start, self.reader = number, _Reader()
-            self.last_code = 0
+            self.stray_line = 0
         self.buf.append(raw)
         tail = line.rstrip(" \t")
-        tokens = self.reader.tokens
         reader = self.reader
         if not tail.endswith(self.terminator):
-            reader.feed(line)
-            if reader.tokens > tokens:
-                self.last_code = len(self.buf)
+            self._feed(line, number)
             if self._ends_before_a_comment(line):
                 self._end(self.terminator, self.buf[:-1] + [line[: reader.semi_at]])
             return
+        whole = copy.copy(reader)
+        whole.words = list(reader.words)
+        whole.feed(tail)
         body = tail[: -len(self.terminator)]
-        reader.feed(body)
+        self._feed(body, number)
+        if bool(whole.block) != bool(reader.block):
+            raise UnsafeStatementSplitError(
+                f"line {number} ends with {self.terminator!r}, which is also part of a "
+                "comment delimiter: the CLP cuts the statement there, the splitter cannot tell "
+                "the two readings apart; put the comment on a line of its own"
+            )
         reader.settle()
-        if reader.inside or reader.block:
-            # A body is kept whole; a comment runs to its close, whatever its lines end with.
-            if reader.tokens > tokens:
-                self.last_code = len(self.buf)
-            return
         if reader.quote:
             raise UnsafeStatementSplitError(
                 f"line {number} ends with {self.terminator!r} inside a string "
@@ -253,6 +271,9 @@ class _Scanner:
                 "the CLP cuts the statement there and the server rejects both halves; "
                 "close the literal before the end of the line"
             )
+        if reader.inside or reader.block:
+            # A body is kept whole; a comment runs to its close, whatever its lines end with.
+            return
         self._end(self.terminator, self.buf[:-1] + [body])
 
     def _ends_before_a_comment(self, line: str) -> bool:
@@ -265,9 +286,7 @@ class _Scanner:
             and line[reader.semi_at + 1 :].lstrip(" \t").startswith(("--", "/*"))
         )
 
-    def _directive(self, line: str, number: int) -> None:
-        keyword = _DIRECTIVE.match(line)
-        assert keyword is not None
+    def _directive(self, line: str, keyword: "re.Match[str]", number: int) -> None:
         value = _DIRECTIVE_VALUE.match(line, keyword.end())
         if value is None:
             raise UnsafeStatementSplitError(
@@ -279,14 +298,18 @@ class _Scanner:
 
     def _end(self, terminator: Optional[str], lines: List[str]) -> None:
         text = "\n".join(lines).strip()
-        start, reader = self.start, self.reader
+        start, reader, stray_line = self.start, self.reader, self.stray_line
+        for piece in lines:  # the statement starts on the first line with anything on it
+            if piece.strip():
+                break
+            start += 1
         self.buf, self.reader = [], _Reader()
         if not text or not reader.code:
             return
         if reader.stray:
             raise UnsafeStatementSplitError(
-                f"the statement starting on line {start} has code after a ';' in the middle of a "
-                "line: the CLP sends it whole and the server rejects it, and the ibm_db driver "
+                f"line {stray_line} has code after a ';' in the middle of a line: "
+                "the CLP sends it whole and the server rejects it, and the ibm_db driver "
                 "runs only the text before the ';'; put each statement on its own line, ended by "
                 "the terminator, or declare another terminator with --#SET TERMINATOR"
             )
