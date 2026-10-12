@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from dblift.db.base_quirks import BaseQuirks
+
+if TYPE_CHECKING:
+    from dblift.core.sql_parser.lexical_spec import LexicalSpec
 
 
 class SqliteQuirks(BaseQuirks):
@@ -61,9 +64,15 @@ class SqliteQuirks(BaseQuirks):
 
     def blank_comments(self, sql: str) -> str:
         """The statement with its comments blanked by the SQLite scanner."""
-        from dblift.db.plugins.sqlite.parser._script import blank_comments
+        from dblift.core.sql_parser.lexical_engine import LexicalEngine
 
-        return blank_comments(sql)
+        return LexicalEngine(self.lexical_spec()).blank_comments(sql)
+
+    def lexical_spec(self) -> "LexicalSpec":
+        """The SQLite script rules used by execution, analysis and masking."""
+        from dblift.db.plugins.sqlite.parser.lexical_spec import SQLITE_SPEC
+
+        return SQLITE_SPEC
 
     def __init__(self, dialect_name: str = "sqlite") -> None:
         """Initialize SQLite quirks with the dialect name."""

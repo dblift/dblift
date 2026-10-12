@@ -684,6 +684,9 @@ class SqlAnalyzer:
         statements: a dialect that divides its batches does it here, after the same refusals.
         Every other dialect: the execution split.
         """
+        engine = self.statement_splitter._engine
+        if engine is not None and engine.spec.sqlite_shell:
+            return engine.split_for_analysis(sql)
         parser = self._db_specific_parser
         if (
             parser is not None

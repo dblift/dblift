@@ -345,15 +345,16 @@ rules are a table and one regular expression (the word pattern); the `go` and `/
 
 ## 12. Current implementation
 
-Code: `dblift/db/plugins/sqlite/parser/_script.py` (`scan_script`, one character
-scanner: the library's seven-state table, the two line rules, comments and
-quoting) and `sqlite_regex_parser.py`. `split()` returns `Statement` records,
-`split_statements()` their execution text, and `split_for_analysis()` adds the
-segments of comments only (§3). `split_for_extraction()` uses that same scanner
-view, and `parse_sql()` honors its shell-command and unsafe-split refusals.
+Code: `dblift/db/plugins/sqlite/parser/lexical_spec.py` supplies the library's
+seven-state table to `LexicalEngine`. Its shared tokenizer and statement parser
+apply the two shell line rules, comments and quoting. `split()` returns
+`Statement` records, `split_statements()` their execution text, and
+`split_for_analysis()` adds segments of comments only (§3).
+`SQLiteRegexParser` delegates its splitter entrypoints to this engine, so
+`split_for_extraction()` and `parse_sql()` retain the same refusals.
 
 Tests: `tests/unit/db/plugins/sqlite/test_script.py` (the rules and the
-records; the scanner is checked against `sqlite3.complete_statement`),
+records; the engine is checked against `sqlite3.complete_statement`),
 `test_extraction_keeps_statements.py` and
 `tests/unit/core/sql_parser/test_sqlite_spec_conformance.py` (every row of §10).
 
