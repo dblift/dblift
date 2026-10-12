@@ -1,3 +1,4 @@
+from pymysql.constants import CLIENT
 from sqlalchemy import text
 
 import dblift.db.native_connection_manager as connection_manager_module
@@ -75,6 +76,7 @@ def test_mysql_engine_disables_pool_reset_on_return(monkeypatch):
         "pool_pre_ping": True,
         "future": True,
         "pool_reset_on_return": None,
+        "connect_args": {"client_flag": CLIENT.MULTI_STATEMENTS},
     }
 
 
@@ -113,6 +115,7 @@ def test_engine_options_mysql_includes_pool_reset():
         "pool_pre_ping": True,
         "future": True,
         "pool_reset_on_return": None,
+        "connect_args": {"client_flag": CLIENT.MULTI_STATEMENTS},
     }
 
 

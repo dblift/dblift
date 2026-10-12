@@ -2,6 +2,9 @@
 
 from typing import Any, Dict, List, Optional
 
+from sqlalchemy import event
+from sqlalchemy.engine import Connection
+
 from dblift.config import DbliftConfig
 from dblift.core.constants import DEFAULT_HISTORY_TABLE
 from dblift.core.constants import MIGRATION_LOCK_TABLE as _MIGRATION_LOCK_TABLE
@@ -20,6 +23,18 @@ _LOCK_NAME_STEM = _MIGRATION_LOCK_TABLE.removesuffix("_lock")
 
 def _quote_identifier(identifier: str) -> str:
     return "`" + identifier.replace("`", "``") + "`"
+
+
+def _drain_result_sets(
+    conn: Any, cursor: Any, statement: Any, parameters: Any, context: Any, executemany: Any
+) -> None:
+    """Consume every result set of a multi-statement query, raising a later statement's error.
+
+    The driver reports the first statement only; the rest sit unread (an error in one is
+    swallowed when the cursor closes, and the connection falls out of step).
+    """
+    while cursor.nextset():
+        pass
 
 
 class MySqlProvider(SqlAlchemyProvider):
@@ -42,6 +57,13 @@ class MySqlProvider(SqlAlchemyProvider):
         """Initialize the native MySQL provider."""
         super().__init__(config, log)
         self._current_database_set = None
+
+    def create_connection(self) -> Connection:
+        """Open the connection and make it read every result set of a query."""
+        conn = super().create_connection()
+        if not event.contains(conn, "after_cursor_execute", _drain_result_sets):
+            event.listen(conn, "after_cursor_execute", _drain_result_sets)
+        return conn
 
     def reset_schema_cache(self) -> None:
         """Forget the database this connection was last ``USE``'d into.
