@@ -14,8 +14,9 @@ from typing import Dict, List, Optional
 
 from dblift.core.sql_model.base import SqlObjectType
 from dblift.core.sql_parser.enhanced_regex_parser import EnhancedRegexParser
+from dblift.core.sql_parser.lexical_engine import LexicalEngine
 from dblift.core.sql_parser.statement import Statement
-from dblift.db.plugins.sqlite.parser._script import scan_script
+from dblift.db.plugins.sqlite.parser.lexical_spec import SQLITE_SPEC
 from dblift.db.plugins.sqlite.parser.parser_config import SQLiteConfig
 
 
@@ -34,23 +35,14 @@ class SQLiteRegexParser(EnhancedRegexParser):
 
     def split(self, sql_content: str) -> List[Statement]:
         """The statements of a script as the ``sqlite3`` shell sends them (see docs/sql-parsing)."""
-        return [
-            Statement(
-                text=unit.text,
-                line=unit.line,
-                terminator=unit.terminator,
-                source_start=unit.source_start,
-                source_end=unit.source_end,
-            )
-            for unit in scan_script(sql_content)
-        ]
+        return LexicalEngine(SQLITE_SPEC).split(sql_content)
 
     def split_statements(self, sql_content: str, strict_tokenizer: bool = False) -> List[str]:
         """The statements execution sends: the text of each ``split()`` record.
 
         The scanner has no unknown characters, so ``strict_tokenizer`` changes nothing.
         """
-        return [record.text for record in self.split(sql_content)]
+        return LexicalEngine(SQLITE_SPEC).split_statements(sql_content)
 
     def split_for_analysis(self, sql_content: str, strict_tokenizer: bool = False) -> List[str]:
         """The statements of a script for callers that read it statement by statement.
@@ -58,7 +50,7 @@ class SQLiteRegexParser(EnhancedRegexParser):
         Execution drops a segment of comments only; the readers of a script (linting, analysis)
         still see it, as they did before the scanner.
         """
-        return [unit.text for unit in scan_script(sql_content, comment_only=True)]
+        return LexicalEngine(SQLITE_SPEC).split_for_analysis(sql_content)
 
     def split_for_extraction(self, sql_content: str, strict_tokenizer: bool = False) -> List[str]:
         """Project extraction text from the shell scanner, retaining comment-only segments."""

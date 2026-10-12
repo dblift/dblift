@@ -24,3 +24,5 @@ class LexicalSpec:
     block_opener: Tuple[str, str] = ("", "")
     nested_block_keywords: FrozenSet[str] = frozenset()
     block_closer: str = ""
+    sqlite_shell: bool = False
+    completion_table: Tuple[Tuple[int, ...], ...] = ()

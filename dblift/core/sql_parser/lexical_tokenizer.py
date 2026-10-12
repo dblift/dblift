@@ -53,6 +53,9 @@ class LexicalTokenizer(BaseTokenizer):
             self._copy_data_pending = False
             return self.handle_copy_data()
 
+        if self.spec.sqlite_shell:
+            return self._next_sqlite_token()
+
         self._skip_whitespace()
 
         if self.pos >= len(self.sql):
@@ -105,6 +108,47 @@ class LexicalTokenizer(BaseTokenizer):
 
         # Delegate to base class for other token types
         return super()._next_token()
+
+    def _next_sqlite_token(self) -> Optional[Token]:
+        """Read SQLite lexemes using the same token stream as other dialects."""
+        if self.pos == 0 and self.peek() == "\ufeff":
+            self.read()
+        while self.pos < len(self.sql) and self.peek() in " \t\n\f\r":
+            self.read()
+        if self.pos >= len(self.sql):
+            return None
+        char = self.peek()
+        if self.peek(2) in ("--", "/*"):
+            return self._handle_comment()
+        if char in "'\"`[":
+            return self._handle_sqlite_quote(char)
+        if char == ";":
+            return self._handle_delimiter()
+        start, line, col = self.pos, self.line, self.col
+        if (char.isascii() and (char.isalnum() or char in "_$")) or ord(char) >= 128:
+            while self.pos < len(self.sql):
+                word_char = self.peek()
+                if not (
+                    (word_char.isascii() and (word_char.isalnum() or word_char in "_$"))
+                    or ord(word_char) >= 128
+                ):
+                    break
+                self.read()
+            word = self.sql[start : self.pos]
+            kind = TokenType.KEYWORD if word.upper() in self.SQL_KEYWORDS else TokenType.IDENTIFIER
+            return Token(kind, word, start, line, col, self.parens_depth)
+        self.read()
+        return Token(TokenType.SYMBOL, char, start, line, col, self.parens_depth)
+
+    def _handle_sqlite_quote(self, opener: str) -> Token:
+        """A SQLite quote runs to its first closer, or to end of script."""
+        start, line, col = self.pos, self.line, self.col
+        closer = "]" if opener == "[" else opener
+        self.read()
+        end = self.sql.find(closer, self.pos)
+        self.read(len(self.sql) - self.pos if end < 0 else end + 1 - self.pos)
+        kind = TokenType.STRING if opener == "'" else TokenType.IDENTIFIER
+        return Token(kind, self.sql[start : self.pos], start, line, col, self.parens_depth)
 
     def _handle_migration_placeholder(self) -> Token:
         """Read a ${…} placeholder as one identifier-like token.
@@ -433,4 +477,6 @@ class LexicalTokenizer(BaseTokenizer):
         start = self.pos
         token = super()._handle_comment()
         self.comments.append((start, self.pos))
+        if self.spec.sqlite_shell:
+            token.text = self.sql[start : self.pos]
         return token

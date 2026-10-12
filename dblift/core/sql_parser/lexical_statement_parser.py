@@ -28,8 +28,37 @@ class LexicalStatementParser(BaseStatementParser):
         self._head: List[str] = []
         self._head_limit = max(map(len, spec.routine_heads), default=0)
         self._previous: Optional[Token] = None
+        self._sqlite_state = 1
+        self._sqlite_code = False
+        self._sqlite_last_line_comment = 0
+        self._sqlite_checked_line = 0
+        self._sqlite_token_end = 0
 
     def _adjust_context(self, token: Token) -> None:
+        if self.spec.sqlite_shell:
+            if token.type == TokenType.COMMENT:
+                if self.source is not None and self.source.startswith("--", token.pos):
+                    self._sqlite_last_line_comment = token.line
+                return
+            if token.type == TokenType.DELIMITER:
+                token_class = 0
+            else:
+                token_class = (
+                    {
+                        "EXPLAIN": 2,
+                        "CREATE": 3,
+                        "TEMP": 4,
+                        "TEMPORARY": 4,
+                        "TRIGGER": 5,
+                        "END": 6,
+                    }.get(token.text.upper(), 1)
+                    if token.type in (TokenType.KEYWORD, TokenType.IDENTIFIER)
+                    and token.text[:1] not in ('"', "`", "[")
+                    else 1
+                )
+                self._sqlite_code = True
+            self._sqlite_state = self.spec.completion_table[self._sqlite_state][token_class]
+            return
         if (
             self.spec.combine_terminator
             and token.type == TokenType.SYMBOL
@@ -71,6 +100,8 @@ class LexicalStatementParser(BaseStatementParser):
         statement: the header and its data block are one COPY, which the
         provider streams through the driver's copy API in a single call.
         """
+        if self.spec.sqlite_shell:
+            return token.type == TokenType.DELIMITER and self._sqlite_state == 1
         if token.type == TokenType.COPY_DATA:
             return True
         if not super()._is_statement_end(token):
@@ -78,11 +109,13 @@ class LexicalStatementParser(BaseStatementParser):
         next_token = self._peek_next_token(skip_comments=False)
         return next_token is None or next_token.type != TokenType.COPY_DATA
 
-    def split(self) -> List[Statement]:
+    def split(self, *, include_comment_only: bool = False) -> List[Statement]:
         """Cut the token stream into Statement records (see ``_split_with_rendered``)."""
-        return [record for record, _ in self._split_with_rendered()]
+        return [record for record, _ in self._split_with_rendered(include_comment_only)]
 
-    def _split_with_rendered(self) -> List[Tuple[Statement, str]]:
+    def _split_with_rendered(
+        self, include_comment_only: bool = False
+    ) -> List[Tuple[Statement, str]]:
         """Cut the token stream into ``(Statement, rendered)`` pairs.
 
         ``rendered`` is the verbatim source slice of the statement, terminator included.
@@ -96,22 +129,32 @@ class LexicalStatementParser(BaseStatementParser):
         current: List[Token] = []
 
         def flush(terminator: Optional[Token], end_pos: Optional[int]) -> None:
-            if current and not all(
-                t.type in (TokenType.COMMENT, TokenType.DELIMITER) for t in current
-            ):
+            has_code = (
+                self._sqlite_code
+                if self.spec.sqlite_shell
+                else any(t.type not in (TokenType.COMMENT, TokenType.DELIMITER) for t in current)
+            )
+            has_comments = any(t.type == TokenType.COMMENT for t in current)
+            if current and (has_code or (include_comment_only and has_comments)):
                 text = self._render_statement(current, terminator, end_pos)
-                if text.strip():
+                if text.strip(" \t\n\f\r" if self.spec.sqlite_shell else None):
                     records.append(self._record(current, text, terminator, end_pos))
             current.clear()
             self.context.reset_for_new_statement()
             self._head.clear()
             self._previous = None
+            self._sqlite_state = 1
+            self._sqlite_code = False
 
         for idx, token in enumerate(self.tokens):
             self.current_idx = idx
 
             if token.type == TokenType.EOF:
                 continue
+
+            if self.spec.sqlite_shell:
+                self._check_sqlite_line(token)
+                self._sqlite_token_end = token.pos + len(token.text)
 
             if token.type == TokenType.META_COMMAND:
                 flush(None, token.pos)
@@ -145,6 +188,56 @@ class LexicalStatementParser(BaseStatementParser):
         flush(None, None)
         return records
 
+    def _render_statement(
+        self,
+        kept_tokens: List[Token],
+        terminator: Optional[Token],
+        dropped_terminator_pos: Optional[int],
+    ) -> str:
+        if not self.spec.sqlite_shell or self.source is None:
+            return super()._render_statement(kept_tokens, terminator, dropped_terminator_pos)
+        start = kept_tokens[0].pos
+        end = (
+            dropped_terminator_pos
+            if dropped_terminator_pos is not None
+            else (
+                terminator.pos + len(terminator.text)
+                if terminator is not None
+                else len(self.source)
+            )
+        )
+        return self.source[start:end].rstrip(" \t\n\f\r")
+
+    def _check_sqlite_line(self, token: Token) -> None:
+        """Refuse shell-only lines that would change SQLite statement boundaries."""
+        if self.source is None or token.line == self._sqlite_checked_line:
+            return
+        self._sqlite_checked_line = token.line
+        line_start = self.source.rfind("\n", 0, token.pos) + 1
+        if line_start < self._sqlite_token_end:
+            return
+        line_end = self.source.find("\n", line_start)
+        line = self.source[line_start : line_end if line_end >= 0 else len(self.source)]
+        if line_start == 0 and line.startswith("\ufeff"):
+            line = line[1:]
+        if line.startswith(".") and not self._sqlite_code:
+            command = line.split(None, 1)[0]
+            raise UnsupportedMetaCommandError(
+                f"sqlite3 shell command {command!r} on line {token.line}: the shell runs "
+                "it and the engine cannot; dblift does not run client commands"
+            )
+        if (
+            self._sqlite_code
+            and self._sqlite_state not in (5, 6)
+            and self._sqlite_last_line_comment != token.line - 1
+            and _sqlite_terminator_line(line)
+        ):
+            raise UnsafeStatementSplitError(
+                f"line {token.line} holds only {line.strip()!r}: the sqlite3 shell ends "
+                "the statement there, the engine reads it as part of the statement; "
+                "put the terminator on the statement"
+            )
+
     def _line_end(self, pos: int) -> Optional[int]:
         if self.source is None:
             return None
@@ -162,7 +255,11 @@ class LexicalStatementParser(BaseStatementParser):
 
         The record's text has the terminator stripped; the string keeps it.
         """
-        first = next(t for t in tokens if t.type != TokenType.COMMENT)
+        first = (
+            tokens[0]
+            if self.spec.sqlite_shell
+            else next(t for t in tokens if t.type != TokenType.COMMENT)
+        )
         source_start = first.pos if self.source is not None else None
         source_end = (
             terminator.pos + len(terminator.text)
@@ -239,7 +336,9 @@ class LexicalStatementParser(BaseStatementParser):
             return record, rendered
         text = rendered
         if text.endswith(terminator.text):
-            text = text[: -len(terminator.text)].rstrip()
+            text = text[: -len(terminator.text)].rstrip(
+                " \t\n\f\r" if self.spec.sqlite_shell else None
+            )
         return (
             Statement(
                 text=text,
@@ -258,7 +357,30 @@ class LexicalStatementParser(BaseStatementParser):
         out: List[str] = []
         for record, rendered in self._split_with_rendered():
             if record.kind == "sql":
-                out.append(rendered)
+                out.append(record.text if self.spec.sqlite_shell else rendered)
             elif record.kind != "directive":
                 out.append(record.text)
         return out
+
+
+def _sqlite_terminator_line(line: str) -> bool:
+    """The sqlite3 shell's GO or / line with optional trailing comments."""
+    blanks = " \t\f\r\v"
+    size, pos = len(line), 0
+    while pos < size and line[pos] in blanks:
+        pos += 1
+    if line.startswith("/", pos):
+        pos += 1
+    elif line[pos : pos + 2].lower() == "go":
+        pos += 2
+    else:
+        return False
+    while True:
+        while pos < size and line[pos] in blanks:
+            pos += 1
+        if not line.startswith("/*", pos):
+            return pos == size or line.startswith("--", pos)
+        end = line.find("*/", pos + 2)
+        if end < 0:
+            return False
+        pos = end + 2

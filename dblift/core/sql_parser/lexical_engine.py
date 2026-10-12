@@ -19,16 +19,22 @@ class LexicalEngine:
         tokens = LexicalTokenizer(script, spec=self.spec).tokenize()
         return LexicalStatementParser(tokens, source=script, spec=self.spec)
 
-    def split(self, script: str) -> List[Statement]:
+    def split(self, script: str, *, include_comment_only: bool = False) -> List[Statement]:
         """Return source-positioned execution units and analysis projections."""
-        return self._parser(script).split()
+        return self._parser(script).split(include_comment_only=include_comment_only)
 
     def split_statements(self, script: str) -> List[str]:
         """Return execution text, preserving the established terminator contract."""
         return self._parser(script).split_statements()
 
+    def split_for_analysis(self, script: str) -> List[str]:
+        """Include SQLite comment-only segments in the shared scan's projection."""
+        return [record.text for record in self.split(script, include_comment_only=True)]
+
     def blank_comments(self, script: str) -> str:
         """Replace each scanned comment with a space, preserving quoted text."""
+        if self.spec.sqlite_shell and script.startswith("\ufeff"):
+            script = script[1:]
         tokenizer = LexicalTokenizer(script, spec=self.spec)
         tokens = tokenizer.tokenize()
         LexicalStatementParser(tokens, source=script, spec=self.spec).split()

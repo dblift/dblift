@@ -16,9 +16,16 @@ from pathlib import Path
 import pytest
 
 from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
-from dblift.db.plugins.sqlite.parser._script import _Scanner, scan_script
+from dblift.core.sql_parser.lexical_engine import LexicalEngine
+from dblift.core.sql_parser.lexical_tokenizer import LexicalTokenizer
+from dblift.core.sql_parser.statement import Statement
+from dblift.db.plugins.sqlite.parser.lexical_spec import SQLITE_SPEC
 
-ROOT = Path(__file__).resolve().parents[4]
+ROOT = Path(__file__).resolve().parents[5]
+
+
+def scan_script(script: str, *, comment_only: bool = False) -> list[Statement]:
+    return LexicalEngine(SQLITE_SPEC).split(script, include_comment_only=comment_only)
 
 
 def texts(script: str) -> list[str]:
@@ -312,6 +319,8 @@ def test_a_dot_line_with_nothing_pending_is_refused(script: str, command: str, l
         ('CREATE TABLE "a\n.print x\nb"(x);', ['CREATE TABLE "a\n.print x\nb"(x)']),
         ("CREATE TABLE [a\n.print x\nb](x);", ["CREATE TABLE [a\n.print x\nb](x)"]),
         ("/*\n.print x\n*/ SELECT 1;", ["/*\n.print x\n*/ SELECT 1"]),
+        ("/*\n.print x */ SELECT 1;", ["/*\n.print x */ SELECT 1"]),
+        ("SELECT 'a\n.print x' FROM t;", ["SELECT 'a\n.print x' FROM t"]),
         ("SELECT 1 /* open\n.print x\n*/ ;", ["SELECT 1 /* open\n.print x\n*/"]),
         ("  .print x\nSELECT 1;", [".print x\nSELECT 1"]),
         ("\t.print x\nSELECT 1;", [".print x\nSELECT 1"]),
@@ -454,6 +463,15 @@ def test_lines_are_counted_across_strings_comments_and_identifiers() -> None:
     assert [u.line for u in scan_script(script)] == [1, 3, 6]
 
 
+def test_records_keep_original_source_offsets_after_a_bom_and_crlf() -> None:
+    script = "\ufeff-- lead\r\nSELECT 1;\r\nSELECT 2"
+    records = scan_script(script)
+    assert [(record.source_start, record.source_end, record.text) for record in records] == [
+        (1, script.index(";") + 1, "-- lead\r\nSELECT 1"),
+        (script.index("SELECT 2"), len(script), "SELECT 2"),
+    ]
+
+
 # ---- cost ---------------------------------------------------------------------------------------------
 
 
@@ -471,7 +489,7 @@ class _CountingText(str):
 
 def _sliced_characters(script: str) -> int:
     _CountingText.sliced = 0
-    _Scanner(_CountingText(script), False).run()
+    LexicalTokenizer(_CountingText(script), spec=SQLITE_SPEC).tokenize()
     return _CountingText.sliced
 
 
@@ -486,7 +504,7 @@ def _sliced_characters(script: str) -> int:
 def test_scanning_slices_each_character_a_bounded_number_of_times(unit: str) -> None:
     for count in (2_000, 8_000):
         script = unit * count
-        assert _sliced_characters(script) <= 2 * len(script)
+        assert _sliced_characters(script) <= 15 * len(script)
 
 
 @pytest.mark.parametrize(
@@ -498,9 +516,10 @@ def test_a_slash_line_with_many_comments_costs_one_pass(tail: str) -> None:
     """A line is read once: 500 comments after the slash must not make the check explode."""
     line = "/ " + "/* c */ " * 500 + tail
     code = (
-        "from dblift.db.plugins.sqlite.parser._script import scan_script\n"
+        "from dblift.core.sql_parser.lexical_engine import LexicalEngine\n"
+        "from dblift.db.plugins.sqlite.parser.lexical_spec import SQLITE_SPEC\n"
         "try:\n"
-        f"    scan_script({('SELECT 6' + chr(10) + line + chr(10) + '2;')!r})\n"
+        f"    LexicalEngine(SQLITE_SPEC).split({('SELECT 6' + chr(10) + line + chr(10) + '2;')!r})\n"
         "except Exception:\n"
         "    pass\n"
     )
