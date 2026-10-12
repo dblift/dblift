@@ -22,8 +22,6 @@ from dblift.db.plugins.sqlite.parser.parser_config import SQLiteConfig
 class SQLiteRegexParser(EnhancedRegexParser):
     """SQLite-specific regex-based SQL parser."""
 
-    SPLITS_WITHOUT_FALLBACK = True
-
     def __init__(self, config: Optional[SQLiteConfig] = None):
         """Initialize the SQLite regex parser.
 

@@ -61,9 +61,8 @@ class SqlGlotParser(SqlParserInterface):
     - Extracting dependencies between objects
     - Supporting quoted identifiers and multi-schema references
 
-    For Oracle dialect: Falls back to OracleParser (regex-based) for edge cases
-    where sqlglot struggles with Oracle-specific syntax (Q-quotes, complex strings).
-    This provides a hybrid approach with best-effort AST parsing and graceful degradation.
+    Every script is split by its dialect scanner first. SQLGlot then analyzes
+    each selected statement as an AST.
     """
 
     def __init__(self, dialect: str):
@@ -87,9 +86,6 @@ class SqlGlotParser(SqlParserInterface):
     def parse_sql(self, sql_content: str, default_schema: Optional[str] = None) -> ParseResult:
         """Parse SQL content into statements using sqlglot AST parsing.
 
-        For Oracle: Falls back to regex-based OracleParser when sqlglot cannot parse
-        Oracle-specific syntax (Q-quotes, complex string literals with escaped quotes).
-
         Args:
             sql_content: SQL content to parse
             default_schema: Default schema name
@@ -98,8 +94,9 @@ class SqlGlotParser(SqlParserInterface):
             ParseResult containing parsed statements and/or errors
         """
         try:
-            # Split into individual statements (uses fallback for Oracle edge cases)
-            statement_strings = self.split_statements(sql_content)
+            # The dialect scanner decides which SQL constituents execute. SQLGlot
+            # analyzes each selected constituent, never script boundaries.
+            statement_strings = self._script_scanner().split_for_extraction(sql_content)
 
             statements = []
             errors = []
@@ -150,46 +147,19 @@ class SqlGlotParser(SqlParserInterface):
             return ParseResult(success=False, statements=[], errors=[error_msg])
 
     def split_statements(self, sql_content: str, strict_tokenizer: bool = False) -> List[str]:
-        """Split SQL content into individual statements using sqlglot.
+        """Return execution units from the dialect's script scanner."""
+        return self._script_scanner().split_statements(
+            sql_content, strict_tokenizer=strict_tokenizer
+        )
 
-        Args:
-            sql_content: SQL content to split
+    def _script_scanner(self) -> SqlParserInterface:
+        """Resolve the dialect's authoritative scanner through its plugin."""
+        from dblift.db.provider_registry import ProviderRegistry
 
-        Returns:
-            List of SQL statement strings
-        """
-        try:
-            # Parse all statements in the content
-            normalized_content = self._preprocess_sql_content(sql_content)
-            statements = sqlglot.parse(normalized_content, read=self.sqlglot_dialect)
-
-            # Convert AST nodes back to SQL strings
-            return [stmt.sql(dialect=self.sqlglot_dialect) for stmt in statements if stmt]
-
-        except Exception as e:
-            logger.warning(
-                f"Error splitting statements with sqlglot: {str(e)}, using fallback parser"
-            )
-
-            # Fall back to the dialect's regex parser when available.
-            from dblift.db.provider_registry import ProviderRegistry
-
-            quirks = ProviderRegistry.get_quirks(self.dialect)
-            regex_cls = quirks.parser_class("regex")
-            if regex_cls is not None:
-                try:
-                    regex_parser = regex_cls()
-                    result: list[str] = regex_parser.split_for_extraction(sql_content)
-                    return result
-                except UnsafeStatementSplitError:
-                    raise
-                except Exception as fallback_error:
-                    logger.warning(
-                        f"Regex fallback parser also failed: {str(fallback_error)}, using simple split"
-                    )
-
-            # Final fallback: simple semicolon split
-            return [s.strip() for s in sql_content.split(";") if s.strip()]
+        scanner_class = ProviderRegistry.get_quirks(self.dialect).parser_class("regex")
+        if scanner_class is None:
+            raise UnsafeStatementSplitError(f"no script scanner for {self.dialect}")
+        return self if isinstance(self, scanner_class) else scanner_class()
 
     def validate_sql(self, sql_content: str) -> Dict[str, Any]:
         """Validate SQL syntax using sqlglot parser.

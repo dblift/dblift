@@ -19,6 +19,7 @@ class StatementSplitter:
         dialect: str,
         logger: Optional[Union[Log, _logging.Logger]] = None,
     ):
+        """Resolve the dialect parser when the first script is split."""
         self.dialect = dialect.lower()
         self.logger = logger
         self.parser_factory = SqlParserFactory(self.dialect, parser_type="regex")

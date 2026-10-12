@@ -9,10 +9,6 @@ from dblift.core.sql_model.base import ParseResult, SqlObject, SqlStatement
 class SqlParserInterface(ABC):
     """Interface for SQL parsers."""
 
-    #: True when ``split_statements`` is authoritative: it returns the split
-    #: (possibly empty) or raises, and callers must not re-split on failure.
-    SPLITS_WITHOUT_FALLBACK: bool = False
-
     @property
     @abstractmethod
     def dialect_name(self) -> str:

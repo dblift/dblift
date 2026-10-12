@@ -201,14 +201,12 @@ class HybridParser(_SqlglotBuildersMixin, SqlParserInterface):
             if not result.success:
                 return result
 
-            collected_objects = False
             enhanced_statements: List[SqlStatement] = []
             for stmt in result.statements or []:
                 enhanced_stmt = self._enhance_statement(stmt, default_schema)
                 enhanced_statements.append(enhanced_stmt)
 
                 if enhanced_stmt.objects:
-                    collected_objects = True
                     self._collect_objects(result, enhanced_stmt.objects)
 
                 self._ensure_table_metadata(enhanced_stmt, default_schema, result)
@@ -219,17 +217,6 @@ class HybridParser(_SqlglotBuildersMixin, SqlParserInterface):
 
             if enhanced_statements:
                 result.statements = enhanced_statements
-
-            try:
-                self.split_statements(sql_content)
-            except ParserError as refusal:
-                if str(refusal) not in (result.errors or []):
-                    result.errors = [*(result.errors or []), str(refusal)]
-
-            if not collected_objects:
-                fallback_objects = self.extract_objects(sql_content, default_schema)
-                if fallback_objects:
-                    self._collect_objects(result, fallback_objects)
 
             return result
 

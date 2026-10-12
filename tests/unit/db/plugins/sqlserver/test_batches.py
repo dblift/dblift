@@ -151,10 +151,6 @@ def test_the_execution_entry_point_splits_by_batch():
     assert statements == ["DECLARE @x INT = 1;\nSELECT @x;", "SELECT 2;"]
 
 
-def test_the_splitter_is_authoritative():
-    assert SqlServerRegexParser.SPLITS_WITHOUT_FALLBACK is True
-
-
 def test_a_splitter_failure_is_a_refusal_and_never_a_guess(monkeypatch):
     def broken(script):
         raise ValueError("boom")

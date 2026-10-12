@@ -23,8 +23,10 @@ def test_extract_objects_from_an_already_split_statement(sql, kind, name):
     assert [(o.object_type.name, o.name.upper()) for o in objects] == [(kind, name)]
 
 
-def test_parse_sql_reports_the_refusal_and_still_returns_statements():
+def test_parse_sql_reports_the_refusal_without_partial_statements():
     result = _oracle_parser().parse_sql("CREATE TABLE t (id NUMBER); -- c\nDELETE FROM t;")
 
     assert any("is not the last text on line 1" in e for e in result.errors or [])
-    assert result.statements
+    assert not result.success
+    assert result.statements == []
+    assert result.tables == []

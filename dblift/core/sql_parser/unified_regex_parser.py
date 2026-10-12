@@ -7,7 +7,7 @@ combining the best patterns from Oracle parser success with comprehensive dialec
 import logging
 import re
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional, Pattern, Tuple
+from typing import Any, Dict, List, Optional, Pattern
 
 from dblift.core.sql_model.base import (
     ParseResult,

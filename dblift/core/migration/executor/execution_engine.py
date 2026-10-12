@@ -20,6 +20,7 @@ from dblift.core.exceptions import (
     CallbackExecutionError,
     TransactionAbortedError,
     TransactionStatementError,
+    UnsafeStatementSplitError,
 )
 from dblift.core.logger import Log, NullLog
 from dblift.core.logger.results import CallbackExecution, MigrationInfo, OperationResult
@@ -43,7 +44,6 @@ from dblift.core.migration.sql.migration_sql_parser import (
     parse_migration_sql,
     resolve_migration_sql_dialect,
 )
-from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.migration.sql.sql_execution_service import SqlExecutionService
 from dblift.core.sql_parser.redaction import describe_statement

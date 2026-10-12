@@ -8,7 +8,8 @@ def test_sqlserver_analysis_split_does_not_repeat_a_go_count():
     assert parser.split_for_analysis("SELECT 1;\nSELECT 2;\nGO 2") == ["SELECT 1;", "SELECT 2;"]
 
 
-def test_postgresql_analysis_split_equals_the_statement_split():
+def test_postgresql_analysis_split_uses_scanner_constituents():
     parser = SqlParserFactory("postgresql").get_parser()
     sql = "SELECT 1; SELECT 2;"
-    assert parser.split_for_analysis(sql) == parser.split_statements(sql)
+    assert parser.split_for_analysis(sql) == ["SELECT 1", "SELECT 2"]
+    assert parser.split_statements(sql) == ["SELECT 1;", "SELECT 2;"]

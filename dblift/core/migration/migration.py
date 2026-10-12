@@ -518,11 +518,11 @@ class Migration:
             logger = DbliftLogger()
         log = cast(Log, logger)
 
+        from dblift.core.exceptions import UnsafeStatementSplitError
         from dblift.core.migration.sql.migration_sql_parser import (
             parse_migration_sql,
             resolve_migration_sql_dialect,
         )
-        from dblift.core.exceptions import UnsafeStatementSplitError
         from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 
         if dialect:

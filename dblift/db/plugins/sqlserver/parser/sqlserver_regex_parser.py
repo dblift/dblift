@@ -23,8 +23,6 @@ class SqlServerRegexParser(EnhancedRegexParser):
     # Script boundaries come only from _batches.scan_batches.
     tokenizer_class: Type[BaseTokenizer] = SQLServerTokenizer
 
-    SPLITS_WITHOUT_FALLBACK = True
-
     def __init__(self) -> None:
         """Initialize SQL Server regex parser."""
         super().__init__(SqlServerConfig())  # type: ignore[no-untyped-call,arg-type]
@@ -44,6 +42,8 @@ class SqlServerRegexParser(EnhancedRegexParser):
                 terminator="GO" if batch.terminated else None,
                 repeat=batch.repeat,
                 analysis_statements=batch.analysis_statements,
+                source_start=batch.source_start,
+                source_end=batch.source_end,
             )
             for batch in scan_batches(sql_content)
         ]

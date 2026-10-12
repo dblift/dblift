@@ -1,12 +1,4 @@
-"""A script the splitter refuses is reported, never raised, by parse_sql and extract_objects.
-
-Both refusal classes (``UnsupportedMetaCommandError``, ``UnsafeStatementSplitError``) behave the
-same on Oracle, SQL Server, MySQL and MariaDB (PostgreSQL's own parser reports it first):
-``parse_sql`` keeps the parse and always puts the refusal message in ``errors``, whether or not
-the readable part of the script declares objects;
-``extract_objects`` reads the text as one statement (as it does for an already-split statement),
-so it returns the objects found there, none when there are none. Execution still refuses.
-"""
+"""A refused script yields no statements or objects in the public parse."""
 
 from __future__ import annotations
 
@@ -51,8 +43,10 @@ def test_parse_sql_reports_the_refusal_and_keeps_the_parse(
     with pytest.raises(ParserError):
         parser.split_statements(script)
     result = parser.parse_sql(script)
-    assert result.success
-    assert result.errors == [message]
+    assert not result.success
+    assert any(message in error for error in result.errors)
+    assert result.statements == []
+    assert result.tables == []
 
 
 @pytest.mark.parametrize("dialect,script,message,with_table", CASES)
@@ -60,8 +54,10 @@ def test_parse_sql_reports_the_refusal_of_a_script_that_declares_objects(
     dialect: str, script: str, message: str, with_table: str
 ) -> None:
     result = HybridParser(dialect).parse_sql(with_table)
-    assert result.success
-    assert result.errors == [message]
+    assert not result.success
+    assert any(message in error for error in result.errors)
+    assert result.statements == []
+    assert result.tables == []
 
 
 @pytest.mark.parametrize("dialect,script,message,with_table", CASES)

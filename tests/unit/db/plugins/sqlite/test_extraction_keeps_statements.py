@@ -13,7 +13,6 @@ PARSER = SQLiteRegexParser()
 
 
 def test_the_parser_is_authoritative_and_returns_statement_records() -> None:
-    assert SQLiteRegexParser.SPLITS_WITHOUT_FALLBACK is True
     assert PARSER.split("SELECT 1; SELECT 2") == [
         Statement(text="SELECT 1", line=1, terminator=";"),
         Statement(text="SELECT 2", line=1, terminator=None),

@@ -61,16 +61,20 @@ class Batch:
     repeat: int = 1
     terminated: bool = False
     analysis_statements: Tuple[str, ...] = field(default=(), compare=False)
+    source_start: int = field(default=0, compare=False)
+    source_end: int = field(default=0, compare=False)
 
 
 def scan_batches(script: str) -> List[Batch]:
     """The batches of ``script``; refuses what ``sqlcmd`` would reject or silently act on."""
-    return _Scanner(script[1:] if script.startswith("\ufeff") else script).run()
+    offset = int(script.startswith("\ufeff"))
+    return _Scanner(script[offset:], offset=offset).run()
 
 
 class _Scanner:
-    def __init__(self, text: str) -> None:
+    def __init__(self, text: str, *, offset: int = 0) -> None:
         self.text = text
+        self.offset = offset
         self.batches: List[Batch] = []
         self.state: Optional[str] = None  # an open lexeme: ', [, ", /*
         self.opened: Tuple[int, int] = (0, 0)
@@ -248,10 +252,12 @@ class _Scanner:
             )
 
     def _cut(self, line_start: int, following: int, count: int, line_no: int) -> None:
-        self._flush(line_start, repeat=count, terminated=True)
+        self._flush(line_start, repeat=count, terminated=True, source_end=following)
         self.batch_start, self.batch_line = following, line_no + 1
 
-    def _flush(self, end: int, repeat: int, terminated: bool) -> None:
+    def _flush(
+        self, end: int, repeat: int, terminated: bool, source_end: Optional[int] = None
+    ) -> None:
         raw = self.text[self.batch_start : end]
         if self.has_code:
             lead = raw[: len(raw) - len(raw.lstrip())]
@@ -262,6 +268,8 @@ class _Scanner:
                     repeat,
                     terminated,
                     self._analysis_parts(end),
+                    self.offset + self.batch_start,
+                    self.offset + (source_end if source_end is not None else end),
                 )
             )
         self.has_code = False
@@ -272,20 +280,27 @@ class _Scanner:
         """Project top-level SQL statements from code tokens seen by this batch scan."""
         words = [word for _, word in self.events if word != ";"]
         head = words[:4]
-        if head[:2] in (["CREATE", "PROCEDURE"], ["CREATE", "PROC"],
-                        ["ALTER", "PROCEDURE"], ["ALTER", "PROC"],
-                        ["CREATE", "TRIGGER"], ["ALTER", "TRIGGER"],
-                        ["CREATE", "FUNCTION"], ["ALTER", "FUNCTION"]) or (
+        if head[:2] in (
+            ["CREATE", "PROCEDURE"],
+            ["CREATE", "PROC"],
+            ["ALTER", "PROCEDURE"],
+            ["ALTER", "PROC"],
+            ["CREATE", "TRIGGER"],
+            ["ALTER", "TRIGGER"],
+            ["CREATE", "FUNCTION"],
+            ["ALTER", "FUNCTION"],
+        ) or (
             head[:3] in (["CREATE", "OR", "ALTER"], ["CREATE", "OR", "REPLACE"])
             and len(head) > 3
             and head[3] in {"PROCEDURE", "PROC", "TRIGGER", "FUNCTION"}
         ):
-            return (self.text[self.batch_start:end].strip(),)
+            return (self.text[self.batch_start : end].strip(),)
 
         parts: List[str] = []
         start = self.batch_start
         depth = 0
         case_depth = 0
+        part_head: List[str] = []
 
         def has_code(first: int, last: int) -> bool:
             index = bisect_left(self.code_positions, first)
@@ -294,7 +309,13 @@ class _Scanner:
         for index, (position, word) in enumerate(self.events):
             if word == "BEGIN":
                 next_word = self.events[index + 1][1] if index + 1 < len(self.events) else ""
-                if next_word not in {"TRAN", "TRANSACTION", "DISTRIBUTED", "CONVERSATION", "DIALOG"}:
+                if next_word not in {
+                    "TRAN",
+                    "TRANSACTION",
+                    "DISTRIBUTED",
+                    "CONVERSATION",
+                    "DIALOG",
+                }:
                     depth += 1
             elif word == "CASE":
                 case_depth += 1
@@ -305,13 +326,23 @@ class _Scanner:
                     depth -= 1
             elif word == ";" and depth == 0:
                 if has_code(start, position):
-                    parts.append(self.text[start:position + 1].strip())
+                    parts.append(self.text[start : position + 1].strip())
                 start = position + 1
+                part_head = []
             elif word in {"CREATE", "ALTER", "DROP", "TRUNCATE"} and depth == 0:
                 line_start = self.text.rfind("\n", self.batch_start, position) + 1
-                if line_start > self.batch_start and not self.text[line_start:position].strip() and has_code(start, position - 1):
+                alter_clause = part_head[:2] == ["ALTER", "TABLE"] and word in {"ALTER", "DROP"}
+                if (
+                    not alter_clause
+                    and line_start > self.batch_start
+                    and not self.text[line_start:position].strip()
+                    and has_code(start, position - 1)
+                ):
                     parts.append(self.text[start:position].strip())
                     start = position
+                    part_head = []
+            if word != ";" and len(part_head) < 2:
+                part_head.append(word)
         if has_code(start, end - 1):
             parts.append(self.text[start:end].strip())
         return tuple(parts)

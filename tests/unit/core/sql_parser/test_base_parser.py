@@ -10,7 +10,9 @@ from dblift.core.sql_parser.common.base_parser import RegexBasedParser
 
 class _SemanticParser(RegexBasedParser):
     def split_statements(self, sql_content, strict_tokenizer=False):
-        from dblift.db.plugins.postgresql.parser.postgresql_regex_parser import PostgreSqlRegexParser
+        from dblift.db.plugins.postgresql.parser.postgresql_regex_parser import (
+            PostgreSqlRegexParser,
+        )
 
         return PostgreSqlRegexParser().split_statements(sql_content, strict_tokenizer)
 

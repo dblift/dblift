@@ -60,14 +60,31 @@ def test_analysis_preserves_tsql_parameters_and_unicode_literal_prefix() -> None
 def test_begin_transaction_and_begin_block_have_distinct_boundaries() -> None:
     parser = SqlServerRegexParser()
     assert parser.split_for_analysis("BEGIN TRANSACTION; SELECT 1; COMMIT;") == [
-        "BEGIN TRANSACTION;", "SELECT 1;", "COMMIT;"
+        "BEGIN TRANSACTION;",
+        "SELECT 1;",
+        "COMMIT;",
     ]
     assert parser.split_for_analysis("BEGIN SELECT 1; SELECT 2; END;") == [
         "BEGIN SELECT 1; SELECT 2; END;"
     ]
 
 
+def test_alter_table_clause_on_next_line_stays_with_its_statement() -> None:
+    sql = "ALTER TABLE users\nDROP COLUMN legacy_flag;"
+    assert SqlServerRegexParser().split_for_analysis(sql) == [sql]
+
+
 @pytest.mark.parametrize("sql", ["SELECT 'a'\rGO", "SELECT [x]\rGO"])
 def test_lone_carriage_return_before_go_in_code_is_refused(sql: str) -> None:
     with pytest.raises(UnsafeStatementSplitError, match="lone carriage return"):
         SqlServerRegexParser().split_statements(sql)
+
+
+def test_batch_records_cover_original_client_control_lines_and_bom() -> None:
+    script = "\ufeff SELECT 1;\nGO 0 -- skipped\nSELECT 2;\nGO 2\n"
+    records = SqlServerRegexParser().split(script)
+    assert [script[record.source_start : record.source_end] for record in records] == [
+        " SELECT 1;\nGO 0 -- skipped\n",
+        "SELECT 2;\nGO 2\n",
+    ]
+    assert [record.repeat for record in records] == [0, 2]

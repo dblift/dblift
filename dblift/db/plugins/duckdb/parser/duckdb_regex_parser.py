@@ -17,8 +17,6 @@ class DuckDBRegexParser(EnhancedRegexParser):
     #: statement boundaries come from ``_script``.
     tokenizer_class: Type[BaseTokenizer] = DuckDBTokenizer
 
-    SPLITS_WITHOUT_FALLBACK = True
-
     def __init__(self, config: Optional[DuckDBParserConfig] = None):
         """Initialize the DuckDB regex parser."""
         duckdb_config = config or DuckDBParserConfig()

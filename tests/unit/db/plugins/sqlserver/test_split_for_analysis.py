@@ -42,11 +42,13 @@ def test_analysis_refuses_what_execution_refuses(script):
         SqlAnalyzer("sqlserver").split_statements_for_analysis(script)
 
 
-def test_every_other_dialect_analyses_the_execution_split():
+def test_other_dialects_analyse_each_executed_constituent():
     script = "CREATE TABLE a (x INT);\nCREATE TABLE b (y INT);\n"
     for dialect in ("postgresql", "mysql", "sqlite", "oracle"):
         analyzer = SqlAnalyzer(dialect)
-        assert analyzer.split_statements_for_analysis(script) == analyzer.split_statements(script)
+        assert [
+            statement.rstrip(";") for statement in analyzer.split_statements_for_analysis(script)
+        ] == ["CREATE TABLE a (x INT)", "CREATE TABLE b (y INT)"]
 
 
 def test_a_batch_that_go_zero_never_runs_is_not_analysed_either():

@@ -1,4 +1,4 @@
-"""Stateless SQL splitting and the compatibility semicolon fallback."""
+"""Stateless migration SQL splitting through the dialect scanner."""
 
 import os
 from typing import Any, List, Optional
@@ -12,9 +12,9 @@ from dblift.core.migration.sql.execution_contracts import ExecutionSqlParser
 def _default_splitter_dialect() -> str:
     """Registry-derived generic dialect for statement splitting (ADR-26 E5).
 
-    Used only on the no-dialect fallback path where no dialect could be
+    Used only when no dialect could be
     resolved from explicit args, config, or environment. The statement
-    splitter still needs *a* relational dialect for its regex tokenizer;
+    splitter still needs *a* relational dialect for its script scanner;
     we take the first relational native dialect the plugin registry
     advertises (sorted by name) so no dialect-name literal is hardcoded.
     """
@@ -30,7 +30,7 @@ def _default_splitter_dialect() -> str:
 
 
 def resolve_migration_sql_dialect(dialect: Optional[str], config: Any, log: Log) -> str:
-    """Resolve the legacy splitting fallback without mutating migration metadata."""
+    """Resolve a dialect for splitting without mutating migration metadata."""
     if dialect:
         return dialect
     if config and hasattr(config, "database") and config.database.type:
@@ -42,7 +42,7 @@ def resolve_migration_sql_dialect(dialect: Optional[str], config: Any, log: Log)
             dialect = db_type.lower()
             log.info(f"Using dialect '{dialect}' from environment variable")
     if not dialect:
-        log.warning("No dialect available from config, defaulting to simple parser")
+        log.warning("No dialect available from config, using a registered dialect scanner")
         dialect = _default_splitter_dialect()
     return dialect
 
@@ -64,9 +64,7 @@ def parse_migration_sql(
         log.debug(f"SqlAnalyzer split returned {len(statements)} statements")
         return [statement for statement in statements if statement.strip()]
     except (UnsafeStatementSplitError, UnsupportedMetaCommandError):
-        # A deliberate refusal, not a splitting failure -- the semicolon
-        # fallback below has no notion of meta-commands either and would
-        # reproduce the exact defect the refusal exists to surface instead.
+        # Preserve the dialect scanner's deliberate refusal and its location.
         raise
     except Exception as exc:
         raise UnsafeStatementSplitError(f"statement splitter failed: {exc}") from exc
