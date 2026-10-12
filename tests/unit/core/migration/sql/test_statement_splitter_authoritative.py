@@ -9,6 +9,7 @@ import pytest
 from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.migration.sql.statement_splitter import StatementSplitter
+from dblift.db.plugins.postgresql.parser.lexical_spec import POSTGRESQL_SPEC
 
 
 def test_directive_only_script_yields_nothing() -> None:
@@ -43,11 +44,11 @@ def _boom(self):
 
 def test_a_parser_bug_is_a_refusal_not_a_semicolon_split(monkeypatch) -> None:
     from dblift.core.migration.sql.migration_sql_parser import parse_migration_sql
-    from dblift.db.plugins.postgresql.parser.postgresql_statement_parser import (
-        PostgreSQLStatementParser,
+    from dblift.core.sql_parser.lexical_statement_parser import (
+        LexicalStatementParser,
     )
 
-    monkeypatch.setattr(PostgreSQLStatementParser, "split_statements", _boom)
+    monkeypatch.setattr(LexicalStatementParser, "split_statements", _boom)
     script = "SELECT 1; SELECT $$a;b$$;"
     with pytest.raises(UnsafeStatementSplitError):
         SqlAnalyzer("postgresql").split_statements(script)

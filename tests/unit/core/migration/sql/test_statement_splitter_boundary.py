@@ -19,7 +19,7 @@ def test_statement_splitter_dialect_is_required():
 
 
 @pytest.mark.unit
-def test_statement_splitter_uses_regex_parser_factory(monkeypatch):
+def test_unmigrated_statement_splitter_uses_regex_parser_factory(monkeypatch):
     created_parser_types = []
 
     class FakeParser:
@@ -35,7 +35,7 @@ def test_statement_splitter_uses_regex_parser_factory(monkeypatch):
 
     monkeypatch.setattr(splitter_module, "SqlParserFactory", FakeFactory)
 
-    splitter = StatementSplitter("postgresql")
+    splitter = StatementSplitter("sqlite")
 
     assert splitter.split_statements("select 1;") == ["select 1;"]
     assert created_parser_types == ["regex"]

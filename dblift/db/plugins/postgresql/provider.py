@@ -13,13 +13,14 @@ from dblift.core.constants import MIGRATION_LOCK_TABLE as _MIGRATION_LOCK_TABLE
 from dblift.core.exceptions import ExecutionError
 from dblift.core.logger import Log
 from dblift.core.migration.clean_summary import CleanExecutionSummary
+from dblift.core.sql_parser.lexical_tokenizer import (
+    LexicalTokenizer,
+    copy_header_reads,
+)
 from dblift.core.sql_parser.tokens import Token, TokenType
 from dblift.db.plugins.base_history_manager import UNDO_HISTORY_TYPE, installed_on_to_bind
 from dblift.db.plugins.postgresql._provider_query_executor import ProviderQueryExecutor
-from dblift.db.plugins.postgresql.parser.postgresql_tokenizer import (
-    PostgreSQLTokenizer,
-    copy_header_reads,
-)
+from dblift.db.plugins.postgresql.parser.lexical_spec import POSTGRESQL_SPEC
 from dblift.db.plugins.postgresql.postgresql._lock_key import _get_advisory_lock_key
 from dblift.db.plugins.postgresql.postgresql.schema_operations import PostgreSqlSchemaOperations
 from dblift.db.plugins.postgresql.search_path import search_path_schemas
@@ -41,7 +42,7 @@ def _split_copy_from_stdin(sql: str) -> Optional[Tuple[str, str]]:
     """
     if sql.lstrip()[:4].upper() != "COPY":
         return None
-    tokens = PostgreSQLTokenizer(sql).tokenize()
+    tokens = LexicalTokenizer(sql, spec=POSTGRESQL_SPEC).tokenize()
     header_tokens: list[Token] = []
     for token in tokens:
         if token.type == TokenType.DELIMITER:
@@ -61,7 +62,10 @@ def _is_copy_to_stdout(sql: str) -> bool:
     """Whether *sql* is a ``COPY ... TO STDOUT`` statement."""
     if sql.lstrip()[:4].upper() != "COPY":
         return False
-    header = takewhile(lambda t: t.type != TokenType.DELIMITER, PostgreSQLTokenizer(sql).tokenize())
+    header = takewhile(
+        lambda t: t.type != TokenType.DELIMITER,
+        LexicalTokenizer(sql, spec=POSTGRESQL_SPEC).tokenize(),
+    )
     return copy_header_reads(header, "TO", "STDOUT")
 
 

@@ -1,121 +1,68 @@
-"""PostgreSQL-specific statement parser.
-
-This module provides PostgreSQL-specific statement parsing including
-BEGIN ATOMIC handling and transaction detection.
-"""
+"""Shared token-stream statement splitting driven by lexical specifications."""
 
 from typing import List, Optional, Tuple
 
 from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
 from dblift.core.sql_parser.base_statement_parser import BaseStatementParser
+from dblift.core.sql_parser.lexical_spec import LexicalSpec
 from dblift.core.sql_parser.parser_context import ParserContext
 from dblift.core.sql_parser.statement import Statement
 from dblift.core.sql_parser.tokens import Token, TokenType
 
 
-class PostgreSQLStatementParser(BaseStatementParser):
-    """PostgreSQL-specific statement parser.
-
-    Handles PostgreSQL-specific features:
-    - BEGIN ATOMIC blocks
-    - CASE expressions within ATOMIC blocks
-    - Transaction compatibility detection
-    """
-
-    #: psql meta-commands ``pg_dump`` itself emits that only scope the dump's
-    #: own session (see CHANGELOG). Safe to execute as nothing. Any other
-    #: backslash line has a real effect, so it is refused by name instead of
-    #: silently skipped.
-    SAFE_META_COMMANDS = frozenset({"\\restrict", "\\unrestrict"})
-
-    TERMINATOR_RESPECTS_PARENS = True
-
-    # Statements that cannot run in transactions
-    NO_TRANSACTION_PATTERNS = [
-        "CREATE DATABASE",
-        "DROP DATABASE",
-        "CREATE TABLESPACE",
-        "DROP TABLESPACE",
-        "CREATE SUBSCRIPTION",
-        "DROP SUBSCRIPTION",
-        "ALTER SYSTEM",
-        "CREATE INDEX CONCURRENTLY",
-        "DROP INDEX CONCURRENTLY",
-        "CREATE UNIQUE INDEX CONCURRENTLY",
-        "REINDEX SCHEMA",
-        "REINDEX DATABASE",
-        "REINDEX SYSTEM",
-        "VACUUM",
-        "DISCARD ALL",
-        "ALTER TYPE",
-        "ADD VALUE",  # Version dependent
-    ]
+class LexicalStatementParser(BaseStatementParser):
+    """Apply a plugin's boundary, block, directive and raw-data policies."""
 
     def __init__(
         self,
         tokens: List[Token],
         context: Optional[ParserContext] = None,
         source: Optional[str] = None,
+        *,
+        spec: LexicalSpec,
     ):
-        """Initialize PostgreSQL statement parser.
-
-        Args:
-            tokens: List of tokens to parse
-            context: Parser context
-            source: Original SQL text the tokens came from (see
-                ``BaseStatementParser.__init__``)
-        """
+        """Bind token boundaries to their original source and plugin rules."""
         super().__init__(tokens, context, source)
+        self.spec = spec
+        self.TERMINATOR_RESPECTS_PARENS = spec.terminator_respects_parens
+        self._head: List[str] = []
+        self._head_limit = max(map(len, spec.routine_heads), default=0)
+        self._previous: Optional[Token] = None
 
-    @property
-    def in_atomic_block(self) -> bool:
-        """True while a BEGIN ATOMIC body is open."""
-        return "ATOMIC" in self.context.block_initiators
+    def _adjust_context(self, token: Token) -> None:
+        if (
+            self.spec.combine_terminator
+            and token.type == TokenType.SYMBOL
+            and token.text == self.spec.combine_terminator
+            and token.parens_depth == 0
+            and self.context.block_depth == 0
+        ):
+            # One execution buffer may contain multiple independent SQL heads.
+            self._head.clear()
+            self._previous = None
+            return
+        if token.type != TokenType.COMMENT and len(self._head) < self._head_limit:
+            self._head.append(token.text.upper())
+        super()._adjust_context(token)
+        if token.type != TokenType.COMMENT:
+            self._previous = token
 
     def _adjust_block_depth(self, token: Token) -> None:
-        """Adjust block depth for PostgreSQL.
-
-        Handles:
-        - BEGIN ATOMIC blocks
-        - CASE expressions within ATOMIC blocks
-
-        Args:
-            token: Keyword token
-        """
         keyword = token.text.upper()
-
-        # Handle BEGIN
-        if keyword == "BEGIN":
-            # Check if next token is ATOMIC
-            next_token = self._peek_next_token()
-            if next_token and next_token.text.upper() == "ATOMIC":
-                # BEGIN ATOMIC - will be increased when we see ATOMIC
-                pass
-            else:
-                # Regular BEGIN (transaction start, not a block)
-                pass
-
-        # Handle ATOMIC after BEGIN
-        elif keyword == "ATOMIC":
-            # Check if preceded by BEGIN (exclude current token from search)
-            # Current token (ATOMIC) is already in context.tokens, so look at tokens before it
-            for token in reversed(self.context.tokens[:-1]):  # Exclude current token
-                if token.type == TokenType.COMMENT:
-                    continue
-                if token.type == TokenType.KEYWORD and token.text.upper() == "BEGIN":
-                    self.context.increase_block_depth("ATOMIC")
-                break  # Stop at first non-comment token
-
-        # Handle CASE within ATOMIC blocks
-        elif keyword == "CASE" and self.in_atomic_block:
-            self.context.increase_block_depth("CASE")
-
-        # Handle END
-        elif keyword == "END":
-            if self.context.block_depth > 0:
-                initiator = self.context.get_block_initiator()
-                if initiator in ("ATOMIC", "CASE"):
-                    self.context.decrease_block_depth()
+        opener, marker = self.spec.block_opener
+        if (
+            keyword == marker
+            and token.parens_depth == 0
+            and self._previous is not None
+            and self._previous.type == TokenType.KEYWORD
+            and self._previous.text.upper() == opener
+            and any(tuple(self._head[: len(head)]) == head for head in self.spec.routine_heads)
+        ):
+            self.context.increase_block_depth(marker)
+        elif keyword in self.spec.nested_block_keywords and self.context.block_depth:
+            self.context.increase_block_depth(keyword)
+        elif keyword == self.spec.block_closer and self.context.block_depth:
+            self.context.decrease_block_depth()
 
     def _is_statement_end(self, token: Token) -> bool:
         """A COPY data block ends its own statement — no ``;`` follows its ``\\.`` line.
@@ -157,6 +104,8 @@ class PostgreSQLStatementParser(BaseStatementParser):
                     records.append(self._record(current, text, terminator, end_pos))
             current.clear()
             self.context.reset_for_new_statement()
+            self._head.clear()
+            self._previous = None
 
         for idx, token in enumerate(self.tokens):
             self.current_idx = idx
@@ -167,10 +116,10 @@ class PostgreSQLStatementParser(BaseStatementParser):
             if token.type == TokenType.META_COMMAND:
                 flush(None, token.pos)
                 command = token.text.split(None, 1)[0]
-                if command not in self.SAFE_META_COMMANDS:
+                if command not in self.spec.safe_meta_commands:
                     raise UnsupportedMetaCommandError(
-                        f"Unsupported psql meta-command {command!r} at line {token.line}; "
-                        "dblift does not run it"
+                        f"Unsupported {self.spec.client_name} meta-command {command!r} at line {token.line}; "
+                        f"dblift does not run it (column {token.col})"
                     )
                 records.append(
                     (
@@ -224,7 +173,13 @@ class PostgreSQLStatementParser(BaseStatementParser):
                 else len(self.source) if self.source is not None else None
             )
         )
-        combinators = [t for t in tokens if t.type == TokenType.SYMBOL and t.text == "\\;"]
+        combinators = [
+            t
+            for t in tokens
+            if t.type == TokenType.SYMBOL
+            and self.spec.combine_terminator
+            and t.text == self.spec.combine_terminator
+        ]
         multi = bool(combinators)
         analysis_statements = None
         if combinators and self.source is not None:
@@ -269,7 +224,7 @@ class PostgreSQLStatementParser(BaseStatementParser):
                 return record, rendered
             end = terminator.pos + len(terminator.text)
             text = self.source[first.pos : end]
-            ended = self.source[end:].lstrip().startswith("\\.")
+            ended = self.source.startswith("\\.", end)
             header_end = next(t.pos for t in tokens if t.type == TokenType.DELIMITER)
             header = self.source[first.pos : header_end].strip()
             record = Statement(
@@ -307,19 +262,3 @@ class PostgreSQLStatementParser(BaseStatementParser):
             elif record.kind != "directive":
                 out.append(record.text)
         return out
-
-    def can_execute_in_transaction(self) -> bool:
-        """Check if current statement can execute in a transaction.
-
-        Returns:
-            True if statement can run in transaction
-        """
-        # Reconstruct statement text from tokens
-        stmt_text = self._tokens_to_string(self.context.tokens).upper()
-
-        # Check against no-transaction patterns
-        for pattern in self.NO_TRANSACTION_PATTERNS:
-            if pattern in stmt_text:
-                return False
-
-        return True

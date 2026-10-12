@@ -5,6 +5,7 @@ import pytest
 from dblift.core.sql_parser.base_statement_parser import BaseStatementParser
 from dblift.core.sql_parser.parser_context import ParserContext
 from dblift.core.sql_parser.tokens import Token, TokenType
+from dblift.db.plugins.postgresql.parser.lexical_spec import POSTGRESQL_SPEC
 
 
 def make_token(type, text, pos=0, line=1, col=1, parens_depth=0):
@@ -830,13 +831,15 @@ def test_semicolon_inside_parentheses_ends_a_statement_unless_the_dialect_says_o
 
 
 def test_parenthesis_depth_ignores_what_strings_contain() -> None:
-    from dblift.core.sql_parser.parser_context import ParserContext
-    from dblift.db.plugins.postgresql.parser.postgresql_statement_parser import (
-        PostgreSQLStatementParser,
+    from dblift.core.sql_parser.lexical_statement_parser import (
+        LexicalStatementParser,
     )
-    from dblift.db.plugins.postgresql.parser.postgresql_tokenizer import PostgreSQLTokenizer
+    from dblift.core.sql_parser.lexical_tokenizer import LexicalTokenizer
+    from dblift.core.sql_parser.parser_context import ParserContext
 
     script = "CREATE RULE r AS ON INSERT TO t DO ALSO (SELECT $$a;b)$$; SELECT ')');\nSELECT 1;"
-    tokens = PostgreSQLTokenizer(script).tokenize()
-    out = PostgreSQLStatementParser(tokens, ParserContext(), source=script).split_statements()
+    tokens = LexicalTokenizer(script, spec=POSTGRESQL_SPEC).tokenize()
+    out = LexicalStatementParser(
+        tokens, ParserContext(), source=script, spec=POSTGRESQL_SPEC
+    ).split_statements()
     assert len(out) == 2 and out[1] == "SELECT 1;"

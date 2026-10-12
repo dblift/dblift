@@ -7,12 +7,13 @@ literals to be lost when _tokens_to_string reconstructed SQL.
 
 import pytest
 
+from dblift.core.sql_parser.lexical_statement_parser import (
+    LexicalStatementParser,
+)
+from dblift.core.sql_parser.lexical_tokenizer import LexicalTokenizer
 from dblift.db.plugins.mysql.parser.mysql_regex_parser import MySqlRegexParser
 from dblift.db.plugins.mysql.parser.mysql_tokenizer import MySQLTokenizer
-from dblift.db.plugins.postgresql.parser.postgresql_statement_parser import (
-    PostgreSQLStatementParser,
-)
-from dblift.db.plugins.postgresql.parser.postgresql_tokenizer import PostgreSQLTokenizer
+from dblift.db.plugins.postgresql.parser.lexical_spec import POSTGRESQL_SPEC
 
 
 class TestMySQLStringPreservation:
@@ -71,10 +72,10 @@ class TestPostgreSQLStringPreservation:
     def test_single_quoted_string_preserved(self):
         """Test that single-quoted strings are preserved in reconstructed SQL."""
         sql = "SELECT 'hello' FROM users;"
-        tokenizer = PostgreSQLTokenizer(sql)
+        tokenizer = LexicalTokenizer(sql, spec=POSTGRESQL_SPEC)
         tokens = tokenizer.tokenize()
 
-        parser = PostgreSQLStatementParser(tokens)
+        parser = LexicalStatementParser(tokens, spec=POSTGRESQL_SPEC)
         statements = parser.split_statements()
 
         assert len(statements) == 1
@@ -84,10 +85,10 @@ class TestPostgreSQLStringPreservation:
     def test_dollar_quoted_string_preserved(self):
         """Test that dollar-quoted strings are preserved in reconstructed SQL."""
         sql = "SELECT $$Hello World$$ FROM users;"
-        tokenizer = PostgreSQLTokenizer(sql)
+        tokenizer = LexicalTokenizer(sql, spec=POSTGRESQL_SPEC)
         tokens = tokenizer.tokenize()
 
-        parser = PostgreSQLStatementParser(tokens)
+        parser = LexicalStatementParser(tokens, spec=POSTGRESQL_SPEC)
         statements = parser.split_statements()
 
         assert len(statements) == 1
@@ -97,10 +98,10 @@ class TestPostgreSQLStringPreservation:
     def test_tagged_dollar_quote_preserved(self):
         """Test that tagged dollar-quoted strings are preserved."""
         sql = "SELECT $tag$Content with 'quotes'$tag$ FROM users;"
-        tokenizer = PostgreSQLTokenizer(sql)
+        tokenizer = LexicalTokenizer(sql, spec=POSTGRESQL_SPEC)
         tokens = tokenizer.tokenize()
 
-        parser = PostgreSQLStatementParser(tokens)
+        parser = LexicalStatementParser(tokens, spec=POSTGRESQL_SPEC)
         statements = parser.split_statements()
 
         assert len(statements) == 1
@@ -110,10 +111,10 @@ class TestPostgreSQLStringPreservation:
     def test_double_quoted_identifier_preserved(self):
         """Test that double-quoted identifiers are preserved."""
         sql = 'SELECT "MyColumn" FROM "MyTable";'
-        tokenizer = PostgreSQLTokenizer(sql)
+        tokenizer = LexicalTokenizer(sql, spec=POSTGRESQL_SPEC)
         tokens = tokenizer.tokenize()
 
-        parser = PostgreSQLStatementParser(tokens)
+        parser = LexicalStatementParser(tokens, spec=POSTGRESQL_SPEC)
         statements = parser.split_statements()
 
         assert len(statements) == 1
@@ -127,10 +128,10 @@ BEGIN
     RETURN 'Hello World';
 END;
 $$ LANGUAGE plpgsql;"""
-        tokenizer = PostgreSQLTokenizer(sql)
+        tokenizer = LexicalTokenizer(sql, spec=POSTGRESQL_SPEC)
         tokens = tokenizer.tokenize()
 
-        parser = PostgreSQLStatementParser(tokens)
+        parser = LexicalStatementParser(tokens, spec=POSTGRESQL_SPEC)
         statements = parser.split_statements()
 
         assert len(statements) == 1
@@ -142,10 +143,10 @@ $$ LANGUAGE plpgsql;"""
     def test_insert_with_string_values_preserved(self):
         """Test that INSERT statements with string values are preserved."""
         sql = "INSERT INTO users (name, email) VALUES ('Jane Doe', 'jane@example.com');"
-        tokenizer = PostgreSQLTokenizer(sql)
+        tokenizer = LexicalTokenizer(sql, spec=POSTGRESQL_SPEC)
         tokens = tokenizer.tokenize()
 
-        parser = PostgreSQLStatementParser(tokens)
+        parser = LexicalStatementParser(tokens, spec=POSTGRESQL_SPEC)
         statements = parser.split_statements()
 
         assert len(statements) == 1
@@ -171,7 +172,7 @@ class TestStringContentNotEmpty:
     def test_postgresql_string_token_not_empty(self):
         """Test that PostgreSQL string tokens have non-empty text."""
         sql = "SELECT 'test' FROM users;"
-        tokenizer = PostgreSQLTokenizer(sql)
+        tokenizer = LexicalTokenizer(sql, spec=POSTGRESQL_SPEC)
         tokens = tokenizer.tokenize()
 
         string_tokens = [t for t in tokens if t.type.name == "STRING"]
@@ -182,7 +183,7 @@ class TestStringContentNotEmpty:
     def test_postgresql_dollar_quote_token_not_empty(self):
         """Test that PostgreSQL dollar-quoted tokens have non-empty text."""
         sql = "SELECT $$test$$ FROM users;"
-        tokenizer = PostgreSQLTokenizer(sql)
+        tokenizer = LexicalTokenizer(sql, spec=POSTGRESQL_SPEC)
         tokens = tokenizer.tokenize()
 
         string_tokens = [t for t in tokens if t.type.name == "STRING"]
@@ -193,7 +194,7 @@ class TestStringContentNotEmpty:
     def test_postgresql_identifier_token_not_empty(self):
         """Test that PostgreSQL identifier tokens have non-empty text."""
         sql = 'SELECT "MyColumn" FROM users;'
-        tokenizer = PostgreSQLTokenizer(sql)
+        tokenizer = LexicalTokenizer(sql, spec=POSTGRESQL_SPEC)
         tokens = tokenizer.tokenize()
 
         identifier_tokens = [t for t in tokens if t.type.name == "IDENTIFIER"]

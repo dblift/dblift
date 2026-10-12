@@ -14,18 +14,15 @@ from dblift.core.sql_model.base import (
 )
 from dblift.core.sql_model.dialect import get_sqlglot_dialect
 from dblift.core.sql_parser.enhanced_regex_parser import EnhancedRegexParser
+from dblift.core.sql_parser.lexical_engine import LexicalEngine
+from dblift.core.sql_parser.lexical_statement_parser import LexicalStatementParser
+from dblift.core.sql_parser.lexical_tokenizer import LexicalTokenizer
 from dblift.core.sql_parser.parser_context import ParserContext
 from dblift.core.sql_parser.statement import Statement, analysis_sql
 from dblift.core.sql_parser.tokens import TokenType
 from dblift.db.dml_analysis import cte_outer_statement_type
+from dblift.db.plugins.postgresql.parser.lexical_spec import POSTGRESQL_SPEC
 from dblift.db.plugins.postgresql.parser.parser_config import PostgreSqlConfig
-from dblift.db.plugins.postgresql.parser.postgresql_statement_parser import (
-    PostgreSQLStatementParser,
-)
-from dblift.db.plugins.postgresql.parser.postgresql_tokenizer import (
-    NonNestingPostgreSQLTokenizer,
-    PostgreSQLTokenizer,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -39,10 +36,7 @@ class PostgreSqlRegexParser(EnhancedRegexParser):
 
     dialect_name = "postgresql"  # lint: allow-dialect-string: dialect dispatch
 
-    #: Tokenizer class used by :meth:`split_statements`. Subclasses for
-    #: wire-compatible engines that don't share PostgreSQL's nested-comment
-    #: documentation swap this for :class:`NonNestingPostgreSQLTokenizer`.
-    tokenizer_class: type = PostgreSQLTokenizer
+    lexical_spec = POSTGRESQL_SPEC
 
     def __init__(self) -> None:
         """Initialize PostgreSQL regex parser."""
@@ -59,29 +53,15 @@ class PostgreSqlRegexParser(EnhancedRegexParser):
         logger.debug("PostgreSQL regex parser initialized")
 
     def split_statements(self, sql_content: str, strict_tokenizer: bool = False) -> List[str]:
-        """Split with the PostgreSQL tokenizer and statement parser. There is no fallback.
+        """Project execution text from the shared engine. There is no fallback.
 
-        What the tokenizer cannot read raises UnsafeStatementSplitError; a psql
-        meta-command with no server equivalent raises UnsupportedMetaCommandError.
-        ``strict_tokenizer`` only decides whether a character outside the
-        tokenizer's alphabet is an error or passes through as a symbol.
+        The compatibility flag does not weaken lexical refusals.
         """
-        if not sql_content or not sql_content.strip():
-            return []
-        tokenizer = self.tokenizer_class(sql_content, strict_unknown_chars=strict_tokenizer)
-        parser = PostgreSQLStatementParser(
-            tokenizer.tokenize(), ParserContext(), source=sql_content
-        )
-        return parser.split_statements()
+        return LexicalEngine(self.lexical_spec).split_statements(sql_content)
 
     def split(self, sql_content: str, strict_tokenizer: bool = False) -> List[Statement]:
         """Return executable units and their scanner-derived analysis parts."""
-        if not sql_content or not sql_content.strip():
-            return []
-        tokenizer = self.tokenizer_class(sql_content, strict_unknown_chars=strict_tokenizer)
-        return PostgreSQLStatementParser(
-            tokenizer.tokenize(), ParserContext(), source=sql_content
-        ).split()
+        return LexicalEngine(self.lexical_spec).split(sql_content)
 
     def split_for_analysis(self, sql_content: str, strict_tokenizer: bool = False) -> List[str]:
         """Return every executable SQL constituent for analysis."""
@@ -182,8 +162,10 @@ class PostgreSqlRegexParser(EnhancedRegexParser):
         errors = []
 
         try:
-            tokens = self.tokenizer_class(sql_content).tokenize()
-            PostgreSQLStatementParser(tokens, ParserContext(), source=sql_content).split()
+            tokens = LexicalTokenizer(sql_content, spec=self.lexical_spec).tokenize()
+            LexicalStatementParser(
+                tokens, ParserContext(), source=sql_content, spec=self.lexical_spec
+            ).split()
             depth = 0
             for token in tokens:
                 if token.type != TokenType.SYMBOL:
@@ -201,11 +183,3 @@ class PostgreSqlRegexParser(EnhancedRegexParser):
             errors.append(f"Validation error: {str(e)}")
 
         return {"success": len(errors) == 0, "errors": errors}
-
-
-class NonNestingPostgreSqlRegexParser(PostgreSqlRegexParser):
-    """PostgreSQL-syntax parser for a wire-compatible engine kept non-nesting
-    by default because nesting isn't established for it (Redshift — see
-    ``RedshiftQuirks.parser_class`` and CHANGELOG.md)."""
-
-    tokenizer_class = NonNestingPostgreSQLTokenizer

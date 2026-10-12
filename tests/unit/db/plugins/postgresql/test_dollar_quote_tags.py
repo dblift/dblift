@@ -4,14 +4,15 @@ from __future__ import annotations
 
 import pytest
 
+from dblift.core.sql_parser.lexical_tokenizer import LexicalTokenizer
 from dblift.core.sql_parser.tokens import TokenType
-from dblift.db.plugins.postgresql.parser.postgresql_tokenizer import PostgreSQLTokenizer
+from dblift.db.plugins.postgresql.parser.lexical_spec import POSTGRESQL_SPEC
 
 
 def _types(script: str) -> list[tuple[str, str]]:
     return [
         (t.type.name, t.text)
-        for t in PostgreSQLTokenizer(script).tokenize()
+        for t in LexicalTokenizer(script, spec=POSTGRESQL_SPEC).tokenize()
         if t.type != TokenType.EOF
     ]
 

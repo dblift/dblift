@@ -1,12 +1,10 @@
-"""Redshift regex parser with dialect-specific literal boundaries."""
+"""Redshift parser retaining its declared literal and comment boundaries."""
 
-from dblift.db.plugins.postgresql.parser.postgresql_regex_parser import (
-    NonNestingPostgreSqlRegexParser,
-)
-from dblift.db.plugins.redshift.parser.redshift_tokenizer import RedshiftTokenizer
+from dblift.db.plugins.postgresql.parser.postgresql_regex_parser import PostgreSqlRegexParser
+from dblift.db.plugins.redshift.parser.lexical_spec import REDSHIFT_SPEC
 
 
-class RedshiftRegexParser(NonNestingPostgreSqlRegexParser):
-    """Use Redshift's backslash-escaping rule when splitting statements."""
+class RedshiftRegexParser(PostgreSqlRegexParser):
+    """Inherit the shared scanner with the existing Redshift overrides."""
 
-    tokenizer_class = RedshiftTokenizer
+    lexical_spec = REDSHIFT_SPEC

@@ -60,3 +60,12 @@ def test_spec_row(row: ConformanceRow, request: pytest.FixtureRequest) -> None:
         f"row {row.row_id}\nscript: {row.script!r}\n"
         f"expected: {row.expectation}\nactual: {outcome!r}"
     )
+
+
+def test_begin_atomic_identifiers_do_not_open_a_routine_body() -> None:
+    script = "CREATE TABLE t(begin int); SELECT begin atomic FROM t; SELECT 2;"
+    assert PostgreSqlRegexParser().split_for_analysis(script) == [
+        "CREATE TABLE t(begin int)",
+        "SELECT begin atomic FROM t",
+        "SELECT 2",
+    ]

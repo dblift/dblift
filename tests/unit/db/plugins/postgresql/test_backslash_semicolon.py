@@ -4,16 +4,19 @@ from __future__ import annotations
 
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.sql_parser import Statement
-from dblift.core.sql_parser.parser_context import ParserContext
-from dblift.db.plugins.postgresql.parser.postgresql_statement_parser import (
-    PostgreSQLStatementParser,
+from dblift.core.sql_parser.lexical_statement_parser import (
+    LexicalStatementParser,
 )
-from dblift.db.plugins.postgresql.parser.postgresql_tokenizer import PostgreSQLTokenizer
+from dblift.core.sql_parser.lexical_tokenizer import LexicalTokenizer
+from dblift.core.sql_parser.parser_context import ParserContext
+from dblift.db.plugins.postgresql.parser.lexical_spec import POSTGRESQL_SPEC
 
 
 def _split(script: str) -> list[Statement]:
-    tokens = PostgreSQLTokenizer(script).tokenize()
-    return PostgreSQLStatementParser(tokens, ParserContext(), source=script).split()
+    tokens = LexicalTokenizer(script, spec=POSTGRESQL_SPEC).tokenize()
+    return LexicalStatementParser(
+        tokens, ParserContext(), source=script, spec=POSTGRESQL_SPEC
+    ).split()
 
 
 def test_backslash_semicolon_combines_statements_and_marks_multi() -> None:

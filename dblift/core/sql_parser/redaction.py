@@ -62,7 +62,15 @@ def describe_statement(sql: str, dialect: Optional[str] = None) -> str:
 def _tokens(sql: str, dialect: Optional[str]) -> List[Token]:
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        tokens = _dialect_tokenizer(dialect)(sql).tokenize()
+        from dblift.core.sql_parser.lexical_tokenizer import LexicalTokenizer
+        from dblift.db.provider_registry import ProviderRegistry
+
+        spec = ProviderRegistry.get_quirks(dialect).lexical_spec() if dialect else None
+        tokens = (
+            LexicalTokenizer(sql, spec=spec).tokenize()
+            if spec is not None
+            else _dialect_tokenizer(dialect)(sql).tokenize()
+        )
     return [t for t in tokens if t.type not in (TokenType.COMMENT, TokenType.EOF)]
 
 
