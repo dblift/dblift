@@ -76,7 +76,7 @@ a build error, so the tables keep this shape:
 A row whose statements cell contains **to verify** or **depends on** is
 compiled with status `to_verify` and skipped, not run. Comparison is on
 normalised statements: surrounding whitespace removed and one trailing
-terminator (`;`) removed; everything else is compared verbatim.
+terminator (`;`) removed; everything else is compared verbatim. A row marked **exact text** in the Statements cell compares decoded statement strings without normalisation, including terminators and final line endings.
 
 Each row runs through `SqlAnalyzer.split_statements`, the entry point `migrate`
 uses, in `test_postgresql_spec_conformance.py`, `test_oracle_spec_conformance.py`,

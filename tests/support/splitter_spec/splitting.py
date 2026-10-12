@@ -36,6 +36,8 @@ class SplitOutcome:
             return expectation.error == ANY_ERROR or self.error == expectation.error
         if self.error is not None or expectation.statements is None:
             return False
+        if expectation.exact:
+            return self.statements == expectation.statements
         return normalize(self.statements) == normalize(expectation.statements)
 
 

@@ -126,13 +126,14 @@ pair table cannot express. Shared with DuckDB and Redshift.
 | 8 | `CREATE RULE r AS ON INSERT TO t DO ALSO (INSERT INTO u VALUES (1); INSERT INTO v VALUES (2)); SELECT 1;` | `CREATE RULE r AS ON INSERT TO t DO ALSO (INSERT INTO u VALUES (1); INSERT INTO v VALUES (2))` · `SELECT 1` (**two**: the semicolon inside parentheses does not split) |
 | 9 | `CREATE FUNCTION h() RETURNS int BEGIN ATOMIC SELECT CASE WHEN true THEN 1 END; SELECT 2; END; SELECT 9;` | `CREATE FUNCTION h() RETURNS int BEGIN ATOMIC SELECT CASE WHEN true THEN 1 END; SELECT 2; END` · `SELECT 9` |
 | 10 | `BEGIN; INSERT INTO t VALUES (1); COMMIT;` | `BEGIN` · `INSERT INTO t VALUES (1)` · `COMMIT` |
-| 11 | `COPY t (a) FROM STDIN;\n1\n2\n\.\nSELECT count(*) FROM t;` | `COPY t (a) FROM STDIN;\n1\n2\n` (one copy_stdin statement: the header and its two data lines; the backslash-period terminator line consumed) · `SELECT count(*) FROM t` |
+| 11 | `COPY t (a) FROM STDIN;\n1\n2\n\.\nSELECT count(*) FROM t;` | `COPY t (a) FROM STDIN;\n1\n2\n` **exact text** (one copy_stdin statement: the header and its two data lines; the backslash-period terminator line consumed) · `SELECT count(*) FROM t;` |
+| 11a | `COPY t (a) FROM STDIN;\n1\n\n\.\nSELECT 1;` | `COPY t (a) FROM STDIN;\n1\n\n` **exact text** (the second data row is empty and remains in the COPY payload) · `SELECT 1;` |
 | 12 | `COPY t TO STDOUT; SELECT 1;` | `COPY t TO STDOUT` · `SELECT 1` (execution later refuses the first) |
 | 13 | `\restrict abc\nSELECT 1;\n\unrestrict abc\n` | directive record · `SELECT 1` · directive record |
 | 14 | `\connect other\nSELECT 1;` | `UnsupportedMetaCommandError` (line 1, `\connect`) |
 | 15 | `SELECT 1; \set x 1` | `UnsupportedMetaCommandError` (line 1, `\set`) |
 | 15a | `SELECT count(*) FROM t \gset n` | `UnsupportedMetaCommandError` (line 1, `\gset`) |
-| 15b | `COPY t (a) FROM STDIN;\n1\n  \.\n\.\nSELECT 1;` | `COPY t (a) FROM STDIN;\n1\n  \.\n` (one copy_stdin statement whose data is the two lines 1 and, with its leading blanks, backslash-period; the exact backslash-period line consumed) · `SELECT 1` |
+| 15b | `COPY t (a) FROM STDIN;\n1\n  \.\n\.\nSELECT 1;` | `COPY t (a) FROM STDIN;\n1\n  \.\n` **exact text** (one copy_stdin statement whose data is the two lines 1 and, with its leading blanks, backslash-period; the exact backslash-period line consumed) · `SELECT 1;` |
 | 16 | `SELECT 1 \; SELECT 2; SELECT 3;` | `SELECT 1 ; SELECT 2` with multi=True · `SELECT 3` |
 | 17 | `SELECT "a;b" FROM t; SELECT 2;` | `SELECT "a;b" FROM t` · `SELECT 2` |
 | 18 | `SELECT U&'d\0061t;a'; SELECT 2;` | `SELECT U&'d\0061t;a'` · `SELECT 2` |

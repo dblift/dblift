@@ -54,6 +54,7 @@ class Expectation:
 
     statements: Optional[tuple[str, ...]] = None
     error: Optional[str] = None
+    exact: bool = False
 
     def __post_init__(self) -> None:
         if (self.statements is None) == (self.error is None):
@@ -209,6 +210,7 @@ def _single_code_span(cell: str, where: str) -> str:
 
 def _expectation(cell: str, where: str) -> tuple[Expectation, Literal["testable", "to_verify"]]:
     spans = _code_spans(cell, where)
+    exact = "**exact text**" in _prose(cell, spans)
     status: Literal["testable", "to_verify"] = (
         "to_verify" if _TO_VERIFY.search(_prose(cell, spans)) else "testable"
     )
@@ -232,4 +234,8 @@ def _expectation(cell: str, where: str) -> tuple[Expectation, Literal["testable"
             raise SpecFormatError(
                 f"{where}: {span!r} must be the only code span of the Statements cell"
             )
-    return Expectation(statements=normalize(_decode(s) for s in spans)), status
+    statements = tuple(_decode(s) for s in spans)
+    return (
+        Expectation(statements=statements if exact else normalize(statements), exact=exact),
+        status,
+    )

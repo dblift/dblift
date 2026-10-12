@@ -12,12 +12,22 @@ from pathlib import Path
 import pytest
 
 from tests.support.splitter_spec.spec_tables import ConformanceRow, load_conformance_rows
-from tests.support.splitter_spec.splitting import split_script
+from tests.support.splitter_spec.splitting import SplitOutcome, split_script
 
 SPEC_DIR = Path(__file__).resolve().parents[4] / "docs" / "sql-parsing"
 ROWS = [row for row in load_conformance_rows(SPEC_DIR) if row.dialect == "postgresql"]
 
 KNOWN_GAPS: frozenset[str] = frozenset()
+
+
+@pytest.mark.parametrize("row_id", ["11", "11a", "15b"])
+def test_copy_conformance_row_preserves_trailing_payload_newlines(row_id: str) -> None:
+    row = next(row for row in ROWS if row.row_id == row_id)
+    outcome = split_script("postgresql", row.script)
+    assert outcome.matches(row.expectation)
+    assert not SplitOutcome((outcome.statements[0].rstrip("\n"), *outcome.statements[1:])).matches(
+        row.expectation
+    )
 
 
 def test_spec_compiles_to_at_least_the_rows_it_had_on_2026_10_10() -> None:
