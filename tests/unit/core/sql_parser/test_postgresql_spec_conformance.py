@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 
+from dblift.db.plugins.postgresql.parser.postgresql_regex_parser import PostgreSqlRegexParser
 from dblift.db.plugins.postgresql.provider import _split_copy_from_stdin
 from tests.support.splitter_spec.spec_tables import ConformanceRow, load_conformance_rows
 from tests.support.splitter_spec.splitting import SplitOutcome, split_script
@@ -35,6 +36,9 @@ def test_copy_header_conformance_row_excludes_comment_from_data() -> None:
     row = next(row for row in ROWS if row.row_id == "11b")
     statement = split_script("postgresql", row.script).statements[0]
     assert _split_copy_from_stdin(statement) == ("COPY t (a) FROM STDIN", "1\n\n")
+    assert PostgreSqlRegexParser().split(row.script)[0].analysis_statements == (
+        "COPY t (a) FROM STDIN",
+    )
 
 
 def test_spec_compiles_to_at_least_the_rows_it_had_on_2026_10_10() -> None:
