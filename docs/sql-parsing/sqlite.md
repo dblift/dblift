@@ -5,7 +5,7 @@
 | Item | Value |
 | --- | --- |
 | Covers | SQLite 3.x scripts written for the `sqlite3` command-line shell and run through Python's `sqlite3` driver. Measured: shell 3.51.0 (`/usr/bin/sqlite3`) and shell 3.45.1 (built from the amalgamation `sqlite-autoconf-3450100`, sha256 `cd9c27841b7a5932c9897651e20b86c701dd740556989b01ca596fcfa3d49a0a`) against the 3.45.1 library of the Python 3.11.8 `sqlite3` module; 557 shell runs, 9 differ between the two shells and none concerns splitting (`.timer`, `EXPLAIN` comments, `load_extension`) |
-| Code facts taken from | OSS `develop` `c5513b99` (§12 describes this commit) |
+| Code facts taken from | OSS `develop` `c5513b99`, before the scanner of §12 |
 | Vendor references, fetched 2026-10-11 from `sqlite.org` | *SQL Comment Syntax* (`lang_comment.html`); *SQLite Keywords* (`lang_keywords.html`: the quoting forms); *Command Line Shell For SQLite* (`cli.html`: "CLI comments", dot-commands); *Test For Complete SQL Statements* (`c3ref/complete.html`); *BEGIN TRANSACTION* (`lang_transaction.html`); *VACUUM* (`lang_vacuum.html`) |
 | Live verification | `sqlite3 -bail <db> < script.sql` (shell 3.51.0 and 3.45.1) against the driver dblift executes through (`SqlAnalyzer("sqlite").split_statements`, then one `cursor.execute` per statement on a connection in autocommit with `PRAGMA foreign_keys = ON`); the resulting files are compared through `sqlite_master`, `PRAGMA table_xinfo`, `index_list`, `foreign_key_list` and the table rows. |
 | Second ground truth | the driver dblift executes through: `cursor.execute` takes **one** statement and raises `ProgrammingError: You can only execute one statement at a time.` for a text that holds two, so a piece cut too late fails loudly; the silent hazards are in the shell, not in the driver |
@@ -333,36 +333,26 @@ rules are a table and two regular expressions.
 | `PRAGMA foreign_keys` and `VACUUM` inside a transaction, `BEGIN` and `COMMIT` inside a migration | execution matters (§8) | not splitting questions |
 | The foreign-key setting | differs between the sides | the provider runs `PRAGMA foreign_keys = ON` on connect and the shell starts with it off (`.dump` prints `PRAGMA foreign_keys=OFF`); a script that violates a foreign key behaves differently on the two sides |
 
-## 12. Current implementation and the gaps this spec closes
+## 12. Current implementation
 
-Code: `dblift/db/plugins/sqlite/parser/sqlite_regex_parser.py` (hand-written
-character scanner, `split_statements` lines 41-175 at `c5513b99`) and
-`parser_config.py`.
+Code: `dblift/db/plugins/sqlite/parser/_script.py` (`scan_script`, one character
+scanner: the library's seven-state table, the two line rules, comments and
+quoting) and `sqlite_regex_parser.py`. `split()` returns `Statement` records,
+`split_statements()` their text, `split_for_analysis()` adds the segments of
+comments only (§3), and `split_for_extraction()` is the previous splitter,
+unchanged, for `parse_sql` and object extraction, which read a chunk of text
+and must not refuse it. The parser is authoritative: `split_statements` never
+falls back to another splitter.
 
-- **No identifier quoting is tracked by the splitter** (`"…"`, `[…]`,
-  `` `…` `` all ignored; only `char in "'"` opens a string, line 111):
-  `CREATE TABLE "a;b"(x)` splits in two, `"it's"` and `[it's]` open a string,
-  a comment marker inside a bracketed or quoted name opens a comment (rows 7-9,
-  23-27).
-- **Any `BEGIN` opens a block** (`sqlite_regex_parser.py:141-144`, verified at
-  `c5513b99`) with no `CREATE TRIGGER` condition, so `BEGIN;` and
-  `BEGIN IMMEDIATE;` swallow every following `;` until some `END`, and `COMMIT`
-  does not close it (rows 4, 5). The result is one piece the driver rejects
-  with `You can only execute one statement at a time.` (measured).
-- **Word boundaries use `isalnum()` only** (`:136-152`): `begin_at` counts as
-  `BEGIN`, `end_at` and `end$` as `END`, and the keyword search runs on text
-  outside single quotes only, so a quoted `"end"` or `[end]` closes a trigger
-  (rows 6, 34, 35).
-- **Block comments are read, but loosely** (`:75-90`): a `*/` outside any
-  comment is taken as a comment end, an unterminated `/*` is accepted and the
-  rest of the script is returned inside it (rows 18, 19). A `;` or `END` inside
-  a closed comment is skipped correctly (row 37 passes).
-- **Dot-commands are glued onto the following statement** (rows 12, 45, 46, 51, 52, 57): the
-  driver then rejects the piece with `near ".": syntax error`.
-- **`go` and `/` lines pass into the statement** (rows 53, 54, 60, 61).
-- **Empty and comment-only segments are statements** (`;` alone, a trailing
-  `-- bye`, a script of comments; rows 14-16, 31): the driver accepts them, so
-  this is harmless but not the shell's behaviour.
-- **A UTF-8 byte order mark stays in the first statement**.
-- `_trigger_block_pattern`, `block_keywords` and `batch_separators` in the
-  config are compiled and never used.
+Tests: `tests/unit/db/plugins/sqlite/test_script.py` (the rules and the
+records; the scanner is checked against `sqlite3.complete_statement`),
+`test_extraction_keeps_statements.py` and
+`tests/unit/core/sql_parser/test_sqlite_spec_conformance.py` (every row of §10).
+
+What the previous splitter did and the scanner no longer does: ignored `"…"`,
+`[…]` and `` `…` `` quoting; opened a block at any `BEGIN` (so `BEGIN;` swallowed
+the statements after it) and matched `END` by an `isalnum()` word boundary
+outside single quotes only; accepted a `*/` outside a comment and an
+unterminated `/*`; glued dot-commands, `go` and `/` lines onto the next
+statement; returned `;;` and comment-only segments as statements; kept the byte
+order mark in the first statement.

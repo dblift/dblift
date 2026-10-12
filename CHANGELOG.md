@@ -28,6 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Statement` records for Db2 (`DB2RegexParser.split()`): the text without its
   terminator, its line, the terminator (`;`, one declared with
   `--#SET TERMINATOR`, or none) and a kind (`sql` or `directive`).
+- `Statement` records for SQLite (`SQLiteRegexParser.split()`): the text without
+  its terminator, its line, and the terminator (`;` or none).
 
 ### Changed
 
@@ -107,9 +109,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SQL Server and Oracle refuse an unterminated string or block comment with
   `UnsafeStatementSplitError` and its position. SQL Server previously
   dropped the rest of the file silently for an unterminated comment.
-- MySQL, MariaDB and Db2 refuse an unterminated block comment with
-  `UnsafeStatementSplitError`. SQLite and DuckDB are unchanged: they return
-  the remainder as one statement, without a warning.
+- MySQL, MariaDB, Db2 and SQLite refuse an unterminated block comment with
+  `UnsafeStatementSplitError`. DuckDB is unchanged: it returns the remainder as
+  one statement, without a warning.
 - **Db2: a script is cut the way the command line processor cuts it.** A
   statement ends at a line whose last non-blank characters are the terminator:
   `;`, or the one or two characters a `--#SET TERMINATOR` line declared
@@ -154,6 +156,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   file that holds one needs a `--#SET TERMINATOR` line to run under `db2 -tvf`;
   dblift runs it either way, and also runs a last statement that has no
   terminator, which the processor drops.
+- **SQLite: a script is cut the way the `sqlite3` shell cuts it.** A statement
+  ends at a `;` outside strings, quoted identifiers (`"…"`, `[…]`, `` `…` ``) and
+  comments; a `CREATE [TEMP] TRIGGER` body ends at the `END` that follows a `;`,
+  which is the rule `sqlite3.complete_statement` applies. A transaction block
+  (`BEGIN; … COMMIT;`) and a word such as `begin_at` no longer swallow the
+  statements after them. The text of a statement no longer ends with its `;`,
+  an empty statement (`;;`) and a segment of comments only are not statements
+  for execution (script readers such as linting still see the latter), and a
+  leading byte order mark is dropped.
+- **SQLite: lines the shell would run itself are refused.** A line that starts
+  with a dot when no statement is pending (`.mode`, `.read`, `.exit`, `.shell`,
+  `.open`, …) stops the script with the command and its line instead of being
+  glued onto the next statement. A line that holds only `go` or `/` (blanks and
+  a trailing comment allowed) while a statement is pending is refused too: the
+  shell ends the statement there and the driver reads it as part of the
+  statement (`SELECT 6` / `/` / `2` is 3 through the driver). Move the
+  terminator onto the statement.
 
 ### Removed
 
@@ -168,6 +187,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- SQLite: a quoted name with a `;` or an apostrophe in it (`"a;b"`, `[it's]`,
+  `` `it's` ``), `""` and ``` `` ``` escapes, comment markers inside a quoted
+  name, a column called `end$` or a quoted `"end"` inside a trigger body, and a
+  transaction statement (`BEGIN`, `COMMIT`) are no longer cut or merged with the
+  statements around them.
 - Db2: a name with `@` in it (`MY@TBL`) and a quoted name with a `;` in it
   (`"a;b"`) are no longer cut; a label after `END` (`END P1`), a comment between
   `END` and `IF`, a compound statement without `ATOMIC`, a body in
