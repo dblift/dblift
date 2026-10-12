@@ -175,6 +175,13 @@ class MySqlProvider(SqlAlchemyProvider):
         """Return a quoted database-qualified object name."""
         return f"{_quote_identifier(schema)}.{_quote_identifier(object_name)}"
 
+    def validate_clean_target(self, schema: str) -> None:
+        """Reject system database targets before clean setup and callbacks."""
+        connection = self._ensure_connection()
+        MySqlSchemaOperations(self.query_executor, self.log).validate_clean_target(
+            connection, schema
+        )
+
     def clean_schema(self, schema: str) -> CleanExecutionSummary:
         """Drop objects inside a database, returning executed clean statements."""
         connection = self._ensure_connection()

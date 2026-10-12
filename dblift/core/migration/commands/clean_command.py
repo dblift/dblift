@@ -67,6 +67,15 @@ class CleanCommand(BaseCommand):
             result.complete()
             return result
 
+        try:
+            self.provider.validate_clean_target(self.config.database.schema)
+        except Exception as e:
+            error_message = f"Clean operation failed: {e}"
+            self.log.error(error_message)
+            result.set_error(error_message)
+            result.complete()
+            return result
+
         if scripts_dir and not dry_run:
             self._prepare_analysis_for_sql_callbacks(
                 scripts_dir,

@@ -167,6 +167,9 @@ class SchemaProvider(ABC):
         """
         ...
 
+    def validate_clean_target(self, schema: str) -> None:
+        """Reject unsafe clean targets before schema setup or callbacks."""
+
     def list_droppable_objects(self, schema: str) -> List[DroppableObject]:
         """Return schema objects in the order clean should drop them."""
         raise NotImplementedError(f"{type(self).__name__} must implement list_droppable_objects()")
