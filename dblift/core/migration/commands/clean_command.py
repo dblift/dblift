@@ -9,7 +9,7 @@ from dblift.core.exceptions import FixedDboSchemaError
 from dblift.core.logger._null import NullLog
 from dblift.core.logger.results import CleanResult
 from dblift.db.provider_capabilities import get_clean_listing_warnings
-from dblift.db.provider_interfaces import TransactionalProvider
+from dblift.db.provider_interfaces import CleanTargetProvider, TransactionalProvider
 
 from ._script_events import emit_script_event as _emit_script_event
 from .base_command import BaseCommand
@@ -68,10 +68,12 @@ class CleanCommand(BaseCommand):
             return result
 
         try:
-            schema = self.config.database.schema
-            validate_target = getattr(self.provider, "validate_clean_target", None)
-            if validate_target is not None:
-                validate_target(schema)
+            if isinstance(self.provider, CleanTargetProvider):
+                schema = self.provider.validate_clean_target(self.config.database.schema)
+                if schema and not self.config.database.schema:
+                    # Callbacks and connection logging share this runtime config.
+                    self.config.database.schema = schema
+                    result.target_schema = schema
         except Exception as e:
             error_message = f"Clean operation failed: {e}"
             self.log.error(error_message)
@@ -95,10 +97,9 @@ class CleanCommand(BaseCommand):
         # PreflightConnectionError, as for every other command.
         self._run_preflight(result)
 
-        prepare_target = getattr(self.provider, "prepare_clean_target", None)
-        if prepare_target is not None:
+        if isinstance(self.provider, CleanTargetProvider):
             try:
-                prepare_target(self.config.database.schema)
+                self.provider.prepare_clean_target(self.config.database.schema)
             except Exception as e:
                 error_message = f"Clean operation failed: {e}"
                 self.log.error(error_message)
@@ -107,7 +108,9 @@ class CleanCommand(BaseCommand):
                 return result
 
         try:
-            if prepare_target is None and hasattr(self.provider, "set_current_schema"):
+            if not isinstance(self.provider, CleanTargetProvider) and hasattr(
+                self.provider, "set_current_schema"
+            ):
                 try:
                     self.provider.set_current_schema(self.config.database.schema)
                 except FixedDboSchemaError:

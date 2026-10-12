@@ -50,6 +50,7 @@ def test_provider_refuses_system_database(provider_class, method):
     with pytest.raises(ValueError, match="system database"):
         getattr(provider, method)("mysql")
 
+    provider._ensure_connection.assert_not_called()
     provider.query_executor.execute_statement.assert_not_called()
     provider.query_executor.execute_query.assert_not_called()
 
@@ -117,6 +118,7 @@ def test_clean_command_reports_system_database_refusal(
 
     if schema == "mysql":
         provider._ensure_connection.assert_not_called()
+    assert config.database.schema == (schema if target_source == "schema" else "")
     assert not callback_effect.exists()
     provider.set_current_schema.assert_not_called()
     command._run_preflight.assert_not_called()
@@ -174,8 +176,10 @@ def test_clean_target_validation_does_not_connect_for_user_database(provider_cla
 
 @pytest.mark.parametrize("provider_class", [MySqlProvider, MariadbProvider])
 @pytest.mark.parametrize("selection_fails", [False, True])
+@pytest.mark.parametrize("target_source", ["schema", "database", "url"])
+@pytest.mark.parametrize("dry_run", [False, True])
 def test_clean_selects_target_before_callbacks(
-    provider_class, selection_fails, tmp_path, monkeypatch
+    provider_class, selection_fails, target_source, dry_run, tmp_path, monkeypatch
 ):
     config = DbliftConfig(
         database=MySqlConfig(
@@ -183,6 +187,10 @@ def test_clean_selects_target_before_callbacks(
         ),
         clean_disabled=False,
     )
+    if target_source != "schema":
+        config.database.schema = ""
+        config.database.database = "app" if target_source == "database" else ""
+        config.database.url = "mysql://localhost/app" if target_source == "url" else None
     provider = object.__new__(provider_class)
     provider.config = config
     provider._quirks = None
@@ -224,10 +232,12 @@ def test_clean_selects_target_before_callbacks(
     command._prepare_analysis_for_sql_callbacks = MagicMock()
     marker = tmp_path / "callback-target"
     command._execute_callbacks = MagicMock(
-        side_effect=lambda *args, **kwargs: marker.write_text(selected["database"])
+        side_effect=lambda *args, **kwargs: marker.write_text(
+            f"{selected['database']}|{config.database.schema}"
+        )
     )
 
-    result = command.execute(scripts_dir=tmp_path)
+    result = command.execute(scripts_dir=tmp_path, dry_run=dry_run)
 
     command._run_preflight.assert_called_once()
     assert selections == ["USE `app`"]
@@ -237,4 +247,9 @@ def test_clean_selects_target_before_callbacks(
         assert "USE denied" in result.error_message
     else:
         assert result.success, result.error_message
-        assert marker.read_text() == "app"
+        provider.list_droppable_objects.assert_called_once_with("app")
+        assert result.target_schema == "app"
+        if not dry_run:
+            assert marker.read_text() == "app|app"
+        else:
+            assert not marker.exists()

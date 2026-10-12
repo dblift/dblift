@@ -99,6 +99,20 @@ class QueryProvider(ABC):
         return ", ".join(["?"] * count)
 
 
+class CleanTargetProvider(ABC):
+    """Provider-owned clean target validation and connection preparation."""
+
+    @abstractmethod
+    def validate_clean_target(self, schema: str) -> str:
+        """Resolve and validate the target before clean setup or callbacks."""
+        ...
+
+    @abstractmethod
+    def prepare_clean_target(self, schema: str) -> None:
+        """Select the validated target after preflight, before callbacks."""
+        ...
+
+
 class SchemaProvider(ABC):
     """Capacité de gestion du schéma de base de données."""
 
@@ -166,9 +180,6 @@ class SchemaProvider(ABC):
             Structured summary of executed statements and dropped objects.
         """
         ...
-
-    def validate_clean_target(self, schema: str) -> None:
-        """Reject unsafe clean targets before schema setup or callbacks."""
 
     def list_droppable_objects(self, schema: str) -> List[DroppableObject]:
         """Return schema objects in the order clean should drop them."""

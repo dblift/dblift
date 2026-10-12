@@ -15,7 +15,6 @@ class TestCleanCommandEnsureConnectionLogging:
 
     def _make_command(self):
         provider = MagicMock()
-        provider.prepare_clean_target = None
         config = MagicMock()
         config.database.schema = "myschema"
         log = MagicMock()
