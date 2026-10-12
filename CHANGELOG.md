@@ -30,6 +30,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `--#SET TERMINATOR`, or none) and a kind (`sql` or `directive`).
 - `Statement` records for SQLite (`SQLiteRegexParser.split()`): the text without
   its terminator, its line, and the terminator (`;` or none).
+- `Statement` records for DuckDB (`DuckDBRegexParser.split()`): the text without
+  its terminator, its line, and the terminator (`;` or none).
 
 ### Changed
 
@@ -176,6 +178,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `parse_sql` reports a script the SQLite splitter refuses as an error in
   `errors`, as for the other dialects, instead of splitting it silently; the
   statements and objects it returns are unchanged.
+- **DuckDB: a script is cut the way the engine cuts it.** A `;` inside a
+  dollar-quoted string (`$$ … $$`, `$tag$ … $tag$`, closing on the identical tag)
+  no longer splits the statement, a `$$` inside a word (`a$$b`) opens nothing,
+  `$1` and `$name` are parameters, an `E` that follows a quote, a digit or a
+  dollar-quoted string opens an escape string, a dollar quote or an `E` right after one
+  of the 18 Unicode blanks the engine reads (no-break space, em space, ideographic space,
+  U+FEFF, …) still opens, and block comments nest. A segment of
+  comments only is no longer sent to the engine as a statement (script analysis
+  still sees it), and the text of a statement no longer ends with its `;`.
+- DuckDB scripts written for the `duckdb` shell: a line that starts with `.` while
+  no statement text is pending (`.mode`, `.read`, `.exit`, …) is refused with its
+  line instead of being glued onto the next statement, and a NUL character, which
+  the driver would turn into a silently shortened script, is refused with its line.
+  `parse_sql` reports such a refusal in `errors`; the statements and objects it
+  returns are unchanged.
 
 ### Removed
 
@@ -195,6 +212,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   name, a column called `end$` or a quoted `"end"` inside a trigger body, and a
   transaction statement (`BEGIN`, `COMMIT`) are no longer cut or merged with the
   statements around them.
+- DuckDB: a migration that defines a macro or a literal with a dollar-quoted body
+  that contains `;` was cut inside the body and failed with `unterminated
+  dollar-quoted string`.
 - Db2: a name with `@` in it (`MY@TBL`) and a quoted name with a `;` in it
   (`"a;b"`) are no longer cut; a label after `END` (`END P1`), a comment between
   `END` and `IF`, a compound statement without `ATOMIC`, a body in
