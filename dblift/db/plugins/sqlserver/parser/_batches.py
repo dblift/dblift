@@ -83,7 +83,7 @@ class _Scanner:
         self.has_code = False
         # SQL words and semicolons are collected while the batch lexer is already
         # in code. Analysis boundaries never need to lex the batch a second time.
-        self.events: List[Tuple[int, str]] = []
+        self.events: List[Tuple[int, str, int]] = []
         self.code_positions: List[int] = []
 
     def run(self) -> List[Batch]:
@@ -141,7 +141,7 @@ class _Scanner:
                     return count
             opener = _OPENER.search(line, i)
             stop = opener.start() if opener else size
-            self._code(line[i:stop], line_no, line_start + i)
+            self._code(line[i:stop], line_no, line_start + i, line_start)
             if opener is None or opener.group() == "--":
                 return None
             self._open(opener.group(), line_no, stop, line_start)
@@ -227,7 +227,7 @@ class _Scanner:
             self.state = None
             return j + 1
 
-    def _code(self, segment: str, line_no: int, start: int) -> None:
+    def _code(self, segment: str, line_no: int, start: int, line_start: int) -> None:
         if _LONE_CR_GO.search(segment):
             raise UnsafeStatementSplitError(
                 f"text after GO on line {line_no}: a lone carriage return is not a line "
@@ -239,7 +239,7 @@ class _Scanner:
                 start + match.start() for match in re.finditer(r"[^ \t\r;]+", segment)
             )
         for match in re.finditer(r"[A-Za-z_@#$][A-Za-z0-9_@#$]*|;", segment):
-            self.events.append((start + match.start(), match.group().upper()))
+            self.events.append((start + match.start(), match.group().upper(), line_start))
         self._variables(segment, line_no)
 
     @staticmethod
@@ -278,7 +278,7 @@ class _Scanner:
 
     def _analysis_parts(self, end: int) -> Tuple[str, ...]:
         """Project top-level SQL statements from code tokens seen by this batch scan."""
-        words = [word for _, word in self.events if word != ";"]
+        words = [word for _, word, _ in self.events if word != ";"]
         head = words[:4]
         if head[:2] in (
             ["CREATE", "PROCEDURE"],
@@ -306,7 +306,7 @@ class _Scanner:
             index = bisect_left(self.code_positions, first)
             return index < len(self.code_positions) and self.code_positions[index] <= last
 
-        for index, (position, word) in enumerate(self.events):
+        for index, (position, word, line_start) in enumerate(self.events):
             if word == "BEGIN":
                 next_word = self.events[index + 1][1] if index + 1 < len(self.events) else ""
                 if next_word not in {
@@ -330,8 +330,11 @@ class _Scanner:
                 start = position + 1
                 part_head = []
             elif word in {"CREATE", "ALTER", "DROP", "TRUNCATE"} and depth == 0:
-                line_start = self.text.rfind("\n", self.batch_start, position) + 1
-                alter_clause = part_head[:2] == ["ALTER", "TABLE"] and word in {"ALTER", "DROP"}
+                next_word = self.events[index + 1][1] if index + 1 < len(self.events) else ""
+                alter_clause = part_head[:2] == ["ALTER", "TABLE"] and (
+                    (word == "ALTER" and next_word == "COLUMN")
+                    or (word == "DROP" and next_word in {"COLUMN", "CONSTRAINT"})
+                )
                 if (
                     not alter_clause
                     and line_start > self.batch_start

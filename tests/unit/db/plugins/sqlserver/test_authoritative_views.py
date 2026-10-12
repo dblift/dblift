@@ -1,6 +1,11 @@
+import subprocess
+import sys
+
 import pytest
 
 from dblift.core.exceptions import UnsafeStatementSplitError
+from dblift.core.migration.sql.script_analysis import analyse_script
+from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.db.plugins.sqlserver.parser.sqlserver_regex_parser import SqlServerRegexParser
 
 
@@ -72,6 +77,38 @@ def test_begin_transaction_and_begin_block_have_distinct_boundaries() -> None:
 def test_alter_table_clause_on_next_line_stays_with_its_statement() -> None:
     sql = "ALTER TABLE users\nDROP COLUMN legacy_flag;"
     assert SqlServerRegexParser().split_for_analysis(sql) == [sql]
+
+
+@pytest.mark.parametrize(
+    "clause",
+    ["DROP COLUMN legacy_flag", "DROP CONSTRAINT old_key", "ALTER COLUMN name VARCHAR(50)"],
+)
+def test_multiline_alter_table_clauses_stay_whole(clause: str) -> None:
+    sql = f"ALTER TABLE users\n{clause};"
+    assert SqlAnalyzer("sqlserver").split_statements_for_analysis(sql) == [sql]
+
+
+def test_standalone_drop_after_unterminated_alter_table_is_visible_to_analysis() -> None:
+    sql = "ALTER TABLE users ADD display_name VARCHAR(50)\nDROP TABLE victims;"
+    assert SqlAnalyzer("sqlserver").split_statements_for_analysis(sql) == [
+        "ALTER TABLE users ADD display_name VARCHAR(50)",
+        "DROP TABLE victims;",
+    ]
+    analysis = analyse_script(sql, "sqlserver")
+    assert [statement.operation for statement in analysis.statements] == ["ALTER", "DROP"]
+    assert any(caution.level == "destroys" for caution in analysis.cautions)
+
+
+def test_many_single_line_ddl_words_have_bounded_analysis_cost() -> None:
+    probe = (
+        "from dblift.db.plugins.sqlserver.parser.sqlserver_regex_parser "
+        "import SqlServerRegexParser\n"
+        "SqlServerRegexParser().split_for_analysis('SELECT 1 ' + 'DROP ' * 100000)\n"
+    )
+    try:
+        subprocess.run([sys.executable, "-c", probe], check=True, timeout=10)
+    except subprocess.TimeoutExpired:
+        pytest.fail("single-line batch analysis exceeded the 10-second bound")
 
 
 @pytest.mark.parametrize("sql", ["SELECT 'a'\rGO", "SELECT [x]\rGO"])
