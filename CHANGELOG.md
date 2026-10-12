@@ -35,6 +35,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Script execution, analysis, object extraction, and transaction checks now
+  use each dialect's authoritative scanner records. Client-skipped batches
+  contribute no statements or objects; scanner refusals no longer trigger a
+  second semicolon split. Parser base classes now require dialect subclasses
+  to provide script splitting. SQLGlot analyzes scanner-selected SQL fragments
+  and does not choose script boundaries.
 - **SQLite and DuckDB: a migration that opens with `BEGIN` and closes with
   `COMMIT` or `END` now runs.** `BEGIN [TRANSACTION]` (and `START TRANSACTION`
   or `BEGIN WORK` on DuckDB) as the first statement and `COMMIT` or `END [TRANSACTION]` as the

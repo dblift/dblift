@@ -201,3 +201,15 @@ def test_sqlglot_fragment_analysis_has_explicit_semantic_entry_point() -> None:
     result = SqlGlotParser("postgresql").parse_fragment("SELECT 1")
     assert result.success
     assert len(result.statements) == 1
+
+
+def test_sqlglot_public_analysis_and_extraction_project_scanner_constituents() -> None:
+    parser = SqlGlotParser("postgresql")
+    sql = r"SELECT 1 \; DROP TABLE users;"
+    assert parser.split_for_analysis(sql) == ["SELECT 1", "DROP TABLE users"]
+    assert parser.split_for_extraction(sql) == ["SELECT 1", "DROP TABLE users"]
+    assert SqlGlotParser("sqlserver").split_for_analysis("SELECT 1;\nGO 0") == []
+    assert SnowflakeStatementParser().split_for_analysis("SELECT 1; SELECT 2;") == [
+        "SELECT 1",
+        "SELECT 2",
+    ]

@@ -148,6 +148,17 @@ class SqlGlotParser(SqlParserInterface):
             sql_content, strict_tokenizer=strict_tokenizer
         )
 
+    def split_for_analysis(self, sql_content: str, strict_tokenizer: bool = False) -> List[str]:
+        """Return scanner-selected SQL constituents for analysis."""
+        scanner = self._script_scanner()
+        if scanner is self:
+            return self.split_statements(sql_content, strict_tokenizer=strict_tokenizer)
+        return scanner.split_for_analysis(sql_content, strict_tokenizer=strict_tokenizer)
+
+    def split_for_extraction(self, sql_content: str, strict_tokenizer: bool = False) -> List[str]:
+        """Use the same executed constituents for object extraction."""
+        return self.split_for_analysis(sql_content, strict_tokenizer=strict_tokenizer)
+
     def _script_scanner(self) -> SqlParserInterface:
         """Resolve the dialect's authoritative scanner through its plugin."""
         from dblift.db.provider_registry import ProviderRegistry
