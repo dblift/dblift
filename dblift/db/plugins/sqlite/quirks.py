@@ -46,6 +46,8 @@ class SqliteQuirks(BaseQuirks):
             r"^PRAGMA\s+FOREIGN_KEYS\s*=?\s*\(?\s*(ON|OFF|TRUE|FALSE|0|1)\s*\)?;?$",
             "SQLite PRAGMA foreign_keys is a no-op inside a transaction block",
         ),
+        # "VACUUM ... cannot be run inside a transaction" (lang_vacuum.html).
+        (r"^VACUUM\b", "SQLite VACUUM cannot run inside a transaction"),
     )
 
     def __init__(self, dialect_name: str = "sqlite") -> None:

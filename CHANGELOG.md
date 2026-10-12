@@ -211,6 +211,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   loses the blank lines, the lines starting with `--` or `/*`, and the `CR` of a
   `CRLF` inside a string literal. The statement is sent as written; only its
   shape is read with the comments blanked.
+- SQLite: `VACUUM` (with or without `INTO`) runs outside a transaction, like
+  `PRAGMA foreign_keys`. Alone in a migration it now runs, with the autocommit
+  warning; before, it failed with `cannot VACUUM from within a transaction`.
+  Mixed with transactional statements the migration is refused before anything
+  runs, instead of failing partway.
 - SQLite: a quoted name with a `;` or an apostrophe in it (`"a;b"`, `[it's]`,
   `` `it's` ``), `""` and ``` `` ``` escapes, comment markers inside a quoted
   name, a column called `end$` or a quoted `"end"` inside a trigger body, and a
