@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal, Optional
+from typing import Iterable, List, Literal, Optional, Tuple
 
 StatementKind = Literal["sql", "directive", "copy_stdin"]
 
@@ -26,3 +26,18 @@ class Statement:
     kind: StatementKind = "sql"
     multi: bool = False
     repeat: int = 1
+    # Derived by the same dialect scan as ``text``. None means this execution
+    # unit is one analysis statement; () deliberately contributes none.
+    analysis_statements: Optional[Tuple[str, ...]] = None
+
+
+def analysis_sql(records: Iterable[Statement]) -> List[str]:
+    """Executed constituents, once per unit even when a client repeats it."""
+    return [
+        sql
+        for record in records
+        if record.kind != "directive" and record.repeat > 0
+        for sql in (
+            record.analysis_statements if record.analysis_statements is not None else (record.text,)
+        )
+    ]
