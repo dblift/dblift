@@ -250,7 +250,7 @@ def test_a_terminator_that_completes_a_comment_close_is_refused_not_read_as_a_co
     terminator: str, body: str
 ) -> None:
     script = f"--#SET TERMINATOR {terminator}\n{body}\nCREATE TABLE u (id INT)\n{terminator}\n"
-    with pytest.raises(UnsafeStatementSplitError, match="line 2"):
+    with pytest.raises(UnsafeStatementSplitError, match="line 2 ends with .* comment delimiter"):
         scan_script(script)
 
 
