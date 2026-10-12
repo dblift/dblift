@@ -35,6 +35,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **SQLite and DuckDB: a migration that opens with `BEGIN` and closes with
+  `COMMIT` or `END` now runs.** `BEGIN [TRANSACTION]` (and `START TRANSACTION`
+  or `BEGIN WORK` on DuckDB) as the first statement and `COMMIT` or `END [TRANSACTION]` as the
+  last are the transaction dblift already opens for the migration, so both are
+  dropped and a warning says so. The body applies or rolls back as one unit, as
+  in the `sqlite3` and `duckdb` shells. Before, the `BEGIN` failed the
+  migration.
+- **SQLite and DuckDB: any other `BEGIN`, `COMMIT`, `END` or `ROLLBACK` (and
+  `ABORT` on DuckDB, and the `WORK` spellings on DuckDB) in a migration or
+  callback is refused before any of its statements run**, naming the statement
+  and its line. A comment inside the statement (`COMMIT /* c */;`) does not hide
+  it. Before, a `COMMIT` or `END` ended dblift's transaction early, so a later
+  failure left part of the migration applied, and a lone `COMMIT` or a `ROLLBACK`
+  that discarded earlier statements was recorded as a successful migration.
+  `SAVEPOINT`, `RELEASE` and `ROLLBACK TO` run as written. A `BEGIN` with options
+  (`BEGIN EXCLUSIVE`, `BEGIN TRANSACTION READ ONLY`) is not accepted as the opening
+  statement, and neither is an opening `BEGIN` around a statement that cannot run
+  in a transaction (`VACUUM`): the migration is refused.
 - **SQL Server: a script is cut into batches at `GO` lines, as `sqlcmd` cuts
   it.** A `;` no longer ends a statement for execution: `DECLARE @x INT = 1;
   SELECT @x;` runs as one request and `@x` stays declared. `CREATE PROCEDURE`,
@@ -211,6 +229,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   loses the blank lines, the lines starting with `--` or `/*`, and the `CR` of a
   `CRLF` inside a string literal. The statement is sent as written; only its
   shape is read with the comments blanked.
+- SQLite: `VACUUM` (with or without `INTO`) runs outside a transaction, like
+  `PRAGMA foreign_keys`. Alone in a migration it now runs, with the autocommit
+  warning; before, it failed with `cannot VACUUM from within a transaction`.
+  Mixed with transactional statements the migration is refused before anything
+  runs, instead of failing partway.
+- DuckDB: a `COMMIT` with no open transaction was reported as success, because
+  `duckdb_engine` turns the bare word into `connection.commit()` and hides the
+  error. A migration's `COMMIT` no longer reaches the driver.
 
 - MySQL and MariaDB: a unit holding several statements (for example
   `INSERT ... ; INSERT ...` under `DELIMITER //`) runs as one query, as the

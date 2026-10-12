@@ -46,7 +46,24 @@ class SqliteQuirks(BaseQuirks):
             r"^PRAGMA\s+FOREIGN_KEYS\s*=?\s*\(?\s*(ON|OFF|TRUE|FALSE|0|1)\s*\)?;?$",
             "SQLite PRAGMA foreign_keys is a no-op inside a transaction block",
         ),
+        # "VACUUM ... cannot be run inside a transaction" (lang_vacuum.html).
+        (r"^VACUUM\b", "SQLite VACUUM cannot run inside a transaction"),
     )
+
+    # dblift's migrate holds the connection's one transaction: a script's own BEGIN fails against
+    # it and its COMMIT/END/ROLLBACK ends it early. The SAVEPOINT family has no entry: it nests.
+    transaction_control_sql_patterns = (
+        (r"^BEGIN(\s+(DEFERRED|IMMEDIATE))?(\s+TRANSACTION)?\s*;?$", "begin"),
+        (r"^BEGIN\b", "begin_other"),
+        (r"^(COMMIT|END)(\s+TRANSACTION)?\s*;?$", "end"),
+        (r"^ROLLBACK(\s+TRANSACTION)?\s*;?$", "abort"),
+    )
+
+    def blank_comments(self, sql: str) -> str:
+        """The statement with its comments blanked by the SQLite scanner."""
+        from dblift.db.plugins.sqlite.parser._script import blank_comments
+
+        return blank_comments(sql)
 
     def __init__(self, dialect_name: str = "sqlite") -> None:
         """Initialize SQLite quirks with the dialect name."""

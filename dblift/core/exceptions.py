@@ -29,6 +29,15 @@ class UnsupportedMetaCommandError(ParserError):
     """Raised for a client meta-command line with no safe no-op interpretation."""
 
 
+class TransactionStatementError(UnsupportedMetaCommandError):
+    """Raised when a script holds a transaction statement dblift cannot run or drop.
+
+    dblift runs each script in a transaction of its own; a ``COMMIT``, ``ROLLBACK`` or
+    ``BEGIN`` inside it would end or fail against that transaction. The message names
+    the script, the statement and its line.
+    """
+
+
 class UnsafeStatementSplitError(ParserError):
     """Raised when a SQL script cannot be split without changing its meaning."""
 

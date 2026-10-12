@@ -231,17 +231,27 @@ None. SQLite has no dollar quoting and no heredoc.
 | Pattern (first keywords) | Status |
 | --- | --- |
 | `PRAGMA foreign_keys = …` | in current code (`quirks.py:44-49`): no effect inside a transaction, so run outside one; inside `BEGIN IMMEDIATE` the pragma is accepted and does nothing |
-| `VACUUM` | **to add** (a quirks matter, not a splitting one): "A VACUUM will fail if there is an open transaction on the database connection that is attempting to run the VACUUM." (*VACUUM*); measured inside the `BEGIN IMMEDIATE` a transactional migrate opens: `cannot VACUUM from within a transaction` |
+| `VACUUM` | in current code (a quirks matter, not a splitting one): "A VACUUM will fail if there is an open transaction on the database connection that is attempting to run the VACUUM." (*VACUUM*); measured inside the `BEGIN IMMEDIATE` a transactional migrate opens: `cannot VACUUM from within a transaction` |
 
-A migration that holds its own `BEGIN`, `COMMIT`, `END` or `ROLLBACK` runs
-inside the transaction dblift opens: `BEGIN` fails (`cannot start a
-transaction within a transaction`) and `COMMIT` commits dblift's transaction
-early, after which later statements autocommit and a failure can no longer
-roll back what came before: after `COMMIT inside, then an error` the table
-stays and the migrate's own `ROLLBACK` answers `cannot rollback - no
-transaction is active`. That is execution, not splitting;
-recorded here so the scanner is not blamed for it, and filed as a separate
-issue.
+A migration that holds its own transaction statement would run inside the
+transaction dblift opens: `BEGIN` fails (`cannot start a transaction within a
+transaction`) and `COMMIT`, `END` or `ROLLBACK` ends dblift's transaction early,
+after which later statements autocommit and a failure can no longer roll back
+what came before. That is execution, not splitting, and the scanner is not
+involved: `transaction_control_sql_patterns` (`quirks.py`) classifies them after
+the split, on the statement with its comments blanked (`COMMIT /* c */;` is a
+`COMMIT`). A script whose first statement is `BEGIN [DEFERRED|IMMEDIATE]
+[TRANSACTION]` and whose last is `COMMIT` or `END [TRANSACTION]` has both
+dropped with a warning (it is the transaction dblift opens, and the outcome is
+the shell's). Any other `BEGIN`, `COMMIT`, `END` or `ROLLBACK` is refused before
+anything runs, naming the statement and its line. `SAVEPOINT`, `RELEASE` and
+`ROLLBACK TO` run as written. `BEGIN EXCLUSIVE` is not an envelope (dblift's own
+transaction is `BEGIN IMMEDIATE`) and is refused, named as the cause. An envelope
+around a statement that cannot run in a transaction (`VACUUM`, `PRAGMA
+foreign_keys`) is refused too: dropping it would run that statement in autocommit
+and give up the atomicity the envelope asked for, where the shell fails
+(`cannot VACUUM from within a transaction`). SQLite has no `WORK` spelling and no
+`ABORT`: both are syntax errors and run as written.
 
 ## 9. Engine subclass
 

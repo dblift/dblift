@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
 
@@ -63,6 +63,20 @@ def scan_script(script: str, *, comment_only: bool = False) -> List[Unit]:
     return _Scanner(text, comment_only).run()
 
 
+def blank_comments(script: str) -> str:
+    """``script`` with every comment replaced by a space; strings and identifiers are untouched."""
+    text = script[1:] if script.startswith("\ufeff") else script
+    scanner = _Scanner(text, False)
+    scanner.run()
+    pieces, last = [], 0
+    for start, end in scanner.comments:
+        pieces.append(text[last:start])
+        pieces.append(" ")
+        last = end
+    pieces.append(text[last:])
+    return "".join(pieces)
+
+
 def _is_terminator_line(line: str) -> bool:
     """``go`` or ``/``, then closed block comments and a line comment, blanks between."""
     size, i = len(line), 0
@@ -90,6 +104,7 @@ class _Scanner:
         self.text = text
         self.comment_only = comment_only
         self.units: List[Unit] = []
+        self.comments: List[Tuple[int, int]] = []
         self.state = _START
         self.code = False
         self.segment = 0
@@ -118,7 +133,9 @@ class _Scanner:
             elif text.startswith("--", i):
                 self.comment_ends_line = True
                 end = text.find("\n", i)
-                i = size if end < 0 else end
+                stop = size if end < 0 else end
+                self.comments.append((i, stop))
+                i = stop
             elif text.startswith("/*", i):
                 i = self._block_comment(i)
             elif char in _CLOSERS:
@@ -169,6 +186,7 @@ class _Scanner:
                 "the script: the statements inside it would be dropped"
             )
         self.line += self.text.count("\n", i, end)
+        self.comments.append((i, end + 2))
         return end + 2
 
     def _quoted(self, i: int, closer: str) -> int:

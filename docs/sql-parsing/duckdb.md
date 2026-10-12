@@ -197,14 +197,24 @@ ordinary statements.
 The splitter flags none: `BEGIN`, `COMMIT`, `ROLLBACK` and the others are ordinary
 statements (row 66; `duckdb.extract_statements` reports each as a
 `TRANSACTION` statement). DuckDB DDL is transactional (`supports_transactional_ddl = True`).
-What they do **inside dblift** is an execution matter, not a splitting one, and is recorded
-here because a script written for the shell makes it likely: through `DuckDBProvider` on a
-connection in autocommit, `BEGIN` fails with `cannot start a transaction within a
-transaction` (the connection already holds one) and `COMMIT` succeeds; inside a
-transactional migrate a `COMMIT` ends dblift's transaction early (the rows written before it
-and the one after it stay when the migrate rolls back); the `duckdb_engine` cursor
-additionally turns the exact text `commit` into `connection.commit()` and answers success when
-no transaction is open; the shell runs `BEGIN; …; COMMIT;` as the driver does and answers `cannot commit - no transaction is active` for a `COMMIT` with nothing open, exit 1.
+What they do **inside dblift** is an execution matter, not a splitting one: the
+connection always holds dblift's transaction, so a script's own `BEGIN` would fail
+(`cannot start a transaction within a transaction`) and its `COMMIT`, `END`,
+`ROLLBACK` or `ABORT` would end that transaction early (the rows written before it
+and after it stay when the migrate rolls back). `transaction_control_sql_patterns`
+(`quirks.py`) classifies them after the split, on the statement with its comments
+blanked (`COMMIT /* c */;` is a `COMMIT`). A script whose first statement is
+`BEGIN [TRANSACTION|WORK]` or `START TRANSACTION` and whose last is `COMMIT` or
+`END` (each with an optional `TRANSACTION` or `WORK`) has both dropped with a
+warning (it is the transaction dblift opens, and the outcome is the shell's); any
+other `BEGIN`, `COMMIT`, `END`, `ROLLBACK` or `ABORT` (each with an optional
+`TRANSACTION` or `WORK`) is refused before anything runs, naming the statement and
+its line. A `BEGIN` or `START TRANSACTION` with options (`BEGIN TRANSACTION READ
+ONLY`) is not an envelope and is refused, named as the cause. A bare `COMMIT`
+therefore never reaches the `duckdb_engine` cursor, which turns the exact text
+`commit` into `connection.commit()` and answers success when no transaction is
+open. The shell answers `cannot commit - no transaction is active` for a `COMMIT`
+with nothing open, exit 1.
 
 ## 9. Engine subclass
 
