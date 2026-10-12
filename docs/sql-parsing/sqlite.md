@@ -246,7 +246,7 @@ issue.
 ## 9. Engine subclass
 
 None: the head check, the one-token lookahead after `;` and the two line
-rules are a table and two regular expressions.
+rules are a table and one regular expression (the word pattern); the `go` and `/` line rule is a character loop.
 
 ## 10. Conformance examples
 
@@ -352,7 +352,6 @@ records; the scanner is checked against `sqlite3.complete_statement`),
 What the previous splitter did and the scanner no longer does: ignored `"…"`,
 `[…]` and `` `…` `` quoting; opened a block at any `BEGIN` (so `BEGIN;` swallowed
 the statements after it) and matched `END` by an `isalnum()` word boundary
-outside single quotes only; accepted a `*/` outside a comment and an
-unterminated `/*`; glued dot-commands, `go` and `/` lines onto the next
+outside single quotes only; accepted an unterminated `/*`; glued dot-commands, `go` and `/` lines onto the next
 statement; returned `;;` and comment-only segments as statements; kept the byte
 order mark in the first statement.

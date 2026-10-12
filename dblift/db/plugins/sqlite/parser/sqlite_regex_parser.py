@@ -65,7 +65,7 @@ class SQLiteRegexParser(EnhancedRegexParser):
         return [unit.text for unit in scan_script(sql_content, comment_only=True)]
 
     def split_for_extraction(self, sql_content: str, strict_tokenizer: bool = False) -> List[str]:
-        """Split SQL content into individual statements.
+        """The previous splitter, kept for ``parse_sql`` and object extraction (never refuses).
 
         Handles:
         - Simple semicolon-separated statements

@@ -168,11 +168,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **SQLite: lines the shell would run itself are refused.** A line that starts
   with a dot when no statement is pending (`.mode`, `.read`, `.exit`, `.shell`,
   `.open`, …) stops the script with the command and its line instead of being
-  glued onto the next statement. A line that holds only `go` or `/` (blanks and
-  a trailing comment allowed) while a statement is pending is refused too: the
-  shell ends the statement there and the driver reads it as part of the
-  statement (`SELECT 6` / `/` / `2` is 3 through the driver). Move the
-  terminator onto the statement.
+  glued onto the next statement. A line the shell ends the statement at (a line
+  that holds only `go` or `/`, blanks and a trailing comment allowed, when the
+  text so far is a complete statement once a `;` is added) is refused too: the
+  driver reads it as part of the statement (`SELECT 6` / `/` / `2` is 3 through
+  the driver). Move the terminator onto the statement.
+- `parse_sql` reports a script the SQLite splitter refuses as an error in
+  `errors`, as for the other dialects, instead of splitting it silently; the
+  statements and objects it returns are unchanged.
 
 ### Removed
 
