@@ -97,8 +97,9 @@ def test_a_statement_name_inside_a_literal_or_comment_does_not_flag_the_batch(ba
     assert _can_run_in_a_transaction(batch) is True
 
 
-def test_other_dialects_are_classified_by_the_first_keywords_only():
+def test_other_dialects_classify_each_scanner_selected_constituent():
     result = classify_execution_statement(
         "CREATE TABLE t (id INT); DROP DATABASE d", dialect="postgresql"
     )
-    assert result.can_execute_in_transaction is True
+    assert result.can_execute_in_transaction is False
+    assert "DATABASE" in (result.transaction_reason or "")
