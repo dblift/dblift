@@ -36,8 +36,8 @@ def _split_copy_from_stdin(sql: str) -> Optional[Tuple[str, str]]:
 
     The splitter hands over the header, its ``;`` and the rows; the ``\\.``
     line was its terminator and is not in the text. The header loses its
-    ``;``; the rows get their final newline back, which the splitter dropped
-    with the terminator. A header with no rows yields empty data.
+    ``;``; the rows retain their exact line endings. A header with no rows
+    yields empty data.
     """
     if sql.lstrip()[:4].upper() != "COPY":
         return None
@@ -58,8 +58,6 @@ def _split_copy_from_stdin(sql: str) -> Optional[Tuple[str, str]]:
         else sql.strip().rstrip(";").rstrip()
     )
     data = data_token.text if data_token else ""
-    if data and not data.endswith("\n"):
-        data += "\r\n" if "\r\n" in data else "\n"
     return header, data
 
 

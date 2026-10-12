@@ -5,18 +5,6 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from dblift.core.sql_model.base import ParseResult, SqlStatementType
-from dblift.db.plugins.oracle.parser._plsql_block import (
-    extract_plsql_block,
-    is_partial_plsql_fragment,
-    is_single_plsql_block,
-)
-from dblift.db.plugins.oracle.parser._statement_splitter import (
-    extract_next_complete_statement,
-    is_empty_or_comment,
-    is_plsql_keyword_start,
-    split_statements_regex,
-    word_at_position,
-)
 from dblift.db.plugins.oracle.parser.oracle_parser import OracleParser
 
 
@@ -41,11 +29,10 @@ class TestOracleParser:
         assert len(result.statements) == 1
         assert "CREATE TABLE test" in result.statements[0].sql_text
 
-    def test_split_statements_regex_simple(self):
+    def test_split_statements_simple(self):
         """Test simple statement splitting."""
-        # Test simple statements
-        sql = "CREATE TABLE test1 (id NUMBER); CREATE TABLE test2 (name VARCHAR2(50));"
-        statements = split_statements_regex(sql, extract_plsql_block=extract_plsql_block)
+        sql = "CREATE TABLE test1 (id NUMBER);\nCREATE TABLE test2 (name VARCHAR2(50));"
+        statements = OracleParser().split_statements(sql)
         assert len(statements) == 2
         assert "CREATE TABLE test1" in statements[0]
         assert "CREATE TABLE test2" in statements[1]
@@ -62,85 +49,13 @@ class TestOracleParser:
 
         CREATE TABLE after_proc (id NUMBER);
         """
-        statements = split_statements_regex(sql, extract_plsql_block=extract_plsql_block)
+        statements = OracleParser().split_statements(sql)
         # The parser may split this differently, so just verify it's properly parsed
         assert len(statements) >= 2
         # Check that procedure and table creation are both captured
         full_sql = " ".join(statements)
         assert "CREATE OR REPLACE PROCEDURE test_proc" in full_sql
         assert "CREATE TABLE after_proc" in full_sql
-
-    def test_is_single_plsql_block(self):
-        """Test PL/SQL block detection."""
-        # Test complete procedure
-        procedure_sql = """
-        CREATE OR REPLACE PROCEDURE test_proc AS
-        BEGIN
-            NULL;
-        END test_proc;
-        """
-        assert is_single_plsql_block(procedure_sql) is True
-
-        # Test function
-        function_sql = """
-        CREATE OR REPLACE FUNCTION test_func RETURN NUMBER AS
-        BEGIN
-            RETURN 1;
-        END test_func;
-        """
-        assert is_single_plsql_block(function_sql) is True
-
-        # Test trigger
-        trigger_sql = """
-        CREATE OR REPLACE TRIGGER test_trigger
-        BEFORE INSERT ON test_table
-        FOR EACH ROW
-        BEGIN
-            :NEW.id := seq.NEXTVAL;
-        END test_trigger;
-        """
-        assert is_single_plsql_block(trigger_sql) is True
-
-        # Test package
-        package_sql = """
-        CREATE OR REPLACE PACKAGE test_pkg AS
-            PROCEDURE test_proc;
-        END test_pkg;
-        """
-        assert is_single_plsql_block(package_sql) is True
-
-        # Test anonymous block
-        anon_sql = """
-        BEGIN
-            DBMS_OUTPUT.PUT_LINE('Hello');
-        END;
-        """
-        assert is_single_plsql_block(anon_sql) is True
-
-        # Test regular DDL
-        ddl_sql = "CREATE TABLE test (id NUMBER);"
-        assert is_single_plsql_block(ddl_sql) is False
-
-    def test_is_partial_plsql_fragment_check(self):
-        """Test fragment detection."""
-        # Test obvious fragments
-        assert is_partial_plsql_fragment("END;") is True
-        assert is_partial_plsql_fragment("BEGIN") is True
-        assert is_partial_plsql_fragment("/") is True
-        assert is_partial_plsql_fragment("DECLARE") is True
-        assert is_partial_plsql_fragment(";") is True
-
-        # Test complete statements
-        assert is_partial_plsql_fragment("CREATE TABLE test (id NUMBER);") is False
-
-        # Test complete PL/SQL blocks should not be fragments
-        complete_block = """
-        CREATE OR REPLACE PROCEDURE test AS
-        BEGIN
-            NULL;
-        END test;
-        """
-        assert is_partial_plsql_fragment(complete_block) is False
 
     def test_validate_sql(self):
         """Test SQL validation."""
@@ -283,48 +198,14 @@ class TestOracleParser:
         assert "*/" not in cleaned
         assert "CREATE TABLE test" in cleaned
 
-    def test_is_empty_or_comment(self):
-        """Test empty/comment detection."""
-        # Test empty statements
-        assert is_empty_or_comment("") is True
-        assert is_empty_or_comment("   ") is True
-
-        # Test comment-only statements
-        assert is_empty_or_comment("-- This is a comment") is True
-        assert is_empty_or_comment("/* Block comment */") is True
-
-        # Test real statements
-        assert is_empty_or_comment("CREATE TABLE test (id NUMBER);") is False
-
-    def test_word_at_position(self):
-        """Test word boundary detection."""
-        text = "CREATE TABLE test (id NUMBER);"
-
-        # Test exact word matches
-        assert word_at_position(text, 0, "CREATE") is True
-        assert word_at_position(text, 7, "TABLE") is True
-
-        # Test partial matches (should fail)
-        assert word_at_position(text, 1, "REATE") is False
-
-        # Test case insensitive
-        assert word_at_position(text, 0, "create") is True
-
-    def test_extract_next_complete_statement_edge_cases(self):
-        """Test edge cases for statement extraction."""
-        # Test empty input
-        statement, pos = extract_next_complete_statement(
-            "", 0, extract_plsql_block=extract_plsql_block
-        )
-        assert statement == ""
-        assert pos == 0
-
-        # Test position beyond string
-        statement, pos = extract_next_complete_statement(
-            "SELECT 1;", 20, extract_plsql_block=extract_plsql_block
-        )
-        assert statement == ""
-        assert pos == 20
+    def test_empty_or_comment_only_script(self):
+        """Empty and comment-only input has no executable statements."""
+        parser = OracleParser()
+        assert parser.split_statements("") == []
+        assert parser.split_statements("   ") == []
+        assert parser.split_statements("-- This is a comment") == []
+        assert parser.split_statements("/* Block comment */") == []
+        assert parser.split_statements("CREATE TABLE test (id NUMBER);")
 
     def test_parse_sql_error_handling(self):
         """Test error handling in parse_sql."""
@@ -394,7 +275,7 @@ class TestOracleParser:
         END;
         /
         """
-        statements = split_statements_regex(sql, extract_plsql_block=extract_plsql_block)
+        statements = OracleParser().split_statements(sql)
         # Just verify it parsed without error and contains the procedure
         assert len(statements) >= 1
         full_sql = " ".join(statements)
@@ -404,13 +285,13 @@ class TestOracleParser:
         """Test proper handling of strings containing special characters."""
         # Test string with semicolon
         sql = "INSERT INTO test VALUES ('data;with;semicolons', 'value');"
-        statements = split_statements_regex(sql, extract_plsql_block=extract_plsql_block)
+        statements = OracleParser().split_statements(sql)
         assert len(statements) == 1
         assert "data;with;semicolons" in statements[0]
 
         # Test string with single quotes
         sql = "INSERT INTO test VALUES ('O''Reilly', 'It''s working');"
-        statements = split_statements_regex(sql, extract_plsql_block=extract_plsql_block)
+        statements = OracleParser().split_statements(sql)
         assert len(statements) == 1
 
     def test_execute_immediate_with_concat_preserves_pipe(self):
@@ -441,17 +322,6 @@ class TestOracleParser:
         # "+1" here would be the reserializer dropping the author's spacing;
         # the expression must come back exactly as written.
         assert "(v_max + 1)" in full_stmt, "Expression (v_max + 1) must be preserved verbatim"
-
-    def test_extract_plsql_block_methods(self):
-        """Test PL/SQL block extraction methods."""
-        parser = OracleParser()
-
-        # Test _starts_with_plsql_keyword
-        assert is_plsql_keyword_start("CREATE OR REPLACE PROCEDURE test") is True
-        assert is_plsql_keyword_start("CREATE FUNCTION test") is True
-        assert is_plsql_keyword_start("BEGIN") is True
-        assert is_plsql_keyword_start("DECLARE") is True
-        assert is_plsql_keyword_start("CREATE TABLE test") is False
 
     def test_complex_sql_scenarios(self):
         """Test complex real-world SQL scenarios."""
@@ -511,6 +381,7 @@ class TestOracleParser:
         BEGIN
             SELECT * FROM employees;
         END;
+        /
         """
 
         result = parser.parse_sql(sql)
@@ -525,6 +396,7 @@ class TestOracleParser:
         BEGIN
             RETURN (SELECT COUNT(*) FROM employees);
         END;
+        /
         """
 
         result = parser.parse_sql(sql)

@@ -13,15 +13,9 @@ from dblift.core.sql_model.base import (
 )
 from dblift.core.sql_parser.common.base_parser import RegexBasedParser
 from dblift.core.sql_parser.parser_context import ParserContext
+from dblift.core.sql_parser.statement import Statement, analysis_sql
 from dblift.db.plugins.oracle.parser._comments import strip_comments
 from dblift.db.plugins.oracle.parser._object_extractor import extract_objects
-from dblift.db.plugins.oracle.parser._plsql_block import (
-    extract_plsql_block,
-    is_partial_plsql_fragment,
-)
-from dblift.db.plugins.oracle.parser._statement_splitter import (
-    split_statements_regex,
-)
 from dblift.db.plugins.oracle.parser.oracle_statement_parser import OracleStatementParser
 from dblift.db.plugins.oracle.parser.oracle_tokenizer import OracleTokenizer
 
@@ -34,7 +28,7 @@ except ModuleNotFoundError as exc:
 
 
 class OracleParser(RegexBasedParser):
-    """Oracle SQL parser using regex-based parsing for complex PL/SQL."""
+    """Oracle SQL parser using the tokenizer's SQL*Plus execution selection."""
 
     SPLITS_WITHOUT_FALLBACK = True
 
@@ -51,49 +45,26 @@ class OracleParser(RegexBasedParser):
         default_schema: Optional[str] = None,
         placeholders: Optional[Dict[str, Any]] = None,
     ) -> ParseResult:
-        """Parse SQL content using regex-based approach for Oracle.
-
-        This implementation handles Oracle-specific parsing challenges:
-        - Quoted identifiers like "TEST_SCHEMA"."employees"
-        - Complex PL/SQL blocks with nested structures
-        - Package specifications and bodies
-        - Anonymous blocks and procedures
-
-        Uses regex-first parsing as the primary strategy for Oracle,
-        which reliably handles quoted identifiers and complex PL/SQL constructs.
-        """
+        """Parse the SQL units selected by the Oracle tokenizer."""
 
         # Handle empty content early
         if not sql_content or not sql_content.strip():
             return ParseResult(success=True, statements=[], errors=[])
 
-        # Clean and normalize the SQL
-        cleaned_sql = sql_content.strip()
+        cleaned_sql = sql_content
 
         # Apply placeholders if provided
         if placeholders:
             for placeholder, value in placeholders.items():
                 cleaned_sql = cleaned_sql.replace(placeholder, str(value))
 
-        error_messages = []
-
-        # Regex-based statement splitting (primary method for Oracle)
         try:
-            statements = split_statements_regex(
-                cleaned_sql, extract_plsql_block=extract_plsql_block
-            )
-            logger.debug(
-                f"Oracle: Successfully parsed {len(statements)} statements using regex-based parsing"
-            )
-
+            statements = self.split_for_analysis(cleaned_sql)
         except Exception as e:
-            error_msg = f"Oracle regex parsing failed: {str(e)}"
+            error_msg = f"Oracle parsing failed: {str(e)}"
             logger.error(error_msg)
-            error_messages.append(error_msg)
-            # Emergency fallback: treat entire input as single statement
-            statements = [cleaned_sql]
+            return ParseResult(success=False, statements=[], errors=[error_msg])
 
-        # Always return success with collected warnings
         sql_statements: List[SqlStatement] = [
             SqlStatement(
                 sql_text=stmt,
@@ -106,8 +77,25 @@ class OracleParser(RegexBasedParser):
         return ParseResult(
             success=True,
             statements=sql_statements,
-            errors=error_messages,  # Include warnings but don't fail
+            errors=[],
         )
+
+    def split(self, sql_content: str, strict_tokenizer: bool = False) -> List[Statement]:
+        """Return Oracle execution records from the authoritative tokenizer."""
+        if not sql_content or not sql_content.strip():
+            return []
+        tokenizer = OracleTokenizer(sql_content, strict_unknown_chars=strict_tokenizer)
+        return OracleStatementParser(
+            tokenizer.tokenize(), ParserContext(), source=sql_content
+        ).split()
+
+    def split_for_analysis(self, sql_content: str, strict_tokenizer: bool = False) -> List[str]:
+        """Project the selected SQL records for analysis."""
+        return analysis_sql(self.split(sql_content, strict_tokenizer=strict_tokenizer))
+
+    def split_for_extraction(self, sql_content: str, strict_tokenizer: bool = False) -> List[str]:
+        """Project the same selected SQL records for object extraction."""
+        return self.split_for_analysis(sql_content, strict_tokenizer=strict_tokenizer)
 
     def split_statements(self, sql_content: str, strict_tokenizer: bool = False) -> List[str]:
         """Split SQL content into statements using tokenization.
@@ -130,30 +118,28 @@ class OracleParser(RegexBasedParser):
         return parser.split_statements()
 
     def validate_sql(self, sql_content: str) -> Dict[str, Any]:
-        """Validate SQL content using Oracle-specific regex-based validation."""
+        """Validate the SQL units selected for Oracle execution."""
         try:
-            statements = split_statements_regex(
-                sql_content, extract_plsql_block=extract_plsql_block
-            )
+            statements = self.split_for_analysis(sql_content)
 
             errors: List[str] = []
             warnings: List[str] = []
 
             for stmt in statements:
                 # Simple validation - just check if it's a fragment
-                if is_partial_plsql_fragment(stmt):
+                if re.fullmatch(r"(?:END\s*;?|BEGIN|DECLARE|/|;)", stmt.strip(), re.IGNORECASE):
                     warnings.append(f"Fragment detected: {stmt[:50]}...")
 
             return {
-                "valid": True,  # Always return valid with graceful error handling
+                "valid": True,
                 "errors": errors,
                 "warnings": warnings,
             }
         except Exception as e:
             return {
-                "valid": True,  # Still return valid, but include error as warning
-                "errors": [],
-                "warnings": [f"Validation failed: {str(e)}"],
+                "valid": False,
+                "errors": [f"Validation failed: {str(e)}"],
+                "warnings": [],
             }
 
     def extract_objects(self, sql: str, default_schema: Optional[str] = None) -> List[SqlObject]:

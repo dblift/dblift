@@ -15,6 +15,7 @@ from dblift.core.sql_model.base import (
 from dblift.core.sql_model.dialect import get_sqlglot_dialect
 from dblift.core.sql_parser.enhanced_regex_parser import EnhancedRegexParser
 from dblift.core.sql_parser.parser_context import ParserContext
+from dblift.core.sql_parser.statement import Statement, analysis_sql
 from dblift.db.dml_analysis import cte_outer_statement_type
 from dblift.db.plugins.postgresql.parser.parser_config import PostgreSqlConfig
 from dblift.db.plugins.postgresql.parser.postgresql_statement_parser import (
@@ -74,6 +75,23 @@ class PostgreSqlRegexParser(EnhancedRegexParser):
         )
         return parser.split_statements()
 
+    def split(self, sql_content: str, strict_tokenizer: bool = False) -> List[Statement]:
+        """Return executable units and their scanner-derived analysis parts."""
+        if not sql_content or not sql_content.strip():
+            return []
+        tokenizer = self.tokenizer_class(sql_content, strict_unknown_chars=strict_tokenizer)
+        return PostgreSQLStatementParser(
+            tokenizer.tokenize(), ParserContext(), source=sql_content
+        ).split()
+
+    def split_for_analysis(self, sql_content: str, strict_tokenizer: bool = False) -> List[str]:
+        """Return every executable SQL constituent for analysis."""
+        return analysis_sql(self.split(sql_content, strict_tokenizer=strict_tokenizer))
+
+    def split_for_extraction(self, sql_content: str, strict_tokenizer: bool = False) -> List[str]:
+        """Extract objects from the same SQL constituents as analysis."""
+        return self.split_for_analysis(sql_content, strict_tokenizer=strict_tokenizer)
+
     def _identify_statement_type(self, sql: str) -> SqlStatementType:
         """Identify PostgreSQL statement type using regex patterns."""
         if not sql or not sql.strip():
@@ -128,7 +146,7 @@ class PostgreSqlRegexParser(EnhancedRegexParser):
 
         try:
             # Split statements using PostgreSQL-specific logic
-            statements = self.split_statements(sql_content)
+            statements = self.split_for_analysis(sql_content)
 
             # Create SqlStatement objects
             sql_statements = []
@@ -166,7 +184,7 @@ class PostgreSqlRegexParser(EnhancedRegexParser):
 
         try:
             # Basic structural validation
-            statements = self.split_statements(sql_content)
+            statements = self.split_for_analysis(sql_content)
 
             for stmt in statements:
                 # Check for basic syntax issues

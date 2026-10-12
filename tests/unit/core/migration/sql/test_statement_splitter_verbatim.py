@@ -107,7 +107,7 @@ class TestPostgresCopyFromStdin:
 
         # the \. line is the terminator and is consumed (docs/sql-parsing/postgresql.md §7, row 11)
         assert stmts == [
-            "COPY t (id, name) FROM stdin;\n1\talice\n2\tbob",
+            "COPY t (id, name) FROM stdin;\n1\talice\n2\tbob\n",
             "SELECT 1;",
         ]
 
@@ -118,7 +118,7 @@ class TestPostgresCopyFromStdin:
 
         # the \. line is the terminator and is consumed (docs/sql-parsing/postgresql.md §7, row 11)
         assert stmts == [
-            "COPY t (id, name) FROM stdin;\n1\talice",
+            "COPY t (id, name) FROM stdin;\n1\talice\n",
         ]
 
     def test_backslash_dot_mid_line_is_not_a_terminator(self):
@@ -130,7 +130,7 @@ class TestPostgresCopyFromStdin:
 
         # the \. line is the terminator and is consumed (docs/sql-parsing/postgresql.md §7, row 11)
         assert stmts == [
-            "COPY t (id, note) FROM stdin;\n1\tO'Brien said \\. wasn't done",
+            "COPY t (id, note) FROM stdin;\n1\tO'Brien said \\. wasn't done\n",
             "SELECT 1;",
         ]
 
@@ -143,7 +143,7 @@ class TestPostgresCopyFromStdin:
 
         # the \. line is the terminator and is consumed (docs/sql-parsing/postgresql.md §7, row 11)
         assert stmts == [
-            "COPY t (id, cmd) FROM stdin;\n1\tSELECT 1; DROP TABLE t;",
+            "COPY t (id, cmd) FROM stdin;\n1\tSELECT 1; DROP TABLE t;\n",
             "SELECT 2;",
         ]
 
@@ -154,7 +154,7 @@ class TestPostgresCopyFromStdin:
 
         # the \. line is the terminator and is consumed (docs/sql-parsing/postgresql.md §7, row 11)
         assert stmts == [
-            "COPY t (id) FROM stdin;",
+            "COPY t (id) FROM stdin;\n",
             "SELECT 1;",
         ]
 
@@ -165,7 +165,7 @@ class TestPostgresCopyFromStdin:
 
         # the \. line is the terminator and is consumed (docs/sql-parsing/postgresql.md §7, row 11)
         assert stmts == [
-            "COPY t (id, name) FROM stdin;\r\n1\talice\r\n2\tbob",
+            "COPY t (id, name) FROM stdin;\r\n1\talice\r\n2\tbob\r\n",
             "SELECT 1;",
         ]
 
@@ -186,7 +186,7 @@ class TestPostgresCopyFromStdin:
         stmts = StatementSplitter("postgresql").split_statements(sql)
 
         # the \. line is the terminator and is consumed (docs/sql-parsing/postgresql.md §7, row 11)
-        assert stmts == [self.PG_DUMP_COPY.removesuffix("\n\\.\n"), "SELECT 1;"]
+        assert stmts == [self.PG_DUMP_COPY.removesuffix("\\.\n"), "SELECT 1;"]
 
     @pytest.mark.parametrize(
         "header",
@@ -204,7 +204,7 @@ class TestPostgresCopyFromStdin:
         stmts = StatementSplitter("postgresql").split_statements(sql)
 
         # the \. line is the terminator and is consumed (docs/sql-parsing/postgresql.md §7, row 11)
-        assert stmts == [f"{header}\n1", "SELECT 1;"]
+        assert stmts == [f"{header}\n1\n", "SELECT 1;"]
 
     def test_copy_header_detection_stops_at_its_semicolon(self):
         """A COPY that is not FROM stdin must not borrow the next statement's
@@ -216,7 +216,7 @@ class TestPostgresCopyFromStdin:
         # the \. line is the terminator and is consumed (docs/sql-parsing/postgresql.md §7, row 11)
         assert stmts == [
             "COPY a TO '/tmp/a.txt';",
-            "COPY b FROM stdin;\n1",
+            "COPY b FROM stdin;\n1\n",
             "SELECT 1;",
         ]
 
@@ -287,7 +287,7 @@ class TestPostgresMetaCommand:
 
         # the \. line is the terminator and is consumed (docs/sql-parsing/postgresql.md §7, row 11)
         assert stmts == [
-            "COPY t (id, name) FROM stdin;\n1\t\\N\n2\tbob",
+            "COPY t (id, name) FROM stdin;\n1\t\\N\n2\tbob\n",
             "SELECT 1;",
         ]
 
@@ -297,7 +297,7 @@ class TestPostgresMetaCommand:
         stmts = StatementSplitter("postgresql").split_statements(sql)
 
         # the \. line is the terminator and is consumed (docs/sql-parsing/postgresql.md §7, row 11)
-        assert stmts == ["COPY t (id) FROM stdin;\n1", "SELECT 1;"]
+        assert stmts == ["COPY t (id) FROM stdin;\n1\n", "SELECT 1;"]
 
     def test_unsupported_meta_command_is_refused_by_default(self):
         """The refusal must reach the caller under the *default* (non-strict)

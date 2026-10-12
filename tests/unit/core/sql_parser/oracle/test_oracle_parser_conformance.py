@@ -141,7 +141,8 @@ CASES: list[ConformanceCase] = [
         id="inline_and_block_comments",
         sql=(
             "-- leading comment\n"
-            "CREATE TABLE t (id NUMBER); /* trailing */\n"
+            "CREATE TABLE t (id NUMBER);\n"
+            "/* trailing */\n"
             "/* block\n"
             "   comment */\n"
             "CREATE INDEX idx_t ON t(id);\n"
@@ -214,13 +215,7 @@ class TestOracleParserConformance:
 
 @pytest.mark.unit
 class TestOracleParserSubResponsibilitiesPresent:
-    """Structural guards: the five sub-responsibility modules exist.
-
-    These pass today only because the skeleton modules have been
-    committed (see ADR-0012). They stay green through the follow-up
-    PRs that move logic into each skeleton. They fail if a skeleton
-    is deleted prematurely — i.e. before its logic has been extracted.
-    """
+    """The semantic helpers still used by the Oracle parser are importable."""
 
     @pytest.mark.parametrize(
         "module_name",
@@ -228,8 +223,6 @@ class TestOracleParserSubResponsibilitiesPresent:
             "dblift.db.plugins.oracle.parser._comments",
             "dblift.db.plugins.oracle.parser._sqlplus",
             "dblift.db.plugins.oracle.parser._object_extractor",
-            "dblift.db.plugins.oracle.parser._statement_splitter",
-            "dblift.db.plugins.oracle.parser._plsql_block",
         ],
     )
     def test_module_importable(self, module_name: str) -> None:

@@ -140,7 +140,7 @@ statement is.
 | `SET SERVEROUTPUT ON|OFF` | record; execution enables `DBMS_OUTPUT` retrieval |
 | `WHENEVER SQLERROR {EXIT … | CONTINUE …}` | record; execution applies the policy to the statements that follow. An unrecognised `WHENEVER SQLERROR` action is refused. |
 | `EXEC[UTE] stmt[;]` | **rewrite** to the PL/SQL unit `BEGIN stmt; END;` after stripping one trailing `;` from `stmt`; never dropped. SQL\*Plus documents only "Executes a single PL/SQL statement"; EXEC runs the call (sqlplus 23.x, Oracle Free 23ai, 2026-10-10: row 16, two EXEC lines → T16 has 2 rows); the `BEGIN stmt; END;` rewrite is the splitter's choice of equivalent, not a measured client behaviour |
-| `EXIT` / `QUIT` | everything after it is **not executed**; the remainder is not recorded: the parser stops and logs a warning naming the count and the first ignored line (sqlplus 23.x, Oracle Free 23ai, 2026-10-10: row 17, rc 0, `T17` empty: the `INSERT` after `EXIT` never ran). An exit status (`EXIT FAILURE`, `EXIT n`, `EXIT ROLLBACK`) is recorded with the directive and not modelled: the statements before it ran; migration status is dblift's (sqlplus 23.x, Oracle Free 23ai, 2026-10-10: `EXIT FAILURE` exit code 1, `EXIT 3` exit code 3) |
+| `EXIT` / `QUIT` | everything after it is **not executed**; the remainder is not recorded: the tokenizer stops before reading the ignored tail and logs a warning naming its first ignored line (sqlplus 23.x, Oracle Free 23ai, 2026-10-10: row 17, rc 0, `T17` empty: the `INSERT` after `EXIT` never ran). An exit status (`EXIT FAILURE`, `EXIT n`, `EXIT ROLLBACK`) is recorded with the directive and not modelled: the statements before it ran; migration status is dblift's (sqlplus 23.x, Oracle Free 23ai, 2026-10-10: `EXIT FAILURE` exit code 1, `EXIT 3` exit code 3) |
 | `@file`, `@@file`, `START file`, `HOST`, `!cmd`, `ACCEPT`, `PAUSE`, `CONNECT`, `CONN`, `DISCONNECT`, `PASSWORD`, `SET SQLTERMINATOR`, `SET BLOCKTERMINATOR`, `SET SQLBLANKLINES`, `SET SQLPREFIX`, `SET CMDSEP`, `SET ESCAPE`, `SET CONCAT` | **reject** with `UnsupportedMetaCommandError` naming the directive and line |
 | `SET ESCAPE`, `SET CONCAT` (rows above) | they change how `&` and `.` are read (sqlplus 23.x, Oracle Free 23ai, 2026-10-10: `SET DEFINE ON`, `DEFINE x = v`, `SET ESCAPE ON`, `SELECT '\&x' FROM dual` gave `&x`: the escape suppresses substitution) |
 | a directive after a `;` on the **same** line | **reject**: SQL\*Plus sends the whole line to the server, which fails with ORA-03405 (§4; sqlplus 23.x, Oracle Free 23ai, 2026-10-10: row 19, rc 1, ORA-03405 "End of query reached; no additional text should follow."); the current code silently loses the following statement |
@@ -189,7 +189,7 @@ else in this spec is data.
 | 16 | `EXEC dbms_output.put_line('hi');\nSELECT 1 FROM dual;` | `BEGIN dbms_output.put_line('hi'); END;` (PL/SQL unit; one trailing semicolon stripped before wrapping) · `SELECT 1 FROM dual` |
 | 16a | `SELECT 1 FROM dual; -- note\nSELECT 2 FROM dual;` | `error` at line 1: text after the terminator (SQL\*Plus 5.3.4; sqlplus 23.x, Oracle Free 23ai, 2026-10-10: row 16a, rc 1, ORA-03405 "End of query reached; no additional text should follow.", nothing created) |
 | 16b | `INSERT INTO t VALUES (1); INSERT INTO t VALUES (2);` | `error` at line 1: the semicolon is not the last text on its line (sqlplus 23.x, Oracle Free 23ai, 2026-10-10: row 16b, rc 1, ORA-03405 "End of query reached; no additional text should follow."; `T16B` created, 0 rows) |
-| 17 | `SELECT 1 FROM dual;\nEXIT\nSELECT 2 FROM dual;` | `SELECT 1 FROM dual` · directive record with warning "1 statement after EXIT ignored" |
+| 17 | `SELECT 1 FROM dual;\nEXIT\nSELECT 2 FROM dual;` | `SELECT 1 FROM dual` · directive record with a warning naming the first ignored line |
 | 18 | `@@setup.sql\nSELECT 1 FROM dual;` | `UnsupportedMetaCommandError` (line 1, `@@`) |
 | 19 | `SELECT 1 FROM dual; PROMPT x\nSELECT 2 FROM dual;` | `UnsupportedMetaCommandError` (line 1, directive after `;` on the same line) |
 | 20 | `CREATE OR REPLACE PROCEDURE p AS BEGIN NULL; END;\nCREATE TABLE t (id NUMBER);` | `error`: PL/SQL unit not terminated by a slash before end of input (SQL\*Plus would hang waiting for it) |
@@ -216,27 +216,12 @@ else in this spec is data.
 
 Code: `dblift/db/plugins/oracle/parser/` (`oracle_tokenizer.py`,
 `oracle_statement_parser.py`, `_unit_heads.py`, `_directives.py`,
-`oracle_parser.py`) and `quirks.py`. The regex path (`_statement_splitter.py`,
-`_plsql_block.py`) remains behind `parse_sql` for object extraction only.
+`oracle_parser.py`) and `quirks.py`. Execution, analysis, extraction, and
+validation select statements through the same tokenizer and statement parser.
+The `Statement` record is the internal unit; string APIs project its selected
+SQL. Object extraction remains a separate semantic step after splitting.
 
-Facts established by reading and running the code; each is a row above or the
-reason for a rule:
-
-- A SQL statement ended only by `/` (row 2) is merged with the next statement
-  in the regex path.
-- `OPEN c FOR SELECT ...` or `SELECT ... FOR UPDATE` inside a block adds depth
-  that never closes in the regex path; the `/` is then ignored (row 4).
-- A column named `TYPE`, `PACKAGE`, `FUNCTION`, `PROCEDURE` or `TRIGGER` at
-  parenthesis depth 0 in any `CREATE`, or a column named `begin`, switches
-  the regex path's delimiter to `/` (row 8).
-- The regex path does not know alternative quoting and cuts `q'[it's; fine]'`
-  and `nq'{x;y}'` at the inner `;`; it scans `CREATE TYPE ... AS OBJECT` to end
-  of file and splits `CREATE TYPE BODY` after its first member (row 7).
-- `CREATE JAVA SOURCE` is cut at the first `;` (row 24).
-
-Tests to re-point (about 470 functions): `tests/unit/core/sql_parser/oracle/*`,
-`tests/unit/core/sql_parser/test_oracle_parser*.py`,
-`tests/unit/test_tokenization_oracle*.py`,
-`tests/unit/test_oracle_sqlplus_directive_*.py`,
-`tests/unit/core/migration/executor/test_execution_engine_sqlplus.py`,
-`tests/integration/parsers/test_oracle_parser.py` (live).
+The tokenizer stops at `EXIT` or `QUIT` before reading the ignored tail. A
+malformed quote or comment after that point cannot make an earlier executable
+statement fail to split. Repeated record and string projections start with
+fresh SQL*Plus substitution state.

@@ -9,7 +9,7 @@ from typing import List, Optional, Tuple
 from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.core.sql_parser.base_tokenizer import BaseTokenizer
 from dblift.core.sql_parser.tokens import Token, TokenType
-from dblift.db.plugins.oracle.parser._directives import classify_directive
+from dblift.db.plugins.oracle.parser._directives import DirectiveAction, classify_directive
 from dblift.db.plugins.oracle.parser._unit_heads import MAX_HEAD_TOKENS, head_decided
 
 
@@ -168,6 +168,10 @@ class OracleTokenizer(BaseTokenizer):
             return None
         token = Token(TokenType.DIRECTIVE, text, self.pos, self.line, self.col, self.parens_depth)
         self.read(end - self.pos)
+        directive = classify_directive(text)
+        if directive is not None and directive.action is DirectiveAction.EXIT:
+            # SQL*Plus ignores everything after EXIT, including malformed SQL.
+            self.pos = len(self.sql)
         return token
 
     def _eol(self, start: int) -> int:

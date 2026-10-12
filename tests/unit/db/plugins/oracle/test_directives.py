@@ -54,7 +54,7 @@ def test_row_17_exit_stops_the_script_and_warns_naming_the_first_ignored_line(ca
         _directive("EXIT", 2),
     ]
     assert any(
-        "1 statement(s) after EXIT" in r.getMessage() and "first ignored line: 3" in r.getMessage()
+        "Content after EXIT" in r.getMessage() and "first ignored line: 3" in r.getMessage()
         for r in caplog.records
     )
     assert _strings(script) == ["SELECT 1 FROM dual;"]

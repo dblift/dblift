@@ -341,11 +341,10 @@ class PostgreSQLTokenizer(BaseTokenizer):
         r"""Read COPY FROM STDIN rows up to the line that is exactly ``\.``.
 
         The newline ending the header line is framing and is dropped. The token
-        text is the rows without the newline that precedes the ``\.`` line and
-        without that line; the statement parser treats that line as the
-        terminator. A line with blanks before ``\.`` is data (psql compares the
-        whole line). Rows running to the end of the script without a ``\.``
-        line are the whole remainder, as psql ends COPY at end of input.
+        text is the exact rows, including the newline before the ``\.`` line;
+        the statement parser treats that line as the terminator. A line with
+        blanks before ``\.`` is data (psql compares the whole line). Rows
+        running to end of input remain unchanged.
         """
         if self.peek() == "\r":
             self.read()
@@ -358,9 +357,7 @@ class PostgreSQLTokenizer(BaseTokenizer):
             newline = self.sql.find("\n", line_start)
             line_end = len(self.sql) if newline == -1 else newline
             if self.sql[line_start:line_end].rstrip("\r") == "\\.":
-                data_end = max(start_pos, line_start - 1)
-                if data_end > start_pos and self.sql[data_end - 1] == "\r":
-                    data_end -= 1
+                data_end = line_start
                 self.read(line_end - line_start + (0 if newline == -1 else 1))
                 break
             self.read(line_end - line_start + (0 if newline == -1 else 1))
