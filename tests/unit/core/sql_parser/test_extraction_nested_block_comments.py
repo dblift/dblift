@@ -253,7 +253,7 @@ class TestDuckDBExtractionNestsBlockComments(unittest.TestCase):
 
 
 class TestDuckDBSplittingAndExtractionShareOneNestingFlag(unittest.TestCase):
-    """``DuckDBRegexParser.split_statements`` and the inherited
+    """``DuckDBRegexParser.split_for_extraction`` and the inherited
     ``extract_objects`` both read ``DuckDBTokenizer.NESTED_BLOCK_COMMENTS``
     instead of each hardcoding their own answer. Pin the lockstep itself,
     not just today's value: flipping the flag must move both paths
@@ -267,13 +267,13 @@ class TestDuckDBSplittingAndExtractionShareOneNestingFlag(unittest.TestCase):
 
         # Baseline: nesting on (DuckDB's real rule) — one statement, no
         # object, because the whole thing is one comment.
-        self.assertEqual(parser.split_statements(NESTED_COMMENT_SQL), [NESTED_COMMENT_SQL])
+        self.assertEqual(parser.split_for_extraction(NESTED_COMMENT_SQL), [NESTED_COMMENT_SQL])
         self.assertEqual(parser.extract_objects(NESTED_COMMENT_SQL), [])
 
         with mock.patch.object(DuckDBTokenizer, "NESTED_BLOCK_COMMENTS", False):
             # Flipped: the inner "/*" no longer nests, so the first "*/"
             # closes the whole comment — two statements, one live object.
-            stmts = parser.split_statements(NESTED_COMMENT_SQL)
+            stmts = parser.split_for_extraction(NESTED_COMMENT_SQL)
             self.assertEqual(len(stmts), 2, stmts)
 
             objects = parser.extract_objects(NESTED_COMMENT_SQL)
@@ -281,7 +281,7 @@ class TestDuckDBSplittingAndExtractionShareOneNestingFlag(unittest.TestCase):
             self.assertEqual(objects[0].name.lower(), "victim")
 
         # Restored: both paths return to the nesting answer, not just one.
-        self.assertEqual(parser.split_statements(NESTED_COMMENT_SQL), [NESTED_COMMENT_SQL])
+        self.assertEqual(parser.split_for_extraction(NESTED_COMMENT_SQL), [NESTED_COMMENT_SQL])
         self.assertEqual(parser.extract_objects(NESTED_COMMENT_SQL), [])
 
 
