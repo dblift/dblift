@@ -473,39 +473,7 @@ class Migration:
     @property
     def sql_statements(self) -> List[str]:
         """Get the SQL statements from the script content."""
-        if not self.content:
-            return []
-
-        # Split on GO statements and semicolons
-        statements: List[str] = []
-        current_statement: List[str] = []
-
-        for line in self.content.split("\n"):
-            line = line.strip()
-            if not line:
-                continue
-
-            if line.upper() == "GO":
-                if current_statement:
-                    statements.append(" ".join(current_statement))
-                    current_statement = []
-            else:
-                current_statement.append(line)
-
-        # Add any remaining statement
-        if current_statement:
-            statements.append(" ".join(current_statement))
-
-        # Split any remaining statements on semicolons
-        final_statements: List[str] = []
-        for stmt in statements:
-            if ";" in stmt:
-                parts = stmt.split(";")
-                final_statements.extend(p.strip() for p in parts if p.strip())
-            else:
-                final_statements.append(stmt)
-
-        return final_statements
+        return self.parse_sql_statements()
 
     def parse_sql_statements(
         self, dialect: Optional[str] = None, content_override: Optional[str] = None
@@ -550,8 +518,8 @@ class Migration:
             logger = DbliftLogger()
         log = cast(Log, logger)
 
+        from dblift.core.exceptions import UnsafeStatementSplitError
         from dblift.core.migration.sql.migration_sql_parser import (
-            fallback_migration_sql,
             parse_migration_sql,
             resolve_migration_sql_dialect,
         )
@@ -564,7 +532,7 @@ class Migration:
         try:
             sql_analyzer = SqlAnalyzer(dialect=dialect, logger=log)
         except Exception as exc:
-            statements = fallback_migration_sql(content, log, exc)
+            raise UnsafeStatementSplitError(f"statement splitter failed: {exc}") from exc
         else:
             statements = parse_migration_sql(sql_analyzer, content, log)
 

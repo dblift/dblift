@@ -1,7 +1,7 @@
 # SQL statement splitter — lexical specifications
 
-One specification per dialect, in the same shape, read by one splitting
-engine. These documents are **normative**: the engine's behaviour for a dialect
+One specification per dialect, in the same shape, read by that dialect's
+authoritative scanner. These documents are **normative**: the scanner's behaviour for a dialect
 is whatever its specification says, the conformance table in each document is
 compiled into the dialect's tests, and a change to splitting starts with a
 change here.
@@ -42,7 +42,7 @@ the extractor's concern and is covered by the model snapshot tests, not here.
   documented equivalent, *dropped and recorded* as a `kind="directive"` entry
   in the statement list, or *rejected* with an error naming the directive.
   "Stripped" without a record is not an option.
-- **No fallback (PostgreSQL family, MySQL, MariaDB, Oracle, SQL Server, Db2, SQLite and DuckDB).** An input the rules do not cover raises
+- **No fallback.** An input the rules do not cover raises
   `UnsafeStatementSplitError` with line and column. The spec's *Not handled*
   section is the list of such inputs the authors know about.
 - **The terminator is consumed, not returned.** A statement's text excludes
@@ -90,12 +90,12 @@ fails strictly (`xfail(strict=True)`): the list can only shrink honestly.
 | --- | --- | --- |
 | [postgresql.md](postgresql.md) | PostgreSQL and the compatible family: AlloyDB, Aurora PostgreSQL, Citus, CockroachDB, Neon, Supabase, TimescaleDB, YugabyteDB | dollar-quote tags |
 | [oracle.md](oracle.md) | Oracle Database 12c+ scripts written for SQL\*Plus / SQLcl | alternative quoting `q'…'` |
-| [sqlserver.md](sqlserver.md) | SQL Server and Azure SQL (T-SQL) | none; the previous splitter still serves extraction and `parse_sql` |
-| [mysql.md](mysql.md) | MySQL and MariaDB, read the way the `mysql` client reads a script: `DELIMITER`, client commands, executable comments, stored-program bodies | none; the previous splitter still serves extraction and `parse_sql` |
+| [sqlserver.md](sqlserver.md) | SQL Server and Azure SQL (T-SQL) | SQL Server batch scanner |
+| [mysql.md](mysql.md) | MySQL and MariaDB, read the way the `mysql` client reads a script: `DELIMITER`, client commands, executable comments, stored-program bodies | MySQL script scanner |
 | [mariadb.md](mariadb.md) | where MariaDB differs from MySQL: the `/*M!` comment, `CREATE OR REPLACE`, `AGGREGATE`, `FOR` loops | none; one flag of the MySQL scanner |
-| [db2.md](db2.md) | Db2 for Linux, UNIX and Windows (scripts written for the command line processor) | none; the previous splitter still serves extraction and `parse_sql` |
-| [sqlite.md](sqlite.md) | SQLite scripts written for the `sqlite3` shell: the library's own statement-completeness rule, trigger bodies, dot-commands, `go` and `/` lines | none; the previous splitter still serves extraction and `parse_sql` |
-| [duckdb.md](duckdb.md) | DuckDB scripts run through the Python driver and written for the `duckdb` shell: dollar-quoted strings, nested block comments, `E'…'` strings, dot-commands | none; the previous splitter still serves extraction and `parse_sql` |
+| [db2.md](db2.md) | Db2 for Linux, UNIX and Windows (scripts written for the command line processor) | Db2 script scanner |
+| [sqlite.md](sqlite.md) | SQLite scripts written for the `sqlite3` shell: the library's own statement-completeness rule, trigger bodies, dot-commands, `go` and `/` lines | SQLite script scanner |
+| [duckdb.md](duckdb.md) | DuckDB scripts run through the Python driver and written for the `duckdb` shell: dollar-quoted strings, nested block comments, `E'…'` strings, dot-commands | DuckDB script scanner |
 
 ## Verification sources
 

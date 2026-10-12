@@ -22,7 +22,6 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from sqlglot import exp, parse_one
 
-from dblift.core.exceptions import ParserError
 from dblift.core.sql_model.base import (
     ConstraintType,
     ParseResult,
@@ -201,14 +200,12 @@ class HybridParser(_SqlglotBuildersMixin, SqlParserInterface):
             if not result.success:
                 return result
 
-            collected_objects = False
             enhanced_statements: List[SqlStatement] = []
             for stmt in result.statements or []:
                 enhanced_stmt = self._enhance_statement(stmt, default_schema)
                 enhanced_statements.append(enhanced_stmt)
 
                 if enhanced_stmt.objects:
-                    collected_objects = True
                     self._collect_objects(result, enhanced_stmt.objects)
 
                 self._ensure_table_metadata(enhanced_stmt, default_schema, result)
@@ -219,17 +216,6 @@ class HybridParser(_SqlglotBuildersMixin, SqlParserInterface):
 
             if enhanced_statements:
                 result.statements = enhanced_statements
-
-            try:
-                self.split_statements(sql_content)
-            except ParserError as refusal:
-                if str(refusal) not in (result.errors or []):
-                    result.errors = [*(result.errors or []), str(refusal)]
-
-            if not collected_objects:
-                fallback_objects = self.extract_objects(sql_content, default_schema)
-                if fallback_objects:
-                    self._collect_objects(result, fallback_objects)
 
             return result
 
@@ -330,17 +316,20 @@ class HybridParser(_SqlglotBuildersMixin, SqlParserInterface):
         effective_schema = self._resolve_default_schema(default_schema)
 
         objects: List[SqlObject] = []
-        try:
-            statements = self.split_for_extraction(sql_content)
-        except ParserError:
-            # an already-split statement may be refused by the execution splitter
-            # (e.g. a PL/SQL unit without its '/'); for extraction the text is one statement
-            statements = [sql_content]
+        statements = self.split_for_extraction(sql_content)
         for stmt_text in statements:
             if not stmt_text or not stmt_text.strip():
                 continue
-            objects.extend(self._extract_objects_for_statement(stmt_text, effective_schema))
+            objects.extend(self.extract_statement_objects(stmt_text, effective_schema))
         return objects
+
+    def extract_statement_objects(
+        self, stmt_text: str, default_schema: Optional[str] = None
+    ) -> List[SqlObject]:
+        """Extract objects from one statement already selected by the script scanner."""
+        return self._extract_objects_for_statement(
+            stmt_text, self._resolve_default_schema(default_schema)
+        )
 
     def _resolve_default_schema(self, default_schema: Optional[str]) -> Optional[str]:
         """Resolve the default schema once, via the quirks, so every caller
@@ -373,7 +362,9 @@ class HybridParser(_SqlglotBuildersMixin, SqlParserInterface):
         )
         if use_sqlglot and self.sqlglot_parser is not None:
             try:
-                sqlglot_objects = self.sqlglot_parser.extract_objects(stmt_text, default_schema)
+                sqlglot_objects = self.sqlglot_parser.extract_fragment_objects(
+                    stmt_text, default_schema
+                )
                 return self._merge_objects(regex_objects, sqlglot_objects)
             except Exception as e:
                 logger.debug(f"SqlGlot object extraction failed, using regex only: {e}")
@@ -474,7 +465,7 @@ class HybridParser(_SqlglotBuildersMixin, SqlParserInterface):
         if self.sqlglot_parser is None:
             raise RuntimeError("sqlglot_parser is not initialized")
         try:
-            objects = self.sqlglot_parser.extract_objects(stmt_text, default_schema)
+            objects = self.sqlglot_parser.extract_fragment_objects(stmt_text, default_schema)
         except Exception as extraction_exc:
             logger.debug(
                 f"SqlGlot object extraction failed during dependency analysis: {extraction_exc}"
@@ -517,7 +508,7 @@ class HybridParser(_SqlglotBuildersMixin, SqlParserInterface):
             # hands it the quirks-resolved one, and the two callers of the same
             # merge function could disagree on identical input.
             effective_schema = self._resolve_default_schema(default_schema)
-            sqlglot_result = self.sqlglot_parser.parse_sql(stmt.sql_text, effective_schema)
+            sqlglot_result = self.sqlglot_parser.parse_fragment(stmt.sql_text, effective_schema)
 
             if sqlglot_result.success and sqlglot_result.statements:
                 sqlglot_stmt = sqlglot_result.statements[0]

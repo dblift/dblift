@@ -1,4 +1,4 @@
-"""Object extraction keeps reading one statement at a time and never refuses; execution does."""
+"""MySQL extraction follows the client scanner and its refusals."""
 
 from __future__ import annotations
 
@@ -15,14 +15,17 @@ from dblift.db.plugins.mysql.quirks import MysqlQuirks
 SCRIPT = "source other.sql;\nCREATE TABLE a (id INT);\nSELECT 1\\G\nCREATE TABLE b (id INT);\n"
 
 
-def test_parse_sql_still_reads_the_tables_of_a_script_the_execution_split_refuses() -> None:
+def test_parse_sql_reports_a_client_command_refusal() -> None:
     result = MySqlRegexParser().parse_sql(SCRIPT)
-    assert sorted(o.name for s in result.statements for o in s.objects) == ["a", "b"]
+    assert not result.success
+    assert result.statements == []
+    assert any("source" in error for error in result.errors)
 
 
-def test_the_hybrid_parser_extracts_through_the_regex_parser_extraction_split() -> None:
+def test_the_hybrid_parser_refuses_the_same_client_command() -> None:
     parser = HybridParser("mysql")
-    assert parser.split_for_extraction(SCRIPT) == MySqlRegexParser().split_for_extraction(SCRIPT)
+    with pytest.raises(UnsupportedMetaCommandError):
+        parser.split_for_extraction(SCRIPT)
 
 
 def test_statements_for_analysis_are_the_execution_statements() -> None:
@@ -40,9 +43,12 @@ def test_a_script_of_hash_comments_is_no_statement_and_is_not_split_again(dialec
     assert SqlAnalyzer(dialect).split_statements("# a\n# b ; c\n") == []
 
 
-def test_the_regex_splitter_of_each_engine_is_authoritative() -> None:
-    assert MySqlRegexParser.SPLITS_WITHOUT_FALLBACK is True
-    assert MariaDbRegexParser.SPLITS_WITHOUT_FALLBACK is True
+@pytest.mark.parametrize("parser_class", [MySqlRegexParser, MariaDbRegexParser])
+def test_each_engine_projects_analysis_from_its_client_records(parser_class: type) -> None:
+    parser = parser_class()
+    script = "DELIMITER //\nSELECT 1; DROP TABLE t//\nDELIMITER ;"
+    assert parser.split_statements(script) == ["SELECT 1; DROP TABLE t"]
+    assert parser.split_for_analysis(script) == ["SELECT 1", "DROP TABLE t"]
 
 
 def test_mariadb_gets_its_own_regex_parser_and_mysql_does_not() -> None:
@@ -67,24 +73,19 @@ def test_the_dialect_name_of_each_regex_parser_is_its_engine() -> None:
     assert MariaDbRegexParser().dialect_name == "mariadb"
 
 
-def test_parse_sql_reports_any_parser_refusal_instead_of_failing(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    def refuse(self: HybridParser, sql_content: str, strict_tokenizer: bool = False) -> list[str]:
-        raise UnsupportedMetaCommandError("client command refused")
-
-    monkeypatch.setattr(HybridParser, "split_statements", refuse)
-    result = HybridParser("mysql").parse_sql("SELECT 1;\n")
-    assert result.success
-    assert "client command refused" in " ".join(result.errors or [])
+def test_parse_sql_reports_client_scanner_refusal_without_partial_objects() -> None:
+    result = HybridParser("mysql").parse_sql("SOURCE other.sql\nCREATE TABLE a (id INT);\n")
+    assert not result.success
+    assert result.statements == []
+    assert "client command 'SOURCE'" in " ".join(result.errors or [])
 
 
-def test_extract_objects_reads_the_script_whatever_refusal_the_split_raises(
+def test_extract_objects_refuses_script_when_scanner_refuses(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     def refuse(self: HybridParser, sql_content: str, strict_tokenizer: bool = False) -> list[str]:
         raise UnsupportedMetaCommandError("client command refused")
 
     monkeypatch.setattr(HybridParser, "split_for_extraction", refuse)
-    objects = HybridParser("mysql").extract_objects("CREATE TABLE a (id INT);\n")
-    assert [o.name for o in objects] == ["a"]
+    with pytest.raises(UnsupportedMetaCommandError, match="client command refused"):
+        HybridParser("mysql").extract_objects("CREATE TABLE a (id INT);\n")

@@ -38,8 +38,6 @@ from __future__ import annotations
 import pytest
 
 from dblift.core.exceptions import UnsafeStatementSplitError
-from dblift.db.plugins.oracle.parser._plsql_block import extract_plsql_block
-from dblift.db.plugins.oracle.parser._statement_splitter import split_statements_regex
 from dblift.db.plugins.oracle.parser.oracle_parser import OracleParser
 
 NESTED = (
@@ -152,11 +150,6 @@ REFUSED = {
 }
 
 
-def _normalise(statements):
-    """Drop the terminating ``;`` so both split paths compare alike."""
-    return [s[:-1].rstrip() if s.endswith(";") else s for s in statements]
-
-
 @pytest.mark.unit
 @pytest.mark.parametrize("name", sorted(set(ALL_CASES) - REFUSED))
 def test_tokenizer_split_matches_sqlplus(name):
@@ -173,20 +166,10 @@ def test_tokenizer_split_refuses_text_after_a_semicolon(name):
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("name", sorted(ALL_CASES))
-def test_regex_split_matches_sqlplus(name):
-    source, expected = ALL_CASES[name]
-    statements = split_statements_regex(source, extract_plsql_block=extract_plsql_block)
-    assert _normalise(statements) == _normalise(expected)
-
-
-@pytest.mark.unit
 def test_nested_comment_never_yields_a_bare_drop():
-    # Tokenizer splitter: refused outright (spec §4, row 13).
+    # The authoritative splitter refuses the unsafe line (spec §4, row 13).
     with pytest.raises(UnsafeStatementSplitError):
         OracleParser().split_statements(NESTED)
-    statements = split_statements_regex(NESTED, extract_plsql_block=extract_plsql_block)
-    assert not any(s.rstrip(";").strip() == "DROP TABLE keep_me" for s in statements)
 
 
 @pytest.mark.unit

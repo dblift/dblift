@@ -211,7 +211,10 @@ def issues_and_created_tables(
     findings = [
         f for f in findings if not (f.code in _TABLE_CODES and f.statement in on_new_tables)
     ]
-    findings.extend(_mixed_transaction_modes(analysis.statements, dialect, text))
+    # A failed scan is already reported by analysis.errors. Do not scan the refused
+    # script again for transaction modes and turn its parse error into an exception.
+    if not analysis.errors:
+        findings.extend(_mixed_transaction_modes(analysis.statements, dialect, text))
     return sorted(findings, key=lambda f: (f.statement, f.code)), frozenset(
         f"{schema}.{name}" if schema else name for schema, name in created
     )

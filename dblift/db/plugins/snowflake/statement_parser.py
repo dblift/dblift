@@ -6,6 +6,7 @@ from typing import List
 
 from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.core.sql_parser.sqlglot_parser import SqlGlotParser
+from dblift.core.sql_parser.statement import Statement
 
 
 class SnowflakeStatementParser(SqlGlotParser):
@@ -16,9 +17,15 @@ class SnowflakeStatementParser(SqlGlotParser):
         super().__init__("snowflake")
 
     def split_statements(self, sql_content: str, strict_tokenizer: bool = False) -> List[str]:
+        """Execution text from the script scanner."""
+        return [record.text for record in self.split(sql_content)]
+
+    def split(self, sql_content: str) -> List[Statement]:
         """Split on unquoted semicolons and reject unquoted scripting blocks."""
-        statements: List[str] = []
+        statements: List[Statement] = []
         start = 0
+        start_line = 1
+        line_no = 1
         index = 0
         state = "sql"
         block_depth = 0
@@ -27,6 +34,8 @@ class SnowflakeStatementParser(SqlGlotParser):
 
         while index < len(sql_content):
             char = sql_content[index]
+            if char == "\n":
+                line_no += 1
             next_char = sql_content[index + 1] if index + 1 < len(sql_content) else ""
 
             if state == "line_comment":
@@ -99,8 +108,16 @@ class SnowflakeStatementParser(SqlGlotParser):
                 index += 2
             elif char == ";":
                 if has_code:
-                    self._append_statement(statements, sql_content[start:index], first_word)
+                    self._append_statement(
+                        statements,
+                        sql_content[start:index],
+                        first_word,
+                        start,
+                        index + 1,
+                        start_line,
+                    )
                 start = index + 1
+                start_line = line_no
                 first_word = ""
                 has_code = False
                 index += 1
@@ -122,13 +139,36 @@ class SnowflakeStatementParser(SqlGlotParser):
         if state not in {"sql", "line_comment"}:
             raise UnsafeStatementSplitError("Unterminated Snowflake string or comment")
         if has_code:
-            self._append_statement(statements, sql_content[start:], first_word)
+            self._append_statement(
+                statements,
+                sql_content[start:],
+                first_word,
+                start,
+                len(sql_content),
+                start_line,
+            )
         return statements
 
     @staticmethod
-    def _append_statement(statements: List[str], sql: str, first_word: str) -> None:
+    def _append_statement(
+        statements: List[Statement],
+        sql: str,
+        first_word: str,
+        source_start: int,
+        source_end: int,
+        start_line: int,
+    ) -> None:
         if first_word in {"BEGIN", "DECLARE"}:
             raise UnsafeStatementSplitError(
                 "Unquoted Snowflake Scripting blocks are not qualified for SQL migrations"
             )
-        statements.append(sql.strip())
+        lead = sql[: len(sql) - len(sql.lstrip())]
+        statements.append(
+            Statement(
+                text=sql.strip(),
+                line=start_line + lead.count("\n"),
+                terminator=";" if source_end > source_start + len(sql) else None,
+                source_start=source_start,
+                source_end=source_end,
+            )
+        )

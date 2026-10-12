@@ -573,7 +573,7 @@ class _SqlglotBuildersMixin:
     def _normalize_index_fallback(sql_text: str) -> Tuple[str, Optional[str]]:
         """Remove unsupported index modifiers, leaving key parsing to sqlglot."""
         header = re.match(
-            r"\s*CREATE\s+(?:UNIQUE\s+)?(?:(FULLTEXT|SPATIAL)\s+)?INDEX\b",
+            r"\s*CREATE\s+(?:UNIQUE\s+)?(?:(FULLTEXT|SPATIAL|BITMAP)\s+)?INDEX\b",
             sql_text,
             re.IGNORECASE,
         )

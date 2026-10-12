@@ -1,19 +1,9 @@
 """Extended tests for DB2 regex parser — targeting uncovered paths.
 
 Covers:
-- split_statements: all routing paths (exec sql, package, module, sqlpl, trigger,
-  compound, spufi, plain semicolon)
-- _split_with_package_awareness
-- _split_with_module_awareness
-- _split_with_exec_sql_awareness
-- _split_with_sqlpl_awareness
-- _split_with_compound_awareness
-- _split_with_trigger_awareness
-- _split_with_spufi_terminators
-- _split_by_semicolon_db2 (strings, quoted identifiers, comments, @ terminator)
+- client scanner for directives, block units, lexemes, and refusal
 - _extract_sqlpl_procedure_name / _extract_sqlpl_function_name
 - _extract_trigger_name / _extract_tablespace_name / _extract_stogroup_name
-- _has_* detection methods
 - parse_sql
 - validate_sql / _validate_db2_syntax
 - _clean_db2_comments
@@ -62,258 +52,58 @@ class TestSplitStatements(unittest.TestCase):
         self.assertGreaterEqual(len(stmts), 1)
 
 
-class TestHasDetectionMethods(unittest.TestCase):
+class TestClientScannerBehavior(unittest.TestCase):
     def setUp(self):
         self.parser = DB2RegexParser()
 
-    def test_has_exec_sql_blocks_true(self):
-        self.assertTrue(self.parser._has_exec_sql_blocks("EXEC SQL SELECT 1 END-EXEC"))
+    def test_routines_packages_modules_and_compounds_stay_whole(self):
+        scripts = (
+            "EXEC SQL CREATE TABLE t (id INT) END-EXEC;",
+            "CREATE PACKAGE pkg AS PROCEDURE p(); END pkg;",
+            "ALTER MODULE m ADD PROCEDURE p() BEGIN SELECT 1; END;",
+            "CREATE PROCEDURE p() LANGUAGE SQL BEGIN SELECT 1; END;",
+            "CREATE FUNCTION f() RETURNS INTEGER LANGUAGE SQL BEGIN RETURN 1; END;",
+            "BEGIN ATOMIC SELECT 1; END;",
+            "BEGIN NOT ATOMIC SELECT 1; END;",
+            "CREATE TRIGGER t AFTER INSERT ON tbl FOR EACH ROW BEGIN ATOMIC SELECT 1; END;",
+        )
+        for script in scripts:
+            with self.subTest(script=script):
+                self.assertEqual(len(self.parser.split_for_extraction(script)), 1)
 
-    def test_has_exec_sql_blocks_false(self):
-        self.assertFalse(self.parser._has_exec_sql_blocks("SELECT 1;"))
+    def test_create_module_is_not_a_procedural_block(self):
+        script = "CREATE MODULE m\n PUBLISH FUNCTION f() RETURNS INT;\nEND MODULE;"
+        self.assertEqual(len(self.parser.split_for_extraction(script)), 2)
 
-    def test_has_package_blocks_true(self):
-        sql = "CREATE PACKAGE pkg AS PROCEDURE p(); END pkg;"
-        self.assertTrue(self.parser._has_package_blocks(sql))
+    def test_directive_changes_terminator_and_is_not_sql(self):
+        script = "--#SET TERMINATOR @\nSELECT 1@\nSELECT 2@\n" "--#SET TERMINATOR ;\nSELECT 3;"
+        self.assertEqual(
+            self.parser.split_for_extraction(script), ["SELECT 1", "SELECT 2", "SELECT 3"]
+        )
+        self.assertEqual(sum(r.kind == "directive" for r in self.parser.split(script)), 2)
 
-    def test_has_package_blocks_false(self):
-        self.assertFalse(self.parser._has_package_blocks("SELECT 1;"))
+    def test_lexemes_keep_internal_semicolons(self):
+        scripts = (
+            "SELECT 'a;b';\nSELECT 1;",
+            'SELECT "col;name";\nSELECT 1;',
+            "SELECT 'O''Brien';\nSELECT 1;",
+            "SELECT /* a; */ 1;\nSELECT 2;",
+            "SELECT 1; -- comment;\nSELECT 2;",
+        )
+        for script in scripts:
+            with self.subTest(script=script):
+                self.assertEqual(len(self.parser.split_for_extraction(script)), 2)
+        self.assertEqual(self.parser.split_for_extraction(""), [])
+        self.assertEqual(self.parser.split_for_extraction("SELECT 1"), ["SELECT 1"])
+        self.assertEqual(self.parser.split_for_extraction("-- comment;"), [])
 
-    def test_has_module_blocks_true(self):
-        sql = "CREATE MODULE m BEGIN END MODULE;"
-        self.assertTrue(self.parser._has_module_blocks(sql))
+    def test_mid_line_semicolon_is_refused_before_the_driver_can_drop_sql(self):
+        from dblift.core.exceptions import UnsafeStatementSplitError
 
-    def test_has_module_blocks_false(self):
-        self.assertFalse(self.parser._has_module_blocks("SELECT 1;"))
-
-    def test_has_sqlpl_blocks_true(self):
-        sql = "CREATE PROCEDURE p() LANGUAGE SQL BEGIN SELECT 1; END;"
-        self.assertTrue(self.parser._has_sqlpl_blocks(sql))
-
-    def test_has_sqlpl_blocks_false(self):
-        self.assertFalse(self.parser._has_sqlpl_blocks("SELECT 1;"))
-
-    def test_has_compound_statements_atomic_true(self):
-        self.assertTrue(self.parser._has_compound_statements("BEGIN ATOMIC SELECT 1; END;"))
-
-    def test_has_compound_statements_not_atomic_true(self):
-        self.assertTrue(self.parser._has_compound_statements("BEGIN NOT ATOMIC SELECT 1; END;"))
-
-    def test_has_compound_statements_false(self):
-        self.assertFalse(self.parser._has_compound_statements("SELECT 1;"))
-
-    def test_has_trigger_blocks_true(self):
-        sql = "CREATE TRIGGER t AFTER INSERT ON tbl FOR EACH ROW BEGIN ATOMIC SELECT 1; END;"
-        self.assertTrue(self.parser._has_trigger_blocks(sql))
-
-    def test_has_trigger_blocks_false(self):
-        self.assertFalse(self.parser._has_trigger_blocks("SELECT 1;"))
-
-    def test_has_spufi_terminators_true(self):
-        self.assertTrue(self.parser._has_spufi_terminators("--#SET TERMINATOR @"))
-
-    def test_has_spufi_terminators_false(self):
-        self.assertFalse(self.parser._has_spufi_terminators("SELECT 1;"))
-
-
-class TestSplitWithSpufiTerminators(unittest.TestCase):
-    def setUp(self):
-        self.parser = DB2RegexParser()
-
-    def test_single_custom_terminator(self):
-        sql = "--#SET TERMINATOR @\nCREATE TABLE t (id INT)@"
-        stmts = self.parser._split_with_spufi_terminators(sql)
-        self.assertGreaterEqual(len(stmts), 1)
-        self.assertTrue(any("CREATE TABLE" in s for s in stmts))
-
-    def test_multiple_statements_with_custom_terminator(self):
-        sql = "--#SET TERMINATOR @\nSELECT 1@\nSELECT 2@"
-        stmts = self.parser._split_with_spufi_terminators(sql)
-        self.assertGreaterEqual(len(stmts), 2)
-
-    def test_terminator_change_mid_script(self):
-        sql = "--#SET TERMINATOR @\n" "SELECT 1@\n" "--#SET TERMINATOR ;\n" "SELECT 2;\n"
-        stmts = self.parser._split_with_spufi_terminators(sql)
-        self.assertGreaterEqual(len(stmts), 2)
-
-    def test_remaining_statement_added(self):
-        sql = "--#SET TERMINATOR @\nSELECT 1@\nSELECT 2"
-        stmts = self.parser._split_with_spufi_terminators(sql)
-        self.assertGreaterEqual(len(stmts), 2)
-
-
-class TestSplitWithPackageAwareness(unittest.TestCase):
-    def setUp(self):
-        self.parser = DB2RegexParser()
-
-    def test_package_as_one_statement(self):
-        sql = "CREATE PACKAGE pkg AS PROCEDURE p(); END pkg;"
-        stmts = self.parser._split_with_package_awareness(sql)
-        self.assertGreaterEqual(len(stmts), 1)
-        pkg = next((s for s in stmts if "CREATE PACKAGE" in s), None)
-        self.assertIsNotNone(pkg)
-
-    def test_sql_before_package_split(self):
-        sql = "SELECT 1;\nCREATE PACKAGE pkg AS PROCEDURE p(); END pkg;"
-        stmts = self.parser._split_with_package_awareness(sql)
-        self.assertGreaterEqual(len(stmts), 2)
-
-    def test_no_package_fallback(self):
-        # No package block — falls back to semicolon splitting
-        sql = "SELECT 1; SELECT 2;"
-        stmts = self.parser._split_with_package_awareness(sql)
-        self.assertGreaterEqual(len(stmts), 2)
-
-
-class TestSplitWithModuleAwareness(unittest.TestCase):
-    def setUp(self):
-        self.parser = DB2RegexParser()
-
-    def test_module_as_one_statement(self):
-        sql = "CREATE MODULE m\n  PUBLISH FUNCTION f() RETURNS INT;\nEND MODULE;"
-        stmts = self.parser._split_with_module_awareness(sql)
-        self.assertGreaterEqual(len(stmts), 1)
-        mod = next((s for s in stmts if "CREATE MODULE" in s), None)
-        self.assertIsNotNone(mod)
-
-    def test_sql_before_module_split(self):
-        sql = "SELECT 1;\nCREATE MODULE m PUBLISH FUNCTION f() RETURNS INT; END MODULE;"
-        stmts = self.parser._split_with_module_awareness(sql)
-        self.assertGreaterEqual(len(stmts), 2)
-
-    def test_no_module_fallback(self):
-        sql = "SELECT 1; SELECT 2;"
-        stmts = self.parser._split_with_module_awareness(sql)
-        self.assertGreaterEqual(len(stmts), 2)
-
-
-class TestSplitWithExecSqlAwareness(unittest.TestCase):
-    def setUp(self):
-        self.parser = DB2RegexParser()
-
-    def test_exec_sql_block_as_one(self):
-        sql = "EXEC SQL CREATE TABLE t (id INT) END-EXEC;\n"
-        stmts = self.parser._split_with_exec_sql_awareness(sql)
-        self.assertGreaterEqual(len(stmts), 1)
-
-    def test_sql_after_exec_block(self):
-        sql = "EXEC SQL CREATE TABLE t (id INT) END-EXEC;\nSELECT 1;"
-        stmts = self.parser._split_with_exec_sql_awareness(sql)
-        self.assertGreaterEqual(len(stmts), 2)
-
-    def test_no_exec_sql_fallback(self):
-        # Config.extract_exec_sql_blocks returns empty for no EXEC SQL
-        sql = "SELECT 1; SELECT 2;"
-        stmts = self.parser._split_with_exec_sql_awareness(sql)
-        self.assertGreaterEqual(len(stmts), 2)
-
-
-class TestSplitWithSqlplAwareness(unittest.TestCase):
-    def setUp(self):
-        self.parser = DB2RegexParser()
-
-    def test_procedure_as_one_block(self):
-        sql = "CREATE PROCEDURE p() LANGUAGE SQL BEGIN SELECT 1; END;"
-        stmts = self.parser._split_with_sqlpl_awareness(sql)
-        self.assertGreaterEqual(len(stmts), 1)
-
-    def test_sql_before_proc(self):
-        sql = "SELECT 1;\nCREATE PROCEDURE p() LANGUAGE SQL BEGIN SELECT 2; END;"
-        stmts = self.parser._split_with_sqlpl_awareness(sql)
-        self.assertGreaterEqual(len(stmts), 2)
-
-    def test_no_sqlpl_fallback(self):
-        sql = "SELECT 1; SELECT 2;"
-        stmts = self.parser._split_with_sqlpl_awareness(sql)
-        self.assertGreaterEqual(len(stmts), 2)
-
-
-class TestSplitWithCompoundAwareness(unittest.TestCase):
-    def setUp(self):
-        self.parser = DB2RegexParser()
-
-    def test_compound_as_one_block(self):
-        sql = "BEGIN ATOMIC SELECT 1; END;"
-        stmts = self.parser._split_with_compound_awareness(sql)
-        self.assertGreaterEqual(len(stmts), 1)
-
-    def test_sql_before_compound(self):
-        sql = "SELECT 1;\nBEGIN ATOMIC SELECT 2; END;"
-        stmts = self.parser._split_with_compound_awareness(sql)
-        self.assertGreaterEqual(len(stmts), 2)
-
-    def test_no_compound_fallback(self):
-        sql = "SELECT 1; SELECT 2;"
-        stmts = self.parser._split_with_compound_awareness(sql)
-        self.assertGreaterEqual(len(stmts), 2)
-
-
-class TestSplitWithTriggerAwareness(unittest.TestCase):
-    def setUp(self):
-        self.parser = DB2RegexParser()
-
-    def test_trigger_as_one_block(self):
-        sql = "CREATE TRIGGER t AFTER INSERT ON tbl FOR EACH ROW BEGIN ATOMIC SELECT 1; END;"
-        stmts = self.parser._split_with_trigger_awareness(sql)
-        self.assertGreaterEqual(len(stmts), 1)
-
-    def test_sql_before_trigger(self):
-        sql = "SELECT 1;\nCREATE TRIGGER t AFTER INSERT ON tbl FOR EACH ROW BEGIN ATOMIC SELECT 2; END;"
-        stmts = self.parser._split_with_trigger_awareness(sql)
-        self.assertGreaterEqual(len(stmts), 2)
-
-    def test_no_trigger_fallback(self):
-        sql = "SELECT 1; SELECT 2;"
-        stmts = self.parser._split_with_trigger_awareness(sql)
-        self.assertGreaterEqual(len(stmts), 2)
-
-
-class TestSplitBySemicolonDb2(unittest.TestCase):
-    def setUp(self):
-        self.parser = DB2RegexParser()
-
-    def test_simple_statements(self):
-        stmts = self.parser._split_by_semicolon_db2("SELECT 1; SELECT 2;")
-        self.assertEqual(len(stmts), 2)
-
-    def test_single_quoted_string_semicolon_not_split(self):
-        stmts = self.parser._split_by_semicolon_db2("SELECT 'a;b'; SELECT 1;")
-        self.assertEqual(len(stmts), 2)
-        self.assertIn("'a;b'", stmts[0])
-
-    def test_double_quoted_identifier_no_internal_semicolon(self):
-        # Quoted identifier without semicolon inside is handled correctly
-        stmts = self.parser._split_by_semicolon_db2('SELECT "col_name"; SELECT 1;')
-        self.assertEqual(len(stmts), 2)
-
-    def test_line_comment_semicolon_not_split(self):
-        stmts = self.parser._split_by_semicolon_db2("SELECT 1; -- comment;\nSELECT 2;")
-        self.assertEqual(len(stmts), 2)
-
-    def test_block_comment_semicolon_not_split(self):
-        stmts = self.parser._split_by_semicolon_db2("SELECT 1; /* ; */ SELECT 2;")
-        self.assertEqual(len(stmts), 2)
-
-    def test_at_sign_terminator(self):
-        stmts = self.parser._split_by_semicolon_db2("SELECT 1@ SELECT 2@")
-        self.assertEqual(len(stmts), 2)
-
-    def test_escaped_single_quote(self):
-        stmts = self.parser._split_by_semicolon_db2("SELECT 'O''Brien'; SELECT 1;")
-        self.assertEqual(len(stmts), 2)
-        self.assertIn("O''Brien", stmts[0])
-
-    def test_empty_string(self):
-        self.assertEqual(self.parser._split_by_semicolon_db2(""), [])
-
-    def test_no_terminator_returns_single(self):
-        stmts = self.parser._split_by_semicolon_db2("SELECT 1")
-        self.assertEqual(len(stmts), 1)
-
-    def test_comment_only_filtered(self):
-        stmts = self.parser._split_by_semicolon_db2("-- comment;")
-        # The comment line itself has ; but it produces only a comment
-        self.assertEqual(len(stmts), 0)
+        for script in ("SELECT 1; SELECT 2;", "SELECT 'a;b'; SELECT 1;"):
+            with self.subTest(script=script):
+                with self.assertRaises(UnsafeStatementSplitError):
+                    self.parser.split_for_extraction(script)
 
 
 class TestExtractNames(unittest.TestCase):
@@ -489,7 +279,9 @@ class TestParseSql(unittest.TestCase):
         self.assertIsInstance(result, ParseResult)
 
     def test_parse_multiple_statements(self):
-        sql = "CREATE TABLE a (id INTEGER); CREATE TABLE b (id INTEGER); INSERT INTO a VALUES (1);"
+        sql = (
+            "CREATE TABLE a (id INTEGER);\nCREATE TABLE b (id INTEGER);\nINSERT INTO a VALUES (1);"
+        )
         result = self.parser.parse_sql(sql)
         self.assertTrue(result.success)
         self.assertGreaterEqual(len(result.statements), 3)
@@ -508,13 +300,13 @@ class TestValidateSql(unittest.TestCase):
         sql = 'CREATE TABLE "test (id INTEGER);'
         result = self.parser.validate_sql(sql)
         self.assertFalse(result["valid"])
-        self.assertIn("Unmatched quoted identifier", result["errors"][0])
+        self.assertIn("inside a string or a quoted identifier", result["errors"][0])
 
     def test_unmatched_begin_end(self):
         sql = "BEGIN ATOMIC INSERT INTO t VALUES (1);"
         result = self.parser.validate_sql(sql)
         self.assertFalse(result["valid"])
-        self.assertIn("Unmatched BEGIN/END", result["errors"][0])
+        self.assertIn("routine body", result["errors"][0])
 
     def test_exec_sql_without_end_exec(self):
         sql = "EXEC SQL CREATE TABLE t (id INTEGER);"
@@ -528,7 +320,7 @@ class TestValidateSql(unittest.TestCase):
         self.assertIn("No valid statements found", result["errors"][0])
 
     def test_statement_count_in_result(self):
-        sql = "CREATE TABLE a (id INTEGER); INSERT INTO a VALUES (1);"
+        sql = "CREATE TABLE a (id INTEGER);\nINSERT INTO a VALUES (1);"
         result = self.parser.validate_sql(sql)
         self.assertIn("statement_count", result)
         self.assertGreaterEqual(result["statement_count"], 2)
@@ -664,8 +456,8 @@ CREATE TABLE t (id INTEGER) IN ts1;
         self.assertGreaterEqual(len(result.statements), 3)
 
     def test_multiple_statements_at_terminator(self):
-        sql = "SELECT 1@ SELECT 2@ SELECT 3@"
-        stmts = self.parser._split_by_semicolon_db2(sql)
+        sql = "--#SET TERMINATOR @\nSELECT 1@\nSELECT 2@\nSELECT 3@"
+        stmts = self.parser.split_statements(sql)
         self.assertEqual(len(stmts), 3)
 
     def test_nested_quoted_in_string(self):

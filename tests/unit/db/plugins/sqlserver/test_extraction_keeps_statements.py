@@ -41,7 +41,10 @@ def test_hybrid_extraction_of_a_batch_equals_extraction_statement_by_statement()
     assert {n for _, n in names(one_by_one)} >= {"a", "ix_a", "v"}
 
 
-def test_the_default_split_for_extraction_is_the_execution_split():
+def test_postgresql_extraction_uses_scanner_constituents():
     parser = SqlParserFactory("postgresql", parser_type="regex").get_parser()
     script = "CREATE TABLE a (x INT);\nCREATE TABLE b (y INT);\n"
-    assert parser.split_for_extraction(script) == parser.split_statements(script)
+    assert parser.split_for_extraction(script) == [
+        "CREATE TABLE a (x INT)",
+        "CREATE TABLE b (y INT)",
+    ]

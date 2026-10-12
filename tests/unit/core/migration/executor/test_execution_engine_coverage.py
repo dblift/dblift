@@ -158,14 +158,11 @@ class TestParseSqlStatements(unittest.TestCase):
     def test_config_dialect_key_str_fallback(self):
         """Lines 270-271: config.database.type has no .value → str(raw_type)."""
         engine = _make_engine(with_config=True)
-        # Remove .value attribute so getattr returns None
-        raw_type = MagicMock()
-        del raw_type.value
-        engine.config.database.type = raw_type
+        engine.config.database.type = "postgresql"
 
         migration = _make_sql_migration()
         result = engine._parse_sql_statements(migration, MagicMock())
-        # Should still work (fall through to sql_analyzer.dialect)
+        # Plain string config values use str(raw_type).
         self.assertIsNotNone(result)
 
     def test_mssql_normalized_to_sqlserver(self):

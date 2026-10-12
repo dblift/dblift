@@ -1,8 +1,4 @@
-"""MySQL tokenization-based SQL parser implementation.
-
-This module provides a MySQL-specific parser that uses tokenization to handle MySQL's unique
-features including DELIMITER statements, backtick identifiers, and stored procedures.
-"""
+"""MySQL object parser backed by the client-aware script scanner."""
 
 import logging
 import re
@@ -11,10 +7,8 @@ from typing import Any, Dict, List, Optional, Type
 from dblift.core.sql_model.base import ParseResult, SqlStatement, SqlStatementType
 from dblift.core.sql_parser.base_tokenizer import BaseTokenizer
 from dblift.core.sql_parser.enhanced_regex_parser import EnhancedRegexParser
-from dblift.core.sql_parser.parser_context import ParserContext
-from dblift.core.sql_parser.statement import Statement
+from dblift.core.sql_parser.statement import Statement, analysis_sql
 from dblift.db.plugins.mysql.parser._script import scan_script
-from dblift.db.plugins.mysql.parser.mysql_statement_parser import MySQLStatementParser
 from dblift.db.plugins.mysql.parser.mysql_tokenizer import MySQLTokenizer
 from dblift.db.plugins.mysql.parser.parser_config import MySqlConfig
 
@@ -26,13 +20,9 @@ class MySqlRegexParser(EnhancedRegexParser):
 
     dialect_name = "mysql"  # lint: allow-dialect-string: dialect dispatch
 
-    #: Same tokenizer :meth:`split_for_extraction` uses below, so extraction's
-    #: comment stripper reads MySQL's non-nesting block-comment rule from
-    #: the one place it is declared instead of assuming its own.
+    #: Object extraction and SQL redaction still use the tokenizer's MySQL
+    #: comment and literal rules; statement boundaries come from ``_script``.
     tokenizer_class: Type[BaseTokenizer] = MySQLTokenizer
-
-    #: No regex fallback may re-split a script this splitter refused.
-    SPLITS_WITHOUT_FALLBACK = True
 
     #: ``/*M! ... */`` is an executable comment to the mariadb client, a plain comment to mysql.
     MARIADB = False
@@ -54,331 +44,19 @@ class MySqlRegexParser(EnhancedRegexParser):
         """
         return [record.text for record in self.split(sql_content) if record.kind == "sql"]
 
+    def split_for_analysis(self, sql_content: str, strict_tokenizer: bool = False) -> List[str]:
+        """Project analysable SQL from the client scanner, including custom-delimiter fragments."""
+        return analysis_sql(self.split(sql_content))
+
     def split_for_extraction(self, sql_content: str, strict_tokenizer: bool = False) -> List[str]:
-        """Split SQL content with MySQL-specific handling, for object extraction.
-
-        Handles DELIMITER statements, backtick identifiers, and MySQL comments.
-        Uses tokenization-based approach for robust parsing with fallback to regex.
-
-        Args:
-            sql_content: SQL content to split
-
-        Returns:
-            List of SQL statement strings
-        """
-        if not sql_content or not sql_content.strip():
-            return []
-
-        try:
-            # Use tokenization-based splitting
-            tokenizer = MySQLTokenizer(sql_content, strict_unknown_chars=strict_tokenizer)
-            tokens = tokenizer.tokenize()
-
-            context = ParserContext()
-            parser = MySQLStatementParser(tokens, context, source=sql_content)
-
-            statements = parser.split_statements()
-            logger.debug(f"MySQL: Tokenization split into {len(statements)} statements")
-            return statements
-
-        except Exception as e:
-            if strict_tokenizer:
-                raise
-            # Fallback to old regex-based splitting if tokenization fails
-            logger.warning(f"MySQL tokenization failed, falling back to regex: {str(e)}")
-
-        # Fallback: Handle DELIMITER statements specially
-        if self._has_delimiter_statements(sql_content):
-            return self._split_with_delimiter_awareness(sql_content)
-
-        # Clean MySQL-specific comments first
-        cleaned_sql = self._clean_mysql_comments(sql_content)
-
-        # Check for stored procedures/functions that might use BEGIN/END
-        if self._has_stored_procedures(cleaned_sql):
-            return self._split_with_procedure_awareness(cleaned_sql)
-
-        # Use enhanced semicolon splitting with backtick awareness
-        return self._split_by_semicolon_mysql(cleaned_sql)
-
-    def _has_delimiter_statements(self, sql: str) -> bool:
-        """Check if SQL contains DELIMITER statements outside comments/strings."""
-        # Quick check first
-        if not re.search(r"^\s*DELIMITER\s+", sql, re.IGNORECASE | re.MULTILINE):
-            return False
-
-        # Verify DELIMITER appears outside comments/strings
-        in_single = False
-        in_double = False
-        in_backtick = False
-        in_line_comment = False
-        in_block_comment = False
-        i = 0
-        while i < len(sql):
-            ch = sql[i]
-            # End of line comment
-            if in_line_comment:
-                if ch in ("\n", "\r"):
-                    in_line_comment = False
-                i += 1
-                continue
-            # End of block comment
-            if in_block_comment:
-                if ch == "*" and i + 1 < len(sql) and sql[i + 1] == "/":
-                    in_block_comment = False
-                    i += 2
-                else:
-                    i += 1
-                continue
-            # Toggle string/backtick states
-            if ch == "'" and not in_double and not in_backtick:
-                in_single = not in_single
-                i += 1
-                continue
-            if ch == '"' and not in_single and not in_backtick:
-                in_double = not in_double
-                i += 1
-                continue
-            if ch == "`" and not in_single and not in_double:
-                in_backtick = not in_backtick
-                i += 1
-                continue
-            # Start comments when not in strings
-            if not in_single and not in_double and not in_backtick:
-                if ch == "#":
-                    in_line_comment = True
-                    i += 1
-                    continue
-                if ch == "-" and i + 1 < len(sql) and sql[i + 1] == "-":
-                    in_line_comment = True
-                    i += 2
-                    continue
-                if ch == "/" and i + 1 < len(sql) and sql[i + 1] == "*":
-                    in_block_comment = True
-                    i += 2
-                    continue
-                # Check for DELIMITER at start of line when not in comment/string
-                if ch in ("\n", "\r") or i == 0:
-                    # Find start of this line
-                    line_start = i if i == 0 else i + 1
-                    # Extract until end of line
-                    line_end = sql.find("\n", line_start)
-                    if line_end == -1:
-                        line_end = len(sql)
-                    line = sql[line_start:line_end]
-                    if re.match(r"^\s*DELIMITER\s+", line, re.IGNORECASE):
-                        return True
-            i += 1
-        return False
-
-    def _has_stored_procedures(self, sql: str) -> bool:
-        """Check if SQL contains stored procedures, functions, events, or triggers with BEGIN/END blocks."""
-        return bool(
-            re.search(
-                r"\b(?:CREATE|ALTER)\s+(?:PROCEDURE|FUNCTION|EVENT|TRIGGER)\b", sql, re.IGNORECASE
-            )
-        )
+        """Use the same scanner projection for object extraction."""
+        return self.split_for_analysis(sql_content, strict_tokenizer=strict_tokenizer)
 
     def _clean_mysql_comments(self, sql: str) -> str:
-        """Clean MySQL-specific comments from SQL."""
-        # Remove hash comments
+        """Remove ordinary comments while retaining executable MySQL comments."""
         sql = re.sub(r"#.*$", "", sql, flags=re.MULTILINE)
-
-        # Remove -- comments
         sql = re.sub(r"--.*$", "", sql, flags=re.MULTILINE)
-
-        # Remove /* */ comments but preserve /*! */ MySQL-specific comments
-        sql = re.sub(r"/\*(?!!)(.*?)\*/", "", sql, flags=re.DOTALL)
-
-        return sql
-
-    def _split_with_delimiter_awareness(self, sql: str) -> List[str]:
-        """Split SQL with DELIMITER statement awareness."""
-        statements = []
-        delimiter_blocks = self.config.extract_delimiter_blocks(sql)
-
-        for block in delimiter_blocks:
-            content = block["content"].strip()
-            delimiter = block["delimiter"]
-
-            if not content:
-                continue
-
-            # Skip DELIMITER statements themselves
-            if content.upper().startswith("DELIMITER"):
-                continue
-
-            # With custom delimiter, each extracted block already ends at a delimiter.
-            # Treat the whole block content as a single statement.
-            if delimiter != ";":
-                if content and not self._is_empty_or_comment(content):
-                    statements.append(content)
-            else:
-                # Standard semicolon - split normally
-                sub_statements = self._split_by_semicolon_mysql(content)
-                statements.extend(sub_statements)
-
-        return statements
-
-    def _split_with_procedure_awareness(self, sql: str) -> List[str]:
-        """Split SQL with stored procedure/function/event/trigger awareness."""
-        # First check if we have CREATE PROCEDURE/FUNCTION/EVENT/TRIGGER with BEGIN...END
-        # If not, use the more robust semicolon splitter
-        has_begin_end = bool(
-            re.search(
-                r"\b(?:CREATE|ALTER)\s+(?:PROCEDURE|FUNCTION|EVENT|TRIGGER)\b.*\bBEGIN\b",
-                sql,
-                re.IGNORECASE | re.DOTALL,
-            )
-        )
-
-        if not has_begin_end:
-            # No BEGIN...END blocks, use regular semicolon splitting
-            return self._split_by_semicolon_mysql(sql)
-
-        # Has BEGIN...END, use line-by-line procedure-aware splitting
-        statements = []
-        current_statement = []
-        lines = sql.split("\n")
-
-        in_procedure = False
-        begin_depth = 0
-
-        for line in lines:
-            line_stripped = line.strip()
-
-            # Check for procedure/function/event/trigger start
-            if re.match(
-                r"^\s*(?:CREATE|ALTER)\s+(?:PROCEDURE|FUNCTION|EVENT|TRIGGER)\b",
-                line_stripped,
-                re.IGNORECASE,
-            ):
-                in_procedure = True
-                begin_depth = 0
-
-            # Track BEGIN/END depth in procedures/events/triggers
-            if in_procedure:
-                begin_matches = len(re.findall(r"\bBEGIN\b", line_stripped, re.IGNORECASE))
-                end_matches = len(re.findall(r"\bEND\b", line_stripped, re.IGNORECASE))
-                begin_depth += begin_matches - end_matches
-
-            current_statement.append(line)
-
-            # Check for statement end
-            if line_stripped.endswith(";"):
-                if not in_procedure or begin_depth <= 0:
-                    # End of statement
-                    stmt = "\n".join(current_statement).strip()
-                    if stmt and not self._is_empty_or_comment(stmt):
-                        statements.append(stmt)
-                    current_statement = []
-                    in_procedure = False
-                    begin_depth = 0
-
-        # Add any remaining statement
-        if current_statement:
-            stmt = "\n".join(current_statement).strip()
-            if stmt and not self._is_empty_or_comment(stmt):
-                statements.append(stmt)
-
-        return statements
-
-    def _split_by_semicolon_mysql(self, sql: str) -> List[str]:
-        """Enhanced semicolon splitting with MySQL backtick identifier support."""
-        statements = []
-        current = []
-        in_string = False
-        in_backtick = False
-        in_line_comment = False
-        in_block_comment = False
-        string_char = None
-        i = 0
-
-        while i < len(sql):
-            char = sql[i]
-
-            # Handle string literals
-            if not in_line_comment and not in_block_comment and not in_backtick:
-                if not in_string and char in ("'", '"'):
-                    in_string = True
-                    string_char = char
-                elif in_string and char == string_char:
-                    # Check for escaped quotes
-                    if i + 1 < len(sql) and sql[i + 1] == string_char:
-                        current.append(char)
-                        current.append(sql[i + 1])
-                        i += 2
-                        continue
-                    else:
-                        in_string = False
-                        string_char = None
-
-            # Handle backtick identifiers
-            if not in_string and not in_line_comment and not in_block_comment:
-                if not in_backtick and char == "`":
-                    in_backtick = True
-                elif in_backtick and char == "`":
-                    in_backtick = False
-
-            # Handle comments
-            if not in_string and not in_backtick:
-                # Hash comments
-                if char == "#":
-                    in_line_comment = True
-                    current.append(char)
-                    i += 1
-                    continue
-                # -- comments
-                elif char == "-" and i + 1 < len(sql) and sql[i + 1] == "-":
-                    in_line_comment = True
-                    current.append(char)
-                    current.append(sql[i + 1])
-                    i += 2
-                    continue
-                # Block comments
-                elif char == "/" and i + 1 < len(sql) and sql[i + 1] == "*":
-                    in_block_comment = True
-                    current.append(char)
-                    current.append(sql[i + 1])
-                    i += 2
-                    continue
-                elif char == "*" and i + 1 < len(sql) and sql[i + 1] == "/" and in_block_comment:
-                    in_block_comment = False
-                    current.append(char)
-                    current.append(sql[i + 1])
-                    i += 2
-                    continue
-
-            # End line comments at newline
-            if char in ["\n", "\r"] and in_line_comment:
-                in_line_comment = False
-
-            # Handle statement terminators (semicolon)
-            if (
-                char == ";"
-                and not in_string
-                and not in_backtick
-                and not in_line_comment
-                and not in_block_comment
-            ):
-                current.append(char)
-                stmt = "".join(current).strip()
-                if stmt and not self._is_empty_or_comment(stmt):
-                    statements.append(stmt)
-                current = []
-                i += 1
-                continue
-
-            current.append(char)
-            i += 1
-
-        # Add any remaining statement
-        if current:
-            stmt = "".join(current).strip()
-            if stmt and not self._is_empty_or_comment(stmt):
-                statements.append(stmt)
-
-        return statements
+        return re.sub(r"/\*(?!!)(.*?)\*/", "", sql, flags=re.DOTALL)
 
     def _extract_delimiter_statement(self, sql: str) -> Optional[str]:
         """Extract DELIMITER statement if present."""
@@ -430,11 +108,7 @@ class MySqlRegexParser(EnhancedRegexParser):
         errors = []
 
         try:
-            # Clean and normalize SQL
-            cleaned_sql = self._clean_mysql_comments(sql_content)
-
-            # Enhanced statement splitting
-            sql_statements = self.split_for_extraction(cleaned_sql)
+            sql_statements = self.split_for_extraction(sql_content)
 
             # Parse each statement with MySQL-specific handling
             for sql in sql_statements:
@@ -443,7 +117,7 @@ class MySqlRegexParser(EnhancedRegexParser):
 
                 try:
                     stmt_type = self._classify_statement_enhanced(sql)
-                    objects = self.extract_objects(sql, default_schema)
+                    objects = self.extract_objects(self._clean_mysql_comments(sql), default_schema)
 
                     statement = SqlStatement(
                         sql_text=sql,

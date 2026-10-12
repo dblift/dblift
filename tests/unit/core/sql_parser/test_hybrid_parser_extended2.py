@@ -90,7 +90,7 @@ class TestIsSqlglotOpaqueValidDdl:
 class TestExtractObjectsSqlglotException:
     def test_sqlglot_extraction_exception_falls_back_to_regex(self):
         parser = HybridParser("postgresql")
-        parser.sqlglot_parser.extract_objects = MagicMock(side_effect=RuntimeError("boom"))
+        parser.sqlglot_parser.extract_fragment_objects = MagicMock(side_effect=RuntimeError("boom"))
         objects = parser.extract_objects("CREATE TABLE t (id INT)")
         assert isinstance(objects, list)
 
@@ -191,7 +191,7 @@ class TestExtractViewDepsFromObjects:
         view_obj.object_type.value = "VIEW"
         view_obj.name = "v1"
         view_obj.schema = "myschema"
-        parser.sqlglot_parser.extract_objects = MagicMock(return_value=[view_obj])
+        parser.sqlglot_parser.extract_fragment_objects = MagicMock(return_value=[view_obj])
         deps = {"tables": [], "views": [], "schemas": []}
         parser._extract_view_deps_from_objects("CREATE VIEW v1 AS SELECT 1", None, deps)
         assert "v1" in deps["views"]
@@ -221,7 +221,7 @@ class TestEnhanceStatement:
             dialect="postgresql",
             schema=None,
         )
-        parser.sqlglot_parser.parse_sql = MagicMock(side_effect=RuntimeError("boom"))
+        parser.sqlglot_parser.parse_fragment = MagicMock(side_effect=RuntimeError("boom"))
         assert parser._enhance_statement(stmt, None) is stmt
 
 

@@ -217,7 +217,7 @@ None. The scanner (`_script.py`) is one reader for both engines: it holds the ac
 
 ## 12. Current implementation
 
-Code: `dblift/db/plugins/mysql/parser/_script.py` (the scanner: strings, comments, executable comments, the delimiter and the stored-program rule of section 5) and `mysql_regex_parser.py` (`split()` returns `Statement` records, `split_statements()` their text, both without a fallback). MariaDB uses the same scanner through `dblift/db/plugins/mariadb/regex_parser.py`, which only switches on `/*M!`. The tokenizer-based splitter that came before is kept as `split_for_extraction()` for object extraction and `parse_sql`, which read a chunk of text and must not refuse it.
+Code: `dblift/db/plugins/mysql/parser/_script.py` (the scanner: strings, comments, executable comments, the delimiter and the stored-program rule of section 5) and `mysql_regex_parser.py` (`split()` returns `Statement` records, `split_statements()` their execution text). MariaDB uses the same scanner through `dblift/db/plugins/mariadb/regex_parser.py`, which switches on `/*M!`. `split_for_extraction()` and `parse_sql()` project from the scanner and honor the same client-command refusals. A custom-delimiter execution unit without a stored-program body records its constituent SQL statements for analysis; the execution text stays one unit. The tokenizer remains for object extraction and literal redaction, but its old statement parser is removed.
 
 Client commands (section 6) are refused by name with their line (`UnsupportedMetaCommandError`); a script that sets `NO_BACKSLASH_ESCAPES` outside its comments is refused (`UnsafeStatementSplitError`).
 

@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Scanner records can carry optional half-open Python string offsets into the
+  original script, including consumed client terminators. Their analysis
+  constituents distinguish a single derived statement from a deliberate
+  empty analysis projection.
 - `Statement` records for Oracle (`OracleStatementParser.split()`): the text
   without its terminator, its line, and the terminator (`;`, `/` or none).
 - `Statement` records from `PostgreSQLStatementParser.split()`: the text
@@ -35,6 +39,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Script execution, analysis, object extraction, and transaction checks now
+  use each dialect's authoritative scanner records. Client-skipped batches
+  contribute no statements or objects; scanner refusals no longer trigger a
+  second semicolon split. Parser base classes now require dialect subclasses
+  to provide script splitting. SQLGlot analyzes scanner-selected SQL fragments
+  and does not choose script boundaries.
+- Scanner-selected constituents prevent `GO 0` batches from appearing in undo
+  or analysis and expose non-transactional SQL inside combined execution units.
+  Transaction controls inside a psql-combined unit are refused. PostgreSQL
+  `COPY` preserves empty and trailing-empty data rows with their original line
+  endings. Oracle `EXIT` ignores trailing text, and repeated parser calls reset
+  substitution state. MySQL delimiter scanning avoids pathological backtracking;
+  DuckDB continued string literals retain their execution boundaries.
 - **SQLite and DuckDB: a migration that opens with `BEGIN` and closes with
   `COMMIT` or `END` now runs.** `BEGIN [TRANSACTION]` (and `START TRANSACTION`
   or `BEGIN WORK` on DuckDB) as the first statement and `COMMIT` or `END [TRANSACTION]` as the

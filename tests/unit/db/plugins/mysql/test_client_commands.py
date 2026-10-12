@@ -128,15 +128,12 @@ def test_other_statements_that_mention_the_mode_are_not_refused() -> None:
 SCRIPT = "source other.sql;\nCREATE TABLE a (id INT);\nSELECT 1\\G\nCREATE TABLE b (id INT);\n"
 
 
-def test_the_execution_split_refuses_a_client_command_and_the_extraction_split_does_not() -> None:
+def test_execution_and_extraction_refuse_the_same_client_command() -> None:
     parser = MySqlRegexParser()
     with pytest.raises(UnsupportedMetaCommandError, match="source"):
         parser.split_statements(SCRIPT)
-    assert parser.split_for_extraction(SCRIPT) == [
-        "source other.sql",
-        "CREATE TABLE a (id INT)",
-        "SELECT 1\\G\nCREATE TABLE b (id INT)",
-    ]
+    with pytest.raises(UnsupportedMetaCommandError, match="source"):
+        parser.split_for_extraction(SCRIPT)
 
 
 @pytest.mark.parametrize("line", ["exit", "exit;", "status", "source f", "use db"])

@@ -15,6 +15,8 @@ from dblift.core.sql_model.base import (
 from dblift.core.sql_model.dialect import get_sqlglot_dialect
 from dblift.core.sql_parser.enhanced_regex_parser import EnhancedRegexParser
 from dblift.core.sql_parser.parser_context import ParserContext
+from dblift.core.sql_parser.statement import Statement, analysis_sql
+from dblift.core.sql_parser.tokens import TokenType
 from dblift.db.dml_analysis import cte_outer_statement_type
 from dblift.db.plugins.postgresql.parser.parser_config import PostgreSqlConfig
 from dblift.db.plugins.postgresql.parser.postgresql_statement_parser import (
@@ -41,8 +43,6 @@ class PostgreSqlRegexParser(EnhancedRegexParser):
     #: wire-compatible engines that don't share PostgreSQL's nested-comment
     #: documentation swap this for :class:`NonNestingPostgreSQLTokenizer`.
     tokenizer_class: type = PostgreSQLTokenizer
-
-    SPLITS_WITHOUT_FALLBACK = True
 
     def __init__(self) -> None:
         """Initialize PostgreSQL regex parser."""
@@ -73,6 +73,23 @@ class PostgreSqlRegexParser(EnhancedRegexParser):
             tokenizer.tokenize(), ParserContext(), source=sql_content
         )
         return parser.split_statements()
+
+    def split(self, sql_content: str, strict_tokenizer: bool = False) -> List[Statement]:
+        """Return executable units and their scanner-derived analysis parts."""
+        if not sql_content or not sql_content.strip():
+            return []
+        tokenizer = self.tokenizer_class(sql_content, strict_unknown_chars=strict_tokenizer)
+        return PostgreSQLStatementParser(
+            tokenizer.tokenize(), ParserContext(), source=sql_content
+        ).split()
+
+    def split_for_analysis(self, sql_content: str, strict_tokenizer: bool = False) -> List[str]:
+        """Return every executable SQL constituent for analysis."""
+        return analysis_sql(self.split(sql_content, strict_tokenizer=strict_tokenizer))
+
+    def split_for_extraction(self, sql_content: str, strict_tokenizer: bool = False) -> List[str]:
+        """Extract objects from the same SQL constituents as analysis."""
+        return self.split_for_analysis(sql_content, strict_tokenizer=strict_tokenizer)
 
     def _identify_statement_type(self, sql: str) -> SqlStatementType:
         """Identify PostgreSQL statement type using regex patterns."""
@@ -128,7 +145,7 @@ class PostgreSqlRegexParser(EnhancedRegexParser):
 
         try:
             # Split statements using PostgreSQL-specific logic
-            statements = self.split_statements(sql_content)
+            statements = self.split_for_analysis(sql_content)
 
             # Create SqlStatement objects
             sql_statements = []
@@ -161,159 +178,29 @@ class PostgreSqlRegexParser(EnhancedRegexParser):
             return ParseResult(statements=[], errors=[error_msg], success=False)
 
     def validate_sql(self, sql_content: str) -> Dict[str, Any]:
-        """Validate SQL content using structural checks."""
+        """Validate client selection and structural parentheses with the tokenizer."""
         errors = []
 
         try:
-            # Basic structural validation
-            statements = self.split_statements(sql_content)
-
-            for stmt in statements:
-                # Check for basic syntax issues
-                if not stmt.strip():
+            tokens = self.tokenizer_class(sql_content).tokenize()
+            PostgreSQLStatementParser(tokens, ParserContext(), source=sql_content).split()
+            depth = 0
+            for token in tokens:
+                if token.type != TokenType.SYMBOL:
                     continue
-
-                # Check for unmatched quotes
-                if self._has_unmatched_quotes(stmt):
-                    errors.append(f"Unmatched quotes in statement: {stmt[:50]}...")
-
-                # Check for unmatched parentheses
-                if self._has_unmatched_parentheses(stmt):
-                    errors.append(f"Unmatched parentheses in statement: {stmt[:50]}...")
-
-                # Check for unmatched dollar quotes
-                if self._has_unmatched_dollar_quotes(stmt):
-                    errors.append(f"Unmatched dollar quotes in statement: {stmt[:50]}...")
+                if token.text == "(":
+                    depth += 1
+                elif token.text == ")":
+                    depth -= 1
+                    if depth < 0:
+                        break
+            if depth != 0:
+                errors.append("Unmatched parentheses in SQL")
 
         except Exception as e:
             errors.append(f"Validation error: {str(e)}")
 
         return {"success": len(errors) == 0, "errors": errors}
-
-    def _has_unmatched_quotes(self, sql: str) -> bool:
-        """Check for unmatched single or double quotes, respecting dollar quotes."""
-        in_single_quote = False
-        in_double_quote = False
-        dollar_tag: Optional[str] = None
-        i = 0
-
-        while i < len(sql):
-            char = sql[i]
-
-            # Handle dollar-quoted strings first (highest priority)
-            if char == "$" and not in_single_quote and not in_double_quote:
-                if dollar_tag is None:
-                    # Check for opening dollar quote
-                    m = re.match(r"\$([a-zA-Z_][a-zA-Z0-9_]*)?\$", sql[i:])
-                    if m:
-                        dollar_tag = m.group(0)
-                        i += len(dollar_tag)
-                        continue
-                else:
-                    # Check for closing dollar quote
-                    if sql.startswith(dollar_tag, i):
-                        i += len(dollar_tag)
-                        dollar_tag = None
-                        continue
-
-            # Only process quotes outside dollar-quoted strings
-            if dollar_tag is None:
-                # Handle single quotes
-                if char == "'" and not in_double_quote:
-                    # Check for escaped single quote
-                    if i + 1 < len(sql) and sql[i + 1] == "'":
-                        i += 2
-                        continue
-                    in_single_quote = not in_single_quote
-                    i += 1
-                    continue
-
-                # Handle double quotes
-                if char == '"' and not in_single_quote:
-                    # Check for escaped double quote
-                    if i + 1 < len(sql) and sql[i + 1] == '"':
-                        i += 2
-                        continue
-                    in_double_quote = not in_double_quote
-                    i += 1
-                    continue
-
-            i += 1
-
-        # Check if we ended in a valid state
-        return in_single_quote or in_double_quote or dollar_tag is not None
-
-    def _has_unmatched_parentheses(self, sql: str) -> bool:
-        """Check for unmatched parentheses, respecting all quote types."""
-        count = 0
-        in_single_quote = False
-        in_double_quote = False
-        dollar_tag: Optional[str] = None
-        i = 0
-
-        while i < len(sql):
-            char = sql[i]
-
-            # Handle dollar-quoted strings
-            if char == "$" and not in_single_quote and not in_double_quote:
-                if dollar_tag is None:
-                    # Check for opening dollar quote
-                    m = re.match(r"\$([a-zA-Z_][a-zA-Z0-9_]*)?\$", sql[i:])
-                    if m:
-                        dollar_tag = m.group(0)
-                        i += len(dollar_tag)
-                        continue
-                else:
-                    # Check for closing dollar quote
-                    if sql.startswith(dollar_tag, i):
-                        i += len(dollar_tag)
-                        dollar_tag = None
-                        continue
-
-            # Handle single quotes
-            if char == "'" and not in_double_quote and dollar_tag is None:
-                # Check for escaped single quote
-                if i + 1 < len(sql) and sql[i + 1] == "'":
-                    i += 2
-                    continue
-                in_single_quote = not in_single_quote
-                i += 1
-                continue
-
-            # Handle double quotes
-            if char == '"' and not in_single_quote and dollar_tag is None:
-                # Check for escaped double quote
-                if i + 1 < len(sql) and sql[i + 1] == '"':
-                    i += 2
-                    continue
-                in_double_quote = not in_double_quote
-                i += 1
-                continue
-
-            # Count parentheses only when not in any quote
-            if not in_single_quote and not in_double_quote and dollar_tag is None:
-                if char == "(":
-                    count += 1
-                elif char == ")":
-                    count -= 1
-                    if count < 0:
-                        return True
-
-            i += 1
-
-        return count != 0
-
-    def _has_unmatched_dollar_quotes(self, sql: str) -> bool:
-        """Check for unmatched dollar quotes."""
-        dollar_quotes = self.postgresql_config.extract_dollar_quoted_blocks(sql)
-
-        # If we successfully extracted blocks, then quotes are matched
-        # If extraction failed, there might be unmatched quotes
-        for block in dollar_quotes:
-            if not block.get("content"):
-                return True
-
-        return False
 
 
 class NonNestingPostgreSqlRegexParser(PostgreSqlRegexParser):

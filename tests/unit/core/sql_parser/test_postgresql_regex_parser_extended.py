@@ -5,7 +5,6 @@ Covers:
 - _identify_statement_type (DDL / DML / QUERY / transaction / unknown)
 - parse_sql (placeholders, errors)
 - validate_sql
-- _has_unmatched_quotes / _has_unmatched_parentheses / _has_unmatched_dollar_quotes
 """
 
 import unittest
@@ -329,81 +328,6 @@ class TestValidateSql(unittest.TestCase):
         sql = "CREATE TABLE a (id INT); INSERT INTO a VALUES (1);"
         result = self.parser.validate_sql(sql)
         self.assertTrue(result["success"])
-
-
-class TestHasUnmatchedQuotes(unittest.TestCase):
-    def setUp(self):
-        self.parser = PostgreSqlRegexParser()
-
-    def test_matched_single_quotes(self):
-        self.assertFalse(self.parser._has_unmatched_quotes("SELECT 'hello'"))
-
-    def test_unmatched_single_quote(self):
-        self.assertTrue(self.parser._has_unmatched_quotes("SELECT 'unclosed"))
-
-    def test_matched_double_quotes(self):
-        self.assertFalse(self.parser._has_unmatched_quotes('SELECT "col"'))
-
-    def test_unmatched_double_quote(self):
-        self.assertTrue(self.parser._has_unmatched_quotes('SELECT "unclosed'))
-
-    def test_escaped_single_quote_balanced(self):
-        self.assertFalse(self.parser._has_unmatched_quotes("SELECT 'O''Brien'"))
-
-    def test_escaped_double_quote_balanced(self):
-        self.assertFalse(self.parser._has_unmatched_quotes('SELECT "col""name"'))
-
-    def test_dollar_quoted_string_balanced(self):
-        self.assertFalse(self.parser._has_unmatched_quotes("SELECT $$hello world$$"))
-
-    def test_unclosed_dollar_quote(self):
-        self.assertTrue(self.parser._has_unmatched_quotes("SELECT $$hello world"))
-
-    def test_no_quotes_is_fine(self):
-        self.assertFalse(self.parser._has_unmatched_quotes("SELECT 1 + 2"))
-
-
-class TestHasUnmatchedParentheses(unittest.TestCase):
-    def setUp(self):
-        self.parser = PostgreSqlRegexParser()
-
-    def test_balanced_parens(self):
-        self.assertFalse(self.parser._has_unmatched_parentheses("SELECT (1 + 2)"))
-
-    def test_extra_open_paren(self):
-        self.assertTrue(self.parser._has_unmatched_parentheses("SELECT (1 + 2"))
-
-    def test_extra_close_paren(self):
-        self.assertTrue(self.parser._has_unmatched_parentheses("SELECT 1 + 2)"))
-
-    def test_nested_balanced(self):
-        self.assertFalse(self.parser._has_unmatched_parentheses("SELECT ((1 + 2) * 3)"))
-
-    def test_paren_inside_string_ignored(self):
-        self.assertFalse(self.parser._has_unmatched_parentheses("SELECT '(unclosed'"))
-
-    def test_paren_inside_double_quote_ignored(self):
-        self.assertFalse(self.parser._has_unmatched_parentheses('SELECT "(unclosed"'))
-
-    def test_paren_inside_dollar_quote_ignored(self):
-        self.assertFalse(self.parser._has_unmatched_parentheses("SELECT $$(unclosed$$"))
-
-    def test_no_parens_ok(self):
-        self.assertFalse(self.parser._has_unmatched_parentheses("SELECT 1"))
-
-
-class TestHasUnmatchedDollarQuotes(unittest.TestCase):
-    def setUp(self):
-        self.parser = PostgreSqlRegexParser()
-
-    def test_no_dollar_quotes(self):
-        self.assertFalse(self.parser._has_unmatched_dollar_quotes("SELECT 1"))
-
-    def test_matched_dollar_quotes(self):
-        self.assertFalse(self.parser._has_unmatched_dollar_quotes("SELECT $$hello$$"))
-
-    def test_named_dollar_tags_matched(self):
-        self.assertFalse(self.parser._has_unmatched_dollar_quotes("SELECT $func$body$func$"))
 
 
 class TestIntegration(unittest.TestCase):

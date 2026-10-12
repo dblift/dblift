@@ -16,6 +16,7 @@ class TestSqlParserInterface:
     def test_parse_success(self):
         """Test parse method with successful parsing."""
         parser = RegexBasedParser("postgresql")
+        parser.split_statements = lambda sql, strict_tokenizer=False: [sql]
 
         sql = "CREATE TABLE test_table (id INT);"
         result = parser.parse(sql, default_schema="public")

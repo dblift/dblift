@@ -2,15 +2,16 @@
 
 docs/sql-parsing/mysql.md. A statement ends at the active delimiter (``;`` at first), which the
 client matches as a plain string outside quotes and comments; ``DELIMITER`` changes it. A few words
-at the start of a line are client commands; ``DELIMITER`` is the one read so far, the others pass
-through as text. One documented extension goes beyond the client:
+at the start of a line are client commands; ``DELIMITER`` is handled and other commands are
+refused. One documented extension goes beyond the client:
 while the delimiter is ``;``, the ``BEGIN ... END`` body of a stored program stays whole.
 """
 
 from __future__ import annotations
 
 import re
-from functools import lru_cache
+from bisect import bisect_left
+from dataclasses import replace
 from typing import List, Optional, Tuple
 
 from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
@@ -55,10 +56,16 @@ _BLOCK_WORDS = frozenset({"IF", "LOOP", "WHILE", "REPEAT", "CASE", "FOR"})
 _STATEMENT_START = frozenset({";", ":", "BEGIN", "THEN", "ELSE", "DO", "LOOP", "REPEAT"})
 
 
-@lru_cache(maxsize=32)
-def _terminator_run(delimiter: str) -> "re.Pattern[str]":
-    """Blanks, ``;`` and the active delimiter, in any number."""
-    return re.compile("(?:[ \t\r\x0b\x0c;]|" + re.escape(delimiter) + ")*")
+def _terminator_run(text: str, start: int, end: int, delimiter: str) -> bool:
+    """Whether a suffix holds only blanks, semicolons and active delimiters."""
+    while start < end:
+        if text.startswith(delimiter, start, end):
+            start += len(delimiter)
+        elif text[start] in _BLANKS + ";":
+            start += 1
+        else:
+            return False
+    return True
 
 
 class _Program:
@@ -198,6 +205,7 @@ class _Scanner:
         self.block_at = (0, 0)
         self.block_from = 0
         self.exec_comment = False
+        self.analysis_exec_comment = False
         self.client = "mariadb" if mariadb else "mysql"
         self.exec_clean = False
         self.exec_only = False  # the statement text so far is executable comments only
@@ -218,6 +226,7 @@ class _Scanner:
         self.spans = []
         self.literals = []
         self.exec_only = False
+        self.fragment_ends: List[int] = []
 
     def run(self) -> List[Statement]:
         text = self.text
@@ -256,7 +265,7 @@ class _Scanner:
             return False
         word, tail = found
         if word.upper() == "DELIMITER":
-            self._delimiter(self.text[pos:end], tail, line_no)
+            self._delimiter(self.text[pos:end], tail, line_no, pos, end)
             return True
         raise UnsupportedMetaCommandError(
             f"{self.client} client command {word!r} on line {line_no}: "
@@ -284,7 +293,7 @@ class _Scanner:
                 return found.group(), tail if gap else ""
             return None
         delimiter = self.delimiter
-        run = _terminator_run(delimiter).fullmatch(text, stop, end) is not None
+        run = _terminator_run(text, stop, end, delimiter)
         if word in _BARE:
             refused = _BLANK_RUN.fullmatch(text, stop, end) is not None
         elif word in _EXIT_WORDS:
@@ -307,7 +316,7 @@ class _Scanner:
         stop = self.text.find(self.delimiter, start, end)
         return stop >= 0 and _COMMENT_START.search(self.text, start, stop) is None
 
-    def _delimiter(self, raw: str, tail: str, line_no: int) -> None:
+    def _delimiter(self, raw: str, tail: str, line_no: int, pos: int, end: int) -> None:
         if "\r" in raw.rstrip("\r"):
             raise UnsafeStatementSplitError(
                 f"DELIMITER on line {line_no} has a carriage return that is not part of a "
@@ -339,7 +348,14 @@ class _Scanner:
             )
         self.delimiter = value
         self.statements.append(
-            Statement(text=raw.strip(_BLANKS), line=line_no, terminator=None, kind="directive")
+            Statement(
+                text=raw.strip(_BLANKS),
+                line=line_no,
+                terminator=None,
+                kind="directive",
+                source_start=pos + len(raw) - len(raw.lstrip(_BLANKS)),
+                source_end=end + (end < len(self.text)),
+            )
         )
 
     # -- the character scan ------------------------------------------------------------------
@@ -375,6 +391,8 @@ class _Scanner:
                 self._end_statement(i, delimiter)
                 i += len(delimiter)
                 continue
+            if ch == ";" and delimiter != ";" and not self.analysis_exec_comment:
+                self.fragment_ends.append(i + 1)
             if ch == "#" or (text.startswith("--", i) and (i + 2 >= end or text[i + 2] in _BLANKS)):
                 if "\r" in text[i:end]:
                     raise UnsafeStatementSplitError(
@@ -388,6 +406,8 @@ class _Scanner:
             if ch == "/" and text.startswith("/*", i):
                 i = self._open_comment(i, pos, line_no)
                 continue
+            if self.analysis_exec_comment and text.startswith("*/", i):
+                self.analysis_exec_comment = False
             if self.exec_comment and text.startswith("*/", i):
                 self.exec_comment = False
                 if self.exec_clean:
@@ -484,6 +504,7 @@ class _Scanner:
             self._code(i, line_no)
             self._flush_word()
             self.exec_comment = True
+            self.analysis_exec_comment = True
             return i + (3 if third == "!" else 4)
         self._flush_word()
         self.block = "/*+" if third == "+" else "/*"
@@ -542,10 +563,10 @@ class _Scanner:
     def _end_statement(self, index: int, delimiter: str) -> None:
         self._flush_word()
         if self.code:
-            self._emit(self.text[self.start : index], delimiter)
+            self._emit(self.text[self.start : index], delimiter, index + len(delimiter))
         self._begin_statement()
 
-    def _emit(self, text: str, terminator: Optional[str]) -> None:
+    def _emit(self, text: str, terminator: Optional[str], source_end: int) -> None:
         text = text.rstrip()
         if "NO_BACKSLASH_ESCAPES" in text.upper() and self._sets_no_backslash_escapes(text):
             raise UnsafeStatementSplitError(
@@ -553,7 +574,28 @@ class _Scanner:
                 f"the {self.client} client then reads backslashes as ordinary characters, "
                 "this splitter cannot follow"
             )
-        self.statements.append(Statement(text=text, line=self.start_line, terminator=terminator))
+        analysis_statements = None
+        if self.fragment_ends and not self.program.is_program:
+            parts = []
+            code = self._blank(text, self.spans)
+            begin = self.start
+            for end in self.fragment_ends:
+                if code[begin - self.start : end - 1 - self.start].strip():
+                    parts.append(self.text[begin : end - 1].strip())
+                begin = end
+            if code[begin - self.start :].strip():
+                parts.append(self.text[begin : self.start + len(text)].strip())
+            analysis_statements = tuple(parts)
+        self.statements.append(
+            Statement(
+                text=text,
+                line=self.start_line,
+                terminator=terminator,
+                analysis_statements=analysis_statements,
+                source_start=self.start,
+                source_end=source_end,
+            )
+        )
 
     def _sets_no_backslash_escapes(self, text: str) -> bool:
         """True when the statement is a SET that names the mode outside its comments.
@@ -600,13 +642,26 @@ class _Scanner:
                 "end of the script"
             )
         if self.code:
-            self._emit(self.text[self.start :], None)
+            self._emit(self.text[self.start :], None, len(self.text))
         return self.statements
 
 
 def scan_script(script: str, *, mariadb: bool = False) -> List[Statement]:
     """The statements and ``DELIMITER`` directives of ``script``, as the client reads them."""
     text = script[1:] if script.startswith("\ufeff") else script
+    bias = len(script) - len(text)
+    removed = [match.start() - count for count, match in enumerate(re.finditer("\r\n", text))]
     # The client reads lines and drops the carriage return of a CRLF pair: what it sends, in
     # strings and bodies too, has LF only. A carriage return alone stays (it is no line end).
-    return _Scanner(text.replace("\r\n", "\n"), mariadb).run()
+    records = _Scanner(text.replace("\r\n", "\n"), mariadb).run()
+    original_records = []
+    for record in records:
+        assert record.source_start is not None and record.source_end is not None
+        original_records.append(
+            replace(
+                record,
+                source_start=record.source_start + bias + bisect_left(removed, record.source_start),
+                source_end=record.source_end + bias + bisect_left(removed, record.source_end),
+            )
+        )
+    return original_records

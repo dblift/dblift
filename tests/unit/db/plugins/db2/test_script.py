@@ -532,7 +532,6 @@ def test_the_parser_returns_statement_records_and_the_string_projection() -> Non
         ("sql", "SELECT 2", None, 3),
     ]
     assert parser.split_statements(script) == ["SELECT 1", "SELECT 2"]
-    assert parser.SPLITS_WITHOUT_FALLBACK is True
 
 
 def test_the_epilogue_is_a_directive_record_and_not_in_the_string_projection() -> None:

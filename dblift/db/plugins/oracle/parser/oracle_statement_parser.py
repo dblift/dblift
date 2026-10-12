@@ -9,7 +9,6 @@ import re
 from typing import Callable, Dict, List, Optional, Tuple
 
 from dblift.core.exceptions import (
-    ParserError,
     UnsafeStatementSplitError,
     UnsupportedMetaCommandError,
 )
@@ -91,6 +90,13 @@ class OracleStatementParser(BaseStatementParser):
         ``;``, a trailing ``/`` is never included; a directive has none (empty)
         except ``WHENEVER SQLERROR``.
         """
+        self.context.reset_for_new_statement()
+        self._head = []
+        self._unit = None
+        self._last_terminator = None
+        self._define_on = True
+        self._define_char = "&"
+        self._defines = {}
         records: List[Tuple[Statement, str]] = []
         current_statement_tokens: List[Token] = []
 
@@ -115,7 +121,7 @@ class OracleStatementParser(BaseStatementParser):
                 self._unit = None
                 records.append(self._directive_record(token))
                 if self._is_exit(token):
-                    self._warn_ignored(self.tokens[idx + 1 :], token)
+                    self._warn_ignored(token)
                     break
                 continue
 
@@ -178,7 +184,14 @@ class OracleStatementParser(BaseStatementParser):
                 f"Unsupported SQL*Plus directive {directive.name!r} at line {token.line}; "
                 "dblift does not run it"
             )
-        record = Statement(text=token.text, line=token.line, terminator=None, kind="directive")
+        record = Statement(
+            text=token.text,
+            line=token.line,
+            terminator=None,
+            kind="directive",
+            source_start=token.pos if self.source is not None else None,
+            source_end=self._line_end(token.pos),
+        )
         if directive.name != "WHENEVER SQLERROR":
             return record, ""
         if parse_whenever_sqlerror(token.text) is None:
@@ -204,7 +217,23 @@ class OracleStatementParser(BaseStatementParser):
                 f"EXECUTE on line {token.line} has no statement to run"
             )
         text = self._substitute(f"BEGIN {stmt}; END;", token.line)
-        return Statement(text=text, line=token.line, terminator=None, kind="sql"), text
+        return (
+            Statement(
+                text=text,
+                line=token.line,
+                terminator=None,
+                kind="sql",
+                source_start=token.pos if self.source is not None else None,
+                source_end=self._line_end(token.pos),
+            ),
+            text,
+        )
+
+    def _line_end(self, pos: int) -> Optional[int]:
+        if self.source is None:
+            return None
+        newline = self.source.find("\n", pos)
+        return newline + 1 if newline >= 0 else len(self.source)
 
     def _apply_define(self, name: str, line: str, line_no: int) -> None:
         """Update the substitution state from a ``DEFINE``-action directive line."""
@@ -255,30 +284,32 @@ class OracleStatementParser(BaseStatementParser):
 
         return re.sub(f"({char}{char}?)(\\w+)\\.?", replace, text)
 
-    def _warn_ignored(self, rest: List[Token], exit_token: Token) -> None:
+    def _warn_ignored(self, exit_token: Token) -> None:
         """Log what follows an ``EXIT``/``QUIT``: SQL*Plus never runs it."""
-        first = next((t for t in rest if t.type not in (TokenType.COMMENT, TokenType.EOF)), None)
-        if first is None:
+        if self.source is None:
             return
-        try:
-            n = sum(
-                1
-                for record in OracleStatementParser(rest, source=self.source).split()
-                if record.kind == "sql"
-            )
-        except ParserError:
-            count = "some"
-        else:
-            if n == 0:
-                return
-            count = str(n)
+        line_end = self.source.find("\n", exit_token.pos)
+        if line_end < 0:
+            return
+        tail = self.source[line_end + 1 :]
+        first_line = next(
+            (
+                line
+                for line, text in enumerate(tail.splitlines(), start=exit_token.line + 1)
+                if text.strip()
+                and not text.lstrip().startswith("--")
+                and classify_directive(text.strip()) is None
+            ),
+            None,
+        )
+        if first_line is None:
+            return
         logger.warning(
-            "%s statement(s) after %s on line %d ignored, as SQL*Plus does not run them "
+            "Content after %s on line %d ignored, as SQL*Plus does not run it "
             "(first ignored line: %d)",
-            count,
             exit_token.text.split(None, 1)[0].upper(),
             exit_token.line,
-            first.line,
+            first_line,
         )
 
     def _unterminated_unit_message(self, tokens: List[Token]) -> str:
@@ -315,7 +346,18 @@ class OracleStatementParser(BaseStatementParser):
         text = rendered
         if end == ";" and text.endswith(";"):
             text = text[:-1].rstrip()
-        return Statement(text=text, line=first.line, terminator=end), rendered
+        last = terminator or tokens[-1]
+        source_end = self._line_end(last.pos) if end == "/" else last.pos + len(last.text)
+        return (
+            Statement(
+                text=text,
+                line=first.line,
+                terminator=end,
+                source_start=first.pos if self.source is not None else None,
+                source_end=source_end if self.source is not None else None,
+            ),
+            rendered,
+        )
 
     def _statement_text(self, tokens: List[Token], is_tail: bool = False) -> str:
         """Render one statement, verbatim from source when source is known.
@@ -382,9 +424,10 @@ class OracleStatementParser(BaseStatementParser):
         if self._unit or token.text != ";" or token.parens_depth > 0:
             return False
 
-        following = self.tokens[self.current_idx + 1 :]
-        if following and following[0].type != TokenType.EOF and following[0].line == token.line:
-            self._refuse_directive_after_terminator(following[0])
+        next_idx = self.current_idx + 1
+        following = self.tokens[next_idx] if next_idx < len(self.tokens) else None
+        if following and following.type != TokenType.EOF and following.line == token.line:
+            self._refuse_directive_after_terminator(following)
             raise UnsafeStatementSplitError(
                 f"';' is not the last text on line {token.line}: SQL*Plus rejects the line "
                 "(ORA-03405); move the comment or the next statement to its own line"

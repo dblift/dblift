@@ -7,7 +7,7 @@ combining the best patterns from Oracle parser success with comprehensive dialec
 import logging
 import re
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional, Pattern, Tuple
+from typing import Any, Dict, List, Optional, Pattern
 
 from dblift.core.sql_model.base import (
     ParseResult,
@@ -159,27 +159,8 @@ class RegexParser(SqlParserInterface):
         return ParseResult(success=success, statements=statements, errors=errors)
 
     def split_statements(self, sql_content: str, strict_tokenizer: bool = False) -> List[str]:
-        """Split SQL content into individual statements using dialect-aware logic.
-
-        Args:
-            sql_content: SQL content to split
-
-        Returns:
-            List of SQL statement strings
-        """
-        if not sql_content.strip():
-            return []
-
-        # Check for dialect-specific batch separators
-        if self._has_batch_separators(sql_content):
-            return self._split_with_batch_separators(sql_content)
-
-        # Check for block statements (procedures, functions, etc.)
-        if self._has_block_statements(sql_content):
-            return self._split_with_block_awareness(sql_content)
-
-        # Default to semicolon-based splitting
-        return self._split_by_semicolon(sql_content)
+        """Dialect subclasses must supply their authoritative script scanner."""
+        raise NotImplementedError("a dialect script scanner is required")
 
     def validate_sql(self, sql_content: str) -> Dict[str, Any]:
         """Validate SQL by attempting to parse into statements.
@@ -249,200 +230,6 @@ class RegexParser(SqlParserInterface):
         sql = re.sub(r"\s+", " ", sql)
 
         return sql.strip()
-
-    def _has_batch_separators(self, sql: str) -> bool:
-        """Check if SQL contains dialect-specific batch separators."""
-        for separator_pattern in self.config.batch_separators:
-            if separator_pattern.search(sql):
-                return True
-        return False
-
-    def _has_block_statements(self, sql: str) -> bool:
-        """Check if SQL contains block statements that need special handling."""
-        sql_upper = sql.upper()
-        for keyword in self.config.block_keywords:
-            if keyword in sql_upper:
-                return True
-        return False
-
-    def _split_with_batch_separators(self, sql: str) -> List[str]:
-        """Split SQL using dialect-specific batch separators."""
-        statements = []
-
-        # Find the primary batch separator for this dialect
-        primary_separator = (
-            self.config.batch_separators[0] if self.config.batch_separators else None
-        )
-
-        if primary_separator:
-            batches = primary_separator.split(sql)
-            for batch in batches:
-                batch = batch.strip()
-                if batch:
-                    # Further split each batch if needed
-                    batch_statements = self._split_with_block_awareness(batch)
-                    statements.extend(batch_statements)
-        else:
-            statements = [sql]
-
-        return statements
-
-    def _split_with_block_awareness(self, sql: str) -> List[str]:
-        """Split SQL while preserving block statements (procedures, functions, etc.)."""
-        statements = []
-        i = 0
-        text = sql.strip()
-
-        while i < len(text):
-            # Skip whitespace
-            while i < len(text) and text[i].isspace():
-                i += 1
-
-            if i >= len(text):
-                break
-
-            # Extract next complete statement
-            statement, next_pos = self._extract_next_statement(text, i)
-
-            if statement and not self._is_empty_or_comment(statement):
-                statements.append(statement.strip())
-
-            i = next_pos
-
-        return statements
-
-    def _split_by_semicolon(self, sql: str) -> List[str]:
-        """Split SQL by semicolons while respecting string literals and comments."""
-        statements = []
-        current = []
-        in_string = False
-        in_identifier = False
-        in_line_comment = False
-        in_block_comment = False
-        string_char = None
-        i = 0
-
-        while i < len(sql):
-            char = sql[i]
-
-            # Handle string literals
-            if not in_line_comment and not in_block_comment:
-                if not in_string and char in ("'", '"'):
-                    in_string = True
-                    string_char = char
-                elif in_string and char == string_char:
-                    # Check for escaped quotes
-                    if i + 1 < len(sql) and sql[i + 1] == string_char:
-                        current.append(char)
-                        current.append(sql[i + 1])
-                        i += 2
-                        continue
-                    else:
-                        in_string = False
-                        string_char = None
-
-            # Handle quoted identifiers (dialect-specific)
-            if not in_string and not in_line_comment and not in_block_comment:
-                # This would use dialect-specific quoted identifier patterns
-                pass
-
-            # Handle comments
-            if not in_string:
-                # Line comments
-                if char == "-" and i + 1 < len(sql) and sql[i + 1] == "-":
-                    in_line_comment = True
-                    current.append(char)
-                    current.append(sql[i + 1])
-                    i += 2
-                    continue
-                # Block comments
-                elif char == "/" and i + 1 < len(sql) and sql[i + 1] == "*":
-                    in_block_comment = True
-                    current.append(char)
-                    current.append(sql[i + 1])
-                    i += 2
-                    continue
-                elif char == "*" and i + 1 < len(sql) and sql[i + 1] == "/" and in_block_comment:
-                    in_block_comment = False
-                    current.append(char)
-                    current.append(sql[i + 1])
-                    i += 2
-                    continue
-
-            # End line comments at newline
-            if char in ["\n", "\r"] and in_line_comment:
-                in_line_comment = False
-
-            # Handle statement terminators
-            if (
-                char == ";"
-                and not in_string
-                and not in_identifier
-                and not in_line_comment
-                and not in_block_comment
-            ):
-                current.append(char)
-                stmt = "".join(current).strip()
-                if stmt:
-                    statements.append(stmt)
-                current = []
-                i += 1
-                continue
-
-            current.append(char)
-            i += 1
-
-        # Add any remaining statement
-        if current:
-            stmt = "".join(current).strip()
-            if stmt:
-                statements.append(stmt)
-
-        return statements
-
-    def _extract_next_statement(self, text: str, start_pos: int) -> Tuple[str, int]:
-        """Extract the next complete SQL statement starting at the given position."""
-        if start_pos >= len(text):
-            return "", start_pos
-
-        remaining = text[start_pos:].strip()
-        if not remaining:
-            return "", len(text)
-
-        # Check if this starts a block statement
-        if self._starts_with_block_keyword(remaining):
-            return self._extract_block_statement(text, start_pos)
-        else:
-            return self._extract_regular_statement(text, start_pos)
-
-    def _starts_with_block_keyword(self, text: str) -> bool:
-        """Check if text starts with a block keyword."""
-        text_upper = text.upper().strip()
-        return any(text_upper.startswith(keyword) for keyword in self.config.block_keywords)
-
-    def _extract_block_statement(self, text: str, start_pos: int) -> Tuple[str, int]:
-        """Extract a complete block statement (handles nested BEGIN/END)."""
-        # This would implement the sophisticated block extraction logic
-        # similar to Oracle parser's _extract_plsql_block method
-        return self._extract_regular_statement(text, start_pos)  # Simplified for now
-
-    def _extract_regular_statement(self, text: str, start_pos: int) -> Tuple[str, int]:
-        """Extract a regular SQL statement ending with semicolon."""
-        i = start_pos
-        statement = ""
-
-        while i < len(text):
-            char = text[i]
-
-            # Simple implementation - would need string/comment awareness
-            if char == ";":
-                statement += char
-                return statement.strip(), i + 1
-
-            statement += char
-            i += 1
-
-        return statement.strip(), len(text)
 
     def _is_empty_or_comment(self, stmt: str) -> bool:
         """Check if statement is empty or just comments."""

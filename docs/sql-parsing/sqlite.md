@@ -348,18 +348,16 @@ rules are a table and one regular expression (the word pattern); the `go` and `/
 Code: `dblift/db/plugins/sqlite/parser/_script.py` (`scan_script`, one character
 scanner: the library's seven-state table, the two line rules, comments and
 quoting) and `sqlite_regex_parser.py`. `split()` returns `Statement` records,
-`split_statements()` their text, `split_for_analysis()` adds the segments of
-comments only (§3), and `split_for_extraction()` is the previous splitter,
-unchanged, for `parse_sql` and object extraction, which read a chunk of text
-and must not refuse it. The parser is authoritative: `split_statements` never
-falls back to another splitter.
+`split_statements()` their execution text, and `split_for_analysis()` adds the
+segments of comments only (§3). `split_for_extraction()` uses that same scanner
+view, and `parse_sql()` honors its shell-command and unsafe-split refusals.
 
 Tests: `tests/unit/db/plugins/sqlite/test_script.py` (the rules and the
 records; the scanner is checked against `sqlite3.complete_statement`),
 `test_extraction_keeps_statements.py` and
 `tests/unit/core/sql_parser/test_sqlite_spec_conformance.py` (every row of §10).
 
-What the previous splitter did and the scanner no longer does: ignored `"…"`,
+What the removed splitter did and the scanner no longer does: ignored `"…"`,
 `[…]` and `` `…` `` quoting; opened a block at any `BEGIN` (so `BEGIN;` swallowed
 the statements after it) and matched `END` by an `isalnum()` word boundary
 outside single quotes only; accepted an unterminated `/*`; glued dot-commands, `go` and `/` lines onto the next

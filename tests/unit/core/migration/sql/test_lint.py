@@ -29,6 +29,15 @@ def test_a_create_table_script_is_safe():
     assert (result.verdict, result.findings, result.script) == (SAFE, (), "V1__u.sql")
 
 
+def test_scanner_refusal_is_one_parse_error_without_transaction_rescan():
+    result = lint_script("SELECT 1; /* unterminated", "postgresql", "V2__bad.sql")
+    assert result.script == "V2__bad.sql"
+    assert result.verdict == REVIEW
+    assert result.findings == ()
+    assert len(result.errors) == 1
+    assert "unterminated block comment" in result.errors[0]
+
+
 def test_an_error_makes_the_script_unsafe():
     assert lint_script("DROP TABLE users;", "mysql").verdict == UNSAFE
 

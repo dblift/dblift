@@ -5,7 +5,9 @@ import re
 import pytest
 
 from dblift.core.sql_parser.dialects.base_config import DialectConfig
+from dblift.db.plugins.db2.parser.db2_regex_parser import DB2RegexParser
 from dblift.db.plugins.db2.parser.parser_config import DB2Config
+from dblift.db.plugins.mysql.parser.mysql_regex_parser import MySqlRegexParser
 from dblift.db.plugins.mysql.parser.parser_config import MySqlConfig
 from dblift.db.plugins.postgresql.parser.parser_config import PostgreSqlConfig
 from dblift.db.plugins.sqlserver.parser.parser_config import SqlServerConfig
@@ -460,32 +462,17 @@ class TestDB2Config:
         result = config.normalize_identifier("", is_quoted=False)
         assert result == ""
 
-    def test_extract_sqlpl_blocks(self):
-        """Test extract_sqlpl_blocks method."""
-        config = DB2Config()
-
-        sql = "CREATE PROCEDURE test_proc BEGIN SELECT 1; END;"
-        blocks = config.extract_sqlpl_blocks(sql)
-
-        assert isinstance(blocks, list)
-
-    def test_extract_compound_statements(self):
-        """Test extract_compound_statements method."""
-        config = DB2Config()
-
-        sql = "BEGIN ATOMIC SELECT 1; END;"
-        blocks = config.extract_compound_statements(sql)
-
-        assert isinstance(blocks, list)
-
-    def test_extract_trigger_blocks(self):
-        """Test extract_trigger_blocks method."""
-        config = DB2Config()
-
-        sql = "CREATE TRIGGER test_trigger BEGIN ATOMIC SELECT 1; END;"
-        blocks = config.extract_trigger_blocks(sql)
-
-        assert isinstance(blocks, list)
+    @pytest.mark.parametrize(
+        "sql",
+        [
+            "CREATE PROCEDURE test_proc BEGIN SELECT 1; END;",
+            "BEGIN ATOMIC SELECT 1; END;",
+            "CREATE TRIGGER test_trigger BEGIN ATOMIC SELECT 1; END;",
+            "CREATE FUNCTION test() RETURNS INT BEGIN RETURN 1; END;",
+        ],
+    )
+    def test_procedural_units_use_public_scanner(self, sql):
+        assert DB2RegexParser().split_statements(sql) == [sql.rstrip(";")]
 
     def test_is_db2_utility_statement(self):
         """Test is_db2_utility_statement method."""
@@ -494,107 +481,18 @@ class TestDB2Config:
         assert config.is_db2_utility_statement("REORG TABLE t1") is True
         assert config.is_db2_utility_statement("SELECT * FROM t1") is False
 
-    def test_extract_module_blocks(self):
-        """Test extract_module_blocks method."""
-        config = DB2Config()
-
-        sql = "CREATE MODULE test_module END MODULE;"
-        blocks = config.extract_module_blocks(sql)
-
-        assert isinstance(blocks, list)
-
-    def test_extract_exec_sql_blocks(self):
-        """Test extract_exec_sql_blocks method."""
-        config = DB2Config()
-
-        sql = "EXEC SQL SELECT 1 END-EXEC"
-        blocks = config.extract_exec_sql_blocks(sql)
-
-        assert isinstance(blocks, list)
-
-    def test_split_statements(self):
-        """Test split_statements method."""
-        config = DB2Config()
-
-        sql = "CREATE TABLE t1 (id INT); SELECT * FROM t1;"
-        statements = config.split_statements(sql)
-
-        assert isinstance(statements, list)
-        assert len(statements) >= 1
-
-    def test_split_statements_with_procedure(self):
-        """Test split_statements with procedure."""
-        config = DB2Config()
-
-        sql = "CREATE PROCEDURE test() BEGIN SELECT 1; END; CREATE TABLE t1 (id INT);"
-        statements = config.split_statements(sql)
-
-        assert isinstance(statements, list)
-
-    def test_split_statements_with_function(self):
-        """Test split_statements with function."""
-        config = DB2Config()
-
-        sql = "CREATE FUNCTION test() RETURNS INT BEGIN RETURN 1; END;"
-        statements = config.split_statements(sql)
-
-        assert isinstance(statements, list)
-
-    def test_split_statements_with_trigger(self):
-        """Test split_statements with trigger."""
-        config = DB2Config()
-
-        sql = "CREATE TRIGGER test_trigger BEGIN ATOMIC SELECT 1; END;"
-        statements = config.split_statements(sql)
-
-        assert isinstance(statements, list)
-
-    def test_split_statements_with_module(self):
-        """Test split_statements with module."""
-        config = DB2Config()
-
-        sql = "CREATE MODULE test_module END MODULE; CREATE TABLE t1 (id INT);"
-        statements = config.split_statements(sql)
-
-        assert isinstance(statements, list)
-
-    def test_split_statements_empty(self):
-        """Test split_statements with empty SQL."""
-        config = DB2Config()
-
-        statements = config.split_statements("")
-
-        assert isinstance(statements, list)
-
-    def test_split_statements_with_strings(self):
-        """Test split_statements with string literals."""
-        config = DB2Config()
-
-        sql = "INSERT INTO t1 VALUES ('test;value'); SELECT * FROM t1;"
-        statements = config.split_statements(sql)
-
-        assert isinstance(statements, list)
-        assert len(statements) >= 1
-
-    def test_split_statements_with_comments(self):
-        """Test split_statements with comments."""
-        config = DB2Config()
-
-        sql = "CREATE TABLE t1 (id INT); -- comment\nSELECT * FROM t1;"
-        statements = config.split_statements(sql)
-
-        assert isinstance(statements, list)
-        assert len(statements) >= 1
-
-    def test_split_statements_with_block_comments(self):
-        """Test split_statements with block comments."""
-        config = DB2Config()
-
-        sql = "CREATE TABLE t1 (id INT); /* comment */ SELECT * FROM t1;"
-        statements = config.split_statements(sql)
-
-        assert isinstance(statements, list)
-        assert len(statements) >= 1
+    def test_module_and_simple_statements_use_public_scanner(self):
+        parser = DB2RegexParser()
+        assert parser.split_statements(
+            "CREATE MODULE test_module END MODULE;\nCREATE TABLE t1 (id INT);"
+        ) == ["CREATE MODULE test_module END MODULE", "CREATE TABLE t1 (id INT)"]
+        assert parser.split_statements(
+            "INSERT INTO t1 VALUES ('test;value');\nSELECT * FROM t1;"
+        ) == ["INSERT INTO t1 VALUES ('test;value')", "SELECT * FROM t1"]
+        assert parser.split_statements("EXEC SQL SELECT 1 END-EXEC") == [
+            "EXEC SQL SELECT 1 END-EXEC"
+        ]
+        assert parser.split_statements("") == []
 
 
 @pytest.mark.unit
@@ -858,14 +756,11 @@ class TestMySqlConfig:
         assert isinstance(body, str)
         assert "BEGIN" in body
 
-    def test_extract_delimiter_blocks(self):
-        """Test extract_delimiter_blocks method."""
-        config = MySqlConfig()
-
+    def test_custom_delimiter_uses_public_scanner(self):
         sql = "DELIMITER //\nCREATE PROCEDURE test() BEGIN SELECT 1; END//\nDELIMITER ;"
-        blocks = config.extract_delimiter_blocks(sql)
-
-        assert isinstance(blocks, list)
+        assert MySqlRegexParser().split_statements(sql) == [
+            "CREATE PROCEDURE test() BEGIN SELECT 1; END"
+        ]
 
 
 @pytest.mark.unit

@@ -1,4 +1,4 @@
-"""A script the execution split refuses still parses: the refusal is reported, the parse is not lost."""
+"""A script the scanner refuses cannot yield a partial parse."""
 
 from __future__ import annotations
 
@@ -19,5 +19,7 @@ def test_parse_sql_reports_a_refused_split_instead_of_failing(
     dialect: str, script: str, command: str
 ) -> None:
     result = SqlParserFactory(dialect).get_parser().parse_sql(script)
-    assert result.success
+    assert not result.success
+    assert result.statements == []
+    assert result.tables == []
     assert any(command in error for error in result.errors)

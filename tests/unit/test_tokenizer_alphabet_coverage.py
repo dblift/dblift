@@ -94,19 +94,21 @@ class TestTokenizerNoSilentDrop(unittest.TestCase):
             ],
         )
 
-    def test_sqlserver_tokenizer_claims_brackets_and_at_signs(self) -> None:
-        from dblift.db.plugins.sqlserver.parser.sqlserver_tokenizer import SQLServerTokenizer
+    def test_sqlserver_scanner_preserves_brackets_and_at_signs(self) -> None:
+        from dblift.db.plugins.sqlserver.parser.sqlserver_regex_parser import SqlServerRegexParser
 
-        self._assert_no_drops(
-            SQLServerTokenizer,
-            [
-                "SELECT [Order Date] FROM [dbo].[Orders];",
-                "DECLARE @id INT = 1;\nSELECT @@ROWCOUNT;",
-                "EXEC sp_executesql N'SELECT 1';\nGO\n",
-                "INSERT INTO t (a) VALUES (1);",
-                "CREATE PROCEDURE dbo.p @x INT AS BEGIN SELECT @x; END",
-            ],
-        )
+        parser = SqlServerRegexParser()
+        for sql in (
+            "SELECT [Order Date] FROM [dbo].[Orders];",
+            "DECLARE @id INT = 1;\nSELECT @@ROWCOUNT;",
+            "EXEC sp_executesql N'SELECT 1';\nGO\n",
+            "INSERT INTO t (a) VALUES (1);",
+            "CREATE PROCEDURE dbo.p @x INT AS BEGIN SELECT @x; END",
+        ):
+            with self.subTest(sql=sql):
+                statements = parser.split_statements(sql)
+                self.assertEqual(len(statements), 1)
+                self.assertEqual(statements[0], sql.removesuffix("\nGO\n"))
 
     def test_warning_carries_dialect_char_line_col(self) -> None:
         """Sanity-check the diagnostic shape for new regressions."""

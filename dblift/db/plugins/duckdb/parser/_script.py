@@ -10,7 +10,7 @@ the engine cannot.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
 
 from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
@@ -45,12 +45,14 @@ class Unit:
     text: str
     line: int
     terminator: Optional[str]
+    source_start: Optional[int] = field(default=None, compare=False)
+    source_end: Optional[int] = field(default=None, compare=False)
 
 
 def scan_script(script: str, *, comment_only: bool = False) -> List[Unit]:
     """The statements of ``script``; ``comment_only`` keeps the comment-only segments as units."""
     text = script[1:] if script.startswith("\ufeff") else script
-    return _Scanner(text, comment_only).run()
+    return _Scanner(text, comment_only, len(script) - len(text)).run()
 
 
 def blank_comments(script: str) -> str:
@@ -73,7 +75,7 @@ def _is_escape_prefix(word: str) -> bool:
 
 
 class _Scanner:
-    def __init__(self, text: str, comment_only: bool) -> None:
+    def __init__(self, text: str, comment_only: bool, offset: int = 0) -> None:
         nul = text.find("\x00")
         if nul >= 0:
             raise UnsafeStatementSplitError(
@@ -82,12 +84,14 @@ class _Scanner:
             )
         self.text = text
         self.comment_only = comment_only
+        self.offset = offset
         self.units: List[Unit] = []
         self.comments: List[Tuple[int, int]] = []
         self.code = False
         self.segment = 0
         self.segment_line = 1
         self.line = 1
+        self.escape_continuation = False
 
     def run(self) -> List[Unit]:
         text, size, i = self.text, len(self.text), 0
@@ -106,17 +110,21 @@ class _Scanner:
                 self.comments.append((i, stop))
                 i = stop
             elif text.startswith("/*", i):
+                self.escape_continuation = False
                 i = self._block_comment(i)
             elif char == "'":
                 self.code = True
-                i = self._plain_string(i)
+                i = self._escape_string(i) if self.escape_continuation else self._plain_string(i)
             elif char == '"':
                 self.code = True
+                self.escape_continuation = False
                 i = self._quoted(i, '"')
             elif char == "$":
                 self.code = True
+                self.escape_continuation = False
                 i = self._dollar(i)
             elif char == ";":
+                self.escape_continuation = False
                 self._finish(i, ";")
                 self.segment, self.segment_line = i + 1, self.line
                 i += 1
@@ -138,10 +146,13 @@ class _Scanner:
         text = self.text
         match = _IDENT.match(text, i) or _NUMBER.match(text, i)
         if match is None:
+            self.escape_continuation = False
             return i + 1
         end = match.end()
         if text.startswith("'", end) and _is_escape_prefix(match.group()):
+            self.escape_continuation = True
             return self._escape_string(end)
+        self.escape_continuation = False
         return end
 
     def _block_comment(self, i: int) -> int:
@@ -207,5 +218,13 @@ class _Scanner:
         if self.code or (self.comment_only and raw.strip(_BLANKS)):
             text = raw.lstrip(_BLANKS)
             line = self.segment_line + raw.count("\n", 0, len(raw) - len(text))
-            self.units.append(Unit(text.rstrip(_BLANKS), line, terminator))
+            self.units.append(
+                Unit(
+                    text.rstrip(_BLANKS),
+                    line,
+                    terminator,
+                    self.segment + len(raw) - len(text) + self.offset,
+                    end + (terminator is not None) + self.offset,
+                )
+            )
         self.code = False

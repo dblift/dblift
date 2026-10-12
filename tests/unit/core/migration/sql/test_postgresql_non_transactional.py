@@ -128,3 +128,11 @@ def test_classification_is_case_and_whitespace_insensitive():
             classify_execution_statement(sql, dialect="postgresql").can_execute_in_transaction
             is False
         ), sql
+
+
+def test_combined_psql_execution_unit_inherits_nontransactional_constituent() -> None:
+    sql = r"SELECT 1 \; CREATE INDEX CONCURRENTLY ix ON users(id);"
+    classified = classify_execution_statement(sql, dialect="postgresql")
+    assert classified.sql == sql
+    assert classified.can_execute_in_transaction is False
+    assert classified.transaction_reason

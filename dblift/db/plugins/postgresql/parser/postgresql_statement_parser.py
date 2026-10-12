@@ -6,7 +6,7 @@ BEGIN ATOMIC handling and transaction detection.
 
 from typing import List, Optional, Tuple
 
-from dblift.core.exceptions import UnsupportedMetaCommandError
+from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
 from dblift.core.sql_parser.base_statement_parser import BaseStatementParser
 from dblift.core.sql_parser.parser_context import ParserContext
 from dblift.core.sql_parser.statement import Statement
@@ -154,7 +154,7 @@ class PostgreSQLStatementParser(BaseStatementParser):
             ):
                 text = self._render_statement(current, terminator, end_pos)
                 if text.strip():
-                    records.append(self._record(current, text, terminator))
+                    records.append(self._record(current, text, terminator, end_pos))
             current.clear()
             self.context.reset_for_new_statement()
 
@@ -175,7 +175,12 @@ class PostgreSQLStatementParser(BaseStatementParser):
                 records.append(
                     (
                         Statement(
-                            text=token.text, line=token.line, terminator=None, kind="directive"
+                            text=token.text,
+                            line=token.line,
+                            terminator=None,
+                            kind="directive",
+                            source_start=token.pos if self.source is not None else None,
+                            source_end=self._line_end(token.pos),
                         ),
                         token.text,
                     )
@@ -191,23 +196,72 @@ class PostgreSQLStatementParser(BaseStatementParser):
         flush(None, None)
         return records
 
+    def _line_end(self, pos: int) -> Optional[int]:
+        if self.source is None:
+            return None
+        newline = self.source.find("\n", pos)
+        return newline + 1 if newline >= 0 else len(self.source)
+
     def _record(
-        self, tokens: List[Token], rendered: str, terminator: Optional[Token]
+        self,
+        tokens: List[Token],
+        rendered: str,
+        terminator: Optional[Token],
+        end_pos: Optional[int],
     ) -> Tuple[Statement, str]:
         """Build the record for one rendered statement and its verbatim string.
 
         The record's text has the terminator stripped; the string keeps it.
         """
         first = next(t for t in tokens if t.type != TokenType.COMMENT)
+        source_start = first.pos if self.source is not None else None
+        source_end = (
+            terminator.pos + len(terminator.text)
+            if terminator is not None
+            else (
+                end_pos
+                if end_pos is not None
+                else len(self.source) if self.source is not None else None
+            )
+        )
         combinators = [t for t in tokens if t.type == TokenType.SYMBOL and t.text == "\\;"]
         multi = bool(combinators)
+        analysis_statements = None
         if combinators and self.source is not None:
-            for t in reversed(combinators):
+            end = terminator.pos if terminator is not None else len(self.source)
+            starts = [first.pos, *(t.pos + len(t.text) for t in combinators)]
+            ends = [*(t.pos for t in combinators), end]
+            analysis_statements = tuple(
+                part
+                for start, stop in zip(starts, ends)
+                if (part := self.source[start:stop].strip())
+            )
+            parts: List[str] = []
+            cursor = 0
+            for t in combinators:
                 rel = t.pos - first.pos
-                rendered = rendered[:rel] + ";" + rendered[rel + 2 :]
+                parts.extend((rendered[cursor:rel], ";"))
+                cursor = rel + len(t.text)
+            parts.append(rendered[cursor:])
+            rendered = "".join(parts)
         if terminator is None:
-            return Statement(text=rendered, line=first.line, terminator=None, multi=multi), rendered
+            return (
+                Statement(
+                    text=rendered,
+                    line=first.line,
+                    terminator=None,
+                    multi=multi,
+                    analysis_statements=analysis_statements,
+                    source_start=source_start,
+                    source_end=source_end,
+                ),
+                rendered,
+            )
         if terminator.type == TokenType.COPY_DATA:
+            if combinators:
+                raise UnsafeStatementSplitError(
+                    "COPY FROM STDIN cannot be combined with another statement using psql \\;"
+                )
             if self.source is None:
                 record = Statement(
                     text=rendered, line=first.line, terminator="\\.", kind="copy_stdin"
@@ -215,18 +269,31 @@ class PostgreSQLStatementParser(BaseStatementParser):
                 return record, rendered
             end = terminator.pos + len(terminator.text)
             text = self.source[first.pos : end]
-            if not terminator.text:
-                text = text.rstrip()
             ended = self.source[end:].lstrip().startswith("\\.")
+            header = self.source[first.pos : terminator.pos].strip().removesuffix(";").rstrip()
             record = Statement(
-                text=text, line=first.line, terminator="\\." if ended else None, kind="copy_stdin"
+                text=text,
+                line=first.line,
+                terminator="\\." if ended else None,
+                kind="copy_stdin",
+                analysis_statements=(header,),
+                source_start=source_start,
+                source_end=self._line_end(end) if ended else end,
             )
             return record, rendered
         text = rendered
         if text.endswith(terminator.text):
             text = text[: -len(terminator.text)].rstrip()
         return (
-            Statement(text=text, line=first.line, terminator=terminator.text, multi=multi),
+            Statement(
+                text=text,
+                line=first.line,
+                terminator=terminator.text,
+                multi=multi,
+                analysis_statements=analysis_statements,
+                source_start=source_start,
+                source_end=source_end,
+            ),
             rendered,
         )
 

@@ -170,24 +170,24 @@ def test_copy_to_stdout_is_refused_before_anything_is_sent(sql):
     assert cursor.copy_sql is None
 
 
-def test_split_copy_from_stdin_restores_the_row_terminator() -> None:
+def test_split_copy_from_stdin_preserves_unterminated_eof_row() -> None:
     from dblift.db.plugins.postgresql.provider import _split_copy_from_stdin
 
     assert _split_copy_from_stdin("COPY t (a) FROM STDIN;\n1\n2") == (
         "COPY t (a) FROM STDIN",
-        "1\n2\n",
+        "1\n2",
     )
     assert _split_copy_from_stdin("COPY t (a, b) FROM STDIN;\n1\t") == (
         "COPY t (a, b) FROM STDIN",
-        "1\t\n",
+        "1\t",
     )
     assert _split_copy_from_stdin("COPY t FROM STDIN;") == ("COPY t FROM STDIN", "")
 
 
-def test_split_copy_from_stdin_restores_the_row_terminator_in_crlf_style() -> None:
+def test_split_copy_from_stdin_preserves_unterminated_eof_row_in_crlf_style() -> None:
     from dblift.db.plugins.postgresql.provider import _split_copy_from_stdin
 
     assert _split_copy_from_stdin("COPY t (a) FROM STDIN;\r\n1\r\n2") == (
         "COPY t (a) FROM STDIN",
-        "1\r\n2\r\n",
+        "1\r\n2",
     )

@@ -20,6 +20,7 @@ from dblift.core.exceptions import (
     CallbackExecutionError,
     TransactionAbortedError,
     TransactionStatementError,
+    UnsafeStatementSplitError,
 )
 from dblift.core.logger import Log, NullLog
 from dblift.core.logger.results import CallbackExecution, MigrationInfo, OperationResult
@@ -40,7 +41,6 @@ from dblift.core.migration.sql.execution_statement import (
     neutralise_transaction_statements,
 )
 from dblift.core.migration.sql.migration_sql_parser import (
-    fallback_migration_sql,
     parse_migration_sql,
     resolve_migration_sql_dialect,
 )
@@ -377,7 +377,6 @@ class ExecutionEngine:
                 migration.dialect, migration.config, self.log
             )
         analyzer = self.sql_analyzer
-        analyzer_error: Optional[Exception] = None
         if analyzer.dialect != dialect_key:
             try:
                 analyzer = SqlAnalyzer(
@@ -386,12 +385,8 @@ class ExecutionEngine:
                     analysis_mode=getattr(self.sql_analyzer, "analysis_mode", "full"),
                 )
             except Exception as exc:
-                analyzer_error = exc
-        statements = (
-            parse_migration_sql(analyzer, content, self.log)
-            if analyzer_error is None
-            else fallback_migration_sql(content, self.log, analyzer_error)
-        )
+                raise UnsafeStatementSplitError(f"statement splitter failed: {exc}") from exc
+        statements = parse_migration_sql(analyzer, content, self.log)
         return neutralise_transaction_statements(
             statements,
             dialect=dialect_key,
