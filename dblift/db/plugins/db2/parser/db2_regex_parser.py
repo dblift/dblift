@@ -11,6 +11,8 @@ from typing import Any, Dict, List, Optional, Type
 from dblift.core.sql_model.base import ParseResult, SqlStatement, SqlStatementType
 from dblift.core.sql_parser.base_tokenizer import BaseTokenizer
 from dblift.core.sql_parser.enhanced_regex_parser import EnhancedRegexParser
+from dblift.core.sql_parser.statement import Statement
+from dblift.db.plugins.db2.parser._script import scan_script
 from dblift.db.plugins.db2.parser.parser_config import DB2Config
 
 logger = logging.getLogger(__name__)
@@ -50,7 +52,23 @@ class DB2RegexParser(EnhancedRegexParser):
         super().__init__(config)  # type: ignore[arg-type]
         self.config: DB2Config = config  # type: ignore[assignment]
 
+    SPLITS_WITHOUT_FALLBACK = True
+
+    def split(self, sql_content: str) -> List[Statement]:
+        """The statements of a script as the CLP sends them (docs/sql-parsing/db2.md)."""
+        return [
+            Statement(text=unit.text, line=unit.line, terminator=unit.terminator, kind=unit.kind)
+            for unit in scan_script(sql_content)
+        ]
+
     def split_statements(self, sql_content: str, strict_tokenizer: bool = False) -> List[str]:
+        """The statements execution sends; ``split()`` also records directives.
+
+        The scanner has no unknown characters, so ``strict_tokenizer`` changes nothing.
+        """
+        return [record.text for record in self.split(sql_content) if record.kind == "sql"]
+
+    def split_for_extraction(self, sql_content: str, strict_tokenizer: bool = False) -> List[str]:
         """Split SQL content with DB2-specific handling.
 
         Handles SQL/PL blocks, EXEC SQL statements, and DB2 utility commands.
@@ -608,7 +626,7 @@ class DB2RegexParser(EnhancedRegexParser):
             cleaned_sql = self._clean_db2_comments(sql_content)
 
             # Enhanced statement splitting
-            sql_statements = self.split_statements(cleaned_sql)
+            sql_statements = self.split_for_extraction(cleaned_sql)
 
             # Parse each statement with DB2-specific handling
             for sql in sql_statements:
