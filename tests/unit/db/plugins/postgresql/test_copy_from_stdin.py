@@ -128,6 +128,24 @@ def test_empty_copy_block_sends_no_rows():
     assert "".join(cursor.written) == ""
 
 
+@pytest.mark.parametrize("header_tail", ["  ", " -- header comment"])
+@pytest.mark.parametrize("newline", ["\n", "\r\n"])
+def test_copy_header_line_tail_is_not_streamed_as_data(header_tail, newline):
+    cursor = _Psycopg3Cursor()
+    provider, _conn = _provider(cursor)
+    script = f"COPY t (id) FROM stdin;{header_tail}{newline}1{newline}{newline}\\.{newline}SELECT 1;"
+    statements = StatementSplitter("postgresql").split_statements(script)
+
+    assert statements == [
+        f"COPY t (id) FROM stdin;{header_tail}{newline}1{newline}{newline}",
+        "SELECT 1;",
+    ]
+    provider.execute_statement(statements[0])
+
+    assert cursor.copy_sql == "COPY t (id) FROM stdin"
+    assert "".join(cursor.written) == f"1{newline}{newline}"
+
+
 @pytest.mark.parametrize(
     "sql",
     [
