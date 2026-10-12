@@ -237,6 +237,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - DuckDB: a `COMMIT` with no open transaction was reported as success, because
   `duckdb_engine` turns the bare word into `connection.commit()` and hides the
   error. A migration's `COMMIT` no longer reaches the driver.
+
+- MySQL and MariaDB: a unit holding several statements (for example
+  `INSERT ... ; INSERT ...` under `DELIMITER //`) runs as one query, as the
+  `mysql` and `mariadb` clients run it, instead of failing with error 1064. An
+  error in a later statement of the unit is reported, and a unit that starts
+  with a `SELECT` runs too. This holds for the connection DBLift opens; an
+  engine passed to `from_sqlalchemy` needs `CLIENT_MULTI_STATEMENTS` enabled
+  (see the SQLAlchemy guide).
+
 - SQLite: a quoted name with a `;` or an apostrophe in it (`"a;b"`, `[it's]`,
   `` `it's` ``), `""` and ``` `` ``` escapes, comment markers inside a quoted
   name, a column called `end$` or a quoted `"end"` inside a trigger body, and a
