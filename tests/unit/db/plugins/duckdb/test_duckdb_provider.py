@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -393,12 +394,12 @@ class TestDuckDBDmlKeepsLiterals:
 
     _provider = TestDuckDBDmlRowcount._provider
 
-    def _table(self, tmp_path: Path) -> "DuckDBProvider":
+    def _table(self, tmp_path: Path) -> Any:
         provider = self._provider(tmp_path)
         provider.execute_statement("CREATE TABLE t (id INTEGER PRIMARY KEY, v VARCHAR)")
         return provider
 
-    def _values(self, provider: "DuckDBProvider") -> list:
+    def _values(self, provider: Any) -> list:
         return [r["v"] for r in provider.execute_query("SELECT v FROM t ORDER BY id")]
 
     def test_insert_keeps_blank_comment_and_crlf_lines_in_literal(self, tmp_path: Path) -> None:
@@ -451,3 +452,30 @@ class TestDuckDBDmlKeepsLiterals:
             "WITH s AS (SELECT 1 AS id, 'a' AS v) INSERT INTO t SELECT * FROM s"
         )
         assert self._values(provider) == ["a"]
+
+    def test_trailing_line_comment_does_not_swallow_returning(self, tmp_path: Path) -> None:
+        provider = self._table(tmp_path)
+        provider.execute_statement("INSERT INTO t VALUES (1, 'a'), (2, 'a'), (3, 'a')")
+        assert provider.execute_statement("UPDATE t SET v = 'b' -- trailing") == 3
+        assert provider.execute_statement("DELETE FROM t -- trailing") == 3
+
+    def test_two_statements_both_run_through_the_default_path(self, tmp_path: Path) -> None:
+        provider = self._table(tmp_path)
+        rc = provider.execute_statement(
+            "INSERT INTO t VALUES (1, 'a'); INSERT INTO t VALUES (2, 'b')"
+        )
+        assert rc == -1
+        assert self._values(provider) == ["a", "b"]
+
+    def test_shell_command_and_nul_fall_back_to_the_default_path(self, tmp_path: Path) -> None:
+        """The scanner's refusals are not raised by the rewrite: the engine answers instead."""
+        from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
+
+        provider = self._table(tmp_path)
+        for sql in (".tables", "INSERT INTO t VALUES (1, 'a\x00b')"):
+            with pytest.raises(Exception) as caught:
+                provider.execute_statement(sql)
+            assert not isinstance(
+                caught.value, (UnsafeStatementSplitError, UnsupportedMetaCommandError)
+            ), sql
+        assert self._values(provider) == []
