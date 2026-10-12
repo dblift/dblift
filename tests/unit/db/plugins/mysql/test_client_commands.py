@@ -258,20 +258,24 @@ def test_a_backslash_in_a_hint_is_text_on_mariadb_only() -> None:
         scan_script("SELECT /*+\n \\G\n*/ 1 AS x;")
 
 
-def _best_of_three(script: str) -> float:
+def _best_of(runs: int, script: str) -> float:
     best = float("inf")
-    for _ in range(3):
+    for _ in range(runs):
         started = time.perf_counter()
         scan_script(script)
         best = min(best, time.perf_counter() - started)
     return best
 
 
-@pytest.mark.parametrize("unit", ["/**/", "SELECT 1; /* c */ ", "/*!40000 SET @a = 1 */; "])
-def test_a_long_single_line_of_comments_is_scanned_in_linear_time(unit: str) -> None:
-    small = _best_of_three(unit * 40_000)
-    large = _best_of_three(unit * 80_000)
-    assert large < 3 * small + 0.05
+@pytest.mark.parametrize(
+    "unit,count",
+    [("/**/", 400_000), ("SELECT 1; /* c */ ", 70_000), ("/*!40000 SET @a = 1 */; ", 70_000)],
+)
+def test_a_long_single_line_of_comments_is_scanned_in_linear_time(unit: str, count: int) -> None:
+    """A four times longer line takes about four times as long (a quadratic scan: sixteen)."""
+    small = _best_of(5, unit * count)
+    large = _best_of(3, unit * (4 * count))
+    assert large < 8 * small
 
 
 def test_a_mode_setting_behind_a_maria_comment_is_refused_on_mariadb_only() -> None:
