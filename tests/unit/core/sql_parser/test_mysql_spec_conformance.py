@@ -26,9 +26,7 @@ MARIADB_ROWS = [row for row in ALL_ROWS if row.dialect == "mariadb"]
 #: mysql.md rows whose expected statements are MySQL's reading and not MariaDB's.
 MYSQL_ONLY_ROWS = frozenset({"16", "39a"})
 
-KNOWN_GAPS: frozenset[str] = frozenset(
-    {"20", "21", "49", "50", "51", "52", "52a", "54", "56", "56a", "56b", "57", "58", "59", "63"}
-)
+KNOWN_GAPS: frozenset[str] = frozenset()
 
 RUNS = (
     [pytest.param("mysql", row, id=f"mysql-{row.row_id}") for row in MYSQL_ROWS]

@@ -10,9 +10,10 @@ while the delimiter is ``;``, the ``BEGIN ... END`` body of a stored program sta
 from __future__ import annotations
 
 import re
+from functools import lru_cache
 from typing import List, Optional, Tuple
 
-from dblift.core.exceptions import UnsafeStatementSplitError
+from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
 from dblift.core.sql_parser.statement import Statement
 
 #: The client keeps a delimiter in a 16-byte buffer: longer ones are silently cut (measured).
@@ -21,12 +22,43 @@ MAX_DELIMITER_LENGTH = 15
 #: Blanks of the client's ``my_isspace`` (the newline is gone: the script is read line by line).
 _BLANKS = " \t\r\x0b\x0c"
 _QUOTES = {"'": "string literal", '"': "string literal", "`": "quoted identifier"}
+#: Line-start words the client takes as commands (measured): alone on the line ...
+_BARE = frozenset({"GO", "EGO"})
+#: ... alone or followed by any run of blanks, ``;`` and the active delimiter (``exit;`` ends the
+#: script on mysql 8.4 and is sent to the server on mysql 8.0: refused either way) ...
+_BARE_OR_SEMICOLON = frozenset(
+    {
+        "EXIT", "QUIT", "STATUS", "HELP", "?", "REHASH", "PRINT", "NOPAGER", "NOTEE", "NOWARNING",
+        "WARNINGS", "CLEAR", "RESETCONNECTION", "EDIT",
+    }
+)  # fmt: skip
+#: ... or followed by a blank and an argument.
+_WITH_ARGUMENT = frozenset(
+    {
+        "SOURCE", "CONNECT", "SYSTEM", "TEE", "CHARSET", "PROMPT", "PAGER", "QUERY_ATTRIBUTES",
+        "SSL_SESSION_DATA_PRINT",
+    }
+)  # fmt: skip
+#: Words that are also SQL: a command only when no delimiter ends the line.
+_UNTERMINATED_COMMANDS = frozenset({"USE", "HELP", "?"})
+_EXIT_WORDS = frozenset({"EXIT", "QUIT"})
+_COMMAND_WORDS = (
+    _BARE | _BARE_OR_SEMICOLON | _WITH_ARGUMENT | _UNTERMINATED_COMMANDS | {"DELIMITER"}
+)
+_COMMENT_START = re.compile(r"#|--(?=[ \t\r\x0b\x0c]|$)|/\*")
+_BLANK_RUN = re.compile(r"[ \t\r\x0b\x0c]*")
 _LINE_WORD = re.compile(r"[A-Za-z_]+|\?")
 _DELIMITER_WORD = re.compile(r"delimiter(?=[ \t\r]|$)", re.IGNORECASE)
 
 _PROGRAM_KINDS = frozenset({"PROCEDURE", "FUNCTION", "TRIGGER", "EVENT"})
 _BLOCK_WORDS = frozenset({"IF", "LOOP", "WHILE", "REPEAT", "CASE", "FOR"})
 _STATEMENT_START = frozenset({";", ":", "BEGIN", "THEN", "ELSE", "DO", "LOOP", "REPEAT"})
+
+
+@lru_cache(maxsize=32)
+def _terminator_run(delimiter: str) -> "re.Pattern[str]":
+    """Blanks, ``;`` and the active delimiter, in any number."""
+    return re.compile("(?:[ \t\r\x0b\x0c;]|" + re.escape(delimiter) + ")*")
 
 
 class _Program:
@@ -164,8 +196,14 @@ class _Scanner:
         self.quote_at = (0, 0)
         self.block = ""  # "/*" or "/*+" while inside one
         self.block_at = (0, 0)
+        self.block_from = 0
         self.exec_comment = False
         self.client = "mariadb" if mariadb else "mysql"
+        self.exec_clean = False
+        self.exec_only = False  # the statement text so far is executable comments only
+        self.literals: List[Tuple[int, int]] = []
+        self.quote_from = 0
+        self.spans: List[Tuple[int, int]] = []  # comments of the statement being read
         self.open_hint: Optional[Tuple[int, int]] = None  # mysql: a hint opened and not yet closed
         self._begin_statement()
 
@@ -177,6 +215,9 @@ class _Scanner:
         self.word_qualified = False
         self.prev_char = ""
         self.program.reset()
+        self.spans = []
+        self.literals = []
+        self.exec_only = False
 
     def run(self) -> List[Statement]:
         text = self.text
@@ -191,7 +232,11 @@ class _Scanner:
             newline = text.find("\n", pos)
             end = len(text) if newline < 0 else newline
             line_no += 1
-            if not (self.quote or self.block or self.code) and self._command(pos, end, line_no):
+            if (
+                not (self.quote or self.block)
+                and (not self.code or self.exec_only)
+                and self._command(pos, end, line_no, exit_only=self.code)
+            ):
                 pos = end + 1
                 continue
             self._scan(pos, end, line_no)
@@ -200,21 +245,67 @@ class _Scanner:
 
     # -- lines that are client commands ---------------------------------------------------
 
-    def _command(self, pos: int, end: int, line_no: int) -> bool:
-        """A client command at the start of a line (statement text empty): handled or refused."""
-        raw = self.text[pos:end]
-        stripped = raw.lstrip(_BLANKS)
-        found = _LINE_WORD.match(stripped)
-        if found is None:
+    def _command(self, pos: int, end: int, line_no: int, exit_only: bool = False) -> bool:
+        """A client command at the start of a line (statement text empty): handled or refused.
+
+        ``exit_only``: the statement text so far is executable comments only; mysql 8.4 still ends
+        the script at ``exit`` or ``quit`` there.
+        """
+        found = self._classify(pos, end)
+        if found is None or (exit_only and found[0].upper() not in _EXIT_WORDS):
             return False
-        word = found.group().upper()
-        rest = stripped[found.end() :]
-        tail = rest.rstrip("\r")
-        has_argument_gap = tail == "" or tail[0] in " \t"
-        if word == "DELIMITER" and (has_argument_gap or tail.startswith(";")):
-            self._delimiter(raw, tail if has_argument_gap else "", line_no)
+        word, tail = found
+        if word.upper() == "DELIMITER":
+            self._delimiter(self.text[pos:end], tail, line_no)
             return True
-        return False
+        raise UnsupportedMetaCommandError(
+            f"{self.client} client command {word!r} on line {line_no}: "
+            "dblift does not run client commands"
+        )
+
+    def _classify(self, pos: int, end: int) -> Optional[Tuple[str, str]]:
+        """The client command the text from ``pos`` to ``end`` starts: (word, rest of line)."""
+        text = self.text
+        while pos < end and text[pos] in _BLANKS:
+            pos += 1
+        found = _LINE_WORD.match(text, pos, end)
+        if found is None:
+            return None
+        word = found.group().upper()
+        if word not in _COMMAND_WORDS:
+            return None
+        stop = found.end()
+        gap = (
+            stop == end or text[stop] in " \t" or _BLANK_RUN.fullmatch(text, stop, end) is not None
+        )
+        if word == "DELIMITER":
+            tail = text[stop:end].rstrip("\r")
+            if gap or tail.startswith(";"):
+                return found.group(), tail if gap else ""
+            return None
+        delimiter = self.delimiter
+        run = _terminator_run(delimiter).fullmatch(text, stop, end) is not None
+        if word in _BARE:
+            refused = _BLANK_RUN.fullmatch(text, stop, end) is not None
+        elif word in _EXIT_WORDS:
+            after = stop
+            while after < end and text[after] in _BLANKS:
+                after += 1
+            refused = (
+                after == end or text.startswith(";", after) or text.startswith(delimiter, after)
+            )
+        elif word in _UNTERMINATED_COMMANDS:
+            refused = (run and word != "USE") or (gap and not self._terminated(stop, end))
+        elif word in _WITH_ARGUMENT:
+            refused = gap or run
+        else:
+            refused = run
+        return (found.group(), "") if refused else None
+
+    def _terminated(self, start: int, end: int) -> bool:
+        """True when the active delimiter ends the line's code (before any comment)."""
+        stop = self.text.find(self.delimiter, start, end)
+        return stop >= 0 and _COMMENT_START.search(self.text, start, stop) is None
 
     def _delimiter(self, raw: str, tail: str, line_no: int) -> None:
         if "\r" in raw.rstrip("\r"):
@@ -265,6 +356,13 @@ class _Scanner:
                 i = self._in_quote(i, end)
                 continue
             ch = text[i]
+            if ch == "\\":
+                self._backslash(i, end, line_no)
+                self._code(i, line_no)
+                self._flush_word()
+                self.prev_char = ""
+                i += 2
+                continue
             delimiter = self.delimiter
             if text.startswith(delimiter, i):
                 self._flush_word()
@@ -285,12 +383,15 @@ class _Scanner:
                         "part of the comment and drops the statements in it"
                     )
                 self._flush_word()
+                self.spans.append((i, end))
                 return
             if ch == "/" and text.startswith("/*", i):
                 i = self._open_comment(i, pos, line_no)
                 continue
             if self.exec_comment and text.startswith("*/", i):
                 self.exec_comment = False
+                if self.exec_clean:
+                    self._command_after_comment(i + 2, end, line_no)
                 self._code(i, line_no)
                 self._flush_word()
                 self.prev_char = ""
@@ -307,6 +408,9 @@ class _Scanner:
                 self._flush_word()
                 self.program.quoted()
                 self.quote, self.quote_at = ch, (line_no, i - pos + 1)
+                self.quote_from = i
+                if not self.exec_comment:
+                    self.exec_only = False
                 self.prev_char = ""
                 i += 1
                 continue
@@ -319,6 +423,7 @@ class _Scanner:
             self._code_char(ch, i, line_no)
             i += 1
         if self.block == "/*+" and not self.mariadb:
+            self.spans.append((self.block_from, end))
             # the mysql client hides the delimiter in a hint on its opening line only
             self.block = ""
         self._flush_word()
@@ -333,6 +438,8 @@ class _Scanner:
             self._flush_word()
             return
         self._code(index, line_no)
+        if not self.exec_comment:
+            self.exec_only = False
         if ch.isalnum() or ch in "_$" or ord(ch) > 127:
             if not self.word_chars:
                 self.word_qualified = self.prev_char in ("@", ".")
@@ -351,6 +458,16 @@ class _Scanner:
             else:
                 self.program.word(word.upper())
 
+    def _backslash(self, index: int, end: int, line_no: int) -> None:
+        following = self.text[index + 1 : index + 2] if index + 1 < end else ""
+        if following == "N":
+            return
+        what = "a backslash at the end of a line" if not following else f"\\{following}"
+        raise UnsupportedMetaCommandError(
+            f"{self.client} client command {what} on line {line_no}: "
+            "dblift does not run client commands"
+        )
+
     def _open_comment(self, i: int, pos: int, line_no: int) -> int:
         text = self.text
         third = text[i + 2 : i + 3]
@@ -361,6 +478,9 @@ class _Scanner:
                 f"the {self.client} client misreads it"
             )
         if executable:
+            self.exec_clean = not self.code
+            if not self.code:
+                self.exec_only = True
             self._code(i, line_no)
             self._flush_word()
             self.exec_comment = True
@@ -368,6 +488,7 @@ class _Scanner:
         self._flush_word()
         self.block = "/*+" if third == "+" else "/*"
         self.block_at = (line_no, i - pos)
+        self.block_from = i
         if third == "+" and not self.mariadb:
             self.open_hint = (line_no, i - pos)
         return i + (3 if third == "+" else 2)
@@ -375,12 +496,32 @@ class _Scanner:
     def _in_block(self, i: int, end: int, line_no: int) -> int:
         text = self.text
         close = text.find("*/", i, end)
+        limit = end if close < 0 else close
+        if self.block == "/*+" and not self.mariadb:
+            slash = text.find("\\", i, limit)
+            if slash >= 0:
+                raise UnsupportedMetaCommandError(
+                    f"backslash inside an optimizer hint on line {line_no}: the mysql client "
+                    "runs it as a command"
+                )
         if close < 0:
             return end
         if self.block == "/*+":
             self.open_hint = None
+        self.spans.append((self.block_from, close + 2))
         self.block = ""
+        if not self.code:
+            self._command_after_comment(close + 2, end, line_no)
         return close + 2
+
+    def _command_after_comment(self, pos: int, end: int, line_no: int) -> None:
+        """A command word after a comment on its line: mysql 8.4 runs it, 8.0 sends it as text."""
+        found = self._classify(pos, end)
+        if found is not None and found[0].upper() != "DELIMITER":
+            raise UnsupportedMetaCommandError(
+                f"{self.client} client command {found[0]!r} after a comment on line {line_no}: "
+                "clients and versions differ on whether it is a command"
+            )
 
     def _in_quote(self, i: int, end: int) -> int:
         text, quote = self.text, self.quote
@@ -392,6 +533,7 @@ class _Scanner:
             i += 1
             if ch == quote:
                 self.quote = ""
+                self.literals.append((self.quote_from, i))
                 break
         return min(i, end)
 
@@ -404,9 +546,36 @@ class _Scanner:
         self._begin_statement()
 
     def _emit(self, text: str, terminator: Optional[str]) -> None:
-        self.statements.append(
-            Statement(text=text.rstrip(), line=self.start_line, terminator=terminator)
+        text = text.rstrip()
+        if "NO_BACKSLASH_ESCAPES" in text.upper() and self._sets_no_backslash_escapes(text):
+            raise UnsafeStatementSplitError(
+                f"the statement on line {self.start_line} sets NO_BACKSLASH_ESCAPES: "
+                f"the {self.client} client then reads backslashes as ordinary characters, "
+                "this splitter cannot follow"
+            )
+        self.statements.append(Statement(text=text, line=self.start_line, terminator=terminator))
+
+    def _sets_no_backslash_escapes(self, text: str) -> bool:
+        """True when the statement is a SET that names the mode outside its comments.
+
+        A literal counts only in a ``SET`` or ``PREPARE`` statement (or a stored program that
+        holds one), also behind ``/*!`` and, on MariaDB, ``/*M!``; the name
+        in the literal of an ``UPDATE`` or a ``SET(...)`` column type is data.
+        """
+        code = self._blank(text, self.spans)
+        sets = re.match(r"\s*(?:/\*M?!\d*\s*)?(?:SET|PREPARE)\b", code, re.IGNORECASE) is not None
+        if not (sets or self.program.is_program):
+            code = self._blank(code, self.literals)
+        return "NO_BACKSLASH_ESCAPES" in code.upper() and bool(
+            re.search(r"\bSET\b", code, re.IGNORECASE)
         )
+
+    def _blank(self, text: str, spans: List[Tuple[int, int]]) -> str:
+        chars = list(text)
+        for begin, stop in spans:
+            for k in range(max(begin - self.start, 0), min(stop - self.start, len(chars))):
+                chars[k] = " "
+        return "".join(chars)
 
     def _finish(self) -> List[Statement]:
         if self.quote:

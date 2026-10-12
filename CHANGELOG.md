@@ -201,9 +201,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `mariadb` instead of `mysql`.
 - `parse_sql` reports a script the splitter refuses as an error in `errors` on
   Oracle, SQL Server, MySQL and MariaDB, instead of failing the parse (PostgreSQL
-  already reported it that way); object extraction returns the
-  objects it finds in the text (none when there are none) instead of raising.
-  Execution still refuses the script.
+  already reported it that way), also when the script declares objects; object
+  extraction returns the objects it finds in the text (none when there are none)
+  instead of raising. Execution still refuses the script. `validate_sql` checks
+  the syntax of the text and does not apply the splitter's refusals.
+- **MySQL and MariaDB: a script with a client command is refused.** `source`,
+  `exit`, `quit`, `status`, `system`, `connect`, `tee`, `charset`, `prompt`,
+  `pager`, `go`, `help x` and `use db` without a terminator, `status;;` and the
+  other command words followed by several terminators, and every backslash command
+  (`\G`, `\g`, `\c`, `\d`, ...) outside a string or comment now fail with the
+  command and its line named, instead of being sent to the server glued to the
+  next statement or silently dropped (the client ends the script at `exit` and
+  clears the statement at `\c`). A command word after a comment on its line is
+  refused too, and so is a script that sets `NO_BACKSLASH_ESCAPES`. Instead of
+  `source file`, put the statements of that file into a migration file of
+  their own (dblift runs migration files in version order); instead of
+  `system` or `\!`, run the command outside the migration, or write the value
+  it produced as a `${VAR}` placeholder.
 
 ## [4.11.1] - 2026-10-10
 
