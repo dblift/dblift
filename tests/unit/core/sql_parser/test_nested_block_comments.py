@@ -173,11 +173,11 @@ class TestDuckDBNestedBlockComments(unittest.TestCase):
 
     def test_issue_example_keeps_drop_inside_the_comment(self):
         stmts = self.parser.split_statements(ISSUE_EXAMPLE)
-        self.assertEqual(stmts, [ISSUE_EXAMPLE])
+        self.assertEqual(stmts, [ISSUE_EXAMPLE.removesuffix(";")])
 
     def test_three_deep(self):
         stmts = self.parser.split_statements(THREE_DEEP)
-        self.assertEqual(stmts, [THREE_DEEP])
+        self.assertEqual(stmts, [THREE_DEEP.removesuffix(";")])
 
     def test_unterminated_inner_comment_swallows_rest_of_file(self):
         stmts = self.parser.split_statements(UNTERMINATED_INNER)

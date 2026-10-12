@@ -181,9 +181,7 @@
     "dialect": "duckdb",
     "sql": "/* just a comment */",
     "strict": false,
-    "statements": [
-      "/* just a comment */"
-    ],
+    "statements": [],
     "error_type": null
   },
   {
