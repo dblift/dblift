@@ -66,8 +66,8 @@ class OracleStatementParser(BaseStatementParser):
         # Head of the statement being read; ``_unit`` stays None until it decides.
         self._head: List[Token] = []
         self._unit: Optional[bool] = None
-        # Text of the delimiter that ended the previous statement (a "/" right
-        # after a ";"-ended statement re-executes it).
+        # Text of the delimiter that ended the previous statement (a bare "/"
+        # after either terminator re-executes it).
         self._last_terminator: Optional[str] = None
         # SQL*Plus substitution state: ON with "&" until a SET DEFINE says otherwise.
         self._define_on = True
@@ -406,8 +406,8 @@ class OracleStatementParser(BaseStatementParser):
 
         ``/`` alone on its line ends any statement; ``;`` ends a statement
         that is not a PL/SQL unit (decided by its head, §5), outside
-        parentheses, and only as the last text on its line. A ``/`` with nothing buffered after a ``;``-ended
-        statement, or a ``.`` alone on a line, is refused.
+        parentheses, and only as the last text on its line. A ``/`` with nothing buffered after a
+        terminated statement, or a ``.`` alone on a line, is refused.
         """
         if token.type != TokenType.DELIMITER:
             return False
@@ -438,7 +438,7 @@ class OracleStatementParser(BaseStatementParser):
     def _slash_ends_statement(self, token: Token) -> bool:
         """Whether a ``/`` alone on its line ends the statement being read."""
         if all(t is token or t.type == TokenType.COMMENT for t in self.context.tokens):
-            if self._last_terminator == ";":
+            if self._last_terminator in (";", "/"):
                 raise UnsafeStatementSplitError(
                     f"'/' on line {token.line} would re-execute the previous statement"
                 )
