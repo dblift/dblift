@@ -52,11 +52,7 @@ def _split_copy_from_stdin(sql: str) -> Optional[Tuple[str, str]]:
     if not copy_header_reads(header_tokens, "FROM", "STDIN"):
         return None
     data_token = next((t for t in tokens if t.type == TokenType.COPY_DATA), None)
-    header = (
-        sql[: data_token.pos].strip().rstrip(";").rstrip()
-        if data_token
-        else sql.strip().rstrip(";").rstrip()
-    )
+    header = sql[: token.pos].strip()
     data = data_token.text if data_token else ""
     return header, data
 

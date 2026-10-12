@@ -270,7 +270,8 @@ class PostgreSQLStatementParser(BaseStatementParser):
             end = terminator.pos + len(terminator.text)
             text = self.source[first.pos : end]
             ended = self.source[end:].lstrip().startswith("\\.")
-            header = self.source[first.pos : terminator.pos].strip().removesuffix(";").rstrip()
+            header_end = next(t.pos for t in tokens if t.type == TokenType.DELIMITER)
+            header = self.source[first.pos : header_end].strip()
             record = Statement(
                 text=text,
                 line=first.line,
