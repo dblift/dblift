@@ -111,12 +111,15 @@ class MysqlQuirks(BaseQuirks):
         Pool reset-on-return is disabled to avoid connection-state churn. Multi-statements
         are enabled because the ``mysql``/``mariadb`` clients connect with them and send a
         chunk holding several statements (under a custom ``DELIMITER``) as one query.
+        ``connect_args`` replaces SQLAlchemy's own ``client_flag``, so ``FOUND_ROWS`` (an
+        ``UPDATE`` counts matched rows) is repeated here. An engine the caller supplies to
+        ``from_sqlalchemy`` is not built from these options and keeps the driver's default.
         """
         from pymysql.constants import CLIENT
 
         return {
             "pool_reset_on_return": None,
-            "connect_args": {"client_flag": CLIENT.MULTI_STATEMENTS},
+            "connect_args": {"client_flag": CLIENT.MULTI_STATEMENTS | CLIENT.FOUND_ROWS},
         }
 
     def parser_class(self, parser_type: str) -> Optional[type]:

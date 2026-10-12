@@ -76,7 +76,7 @@ def test_mysql_engine_disables_pool_reset_on_return(monkeypatch):
         "pool_pre_ping": True,
         "future": True,
         "pool_reset_on_return": None,
-        "connect_args": {"client_flag": CLIENT.MULTI_STATEMENTS},
+        "connect_args": {"client_flag": CLIENT.MULTI_STATEMENTS | CLIENT.FOUND_ROWS},
     }
 
 
@@ -115,7 +115,7 @@ def test_engine_options_mysql_includes_pool_reset():
         "pool_pre_ping": True,
         "future": True,
         "pool_reset_on_return": None,
-        "connect_args": {"client_flag": CLIENT.MULTI_STATEMENTS},
+        "connect_args": {"client_flag": CLIENT.MULTI_STATEMENTS | CLIENT.FOUND_ROWS},
     }
 
 

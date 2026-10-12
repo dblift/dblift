@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Optional
 
 from sqlalchemy import event
 from sqlalchemy.engine import Connection
+from sqlalchemy.exc import DBAPIError
 
 from dblift.config import DbliftConfig
 from dblift.core.constants import DEFAULT_HISTORY_TABLE
@@ -25,16 +26,21 @@ def _quote_identifier(identifier: str) -> str:
     return "`" + identifier.replace("`", "``") + "`"
 
 
+_DRAIN_KEY = "dblift_drain_result_sets"
+
+
 def _drain_result_sets(
     conn: Any, cursor: Any, statement: Any, parameters: Any, context: Any, executemany: Any
 ) -> None:
-    """Consume every result set of a multi-statement query, raising a later statement's error.
+    """After a statement run by ``execute_statement``, read every further result set.
 
     The driver reports the first statement only; the rest sit unread (an error in one is
-    swallowed when the cursor closes, and the connection falls out of step).
+    swallowed when the cursor closes, and the connection falls out of step). A query keeps
+    the rows it asked for, so only ``execute_statement`` arms this (see ``_DRAIN_KEY``).
     """
-    while cursor.nextset():
-        pass
+    if conn.info.get(_DRAIN_KEY):
+        while cursor.nextset():
+            pass
 
 
 class MySqlProvider(SqlAlchemyProvider):
@@ -61,8 +67,7 @@ class MySqlProvider(SqlAlchemyProvider):
     def create_connection(self) -> Connection:
         """Open the connection and make it read every result set of a query."""
         conn = super().create_connection()
-        if not event.contains(conn, "after_cursor_execute", _drain_result_sets):
-            event.listen(conn, "after_cursor_execute", _drain_result_sets)
+        event.listen(conn, "after_cursor_execute", _drain_result_sets)
         return conn
 
     def reset_schema_cache(self) -> None:
@@ -82,7 +87,42 @@ class MySqlProvider(SqlAlchemyProvider):
         if schema:
             self.create_schema_if_not_exists(schema)
             self.set_current_schema(schema)
-        return super().execute_statement(sql, schema=schema, params=params)
+        with self._lock:
+            conn = self._ensure_connection()
+            conn.info[_DRAIN_KEY] = True
+            try:
+                return super().execute_statement(sql, schema=schema, params=params)
+            finally:
+                conn.info.pop(_DRAIN_KEY, None)
+
+    def execute_query(self, sql: str, params: Optional[List[Any]] = None) -> List[Dict[str, Any]]:
+        """Return the rows of the first result set; later statements of the query still run.
+
+        Rows are read before the remaining result sets, so ``SELECT 1; INSERT ...`` and a
+        ``CALL`` that returns rows keep their rows and an error in a later statement is raised.
+        """
+        if params is not None:
+            return super().execute_query(sql, params)
+        with self._lock:
+            conn = self._ensure_connection()
+            result = self._exec_unbound(conn, sql)
+            cursor = result.cursor
+            if cursor is None:
+                return [dict(row) for row in result.mappings()]  # raises: no rows to return
+            from pymysql.err import MySQLError
+
+            keys = list(result.keys())
+            rows = [dict(zip(keys, row)) for row in cursor.fetchall()]
+            try:
+                while cursor.nextset():
+                    pass
+            except MySQLError as exc:
+                raise DBAPIError.instance(sql, None, exc, MySQLError) from exc
+            finally:
+                result.close()
+            if self._tx is None and not getattr(self, "_external_connection", False):
+                conn.commit()
+            return rows
 
     def create_schema_if_not_exists(self, schema: str) -> None:
         """Create a MySQL database if it is missing."""
