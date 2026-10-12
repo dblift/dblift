@@ -51,7 +51,7 @@ def test_sql_analyzer_split_statements_does_not_use_rich_parser_factory():
             raise AssertionError("rich object extraction should not split execution statements")
 
     class FakeStatementSplitter:
-        def split_statements(self, sql, *, strict_tokenizer=False, fallback=None):
+        def split_statements(self, sql, *, strict_tokenizer=False):
             return ["select 1", "select 2"]
 
     analyzer = SqlAnalyzer(
@@ -105,11 +105,11 @@ def test_comment_only_script_yields_no_executable_statement(dialect, sql):
 
 @pytest.mark.unit
 @pytest.mark.parametrize("dialect", _ALL_SPLITTER_DIALECTS)
-def test_regex_fallback_drops_closing_block_comment_marker(dialect):
+def test_scanner_drops_comment_only_script_and_keeps_following_sql(dialect):
     analyzer = SqlAnalyzer(dialect=dialect)
 
-    assert analyzer._split_statements_with_regex("/* just a comment */") == []
-    assert analyzer._split_statements_with_regex("/* c */ SELECT 1;") == ["SELECT 1;"]
+    assert analyzer.split_statements("/* just a comment */") == []
+    assert len(analyzer.split_statements("/* c */ SELECT 1;")) == 1
 
 
 _NESTED_COMMENT_ONLY = "/* outer /* nested */ still comment */"

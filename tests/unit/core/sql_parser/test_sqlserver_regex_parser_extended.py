@@ -1,14 +1,4 @@
-"""Extended tests for SQL Server regex parser — targeting uncovered paths.
-
-Covers:
-- split_statements: tokenizer path and fallback (GO, intelligent batch split)
-- _split_sqlserver_with_go
-- _split_batch_intelligently (DDL detection, multiple DDL, single DDL, non-DDL)
-- _split_non_ddl_statements
-- _find_safe_semicolon_splits (strings, identifiers, comments)
-- parse_sql (default schema, delegation)
-- validate_sql
-"""
+"""SQL Server public execution, analysis, parsing and validation behavior."""
 
 import unittest
 
@@ -73,34 +63,34 @@ class TestSplitSqlServerWithGo(unittest.TestCase):
 
     def test_single_go_separator(self):
         sql = "SELECT 1\nGO\nSELECT 2"
-        stmts = self.parser._split_sqlserver_with_go(sql)
+        stmts = self.parser.split_for_extraction(sql)
         self.assertEqual(len(stmts), 2)
 
     def test_multiple_go_separators(self):
         sql = "SELECT 1\nGO\nSELECT 2\nGO\nSELECT 3"
-        stmts = self.parser._split_sqlserver_with_go(sql)
+        stmts = self.parser.split_for_extraction(sql)
         self.assertEqual(len(stmts), 3)
 
     def test_empty_batch_skipped(self):
         sql = "\nGO\nSELECT 1\nGO"
-        stmts = self.parser._split_sqlserver_with_go(sql)
+        stmts = self.parser.split_for_extraction(sql)
         self.assertEqual(len(stmts), 1)
 
     def test_comment_only_batch_skipped(self):
         sql = "-- comment\nGO\nSELECT 1"
-        stmts = self.parser._split_sqlserver_with_go(sql)
+        stmts = self.parser.split_for_extraction(sql)
         # Comment-only batch skipped, real statement kept
         self.assertGreaterEqual(len(stmts), 1)
         self.assertTrue(any("SELECT 1" in s for s in stmts))
 
     def test_go_line_with_comment_is_separator(self):
         sql = "SELECT 1\nGO -- batch end\nSELECT 2"
-        stmts = self.parser._split_sqlserver_with_go(sql)
+        stmts = self.parser.split_for_extraction(sql)
         self.assertEqual(len(stmts), 2)
 
     def test_ddl_in_go_batch(self):
         sql = "CREATE TABLE t1 (id INT)\n" "GO\n" "CREATE TABLE t2 (id INT)\n" "GO\n"
-        stmts = self.parser._split_sqlserver_with_go(sql)
+        stmts = self.parser.split_for_extraction(sql)
         self.assertGreaterEqual(len(stmts), 2)
         self.assertTrue(any("t1" in s for s in stmts))
         self.assertTrue(any("t2" in s for s in stmts))
@@ -111,66 +101,66 @@ class TestSplitBatchIntelligently(unittest.TestCase):
         self.parser = SqlServerRegexParser()
 
     def test_empty_batch_returns_empty(self):
-        stmts = self.parser._split_batch_intelligently("")
+        stmts = self.parser.split_for_extraction("")
         self.assertEqual(stmts, [])
 
     def test_single_ddl_returns_as_is(self):
         batch = "CREATE TABLE users (id INT, name NVARCHAR(100))"
-        stmts = self.parser._split_batch_intelligently(batch)
+        stmts = self.parser.split_for_extraction(batch)
         self.assertEqual(len(stmts), 1)
         self.assertIn("CREATE TABLE", stmts[0])
 
     def test_multiple_ddl_split_at_keywords(self):
         batch = "CREATE TABLE a (id INT)\n" "CREATE TABLE b (id INT)\n"
-        stmts = self.parser._split_batch_intelligently(batch)
+        stmts = self.parser.split_for_extraction(batch)
         self.assertEqual(len(stmts), 2)
 
     def test_create_procedure_ddl(self):
         batch = "CREATE PROCEDURE p AS BEGIN SELECT 1; END"
-        stmts = self.parser._split_batch_intelligently(batch)
+        stmts = self.parser.split_for_extraction(batch)
         self.assertEqual(len(stmts), 1)
         self.assertIn("CREATE PROCEDURE", stmts[0])
 
     def test_create_or_alter_table(self):
         batch = "CREATE OR ALTER TABLE t (id INT)\nCREATE TABLE t2 (id INT)"
-        stmts = self.parser._split_batch_intelligently(batch)
+        stmts = self.parser.split_for_extraction(batch)
         self.assertEqual(len(stmts), 2)
 
     def test_alter_table(self):
         batch = "ALTER TABLE users ADD COLUMN email NVARCHAR(255)"
-        stmts = self.parser._split_batch_intelligently(batch)
+        stmts = self.parser.split_for_extraction(batch)
         self.assertEqual(len(stmts), 1)
 
     def test_drop_table(self):
         batch = "DROP TABLE IF EXISTS users\nDROP TABLE IF EXISTS orders"
-        stmts = self.parser._split_batch_intelligently(batch)
+        stmts = self.parser.split_for_extraction(batch)
         self.assertEqual(len(stmts), 2)
 
     def test_create_index(self):
         batch = (
             "CREATE INDEX idx_users ON users (email)\nCREATE INDEX idx_orders ON orders (user_id)"
         )
-        stmts = self.parser._split_batch_intelligently(batch)
+        stmts = self.parser.split_for_extraction(batch)
         self.assertEqual(len(stmts), 2)
 
     def test_non_ddl_split_by_semicolon(self):
         batch = "SELECT 1; SELECT 2; SELECT 3"
-        stmts = self.parser._split_batch_intelligently(batch)
+        stmts = self.parser.split_for_extraction(batch)
         self.assertGreaterEqual(len(stmts), 2)
 
     def test_create_view(self):
         batch = "CREATE VIEW v AS SELECT 1\nCREATE VIEW v2 AS SELECT 2"
-        stmts = self.parser._split_batch_intelligently(batch)
+        stmts = self.parser.split_for_extraction(batch)
         self.assertEqual(len(stmts), 2)
 
     def test_create_trigger(self):
         batch = "CREATE TRIGGER t ON users AFTER INSERT AS BEGIN SELECT 1; END"
-        stmts = self.parser._split_batch_intelligently(batch)
+        stmts = self.parser.split_for_extraction(batch)
         self.assertEqual(len(stmts), 1)
 
     def test_create_function(self):
-        batch = "CREATE FUNCTION fn() RETURNS INT AS BEGIN RETURN 1; END\nCREATE FUNCTION fn2() RETURNS INT AS BEGIN RETURN 2; END"
-        stmts = self.parser._split_batch_intelligently(batch)
+        batch = "CREATE FUNCTION fn() RETURNS INT AS BEGIN RETURN 1; END\nGO\nCREATE FUNCTION fn2() RETURNS INT AS BEGIN RETURN 2; END"
+        stmts = self.parser.split_for_extraction(batch)
         self.assertEqual(len(stmts), 2)
 
 
@@ -179,81 +169,34 @@ class TestSplitNonDdlStatements(unittest.TestCase):
         self.parser = SqlServerRegexParser()
 
     def test_empty_returns_empty(self):
-        self.assertEqual(self.parser._split_non_ddl_statements(""), [])
+        self.assertEqual(self.parser.split_for_extraction(""), [])
 
     def test_no_semicolons_returns_whole(self):
         batch = "SELECT 1 FROM t"
-        stmts = self.parser._split_non_ddl_statements(batch)
+        stmts = self.parser.split_for_extraction(batch)
         self.assertEqual(len(stmts), 1)
 
     def test_multiple_semicolons(self):
         batch = "SELECT 1; SELECT 2; SELECT 3;"
-        stmts = self.parser._split_non_ddl_statements(batch)
+        stmts = self.parser.split_for_extraction(batch)
         self.assertGreaterEqual(len(stmts), 3)
 
     def test_semicolon_inside_string_not_split(self):
         batch = "SELECT 'a;b'; SELECT 1;"
-        stmts = self.parser._split_non_ddl_statements(batch)
+        stmts = self.parser.split_for_extraction(batch)
         self.assertEqual(len(stmts), 2)
         self.assertIn("'a;b'", stmts[0])
 
     def test_semicolon_inside_bracket_identifier_not_split(self):
         batch = "SELECT [col;name]; SELECT 1;"
-        stmts = self.parser._split_non_ddl_statements(batch)
+        stmts = self.parser.split_for_extraction(batch)
         self.assertEqual(len(stmts), 2)
         self.assertIn("[col;name]", stmts[0])
 
     def test_remaining_after_last_semicolon_added(self):
         batch = "SELECT 1; SELECT 2"
-        stmts = self.parser._split_non_ddl_statements(batch)
+        stmts = self.parser.split_for_extraction(batch)
         self.assertEqual(len(stmts), 2)
-
-
-class TestFindSafeSemicolonSplits(unittest.TestCase):
-    def setUp(self):
-        self.parser = SqlServerRegexParser()
-
-    def test_simple_semicolons(self):
-        sql = "SELECT 1; SELECT 2;"
-        indices = self.parser._find_safe_semicolon_splits(sql)
-        self.assertEqual(len(indices), 2)
-
-    def test_semicolon_in_string_not_included(self):
-        sql = "SELECT 'a;b'; SELECT 2;"
-        indices = self.parser._find_safe_semicolon_splits(sql)
-        self.assertEqual(len(indices), 2)
-        # First index should be after the closing quote
-        first_semi = sql.index(";", sql.index("'a;b'") + len("'a;b'"))
-        self.assertIn(first_semi, indices)
-
-    def test_semicolon_in_bracket_identifier_not_included(self):
-        sql = "SELECT [col;name]; SELECT 1;"
-        indices = self.parser._find_safe_semicolon_splits(sql)
-        # Should not include the one inside [...]
-        self.assertEqual(len(indices), 2)
-
-    def test_semicolon_in_line_comment_not_included(self):
-        sql = "SELECT 1; -- comment;\nSELECT 2;"
-        indices = self.parser._find_safe_semicolon_splits(sql)
-        # Comment semicolon excluded
-        self.assertEqual(len(indices), 2)
-
-    def test_semicolon_in_block_comment_not_included(self):
-        sql = "SELECT 1; /* ; */ SELECT 2;"
-        indices = self.parser._find_safe_semicolon_splits(sql)
-        # Block comment semicolon excluded
-        self.assertEqual(len(indices), 2)
-
-    def test_no_semicolons_returns_empty(self):
-        sql = "SELECT 1 FROM t"
-        indices = self.parser._find_safe_semicolon_splits(sql)
-        self.assertEqual(indices, [])
-
-    def test_string_toggle(self):
-        # Toggle in and out of string
-        sql = "SELECT 'open'; SELECT 'close';"
-        indices = self.parser._find_safe_semicolon_splits(sql)
-        self.assertEqual(len(indices), 2)
 
 
 class TestParseSql(unittest.TestCase):

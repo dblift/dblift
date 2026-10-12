@@ -11,7 +11,8 @@ error, never SQL.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from bisect import bisect_left
+from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
 
 from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
@@ -59,6 +60,7 @@ class Batch:
     line: int
     repeat: int = 1
     terminated: bool = False
+    analysis_statements: Tuple[str, ...] = field(default=(), compare=False)
 
 
 def scan_batches(script: str) -> List[Batch]:
@@ -75,6 +77,10 @@ class _Scanner:
         self.batch_start = 0
         self.batch_line = 1
         self.has_code = False
+        # SQL words and semicolons are collected while the batch lexer is already
+        # in code. Analysis boundaries never need to lex the batch a second time.
+        self.events: List[Tuple[int, str]] = []
+        self.code_positions: List[int] = []
 
     def run(self) -> List[Batch]:
         text, pos, line_no = self.text, 0, 0
@@ -83,7 +89,7 @@ class _Scanner:
             end = len(text) if newline == -1 else newline
             following = len(text) if newline == -1 else newline + 1
             line_no += 1
-            count = self._scan_line(text[pos:end], line_no)
+            count = self._scan_line(text[pos:end], line_no, pos)
             if count is not None:
                 self._cut(pos, following, count, line_no)
             pos = following
@@ -95,13 +101,8 @@ class _Scanner:
         self._flush(len(text), repeat=1, terminated=False)
         return self.batches
 
-    def _scan_line(self, line: str, line_no: int) -> Optional[int]:
+    def _scan_line(self, line: str, line_no: int, line_start: int) -> Optional[int]:
         """Advance the lexical state over one line; the ``GO`` count when the line is a ``GO``."""
-        if self.state is None and _LONE_CR_GO.search(line):
-            raise UnsafeStatementSplitError(
-                f"text after GO on line {line_no}: a lone carriage return is not a line "
-                "break sqlcmd was measured on; end the line with a newline"
-            )
         i, size = 0, len(line)
         at_head = self.state in (None, "/*")
         commented = False
@@ -116,11 +117,16 @@ class _Scanner:
                 i = self._close_lexeme(line, i, line_no)
                 continue
             if line[i] in " \t\r":
+                if line[i] == "\r" and _LONE_CR_GO.match(line, i):
+                    raise UnsafeStatementSplitError(
+                        f"text after GO on line {line_no}: a lone carriage return is not a line "
+                        "break sqlcmd was measured on; end the line with a newline"
+                    )
                 i += 1
                 continue
             if at_head:
                 if line.startswith("/*", i):
-                    self._open("/*", line_no, i)
+                    self._open("/*", line_no, i, line_start)
                     i += 2
                     continue
                 if line.startswith("--", i):
@@ -131,10 +137,10 @@ class _Scanner:
                     return count
             opener = _OPENER.search(line, i)
             stop = opener.start() if opener else size
-            self._code(line[i:stop], line_no)
+            self._code(line[i:stop], line_no, line_start + i)
             if opener is None or opener.group() == "--":
                 return None
-            self._open(opener.group(), line_no, stop)
+            self._open(opener.group(), line_no, stop, line_start)
             i = stop + len(opener.group())
         return None
 
@@ -195,10 +201,11 @@ class _Scanner:
             )
         return count
 
-    def _open(self, lexeme: str, line_no: int, index: int) -> None:
+    def _open(self, lexeme: str, line_no: int, index: int, line_start: int) -> None:
         self.state, self.opened = lexeme, (line_no, index + 1)
         if lexeme != "/*":
             self.has_code = True
+            self.code_positions.append(line_start + index)
 
     def _close_lexeme(self, line: str, i: int, line_no: int) -> int:
         """Consume a string or identifier up to its closer (a doubled closer is an escape)."""
@@ -216,9 +223,19 @@ class _Scanner:
             self.state = None
             return j + 1
 
-    def _code(self, segment: str, line_no: int) -> None:
+    def _code(self, segment: str, line_no: int, start: int) -> None:
+        if _LONE_CR_GO.search(segment):
+            raise UnsafeStatementSplitError(
+                f"text after GO on line {line_no}: a lone carriage return is not a line "
+                "break sqlcmd was measured on; end the line with a newline"
+            )
         if segment.strip(" \t\r;"):
             self.has_code = True
+            self.code_positions.extend(
+                start + match.start() for match in re.finditer(r"[^ \t\r;]+", segment)
+            )
+        for match in re.finditer(r"[A-Za-z_@#$][A-Za-z0-9_@#$]*|;", segment):
+            self.events.append((start + match.start(), match.group().upper()))
         self._variables(segment, line_no)
 
     @staticmethod
@@ -239,6 +256,62 @@ class _Scanner:
         if self.has_code:
             lead = raw[: len(raw) - len(raw.lstrip())]
             self.batches.append(
-                Batch(raw.strip(), self.batch_line + lead.count("\n"), repeat, terminated)
+                Batch(
+                    raw.strip(),
+                    self.batch_line + lead.count("\n"),
+                    repeat,
+                    terminated,
+                    self._analysis_parts(end),
+                )
             )
         self.has_code = False
+        self.events.clear()
+        self.code_positions.clear()
+
+    def _analysis_parts(self, end: int) -> Tuple[str, ...]:
+        """Project top-level SQL statements from code tokens seen by this batch scan."""
+        words = [word for _, word in self.events if word != ";"]
+        head = words[:4]
+        if head[:2] in (["CREATE", "PROCEDURE"], ["CREATE", "PROC"],
+                        ["ALTER", "PROCEDURE"], ["ALTER", "PROC"],
+                        ["CREATE", "TRIGGER"], ["ALTER", "TRIGGER"],
+                        ["CREATE", "FUNCTION"], ["ALTER", "FUNCTION"]) or (
+            head[:3] in (["CREATE", "OR", "ALTER"], ["CREATE", "OR", "REPLACE"])
+            and len(head) > 3
+            and head[3] in {"PROCEDURE", "PROC", "TRIGGER", "FUNCTION"}
+        ):
+            return (self.text[self.batch_start:end].strip(),)
+
+        parts: List[str] = []
+        start = self.batch_start
+        depth = 0
+        case_depth = 0
+
+        def has_code(first: int, last: int) -> bool:
+            index = bisect_left(self.code_positions, first)
+            return index < len(self.code_positions) and self.code_positions[index] <= last
+
+        for index, (position, word) in enumerate(self.events):
+            if word == "BEGIN":
+                next_word = self.events[index + 1][1] if index + 1 < len(self.events) else ""
+                if next_word not in {"TRAN", "TRANSACTION", "DISTRIBUTED", "CONVERSATION", "DIALOG"}:
+                    depth += 1
+            elif word == "CASE":
+                case_depth += 1
+            elif word == "END":
+                if case_depth:
+                    case_depth -= 1
+                elif depth:
+                    depth -= 1
+            elif word == ";" and depth == 0:
+                if has_code(start, position):
+                    parts.append(self.text[start:position + 1].strip())
+                start = position + 1
+            elif word in {"CREATE", "ALTER", "DROP", "TRUNCATE"} and depth == 0:
+                line_start = self.text.rfind("\n", self.batch_start, position) + 1
+                if line_start > self.batch_start and not self.text[line_start:position].strip() and has_code(start, position - 1):
+                    parts.append(self.text[start:position].strip())
+                    start = position
+        if has_code(start, end - 1):
+            parts.append(self.text[start:end].strip())
+        return tuple(parts)

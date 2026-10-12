@@ -47,14 +47,6 @@ def resolve_migration_sql_dialect(dialect: Optional[str], config: Any, log: Log)
     return dialect
 
 
-def fallback_migration_sql(content: str, log: Log, error: Exception) -> List[str]:
-    """Preserve SQL parsing's fallback for analyzer construction or splitting failures."""
-    log.warning(f"Error using SqlAnalyzer: {error}. Falling back to simple semicolon-based parser.")
-    statements = [statement.strip() for statement in content.split(";") if statement.strip()]
-    log.debug(f"Fallback parser produced {len(statements)} statements")
-    return statements
-
-
 def parse_migration_sql(
     analyzer: ExecutionSqlParser, content: str, log: Log, *, for_analysis: bool = False
 ) -> List[str]:
@@ -77,4 +69,4 @@ def parse_migration_sql(
         # reproduce the exact defect the refusal exists to surface instead.
         raise
     except Exception as exc:
-        return fallback_migration_sql(content, log, exc)
+        raise UnsafeStatementSplitError(f"statement splitter failed: {exc}") from exc

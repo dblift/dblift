@@ -640,9 +640,7 @@ def test_snowflake_migration_split_refuses_unquoted_scripting_block() -> None:
     sql = "BEGIN LET x INT := 1; RETURN x; END;"
 
     with pytest.raises(UnsafeStatementSplitError, match="Snowflake Scripting"):
-        StatementSplitter("snowflake").split_statements(
-            sql, fallback=lambda value: value.split(";")
-        )
+        StatementSplitter("snowflake").split_statements(sql)
 
 
 def test_snowflake_clean_schema_and_droppable_objects_use_catalogs() -> None:

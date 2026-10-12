@@ -11,12 +11,8 @@ from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.migration.sql.statement_splitter import StatementSplitter
 
 
-def test_directive_only_script_yields_nothing_and_never_reaches_the_fallback() -> None:
-    calls: list[str] = []
-    out = StatementSplitter("postgresql").split_statements(
-        "\\restrict abc\n\\unrestrict abc\n", fallback=lambda sql: calls.append(sql) or ["BOOM"]
-    )
-    assert out == [] and calls == []
+def test_directive_only_script_yields_nothing() -> None:
+    assert StatementSplitter("postgresql").split_statements("\\restrict abc\n\\unrestrict abc\n") == []
 
 
 def test_analyzer_returns_nothing_for_a_directive_only_script() -> None:

@@ -2,109 +2,37 @@
 
 from __future__ import annotations
 
-import inspect
 import logging as _logging
-from typing import Callable, List, Optional, Union
+from typing import List, Optional, Union
 
 from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
 from dblift.core.logger import Log
-from dblift.core.migration.sql.execution_statement import is_comment_only_statement
-from dblift.core.sql_parser.enhanced_regex_parser import EnhancedRegexParser
 from dblift.core.sql_parser.parser_factory import SqlParserFactory
 from dblift.core.sql_parser.parser_interface import SqlParserInterface
 
-FallbackSplitter = Callable[[str], List[str]]
-
 
 class StatementSplitter:
-    """Split migration scripts without constructing rich schema-analysis parsers."""
+    """Split migration scripts with the dialect's authoritative scanner."""
 
     def __init__(
         self,
         dialect: str,
         logger: Optional[Union[Log, _logging.Logger]] = None,
     ):
-        """Pick a regex parser for the given ``dialect`` — lighter than full schema parsing."""
         self.dialect = dialect.lower()
         self.logger = logger
         self.parser_factory = SqlParserFactory(self.dialect, parser_type="regex")
         self._parser: Optional[SqlParserInterface] = None
 
-    def split_statements(
-        self,
-        sql: str,
-        *,
-        strict_tokenizer: bool = False,
-        fallback: Optional[FallbackSplitter] = None,
-    ) -> List[str]:
-        """Split SQL content into executable statement strings."""
-        parser = self._parser
-        if parser is None:
-            try:
-                parser = self.parser_factory.get_parser()
-            except Exception as exc:  # no parser for this dialect: the caller's fallback decides
-                if strict_tokenizer:
-                    raise
-                if self.logger:
-                    self.logger.warning(f"{self.dialect}-specific statement splitter failed: {exc}")
-                return list(fallback(sql)) if fallback is not None else []
-            self._parser = parser
-
-        if isinstance(parser, SqlParserInterface) and parser.SPLITS_WITHOUT_FALLBACK:
-            # Authoritative: a splitter bug must refuse, never fall back to a guess.
-            try:
-                return list(parser.split_statements(sql, strict_tokenizer=strict_tokenizer))
-            except (UnsafeStatementSplitError, UnsupportedMetaCommandError):
-                raise
-            except Exception as exc:
-                raise UnsafeStatementSplitError(
-                    f"{self.dialect} statement splitter failed: {exc}"
-                ) from exc
-
+    def split_statements(self, sql: str, *, strict_tokenizer: bool = False) -> List[str]:
+        """Return executable units or refuse; never guess a second split."""
+        if self._parser is None:
+            self._parser = self.parser_factory.get_parser()
         try:
-            split_signature = inspect.signature(parser.split_statements)
-            supports_strict = "strict_tokenizer" in split_signature.parameters
-            if supports_strict:
-                statements = parser.split_statements(sql, strict_tokenizer=strict_tokenizer)
-            else:
-                statements = parser.split_statements(sql)
-
-            if statements:
-                return list(statements)
-            # Nothing executable is a correct result for a blank or comment-only
-            # script; the permissive fallback would only reintroduce comment
-            # fragments (e.g. a stray ``*`` from a closing ``*/``).
-            # Whether ``/* a /* b */ c */`` is one comment is the dialect's
-            # call; its tokenizer already declares it.
-            nested = (
-                isinstance(parser, EnhancedRegexParser)
-                and parser.tokenizer_class.NESTED_BLOCK_COMMENTS
-            )
-            if is_comment_only_statement(sql, nested_block_comments=nested):
-                return []
-            if self.logger:
-                self.logger.warning(
-                    f"{self.dialect}-specific statement splitter returned no statements"
-                )
-        except TypeError:
-            if strict_tokenizer:
-                raise
-            if self.logger:
-                self.logger.warning(
-                    f"{self.dialect}-specific statement splitter did not accept strict mode"
-                )
+            return list(self._parser.split_statements(sql, strict_tokenizer=strict_tokenizer))
         except (UnsafeStatementSplitError, UnsupportedMetaCommandError):
-            # A deliberate refusal from the dialect parser, not a splitting
-            # failure -- the fallback below cannot be trusted to reproduce
-            # it, so it must not be swallowed here regardless of
-            # strict_tokenizer.
             raise
         except Exception as exc:
-            if strict_tokenizer:
-                raise
-            if self.logger:
-                self.logger.warning(f"{self.dialect}-specific statement splitter failed: {exc}")
-
-        if fallback is None:
-            return []
-        return list(fallback(sql))
+            raise UnsafeStatementSplitError(
+                f"{self.dialect} statement splitter failed: {exc}"
+            ) from exc

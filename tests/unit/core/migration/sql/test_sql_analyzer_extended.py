@@ -4,8 +4,7 @@ Target file: core/migration/sql/sql_analyzer.py
 Coverage focus:
 - get_statement_type: db-specific parser path (value, UNKNOWN fallback), exception path
 - _get_statement_type_string: each keyword branch, BOM handling, comment removal
-- split_statements + _split_statements_with_regex: GO, block comment, identifier, string
-- _split_sqlserver_with_go
+- split_statements: GO, block comment, identifier, string
 - analyze_statement: success and exception paths
 - validate_sql: db-specific parser (tuple, dict, bool result), basic structural checks
 - extract_objects / _extract_objects_regex: all branches
@@ -229,7 +228,7 @@ class TestGetStatementTypeWithDbSpecificParser(unittest.TestCase):
 
 
 class TestSplitStatements(unittest.TestCase):
-    """Tests for split_statements() and _split_statements_with_regex()."""
+    """Tests for the public execution split."""
 
     def test_splits_semicolon_separated(self):
         analyzer = SqlAnalyzer(dialect="postgresql")
@@ -264,72 +263,72 @@ class TestSplitStatements(unittest.TestCase):
         self.assertTrue(stmts[2].strip().startswith("CREATE INDEX idx2"))
         self.assertTrue(stmts[3].strip().startswith("ALTER TABLE customers"))
 
-    def test_regex_fallback_splits_semicolons(self):
+    def test_scanner_splits_semicolons(self):
         analyzer = SqlAnalyzer(dialect="postgresql")
         sql = "INSERT INTO t VALUES (1);\nINSERT INTO t VALUES (2);"
-        stmts = analyzer._split_statements_with_regex(sql)
+        stmts = analyzer.split_statements(sql)
         self.assertEqual(len(stmts), 2)
 
-    def test_regex_handles_string_literals(self):
+    def test_scanner_handles_string_literals(self):
         analyzer = SqlAnalyzer(dialect="postgresql")
         # semicolon inside a string should not split
         sql = "INSERT INTO t VALUES ('hello; world');"
-        stmts = analyzer._split_statements_with_regex(sql)
+        stmts = analyzer.split_statements(sql)
         self.assertEqual(len(stmts), 1)
 
-    def test_regex_handles_block_comment(self):
+    def test_scanner_handles_block_comment(self):
         analyzer = SqlAnalyzer(dialect="postgresql")
         sql = "/* first; comment */\nSELECT 1;"
-        stmts = analyzer._split_statements_with_regex(sql)
+        stmts = analyzer.split_statements(sql)
         self.assertEqual(len(stmts), 1)
 
-    def test_regex_handles_line_comment(self):
+    def test_scanner_handles_line_comment(self):
         analyzer = SqlAnalyzer(dialect="postgresql")
         sql = "-- this is a comment; not a separator\nSELECT 1;"
-        stmts = analyzer._split_statements_with_regex(sql)
+        stmts = analyzer.split_statements(sql)
         self.assertEqual(len(stmts), 1)
 
-    def test_regex_handles_quoted_identifiers(self):
+    def test_scanner_handles_quoted_identifiers(self):
         analyzer = SqlAnalyzer(dialect="postgresql")
         sql = 'SELECT "col;name" FROM t;'
-        stmts = analyzer._split_statements_with_regex(sql)
+        stmts = analyzer.split_statements(sql)
         self.assertEqual(len(stmts), 1)
 
     def test_empty_sql_returns_empty(self):
         analyzer = SqlAnalyzer(dialect="postgresql")
-        stmts = analyzer._split_statements_with_regex("")
+        stmts = analyzer.split_statements("")
         self.assertEqual(stmts, [])
 
     def test_sqlserver_go_with_comment(self):
         analyzer = SqlAnalyzer(dialect="sqlserver")
         sql = "SELECT 1\nGO -- batch separator\nSELECT 2"
-        stmts = analyzer._split_sqlserver_with_go(sql)
+        stmts = analyzer.split_statements(sql)
         self.assertEqual(len(stmts), 2)
 
     def test_sqlserver_go_filters_empty_batches(self):
         analyzer = SqlAnalyzer(dialect="sqlserver")
         sql = "\nGO\nSELECT 1\nGO\n"
-        stmts = analyzer._split_sqlserver_with_go(sql)
+        stmts = analyzer.split_statements(sql)
         self.assertEqual(len(stmts), 1)
 
     def test_sqlserver_go_case_insensitive(self):
         analyzer = SqlAnalyzer(dialect="sqlserver")
         sql = "SELECT 1\ngo\nSELECT 2"
-        stmts = analyzer._split_sqlserver_with_go(sql)
+        stmts = analyzer.split_statements(sql)
         self.assertEqual(len(stmts), 2)
 
     def test_non_sqlserver_no_go_splitting(self):
         analyzer = SqlAnalyzer(dialect="postgresql")
         sql = "SELECT 1\nGO\nSELECT 2"
-        # Should fall through to semicolon splitter; GO treated as regular word
-        stmts = analyzer._split_statements_with_regex(sql)
+        # GO is an ordinary word outside the SQL Server dialect.
+        stmts = analyzer.split_statements(sql)
         # Both statements have no semicolons so they are joined as one
         self.assertIsInstance(stmts, list)
 
     def test_escaped_quotes_in_string(self):
         analyzer = SqlAnalyzer(dialect="postgresql")
         sql = "INSERT INTO t VALUES ('it''s a test');"
-        stmts = analyzer._split_statements_with_regex(sql)
+        stmts = analyzer.split_statements(sql)
         self.assertEqual(len(stmts), 1)
 
 

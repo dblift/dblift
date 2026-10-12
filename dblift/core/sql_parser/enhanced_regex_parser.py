@@ -61,33 +61,8 @@ class EnhancedRegexParser(RegexParser):
         logger.debug("Enhanced regex parser initialized")
 
     def split_statements(self, sql_content: str, strict_tokenizer: bool = False) -> List[str]:
-        """Split SQL content using enhanced Oracle-proven patterns.
-
-        This method incorporates the successful patterns from Oracle parser's
-        _split_statements_regex method for more robust statement splitting.
-
-        Args:
-            sql_content: SQL content to split
-
-        Returns:
-            List of SQL statement strings
-        """
-        if not sql_content.strip():
-            return []
-
-        # Clean and normalize SQL first
-        cleaned_sql = self._clean_sql(sql_content)
-
-        # Check for batch separators first (dialect-specific)
-        if self._has_batch_separators(cleaned_sql):
-            return self._split_with_batch_separators(cleaned_sql)
-
-        # Check for block statements that need special handling
-        if self._has_block_statements(cleaned_sql):
-            return self._split_with_block_awareness(cleaned_sql)
-
-        # Enhanced semicolon-based splitting with Oracle-proven patterns
-        return self._split_by_semicolon_enhanced(cleaned_sql)
+        """Dialect subclasses must supply their authoritative script scanner."""
+        raise NotImplementedError("a dialect script scanner is required")
 
     def extract_objects(
         self, sql_content: str, default_schema: Optional[str] = None
@@ -144,10 +119,8 @@ class EnhancedRegexParser(RegexParser):
 
         try:
             # Clean and normalize SQL
-            cleaned_sql = self._clean_sql(sql_content)
-
             # Enhanced statement splitting
-            sql_statements = self.split_for_extraction(cleaned_sql)
+            sql_statements = self.split_for_extraction(sql_content)
 
             # Parse each statement with enhanced error handling
             for sql in sql_statements:
@@ -216,122 +189,9 @@ class EnhancedRegexParser(RegexParser):
             ),
         }
 
-    def _split_by_semicolon_enhanced(self, sql: str) -> List[str]:
-        """Enhanced semicolon splitting incorporating Oracle parser patterns."""
-        statements = []
-        current = []
-        in_string = False
-        in_identifier = False
-        in_line_comment = False
-        in_block_comment = False
-        string_char = None
-        i = 0
-
-        while i < len(sql):
-            char = sql[i]
-
-            # Handle string literals with Oracle-style escaping
-            if not in_line_comment and not in_block_comment:
-                if not in_string and char in ("'", '"'):
-                    in_string = True
-                    string_char = char
-                elif in_string and char == string_char:
-                    # Check for Oracle-style escaped quotes (double quote)
-                    if i + 1 < len(sql) and sql[i + 1] == string_char:
-                        current.append(char)
-                        current.append(sql[i + 1])
-                        i += 2
-                        continue
-                    else:
-                        in_string = False
-                        string_char = None
-
-            # Handle dialect-specific quoted identifiers
-            if not in_string and not in_line_comment and not in_block_comment:
-                # This would need more sophisticated handling for bracket identifiers
-                pass
-
-            # Handle comments
-            if not in_string:
-                # Line comments
-                if char == "-" and i + 1 < len(sql) and sql[i + 1] == "-":
-                    in_line_comment = True
-                    current.append(char)
-                    current.append(sql[i + 1])
-                    i += 2
-                    continue
-                # Block comments
-                elif char == "/" and i + 1 < len(sql) and sql[i + 1] == "*":
-                    in_block_comment = True
-                    current.append(char)
-                    current.append(sql[i + 1])
-                    i += 2
-                    continue
-                elif char == "*" and i + 1 < len(sql) and sql[i + 1] == "/" and in_block_comment:
-                    in_block_comment = False
-                    current.append(char)
-                    current.append(sql[i + 1])
-                    i += 2
-                    continue
-
-            # End line comments at newline
-            if char in ["\n", "\r"] and in_line_comment:
-                in_line_comment = False
-
-            # Handle statement terminators (semicolon)
-            if (
-                char == ";"
-                and not in_string
-                and not in_identifier
-                and not in_line_comment
-                and not in_block_comment
-            ):
-                current.append(char)
-                stmt = "".join(current).strip()
-                if stmt and not self._is_empty_or_comment(stmt):
-                    statements.append(stmt)
-                current = []
-                i += 1
-                continue
-
-            current.append(char)
-            i += 1
-
-        # Add any remaining statement
-        if current:
-            stmt = "".join(current).strip()
-            if stmt and not self._is_empty_or_comment(stmt):
-                statements.append(stmt)
-
-        return statements
-
     def _clean_sql(self, sql: str) -> str:
         """Clean and normalize SQL content."""
         return sql.strip()
-
-    def _has_batch_separators(self, sql: str) -> bool:
-        """Check if SQL contains batch separators."""
-        for pattern in self.config.batch_separators:
-            if pattern.search(sql):
-                return True
-        return False
-
-    def _has_block_statements(self, sql: str) -> bool:
-        """Check if SQL contains block statements."""
-        for keyword in self.config.block_keywords:
-            if keyword in sql.upper():
-                return True
-        return False
-
-    def _split_with_batch_separators(self, sql: str) -> List[str]:
-        """Split SQL using batch separators."""
-        # Simple implementation - can be enhanced
-        return [stmt.strip() for stmt in sql.split(";") if stmt.strip()]
-
-    def _split_with_block_awareness(self, sql: str) -> List[str]:
-        """Split SQL with block awareness."""
-        # Simple implementation - can be enhanced
-        return [stmt.strip() for stmt in sql.split(";") if stmt.strip()]
 
     def _is_empty_or_comment(self, stmt: str) -> bool:
         """Check if statement is empty or just comments."""

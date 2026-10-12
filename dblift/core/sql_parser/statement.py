@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Iterable, List, Literal, Optional, Tuple
 
 StatementKind = Literal["sql", "directive", "copy_stdin"]
@@ -28,7 +28,7 @@ class Statement:
     repeat: int = 1
     # Derived by the same dialect scan as ``text``. None means this execution
     # unit is one analysis statement; () deliberately contributes none.
-    analysis_statements: Optional[Tuple[str, ...]] = None
+    analysis_statements: Optional[Tuple[str, ...]] = field(default=None, compare=False)
 
 
 def analysis_sql(records: Iterable[Statement]) -> List[str]:

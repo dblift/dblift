@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from dblift.core.exceptions import UnsupportedMetaCommandError
+from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
 from dblift.core.logger import NullLog
 from dblift.core.logger.results import MigrateResult
 from dblift.core.migration.executor.execution_engine import ExecutionEngine
@@ -28,17 +28,13 @@ def test_helper_splits_with_dialect_and_filters_empty_statements():
     assert helper.parse_migration_sql(analyzer, "SELECT 3;", NullLog()) == ["SELECT 3"]
 
 
-def test_helper_split_failure_logs_and_uses_semicolon_fallback():
+def test_helper_split_failure_refuses_instead_of_guessing():
     helper = importlib.import_module("dblift.core.migration.sql.migration_sql_parser")
     analyzer, log = MagicMock(), MagicMock()
     analyzer.split_statements.side_effect = ValueError("bad parser")
-    assert helper.parse_migration_sql(analyzer, " SELECT 1; ; SELECT 2;", log) == [
-        "SELECT 1",
-        "SELECT 2",
-    ]
-    log.warning.assert_called_once_with(
-        "Error using SqlAnalyzer: bad parser. Falling back to simple semicolon-based parser."
-    )
+    with pytest.raises(UnsafeStatementSplitError, match="bad parser"):
+        helper.parse_migration_sql(analyzer, " SELECT 1; ; SELECT 2;", log)
+    log.warning.assert_not_called()
 
 
 def test_helper_unsupported_meta_command_is_not_swallowed_by_the_fallback():
@@ -96,6 +92,19 @@ def test_resolved_config_dialect_replaces_mismatched_analyzer(monkeypatch):
     assert engine._prepare_sql_statements(migration) == ["SELECT 1", "SELECT 2"]
 
 
+def test_execution_refuses_analyzer_construction_failure(monkeypatch):
+    config = SimpleNamespace(database=SimpleNamespace(type="sqlserver"))
+    engine = ExecutionEngine(MagicMock(), SqlAnalyzer("sqlite"), NullLog(), config=config)
+    migration = Migration(script_name="V1__x.sql", content="SELECT 'a;b';")
+
+    def fail(*args, **kwargs):
+        raise ValueError("analyzer bug")
+
+    monkeypatch.setattr("dblift.core.migration.executor.execution_engine.SqlAnalyzer", fail)
+    with pytest.raises(UnsafeStatementSplitError, match="analyzer bug"):
+        engine._prepare_sql_statements(migration)
+
+
 def test_sqlplus_order_and_context_reset_without_model_parsing(monkeypatch):
     engine = ExecutionEngine(MagicMock(), SqlAnalyzer("oracle"), MagicMock())
     placeholders = PlaceholderService({"owner": "APP"}, NullLog())
@@ -141,7 +150,7 @@ def test_undo_fallback_does_not_call_model_sql_parser(success, monkeypatch):
 
 @pytest.mark.parametrize("dialect", [None, "sqlite"])
 @pytest.mark.parametrize("failure", ["construction", "splitting"])
-def test_shim_falls_back_safely_for_known_and_default_dialects(dialect, failure, monkeypatch):
+def test_shim_refuses_parser_failures_for_known_and_default_dialects(dialect, failure, monkeypatch):
     monkeypatch.delenv("DBLIFT_DATABASE_TYPE", raising=False)
     analyzer = MagicMock()
     if failure == "construction":
@@ -150,8 +159,9 @@ def test_shim_falls_back_safely_for_known_and_default_dialects(dialect, failure,
         analyzer.return_value.split_statements.side_effect = ValueError("bad parser")
     monkeypatch.setattr("dblift.core.migration.sql.sql_analyzer.SqlAnalyzer", analyzer)
     migration = Migration(script_name="V1__x.sql", content="SELECT 1; SELECT 2;", logger=NullLog())
-    assert migration.parse_sql_statements(dialect) == ["SELECT 1", "SELECT 2"]
-    assert migration._sql_statements == ["SELECT 1", "SELECT 2"]
+    with pytest.raises(UnsafeStatementSplitError, match="bad parser"):
+        migration.parse_sql_statements(dialect)
+    assert migration._sql_statements is None
 
 
 def test_shim_recomputes_canonical_cache_and_leaves_overrides_uncached():

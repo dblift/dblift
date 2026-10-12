@@ -11,6 +11,8 @@ from dblift.core.sql_parser.sqlglot_parser import SqlGlotParser
 class SnowflakeStatementParser(SqlGlotParser):
     """Keep statement text intact while respecting Snowflake string delimiters."""
 
+    SPLITS_WITHOUT_FALLBACK = True
+
     def __init__(self) -> None:
         """Use Snowflake's AST grammar for non-splitting parser operations."""
         super().__init__("snowflake")
