@@ -82,6 +82,18 @@ raise `unterminated /* comment` and nothing runs,
 so the scanner returns it as the last statement and refuses nothing (rows 40, 41). This
 differs from SQLite, where the same text is silently dropped.
 
+**Where the shell and the engine differ on comments** (measured on the shell v1.5.6 with
+`duckdb -init /dev/null -bail`, script on stdin). A script whose first line starts with `--` and holds a lone CR
+(`-- a` CR `SELECT 1 AS x;` LF `SELECT 2 AS y;`): the shell drops the whole line, runs only
+`SELECT 2 AS y` and exits 0, while `extract_statements` ends the comment at the CR and
+returns `SELECT 1 AS x` first, and the scanner does the same, so dblift runs one statement
+more than the shell and never silently. An unterminated block comment after a statement
+(`SELECT 1 AS a;` LF `/* open` LF `SELECT 2 AS b;` LF `SELECT 3 AS c;`): the shell runs
+the first statement, then rejects the rest as one unterminated comment and exits 1, as the
+engine does; the scanner returns the rest as the last statement and the engine rejects it,
+so all three agree (the later lines do not run). A later `*/` closes it for the shell as
+for the engine (`SELECT 9 AS z` runs).
+
 **A comment-only segment is not a statement.** `extract_statements` returns nothing for
 `-- c` newline `;` and for a script of comments; the scanner returns nothing for them
 (rows 44-46). A comment that follows a `;` on its line belongs to the next
@@ -209,7 +221,7 @@ opened it, is a regular expression and a substring search in the scanner.
 | 4 | `SELECT 'a\'; SELECT 2;` | `SELECT 'a\'` · `SELECT 2` (plain strings have no backslash escape) |
 | 5 | `SELECT $$a;'b$$; SELECT 2;` | `SELECT $$a;'b$$` · `SELECT 2` |
 | 6 | `SELECT $x$ a $$ ; $x$; SELECT 2;` | `SELECT $x$ a $$ ; $x$` · `SELECT 2` |
-| 7 | `CREATE TABLE "weird;name"(a INT); CREATE TABLE "a--b"(c INT);` | `CREATE TABLE "weird;name"(a INT)` · `CREATE TABLE "a--b"(c INT)` (the previous text of this row had columns without a type, which the engine rejects; the cut is the same) |
+| 7 | `CREATE TABLE "weird;name"(a INT); CREATE TABLE "a--b"(c INT);` | `CREATE TABLE "weird;name"(a INT)` · `CREATE TABLE "a--b"(c INT)` |
 | 8 | `/* a /* b */ ; */ SELECT 1;` | `/* a /* b */ ; */ SELECT 1` (nested comment; a comment before a statement stays in its text) |
 | 9 | `CREATE MACRO add(a, b) AS a + b; SELECT add(1, 2);` | `CREATE MACRO add(a, b) AS a + b` · `SELECT add(1, 2)` |
 | 10 | `.mode csv\nSELECT 1;` | `UnsupportedMetaCommandError` (line 1, the dot command: refusal; the engine cannot run it and the shell does, printing the result as CSV and exiting 0) |
