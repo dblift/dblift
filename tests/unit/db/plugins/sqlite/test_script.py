@@ -11,13 +11,12 @@ import itertools
 import sqlite3
 import subprocess
 import sys
-import time
 from pathlib import Path
 
 import pytest
 
 from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
-from dblift.db.plugins.sqlite.parser._script import scan_script
+from dblift.db.plugins.sqlite.parser._script import _Scanner, scan_script
 
 ROOT = Path(__file__).resolve().parents[4]
 
@@ -458,13 +457,22 @@ def test_lines_are_counted_across_strings_comments_and_identifiers() -> None:
 # ---- cost ---------------------------------------------------------------------------------------------
 
 
-def _best_of(script: str, rounds: int = 5) -> float:
-    best = float("inf")
-    for _ in range(rounds):
-        start = time.perf_counter()
-        scan_script(script)
-        best = min(best, time.perf_counter() - start)
-    return best
+class _CountingText(str):
+    """A script that counts the characters sliced out of it: a scan that copies the rest of the
+    script at every comment is quadratic on a long script, however fast the machine."""
+
+    sliced = 0
+
+    def __getitem__(self, key):  # type: ignore[no-untyped-def]
+        if isinstance(key, slice):
+            _CountingText.sliced += len(range(*key.indices(len(self))))
+        return super().__getitem__(key)
+
+
+def _sliced_characters(script: str) -> int:
+    _CountingText.sliced = 0
+    _Scanner(_CountingText(script), False).run()
+    return _CountingText.sliced
 
 
 @pytest.mark.parametrize(
@@ -475,9 +483,10 @@ def _best_of(script: str, rounds: int = 5) -> float:
         "SELECT 1\n-- comment\n/* block\ncomment */\n;\n",
     ],
 )
-def test_scanning_cost_grows_linearly(unit: str) -> None:
-    small, large = _best_of(unit * 2_000), _best_of(unit * 8_000)  # a 4x step
-    assert large / small <= 8, (small, large)
+def test_scanning_slices_each_character_a_bounded_number_of_times(unit: str) -> None:
+    for count in (2_000, 8_000):
+        script = unit * count
+        assert _sliced_characters(script) <= 2 * len(script)
 
 
 @pytest.mark.parametrize(
