@@ -552,14 +552,19 @@ class TestDuckDBAutocommit:
         assert provider.execute_query("SELECT * FROM items") == [{"id": 1}]
         assert len(provider.get_applied_migrations("main")) == 2
 
-    def test_mixed_checkpoint_migration_is_rejected_before_writes(self, duckdb_provider):
+    @pytest.mark.parametrize(
+        "checkpoint", ["CHECKPOINT", "FORCE /* flush */ CHECKPOINT", "FORCE -- flush\nCHECKPOINT"]
+    )
+    def test_mixed_checkpoint_migration_is_rejected_before_writes(
+        self, duckdb_provider, checkpoint
+    ):
         from dblift.api.client import DBLiftClient
 
         provider, tmp = duckdb_provider
         provider.execute_statement("CREATE TABLE pending (id INTEGER)")
         migrations = tmp / "migrations"
         migrations.mkdir()
-        (migrations / "V1__mixed.sql").write_text("INSERT INTO pending VALUES (1); CHECKPOINT;")
+        (migrations / "V1__mixed.sql").write_text(f"INSERT INTO pending VALUES (1); {checkpoint};")
         result = DBLiftClient(provider, migrations).migrate()
         assert not result.success
         assert "mixes transactional and autocommit-only statements" in result.error_message
