@@ -340,12 +340,26 @@ class PostgreSQLTokenizer(BaseTokenizer):
     def handle_copy_data(self) -> Token:
         r"""Read COPY FROM STDIN rows up to the line that is exactly ``\.``.
 
-        The newline ending the header line is framing and is dropped. The token
-        text is the exact rows, including the newline before the ``\.`` line;
+        The rest of the header line after ``;`` is framing and is dropped. The
+        token text is the exact rows, including the newline before the ``\.`` line;
         the statement parser treats that line as the terminator. A line with
         blanks before ``\.`` is data (psql compares the whole line). Rows
         running to end of input remain unchanged.
         """
+        header_line = self.line
+        while self.pos < len(self.sql) and self.peek() not in ("\r", "\n"):
+            if self.peek() in (" ", "\t"):
+                self.read()
+            elif self.peek(2) in ("--", "/*"):
+                self._handle_comment()
+                if self.line != header_line:
+                    raise UnsafeStatementSplitError(
+                        f"multiline COPY FROM STDIN header comment at line {header_line}"
+                    )
+            else:
+                raise UnsafeStatementSplitError(
+                    f"text after COPY FROM STDIN header terminator at line {header_line}"
+                )
         if self.peek() == "\r":
             self.read()
         if self.peek() == "\n":

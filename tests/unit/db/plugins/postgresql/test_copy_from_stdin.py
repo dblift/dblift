@@ -10,7 +10,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from dblift.core.exceptions import ExecutionError
+from dblift.core.exceptions import ExecutionError, UnsafeStatementSplitError
 from dblift.core.migration.sql.statement_splitter import StatementSplitter
 from dblift.db.plugins.postgresql.provider import PostgreSqlProvider
 
@@ -128,12 +128,14 @@ def test_empty_copy_block_sends_no_rows():
     assert "".join(cursor.written) == ""
 
 
-@pytest.mark.parametrize("header_tail", ["  ", " -- header comment"])
+@pytest.mark.parametrize("header_tail", ["  ", " -- header comment", " /* header comment */"])
 @pytest.mark.parametrize("newline", ["\n", "\r\n"])
 def test_copy_header_line_tail_is_not_streamed_as_data(header_tail, newline):
     cursor = _Psycopg3Cursor()
     provider, _conn = _provider(cursor)
-    script = f"COPY t (id) FROM stdin;{header_tail}{newline}1{newline}{newline}\\.{newline}SELECT 1;"
+    script = (
+        f"COPY t (id) FROM stdin;{header_tail}{newline}1{newline}{newline}\\.{newline}SELECT 1;"
+    )
     statements = StatementSplitter("postgresql").split_statements(script)
 
     assert statements == [
@@ -144,6 +146,20 @@ def test_copy_header_line_tail_is_not_streamed_as_data(header_tail, newline):
 
     assert cursor.copy_sql == "COPY t (id) FROM stdin"
     assert "".join(cursor.written) == f"1{newline}{newline}"
+
+
+def test_copy_header_refuses_sql_after_semicolon():
+    script = "COPY t FROM STDIN; DROP TABLE t;\n1\n\\.\n"
+
+    with pytest.raises(UnsafeStatementSplitError, match="text after COPY FROM STDIN"):
+        StatementSplitter("postgresql").split_statements(script)
+
+
+def test_copy_header_refuses_nonbreaking_space_after_semicolon():
+    script = "COPY t FROM STDIN;\u00a0\n1\n\\.\n"
+
+    with pytest.raises(UnsafeStatementSplitError, match="text after COPY FROM STDIN"):
+        StatementSplitter("postgresql").split_statements(script)
 
 
 @pytest.mark.parametrize(
