@@ -80,12 +80,12 @@ def test_parse_sql_reports_client_scanner_refusal_without_partial_objects() -> N
     assert "client command 'SOURCE'" in " ".join(result.errors or [])
 
 
-def test_extract_objects_reads_the_script_whatever_refusal_the_split_raises(
+def test_extract_objects_refuses_script_when_scanner_refuses(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     def refuse(self: HybridParser, sql_content: str, strict_tokenizer: bool = False) -> list[str]:
         raise UnsupportedMetaCommandError("client command refused")
 
     monkeypatch.setattr(HybridParser, "split_for_extraction", refuse)
-    objects = HybridParser("mysql").extract_objects("CREATE TABLE a (id INT);\n")
-    assert [o.name for o in objects] == ["a"]
+    with pytest.raises(UnsupportedMetaCommandError, match="client command refused"):
+        HybridParser("mysql").extract_objects("CREATE TABLE a (id INT);\n")

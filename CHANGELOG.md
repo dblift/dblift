@@ -46,11 +46,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   to provide script splitting. SQLGlot analyzes scanner-selected SQL fragments
   and does not choose script boundaries.
 - Scanner-selected constituents prevent `GO 0` batches from appearing in undo
-  or analysis and expose a non-transactional or transaction-control command
-  inside a combined execution unit. PostgreSQL `COPY` preserves an exact empty
-  data block; Oracle `EXIT` excludes the ignored tail from analysis and replay;
-  MySQL delimiter changes and DuckDB continued string literals retain their
-  execution boundaries.
+  or analysis and expose non-transactional SQL inside combined execution units.
+  Transaction controls inside a psql-combined unit are refused. PostgreSQL
+  `COPY` preserves empty and trailing-empty data rows with their original line
+  endings. Oracle `EXIT` ignores trailing text, and repeated parser calls reset
+  substitution state. MySQL delimiter scanning avoids pathological backtracking;
+  DuckDB continued string literals retain their execution boundaries.
 - **SQLite and DuckDB: a migration that opens with `BEGIN` and closes with
   `COMMIT` or `END` now runs.** `BEGIN [TRANSACTION]` (and `START TRANSACTION`
   or `BEGIN WORK` on DuckDB) as the first statement and `COMMIT` or `END [TRANSACTION]` as the
