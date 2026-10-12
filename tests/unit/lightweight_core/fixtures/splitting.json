@@ -172,8 +172,8 @@
     "sql": "SELECT 'a;b'; SELECT 2;",
     "strict": false,
     "statements": [
-      "SELECT 'a;b';",
-      "SELECT 2;"
+      "SELECT 'a;b'",
+      "SELECT 2"
     ],
     "error_type": null
   },

@@ -16,11 +16,15 @@ from typing import Dict, List, Optional
 
 from dblift.core.sql_model.base import SqlObjectType
 from dblift.core.sql_parser.enhanced_regex_parser import EnhancedRegexParser
+from dblift.core.sql_parser.statement import Statement
+from dblift.db.plugins.sqlite.parser._script import scan_script
 from dblift.db.plugins.sqlite.parser.parser_config import SQLiteConfig
 
 
 class SQLiteRegexParser(EnhancedRegexParser):
     """SQLite-specific regex-based SQL parser."""
+
+    SPLITS_WITHOUT_FALLBACK = True
 
     def __init__(self, config: Optional[SQLiteConfig] = None):
         """Initialize the SQLite regex parser.
@@ -38,8 +42,30 @@ class SQLiteRegexParser(EnhancedRegexParser):
             re.IGNORECASE | re.DOTALL,
         )
 
+    def split(self, sql_content: str) -> List[Statement]:
+        """The statements of a script as the ``sqlite3`` shell sends them (see docs/sql-parsing)."""
+        return [
+            Statement(text=unit.text, line=unit.line, terminator=unit.terminator)
+            for unit in scan_script(sql_content)
+        ]
+
     def split_statements(self, sql_content: str, strict_tokenizer: bool = False) -> List[str]:
-        """Split SQL content into individual statements.
+        """The statements execution sends: the text of each ``split()`` record.
+
+        The scanner has no unknown characters, so ``strict_tokenizer`` changes nothing.
+        """
+        return [record.text for record in self.split(sql_content)]
+
+    def split_for_analysis(self, sql_content: str, strict_tokenizer: bool = False) -> List[str]:
+        """The statements of a script for callers that read it statement by statement.
+
+        Execution drops a segment of comments only; the readers of a script (linting, analysis)
+        still see it, as they did before the scanner.
+        """
+        return [unit.text for unit in scan_script(sql_content, comment_only=True)]
+
+    def split_for_extraction(self, sql_content: str, strict_tokenizer: bool = False) -> List[str]:
+        """The previous splitter, kept for ``parse_sql`` and object extraction (never refuses).
 
         Handles:
         - Simple semicolon-separated statements
