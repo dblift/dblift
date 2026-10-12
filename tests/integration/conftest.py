@@ -486,8 +486,10 @@ def db_configs() -> Dict[str, Dict[str, Any]]:
         if EXTERNAL_MYSQL_DATABASE:
             mysql_config["database"] = EXTERNAL_MYSQL_DATABASE
         else:
-            # Use a sensible default schema name for migrations
-            mysql_config["database"] = "mysql"
+            pytest.fail(
+                "DBLIFT_MYSQL_DATABASE must explicitly name a test database "
+                "when DBLIFT_MYSQL_HOST is set"
+            )
         if EXTERNAL_MYSQL_USERNAME:
             mysql_config["username"] = EXTERNAL_MYSQL_USERNAME
         if EXTERNAL_MYSQL_PASSWORD:

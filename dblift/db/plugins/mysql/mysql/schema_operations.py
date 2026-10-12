@@ -13,6 +13,8 @@ from dblift.core.logger import Log, NullLog
 from dblift.core.migration.clean_summary import CleanExecutionSummary
 from dblift.db.plugins.base_schema_operations import BaseSchemaOperations
 
+SYSTEM_DATABASES = frozenset({"mysql", "sys", "information_schema", "performance_schema"})
+
 # MariaDB reports a ``WITH SYSTEM VERSIONING`` table with its own TABLE_TYPE.
 _TABLE_TYPES_FILTER = "TABLE_TYPE IN ('BASE TABLE', 'SYSTEM VERSIONED')"
 
@@ -117,6 +119,22 @@ class MySqlSchemaOperations(BaseSchemaOperations):
             self.log.warning(f"Error getting MySQL version: {str(e)}")
             return "MySQL Unknown Version"
 
+    def validate_clean_target(self, connection: Any, schema: str) -> None:
+        """Reject system databases using the server's identifier case rules."""
+        # The query-executor adapter strips surrounding whitespace before USE.
+        name = schema.strip()
+        folded = name.lower()
+        if folded not in SYSTEM_DATABASES:
+            return
+        # INFORMATION_SCHEMA is virtual and always case-insensitive.
+        if name != folded and folded != "information_schema":
+            rows = self.query_executor.execute_query(
+                connection, "SELECT @@lower_case_table_names AS lower_case_table_names"
+            )
+            if rows and rows[0].get("lower_case_table_names") in (0, "0"):
+                return
+        raise ValueError(f"Cannot clean system database '{schema}'")
+
     def clean_schema(self, connection: Any, schema: str) -> CleanExecutionSummary:
         """Clean a MySQL database by dropping all objects in the correct order.
 
@@ -127,6 +145,7 @@ class MySqlSchemaOperations(BaseSchemaOperations):
         Returns:
             CleanExecutionSummary describing executed statements and dropped objects.
         """
+        self.validate_clean_target(connection, schema)
         self.log.info(f"Cleaning MySQL database: {schema}")
 
         summary = CleanExecutionSummary()
@@ -235,6 +254,7 @@ class MySqlSchemaOperations(BaseSchemaOperations):
         ``clean_schema`` processes: triggers, views, tables, sequences,
         functions, procedures, events.
         """
+        self.validate_clean_target(connection, schema)
         summary = CleanExecutionSummary()
 
         self._check_events_listable(connection, schema)
