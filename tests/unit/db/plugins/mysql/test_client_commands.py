@@ -272,3 +272,23 @@ def test_a_long_single_line_of_comments_is_scanned_in_linear_time(unit: str) -> 
     small = _best_of_three(unit * 40_000)
     large = _best_of_three(unit * 80_000)
     assert large < 3 * small + 0.05
+
+
+def test_a_mode_setting_behind_a_maria_comment_is_refused_on_mariadb_only() -> None:
+    script = "/*M!100500 SET sql_mode = 'NO_BACKSLASH_ESCAPES' */;\nSELECT 1;"
+    with pytest.raises(UnsafeStatementSplitError, match="NO_BACKSLASH_ESCAPES"):
+        scan_script(script, mariadb=True)
+    assert sql(script) == ["SELECT 1"]
+
+
+@pytest.mark.parametrize("mariadb", [False, True])
+def test_a_prepared_statement_that_sets_the_mode_is_refused(mariadb: bool) -> None:
+    script = "PREPARE s FROM 'SET sql_mode=''NO_BACKSLASH_ESCAPES''';\nEXECUTE s;"
+    with pytest.raises(UnsafeStatementSplitError, match="NO_BACKSLASH_ESCAPES"):
+        scan_script(script, mariadb=mariadb)
+
+
+@pytest.mark.parametrize("mariadb", [False, True])
+def test_a_prepared_statement_that_does_not_set_the_mode_passes(mariadb: bool) -> None:
+    script = "PREPARE s FROM 'SELECT 1 FROM t WHERE m = ''NO_BACKSLASH_ESCAPES''';"
+    assert len(sql(script, mariadb=mariadb)) == 1

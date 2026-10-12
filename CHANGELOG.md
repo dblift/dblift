@@ -207,8 +207,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the syntax of the text and does not apply the splitter's refusals.
 - **MySQL and MariaDB: a script with a client command is refused.** `source`,
   `exit`, `quit`, `status`, `system`, `connect`, `tee`, `charset`, `prompt`,
-  `pager`, `go`, `help x` and `use db` without a terminator, a command word
-  followed by any run of `;` and the delimiter (`status;;`), and every backslash command
+  `pager`, `go`, `help x` and `use db` without a terminator, `status;;` and the
+  other command words followed by several terminators, and every backslash command
   (`\G`, `\g`, `\c`, `\d`, ...) outside a string or comment now fail with the
   command and its line named, instead of being sent to the server glued to the
   next statement or silently dropped (the client ends the script at `exit` and

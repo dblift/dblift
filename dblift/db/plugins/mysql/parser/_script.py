@@ -558,11 +558,12 @@ class _Scanner:
     def _sets_no_backslash_escapes(self, text: str) -> bool:
         """True when the statement is a SET that names the mode outside its comments.
 
-        A literal counts only in a ``SET`` statement (or a stored program that holds one); the name
+        A literal counts only in a ``SET`` or ``PREPARE`` statement (or a stored program that
+        holds one), also behind ``/*!`` and, on MariaDB, ``/*M!``; the name
         in the literal of an ``UPDATE`` or a ``SET(...)`` column type is data.
         """
         code = self._blank(text, self.spans)
-        sets = re.match(r"\s*(?:/\*!\d*\s*)?SET\b", code, re.IGNORECASE) is not None
+        sets = re.match(r"\s*(?:/\*M?!\d*\s*)?(?:SET|PREPARE)\b", code, re.IGNORECASE) is not None
         if not (sets or self.program.is_program):
             code = self._blank(code, self.literals)
         return "NO_BACKSLASH_ESCAPES" in code.upper() and bool(
