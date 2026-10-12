@@ -5,7 +5,7 @@
 | Item | Value |
 | --- | --- |
 | Covers | Db2 for Linux, UNIX and Windows scripts written for the command line processor (CLP) and run through the `ibm_db` driver. Measured: Db2 12.1.5.0 (CLP and server) with `ibm_db` 3.3.0; the rules are extrapolated to 11.1-11.5 where the V11.5 manuals agree and are unmeasured there |
-| Code facts taken from | OSS `develop` `94384ff` (§12 describes this commit) |
+| Code facts taken from | OSS `develop` `94384ff` (2026-10-11), the splitter before this change; §12 describes the code of this change |
 | Vendor references, fetched 2026-10-10 | *IBM Db2 V11.5 Command Reference* (PDF `db2_commands_115.pdf`, chapter 1 "Command line processor (CLP)": "Command line processor options", "Statement Termination Character Options", "Read from Input File Option"); *IBM Db2 V11.5 SQL Reference* (PDF `db2_sql_reference_115.pdf`: "Characters", "Constants", "SQL comments" p. 740, "CREATE MODULE" p. 1276). Both from the IBM support page "Db2 Version 11.5 for Linux, UNIX, and Windows English manuals". |
 | Live verification | `db2 -tsvf script.sql` (the CLP of `DB2 v12.1.5.0`, `s2605181111`) run as the instance owner against `DB2/LINUXX8664 12.1.5.0`, database `TESTDB`, autocommit on; `-s` stops at the first error, as dblift does. Every "measured 2026-10-11" below is that pair. Where the V11.5 manual and the measurement disagree the cell follows the measurement and says so. |
 | Second ground truth | the `ibm_db` 3.3.0 driver dblift executes through: what it does with a `;` inside the text of one statement decides the rules marked "driver" (§4, §11, rows 12, 42) |
@@ -87,7 +87,7 @@ What the CLP does with comments (measured 2026-10-11, db2 CLP 12.1.5.0, Db2 12.1
 - a `--` comment that follows code is part of the line and is sent: `CREATE TABLE a (id INT) -- c;` ends the statement at the `;` and sends `CREATE TABLE a (id INT) -- c` (row 20); a comment after the terminator spoils it: `CREATE TABLE a (id INT); -- c` has not ended (§4, row 13; the splitter ends the statement there, extension);
 - a block comment is statement text: `/* c */ CREATE TABLE a (id INT);` sends the comment (the stored text of `/* hdr */` + `CREATE PROCEDURE` begins with the comment), a line `/* x;` inside a statement ends it, and a `/* … */` followed by the terminator and nothing else is a statement of its own that the server rejects (SQL0198N, blank statement; row 27);
 - **a `;` at the end of a line inside a block comment cuts there**: `/*` newline `DROP TABLE old;` newline `*/` newline `CREATE TABLE n (id INT);` is cut after `old`, the first half is an unclosed comment and the second begins with a stray `*/`, both rejected (SQL0104N, return code 4; measured, `h_commented_out_sql`); the same comment with the `;` in the middle of its line runs. **dblift does not cut there** (extension, row 47): a comment is never executed, the previous splitter kept it whole, commented-out SQL is the commonest place a `;` ends a line inside one, and the CLP's answer to it is a message about a token `*/`;
-- a `*/` without an opener, and an unterminated `/*`, are text for the CLP; the server rejects the statement (SQL0104N).
+- a `*/` without an opener, and an unterminated `/*`, are text for the CLP; the server rejects the statement (SQL0104N). The splitter refuses an unterminated `/*`, naming its line.
 
 ## 4. Terminators
 
