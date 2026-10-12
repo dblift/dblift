@@ -29,6 +29,10 @@ class Statement:
     # Derived by the same dialect scan as ``text``. None means this execution
     # unit is one analysis statement; () deliberately contributes none.
     analysis_statements: Optional[Tuple[str, ...]] = field(default=None, compare=False)
+    # Half-open offsets in the original script, including a consumed client
+    # terminator such as GO. Optional for externally constructed records.
+    source_start: Optional[int] = field(default=None, compare=False)
+    source_end: Optional[int] = field(default=None, compare=False)
 
 
 def analysis_sql(records: Iterable[Statement]) -> List[str]:
