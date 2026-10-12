@@ -58,3 +58,26 @@ def test_copy_cannot_hide_an_executed_combined_constituent() -> None:
 
     with pytest.raises(UnsafeStatementSplitError):
         PostgreSqlRegexParser().split_statements(script)
+
+
+def test_validation_uses_tokenizer_knowledge_of_escaped_string() -> None:
+    script = r"SELECT E'a\'b (c';"
+
+    assert PostgreSqlRegexParser().validate_sql(script) == {"success": True, "errors": []}
+
+
+@pytest.mark.parametrize(
+    "script, success",
+    [
+        ("SELECT '(not code)'", True),
+        ("SELECT $tag$(not code)$tag$", True),
+        ("SELECT 'unclosed", False),
+        ("SELECT $tag$unclosed", False),
+        ("SELECT (1 + 2", False),
+        ("SELECT 1 + 2)", False),
+    ],
+)
+def test_validation_checks_lexemes_and_parentheses_with_one_tokenizer(
+    script: str, success: bool
+) -> None:
+    assert PostgreSqlRegexParser().validate_sql(script)["success"] is success
