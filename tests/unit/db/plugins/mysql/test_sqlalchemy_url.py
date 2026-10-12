@@ -205,7 +205,7 @@ def test_mysql_session_variables_string_values_are_quoted() -> None:
     url = make_url(build_sqlalchemy_url(db))
     init_cmd = dict(url.query)["init_command"]
 
-    # Numeric value unquoted; string values single-quoted
+    # Numeric values remain numeric; strings carry explicit UTF-8 bytes.
     assert "wait_timeout=28800" in init_cmd
-    assert "time_zone='+00:00'" in init_cmd
-    assert "sql_mode='ANSI_QUOTES'" in init_cmd
+    assert "time_zone=_utf8mb4 X'2b30303a3030'" in init_cmd
+    assert "sql_mode=_utf8mb4 X'414e53495f51554f544553'" in init_cmd

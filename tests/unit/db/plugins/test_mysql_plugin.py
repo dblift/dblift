@@ -151,8 +151,8 @@ class TestMySqlSchemaOperations(unittest.TestCase):
     def test_get_columns_query_contains_schema_and_table(self):
         ops, qe, log = self._make_ops()
         sql = ops.get_columns_query("mydb", "orders")
-        self.assertIn("mydb", sql)
-        self.assertIn("orders", sql)
+        self.assertIn("_utf8mb4 X'6d796462'", sql)
+        self.assertIn("_utf8mb4 X'6f7264657273'", sql)
         self.assertIn("COLUMN_NAME", sql)
 
     def test_get_columns_query_includes_column_type(self):
