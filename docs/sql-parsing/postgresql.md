@@ -92,7 +92,7 @@ exceptions are `\;` (§4) and `\:`.
 
 | Block | Opens | Closes | Rule |
 | --- | --- | --- | --- |
-| `COPY … FROM STDIN` data | the statement head is `COPY`, the header contains the two top-level words `FROM STDIN` (unquoted, parenthesis depth 0), and the header's `;` has been read | the first line consisting **exactly** of `\.` (psql `copy.c` compares the whole line against `\.\n` or `\.\r\n`; COPY reference: "a line containing just backslash-period (\.)"); a line with leading blanks before `\.` is data | the header, its `;`, and the data lines form **one** `Statement` with `kind="copy_stdin"`; the `\.` line is the block's terminator and, like every terminator, is consumed and not part of the text. The row payload retains every byte, including the final LF or CRLF, so an empty final row remains distinct from zero rows. Analysis sees the COPY header as one opaque constituent. Execution streams the data through the driver's COPY API. `COPY … TO STDOUT` is rejected by execution. |
+| `COPY … FROM STDIN` data | the statement head is `COPY`, the header contains the two top-level words `FROM STDIN` (unquoted, parenthesis depth 0), and the header's `;` has been read | the first line consisting **exactly** of `\.` (psql `copy.c` compares the whole line against `\.\n` or `\.\r\n`; COPY reference: "a line containing just backslash-period (\.)"); a line with leading blanks before `\.` is data | the header, its `;`, and the data lines form **one** `Statement` with `kind="copy_stdin"`; the `\.` line is the block's terminator and, like every terminator, is consumed and not part of the text. The row payload starts after the header line, excluding blanks or a comment after `;` on that line, and retains every data byte, including the final LF or CRLF. The statement text still preserves the original header line. Analysis sees the COPY header as one opaque constituent. Execution streams the data through the driver's COPY API. `COPY … TO STDOUT` is rejected by execution. |
 
 Dollar-quoted bodies are opaque by §1.
 
@@ -128,6 +128,7 @@ pair table cannot express. Shared with DuckDB and Redshift.
 | 10 | `BEGIN; INSERT INTO t VALUES (1); COMMIT;` | `BEGIN` · `INSERT INTO t VALUES (1)` · `COMMIT` |
 | 11 | `COPY t (a) FROM STDIN;\n1\n2\n\.\nSELECT count(*) FROM t;` | `COPY t (a) FROM STDIN;\n1\n2\n` **exact text** (one copy_stdin statement: the header and its two data lines; the backslash-period terminator line consumed) · `SELECT count(*) FROM t;` |
 | 11a | `COPY t (a) FROM STDIN;\n1\n\n\.\nSELECT 1;` | `COPY t (a) FROM STDIN;\n1\n\n` **exact text** (the second data row is empty and remains in the COPY payload) · `SELECT 1;` |
+| 11b | `COPY t (a) FROM STDIN; -- header\n1\n\n\.\nSELECT 1;` | `COPY t (a) FROM STDIN; -- header\n1\n\n` **exact text** (the statement preserves the header line; the COPY payload excludes the comment and retains the final empty row) · `SELECT 1;` |
 | 12 | `COPY t TO STDOUT; SELECT 1;` | `COPY t TO STDOUT` · `SELECT 1` (execution later refuses the first) |
 | 13 | `\restrict abc\nSELECT 1;\n\unrestrict abc\n` | directive record · `SELECT 1` · directive record |
 | 14 | `\connect other\nSELECT 1;` | `UnsupportedMetaCommandError` (line 1, `\connect`) |
