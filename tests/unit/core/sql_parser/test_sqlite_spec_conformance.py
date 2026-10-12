@@ -17,9 +17,7 @@ from tests.support.splitter_spec.splitting import split_script
 SPEC_DIR = Path(__file__).resolve().parents[4] / "docs" / "sql-parsing"
 ROWS = [row for row in load_conformance_rows(SPEC_DIR) if row.dialect == "sqlite"]
 
-KNOWN_GAPS: frozenset[str] = frozenset(
-    "4 5 6 7 8 9 12 14 15 16 18 19 23 24 25 26 27 31 34 35 44 45 46 51 52 53 54 57 60 61 62".split()
-)
+KNOWN_GAPS: frozenset[str] = frozenset()
 
 
 def test_spec_compiles_to_at_least_the_rows_it_had_on_2026_10_12() -> None:

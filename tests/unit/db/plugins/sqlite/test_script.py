@@ -12,11 +12,14 @@ import sqlite3
 import subprocess
 import sys
 import time
+from pathlib import Path
 
 import pytest
 
 from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
 from dblift.db.plugins.sqlite.parser._script import scan_script
+
+ROOT = Path(__file__).resolve().parents[4]
 
 
 def texts(script: str) -> list[str]:
@@ -487,14 +490,13 @@ def test_a_slash_line_with_many_comments_costs_one_pass(tail: str) -> None:
     line = "/ " + "/* c */ " * 500 + tail
     code = (
         "from dblift.db.plugins.sqlite.parser._script import scan_script\n"
-        "import sys\n"
         "try:\n"
         f"    scan_script({('SELECT 6' + chr(10) + line + chr(10) + '2;')!r})\n"
         "except Exception:\n"
         "    pass\n"
     )
     # the bound is far above the linear cost (milliseconds) and far below a backtracking one (minutes)
-    subprocess.run([sys.executable, "-c", code], check=True, timeout=10)
+    subprocess.run([sys.executable, "-c", code], check=True, timeout=10, cwd=ROOT)
 
 
 def test_a_huge_literal_and_a_huge_comment_cost_one_pass() -> None:

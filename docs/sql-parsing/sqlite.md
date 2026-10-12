@@ -312,7 +312,7 @@ rules are a table and two regular expressions.
 | 58 | `SELECT 1;␍.print x␍SELECT 2;␍` | `SELECT 1` · `.print x␍SELECT 2` (a CR that stands alone ends no line: the dot is not at a line start) |
 | 60 | `SELECT 6\n/ -- c\n2;` | `UnsafeStatementSplitError` (line 2: a line comment after the slash does not stop the shell from ending the statement there) |
 | 61 | `SELECT 6\ngo /* c */ -- d\n2;` | `UnsafeStatementSplitError` (line 2: closed block comments and a line comment after go) |
-| 62 | `SELECT 6 -- six\n/\n2;` | `SELECT 6 -- six\n/\n2` (the statement so far ends in a line comment: a `;` added to it would be inside the comment, the shell does not end the statement, and shell and driver both print 3) |
+| 62 | `SELECT 6 -- six\n/\n2;` | `SELECT 6 -- six\n/\n2` (the statement so far ends in a line comment: a semicolon added to it would be inside the comment, the shell does not end the statement, and shell and driver both print 3) |
 | 63 | `SELECT 6\ngo x\n;` | `SELECT 6\ngo x` (go with other text after it is text; the engine rejects it) |
 | 59 | `CREATE TABLE t(a);\ngo\nINSERT INTO t VALUES(1);` | `CREATE TABLE t(a)` · `go\nINSERT INTO t VALUES(1)` (nothing is pending at the go line: the shell skips it, dblift sends it as text and the engine rejects it, loudly; narrower than the shell by design) |
 
