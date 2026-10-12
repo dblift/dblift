@@ -117,6 +117,12 @@ class MySqlSchemaOperations(BaseSchemaOperations):
             self.log.warning(f"Error getting MySQL version: {str(e)}")
             return "MySQL Unknown Version"
 
+    @staticmethod
+    def _validate_clean_schema(schema: str) -> None:
+        # Database names can be case-insensitive depending on server configuration.
+        if schema.lower() in {"mysql", "sys", "information_schema", "performance_schema"}:
+            raise ValueError(f"Cannot clean system database '{schema}'")
+
     def clean_schema(self, connection: Any, schema: str) -> CleanExecutionSummary:
         """Clean a MySQL database by dropping all objects in the correct order.
 
@@ -127,6 +133,7 @@ class MySqlSchemaOperations(BaseSchemaOperations):
         Returns:
             CleanExecutionSummary describing executed statements and dropped objects.
         """
+        self._validate_clean_schema(schema)
         self.log.info(f"Cleaning MySQL database: {schema}")
 
         summary = CleanExecutionSummary()
@@ -235,6 +242,7 @@ class MySqlSchemaOperations(BaseSchemaOperations):
         ``clean_schema`` processes: triggers, views, tables, sequences,
         functions, procedures, events.
         """
+        self._validate_clean_schema(schema)
         summary = CleanExecutionSummary()
 
         self._check_events_listable(connection, schema)
