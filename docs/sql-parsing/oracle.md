@@ -195,8 +195,8 @@ else in this spec is data.
 | 19 | `SELECT 1 FROM dual; PROMPT x\nSELECT 2 FROM dual;` | `UnsupportedMetaCommandError` (line 1, directive after `;` on the same line) |
 | 20 | `CREATE OR REPLACE PROCEDURE p AS BEGIN NULL; END;\nCREATE TABLE t (id NUMBER);` | `error`: PL/SQL unit not terminated by a slash before end of input (SQL\*Plus would hang waiting for it) |
 | 21 | `BEGIN\n  EXECUTE IMMEDIATE 'CREATE TABLE x (\n  id NUMBER)';\nEND;\n/` | `BEGIN\n  EXECUTE IMMEDIATE 'CREATE TABLE x (\n  id NUMBER)';\nEND;` (one unit: the line starting with id NUMBER is inside a literal, not a directive) |
-| 22 | `CREATE TABLE t (id NUMBER);\n/\n` | `error`: the slash would re-execute the previous statement |
-| 22a | `INSERT INTO t VALUES (1)\n/\n/\n` | `UnsafeStatementSplitError` at line 3: the second slash would re-execute the previous statement |
+| 22 | `CREATE TABLE t (id NUMBER);\n/\n` | `error` at line 2, column 1: the slash would re-execute the previous statement |
+| 22a | `INSERT INTO t VALUES (1)\n/\n/\n` | `UnsafeStatementSplitError` at line 3, column 1: the second slash would re-execute the previous statement |
 | 23 | `WHENEVER SQLERROR EXIT FAILURE\nCREATE TABLE t (id NUMBER);` | `WHENEVER SQLERROR EXIT FAILURE;` (a directive: recorded, and handed to execution, which applies the policy to the statements that follow) · `CREATE TABLE t (id NUMBER)` |
 | 24 | `CREATE OR REPLACE AND COMPILE JAVA SOURCE NAMED "H" AS\npublic class H { int f() { return 1; } }\n/` | `CREATE OR REPLACE AND COMPILE JAVA SOURCE NAMED "H" AS\npublic class H { int f() { return 1; } }` (one unit) (Oracle Free: ORA-29538, unverifiable there) |
 | 25 | `CREATE TABLE t25 (id NUMBER)\n/ -- done\nINSERT INTO t25 VALUES (1);` | `CREATE TABLE t25 (id NUMBER)\n/ -- done\nINSERT INTO t25 VALUES (1)` (the slash line is text, the semicolon ends it; the server rejects it, as it rejected it for SQL\*Plus) |

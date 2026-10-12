@@ -440,7 +440,8 @@ class OracleStatementParser(BaseStatementParser):
         if all(t is token or t.type == TokenType.COMMENT for t in self.context.tokens):
             if self._last_terminator in (";", "/"):
                 raise UnsafeStatementSplitError(
-                    f"'/' on line {token.line} would re-execute the previous statement"
+                    f"'/' on line {token.line}, column {token.col} would re-execute "
+                    "the previous statement"
                 )
         else:
             self._last_terminator = "/"
