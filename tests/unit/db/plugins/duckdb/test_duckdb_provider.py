@@ -277,7 +277,7 @@ class TestDuckDBDmlRowcount:
         with patch.object(SqlAlchemyProvider, "_exec_unbound", staticmethod(spy)):
             assert provider.execute_statement("UPDATE t SET v = '50%' WHERE id = 1") == 1
 
-        assert sent == ["UPDATE t SET v = '50%' WHERE id = 1 RETURNING 1"]
+        assert sent == ["UPDATE t SET v = '50%' WHERE id = 1\nRETURNING 1"]
 
     def test_params_update_reports_positive_rowcount(self, tmp_path: Path) -> None:
         """Parameterized DML uses RETURNING rewrite (undo restore / bind paths)."""
@@ -345,30 +345,6 @@ class TestDuckDBDmlRowcount:
         )
         assert isinstance(rc, int)
 
-    def test_strip_sql_comments_helpers(self) -> None:
-        from dblift.db.plugins.duckdb.provider import DuckDBProvider
-
-        strip = DuckDBProvider._strip_sql_comments
-        assert strip("-- only comment") == ""
-        assert strip("/* block */") == ""
-        assert strip("/* a */\nUPDATE t SET v=1 /* trail */") == "UPDATE t SET v=1"
-        assert strip("-- d1\n-- d2\nDELETE FROM t") == "DELETE FROM t"
-        assert strip("UPDATE t SET v=1\n-- trail\n") == "UPDATE t SET v=1"
-        # Inline trailing comment on the DML line (Bugbot finding)
-        assert strip("UPDATE t SET v=1  -- note") == "UPDATE t SET v=1"
-        # Dashes inside string literals must remain
-        assert strip("UPDATE t SET v = 'a--b'") == "UPDATE t SET v = 'a--b'"
-
-    def test_has_top_level_semicolon_helpers(self) -> None:
-        from dblift.db.plugins.duckdb.provider import DuckDBProvider
-
-        has = DuckDBProvider._has_top_level_semicolon
-        assert has("UPDATE t SET v = 1") is False
-        assert has("UPDATE t SET v = 'a;b'") is False
-        assert has('UPDATE t SET v = "a;b"') is False
-        assert has("UPDATE t SET v = 'it''s;ok'") is False
-        assert has("INSERT INTO t VALUES (1); INSERT INTO t VALUES (2)") is True
-
     def test_returning_word_in_string_still_rewrites(self, tmp_path: Path) -> None:
         """Bugbot: substring ' RETURNING ' inside a literal must not skip rewrite."""
         provider = self._provider(tmp_path)
@@ -386,14 +362,15 @@ class TestDuckDBDmlRowcount:
         assert provider.execute_statement(sql) == 1
 
     def test_has_top_level_keyword_helpers(self) -> None:
+        from dblift.db.plugins.duckdb.parser._script import blank_comments
         from dblift.db.plugins.duckdb.provider import DuckDBProvider
 
         has = DuckDBProvider._has_top_level_keyword
-        strip = DuckDBProvider._strip_sql_comments
+        blank = blank_comments
         assert has("UPDATE t SET v = 1 RETURNING id", "RETURNING") is True
         assert has("UPDATE t SET v = ' returning ' WHERE id = 1", "RETURNING") is False
         # After comment strip, mid-line/full-line comments mentioning returning are gone
-        cleaned = strip("UPDATE t SET v = 1  -- returning\nWHERE id = 1")
+        cleaned = blank("UPDATE t SET v = 1  -- returning\nWHERE id = 1")
         assert "returning" not in cleaned.lower()
         assert has(cleaned, "RETURNING") is False
 
@@ -405,3 +382,72 @@ class TestDuckDBDmlRowcount:
         )
         provider.execute_statement("INSERT INTO s.t VALUES (1, 'a')", schema="s")
         assert provider.execute_statement("UPDATE s.t SET v = 'x' WHERE id = 1", schema="s") == 1
+
+
+MULTILINE_LITERAL = "a\n\n-- b\n/* c */\nd\r\ne"
+
+
+@pytest.mark.unit
+class TestDuckDBDmlKeepsLiterals:
+    """The RETURNING rewrite must send string literals exactly as written."""
+
+    _provider = TestDuckDBDmlRowcount._provider
+
+    def _table(self, tmp_path: Path) -> "DuckDBProvider":
+        provider = self._provider(tmp_path)
+        provider.execute_statement("CREATE TABLE t (id INTEGER PRIMARY KEY, v VARCHAR)")
+        return provider
+
+    def _values(self, provider: "DuckDBProvider") -> list:
+        return [r["v"] for r in provider.execute_query("SELECT v FROM t ORDER BY id")]
+
+    def test_insert_keeps_blank_comment_and_crlf_lines_in_literal(self, tmp_path: Path) -> None:
+        provider = self._table(tmp_path)
+        rc = provider.execute_statement(f"INSERT INTO t VALUES (1, '{MULTILINE_LITERAL}')")
+        assert rc == 1
+        assert self._values(provider) == [MULTILINE_LITERAL]
+
+    def test_update_keeps_literal(self, tmp_path: Path) -> None:
+        provider = self._table(tmp_path)
+        provider.execute_statement("INSERT INTO t VALUES (1, 'x')")
+        rc = provider.execute_statement(f"UPDATE t SET v = '{MULTILINE_LITERAL}' WHERE id = 1")
+        assert rc == 1
+        assert self._values(provider) == [MULTILINE_LITERAL]
+
+    def test_delete_where_literal_matches_the_stored_row(self, tmp_path: Path) -> None:
+        provider = self._table(tmp_path)
+        # Built by the engine, so the stored row does not depend on the statement under test.
+        provider.execute_statement(
+            "INSERT INTO t SELECT 1, 'a' || chr(10) || chr(10) || '-- b' || chr(10)"
+            " || '/* c */' || chr(10) || 'd' || chr(13) || chr(10) || 'e'"
+        )
+        provider.execute_statement("INSERT INTO t VALUES (2, 'a / d / e')")
+        rc = provider.execute_statement(f"DELETE FROM t WHERE v = '{MULTILINE_LITERAL}'")
+        assert rc == 1
+        assert self._values(provider) == ["a / d / e"]
+
+    def test_literal_with_returning_text_and_comment_lines(self, tmp_path: Path) -> None:
+        provider = self._table(tmp_path)
+        literal = "x\n\n-- returning\nRETURNING y"
+        assert provider.execute_statement(f"INSERT INTO t VALUES (1, '{literal}')") == 1
+        assert self._values(provider) == [literal]
+
+    def test_comments_around_the_statement_still_count_rows(self, tmp_path: Path) -> None:
+        provider = self._table(tmp_path)
+        assert provider.execute_statement("-- lead\n/* lead */\nINSERT INTO t VALUES (1, 'a')") == 1
+        assert provider.execute_statement("INSERT INTO t VALUES (2, 'b') -- trail") == 1
+        assert provider.execute_statement("UPDATE t SET v = 'z' /* trail */;\n-- after\n") == 2
+        assert provider.execute_statement("DELETE FROM t -- all\nWHERE id > 0;") == 2
+        assert self._values(provider) == []
+
+    def test_returning_already_present_is_left_alone(self, tmp_path: Path) -> None:
+        provider = self._table(tmp_path)
+        provider.execute_statement("INSERT INTO t VALUES (1, 'a') RETURNING id")
+        assert self._values(provider) == ["a"]
+
+    def test_with_cte_insert_is_not_rewritten_but_runs(self, tmp_path: Path) -> None:
+        provider = self._table(tmp_path)
+        provider.execute_statement(
+            "WITH s AS (SELECT 1 AS id, 'a' AS v) INSERT INTO t SELECT * FROM s"
+        )
+        assert self._values(provider) == ["a"]
