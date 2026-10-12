@@ -11,9 +11,11 @@ from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCom
 from dblift.core.migration.sql.script_analysis import analyse_script
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.db.plugins.db2.parser.db2_regex_parser import DB2RegexParser
+from dblift.db.plugins.db2.parser.parser_config import DB2Config
 from dblift.db.plugins.duckdb.parser.duckdb_regex_parser import DuckDBRegexParser
 from dblift.db.plugins.mariadb.regex_parser import MariaDbRegexParser
 from dblift.db.plugins.mysql.parser.mysql_regex_parser import MySqlRegexParser
+from dblift.db.plugins.mysql.parser.parser_config import MySqlConfig
 from dblift.db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
 
 
@@ -129,6 +131,13 @@ def test_db2_extraction_refuses_clp_statement_that_would_lose_sql() -> None:
 
     with pytest.raises(UnsafeStatementSplitError):
         parser.split_for_extraction(script)
+
+
+def test_dialect_configs_do_not_keep_alternate_script_splitters() -> None:
+    assert not hasattr(DB2Config, "split_statements")
+    assert not hasattr(DB2Config, "extract_sqlpl_blocks")
+    assert not hasattr(DB2Config, "extract_trigger_blocks")
+    assert not hasattr(MySqlConfig, "extract_delimiter_blocks")
 
 
 def test_sqlite_extraction_refuses_shell_command() -> None:
