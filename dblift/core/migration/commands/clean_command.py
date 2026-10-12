@@ -70,7 +70,7 @@ class CleanCommand(BaseCommand):
         try:
             schema = self.config.database.schema
             validate_target = getattr(self.provider, "validate_clean_target", None)
-            if schema and validate_target is not None:
+            if validate_target is not None:
                 validate_target(schema)
         except Exception as e:
             error_message = f"Clean operation failed: {e}"
@@ -95,8 +95,19 @@ class CleanCommand(BaseCommand):
         # PreflightConnectionError, as for every other command.
         self._run_preflight(result)
 
+        prepare_target = getattr(self.provider, "prepare_clean_target", None)
+        if prepare_target is not None:
+            try:
+                prepare_target(self.config.database.schema)
+            except Exception as e:
+                error_message = f"Clean operation failed: {e}"
+                self.log.error(error_message)
+                result.set_error(error_message)
+                result.complete()
+                return result
+
         try:
-            if hasattr(self.provider, "set_current_schema"):
+            if prepare_target is None and hasattr(self.provider, "set_current_schema"):
                 try:
                     self.provider.set_current_schema(self.config.database.schema)
                 except FixedDboSchemaError:

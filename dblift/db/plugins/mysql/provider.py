@@ -13,7 +13,7 @@ from dblift.core.logger import Log
 from dblift.core.migration.clean_summary import CleanExecutionSummary
 from dblift.core.migration.migration import success_to_bool
 from dblift.db.plugins.base_history_manager import UNDO_HISTORY_TYPE, installed_on_to_bind
-from dblift.db.plugins.mysql.mysql.schema_operations import MySqlSchemaOperations
+from dblift.db.plugins.mysql.mysql.schema_operations import SYSTEM_DATABASES, MySqlSchemaOperations
 from dblift.db.provider_interfaces import DroppableObject
 from dblift.db.sqlalchemy_provider import SqlAlchemyProvider
 
@@ -177,10 +177,23 @@ class MySqlProvider(SqlAlchemyProvider):
 
     def validate_clean_target(self, schema: str) -> None:
         """Reject system database targets before clean setup and callbacks."""
-        connection = self._ensure_connection()
+        schema = schema or self.quirks.derive_schema_name(self.config.database) or ""
+        name = schema.strip()
+        folded = name.lower()
+        if folded not in SYSTEM_DATABASES:
+            return
+        connection = (
+            self._ensure_connection() if name != folded and folded != "information_schema" else None
+        )
         MySqlSchemaOperations(self.query_executor, self.log).validate_clean_target(
             connection, schema
         )
+
+    def prepare_clean_target(self, schema: str) -> None:
+        """Force the requested database selection before clean callbacks."""
+        schema = schema or self.quirks.derive_schema_name(self.config.database) or ""
+        self.reset_schema_cache()
+        self.set_current_schema(schema)
 
     def clean_schema(self, schema: str) -> CleanExecutionSummary:
         """Drop objects inside a database, returning executed clean statements."""

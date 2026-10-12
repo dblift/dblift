@@ -4,10 +4,13 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from dblift.config import DbliftConfig
 from dblift.core.migration.commands.clean_command import CleanCommand
 from dblift.db.plugins.mariadb.provider import MariadbProvider
+from dblift.db.plugins.mysql.config import MySqlConfig
 from dblift.db.plugins.mysql.mysql.schema_operations import MySqlSchemaOperations
 from dblift.db.plugins.mysql.provider import MySqlProvider
+from dblift.db.sqlalchemy_provider import SqlAlchemyProvider
 
 
 @pytest.mark.parametrize(
@@ -68,8 +71,9 @@ def test_clean_keeps_user_database_names(schema):
 @pytest.mark.parametrize("dry_run", [False, True])
 @pytest.mark.parametrize("schema", ["mysql", "MYSQL"])
 @pytest.mark.parametrize("probe_fails", [False, True])
+@pytest.mark.parametrize("target_source", ["schema", "database", "url"])
 def test_clean_command_reports_system_database_refusal(
-    provider_class, dry_run, schema, probe_fails, tmp_path
+    provider_class, dry_run, schema, probe_fails, target_source, tmp_path
 ):
     provider = object.__new__(provider_class)
     provider.query_executor = MagicMock()
@@ -80,9 +84,13 @@ def test_clean_command_reports_system_database_refusal(
     provider.drop_object = MagicMock()
     if probe_fails:
         provider.query_executor.execute_query.side_effect = RuntimeError("case mode unavailable")
-    config = MagicMock()
-    config.database.schema = schema
-    config.clean_disabled = False
+    database = MySqlConfig(type=provider_class.canonical_dialect_key)
+    database.schema = schema if target_source == "schema" else ""
+    database.database = schema if target_source == "database" else ""
+    database.url = f"mysql://localhost/{schema}" if target_source == "url" else None
+    config = DbliftConfig(database=database, clean_disabled=False)
+    provider.config = config
+    provider._quirks = None
     command = CleanCommand(
         config=config,
         log=MagicMock(),
@@ -107,6 +115,8 @@ def test_clean_command_reports_system_database_refusal(
 
     result = command.execute(dry_run=dry_run, scripts_dir=tmp_path)
 
+    if schema == "mysql":
+        provider._ensure_connection.assert_not_called()
     assert not callback_effect.exists()
     provider.set_current_schema.assert_not_called()
     command._run_preflight.assert_not_called()
@@ -151,3 +161,80 @@ def test_unknown_case_mode_refuses_mixed_case_clean(case_rows):
         operations.clean_schema(MagicMock(), "MYSQL")
 
     executor.execute_statement.assert_not_called()
+
+
+@pytest.mark.parametrize("provider_class", [MySqlProvider, MariadbProvider])
+@pytest.mark.parametrize("schema", ["app", "mysql_app", "system"])
+def test_clean_target_validation_does_not_connect_for_user_database(provider_class, schema):
+    provider = object.__new__(provider_class)
+    provider._ensure_connection = MagicMock(side_effect=AssertionError("must not connect"))
+    provider.validate_clean_target(schema)
+    provider._ensure_connection.assert_not_called()
+
+
+@pytest.mark.parametrize("provider_class", [MySqlProvider, MariadbProvider])
+@pytest.mark.parametrize("selection_fails", [False, True])
+def test_clean_selects_target_before_callbacks(
+    provider_class, selection_fails, tmp_path, monkeypatch
+):
+    config = DbliftConfig(
+        database=MySqlConfig(
+            type=provider_class.canonical_dialect_key, schema="app", database="mysql"
+        ),
+        clean_disabled=False,
+    )
+    provider = object.__new__(provider_class)
+    provider.config = config
+    provider._quirks = None
+    provider.log = MagicMock()
+    provider.query_executor = MagicMock()
+    provider._ensure_connection = MagicMock(return_value=MagicMock())
+    # A previous raw USE changed the connection without updating the cached name.
+    provider._current_database_set = "app"
+    selected = {"database": "mysql"}
+    selections = []
+    provider.list_droppable_objects = MagicMock(return_value=[])
+
+    def execute_statement(self, sql, **kwargs):
+        selections.append(sql)
+        if selection_fails:
+            raise RuntimeError("USE denied")
+        assert sql == "USE `app`"
+        selected["database"] = "app"
+        return 0
+
+    monkeypatch.setattr(SqlAlchemyProvider, "execute_statement", execute_statement)
+    if selection_fails:
+        provider._current_database_set = None
+    command = CleanCommand(
+        config=config,
+        log=MagicMock(),
+        provider=provider,
+        script_manager=MagicMock(),
+        history_manager=MagicMock(),
+        validator=MagicMock(),
+        execution_engine=MagicMock(),
+        migration_helpers=MagicMock(),
+        state_manager=MagicMock(),
+        migration_ui=MagicMock(),
+        migration_rules=MagicMock(),
+    )
+    command._run_preflight = MagicMock()
+    command._log_command_header_update = MagicMock()
+    command._prepare_analysis_for_sql_callbacks = MagicMock()
+    marker = tmp_path / "callback-target"
+    command._execute_callbacks = MagicMock(
+        side_effect=lambda *args, **kwargs: marker.write_text(selected["database"])
+    )
+
+    result = command.execute(scripts_dir=tmp_path)
+
+    command._run_preflight.assert_called_once()
+    assert selections == ["USE `app`"]
+    if selection_fails:
+        assert not marker.exists()
+        assert not result.success
+        assert "USE denied" in result.error_message
+    else:
+        assert result.success, result.error_message
+        assert marker.read_text() == "app"
