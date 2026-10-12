@@ -603,6 +603,7 @@ module = [
     "dblift.db.plugins.sqlite.parser",
     "dblift.db.plugins.sqlite.parser.parser_config",
     "dblift.db.plugins.sqlite.parser.sqlite_regex_parser",
+    "dblift.db.plugins.sqlite.parser._script",
 ]
 disallow_any_generics = true
 disallow_subclassing_any = true
