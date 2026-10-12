@@ -24,7 +24,7 @@ _BLANKS_UNICODE = (
 )
 _NON_BLANK = (
     "\x80-\x9f\xa1-\u1fff\u200c-\u202e\u2030-\u205e\u2061-\u2fff\u3001-\ufefe"
-    "\uff00-\U0010ffff"
+    + "\uff00-\U0010ffff"
 )
 #: An identifier is a letter, ``_`` or a non-blank non-ASCII character, then those, digits and
 #: ``$``: so ``a$$b`` and ``SELECT$$a`` are words and a dollar quote cannot open inside one.
