@@ -479,3 +479,93 @@ class TestDuckDBDmlKeepsLiterals:
                 caught.value, (UnsafeStatementSplitError, UnsupportedMetaCommandError)
             ), sql
         assert self._values(provider) == []
+
+
+@pytest.mark.unit
+class TestDuckDBAutocommit:
+    @pytest.mark.parametrize("checkpoint", ["CHECKPOINT", "FORCE CHECKPOINT"])
+    def test_checkpoint_ends_pending_writes_without_committing(self, duckdb_provider, checkpoint):
+        provider, _ = duckdb_provider
+        provider.execute_statement("CREATE TABLE pending (id INTEGER)")
+        connection = provider._ensure_connection()
+        provider.begin_transaction()
+        provider.execute_statement("INSERT INTO pending VALUES (1)")
+
+        provider.execute_autocommit_statement(checkpoint)
+
+        assert provider._ensure_connection() is connection
+        assert not connection.in_transaction()
+        assert provider.execute_query("SELECT * FROM pending") == []
+        provider.begin_transaction()
+        provider.execute_statement("INSERT INTO pending VALUES (2)")
+        provider.rollback_transaction()
+        assert provider.execute_query("SELECT * FROM pending") == []
+
+    def test_failure_leaves_connection_transactional(self, duckdb_provider):
+        provider, _ = duckdb_provider
+        provider.execute_statement("CREATE TABLE pending (id INTEGER)")
+        provider.begin_transaction()
+        provider.execute_statement("INSERT INTO pending VALUES (1)")
+        with pytest.raises(duckdb.Error, match="missing_database"):
+            provider.execute_autocommit_statement("CHECKPOINT missing_database")
+        assert not provider._ensure_connection().in_transaction()
+        provider.begin_transaction()
+        provider.execute_statement("INSERT INTO pending VALUES (2)")
+        provider.rollback_transaction()
+        assert provider.execute_query("SELECT * FROM pending") == []
+
+    def test_schema_and_parameters_are_preserved(self, duckdb_provider):
+        provider, _ = duckdb_provider
+        provider.execute_statement("CREATE SCHEMA target")
+        provider.execute_statement("CREATE TABLE target.items (id INTEGER)")
+        provider.execute_autocommit_statement(
+            "INSERT INTO items VALUES (?)", schema="target", params=[7]
+        )
+        assert provider.execute_query("SELECT * FROM target.items") == [{"id": 7}]
+
+    @pytest.mark.parametrize("checkpoint", ["CHECKPOINT", "FORCE CHECKPOINT"])
+    def test_checkpoint_migration_routes_to_autocommit(
+        self, duckdb_provider, checkpoint, monkeypatch
+    ):
+        from dblift.api.client import DBLiftClient
+
+        provider, tmp = duckdb_provider
+        migrations = tmp / "migrations"
+        migrations.mkdir()
+        (migrations / "V1__create.sql").write_text(
+            "CREATE TABLE items (id INTEGER); INSERT INTO items VALUES (1);"
+        )
+        (migrations / "V2__checkpoint.sql").write_text(f"-- persist writes\n{checkpoint};")
+        calls = []
+        execute = provider.execute_autocommit_statement
+
+        def record(sql, schema=None, params=None):
+            calls.append(sql)
+            return execute(sql, schema=schema, params=params)
+
+        monkeypatch.setattr(provider, "execute_autocommit_statement", record)
+        client = DBLiftClient(provider, migrations)
+        result = client.migrate()
+        assert result.success, result.error_message
+        assert len(calls) == 1
+        assert checkpoint in calls[0]
+        assert provider.execute_query("SELECT * FROM items") == [{"id": 1}]
+        assert len(provider.get_applied_migrations("main")) == 2
+
+    @pytest.mark.parametrize(
+        "checkpoint", ["CHECKPOINT", "FORCE /* flush */ CHECKPOINT", "FORCE -- flush\nCHECKPOINT"]
+    )
+    def test_mixed_checkpoint_migration_is_rejected_before_writes(
+        self, duckdb_provider, checkpoint
+    ):
+        from dblift.api.client import DBLiftClient
+
+        provider, tmp = duckdb_provider
+        provider.execute_statement("CREATE TABLE pending (id INTEGER)")
+        migrations = tmp / "migrations"
+        migrations.mkdir()
+        (migrations / "V1__mixed.sql").write_text(f"INSERT INTO pending VALUES (1); {checkpoint};")
+        result = DBLiftClient(provider, migrations).migrate()
+        assert not result.success
+        assert "mixes transactional and autocommit-only statements" in result.error_message
+        assert provider.execute_query("SELECT * FROM pending") == []
