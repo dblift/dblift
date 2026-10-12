@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
 
@@ -53,6 +53,20 @@ def scan_script(script: str, *, comment_only: bool = False) -> List[Unit]:
     return _Scanner(text, comment_only).run()
 
 
+def blank_comments(script: str) -> str:
+    """``script`` with every comment replaced by a space; strings and identifiers are untouched."""
+    text = script[1:] if script.startswith("\ufeff") else script
+    scanner = _Scanner(text, False)
+    scanner.run()
+    pieces, last = [], 0
+    for start, end in scanner.comments:
+        pieces.append(text[last:start])
+        pieces.append(" ")
+        last = end
+    pieces.append(text[last:])
+    return "".join(pieces)
+
+
 def _is_escape_prefix(word: str) -> bool:
     """``E`` or ``e`` alone, or after digits (``1E'a'`` is the number 1 and an E string)."""
     return word[-1] in "Ee" and (len(word) == 1 or word[:-1].isdigit())
@@ -69,6 +83,7 @@ class _Scanner:
         self.text = text
         self.comment_only = comment_only
         self.units: List[Unit] = []
+        self.comments: List[Tuple[int, int]] = []
         self.code = False
         self.segment = 0
         self.segment_line = 1
@@ -87,7 +102,9 @@ class _Scanner:
                 self._refuse_command(i)
             elif text.startswith("--", i):
                 end = _LINE_END.search(text, i)
-                i = size if end is None else end.start()
+                stop = size if end is None else end.start()
+                self.comments.append((i, stop))
+                i = stop
             elif text.startswith("/*", i):
                 i = self._block_comment(i)
             elif char == "'":
@@ -139,6 +156,7 @@ class _Scanner:
             depth += 1 if edge.group() == "/*" else -1
             j = edge.end()
         self.line += text.count("\n", i, j)
+        self.comments.append((i, j))
         return j
 
     def _quoted(self, i: int, closer: str) -> int:

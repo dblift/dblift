@@ -207,6 +207,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- DuckDB: a lone `INSERT`, `UPDATE` or `DELETE` run through the provider no longer
+  loses the blank lines, the lines starting with `--` or `/*`, and the `CR` of a
+  `CRLF` inside a string literal. The statement is sent as written; only its
+  shape is read with the comments blanked.
 - SQLite: a quoted name with a `;` or an apostrophe in it (`"a;b"`, `[it's]`,
   `` `it's` ``), `""` and ``` `` ``` escapes, comment markers inside a quoted
   name, a column called `end$` or a quoted `"end"` inside a trigger body, and a
