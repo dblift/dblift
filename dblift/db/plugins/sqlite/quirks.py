@@ -50,6 +50,15 @@ class SqliteQuirks(BaseQuirks):
         (r"^VACUUM\b", "SQLite VACUUM cannot run inside a transaction"),
     )
 
+    # dblift's migrate holds the connection's one transaction: a script's own BEGIN fails against
+    # it and its COMMIT/END/ROLLBACK ends it early. ``BEGIN EXCLUSIVE`` and the SAVEPOINT family
+    # have no entry: the first fails as written, the second nests.
+    transaction_control_sql_patterns = (
+        (r"^BEGIN(\s+(DEFERRED|IMMEDIATE))?(\s+TRANSACTION)?\s*;?$", "begin"),
+        (r"^(COMMIT|END)(\s+TRANSACTION)?\s*;?$", "end"),
+        (r"^ROLLBACK(\s+TRANSACTION)?\s*;?$", "abort"),
+    )
+
     def __init__(self, dialect_name: str = "sqlite") -> None:
         """Initialize SQLite quirks with the dialect name."""
         super().__init__(dialect_name=dialect_name)

@@ -514,6 +514,14 @@ class BaseQuirks:
     #: Default: empty — no dialect-specific non-transactional statements.
     non_transactional_sql_patterns: "tuple[tuple[str, str], ...]" = ()
 
+    #: Statements that open (``"begin"``), end (``"end"``) or abandon (``"abort"``) the
+    #: connection's transaction, as ``(regex, kind)`` matched like
+    #: ``non_transactional_sql_patterns``. dblift runs each migration in a transaction of its
+    #: own, so a dialect that fills this table gets a script's exact ``BEGIN ... COMMIT``
+    #: envelope dropped and any other transaction statement refused.
+    #: Default: empty -- the script is run as written (``COMMIT`` after DML, nested ``BEGIN``).
+    transaction_control_sql_patterns: "tuple[tuple[str, str], ...]" = ()
+
     # ------------------------------------------------------------------
     # Provider display / credential hooks.
     # ------------------------------------------------------------------

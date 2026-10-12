@@ -104,3 +104,69 @@ def classify_execution_statement(
                 )
 
     return ExecutionStatement(sql=sql, statement_type=statement_type)
+
+
+def neutralise_transaction_statements(
+    statements: List[str],
+    *,
+    dialect: str,
+    log: Any,
+    script_name: str = "the script",
+    content: str = "",
+) -> List[str]:
+    """*statements* with a script's ``BEGIN ... COMMIT`` envelope dropped, or a refusal.
+
+    dblift runs a migration in one transaction of its own. A script whose first statement is a
+    ``begin`` and whose last is an ``end`` (``quirks.transaction_control_sql_patterns``) is that
+    same transaction: both are dropped and a warning says so. Any other ``begin``/``end``/``abort``
+    would end or fail against dblift's transaction, and is refused before anything runs.
+    A dialect with no patterns gets *statements* back untouched.
+    """
+    from dblift.core.exceptions import UnsupportedMetaCommandError
+    from dblift.db.provider_registry import ProviderRegistry
+
+    patterns = ProviderRegistry.get_quirks(dialect.lower()).transaction_control_sql_patterns
+    if not patterns:
+        return statements
+    # (index, normalised text, kind) of every executable statement.
+    executable = []
+    for index, statement in enumerate(statements):
+        if is_comment_only_statement(statement):
+            continue
+        text = re.sub(r"\s+", " ", strip_leading_comments(statement).strip()).upper()
+        executable.append((index, text, next((k for p, k in patterns if re.match(p, text)), None)))
+    marked = [entry for entry in executable if entry[2]]
+    if not marked:
+        return statements
+    first, last = executable[0], executable[-1]
+    if first[2] == "begin" and last[2] == "end" and first is not last:
+        offenders = [entry for entry in marked if entry is not first and entry is not last]
+        if not offenders:
+            log.warning(
+                f"Dropped {first[1].rstrip(';').rstrip()} and {last[1].rstrip(';').rstrip()} "
+                f"from {script_name}: dblift runs the migration in one transaction of its own"
+            )
+            return [s for i, s in enumerate(statements) if i not in (first[0], last[0])]
+    else:
+        offenders = [entry for entry in marked if entry is not first or entry[2] != "begin"]
+    index, text, _ = (offenders or marked)[0]
+    raise UnsupportedMetaCommandError(
+        f"{script_name}, {_position(statements, index, content)}: {text.rstrip(';').rstrip()} "
+        "manages the transaction, which dblift already opens for each migration, so none of its "
+        "statements were executed. Remove it; a script that is only BEGIN ... COMMIT around its "
+        "whole body is accepted."
+    )
+
+
+def _position(statements: List[str], index: int, content: str) -> str:
+    """``line N`` of ``statements[index]`` in *content*, or ``statement N`` when it cannot be found."""
+    pos = 0
+    for i, statement in enumerate(statements[: index + 1]):
+        needle = strip_leading_comments(statement).strip()
+        found = content.find(needle, pos) if needle else -1
+        if found < 0:
+            break
+        if i == index:
+            return f"line {content.count(chr(10), 0, found) + 1}"
+        pos = found + len(needle)
+    return f"statement {index + 1}"

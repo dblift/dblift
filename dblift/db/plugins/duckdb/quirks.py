@@ -34,6 +34,15 @@ class DuckDBQuirks(BaseQuirks):
     # In-memory DB: never touches disk, safe as a validate-sql offline placeholder.
     lint_placeholder_url = "duckdb:///:memory:"
 
+    # The connection always holds dblift's transaction (``duckdb_engine`` opens one on the first
+    # statement): a script's own BEGIN fails against it and its COMMIT/END/ROLLBACK/ABORT ends it
+    # early. DuckDB has no SAVEPOINT, so there is no savepoint family to leave alone.
+    transaction_control_sql_patterns = (
+        (r"^(BEGIN(\s+TRANSACTION)?|START\s+TRANSACTION)\s*;?$", "begin"),
+        (r"^(COMMIT|END)(\s+TRANSACTION)?\s*;?$", "end"),
+        (r"^(ROLLBACK|ABORT)(\s+TRANSACTION)?\s*;?$", "abort"),
+    )
+
     def __init__(self, dialect_name: str = "duckdb") -> None:
         """Initialize DuckDB quirks with the dialect name."""
         super().__init__(dialect_name=dialect_name)

@@ -16,7 +16,11 @@ from dblift.core.constants import (
     SECONDS_TO_MILLISECONDS,
     truncate_sql_for_logging,
 )
-from dblift.core.exceptions import CallbackExecutionError, TransactionAbortedError
+from dblift.core.exceptions import (
+    CallbackExecutionError,
+    TransactionAbortedError,
+    UnsupportedMetaCommandError,
+)
 from dblift.core.logger import Log, NullLog
 from dblift.core.logger.results import CallbackExecution, MigrationInfo, OperationResult
 from dblift.core.logger.tabular_data import rows_to_columns_and_values
@@ -33,6 +37,7 @@ from dblift.core.migration.sql.execution_statement import (
     ExecutionStatement,
     classify_execution_statement,
     is_comment_only_statement,
+    neutralise_transaction_statements,
 )
 from dblift.core.migration.sql.migration_sql_parser import (
     fallback_migration_sql,
@@ -301,7 +306,13 @@ class ExecutionEngine:
         try:
             return self._prepare_sql_statements(migration, placeholder_service=placeholder_service)
         except Exception as exc:
-            message = f"Failed to parse SQL for {migration.script_name}: {to_python_string(exc)}"
+            detail = str(to_python_string(exc))
+            # A transaction-statement refusal already names its script.
+            message = (
+                detail
+                if isinstance(exc, UnsupportedMetaCommandError) and migration.script_name in detail
+                else f"Failed to parse SQL for {migration.script_name}: {detail}"
+            )
             self.log.error(message)
             result.set_error(message)
             return None
@@ -367,6 +378,7 @@ class ExecutionEngine:
                 migration.dialect, migration.config, self.log
             )
         analyzer = self.sql_analyzer
+        analyzer_error: Optional[Exception] = None
         if analyzer.dialect != dialect_key:
             try:
                 analyzer = SqlAnalyzer(
@@ -375,8 +387,19 @@ class ExecutionEngine:
                     analysis_mode=getattr(self.sql_analyzer, "analysis_mode", "full"),
                 )
             except Exception as exc:
-                return fallback_migration_sql(content, self.log, exc)
-        return parse_migration_sql(analyzer, content, self.log)
+                analyzer_error = exc
+        statements = (
+            parse_migration_sql(analyzer, content, self.log)
+            if analyzer_error is None
+            else fallback_migration_sql(content, self.log, analyzer_error)
+        )
+        return neutralise_transaction_statements(
+            statements,
+            dialect=dialect_key,
+            log=self.log,
+            script_name=migration.script_name,
+            content=content,
+        )
 
     def _reset_provider_schema_cache(self) -> None:
         """Forget any per-connection schema the provider has cached as already applied.
