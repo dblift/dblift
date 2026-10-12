@@ -10,6 +10,7 @@ SCRIPTS = [
     ("mysql", "UPDATE t SET a = 1;\nSELECT 1\\G\nUPDATE t SET a = 2;\n", "\\G"),
     ("mariadb", "UPDATE t SET a = 1;\nsource other.sql\nUPDATE t SET a = 2;\n", "source"),
     ("sqlserver", "UPDATE t SET a = 1;\nGO\n:r other.sql\nGO\n", ":r"),
+    ("duckdb", ".mode csv\nCREATE TABLE a(x INT);\n", ".mode"),
 ]
 
 

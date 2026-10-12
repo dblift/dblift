@@ -42,7 +42,7 @@ the extractor's concern and is covered by the model snapshot tests, not here.
   documented equivalent, *dropped and recorded* as a `kind="directive"` entry
   in the statement list, or *rejected* with an error naming the directive.
   "Stripped" without a record is not an option.
-- **No fallback (PostgreSQL family, Oracle, SQL Server, Db2 and SQLite).** An input the rules do not cover raises
+- **No fallback (PostgreSQL family, Oracle, SQL Server, Db2, SQLite and DuckDB).** An input the rules do not cover raises
   `UnsafeStatementSplitError` with line and column. The spec's *Not handled*
   section is the list of such inputs the authors know about.
 - **The terminator is consumed, not returned.** A statement's text excludes
