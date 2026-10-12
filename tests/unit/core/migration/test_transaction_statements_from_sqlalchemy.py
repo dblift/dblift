@@ -30,11 +30,10 @@ def _migrate(engine_name, tmp_path, script):
 
 
 @pytest.mark.parametrize("engine_name, name", cases())
-def test_scenario(engine_name, name, tmp_path, caplog, capfd):
+def test_scenario(engine_name, name, tmp_path, caplog):
     scenario = SCENARIOS[name]
     with caplog.at_level(logging.INFO):
         result = _migrate(engine_name, tmp_path, scenario.script)
-    output = caplog.text + "".join(capfd.readouterr())
 
     assert result.success is (scenario.status == "applied")
     assert read_state(engine_name, tmp_path) == (scenario.tables, scenario.expected_history())

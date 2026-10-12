@@ -158,8 +158,9 @@ def neutralise_transaction_statements(
                 if reason:
                     raise refuse(
                         entry,
-                        f"cannot run inside a transaction ({reason}), so the {first[1].rstrip(';')} "
-                        f"... {last[1].rstrip(';')} around it cannot be dropped. Remove the envelope.",
+                        f"cannot stay inside the envelope: {reason}. The "
+                        f"{first[1].rstrip(';')} ... {last[1].rstrip(';')} around it cannot be "
+                        "dropped; remove the envelope.",
                     )
             log.warning(
                 f"Dropped {first[1].rstrip(';').rstrip()} and {last[1].rstrip(';').rstrip()} "
@@ -169,7 +170,7 @@ def neutralise_transaction_statements(
     else:
         offenders = [entry for entry in marked if entry is not first or entry[2] != "begin"]
     offender = (offenders or marked)[0]
-    if offender[2] == "begin_other":
+    if offender[2] == "begin_other" and offender is first:
         raise refuse(
             offender,
             "cannot stand in for dblift's transaction, which it opens itself for each script: "

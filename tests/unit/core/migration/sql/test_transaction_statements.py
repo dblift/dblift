@@ -279,3 +279,19 @@ def test_refusal_line_ignores_the_same_word_in_comments(dialect):
     content = "CREATE TABLE t(a INT);\n-- remember COMMIT;\nINSERT INTO t VALUES(1); -- COMMIT;\nCOMMIT;\n"
     with pytest.raises(TransactionStatementError, match=r"V1__x\.sql, line 4: COMMIT manages"):
         _run(_split(dialect, content), dialect, content=content)
+
+
+@pytest.mark.parametrize(
+    "dialect, begin", [("sqlite", "BEGIN EXCLUSIVE"), ("duckdb", "BEGIN TRANSACTION READ ONLY")]
+)
+def test_a_begin_with_options_mid_script_gets_the_ordinary_refusal(dialect, begin):
+    with pytest.raises(TransactionStatementError) as raised:
+        _run([BODY[0], begin, BODY[1], "COMMIT"], dialect)
+    assert f"{begin} manages the transaction" in str(raised.value)
+    assert "only a plain BEGIN" not in str(raised.value)
+
+
+def test_the_envelope_refusal_names_the_reason_once():
+    with pytest.raises(TransactionStatementError) as raised:
+        _run(["BEGIN", "VACUUM", "COMMIT"], "sqlite")
+    assert str(raised.value).count("cannot run inside a transaction") == 1
