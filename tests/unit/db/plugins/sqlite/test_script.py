@@ -57,10 +57,12 @@ def _expected(words: tuple[str, ...]) -> list[str]:
     return out
 
 
-def test_the_scanner_cuts_where_the_library_says_a_statement_is_complete() -> None:
-    """Every sequence of up to 7 token classes (960 799), against the library: the whole table."""
+@pytest.mark.parametrize("first", _CLASSES)
+def test_the_scanner_cuts_where_the_library_says_a_statement_is_complete(first: str) -> None:
+    """Every sequence of up to 7 token classes (960 799), partitioned by first token."""
     for length in range(1, 8):
-        for words in itertools.product(_CLASSES, repeat=length):
+        for suffix in itertools.product(_CLASSES, repeat=length - 1):
+            words = (first, *suffix)
             script = " ".join(words)
             assert texts(script) == _expected(words), script
 
