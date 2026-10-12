@@ -565,7 +565,6 @@ def test_a_blank_or_comment_only_script_has_no_statements() -> None:
     "script",
     [
         "SELECT 1;\nQUIT",
-        "SELECT 1;\nQUIT;;",
         "SELECT 1;\nQUIT; -- bye",
         "SELECT 1;\nQUIT -- bye",
         "SELECT 1;\nCONNECT RESET;\nTERMINATE;\nQUIT;",
@@ -585,3 +584,67 @@ def test_every_form_of_the_epilogue_is_dropped_and_recorded(script: str) -> None
 def test_quit_before_a_statement_is_refused(script: str) -> None:
     with pytest.raises(UnsupportedMetaCommandError, match="QUIT"):
         scan_script(script)
+
+
+@pytest.mark.parametrize("command", ["CONNECT RESET", "QUIT", "TERMINATE"])
+@pytest.mark.parametrize("after", ["\nCREATE TABLE u (id INT);", " -- c\nCREATE TABLE u (id INT);"])
+def test_an_epilogue_command_without_a_terminator_does_not_swallow_the_next_statement(
+    command: str, after: str
+) -> None:
+    with pytest.raises(UnsafeStatementSplitError, match="line 2"):
+        scan_script(f"SELECT 1;\n{command}{after}")
+
+
+@pytest.mark.parametrize(
+    "script",
+    [
+        "SELECT 1;\nCONNECT RESET",
+        "SELECT 1;\nQUIT;",
+        "SELECT 1;\nTERMINATE -- bye",
+        "SELECT 1;\nTERMINATE; -- bye",
+        "SELECT 1;\nQUIT /* bye */",
+        "--#SET TERMINATOR @\nSELECT 1@\nCONNECT RESET@",
+    ],
+)
+def test_the_accepted_epilogue_forms_are_recorded_and_dropped(script: str) -> None:
+    parser = DB2RegexParser()
+    assert [r.kind for r in parser.split(script)][-1] == "directive"
+    assert parser.split_statements(script) == ["SELECT 1"]
+
+
+@pytest.mark.parametrize("tail", ["QUIT;;", "TERMINATE;;", "QUIT foo;", "CONNECT RESET now;"])
+def test_what_is_not_exactly_an_epilogue_command_is_refused(tail: str) -> None:
+    with pytest.raises(UnsafeStatementSplitError, match="line 2"):
+        scan_script(f"SELECT 1;\n{tail}")
+
+
+@pytest.mark.parametrize(
+    "statement",
+    [
+        "UPDATE\nCOMMAND OPTIONS USING S ON",
+        "UPDATE DB\nCFG FOR sample USING LOGFILSIZ 10",
+        "SET\nCLIENT CONNECT_NODE 0",
+    ],
+)
+def test_a_command_phrase_split_over_lines_is_still_a_command(statement: str) -> None:
+    with pytest.raises(UnsupportedMetaCommandError, match="line 2"):
+        scan_script(f"SELECT 0;\n{statement};")
+
+
+def test_a_statement_that_merely_starts_like_a_command_phrase_on_two_lines_is_sql() -> None:
+    assert texts("UPDATE\nt SET x = 1;") == ["UPDATE\nt SET x = 1"]
+
+
+@pytest.mark.parametrize(
+    "script, expected",
+    [
+        ("SELECT 1\n/* c */", "SELECT 1"),
+        ("SELECT 1\n/* a\n b */\n", "SELECT 1"),
+        ("SELECT 1 /* a\n b */\n-- c", "SELECT 1 /* a\n b */"),
+        ("SELECT 1\n/* c */\nFROM t\n/* d */", "SELECT 1\n/* c */\nFROM t"),
+    ],
+)
+def test_comment_lines_of_both_forms_after_the_last_code_are_not_part_of_it(
+    script: str, expected: str
+) -> None:
+    assert texts(script) == [expected]

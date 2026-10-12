@@ -27,6 +27,10 @@ _DIRECTIVE = re.compile(r"[ \t]*--#SET +TERMINATOR(?!\w)")
 _DIRECTIVE_VALUE = re.compile(r" +(\S{1,2})[ \t]*\Z")
 _WORD = re.compile(r"[A-Za-z_][A-Za-z0-9_$#@]*")
 _LEADING_WORD = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+#: The whole text of an epilogue command, a comment on its line allowed.
+_EPILOGUE = re.compile(
+    r"(?:QUIT|TERMINATE|CONNECT[ \t]+RESET)[ \t]*(?:--.*|/\*.*?\*/[ \t]*)?\Z", re.I
+)
 #: First words of CLP commands that no SQL statement starts with (the CLP's own ``?`` listing).
 _COMMAND_WORDS = frozenset(
     "ACTIVATE ADD ARCHIVE ATTACH AUTOCONFIGURE BACKUP BIND CATALOG CHANGE COMPLETE CONNECT "
@@ -225,8 +229,9 @@ class _Scanner:
         self.buf: List[str] = []
         self.start = 0
         self.reader = _Reader()
-        self.epilogue = False
         self.block_line = 0
+        self.block_code = False
+        self.last_code = 0
         self.stray_line = 0
 
     def run(self) -> List[Unit]:
@@ -251,17 +256,25 @@ class _Scanner:
                     f"the routine body starting on line {self.start} is not closed "
                     "before the end of the script"
                 )
-            lines = self.buf
-            while lines and not self.reader.quote and lines[-1].strip(" \t\r").startswith("--"):
-                lines = lines[:-1]  # comment lines after the last code are not part of it
-            self._end(None, lines)
+            self._end(None, self.buf[: self.last_code])
         return self._epilogue()
 
     def _feed(self, text: str, number: int) -> None:
         """Feed a line to the reader, remembering where a block comment opened and a ';' strayed."""
         reader = self.reader
-        was_block, was_stray = reader.block, reader.stray
+        was_block, was_stray, tokens, quote = (
+            reader.block,
+            reader.stray,
+            reader.tokens,
+            reader.quote,
+        )
         reader.feed(text)
+        if reader.tokens > tokens or quote or reader.quote or (was_block and self.block_code):
+            self.last_code = len(self.buf)  # the line is code, not a comment after the code
+        if not was_block and reader.block:
+            self.block_code = reader.tokens > tokens
+        elif not reader.block:
+            self.block_code = False
         if reader.block and not was_block:
             self.block_line = number
         if reader.stray and not was_stray:
@@ -293,8 +306,8 @@ class _Scanner:
             if not stripped:
                 return
             self.start, self.reader = number, _Reader()
-            self.epilogue = self._command(stripped, number)
             self.stray_line = 0
+            self.last_code = 0
         self.buf.append(raw)
         tail = line.rstrip(" \t")
         reader = self.reader
@@ -348,7 +361,10 @@ class _Scanner:
         self.units.append(Unit(line.strip(), number, None, "directive"))
 
     def _command(self, stripped: str, number: int) -> bool:
-        """True for the commands a CLP script may end with; refuses every other CLP command."""
+        """True for the commands a CLP script may end with; refuses every other CLP command.
+
+        The CLP joins the lines of a statement, so the head is read from the whole text.
+        """
         if stripped[0] in "!?":
             raise UnsupportedMetaCommandError(
                 f"CLP command {stripped[0]!r} on line {number}: dblift does not run client commands"
@@ -357,6 +373,12 @@ class _Scanner:
         if not words:
             return False
         if words[0] in ("TERMINATE", "QUIT") or words[:2] == ("CONNECT", "RESET"):
+            if not _EPILOGUE.match(stripped):
+                raise UnsafeStatementSplitError(
+                    f"{words[0]} on line {number} is not alone on its line: the CLP joins it "
+                    "with what follows and the server rejects the text; end it with the "
+                    "terminator"
+                )
             return True
         if words[:2] == ("GET", "DIAGNOSTICS"):
             return False
@@ -380,15 +402,15 @@ class _Scanner:
 
     def _end(self, terminator: Optional[str], lines: List[str]) -> None:
         text = "\n".join(lines).strip()
-        start, epilogue = self.start, self.epilogue
-        reader, stray_line = self.reader, self.stray_line
+        start, reader, stray_line = self.start, self.reader, self.stray_line
         for piece in lines:  # the statement starts on the first line with anything on it
             if piece.strip():
                 break
             start += 1
-        self.buf, self.reader, self.epilogue = [], _Reader(), False
+        self.buf, self.reader = [], _Reader()
         if not text or not reader.code:
             return
+        epilogue = self._command(text, start)
         if reader.stray:
             raise UnsafeStatementSplitError(
                 f"line {stray_line} has code after a ';' in the middle of a line: "
