@@ -207,7 +207,7 @@ def test_empty_analyzer_dialect_uses_legacy_split_fallbacks(source, monkeypatch)
     assert migration.dialect == original_dialect
     if source == "default":
         log.warning.assert_called_once_with(
-            "No dialect available from config, defaulting to simple parser"
+            "No dialect available from config, using a registered dialect scanner"
         )
 
 

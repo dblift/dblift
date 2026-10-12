@@ -61,21 +61,25 @@ def test_parse_sql_reports_the_refusal_of_a_script_that_declares_objects(
 
 
 @pytest.mark.parametrize("dialect,script,message,with_table", CASES)
-def test_extract_objects_reads_a_refused_script_as_one_statement(
+def test_extract_objects_refuses_a_script_the_scanner_refuses(
     dialect: str, script: str, message: str, with_table: str
 ) -> None:
     parser = HybridParser(dialect)
-    assert parser.extract_objects(script) == []
-    assert [o.name.lower() for o in parser.extract_objects(with_table)] == ["a"]
+    with pytest.raises(ParserError):
+        parser.extract_objects(script)
+    with pytest.raises(ParserError):
+        parser.extract_objects(with_table)
 
 
-def test_postgresql_extraction_reads_a_refused_script_and_its_parse_reports_the_refusal() -> None:
+def test_postgresql_extraction_refuses_a_refused_script_and_parse_reports_it() -> None:
     script, message, with_table = POSTGRESQL
     parser = HybridParser("postgresql")
     with pytest.raises(ParserError):
         parser.split_statements(script)
-    assert parser.extract_objects(script) == []
-    assert [o.name.lower() for o in parser.extract_objects(with_table)] == ["a"]
+    with pytest.raises(ParserError):
+        parser.extract_objects(script)
+    with pytest.raises(ParserError):
+        parser.extract_objects(with_table)
     # the PostgreSQL regex parser fails its own parse first, with the message and the line
     result = parser.parse_sql(script)
     assert not result.success

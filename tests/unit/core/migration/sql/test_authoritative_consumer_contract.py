@@ -2,10 +2,18 @@
 
 import pytest
 
-from dblift.core.exceptions import UnsafeStatementSplitError
+from dblift.core.exceptions import (
+    TransactionStatementError,
+    UnsafeStatementSplitError,
+    UnsupportedMetaCommandError,
+)
 from dblift.core.logger import NullLog
 from dblift.core.migration.migration import Migration
 from dblift.core.migration.scripting.undo_script_generator import UndoScriptGenerator
+from dblift.core.migration.sql.execution_statement import (
+    execution_units,
+    neutralise_transaction_statements,
+)
 from dblift.core.migration.sql.lint_rules import find_issues
 from dblift.core.migration.sql.script_analysis import analyse_script
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
@@ -137,3 +145,59 @@ def test_snowflake_records_cover_original_statement_spans() -> None:
         "\nSELECT 2;",
     ]
     assert [record.text for record in records] == ["SELECT 'a;b'", "SELECT 2"]
+
+
+def test_transaction_policy_sees_inner_commit_in_atomic_pg_unit() -> None:
+    sql = r"SELECT 1 \; COMMIT;"
+    statements = SqlAnalyzer("postgresql").split_statements(sql)
+    assert len(statements) == 1
+    with pytest.raises(TransactionStatementError, match="COMMIT manages the transaction"):
+        neutralise_transaction_statements(
+            statements,
+            dialect="postgresql",
+            log=NullLog(),
+            content=sql,
+        )
+
+
+def test_transaction_policy_preserves_sqlserver_procedural_begin_batch() -> None:
+    sql = "BEGIN SELECT 1; END; SELECT 2;"
+    statements = SqlAnalyzer("sqlserver").split_statements(sql)
+    assert (
+        neutralise_transaction_statements(
+            statements,
+            dialect="sqlserver",
+            log=NullLog(),
+            content=sql,
+        )
+        == statements
+    )
+
+
+def test_execution_units_filter_go_zero_and_keep_psql_combination_atomic() -> None:
+    assert execution_units("SELECT 1;\nGO 0\nSELECT 2;", "sqlserver") == ["SELECT 2;"]
+    sql = r"SELECT 1 \; CREATE INDEX CONCURRENTLY ix ON users(id);"
+    assert len(execution_units(sql, "postgresql")) == 1
+
+
+def test_sqlglot_public_object_extraction_omits_skipped_batch() -> None:
+    parser = SqlGlotParser("sqlserver")
+    assert parser.extract_objects("CREATE TABLE ghost(id INT);\nGO 0") == []
+
+
+def test_sqlglot_public_validation_reports_scanner_refusal() -> None:
+    result = SqlGlotParser("sqlserver").validate_sql(":setvar schema dbo\nSELECT 1;\n")
+    assert result["valid"] is False
+    assert any(":setvar" in error for error in result["errors"])
+
+
+def test_hybrid_public_object_extraction_does_not_rescan_refused_script() -> None:
+    parser = SqlParserFactory("sqlserver").get_parser()
+    with pytest.raises(UnsupportedMetaCommandError, match=":setvar"):
+        parser.extract_objects(":setvar schema dbo\nCREATE TABLE ghost(id INT);")
+
+
+def test_sqlglot_fragment_analysis_has_explicit_semantic_entry_point() -> None:
+    result = SqlGlotParser("postgresql").parse_fragment("SELECT 1")
+    assert result.success
+    assert len(result.statements) == 1

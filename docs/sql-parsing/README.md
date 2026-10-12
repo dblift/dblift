@@ -1,7 +1,7 @@
 # SQL statement splitter — lexical specifications
 
-One specification per dialect, in the same shape, read by one splitting
-engine. These documents are **normative**: the engine's behaviour for a dialect
+One specification per dialect, in the same shape, read by that dialect's
+authoritative scanner. These documents are **normative**: the scanner's behaviour for a dialect
 is whatever its specification says, the conformance table in each document is
 compiled into the dialect's tests, and a change to splitting starts with a
 change here.

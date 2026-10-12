@@ -18,7 +18,7 @@ def _oracle_parser():
     ],
 )
 def test_extract_objects_from_an_already_split_statement(sql, kind, name):
-    objects = _oracle_parser().extract_objects(sql, "S")
+    objects = _oracle_parser().extract_statement_objects(sql, "S")
 
     assert [(o.object_type.name, o.name.upper()) for o in objects] == [(kind, name)]
 

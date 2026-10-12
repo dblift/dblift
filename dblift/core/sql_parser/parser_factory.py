@@ -18,9 +18,9 @@ class SqlParserFactory:
     and caching parser instances.
 
     Parser Types:
-    - 'regex': Pure regex-based parsing (default, handles all procedural languages)
-    - 'hybrid': Combines regex (for splitting) + sqlglot (for pure SQL analysis)
-    - 'sqlglot': Pure sqlglot parsing (fails on procedural languages, not recommended)
+    - 'regex': Dialect scanner with lightweight statement analysis
+    - 'hybrid': Dialect scanner with SQLGlot analysis of selected statements
+    - 'sqlglot': Dialect scanner with SQLGlot AST parsing of selected statements
     """
 
     # Parser classes are owned by the plugin via

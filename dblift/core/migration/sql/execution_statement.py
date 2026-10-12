@@ -48,37 +48,35 @@ def is_comment_only_statement(sql: str, *, nested_block_comments: bool = False) 
 
 
 @lru_cache(maxsize=None)
-def _batch_parser(dialect: str) -> Any:
-    """The dialect's regex parser when its statements arrive as batches (T-SQL), else None."""
+def _script_parser(dialect: str) -> Any:
+    """The dialect parser that owns execution and analysis script boundaries."""
     from dblift.db.provider_registry import ProviderRegistry
 
-    quirks = ProviderRegistry.get_quirks(dialect)
-    parser_class = quirks.parser_class("regex") if quirks.supports_go_batch_separator else None
+    parser_class = ProviderRegistry.get_quirks(dialect).parser_class("regex")
     return parser_class() if parser_class is not None else None
 
 
 def _statements_of(sql: str, dialect: str) -> List[str]:
-    """The statements of one execution unit: a T-SQL batch holds several, any other unit is one."""
-    parser = _batch_parser(dialect)
+    """Scanner-derived constituents of one execution unit."""
+    parser = _script_parser(dialect)
     if parser is None:
         return [sql]
-    return list(parser.split_for_extraction(sql)) or [sql]
+    return list(parser.split_for_analysis(sql))
 
 
 def execution_units(sql: str, dialect: str) -> Optional[List[str]]:
-    """The units execution sends for *sql* when the dialect runs batches, else None.
+    """The scanner's executable units once each, omitting skipped client batches.
 
-    None also when the splitter refuses the script: the caller falls back to statements.
+    ``None`` means the dialect has no record API. A scanner refusal propagates.
     """
-    from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
-
-    parser = _batch_parser(dialect.lower())
-    if parser is None:
+    parser = _script_parser(dialect.lower())
+    if parser is None or not hasattr(parser, "split"):
         return None
-    try:
-        return [record.text for record in parser.split(sql)]
-    except (UnsafeStatementSplitError, UnsupportedMetaCommandError):
-        return None
+    return [
+        record.text
+        for record in parser.split(sql)
+        if record.kind != "directive" and record.repeat > 0
+    ]
 
 
 def classify_execution_statement(
@@ -88,6 +86,8 @@ def classify_execution_statement(
     from dblift.db.provider_registry import ProviderRegistry
 
     quirks = ProviderRegistry.get_quirks(dialect.lower())
+    if not quirks.non_transactional_sql_patterns:
+        return ExecutionStatement(sql=sql, statement_type=statement_type)
 
     # A batch is not transactional when any of its statements is not: SQL Server refuses that
     # statement inside the transaction the whole batch would run in.
@@ -129,6 +129,34 @@ def neutralise_transaction_statements(
     quirks = ProviderRegistry.get_quirks(dialect.lower())
     patterns = quirks.transaction_control_sql_patterns
     if not patterns:
+        parser = _script_parser(dialect.lower())
+        if not content or parser is None or not hasattr(parser, "split"):
+            return statements
+        records = [
+            record
+            for record in parser.split(content)
+            if record.kind != "directive" and record.repeat > 0
+            for _ in range(record.repeat)
+        ]
+        if [record.text.strip().rstrip(";") for record in records] != [
+            statement.strip().rstrip(";") for statement in statements
+        ]:
+            return statements
+        for index, record in enumerate(records):
+            if not record.multi:
+                continue
+            parts = record.analysis_statements or (record.text,)
+            if len(parts) < 2:
+                continue
+            for part in parts:
+                text = re.sub(r"\s+", " ", _without_comments(quirks, part)).upper()
+                if re.match(r"^(?:BEGIN|START TRANSACTION|COMMIT|ROLLBACK)\b", text):
+                    where = _position(statements, index, dialect, content)
+                    raise TransactionStatementError(
+                        f"{script_name}, {where}: {text.rstrip(';')} manages the transaction "
+                        "inside one execution unit, so none of its statements were executed. "
+                        "Remove it from the combined unit."
+                    )
         return statements
     # (index, normalised text, kind) of every executable statement.
     executable = []

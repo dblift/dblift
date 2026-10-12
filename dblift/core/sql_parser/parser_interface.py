@@ -38,18 +38,20 @@ class SqlParserInterface(ABC):
         """
 
     def split_for_extraction(self, sql_content: str, strict_tokenizer: bool = False) -> List[str]:
-        """Statements for object extraction and reporting.
+        """Executed SQL constituents for object extraction and reporting.
 
-        The same as :meth:`split_statements` unless a dialect executes batches (T-SQL):
-        extraction still reads one statement at a time.
+        Dialect scanners may keep several constituents in one execution unit
+        (T-SQL batches or a client-combined command). Directives and skipped
+        batches contribute none.
         """
         return self.split_statements(sql_content, strict_tokenizer=strict_tokenizer)
 
     def split_for_analysis(self, sql_content: str, strict_tokenizer: bool = False) -> List[str]:
-        """The statements of a whole script, for callers that read it statement by statement.
+        """Scanner-derived executed constituents, once per execution unit.
 
-        The execution split, unless the dialect executes batches (T-SQL): then each batch is divided
-        into its statements, and ``GO n`` is not repeated.
+        A repeated batch is analyzed once, and a skipped batch contributes
+        nothing. Concrete dialect parsers override this when execution units
+        can contain more than one SQL statement.
         """
         return self.split_statements(sql_content, strict_tokenizer=strict_tokenizer)
 

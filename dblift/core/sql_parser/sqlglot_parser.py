@@ -98,45 +98,15 @@ class SqlGlotParser(SqlParserInterface):
             # analyzes each selected constituent, never script boundaries.
             statement_strings = self._script_scanner().split_for_extraction(sql_content)
 
-            statements = []
-            errors = []
+            statements: List[SqlStatement] = []
+            errors: List[str] = []
 
             for sql_text in statement_strings:
                 if not sql_text.strip():
                     continue
-
-                try:
-                    normalized_sql = self._preprocess_sql_content(sql_text)
-
-                    # Parse the statement using sqlglot
-                    ast = parse_one(normalized_sql, read=self.sqlglot_dialect)
-
-                    # Convert AST to SqlStatement
-                    statement = self._ast_to_statement(
-                        cast(exp.Expression, ast), sql_text, default_schema  # type: ignore[redundant-cast]
-                    )
-                    statements.append(statement)
-
-                except ParseError as e:
-                    error_msg = f"Parse error in statement: {str(e)}"
-                    logger.debug(error_msg)
-                    errors.append(error_msg)
-
-                    # Create a statement with UNKNOWN type for failed parses
-                    statement = SqlStatement(
-                        sql_text=sql_text,
-                        statement_type=SqlStatementType.UNKNOWN,
-                        objects=[],
-                        affected_objects=[],
-                        dialect=self.dialect,
-                        schema=default_schema,
-                    )
-                    statements.append(statement)
-
-                except Exception as e:
-                    error_msg = f"Unexpected error parsing statement: {str(e)}"
-                    logger.error(error_msg)
-                    errors.append(error_msg)
+                fragment_result = self.parse_fragment(sql_text, default_schema)
+                statements.extend(fragment_result.statements or [])
+                errors.extend(fragment_result.errors or [])
 
             success = len(errors) == 0
             return ParseResult(success=success, statements=statements, errors=errors)
@@ -145,6 +115,32 @@ class SqlGlotParser(SqlParserInterface):
             error_msg = f"Error parsing SQL content: {str(e)}"
             logger.error(error_msg)
             return ParseResult(success=False, statements=[], errors=[error_msg])
+
+    def parse_fragment(self, sql_text: str, default_schema: Optional[str] = None) -> ParseResult:
+        """Analyze one SQL fragment already selected by the dialect scanner."""
+        try:
+            normalized_sql = self._preprocess_sql_content(sql_text)
+            ast = parse_one(normalized_sql, read=self.sqlglot_dialect)
+            statement = self._ast_to_statement(
+                cast(exp.Expression, ast), sql_text, default_schema  # type: ignore[redundant-cast]
+            )
+            return ParseResult(success=True, statements=[statement], errors=[])
+        except ParseError as exc:
+            error = f"Parse error in statement: {exc}"
+            logger.debug(error)
+            statement = SqlStatement(
+                sql_text=sql_text,
+                statement_type=SqlStatementType.UNKNOWN,
+                objects=[],
+                affected_objects=[],
+                dialect=self.dialect,
+                schema=default_schema,
+            )
+            return ParseResult(success=False, statements=[statement], errors=[error])
+        except Exception as exc:
+            error = f"Unexpected error parsing statement: {exc}"
+            logger.error(error)
+            return ParseResult(success=False, statements=[], errors=[error])
 
     def split_statements(self, sql_content: str, strict_tokenizer: bool = False) -> List[str]:
         """Return execution units from the dialect's script scanner."""
@@ -162,7 +158,7 @@ class SqlGlotParser(SqlParserInterface):
         return self if isinstance(self, scanner_class) else scanner_class()
 
     def validate_sql(self, sql_content: str) -> Dict[str, Any]:
-        """Validate SQL syntax using sqlglot parser.
+        """Validate scanner-selected SQL constituents using sqlglot.
 
         Args:
             sql_content: SQL content to validate
@@ -173,15 +169,12 @@ class SqlGlotParser(SqlParserInterface):
         errors = []
 
         try:
-            # Try to parse the SQL content
-            normalized_content = self._preprocess_sql_content(sql_content)
-            statements = sqlglot.parse(normalized_content, read=self.sqlglot_dialect)
-
-            if not statements:
+            fragments = self._script_scanner().split_for_extraction(sql_content)
+            if not fragments:
                 errors.append("No valid SQL statements found")
-
-            for stmt in statements:
-                if stmt is None:
+            for fragment in fragments:
+                normalized = self._preprocess_sql_content(fragment)
+                if parse_one(normalized, read=self.sqlglot_dialect) is None:
                     errors.append("Invalid or empty statement")
 
         except ParseError as e:
@@ -194,19 +187,21 @@ class SqlGlotParser(SqlParserInterface):
     def extract_objects(
         self, sql_content: str, default_schema: Optional[str] = None
     ) -> List[SqlObject]:
-        """Extract database objects from SQL content using sqlglot AST traversal.
+        """Extract objects only from the dialect scanner's executed SQL."""
+        objects: List[SqlObject] = []
+        for fragment in self._script_scanner().split_for_extraction(sql_content):
+            objects.extend(self.extract_fragment_objects(fragment, default_schema))
+        return objects
+
+    def extract_fragment_objects(
+        self, sql_content: str, default_schema: Optional[str] = None
+    ) -> List[SqlObject]:
+        """Extract objects from SQL already selected by the script scanner.
 
         This method provides superior object extraction compared to regex by:
         - Handling quoted identifiers correctly
         - Extracting schema-qualified names
         - Understanding SQL context (CREATE vs SELECT)
-
-        ``sqlglot.parse()`` parses the whole of ``sql_content`` as one batch
-        and is all-or-nothing: one statement it cannot read raises before any
-        object is extracted, discarding every valid statement alongside it
-        rather than just the one that failed. Callers that want partial
-        results from a multi-statement string must split it themselves and
-        call this once per statement.
 
         Args:
             sql_content: SQL content to extract objects from

@@ -31,4 +31,6 @@ result = parser.parse_sql("SELECT 1; SELECT 2;")
 
 For applications that need original script locations, concrete dialect parsers
 expose `split(sql)` records with half-open `source_start` and `source_end`
-offsets. These cover client terminators consumed with an execution unit.
+Python string offsets in the original script. These include client terminators
+consumed with an execution unit. Analysis projects constituents once per
+executed unit and excludes directives and `GO 0` batches.
