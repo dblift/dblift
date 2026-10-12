@@ -25,8 +25,9 @@ def _query_mapping(database_config: Any, base_query: Any = None) -> Dict[str, st
             if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key):
                 raise ValueError(f"Invalid MySQL session variable name: {key!r}")
             # Keep numeric SET values numeric; encode strings independently of sql_mode.
-            if re.fullmatch(r"[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?", value):
-                parts.append(f"{key}={value}")
+            numeric = value.strip()
+            if re.fullmatch(r"[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?", numeric):
+                parts.append(f"{key}={numeric}")
             else:
                 parts.append(f"{key}={string_literal(value)}")
         query["init_command"] = f"SET SESSION {', '.join(parts)}"

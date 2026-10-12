@@ -36,11 +36,11 @@ def test_session_variable_names_must_be_simple_identifiers(key):
         build_sqlalchemy_url(SimpleNamespace(session_variables={key: "1"}))
 
 
-@pytest.mark.parametrize("value", ["1", "-1", "+1", "0.5", "1e3"])
+@pytest.mark.parametrize("value", ["1", "-1", "+1", "0.5", "1e3", " 28800 ", "28800\n"])
 def test_numeric_session_values_keep_numeric_types(value):
     config = SimpleNamespace(session_variables={"wait_timeout": value})
     sql = make_url(build_sqlalchemy_url(config)).query["init_command"]
-    assert sql == f"SET SESSION wait_timeout={value}"
+    assert sql == f"SET SESSION wait_timeout={value.strip()}"
 
 
 @pytest.mark.parametrize("value", ["nan", "inf", "1_000"])
