@@ -107,10 +107,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SQL Server and Oracle refuse an unterminated string or block comment with
   `UnsafeStatementSplitError` and its position. SQL Server previously
   dropped the rest of the file silently for an unterminated comment.
-- MySQL and MariaDB: an unterminated block comment now yields the remainder
-  as one statement (the server rejects it) instead of an empty result.
-  SQLite and DuckDB log a warning and keep their previous output; Db2 refuses
-  it (below).
+- MySQL, MariaDB and Db2 refuse an unterminated block comment with
+  `UnsafeStatementSplitError`. SQLite and DuckDB are unchanged: they return
+  the remainder as one statement, without a warning.
 - **Db2: a script is cut the way the command line processor cuts it.** A
   statement ends at a line whose last non-blank characters are the terminator:
   `;`, or the one or two characters a `--#SET TERMINATOR` line declared
@@ -135,7 +134,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   statement.
 - **Db2: processor commands are refused by name.** `CONNECT TO`, `QUIT`, `ECHO`,
   `!command`, `?`, `UPDATE COMMAND OPTIONS`, `CHANGE ISOLATION`, `REORG`,
-  `RUNSTATS`, `EXPORT`, `IMPORT`, `LOAD`, `LIST`, `GET` and the
+  `RUNSTATS`, `EXPORT`, `IMPORT`, `LOAD`, `LIST`, `GET` (`GET DIAGNOSTICS` is SQL and passes) and the
   rest of the processor's own command list, and `(=` comment blocks, stop the
   script with the command and its line instead of being sent to the server or
   skipped silently. A command's words are read across line breaks, as the
@@ -145,9 +144,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the server, which rejects them.
 - **Db2: a malformed `--#SET TERMINATOR` line is refused**; a value of more than
   two characters used to be accepted and ignored.
-- **Db2: a routine body that is never closed, an unterminated block comment, and
-  a comment alone before a terminator, no longer reach the server**: the first
-  two are refused, the third is not a statement.
+- **Db2: a routine body that is never closed and an unterminated block comment
+  are refused** instead of reaching the server. A comment alone before a
+  terminator is still not a statement.
 - **Db2: a body is kept whole under `;`** for `CREATE [OR REPLACE] PROCEDURE`,
   `FUNCTION`, `TRIGGER`, `METHOD`, `ALTER MODULE … ADD` and a compound
   statement; `PACKAGE` bodies follow the same rule (not tested against a

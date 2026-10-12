@@ -252,7 +252,7 @@ counter and the command list are all expressible as data.
 | `--#SET` options other than `TERMINATOR` (`DELIMITER`, `MAXERRORS`, `AUTOCOMMIT`) | comments | measured: the CLP ignores them |
 | `(=` … `=)` CLP comment blocks | rejected (row 29) | the CLP skips them without an error, statements inside included |
 | A last statement without a terminator | **run** (row 17) | extension: the CLP does not run it (DB21007E, return code 2). |
-| A routine body under `;` whose lines end in `;` | **kept whole** (rows 5a, 8, 9, 37-39, 45, 46) | extension: the CLP cuts it and the pieces run as statements. |
+| A routine body under `;` whose lines end in `;` | **kept whole** (rows 5a, 8, 9, 37-39, 41, 45, 46) | extension: the CLP cuts it and the pieces run as statements. |
 | A comment-only segment before a terminator (`/* c */;`) | dropped, no statement (row 27) | the CLP sends it and the server rejects it, SQL0198N. |
 | A leading UTF-8 byte order mark | dropped, as the migration loader does | the CLP sends it and the first statement fails (measured: SQL0104N on the first statement, the byte order mark glued to CREATE). |
 | A line break inside a string literal or a quoted identifier | sent as written | the CLP replaces it with a blank (§1): `'x` newline `y'` is stored as `x y` there and as `x` newline `y` by dblift. |
