@@ -29,6 +29,21 @@ def test_slash_after_a_semicolon_ended_statement_is_a_re_execution_and_refused()
         _split("CREATE TABLE t (id NUMBER);\n/\n")
 
 
+@pytest.mark.parametrize(
+    "script",
+    [
+        "INSERT INTO t VALUES (1)\n/\n/\n",
+        "BEGIN NULL; END;\n/\n/\n",
+        "INSERT INTO t VALUES (1)\n/\nPROMPT done\n/\n",
+    ],
+)
+def test_second_slash_refuses_re_execution_on_line_four_or_three(script):  # row 22a
+    line = 4 if "PROMPT" in script else 3
+    with pytest.raises(UnsafeStatementSplitError, match=f"line {line}") as exc:
+        _split(script)
+    assert "re-execute" in str(exc.value)
+
+
 def test_dot_alone_is_refused():  # row 26
     with pytest.raises(UnsafeStatementSplitError, match="line 4"):
         _split("BEGIN\n  NULL;\nEND;\n.\nCREATE TABLE t26 (id NUMBER);")
