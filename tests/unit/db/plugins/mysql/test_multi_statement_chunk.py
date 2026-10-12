@@ -98,3 +98,27 @@ def test_execute_statement_arms_the_drain_only_while_it_runs(
     provider.execute_statement("SELECT 1")
     assert seen == [True]
     assert _DRAIN_KEY not in conn.info
+
+
+def test_create_connection_does_not_arm_the_drain(monkeypatch: pytest.MonkeyPatch) -> None:
+    conn = create_engine("sqlite://").connect()
+    monkeypatch.setattr(SqlAlchemyProvider, "create_connection", lambda self: conn)
+    object.__new__(MySqlProvider).create_connection()
+    assert _DRAIN_KEY not in conn.info
+
+
+def test_execute_statement_disarms_the_drain_when_the_statement_raises(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = SimpleNamespace(info={})
+
+    def failing(self: Any, sql: str, schema: Any = None, params: Any = None) -> int:
+        raise RuntimeError("1146")
+
+    monkeypatch.setattr(SqlAlchemyProvider, "execute_statement", failing)
+    provider = object.__new__(MySqlProvider)
+    provider._lock = threading.RLock()
+    provider._ensure_connection = lambda: conn  # type: ignore[method-assign]
+    with pytest.raises(RuntimeError):
+        provider.execute_statement("SELECT 1")
+    assert _DRAIN_KEY not in conn.info
