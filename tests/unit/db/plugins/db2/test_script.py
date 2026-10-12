@@ -648,3 +648,8 @@ def test_comment_lines_of_both_forms_after_the_last_code_are_not_part_of_it(
     script: str, expected: str
 ) -> None:
     assert texts(script) == [expected]
+
+
+def test_a_doubled_quote_on_a_continuation_line_keeps_the_literal_open() -> None:
+    script = "INSERT INTO t VALUES ('a\nb''c;d');\nSELECT 2;"
+    assert texts(script) == ["INSERT INTO t VALUES ('a\nb''c;d')", "SELECT 2"]
