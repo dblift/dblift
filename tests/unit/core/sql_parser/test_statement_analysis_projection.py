@@ -21,7 +21,10 @@ def test_analysis_projects_executed_sql_once_and_keeps_copy_header() -> None:
     ]
 
     assert statement.analysis_sql(records) == [
-        "SELECT 1;", "SELECT 2;", "COPY t FROM STDIN;", "SELECT 3"
+        "SELECT 1;",
+        "SELECT 2;",
+        "COPY t FROM STDIN;",
+        "SELECT 3",
     ]
 
 
