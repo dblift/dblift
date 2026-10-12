@@ -15,9 +15,9 @@ from __future__ import annotations
 import copy
 import re
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
-from dblift.core.exceptions import UnsafeStatementSplitError
+from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
 from dblift.core.sql_parser.statement import StatementKind
 
 DEFAULT_TERMINATOR = ";"
@@ -26,6 +26,46 @@ DEFAULT_TERMINATOR = ";"
 _DIRECTIVE = re.compile(r"[ \t]*--#SET +TERMINATOR(?!\w)")
 _DIRECTIVE_VALUE = re.compile(r" +(\S{1,2})[ \t]*\Z")
 _WORD = re.compile(r"[A-Za-z_][A-Za-z0-9_$#@]*")
+_LEADING_WORD = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+#: First words of CLP commands that no SQL statement starts with (the CLP's own ``?`` listing).
+_COMMAND_WORDS = frozenset(
+    "ACTIVATE ADD ARCHIVE ATTACH AUTOCONFIGURE BACKUP BIND CATALOG CHANGE COMPLETE CONNECT "
+    "DEACTIVATE DECOMPOSE DEREGISTER DESCRIBE DETACH ECHO EDIT EXPORT FORCE GET HELP HISTORY "
+    "IMPORT INITIALIZE INSPECT LIST LOAD PING PRECOMPILE PREP PRUNE PUT QUERY QUIESCE QUIT "
+    "REBIND RECOVER REDISTRIBUTE REGISTER REORG REORGCHK RESET RESTART RESTORE REWIND "
+    "ROLLFORWARD RUNCMD RUNSTATS START STOP TAKEOVER TERMINATE UNCATALOG UNQUIESCE UPGRADE".split()
+)
+#: CLP commands whose first word also starts an SQL statement: the next word(s) decide.
+#: ``CREATE DATABASE`` and ``DROP DATABASE`` are not here on purpose: the server rejects them
+#: with an error, and ``CREATE DATABASE LINK`` is SQL other dialects write.
+_COMMAND_PHRASES = frozenset(
+    {
+        ("DROP", "DBPARTITIONNUM"),
+        ("REFRESH", "LDAP"),
+        ("SET", "CLIENT"),
+        ("SET", "RUNTIME"),
+        ("SET", "TABLESPACE"),
+        ("SET", "TAPE"),
+        ("SET", "UTIL_IMPACT_PRIORITY"),
+        ("SET", "WRITE"),
+        ("UPDATE", "COMMAND", "OPTIONS"),
+        ("UPDATE", "DATABASE", "CONFIGURATION"),
+        ("UPDATE", "DATABASE", "MANAGER"),
+        ("UPDATE", "DB", "CFG"),
+        ("UPDATE", "DB", "CONFIGURATION"),
+        ("UPDATE", "DB", "MANAGER"),
+        ("UPDATE", "DBM", "CFG"),
+        ("UPDATE", "DBM", "CONFIGURATION"),
+        ("UPDATE", "ALERT", "CFG"),
+        ("UPDATE", "ALERT", "CONFIGURATION"),
+        ("UPDATE", "CLI", "CFG"),
+        ("UPDATE", "CLI", "CONFIGURATION"),
+        ("UPDATE", "HISTORY", "FOR"),
+        ("UPDATE", "HISTORY", "EID"),
+        ("UPDATE", "LDAP", "NODE"),
+        ("UPDATE", "MONITOR", "SWITCHES"),
+    }
+)
 
 #: Routine kinds whose ``BEGIN ... END`` body the scanner keeps whole.
 _BODY_HEADS = frozenset({"PROCEDURE", "FUNCTION", "TRIGGER", "METHOD"})
@@ -41,6 +81,7 @@ class Unit:
     line: int
     terminator: Optional[str]
     kind: StatementKind = "sql"
+    epilogue: bool = False  # CONNECT RESET or TERMINATE: a directive when nothing follows
 
 
 class _Reader:
@@ -184,6 +225,7 @@ class _Scanner:
         self.buf: List[str] = []
         self.start = 0
         self.reader = _Reader()
+        self.epilogue = False
         self.block_line = 0
         self.stray_line = 0
 
@@ -209,8 +251,11 @@ class _Scanner:
                     f"the routine body starting on line {self.start} is not closed "
                     "before the end of the script"
                 )
-            self._end(None, self.buf)
-        return self.units
+            lines = self.buf
+            while lines and not self.reader.quote and lines[-1].strip(" \t\r").startswith("--"):
+                lines = lines[:-1]  # comment lines after the last code are not part of it
+            self._end(None, lines)
+        return self._epilogue()
 
     def _feed(self, text: str, number: int) -> None:
         """Feed a line to the reader, remembering where a block comment opened and a ';' strayed."""
@@ -239,10 +284,16 @@ class _Scanner:
                 self.buf.append(raw)
                 self._feed(line, number)
             return
+        if stripped.startswith("(="):
+            raise UnsupportedMetaCommandError(
+                f"CLP comment block '(=' on line {number}: the CLP skips it, "
+                "dblift does not run CLP input syntax"
+            )
         if not self.buf:
             if not stripped:
                 return
             self.start, self.reader = number, _Reader()
+            self.epilogue = self._command(stripped, number)
             self.stray_line = 0
         self.buf.append(raw)
         tail = line.rstrip(" \t")
@@ -296,14 +347,46 @@ class _Scanner:
         self.terminator = value.group(1)
         self.units.append(Unit(line.strip(), number, None, "directive"))
 
+    def _command(self, stripped: str, number: int) -> bool:
+        """True for the commands a CLP script may end with; refuses every other CLP command."""
+        if stripped[0] in "!?":
+            raise UnsupportedMetaCommandError(
+                f"CLP command {stripped[0]!r} on line {number}: dblift does not run client commands"
+            )
+        words = self._leading_words(stripped)
+        if not words:
+            return False
+        if words[0] in ("TERMINATE", "QUIT") or words[:2] == ("CONNECT", "RESET"):
+            return True
+        if words[:2] == ("GET", "DIAGNOSTICS"):
+            return False
+        if words[0] in _COMMAND_WORDS or words[:2] in _COMMAND_PHRASES or words in _COMMAND_PHRASES:
+            raise UnsupportedMetaCommandError(
+                f"CLP command {words[0]} on line {number}: dblift does not run client commands"
+            )
+        return False
+
+    @staticmethod
+    def _leading_words(stripped: str) -> Tuple[str, ...]:
+        words = []
+        for token in stripped.split()[:3]:
+            match = _LEADING_WORD.match(token)
+            if match is None:
+                break
+            words.append(match.group().upper())
+            if match.end() < len(token):
+                break
+        return tuple(words)
+
     def _end(self, terminator: Optional[str], lines: List[str]) -> None:
         text = "\n".join(lines).strip()
-        start, reader, stray_line = self.start, self.reader, self.stray_line
+        start, epilogue = self.start, self.epilogue
+        reader, stray_line = self.reader, self.stray_line
         for piece in lines:  # the statement starts on the first line with anything on it
             if piece.strip():
                 break
             start += 1
-        self.buf, self.reader = [], _Reader()
+        self.buf, self.reader, self.epilogue = [], _Reader(), False
         if not text or not reader.code:
             return
         if reader.stray:
@@ -313,4 +396,21 @@ class _Scanner:
                 "runs only the text before the ';'; put each statement on its own line, ended by "
                 "the terminator, or declare another terminator with --#SET TERMINATOR"
             )
-        self.units.append(Unit(text, start, terminator))
+        self.units.append(Unit(text, start, terminator, "sql", epilogue))
+
+    def _epilogue(self) -> List[Unit]:
+        """``CONNECT RESET``, ``TERMINATE``, ``QUIT``: recorded and dropped when last."""
+        last_sql = max(
+            (i for i, u in enumerate(self.units) if u.kind == "sql" and not u.epilogue), default=-1
+        )
+        out: List[Unit] = []
+        for index, unit in enumerate(self.units):
+            if unit.epilogue:
+                if index < last_sql:
+                    raise UnsupportedMetaCommandError(
+                        f"CLP command {unit.text.split(None, 1)[0].upper()} on line {unit.line}: "
+                        "dblift does not run client commands"
+                    )
+                unit = Unit(unit.text, unit.line, unit.terminator, "directive", True)
+            out.append(unit)
+        return out

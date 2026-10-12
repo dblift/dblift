@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from dblift.core.exceptions import UnsafeStatementSplitError
+from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
 from dblift.db.plugins.db2.parser._script import Unit, scan_script
 from dblift.db.plugins.db2.parser.db2_regex_parser import DB2RegexParser
 
@@ -268,7 +268,10 @@ def test_a_terminator_that_shares_a_character_with_a_comment_but_closes_nothing_
         ("SELECT 'a\nb'", "SELECT 'a\nb'"),
         ('SELECT "a\nb"', 'SELECT "a\nb"'),
         ("SELECT 1\n\n  \n", "SELECT 1"),
-        ("SELECT 1\n-- why\n", "SELECT 1\n-- why"),
+        ("SELECT 1\n-- why\n", "SELECT 1"),
+        ("SELECT 1\n-- a\n  -- b\n", "SELECT 1"),
+        ("SELECT 1\n-- a\nFROM t\n-- b", "SELECT 1\n-- a\nFROM t"),
+        ("SELECT 'a\n-- b", "SELECT 'a\n-- b"),
     ],
 )
 def test_the_last_statement_is_returned_whole(script: str, expected: str) -> None:
@@ -301,6 +304,108 @@ def test_a_comment_alone_before_a_terminator_is_not_a_statement() -> None:
 
 def test_empty_statements_are_not_statements() -> None:
     assert texts(";\n;;\n  ;\nSELECT 1;;\n;") == ["SELECT 1;"]
+
+
+# ---- CLP commands ----
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "CONNECT TO sample",
+        "connect to sample",
+        "CONNECT",
+        "QUIT",
+        "ECHO hello",
+        "!ls",
+        "? CONNECT",
+        "UPDATE COMMAND OPTIONS USING S ON",
+        "UPDATE DB CFG FOR sample USING LOGFILSIZ 10",
+        "UPDATE DATABASE MANAGER CONFIGURATION USING DIAGLEVEL 3",
+        "CHANGE ISOLATION TO UR",
+        "REORG TABLE t",
+        "RUNSTATS ON TABLE t",
+        "EXPORT TO f.del OF DEL SELECT * FROM t",
+        "IMPORT FROM f.del OF DEL INSERT INTO t",
+        "LOAD FROM f.del OF DEL INSERT INTO t",
+        "LIST TABLES",
+        "DESCRIBE TABLE t",
+        "GET DB CFG",
+        "ATTACH TO inst",
+        "BIND f.bnd",
+        "BACKUP DATABASE sample",
+        "RESTORE DATABASE sample",
+        "FORCE APPLICATION (1)",
+        "SET CLIENT CONNECT_NODE 0",
+        "START DATABASE MANAGER",
+        "STOP DATABASE MANAGER",
+        "REGISTER XMLSCHEMA a AS b",
+        "RESET DB CFG FOR sample",
+    ],
+)
+def test_a_clp_command_is_refused_by_name_and_line(line: str) -> None:
+    with pytest.raises(UnsupportedMetaCommandError, match="line 2"):
+        scan_script(f"SELECT 0;\n{line};\nSELECT 1;")
+
+
+@pytest.mark.parametrize(
+    "statement",
+    [
+        "UPDATE t SET a = 1",
+        "UPDATE history SET a = 1",
+        "SET CURRENT SCHEMA s",
+        "SET SCHEMA s",
+        "SET v = 1",
+        "CREATE TABLE connect (id INT)",
+        "DROP TABLE t",
+        "REFRESH TABLE t",
+        "COMMIT WORK",
+        "ROLLBACK",
+        "CREATE DATABASE LINK dl CONNECT TO u USING 'db'",
+        "CREATE DATABASE sample",
+        "CALL p(?)",
+        "VALUES 1",
+        "WITH x(a) AS (VALUES 1) SELECT a FROM x",
+        "XQUERY 1",
+        "/* c */ ECHO hello",
+        "/* c */ CONNECT RESET",
+        "EXIT",
+        "GO",
+        "GET DIAGNOSTICS rc = ROW_COUNT",
+    ],
+)
+def test_sql_and_other_text_is_not_a_clp_command(statement: str) -> None:
+    assert texts(f"{statement};") == [statement]
+
+
+def test_a_command_word_in_the_middle_of_a_statement_is_text() -> None:
+    assert texts("CREATE TABLE t (\nconnect INT,\necho INT,\nquit INT);") == [
+        "CREATE TABLE t (\nconnect INT,\necho INT,\nquit INT)"
+    ]
+
+
+def test_connect_reset_and_terminate_at_the_end_are_dropped_and_recorded() -> None:
+    units = scan_script("SELECT 1;\nCOMMIT;\nCONNECT RESET;\nTERMINATE;\n")
+    assert [(u.kind, u.text) for u in units] == [
+        ("sql", "SELECT 1"),
+        ("sql", "COMMIT"),
+        ("directive", "CONNECT RESET"),
+        ("directive", "TERMINATE"),
+    ]
+    assert [u.kind for u in scan_script("SELECT 1;\nterminate;")] == ["sql", "directive"]
+
+
+@pytest.mark.parametrize("script", ["CONNECT RESET;\nSELECT 1;", "TERMINATE;\nSELECT 1;"])
+def test_connect_reset_and_terminate_before_a_statement_are_refused(script: str) -> None:
+    with pytest.raises(UnsupportedMetaCommandError, match="line 1"):
+        scan_script(script)
+
+
+def test_a_clp_comment_block_is_refused_where_it_opens() -> None:
+    for line in ("(=", "   (= c =)"):
+        with pytest.raises(UnsupportedMetaCommandError, match="line 2"):
+            scan_script(f"SELECT 1;\n{line}\nSELECT 2;")
+    assert texts("SELECT 1 (= c =);") == ["SELECT 1 (= c =)"]  # in the middle of a line it is text
 
 
 # ---- routine bodies ----
@@ -430,6 +535,17 @@ def test_the_parser_returns_statement_records_and_the_string_projection() -> Non
     assert parser.SPLITS_WITHOUT_FALLBACK is True
 
 
+def test_the_epilogue_is_a_directive_record_and_not_in_the_string_projection() -> None:
+    parser = DB2RegexParser()
+    script = "SELECT 1;\nCONNECT RESET;\nTERMINATE;"
+    assert [(r.kind, r.text) for r in parser.split(script)] == [
+        ("sql", "SELECT 1"),
+        ("directive", "CONNECT RESET"),
+        ("directive", "TERMINATE"),
+    ]
+    assert parser.split_statements(script) == ["SELECT 1"]
+
+
 def test_a_package_is_a_body_that_opens_at_as_and_closes_at_its_own_end() -> None:
     spec = "CREATE OR REPLACE PACKAGE pk1 AS\nPROCEDURE proc1(x INT);\nEND pk1"
     body = (
@@ -443,3 +559,29 @@ def test_a_package_is_a_body_that_opens_at_as_and_closes_at_its_own_end() -> Non
 
 def test_a_blank_or_comment_only_script_has_no_statements() -> None:
     assert texts("") == [] and texts("\n  \n") == [] and texts("-- c\n/* d */\n") == []
+
+
+@pytest.mark.parametrize(
+    "script",
+    [
+        "SELECT 1;\nQUIT",
+        "SELECT 1;\nQUIT;;",
+        "SELECT 1;\nQUIT; -- bye",
+        "SELECT 1;\nQUIT -- bye",
+        "SELECT 1;\nCONNECT RESET;\nTERMINATE;\nQUIT;",
+        "--#SET TERMINATOR @\nSELECT 1@\nQUIT@",
+    ],
+)
+def test_every_form_of_the_epilogue_is_dropped_and_recorded(script: str) -> None:
+    units = scan_script(script)
+    assert [u.kind for u in units if u.kind == "sql"] == ["sql"]
+    assert units[-1].kind == "directive"
+
+
+@pytest.mark.parametrize(
+    "script",
+    ["QUIT;\nSELECT 1;", "SELECT 1;\nQUIT;\nSELECT 2;", "--#SET TERMINATOR @\nQUIT@\nSELECT 1@"],
+)
+def test_quit_before_a_statement_is_refused(script: str) -> None:
+    with pytest.raises(UnsupportedMetaCommandError, match="QUIT"):
+        scan_script(script)
