@@ -30,6 +30,7 @@ import unittest
 import warnings
 
 from dblift.core.sql_parser.base_tokenizer import TokenizerWarning
+from dblift.db.plugins.postgresql.parser.lexical_spec import POSTGRESQL_SPEC
 
 
 class TestTokenizerNoSilentDrop(unittest.TestCase):
@@ -40,12 +41,12 @@ class TestTokenizerNoSilentDrop(unittest.TestCase):
     which we turn into ``TokenizerError`` (an exception) for the test.
     """
 
-    def _assert_no_drops(self, tokenizer_cls, corpus: list[str]) -> None:
+    def _assert_no_drops(self, tokenizer_cls, corpus: list[str], **kwargs) -> None:
         for sql in corpus:
             with self.subTest(dialect=tokenizer_cls.dialect_name, sql=sql[:60]):
                 with warnings.catch_warnings():
                     warnings.simplefilter("error", TokenizerWarning)
-                    tokenizer_cls(sql).tokenize()
+                    tokenizer_cls(sql, **kwargs).tokenize()
 
     def test_mysql_tokenizer_claims_user_variables(self) -> None:
         from dblift.db.plugins.mysql.parser.mysql_tokenizer import MySQLTokenizer
@@ -81,10 +82,10 @@ class TestTokenizerNoSilentDrop(unittest.TestCase):
         )
 
     def test_postgresql_tokenizer_claims_dollar_quotes_and_quoted_idents(self) -> None:
-        from dblift.db.plugins.postgresql.parser.postgresql_tokenizer import PostgreSQLTokenizer
+        from dblift.core.sql_parser.lexical_tokenizer import LexicalTokenizer
 
         self._assert_no_drops(
-            PostgreSQLTokenizer,
+            LexicalTokenizer,
             [
                 'CREATE TABLE "Quoted" (id INT);',
                 "CREATE FUNCTION f() RETURNS void AS $$ BEGIN RAISE NOTICE 'hi'; END; $$ LANGUAGE plpgsql;",
@@ -92,6 +93,7 @@ class TestTokenizerNoSilentDrop(unittest.TestCase):
                 "INSERT INTO t (a) VALUES (1) ON CONFLICT DO NOTHING;",
                 "SELECT a || b FROM t;",
             ],
+            spec=POSTGRESQL_SPEC,
         )
 
     def test_sqlserver_scanner_preserves_brackets_and_at_signs(self) -> None:

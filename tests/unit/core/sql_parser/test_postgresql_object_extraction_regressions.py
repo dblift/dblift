@@ -8,6 +8,7 @@ paths (``EnhancedRegexParser.extract_objects`` and the PostgreSQL
 
 import pytest
 
+from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.core.sql_model.base import SqlObjectType
 from dblift.core.sql_parser.parser_factory import SqlParserFactory
 from dblift.db.plugins.mysql.parser.mysql_regex_parser import MySqlRegexParser
@@ -189,8 +190,8 @@ class TestCommentStrippingIsQuoteAware:
         # comment inside the dollar-quoted body, hiding the ALTER TABLE
         # that follows.
         sql = (
-            "CREATE FUNCTION foo() RETURNS INT AS $$ BEGIN -- note $$ LANGUAGE plpgsql; "
-            'ALTER TABLE "s"."orders" ADD COLUMN "x" INT; END; $$;'
+            "CREATE FUNCTION foo() RETURNS INT AS $$ SELECT 1 -- note $$ LANGUAGE sql; "
+            'ALTER TABLE "s"."orders" ADD COLUMN "x" INT;'
         )
         objects = self.postgres.extract_objects(sql)
 
@@ -221,13 +222,10 @@ class TestCommentStrippingIsQuoteAware:
         assert objects[0].name == "orders"
         assert objects[0].schema == "s"
 
-    def test_unterminated_nested_block_comment_consumes_to_end(self):
-        # No closing "*/" at all: everything after the opening "/*" is
-        # comment, so there is no real statement left to find an object in.
+    def test_unterminated_nested_block_comment_is_refused(self):
         sql = 'ALTER TABLE /* outer /* inner never closes "s"."orders" ADD COLUMN c INT;'
-        objects = self.postgres.extract_objects(sql)
-
-        assert objects == []
+        with pytest.raises(UnsafeStatementSplitError, match="unterminated block comment"):
+            self.postgres.extract_objects(sql)
 
 
 @pytest.mark.unit

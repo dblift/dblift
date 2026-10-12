@@ -1,0 +1,41 @@
+"""One lexical entry point for splitting and comment masking."""
+
+from typing import List
+
+from dblift.core.sql_parser.lexical_spec import LexicalSpec
+from dblift.core.sql_parser.lexical_statement_parser import LexicalStatementParser
+from dblift.core.sql_parser.lexical_tokenizer import LexicalTokenizer
+from dblift.core.sql_parser.statement import Statement
+
+
+class LexicalEngine:
+    """Select rules once; never retry through a second implementation."""
+
+    def __init__(self, spec: LexicalSpec):
+        """Bind the immutable plugin specification."""
+        self.spec = spec
+
+    def _parser(self, script: str) -> LexicalStatementParser:
+        tokens = LexicalTokenizer(script, spec=self.spec).tokenize()
+        return LexicalStatementParser(tokens, source=script, spec=self.spec)
+
+    def split(self, script: str) -> List[Statement]:
+        """Return source-positioned execution units and analysis projections."""
+        return self._parser(script).split()
+
+    def split_statements(self, script: str) -> List[str]:
+        """Return execution text, preserving the established terminator contract."""
+        return self._parser(script).split_statements()
+
+    def blank_comments(self, script: str) -> str:
+        """Replace each scanned comment with a space, preserving quoted text."""
+        tokenizer = LexicalTokenizer(script, spec=self.spec)
+        tokens = tokenizer.tokenize()
+        LexicalStatementParser(tokens, source=script, spec=self.spec).split()
+        parts: List[str] = []
+        last = 0
+        for start, end in tokenizer.comments:
+            parts.extend((script[last:start], " "))
+            last = end
+        parts.append(script[last:])
+        return "".join(parts)

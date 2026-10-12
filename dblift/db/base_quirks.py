@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import re
 from typing import (
+    TYPE_CHECKING,
     Any,
     ClassVar,
     Dict,
@@ -27,6 +28,9 @@ from dblift.db.dml_analysis import (
     is_full_table_dml,
 )
 from dblift.db.feature_gate import FeatureGate
+
+if TYPE_CHECKING:
+    from dblift.core.sql_parser.lexical_spec import LexicalSpec
 
 
 class BaseQuirks:
@@ -522,6 +526,10 @@ class BaseQuirks:
     #: entry is a BEGIN with options that cannot stand in for dblift's own: never dropped.
     #: Default: empty -- the script is run as written (``COMMIT`` after DML, nested ``BEGIN``).
     transaction_control_sql_patterns: "tuple[tuple[str, str], ...]" = ()
+
+    def lexical_spec(self) -> "Optional[LexicalSpec]":
+        """The plugin's shared-scanner rules, when migrated."""
+        return None
 
     def blank_comments(self, sql: str) -> str:
         """*sql* with its comments blanked, as the dialect's scanner reads them.

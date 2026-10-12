@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from dblift.db.plugins.postgresql.quirks import PostgresqlQuirks
+
+if TYPE_CHECKING:
+    from dblift.core.sql_parser.lexical_spec import LexicalSpec
 
 
 class RedshiftQuirks(PostgresqlQuirks):
@@ -30,6 +33,12 @@ class RedshiftQuirks(PostgresqlQuirks):
 
     def __init__(self, dialect_name: str = "redshift") -> None:
         super().__init__(dialect_name=dialect_name)
+
+    def lexical_spec(self) -> "LexicalSpec":
+        """Retain existing Redshift differences without claiming live conformance."""
+        from dblift.db.plugins.redshift.parser.lexical_spec import REDSHIFT_SPEC
+
+        return REDSHIFT_SPEC
 
     def parser_class(self, parser_type: str) -> Optional[type]:
         """Kept non-nesting, unverified: no local Redshift engine, and no

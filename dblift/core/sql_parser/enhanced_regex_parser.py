@@ -275,6 +275,11 @@ class EnhancedRegexParser(RegexParser):
         engine actually nests them; otherwise the first ``*/`` closes,
         matching statement splitting for the same dialect.
         """
+        lexical_spec = getattr(self, "lexical_spec", None)
+        if lexical_spec is not None:
+            from dblift.core.sql_parser.lexical_engine import LexicalEngine
+
+            return LexicalEngine(lexical_spec).blank_comments(sql).strip()
         line_prefixes, has_block_comments = self._comment_markers()
         return strip_comments_preserving_quotes(
             sql,

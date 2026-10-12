@@ -8,7 +8,7 @@
 | Code facts taken from | OSS `develop` `61b1d83f` |
 | Vendor references, fetched 2026-10-10 | *PostgreSQL 18 documentation*, §4.1.1 Identifiers, §4.1.2.1–4.1.2.5 Constants, §4.1.5 Comments; *psql* reference, "Meta-Commands" and `\;` |
 | Live verification | psql against PostgreSQL 15 and 16, 2026-10-10 (rows 16, 21, 25) |
-| Engine subclass | dollar-quote tags |
+| Engine subclass | none; tagged strings use the shared lexical primitive (§9) |
 
 ## 1. String literals
 
@@ -109,8 +109,10 @@ Dollar-quoted bodies are opaque by §1.
 
 ## 9. Engine subclass
 
-Dollar-quote tag matching: the closer repeats the opener's tag, which a fixed
-pair table cannot express. Shared with DuckDB and Redshift.
+Dollar-quote tag matching uses the shared tokenizer's tagged-string primitive:
+the closer repeats the opener's tag. A specification enables it as data; no
+PostgreSQL engine subclass is needed. Redshift uses the same implementation;
+DuckDB retains its existing scanner until it is migrated.
 
 ## 10. Conformance examples
 
@@ -148,6 +150,10 @@ pair table cannot express. Shared with DuckDB and Redshift.
 | 23 | `SELECT $$abc; SELECT 2;` | `UnsafeStatementSplitError` (unterminated dollar-quoted string, line 1 column 8) |
 | 24 | `SELECT "a;b FROM t;` | `UnsafeStatementSplitError` (unterminated quoted identifier) |
 | 25 | `SELECT (1; SELECT 2;` | `SELECT (1; SELECT 2;` (one statement, the text unchanged: psql sends the buffer at end of input at any parenthesis depth; the server rejects it, verified 2026-10-10 on PostgreSQL 15: syntax error at or near ";") |
+| 26 | `CREATE TABLE t(begin int); SELECT begin atomic FROM t; SELECT 2;` | `CREATE TABLE t(begin int)` · `SELECT begin atomic FROM t` · `SELECT 2` (ordinary identifiers do not open a routine body; psql executes three statements) |
+| 27 | `SELECT E'a\'--b'; DROP TABLE visible;` | `SELECT E'a\'--b'` · `DROP TABLE visible` (comment masking for analysis uses these same literal boundaries and keeps the following statement) |
+| 28 | `SELECT 0 \; CREATE FUNCTION f() RETURNS int LANGUAGE SQL BEGIN ATOMIC SELECT 1; END; SELECT 2;` | `SELECT 0 ; CREATE FUNCTION f() RETURNS int LANGUAGE SQL BEGIN ATOMIC SELECT 1; END` with multi=True · `SELECT 2` (the combined query starts a fresh routine head after its escaped semicolon; analysis has three constituents) |
+| 29 | `CREATE TABLE stdin(copy int); SELECT copy FROM stdin; SELECT 2;` | `CREATE TABLE stdin(copy int)` · `SELECT copy FROM stdin` · `SELECT 2` (a column named COPY never opens a data header) |
 
 ## 11. Not handled
 
@@ -160,8 +166,12 @@ pair table cannot express. Shared with DuckDB and Redshift.
 
 ## 12. Implementation
 
-Code: `dblift/db/plugins/postgresql/parser/postgresql_tokenizer.py`,
-`postgresql_statement_parser.py` and `postgresql_regex_parser.py`. The
+Code: the shared `dblift/core/sql_parser/lexical_engine.py`,
+`lexical_tokenizer.py` and `lexical_statement_parser.py`, driven by
+`dblift/db/plugins/postgresql/parser/lexical_spec.py`. The former dialect
+tokenizer and statement parser are removed. Execution resolves the specification
+from the plugin; `postgresql_regex_parser.py` projects the same shared engine
+for analysis and extraction. Comment masking uses the same token scan. The
 splitter returns `Statement` records (`dblift/core/sql_parser/statement.py`):
 text without its terminator, line, terminator, kind, and scanner-derived analysis constituents. COPY text retains the exact row payload and line endings. The conformance
 table in section 10 is compiled into
@@ -169,6 +179,10 @@ table in section 10 is compiled into
 
 Unterminated lexemes (comment, string, quoted identifier, dollar quote) and
 unsupported meta-commands are refusals, not input to a fallback.
+
+The shared engine checks COPY terminators at their source position without
+copying the remainder of the script for each block; repeated COPY units have
+bounded source-slicing cost.
 
 The string projection `split_statements()` keeps the trailing `;`; the
 `Statement.text` excludes it.
@@ -180,4 +194,4 @@ The string projection `split_statements()` keeps the trailing `;`; the
 | AlloyDB, Aurora PostgreSQL, Citus, Neon, Supabase, TimescaleDB | none | `make_pg_compatible_plugin` with no parser override |
 | YugabyteDB | none | `yugabytedb/plugin.py:31-39` records a live check that block comments nest |
 | CockroachDB | none | `cockroachdb/quirks.py:24-32` records a live check that block comments nest |
-| Redshift | a separate Redshift specification (not in this repository) | string escapes and comment nesting differ or are unverified |
+| Redshift | plugin spec derives from PostgreSQL with nonnested block comments and backslash escapes in plain strings | inherited behavior is covered by preservation tests; live Redshift conformance remains unverified |

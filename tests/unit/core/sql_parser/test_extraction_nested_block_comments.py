@@ -314,9 +314,9 @@ class TestUnterminatedInnerCommentAgreesWithSplitting(unittest.TestCase):
 
     UNTERMINATED_INNER = "/* outer /* inner */ CREATE TABLE victim (id INT);"
 
-    def test_postgresql_stays_open_hides_everything(self):
-        objects = PostgreSqlRegexParser().extract_objects(self.UNTERMINATED_INNER)
-        self.assertEqual(objects, [])
+    def test_postgresql_refuses_an_unterminated_nested_comment(self):
+        with self.assertRaises(UnsafeStatementSplitError):
+            PostgreSqlRegexParser().extract_objects(self.UNTERMINATED_INNER)
 
     def test_mysql_closes_at_first_marker_exposes_statement(self):
         objects = MySqlRegexParser().extract_objects(self.UNTERMINATED_INNER)

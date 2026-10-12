@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from typing import Any, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, List, Optional, Tuple
 
 from dblift.db.base_quirks import BaseQuirks
 from dblift.db.error import ErrorCategory
@@ -33,6 +33,10 @@ _DROP_TRIGGER_ON_RE = re.compile(
     r"\s+ON\s+",
     re.IGNORECASE,
 )
+
+
+if TYPE_CHECKING:
+    from dblift.core.sql_parser.lexical_spec import LexicalSpec
 
 
 class PostgresqlQuirks(BaseQuirks):
@@ -108,6 +112,18 @@ class PostgresqlQuirks(BaseQuirks):
         if _value("url"):
             return True
         return bool(_value("host") and _value("database"))
+
+    def lexical_spec(self) -> "LexicalSpec":
+        """The lexical specification shared by PostgreSQL-compatible plugins."""
+        from dblift.db.plugins.postgresql.parser.lexical_spec import POSTGRESQL_SPEC
+
+        return POSTGRESQL_SPEC
+
+    def blank_comments(self, sql: str) -> str:
+        """Mask comments using the same scanner as execution."""
+        from dblift.core.sql_parser.lexical_engine import LexicalEngine
+
+        return LexicalEngine(self.lexical_spec()).blank_comments(sql)
 
     def parser_class(self, parser_type: str) -> Optional[type]:
         """PostgreSQL parser dispatch: hybrid → :class:`HybridParser`, sqlglot →

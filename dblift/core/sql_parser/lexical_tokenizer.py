@@ -1,13 +1,10 @@
-"""PostgreSQL-specific tokenizer.
-
-This module provides PostgreSQL-specific tokenization including dollar quotes
-and COPY FROM STDIN data block handling.
-"""
+"""Shared lexical tokenization driven by immutable plugin facts."""
 
 from typing import Iterable, List, Optional
 
 from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.core.sql_parser.base_tokenizer import BaseTokenizer
+from dblift.core.sql_parser.lexical_spec import LexicalSpec
 from dblift.core.sql_parser.tokens import Token, TokenType
 
 
@@ -26,34 +23,23 @@ def copy_header_reads(tokens: Iterable[Token], direction: str, stream: str) -> b
     return any(a == direction and b == stream for a, b in zip(words, words[1:]))
 
 
-class PostgreSQLTokenizer(BaseTokenizer):
-    """PostgreSQL-specific tokenizer with dollar-quote and COPY support.
+class LexicalTokenizer(BaseTokenizer):
+    """Use the base character scanner with the selected plugin's lexical rules."""
 
-    Handles PostgreSQL-specific features:
-    - Dollar-quoted strings: $$text$$ or $tag$text$tag$
-    - COPY FROM STDIN data blocks
-    - Double-quoted identifiers (case-sensitive)
-    """
-
-    dialect_name = "postgresql"  # lint: allow-dialect-string: dialect dispatch
-
-    # PostgreSQL documents nested block comments explicitly.
-    NESTED_BLOCK_COMMENTS = True
-
-    def __init__(self, sql: str, strict_unknown_chars: bool = False):
-        """Initialize PostgreSQL tokenizer.
-
-        Args:
-            sql: SQL content to tokenize
-            strict_unknown_chars: If True, unknown characters fail tokenization.
-        """
-        super().__init__(sql, strict_unknown_chars=strict_unknown_chars)
+    def __init__(self, sql: str, *, spec: LexicalSpec):
+        """Read source positions with the plugin's lexical policies."""
+        super().__init__(sql)
+        self.spec = spec
+        self.dialect_name = spec.name
+        self.NESTED_BLOCK_COMMENTS = spec.nested_comments
+        self.comments: List[tuple[int, int]] = []
         self.in_copy_data = False
         # Set once the ';' ending a "COPY ... FROM STDIN" header has been read;
         # the very next token is then the data block, not ordinary SQL.
         self._copy_data_pending = False
         # Tokens read since a COPY keyword, until the ';' ending its header.
         self._copy_header: Optional[List[Token]] = None
+        self._statement_start = True
 
     def _next_sql_token(self) -> Optional[Token]:
         """Get the next token from the input.
@@ -76,9 +62,13 @@ class PostgreSQLTokenizer(BaseTokenizer):
 
         # psql's ``\;`` adds a ';' to the query buffer without ending the
         # statement (spec §4): one token, so the parser can combine around it.
-        if char == "\\" and self._copy_header is None and self.peek(2) == "\\;":
+        if (
+            self.spec.combine_terminator
+            and self._copy_header is None
+            and self.peek(len(self.spec.combine_terminator)) == self.spec.combine_terminator
+        ):
             start_pos, start_line, start_col = self.pos, self.line, self.col
-            text = self.read(2)
+            text = self.read(len(self.spec.combine_terminator))
             return Token(
                 TokenType.SYMBOL, text, start_pos, start_line, start_col, self.parens_depth
             )
@@ -89,7 +79,7 @@ class PostgreSQLTokenizer(BaseTokenizer):
         # reaching here is unquoted. Not inside a COPY header (up to its ';'),
         # which stays one unit with its data block; the data block itself
         # (rows may start with \N) is read whole above.
-        if char == "\\" and self._copy_header is None:
+        if self.spec.meta_prefix and char == self.spec.meta_prefix and self._copy_header is None:
             return self._handle_meta_command()
 
         # Flyway / DBLift placeholders ${name} or ${name:default} — not PostgreSQL
@@ -99,7 +89,7 @@ class PostgreSQLTokenizer(BaseTokenizer):
             return self._handle_migration_placeholder()
 
         # Check for double-quoted identifier BEFORE other checks
-        if char == '"':
+        if char == self.spec.quoted_identifier:
             return self._handle_quoted_identifier()
 
         # '$' that does not open a dollar-quote: a positional parameter ($1)
@@ -145,11 +135,11 @@ class PostgreSQLTokenizer(BaseTokenizer):
         Returns:
             True if an escape prefix or dollar-quote is detected
         """
-        if self.peek(2) in ("E'", "e'"):
+        if self.peek(2) in self.spec.escape_prefixes:
             # An identifier suffix or a prefix touching a quote is not E'...'.
             previous = self.sql[self.pos - 1] if self.pos else ""
             return not previous or not (previous.isalnum() or previous in "_$'\"")
-        if self.peek() != "$":
+        if not self.spec.dollar_quotes or self.peek() != "$":
             return False
         previous = self.sql[self.pos - 1] if self.pos else ""
         if previous and (previous.isalnum() or previous in "_$"):
@@ -171,10 +161,13 @@ class PostgreSQLTokenizer(BaseTokenizer):
             return self._handle_dollar_quote()
 
         # Check for double-quoted identifier (not string in PostgreSQL)
-        if self.peek() == '"':
+        if self.peek() == self.spec.quoted_identifier:
             return self._handle_quoted_identifier()
 
-        if self.peek(2) in ("E'", "e'"):
+        if self.peek(2) in self.spec.escape_prefixes:
+            return self._handle_escape_string()
+
+        if self.spec.plain_string_escapes:
             return self._handle_escape_string()
 
         # Standard single-quoted string
@@ -183,7 +176,7 @@ class PostgreSQLTokenizer(BaseTokenizer):
     def _handle_escape_string(self) -> Token:
         """Read a backslash-escaped literal, including an optional E prefix."""
         start_pos, start_line, start_col = self.pos, self.line, self.col
-        self.read(2 if self.peek(2) in ("E'", "e'") else 1)
+        self.read(2 if self.peek(2) in self.spec.escape_prefixes else 1)
         closed = False
         while self.pos < len(self.sql):
             if self.peek() == "\\" or self.peek(2) == "''":
@@ -286,9 +279,9 @@ class PostgreSQLTokenizer(BaseTokenizer):
         closed = False
         while self.pos < len(self.sql):
             char = self.peek()
-            if char == '"':
+            if char == self.spec.quoted_identifier:
                 # Check for doubled quote (escape)
-                if self.peek(2) == '""':
+                if self.peek(2) == self.spec.quoted_identifier * 2:
                     identifier_text += self.read(2)
                 else:
                     identifier_text += self.read()  # Closing quote
@@ -324,7 +317,7 @@ class PostgreSQLTokenizer(BaseTokenizer):
         token = self._next_sql_token()
         if token is None:
             return None
-        if token.type == TokenType.DELIMITER:
+        if token.type == TokenType.DELIMITER and token.parens_depth == 0:
             if self._copy_header is not None and copy_header_reads(
                 self._copy_header, "FROM", "STDIN"
             ):
@@ -333,8 +326,28 @@ class PostgreSQLTokenizer(BaseTokenizer):
             self._copy_header = None
         elif self._copy_header is not None:
             self._copy_header.append(token)
-        elif token.type == TokenType.KEYWORD and token.text.upper() == "COPY":
+        elif (
+            self.spec.copy_from_stdin
+            and self._statement_start
+            and token.type == TokenType.KEYWORD
+            and token.text.upper() == "COPY"
+        ):
             self._copy_header = []
+        if token.type not in (TokenType.COMMENT, TokenType.EOF):
+            self._statement_start = token.type in (
+                TokenType.META_COMMAND,
+                TokenType.COPY_DATA,
+            ) or (
+                token.parens_depth == 0
+                and (
+                    token.type == TokenType.DELIMITER
+                    or (
+                        token.type == TokenType.SYMBOL
+                        and bool(self.spec.combine_terminator)
+                        and token.text == self.spec.combine_terminator
+                    )
+                )
+            )
         return token
 
     def handle_copy_data(self) -> Token:
@@ -416,13 +429,8 @@ class PostgreSQLTokenizer(BaseTokenizer):
             self.parens_depth,
         )
 
-
-class NonNestingPostgreSQLTokenizer(PostgreSQLTokenizer):
-    """PostgreSQL-syntax tokenizer for a wire-compatible engine kept
-    non-nesting by default because nesting isn't established for it
-    (Redshift — see ``RedshiftQuirks.parser_class`` and CHANGELOG.md).
-    Reuses everything else PostgreSQL does; only the nesting claim is
-    withheld.
-    """
-
-    NESTED_BLOCK_COMMENTS = False
+    def _handle_comment(self) -> Token:
+        start = self.pos
+        token = super()._handle_comment()
+        self.comments.append((start, self.pos))
+        return token
