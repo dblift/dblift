@@ -14,6 +14,7 @@ from dblift.core.migration.clean_summary import CleanExecutionSummary
 from dblift.core.migration.migration import success_to_bool
 from dblift.db.plugins.base_history_manager import UNDO_HISTORY_TYPE, installed_on_to_bind
 from dblift.db.plugins.mysql.mysql.schema_operations import SYSTEM_DATABASES, MySqlSchemaOperations
+from dblift.db.plugins.mysql.sql_literals import string_literal
 from dblift.db.provider_interfaces import CleanTargetProvider, DroppableObject
 from dblift.db.sqlalchemy_provider import SqlAlchemyProvider
 
@@ -408,7 +409,7 @@ class MySqlProvider(SqlAlchemyProvider, CleanTargetProvider):
         return f"""
             SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE, COLUMN_DEFAULT
             FROM information_schema.COLUMNS
-            WHERE TABLE_SCHEMA = '{schema}' AND TABLE_NAME = '{table}'
+            WHERE TABLE_SCHEMA = {string_literal(schema)} AND TABLE_NAME = {string_literal(table)}
             ORDER BY ORDINAL_POSITION
             """
 

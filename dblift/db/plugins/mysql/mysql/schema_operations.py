@@ -12,6 +12,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from dblift.core.logger import Log, NullLog
 from dblift.core.migration.clean_summary import CleanExecutionSummary
 from dblift.db.plugins.base_schema_operations import BaseSchemaOperations
+from dblift.db.plugins.mysql.sql_literals import string_literal
 
 SYSTEM_DATABASES = frozenset({"mysql", "sys", "information_schema", "performance_schema"})
 
@@ -538,7 +539,7 @@ class MySqlSchemaOperations(BaseSchemaOperations):
         SELECT COLUMN_NAME as column_name, DATA_TYPE as data_type,
                COLUMN_TYPE as column_type
         FROM information_schema.COLUMNS
-        WHERE TABLE_SCHEMA = '{schema}' AND TABLE_NAME = '{table}'
+        WHERE TABLE_SCHEMA = {string_literal(schema)} AND TABLE_NAME = {string_literal(table)}
         ORDER BY ORDINAL_POSITION
         """
 
