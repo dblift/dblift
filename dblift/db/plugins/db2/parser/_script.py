@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import copy
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
 
 from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
@@ -86,6 +86,8 @@ class Unit:
     terminator: Optional[str]
     kind: StatementKind = "sql"
     epilogue: bool = False  # CONNECT RESET or TERMINATE: a directive when nothing follows
+    source_start: Optional[int] = field(default=None, compare=False)
+    source_end: Optional[int] = field(default=None, compare=False)
 
 
 class _Reader:
@@ -215,11 +217,13 @@ class _Reader:
 
 def scan_script(script: str) -> List[Unit]:
     """The units of ``script``; refuses what the CLP would run differently, skip or reject."""
-    return _Scanner(script[1:] if script.startswith("\ufeff") else script).run()
+    text = script[1:] if script.startswith("\ufeff") else script
+    return _Scanner(text, len(script) - len(text)).run()
 
 
 class _Scanner:
-    def __init__(self, text: str) -> None:
+    def __init__(self, text: str, offset: int = 0) -> None:
+        self.offset = offset
         self.pieces = text.split("\n")
         self.final_newline = self.pieces[-1] == ""
         if self.final_newline:
@@ -233,10 +237,17 @@ class _Scanner:
         self.block_code = False
         self.last_code = 0
         self.stray_line = 0
+        self.line_start = 0
+        self.line_end = 0
+        self.unit_start = 0
 
     def run(self) -> List[Unit]:
         last = len(self.pieces)
+        position = 0
         for number, piece in enumerate(self.pieces, start=1):
+            self.line_start = position
+            position += len(piece) + (number < last or self.final_newline)
+            self.line_end = position
             # A CR is a line end only before a LF; a lone CR is text (measured).
             line = (
                 piece[:-1]
@@ -306,6 +317,7 @@ class _Scanner:
             if not stripped:
                 return
             self.start, self.reader = number, _Reader()
+            self.unit_start = self.line_start + len(raw) - len(raw.lstrip(" \t"))
             self.stray_line = 0
             self.last_code = 0
         self.buf.append(raw)
@@ -358,7 +370,16 @@ class _Scanner:
                 "characters after the keyword, separated from it by blanks"
             )
         self.terminator = value.group(1)
-        self.units.append(Unit(line.strip(), number, None, "directive"))
+        self.units.append(
+            Unit(
+                line.strip(),
+                number,
+                None,
+                "directive",
+                source_start=self.line_start + len(line) - len(line.lstrip(" \t")) + self.offset,
+                source_end=self.line_end + self.offset,
+            )
+        )
 
     def _command(self, stripped: str, number: int) -> bool:
         """True for the commands a CLP script may end with; refuses every other CLP command.
@@ -418,7 +439,17 @@ class _Scanner:
                 "runs only the text before the ';'; put each statement on its own line, ended by "
                 "the terminator, or declare another terminator with --#SET TERMINATOR"
             )
-        self.units.append(Unit(text, start, terminator, "sql", epilogue))
+        self.units.append(
+            Unit(
+                text,
+                start,
+                terminator,
+                "sql",
+                epilogue,
+                self.unit_start + self.offset,
+                self.line_end + self.offset,
+            )
+        )
 
     def _epilogue(self) -> List[Unit]:
         """``CONNECT RESET``, ``TERMINATE``, ``QUIT``: recorded and dropped when last."""
@@ -433,6 +464,14 @@ class _Scanner:
                         f"CLP command {unit.text.split(None, 1)[0].upper()} on line {unit.line}: "
                         "dblift does not run client commands"
                     )
-                unit = Unit(unit.text, unit.line, unit.terminator, "directive", True)
+                unit = Unit(
+                    unit.text,
+                    unit.line,
+                    unit.terminator,
+                    "directive",
+                    True,
+                    unit.source_start,
+                    unit.source_end,
+                )
             out.append(unit)
         return out

@@ -37,12 +37,17 @@ class DB2RegexParser(EnhancedRegexParser):
         super().__init__(config)  # type: ignore[arg-type]
         self.config: DB2Config = config  # type: ignore[assignment]
 
-    SPLITS_WITHOUT_FALLBACK = True
-
     def split(self, sql_content: str) -> List[Statement]:
         """The statements of a script as the CLP sends them (docs/sql-parsing/db2.md)."""
         return [
-            Statement(text=unit.text, line=unit.line, terminator=unit.terminator, kind=unit.kind)
+            Statement(
+                text=unit.text,
+                line=unit.line,
+                terminator=unit.terminator,
+                kind=unit.kind,
+                source_start=unit.source_start,
+                source_end=unit.source_end,
+            )
             for unit in scan_script(sql_content)
         ]
 

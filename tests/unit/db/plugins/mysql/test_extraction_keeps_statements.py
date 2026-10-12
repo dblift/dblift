@@ -43,9 +43,12 @@ def test_a_script_of_hash_comments_is_no_statement_and_is_not_split_again(dialec
     assert SqlAnalyzer(dialect).split_statements("# a\n# b ; c\n") == []
 
 
-def test_the_regex_splitter_of_each_engine_is_authoritative() -> None:
-    assert MySqlRegexParser.SPLITS_WITHOUT_FALLBACK is True
-    assert MariaDbRegexParser.SPLITS_WITHOUT_FALLBACK is True
+@pytest.mark.parametrize("parser_class", [MySqlRegexParser, MariaDbRegexParser])
+def test_each_engine_projects_analysis_from_its_client_records(parser_class: type) -> None:
+    parser = parser_class()
+    script = "DELIMITER //\nSELECT 1; DROP TABLE t//\nDELIMITER ;"
+    assert parser.split_statements(script) == ["SELECT 1; DROP TABLE t"]
+    assert parser.split_for_analysis(script) == ["SELECT 1", "DROP TABLE t"]
 
 
 def test_mariadb_gets_its_own_regex_parser_and_mysql_does_not() -> None:

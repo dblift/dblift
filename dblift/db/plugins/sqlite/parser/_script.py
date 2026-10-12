@@ -12,7 +12,7 @@ would interpret are refused instead of being glued to the next statement.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
 
 from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
@@ -55,12 +55,14 @@ class Unit:
     text: str
     line: int
     terminator: Optional[str]
+    source_start: Optional[int] = field(default=None, compare=False)
+    source_end: Optional[int] = field(default=None, compare=False)
 
 
 def scan_script(script: str, *, comment_only: bool = False) -> List[Unit]:
     """The statements of ``script``; ``comment_only`` keeps the comment-only segments as units."""
     text = script[1:] if script.startswith("﻿") else script
-    return _Scanner(text, comment_only).run()
+    return _Scanner(text, comment_only, len(script) - len(text)).run()
 
 
 def blank_comments(script: str) -> str:
@@ -100,9 +102,10 @@ def _is_terminator_line(line: str) -> bool:
 
 
 class _Scanner:
-    def __init__(self, text: str, comment_only: bool) -> None:
+    def __init__(self, text: str, comment_only: bool, offset: int = 0) -> None:
         self.text = text
         self.comment_only = comment_only
+        self.offset = offset
         self.units: List[Unit] = []
         self.comments: List[Tuple[int, int]] = []
         self.state = _START
@@ -211,5 +214,13 @@ class _Scanner:
         if self.code or (self.comment_only and raw.strip(_BLANKS)):
             text = raw.lstrip(_BLANKS)
             line = self.segment_line + raw.count("\n", 0, len(raw) - len(text))
-            self.units.append(Unit(text.rstrip(_BLANKS), line, terminator))
+            self.units.append(
+                Unit(
+                    text.rstrip(_BLANKS),
+                    line,
+                    terminator,
+                    self.segment + len(raw) - len(text) + self.offset,
+                    end + (terminator is not None) + self.offset,
+                )
+            )
         self.state, self.code = _START, False

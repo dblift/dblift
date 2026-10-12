@@ -10,6 +10,8 @@ while the delimiter is ``;``, the ``BEGIN ... END`` body of a stored program sta
 from __future__ import annotations
 
 import re
+from bisect import bisect_left
+from dataclasses import replace
 from typing import List, Optional, Tuple
 
 from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
@@ -263,7 +265,7 @@ class _Scanner:
             return False
         word, tail = found
         if word.upper() == "DELIMITER":
-            self._delimiter(self.text[pos:end], tail, line_no)
+            self._delimiter(self.text[pos:end], tail, line_no, pos, end)
             return True
         raise UnsupportedMetaCommandError(
             f"{self.client} client command {word!r} on line {line_no}: "
@@ -314,7 +316,7 @@ class _Scanner:
         stop = self.text.find(self.delimiter, start, end)
         return stop >= 0 and _COMMENT_START.search(self.text, start, stop) is None
 
-    def _delimiter(self, raw: str, tail: str, line_no: int) -> None:
+    def _delimiter(self, raw: str, tail: str, line_no: int, pos: int, end: int) -> None:
         if "\r" in raw.rstrip("\r"):
             raise UnsafeStatementSplitError(
                 f"DELIMITER on line {line_no} has a carriage return that is not part of a "
@@ -346,7 +348,14 @@ class _Scanner:
             )
         self.delimiter = value
         self.statements.append(
-            Statement(text=raw.strip(_BLANKS), line=line_no, terminator=None, kind="directive")
+            Statement(
+                text=raw.strip(_BLANKS),
+                line=line_no,
+                terminator=None,
+                kind="directive",
+                source_start=pos + len(raw) - len(raw.lstrip(_BLANKS)),
+                source_end=end + (end < len(self.text)),
+            )
         )
 
     # -- the character scan ------------------------------------------------------------------
@@ -554,10 +563,10 @@ class _Scanner:
     def _end_statement(self, index: int, delimiter: str) -> None:
         self._flush_word()
         if self.code:
-            self._emit(self.text[self.start : index], delimiter)
+            self._emit(self.text[self.start : index], delimiter, index + len(delimiter))
         self._begin_statement()
 
-    def _emit(self, text: str, terminator: Optional[str]) -> None:
+    def _emit(self, text: str, terminator: Optional[str], source_end: int) -> None:
         text = text.rstrip()
         if "NO_BACKSLASH_ESCAPES" in text.upper() and self._sets_no_backslash_escapes(text):
             raise UnsafeStatementSplitError(
@@ -583,6 +592,8 @@ class _Scanner:
                 line=self.start_line,
                 terminator=terminator,
                 analysis_statements=analysis_statements,
+                source_start=self.start,
+                source_end=source_end,
             )
         )
 
@@ -631,13 +642,26 @@ class _Scanner:
                 "end of the script"
             )
         if self.code:
-            self._emit(self.text[self.start :], None)
+            self._emit(self.text[self.start :], None, len(self.text))
         return self.statements
 
 
 def scan_script(script: str, *, mariadb: bool = False) -> List[Statement]:
     """The statements and ``DELIMITER`` directives of ``script``, as the client reads them."""
     text = script[1:] if script.startswith("\ufeff") else script
+    bias = len(script) - len(text)
+    removed = [match.start() - count for count, match in enumerate(re.finditer("\r\n", text))]
     # The client reads lines and drops the carriage return of a CRLF pair: what it sends, in
     # strings and bodies too, has LF only. A carriage return alone stays (it is no line end).
-    return _Scanner(text.replace("\r\n", "\n"), mariadb).run()
+    records = _Scanner(text.replace("\r\n", "\n"), mariadb).run()
+    original_records = []
+    for record in records:
+        assert record.source_start is not None and record.source_end is not None
+        original_records.append(
+            replace(
+                record,
+                source_start=record.source_start + bias + bisect_left(removed, record.source_start),
+                source_end=record.source_end + bias + bisect_left(removed, record.source_end),
+            )
+        )
+    return original_records

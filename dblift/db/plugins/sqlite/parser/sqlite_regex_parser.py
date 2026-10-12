@@ -37,7 +37,13 @@ class SQLiteRegexParser(EnhancedRegexParser):
     def split(self, sql_content: str) -> List[Statement]:
         """The statements of a script as the ``sqlite3`` shell sends them (see docs/sql-parsing)."""
         return [
-            Statement(text=unit.text, line=unit.line, terminator=unit.terminator)
+            Statement(
+                text=unit.text,
+                line=unit.line,
+                terminator=unit.terminator,
+                source_start=unit.source_start,
+                source_end=unit.source_end,
+            )
             for unit in scan_script(sql_content)
         ]
 

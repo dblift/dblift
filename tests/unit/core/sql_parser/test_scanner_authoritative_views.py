@@ -140,6 +140,40 @@ def test_dialect_configs_do_not_keep_alternate_script_splitters() -> None:
     assert not hasattr(MySqlConfig, "extract_delimiter_blocks")
 
 
+@pytest.mark.parametrize("parser_class", [MySqlRegexParser, MariaDbRegexParser])
+def test_mysql_source_spans_keep_original_delimiters_and_bom_crlf(parser_class: type) -> None:
+    script = "\ufeffDELIMITER //\r\n  SELECT 1; DROP TABLE t//\r\nDELIMITER ;\r\n"
+    records = parser_class().split(script)
+
+    assert [script[record.source_start : record.source_end] for record in records] == [
+        "DELIMITER //\r\n",
+        "SELECT 1; DROP TABLE t//",
+        "DELIMITER ;\r\n",
+    ]
+
+
+def test_db2_source_spans_keep_directive_and_terminated_lines() -> None:
+    script = "\ufeff--#SET TERMINATOR @\r\n  SELECT 1@\r\nSELECT 2@\r\n"
+    records = DB2RegexParser().split(script)
+
+    assert [script[record.source_start : record.source_end] for record in records] == [
+        "--#SET TERMINATOR @\r\n",
+        "SELECT 1@\r\n",
+        "SELECT 2@\r\n",
+    ]
+
+
+@pytest.mark.parametrize("parser_class", [SQLiteRegexParser, DuckDBRegexParser])
+def test_engine_source_spans_keep_original_semicolons_and_bom_crlf(parser_class: type) -> None:
+    script = "\ufeff  SELECT 1;\r\nSELECT 2;"
+    records = parser_class().split(script)
+
+    assert [script[record.source_start : record.source_end] for record in records] == [
+        "SELECT 1;",
+        "SELECT 2;",
+    ]
+
+
 def test_sqlite_extraction_refuses_shell_command() -> None:
     parser = SQLiteRegexParser()
 
