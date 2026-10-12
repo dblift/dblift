@@ -92,3 +92,12 @@ def test_analysis_is_the_execution_split_when_a_script_has_no_comment_only_segme
 def test_analysis_refuses_what_execution_refuses() -> None:
     with pytest.raises(UnsupportedMetaCommandError):
         PARSER.split_for_analysis("CREATE TABLE t(a INT);\n.mode csv\n")
+
+
+def test_split_records_carry_the_line_of_each_statement() -> None:
+    script = "SELECT 1;\nSELECT 2;\n/* a\nb */\nSELECT 3"
+    assert PARSER.split(script) == [
+        Statement(text="SELECT 1", line=1, terminator=";"),
+        Statement(text="SELECT 2", line=2, terminator=";"),
+        Statement(text="/* a\nb */\nSELECT 3", line=3, terminator=None),
+    ]
