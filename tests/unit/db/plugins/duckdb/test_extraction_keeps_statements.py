@@ -95,9 +95,10 @@ def test_analysis_refuses_what_execution_refuses() -> None:
 
 
 def test_split_records_carry_the_line_of_each_statement() -> None:
-    script = "SELECT 1;\nSELECT 2;\n/* a\nb */\nSELECT 3"
+    script = "SELECT 1;\nSELECT 2;\n/* a\nb */\nSELECT 3;\nSELECT 4"
     assert PARSER.split(script) == [
         Statement(text="SELECT 1", line=1, terminator=";"),
         Statement(text="SELECT 2", line=2, terminator=";"),
-        Statement(text="/* a\nb */\nSELECT 3", line=3, terminator=None),
+        Statement(text="/* a\nb */\nSELECT 3", line=3, terminator=";"),
+        Statement(text="SELECT 4", line=6, terminator=None),
     ]
