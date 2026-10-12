@@ -37,18 +37,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **SQLite and DuckDB: a migration that opens with `BEGIN` and closes with
   `COMMIT` or `END` now runs.** `BEGIN [TRANSACTION]` (and `START TRANSACTION`
-  on DuckDB) as the first statement and `COMMIT` or `END [TRANSACTION]` as the
+  or `BEGIN WORK` on DuckDB) as the first statement and `COMMIT` or `END [TRANSACTION]` as the
   last are the transaction dblift already opens for the migration, so both are
   dropped and a warning says so. The body applies or rolls back as one unit, as
   in the `sqlite3` and `duckdb` shells. Before, the `BEGIN` failed the
   migration.
 - **SQLite and DuckDB: any other `BEGIN`, `COMMIT`, `END` or `ROLLBACK` (and
-  `ABORT` on DuckDB) in a migration or callback is refused before any of its
-  statements run**, naming the statement and its line. Before, a `COMMIT` or
-  `END` ended dblift's transaction early, so a later failure left part of the
-  migration applied, and a lone `COMMIT` or a `ROLLBACK` that discarded earlier
-  statements was recorded as a successful migration. `SAVEPOINT`, `RELEASE` and
-  `ROLLBACK TO` run as written.
+  `ABORT` on DuckDB, and the `WORK` spellings on DuckDB) in a migration or
+  callback is refused before any of its statements run**, naming the statement
+  and its line. A comment inside the statement (`COMMIT /* c */;`) does not hide
+  it. Before, a `COMMIT` or `END` ended dblift's transaction early, so a later
+  failure left part of the migration applied, and a lone `COMMIT` or a `ROLLBACK`
+  that discarded earlier statements was recorded as a successful migration.
+  `SAVEPOINT`, `RELEASE` and `ROLLBACK TO` run as written. A `BEGIN` with options
+  (`BEGIN EXCLUSIVE`, `BEGIN TRANSACTION READ ONLY`) is not accepted as the opening
+  statement, and neither is an opening `BEGIN` around a statement that cannot run
+  in a transaction (`VACUUM`): the migration is refused.
 - **SQL Server: a script is cut into batches at `GO` lines, as `sqlcmd` cuts
   it.** A `;` no longer ends a statement for execution: `DECLARE @x INT = 1;
   SELECT @x;` runs as one request and `@x` stays declared. `CREATE PROCEDURE`,
