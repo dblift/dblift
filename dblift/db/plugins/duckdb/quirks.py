@@ -44,6 +44,13 @@ class DuckDBQuirks(BaseQuirks):
         (r"^(ROLLBACK|ABORT)(\s+(TRANSACTION|WORK))?\s*;?$", "abort"),
     )
 
+    non_transactional_sql_patterns = (
+        (
+            r"^(?:FORCE\s+)?CHECKPOINT\b",
+            "DuckDB CHECKPOINT cannot run in a transaction with local changes",
+        ),
+    )
+
     def blank_comments(self, sql: str) -> str:
         """The statement with its comments blanked by the DuckDB scanner."""
         from dblift.db.plugins.duckdb.parser._script import blank_comments

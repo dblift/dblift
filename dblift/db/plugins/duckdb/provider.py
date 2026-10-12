@@ -61,6 +61,27 @@ class DuckDBProvider(SqlLeaseLockingProvider):
             return counted
         return super().execute_statement(sql, schema=schema, params=params)
 
+    def execute_autocommit_statement(
+        self, sql: str, schema: Optional[str] = None, params: Optional[List[Any]] = None
+    ) -> int:
+        """Run outside DuckDB's explicit transaction on the same connection.
+
+        duckdb_engine cannot set SQLAlchemy's AUTOCOMMIT isolation level.
+        DuckDB itself autocommits unless BEGIN was issued, so first roll back
+        pending work, then bypass SQLAlchemy's implicit BEGIN for this call.
+        Later SQLAlchemy statements retain their normal transaction behavior.
+        """
+        with self._lock:
+            conn = self._ensure_connection()
+            self._end_open_transaction(conn)
+            dbapi = conn.connection.dbapi_connection
+            assert dbapi is not None  # _ensure_connection returned a live connection.
+            if schema:
+                dbapi.execute(f"CREATE SCHEMA IF NOT EXISTS {_quote_identifier(schema)}")
+                dbapi.execute("SET schema = ?", [schema])
+            result = dbapi.execute(sql) if params is None else dbapi.execute(sql, params)
+            return result.rowcount if result.rowcount is not None else -1
+
     def _try_dml_rowcount_via_returning(
         self, sql: str, params: Optional[List[Any]] = None
     ) -> Optional[int]:
