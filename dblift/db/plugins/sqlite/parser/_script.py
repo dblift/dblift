@@ -42,11 +42,8 @@ _KEYWORDS = {
 }
 #: A word is a run of these (sqlite3_complete's IdChar), so ``end_at`` and ``end$`` are not END.
 _WORD = re.compile(r"[A-Za-z0-9_$\x80-\U0010ffff]+")
-#: A line the shell takes as a terminator when a statement is pending: ``go`` in any case or ``/``,
-#: blanks (the shell's include ``\v``) around it, then closed block comments and a line comment.
-_TERMINATOR_LINE = re.compile(
-    r"[ \t\f\r\v]*(?:/|[Gg][Oo])[ \t\f\r\v]*(?:/\*.*?\*/[ \t\f\r\v]*)*(?:--.*)?\Z"
-)
+#: The blanks around a ``go`` or ``/`` line; the shell's include the vertical tab.
+_LINE_BLANKS = " \t\f\r\v"
 _BLANKS = " \t\n\f\r"
 _CLOSERS = {"'": "'", '"': '"', "`": "`", "[": "]"}
 
@@ -64,6 +61,28 @@ def scan_script(script: str, *, comment_only: bool = False) -> List[Unit]:
     """The statements of ``script``; ``comment_only`` keeps the comment-only segments as units."""
     text = script[1:] if script.startswith("﻿") else script
     return _Scanner(text, comment_only).run()
+
+
+def _is_terminator_line(line: str) -> bool:
+    """``go`` or ``/``, then closed block comments and a line comment, blanks between."""
+    size, i = len(line), 0
+    while i < size and line[i] in _LINE_BLANKS:
+        i += 1
+    if line.startswith("/", i):
+        i += 1
+    elif line[i : i + 2].lower() == "go":
+        i += 2
+    else:
+        return False
+    while True:
+        while i < size and line[i] in _LINE_BLANKS:
+            i += 1
+        if not line.startswith("/*", i):
+            return i == size or line.startswith("--", i)
+        end = line.find("*/", i + 2)
+        if end < 0:
+            return False
+        i = end + 2
 
 
 class _Scanner:
@@ -130,7 +149,7 @@ class _Scanner:
             self.code
             and self.state not in (_IN_TRIGGER, _AFTER_SEMI)
             and not self.comment_ended_previous_line
-            and _TERMINATOR_LINE.match(line)
+            and _is_terminator_line(line)
         ):
             raise UnsafeStatementSplitError(
                 f"line {self.line} holds only {line.strip()!r}: the sqlite3 shell ends the "

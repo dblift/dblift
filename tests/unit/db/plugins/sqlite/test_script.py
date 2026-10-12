@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import itertools
 import sqlite3
+import subprocess
+import sys
 import time
 
 import pytest
@@ -473,6 +475,26 @@ def _best_of(script: str, rounds: int = 5) -> float:
 def test_scanning_cost_grows_linearly(unit: str) -> None:
     small, large = _best_of(unit * 2_000), _best_of(unit * 8_000)  # a 4x step
     assert large / small <= 8, (small, large)
+
+
+@pytest.mark.parametrize(
+    "tail",
+    ["x", "/* open"],
+    ids=["closed comments then text", "closed comments then an unclosed one"],
+)
+def test_a_slash_line_with_many_comments_costs_one_pass(tail: str) -> None:
+    """A line is read once: 500 comments after the slash must not make the check explode."""
+    line = "/ " + "/* c */ " * 500 + tail
+    code = (
+        "from dblift.db.plugins.sqlite.parser._script import scan_script\n"
+        "import sys\n"
+        "try:\n"
+        f"    scan_script({('SELECT 6' + chr(10) + line + chr(10) + '2;')!r})\n"
+        "except Exception:\n"
+        "    pass\n"
+    )
+    # the bound is far above the linear cost (milliseconds) and far below a backtracking one (minutes)
+    subprocess.run([sys.executable, "-c", code], check=True, timeout=10)
 
 
 def test_a_huge_literal_and_a_huge_comment_cost_one_pass() -> None:
