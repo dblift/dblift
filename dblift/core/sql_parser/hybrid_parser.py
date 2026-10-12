@@ -22,7 +22,6 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from sqlglot import exp, parse_one
 
-from dblift.core.exceptions import ParserError
 from dblift.core.sql_model.base import (
     ConstraintType,
     ParseResult,

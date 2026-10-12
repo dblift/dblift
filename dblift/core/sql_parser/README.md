@@ -21,6 +21,10 @@ splitting to the dialect scanner. Neither uses SQLGlot to decide execution
 boundaries. Tokenizers retained by some parsers also support quoted comment
 stripping or redaction; they do not provide an alternate script split.
 
+In a `Statement` record, `analysis_statements=None` means its execution text
+is one analyzable statement. An empty tuple means it contributes none. A
+nonempty tuple lists the constituents found by the same dialect scan.
+
 ```python
 from dblift.core.sql_parser.parser_factory import SqlParserFactory
 
@@ -31,6 +35,8 @@ result = parser.parse_sql("SELECT 1; SELECT 2;")
 
 For applications that need original script locations, concrete dialect parsers
 expose `split(sql)` records with half-open `source_start` and `source_end`
-Python string offsets in the original script. These include client terminators
+offsets into the original Python string. These include client terminators
 consumed with an execution unit. Analysis projects constituents once per
-executed unit and excludes directives and `GO 0` batches.
+executed unit and excludes directives and `GO 0` batches. The offsets are
+optional for records constructed outside a scanner and preserve the original
+indexing across a BOM or CRLF newlines.
