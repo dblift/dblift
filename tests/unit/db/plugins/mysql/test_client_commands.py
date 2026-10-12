@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import time
+
 import pytest
 
 from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
@@ -34,7 +36,7 @@ def test_a_command_word_alone_on_a_line_is_refused(line: str) -> None:
     "line",
     [
         "exit now", "quit now", "go;", "ego;", "go now",
-        "status x", "status x;", "help 'contents'", "help 'x';", "print x", "clear x",
+        "status x", "status x;", "help 'x';", "help x;", "? x;", "print x", "clear x",
         "exiting", "status_flag INT,", "source_table", "use_x", "gone", "goal", "helper",
         "exit -- c", "exit # c", "exit /* c */", "delimiters //", "delimiter_x",
     ],
@@ -184,3 +186,89 @@ def test_a_refusal_names_the_client_of_the_dialect() -> None:
         scan_script("SELECT 1;\nexit\n", mariadb=True)
     with pytest.raises(UnsupportedMetaCommandError, match="mysql client command 'exit'"):
         scan_script("SELECT 1;\nexit\n")
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "USE db; -- c", "USE db; # c", "USE db; /* c */", "USE `db`; -- x", "use db ; -- x",
+        "use testdb; xyz", "use db;;",
+    ],
+)  # fmt: skip
+def test_a_terminated_use_is_sql_whatever_follows_its_terminator(line: str) -> None:
+    """All three clients send it to the server (`use testdb; xyz` is error 1064 near `xyz`)."""
+    assert sql(f"SELECT 1;\n{line}\nSELECT 2;")[1].lower().startswith("use")
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "status;;", "status ; ;", "help;;", "?;;", "warnings;;", "print;;", "nopager;;",
+        "notee;;", "clear;;", "rehash;;", "nowarning;;", "tee;;", "prompt;;", "pager;;",
+        "connect;;", "resetconnection;;", "query_attributes;;", "exit;;", "exit ; ;", "exit;x",
+        "quit;;", "source;;",
+    ],
+)  # fmt: skip
+def test_a_command_word_followed_by_any_run_of_terminators_is_a_command(line: str) -> None:
+    with pytest.raises(UnsupportedMetaCommandError, match="on line 2"):
+        scan_script(f"SELECT 1;\n{line}\nSELECT 2;")
+
+
+@pytest.mark.parametrize("line", ["status //", "exit //", "help //", "tee //", "exit ; //"])
+def test_a_command_word_followed_by_the_active_delimiter_is_a_command(line: str) -> None:
+    with pytest.raises(UnsupportedMetaCommandError, match="on line 3"):
+        scan_script(f"DELIMITER //\nSELECT 1//\n{line}\nSELECT 2//")
+
+
+def test_exit_after_an_executable_comment_that_is_the_whole_pending_text_is_a_command() -> None:
+    """mysql 8.4 ends the script there; a statement text before it keeps it text."""
+    with pytest.raises(UnsupportedMetaCommandError, match="'exit'"):
+        scan_script("/*!50000 SET @a=1 */\nexit\n;")
+    assert sql("SELECT 1 /*!50000 + 1 */\nexit\n;") == ["SELECT 1 /*!50000 + 1 */\nexit"]
+
+
+@pytest.mark.parametrize("line", ["help x", "help 'x'", "? x", "? 'x'", "HELP contents"])
+def test_help_with_an_argument_and_no_terminator_is_a_command(line: str) -> None:
+    with pytest.raises(UnsupportedMetaCommandError, match="on line 2"):
+        scan_script(f"SELECT 1;\n{line}\nSELECT 2;")
+
+
+@pytest.mark.parametrize(
+    "script",
+    [
+        "UPDATE cfg SET mode = 'NO_BACKSLASH_ESCAPES' WHERE id = 1;",
+        "INSERT INTO t VALUES ('SET x NO_BACKSLASH_ESCAPES');",
+        "CREATE TABLE t (m SET('NO_BACKSLASH_ESCAPES', 'x'));",
+        "SELECT `NO_BACKSLASH_ESCAPES` FROM t WHERE a = 'SET';",
+    ],
+)
+def test_the_mode_name_in_a_literal_of_another_statement_is_not_a_setting(script: str) -> None:
+    assert len(sql(script)) == 1
+
+
+def test_the_mode_set_by_a_stored_program_body_is_still_refused() -> None:
+    with pytest.raises(UnsafeStatementSplitError, match="NO_BACKSLASH_ESCAPES"):
+        scan_script("CREATE PROCEDURE p() BEGIN SET sql_mode = 'NO_BACKSLASH_ESCAPES'; END;")
+
+
+def test_a_backslash_in_a_hint_is_text_on_mariadb_only() -> None:
+    assert sql("SELECT /*+ \\G */ 1;", mariadb=True) == ["SELECT /*+ \\G */ 1"]
+    assert sql("SELECT /*+\n \\G\n*/ 1 AS x;", mariadb=True) == ["SELECT /*+\n \\G\n*/ 1 AS x"]
+    with pytest.raises(UnsupportedMetaCommandError):
+        scan_script("SELECT /*+\n \\G\n*/ 1 AS x;")
+
+
+def _best_of_three(script: str) -> float:
+    best = float("inf")
+    for _ in range(3):
+        started = time.perf_counter()
+        scan_script(script)
+        best = min(best, time.perf_counter() - started)
+    return best
+
+
+@pytest.mark.parametrize("unit", ["/**/", "SELECT 1; /* c */ ", "/*!40000 SET @a = 1 */; "])
+def test_a_long_single_line_of_comments_is_scanned_in_linear_time(unit: str) -> None:
+    small = _best_of_three(unit * 40_000)
+    large = _best_of_three(unit * 80_000)
+    assert large < 3 * small + 0.05
