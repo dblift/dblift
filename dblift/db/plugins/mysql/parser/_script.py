@@ -2,15 +2,14 @@
 
 docs/sql-parsing/mysql.md. A statement ends at the active delimiter (``;`` at first), which the
 client matches as a plain string outside quotes and comments; ``DELIMITER`` changes it. A few words
-at the start of a line are client commands; ``DELIMITER`` is the one read so far, the others pass
-through as text. One documented extension goes beyond the client:
+at the start of a line are client commands; ``DELIMITER`` is handled and other commands are
+refused. One documented extension goes beyond the client:
 while the delimiter is ``;``, the ``BEGIN ... END`` body of a stored program stays whole.
 """
 
 from __future__ import annotations
 
 import re
-from functools import lru_cache
 from typing import List, Optional, Tuple
 
 from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
@@ -55,10 +54,16 @@ _BLOCK_WORDS = frozenset({"IF", "LOOP", "WHILE", "REPEAT", "CASE", "FOR"})
 _STATEMENT_START = frozenset({";", ":", "BEGIN", "THEN", "ELSE", "DO", "LOOP", "REPEAT"})
 
 
-@lru_cache(maxsize=32)
-def _terminator_run(delimiter: str) -> "re.Pattern[str]":
-    """Blanks, ``;`` and the active delimiter, in any number."""
-    return re.compile("(?:[ \t\r\x0b\x0c;]|" + re.escape(delimiter) + ")*")
+def _terminator_run(text: str, start: int, end: int, delimiter: str) -> bool:
+    """Whether a suffix holds only blanks, semicolons and active delimiters."""
+    while start < end:
+        if text.startswith(delimiter, start, end):
+            start += len(delimiter)
+        elif text[start] in _BLANKS + ";":
+            start += 1
+        else:
+            return False
+    return True
 
 
 class _Program:
@@ -218,6 +223,7 @@ class _Scanner:
         self.spans = []
         self.literals = []
         self.exec_only = False
+        self.fragment_ends: List[int] = []
 
     def run(self) -> List[Statement]:
         text = self.text
@@ -284,7 +290,7 @@ class _Scanner:
                 return found.group(), tail if gap else ""
             return None
         delimiter = self.delimiter
-        run = _terminator_run(delimiter).fullmatch(text, stop, end) is not None
+        run = _terminator_run(text, stop, end, delimiter)
         if word in _BARE:
             refused = _BLANK_RUN.fullmatch(text, stop, end) is not None
         elif word in _EXIT_WORDS:
@@ -375,6 +381,8 @@ class _Scanner:
                 self._end_statement(i, delimiter)
                 i += len(delimiter)
                 continue
+            if ch == ";" and delimiter != ";" and not self.exec_comment:
+                self.fragment_ends.append(i + 1)
             if ch == "#" or (text.startswith("--", i) and (i + 2 >= end or text[i + 2] in _BLANKS)):
                 if "\r" in text[i:end]:
                     raise UnsafeStatementSplitError(
@@ -553,7 +561,26 @@ class _Scanner:
                 f"the {self.client} client then reads backslashes as ordinary characters, "
                 "this splitter cannot follow"
             )
-        self.statements.append(Statement(text=text, line=self.start_line, terminator=terminator))
+        analysis_statements = None
+        if self.fragment_ends and not self.program.is_program:
+            parts = []
+            code = self._blank(text, self.spans)
+            begin = self.start
+            for end in self.fragment_ends:
+                if code[begin - self.start : end - 1 - self.start].strip():
+                    parts.append(self.text[begin : end - 1].strip())
+                begin = end
+            if code[begin - self.start :].strip():
+                parts.append(self.text[begin : self.start + len(text)].strip())
+            analysis_statements = tuple(parts)
+        self.statements.append(
+            Statement(
+                text=text,
+                line=self.start_line,
+                terminator=terminator,
+                analysis_statements=analysis_statements,
+            )
+        )
 
     def _sets_no_backslash_escapes(self, text: str) -> bool:
         """True when the statement is a SET that names the mode outside its comments.

@@ -676,16 +676,7 @@ END"""
 
 @pytest.mark.unit
 class TestDB2BlockDetectionGateAgreesWithExtractor:
-    """A gate that accepts an input must have the extractor return one block.
-
-    ``_has_sqlpl_blocks`` / ``_has_compound_statements`` / ``_has_trigger_blocks``
-    decide whether ``split_statements`` treats the input as a block at all; the
-    matching ``extract_*_blocks`` then has to actually find it. If the gate says
-    yes and the extractor comes back empty (or splits it into more than one
-    piece), the block silently falls through to semicolon-splitting and gets
-    truncated — exactly how both bugs above were previously invisible to the
-    boolean gates.
-    """
+    """The client scanner preserves procedural units for execution and extraction."""
 
     @pytest.mark.parametrize(
         "sql",
@@ -697,8 +688,7 @@ class TestDB2BlockDetectionGateAgreesWithExtractor:
     )
     def test_sqlpl_gate_agrees_with_extractor(self, sql):
         parser = DB2RegexParser()
-        assert parser._has_sqlpl_blocks(sql)
-        assert len(parser.config.extract_sqlpl_blocks(sql)) == 1
+        assert parser.split_for_extraction(sql) == [sql.rstrip(";")]
 
     @pytest.mark.parametrize(
         "sql",
@@ -710,8 +700,7 @@ class TestDB2BlockDetectionGateAgreesWithExtractor:
     )
     def test_compound_gate_agrees_with_extractor(self, sql):
         parser = DB2RegexParser()
-        assert parser._has_compound_statements(sql)
-        assert len(parser.config.extract_compound_statements(sql)) == 1
+        assert parser.split_for_extraction(sql) == [sql.rstrip(";")]
 
     @pytest.mark.parametrize(
         "sql",
@@ -728,8 +717,7 @@ class TestDB2BlockDetectionGateAgreesWithExtractor:
     )
     def test_trigger_gate_agrees_with_extractor(self, sql):
         parser = DB2RegexParser()
-        assert parser._has_trigger_blocks(sql)
-        assert len(parser.config.extract_trigger_blocks(sql)) == 1
+        assert parser.split_for_extraction(sql) == [sql.rstrip(";")]
 
 
 @pytest.mark.unit
@@ -740,16 +728,12 @@ class TestDB2CompoundDetectionStaysNarrow:
         parser = DB2RegexParser()
         sql = "INSERT INTO audit_log (id, msg) VALUES (1, 'the END')"
 
-        assert not parser._has_sqlpl_blocks(sql)
-        assert not parser._has_trigger_blocks(sql)
         assert parser.split_statements(sql) == [sql]
 
     def test_case_expression_ending_the_script_is_not_a_block(self):
         parser = DB2RegexParser()
         sql = "SELECT CASE WHEN id = 1 THEN 'x' ELSE 'y' END FROM audit_log"
 
-        assert not parser._has_sqlpl_blocks(sql)
-        assert not parser._has_trigger_blocks(sql)
         assert parser.split_statements(sql) == [sql]
 
     def test_external_procedure_followed_by_case_expression(self):

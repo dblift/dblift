@@ -310,12 +310,11 @@ opened it, is a regular expression and a substring search in the scanner.
 
 ## 12. Current implementation
 
-Code: `dblift/db/plugins/duckdb/parser/_script.py` (`scan_script`, one character
-scanner, no tokenizer, no state machine beyond one flag: whether statement text is
-pending), wired by `DuckDBRegexParser`: `split()` returns `Statement` records,
-`split_statements()` their texts, `split_for_analysis()` the same plus the segments of
-comments only, and `split_for_extraction()` the previous splitter, kept for `parse_sql`
-and object extraction, which must read a chunk of text and never refuse it.
+Code: `dblift/db/plugins/duckdb/parser/_script.py` (`scan_script`, the engine's
+character scanner), wired by `DuckDBRegexParser`: `split()` returns `Statement`
+records, `split_statements()` their execution text, and `split_for_analysis()`
+adds comment-only segments. `split_for_extraction()` uses the same scanner view;
+`parse_sql()` honors its shell-command and unsafe-split refusals.
 
 The scanner reads a script as the engine's lexer does. A word is a letter, an
 underscore or a non-ASCII character followed by those, digits and `$`; a number is read
@@ -324,7 +323,8 @@ never inside a word. A `$` that starts a token opens a dollar-quoted string when
 (letters, underscore, non-ASCII, digits, no `$`) and a second `$` follow, and closes it on
 the identical tag; otherwise it starts a parameter (`$1`, `$name`). `E'` and `e'` open an
 escape string unless the `E` ends a longer word, and the 18 non-ASCII blanks the engine reads (U+00A0, U+2000 to U+200B, U+202F, U+205F, U+2060, U+3000, U+FEFF) are blanks, so a dollar quote or an `E` right after one still opens; inside it a backslash takes the next
-character and a doubled quote stays inside. A plain string and a quoted identifier end at
+character and a doubled quote stays inside. Adjacent string literals separated by a newline,
+including a line comment, continue an `E` string's escape mode. A plain string and a quoted identifier end at
 the next quote, a doubled quote being two lexemes in a row. A line comment ends at the
 first LF or CR, a block comment nests and one that is never closed is sent as it stands,
 like a string, an identifier or a dollar-quoted string that is never closed: the engine

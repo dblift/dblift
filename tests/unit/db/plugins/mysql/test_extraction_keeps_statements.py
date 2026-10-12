@@ -1,4 +1,4 @@
-"""Object extraction keeps reading one statement at a time and never refuses; execution does."""
+"""MySQL extraction follows the client scanner and its refusals."""
 
 from __future__ import annotations
 
@@ -15,14 +15,17 @@ from dblift.db.plugins.mysql.quirks import MysqlQuirks
 SCRIPT = "source other.sql;\nCREATE TABLE a (id INT);\nSELECT 1\\G\nCREATE TABLE b (id INT);\n"
 
 
-def test_parse_sql_still_reads_the_tables_of_a_script_the_execution_split_refuses() -> None:
+def test_parse_sql_reports_a_client_command_refusal() -> None:
     result = MySqlRegexParser().parse_sql(SCRIPT)
-    assert sorted(o.name for s in result.statements for o in s.objects) == ["a", "b"]
+    assert not result.success
+    assert result.statements == []
+    assert any("source" in error for error in result.errors)
 
 
-def test_the_hybrid_parser_extracts_through_the_regex_parser_extraction_split() -> None:
+def test_the_hybrid_parser_refuses_the_same_client_command() -> None:
     parser = HybridParser("mysql")
-    assert parser.split_for_extraction(SCRIPT) == MySqlRegexParser().split_for_extraction(SCRIPT)
+    with pytest.raises(UnsupportedMetaCommandError):
+        parser.split_for_extraction(SCRIPT)
 
 
 def test_statements_for_analysis_are_the_execution_statements() -> None:

@@ -268,8 +268,8 @@ counter and the command list are all expressible as data.
 
 ## 12. Current implementation
 
-Code: `dblift/db/plugins/db2/parser/_script.py` (the scanner: lines, the active terminator, the `--#SET TERMINATOR` directive, routine bodies, the refusals and the command list of sections 4 to 6) and `db2_regex_parser.py` (`split()` returns `Statement` records, `split_statements()` their text, both without a fallback). The tokenizer-based splitter that came before is kept as `split_for_extraction()` for object extraction and `parse_sql`, which read a chunk of text and must not refuse it.
+Code: `dblift/db/plugins/db2/parser/_script.py` (the scanner: lines, the active terminator, the `--#SET TERMINATOR` directive, routine bodies, the refusals and the command list of sections 4 to 6) and `db2_regex_parser.py` (`split()` returns `Statement` records, `split_statements()` their execution text). `split_for_extraction()` and `parse_sql()` project from that scanner, preserving routine bodies and honoring the same CLP refusals. The earlier extraction splitter is removed.
 
 Every row of section 10 is a passing test; none is a known gap.
 
-Tests: `tests/unit/core/sql_parser/test_db2_spec_conformance.py` runs every row of section 10 through `SqlAnalyzer.split_statements`; `tests/unit/db/plugins/db2/test_script.py` covers the scanner rule by rule; `tests/unit/db/plugins/db2/test_extraction_keeps_statements.py` pins that extraction still reads what execution refuses.
+Tests: `tests/unit/core/sql_parser/test_db2_spec_conformance.py` runs every row of section 10 through `SqlAnalyzer.split_statements`; `tests/unit/db/plugins/db2/test_script.py` covers the scanner rule by rule; `tests/unit/db/plugins/db2/test_extraction_keeps_statements.py` checks that extraction and execution agree on refusals.

@@ -5,10 +5,7 @@ statements, causing subsequent BEGIN statements to be incorrectly treated
 as block starts.
 """
 
-import pytest
-
-from dblift.db.plugins.mysql.parser.mysql_statement_parser import MySQLStatementParser
-from dblift.db.plugins.mysql.parser.mysql_tokenizer import MySQLTokenizer
+from dblift.db.plugins.mysql.parser.mysql_regex_parser import MySqlRegexParser
 
 
 class TestMySQLStoredProgramFlagReset:
@@ -34,11 +31,7 @@ class TestMySQLStoredProgramFlagReset:
         COMMIT;
         """
 
-        tokenizer = MySQLTokenizer(sql)
-        tokens = tokenizer.tokenize()
-
-        parser = MySQLStatementParser(tokens)
-        statements = parser.split_statements()
+        statements = MySqlRegexParser().split_statements(sql)
 
         # Should have 4 statements:
         # 1. CREATE PROCEDURE (entire procedure)
@@ -83,11 +76,7 @@ class TestMySQLStoredProgramFlagReset:
         DELIMITER ;
         """
 
-        tokenizer = MySQLTokenizer(sql)
-        tokens = tokenizer.tokenize()
-
-        parser = MySQLStatementParser(tokens)
-        statements = parser.split_statements()
+        statements = MySqlRegexParser().split_statements(sql)
 
         # Should have 2 statements (one for each procedure)
         assert len(statements) == 2
@@ -114,11 +103,7 @@ class TestMySQLStoredProgramFlagReset:
         SELECT calc_sum(1, 2);
         """
 
-        tokenizer = MySQLTokenizer(sql)
-        tokens = tokenizer.tokenize()
-
-        parser = MySQLStatementParser(tokens)
-        statements = parser.split_statements()
+        statements = MySqlRegexParser().split_statements(sql)
 
         # Should have 2 statements: function and select
         assert len(statements) == 2
@@ -145,11 +130,7 @@ class TestMySQLStoredProgramFlagReset:
         INSERT INTO test_table (name) VALUES ('test');
         """
 
-        tokenizer = MySQLTokenizer(sql)
-        tokens = tokenizer.tokenize()
-
-        parser = MySQLStatementParser(tokens)
-        statements = parser.split_statements()
+        statements = MySqlRegexParser().split_statements(sql)
 
         # Should have 2 statements: trigger and insert
         assert len(statements) == 2
@@ -176,11 +157,7 @@ class TestMySQLStoredProgramFlagReset:
         SELECT * FROM logs;
         """
 
-        tokenizer = MySQLTokenizer(sql)
-        tokens = tokenizer.tokenize()
-
-        parser = MySQLStatementParser(tokens)
-        statements = parser.split_statements()
+        statements = MySqlRegexParser().split_statements(sql)
 
         # Should have 2 statements: event and select
         assert len(statements) == 2
@@ -204,11 +181,7 @@ class TestMySQLStoredProgramFlagReset:
         COMMIT;
         """
 
-        tokenizer = MySQLTokenizer(sql)
-        tokens = tokenizer.tokenize()
-
-        parser = MySQLStatementParser(tokens)
-        statements = parser.split_statements()
+        statements = MySqlRegexParser().split_statements(sql)
 
         # Should have 4 statements
         assert len(statements) == 4

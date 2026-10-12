@@ -5,11 +5,7 @@ increased block depth because _last_token_is("END") was checking after the
 current CASE token was already added to context.tokens.
 """
 
-import pytest
-
-from dblift.core.sql_parser.parser_context import ParserContext
-from dblift.db.plugins.mysql.parser.mysql_statement_parser import MySQLStatementParser
-from dblift.db.plugins.mysql.parser.mysql_tokenizer import MySQLTokenizer
+from dblift.db.plugins.mysql.parser.mysql_regex_parser import MySqlRegexParser
 
 
 class TestMySQLEndCaseFix:
@@ -24,11 +20,7 @@ BEGIN
   END CASE;
 END;"""
 
-        tokenizer = MySQLTokenizer(sql)
-        tokens = tokenizer.tokenize()
-
-        parser = MySQLStatementParser(tokens)
-        statements = parser.split_statements()
+        statements = MySqlRegexParser().split_statements(sql)
 
         # Should be one complete statement
         assert len(statements) == 1
@@ -48,11 +40,7 @@ BEGIN
   END CASE;
 END;"""
 
-        tokenizer = MySQLTokenizer(sql)
-        tokens = tokenizer.tokenize()
-
-        parser = MySQLStatementParser(tokens)
-        statements = parser.split_statements()
+        statements = MySqlRegexParser().split_statements(sql)
 
         # Should be one complete statement
         assert len(statements) == 1
@@ -71,11 +59,7 @@ BEGIN
   END CASE;
 END;"""
 
-        tokenizer = MySQLTokenizer(sql)
-        tokens = tokenizer.tokenize()
-
-        parser = MySQLStatementParser(tokens)
-        statements = parser.split_statements()
+        statements = MySqlRegexParser().split_statements(sql)
 
         # Should be one complete statement
         assert len(statements) == 1
@@ -93,11 +77,7 @@ BEGIN
   END CASE;
 END;"""
 
-        tokenizer = MySQLTokenizer(sql)
-        tokens = tokenizer.tokenize()
-
-        parser = MySQLStatementParser(tokens)
-        statements = parser.split_statements()
+        statements = MySqlRegexParser().split_statements(sql)
 
         assert len(statements) == 1
 
@@ -111,11 +91,7 @@ END;"""
   END AS result
 FROM table1;"""
 
-        tokenizer = MySQLTokenizer(sql)
-        tokens = tokenizer.tokenize()
-
-        parser = MySQLStatementParser(tokens)
-        statements = parser.split_statements()
+        statements = MySqlRegexParser().split_statements(sql)
 
         # Should be one statement
         assert len(statements) == 1
@@ -131,11 +107,7 @@ BEGIN
   END CASE;
 END;"""
 
-        tokenizer = MySQLTokenizer(sql)
-        tokens = tokenizer.tokenize()
-
-        parser = MySQLStatementParser(tokens)
-        statements = parser.split_statements()
+        statements = MySqlRegexParser().split_statements(sql)
 
         assert len(statements) == 1
 
@@ -150,11 +122,7 @@ BEGIN
 END //
 DELIMITER ;"""
 
-        tokenizer = MySQLTokenizer(sql)
-        tokens = tokenizer.tokenize()
-
-        parser = MySQLStatementParser(tokens)
-        statements = parser.split_statements()
+        statements = MySqlRegexParser().split_statements(sql)
 
         # Should have procedure statement
         proc_stmt = None
@@ -184,11 +152,7 @@ BEGIN
   END CASE;
 END;"""
 
-        tokenizer = MySQLTokenizer(sql)
-        tokens = tokenizer.tokenize()
-
-        parser = MySQLStatementParser(tokens)
-        statements = parser.split_statements()
+        statements = MySqlRegexParser().split_statements(sql)
 
         assert len(statements) == 1
 
@@ -201,11 +165,7 @@ BEGIN
   END /* comment */ CASE;
 END;"""
 
-        tokenizer = MySQLTokenizer(sql)
-        tokens = tokenizer.tokenize()
-
-        parser = MySQLStatementParser(tokens)
-        statements = parser.split_statements()
+        statements = MySqlRegexParser().split_statements(sql)
 
         # Should handle comments correctly
         assert len(statements) == 1

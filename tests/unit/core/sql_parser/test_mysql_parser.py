@@ -236,11 +236,15 @@ class TestMySqlParser:
         sql_with_delimiter = (
             "DELIMITER //\nCREATE PROCEDURE test() BEGIN SELECT 1; END //\nDELIMITER ;"
         )
-        assert parser._has_delimiter_statements(sql_with_delimiter)
+        assert [record.kind for record in parser.split(sql_with_delimiter)] == [
+            "directive",
+            "sql",
+            "directive",
+        ]
 
         # Test without DELIMITER statement
         sql_without_delimiter = "CREATE TABLE test (id INT);"
-        assert not parser._has_delimiter_statements(sql_without_delimiter)
+        assert [record.kind for record in parser.split(sql_without_delimiter)] == ["sql"]
 
     def test_stored_procedure_detection(self):
         """Test MySQL stored procedure detection."""
@@ -248,15 +252,15 @@ class TestMySqlParser:
 
         # Test with stored procedure
         sql_with_proc = "CREATE PROCEDURE test() BEGIN SELECT 1; END;"
-        assert parser._has_stored_procedures(sql_with_proc)
+        assert parser.split_statements(sql_with_proc) == [sql_with_proc[:-1]]
 
         # Test with function
         sql_with_func = "CREATE FUNCTION test() RETURNS INT BEGIN RETURN 1; END;"
-        assert parser._has_stored_procedures(sql_with_func)
+        assert parser.split_statements(sql_with_func) == [sql_with_func[:-1]]
 
         # Test without procedures
         sql_without_proc = "CREATE TABLE test (id INT);"
-        assert not parser._has_stored_procedures(sql_without_proc)
+        assert parser.split_statements(sql_without_proc) == [sql_without_proc[:-1]]
 
     def test_complex_delimiter_parsing(self):
         """Test complex DELIMITER parsing scenarios."""
@@ -398,7 +402,7 @@ class TestMySqlParser:
         invalid_sql = "CREATE TABLE `test (id INT);"
         result = parser.validate_sql(invalid_sql)
         assert not result["valid"]
-        assert "Unmatched backtick identifier" in result["errors"][0]
+        assert "unterminated quoted identifier" in result["errors"][0]
 
         # Test valid MySQL syntax should pass
         valid_sql = "CREATE TABLE test (id INT PRIMARY KEY);"

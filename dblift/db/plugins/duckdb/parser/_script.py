@@ -88,6 +88,7 @@ class _Scanner:
         self.segment = 0
         self.segment_line = 1
         self.line = 1
+        self.escape_continuation = False
 
     def run(self) -> List[Unit]:
         text, size, i = self.text, len(self.text), 0
@@ -106,17 +107,21 @@ class _Scanner:
                 self.comments.append((i, stop))
                 i = stop
             elif text.startswith("/*", i):
+                self.escape_continuation = False
                 i = self._block_comment(i)
             elif char == "'":
                 self.code = True
-                i = self._plain_string(i)
+                i = self._escape_string(i) if self.escape_continuation else self._plain_string(i)
             elif char == '"':
                 self.code = True
+                self.escape_continuation = False
                 i = self._quoted(i, '"')
             elif char == "$":
                 self.code = True
+                self.escape_continuation = False
                 i = self._dollar(i)
             elif char == ";":
+                self.escape_continuation = False
                 self._finish(i, ";")
                 self.segment, self.segment_line = i + 1, self.line
                 i += 1
@@ -138,10 +143,13 @@ class _Scanner:
         text = self.text
         match = _IDENT.match(text, i) or _NUMBER.match(text, i)
         if match is None:
+            self.escape_continuation = False
             return i + 1
         end = match.end()
         if text.startswith("'", end) and _is_escape_prefix(match.group()):
+            self.escape_continuation = True
             return self._escape_string(end)
+        self.escape_continuation = False
         return end
 
     def _block_comment(self, i: int) -> int:

@@ -321,11 +321,11 @@ class TestDB2RegexParser:
 
         # Test with EXEC SQL
         sql_with_exec = "EXEC SQL CREATE TABLE test (id INTEGER) END-EXEC;"
-        assert parser._has_exec_sql_blocks(sql_with_exec)
+        assert parser.split_statements(sql_with_exec) == [sql_with_exec[:-1]]
 
         # Test without EXEC SQL
         sql_without_exec = "CREATE TABLE test (id INTEGER);"
-        assert not parser._has_exec_sql_blocks(sql_without_exec)
+        assert parser.split_statements(sql_without_exec) == [sql_without_exec[:-1]]
 
     def test_db2_sqlpl_detection(self):
         """Test DB2 SQL/PL detection."""
@@ -333,15 +333,15 @@ class TestDB2RegexParser:
 
         # Test with SQL/PL procedure
         sql_with_sqlpl = "CREATE PROCEDURE test() LANGUAGE SQL BEGIN SELECT 1; END;"
-        assert parser._has_sqlpl_blocks(sql_with_sqlpl)
+        assert parser.split_statements(sql_with_sqlpl) == [sql_with_sqlpl[:-1]]
 
         # Test with SQLPL procedure
         sql_with_sqlpl2 = "CREATE PROCEDURE test() LANGUAGE SQLPL BEGIN SELECT 1; END;"
-        assert parser._has_sqlpl_blocks(sql_with_sqlpl2)
+        assert parser.split_statements(sql_with_sqlpl2) == [sql_with_sqlpl2[:-1]]
 
         # Test without SQL/PL
         sql_without_sqlpl = "CREATE TABLE test (id INTEGER);"
-        assert not parser._has_sqlpl_blocks(sql_without_sqlpl)
+        assert parser.split_statements(sql_without_sqlpl) == [sql_without_sqlpl[:-1]]
 
     def test_db2_compound_statement_detection(self):
         """Test DB2 compound statement detection."""
@@ -349,15 +349,15 @@ class TestDB2RegexParser:
 
         # Test with compound atomic
         sql_with_compound = "BEGIN ATOMIC SELECT 1; END;"
-        assert parser._has_compound_statements(sql_with_compound)
+        assert parser.split_statements(sql_with_compound) == [sql_with_compound[:-1]]
 
         # Test with compound not atomic
         sql_with_compound2 = "BEGIN NOT ATOMIC SELECT 1; END;"
-        assert parser._has_compound_statements(sql_with_compound2)
+        assert parser.split_statements(sql_with_compound2) == [sql_with_compound2[:-1]]
 
         # Test without compound
         sql_without_compound = "SELECT 1;"
-        assert not parser._has_compound_statements(sql_without_compound)
+        assert parser.split_statements(sql_without_compound) == [sql_without_compound[:-1]]
 
     def test_db2_trigger_detection(self):
         """Test DB2 trigger detection."""
@@ -367,11 +367,11 @@ class TestDB2RegexParser:
         sql_with_trigger = (
             "CREATE TRIGGER test_trigger AFTER INSERT ON test FOR EACH ROW BEGIN SELECT 1; END;"
         )
-        assert parser._has_trigger_blocks(sql_with_trigger)
+        assert parser.split_statements(sql_with_trigger) == [sql_with_trigger[:-1]]
 
         # Test without trigger
         sql_without_trigger = "CREATE TABLE test (id INTEGER);"
-        assert not parser._has_trigger_blocks(sql_without_trigger)
+        assert parser.split_statements(sql_without_trigger) == [sql_without_trigger[:-1]]
 
     def test_db2_spufi_terminator_detection(self):
         """Test DB2 SPUFI terminator detection."""
@@ -379,11 +379,11 @@ class TestDB2RegexParser:
 
         # Test with SPUFI terminator
         sql_with_spufi = "--#SET TERMINATOR @"
-        assert parser._has_spufi_terminators(sql_with_spufi)
+        assert [record.kind for record in parser.split(sql_with_spufi)] == ["directive"]
 
         # Test without SPUFI terminator
         sql_without_spufi = "CREATE TABLE test (id INTEGER);"
-        assert not parser._has_spufi_terminators(sql_without_spufi)
+        assert [record.kind for record in parser.split(sql_without_spufi)] == ["sql"]
 
     def test_db2_sqlpl_procedure_name_extraction(self):
         """Test DB2 SQL/PL procedure name extraction."""
@@ -658,13 +658,13 @@ class TestDB2RegexParser:
         invalid_sql = 'CREATE TABLE "test (id INTEGER);'
         result = parser.validate_sql(invalid_sql)
         assert not result["valid"]
-        assert "Unmatched quoted identifier" in result["errors"][0]
+        assert "inside a string or a quoted identifier" in result["errors"][0]
 
         # Test unmatched BEGIN/END
         invalid_sql = "BEGIN ATOMIC INSERT INTO test VALUES (1);"
         result = parser.validate_sql(invalid_sql)
         assert not result["valid"]
-        assert "Unmatched BEGIN/END blocks" in result["errors"][0]
+        assert "routine body" in result["errors"][0]
 
         # Test EXEC SQL without END-EXEC
         invalid_sql = "EXEC SQL CREATE TABLE test (id INTEGER);"

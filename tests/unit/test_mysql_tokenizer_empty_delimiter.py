@@ -6,8 +6,9 @@ is followed by whitespace/newline without an actual delimiter string.
 
 import pytest
 
+from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.core.sql_parser.tokens import TokenType
-from dblift.db.plugins.mysql.parser.mysql_statement_parser import MySQLStatementParser
+from dblift.db.plugins.mysql.parser.mysql_regex_parser import MySqlRegexParser
 from dblift.db.plugins.mysql.parser.mysql_tokenizer import MySQLTokenizer
 
 
@@ -88,17 +89,10 @@ class TestMySQLEmptyDelimiterFix:
         assert new_delimiter_tokens[1].text == "//"  # Kept // instead of empty
 
     def test_statement_parsing_with_empty_delimiter(self):
-        """Test statement parsing doesn't break with empty DELIMITER."""
+        """The client scanner refuses an empty delimiter before the following SQL."""
         sql = "DELIMITER\nCREATE TABLE test (id INT);"
-        tokenizer = MySQLTokenizer(sql)
-        tokens = tokenizer.tokenize()
-
-        parser = MySQLStatementParser(tokens)
-        statements = parser.split_statements()
-
-        # Should successfully parse statements
-        assert len(statements) > 0
-        assert any("CREATE TABLE" in s.upper() for s in statements)
+        with pytest.raises(UnsafeStatementSplitError, match="no argument"):
+            MySqlRegexParser().split_statements(sql)
 
     def test_delimiter_prevents_infinite_loop(self):
         """Test that empty delimiter doesn't cause infinite loop."""
