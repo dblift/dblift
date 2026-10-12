@@ -33,8 +33,6 @@ class LexicalEngine:
 
     def blank_comments(self, script: str) -> str:
         """Replace each scanned comment with a space, preserving quoted text."""
-        if self.spec.sqlite_shell and script.startswith("\ufeff"):
-            script = script[1:]
         tokenizer = LexicalTokenizer(script, spec=self.spec)
         tokens = tokenizer.tokenize()
         LexicalStatementParser(tokens, source=script, spec=self.spec).split()
@@ -44,4 +42,5 @@ class LexicalEngine:
             parts.extend((script[last:start], " "))
             last = end
         parts.append(script[last:])
-        return "".join(parts)
+        masked = "".join(parts)
+        return masked[1:] if self.spec.sqlite_shell and script.startswith("\ufeff") else masked
