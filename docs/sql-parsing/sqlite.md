@@ -177,7 +177,7 @@ them like any other statement (rows 4, 5). The current splitter's `BEGIN` counte
 | Directive | Client | Splitter action |
 | --- | --- | --- |
 | A line whose first character is `.` (column 0) when no statement is pending: `.read`, `.mode`, `.print`, `.tables`, `.exit`, `.quit`, `.bail`, `.shell`, `.system`, `.open`, `.output`, `.parameter`, any other word, a lone `.` | `sqlite3` shell | **reject** with `UnsupportedMetaCommandError` (command and line named) |
-| A line that holds only `go` (any case) or `/`, blanks around it allowed, while the statement so far would be complete once a `;` is added | `sqlite3` shell | **reject** with `UnsafeStatementSplitError` (line named) |
+| A line that holds only `go` (any case) or `/`, blanks (space, tab, form feed, CR, vertical tab) around it allowed and a trailing line comment or closed block comments after it allowed, while the statement so far would be complete once a `;` is added (not when its last line ends in a line comment) | `sqlite3` shell | **reject** with `UnsafeStatementSplitError` (line named) |
 
 *Command Line Shell*: "Dot-commands must begin with a "." at the left margin
 with no preceding whitespace. Dot-commands must be entirely contained on a
@@ -207,10 +207,15 @@ results, `.mode`, `.headers`, `.echo`, `.timer` and
 A line `go` or `/` is not in the manual; it is in the shell's behaviour and
 was measured: with a statement pending it ends it, as a `;` would
 (`CREATE TABLE t(a)` newline `go` creates the table, `/` the same; `GO`, blanks
-around it and CRLF work; `go;` and `go to` do not), also inside parentheses. The driver reads the same lines as part
+around it and CRLF work, and so do a comment after it, `go -- c`, `/-- c`, `go/**/`, `/ /* c */`, and a vertical tab; `go;`, `go to`, `go /* c` and a comment before it, `/* c */ go`, do not), also inside parentheses. The driver reads the same lines as part
 of the statement: `SELECT 6` newline `/` newline `2` is `3` through the driver
 and `6` followed by a syntax error through the shell. That is a silent divergence, so the
-scanner refuses the line. It is text inside a string, a quoted identifier, a
+scanner refuses the line. The same holds when the statement so far ends in a line
+comment, with one exception: the shell tests completeness with a `;` appended to the text,
+so a last line that ends in a line comment swallows it, the line is no terminator, and shell
+and driver agree (`SELECT 6 -- six` newline `/` newline `2` is `3` for both, row 62; a
+`go` line there is read by both as an alias and the statement fails loudly). A line that is
+text inside a string, a quoted identifier, a
 comment, and in a trigger body that is not yet closed: the library says the text
 is incomplete, so the shell leaves the line in the statement; and with nothing pending the shell skips it while the engine rejects `go` or `/` as a
 statement, loudly. dblift is narrower than the shell there, by design (row 59):
@@ -305,6 +310,10 @@ rules are a table and two regular expressions.
 | 56 | `CREATE TRIGGER tr AFTER INSERT ON t BEGIN\nSELECT 1;\ngo\nSELECT 2; END;` | `CREATE TRIGGER tr AFTER INSERT ON t BEGIN\nSELECT 1;\ngo\nSELECT 2; END` (inside an unfinished trigger a go line is text; the engine rejects it) |
 | 57 | `CREATE TABLE t(a);␍\n.print x␍\nINSERT INTO t VALUES(1);␍\n` | `UnsupportedMetaCommandError` (line 2: the CR of a CRLF pair is part of the line end) |
 | 58 | `SELECT 1;␍.print x␍SELECT 2;␍` | `SELECT 1` · `.print x␍SELECT 2` (a CR that stands alone ends no line: the dot is not at a line start) |
+| 60 | `SELECT 6\n/ -- c\n2;` | `UnsafeStatementSplitError` (line 2: a line comment after the slash does not stop the shell from ending the statement there) |
+| 61 | `SELECT 6\ngo /* c */ -- d\n2;` | `UnsafeStatementSplitError` (line 2: closed block comments and a line comment after go) |
+| 62 | `SELECT 6 -- six\n/\n2;` | `SELECT 6 -- six\n/\n2` (the statement so far ends in a line comment: a `;` added to it would be inside the comment, the shell does not end the statement, and shell and driver both print 3) |
+| 63 | `SELECT 6\ngo x\n;` | `SELECT 6\ngo x` (go with other text after it is text; the engine rejects it) |
 | 59 | `CREATE TABLE t(a);\ngo\nINSERT INTO t VALUES(1);` | `CREATE TABLE t(a)` · `go\nINSERT INTO t VALUES(1)` (nothing is pending at the go line: the shell skips it, dblift sends it as text and the engine rejects it, loudly; narrower than the shell by design) |
 
 ## 11. Not handled
@@ -312,7 +321,7 @@ rules are a table and two regular expressions.
 | Construct | Behaviour | Why |
 | --- | --- | --- |
 | Shell dot-commands | rejected (rows 12, 45, 46, 51, 52, 57) | they are not SQL and SQLite's C API cannot run them; the shell runs them silently |
-| A `go` or `/` line that would end the statement | rejected (rows 53, 54) | the shell cuts there and the driver does not; for a slash inside an expression the two read different statements |
+| A `go` or `/` line that would end the statement | rejected (rows 53, 54, 60, 61) | the shell cuts there and the driver does not; for a slash inside an expression the two read different statements |
 | A `go` or `/` line with nothing pending | text (row 59) | the shell skips it and the engine rejects it as a statement: loud, and dblift is narrower than the shell |
 | An unterminated `/*` | rejected (rows 18, 19) | silent in the shell and in the driver |
 | An unterminated string, quoted identifier or trigger body at the end | returned as the last statement (rows 29, 39) | both clients reject it loudly (`unrecognized token`, `incomplete input`) |

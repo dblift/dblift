@@ -7,7 +7,7 @@ test, these tests pin the rules behind them and the records the scanner returns.
 
 from __future__ import annotations
 
-import random
+import itertools
 import sqlite3
 import time
 
@@ -23,58 +23,35 @@ def texts(script: str) -> list[str]:
 
 # ---- the library's rule ----------------------------------------------------------------------
 
-#: (text, kind): kind "semi" is a terminator candidate, "skip" is blanks or a comment, else code.
-_VOCABULARY = [
-    *(
-        (word, "code")
-        for word in "create temp temporary trigger end explain begin select x end_x end$ 1 ( )".split()
-    ),
-    ("'a;b'", "code"),
-    ('"end"', "code"),
-    ("[end;]", "code"),
-    ("`;`", "code"),
-    ("'it''s;'", "code"),
-    (";", "semi"),
-    (";", "semi"),
-    (";", "semi"),
-    (" ", "skip"),
-    ("\n", "skip"),
-    ("/* ; end */", "skip"),
-    ("-- ; end\n", "skip"),
-    ("/* c */", "skip"),
-]
+#: One word per token class of ``sqlite3_complete``; the scanner's table is checked against the library.
+_CLASSES = [";", "x", "explain", "create", "temp", "trigger", "end"]
 
 
-def _expected(tokens: list[tuple[str, str]]) -> list[str]:
-    """The statements ``sqlite3.complete_statement`` says a token sequence is made of."""
+def _expected(words: tuple[str, ...]) -> list[str]:
+    """The statements ``sqlite3.complete_statement`` says a sequence of words is made of."""
     out: list[str] = []
     segment: list[str] = []
     code, prefix = False, ""
-    for text, kind in tokens:
-        prefix += text
-        if kind == "semi" and sqlite3.complete_statement(prefix):
+    for word in words:
+        prefix += word + " "
+        if word == ";" and sqlite3.complete_statement(prefix):
             if code:
-                out.append("".join(segment).strip(" \t\n\f\r"))
+                out.append(" ".join(segment))
             segment, code = [], False
             continue
-        segment.append(text)
-        code = code or kind != "skip"
+        segment.append(word)
+        code = True
     if code:
-        out.append("".join(segment).strip(" \t\n\f\r"))
+        out.append(" ".join(segment))
     return out
 
 
 def test_the_scanner_cuts_where_the_library_says_a_statement_is_complete() -> None:
-    """The scanner is the library's table; the library itself is the oracle (3 000 sequences, derandomised)."""
-    rng = random.Random(7)
-    for _ in range(3000):
-        tokens: list[tuple[str, str]] = []
-        for _ in range(rng.randint(1, 14)):
-            tokens.append(rng.choice(_VOCABULARY))
-            if rng.random() < 0.6:
-                tokens.append((" ", "skip"))
-        script = "".join(text for text, _ in tokens)
-        assert texts(script) == _expected(tokens), script
+    """Every sequence of up to 7 token classes (960 799), against the library: the whole table."""
+    for length in range(1, 8):
+        for words in itertools.product(_CLASSES, repeat=length):
+            script = " ".join(words)
+            assert texts(script) == _expected(words), script
 
 
 # ---- strings, identifiers ----------------------------------------------------------------------
@@ -353,6 +330,11 @@ def test_a_dot_line_after_a_lone_cr_is_not_at_a_line_start() -> None:
     assert texts("SELECT 1;\r.print x\rSELECT 2;\r") == ["SELECT 1", ".print x\rSELECT 2"]
 
 
+def test_a_form_feed_is_a_blank() -> None:
+    trigger = "CREATE TRIGGER tr AFTER INSERT ON t BEGIN SELECT 1; END"
+    assert texts(f"\f{trigger}; SELECT 2;") == [trigger, "SELECT 2"]
+
+
 def test_a_dot_after_a_byte_order_mark_is_refused_the_mark_is_dropped_first() -> None:
     with pytest.raises(UnsupportedMetaCommandError):
         scan_script("﻿.print x\nSELECT 1;")
@@ -371,8 +353,24 @@ def test_a_dot_after_a_byte_order_mark_is_refused_the_mark_is_dropped_first() ->
         ("SELECT 6\n  /  \n2;", 2),
         ("INSERT INTO t VALUES(6\n/\n2);", 2),
         ("CREATE TABLE t(a)\r\ngo\r\n", 2),
-        ("SELECT 1\n-- c\ngo\n", 3),
+        ("SELECT 1 /* c */\n-- d\n\ngo\n", 4),
         ("CREATE TRIGGER tr AFTER INSERT ON t BEGIN SELECT 1; END\ngo\n", 2),
+        ("SELECT 6\n/ -- c\n2;", 2),
+        ("SELECT 6\n/-- c\n2;", 2),
+        ("SELECT 6\ngo -- c\n2;", 2),
+        ("SELECT 6\ngo --\n2;", 2),
+        ("SELECT 6\ngo/**/\n2;", 2),
+        ("SELECT 6\n/ /* c */\n2;", 2),
+        ("SELECT 6\ngo /* a */ /* b */ -- d\n2;", 2),
+        ("SELECT 6\ngo  -- c\r\n2;", 2),
+        ("SELECT 6\n\vgo\n2;", 2),
+        ("SELECT 6\ngo\v\n2;", 2),
+        ("SELECT 6\n\v/\v\n2;", 2),
+        ("SELECT 6\n\fgo\n2;", 2),
+        ("SELECT 6\n \f/\n2;", 2),
+        ("SELECT 6\n\r/\n2;", 2),
+        ("SELECT 6 /* c */\n/\n2;", 2),
+        ("SELECT 6 -- six\n\n/\n2;", 3),
     ],
 )
 def test_a_go_or_slash_line_that_would_end_the_statement_is_refused(script: str, line: int) -> None:
@@ -394,10 +392,24 @@ def test_a_go_or_slash_line_that_would_end_the_statement_is_refused(script: str,
         "SELECT 1\ngo;\n",
         "SELECT 1\ngo to\n;",
         "SELECT 1\n/ 2\n;",
+        "SELECT 6\ngo /* c\n2;\n*/",
+        "SELECT 6\ngo /* c */ x\n;",
+        "SELECT 6\n/* c */ go\n;",
+        "SELECT 6\n/* c */\n;",
+        "SELECT 6\n//\n;",
     ],
 )
 def test_a_go_or_slash_line_is_text_when_it_would_not_end_the_statement(script: str) -> None:
     scan_script(script)
+
+
+def test_a_go_or_slash_line_after_a_line_comment_is_text_the_appended_semicolon_is_commented_out() -> (
+    None
+):
+    assert texts("SELECT 6 -- six\n/\n2;") == ["SELECT 6 -- six\n/\n2"]
+    assert texts("SELECT 6\n-- six\n/\n2;") == ["SELECT 6\n-- six\n/\n2"]
+    assert texts("SELECT 6 -- six\n  go\n;") == ["SELECT 6 -- six\n  go"]
+    assert texts("SELECT 1\n-- c\ngo\n") == ["SELECT 1\n-- c\ngo"]
 
 
 # ---- bytes -------------------------------------------------------------------------------------------

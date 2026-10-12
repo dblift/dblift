@@ -18,19 +18,19 @@ from typing import List, Optional
 from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
 
 # Token classes of sqlite3_complete and its states (docs/sql-parsing/sqlite.md section 5).
-_SEMI, _WS, _OTHER, _EXPLAIN, _CREATE, _TEMP, _TRIGGER, _END = range(8)
+_SEMI, _OTHER, _EXPLAIN, _CREATE, _TEMP, _TRIGGER, _END = range(7)
 _START, _NORMAL, _EXPLAINED, _CREATING, _IN_TRIGGER, _AFTER_SEMI, _AFTER_END = range(1, 8)
 
 #: ``_NEXT[state][token]``: the state after the token. Row 0 is unused.
 _NEXT = (
     (),
-    (1, 1, 2, 3, 4, 2, 2, 2),
-    (1, 2, 2, 2, 2, 2, 2, 2),
-    (1, 3, 3, 2, 4, 2, 2, 2),
-    (1, 4, 2, 2, 2, 4, 5, 2),
-    (6, 5, 5, 5, 5, 5, 5, 5),
-    (6, 6, 5, 5, 5, 5, 5, 7),
-    (1, 7, 5, 5, 5, 5, 5, 5),
+    (1, 2, 3, 4, 2, 2, 2),
+    (1, 2, 2, 2, 2, 2, 2),
+    (1, 3, 2, 4, 2, 2, 2),
+    (1, 2, 2, 2, 4, 5, 2),
+    (6, 5, 5, 5, 5, 5, 5),
+    (6, 5, 5, 5, 5, 5, 7),
+    (1, 5, 5, 5, 5, 5, 5),
 )
 _KEYWORDS = {
     "explain": _EXPLAIN,
@@ -42,8 +42,11 @@ _KEYWORDS = {
 }
 #: A word is a run of these (sqlite3_complete's IdChar), so ``end_at`` and ``end$`` are not END.
 _WORD = re.compile(r"[A-Za-z0-9_$\x80-\U0010ffff]+")
-#: A line the shell takes as a terminator when a statement is pending: ``go`` in any case, or ``/``.
-_TERMINATOR_LINE = re.compile(r"[ \t\f\r]*(?:/|[Gg][Oo])[ \t\f\r]*\Z")
+#: A line the shell takes as a terminator when a statement is pending: ``go`` in any case or ``/``,
+#: blanks (the shell's include ``\v``) around it, then closed block comments and a line comment.
+_TERMINATOR_LINE = re.compile(
+    r"[ \t\f\r\v]*(?:/|[Gg][Oo])[ \t\f\r\v]*(?:/\*.*?\*/[ \t\f\r\v]*)*(?:--.*)?\Z"
+)
 _BLANKS = " \t\n\f\r"
 _CLOSERS = {"'": "'", '"': '"', "`": "`", "[": "]"}
 
@@ -58,12 +61,7 @@ class Unit:
 
 
 def scan_script(script: str, *, comment_only: bool = False) -> List[Unit]:
-    """The statements of ``script``; refuses what the shell would run differently or skip.
-
-    The shell sends nothing for a segment of comments only, so execution drops it. With
-    ``comment_only`` the segment is returned as a unit of its own, for the callers that read a
-    script statement by statement and look at its comments.
-    """
+    """The statements of ``script``; ``comment_only`` keeps the comment-only segments as units."""
     text = script[1:] if script.startswith("﻿") else script
     return _Scanner(text, comment_only).run()
 
@@ -79,6 +77,8 @@ class _Scanner:
         self.segment_line = 1
         self.line = 1
         self.at_line_start = True
+        self.comment_ends_line = False
+        self.comment_ended_previous_line = False
 
     def run(self) -> List[Unit]:
         text, size, i = self.text, len(self.text), 0
@@ -89,12 +89,15 @@ class _Scanner:
             if char == "\n":
                 self.line += 1
                 self.at_line_start = True
+                self.comment_ended_previous_line = self.comment_ends_line
+                self.comment_ends_line = False
                 i += 1
                 continue
             self.at_line_start = False
             if char in " \t\f\r":
                 i += 1
             elif text.startswith("--", i):
+                self.comment_ends_line = True
                 end = text.find("\n", i)
                 i = size if end < 0 else end
             elif text.startswith("/*", i):
@@ -126,6 +129,7 @@ class _Scanner:
         if (
             self.code
             and self.state not in (_IN_TRIGGER, _AFTER_SEMI)
+            and not self.comment_ended_previous_line
             and _TERMINATOR_LINE.match(line)
         ):
             raise UnsafeStatementSplitError(
