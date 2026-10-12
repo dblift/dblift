@@ -8,6 +8,8 @@ import sys
 import pytest
 
 from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
+from dblift.core.migration.sql.script_analysis import analyse_script
+from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.db.plugins.db2.parser.db2_regex_parser import DB2RegexParser
 from dblift.db.plugins.duckdb.parser.duckdb_regex_parser import DuckDBRegexParser
 from dblift.db.plugins.mariadb.regex_parser import MariaDbRegexParser
@@ -27,6 +29,25 @@ def test_mysql_custom_delimiter_unit_exposes_each_plain_statement(parser_class: 
         "QUERY",
         "DDL",
         "QUERY",
+    ]
+
+
+@pytest.mark.parametrize("dialect", ["mysql", "mariadb"])
+def test_mysql_analysis_sees_drop_inside_custom_delimiter_unit(dialect: str) -> None:
+    script = "DELIMITER //\nSELECT 1; DROP TABLE users; SELECT 2//\nDELIMITER ;"
+
+    analysis = analyse_script(script, dialect)
+
+    assert [statement.operation for statement in analysis.statements] == [
+        "SELECT",
+        "DROP",
+        "SELECT",
+    ]
+    assert any(caution.level == "destroys" for caution in analysis.cautions)
+    assert SqlAnalyzer(dialect).split_statements_for_analysis(script) == [
+        "SELECT 1",
+        "DROP TABLE users",
+        "SELECT 2",
     ]
 
 
@@ -73,6 +94,19 @@ def test_mysql_executable_comment_wrapper_stays_whole_in_analysis() -> None:
         "/*!50100 SELECT 1; DROP TABLE hidden */",
         "DROP TABLE visible",
         "SELECT 2",
+    ]
+
+
+def test_mysql_multiline_executable_comment_wrapper_stays_whole_in_analysis() -> None:
+    parser = MySqlRegexParser()
+    script = (
+        "DELIMITER //\n/*!50100 SELECT 1;\nDROP TABLE hidden; SELECT 2 */; "
+        "DROP TABLE visible//\nDELIMITER ;"
+    )
+
+    assert parser.split_for_extraction(script) == [
+        "/*!50100 SELECT 1;\nDROP TABLE hidden; SELECT 2 */",
+        "DROP TABLE visible",
     ]
 
 

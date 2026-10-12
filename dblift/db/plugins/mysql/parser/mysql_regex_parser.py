@@ -47,9 +47,13 @@ class MySqlRegexParser(EnhancedRegexParser):
         """
         return [record.text for record in self.split(sql_content) if record.kind == "sql"]
 
-    def split_for_extraction(self, sql_content: str, strict_tokenizer: bool = False) -> List[str]:
+    def split_for_analysis(self, sql_content: str, strict_tokenizer: bool = False) -> List[str]:
         """Project analysable SQL from the client scanner, including custom-delimiter fragments."""
         return analysis_sql(self.split(sql_content))
+
+    def split_for_extraction(self, sql_content: str, strict_tokenizer: bool = False) -> List[str]:
+        """Use the same scanner projection for object extraction."""
+        return self.split_for_analysis(sql_content, strict_tokenizer=strict_tokenizer)
 
     def _clean_mysql_comments(self, sql: str) -> str:
         """Remove ordinary comments while retaining executable MySQL comments."""

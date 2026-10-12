@@ -203,6 +203,7 @@ class _Scanner:
         self.block_at = (0, 0)
         self.block_from = 0
         self.exec_comment = False
+        self.analysis_exec_comment = False
         self.client = "mariadb" if mariadb else "mysql"
         self.exec_clean = False
         self.exec_only = False  # the statement text so far is executable comments only
@@ -381,7 +382,7 @@ class _Scanner:
                 self._end_statement(i, delimiter)
                 i += len(delimiter)
                 continue
-            if ch == ";" and delimiter != ";" and not self.exec_comment:
+            if ch == ";" and delimiter != ";" and not self.analysis_exec_comment:
                 self.fragment_ends.append(i + 1)
             if ch == "#" or (text.startswith("--", i) and (i + 2 >= end or text[i + 2] in _BLANKS)):
                 if "\r" in text[i:end]:
@@ -396,6 +397,8 @@ class _Scanner:
             if ch == "/" and text.startswith("/*", i):
                 i = self._open_comment(i, pos, line_no)
                 continue
+            if self.analysis_exec_comment and text.startswith("*/", i):
+                self.analysis_exec_comment = False
             if self.exec_comment and text.startswith("*/", i):
                 self.exec_comment = False
                 if self.exec_clean:
@@ -492,6 +495,7 @@ class _Scanner:
             self._code(i, line_no)
             self._flush_word()
             self.exec_comment = True
+            self.analysis_exec_comment = True
             return i + (3 if third == "!" else 4)
         self._flush_word()
         self.block = "/*+" if third == "+" else "/*"
