@@ -58,6 +58,7 @@ class OracleParser(RegexBasedParser):
 
         try:
             statements = self.split_for_analysis(cleaned_sql)
+            logger.debug(f"Oracle: Successfully parsed {len(statements)} statements")
         except Exception as e:
             error_msg = f"Oracle parsing failed: {str(e)}"
             logger.error(error_msg)
