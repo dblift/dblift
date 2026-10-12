@@ -351,14 +351,17 @@ class PostgreSQLTokenizer(BaseTokenizer):
             if self.peek() in (" ", "\t"):
                 self.read()
             elif self.peek(2) in ("--", "/*"):
+                comment_col = self.col
                 self._handle_comment()
                 if self.line != header_line:
                     raise UnsafeStatementSplitError(
-                        f"multiline COPY FROM STDIN header comment at line {header_line}"
+                        f"multiline COPY FROM STDIN header comment at line {header_line}, "
+                        f"column {comment_col}"
                     )
             else:
                 raise UnsafeStatementSplitError(
-                    f"text after COPY FROM STDIN header terminator at line {header_line}"
+                    f"text after COPY FROM STDIN header terminator at line {self.line}, "
+                    f"column {self.col}"
                 )
         if self.peek() == "\r":
             self.read()

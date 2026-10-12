@@ -151,14 +151,25 @@ def test_copy_header_line_tail_is_not_streamed_as_data(header_tail, newline):
 def test_copy_header_refuses_sql_after_semicolon():
     script = "COPY t FROM STDIN; DROP TABLE t;\n1\n\\.\n"
 
-    with pytest.raises(UnsafeStatementSplitError, match="text after COPY FROM STDIN"):
+    with pytest.raises(
+        UnsafeStatementSplitError, match=f"line 1, column {script.index('DROP') + 1}"
+    ):
         StatementSplitter("postgresql").split_statements(script)
 
 
 def test_copy_header_refuses_nonbreaking_space_after_semicolon():
     script = "COPY t FROM STDIN;\u00a0\n1\n\\.\n"
 
-    with pytest.raises(UnsafeStatementSplitError, match="text after COPY FROM STDIN"):
+    with pytest.raises(
+        UnsafeStatementSplitError, match=f"line 1, column {script.index(chr(0xA0)) + 1}"
+    ):
+        StatementSplitter("postgresql").split_statements(script)
+
+
+def test_copy_header_refuses_multiline_block_comment_at_its_start():
+    script = "COPY t FROM STDIN; /* header\ncomment */\n1\n\\.\n"
+
+    with pytest.raises(UnsafeStatementSplitError, match=f"line 1, column {script.index('/*') + 1}"):
         StatementSplitter("postgresql").split_statements(script)
 
 
