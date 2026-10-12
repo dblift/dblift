@@ -155,7 +155,7 @@ None.
 Statements the splitter flags as *not transactional*; execution runs them in
 autocommit. The flag is set from the first keywords of a statement after
 comments; a batch is flagged as a whole when ANY of its statements is one of these
-(the batch is divided into statements to find out, with the extraction split: `CREATE TABLE a (id INT);\nCREATE FULLTEXT INDEX …` with no `GO` is flagged) and reported. The division follows `;`: a statement SQL Server refuses in a transaction must start a `;`-terminated statement or its own batch; otherwise the server reports the error (Msg 226, 574 or 3021) and the batch rolls back. Every pattern below is a statement SQL Server
+(the batch is divided into statements to find out, with scanner-derived analysis constituents: `CREATE TABLE a (id INT);\nCREATE FULLTEXT INDEX …` with no `GO` is flagged) and reported. The division follows `;`: a statement SQL Server refuses in a transaction must start a `;`-terminated statement or its own batch; otherwise the server reports the error (Msg 226, 574 or 3021) and the batch rolls back. Every pattern below is a statement SQL Server
 refuses inside a user transaction (measured 2026-10-11, sqlcmd 18.6.0002.1, SQL Server 16.0.4255.1: `BEGIN TRANSACTION; <statement>; COMMIT;`), exit 1, nothing created:
 
 | Pattern (first keywords) | Measured error | Flagged |
@@ -189,6 +189,10 @@ count and comment, a directive prefix list.
 | 5 | `SELECT 'GO\n' AS s\nGO` | `SELECT 'GO\n' AS s` |
 | 5a | `SELECT 'a\nGO\nb' AS s\nGO` | `SELECT 'a\nGO\nb' AS s` (a GO alone on a line inside a string is text) |
 | 5b | `CREATE TABLE [a\nGO\nb] (id INT)\nGO` | `CREATE TABLE [a\nGO\nb] (id INT)` (the same inside a bracketed identifier) |
+| 5c | `SELECT 'a'␍GO` | `UnsafeStatementSplitError` (a lone CR in code is not a GO line break) |
+| 5d | `SELECT [x]␍GO` | `UnsafeStatementSplitError` (the same after a bracketed identifier) |
+| 5e | `SELECT 'a␍GO';\nGO` | `SELECT 'a␍GO';` (a CR and GO inside a string are text) |
+| 5f | `SELECT [x␍GO];\nGO` | `SELECT [x␍GO];` (the same inside a bracketed identifier) |
 | 6 | `/* a /* b */ GO */\nSELECT 1\nGO` | `error` (measured: sqlcmd ends the comment at the first `*/`; `GO */` is text after `GO`: client syntax error, exit 1; go-sqlcmd runs it and creates the table; §3) |
 | 6a | `SELECT /* a /* b */ */ 1\nGO` | `SELECT /* a /* b */ */ 1` (no GO involved: the nested comment is the server's, the text is passed through) |
 | 6b | `SELECT 1 /* a\nGO\n*/\nGO` | `SELECT 1 /* a\nGO\n*/` (a GO alone on a line inside a block comment is text) |
@@ -244,23 +248,21 @@ count and comment, a directive prefix list.
 
 Code in `dblift/db/plugins/sqlserver/parser/`:
 
-- `_batches.py`: `scan_batches(script)` is the only function `split_statements` calls. It reproduces
-  the client's lexer: strings, bracketed and quoted identifiers, `--` comments, block comments that
-  end at the first `*/`, a command word as the first token of a line, the `GO` line grammar of §4 and
-  the refusals of §6. A `GO n` batch carries its count; the scanner never reads a `;`.
-- `sqlserver_regex_parser.py`: `SqlServerRegexParser.split()` returns one `Statement` per batch
-  (`terminator="GO"` or none, `repeat`); `split_statements()` is its projection (`GO n` returns the
-  batch n times, `GO 0` is logged and returns nothing) and has no fallback;
-  `split_for_analysis()` divides each batch into its statements for callers that read a script
-  statement by statement; `split_for_extraction()` is the previous tokenizer-based splitter,
-  unchanged, and still serves `parse_sql`, object extraction and the sqlglot fallback. It still
-  carries the defects of rows 13, 15 and 16 (it cuts `SELECT 1 AS go;` at the alias).
-- `sqlserver_tokenizer.py`, `sqlserver_statement_parser.py`, `tsql_batch_separator.py`: kept only for
-  that extraction path.
-- `quirks.py` `non_transactional_sql_patterns` (§8) and `execution_statement.classify_execution_statement`,
-  which divides a batch so that any statement matching a pattern makes the batch non-transactional.
+- `_batches.py`: `scan_batches(script)` reads the client lexical rules and builds
+  the batch records and their SQL analysis constituents in one pass. It
+  recognises `GO` only in code, refuses ambiguous client commands and lone-CR
+  separator lines, and retains `GO n` as a repeat count.
+- `sqlserver_regex_parser.py`: `split()` returns one `Statement` record per
+  batch, including `repeat`, analysis constituents and source offsets.
+  `split_statements()` projects executable batches (`GO 0` executes none), and
+  `split_for_analysis()` and `split_for_extraction()` project the same records.
+  `parse_sql` reads those selected constituents; no earlier tokenizer splitter
+  remains behind extraction.
+- `sqlserver_tokenizer.py` remains for literal redaction only;
+  `tsql_batch_separator.py` provides semantic batch metadata, not script cuts.
+- `quirks.py` and `execution_statement.classify_execution_statement` mark a
+  batch non-transactional when any scanner-derived constituent matches §8.
 
-Tests that pin it: `tests/unit/core/sql_parser/test_sqlserver_spec_conformance.py` (every row of §10),
-`tests/unit/db/plugins/sqlserver/` (`test_batches.py`, `test_go_line.py`, `test_client_commands.py`,
-`test_split_for_analysis.py`, `test_extraction_keeps_statements.py`,
-`test_non_transactional_statements.py`).
+Tests: `tests/unit/core/sql_parser/test_sqlserver_spec_conformance.py` compiles
+§10; `tests/unit/db/plugins/sqlserver/test_authoritative_views.py` checks the
+record and projection contract, including the lone-CR cases.

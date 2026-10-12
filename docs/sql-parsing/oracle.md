@@ -190,6 +190,7 @@ else in this spec is data.
 | 16a | `SELECT 1 FROM dual; -- note\nSELECT 2 FROM dual;` | `error` at line 1: text after the terminator (SQL\*Plus 5.3.4; sqlplus 23.x, Oracle Free 23ai, 2026-10-10: row 16a, rc 1, ORA-03405 "End of query reached; no additional text should follow.", nothing created) |
 | 16b | `INSERT INTO t VALUES (1); INSERT INTO t VALUES (2);` | `error` at line 1: the semicolon is not the last text on its line (sqlplus 23.x, Oracle Free 23ai, 2026-10-10: row 16b, rc 1, ORA-03405 "End of query reached; no additional text should follow."; `T16B` created, 0 rows) |
 | 17 | `SELECT 1 FROM dual;\nEXIT\nSELECT 2 FROM dual;` | `SELECT 1 FROM dual` · directive record with a warning naming the first ignored line |
+| 17a | `SELECT 1 FROM dual;\nEXIT\nSELECT 'unterminated` | `SELECT 1 FROM dual` (EXIT ignores the malformed tail before tokenising it; warning names the first ignored line) |
 | 18 | `@@setup.sql\nSELECT 1 FROM dual;` | `UnsupportedMetaCommandError` (line 1, `@@`) |
 | 19 | `SELECT 1 FROM dual; PROMPT x\nSELECT 2 FROM dual;` | `UnsupportedMetaCommandError` (line 1, directive after `;` on the same line) |
 | 20 | `CREATE OR REPLACE PROCEDURE p AS BEGIN NULL; END;\nCREATE TABLE t (id NUMBER);` | `error`: PL/SQL unit not terminated by a slash before end of input (SQL\*Plus would hang waiting for it) |
