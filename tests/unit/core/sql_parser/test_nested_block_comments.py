@@ -234,9 +234,10 @@ class TestDb2NestedBlockComments(unittest.TestCase):
         stmts = self.parser.split_statements(THREE_DEEP)
         self.assertEqual(stmts, [THREE_DEEP.rstrip(";")])
 
-    def test_unterminated_inner_comment_swallows_rest_of_file(self):
-        stmts = self.parser.split_statements(UNTERMINATED_INNER)
-        self.assertEqual(stmts, [])
+    def test_unterminated_inner_comment_is_refused(self):
+        # an unclosed block comment is refused, not swallowed (docs/sql-parsing/db2.md §4)
+        with self.assertRaises(UnsafeStatementSplitError):
+            self.parser.split_statements(UNTERMINATED_INNER)
 
     def test_comment_only_file_produces_no_statements(self):
         sql = "/* outer\n   /* inner */\n   still comment\n*/\n"
@@ -268,7 +269,9 @@ class TestDb2NestedBlockComments(unittest.TestCase):
     def test_nested_comment_before_a_procedure_keeps_the_block_whole(self):
         sql = (
             "/* a /* b */ ; DROP TABLE t_keep; */\n"
+            "--#SET TERMINATOR @\n"
             "CREATE PROCEDURE p1() BEGIN DECLARE v INT; SET v = 1; END@\n"
+            "--#SET TERMINATOR ;\n"
             "CREATE TABLE t_after (x INT);"
         )
         stmts = self.parser.split_statements(sql)

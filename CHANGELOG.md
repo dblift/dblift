@@ -25,6 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   text without its delimiter, its line, the delimiter that ended it, and
   `DELIMITER` lines as `directive` records. MariaDB has its own parser class
   (`MariaDbRegexParser`).
+- `Statement` records for Db2 (`DB2RegexParser.split()`): the text without its
+  terminator, its line, the terminator (`;`, one declared with
+  `--#SET TERMINATOR`, or none) and a kind (`sql` or `directive`).
 
 ### Changed
 
@@ -104,9 +107,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SQL Server and Oracle refuse an unterminated string or block comment with
   `UnsafeStatementSplitError` and its position. SQL Server previously
   dropped the rest of the file silently for an unterminated comment.
-- MySQL and MariaDB: an unterminated block comment now yields the remainder
-  as one statement (the server rejects it) instead of an empty result.
-  SQLite, DuckDB and Db2 log a warning and keep their previous output.
+- MySQL, MariaDB and Db2 refuse an unterminated block comment with
+  `UnsafeStatementSplitError`. SQLite and DuckDB are unchanged: they return
+  the remainder as one statement, without a warning.
+- **Db2: a script is cut the way the command line processor cuts it.** A
+  statement ends at a line whose last non-blank characters are the terminator:
+  `;`, or the one or two characters a `--#SET TERMINATOR` line declared
+  (upper case only). `@` ends a statement only after that directive; `MY@TBL`
+  is a name. A `;` at the end of a line inside a block comment does not end the
+  statement (commented-out SQL stays whole, where the processor would cut it and
+  reject both halves). A comment after a `;` on its line is dropped and the
+  statement ends at the `;`. Comment-only lines of either form after the last
+  statement are dropped.
+- **Db2: a line that ends with the terminator inside a string or a quoted
+  identifier is refused** with the line named. The processor cuts there and the
+  server rejects both halves; the previous splitter read the literal across the
+  line break and ran it, so a script with a multi-line literal whose line ends in
+  `;` must end the literal on the same line or use another terminator.
+- **Db2: two statements on one line, or code after a `;` in the middle of a
+  line, are refused** with the line named. The processor rejects such a line and
+  the `ibm_db` driver executes only the text before the `;`. The previous
+  splitter cut at that `;` and ran both halves; put each statement on its own
+  line.
+- **Db2: a `--#SET TERMINATOR` line inside a string, a quoted identifier or a
+  block comment is refused.** The processor honours it there and misreads the
+  statement.
+- **Db2: processor commands are refused by name.** `CONNECT TO`, `QUIT`, `ECHO`,
+  `!command`, `?`, `UPDATE COMMAND OPTIONS`, `CHANGE ISOLATION`, `REORG`,
+  `RUNSTATS`, `EXPORT`, `IMPORT`, `LOAD`, `LIST`, `GET` (`GET DIAGNOSTICS` is SQL and passes) and the
+  rest of the processor's own command list, and `(=` comment blocks, stop the
+  script with the command and its line instead of being sent to the server or
+  skipped silently. A command's words are read across line breaks, as the
+  processor reads them. `CONNECT RESET`, `TERMINATE` and `QUIT` as the last
+  statement of a script are dropped when each is the bare command alone on its
+  line, and refused otherwise. `CREATE DATABASE` and `DROP DATABASE` are sent to
+  the server, which rejects them.
+- **Db2: a malformed `--#SET TERMINATOR` line is refused**; a value of more than
+  two characters used to be accepted and ignored.
+- **Db2: a routine body that is never closed and an unterminated block comment
+  are refused** instead of reaching the server. A comment alone before a
+  terminator is still not a statement.
+- **Db2: a body is kept whole under `;`** for `CREATE [OR REPLACE] PROCEDURE`,
+  `FUNCTION`, `TRIGGER`, `METHOD`, `ALTER MODULE … ADD` and a compound
+  statement; `PACKAGE` bodies follow the same rule (not tested against a
+  server). The processor cuts such a body at every line that ends in `;`, so a
+  file that holds one needs a `--#SET TERMINATOR` line to run under `db2 -tvf`;
+  dblift runs it either way, and also runs a last statement that has no
+  terminator, which the processor drops.
 
 ### Removed
 
@@ -121,6 +168,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Db2: a name with `@` in it (`MY@TBL`) and a quoted name with a `;` in it
+  (`"a;b"`) are no longer cut; a label after `END` (`END P1`), a comment between
+  `END` and `IF`, a compound statement without `ATOMIC`, a body in
+  `ALTER MODULE … ADD PROCEDURE`, a routine without a `BEGIN` next to a trigger,
+  and a `--#SET TERMINATOR` of two characters (`%%`) in a script that also holds
+  a procedure are read as the command line processor reads them.
 - Oracle: `DEFINE`, `SET DEFINE` and `UNDEFINE` apply from the line where they
   stand, not to the whole script; `&x`, `&&x` and `&x.suffix` are replaced
   (inside string literals too, as SQL*Plus does), and a reference to an

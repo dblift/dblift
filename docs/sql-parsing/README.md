@@ -42,7 +42,7 @@ the extractor's concern and is covered by the model snapshot tests, not here.
   documented equivalent, *dropped and recorded* as a `kind="directive"` entry
   in the statement list, or *rejected* with an error naming the directive.
   "Stripped" without a record is not an option.
-- **No fallback (PostgreSQL family, Oracle and SQL Server).** An input the rules do not cover raises
+- **No fallback (PostgreSQL family, Oracle, SQL Server and Db2).** An input the rules do not cover raises
   `UnsafeStatementSplitError` with line and column. The spec's *Not handled*
   section is the list of such inputs the authors know about.
 - **The terminator is consumed, not returned.** A statement's text excludes
@@ -64,7 +64,7 @@ the extractor's concern and is covered by the model snapshot tests, not here.
 Section 10 of every spec is compiled into tests by
 `tests/support/splitter_spec/spec_tables.py` and run by
 `test_postgresql_spec_conformance.py`, `test_oracle_spec_conformance.py`,
-`test_sqlserver_spec_conformance.py` and `test_mysql_spec_conformance.py` in `tests/unit/core/sql_parser/`. A row that the compiler cannot read is
+`test_sqlserver_spec_conformance.py`, `test_mysql_spec_conformance.py` and `test_db2_spec_conformance.py` in `tests/unit/core/sql_parser/`. A row that the compiler cannot read is
 a build error, so the tables keep this shape:
 
 | Column | Rule |
@@ -80,7 +80,7 @@ terminator (`;`) removed; everything else is compared verbatim.
 
 Each row runs through `SqlAnalyzer.split_statements`, the entry point `migrate`
 uses, in `test_postgresql_spec_conformance.py`, `test_oracle_spec_conformance.py`,
-`test_sqlserver_spec_conformance.py` and `test_mysql_spec_conformance.py` (all in `tests/unit/core/sql_parser/`; the last runs `mysql.md` for both engines and `mariadb.md` for MariaDB). A row
+`test_sqlserver_spec_conformance.py`, `test_mysql_spec_conformance.py` and `test_db2_spec_conformance.py` (all in `tests/unit/core/sql_parser/`; the mysql module runs `mysql.md` for both engines and `mariadb.md` for MariaDB). A row
 the current code gets wrong is listed by id in that module's list of known gaps and
 fails strictly (`xfail(strict=True)`): the list can only shrink honestly.
 
@@ -93,6 +93,7 @@ fails strictly (`xfail(strict=True)`): the list can only shrink honestly.
 | [sqlserver.md](sqlserver.md) | SQL Server and Azure SQL (T-SQL) | none; the previous splitter still serves extraction and `parse_sql` |
 | [mysql.md](mysql.md) | MySQL and MariaDB, read the way the `mysql` client reads a script: `DELIMITER`, client commands, executable comments, stored-program bodies | none; the previous splitter still serves extraction and `parse_sql` |
 | [mariadb.md](mariadb.md) | where MariaDB differs from MySQL: the `/*M!` comment, `CREATE OR REPLACE`, `AGGREGATE`, `FOR` loops | none; one flag of the MySQL scanner |
+| [db2.md](db2.md) | Db2 for Linux, UNIX and Windows (scripts written for the command line processor) | none; the previous splitter still serves extraction and `parse_sql` |
 
 ## Verification sources
 
