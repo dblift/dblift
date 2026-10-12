@@ -220,11 +220,13 @@ class HybridParser(_SqlglotBuildersMixin, SqlParserInterface):
             if enhanced_statements:
                 result.statements = enhanced_statements
 
-            if not collected_objects:
-                try:
-                    self.split_statements(sql_content)
-                except ParserError as refusal:
+            try:
+                self.split_statements(sql_content)
+            except ParserError as refusal:
+                if str(refusal) not in (result.errors or []):
                     result.errors = [*(result.errors or []), str(refusal)]
+
+            if not collected_objects:
                 fallback_objects = self.extract_objects(sql_content, default_schema)
                 if fallback_objects:
                     self._collect_objects(result, fallback_objects)
