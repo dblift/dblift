@@ -68,7 +68,10 @@ class CleanCommand(BaseCommand):
             return result
 
         try:
-            self.provider.validate_clean_target(self.config.database.schema)
+            schema = self.config.database.schema
+            validate_target = getattr(self.provider, "validate_clean_target", None)
+            if schema and validate_target is not None:
+                validate_target(schema)
         except Exception as e:
             error_message = f"Clean operation failed: {e}"
             self.log.error(error_message)
