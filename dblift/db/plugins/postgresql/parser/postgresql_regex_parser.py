@@ -44,8 +44,6 @@ class PostgreSqlRegexParser(EnhancedRegexParser):
     #: documentation swap this for :class:`NonNestingPostgreSQLTokenizer`.
     tokenizer_class: type = PostgreSQLTokenizer
 
-    SPLITS_WITHOUT_FALLBACK = True
-
     def __init__(self) -> None:
         """Initialize PostgreSQL regex parser."""
         # Initialize with PostgreSQL configuration

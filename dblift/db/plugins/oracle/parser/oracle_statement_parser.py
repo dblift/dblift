@@ -184,7 +184,14 @@ class OracleStatementParser(BaseStatementParser):
                 f"Unsupported SQL*Plus directive {directive.name!r} at line {token.line}; "
                 "dblift does not run it"
             )
-        record = Statement(text=token.text, line=token.line, terminator=None, kind="directive")
+        record = Statement(
+            text=token.text,
+            line=token.line,
+            terminator=None,
+            kind="directive",
+            source_start=token.pos if self.source is not None else None,
+            source_end=self._line_end(token.pos),
+        )
         if directive.name != "WHENEVER SQLERROR":
             return record, ""
         if parse_whenever_sqlerror(token.text) is None:
@@ -210,7 +217,23 @@ class OracleStatementParser(BaseStatementParser):
                 f"EXECUTE on line {token.line} has no statement to run"
             )
         text = self._substitute(f"BEGIN {stmt}; END;", token.line)
-        return Statement(text=text, line=token.line, terminator=None, kind="sql"), text
+        return (
+            Statement(
+                text=text,
+                line=token.line,
+                terminator=None,
+                kind="sql",
+                source_start=token.pos if self.source is not None else None,
+                source_end=self._line_end(token.pos),
+            ),
+            text,
+        )
+
+    def _line_end(self, pos: int) -> Optional[int]:
+        if self.source is None:
+            return None
+        newline = self.source.find("\n", pos)
+        return newline + 1 if newline >= 0 else len(self.source)
 
     def _apply_define(self, name: str, line: str, line_no: int) -> None:
         """Update the substitution state from a ``DEFINE``-action directive line."""
@@ -323,7 +346,18 @@ class OracleStatementParser(BaseStatementParser):
         text = rendered
         if end == ";" and text.endswith(";"):
             text = text[:-1].rstrip()
-        return Statement(text=text, line=first.line, terminator=end), rendered
+        last = terminator or tokens[-1]
+        source_end = self._line_end(last.pos) if end == "/" else last.pos + len(last.text)
+        return (
+            Statement(
+                text=text,
+                line=first.line,
+                terminator=end,
+                source_start=first.pos if self.source is not None else None,
+                source_end=source_end if self.source is not None else None,
+            ),
+            rendered,
+        )
 
     def _statement_text(self, tokens: List[Token], is_tail: bool = False) -> str:
         """Render one statement, verbatim from source when source is known.

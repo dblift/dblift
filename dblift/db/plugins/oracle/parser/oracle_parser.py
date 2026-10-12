@@ -30,8 +30,6 @@ except ModuleNotFoundError as exc:
 class OracleParser(RegexBasedParser):
     """Oracle SQL parser using the tokenizer's SQL*Plus execution selection."""
 
-    SPLITS_WITHOUT_FALLBACK = True
-
     dialect_name = "oracle"  # lint: allow-dialect-string: dialect dispatch
 
     def __init__(self) -> None:

@@ -135,3 +135,37 @@ def test_block_state_does_not_leak_into_the_next_statement() -> None:
 )
 def test_split_statements_keeps_the_source_slice_verbatim(script: str, expected: list[str]) -> None:
     assert _parser(script).split_statements() == expected
+
+
+def test_source_offsets_cover_psql_combination_and_copy_terminator() -> None:
+    script = "SELECT 1 \\; SELECT 2;\nCOPY t FROM STDIN;\n1\n\\.\nSELECT 3;"
+    records = _split(script)
+
+    assert [script[r.source_start : r.source_end] for r in records] == [
+        "SELECT 1 \\; SELECT 2;",
+        "COPY t FROM STDIN;\n1\n\\.\n",
+        "SELECT 3;",
+    ]
+    assert records[0].analysis_statements == ("SELECT 1", "SELECT 2")
+
+
+def test_source_offsets_do_not_swallow_following_meta_command() -> None:
+    script = "SELECT 1\n\\restrict abc\nSELECT 2;"
+    records = _split(script)
+
+    assert [script[r.source_start : r.source_end] for r in records] == [
+        "SELECT 1\n",
+        "\\restrict abc\n",
+        "SELECT 2;",
+    ]
+
+
+def test_source_offsets_use_original_bom_and_crlf_positions() -> None:
+    script = "\ufeffSELECT 1;\r\nCOPY t FROM STDIN;\r\n1\r\n\\.\r\nSELECT 2;"
+    records = _split(script)
+
+    assert [script[r.source_start : r.source_end] for r in records] == [
+        "\ufeffSELECT 1;",
+        "COPY t FROM STDIN;\r\n1\r\n\\.\r\n",
+        "SELECT 2;",
+    ]

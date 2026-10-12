@@ -49,3 +49,29 @@ def test_sql_statement_ended_by_slash_alone():
     s = "SELECT 1 FROM dual\n/\n"
     assert _split(s) == [Statement(text="SELECT 1 FROM dual", line=1, terminator="/")]
     assert _parser(s).split_statements() == ["SELECT 1 FROM dual"]
+
+
+def test_source_offsets_cover_slash_line_and_substituted_execution_text():
+    script = (
+        "DEFINE table_name = widgets\n"
+        "CREATE OR REPLACE PROCEDURE p AS BEGIN NULL; END;\n/\n"
+        "CREATE TABLE &table_name (id NUMBER);\n"
+    )
+    records = _split(script)
+
+    assert [script[r.source_start : r.source_end] for r in records] == [
+        "DEFINE table_name = widgets\n",
+        "CREATE OR REPLACE PROCEDURE p AS BEGIN NULL; END;\n/\n",
+        "CREATE TABLE &table_name (id NUMBER);",
+    ]
+    assert records[2].text == "CREATE TABLE widgets (id NUMBER)"
+
+
+def test_source_offsets_use_original_crlf_positions():
+    script = "CREATE PROCEDURE p AS BEGIN NULL; END;\r\n/\r\nSELECT 1 FROM dual;"
+    records = _split(script)
+
+    assert [script[r.source_start : r.source_end] for r in records] == [
+        "CREATE PROCEDURE p AS BEGIN NULL; END;\r\n/\r\n",
+        "SELECT 1 FROM dual;",
+    ]

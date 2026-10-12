@@ -154,7 +154,7 @@ class PostgreSQLStatementParser(BaseStatementParser):
             ):
                 text = self._render_statement(current, terminator, end_pos)
                 if text.strip():
-                    records.append(self._record(current, text, terminator))
+                    records.append(self._record(current, text, terminator, end_pos))
             current.clear()
             self.context.reset_for_new_statement()
 
@@ -175,7 +175,12 @@ class PostgreSQLStatementParser(BaseStatementParser):
                 records.append(
                     (
                         Statement(
-                            text=token.text, line=token.line, terminator=None, kind="directive"
+                            text=token.text,
+                            line=token.line,
+                            terminator=None,
+                            kind="directive",
+                            source_start=token.pos if self.source is not None else None,
+                            source_end=self._line_end(token.pos),
                         ),
                         token.text,
                     )
@@ -191,14 +196,34 @@ class PostgreSQLStatementParser(BaseStatementParser):
         flush(None, None)
         return records
 
+    def _line_end(self, pos: int) -> Optional[int]:
+        if self.source is None:
+            return None
+        newline = self.source.find("\n", pos)
+        return newline + 1 if newline >= 0 else len(self.source)
+
     def _record(
-        self, tokens: List[Token], rendered: str, terminator: Optional[Token]
+        self,
+        tokens: List[Token],
+        rendered: str,
+        terminator: Optional[Token],
+        end_pos: Optional[int],
     ) -> Tuple[Statement, str]:
         """Build the record for one rendered statement and its verbatim string.
 
         The record's text has the terminator stripped; the string keeps it.
         """
         first = next(t for t in tokens if t.type != TokenType.COMMENT)
+        source_start = first.pos if self.source is not None else None
+        source_end = (
+            terminator.pos + len(terminator.text)
+            if terminator is not None
+            else (
+                end_pos
+                if end_pos is not None
+                else len(self.source) if self.source is not None else None
+            )
+        )
         combinators = [t for t in tokens if t.type == TokenType.SYMBOL and t.text == "\\;"]
         multi = bool(combinators)
         analysis_statements = None
@@ -227,6 +252,8 @@ class PostgreSQLStatementParser(BaseStatementParser):
                     terminator=None,
                     multi=multi,
                     analysis_statements=analysis_statements,
+                    source_start=source_start,
+                    source_end=source_end,
                 ),
                 rendered,
             )
@@ -250,6 +277,8 @@ class PostgreSQLStatementParser(BaseStatementParser):
                 terminator="\\." if ended else None,
                 kind="copy_stdin",
                 analysis_statements=(header,),
+                source_start=source_start,
+                source_end=self._line_end(end) if ended else end,
             )
             return record, rendered
         text = rendered
@@ -262,6 +291,8 @@ class PostgreSQLStatementParser(BaseStatementParser):
                 terminator=terminator.text,
                 multi=multi,
                 analysis_statements=analysis_statements,
+                source_start=source_start,
+                source_end=source_end,
             ),
             rendered,
         )
