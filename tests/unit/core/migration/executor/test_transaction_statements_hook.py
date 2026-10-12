@@ -48,7 +48,7 @@ def test_migration_runs_the_body_without_the_envelope():
 
     assert [s.strip(";\n ") for s in _executed(engine)] == ["CREATE TABLE t (a INT)"]
     engine.log.warning.assert_any_call(
-        "Dropped BEGIN and COMMIT from V1__x.sql: dblift runs the migration in one "
+        "Dropped BEGIN and COMMIT from V1__x.sql: dblift runs the script in one "
         "transaction of its own"
     )
 

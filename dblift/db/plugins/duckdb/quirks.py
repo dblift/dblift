@@ -38,10 +38,17 @@ class DuckDBQuirks(BaseQuirks):
     # statement): a script's own BEGIN fails against it and its COMMIT/END/ROLLBACK/ABORT ends it
     # early. DuckDB has no SAVEPOINT, so there is no savepoint family to leave alone.
     transaction_control_sql_patterns = (
-        (r"^(BEGIN(\s+TRANSACTION)?|START\s+TRANSACTION)\s*;?$", "begin"),
-        (r"^(COMMIT|END)(\s+TRANSACTION)?\s*;?$", "end"),
-        (r"^(ROLLBACK|ABORT)(\s+TRANSACTION)?\s*;?$", "abort"),
+        (r"^(BEGIN(\s+(TRANSACTION|WORK))?|START\s+TRANSACTION)\s*;?$", "begin"),
+        (r"^(BEGIN|START\s+TRANSACTION)\b", "begin_other"),
+        (r"^(COMMIT|END)(\s+(TRANSACTION|WORK))?\s*;?$", "end"),
+        (r"^(ROLLBACK|ABORT)(\s+(TRANSACTION|WORK))?\s*;?$", "abort"),
     )
+
+    def blank_comments(self, sql: str) -> str:
+        """The statement with its comments blanked by the DuckDB scanner."""
+        from dblift.db.plugins.duckdb.parser._script import blank_comments
+
+        return blank_comments(sql)
 
     def __init__(self, dialect_name: str = "duckdb") -> None:
         """Initialize DuckDB quirks with the dialect name."""

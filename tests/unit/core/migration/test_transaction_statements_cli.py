@@ -1,4 +1,4 @@
-"""SQLite and DuckDB: transaction statements in a migration, through ``dblift migrate`` as a subprocess.
+"""SQLite and DuckDB: transaction statements in a migration, through ``dblift migrate`` as a subprocess (no container: file databases).
 
 The CLI connects in autocommit, unlike ``from_sqlalchemy``; the same scenarios are held to the same
 state on both paths. For a script that is applied, the vendor shell run on the same script is the
@@ -14,8 +14,6 @@ from pathlib import Path
 import pytest
 
 from tests.support.transaction_scenarios import SCENARIOS, SCRIPT, cases, database_url, read_state
-
-pytestmark = pytest.mark.integration
 
 REPO = Path(__file__).resolve().parents[2]
 SHELLS = {"sqlite": ["sqlite3", "-bail"], "duckdb": ["duckdb", "-init", "/dev/null", "-bail"]}

@@ -518,9 +518,18 @@ class BaseQuirks:
     #: connection's transaction, as ``(regex, kind)`` matched like
     #: ``non_transactional_sql_patterns``. dblift runs each migration in a transaction of its
     #: own, so a dialect that fills this table gets a script's exact ``BEGIN ... COMMIT``
-    #: envelope dropped and any other transaction statement refused.
+    #: envelope dropped and any other transaction statement refused. A ``"begin_other"``
+    #: entry is a BEGIN with options that cannot stand in for dblift's own: never dropped.
     #: Default: empty -- the script is run as written (``COMMIT`` after DML, nested ``BEGIN``).
     transaction_control_sql_patterns: "tuple[tuple[str, str], ...]" = ()
+
+    def blank_comments(self, sql: str) -> str:
+        """*sql* with its comments blanked, as the dialect's scanner reads them.
+
+        Used to match ``transaction_control_sql_patterns`` on ``COMMIT /* c */;``.
+        Default: unchanged (only leading comments are stripped by the caller).
+        """
+        return sql
 
     # ------------------------------------------------------------------
     # Provider display / credential hooks.

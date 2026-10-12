@@ -8,11 +8,12 @@ keeps an empty table and is returned untouched.
 
 from __future__ import annotations
 
+import re
 from unittest.mock import MagicMock
 
 import pytest
 
-from dblift.core.exceptions import UnsupportedMetaCommandError
+from dblift.core.exceptions import TransactionStatementError, UnsupportedMetaCommandError
 from dblift.core.migration.sql.execution_statement import neutralise_transaction_statements
 from dblift.db.base_quirks import BaseQuirks
 from dblift.db.provider_registry import ProviderRegistry
@@ -29,11 +30,9 @@ def _run(statements, dialect="sqlite", content="", name="V1__x.sql"):
 
 
 def _kinds(dialect, text):
-    return [
-        kind
-        for pattern, kind in ProviderRegistry.get_quirks(dialect).transaction_control_sql_patterns
-        if __import__("re").match(pattern, text)
-    ]
+    """The kind the function would give *text*: the first pattern that matches, as a list."""
+    patterns = ProviderRegistry.get_quirks(dialect).transaction_control_sql_patterns
+    return [kind for pattern, kind in patterns if re.match(pattern, text)][:1]
 
 
 def test_base_quirks_default_is_empty():
@@ -54,6 +53,8 @@ def test_base_quirks_default_is_empty():
         ("END TRANSACTION", "end"),
         ("ROLLBACK", "abort"),
         ("ROLLBACK TRANSACTION;", "abort"),
+        ("BEGIN EXCLUSIVE", "begin_other"),
+        ("BEGIN EXCLUSIVE TRANSACTION", "begin_other"),
     ],
 )
 def test_sqlite_patterns_match(text, kind):
@@ -67,9 +68,10 @@ def test_sqlite_patterns_match(text, kind):
         "ROLLBACK TRANSACTION TO SAVEPOINT s",
         "SAVEPOINT s",
         "RELEASE s",
-        "BEGIN EXCLUSIVE",
         "START TRANSACTION",
         "ABORT",
+        "COMMIT WORK",
+        "BEGIN_LOG",
         "CREATE TABLE begin_log (a INT)",
         "INSERT INTO t VALUES (1)",
         "CREATE TRIGGER tg AFTER INSERT ON t BEGIN SELECT 1; END",
@@ -91,6 +93,14 @@ def test_sqlite_patterns_do_not_match(text):
         ("ROLLBACK", "abort"),
         ("ABORT;", "abort"),
         ("ABORT TRANSACTION", "abort"),
+        ("BEGIN WORK", "begin"),
+        ("START TRANSACTION", "begin"),
+        ("COMMIT WORK;", "end"),
+        ("END WORK", "end"),
+        ("ROLLBACK WORK", "abort"),
+        ("ABORT WORK;", "abort"),
+        ("BEGIN TRANSACTION READ ONLY", "begin_other"),
+        ("START TRANSACTION READ ONLY", "begin_other"),
     ],
 )
 def test_duckdb_patterns_match(text, kind):
@@ -103,7 +113,7 @@ def test_duckdb_patterns_match(text, kind):
         "START",
         "ROLLBACK TO s",
         "SAVEPOINT s",
-        "BEGIN TRANSACTION READ ONLY",
+        "BEGIN_LOG",
         "CREATE TABLE t (a INT)",
     ],
 )
@@ -117,7 +127,7 @@ class TestEnvelope:
         out, log = _run(["BEGIN;", *BODY, "COMMIT;"], dialect)
         assert out == BODY
         log.warning.assert_called_once_with(
-            "Dropped BEGIN and COMMIT from V1__x.sql: dblift runs the migration in one "
+            "Dropped BEGIN and COMMIT from V1__x.sql: dblift runs the script in one "
             "transaction of its own"
         )
 
@@ -163,6 +173,33 @@ class TestEnvelope:
         assert f"{offender} manages the transaction" in message
         assert "none of its statements were executed" in message
 
+    def test_a_comment_between_the_keyword_and_the_semicolon_is_not_part_of_the_statement(
+        self, dialect
+    ):
+        out, _ = _run(["BEGIN /* a */", *BODY, "COMMIT -- b\n"], dialect)
+        assert out == BODY
+        with pytest.raises(TransactionStatementError, match="COMMIT manages"):
+            _run([BODY[0], "COMMIT /* c */", BODY[1]], dialect)
+
+    def test_a_word_inside_a_comment_or_string_is_not_a_statement(self, dialect):
+        statements = ["/* COMMIT */ SELECT 'COMMIT'", "-- ROLLBACK\nSELECT 1"]
+        assert _run(statements, dialect)[0] is statements
+
+    def test_an_envelope_around_a_statement_that_cannot_run_in_a_transaction_is_refused(
+        self, dialect
+    ):
+        if dialect == "duckdb":
+            pytest.skip("DuckDB has no non-transactional statement")
+        with pytest.raises(
+            TransactionStatementError, match="VACUUM cannot run inside a transaction"
+        ):
+            _run(["BEGIN", "VACUUM", "COMMIT"], dialect)
+
+    def test_refusal_is_a_transaction_statement_error(self, dialect):
+        with pytest.raises(TransactionStatementError) as raised:
+            _run(["COMMIT"], dialect)
+        assert isinstance(raised.value, UnsupportedMetaCommandError)
+
     def test_savepoints_run_as_written(self, dialect):
         statements = ["BEGIN", "SAVEPOINT s", BODY[1], "ROLLBACK TO s", "RELEASE s", "COMMIT"]
         out, _ = _run(statements, dialect)
@@ -175,11 +212,17 @@ class TestEnvelope:
         log.warning.assert_not_called()
 
 
-def test_refusal_names_the_line_of_the_statement_in_the_script():
+def _split(dialect, content):
+    from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+
+    return SqlAnalyzer(dialect=dialect, logger=MagicMock()).split_statements(content)
+
+
+@pytest.mark.parametrize("dialect", ["sqlite", "duckdb"])
+def test_refusal_names_the_line_of_the_statement_in_the_script(dialect):
     content = "CREATE TABLE t (a INT);\n\n-- x\nROLLBACK;\nCREATE TABLE u (a INT);\n"
-    statements = ["CREATE TABLE t (a INT);", "-- x\nROLLBACK;", "CREATE TABLE u (a INT);"]
-    with pytest.raises(UnsupportedMetaCommandError, match=r"V1__x\.sql, line 4: ROLLBACK manages"):
-        _run(statements, content=content)
+    with pytest.raises(TransactionStatementError, match=r"V1__x\.sql, line 4: ROLLBACK manages"):
+        _run(_split(dialect, content), dialect, content=content)
 
 
 def test_refusal_falls_back_to_the_statement_number_when_the_line_is_unknown():
@@ -202,3 +245,37 @@ def test_every_other_dialect_has_no_patterns_and_is_untouched():
         out, log = _run(statements, dialect)
         assert out is statements, dialect
         log.warning.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "dialect, begin, end",
+    [("duckdb", "BEGIN WORK", "COMMIT WORK"), ("duckdb", "START TRANSACTION", "END WORK")],
+)
+def test_duckdb_work_spellings_form_an_envelope(dialect, begin, end):
+    out, _ = _run([begin, *BODY, end], dialect)
+    assert out == BODY
+
+
+@pytest.mark.parametrize(
+    "word", ["COMMIT WORK", "END WORK", "ROLLBACK WORK", "ABORT WORK", "BEGIN WORK"]
+)
+def test_duckdb_work_spellings_are_refused_mid_script(word):
+    with pytest.raises(TransactionStatementError, match=f"{word} manages the transaction"):
+        _run([BODY[0], word, BODY[1]], "duckdb")
+
+
+@pytest.mark.parametrize(
+    "dialect, begin", [("sqlite", "BEGIN EXCLUSIVE"), ("duckdb", "BEGIN TRANSACTION READ ONLY")]
+)
+def test_a_begin_with_options_is_named_as_the_cause(dialect, begin):
+    with pytest.raises(TransactionStatementError) as raised:
+        _run([begin, *BODY, "COMMIT"], dialect)
+    assert f"{begin} cannot stand in for dblift's transaction" in str(raised.value)
+    assert "only a plain BEGIN" in str(raised.value)
+
+
+@pytest.mark.parametrize("dialect", ["sqlite", "duckdb"])
+def test_refusal_line_ignores_the_same_word_in_comments(dialect):
+    content = "CREATE TABLE t(a INT);\n-- remember COMMIT;\nINSERT INTO t VALUES(1); -- COMMIT;\nCOMMIT;\n"
+    with pytest.raises(TransactionStatementError, match=r"V1__x\.sql, line 4: COMMIT manages"):
+        _run(_split(dialect, content), dialect, content=content)

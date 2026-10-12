@@ -51,13 +51,19 @@ class SqliteQuirks(BaseQuirks):
     )
 
     # dblift's migrate holds the connection's one transaction: a script's own BEGIN fails against
-    # it and its COMMIT/END/ROLLBACK ends it early. ``BEGIN EXCLUSIVE`` and the SAVEPOINT family
-    # have no entry: the first fails as written, the second nests.
+    # it and its COMMIT/END/ROLLBACK ends it early. The SAVEPOINT family has no entry: it nests.
     transaction_control_sql_patterns = (
         (r"^BEGIN(\s+(DEFERRED|IMMEDIATE))?(\s+TRANSACTION)?\s*;?$", "begin"),
+        (r"^BEGIN\b", "begin_other"),
         (r"^(COMMIT|END)(\s+TRANSACTION)?\s*;?$", "end"),
         (r"^ROLLBACK(\s+TRANSACTION)?\s*;?$", "abort"),
     )
+
+    def blank_comments(self, sql: str) -> str:
+        """The statement with its comments blanked by the SQLite scanner."""
+        from dblift.db.plugins.sqlite.parser._script import blank_comments
+
+        return blank_comments(sql)
 
     def __init__(self, dialect_name: str = "sqlite") -> None:
         """Initialize SQLite quirks with the dialect name."""

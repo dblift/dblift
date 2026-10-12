@@ -113,7 +113,91 @@ SCENARIOS: Dict[str, Scenario] = {
         "refused",
         {},
         engines=("sqlite",),
+        message="line 1: BEGIN EXCLUSIVE",
+    ),
+    "begin_read_only_is_not_the_envelope": Scenario(
+        "BEGIN TRANSACTION READ ONLY;\nSELECT 1;\nCOMMIT;\n",
+        "refused",
+        {},
+        engines=("duckdb",),
+        message="line 1: BEGIN TRANSACTION READ ONLY",
+    ),
+    "envelope_around_vacuum": Scenario(
+        "BEGIN;\nVACUUM;\nCOMMIT;\n",
+        "refused",
+        {},
+        engines=("sqlite",),
+        message="line 2: VACUUM",
+    ),
+    "envelope_inline_comments": Scenario(
+        "BEGIN /* open */;\nCREATE TABLE t(a INT);\nINSERT INTO t VALUES (1);\nCOMMIT /* close */;\n",
+        "applied",
+        T1,
+    ),
+    "commit_with_a_comment_before_the_semicolon": Scenario(
+        "CREATE TABLE t(a INT);\nINSERT INTO t VALUES (1);\nCOMMIT /* c */;\n"
+        "INSERT INTO t VALUES (2);\nSELECT * FROM nosuch;\n",
+        "refused",
+        {},
         message="line 3",
+    ),
+    "line_after_a_comment_with_the_same_word": Scenario(
+        "CREATE TABLE t(a INT);\n-- remember COMMIT;\nINSERT INTO t VALUES(1); -- COMMIT;\nCOMMIT;\n",
+        "refused",
+        {},
+        message="line 4: COMMIT",
+    ),
+    "envelope_work": Scenario(
+        "BEGIN WORK;\nCREATE TABLE t(a INT);\nINSERT INTO t VALUES (1);\nCOMMIT WORK;\n",
+        "applied",
+        T1,
+        engines=("duckdb",),
+    ),
+    "lone_commit_work": Scenario(
+        "COMMIT WORK;\n", "refused", {}, engines=("duckdb",), message="line 1"
+    ),
+    "commit_work_mid_then_error": Scenario(
+        "CREATE TABLE t(a INT);\nINSERT INTO t VALUES (1);\nCOMMIT WORK;\nINSERT INTO t VALUES (2);\n"
+        "SELECT * FROM nosuch;\n",
+        "refused",
+        {},
+        engines=("duckdb",),
+        message="line 3",
+    ),
+    "end_work_mid": Scenario(
+        "CREATE TABLE t(a INT);\nEND WORK;\nINSERT INTO t VALUES (1);\n",
+        "refused",
+        {},
+        engines=("duckdb",),
+        message="line 2",
+    ),
+    "rollback_work_mid": Scenario(
+        "CREATE TABLE t(a INT);\nROLLBACK WORK;\nCREATE TABLE u(a INT);\n",
+        "refused",
+        {},
+        engines=("duckdb",),
+        message="line 2",
+    ),
+    "begin_work_closed_by_abort_work": Scenario(
+        "BEGIN WORK;\nCREATE TABLE t(a INT);\nABORT WORK;\n",
+        "refused",
+        {},
+        engines=("duckdb",),
+        message="line 3",
+    ),
+    "begin_work_closed_by_rollback_work": Scenario(
+        "BEGIN WORK;\nCREATE TABLE t(a INT);\nROLLBACK WORK;\n",
+        "refused",
+        {},
+        engines=("duckdb",),
+        message="line 3",
+    ),
+    "begin_work_mid": Scenario(
+        "CREATE TABLE t(a INT);\nBEGIN WORK;\nINSERT INTO t VALUES (1);\nCOMMIT WORK;\n",
+        "refused",
+        {},
+        engines=("duckdb",),
+        message="line 2",
     ),
     "start_transaction_envelope": Scenario(
         "START TRANSACTION;\nCREATE TABLE t(a INT);\nINSERT INTO t VALUES (1);\nCOMMIT;\n",

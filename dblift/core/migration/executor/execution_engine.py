@@ -19,7 +19,7 @@ from dblift.core.constants import (
 from dblift.core.exceptions import (
     CallbackExecutionError,
     TransactionAbortedError,
-    UnsupportedMetaCommandError,
+    TransactionStatementError,
 )
 from dblift.core.logger import Log, NullLog
 from dblift.core.logger.results import CallbackExecution, MigrationInfo, OperationResult
@@ -307,10 +307,9 @@ class ExecutionEngine:
             return self._prepare_sql_statements(migration, placeholder_service=placeholder_service)
         except Exception as exc:
             detail = str(to_python_string(exc))
-            # A transaction-statement refusal already names its script.
             message = (
                 detail
-                if isinstance(exc, UnsupportedMetaCommandError) and migration.script_name in detail
+                if isinstance(exc, TransactionStatementError)  # names its script itself
                 else f"Failed to parse SQL for {migration.script_name}: {detail}"
             )
             self.log.error(message)

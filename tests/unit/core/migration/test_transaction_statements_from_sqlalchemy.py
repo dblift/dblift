@@ -52,11 +52,11 @@ def test_envelope_is_dropped_with_a_warning(engine_name, tmp_path, caplog, capfd
     output = caplog.text + "".join(capfd.readouterr())
 
     assert "Dropped BEGIN and COMMIT from V1__x.sql" in output
-    assert "dblift runs the migration in one transaction of its own" in output
+    assert "dblift runs the script in one transaction of its own" in output
 
 
 def test_duckdb_bare_commit_never_reaches_the_driver_shim(tmp_path, monkeypatch):
-    """#1529: ``duckdb_engine`` turns a bare ``commit`` into ``connection.commit()`` and swallows the error."""
+    """``duckdb_engine`` turns a bare ``commit`` into ``connection.commit()`` and swallows the error; a migration must never get there."""
     import duckdb_engine
 
     seen = []

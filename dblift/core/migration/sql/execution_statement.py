@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any, List, Optional
 
+from dblift.core.exceptions import TransactionStatementError
 from dblift.core.sql_parser.common.comment_stripping import strip_comments_preserving_quotes
 from dblift.core.utils.row_access import strip_leading_comments
 
@@ -116,16 +117,17 @@ def neutralise_transaction_statements(
 ) -> List[str]:
     """*statements* with a script's ``BEGIN ... COMMIT`` envelope dropped, or a refusal.
 
-    dblift runs a migration in one transaction of its own. A script whose first statement is a
+    dblift runs a script in one transaction of its own. A script whose first statement is a
     ``begin`` and whose last is an ``end`` (``quirks.transaction_control_sql_patterns``) is that
-    same transaction: both are dropped and a warning says so. Any other ``begin``/``end``/``abort``
-    would end or fail against dblift's transaction, and is refused before anything runs.
+    same transaction: both are dropped and a warning says so. Any other transaction statement
+    would end or fail against dblift's transaction, and is refused before anything runs, as is
+    an envelope around a statement that cannot run in a transaction.
     A dialect with no patterns gets *statements* back untouched.
     """
-    from dblift.core.exceptions import UnsupportedMetaCommandError
     from dblift.db.provider_registry import ProviderRegistry
 
-    patterns = ProviderRegistry.get_quirks(dialect.lower()).transaction_control_sql_patterns
+    quirks = ProviderRegistry.get_quirks(dialect.lower())
+    patterns = quirks.transaction_control_sql_patterns
     if not patterns:
         return statements
     # (index, normalised text, kind) of every executable statement.
@@ -133,40 +135,78 @@ def neutralise_transaction_statements(
     for index, statement in enumerate(statements):
         if is_comment_only_statement(statement):
             continue
-        text = re.sub(r"\s+", " ", strip_leading_comments(statement).strip()).upper()
+        text = re.sub(r"\s+", " ", _without_comments(quirks, statement)).upper()
         executable.append((index, text, next((k for p, k in patterns if re.match(p, text)), None)))
     marked = [entry for entry in executable if entry[2]]
     if not marked:
         return statements
+
+    def refuse(entry: Any, what: str) -> TransactionStatementError:
+        where = _position(statements, entry[0], dialect, content)
+        return TransactionStatementError(
+            f"{script_name}, {where}: {entry[1].rstrip(';').rstrip()} {what}"
+        )
+
     first, last = executable[0], executable[-1]
     if first[2] == "begin" and last[2] == "end" and first is not last:
         offenders = [entry for entry in marked if entry is not first and entry is not last]
         if not offenders:
+            for entry in executable[1:-1]:
+                reason = classify_execution_statement(
+                    statements[entry[0]], dialect=dialect
+                ).transaction_reason
+                if reason:
+                    raise refuse(
+                        entry,
+                        f"cannot run inside a transaction ({reason}), so the {first[1].rstrip(';')} "
+                        f"... {last[1].rstrip(';')} around it cannot be dropped. Remove the envelope.",
+                    )
             log.warning(
                 f"Dropped {first[1].rstrip(';').rstrip()} and {last[1].rstrip(';').rstrip()} "
-                f"from {script_name}: dblift runs the migration in one transaction of its own"
+                f"from {script_name}: dblift runs the script in one transaction of its own"
             )
             return [s for i, s in enumerate(statements) if i not in (first[0], last[0])]
     else:
         offenders = [entry for entry in marked if entry is not first or entry[2] != "begin"]
-    index, text, _ = (offenders or marked)[0]
-    raise UnsupportedMetaCommandError(
-        f"{script_name}, {_position(statements, index, content)}: {text.rstrip(';').rstrip()} "
-        "manages the transaction, which dblift already opens for each migration, so none of its "
+    offender = (offenders or marked)[0]
+    if offender[2] == "begin_other":
+        raise refuse(
+            offender,
+            "cannot stand in for dblift's transaction, which it opens itself for each script: "
+            "only a plain BEGIN [TRANSACTION] can open a script that is closed by COMMIT or END. "
+            "None of its statements were executed.",
+        )
+    raise refuse(
+        offender,
+        "manages the transaction, which dblift already opens for each script, so none of its "
         "statements were executed. Remove it; a script that is only BEGIN ... COMMIT around its "
-        "whole body is accepted."
+        "whole body is accepted.",
     )
 
 
-def _position(statements: List[str], index: int, content: str) -> str:
-    """``line N`` of ``statements[index]`` in *content*, or ``statement N`` when it cannot be found."""
-    pos = 0
-    for i, statement in enumerate(statements[: index + 1]):
-        needle = strip_leading_comments(statement).strip()
-        found = content.find(needle, pos) if needle else -1
-        if found < 0:
-            break
-        if i == index:
-            return f"line {content.count(chr(10), 0, found) + 1}"
-        pos = found + len(needle)
+def _without_comments(quirks: Any, statement: str) -> str:
+    """The statement with its comments gone, so ``COMMIT /* c */`` reads as ``COMMIT``."""
+    from dblift.core.exceptions import ParserError
+
+    try:
+        statement = quirks.blank_comments(statement)
+    except ParserError:  # a scanner refusal belongs to the split, which already passed
+        pass
+    return strip_leading_comments(statement).strip()
+
+
+def _position(statements: List[str], index: int, dialect: str, content: str) -> str:
+    """``line N`` of ``statements[index]``, from the splitter's own records; else ``statement N``."""
+    from dblift.db.provider_registry import ProviderRegistry
+
+    parser_class = ProviderRegistry.get_quirks(dialect.lower()).parser_class("regex")
+    try:
+        records = [r for r in parser_class().split(content) if r.text.strip()]  # type: ignore[misc]
+    except Exception:  # noqa: BLE001 - the line is a courtesy; the refusal stands without it
+        records = []
+    if [r.text for r in records] == statements:
+        record = records[index]
+        # The record's line is where its leading comments start; the keyword is after them.
+        offset = max(record.text.rfind(strip_leading_comments(record.text).strip()), 0)
+        return f"line {record.line + record.text.count(chr(10), 0, offset)}"
     return f"statement {index + 1}"

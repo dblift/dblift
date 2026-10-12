@@ -58,7 +58,7 @@ def test_other_sqlite_statements_stay_transactional(sql):
     ],
 )
 def test_vacuum_is_classified_non_transactional(sql):
-    """SQLite: "VACUUM ... cannot be run inside a transaction" (#1524)."""
+    """SQLite: "VACUUM ... cannot be run inside a transaction"."""
     result = classify_execution_statement(sql, dialect="sqlite")
     assert result.can_execute_in_transaction is False
     assert "VACUUM" in result.transaction_reason
