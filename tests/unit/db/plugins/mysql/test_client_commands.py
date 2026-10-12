@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-import time
-
 import pytest
 
 from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
-from dblift.db.plugins.mysql.parser._script import scan_script
+from dblift.db.plugins.mysql.parser._script import _Scanner, scan_script
 from dblift.db.plugins.mysql.parser.mysql_regex_parser import MySqlRegexParser
 
 
@@ -258,24 +256,29 @@ def test_a_backslash_in_a_hint_is_text_on_mariadb_only() -> None:
         scan_script("SELECT /*+\n \\G\n*/ 1 AS x;")
 
 
-def _best_of(runs: int, script: str) -> float:
-    best = float("inf")
-    for _ in range(runs):
-        started = time.perf_counter()
-        scan_script(script)
-        best = min(best, time.perf_counter() - started)
-    return best
+class _CountingText(str):
+    """A script that counts the characters sliced out of it: a scan that copies the rest of a
+    line at every comment is quadratic on one long line, however fast the machine."""
+
+    sliced = 0
+
+    def __getitem__(self, key):  # type: ignore[no-untyped-def]
+        if isinstance(key, slice):
+            _CountingText.sliced += len(range(*key.indices(len(self))))
+        return super().__getitem__(key)
 
 
-@pytest.mark.parametrize(
-    "unit,count",
-    [("/**/", 400_000), ("SELECT 1; /* c */ ", 70_000), ("/*!40000 SET @a = 1 */; ", 70_000)],
-)
-def test_a_long_single_line_of_comments_is_scanned_in_linear_time(unit: str, count: int) -> None:
-    """A four times longer line takes about four times as long (a quadratic scan: sixteen)."""
-    small = _best_of(5, unit * count)
-    large = _best_of(3, unit * (4 * count))
-    assert large < 8 * small
+def _sliced_characters(script: str) -> int:
+    _CountingText.sliced = 0
+    _Scanner(_CountingText(script), False).run()
+    return _CountingText.sliced
+
+
+@pytest.mark.parametrize("unit", ["/**/", "SELECT 1; /* c */ ", "/*!40000 SET @a = 1 */; "])
+def test_a_long_single_line_of_comments_is_scanned_in_linear_time(unit: str) -> None:
+    for count in (2_000, 8_000):
+        script = unit * count
+        assert _sliced_characters(script) <= 2 * len(script)
 
 
 def test_a_mode_setting_behind_a_maria_comment_is_refused_on_mariadb_only() -> None:
