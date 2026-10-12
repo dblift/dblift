@@ -310,11 +310,11 @@ rules are a table and two regular expressions.
 | 56 | `CREATE TRIGGER tr AFTER INSERT ON t BEGIN\nSELECT 1;\ngo\nSELECT 2; END;` | `CREATE TRIGGER tr AFTER INSERT ON t BEGIN\nSELECT 1;\ngo\nSELECT 2; END` (inside an unfinished trigger a go line is text; the engine rejects it) |
 | 57 | `CREATE TABLE t(a);␍\n.print x␍\nINSERT INTO t VALUES(1);␍\n` | `UnsupportedMetaCommandError` (line 2: the CR of a CRLF pair is part of the line end) |
 | 58 | `SELECT 1;␍.print x␍SELECT 2;␍` | `SELECT 1` · `.print x␍SELECT 2` (a CR that stands alone ends no line: the dot is not at a line start) |
+| 59 | `CREATE TABLE t(a);\ngo\nINSERT INTO t VALUES(1);` | `CREATE TABLE t(a)` · `go\nINSERT INTO t VALUES(1)` (nothing is pending at the go line: the shell skips it, dblift sends it as text and the engine rejects it, loudly; narrower than the shell by design) |
 | 60 | `SELECT 6\n/ -- c\n2;` | `UnsafeStatementSplitError` (line 2: a line comment after the slash does not stop the shell from ending the statement there) |
 | 61 | `SELECT 6\ngo /* c */ -- d\n2;` | `UnsafeStatementSplitError` (line 2: closed block comments and a line comment after go) |
 | 62 | `SELECT 6 -- six\n/\n2;` | `SELECT 6 -- six\n/\n2` (the statement so far ends in a line comment: a semicolon added to it would be inside the comment, the shell does not end the statement, and shell and driver both print 3) |
 | 63 | `SELECT 6\ngo x\n;` | `SELECT 6\ngo x` (go with other text after it is text; the engine rejects it) |
-| 59 | `CREATE TABLE t(a);\ngo\nINSERT INTO t VALUES(1);` | `CREATE TABLE t(a)` · `go\nINSERT INTO t VALUES(1)` (nothing is pending at the go line: the shell skips it, dblift sends it as text and the engine rejects it, loudly; narrower than the shell by design) |
 
 ## 11. Not handled
 
@@ -357,9 +357,9 @@ character scanner, `split_statements` lines 41-175 at `c5513b99`) and
   comment is taken as a comment end, an unterminated `/*` is accepted and the
   rest of the script is returned inside it (rows 18, 19). A `;` or `END` inside
   a closed comment is skipped correctly (row 37 passes).
-- **Dot-commands are glued onto the following statement** (row 12): the
+- **Dot-commands are glued onto the following statement** (rows 12, 45, 46, 51, 52, 57): the
   driver then rejects the piece with `near ".": syntax error`.
-- **`go` and `/` lines pass into the statement** (rows 53, 54).
+- **`go` and `/` lines pass into the statement** (rows 53, 54, 60, 61).
 - **Empty and comment-only segments are statements** (`;` alone, a trailing
   `-- bye`, a script of comments; rows 14-16, 31): the driver accepts them, so
   this is harmless but not the shell's behaviour.
