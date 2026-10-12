@@ -37,6 +37,11 @@ END"""
 TERMINATORS = pytest.mark.parametrize("terminator", ["", ";", "@"], ids=["none", "semicolon", "at"])
 
 
+def declared(terminator: str) -> str:
+    """``@`` ends a statement only where the script declared it: a directive line goes first."""
+    return "--#SET TERMINATOR @\n" if terminator == "@" else ""
+
+
 @pytest.mark.unit
 class TestDB2CompoundStatementTerminator:
     """The trailing terminator is optional on the last compound statement."""
@@ -45,7 +50,9 @@ class TestDB2CompoundStatementTerminator:
     def test_trigger_body_is_one_statement(self, terminator):
         parser = DB2RegexParser()
 
-        statements = parser.split_statements(f"{PRELUDE};\n\n{TRIGGER_BODY}{terminator}")
+        statements = parser.split_statements(
+            f"{PRELUDE};\n\n{declared(terminator)}{TRIGGER_BODY}{terminator}"
+        )
 
         assert statements == [PRELUDE, TRIGGER_BODY]
 
@@ -53,7 +60,9 @@ class TestDB2CompoundStatementTerminator:
     def test_procedure_body_is_one_statement(self, terminator):
         parser = DB2RegexParser()
 
-        statements = parser.split_statements(f"{PRELUDE};\n\n{PROCEDURE_BODY}{terminator}")
+        statements = parser.split_statements(
+            f"{PRELUDE};\n\n{declared(terminator)}{PROCEDURE_BODY}{terminator}"
+        )
 
         assert statements == [PRELUDE, PROCEDURE_BODY]
 
@@ -61,7 +70,9 @@ class TestDB2CompoundStatementTerminator:
     def test_compound_block_is_one_statement(self, terminator):
         parser = DB2RegexParser()
 
-        statements = parser.split_statements(f"{PRELUDE};\n\n{COMPOUND_BODY}{terminator}")
+        statements = parser.split_statements(
+            f"{PRELUDE};\n\n{declared(terminator)}{COMPOUND_BODY}{terminator}"
+        )
 
         assert statements == [PRELUDE, COMPOUND_BODY]
 
@@ -95,7 +106,7 @@ class TestDB2CompoundBlockBoundaries:
         compound = "BEGIN ATOMIC\n  INSERT INTO audit_log VALUES (1);\nEND"
         query = "SELECT CASE WHEN id = 1 THEN 'x' ELSE 'y' END"
 
-        statements = parser.split_statements(f"{compound}\n{query}")
+        statements = parser.split_statements(f"{compound};\n{query}")
 
         assert statements == [compound, query]
 
@@ -104,7 +115,7 @@ class TestDB2CompoundBlockBoundaries:
         compound = "BEGIN ATOMIC\n  INSERT INTO audit_log VALUES (1);\nEND"
         query = "SELECT * FROM audit_log"
 
-        statements = parser.split_statements(f"{compound}\n{query}")
+        statements = parser.split_statements(f"{compound};\n{query}")
 
         assert statements == [compound, query]
 
@@ -915,7 +926,7 @@ BEGIN
     UPDATE counters SET c = c + 1;
 END"""
 
-        assert parser.split_statements(f"{trigger}{terminator}") == [trigger]
+        assert parser.split_statements(f"{declared(terminator)}{trigger}{terminator}") == [trigger]
 
     def test_plain_begin_trigger_with_control_structure_does_not_truncate(self):
         """The same control-structure lookahead already proven for
@@ -1021,7 +1032,9 @@ BEGIN
 END proc1;
 END pk1"""
 
-        assert parser.split_statements(f"{package_body}{terminator}") == [package_body]
+        assert parser.split_statements(f"{declared(terminator)}{package_body}{terminator}") == [
+            package_body
+        ]
 
     @TERMINATORS
     def test_package_body_with_two_procedures_is_not_truncated_at_first_end(self, terminator):
@@ -1042,7 +1055,9 @@ BEGIN
 END proc2;
 END pk1"""
 
-        assert parser.split_statements(f"{package_body}{terminator}") == [package_body]
+        assert parser.split_statements(f"{declared(terminator)}{package_body}{terminator}") == [
+            package_body
+        ]
 
     @TERMINATORS
     def test_declaration_only_package_is_one_statement(self, terminator):
@@ -1060,7 +1075,9 @@ END pk1"""
 PROCEDURE proc1(x INT);
 END pk1"""
 
-        assert parser.split_statements(f"{package_decl}{terminator}") == [package_decl]
+        assert parser.split_statements(f"{declared(terminator)}{package_decl}{terminator}") == [
+            package_decl
+        ]
 
     def test_package_end_with_no_name_and_no_space_before_semicolon_is_recognized(self):
         """``END;`` - no repeated package name, no whitespace before the
@@ -1137,13 +1154,16 @@ class TestDB2MixedCompoundBlocks:
     def test_blocks_between_plain_ddl_stay_whole(self, blocks, terminator):
         parser = DB2RegexParser()
         parts = [PRELUDE, *blocks[:1], VIEW, *blocks[1:], INDEX]
-        script = "\n\n".join(f"{part};" for part in parts[:-1]) + f"\n\n{parts[-1]}{terminator}"
+        script = (
+            "\n\n".join(f"{part};" for part in parts[:-1])
+            + f"\n\n{declared(terminator)}{parts[-1]}{terminator}"
+        )
 
         assert parser.split_statements(script) == parts
 
     @TERMINATORS
     def test_trailing_block_without_ddl_after_it(self, terminator):
         parser = DB2RegexParser()
-        script = f"{PRELUDE};\n{PROCEDURE_BODY};\n{TRIGGER_BODY}{terminator}"
+        script = f"{PRELUDE};\n{PROCEDURE_BODY};\n{declared(terminator)}{TRIGGER_BODY}{terminator}"
 
         assert parser.split_statements(script) == [PRELUDE, PROCEDURE_BODY, TRIGGER_BODY]

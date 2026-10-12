@@ -37,7 +37,7 @@ class TestSplitStatements(unittest.TestCase):
         self.assertEqual(self.parser.split_statements("   \n  "), [])
 
     def test_simple_statements(self):
-        sql = "SELECT 1; SELECT 2;"
+        sql = "SELECT 1;\nSELECT 2;"
         stmts = self.parser.split_statements(sql)
         self.assertGreaterEqual(len(stmts), 2)
 
@@ -669,7 +669,7 @@ CREATE TABLE t (id INTEGER) IN ts1;
         self.assertEqual(len(stmts), 3)
 
     def test_nested_quoted_in_string(self):
-        sql = "SELECT 'O''Brien' FROM t; INSERT INTO t VALUES ('Jones');"
+        sql = "SELECT 'O''Brien' FROM t;\nINSERT INTO t VALUES ('Jones');"
         stmts = self.parser.split_statements(sql)
         self.assertGreaterEqual(len(stmts), 2)
 
