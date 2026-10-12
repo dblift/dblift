@@ -8,6 +8,7 @@ it at the first semicolon inside the body.
 
 import pytest
 
+from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.db.plugins.db2.parser.db2_regex_parser import DB2RegexParser
 
 PRELUDE = "CREATE TABLE audit_log (id INTEGER, msg VARCHAR(100))"
@@ -273,31 +274,17 @@ END;"""
 
 @pytest.mark.unit
 class TestDB2EndControlKeywordSeparatorWhitespace:
-    """The whitespace between ``END`` and a control keyword can be any SQL
-    whitespace, not just a space or a tab.
-
-    ``_find_block_end`` recognises ``END CASE``/``END IF``/... by skipping
-    whitespace after ``END`` and reading the next word. That skip only
-    checked ``sql[j] in (" ", "\\t")`` - a newline or CRLF between ``END``
-    and the keyword defeated the lookahead entirely, so the control-end went
-    unrecognised and was counted as the block's own terminating ``END``
-    instead, truncating the block early (the same self-poisoning regression
-    the previous round's fix addressed, reappearing for this input shape).
-    """
+    """Newline and CRLF between ``END`` and a control keyword keep the body whole."""
 
     def test_end_case_separated_by_newline_is_still_recognised(self):
-        from dblift.db.plugins.db2.parser.parser_config import DB2Config
-
         sql = "CREATE PROCEDURE p() BEGIN CASE x WHEN 1 THEN SET y=1; END\nCASE; END"
 
-        assert DB2Config()._find_block_end(sql, sql.index("BEGIN")) == 68
+        assert DB2RegexParser().split_statements(sql) == [sql]
 
     def test_end_case_separated_by_crlf_is_still_recognised(self):
-        from dblift.db.plugins.db2.parser.parser_config import DB2Config
-
         sql = "CREATE PROCEDURE p() BEGIN CASE x WHEN 1 THEN SET y=1; END\r\nCASE; END"
 
-        assert DB2Config()._find_block_end(sql, sql.index("BEGIN")) is not None
+        assert DB2RegexParser().split_statements(sql) == [sql]
 
     SEPARATORS = pytest.mark.parametrize(
         "separator",
@@ -347,20 +334,14 @@ class TestDB2EndControlKeywordSeparatorWhitespace:
 
         assert parser.split_statements(procedure) == [procedure]
 
-    def test_nbsp_between_end_and_control_keyword_is_not_treated_as_separator(self):
+    def test_nbsp_in_procedure_is_preserved_without_syntax_validation(self):
         """A non-breaking space (U+00A0) is not DB2 whitespace.
 
         DB2's lexer rejects ``END<NBSP>WHILE`` with a syntax error - unlike
         an ordinary space, tab, or newline, NBSP is not a legal separator
-        between ``END`` and a control keyword. ``_find_block_end`` doesn't
-        validate DB2 syntax, it only locates block boundaries, so the
-        correct behaviour here isn't to raise: the lookahead simply doesn't
-        skip the NBSP, doesn't recognise "WHILE" as following it, and falls
-        through to treating this ``END`` as the block's own terminating
-        ``END`` - closing the block right there, before the real one.
+        between ``END`` and a control keyword. The scanner finds the full
+        execution unit without validating SQL syntax.
         """
-        from dblift.db.plugins.db2.parser.parser_config import DB2Config
-
         sql = (
             "CREATE PROCEDURE p(IN x INTEGER)\nLANGUAGE SQL\nBEGIN\n"
             "    WHILE x < 10 DO\n"
@@ -369,31 +350,14 @@ class TestDB2EndControlKeywordSeparatorWhitespace:
             "    INSERT INTO t VALUES (x);\n"
             "END"
         )
-        inner_end = sql.index("END WHILE")
-
-        end_pos = DB2Config()._find_block_end(sql, sql.index("BEGIN"))
-
-        assert end_pos == inner_end + 3
+        assert DB2RegexParser().split_statements(sql) == [sql]
 
 
 @pytest.mark.unit
 class TestDB2EndKeywordRequiresRightWordBoundary:
-    """The literal ``END`` match itself needs a right-hand word boundary too.
-
-    ``_find_block_end``'s ``BEGIN``- and ``CASE``-open detectors already check
-    both sides of their match (the character before *and* the character just
-    past it isn't an identifier character). The ``END`` detector only ever
-    checked the left side. So an identifier that merely *starts* with the
-    letters ``END`` - ``ENDDATE``, ``END_IF``, ``ENDLESS``, ``ENDPOINT``,
-    ``ENDCASE`` - had its first three characters mistaken for a genuine
-    closing ``END`` token, corrupting ``depth``/``case_depth`` mid-scan and
-    truncating the rest of the block. Confirmed live on DB2 12.1: a procedure
-    declaring ``ENDDATE`` as a variable name compiles and runs unmodified.
-    """
+    """Identifiers beginning with END must not close the procedure body."""
 
     def test_variable_named_enddate_does_not_truncate_the_procedure(self):
-        from dblift.db.plugins.db2.parser.parser_config import DB2Config
-
         sql = """CREATE PROCEDURE P1()
 BEGIN
   DECLARE ENDDATE DATE;
@@ -402,7 +366,9 @@ BEGIN
 END
 """
 
-        assert DB2Config()._find_block_end(sql, sql.index("BEGIN")) == len(sql)
+        records = DB2RegexParser().split(sql)
+        assert [record.text for record in records] == [sql.strip()]
+        assert records[0].source_end == len(sql)
 
     def test_variable_named_enddate_survives_split_statements(self):
         parser = DB2RegexParser()
@@ -437,30 +403,16 @@ END"""
 
 @pytest.mark.unit
 class TestDB2ControlEndKeywordRequiresWordBoundary:
-    """The keyword read after ``END`` must be a whole word, not a prefix.
-
-    ``_find_block_end`` reads the word following ``END`` by scanning
-    ``.isalpha()`` characters and comparing the result against the control
-    keyword list. That scan has no *right-hand* word-boundary check, unlike
-    the ``BEGIN``/``CASE``-open detectors earlier in the same function (which
-    both check the character just past the match isn't alnum). So
-    ``END IF1`` reads only ``IF`` (stopping at the digit), matches it as
-    ``END IF``, and treats a CASE expression's real closing ``END`` as a
-    control-structure end instead - leaving ``case_depth`` open and making
-    the enclosing block's own terminating ``END`` look like it still belongs
-    to that phantom-open CASE.
-    """
+    """A word beginning with IF after END must not masquerade as END IF."""
 
     def test_end_immediately_followed_by_identifier_starting_with_if_is_not_end_if(self):
-        from dblift.db.plugins.db2.parser.parser_config import DB2Config
-
         sql = (
             "CREATE PROCEDURE p(IN x INTEGER)\nLANGUAGE SQL\nBEGIN\n"
             "    SET x = (SELECT CASE WHEN x = 1 THEN 1 END IF1 FROM t);\n"
             "    SET x = x + 1;\nEND"
         )
 
-        assert DB2Config()._find_block_end(sql, sql.index("BEGIN")) == len(sql)
+        assert DB2RegexParser().split_statements(sql) == [sql]
 
     def test_case_expression_alias_starting_with_a_control_keyword_does_not_truncate_the_procedure(
         self,
@@ -838,9 +790,8 @@ BEGIN
   SELECT 1 FROM SYSIBM.SYSDUMMY1;
 END"""
 
-        from dblift.db.plugins.db2.parser.parser_config import DB2Config
-
-        assert DB2Config()._find_block_end(sql, sql.index("BEGIN")) is None
+        with pytest.raises(UnsafeStatementSplitError, match="block comment"):
+            DB2RegexParser().split_statements(sql)
 
     def test_standalone_line_comment_outside_a_block_comment_still_works(self):
         """Ordinary ``--`` line comments, entirely outside any block comment,

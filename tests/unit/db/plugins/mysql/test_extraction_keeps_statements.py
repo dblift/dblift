@@ -73,16 +73,11 @@ def test_the_dialect_name_of_each_regex_parser_is_its_engine() -> None:
     assert MariaDbRegexParser().dialect_name == "mariadb"
 
 
-def test_parse_sql_reports_any_parser_refusal_instead_of_failing(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    def refuse(self: HybridParser, sql_content: str, strict_tokenizer: bool = False) -> list[str]:
-        raise UnsupportedMetaCommandError("client command refused")
-
-    monkeypatch.setattr(HybridParser, "split_statements", refuse)
-    result = HybridParser("mysql").parse_sql("SELECT 1;\n")
-    assert result.success
-    assert "client command refused" in " ".join(result.errors or [])
+def test_parse_sql_reports_client_scanner_refusal_without_partial_objects() -> None:
+    result = HybridParser("mysql").parse_sql("SOURCE other.sql\nCREATE TABLE a (id INT);\n")
+    assert not result.success
+    assert result.statements == []
+    assert "client command 'SOURCE'" in " ".join(result.errors or [])
 
 
 def test_extract_objects_reads_the_script_whatever_refusal_the_split_raises(
