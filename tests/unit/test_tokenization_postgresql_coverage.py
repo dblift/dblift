@@ -29,21 +29,18 @@ class TestPostgreSQLTokenizerCoverage:
         assert len(identifier_tokens) >= 2
 
     def test_copy_from_stdin_data_block(self):
-        """Test COPY FROM STDIN data block handling (lines 204-227)."""
+        """The tokenizer consumes COPY rows after the header terminator."""
         sql = """COPY users FROM STDIN;
 1\tJohn
 2\tJane
 \\.
 """
         tokenizer = PostgreSQLTokenizer(sql)
-        # Set in_copy_data to True to test handle_copy_data
-        tokenizer.in_copy_data = True
+        tokens = tokenizer.tokenize()
 
-        # Manually call handle_copy_data
-        token = tokenizer.handle_copy_data()
-
-        # Should return a COPY_DATA token
-        assert token.type == TokenType.COPY_DATA
+        data_tokens = [token for token in tokens if token.type == TokenType.COPY_DATA]
+        assert len(data_tokens) == 1
+        assert data_tokens[0].text == "1\tJohn\n2\tJane\n"
         assert tokenizer.in_copy_data is False
 
     def test_copy_from_stdin_with_backslash_dot(self):
@@ -120,18 +117,13 @@ SELECT 1;"""
 
     def test_meta_command_not_recognized_inside_copy_data(self):
         """A data row starting with '\\N' must not become a META_COMMAND
-        token. This holds regardless of the ``in_copy_data`` gate: a COPY
-        data block is consumed whole by ``handle_copy_data`` before the
-        top-level dispatch loop runs again, so the meta-command check never
-        sees a line from inside it either way."""
-        sql = "1\t\\N\n\\.\n"
+        token: the data block is consumed before top-level dispatch resumes."""
+        sql = "COPY t FROM STDIN;\n1\t\\N\n\\.\n"
         tokenizer = PostgreSQLTokenizer(sql)
-        tokenizer.in_copy_data = True
+        tokens = tokenizer.tokenize()
 
-        token = tokenizer.handle_copy_data()
-
-        assert token.type == TokenType.COPY_DATA
-        assert "\\N" in token.text
+        assert [token.text for token in tokens if token.type == TokenType.COPY_DATA] == ["1\t\\N\n"]
+        assert not any(token.type == TokenType.META_COMMAND for token in tokens)
 
     def test_meta_command_gate_protects_the_copy_header_window(self):
         """Unlike the data block above, the COPY-header gate *is* load-
