@@ -16,6 +16,7 @@ from typing import (
     Dict,
     Optional,
     Tuple,
+    Type,
 )
 
 from dblift.core.dialect_boundary import DialectQuirks
@@ -31,6 +32,7 @@ from dblift.db.feature_gate import FeatureGate
 
 if TYPE_CHECKING:
     from dblift.core.sql_parser.lexical_spec import LexicalSpec
+    from dblift.core.sql_parser.statement_facts import SqlglotStatementFactsReader, StatementFacts
 
 
 class BaseQuirks:
@@ -79,6 +81,23 @@ class BaseQuirks:
     #: ``sqlglot`` dialect name (or ``None`` if sqlglot has no match).
     #: Used by formatters/parsers that delegate to sqlglot.
     sqlglot_dialect: Optional[str] = None
+    #: Plugin-owned reader class for AST-derived statement facts.
+    statement_facts_class: Optional[Type["SqlglotStatementFactsReader"]] = None
+
+    @property
+    def supports_statement_facts(self) -> bool:
+        """Whether this plugin has an authoritative statement facts reader."""
+        return self.statement_facts_class is not None
+
+    def statement_facts(self, statement: str) -> "StatementFacts":
+        """Return plugin statement facts when ``supports_statement_facts`` is true."""
+        reader_class = self.statement_facts_class
+        dialect = self.sqlglot_dialect
+        spec = self.lexical_spec()
+        if reader_class is None or dialect is None or spec is None:
+            raise NotImplementedError("This dialect has no statement facts reader")
+        return reader_class(dialect, spec).read(statement)
+
     #: Upper-cased SQL patterns that signal sqlglot can't parse the
     #: statement faithfully. When *any* pattern appears in the
     #: uppercased SQL text, ``HybridParser`` falls back to regex-only.

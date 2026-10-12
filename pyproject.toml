@@ -601,8 +601,6 @@ module = [
     "dblift.db.plugins.sqlite.sqlite.query_executor",
     "dblift.db.plugins.sqlite.sqlite.schema_operations",
     "dblift.db.plugins.sqlite.parser",
-    "dblift.db.plugins.sqlite.parser.parser_config",
-    "dblift.db.plugins.sqlite.parser.sqlite_regex_parser",
 ]
 disallow_any_generics = true
 disallow_subclassing_any = true

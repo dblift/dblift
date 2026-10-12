@@ -8,7 +8,7 @@ from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.migration.sql.statement_splitter import StatementSplitter
 from dblift.core.sql_parser.parser_factory import SqlParserFactory
-from dblift.db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
+from dblift.db.plugins.sqlite.parser.sqlite_facts_parser import SQLiteFactsParser
 from dblift.db.provider_registry import ProviderRegistry
 
 
@@ -28,7 +28,7 @@ def test_sqlite_analysis_does_not_call_the_legacy_scanner(monkeypatch):
     def forbidden(*args, **kwargs):
         raise AssertionError("legacy analysis scanner reached")
 
-    monkeypatch.setattr(SQLiteRegexParser, "split_for_analysis", forbidden)
+    monkeypatch.setattr(SQLiteFactsParser, "split_for_analysis", forbidden)
     assert SqlAnalyzer("sqlite").split_statements_for_analysis("-- note\n") == ["-- note"]
 
 

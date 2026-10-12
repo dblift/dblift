@@ -166,6 +166,44 @@ def analyse_script(text: str, dialect: str) -> ScriptAnalysis:
 
 
 def _analyse(text: str, dialect: str) -> ScriptAnalysis:
+    quirks = ProviderRegistry.get_quirks(dialect)
+    if quirks.supports_statement_facts:
+        from dblift.core.sql_parser.lexical_engine import LexicalEngine
+
+        spec = quirks.lexical_spec()
+        assert spec is not None
+        fact_statements: List[AnalysedStatement] = []
+        fact_cautions: List[Caution] = []
+        errors: List[str] = []
+        for body in LexicalEngine(spec).split_for_analysis(text):
+            if not body.strip():
+                continue
+            facts = quirks.statement_facts(body)
+            objects = tuple(
+                AnalysedObject(obj.type.value, obj.name, obj.schema)
+                for obj in facts.affected_objects
+            )
+            operation = operation_of(body)
+            full_table = facts.kind == "DML" and (
+                facts.operation in ("UPDATE", "DELETE") and (facts.opaque or not facts.predicate)
+            )
+            analysed = AnalysedStatement(
+                len(fact_statements),
+                operation,
+                facts.kind,
+                objects,
+                full_table,
+                _snippet(body),
+                sql=body,
+            )
+            fact_statements.append(analysed)
+            caution = _caution_for(analysed, body)
+            if caution is not None:
+                fact_cautions.append(caution)
+            if facts.diagnostic:
+                errors.append(facts.diagnostic)
+        return ScriptAnalysis(tuple(fact_statements), tuple(fact_cautions), tuple(errors))
+
     try:
         parsed = SqlParserFactory(dialect).parse_sql(text)
         quirks = ProviderRegistry.get_quirks(dialect)

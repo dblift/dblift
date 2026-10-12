@@ -7,9 +7,9 @@ import pytest
 from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.sql_parser.statement import Statement
-from dblift.db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
+from dblift.db.plugins.sqlite.parser.sqlite_facts_parser import SQLiteFactsParser
 
-PARSER = SQLiteRegexParser()
+PARSER = SQLiteFactsParser()
 
 
 def test_the_parser_is_authoritative_and_returns_statement_records() -> None:

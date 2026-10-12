@@ -72,6 +72,12 @@ class SqlGlotParser(SqlParserInterface):
             dialect: SQL dialect name (oracle, mysql, postgresql, sqlserver)
         """
         self.dialect = dialect.lower()
+        from dblift.db.provider_registry import ProviderRegistry
+
+        if ProviderRegistry.get_quirks(self.dialect).supports_statement_facts:
+            raise ValueError(
+                f"Use the statement-facts parser for {self.dialect} (SQLiteFactsParser)"
+            )
         _ensure_sqlglot_dialect_map()
         self.sqlglot_dialect = _SQLGLOT_DIALECT_MAP.get(self.dialect) or self.dialect
         logger.debug(

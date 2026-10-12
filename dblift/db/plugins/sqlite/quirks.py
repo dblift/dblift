@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Optional
 
+from dblift.core.sql_parser.statement_facts import SqlglotStatementFactsReader
 from dblift.db.base_quirks import BaseQuirks
+from dblift.db.dml_analysis import DmlMutation
 
 if TYPE_CHECKING:
     from dblift.core.sql_parser.lexical_spec import LexicalSpec
@@ -17,8 +19,7 @@ class SqliteQuirks(BaseQuirks):
     (no schema concept; ``schema_required=False``), no traditional
     user/password credentials, ``"main"`` as the default schema name,
     integer 0/1 literals for booleans, no CASCADE on ``DROP TABLE``,
-    and the regex-only parser path (sqlglot's SQLite dialect is not
-    used for round-trip parsing).
+    and statement facts read from sqlglot's SQLite AST.
     """
 
     # Capability matrix (was ``_CAPABILITIES["sqlite"]``).
@@ -28,6 +29,7 @@ class SqliteQuirks(BaseQuirks):
     uppercase_identifiers = False
     clean_strategy = "native"
     sqlglot_dialect = "sqlite"
+    statement_facts_class = SqlglotStatementFactsReader
     default_schema_name = "main"
     boolean_false_literal = "0"
     drop_supports_if_exists = True  # supported since SQLite 3.3.0 (2006)
@@ -79,18 +81,24 @@ class SqliteQuirks(BaseQuirks):
         super().__init__(dialect_name=dialect_name)
 
     def parser_class(self, parser_type: str) -> Optional[type]:
-        """SQLite uses :class:`SQLiteRegexParser` for ``"hybrid"`` and ``"regex"``.
+        """Use statement facts for the supported SQLite parser projections."""
+        from dblift.db.plugins.sqlite.parser.sqlite_facts_parser import SQLiteFactsParser
 
-        ``"sqlglot"`` returns ``None`` — sqlglot's SQLite dialect is not used
-        for round-trip parsing (regex handles SQLite's small DDL surface).
-        """
-        # SQLite uses regex-only parser for all three modes (hybrid
-        # routing previously dispatched here too).
-        from dblift.db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
+        return SQLiteFactsParser if parser_type in ("hybrid", "regex") else None
 
-        if parser_type in ("hybrid", "regex"):
-            return SQLiteRegexParser
-        return None
+    def analyze_dml(self, statement: str) -> DmlMutation:
+        """Project DML safety details from the SQLite statement facts."""
+        facts = self.statement_facts(statement)
+        return DmlMutation(
+            facts.target or "",
+            set(facts.events) if facts.events else None,
+            list(facts.affected_columns),
+        )
+
+    def is_full_table_dml(self, statement: str) -> bool:
+        """Treat an opaque mutation as potentially affecting every row."""
+        facts = self.statement_facts(statement)
+        return facts.kind == "DML" and (facts.opaque or not facts.predicate)
 
     def type_equivalents(self) -> "dict[str, str]":
         """SQLite alias → canonical type map.

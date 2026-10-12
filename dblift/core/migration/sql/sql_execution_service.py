@@ -209,10 +209,19 @@ class SqlExecutionService:
                         and hasattr(self.journal, "record_object_changes")
                     ):
                         try:
-                            objects_affected = []
+                            objects_affected: List[Any] = []
+
+                            if self.quirks.supports_statement_facts:
+                                facts = self.quirks.statement_facts(statement)
+                                objects_affected = [
+                                    obj.as_sql_object(self.schema, self.quirks.dialect_name)
+                                    for obj in facts.affected_objects
+                                ]
+                                if facts.diagnostic:
+                                    self.log.warning(facts.diagnostic)
 
                             # For DDL statements, use parser to extract objects
-                            if statement_type == SqlStatementType.DDL.value:
+                            elif statement_type == SqlStatementType.DDL.value:
                                 # Use the parser factory directly to get proper schema handling
                                 if getattr(self.sql_analyzer, "parser_factory", None):
                                     objects_affected = (

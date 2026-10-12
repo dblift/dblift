@@ -4,6 +4,6 @@ SQLite SQL Parser module.
 This module provides SQLite-specific SQL parsing capabilities.
 """
 
-from .sqlite_regex_parser import SQLiteRegexParser
+from .sqlite_facts_parser import SQLiteFactsParser
 
-__all__ = ["SQLiteRegexParser"]
+__all__ = ["SQLiteFactsParser"]

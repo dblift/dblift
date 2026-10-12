@@ -405,7 +405,167 @@
             ]
           }
         ]
-      }
+      },
+      "facts_observed": [
+        {
+          "sql": "CREATE TABLE child (id INT PRIMARY KEY, parent_id INT REFERENCES parent(id))",
+          "operation": "CREATE",
+          "kind": "DDL",
+          "objects": [
+            {
+              "type": "TABLE",
+              "name": "child",
+              "schema": null,
+              "role": "created"
+            }
+          ],
+          "target": null,
+          "predicate": null,
+          "declared_columns": [
+            "id",
+            "parent_id"
+          ],
+          "declared_constraints": [
+            {
+              "kind": "PRIMARY_KEY",
+              "columns": [
+                "id"
+              ],
+              "name": null,
+              "referenced_table": null,
+              "referenced_columns": []
+            },
+            {
+              "kind": "FOREIGN_KEY",
+              "columns": [
+                "parent_id"
+              ],
+              "name": null,
+              "referenced_table": "parent",
+              "referenced_columns": [
+                "id"
+              ]
+            }
+          ],
+          "declared_column_comments": null,
+          "affected_columns": [],
+          "events": null,
+          "diagnostic": null,
+          "indexed_table": null,
+          "indexed_columns": null
+        },
+        {
+          "sql": "CREATE INDEX ix_child_parent ON child (parent_id)",
+          "operation": "CREATE",
+          "kind": "DDL",
+          "objects": [
+            {
+              "type": "INDEX",
+              "name": "ix_child_parent",
+              "schema": null,
+              "role": "created"
+            },
+            {
+              "type": "TABLE",
+              "name": "child",
+              "schema": null,
+              "role": "referenced"
+            }
+          ],
+          "target": null,
+          "predicate": null,
+          "declared_columns": [],
+          "declared_constraints": [],
+          "declared_column_comments": null,
+          "affected_columns": [],
+          "events": null,
+          "diagnostic": null,
+          "indexed_table": "child",
+          "indexed_columns": [
+            "parent_id"
+          ]
+        },
+        {
+          "sql": "UPDATE child SET parent_id = 2 WHERE id = 1",
+          "operation": "UPDATE",
+          "kind": "DML",
+          "objects": [
+            {
+              "type": "TABLE",
+              "name": "child",
+              "schema": null,
+              "role": "altered"
+            }
+          ],
+          "target": "child",
+          "predicate": "id = 1",
+          "declared_columns": [],
+          "declared_constraints": [],
+          "declared_column_comments": null,
+          "affected_columns": [
+            "parent_id"
+          ],
+          "events": [
+            "UPDATE"
+          ],
+          "diagnostic": null,
+          "indexed_table": null,
+          "indexed_columns": null
+        },
+        {
+          "sql": "DELETE FROM child WHERE id = 1",
+          "operation": "DELETE",
+          "kind": "DML",
+          "objects": [
+            {
+              "type": "TABLE",
+              "name": "child",
+              "schema": null,
+              "role": "altered"
+            }
+          ],
+          "target": "child",
+          "predicate": "id = 1",
+          "declared_columns": [],
+          "declared_constraints": [],
+          "declared_column_comments": null,
+          "affected_columns": [],
+          "events": [
+            "DELETE"
+          ],
+          "diagnostic": null,
+          "indexed_table": null,
+          "indexed_columns": null
+        },
+        {
+          "sql": "DROP TABLE child",
+          "operation": "DROP",
+          "kind": "DDL",
+          "objects": [
+            {
+              "type": "TABLE",
+              "name": "child",
+              "schema": null,
+              "role": "dropped"
+            }
+          ],
+          "target": null,
+          "predicate": null,
+          "declared_columns": [],
+          "declared_constraints": [],
+          "declared_column_comments": null,
+          "affected_columns": [],
+          "events": null,
+          "diagnostic": null,
+          "indexed_table": null,
+          "indexed_columns": null
+        }
+      ],
+      "accepted_differences": [
+        "UPDATE and DELETE now name child as their affected TABLE; the legacy extractor omitted both targets (#561).",
+        "CREATE INDEX records its referenced child table separately from the created index.",
+        "AST facts add DML predicates and column names, and CREATE TABLE declarations without building a schema model."
+      ]
     },
     {
       "dialect": "duckdb",

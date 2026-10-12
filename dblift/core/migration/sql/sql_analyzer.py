@@ -408,6 +408,10 @@ class SqlAnalyzer:
         if not sql:
             return "UNKNOWN"
 
+        quirks = ProviderRegistry.get_quirks(self.dialect)
+        if quirks.supports_statement_facts and self.analysis_mode == "full":
+            return quirks.statement_facts(sql).kind
+
         execution_sql = sql.lstrip("\ufeff").lstrip() if self.analysis_mode == "execution" else sql
         if self.analysis_mode == "execution":
             try:
@@ -528,9 +532,16 @@ class SqlAnalyzer:
         Returns:
             List of dictionaries with object information
         """
-        # Use regex-based extraction
-
-        # Use the regex-based extraction as a reliable method
+        quirks = ProviderRegistry.get_quirks(self.dialect)
+        if quirks.supports_statement_facts:
+            facts = quirks.statement_facts(sql)
+            return [
+                {
+                    "object_type": obj.type.value,
+                    "object_name": f"{obj.schema or DEFAULT_SCHEMA_PLACEHOLDER}.{obj.name}",
+                }
+                for obj in facts.affected_objects
+            ]
         return self._extract_objects_regex(sql)
 
     def analyze_statement(self, sql: str) -> Dict[str, Any]:
@@ -542,6 +553,17 @@ class SqlAnalyzer:
         Returns:
             Dictionary containing analysis results
         """
+        quirks = ProviderRegistry.get_quirks(self.dialect)
+        if quirks.supports_statement_facts:
+            facts = quirks.statement_facts(sql)
+            return {
+                "type": facts.kind,
+                "objects": self.extract_objects(sql),
+                "is_valid": not facts.opaque,
+                "errors": [facts.diagnostic] if facts.diagnostic else [],
+                "parsed_with": "facts",
+            }
+
         # Use regex-based analysis
         try:
             objects = self.extract_objects(sql)
