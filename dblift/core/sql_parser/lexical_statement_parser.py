@@ -35,7 +35,9 @@ class LexicalStatementParser(BaseStatementParser):
         self._sqlite_checked_line = 0
         self._sqlite_token_end = 0
         self._script = (
-            ClientScript(spec.client_script, source) if spec.client_script is not None else None
+            ClientScript(spec.client_script, source, spec.client_name)
+            if spec.client_script is not None
+            else None
         )
 
     def _adjust_context(self, token: Token) -> None:

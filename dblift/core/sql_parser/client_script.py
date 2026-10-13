@@ -16,19 +16,17 @@ class ClientScript:
     at a ``;`` that is last on its line or at such a line terminator.
     """
 
-    def __init__(self, rules: ClientScriptRules, source: Optional[str]) -> None:
+    def __init__(
+        self, rules: ClientScriptRules, source: Optional[str], client_name: str = "SQL client"
+    ) -> None:
         """Start a script with no previous terminator."""
         self.rules = rules
         self.source = source
+        self.client_name = client_name
         self._words: List[str] = []
         self._head_line = 0
         self._unit: Optional[bool] = None
         self._last_terminator: Optional[str] = None
-
-    @property
-    def in_unit(self) -> bool:
-        """Whether the statement being read is a unit."""
-        return bool(self._unit)
 
     def reset_statement(self) -> None:
         """Forget the head of the statement that just ended."""
@@ -70,7 +68,7 @@ class ClientScript:
             return False
         if following and following.type != TokenType.EOF and following.line == token.line:
             raise UnsafeStatementSplitError(
-                f"';' is not the last text on line {token.line}: SQL*Plus rejects the line "
+                f"';' is not the last text on line {token.line}: {self.client_name} rejects the line "
                 "(ORA-03405); move the comment or the next statement to its own line"
             )
         self._last_terminator = ";"
