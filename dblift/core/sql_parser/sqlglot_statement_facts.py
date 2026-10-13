@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import replace
-from typing import Iterator, Optional, Tuple
+from typing import Optional, Tuple
 
 from sqlglot import exp, parse_one
 from sqlglot.errors import ParseError, TokenError
@@ -25,7 +25,13 @@ from dblift.core.sql_parser.statement_facts import (
     NamedObject,
     StatementFacts,
 )
-from dblift.db.dml_analysis import _dml_target_table, _sqlglot_events, _sqlglot_updated_columns
+from dblift.db.dml_analysis import (
+    DEFAULT_QUOTE_PAIRS,
+    _dml_target_table,
+    _find_top_level_keyword,
+    _sqlglot_events,
+    _sqlglot_updated_columns,
+)
 
 _NAME = rf"(?:{DOUBLE_QUOTED_IDENTIFIER}|{BRACKET_IDENTIFIER}|{BACKTICK_IDENTIFIER}|[\w$]+)"
 _HEAD = re.compile(
@@ -170,42 +176,23 @@ _DML_FORM = {
     "DELETE": re.compile(r"^\s*DELETE\s+FROM\b", re.IGNORECASE),
 }
 _NOT_A_TABLE = frozenset({"FROM", "INTO", "WHERE", "SET", "VALUES", "SELECT", "DEFAULT"})
-_CLOSERS = {"'": "'", '"': '"', "`": "`", "[": "]"}
-
-
-def _top_level_words(text: str) -> Iterator[Tuple[int, str]]:
-    """Words outside quotes and parentheses, with their offsets."""
-    depth = position = 0
-    while position < len(text):
-        char = text[position]
-        if char in _CLOSERS:
-            end = text.find(_CLOSERS[char], position + 1)
-            position = len(text) if end < 0 else end + 1
-            continue
-        if char in "()":
-            depth += 1 if char == "(" else -1
-            position += 1
-        elif char.isalnum() or char in "_$":
-            end = position
-            while end < len(text) and (text[end].isalnum() or text[end] in "_$"):
-                end += 1
-            if depth == 0:
-                yield position, text[position:end].upper()
-            position = end
-        else:
-            position += 1
+_MAIN_KEYWORDS = ("INSERT", "REPLACE", "UPDATE", "DELETE", "MERGE", "SELECT")
 
 
 def _top_level_where(text: str) -> Optional[int]:
-    """Offset of the WHERE keyword outside quotes and parentheses, or None."""
-    return next((at for at, word in _top_level_words(text) if word == "WHERE"), None)
+    """Offset of the WHERE keyword outside quotes, comments and parentheses, or None."""
+    at = _find_top_level_keyword(text, "WHERE", DEFAULT_QUOTE_PAIRS)
+    return at if at >= 0 else None
 
 
 def _main_statement(head: str) -> str:
-    """The statement behind a WITH clause, from its INSERT, REPLACE, UPDATE, DELETE or SELECT."""
-    main = {"INSERT", "REPLACE", "UPDATE", "DELETE", "SELECT"}
-    at = next((at for at, word in _top_level_words(head) if word in main), None)
-    return head if at is None else head[at:]
+    """The statement behind a WITH clause, from its first top-level write or SELECT keyword."""
+    found = {
+        at: word
+        for word in _MAIN_KEYWORDS
+        if (at := _find_top_level_keyword(head, word, DEFAULT_QUOTE_PAIRS)) >= 0
+    }
+    return head[min(found) :] if found else head
 
 
 def _head_object(match: "re.Match[str]") -> NamedObject:

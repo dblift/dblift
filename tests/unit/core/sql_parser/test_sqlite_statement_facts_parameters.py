@@ -114,3 +114,15 @@ def test_truncated_dml_does_not_take_a_keyword_as_its_table(sql):
     assert facts.objects == ()
     assert facts.target is None
     assert facts.diagnostic
+
+
+def test_unreadable_cte_merge_is_not_taken_for_the_delete_inside_it():
+    sql = "WITH x AS (SELECT ?1) MERGE INTO t USING x ON 1=1 WHEN MATCHED THEN DELETE"
+    analysis = analyse_script(sql, "sqlite")
+    (statement,) = analysis.statements
+
+    assert statement.operation == "MERGE"
+    assert statement.objects == ()
+    assert statement.full_table is False
+    assert "dml-no-where" not in [c.code for c in analysis.cautions]
+    assert READER.read(sql).target is None
