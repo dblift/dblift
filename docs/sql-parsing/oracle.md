@@ -210,6 +210,7 @@ else in this spec is data.
 | 33 | `SELECT 1;\n/ SELECT 4 /` | `SELECT 1` · `/ SELECT 4 /` (both slashes are statement text) |
 | 34 | `SELECT 1 FROM dual /* c */` | `SELECT 1 FROM dual /* c */` (the end of the block comment is not a terminator) |
 | 35 | `SELECT 1 FROM dual -- a/` | `SELECT 1 FROM dual -- a/` (a slash ending a line comment is part of the comment) |
+| 36 | `/ -- done` | `/ -- done` (a slash followed by a comment is statement text, §4; the server rejects it) |
 
 ## 11. Not handled
 

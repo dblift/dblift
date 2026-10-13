@@ -313,6 +313,7 @@ def test_each_call_starts_without_a_previous_terminator():
             "SELECT 1 FROM dual -- see http://host/",
             [("SELECT 1 FROM dual -- see http://host/", 1, None, 0, 19)],
         ),
+        ("/ -- done", [("/ -- done", 1, None, 0, 2)]),  # row 36
         (
             "SELECT 1 FROM dual;\n/ -- c\nSELECT 2 FROM dual;",
             [("SELECT 1 FROM dual", 1, ";", 0, 19), ("/ -- c\nSELECT 2 FROM dual", 2, ";", 20, 46)],
