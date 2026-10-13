@@ -417,3 +417,14 @@ def test_a_directive_record_is_a_statement_of_kind_directive():
     (record,) = LexicalEngine(ORACLE_SPEC).split("SET LINESIZE 100\n")
     assert record == Statement(text="SET LINESIZE 100", line=1, terminator=None, kind="directive")
     assert (record.source_start, record.source_end) == (0, 17)
+
+
+@pytest.mark.parametrize(
+    "line",
+    ["PROMPT hi -- x", "PRO hi -- x", "REMARK a -- b", "REM a -- b"],
+)
+def test_free_text_directives_do_not_read_a_comment(line):
+    script = f"{line}\nSELECT 1 FROM dual;"
+    assert records(script)[0] == directive(line, 1)
+    tokens = LexicalTokenizer(script, spec=ORACLE_SPEC).tokenize()
+    assert [t.type for t in tokens[:2]] == [TokenType.DIRECTIVE, TokenType.KEYWORD]
