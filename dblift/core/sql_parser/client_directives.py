@@ -2,8 +2,7 @@
 
 A client accepts a command abbreviated to its documented minimum, so a typed
 word matches a rule when it is a prefix of the rule's word of at least that
-length. The commands that carry options (``SET``, ``WHENEVER``) are named
-here; every word, minimum and action is table data.
+length. Every word, minimum and action is table data.
 """
 
 import re
@@ -11,8 +10,6 @@ from typing import List, Optional, Tuple
 
 from dblift.core.sql_parser.lexical_spec import ClientScriptRules, DirectiveAction
 
-_SET = ("SET", 3)
-_WHENEVER = "WHENEVER"
 _WORD = re.compile(r"[A-Za-z]+(?![A-Za-z0-9_$#])")
 
 
@@ -50,12 +47,12 @@ def classify_directive(
     if not words:
         return None
     first = words[0]
-    if _matches(first, *_SET):
+    if _matches(first, *rules.set_command):
         return _classify_set(rules, words[1:])
-    if _matches(first, _WHENEVER, rules.whenever_min_abbrev):
+    if _matches(first, rules.whenever_command, rules.whenever_min_abbrev):
         for word, action in rules.whenever:
             if len(words) > 1 and words[1] == word:
-                return f"{_WHENEVER} {word}", action, rules.whenever_min_abbrev
+                return f"{rules.whenever_command} {word}", action, rules.whenever_min_abbrev
         return None
     for rule in rules.directives:
         if _matches(first, rule.word, rule.min_abbrev):
@@ -75,8 +72,8 @@ def _classify_set(
         return None
     for rule in rules.set_options:
         if _matches(rest[0], rule.word, rule.min_abbrev):
-            return f"{_SET[0]} {rule.word}", rule.action, rule.min_abbrev
-    return _SET[0], DirectiveAction.DROP_RECORD, _SET[1]
+            return f"{rules.set_command[0]} {rule.word}", rule.action, rule.min_abbrev
+    return rules.set_command[0], DirectiveAction.DROP_RECORD, rules.set_command[1]
 
 
 def is_free_text(rules: ClientScriptRules, name: str) -> bool:

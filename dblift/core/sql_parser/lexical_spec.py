@@ -50,10 +50,12 @@ class ClientScriptRules:
     line_terminator: str
     discard_line: str
     directives: Tuple[DirectiveRule, ...]
+    set_command: Tuple[str, int]
     set_options: Tuple[DirectiveRule, ...]
     set_sql_words: FrozenSet[str]
     prefix_directives: Tuple[Tuple[str, str], ...]
     sql_follow_words: Tuple[Tuple[str, str], ...]
+    whenever_command: str
     whenever: Tuple[Tuple[str, DirectiveAction], ...]
     whenever_min_abbrev: int
     policy_actions: Tuple[str, ...]
