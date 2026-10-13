@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import replace
-from typing import Optional, Tuple
+from typing import Iterator, Optional, Tuple
 
 from sqlglot import exp, parse_one
 from sqlglot.errors import ParseError, TokenError
@@ -169,11 +169,12 @@ _DML_FORM = {
     "UPDATE": re.compile(r"^\s*UPDATE\b", re.IGNORECASE),
     "DELETE": re.compile(r"^\s*DELETE\s+FROM\b", re.IGNORECASE),
 }
+_NOT_A_TABLE = frozenset({"FROM", "INTO", "WHERE", "SET", "VALUES", "SELECT", "DEFAULT"})
 _CLOSERS = {"'": "'", '"': '"', "`": "`", "[": "]"}
 
 
-def _top_level_where(text: str) -> Optional[int]:
-    """Offset of the WHERE keyword outside quotes and parentheses, or None."""
+def _top_level_words(text: str) -> Iterator[Tuple[int, str]]:
+    """Words outside quotes and parentheses, with their offsets."""
     depth = position = 0
     while position < len(text):
         char = text[position]
@@ -181,17 +182,30 @@ def _top_level_where(text: str) -> Optional[int]:
             end = text.find(_CLOSERS[char], position + 1)
             position = len(text) if end < 0 else end + 1
             continue
-        depth += {"(": 1, ")": -1}.get(char, 0)
-        if (
-            depth == 0
-            and text[position : position + 5].upper() == "WHERE"
-            and not (position and (text[position - 1].isalnum() or text[position - 1] in "_$"))
-            and not text[position + 5 : position + 6].isalnum()
-            and text[position + 5 : position + 6] not in ("_", "$")
-        ):
-            return position
-        position += 1
-    return None
+        if char in "()":
+            depth += 1 if char == "(" else -1
+            position += 1
+        elif char.isalnum() or char in "_$":
+            end = position
+            while end < len(text) and (text[end].isalnum() or text[end] in "_$"):
+                end += 1
+            if depth == 0:
+                yield position, text[position:end].upper()
+            position = end
+        else:
+            position += 1
+
+
+def _top_level_where(text: str) -> Optional[int]:
+    """Offset of the WHERE keyword outside quotes and parentheses, or None."""
+    return next((at for at, word in _top_level_words(text) if word == "WHERE"), None)
+
+
+def _main_statement(head: str) -> str:
+    """The statement behind a WITH clause, from its INSERT, REPLACE, UPDATE, DELETE or SELECT."""
+    main = {"INSERT", "REPLACE", "UPDATE", "DELETE", "SELECT"}
+    at = next((at for at, word in _top_level_words(head) if word in main), None)
+    return head if at is None else head[at:]
 
 
 def _head_object(match: "re.Match[str]") -> NamedObject:
@@ -218,6 +232,9 @@ def _head_facts(sql: str, diagnostic: str) -> StatementFacts:
     """Classify a statement from its leading words when sqlglot cannot represent the body."""
     head = _blanked(sql)
     first = _FIRST_WORD.match(head)
+    if first and first.group(1).upper() == "WITH":
+        head = _main_statement(head)
+        first = _FIRST_WORD.match(head)
     operation = first.group(1).upper() if first else "UNKNOWN"
     kind = _KINDS.get(operation, "UNKNOWN")
     objects: Tuple[NamedObject, ...] = ()
@@ -233,7 +250,7 @@ def _head_facts(sql: str, diagnostic: str) -> StatementFacts:
         found = _head_object(match)
         diagnostic = f"{found.type.value.lower().replace('_', ' ')}: {diagnostic}"
         objects = (found,)
-    elif dml and _DML_FORM[operation].match(head):
+    elif dml and _DML_FORM[operation].match(head) and dml.group(2).upper() not in _NOT_A_TABLE:
         schema = strip_identifier_quotes(dml.group(2)) if dml.group(3) else None
         name = strip_identifier_quotes(dml.group(3) or dml.group(2))
         objects = (NamedObject(name, SqlObjectType.TABLE, "altered", schema),)
