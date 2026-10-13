@@ -40,6 +40,8 @@ class LexicalTokenizer(BaseTokenizer):
         # Tokens read since a COPY keyword, until the ';' ending its header.
         self._copy_header: Optional[List[Token]] = None
         self._statement_start = True
+        # (position, opener length) of the last alternative-quote lookup.
+        self._opener_at = (-1, 0)
 
     def _next_sql_token(self) -> Optional[Token]:
         """Get the next token from the input.
@@ -200,10 +202,15 @@ class LexicalTokenizer(BaseTokenizer):
 
     def _alternative_quote_opener(self) -> int:
         """Length of the alternative-quote opener (``q'``, ``nq'``) at the cursor, else 0."""
+        if self._opener_at[0] == self.pos:
+            return self._opener_at[1]
+        length = 0
         for opener in self.spec.alternative_quotes:
             if self.peek(len(opener)).lower() == opener.lower():
-                return len(opener)
-        return 0
+                length = len(opener)
+                break
+        self._opener_at = (self.pos, length)
+        return length
 
     def _handle_alternative_quote(self, opener_length: int) -> Token:
         """Read ``q'<d>...<c>'``: the closer ``<c>`` depends on the delimiter ``<d>``."""
