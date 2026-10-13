@@ -80,8 +80,8 @@ reports SP2-0103 on an empty one) and ignores the rest of the line (sqlplus
 23.x, Oracle Free 23ai, 2026-10-13: rows 28, 36, 38, 39). A `/` with no blank
 before the text that follows it (`/x`) is reported by SQL\*Plus as an unknown
 command (SP2-0042) and is rejected too (row 40). In a buffer that holds
-statement text the same line is statement text (row 25); the same with only a
-block comment before the `/` is not yet measured (row 41).
+statement text the same line is statement text (row 25), also with only a
+block comment before the `/` (sqlplus 23.x, Oracle Free 23ai, 2026-10-13: row 41).
 
 End of input: a statement or unit that reaches the end of the script without
 its terminator is never run by SQL\*Plus. A unit is rejected (row 20); a SQL
@@ -231,7 +231,7 @@ else in this spec is data.
 | 38 | `SELECT 7 AS a FROM dual;\n/* c */ /` | `UnsafeStatementSplitError` at line 2, column 9: the `/` after a block comment would re-execute the previous statement (sqlplus 23.x, Oracle Free 23ai, 2026-10-13: the line is the `/` command, which re-executes the buffer) |
 | 39 | `SELECT 1;\n/* a */ /* b */ / x` | `UnsafeStatementSplitError` at line 2, column 17: the `/` after block comments would re-execute the previous statement, the rest of the line is ignored (sqlplus 23.x, Oracle Free 23ai, 2026-10-13: the line is the `/` command, which re-executes the buffer) |
 | 40 | `SELECT 1;\n/x` | `UnsafeStatementSplitError` at line 2, column 1: SQL\*Plus reports the line as an unknown command (SP2-0042; sqlplus 23.x, Oracle Free 23ai, 2026-10-13) and does not re-execute the buffer |
-| 41 | `SELECT 1\n/* c */ /` | **to verify live** (an open buffer whose last line is a block comment and a `/`; the splitter keeps it as statement text, not changed here) |
+| 41 | `SELECT 1\n/* c */ /` | `SELECT 1\n/* c */ /` (an open buffer keeps a line made of a block comment and a slash as statement text; sqlplus 23.x, Oracle Free 23ai, 2026-10-13: a statement left open, then a line made of a block comment and a slash, then a second statement was rejected with ORA-03048, the line having been appended to the open statement) |
 
 ## 11. Not handled
 
