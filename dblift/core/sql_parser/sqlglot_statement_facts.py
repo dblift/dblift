@@ -50,6 +50,28 @@ def _named(node: exp.Expression, kind: SqlObjectType, role: str) -> Optional[Nam
     return NamedObject(table.name, kind, role, schema)
 
 
+def _qualified_index(
+    index: exp.Index,
+) -> Optional[Tuple[str, str, str, list[exp.Expression]]]:
+    """Schema, index, table and indexed expressions of ``schema.index ON table (...)``.
+
+    sqlglot's SQLite grammar reads the schema as the index name and the table as a call.
+    SQLite qualifies the index only; the table is always unqualified.
+    """
+    params = index.args.get("params")
+    called = params.args.get("on") if params else None
+    named = index.args.get("table")
+    if not (
+        isinstance(called, exp.Anonymous)
+        and isinstance(index.this, exp.Identifier)
+        and isinstance(named, exp.Table)
+        and named.name
+    ):
+        return None
+    table = called.this.name if isinstance(called.this, exp.Identifier) else str(called.this)
+    return index.this.name, named.name, table, list(called.expressions)
+
+
 def _reference(node: exp.Reference) -> Tuple[Optional[str], Tuple[str, ...]]:
     target = node.this
     if isinstance(target, exp.Schema):
@@ -146,12 +168,23 @@ def read_statement_facts(sql: str, *, dialect: str, spec: LexicalSpec) -> Statem
         objects: Tuple[NamedObject, ...] = (identity,) if identity else ()
         indexed_table = None
         indexed_columns = None
+        index_items: list[exp.Expression] = []
         if isinstance(subject, exp.Index):
+            params = subject.args.get("params")
+            index_items = params.args.get("columns", []) if params else []
             table = subject.args.get("table")
-            reference = _named(table, SqlObjectType.TABLE, "referenced") if table else None
-            if reference:
-                objects += (reference,)
-                indexed_table = reference.name
+            qualified = _qualified_index(subject)
+            if qualified is not None:
+                schema, index_name, indexed_table, index_items = qualified
+                objects = (
+                    NamedObject(index_name, object_type, "created", schema),
+                    NamedObject(indexed_table, SqlObjectType.TABLE, "referenced"),
+                )
+            else:
+                reference = _named(table, SqlObjectType.TABLE, "referenced") if table else None
+                if reference:
+                    objects += (reference,)
+                    indexed_table = reference.name
         definitions = schema_node.expressions if schema_node is not None else []
         columns = tuple(
             x.name for x in definitions if isinstance(x, (exp.ColumnDef, exp.Identifier))
@@ -169,9 +202,7 @@ def read_statement_facts(sql: str, *, dialect: str, spec: LexicalSpec) -> Statem
             if (detail := _declared_constraint(definition))
         )
         if isinstance(subject, exp.Index):
-            params = subject.args.get("params")
-            indexed = params.args.get("columns", []) if params else []
-            simple = [item.this if isinstance(item, exp.Ordered) else item for item in indexed]
+            simple = [item.this if isinstance(item, exp.Ordered) else item for item in index_items]
             if all(isinstance(item, exp.Column) for item in simple):
                 indexed_columns = tuple(item.name for item in simple)
         diagnostic = f"{dialect} virtual table module arguments are opaque" if virtual else None
