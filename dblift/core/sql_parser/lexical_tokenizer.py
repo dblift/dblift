@@ -23,6 +23,25 @@ def copy_header_reads(tokens: Iterable[Token], direction: str, stream: str) -> b
     return any(a == direction and b == stream for a, b in zip(words, words[1:]))
 
 
+def is_alone_on_line(sql: str, pos: int) -> bool:
+    """Whether ``sql[pos]`` is the only non-blank text on its line.
+
+    Looks only at the blanks adjacent to ``pos``, so the cost does not grow
+    with the length of the line.
+    """
+    i = pos - 1
+    while i >= 0 and sql[i] != "\n":
+        if not sql[i].isspace():
+            return False
+        i -= 1
+    i = pos + 1
+    while i < len(sql) and sql[i] != "\n":
+        if not sql[i].isspace():
+            return False
+        i += 1
+    return True
+
+
 class LexicalTokenizer(BaseTokenizer):
     """Use the base character scanner with the selected plugin's lexical rules."""
 
@@ -199,6 +218,16 @@ class LexicalTokenizer(BaseTokenizer):
             return True  # empty tag
         # A tag starts like an unquoted identifier; $1 is a parameter, ${ a placeholder.
         return bool(after) and (after.isalpha() or after == "_")
+
+    def _is_delimiter_start(self) -> bool:
+        """A ``;``, or a line terminator and discard line when alone on their line."""
+        char = self.peek()
+        if char == ";":
+            return True
+        rules = self.spec.client_script
+        if rules is not None and char in (rules.line_terminator, rules.discard_line):
+            return is_alone_on_line(self.sql, self.pos)
+        return False
 
     def _alternative_quote_opener(self) -> int:
         """Length of the alternative-quote opener (``q'``, ``nq'``) at the cursor, else 0."""

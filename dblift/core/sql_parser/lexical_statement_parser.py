@@ -4,6 +4,7 @@ from typing import List, Optional, Tuple
 
 from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
 from dblift.core.sql_parser.base_statement_parser import BaseStatementParser
+from dblift.core.sql_parser.client_script import ClientScript
 from dblift.core.sql_parser.lexical_spec import LexicalSpec
 from dblift.core.sql_parser.parser_context import ParserContext
 from dblift.core.sql_parser.statement import Statement
@@ -33,6 +34,9 @@ class LexicalStatementParser(BaseStatementParser):
         self._sqlite_last_line_comment = 0
         self._sqlite_checked_line = 0
         self._sqlite_token_end = 0
+        self._script = (
+            ClientScript(spec.client_script, source) if spec.client_script is not None else None
+        )
 
     def _adjust_context(self, token: Token) -> None:
         if self.spec.sqlite_shell:
@@ -102,6 +106,10 @@ class LexicalStatementParser(BaseStatementParser):
         """
         if self.spec.sqlite_shell:
             return token.type == TokenType.DELIMITER and self._sqlite_state == 1
+        if self._script is not None:
+            following_idx = self.current_idx + 1
+            following = self.tokens[following_idx] if following_idx < len(self.tokens) else None
+            return self._script.is_statement_end(token, following, self.context.tokens)
         if token.type == TokenType.COPY_DATA:
             return True
         if not super()._is_statement_end(token):
@@ -145,6 +153,8 @@ class LexicalStatementParser(BaseStatementParser):
             self._previous = None
             self._sqlite_state = 1
             self._sqlite_code = False
+            if self._script is not None:
+                self._script.reset_statement()
 
         for idx, token in enumerate(self.tokens):
             self.current_idx = idx
@@ -185,6 +195,8 @@ class LexicalStatementParser(BaseStatementParser):
             if self._is_statement_end(token):
                 flush(token, None)
 
+        if self._script is not None:
+            self._script.check_tail(current)
         flush(None, None)
         return records
 
@@ -270,6 +282,8 @@ class LexicalStatementParser(BaseStatementParser):
                 else len(self.source) if self.source is not None else None
             )
         )
+        if self._script is not None:
+            source_end = self._script.record_end(tokens, terminator, source_end)
         combinators = [
             t
             for t in tokens
@@ -357,7 +371,11 @@ class LexicalStatementParser(BaseStatementParser):
         out: List[str] = []
         for record, rendered in self._split_with_rendered():
             if record.kind == "sql":
-                out.append(record.text if self.spec.sqlite_shell else rendered)
+                ends_at_line = (
+                    self._script is not None
+                    and record.terminator == self._script.rules.line_terminator
+                )
+                out.append(record.text if self.spec.sqlite_shell or ends_at_line else rendered)
             elif record.kind != "directive":
                 out.append(record.text)
         return out
