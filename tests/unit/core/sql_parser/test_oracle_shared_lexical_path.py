@@ -108,8 +108,34 @@ def test_row_37_the_public_route_names_the_line_of_the_reference():
 
 def test_redaction_reads_oracle_text_without_client_directives():
     assert mask_string_literals("DEFINE p = 'secret'", "oracle") == "DEFINE p = '?'"
-    assert "secret" not in mask_string_literals("PROMPT it's secret", "oracle")
-    assert "pw" not in mask_string_literals("CREATE USER u IDENTIFIED BY q'[pw]'", "oracle")
+    # a directive line that opens a quote falls back to the first word, as before
+    assert mask_string_literals("PROMPT it's secret", "oracle") == "PROMPT"
     assert describe_statement("CONNECT scott/tiger@db", "oracle") == "CONNECT scott"
     # pre-existing: nothing in this text is a literal or an IDENTIFIED BY value, so it is not masked
     assert mask_string_literals("CONNECT scott/tiger@db", "oracle") == "CONNECT scott/tiger@db"
+
+
+def test_redaction_reads_alternative_quotes_as_the_splitter_does():
+    # a q-quote is one literal (before: a masked quote followed by a stray quote)
+    assert (
+        mask_string_literals("CREATE USER u IDENTIFIED BY q'[pw]'", "oracle")
+        == "CREATE USER u IDENTIFIED BY '?'"
+    )
+    # before: the statement fell back to its first word
+    assert (
+        mask_string_literals("CREATE TABLE t (a VARCHAR2(5) DEFAULT q'[it's]')", "oracle")
+        == "CREATE TABLE t (a VARCHAR2(5) DEFAULT '?')"
+    )
+
+
+def test_redaction_keeps_comment_markers_inside_quoted_identifiers_out_of_literals():
+    # before: the quote inside the identifier opened a literal that swallowed the comment
+    assert (
+        mask_string_literals("CREATE TABLE \"nq'\" (id NUMBER)/* it's */", "oracle")
+        == "CREATE TABLE \"nq'\" (id NUMBER)/* it's */"
+    )
+
+
+def test_redaction_falls_back_to_the_first_word_for_an_unterminated_alternative_quote():
+    # before: the text was masked as if the unterminated q-quote were a literal
+    assert mask_string_literals("INSERT INTO t VALUES (Q':a'b);", "oracle") == "INSERT"

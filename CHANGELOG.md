@@ -39,6 +39,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Oracle error-message redaction now reads quoting the way the statement splitter
+  does: alternative quotes (`q'[...]'`) are one literal, an identifier that contains
+  a comment marker or an apostrophe is not a literal, and an unterminated
+  alternative quote falls back to the first word of the statement.
 - **SQLite: object extraction reads statement facts from the SQLGlot AST instead of
   regular expressions.** `parse_sql` and `extract_objects` report the table an
   `INSERT`, `UPDATE` or `DELETE` writes as an affected object, including behind a
