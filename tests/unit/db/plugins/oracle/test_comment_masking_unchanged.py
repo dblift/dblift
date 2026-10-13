@@ -132,6 +132,42 @@ DIRECTIVE_CASES = [
             [True, []],
         ],
     ),
+    (
+        "CREATE PROCEDURE p AS\nBEGIN\n  NULL;\nPROMPT it's -- c\nEND;\n/\n",
+        [
+            [
+                "error",
+                "UnsafeStatementSplitError",
+                "unterminated string opened at line 4, column 10",
+            ],
+            [
+                "error",
+                "UnsafeStatementSplitError",
+                "unterminated string opened at line 4, column 10",
+            ],
+            [
+                "error",
+                "UnsafeStatementSplitError",
+                "unterminated string opened at line 4, column 10",
+            ],
+        ],
+    ),
+    (
+        "PROMPT Hello World -- X",
+        ["PROMPT Hello World", "PROMPT Hello World ", [False, ["Hello World"]]],
+    ),
+    (
+        "REM note -- x",
+        ["REM note", "REM note ", [False, []]],
+    ),
+    (
+        "REMARK note /* y */",
+        ["REMARK note /* y */", "REMARK note /* y */", [False, []]],
+    ),
+    (
+        "SET FEED OFF -- don't",
+        ["SET FEED OFF", "SET FEED OFF ", [False, []]],
+    ),
 ]
 
 Q_QUOTE_CASES = [
@@ -158,6 +194,10 @@ Q_QUOTE_CASES = [
     (
         "SELECT q'[a]b -- c]' FROM dual;",
         ["SELECT q'[a]b -- c]' FROM dual;", "SELECT q'[a]b -- c]' FROM dual;", [False, []]],
+    ),
+    (
+        "SELECT 1 /*/ x */ FROM dual;",
+        ["SELECT 1  FROM dual;", "SELECT 1 FROM dual;", [False, []]],
     ),
     (
         'SELECT "a--b" FROM dual; -- tail',
