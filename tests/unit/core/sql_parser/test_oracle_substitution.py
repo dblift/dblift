@@ -181,9 +181,9 @@ def test_whenever_policy_actions_agree_with_the_policy_reader(action):
 @pytest.mark.parametrize(
     "script, line",
     [
-        ("/ -- c\nSELECT &v FROM dual;", 2),
-        ("/ -- a\n-- b\n\nSELECT 1,\n  &v FROM dual;", 5),
-        ("SELECT 1 FROM dual;\n/ SELECT\n&w FROM dual;", 3),
+        ("-- c\nSELECT &v FROM dual;", 2),
+        ("-- a\n-- b\n\nSELECT 1,\n  &v FROM dual;", 5),
+        ("SELECT 1 FROM dual;\nSELECT\n&w FROM dual;", 3),
     ],
 )
 def test_row_37_a_refusal_names_the_line_of_the_reference_in_the_source(script, line):

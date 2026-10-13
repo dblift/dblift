@@ -103,7 +103,7 @@ def test_a_line_terminator_is_not_a_terminator_for_other_dialects():
 def test_row_37_the_public_route_names_the_line_of_the_reference():
     for route in (OracleParser().split, SqlAnalyzer("oracle").split_statements):
         with pytest.raises(UnsafeStatementSplitError, match=r"&v on line 2 is undefined"):
-            route("/ -- c\nSELECT &v FROM dual;")
+            route("-- c\nSELECT &v FROM dual;")
 
 
 def test_redaction_reads_oracle_text_without_client_directives():
