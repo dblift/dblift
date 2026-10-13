@@ -132,6 +132,7 @@ ORACLE_SPEC = LexicalSpec(
         whenever_min_abbrev=8,
         policy_actions=("EXIT", "CONTINUE"),
         slash_record_ends_at_line_end=True,
+        refuse_terminator_text_on_empty_buffer=True,
         tail_record_ends_at_last_token=True,
         policy_projection=("WHENEVER SQLERROR",),
         substitution_char="&",

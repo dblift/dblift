@@ -60,6 +60,7 @@ class ClientScriptRules:
     whenever_min_abbrev: int
     policy_actions: Tuple[str, ...]
     slash_record_ends_at_line_end: bool
+    refuse_terminator_text_on_empty_buffer: bool
     tail_record_ends_at_last_token: bool
     policy_projection: Tuple[str, ...]
     substitution_char: str

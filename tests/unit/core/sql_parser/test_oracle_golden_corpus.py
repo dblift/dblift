@@ -7,8 +7,8 @@ script can reach without being sensitive to them (substitution, unit heads, comm
 cuts). Coverage of the engine modules is measured with `coverage run --branch`, not
 `pytest --cov` (which starts after the modules are imported). Each entry stores
 what the previous scanner returned for it, except where `difference` names the
-declared correction (a slash that is statement text, a statement ending in a
-comment, a slash followed only by a comment, a refusal naming the true line); there
+declared correction (a refused slash line that holds text, a statement ending in a
+comment, a refusal naming the true line); there
 it stores the corrected value. The entries are compared exactly: records with their
 offsets, execution strings, analysis projection, comment masking, SQL*Plus context
 and the class and message of every refusal.
@@ -28,7 +28,13 @@ from dblift.db.plugins.oracle.parser.sqlplus_context import extract_sqlplus_cont
 
 CORPUS = json.loads(Path(__file__).with_name("oracle_golden_corpus.json").read_text())
 CHUNK = 50
-DECLARED = {"covered", "old_crash", "old_refusal_line"}
+DECLARED = {
+    "covered",
+    "old_crash",
+    "old_refusal_line",
+    "slash_refusal",
+    "slash_refusal_old_refused",
+}
 
 
 def outcome(call):

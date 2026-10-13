@@ -279,24 +279,28 @@ def test_each_call_starts_without_a_previous_terminator():
 @pytest.mark.parametrize(
     "script, expected",
     [
-        (  # row 28
-            "SELECT 1 FROM dual;\n/ SELECT 2 FROM dual;",
-            [("SELECT 1 FROM dual", 1, ";", 0, 19), ("/ SELECT 2 FROM dual", 2, ";", 20, 41)],
-        ),
         ("SELECT 4 /", [("SELECT 4 /", 1, None, 0, 10)]),  # row 29
-        (  # row 30
-            "SELECT 1;\n/ ;\nSELECT 2;",
-            [("SELECT 1", 1, ";", 0, 9), ("/", 2, ";", 10, 13), ("SELECT 2", 3, ";", 14, 23)],
+        (  # a comment before the slash: the line does not start with it
+            "SELECT 1;\n/* c */ / x",
+            [("SELECT 1", 1, ";", 0, 9), ("/ x", 2, None, 18, 21)],
         ),
-        (  # row 31
-            "SELECT 1;\n/ /\n",
-            [("SELECT 1", 1, ";", 0, 9), ("/ /", 2, None, 10, 13)],
+        (
+            "SELECT 1;\n/* a\n b */ / x;",
+            [("SELECT 1", 1, ";", 0, 9), ("/ x", 3, ";", 21, 25)],
+        ),
+        (  # row 25: an open buffer keeps the slash line as statement text
+            "CREATE TABLE t25 (id NUMBER)\n/ -- done\nINSERT INTO t25 VALUES (1);",
+            [
+                (
+                    "CREATE TABLE t25 (id NUMBER)\n/ -- done\nINSERT INTO t25 VALUES (1)",
+                    1,
+                    ";",
+                    0,
+                    66,
+                )
+            ],
         ),
         ("SELECT 4 / -- c", [("SELECT 4 / -- c", 1, None, 0, 11)]),  # row 32
-        (  # row 33
-            "SELECT 1;\n/ SELECT 4 /",
-            [("SELECT 1", 1, ";", 0, 9), ("/ SELECT 4 /", 2, None, 10, 22)],
-        ),
         (  # row 34
             "SELECT 1 FROM dual /* c */",
             [("SELECT 1 FROM dual /* c */", 1, None, 0, 19)],
@@ -313,15 +317,32 @@ def test_each_call_starts_without_a_previous_terminator():
             "SELECT 1 FROM dual -- see http://host/",
             [("SELECT 1 FROM dual -- see http://host/", 1, None, 0, 19)],
         ),
-        ("/ -- done", [("/ -- done", 1, None, 0, 2)]),  # row 36
-        (
-            "SELECT 1 FROM dual;\n/ -- c\nSELECT 2 FROM dual;",
-            [("SELECT 1 FROM dual", 1, ";", 0, 19), ("/ -- c\nSELECT 2 FROM dual", 2, ";", 20, 46)],
-        ),
     ],
 )
 def test_a_slash_that_is_not_alone_on_its_line_stays_statement_text(script, expected):
     assert fields(script) == expected
+
+
+_AFTER = "'/' followed by text on line {}, column 1 would re-execute the previous statement"
+_EMPTY = "'/' followed by text on line 1, column 1 would run an empty buffer"
+
+
+@pytest.mark.parametrize(
+    "script, message",
+    [
+        ("SELECT 1 FROM dual;\n/ SELECT 2 FROM dual;", _AFTER.format(2)),  # row 28
+        ("SELECT 1;\n/ ;\nSELECT 2;", _AFTER.format(2)),  # row 30
+        ("SELECT 1;\n/ /\n", _AFTER.format(2)),  # row 31
+        ("SELECT 1;\n/ SELECT 4 /", _AFTER.format(2)),  # row 33
+        ("/ -- done", _EMPTY),  # row 36
+        ("SELECT 1 FROM dual;\n/ -- c\nSELECT 2 FROM dual;", _AFTER.format(2)),
+        ("SELECT 1;\n/ garbage", _AFTER.format(2)),
+        ("BEGIN NULL; END;\n/\n/ x\n", _AFTER.format(3)),
+        ("-- c\n/ x", _EMPTY.replace("line 1", "line 2")),
+    ],
+)
+def test_a_slash_with_text_where_the_buffer_is_complete_is_refused(script, message):
+    assert refusal(script) == message
 
 
 @pytest.mark.parametrize(
@@ -393,3 +414,15 @@ def test_a_word_in_a_line_is_alone_on_it_as_the_plugin_helper_says():
 )
 def test_a_semicolon_inside_parentheses_does_not_end_the_statement(script, expected):
     assert texts(script) == expected
+
+
+def test_the_empty_buffer_rule_is_a_spec_flag():
+    rules = ORACLE_SPEC.client_script
+    assert rules is not None
+    off = replace(
+        ORACLE_SPEC, client_script=replace(rules, refuse_terminator_text_on_empty_buffer=False)
+    )
+    assert [r.text for r in LexicalEngine(off).split("SELECT 1;\n/ SELECT 2;")] == [
+        "SELECT 1",
+        "/ SELECT 2",
+    ]

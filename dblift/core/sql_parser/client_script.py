@@ -68,9 +68,10 @@ class ClientScript:
     ) -> bool:
         """Whether ``token`` ends the statement; refuses what the client would reject."""
         self._observe(token)
-        if token.type != TokenType.DELIMITER:
-            return False
         rules = self.rules
+        if token.type != TokenType.DELIMITER:
+            self._refuse_terminator_text(token, following, buffered)
+            return False
         if token.text == rules.discard_line:
             raise UnsafeStatementSplitError(
                 f"'{rules.discard_line}' alone on line {token.line} would discard the "
@@ -96,6 +97,29 @@ class ClientScript:
             )
         self._last_terminator = ";"
         return True
+
+    def _refuse_terminator_text(
+        self, token: Token, following: Optional[Token], buffered: Sequence[Token]
+    ) -> None:
+        """The client runs a line that starts with the terminator, whatever follows it."""
+        rules = self.rules
+        if not (
+            rules.refuse_terminator_text_on_empty_buffer
+            and token.text == rules.line_terminator
+            and following is not None
+            and following.type != TokenType.EOF
+            and following.line == token.line
+            and all(t is token or t.type == TokenType.COMMENT for t in buffered)
+            and self.source is not None
+            and not self.source[self.source.rfind("\n", 0, token.pos) + 1 : token.pos].strip()
+        ):
+            return
+        where = (
+            f"'{rules.line_terminator}' followed by text on line {token.line}, column {token.col}"
+        )
+        if self._last_terminator is None:
+            raise UnsafeStatementSplitError(f"{where} would run an empty buffer")
+        raise UnsafeStatementSplitError(f"{where} would re-execute the previous statement")
 
     def check_tail(self, tokens: Sequence[Token]) -> None:
         """Refuse a unit that reached the end of the script without its line terminator."""
