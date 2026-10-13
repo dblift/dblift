@@ -27,6 +27,7 @@ def _objects(facts):
 def test_execution_splitting_does_not_import_sqlglot():
     code = textwrap.dedent("""
         import sys
+        import dblift.core.migration.executor.execution_engine
         from dblift.core.migration.sql.execution_statement import execution_units
         from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
         from dblift.core.sql_parser.parser_factory import SqlParserFactory
