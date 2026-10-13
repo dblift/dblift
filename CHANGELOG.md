@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   original script, including consumed client terminators. Their analysis
   constituents distinguish a single derived statement from a deliberate
   empty analysis projection.
-- `Statement` records for Oracle (`OracleStatementParser.split()`): the text
+- `Statement` records for Oracle (`OracleParser.split()`): the text
   without its terminator, its line, and the terminator (`;`, `/` or none).
 - `Statement` records from `PostgreSQLStatementParser.split()`: the text
   without its terminator, its line, the terminator, a kind (`sql`,
@@ -39,6 +39,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Oracle: statement splitting, analysis and extraction run on the shared
+  lexical engine** (as PostgreSQL and SQLite do), with the Oracle rules as data.
+  The same scripts give the same statements, with the corrections listed under
+  Fixed. SQL*Plus directive masking for comments keeps its own scanner and is
+  not changed.
 - Oracle error-message redaction now reads quoting the way the statement splitter
   does: alternative quotes (`q'[...]'`) are one literal, an identifier that contains
   a comment marker or an apostrophe is not a literal, and an unterminated
@@ -251,8 +256,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - The unused wrapped-PL/SQL detector on the Oracle tokenizer is gone.
 - The `terminate_script_directives` and `apply_script_substitution` quirks
-  hooks are gone: SQL*Plus directives are handled by the Oracle statement
-  splitter itself, which records, rewrites or refuses them.
+  hooks are gone: SQL*Plus directives are handled by the Oracle splitter
+  itself, which records, rewrites or refuses them.
 - `SqlplusContext` (`dblift.db.plugins.oracle.parser`) no longer carries
   `define_on` or `defines`, and `apply_define_substitution` and
   `terminate_sqlplus_directives` are gone; `DEFINE` is resolved by the splitter,
@@ -260,6 +265,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Oracle: a `/` that is not alone on its line stays statement text.** `/ SELECT 2
+  FROM dual;` and a trailing ` /` were stripped before; a statement that ends in
+  a comment no longer loses the closing slash of that comment (`*/`, or the last
+  character of a `--` comment), which left an unterminated comment or changed it.
+- **Oracle: a slash followed only by a comment is a statement record** instead of
+  an internal error.
+- **Oracle: a refusal for an undefined substitution variable names the line of
+  the reference** in the script when the statement starts with a slash.
 - DuckDB: a lone `INSERT`, `UPDATE` or `DELETE` run through the provider no longer
   loses the blank lines, the lines starting with `--` or `/*`, and the `CR` of a
   `CRLF` inside a string literal. The statement is sent as written; only its

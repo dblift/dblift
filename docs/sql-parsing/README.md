@@ -89,7 +89,7 @@ fails strictly (`xfail(strict=True)`): the list can only shrink honestly.
 | Spec | Covers | Engine subclass needed |
 | --- | --- | --- |
 | [postgresql.md](postgresql.md) | PostgreSQL and the compatible family: AlloyDB, Aurora PostgreSQL, Citus, CockroachDB, Neon, Supabase, TimescaleDB, YugabyteDB | dollar-quote tags |
-| [oracle.md](oracle.md) | Oracle Database 12c+ scripts written for SQL\*Plus / SQLcl | alternative quoting `q'…'` |
+| [oracle.md](oracle.md) | Oracle Database 12c+ scripts written for SQL\*Plus / SQLcl | alternative quoting `q'…'` (a flag of the shared tokenizer; the line-oriented client rules are spec data) |
 | [sqlserver.md](sqlserver.md) | SQL Server and Azure SQL (T-SQL) | SQL Server batch scanner |
 | [mysql.md](mysql.md) | MySQL and MariaDB, read the way the `mysql` client reads a script: `DELIMITER`, client commands, executable comments, stored-program bodies | MySQL script scanner |
 | [mariadb.md](mariadb.md) | where MariaDB differs from MySQL: the `/*M!` comment, `CREATE OR REPLACE`, `AGGREGATE`, `FOR` loops | none; one flag of the MySQL scanner |
