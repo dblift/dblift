@@ -149,6 +149,9 @@ class LexicalStatementParser(BaseStatementParser):
             if current and (has_code or (include_comment_only and has_comments)):
                 text = self._render_statement(current, terminator, end_pos)
                 if text.strip(" \t\n\f\r" if self.spec.sqlite_shell else None):
+                    first = next((t for t in current if t.type != TokenType.COMMENT), None)
+                    if self._script is not None and first is not None:
+                        text = self._script.substitute(text, first.line)
                     records.append(self._record(current, text, terminator, end_pos))
             current.clear()
             self.context.reset_for_new_statement()

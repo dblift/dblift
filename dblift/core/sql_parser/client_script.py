@@ -1,7 +1,7 @@
 """Statement ends and refusals for a client that reads a script line by line."""
 
 import re
-from typing import List, Optional, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
 from dblift.core.sql_parser.client_directives import classify_directive
@@ -11,6 +11,9 @@ from dblift.core.sql_parser.tokens import Token, TokenType
 from dblift.core.sql_parser.unit_heads import decide
 
 _EXEC_BODY = re.compile(r"^\s*\w+\s*(.*?)\s*$", re.DOTALL)
+_SET_DEFINE_ARG = re.compile(r"^\s*\w+\s+\w+\s+(\S+)")
+_DEFINE_ASSIGN = re.compile(r"^\s*\w+\s+(\w+)\s*=\s*(.*?)\s*;?\s*$", re.DOTALL)
+_UNDEFINE_NAMES = re.compile(r"^\s*\w+\s+(.*?)\s*;?\s*$", re.DOTALL)
 
 
 class ClientScript:
@@ -32,6 +35,10 @@ class ClientScript:
         self._head_line = 0
         self._unit: Optional[bool] = None
         self._last_terminator: Optional[str] = None
+        # Substitution state: on, with the rules' character, until a directive says otherwise.
+        self._define_on = True
+        self._define_char = rules.substitution_char
+        self._defines: Dict[str, str] = {}
         self._policy = re.compile(
             "^\\s*("
             + "|".join(
@@ -167,6 +174,8 @@ class ClientScript:
         name, action, _ = found
         if action is DirectiveAction.EXEC:
             return self.exec_record(token)
+        if action is DirectiveAction.DEFINE:
+            self._apply_define(name, token.text, token.line)
         if action is DirectiveAction.REJECT:
             raise UnsupportedMetaCommandError(
                 f"Unsupported {self.client_name} directive {name!r} at line {token.line}; "
@@ -200,7 +209,7 @@ class ClientScript:
                 f"EXECUTE on line {token.line} has no statement to run"
             )
         opener, closer = self.rules.exec_wrapper
-        text = f"{opener}{stmt}{closer}"
+        text = self.substitute(f"{opener}{stmt}{closer}", token.line)
         return (
             Statement(
                 text=text,
@@ -243,3 +252,53 @@ class ClientScript:
             return None
         newline = self.source.find("\n", pos)
         return newline + 1 if newline >= 0 else len(self.source)
+
+    def _apply_define(self, name: str, line: str, line_no: int) -> None:
+        """Update the substitution state from a DEFINE-action directive line."""
+        set_word = self.rules.set_command[0]
+        if name in (f"{set_word} DEFINE", f"{set_word} SCAN"):
+            arg = _SET_DEFINE_ARG.match(line)
+            value = arg.group(1).rstrip(";") if arg else ""
+            if value.upper() == "OFF":
+                self._define_on = False
+            elif value.upper() == "ON":
+                self._define_on = True
+            elif len(value) == 1 and name == f"{set_word} DEFINE":
+                self._define_on = True
+                self._define_char = value
+        elif name == "UNDEFINE":
+            names = _UNDEFINE_NAMES.match(line)
+            for var in (names.group(1) if names else "").replace(";", " ").split():
+                self._defines.pop(var.upper(), None)
+        else:
+            assign = _DEFINE_ASSIGN.match(line)
+            if assign:
+                value = self.substitute(assign.group(2), line_no)
+                if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
+                    value = value[1:-1]
+                self._defines[assign.group(1).upper()] = value
+
+    def substitute(self, text: str, first_line: int) -> str:
+        """Replace ``&x`` / ``&&x`` / ``&x.`` with the defined values.
+
+        The client substitutes variables before sending the command to the
+        server, so a reference inside a literal is replaced too. The ``.``
+        after a name ends it and is consumed. A reference to an undefined
+        variable would make the client prompt, which a migration cannot
+        answer: refused (so ``&&x`` never has an undefined value to define).
+        """
+        if not self._define_on or self._define_char not in text:
+            return text
+        char = re.escape(self._define_char)
+
+        def replace(m: "re.Match[str]") -> str:
+            var = m.group(2).upper()
+            if var not in self._defines:
+                where = first_line + text.count("\n", 0, m.start())
+                raise UnsafeStatementSplitError(
+                    f"{self._define_char}{m.group(2)} on line {where} is undefined; "
+                    f"{self.client_name} would prompt for it"
+                )
+            return self._defines[var]
+
+        return re.sub(f"({char}{char}?)(\\w+)\\.?", replace, text)
