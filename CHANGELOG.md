@@ -269,16 +269,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **Oracle: a line that starts with `/` followed by text is refused where the
-  buffer holds no statement text.** After a statement completed by `;`, SQL*Plus
-  runs `/ SELECT 2 FROM dual;` as the `/` command: it re-executes the previous
-  statement and ignores the rest of the line. The splitter used to strip the slash
-  or drop the line, so a script ran differently from SQL*Plus; it now raises
-  `UnsafeStatementSplitError` naming the line and column of the `/`, like a `/` alone
-  after a completed statement. A `/` followed by text in an open buffer stays
-  statement text, and a statement that ends in a comment keeps the closing slash of
-  that comment (`*/`, or the last character of a `--` comment), which was cut off
-  before and left an unterminated comment.
+- **Oracle: a line whose first text is a `/` is refused where the buffer holds no
+  statement text.** After a statement completed by `;`, SQL*Plus runs `/ SELECT 2
+  FROM dual;` (and `/* c */ /`, with blanks and block comments before the slash) as
+  the `/` command: it re-executes the previous statement and ignores the rest of the
+  line. The splitter used to strip the slash or drop the line, so a script ran
+  differently from SQL*Plus; it now raises `UnsafeStatementSplitError` naming the
+  line and column of the `/`, like a `/` alone after a completed statement. A `/`
+  with no blank before the text that follows it (`/x`) is refused as an unknown
+  command. A `/` followed by text in an open buffer stays statement text, and a
+  statement that ends in a comment keeps the closing slash of that comment (`*/`, or
+  the last character of a `--` comment), which was cut off before and left an
+  unterminated comment.
 - DuckDB: a lone `INSERT`, `UPDATE` or `DELETE` run through the provider no longer
   loses the blank lines, the lines starting with `--` or `/*`, and the `CR` of a
   `CRLF` inside a string literal. The statement is sent as written; only its

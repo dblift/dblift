@@ -280,14 +280,6 @@ def test_each_call_starts_without_a_previous_terminator():
     "script, expected",
     [
         ("SELECT 4 /", [("SELECT 4 /", 1, None, 0, 10)]),  # row 29
-        (  # a comment before the slash: the line does not start with it
-            "SELECT 1;\n/* c */ / x",
-            [("SELECT 1", 1, ";", 0, 9), ("/ x", 2, None, 18, 21)],
-        ),
-        (
-            "SELECT 1;\n/* a\n b */ / x;",
-            [("SELECT 1", 1, ";", 0, 9), ("/ x", 3, ";", 21, 25)],
-        ),
         (  # row 25: an open buffer keeps the slash line as statement text
             "CREATE TABLE t25 (id NUMBER)\n/ -- done\nINSERT INTO t25 VALUES (1);",
             [
@@ -343,6 +335,49 @@ _EMPTY = "'/' followed by text on line 1, column 1 would run an empty buffer"
 )
 def test_a_slash_with_text_where_the_buffer_is_complete_is_refused(script, message):
     assert refusal(script) == message
+
+
+_RERUN = "'/' on line {}, column {} would re-execute the previous statement"
+_RERUN_TEXT = "'/' followed by text on line {}, column {} would re-execute the previous statement"
+
+
+@pytest.mark.parametrize(
+    "script, message",
+    [
+        ("SELECT 7 AS a FROM dual;\n/* c */ /", _RERUN.format(2, 9)),
+        ("SELECT 7 AS a FROM dual;\n/* c */ / x", _RERUN_TEXT.format(2, 9)),
+        ("SELECT 1;\n/* a */ /* b */ / x", _RERUN_TEXT.format(2, 17)),
+        ("SELECT 1;\n/* a\n b */ /\nSELECT 2;", _RERUN.format(3, 7)),
+        ("SELECT 1;\n-- c\n/* a */ /", _RERUN.format(3, 9)),
+        ("/* c */ /", "'/' on line 1, column 9 would run an empty buffer"),
+        # nothing has run yet: a bare ';' or a directive line is no previous statement
+        (";\n/ x", "'/' followed by text on line 2, column 1 would run an empty buffer"),
+        ("PROMPT hi\n/ x", "'/' followed by text on line 2, column 1 would run an empty buffer"),
+        (
+            "SELECT 1;\n/x",
+            "'/' followed by text on line 2, column 1: SQL*Plus reads the line as an unknown "
+            "command (SP2-0042)",
+        ),
+    ],
+)
+def test_a_slash_after_blanks_and_block_comments_is_the_slash_command(script, message):
+    assert refusal(script) == message
+
+
+@pytest.mark.parametrize(
+    "script, texts",
+    [
+        # an open buffer keeps the line (unverified against SQL*Plus, not changed here)
+        ("SELECT 1\n/* c */ /", ["SELECT 1\n/* c */ /"]),
+        ("SELECT 1\n/* c */ / x;", ["SELECT 1\n/* c */ / x"]),
+        # a slash inside a block comment is no slash at all
+        ("SELECT 1;\n/* c / x */ SELECT 2;", ["SELECT 1", "SELECT 2"]),
+        # something other than a comment comes first on the line
+        ("SELECT 1;\nSELECT 2 / x;", ["SELECT 1", "SELECT 2 / x"]),
+    ],
+)
+def test_other_slashes_stay_statement_text(script, texts):
+    assert [r.text for r in LexicalEngine(ORACLE_SPEC).split(script)] == texts
 
 
 @pytest.mark.parametrize(

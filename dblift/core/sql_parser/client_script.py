@@ -10,6 +10,7 @@ from dblift.core.sql_parser.statement import Statement
 from dblift.core.sql_parser.tokens import Token, TokenType
 from dblift.core.sql_parser.unit_heads import decide
 
+_COMMENT = re.compile(r"/\*.*?\*/|--[^\n]*", re.DOTALL)
 _EXEC_BODY = re.compile(r"^\s*\w+\s*(.*?)\s*$", re.DOTALL)
 _SET_DEFINE_ARG = re.compile(r"^\s*\w+\s+\w+\s+(\S+)")
 _DEFINE_ASSIGN = re.compile(r"^\s*\w+\s+(\w+)\s*=\s*(.*?)\s*;?\s*$", re.DOTALL)
@@ -35,6 +36,7 @@ class ClientScript:
         self._head_line = 0
         self._unit: Optional[bool] = None
         self._last_terminator: Optional[str] = None
+        self._ran = False
         # Substitution state: on, with the rules' character, until a directive says otherwise.
         self._define_on = True
         self._define_char = rules.substitution_char
@@ -86,6 +88,7 @@ class ClientScript:
                     )
             else:
                 self._last_terminator = rules.line_terminator
+                self._ran = True
             return True
         if self._unit or token.text != ";" or token.parens_depth > 0:
             return False
@@ -96,7 +99,20 @@ class ClientScript:
                 "(ORA-03405); move the comment or the next statement to its own line"
             )
         self._last_terminator = ";"
+        self._ran = self._ran or any(
+            t is not token and t.type != TokenType.COMMENT for t in buffered
+        )
         return True
+
+    def _starts_the_line(self, token: Token, buffered: Sequence[Token]) -> bool:
+        """Whether only blanks and block comments come before ``token`` on its line."""
+        if self.source is None:
+            return False
+        others = [t for t in buffered if t is not token]
+        line_start = self.source.rfind("\n", 0, token.pos) + 1
+        start = others[0].pos if others else line_start
+        text = _COMMENT.sub(" ", self.source[start : token.pos])
+        return not text.rsplit("\n", 1)[-1].strip()
 
     def _refuse_terminator_text(
         self, token: Token, following: Optional[Token], buffered: Sequence[Token]
@@ -106,20 +122,26 @@ class ClientScript:
         if not (
             rules.refuse_terminator_text_on_empty_buffer
             and token.text == rules.line_terminator
-            and following is not None
-            and following.type != TokenType.EOF
-            and following.line == token.line
             and all(t is token or t.type == TokenType.COMMENT for t in buffered)
-            and self.source is not None
-            and not self.source[self.source.rfind("\n", 0, token.pos) + 1 : token.pos].strip()
+            and self._starts_the_line(token, buffered)
         ):
             return
-        where = (
-            f"'{rules.line_terminator}' followed by text on line {token.line}, column {token.col}"
+        has_text = (
+            following is not None
+            and following.type != TokenType.EOF
+            and following.line == token.line
         )
-        if self._last_terminator is None:
-            raise UnsafeStatementSplitError(f"{where} would run an empty buffer")
-        raise UnsafeStatementSplitError(f"{where} would re-execute the previous statement")
+        mark = rules.line_terminator
+        where = f"on line {token.line}, column {token.col}"
+        if has_text and following is not None:
+            if following.type != TokenType.COMMENT and following.col == token.col + 1:
+                raise UnsafeStatementSplitError(
+                    f"'{mark}' followed by text {where}: {self.client_name} reads the line as an "
+                    "unknown command (SP2-0042)"
+                )
+            where = f"followed by text {where}"
+        effect = "re-execute the previous statement" if self._ran else "run an empty buffer"
+        raise UnsafeStatementSplitError(f"'{mark}' {where} would {effect}")
 
     def check_tail(self, tokens: Sequence[Token]) -> None:
         """Refuse a unit that reached the end of the script without its line terminator."""
