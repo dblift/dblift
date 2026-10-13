@@ -2,6 +2,7 @@
 
 import re
 import warnings
+from dataclasses import replace
 from typing import List, Optional, Tuple, Type
 
 from dblift.core.sql_parser.base_tokenizer import BaseTokenizer
@@ -66,6 +67,9 @@ def _tokens(sql: str, dialect: Optional[str]) -> List[Token]:
         from dblift.db.provider_registry import ProviderRegistry
 
         spec = ProviderRegistry.get_quirks(dialect).lexical_spec() if dialect else None
+        if spec is not None and spec.client_script is not None:
+            # Masking reads the text as SQL: a client directive line is not a literal-free token.
+            spec = replace(spec, client_script=None)
         tokens = (
             LexicalTokenizer(sql, spec=spec).tokenize()
             if spec is not None

@@ -80,24 +80,26 @@ def test_semicolon_inside_parentheses_does_not_end():
 
 
 def test_a_long_single_line_with_many_slashes_splits_in_linear_time():
-    import time
+    from dblift.core.sql_parser.lexical_engine import LexicalEngine
+    from dblift.db.plugins.oracle.parser.lexical_spec import ORACLE_SPEC
 
-    # A size ratio, not a wall-clock bound: absolute time varies with the runner.
-    def best_time(tokens):
-        script = "SELECT " + ", ".join("a.b/c" for _ in range(tokens)) + " FROM dual;"
-        best = float("inf")
-        for _ in range(2):
-            started = time.perf_counter()
-            statements = _split(script)
-            best = min(best, time.perf_counter() - started)
-        assert len(statements) == 1
-        return best
+    class CountingText(str):
+        sliced = 0
 
-    t_n = best_time(5_000)
-    t_4n = best_time(20_000)
+        def __getitem__(self, key):
+            if isinstance(key, slice):
+                self.sliced += len(range(*key.indices(len(self))))
+            return super().__getitem__(key)
 
-    # Linear scaling gives ~4x for 4x the input; a quadratic scan gives ~16x.
-    assert t_4n < 8 * t_n, f"t_n={t_n:.3f}s t_4n={t_4n:.3f}s ratio={t_4n / t_n:.1f}"
+    # An operation count, not a clock: characters sliced per source character stay constant when the
+    # script grows fourfold (a scan of the rest of the script per token would grow with its size).
+    per_character = []
+    for tokens in (5_000, 20_000):
+        script = CountingText("SELECT " + ", ".join("a.b/c" for _ in range(tokens)) + " FROM dual;")
+        assert len(LexicalEngine(ORACLE_SPEC).split(script)) == 1
+        per_character.append(script.sliced / len(script))
+    assert per_character[1] <= 1.1 * per_character[0], per_character
+    assert per_character[1] <= 24, per_character
 
 
 @pytest.mark.parametrize("line", ["/", "  /  ", "\t/\t"])

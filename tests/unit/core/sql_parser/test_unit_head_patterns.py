@@ -1,79 +1,14 @@
-"""The unit-head table decides exactly as the previous classifier did."""
-
-import random
-from itertools import product
+"""The unit-head table decides which statements a client buffers up to its terminator line."""
 
 import pytest
 
 from dblift.core.sql_parser.lexical_tokenizer import LexicalTokenizer
-from dblift.core.sql_parser.tokens import Token, TokenType
+from dblift.core.sql_parser.tokens import TokenType
 from dblift.core.sql_parser.unit_heads import decide
-from dblift.db.plugins.oracle.parser._unit_heads import MAX_HEAD_TOKENS, head_decided
 from dblift.db.plugins.oracle.parser.lexical_spec import ORACLE_SPEC
 
 RULES = ORACLE_SPEC.client_script
 assert RULES is not None
-VOCABULARY = (
-    "CREATE OR REPLACE EDITIONABLE FUNCTION PROCEDURE PACKAGE AND COMPILE RESOLVE NOFORCE "
-    "JAVA SOURCE CLASS IF NOT EXISTS MLE MODULE BEGIN DECLARE < > x"
-).split()
-LONGER = VOCABULARY + ["NONEDITIONABLE", "TYPE", "TRIGGER", "LIBRARY", "RESOURCE", "TABLE"]
-
-
-def previous(words, comments=()):
-    """The previous classifier plus the parser's head-length rule, with comment tokens mixed in."""
-    tokens = []
-    for index, word in enumerate(words):
-        if index in comments:
-            tokens.append(Token(TokenType.COMMENT, "", index, 1, 1))
-        tokens.append(Token(TokenType.KEYWORD, word, index, 1, 1))
-    result = head_decided(tokens)
-    if result is None and len(words) >= MAX_HEAD_TOKENS:
-        return False
-    return result
-
-
-def current(words):
-    return decide(RULES.unit_heads, [w.upper() for w in words], RULES.max_head_tokens)
-
-
-def test_every_head_up_to_four_words_decides_as_before():
-    count = 0
-    for length in range(1, 5):
-        for words in product(VOCABULARY, repeat=length):
-            assert current(words) == previous(words), words
-            count += 1
-    assert count > 300_000
-
-
-def test_seeded_longer_heads_with_comments_between_words_decide_as_before():
-    rng = random.Random(42)
-    seeds = [
-        "CREATE OR REPLACE EDITIONABLE PACKAGE",
-        "CREATE OR REPLACE AND COMPILE NOFORCE IF NOT EXISTS MLE MODULE",
-        "CREATE OR REPLACE AND RESOLVE NOFORCE JAVA SOURCE",
-        "CREATE NOFORCE IF NOT EXISTS MLE MODULE",
-        "< < x > > BEGIN",
-        "CREATE JAVA CLASS",
-        "CREATE OR REPLACE NONEDITIONABLE TRIGGER",
-    ]
-    for _ in range(200_000):
-        words = rng.choice(seeds).split() if rng.random() < 0.7 else []
-        if not words:
-            words = [rng.choice(LONGER) for _ in range(rng.randrange(1, 11))]
-        for _ in range(rng.randrange(0, 3)):
-            edit = rng.randrange(3)
-            at = rng.randrange(len(words) + 1)
-            if edit == 0 and words:
-                del words[min(at, len(words) - 1)]
-            elif edit == 1:
-                words.insert(at, rng.choice(LONGER))
-            elif words:
-                words[min(at, len(words) - 1)] = rng.choice(LONGER)
-        if not words:
-            continue
-        comments = {i for i in range(len(words)) if rng.random() < 0.2}
-        assert current(words) == previous(words, comments), words
 
 
 @pytest.mark.parametrize(

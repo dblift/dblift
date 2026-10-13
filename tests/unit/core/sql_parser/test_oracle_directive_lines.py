@@ -428,3 +428,11 @@ def test_free_text_directives_do_not_read_a_comment(line):
     assert records(script)[0] == directive(line, 1)
     tokens = LexicalTokenizer(script, spec=ORACLE_SPEC).tokenize()
     assert [t.type for t in tokens[:2]] == [TokenType.DIRECTIVE, TokenType.KEYWORD]
+
+
+@pytest.mark.parametrize("action, policy", [("EXIT FAILURE", "exit"), ("CONTINUE", "continue")])
+def test_the_projected_policy_line_is_read_by_the_policy_reader(action, policy):
+    from dblift.db.plugins.oracle.quirks import OracleQuirks
+
+    projected = strings(f"WHENEVER SQLERROR {action}\nCREATE TABLE t (id NUMBER);")[0]
+    assert OracleQuirks().parse_error_policy_directive(projected) == policy

@@ -205,7 +205,7 @@ else in this spec is data.
 | 28 | `SELECT 1 FROM dual;\n/ SELECT 2 FROM dual;` | `SELECT 1 FROM dual` · `/ SELECT 2 FROM dual` (a slash followed by text is statement text, §4; the server rejects the second statement, as it does for SQL\*Plus) |
 | 29 | `SELECT 4 /` | `SELECT 4 /` (a slash that ends the script on a line with other text is statement text) |
 | 30 | `SELECT 1;\n/ ;\nSELECT 2;` | `SELECT 1` · `/` · `SELECT 2` (the slash is statement text ended by the semicolon; the server rejects it) |
-| 31 | `SELECT 1;\n/ /\n` | `SELECT 1` · `/ /` (neither `/` is alone on its line, so both are statement text) |
+| 31 | `SELECT 1;\n/ /\n` | `SELECT 1` · `/ /` (neither slash is alone on its line, so both are statement text) |
 | 32 | `SELECT 4 / -- c` | `SELECT 4 / -- c` (the slash and the comment stay statement text) |
 | 33 | `SELECT 1;\n/ SELECT 4 /` | `SELECT 1` · `/ SELECT 4 /` (both slashes are statement text) |
 | 34 | `SELECT 1 FROM dual /* c */` | `SELECT 1 FROM dual /* c */` (the end of the block comment is not a terminator) |

@@ -12,12 +12,11 @@ from dblift.core.sql_model.base import (
     SqlStatementType,
 )
 from dblift.core.sql_parser.common.base_parser import RegexBasedParser
-from dblift.core.sql_parser.parser_context import ParserContext
+from dblift.core.sql_parser.lexical_engine import LexicalEngine
 from dblift.core.sql_parser.statement import Statement, analysis_sql
 from dblift.db.plugins.oracle.parser._comments import strip_comments
 from dblift.db.plugins.oracle.parser._object_extractor import extract_objects
-from dblift.db.plugins.oracle.parser.oracle_statement_parser import OracleStatementParser
-from dblift.db.plugins.oracle.parser.oracle_tokenizer import OracleTokenizer
+from dblift.db.plugins.oracle.parser.lexical_spec import ORACLE_SPEC
 
 try:
     logger: Any = LogFactory.get_log(__name__)
@@ -28,7 +27,7 @@ except ModuleNotFoundError as exc:
 
 
 class OracleParser(RegexBasedParser):
-    """Oracle SQL parser using the tokenizer's SQL*Plus execution selection."""
+    """Oracle SQL parser: scripts are split by the shared lexical engine with the Oracle spec."""
 
     dialect_name = "oracle"  # lint: allow-dialect-string: dialect dispatch
 
@@ -80,13 +79,10 @@ class OracleParser(RegexBasedParser):
         )
 
     def split(self, sql_content: str, strict_tokenizer: bool = False) -> List[Statement]:
-        """Return Oracle execution records from the authoritative tokenizer."""
+        """Return Oracle execution records from the shared lexical engine."""
         if not sql_content or not sql_content.strip():
             return []
-        tokenizer = OracleTokenizer(sql_content, strict_unknown_chars=strict_tokenizer)
-        return OracleStatementParser(
-            tokenizer.tokenize(), ParserContext(), source=sql_content
-        ).split()
+        return LexicalEngine(ORACLE_SPEC).split(sql_content)
 
     def split_for_analysis(self, sql_content: str, strict_tokenizer: bool = False) -> List[str]:
         """Project the selected SQL records for analysis."""
@@ -112,9 +108,7 @@ class OracleParser(RegexBasedParser):
         if not sql_content or not sql_content.strip():
             return []
 
-        tokenizer = OracleTokenizer(sql_content, strict_unknown_chars=strict_tokenizer)
-        parser = OracleStatementParser(tokenizer.tokenize(), ParserContext(), source=sql_content)
-        return parser.split_statements()
+        return LexicalEngine(ORACLE_SPEC).split_statements(sql_content)
 
     def validate_sql(self, sql_content: str) -> Dict[str, Any]:
         """Validate the SQL units selected for Oracle execution."""
