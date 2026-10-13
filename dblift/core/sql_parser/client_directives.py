@@ -33,8 +33,8 @@ def _words(line: str) -> List[str]:
 
 def classify_directive(
     rules: ClientScriptRules, line: str
-) -> Optional[Tuple[str, DirectiveAction, int]]:
-    """The directive ``line`` holds as (name, action, minimum abbreviation), or None for SQL.
+) -> Optional[Tuple[str, DirectiveAction]]:
+    """The directive ``line`` holds as (name, action), or None for SQL.
 
     ``line`` starts where a statement can begin. A command followed by one of
     the rules' follow words, and ``SET`` followed by a SQL word, are SQL.
@@ -42,7 +42,7 @@ def classify_directive(
     text = line.strip()
     for prefix, name in rules.prefix_directives:
         if text.startswith(prefix):
-            return name, DirectiveAction.REJECT, len(prefix)
+            return name, DirectiveAction.REJECT
     words = _words(text)
     if not words:
         return None
@@ -52,7 +52,7 @@ def classify_directive(
     if _matches(first, rules.whenever_command, rules.whenever_min_abbrev):
         for word, action in rules.whenever:
             if len(words) > 1 and words[1] == word:
-                return f"{rules.whenever_command} {word}", action, rules.whenever_min_abbrev
+                return f"{rules.whenever_command} {word}", action
         return None
     for rule in rules.directives:
         if _matches(first, rule.word, rule.min_abbrev):
@@ -61,19 +61,19 @@ def classify_directive(
                 for a, b in rules.sql_follow_words
             ):
                 return None
-            return rule.word, rule.action, rule.min_abbrev
+            return rule.word, rule.action
     return None
 
 
 def _classify_set(
     rules: ClientScriptRules, rest: List[str]
-) -> Optional[Tuple[str, DirectiveAction, int]]:
+) -> Optional[Tuple[str, DirectiveAction]]:
     if not rest or rest[0] in rules.set_sql_words:
         return None
     for rule in rules.set_options:
         if _matches(rest[0], rule.word, rule.min_abbrev):
-            return f"{rules.set_command[0]} {rule.word}", rule.action, rule.min_abbrev
-    return rules.set_command[0], DirectiveAction.DROP_RECORD, rules.set_command[1]
+            return f"{rules.set_command[0]} {rule.word}", rule.action
+    return rules.set_command[0], DirectiveAction.DROP_RECORD
 
 
 def is_free_text(rules: ClientScriptRules, name: str) -> bool:

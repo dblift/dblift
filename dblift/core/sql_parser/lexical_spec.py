@@ -9,7 +9,6 @@ class DirectiveAction(Enum):
     """What the splitter does with a client directive line."""
 
     DROP_RECORD = "drop_record"
-    RECORD_POLICY = "record_policy"
     DEFINE = "define"
     EXEC = "exec"
     EXIT = "exit"

@@ -55,7 +55,6 @@ _UNIT_HEADS: Tuple[HeadPattern, ...] = (
 )
 
 _DROP = DirectiveAction.DROP_RECORD
-_POLICY = DirectiveAction.RECORD_POLICY
 _DEFINE = DirectiveAction.DEFINE
 _EXEC = DirectiveAction.EXEC
 _EXIT = DirectiveAction.EXIT
@@ -95,7 +94,7 @@ _DIRECTIVES: Tuple[DirectiveRule, ...] = (
 
 # SET options the splitter does not drop; any other SET option is dropped and recorded.
 _SET_OPTIONS: Tuple[DirectiveRule, ...] = (
-    DirectiveRule("SERVEROUTPUT", 9, _POLICY),
+    DirectiveRule("SERVEROUTPUT", 9, _DROP),
     DirectiveRule("DEFINE", 3, _DEFINE),
     DirectiveRule("SCAN", 4, _DEFINE),
     DirectiveRule("ESCAPE", 3, _REJECT),
@@ -128,7 +127,7 @@ ORACLE_SPEC = LexicalSpec(
         prefix_directives=(("@@", "@@"), ("@", "@"), ("!", "!")),
         sql_follow_words=(("CONNECT", "TO"),),
         whenever_command="WHENEVER",
-        whenever=(("SQLERROR", _POLICY), ("OSERROR", _DROP)),
+        whenever=(("SQLERROR", _DROP), ("OSERROR", _DROP)),
         whenever_min_abbrev=8,
         policy_actions=("EXIT", "CONTINUE"),
         slash_record_ends_at_line_end=True,

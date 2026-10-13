@@ -35,11 +35,10 @@ class LexicalStatementParser(BaseStatementParser):
         self._sqlite_checked_line = 0
         self._sqlite_token_end = 0
         self.warnings: List[str] = []
-        self._script = (
-            ClientScript(spec.client_script, source, spec.client_name)
-            if spec.client_script is not None
-            else None
-        )
+        self._script: Optional[ClientScript] = None
+        if spec.client_script is not None:
+            assert source is not None  # a client script is read line by line from its text
+            self._script = ClientScript(spec.client_script, source, spec.client_name)
 
     def _adjust_context(self, token: Token) -> None:
         if self.spec.sqlite_shell:

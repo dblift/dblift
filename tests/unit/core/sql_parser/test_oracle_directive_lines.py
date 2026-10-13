@@ -350,17 +350,20 @@ def test_every_directive_example_is_recorded_refused_or_ends_the_script():
 @pytest.mark.parametrize(
     "line, expected",
     [
-        ("SET SERVEROUT ON", ("SET SERVEROUTPUT", DirectiveAction.RECORD_POLICY, 9)),
-        ("SET SERVEROU ON", ("SET", DirectiveAction.DROP_RECORD, 3)),
-        ("SET DEF OFF", ("SET DEFINE", DirectiveAction.DEFINE, 3)),
-        ("set feed off", ("SET", DirectiveAction.DROP_RECORD, 3)),
-        ("EXEC p;", ("EXECUTE", DirectiveAction.EXEC, 4)),
-        ("EXIT 1", ("EXIT", DirectiveAction.EXIT, 4)),
-        ("QUIT", ("QUIT", DirectiveAction.EXIT, 4)),
-        ("@@x.sql", ("@@", DirectiveAction.REJECT, 2)),
+        ("SET SERVEROUT ON", ("SET SERVEROUTPUT", DirectiveAction.DROP_RECORD)),
+        ("SET SERVEROU ON", ("SET", DirectiveAction.DROP_RECORD)),
+        ("SET DEF OFF", ("SET DEFINE", DirectiveAction.DEFINE)),
+        ("set feed off", ("SET", DirectiveAction.DROP_RECORD)),
+        ("EXEC p;", ("EXECUTE", DirectiveAction.EXEC)),
+        ("EXIT 1", ("EXIT", DirectiveAction.EXIT)),
+        ("QUIT", ("QUIT", DirectiveAction.EXIT)),
+        ("@@x.sql", ("@@", DirectiveAction.REJECT)),
         ("SELECT 1 FROM dual", None),
         ("SET", None),
         ("WHENEVER NOT FOUND EXIT", None),
+        ("WHENEVER SQLERROR EXIT", ("WHENEVER SQLERROR", DirectiveAction.DROP_RECORD)),
+        ("WHENEVE SQLERROR EXIT", None),
+        ("whenever oserror exit", ("WHENEVER OSERROR", DirectiveAction.DROP_RECORD)),
         ("PROMPTS x", None),
     ],
 )
@@ -402,14 +405,19 @@ def test_classification_matches_the_previous_table():
         for variant in (line, line.lower()):
             old = previous.classify_directive(variant)
             new = classify_directive(RULES, variant)
-            assert (None if old is None else (old.name, old.action.value, old.min_abbrev)) == (
-                None if new is None else (new[0], new[1].value, new[2])
+            assert (None if old is None else (old.name, previous_action(old))) == (
+                None if new is None else (new[0], new[1].value)
             ), variant
 
 
-def test_directive_action_enums_agree():
+def previous_action(old):
+    """The previous table's action value; a policy directive is recorded like any other directive."""
+    return "drop_record" if old.action.value == "record_policy" else old.action.value
+
+
+def test_directive_actions_are_the_previous_actions_without_the_policy_one():
     assert {a.name: a.value for a in DirectiveAction} == {
-        a.name: a.value for a in previous.DirectiveAction
+        a.name: a.value for a in previous.DirectiveAction if a.name != "RECORD_POLICY"
     }
 
 

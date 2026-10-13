@@ -26,7 +26,7 @@ class ClientScript:
     """
 
     def __init__(
-        self, rules: ClientScriptRules, source: Optional[str], client_name: str = "SQL client"
+        self, rules: ClientScriptRules, source: str, client_name: str = "SQL client"
     ) -> None:
         """Start a script with no previous terminator."""
         self.rules = rules
@@ -106,8 +106,6 @@ class ClientScript:
 
     def _starts_the_line(self, token: Token, buffered: Sequence[Token]) -> bool:
         """Whether only blanks and block comments come before ``token`` on its line."""
-        if self.source is None:
-            return False
         others = [t for t in buffered if t is not token]
         line_start = self.source.rfind("\n", 0, token.pos) + 1
         start = others[0].pos if others else line_start
@@ -167,8 +165,6 @@ class ClientScript:
         self, tokens: Sequence[Token], terminator: Optional[Token], default: Optional[int]
     ) -> Optional[int]:
         """End offset of a record under the client's rules."""
-        if self.source is None:
-            return default
         rules = self.rules
         if terminator is not None:
             if rules.slash_record_ends_at_line_end and terminator.text == rules.line_terminator:
@@ -182,8 +178,6 @@ class ClientScript:
 
     def _refuse_directive_after_terminator(self, following: Token) -> None:
         """A directive after a ``;`` on the same line: the client sends the line to the server."""
-        if self.source is None:
-            return
         eol = self.source.find("\n", following.pos)
         found = classify_directive(
             self.rules, self.source[following.pos : eol if eol != -1 else len(self.source)]
@@ -207,7 +201,7 @@ class ClientScript:
         """
         found = classify_directive(self.rules, token.text)
         assert found is not None  # the tokenizer only emits recognised directives
-        name, action, _ = found
+        name, action = found
         if action is DirectiveAction.EXEC:
             return self.exec_record(token)
         if action is DirectiveAction.DEFINE:
@@ -222,7 +216,7 @@ class ClientScript:
             line=token.line,
             terminator=None,
             kind="directive",
-            source_start=token.pos if self.source is not None else None,
+            source_start=token.pos,
             source_end=self._line_end(token.pos),
         )
         if name not in self.rules.policy_projection:
@@ -252,7 +246,7 @@ class ClientScript:
                 line=token.line,
                 terminator=None,
                 kind="sql",
-                source_start=token.pos if self.source is not None else None,
+                source_start=token.pos,
                 source_end=self._line_end(token.pos),
             ),
             text,
@@ -260,8 +254,6 @@ class ClientScript:
 
     def ignored_tail_message(self, exit_token: Token) -> Optional[str]:
         """What follows an EXIT directive: the client never runs it. None when nothing would run."""
-        if self.source is None:
-            return None
         line_end = self.source.find("\n", exit_token.pos)
         if line_end < 0:
             return None
@@ -283,9 +275,7 @@ class ClientScript:
             f"ignored, as {self.client_name} does not run it (first ignored line: {first_line})"
         )
 
-    def _line_end(self, pos: int) -> Optional[int]:
-        if self.source is None:
-            return None
+    def _line_end(self, pos: int) -> int:
         newline = self.source.find("\n", pos)
         return newline + 1 if newline >= 0 else len(self.source)
 

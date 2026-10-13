@@ -1,4 +1,4 @@
-"""The client script rules, driven directly (no source text, a DEFINE without a value)."""
+"""The client script rules, driven directly (a DEFINE without a value, EXIT as the last line)."""
 
 import pytest
 
@@ -17,16 +17,6 @@ def tokens(script):
     return [
         t for t in LexicalTokenizer(script, spec=ORACLE_SPEC).tokenize() if t.type != TokenType.EOF
     ]
-
-
-def test_without_a_source_a_record_keeps_the_default_end_and_nothing_is_read_from_the_text():
-    script = ClientScript(RULES, None)
-    toks = tokens("SELECT 1 FROM dual")
-    assert script.record_end(toks, None, 18) == 18
-    assert script.ignored_tail_message(toks[0]) is None
-    assert script._line_end(0) is None
-    # a directive after a semicolon cannot be recognised without the text
-    script._refuse_directive_after_terminator(toks[0])
 
 
 def test_a_define_without_a_value_defines_nothing():
