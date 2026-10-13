@@ -117,9 +117,7 @@ def _declared_constraint(
     return None
 
 
-def _referenced(
-    node: exp.Expression, skip: Tuple[exp.Expression, ...] = ()
-) -> Tuple[NamedObject, ...]:
+def _referenced(node: exp.Expr, skip: Tuple[exp.Expr, ...] = ()) -> Tuple[NamedObject, ...]:
     """Tables a statement reads: query sources and foreign key targets, not common table names."""
     ctes = {cte.alias.lower() for cte in node.find_all(exp.CTE)}
     found: list[NamedObject] = []

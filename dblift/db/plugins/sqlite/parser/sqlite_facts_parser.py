@@ -84,6 +84,6 @@ class SQLiteFactsParser(SqlParserInterface):
         result = self.parse_sql(sql_content)
         return {
             "valid": result.success,
-            "statements_found": len(result.statements),
+            "statements_found": len(result.statements or []),
             "errors": result.errors,
         }

@@ -243,7 +243,9 @@ def test_common_table_names_are_not_reported_as_referenced_tables():
 
 
 def test_trigger_body_and_event_table_are_reported_as_skipped():
-    facts = READER.read("CREATE TRIGGER trg AFTER INSERT ON child BEGIN UPDATE other SET x = 1; END")
+    facts = READER.read(
+        "CREATE TRIGGER trg AFTER INSERT ON child BEGIN UPDATE other SET x = 1; END"
+    )
 
     assert facts.opaque
     assert "trigger" in facts.diagnostic
