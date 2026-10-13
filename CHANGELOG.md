@@ -39,6 +39,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Oracle: `strict_tokenizer` has no effect.** A character no rule claims is passed
+  through verbatim with a `TokenizerWarning` in both modes; `strict_tokenizer=True`
+  on `OracleParser.split`, `OracleParser.split_statements` and
+  `SqlAnalyzer("oracle").split_statements` no longer raises `TokenizerError` for it.
 - **Oracle: statement splitting, analysis and extraction run on the shared
   lexical engine** (as PostgreSQL and SQLite do), with the Oracle rules as data.
   The same scripts give the same statements, with the corrections listed under
