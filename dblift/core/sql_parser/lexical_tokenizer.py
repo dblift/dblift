@@ -88,7 +88,8 @@ class LexicalTokenizer(BaseTokenizer):
         # Flyway / DBLift placeholders ${name} or ${name:default} — not PostgreSQL
         # dollar-quoting ($$…$$ / $tag$…$tag$). Treat as a single token so statement
         # splitting and reconstruction preserve the exact spelling (including before '.').
-        if self.peek(2) == "${":
+        placeholder = self.spec.placeholder_open
+        if placeholder and self.peek(len(placeholder)) == placeholder:
             return self._handle_migration_placeholder()
 
         # Check for double-quoted identifier BEFORE other checks
@@ -97,9 +98,10 @@ class LexicalTokenizer(BaseTokenizer):
 
         # '$' that does not open a dollar-quote: a positional parameter ($1)
         # or a stray '$'.
-        if char == "$" and not self._is_alternative_string_start():
+        prefix = self.spec.parameter_prefix
+        if prefix and self.peek(len(prefix)) == prefix and not self._is_alternative_string_start():
             start_pos, start_line, start_col = self.pos, self.line, self.col
-            text = self.read()
+            text = self.read(len(prefix))
             while self.pos < len(self.sql) and self.peek().isdigit():
                 text += self.read()
             return Token(
@@ -159,7 +161,7 @@ class LexicalTokenizer(BaseTokenizer):
         start_line = self.line
         start_col = self.col
         text = ""
-        text += self.read(2)  # ${
+        text += self.read(len(self.spec.placeholder_open or ""))
         while self.pos < len(self.sql) and self.peek() != "}":
             text += self.read()
         if self.pos < len(self.sql) and self.peek() == "}":
@@ -174,11 +176,13 @@ class LexicalTokenizer(BaseTokenizer):
         )
 
     def _is_alternative_string_start(self) -> bool:
-        """Check for PostgreSQL escape strings and dollar-quote strings.
+        """Check for alternative quoting, escape strings and dollar-quote strings.
 
         Returns:
-            True if an escape prefix or dollar-quote is detected
+            True if an alternative-quote opener, escape prefix or dollar-quote is detected
         """
+        if self._alternative_quote_opener():
+            return True
         if self.peek(2) in self.spec.escape_prefixes:
             # An identifier suffix or a prefix touching a quote is not E'...'.
             previous = self.sql[self.pos - 1] if self.pos else ""
@@ -194,12 +198,53 @@ class LexicalTokenizer(BaseTokenizer):
         # A tag starts like an unquoted identifier; $1 is a parameter, ${ a placeholder.
         return bool(after) and (after.isalpha() or after == "_")
 
+    def _alternative_quote_opener(self) -> int:
+        """Length of the alternative-quote opener (``q'``, ``nq'``) at the cursor, else 0."""
+        for opener in self.spec.alternative_quotes:
+            if self.peek(len(opener)).lower() == opener.lower():
+                return len(opener)
+        return 0
+
+    def _handle_alternative_quote(self, opener_length: int) -> Token:
+        """Read ``q'<d>...<c>'``: the closer ``<c>`` depends on the delimiter ``<d>``."""
+        start_pos, start_line, start_col = self.pos, self.line, self.col
+        self.read(opener_length)
+        # End of input is checked first: ``"" in " \t\r\n"`` is True.
+        if self.pos >= len(self.sql):
+            raise UnsafeStatementSplitError(
+                f"unterminated q-quoted string opened at line {start_line}, column {start_col}"
+            )
+        delimiter = self.read()
+        if delimiter in " \t\r\n":
+            raise UnsafeStatementSplitError(
+                f"q-quote delimiter cannot be whitespace at line {start_line}, column {start_col}"
+            )
+        closer = dict(self.spec.alternative_quote_pairs).get(delimiter, delimiter) + "'"
+        end = self.sql.find(closer, self.pos)
+        if end < 0:
+            raise UnsafeStatementSplitError(
+                f"unterminated q-quoted string opened at line {start_line}, column {start_col}"
+            )
+        self.read(end + len(closer) - self.pos)
+        return Token(
+            TokenType.STRING,
+            self.sql[start_pos : self.pos],
+            start_pos,
+            start_line,
+            start_col,
+            self.parens_depth,
+        )
+
     def _handle_string(self) -> Token:
-        """Handle standard strings, escape strings and dollar-quotes.
+        """Handle standard strings, alternative quotes, escape strings and dollar-quotes.
 
         Returns:
             String token
         """
+        opener_length = self._alternative_quote_opener()
+        if opener_length:
+            return self._handle_alternative_quote(opener_length)
+
         # Check for dollar-quote
         if self.peek() == "$":
             return self._handle_dollar_quote()
@@ -325,7 +370,10 @@ class LexicalTokenizer(BaseTokenizer):
             char = self.peek()
             if char == self.spec.quoted_identifier:
                 # Check for doubled quote (escape)
-                if self.peek(2) == self.spec.quoted_identifier * 2:
+                if (
+                    self.spec.quoted_identifier_escape
+                    and self.peek(2) == self.spec.quoted_identifier * 2
+                ):
                     identifier_text += self.read(2)
                 else:
                     identifier_text += self.read()  # Closing quote

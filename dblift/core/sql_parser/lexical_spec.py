@@ -1,7 +1,7 @@
 """Plugin-owned facts consumed by the shared lexical scanner."""
 
 from dataclasses import dataclass
-from typing import FrozenSet, Tuple
+from typing import FrozenSet, Optional, Tuple
 
 
 @dataclass(frozen=True)
@@ -26,3 +26,8 @@ class LexicalSpec:
     block_closer: str = ""
     sqlite_shell: bool = False
     completion_table: Tuple[Tuple[int, ...], ...] = ()
+    alternative_quotes: Tuple[str, ...] = ()
+    alternative_quote_pairs: Tuple[Tuple[str, str], ...] = ()
+    quoted_identifier_escape: bool = True
+    parameter_prefix: str = "$"
+    placeholder_open: Optional[str] = "${"
