@@ -408,10 +408,6 @@ class SqlAnalyzer:
         if not sql:
             return "UNKNOWN"
 
-        quirks = ProviderRegistry.get_quirks(self.dialect)
-        if quirks.supports_statement_facts and self.analysis_mode == "full":
-            return quirks.statement_facts(sql).kind
-
         execution_sql = sql.lstrip("\ufeff").lstrip() if self.analysis_mode == "execution" else sql
         if self.analysis_mode == "execution":
             try:

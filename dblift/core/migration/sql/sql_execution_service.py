@@ -108,9 +108,13 @@ class SqlExecutionService:
             prepare()
 
         # Native quirks use the shared AST-first DML analyzer, including on
-        # dialects whose DDL parser is regex-only. Plugin overrides own this path.
+        # dialects whose DDL parser is regex-only. Plugin overrides own this path,
+        # except that statement facts are read from the same AST.
         analyze_dml = self.quirks.analyze_dml
-        if getattr(analyze_dml, "__func__", analyze_dml) is BaseQuirks.analyze_dml:
+        if (
+            self.quirks.supports_statement_facts
+            or getattr(analyze_dml, "__func__", analyze_dml) is BaseQuirks.analyze_dml
+        ):
             import sqlglot  # noqa: F401 - fail before any user or history write
 
         self._analysis_prepared = True
