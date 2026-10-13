@@ -31,7 +31,7 @@ from dblift.db.plugins.oracle.parser.oracle_parser import OracleParser
 from dblift.db.plugins.postgresql.parser.postgresql_regex_parser import (
     PostgreSqlRegexParser,
 )
-from dblift.db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
+from dblift.db.plugins.sqlite.parser.sqlite_facts_parser import SQLiteFactsParser
 from dblift.db.plugins.sqlserver.parser.sqlserver_regex_parser import (
     SqlServerRegexParser,
 )
@@ -207,7 +207,7 @@ class TestNonNestingDialectsUnchanged(unittest.TestCase):
             OracleParser().split_statements(ISSUE_EXAMPLE)
 
     def test_sqlite_stops_at_first_close(self):
-        stmts = SQLiteRegexParser().split_statements(ISSUE_EXAMPLE)
+        stmts = SQLiteFactsParser().split_statements(ISSUE_EXAMPLE)
         self.assertTrue(any("DROP TABLE victim" in s for s in stmts))
 
 

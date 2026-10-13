@@ -18,6 +18,8 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Set, Tupl
 if TYPE_CHECKING:
     from sqlglot import exp
 
+    from dblift.core.sql_parser.statement_facts import StatementFacts
+
 #: Quote delimiters understood by the scanner: opening char -> closing char.
 #: Union of every dialect's string/identifier quoting so the mechanics are
 #: safe regardless of dialect; plugins may narrow this via quirks.
@@ -74,6 +76,16 @@ class DmlMutation:
     updated_columns: List[str]
 
 
+def _plugin_statement_facts(statement: str, dialect: Optional[str]) -> Optional["StatementFacts"]:
+    """Return a plugin's authoritative facts, or ``None`` for legacy dialects."""
+    if not dialect:
+        return None
+    from dblift.db.provider_registry import ProviderRegistry
+
+    quirks = ProviderRegistry.get_quirks(dialect)
+    return quirks.statement_facts(statement) if quirks.supports_statement_facts else None
+
+
 def analyze_dml(
     statement: str,
     *,
@@ -89,6 +101,14 @@ def analyze_dml(
     statement or does not recognise it as DML — mirroring the hybrid-parser
     philosophy used elsewhere.
     """
+    facts = _plugin_statement_facts(statement, sqlglot_dialect)
+    if facts is not None:
+        return DmlMutation(
+            facts.target or "",
+            set(facts.events) if facts.events else None,
+            list(facts.affected_columns),
+        )
+
     mutation = _analyze_dml_sqlglot(statement, sqlglot_dialect)
     if mutation is not None:
         return mutation
@@ -266,6 +286,10 @@ def dml_where_predicate(
     statement may touch every row). The predicate is rendered by ``sqlglot``
     for ``sqlglot_dialect`` so it round-trips into a dialect-correct SELECT.
     """
+    facts = _plugin_statement_facts(statement, sqlglot_dialect)
+    if facts is not None:
+        return facts.predicate
+
     text = strip_leading_sql_comments(statement).lstrip()
     if not text:
         return None
@@ -399,6 +423,10 @@ def is_full_table_dml(
     scanner — ``sqlglot`` parsed with the wrong dialect can mis-read a quoted
     column named ``where`` as a clause.
     """
+    facts = _plugin_statement_facts(statement, sqlglot_dialect)
+    if facts is not None:
+        return facts.operation in ("UPDATE", "DELETE") and (not facts.predicate)
+
     text = strip_leading_sql_comments(statement).lstrip()
     if not text:
         return False
@@ -583,6 +611,10 @@ def statement_dml_table(statement: str, dialect: Optional[str] = None) -> str:
     parse the statement — mirroring the hybrid-parser philosophy used by
     :func:`analyze_dml`.
     """
+    facts = _plugin_statement_facts(statement, dialect)
+    if facts is not None:
+        return facts.target_sql or ""
+
     text = _without_dml_modifiers(strip_leading_sql_comments(statement).lstrip())
     if dialect:
         from dblift.core.sql_model.dialect import get_sqlglot_dialect

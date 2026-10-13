@@ -146,14 +146,18 @@ class HybridParser(_SqlglotBuildersMixin, SqlParserInterface):
             dialect: SQL dialect name (oracle, mysql, postgresql, sqlserver, db2)
         """
         self.dialect = dialect.lower()
+        from dblift.db.provider_registry import ProviderRegistry
+
+        self._quirks = ProviderRegistry.get_quirks(self.dialect)
+        if self._quirks.supports_statement_facts:
+            raise ValueError(
+                f"Use the statement-facts parser for {self.dialect} (SQLiteFactsParser)"
+            )
 
         # Initialize regex parser for this dialect
         self.regex_parser = self._get_regex_parser(dialect)
 
         # Initialize sqlglot parser (only when the plugin declares a sqlglot dialect).
-        from dblift.db.provider_registry import ProviderRegistry
-
-        self._quirks = ProviderRegistry.get_quirks(self.dialect)
         self.sqlglot_parser = None
         if self._quirks.sqlglot_dialect is not None:
             try:

@@ -6,6 +6,9 @@ from pathlib import Path
 import pytest
 
 from dblift.core.sql_parser import SqlParserFactory
+from dblift.core.sql_parser.lexical_engine import LexicalEngine
+from dblift.core.sql_parser.statement_facts import SqlglotStatementFactsReader
+from dblift.db.plugins.sqlite.parser.lexical_spec import SQLITE_SPEC
 
 CORPUS = Path(__file__).with_name("legacy_facts_baseline.json")
 CORPUS_DATA = json.loads(CORPUS.read_text(encoding="utf-8"))
@@ -48,7 +51,71 @@ def test_legacy_facts_corpus_shape():
 @pytest.mark.parametrize("case", CASES, ids=[case["dialect"] for case in CASES])
 def test_legacy_facts_corpus(case):
     observed = _observe(case["dialect"], case["script"])
+    if case["dialect"] == "sqlite":
+        assert observed["success"] == case["legacy_observed"]["success"]
+        assert observed["errors"] == case["legacy_observed"]["errors"]
+        assert len(observed["statements"]) == 5
+        for index in (0, 1, 4):
+            assert observed["statements"][index] == case["legacy_observed"]["statements"][index]
+        for index in (2, 3):
+            old = case["legacy_observed"]["statements"][index]
+            new = observed["statements"][index]
+            assert old["objects"] == old["affected_objects"] == []
+            assert (
+                new["objects"]
+                == new["affected_objects"]
+                == [{"type": "TABLE", "name": "child", "schema": None}]
+            )
+        assert len(case["accepted_differences"]) == 3
+        return
     assert observed == case["legacy_observed"]
+
+
+@pytest.mark.unit
+def test_sqlite_statement_facts_snapshot():
+    case = next(case for case in CASES if case["dialect"] == "sqlite")
+    observed = []
+    reader = SqlglotStatementFactsReader("sqlite", SQLITE_SPEC)
+    for sql in LexicalEngine(SQLITE_SPEC).split_for_analysis(case["script"]):
+        facts = reader.read(sql)
+        observed.append(
+            {
+                "sql": sql,
+                "operation": facts.operation,
+                "kind": facts.kind,
+                "objects": [
+                    {
+                        "type": obj.type.value,
+                        "name": obj.name,
+                        "schema": obj.schema,
+                        "role": obj.role,
+                    }
+                    for obj in facts.objects
+                ],
+                "target": facts.target,
+                "predicate": facts.predicate,
+                "declared_columns": list(facts.declared_columns),
+                "indexed_table": facts.indexed_table,
+                "indexed_columns": (
+                    list(facts.indexed_columns) if facts.indexed_columns is not None else None
+                ),
+                "declared_constraints": [
+                    {
+                        "kind": constraint.kind,
+                        "columns": list(constraint.columns),
+                        "name": constraint.name,
+                        "referenced_table": constraint.referenced_table,
+                        "referenced_columns": list(constraint.referenced_columns),
+                    }
+                    for constraint in facts.declared_constraints
+                ],
+                "declared_column_comments": facts.declared_column_comments,
+                "affected_columns": list(facts.affected_columns),
+                "events": sorted(facts.events) if facts.events else None,
+                "diagnostic": facts.diagnostic,
+            }
+        )
+    assert observed == case["facts_observed"]
 
 
 @pytest.mark.unit

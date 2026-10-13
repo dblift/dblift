@@ -32,13 +32,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Statement` records for Db2 (`DB2RegexParser.split()`): the text without its
   terminator, its line, the terminator (`;`, one declared with
   `--#SET TERMINATOR`, or none) and a kind (`sql` or `directive`).
-- `Statement` records for SQLite (`SQLiteRegexParser.split()`): the text without
+- `Statement` records for SQLite (`SQLiteFactsParser.split()`): the text without
   its terminator, its line, and the terminator (`;` or none).
 - `Statement` records for DuckDB (`DuckDBRegexParser.split()`): the text without
   its terminator, its line, and the terminator (`;` or none).
 
 ### Changed
 
+- **SQLite: object extraction reads statement facts from the SQLGlot AST instead of
+  regular expressions.** `parse_sql` and `extract_objects` report the table an
+  `INSERT`, `UPDATE` or `DELETE` writes as an affected object, including behind a
+  `WITH` clause, where script analysis now reports the write (`UPDATE`, `DELETE`,
+  `INSERT`) rather than `WITH`, and a `WITH ... SELECT` as `SELECT`. Foreign key
+  targets, view and `CREATE TABLE AS` sources and `INSERT ... SELECT` sources are
+  read as referenced tables, and `CHECK` constraints as declared constraints;
+  referenced tables are not reported as affected objects. Schema-qualified
+  indexes (`CREATE INDEX main.ix ON t(c)`) are extracted with their schema.
+  Statements the grammar does not model (triggers, `PRAGMA`, `VACUUM`,
+  `REPLACE INTO`, virtual tables) are classified from their leading words and are
+  not errors. Text that does not tokenize, such as an unterminated string, is now
+  an error in `parse_sql().errors`, `validate_sql()`, script analysis and the
+  `validate-sql` REVIEW verdict; the message names no SQL text.
 - Script execution, analysis, object extraction, and transaction checks now
   use each dialect's authoritative scanner records. Client-skipped batches
   contribute no statements or objects; scanner refusals no longer trigger a

@@ -16,7 +16,7 @@ These tests guard against re-introduction of the following bugs:
 - InfoCommand status normalized to "APPLIED" instead of "SUCCESS"
   → Fixed: "APPLIED" maps to "SUCCESS"; "BASELINE" stays distinct as "BASELINE"
 - SQLite CASE...END inside triggers confused BEGIN/END detection
-  → Fixed: added case_depth tracking in SQLiteRegexParser
+  → Fixed: added case_depth tracking in SQLiteFactsParser
 """
 
 from pathlib import Path
@@ -307,9 +307,9 @@ class TestSqliteCaseEndInTrigger:
 
     def test_trigger_with_case_expression(self):
         """Trigger containing CASE...END must be parsed as single statement."""
-        from dblift.db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
+        from dblift.db.plugins.sqlite.parser.sqlite_facts_parser import SQLiteFactsParser
 
-        parser = SQLiteRegexParser()
+        parser = SQLiteFactsParser()
 
         sql = """
         CREATE TRIGGER set_status
@@ -335,9 +335,9 @@ class TestSqliteCaseEndInTrigger:
 
     def test_trigger_with_nested_case(self):
         """Trigger with nested CASE expressions."""
-        from dblift.db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
+        from dblift.db.plugins.sqlite.parser.sqlite_facts_parser import SQLiteFactsParser
 
-        parser = SQLiteRegexParser()
+        parser = SQLiteFactsParser()
 
         sql = """
         CREATE TRIGGER complex_trigger
@@ -365,9 +365,9 @@ class TestSqliteCaseEndInTrigger:
 
     def test_trigger_with_multiple_case_expressions(self):
         """Trigger with multiple CASE expressions in same statement."""
-        from dblift.db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
+        from dblift.db.plugins.sqlite.parser.sqlite_facts_parser import SQLiteFactsParser
 
-        parser = SQLiteRegexParser()
+        parser = SQLiteFactsParser()
 
         sql = """
         CREATE TRIGGER multi_case
@@ -389,9 +389,9 @@ class TestSqliteCaseEndInTrigger:
 
     def test_case_outside_trigger_is_fine(self):
         """CASE...END outside trigger should not affect statement splitting."""
-        from dblift.db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
+        from dblift.db.plugins.sqlite.parser.sqlite_facts_parser import SQLiteFactsParser
 
-        parser = SQLiteRegexParser()
+        parser = SQLiteFactsParser()
 
         sql = """
         SELECT CASE WHEN x > 0 THEN 'pos' ELSE 'neg' END FROM t;

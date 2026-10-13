@@ -27,7 +27,7 @@ from dblift.db.plugins.oracle.parser.oracle_parser import OracleParser
 from dblift.db.plugins.postgresql.parser.postgresql_regex_parser import (
     PostgreSqlRegexParser,
 )
-from dblift.db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
+from dblift.db.plugins.sqlite.parser.sqlite_facts_parser import SQLiteFactsParser
 from dblift.db.plugins.sqlserver.parser.sqlserver_regex_parser import (
     SqlServerRegexParser,
 )
@@ -206,12 +206,12 @@ class TestSQLiteExtractionDoesNotNestBlockComments(unittest.TestCase):
     """
 
     def test_issue_example(self):
-        objects = SQLiteRegexParser().extract_objects(ISSUE_REPRODUCTION_SQL)
+        objects = SQLiteFactsParser().extract_objects(ISSUE_REPRODUCTION_SQL)
         self.assertEqual(len(objects), 1, objects)
         self.assertEqual(objects[0].name, "real_one")
 
     def test_nested_comment_leaves_live_statement_visible(self):
-        objects = SQLiteRegexParser().extract_objects(NESTED_COMMENT_SQL)
+        objects = SQLiteFactsParser().extract_objects(NESTED_COMMENT_SQL)
         self.assertEqual(len(objects), 1, objects)
         self.assertEqual(objects[0].name.lower(), "victim")
 
@@ -266,7 +266,7 @@ class TestLineCommentsAlsoHideTheCommentedStatement(unittest.TestCase):
     """
 
     def test_sqlite(self):
-        objects = SQLiteRegexParser().extract_objects(LINE_COMMENT_REPRODUCTION_SQL)
+        objects = SQLiteFactsParser().extract_objects(LINE_COMMENT_REPRODUCTION_SQL)
         self.assertEqual(len(objects), 1, objects)
         self.assertEqual(objects[0].name, "real_one")
 
@@ -293,7 +293,7 @@ class TestExtractionReturnsEveryLiveObjectNotJustTheFirst(unittest.TestCase):
     SQL = "CREATE TABLE first_one (id int); CREATE TABLE second_one (id int);"
 
     def test_sqlite(self):
-        objects = SQLiteRegexParser().extract_objects(self.SQL)
+        objects = SQLiteFactsParser().extract_objects(self.SQL)
         self.assertEqual([o.name for o in objects], ["first_one", "second_one"])
 
     def test_duckdb(self):
@@ -324,7 +324,7 @@ class TestUnterminatedInnerCommentAgreesWithSplitting(unittest.TestCase):
         self.assertEqual(objects[0].name.lower(), "victim")
 
     def test_sqlite_closes_at_first_marker_exposes_statement(self):
-        objects = SQLiteRegexParser().extract_objects(self.UNTERMINATED_INNER)
+        objects = SQLiteFactsParser().extract_objects(self.UNTERMINATED_INNER)
         self.assertEqual(len(objects), 1, objects)
         self.assertEqual(objects[0].name.lower(), "victim")
 
@@ -358,7 +358,7 @@ class TestQuotedCommentMarkersSurviveDialectAwareStripping(unittest.TestCase):
 
     def test_slash_star_inside_string_on_sqlite(self):
         sql = "CREATE TABLE t (note VARCHAR(10) DEFAULT '/*'); SELECT 1;"
-        objects = SQLiteRegexParser().extract_objects(sql)
+        objects = SQLiteFactsParser().extract_objects(sql)
         self.assertEqual(len(objects), 1, objects)
         self.assertEqual(objects[0].name.lower(), "t")
 
@@ -394,7 +394,7 @@ class TestCommentContainingSemicolon(unittest.TestCase):
 
     def test_sqlite_semicolon_inside_comment_is_not_a_boundary(self):
         sql = "/* has a ; inside */ CREATE TABLE t (id int);"
-        objects = SQLiteRegexParser().extract_objects(sql)
+        objects = SQLiteFactsParser().extract_objects(sql)
         self.assertEqual(len(objects), 1, objects)
         self.assertEqual(objects[0].name.lower(), "t")
 

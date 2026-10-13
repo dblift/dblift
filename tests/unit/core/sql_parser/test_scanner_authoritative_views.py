@@ -16,7 +16,7 @@ from dblift.db.plugins.duckdb.parser.duckdb_regex_parser import DuckDBRegexParse
 from dblift.db.plugins.mariadb.regex_parser import MariaDbRegexParser
 from dblift.db.plugins.mysql.parser.mysql_regex_parser import MySqlRegexParser
 from dblift.db.plugins.mysql.parser.parser_config import MySqlConfig
-from dblift.db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
+from dblift.db.plugins.sqlite.parser.sqlite_facts_parser import SQLiteFactsParser
 
 
 @pytest.mark.parametrize("parser_class", [MySqlRegexParser, MariaDbRegexParser])
@@ -163,7 +163,7 @@ def test_db2_source_spans_keep_directive_and_terminated_lines() -> None:
     ]
 
 
-@pytest.mark.parametrize("parser_class", [SQLiteRegexParser, DuckDBRegexParser])
+@pytest.mark.parametrize("parser_class", [SQLiteFactsParser, DuckDBRegexParser])
 def test_engine_source_spans_keep_original_semicolons_and_bom_crlf(parser_class: type) -> None:
     script = "\ufeff  SELECT 1;\r\nSELECT 2;"
     records = parser_class().split(script)
@@ -175,7 +175,7 @@ def test_engine_source_spans_keep_original_semicolons_and_bom_crlf(parser_class:
 
 
 def test_sqlite_extraction_refuses_shell_command() -> None:
-    parser = SQLiteRegexParser()
+    parser = SQLiteFactsParser()
 
     with pytest.raises(UnsupportedMetaCommandError):
         parser.split_for_extraction(".read other.sql\nSELECT 1;")

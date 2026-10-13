@@ -528,9 +528,16 @@ class SqlAnalyzer:
         Returns:
             List of dictionaries with object information
         """
-        # Use regex-based extraction
-
-        # Use the regex-based extraction as a reliable method
+        quirks = ProviderRegistry.get_quirks(self.dialect)
+        if quirks.supports_statement_facts:
+            facts = quirks.statement_facts(sql)
+            return [
+                {
+                    "object_type": obj.type.value,
+                    "object_name": f"{obj.schema or DEFAULT_SCHEMA_PLACEHOLDER}.{obj.name}",
+                }
+                for obj in facts.affected_objects
+            ]
         return self._extract_objects_regex(sql)
 
     def analyze_statement(self, sql: str) -> Dict[str, Any]:
@@ -542,6 +549,17 @@ class SqlAnalyzer:
         Returns:
             Dictionary containing analysis results
         """
+        quirks = ProviderRegistry.get_quirks(self.dialect)
+        if quirks.supports_statement_facts:
+            facts = quirks.statement_facts(sql)
+            return {
+                "type": facts.kind,
+                "objects": self.extract_objects(sql),
+                "is_valid": facts.error is None,
+                "errors": [facts.error] if facts.error else [],
+                "parsed_with": "facts",
+            }
+
         # Use regex-based analysis
         try:
             objects = self.extract_objects(sql)

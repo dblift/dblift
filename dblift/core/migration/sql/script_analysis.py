@@ -14,6 +14,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 
+from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
 from dblift.core.sql_model.base import SqlObject, SqlObjectType
 from dblift.core.sql_parser.parser_factory import SqlParserFactory
 from dblift.db.base_quirks import BaseQuirks
@@ -166,6 +167,48 @@ def analyse_script(text: str, dialect: str) -> ScriptAnalysis:
 
 
 def _analyse(text: str, dialect: str) -> ScriptAnalysis:
+    quirks = ProviderRegistry.get_quirks(dialect)
+    if quirks.supports_statement_facts:
+        from dblift.core.sql_parser.lexical_engine import LexicalEngine
+
+        spec = quirks.lexical_spec()
+        assert spec is not None
+        fact_statements: List[AnalysedStatement] = []
+        fact_cautions: List[Caution] = []
+        errors: List[str] = []
+        try:
+            bodies = LexicalEngine(spec).split_for_analysis(text)
+        except (UnsafeStatementSplitError, UnsupportedMetaCommandError) as error:
+            return ScriptAnalysis((), (), (f"Error splitting SQL: {error}",))
+        for body in bodies:
+            if not body.strip():
+                continue
+            facts = quirks.statement_facts(body)
+            objects = tuple(
+                AnalysedObject(obj.type.value, obj.name, obj.schema)
+                for obj in facts.affected_objects
+            )
+            operation = facts.operation if facts.operation != "UNKNOWN" else operation_of(body)
+            full_table = facts.kind == "DML" and (
+                facts.operation in ("UPDATE", "DELETE") and (not facts.predicate)
+            )
+            analysed = AnalysedStatement(
+                len(fact_statements),
+                operation,
+                facts.kind,
+                objects,
+                full_table,
+                _snippet(body),
+                sql=body,
+            )
+            fact_statements.append(analysed)
+            caution = _caution_for(analysed, body)
+            if caution is not None:
+                fact_cautions.append(caution)
+            if facts.error:
+                errors.append(facts.error)
+        return ScriptAnalysis(tuple(fact_statements), tuple(fact_cautions), tuple(errors))
+
     try:
         parsed = SqlParserFactory(dialect).parse_sql(text)
         quirks = ProviderRegistry.get_quirks(dialect)

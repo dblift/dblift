@@ -108,9 +108,13 @@ class SqlExecutionService:
             prepare()
 
         # Native quirks use the shared AST-first DML analyzer, including on
-        # dialects whose DDL parser is regex-only. Plugin overrides own this path.
+        # dialects whose DDL parser is regex-only. Plugin overrides own this path,
+        # except that statement facts are read from the same AST.
         analyze_dml = self.quirks.analyze_dml
-        if getattr(analyze_dml, "__func__", analyze_dml) is BaseQuirks.analyze_dml:
+        if (
+            self.quirks.supports_statement_facts
+            or getattr(analyze_dml, "__func__", analyze_dml) is BaseQuirks.analyze_dml
+        ):
             import sqlglot  # noqa: F401 - fail before any user or history write
 
         self._analysis_prepared = True
@@ -209,10 +213,21 @@ class SqlExecutionService:
                         and hasattr(self.journal, "record_object_changes")
                     ):
                         try:
-                            objects_affected = []
+                            objects_affected: List[Any] = []
+
+                            if self.quirks.supports_statement_facts:
+                                facts = self.quirks.statement_facts(statement)
+                                objects_affected = [
+                                    obj.as_sql_object(self.schema, self.quirks.dialect_name)
+                                    for obj in facts.affected_objects
+                                ]
+                                if facts.error:
+                                    self.log.warning(facts.error)
+                                elif facts.diagnostic:
+                                    self.log.debug(facts.diagnostic)
 
                             # For DDL statements, use parser to extract objects
-                            if statement_type == SqlStatementType.DDL.value:
+                            elif statement_type == SqlStatementType.DDL.value:
                                 # Use the parser factory directly to get proper schema handling
                                 if getattr(self.sql_analyzer, "parser_factory", None):
                                     objects_affected = (

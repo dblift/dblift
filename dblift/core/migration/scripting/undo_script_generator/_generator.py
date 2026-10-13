@@ -18,6 +18,7 @@ from dblift.core.migration.scripting.undo_script_generator._reversers import _Un
 from dblift.core.migration.sql.migration_sql_parser import parse_migration_sql
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.sql_parser.parser_factory import SqlParserFactory
+from dblift.core.sql_parser.statement_facts import StatementFacts
 
 
 class UndoScriptGenerator(_UndoReversersMixin, _UndoExtractorsMixin):
@@ -178,6 +179,21 @@ class UndoScriptGenerator(_UndoReversersMixin, _UndoExtractorsMixin):
         Returns:
             List of undo statements (in reverse order)
         """
+        from dblift.db.provider_registry import ProviderRegistry
+
+        quirks = ProviderRegistry.get_quirks(self.dialect)
+        if quirks.supports_statement_facts:
+            from dblift.core.sql_parser.lexical_engine import LexicalEngine
+
+            spec = quirks.lexical_spec()
+            assert spec is not None
+            return [
+                undo
+                for sql in reversed(LexicalEngine(spec).split_for_analysis(migration.content))
+                if (undo := self._reverse_sqlite_facts(sql, quirks.statement_facts(sql)))
+                is not None
+            ]
+
         # Parse SQL using the parser to get structured statements with types
         parse_result = self.parser.parse_sql(migration.content, default_schema=self.default_schema)
 
@@ -264,6 +280,38 @@ class UndoScriptGenerator(_UndoReversersMixin, _UndoExtractorsMixin):
             filtered_statements.append(undo_stmt)
 
         return filtered_statements
+
+    def _reverse_sqlite_facts(self, sql: str, facts: StatementFacts) -> Optional[UndoStatement]:
+        """Reverse only SQLite operations whose AST facts determine the target."""
+        if facts.operation == "UNKNOWN" and not facts.opaque:
+            return None
+        if facts.error is None and facts.operation == "CREATE" and facts.affected_objects:
+            obj = facts.affected_objects[0]
+            if obj.type.value in ("TABLE", "VIEW", "INDEX", "TRIGGER"):
+                qualified = ".".join(
+                    self._quote_identifier(part) for part in (obj.schema, obj.name) if part
+                )
+                return UndoStatement(f"DROP {obj.type.value} IF EXISTS {qualified};", sql, "CREATE")
+        if (
+            not facts.opaque
+            and facts.operation == "ALTER"
+            and facts.action == "add-column"
+            and len(facts.declared_columns) == 1
+            and facts.affected_objects
+        ):
+            obj = facts.affected_objects[0]
+            qualified = ".".join(
+                self._quote_identifier(part) for part in (obj.schema, obj.name) if part
+            )
+            return UndoStatement(
+                f"ALTER TABLE {qualified} DROP COLUMN {self._quote_identifier(facts.declared_columns[0])};",
+                sql,
+                "ALTER",
+            )
+        reason = f"{facts.operation} cannot be reversed automatically; review it and write the undo by hand"
+        return UndoStatement(
+            f"-- WARNING: {reason}", sql, facts.operation, reason, requires_manual_review=True
+        )
 
     def _write_undo_script(
         self,

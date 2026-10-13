@@ -94,9 +94,9 @@ class TestSQLiteParser:
 
     def test_basic_table_creation(self, sqlite_db):
         """Test parsing and executing basic CREATE TABLE."""
-        from dblift.db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
+        from dblift.db.plugins.sqlite.parser.sqlite_facts_parser import SQLiteFactsParser
 
-        parser = SQLiteRegexParser()
+        parser = SQLiteFactsParser()
 
         sql_script = """
         CREATE TABLE users (
@@ -131,9 +131,9 @@ class TestSQLiteParser:
 
     def test_trigger_with_begin_end(self, sqlite_db):
         """Test parsing and executing trigger with BEGIN/END block."""
-        from dblift.db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
+        from dblift.db.plugins.sqlite.parser.sqlite_facts_parser import SQLiteFactsParser
 
-        parser = SQLiteRegexParser()
+        parser = SQLiteFactsParser()
 
         sql_script = """
         CREATE TABLE logs (
@@ -172,9 +172,9 @@ class TestSQLiteParser:
 
     def test_view_creation(self, sqlite_db):
         """Test parsing and executing CREATE VIEW."""
-        from dblift.db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
+        from dblift.db.plugins.sqlite.parser.sqlite_facts_parser import SQLiteFactsParser
 
-        parser = SQLiteRegexParser()
+        parser = SQLiteFactsParser()
 
         sql_script = """
         CREATE TABLE products (
@@ -209,9 +209,9 @@ class TestSQLiteParser:
 
     def test_index_creation(self, sqlite_db):
         """Test parsing and executing CREATE INDEX statements."""
-        from dblift.db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
+        from dblift.db.plugins.sqlite.parser.sqlite_facts_parser import SQLiteFactsParser
 
-        parser = SQLiteRegexParser()
+        parser = SQLiteFactsParser()
 
         sql_script = """
         CREATE TABLE orders (
@@ -246,9 +246,9 @@ class TestSQLiteParser:
 
     def test_comments_handling(self, sqlite_db):
         """Test parsing SQL with various comment styles."""
-        from dblift.db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
+        from dblift.db.plugins.sqlite.parser.sqlite_facts_parser import SQLiteFactsParser
 
-        parser = SQLiteRegexParser()
+        parser = SQLiteFactsParser()
 
         sql_script = """
         -- This is a line comment
@@ -281,9 +281,9 @@ class TestSQLiteParser:
 
     def test_string_with_semicolons(self, sqlite_db):
         """Test parsing SQL with semicolons inside string literals."""
-        from dblift.db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
+        from dblift.db.plugins.sqlite.parser.sqlite_facts_parser import SQLiteFactsParser
 
-        parser = SQLiteRegexParser()
+        parser = SQLiteFactsParser()
 
         sql_script = """
         CREATE TABLE messages (
@@ -313,9 +313,9 @@ class TestSQLiteParser:
 
     def test_complex_trigger(self, sqlite_db):
         """Test complex trigger with multiple statements in body."""
-        from dblift.db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
+        from dblift.db.plugins.sqlite.parser.sqlite_facts_parser import SQLiteFactsParser
 
-        parser = SQLiteRegexParser()
+        parser = SQLiteFactsParser()
 
         sql_script = """
         CREATE TABLE inventory (
@@ -362,9 +362,9 @@ class TestSQLiteParser:
 
     def test_cte_with_recursive(self, sqlite_db):
         """Test parsing Common Table Expression with RECURSIVE."""
-        from dblift.db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
+        from dblift.db.plugins.sqlite.parser.sqlite_facts_parser import SQLiteFactsParser
 
-        parser = SQLiteRegexParser()
+        parser = SQLiteFactsParser()
 
         sql_script = """
         CREATE TABLE categories (
@@ -407,9 +407,9 @@ class TestSQLiteParser:
 
     def test_on_conflict_clause(self, sqlite_db):
         """Test parsing INSERT with ON CONFLICT clause."""
-        from dblift.db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
+        from dblift.db.plugins.sqlite.parser.sqlite_facts_parser import SQLiteFactsParser
 
-        parser = SQLiteRegexParser()
+        parser = SQLiteFactsParser()
 
         sql_script = """
         CREATE TABLE settings (
