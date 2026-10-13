@@ -148,11 +148,11 @@ def test_script_analysis_reports_the_refusal(script):
     assert analysis.errors[0].startswith("Error splitting SQL: ")
 
 
-def test_facts_of_text_holding_a_shell_command_carry_a_diagnostic():
+def test_facts_of_unsplit_text_holding_a_shell_command_do_not_raise():
     facts = READER.read("SELECT 1;\n.read x.sql\n")
 
     assert facts.opaque
-    assert ".read" in facts.diagnostic
+    assert facts.error is None
 
 
 # --- recognised statements never drop references or constraints silently --------------

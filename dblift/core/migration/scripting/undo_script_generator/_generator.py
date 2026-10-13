@@ -285,9 +285,9 @@ class UndoScriptGenerator(_UndoReversersMixin, _UndoExtractorsMixin):
         """Reverse only SQLite operations whose AST facts determine the target."""
         if facts.operation == "UNKNOWN" and not facts.opaque:
             return None
-        if not facts.opaque and facts.operation == "CREATE" and facts.affected_objects:
+        if facts.error is None and facts.operation == "CREATE" and facts.affected_objects:
             obj = facts.affected_objects[0]
-            if obj.type.value in ("TABLE", "VIEW", "INDEX"):
+            if obj.type.value in ("TABLE", "VIEW", "INDEX", "TRIGGER"):
                 qualified = ".".join(
                     self._quote_identifier(part) for part in (obj.schema, obj.name) if part
                 )

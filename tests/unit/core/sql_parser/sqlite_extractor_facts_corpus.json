@@ -483,7 +483,7 @@
           "affected_columns": [],
           "target": null,
           "predicate": null,
-          "diagnostic": "sqlite syntax could not be parsed: Invalid expression / Unexpected token",
+          "diagnostic": "sqlite grammar is not modelled for this statement",
           "indexed_table": null,
           "indexed_columns": null
         }

@@ -6,21 +6,20 @@ Kept apart from ``statement_facts`` so that importing the fact types never impor
 from __future__ import annotations
 
 import re
+from dataclasses import replace
 from typing import Optional, Tuple
 
 from sqlglot import exp, parse_one
 from sqlglot.errors import ParseError, TokenError
 
-from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
 from dblift.core.sql_model.base import SqlObjectType
+from dblift.core.sql_parser.common.comment_stripping import strip_comments_preserving_quotes
 from dblift.core.sql_parser.dialects.identifier_tokens import (
     BACKTICK_IDENTIFIER,
     BRACKET_IDENTIFIER,
     DOUBLE_QUOTED_IDENTIFIER,
     strip_identifier_quotes,
 )
-from dblift.core.sql_parser.lexical_engine import LexicalEngine
-from dblift.core.sql_parser.lexical_spec import LexicalSpec
 from dblift.core.sql_parser.statement_facts import (
     DeclaredConstraint,
     NamedObject,
@@ -35,9 +34,23 @@ _HEAD = re.compile(
     rf"({_NAME})(?:\s*\.\s*({_NAME}))?",
     re.IGNORECASE,
 )
+_HEAD_SCAN = re.compile(
+    _HEAD.pattern.replace(r"^\s*", r"(?:^|;)\s*", 1), re.IGNORECASE | re.MULTILINE
+)
+_REPLACE_INTO = re.compile(rf"^\s*REPLACE\s+INTO\s+({_NAME})(?:\s*\.\s*({_NAME}))?", re.IGNORECASE)
+_UPDATE_OR = re.compile(
+    r"^((?:\s|--[^\n]*\n|/\*.*?\*/)*UPDATE)\s+OR\s+(?:ROLLBACK|ABORT|FAIL|IGNORE|REPLACE)\b",
+    re.IGNORECASE | re.DOTALL,
+)
 _FIRST_WORD = re.compile(r"^\s*([A-Za-z]+)")
-_DDL = frozenset({"CREATE", "ALTER", "DROP"})
-_DML = frozenset({"INSERT", "UPDATE", "DELETE"})
+_KINDS = {
+    **dict.fromkeys(
+        ("CREATE", "ALTER", "DROP", "VACUUM", "ANALYZE", "REINDEX", "PRAGMA", "ATTACH", "DETACH"),
+        "DDL",
+    ),
+    **dict.fromkeys(("INSERT", "UPDATE", "DELETE", "REPLACE"), "DML"),
+    **dict.fromkeys(("SELECT", "WITH", "VALUES", "EXPLAIN"), "QUERY"),
+}
 
 
 def _named(node: exp.Expression, kind: SqlObjectType, role: str) -> Optional[NamedObject]:
@@ -140,58 +153,80 @@ def _column_constraints(definition: exp.ColumnDef) -> Tuple[DeclaredConstraint, 
     )
 
 
-def _head_facts(sql: str, diagnostic: str, spec: LexicalSpec) -> StatementFacts:
-    """Read only a statement head when sqlglot cannot represent the body."""
-    head = LexicalEngine(spec).blank_comments(sql)
+def _blanked(sql: str) -> str:
+    return strip_comments_preserving_quotes(
+        sql, line_prefixes=["--"], has_block_comments=True, nested_block_comments=False
+    )
+
+
+def _head_object(match: "re.Match[str]") -> NamedObject:
+    operation = match.group(1).upper()
+    object_type = SqlObjectType[match.group(2).upper().replace(" ", "_")]
+    name = strip_identifier_quotes(match.group(4) or match.group(3))
+    schema = strip_identifier_quotes(match.group(3)) if match.group(4) else None
+    role = {"CREATE": "created", "ALTER": "altered", "DROP": "dropped"}[operation]
+    return NamedObject(name, object_type, role, schema)
+
+
+def scan_head_objects(sql: str) -> Tuple[NamedObject, ...]:
+    """Objects named by CREATE, ALTER and DROP heads anywhere in text that was not split."""
+    text = strip_comments_preserving_quotes(
+        sql.replace("\x00", " "),
+        line_prefixes=["--"],
+        has_block_comments=True,
+        nested_block_comments=False,
+    )
+    return tuple(_head_object(match) for match in _HEAD_SCAN.finditer(text))
+
+
+def _head_facts(sql: str, diagnostic: str) -> StatementFacts:
+    """Classify a statement from its leading words when sqlglot cannot represent the body."""
+    head = _blanked(sql)
     first = _FIRST_WORD.match(head)
     operation = first.group(1).upper() if first else "UNKNOWN"
-    kind = (
-        "DDL"
-        if operation in _DDL
-        else (
-            "DML"
-            if operation in _DML
-            else "QUERY" if operation in ("SELECT", "WITH") else "UNKNOWN"
-        )
-    )
-    match = _HEAD.match(head)
+    kind = _KINDS.get(operation, "UNKNOWN")
     objects: Tuple[NamedObject, ...] = ()
+    match = _HEAD.match(head)
+    if match is None and first is None:
+        # Stray characters (a NUL, a lone ``/``) ahead of the statement; the engine reads past them.
+        match = _HEAD_SCAN.search(head.replace("\x00", " "))
+        if match:
+            operation = match.group(1).upper()
+            kind = _KINDS[operation]
+    replaced = _REPLACE_INTO.match(head)
     if match:
-        type_name = match.group(2).upper().replace(" ", "_")
-        diagnostic = f"{type_name.lower().replace('_', ' ')}: {diagnostic}"
-        object_type = SqlObjectType[type_name]
-        name = strip_identifier_quotes(match.group(4) or match.group(3))
-        schema = strip_identifier_quotes(match.group(3)) if match.group(4) else None
-        role = {"CREATE": "created", "ALTER": "altered", "DROP": "dropped"}[operation]
-        objects = (NamedObject(name, object_type, role, schema),)
+        found = _head_object(match)
+        diagnostic = f"{found.type.value.lower().replace('_', ' ')}: {diagnostic}"
+        objects = (found,)
+    elif replaced:
+        schema = strip_identifier_quotes(replaced.group(1)) if replaced.group(2) else None
+        name = strip_identifier_quotes(replaced.group(2) or replaced.group(1))
+        objects = (NamedObject(name, SqlObjectType.TABLE, "altered", schema),)
     return StatementFacts(operation, kind, objects, diagnostic=diagnostic)
 
 
-def read_statement_facts(sql: str, *, dialect: str, spec: LexicalSpec) -> StatementFacts:
+def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
     """Read one already-split statement; never retry a second extractor.
 
-    Text the lexical engine refuses (a client command, an unterminated comment) is reported
-    as a diagnostic, never raised.
+    Text that does not tokenize is reported as an error. A statement the grammar does not
+    model is classified from its leading words with an informational diagnostic.
     """
     try:
-        return _read_statement_facts(sql, dialect, spec)
-    except (UnsafeStatementSplitError, UnsupportedMetaCommandError) as exc:
-        return StatementFacts("UNKNOWN", "UNKNOWN", diagnostic=str(exc))
-
-
-def _read_statement_facts(sql: str, dialect: str, spec: LexicalSpec) -> StatementFacts:
-    try:
-        ast = parse_one(sql, read=dialect)
+        ast = parse_one(_UPDATE_OR.sub(r"\1", sql), read=dialect)
     except (ParseError, TokenError) as exc:
-        if not LexicalEngine(spec).blank_comments(sql).strip():
+        if not _blanked(sql).strip():
             return StatementFacts("UNKNOWN", "UNKNOWN")
-        reason = (
-            exc.errors[0]["description"] if isinstance(exc, ParseError) and exc.errors else str(exc)
-        )
-        return _head_facts(sql, f"{dialect} syntax could not be parsed: {reason}", spec)
+        if isinstance(exc, TokenError):
+            facts = _head_facts(sql, "")
+            return replace(
+                facts,
+                diagnostic=None,
+                error=f"{dialect} statement could not be tokenized (unterminated quote or comment)",
+            )
+        return _head_facts(sql, f"{dialect} grammar is not modelled for this statement")
     if ast is None or isinstance(ast, (exp.Command, exp.Block)):
         construct = type(ast).__name__ if ast is not None else "empty statement"
-        return _head_facts(sql, f"{dialect} {construct} is opaque to statement facts", spec)
+        return _head_facts(sql, f"{dialect} {construct} is opaque to statement facts")
 
     if isinstance(ast, exp.Create):
         kind = str(ast.args.get("kind") or "").upper()
@@ -324,4 +359,4 @@ def _read_statement_facts(sql: str, dialect: str, spec: LexicalSpec) -> Statemen
 
     if isinstance(ast, exp.Query):
         return StatementFacts("SELECT", "QUERY", _referenced(ast))
-    return _head_facts(sql, f"{dialect} {type(ast).__name__} has no statement facts mapping", spec)
+    return _head_facts(sql, f"{dialect} {type(ast).__name__} has no statement facts mapping")

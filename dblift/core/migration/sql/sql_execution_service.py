@@ -221,8 +221,10 @@ class SqlExecutionService:
                                     obj.as_sql_object(self.schema, self.quirks.dialect_name)
                                     for obj in facts.affected_objects
                                 ]
-                                if facts.diagnostic:
-                                    self.log.warning(facts.diagnostic)
+                                if facts.error:
+                                    self.log.warning(facts.error)
+                                elif facts.diagnostic:
+                                    self.log.debug(facts.diagnostic)
 
                             # For DDL statements, use parser to extract objects
                             elif statement_type == SqlStatementType.DDL.value:

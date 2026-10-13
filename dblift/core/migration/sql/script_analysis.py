@@ -205,8 +205,8 @@ def _analyse(text: str, dialect: str) -> ScriptAnalysis:
             caution = _caution_for(analysed, body)
             if caution is not None:
                 fact_cautions.append(caution)
-            if facts.diagnostic:
-                errors.append(facts.diagnostic)
+            if facts.error:
+                errors.append(facts.error)
         return ScriptAnalysis(tuple(fact_statements), tuple(fact_cautions), tuple(errors))
 
     try:

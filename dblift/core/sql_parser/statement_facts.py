@@ -36,7 +36,11 @@ class DeclaredConstraint:
 
 @dataclass(frozen=True)
 class StatementFacts:
-    """Statement-level evidence, with diagnostics when its grammar is opaque."""
+    """Statement-level evidence.
+
+    ``diagnostic`` is information naming a construct whose detail was not read; ``error`` is
+    reserved for text the engine would refuse (a refused script, text that does not tokenize).
+    """
 
     operation: str
     kind: str
@@ -52,12 +56,13 @@ class StatementFacts:
     events: Optional[frozenset[str]] = None
     action: Optional[str] = None
     diagnostic: Optional[str] = None
+    error: Optional[str] = None
     target_sql: Optional[str] = None
 
     @property
     def opaque(self) -> bool:
         """Whether grammar detail was unavailable for this statement."""
-        return self.diagnostic is not None
+        return self.diagnostic is not None or self.error is not None
 
     @property
     def affected_objects(self) -> Tuple[NamedObject, ...]:
@@ -77,4 +82,4 @@ class SqlglotStatementFactsReader:
         """Read one already-split statement."""
         from dblift.core.sql_parser.sqlglot_statement_facts import read_statement_facts
 
-        return read_statement_facts(sql, dialect=self.dialect, spec=self.spec)
+        return read_statement_facts(sql, dialect=self.dialect)

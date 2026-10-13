@@ -555,8 +555,8 @@ class SqlAnalyzer:
             return {
                 "type": facts.kind,
                 "objects": self.extract_objects(sql),
-                "is_valid": not facts.opaque,
-                "errors": [facts.diagnostic] if facts.diagnostic else [],
+                "is_valid": facts.error is None,
+                "errors": [facts.error] if facts.error else [],
                 "parsed_with": "facts",
             }
 

@@ -57,8 +57,8 @@ class SQLiteFactsParser(SqlParserInterface):
             statements.append(
                 SqlStatement(sql, facts.kind, objects, objects, "sqlite", default_schema)
             )
-            if facts.diagnostic:
-                errors.append(facts.diagnostic)
+            if facts.error:
+                errors.append(facts.error)
         return ParseResult(not errors, statements, errors)
 
     def extract_objects(
@@ -68,7 +68,12 @@ class SQLiteFactsParser(SqlParserInterface):
         try:
             fragments = self.split_for_analysis(sql_content)
         except (UnsafeStatementSplitError, UnsupportedMetaCommandError):
-            return []
+            from dblift.core.sql_parser.sqlglot_statement_facts import scan_head_objects
+
+            return [
+                obj.as_sql_object(default_schema, "sqlite")
+                for obj in scan_head_objects(sql_content)
+            ]
         return [
             obj.as_sql_object(default_schema, "sqlite")
             for sql in fragments

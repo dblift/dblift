@@ -89,7 +89,7 @@ def test_cte_update_has_one_target_and_full_table_caution(monkeypatch):
     assert analysis.cautions[0].code == "dml-no-where"
 
 
-def test_opaque_trigger_keeps_identity_and_diagnostic():
+def test_opaque_trigger_keeps_identity_without_an_error():
     sql = "CREATE TRIGGER trg AFTER INSERT ON child BEGIN UPDATE child SET id = 2; END;"
     result = SqlParserFactory("sqlite").parse_sql(sql)
 
@@ -97,8 +97,8 @@ def test_opaque_trigger_keeps_identity_and_diagnostic():
     assert [(obj.object_type, obj.name) for obj in result.statements[0].affected_objects] == [
         (SqlObjectType.TRIGGER, "trg")
     ]
-    assert not result.success
-    assert any("trigger" in error.lower() for error in result.errors)
+    assert result.success
+    assert result.errors == []
 
 
 def test_sqlite_dml_analysis_refuses_unparsed_mutation_instead_of_regex_guess():
@@ -157,7 +157,7 @@ def test_sqlite_undo_add_column_uses_facts_instead_of_regex_extractor(monkeypatc
     assert not statements[0].requires_manual_review
 
 
-def test_sqlite_undo_opaque_trigger_requires_manual_review():
+def test_sqlite_undo_of_an_opaque_trigger_drops_it():
     generator = UndoScriptGenerator("sqlite")
     migration = Migration(
         script_name="V1__trigger.sql",
@@ -165,6 +165,6 @@ def test_sqlite_undo_opaque_trigger_requires_manual_review():
     )
 
     statements = generator._generate_undo_statements(migration)
-    assert len(statements) == 1
-    assert statements[0].requires_manual_review
-    assert "trigger" in statements[0].warning.lower()
+    assert [(s.sql, s.requires_manual_review) for s in statements] == [
+        ('DROP TRIGGER IF EXISTS "trg";', False)
+    ]
