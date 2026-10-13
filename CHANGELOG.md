@@ -39,6 +39,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Oracle: the warning about the text ignored after `EXIT` or `QUIT` is logged by
+  `dblift.core.sql_parser.lexical_engine`**; its message is unchanged.
 - **Oracle: `strict_tokenizer` has no effect.** A character no rule claims is passed
   through verbatim with a `TokenizerWarning` in both modes; `strict_tokenizer=True`
   on `OracleParser.split`, `OracleParser.split_statements` and
@@ -281,6 +283,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   statement that ends in a comment keeps the closing slash of that comment (`*/`, or
   the last character of a `--` comment), which was cut off before and left an
   unterminated comment.
+- **Oracle: a refusal for an undefined substitution variable names the line of the
+  reference** in the script; one case was miscounted before.
+- **Oracle: a `/` that ends the script on a line with other text stays statement
+  text** (`SELECT 4 /`). It was stripped and read as a terminator before.
+- **Oracle: a record made only of slashes and comments** no longer ends in an
+  internal error; the `/` line is refused with the slash message described above.
 - DuckDB: a lone `INSERT`, `UPDATE` or `DELETE` run through the provider no longer
   loses the blank lines, the lines starting with `--` or `/*`, and the `CR` of a
   `CRLF` inside a string literal. The statement is sent as written; only its
