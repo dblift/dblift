@@ -5,8 +5,12 @@ import pytest
 from dblift.core.migration.migration import Migration
 from dblift.core.migration.scripting.undo_script_generator import UndoScriptGenerator
 from dblift.core.migration.sql.script_analysis import analyse_script
+from dblift.core.sql_parser.statement_facts import SqlglotStatementFactsReader
 from dblift.db.dml_analysis import analyze_dml, is_full_table_dml
+from dblift.db.plugins.sqlite.parser.lexical_spec import SQLITE_SPEC
 from dblift.db.plugins.sqlite.quirks import SqliteQuirks
+
+READER = SqlglotStatementFactsReader("sqlite", SQLITE_SPEC)
 
 # (statement, target, writes every row)
 NUMBERED = [
@@ -63,3 +67,50 @@ def test_undo_comments_use_plain_wording(content):
         assert "grammar" not in text
         if undo.requires_manual_review:
             assert "review" in text
+
+
+# --- a write behind a WITH clause the grammar cannot read ------------------------------
+
+CTE = "WITH c AS (SELECT id FROM u WHERE x=?1)"
+CTE_WRITES = [
+    (f"{CTE} UPDATE t SET a=?2", "UPDATE", "t", True),
+    (f"{CTE} UPDATE t SET a=?2 WHERE id IN (SELECT id FROM c)", "UPDATE", "t", False),
+    (f"{CTE} DELETE FROM t", "DELETE", "t", True),
+    (f"{CTE} DELETE FROM t WHERE id IN (SELECT id FROM c)", "DELETE", "t", False),
+    (f"{CTE} INSERT INTO t SELECT id FROM c", "INSERT", "t", False),
+    (
+        f"WITH RECURSIVE c(n) AS (SELECT ?1 UNION ALL SELECT n+1 FROM c) DELETE FROM t",
+        "DELETE",
+        "t",
+        True,
+    ),
+]
+
+
+@pytest.mark.parametrize("sql, operation, target, full", CTE_WRITES)
+def test_unreadable_cte_write_keeps_operation_target_and_caution(sql, operation, target, full):
+    analysis = analyse_script(sql, "sqlite")
+    (statement,) = analysis.statements
+
+    assert (statement.operation, statement.kind) == (operation, "DML")
+    assert [o.name for o in statement.objects] == [target]
+    assert statement.full_table is full
+    assert any(c.code == "dml-no-where" for c in analysis.cautions) is full
+    assert SqliteQuirks().is_full_table_dml(sql) is full
+
+
+def test_unreadable_cte_select_is_a_query_without_objects():
+    (statement,) = analyse_script("WITH c AS (SELECT ?1) SELECT * FROM c", "sqlite").statements
+
+    assert (statement.operation, statement.kind, statement.objects) == ("SELECT", "QUERY", ())
+
+
+@pytest.mark.parametrize(
+    "sql", ["DELETE FROM", "INSERT INTO", "DELETE FROM WHERE", "UPDATE SET a=1"]
+)
+def test_truncated_dml_does_not_take_a_keyword_as_its_table(sql):
+    facts = READER.read(sql)
+
+    assert facts.objects == ()
+    assert facts.target is None
+    assert facts.diagnostic
