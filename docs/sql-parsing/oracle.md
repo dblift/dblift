@@ -211,6 +211,7 @@ else in this spec is data.
 | 34 | `SELECT 1 FROM dual /* c */` | `SELECT 1 FROM dual /* c */` (the end of the block comment is not a terminator) |
 | 35 | `SELECT 1 FROM dual -- a/` | `SELECT 1 FROM dual -- a/` (a slash ending a line comment is part of the comment) |
 | 36 | `/ -- done` | `/ -- done` (a slash followed by a comment is statement text, §4; the server rejects it) |
+| 37 | `/ -- c\nSELECT &v FROM dual;` | `UnsafeStatementSplitError` (an undefined substitution variable; the message names line 2, the line of the reference in the source) |
 
 ## 11. Not handled
 
