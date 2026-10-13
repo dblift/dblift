@@ -72,12 +72,16 @@ input without running).
 A SQL statement with no `;` but followed by `/` alone on a line is valid
 SQL\*Plus and is one statement.
 
-A line that starts with `/` followed by other text, where the buffer holds no
-statement text (after a statement completed by `;` or `/`, or with nothing
-before it), is **rejected**: SQL\*Plus runs it as the `/` command, which
-re-executes the buffer (or reports SP2-0103 on an empty one) and ignores the
-rest of the line (sqlplus 23.x, Oracle Free 23ai, 2026-10-13: rows 28, 36). In
-a buffer that holds statement text the same line is statement text (row 25).
+A line whose first text is a `/`, where the buffer holds no statement text
+(after a statement completed by `;` or `/`, or with nothing before it), is
+**rejected**. Blanks and block comments before the `/` do not change that:
+SQL\*Plus runs the line as the `/` command, which re-executes the buffer (or
+reports SP2-0103 on an empty one) and ignores the rest of the line (sqlplus
+23.x, Oracle Free 23ai, 2026-10-13: rows 28, 36, 38, 39). A `/` with no blank
+before the text that follows it (`/x`) is reported by SQL\*Plus as an unknown
+command (SP2-0042) and is rejected too (row 40). In a buffer that holds
+statement text the same line is statement text (row 25); the same with only a
+block comment before the `/` is not yet measured (row 41).
 
 End of input: a statement or unit that reaches the end of the script without
 its terminator is never run by SQL\*Plus. A unit is rejected (row 20); a SQL
@@ -223,7 +227,11 @@ else in this spec is data.
 | 34 | `SELECT 1 FROM dual /* c */` | `SELECT 1 FROM dual /* c */` (the end of the block comment is not a terminator; an unterminated tail is never run by sqlplus, and dblift records it under the end-of-input rule of §4) |
 | 35 | `SELECT 1 FROM dual -- a/` | `SELECT 1 FROM dual -- a/` (a slash ending a line comment is part of the comment; an unterminated tail is never run by sqlplus, and dblift records it under the end-of-input rule of §4) |
 | 36 | `/ -- done` | `UnsafeStatementSplitError` at line 1, column 1: the `/` followed by text would run an empty buffer (sqlplus 23.x, Oracle Free 23ai, 2026-10-13: the line is the `/` command with an empty buffer, SP2-0103 "Nothing in SQL buffer to run") |
-| 37 | `-- c\nSELECT &v FROM dual;` | `UnsafeStatementSplitError` (an undefined substitution variable; the message names line 2, the line of the reference in the source) |
+| 37 | `SELECT 1,\n&v FROM dual;` | `UnsafeStatementSplitError` (an undefined substitution variable; the message names line 2, the line of the reference in the source, not the line of the first token) |
+| 38 | `SELECT 7 AS a FROM dual;\n/* c */ /` | `UnsafeStatementSplitError` at line 2, column 9: the `/` after a block comment would re-execute the previous statement (sqlplus 23.x, Oracle Free 23ai, 2026-10-13: the line is the `/` command, which re-executes the buffer) |
+| 39 | `SELECT 1;\n/* a */ /* b */ / x` | `UnsafeStatementSplitError` at line 2, column 17: the `/` after block comments would re-execute the previous statement, the rest of the line is ignored (sqlplus 23.x, Oracle Free 23ai, 2026-10-13: the line is the `/` command, which re-executes the buffer) |
+| 40 | `SELECT 1;\n/x` | `UnsafeStatementSplitError` at line 2, column 1: SQL\*Plus reports the line as an unknown command (SP2-0042; sqlplus 23.x, Oracle Free 23ai, 2026-10-13) and does not re-execute the buffer |
+| 41 | `SELECT 1\n/* c */ /` | **to verify live** (an open buffer whose last line is a block comment and a `/`; the splitter keeps it as statement text, not changed here) |
 
 ## 11. Not handled
 
@@ -274,8 +282,9 @@ engine is a separate change with its own rows.
 
 ### Behaviour that differs from the previous scanner
 
-- A line that starts with a `/` followed by text, where the buffer holds no
-  statement text, is rejected (rows 28, 30, 31, 33, 36); the previous scanner
+- A line whose first text is a `/`, where the buffer holds no statement text,
+  is rejected, with or without text after the slash and with block comments
+  before it (rows 28, 30, 31, 33, 36, 38, 39, 40); the previous scanner
   stripped the slash from the statement, or dropped the records of rows 30
   and 31, so a statement SQL\*Plus never ran as written was executed or lost.
   A `/` followed by text in an open buffer stays statement text (row 25), and
