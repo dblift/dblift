@@ -101,18 +101,19 @@ def test_opaque_trigger_keeps_identity_without_an_error():
     assert result.errors == []
 
 
-def test_sqlite_dml_analysis_refuses_unparsed_mutation_instead_of_regex_guess():
+def test_sqlite_dml_analysis_of_unparsed_mutation_names_only_the_head_target():
     mutation = SqliteQuirks().analyze_dml("UPDATE child SET parent_id =")
 
-    assert mutation.table == ""
-    assert mutation.events is None
+    assert mutation.table == "child"
+    assert mutation.events == {"UPDATE"}
     assert mutation.updated_columns == []
 
 
-def test_direct_sqlite_dml_helpers_do_not_retry_regex_after_parse_failure():
+def test_direct_sqlite_dml_helpers_read_only_the_head_after_parse_failure():
     sql = "UPDATE child SET parent_id ="
-    assert analyze_dml(sql, sqlglot_dialect="sqlite").table == ""
-    assert statement_dml_table(sql, dialect="sqlite") == ""
+    assert analyze_dml(sql, sqlglot_dialect="sqlite").table == "child"
+    assert statement_dml_table(sql, dialect="sqlite") == "child"
+    assert analyze_dml(sql, sqlglot_dialect="sqlite").updated_columns == []
 
 
 def test_sqlite_parser_config_patterns_are_removed():

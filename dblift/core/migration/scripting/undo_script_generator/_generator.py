@@ -308,7 +308,7 @@ class UndoScriptGenerator(_UndoReversersMixin, _UndoExtractorsMixin):
                 sql,
                 "ALTER",
             )
-        reason = facts.diagnostic or f"{facts.operation} cannot be reversed from statement facts"
+        reason = f"{facts.operation} cannot be reversed automatically; review it and write the undo by hand"
         return UndoStatement(
             f"-- WARNING: {reason}", sql, facts.operation, reason, requires_manual_review=True
         )

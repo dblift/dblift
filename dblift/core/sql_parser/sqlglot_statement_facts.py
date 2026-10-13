@@ -37,7 +37,11 @@ _HEAD = re.compile(
 _HEAD_SCAN = re.compile(
     _HEAD.pattern.replace(r"^\s*", r"(?:^|;)\s*", 1), re.IGNORECASE | re.MULTILINE
 )
-_REPLACE_INTO = re.compile(rf"^\s*REPLACE\s+INTO\s+({_NAME})(?:\s*\.\s*({_NAME}))?", re.IGNORECASE)
+_DML_HEAD = re.compile(
+    rf"^\s*(INSERT|REPLACE|UPDATE|DELETE)\s+(?:OR\s+\w+\s+)?(?:(?:INTO|FROM)\s+)?"
+    rf"({_NAME})(?:\s*\.\s*({_NAME}))?",
+    re.IGNORECASE,
+)
 _UPDATE_OR = re.compile(
     r"^((?:\s|--[^\n]*\n|/\*.*?\*/)*UPDATE)\s+OR\s+(?:ROLLBACK|ABORT|FAIL|IGNORE|REPLACE)\b",
     re.IGNORECASE | re.DOTALL,
@@ -159,6 +163,37 @@ def _blanked(sql: str) -> str:
     )
 
 
+_DML_FORM = {
+    "INSERT": re.compile(r"^\s*INSERT\s+(?:OR\s+\w+\s+)?INTO\b", re.IGNORECASE),
+    "REPLACE": re.compile(r"^\s*REPLACE\s+INTO\b", re.IGNORECASE),
+    "UPDATE": re.compile(r"^\s*UPDATE\b", re.IGNORECASE),
+    "DELETE": re.compile(r"^\s*DELETE\s+FROM\b", re.IGNORECASE),
+}
+_CLOSERS = {"'": "'", '"': '"', "`": "`", "[": "]"}
+
+
+def _top_level_where(text: str) -> Optional[int]:
+    """Offset of the WHERE keyword outside quotes and parentheses, or None."""
+    depth = position = 0
+    while position < len(text):
+        char = text[position]
+        if char in _CLOSERS:
+            end = text.find(_CLOSERS[char], position + 1)
+            position = len(text) if end < 0 else end + 1
+            continue
+        depth += {"(": 1, ")": -1}.get(char, 0)
+        if (
+            depth == 0
+            and text[position : position + 5].upper() == "WHERE"
+            and not (position and (text[position - 1].isalnum() or text[position - 1] in "_$"))
+            and not text[position + 5 : position + 6].isalnum()
+            and text[position + 5 : position + 6] not in ("_", "$")
+        ):
+            return position
+        position += 1
+    return None
+
+
 def _head_object(match: "re.Match[str]") -> NamedObject:
     operation = match.group(1).upper()
     object_type = SqlObjectType[match.group(2).upper().replace(" ", "_")]
@@ -193,15 +228,28 @@ def _head_facts(sql: str, diagnostic: str) -> StatementFacts:
         if match:
             operation = match.group(1).upper()
             kind = _KINDS[operation]
-    replaced = _REPLACE_INTO.match(head)
+    dml = _DML_HEAD.match(head)
     if match:
         found = _head_object(match)
         diagnostic = f"{found.type.value.lower().replace('_', ' ')}: {diagnostic}"
         objects = (found,)
-    elif replaced:
-        schema = strip_identifier_quotes(replaced.group(1)) if replaced.group(2) else None
-        name = strip_identifier_quotes(replaced.group(2) or replaced.group(1))
+    elif dml and _DML_FORM[operation].match(head):
+        schema = strip_identifier_quotes(dml.group(2)) if dml.group(3) else None
+        name = strip_identifier_quotes(dml.group(3) or dml.group(2))
         objects = (NamedObject(name, SqlObjectType.TABLE, "altered", schema),)
+        target = f"{schema}.{name}" if schema else name
+        where = _top_level_where(head)
+        events = None if operation == "REPLACE" else frozenset({operation})
+        return StatementFacts(
+            operation,
+            kind,
+            objects,
+            target,
+            head[where:].strip() if where is not None else None,
+            events=events,
+            diagnostic=diagnostic,
+            target_sql=target,
+        )
     return StatementFacts(operation, kind, objects, diagnostic=diagnostic)
 
 

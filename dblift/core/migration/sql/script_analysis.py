@@ -190,7 +190,7 @@ def _analyse(text: str, dialect: str) -> ScriptAnalysis:
             )
             operation = facts.operation if facts.operation != "UNKNOWN" else operation_of(body)
             full_table = facts.kind == "DML" and (
-                facts.operation in ("UPDATE", "DELETE") and (facts.opaque or not facts.predicate)
+                facts.operation in ("UPDATE", "DELETE") and (not facts.predicate)
             )
             analysed = AnalysedStatement(
                 len(fact_statements),

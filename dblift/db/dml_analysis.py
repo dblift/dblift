@@ -425,7 +425,7 @@ def is_full_table_dml(
     """
     facts = _plugin_statement_facts(statement, sqlglot_dialect)
     if facts is not None:
-        return facts.operation in ("UPDATE", "DELETE") and (facts.opaque or not facts.predicate)
+        return facts.operation in ("UPDATE", "DELETE") and (not facts.predicate)
 
     text = strip_leading_sql_comments(statement).lstrip()
     if not text:
