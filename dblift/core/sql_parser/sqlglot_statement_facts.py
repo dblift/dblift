@@ -11,6 +11,7 @@ from typing import Optional, Tuple
 from sqlglot import exp, parse_one
 from sqlglot.errors import ParseError, TokenError
 
+from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
 from dblift.core.sql_model.base import SqlObjectType
 from dblift.core.sql_parser.dialects.identifier_tokens import (
     BACKTICK_IDENTIFIER,
@@ -141,7 +142,18 @@ def _head_facts(sql: str, diagnostic: str, spec: LexicalSpec) -> StatementFacts:
 
 
 def read_statement_facts(sql: str, *, dialect: str, spec: LexicalSpec) -> StatementFacts:
-    """Read one already-split statement; never retry a second extractor."""
+    """Read one already-split statement; never retry a second extractor.
+
+    Text the lexical engine refuses (a client command, an unterminated comment) is reported
+    as a diagnostic, never raised.
+    """
+    try:
+        return _read_statement_facts(sql, dialect, spec)
+    except (UnsafeStatementSplitError, UnsupportedMetaCommandError) as exc:
+        return StatementFacts("UNKNOWN", "UNKNOWN", diagnostic=str(exc))
+
+
+def _read_statement_facts(sql: str, dialect: str, spec: LexicalSpec) -> StatementFacts:
     try:
         ast = parse_one(sql, read=dialect)
     except (ParseError, TokenError) as exc:

@@ -14,6 +14,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 
+from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
 from dblift.core.sql_model.base import SqlObject, SqlObjectType
 from dblift.core.sql_parser.parser_factory import SqlParserFactory
 from dblift.db.base_quirks import BaseQuirks
@@ -175,7 +176,11 @@ def _analyse(text: str, dialect: str) -> ScriptAnalysis:
         fact_statements: List[AnalysedStatement] = []
         fact_cautions: List[Caution] = []
         errors: List[str] = []
-        for body in LexicalEngine(spec).split_for_analysis(text):
+        try:
+            bodies = LexicalEngine(spec).split_for_analysis(text)
+        except (UnsafeStatementSplitError, UnsupportedMetaCommandError) as error:
+            return ScriptAnalysis((), (), (f"Error splitting SQL: {error}",))
+        for body in bodies:
             if not body.strip():
                 continue
             facts = quirks.statement_facts(body)

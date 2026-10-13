@@ -48,7 +48,7 @@ class SQLiteFactsParser(SqlParserInterface):
         try:
             fragments = self.split_for_analysis(sql_content)
         except (UnsafeStatementSplitError, UnsupportedMetaCommandError) as exc:
-            return ParseResult(False, [], [str(exc)])
+            return ParseResult(False, [], [f"Error splitting SQL: {exc}"])
         for sql in fragments:
             facts = _FACTS.read(sql)
             objects = [
@@ -65,13 +65,25 @@ class SQLiteFactsParser(SqlParserInterface):
         self, sql_content: str, default_schema: Optional[str] = None
     ) -> List[SqlObject]:
         """Return identities of changed objects from statement facts."""
+        try:
+            fragments = self.split_for_analysis(sql_content)
+        except (UnsafeStatementSplitError, UnsupportedMetaCommandError):
+            return []
         return [
             obj.as_sql_object(default_schema, "sqlite")
-            for sql in self.split_for_analysis(sql_content)
+            for sql in fragments
             for obj in _FACTS.read(sql).affected_objects
         ]
 
     def validate_sql(self, sql_content: str) -> Dict[str, Any]:
         """Report whether every selected statement has readable facts."""
+        try:
+            self.split_for_analysis(sql_content)
+        except (UnsafeStatementSplitError, UnsupportedMetaCommandError) as exc:
+            return {"valid": False, "statements_found": 0, "errors": [str(exc)]}
         result = self.parse_sql(sql_content)
-        return {"valid": result.success, "errors": result.errors}
+        return {
+            "valid": result.success,
+            "statements_found": len(result.statements),
+            "errors": result.errors,
+        }
