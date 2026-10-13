@@ -34,6 +34,7 @@ class LexicalStatementParser(BaseStatementParser):
         self._sqlite_last_line_comment = 0
         self._sqlite_checked_line = 0
         self._sqlite_token_end = 0
+        self.warnings: List[str] = []
         self._script = (
             ClientScript(spec.client_script, source, spec.client_name)
             if spec.client_script is not None
@@ -167,6 +168,19 @@ class LexicalStatementParser(BaseStatementParser):
             if self.spec.sqlite_shell:
                 self._check_sqlite_line(token)
                 self._sqlite_token_end = token.pos + len(token.text)
+
+            if token.type == TokenType.DIRECTIVE and self._script is not None:
+                if self._script.flush_before_directive(current):
+                    flush(None, current[-1].pos + len(current[-1].text))
+                else:
+                    flush(None, None)
+                records.append(self._script.directive_record(token))
+                if self._script.is_exit(token):
+                    message = self._script.ignored_tail_message(token)
+                    if message is not None:
+                        self.warnings.append(message)
+                    return records
+                continue
 
             if token.type == TokenType.META_COMMAND:
                 flush(None, token.pos)
@@ -380,6 +394,8 @@ class LexicalStatementParser(BaseStatementParser):
                 out.append(record.text if self.spec.sqlite_shell or ends_at_line else rendered)
             elif record.kind != "directive":
                 out.append(record.text)
+            elif self._script is not None and rendered:
+                out.append(rendered)
         return out
 
 

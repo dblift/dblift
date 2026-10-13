@@ -1,11 +1,14 @@
 """One lexical entry point for splitting and comment masking."""
 
+import logging
 from typing import List
 
 from dblift.core.sql_parser.lexical_spec import LexicalSpec
 from dblift.core.sql_parser.lexical_statement_parser import LexicalStatementParser
 from dblift.core.sql_parser.lexical_tokenizer import LexicalTokenizer
 from dblift.core.sql_parser.statement import Statement
+
+logger = logging.getLogger(__name__)
 
 
 class LexicalEngine:
@@ -19,13 +22,24 @@ class LexicalEngine:
         tokens = LexicalTokenizer(script, spec=self.spec).tokenize()
         return LexicalStatementParser(tokens, source=script, spec=self.spec)
 
+    @staticmethod
+    def _report(parser: LexicalStatementParser) -> None:
+        for message in parser.warnings:
+            logger.warning(message)
+
     def split(self, script: str, *, include_comment_only: bool = False) -> List[Statement]:
         """Return source-positioned execution units and analysis projections."""
-        return self._parser(script).split(include_comment_only=include_comment_only)
+        parser = self._parser(script)
+        records = parser.split(include_comment_only=include_comment_only)
+        self._report(parser)
+        return records
 
     def split_statements(self, script: str) -> List[str]:
         """Return execution text, preserving the established terminator contract."""
-        return self._parser(script).split_statements()
+        parser = self._parser(script)
+        statements = parser.split_statements()
+        self._report(parser)
+        return statements
 
     def split_for_analysis(self, script: str) -> List[str]:
         """Include SQLite comment-only segments in the shared scan's projection."""
