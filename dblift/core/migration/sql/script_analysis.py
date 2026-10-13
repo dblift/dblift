@@ -188,7 +188,7 @@ def _analyse(text: str, dialect: str) -> ScriptAnalysis:
                 AnalysedObject(obj.type.value, obj.name, obj.schema)
                 for obj in facts.affected_objects
             )
-            operation = operation_of(body)
+            operation = facts.operation if facts.operation != "UNKNOWN" else operation_of(body)
             full_table = facts.kind == "DML" and (
                 facts.operation in ("UPDATE", "DELETE") and (facts.opaque or not facts.predicate)
             )
