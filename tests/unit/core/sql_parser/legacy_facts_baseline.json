@@ -417,6 +417,12 @@
               "name": "child",
               "schema": null,
               "role": "created"
+            },
+            {
+              "type": "TABLE",
+              "name": "parent",
+              "schema": null,
+              "role": "referenced"
             }
           ],
           "target": null,

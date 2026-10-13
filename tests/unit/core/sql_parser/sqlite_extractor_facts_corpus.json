@@ -66,6 +66,12 @@
               "name": "active_users",
               "role": "created",
               "schema": null
+            },
+            {
+              "type": "TABLE",
+              "name": "users",
+              "role": "referenced",
+              "schema": null
             }
           ],
           "declared_columns": [],

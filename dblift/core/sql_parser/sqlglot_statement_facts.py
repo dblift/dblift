@@ -108,10 +108,38 @@ def _declared_constraint(
         return DeclaredConstraint(
             "FOREIGN_KEY", tuple(x.name for x in node.expressions), name, table, referenced
         )
+    if isinstance(node, exp.CheckColumnConstraint):
+        used = tuple(dict.fromkeys(column.name for column in node.find_all(exp.Column)))
+        return DeclaredConstraint("CHECK", columns or used, name)
     if isinstance(node, exp.UniqueColumnConstraint):
         listed = node.this.expressions if isinstance(node.this, exp.Schema) else []
         return DeclaredConstraint("UNIQUE", columns or tuple(x.name for x in listed), name)
     return None
+
+
+def _referenced(
+    node: exp.Expression, skip: Tuple[exp.Expression, ...] = ()
+) -> Tuple[NamedObject, ...]:
+    """Tables a statement reads: query sources and foreign key targets, not common table names."""
+    ctes = {cte.alias.lower() for cte in node.find_all(exp.CTE)}
+    found: list[NamedObject] = []
+    for table in node.find_all(exp.Table):
+        if any(table is excluded for excluded in skip) or not table.name:
+            continue
+        if not table.db and table.name.lower() in ctes:
+            continue
+        reference = _named(table, SqlObjectType.TABLE, "referenced")
+        if reference is not None and reference not in found:
+            found.append(reference)
+    return tuple(found)
+
+
+def _column_constraints(definition: exp.ColumnDef) -> Tuple[DeclaredConstraint, ...]:
+    return tuple(
+        detail
+        for constraint in definition.args.get("constraints", [])
+        if (detail := _declared_constraint(constraint.args["kind"], (definition.name,)))
+    )
 
 
 def _head_facts(sql: str, diagnostic: str, spec: LexicalSpec) -> StatementFacts:
@@ -205,8 +233,7 @@ def _read_statement_facts(sql: str, dialect: str, spec: LexicalSpec) -> Statemen
             detail
             for definition in definitions
             if isinstance(definition, exp.ColumnDef)
-            for constraint in definition.args.get("constraints", [])
-            if (detail := _declared_constraint(constraint.args["kind"], (definition.name,)))
+            for detail in _column_constraints(definition)
         ) + tuple(
             detail
             for definition in definitions
@@ -217,6 +244,8 @@ def _read_statement_facts(sql: str, dialect: str, spec: LexicalSpec) -> Statemen
             simple = [item.this if isinstance(item, exp.Ordered) else item for item in index_items]
             if all(isinstance(item, exp.Column) for item in simple):
                 indexed_columns = tuple(item.name for item in simple)
+        if not isinstance(subject, exp.Index) and subject is not None:
+            objects += _referenced(ast, tuple(subject.find_all(exp.Table)))
         diagnostic = f"{dialect} virtual table module arguments are opaque" if virtual else None
         if isinstance(subject, exp.Index) and indexed_columns is None:
             diagnostic = f"{dialect} index expression columns are opaque"
@@ -251,8 +280,17 @@ def _read_statement_facts(sql: str, dialect: str, spec: LexicalSpec) -> Statemen
         actions = ast.args.get("actions") or []
         columns = tuple(action.name for action in actions if isinstance(action, exp.ColumnDef))
         action = "add-column" if columns else None
+        added = [item for item in actions if isinstance(item, exp.ColumnDef)]
         return StatementFacts(
-            "ALTER", "DDL", (identity,) if identity else (), declared_columns=columns, action=action
+            "ALTER",
+            "DDL",
+            ((identity,) if identity else ())
+            + tuple(ref for definition in added for ref in _referenced(definition)),
+            declared_columns=columns,
+            declared_constraints=tuple(
+                detail for definition in added for detail in _column_constraints(definition)
+            ),
+            action=action,
         )
 
     if isinstance(ast, (exp.Insert, exp.Update, exp.Delete)):
@@ -277,7 +315,8 @@ def _read_statement_facts(sql: str, dialect: str, spec: LexicalSpec) -> Statemen
         return StatementFacts(
             operation,
             "DML",
-            (identity,) if identity else (),
+            ((identity,) if identity else ())
+            + _referenced(ast, (table,) if table is not None else ()),
             target,
             predicate,
             affected_columns=columns,
@@ -286,5 +325,5 @@ def _read_statement_facts(sql: str, dialect: str, spec: LexicalSpec) -> Statemen
         )
 
     if isinstance(ast, exp.Query):
-        return StatementFacts("SELECT", "QUERY")
+        return StatementFacts("SELECT", "QUERY", _referenced(ast))
     return _head_facts(sql, f"{dialect} {type(ast).__name__} has no statement facts mapping", spec)
