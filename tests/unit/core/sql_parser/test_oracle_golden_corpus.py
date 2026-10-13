@@ -1,8 +1,11 @@
 """Golden corpus: the recorded behaviour of the Oracle scanner this engine replaced.
 
-oracle_golden_corpus.json holds a small set of scripts chosen so that together they
-reach every branch the previous scanner (and the comment-masking scanner) reached,
-plus the shapes where the behaviour was deliberately corrected. Each entry stores
+oracle_golden_corpus.json holds a small set of scripts chosen by branch (arc) coverage
+of the previous scanner and the comment-masking scanner, plus hand-written shapes: the
+places where the behaviour was deliberately corrected and the rules a coverage-chosen
+script can reach without being sensitive to them (substitution, unit heads, comment
+cuts). Coverage of the engine modules is measured with `coverage run --branch`, not
+`pytest --cov` (which starts after the modules are imported). Each entry stores
 what the previous scanner returned for it, except where `difference` names the
 declared correction (a slash that is statement text, a statement ending in a
 comment, a slash followed only by a comment, a refusal naming the true line); there

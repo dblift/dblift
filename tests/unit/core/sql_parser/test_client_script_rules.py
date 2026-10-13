@@ -1,4 +1,4 @@
-"""The client script rules, driven directly (no source text, an open unit, a DEFINE without a value)."""
+"""The client script rules, driven directly (no source text, a DEFINE without a value)."""
 
 import pytest
 
@@ -29,20 +29,6 @@ def test_without_a_source_a_record_keeps_the_default_end_and_nothing_is_read_fro
     script._refuse_directive_after_terminator(toks[0])
 
 
-def test_a_pending_unit_is_refused_where_a_directive_begins():
-    script = ClientScript(RULES, "BEGIN\nNULL;\n")
-    toks = tokens("BEGIN\nNULL;\n")
-    for token in toks[:2]:
-        script.is_statement_end(token, None, toks[:2])
-    with pytest.raises(UnsafeStatementSplitError, match="PL/SQL unit starting at line 1"):
-        script.flush_before_directive(toks[:2])
-
-
-def test_only_comments_pending_is_not_a_statement():
-    toks = tokens("-- c\n")
-    assert ClientScript(RULES, "-- c\n").flush_before_directive(toks) is False
-
-
 def test_a_define_without_a_value_defines_nothing():
     assert LexicalEngine(ORACLE_SPEC).split_statements("DEFINE v\nSELECT 1 FROM dual;") == [
         "SELECT 1 FROM dual;"
@@ -57,11 +43,3 @@ def test_exit_as_the_last_line_has_no_ignored_tail():
         t for t in tokens("SELECT 1 FROM dual;\nEXIT") if t.type == TokenType.DIRECTIVE
     )
     assert script.ignored_tail_message(exit_token) is None
-
-
-def test_a_pending_statement_that_is_not_a_unit_is_flushed_where_a_directive_begins():
-    toks = tokens("SELECT 1")
-    script = ClientScript(RULES, "SELECT 1")
-    for token in toks:
-        script.is_statement_end(token, None, toks)
-    assert script.flush_before_directive(toks) is True

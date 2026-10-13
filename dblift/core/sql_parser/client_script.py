@@ -148,16 +148,6 @@ class ClientScript:
                 f"{self.client_name} rejects the line (ORA-03405); put it on its own line"
             )
 
-    def flush_before_directive(self, pending: Sequence[Token]) -> bool:
-        """Whether a statement is pending where a directive begins; refuses an open unit."""
-        if not any(t.type != TokenType.COMMENT for t in pending):
-            return False
-        if self._unit:
-            raise UnsafeStatementSplitError(
-                self.unterminated_unit_message(pending, self._head_line)
-            )
-        return True
-
     def is_exit(self, token: Token) -> bool:
         """Whether a directive token stops the script."""
         found = classify_directive(self.rules, token.text)

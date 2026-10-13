@@ -173,10 +173,7 @@ class LexicalStatementParser(BaseStatementParser):
                 self._sqlite_token_end = token.pos + len(token.text)
 
             if token.type == TokenType.DIRECTIVE and self._script is not None:
-                if self._script.flush_before_directive(current):
-                    flush(None, current[-1].pos + len(current[-1].text))
-                else:
-                    flush(None, None)
+                flush(None, None)
                 records.append(self._script.directive_record(token))
                 if self._script.is_exit(token):
                     message = self._script.ignored_tail_message(token)
