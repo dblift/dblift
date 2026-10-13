@@ -1,7 +1,69 @@
 """Plugin-owned facts consumed by the shared lexical scanner."""
 
 from dataclasses import dataclass
-from typing import FrozenSet, Tuple
+from enum import Enum
+from typing import FrozenSet, Optional, Tuple
+
+
+class DirectiveAction(Enum):
+    """What the splitter does with a client directive line."""
+
+    DROP_RECORD = "drop_record"
+    DEFINE = "define"
+    EXEC = "exec"
+    EXIT = "exit"
+    REJECT = "reject"
+
+
+@dataclass(frozen=True)
+class DirectiveRule:
+    """A one-word client command, its documented minimum abbreviation and its action."""
+
+    word: str
+    min_abbrev: int
+    action: DirectiveAction
+    free_text: bool = False
+
+
+@dataclass(frozen=True)
+class HeadStep:
+    """One step of a unit-head pattern: alternative word sequences, ``*`` matches any token.
+
+    An optional step is skipped only when the next token is no alternative's first
+    word; a first-word match followed by a mismatch fails the pattern.
+    """
+
+    alternatives: Tuple[Tuple[str, ...], ...]
+    optional: bool = False
+
+
+HeadPattern = Tuple[HeadStep, ...]
+
+
+@dataclass(frozen=True)
+class ClientScriptRules:
+    """Line-oriented client script rules (a client that reads a script line by line)."""
+
+    unit_heads: Tuple[HeadPattern, ...]
+    max_head_tokens: int
+    line_terminator: str
+    discard_line: str
+    directives: Tuple[DirectiveRule, ...]
+    set_command: Tuple[str, int]
+    set_options: Tuple[DirectiveRule, ...]
+    set_sql_words: FrozenSet[str]
+    prefix_directives: Tuple[Tuple[str, str], ...]
+    sql_follow_words: Tuple[Tuple[str, str], ...]
+    whenever_command: str
+    whenever: Tuple[Tuple[str, DirectiveAction], ...]
+    whenever_min_abbrev: int
+    policy_actions: Tuple[str, ...]
+    slash_record_ends_at_line_end: bool
+    refuse_terminator_text_on_empty_buffer: bool
+    tail_record_ends_at_last_token: bool
+    policy_projection: Tuple[str, ...]
+    substitution_char: str
+    exec_wrapper: Tuple[str, str]
 
 
 @dataclass(frozen=True)
@@ -26,3 +88,9 @@ class LexicalSpec:
     block_closer: str = ""
     sqlite_shell: bool = False
     completion_table: Tuple[Tuple[int, ...], ...] = ()
+    alternative_quotes: Tuple[str, ...] = ()
+    alternative_quote_pairs: Tuple[Tuple[str, str], ...] = ()
+    quoted_identifier_escape: bool = True
+    parameter_prefix: str = "$"
+    placeholder_open: Optional[str] = "${"
+    client_script: Optional[ClientScriptRules] = None

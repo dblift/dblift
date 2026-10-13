@@ -1,11 +1,13 @@
 """Shared lexical tokenization driven by immutable plugin facts."""
 
-from typing import Iterable, List, Optional
+from typing import Iterable, List, Optional, Tuple
 
 from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.core.sql_parser.base_tokenizer import BaseTokenizer
-from dblift.core.sql_parser.lexical_spec import LexicalSpec
+from dblift.core.sql_parser.client_directives import classify_directive, is_free_text
+from dblift.core.sql_parser.lexical_spec import DirectiveAction, LexicalSpec
 from dblift.core.sql_parser.tokens import Token, TokenType
+from dblift.core.sql_parser.unit_heads import decide
 
 
 def copy_header_reads(tokens: Iterable[Token], direction: str, stream: str) -> bool:
@@ -21,6 +23,47 @@ def copy_header_reads(tokens: Iterable[Token], direction: str, stream: str) -> b
         if token.type != TokenType.COMMENT and token.parens_depth == 0
     ]
     return any(a == direction and b == stream for a, b in zip(words, words[1:]))
+
+
+def is_alone_on_line(sql: str, pos: int) -> bool:
+    """Whether ``sql[pos]`` is the only non-blank text on its line.
+
+    Looks only at the blanks adjacent to ``pos``, so the cost does not grow
+    with the length of the line.
+    """
+    i = pos - 1
+    while i >= 0 and sql[i] != "\n":
+        if not sql[i].isspace():
+            return False
+        i -= 1
+    i = pos + 1
+    while i < len(sql) and sql[i] != "\n":
+        if not sql[i].isspace():
+            return False
+        i += 1
+    return True
+
+
+def _scan_line(sql: str, start: int, eol: int) -> Tuple[int, bool]:
+    """Find the ``--`` that starts a comment on ``sql[start:eol]``, outside quotes.
+
+    Returns ``(index or -1, closed)``; ``closed`` is False when a quote is
+    still open at the end of the line, which means neither a comment nor a
+    ``-`` continuation (a doubled quote is read as close-then-open).
+    """
+    quote = ""
+    i = start
+    while i < eol:
+        char = sql[i]
+        if quote:
+            if char == quote:
+                quote = ""
+        elif char in "'\"":
+            quote = char
+        elif char == "-" and sql.startswith("--", i):
+            return i, True
+        i += 1
+    return -1, not quote
 
 
 class LexicalTokenizer(BaseTokenizer):
@@ -40,6 +83,20 @@ class LexicalTokenizer(BaseTokenizer):
         # Tokens read since a COPY keyword, until the ';' ending its header.
         self._copy_header: Optional[List[Token]] = None
         self._statement_start = True
+        # (position, opener length) of the last alternative-quote lookup.
+        self._opener_at = (-1, 0)
+        rules = spec.client_script
+        self._reads_directives = rules is not None and bool(
+            rules.directives or rules.prefix_directives
+        )
+        # Whether a statement can begin at the cursor, and the statement being read:
+        # its head words, and whether that head makes it a unit.
+        self._at_start = True
+        self._head: List[str] = []
+        self._unit: Optional[bool] = None
+        # End of a block comment read where a directive could begin: a directive
+        # may follow it on the same line.
+        self._clear_from: Optional[int] = None
 
     def _next_sql_token(self) -> Optional[Token]:
         """Get the next token from the input.
@@ -60,6 +117,11 @@ class LexicalTokenizer(BaseTokenizer):
 
         if self.pos >= len(self.sql):
             return Token(TokenType.EOF, "", self.pos, self.line, self.col, self.parens_depth)
+
+        if self._reads_directives and self._at_start:
+            directive = self._directive_token()
+            if directive is not None:
+                return directive
 
         char = self.peek()
 
@@ -88,7 +150,8 @@ class LexicalTokenizer(BaseTokenizer):
         # Flyway / DBLift placeholders ${name} or ${name:default} — not PostgreSQL
         # dollar-quoting ($$…$$ / $tag$…$tag$). Treat as a single token so statement
         # splitting and reconstruction preserve the exact spelling (including before '.').
-        if self.peek(2) == "${":
+        placeholder = self.spec.placeholder_open
+        if placeholder and self.peek(len(placeholder)) == placeholder:
             return self._handle_migration_placeholder()
 
         # Check for double-quoted identifier BEFORE other checks
@@ -97,9 +160,10 @@ class LexicalTokenizer(BaseTokenizer):
 
         # '$' that does not open a dollar-quote: a positional parameter ($1)
         # or a stray '$'.
-        if char == "$" and not self._is_alternative_string_start():
+        prefix = self.spec.parameter_prefix
+        if prefix and self.peek(len(prefix)) == prefix and not self._is_alternative_string_start():
             start_pos, start_line, start_col = self.pos, self.line, self.col
-            text = self.read()
+            text = self.read(len(prefix))
             while self.pos < len(self.sql) and self.peek().isdigit():
                 text += self.read()
             return Token(
@@ -159,7 +223,7 @@ class LexicalTokenizer(BaseTokenizer):
         start_line = self.line
         start_col = self.col
         text = ""
-        text += self.read(2)  # ${
+        text += self.read(len(self.spec.placeholder_open or ""))
         while self.pos < len(self.sql) and self.peek() != "}":
             text += self.read()
         if self.pos < len(self.sql) and self.peek() == "}":
@@ -174,11 +238,13 @@ class LexicalTokenizer(BaseTokenizer):
         )
 
     def _is_alternative_string_start(self) -> bool:
-        """Check for PostgreSQL escape strings and dollar-quote strings.
+        """Check for alternative quoting, escape strings and dollar-quote strings.
 
         Returns:
-            True if an escape prefix or dollar-quote is detected
+            True if an alternative-quote opener, escape prefix or dollar-quote is detected
         """
+        if self._alternative_quote_opener():
+            return True
         if self.peek(2) in self.spec.escape_prefixes:
             # An identifier suffix or a prefix touching a quote is not E'...'.
             previous = self.sql[self.pos - 1] if self.pos else ""
@@ -194,12 +260,138 @@ class LexicalTokenizer(BaseTokenizer):
         # A tag starts like an unquoted identifier; $1 is a parameter, ${ a placeholder.
         return bool(after) and (after.isalpha() or after == "_")
 
+    def _track(self, token: Token) -> None:
+        """Follow where statements end, as the statement parser does."""
+        rules = self.spec.client_script
+        assert rules is not None
+        if token.type in (TokenType.COMMENT, TokenType.EOF):
+            return
+        if self._at_start:
+            self._at_start = False
+            self._head = []
+            self._unit = None
+        if self._unit is None:
+            self._head.append(token.text.upper())
+            self._unit = decide(rules.unit_heads, self._head, rules.max_head_tokens)
+        if token.type != TokenType.DELIMITER:
+            return
+        if token.text == rules.line_terminator or (
+            token.text == ";" and not self._unit and token.parens_depth == 0
+        ):
+            self._at_start = True
+
+    def _directive_token(self) -> Optional[Token]:
+        """Consume a directive line (and its ``-`` continuations) at the cursor.
+
+        Only blanks and block comments may precede it on its line. A ``--``
+        outside quotes ends the directive; the rest of the line is a comment
+        and tokenized as one. The text is not lexed: ``REM don't`` opens no
+        literal, and for free-text commands the whole line is the text.
+        """
+        rules = self.spec.client_script
+        assert rules is not None
+        if not self._line_is_clear(self.pos):
+            return None
+        first = self.sql[self.pos : self._eol(self.pos)].strip()
+        found = classify_directive(rules, first)
+        free_text = found is not None and is_free_text(rules, found[0])
+        parts: List[str] = []
+        cursor = self.pos
+        while True:
+            eol = self._eol(cursor)
+            comment, closed = (-1, True) if free_text else _scan_line(self.sql, cursor, eol)
+            end = comment if comment != -1 else eol
+            part = self.sql[cursor:end].strip()
+            if comment == -1 and closed and part.endswith("-") and eol < len(self.sql):
+                parts.append(part[:-1].rstrip())
+                cursor = eol + 1
+                continue
+            parts.append(part)
+            break
+        text = " ".join(p for p in parts if p)
+        directive = classify_directive(rules, text)
+        if directive is None:
+            return None
+        token = Token(TokenType.DIRECTIVE, text, self.pos, self.line, self.col, self.parens_depth)
+        self.read(end - self.pos)
+        if directive[1] is DirectiveAction.EXIT:
+            # The client ignores everything after EXIT, including malformed SQL.
+            self.pos = len(self.sql)
+        return token
+
+    def _eol(self, start: int) -> int:
+        eol = self.sql.find("\n", start)
+        return eol if eol != -1 else len(self.sql)
+
+    def _line_is_clear(self, pos: int) -> bool:
+        """Whether only blanks and block comments precede ``pos`` on its line."""
+        line_start = self.sql.rfind("\n", 0, pos) + 1
+        if not self.sql[line_start:pos].strip():
+            return True
+        return self._clear_from is not None and not self.sql[self._clear_from : pos].strip()
+
+    def _is_delimiter_start(self) -> bool:
+        """A ``;``, or a line terminator and discard line when alone on their line."""
+        char = self.peek()
+        if char == ";":
+            return True
+        rules = self.spec.client_script
+        if rules is not None and char in (rules.line_terminator, rules.discard_line):
+            return is_alone_on_line(self.sql, self.pos)
+        return False
+
+    def _alternative_quote_opener(self) -> int:
+        """Length of the alternative-quote opener (``q'``, ``nq'``) at the cursor, else 0."""
+        if self._opener_at[0] == self.pos:
+            return self._opener_at[1]
+        length = 0
+        for opener in self.spec.alternative_quotes:
+            if self.peek(len(opener)).lower() == opener.lower():
+                length = len(opener)
+                break
+        self._opener_at = (self.pos, length)
+        return length
+
+    def _handle_alternative_quote(self, opener_length: int) -> Token:
+        """Read ``q'<d>...<c>'``: the closer ``<c>`` depends on the delimiter ``<d>``."""
+        start_pos, start_line, start_col = self.pos, self.line, self.col
+        self.read(opener_length)
+        # End of input is checked first: ``"" in " \t\r\n"`` is True.
+        if self.pos >= len(self.sql):
+            raise UnsafeStatementSplitError(
+                f"unterminated q-quoted string opened at line {start_line}, column {start_col}"
+            )
+        delimiter = self.read()
+        if delimiter in " \t\r\n":
+            raise UnsafeStatementSplitError(
+                f"q-quote delimiter cannot be whitespace at line {start_line}, column {start_col}"
+            )
+        closer = dict(self.spec.alternative_quote_pairs).get(delimiter, delimiter) + "'"
+        end = self.sql.find(closer, self.pos)
+        if end < 0:
+            raise UnsafeStatementSplitError(
+                f"unterminated q-quoted string opened at line {start_line}, column {start_col}"
+            )
+        self.read(end + len(closer) - self.pos)
+        return Token(
+            TokenType.STRING,
+            self.sql[start_pos : self.pos],
+            start_pos,
+            start_line,
+            start_col,
+            self.parens_depth,
+        )
+
     def _handle_string(self) -> Token:
-        """Handle standard strings, escape strings and dollar-quotes.
+        """Handle standard strings, alternative quotes, escape strings and dollar-quotes.
 
         Returns:
             String token
         """
+        opener_length = self._alternative_quote_opener()
+        if opener_length:
+            return self._handle_alternative_quote(opener_length)
+
         # Check for dollar-quote
         if self.peek() == "$":
             return self._handle_dollar_quote()
@@ -325,7 +517,10 @@ class LexicalTokenizer(BaseTokenizer):
             char = self.peek()
             if char == self.spec.quoted_identifier:
                 # Check for doubled quote (escape)
-                if self.peek(2) == self.spec.quoted_identifier * 2:
+                if (
+                    self.spec.quoted_identifier_escape
+                    and self.peek(2) == self.spec.quoted_identifier * 2
+                ):
                     identifier_text += self.read(2)
                 else:
                     identifier_text += self.read()  # Closing quote
@@ -358,9 +553,17 @@ class LexicalTokenizer(BaseTokenizer):
         Returns:
             Next token or None if no more tokens
         """
+        clear = False
+        if self._reads_directives:
+            self._skip_whitespace()
+            clear = self._at_start and self._line_is_clear(self.pos)
         token = self._next_sql_token()
         if token is None:
             return None
+        if self._reads_directives and token.type != TokenType.DIRECTIVE:
+            if clear and token.type == TokenType.COMMENT and self.sql.startswith("/*", token.pos):
+                self._clear_from = self.pos
+            self._track(token)
         if token.type == TokenType.DELIMITER and token.parens_depth == 0:
             if self._copy_header is not None and copy_header_reads(
                 self._copy_header, "FROM", "STDIN"

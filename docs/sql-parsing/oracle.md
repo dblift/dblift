@@ -65,12 +65,28 @@ input without running).
 | Terminator | Rule |
 | --- | --- |
 | `;` | ends a **SQL** statement (one that is not a PL/SQL unit, §5) at parenthesis depth 0 **when it is the last non-blank text on its line**. SQL\*Plus 5.3.4: "Do not put comments after statement terminators (period, semicolon or slash). … SQL\*Plus expects no text after a statement terminator and is unable to process the command." (ORA-00911). A `;` followed by more text on the same line is therefore not a terminator for SQL\*Plus; the splitter **rejects** it with an error naming the line, rather than silently running two statements the client would not, or one the client would reject. This subsumes the stray-`*/` rule below. Measured, the server error is ORA-03405 "End of query reached; no additional text should follow." for a trailing comment, a second statement and a directive after the `;` (sqlplus 23.x, Oracle Free 23ai, 2026-10-10: rows 16a, 16b, 19, each rc 1, ORA-03405; the documented ORA-00911 was not what the server returned). |
-| `/` | ends any statement, SQL or PL/SQL, **only when it is alone on its line** (SQL\*Plus accepts leading blanks per its reference; live verification measured only an unindented `/`). A `/` followed by other text is not a terminator and stays statement text: `/ 2; END;` inside a package body compiled VALID (sqlplus 23.x, Oracle Free 23ai, 2026-10-10: row 5, rc 0, `PACKAGE BODY` VALID with its source lines 3-6 intact); `/ -- done` after a statement without `;` was sent to the server with the statement and rejected (sqlplus 23.x, Oracle Free 23ai, 2026-10-10: row 25, rc 1, ORA-00922), and the splitter sends the same text, so the server rejects it for both. After a PL/SQL unit the `/` is **required**; after a SQL statement already ended by `;` a following `/` alone on its line is a SQL\*Plus re-execution of the buffer and is **rejected** with an error (it would run the statement twice; sqlplus 23.x, Oracle Free 23ai, 2026-10-10: row 22, "1 row created." twice, `T22` = 2 rows). |
-| blank line | **not** a terminator: the splitter behaves as `SET SQLBLANKLINES ON`. A script that relies on a blank line to end a statement is listed under *Not handled*. (sqlplus 23.x, Oracle Free 23ai, 2026-10-10: probe 40: with the default `SQLBLANKLINES OFF`, sqlplus reports SP2-0042 and creates nothing; with `SET SQLBLANKLINES ON` the table is created) |
+| `/` | ends any statement, SQL or PL/SQL, **only when it is alone on its line** (SQL\*Plus accepts leading blanks per its reference; live verification measured only an unindented `/`). A `/` followed by other text is not a terminator and stays statement text in a buffer that holds statement text (a line starting with it where the buffer is complete is rejected, below): `/ 2; END;` inside a package body compiled VALID (sqlplus 23.x, Oracle Free 23ai, 2026-10-10: row 5, rc 0, `PACKAGE BODY` VALID with its source lines 3-6 intact); `/ -- done` after a statement without `;` was sent to the server with the statement and rejected (sqlplus 23.x, Oracle Free 23ai, 2026-10-10: row 25, rc 1, ORA-00922), and the splitter sends the same text, so the server rejects it for both. After a PL/SQL unit the `/` is **required**; after a SQL statement already ended by `;` a following `/` alone on its line is a SQL\*Plus re-execution of the buffer and is **rejected** with an error (it would run the statement twice; sqlplus 23.x, Oracle Free 23ai, 2026-10-10: row 22, "1 row created." twice, `T22` = 2 rows). A second `/` after a statement ended by `/` also re-executes the retained SQL\*Plus buffer and is refused at that line and column (row 22a). |
+| blank line | **not** a terminator: the splitter behaves as `SET SQLBLANKLINES ON`. A script that relies on a blank line to end a statement is listed under *Not handled*. (sqlplus 23.x, Oracle Free 23ai, 2026-10-10: with the default `SQLBLANKLINES OFF`, sqlplus reports SP2-0042 and creates nothing; with `SET SQLBLANKLINES ON` the table is created) |
 | `.` alone on a line | ends a PL/SQL buffer without running it; **rejected**, because dropping the block silently would hide a statement the author wrote (sqlplus 23.x, Oracle Free 23ai, 2026-10-10: row 26, rc 0, the buffered `BEGIN … END;` was discarded without running and the script continued, `T26` created) |
 
 A SQL statement with no `;` but followed by `/` alone on a line is valid
 SQL\*Plus and is one statement.
+
+A line whose first text is a `/`, where the buffer holds no statement text
+(after a statement completed by `;` or `/`, or with nothing before it), is
+**rejected**. Blanks and block comments before the `/` do not change that:
+SQL\*Plus runs the line as the `/` command, which re-executes the buffer (or
+reports SP2-0103 on an empty one) and ignores the rest of the line (sqlplus
+23.x, Oracle Free 23ai, 2026-10-13: rows 28, 36, 38, 39). A `/` with no blank
+before the text that follows it (`/x`) is reported by SQL\*Plus as an unknown
+command (SP2-0042) and is rejected too (row 40). In a buffer that holds
+statement text the same line is statement text (row 25), also with only a
+block comment before the `/` (sqlplus 23.x, Oracle Free 23ai, 2026-10-13: row 41).
+
+End of input: a statement or unit that reaches the end of the script without
+its terminator is never run by SQL\*Plus. A unit is rejected (row 20); a SQL
+statement is recorded as written, text and trailing comment included (rows 29,
+32, 34, 35).
 
 ## 5. Blocks: what is a PL/SQL unit
 
@@ -202,12 +218,26 @@ else in this spec is data.
 | 25 | `CREATE TABLE t25 (id NUMBER)\n/ -- done\nINSERT INTO t25 VALUES (1);` | `CREATE TABLE t25 (id NUMBER)\n/ -- done\nINSERT INTO t25 VALUES (1)` (the slash line is text, the semicolon ends it; the server rejects it, as it rejected it for SQL\*Plus) |
 | 26 | `BEGIN\n  NULL;\nEND;\n.\nCREATE TABLE t26 (id NUMBER);` | `error`: a `.` alone discards the buffered unit in SQL\*Plus; the splitter rejects rather than silently dropping a block |
 | 27 | `CREATE OR REPLACE MLE MODULE m27 LANGUAGE JAVASCRIPT AS\nexport function f() { return 1; }\n/` | **to verify live** (ORA-00439 on Oracle Free) |
+| 28 | `SELECT 1 FROM dual;\n/ SELECT 2 FROM dual;` | `UnsafeStatementSplitError` at line 2, column 1: the `/` followed by text after a completed statement would re-execute it (sqlplus 23.x, Oracle Free 23ai, 2026-10-13: the line is run as the `/` command, which re-executes the buffer and ignores the rest of the line; `SELECT 1` printed twice) |
+| 29 | `SELECT 4 /` | `SELECT 4 /` (a slash that ends the script on a line with other text is statement text; sqlplus never runs an unterminated tail at end of input, and dblift records it under the end-of-input rule of §4) |
+| 30 | `SELECT 1;\n/ ;\nSELECT 2;` | `UnsafeStatementSplitError` at line 2, column 1: the `/` followed by text after a completed statement would re-execute it (same sqlplus observation as row 28) |
+| 31 | `SELECT 1;\n/ /\n` | `UnsafeStatementSplitError` at line 2, column 1: the `/` followed by text after a completed statement would re-execute it (same sqlplus observation as row 28) |
+| 32 | `SELECT 4 / -- c` | `SELECT 4 / -- c` (the slash and the comment stay statement text; an unterminated tail is never run by sqlplus, and dblift records it under the end-of-input rule of §4) |
+| 33 | `SELECT 1;\n/ SELECT 4 /` | `UnsafeStatementSplitError` at line 2, column 1: the `/` followed by text after a completed statement would re-execute it (same sqlplus observation as row 28) |
+| 34 | `SELECT 1 FROM dual /* c */` | `SELECT 1 FROM dual /* c */` (the end of the block comment is not a terminator; an unterminated tail is never run by sqlplus, and dblift records it under the end-of-input rule of §4) |
+| 35 | `SELECT 1 FROM dual -- a/` | `SELECT 1 FROM dual -- a/` (a slash ending a line comment is part of the comment; an unterminated tail is never run by sqlplus, and dblift records it under the end-of-input rule of §4) |
+| 36 | `/ -- done` | `UnsafeStatementSplitError` at line 1, column 1: the `/` followed by text would run an empty buffer (sqlplus 23.x, Oracle Free 23ai, 2026-10-13: the line is the `/` command with an empty buffer, SP2-0103 "Nothing in SQL buffer to run") |
+| 37 | `SELECT 1,\n&v FROM dual;` | `UnsafeStatementSplitError` (an undefined substitution variable; the message names line 2, the line of the reference in the source, not the line of the first token) |
+| 38 | `SELECT 7 AS a FROM dual;\n/* c */ /` | `UnsafeStatementSplitError` at line 2, column 9: the `/` after a block comment would re-execute the previous statement (sqlplus 23.x, Oracle Free 23ai, 2026-10-13: the line is the `/` command, which re-executes the buffer) |
+| 39 | `SELECT 1;\n/* a */ /* b */ / x` | `UnsafeStatementSplitError` at line 2, column 17: the `/` after block comments would re-execute the previous statement, the rest of the line is ignored (sqlplus 23.x, Oracle Free 23ai, 2026-10-13: the line is the `/` command, which re-executes the buffer) |
+| 40 | `SELECT 1;\n/x` | `UnsafeStatementSplitError` at line 2, column 1: SQL\*Plus reports the line as an unknown command (SP2-0042; sqlplus 23.x, Oracle Free 23ai, 2026-10-13) and does not re-execute the buffer |
+| 41 | `SELECT 1\n/* c */ /` | `SELECT 1\n/* c */ /` (an open buffer keeps a line made of a block comment and a slash as statement text; sqlplus 23.x, Oracle Free 23ai, 2026-10-13: a statement left open, then a line made of a block comment and a slash, then a second statement was rejected with ORA-03048, the line having been appended to the open statement) |
 
 ## 11. Not handled
 
 | Construct | Behaviour | Why |
 | --- | --- | --- |
-| Blank-line termination (`SQLBLANKLINES OFF`, the SQL\*Plus default) | blank lines are whitespace | ending a statement on a blank line never runs it in SQL\*Plus either; scripts that depend on it are interactive artefacts (sqlplus 23.x, Oracle Free 23ai, 2026-10-10: probe 40, SP2-0042 and nothing created under the default) |
+| Blank-line termination (`SQLBLANKLINES OFF`, the SQL\*Plus default) | blank lines are whitespace | ending a statement on a blank line never runs it in SQL\*Plus either; scripts that depend on it are interactive artefacts (sqlplus 23.x, Oracle Free 23ai, 2026-10-10: SP2-0042 and nothing created under the default) |
 | `.` alone on a line | rejected (§4) | SQL\*Plus discards the buffered unit without running it (sqlplus 23.x, Oracle Free 23ai, 2026-10-10: row 26) |
 | `SET SQLTERMINATOR`, `SET BLOCKTERMINATOR`, `SET CMDSEP` | rejected | they redefine the lexer at runtime; no migration tool supports them |
 | `@`/`@@`/`START` includes | rejected | file inclusion is the migration framework's job |
@@ -216,14 +246,56 @@ else in this spec is data.
 
 ## 12. Implementation
 
-Code: `dblift/db/plugins/oracle/parser/` (`oracle_tokenizer.py`,
-`oracle_statement_parser.py`, `_unit_heads.py`, `_directives.py`,
-`oracle_parser.py`) and `quirks.py`. Execution, analysis, extraction, and
-validation select statements through the same tokenizer and statement parser.
-The `Statement` record is the internal unit; string APIs project its selected
-SQL. Object extraction remains a separate semantic step after splitting.
+Splitting, analysis and extraction run on the shared lexical engine
+(`dblift/core/sql_parser/lexical_engine.py`) driven by `ORACLE_SPEC`
+(`dblift/db/plugins/oracle/parser/lexical_spec.py`). The spec holds the
+Oracle facts as data: alternative quoting (§1, §9), no escape inside a quoted
+identifier (§2), the unit head table (§5), the directive table (§6), the
+terminator and discard lines (§4) and the bounds of a record. The mechanisms
+live in core: `lexical_tokenizer.py` (quotes, terminators alone on their line,
+directive lines), `unit_heads.py`, `client_directives.py` and `client_script.py`
+(statement ends, refusals, substitution variables, `EXECUTE`). `OracleParser`
+delegates `split`, `split_statements`, `split_for_analysis`,
+`split_for_extraction` and `validate_sql` to the engine, and `StatementSplitter`
+skips the parser factory for Oracle. The `Statement` record is the internal
+unit; string APIs project its selected SQL. Object extraction remains a
+separate semantic step after splitting.
 
 The tokenizer stops at `EXIT` or `QUIT` before reading the ignored tail. A
 malformed quote or comment after that point cannot make an earlier executable
-statement fail to split. Repeated record and string projections start with
+statement fail to split. The warning about the ignored tail is logged by the
+engine's logger (`dblift.core.sql_parser.lexical_engine`); its message is
+unchanged. Repeated record and string projections start with
 fresh SQL*Plus substitution state.
+
+`strict_tokenizer` has no effect for Oracle. A character no rule claims is
+passed through verbatim with a `TokenizerWarning` in both modes, so the
+statement text is never altered; the previous scanner raised `TokenizerError`
+in strict mode for such a character.
+
+SQL\*Plus directive masking for comments (`strip_comments`,
+`strip_sql_comments`, `extract_sqlplus_context`) keeps its own scanner
+(`_comments.py`, `_sqlplus.py` and `sqlplus_context.py`, which read the Oracle
+tokenizer with `directives=False` and its `is_alone_on_line` helper); this
+change does not alter it. Moving it onto the
+engine is a separate change with its own rows.
+
+### Behaviour that differs from the previous scanner
+
+- A line whose first text is a `/`, where the buffer holds no statement text,
+  is rejected, with or without text after the slash and with block comments
+  before it (rows 28, 30, 31, 33, 36, 38, 39, 40); the previous scanner
+  stripped the slash from the statement, or dropped the records of rows 30
+  and 31, so a statement SQL\*Plus never ran as written was executed or lost.
+  A `/` followed by text in an open buffer stays statement text (row 25), and
+  a `/` that ends a script on a line with other text stays text (rows 29,
+  32).
+- A statement that ends in a comment keeps the closing slash of that comment
+  (`*/` or the last character of a `--` comment, rows 34, 35); the previous
+  scanner cut it off.
+- A refusal for an undefined substitution variable names the line of the
+  reference in the source (row 37).
+- Error-message redaction reads Oracle text the way the splitter does:
+  alternative quotes are one literal, an identifier that holds a comment
+  marker or an apostrophe is not a literal, and an unterminated alternative
+  quote falls back to the first word of the statement.

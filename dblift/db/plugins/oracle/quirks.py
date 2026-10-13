@@ -10,6 +10,7 @@ from dblift.db.error import ErrorCategory
 from dblift.db.feature_gate import FeatureGate
 
 if TYPE_CHECKING:
+    from dblift.core.sql_parser.lexical_spec import LexicalSpec
     from dblift.db.version import DatabaseVersion
 
 
@@ -154,6 +155,12 @@ class OracleQuirks(BaseQuirks):
         from dblift.db.plugins.oracle.parser.sqlplus_context import extract_sqlplus_context
 
         return extract_sqlplus_context(sql)
+
+    def lexical_spec(self) -> "LexicalSpec":
+        """The lexical specification the shared engine splits Oracle scripts with."""
+        from dblift.db.plugins.oracle.parser.lexical_spec import ORACLE_SPEC
+
+        return ORACLE_SPEC
 
     def parse_error_policy_directive(self, stmt: str) -> Optional[str]:
         """Return the Oracle ``WHENEVER SQLERROR`` policy encoded in *stmt*, or ``None``."""

@@ -9,7 +9,9 @@ from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.core.migration.sql.statement_splitter import StatementSplitter
 from dblift.core.sql_parser.lexical_engine import LexicalEngine
 from dblift.core.sql_parser.lexical_spec import LexicalSpec
+from dblift.core.sql_parser.lexical_tokenizer import LexicalTokenizer
 from dblift.core.sql_parser.parser_factory import SqlParserFactory
+from dblift.core.sql_parser.tokens import TokenType
 from dblift.db.plugins.postgresql.parser.lexical_spec import POSTGRESQL_SPEC
 from dblift.db.plugins.postgresql.parser.postgresql_regex_parser import PostgreSqlRegexParser
 from dblift.db.plugins.redshift.parser.lexical_spec import REDSHIFT_SPEC
@@ -154,3 +156,13 @@ def test_copy_column_does_not_start_a_data_header():
         "SELECT 2;",
     ]
     assert all(record.kind == "sql" for record in LexicalEngine(POSTGRESQL_SPEC).split(script))
+
+
+def test_postgresql_keeps_parameter_tokens_and_the_quoted_identifier_escape():
+    tokens = LexicalTokenizer('SELECT $1, "a""b"', spec=POSTGRESQL_SPEC).tokenize()
+    assert [(t.type, t.text) for t in tokens] == [
+        (TokenType.KEYWORD, "SELECT"),
+        (TokenType.SYMBOL, "$1"),
+        (TokenType.SYMBOL, ","),
+        (TokenType.IDENTIFIER, '"a""b"'),
+    ]

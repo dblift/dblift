@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   original script, including consumed client terminators. Their analysis
   constituents distinguish a single derived statement from a deliberate
   empty analysis projection.
-- `Statement` records for Oracle (`OracleStatementParser.split()`): the text
+- `Statement` records for Oracle (`OracleParser.split()`): the text
   without its terminator, its line, and the terminator (`;`, `/` or none).
 - `Statement` records from `PostgreSQLStatementParser.split()`: the text
   without its terminator, its line, the terminator, a kind (`sql`,
@@ -39,6 +39,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Oracle: the warning about the text ignored after `EXIT` or `QUIT` is logged by
+  `dblift.core.sql_parser.lexical_engine`**; its message is unchanged.
+- **Oracle: `strict_tokenizer` has no effect.** A character no rule claims is passed
+  through verbatim with a `TokenizerWarning` in both modes; `strict_tokenizer=True`
+  on `OracleParser.split`, `OracleParser.split_statements` and
+  `SqlAnalyzer("oracle").split_statements` no longer raises `TokenizerError` for it.
+- **Oracle: statement splitting, analysis and extraction run on the shared
+  lexical engine** (as PostgreSQL and SQLite do), with the Oracle rules as data.
+  The same scripts give the same statements, with the corrections listed under
+  Fixed. SQL*Plus directive masking for comments keeps its own scanner and is
+  not changed.
+- Oracle error-message redaction now reads quoting the way the statement splitter
+  does: alternative quotes (`q'[...]'`) are one literal, an identifier that contains
+  a comment marker or an apostrophe is not a literal, and an unterminated
+  alternative quote falls back to the first word of the statement.
 - **SQLite: object extraction reads statement facts from the SQLGlot AST instead of
   regular expressions.** `parse_sql` and `extract_objects` report the table an
   `INSERT`, `UPDATE` or `DELETE` writes as an affected object, including behind a
@@ -247,8 +262,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - The unused wrapped-PL/SQL detector on the Oracle tokenizer is gone.
 - The `terminate_script_directives` and `apply_script_substitution` quirks
-  hooks are gone: SQL*Plus directives are handled by the Oracle statement
-  splitter itself, which records, rewrites or refuses them.
+  hooks are gone: SQL*Plus directives are handled by the Oracle splitter
+  itself, which records, rewrites or refuses them.
 - `SqlplusContext` (`dblift.db.plugins.oracle.parser`) no longer carries
   `define_on` or `defines`, and `apply_define_substitution` and
   `terminate_sqlplus_directives` are gone; `DEFINE` is resolved by the splitter,
@@ -256,6 +271,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Oracle: a line whose first text is a `/` is refused where the buffer holds no
+  statement text.** After a statement completed by `;`, SQL*Plus runs `/ SELECT 2
+  FROM dual;` (and `/* c */ /`, with blanks and block comments before the slash) as
+  the `/` command: it re-executes the previous statement and ignores the rest of the
+  line. The splitter used to strip the slash or drop the line, so a script ran
+  differently from SQL*Plus; it now raises `UnsafeStatementSplitError` naming the
+  line and column of the `/`, like a `/` alone after a completed statement. A `/`
+  with no blank before the text that follows it (`/x`) is refused as an unknown
+  command. A `/` followed by text in an open buffer stays statement text, and a
+  statement that ends in a comment keeps the closing slash of that comment (`*/`, or
+  the last character of a `--` comment), which was cut off before and left an
+  unterminated comment.
+- **Oracle: a refusal for an undefined substitution variable names the line of the
+  reference** in the script; one case was miscounted before.
+- **Oracle: a `/` that ends the script on a line with other text stays statement
+  text** (`SELECT 4 /`). It was stripped and read as a terminator before.
+- **Oracle: a record made only of slashes and comments** no longer ends in an
+  internal error; the `/` line is refused with the slash message described above.
 - DuckDB: a lone `INSERT`, `UPDATE` or `DELETE` run through the provider no longer
   loses the blank lines, the lines starting with `--` or `/*`, and the `CR` of a
   `CRLF` inside a string literal. The statement is sent as written; only its

@@ -3,9 +3,10 @@
 import pytest
 
 from dblift.core.exceptions import UnsafeStatementSplitError
+from dblift.core.sql_parser.lexical_engine import LexicalEngine
 from dblift.core.sql_parser.parser_context import ParserContext
 from dblift.core.sql_parser.tokens import TokenType
-from dblift.db.plugins.oracle.parser.oracle_statement_parser import OracleStatementParser
+from dblift.db.plugins.oracle.parser.lexical_spec import ORACLE_SPEC
 from dblift.db.plugins.oracle.parser.oracle_tokenizer import OracleTokenizer
 
 
@@ -69,7 +70,7 @@ class TestOracleTokenizerCoverage:
 
         identifiers = [t.text for t in tokens if t.type == TokenType.IDENTIFIER]
         assert identifiers[:2] == ['"a"', '"b"']
-        assert len(OracleStatementParser(tokens).split_statements()) == 2
+        assert len(LexicalEngine(ORACLE_SPEC).split_statements(script)) == 2
 
     def test_semicolon_after_doubled_quote_stays_inside_the_second_identifier(self):
         """In ``"a"";b"`` the second ``"`` opens a new identifier ``";b"``.
@@ -81,7 +82,7 @@ class TestOracleTokenizerCoverage:
 
         identifiers = [t.text for t in tokens if t.type == TokenType.IDENTIFIER]
         assert identifiers[:2] == ['"a"', '";b"']
-        assert len(OracleStatementParser(tokens).split_statements()) == 2
+        assert len(LexicalEngine(ORACLE_SPEC).split_statements(script)) == 2
 
     def test_q_quote_at_end_of_input_is_unterminated(self):
         with pytest.raises(UnsafeStatementSplitError, match="unterminated q-quoted string"):
@@ -102,32 +103,24 @@ class TestOracleTokenizerCoverage:
         assert "%" in full_text
 
 
-class TestOracleStatementParserCoverage:
-    """Tests to cover remaining Oracle statement parser lines."""
+class TestOracleUnitTermination:
+    """A unit ends only at its terminator line."""
 
     def test_package_body_without_slash_is_refused(self):
         """A PACKAGE BODY ends only at ``/`` (docs/sql-parsing/oracle.md section 11, row 20)."""
         sql = """CREATE OR REPLACE PACKAGE BODY test_pkg AS
     PROCEDURE proc1 AS BEGIN NULL; END;
 END test_pkg;"""
-        tokenizer = OracleTokenizer(sql)
-        tokens = tokenizer.tokenize()
-        parser = OracleStatementParser(tokens)
-
         with pytest.raises(UnsafeStatementSplitError, match="not terminated by a '/' line"):
-            parser.split_statements()
+            LexicalEngine(ORACLE_SPEC).split_statements(sql)
 
     def test_package_spec_without_slash_is_refused(self):
         """A PACKAGE spec ends only at ``/`` (docs/sql-parsing/oracle.md section 11, row 20)."""
         sql = """CREATE PACKAGE test_pkg AS
     PROCEDURE proc1;
 END test_pkg;"""
-        tokenizer = OracleTokenizer(sql)
-        tokens = tokenizer.tokenize()
-        parser = OracleStatementParser(tokens)
-
         with pytest.raises(UnsafeStatementSplitError, match="not terminated by a '/' line"):
-            parser.split_statements()
+            LexicalEngine(ORACLE_SPEC).split_statements(sql)
 
 
 class TestOracleNationalQQuote:

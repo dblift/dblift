@@ -780,7 +780,6 @@ module = [
     "dblift.db.plugins.oracle.oracle.dbms_output",
     "dblift.db.plugins.oracle.parser",
     "dblift.db.plugins.oracle.parser.oracle_parser",
-    "dblift.db.plugins.oracle.parser.oracle_statement_parser",
     "dblift.db.plugins.oracle.parser.oracle_tokenizer",
     "dblift.db.plugins.oracle.parser.sqlplus_context",
     "dblift.db.plugins.oracle.parser._comments",

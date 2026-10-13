@@ -1,9 +1,9 @@
 """Oracle parsing uses its executable SQL*Plus selection consistently."""
 
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+from dblift.core.sql_parser.lexical_engine import LexicalEngine
+from dblift.db.plugins.oracle.parser.lexical_spec import ORACLE_SPEC
 from dblift.db.plugins.oracle.parser.oracle_parser import OracleParser
-from dblift.db.plugins.oracle.parser.oracle_statement_parser import OracleStatementParser
-from dblift.db.plugins.oracle.parser.oracle_tokenizer import OracleTokenizer
 
 
 def test_exit_shields_ignored_malformed_tail_from_tokenizer() -> None:
@@ -42,26 +42,24 @@ def test_validate_sql_warns_for_isolated_plsql_fragment() -> None:
 
 def test_repeated_record_and_string_projections_preserve_define_state() -> None:
     script = "DEFINE x = ok\nSELECT '&x' FROM dual;\nSET DEFINE OFF\n"
-    parser = OracleStatementParser(OracleTokenizer(script).tokenize(), source=script)
+    engine = LexicalEngine(ORACLE_SPEC)
 
-    first = parser.split()
+    first = engine.split(script)
 
-    assert parser.split() == first
-    assert parser.split_statements() == ["SELECT 'ok' FROM dual;"]
+    assert engine.split(script) == first
+    assert engine.split_statements(script) == ["SELECT 'ok' FROM dual;"]
 
 
-def test_large_script_does_not_copy_each_remaining_token_suffix() -> None:
-    class CountedTokens(list):
-        copied = 0
+def test_large_script_cost_is_bounded_in_sliced_characters() -> None:
+    class CountingText(str):
+        sliced = 0
 
-        def __getitem__(self, index):
-            result = super().__getitem__(index)
-            if isinstance(index, slice):
-                self.copied += len(result)
-            return result
+        def __getitem__(self, key):
+            if isinstance(key, slice):
+                self.sliced += len(range(*key.indices(len(self))))
+            return super().__getitem__(key)
 
-    script = "SELECT 1 FROM dual;\n" * 100
-    tokens = CountedTokens(OracleTokenizer(script).tokenize())
-
-    assert len(OracleStatementParser(tokens, source=script).split()) == 100
-    assert tokens.copied < 10 * len(tokens)
+    for repetitions in (100, 400):
+        script = CountingText("SELECT 1 FROM dual;\n" * repetitions)
+        assert len(LexicalEngine(ORACLE_SPEC).split(script)) == repetitions
+        assert script.sliced <= 12 * len(script)

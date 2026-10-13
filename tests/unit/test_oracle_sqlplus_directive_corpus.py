@@ -73,10 +73,10 @@ class TestSqlplusDirectiveRegistry(unittest.TestCase):
 
 
 def _split(sql: str) -> list[str]:
-    from dblift.db.plugins.oracle.parser.oracle_statement_parser import OracleStatementParser
+    from dblift.core.sql_parser.lexical_engine import LexicalEngine
+    from dblift.db.plugins.oracle.parser.lexical_spec import ORACLE_SPEC
 
-    tokens = OracleTokenizer(sql).tokenize()
-    return [s for s in OracleStatementParser(tokens, source=sql).split_statements() if s.strip()]
+    return [s for s in LexicalEngine(ORACLE_SPEC).split_statements(sql) if s.strip()]
 
 
 class TestSqlplusDirectiveTerminationCorpus(unittest.TestCase):

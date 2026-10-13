@@ -1,0 +1,81 @@
+"""Classify a client directive line from the spec's tables.
+
+A client accepts a command abbreviated to its documented minimum, so a typed
+word matches a rule when it is a prefix of the rule's word of at least that
+length. Every word, minimum and action is table data.
+"""
+
+import re
+from typing import List, Optional, Tuple
+
+from dblift.core.sql_parser.lexical_spec import ClientScriptRules, DirectiveAction
+
+_WORD = re.compile(r"[A-Za-z]+(?![A-Za-z0-9_$#])")
+
+
+def _matches(typed: str, full: str, minimum: int) -> bool:
+    return len(typed) >= minimum and full.startswith(typed)
+
+
+def _words(line: str) -> List[str]:
+    """Upper-cased leading words of ``line``."""
+    out: List[str] = []
+    pos = 0
+    while True:
+        while pos < len(line) and line[pos].isspace():
+            pos += 1
+        match = _WORD.match(line, pos)
+        if not match:
+            return out
+        out.append(match.group().upper())
+        pos = match.end()
+
+
+def classify_directive(
+    rules: ClientScriptRules, line: str
+) -> Optional[Tuple[str, DirectiveAction]]:
+    """The directive ``line`` holds as (name, action), or None for SQL.
+
+    ``line`` starts where a statement can begin. A command followed by one of
+    the rules' follow words, and ``SET`` followed by a SQL word, are SQL.
+    """
+    text = line.strip()
+    for prefix, name in rules.prefix_directives:
+        if text.startswith(prefix):
+            return name, DirectiveAction.REJECT
+    words = _words(text)
+    if not words:
+        return None
+    first = words[0]
+    if _matches(first, *rules.set_command):
+        return _classify_set(rules, words[1:])
+    if _matches(first, rules.whenever_command, rules.whenever_min_abbrev):
+        for word, action in rules.whenever:
+            if len(words) > 1 and words[1] == word:
+                return f"{rules.whenever_command} {word}", action
+        return None
+    for rule in rules.directives:
+        if _matches(first, rule.word, rule.min_abbrev):
+            if any(
+                rule.word == a and len(words) > 1 and words[1] == b
+                for a, b in rules.sql_follow_words
+            ):
+                return None
+            return rule.word, rule.action
+    return None
+
+
+def _classify_set(
+    rules: ClientScriptRules, rest: List[str]
+) -> Optional[Tuple[str, DirectiveAction]]:
+    if not rest or rest[0] in rules.set_sql_words:
+        return None
+    for rule in rules.set_options:
+        if _matches(rest[0], rule.word, rule.min_abbrev):
+            return f"{rules.set_command[0]} {rule.word}", rule.action
+    return rules.set_command[0], DirectiveAction.DROP_RECORD
+
+
+def is_free_text(rules: ClientScriptRules, name: str) -> bool:
+    """Whether the execution view reads the whole line of this directive as text."""
+    return any(rule.free_text and rule.word == name for rule in rules.directives)
