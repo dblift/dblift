@@ -376,3 +376,19 @@ def test_a_word_in_a_line_is_alone_on_it_as_the_plugin_helper_says():
                 assert is_alone_on_line(script, pos) == plugin_is_alone_on_line(script, pos)
                 checked += 1
     assert checked > 1000
+
+
+@pytest.mark.parametrize(
+    "script, expected",
+    [
+        ("SELECT (1;\n2) FROM dual;", ["SELECT (1;\n2) FROM dual"]),
+        ("CREATE TABLE t (a NUMBER;\nb NUMBER);", ["CREATE TABLE t (a NUMBER;\nb NUMBER)"]),
+        ("SELECT f(g(1;\n2), 3) FROM dual;", ["SELECT f(g(1;\n2), 3) FROM dual"]),
+        (
+            "CREATE TABLE t (v VARCHAR2(10) DEFAULT (';')\n);\nSELECT 1 FROM dual;",
+            ["CREATE TABLE t (v VARCHAR2(10) DEFAULT (';')\n)", "SELECT 1 FROM dual"],
+        ),
+    ],
+)
+def test_a_semicolon_inside_parentheses_does_not_end_the_statement(script, expected):
+    assert texts(script) == expected
