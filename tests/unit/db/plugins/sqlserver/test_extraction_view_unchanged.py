@@ -119,6 +119,6 @@ def test_every_recorded_view_is_covered_by_a_named_test():
 
 
 @pytest.mark.parametrize("view", sorted(VIEWS))
-def test_the_recording_holds_the_server_and_client_comment_probes(view):
-    probes = ["/* a /* b */ c */ SELECT 1", "SELECT [a]]b]", "SELECT @@ROWCOUNT, @p, #t, ##g"]
-    assert all(probe in golden()[view] for probe in probes)
+def test_the_recording_holds_the_server_and_client_comment_cases(view):
+    cases = ["/* a /* b */ c */ SELECT 1", "SELECT [a]]b]", "SELECT @@ROWCOUNT, @p, #t, ##g"]
+    assert all(case in golden()[view] for case in cases)
