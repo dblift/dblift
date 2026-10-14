@@ -247,6 +247,94 @@ def _merge_referenced(node: exp.Merge) -> Tuple[NamedObject, ...]:
     return tuple(found)
 
 
+def _postgres_merge_facts(node: exp.Merge) -> Optional[StatementFacts]:
+    """Read explicit MERGE actions; affected columns describe UPDATE assignments only."""
+    from sqlglot.optimizer.scope import traverse_scope
+
+    table = node.this
+    if not isinstance(table, exp.Table) or not isinstance(table.this, exp.Identifier):
+        return None
+    if table.args.get("joins") or not node.args.get("on"):
+        return None
+    if not isinstance(node.args.get("using"), (exp.Table, exp.Subquery, exp.Values)):
+        return None
+    if any(not isinstance(cte.this, exp.Query) for cte in node.find_all(exp.CTE)):
+        return None
+    whens = node.args.get("whens")
+    if whens is None or not whens.expressions:
+        return None
+    events: set[str] = set()
+    for when in whens.expressions:
+        action = when.args.get("then")
+        matches_target = when.args.get("matched") or when.args.get("source")
+        if isinstance(action, exp.Update) and matches_target:
+            if not action.expressions:
+                return None
+            for assignment in action.expressions:
+                if not isinstance(assignment, exp.EQ):
+                    return None
+                columns = (
+                    assignment.this.expressions
+                    if isinstance(assignment.this, exp.Tuple)
+                    else [assignment.this]
+                )
+                if not columns or any(
+                    not isinstance(column, exp.Column)
+                    or not isinstance(column.this, exp.Identifier)
+                    or column.table
+                    for column in columns
+                ):
+                    return None
+            events.add("UPDATE")
+        elif isinstance(action, exp.Insert) and not matches_target:
+            if action.this is not None and not isinstance(action.this, exp.Tuple):
+                return None
+            events.add("INSERT")
+        elif isinstance(action, exp.Var) and action.name == "DELETE" and matches_target:
+            events.add("DELETE")
+        elif not (isinstance(action, exp.Var) and action.name == "DO NOTHING"):
+            return None
+
+    # Scope lookup folds unquoted PostgreSQL identifiers, but facts keep the written names.
+    scoped = node.copy()
+    originals = {
+        id(source): _named(source, SqlObjectType.TABLE, "referenced")
+        for source in scoped.find_all(exp.Table)
+    }
+    if any(not isinstance(source.this, exp.Identifier) for source in scoped.find_all(exp.Table)):
+        return None
+    dialect = Dialect.get_or_raise("postgres")  # lint: allow-dialect-string: PostgreSQL scopes
+    for identifier in scoped.find_all(exp.Identifier):
+        dialect.normalize_identifier(identifier)
+    references: list[NamedObject] = []
+    seen_tables = {id(scoped.this)}
+    for scope in traverse_scope(scoped):
+        if scope.is_udtf:
+            return None
+        seen_tables.update(id(source) for source in scope.tables)
+        if isinstance(scope.expression, exp.Table):
+            seen_tables.add(id(scope.expression))
+        for source in scope.sources.values():
+            if isinstance(source, exp.Table):
+                reference = originals[id(source)]
+                if reference is not None and reference not in references:
+                    references.append(reference)
+    if any(id(source) not in seen_tables for source in scoped.find_all(exp.Table)):
+        return None
+    identity = _named(table, SqlObjectType.TABLE, "altered")
+    target_table = table.copy()
+    target_table.set("alias", None)
+    return StatementFacts(
+        "MERGE",
+        "DML",
+        ((identity,) if identity else ()) + tuple(references),
+        target=".".join(part for part in (table.catalog, table.db, table.name) if part),
+        target_sql=target_table.sql(dialect=dialect),
+        affected_columns=tuple(_sqlglot_updated_columns(node)),
+        events=frozenset(events),
+    )
+
+
 def _copy_query_referenced(query: exp.Subquery, sql: str) -> Optional[Tuple[NamedObject, ...]]:
     """Resolve query export sources, refusing table functions rather than omitting them."""
     from sqlglot.optimizer.scope import traverse_scope
@@ -642,6 +730,15 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
             identity = _named(target, SqlObjectType.TABLE, "altered")
             if identity is not None:
                 return StatementFacts("TRUNCATE", "DDL", (identity,))
+
+    if (
+        dialect == "postgres"  # lint: allow-dialect-string: qualified PostgreSQL MERGE facts
+        and isinstance(ast, exp.Merge)
+    ):
+        merge_facts = _postgres_merge_facts(ast)
+        if merge_facts is not None:
+            return merge_facts
+        return _head_facts(sql, "postgres MERGE effects are not modelled", dialect=dialect)
 
     if isinstance(ast, (exp.Insert, exp.Update, exp.Delete)) or (
         dialect == "duckdb"  # lint: allow-dialect-string: MERGE facts qualified for DuckDB only
