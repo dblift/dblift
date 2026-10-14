@@ -14,10 +14,13 @@ SHAPES = {
         950000,
     ),
     "many GO batches": (lambda n: "SELECT 1\nGO\n" * n, 28000),
-    "many head lines": (lambda n: "SELECT 1\n  x1\n  y2 AS c,\n" * n + "GO\n", 14000),
+    "many head lines": (
+        lambda n: "SELECT 'x'\n" * n + "/*" + "x" * (200 * n) + "*/\nGO\n",
+        10000,
+    ),
     "one line of comments, words and semicolons": (
-        lambda n: "/**/ " * n + "/**/ SELECT 1; " * n + "\r" * n + "x GO x\nGO\n",
-        20000,
+        lambda n: "/**/ " * n + "/**/ SELECT 1 " * n + ";" * (n // 20) + "\r" * n + "x GO x\nGO\n",
+        24000,
     ),
 }
 
