@@ -136,6 +136,10 @@ class LexicalSpec:
     leading_bom_is_blank: bool = False
     silent_unclaimed: bool = False
     batch_script: Optional[BatchScriptRules] = None
+    #: Whether literal masking reads the text through this specification. False keeps the dialect's
+    #: own tokenizer: SQL Server masking reads comments as the server does, which differs from
+    #: the client's batch reading.
+    redaction_reads_engine: bool = True
 
     def __post_init__(self) -> None:
         """A client reads a script by lines or by batches, never both."""

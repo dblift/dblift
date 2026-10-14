@@ -99,6 +99,7 @@ def test_other_dialect_specs_are_unchanged():
         assert spec.bracket_identifier == ()
         assert spec.silent_unclaimed is False
         assert spec.leading_bom_is_blank is False
+        assert spec.redaction_reads_engine is True
 
 
 def test_go_zero_is_logged_at_info(caplog):
@@ -162,3 +163,50 @@ def test_redaction_describes_parameters_and_keeps_go_out_of_names():
     assert describe_statement("DECLARE @x = 'secret'", "sqlserver") == "DECLARE @x"
     assert describe_statement("SELECT @@ROWCOUNT, 'w'", "sqlserver") == "SELECT @@ROWCOUNT"
     assert describe_statement("SELECT go INT FROM t", "sqlserver") == "SELECT"
+
+
+def _spy_dialect_tokenizer(monkeypatch):
+    from dblift.core.sql_parser import redaction
+
+    calls = []
+    real = redaction._dialect_tokenizer
+
+    def spy(dialect):
+        calls.append(dialect)
+        return real(dialect)
+
+    monkeypatch.setattr(redaction, "_dialect_tokenizer", spy)
+    return calls
+
+
+def test_redaction_reading_is_a_spec_field_sqlserver_keeps_the_dialect_reader(monkeypatch):
+    calls = _spy_dialect_tokenizer(monkeypatch)
+    assert SQLSERVER_SPEC.redaction_reads_engine is False
+    assert describe_statement("DECLARE @x = 'secret'", "sqlserver") == "DECLARE @x"
+    assert calls == ["sqlserver"]
+
+
+def test_flipping_the_redaction_field_on_sqlserver_reads_the_engine(monkeypatch):
+    from dataclasses import replace
+
+    from dblift.db.plugins.sqlserver.quirks import SqlserverQuirks
+
+    calls = _spy_dialect_tokenizer(monkeypatch)
+    spec = replace(SQLSERVER_SPEC, redaction_reads_engine=True)
+    monkeypatch.setattr(SqlserverQuirks, "lexical_spec", lambda self: spec)
+    assert describe_statement("DECLARE @x = 'secret'", "sqlserver") == "DECLARE"
+    assert calls == []
+
+
+def test_flipping_the_redaction_field_on_postgresql_reads_the_dialect_tokenizer(monkeypatch):
+    from dataclasses import replace
+
+    from dblift.db.plugins.postgresql.quirks import PostgresqlQuirks
+
+    calls = _spy_dialect_tokenizer(monkeypatch)
+    mask_string_literals("SELECT 'a'", "postgresql")
+    assert calls == []
+    spec = replace(POSTGRESQL_SPEC, redaction_reads_engine=False)
+    monkeypatch.setattr(PostgresqlQuirks, "lexical_spec", lambda self: spec)
+    mask_string_literals("SELECT 'a'", "postgresql")
+    assert calls == ["postgresql"]

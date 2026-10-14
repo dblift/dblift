@@ -74,4 +74,5 @@ SQLSERVER_SPEC = LexicalSpec(
     silent_unclaimed=True,
     placeholder_open=None,
     batch_script=SQLSERVER_BATCHES,
+    redaction_reads_engine=False,
 )
