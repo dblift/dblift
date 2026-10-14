@@ -1,0 +1,80 @@
+{
+  "cases": [
+    {
+      "id": "update_and_insert",
+      "source": "tests/unit/db/test_dml_analysis.py::test_analyze_dml_collects_merge_events_and_table (adapted)",
+      "sql": "MERGE INTO t USING s ON t.id = s.id WHEN MATCHED THEN UPDATE SET val = s.val WHEN NOT MATCHED THEN INSERT (id, val) VALUES (s.id, s.val);",
+      "facts": {
+        "operation": "MERGE",
+        "kind": "DML",
+        "objects": [
+          {"name": "t", "type": "TABLE", "role": "altered", "schema": null},
+          {"name": "s", "type": "TABLE", "role": "referenced", "schema": null}
+        ],
+        "target": "t",
+        "predicate": null,
+        "affected_columns": ["val"],
+        "events": ["INSERT", "UPDATE"],
+        "diagnostic": null,
+        "error": null
+      }
+    },
+    {
+      "id": "conditional_delete",
+      "source": "DuckDB MERGE facts regression: conditional DELETE names its target and event without treating ON or WHEN as WHERE",
+      "sql": "MERGE INTO users USING s ON s.id = users.id WHEN MATCHED AND s.expired THEN DELETE;",
+      "facts": {
+        "operation": "MERGE",
+        "kind": "DML",
+        "objects": [
+          {"name": "users", "type": "TABLE", "role": "altered", "schema": null},
+          {"name": "s", "type": "TABLE", "role": "referenced", "schema": null}
+        ],
+        "target": "users",
+        "predicate": null,
+        "affected_columns": [],
+        "events": ["DELETE"],
+        "diagnostic": null,
+        "error": null
+      }
+    },
+    {
+      "id": "qualified_quoted_target_and_alias",
+      "source": "tests/unit/db/test_dml_analysis.py::test_statement_dml_table_sqlglot_strips_merge_alias (adapted to DuckDB)",
+      "sql": "MERGE INTO \"Sales\".\"Order Items\" AS t USING staging.items AS s ON t.id = s.id WHEN MATCHED THEN UPDATE SET \"Item Value\" = s.val;",
+      "facts": {
+        "operation": "MERGE",
+        "kind": "DML",
+        "objects": [
+          {"name": "Order Items", "type": "TABLE", "role": "altered", "schema": "Sales"},
+          {"name": "items", "type": "TABLE", "role": "referenced", "schema": "staging"}
+        ],
+        "target": "Sales.Order Items",
+        "predicate": null,
+        "affected_columns": ["Item Value"],
+        "events": ["UPDATE"],
+        "diagnostic": null,
+        "error": null
+      }
+    },
+    {
+      "id": "cte_source_and_dollar_string",
+      "source": "DuckDB MERGE facts regression: source CTE is not a table, and a semicolon inside a dollar string is not a statement boundary",
+      "sql": "WITH incoming AS (SELECT id, val FROM staging.items) MERGE INTO items AS t USING incoming AS s ON t.id = s.id WHEN MATCHED THEN UPDATE SET val = $$changed;value$$;",
+      "facts": {
+        "operation": "MERGE",
+        "kind": "DML",
+        "objects": [
+          {"name": "items", "type": "TABLE", "role": "altered", "schema": null},
+          {"name": "items", "type": "TABLE", "role": "referenced", "schema": "staging"}
+        ],
+        "target": "items",
+        "predicate": null,
+        "affected_columns": ["val"],
+        "events": ["UPDATE"],
+        "diagnostic": null,
+        "error": null
+      }
+    }
+  ]
+}
