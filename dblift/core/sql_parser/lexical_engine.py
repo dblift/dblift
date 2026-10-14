@@ -19,13 +19,18 @@ class LexicalEngine:
         self.spec = spec
 
     def _parser(self, script: str) -> LexicalStatementParser:
-        tokens = LexicalTokenizer(script, spec=self.spec).tokenize()
-        return LexicalStatementParser(tokens, source=script, spec=self.spec)
+        tokenizer = LexicalTokenizer(script, spec=self.spec)
+        tokens = tokenizer.tokenize()
+        return LexicalStatementParser(
+            tokens, source=script, spec=self.spec, comments=tokenizer.comments
+        )
 
     @staticmethod
     def _report(parser: LexicalStatementParser) -> None:
         for message in parser.warnings:
             logger.warning(message)
+        for message in parser.notices:
+            logger.info(message)
 
     def split(self, script: str, *, include_comment_only: bool = False) -> List[Statement]:
         """Return source-positioned execution units and analysis projections."""
