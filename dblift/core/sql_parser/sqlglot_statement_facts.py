@@ -390,9 +390,11 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
 
     if dialect == "duckdb" and isinstance(ast, exp.TruncateTable):
         targets = ast.expressions
-        identity = _named(targets[0], SqlObjectType.TABLE, "altered") if len(targets) == 1 else None
-        if identity is not None:
-            return StatementFacts("TRUNCATE", "DDL", (identity,))
+        target = targets[0] if len(targets) == 1 else None
+        if isinstance(target, exp.Table) and isinstance(target.this, exp.Identifier):
+            identity = _named(target, SqlObjectType.TABLE, "altered")
+            if identity is not None:
+                return StatementFacts("TRUNCATE", "DDL", (identity,))
 
     if isinstance(ast, (exp.Insert, exp.Update, exp.Delete)) or (
         dialect == "duckdb"  # lint: allow-dialect-string: MERGE facts qualified for DuckDB only

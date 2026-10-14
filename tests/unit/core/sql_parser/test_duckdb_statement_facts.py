@@ -92,6 +92,22 @@ def test_duckdb_truncate_facts_name_the_altered_table(sql, name, schema):
     assert not facts.opaque
 
 
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "TRUNCATE TABLE (SELECT * FROM t)",
+        "TRUNCATE TABLE read_csv('x')",
+        "TRUNCATE t,u",
+    ],
+)
+def test_duckdb_truncate_non_table_targets_are_opaque(sql):
+    facts = read_statement_facts(sql, dialect="duckdb")
+
+    assert facts.operation == "TRUNCATE"
+    assert facts.objects == ()
+    assert facts.opaque
+
+
 def test_duckdb_truncate_facts_do_not_change_other_mappings():
     delete = read_statement_facts("DELETE FROM t WHERE id = 1", dialect="duckdb")
     drop = read_statement_facts("DROP TABLE t", dialect="duckdb")
