@@ -45,7 +45,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and message). The four refusals for an unterminated lexeme now read
   `unterminated string|bracketed identifier|quoted identifier|block comment opened
   at line L, column C` (they read `unterminated string literal|... starting at ...`);
-  class, line and column are unchanged.
+  class, line and column are unchanged. The same text appears in the errors of
+  `validate_sql` and `parse_sql` and in the log record `parse_sql` writes.
 - **SQL Server: the notice about `GO 0` is logged by
   `dblift.core.sql_parser.lexical_engine`** (INFO); its message is unchanged.
 - **SQL Server: splitting a large script takes longer and uses more memory.** On one

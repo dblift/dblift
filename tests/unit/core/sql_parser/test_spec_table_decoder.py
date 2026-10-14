@@ -20,7 +20,7 @@ def script_of(tmp_path: Path, cell: str) -> str:
     [
         ("a\\x0cb", "a\x0cb"),
         ("a\\xa0b", "a\xa0b"),
-        ("a\\u2028b", "a b"),
+        ("a\\u2028b", "a\u2028b"),
         ("a\\x0Cb", "a\x0cb"),
         ("\\\\x0c", "\\x0c"),
         ("\\unrestrict and \\x on", "\\unrestrict and \\x on"),
