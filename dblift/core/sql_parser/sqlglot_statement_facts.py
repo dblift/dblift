@@ -165,6 +165,74 @@ def _column_constraints(definition: exp.ColumnDef) -> Tuple[DeclaredConstraint, 
     )
 
 
+def _created_object_type(ast: exp.Create, dialect: str) -> SqlObjectType:
+    """Select the created object type, including dialect-specific view properties."""
+    kind = str(ast.args.get("kind") or "").upper()
+    object_type = SqlObjectType.__members__.get(kind, SqlObjectType.UNKNOWN)
+    properties = ast.args.get("properties")
+    if properties and properties.find(exp.VirtualProperty):
+        object_type = SqlObjectType.VIRTUAL_TABLE
+    if (
+        dialect == "postgres"  # lint: allow-dialect-string: PostgreSQL materialized views
+        and kind == "VIEW"
+        and properties
+        and properties.find(exp.MaterializedProperty)
+    ):
+        object_type = SqlObjectType.MATERIALIZED_VIEW
+    return object_type
+
+
+def _postgresql_opaque_cte(ast: exp.Expr, dialect: str) -> Optional[StatementFacts]:
+    """Retain outer identities when the flat CTE reference filter cannot prove the body."""
+    clauses = list(ast.find_all(exp.With))
+    if not clauses:
+        return None
+    ctes = list(ast.find_all(exp.CTE))
+    aliases = {cte.alias.lower() for cte in ctes}
+    effects_unknown = any(not isinstance(cte.this, exp.Query) for cte in ctes)
+    query = ast.args.get("expression") if isinstance(ast, exp.Create) else ast
+    if not (
+        effects_unknown
+        or len(clauses) != 1
+        or clauses[0].parent is not query
+        or clauses[0].args.get("recursive")
+        or any(cte.args["alias"].this.args.get("quoted") for cte in ctes)
+        or any(
+            not table.db and table.name.lower() in aliases
+            for cte in ctes
+            for table in cte.this.find_all(exp.Table)
+        )
+        or any(
+            not table.db
+            and table.name.lower() in aliases
+            and isinstance(table.this, exp.Identifier)
+            and table.this.args.get("quoted")
+            for table in ast.find_all(exp.Table)
+        )
+    ):
+        return None
+
+    operation = type(ast).__name__.upper()
+    kind = "UNKNOWN"
+    identity = None
+    if isinstance(ast, exp.Query):
+        operation = "SELECT"
+        kind = "UNKNOWN" if effects_unknown else "QUERY"
+    elif isinstance(ast, exp.Create):
+        kind = "DDL"
+        identity = _named(ast.this, _created_object_type(ast, dialect), "created")
+    elif isinstance(ast, (exp.Insert, exp.Update, exp.Delete)):
+        kind = "DML"
+        table = _dml_target_table(ast)
+        identity = _named(table, SqlObjectType.TABLE, "altered") if table is not None else None
+    return StatementFacts(
+        operation,
+        kind,
+        (identity,) if identity is not None else (),
+        diagnostic="postgres CTE source scopes or effects are opaque to statement facts",
+    )
+
+
 def _merge_referenced(node: exp.Merge) -> Tuple[NamedObject, ...]:
     """Resolve MERGE sources in their own scopes, excluding CTE aliases."""
     from sqlglot.optimizer.scope import traverse_scope
@@ -377,6 +445,11 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
             sql, f"{dialect} {construct} is opaque to statement facts", dialect=dialect
         )
 
+    if dialect == "postgres":  # lint: allow-dialect-string: contain unproven PostgreSQL CTE facts
+        opaque_cte = _postgresql_opaque_cte(ast, dialect)
+        if opaque_cte is not None:
+            return opaque_cte
+
     if (
         dialect == "duckdb"  # lint: allow-dialect-string: DuckDB macros lack a fact object type
         and isinstance(ast, (exp.Create, exp.Drop))
@@ -403,21 +476,11 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
             return StatementFacts(operation, "QUERY", _referenced(ast))
 
     if isinstance(ast, exp.Create):
-        kind = str(ast.args.get("kind") or "").upper()
-        object_type = SqlObjectType.__members__.get(kind, SqlObjectType.UNKNOWN)
+        object_type = _created_object_type(ast, dialect)
         schema_node = ast.this if isinstance(ast.this, exp.Schema) else None
         subject = schema_node.this if schema_node is not None else ast.this
         properties = ast.args.get("properties")
         virtual = bool(properties and properties.find(exp.VirtualProperty))
-        if virtual:
-            object_type = SqlObjectType.VIRTUAL_TABLE
-        if (
-            dialect == "postgres"  # lint: allow-dialect-string: PostgreSQL materialized views
-            and kind == "VIEW"
-            and properties
-            and properties.find(exp.MaterializedProperty)
-        ):
-            object_type = SqlObjectType.MATERIALIZED_VIEW
         identity = _named(subject, object_type, "created") if subject is not None else None
         if (
             dialect == "duckdb"  # lint: allow-dialect-string: DuckDB schema identity projection
