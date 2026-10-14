@@ -77,10 +77,10 @@ def test_duckdb_schema_and_metadata_mappings_preserve_other_dialects(
         ("sqlite", "child AS c"),
         ("postgres", "child AS c"),
         ("oracle", "child c"),
-        ("mysql", "child AS c"),
+        ("mysql", "child"),
         ("tsql", "child AS c"),
     ],
 )
-def test_duckdb_target_alias_normalization_preserves_other_dialect_facts(dialect, expected):
+def test_target_alias_normalization_preserves_each_dialect_contract(dialect, expected):
     facts = read_statement_facts("UPDATE child AS c SET id = 2 WHERE c.id = 1", dialect=dialect)
     assert facts.target_sql == expected

@@ -383,6 +383,11 @@ def _head_facts(sql: str, diagnostic: str, *, dialect: str = "") -> StatementFac
         first = _FIRST_WORD.match(head)
     operation = first.group(1).upper() if first else "UNKNOWN"
     kind = _KINDS.get(operation, "UNKNOWN")
+    if (
+        dialect == "mysql"  # lint: allow-dialect-string: unread MySQL mutations may be multi-target
+        and operation in {"UPDATE", "DELETE"}
+    ):
+        return StatementFacts(operation, kind, diagnostic=diagnostic)
     if dialect == "duckdb":  # lint: allow-dialect-string: preserve DuckDB opaque metadata kinds
         kind = {"COMMENT": "DDL", "SHOW": "QUERY", "EXECUTE": "DML"}.get(operation, kind)
     objects: Tuple[NamedObject, ...] = ()
@@ -421,9 +426,19 @@ def _head_facts(sql: str, diagnostic: str, *, dialect: str = "") -> StatementFac
 def _mysql_unresolved_mutation_target(ast: exp.Expression) -> bool:
     """Refuse multiple or unproven targets before projecting singular mutation facts."""
     if isinstance(ast, exp.Delete):
-        return len(ast.args.get("tables") or []) > 1 or bool(
-            ast.args.get("using") and isinstance(ast.this, exp.Table) and ast.this.args.get("joins")
-        )
+        targets = ast.args.get("tables") or []
+        using = ast.args.get("using")
+        table = _dml_target_table(ast)
+        if using or len(targets) > 1 or table is None:
+            return True
+        if targets:
+            wanted = targets[0]
+            return (
+                wanted.name != table.alias_or_name
+                or bool(wanted.db and wanted.db != table.db)
+                or bool(wanted.catalog and wanted.catalog != table.catalog)
+            )
+        return False
     if not isinstance(ast, exp.Update) or not isinstance(ast.this, exp.Table):
         return False
     table = ast.this
@@ -695,14 +710,21 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
         )
         events = _sqlglot_events(ast)
         columns = tuple(_sqlglot_updated_columns(ast))
+        skipped_references: Tuple[exp.Expression, ...] = (table,) if table is not None else ()
+        if (
+            dialect == "mysql"  # lint: allow-dialect-string: MySQL DELETE target lists are writes
+            and isinstance(ast, exp.Delete)
+        ):
+            # DELETE's target list names write targets, not additional read sources.
+            skipped_references += tuple(ast.args.get("tables") or [])
         references = (
             _merge_referenced(ast)
             if isinstance(ast, exp.Merge)
-            else _referenced(ast, (table,) if table is not None else ())
+            else _referenced(ast, skipped_references)
         )
         target_table = table
         if (
-            dialect == "duckdb"  # lint: allow-dialect-string: preserve bare DuckDB mutation targets
+            dialect in {"duckdb", "mysql"}  # lint: allow-dialect-string: bare mutation targets
             and table is not None
             and (table.args.get("alias") or table.args.get("joins") or table.args.get("only"))
         ):
