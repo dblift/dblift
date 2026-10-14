@@ -4,9 +4,10 @@ from typing import Any, Dict, List, Optional
 
 from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
 from dblift.core.sql_model.base import ParseResult, SqlObject, SqlStatement
+from dblift.core.sql_parser.parser_interface import SqlParserInterface
+from dblift.core.sql_parser.statement import Statement
 from dblift.core.sql_parser.statement_facts import SqlglotStatementFactsReader, StatementFacts
-from dblift.db.plugins.duckdb.parser._script import blank_comments
-from dblift.db.plugins.duckdb.parser.duckdb_regex_parser import DuckDBRegexParser
+from dblift.db.plugins.duckdb.parser._script import blank_comments, scan_script
 
 
 class DuckDBStatementFactsReader(SqlglotStatementFactsReader):
@@ -21,8 +22,38 @@ class DuckDBStatementFactsReader(SqlglotStatementFactsReader):
 _FACTS = DuckDBStatementFactsReader("duckdb")
 
 
-class DuckDBFactsParser(DuckDBRegexParser):
+class DuckDBFactsParser(SqlParserInterface):
     """Preserve scanner boundaries and project facts into the public parser result."""
+
+    @property
+    def dialect_name(self) -> str:
+        """Return the plugin dialect name."""
+        return "duckdb"
+
+    def split(self, sql_content: str) -> List[Statement]:
+        """Return source-positioned statements from the engine script scanner."""
+        return [
+            Statement(
+                text=unit.text,
+                line=unit.line,
+                terminator=unit.terminator,
+                source_start=unit.source_start,
+                source_end=unit.source_end,
+            )
+            for unit in scan_script(sql_content)
+        ]
+
+    def split_statements(self, sql_content: str, strict_tokenizer: bool = False) -> List[str]:
+        """Return execution text from the engine script scanner."""
+        return [record.text for record in self.split(sql_content)]
+
+    def split_for_analysis(self, sql_content: str, strict_tokenizer: bool = False) -> List[str]:
+        """Include comment-only segments in scanner-selected analysis text."""
+        return [unit.text for unit in scan_script(sql_content, comment_only=True)]
+
+    def split_for_extraction(self, sql_content: str, strict_tokenizer: bool = False) -> List[str]:
+        """Return the same scanner-selected constituents as analysis."""
+        return self.split_for_analysis(sql_content, strict_tokenizer)
 
     def parse_sql(self, sql_content: str, default_schema: Optional[str] = None) -> ParseResult:
         """Read facts for every constituent, with atomic refusal of unsafe scripts."""

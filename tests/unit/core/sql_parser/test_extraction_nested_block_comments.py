@@ -22,6 +22,7 @@ import unittest
 from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.db.plugins.db2.parser.db2_regex_parser import DB2RegexParser
 from dblift.db.plugins.duckdb.parser.duckdb_regex_parser import DuckDBRegexParser
+from dblift.db.plugins.duckdb.quirks import DuckDBQuirks
 from dblift.db.plugins.mysql.parser.mysql_regex_parser import MySqlRegexParser
 from dblift.db.plugins.oracle.parser.oracle_parser import OracleParser
 from dblift.db.plugins.postgresql.parser.postgresql_regex_parser import (
@@ -72,6 +73,8 @@ def _splits_out_the_live_statement(dialect: str) -> bool:
     parser = _regex_parser_for(dialect)
     stmts = parser.split_statements(NESTED_COMMENT_SQL)
     strip_comments = getattr(parser, "_strip_comments_preserving_quotes", None)
+    if dialect == "duckdb":
+        strip_comments = DuckDBQuirks().blank_comments
     if strip_comments is None:
         return any("CREATE TABLE victim" in s for s in stmts)
     return any("CREATE TABLE victim" in strip_comments(s) for s in stmts)
