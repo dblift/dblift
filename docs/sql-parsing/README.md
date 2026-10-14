@@ -70,7 +70,7 @@ a build error, so the tables keep this shape:
 | Column | Rule |
 | --- | --- |
 | `#` | a row id, unique within the spec (`1`, `15a`, `R3`) |
-| `Script` | exactly one code span (`` `…` `` or ``` `` … `` ``` when the script contains a backtick); `\n` and `\t` inside it are a newline and a tab, `\\` a backslash, `\|` a pipe, and the symbol `␍` (U+240D) a carriage return; nothing else is escaped (`\r` is not: `\restrict` is a psql command) |
+| `Script` | exactly one code span (`` `…` `` or ``` `` … `` ``` when the script contains a backtick); `\n` and `\t` inside it are a newline and a tab, `\\` a backslash, `\|` a pipe, `\xHH` and `\uHHHH` the character with that code (a malformed one is an error), and the symbol `␍` (U+240D) a carriage return; nothing else is escaped (`\r` is not: `\restrict` is a psql command) |
 | `Statements returned` | the expected statements, each in its own code span, separated by ` · `; `\n`, `\t` and `\\` inside a span decode as in the Script cell; `` `(empty)` `` means no statement. An expected refusal is a code span naming the exception as the **first** span of the cell: `` `UnsupportedMetaCommandError` ``, `` `UnsafeStatementSplitError` ``, or `` `error` `` for any error; code spans after an error keyword are explanatory (the directive or line it names) and are not compared. An error keyword or `(empty)` anywhere else is a format error. Prose outside code spans is allowed and ignored by the compiler (it explains the row); a directive record is written in prose, never as a code span. |
 
 A row whose statements cell contains **to verify** or **depends on** is
