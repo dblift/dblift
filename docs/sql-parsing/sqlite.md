@@ -350,8 +350,9 @@ seven-state table to `LexicalEngine`. Its shared tokenizer and statement parser
 apply the two shell line rules, comments and quoting. `split()` returns
 `Statement` records, `split_statements()` their execution text, and
 `split_for_analysis()` adds segments of comments only (§3).
-`SQLiteRegexParser` delegates its splitter entrypoints to this engine, so
-`split_for_extraction()` and `parse_sql()` retain the same refusals.
+`SQLiteFactsParser` delegates its splitter entrypoints to this engine.
+`split_for_extraction()` and `extract_objects()` propagate scanner refusals;
+`parse_sql()` reports them in its errors without returning statements.
 
 Tests: `tests/unit/db/plugins/sqlite/test_script.py` (the rules and the
 records; the engine is checked against `sqlite3.complete_statement`),

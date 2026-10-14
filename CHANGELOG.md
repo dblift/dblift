@@ -311,6 +311,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- SQLite `extract_objects()` now propagates scanner refusals, preserving their
+  exception class and source line. Refused scripts no longer report partial
+  object lists or mistake quoted SQL text for changed objects.
+
 - **Oracle: a line whose first text is a `/` is refused where the buffer holds no
   statement text.** After a statement completed by `;`, SQL*Plus runs `/ SELECT 2
   FROM dual;` (and `/* c */ /`, with blanks and block comments before the slash) as

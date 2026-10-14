@@ -204,17 +204,6 @@ def _head_object(match: "re.Match[str]") -> NamedObject:
     return NamedObject(name, object_type, role, schema)
 
 
-def scan_head_objects(sql: str) -> Tuple[NamedObject, ...]:
-    """Objects named by CREATE, ALTER and DROP heads anywhere in text that was not split."""
-    text = strip_comments_preserving_quotes(
-        sql.replace("\x00", " "),
-        line_prefixes=["--"],
-        has_block_comments=True,
-        nested_block_comments=False,
-    )
-    return tuple(_head_object(match) for match in _HEAD_SCAN.finditer(text))
-
-
 def _head_facts(sql: str, diagnostic: str) -> StatementFacts:
     """Classify a statement from its leading words when sqlglot cannot represent the body."""
     head = _blanked(sql)
