@@ -52,9 +52,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **SQL Server: splitting a large script takes longer and uses more memory.** On one
   development machine a 2.9 MB script of `INSERT` statements takes 4.7 s where it
   took 0.64 s, with a peak of 284 MiB where it was 109 MiB (about two and a half
-  times); a typical 100 KB migration takes 0.11 s where it took 0.018 s, with a
-  peak of 5.0 MiB where it was 0.8 MiB. The cost grows linearly with the size of
-  the script.
+  times); a roughly 100 KiB script made by repeating the 99-byte median corpus
+  file takes 0.105 s where it took 0.019 s, with a peak of 4.7 MiB where it was
+  0.7 MiB. The cost grows linearly with script size.
 - SQL Server error-message redaction, object extraction and the check that a
   statement holds only comments are unchanged: they still read block comments the
   way the server does (they nest), while the splitter cuts batches the way `sqlcmd`
