@@ -255,6 +255,121 @@ def test_updates_restore_key_ignores_non_key_columns():
     assert not updates_restore_key("UPDATE users SET status = 'x' WHERE id = 1;", _DEFAULT_KEYS)
 
 
+@pytest.mark.parametrize(
+    "statement, columns, changes_key",
+    [
+        ("INSERT INTO child(value) VALUES(10) ON CONFLICT(value) DO UPDATE SET id=2", ["id"], True),
+        (
+            "INSERT INTO child(value) VALUES(10) "
+            "ON CONFLICT(value) DO UPDATE SET id=excluded.value",
+            ["id"],
+            True,
+        ),
+        ("INSERT INTO child(id, value) VALUES(2, 10)", [], False),
+        (
+            "INSERT INTO child(id, value) VALUES(2, 10) ON CONFLICT(value) DO NOTHING",
+            [],
+            False,
+        ),
+        (
+            "INSERT INTO child(id, value) VALUES(2, 10) "
+            "ON CONFLICT(value) DO UPDATE SET value=excluded.value",
+            ["value"],
+            False,
+        ),
+        ("UPDATE child SET id=2 WHERE value=10", ["id"], True),
+        ("UPDATE child SET value=20 WHERE id=1", ["value"], False),
+    ],
+    ids=[
+        "upsert-literal-key",
+        "upsert-excluded-key",
+        "insert-key",
+        "do-nothing-key",
+        "upsert-non-key",
+        "update-key",
+        "update-non-key",
+    ],
+)
+def test_sqlite_restore_key_checks_update_assignments(statement, columns, changes_key):
+    mutation = analyze_dml(statement, sqlglot_dialect="sqlite")
+
+    assert mutation.updated_columns == columns
+    assert updates_restore_key(statement, ("id",), sqlglot_dialect="sqlite") is changes_key
+
+
+@pytest.mark.parametrize("dialect", ["sqlite", "postgres", "duckdb"])
+@pytest.mark.parametrize(
+    "statement, columns, changes_key",
+    [
+        (
+            "INSERT INTO child(id,value) VALUES(2,10) "
+            "ON CONFLICT(value) DO UPDATE SET (id,value)=(2,11)",
+            ["id", "value"],
+            True,
+        ),
+        ("UPDATE child SET (id,value)=(2,11) WHERE id=1", ["id", "value"], True),
+        (
+            "INSERT INTO child(id,value,other) VALUES(2,10,20) "
+            "ON CONFLICT(value) DO UPDATE SET (value,other)=(11,21)",
+            ["value", "other"],
+            False,
+        ),
+        (
+            "INSERT INTO child(id,value) VALUES(2,10) "
+            'ON CONFLICT(value) DO UPDATE SET ("value","id")=(excluded.value,excluded.id)',
+            ["value", "id"],
+            True,
+        ),
+        (
+            "INSERT INTO child(id,value,other) VALUES(2,10,20) "
+            "ON CONFLICT(value) DO UPDATE SET (value,other)=(excluded.id,21)",
+            ["value", "other"],
+            False,
+        ),
+    ],
+    ids=[
+        "upsert-tuple-key",
+        "update-tuple-key",
+        "upsert-tuple-non-key",
+        "upsert-tuple-quoted-key",
+        "upsert-tuple-key-on-rhs",
+    ],
+)
+def test_restore_key_checks_tuple_update_assignments(dialect, statement, columns, changes_key):
+    mutation = analyze_dml(statement, sqlglot_dialect=dialect)
+
+    assert mutation.updated_columns == columns
+    assert updates_restore_key(statement, ("id",), sqlglot_dialect=dialect) is changes_key
+
+
+@pytest.mark.parametrize("dialect", ["sqlite", "duckdb"])
+@pytest.mark.parametrize(
+    "statement, columns, changes_key",
+    [
+        (
+            "INSERT INTO child(id,value) VALUES(2,10) " "ON CONFLICT(value) DO UPDATE SET (id)=(2)",
+            ["id"],
+            True,
+        ),
+        ("UPDATE child SET (id)=(2) WHERE id=1", ["id"], True),
+        (
+            "INSERT INTO child(id,value) VALUES(2,10) "
+            "ON CONFLICT(value) DO UPDATE SET (value)=(excluded.id)",
+            ["value"],
+            False,
+        ),
+    ],
+    ids=["upsert-parenthesized-key", "update-parenthesized-key", "upsert-key-on-rhs"],
+)
+def test_restore_key_checks_parenthesized_update_assignments(
+    dialect, statement, columns, changes_key
+):
+    mutation = analyze_dml(statement, sqlglot_dialect=dialect)
+
+    assert mutation.updated_columns == columns
+    assert updates_restore_key(statement, ("id",), sqlglot_dialect=dialect) is changes_key
+
+
 def test_updates_restore_key_is_configurable():
     # A custom restore key (tenant) is flagged when configured...
     assert updates_restore_key("UPDATE t SET tenant = 1 WHERE id = 1;", ("tenant",))

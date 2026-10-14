@@ -521,8 +521,6 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
         )
         events = _sqlglot_events(ast)
         columns = tuple(_sqlglot_updated_columns(ast))
-        if isinstance(ast, exp.Insert) and isinstance(ast.this, exp.Schema):
-            columns = tuple(x.name for x in ast.this.expressions)
         references = (
             _merge_referenced(ast)
             if isinstance(ast, exp.Merge)
