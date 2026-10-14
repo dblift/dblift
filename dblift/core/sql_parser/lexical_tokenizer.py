@@ -6,7 +6,7 @@ from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.core.sql_parser.base_tokenizer import BaseTokenizer
 from dblift.core.sql_parser.batch_commands import read_command
 from dblift.core.sql_parser.client_directives import classify_directive, is_free_text
-from dblift.core.sql_parser.lexical_spec import DirectiveAction, LexicalSpec
+from dblift.core.sql_parser.lexical_spec import BOM, DirectiveAction, LexicalSpec
 from dblift.core.sql_parser.tokens import Token, TokenType
 from dblift.core.sql_parser.unit_heads import decide
 
@@ -98,10 +98,10 @@ class LexicalTokenizer(BaseTokenizer):
         # End of a block comment read where a directive could begin: a directive
         # may follow it on the same line.
         self._clear_from: Optional[int] = None
-        # Batch scripts: the line on which the last code token ended, and where the last
-        # comment ended (a command may follow blanks and comments, not code, on its line).
+        # Batch scripts: whether only blanks and comments precede the cursor on its line (a
+        # command may follow them, nothing else), and the line the last comment ended on.
         self._batches = spec.batch_script
-        self._last_code_line = 0
+        self._line_head = True
         self._comment_end_line = 0
 
     def _next_sql_token(self) -> Optional[Token]:
@@ -119,7 +119,7 @@ class LexicalTokenizer(BaseTokenizer):
         if self.spec.sqlite_shell:
             return self._next_sqlite_token()
 
-        if self.spec.leading_bom_is_blank and self.pos == 0 and self.peek() == "\ufeff":
+        if self.spec.leading_bom_is_blank and self.pos == 0 and self.peek() == BOM:
             self.pos = 1  # offsets stay source offsets; columns do not count the BOM
 
         self._skip_whitespace()
@@ -132,7 +132,7 @@ class LexicalTokenizer(BaseTokenizer):
             if directive is not None:
                 return directive
 
-        if self._batches is not None and self._at_line_head():
+        if self._batches is not None and self._line_head and self.peek(2) not in ("--", "/*"):
             count = read_command(
                 self._batches,
                 self.spec.client_name,
@@ -431,8 +431,31 @@ class LexicalTokenizer(BaseTokenizer):
         if self.spec.plain_string_escapes:
             return self._handle_escape_string()
 
-        # Standard single-quoted string
-        return super()._handle_string()
+        return self._handle_standard_string()
+
+    def _handle_standard_string(self) -> Token:
+        """Read ``'...'``: a doubled quote is part of the string. Linear in the string length."""
+        start_pos, start_line, start_col = self.pos, self.line, self.col
+        quote = self.read()
+        while True:
+            end = self.sql.find(quote, self.pos)
+            if end < 0:
+                self.read(len(self.sql) - self.pos)
+                raise UnsafeStatementSplitError(
+                    f"unterminated string opened at line {start_line}, column {start_col}"
+                )
+            self.read(end + 1 - self.pos)
+            if self.peek() != quote:
+                break
+            self.read()
+        return Token(
+            TokenType.STRING,
+            self.sql[start_pos : self.pos],
+            start_pos,
+            start_line,
+            start_col,
+            self.parens_depth,
+        )
 
     def _handle_escape_string(self) -> Token:
         """Read a backslash-escaped literal, including an optional E prefix."""
@@ -568,29 +591,19 @@ class LexicalTokenizer(BaseTokenizer):
             self.parens_depth,
         )
 
-    def _at_line_head(self) -> bool:
-        """Whether only blanks and comments precede the cursor on its line, and no code token."""
-        assert self._batches is not None
-        if self._last_code_line >= self.line:
-            return False
+    def _skip_whitespace(self) -> None:
+        """Skip what ``str.isspace`` accepts; a character that is not a blank ends the line head."""
+        if self._batches is None:
+            super()._skip_whitespace()
+            return
         blanks = self._batches.blanks
-        comment = len(self.comments) - 1
-        index = self.pos
-        while index > 0:
-            if comment >= 0 and index == self.comments[comment][1]:
-                start = self.comments[comment][0]
-                comment -= 1
-                if self.sql.find("\n", start, index) >= 0:
-                    return True  # the comment began on an earlier line: the line starts inside it
-                index = start
-                continue
-            char = self.sql[index - 1]
+        while self.pos < len(self.sql) and self.sql[self.pos].isspace():
+            char = self.sql[self.pos]
             if char == "\n":
-                return True
-            if char not in blanks:
-                return index == 1 and char == "\ufeff" and self.spec.leading_bom_is_blank
-            index -= 1
-        return True
+                self._line_head = True
+            elif char not in blanks:
+                self._line_head = False
+            self.read()
 
     def _separator_token(self) -> Token:
         """The rest of the line, a trailing CR included, as one DIRECTIVE token."""
@@ -652,8 +665,12 @@ class LexicalTokenizer(BaseTokenizer):
         token = self._next_sql_token()
         if token is None:
             return None
-        if self._batches is not None and token.type not in (TokenType.COMMENT, TokenType.EOF):
-            self._last_code_line = self.line
+        if self._batches is not None:
+            if token.type == TokenType.COMMENT:
+                if self.sql.find("\n", token.pos, self.pos) >= 0:
+                    self._line_head = True  # the line the comment ends on starts inside it
+            elif token.type != TokenType.EOF:
+                self._line_head = False
         if self._reads_directives and token.type != TokenType.DIRECTIVE:
             if clear and token.type == TokenType.COMMENT and self.sql.startswith("/*", token.pos):
                 self._clear_from = self.pos
