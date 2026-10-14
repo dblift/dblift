@@ -266,9 +266,13 @@ def _eq_target_columns(expressions: Any) -> List[str]:
     for assignment in expressions or []:
         if isinstance(assignment, exp.EQ):
             target = assignment.this
-            name = getattr(target, "name", "") or target.sql()
-            if name:
-                columns.append(name)
+            targets = target.expressions if isinstance(target, exp.Tuple) else [target]
+            for column in targets:
+                if isinstance(column, exp.Paren):
+                    column = column.this
+                name = getattr(column, "name", "") or column.sql()
+                if name:
+                    columns.append(name)
     return columns
 
 
