@@ -418,6 +418,31 @@ def _head_facts(sql: str, diagnostic: str, *, dialect: str = "") -> StatementFac
     return StatementFacts(operation, kind, objects, diagnostic=diagnostic)
 
 
+def _mysql_unresolved_mutation_target(ast: exp.Expression) -> bool:
+    """Refuse multiple or unproven targets before projecting singular mutation facts."""
+    if isinstance(ast, exp.Delete):
+        return len(ast.args.get("tables") or []) > 1 or bool(
+            ast.args.get("using") and isinstance(ast.this, exp.Table) and ast.this.args.get("joins")
+        )
+    if not isinstance(ast, exp.Update) or not isinstance(ast.this, exp.Table):
+        return False
+    table = ast.this
+    if not table.args.get("joins"):
+        return False
+    # A JOIN is not itself evidence of multiple write targets. Every SET left-hand
+    # side must explicitly name the leading target; unqualified columns need a catalogue.
+    for assignment in ast.expressions:
+        column = assignment.this
+        if (
+            not isinstance(column, exp.Column)
+            or column.table != table.alias_or_name
+            or (column.db and column.db != table.db)
+            or (column.catalog and column.catalog != table.catalog)
+        ):
+            return True
+    return False
+
+
 def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
     """Read one already-split statement; never retry a second extractor.
 
@@ -648,6 +673,13 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
         and isinstance(ast, exp.Merge)
     ):
         operation = type(ast).__name__.upper()
+        if (
+            dialect == "mysql"  # lint: allow-dialect-string: MySQL permits multi-target mutations
+            and _mysql_unresolved_mutation_target(ast)
+        ):
+            return StatementFacts(
+                operation, "DML", diagnostic="mysql mutation has multiple or unproven targets"
+            )
         table = _dml_target_table(ast)
         identity = _named(table, SqlObjectType.TABLE, "altered") if table else None
         target = (
