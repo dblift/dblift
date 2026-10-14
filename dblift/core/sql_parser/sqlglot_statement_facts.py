@@ -539,6 +539,39 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
             action=action,
         )
 
+    if (
+        dialect == "postgres"  # lint: allow-dialect-string: PostgreSQL explicit TRUNCATE targets
+        and isinstance(ast, exp.TruncateTable)
+        and ast.expressions
+        and ast.args.get("identity") in (None, "RESTART", "CONTINUE")
+        and str(ast.args.get("option") or "").upper() in ("", "CASCADE", "RESTRICT")
+        and not any(
+            value
+            for key, value in ast.args.items()
+            if key not in {"expressions", "identity", "option"}
+        )
+        and all(
+            isinstance(target, exp.Table)
+            and isinstance(target.this, exp.Identifier)
+            and target.name
+            and target.args.get("catalog") is None
+            and (target.args.get("db") is None or target.db)
+            and not any(
+                value
+                for key, value in target.args.items()
+                if key not in {"this", "db", "catalog", "only"}
+            )
+            for target in ast.expressions
+        )
+    ):
+        # Named targets only: inheritance, CASCADE and identity-sequence effects need a catalogue.
+        identities = tuple(
+            identity
+            for target in ast.expressions
+            if (identity := _named(target, SqlObjectType.TABLE, "altered")) is not None
+        )
+        return StatementFacts("TRUNCATE", "DDL", identities)
+
     if dialect == "duckdb" and isinstance(ast, exp.TruncateTable):
         targets = ast.expressions
         target = targets[0] if len(targets) == 1 else None

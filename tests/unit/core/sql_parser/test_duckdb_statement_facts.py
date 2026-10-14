@@ -155,7 +155,7 @@ def test_duckdb_truncate_non_table_targets_are_opaque(sql):
 def test_duckdb_truncate_facts_do_not_change_other_mappings():
     delete = read_statement_facts("DELETE FROM t WHERE id = 1", dialect="duckdb")
     drop = read_statement_facts("DROP TABLE t", dialect="duckdb")
-    postgres_truncate = read_statement_facts("TRUNCATE TABLE t", dialect="postgres")
+    oracle_truncate = read_statement_facts("TRUNCATE TABLE t", dialect="oracle")
 
     assert delete.operation == "DELETE"
     assert delete.kind == "DML"
@@ -163,7 +163,7 @@ def test_duckdb_truncate_facts_do_not_change_other_mappings():
     assert drop.operation == "DROP"
     assert drop.kind == "DDL"
     assert drop.objects == (NamedObject("t", SqlObjectType.TABLE, "dropped"),)
-    assert postgres_truncate.operation == "TRUNCATE"
-    assert postgres_truncate.kind == "UNKNOWN"
-    assert postgres_truncate.objects == ()
-    assert postgres_truncate.opaque
+    assert oracle_truncate.operation == "TRUNCATE"
+    assert oracle_truncate.kind == "UNKNOWN"
+    assert oracle_truncate.objects == ()
+    assert oracle_truncate.opaque
