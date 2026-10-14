@@ -73,6 +73,41 @@ def test_mysql_markers_in_literals_identifiers_and_plain_comments_are_not_execut
     assert facts.objects == (NamedObject("items", SqlObjectType.TABLE, "referenced"),)
 
 
+# LF ends the comment immediately; the remaining ASCII controls and space keep it open.
+_LINE_COMMENT_SEPARATORS = [chr(code) for code in (*range(1, 10), *range(11, 33), 127)]
+
+
+@pytest.mark.parametrize("separator", _LINE_COMMENT_SEPARATORS, ids=repr)
+@pytest.mark.parametrize("marker", ["/*!", "/*M!"])
+def test_mysql_control_character_comment_hides_inactive_marker(separator, marker):
+    facts = SqlglotStatementFactsReader("mysql").read(
+        f"UPDATE items SET a=1 --{separator}{marker}50000 , b=2 */"
+    )
+
+    assert not facts.opaque
+    assert facts.target == "items"
+    assert facts.affected_columns == ("a",)
+    assert facts.events == frozenset({"UPDATE"})
+
+
+@pytest.mark.parametrize("separator", _LINE_COMMENT_SEPARATORS, ids=repr)
+@pytest.mark.parametrize("marker", ["/*!", "/*M!"])
+def test_mysql_quote_in_control_character_comment_does_not_hide_active_marker(separator, marker):
+    facts = SqlglotStatementFactsReader("mysql").read(
+        f"UPDATE items SET a=1 --{separator}'\n{marker}50000 , b=2 */"
+    )
+
+    assert facts.opaque
+    assert facts.diagnostic
+    assert facts.error is None
+    assert facts.operation == "UNKNOWN"
+    assert facts.kind == "UNKNOWN"
+    assert facts.objects == ()
+    assert facts.target is None
+    assert facts.affected_columns == ()
+    assert facts.events is None
+
+
 @pytest.mark.parametrize("dialect", ["sqlite", "postgres", "duckdb", "oracle", "tsql"])
 @pytest.mark.parametrize("marker", ["/*!", "/*M!"])
 def test_mysql_comment_guard_preserves_other_dialect_facts(dialect, marker):

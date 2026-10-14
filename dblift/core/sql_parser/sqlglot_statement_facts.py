@@ -56,12 +56,12 @@ _UPDATE_OR = re.compile(
 )
 _FIRST_WORD = re.compile(r"^\s*([A-Za-z]+)")
 # Default MySQL lexical rules from docs/sql-parsing/mysql.md: backslashes escape strings,
-# not backticks; -- needs whitespace; ordinary block comments do not nest.
+# not backticks; -- needs whitespace/control; ordinary block comments do not nest.
 _MYSQL_QUOTES_AND_COMMENTS = re.compile(
     r"'(?:''|\\.|[^'\\])*(?:'|\Z)|"
     r'"(?:""|\\.|[^"\\])*(?:"|\Z)|'
     r"`(?:``|[^`])*(?:`|\Z)|"
-    r"(?:\#|--(?=[ \t\r\n\v\f]|\Z))[^\n]*|/\*.*?(?:\*/|\Z)",
+    r"(?:\#|--(?=[\x00-\x20\x7f]|\Z))[^\n]*|/\*.*?(?:\*/|\Z)",
     re.DOTALL,
 )
 _KINDS = {
