@@ -65,15 +65,7 @@ class SQLiteFactsParser(SqlParserInterface):
         self, sql_content: str, default_schema: Optional[str] = None
     ) -> List[SqlObject]:
         """Return identities of changed objects from statement facts."""
-        try:
-            fragments = self.split_for_analysis(sql_content)
-        except (UnsafeStatementSplitError, UnsupportedMetaCommandError):
-            from dblift.core.sql_parser.sqlglot_statement_facts import scan_head_objects
-
-            return [
-                obj.as_sql_object(default_schema, "sqlite")
-                for obj in scan_head_objects(sql_content)
-            ]
+        fragments = self.split_for_analysis(sql_content)
         return [
             obj.as_sql_object(default_schema, "sqlite")
             for sql in fragments

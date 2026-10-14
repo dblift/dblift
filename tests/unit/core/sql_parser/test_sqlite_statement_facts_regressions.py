@@ -6,8 +6,10 @@ import textwrap
 
 import pytest
 
+from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
 from dblift.core.migration.sql.script_analysis import analyse_script
 from dblift.core.sql_model.base import SqlObjectType
+from dblift.core.sql_parser.parser_factory import SqlParserFactory
 from dblift.core.sql_parser.statement_facts import SqlglotStatementFactsReader
 from dblift.db.dml_analysis import analyze_dml, is_full_table_dml, statement_dml_table
 from dblift.db.plugins.sqlite.parser.lexical_spec import SQLITE_SPEC
@@ -126,8 +128,33 @@ def test_parse_sql_reports_the_refusal_as_an_error(script):
 
 
 @pytest.mark.parametrize("script", REFUSED)
-def test_extract_objects_returns_nothing_for_a_refused_script(script):
-    assert PARSER.extract_objects(script) == []
+def test_extract_objects_propagates_the_refusal(script):
+    with pytest.raises((UnsafeStatementSplitError, UnsupportedMetaCommandError)):
+        PARSER.extract_objects(script)
+
+
+@pytest.mark.parametrize("parser_class", [SQLiteFactsParser, lambda: SqlParserFactory("sqlite")])
+@pytest.mark.parametrize(
+    "statement",
+    [
+        "SELECT '; CREATE TABLE invented(x);';",
+        "CREATE TABLE real(x TEXT DEFAULT '; DROP TABLE victim;');",
+    ],
+)
+@pytest.mark.parametrize(
+    "suffix, error_class, line",
+    [
+        (".read x.sql", UnsupportedMetaCommandError, 2),
+        ("/* open", UnsafeStatementSplitError, 2),
+        ("SELECT 1\nGO\n", UnsafeStatementSplitError, 3),
+        ("SELECT 6\n/\n2;", UnsafeStatementSplitError, 3),
+    ],
+)
+def test_extraction_rejects_refused_scripts_without_scanning_quoted_sql(
+    parser_class, statement, suffix, error_class, line
+):
+    with pytest.raises(error_class, match=f"line {line}"):
+        parser_class().extract_objects(f"{statement}\n{suffix}")
 
 
 @pytest.mark.parametrize("script", REFUSED)
