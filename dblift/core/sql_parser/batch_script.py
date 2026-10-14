@@ -3,7 +3,7 @@
 from typing import List, Optional, Sequence, Tuple
 
 from dblift.core.sql_parser.batch_commands import read_command
-from dblift.core.sql_parser.batch_division import code_positions, code_spans, has_code
+from dblift.core.sql_parser.batch_division import code_positions, code_spans, divide, has_code
 from dblift.core.sql_parser.lexical_spec import BatchScriptRules
 from dblift.core.sql_parser.statement import Statement
 from dblift.core.sql_parser.tokens import Token, TokenType
@@ -54,14 +54,17 @@ class BatchScript:
             newline = source.find("\n", token.pos)
             following = len(source) if newline < 0 else newline + 1
             count = read_command(self.rules, self.client_name, token.text, 0, token.line, False)
-            self._add(records, positions, start, cut, line, self.rules.separator, count, following)
+            self._add(
+                records, spans, positions, start, cut, line, self.rules.separator, count, following
+            )
             start, line = following, token.line + 1
-        self._add(records, positions, start, len(source), line, None, 1, len(source))
+        self._add(records, spans, positions, start, len(source), line, None, 1, len(source))
         return records
 
     def _add(
         self,
         records: List[Tuple[Statement, str]],
+        spans: Sequence[Tuple[int, int]],
         positions: Sequence[int],
         start: int,
         cut: int,
@@ -81,6 +84,7 @@ class BatchScript:
             line=line + raw.count("\n", 0, lead),
             terminator=terminator,
             repeat=1 if count is None else count,
+            analysis_statements=divide(self.rules, self.source, start, cut, spans, positions),
             source_start=start,
             source_end=end,
         )

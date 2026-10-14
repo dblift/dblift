@@ -1164,7 +1164,7 @@ def test_record_fields_that_do_not_compare_are_asserted():
     first, second = engine().split("\ufeffSELECT 1\nGO\nSELECT 2")
     assert (first.source_start, first.source_end, first.line) == (1, 13, 1)
     assert (second.source_start, second.source_end, second.line) == (13, 21, 3)
-    assert (first.kind, first.multi, first.analysis_statements) == ("sql", False, None)
+    assert (first.kind, first.multi, first.analysis_statements) == ("sql", False, ("SELECT 1",))
 
 
 def test_split_statements_repeats_and_go_zero_logs(caplog):
