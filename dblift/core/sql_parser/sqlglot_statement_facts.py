@@ -85,6 +85,22 @@ def _named(node: exp.Expression, kind: SqlObjectType, role: str) -> Optional[Nam
     return NamedObject(table.name, kind, role, schema)
 
 
+def _mysql_identifier_is_proven(identifier: exp.Expression, sql: str) -> bool:
+    """Accept only source tokens stable without knowing the server's SQL mode."""
+    if not isinstance(identifier, exp.Identifier) or not identifier.name:
+        return False
+    start, end = identifier.meta.get("start"), identifier.meta.get("end")
+    if not isinstance(start, int) or not isinstance(end, int):
+        return False
+    mysql = Dialect.get_or_raise("mysql")  # lint: allow-dialect-string: MySQL tokens
+    tokens = mysql.tokenize(sql[start : end + 1])
+    return (
+        len(tokens) == 1
+        and tokens[0].token_type in {TokenType.VAR, TokenType.IDENTIFIER}
+        and tokens[0].text == identifier.name
+    )
+
+
 def _qualified_index(
     index: exp.Index,
 ) -> Optional[Tuple[str, str, str, list[exp.Expression]]]:
@@ -775,9 +791,23 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
         if (
             dialect == "mysql"  # lint: allow-dialect-string: MySQL DROP INDEX names its table
             and object_type == SqlObjectType.INDEX
-            and isinstance(on, exp.OnProperty)
-            and isinstance(on.this, exp.Identifier)
         ):
+            index = targets[0] if len(targets) == 1 else None
+            if not (
+                isinstance(index, exp.Table)
+                and index.args.get("db") is None
+                and index.args.get("catalog") is None
+                and _mysql_identifier_is_proven(index.this, sql)
+                and isinstance(on, exp.OnProperty)
+                and _mysql_identifier_is_proven(on.this, sql)
+            ) or any(
+                value
+                for key, value in ast.args.items()
+                if key not in {"tables", "kind", "cluster", "exists"}
+            ):
+                return StatementFacts(
+                    "DROP", "DDL", dropped_objects, diagnostic="mysql DROP INDEX relation is opaque"
+                )
             indexed_table = on.this.name
             dropped_objects += (NamedObject(indexed_table, SqlObjectType.TABLE, "referenced"),)
         return StatementFacts("DROP", "DDL", dropped_objects, indexed_table=indexed_table)

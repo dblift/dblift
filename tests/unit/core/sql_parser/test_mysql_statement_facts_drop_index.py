@@ -52,6 +52,44 @@ def test_mysql_unproven_drop_index_relations_remain_opaque(sql):
     assert all(obj.type != SqlObjectType.TABLE for obj in facts.objects)
 
 
+@pytest.mark.parametrize(
+    "target", ["'t'", "''", "``", '"t"', "123", "1e3", "NULL", "TRUE", "DEFAULT"]
+)
+def test_mysql_drop_index_pseudo_identifiers_do_not_prove_a_table(target):
+    facts = read_statement_facts(f"DROP INDEX idx ON {target}", dialect="mysql")
+
+    assert facts.opaque
+    assert facts.indexed_table is None
+    assert all(obj.type != SqlObjectType.TABLE for obj in facts.objects)
+
+
+@pytest.mark.parametrize("option", ["CASCADE", "RESTRICT", "PURGE", "SYNC"])
+def test_mysql_drop_index_unmodelled_options_do_not_prove_a_relation(option):
+    facts = read_statement_facts(f"DROP INDEX idx ON t {option}", dialect="mysql")
+
+    assert facts.opaque
+    assert facts.indexed_table is None
+    assert all(obj.type != SqlObjectType.TABLE for obj in facts.objects)
+
+
+@pytest.mark.parametrize("index", ["``", "'idx'", '"idx"', "NULL"])
+def test_mysql_drop_index_unproven_index_does_not_prove_a_relation(index):
+    facts = read_statement_facts(f"DROP INDEX {index} ON t", dialect="mysql")
+
+    assert facts.opaque
+    assert all(obj.type != SqlObjectType.TABLE for obj in facts.objects)
+    assert facts.indexed_table is None
+
+
+@pytest.mark.parametrize("index", ["``.idx", "``.``.idx"])
+def test_mysql_drop_index_empty_qualifiers_remain_opaque(index):
+    facts = read_statement_facts(f"DROP INDEX {index} ON t", dialect="mysql")
+
+    assert facts.opaque
+    assert facts.indexed_table is None
+    assert all(obj.type != SqlObjectType.TABLE for obj in facts.objects)
+
+
 @pytest.mark.parametrize("dialect", ["sqlite", "duckdb", "postgres", "oracle", "tsql"])
 def test_other_dialect_drop_indexes_do_not_gain_a_mysql_relation(dialect):
     facts = read_statement_facts("DROP INDEX idx", dialect=dialect)
