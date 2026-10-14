@@ -247,6 +247,16 @@ def _merge_referenced(node: exp.Merge) -> Tuple[NamedObject, ...]:
     return tuple(found)
 
 
+def _is_merge_column(column: exp.Expr) -> bool:
+    """Whether a MERGE action names one nonempty, unqualified whole column."""
+    return (
+        isinstance(column, exp.Column)
+        and isinstance(column.this, exp.Identifier)
+        and bool(column.name)
+        and all(column.args.get(part) is None for part in ("catalog", "db", "table"))
+    )
+
+
 def _postgres_merge_facts(node: exp.Merge) -> Optional[StatementFacts]:
     """Read explicit MERGE actions; affected columns describe UPDATE assignments only."""
     from sqlglot.optimizer.scope import traverse_scope
@@ -262,7 +272,7 @@ def _postgres_merge_facts(node: exp.Merge) -> Optional[StatementFacts]:
         for source in node.find_all(exp.Table)
     ):
         return None
-    if table.args.get("joins") or not node.args.get("on"):
+    if table.args.get("joins") or not node.args.get("on") or node.args.get("using_cond"):
         return None
     if not isinstance(node.args.get("using"), (exp.Table, exp.Subquery, exp.Values)):
         return None
@@ -274,6 +284,8 @@ def _postgres_merge_facts(node: exp.Merge) -> Optional[StatementFacts]:
     events: set[str] = set()
     for when in whens.expressions:
         action = when.args.get("then")
+        if action is not None and action.args.get("where") is not None:
+            return None
         matches_target = when.args.get("matched") or when.args.get("source")
         if isinstance(action, exp.Update) and matches_target:
             if not action.expressions:
@@ -286,16 +298,25 @@ def _postgres_merge_facts(node: exp.Merge) -> Optional[StatementFacts]:
                     if isinstance(assignment.this, exp.Tuple)
                     else [assignment.this]
                 )
-                if not columns or any(
-                    not isinstance(column, exp.Column)
-                    or not isinstance(column.this, exp.Identifier)
-                    or column.table
-                    for column in columns
-                ):
+                if not columns or not all(_is_merge_column(column) for column in columns):
                     return None
             events.add("UPDATE")
         elif isinstance(action, exp.Insert) and not matches_target:
-            if action.this is not None and not isinstance(action.this, exp.Tuple):
+            insert_columns = action.this.expressions if isinstance(action.this, exp.Tuple) else []
+            if action.this is not None and (
+                not insert_columns or not all(_is_merge_column(column) for column in insert_columns)
+            ):
+                return None
+            values = action.expression
+            if values is None:
+                # sqlglot represents DEFAULT VALUES as a single unquoted DEFAULT column.
+                if (
+                    len(insert_columns) != 1
+                    or insert_columns[0].name.upper() != "DEFAULT"
+                    or insert_columns[0].this.args.get("quoted")
+                ):
+                    return None
+            elif not isinstance(values, exp.Tuple) or not values.expressions:
                 return None
             events.add("INSERT")
         elif isinstance(action, exp.Var) and action.name.upper() == "DELETE" and matches_target:

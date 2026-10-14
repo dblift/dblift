@@ -16,6 +16,8 @@ from dblift.db.plugins.postgresql.quirks import PostgresqlQuirks
         ("WHEN NOT MATCHED THEN INSERT (id, value) VALUES (s.id, s.value)", {"INSERT"}, ()),
         ("WHEN NOT MATCHED THEN INSERT VALUES (s.id, s.value)", {"INSERT"}, ()),
         ("WHEN NOT MATCHED THEN INSERT DEFAULT VALUES", {"INSERT"}, ()),
+        ("WHEN NOT MATCHED THEN insert default values", {"INSERT"}, ()),
+        ("WHEN NOT MATCHED THEN insert DeFaUlT values", {"INSERT"}, ()),
         ("WHEN MATCHED THEN DO NOTHING", set(), ()),
         ("WHEN NOT MATCHED THEN DO NOTHING", set(), ()),
         ("WHEN NOT MATCHED BY SOURCE THEN DELETE", {"DELETE"}, ()),
@@ -233,3 +235,55 @@ def test_postgres_merge_quoted_schema_and_cte_collision_preserve_physical_source
         NamedObject("source", SqlObjectType.TABLE, "referenced", "stage.data"),
     )
     assert facts.target_sql == '"currentdb.public"."items"'
+
+
+@pytest.mark.parametrize(
+    "branch",
+    [
+        "WHEN NOT MATCHED THEN INSERT",
+        "WHEN NOT MATCHED THEN INSERT (id)",
+        "WHEN NOT MATCHED THEN INSERT BY NAME",
+        "WHEN NOT MATCHED THEN INSERT VALUES s.id",
+        "WHEN NOT MATCHED THEN INSERT VALUES s",
+        "WHEN NOT MATCHED THEN INSERT (id+1) VALUES(s.id)",
+        "WHEN NOT MATCHED THEN INSERT (id) VALUES(s.id) WHERE FALSE",
+        "WHEN NOT MATCHED THEN INSERT DEFAULT",
+        "WHEN NOT MATCHED THEN INSERT (DEFAULT) VALUES",
+        "WHEN NOT MATCHED THEN INSERT () VALUES ()",
+        "WHEN NOT MATCHED THEN INSERT VALUES ()",
+        'WHEN NOT MATCHED THEN INSERT ("") VALUES (1)',
+        'WHEN NOT MATCHED THEN INSERT ("".id) VALUES (1)',
+        "WHEN NOT MATCHED THEN INSERT (id.field) VALUES (1)",
+        "WHEN MATCHED THEN UPDATE SET value=s.value WHERE FALSE",
+        'WHEN MATCHED THEN UPDATE SET ""=1',
+        'WHEN MATCHED THEN UPDATE SET "".value=1',
+        'WHEN MATCHED THEN UPDATE SET public."".value=1',
+        'WHEN MATCHED THEN UPDATE SET (id, "")=(1,2)',
+    ],
+)
+def test_postgres_merge_unmodelled_action_shapes_are_opaque(branch):
+    facts = read_statement_facts(
+        "MERGE INTO items t USING source s ON t.id=s.id " + branch,
+        dialect="postgres",
+    )
+
+    assert facts.operation == "MERGE"
+    assert facts.opaque
+    assert facts.objects == ()
+    assert facts.target is None
+    assert facts.events is None
+    assert facts.affected_columns == ()
+
+
+def test_postgres_merge_using_condition_extension_is_opaque():
+    facts = read_statement_facts(
+        "MERGE INTO items t USING source s ON t.id=s.id USING(id) WHEN MATCHED THEN DELETE",
+        dialect="postgres",
+    )
+
+    assert facts.operation == "MERGE"
+    assert facts.opaque
+    assert facts.objects == ()
+    assert facts.target is None
+    assert facts.events is None
+    assert facts.affected_columns == ()
