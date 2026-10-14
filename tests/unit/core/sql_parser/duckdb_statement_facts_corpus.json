@@ -95,6 +95,340 @@
         "diagnostic": null,
         "error": null
       }
+    },
+    {
+      "id": "copy_from_file",
+      "source": "DuckDB COPY facts regression: named-table file effects or explicit opaque boundary",
+      "sql": "COPY items FROM '/tmp/items.csv' (FORMAT CSV, HEADER);",
+      "facts": {
+        "operation": "COPY",
+        "kind": "DML",
+        "objects": [
+          {
+            "name": "items",
+            "type": "TABLE",
+            "role": "altered",
+            "schema": null
+          }
+        ],
+        "target": "items",
+        "predicate": null,
+        "affected_columns": [],
+        "events": [
+          "INSERT"
+        ],
+        "diagnostic": null,
+        "error": null
+      }
+    },
+    {
+      "id": "copy_from_qualified_columns",
+      "source": "DuckDB COPY facts regression: named-table file effects or explicit opaque boundary",
+      "sql": "COPY \"Sales\".\"Order Items\" (id, \"Item Value\") FROM '/tmp/items.csv' (FORMAT CSV, FORCE_NOT_NULL (id));",
+      "facts": {
+        "operation": "COPY",
+        "kind": "DML",
+        "objects": [
+          {
+            "name": "Order Items",
+            "type": "TABLE",
+            "role": "altered",
+            "schema": "Sales"
+          }
+        ],
+        "target": "Sales.Order Items",
+        "predicate": null,
+        "affected_columns": [
+          "id",
+          "Item Value"
+        ],
+        "events": [
+          "INSERT"
+        ],
+        "diagnostic": null,
+        "error": null
+      }
+    },
+    {
+      "id": "copy_from_nested_comments_and_path_semicolon",
+      "source": "DuckDB COPY facts regression: named-table file effects or explicit opaque boundary",
+      "sql": "/* outer /* inner */ tail */ COPY /* target */ items (id) FROM '/tmp/items;--/*quoted*/.csv';",
+      "facts": {
+        "operation": "COPY",
+        "kind": "DML",
+        "objects": [
+          {
+            "name": "items",
+            "type": "TABLE",
+            "role": "altered",
+            "schema": null
+          }
+        ],
+        "target": "items",
+        "predicate": null,
+        "affected_columns": [
+          "id"
+        ],
+        "events": [
+          "INSERT"
+        ],
+        "diagnostic": null,
+        "error": null
+      }
+    },
+    {
+      "id": "copy_to_file",
+      "source": "DuckDB COPY facts regression: named-table file effects or explicit opaque boundary",
+      "sql": "COPY items TO '/tmp/items.csv' (FORMAT CSV, HEADER);",
+      "facts": {
+        "operation": "COPY",
+        "kind": "QUERY",
+        "objects": [
+          {
+            "name": "items",
+            "type": "TABLE",
+            "role": "referenced",
+            "schema": null
+          }
+        ],
+        "target": null,
+        "predicate": null,
+        "affected_columns": [],
+        "events": null,
+        "diagnostic": null,
+        "error": null
+      }
+    },
+    {
+      "id": "copy_to_qualified_columns",
+      "source": "DuckDB COPY facts regression: named-table file effects or explicit opaque boundary",
+      "sql": "COPY \"Sales\".\"Order Items\" (id, \"Item Value\") TO '/tmp/items;out.parquet' (FORMAT PARQUET);",
+      "facts": {
+        "operation": "COPY",
+        "kind": "QUERY",
+        "objects": [
+          {
+            "name": "Order Items",
+            "type": "TABLE",
+            "role": "referenced",
+            "schema": "Sales"
+          }
+        ],
+        "target": null,
+        "predicate": null,
+        "affected_columns": [],
+        "events": null,
+        "diagnostic": null,
+        "error": null
+      }
+    },
+    {
+      "id": "copy_query_export_opaque",
+      "source": "DuckDB COPY facts regression: named-table file effects or explicit opaque boundary",
+      "sql": "COPY (SELECT id FROM items) TO '/tmp/items.csv';",
+      "facts": {
+        "operation": "COPY",
+        "kind": "UNKNOWN",
+        "objects": [],
+        "target": null,
+        "predicate": null,
+        "affected_columns": [],
+        "events": null,
+        "diagnostic": "duckdb COPY source or destination is opaque",
+        "error": null
+      }
+    },
+    {
+      "id": "copy_database_opaque",
+      "source": "DuckDB COPY facts regression: named-table file effects or explicit opaque boundary",
+      "sql": "COPY FROM DATABASE source_db TO target_db;",
+      "facts": {
+        "operation": "COPY",
+        "kind": "UNKNOWN",
+        "objects": [],
+        "target": null,
+        "predicate": null,
+        "affected_columns": [],
+        "events": null,
+        "diagnostic": "duckdb COPY source or destination is opaque",
+        "error": null
+      }
+    },
+    {
+      "id": "copy_stdin_opaque",
+      "source": "DuckDB COPY facts regression: named-table file effects or explicit opaque boundary",
+      "sql": "COPY items FROM STDIN;",
+      "facts": {
+        "operation": "COPY",
+        "kind": "UNKNOWN",
+        "objects": [],
+        "target": null,
+        "predicate": null,
+        "affected_columns": [],
+        "events": null,
+        "diagnostic": "duckdb COPY source or destination is opaque",
+        "error": null
+      }
+    },
+    {
+      "id": "copy_stdout_opaque",
+      "source": "DuckDB COPY facts regression: named-table file effects or explicit opaque boundary",
+      "sql": "COPY items TO STDOUT;",
+      "facts": {
+        "operation": "COPY",
+        "kind": "UNKNOWN",
+        "objects": [],
+        "target": null,
+        "predicate": null,
+        "affected_columns": [],
+        "events": null,
+        "diagnostic": "duckdb COPY source or destination is opaque",
+        "error": null
+      }
+    },
+    {
+      "id": "copy_dynamic_placeholder_opaque",
+      "source": "DuckDB COPY facts regression: named-table file effects or explicit opaque boundary",
+      "sql": "COPY items FROM $path;",
+      "facts": {
+        "operation": "COPY",
+        "kind": "UNKNOWN",
+        "objects": [],
+        "target": null,
+        "predicate": null,
+        "affected_columns": [],
+        "events": null,
+        "diagnostic": "duckdb COPY source or destination is opaque",
+        "error": null
+      }
+    },
+    {
+      "id": "copy_dynamic_expression_opaque",
+      "source": "DuckDB COPY facts regression: named-table file effects or explicit opaque boundary",
+      "sql": "COPY items TO ('/tmp/' || 'items.csv');",
+      "facts": {
+        "operation": "COPY",
+        "kind": "UNKNOWN",
+        "objects": [],
+        "target": null,
+        "predicate": null,
+        "affected_columns": [],
+        "events": null,
+        "diagnostic": "duckdb COPY source or destination is opaque",
+        "error": null
+      }
+    },
+    {
+      "id": "copy_dynamic_unparenthesized_expression_opaque",
+      "source": "DuckDB COPY facts regression: named-table file effects or explicit opaque boundary",
+      "sql": "COPY items FROM '/tmp/' || 'items.csv';",
+      "facts": {
+        "operation": "COPY",
+        "kind": "UNKNOWN",
+        "objects": [],
+        "target": null,
+        "predicate": null,
+        "affected_columns": [],
+        "events": null,
+        "diagnostic": "duckdb COPY source or destination is opaque",
+        "error": null
+      }
+    },
+    {
+      "id": "copy_parenthesized_path_opaque",
+      "source": "DuckDB COPY facts regression: named-table file effects or explicit opaque boundary",
+      "sql": "COPY items FROM ('/tmp/items.csv');",
+      "facts": {
+        "operation": "COPY",
+        "kind": "UNKNOWN",
+        "objects": [],
+        "target": null,
+        "predicate": null,
+        "affected_columns": [],
+        "events": null,
+        "diagnostic": "duckdb COPY source or destination is opaque",
+        "error": null
+      }
+    },
+    {
+      "id": "copy_numeric_path_opaque",
+      "source": "DuckDB COPY facts regression: named-table file effects or explicit opaque boundary",
+      "sql": "COPY items FROM 42;",
+      "facts": {
+        "operation": "COPY",
+        "kind": "UNKNOWN",
+        "objects": [],
+        "target": null,
+        "predicate": null,
+        "affected_columns": [],
+        "events": null,
+        "diagnostic": "duckdb COPY source or destination is opaque",
+        "error": null
+      }
+    },
+    {
+      "id": "copy_multiple_files_opaque",
+      "source": "DuckDB COPY facts regression: named-table file effects or explicit opaque boundary",
+      "sql": "COPY items FROM 'a.csv', 'b.csv';",
+      "facts": {
+        "operation": "COPY",
+        "kind": "UNKNOWN",
+        "objects": [],
+        "target": null,
+        "predicate": null,
+        "affected_columns": [],
+        "events": null,
+        "diagnostic": "duckdb COPY source or destination is opaque",
+        "error": null
+      }
+    },
+    {
+      "id": "copy_dollar_path_opaque",
+      "source": "DuckDB COPY facts regression: named-table file effects or explicit opaque boundary",
+      "sql": "COPY items FROM $$items.csv$$;",
+      "facts": {
+        "operation": "COPY",
+        "kind": "UNKNOWN",
+        "objects": [],
+        "target": null,
+        "predicate": null,
+        "affected_columns": [],
+        "events": null,
+        "diagnostic": "duckdb COPY source or destination is opaque",
+        "error": null
+      }
+    },
+    {
+      "id": "copy_escape_path_opaque",
+      "source": "DuckDB COPY facts regression: named-table file effects or explicit opaque boundary",
+      "sql": "COPY items FROM E'items.csv';",
+      "facts": {
+        "operation": "COPY",
+        "kind": "UNKNOWN",
+        "objects": [],
+        "target": null,
+        "predicate": null,
+        "affected_columns": [],
+        "events": null,
+        "diagnostic": "duckdb COPY source or destination is opaque",
+        "error": null
+      }
+    },
+    {
+      "id": "copy_function_source_opaque",
+      "source": "DuckDB COPY facts regression: named-table file effects or explicit opaque boundary",
+      "sql": "COPY read_csv('items.csv') TO '/tmp/items.csv';",
+      "facts": {
+        "operation": "COPY",
+        "kind": "UNKNOWN",
+        "objects": [],
+        "target": null,
+        "predicate": null,
+        "affected_columns": [],
+        "events": null,
+        "diagnostic": "duckdb COPY source or destination is opaque",
+        "error": null
+      }
     }
   ]
 }

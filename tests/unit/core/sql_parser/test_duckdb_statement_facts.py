@@ -1,4 +1,4 @@
-"""DuckDB MERGE facts retain mutation details without changing parser dispatch."""
+"""DuckDB statement facts retain effects without changing parser dispatch."""
 
 import json
 from pathlib import Path
@@ -18,7 +18,7 @@ CASES = json.loads(
 
 
 @pytest.mark.parametrize("case", CASES, ids=lambda case: case["id"])
-def test_merge_facts_keep_targets_references_and_branch_effects(case):
+def test_duckdb_facts_keep_targets_references_and_effects(case):
     statements = scan_script(case["sql"])
     assert len(statements) == 1
     facts = read_statement_facts(statements[0].text, dialect="duckdb")
@@ -37,6 +37,10 @@ def test_merge_facts_keep_targets_references_and_branch_effects(case):
         "diagnostic": facts.diagnostic,
         "error": facts.error,
     } == case["facts"]
+    assert facts.action is None
+    assert [obj.name for obj in facts.affected_objects] == [
+        obj["name"] for obj in case["facts"]["objects"] if obj["role"] != "referenced"
+    ]
 
 
 def test_duckdb_facts_do_not_activate_parser_consumers():
@@ -57,6 +61,29 @@ def test_merge_facts_remain_opaque_for_other_dialects(dialect):
     assert facts.events is None
     assert facts.affected_columns == ()
     assert facts.opaque
+
+
+@pytest.mark.parametrize("dialect", ["sqlite", "postgres", "oracle", "snowflake", "tsql"])
+def test_copy_facts_remain_opaque_for_other_dialects(dialect):
+    facts = read_statement_facts("COPY items FROM '/tmp/items.csv'", dialect=dialect)
+
+    assert facts.operation == "COPY"
+    assert facts.kind == "UNKNOWN"
+    assert facts.target is None
+    assert facts.target_sql is None
+    assert facts.objects == ()
+    assert facts.events is None
+    assert facts.affected_columns == ()
+    assert facts.action is None
+    assert facts.opaque
+
+
+def test_copy_from_preserves_quoted_target_sql():
+    facts = read_statement_facts(
+        'COPY "Sales"."Order Items" (id) FROM \'/tmp/items.csv\'', dialect="duckdb"
+    )
+
+    assert facts.target_sql == '"Sales"."Order Items"'
 
 
 @pytest.mark.parametrize("update", ["UPDATE", "UPDATE SET *"])
