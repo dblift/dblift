@@ -770,7 +770,17 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
                 if node is not None
                 if (obj := _named(node, object_type, "dropped"))
             )
-        return StatementFacts("DROP", "DDL", dropped_objects)
+        indexed_table = None
+        on = ast.args.get("cluster")
+        if (
+            dialect == "mysql"  # lint: allow-dialect-string: MySQL DROP INDEX names its table
+            and object_type == SqlObjectType.INDEX
+            and isinstance(on, exp.OnProperty)
+            and isinstance(on.this, exp.Identifier)
+        ):
+            indexed_table = on.this.name
+            dropped_objects += (NamedObject(indexed_table, SqlObjectType.TABLE, "referenced"),)
+        return StatementFacts("DROP", "DDL", dropped_objects, indexed_table=indexed_table)
 
     if isinstance(ast, exp.Alter):
         object_type = SqlObjectType.__members__.get(
