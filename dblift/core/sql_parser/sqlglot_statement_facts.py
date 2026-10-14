@@ -372,6 +372,17 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
         return _head_facts(sql, f"{dialect} {construct} is opaque to statement facts")
 
     if (
+        dialect == "duckdb"  # lint: allow-dialect-string: DuckDB macros lack a fact object type
+        and isinstance(ast, (exp.Create, exp.Drop))
+        and str(ast.args.get("kind") or "").upper() in {"MACRO", "FUNCTION"}
+    ):
+        return StatementFacts(
+            type(ast).__name__.upper(),
+            "DDL",
+            diagnostic="duckdb macro identity and body are opaque to statement facts",
+        )
+
+    if (
         dialect == "duckdb"  # lint: allow-dialect-string: COPY facts qualified for DuckDB only
         and isinstance(ast, exp.Copy)
     ):
