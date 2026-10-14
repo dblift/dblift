@@ -435,6 +435,11 @@ class SqlAnalyzer:
         if is_select_into(sql):
             return "DML"
 
+        if self.analysis_mode == "full":
+            quirks = ProviderRegistry.get_quirks(self.dialect)
+            if quirks.supports_statement_facts:
+                return quirks.statement_facts(sql).kind
+
         # Try database-specific parser classification first
         if self.dialect and hasattr(self, "_db_specific_parser") and self._db_specific_parser:
             try:
@@ -529,7 +534,7 @@ class SqlAnalyzer:
             List of dictionaries with object information
         """
         quirks = ProviderRegistry.get_quirks(self.dialect)
-        if quirks.supports_statement_facts:
+        if self.analysis_mode == "full" and quirks.supports_statement_facts:
             facts = quirks.statement_facts(sql)
             return [
                 {
@@ -550,7 +555,7 @@ class SqlAnalyzer:
             Dictionary containing analysis results
         """
         quirks = ProviderRegistry.get_quirks(self.dialect)
-        if quirks.supports_statement_facts:
+        if self.analysis_mode == "full" and quirks.supports_statement_facts:
             facts = quirks.statement_facts(sql)
             return {
                 "type": facts.kind,

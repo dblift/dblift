@@ -183,15 +183,18 @@ class UndoScriptGenerator(_UndoReversersMixin, _UndoExtractorsMixin):
 
         quirks = ProviderRegistry.get_quirks(self.dialect)
         if quirks.supports_statement_facts:
-            from dblift.core.sql_parser.lexical_engine import LexicalEngine
-
-            spec = quirks.lexical_spec()
-            assert spec is not None
+            reverse = (
+                self._reverse_sqlite_facts
+                if quirks.sqlglot_dialect
+                == "sqlite"  # lint: allow-dialect-string: SQLite-only undo contract
+                else self._review_statement_facts
+            )
             return [
                 undo
-                for sql in reversed(LexicalEngine(spec).split_for_analysis(migration.content))
-                if (undo := self._reverse_sqlite_facts(sql, quirks.statement_facts(sql)))
-                is not None
+                for sql in reversed(
+                    self.sql_analyzer.split_statements_for_analysis(migration.content)
+                )
+                if (undo := reverse(sql, quirks.statement_facts(sql))) is not None
             ]
 
         # Parse SQL using the parser to get structured statements with types
@@ -280,6 +283,15 @@ class UndoScriptGenerator(_UndoReversersMixin, _UndoExtractorsMixin):
             filtered_statements.append(undo_stmt)
 
         return filtered_statements
+
+    def _review_statement_facts(self, sql: str, facts: StatementFacts) -> Optional[UndoStatement]:
+        """Require manual undo unless facts establish a read-only statement."""
+        if not facts.opaque and (facts.kind == "QUERY" or facts.operation == "UNKNOWN"):
+            return None
+        reason = f"{facts.operation} cannot be reversed automatically; review it and write the undo by hand"
+        return UndoStatement(
+            f"-- WARNING: {reason}", sql, facts.operation, reason, requires_manual_review=True
+        )
 
     def _reverse_sqlite_facts(self, sql: str, facts: StatementFacts) -> Optional[UndoStatement]:
         """Reverse only SQLite operations whose AST facts determine the target."""

@@ -94,7 +94,7 @@ class BaseQuirks:
         reader_class = self.statement_facts_class
         dialect = self.sqlglot_dialect
         spec = self.lexical_spec()
-        if reader_class is None or dialect is None or spec is None:
+        if reader_class is None or dialect is None:
             raise NotImplementedError("This dialect has no statement facts reader")
         return reader_class(dialect, spec).read(statement)
 

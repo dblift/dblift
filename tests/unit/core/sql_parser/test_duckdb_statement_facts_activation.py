@@ -137,6 +137,8 @@ def test_execution_analyzer_does_not_import_sqlglot():
             "from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer; "
             "analyzer = SqlAnalyzer('duckdb', analysis_mode='execution'); "
             "assert analyzer.get_statement_type('UPDATE child SET id = 2') == 'DML'; "
+            "analyzer.extract_objects('UPDATE child SET id = 2'); "
+            "assert analyzer.analyze_statement('UPDATE child SET id = 2')['type'] == 'DML'; "
             "assert not any(name == 'sqlglot' or name.startswith('sqlglot.') "
             "for name in sys.modules)",
         ],
@@ -144,3 +146,28 @@ def test_execution_analyzer_does_not_import_sqlglot():
         text=True,
     )
     assert probe.returncode == 0, probe.stdout + probe.stderr
+
+
+@pytest.mark.parametrize(
+    "sql", ["SELECT * FROM child", "COPY child TO 'output.csv'", "/* outer /* inner */ tail */"]
+)
+def test_read_only_statements_and_comments_need_no_undo(sql):
+    migration = Migration(script_name="V1__read.sql", content=sql)
+    assert UndoScriptGenerator("duckdb")._generate_undo_statements(migration) == []
+
+
+@pytest.mark.parametrize("sql", ["CREATE TABLE child(id INT)", "FUTURE COMMAND child"])
+def test_mutations_and_unknown_commands_require_manual_undo(sql):
+    migration = Migration(script_name="V1__child.sql", content=sql)
+    undo = UndoScriptGenerator("duckdb")._generate_undo_statements(migration)
+    assert len(undo) == 1
+    assert undo[0].requires_manual_review
+    assert undo[0].warning
+    assert all(line.lstrip().startswith("--") for line in undo[0].sql.splitlines() if line.strip())
+
+
+@pytest.mark.parametrize("mode", ["regex", "hybrid", "sqlglot"])
+@pytest.mark.parametrize("sql", [CTE_UPDATE, COPY_FROM])
+def test_factory_affected_objects_projects_facts(mode, sql):
+    objects = SqlParserFactory("duckdb", mode).get_affected_objects(sql)
+    assert [(obj.object_type.value, obj.name) for obj in objects] == [("TABLE", "child")]
