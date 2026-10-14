@@ -504,6 +504,11 @@ def _head_facts(sql: str, diagnostic: str, *, dialect: str = "") -> StatementFac
         first = _FIRST_WORD.match(head)
     operation = first.group(1).upper() if first else "UNKNOWN"
     kind = _KINDS.get(operation, "UNKNOWN")
+    if (
+        dialect == "mysql"  # lint: allow-dialect-string: unread MySQL mutations may be multi-target
+        and operation in {"UPDATE", "DELETE"}
+    ):
+        return StatementFacts(operation, kind, diagnostic=diagnostic)
     if dialect == "duckdb":  # lint: allow-dialect-string: preserve DuckDB opaque metadata kinds
         kind = {"COMMENT": "DDL", "SHOW": "QUERY", "EXECUTE": "DML"}.get(operation, kind)
     objects: Tuple[NamedObject, ...] = ()
@@ -537,6 +542,41 @@ def _head_facts(sql: str, diagnostic: str, *, dialect: str = "") -> StatementFac
             target_sql=target,
         )
     return StatementFacts(operation, kind, objects, diagnostic=diagnostic)
+
+
+def _mysql_unresolved_mutation_target(ast: exp.Expression) -> bool:
+    """Refuse multiple or unproven targets before projecting singular mutation facts."""
+    if isinstance(ast, exp.Delete):
+        targets = ast.args.get("tables") or []
+        using = ast.args.get("using")
+        table = _dml_target_table(ast)
+        if using or len(targets) > 1 or table is None:
+            return True
+        if targets:
+            wanted = targets[0]
+            return (
+                wanted.name != table.alias_or_name
+                or bool(wanted.db and wanted.db != table.db)
+                or bool(wanted.catalog and wanted.catalog != table.catalog)
+            )
+        return False
+    if not isinstance(ast, exp.Update) or not isinstance(ast.this, exp.Table):
+        return False
+    table = ast.this
+    if not table.args.get("joins"):
+        return False
+    # A JOIN is not itself evidence of multiple write targets. Every SET left-hand
+    # side must explicitly name the leading target; unqualified columns need a catalogue.
+    for assignment in ast.expressions:
+        column = assignment.this
+        if (
+            not isinstance(column, exp.Column)
+            or column.table != table.alias_or_name
+            or (column.db and column.db != table.db)
+            or (column.catalog and column.catalog != table.catalog)
+        ):
+            return True
+    return False
 
 
 def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
@@ -778,6 +818,13 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
         and isinstance(ast, exp.Merge)
     ):
         operation = type(ast).__name__.upper()
+        if (
+            dialect == "mysql"  # lint: allow-dialect-string: MySQL permits multi-target mutations
+            and _mysql_unresolved_mutation_target(ast)
+        ):
+            return StatementFacts(
+                operation, "DML", diagnostic="mysql mutation has multiple or unproven targets"
+            )
         table = _dml_target_table(ast)
         identity = _named(table, SqlObjectType.TABLE, "altered") if table else None
         target = (
@@ -793,14 +840,21 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
         )
         events = _sqlglot_events(ast)
         columns = tuple(_sqlglot_updated_columns(ast))
+        skipped_references: Tuple[exp.Expression, ...] = (table,) if table is not None else ()
+        if (
+            dialect == "mysql"  # lint: allow-dialect-string: MySQL DELETE target lists are writes
+            and isinstance(ast, exp.Delete)
+        ):
+            # DELETE's target list names write targets, not additional read sources.
+            skipped_references += tuple(ast.args.get("tables") or [])
         references = (
             _merge_referenced(ast)
             if isinstance(ast, exp.Merge)
-            else _referenced(ast, (table,) if table is not None else ())
+            else _referenced(ast, skipped_references)
         )
         target_table = table
         if (
-            dialect == "duckdb"  # lint: allow-dialect-string: preserve bare DuckDB mutation targets
+            dialect in {"duckdb", "mysql"}  # lint: allow-dialect-string: bare mutation targets
             and table is not None
             and (table.args.get("alias") or table.args.get("joins") or table.args.get("only"))
         ):
