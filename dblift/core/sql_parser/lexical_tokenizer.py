@@ -1,10 +1,17 @@
 """Shared lexical tokenization driven by immutable plugin facts."""
 
+import re
 from typing import Iterable, List, Optional, Tuple
 
 from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.core.sql_parser.base_tokenizer import BaseTokenizer
-from dblift.core.sql_parser.batch_commands import read_command
+from dblift.core.sql_parser.batch_commands import (
+    find_lone_cr,
+    read_command,
+    refuse_lone_cr,
+    refuse_variable_in_code,
+    refuse_variable_in_lexeme,
+)
 from dblift.core.sql_parser.client_directives import classify_directive, is_free_text
 from dblift.core.sql_parser.lexical_spec import BOM, DirectiveAction, LexicalSpec
 from dblift.core.sql_parser.tokens import Token, TokenType
@@ -103,6 +110,18 @@ class LexicalTokenizer(BaseTokenizer):
         self._batches = spec.batch_script
         self._line_head = True
         self._comment_end_line = 0
+        # The code segment being read (a line's text up to the next lexeme or comment opener):
+        # where it ends, whether its refusals ran, the start of the blanks before it, a carriage
+        # return found in it, the cached end of the current line, where the current token began.
+        self._seg_end = 0
+        self._seg_checked = True
+        self._region_start = 0
+        self._seg_lone_cr = False
+        self._line_end = -1
+        self._token_start = 0
+        self._token_line = 1
+        openers = ["'", "/*", "--", spec.quoted_identifier, *spec.bracket_identifier[:1]]
+        self._opener_re = re.compile("|".join(re.escape(o) for o in openers if o))
 
     def _next_sql_token(self) -> Optional[Token]:
         """Get the next token from the input.
@@ -132,6 +151,11 @@ class LexicalTokenizer(BaseTokenizer):
             if directive is not None:
                 return directive
 
+        if self._batches is not None:
+            self._token_start, self._token_line = self.pos, self.line
+            if self.pos >= self._seg_end:
+                self._enter_segment()
+
         if self._batches is not None and self._line_head and self.peek(2) not in ("--", "/*"):
             count = read_command(
                 self._batches,
@@ -143,6 +167,9 @@ class LexicalTokenizer(BaseTokenizer):
             )
             if count is not None:
                 return self._separator_token()
+
+        if self._batches is not None and not self._seg_checked:
+            self._check_segment()
 
         char = self.peek()
 
@@ -569,19 +596,71 @@ class LexicalTokenizer(BaseTokenizer):
             self.parens_depth,
         )
 
+    def _enter_segment(self) -> None:
+        """Start a code segment at the cursor: refuse a lone carriage return in the blanks before it."""
+        assert self._batches is not None
+        if self.pos > self._line_end:
+            newline = self.sql.find("\n", self.pos)
+            self._line_end = len(self.sql) if newline < 0 else newline
+        opener = self._opener_re.search(self.sql, self.pos, self._line_end)
+        self._seg_end = opener.start() if opener else self._line_end
+        self._seg_checked = False
+        found = find_lone_cr(self._batches, self.sql, self._region_start, self._seg_end)
+        if found is not None and found < self.pos:
+            refuse_lone_cr(self._batches, self.spec.client_name, self.line)
+        self._seg_lone_cr = found is not None
+
+    def _check_segment(self) -> None:
+        """Refuse a lone carriage return, then a variable reference, in the segment at the cursor."""
+        assert self._batches is not None
+        self._seg_checked = True
+        if self._seg_lone_cr:
+            refuse_lone_cr(self._batches, self.spec.client_name, self.line)
+        refuse_variable_in_code(
+            self._batches, self.spec.client_name, self.sql, self.pos, self._seg_end, self.line
+        )
+
     def _skip_whitespace(self) -> None:
         """Skip what ``str.isspace`` accepts; a character that is not a blank ends the line head."""
         if self._batches is None:
             super()._skip_whitespace()
             return
         blanks = self._batches.blanks
+        self._region_start = self.pos
         while self.pos < len(self.sql) and self.sql[self.pos].isspace():
             char = self.sql[self.pos]
             if char == "\n":
                 self._line_head = True
+                self._region_start = self.pos + 1
             elif char not in blanks:
                 self._line_head = False
             self.read()
+
+    def _is_lexeme(self, token: Token) -> bool:
+        """Whether a token is a string or a quoted or bracketed name."""
+        return token.type == TokenType.STRING or (
+            token.type == TokenType.IDENTIFIER
+            and token.text[:1] in (self.spec.quoted_identifier, *self.spec.bracket_identifier[:1])
+        )
+
+    def _refuse_variable_in_unterminated(self) -> None:
+        """A variable reference in the text an unterminated lexeme swallowed is reported first."""
+        assert self._batches is not None
+        start = self._token_start
+        opener = self.sql[start : start + 1]
+        if opener and opener in (
+            "'",
+            self.spec.quoted_identifier,
+            *self.spec.bracket_identifier[:1],
+        ):
+            refuse_variable_in_lexeme(
+                self._batches,
+                self.spec.client_name,
+                self.sql,
+                start + 1,
+                len(self.sql),
+                self._token_line,
+            )
 
     def _separator_token(self) -> Token:
         """The rest of the line, a trailing CR included, as one DIRECTIVE token."""
@@ -640,9 +719,23 @@ class LexicalTokenizer(BaseTokenizer):
         if self._reads_directives:
             self._skip_whitespace()
             clear = self._at_start and self._line_is_clear(self.pos)
-        token = self._next_sql_token()
+        try:
+            token = self._next_sql_token()
+        except UnsafeStatementSplitError as error:
+            if self._batches is not None and str(error).startswith("unterminated"):
+                self._refuse_variable_in_unterminated()
+            raise
         if token is None:
             return None
+        if self._batches is not None and self._is_lexeme(token):
+            refuse_variable_in_lexeme(
+                self._batches,
+                self.spec.client_name,
+                self.sql,
+                token.pos + 1,
+                token.pos + len(token.text) - 1,
+                token.line,
+            )
         if self._batches is not None:
             if token.type == TokenType.COMMENT:
                 if self.sql.find("\n", token.pos, self.pos) >= 0:

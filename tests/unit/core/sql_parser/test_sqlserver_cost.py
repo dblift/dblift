@@ -11,11 +11,11 @@ from dblift.db.plugins.sqlserver.parser.lexical_spec import SQLSERVER_SPEC
 SHAPES = {
     "one lexeme across many lines": (
         lambda n: "SELECT '" + "line of text\n" * n + "'\nGO\n",
-        1100000,
+        950000,
     ),
-    "many GO batches": (lambda n: "SELECT 1\nGO\n" * n, 35000),
-    "many head lines": (lambda n: "SELECT 1\n  x1\n  y2 AS c,\n" * n + "GO\n", 17000),
-    "one line of comments": (lambda n: "/**/ " * n + "/**/" * n + "x\nGO\n", 90000),
+    "many GO batches": (lambda n: "SELECT 1\nGO\n" * n, 28000),
+    "many head lines": (lambda n: "SELECT 1\n  x1\n  y2 AS c,\n" * n + "GO\n", 14000),
+    "one line of comments": (lambda n: "/**/ " * n + "/**/" * n + "x\nGO\n", 58000),
 }
 
 
@@ -39,8 +39,8 @@ def test_sqlserver_cost_grows_linearly(shape):
 
 
 IDENTIFIERS = {
-    "quoted identifier": (lambda n: 'SELECT "' + "line of text\n" * n + '"\nGO\n', 300000),
-    "bracketed identifier": (lambda n: "SELECT [" + "line of text\n" * n + "]\nGO\n", 300000),
+    "quoted identifier": (lambda n: 'SELECT "' + "line of text\n" * n + '"\nGO\n', 950000),
+    "bracketed identifier": (lambda n: "SELECT [" + "line of text\n" * n + "]\nGO\n", 950000),
 }
 
 
