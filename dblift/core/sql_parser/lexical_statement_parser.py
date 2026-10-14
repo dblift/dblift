@@ -6,7 +6,7 @@ from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCom
 from dblift.core.sql_parser.base_statement_parser import BaseStatementParser
 from dblift.core.sql_parser.batch_script import BatchScript
 from dblift.core.sql_parser.client_script import ClientScript
-from dblift.core.sql_parser.lexical_spec import LexicalSpec
+from dblift.core.sql_parser.lexical_spec import BOM, LexicalSpec
 from dblift.core.sql_parser.parser_context import ParserContext
 from dblift.core.sql_parser.statement import Statement
 from dblift.core.sql_parser.tokens import Token, TokenType
@@ -46,7 +46,7 @@ class LexicalStatementParser(BaseStatementParser):
                 source,
                 spec.client_name,
                 comments,
-                origin=int(spec.leading_bom_is_blank and source.startswith("\ufeff")),
+                origin=int(spec.leading_bom_is_blank and source.startswith(BOM)),
             )
         self._script: Optional[ClientScript] = None
         if spec.client_script is not None:

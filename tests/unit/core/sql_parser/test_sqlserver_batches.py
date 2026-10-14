@@ -1298,6 +1298,28 @@ def test_blanks_are_a_spec_field():
 def test_ignored_in_code_is_a_spec_field():
     assert texts(",\nGO\nSELECT 2") == [",", "SELECT 2"]
     assert texts(",\nGO\nSELECT 2", varied(ignored_in_code=";,")) == ["SELECT 2"]
+
+
+def test_separator_followers_are_a_spec_field():
+    with pytest.raises(UnsafeStatementSplitError, match="text after GO on line 2"):
+        engine().split("SELECT 1\nGO;\nSELECT 2")
+    assert texts("SELECT 1\nGO;\nSELECT 2", varied(separator_followers=frozenset())) == [
+        "SELECT 1\nGO;\nSELECT 2"
+    ]
     assert texts("SELECT 1\nGO,\nSELECT 2") == ["SELECT 1\nGO,\nSELECT 2"]
     with pytest.raises(UnsafeStatementSplitError, match="text after GO on line 2"):
-        engine(varied(ignored_in_code=";,")).split("SELECT 1\nGO,\nSELECT 2")
+        engine(varied(separator_followers=frozenset(";,"))).split("SELECT 1\nGO,\nSELECT 2")
+
+
+def test_the_comment_marker_of_the_glue_check_is_the_spec_field():
+    spec = varied(tail_comment="=")
+    with pytest.raises(UnsafeStatementSplitError, match="'=' directly after GO"):
+        engine(spec).split("SELECT 1\nGO=c\nSELECT 2")
+    with pytest.raises(UnsafeStatementSplitError, match="text after GO on line 2"):
+        engine().split("SELECT 1\nGO=c\nSELECT 2")
+
+
+def test_the_blanks_of_the_separator_tail_are_the_spec_field():
+    spec = varied(blanks=" \t\r\xa0", command_followers=frozenset(" \t\r\xa0-=(['/"))
+    assert texts("SELECT 1\nGO\xa0\nSELECT 2", spec) == ["SELECT 1", "SELECT 2"]
+    assert texts("SELECT 1\nGO\xa0\nSELECT 2") == ["SELECT 1\nGO\xa0\nSELECT 2"]

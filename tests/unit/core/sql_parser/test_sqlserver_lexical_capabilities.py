@@ -166,6 +166,7 @@ def test_batch_and_client_script_are_exclusive():
         colon_commands=(),
         shell_prefix="!!",
         command_followers=frozenset(),
+        separator_followers=frozenset(),
         unmeasured_blanks=frozenset(),
         tail_comment="--",
         max_repeat=1_000_000,

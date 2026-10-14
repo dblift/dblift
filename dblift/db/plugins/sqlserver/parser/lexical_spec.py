@@ -53,6 +53,7 @@ SQLSERVER_BATCHES = BatchScriptRules(
     ),
     shell_prefix="!!",
     command_followers=frozenset(" \t\r-=(['/"),
+    separator_followers=frozenset(";"),
     unmeasured_blanks=frozenset("\x0b\x0c"),
     tail_comment="--",
     max_repeat=1_000_000,

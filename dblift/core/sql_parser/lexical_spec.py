@@ -4,6 +4,9 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import FrozenSet, Optional, Tuple
 
+#: A byte order mark at the start of a script.
+BOM = "\ufeff"
+
 
 class DirectiveAction(Enum):
     """What the splitter does with a client directive line."""
@@ -90,6 +93,7 @@ class BatchScriptRules:
     colon_commands: Tuple[str, ...]
     shell_prefix: str
     command_followers: FrozenSet[str]
+    separator_followers: FrozenSet[str]
     unmeasured_blanks: FrozenSet[str]
     tail_comment: str
     max_repeat: int

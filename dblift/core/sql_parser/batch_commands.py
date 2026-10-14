@@ -42,7 +42,7 @@ def read_command(
     if (
         follower
         and follower not in rules.command_followers
-        and follower not in rules.ignored_in_code
+        and follower not in rules.separator_followers
     ):
         return None
     sep, tail_comment = rules.separator, rules.tail_comment
