@@ -177,6 +177,39 @@ def _merge_referenced(node: exp.Merge) -> Tuple[NamedObject, ...]:
     return tuple(found)
 
 
+def _copy_facts(node: exp.Copy) -> StatementFacts:
+    """Read named-table DuckDB COPY with one literal file path."""
+    schema = node.this if isinstance(node.this, exp.Schema) else None
+    table = schema.this if schema is not None else node.this
+    files = node.args.get("files") or []
+    columns = schema.expressions if schema is not None else []
+    if not (
+        isinstance(table, exp.Table)
+        and isinstance(table.this, exp.Identifier)
+        and all(isinstance(column, exp.Identifier) for column in columns)
+        and len(files) == 1
+        and isinstance(files[0], exp.Literal)
+        and files[0].is_string
+        # A path concatenation can be misread as a COPY option named ``||``.
+        and all(parameter.name.isidentifier() for parameter in node.args.get("params") or [])
+    ):
+        return StatementFacts(
+            "COPY", "UNKNOWN", diagnostic="duckdb COPY source or destination is opaque"
+        )
+    importing = node.args.get("kind") is True
+    identity = _named(table, SqlObjectType.TABLE, "altered" if importing else "referenced")
+    target = ".".join(part for part in (table.catalog, table.db, table.name) if part)
+    return StatementFacts(
+        "COPY",
+        "DML" if importing else "QUERY",
+        (identity,) if identity else (),
+        target if importing else None,
+        affected_columns=tuple(column.name for column in columns) if importing else (),
+        events=frozenset({"INSERT"}) if importing else None,
+        target_sql=table.sql(dialect="duckdb") if importing else None,
+    )
+
+
 def _blanked(sql: str) -> str:
     return strip_comments_preserving_quotes(
         sql, line_prefixes=["--"], has_block_comments=True, nested_block_comments=False
@@ -282,6 +315,12 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
     if ast is None or isinstance(ast, (exp.Command, exp.Block)):
         construct = type(ast).__name__ if ast is not None else "empty statement"
         return _head_facts(sql, f"{dialect} {construct} is opaque to statement facts")
+
+    if (
+        dialect == "duckdb"  # lint: allow-dialect-string: COPY facts qualified for DuckDB only
+        and isinstance(ast, exp.Copy)
+    ):
+        return _copy_facts(ast)
 
     if isinstance(ast, exp.Create):
         kind = str(ast.args.get("kind") or "").upper()
