@@ -223,18 +223,25 @@
       }
     },
     {
-      "id": "copy_query_export_opaque",
+      "id": "copy_query_export",
       "source": "DuckDB COPY facts regression: named-table file effects or explicit opaque boundary",
       "sql": "COPY (SELECT id FROM items) TO '/tmp/items.csv';",
       "facts": {
         "operation": "COPY",
-        "kind": "UNKNOWN",
-        "objects": [],
+        "kind": "QUERY",
+        "objects": [
+          {
+            "name": "items",
+            "type": "TABLE",
+            "role": "referenced",
+            "schema": null
+          }
+        ],
         "target": null,
         "predicate": null,
         "affected_columns": [],
         "events": null,
-        "diagnostic": "duckdb COPY source or destination is opaque",
+        "diagnostic": null,
         "error": null
       }
     },

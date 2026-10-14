@@ -179,19 +179,54 @@ def _merge_referenced(node: exp.Merge) -> Tuple[NamedObject, ...]:
     return tuple(found)
 
 
+def _copy_query_referenced(query: exp.Subquery, sql: str) -> Optional[Tuple[NamedObject, ...]]:
+    """Resolve query export sources, refusing table functions rather than omitting them."""
+    from sqlglot.optimizer.scope import traverse_scope
+
+    query = query.copy()
+    original_names = {
+        id(table): _named(table, SqlObjectType.TABLE, "referenced")
+        for table in query.find_all(exp.Table)
+    }
+    # Scope lookup must use DuckDB's case rules while facts preserve the written identities.
+    dialect = Dialect.get_or_raise("duckdb")
+    for identifier in query.find_all(exp.Identifier):
+        dialect.normalize_identifier(identifier)
+
+    found: list[NamedObject] = []
+    for scope in traverse_scope(query):
+        if scope.is_udtf:
+            return None
+        for source in scope.sources.values():
+            if isinstance(source, exp.Table):
+                if not isinstance(source.this, exp.Identifier) or not source.name:
+                    return None
+                # sqlglot represents a single-quoted file source as a quoted table identifier.
+                start = source.this.meta.get("start")
+                if source.this.args.get("quoted") and (start is None or sql[start] != '"'):
+                    return None
+                reference = original_names[id(source)]
+                if reference is not None and reference not in found:
+                    found.append(reference)
+    return tuple(found)
+
+
 def _copy_facts(node: exp.Copy, sql: str) -> StatementFacts:
-    """Read named-table DuckDB COPY with one literal file path."""
+    """Read DuckDB table imports and table or query exports with one literal file path."""
     schema = node.this if isinstance(node.this, exp.Schema) else None
     table = schema.this if schema is not None else node.this
     direction = node.args.get("kind")
+    query = table if isinstance(table, exp.Subquery) and isinstance(table.this, exp.Query) else None
     files = node.args.get("files") or []
     columns = schema.expressions if schema is not None else []
     opaque = StatementFacts(
         "COPY", "UNKNOWN", diagnostic="duckdb COPY source or destination is opaque"
     )
     if not (
-        isinstance(table, exp.Table)
-        and isinstance(table.this, exp.Identifier)
+        (
+            (isinstance(table, exp.Table) and isinstance(table.this, exp.Identifier))
+            or (query is not None and direction is False)
+        )
         and (direction is True or direction is False)
         and all(isinstance(column, exp.Identifier) for column in columns)
         and len(files) == 1
@@ -214,6 +249,9 @@ def _copy_facts(node: exp.Copy, sql: str) -> StatementFacts:
         or (tokens[path_at - 1].token_type, tokens[path_at - 1].text.upper()) != expected
     ):
         return opaque
+    if query is not None:
+        references = _copy_query_referenced(query, sql)
+        return StatementFacts("COPY", "QUERY", references) if references is not None else opaque
     identity = _named(table, SqlObjectType.TABLE, "altered" if importing else "referenced")
     target = ".".join(part for part in (table.catalog, table.db, table.name) if part)
     return StatementFacts(
