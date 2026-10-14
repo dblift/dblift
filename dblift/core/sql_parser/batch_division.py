@@ -2,8 +2,9 @@
 
 import re
 from bisect import bisect_left
-from typing import Dict, List, Sequence, Tuple
+from typing import List, Sequence, Tuple
 
+from dblift.core.sql_parser.batch_cache import RulesCache
 from dblift.core.sql_parser.lexical_spec import BatchScriptRules
 from dblift.core.sql_parser.unit_heads import decide
 
@@ -51,19 +52,11 @@ def has_code(positions: Sequence[int], first: int, last: int) -> bool:
     return index < len(positions) and positions[index] <= last
 
 
-_PATTERNS: Dict[int, Tuple[BatchScriptRules, "re.Pattern[str]"]] = {}
+_WORDS: RulesCache["re.Pattern[str]"] = RulesCache(
+    lambda rules: re.compile(f"[{rules.word_start}][{rules.word_part}]*|;")
+)
+#: Division reads ``str.strip()`` whitespace before a head word, as the previous heuristic did, not ``blanks``.
 _NOT_BLANK = re.compile(r"\S")
-
-
-def _word_pattern(rules: BatchScriptRules) -> "re.Pattern[str]":
-    """Words and semicolons; looked up by identity, hashing the rules costs more."""
-    entry = _PATTERNS.get(id(rules))
-    if entry is None or entry[0] is not rules:
-        if len(_PATTERNS) > 64:
-            _PATTERNS.clear()
-        pattern = re.compile(f"[{rules.word_start}][{rules.word_part}]*|;")
-        entry = _PATTERNS[id(rules)] = (rules, pattern)
-    return entry[1]
 
 
 def _events(
@@ -74,7 +67,7 @@ def _events(
     spans: Sequence[Tuple[int, int]],
 ) -> List[Tuple[int, str, int]]:
     """``(offset, upper-cased word or ';', start of its physical line)`` for the code of a batch."""
-    pattern = _word_pattern(rules)
+    pattern = _WORDS.get(rules)
     events: List[Tuple[int, str, int]] = []
     line_start = cursor = start
     for lo, hi in spans[max(bisect_left(spans, (start,)) - 1, 0) :]:

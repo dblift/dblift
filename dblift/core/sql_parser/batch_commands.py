@@ -1,9 +1,10 @@
 """Classification of a client script line, and the refusals of a client that substitutes text."""
 
 import re
-from typing import Dict, NamedTuple, Optional, Pattern, Tuple
+from typing import NamedTuple, Optional, Pattern
 
 from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
+from dblift.core.sql_parser.batch_cache import RulesCache
 from dblift.core.sql_parser.lexical_spec import BatchScriptRules
 
 
@@ -18,17 +19,9 @@ class _Patterns(NamedTuple):
 _NAME = re.compile(r"\S+")
 
 
-_COMPILED: Dict[int, Tuple[BatchScriptRules, _Patterns]] = {}
-
-
 def _patterns(rules: BatchScriptRules) -> _Patterns:
-    """The compiled patterns of ``rules``; looked up by identity, hashing the rules costs more."""
-    entry = _COMPILED.get(id(rules))
-    if entry is None or entry[0] is not rules:
-        if len(_COMPILED) > 64:
-            _COMPILED.clear()
-        entry = _COMPILED[id(rules)] = (rules, _compile(rules))
-    return entry[1]
+    """The compiled patterns of ``rules``."""
+    return _CACHE.get(rules)
 
 
 def _compile(rules: BatchScriptRules) -> _Patterns:
@@ -51,6 +44,9 @@ def _compile(rules: BatchScriptRules) -> _Patterns:
         ),
         lone_cr=re.compile(f"\\r[{lone_blanks}]*(?:{lone_words})(?![{part}])", re.IGNORECASE),
     )
+
+
+_CACHE: RulesCache[_Patterns] = RulesCache(lambda rules: _compile(rules))
 
 
 def read_command(
