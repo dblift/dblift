@@ -50,7 +50,7 @@ class BatchScript:
         for token in tokens:
             if token.type != TokenType.DIRECTIVE:
                 continue
-            cut = max(source.rfind("\n", 0, token.pos) + 1, start)
+            cut = token.pos  # only blanks precede a separator on its line; strip() drops them
             newline = source.find("\n", token.pos)
             following = len(source) if newline < 0 else newline + 1
             count = read_command(self.rules, self.client_name, token.text, 0, token.line, False)

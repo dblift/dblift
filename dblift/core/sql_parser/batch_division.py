@@ -16,13 +16,9 @@ def code_spans(
     spans: List[Tuple[int, int]] = []
     cursor = start
     for lo, hi in extents:
-        if hi <= cursor:
-            continue
-        if lo >= end:
-            break
         if lo > cursor:
             spans.append((cursor, lo))
-        cursor = max(cursor, hi)
+        cursor = hi
     if cursor < end:
         spans.append((cursor, end))
     return spans

@@ -6,6 +6,8 @@ described text of every statement, or the refusal (class and message). The recor
 from the scanner that preceded the shared lexical engine, except that the four unterminated
 lexeme refusals carry the engine's wording. The scripts were chosen by branch coverage of that
 scanner, then extended until every rule change tried against the engine was caught here alone.
+The texts of validate_sql, parse_sql and extraction are held by the comparison through the public
+entry points and by the extraction guard, not by this corpus.
 """
 
 import dataclasses

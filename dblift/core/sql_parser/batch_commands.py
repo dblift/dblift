@@ -29,6 +29,7 @@ def _compile(rules: BatchScriptRules) -> _Patterns:
     part = rules.word_part
     opener, closer = rules.variable_reference
     colon_words = "|".join(re.escape(word) for word in rules.colon_commands)
+    # CR stays out of the class: with it, a run of carriage returns makes the pattern quadratic
     lone_blanks = re.escape(rules.blanks.replace("\r", ""))
     lone_words = "|".join(re.escape(word) for word in rules.lone_cr_words)
     return _Patterns(
