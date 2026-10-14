@@ -1,13 +1,17 @@
 {
 "comment_only": {
 "\"incomplete": false,
+"${a\nGO\nSELECT 2}\n\nDROP TABLE t\n \nGO\r\n\nTRUNCATE TABLE t \nWAITFOR DELAY '00:00:01'\n\nGO 5 -- c\n\t\nUSE db\nRECONFIGURE\n GO3\n \n": false,
 "-- c /* d\nSELECT 1 */": false,
+"/* /* */ */ GO": false,
 "/* a */ b */ SELECT 1": false,
+"/* a -- b */ SELECT 1 */ SELECT 2": false,
 "/* a /* b */": true,
 "/* a /* b */ */ SELECT 1 /* c */": false,
 "/* a /* b */ c */": true,
 "/* a /* b */ c */ CREATE VIEW dbo.v AS SELECT 1 AS a": false,
 "/* a /* b */ c */ SELECT 1": false,
+"/* a [*/] b */ SELECT 1": false,
 "CREATE /* x /* y */ z */ PROCEDURE dbo.p AS SELECT 1": false,
 "CREATE TABLE /* a /* b */ c */ dbo.t (id INT)": false,
 "CREATE TABLE [a]]/*b*/] (id INT) /* c */": false,
@@ -33,8 +37,11 @@
 "SELECT 1\u0000": false,
 "SELECT 1\nGO\n": false,
 "SELECT 1\nGO ;": false,
+"SELECT 1\nGO--c\nSELECT 2": false,
+"SELECT 1 -- c\rSELECT 2": false,
 "SELECT 1 -- it's": false,
 "SELECT 1 /* a\n/* b\n*/ c\n*/ + 2": false,
+"SELECT 1 /* a /* b": false,
 "SELECT 1 /* a /* b /* c */ */ */": false,
 "SELECT 1 GO": false,
 "SELECT 1 GO;": false,
@@ -50,16 +57,25 @@
 "SELECT [column name with spaces] FROM [table name];": false,
 "SELECT [column_name] FROM [table_name];": false,
 "SELECT [simple_column] FROM [simple_table];": false,
+"SELECT _a, b_c FROM _t": false,
 "SELECT a % b & c | d ^ e ~ f": false,
 "SELECT \u00e9, \u00a35": false,
 "[incomplete": false,
-"x\r\rGO\n\r\ngo99\n-- a\rGO\n\t\n\n\t\n\tGO 3\n\nDECLARE @x INT = '\nGO\n'\n": false,
 "\ufeffSELECT 1": false
 },
 "objects": {
 "\"incomplete": [],
+"${a\nGO\nSELECT 2}\n\nDROP TABLE t\n \nGO\r\n\nTRUNCATE TABLE t \nWAITFOR DELAY '00:00:01'\n\nGO 5 -- c\n\t\nUSE db\nRECONFIGURE\n GO3\n \n": [
+[
+"SqlObjectType.TABLE",
+"t",
+"dbo"
+]
+],
 "-- c /* d\nSELECT 1 */": [],
+"/* /* */ */ GO": [],
 "/* a */ b */ SELECT 1": [],
+"/* a -- b */ SELECT 1 */ SELECT 2": [],
 "/* a /* b */": [],
 "/* a /* b */ */ SELECT 1 /* c */": [],
 "/* a /* b */ c */": [],
@@ -71,6 +87,7 @@
 ]
 ],
 "/* a /* b */ c */ SELECT 1": [],
+"/* a [*/] b */ SELECT 1": [],
 "CREATE /* x /* y */ z */ PROCEDURE dbo.p AS SELECT 1": [
 [
 "SqlObjectType.PROCEDURE",
@@ -131,8 +148,11 @@
 "SELECT 1\u0000": [],
 "SELECT 1\nGO\n": [],
 "SELECT 1\nGO ;": [],
+"SELECT 1\nGO--c\nSELECT 2": [],
+"SELECT 1 -- c\rSELECT 2": [],
 "SELECT 1 -- it's": [],
 "SELECT 1 /* a\n/* b\n*/ c\n*/ + 2": [],
+"SELECT 1 /* a /* b": [],
 "SELECT 1 /* a /* b /* c */ */ */": [],
 "SELECT 1 GO": [],
 "SELECT 1 GO;": [],
@@ -148,21 +168,25 @@
 "SELECT [column name with spaces] FROM [table name];": [],
 "SELECT [column_name] FROM [table_name];": [],
 "SELECT [simple_column] FROM [simple_table];": [],
+"SELECT _a, b_c FROM _t": [],
 "SELECT a % b & c | d ^ e ~ f": [],
 "SELECT \u00e9, \u00a35": [],
 "[incomplete": [],
-"x\r\rGO\n\r\ngo99\n-- a\rGO\n\t\n\n\t\n\tGO 3\n\nDECLARE @x INT = '\nGO\n'\n": [],
 "\ufeffSELECT 1": []
 },
 "stripped": {
 "\"incomplete": "\"incomplete",
+"${a\nGO\nSELECT 2}\n\nDROP TABLE t\n \nGO\r\n\nTRUNCATE TABLE t \nWAITFOR DELAY '00:00:01'\n\nGO 5 -- c\n\t\nUSE db\nRECONFIGURE\n GO3\n \n": "${a\nGO\nSELECT 2}\n\nDROP TABLE t\n \nGO\r\n\nTRUNCATE TABLE t \nWAITFOR DELAY '00:00:01'\n\nGO 5 \n\t\nUSE db\nRECONFIGURE\n GO3",
 "-- c /* d\nSELECT 1 */": "SELECT 1 */",
+"/* /* */ */ GO": "GO",
 "/* a */ b */ SELECT 1": "b */ SELECT 1",
+"/* a -- b */ SELECT 1 */ SELECT 2": "SELECT 1 */ SELECT 2",
 "/* a /* b */": "",
 "/* a /* b */ */ SELECT 1 /* c */": "SELECT 1",
 "/* a /* b */ c */": "",
 "/* a /* b */ c */ CREATE VIEW dbo.v AS SELECT 1 AS a": "CREATE VIEW dbo.v AS SELECT 1 AS a",
 "/* a /* b */ c */ SELECT 1": "SELECT 1",
+"/* a [*/] b */ SELECT 1": "] b */ SELECT 1",
 "CREATE /* x /* y */ z */ PROCEDURE dbo.p AS SELECT 1": "CREATE  PROCEDURE dbo.p AS SELECT 1",
 "CREATE TABLE /* a /* b */ c */ dbo.t (id INT)": "CREATE TABLE  dbo.t (id INT)",
 "CREATE TABLE [a]]/*b*/] (id INT) /* c */": "CREATE TABLE [a]]/*b*/] (id INT)",
@@ -188,8 +212,11 @@
 "SELECT 1\u0000": "SELECT 1\u0000",
 "SELECT 1\nGO\n": "SELECT 1\nGO",
 "SELECT 1\nGO ;": "SELECT 1\nGO ;",
+"SELECT 1\nGO--c\nSELECT 2": "SELECT 1\nGO\nSELECT 2",
+"SELECT 1 -- c\rSELECT 2": "SELECT 1 \rSELECT 2",
 "SELECT 1 -- it's": "SELECT 1",
 "SELECT 1 /* a\n/* b\n*/ c\n*/ + 2": "SELECT 1  + 2",
+"SELECT 1 /* a /* b": "SELECT 1",
 "SELECT 1 /* a /* b /* c */ */ */": "SELECT 1",
 "SELECT 1 GO": "SELECT 1 GO",
 "SELECT 1 GO;": "SELECT 1 GO;",
@@ -205,10 +232,10 @@
 "SELECT [column name with spaces] FROM [table name];": "SELECT [column name with spaces] FROM [table name];",
 "SELECT [column_name] FROM [table_name];": "SELECT [column_name] FROM [table_name];",
 "SELECT [simple_column] FROM [simple_table];": "SELECT [simple_column] FROM [simple_table];",
+"SELECT _a, b_c FROM _t": "SELECT _a, b_c FROM _t",
 "SELECT a % b & c | d ^ e ~ f": "SELECT a % b & c | d ^ e ~ f",
 "SELECT \u00e9, \u00a35": "SELECT \u00e9, \u00a35",
 "[incomplete": "[incomplete",
-"x\r\rGO\n\r\ngo99\n-- a\rGO\n\t\n\n\t\n\tGO 3\n\nDECLARE @x INT = '\nGO\n'\n": "x\r\rGO\n\r\ngo99\n\rGO\n\t\n\n\t\n\tGO 3\n\nDECLARE @x INT = '\nGO\n'",
 "\ufeffSELECT 1": "\ufeffSELECT 1"
 },
 "tokens": {
@@ -218,6 +245,208 @@
 "\"incomplete",
 0,
 1,
+1,
+0
+]
+],
+"${a\nGO\nSELECT 2}\n\nDROP TABLE t\n \nGO\r\n\nTRUNCATE TABLE t \nWAITFOR DELAY '00:00:01'\n\nGO 5 -- c\n\t\nUSE db\nRECONFIGURE\n GO3\n \n": [
+[
+"SYMBOL",
+"$",
+0,
+1,
+1,
+0
+],
+[
+"SYMBOL",
+"{",
+1,
+1,
+2,
+0
+],
+[
+"IDENTIFIER",
+"a",
+2,
+1,
+3,
+0
+],
+[
+"DELIMITER",
+"GO",
+4,
+2,
+1,
+0
+],
+[
+"KEYWORD",
+"SELECT",
+7,
+3,
+1,
+0
+],
+[
+"IDENTIFIER",
+"2",
+14,
+3,
+8,
+0
+],
+[
+"SYMBOL",
+"}",
+15,
+3,
+9,
+0
+],
+[
+"KEYWORD",
+"DROP",
+18,
+5,
+1,
+0
+],
+[
+"KEYWORD",
+"TABLE",
+23,
+5,
+6,
+0
+],
+[
+"IDENTIFIER",
+"t",
+29,
+5,
+12,
+0
+],
+[
+"DELIMITER",
+"GO",
+33,
+7,
+1,
+0
+],
+[
+"IDENTIFIER",
+"TRUNCATE",
+38,
+9,
+1,
+0
+],
+[
+"KEYWORD",
+"TABLE",
+47,
+9,
+10,
+0
+],
+[
+"IDENTIFIER",
+"t",
+53,
+9,
+16,
+0
+],
+[
+"IDENTIFIER",
+"WAITFOR",
+56,
+10,
+1,
+0
+],
+[
+"IDENTIFIER",
+"DELAY",
+64,
+10,
+9,
+0
+],
+[
+"STRING",
+"'00:00:01'",
+70,
+10,
+15,
+0
+],
+[
+"DELIMITER",
+"GO",
+82,
+12,
+1,
+0
+],
+[
+"IDENTIFIER",
+"5",
+85,
+12,
+4,
+0
+],
+[
+"COMMENT",
+"",
+87,
+12,
+6,
+0
+],
+[
+"IDENTIFIER",
+"USE",
+94,
+14,
+1,
+0
+],
+[
+"IDENTIFIER",
+"db",
+98,
+14,
+5,
+0
+],
+[
+"IDENTIFIER",
+"RECONFIGURE",
+101,
+15,
+1,
+0
+],
+[
+"IDENTIFIER",
+"GO3",
+114,
+16,
+2,
+0
+],
+[
+"EOF",
+"",
+120,
+18,
 1,
 0
 ]
@@ -261,6 +490,24 @@
 20,
 2,
 11,
+0
+]
+],
+"/* /* */ */ GO": [
+[
+"COMMENT",
+"",
+0,
+1,
+1,
+0
+],
+[
+"DELIMITER",
+"GO",
+12,
+1,
+13,
 0
 ]
 ],
@@ -311,6 +558,64 @@
 20,
 1,
 21,
+0
+]
+],
+"/* a -- b */ SELECT 1 */ SELECT 2": [
+[
+"COMMENT",
+"",
+0,
+1,
+1,
+0
+],
+[
+"KEYWORD",
+"SELECT",
+13,
+1,
+14,
+0
+],
+[
+"IDENTIFIER",
+"1",
+20,
+1,
+21,
+0
+],
+[
+"SYMBOL",
+"*",
+22,
+1,
+23,
+0
+],
+[
+"SYMBOL",
+"/",
+23,
+1,
+24,
+0
+],
+[
+"KEYWORD",
+"SELECT",
+25,
+1,
+26,
+0
+],
+[
+"IDENTIFIER",
+"2",
+32,
+1,
+33,
 0
 ]
 ],
@@ -476,6 +781,64 @@
 25,
 1,
 26,
+0
+]
+],
+"/* a [*/] b */ SELECT 1": [
+[
+"COMMENT",
+"",
+0,
+1,
+1,
+0
+],
+[
+"SYMBOL",
+"]",
+8,
+1,
+9,
+0
+],
+[
+"IDENTIFIER",
+"b",
+10,
+1,
+11,
+0
+],
+[
+"SYMBOL",
+"*",
+12,
+1,
+13,
+0
+],
+[
+"SYMBOL",
+"/",
+13,
+1,
+14,
+0
+],
+[
+"KEYWORD",
+"SELECT",
+15,
+1,
+16,
+0
+],
+[
+"IDENTIFIER",
+"1",
+22,
+1,
+23,
 0
 ]
 ],
@@ -1620,6 +1983,82 @@
 0
 ]
 ],
+"SELECT 1\nGO--c\nSELECT 2": [
+[
+"KEYWORD",
+"SELECT",
+0,
+1,
+1,
+0
+],
+[
+"IDENTIFIER",
+"1",
+7,
+1,
+8,
+0
+],
+[
+"DELIMITER",
+"GO",
+9,
+2,
+1,
+0
+],
+[
+"COMMENT",
+"",
+11,
+2,
+3,
+0
+],
+[
+"KEYWORD",
+"SELECT",
+15,
+3,
+1,
+0
+],
+[
+"IDENTIFIER",
+"2",
+22,
+3,
+8,
+0
+]
+],
+"SELECT 1 -- c\rSELECT 2": [
+[
+"KEYWORD",
+"SELECT",
+0,
+1,
+1,
+0
+],
+[
+"IDENTIFIER",
+"1",
+7,
+1,
+8,
+0
+],
+[
+"COMMENT",
+"",
+9,
+1,
+10,
+0
+]
+],
 "SELECT 1 -- it's": [
 [
 "KEYWORD",
@@ -1687,6 +2126,11 @@
 6,
 0
 ]
+],
+"SELECT 1 /* a /* b": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated block comment opened at line 1, column 10"
 ],
 "SELECT 1 /* a /* b /* c */ */ */": [
 [
@@ -2302,6 +2746,56 @@
 0
 ]
 ],
+"SELECT _a, b_c FROM _t": [
+[
+"KEYWORD",
+"SELECT",
+0,
+1,
+1,
+0
+],
+[
+"IDENTIFIER",
+"_a",
+7,
+1,
+8,
+0
+],
+[
+"SYMBOL",
+",",
+9,
+1,
+10,
+0
+],
+[
+"IDENTIFIER",
+"b_c",
+11,
+1,
+12,
+0
+],
+[
+"KEYWORD",
+"FROM",
+15,
+1,
+16,
+0
+],
+[
+"IDENTIFIER",
+"_t",
+20,
+1,
+21,
+0
+]
+],
 "SELECT a % b & c | d ^ e ~ f": [
 [
 "KEYWORD",
@@ -2448,104 +2942,6 @@
 "[incomplete",
 0,
 1,
-1,
-0
-]
-],
-"x\r\rGO\n\r\ngo99\n-- a\rGO\n\t\n\n\t\n\tGO 3\n\nDECLARE @x INT = '\nGO\n'\n": [
-[
-"IDENTIFIER",
-"x",
-0,
-1,
-1,
-0
-],
-[
-"DELIMITER",
-"GO",
-3,
-1,
-4,
-0
-],
-[
-"IDENTIFIER",
-"go99",
-8,
-3,
-1,
-0
-],
-[
-"COMMENT",
-"",
-13,
-4,
-1,
-0
-],
-[
-"DELIMITER",
-"GO",
-27,
-8,
-2,
-0
-],
-[
-"IDENTIFIER",
-"3",
-30,
-8,
-5,
-0
-],
-[
-"KEYWORD",
-"DECLARE",
-33,
-10,
-1,
-0
-],
-[
-"IDENTIFIER",
-"@x",
-41,
-10,
-9,
-0
-],
-[
-"IDENTIFIER",
-"INT",
-44,
-10,
-12,
-0
-],
-[
-"SYMBOL",
-"=",
-48,
-10,
-16,
-0
-],
-[
-"STRING",
-"'\nGO\n'",
-50,
-10,
-18,
-0
-],
-[
-"EOF",
-"",
-57,
-13,
 1,
 0
 ]

@@ -95,6 +95,10 @@ def test_comment_markers_inside_quoted_spans_survive():
     )
 
 
+def test_comment_stripping_unchanged():
+    check("stripped", list(golden()["stripped"]))
+
+
 def test_nested_comment_only_statement():
     assert comment_only("/* a /* b */ c */") is True
     assert comment_only("/* a */ b */") is False
