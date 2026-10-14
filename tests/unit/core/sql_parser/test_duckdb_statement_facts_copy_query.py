@@ -31,6 +31,24 @@ from dblift.core.sql_parser.statement_facts import NamedObject, StatementFacts
             (("items", None), ("other_items", None)),
         ),
         ("SELECT a.id FROM items a JOIN items b ON a.id=b.id", (("items", None),)),
+        (
+            "WITH Items AS (SELECT id FROM other_items) SELECT id FROM items",
+            (("other_items", None),),
+        ),
+        (
+            'WITH "Items" AS (SELECT id FROM other_items) SELECT id FROM "ITEMS"',
+            (("other_items", None),),
+        ),
+        (
+            'WITH "Items" AS (SELECT id FROM other_items) '
+            'SELECT id FROM items UNION ALL SELECT id FROM main."Items"',
+            (("other_items", None), ("Items", "main")),
+        ),
+        (
+            'WITH "Ä" AS (SELECT id FROM other_items) '
+            'SELECT id FROM "Ä" UNION ALL SELECT id FROM "ä"',
+            (("other_items", None), ("ä", None)),
+        ),
         ("SELECT 1 AS id", ()),
         ('SELECT id FROM "items.csv"', (("items.csv", None),)),
     ],
@@ -42,6 +60,10 @@ from dblift.core.sql_parser.statement_facts import NamedObject, StatementFacts
         "qualified_cte_name",
         "nested_cte",
         "dedup",
+        "case_insensitive_cte",
+        "quoted_case_insensitive_cte",
+        "case_insensitive_cte_qualified_table",
+        "non_ascii_cte_distinct",
         "constant",
         "quoted_table",
     ],
@@ -54,6 +76,7 @@ def test_query_export_keeps_only_scoped_physical_sources(tmp_path, query, source
         connection.execute('CREATE SCHEMA "Sales"')
         connection.execute('CREATE TABLE "Sales"."Order Items" AS SELECT 1 AS id')
         connection.execute('CREATE TABLE "items.csv" AS SELECT 1 AS id')
+        connection.execute('CREATE TABLE "ä" AS SELECT 3 AS id')
         connection.execute("CREATE TABLE items AS SELECT 1 AS id")
         connection.execute("CREATE TABLE other_items AS SELECT 2 AS id")
         connection.execute(sql)
@@ -81,6 +104,8 @@ def test_query_export_keeps_only_scoped_physical_sources(tmp_path, query, source
         "SELECT * FROM items, source) TO 'out.csv'",
         "COPY (SELECT * FROM items WHERE id IN (SELECT * FROM range(3))) TO 'out.csv'",
         "COPY (SELECT * FROM unnest([1, 2])) TO 'out.csv'",
+        "COPY (SELECT * FROM items, LATERAL (SELECT * FROM other_items) x) TO 'out.csv'",
+        "COPY (SELECT * FROM (VALUES (1)) v(id)) TO 'out.csv'",
         "COPY (SELECT * FROM items) TO ?",
         "COPY (SELECT * FROM items) TO ('out' || '.csv')",
         "COPY (SELECT * FROM items) TO 'out' || '.csv'",
@@ -98,6 +123,8 @@ def test_query_export_keeps_only_scoped_physical_sources(tmp_path, query, source
         "cte_function",
         "predicate_function",
         "unnest",
+        "lateral",
+        "values_source",
         "placeholder",
         "dynamic_path",
         "concatenated_path",
