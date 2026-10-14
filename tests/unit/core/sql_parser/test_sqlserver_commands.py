@@ -7059,3 +7059,17 @@ def test_variable_reference_is_a_spec_field():
     assert texts("SELECT $(x)", spec) == ["SELECT $(x)"]
     with pytest.raises(UnsupportedMetaCommandError, match=r"scripting variable @\(x\) on line 1"):
         engine(spec).split("SELECT @(x)")
+
+
+def test_blanks_of_a_lone_carriage_return_are_the_spec_field():
+    script = "SELECT 1\r\xa0GO"
+    assert texts(script) == [script]
+    with pytest.raises(UnsafeStatementSplitError, match="lone carriage return"):
+        engine(varied(blanks=" \t\r\xa0")).split(script)
+
+
+def test_shell_prefix_after_a_colon_is_the_spec_field():
+    script = "SELECT 1\n:##x\nGO"
+    assert texts(script) == ["SELECT 1\n:##x"]
+    with pytest.raises(UnsupportedMetaCommandError, match="command ':##x'"):
+        engine(varied(shell_prefix="##")).split(script)
