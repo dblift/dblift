@@ -55,6 +55,15 @@ _UPDATE_OR = re.compile(
     re.IGNORECASE | re.DOTALL,
 )
 _FIRST_WORD = re.compile(r"^\s*([A-Za-z]+)")
+# Default MySQL lexical rules from docs/sql-parsing/mysql.md: backslashes escape strings,
+# not backticks; -- needs whitespace; ordinary block comments do not nest.
+_MYSQL_QUOTES_AND_COMMENTS = re.compile(
+    r"'(?:''|\\.|[^'\\])*(?:'|\Z)|"
+    r'"(?:""|\\.|[^"\\])*(?:"|\Z)|'
+    r"`(?:``|[^`])*(?:`|\Z)|"
+    r"(?:\#|--(?=[ \t\r\n\v\f]|\Z))[^\n]*|/\*.*?(?:\*/|\Z)",
+    re.DOTALL,
+)
 _KINDS = {
     **dict.fromkeys(
         ("CREATE", "ALTER", "DROP", "VACUUM", "ANALYZE", "REINDEX", "PRAGMA", "ATTACH", "DETACH"),
@@ -424,6 +433,18 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
     Text that does not tokenize is reported as an error. A statement the grammar does not
     model is classified from its leading words with an informational diagnostic.
     """
+    # MariaDB shares this grammar; without engine/version context both markers are opaque.
+    if (
+        dialect == "mysql"  # lint: allow-dialect-string: MySQL-family executable comments
+        and ("/*!" in sql or "/*M!" in sql)
+        and any(
+            match.group().startswith(("/*!", "/*M!"))
+            for match in _MYSQL_QUOTES_AND_COMMENTS.finditer(sql)
+        )
+    ):
+        return StatementFacts(
+            "UNKNOWN", "UNKNOWN", diagnostic="mysql executable comment is opaque to statement facts"
+        )
     try:
         ast = parse_one(_UPDATE_OR.sub(r"\1", sql), read=dialect)
     except (ParseError, TokenError) as exc:
