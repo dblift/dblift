@@ -372,6 +372,20 @@ CASES = [
         ("ok", [("SELECT 1", "DROP TABLE t"), ("SELECT 2;",)]),
     ),
     ("case 113", "SELECT 1;\r\nSELECT 2;\r\n", ("ok", [("SELECT 1;", "SELECT 2;")])),
+    ("batch start 0", "\xa0 DROP TABLE t", ("ok", [("DROP TABLE t",)])),
+    ("batch start 1", "\x0cDROP TABLE t", ("ok", [("DROP TABLE t",)])),
+    ("batch start 2", "\x1c DROP t", ("ok", [("DROP t",)])),
+    ("batch start 3", "x\nGO\n\xa0DROP t", ("ok", [("x",), ("DROP t",)])),
+    ("batch start 4", "\x85DROP TABLE t", ("ok", [("DROP TABLE t",)])),
+    ("batch start 5", "\u2028 CREATE TABLE t (a INT)", ("ok", [("CREATE TABLE t (a INT)",)])),
+    ("batch start 6", "\x1dTRUNCATE TABLE t", ("ok", [("TRUNCATE TABLE t",)])),
+    ("batch start 7", "\x0b DROP t", ("ok", [("DROP t",)])),
+    (
+        "batch start 8",
+        "SELECT 1\nGO\n\x0c DROP TABLE t\nGO\n\xa0CREATE TABLE u (a INT)",
+        ("ok", [("SELECT 1",), ("DROP TABLE t",), ("CREATE TABLE u (a INT)",)]),
+    ),
+    ("batch start 9", "\xa0 \xa0DROP TABLE t; SELECT 2", ("ok", [("DROP TABLE t;", "SELECT 2")])),
 ]
 
 
@@ -387,6 +401,10 @@ def parts(script, spec=SQLSERVER_SPEC):
         if record.repeat > 0
         for statement in record.analysis_statements
     ]
+
+
+def batch_rules(**changes):
+    return replace(SQLSERVER_SPEC, batch_script=replace(SQLSERVER_SPEC.batch_script, **changes))
 
 
 def division(**changes):
@@ -531,6 +549,14 @@ GLUE = [
     "\n  ",
     "\nGO\n",
     " ; ",
+    "\xa0",
+    "\n\xa0",
+    "\x0c",
+    "\n\x1c ",
+    "\x85",
+    "\u2028",
+    "\nGO\n\xa0",
+    "\x0b ",
 ]
 
 
@@ -588,3 +614,19 @@ def test_division_rules_match_the_previous_heuristic_on_long_sequences(chunk):
         words = [rng.choice(WORDS) for _ in range(rng.randrange(5, 14))]
         script = _layout(rng, words)
         assert _same_as_before(script), script
+
+
+def test_word_alphabet_of_the_division_is_a_spec_field():
+    script = "BEGIN SELECT 1; END2 SELECT 2; END; SELECT 3;"
+    assert parts(script) == ["BEGIN SELECT 1; END2 SELECT 2; END;", "SELECT 3;"]
+    assert parts(script, batch_rules(word_part="A-Za-z_@#$")) == [
+        "BEGIN SELECT 1; END2 SELECT 2;",
+        "END;",
+        "SELECT 3;",
+    ]
+
+
+def test_word_start_of_the_division_is_a_spec_field():
+    script = "BEGIN SELECT 1; END; SELECT 2;"
+    assert parts(script) == ["BEGIN SELECT 1; END;", "SELECT 2;"]
+    assert parts(script, batch_rules(word_start="A-DF-Za-z_@#$")) == [script]
