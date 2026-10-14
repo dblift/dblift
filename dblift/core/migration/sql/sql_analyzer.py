@@ -537,7 +537,10 @@ class SqlAnalyzer:
             List of dictionaries with object information
         """
         quirks = ProviderRegistry.get_quirks(self.dialect)
-        if self.analysis_mode == "full" and quirks.supports_statement_facts:
+        if quirks.supports_statement_facts and (
+            self.analysis_mode == "full"
+            or self.dialect != "duckdb"  # lint: allow-dialect-string: existing facts modes
+        ):
             facts = quirks.statement_facts(sql)
             return [
                 {
@@ -558,7 +561,10 @@ class SqlAnalyzer:
             Dictionary containing analysis results
         """
         quirks = ProviderRegistry.get_quirks(self.dialect)
-        if self.analysis_mode == "full" and quirks.supports_statement_facts:
+        if quirks.supports_statement_facts and (
+            self.analysis_mode == "full"
+            or self.dialect != "duckdb"  # lint: allow-dialect-string: existing facts modes
+        ):
             facts = quirks.statement_facts(sql)
             return {
                 "type": facts.kind,

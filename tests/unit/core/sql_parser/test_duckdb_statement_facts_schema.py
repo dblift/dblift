@@ -1,4 +1,4 @@
-"""DuckDB schema facts retain identities without activating parser consumers."""
+"""DuckDB schema facts retain identities through scanner-backed parser consumers."""
 
 import pytest
 
@@ -49,3 +49,38 @@ def test_schema_facts_share_duckdb_parser_consumers():
     assert quirks.parser_class("regex") is DuckDBFactsParser
     assert quirks.parser_class("hybrid") is DuckDBFactsParser
     assert quirks.parser_class("sqlglot") is DuckDBFactsParser
+
+
+@pytest.mark.parametrize("dialect", ["sqlite", "postgres", "oracle", "mysql", "tsql"])
+@pytest.mark.parametrize(
+    "sql,operation,kind,opaque",
+    [
+        ("DROP SCHEMA s CASCADE", "DROP", "DDL", False),
+        ("COMMENT ON TABLE child IS 'note'", "COMMENT", "UNKNOWN", True),
+        ("SHOW TABLES", "SHOW", "UNKNOWN", True),
+        ("DESCRIBE child", "DESCRIBE", "UNKNOWN", True),
+    ],
+)
+def test_duckdb_schema_and_metadata_mappings_preserve_other_dialects(
+    dialect, sql, operation, kind, opaque
+):
+    facts = read_statement_facts(sql, dialect=dialect)
+    assert facts.operation == operation
+    assert facts.kind == kind
+    assert facts.objects == ()
+    assert facts.opaque is opaque
+
+
+@pytest.mark.parametrize(
+    "dialect,expected",
+    [
+        ("sqlite", "child AS c"),
+        ("postgres", "child AS c"),
+        ("oracle", "child c"),
+        ("mysql", "child AS c"),
+        ("tsql", "child AS c"),
+    ],
+)
+def test_duckdb_target_alias_normalization_preserves_other_dialect_facts(dialect, expected):
+    facts = read_statement_facts("UPDATE child AS c SET id = 2 WHERE c.id = 1", dialect=dialect)
+    assert facts.target_sql == expected

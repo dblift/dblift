@@ -106,7 +106,7 @@ def analyze_dml(
         return DmlMutation(
             facts.target or "",
             set(facts.events) if facts.events else None,
-            list(facts.affected_columns),
+            list(facts.affected_columns) if facts.events and "UPDATE" in facts.events else [],
         )
 
     mutation = _analyze_dml_sqlglot(statement, sqlglot_dialect)

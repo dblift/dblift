@@ -651,7 +651,7 @@
       "accepted_differences": [
         "UPDATE and DELETE expose their changed TABLE target instead of an empty object list.",
         "CTE mutations and COPY imports use statement facts in regex, hybrid, and sqlglot factory modes.",
-        "Undo requires manual review for all mutations, including plain CREATE; queries and comment-only units need no undo."
+        "Undo requires manual review for all mutations, including plain CREATE; queries and comment-only units need no undo. CREATE TYPE and DROP TYPE remain opaque with no reported identity because sqlglot provides no target AST; their undo always requires manual review."
       ]
     }
   ],
