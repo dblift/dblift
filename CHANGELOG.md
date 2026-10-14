@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.12.0] - 2026-10-14
+
 ### Added
 
 - Scanner records can carry optional half-open Python string offsets into the
@@ -39,6 +41,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Script correctness:** the updated dialect splitters refuse scripts the vendor client
+  would reject or misread, naming the construct and its line, instead of guessing
+  another split or silently losing text. The dialect notes below describe the
+  supported client commands and the deliberate extensions to client behavior.
+- **Library API: `split_statements()` keeps comments inside statements.** MySQL,
+  MariaDB, Db2, SQLite and DuckDB strings omit their consumed trailing delimiter.
+  PostgreSQL and Redshift strings keep their trailing `;`; Oracle SQL strings
+  keep `;` but omit a terminating `/` line, retaining the `;` inside PL/SQL bodies.
+  SQL Server returns batches without the `GO` line and keeps their semicolons.
+  Callers that compare or concatenate statement text should account for these
+  dialect-specific projections; `split()` records carry the consumed terminator
+  separately.
+- **Snowflake retains its previous statement splitter.** Its splitter migration
+  is deferred. Redshift inherits the PostgreSQL scanner with its existing
+  non-nesting block comments and backslash escapes in plain string literals;
+  these rules have not been verified against a live Redshift engine.
 - **SQL Server: statement splitting, analysis and extraction run on the shared
   lexical engine** (as PostgreSQL, SQLite and Oracle do), with the sqlcmd rules as
   data: the same scripts give the same batches and the same refusals (class, line
@@ -190,8 +208,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the unit tests.
 - The Oracle splitter has no regex fallback: a script it cannot read is an
   error naming the construct (the regex path remains for object extraction
-  only). `split_statements()` strings are unchanged except where the rules
-  under Fixed ruled the old output wrong.
+  only). Its statement-text projection is described above; the corrections
+  under Fixed also change the affected strings.
 - SQL Server and Oracle refuse an unterminated string or block comment with
   `UnsafeStatementSplitError` and its position. SQL Server previously
   dropped the rest of the file silently for an unterminated comment.
@@ -426,10 +444,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `mariadb` instead of `mysql`.
 - `parse_sql` reports a script the splitter refuses as an error in `errors` on
   Oracle, SQL Server, MySQL and MariaDB, instead of failing the parse (PostgreSQL
-  already reported it that way), also when the script declares objects; object
-  extraction returns the objects it finds in the text (none when there are none)
-  instead of raising. Execution still refuses the script. `validate_sql` checks
-  the syntax of the text and does not apply the splitter's refusals.
+  already reported it that way), also when the script declares objects. A refused
+  script returns no statements or objects from the public parser; public object
+  extraction raises the scanner refusal. `validate_sql` reports the same refusal
+  as an error, and execution refuses the script.
 - **MySQL and MariaDB: a script with a client command is refused.** `source`,
   `exit`, `quit`, `status`, `system`, `connect`, `tee`, `charset`, `prompt`,
   `pager`, `go`, `help x` and `use db` without a terminator, `status;;` and the
@@ -4638,3 +4656,6 @@ All additions are backward compatible (MINOR): two new modules, two new
 - Configuration via YAML files, environment variables, or CLI arguments.
 - Cross-platform distributions (Windows, Linux, macOS).
 - Modular provider architecture for easy database support extension.
+
+[Unreleased]: https://github.com/dblift/dblift/compare/v4.12.0...develop
+[4.12.0]: https://github.com/dblift/dblift/compare/v4.11.1...v4.12.0
