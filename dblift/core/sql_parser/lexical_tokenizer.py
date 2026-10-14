@@ -544,47 +544,25 @@ class LexicalTokenizer(BaseTokenizer):
         )
 
     def _handle_quoted_identifier(self) -> Token:
-        """Handle double-quoted identifiers (case-sensitive in PostgreSQL).
-
-        Returns:
-            Identifier token
-        """
-        start_pos = self.pos
-        start_line = self.line
-        start_col = self.col
-
-        # Capture entire identifier including quotes
-        identifier_text = ""
-
-        # Read opening quote
-        identifier_text += self.read()
-
-        # Read until closing quote
-        closed = False
-        while self.pos < len(self.sql):
-            char = self.peek()
-            if char == self.spec.quoted_identifier:
-                # Check for doubled quote (escape)
-                if (
-                    self.spec.quoted_identifier_escape
-                    and self.peek(2) == self.spec.quoted_identifier * 2
-                ):
-                    identifier_text += self.read(2)
-                else:
-                    identifier_text += self.read()  # Closing quote
-                    closed = True
-                    break
-            else:
-                identifier_text += self.read()
-        if not closed:
-            raise UnsafeStatementSplitError(
-                f"unterminated quoted identifier opened at line {start_line}, "
-                f"column {start_col}"
-            )
-
+        """Read a quoted identifier; a doubled quote is an escape when the spec says so."""
+        start_pos, start_line, start_col = self.pos, self.line, self.col
+        quote = self.spec.quoted_identifier
+        self.read()
+        while True:
+            end = self.sql.find(quote, self.pos)
+            if end < 0:
+                self.read(len(self.sql) - self.pos)
+                raise UnsafeStatementSplitError(
+                    f"unterminated quoted identifier opened at line {start_line}, "
+                    f"column {start_col}"
+                )
+            self.read(end + 1 - self.pos)
+            if not (self.spec.quoted_identifier_escape and self.peek() == quote):
+                break
+            self.read()
         return Token(
             TokenType.IDENTIFIER,
-            identifier_text,
+            self.sql[start_pos : self.pos],
             start_pos,
             start_line,
             start_col,
