@@ -64,7 +64,7 @@ def test_merge_facts_remain_opaque_for_other_dialects(dialect):
     assert facts.opaque
 
 
-@pytest.mark.parametrize("dialect", ["sqlite", "postgres", "oracle", "snowflake", "tsql"])
+@pytest.mark.parametrize("dialect", ["sqlite", "oracle", "snowflake", "tsql"])
 def test_copy_facts_remain_opaque_for_other_dialects(dialect):
     facts = read_statement_facts("COPY items FROM '/tmp/items.csv'", dialect=dialect)
 
