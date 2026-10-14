@@ -411,6 +411,13 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
         virtual = bool(properties and properties.find(exp.VirtualProperty))
         if virtual:
             object_type = SqlObjectType.VIRTUAL_TABLE
+        if (
+            dialect == "postgres"  # lint: allow-dialect-string: PostgreSQL materialized views
+            and kind == "VIEW"
+            and properties
+            and properties.find(exp.MaterializedProperty)
+        ):
+            object_type = SqlObjectType.MATERIALIZED_VIEW
         identity = _named(subject, object_type, "created") if subject is not None else None
         if (
             dialect == "duckdb"  # lint: allow-dialect-string: DuckDB schema identity projection
@@ -486,6 +493,12 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
     if isinstance(ast, exp.Drop):
         kind = str(ast.args.get("kind") or "").upper()
         object_type = SqlObjectType.__members__.get(kind, SqlObjectType.UNKNOWN)
+        if (
+            dialect == "postgres"  # lint: allow-dialect-string: PostgreSQL materialized views
+            and kind == "VIEW"
+            and ast.args.get("materialized")
+        ):
+            object_type = SqlObjectType.MATERIALIZED_VIEW
         targets = ast.args.get("tables") or ast.args.get("expressions") or [ast.this]
         if (
             dialect == "duckdb"  # lint: allow-dialect-string: DuckDB schema identity projection
