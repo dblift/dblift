@@ -163,6 +163,20 @@ def _column_constraints(definition: exp.ColumnDef) -> Tuple[DeclaredConstraint, 
     )
 
 
+def _merge_referenced(node: exp.Merge) -> Tuple[NamedObject, ...]:
+    """Resolve MERGE sources in their own scopes, excluding CTE aliases."""
+    from sqlglot.optimizer.scope import traverse_scope
+
+    found: list[NamedObject] = []
+    for scope in traverse_scope(node):
+        for source in scope.sources.values():
+            if isinstance(source, exp.Table):
+                reference = _named(source, SqlObjectType.TABLE, "referenced")
+                if reference is not None and reference not in found:
+                    found.append(reference)
+    return tuple(found)
+
+
 def _blanked(sql: str) -> str:
     return strip_comments_preserving_quotes(
         sql, line_prefixes=["--"], has_block_comments=True, nested_block_comments=False
@@ -400,11 +414,15 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
         columns = tuple(_sqlglot_updated_columns(ast))
         if isinstance(ast, exp.Insert) and isinstance(ast.this, exp.Schema):
             columns = tuple(x.name for x in ast.this.expressions)
+        references = (
+            _merge_referenced(ast)
+            if isinstance(ast, exp.Merge)
+            else _referenced(ast, (table,) if table is not None else ())
+        )
         return StatementFacts(
             operation,
             "DML",
-            ((identity,) if identity else ())
-            + _referenced(ast, (table,) if table is not None else ()),
+            ((identity,) if identity else ()) + references,
             target,
             predicate,
             affected_columns=columns,
