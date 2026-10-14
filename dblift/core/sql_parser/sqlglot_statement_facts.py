@@ -183,6 +183,16 @@ def _copy_query_referenced(query: exp.Subquery, sql: str) -> Optional[Tuple[Name
     """Resolve query export sources, refusing table functions rather than omitting them."""
     from sqlglot.optimizer.scope import traverse_scope
 
+    query = query.copy()
+    original_names = {
+        id(table): _named(table, SqlObjectType.TABLE, "referenced")
+        for table in query.find_all(exp.Table)
+    }
+    # Scope lookup must use DuckDB's case rules while facts preserve the written identities.
+    dialect = Dialect.get_or_raise("duckdb")
+    for identifier in query.find_all(exp.Identifier):
+        dialect.normalize_identifier(identifier)
+
     found: list[NamedObject] = []
     for scope in traverse_scope(query):
         if scope.is_udtf:
@@ -195,7 +205,7 @@ def _copy_query_referenced(query: exp.Subquery, sql: str) -> Optional[Tuple[Name
                 start = source.this.meta.get("start")
                 if source.this.args.get("quoted") and (start is None or sql[start] != '"'):
                     return None
-                reference = _named(source, SqlObjectType.TABLE, "referenced")
+                reference = original_names[id(source)]
                 if reference is not None and reference not in found:
                     found.append(reference)
     return tuple(found)
