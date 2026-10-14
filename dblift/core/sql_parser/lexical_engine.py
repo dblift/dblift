@@ -6,7 +6,7 @@ from typing import List
 from dblift.core.sql_parser.lexical_spec import LexicalSpec
 from dblift.core.sql_parser.lexical_statement_parser import LexicalStatementParser
 from dblift.core.sql_parser.lexical_tokenizer import LexicalTokenizer
-from dblift.core.sql_parser.statement import Statement
+from dblift.core.sql_parser.statement import Statement, analysis_sql
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +47,9 @@ class LexicalEngine:
         return statements
 
     def split_for_analysis(self, script: str) -> List[str]:
-        """Include SQLite comment-only segments in the shared scan's projection."""
+        """Project executed batch constituents, retaining SQLite comment-only segments."""
+        if self.spec.batch_script is not None:
+            return analysis_sql(self.split(script))
         return [record.text for record in self.split(script, include_comment_only=True)]
 
     def blank_comments(self, script: str) -> str:

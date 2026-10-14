@@ -228,3 +228,20 @@ def test_a_spec_that_reads_the_engine_for_masking_reads_client_lines_as_text(mon
 
 def test_shared_comment_masking_has_the_batch_comment_extents():
     assert LexicalEngine(SQLSERVER_SPEC).blank_comments("SELECT 1 /* c */") == "SELECT 1  "
+
+
+@pytest.mark.parametrize("count", [0, 2])
+def test_shared_analysis_projects_executed_batch_constituents(count):
+    script = f"SELECT 1; SELECT 2;\nGO {count}\nSELECT 3; SELECT 4;"
+    expected = ["SELECT 3;", "SELECT 4;"]
+    if count:
+        expected = ["SELECT 1;", "SELECT 2;"] + expected
+    assert SqlServerRegexParser().split_for_analysis(script) == expected
+    assert LexicalEngine(SQLSERVER_SPEC).split_for_analysis(script) == expected
+
+
+def test_shared_analysis_keeps_sqlite_comment_only_segments():
+    assert LexicalEngine(SQLITE_SPEC).split_for_analysis("SELECT 1; -- only") == [
+        "SELECT 1",
+        "-- only",
+    ]
