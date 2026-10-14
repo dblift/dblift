@@ -75,6 +75,26 @@
         "diagnostic": null,
         "error": null
       }
+    },
+    {
+      "id": "nested_cte_does_not_hide_using_table",
+      "source": "DuckDB MERGE facts regression: a CTE inside an UPDATE expression does not hide a real table in the outer USING clause",
+      "sql": "MERGE INTO t USING s ON t.id=s.id WHEN MATCHED THEN UPDATE SET val=(WITH s AS (SELECT val FROM z) SELECT val FROM s);",
+      "facts": {
+        "operation": "MERGE",
+        "kind": "DML",
+        "objects": [
+          {"name": "t", "type": "TABLE", "role": "altered", "schema": null},
+          {"name": "s", "type": "TABLE", "role": "referenced", "schema": null},
+          {"name": "z", "type": "TABLE", "role": "referenced", "schema": null}
+        ],
+        "target": "t",
+        "predicate": null,
+        "affected_columns": ["val"],
+        "events": ["UPDATE"],
+        "diagnostic": null,
+        "error": null
+      }
     }
   ]
 }

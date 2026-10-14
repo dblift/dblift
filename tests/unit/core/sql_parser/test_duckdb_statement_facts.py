@@ -57,3 +57,16 @@ def test_merge_facts_remain_opaque_for_other_dialects(dialect):
     assert facts.events is None
     assert facts.affected_columns == ()
     assert facts.opaque
+
+
+@pytest.mark.parametrize("update", ["UPDATE", "UPDATE SET *"])
+def test_merge_implicit_update_columns_keep_the_target_and_event(update):
+    facts = read_statement_facts(
+        f"MERGE INTO t USING s ON t.id=s.id WHEN MATCHED THEN {update}", dialect="duckdb"
+    )
+
+    assert facts.target == "t"
+    assert facts.events == frozenset({"UPDATE"})
+    # The statement declares no individual columns; their names need the database catalogue.
+    assert facts.affected_columns == ()
+    assert not facts.opaque
