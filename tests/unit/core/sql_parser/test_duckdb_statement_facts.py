@@ -93,7 +93,7 @@ def test_copy_unknown_direction_does_not_claim_read_or_write_effects(direction):
         this=exp.to_table("items"), kind=direction, files=[exp.Literal.string("items.csv")]
     )
 
-    facts = _copy_facts(node)
+    facts = _copy_facts(node, "COPY items FROM 'items.csv'")
 
     assert facts.operation == "COPY"
     assert facts.kind == "UNKNOWN"

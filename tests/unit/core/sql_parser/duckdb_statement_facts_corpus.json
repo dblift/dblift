@@ -501,6 +501,129 @@
         "diagnostic": null,
         "error": null
       }
+    },
+    {
+      "id": "copy_missing_direction_opaque",
+      "source": "DuckDB COPY facts regression: a direction keyword must precede the file path",
+      "sql": "COPY items 'a.csv';",
+      "facts": {
+        "operation": "COPY",
+        "kind": "UNKNOWN",
+        "objects": [],
+        "target": null,
+        "predicate": null,
+        "affected_columns": [],
+        "events": null,
+        "diagnostic": "duckdb COPY source or destination is opaque",
+        "error": null
+      }
+    },
+    {
+      "id": "copy_missing_direction_path_keyword_opaque",
+      "source": "DuckDB COPY facts regression: a direction keyword must precede the file path",
+      "sql": "COPY items 'from.csv';",
+      "facts": {
+        "operation": "COPY",
+        "kind": "UNKNOWN",
+        "objects": [],
+        "target": null,
+        "predicate": null,
+        "affected_columns": [],
+        "events": null,
+        "diagnostic": "duckdb COPY source or destination is opaque",
+        "error": null
+      }
+    },
+    {
+      "id": "copy_missing_direction_identifier_keyword_opaque",
+      "source": "DuckDB COPY facts regression: a direction keyword must precede the file path",
+      "sql": "COPY \"FROM\" 'a.csv';",
+      "facts": {
+        "operation": "COPY",
+        "kind": "UNKNOWN",
+        "objects": [],
+        "target": null,
+        "predicate": null,
+        "affected_columns": [],
+        "events": null,
+        "diagnostic": "duckdb COPY source or destination is opaque",
+        "error": null
+      }
+    },
+    {
+      "id": "copy_missing_direction_qualified_keyword_opaque",
+      "source": "DuckDB COPY facts regression: a direction keyword must precede the file path",
+      "sql": "COPY s.FROM 'a.csv';",
+      "facts": {
+        "operation": "COPY",
+        "kind": "UNKNOWN",
+        "objects": [],
+        "target": null,
+        "predicate": null,
+        "affected_columns": [],
+        "events": null,
+        "diagnostic": "duckdb grammar is not modelled for this statement",
+        "error": null
+      }
+    },
+    {
+      "id": "copy_missing_direction_comment_keyword_opaque",
+      "source": "DuckDB COPY facts regression: a direction keyword must precede the file path",
+      "sql": "COPY items /* FROM */ 'a.csv';",
+      "facts": {
+        "operation": "COPY",
+        "kind": "UNKNOWN",
+        "objects": [],
+        "target": null,
+        "predicate": null,
+        "affected_columns": [],
+        "events": null,
+        "diagnostic": "duckdb COPY source or destination is opaque",
+        "error": null
+      }
+    },
+    {
+      "id": "copy_missing_direction_option_keyword_opaque",
+      "source": "DuckDB COPY facts regression: a direction keyword must precede the file path",
+      "sql": "COPY items 'a.csv' (FORMAT FROM);",
+      "facts": {
+        "operation": "COPY",
+        "kind": "UNKNOWN",
+        "objects": [],
+        "target": null,
+        "predicate": null,
+        "affected_columns": [],
+        "events": null,
+        "diagnostic": "duckdb COPY source or destination is opaque",
+        "error": null
+      }
+    },
+    {
+      "id": "copy_quoted_keyword_subject",
+      "source": "DuckDB COPY facts regression: quoted subject keywords do not hide the real direction",
+      "sql": "COPY \"TO\".\"FROM\" (\"FROM\") FROM 'a.csv';",
+      "facts": {
+        "operation": "COPY",
+        "kind": "DML",
+        "objects": [
+          {
+            "name": "FROM",
+            "type": "TABLE",
+            "role": "altered",
+            "schema": "TO"
+          }
+        ],
+        "target": "TO.FROM",
+        "predicate": null,
+        "affected_columns": [
+          "FROM"
+        ],
+        "events": [
+          "INSERT"
+        ],
+        "diagnostic": null,
+        "error": null
+      }
     }
   ]
 }

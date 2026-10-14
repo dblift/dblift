@@ -10,7 +10,9 @@ from dataclasses import replace
 from typing import Optional, Tuple
 
 from sqlglot import exp, parse_one
+from sqlglot.dialects import Dialect
 from sqlglot.errors import ParseError, TokenError
+from sqlglot.tokens import TokenType
 
 from dblift.core.sql_model.base import SqlObjectType
 from dblift.core.sql_parser.common.comment_stripping import strip_comments_preserving_quotes
@@ -177,13 +179,16 @@ def _merge_referenced(node: exp.Merge) -> Tuple[NamedObject, ...]:
     return tuple(found)
 
 
-def _copy_facts(node: exp.Copy) -> StatementFacts:
+def _copy_facts(node: exp.Copy, sql: str) -> StatementFacts:
     """Read named-table DuckDB COPY with one literal file path."""
     schema = node.this if isinstance(node.this, exp.Schema) else None
     table = schema.this if schema is not None else node.this
     direction = node.args.get("kind")
     files = node.args.get("files") or []
     columns = schema.expressions if schema is not None else []
+    opaque = StatementFacts(
+        "COPY", "UNKNOWN", diagnostic="duckdb COPY source or destination is opaque"
+    )
     if not (
         isinstance(table, exp.Table)
         and isinstance(table.this, exp.Identifier)
@@ -196,10 +201,19 @@ def _copy_facts(node: exp.Copy) -> StatementFacts:
         and all(parameter.name.isidentifier() for parameter in node.args.get("params") or [])
         and not any(parameter.find(exp.Query) for parameter in node.args.get("params") or [])
     ):
-        return StatementFacts(
-            "COPY", "UNKNOWN", diagnostic="duckdb COPY source or destination is opaque"
-        )
+        return opaque
     importing = direction is True
+    # sqlglot defaults a missing direction to FROM; require the actual keyword before the path.
+    tokens = Dialect.get_or_raise("duckdb").tokenize(sql)
+    path_at = next(
+        (i for i, token in enumerate(tokens) if token.start == files[0].meta.get("start")), 0
+    )
+    expected = (TokenType.FROM, "FROM") if importing else (TokenType.VAR, "TO")
+    if (
+        not path_at
+        or (tokens[path_at - 1].token_type, tokens[path_at - 1].text.upper()) != expected
+    ):
+        return opaque
     identity = _named(table, SqlObjectType.TABLE, "altered" if importing else "referenced")
     target = ".".join(part for part in (table.catalog, table.db, table.name) if part)
     return StatementFacts(
@@ -323,7 +337,7 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
         dialect == "duckdb"  # lint: allow-dialect-string: COPY facts qualified for DuckDB only
         and isinstance(ast, exp.Copy)
     ):
-        return _copy_facts(ast)
+        return _copy_facts(ast, sql)
 
     if isinstance(ast, exp.Create):
         kind = str(ast.args.get("kind") or "").upper()
