@@ -16,6 +16,9 @@ from dblift.db.plugins.postgresql.quirks import PostgresqlQuirks
     [
         ("TRUNCATE items", (("items", None),)),
         ("TRUNCATE TABLE public.items", (("items", "public"),)),
+        ("truncate table public.items restart identity cascade", (("items", "public"),)),
+        ("truncate table public.items continue identity restrict", (("items", "public"),)),
+        ("TRUNCATE TABLE public.items ReStArT IdEnTiTy CaScAdE", (("items", "public"),)),
         (
             "TRUNCATE TABLE ONLY public.items, public.logs RESTART IDENTITY CASCADE",
             (("items", "public"), ("logs", "public")),
@@ -52,6 +55,10 @@ def test_postgres_truncate_facts_name_only_explicit_tables(sql, identities):
         "TRUNCATE DATABASE inventory",
         "TRUNCATE TABLE public.items AS i",
         "TRUNCATE TABLE public.items ON CLUSTER c",
+        "TRUNCATE TABLE currentdb.public.items",
+        'TRUNCATE TABLE "".items',
+        'TRUNCATE TABLE "".public.items',
+        'TRUNCATE TABLE public.""',
     ],
 )
 def test_postgres_unmodelled_truncate_targets_and_clauses_stay_opaque(sql):

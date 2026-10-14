@@ -522,7 +522,7 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
         and isinstance(ast, exp.TruncateTable)
         and ast.expressions
         and ast.args.get("identity") in (None, "RESTART", "CONTINUE")
-        and ast.args.get("option") in (None, "CASCADE", "RESTRICT")
+        and str(ast.args.get("option") or "").upper() in ("", "CASCADE", "RESTRICT")
         and not any(
             value
             for key, value in ast.args.items()
@@ -532,6 +532,8 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
             isinstance(target, exp.Table)
             and isinstance(target.this, exp.Identifier)
             and target.name
+            and target.args.get("catalog") is None
+            and (target.args.get("db") is None or target.db)
             and not any(
                 value
                 for key, value in target.args.items()
