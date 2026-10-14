@@ -1,13 +1,15 @@
-"""DuckDB MERGE facts retain mutation details without changing parser dispatch."""
+"""DuckDB statement facts retain mutation details without changing parser dispatch."""
 
 import json
 from pathlib import Path
 
 import pytest
 
+from dblift.core.sql_model.base import SqlObjectType
 from dblift.core.sql_parser.hybrid_parser import HybridParser
 from dblift.core.sql_parser.sqlglot_parser import SqlGlotParser
 from dblift.core.sql_parser.sqlglot_statement_facts import read_statement_facts
+from dblift.core.sql_parser.statement_facts import NamedObject
 from dblift.db.plugins.duckdb.parser._script import scan_script
 from dblift.db.plugins.duckdb.parser.duckdb_regex_parser import DuckDBRegexParser
 from dblift.db.plugins.duckdb.quirks import DuckDBQuirks
@@ -70,3 +72,54 @@ def test_merge_implicit_update_columns_keep_the_target_and_event(update):
     # The statement declares no individual columns; their names need the database catalogue.
     assert facts.affected_columns == ()
     assert not facts.opaque
+
+
+@pytest.mark.parametrize(
+    ("sql", "name", "schema"),
+    [
+        ("TRUNCATE t", "t", None),
+        ("TRUNCATE TABLE t", "t", None),
+        ("TRUNCATE TABLE main.t", "t", "main"),
+        ('TRUNCATE TABLE "main"."Order Items"', "Order Items", "main"),
+    ],
+)
+def test_duckdb_truncate_facts_name_the_altered_table(sql, name, schema):
+    facts = read_statement_facts(sql, dialect="duckdb")
+
+    assert facts.operation == "TRUNCATE"
+    assert facts.kind == "DDL"
+    assert facts.objects == (NamedObject(name, SqlObjectType.TABLE, "altered", schema),)
+    assert not facts.opaque
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "TRUNCATE TABLE (SELECT * FROM t)",
+        "TRUNCATE TABLE read_csv('x')",
+        "TRUNCATE t,u",
+    ],
+)
+def test_duckdb_truncate_non_table_targets_are_opaque(sql):
+    facts = read_statement_facts(sql, dialect="duckdb")
+
+    assert facts.operation == "TRUNCATE"
+    assert facts.objects == ()
+    assert facts.opaque
+
+
+def test_duckdb_truncate_facts_do_not_change_other_mappings():
+    delete = read_statement_facts("DELETE FROM t WHERE id = 1", dialect="duckdb")
+    drop = read_statement_facts("DROP TABLE t", dialect="duckdb")
+    postgres_truncate = read_statement_facts("TRUNCATE TABLE t", dialect="postgres")
+
+    assert delete.operation == "DELETE"
+    assert delete.kind == "DML"
+    assert delete.objects == (NamedObject("t", SqlObjectType.TABLE, "altered"),)
+    assert drop.operation == "DROP"
+    assert drop.kind == "DDL"
+    assert drop.objects == (NamedObject("t", SqlObjectType.TABLE, "dropped"),)
+    assert postgres_truncate.operation == "TRUNCATE"
+    assert postgres_truncate.kind == "UNKNOWN"
+    assert postgres_truncate.objects == ()
+    assert postgres_truncate.opaque
