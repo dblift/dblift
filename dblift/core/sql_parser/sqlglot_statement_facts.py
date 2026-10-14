@@ -254,6 +254,14 @@ def _postgres_merge_facts(node: exp.Merge) -> Optional[StatementFacts]:
     table = node.this
     if not isinstance(table, exp.Table) or not isinstance(table.this, exp.Identifier):
         return None
+    if any(
+        not isinstance(source.this, exp.Identifier)
+        or not source.name
+        or source.args.get("catalog") is not None
+        or (source.args.get("db") is not None and not source.db)
+        for source in node.find_all(exp.Table)
+    ):
+        return None
     if table.args.get("joins") or not node.args.get("on"):
         return None
     if not isinstance(node.args.get("using"), (exp.Table, exp.Subquery, exp.Values)):
@@ -290,9 +298,9 @@ def _postgres_merge_facts(node: exp.Merge) -> Optional[StatementFacts]:
             if action.this is not None and not isinstance(action.this, exp.Tuple):
                 return None
             events.add("INSERT")
-        elif isinstance(action, exp.Var) and action.name == "DELETE" and matches_target:
+        elif isinstance(action, exp.Var) and action.name.upper() == "DELETE" and matches_target:
             events.add("DELETE")
-        elif not (isinstance(action, exp.Var) and action.name == "DO NOTHING"):
+        elif not (isinstance(action, exp.Var) and action.name.upper() == "DO NOTHING"):
             return None
 
     # Scope lookup folds unquoted PostgreSQL identifiers, but facts keep the written names.
@@ -301,8 +309,6 @@ def _postgres_merge_facts(node: exp.Merge) -> Optional[StatementFacts]:
         id(source): _named(source, SqlObjectType.TABLE, "referenced")
         for source in scoped.find_all(exp.Table)
     }
-    if any(not isinstance(source.this, exp.Identifier) for source in scoped.find_all(exp.Table)):
-        return None
     dialect = Dialect.get_or_raise("postgres")  # lint: allow-dialect-string: PostgreSQL scopes
     for identifier in scoped.find_all(exp.Identifier):
         dialect.normalize_identifier(identifier)

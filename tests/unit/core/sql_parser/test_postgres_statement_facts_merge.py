@@ -170,3 +170,66 @@ def test_postgres_merge_unmodelled_effects_remain_opaque(sql):
 
 def test_postgres_merge_does_not_activate_the_plugin():
     assert not PostgresqlQuirks().supports_statement_facts
+
+
+@pytest.mark.parametrize(
+    "relation",
+    ["currentdb.public.items", '"".public.items', '"".items', 'public.""', '""'],
+)
+@pytest.mark.parametrize("position", ["target", "source", "query", "cte", "condition"])
+def test_postgres_merge_refuses_unrepresentable_identity_in_every_table_position(
+    relation, position
+):
+    prefix = ""
+    target = relation if position == "target" else "items"
+    source = relation if position == "source" else "source"
+    condition = ""
+    if position == "query":
+        source = f"(SELECT * FROM {relation})"
+    elif position == "cte":
+        prefix = f"WITH source AS (SELECT * FROM {relation}) "
+    elif position == "condition":
+        condition = f"AND EXISTS (SELECT 1 FROM {relation}) "
+
+    facts = read_statement_facts(
+        f"{prefix}MERGE INTO {target} t USING {source} s ON t.id=s.id "
+        f"WHEN MATCHED {condition}THEN DELETE",
+        dialect="postgres",
+    )
+
+    assert facts.operation == "MERGE"
+    assert facts.opaque
+    assert facts.objects == ()
+    assert facts.target is None
+    assert facts.target_sql is None
+    assert facts.events is None
+    assert facts.affected_columns == ()
+
+
+@pytest.mark.parametrize("action", ["delete", "DeLeTe", "do nothing", "Do NoThInG"])
+def test_postgres_merge_action_keywords_are_case_insensitive(action):
+    facts = read_statement_facts(
+        f"merge into items t using source s on t.id=s.id when matched then {action}",
+        dialect="postgres",
+    )
+
+    assert not facts.opaque
+    assert facts.events == (frozenset({"DELETE"}) if " " not in action else frozenset())
+    assert facts.target == facts.target_sql == "items"
+
+
+def test_postgres_merge_quoted_schema_and_cte_collision_preserve_physical_sources():
+    facts = read_statement_facts(
+        'WITH source AS (SELECT * FROM "raw.data"."source") '
+        'MERGE INTO "currentdb.public"."items" t USING "stage.data"."source" s '
+        "ON t.id=s.id WHEN MATCHED THEN DELETE",
+        dialect="postgres",
+    )
+
+    assert not facts.opaque
+    assert facts.objects == (
+        NamedObject("items", SqlObjectType.TABLE, "altered", "currentdb.public"),
+        NamedObject("source", SqlObjectType.TABLE, "referenced", "raw.data"),
+        NamedObject("source", SqlObjectType.TABLE, "referenced", "stage.data"),
+    )
+    assert facts.target_sql == '"currentdb.public"."items"'
