@@ -1,4 +1,4 @@
-"""DuckDB statement facts retain effects without changing parser dispatch."""
+"""DuckDB statement facts retain effects through scanner-backed parser projections."""
 
 import json
 from pathlib import Path
@@ -7,12 +7,10 @@ import pytest
 from sqlglot import exp
 
 from dblift.core.sql_model.base import SqlObjectType
-from dblift.core.sql_parser.hybrid_parser import HybridParser
-from dblift.core.sql_parser.sqlglot_parser import SqlGlotParser
 from dblift.core.sql_parser.sqlglot_statement_facts import _copy_facts, read_statement_facts
 from dblift.core.sql_parser.statement_facts import NamedObject
 from dblift.db.plugins.duckdb.parser._script import scan_script
-from dblift.db.plugins.duckdb.parser.duckdb_regex_parser import DuckDBRegexParser
+from dblift.db.plugins.duckdb.parser.duckdb_facts_parser import DuckDBFactsParser
 from dblift.db.plugins.duckdb.quirks import DuckDBQuirks
 
 CASES = json.loads(
@@ -46,12 +44,12 @@ def test_duckdb_facts_keep_targets_references_and_effects(case):
     ]
 
 
-def test_duckdb_facts_do_not_activate_parser_consumers():
+def test_duckdb_facts_activate_parser_consumers():
     quirks = DuckDBQuirks()
-    assert not quirks.supports_statement_facts
-    assert quirks.parser_class("regex") is DuckDBRegexParser
-    assert quirks.parser_class("hybrid") is HybridParser
-    assert quirks.parser_class("sqlglot") is SqlGlotParser
+    assert quirks.supports_statement_facts
+    assert quirks.parser_class("regex") is DuckDBFactsParser
+    assert quirks.parser_class("hybrid") is DuckDBFactsParser
+    assert quirks.parser_class("sqlglot") is DuckDBFactsParser
 
 
 @pytest.mark.parametrize("dialect", ["sqlite", "postgres", "oracle", "snowflake", "tsql"])

@@ -107,13 +107,13 @@ class TestDuckDBQuirks:
         assert q.type_equivalents()["BOOL"] == "BOOLEAN"
 
     def test_parser_class_dispatch(self):
-        from dblift.db.plugins.duckdb.parser.duckdb_regex_parser import DuckDBRegexParser
+        from dblift.db.plugins.duckdb.parser.duckdb_facts_parser import DuckDBFactsParser
         from dblift.db.plugins.duckdb.quirks import DuckDBQuirks
 
         q = DuckDBQuirks()
-        assert q.parser_class("regex") is DuckDBRegexParser
-        assert q.parser_class("hybrid").__name__ == "HybridParser"
-        assert q.parser_class("sqlglot").__name__ == "SqlGlotParser"
+        assert q.parser_class("regex") is DuckDBFactsParser
+        assert q.parser_class("hybrid") is DuckDBFactsParser
+        assert q.parser_class("sqlglot") is DuckDBFactsParser
         assert q.parser_class("other") is None
 
 

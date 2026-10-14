@@ -435,7 +435,10 @@ class SqlAnalyzer:
         if is_select_into(sql):
             return "DML"
 
-        if self.analysis_mode == "full":
+        if (
+            self.analysis_mode == "full"
+            and self.dialect == "duckdb"  # lint: allow-dialect-string: DuckDB facts classification
+        ):
             quirks = ProviderRegistry.get_quirks(self.dialect)
             if quirks.supports_statement_facts:
                 return quirks.statement_facts(sql).kind

@@ -647,7 +647,12 @@
             ]
           }
         ]
-      }
+      },
+      "accepted_differences": [
+        "UPDATE and DELETE expose their changed TABLE target instead of an empty object list.",
+        "CTE mutations and COPY imports use statement facts in regex, hybrid, and sqlglot factory modes.",
+        "Undo requires manual review for all mutations, including plain CREATE; queries and comment-only units need no undo."
+      ]
     }
   ],
   "input_provenance": "Portable CREATE/INDEX/UPDATE/DELETE/DROP forms adapted from tests/unit/core/sql_parser/test_index_method_and_kind.py and tests/unit/core/sql_parser/test_hybrid_parser_extended.py; parent/child FK shape also appears in tests/unit/core/migration/test_clean_no_introspector.py."
