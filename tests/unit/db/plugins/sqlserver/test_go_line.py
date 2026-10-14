@@ -1,15 +1,27 @@
 """The shape of a GO line, and what follows it (docs/sql-parsing/sqlserver.md section 4)."""
 
 import logging
+from collections import namedtuple
+from dataclasses import replace
 
 import pytest
 
 from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+from dblift.core.sql_parser.lexical_engine import LexicalEngine
 from dblift.core.sql_parser.statement import Statement
-from dblift.db.plugins.sqlserver.parser import _batches
-from dblift.db.plugins.sqlserver.parser._batches import Batch, scan_batches
+from dblift.db.plugins.sqlserver.parser.lexical_spec import SQLSERVER_SPEC
 from dblift.db.plugins.sqlserver.parser.sqlserver_regex_parser import SqlServerRegexParser
+
+Batch = namedtuple("Batch", "text line repeat terminated")
+
+
+def batches_of(script, spec=SQLSERVER_SPEC):
+    """The batch records of the shared engine, in the shape these tests read."""
+    return [
+        Batch(r.text, r.line, r.repeat, r.terminator == "GO")
+        for r in LexicalEngine(spec).split(script)
+    ]
 
 
 def _strings(script):
@@ -33,7 +45,7 @@ def _strings(script):
     ],
 )
 def test_a_clean_go_line_separates_with_its_count(line, count):
-    batches = scan_batches(f"SELECT 1\n{line}\nSELECT 2")
+    batches = batches_of(f"SELECT 1\n{line}\nSELECT 2")
     assert [(b.text, b.repeat) for b in batches] == [("SELECT 1", count), ("SELECT 2", 1)]
 
 
@@ -59,7 +71,7 @@ def test_a_clean_go_line_separates_with_its_count(line, count):
 )
 def test_anything_but_a_count_and_a_dash_comment_after_go_is_refused(line):
     with pytest.raises(UnsafeStatementSplitError, match="text after GO on line 2"):
-        scan_batches(f"SELECT 1\n{line}\nSELECT 2")
+        batches_of(f"SELECT 1\n{line}\nSELECT 2")
 
 
 @pytest.mark.parametrize(
@@ -69,12 +81,12 @@ def test_a_comment_glued_to_go_is_refused(line):
     # The ODBC sqlcmd takes GO--c as a separator; go-sqlcmd sends GO to the server as text, which a
     # batch ending in an expression turns into an alias. Refuse what the two clients read differently.
     with pytest.raises(UnsafeStatementSplitError, match="directly after GO") as error:
-        scan_batches(f"SELECT 1\n{line}\nSELECT 2")
+        batches_of(f"SELECT 1\n{line}\nSELECT 2")
     assert "line 2" in str(error.value)
 
 
 def test_a_blank_before_the_comment_is_still_a_separator():
-    batches = scan_batches("SELECT 1\nGO --c\nSELECT 2")
+    batches = batches_of("SELECT 1\nGO --c\nSELECT 2")
     assert [(b.text, b.repeat) for b in batches] == [("SELECT 1", 1), ("SELECT 2", 1)]
 
 
@@ -100,7 +112,7 @@ def test_a_blank_before_the_comment_is_still_a_separator():
     ],
 )
 def test_a_longer_word_or_a_quoted_name_is_text_not_a_command(word):
-    assert scan_batches(f"SELECT 1\n{word}\nGO") == [Batch(f"SELECT 1\n{word}", 1, 1, True)]
+    assert batches_of(f"SELECT 1\n{word}\nGO") == [Batch(f"SELECT 1\n{word}", 1, 1, True)]
 
 
 @pytest.mark.parametrize(
@@ -113,7 +125,7 @@ def test_a_longer_word_or_a_quoted_name_is_text_not_a_command(word):
 )
 def test_a_go_that_follows_a_comment_on_its_line_is_refused(script):
     with pytest.raises(UnsafeStatementSplitError, match="GO after a comment"):
-        scan_batches(script)
+        batches_of(script)
 
 
 def test_go_n_is_one_record_with_repeat_and_n_strings():
@@ -130,25 +142,27 @@ def test_go_zero_runs_the_batch_never():
     assert _strings(script) == ["SELECT 2"]
 
 
-def test_a_count_above_the_limit_is_refused(monkeypatch):
-    monkeypatch.setattr(_batches, "MAX_GO_COUNT", 5)
+def test_a_count_above_the_limit_is_refused():
+    rules = replace(SQLSERVER_SPEC.batch_script, max_repeat=5)
+    spec = replace(SQLSERVER_SPEC, batch_script=rules)
     assert len(_strings("SELECT 1\nGO 5\n")) == 5
+    assert batches_of("SELECT 1\nGO 5\n", spec)[0].repeat == 5
     with pytest.raises(UnsafeStatementSplitError, match="GO 6 on line 2 exceeds the limit of 5"):
-        scan_batches("SELECT 1\nGO 6\n")
+        batches_of("SELECT 1\nGO 6\n", spec)
 
 
 def test_the_default_limit_is_one_million():
-    assert _batches.MAX_GO_COUNT == 1_000_000
+    assert SQLSERVER_SPEC.batch_script.max_repeat == 1_000_000
 
 
 def test_the_default_limit_is_pinned_by_a_count_one_above_it():
-    assert scan_batches("SELECT 1\nGO 1000000\n")[0].repeat == 1_000_000
+    assert batches_of("SELECT 1\nGO 1000000\n")[0].repeat == 1_000_000
     with pytest.raises(UnsafeStatementSplitError, match="GO 1000001 on line 2 exceeds the limit"):
-        scan_batches("SELECT 1\nGO 1000001\n")
+        batches_of("SELECT 1\nGO 1000001\n")
 
 
 def test_go_zero_is_logged_not_dropped_silently(caplog):
-    logger = "dblift.db.plugins.sqlserver.parser.sqlserver_regex_parser"
+    logger = "dblift.core.sql_parser.lexical_engine"
     with caplog.at_level(logging.INFO, logger=logger):
         assert _strings("INSERT INTO t VALUES (1)\nGO 0\nSELECT 2") == ["SELECT 2"]
     assert "GO 0 follows the batch starting on line 1" in caplog.text
@@ -156,22 +170,22 @@ def test_go_zero_is_logged_not_dropped_silently(caplog):
 
 def test_a_go_line_inside_an_open_block_comment_is_not_cut():
     with pytest.raises(UnsafeStatementSplitError, match="GO after a comment"):
-        scan_batches("SELECT /* a\n b */ GO\nSELECT 2")
+        batches_of("SELECT /* a\n b */ GO\nSELECT 2")
 
 
 def test_text_after_go_on_a_line_that_a_comment_closed_names_the_text_row_6():
     with pytest.raises(UnsafeStatementSplitError, match="text after GO on line 1"):
-        scan_batches("/* a /* b */ GO */\nSELECT 1\nGO")
+        batches_of("/* a /* b */ GO */\nSELECT 1\nGO")
 
 
 @pytest.mark.parametrize("digits", ["9" * 5000, "0" * 5000 + "9" * 7, "1" + "0" * 7])
 def test_a_count_with_more_digits_than_the_limit_allows_is_refused_not_a_crash(digits):
     with pytest.raises(UnsafeStatementSplitError, match="exceeds the limit"):
-        scan_batches(f"SELECT 1\nGO {digits}\n")
+        batches_of(f"SELECT 1\nGO {digits}\n")
 
 
 def test_a_count_of_only_zeros_is_go_zero_however_long():
-    assert scan_batches("SELECT 1\nGO " + "0" * 5000 + "\n")[0].repeat == 0
+    assert batches_of("SELECT 1\nGO " + "0" * 5000 + "\n")[0].repeat == 0
 
 
 @pytest.mark.parametrize(
@@ -184,4 +198,4 @@ def test_a_count_of_only_zeros_is_go_zero_however_long():
 )
 def test_go_followed_by_an_unmeasured_blank_or_a_lone_cr_is_refused(script):
     with pytest.raises(UnsafeStatementSplitError, match="text after GO"):
-        scan_batches(script)
+        batches_of(script)

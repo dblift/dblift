@@ -67,7 +67,12 @@ def _tokens(sql: str, dialect: Optional[str]) -> List[Token]:
         from dblift.db.provider_registry import ProviderRegistry
 
         spec = ProviderRegistry.get_quirks(dialect).lexical_spec() if dialect else None
-        if spec is not None and spec.client_script is not None:
+        if spec is not None and spec.batch_script is not None:
+            # A batch script is cut the way its client reads comments; masking reads the text the
+            # way the server does (the dialect's own tokenizer), so no literal hides in a comment
+            # the server does not see.
+            spec = None
+        elif spec is not None and spec.client_script is not None:
             # Masking reads the text as SQL: a client directive line is not a literal-free token.
             spec = replace(spec, client_script=None)
         tokens = (

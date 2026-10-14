@@ -248,10 +248,11 @@ count and comment, a directive prefix list.
 
 Code in `dblift/db/plugins/sqlserver/parser/`:
 
-- `_batches.py`: `scan_batches(script)` reads the client lexical rules and builds
-  the batch records and their SQL analysis constituents in one pass. It
-  recognises `GO` only in code, refuses ambiguous client commands and lone-CR
-  separator lines, and retains `GO n` as a repeat count.
+- `lexical_spec.py`: `SQLSERVER_SPEC`, the facts the shared lexical engine reads:
+  bracketed identifiers, a leading BOM, and the sqlcmd rules (`GO` only in code,
+  client commands, scripting variables and lone-CR separator lines refused,
+  `GO n` kept as a repeat count, the division of a batch into its statements).
+  The engine builds the batch records and their SQL analysis constituents.
 - `sqlserver_regex_parser.py`: `split()` returns one `Statement` record per
   batch, including `repeat`, analysis constituents and source offsets.
   `split_statements()` projects executable batches (`GO 0` executes none), and

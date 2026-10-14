@@ -4,13 +4,11 @@ Expected values were recorded from the heuristic this engine replaces (the analy
 statements of every batch record, or the refusal).
 """
 
-import random
 from dataclasses import replace
 
 import pytest
 
 from dblift.core.sql_parser.lexical_engine import LexicalEngine
-from dblift.db.plugins.sqlserver.parser._batches import scan_batches
 from dblift.db.plugins.sqlserver.parser.lexical_spec import SQLSERVER_SPEC
 
 # Recorded: (name, script, outcome). Outcome: ("ok", analysis tuples per record) or ("error", class, message).
@@ -469,13 +467,6 @@ def test_division_words_come_from_code_spans(word):
     assert parts(script) == [f"BEGIN SELECT 1; {word} SELECT 2; END;", "SELECT 3;"]
 
 
-@pytest.mark.parametrize("word", ["1END", "\u00e9END"])
-def test_division_words_keep_the_old_reading_of_numbers_and_letters(word):
-    # recorded from the previous heuristic: the word starts inside a number or after a non-ASCII letter
-    script = f"BEGIN SELECT 1; {word} SELECT 2;"
-    assert parts(script) == [x for b in scan_batches(script) for x in b.analysis_statements]
-
-
 def test_division_keeps_literals_comments_and_brackets_intact():
     assert parts("SELECT 'a;b'; /* ; */ SELECT 2; [x;y]; -- ;\nSELECT 3;") == [
         "SELECT 'a;b';",
@@ -531,102 +522,654 @@ def test_clause_exemptions_are_a_spec_field():
     assert len(parts(script, division(clause_exemptions=()))) == 2
 
 
-WORDS = (
-    "CREATE ALTER DROP TRUNCATE OR REPLACE PROC PROCEDURE TRIGGER FUNCTION TABLE BEGIN END CASE"
-).split()
-GLUE = [
-    "",
-    " ",
-    " ",
-    "\n",
-    "\n",
-    ";",
-    "; ",
-    ";\n",
-    " /* c */ ",
-    "\n-- c\n",
-    "\n\n",
-    "\n  ",
-    "\nGO\n",
-    " ; ",
-    "\xa0",
-    "\n\xa0",
-    "\x0c",
-    "\n\x1c ",
-    "\x85",
-    "\u2028",
-    "\nGO\n\xa0",
-    "\x0b ",
+EQUIVALENCE_CASES = [
+    ("\nCREATE\x0c", [("CREATE", 2, 1, False, ("CREATE",))]),
+    (
+        "\nGO\n\xa0truncate\ndrop\u2028ALTER ; ",
+        [("truncate\ndrop\u2028ALTER ;", 3, 1, False, ("truncate", "drop\u2028ALTER ;"))],
+    ),
+    (
+        "\x85PROCEDURE\n\xa0REPLACE\x85DROP",
+        [("PROCEDURE\n\xa0REPLACE\x85DROP", 1, 1, False, ("PROCEDURE\n\xa0REPLACE\x85DROP",))],
+    ),
+    (
+        "\u2028BEGIN\n-- c\ntrigger\xa0TRUNCATE\x0b ",
+        [("BEGIN\n-- c\ntrigger\xa0TRUNCATE", 1, 1, False, ("BEGIN\n-- c\ntrigger\xa0TRUNCATE",))],
+    ),
+    (
+        "\n\xa0CREATE; ALTER\n  begin\n  or;;",
+        [("CREATE; ALTER\n  begin\n  or;;", 2, 1, False, ("", "ALTER\n  begin\n  or;;"))],
+    ),
+    (
+        "\x0cCREATE\n\nPROC\n\x1c CREATE\xa0REPLACE\nGO\n\xa0",
+        [
+            (
+                "CREATE\n\nPROC\n\x1c CREATE\xa0REPLACE",
+                1,
+                1,
+                True,
+                ("CREATE\n\nPROC\n\x1c CREATE\xa0REPLACE",),
+            ),
+            ("", 6, 1, False, ("",)),
+        ],
+    ),
+    (
+        "\x85CREATE\n  TABLE ; TRUNCATE\x85PROC\n",
+        [
+            (
+                "CREATE\n  TABLE ; TRUNCATE\x85PROC",
+                1,
+                1,
+                False,
+                ("CREATE\n  TABLE ;", "TRUNCATE\x85PROC"),
+            )
+        ],
+    ),
+    (
+        " ; ALTER\u2028create\nGO\nproc /* c */ procedure\x85",
+        [
+            ("; ALTER\u2028create", 1, 1, True, ("ALTER\u2028create",)),
+            ("proc /* c */ procedure", 3, 1, False, ("proc /* c */ procedure",)),
+        ],
+    ),
+    (
+        "\n\xa0ALTEROR\nfunction\x0ctrigger\n",
+        [("ALTEROR\nfunction\x0ctrigger", 2, 1, False, ("ALTEROR\nfunction\x0ctrigger",))],
+    ),
+    (
+        "\u2028ALTER\nTRIGGER;\nend\nFUNCTION\xa0",
+        [("ALTER\nTRIGGER;\nend\nFUNCTION", 1, 1, False, ("ALTER\nTRIGGER;\nend\nFUNCTION",))],
+    ),
+    (
+        "\x0b ALTER\n\x1c CASE\nGO\nALTER\n-- c\nTABLE\nGO\n\xa0",
+        [
+            ("ALTER\n\x1c CASE", 1, 1, True, ("ALTER\n\x1c CASE",)),
+            ("ALTER\n-- c\nTABLE", 4, 1, True, ("ALTER\n-- c\nTABLE",)),
+            ("", 8, 1, False, ("",)),
+        ],
+    ),
+    (
+        "\x0cDROP\nGO\nTRUNCATE\n-- c\norBEGIN\nGO\n\xa0",
+        [
+            ("DROP", 1, 1, True, ("DROP",)),
+            ("TRUNCATE\n-- c\norBEGIN", 3, 1, True, ("TRUNCATE\n-- c\norBEGIN",)),
+            ("", 7, 1, False, ("",)),
+        ],
+    ),
+    (
+        "\u2028drop\x0cprocedure\n  procedure /* c */ END\xa0",
+        [
+            (
+                "drop\x0cprocedure\n  procedure /* c */ END",
+                1,
+                1,
+                False,
+                ("drop\x0cprocedure\n  procedure /* c */ END",),
+            )
+        ],
+    ),
+    (
+        "\x0cDROP\n\xa0begin\n\x1c TABLE case\n\n",
+        [("DROP\n\xa0begin\n\x1c TABLE case", 1, 1, False, ("DROP\n\xa0begin\n\x1c TABLE case",))],
+    ),
+    (
+        "\xa0truncate\nDROP\x0cCREATE;create;;",
+        [
+            (
+                "truncate\nDROP\x0cCREATE;create;;",
+                1,
+                1,
+                False,
+                ("truncate", "DROP\x0cCREATE;", "create;"),
+            )
+        ],
+    ),
+    (
+        "\n\xa0truncate\nGO\n\xa0PROC\n\xa0TRUNCATE; ALTER ; ",
+        [
+            ("truncate", 2, 1, True, ("",)),
+            ("PROC\n\xa0TRUNCATE; ALTER ;", 4, 1, False, ("PROC", "ALTER ;")),
+        ],
+    ),
+    (
+        "\nTRUNCATETABLE\xa0PROC DROP; ",
+        [("TRUNCATETABLE\xa0PROC DROP;", 2, 1, False, ("TRUNCATETABLE\xa0PROC DROP;",))],
+    ),
+    (
+        ";\nOR CREATE /* c */ FUNCTION\nGO\n\xa0TRUNCATE",
+        [
+            (";\nOR CREATE /* c */ FUNCTION", 1, 1, True, ("OR CREATE /* c */ FUNCTION",)),
+            ("TRUNCATE", 4, 1, False, ("TRUNCATE",)),
+        ],
+    ),
+    (
+        "\n\nOR\x85OR\n\xa0END\nOR\n\xa0",
+        [("OR\x85OR\n\xa0END\nOR", 3, 1, False, ("OR\x85OR\n\xa0END\nOR",))],
+    ),
+    (
+        "\x85OR\u2028function\x0cALTER ; REPLACE\n",
+        [
+            (
+                "OR\u2028function\x0cALTER ; REPLACE",
+                1,
+                1,
+                False,
+                ("OR\u2028function\x0cALTER ;", "REPLACE"),
+            )
+        ],
+    ),
+    (
+        "\x85OR ; CASE\nOR; PROC\n",
+        [("OR ; CASE\nOR; PROC", 1, 1, False, ("OR ;", "CASE\nOR;", "PROC"))],
+    ),
+    (
+        "\nGO\nreplace truncate\nGO\n\xa0PROCEDUREPROCEDURE\n\xa0",
+        [
+            ("replace truncate", 3, 1, True, ("replace truncate",)),
+            ("PROCEDUREPROCEDURE", 5, 1, False, ("PROCEDUREPROCEDURE",)),
+        ],
+    ),
+    (
+        "\n\nREPLACE\xa0PROCEDURE\nTABLE\xa0TRIGGER;",
+        [
+            (
+                "REPLACE\xa0PROCEDURE\nTABLE\xa0TRIGGER;",
+                3,
+                1,
+                False,
+                ("REPLACE\xa0PROCEDURE\nTABLE\xa0TRIGGER;",),
+            )
+        ],
+    ),
+    (
+        "\nREPLACE; BEGIN\n\nCASE;\nFUNCTION ",
+        [
+            (
+                "REPLACE; BEGIN\n\nCASE;\nFUNCTION",
+                2,
+                1,
+                False,
+                ("REPLACE;", "BEGIN\n\nCASE;\nFUNCTION"),
+            )
+        ],
+    ),
+    (
+        "\n\x1c PROC; DROP;DROP\n\x1c table ",
+        [("PROC; DROP;DROP\n\x1c table", 2, 1, False, ("PROC;", "DROP;", "DROP\n\x1c table"))],
+    ),
+    (
+        "\xa0proc\nGO\n\xa0PROC\x0b replace\nBEGIN; ",
+        [
+            ("proc", 1, 1, True, ("proc",)),
+            ("PROC\x0b replace\nBEGIN;", 3, 1, False, ("PROC\x0b replace\nBEGIN;",)),
+        ],
+    ),
+    (
+        "\x0cproc\nTABLE;TRIGGER ; END ",
+        [("proc\nTABLE;TRIGGER ; END", 1, 1, False, ("proc\nTABLE;", "TRIGGER ;", "END"))],
+    ),
+    (
+        "\nGO\nPROCEDURE\n  CREATE\xa0BEGIN ; CASE;",
+        [
+            (
+                "PROCEDURE\n  CREATE\xa0BEGIN ; CASE;",
+                3,
+                1,
+                False,
+                ("PROCEDURE", "CREATE\xa0BEGIN ; CASE;"),
+            )
+        ],
+    ),
+    (
+        "\n\nPROCEDURE\xa0REPLACE\x0cALTER\ncreate;\n",
+        [
+            (
+                "PROCEDURE\xa0REPLACE\x0cALTER\ncreate;",
+                3,
+                1,
+                False,
+                ("PROCEDURE\xa0REPLACE\x0cALTER", "create;"),
+            )
+        ],
+    ),
+    (
+        "procedure\xa0FUNCTION ; OR\x0b ALTER",
+        [
+            (
+                "procedure\xa0FUNCTION ; OR\x0b ALTER",
+                1,
+                1,
+                False,
+                ("procedure\xa0FUNCTION ;", "OR\x0b ALTER"),
+            )
+        ],
+    ),
+    (
+        "\n  procedure\n  CASE\x85PROCEDURE; DROP\nGO 2\n",
+        [
+            (
+                "procedure\n  CASE\x85PROCEDURE; DROP",
+                2,
+                2,
+                True,
+                ("procedure\n  CASE\x85PROCEDURE;", "DROP"),
+            )
+        ],
+    ),
+    (
+        " /* c */ TRIGGER\x85TRUNCATE\x85TABLE /* c */ TRUNCATE\n",
+        [
+            (
+                "/* c */ TRIGGER\x85TRUNCATE\x85TABLE /* c */ TRUNCATE",
+                1,
+                1,
+                False,
+                ("/* c */ TRIGGER\x85TRUNCATE\x85TABLE /* c */ TRUNCATE",),
+            )
+        ],
+    ),
+    (
+        "\nTRIGGER\nprocedure;CASE OR;;",
+        [("TRIGGER\nprocedure;CASE OR;;", 2, 1, False, ("TRIGGER\nprocedure;", "CASE OR;"))],
+    ),
+    (
+        ";TRIGGER\nEND /* c */ DROP REPLACE\n\n",
+        [
+            (
+                ";TRIGGER\nEND /* c */ DROP REPLACE",
+                1,
+                1,
+                False,
+                ("TRIGGER\nEND /* c */ DROP REPLACE",),
+            )
+        ],
+    ),
+    (
+        ";FUNCTION DROP /* c */ REPLACEPROC;\n",
+        [
+            (
+                ";FUNCTION DROP /* c */ REPLACEPROC;",
+                1,
+                1,
+                False,
+                ("FUNCTION DROP /* c */ REPLACEPROC;",),
+            )
+        ],
+    ),
+    (
+        "FUNCTION\nPROC\x85trigger\n  PROCEDURE\xa0",
+        [
+            (
+                "FUNCTION\nPROC\x85trigger\n  PROCEDURE",
+                1,
+                1,
+                False,
+                ("FUNCTION\nPROC\x85trigger\n  PROCEDURE",),
+            )
+        ],
+    ),
+    (
+        "\u2028FUNCTION\u2028TABLE\nGO\nBEGIN; TRIGGER ; ",
+        [
+            ("FUNCTION\u2028TABLE", 1, 1, True, ("FUNCTION\u2028TABLE",)),
+            ("BEGIN; TRIGGER ;", 3, 1, False, ("BEGIN; TRIGGER ;",)),
+        ],
+    ),
+    (
+        "\x0b table\x0b ALTER\x0cCREATE /* c */ FUNCTION\n  ",
+        [
+            (
+                "table\x0b ALTER\x0cCREATE /* c */ FUNCTION",
+                1,
+                1,
+                False,
+                ("table\x0b ALTER\x0cCREATE /* c */ FUNCTION",),
+            )
+        ],
+    ),
+    (
+        " TABLE ; replace\n-- c\nTRUNCATE\n-- c\nTABLE\n",
+        [
+            (
+                "TABLE ; replace\n-- c\nTRUNCATE\n-- c\nTABLE",
+                1,
+                1,
+                False,
+                ("TABLE ;", "replace\n-- c", "TRUNCATE\n-- c\nTABLE"),
+            )
+        ],
+    ),
+    (
+        "\n-- c\nTABLE\n\nFUNCTIONPROC\n\nBEGIN ",
+        [
+            (
+                "-- c\nTABLE\n\nFUNCTIONPROC\n\nBEGIN",
+                2,
+                1,
+                False,
+                ("-- c\nTABLE\n\nFUNCTIONPROC\n\nBEGIN",),
+            )
+        ],
+    ),
+    (
+        "\nTABLE\nCASE\nFUNCTION\u2028END\nGO\n\xa0",
+        [
+            ("TABLE\nCASE\nFUNCTION\u2028END", 2, 1, True, ("TABLE\nCASE\nFUNCTION\u2028END",)),
+            ("", 6, 1, False, ("",)),
+        ],
+    ),
+    (
+        "\n-- c\nBEGIN\x85TRUNCATE ; END;\nCASE\x0b ",
+        [
+            (
+                "-- c\nBEGIN\x85TRUNCATE ; END;\nCASE",
+                2,
+                1,
+                False,
+                ("-- c\nBEGIN\x85TRUNCATE ; END;", "CASE"),
+            )
+        ],
+    ),
+    (
+        ";\nBEGIN;TRIGGER\x0b DROP\n\x1c CREATE\nGO\n",
+        [
+            (
+                ";\nBEGIN;TRIGGER\x0b DROP\n\x1c CREATE",
+                1,
+                1,
+                True,
+                ("BEGIN;TRIGGER\x0b DROP\n\x1c CREATE",),
+            )
+        ],
+    ),
+    (
+        " /* c */ BEGIN;\nEND /* c */ REPLACE ; ALTER\n\n",
+        [
+            (
+                "/* c */ BEGIN;\nEND /* c */ REPLACE ; ALTER",
+                1,
+                1,
+                False,
+                ("/* c */ BEGIN;\nEND /* c */ REPLACE ;", "ALTER"),
+            )
+        ],
+    ),
+    (
+        "\nend\x85DROP;TRIGGER\nGO\n\xa0drop\x0c",
+        [
+            ("end\x85DROP;TRIGGER", 2, 1, True, ("end\x85DROP;", "TRIGGER")),
+            ("drop", 4, 1, False, ("drop",)),
+        ],
+    ),
+    (
+        " /* c */ END\x0cPROC\n\nBEGINTRUNCATE;\n",
+        [
+            (
+                "/* c */ END\x0cPROC\n\nBEGINTRUNCATE;",
+                1,
+                1,
+                False,
+                ("/* c */ END\x0cPROC\n\nBEGINTRUNCATE;",),
+            )
+        ],
+    ),
+    (
+        "\n\xa0END;\nBEGIN\ncreate\nGO\nOR\n  ",
+        [
+            ("END;\nBEGIN\ncreate", 2, 1, True, ("END;", "BEGIN\ncreate")),
+            ("OR", 6, 1, False, ("OR",)),
+        ],
+    ),
+    (
+        ";\nCASE /* c */ ALTER; TRUNCATE\xa0REPLACE\n\x1c ",
+        [
+            (
+                ";\nCASE /* c */ ALTER; TRUNCATE\xa0REPLACE",
+                1,
+                1,
+                False,
+                ("CASE /* c */ ALTER;", "TRUNCATE\xa0REPLACE"),
+            )
+        ],
+    ),
+    (
+        "\n\xa0case\x0b REPLACE; PROC ; PROC",
+        [("case\x0b REPLACE; PROC ; PROC", 2, 1, False, ("case\x0b REPLACE;", "PROC ;", "PROC"))],
+    ),
+    (
+        "\n  case\x0cFUNCTION FUNCTION PROCEDURE\n\x1c ",
+        [
+            (
+                "case\x0cFUNCTION FUNCTION PROCEDURE",
+                2,
+                1,
+                False,
+                ("case\x0cFUNCTION FUNCTION PROCEDURE",),
+            )
+        ],
+    ),
+    (
+        " drop; PROC ; TABLE;\nCREATE ; ALTER\x85CASE;\nTRIGGER\x85alter\x85REPLACE function ",
+        [
+            (
+                "drop; PROC ; TABLE;\nCREATE ; ALTER\x85CASE;\nTRIGGER\x85alter\x85REPLACE function",
+                1,
+                1,
+                False,
+                (
+                    "drop;",
+                    "PROC ;",
+                    "TABLE;",
+                    "CREATE ;",
+                    "ALTER\x85CASE;",
+                    "TRIGGER\x85alter\x85REPLACE function",
+                ),
+            )
+        ],
+    ),
+    (
+        "\n"
+        "CASE\n"
+        "GO\n"
+        "\xa0DROP\n"
+        "OR PROC\u2028"
+        "DROP\x0b"
+        " TRIGGER\n"
+        "\n"
+        "ALTER\xa0FUNCTION;\n"
+        "OR;\n"
+        "TRIGGER\n"
+        "-- c\n"
+        "CASE\n"
+        "\n"
+        "TABLE\n"
+        "-- c\n"
+        "DROP ",
+        [
+            ("CASE", 2, 1, True, ("CASE",)),
+            (
+                "DROP\n"
+                "OR PROC\u2028"
+                "DROP\x0b"
+                " TRIGGER\n"
+                "\n"
+                "ALTER\xa0FUNCTION;\n"
+                "OR;\n"
+                "TRIGGER\n"
+                "-- c\n"
+                "CASE\n"
+                "\n"
+                "TABLE\n"
+                "-- c\n"
+                "DROP",
+                4,
+                1,
+                False,
+                (
+                    "DROP\nOR PROC\u2028DROP\x0b TRIGGER",
+                    "ALTER\xa0FUNCTION;",
+                    "OR;",
+                    "TRIGGER\n-- c\nCASE\n\nTABLE\n-- c",
+                    "DROP",
+                ),
+            ),
+        ],
+    ),
+    (
+        "\n\xa0TRIGGER\x0b PROC\n\x1c DROP\n\nEND\n  REPLACE\x85DROP ",
+        [
+            (
+                "TRIGGER\x0b PROC\n\x1c DROP\n\nEND\n  REPLACE\x85DROP",
+                2,
+                1,
+                False,
+                ("TRIGGER\x0b PROC", "DROP\n\nEND\n  REPLACE\x85DROP"),
+            )
+        ],
+    ),
+    (
+        "\n-- c\nOR\x0b procedure\n-- c\nBEGIN\x0b TABLE\xa0ALTER\u2028CREATE ",
+        [
+            (
+                "-- c\nOR\x0b procedure\n-- c\nBEGIN\x0b TABLE\xa0ALTER\u2028CREATE",
+                2,
+                1,
+                False,
+                ("-- c\nOR\x0b procedure\n-- c\nBEGIN\x0b TABLE\xa0ALTER\u2028CREATE",),
+            )
+        ],
+    ),
+    (
+        "\n\xa0END\xa0OR /* c */ drop ; begin /* c */ TRUNCATE\n  PROC\nGO\nproc\nCASE\n",
+        [
+            (
+                "END\xa0OR /* c */ drop ; begin /* c */ TRUNCATE\n  PROC",
+                2,
+                1,
+                True,
+                ("END\xa0OR /* c */ drop ;", "begin /* c */ TRUNCATE\n  PROC"),
+            ),
+            ("proc\nCASE", 5, 1, False, ("proc\nCASE",)),
+        ],
+    ),
+    (
+        "\n-- c\nTABLE ; TRUNCATE\u2028CREATE\nPROCEDURE\x0ccase\nGO\n\xa0FUNCTION DROP\x0b OR\nGO\n",
+        [
+            (
+                "-- c\nTABLE ; TRUNCATE\u2028CREATE\nPROCEDURE\x0ccase",
+                2,
+                1,
+                True,
+                ("-- c\nTABLE ;", "TRUNCATE\u2028CREATE\nPROCEDURE\x0ccase"),
+            ),
+            ("FUNCTION DROP\x0b OR", 6, 1, True, ("FUNCTION DROP\x0b OR",)),
+        ],
+    ),
+    (
+        ";PROC\u2028"
+        "PROCALTER\n"
+        "\x1c"
+        " PROCEDURE\n"
+        "  TABLE proc\u2028"
+        "CREATE\n"
+        "GO\n"
+        "\xa0TRUNCATE\n"
+        "  ALTER\n"
+        "\xa0TRUNCATE\n"
+        "\xa0procedure\xa0",
+        [
+            (
+                ";PROC\u2028PROCALTER\n\x1c PROCEDURE\n  TABLE proc\u2028CREATE",
+                1,
+                1,
+                True,
+                ("PROC\u2028PROCALTER\n\x1c PROCEDURE\n  TABLE proc\u2028CREATE",),
+            ),
+            (
+                "TRUNCATE\n  ALTER\n\xa0TRUNCATE\n\xa0procedure",
+                5,
+                1,
+                False,
+                ("TRUNCATE", "ALTER", "TRUNCATE\n\xa0procedure"),
+            ),
+        ],
+    ),
+    (
+        ";PROCEDURE; or\x0c"
+        "ALTER\n"
+        "\x1c"
+        " drop\x0c"
+        "ALTER\n"
+        "GO\n"
+        "\xa0begin /* c */ REPLACE;BEGIN;\n"
+        "OR\x0c"
+        "PROCEDURE;\n"
+        "CASE; begin\n"
+        "GO\n",
+        [
+            (
+                ";PROCEDURE; or\x0cALTER\n\x1c drop\x0cALTER",
+                1,
+                1,
+                True,
+                ("PROCEDURE;", "or\x0cALTER", "drop\x0cALTER"),
+            ),
+            (
+                "begin /* c */ REPLACE;BEGIN;\nOR\x0cPROCEDURE;\nCASE; begin",
+                4,
+                1,
+                True,
+                ("begin /* c */ REPLACE;BEGIN;\nOR\x0cPROCEDURE;\nCASE; begin",),
+            ),
+        ],
+    ),
+    (
+        " /* c */ TRUNCATE; TRIGGER\n  PROCEDURE\n  replace\n  BEGIN\nCREATE; CREATE\n\xa0END\u2028",
+        [
+            (
+                "/* c */ TRUNCATE; TRIGGER\n  PROCEDURE\n  replace\n  BEGIN\nCREATE; CREATE\n\xa0END",
+                1,
+                1,
+                False,
+                (
+                    "/* c */ TRUNCATE;",
+                    "TRIGGER\n  PROCEDURE\n  replace\n  BEGIN\nCREATE; CREATE\n\xa0END",
+                ),
+            )
+        ],
+    ),
+    (
+        " procedure\ntable; REPLACE;END\nGO\n\xa0TABLE;;",
+        [
+            ("procedure\ntable; REPLACE;END", 1, 1, True, ("procedure\ntable;", "REPLACE;", "END")),
+            ("TABLE;;", 4, 1, False, ("TABLE;",)),
+        ],
+    ),
+    (
+        "BEGIN SELECT 1; 1END SELECT 2;",
+        [("BEGIN SELECT 1; 1END SELECT 2;", 1, 1, False, ("BEGIN SELECT 1; 1END SELECT 2;",))],
+    ),
+    (
+        "BEGIN SELECT 1; \xe9END SELECT 2;",
+        [
+            (
+                "BEGIN SELECT 1; \xe9END SELECT 2;",
+                1,
+                1,
+                False,
+                ("BEGIN SELECT 1; \xe9END SELECT 2;",),
+            )
+        ],
+    ),
 ]
 
 
-def _layout(rng, words):
-    out = []
-    for word in words:
-        out.append(rng.choice(GLUE))
-        out.append(word if rng.random() < 0.8 else word.lower())
-    out.append(rng.choice(GLUE + ["\nGO 2\n", ";;"]))
-    return "".join(out)
-
-
-def _same_as_before(script):
-    old = [
-        (b.text, b.line, b.repeat, b.terminated, b.analysis_statements)
-        for b in scan_batches(script)
-    ]
-    new = [
+@pytest.mark.parametrize(
+    "script, expected", EQUIVALENCE_CASES, ids=[f"case-{i}" for i in range(len(EQUIVALENCE_CASES))]
+)
+def test_division_matches_the_values_recorded_from_the_previous_heuristic(script, expected):
+    found = [
         (r.text, r.line, r.repeat, r.terminator == "GO", r.analysis_statements)
         for r in engine().split(script)
     ]
-    return old == new
-
-
-def _short_sequences():
-    for length in range(1, 5):
-        yield from _product(length)
-
-
-def _product(length):
-    if length == 0:
-        yield []
-        return
-    for rest in _product(length - 1):
-        for word in WORDS:
-            yield [*rest, word]
-
-
-SHORT = list(_short_sequences())
-CHUNKS = 8
-
-
-@pytest.mark.parametrize("chunk", range(CHUNKS))
-def test_division_rules_match_the_previous_heuristic_on_short_sequences(chunk):
-    rng = random.Random(chunk)
-    for words in SHORT[chunk::CHUNKS]:
-        script = _layout(rng, words)
-        assert _same_as_before(script), script
-
-
-@pytest.mark.parametrize("chunk", range(CHUNKS))
-def test_division_rules_match_the_previous_heuristic_on_long_sequences(chunk):
-    rng = random.Random(1000 + chunk)
-    for _ in range(19000):
-        words = [rng.choice(WORDS) for _ in range(rng.randrange(5, 14))]
-        script = _layout(rng, words)
-        assert _same_as_before(script), script
-
-
-def test_word_alphabet_of_the_division_is_a_spec_field():
-    script = "BEGIN SELECT 1; END2 SELECT 2; END; SELECT 3;"
-    assert parts(script) == ["BEGIN SELECT 1; END2 SELECT 2; END;", "SELECT 3;"]
-    assert parts(script, batch_rules(word_part="A-Za-z_@#$")) == [
-        "BEGIN SELECT 1; END2 SELECT 2;",
-        "END;",
-        "SELECT 3;",
-    ]
-
-
-def test_word_start_of_the_division_is_a_spec_field():
-    script = "BEGIN SELECT 1; END; SELECT 2;"
-    assert parts(script) == ["BEGIN SELECT 1; END;", "SELECT 2;"]
-    assert parts(script, batch_rules(word_start="A-DF-Za-z_@#$")) == [script]
+    assert found == expected

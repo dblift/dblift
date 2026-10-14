@@ -1,10 +1,23 @@
 """sqlcmd commands and scripting variables are refused, never sent to the server (docs/sql-parsing/sqlserver.md section 6)."""
 
+from collections import namedtuple
+
 import pytest
 
 from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
-from dblift.db.plugins.sqlserver.parser._batches import Batch, scan_batches
+from dblift.core.sql_parser.lexical_engine import LexicalEngine
+from dblift.db.plugins.sqlserver.parser.lexical_spec import SQLSERVER_SPEC
+
+Batch = namedtuple("Batch", "text line repeat terminated")
+
+
+def batches_of(script, spec=SQLSERVER_SPEC):
+    """The batch records of the shared engine, in the shape these tests read."""
+    return [
+        Batch(r.text, r.line, r.repeat, r.terminator == "GO")
+        for r in LexicalEngine(spec).split(script)
+    ]
 
 
 def _split(script):
@@ -57,7 +70,7 @@ def _split(script):
 )
 def test_a_command_at_the_first_token_of_a_line_is_refused_naming_the_line(line):
     with pytest.raises(UnsupportedMetaCommandError, match="on line 2"):
-        scan_batches(f"SELECT 1\n{line}\nSELECT 2")
+        batches_of(f"SELECT 1\n{line}\nSELECT 2")
 
 
 def test_a_command_in_the_middle_of_a_statement_is_refused_too():
@@ -97,7 +110,7 @@ def test_a_column_named_like_a_command_at_a_line_start_is_refused_as_sqlcmd_erro
     ],
 )
 def test_an_unknown_colon_word_a_longer_word_or_a_mid_line_command_is_sql_text(script):
-    assert len(scan_batches(script)) == 1
+    assert len(batches_of(script)) == 1
 
 
 @pytest.mark.parametrize(
@@ -112,7 +125,7 @@ def test_an_unknown_colon_word_a_longer_word_or_a_mid_line_command_is_sql_text(s
     ],
 )
 def test_a_command_line_inside_a_string_an_identifier_or_a_comment_is_text(script):
-    assert len(scan_batches(script)) == 1
+    assert len(batches_of(script)) == 1
 
 
 @pytest.mark.parametrize(
@@ -133,7 +146,7 @@ def test_a_command_line_inside_a_string_an_identifier_or_a_comment_is_text(scrip
 )
 def test_a_scripting_variable_reference_is_refused_outside_comments(script):
     with pytest.raises(UnsupportedMetaCommandError, match=r"scripting variable \$\(.* on line \d"):
-        scan_batches(script + "\nGO")
+        batches_of(script + "\nGO")
 
 
 @pytest.mark.parametrize(
@@ -149,28 +162,28 @@ def test_a_scripting_variable_reference_is_refused_outside_comments(script):
     ],
 )
 def test_a_comment_and_text_that_is_not_a_reference_are_left_alone(script):
-    assert [b.text for b in scan_batches(script + "\nGO")] == [script]
+    assert [b.text for b in batches_of(script + "\nGO")] == [script]
 
 
 def test_the_refusal_names_the_line_of_a_reference_inside_a_multi_line_string():
     with pytest.raises(UnsupportedMetaCommandError, match=r"\$\(x\) on line 4"):
-        scan_batches("SELECT 1\nGO\nSELECT 'a\n$(x)\nb'")
+        batches_of("SELECT 1\nGO\nSELECT 'a\n$(x)\nb'")
 
 
 def test_go_n_with_a_variable_is_refused_as_text_after_go_not_substituted():
     with pytest.raises(
         UnsafeStatementSplitError, match=r"text after GO.*\$\(n\) is not substituted"
     ):
-        scan_batches("SELECT 1\nGO $(n)\n")
+        batches_of("SELECT 1\nGO $(n)\n")
 
 
 def test_the_batch_of_a_refused_script_is_not_partially_returned():
     with pytest.raises(UnsupportedMetaCommandError):
-        scan_batches("SELECT 1\nGO\n:setvar a b\nSELECT 2\nGO\n")
-    assert scan_batches("SELECT 1\nGO\n") == [Batch("SELECT 1", 1, 1, True)]
+        batches_of("SELECT 1\nGO\n:setvar a b\nSELECT 2\nGO\n")
+    assert batches_of("SELECT 1\nGO\n") == [Batch("SELECT 1", 1, 1, True)]
 
 
 @pytest.mark.parametrize("script", ["SELECT $(", "SELECT $(x", "SELECT '$(' AS s"])
 def test_an_unfinished_dollar_paren_is_refused_like_a_reference(script):
     with pytest.raises(UnsupportedMetaCommandError, match=r"scripting variable \$\(.* on line 1"):
-        scan_batches(script + "\nGO")
+        batches_of(script + "\nGO")

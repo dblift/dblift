@@ -1,4 +1,4 @@
-"""SQL Server parser backed by the sqlcmd batch scanner."""
+"""SQL Server parser backed by the shared lexical engine."""
 
 import logging
 from typing import Any, Dict, List, Optional, Type
@@ -8,8 +8,9 @@ from dblift.core.sql_model.base import (
 )
 from dblift.core.sql_parser.base_tokenizer import BaseTokenizer
 from dblift.core.sql_parser.enhanced_regex_parser import EnhancedRegexParser
+from dblift.core.sql_parser.lexical_engine import LexicalEngine
 from dblift.core.sql_parser.statement import Statement, analysis_sql
-from dblift.db.plugins.sqlserver.parser._batches import scan_batches
+from dblift.db.plugins.sqlserver.parser.lexical_spec import SQLSERVER_SPEC
 from dblift.db.plugins.sqlserver.parser.parser_config import SqlServerConfig
 from dblift.db.plugins.sqlserver.parser.sqlserver_tokenizer import SQLServerTokenizer
 
@@ -17,10 +18,10 @@ logger = logging.getLogger(__name__)
 
 
 class SqlServerRegexParser(EnhancedRegexParser):
-    """Execute sqlcmd batches and analyse their scanner-derived constituents."""
+    """Execute sqlcmd batches and analyse their engine-derived constituents."""
 
-    # Redaction and object comment stripping still use this lexical classifier.
-    # Script boundaries come only from _batches.scan_batches.
+    # Object comment stripping still uses this lexical classifier (comments nest, as on the
+    # server). Script boundaries come only from the shared engine.
     tokenizer_class: Type[BaseTokenizer] = SQLServerTokenizer
 
     def __init__(self) -> None:
@@ -35,32 +36,14 @@ class SqlServerRegexParser(EnhancedRegexParser):
 
     def split(self, sql_content: str) -> List[Statement]:
         """The batches of a script, as ``sqlcmd`` sends them (docs/sql-parsing/sqlserver.md)."""
-        return [
-            Statement(
-                text=batch.text,
-                line=batch.line,
-                terminator="GO" if batch.terminated else None,
-                repeat=batch.repeat,
-                analysis_statements=batch.analysis_statements,
-                source_start=batch.source_start,
-                source_end=batch.source_end,
-            )
-            for batch in scan_batches(sql_content)
-        ]
+        return LexicalEngine(SQLSERVER_SPEC).split(sql_content)
 
     def split_statements(self, sql_content: str, strict_tokenizer: bool = False) -> List[str]:
         """Batches as execution receives them; ``GO n`` returns its batch n times.
 
-        The scanner has no unknown characters, so ``strict_tokenizer`` changes nothing.
+        The engine has no unknown characters, so ``strict_tokenizer`` changes nothing.
         """
-        statements: List[str] = []
-        for record in self.split(sql_content):
-            if record.repeat == 0:
-                logger.info(
-                    "GO 0 follows the batch starting on line %d: it is not run", record.line
-                )
-            statements.extend([record.text] * record.repeat)
-        return statements
+        return LexicalEngine(SQLSERVER_SPEC).split_statements(sql_content)
 
     def split_for_analysis(self, sql_content: str, strict_tokenizer: bool = False) -> List[str]:
         """The executed constituents of each batch, once regardless of GO count."""
