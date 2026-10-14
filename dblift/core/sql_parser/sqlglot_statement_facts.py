@@ -279,6 +279,13 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
         if virtual:
             object_type = SqlObjectType.VIRTUAL_TABLE
         identity = _named(subject, object_type, "created") if subject is not None else None
+        if (
+            dialect == "duckdb"  # lint: allow-dialect-string: DuckDB schema identity projection
+            and object_type == SqlObjectType.SCHEMA
+            and isinstance(subject, exp.Table)
+            and subject.db
+        ):
+            identity = NamedObject(subject.db, object_type, "created", subject.catalog or None)
         objects: Tuple[NamedObject, ...] = (identity,) if identity else ()
         indexed_table = None
         indexed_columns = None
