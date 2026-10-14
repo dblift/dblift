@@ -272,11 +272,17 @@ def _postgres_merge_facts(node: exp.Merge) -> Optional[StatementFacts]:
         for source in node.find_all(exp.Table)
     ):
         return None
-    if table.args.get("joins") or not node.args.get("on") or node.args.get("using_cond"):
+    if (
+        table.args.get("joins")
+        or not node.args.get("on")
+        or node.args.get("using_cond") is not False
+    ):
         return None
     if not isinstance(node.args.get("using"), (exp.Table, exp.Subquery, exp.Values)):
         return None
-    if any(not isinstance(cte.this, exp.Query) for cte in node.find_all(exp.CTE)):
+    if any(clause.args.get("recursive") for clause in node.find_all(exp.With)) or any(
+        not isinstance(cte.this, exp.Query) for cte in node.find_all(exp.CTE)
+    ):
         return None
     whens = node.args.get("whens")
     if whens is None or not whens.expressions:
@@ -560,6 +566,15 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
             sql, f"{dialect} {construct} is opaque to statement facts", dialect=dialect
         )
 
+    if (
+        dialect == "postgres"  # lint: allow-dialect-string: qualified PostgreSQL MERGE facts
+        and isinstance(ast, exp.Merge)
+    ):
+        merge_facts = _postgres_merge_facts(ast)
+        if merge_facts is not None:
+            return merge_facts
+        return _head_facts(sql, "postgres MERGE effects are not modelled", dialect=dialect)
+
     if dialect == "postgres":  # lint: allow-dialect-string: contain unproven PostgreSQL CTE facts
         opaque_cte = _postgresql_opaque_cte(ast, dialect)
         if opaque_cte is not None:
@@ -757,15 +772,6 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
             identity = _named(target, SqlObjectType.TABLE, "altered")
             if identity is not None:
                 return StatementFacts("TRUNCATE", "DDL", (identity,))
-
-    if (
-        dialect == "postgres"  # lint: allow-dialect-string: qualified PostgreSQL MERGE facts
-        and isinstance(ast, exp.Merge)
-    ):
-        merge_facts = _postgres_merge_facts(ast)
-        if merge_facts is not None:
-            return merge_facts
-        return _head_facts(sql, "postgres MERGE effects are not modelled", dialect=dialect)
 
     if isinstance(ast, (exp.Insert, exp.Update, exp.Delete)) or (
         dialect == "duckdb"  # lint: allow-dialect-string: MERGE facts qualified for DuckDB only

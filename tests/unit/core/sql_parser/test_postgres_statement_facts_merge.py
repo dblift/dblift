@@ -108,6 +108,18 @@ def test_postgres_merge_target_sql_removes_alias_but_preserves_identifier_and_on
             "WHEN MATCHED THEN DELETE",
             (("items", "raw"), ("items", "other")),
         ),
+        (
+            "WITH source AS (SELECT * FROM source) ",
+            "source AS s",
+            "WHEN MATCHED THEN DELETE",
+            (("source", None),),
+        ),
+        (
+            "WITH first AS (SELECT * FROM source), source AS (SELECT * FROM other) ",
+            "first AS s",
+            "WHEN MATCHED THEN DELETE",
+            (("source", None), ("other", None)),
+        ),
         ("", "items AS s", "WHEN MATCHED THEN DELETE", (("items", None),)),
         ("", "(VALUES (1, 2)) AS s(id, value)", "WHEN MATCHED THEN DELETE", ()),
         (
@@ -275,9 +287,10 @@ def test_postgres_merge_unmodelled_action_shapes_are_opaque(branch):
     assert facts.affected_columns == ()
 
 
-def test_postgres_merge_using_condition_extension_is_opaque():
+@pytest.mark.parametrize("columns", ["id", ""])
+def test_postgres_merge_using_condition_extension_is_opaque(columns):
     facts = read_statement_facts(
-        "MERGE INTO items t USING source s ON t.id=s.id USING(id) WHEN MATCHED THEN DELETE",
+        f"MERGE INTO items t USING source s ON t.id=s.id USING({columns}) WHEN MATCHED THEN DELETE",
         dialect="postgres",
     )
 
@@ -287,3 +300,36 @@ def test_postgres_merge_using_condition_extension_is_opaque():
     assert facts.target is None
     assert facts.events is None
     assert facts.affected_columns == ()
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "DELETE FROM archived RETURNING *",
+        "UPDATE archived SET id=1 RETURNING *",
+        "INSERT INTO archived VALUES(1) RETURNING *",
+    ],
+)
+def test_postgres_merge_mutating_ctes_stay_opaque_before_generic_cte_guard(body):
+    facts = read_statement_facts(
+        f'WITH "Source" AS ({body}) MERGE INTO items t '
+        'USING "Source" s ON t.id=s.id WHEN MATCHED THEN DELETE',
+        dialect="postgres",
+    )
+
+    assert facts.opaque
+    assert facts.objects == ()
+    assert facts.events is None
+
+
+def test_postgres_merge_recursive_cte_stays_opaque():
+    facts = read_statement_facts(
+        "WITH RECURSIVE source AS (SELECT * FROM seed UNION ALL "
+        "SELECT seed.* FROM seed JOIN source USING(id)) "
+        "MERGE INTO items t USING source s ON t.id=s.id WHEN MATCHED THEN DELETE",
+        dialect="postgres",
+    )
+
+    assert facts.opaque
+    assert facts.objects == ()
+    assert facts.events is None
