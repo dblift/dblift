@@ -429,6 +429,78 @@
         "diagnostic": "duckdb COPY source or destination is opaque",
         "error": null
       }
+    },
+    {
+      "id": "copy_option_subquery_opaque",
+      "source": "DuckDB COPY facts regression: dynamic options do not imply complete table effects",
+      "sql": "COPY items FROM 'items.csv' (DELIMITER (SELECT ',' FROM source_table));",
+      "facts": {
+        "operation": "COPY",
+        "kind": "UNKNOWN",
+        "objects": [],
+        "target": null,
+        "predicate": null,
+        "affected_columns": [],
+        "events": null,
+        "diagnostic": "duckdb COPY source or destination is opaque",
+        "error": null
+      }
+    },
+    {
+      "id": "copy_static_options",
+      "source": "DuckDB COPY facts regression: static literal and column-list options preserve import effects",
+      "sql": "COPY items (id, val) FROM 'items.csv' (FORMAT CSV, HEADER TRUE, DELIMITER ',', FORCE_NOT_NULL (id, val));",
+      "facts": {
+        "operation": "COPY",
+        "kind": "DML",
+        "objects": [
+          {
+            "name": "items",
+            "type": "TABLE",
+            "role": "altered",
+            "schema": null
+          }
+        ],
+        "target": "items",
+        "predicate": null,
+        "affected_columns": [
+          "id",
+          "val"
+        ],
+        "events": [
+          "INSERT"
+        ],
+        "diagnostic": null,
+        "error": null
+      }
+    },
+    {
+      "id": "copy_variable_options",
+      "source": "DuckDB COPY facts regression: variable options keep the known import target and columns",
+      "sql": "COPY items (id, val) FROM 'items.csv' (FORMAT CSV, HEADER getvariable('header'), DELIMITER $delimiter);",
+      "facts": {
+        "operation": "COPY",
+        "kind": "DML",
+        "objects": [
+          {
+            "name": "items",
+            "type": "TABLE",
+            "role": "altered",
+            "schema": null
+          }
+        ],
+        "target": "items",
+        "predicate": null,
+        "affected_columns": [
+          "id",
+          "val"
+        ],
+        "events": [
+          "INSERT"
+        ],
+        "diagnostic": null,
+        "error": null
+      }
     }
   ]
 }

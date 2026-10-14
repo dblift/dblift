@@ -194,6 +194,7 @@ def _copy_facts(node: exp.Copy) -> StatementFacts:
         and files[0].is_string
         # A path concatenation can be misread as a COPY option named ``||``.
         and all(parameter.name.isidentifier() for parameter in node.args.get("params") or [])
+        and not any(parameter.find(exp.Query) for parameter in node.args.get("params") or [])
     ):
         return StatementFacts(
             "COPY", "UNKNOWN", diagnostic="duckdb COPY source or destination is opaque"
