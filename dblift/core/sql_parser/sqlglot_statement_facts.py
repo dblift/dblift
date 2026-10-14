@@ -405,6 +405,15 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
             and subject.db
         ):
             identity = NamedObject(subject.db, object_type, "created", subject.catalog or None)
+        if (
+            dialect == "postgres"  # lint: allow-dialect-string: PostgreSQL schema identity only
+            and object_type == SqlObjectType.SCHEMA
+            and isinstance(subject, exp.Table)
+            and subject.db
+            and not subject.catalog
+            and not subject.name
+        ):
+            identity = NamedObject(subject.db, object_type, "created")
         objects: Tuple[NamedObject, ...] = (identity,) if identity else ()
         indexed_table = None
         indexed_columns = None
