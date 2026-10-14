@@ -54,7 +54,9 @@ class LexicalEngine:
         """Replace each scanned comment with a space, preserving quoted text."""
         tokenizer = LexicalTokenizer(script, spec=self.spec)
         tokens = tokenizer.tokenize()
-        LexicalStatementParser(tokens, source=script, spec=self.spec).split()
+        LexicalStatementParser(
+            tokens, source=script, spec=self.spec, comments=tokenizer.comments
+        ).split()
         parts: List[str] = []
         last = 0
         for start, end in tokenizer.comments:

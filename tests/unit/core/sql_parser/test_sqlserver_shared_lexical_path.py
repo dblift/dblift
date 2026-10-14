@@ -224,3 +224,7 @@ def test_a_spec_that_reads_the_engine_for_masking_reads_client_lines_as_text(mon
     assert (
         mask_string_literals("SELECT 1\nGO\nSELECT 'a'", "sqlserver") == "SELECT 1\nGO\nSELECT '?'"
     )
+
+
+def test_shared_comment_masking_has_the_batch_comment_extents():
+    assert LexicalEngine(SQLSERVER_SPEC).blank_comments("SELECT 1 /* c */") == "SELECT 1  "
