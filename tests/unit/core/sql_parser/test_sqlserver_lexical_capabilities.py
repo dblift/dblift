@@ -79,20 +79,22 @@ def test_block_comment_ends_at_the_first_close():
 
 
 def test_leading_bom_is_skipped_and_columns_ignore_it():
-    first = LexicalTokenizer("﻿SELECT 1", spec=SQLSERVER_SPEC).tokenize()[0]
+    first = LexicalTokenizer("\ufeffSELECT 1", spec=SQLSERVER_SPEC).tokenize()[0]
     assert (first.text, first.pos, first.line, first.col) == ("SELECT", 1, 1, 1)
     with pytest.raises(UnsafeStatementSplitError, match=r"opened at line 1, column 1$"):
-        LexicalEngine(SQLSERVER_SPEC).split("﻿'abc")
-    mid, warned = tokens_and_warnings("a﻿b")
-    assert (TokenType.SYMBOL, "﻿") in mid and warned == []
+        LexicalEngine(SQLSERVER_SPEC).split("\ufeff'abc")
+    mid, warned = tokens_and_warnings("a\ufeffb")
+    assert (TokenType.SYMBOL, "\ufeff") in mid and warned == []
 
 
 def test_leading_bom_is_a_spec_field():
-    kept = LexicalTokenizer("﻿SELECT 1", spec=replace(SQLSERVER_SPEC, leading_bom_is_blank=False))
+    kept = LexicalTokenizer(
+        "\ufeffSELECT 1", spec=replace(SQLSERVER_SPEC, leading_bom_is_blank=False)
+    )
     with warnings.catch_warnings(record=True):
         warnings.simplefilter("always")
         first = kept.tokenize()[0]
-    assert (first.text, first.pos) == ("﻿", 0)
+    assert (first.text, first.pos) == ("\ufeff", 0)
 
 
 @pytest.mark.parametrize(
@@ -105,12 +107,23 @@ def test_unclaimed_characters_are_symbols_without_a_warning(script, text):
     assert warned == []
 
 
+@pytest.mark.parametrize(
+    "blank", ["\x0b", "\x0c", "\x1c", "\x1d", "\x1e", "\x1f", "\x85", "\xa0", "\u2028", "\u2029"]
+)
+def test_token_level_whitespace_is_str_isspace_as_before(blank):
+    # The tokenizer skips these exactly as the previous T-SQL tokenizer did (values recorded from it);
+    # only the line-head rules use the narrower blank set.
+    result, warned = tokens_and_warnings("a" + blank + "b")
+    assert result == [(TokenType.IDENTIFIER, "a"), (TokenType.IDENTIFIER, "b")]
+    assert warned == []
+
+
 def test_unclaimed_character_warns_when_not_silent():
     _, warned = tokens_and_warnings("\xa35", replace(SQLSERVER_SPEC, silent_unclaimed=False))
     assert TokenizerWarning in warned
 
 
-@pytest.mark.parametrize("script", ["SELECT \xa35", "SELECT 1 ﻿", "SELECT $action"])
+@pytest.mark.parametrize("script", ["SELECT \xa35", "SELECT 1 \ufeff", "SELECT $action"])
 def test_strict_tokenizer_has_no_effect_for_sqlserver(script):
     parser = SqlServerRegexParser()
     assert parser.split_statements(script, strict_tokenizer=True) == parser.split_statements(
