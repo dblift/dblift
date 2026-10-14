@@ -229,7 +229,14 @@
       "facts": {
         "operation": "COPY",
         "kind": "QUERY",
-        "objects": [{"name": "items", "type": "TABLE", "role": "referenced", "schema": null}],
+        "objects": [
+          {
+            "name": "items",
+            "type": "TABLE",
+            "role": "referenced",
+            "schema": null
+          }
+        ],
         "target": null,
         "predicate": null,
         "affected_columns": [],
