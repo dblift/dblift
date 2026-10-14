@@ -39,6 +39,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **SQL Server: statement splitting, analysis and extraction run on the shared
+  lexical engine** (as PostgreSQL, SQLite and Oracle do), with the sqlcmd rules as
+  data: the same scripts give the same batches and the same refusals (class, line
+  and message). The four refusals for an unterminated lexeme now read
+  `unterminated string|bracketed identifier|quoted identifier|block comment opened
+  at line L, column C` (they read `unterminated string literal|... starting at ...`);
+  class, line and column are unchanged. The same text appears in the errors of
+  `validate_sql` and `parse_sql` and in the log record `parse_sql` writes.
+- **SQL Server: the notice about `GO 0` is logged by
+  `dblift.core.sql_parser.lexical_engine`** (INFO); its message is unchanged.
+- **SQL Server: splitting a large script takes longer and uses more memory.** On one
+  development machine a 2.9 MB script of `INSERT` statements takes 4.7 s where it
+  took 0.64 s, with a peak of 284 MiB where it was 109 MiB (about two and a half
+  times); a roughly 100 KiB script made by repeating the 99-byte median corpus
+  file takes 0.105 s where it took 0.019 s, with a peak of 4.7 MiB where it was
+  0.7 MiB. The cost grows linearly with script size.
+- SQL Server error-message redaction, object extraction and the check that a
+  statement holds only comments are unchanged: they still read block comments the
+  way the server does (they nest), while the splitter cuts batches the way `sqlcmd`
+  does (a comment ends at the first `*/`).
 - **Oracle: the warning about the text ignored after `EXIT` or `QUIT` is logged by
   `dblift.core.sql_parser.lexical_engine`**; its message is unchanged.
 - **Oracle: `strict_tokenizer` has no effect.** A character no rule claims is passed
@@ -260,6 +280,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- `dblift.db.plugins.sqlserver.parser._batches` (an internal module): the batch scanner
+  is replaced by the shared lexical engine.
 - The unused wrapped-PL/SQL detector on the Oracle tokenizer is gone.
 - The `terminate_script_directives` and `apply_script_substitution` quirks
   hooks are gone: SQL*Plus directives are handled by the Oracle splitter

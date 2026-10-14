@@ -1,11 +1,19 @@
 """Shared lexical tokenization driven by immutable plugin facts."""
 
+import re
 from typing import Iterable, List, Optional, Tuple
 
 from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.core.sql_parser.base_tokenizer import BaseTokenizer
+from dblift.core.sql_parser.batch_commands import (
+    find_lone_cr,
+    read_command,
+    refuse_lone_cr,
+    refuse_variable_in_code,
+    refuse_variable_in_lexeme,
+)
 from dblift.core.sql_parser.client_directives import classify_directive, is_free_text
-from dblift.core.sql_parser.lexical_spec import DirectiveAction, LexicalSpec
+from dblift.core.sql_parser.lexical_spec import BOM, DirectiveAction, LexicalSpec
 from dblift.core.sql_parser.tokens import Token, TokenType
 from dblift.core.sql_parser.unit_heads import decide
 
@@ -97,6 +105,23 @@ class LexicalTokenizer(BaseTokenizer):
         # End of a block comment read where a directive could begin: a directive
         # may follow it on the same line.
         self._clear_from: Optional[int] = None
+        # Batch scripts: whether only blanks and comments precede the cursor on its line (a
+        # command may follow them, nothing else), and the line the last comment ended on.
+        self._batches = spec.batch_script
+        self._line_head = True
+        self._comment_end_line = 0
+        # The code segment being read (a line's text up to the next lexeme or comment opener):
+        # where it ends, whether its refusals ran, the start of the blanks before it, a carriage
+        # return found in it, the cached end of the current line, where the current token began.
+        self._seg_end = 0
+        self._seg_checked = True
+        self._region_start = 0
+        self._seg_lone_cr = False
+        self._line_end = -1
+        self._token_start = 0
+        self._token_line = 1
+        openers = ["'", "/*", "--", spec.quoted_identifier, *spec.bracket_identifier[:1]]
+        self._opener_re = re.compile("|".join(re.escape(o) for o in openers if o))
 
     def _next_sql_token(self) -> Optional[Token]:
         """Get the next token from the input.
@@ -113,6 +138,9 @@ class LexicalTokenizer(BaseTokenizer):
         if self.spec.sqlite_shell:
             return self._next_sqlite_token()
 
+        if self.spec.leading_bom_is_blank and self.pos == 0 and self.peek() == BOM:
+            self.pos = 1  # offsets stay source offsets; columns do not count the BOM
+
         self._skip_whitespace()
 
         if self.pos >= len(self.sql):
@@ -122,6 +150,26 @@ class LexicalTokenizer(BaseTokenizer):
             directive = self._directive_token()
             if directive is not None:
                 return directive
+
+        if self._batches is not None:
+            self._token_start, self._token_line = self.pos, self.line
+            if self.pos >= self._seg_end:
+                self._enter_segment()
+
+        if self._batches is not None and self._line_head and self.peek(2) not in ("--", "/*"):
+            count = read_command(
+                self._batches,
+                self.spec.client_name,
+                self.sql,
+                self.pos,
+                self.line,
+                self._comment_end_line == self.line,
+            )
+            if count is not None:
+                return self._separator_token()
+
+        if self._batches is not None and not self._seg_checked:
+            self._check_segment()
 
         char = self.peek()
 
@@ -153,6 +201,10 @@ class LexicalTokenizer(BaseTokenizer):
         placeholder = self.spec.placeholder_open
         if placeholder and self.peek(len(placeholder)) == placeholder:
             return self._handle_migration_placeholder()
+
+        bracket = self.spec.bracket_identifier
+        if bracket and char == bracket[0]:
+            return self._handle_bracket_identifier()
 
         # Check for double-quoted identifier BEFORE other checks
         if char == self.spec.quoted_identifier:
@@ -406,8 +458,31 @@ class LexicalTokenizer(BaseTokenizer):
         if self.spec.plain_string_escapes:
             return self._handle_escape_string()
 
-        # Standard single-quoted string
-        return super()._handle_string()
+        return self._handle_standard_string()
+
+    def _handle_standard_string(self) -> Token:
+        """Read ``'...'``: a doubled quote is part of the string. Linear in the string length."""
+        start_pos, start_line, start_col = self.pos, self.line, self.col
+        quote = self.read()
+        while True:
+            end = self.sql.find(quote, self.pos)
+            if end < 0:
+                self.read(len(self.sql) - self.pos)
+                raise UnsafeStatementSplitError(
+                    f"unterminated string opened at line {start_line}, column {start_col}"
+                )
+            self.read(end + 1 - self.pos)
+            if self.peek() != quote:
+                break
+            self.read()
+        return Token(
+            TokenType.STRING,
+            self.sql[start_pos : self.pos],
+            start_pos,
+            start_line,
+            start_col,
+            self.parens_depth,
+        )
 
     def _handle_escape_string(self) -> Token:
         """Read a backslash-escaped literal, including an optional E prefix."""
@@ -496,51 +571,138 @@ class LexicalTokenizer(BaseTokenizer):
         )
 
     def _handle_quoted_identifier(self) -> Token:
-        """Handle double-quoted identifiers (case-sensitive in PostgreSQL).
-
-        Returns:
-            Identifier token
-        """
-        start_pos = self.pos
-        start_line = self.line
-        start_col = self.col
-
-        # Capture entire identifier including quotes
-        identifier_text = ""
-
-        # Read opening quote
-        identifier_text += self.read()
-
-        # Read until closing quote
-        closed = False
-        while self.pos < len(self.sql):
-            char = self.peek()
-            if char == self.spec.quoted_identifier:
-                # Check for doubled quote (escape)
-                if (
-                    self.spec.quoted_identifier_escape
-                    and self.peek(2) == self.spec.quoted_identifier * 2
-                ):
-                    identifier_text += self.read(2)
-                else:
-                    identifier_text += self.read()  # Closing quote
-                    closed = True
-                    break
-            else:
-                identifier_text += self.read()
-        if not closed:
-            raise UnsafeStatementSplitError(
-                f"unterminated quoted identifier opened at line {start_line}, "
-                f"column {start_col}"
-            )
-
+        """Read a quoted identifier; a doubled quote is an escape when the spec says so."""
+        start_pos, start_line, start_col = self.pos, self.line, self.col
+        quote = self.spec.quoted_identifier
+        self.read()
+        while True:
+            end = self.sql.find(quote, self.pos)
+            if end < 0:
+                self.read(len(self.sql) - self.pos)
+                raise UnsafeStatementSplitError(
+                    f"unterminated quoted identifier opened at line {start_line}, "
+                    f"column {start_col}"
+                )
+            self.read(end + 1 - self.pos)
+            if not (self.spec.quoted_identifier_escape and self.peek() == quote):
+                break
+            self.read()
         return Token(
             TokenType.IDENTIFIER,
-            identifier_text,
+            self.sql[start_pos : self.pos],
             start_pos,
             start_line,
             start_col,
             self.parens_depth,
+        )
+
+    def _enter_segment(self) -> None:
+        """Start a code segment at the cursor: refuse a lone carriage return in the blanks before it."""
+        assert self._batches is not None
+        if self.pos > self._line_end:
+            newline = self.sql.find("\n", self.pos)
+            self._line_end = len(self.sql) if newline < 0 else newline
+        opener = self._opener_re.search(self.sql, self.pos, self._line_end)
+        self._seg_end = opener.start() if opener else self._line_end
+        self._seg_checked = False
+        found = find_lone_cr(self._batches, self.sql, self._region_start, self._seg_end)
+        if found is not None and found < self.pos:
+            refuse_lone_cr(self._batches, self.spec.client_name, self.line)
+        self._seg_lone_cr = found is not None
+
+    def _check_segment(self) -> None:
+        """Refuse a lone carriage return, then a variable reference, in the segment at the cursor."""
+        assert self._batches is not None
+        self._seg_checked = True
+        if self._seg_lone_cr:
+            refuse_lone_cr(self._batches, self.spec.client_name, self.line)
+        refuse_variable_in_code(
+            self._batches, self.spec.client_name, self.sql, self.pos, self._seg_end, self.line
+        )
+
+    def _skip_whitespace(self) -> None:
+        """Skip what ``str.isspace`` accepts; a character that is not a blank ends the line head."""
+        if self._batches is None:
+            super()._skip_whitespace()
+            return
+        blanks = self._batches.blanks
+        self._region_start = self.pos
+        while self.pos < len(self.sql) and self.sql[self.pos].isspace():
+            char = self.sql[self.pos]
+            if char == "\n":
+                self._line_head = True
+                self._region_start = self.pos + 1
+            elif char not in blanks:
+                self._line_head = False
+            self.read()
+
+    def _is_lexeme(self, token: Token) -> bool:
+        """Whether a token is a string or a quoted or bracketed name."""
+        return token.type == TokenType.STRING or (
+            token.type == TokenType.IDENTIFIER
+            and token.text[:1] in (self.spec.quoted_identifier, *self.spec.bracket_identifier[:1])
+        )
+
+    def _refuse_variable_in_unterminated(self) -> None:
+        """A variable reference in the text an unterminated lexeme swallowed is reported first."""
+        assert self._batches is not None
+        start = self._token_start
+        opener = self.sql[start : start + 1]
+        if opener and opener in (
+            "'",
+            self.spec.quoted_identifier,
+            *self.spec.bracket_identifier[:1],
+        ):
+            refuse_variable_in_lexeme(
+                self._batches,
+                self.spec.client_name,
+                self.sql,
+                start + 1,
+                len(self.sql),
+                self._token_line,
+            )
+
+    def _separator_token(self) -> Token:
+        """The rest of the line, a trailing CR included, as one DIRECTIVE token."""
+        start_pos, start_line, start_col = self.pos, self.line, self.col
+        newline = self.sql.find("\n", start_pos)
+        end = len(self.sql) if newline < 0 else newline
+        text = self.read(end - start_pos)
+        return Token(TokenType.DIRECTIVE, text, start_pos, start_line, start_col, self.parens_depth)
+
+    def _handle_bracket_identifier(self) -> Token:
+        """Read ``[...]``: a doubled closer is an escape, newlines are part of the name."""
+        closer = self.spec.bracket_identifier[1]
+        start_pos, start_line, start_col = self.pos, self.line, self.col
+        self.read()
+        while True:
+            end = self.sql.find(closer, self.pos)
+            if end < 0:
+                self.read(len(self.sql) - self.pos)
+                raise UnsafeStatementSplitError(
+                    f"unterminated bracketed identifier opened at line {start_line}, "
+                    f"column {start_col}"
+                )
+            self.read(end + 1 - self.pos)
+            if self.peek() != closer:
+                break
+            self.read()
+        return Token(
+            TokenType.IDENTIFIER,
+            self.sql[start_pos : self.pos],
+            start_pos,
+            start_line,
+            start_col,
+            self.parens_depth,
+        )
+
+    def _handle_unknown_char(self, char: str) -> Optional[Token]:
+        """An unclaimed character is a symbol; it only warns when the spec has not declared it silent."""
+        if not self.spec.silent_unclaimed:
+            return super()._handle_unknown_char(char)
+        start_pos, start_line, start_col = self.pos, self.line, self.col
+        return Token(
+            TokenType.SYMBOL, self.read(), start_pos, start_line, start_col, self.parens_depth
         )
 
     def _next_token(self) -> Optional[Token]:
@@ -557,9 +719,29 @@ class LexicalTokenizer(BaseTokenizer):
         if self._reads_directives:
             self._skip_whitespace()
             clear = self._at_start and self._line_is_clear(self.pos)
-        token = self._next_sql_token()
+        try:
+            token = self._next_sql_token()
+        except UnsafeStatementSplitError as error:
+            if self._batches is not None and str(error).startswith("unterminated"):
+                self._refuse_variable_in_unterminated()
+            raise
         if token is None:
             return None
+        if self._batches is not None and self._is_lexeme(token):
+            refuse_variable_in_lexeme(
+                self._batches,
+                self.spec.client_name,
+                self.sql,
+                token.pos + 1,
+                token.pos + len(token.text) - 1,
+                token.line,
+            )
+        if self._batches is not None:
+            if token.type == TokenType.COMMENT:
+                if self.sql.find("\n", token.pos, self.pos) >= 0:
+                    self._line_head = True  # the line the comment ends on starts inside it
+            elif token.type != TokenType.EOF:
+                self._line_head = False
         if self._reads_directives and token.type != TokenType.DIRECTIVE:
             if clear and token.type == TokenType.COMMENT and self.sql.startswith("/*", token.pos):
                 self._clear_from = self.pos
@@ -680,6 +862,7 @@ class LexicalTokenizer(BaseTokenizer):
         start = self.pos
         token = super()._handle_comment()
         self.comments.append((start, self.pos))
+        self._comment_end_line = self.line
         if self.spec.sqlite_shell:
             token.text = self.sql[start : self.pos]
         return token

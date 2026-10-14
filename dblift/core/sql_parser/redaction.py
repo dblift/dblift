@@ -67,9 +67,12 @@ def _tokens(sql: str, dialect: Optional[str]) -> List[Token]:
         from dblift.db.provider_registry import ProviderRegistry
 
         spec = ProviderRegistry.get_quirks(dialect).lexical_spec() if dialect else None
-        if spec is not None and spec.client_script is not None:
-            # Masking reads the text as SQL: a client directive line is not a literal-free token.
-            spec = replace(spec, client_script=None)
+        if spec is not None and not spec.redaction_reads_engine:
+            spec = None
+        elif spec is not None and (spec.client_script or spec.batch_script):
+            # Masking reads the text as SQL: a client line (a directive, a batch separator) is not
+            # a literal-free token.
+            spec = replace(spec, client_script=None, batch_script=None)
         tokens = (
             LexicalTokenizer(sql, spec=spec).tokenize()
             if spec is not None

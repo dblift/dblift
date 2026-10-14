@@ -6,8 +6,9 @@ the README states in "Conformance table format":
 
 * ``#`` is the row id, unique within a spec;
 * ``Script`` holds exactly one code span (one or two backticks); inside it
-  ``\\n`` is a newline, ``\\t`` a tab, ``\\\\`` a backslash and ``\\|`` a pipe
-  (GFM needs it for a pipe inside a table cell), and the symbol U+240D is a
+  ``\\n`` is a newline, ``\\t`` a tab, ``\\\\`` a backslash, ``\\|`` a pipe
+  (GFM needs it for a pipe inside a table cell), ``\\xHH`` and ``\\uHHHH`` the
+  character with that code (a malformed one is an error), and the symbol U+240D is a
   carriage return (a backslash and ``r`` is not an escape: ``\\restrict`` is a psql
   command); nothing else is escaped;
 * ``Statements returned`` holds one code span per expected statement,
@@ -39,7 +40,7 @@ _SECTION_10 = re.compile(r"^## 10\.")
 _ANY_SECTION = re.compile(r"^## ")
 _SEPARATOR_CELL = re.compile(r"^:?-+:?$")
 _TO_VERIFY = re.compile(r"to verify|depends on", re.IGNORECASE)
-_ESCAPE = re.compile(r"\\(.)", re.DOTALL)
+_ESCAPE = re.compile(r"\\(x[0-9A-Fa-f]{2}|u[0-9A-Fa-f]{4}|[xu][0-9A-Fa-f]{1,3}|.)", re.DOTALL)
 CARRIAGE_RETURN_SYMBOL = "\u240d"  # a carriage return in a Script or Statements cell
 _ESCAPES = {"n": "\n", "t": "\t", "\\": "\\", "|": "|"}
 
@@ -194,9 +195,17 @@ def _prose(cell: str, spans: list[str]) -> str:
     return prose
 
 
-def _decode(text: str) -> str:
-    decoded = _ESCAPE.sub(lambda m: _ESCAPES.get(m.group(1), m.group(0)), text)
-    return decoded.replace(CARRIAGE_RETURN_SYMBOL, "\r")
+def _decode(text: str, where: str) -> str:
+    def one(match: "re.Match[str]") -> str:
+        body = match.group(1)
+        if len(body) > 1 and body[0] in "xu":
+            digits = 2 if body[0] == "x" else 4
+            if len(body) != digits + 1:
+                raise SpecFormatError(f"{where}: malformed escape {match.group(0)!r}")
+            return chr(int(body[1:], 16))
+        return _ESCAPES.get(body, match.group(0))
+
+    return _ESCAPE.sub(one, text).replace(CARRIAGE_RETURN_SYMBOL, "\r")
 
 
 def _single_code_span(cell: str, where: str) -> str:
@@ -205,7 +214,7 @@ def _single_code_span(cell: str, where: str) -> str:
         raise SpecFormatError(
             f"{where}: the Script cell must hold exactly one code span, found {len(spans)}"
         )
-    return _decode(spans[0])
+    return _decode(spans[0], where)
 
 
 def _expectation(cell: str, where: str) -> tuple[Expectation, Literal["testable", "to_verify"]]:
@@ -234,7 +243,7 @@ def _expectation(cell: str, where: str) -> tuple[Expectation, Literal["testable"
             raise SpecFormatError(
                 f"{where}: {span!r} must be the only code span of the Statements cell"
             )
-    statements = tuple(_decode(s) for s in spans)
+    statements = tuple(_decode(s, where) for s in spans)
     return (
         Expectation(statements=statements if exact else normalize(statements), exact=exact),
         status,

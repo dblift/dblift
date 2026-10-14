@@ -1,0 +1,6585 @@
+[
+{
+"script": "DBCC CHECKDB\n \nSELECT \u00dcn\u00ef FROM (SELECT \u00dcn\u00ef AS x) AS y\n \nGO  \r\n\nEXEC p '\u00e9'\n/* BEGIN */\nSELECT [:setvar] FROM \"x\"\"y\"\nCREATE TABLE t (a INT);\n\nSELECT \"GO\"/* a\nGO\nb */\n\t\nBEGIN; END\n \n \n",
+"expected": {
+"records": [
+{
+"text": "DBCC CHECKDB\n \nSELECT \u00dcn\u00ef FROM (SELECT \u00dcn\u00ef AS x) AS y",
+"line": 1,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"DBCC CHECKDB\n \nSELECT \u00dcn\u00ef FROM (SELECT \u00dcn\u00ef AS x) AS y"
+],
+"source_start": 0,
+"source_end": 62
+},
+{
+"text": "EXEC p '\u00e9'\n/* BEGIN */\nSELECT [:setvar] FROM \"x\"\"y\"\nCREATE TABLE t (a INT);\n\nSELECT \"GO\"/* a\nGO\nb */\n\t\nBEGIN; END",
+"line": 7,
+"terminator": null,
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"EXEC p '\u00e9'\n/* BEGIN */\nSELECT [:setvar] FROM \"x\"\"y\"",
+"CREATE TABLE t (a INT);",
+"SELECT \"GO\"/* a\nGO\nb */\n\t\nBEGIN; END"
+],
+"source_start": 62,
+"source_end": 181
+}
+],
+"strings": [
+[
+"DBCC CHECKDB\n \nSELECT \u00dcn\u00ef FROM (SELECT \u00dcn\u00ef AS x) AS y",
+1
+],
+[
+"EXEC p '\u00e9'\n/* BEGIN */\nSELECT [:setvar] FROM \"x\"\"y\"\nCREATE TABLE t (a INT);\n\nSELECT \"GO\"/* a\nGO\nb */\n\t\nBEGIN; END",
+1
+]
+],
+"analysis": [
+"DBCC CHECKDB\n \nSELECT \u00dcn\u00ef FROM (SELECT \u00dcn\u00ef AS x) AS y",
+"EXEC p '\u00e9'\n/* BEGIN */\nSELECT [:setvar] FROM \"x\"\"y\"",
+"CREATE TABLE t (a INT);",
+"SELECT \"GO\"/* a\nGO\nb */\n\t\nBEGIN; END"
+],
+"executed": [
+"DBCC CHECKDB\n \nSELECT \u00dcn\u00ef FROM (SELECT \u00dcn\u00ef AS x) AS y",
+"EXEC p '\u00e9'\n/* BEGIN */\nSELECT [:setvar] FROM \"x\"\"y\"",
+"CREATE TABLE t (a INT);",
+"SELECT \"GO\"/* a\nGO\nb */\n\t\nBEGIN; END"
+],
+"masking": [
+[
+"DBCC CHECKDB\n \nSELECT \u00dcn\u00ef FROM (SELECT \u00dcn\u00ef AS x) AS y",
+"DBCC CHECKDB"
+],
+[
+"DBCC CHECKDB\n \nSELECT \u00dcn\u00ef FROM (SELECT \u00dcn\u00ef AS x) AS y",
+"DBCC CHECKDB"
+],
+[
+"EXEC p '?'\n/* BEGIN */\nSELECT [:setvar] FROM \"x\"\"y\"\nCREATE TABLE t (a INT);\n\nSELECT \"GO\"/* a\nGO\nb */\n\t\nBEGIN; END",
+"EXEC p"
+],
+[
+"EXEC p '?'\n/* BEGIN */\nSELECT [:setvar] FROM \"x\"\"y\"",
+"EXEC p"
+],
+[
+"CREATE TABLE t (a INT);",
+"CREATE TABLE t"
+],
+[
+"SELECT \"GO\"/* a\nGO\nb */\n\t\nBEGIN; END",
+"SELECT \"GO\""
+]
+]
+}
+},
+{
+"script": "INSERT INTO t VALUES (CASE WHEN 1=1 THEN 2 ELSE 3 END)\r\nGO\n\n \nCREATE TABLE [a\nGO\nb] (id INT)\nGO\t2\n\t\n\n\t\nGO TRUNCATE TABLE t;\n\nALTER TABLE t\nDROP CONSTRAINT k SELECT [\u00e9], [\u00e9] FROM t WHERE x = [\u00e9]\n\nGO 5 -- c\n\n",
+"expected": {
+"error": [
+"UnsafeStatementSplitError",
+"text after GO on line 12: only a count and a '--' comment may follow it"
+]
+}
+},
+{
+"script": "TRUNCATE TABLE t; ALTER TABLE t\nALTER COLUMN c INT\nDROP COLUMN d\nCREATE INDEX i ON t (a)\r\n\nEXEC p 'GO'\n \nx gO\r\n\n\t\nSELECT go INT FROM t\n\t\nGo\ngo\n\nDECLARE @x INT = [$(x)]",
+"expected": {
+"error": [
+"UnsupportedMetaCommandError",
+"scripting variable $(x) on line 16: sqlcmd substitutes it before the batch is sent, dblift sends the text as it is"
+]
+}
+},
+{
+"script": "; %EXITGO OR+;${x -- GO-- [ [end]\nreset;\n-- GO\tt\t'*/'--GO 0\t<'' '\nGO\n'",
+"expected": {
+"error": [
+"UnsafeStatementSplitError",
+"unterminated string opened at line 5, column 1"
+]
+}
+},
+{
+"script": "SET NOCOUNT ON\n\t\nGO 000\nSELECT $action, $action FROM t WHERE x = $action\n\t\nGO 0\n\n \nBEGIN TRAN\r\n\nROLLBACK\nGO  \nCREATE OR REPLACE TRIGGER x\n\n\t\nGO\r\n\n",
+"expected": {
+"records": [
+{
+"text": "SET NOCOUNT ON",
+"line": 1,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 0,
+"analysis_statements": [
+"SET NOCOUNT ON"
+],
+"source_start": 0,
+"source_end": 24
+},
+{
+"text": "SELECT $action, $action FROM t WHERE x = $action",
+"line": 4,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 0,
+"analysis_statements": [
+"SELECT $action, $action FROM t WHERE x = $action"
+],
+"source_start": 24,
+"source_end": 80
+},
+{
+"text": "BEGIN TRAN\r\n\nROLLBACK",
+"line": 9,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"BEGIN TRAN\r\n\nROLLBACK"
+],
+"source_start": 80,
+"source_end": 110
+},
+{
+"text": "CREATE OR REPLACE TRIGGER x",
+"line": 13,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"CREATE OR REPLACE TRIGGER x"
+],
+"source_start": 110,
+"source_end": 145
+}
+],
+"strings": [
+[
+"BEGIN TRAN\r\n\nROLLBACK",
+1
+],
+[
+"CREATE OR REPLACE TRIGGER x",
+1
+]
+],
+"analysis": [
+"BEGIN TRAN\r\n\nROLLBACK",
+"CREATE OR REPLACE TRIGGER x"
+],
+"executed": [
+"BEGIN TRAN\r\n\nROLLBACK",
+"CREATE OR REPLACE TRIGGER x"
+],
+"masking": [
+[
+"SET NOCOUNT ON",
+"SET NOCOUNT"
+],
+[
+"SET NOCOUNT ON",
+"SET NOCOUNT"
+],
+[
+"SELECT $action, $action FROM t WHERE x = $action",
+"SELECT"
+],
+[
+"SELECT $action, $action FROM t WHERE x = $action",
+"SELECT"
+],
+[
+"BEGIN TRAN\r\n\nROLLBACK",
+"BEGIN TRAN"
+],
+[
+"BEGIN TRAN\r\n\nROLLBACK",
+"BEGIN TRAN"
+],
+[
+"CREATE OR REPLACE TRIGGER x",
+"CREATE OR REPLACE TRIGGER x"
+],
+[
+"CREATE OR REPLACE TRIGGER x",
+"CREATE OR REPLACE TRIGGER x"
+]
+]
+}
+},
+{
+"script": "${+\na${b}\n\t:setvar\t/* /* */\n\u00a3\"\"[/*];\t[:setvar] &} `[--]'it''s'\t! @@ROWCOUNT\n; /* it's */ ##gquit${a\nGO\nSELECT 2}TRAN",
+"expected": {
+"error": [
+"UnsupportedMetaCommandError",
+"sqlcmd command ':setvar' on line 3: dblift does not run client commands"
+]
+}
+},
+{
+"script": "a\rGO\n\t\ngo\r",
+"expected": {
+"error": [
+"UnsafeStatementSplitError",
+"text after GO on line 1: a lone carriage return is not a line break sqlcmd was measured on; end the line with a newline"
+]
+}
+},
+{
+"script": "ALTER TABLE t\nDROP COLUMN c\n UPDATE t SET a = $action\n--c\r\nWITH c AS (SELECT 1 AS x) SELECT * FROM c\n\n\n\t\nEND CATCH;\nDELETE FROM t WHERE a = '\r'; CREATE LOGIN l WITH PASSWORD = 'a'\nGO 0\n\nSELECT @x = [:setvar]\n/* a\nb */ GO 007\r\n",
+"expected": {
+"error": [
+"UnsafeStatementSplitError",
+"GO after a comment on line 15: sqlcmd takes it as a command after one comment and as text after two; put it first on its line"
+]
+}
+},
+{
+"script": ";;; CREATE PROC p AS SELECT 1 ROLLBACK\n\nGO 2\nSELECT (a, b) FROM t\n\nMERGE t USING s ON 1=1 WHEN MATCHED THEN DELETE OUTPUT $action\r\ngo 010--c\n\n\t\n",
+"expected": {
+"error": [
+"UnsafeStatementSplitError",
+"GO on line 7: GO must be followed by a blank, a count or end of line; '--' directly after GO is read differently by sqlcmd clients"
+]
+}
+},
+{
+"script": "DELETE FROM t WHERE a = a.b.c\n\t\nGO\r\n \n\rGO\n\t\n\nSELECT go INT FROM t /**/\n\nSELECT @x = 1 AS go\n\t\nDECLARE @x INT = \"a;b\"\n\n",
+"expected": {
+"error": [
+"UnsafeStatementSplitError",
+"text after GO on line 5: a lone carriage return is not a line break sqlcmd was measured on; end the line with a newline"
+]
+}
+},
+{
+"script": "${a;b}\n[a\nGO\nb] #tmp$1- \"a\" @@ROWCOUNT -- ['GO':ra${b}[a\u240d] a$bexit begin*/--a (\n\"A b\"\nreset -- $(x) ~*\ncol_1;\n",
+"expected": {
+"error": [
+"UnsupportedMetaCommandError",
+"sqlcmd command 'RESET' on line 6: dblift does not run client commands"
+]
+}
+},
+{
+"script": "SELECT CASE WHEN 1=1 THEN 2 ELSE 3 END, CASE WHEN 1=1 THEN 2 ELSE 3 END FROM t WHERE x = CASE WHEN 1=1 THEN 2 ELSE 3 END\n\t\n  GO   10000000\t-- c\n\t\n\n\ngo\n\nWAITFOR DELAY '00:00:01'EXEC p '\ud83d\ude00'\r\n  GO\n",
+"expected": {
+"error": [
+"UnsafeStatementSplitError",
+"GO count on line 3 exceeds the limit of 1000000"
+]
+}
+},
+{
+"script": "a${b}TRUNCATE TABLE t\ngo\u000b\nDELETE FROM t WHERE a = @@ROWCOUNT\n\tGO ROLLBACK",
+"expected": {
+"error": [
+"UnsafeStatementSplitError",
+"text after GO on line 2: only a count and a '--' comment may follow it"
+]
+}
+},
+{
+"script": "CREATE LOGIN l WITH PASSWORD = '\u00a0'\nGO 007\n\nALTER TABLE t ADD c INT\nGO  9999999\nSELECT [a\u240d] FROM \"a;b\"\nGo\u00a0\n\n",
+"expected": {
+"error": [
+"UnsafeStatementSplitError",
+"GO 9999999 on line 5 exceeds the limit of 1000000"
+]
+}
+},
+{
+"script": "-- $(x)\na@b \\ --\t^ '\nGO\n'$actionGO 2\tGo\"x\"\"y\" )'\r'END ~\ud83d\ude00/*\n*/\t\u001c\n$1\"$(x)\": ;\n\" ",
+"expected": {
+"error": [
+"UnsupportedMetaCommandError",
+"scripting variable $(x) on line 6: sqlcmd substitutes it before the batch is sent, dblift sends the text as it is"
+]
+}
+},
+{
+"script": "CREATE OR ALTER VIEW v AS SELECT 1\r\n\r\nCREATE PROCEDURE p AS BEGIN SELECT 1; SELECT 2; END\r\n\r\n\r\n\t\r\n",
+"expected": {
+"records": [
+{
+"text": "CREATE OR ALTER VIEW v AS SELECT 1\r\n\r\nCREATE PROCEDURE p AS BEGIN SELECT 1; SELECT 2; END",
+"line": 1,
+"terminator": null,
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"CREATE OR ALTER VIEW v AS SELECT 1",
+"CREATE PROCEDURE p AS BEGIN SELECT 1; SELECT 2; END"
+],
+"source_start": 0,
+"source_end": 98
+}
+],
+"strings": [
+[
+"CREATE OR ALTER VIEW v AS SELECT 1\r\n\r\nCREATE PROCEDURE p AS BEGIN SELECT 1; SELECT 2; END",
+1
+]
+],
+"analysis": [
+"CREATE OR ALTER VIEW v AS SELECT 1",
+"CREATE PROCEDURE p AS BEGIN SELECT 1; SELECT 2; END"
+],
+"executed": [
+"CREATE OR ALTER VIEW v AS SELECT 1",
+"CREATE PROCEDURE p AS BEGIN SELECT 1; SELECT 2; END"
+],
+"masking": [
+[
+"CREATE OR ALTER VIEW v AS SELECT 1\r\n\r\nCREATE PROCEDURE p AS BEGIN SELECT 1; SELECT 2; END",
+"CREATE OR ALTER VIEW v"
+],
+[
+"CREATE OR ALTER VIEW v AS SELECT 1",
+"CREATE OR ALTER VIEW v"
+],
+[
+"CREATE PROCEDURE p AS BEGIN SELECT 1; SELECT 2; END",
+"CREATE PROCEDURE p"
+]
+]
+}
+},
+{
+"script": "CREATE OR ALTER; \n\t\n",
+"expected": {
+"records": [
+{
+"text": "CREATE OR ALTER;",
+"line": 1,
+"terminator": null,
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"CREATE OR ALTER;"
+],
+"source_start": 0,
+"source_end": 20
+}
+],
+"strings": [
+[
+"CREATE OR ALTER;",
+1
+]
+],
+"analysis": [
+"CREATE OR ALTER;"
+],
+"executed": [
+"CREATE OR ALTER;"
+],
+"masking": [
+[
+"CREATE OR ALTER;",
+"CREATE OR ALTER"
+],
+[
+"CREATE OR ALTER;",
+"CREATE OR ALTER"
+]
+]
+}
+},
+{
+"script": "SELECT 1\nGO\n",
+"expected": {
+"records": [
+{
+"text": "SELECT 1",
+"line": 1,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"SELECT 1"
+],
+"source_start": 0,
+"source_end": 12
+}
+],
+"strings": [
+[
+"SELECT 1",
+1
+]
+],
+"analysis": [
+"SELECT 1"
+],
+"executed": [
+"SELECT 1"
+],
+"masking": [
+[
+"SELECT 1",
+"SELECT 1"
+],
+[
+"SELECT 1",
+"SELECT 1"
+]
+]
+}
+},
+{
+"script": "CREATE TABLE t (id INT);\nGO\nGO\nSELECT 1;\n",
+"expected": {
+"records": [
+{
+"text": "CREATE TABLE t (id INT);",
+"line": 1,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"CREATE TABLE t (id INT);"
+],
+"source_start": 0,
+"source_end": 28
+},
+{
+"text": "SELECT 1;",
+"line": 4,
+"terminator": null,
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"SELECT 1;"
+],
+"source_start": 31,
+"source_end": 41
+}
+],
+"strings": [
+[
+"CREATE TABLE t (id INT);",
+1
+],
+[
+"SELECT 1;",
+1
+]
+],
+"analysis": [
+"CREATE TABLE t (id INT);",
+"SELECT 1;"
+],
+"executed": [
+"CREATE TABLE t (id INT);",
+"SELECT 1;"
+],
+"masking": [
+[
+"CREATE TABLE t (id INT);",
+"CREATE TABLE t"
+],
+[
+"CREATE TABLE t (id INT);",
+"CREATE TABLE t"
+],
+[
+"SELECT 1;",
+"SELECT 1"
+],
+[
+"SELECT 1;",
+"SELECT 1"
+]
+]
+}
+},
+{
+"script": "DECLARE @x INT = 1;\nSELECT @x;\nGO",
+"expected": {
+"records": [
+{
+"text": "DECLARE @x INT = 1;\nSELECT @x;",
+"line": 1,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"DECLARE @x INT = 1;",
+"SELECT @x;"
+],
+"source_start": 0,
+"source_end": 33
+}
+],
+"strings": [
+[
+"DECLARE @x INT = 1;\nSELECT @x;",
+1
+]
+],
+"analysis": [
+"DECLARE @x INT = 1;",
+"SELECT @x;"
+],
+"executed": [
+"DECLARE @x INT = 1;",
+"SELECT @x;"
+],
+"masking": [
+[
+"DECLARE @x INT = 1;\nSELECT @x;",
+"DECLARE @x"
+],
+[
+"DECLARE @x INT = 1;",
+"DECLARE @x"
+],
+[
+"SELECT @x;",
+"SELECT @x"
+]
+]
+}
+},
+{
+"script": "CREATE PROCEDURE p AS\nSELECT 1;\nSELECT 2;\nGO\nEXEC p;",
+"expected": {
+"records": [
+{
+"text": "CREATE PROCEDURE p AS\nSELECT 1;\nSELECT 2;",
+"line": 1,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"CREATE PROCEDURE p AS\nSELECT 1;\nSELECT 2;"
+],
+"source_start": 0,
+"source_end": 45
+},
+{
+"text": "EXEC p;",
+"line": 5,
+"terminator": null,
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"EXEC p;"
+],
+"source_start": 45,
+"source_end": 52
+}
+],
+"strings": [
+[
+"CREATE PROCEDURE p AS\nSELECT 1;\nSELECT 2;",
+1
+],
+[
+"EXEC p;",
+1
+]
+],
+"analysis": [
+"CREATE PROCEDURE p AS\nSELECT 1;\nSELECT 2;",
+"EXEC p;"
+],
+"executed": [
+"CREATE PROCEDURE p AS\nSELECT 1;\nSELECT 2;",
+"EXEC p;"
+],
+"masking": [
+[
+"CREATE PROCEDURE p AS\nSELECT 1;\nSELECT 2;",
+"CREATE PROCEDURE p"
+],
+[
+"CREATE PROCEDURE p AS\nSELECT 1;\nSELECT 2;",
+"CREATE PROCEDURE p"
+],
+[
+"EXEC p;",
+"EXEC p"
+],
+[
+"EXEC p;",
+"EXEC p"
+]
+]
+}
+},
+{
+"script": "SELECT 'GO\n' AS s\nGO",
+"expected": {
+"records": [
+{
+"text": "SELECT 'GO\n' AS s",
+"line": 1,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"SELECT 'GO\n' AS s"
+],
+"source_start": 0,
+"source_end": 20
+}
+],
+"strings": [
+[
+"SELECT 'GO\n' AS s",
+1
+]
+],
+"analysis": [
+"SELECT 'GO\n' AS s"
+],
+"executed": [
+"SELECT 'GO\n' AS s"
+],
+"masking": [
+[
+"SELECT '?' AS s",
+"SELECT"
+],
+[
+"SELECT '?' AS s",
+"SELECT"
+]
+]
+}
+},
+{
+"script": "SELECT 'a\nGO\nb' AS s\nGO",
+"expected": {
+"records": [
+{
+"text": "SELECT 'a\nGO\nb' AS s",
+"line": 1,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"SELECT 'a\nGO\nb' AS s"
+],
+"source_start": 0,
+"source_end": 23
+}
+],
+"strings": [
+[
+"SELECT 'a\nGO\nb' AS s",
+1
+]
+],
+"analysis": [
+"SELECT 'a\nGO\nb' AS s"
+],
+"executed": [
+"SELECT 'a\nGO\nb' AS s"
+],
+"masking": [
+[
+"SELECT '?' AS s",
+"SELECT"
+],
+[
+"SELECT '?' AS s",
+"SELECT"
+]
+]
+}
+},
+{
+"script": "CREATE TABLE [a\nGO\nb] (id INT)\nGO",
+"expected": {
+"records": [
+{
+"text": "CREATE TABLE [a\nGO\nb] (id INT)",
+"line": 1,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"CREATE TABLE [a\nGO\nb] (id INT)"
+],
+"source_start": 0,
+"source_end": 33
+}
+],
+"strings": [
+[
+"CREATE TABLE [a\nGO\nb] (id INT)",
+1
+]
+],
+"analysis": [
+"CREATE TABLE [a\nGO\nb] (id INT)"
+],
+"executed": [
+"CREATE TABLE [a\nGO\nb] (id INT)"
+],
+"masking": [
+[
+"CREATE TABLE [a\nGO\nb] (id INT)",
+"CREATE TABLE [a\nGO\nb]"
+],
+[
+"CREATE TABLE [a\nGO\nb] (id INT)",
+"CREATE TABLE [a\nGO\nb]"
+]
+]
+}
+},
+{
+"script": "SELECT 'a'\rGO",
+"expected": {
+"error": [
+"UnsafeStatementSplitError",
+"text after GO on line 1: a lone carriage return is not a line break sqlcmd was measured on; end the line with a newline"
+]
+}
+},
+{
+"script": "SELECT [x]\rGO",
+"expected": {
+"error": [
+"UnsafeStatementSplitError",
+"text after GO on line 1: a lone carriage return is not a line break sqlcmd was measured on; end the line with a newline"
+]
+}
+},
+{
+"script": "SELECT 'a\rGO';\nGO",
+"expected": {
+"records": [
+{
+"text": "SELECT 'a\rGO';",
+"line": 1,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"SELECT 'a\rGO';"
+],
+"source_start": 0,
+"source_end": 17
+}
+],
+"strings": [
+[
+"SELECT 'a\rGO';",
+1
+]
+],
+"analysis": [
+"SELECT 'a\rGO';"
+],
+"executed": [
+"SELECT 'a\rGO';"
+],
+"masking": [
+[
+"SELECT '?';",
+"SELECT"
+],
+[
+"SELECT '?';",
+"SELECT"
+]
+]
+}
+},
+{
+"script": "SELECT [x\rGO];\nGO",
+"expected": {
+"records": [
+{
+"text": "SELECT [x\rGO];",
+"line": 1,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"SELECT [x\rGO];"
+],
+"source_start": 0,
+"source_end": 17
+}
+],
+"strings": [
+[
+"SELECT [x\rGO];",
+1
+]
+],
+"analysis": [
+"SELECT [x\rGO];"
+],
+"executed": [
+"SELECT [x\rGO];"
+],
+"masking": [
+[
+"SELECT [x\rGO];",
+"SELECT [x\rGO]"
+],
+[
+"SELECT [x\rGO];",
+"SELECT [x\rGO]"
+]
+]
+}
+},
+{
+"script": "/* a /* b */ GO */\nSELECT 1\nGO",
+"expected": {
+"error": [
+"UnsafeStatementSplitError",
+"text after GO on line 1: only a count and a '--' comment may follow it"
+]
+}
+},
+{
+"script": "SELECT /* a /* b */ */ 1\nGO",
+"expected": {
+"records": [
+{
+"text": "SELECT /* a /* b */ */ 1",
+"line": 1,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"SELECT /* a /* b */ */ 1"
+],
+"source_start": 0,
+"source_end": 27
+}
+],
+"strings": [
+[
+"SELECT /* a /* b */ */ 1",
+1
+]
+],
+"analysis": [
+"SELECT /* a /* b */ */ 1"
+],
+"executed": [
+"SELECT /* a /* b */ */ 1"
+],
+"masking": [
+[
+"SELECT /* a /* b */ */ 1",
+"SELECT 1"
+],
+[
+"SELECT /* a /* b */ */ 1",
+"SELECT 1"
+]
+]
+}
+},
+{
+"script": "SELECT 1 /* a\nGO\n*/\nGO",
+"expected": {
+"records": [
+{
+"text": "SELECT 1 /* a\nGO\n*/",
+"line": 1,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"SELECT 1 /* a\nGO\n*/"
+],
+"source_start": 0,
+"source_end": 22
+}
+],
+"strings": [
+[
+"SELECT 1 /* a\nGO\n*/",
+1
+]
+],
+"analysis": [
+"SELECT 1 /* a\nGO\n*/"
+],
+"executed": [
+"SELECT 1 /* a\nGO\n*/"
+],
+"masking": [
+[
+"SELECT 1 /* a\nGO\n*/",
+"SELECT 1"
+],
+[
+"SELECT 1 /* a\nGO\n*/",
+"SELECT 1"
+]
+]
+}
+},
+{
+"script": "SELECT 1 /* a\nGO\n/* b */\nGO\n*/",
+"expected": {
+"records": [
+{
+"text": "SELECT 1 /* a\nGO\n/* b */",
+"line": 1,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"SELECT 1 /* a\nGO\n/* b */"
+],
+"source_start": 0,
+"source_end": 28
+},
+{
+"text": "*/",
+"line": 5,
+"terminator": null,
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"*/"
+],
+"source_start": 28,
+"source_end": 30
+}
+],
+"strings": [
+[
+"SELECT 1 /* a\nGO\n/* b */",
+1
+],
+[
+"*/",
+1
+]
+],
+"analysis": [
+"SELECT 1 /* a\nGO\n/* b */",
+"*/"
+],
+"executed": [
+"SELECT 1 /* a\nGO\n/* b */",
+"*/"
+],
+"masking": [
+[
+"SELECT",
+"SELECT"
+],
+[
+"SELECT",
+"SELECT"
+],
+[
+"*/",
+""
+],
+[
+"*/",
+""
+]
+]
+}
+},
+{
+"script": "SELECT [go] FROM t\ngo -- end\n",
+"expected": {
+"records": [
+{
+"text": "SELECT [go] FROM t",
+"line": 1,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"SELECT [go] FROM t"
+],
+"source_start": 0,
+"source_end": 29
+}
+],
+"strings": [
+[
+"SELECT [go] FROM t",
+1
+]
+],
+"analysis": [
+"SELECT [go] FROM t"
+],
+"executed": [
+"SELECT [go] FROM t"
+],
+"masking": [
+[
+"SELECT [go] FROM t",
+"SELECT [go]"
+],
+[
+"SELECT [go] FROM t",
+"SELECT [go]"
+]
+]
+}
+},
+{
+"script": "SELECT 1\nGO /* c */\nSELECT 2",
+"expected": {
+"error": [
+"UnsafeStatementSplitError",
+"text after GO on line 2: only a count and a '--' comment may follow it"
+]
+}
+},
+{
+"script": "SELECT 1\nGO--c\nSELECT 2",
+"expected": {
+"error": [
+"UnsafeStatementSplitError",
+"GO on line 2: GO must be followed by a blank, a count or end of line; '--' directly after GO is read differently by sqlcmd clients"
+]
+}
+},
+{
+"script": "INSERT INTO t VALUES (1)\nGO 3\n",
+"expected": {
+"records": [
+{
+"text": "INSERT INTO t VALUES (1)",
+"line": 1,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 3,
+"analysis_statements": [
+"INSERT INTO t VALUES (1)"
+],
+"source_start": 0,
+"source_end": 30
+}
+],
+"strings": [
+[
+"INSERT INTO t VALUES (1)",
+3
+]
+],
+"analysis": [
+"INSERT INTO t VALUES (1)"
+],
+"executed": [
+"INSERT INTO t VALUES (1)"
+],
+"masking": [
+[
+"INSERT INTO t VALUES (1)",
+"INSERT INTO t"
+],
+[
+"INSERT INTO t VALUES (1)",
+"INSERT INTO t"
+]
+]
+}
+},
+{
+"script": "INSERT INTO t VALUES (1)\nGO 0\nSELECT 2",
+"expected": {
+"records": [
+{
+"text": "INSERT INTO t VALUES (1)",
+"line": 1,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 0,
+"analysis_statements": [
+"INSERT INTO t VALUES (1)"
+],
+"source_start": 0,
+"source_end": 30
+},
+{
+"text": "SELECT 2",
+"line": 3,
+"terminator": null,
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"SELECT 2"
+],
+"source_start": 30,
+"source_end": 38
+}
+],
+"strings": [
+[
+"SELECT 2",
+1
+]
+],
+"analysis": [
+"SELECT 2"
+],
+"executed": [
+"SELECT 2"
+],
+"masking": [
+[
+"INSERT INTO t VALUES (1)",
+"INSERT INTO t"
+],
+[
+"INSERT INTO t VALUES (1)",
+"INSERT INTO t"
+],
+[
+"SELECT 2",
+"SELECT 2"
+],
+[
+"SELECT 2",
+"SELECT 2"
+]
+]
+}
+},
+{
+"script": "SELECT 1\nGO 5x\nSELECT 2",
+"expected": {
+"error": [
+"UnsafeStatementSplitError",
+"text after GO on line 2: only a count and a '--' comment may follow it"
+]
+}
+},
+{
+"script": "SELECT N'it''s'\nGO",
+"expected": {
+"records": [
+{
+"text": "SELECT N'it''s'",
+"line": 1,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"SELECT N'it''s'"
+],
+"source_start": 0,
+"source_end": 18
+}
+],
+"strings": [
+[
+"SELECT N'it''s'",
+1
+]
+],
+"analysis": [
+"SELECT N'it''s'"
+],
+"executed": [
+"SELECT N'it''s'"
+],
+"masking": [
+[
+"SELECT N'?'",
+"SELECT N"
+],
+[
+"SELECT N'?'",
+"SELECT N"
+]
+]
+}
+},
+{
+"script": "MERGE t USING s ON 1=1 WHEN MATCHED THEN DELETE OUTPUT $action;\nGO",
+"expected": {
+"records": [
+{
+"text": "MERGE t USING s ON 1=1 WHEN MATCHED THEN DELETE OUTPUT $action;",
+"line": 1,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"MERGE t USING s ON 1=1 WHEN MATCHED THEN DELETE OUTPUT $action;"
+],
+"source_start": 0,
+"source_end": 66
+}
+],
+"strings": [
+[
+"MERGE t USING s ON 1=1 WHEN MATCHED THEN DELETE OUTPUT $action;",
+1
+]
+],
+"analysis": [
+"MERGE t USING s ON 1=1 WHEN MATCHED THEN DELETE OUTPUT $action;"
+],
+"executed": [
+"MERGE t USING s ON 1=1 WHEN MATCHED THEN DELETE OUTPUT $action;"
+],
+"masking": [
+[
+"MERGE t USING s ON 1=1 WHEN MATCHED THEN DELETE OUTPUT $action;",
+"MERGE t"
+],
+[
+"MERGE t USING s ON 1=1 WHEN MATCHED THEN DELETE OUTPUT $action;",
+"MERGE t"
+]
+]
+}
+},
+{
+"script": ":setvar schema dbo\nGO",
+"expected": {
+"error": [
+"UnsupportedMetaCommandError",
+"sqlcmd command ':setvar' on line 1: dblift does not run client commands"
+]
+}
+},
+{
+"script": "GOTO label\nGO",
+"expected": {
+"records": [
+{
+"text": "GOTO label",
+"line": 1,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"GOTO label"
+],
+"source_start": 0,
+"source_end": 13
+}
+],
+"strings": [
+[
+"GOTO label",
+1
+]
+],
+"analysis": [
+"GOTO label"
+],
+"executed": [
+"GOTO label"
+],
+"masking": [
+[
+"GOTO label",
+"GOTO label"
+],
+[
+"GOTO label",
+"GOTO label"
+]
+]
+}
+},
+{
+"script": "SELECT\n    go.id\nFROM t AS go\nGO",
+"expected": {
+"records": [
+{
+"text": "SELECT\n    go.id\nFROM t AS go",
+"line": 1,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"SELECT\n    go.id\nFROM t AS go"
+],
+"source_start": 0,
+"source_end": 32
+}
+],
+"strings": [
+[
+"SELECT\n    go.id\nFROM t AS go",
+1
+]
+],
+"analysis": [
+"SELECT\n    go.id\nFROM t AS go"
+],
+"executed": [
+"SELECT\n    go.id\nFROM t AS go"
+],
+"masking": [
+[
+"SELECT\n    go.id\nFROM t AS go",
+"SELECT go.id"
+],
+[
+"SELECT\n    go.id\nFROM t AS go",
+"SELECT go.id"
+]
+]
+}
+},
+{
+"script": "SELECT\n    go,\n    2 AS b\nFROM t\nGO",
+"expected": {
+"records": [
+{
+"text": "SELECT\n    go,\n    2 AS b\nFROM t",
+"line": 1,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"SELECT\n    go,\n    2 AS b\nFROM t"
+],
+"source_start": 0,
+"source_end": 35
+}
+],
+"strings": [
+[
+"SELECT\n    go,\n    2 AS b\nFROM t",
+1
+]
+],
+"analysis": [
+"SELECT\n    go,\n    2 AS b\nFROM t"
+],
+"executed": [
+"SELECT\n    go,\n    2 AS b\nFROM t"
+],
+"masking": [
+[
+"SELECT\n    go,\n    2 AS b\nFROM t",
+"SELECT go"
+],
+[
+"SELECT\n    go,\n    2 AS b\nFROM t",
+"SELECT go"
+]
+]
+}
+},
+{
+"script": "SELECT 1 GO",
+"expected": {
+"records": [
+{
+"text": "SELECT 1 GO",
+"line": 1,
+"terminator": null,
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"SELECT 1 GO"
+],
+"source_start": 0,
+"source_end": 11
+}
+],
+"strings": [
+[
+"SELECT 1 GO",
+1
+]
+],
+"analysis": [
+"SELECT 1 GO"
+],
+"executed": [
+"SELECT 1 GO"
+],
+"masking": [
+[
+"SELECT 1 GO",
+"SELECT 1"
+],
+[
+"SELECT 1 GO",
+"SELECT 1"
+]
+]
+}
+},
+{
+"script": "SELECT 1\nGO;",
+"expected": {
+"error": [
+"UnsafeStatementSplitError",
+"text after GO on line 2: only a count and a '--' comment may follow it"
+]
+}
+},
+{
+"script": "SELECT 1 AS go;\nSELECT 2;\nGO",
+"expected": {
+"records": [
+{
+"text": "SELECT 1 AS go;\nSELECT 2;",
+"line": 1,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"SELECT 1 AS go;",
+"SELECT 2;"
+],
+"source_start": 0,
+"source_end": 28
+}
+],
+"strings": [
+[
+"SELECT 1 AS go;\nSELECT 2;",
+1
+]
+],
+"analysis": [
+"SELECT 1 AS go;",
+"SELECT 2;"
+],
+"executed": [
+"SELECT 1 AS go;",
+"SELECT 2;"
+],
+"masking": [
+[
+"SELECT 1 AS go;\nSELECT 2;",
+"SELECT 1"
+],
+[
+"SELECT 1 AS go;",
+"SELECT 1"
+],
+[
+"SELECT 2;",
+"SELECT 2"
+]
+]
+}
+},
+{
+"script": "SELECT go INT FROM t;\nSELECT 2;\nGO",
+"expected": {
+"records": [
+{
+"text": "SELECT go INT FROM t;\nSELECT 2;",
+"line": 1,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"SELECT go INT FROM t;",
+"SELECT 2;"
+],
+"source_start": 0,
+"source_end": 34
+}
+],
+"strings": [
+[
+"SELECT go INT FROM t;\nSELECT 2;",
+1
+]
+],
+"analysis": [
+"SELECT go INT FROM t;",
+"SELECT 2;"
+],
+"executed": [
+"SELECT go INT FROM t;",
+"SELECT 2;"
+],
+"masking": [
+[
+"SELECT go INT FROM t;\nSELECT 2;",
+"SELECT"
+],
+[
+"SELECT go INT FROM t;",
+"SELECT"
+],
+[
+"SELECT 2;",
+"SELECT 2"
+]
+]
+}
+},
+{
+"script": "EXIT\nSELECT 1\nGO",
+"expected": {
+"error": [
+"UnsupportedMetaCommandError",
+"sqlcmd command 'EXIT' on line 1: dblift does not run client commands"
+]
+}
+},
+{
+"script": ":r include.sql\nGO",
+"expected": {
+"error": [
+"UnsupportedMetaCommandError",
+"sqlcmd command ':r' on line 1: dblift does not run client commands"
+]
+}
+},
+{
+"script": "SELECT * FROM $(table)\nGO",
+"expected": {
+"error": [
+"UnsupportedMetaCommandError",
+"scripting variable $(table) on line 1: sqlcmd substitutes it before the batch is sent, dblift sends the text as it is"
+]
+}
+},
+{
+"script": "SELECT 1 -- $(x)\nGO",
+"expected": {
+"records": [
+{
+"text": "SELECT 1 -- $(x)",
+"line": 1,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"SELECT 1 -- $(x)"
+],
+"source_start": 0,
+"source_end": 19
+}
+],
+"strings": [
+[
+"SELECT 1 -- $(x)",
+1
+]
+],
+"analysis": [
+"SELECT 1 -- $(x)"
+],
+"executed": [
+"SELECT 1 -- $(x)"
+],
+"masking": [
+[
+"SELECT 1 -- $(x)",
+"SELECT 1"
+],
+[
+"SELECT 1 -- $(x)",
+"SELECT 1"
+]
+]
+}
+},
+{
+"script": "SELECT '$(x)' AS s\nGO",
+"expected": {
+"error": [
+"UnsupportedMetaCommandError",
+"scripting variable $(x) on line 1: sqlcmd substitutes it before the batch is sent, dblift sends the text as it is"
+]
+}
+},
+{
+"script": "SELECT 'a\n:setvar x y\nb' AS s\nGO",
+"expected": {
+"records": [
+{
+"text": "SELECT 'a\n:setvar x y\nb' AS s",
+"line": 1,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"SELECT 'a\n:setvar x y\nb' AS s"
+],
+"source_start": 0,
+"source_end": 32
+}
+],
+"strings": [
+[
+"SELECT 'a\n:setvar x y\nb' AS s",
+1
+]
+],
+"analysis": [
+"SELECT 'a\n:setvar x y\nb' AS s"
+],
+"executed": [
+"SELECT 'a\n:setvar x y\nb' AS s"
+],
+"masking": [
+[
+"SELECT '?' AS s",
+"SELECT"
+],
+[
+"SELECT '?' AS s",
+"SELECT"
+]
+]
+}
+},
+{
+"script": "SELECT 1 /*\n:setvar x y\n*/\nGO",
+"expected": {
+"records": [
+{
+"text": "SELECT 1 /*\n:setvar x y\n*/",
+"line": 1,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"SELECT 1 /*\n:setvar x y\n*/"
+],
+"source_start": 0,
+"source_end": 29
+}
+],
+"strings": [
+[
+"SELECT 1 /*\n:setvar x y\n*/",
+1
+]
+],
+"analysis": [
+"SELECT 1 /*\n:setvar x y\n*/"
+],
+"executed": [
+"SELECT 1 /*\n:setvar x y\n*/"
+],
+"masking": [
+[
+"SELECT 1 /*\n:setvar x y\n*/",
+"SELECT 1"
+],
+[
+"SELECT 1 /*\n:setvar x y\n*/",
+"SELECT 1"
+]
+]
+}
+},
+{
+"script": ":foo\nGO",
+"expected": {
+"records": [
+{
+"text": ":foo",
+"line": 1,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+":foo"
+],
+"source_start": 0,
+"source_end": 7
+}
+],
+"strings": [
+[
+":foo",
+1
+]
+],
+"analysis": [
+":foo"
+],
+"executed": [
+":foo"
+],
+"masking": [
+[
+":foo",
+""
+],
+[
+":foo",
+""
+]
+]
+}
+},
+{
+"script": "CREATE TABLE t (id INT,\n:setvar x y\n x INT)\nGO",
+"expected": {
+"error": [
+"UnsupportedMetaCommandError",
+"sqlcmd command ':setvar' on line 2: dblift does not run client commands"
+]
+}
+},
+{
+"script": "SELECT 1\n/* c */ GO\nSELECT 2",
+"expected": {
+"error": [
+"UnsafeStatementSplitError",
+"GO after a comment on line 2: sqlcmd takes it as a command after one comment and as text after two; put it first on its line"
+]
+}
+},
+{
+"script": "CREATE TABLE t (\n  exit INT\n)\nGO",
+"expected": {
+"error": [
+"UnsupportedMetaCommandError",
+"sqlcmd command 'EXIT' on line 2: dblift does not run client commands"
+]
+}
+},
+{
+"script": "CREATE TABLE t (\n  quit INT\n)\nGO",
+"expected": {
+"error": [
+"UnsupportedMetaCommandError",
+"sqlcmd command 'QUIT' on line 2: dblift does not run client commands"
+]
+}
+},
+{
+"script": "CREATE TABLE t (\n  reset INT\n)\nGO",
+"expected": {
+"error": [
+"UnsupportedMetaCommandError",
+"sqlcmd command 'RESET' on line 2: dblift does not run client commands"
+]
+}
+},
+{
+"script": "CREATE TABLE t (\n  ed INT\n)\nGO",
+"expected": {
+"error": [
+"UnsupportedMetaCommandError",
+"sqlcmd command 'ED' on line 2: dblift does not run client commands"
+]
+}
+},
+{
+"script": "SELECT 1\nquit;\nSELECT 2",
+"expected": {
+"records": [
+{
+"text": "SELECT 1\nquit;\nSELECT 2",
+"line": 1,
+"terminator": null,
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"SELECT 1\nquit;",
+"SELECT 2"
+],
+"source_start": 0,
+"source_end": 23
+}
+],
+"strings": [
+[
+"SELECT 1\nquit;\nSELECT 2",
+1
+]
+],
+"analysis": [
+"SELECT 1\nquit;",
+"SELECT 2"
+],
+"executed": [
+"SELECT 1\nquit;",
+"SELECT 2"
+],
+"masking": [
+[
+"SELECT 1\nquit;\nSELECT 2",
+"SELECT 1"
+],
+[
+"SELECT 1\nquit;",
+"SELECT 1"
+],
+[
+"SELECT 2",
+"SELECT 2"
+]
+]
+}
+},
+{
+"script": "SELECT 1 /* x\nGO\nSELECT 2",
+"expected": {
+"error": [
+"UnsafeStatementSplitError",
+"unterminated block comment opened at line 1, column 10"
+]
+}
+},
+{
+"script": "SELECT 'abc\nGO\n",
+"expected": {
+"error": [
+"UnsafeStatementSplitError",
+"unterminated string opened at line 1, column 8"
+]
+}
+},
+{
+"script": "USE db\nCREATE PROCEDURE p AS SELECT 1\nGO",
+"expected": {
+"records": [
+{
+"text": "USE db\nCREATE PROCEDURE p AS SELECT 1",
+"line": 1,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"USE db",
+"CREATE PROCEDURE p AS SELECT 1"
+],
+"source_start": 0,
+"source_end": 40
+}
+],
+"strings": [
+[
+"USE db\nCREATE PROCEDURE p AS SELECT 1",
+1
+]
+],
+"analysis": [
+"USE db",
+"CREATE PROCEDURE p AS SELECT 1"
+],
+"executed": [
+"USE db",
+"CREATE PROCEDURE p AS SELECT 1"
+],
+"masking": [
+[
+"USE db\nCREATE PROCEDURE p AS SELECT 1",
+"USE db"
+],
+[
+"USE db",
+"USE db"
+],
+[
+"CREATE PROCEDURE p AS SELECT 1",
+"CREATE PROCEDURE p"
+]
+]
+}
+},
+{
+"script": ";\nGO\nSELECT 2",
+"expected": {
+"records": [
+{
+"text": "SELECT 2",
+"line": 3,
+"terminator": null,
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"SELECT 2"
+],
+"source_start": 5,
+"source_end": 13
+}
+],
+"strings": [
+[
+"SELECT 2",
+1
+]
+],
+"analysis": [
+"SELECT 2"
+],
+"executed": [
+"SELECT 2"
+],
+"masking": [
+[
+"SELECT 2",
+"SELECT 2"
+],
+[
+"SELECT 2",
+"SELECT 2"
+]
+]
+}
+},
+{
+"script": "SELECT 1\nGO 1000001",
+"expected": {
+"error": [
+"UnsafeStatementSplitError",
+"GO 1000001 on line 2 exceeds the limit of 1000000"
+]
+}
+},
+{
+"script": "-- spec: sqlserver.md section 10 row 1\nCREATE TABLE t01 (id INT)\nGO\nINSERT INTO t01 VALUES (1)\nGO\n",
+"expected": {
+"records": [
+{
+"text": "-- spec: sqlserver.md section 10 row 1\nCREATE TABLE t01 (id INT)",
+"line": 1,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"-- spec: sqlserver.md section 10 row 1\nCREATE TABLE t01 (id INT)"
+],
+"source_start": 0,
+"source_end": 68
+},
+{
+"text": "INSERT INTO t01 VALUES (1)",
+"line": 4,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"INSERT INTO t01 VALUES (1)"
+],
+"source_start": 68,
+"source_end": 98
+}
+],
+"strings": [
+[
+"-- spec: sqlserver.md section 10 row 1\nCREATE TABLE t01 (id INT)",
+1
+],
+[
+"INSERT INTO t01 VALUES (1)",
+1
+]
+],
+"analysis": [
+"-- spec: sqlserver.md section 10 row 1\nCREATE TABLE t01 (id INT)",
+"INSERT INTO t01 VALUES (1)"
+],
+"executed": [
+"-- spec: sqlserver.md section 10 row 1\nCREATE TABLE t01 (id INT)",
+"INSERT INTO t01 VALUES (1)"
+],
+"masking": [
+[
+"-- spec: sqlserver.md section 10 row 1\nCREATE TABLE t01 (id INT)",
+"CREATE TABLE t01"
+],
+[
+"-- spec: sqlserver.md section 10 row 1\nCREATE TABLE t01 (id INT)",
+"CREATE TABLE t01"
+],
+[
+"INSERT INTO t01 VALUES (1)",
+"INSERT INTO t01"
+],
+[
+"INSERT INTO t01 VALUES (1)",
+"INSERT INTO t01"
+]
+]
+}
+},
+{
+"script": "-- spec: sqlserver.md section 10 row 2\nCREATE TABLE t02 (id INT);\nGO\nGO\nINSERT INTO t02 VALUES (1);\n",
+"expected": {
+"records": [
+{
+"text": "-- spec: sqlserver.md section 10 row 2\nCREATE TABLE t02 (id INT);",
+"line": 1,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"-- spec: sqlserver.md section 10 row 2\nCREATE TABLE t02 (id INT);"
+],
+"source_start": 0,
+"source_end": 69
+},
+{
+"text": "INSERT INTO t02 VALUES (1);",
+"line": 5,
+"terminator": null,
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"INSERT INTO t02 VALUES (1);"
+],
+"source_start": 72,
+"source_end": 100
+}
+],
+"strings": [
+[
+"-- spec: sqlserver.md section 10 row 2\nCREATE TABLE t02 (id INT);",
+1
+],
+[
+"INSERT INTO t02 VALUES (1);",
+1
+]
+],
+"analysis": [
+"-- spec: sqlserver.md section 10 row 2\nCREATE TABLE t02 (id INT);",
+"INSERT INTO t02 VALUES (1);"
+],
+"executed": [
+"-- spec: sqlserver.md section 10 row 2\nCREATE TABLE t02 (id INT);",
+"INSERT INTO t02 VALUES (1);"
+],
+"masking": [
+[
+"-- spec: sqlserver.md section 10 row 2\nCREATE TABLE t02 (id INT);",
+"CREATE TABLE t02"
+],
+[
+"-- spec: sqlserver.md section 10 row 2\nCREATE TABLE t02 (id INT);",
+"CREATE TABLE t02"
+],
+[
+"INSERT INTO t02 VALUES (1);",
+"INSERT INTO t02"
+],
+[
+"INSERT INTO t02 VALUES (1);",
+"INSERT INTO t02"
+]
+]
+}
+},
+{
+"script": "-- spec: sqlserver.md section 10 row 3\nCREATE TABLE t03 (v INT)\nGO\nDECLARE @x INT = 7;\nINSERT INTO t03 VALUES (@x);\nSELECT @x AS x;\nGO\n",
+"expected": {
+"records": [
+{
+"text": "-- spec: sqlserver.md section 10 row 3\nCREATE TABLE t03 (v INT)",
+"line": 1,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"-- spec: sqlserver.md section 10 row 3\nCREATE TABLE t03 (v INT)"
+],
+"source_start": 0,
+"source_end": 67
+},
+{
+"text": "DECLARE @x INT = 7;\nINSERT INTO t03 VALUES (@x);\nSELECT @x AS x;",
+"line": 4,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"DECLARE @x INT = 7;",
+"INSERT INTO t03 VALUES (@x);",
+"SELECT @x AS x;"
+],
+"source_start": 67,
+"source_end": 135
+}
+],
+"strings": [
+[
+"-- spec: sqlserver.md section 10 row 3\nCREATE TABLE t03 (v INT)",
+1
+],
+[
+"DECLARE @x INT = 7;\nINSERT INTO t03 VALUES (@x);\nSELECT @x AS x;",
+1
+]
+],
+"analysis": [
+"-- spec: sqlserver.md section 10 row 3\nCREATE TABLE t03 (v INT)",
+"DECLARE @x INT = 7;",
+"INSERT INTO t03 VALUES (@x);",
+"SELECT @x AS x;"
+],
+"executed": [
+"-- spec: sqlserver.md section 10 row 3\nCREATE TABLE t03 (v INT)",
+"DECLARE @x INT = 7;",
+"INSERT INTO t03 VALUES (@x);",
+"SELECT @x AS x;"
+],
+"masking": [
+[
+"-- spec: sqlserver.md section 10 row 3\nCREATE TABLE t03 (v INT)",
+"CREATE TABLE t03"
+],
+[
+"-- spec: sqlserver.md section 10 row 3\nCREATE TABLE t03 (v INT)",
+"CREATE TABLE t03"
+],
+[
+"DECLARE @x INT = 7;\nINSERT INTO t03 VALUES (@x);\nSELECT @x AS x;",
+"DECLARE @x"
+],
+[
+"DECLARE @x INT = 7;",
+"DECLARE @x"
+],
+[
+"INSERT INTO t03 VALUES (@x);",
+"INSERT INTO t03"
+],
+[
+"SELECT @x AS x;",
+"SELECT @x"
+]
+]
+}
+},
+{
+"script": "-- spec: sqlserver.md section 10 row 4\nCREATE TABLE t04 (v INT)\nGO\nCREATE PROCEDURE p04 AS\nINSERT INTO t04 VALUES (1);\nINSERT INTO t04 VALUES (2);\nGO\nEXEC p04;\n",
+"expected": {
+"records": [
+{
+"text": "-- spec: sqlserver.md section 10 row 4\nCREATE TABLE t04 (v INT)",
+"line": 1,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"-- spec: sqlserver.md section 10 row 4\nCREATE TABLE t04 (v INT)"
+],
+"source_start": 0,
+"source_end": 67
+},
+{
+"text": "CREATE PROCEDURE p04 AS\nINSERT INTO t04 VALUES (1);\nINSERT INTO t04 VALUES (2);",
+"line": 4,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"CREATE PROCEDURE p04 AS\nINSERT INTO t04 VALUES (1);\nINSERT INTO t04 VALUES (2);"
+],
+"source_start": 67,
+"source_end": 150
+},
+{
+"text": "EXEC p04;",
+"line": 8,
+"terminator": null,
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"EXEC p04;"
+],
+"source_start": 150,
+"source_end": 160
+}
+],
+"strings": [
+[
+"-- spec: sqlserver.md section 10 row 4\nCREATE TABLE t04 (v INT)",
+1
+],
+[
+"CREATE PROCEDURE p04 AS\nINSERT INTO t04 VALUES (1);\nINSERT INTO t04 VALUES (2);",
+1
+],
+[
+"EXEC p04;",
+1
+]
+],
+"analysis": [
+"-- spec: sqlserver.md section 10 row 4\nCREATE TABLE t04 (v INT)",
+"CREATE PROCEDURE p04 AS\nINSERT INTO t04 VALUES (1);\nINSERT INTO t04 VALUES (2);",
+"EXEC p04;"
+],
+"executed": [
+"-- spec: sqlserver.md section 10 row 4\nCREATE TABLE t04 (v INT)",
+"CREATE PROCEDURE p04 AS\nINSERT INTO t04 VALUES (1);\nINSERT INTO t04 VALUES (2);",
+"EXEC p04;"
+],
+"masking": [
+[
+"-- spec: sqlserver.md section 10 row 4\nCREATE TABLE t04 (v INT)",
+"CREATE TABLE t04"
+],
+[
+"-- spec: sqlserver.md section 10 row 4\nCREATE TABLE t04 (v INT)",
+"CREATE TABLE t04"
+],
+[
+"CREATE PROCEDURE p04 AS\nINSERT INTO t04 VALUES (1);\nINSERT INTO t04 VALUES (2);",
+"CREATE PROCEDURE p04"
+],
+[
+"CREATE PROCEDURE p04 AS\nINSERT INTO t04 VALUES (1);\nINSERT INTO t04 VALUES (2);",
+"CREATE PROCEDURE p04"
+],
+[
+"EXEC p04;",
+"EXEC p04"
+],
+[
+"EXEC p04;",
+"EXEC p04"
+]
+]
+}
+},
+{
+"script": "-- spec: sqlserver.md section 10 row 5\nCREATE TABLE t05 (s VARCHAR(20))\nGO\nINSERT INTO t05 VALUES ('GO\n')\nGO\n",
+"expected": {
+"records": [
+{
+"text": "-- spec: sqlserver.md section 10 row 5\nCREATE TABLE t05 (s VARCHAR(20))",
+"line": 1,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"-- spec: sqlserver.md section 10 row 5\nCREATE TABLE t05 (s VARCHAR(20))"
+],
+"source_start": 0,
+"source_end": 75
+},
+{
+"text": "INSERT INTO t05 VALUES ('GO\n')",
+"line": 4,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"INSERT INTO t05 VALUES ('GO\n')"
+],
+"source_start": 75,
+"source_end": 109
+}
+],
+"strings": [
+[
+"-- spec: sqlserver.md section 10 row 5\nCREATE TABLE t05 (s VARCHAR(20))",
+1
+],
+[
+"INSERT INTO t05 VALUES ('GO\n')",
+1
+]
+],
+"analysis": [
+"-- spec: sqlserver.md section 10 row 5\nCREATE TABLE t05 (s VARCHAR(20))",
+"INSERT INTO t05 VALUES ('GO\n')"
+],
+"executed": [
+"-- spec: sqlserver.md section 10 row 5\nCREATE TABLE t05 (s VARCHAR(20))",
+"INSERT INTO t05 VALUES ('GO\n')"
+],
+"masking": [
+[
+"-- spec: sqlserver.md section 10 row 5\nCREATE TABLE t05 (s VARCHAR(20))",
+"CREATE TABLE t05"
+],
+[
+"-- spec: sqlserver.md section 10 row 5\nCREATE TABLE t05 (s VARCHAR(20))",
+"CREATE TABLE t05"
+],
+[
+"INSERT INTO t05 VALUES ('?')",
+"INSERT INTO t05"
+],
+[
+"INSERT INTO t05 VALUES ('?')",
+"INSERT INTO t05"
+]
+]
+}
+},
+{
+"script": "-- spec: sqlserver.md section 10 row 5a\nCREATE TABLE t05a (s VARCHAR(20))\nGO\nINSERT INTO t05a VALUES ('a\nGO\nb')\nGO\n",
+"expected": {
+"records": [
+{
+"text": "-- spec: sqlserver.md section 10 row 5a\nCREATE TABLE t05a (s VARCHAR(20))",
+"line": 1,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"-- spec: sqlserver.md section 10 row 5a\nCREATE TABLE t05a (s VARCHAR(20))"
+],
+"source_start": 0,
+"source_end": 77
+},
+{
+"text": "INSERT INTO t05a VALUES ('a\nGO\nb')",
+"line": 4,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"INSERT INTO t05a VALUES ('a\nGO\nb')"
+],
+"source_start": 77,
+"source_end": 115
+}
+],
+"strings": [
+[
+"-- spec: sqlserver.md section 10 row 5a\nCREATE TABLE t05a (s VARCHAR(20))",
+1
+],
+[
+"INSERT INTO t05a VALUES ('a\nGO\nb')",
+1
+]
+],
+"analysis": [
+"-- spec: sqlserver.md section 10 row 5a\nCREATE TABLE t05a (s VARCHAR(20))",
+"INSERT INTO t05a VALUES ('a\nGO\nb')"
+],
+"executed": [
+"-- spec: sqlserver.md section 10 row 5a\nCREATE TABLE t05a (s VARCHAR(20))",
+"INSERT INTO t05a VALUES ('a\nGO\nb')"
+],
+"masking": [
+[
+"-- spec: sqlserver.md section 10 row 5a\nCREATE TABLE t05a (s VARCHAR(20))",
+"CREATE TABLE t05a"
+],
+[
+"-- spec: sqlserver.md section 10 row 5a\nCREATE TABLE t05a (s VARCHAR(20))",
+"CREATE TABLE t05a"
+],
+[
+"INSERT INTO t05a VALUES ('?')",
+"INSERT INTO t05a"
+],
+[
+"INSERT INTO t05a VALUES ('?')",
+"INSERT INTO t05a"
+]
+]
+}
+},
+{
+"script": "-- spec: sqlserver.md section 10 row 5b\nCREATE TABLE [a\nGO\nb] (id INT)\nGO\n",
+"expected": {
+"records": [
+{
+"text": "-- spec: sqlserver.md section 10 row 5b\nCREATE TABLE [a\nGO\nb] (id INT)",
+"line": 1,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"-- spec: sqlserver.md section 10 row 5b\nCREATE TABLE [a\nGO\nb] (id INT)"
+],
+"source_start": 0,
+"source_end": 74
+}
+],
+"strings": [
+[
+"-- spec: sqlserver.md section 10 row 5b\nCREATE TABLE [a\nGO\nb] (id INT)",
+1
+]
+],
+"analysis": [
+"-- spec: sqlserver.md section 10 row 5b\nCREATE TABLE [a\nGO\nb] (id INT)"
+],
+"executed": [
+"-- spec: sqlserver.md section 10 row 5b\nCREATE TABLE [a\nGO\nb] (id INT)"
+],
+"masking": [
+[
+"-- spec: sqlserver.md section 10 row 5b\nCREATE TABLE [a\nGO\nb] (id INT)",
+"CREATE TABLE [a\nGO\nb]"
+],
+[
+"-- spec: sqlserver.md section 10 row 5b\nCREATE TABLE [a\nGO\nb] (id INT)",
+"CREATE TABLE [a\nGO\nb]"
+]
+]
+}
+},
+{
+"script": "-- spec: sqlserver.md section 10 row 6\n/* a /* b */ GO */\nCREATE TABLE t06 (id INT)\nGO\n",
+"expected": {
+"error": [
+"UnsafeStatementSplitError",
+"text after GO on line 2: only a count and a '--' comment may follow it"
+]
+}
+},
+{
+"script": "-- spec: sqlserver.md section 10 row 6a\nSELECT /* a /* b */ */ 1 AS x INTO t06a\nGO\n",
+"expected": {
+"records": [
+{
+"text": "-- spec: sqlserver.md section 10 row 6a\nSELECT /* a /* b */ */ 1 AS x INTO t06a",
+"line": 1,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"-- spec: sqlserver.md section 10 row 6a\nSELECT /* a /* b */ */ 1 AS x INTO t06a"
+],
+"source_start": 0,
+"source_end": 83
+}
+],
+"strings": [
+[
+"-- spec: sqlserver.md section 10 row 6a\nSELECT /* a /* b */ */ 1 AS x INTO t06a",
+1
+]
+],
+"analysis": [
+"-- spec: sqlserver.md section 10 row 6a\nSELECT /* a /* b */ */ 1 AS x INTO t06a"
+],
+"executed": [
+"-- spec: sqlserver.md section 10 row 6a\nSELECT /* a /* b */ */ 1 AS x INTO t06a"
+],
+"masking": [
+[
+"-- spec: sqlserver.md section 10 row 6a\nSELECT /* a /* b */ */ 1 AS x INTO t06a",
+"SELECT 1"
+],
+[
+"-- spec: sqlserver.md section 10 row 6a\nSELECT /* a /* b */ */ 1 AS x INTO t06a",
+"SELECT 1"
+]
+]
+}
+},
+{
+"script": "-- spec: sqlserver.md section 10 row 6b\nCREATE TABLE t06b (id INT) /* a\nGO\n*/\nGO\n",
+"expected": {
+"records": [
+{
+"text": "-- spec: sqlserver.md section 10 row 6b\nCREATE TABLE t06b (id INT) /* a\nGO\n*/",
+"line": 1,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"-- spec: sqlserver.md section 10 row 6b\nCREATE TABLE t06b (id INT) /* a\nGO\n*/"
+],
+"source_start": 0,
+"source_end": 81
+}
+],
+"strings": [
+[
+"-- spec: sqlserver.md section 10 row 6b\nCREATE TABLE t06b (id INT) /* a\nGO\n*/",
+1
+]
+],
+"analysis": [
+"-- spec: sqlserver.md section 10 row 6b\nCREATE TABLE t06b (id INT) /* a\nGO\n*/"
+],
+"executed": [
+"-- spec: sqlserver.md section 10 row 6b\nCREATE TABLE t06b (id INT) /* a\nGO\n*/"
+],
+"masking": [
+[
+"-- spec: sqlserver.md section 10 row 6b\nCREATE TABLE t06b (id INT) /* a\nGO\n*/",
+"CREATE TABLE t06b"
+],
+[
+"-- spec: sqlserver.md section 10 row 6b\nCREATE TABLE t06b (id INT) /* a\nGO\n*/",
+"CREATE TABLE t06b"
+]
+]
+}
+},
+{
+"script": "-- spec: sqlserver.md section 10 row 6c\nCREATE TABLE t06c (id INT) /* a\nGO\n/* b */\nGO\n*/\n",
+"expected": {
+"records": [
+{
+"text": "-- spec: sqlserver.md section 10 row 6c\nCREATE TABLE t06c (id INT) /* a\nGO\n/* b */",
+"line": 1,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"-- spec: sqlserver.md section 10 row 6c\nCREATE TABLE t06c (id INT) /* a\nGO\n/* b */"
+],
+"source_start": 0,
+"source_end": 86
+},
+{
+"text": "*/",
+"line": 6,
+"terminator": null,
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"*/"
+],
+"source_start": 86,
+"source_end": 89
+}
+],
+"strings": [
+[
+"-- spec: sqlserver.md section 10 row 6c\nCREATE TABLE t06c (id INT) /* a\nGO\n/* b */",
+1
+],
+[
+"*/",
+1
+]
+],
+"analysis": [
+"-- spec: sqlserver.md section 10 row 6c\nCREATE TABLE t06c (id INT) /* a\nGO\n/* b */",
+"*/"
+],
+"executed": [
+"-- spec: sqlserver.md section 10 row 6c\nCREATE TABLE t06c (id INT) /* a\nGO\n/* b */",
+"*/"
+],
+"masking": [
+[
+"",
+""
+],
+[
+"",
+""
+],
+[
+"*/",
+""
+],
+[
+"*/",
+""
+]
+]
+}
+},
+{
+"script": "-- spec: sqlserver.md section 10 row 7\nCREATE TABLE t07 ([go] INT)\ngo -- end\nINSERT INTO t07 ([go]) VALUES (1)\n\tGo   -- trailing\n",
+"expected": {
+"records": [
+{
+"text": "-- spec: sqlserver.md section 10 row 7\nCREATE TABLE t07 ([go] INT)",
+"line": 1,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"-- spec: sqlserver.md section 10 row 7\nCREATE TABLE t07 ([go] INT)"
+],
+"source_start": 0,
+"source_end": 77
+},
+{
+"text": "INSERT INTO t07 ([go]) VALUES (1)",
+"line": 4,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"INSERT INTO t07 ([go]) VALUES (1)"
+],
+"source_start": 77,
+"source_end": 129
+}
+],
+"strings": [
+[
+"-- spec: sqlserver.md section 10 row 7\nCREATE TABLE t07 ([go] INT)",
+1
+],
+[
+"INSERT INTO t07 ([go]) VALUES (1)",
+1
+]
+],
+"analysis": [
+"-- spec: sqlserver.md section 10 row 7\nCREATE TABLE t07 ([go] INT)",
+"INSERT INTO t07 ([go]) VALUES (1)"
+],
+"executed": [
+"-- spec: sqlserver.md section 10 row 7\nCREATE TABLE t07 ([go] INT)",
+"INSERT INTO t07 ([go]) VALUES (1)"
+],
+"masking": [
+[
+"-- spec: sqlserver.md section 10 row 7\nCREATE TABLE t07 ([go] INT)",
+"CREATE TABLE t07"
+],
+[
+"-- spec: sqlserver.md section 10 row 7\nCREATE TABLE t07 ([go] INT)",
+"CREATE TABLE t07"
+],
+[
+"INSERT INTO t07 ([go]) VALUES (1)",
+"INSERT INTO t07"
+],
+[
+"INSERT INTO t07 ([go]) VALUES (1)",
+"INSERT INTO t07"
+]
+]
+}
+},
+{
+"script": "-- spec: sqlserver.md section 10 row 7a\nCREATE TABLE t07a (id INT)\nGO /* c */\nINSERT INTO t07a VALUES (1)\nGO\n",
+"expected": {
+"error": [
+"UnsafeStatementSplitError",
+"text after GO on line 3: only a count and a '--' comment may follow it"
+]
+}
+},
+{
+"script": "-- spec: sqlserver.md section 10 row 7b\nCREATE TABLE t07b (id INT)\nGO--c\nINSERT INTO t07b VALUES (1)\nGO\n",
+"expected": {
+"error": [
+"UnsafeStatementSplitError",
+"GO on line 3: GO must be followed by a blank, a count or end of line; '--' directly after GO is read differently by sqlcmd clients"
+]
+}
+},
+{
+"script": "-- spec: sqlserver.md section 10 row 8\nCREATE TABLE t08 (id INT)\nGO\nINSERT INTO t08 VALUES (1)\nGO 3\n",
+"expected": {
+"records": [
+{
+"text": "-- spec: sqlserver.md section 10 row 8\nCREATE TABLE t08 (id INT)",
+"line": 1,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"-- spec: sqlserver.md section 10 row 8\nCREATE TABLE t08 (id INT)"
+],
+"source_start": 0,
+"source_end": 68
+},
+{
+"text": "INSERT INTO t08 VALUES (1)",
+"line": 4,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 3,
+"analysis_statements": [
+"INSERT INTO t08 VALUES (1)"
+],
+"source_start": 68,
+"source_end": 100
+}
+],
+"strings": [
+[
+"-- spec: sqlserver.md section 10 row 8\nCREATE TABLE t08 (id INT)",
+1
+],
+[
+"INSERT INTO t08 VALUES (1)",
+3
+]
+],
+"analysis": [
+"-- spec: sqlserver.md section 10 row 8\nCREATE TABLE t08 (id INT)",
+"INSERT INTO t08 VALUES (1)"
+],
+"executed": [
+"-- spec: sqlserver.md section 10 row 8\nCREATE TABLE t08 (id INT)",
+"INSERT INTO t08 VALUES (1)"
+],
+"masking": [
+[
+"-- spec: sqlserver.md section 10 row 8\nCREATE TABLE t08 (id INT)",
+"CREATE TABLE t08"
+],
+[
+"-- spec: sqlserver.md section 10 row 8\nCREATE TABLE t08 (id INT)",
+"CREATE TABLE t08"
+],
+[
+"INSERT INTO t08 VALUES (1)",
+"INSERT INTO t08"
+],
+[
+"INSERT INTO t08 VALUES (1)",
+"INSERT INTO t08"
+]
+]
+}
+},
+{
+"script": "-- spec: sqlserver.md section 10 row 8a\nCREATE TABLE t08a (id INT)\nGO\nINSERT INTO t08a VALUES (1)\nGO 0\nINSERT INTO t08a VALUES (2)\nGO\n",
+"expected": {
+"records": [
+{
+"text": "-- spec: sqlserver.md section 10 row 8a\nCREATE TABLE t08a (id INT)",
+"line": 1,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"-- spec: sqlserver.md section 10 row 8a\nCREATE TABLE t08a (id INT)"
+],
+"source_start": 0,
+"source_end": 70
+},
+{
+"text": "INSERT INTO t08a VALUES (1)",
+"line": 4,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 0,
+"analysis_statements": [
+"INSERT INTO t08a VALUES (1)"
+],
+"source_start": 70,
+"source_end": 103
+},
+{
+"text": "INSERT INTO t08a VALUES (2)",
+"line": 6,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"INSERT INTO t08a VALUES (2)"
+],
+"source_start": 103,
+"source_end": 134
+}
+],
+"strings": [
+[
+"-- spec: sqlserver.md section 10 row 8a\nCREATE TABLE t08a (id INT)",
+1
+],
+[
+"INSERT INTO t08a VALUES (2)",
+1
+]
+],
+"analysis": [
+"-- spec: sqlserver.md section 10 row 8a\nCREATE TABLE t08a (id INT)",
+"INSERT INTO t08a VALUES (2)"
+],
+"executed": [
+"-- spec: sqlserver.md section 10 row 8a\nCREATE TABLE t08a (id INT)",
+"INSERT INTO t08a VALUES (2)"
+],
+"masking": [
+[
+"-- spec: sqlserver.md section 10 row 8a\nCREATE TABLE t08a (id INT)",
+"CREATE TABLE t08a"
+],
+[
+"-- spec: sqlserver.md section 10 row 8a\nCREATE TABLE t08a (id INT)",
+"CREATE TABLE t08a"
+],
+[
+"INSERT INTO t08a VALUES (1)",
+"INSERT INTO t08a"
+],
+[
+"INSERT INTO t08a VALUES (1)",
+"INSERT INTO t08a"
+],
+[
+"INSERT INTO t08a VALUES (2)",
+"INSERT INTO t08a"
+],
+[
+"INSERT INTO t08a VALUES (2)",
+"INSERT INTO t08a"
+]
+]
+}
+},
+{
+"script": "-- spec: sqlserver.md section 10 row 8b\nCREATE TABLE t08b (id INT)\nGO 5x\nINSERT INTO t08b VALUES (1)\nGO\n",
+"expected": {
+"error": [
+"UnsafeStatementSplitError",
+"text after GO on line 3: only a count and a '--' comment may follow it"
+]
+}
+},
+{
+"script": "-- spec: sqlserver.md section 10 row 9\nCREATE TABLE t09 (v NVARCHAR(20))\nGO\nINSERT INTO t09 VALUES (N'it''s')\nGO\n",
+"expected": {
+"records": [
+{
+"text": "-- spec: sqlserver.md section 10 row 9\nCREATE TABLE t09 (v NVARCHAR(20))",
+"line": 1,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"-- spec: sqlserver.md section 10 row 9\nCREATE TABLE t09 (v NVARCHAR(20))"
+],
+"source_start": 0,
+"source_end": 76
+},
+{
+"text": "INSERT INTO t09 VALUES (N'it''s')",
+"line": 4,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"INSERT INTO t09 VALUES (N'it''s')"
+],
+"source_start": 76,
+"source_end": 113
+}
+],
+"strings": [
+[
+"-- spec: sqlserver.md section 10 row 9\nCREATE TABLE t09 (v NVARCHAR(20))",
+1
+],
+[
+"INSERT INTO t09 VALUES (N'it''s')",
+1
+]
+],
+"analysis": [
+"-- spec: sqlserver.md section 10 row 9\nCREATE TABLE t09 (v NVARCHAR(20))",
+"INSERT INTO t09 VALUES (N'it''s')"
+],
+"executed": [
+"-- spec: sqlserver.md section 10 row 9\nCREATE TABLE t09 (v NVARCHAR(20))",
+"INSERT INTO t09 VALUES (N'it''s')"
+],
+"masking": [
+[
+"-- spec: sqlserver.md section 10 row 9\nCREATE TABLE t09 (v NVARCHAR(20))",
+"CREATE TABLE t09"
+],
+[
+"-- spec: sqlserver.md section 10 row 9\nCREATE TABLE t09 (v NVARCHAR(20))",
+"CREATE TABLE t09"
+],
+[
+"INSERT INTO t09 VALUES (N'?')",
+"INSERT INTO t09"
+],
+[
+"INSERT INTO t09 VALUES (N'?')",
+"INSERT INTO t09"
+]
+]
+}
+},
+{
+"script": "-- spec: sqlserver.md section 10 row 10\nCREATE TABLE t10 (id INT)\nGO\nINSERT INTO t10 VALUES (1);\nMERGE t10 AS tgt USING (SELECT 1 AS id) AS s ON tgt.id = s.id WHEN MATCHED THEN DELETE OUTPUT $action;\nGO\n",
+"expected": {
+"records": [
+{
+"text": "-- spec: sqlserver.md section 10 row 10\nCREATE TABLE t10 (id INT)",
+"line": 1,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"-- spec: sqlserver.md section 10 row 10\nCREATE TABLE t10 (id INT)"
+],
+"source_start": 0,
+"source_end": 69
+},
+{
+"text": "INSERT INTO t10 VALUES (1);\nMERGE t10 AS tgt USING (SELECT 1 AS id) AS s ON tgt.id = s.id WHEN MATCHED THEN DELETE OUTPUT $action;",
+"line": 4,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"INSERT INTO t10 VALUES (1);",
+"MERGE t10 AS tgt USING (SELECT 1 AS id) AS s ON tgt.id = s.id WHEN MATCHED THEN DELETE OUTPUT $action;"
+],
+"source_start": 69,
+"source_end": 203
+}
+],
+"strings": [
+[
+"-- spec: sqlserver.md section 10 row 10\nCREATE TABLE t10 (id INT)",
+1
+],
+[
+"INSERT INTO t10 VALUES (1);\nMERGE t10 AS tgt USING (SELECT 1 AS id) AS s ON tgt.id = s.id WHEN MATCHED THEN DELETE OUTPUT $action;",
+1
+]
+],
+"analysis": [
+"-- spec: sqlserver.md section 10 row 10\nCREATE TABLE t10 (id INT)",
+"INSERT INTO t10 VALUES (1);",
+"MERGE t10 AS tgt USING (SELECT 1 AS id) AS s ON tgt.id = s.id WHEN MATCHED THEN DELETE OUTPUT $action;"
+],
+"executed": [
+"-- spec: sqlserver.md section 10 row 10\nCREATE TABLE t10 (id INT)",
+"INSERT INTO t10 VALUES (1);",
+"MERGE t10 AS tgt USING (SELECT 1 AS id) AS s ON tgt.id = s.id WHEN MATCHED THEN DELETE OUTPUT $action;"
+],
+"masking": [
+[
+"-- spec: sqlserver.md section 10 row 10\nCREATE TABLE t10 (id INT)",
+"CREATE TABLE t10"
+],
+[
+"-- spec: sqlserver.md section 10 row 10\nCREATE TABLE t10 (id INT)",
+"CREATE TABLE t10"
+],
+[
+"INSERT INTO t10 VALUES (1);\nMERGE t10 AS tgt USING (SELECT 1 AS id) AS s ON tgt.id = s.id WHEN MATCHED THEN DELETE OUTPUT $action;",
+"INSERT INTO t10"
+],
+[
+"INSERT INTO t10 VALUES (1);",
+"INSERT INTO t10"
+],
+[
+"MERGE t10 AS tgt USING (SELECT 1 AS id) AS s ON tgt.id = s.id WHEN MATCHED THEN DELETE OUTPUT $action;",
+"MERGE t10"
+]
+]
+}
+},
+{
+"script": "-- spec: sqlserver.md section 10 row 11\n:setvar tname t11\nCREATE TABLE $(tname) (id INT)\nGO\n",
+"expected": {
+"error": [
+"UnsupportedMetaCommandError",
+"sqlcmd command ':setvar' on line 2: dblift does not run client commands"
+]
+}
+},
+{
+"script": "-- spec: sqlserver.md section 10 row 12\nCREATE TABLE t12 (id INT)\nGO\nGOTO done\nINSERT INTO t12 VALUES (1)\ndone:\nINSERT INTO t12 VALUES (2)\nGO\n",
+"expected": {
+"records": [
+{
+"text": "-- spec: sqlserver.md section 10 row 12\nCREATE TABLE t12 (id INT)",
+"line": 1,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"-- spec: sqlserver.md section 10 row 12\nCREATE TABLE t12 (id INT)"
+],
+"source_start": 0,
+"source_end": 69
+},
+{
+"text": "GOTO done\nINSERT INTO t12 VALUES (1)\ndone:\nINSERT INTO t12 VALUES (2)",
+"line": 4,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"GOTO done\nINSERT INTO t12 VALUES (1)\ndone:\nINSERT INTO t12 VALUES (2)"
+],
+"source_start": 69,
+"source_end": 142
+}
+],
+"strings": [
+[
+"-- spec: sqlserver.md section 10 row 12\nCREATE TABLE t12 (id INT)",
+1
+],
+[
+"GOTO done\nINSERT INTO t12 VALUES (1)\ndone:\nINSERT INTO t12 VALUES (2)",
+1
+]
+],
+"analysis": [
+"-- spec: sqlserver.md section 10 row 12\nCREATE TABLE t12 (id INT)",
+"GOTO done\nINSERT INTO t12 VALUES (1)\ndone:\nINSERT INTO t12 VALUES (2)"
+],
+"executed": [
+"-- spec: sqlserver.md section 10 row 12\nCREATE TABLE t12 (id INT)",
+"GOTO done\nINSERT INTO t12 VALUES (1)\ndone:\nINSERT INTO t12 VALUES (2)"
+],
+"masking": [
+[
+"-- spec: sqlserver.md section 10 row 12\nCREATE TABLE t12 (id INT)",
+"CREATE TABLE t12"
+],
+[
+"-- spec: sqlserver.md section 10 row 12\nCREATE TABLE t12 (id INT)",
+"CREATE TABLE t12"
+],
+[
+"GOTO done\nINSERT INTO t12 VALUES (1)\ndone:\nINSERT INTO t12 VALUES (2)",
+"GOTO done"
+],
+[
+"GOTO done\nINSERT INTO t12 VALUES (1)\ndone:\nINSERT INTO t12 VALUES (2)",
+"GOTO done"
+]
+]
+}
+},
+{
+"script": "-- spec: sqlserver.md section 10 row 12a\nSELECT\n    go.id\nINTO t12a\nFROM (SELECT 1 AS id) AS go\nGO\n",
+"expected": {
+"records": [
+{
+"text": "-- spec: sqlserver.md section 10 row 12a\nSELECT\n    go.id\nINTO t12a\nFROM (SELECT 1 AS id) AS go",
+"line": 1,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"-- spec: sqlserver.md section 10 row 12a\nSELECT\n    go.id\nINTO t12a\nFROM (SELECT 1 AS id) AS go"
+],
+"source_start": 0,
+"source_end": 99
+}
+],
+"strings": [
+[
+"-- spec: sqlserver.md section 10 row 12a\nSELECT\n    go.id\nINTO t12a\nFROM (SELECT 1 AS id) AS go",
+1
+]
+],
+"analysis": [
+"-- spec: sqlserver.md section 10 row 12a\nSELECT\n    go.id\nINTO t12a\nFROM (SELECT 1 AS id) AS go"
+],
+"executed": [
+"-- spec: sqlserver.md section 10 row 12a\nSELECT\n    go.id\nINTO t12a\nFROM (SELECT 1 AS id) AS go"
+],
+"masking": [
+[
+"-- spec: sqlserver.md section 10 row 12a\nSELECT\n    go.id\nINTO t12a\nFROM (SELECT 1 AS id) AS go",
+"SELECT go.id"
+],
+[
+"-- spec: sqlserver.md section 10 row 12a\nSELECT\n    go.id\nINTO t12a\nFROM (SELECT 1 AS id) AS go",
+"SELECT go.id"
+]
+]
+}
+},
+{
+"script": "-- spec: sqlserver.md section 10 row 12b\nSELECT\n    go,\n    2 AS b\nINTO t12b\nFROM (SELECT 1 AS go) AS t\nGO\n",
+"expected": {
+"records": [
+{
+"text": "-- spec: sqlserver.md section 10 row 12b\nSELECT\n    go,\n    2 AS b\nINTO t12b\nFROM (SELECT 1 AS go) AS t",
+"line": 1,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"-- spec: sqlserver.md section 10 row 12b\nSELECT\n    go,\n    2 AS b\nINTO t12b\nFROM (SELECT 1 AS go) AS t"
+],
+"source_start": 0,
+"source_end": 107
+}
+],
+"strings": [
+[
+"-- spec: sqlserver.md section 10 row 12b\nSELECT\n    go,\n    2 AS b\nINTO t12b\nFROM (SELECT 1 AS go) AS t",
+1
+]
+],
+"analysis": [
+"-- spec: sqlserver.md section 10 row 12b\nSELECT\n    go,\n    2 AS b\nINTO t12b\nFROM (SELECT 1 AS go) AS t"
+],
+"executed": [
+"-- spec: sqlserver.md section 10 row 12b\nSELECT\n    go,\n    2 AS b\nINTO t12b\nFROM (SELECT 1 AS go) AS t"
+],
+"masking": [
+[
+"-- spec: sqlserver.md section 10 row 12b\nSELECT\n    go,\n    2 AS b\nINTO t12b\nFROM (SELECT 1 AS go) AS t",
+"SELECT go"
+],
+[
+"-- spec: sqlserver.md section 10 row 12b\nSELECT\n    go,\n    2 AS b\nINTO t12b\nFROM (SELECT 1 AS go) AS t",
+"SELECT go"
+]
+]
+}
+},
+{
+"script": "-- spec: sqlserver.md section 10 row 13\nSELECT 1 GO\nINTO t13\n",
+"expected": {
+"records": [
+{
+"text": "-- spec: sqlserver.md section 10 row 13\nSELECT 1 GO\nINTO t13",
+"line": 1,
+"terminator": null,
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"-- spec: sqlserver.md section 10 row 13\nSELECT 1 GO\nINTO t13"
+],
+"source_start": 0,
+"source_end": 61
+}
+],
+"strings": [
+[
+"-- spec: sqlserver.md section 10 row 13\nSELECT 1 GO\nINTO t13",
+1
+]
+],
+"analysis": [
+"-- spec: sqlserver.md section 10 row 13\nSELECT 1 GO\nINTO t13"
+],
+"executed": [
+"-- spec: sqlserver.md section 10 row 13\nSELECT 1 GO\nINTO t13"
+],
+"masking": [
+[
+"-- spec: sqlserver.md section 10 row 13\nSELECT 1 GO\nINTO t13",
+"SELECT 1"
+],
+[
+"-- spec: sqlserver.md section 10 row 13\nSELECT 1 GO\nINTO t13",
+"SELECT 1"
+]
+]
+}
+},
+{
+"script": "-- spec: sqlserver.md section 10 row 14\nCREATE TABLE t14 (id INT)\nGO\nINSERT INTO t14 SELECT 1\nGO;\n",
+"expected": {
+"error": [
+"UnsafeStatementSplitError",
+"text after GO on line 5: only a count and a '--' comment may follow it"
+]
+}
+},
+{
+"script": "-- spec: sqlserver.md section 10 row 14\nCREATE TABLE t14a (id INT)\nGO;\nINSERT INTO t14a VALUES (1)\n",
+"expected": {
+"error": [
+"UnsafeStatementSplitError",
+"text after GO on line 3: only a count and a '--' comment may follow it"
+]
+}
+},
+{
+"script": "-- spec: sqlserver.md section 10 row 15\nSELECT 1 AS go INTO t15a;\nSELECT 2 AS x INTO t15b;\nGO\n",
+"expected": {
+"records": [
+{
+"text": "-- spec: sqlserver.md section 10 row 15\nSELECT 1 AS go INTO t15a;\nSELECT 2 AS x INTO t15b;",
+"line": 1,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"-- spec: sqlserver.md section 10 row 15\nSELECT 1 AS go INTO t15a;",
+"SELECT 2 AS x INTO t15b;"
+],
+"source_start": 0,
+"source_end": 94
+}
+],
+"strings": [
+[
+"-- spec: sqlserver.md section 10 row 15\nSELECT 1 AS go INTO t15a;\nSELECT 2 AS x INTO t15b;",
+1
+]
+],
+"analysis": [
+"-- spec: sqlserver.md section 10 row 15\nSELECT 1 AS go INTO t15a;",
+"SELECT 2 AS x INTO t15b;"
+],
+"executed": [
+"-- spec: sqlserver.md section 10 row 15\nSELECT 1 AS go INTO t15a;",
+"SELECT 2 AS x INTO t15b;"
+],
+"masking": [
+[
+"-- spec: sqlserver.md section 10 row 15\nSELECT 1 AS go INTO t15a;\nSELECT 2 AS x INTO t15b;",
+"SELECT 1"
+],
+[
+"-- spec: sqlserver.md section 10 row 15\nSELECT 1 AS go INTO t15a;",
+"SELECT 1"
+],
+[
+"SELECT 2 AS x INTO t15b;",
+"SELECT 2"
+]
+]
+}
+},
+{
+"script": "-- spec: sqlserver.md section 10 row 16\nCREATE TABLE t16 (go INT)\nGO\nSELECT go INT INTO t16b FROM t16;\nSELECT 2 AS x INTO t16c;\nGO\n",
+"expected": {
+"records": [
+{
+"text": "-- spec: sqlserver.md section 10 row 16\nCREATE TABLE t16 (go INT)",
+"line": 1,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"-- spec: sqlserver.md section 10 row 16\nCREATE TABLE t16 (go INT)"
+],
+"source_start": 0,
+"source_end": 69
+},
+{
+"text": "SELECT go INT INTO t16b FROM t16;\nSELECT 2 AS x INTO t16c;",
+"line": 4,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"SELECT go INT INTO t16b FROM t16;",
+"SELECT 2 AS x INTO t16c;"
+],
+"source_start": 69,
+"source_end": 131
+}
+],
+"strings": [
+[
+"-- spec: sqlserver.md section 10 row 16\nCREATE TABLE t16 (go INT)",
+1
+],
+[
+"SELECT go INT INTO t16b FROM t16;\nSELECT 2 AS x INTO t16c;",
+1
+]
+],
+"analysis": [
+"-- spec: sqlserver.md section 10 row 16\nCREATE TABLE t16 (go INT)",
+"SELECT go INT INTO t16b FROM t16;",
+"SELECT 2 AS x INTO t16c;"
+],
+"executed": [
+"-- spec: sqlserver.md section 10 row 16\nCREATE TABLE t16 (go INT)",
+"SELECT go INT INTO t16b FROM t16;",
+"SELECT 2 AS x INTO t16c;"
+],
+"masking": [
+[
+"-- spec: sqlserver.md section 10 row 16\nCREATE TABLE t16 (go INT)",
+"CREATE TABLE t16"
+],
+[
+"-- spec: sqlserver.md section 10 row 16\nCREATE TABLE t16 (go INT)",
+"CREATE TABLE t16"
+],
+[
+"SELECT go INT INTO t16b FROM t16;\nSELECT 2 AS x INTO t16c;",
+"SELECT"
+],
+[
+"SELECT go INT INTO t16b FROM t16;",
+"SELECT"
+],
+[
+"SELECT 2 AS x INTO t16c;",
+"SELECT 2"
+]
+]
+}
+},
+{
+"script": "-- spec: sqlserver.md section 10 row 17\nCREATE TABLE t17 (id INT)\nGO\nEXIT\nCREATE TABLE t17b (id INT)\nGO\n",
+"expected": {
+"error": [
+"UnsupportedMetaCommandError",
+"sqlcmd command 'EXIT' on line 4: dblift does not run client commands"
+]
+}
+},
+{
+"script": "-- spec: sqlserver.md section 10 row 18\n:r /nonexistent/include.sql\nGO\n",
+"expected": {
+"error": [
+"UnsupportedMetaCommandError",
+"sqlcmd command ':r' on line 2: dblift does not run client commands"
+]
+}
+},
+{
+"script": "-- spec: sqlserver.md section 10 row 19\nCREATE TABLE $(t19) (id INT)\nGO\n",
+"expected": {
+"error": [
+"UnsupportedMetaCommandError",
+"scripting variable $(t19) on line 2: sqlcmd substitutes it before the batch is sent, dblift sends the text as it is"
+]
+}
+},
+{
+"script": "-- spec: sqlserver.md section 10 row 19a\n-- $(zz)\nCREATE TABLE t19a (id INT)\nGO\n",
+"expected": {
+"records": [
+{
+"text": "-- spec: sqlserver.md section 10 row 19a\n-- $(zz)\nCREATE TABLE t19a (id INT)",
+"line": 1,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"-- spec: sqlserver.md section 10 row 19a\n-- $(zz)\nCREATE TABLE t19a (id INT)"
+],
+"source_start": 0,
+"source_end": 80
+}
+],
+"strings": [
+[
+"-- spec: sqlserver.md section 10 row 19a\n-- $(zz)\nCREATE TABLE t19a (id INT)",
+1
+]
+],
+"analysis": [
+"-- spec: sqlserver.md section 10 row 19a\n-- $(zz)\nCREATE TABLE t19a (id INT)"
+],
+"executed": [
+"-- spec: sqlserver.md section 10 row 19a\n-- $(zz)\nCREATE TABLE t19a (id INT)"
+],
+"masking": [
+[
+"-- spec: sqlserver.md section 10 row 19a\n-- $(zz)\nCREATE TABLE t19a (id INT)",
+"CREATE TABLE t19a"
+],
+[
+"-- spec: sqlserver.md section 10 row 19a\n-- $(zz)\nCREATE TABLE t19a (id INT)",
+"CREATE TABLE t19a"
+]
+]
+}
+},
+{
+"script": "-- spec: sqlserver.md section 10 row 19b\nCREATE TABLE t19b (s VARCHAR(20))\nGO\nINSERT INTO t19b VALUES ('$(x)')\nGO\n",
+"expected": {
+"error": [
+"UnsupportedMetaCommandError",
+"scripting variable $(x) on line 4: sqlcmd substitutes it before the batch is sent, dblift sends the text as it is"
+]
+}
+},
+{
+"script": "-- spec: sqlserver.md section 10 row 20\nCREATE TABLE t20 (s VARCHAR(40))\nGO\nINSERT INTO t20 VALUES ('x\n:setvar a b\ny')\nGO\n",
+"expected": {
+"records": [
+{
+"text": "-- spec: sqlserver.md section 10 row 20\nCREATE TABLE t20 (s VARCHAR(40))",
+"line": 1,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"-- spec: sqlserver.md section 10 row 20\nCREATE TABLE t20 (s VARCHAR(40))"
+],
+"source_start": 0,
+"source_end": 76
+},
+{
+"text": "INSERT INTO t20 VALUES ('x\n:setvar a b\ny')",
+"line": 4,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"INSERT INTO t20 VALUES ('x\n:setvar a b\ny')"
+],
+"source_start": 76,
+"source_end": 122
+}
+],
+"strings": [
+[
+"-- spec: sqlserver.md section 10 row 20\nCREATE TABLE t20 (s VARCHAR(40))",
+1
+],
+[
+"INSERT INTO t20 VALUES ('x\n:setvar a b\ny')",
+1
+]
+],
+"analysis": [
+"-- spec: sqlserver.md section 10 row 20\nCREATE TABLE t20 (s VARCHAR(40))",
+"INSERT INTO t20 VALUES ('x\n:setvar a b\ny')"
+],
+"executed": [
+"-- spec: sqlserver.md section 10 row 20\nCREATE TABLE t20 (s VARCHAR(40))",
+"INSERT INTO t20 VALUES ('x\n:setvar a b\ny')"
+],
+"masking": [
+[
+"-- spec: sqlserver.md section 10 row 20\nCREATE TABLE t20 (s VARCHAR(40))",
+"CREATE TABLE t20"
+],
+[
+"-- spec: sqlserver.md section 10 row 20\nCREATE TABLE t20 (s VARCHAR(40))",
+"CREATE TABLE t20"
+],
+[
+"INSERT INTO t20 VALUES ('?')",
+"INSERT INTO t20"
+],
+[
+"INSERT INTO t20 VALUES ('?')",
+"INSERT INTO t20"
+]
+]
+}
+},
+{
+"script": "-- spec: sqlserver.md section 10 row 20a\n/*\n:setvar a b\n*/\nCREATE TABLE t20a (id INT)\nGO\n",
+"expected": {
+"records": [
+{
+"text": "-- spec: sqlserver.md section 10 row 20a\n/*\n:setvar a b\n*/\nCREATE TABLE t20a (id INT)",
+"line": 1,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"-- spec: sqlserver.md section 10 row 20a\n/*\n:setvar a b\n*/\nCREATE TABLE t20a (id INT)"
+],
+"source_start": 0,
+"source_end": 89
+}
+],
+"strings": [
+[
+"-- spec: sqlserver.md section 10 row 20a\n/*\n:setvar a b\n*/\nCREATE TABLE t20a (id INT)",
+1
+]
+],
+"analysis": [
+"-- spec: sqlserver.md section 10 row 20a\n/*\n:setvar a b\n*/\nCREATE TABLE t20a (id INT)"
+],
+"executed": [
+"-- spec: sqlserver.md section 10 row 20a\n/*\n:setvar a b\n*/\nCREATE TABLE t20a (id INT)"
+],
+"masking": [
+[
+"-- spec: sqlserver.md section 10 row 20a\n/*\n:setvar a b\n*/\nCREATE TABLE t20a (id INT)",
+"CREATE TABLE t20a"
+],
+[
+"-- spec: sqlserver.md section 10 row 20a\n/*\n:setvar a b\n*/\nCREATE TABLE t20a (id INT)",
+"CREATE TABLE t20a"
+]
+]
+}
+},
+{
+"script": "-- spec: sqlserver.md section 10 row 21\n:foo\nGO\n",
+"expected": {
+"records": [
+{
+"text": "-- spec: sqlserver.md section 10 row 21\n:foo",
+"line": 1,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"-- spec: sqlserver.md section 10 row 21\n:foo"
+],
+"source_start": 0,
+"source_end": 48
+}
+],
+"strings": [
+[
+"-- spec: sqlserver.md section 10 row 21\n:foo",
+1
+]
+],
+"analysis": [
+"-- spec: sqlserver.md section 10 row 21\n:foo"
+],
+"executed": [
+"-- spec: sqlserver.md section 10 row 21\n:foo"
+],
+"masking": [
+[
+"-- spec: sqlserver.md section 10 row 21\n:foo",
+""
+],
+[
+"-- spec: sqlserver.md section 10 row 21\n:foo",
+""
+]
+]
+}
+},
+{
+"script": "-- spec: sqlserver.md section 10 row 22\nCREATE TABLE t22 (id INT,\n:setvar a b\n x INT)\nGO\n",
+"expected": {
+"error": [
+"UnsupportedMetaCommandError",
+"sqlcmd command ':setvar' on line 3: dblift does not run client commands"
+]
+}
+},
+{
+"script": "-- spec: sqlserver.md section 10 row 23\nCREATE TABLE t23a (id INT)\n/* c */ GO\nCREATE TABLE t23b (id INT)\nGO\n",
+"expected": {
+"error": [
+"UnsafeStatementSplitError",
+"GO after a comment on line 3: sqlcmd takes it as a command after one comment and as text after two; put it first on its line"
+]
+}
+},
+{
+"script": "-- spec: sqlserver.md section 10 row 24\nCREATE TABLE t24 (\n  exit INT\n)\nGO\n",
+"expected": {
+"error": [
+"UnsupportedMetaCommandError",
+"sqlcmd command 'EXIT' on line 3: dblift does not run client commands"
+]
+}
+},
+{
+"script": "-- spec: sqlserver.md section 10 row 24a\nCREATE TABLE t24a (\n  quit INT\n)\nGO\n",
+"expected": {
+"error": [
+"UnsupportedMetaCommandError",
+"sqlcmd command 'QUIT' on line 3: dblift does not run client commands"
+]
+}
+},
+{
+"script": "-- spec: sqlserver.md section 10 row 24b\nCREATE TABLE t24b (\n  reset INT\n)\nGO\n",
+"expected": {
+"error": [
+"UnsupportedMetaCommandError",
+"sqlcmd command 'RESET' on line 3: dblift does not run client commands"
+]
+}
+},
+{
+"script": "-- spec: sqlserver.md section 10 row 24c\nCREATE TABLE t24c (\n  ed INT\n)\nGO\n",
+"expected": {
+"error": [
+"UnsupportedMetaCommandError",
+"sqlcmd command 'ED' on line 3: dblift does not run client commands"
+]
+}
+},
+{
+"script": "-- spec: sqlserver.md section 10 row 24d\nSELECT 1\nquit;\nSELECT 2 AS b INTO t24d\nGO\n",
+"expected": {
+"records": [
+{
+"text": "-- spec: sqlserver.md section 10 row 24d\nSELECT 1\nquit;\nSELECT 2 AS b INTO t24d",
+"line": 1,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"-- spec: sqlserver.md section 10 row 24d\nSELECT 1\nquit;",
+"SELECT 2 AS b INTO t24d"
+],
+"source_start": 0,
+"source_end": 83
+}
+],
+"strings": [
+[
+"-- spec: sqlserver.md section 10 row 24d\nSELECT 1\nquit;\nSELECT 2 AS b INTO t24d",
+1
+]
+],
+"analysis": [
+"-- spec: sqlserver.md section 10 row 24d\nSELECT 1\nquit;",
+"SELECT 2 AS b INTO t24d"
+],
+"executed": [
+"-- spec: sqlserver.md section 10 row 24d\nSELECT 1\nquit;",
+"SELECT 2 AS b INTO t24d"
+],
+"masking": [
+[
+"-- spec: sqlserver.md section 10 row 24d\nSELECT 1\nquit;\nSELECT 2 AS b INTO t24d",
+"SELECT 1"
+],
+[
+"-- spec: sqlserver.md section 10 row 24d\nSELECT 1\nquit;",
+"SELECT 1"
+],
+[
+"SELECT 2 AS b INTO t24d",
+"SELECT 2"
+]
+]
+}
+},
+{
+"script": "-- spec: sqlserver.md section 10 row 25\nCREATE TABLE t25 (id INT)\n/* x\nGO\nCREATE TABLE t25b (id INT)\nGO\n",
+"expected": {
+"error": [
+"UnsafeStatementSplitError",
+"unterminated block comment opened at line 3, column 1"
+]
+}
+},
+{
+"script": "-- spec: sqlserver.md section 10 row 26\nCREATE TABLE t26 (id INT)\nGO\nSELECT 'abc\nGO\n",
+"expected": {
+"error": [
+"UnsafeStatementSplitError",
+"unterminated string opened at line 4, column 8"
+]
+}
+},
+{
+"script": "-- spec: sqlserver.md section 10 row 27\nSET NOCOUNT ON\nCREATE PROCEDURE p27 AS SELECT 1\nGO\n",
+"expected": {
+"records": [
+{
+"text": "-- spec: sqlserver.md section 10 row 27\nSET NOCOUNT ON\nCREATE PROCEDURE p27 AS SELECT 1",
+"line": 1,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"-- spec: sqlserver.md section 10 row 27\nSET NOCOUNT ON",
+"CREATE PROCEDURE p27 AS SELECT 1"
+],
+"source_start": 0,
+"source_end": 91
+}
+],
+"strings": [
+[
+"-- spec: sqlserver.md section 10 row 27\nSET NOCOUNT ON\nCREATE PROCEDURE p27 AS SELECT 1",
+1
+]
+],
+"analysis": [
+"-- spec: sqlserver.md section 10 row 27\nSET NOCOUNT ON",
+"CREATE PROCEDURE p27 AS SELECT 1"
+],
+"executed": [
+"-- spec: sqlserver.md section 10 row 27\nSET NOCOUNT ON",
+"CREATE PROCEDURE p27 AS SELECT 1"
+],
+"masking": [
+[
+"-- spec: sqlserver.md section 10 row 27\nSET NOCOUNT ON\nCREATE PROCEDURE p27 AS SELECT 1",
+"SET NOCOUNT"
+],
+[
+"-- spec: sqlserver.md section 10 row 27\nSET NOCOUNT ON",
+"SET NOCOUNT"
+],
+[
+"CREATE PROCEDURE p27 AS SELECT 1",
+"CREATE PROCEDURE p27"
+]
+]
+}
+},
+{
+"script": "-- spec: sqlserver.md section 10 row 29\n;\nGO\nCREATE TABLE t29 (id INT)\nGO\n",
+"expected": {
+"records": [
+{
+"text": "CREATE TABLE t29 (id INT)",
+"line": 4,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"CREATE TABLE t29 (id INT)"
+],
+"source_start": 45,
+"source_end": 74
+}
+],
+"strings": [
+[
+"CREATE TABLE t29 (id INT)",
+1
+]
+],
+"analysis": [
+"CREATE TABLE t29 (id INT)"
+],
+"executed": [
+"CREATE TABLE t29 (id INT)"
+],
+"masking": [
+[
+"CREATE TABLE t29 (id INT)",
+"CREATE TABLE t29"
+],
+[
+"CREATE TABLE t29 (id INT)",
+"CREATE TABLE t29"
+]
+]
+}
+},
+{
+"script": "-- realistic: comments, GO batches, a view, a trigger, a procedure with TRY/CATCH\nCREATE TABLE dbo.orders (\n    id INT IDENTITY(1,1) PRIMARY KEY,\n    status VARCHAR(10) NOT NULL DEFAULT 'new',\n    amount DECIMAL(10,2) NOT NULL CHECK (amount >= 0)\n);\nCREATE INDEX ix_orders_status ON dbo.orders (status);\nGO\n\n/* the audit table: the trigger below fills it */\nCREATE TABLE dbo.orders_audit (order_id INT, note VARCHAR(50));\nGO\n\nCREATE VIEW dbo.open_orders AS\nSELECT id, amount FROM dbo.orders WHERE status = 'new';\nGO\n\nCREATE TRIGGER dbo.trg_orders_audit ON dbo.orders AFTER INSERT AS\nBEGIN\n    INSERT INTO dbo.orders_audit (order_id, note) SELECT id, 'inserted; by trigger' FROM inserted;\nEND;\nGO\n\nCREATE PROCEDURE dbo.add_order @amount DECIMAL(10,2) AS\nBEGIN\n    BEGIN TRY\n        BEGIN TRANSACTION;\n        INSERT INTO dbo.orders (amount, status) VALUES (@amount, CASE WHEN @amount > 100 THEN 'review' ELSE 'new' END);\n        COMMIT TRANSACTION;\n    END TRY\n    BEGIN CATCH\n        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;\n        THROW;\n    END CATCH\nEND;\nGO\n\nEXEC dbo.add_order 50;\nEXEC dbo.add_order 500;\nGO\n",
+"expected": {
+"records": [
+{
+"text": "-- realistic: comments, GO batches, a view, a trigger, a procedure with TRY/CATCH\nCREATE TABLE dbo.orders (\n    id INT IDENTITY(1,1) PRIMARY KEY,\n    status VARCHAR(10) NOT NULL DEFAULT 'new',\n    amount DECIMAL(10,2) NOT NULL CHECK (amount >= 0)\n);\nCREATE INDEX ix_orders_status ON dbo.orders (status);",
+"line": 1,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"-- realistic: comments, GO batches, a view, a trigger, a procedure with TRY/CATCH\nCREATE TABLE dbo.orders (\n    id INT IDENTITY(1,1) PRIMARY KEY,\n    status VARCHAR(10) NOT NULL DEFAULT 'new',\n    amount DECIMAL(10,2) NOT NULL CHECK (amount >= 0)\n);",
+"CREATE INDEX ix_orders_status ON dbo.orders (status);"
+],
+"source_start": 0,
+"source_end": 307
+},
+{
+"text": "/* the audit table: the trigger below fills it */\nCREATE TABLE dbo.orders_audit (order_id INT, note VARCHAR(50));",
+"line": 10,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"/* the audit table: the trigger below fills it */\nCREATE TABLE dbo.orders_audit (order_id INT, note VARCHAR(50));"
+],
+"source_start": 307,
+"source_end": 425
+},
+{
+"text": "CREATE VIEW dbo.open_orders AS\nSELECT id, amount FROM dbo.orders WHERE status = 'new';",
+"line": 14,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"CREATE VIEW dbo.open_orders AS\nSELECT id, amount FROM dbo.orders WHERE status = 'new';"
+],
+"source_start": 425,
+"source_end": 516
+},
+{
+"text": "CREATE TRIGGER dbo.trg_orders_audit ON dbo.orders AFTER INSERT AS\nBEGIN\n    INSERT INTO dbo.orders_audit (order_id, note) SELECT id, 'inserted; by trigger' FROM inserted;\nEND;",
+"line": 18,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"CREATE TRIGGER dbo.trg_orders_audit ON dbo.orders AFTER INSERT AS\nBEGIN\n    INSERT INTO dbo.orders_audit (order_id, note) SELECT id, 'inserted; by trigger' FROM inserted;\nEND;"
+],
+"source_start": 516,
+"source_end": 696
+},
+{
+"text": "CREATE PROCEDURE dbo.add_order @amount DECIMAL(10,2) AS\nBEGIN\n    BEGIN TRY\n        BEGIN TRANSACTION;\n        INSERT INTO dbo.orders (amount, status) VALUES (@amount, CASE WHEN @amount > 100 THEN 'review' ELSE 'new' END);\n        COMMIT TRANSACTION;\n    END TRY\n    BEGIN CATCH\n        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;\n        THROW;\n    END CATCH\nEND;",
+"line": 24,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"CREATE PROCEDURE dbo.add_order @amount DECIMAL(10,2) AS\nBEGIN\n    BEGIN TRY\n        BEGIN TRANSACTION;\n        INSERT INTO dbo.orders (amount, status) VALUES (@amount, CASE WHEN @amount > 100 THEN 'review' ELSE 'new' END);\n        COMMIT TRANSACTION;\n    END TRY\n    BEGIN CATCH\n        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;\n        THROW;\n    END CATCH\nEND;"
+],
+"source_start": 696,
+"source_end": 1062
+},
+{
+"text": "EXEC dbo.add_order 50;\nEXEC dbo.add_order 500;",
+"line": 38,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"EXEC dbo.add_order 50;",
+"EXEC dbo.add_order 500;"
+],
+"source_start": 1062,
+"source_end": 1113
+}
+],
+"strings": [
+[
+"-- realistic: comments, GO batches, a view, a trigger, a procedure with TRY/CATCH\nCREATE TABLE dbo.orders (\n    id INT IDENTITY(1,1) PRIMARY KEY,\n    status VARCHAR(10) NOT NULL DEFAULT 'new',\n    amount DECIMAL(10,2) NOT NULL CHECK (amount >= 0)\n);\nCREATE INDEX ix_orders_status ON dbo.orders (status);",
+1
+],
+[
+"/* the audit table: the trigger below fills it */\nCREATE TABLE dbo.orders_audit (order_id INT, note VARCHAR(50));",
+1
+],
+[
+"CREATE VIEW dbo.open_orders AS\nSELECT id, amount FROM dbo.orders WHERE status = 'new';",
+1
+],
+[
+"CREATE TRIGGER dbo.trg_orders_audit ON dbo.orders AFTER INSERT AS\nBEGIN\n    INSERT INTO dbo.orders_audit (order_id, note) SELECT id, 'inserted; by trigger' FROM inserted;\nEND;",
+1
+],
+[
+"CREATE PROCEDURE dbo.add_order @amount DECIMAL(10,2) AS\nBEGIN\n    BEGIN TRY\n        BEGIN TRANSACTION;\n        INSERT INTO dbo.orders (amount, status) VALUES (@amount, CASE WHEN @amount > 100 THEN 'review' ELSE 'new' END);\n        COMMIT TRANSACTION;\n    END TRY\n    BEGIN CATCH\n        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;\n        THROW;\n    END CATCH\nEND;",
+1
+],
+[
+"EXEC dbo.add_order 50;\nEXEC dbo.add_order 500;",
+1
+]
+],
+"analysis": [
+"-- realistic: comments, GO batches, a view, a trigger, a procedure with TRY/CATCH\nCREATE TABLE dbo.orders (\n    id INT IDENTITY(1,1) PRIMARY KEY,\n    status VARCHAR(10) NOT NULL DEFAULT 'new',\n    amount DECIMAL(10,2) NOT NULL CHECK (amount >= 0)\n);",
+"CREATE INDEX ix_orders_status ON dbo.orders (status);",
+"/* the audit table: the trigger below fills it */\nCREATE TABLE dbo.orders_audit (order_id INT, note VARCHAR(50));",
+"CREATE VIEW dbo.open_orders AS\nSELECT id, amount FROM dbo.orders WHERE status = 'new';",
+"CREATE TRIGGER dbo.trg_orders_audit ON dbo.orders AFTER INSERT AS\nBEGIN\n    INSERT INTO dbo.orders_audit (order_id, note) SELECT id, 'inserted; by trigger' FROM inserted;\nEND;",
+"CREATE PROCEDURE dbo.add_order @amount DECIMAL(10,2) AS\nBEGIN\n    BEGIN TRY\n        BEGIN TRANSACTION;\n        INSERT INTO dbo.orders (amount, status) VALUES (@amount, CASE WHEN @amount > 100 THEN 'review' ELSE 'new' END);\n        COMMIT TRANSACTION;\n    END TRY\n    BEGIN CATCH\n        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;\n        THROW;\n    END CATCH\nEND;",
+"EXEC dbo.add_order 50;",
+"EXEC dbo.add_order 500;"
+],
+"executed": [
+"-- realistic: comments, GO batches, a view, a trigger, a procedure with TRY/CATCH\nCREATE TABLE dbo.orders (\n    id INT IDENTITY(1,1) PRIMARY KEY,\n    status VARCHAR(10) NOT NULL DEFAULT 'new',\n    amount DECIMAL(10,2) NOT NULL CHECK (amount >= 0)\n);",
+"CREATE INDEX ix_orders_status ON dbo.orders (status);",
+"/* the audit table: the trigger below fills it */\nCREATE TABLE dbo.orders_audit (order_id INT, note VARCHAR(50));",
+"CREATE VIEW dbo.open_orders AS\nSELECT id, amount FROM dbo.orders WHERE status = 'new';",
+"CREATE TRIGGER dbo.trg_orders_audit ON dbo.orders AFTER INSERT AS\nBEGIN\n    INSERT INTO dbo.orders_audit (order_id, note) SELECT id, 'inserted; by trigger' FROM inserted;\nEND;",
+"CREATE PROCEDURE dbo.add_order @amount DECIMAL(10,2) AS\nBEGIN\n    BEGIN TRY\n        BEGIN TRANSACTION;\n        INSERT INTO dbo.orders (amount, status) VALUES (@amount, CASE WHEN @amount > 100 THEN 'review' ELSE 'new' END);\n        COMMIT TRANSACTION;\n    END TRY\n    BEGIN CATCH\n        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;\n        THROW;\n    END CATCH\nEND;",
+"EXEC dbo.add_order 50;",
+"EXEC dbo.add_order 500;"
+],
+"masking": [
+[
+"-- realistic: comments, GO batches, a view, a trigger, a procedure with TRY/CATCH\nCREATE TABLE dbo.orders (\n    id INT IDENTITY(1,1) PRIMARY KEY,\n    status VARCHAR(10) NOT NULL DEFAULT '?',\n    amount DECIMAL(10,2) NOT NULL CHECK (amount >= 0)\n);\nCREATE INDEX ix_orders_status ON dbo.orders (status);",
+"CREATE TABLE dbo.orders"
+],
+[
+"-- realistic: comments, GO batches, a view, a trigger, a procedure with TRY/CATCH\nCREATE TABLE dbo.orders (\n    id INT IDENTITY(1,1) PRIMARY KEY,\n    status VARCHAR(10) NOT NULL DEFAULT '?',\n    amount DECIMAL(10,2) NOT NULL CHECK (amount >= 0)\n);",
+"CREATE TABLE dbo.orders"
+],
+[
+"CREATE INDEX ix_orders_status ON dbo.orders (status);",
+"CREATE INDEX ix_orders_status"
+],
+[
+"/* the audit table: the trigger below fills it */\nCREATE TABLE dbo.orders_audit (order_id INT, note VARCHAR(50));",
+"CREATE TABLE dbo.orders_audit"
+],
+[
+"/* the audit table: the trigger below fills it */\nCREATE TABLE dbo.orders_audit (order_id INT, note VARCHAR(50));",
+"CREATE TABLE dbo.orders_audit"
+],
+[
+"CREATE VIEW dbo.open_orders AS\nSELECT id, amount FROM dbo.orders WHERE status = '?';",
+"CREATE VIEW dbo.open_orders"
+],
+[
+"CREATE VIEW dbo.open_orders AS\nSELECT id, amount FROM dbo.orders WHERE status = '?';",
+"CREATE VIEW dbo.open_orders"
+],
+[
+"CREATE TRIGGER dbo.trg_orders_audit ON dbo.orders AFTER INSERT AS\nBEGIN\n    INSERT INTO dbo.orders_audit (order_id, note) SELECT id, '?' FROM inserted;\nEND;",
+"CREATE TRIGGER dbo.trg_orders_audit"
+],
+[
+"CREATE TRIGGER dbo.trg_orders_audit ON dbo.orders AFTER INSERT AS\nBEGIN\n    INSERT INTO dbo.orders_audit (order_id, note) SELECT id, '?' FROM inserted;\nEND;",
+"CREATE TRIGGER dbo.trg_orders_audit"
+],
+[
+"CREATE PROCEDURE dbo.add_order @amount DECIMAL(10,2) AS\nBEGIN\n    BEGIN TRY\n        BEGIN TRANSACTION;\n        INSERT INTO dbo.orders (amount, status) VALUES (@amount, CASE WHEN @amount > 100 THEN '?' ELSE '?' END);\n        COMMIT TRANSACTION;\n    END TRY\n    BEGIN CATCH\n        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;\n        THROW;\n    END CATCH\nEND;",
+"CREATE PROCEDURE dbo.add_order"
+],
+[
+"CREATE PROCEDURE dbo.add_order @amount DECIMAL(10,2) AS\nBEGIN\n    BEGIN TRY\n        BEGIN TRANSACTION;\n        INSERT INTO dbo.orders (amount, status) VALUES (@amount, CASE WHEN @amount > 100 THEN '?' ELSE '?' END);\n        COMMIT TRANSACTION;\n    END TRY\n    BEGIN CATCH\n        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;\n        THROW;\n    END CATCH\nEND;",
+"CREATE PROCEDURE dbo.add_order"
+],
+[
+"EXEC dbo.add_order 50;\nEXEC dbo.add_order 500;",
+"EXEC dbo.add_order"
+],
+[
+"EXEC dbo.add_order 50;",
+"EXEC dbo.add_order"
+],
+[
+"EXEC dbo.add_order 500;",
+"EXEC dbo.add_order"
+]
+]
+}
+},
+{
+"script": "-- realistic: one batch with several statements and TRY/CATCH\nCREATE TABLE t31 (id INT PRIMARY KEY, v VARCHAR(30));\nGO\nBEGIN TRY\n    INSERT INTO t31 VALUES (1, 'a');\n    INSERT INTO t31 VALUES (1, 'duplicate');\nEND TRY\nBEGIN CATCH\n    INSERT INTO t31 VALUES (2, 'after catch; still running');\nEND CATCH;\nSELECT COUNT(*) AS n FROM t31;\nGO\n",
+"expected": {
+"records": [
+{
+"text": "-- realistic: one batch with several statements and TRY/CATCH\nCREATE TABLE t31 (id INT PRIMARY KEY, v VARCHAR(30));",
+"line": 1,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"-- realistic: one batch with several statements and TRY/CATCH\nCREATE TABLE t31 (id INT PRIMARY KEY, v VARCHAR(30));"
+],
+"source_start": 0,
+"source_end": 119
+},
+{
+"text": "BEGIN TRY\n    INSERT INTO t31 VALUES (1, 'a');\n    INSERT INTO t31 VALUES (1, 'duplicate');\nEND TRY\nBEGIN CATCH\n    INSERT INTO t31 VALUES (2, 'after catch; still running');\nEND CATCH;\nSELECT COUNT(*) AS n FROM t31;",
+"line": 4,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"BEGIN TRY\n    INSERT INTO t31 VALUES (1, 'a');\n    INSERT INTO t31 VALUES (1, 'duplicate');\nEND TRY\nBEGIN CATCH\n    INSERT INTO t31 VALUES (2, 'after catch; still running');\nEND CATCH;",
+"SELECT COUNT(*) AS n FROM t31;"
+],
+"source_start": 119,
+"source_end": 338
+}
+],
+"strings": [
+[
+"-- realistic: one batch with several statements and TRY/CATCH\nCREATE TABLE t31 (id INT PRIMARY KEY, v VARCHAR(30));",
+1
+],
+[
+"BEGIN TRY\n    INSERT INTO t31 VALUES (1, 'a');\n    INSERT INTO t31 VALUES (1, 'duplicate');\nEND TRY\nBEGIN CATCH\n    INSERT INTO t31 VALUES (2, 'after catch; still running');\nEND CATCH;\nSELECT COUNT(*) AS n FROM t31;",
+1
+]
+],
+"analysis": [
+"-- realistic: one batch with several statements and TRY/CATCH\nCREATE TABLE t31 (id INT PRIMARY KEY, v VARCHAR(30));",
+"BEGIN TRY\n    INSERT INTO t31 VALUES (1, 'a');\n    INSERT INTO t31 VALUES (1, 'duplicate');\nEND TRY\nBEGIN CATCH\n    INSERT INTO t31 VALUES (2, 'after catch; still running');\nEND CATCH;",
+"SELECT COUNT(*) AS n FROM t31;"
+],
+"executed": [
+"-- realistic: one batch with several statements and TRY/CATCH\nCREATE TABLE t31 (id INT PRIMARY KEY, v VARCHAR(30));",
+"BEGIN TRY\n    INSERT INTO t31 VALUES (1, 'a');\n    INSERT INTO t31 VALUES (1, 'duplicate');\nEND TRY\nBEGIN CATCH\n    INSERT INTO t31 VALUES (2, 'after catch; still running');\nEND CATCH;",
+"SELECT COUNT(*) AS n FROM t31;"
+],
+"masking": [
+[
+"-- realistic: one batch with several statements and TRY/CATCH\nCREATE TABLE t31 (id INT PRIMARY KEY, v VARCHAR(30));",
+"CREATE TABLE t31"
+],
+[
+"-- realistic: one batch with several statements and TRY/CATCH\nCREATE TABLE t31 (id INT PRIMARY KEY, v VARCHAR(30));",
+"CREATE TABLE t31"
+],
+[
+"BEGIN TRY\n    INSERT INTO t31 VALUES (1, '?');\n    INSERT INTO t31 VALUES (1, '?');\nEND TRY\nBEGIN CATCH\n    INSERT INTO t31 VALUES (2, '?');\nEND CATCH;\nSELECT COUNT(*) AS n FROM t31;",
+"BEGIN TRY"
+],
+[
+"BEGIN TRY\n    INSERT INTO t31 VALUES (1, '?');\n    INSERT INTO t31 VALUES (1, '?');\nEND TRY\nBEGIN CATCH\n    INSERT INTO t31 VALUES (2, '?');\nEND CATCH;",
+"BEGIN TRY"
+],
+[
+"SELECT COUNT(*) AS n FROM t31;",
+"SELECT COUNT"
+]
+]
+}
+},
+{
+"script": "-- realistic: the preamble SSMS writes into a generated script\nSET ANSI_NULLS ON\nGO\nSET QUOTED_IDENTIFIER ON\nGO\nCREATE PROCEDURE dbo.p32 AS\nBEGIN\n    SET NOCOUNT ON;\n    SELECT 1 AS one;\nEND\nGO\nCREATE TABLE dbo.t32 (id INT)\nGO\n",
+"expected": {
+"records": [
+{
+"text": "-- realistic: the preamble SSMS writes into a generated script\nSET ANSI_NULLS ON",
+"line": 1,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"-- realistic: the preamble SSMS writes into a generated script\nSET ANSI_NULLS ON"
+],
+"source_start": 0,
+"source_end": 84
+},
+{
+"text": "SET QUOTED_IDENTIFIER ON",
+"line": 4,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"SET QUOTED_IDENTIFIER ON"
+],
+"source_start": 84,
+"source_end": 112
+},
+{
+"text": "CREATE PROCEDURE dbo.p32 AS\nBEGIN\n    SET NOCOUNT ON;\n    SELECT 1 AS one;\nEND",
+"line": 6,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"CREATE PROCEDURE dbo.p32 AS\nBEGIN\n    SET NOCOUNT ON;\n    SELECT 1 AS one;\nEND"
+],
+"source_start": 112,
+"source_end": 194
+},
+{
+"text": "CREATE TABLE dbo.t32 (id INT)",
+"line": 12,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"CREATE TABLE dbo.t32 (id INT)"
+],
+"source_start": 194,
+"source_end": 227
+}
+],
+"strings": [
+[
+"-- realistic: the preamble SSMS writes into a generated script\nSET ANSI_NULLS ON",
+1
+],
+[
+"SET QUOTED_IDENTIFIER ON",
+1
+],
+[
+"CREATE PROCEDURE dbo.p32 AS\nBEGIN\n    SET NOCOUNT ON;\n    SELECT 1 AS one;\nEND",
+1
+],
+[
+"CREATE TABLE dbo.t32 (id INT)",
+1
+]
+],
+"analysis": [
+"-- realistic: the preamble SSMS writes into a generated script\nSET ANSI_NULLS ON",
+"SET QUOTED_IDENTIFIER ON",
+"CREATE PROCEDURE dbo.p32 AS\nBEGIN\n    SET NOCOUNT ON;\n    SELECT 1 AS one;\nEND",
+"CREATE TABLE dbo.t32 (id INT)"
+],
+"executed": [
+"-- realistic: the preamble SSMS writes into a generated script\nSET ANSI_NULLS ON",
+"SET QUOTED_IDENTIFIER ON",
+"CREATE PROCEDURE dbo.p32 AS\nBEGIN\n    SET NOCOUNT ON;\n    SELECT 1 AS one;\nEND",
+"CREATE TABLE dbo.t32 (id INT)"
+],
+"masking": [
+[
+"-- realistic: the preamble SSMS writes into a generated script\nSET ANSI_NULLS ON",
+"SET ANSI_NULLS"
+],
+[
+"-- realistic: the preamble SSMS writes into a generated script\nSET ANSI_NULLS ON",
+"SET ANSI_NULLS"
+],
+[
+"SET QUOTED_IDENTIFIER ON",
+"SET QUOTED_IDENTIFIER"
+],
+[
+"SET QUOTED_IDENTIFIER ON",
+"SET QUOTED_IDENTIFIER"
+],
+[
+"CREATE PROCEDURE dbo.p32 AS\nBEGIN\n    SET NOCOUNT ON;\n    SELECT 1 AS one;\nEND",
+"CREATE PROCEDURE dbo.p32"
+],
+[
+"CREATE PROCEDURE dbo.p32 AS\nBEGIN\n    SET NOCOUNT ON;\n    SELECT 1 AS one;\nEND",
+"CREATE PROCEDURE dbo.p32"
+],
+[
+"CREATE TABLE dbo.t32 (id INT)",
+"CREATE TABLE dbo.t32"
+],
+[
+"CREATE TABLE dbo.t32 (id INT)",
+"CREATE TABLE dbo.t32"
+]
+]
+}
+},
+{
+"script": "-- spec: sqlserver.md section 10 row 1\r\nCREATE TABLE t01 (id INT)\r\nGO\r\nINSERT INTO t01 VALUES (1)\r\nGO\r\n",
+"expected": {
+"records": [
+{
+"text": "-- spec: sqlserver.md section 10 row 1\r\nCREATE TABLE t01 (id INT)",
+"line": 1,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"-- spec: sqlserver.md section 10 row 1\r\nCREATE TABLE t01 (id INT)"
+],
+"source_start": 0,
+"source_end": 71
+},
+{
+"text": "INSERT INTO t01 VALUES (1)",
+"line": 4,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"INSERT INTO t01 VALUES (1)"
+],
+"source_start": 71,
+"source_end": 103
+}
+],
+"strings": [
+[
+"-- spec: sqlserver.md section 10 row 1\r\nCREATE TABLE t01 (id INT)",
+1
+],
+[
+"INSERT INTO t01 VALUES (1)",
+1
+]
+],
+"analysis": [
+"-- spec: sqlserver.md section 10 row 1\r\nCREATE TABLE t01 (id INT)",
+"INSERT INTO t01 VALUES (1)"
+],
+"executed": [
+"-- spec: sqlserver.md section 10 row 1\r\nCREATE TABLE t01 (id INT)",
+"INSERT INTO t01 VALUES (1)"
+],
+"masking": [
+[
+"-- spec: sqlserver.md section 10 row 1\r\nCREATE TABLE t01 (id INT)",
+"CREATE TABLE t01"
+],
+[
+"-- spec: sqlserver.md section 10 row 1\r\nCREATE TABLE t01 (id INT)",
+"CREATE TABLE t01"
+],
+[
+"INSERT INTO t01 VALUES (1)",
+"INSERT INTO t01"
+],
+[
+"INSERT INTO t01 VALUES (1)",
+"INSERT INTO t01"
+]
+]
+}
+},
+{
+"script": "-- spec: sqlserver.md section 10 row 2\r\nCREATE TABLE t02 (id INT);\r\nGO\r\nGO\r\nINSERT INTO t02 VALUES (1);\r\n",
+"expected": {
+"records": [
+{
+"text": "-- spec: sqlserver.md section 10 row 2\r\nCREATE TABLE t02 (id INT);",
+"line": 1,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"-- spec: sqlserver.md section 10 row 2\r\nCREATE TABLE t02 (id INT);"
+],
+"source_start": 0,
+"source_end": 72
+},
+{
+"text": "INSERT INTO t02 VALUES (1);",
+"line": 5,
+"terminator": null,
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"INSERT INTO t02 VALUES (1);"
+],
+"source_start": 76,
+"source_end": 105
+}
+],
+"strings": [
+[
+"-- spec: sqlserver.md section 10 row 2\r\nCREATE TABLE t02 (id INT);",
+1
+],
+[
+"INSERT INTO t02 VALUES (1);",
+1
+]
+],
+"analysis": [
+"-- spec: sqlserver.md section 10 row 2\r\nCREATE TABLE t02 (id INT);",
+"INSERT INTO t02 VALUES (1);"
+],
+"executed": [
+"-- spec: sqlserver.md section 10 row 2\r\nCREATE TABLE t02 (id INT);",
+"INSERT INTO t02 VALUES (1);"
+],
+"masking": [
+[
+"-- spec: sqlserver.md section 10 row 2\r\nCREATE TABLE t02 (id INT);",
+"CREATE TABLE t02"
+],
+[
+"-- spec: sqlserver.md section 10 row 2\r\nCREATE TABLE t02 (id INT);",
+"CREATE TABLE t02"
+],
+[
+"INSERT INTO t02 VALUES (1);",
+"INSERT INTO t02"
+],
+[
+"INSERT INTO t02 VALUES (1);",
+"INSERT INTO t02"
+]
+]
+}
+},
+{
+"script": "-- spec: sqlserver.md section 10 row 3\r\nCREATE TABLE t03 (v INT)\r\nGO\r\nDECLARE @x INT = 7;\r\nINSERT INTO t03 VALUES (@x);\r\nSELECT @x AS x;\r\nGO\r\n",
+"expected": {
+"records": [
+{
+"text": "-- spec: sqlserver.md section 10 row 3\r\nCREATE TABLE t03 (v INT)",
+"line": 1,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"-- spec: sqlserver.md section 10 row 3\r\nCREATE TABLE t03 (v INT)"
+],
+"source_start": 0,
+"source_end": 70
+},
+{
+"text": "DECLARE @x INT = 7;\r\nINSERT INTO t03 VALUES (@x);\r\nSELECT @x AS x;",
+"line": 4,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"DECLARE @x INT = 7;",
+"INSERT INTO t03 VALUES (@x);",
+"SELECT @x AS x;"
+],
+"source_start": 70,
+"source_end": 142
+}
+],
+"strings": [
+[
+"-- spec: sqlserver.md section 10 row 3\r\nCREATE TABLE t03 (v INT)",
+1
+],
+[
+"DECLARE @x INT = 7;\r\nINSERT INTO t03 VALUES (@x);\r\nSELECT @x AS x;",
+1
+]
+],
+"analysis": [
+"-- spec: sqlserver.md section 10 row 3\r\nCREATE TABLE t03 (v INT)",
+"DECLARE @x INT = 7;",
+"INSERT INTO t03 VALUES (@x);",
+"SELECT @x AS x;"
+],
+"executed": [
+"-- spec: sqlserver.md section 10 row 3\r\nCREATE TABLE t03 (v INT)",
+"DECLARE @x INT = 7;",
+"INSERT INTO t03 VALUES (@x);",
+"SELECT @x AS x;"
+],
+"masking": [
+[
+"-- spec: sqlserver.md section 10 row 3\r\nCREATE TABLE t03 (v INT)",
+"CREATE TABLE t03"
+],
+[
+"-- spec: sqlserver.md section 10 row 3\r\nCREATE TABLE t03 (v INT)",
+"CREATE TABLE t03"
+],
+[
+"DECLARE @x INT = 7;\r\nINSERT INTO t03 VALUES (@x);\r\nSELECT @x AS x;",
+"DECLARE @x"
+],
+[
+"DECLARE @x INT = 7;",
+"DECLARE @x"
+],
+[
+"INSERT INTO t03 VALUES (@x);",
+"INSERT INTO t03"
+],
+[
+"SELECT @x AS x;",
+"SELECT @x"
+]
+]
+}
+},
+{
+"script": "",
+"expected": {
+"records": [],
+"strings": [],
+"analysis": [],
+"executed": [],
+"masking": []
+}
+},
+{
+"script": " ",
+"expected": {
+"records": [],
+"strings": [],
+"analysis": [],
+"executed": [],
+"masking": []
+}
+},
+{
+"script": "  \n",
+"expected": {
+"records": [],
+"strings": [],
+"analysis": [],
+"executed": [],
+"masking": []
+}
+},
+{
+"script": "\u00a0",
+"expected": {
+"records": [
+{
+"text": "",
+"line": 1,
+"terminator": null,
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+""
+],
+"source_start": 0,
+"source_end": 1
+}
+],
+"strings": [
+[
+"",
+1
+]
+],
+"analysis": [
+""
+],
+"executed": [
+""
+],
+"masking": [
+[
+"",
+""
+],
+[
+"",
+""
+]
+]
+}
+},
+{
+"script": "\f",
+"expected": {
+"records": [
+{
+"text": "",
+"line": 1,
+"terminator": null,
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+""
+],
+"source_start": 0,
+"source_end": 1
+}
+],
+"strings": [
+[
+"",
+1
+]
+],
+"analysis": [
+""
+],
+"executed": [
+""
+],
+"masking": [
+[
+"",
+""
+],
+[
+"",
+""
+]
+]
+}
+},
+{
+"script": "\u000b",
+"expected": {
+"records": [
+{
+"text": "",
+"line": 1,
+"terminator": null,
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+""
+],
+"source_start": 0,
+"source_end": 1
+}
+],
+"strings": [
+[
+"",
+1
+]
+],
+"analysis": [
+""
+],
+"executed": [
+""
+],
+"masking": [
+[
+"",
+""
+],
+[
+"",
+""
+]
+]
+}
+},
+{
+"script": "\u001c",
+"expected": {
+"records": [
+{
+"text": "",
+"line": 1,
+"terminator": null,
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+""
+],
+"source_start": 0,
+"source_end": 1
+}
+],
+"strings": [
+[
+"",
+1
+]
+],
+"analysis": [
+""
+],
+"executed": [
+""
+],
+"masking": [
+[
+"",
+""
+],
+[
+"",
+""
+]
+]
+}
+},
+{
+"script": "\u0085",
+"expected": {
+"records": [
+{
+"text": "",
+"line": 1,
+"terminator": null,
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+""
+],
+"source_start": 0,
+"source_end": 1
+}
+],
+"strings": [
+[
+"",
+1
+]
+],
+"analysis": [
+""
+],
+"executed": [
+""
+],
+"masking": [
+[
+"",
+""
+],
+[
+"",
+""
+]
+]
+}
+},
+{
+"script": "\u2028",
+"expected": {
+"records": [
+{
+"text": "",
+"line": 1,
+"terminator": null,
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+""
+],
+"source_start": 0,
+"source_end": 1
+}
+],
+"strings": [
+[
+"",
+1
+]
+],
+"analysis": [
+""
+],
+"executed": [
+""
+],
+"masking": [
+[
+"",
+""
+],
+[
+"",
+""
+]
+]
+}
+},
+{
+"script": "\u0000",
+"expected": {
+"records": [
+{
+"text": "\u0000",
+"line": 1,
+"terminator": null,
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"\u0000"
+],
+"source_start": 0,
+"source_end": 1
+}
+],
+"strings": [
+[
+"\u0000",
+1
+]
+],
+"analysis": [
+"\u0000"
+],
+"executed": [
+"\u0000"
+],
+"masking": [
+[
+"\u0000",
+""
+],
+[
+"\u0000",
+""
+]
+]
+}
+},
+{
+"script": "\ufeff",
+"expected": {
+"records": [],
+"strings": [],
+"analysis": [],
+"executed": [],
+"masking": []
+}
+},
+{
+"script": "\ufeffGO",
+"expected": {
+"records": [],
+"strings": [],
+"analysis": [],
+"executed": [],
+"masking": []
+}
+},
+{
+"script": "GO",
+"expected": {
+"records": [],
+"strings": [],
+"analysis": [],
+"executed": [],
+"masking": []
+}
+},
+{
+"script": "GO\n",
+"expected": {
+"records": [],
+"strings": [],
+"analysis": [],
+"executed": [],
+"masking": []
+}
+},
+{
+"script": "\ufeff\ufeffSELECT 1",
+"expected": {
+"records": [
+{
+"text": "\ufeffSELECT 1",
+"line": 1,
+"terminator": null,
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"\ufeffSELECT 1"
+],
+"source_start": 1,
+"source_end": 10
+}
+],
+"strings": [
+[
+"\ufeffSELECT 1",
+1
+]
+],
+"analysis": [
+"\ufeffSELECT 1"
+],
+"executed": [
+"\ufeffSELECT 1"
+],
+"masking": [
+[
+"\ufeffSELECT 1",
+""
+],
+[
+"\ufeffSELECT 1",
+""
+]
+]
+}
+},
+{
+"script": "SELECT 'abc",
+"expected": {
+"error": [
+"UnsafeStatementSplitError",
+"unterminated string opened at line 1, column 8"
+]
+}
+},
+{
+"script": "SELECT [abc",
+"expected": {
+"error": [
+"UnsafeStatementSplitError",
+"unterminated bracketed identifier opened at line 1, column 8"
+]
+}
+},
+{
+"script": "SELECT \"abc",
+"expected": {
+"error": [
+"UnsafeStatementSplitError",
+"unterminated quoted identifier opened at line 1, column 8"
+]
+}
+},
+{
+"script": "SELECT 1 /* x",
+"expected": {
+"error": [
+"UnsafeStatementSplitError",
+"unterminated block comment opened at line 1, column 10"
+]
+}
+},
+{
+"script": "SELECT 1\nGO\nSELECT 'open",
+"expected": {
+"error": [
+"UnsafeStatementSplitError",
+"unterminated string opened at line 3, column 8"
+]
+}
+},
+{
+"script": "[col;name]",
+"expected": {
+"records": [
+{
+"text": "[col;name]",
+"line": 1,
+"terminator": null,
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"[col;name]"
+],
+"source_start": 0,
+"source_end": 10
+}
+],
+"strings": [
+[
+"[col;name]",
+1
+]
+],
+"analysis": [
+"[col;name]"
+],
+"executed": [
+"[col;name]"
+],
+"masking": [
+[
+"[col;name]",
+"[col;name]"
+],
+[
+"[col;name]",
+"[col;name]"
+]
+]
+}
+},
+{
+"script": "[x;y]'a'\na$1\n",
+"expected": {
+"records": [
+{
+"text": "[x;y]'a'\na$1",
+"line": 1,
+"terminator": null,
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"[x;y]'a'\na$1"
+],
+"source_start": 0,
+"source_end": 13
+}
+],
+"strings": [
+[
+"[x;y]'a'\na$1",
+1
+]
+],
+"analysis": [
+"[x;y]'a'\na$1"
+],
+"executed": [
+"[x;y]'a'\na$1"
+],
+"masking": [
+[
+"[x;y]'?'\na$1",
+"[x;y]"
+],
+[
+"[x;y]'?'\na$1",
+"[x;y]"
+]
+]
+}
+},
+{
+"script": "SELECT 1\nGO 1000000\n",
+"expected": {
+"records": [
+{
+"text": "SELECT 1",
+"line": 1,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1000000,
+"analysis_statements": [
+"SELECT 1"
+],
+"source_start": 0,
+"source_end": 20
+}
+],
+"strings": [
+[
+"SELECT 1",
+1000000
+]
+],
+"analysis": [
+"SELECT 1"
+],
+"executed": [
+"SELECT 1"
+],
+"masking": [
+[
+"SELECT 1",
+"SELECT 1"
+],
+[
+"SELECT 1",
+"SELECT 1"
+]
+]
+}
+},
+{
+"script": "mssql+pymssql://h/app?encryption=true\nSELECT 1\nGO 1000000\n",
+"expected": {
+"records": [
+{
+"text": "mssql+pymssql://h/app?encryption=true\nSELECT 1",
+"line": 1,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1000000,
+"analysis_statements": [
+"mssql+pymssql://h/app?encryption=true\nSELECT 1"
+],
+"source_start": 0,
+"source_end": 58
+}
+],
+"strings": [
+[
+"mssql+pymssql://h/app?encryption=true\nSELECT 1",
+1000000
+]
+],
+"analysis": [
+"mssql+pymssql://h/app?encryption=true\nSELECT 1"
+],
+"executed": [
+"mssql+pymssql://h/app?encryption=true\nSELECT 1"
+],
+"masking": [
+[
+"mssql+pymssql://h/app?encryption=true\nSELECT 1",
+"mssql"
+],
+[
+"mssql+pymssql://h/app?encryption=true\nSELECT 1",
+"mssql"
+]
+]
+}
+},
+{
+"script": "\nGO $(n)\r\n:r f.sql\n",
+"expected": {
+"error": [
+"UnsafeStatementSplitError",
+"text after GO on line 2: only a count and a '--' comment may follow it; $(n) is not substituted"
+]
+}
+},
+{
+"script": "SELECT 1\nGO $(n)\r\nED",
+"expected": {
+"error": [
+"UnsafeStatementSplitError",
+"text after GO on line 2: only a count and a '--' comment may follow it; $(n) is not substituted"
+]
+}
+},
+{
+"script": " $(aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa)\n\t\n\n \n",
+"expected": {
+"error": [
+"UnsupportedMetaCommandError",
+"scripting variable $(aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa on line 1: sqlcmd substitutes it before the batch is sent, dblift sends the text as it is"
+]
+}
+},
+{
+"script": "go\n$(aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa)\n\t\n\nGO 007\n",
+"expected": {
+"error": [
+"UnsupportedMetaCommandError",
+"scripting variable $(aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa on line 2: sqlcmd substitutes it before the batch is sent, dblift sends the text as it is"
+]
+}
+},
+{
+"script": "exit/1\r\n\n",
+"expected": {
+"error": [
+"UnsupportedMetaCommandError",
+"sqlcmd command 'EXIT' on line 1: dblift does not run client commands"
+]
+}
+},
+{
+"script": "ROLLBACK\nGo/\r\n\r\n",
+"expected": {
+"error": [
+"UnsafeStatementSplitError",
+"text after GO on line 2: only a count and a '--' comment may follow it"
+]
+}
+},
+{
+"script": "\rGo${x/**/\"--\" ",
+"expected": {
+"records": [
+{
+"text": "Go${x/**/\"--\"",
+"line": 1,
+"terminator": null,
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"Go${x/**/\"--\""
+],
+"source_start": 0,
+"source_end": 15
+}
+],
+"strings": [
+[
+"Go${x/**/\"--\"",
+1
+]
+],
+"analysis": [
+"Go${x/**/\"--\""
+],
+"executed": [
+"Go${x/**/\"--\""
+],
+"masking": [
+[
+"Go${x/**/\"--\"",
+"Go$"
+],
+[
+"Go${x/**/\"--\"",
+"Go$"
+]
+]
+}
+},
+{
+"script": "\u20ac ${ .\nTRUNCATE\t:\tbegin${a;b}dbo\"GO\"\t/'a'\t|\n!\t${x:y}- ",
+"expected": {
+"records": [
+{
+"text": "\u20ac ${ .\nTRUNCATE\t:\tbegin${a;b}dbo\"GO\"\t/'a'\t|\n!\t${x:y}-",
+"line": 1,
+"terminator": null,
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"\u20ac ${ .",
+"TRUNCATE\t:\tbegin${a;",
+"b}dbo\"GO\"\t/'a'\t|\n!\t${x:y}-"
+],
+"source_start": 0,
+"source_end": 54
+}
+],
+"strings": [
+[
+"\u20ac ${ .\nTRUNCATE\t:\tbegin${a;b}dbo\"GO\"\t/'a'\t|\n!\t${x:y}-",
+1
+]
+],
+"analysis": [
+"\u20ac ${ .",
+"TRUNCATE\t:\tbegin${a;",
+"b}dbo\"GO\"\t/'a'\t|\n!\t${x:y}-"
+],
+"executed": [
+"\u20ac ${ .",
+"TRUNCATE\t:\tbegin${a;",
+"b}dbo\"GO\"\t/'a'\t|\n!\t${x:y}-"
+],
+"masking": [
+[
+"\u20ac ${ .\nTRUNCATE\t:\tbegin${a;b}dbo\"GO\"\t/'?'\t|\n!\t${x:y}-",
+""
+],
+[
+"\u20ac ${ .",
+""
+],
+[
+"TRUNCATE\t:\tbegin${a;",
+"TRUNCATE"
+],
+[
+"b}dbo\"GO\"\t/'?'\t|\n!\t${x:y}-",
+"b"
+]
+]
+}
+},
+{
+"script": "BEGIN DIALOG CONVERSATION;\n\u00e9END\r\n",
+"expected": {
+"records": [
+{
+"text": "BEGIN DIALOG CONVERSATION;\n\u00e9END",
+"line": 1,
+"terminator": null,
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"BEGIN DIALOG CONVERSATION;",
+"\u00e9END"
+],
+"source_start": 0,
+"source_end": 33
+}
+],
+"strings": [
+[
+"BEGIN DIALOG CONVERSATION;\n\u00e9END",
+1
+]
+],
+"analysis": [
+"BEGIN DIALOG CONVERSATION;",
+"\u00e9END"
+],
+"executed": [
+"BEGIN DIALOG CONVERSATION;",
+"\u00e9END"
+],
+"masking": [
+[
+"BEGIN DIALOG CONVERSATION;\n\u00e9END",
+"BEGIN DIALOG"
+],
+[
+"BEGIN DIALOG CONVERSATION;",
+"BEGIN DIALOG"
+],
+[
+"\u00e9END",
+"\u00e9END"
+]
+]
+}
+},
+{
+"script": "BEGIN DIALOG CONVERSATION;\n\r\nUSE db\n GO 3\n\n",
+"expected": {
+"records": [
+{
+"text": "BEGIN DIALOG CONVERSATION;\n\r\nUSE db",
+"line": 1,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 3,
+"analysis_statements": [
+"BEGIN DIALOG CONVERSATION;",
+"USE db"
+],
+"source_start": 0,
+"source_end": 42
+}
+],
+"strings": [
+[
+"BEGIN DIALOG CONVERSATION;\n\r\nUSE db",
+3
+]
+],
+"analysis": [
+"BEGIN DIALOG CONVERSATION;",
+"USE db"
+],
+"executed": [
+"BEGIN DIALOG CONVERSATION;",
+"USE db"
+],
+"masking": [
+[
+"BEGIN DIALOG CONVERSATION;\n\r\nUSE db",
+"BEGIN DIALOG"
+],
+[
+"BEGIN DIALOG CONVERSATION;",
+"BEGIN DIALOG"
+],
+[
+"USE db",
+"USE db"
+]
+]
+}
+},
+{
+"script": "\n\u001cTRUNCATE TABLE t\nGO\n",
+"expected": {
+"records": [
+{
+"text": "TRUNCATE TABLE t",
+"line": 2,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"",
+"TRUNCATE TABLE t"
+],
+"source_start": 0,
+"source_end": 22
+}
+],
+"strings": [
+[
+"TRUNCATE TABLE t",
+1
+]
+],
+"analysis": [
+"",
+"TRUNCATE TABLE t"
+],
+"executed": [
+"",
+"TRUNCATE TABLE t"
+],
+"masking": [
+[
+"TRUNCATE TABLE t",
+"TRUNCATE TABLE t"
+],
+[
+"",
+""
+],
+[
+"TRUNCATE TABLE t",
+"TRUNCATE TABLE t"
+]
+]
+}
+},
+{
+"script": "\n\fTRUNCATE TABLE t\nGO\n",
+"expected": {
+"records": [
+{
+"text": "TRUNCATE TABLE t",
+"line": 2,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"",
+"TRUNCATE TABLE t"
+],
+"source_start": 0,
+"source_end": 22
+}
+],
+"strings": [
+[
+"TRUNCATE TABLE t",
+1
+]
+],
+"analysis": [
+"",
+"TRUNCATE TABLE t"
+],
+"executed": [
+"",
+"TRUNCATE TABLE t"
+],
+"masking": [
+[
+"TRUNCATE TABLE t",
+"TRUNCATE TABLE t"
+],
+[
+"",
+""
+],
+[
+"TRUNCATE TABLE t",
+"TRUNCATE TABLE t"
+]
+]
+}
+},
+{
+"script": "ALTER TABLE t\nDROP CONSTRAINT k; ",
+"expected": {
+"records": [
+{
+"text": "ALTER TABLE t\nDROP CONSTRAINT k;",
+"line": 1,
+"terminator": null,
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"ALTER TABLE t\nDROP CONSTRAINT k;"
+],
+"source_start": 0,
+"source_end": 33
+}
+],
+"strings": [
+[
+"ALTER TABLE t\nDROP CONSTRAINT k;",
+1
+]
+],
+"analysis": [
+"ALTER TABLE t\nDROP CONSTRAINT k;"
+],
+"executed": [
+"ALTER TABLE t\nDROP CONSTRAINT k;"
+],
+"masking": [
+[
+"ALTER TABLE t\nDROP CONSTRAINT k;",
+"ALTER TABLE t"
+],
+[
+"ALTER TABLE t\nDROP CONSTRAINT k;",
+"ALTER TABLE t"
+]
+]
+}
+},
+{
+"script": "ALTER TABLE t\nDROP CONSTRAINT k\n\n\t\n",
+"expected": {
+"records": [
+{
+"text": "ALTER TABLE t\nDROP CONSTRAINT k",
+"line": 1,
+"terminator": null,
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"ALTER TABLE t\nDROP CONSTRAINT k"
+],
+"source_start": 0,
+"source_end": 35
+}
+],
+"strings": [
+[
+"ALTER TABLE t\nDROP CONSTRAINT k",
+1
+]
+],
+"analysis": [
+"ALTER TABLE t\nDROP CONSTRAINT k"
+],
+"executed": [
+"ALTER TABLE t\nDROP CONSTRAINT k"
+],
+"masking": [
+[
+"ALTER TABLE t\nDROP CONSTRAINT k",
+"ALTER TABLE t"
+],
+[
+"ALTER TABLE t\nDROP CONSTRAINT k",
+"ALTER TABLE t"
+]
+]
+}
+},
+{
+"script": "CREATE OR REPLACE TRIGGER x; \r\nDBCC CHECKDB\r\n\n \n",
+"expected": {
+"records": [
+{
+"text": "CREATE OR REPLACE TRIGGER x; \r\nDBCC CHECKDB",
+"line": 1,
+"terminator": null,
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"CREATE OR REPLACE TRIGGER x; \r\nDBCC CHECKDB"
+],
+"source_start": 0,
+"source_end": 48
+}
+],
+"strings": [
+[
+"CREATE OR REPLACE TRIGGER x; \r\nDBCC CHECKDB",
+1
+]
+],
+"analysis": [
+"CREATE OR REPLACE TRIGGER x; \r\nDBCC CHECKDB"
+],
+"executed": [
+"CREATE OR REPLACE TRIGGER x; \r\nDBCC CHECKDB"
+],
+"masking": [
+[
+"CREATE OR REPLACE TRIGGER x; \r\nDBCC CHECKDB",
+"CREATE OR REPLACE TRIGGER x"
+],
+[
+"CREATE OR REPLACE TRIGGER x; \r\nDBCC CHECKDB",
+"CREATE OR REPLACE TRIGGER x"
+]
+]
+}
+},
+{
+"script": "ALTER TRIGGER tr ON t AFTER INSERT AS SELECT 1;USE db\n\t\nGO\n\n",
+"expected": {
+"records": [
+{
+"text": "ALTER TRIGGER tr ON t AFTER INSERT AS SELECT 1;USE db",
+"line": 1,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"ALTER TRIGGER tr ON t AFTER INSERT AS SELECT 1;USE db"
+],
+"source_start": 0,
+"source_end": 59
+}
+],
+"strings": [
+[
+"ALTER TRIGGER tr ON t AFTER INSERT AS SELECT 1;USE db",
+1
+]
+],
+"analysis": [
+"ALTER TRIGGER tr ON t AFTER INSERT AS SELECT 1;USE db"
+],
+"executed": [
+"ALTER TRIGGER tr ON t AFTER INSERT AS SELECT 1;USE db"
+],
+"masking": [
+[
+"ALTER TRIGGER tr ON t AFTER INSERT AS SELECT 1;USE db",
+"ALTER TRIGGER tr"
+],
+[
+"ALTER TRIGGER tr ON t AFTER INSERT AS SELECT 1;USE db",
+"ALTER TRIGGER tr"
+]
+]
+}
+},
+{
+"script": ":XML\u00a0x\n",
+"expected": {
+"error": [
+"UnsupportedMetaCommandError",
+"sqlcmd command ':XML' on line 1: dblift does not run client commands"
+]
+}
+},
+{
+"script": ":xml = 1\r\n",
+"expected": {
+"error": [
+"UnsupportedMetaCommandError",
+"sqlcmd command ':xml' on line 1: dblift does not run client commands"
+]
+}
+},
+{
+"script": "!dir",
+"expected": {
+"records": [
+{
+"text": "!dir",
+"line": 1,
+"terminator": null,
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"!dir"
+],
+"source_start": 0,
+"source_end": 4
+}
+],
+"strings": [
+[
+"!dir",
+1
+]
+],
+"analysis": [
+"!dir"
+],
+"executed": [
+"!dir"
+],
+"masking": [
+[
+"!dir",
+""
+],
+[
+"!dir",
+""
+]
+]
+}
+},
+{
+"script": ":!\n \n\n",
+"expected": {
+"records": [
+{
+"text": ":!",
+"line": 1,
+"terminator": null,
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+":!"
+],
+"source_start": 0,
+"source_end": 6
+}
+],
+"strings": [
+[
+":!",
+1
+]
+],
+"analysis": [
+":!"
+],
+"executed": [
+":!"
+],
+"masking": [
+[
+":!",
+""
+],
+[
+":!",
+""
+]
+]
+}
+},
+{
+"script": "x /* a\n*/ GO\r\n:r f.sql",
+"expected": {
+"error": [
+"UnsafeStatementSplitError",
+"GO after a comment on line 2: sqlcmd takes it as a command after one comment and as text after two; put it first on its line"
+]
+}
+},
+{
+"script": "$$ &/*\n*/GO 2 $action \u200b\u2028",
+"expected": {
+"error": [
+"UnsafeStatementSplitError",
+"text after GO on line 2: only a count and a '--' comment may follow it"
+]
+}
+},
+{
+"script": "SELECT [a]]",
+"expected": {
+"error": [
+"UnsafeStatementSplitError",
+"unterminated bracketed identifier opened at line 1, column 8"
+]
+}
+},
+{
+"script": "CREATE TABLE [a]]",
+"expected": {
+"error": [
+"UnsafeStatementSplitError",
+"unterminated bracketed identifier opened at line 1, column 14"
+]
+}
+},
+{
+"script": "GO\n\u2028 DROP TABLE t\nGO\n",
+"expected": {
+"records": [
+{
+"text": "DROP TABLE t",
+"line": 2,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"DROP TABLE t"
+],
+"source_start": 3,
+"source_end": 21
+}
+],
+"strings": [
+[
+"DROP TABLE t",
+1
+]
+],
+"analysis": [
+"DROP TABLE t"
+],
+"executed": [
+"DROP TABLE t"
+],
+"masking": [
+[
+"DROP TABLE t",
+"DROP TABLE t"
+],
+[
+"DROP TABLE t",
+"DROP TABLE t"
+]
+]
+}
+},
+{
+"script": "\u00a0TRUNCATE TABLE t\nGO\n",
+"expected": {
+"records": [
+{
+"text": "TRUNCATE TABLE t",
+"line": 1,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"TRUNCATE TABLE t"
+],
+"source_start": 0,
+"source_end": 21
+}
+],
+"strings": [
+[
+"TRUNCATE TABLE t",
+1
+]
+],
+"analysis": [
+"TRUNCATE TABLE t"
+],
+"executed": [
+"TRUNCATE TABLE t"
+],
+"masking": [
+[
+"TRUNCATE TABLE t",
+"TRUNCATE TABLE t"
+],
+[
+"TRUNCATE TABLE t",
+"TRUNCATE TABLE t"
+]
+]
+}
+},
+{
+"script": "CREATE OR REPLACE PROC p AS SELECT 1; SELECT 2\n",
+"expected": {
+"records": [
+{
+"text": "CREATE OR REPLACE PROC p AS SELECT 1; SELECT 2",
+"line": 1,
+"terminator": null,
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"CREATE OR REPLACE PROC p AS SELECT 1; SELECT 2"
+],
+"source_start": 0,
+"source_end": 47
+}
+],
+"strings": [
+[
+"CREATE OR REPLACE PROC p AS SELECT 1; SELECT 2",
+1
+]
+],
+"analysis": [
+"CREATE OR REPLACE PROC p AS SELECT 1; SELECT 2"
+],
+"executed": [
+"CREATE OR REPLACE PROC p AS SELECT 1; SELECT 2"
+],
+"masking": [
+[
+"CREATE OR REPLACE PROC p AS SELECT 1; SELECT 2",
+"CREATE OR REPLACE PROC"
+],
+[
+"CREATE OR REPLACE PROC p AS SELECT 1; SELECT 2",
+"CREATE OR REPLACE PROC"
+]
+]
+}
+},
+{
+"script": "IF 1=1 BEGIN SELECT CASE WHEN 1=1 THEN 1 ELSE 0 END; DROP TABLE users; END;",
+"expected": {
+"records": [
+{
+"text": "IF 1=1 BEGIN SELECT CASE WHEN 1=1 THEN 1 ELSE 0 END; DROP TABLE users; END;",
+"line": 1,
+"terminator": null,
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"IF 1=1 BEGIN SELECT CASE WHEN 1=1 THEN 1 ELSE 0 END; DROP TABLE users; END;"
+],
+"source_start": 0,
+"source_end": 75
+}
+],
+"strings": [
+[
+"IF 1=1 BEGIN SELECT CASE WHEN 1=1 THEN 1 ELSE 0 END; DROP TABLE users; END;",
+1
+]
+],
+"analysis": [
+"IF 1=1 BEGIN SELECT CASE WHEN 1=1 THEN 1 ELSE 0 END; DROP TABLE users; END;"
+],
+"executed": [
+"IF 1=1 BEGIN SELECT CASE WHEN 1=1 THEN 1 ELSE 0 END; DROP TABLE users; END;"
+],
+"masking": [
+[
+"IF 1=1 BEGIN SELECT CASE WHEN 1=1 THEN 1 ELSE 0 END; DROP TABLE users; END;",
+"IF 1"
+],
+[
+"IF 1=1 BEGIN SELECT CASE WHEN 1=1 THEN 1 ELSE 0 END; DROP TABLE users; END;",
+"IF 1"
+]
+]
+}
+},
+{
+"script": "IF 1=1 BEGIN SELECT CASE WHEN 1=1 THEN 1 ELSE 0 END; DROP TABLE users; END; SELECT 2;",
+"expected": {
+"records": [
+{
+"text": "IF 1=1 BEGIN SELECT CASE WHEN 1=1 THEN 1 ELSE 0 END; DROP TABLE users; END; SELECT 2;",
+"line": 1,
+"terminator": null,
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"IF 1=1 BEGIN SELECT CASE WHEN 1=1 THEN 1 ELSE 0 END; DROP TABLE users; END;",
+"SELECT 2;"
+],
+"source_start": 0,
+"source_end": 85
+}
+],
+"strings": [
+[
+"IF 1=1 BEGIN SELECT CASE WHEN 1=1 THEN 1 ELSE 0 END; DROP TABLE users; END; SELECT 2;",
+1
+]
+],
+"analysis": [
+"IF 1=1 BEGIN SELECT CASE WHEN 1=1 THEN 1 ELSE 0 END; DROP TABLE users; END;",
+"SELECT 2;"
+],
+"executed": [
+"IF 1=1 BEGIN SELECT CASE WHEN 1=1 THEN 1 ELSE 0 END; DROP TABLE users; END;",
+"SELECT 2;"
+],
+"masking": [
+[
+"IF 1=1 BEGIN SELECT CASE WHEN 1=1 THEN 1 ELSE 0 END; DROP TABLE users; END; SELECT 2;",
+"IF 1"
+],
+[
+"IF 1=1 BEGIN SELECT CASE WHEN 1=1 THEN 1 ELSE 0 END; DROP TABLE users; END;",
+"IF 1"
+],
+[
+"SELECT 2;",
+"SELECT 2"
+]
+]
+}
+},
+{
+"script": "\t\u00a0BEGIN TRAN; SELECT 1\nDROP TABLE u",
+"expected": {
+"records": [
+{
+"text": "BEGIN TRAN; SELECT 1\nDROP TABLE u",
+"line": 1,
+"terminator": null,
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"BEGIN TRAN;",
+"SELECT 1",
+"DROP TABLE u"
+],
+"source_start": 0,
+"source_end": 35
+}
+],
+"strings": [
+[
+"BEGIN TRAN; SELECT 1\nDROP TABLE u",
+1
+]
+],
+"analysis": [
+"BEGIN TRAN;",
+"SELECT 1",
+"DROP TABLE u"
+],
+"executed": [
+"BEGIN TRAN;",
+"SELECT 1",
+"DROP TABLE u"
+],
+"masking": [
+[
+"BEGIN TRAN; SELECT 1\nDROP TABLE u",
+"BEGIN TRAN"
+],
+[
+"BEGIN TRAN;",
+"BEGIN TRAN"
+],
+[
+"SELECT 1",
+"SELECT 1"
+],
+[
+"DROP TABLE u",
+"DROP TABLE u"
+]
+]
+}
+},
+{
+"script": "\n\u00a0BEGIN TRAN; SELECT 1\nDROP TABLE u",
+"expected": {
+"records": [
+{
+"text": "BEGIN TRAN; SELECT 1\nDROP TABLE u",
+"line": 2,
+"terminator": null,
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"BEGIN TRAN;",
+"SELECT 1",
+"DROP TABLE u"
+],
+"source_start": 0,
+"source_end": 35
+}
+],
+"strings": [
+[
+"BEGIN TRAN; SELECT 1\nDROP TABLE u",
+1
+]
+],
+"analysis": [
+"BEGIN TRAN;",
+"SELECT 1",
+"DROP TABLE u"
+],
+"executed": [
+"BEGIN TRAN;",
+"SELECT 1",
+"DROP TABLE u"
+],
+"masking": [
+[
+"BEGIN TRAN; SELECT 1\nDROP TABLE u",
+"BEGIN TRAN"
+],
+[
+"BEGIN TRAN;",
+"BEGIN TRAN"
+],
+[
+"SELECT 1",
+"SELECT 1"
+],
+[
+"DROP TABLE u",
+"DROP TABLE u"
+]
+]
+}
+},
+{
+"script": "ALTER TABLE t\nDROP COLUMN c;\n\t\n",
+"expected": {
+"records": [
+{
+"text": "ALTER TABLE t\nDROP COLUMN c;",
+"line": 1,
+"terminator": null,
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"ALTER TABLE t\nDROP COLUMN c;"
+],
+"source_start": 0,
+"source_end": 31
+}
+],
+"strings": [
+[
+"ALTER TABLE t\nDROP COLUMN c;",
+1
+]
+],
+"analysis": [
+"ALTER TABLE t\nDROP COLUMN c;"
+],
+"executed": [
+"ALTER TABLE t\nDROP COLUMN c;"
+],
+"masking": [
+[
+"ALTER TABLE t\nDROP COLUMN c;",
+"ALTER TABLE t"
+],
+[
+"ALTER TABLE t\nDROP COLUMN c;",
+"ALTER TABLE t"
+]
+]
+}
+},
+{
+"script": "GO\r\nALTER TABLE t\nALTER COLUMN c INT;",
+"expected": {
+"records": [
+{
+"text": "ALTER TABLE t\nALTER COLUMN c INT;",
+"line": 2,
+"terminator": null,
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"ALTER TABLE t\nALTER COLUMN c INT;"
+],
+"source_start": 4,
+"source_end": 37
+}
+],
+"strings": [
+[
+"ALTER TABLE t\nALTER COLUMN c INT;",
+1
+]
+],
+"analysis": [
+"ALTER TABLE t\nALTER COLUMN c INT;"
+],
+"executed": [
+"ALTER TABLE t\nALTER COLUMN c INT;"
+],
+"masking": [
+[
+"ALTER TABLE t\nALTER COLUMN c INT;",
+"ALTER TABLE t"
+],
+[
+"ALTER TABLE t\nALTER COLUMN c INT;",
+"ALTER TABLE t"
+]
+]
+}
+},
+{
+"script": "  GO  \n\n\nBEGIN CONVERSATION TIMER\n\nDROP TABLE T; \r\n",
+"expected": {
+"records": [
+{
+"text": "BEGIN CONVERSATION TIMER\n\nDROP TABLE T;",
+"line": 4,
+"terminator": null,
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"BEGIN CONVERSATION TIMER",
+"DROP TABLE T;"
+],
+"source_start": 7,
+"source_end": 51
+}
+],
+"strings": [
+[
+"BEGIN CONVERSATION TIMER\n\nDROP TABLE T;",
+1
+]
+],
+"analysis": [
+"BEGIN CONVERSATION TIMER",
+"DROP TABLE T;"
+],
+"executed": [
+"BEGIN CONVERSATION TIMER",
+"DROP TABLE T;"
+],
+"masking": [
+[
+"BEGIN CONVERSATION TIMER\n\nDROP TABLE T;",
+"BEGIN CONVERSATION"
+],
+[
+"BEGIN CONVERSATION TIMER",
+"BEGIN CONVERSATION"
+],
+[
+"DROP TABLE T;",
+"DROP TABLE T"
+]
+]
+}
+},
+{
+"script": "BEGIN DISTRIBUTED TRANSACTION; go\n\n",
+"expected": {
+"records": [
+{
+"text": "BEGIN DISTRIBUTED TRANSACTION; go",
+"line": 1,
+"terminator": null,
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"BEGIN DISTRIBUTED TRANSACTION;",
+"go"
+],
+"source_start": 0,
+"source_end": 35
+}
+],
+"strings": [
+[
+"BEGIN DISTRIBUTED TRANSACTION; go",
+1
+]
+],
+"analysis": [
+"BEGIN DISTRIBUTED TRANSACTION;",
+"go"
+],
+"executed": [
+"BEGIN DISTRIBUTED TRANSACTION;",
+"go"
+],
+"masking": [
+[
+"BEGIN DISTRIBUTED TRANSACTION; go",
+"BEGIN DISTRIBUTED"
+],
+[
+"BEGIN DISTRIBUTED TRANSACTION;",
+"BEGIN DISTRIBUTED"
+],
+[
+"go",
+""
+]
+]
+}
+},
+{
+"script": "BEGIN TRANSACTION t1; 'GO'\n\t\n",
+"expected": {
+"records": [
+{
+"text": "BEGIN TRANSACTION t1; 'GO'",
+"line": 1,
+"terminator": null,
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"BEGIN TRANSACTION t1;",
+"'GO'"
+],
+"source_start": 0,
+"source_end": 29
+}
+],
+"strings": [
+[
+"BEGIN TRANSACTION t1; 'GO'",
+1
+]
+],
+"analysis": [
+"BEGIN TRANSACTION t1;",
+"'GO'"
+],
+"executed": [
+"BEGIN TRANSACTION t1;",
+"'GO'"
+],
+"masking": [
+[
+"BEGIN TRANSACTION t1; '?'",
+"BEGIN TRANSACTION"
+],
+[
+"BEGIN TRANSACTION t1;",
+"BEGIN TRANSACTION"
+],
+[
+"'?'",
+""
+]
+]
+}
+},
+{
+"script": "'a'\nDROP TABLE t\n\t\nGO\t2\n \n\n",
+"expected": {
+"records": [
+{
+"text": "'a'\nDROP TABLE t",
+"line": 1,
+"terminator": "GO",
+"kind": "sql",
+"multi": false,
+"repeat": 2,
+"analysis_statements": [
+"'a'",
+"DROP TABLE t"
+],
+"source_start": 0,
+"source_end": 24
+}
+],
+"strings": [
+[
+"'a'\nDROP TABLE t",
+2
+]
+],
+"analysis": [
+"'a'",
+"DROP TABLE t"
+],
+"executed": [
+"'a'",
+"DROP TABLE t"
+],
+"masking": [
+[
+"'?'\nDROP TABLE t",
+""
+],
+[
+"'?'",
+""
+],
+[
+"DROP TABLE t",
+"DROP TABLE t"
+]
+]
+}
+},
+{
+"script": "\ufeffRESET=id\n",
+"expected": {
+"error": [
+"UnsupportedMetaCommandError",
+"sqlcmd command 'RESET' on line 1: dblift does not run client commands"
+]
+}
+},
+{
+"script": "go(1)\norder_seq",
+"expected": {
+"error": [
+"UnsafeStatementSplitError",
+"text after GO on line 1: only a count and a '--' comment may follow it"
+]
+}
+},
+{
+"script": "EXIT[id,\n",
+"expected": {
+"error": [
+"UnsupportedMetaCommandError",
+"sqlcmd command 'EXIT' on line 1: dblift does not run client commands"
+]
+}
+},
+{
+"script": "quit'id,\n",
+"expected": {
+"error": [
+"UnsupportedMetaCommandError",
+"sqlcmd command 'QUIT' on line 1: dblift does not run client commands"
+]
+}
+},
+{
+"script": "'-- x'\nALTER TABLE t ADD c INT\n",
+"expected": {
+"records": [
+{
+"text": "'-- x'\nALTER TABLE t ADD c INT",
+"line": 1,
+"terminator": null,
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"'-- x'",
+"ALTER TABLE t ADD c INT"
+],
+"source_start": 0,
+"source_end": 31
+}
+],
+"strings": [
+[
+"'-- x'\nALTER TABLE t ADD c INT",
+1
+]
+],
+"analysis": [
+"'-- x'",
+"ALTER TABLE t ADD c INT"
+],
+"executed": [
+"'-- x'",
+"ALTER TABLE t ADD c INT"
+],
+"masking": [
+[
+"'?'\nALTER TABLE t ADD c INT",
+""
+],
+[
+"'?'",
+""
+],
+[
+"ALTER TABLE t ADD c INT",
+"ALTER TABLE t"
+]
+]
+}
+},
+{
+"script": "ALTER FUNCTION f() RETURNS INT AS BEGIN RETURN 1; END\n\r\n; ;\n\n",
+"expected": {
+"records": [
+{
+"text": "ALTER FUNCTION f() RETURNS INT AS BEGIN RETURN 1; END\n\r\n; ;",
+"line": 1,
+"terminator": null,
+"kind": "sql",
+"multi": false,
+"repeat": 1,
+"analysis_statements": [
+"ALTER FUNCTION f() RETURNS INT AS BEGIN RETURN 1; END\n\r\n; ;"
+],
+"source_start": 0,
+"source_end": 61
+}
+],
+"strings": [
+[
+"ALTER FUNCTION f() RETURNS INT AS BEGIN RETURN 1; END\n\r\n; ;",
+1
+]
+],
+"analysis": [
+"ALTER FUNCTION f() RETURNS INT AS BEGIN RETURN 1; END\n\r\n; ;"
+],
+"executed": [
+"ALTER FUNCTION f() RETURNS INT AS BEGIN RETURN 1; END\n\r\n; ;"
+],
+"masking": [
+[
+"ALTER FUNCTION f() RETURNS INT AS BEGIN RETURN 1; END\n\r\n; ;",
+"ALTER FUNCTION f"
+],
+[
+"ALTER FUNCTION f() RETURNS INT AS BEGIN RETURN 1; END\n\r\n; ;",
+"ALTER FUNCTION f"
+]
+]
+}
+},
+{
+"script": "go\f000\n",
+"expected": {
+"error": [
+"UnsafeStatementSplitError",
+"text after GO on line 1: only a count and a '--' comment may follow it"
+]
+}
+},
+{
+"script": ":perftrace'\r\n",
+"expected": {
+"error": [
+"UnsupportedMetaCommandError",
+"sqlcmd command \":perftrace'\" on line 1: dblift does not run client commands"
+]
+}
+},
+{
+"script": ":help",
+"expected": {
+"error": [
+"UnsupportedMetaCommandError",
+"sqlcmd command ':help' on line 1: dblift does not run client commands"
+]
+}
+},
+{
+"script": "\ufeff:serverlist\r\n",
+"expected": {
+"error": [
+"UnsupportedMetaCommandError",
+"sqlcmd command ':serverlist' on line 1: dblift does not run client commands"
+]
+}
+},
+{
+"script": ":reset",
+"expected": {
+"error": [
+"UnsupportedMetaCommandError",
+"sqlcmd command ':reset' on line 1: dblift does not run client commands"
+]
+}
+},
+{
+"script": ":ed",
+"expected": {
+"error": [
+"UnsupportedMetaCommandError",
+"sqlcmd command ':ed' on line 1: dblift does not run client commands"
+]
+}
+},
+{
+"script": ":connect\n \n",
+"expected": {
+"error": [
+"UnsupportedMetaCommandError",
+"sqlcmd command ':connect' on line 1: dblift does not run client commands"
+]
+}
+},
+{
+"script": ":ON\n",
+"expected": {
+"error": [
+"UnsupportedMetaCommandError",
+"sqlcmd command ':ON' on line 1: dblift does not run client commands"
+]
+}
+},
+{
+"script": ":exit x\n\n",
+"expected": {
+"error": [
+"UnsupportedMetaCommandError",
+"sqlcmd command ':exit' on line 1: dblift does not run client commands"
+]
+}
+},
+{
+"script": ":quit",
+"expected": {
+"error": [
+"UnsupportedMetaCommandError",
+"sqlcmd command ':quit' on line 1: dblift does not run client commands"
+]
+}
+},
+{
+"script": ":list.x\n \n\n\n",
+"expected": {
+"error": [
+"UnsupportedMetaCommandError",
+"sqlcmd command ':list.x' on line 1: dblift does not run client commands"
+]
+}
+},
+{
+"script": ":listvar",
+"expected": {
+"error": [
+"UnsupportedMetaCommandError",
+"sqlcmd command ':listvar' on line 1: dblift does not run client commands"
+]
+}
+},
+{
+"script": ":error STDERR",
+"expected": {
+"error": [
+"UnsupportedMetaCommandError",
+"sqlcmd command ':error' on line 1: dblift does not run client commands"
+]
+}
+},
+{
+"script": ":out(\n \n",
+"expected": {
+"error": [
+"UnsupportedMetaCommandError",
+"sqlcmd command ':out(' on line 1: dblift does not run client commands"
+]
+}
+}
+]

@@ -6,7 +6,7 @@ from typing import List
 from dblift.core.sql_parser.lexical_spec import LexicalSpec
 from dblift.core.sql_parser.lexical_statement_parser import LexicalStatementParser
 from dblift.core.sql_parser.lexical_tokenizer import LexicalTokenizer
-from dblift.core.sql_parser.statement import Statement
+from dblift.core.sql_parser.statement import Statement, analysis_sql
 
 logger = logging.getLogger(__name__)
 
@@ -19,13 +19,18 @@ class LexicalEngine:
         self.spec = spec
 
     def _parser(self, script: str) -> LexicalStatementParser:
-        tokens = LexicalTokenizer(script, spec=self.spec).tokenize()
-        return LexicalStatementParser(tokens, source=script, spec=self.spec)
+        tokenizer = LexicalTokenizer(script, spec=self.spec)
+        tokens = tokenizer.tokenize()
+        return LexicalStatementParser(
+            tokens, source=script, spec=self.spec, comments=tokenizer.comments
+        )
 
     @staticmethod
     def _report(parser: LexicalStatementParser) -> None:
         for message in parser.warnings:
             logger.warning(message)
+        for message in parser.notices:
+            logger.info(message)
 
     def split(self, script: str, *, include_comment_only: bool = False) -> List[Statement]:
         """Return source-positioned execution units and analysis projections."""
@@ -42,14 +47,18 @@ class LexicalEngine:
         return statements
 
     def split_for_analysis(self, script: str) -> List[str]:
-        """Include SQLite comment-only segments in the shared scan's projection."""
+        """Project executed batch constituents, retaining SQLite comment-only segments."""
+        if self.spec.batch_script is not None:
+            return analysis_sql(self.split(script))
         return [record.text for record in self.split(script, include_comment_only=True)]
 
     def blank_comments(self, script: str) -> str:
         """Replace each scanned comment with a space, preserving quoted text."""
         tokenizer = LexicalTokenizer(script, spec=self.spec)
         tokens = tokenizer.tokenize()
-        LexicalStatementParser(tokens, source=script, spec=self.spec).split()
+        LexicalStatementParser(
+            tokens, source=script, spec=self.spec, comments=tokenizer.comments
+        ).split()
         parts: List[str] = []
         last = 0
         for start, end in tokenizer.comments:

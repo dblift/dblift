@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import re
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from dblift.db.base_quirks import BaseQuirks
 from dblift.db.feature_gate import FeatureGate
+
+if TYPE_CHECKING:
+    from dblift.core.sql_parser.lexical_spec import LexicalSpec
 
 _PK_CLUSTERED_RE = re.compile(r"(PRIMARY\s+KEY)\s+(CLUSTERED|NONCLUSTERED)", re.IGNORECASE)
 _UNIQUE_CLUSTERED_RE = re.compile(r"(UNIQUE)\s+(CLUSTERED|NONCLUSTERED)", re.IGNORECASE)
@@ -70,6 +73,12 @@ class SqlserverQuirks(BaseQuirks):
         from dblift.db.plugins.sqlserver.parser.tsql_batch_separator import is_tsql_batch_separator
 
         return is_tsql_batch_separator(stmt)
+
+    def lexical_spec(self) -> "LexicalSpec":
+        """The lexical specification the shared engine splits SQL Server scripts with."""
+        from dblift.db.plugins.sqlserver.parser.lexical_spec import SQLSERVER_SPEC
+
+        return SQLSERVER_SPEC
 
     parser_default_schema = "dbo"
 

@@ -1,17 +1,29 @@
 """A T-SQL script is cut into batches at ``GO`` lines and nowhere else (docs/sql-parsing/sqlserver.md)."""
 
+from collections import namedtuple
+
 import pytest
 
 from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+from dblift.core.sql_parser.lexical_engine import LexicalEngine
 from dblift.core.sql_parser.statement import Statement
-from dblift.db.plugins.sqlserver.parser import sqlserver_regex_parser
-from dblift.db.plugins.sqlserver.parser._batches import Batch, scan_batches
+from dblift.db.plugins.sqlserver.parser.lexical_spec import SQLSERVER_SPEC
 from dblift.db.plugins.sqlserver.parser.sqlserver_regex_parser import SqlServerRegexParser
+
+Batch = namedtuple("Batch", "text line repeat terminated")
+
+
+def batches_of(script, spec=SQLSERVER_SPEC):
+    """The batch records of the shared engine, in the shape these tests read."""
+    return [
+        Batch(r.text, r.line, r.repeat, r.terminator == "GO")
+        for r in LexicalEngine(spec).split(script)
+    ]
 
 
 def _texts(script):
-    return [batch.text for batch in scan_batches(script)]
+    return [batch.text for batch in batches_of(script)]
 
 
 def test_a_semicolon_never_ends_a_batch():
@@ -20,14 +32,14 @@ def test_a_semicolon_never_ends_a_batch():
 
 
 def test_go_ends_a_batch_and_is_not_part_of_it():
-    assert scan_batches("SELECT 1\nGO\nSELECT 2\nGO\n") == [
+    assert batches_of("SELECT 1\nGO\nSELECT 2\nGO\n") == [
         Batch("SELECT 1", 1, 1, True),
         Batch("SELECT 2", 3, 1, True),
     ]
 
 
 def test_the_last_batch_runs_without_a_go():
-    assert scan_batches("SELECT 1\nGO\nSELECT 2;") == [
+    assert batches_of("SELECT 1\nGO\nSELECT 2;") == [
         Batch("SELECT 1", 1, 1, True),
         Batch("SELECT 2;", 3, 1, False),
     ]
@@ -38,17 +50,17 @@ def test_the_last_batch_runs_without_a_go():
     ["", "   \n\n", "GO\nGO\n", "-- only a comment\nGO\n", "/* a */\nGO", ";\nGO\n", ";;\n;\n"],
 )
 def test_a_batch_of_blanks_comments_and_semicolons_is_not_a_statement(script):
-    assert scan_batches(script) == []
+    assert batches_of(script) == []
 
 
 def test_batch_text_is_verbatim_between_the_go_lines_without_surrounding_blanks():
     script = "\n  SELECT 1  /* c */\n\n  -- note\nGO\n"
-    assert scan_batches(script) == [Batch("SELECT 1  /* c */\n\n  -- note", 2, 1, True)]
+    assert batches_of(script) == [Batch("SELECT 1  /* c */\n\n  -- note", 2, 1, True)]
 
 
 def test_the_line_of_a_batch_is_the_line_of_its_first_character():
     script = "SELECT 1\nGO\n\n\n-- header\nSELECT 2\nGO\n"
-    assert [(b.line, b.text) for b in scan_batches(script)] == [
+    assert [(b.line, b.text) for b in batches_of(script)] == [
         (1, "SELECT 1"),
         (5, "-- header\nSELECT 2"),
     ]
@@ -84,7 +96,7 @@ def test_go_alone_on_a_line_inside_a_lexeme_is_text(script):
     ],
 )
 def test_comment_and_literal_markers_inside_each_other_do_not_swallow_the_go(script):
-    assert len(scan_batches(script)) == 2
+    assert len(batches_of(script)) == 2
 
 
 def test_a_block_comment_ends_at_its_first_close_row_6c():
@@ -100,7 +112,7 @@ def test_the_server_nests_so_the_splitter_passes_a_nested_comment_through_verbat
 @pytest.mark.parametrize(
     "script, what, line, column",
     [
-        ("SELECT 'abc\nGO\n", "string literal", 1, 8),
+        ("SELECT 'abc\nGO\n", "string", 1, 8),
         ("SELECT 1 AS [abc\nGO\n", "bracketed identifier", 1, 13),
         ('SELECT 1 AS "abc\nGO\n', "quoted identifier", 1, 13),
         ("SELECT 1\n/* x\nGO\nSELECT 2", "block comment", 2, 1),
@@ -108,8 +120,8 @@ def test_the_server_nests_so_the_splitter_passes_a_nested_comment_through_verbat
 )
 def test_an_unterminated_lexeme_is_refused_with_its_position(script, what, line, column):
     with pytest.raises(UnsafeStatementSplitError) as excinfo:
-        scan_batches(script)
-    assert f"unterminated {what} starting at line {line}, column {column}" in str(excinfo.value)
+        batches_of(script)
+    assert f"unterminated {what} opened at line {line}, column {column}" in str(excinfo.value)
 
 
 def test_a_utf8_byte_order_mark_is_not_part_of_the_first_batch():
@@ -152,9 +164,9 @@ def test_the_execution_entry_point_splits_by_batch():
 
 
 def test_a_splitter_failure_is_a_refusal_and_never_a_guess(monkeypatch):
-    def broken(script):
+    def broken(self, script):
         raise ValueError("boom")
 
-    monkeypatch.setattr(sqlserver_regex_parser, "scan_batches", broken)
+    monkeypatch.setattr(LexicalEngine, "split_statements", broken)
     with pytest.raises(UnsafeStatementSplitError, match="sqlserver statement splitter failed"):
         SqlAnalyzer("sqlserver").split_statements("SELECT 1;\nSELECT 2;")

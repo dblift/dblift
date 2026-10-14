@@ -1,11 +1,12 @@
 """Shared token-stream statement splitting driven by lexical specifications."""
 
-from typing import List, Optional, Tuple
+from typing import List, Optional, Sequence, Tuple
 
 from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
 from dblift.core.sql_parser.base_statement_parser import BaseStatementParser
+from dblift.core.sql_parser.batch_script import BatchScript
 from dblift.core.sql_parser.client_script import ClientScript
-from dblift.core.sql_parser.lexical_spec import LexicalSpec
+from dblift.core.sql_parser.lexical_spec import BOM, LexicalSpec
 from dblift.core.sql_parser.parser_context import ParserContext
 from dblift.core.sql_parser.statement import Statement
 from dblift.core.sql_parser.tokens import Token, TokenType
@@ -21,6 +22,7 @@ class LexicalStatementParser(BaseStatementParser):
         source: Optional[str] = None,
         *,
         spec: LexicalSpec,
+        comments: Optional[Sequence[Tuple[int, int]]] = None,
     ):
         """Bind token boundaries to their original source and plugin rules."""
         super().__init__(tokens, context, source)
@@ -35,6 +37,17 @@ class LexicalStatementParser(BaseStatementParser):
         self._sqlite_checked_line = 0
         self._sqlite_token_end = 0
         self.warnings: List[str] = []
+        self.notices: List[str] = []
+        self._batches: Optional[BatchScript] = None
+        if spec.batch_script is not None:
+            assert source is not None and comments is not None  # batches are cut from their text
+            self._batches = BatchScript(
+                spec.batch_script,
+                source,
+                spec.client_name,
+                comments,
+                origin=int(spec.leading_bom_is_blank and source.startswith(BOM)),
+            )
         self._script: Optional[ClientScript] = None
         if spec.client_script is not None:
             assert source is not None  # a client script is read line by line from its text
@@ -135,6 +148,8 @@ class LexicalStatementParser(BaseStatementParser):
         (which only marks a boundary, it can't drop the token from output).
         A safe one is recorded as a ``directive``; any other is refused.
         """
+        if self._batches is not None:
+            return self._batches.split(self.tokens)
         records: List[Tuple[Statement, str]] = []
         current: List[Token] = []
 
@@ -384,6 +399,14 @@ class LexicalStatementParser(BaseStatementParser):
     def split_statements(self) -> List[str]:
         """Statement strings as execution receives them (``;`` kept, directives dropped)."""
         out: List[str] = []
+        if self._batches is not None:
+            for record, rendered in self._split_with_rendered():
+                if record.repeat == 0:
+                    self.notices.append(
+                        f"GO 0 follows the batch starting on line {record.line}: it is not run"
+                    )
+                out.extend([rendered] * record.repeat)
+            return out
         for record, rendered in self._split_with_rendered():
             if record.kind == "sql":
                 ends_at_line = (
