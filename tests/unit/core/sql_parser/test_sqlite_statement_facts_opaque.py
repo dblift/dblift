@@ -8,6 +8,7 @@ from unittest.mock import Mock
 
 import pytest
 
+from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
 from dblift.core.migration.migration import Migration
 from dblift.core.migration.scripting.undo_script_generator import UndoScriptGenerator
 from dblift.core.migration.sql.lint import lint_script
@@ -219,24 +220,36 @@ def test_an_unterminated_string_is_an_error_that_does_not_echo_the_sql():
         assert "accounts" not in message
 
 
-# --- extraction of a refused script is what it always returned --------------------------
+# --- extraction preserves refusals even when valid DDL precedes them -----------------
 
 
 @pytest.mark.parametrize(
-    "script, expected",
+    "script",
     [
-        (".mode csv\nCREATE TABLE a(x)", ["a"]),
-        ("CREATE TABLE t(a);\n.read x", ["t"]),
-        ("CREATE TABLE t(a);\n/* unterminated\n", ["t"]),
-        ("CREATE TABLE t(a)\nGO\n", ["t"]),
-        ("CREATE TABLE a(x);\x00CREATE TABLE b(y);", ["a", "b"]),
-        ("CREATE TABLE a(x);\n/\nCREATE TABLE b(y);", ["a", "b"]),
-        (".read x.sql", []),
+        ".mode csv\nCREATE TABLE a(x)",
+        "CREATE TABLE t(a);\n.read x",
+        "CREATE TABLE t(a);\n/* unterminated\n",
+        "CREATE TABLE t(a)\nGO\n",
+        "CREATE TABLE a(x)\n/\nCREATE TABLE b(y);",
+        ".read x.sql",
     ],
 )
-def test_extract_objects_of_a_refused_script_names_the_tables_it_creates(script, expected):
+def test_extract_objects_does_not_recover_tables_from_a_refused_script(script):
+    with pytest.raises((UnsafeStatementSplitError, UnsupportedMetaCommandError)):
+        PARSER.extract_objects(script)
+
+
+@pytest.mark.parametrize(
+    "script",
+    [
+        "CREATE TABLE a(x);\x00CREATE TABLE b(y);",
+        "CREATE TABLE a(x);\n/\nCREATE TABLE b(y);",
+    ],
+)
+def test_extract_objects_preserves_scanner_selected_tables(script):
     assert [(o.object_type, o.name, o.schema) for o in PARSER.extract_objects(script)] == [
-        (SqlObjectType.TABLE, name, None) for name in expected
+        (SqlObjectType.TABLE, "a", None),
+        (SqlObjectType.TABLE, "b", None),
     ]
 
 
