@@ -306,7 +306,7 @@ def _head_object(match: "re.Match[str]") -> NamedObject:
     return NamedObject(name, object_type, role, schema)
 
 
-def _head_facts(sql: str, diagnostic: str) -> StatementFacts:
+def _head_facts(sql: str, diagnostic: str, *, dialect: str = "") -> StatementFacts:
     """Classify a statement from its leading words when sqlglot cannot represent the body."""
     head = _blanked(sql)
     first = _FIRST_WORD.match(head)
@@ -315,6 +315,8 @@ def _head_facts(sql: str, diagnostic: str) -> StatementFacts:
         first = _FIRST_WORD.match(head)
     operation = first.group(1).upper() if first else "UNKNOWN"
     kind = _KINDS.get(operation, "UNKNOWN")
+    if dialect == "duckdb":  # lint: allow-dialect-string: preserve DuckDB opaque metadata kinds
+        kind = {"COMMENT": "DDL", "SHOW": "QUERY", "EXECUTE": "DML"}.get(operation, kind)
     objects: Tuple[NamedObject, ...] = ()
     match = _HEAD.match(head)
     if match is None and first is None:
@@ -360,16 +362,20 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
         if not _blanked(sql).strip():
             return StatementFacts("UNKNOWN", "UNKNOWN")
         if isinstance(exc, TokenError):
-            facts = _head_facts(sql, "")
+            facts = _head_facts(sql, "", dialect=dialect)
             return replace(
                 facts,
                 diagnostic=None,
                 error=f"{dialect} statement could not be tokenized (unterminated quote or comment)",
             )
-        return _head_facts(sql, f"{dialect} grammar is not modelled for this statement")
+        return _head_facts(
+            sql, f"{dialect} grammar is not modelled for this statement", dialect=dialect
+        )
     if ast is None or isinstance(ast, (exp.Command, exp.Block)):
         construct = type(ast).__name__ if ast is not None else "empty statement"
-        return _head_facts(sql, f"{dialect} {construct} is opaque to statement facts")
+        return _head_facts(
+            sql, f"{dialect} {construct} is opaque to statement facts", dialect=dialect
+        )
 
     if (
         dialect == "duckdb"  # lint: allow-dialect-string: DuckDB macros lack a fact object type
@@ -387,6 +393,14 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
         and isinstance(ast, exp.Copy)
     ):
         return _copy_facts(ast, sql)
+
+    if dialect == "duckdb":  # lint: allow-dialect-string: DuckDB metadata statement mappings
+        if isinstance(ast, exp.Comment) and ast.args.get("kind") == "TABLE":
+            identity = _named(ast.this, SqlObjectType.TABLE, "altered")
+            return StatementFacts("COMMENT", "DDL", (identity,) if identity else ())
+        if isinstance(ast, (exp.Show, exp.Describe)):
+            operation = "SHOW" if isinstance(ast, exp.Show) else "DESCRIBE"
+            return StatementFacts(operation, "QUERY", _referenced(ast))
 
     if isinstance(ast, exp.Create):
         kind = str(ast.args.get("kind") or "").upper()
@@ -464,12 +478,22 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
         kind = str(ast.args.get("kind") or "").upper()
         object_type = SqlObjectType.__members__.get(kind, SqlObjectType.UNKNOWN)
         targets = ast.args.get("tables") or ast.args.get("expressions") or [ast.this]
-        dropped_objects = tuple(
-            obj
-            for node in targets
-            if node is not None
-            if (obj := _named(node, object_type, "dropped"))
-        )
+        if (
+            dialect == "duckdb"  # lint: allow-dialect-string: DuckDB schema identity projection
+            and object_type == SqlObjectType.SCHEMA
+        ):
+            dropped_objects = tuple(
+                NamedObject(node.db, object_type, "dropped", node.catalog or None)
+                for node in targets
+                if isinstance(node, exp.Table) and node.db
+            )
+        else:
+            dropped_objects = tuple(
+                obj
+                for node in targets
+                if node is not None
+                if (obj := _named(node, object_type, "dropped"))
+            )
         return StatementFacts("DROP", "DDL", dropped_objects)
 
     if isinstance(ast, exp.Alter):
@@ -526,6 +550,16 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
             if isinstance(ast, exp.Merge)
             else _referenced(ast, (table,) if table is not None else ())
         )
+        target_table = table
+        if (
+            dialect == "duckdb"  # lint: allow-dialect-string: preserve bare DuckDB mutation targets
+            and table is not None
+            and (table.args.get("alias") or table.args.get("joins") or table.args.get("only"))
+        ):
+            target_table = table.copy()
+            target_table.set("alias", None)
+            target_table.set("joins", None)
+            target_table.set("only", None)
         return StatementFacts(
             operation,
             "DML",
@@ -534,9 +568,11 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
             predicate,
             affected_columns=columns,
             events=frozenset(events) if events else None,
-            target_sql=table.sql(dialect=dialect) if table else None,
+            target_sql=target_table.sql(dialect=dialect) if target_table is not None else None,
         )
 
     if isinstance(ast, exp.Query):
         return StatementFacts("SELECT", "QUERY", _referenced(ast))
-    return _head_facts(sql, f"{dialect} {type(ast).__name__} has no statement facts mapping")
+    return _head_facts(
+        sql, f"{dialect} {type(ast).__name__} has no statement facts mapping", dialect=dialect
+    )

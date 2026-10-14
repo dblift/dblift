@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Optional
 
 from dblift.db.base_quirks import BaseQuirks
+from dblift.db.plugins.duckdb.parser.duckdb_facts_parser import DuckDBStatementFactsReader
 
 
 class DuckDBQuirks(BaseQuirks):
@@ -23,6 +24,7 @@ class DuckDBQuirks(BaseQuirks):
     uppercase_identifiers = False
     clean_strategy = "native"
     sqlglot_dialect = "duckdb"
+    statement_facts_class = DuckDBStatementFactsReader
     default_schema_name = "main"
     boolean_false_literal = "FALSE"  # native BOOLEAN, not 0/1
     drop_supports_if_exists = True
@@ -62,21 +64,10 @@ class DuckDBQuirks(BaseQuirks):
         super().__init__(dialect_name=dialect_name)
 
     def parser_class(self, parser_type: str) -> Optional[type]:
-        """DuckDB parser dispatch: hybrid → :class:`HybridParser`,
-        sqlglot → :class:`SqlGlotParser` (``duckdb`` dialect)."""
-        if parser_type == "hybrid":
-            from dblift.core.sql_parser.hybrid_parser import HybridParser
+        """Use scanner-backed facts for each supported analysis mode."""
+        from dblift.db.plugins.duckdb.parser.duckdb_facts_parser import DuckDBFactsParser
 
-            return HybridParser
-        if parser_type == "sqlglot":
-            from dblift.core.sql_parser.sqlglot_parser import SqlGlotParser
-
-            return SqlGlotParser
-        if parser_type == "regex":
-            from dblift.db.plugins.duckdb.parser.duckdb_regex_parser import DuckDBRegexParser
-
-            return DuckDBRegexParser
-        return None
+        return DuckDBFactsParser if parser_type in ("regex", "hybrid", "sqlglot") else None
 
     def type_equivalents(self) -> "dict[str, str]":
         """DuckDB alias → canonical type map."""

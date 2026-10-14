@@ -51,7 +51,7 @@ def test_legacy_facts_corpus_shape():
 @pytest.mark.parametrize("case", CASES, ids=[case["dialect"] for case in CASES])
 def test_legacy_facts_corpus(case):
     observed = _observe(case["dialect"], case["script"])
-    if case["dialect"] == "sqlite":
+    if case["dialect"] in ("sqlite", "duckdb"):
         assert observed["success"] == case["legacy_observed"]["success"]
         assert observed["errors"] == case["legacy_observed"]["errors"]
         assert len(observed["statements"]) == 5

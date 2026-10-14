@@ -71,10 +71,10 @@ class StatementFacts:
 
 
 class SqlglotStatementFactsReader:
-    """Reusable AST facts reader configured by a dialect's lexical spec."""
+    """Reusable AST facts reader configured by a dialect."""
 
-    def __init__(self, dialect: str, spec: LexicalSpec):
-        """Bind sqlglot grammar and the authoritative lexical rules."""
+    def __init__(self, dialect: str, spec: Optional[LexicalSpec] = None):
+        """Bind sqlglot grammar and optional lexical metadata."""
         self.dialect = dialect
         self.spec = spec
 

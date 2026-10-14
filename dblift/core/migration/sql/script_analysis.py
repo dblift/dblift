@@ -169,15 +169,11 @@ def analyse_script(text: str, dialect: str) -> ScriptAnalysis:
 def _analyse(text: str, dialect: str) -> ScriptAnalysis:
     quirks = ProviderRegistry.get_quirks(dialect)
     if quirks.supports_statement_facts:
-        from dblift.core.sql_parser.lexical_engine import LexicalEngine
-
-        spec = quirks.lexical_spec()
-        assert spec is not None
         fact_statements: List[AnalysedStatement] = []
         fact_cautions: List[Caution] = []
         errors: List[str] = []
         try:
-            bodies = LexicalEngine(spec).split_for_analysis(text)
+            bodies = SqlParserFactory(dialect).get_parser().split_for_analysis(text)
         except (UnsafeStatementSplitError, UnsupportedMetaCommandError) as error:
             return ScriptAnalysis((), (), (f"Error splitting SQL: {error}",))
         for body in bodies:
@@ -188,7 +184,7 @@ def _analyse(text: str, dialect: str) -> ScriptAnalysis:
                 AnalysedObject(obj.type.value, obj.name, obj.schema)
                 for obj in facts.affected_objects
             )
-            operation = facts.operation if facts.operation != "UNKNOWN" else operation_of(body)
+            operation = facts.operation
             full_table = facts.kind == "DML" and (
                 facts.operation in ("UPDATE", "DELETE") and (not facts.predicate)
             )

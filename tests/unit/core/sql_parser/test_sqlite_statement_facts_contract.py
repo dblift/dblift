@@ -169,3 +169,23 @@ def test_sqlite_undo_of_an_opaque_trigger_drops_it():
     assert [(s.sql, s.requires_manual_review) for s in statements] == [
         ('DROP TRIGGER IF EXISTS "trg";', False)
     ]
+
+
+@pytest.mark.parametrize("mode", ["full", "execution"])
+def test_sqlite_analyzer_modes_preserve_cte_mutation_target(mode):
+    analyzer = SqlAnalyzer("sqlite", analysis_mode=mode)
+    assert analyzer.extract_objects("WITH x AS (SELECT 1) UPDATE child SET parent_id = 2") == [
+        {"object_type": "TABLE", "object_name": "default_schema.child"}
+    ]
+
+
+@pytest.mark.parametrize("mode", ["full", "execution"])
+def test_sqlite_analyzer_modes_preserve_statement_facts(mode):
+    result = SqlAnalyzer("sqlite", analysis_mode=mode).analyze_statement("CREATE TABLE t (x INT)")
+    assert result == {
+        "type": "DDL",
+        "objects": [{"object_type": "TABLE", "object_name": "default_schema.t"}],
+        "is_valid": True,
+        "errors": [],
+        "parsed_with": "facts",
+    }
