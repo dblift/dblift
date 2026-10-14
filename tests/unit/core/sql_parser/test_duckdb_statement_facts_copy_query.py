@@ -32,6 +32,7 @@ from dblift.core.sql_parser.statement_facts import NamedObject, StatementFacts
         ),
         ("SELECT a.id FROM items a JOIN items b ON a.id=b.id", (("items", None),)),
         ("SELECT 1 AS id", ()),
+        ('SELECT id FROM "items.csv"', (("items.csv", None),)),
     ],
     ids=[
         "qualified",
@@ -42,6 +43,7 @@ from dblift.core.sql_parser.statement_facts import NamedObject, StatementFacts
         "nested_cte",
         "dedup",
         "constant",
+        "quoted_table",
     ],
 )
 @pytest.mark.parametrize("file_format", ["CSV", "PARQUET"])
@@ -51,6 +53,7 @@ def test_query_export_keeps_only_scoped_physical_sources(tmp_path, query, source
     with duckdb.connect() as connection:
         connection.execute('CREATE SCHEMA "Sales"')
         connection.execute('CREATE TABLE "Sales"."Order Items" AS SELECT 1 AS id')
+        connection.execute('CREATE TABLE "items.csv" AS SELECT 1 AS id')
         connection.execute("CREATE TABLE items AS SELECT 1 AS id")
         connection.execute("CREATE TABLE other_items AS SELECT 2 AS id")
         connection.execute(sql)
@@ -127,6 +130,29 @@ def test_query_export_requires_explicit_false_direction(direction):
     node.set("kind", direction)
 
     facts = _copy_facts(node, sql)
+
+    assert facts.kind == "UNKNOWN"
+    assert facts.objects == ()
+    assert facts.target is None
+    assert facts.target_sql is None
+    assert facts.events is None
+    assert facts.affected_columns == ()
+    assert facts.opaque
+
+
+@pytest.mark.parametrize("nested", [False, True])
+def test_query_export_file_sources_remain_opaque(tmp_path, nested):
+    source = tmp_path / "source.csv"
+    source.write_text("id\n1\n", encoding="utf-8")
+    query = f"SELECT * FROM '{source}'"
+    if nested:
+        query = f"WITH source AS ({query}) SELECT * FROM items, source"
+    sql = f"COPY ({query}) TO '{tmp_path / 'out.csv'}' (FORMAT CSV)"
+    with duckdb.connect() as connection:
+        connection.execute("CREATE TABLE items AS SELECT 2 AS other_id")
+        connection.execute(sql)
+
+    facts = read_statement_facts(sql, dialect="duckdb")
 
     assert facts.kind == "UNKNOWN"
     assert facts.objects == ()
