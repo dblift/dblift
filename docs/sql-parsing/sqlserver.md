@@ -5,7 +5,7 @@
 | Item | Value |
 | --- | --- |
 | Covers | SQL Server 2016+, Azure SQL Database (T-SQL) |
-| Code facts taken from | OSS `develop` `61b1d83f` |
+| Code facts taken from | `develop` `532665c` (the shared lexical engine change, branch `feature/sqlserver-lexical-engine`, is described by §12) |
 | Vendor references, fetched 2026-10-10 | *SQL Server documentation*: "SQL Server Utilities Statements — GO", "Slash Star (Block Comment)", "Comment (Transact-SQL)", "Constants (Transact-SQL)", "Database identifiers", "sqlcmd utility" |
 | Live verification | Ground truth `sqlcmd -C -I -b -i script.sql` with the ODBC `sqlcmd` 18.6 (`/opt/mssql-tools18/bin/sqlcmd`). `-I` is required with the ODBC sqlcmd: "Sets the SET QUOTED_IDENTIFIER connection option to ON. The default setting is OFF.", and dblift's driver connection runs with it ON. Every "measured 2026-10-11" below is `sqlcmd 18.6.0002.1 Linux` against `SQL Server 2022 RTM-CU25 16.0.4255.1` (Developer, Linux). The same probes were run through go-sqlcmd 1.10.0 (the Go rewrite, Homebrew `sqlcmd`, `-C -I -b -i`) against the same server; where it differs, the cell says "ODBC sqlcmd: …; go-sqlcmd: …". The dblift rule: follow the ODBC sqlcmd, the reference client, and refuse in addition anything go-sqlcmd would run differently without failing. The one script the ODBC sqlcmd accepts and go-sqlcmd silently runs differently is `GO--c` after a batch that can take an alias (row 7b), which is refused; the scripts go-sqlcmd runs and the ODBC sqlcmd rejects are refused because the ODBC sqlcmd rejects them; where go-sqlcmd fails loudly on what the ODBC sqlcmd runs, dblift follows the ODBC sqlcmd. |
 | Engine subclass | none |
@@ -175,8 +175,10 @@ Accepted inside a user transaction, so **not** flagged (same measurement, exit 0
 ## 9. Engine subclass
 
 None. Every rule above is expressible as data: quote pairs, identifier
-alphabet, nested comments, a line-anchored batch separator with an optional
-count and comment, a directive prefix list.
+alphabet, non-nested block comments (for the client), a line-anchored batch
+separator with an optional count and comment, command and variable words. The
+sqlcmd rules are the data of `BatchScriptRules` and `DivisionRules` in
+`SQLSERVER_SPEC`, read by the shared tokenizer and engine.
 
 ## 10. Conformance examples
 
@@ -233,6 +235,8 @@ count and comment, a directive prefix list.
 | 27 | `USE db\nCREATE PROCEDURE p AS SELECT 1\nGO` | `USE db\nCREATE PROCEDURE p AS SELECT 1` (one batch; the server rejects it, Msg 111) |
 | 29 | `;\nGO\nSELECT 2` | `SELECT 2` (a batch of only a semicolon is not a statement) |
 | 30 | `SELECT 1\nGO 1000001` | `UnsafeStatementSplitError` (the splitter's own bound: split_statements returns one string per repetition; sqlcmd accepts the count) |
+| 31 | `\x0c\nGO\nSELECT 2` | `SELECT 2` (a batch holding only a form feed is not a statement; measured 2026-10-14, sqlcmd 18.6.0002.1: only the second batch runs, exit 0. Known gap: the splitter returns an empty-text record for the first batch, §12) |
+| 32 | `SELECT 1\n\xa0GO\nSELECT 2` | `SELECT 1\n\xa0GO\nSELECT 2` (one batch: a no-break space before GO makes the line text; measured 2026-10-14, sqlcmd 18.6.0002.1: Msg 102 near GO, exit 1, the same for a form feed, U+001C, U+0085 and U+2028 before GO) |
 
 ## 11. Not handled
 
@@ -246,24 +250,56 @@ count and comment, a directive prefix list.
 
 ## 12. Current implementation
 
-Code in `dblift/db/plugins/sqlserver/parser/`:
+Code in `dblift/core/sql_parser/` and `dblift/db/plugins/sqlserver/parser/`:
 
-- `lexical_spec.py`: `SQLSERVER_SPEC`, the facts the shared lexical engine reads:
-  bracketed identifiers, a leading BOM, and the sqlcmd rules (`GO` only in code,
-  client commands, scripting variables and lone-CR separator lines refused,
-  `GO n` kept as a repeat count, the division of a batch into its statements).
-  The engine builds the batch records and their SQL analysis constituents.
-- `sqlserver_regex_parser.py`: `split()` returns one `Statement` record per
-  batch, including `repeat`, analysis constituents and source offsets.
-  `split_statements()` projects executable batches (`GO 0` executes none), and
-  `split_for_analysis()` and `split_for_extraction()` project the same records.
-  `parse_sql` reads those selected constituents; no earlier tokenizer splitter
-  remains behind extraction.
-- `sqlserver_tokenizer.py` remains for literal redaction only;
-  `tsql_batch_separator.py` provides semantic batch metadata, not script cuts.
-- `quirks.py` and `execution_statement.classify_execution_statement` mark a
-  batch non-transactional when any scanner-derived constituent matches §8.
+- `lexical_spec.py` (plugin): `SQLSERVER_SPEC`. Lexical facts: bracketed
+  identifiers with `]]` as the escape, a leading BOM that offsets skip, unclaimed
+  characters as symbols without a warning, block comments that end at the first
+  `*/`, no `${...}` placeholder token. Batch rules (`BatchScriptRules`): the
+  separator, the word alphabet, the command words, the follower sets, the count
+  limit, the blank set `" \t\r"` and the division data (`DivisionRules`).
+- `batch_commands.py`: `read_command` classifies the line whose first token is a
+  command word (separator, client command, malformed separator) and the refusals
+  for scripting variables and lone carriage returns, all raised by the tokenizer
+  in source order with the messages of the previous scanner.
+- `batch_script.py`: `BatchScript` groups the tokens into batches and builds the
+  records (`text`, `line`, terminator `GO`, `repeat`, offsets, analysis
+  statements); it raises nothing. `batch_division.py` divides a batch into the
+  statements analysis reads from the code outside lexemes and comments.
+- `sqlserver_regex_parser.py`: a delegate: `split`, `split_statements`,
+  `split_for_analysis`, `split_for_extraction` and `validate_sql` keep their
+  signatures and shapes; `SqlserverQuirks.lexical_spec()` returns the spec, so
+  `StatementSplitter("sqlserver")` skips the parser factory.
+- `sqlserver_tokenizer.py` and `EnhancedRegexParser._strip_comments_preserving_quotes`
+  are unchanged. They read block comments the way the **server** does (they nest):
+  object extraction, the comment-only check and literal masking ask what the server
+  will see, not where the client cuts. SQL Server literal masking keeps this reader
+  (`LexicalSpec.redaction_reads_engine` is false). Moving the extraction view and the
+  masking onto the engine is a separate change.
+- The notice about `GO 0` is logged at INFO by `dblift.core.sql_parser.lexical_engine`
+  (it was `dblift.db.plugins.sqlserver.parser.sqlserver_regex_parser`).
+- `strict_tokenizer` has no effect: the engine has no unknown characters.
+- The four unterminated-lexeme refusals read `unterminated string|bracketed
+  identifier|quoted identifier|block comment opened at line L, column C` (they
+  read `unterminated string literal|... starting at ...`); class, line and column
+  are unchanged.
+
+### Current implementation gaps
+
+Behaviours kept from the previous scanner on purpose and recorded here (each has
+a test; none is changed by the move to the engine):
+
+- A batch holding only a form feed, a vertical tab or a no-break space is a batch
+  with code: the splitter returns an empty-text record where sqlcmd runs nothing
+  (row 31, listed in `KNOWN_GAPS` of the conformance test).
+- The blank set of the line-head rules is `" \t\r"` only: a command word or `GO`
+  after any other whitespace character on its line is text (row 32 agrees with
+  sqlcmd, measured).
+- In the analysis view a keyword is read inside a number (`1END`) and next to a
+  non-ASCII letter (`\u00e9END`).
 
 Tests: `tests/unit/core/sql_parser/test_sqlserver_spec_conformance.py` compiles
-§10; `tests/unit/db/plugins/sqlserver/test_authoritative_views.py` checks the
-record and projection contract, including the lone-CR cases.
+§10 in the public tree; `tests/unit/core/sql_parser/test_sqlserver_batches.py`,
+`test_sqlserver_commands.py` and `test_sqlserver_division.py` pin the rules;
+`tests/unit/db/plugins/sqlserver/test_extraction_view_unchanged.py` pins the
+secondary readers.
