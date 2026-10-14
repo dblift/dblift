@@ -210,3 +210,17 @@ def test_flipping_the_redaction_field_on_postgresql_reads_the_dialect_tokenizer(
     monkeypatch.setattr(PostgresqlQuirks, "lexical_spec", lambda self: spec)
     mask_string_literals("SELECT 'a'", "postgresql")
     assert calls == ["postgresql"]
+
+
+def test_a_spec_that_reads_the_engine_for_masking_reads_client_lines_as_text(monkeypatch):
+    from dataclasses import replace
+
+    from dblift.db.plugins.sqlserver.quirks import SqlserverQuirks
+
+    spec = replace(SQLSERVER_SPEC, redaction_reads_engine=True)
+    monkeypatch.setattr(SqlserverQuirks, "lexical_spec", lambda self: spec)
+    # a client command line is refused by the splitter, but masking must still read its literal
+    assert mask_string_literals(":setvar x 'secret'", "sqlserver") == ":setvar x '?'"
+    assert (
+        mask_string_literals("SELECT 1\nGO\nSELECT 'a'", "sqlserver") == "SELECT 1\nGO\nSELECT '?'"
+    )
