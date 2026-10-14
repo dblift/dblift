@@ -378,7 +378,10 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
             action=action,
         )
 
-    if isinstance(ast, (exp.Insert, exp.Update, exp.Delete)):
+    if isinstance(ast, (exp.Insert, exp.Update, exp.Delete)) or (
+        dialect == "duckdb"  # lint: allow-dialect-string: MERGE facts qualified for DuckDB only
+        and isinstance(ast, exp.Merge)
+    ):
         operation = type(ast).__name__.upper()
         table = _dml_target_table(ast)
         identity = _named(table, SqlObjectType.TABLE, "altered") if table else None

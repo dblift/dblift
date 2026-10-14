@@ -45,3 +45,15 @@ def test_duckdb_facts_do_not_activate_parser_consumers():
     assert quirks.parser_class("regex") is DuckDBRegexParser
     assert quirks.parser_class("hybrid") is HybridParser
     assert quirks.parser_class("sqlglot") is SqlGlotParser
+
+
+@pytest.mark.parametrize("dialect", ["sqlite", "postgres", "oracle", "snowflake", "tsql"])
+def test_merge_facts_remain_opaque_for_other_dialects(dialect):
+    facts = read_statement_facts(CASES[0]["sql"], dialect=dialect)
+
+    assert facts.kind == "UNKNOWN"
+    assert facts.target is None
+    assert facts.objects == ()
+    assert facts.events is None
+    assert facts.affected_columns == ()
+    assert facts.opaque
