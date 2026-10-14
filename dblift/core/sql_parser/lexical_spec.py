@@ -67,6 +67,40 @@ class ClientScriptRules:
 
 
 @dataclass(frozen=True)
+class DivisionRules:
+    """How one batch is divided into the statements analysis reads (not what the client sends)."""
+
+    routine_heads: Tuple[HeadPattern, ...]
+    block_open: str
+    block_open_exempt: FrozenSet[str]
+    case_word: str
+    block_close: str
+    split_heads: FrozenSet[str]
+    clause_exemptions: Tuple[Tuple[Tuple[str, str], Tuple[Tuple[str, str], ...]], ...]
+
+
+@dataclass(frozen=True)
+class BatchScriptRules:
+    """A client that cuts a script into batches at separator lines."""
+
+    separator: str
+    word_start: str
+    word_part: str
+    bare_commands: Tuple[str, ...]
+    colon_commands: Tuple[str, ...]
+    shell_prefix: str
+    command_followers: FrozenSet[str]
+    unmeasured_blanks: FrozenSet[str]
+    tail_comment: str
+    max_repeat: int
+    lone_cr_words: Tuple[str, ...]
+    variable_reference: Tuple[str, str]
+    blanks: str
+    ignored_in_code: str
+    division: DivisionRules
+
+
+@dataclass(frozen=True)
 class LexicalSpec:
     """Only lexical rules; no parser callbacks or alternative implementations."""
 
@@ -94,3 +128,12 @@ class LexicalSpec:
     parameter_prefix: str = "$"
     placeholder_open: Optional[str] = "${"
     client_script: Optional[ClientScriptRules] = None
+    bracket_identifier: Tuple[str, ...] = ()
+    leading_bom_is_blank: bool = False
+    silent_unclaimed: bool = False
+    batch_script: Optional[BatchScriptRules] = None
+
+    def __post_init__(self) -> None:
+        """A client reads a script by lines or by batches, never both."""
+        if self.client_script is not None and self.batch_script is not None:
+            raise ValueError("client_script and batch_script are mutually exclusive")

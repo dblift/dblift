@@ -166,3 +166,21 @@ def test_postgresql_keeps_parameter_tokens_and_the_quoted_identifier_escape():
         (TokenType.SYMBOL, ","),
         (TokenType.IDENTIFIER, '"a""b"'),
     ]
+
+
+def test_other_specs_keep_the_new_defaults():
+    from dblift.db.plugins.oracle.parser.lexical_spec import ORACLE_SPEC
+    from dblift.db.plugins.postgresql.parser.lexical_spec import POSTGRESQL_SPEC
+    from dblift.db.plugins.sqlite.parser.lexical_spec import SQLITE_SPEC
+
+    for spec in (POSTGRESQL_SPEC, SQLITE_SPEC, ORACLE_SPEC):
+        assert spec.bracket_identifier == ()
+        assert spec.leading_bom_is_blank is False
+        assert spec.silent_unclaimed is False
+        assert spec.batch_script is None
+    assert POSTGRESQL_SPEC.placeholder_open == "${"
+    assert SQLITE_SPEC.placeholder_open == "${"
+    placeholder = LexicalTokenizer("SELECT ${x;", spec=POSTGRESQL_SPEC).tokenize()
+    assert [x.text for x in placeholder if "${" in x.text] == ["${x;"]
+    brackets = LexicalTokenizer("SELECT [a]", spec=POSTGRESQL_SPEC).tokenize()
+    assert [x.text for x in brackets if x.type == TokenType.SYMBOL] == ["[", "]"]

@@ -113,6 +113,9 @@ class LexicalTokenizer(BaseTokenizer):
         if self.spec.sqlite_shell:
             return self._next_sqlite_token()
 
+        if self.spec.leading_bom_is_blank and self.pos == 0 and self.peek() == "\ufeff":
+            self.pos = 1  # offsets stay source offsets; columns do not count the BOM
+
         self._skip_whitespace()
 
         if self.pos >= len(self.sql):
@@ -153,6 +156,10 @@ class LexicalTokenizer(BaseTokenizer):
         placeholder = self.spec.placeholder_open
         if placeholder and self.peek(len(placeholder)) == placeholder:
             return self._handle_migration_placeholder()
+
+        bracket = self.spec.bracket_identifier
+        if bracket and char == bracket[0]:
+            return self._handle_bracket_identifier()
 
         # Check for double-quoted identifier BEFORE other checks
         if char == self.spec.quoted_identifier:
@@ -541,6 +548,41 @@ class LexicalTokenizer(BaseTokenizer):
             start_line,
             start_col,
             self.parens_depth,
+        )
+
+    def _handle_bracket_identifier(self) -> Token:
+        """Read ``[...]``: a doubled closer is an escape, newlines are part of the name."""
+        closer = self.spec.bracket_identifier[1]
+        start_pos, start_line, start_col = self.pos, self.line, self.col
+        self.read()
+        while True:
+            end = self.sql.find(closer, self.pos)
+            if end < 0:
+                self.read(len(self.sql) - self.pos)
+                raise UnsafeStatementSplitError(
+                    f"unterminated bracketed identifier opened at line {start_line}, "
+                    f"column {start_col}"
+                )
+            self.read(end + 1 - self.pos)
+            if self.peek() != closer:
+                break
+            self.read()
+        return Token(
+            TokenType.IDENTIFIER,
+            self.sql[start_pos : self.pos],
+            start_pos,
+            start_line,
+            start_col,
+            self.parens_depth,
+        )
+
+    def _handle_unknown_char(self, char: str) -> Optional[Token]:
+        """An unclaimed character is a symbol; it only warns when the spec has not declared it silent."""
+        if not self.spec.silent_unclaimed:
+            return super()._handle_unknown_char(char)
+        start_pos, start_line, start_col = self.pos, self.line, self.col
+        return Token(
+            TokenType.SYMBOL, self.read(), start_pos, start_line, start_col, self.parens_depth
         )
 
     def _next_token(self) -> Optional[Token]:
