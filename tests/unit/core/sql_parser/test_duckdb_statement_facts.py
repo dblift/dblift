@@ -4,10 +4,11 @@ import json
 from pathlib import Path
 
 import pytest
+from sqlglot import exp
 
 from dblift.core.sql_parser.hybrid_parser import HybridParser
 from dblift.core.sql_parser.sqlglot_parser import SqlGlotParser
-from dblift.core.sql_parser.sqlglot_statement_facts import read_statement_facts
+from dblift.core.sql_parser.sqlglot_statement_facts import _copy_facts, read_statement_facts
 from dblift.db.plugins.duckdb.parser._script import scan_script
 from dblift.db.plugins.duckdb.parser.duckdb_regex_parser import DuckDBRegexParser
 from dblift.db.plugins.duckdb.quirks import DuckDBQuirks
@@ -84,6 +85,24 @@ def test_copy_from_preserves_quoted_target_sql():
     )
 
     assert facts.target_sql == '"Sales"."Order Items"'
+
+
+@pytest.mark.parametrize("direction", [None, "FROM", 0, 1])
+def test_copy_unknown_direction_does_not_claim_read_or_write_effects(direction):
+    node = exp.Copy(
+        this=exp.to_table("items"), kind=direction, files=[exp.Literal.string("items.csv")]
+    )
+
+    facts = _copy_facts(node)
+
+    assert facts.operation == "COPY"
+    assert facts.kind == "UNKNOWN"
+    assert facts.objects == ()
+    assert facts.target is None
+    assert facts.target_sql is None
+    assert facts.events is None
+    assert facts.affected_columns == ()
+    assert facts.opaque
 
 
 @pytest.mark.parametrize("update", ["UPDATE", "UPDATE SET *"])

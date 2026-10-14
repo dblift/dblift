@@ -181,11 +181,13 @@ def _copy_facts(node: exp.Copy) -> StatementFacts:
     """Read named-table DuckDB COPY with one literal file path."""
     schema = node.this if isinstance(node.this, exp.Schema) else None
     table = schema.this if schema is not None else node.this
+    direction = node.args.get("kind")
     files = node.args.get("files") or []
     columns = schema.expressions if schema is not None else []
     if not (
         isinstance(table, exp.Table)
         and isinstance(table.this, exp.Identifier)
+        and (direction is True or direction is False)
         and all(isinstance(column, exp.Identifier) for column in columns)
         and len(files) == 1
         and isinstance(files[0], exp.Literal)
@@ -196,7 +198,7 @@ def _copy_facts(node: exp.Copy) -> StatementFacts:
         return StatementFacts(
             "COPY", "UNKNOWN", diagnostic="duckdb COPY source or destination is opaque"
         )
-    importing = node.args.get("kind") is True
+    importing = direction is True
     identity = _named(table, SqlObjectType.TABLE, "altered" if importing else "referenced")
     target = ".".join(part for part in (table.catalog, table.db, table.name) if part)
     return StatementFacts(
