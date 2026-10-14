@@ -258,6 +258,11 @@ Code in `dblift/core/sql_parser/` and `dblift/db/plugins/sqlserver/parser/`:
   `*/`, no `${...}` placeholder token. Batch rules (`BatchScriptRules`): the
   separator, the word alphabet, the command words, the follower sets, the count
   limit, the blank set `" \t\r"` and the division data (`DivisionRules`).
+  The field `unmeasured_blanks` retains its historical name: `GO` immediately
+  followed by a vertical tab or form feed was measured on 2026-10-14 with
+  ODBC sqlcmd 18.6.0002.1 (`SELECT 1 AS a\nGO\x0b\nSELECT 2 AS b` and
+  the same script with `\x0c`): exit 1, Msg 102 near `GO`. The splitter's
+  existing refusal is preserved.
 - `batch_commands.py`: `read_command` classifies the line whose first token is a
   command word (separator, client command, malformed separator) and the refusals
   for scripting variables and lone carriage returns, all raised by the tokenizer
@@ -293,8 +298,9 @@ a test; none is changed by the move to the engine):
   with code: the splitter returns an empty-text record where sqlcmd runs nothing
   (row 31, listed in `KNOWN_GAPS` of the conformance test).
 - The blank set of the line-head rules is `" \t\r"` only: a command word or `GO`
-  after any other whitespace character on its line is text (row 32 agrees with
-  sqlcmd, measured).
+  after any other whitespace character on its line is text. Before `GO`, agreement
+  with sqlcmd was measured on 2026-10-14 for NBSP, form feed, U+001C, U+0085 and
+  U+2028 (row 32); the broader rule preserves the previous scanner's behaviour.
 - In the analysis view a keyword is read inside a number (`1END`) and next to a
   non-ASCII letter (`\u00e9END`).
 
