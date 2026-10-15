@@ -23,6 +23,9 @@ from dblift.db.plugins.oracle.quirks import OracleQuirks
         ("UPDATE t PARTITION (p1) SET x=1", "UPDATE"),
         ("DELETE FROM t SUBPARTITION (sp1)", "DELETE"),
         ("INSERT INTO t PARTITION (p1) VALUES (1)", "INSERT"),
+        ("INSERT INTO t SUBPARTITION (sp) VALUES (1)", "INSERT"),
+        ("DELETE FROM t PARTITION (p) WHERE x=1", "DELETE"),
+        ("DELETE t FROM u WHERE x=1", "DELETE"),
     ],
 )
 def test_oracle_unproven_mutation_targets_have_no_mutation_payload(sql, operation):

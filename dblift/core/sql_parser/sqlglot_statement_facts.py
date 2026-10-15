@@ -831,19 +831,26 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
                 targets = ast.args.get("tables") or []
                 subject = targets[0] if len(targets) == 1 else None
             alias = subject.args.get("alias") if isinstance(subject, exp.Table) else None
-            # sqlglot reads partition restrictions as aliases (INSERT loses the arguments).
-            restricted_alias = alias is not None and (
-                alias.args.get("columns")
-                or (
-                    alias.name.upper() in {"PARTITION", "SUBPARTITION"}
-                    and not alias.this.args.get("quoted")
-                )
+            # Older sqlglot reads partition restrictions as aliases (INSERT loses the arguments),
+            # newer versions as a `partition` argument: prove the target by its shape instead.
+            restricted_alias = (
+                alias is not None
+                and alias.name.upper() in {"PARTITION", "SUBPARTITION"}
+                and not alias.this.args.get("quoted")
             )
+            plain_table = isinstance(subject, exp.Table) and not any(
+                value
+                for key, value in subject.args.items()
+                if key not in {"this", "db", "catalog", "alias"}
+            )
+            # `DELETE t FROM u` names a target list apart from its source.
+            split_delete = isinstance(ast, exp.Delete) and ast.this and ast.args.get("tables")
             if not (
-                isinstance(subject, exp.Table)
+                plain_table
                 and isinstance(subject.this, exp.Identifier)
                 and subject.name
                 and not restricted_alias
+                and not split_delete
             ):
                 return StatementFacts(
                     operation,
