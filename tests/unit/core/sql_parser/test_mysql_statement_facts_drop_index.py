@@ -1,9 +1,14 @@
 """Dormant MySQL-family DROP INDEX facts retain their proven table relation."""
 
 import pytest
+from sqlglot import exp
 
 from dblift.core.sql_model.base import SqlObjectType
-from dblift.core.sql_parser.sqlglot_statement_facts import read_statement_facts
+from dblift.core.sql_parser.sqlglot_statement_facts import (
+    _mysql_identifier_is_proven,
+    _mysql_on_table_name,
+    read_statement_facts,
+)
 from dblift.core.sql_parser.statement_facts import NamedObject, StatementFacts
 from dblift.db.plugins.mariadb.quirks import MariadbQuirks
 from dblift.db.plugins.mysql.quirks import MysqlQuirks
@@ -156,3 +161,34 @@ def test_mysql_create_index_relation_is_unchanged():
     )
     assert facts.indexed_table == "t"
     assert facts.indexed_columns == ("id",)
+
+
+def _identifier_at(sql: str, name: str) -> exp.Identifier:
+    identifier = exp.to_identifier(name)
+    start = sql.index(name)
+    identifier.meta["start"], identifier.meta["end"] = start, start + len(name) - 1
+    return identifier
+
+
+@pytest.mark.parametrize(
+    "wrap",
+    [
+        pytest.param(lambda identifier: identifier, id="bare identifier"),
+        pytest.param(lambda identifier: exp.Table(this=identifier), id="table wrapper"),
+    ],
+)
+def test_on_table_name_reads_either_sqlglot_shape(wrap):
+    """sqlglot 30.18 leaves the ``ON`` name bare; later versions wrap it in a Table."""
+    sql = "DROP INDEX idx ON t"
+    on = exp.OnProperty(this=wrap(_identifier_at(sql, "t")))
+    assert _mysql_on_table_name(on, sql) == "t"
+
+
+def test_on_table_name_refuses_a_table_wrapper_with_more_than_a_name():
+    sql = "DROP INDEX idx ON s.t"
+    table = exp.Table(this=_identifier_at(sql, "t"), db=exp.to_identifier("s"))
+    assert _mysql_on_table_name(exp.OnProperty(this=table), sql) is None
+
+
+def test_identifier_without_source_positions_is_not_proven():
+    assert _mysql_identifier_is_proven(exp.to_identifier("t"), "DROP INDEX idx ON t") is False
