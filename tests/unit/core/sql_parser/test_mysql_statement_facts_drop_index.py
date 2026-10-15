@@ -4,7 +4,7 @@ import pytest
 
 from dblift.core.sql_model.base import SqlObjectType
 from dblift.core.sql_parser.sqlglot_statement_facts import read_statement_facts
-from dblift.core.sql_parser.statement_facts import NamedObject
+from dblift.core.sql_parser.statement_facts import NamedObject, StatementFacts
 from dblift.db.plugins.mariadb.quirks import MariadbQuirks
 from dblift.db.plugins.mysql.quirks import MysqlQuirks
 
@@ -91,11 +91,25 @@ def test_mysql_drop_index_empty_qualifiers_remain_opaque(index):
 
 
 @pytest.mark.parametrize("dialect", ["sqlite", "duckdb", "postgres", "oracle", "tsql"])
-def test_other_dialect_drop_indexes_do_not_gain_a_mysql_relation(dialect):
-    facts = read_statement_facts("DROP INDEX idx", dialect=dialect)
+@pytest.mark.parametrize("sql", ["DROP INDEX idx", "DROP INDEX idx ON t"])
+def test_other_dialect_drop_indexes_do_not_gain_a_mysql_relation(dialect, sql):
+    """These dialects return exactly the single dropped index they returned before."""
+    facts = read_statement_facts(sql, dialect=dialect)
 
-    assert facts.objects == (NamedObject("idx", SqlObjectType.INDEX, "dropped"),)
-    assert facts.indexed_table is None
+    assert facts == StatementFacts(
+        "DROP", "DDL", (NamedObject("idx", SqlObjectType.INDEX, "dropped"),)
+    )
+
+
+def test_mysql_drop_index_if_exists_keeps_the_on_table_relation():
+    facts = read_statement_facts("DROP INDEX IF EXISTS idx ON t", dialect="mysql")
+
+    assert not facts.opaque
+    assert facts.indexed_table == "t"
+    assert facts.objects == (
+        NamedObject("idx", SqlObjectType.INDEX, "dropped"),
+        NamedObject("t", SqlObjectType.TABLE, "referenced"),
+    )
 
 
 @pytest.mark.parametrize("quirks_class", [MysqlQuirks, MariadbQuirks])

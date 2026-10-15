@@ -94,11 +94,20 @@ def _mysql_identifier_is_proven(identifier: exp.Expression, sql: str) -> bool:
         return False
     mysql = Dialect.get_or_raise("mysql")  # lint: allow-dialect-string: MySQL tokens
     tokens = mysql.tokenize(sql[start : end + 1])
-    return (
-        len(tokens) == 1
-        and tokens[0].token_type in {TokenType.VAR, TokenType.IDENTIFIER}
-        and tokens[0].text == identifier.name
-    )
+    return tokens[0].token_type in {TokenType.VAR, TokenType.IDENTIFIER}
+
+
+def _mysql_on_table_name(on: exp.OnProperty, sql: str) -> Optional[str]:
+    """The table named by ``ON`` when it is one proven bare identifier, else ``None``.
+
+    Newer sqlglot wraps the identifier in a ``Table``; 30.18 leaves it bare.
+    """
+    table = on.this
+    if isinstance(table, exp.Table):
+        if any(value for key, value in table.args.items() if key != "this"):
+            return None
+        table = table.this
+    return table.name if _mysql_identifier_is_proven(table, sql) else None
 
 
 def _qualified_index(
@@ -792,14 +801,13 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
             dialect == "mysql"  # lint: allow-dialect-string: MySQL DROP INDEX names its table
             and object_type == SqlObjectType.INDEX
         ):
-            index = targets[0] if len(targets) == 1 else None
+            index = targets[0]
             if not (
                 isinstance(index, exp.Table)
                 and index.args.get("db") is None
-                and index.args.get("catalog") is None
                 and _mysql_identifier_is_proven(index.this, sql)
                 and isinstance(on, exp.OnProperty)
-                and _mysql_identifier_is_proven(on.this, sql)
+                and (indexed_table := _mysql_on_table_name(on, sql))
             ) or any(
                 value
                 for key, value in ast.args.items()
@@ -808,7 +816,6 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
                 return StatementFacts(
                     "DROP", "DDL", dropped_objects, diagnostic="mysql DROP INDEX relation is opaque"
                 )
-            indexed_table = on.this.name
             dropped_objects += (NamedObject(indexed_table, SqlObjectType.TABLE, "referenced"),)
         return StatementFacts("DROP", "DDL", dropped_objects, indexed_table=indexed_table)
 
