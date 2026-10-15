@@ -833,10 +833,12 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
             alias = subject.args.get("alias") if isinstance(subject, exp.Table) else None
             # Older sqlglot reads partition restrictions as aliases (INSERT loses the arguments),
             # newer versions as a `partition` argument: prove the target by its shape instead.
-            restricted_alias = (
-                alias is not None
-                and alias.name.upper() in {"PARTITION", "SUBPARTITION"}
-                and not alias.this.args.get("quoted")
+            restricted_alias = alias is not None and (
+                alias.args.get("columns")
+                or (
+                    alias.name.upper() in {"PARTITION", "SUBPARTITION"}
+                    and not alias.this.args.get("quoted")
+                )
             )
             plain_table = isinstance(subject, exp.Table) and not any(
                 value
