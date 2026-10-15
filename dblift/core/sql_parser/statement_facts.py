@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Optional, Protocol, Tuple
 
 from dblift.core.sql_model.base import SqlObject, SqlObjectType
 from dblift.core.sql_parser.lexical_spec import LexicalSpec
@@ -70,11 +70,25 @@ class StatementFacts:
         return tuple(obj for obj in self.objects if obj.role != "referenced")
 
 
+class StatementFactsReader(Protocol):
+    """Structural contract for a plugin-owned statement facts reader."""
+
+    def __init__(self, dialect: Optional[str], spec: Optional[LexicalSpec] = None):
+        """Bind optional grammar and lexical metadata supplied by the plugin."""
+        ...
+
+    def read(self, sql: str) -> StatementFacts:
+        """Read one already-split statement."""
+        ...
+
+
 class SqlglotStatementFactsReader:
     """Reusable AST facts reader configured by a dialect."""
 
-    def __init__(self, dialect: str, spec: Optional[LexicalSpec] = None):
+    def __init__(self, dialect: Optional[str], spec: Optional[LexicalSpec] = None):
         """Bind sqlglot grammar and optional lexical metadata."""
+        if dialect is None:
+            raise ValueError("A SQLGlot statement facts reader requires a dialect")
         self.dialect = dialect
         self.spec = spec
 

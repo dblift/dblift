@@ -32,7 +32,7 @@ from dblift.db.feature_gate import FeatureGate
 
 if TYPE_CHECKING:
     from dblift.core.sql_parser.lexical_spec import LexicalSpec
-    from dblift.core.sql_parser.statement_facts import SqlglotStatementFactsReader, StatementFacts
+    from dblift.core.sql_parser.statement_facts import StatementFacts, StatementFactsReader
 
 
 class BaseQuirks:
@@ -81,8 +81,8 @@ class BaseQuirks:
     #: ``sqlglot`` dialect name (or ``None`` if sqlglot has no match).
     #: Used by formatters/parsers that delegate to sqlglot.
     sqlglot_dialect: Optional[str] = None
-    #: Plugin-owned reader class for AST-derived statement facts.
-    statement_facts_class: Optional[Type["SqlglotStatementFactsReader"]] = None
+    #: Plugin-owned reader class for statement facts.
+    statement_facts_class: Optional[Type["StatementFactsReader"]] = None
 
     @property
     def supports_statement_facts(self) -> bool:
@@ -94,7 +94,7 @@ class BaseQuirks:
         reader_class = self.statement_facts_class
         dialect = self.sqlglot_dialect
         spec = self.lexical_spec()
-        if reader_class is None or dialect is None:
+        if reader_class is None:
             raise NotImplementedError("This dialect has no statement facts reader")
         return reader_class(dialect, spec).read(statement)
 
