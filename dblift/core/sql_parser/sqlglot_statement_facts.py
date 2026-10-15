@@ -92,6 +92,9 @@ def _mysql_identifier_is_proven(identifier: exp.Expression, sql: str) -> bool:
     start, end = identifier.meta.get("start"), identifier.meta.get("end")
     if not isinstance(start, int) or not isinstance(end, int):
         return False
+    # sqlglot skips non-ASCII spaces that MySQL reads as part of the identifier.
+    if any(not c.isascii() for c in sql[max(start - 1, 0) : start] + sql[end + 1 : end + 2]):
+        return False
     mysql = Dialect.get_or_raise("mysql")  # lint: allow-dialect-string: MySQL tokens
     tokens = mysql.tokenize(sql[start : end + 1])
     return tokens[0].token_type in {TokenType.VAR, TokenType.IDENTIFIER}

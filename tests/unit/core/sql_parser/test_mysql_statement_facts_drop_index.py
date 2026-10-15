@@ -52,6 +52,36 @@ def test_mysql_unproven_drop_index_relations_remain_opaque(sql):
     assert all(obj.type != SqlObjectType.TABLE for obj in facts.objects)
 
 
+_DROP_INDEX_SPACED = [
+    "DROP INDEX idx ON t{c}",
+    "DROP INDEX idx ON {c}t",
+    "DROP INDEX idx{c} ON t",
+    "DROP INDEX {c}idx ON t",
+]
+
+
+@pytest.mark.parametrize("semicolon", ["", ";"])
+@pytest.mark.parametrize("template", _DROP_INDEX_SPACED)
+@pytest.mark.parametrize("char", ["\u00a0", "\u0085", "\u2003", "\u2028", "\u3000"])
+def test_mysql_drop_index_non_ascii_space_beside_a_name_is_not_proven(char, template, semicolon):
+    # sqlglot skips these as whitespace; MySQL/MariaDB read them as part of the name.
+    facts = read_statement_facts(template.format(c=char) + semicolon, dialect="mysql")
+
+    assert facts.opaque
+    assert facts.diagnostic
+    assert facts.indexed_table is None
+
+
+@pytest.mark.parametrize("semicolon", ["", ";"])
+@pytest.mark.parametrize("template", _DROP_INDEX_SPACED)
+@pytest.mark.parametrize("char", ["\x0b", "\x0c"])
+def test_mysql_drop_index_vertical_tab_and_form_feed_are_real_whitespace(char, template, semicolon):
+    facts = read_statement_facts(template.format(c=char) + semicolon, dialect="mysql")
+
+    assert not facts.opaque
+    assert facts.indexed_table == "t"
+
+
 @pytest.mark.parametrize(
     "target", ["'t'", "''", "``", '"t"', "123", "1e3", "NULL", "TRUE", "DEFAULT"]
 )
