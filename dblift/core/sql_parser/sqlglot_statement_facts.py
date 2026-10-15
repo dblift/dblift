@@ -437,8 +437,8 @@ def _copy_query_referenced(query: exp.Subquery, sql: str) -> Optional[Tuple[Name
     return tuple(found)
 
 
-def _copy_facts(node: exp.Copy, sql: str) -> StatementFacts:
-    """Read DuckDB table imports and table or query exports with one literal file path."""
+def _copy_facts(node: exp.Copy, sql: str, *, dialect: str = "duckdb") -> StatementFacts:
+    """Read literal-file COPY; PostgreSQL permits only option-free table transfers."""
     schema = node.this if isinstance(node.this, exp.Schema) else None
     table = schema.this if schema is not None else node.this
     direction = node.args.get("kind")
@@ -446,7 +446,7 @@ def _copy_facts(node: exp.Copy, sql: str) -> StatementFacts:
     files = node.args.get("files") or []
     columns = schema.expressions if schema is not None else []
     opaque = StatementFacts(
-        "COPY", "UNKNOWN", diagnostic="duckdb COPY source or destination is opaque"
+        "COPY", "UNKNOWN", diagnostic=f"{dialect} COPY source or destination is opaque"
     )
     if not (
         (
@@ -463,9 +463,27 @@ def _copy_facts(node: exp.Copy, sql: str) -> StatementFacts:
         and not any(parameter.find(exp.Query) for parameter in node.args.get("params") or [])
     ):
         return opaque
+    if dialect == "postgres":  # lint: allow-dialect-string: narrow PostgreSQL file COPY facts
+        if not (
+            isinstance(table, exp.Table)
+            and table.name
+            and table.args.get("catalog") is None
+            and (table.args.get("db") is None or table.db)
+            and not any(value for key, value in table.args.items() if key not in {"this", "db"})
+            and (schema is None or columns)
+            and all(column.name for column in columns)
+            and not node.args.get("params")
+            and not any(
+                value
+                for key, value in node.args.items()
+                if key not in {"this", "kind", "files", "params", "credentials"}
+            )
+            and not any((node.args.get("credentials") or exp.Credentials()).args.values())
+        ):
+            return opaque
     importing = direction is True
     # sqlglot defaults a missing direction to FROM; require the actual keyword before the path.
-    tokens = Dialect.get_or_raise("duckdb").tokenize(sql)
+    tokens = Dialect.get_or_raise(dialect).tokenize(sql)
     path_at = next(
         (i for i, token in enumerate(tokens) if token.start == files[0].meta.get("start")), 0
     )
@@ -475,6 +493,10 @@ def _copy_facts(node: exp.Copy, sql: str) -> StatementFacts:
         or (tokens[path_at - 1].token_type, tokens[path_at - 1].text.upper()) != expected
     ):
         return opaque
+    if dialect == "postgres":  # lint: allow-dialect-string: reject unmodelled COPY suffixes
+        suffix = tokens[path_at + 1 :]
+        if suffix and not (len(suffix) == 1 and suffix[0].token_type == TokenType.SEMICOLON):
+            return opaque
     if query is not None:
         references = _copy_query_referenced(query, sql)
         return StatementFacts("COPY", "QUERY", references) if references is not None else opaque
@@ -487,7 +509,7 @@ def _copy_facts(node: exp.Copy, sql: str) -> StatementFacts:
         target if importing else None,
         affected_columns=tuple(column.name for column in columns) if importing else (),
         events=frozenset({"INSERT"}) if importing else None,
-        target_sql=table.sql(dialect="duckdb") if importing else None,
+        target_sql=table.sql(dialect=dialect) if importing else None,
     )
 
 
@@ -544,6 +566,11 @@ def _head_facts(sql: str, diagnostic: str, *, dialect: str = "") -> StatementFac
     if (
         dialect == "mysql"  # lint: allow-dialect-string: unread MySQL mutations may be multi-target
         and operation in {"UPDATE", "DELETE"}
+    ):
+        return StatementFacts(operation, kind, diagnostic=diagnostic)
+    if (
+        dialect == "oracle"  # lint: allow-dialect-string: unread Oracle targets may be expressions
+        and operation in {"INSERT", "UPDATE", "DELETE"}
     ):
         return StatementFacts(operation, kind, diagnostic=diagnostic)
     if dialect == "duckdb":  # lint: allow-dialect-string: preserve DuckDB opaque metadata kinds
@@ -664,7 +691,9 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
             return merge_facts
         return _head_facts(sql, "postgres MERGE effects are not modelled", dialect=dialect)
 
-    if dialect == "postgres":  # lint: allow-dialect-string: contain unproven PostgreSQL CTE facts
+    if dialect == "postgres":  # lint: allow-dialect-string: PostgreSQL COPY and CTE boundaries
+        if isinstance(ast, exp.Copy):
+            return _copy_facts(ast, sql, dialect=dialect)
         opaque_cte = _postgresql_opaque_cte(ast, dialect)
         if opaque_cte is not None:
             return opaque_cte
@@ -889,6 +918,42 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
         and isinstance(ast, exp.Merge)
     ):
         operation = type(ast).__name__.upper()
+        if dialect == "oracle":  # lint: allow-dialect-string: Oracle expression write targets
+            subject = ast.this
+            if isinstance(ast, exp.Insert) and isinstance(subject, exp.Schema):
+                subject = subject.this
+            if isinstance(ast, exp.Delete) and not subject:
+                targets = ast.args.get("tables") or []
+                subject = targets[0] if len(targets) == 1 else None
+            alias = subject.args.get("alias") if isinstance(subject, exp.Table) else None
+            # Older sqlglot reads partition restrictions as aliases (INSERT loses the arguments),
+            # newer versions as a `partition` argument: prove the target by its shape instead.
+            restricted_alias = alias is not None and (
+                alias.args.get("columns")
+                or (
+                    alias.name.upper() in {"PARTITION", "SUBPARTITION"}
+                    and not alias.this.args.get("quoted")
+                )
+            )
+            plain_table = isinstance(subject, exp.Table) and not any(
+                value
+                for key, value in subject.args.items()
+                if key not in {"this", "db", "catalog", "alias"}
+            )
+            # `DELETE t FROM u` names a target list apart from its source.
+            split_delete = isinstance(ast, exp.Delete) and ast.this and ast.args.get("tables")
+            if not (
+                plain_table
+                and isinstance(subject.this, exp.Identifier)
+                and subject.name
+                and not restricted_alias
+                and not split_delete
+            ):
+                return StatementFacts(
+                    operation,
+                    "DML",
+                    diagnostic="oracle mutation target is not a direct named table",
+                )
         if (
             dialect == "mysql"  # lint: allow-dialect-string: MySQL permits multi-target mutations
             and _mysql_unresolved_mutation_target(ast)

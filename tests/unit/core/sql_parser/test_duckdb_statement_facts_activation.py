@@ -12,10 +12,40 @@ from dblift.core.migration.sql.script_analysis import analyse_script
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.sql_parser import SqlParserFactory
 from dblift.db.dml_analysis import analyze_dml, statement_dml_table, updates_restore_key
+from dblift.db.plugins.duckdb.parser.parser_config import DuckDBParserConfig
 from dblift.db.plugins.duckdb.quirks import DuckDBQuirks
 
 CTE_UPDATE = "WITH x AS (SELECT 1) UPDATE child SET id = 2"
 COPY_FROM = "COPY child FROM 'input.csv'"
+
+
+@pytest.mark.parametrize("mode", ["regex", "hybrid", "sqlglot"])
+def test_factory_projects_facts_without_constructing_regex_config(mode, monkeypatch):
+    def refuse_regex_config(self):
+        raise AssertionError("DuckDB facts must not construct regex configuration")
+
+    monkeypatch.setattr(DuckDBParserConfig, "__init__", refuse_regex_config)
+    factory = SqlParserFactory("duckdb", mode)
+    result = factory.parse_sql(CTE_UPDATE)
+
+    assert result.success, result.errors
+    assert result.statements[0].statement_type.value == "DML"
+    assert [obj.name for obj in factory.extract_objects(CTE_UPDATE)] == ["child"]
+    assert factory.validate_sql(CTE_UPDATE) == {
+        "valid": True,
+        "statements_found": 1,
+        "errors": [],
+    }
+    assert factory.split_statements("SELECT 1;\n-- note\n") == ["SELECT 1"]
+    parser = factory.get_parser()
+    assert parser.dialect_name == "duckdb"
+    assert parser.split_for_analysis("SELECT 1;\n-- note\n") == ["SELECT 1", "-- note"]
+    assert parser.split_for_extraction("SELECT 1;\n-- note\n") == ["SELECT 1", "-- note"]
+    records = parser.split("SELECT 1;\nSELECT 2")
+    assert [
+        (record.text, record.line, record.terminator, record.source_start, record.source_end)
+        for record in records
+    ] == [("SELECT 1", 1, ";", 0, 9), ("SELECT 2", 2, None, 10, 18)]
 
 
 def test_plugin_reads_facts_without_a_lexical_spec():
