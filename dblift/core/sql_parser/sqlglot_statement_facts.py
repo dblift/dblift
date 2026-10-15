@@ -85,6 +85,34 @@ def _named(node: exp.Expression, kind: SqlObjectType, role: str) -> Optional[Nam
     return NamedObject(table.name, kind, role, schema)
 
 
+def _mysql_identifier_is_proven(identifier: exp.Expression, sql: str) -> bool:
+    """Accept only source tokens stable without knowing the server's SQL mode."""
+    if not isinstance(identifier, exp.Identifier) or not identifier.name:
+        return False
+    start, end = identifier.meta.get("start"), identifier.meta.get("end")
+    if not isinstance(start, int) or not isinstance(end, int):
+        return False
+    # sqlglot skips non-ASCII spaces that MySQL reads as part of the identifier.
+    if any(not c.isascii() for c in sql[max(start - 1, 0) : start] + sql[end + 1 : end + 2]):
+        return False
+    mysql = Dialect.get_or_raise("mysql")  # lint: allow-dialect-string: MySQL tokens
+    tokens = mysql.tokenize(sql[start : end + 1])
+    return tokens[0].token_type in {TokenType.VAR, TokenType.IDENTIFIER}
+
+
+def _mysql_on_table_name(on: exp.OnProperty, sql: str) -> Optional[str]:
+    """The table named by ``ON`` when it is one proven bare identifier, else ``None``.
+
+    Newer sqlglot wraps the identifier in a ``Table``; 30.18 leaves it bare.
+    """
+    table = on.this
+    if isinstance(table, exp.Table):
+        if any(value for key, value in table.args.items() if key != "this"):
+            return None
+        table = table.this
+    return table.name if _mysql_identifier_is_proven(table, sql) else None
+
+
 def _qualified_index(
     index: exp.Index,
 ) -> Optional[Tuple[str, str, str, list[exp.Expression]]]:
@@ -799,7 +827,29 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
                 if node is not None
                 if (obj := _named(node, object_type, "dropped"))
             )
-        return StatementFacts("DROP", "DDL", dropped_objects)
+        indexed_table = None
+        on = ast.args.get("cluster")
+        if (
+            dialect == "mysql"  # lint: allow-dialect-string: MySQL DROP INDEX names its table
+            and object_type == SqlObjectType.INDEX
+        ):
+            index = targets[0]
+            if not (
+                isinstance(index, exp.Table)
+                and index.args.get("db") is None
+                and _mysql_identifier_is_proven(index.this, sql)
+                and isinstance(on, exp.OnProperty)
+                and (indexed_table := _mysql_on_table_name(on, sql))
+            ) or any(
+                value
+                for key, value in ast.args.items()
+                if key not in {"tables", "kind", "cluster", "exists"}
+            ):
+                return StatementFacts(
+                    "DROP", "DDL", dropped_objects, diagnostic="mysql DROP INDEX relation is opaque"
+                )
+            dropped_objects += (NamedObject(indexed_table, SqlObjectType.TABLE, "referenced"),)
+        return StatementFacts("DROP", "DDL", dropped_objects, indexed_table=indexed_table)
 
     if isinstance(ast, exp.Alter):
         object_type = SqlObjectType.__members__.get(
