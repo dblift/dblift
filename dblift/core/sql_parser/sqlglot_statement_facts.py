@@ -540,6 +540,11 @@ def _head_facts(sql: str, diagnostic: str, *, dialect: str = "") -> StatementFac
         and operation in {"UPDATE", "DELETE"}
     ):
         return StatementFacts(operation, kind, diagnostic=diagnostic)
+    if (
+        dialect == "oracle"  # lint: allow-dialect-string: unread Oracle targets may be expressions
+        and operation in {"INSERT", "UPDATE", "DELETE"}
+    ):
+        return StatementFacts(operation, kind, diagnostic=diagnostic)
     if dialect == "duckdb":  # lint: allow-dialect-string: preserve DuckDB opaque metadata kinds
         kind = {"COMMENT": "DDL", "SHOW": "QUERY", "EXECUTE": "DML"}.get(operation, kind)
     objects: Tuple[NamedObject, ...] = ()
@@ -863,6 +868,42 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
         and isinstance(ast, exp.Merge)
     ):
         operation = type(ast).__name__.upper()
+        if dialect == "oracle":  # lint: allow-dialect-string: Oracle expression write targets
+            subject = ast.this
+            if isinstance(ast, exp.Insert) and isinstance(subject, exp.Schema):
+                subject = subject.this
+            if isinstance(ast, exp.Delete) and not subject:
+                targets = ast.args.get("tables") or []
+                subject = targets[0] if len(targets) == 1 else None
+            alias = subject.args.get("alias") if isinstance(subject, exp.Table) else None
+            # Older sqlglot reads partition restrictions as aliases (INSERT loses the arguments),
+            # newer versions as a `partition` argument: prove the target by its shape instead.
+            restricted_alias = alias is not None and (
+                alias.args.get("columns")
+                or (
+                    alias.name.upper() in {"PARTITION", "SUBPARTITION"}
+                    and not alias.this.args.get("quoted")
+                )
+            )
+            plain_table = isinstance(subject, exp.Table) and not any(
+                value
+                for key, value in subject.args.items()
+                if key not in {"this", "db", "catalog", "alias"}
+            )
+            # `DELETE t FROM u` names a target list apart from its source.
+            split_delete = isinstance(ast, exp.Delete) and ast.this and ast.args.get("tables")
+            if not (
+                plain_table
+                and isinstance(subject.this, exp.Identifier)
+                and subject.name
+                and not restricted_alias
+                and not split_delete
+            ):
+                return StatementFacts(
+                    operation,
+                    "DML",
+                    diagnostic="oracle mutation target is not a direct named table",
+                )
         if (
             dialect == "mysql"  # lint: allow-dialect-string: MySQL permits multi-target mutations
             and _mysql_unresolved_mutation_target(ast)
