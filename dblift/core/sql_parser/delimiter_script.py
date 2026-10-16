@@ -38,7 +38,7 @@ class DelimiterScript:
         self.records: List[Statement] = []
         self.exec_comment = False
         self.analysis_exec_comment = False
-        self.exec_clean = False  # set where a comment opens, kept when a delimiter ends a statement in it
+        self.exec_clean = False  # set at an opener; a delimiter in the comment keeps it
         self.open_hint: Optional[Tuple[int, int]] = None
         self._line_comment_end = -1
         self._begin()
