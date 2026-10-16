@@ -741,6 +741,64 @@ PROGRAMS = [
         ["ok", ["CREATE PROCEDURE p() BEGIN SELECT 1; END", "CASE", "SELECT 3"]],
         ["ok", ["CREATE PROCEDURE p() BEGIN SELECT 1; END", "CASE", "SELECT 3"]],
     ],
+    [
+        "ALTER AGGREGATE EVENT e DO BEGIN SELECT 1; END; SELECT 3;",
+        ["ok", ["ALTER AGGREGATE EVENT e DO BEGIN SELECT 1", "END", "SELECT 3"]],
+        ["ok", ["ALTER AGGREGATE EVENT e DO BEGIN SELECT 1", "END", "SELECT 3"]],
+    ],
+    [
+        "CREATE PROCEDURE p() BEGIN SELECT CASE WHEN a THEN IF(b,1,2) ELSE 3 END; SELECT 4; END; "
+        "SELECT 5;",
+        [
+            "ok",
+            [
+                "CREATE PROCEDURE p() BEGIN SELECT CASE WHEN a THEN IF(b,1,2) ELSE 3 END; SELECT 4; END",
+                "SELECT 5",
+            ],
+        ],
+        [
+            "ok",
+            [
+                "CREATE PROCEDURE p() BEGIN SELECT CASE WHEN a THEN IF(b,1,2) ELSE 3 END; SELECT 4; END",
+                "SELECT 5",
+            ],
+        ],
+    ],
+    [
+        "DELIMITER //\nCREATE PROCEDURE p() BEGIN SELECT 1//\nSELECT 2//\n",
+        ["ok", ["CREATE PROCEDURE p() BEGIN SELECT 1", "SELECT 2"]],
+        ["ok", ["CREATE PROCEDURE p() BEGIN SELECT 1", "SELECT 2"]],
+    ],
+    [
+        "CREATE PROCEDURE p(x INT DEFAULT (BEGIN)) SELECT 1; SELECT 3;",
+        ["ok", ["CREATE PROCEDURE p(x INT DEFAULT (BEGIN)) SELECT 1", "SELECT 3"]],
+        ["ok", ["CREATE PROCEDURE p(x INT DEFAULT (BEGIN)) SELECT 1", "SELECT 3"]],
+    ],
+    [
+        "CREATE PROCEDURE p() BEGIN SELECT 1; END; SELECT 3;\n"
+        "DELIMITER //\n"
+        "CREATE PROCEDURE q() BEGIN SELECT 1; SELECT 2; END//\n"
+        "DELIMITER ;\n"
+        "SELECT 4;",
+        [
+            "ok",
+            [
+                "CREATE PROCEDURE p() BEGIN SELECT 1; END",
+                "SELECT 3",
+                "CREATE PROCEDURE q() BEGIN SELECT 1; SELECT 2; END",
+                "SELECT 4",
+            ],
+        ],
+        [
+            "ok",
+            [
+                "CREATE PROCEDURE p() BEGIN SELECT 1; END",
+                "SELECT 3",
+                "CREATE PROCEDURE q() BEGIN SELECT 1; SELECT 2; END",
+                "SELECT 4",
+            ],
+        ],
+    ],
 ]
 
 
@@ -755,9 +813,9 @@ BODY = "BEGIN SELECT 1; SELECT 2; END"
 
 
 def whole(script: str, spec: LexicalSpec = MYSQL_SPEC) -> bool:
-    """The first statement runs through the end of the body: one record, then the tail."""
+    """The body is one record and the statement after it is the only other one."""
     result = observed(spec, script)
-    return result[0] == "ok" and result[1][0].endswith("END")
+    return result[0] == "ok" and len(result[1]) == 2 and result[1][0].endswith("END")
 
 
 FIELD_CASES = [
@@ -842,3 +900,12 @@ def test_a_qualified_word_is_a_name_and_a_quoted_one_a_name_too():
     assert body.open
     body.word("END")
     assert not body.open
+
+
+@BOTH
+def test_a_stored_program_under_a_custom_delimiter_has_no_analysis_fragments(spec):
+    script = (
+        "DELIMITER //\nCREATE PROCEDURE p() BEGIN SELECT 1; SELECT 2; END//\nSELECT 3; SELECT 4//\n"
+    )
+    records = [r for r in LexicalEngine(spec).split(script) if r.kind == "sql"]
+    assert [r.analysis_statements for r in records] == [None, ("SELECT 3", "SELECT 4")]

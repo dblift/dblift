@@ -12,6 +12,7 @@ from dblift.core.sql_parser.delimiter_commands import (
     refuse_command,
 )
 from dblift.core.sql_parser.lexical_spec import DelimiterScriptRules
+from dblift.core.sql_parser.program_body import ProgramBody
 from dblift.core.sql_parser.statement import Statement
 
 
@@ -33,6 +34,7 @@ class DelimiterScript:
         self.removed = removed  # `removed` and `origin` map record offsets back to the source
         self.origin = origin
         self.delimiter = rules.initial
+        self.program = ProgramBody(rules.program)
         self.records: List[Statement] = []
         self.exec_comment = False
         self.analysis_exec_comment = False
@@ -54,6 +56,7 @@ class DelimiterScript:
         self.qualifier = False
         self.exec_only = False
         self.exec_clean = False
+        self.program.reset()
         self._literals: List[Tuple[int, int]] = []
         self._spans: List[Tuple[int, int]] = []
         self._fragments: List[int] = []
@@ -109,6 +112,10 @@ class DelimiterScript:
         qualified = self.qualifier
         self.qualifier = False
         self._outside_executable()
+        if qualified:
+            self.program.quoted()
+        else:
+            self.program.word(text.upper())
         return qualified
 
     def _outside_executable(self) -> None:
@@ -120,6 +127,7 @@ class DelimiterScript:
         """A one-character code symbol was read."""
         self.qualifier = char in self.rules.qualifiers
         self._outside_executable()
+        self.program.punct(char)
 
     def comment(self, start: int, end: int, line_comment: bool) -> None:
         """A comment of the statement being read."""
@@ -147,6 +155,7 @@ class DelimiterScript:
     def literal(self, start: int, stop: int, start_line: int, end_line: int) -> None:
         """A string or quoted name was read."""
         self._literals.append((start, stop))
+        self.program.quoted()
         self.lexeme(start_line, end_line)
         self.qualifier = False
         self._outside_executable()
@@ -165,7 +174,7 @@ class DelimiterScript:
         text = self.text[self.start : cut].rstrip()
         self._refuse_session_mode(text)
         analysis: Optional[Tuple[str, ...]] = None
-        if self._fragments:
+        if self._fragments and not self.program.is_program:
             code = self._blank(text, self._spans)
             parts = []
             begin = self.start
@@ -197,7 +206,7 @@ class DelimiterScript:
         verbs = "|".join(re.escape(verb) for verb in rules.session_mode_verbs)
         openers = "|".join(re.escape(opener) for opener in rules.executable_openers)
         sets = re.match(rf"\s*(?:(?:{openers})\d*\s*)?(?:{verbs})\b", code, re.IGNORECASE)
-        if not sets:
+        if not (sets or self.program.is_program):
             code = self._blank(code, self._literals)
         setter = re.escape(rules.session_mode_verbs[0])
         if mode in code.upper() and re.search(rf"\b{setter}\b", code, re.IGNORECASE):
@@ -252,6 +261,8 @@ class DelimiterScript:
         elif self.open_hint is not None:
             self.open_hint = None
             self.exec_only = False
+            self.program.punct("*")
+            self.program.punct("/")
         else:
             return False
         self.qualifier = False
@@ -297,6 +308,11 @@ class DelimiterScript:
             line, col = self.open_hint
             raise UnsafeStatementSplitError(
                 f"unterminated optimizer hint starting at line {line}, column {col}"
+            )
+        if self.code_started and self.delimiter == self.rules.initial and self.program.open:
+            raise UnsafeStatementSplitError(
+                f"stored-program body opened at line {self.start_line} is not closed before "
+                "the end of the script"
             )
         if self.code_started:
             self._emit(len(self.text), None, len(self.text))

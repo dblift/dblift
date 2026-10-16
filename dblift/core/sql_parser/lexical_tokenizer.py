@@ -966,6 +966,10 @@ class LexicalTokenizer(BaseTokenizer):
                 script.reset_qualifier()
                 return self._delimiter_token(TokenType.SYMBOL, 2 if follows else 1)
             if sql.startswith(self._delimiter, pos):
+                if self._delimiter == rules.initial and script.program.open:
+                    # inside a stored-program body the initial delimiter is code
+                    script.symbol(rules.initial)
+                    return self._delimiter_token(TokenType.SYMBOL, len(self._delimiter))
                 script.end(pos)
                 return self._delimiter_token(TokenType.DELIMITER, len(self._delimiter))
             if char in rules.blanks:
