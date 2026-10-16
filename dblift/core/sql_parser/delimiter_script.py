@@ -24,6 +24,7 @@ class DelimiterScript:
         self.removed = removed  # `removed` and `origin` map record offsets back to the source
         self.origin = origin
         self.exec_comment = False
+        self.analysis_exec_comment = False
         self.open_hint: Optional[Tuple[int, int]] = None
         nul = text.find("\x00")
         if nul >= 0:
@@ -32,7 +33,23 @@ class DelimiterScript:
                 "refuses it unless --binary-mode is set"
             )
 
-    def line_end(self) -> None:
+    def word(self, text: str) -> bool:
+        """A word was read (not read yet)."""
+        return False
+
+    def symbol(self, char: str) -> None:
+        """A symbol was read (not read yet)."""
+
+    def comment(self, start: int, end: int, line_comment: bool) -> None:
+        """A comment was read (not read yet)."""
+
+    def literal(self, start_line: int, end_line: int) -> None:
+        """A literal was read (not read yet)."""
+
+    def reset_qualifier(self) -> None:
+        """A qualifier is broken (not read yet)."""
+
+    def line_end(self, pos: int = -1) -> None:
         """The client keeps the executable-comment flag per line."""
         self.exec_comment = False
 
