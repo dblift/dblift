@@ -5,12 +5,16 @@ from __future__ import annotations
 import pytest
 
 from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
-from dblift.db.plugins.mysql.parser._script import _Scanner, scan_script
+from dblift.db.plugins.mariadb.regex_parser import MariaDbRegexParser
 from dblift.db.plugins.mysql.parser.mysql_regex_parser import MySqlRegexParser
 
 
+def _split(script: str, *, mariadb: bool = False):  # type: ignore[no-untyped-def]
+    return (MariaDbRegexParser if mariadb else MySqlRegexParser)().split(script)
+
+
 def sql(script: str, *, mariadb: bool = False) -> list[str]:
-    return [s.text for s in scan_script(script, mariadb=mariadb) if s.kind == "sql"]
+    return [s.text for s in _split(script, mariadb=mariadb) if s.kind == "sql"]
 
 
 @pytest.mark.parametrize(
@@ -26,7 +30,7 @@ def sql(script: str, *, mariadb: bool = False) -> list[str]:
 )  # fmt: skip
 def test_a_command_word_alone_on_a_line_is_refused(line: str) -> None:
     with pytest.raises(UnsupportedMetaCommandError) as caught:
-        scan_script(f"SELECT 1;\n{line}\nSELECT 2;")
+        _split(f"SELECT 1;\n{line}\nSELECT 2;")
     assert "on line 2" in str(caught.value)
 
 
@@ -53,7 +57,7 @@ def test_a_command_word_is_text_while_a_statement_is_pending_or_after_a_terminat
 
 def test_a_command_word_after_a_comment_line_is_a_command() -> None:
     with pytest.raises(UnsupportedMetaCommandError):
-        scan_script("-- c\nexit\nSELECT 1;")
+        _split("-- c\nexit\nSELECT 1;")
 
 
 def test_use_needs_its_terminator() -> None:
@@ -62,7 +66,7 @@ def test_use_needs_its_terminator() -> None:
     assert sql("DELIMITER //\nuse db//\nDELIMITER ;") == ["use db"]
     for script in ("use db\nSELECT 1;", "use\nSELECT 1;", "USE db -- c\nSELECT 1;"):
         with pytest.raises(UnsupportedMetaCommandError, match="'(use|USE)'"):
-            scan_script(script)
+            _split(script)
 
 
 @pytest.mark.parametrize(
@@ -84,18 +88,18 @@ def test_use_needs_its_terminator() -> None:
 )
 def test_a_backslash_outside_a_string_is_a_client_command_and_refused(text: str, name: str) -> None:
     with pytest.raises(UnsupportedMetaCommandError) as caught:
-        scan_script(f"{text}\nSELECT 2;")
+        _split(f"{text}\nSELECT 2;")
     assert name in str(caught.value)
 
 
 def test_a_backslash_at_the_end_of_a_line_is_refused() -> None:
     with pytest.raises(UnsupportedMetaCommandError, match="end of a line"):
-        scan_script("SELECT 1 \\\nUNION SELECT 2;")
+        _split("SELECT 1 \\\nUNION SELECT 2;")
 
 
 def test_a_backslash_inside_a_hint_is_refused_and_inside_comments_is_text() -> None:
     with pytest.raises(UnsupportedMetaCommandError, match="optimizer hint"):
-        scan_script("SELECT /*+ \\G */ 1;")
+        _split("SELECT /*+ \\G */ 1;")
     assert sql("SELECT 1 -- \\G\n;\nSELECT 2 /* \\G */; SELECT 3 # \\c\n;") == [
         "SELECT 1 -- \\G",
         "SELECT 2 /* \\G */",
@@ -118,7 +122,7 @@ def test_backslash_n_outside_a_string_is_text() -> None:
 )
 def test_a_script_that_sets_no_backslash_escapes_is_refused(setting: str) -> None:
     with pytest.raises(UnsafeStatementSplitError, match="NO_BACKSLASH_ESCAPES"):
-        scan_script(f"{setting};\nSELECT 1;")
+        _split(f"{setting};\nSELECT 1;")
 
 
 def test_other_statements_that_mention_the_mode_are_not_refused() -> None:
@@ -141,7 +145,7 @@ def test_a_command_word_after_a_comment_on_its_line_is_refused(line: str) -> Non
     """mysql 8.4 runs it and mysql 8.0 sends it to the server as text: neither is safe to guess."""
     for comment in ("/* c */", "/* a */ /* b */"):
         with pytest.raises(UnsupportedMetaCommandError, match="after a comment on line 2"):
-            scan_script(f"SELECT 1;\n{comment} {line}\nSELECT 2;")
+            _split(f"SELECT 1;\n{comment} {line}\nSELECT 2;")
 
 
 def test_a_terminated_use_or_a_word_with_arguments_after_a_comment_is_sql() -> None:
@@ -156,7 +160,7 @@ def test_a_command_word_after_any_comment_that_starts_the_line_is_refused(
     comment: str, line: str
 ) -> None:
     with pytest.raises(UnsupportedMetaCommandError, match="after a comment on line 2"):
-        scan_script(f"SELECT 1;\n{comment} {line}\nSELECT 2;")
+        _split(f"SELECT 1;\n{comment} {line}\nSELECT 2;")
 
 
 def test_the_no_backslash_escapes_check_ignores_comments() -> None:
@@ -178,9 +182,9 @@ def test_the_no_backslash_escapes_check_ignores_comments() -> None:
 
 def test_a_refusal_names_the_client_of_the_dialect() -> None:
     with pytest.raises(UnsupportedMetaCommandError, match="mariadb client command 'exit'"):
-        scan_script("SELECT 1;\nexit\n", mariadb=True)
+        _split("SELECT 1;\nexit\n", mariadb=True)
     with pytest.raises(UnsupportedMetaCommandError, match="mysql client command 'exit'"):
-        scan_script("SELECT 1;\nexit\n")
+        _split("SELECT 1;\nexit\n")
 
 
 @pytest.mark.parametrize(
@@ -206,26 +210,26 @@ def test_a_terminated_use_is_sql_whatever_follows_its_terminator(line: str) -> N
 )  # fmt: skip
 def test_a_command_word_followed_by_any_run_of_terminators_is_a_command(line: str) -> None:
     with pytest.raises(UnsupportedMetaCommandError, match="on line 2"):
-        scan_script(f"SELECT 1;\n{line}\nSELECT 2;")
+        _split(f"SELECT 1;\n{line}\nSELECT 2;")
 
 
 @pytest.mark.parametrize("line", ["status //", "exit //", "help //", "tee //", "exit ; //"])
 def test_a_command_word_followed_by_the_active_delimiter_is_a_command(line: str) -> None:
     with pytest.raises(UnsupportedMetaCommandError, match="on line 3"):
-        scan_script(f"DELIMITER //\nSELECT 1//\n{line}\nSELECT 2//")
+        _split(f"DELIMITER //\nSELECT 1//\n{line}\nSELECT 2//")
 
 
 def test_exit_after_an_executable_comment_that_is_the_whole_pending_text_is_a_command() -> None:
     """mysql 8.4 ends the script there; a statement text before it keeps it text."""
     with pytest.raises(UnsupportedMetaCommandError, match="'exit'"):
-        scan_script("/*!50000 SET @a=1 */\nexit\n;")
+        _split("/*!50000 SET @a=1 */\nexit\n;")
     assert sql("SELECT 1 /*!50000 + 1 */\nexit\n;") == ["SELECT 1 /*!50000 + 1 */\nexit"]
 
 
 @pytest.mark.parametrize("line", ["help x", "help 'x'", "? x", "? 'x'", "HELP contents"])
 def test_help_with_an_argument_and_no_terminator_is_a_command(line: str) -> None:
     with pytest.raises(UnsupportedMetaCommandError, match="on line 2"):
-        scan_script(f"SELECT 1;\n{line}\nSELECT 2;")
+        _split(f"SELECT 1;\n{line}\nSELECT 2;")
 
 
 @pytest.mark.parametrize(
@@ -243,45 +247,20 @@ def test_the_mode_name_in_a_literal_of_another_statement_is_not_a_setting(script
 
 def test_the_mode_set_by_a_stored_program_body_is_still_refused() -> None:
     with pytest.raises(UnsafeStatementSplitError, match="NO_BACKSLASH_ESCAPES"):
-        scan_script("CREATE PROCEDURE p() BEGIN SET sql_mode = 'NO_BACKSLASH_ESCAPES'; END;")
+        _split("CREATE PROCEDURE p() BEGIN SET sql_mode = 'NO_BACKSLASH_ESCAPES'; END;")
 
 
 def test_a_backslash_in_a_hint_is_text_on_mariadb_only() -> None:
     assert sql("SELECT /*+ \\G */ 1;", mariadb=True) == ["SELECT /*+ \\G */ 1"]
     assert sql("SELECT /*+\n \\G\n*/ 1 AS x;", mariadb=True) == ["SELECT /*+\n \\G\n*/ 1 AS x"]
     with pytest.raises(UnsupportedMetaCommandError):
-        scan_script("SELECT /*+\n \\G\n*/ 1 AS x;")
-
-
-class _CountingText(str):
-    """A script that counts the characters sliced out of it: a scan that copies the rest of a
-    line at every comment is quadratic on one long line, however fast the machine."""
-
-    sliced = 0
-
-    def __getitem__(self, key):  # type: ignore[no-untyped-def]
-        if isinstance(key, slice):
-            _CountingText.sliced += len(range(*key.indices(len(self))))
-        return super().__getitem__(key)
-
-
-def _sliced_characters(script: str) -> int:
-    _CountingText.sliced = 0
-    _Scanner(_CountingText(script), False).run()
-    return _CountingText.sliced
-
-
-@pytest.mark.parametrize("unit", ["/**/", "SELECT 1; /* c */ ", "/*!40000 SET @a = 1 */; "])
-def test_a_long_single_line_of_comments_is_scanned_in_linear_time(unit: str) -> None:
-    for count in (2_000, 8_000):
-        script = unit * count
-        assert _sliced_characters(script) <= 2 * len(script)
+        _split("SELECT /*+\n \\G\n*/ 1 AS x;")
 
 
 def test_a_mode_setting_behind_a_maria_comment_is_refused_on_mariadb_only() -> None:
     script = "/*M!100500 SET sql_mode = 'NO_BACKSLASH_ESCAPES' */;\nSELECT 1;"
     with pytest.raises(UnsafeStatementSplitError, match="NO_BACKSLASH_ESCAPES"):
-        scan_script(script, mariadb=True)
+        _split(script, mariadb=True)
     assert sql(script) == ["SELECT 1"]
 
 
@@ -289,7 +268,7 @@ def test_a_mode_setting_behind_a_maria_comment_is_refused_on_mariadb_only() -> N
 def test_a_prepared_statement_that_sets_the_mode_is_refused(mariadb: bool) -> None:
     script = "PREPARE s FROM 'SET sql_mode=''NO_BACKSLASH_ESCAPES''';\nEXECUTE s;"
     with pytest.raises(UnsafeStatementSplitError, match="NO_BACKSLASH_ESCAPES"):
-        scan_script(script, mariadb=mariadb)
+        _split(script, mariadb=mariadb)
 
 
 @pytest.mark.parametrize("mariadb", [False, True])

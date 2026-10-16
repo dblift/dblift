@@ -7,8 +7,10 @@ from typing import Any, Dict, List, Optional, Type
 from dblift.core.sql_model.base import ParseResult, SqlStatement, SqlStatementType
 from dblift.core.sql_parser.base_tokenizer import BaseTokenizer
 from dblift.core.sql_parser.enhanced_regex_parser import EnhancedRegexParser
+from dblift.core.sql_parser.lexical_engine import LexicalEngine
+from dblift.core.sql_parser.lexical_spec import LexicalSpec
 from dblift.core.sql_parser.statement import Statement, analysis_sql
-from dblift.db.plugins.mysql.parser._script import scan_script
+from dblift.db.plugins.mysql.parser.lexical_spec import MYSQL_SPEC
 from dblift.db.plugins.mysql.parser.mysql_tokenizer import MySQLTokenizer
 from dblift.db.plugins.mysql.parser.parser_config import MySqlConfig
 
@@ -21,11 +23,12 @@ class MySqlRegexParser(EnhancedRegexParser):
     dialect_name = "mysql"  # lint: allow-dialect-string: dialect dispatch
 
     #: Object extraction and SQL redaction still use the tokenizer's MySQL
-    #: comment and literal rules; statement boundaries come from ``_script``.
+    #: comment and literal rules; statement boundaries come from the shared engine.
     tokenizer_class: Type[BaseTokenizer] = MySQLTokenizer
 
-    #: ``/*M! ... */`` is an executable comment to the mariadb client, a plain comment to mysql.
-    MARIADB = False
+    #: The rules the engine cuts scripts with. Deliberately not named ``lexical_spec``: object
+    #: extraction blanks comments through the engine when a parser has that attribute.
+    _splitter_spec: LexicalSpec = MYSQL_SPEC
 
     def __init__(self) -> None:
         """Initialize MySQL regex parser."""
@@ -35,14 +38,14 @@ class MySqlRegexParser(EnhancedRegexParser):
 
     def split(self, sql_content: str) -> List[Statement]:
         """The statements and ``DELIMITER`` directives of a script, as the client reads it."""
-        return scan_script(sql_content, mariadb=self.MARIADB)
+        return LexicalEngine(self._splitter_spec).split(sql_content)
 
     def split_statements(self, sql_content: str, strict_tokenizer: bool = False) -> List[str]:
         """The statements the server receives; refuses what the client would not run as SQL.
 
         The scanner has no unknown characters, so ``strict_tokenizer`` changes nothing.
         """
-        return [record.text for record in self.split(sql_content) if record.kind == "sql"]
+        return LexicalEngine(self._splitter_spec).split_statements(sql_content)
 
     def split_for_analysis(self, sql_content: str, strict_tokenizer: bool = False) -> List[str]:
         """Project analysable SQL from the client scanner, including custom-delimiter fragments."""

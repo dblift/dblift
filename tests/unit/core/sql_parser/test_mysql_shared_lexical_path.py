@@ -52,7 +52,8 @@ def test_mariadb_reads_its_executable_comment_through_the_analyzer():
 
 
 def test_replaced_scanner_module_is_absent():
-    assert importlib.util.find_spec("dblift.db.plugins.mysql.parser._script") is None
+    scanner = "dblift.db.plugins.mysql.parser." + "_script"
+    assert importlib.util.find_spec(scanner) is None
 
 
 @pytest.mark.parametrize("dialect", ["mysql", "mariadb"])

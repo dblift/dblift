@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import re
-from typing import Any, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, List, Optional, Tuple
 
 from dblift.core.utils.database_url_parser import DatabaseUrlParser
 from dblift.db.base_quirks import BaseQuirks
 from dblift.db.error import ErrorCategory
 from dblift.db.feature_gate import FeatureGate
+
+if TYPE_CHECKING:
+    from dblift.core.sql_parser.lexical_spec import LexicalSpec
 
 # Each entry: (compiled regex, ErrorCategory). Sourced by
 # ``DatabaseErrorClassifier`` via ``error_patterns()`` (ADR-26 A2).
@@ -45,6 +48,12 @@ class MysqlQuirks(BaseQuirks):
     on views, ``ON UPDATE CURRENT_TIMESTAMP`` column defaults, and
     catalog-mode metadata queries (no separate schema concept).
     """
+
+    def lexical_spec(self) -> "LexicalSpec":
+        """The lexical specification the shared engine splits MySQL scripts with."""
+        from dblift.db.plugins.mysql.parser.lexical_spec import MYSQL_SPEC
+
+        return MYSQL_SPEC
 
     # Capability matrix (was ``_CAPABILITIES["mysql"]``).
     supports_transactions = True

@@ -747,7 +747,6 @@ module = [
     "dblift.db.plugins.mysql.quirks",
     "dblift.db.plugins.mysql.mysql",
     "dblift.db.plugins.mysql.mysql.schema_operations",
-    "dblift.db.plugins.mysql.parser._script",
     "dblift.db.plugins.mysql.parser.parser_config",
     "dblift.db.plugins.mysql.parser.mysql_regex_parser",
     "dblift.db.plugins.mysql.parser.mysql_statement_parser",

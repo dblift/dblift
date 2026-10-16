@@ -24,7 +24,7 @@ CASES = [
     (
         "mysql",
         "SELECT 1;\n/* open\n",
-        "unterminated block comment starting at line 2, column 1",
+        "unterminated block comment opened at line 2, column 1",
         "CREATE TABLE a (id INT);\n/* open\n",
     ),
 ]
