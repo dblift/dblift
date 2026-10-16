@@ -293,7 +293,7 @@ class DelimiterScript:
 
     def first_word_check(self, pos: int, line: int) -> None:
         """Refuse the command word met away from the head of its line."""
-        first = self.text.rfind("\n", 0, pos) + 1
+        first = max(self.text.rfind("\n", 0, pos) + 1, self.origin)
         while self.text[first] in self.rules.blanks:
             first += 1
         if first != pos:
