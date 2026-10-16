@@ -223,6 +223,8 @@ def test_exit_after_an_executable_comment_that_is_the_whole_pending_text_is_a_co
     """mysql 8.4 ends the script there; a statement text before it keeps it text."""
     with pytest.raises(UnsupportedMetaCommandError, match="'exit'"):
         _split("/*!50000 SET @a=1 */\nexit\n;")
+    with pytest.raises(UnsupportedMetaCommandError, match="'quit'"):
+        _split("/*!50000 SET @a=1 */\nquit\n;")
     assert sql("SELECT 1 /*!50000 + 1 */\nexit\n;") == ["SELECT 1 /*!50000 + 1 */\nexit"]
 
 

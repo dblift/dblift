@@ -131,6 +131,12 @@ def test_delimiter_is_matched_before_blanks(spec):
 
 
 @BOTH
+@pytest.mark.parametrize("blank", [" ", "\t", "\r", "\x0b", "\x0c"], ids=repr)
+def test_each_blank_of_the_client_is_skipped_before_a_delimiter(spec, blank):
+    assert statements(f"{blank};SELECT 1;", spec) == ["SELECT 1"]
+
+
+@BOTH
 def test_blank_delimiter_quirks_are_kept(spec):
     assert statements("delimiter\x0b\nSELECT 1;", spec) == ["SELECT 1;"]
     assert statements("DELIMITER \x0c\nSELECT 1;", spec) == ["SELECT 1;"]
