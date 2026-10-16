@@ -831,3 +831,14 @@ def test_a_command_after_an_executable_comment_is_refused_when_a_delimiter_ends_
     error = observed(spec, script)
     assert error[:2] == ["error", "UnsupportedMetaCommandError"]
     assert "after a comment on line 1" in error[2]
+
+
+@BOTH
+@pytest.mark.parametrize("lead", ["", " "])
+def test_the_byte_order_mark_is_not_a_word_before_a_command_on_the_first_line(spec, lead):
+    bom = chr(0xFEFF)  # a code point, never a literal: an editor would drop it
+    assert observed(spec, bom + lead + "DELIMITER\rSELECT 1;") == [
+        "ok",
+        ["DELIMITER\rSELECT 1"],
+    ]
+    assert refused("SELECT 1; DELIMITER\rx;", spec)
