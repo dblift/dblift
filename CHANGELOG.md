@@ -9,28 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- MySQL and MariaDB splitting, analysis and extraction run on the shared
-  lexical engine, with the `mysql` and `mariadb` client rules (the `DELIMITER`
-  command, client commands, executable comments, optimizer hints, the
-  stored-program body rule) as specification data. The same scripts give the
-  same statements, records and execution strings, and the same refusals.
-- An unterminated string, quoted identifier or block comment in a MySQL or
-  MariaDB script now reads `unterminated string opened at line L, column C`
-  (`quoted identifier` and `block comment` likewise); the line and column are
-  unchanged.
-- A `DELIMITER` line without a usable argument is refused with a message that
-  names the client that ran it (`mysql` or `mariadb`) instead of describing
-  both.
-- Literal masking, object extraction and comment stripping keep reading MySQL
-  text as before.
-- Splitting a large MySQL or MariaDB script takes longer and uses more
-  memory; the time stays linear in the length of the script. Measured on one
+- **MySQL and MariaDB splitting moved onto the shared lexical engine.**
+  Splitting, analysis and extraction use the `mysql` and `mariadb` client rules
+  (the `DELIMITER` command, client commands, executable comments, optimizer
+  hints, the stored-program body rule) as specification data. The same scripts
+  give the same statements, records and execution strings, and the same
+  refusals (class, line and column).
+- **Unterminated-lexeme messages read `opened at`.** An unterminated string,
+  quoted identifier or block comment in a MySQL or MariaDB script now reads
+  `unterminated string opened at line L, column C` (`quoted identifier` and
+  `block comment` likewise); the line and column are unchanged.
+- **A `DELIMITER` line without a usable argument names the client that ran it**
+  (`mysql` or `mariadb`) in its refusal instead of describing both.
+- **Literal masking, object extraction and comment stripping are unchanged.**
+  They keep reading MySQL text as before.
+- **Splitting a large MySQL or MariaDB script takes longer and uses more
+  memory.** The time stays linear in the length of the script. Measured on one
   machine, a 3 MiB script of `INSERT` statements went from 0.95 s and a 19 MB
   peak to 2.9 s and a 176 MB peak, and a 132-byte migration from 42 to 82
   microseconds.
-- The analyzer no longer logs the debug record "Enhanced regex parser
-  initialized" on its first MySQL or MariaDB use: it no longer builds a regex
-  parser to split a script.
 
 ### Removed
 
