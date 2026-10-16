@@ -122,3 +122,9 @@ def test_other_dialects_unchanged():
         assert ProviderRegistry.get_quirks(dialect).lexical_spec() is spec
     for spec in expected.values():
         assert spec.delimiter_script is None and spec.string_quote_doubling is True
+
+
+@pytest.mark.parametrize("spec", [MYSQL_SPEC, MARIADB_SPEC], ids=["mysql", "mariadb"])
+def test_blanking_comments_is_not_offered_for_a_delimiter_script(spec):
+    with pytest.raises(NotImplementedError, match="own tokenizer"):
+        LexicalEngine(spec).blank_comments("SELECT 1 -- c")

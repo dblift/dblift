@@ -58,6 +58,10 @@ class LexicalEngine:
 
     def blank_comments(self, script: str) -> str:
         """Replace each scanned comment with a space, preserving quoted text."""
+        if self.spec.delimiter_script is not None:
+            raise NotImplementedError(
+                "comments of a delimiter script are blanked by the dialect's own tokenizer"
+            )
         tokenizer = LexicalTokenizer(script, spec=self.spec)
         tokens = tokenizer.tokenize()
         LexicalStatementParser(
