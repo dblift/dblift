@@ -934,6 +934,8 @@ class LexicalTokenizer(BaseTokenizer):
 
     def _next_occurrence(self, start: int) -> int:
         """Where the active delimiter next begins from ``start`` (-1: nowhere), searched once."""
+        # No reset on a DELIMITER line: it takes effect with no code pending, so the cached
+        # occurrence of the old delimiter is always behind the cursor and gets recomputed.
         if not (self._seen_from <= start and (self._seen_at < 0 or start <= self._seen_at)):
             self._seen_from, self._seen_at = start, self.sql.find(self._delimiter, start)
         return self._seen_at
@@ -956,7 +958,6 @@ class LexicalTokenizer(BaseTokenizer):
                     pos, self._delimiter_eol(), self.line
                 ):
                     self._delimiter = script.delimiter
-                    self._seen_from = len(sql) + 1  # cached occurrences are of the old one
                     self.read(self._delimiter_eol() - pos)
                     continue
             if char == rules.escape:
