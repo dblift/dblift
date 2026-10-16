@@ -106,7 +106,7 @@ class BatchScriptRules:
 
 @dataclass(frozen=True)
 class ProgramRules:
-    """Statements whose ``BEGIN ... END`` body a ``;`` does not end (an extension beyond the client)."""
+    """Statements whose ``BEGIN ... END`` body a ``;`` does not end (beyond the client)."""
 
     head_verbs: FrozenSet[str]
     fillers: FrozenSet[str]
@@ -195,10 +195,13 @@ class LexicalSpec:
     #: the client's batch reading.
     redaction_reads_engine: bool = True
     delimiter_script: Optional[DelimiterScriptRules] = None
-    #: False: a doubled string quote closes the literal and opens the next one, as a line-by-line client reads it.
+    #: False: a doubled string quote closes the literal and opens the next, as a client does.
     string_quote_doubling: bool = True
 
     def __post_init__(self) -> None:
-        """A client reads a script by lines or by batches, never both."""
-        if self.client_script is not None and self.batch_script is not None:
-            raise ValueError("client_script and batch_script are mutually exclusive")
+        """A client reads a script by lines, by batches or up to a delimiter, never two of them."""
+        rules = (self.client_script, self.batch_script, self.delimiter_script)
+        if sum(rule is not None for rule in rules) > 1:
+            raise ValueError(
+                "client_script, batch_script and delimiter_script are mutually exclusive"
+            )

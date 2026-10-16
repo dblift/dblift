@@ -1,4 +1,4 @@
-"""MariaDB lexical facts from docs/sql-parsing/mariadb.md: the mysql rules, with the differences the client has."""
+"""MariaDB lexical facts from docs/sql-parsing/mariadb.md: the mysql rules, and what differs."""
 
 from dataclasses import replace
 

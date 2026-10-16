@@ -187,6 +187,24 @@ def test_comment_inside_an_executable_comment_is_refused(spec):
     assert delimiters(tokens) == 1
 
 
+@BOTH
+@pytest.mark.parametrize("lexeme", ["'a\nb'", "`a\nb`"])
+def test_a_lexeme_spanning_lines_ends_the_executable_comment_flag(spec, lexeme):
+    tokenizer, tokens = read(f"SELECT /*! {lexeme} /* c */ 1 */;", spec)
+    assert comments(tokenizer) == ["/* c */"]
+    assert delimiters(tokens) == 1
+    assert "executable comment" in refusal("SELECT /*! 'a' /* c */ 1 */;", spec)
+
+
+@BOTH
+def test_each_comment_ends_at_its_own_line(spec):
+    tokenizer, tokens = read("SELECT 1 # a\nSELECT 2 # b\n;\nSELECT /*+ x */ 3 -- c\n;", spec)
+    assert comments(tokenizer) == ["# a", "# b", "/*+ x */", "-- c"]
+    assert delimiters(tokens) == 2
+    tokenizer, _ = read("# a\n# b\n# c", MYSQL_SPEC)
+    assert comments(tokenizer) == ["# a", "# b", "# c"]
+
+
 HINT_ROWS = [
     # script, mysql comment spans, mariadb comment spans, mysql delimiters, mariadb delimiters
     ("SELECT 1 /*+ ; */ + 1; SELECT 2;", ["/*+ ; */"], ["/*+ ; */"], 2, 2),
