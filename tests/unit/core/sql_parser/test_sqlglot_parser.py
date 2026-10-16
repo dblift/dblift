@@ -432,10 +432,6 @@ class TestSqlGlotParser:
         assert result.success
         assert len(result.statements[0].affected_objects) >= 1
 
-    @pytest.mark.skipif(
-        tuple(int(part) for part in sqlglot.__version__.split(".")[:2]) < (30, 18),
-        reason="sqlglot < 30.18 rejects DROP TABLE with several tables",
-    )
     def test_affected_objects_drop_multiple_tables(self):
         """Test affected objects for DROP TABLE naming several tables."""
         parser = SqlGlotParser(dialect="postgresql")

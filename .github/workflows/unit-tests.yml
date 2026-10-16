@@ -76,8 +76,8 @@ jobs:
           path: ${{ env.E4_EVIDENCE_DIR }}
 
   sqlglot-floor:
-    # constraints-ci.txt pins one sqlglot release, so the lowest version the
-    # package declares is never exercised by the jobs above.
+    # constraints-ci.txt pins sqlglot at the declared minimum today, so this
+    # duplicates the main job; it guards the floor once constraints-ci.txt moves ahead.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6

@@ -75,11 +75,7 @@ _MESSAGES: Dict[str, str] = {
     "statement-not-analysed": "this ALTER statement could not be analysed; review it by hand",
 }
 
-# ``ModifyColumn`` (MySQL MODIFY / CHANGE) exists from sqlglot 30.18; older releases
-# parse MODIFY as ``AlterColumn``.
-_TYPE_CHANGE = tuple(
-    node for node in (exp.AlterColumn, exp.__dict__.get("ModifyColumn")) if node is not None
-)
+_TYPE_CHANGE = (exp.AlterColumn, exp.ModifyColumn)
 # Findings about one table's rows or its users: not reported for a table new in the delta.
 _TABLE_CODES = frozenset(
     {

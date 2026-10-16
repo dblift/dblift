@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Requires sqlglot 30.18 or later.** Statement facts rely on grammar that arrived between
+  sqlglot 30.15 and 30.18; the declared range is now `sqlglot>=30.18.0,<31`.
 - **MySQL and MariaDB splitting moved onto the shared lexical engine.**
   Splitting, analysis and extraction use the `mysql` and `mariadb` client rules
   (the `DELIMITER` command, client commands, executable comments, optimizer
@@ -31,12 +33,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **Statement facts on older sqlglot.** Reading an `INSERT` no longer fails with an
-  `AttributeError` when sqlglot 30.0 to 30.14 is installed (an absent `WHERE` is stored as
-  `False` there), which broke `dblift info`, `migrate --dry-run` and data-plan analysis on
-  DuckDB and SQLite. The statement-facts reader also depends on grammar changes that arrived in
-  sqlglot 30.17, so the declared minimum is now `sqlglot>=30.18.0`; CI installs that minimum
-  and runs the parser and the DuckDB and SQLite plugin tests against it.
+- **Statement facts on older sqlglot.** With sqlglot 30.0 to 30.14 installed, an `INSERT` made
+  statement analysis fail silently (a DEBUG "Could not analyse" line), so `migrate --dry-run`
+  lost its `[SAFE]` label and data-plan analysis skipped the statement. An absent `WHERE` is
+  stored as `False` there and is now read as no predicate.
 
 ### Removed
 

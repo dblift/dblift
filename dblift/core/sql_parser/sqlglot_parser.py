@@ -486,10 +486,7 @@ class SqlGlotParser(SqlParserInterface):
 
     @staticmethod
     def _drop_targets(ast: exp.Drop) -> List[exp.Table]:
-        """Tables named by a DROP. sqlglot < 30.18 puts the single table in
-        ``ast.this``; 30.18+ lists every table under ``ast.args["tables"]``."""
-        if isinstance(ast.this, exp.Table):
-            return [ast.this]
+        """Tables named by a DROP, listed under ``ast.args["tables"]``."""
         return [t for t in (ast.args.get("tables") or []) if isinstance(t, exp.Table)]
 
     def _correct_sqlserver_drop_index_schema(
