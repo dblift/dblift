@@ -5,15 +5,21 @@ from __future__ import annotations
 import pytest
 
 from dblift.core.exceptions import UnsafeStatementSplitError
-from dblift.db.plugins.mysql.parser._script import MAX_DELIMITER_LENGTH, scan_script
+from dblift.db.plugins.mariadb.regex_parser import MariaDbRegexParser
+from dblift.db.plugins.mysql.parser.lexical_spec import MYSQL_RULES
+from dblift.db.plugins.mysql.parser.mysql_regex_parser import MySqlRegexParser
+
+
+def _split(script: str, *, mariadb: bool = False):  # type: ignore[no-untyped-def]
+    return (MariaDbRegexParser if mariadb else MySqlRegexParser)().split(script)
 
 
 def sql(script: str, *, mariadb: bool = False) -> list[str]:
-    return [s.text for s in scan_script(script, mariadb=mariadb) if s.kind == "sql"]
+    return [s.text for s in _split(script, mariadb=mariadb) if s.kind == "sql"]
 
 
 def test_a_statement_record_has_text_line_and_terminator() -> None:
-    records = scan_script("CREATE TABLE t (id INT);\n\nINSERT INTO t VALUES (1)")
+    records = _split("CREATE TABLE t (id INT);\n\nINSERT INTO t VALUES (1)")
     assert [(r.text, r.line, r.terminator, r.kind) for r in records] == [
         ("CREATE TABLE t (id INT)", 1, ";", "sql"),
         ("INSERT INTO t VALUES (1)", 3, None, "sql"),
@@ -21,7 +27,7 @@ def test_a_statement_record_has_text_line_and_terminator() -> None:
 
 
 def test_delimiter_lines_are_directive_records_and_set_the_terminator() -> None:
-    records = scan_script("DELIMITER //\nSELECT 1//\nDELIMITER ;\nSELECT 2;")
+    records = _split("DELIMITER //\nSELECT 1//\nDELIMITER ;\nSELECT 2;")
     assert [(r.text, r.line, r.terminator, r.kind) for r in records] == [
         ("DELIMITER //", 1, None, "directive"),
         ("SELECT 1", 2, "//", "sql"),
@@ -82,7 +88,7 @@ def test_a_delimiter_after_comment_only_lines_is_a_command() -> None:
 def test_the_word_delimiter_is_text_unless_it_starts_a_line_with_nothing_pending(
     script: str,
 ) -> None:
-    assert not [r for r in scan_script(script) if r.kind == "directive"]
+    assert not [r for r in _split(script) if r.kind == "directive"]
 
 
 def test_the_delimiter_is_matched_as_a_plain_string_even_inside_a_word() -> None:
@@ -111,10 +117,10 @@ def test_empty_units_are_not_statements() -> None:
 
 
 def test_the_delimiter_may_be_fifteen_characters_and_no_more() -> None:
-    fifteen = "x" * MAX_DELIMITER_LENGTH
+    fifteen = "x" * MYSQL_RULES.max_length
     assert sql(f"DELIMITER {fifteen}\nSELECT 1{fifteen}") == ["SELECT 1"]
     with pytest.raises(UnsafeStatementSplitError, match="longer than 15"):
-        scan_script(f"DELIMITER {fifteen}x\nSELECT 1;")
+        _split(f"DELIMITER {fifteen}x\nSELECT 1;")
 
 
 @pytest.mark.parametrize(
@@ -134,7 +140,7 @@ def test_the_delimiter_may_be_fifteen_characters_and_no_more() -> None:
 )
 def test_a_delimiter_command_the_client_rejects_is_refused(line: str, message: str) -> None:
     with pytest.raises(UnsafeStatementSplitError, match=message):
-        scan_script(f"{line}\nSELECT 1;")
+        _split(f"{line}\nSELECT 1;")
 
 
 @pytest.mark.parametrize(
@@ -148,7 +154,7 @@ def test_a_delimiter_command_the_client_rejects_is_refused(line: str, message: s
 )
 def test_delimiter_that_does_not_start_its_line_is_refused(script: str) -> None:
     with pytest.raises(UnsafeStatementSplitError, match="not the first word"):
-        scan_script(script)
+        _split(script)
 
 
 def test_a_bom_is_skipped_and_crlf_is_read() -> None:
@@ -160,7 +166,7 @@ def test_a_bom_is_skipped_and_crlf_is_read() -> None:
 
 def test_a_nul_byte_is_refused() -> None:
     with pytest.raises(UnsafeStatementSplitError, match="line 2"):
-        scan_script("SELECT 1;\nSELECT 2\x00;")
+        _split("SELECT 1;\nSELECT 2\x00;")
 
 
 # --------------------------------------------------------------------------- comments and strings
@@ -220,7 +226,7 @@ def test_a_comment_character_inside_an_executable_comment_is_a_comment_to_the_en
 
 def test_a_comment_opening_inside_an_executable_comment_is_refused() -> None:
     with pytest.raises(UnsafeStatementSplitError, match="inside an executable comment"):
-        scan_script("SELECT 1 /*! /* c */ + 1 */;")
+        _split("SELECT 1 /*! /* c */ + 1 */;")
 
 
 def test_an_executable_comment_flag_does_not_outlive_its_line() -> None:
@@ -242,17 +248,17 @@ def test_an_optimizer_hint_hides_the_delimiter_and_stays_in_the_text() -> None:
 @pytest.mark.parametrize(
     "script,message",
     [
-        ("SELECT 1; /* c ; SELECT 2;", "unterminated block comment starting at line 1, column 11"),
-        ("/* c\nSELECT 1;", "unterminated block comment starting at line 1, column 1"),
+        ("SELECT 1; /* c ; SELECT 2;", "unterminated block comment opened at line 1, column 11"),
+        ("/* c\nSELECT 1;", "unterminated block comment opened at line 1, column 1"),
         ("SELECT /*+ x;\nSELECT 3;", "unterminated optimizer hint starting at line 1, column 8"),
-        ("SELECT 'abc;\nSELECT 2;", "unterminated string literal starting at line 1, column 8"),
-        ('SELECT "abc;', "unterminated string literal starting at line 1, column 8"),
-        ("SELECT 1 AS `abc;", "unterminated quoted identifier starting at line 1, column 13"),
+        ("SELECT 'abc;\nSELECT 2;", "unterminated string opened at line 1, column 8"),
+        ('SELECT "abc;', "unterminated string opened at line 1, column 8"),
+        ("SELECT 1 AS `abc;", "unterminated quoted identifier opened at line 1, column 13"),
     ],
 )
 def test_an_unterminated_lexeme_is_refused_with_its_position(script: str, message: str) -> None:
     with pytest.raises(UnsafeStatementSplitError, match=message):
-        scan_script(script)
+        _split(script)
 
 
 @pytest.mark.parametrize(
@@ -383,18 +389,18 @@ def test_the_extension_is_off_under_a_custom_delimiter() -> None:
 def test_a_body_without_its_end_is_refused_at_the_end_of_the_script() -> None:
     script = "SELECT 0;\nCREATE PROCEDURE p() BEGIN SELECT 1; SELECT 2;\nSELECT 3;"
     with pytest.raises(UnsafeStatementSplitError, match="opened at line 2 is not closed"):
-        scan_script(script)
+        _split(script)
 
 
 def test_the_column_of_an_unterminated_comment_or_hint_is_in_its_line() -> None:
     with pytest.raises(UnsafeStatementSplitError, match="line 3, column 3"):
-        scan_script("SELECT 1;\nSELECT 2;\n  /* open")
+        _split("SELECT 1;\nSELECT 2;\n  /* open")
     with pytest.raises(UnsafeStatementSplitError, match="hint starting at line 3, column 3"):
-        scan_script("SELECT 1;\nSELECT 2;\n  /*+ open")
+        _split("SELECT 1;\nSELECT 2;\n  /*+ open")
 
 
 def test_the_statement_after_a_body_gets_its_own_line() -> None:
-    records = scan_script("CREATE PROCEDURE p() BEGIN\n  SELECT 1;\nEND;\nSELECT 2;")
+    records = _split("CREATE PROCEDURE p() BEGIN\n  SELECT 1;\nEND;\nSELECT 2;")
     assert [(r.line, r.terminator) for r in records] == [(1, ";"), (4, ";")]
 
 
@@ -424,7 +430,7 @@ def test_a_comment_line_that_holds_a_carriage_return_alone_is_refused(
 ) -> None:
     script = f"SELECT 1;\nSELECT 2; {comment}\rSELECT 3;\r"
     with pytest.raises(UnsafeStatementSplitError, match="comment on line 2 holds a carriage") as e:
-        scan_script(script, mariadb=mariadb)
+        _split(script, mariadb=mariadb)
     assert "client reads the rest of the script as part of the comment" in str(e.value)
     assert sql("SELECT 1; # c\r\nSELECT 2;\r\n") == ["SELECT 1", "SELECT 2"]
 
@@ -439,15 +445,15 @@ def test_a_comment_line_that_holds_a_carriage_return_alone_is_refused(
 )
 def test_a_carriage_return_inside_a_delimiter_line_is_refused(script: str) -> None:
     with pytest.raises(UnsafeStatementSplitError, match="DELIMITER on line"):
-        scan_script(script)
+        _split(script)
     with pytest.raises(UnsafeStatementSplitError, match="mariadb client reads the rest"):
-        scan_script(script, mariadb=True)
+        _split(script, mariadb=True)
 
 
 def test_a_delimiter_that_follows_a_carriage_return_alone_is_refused() -> None:
     script = "SELECT 1;\rDELIMITER //\nSELECT 2//\nDELIMITER ;\nSELECT 3;\n"
     with pytest.raises(UnsafeStatementSplitError, match="not the first word"):
-        scan_script(script)
+        _split(script)
 
 
 HINT_ACROSS_LINES = "SELECT /*+\n NO_BKA(t1) ;\n*/ 1 AS a;\nSELECT 2 AS b;\n"
@@ -477,4 +483,4 @@ def test_a_hint_across_lines_is_one_statement_when_the_delimiter_is_on_its_first
 @pytest.mark.parametrize("mariadb", [False, True])
 def test_a_hint_that_is_never_closed_is_refused(mariadb: bool) -> None:
     with pytest.raises(UnsafeStatementSplitError, match="unterminated"):
-        scan_script("SELECT /*+ x\n;\nSELECT 3;\n", mariadb=mariadb)
+        _split("SELECT /*+ x\n;\nSELECT 3;\n", mariadb=mariadb)

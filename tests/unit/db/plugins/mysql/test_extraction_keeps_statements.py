@@ -56,7 +56,10 @@ def test_mariadb_gets_its_own_regex_parser_and_mysql_does_not() -> None:
     assert MysqlQuirks().parser_class("regex") is MySqlRegexParser
     assert MariadbQuirks().parser_class("hybrid") is MysqlQuirks().parser_class("hybrid")
     assert issubclass(MariaDbRegexParser, MySqlRegexParser)
-    assert MariaDbRegexParser.MARIADB and not MySqlRegexParser.MARIADB
+    assert (
+        MariaDbRegexParser._splitter_spec.name == "mariadb"
+        and MySqlRegexParser._splitter_spec.name == "mysql"
+    )
 
 
 def test_the_dialect_decides_what_the_maria_comment_is() -> None:

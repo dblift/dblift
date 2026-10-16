@@ -172,7 +172,11 @@ def test_other_specs_keep_the_new_defaults():
     from dblift.db.plugins.oracle.parser.lexical_spec import ORACLE_SPEC
     from dblift.db.plugins.postgresql.parser.lexical_spec import POSTGRESQL_SPEC
     from dblift.db.plugins.sqlite.parser.lexical_spec import SQLITE_SPEC
+    from dblift.db.plugins.sqlserver.parser.lexical_spec import SQLSERVER_SPEC
 
+    for spec in (POSTGRESQL_SPEC, REDSHIFT_SPEC, SQLITE_SPEC, ORACLE_SPEC, SQLSERVER_SPEC):
+        assert spec.delimiter_script is None
+        assert spec.string_quote_doubling is True
     for spec in (POSTGRESQL_SPEC, SQLITE_SPEC, ORACLE_SPEC):
         assert spec.bracket_identifier == ()
         assert spec.leading_bom_is_blank is False

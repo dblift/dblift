@@ -6,6 +6,7 @@ from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCom
 from dblift.core.sql_parser.base_statement_parser import BaseStatementParser
 from dblift.core.sql_parser.batch_script import BatchScript
 from dblift.core.sql_parser.client_script import ClientScript
+from dblift.core.sql_parser.delimiter_script import DelimiterScript
 from dblift.core.sql_parser.lexical_spec import BOM, LexicalSpec
 from dblift.core.sql_parser.parser_context import ParserContext
 from dblift.core.sql_parser.statement import Statement
@@ -23,6 +24,7 @@ class LexicalStatementParser(BaseStatementParser):
         *,
         spec: LexicalSpec,
         comments: Optional[Sequence[Tuple[int, int]]] = None,
+        delimiter_script: Optional[DelimiterScript] = None,
     ):
         """Bind token boundaries to their original source and plugin rules."""
         super().__init__(tokens, context, source)
@@ -48,6 +50,9 @@ class LexicalStatementParser(BaseStatementParser):
                 comments,
                 origin=int(spec.leading_bom_is_blank and source.startswith(BOM)),
             )
+        # A delimiter script is cut by the tokenizer as it reads: its records are final.
+        assert (spec.delimiter_script is None) == (delimiter_script is None)
+        self._delimiter_script = delimiter_script
         self._script: Optional[ClientScript] = None
         if spec.client_script is not None:
             assert source is not None  # a client script is read line by line from its text
@@ -148,6 +153,8 @@ class LexicalStatementParser(BaseStatementParser):
         (which only marks a boundary, it can't drop the token from output).
         A safe one is recorded as a ``directive``; any other is refused.
         """
+        if self._delimiter_script is not None:
+            return [(record, record.text) for record in self._delimiter_script.records]
         if self._batches is not None:
             return self._batches.split(self.tokens)
         records: List[Tuple[Statement, str]] = []

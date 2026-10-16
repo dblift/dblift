@@ -8,10 +8,13 @@ modern versions) get added here as the epic touches each subsystem.
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from dblift.db.feature_gate import FeatureGate
 from dblift.db.plugins.mysql.quirks import MysqlQuirks
+
+if TYPE_CHECKING:
+    from dblift.core.sql_parser.lexical_spec import LexicalSpec
 
 
 class MariadbQuirks(MysqlQuirks):
@@ -25,6 +28,12 @@ class MariadbQuirks(MysqlQuirks):
     modern versions.
 
     """
+
+    def lexical_spec(self) -> "LexicalSpec":
+        """The lexical specification the shared engine splits MariaDB scripts with."""
+        from dblift.db.plugins.mariadb.lexical_spec import MARIADB_SPEC
+
+        return MARIADB_SPEC
 
     # Plain-view redefinition inherits MySQL's CREATE OR REPLACE support.
     # https://mariadb.com/docs/server/server-usage/views/create-view
