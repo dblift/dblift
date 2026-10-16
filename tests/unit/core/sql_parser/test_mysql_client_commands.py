@@ -817,3 +817,17 @@ def test_a_nul_is_refused_before_a_command_and_the_session_mode_waits_for_its_st
         observed(spec, "SET sql_mode='NO_BACKSLASH_ESCAPES';\nexit\n")[1]
         == "UnsafeStatementSplitError"
     )
+
+
+@BOTH
+@pytest.mark.parametrize(
+    "script",
+    ["/*! ; */ ?", "/*! ; */ go\nSELECT 1;", "SELECT 1; /*! ; */ status", "/*! a ; b */ exit"],
+)
+def test_a_command_after_an_executable_comment_is_refused_when_a_delimiter_ends_the_statement_inside_it(
+    spec, script
+):
+    """The statement the delimiter ends inside the comment does not forget how the comment began."""
+    error = observed(spec, script)
+    assert error[:2] == ["error", "UnsupportedMetaCommandError"]
+    assert "after a comment on line 1" in error[2]
