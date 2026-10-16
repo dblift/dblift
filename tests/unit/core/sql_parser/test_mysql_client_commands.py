@@ -742,6 +742,16 @@ def test_refusals_are_raised_in_source_order(index):
             assert result[0] == "error" and result[1:] == PAIRS["errors"][code], script
 
 
+# built with chr(): a formatter or an editor must not be able to turn them into invisible literals
+LS = chr(0x2028)
+SEC = chr(0x00A7)
+EA = chr(0x00E9)
+
+
+def test_the_quirk_characters_are_the_ones_meant():
+    assert (ord(LS), ord(SEC), ord(EA)) == (0x2028, 0xA7, 0xE9)
+
+
 @BOTH
 def test_preserved_quirks_match_the_recorded_values(spec):
     def statements(script: str) -> list:
@@ -749,20 +759,33 @@ def test_preserved_quirks_match_the_recorded_values(spec):
 
     # a trailing NBSP or U+2028 is stripped from a statement; a leading one is kept
     assert statements("SELECT 1\xa0;") == ["SELECT 1"]
-    assert statements("SELECT 1 ;") == ["SELECT 1"]
+    assert statements(f"SELECT 1{LS};") == ["SELECT 1"]
     assert statements("\xa0SELECT 1;") == ["\xa0SELECT 1"]
     # a delimiter counts characters, not bytes
-    assert statements("DELIMITER §\nSELECT 1§\nSELECT 2§\nDELIMITER ;") == [
+    assert statements(f"DELIMITER {SEC}\nSELECT 1{SEC}\nSELECT 2{SEC}\nDELIMITER ;") == [
         "SELECT 1",
         "SELECT 2",
     ]
-    assert statements("DELIMITER " + "é" * 15 + "\nSELECT 1" + "é" * 15) == ["SELECT 1"]
-    assert statements("DELIMITER " + "é" * 8 + "\nSELECT 1" + "é" * 8) == ["SELECT 1"]
+    assert statements("DELIMITER " + EA * 15 + "\nSELECT 1" + EA * 15) == ["SELECT 1"]
+    assert statements("DELIMITER " + EA * 8 + "\nSELECT 1" + EA * 8) == ["SELECT 1"]
     with pytest.raises(UnsafeStatementSplitError, match="longer than 15 characters"):
-        LexicalEngine(spec).split("DELIMITER " + "é" * 16 + "\nSELECT 1;")
+        LexicalEngine(spec).split("DELIMITER " + EA * 16 + "\nSELECT 1;")
     # `delimiter` followed only by a vertical tab or form feed is the command, with that delimiter
     assert statements("delimiter\x0b\nSELECT 1;") == ["SELECT 1;"]
     assert statements("DELIMITER \x0c\nSELECT 1;") == ["SELECT 1;"]
+
+
+@BOTH
+def test_a_bare_command_is_followed_by_blanks_that_include_a_carriage_return(spec):
+    assert observed(spec, "SELECT 1;\ngo \r")[0] == "error"
+    assert observed(spec, "SELECT 1;\ngo \x0b")[0] == "error"
+
+
+def test_the_closer_of_an_open_hint_ends_the_executable_comment_only_text():
+    script = "/*! x */ /*+ a\n*/ \nexit\nSELECT 1;"
+    assert observed(MYSQL_SPEC, script) == ["ok", ["/*! x */ /*+ a\n*/ \nexit\nSELECT 1"]]
+    # a mariadb hint is a block comment: the text before the exit line is comments only
+    assert observed(MARIADB_SPEC, script)[0] == "error"
 
 
 @BOTH
