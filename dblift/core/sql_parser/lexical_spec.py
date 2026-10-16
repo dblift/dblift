@@ -105,6 +105,60 @@ class BatchScriptRules:
 
 
 @dataclass(frozen=True)
+class ProgramRules:
+    """Statements whose ``BEGIN ... END`` body a ``;`` does not end (an extension beyond the client)."""
+
+    head_verbs: FrozenSet[str]
+    fillers: FrozenSet[str]
+    create_only_fillers: FrozenSet[str]
+    definer: str
+    current_user: str
+    kinds: FrozenSet[str]
+    alter_kinds: FrozenSet[str]
+    body_open: str
+    body_close: str
+    block_words: FrozenSet[str]
+    case_word: str
+    statement_starts: FrozenSet[str]
+
+
+@dataclass(frozen=True)
+class DelimiterScriptRules:
+    """A client that reads a script line by line and ends a statement at a delimiter the script changes.
+
+    It reads a CRLF pair as LF and refuses a NUL byte (not fields: every such client does). ``initial`` is read for
+    the starting delimiter and for every place a plain ``;`` is meant: the terminator run of a command line, fragments,
+    and the stored-program condition (the extension runs only under the initial delimiter).
+    """
+
+    command: str
+    initial: str
+    max_length: int
+    argument_quotes: str
+    blanks: str
+    line_word: str
+    bare_commands: FrozenSet[str]
+    terminated_commands: FrozenSet[str]
+    argument_commands: FrozenSet[str]
+    unterminated_commands: FrozenSet[str]
+    statement_words: FrozenSet[str]
+    exit_commands: FrozenSet[str]
+    escape: str
+    escape_text: FrozenSet[str]
+    string_quotes: str
+    hash_comment: str
+    dash_comment: str
+    executable_openers: Tuple[str, ...]
+    hint_opener: str
+    hint_opening_line_only: bool
+    word_part: str
+    qualifiers: str
+    session_mode: str
+    session_mode_verbs: Tuple[str, ...]
+    program: ProgramRules
+
+
+@dataclass(frozen=True)
 class LexicalSpec:
     """Only lexical rules; no parser callbacks or alternative implementations."""
 
@@ -140,6 +194,9 @@ class LexicalSpec:
     #: own tokenizer: SQL Server masking reads comments as the server does, which differs from
     #: the client's batch reading.
     redaction_reads_engine: bool = True
+    delimiter_script: Optional[DelimiterScriptRules] = None
+    #: False: a doubled string quote closes the literal and opens the next one, as a line-by-line client reads it.
+    string_quote_doubling: bool = True
 
     def __post_init__(self) -> None:
         """A client reads a script by lines or by batches, never both."""
