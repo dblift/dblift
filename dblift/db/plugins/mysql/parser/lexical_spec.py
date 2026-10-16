@@ -4,6 +4,7 @@ from dblift.core.sql_parser.lexical_spec import DelimiterScriptRules, LexicalSpe
 
 MYSQL_PROGRAMS = ProgramRules(
     head_verbs=frozenset({"CREATE", "ALTER"}),
+    create_verb="CREATE",
     fillers=frozenset({"OR", "REPLACE"}),
     create_only_fillers=frozenset({"AGGREGATE"}),
     definer="DEFINER",

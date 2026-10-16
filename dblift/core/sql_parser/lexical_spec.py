@@ -109,6 +109,7 @@ class ProgramRules:
     """Statements whose ``BEGIN ... END`` body a ``;`` does not end (beyond the client)."""
 
     head_verbs: FrozenSet[str]
+    create_verb: str
     fillers: FrozenSet[str]
     create_only_fillers: FrozenSet[str]
     definer: str
