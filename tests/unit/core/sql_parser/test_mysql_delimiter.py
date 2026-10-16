@@ -14,9 +14,7 @@ from dblift.core.sql_parser.lexical_spec import LexicalSpec
 from dblift.core.sql_parser.lexical_tokenizer import LexicalTokenizer
 from dblift.core.sql_parser.statement import Statement
 from dblift.db.plugins.mariadb.lexical_spec import MARIADB_SPEC
-from dblift.db.plugins.mariadb.regex_parser import MariaDbRegexParser
 from dblift.db.plugins.mysql.parser.lexical_spec import MYSQL_RULES, MYSQL_SPEC
-from dblift.db.plugins.mysql.parser.mysql_regex_parser import MySqlRegexParser
 from tests.support.splitter_spec.spec_tables import load_conformance_rows
 from tests.support.splitter_spec.splitting import SplitOutcome
 
@@ -190,12 +188,12 @@ def test_delimiter_refusals_in_order(spec):
         f"the {client} client reads the rest of the script as part of that line and sends nothing"
     )
     no_argument = (
-        "DELIMITER on line 1 has no argument (or an empty or unclosed quoted one): the mysql "
-        "client prints an error and keeps the old delimiter, the mariadb client sends the line "
-        "to the server as text"
+        "DELIMITER on line 1 has no argument (or an empty or unclosed quoted one): "
+        f"the {client} client does not set a delimiter from it"
     )
     assert refusal("DELIMITER\nSELECT 1;", spec) == no_argument
     assert refusal("DELIMITER ''\nSELECT 1;", spec) == no_argument
+    assert refusal("DELIMITER;\nSELECT 1;", spec) == no_argument
     backslash = (
         "DELIMITER on line 1 contains a backslash: "
         f"the {client} client refuses it, backslash is the escape character"
@@ -217,6 +215,9 @@ def test_delimiter_not_first_on_its_line_is_refused(spec):
     assert refusal("SELECT 1; DELIMITER //\nSELECT 2;", spec) == message.format(1)
     assert refusal("/* c */ DELIMITER //\nSELECT 2;", spec) == message.format(1)
     assert refusal("SELECT 1;\nSELECT 2; delimiter //\n", spec) == message.format(2)
+    assert refusal("SELECT 1; DELIMITER\rx;", spec) == message.format(1)
+    # a line that follows a multi-line comment is not a line head
+    assert refusal("/* x\n*/DELIMITER //\nSELECT 1//", spec) == message.format(2)
     # pending code makes the line text, and a delimiter word is not a command inside a lexeme
     assert statements("SELECT 1\nDELIMITER //\n", spec) == ["SELECT 1\nDELIMITER //"]
     assert statements("SELECT 1 /* x\n*/ DELIMITER //\n", spec) == [
@@ -234,7 +235,7 @@ S = "sql"
 BOUNDS: List[Tuple[str, str, List[RecordTuple]]] = [
     (
         "bom",
-        "﻿DELIMITER //\nSELECT 1//\nDELIMITER ;\nSELECT 2;",
+        "\ufeffDELIMITER //\nSELECT 1//\nDELIMITER ;\nSELECT 2;",
         [
             ("DELIMITER //", 1, None, D, False, 1, None, 1, 14),
             ("SELECT 1", 2, "//", S, False, 1, None, 14, 24),
@@ -284,6 +285,36 @@ BOUNDS: List[Tuple[str, str, List[RecordTuple]]] = [
         ],
     ),
     (
+        "two directive lines in a row",
+        "DELIMITER //\nDELIMITER ;\nSELECT 1;",
+        [
+            ("DELIMITER //", 1, None, D, False, 1, None, 0, 13),
+            ("DELIMITER ;", 2, None, D, False, 1, None, 13, 25),
+            ("SELECT 1", 3, ";", S, False, 1, None, 25, 34),
+        ],
+    ),
+    (
+        "directive text keeps what is no blank",
+        "DELIMITER // x\xa0\nSELECT 1//",
+        [
+            ("DELIMITER // x\xa0", 1, None, D, False, 1, None, 0, 16),
+            ("SELECT 1", 2, "//", S, False, 1, None, 16, 26),
+        ],
+    ),
+    (
+        "crlf before a tail record",
+        "SELECT 1;\r\nSELECT 2",
+        [
+            ("SELECT 1", 1, ";", S, False, 1, None, 0, 9),
+            ("SELECT 2", 2, None, S, False, 1, None, 11, 19),
+        ],
+    ),
+    (
+        "a command word followed by a carriage return is text",
+        "  DELIMITER\rx;",
+        [("DELIMITER\rx", 1, ";", S, False, 1, None, 2, 14)],
+    ),
+    (
         "blanks around the directive",
         "  DELIMITER   //  \nSELECT 1//",
         [
@@ -302,9 +333,14 @@ def test_record_bounds_match_the_recorded_values(spec, name, script, expected):
 
 @BOTH
 def test_a_refusal_after_a_bom_counts_columns_without_it(spec):
-    assert refusal("﻿DELIMITER //\r\nSELECT 'a", spec) == (
-        "unterminated string opened at line 2, column 8"
-    )
+    with_bom = "\ufeffDELIMITER //\r\nSELECT 'a"
+    assert with_bom[0] == "\ufeff"
+    expected = "unterminated string opened at line 2, column 8"
+    assert refusal(with_bom, spec) == expected
+    assert refusal(with_bom[1:], spec) == expected
+    assert refusal("\ufeffSELECT 'a", spec) == "unterminated string opened at line 1, column 8"
+    # the offsets, not the columns, see the byte order mark
+    assert LexicalEngine(spec).split(with_bom[:-9] + "\r\nSELECT 1//")[0].source_start == 1
 
 
 @BOTH
@@ -347,16 +383,14 @@ def test_the_cache_of_delimiter_occurrences_is_dropped_on_a_delimiter_line(spec)
     assert tokenizer._seen_from > len(tokenizer.sql)
 
 
-PARSERS = {"mysql": MySqlRegexParser, "mariadb": MariaDbRegexParser}
+ANALYSIS_ORACLE = {"24": ["SELECT 1 AS A", "B"], "27": ["SELECT 1", "SELECT 2"]}
 
 
-@pytest.mark.parametrize("dialect, spec", [("mysql", MYSQL_SPEC), ("mariadb", MARIADB_SPEC)])
+@BOTH
 @pytest.mark.parametrize("row_id", ["24", "27"])
-def test_engine_analysis_view_matches_the_parser(dialect, spec, row_id):
+def test_engine_analysis_view_matches_the_recorded_parser_view(spec, row_id):
     script = next(r.script for r in ROWS if r.dialect == "mysql" and r.row_id == row_id)
-    expected = PARSERS[dialect]().split_for_analysis(script)
-    assert LexicalEngine(spec).split_for_analysis(script) == expected
-    assert not any(text.startswith("DELIMITER") for text in expected)
+    assert LexicalEngine(spec).split_for_analysis(script) == ANALYSIS_ORACLE[row_id]
 
 
 @BOTH
@@ -374,6 +408,8 @@ def script_with(rules_text: str = "SELECT 1") -> DelimiterScript:
     return DelimiterScript(MYSQL_RULES, "mysql", rules_text, [], 0)
 
 
+# `word()` and the qualifier it reports have no reader until the stored-program tracker is wired in
+# (a later change); these tests drive the event API directly.
 def test_a_name_qualifier_lives_until_the_line_ends_unless_a_comment_ended_it():
     script = script_with()
     script.symbol(".")
@@ -420,8 +456,9 @@ def test_a_closer_breaks_the_qualifier_and_ends_the_analysis_flag():
     assert script.word("end") is True
 
 
-def test_engine_direct_equals_the_regex_parsers_for_delimiter_free_scripts():
+def test_a_delimiter_free_script_is_cut_at_its_semicolons():
     script = "SELECT 'a;b' /* ; */ ; SELECT 2 # c\n;"
     assert [r.text for r in LexicalEngine(MYSQL_SPEC).split(script)] == [
-        r.text for r in MySqlRegexParser().split(script)
+        "SELECT 'a;b' /* ; */",
+        "SELECT 2 # c",
     ]

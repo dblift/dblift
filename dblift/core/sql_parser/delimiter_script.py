@@ -54,7 +54,7 @@ class DelimiterScript:
 
     def line_head(self, pos: int, end: int, line: int) -> bool:
         """Read the line at ``pos`` as a command (no code pending): True for a delimiter command."""
-        found = classify_line(self.rules, self.text, pos, end, self.delimiter)
+        found = classify_line(self.rules, self.text, pos, end)
         if found is None:
             return False
         raw = self.text[pos:end]

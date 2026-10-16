@@ -8,7 +8,7 @@ from dblift.core.sql_parser.lexical_spec import DelimiterScriptRules
 
 
 def classify_line(
-    rules: DelimiterScriptRules, source: str, start: int, end: int, delimiter: str
+    rules: DelimiterScriptRules, source: str, start: int, end: int
 ) -> Optional[Tuple[str, str]]:
     """The command a line begins: (word as written, argument tail), or None when it is text.
 
@@ -52,9 +52,7 @@ def read_delimiter(
     if not value:
         raise UnsafeStatementSplitError(
             f"{command} on line {line} has no argument (or an empty or unclosed quoted "
-            "one): "
-            "the mysql client prints an error and keeps the old delimiter, the mariadb "
-            "client sends the line to the server as text"
+            f"one): the {client_name} client does not set a delimiter from it"
         )
     if rules.escape in value:
         raise UnsafeStatementSplitError(
