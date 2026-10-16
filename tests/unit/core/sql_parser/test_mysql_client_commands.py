@@ -799,3 +799,21 @@ def test_the_closer_of_an_open_hint_ends_the_executable_comment_only_text():
 )
 def test_the_session_mode_name_in_a_comment_of_the_statement_is_not_a_setting(spec, script):
     assert observed(spec, script)[0] == "ok"
+
+
+@BOTH
+def test_a_nul_is_refused_before_a_command_and_the_session_mode_waits_for_its_statement_end(spec):
+    assert observed(spec, "exit\nSELECT 1\x00;") == [
+        "error",
+        "UnsafeStatementSplitError",
+        f"NUL byte on line 2: the {spec.client_name} client refuses it unless --binary-mode is set",
+    ]
+    assert observed(spec, "SET sql_mode='NO_BACKSLASH_ESCAPES', @a = 1 \\G\n;") == [
+        "error",
+        "UnsupportedMetaCommandError",
+        f"{spec.client_name} client command \\G on line 1: dblift does not run client commands",
+    ]
+    assert (
+        observed(spec, "SET sql_mode='NO_BACKSLASH_ESCAPES';\nexit\n")[1]
+        == "UnsafeStatementSplitError"
+    )

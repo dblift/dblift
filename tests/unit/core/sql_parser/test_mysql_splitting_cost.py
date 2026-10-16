@@ -74,6 +74,7 @@ def work(script: str, spec: LexicalSpec) -> int:
     COUNT[0] = 0
     tokenizer.tokenize()
     assert tokenizer.delimiter_script.records is not None
+    assert COUNT[0] > 0
     return COUNT[0]
 
 
