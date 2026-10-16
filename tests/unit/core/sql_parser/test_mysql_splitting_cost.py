@@ -1,10 +1,10 @@
 """Splitting a client script costs time linear in its length.
 
-The budget is a count of the characters the delimiter path slices, searches and maps back, not a
-clock: the text and the offset map of a tokenizer are replaced by counting copies, each shape is run
-at S and at 4S, and the count must grow about four times. Each S is the size at which splitting
-takes about half a second, so a per-token search of a line or a per-statement scan from the start of
-the script shows as a ratio far above four.
+The budget is a bound on counted work, not on time: the characters the delimiter path slices,
+searches and maps back are counted on counting copies of the text and of the offset map, each shape is
+run at S and at 4S, and the count must grow about four times (clean runs give 4.0 to 4.2, a per-token
+search of a line or a per-statement scan from the start of the script gives about 16). A count does
+not depend on the machine, so S only has to be large enough for the quadratic terms to dominate.
 """
 
 from typing import Callable, Dict, List, Tuple
@@ -77,18 +77,18 @@ def work(script: str, spec: LexicalSpec) -> int:
     return COUNT[0]
 
 
-#: shape -> (script of n repeats, S). Each S takes about half a second to split.
+#: shape -> (script of n repeats, S).
 SHAPES: Dict[str, Tuple[Callable[[int], str], int]] = {
     "one-line-of-statements-and-comments": (
         lambda n: "SELECT 1; /* c */ /*!40000 SET @a = 1 */; " * n,
-        14000,
+        700,
     ),
     "one-line-under-a-custom-delimiter": (
         lambda n: "DELIMITER //\n" + "SELECT 1; " * n + "//",
-        70000,
+        3500,
     ),
-    "crlf-statements": (lambda n: "SELECT 1;\r\n" * n, 56000),
-    "one-statement-of-comment-lines": (lambda n: "SELECT 1\n" + "# c ; x\n" * n + ";", 220000),
+    "crlf-statements": (lambda n: "SELECT 1;\r\n" * n, 2800),
+    "one-statement-of-comment-lines": (lambda n: "SELECT 1\n" + "# c ; x\n" * n + ";", 11000),
 }
 
 
