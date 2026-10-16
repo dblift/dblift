@@ -971,7 +971,7 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
         where = ast.args.get("where")
         predicate = (
             where.this.sql(dialect=dialect)
-            if where is not None and where.this is not None
+            if isinstance(where, exp.Where) and where.this is not None
             else None
         )
         events = _sqlglot_events(ast)

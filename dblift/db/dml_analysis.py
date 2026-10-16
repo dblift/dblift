@@ -307,7 +307,7 @@ def dml_where_predicate(
     if not isinstance(ast, (exp.Update, exp.Delete)):
         return None
     where = ast.args.get("where")
-    if where is None or where.this is None:
+    if not isinstance(where, exp.Where) or where.this is None:
         return None
     return str(where.this.sql(dialect=sqlglot_dialect))
 

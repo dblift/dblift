@@ -29,6 +29,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   peak to 2.9 s and a 176 MB peak, and a 132-byte migration from 42 to 81
   microseconds.
 
+### Fixed
+
+- **Statement facts on older sqlglot.** Reading an `INSERT` no longer fails with an
+  `AttributeError` when sqlglot 30.0 to 30.14 is installed (an absent `WHERE` is stored as
+  `False` there), which broke `dblift info`, `migrate --dry-run` and data-plan analysis on
+  DuckDB and SQLite. The statement-facts reader also depends on grammar changes that arrived in
+  sqlglot 30.17, so the declared minimum is now `sqlglot>=30.18.0`; CI installs that minimum
+  and runs the parser and the DuckDB and SQLite plugin tests against it.
+
 ### Removed
 
 - `dblift.db.plugins.mysql.parser._script` (an internal module; use
