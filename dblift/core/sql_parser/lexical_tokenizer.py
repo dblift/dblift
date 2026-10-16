@@ -1044,9 +1044,8 @@ class LexicalTokenizer(BaseTokenizer):
         try:
             token = self._handle_comment()
         except UnsafeStatementSplitError as error:
-            if str(error).startswith("unterminated block comment"):
-                script.unterminated_block(error)
-            raise
+            # the only refusal of a block comment is the unterminated one
+            script.unterminated_block(error)
         script.lexeme(start_line, self.line)
         script.comment(start_pos, self.pos, False)
         if not script.code_started:
