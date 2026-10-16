@@ -11,6 +11,7 @@ from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.core.sql_parser.delimiter_script import DelimiterScript
 from dblift.core.sql_parser.lexical_engine import LexicalEngine
 from dblift.core.sql_parser.lexical_spec import LexicalSpec
+from dblift.core.sql_parser.lexical_tokenizer import LexicalTokenizer
 from dblift.core.sql_parser.statement import Statement
 from dblift.db.plugins.mariadb.lexical_spec import MARIADB_SPEC
 from dblift.db.plugins.mariadb.regex_parser import MariaDbRegexParser
@@ -329,6 +330,21 @@ def test_analysis_fragments_under_a_custom_delimiter(spec):
     # a record without a semicolon of its own has no fragments to give
     plain = LexicalEngine(spec).split("DELIMITER //\nSELECT 1//\n")
     assert plain[1].analysis_statements is None
+
+
+@BOTH
+def test_comment_only_and_empty_fragments_give_nothing_to_analyse(spec):
+    records = LexicalEngine(spec).split("DELIMITER //\nSELECT 1; /* c */; # x\n; SELECT 2//\n")
+    assert records[1].analysis_statements == ("SELECT 1", "SELECT 2")
+    records = LexicalEngine(spec).split("DELIMITER //\nSELECT 1;; SELECT 2//")
+    assert records[1].analysis_statements == ("SELECT 1", "SELECT 2")
+
+
+@BOTH
+def test_the_cache_of_delimiter_occurrences_is_dropped_on_a_delimiter_line(spec):
+    tokenizer = LexicalTokenizer("DELIMITER ZZ\nSELECT 1 ZZ\nDELIMITER B\n", spec=spec)
+    tokenizer.tokenize()
+    assert tokenizer._seen_from > len(tokenizer.sql)
 
 
 PARSERS = {"mysql": MySqlRegexParser, "mariadb": MariaDbRegexParser}

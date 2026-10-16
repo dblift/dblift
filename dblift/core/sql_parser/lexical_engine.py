@@ -22,7 +22,11 @@ class LexicalEngine:
         tokenizer = LexicalTokenizer(script, spec=self.spec)
         tokens = tokenizer.tokenize()
         return LexicalStatementParser(
-            tokens, source=script, spec=self.spec, comments=tokenizer.comments
+            tokens,
+            source=script,
+            spec=self.spec,
+            comments=tokenizer.comments,
+            delimiter_script=tokenizer.delimiter_script,
         )
 
     @staticmethod
@@ -48,7 +52,7 @@ class LexicalEngine:
 
     def split_for_analysis(self, script: str) -> List[str]:
         """Project executed batch constituents, retaining SQLite comment-only segments."""
-        if self.spec.batch_script is not None:
+        if self.spec.batch_script is not None or self.spec.delimiter_script is not None:
             return analysis_sql(self.split(script))
         return [record.text for record in self.split(script, include_comment_only=True)]
 
