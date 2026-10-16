@@ -73,7 +73,7 @@ def work(script: str, spec: LexicalSpec) -> int:
     tokenizer.delimiter_script.removed = CountingOffsets(tokenizer.delimiter_script.removed)
     COUNT[0] = 0
     tokenizer.tokenize()
-    assert tokenizer.delimiter_script.records
+    assert tokenizer.delimiter_script.records is not None
     return COUNT[0]
 
 
@@ -89,6 +89,7 @@ SHAPES: Dict[str, Tuple[Callable[[int], str], int]] = {
     ),
     "crlf-statements": (lambda n: "SELECT 1;\r\n" * n, 2800),
     "one-statement-of-comment-lines": (lambda n: "SELECT 1\n" + "# c ; x\n" * n + ";", 11000),
+    "one-line-of-block-comments": (lambda n: "/**/" * n, 2000),
 }
 
 

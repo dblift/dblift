@@ -8,6 +8,7 @@ import pytest
 from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.migration.sql.statement_splitter import StatementSplitter
+from dblift.core.sql_parser.enhanced_regex_parser import EnhancedRegexParser
 from dblift.core.sql_parser.lexical_engine import LexicalEngine
 from dblift.core.sql_parser.parser_factory import SqlParserFactory
 from dblift.db.plugins.mariadb.lexical_spec import MARIADB_SPEC
@@ -38,6 +39,7 @@ def test_execution_uses_the_spec_without_constructing_a_regex_parser(monkeypatch
 
     monkeypatch.setattr(SqlParserFactory, "__init__", forbidden)
     monkeypatch.setattr(SqlParserFactory, "get_parser", forbidden)
+    monkeypatch.setattr(EnhancedRegexParser, "__init__", forbidden)
     assert StatementSplitter(dialect).split_statements(SCRIPT) == [
         "CREATE TABLE a (x INT)",
         "SELECT 1; SELECT 2",
