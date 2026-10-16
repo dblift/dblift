@@ -1,7 +1,6 @@
 """Tests for SqlGlot-based SQL parser."""
 
 import pytest
-import sqlglot
 
 from dblift.core.sql_model.base import (
     ParseResult,
