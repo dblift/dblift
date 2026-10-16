@@ -363,10 +363,12 @@ def test_bom_columns(spec):
 
 
 def test_backslash_outside_lexemes_consumes_the_next_character():
-    tokenizer, tokens = read("SELECT \\' x;", MYSQL_SPEC)
+    tokenizer, tokens = read("SELECT \\N x;", MYSQL_SPEC)
     assert texts(tokens, TokenType.STRING) == []
-    assert code(tokens) == ["SELECT", "\\'", "x", ";"]
-    tilde = replace(MYSQL_SPEC, delimiter_script=replace(MYSQL_RULES, escape="~"))
+    assert code(tokens) == ["SELECT", "\\N", "x", ";"]
+    tilde = replace(
+        MYSQL_SPEC, delimiter_script=replace(MYSQL_RULES, escape="~", escape_text=frozenset("'"))
+    )
     assert code(read("SELECT ~' x;", tilde)[1]) == ["SELECT", "~'", "x", ";"]
     assert refusal("SELECT \\' x;", tilde) == "unterminated string opened at line 1, column 9"
 

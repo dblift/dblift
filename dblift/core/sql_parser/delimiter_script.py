@@ -1,10 +1,16 @@
 """The client state of one delimiter script, driven by the tokenizer in source order."""
 
+import re
 from bisect import bisect_left
 from typing import List, NoReturn, Optional, Sequence, Tuple
 
 from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
-from dblift.core.sql_parser.delimiter_commands import classify_line, read_delimiter
+from dblift.core.sql_parser.delimiter_commands import (
+    check_escape,
+    classify_line,
+    read_delimiter,
+    refuse_command,
+)
 from dblift.core.sql_parser.lexical_spec import DelimiterScriptRules
 from dblift.core.sql_parser.statement import Statement
 
@@ -46,6 +52,9 @@ class DelimiterScript:
         self.start = -1
         self.start_line = 0
         self.qualifier = False
+        self.exec_only = False
+        self.exec_clean = False
+        self._literals: List[Tuple[int, int]] = []
         self._spans: List[Tuple[int, int]] = []
         self._fragments: List[int] = []
 
@@ -53,10 +62,18 @@ class DelimiterScript:
         return offset + bisect_left(self.removed, offset)
 
     def line_head(self, pos: int, end: int, line: int) -> bool:
-        """Read the line at ``pos`` as a command (no code pending): True for a delimiter command."""
-        found = classify_line(self.rules, self.text, pos, end)
+        """Read the line at ``pos`` as a command: True for a delimiter command, else it is text.
+
+        With only executable comments pending, just the exit commands still count.
+        """
+        found = classify_line(self.rules, self.text, pos, end, self.delimiter)
         if found is None:
             return False
+        word = found[0].upper()
+        if self.code_started and word not in self.rules.exit_commands:
+            return False
+        if word != self.rules.command.upper():
+            refuse_command(self.client_name, found[0], line, after_comment=False)
         raw = self.text[pos:end]
         self.delimiter = read_delimiter(self.rules, self.client_name, raw, found[1], line)
         first = pos + len(raw) - len(raw.lstrip(self.rules.blanks))
@@ -72,6 +89,16 @@ class DelimiterScript:
         )
         return True
 
+    def after_comment(self, pos: int, end: int, line: int) -> None:
+        """A command word after a comment on its line: some clients run it, so it is refused."""
+        found = classify_line(self.rules, self.text, pos, end, self.delimiter)
+        if found is not None and found[0].upper() != self.rules.command.upper():
+            refuse_command(self.client_name, found[0], line, after_comment=True)
+
+    def escape(self, pos: int, end: int, line: int) -> None:
+        """The escape character met outside lexemes and comments."""
+        check_escape(self.rules, self.client_name, self.text, pos, end, line)
+
     def code(self, pos: int, line: int) -> None:
         """Code was read: it starts the statement when none is open."""
         if not self.code_started:
@@ -81,11 +108,18 @@ class DelimiterScript:
         """A word was read; True when what precedes it qualifies it (``t.end``, ``@begin``)."""
         qualified = self.qualifier
         self.qualifier = False
+        self._outside_executable()
         return qualified
+
+    def _outside_executable(self) -> None:
+        """Code read outside an executable comment ends the executable-comment-only text."""
+        if not self.exec_comment:
+            self.exec_only = False
 
     def symbol(self, char: str) -> None:
         """A one-character code symbol was read."""
         self.qualifier = char in self.rules.qualifiers
+        self._outside_executable()
 
     def comment(self, start: int, end: int, line_comment: bool) -> None:
         """A comment of the statement being read."""
@@ -99,7 +133,7 @@ class DelimiterScript:
             self._fragments.append(pos + 1)
 
     def line_end(self, pos: int) -> None:
-        """A line feed ends the executable-comment flag; the qualifier too, unless a line comment ended it."""
+        """A line feed ends the executable-comment flag, and the qualifier unless a comment did."""
         self.exec_comment = False
         if pos != self._line_comment_end:
             self.qualifier = False
@@ -110,10 +144,12 @@ class DelimiterScript:
             self.exec_comment = False
             self.qualifier = False
 
-    def literal(self, start_line: int, end_line: int) -> None:
+    def literal(self, start: int, stop: int, start_line: int, end_line: int) -> None:
         """A string or quoted name was read."""
+        self._literals.append((start, stop))
         self.lexeme(start_line, end_line)
         self.qualifier = False
+        self._outside_executable()
 
     def reset_qualifier(self) -> None:
         """A client command pair or a closer breaks a qualified name."""
@@ -127,9 +163,10 @@ class DelimiterScript:
 
     def _emit(self, cut: int, terminator: Optional[str], source_end: int) -> None:
         text = self.text[self.start : cut].rstrip()
+        self._refuse_session_mode(text)
         analysis: Optional[Tuple[str, ...]] = None
         if self._fragments:
-            code = self._blank(text)
+            code = self._blank(text, self._spans)
             parts = []
             begin = self.start
             for end in self._fragments:
@@ -150,10 +187,30 @@ class DelimiterScript:
             )
         )
 
-    def _blank(self, text: str) -> str:
-        """The statement text with its comments blanked."""
+    def _refuse_session_mode(self, text: str) -> None:
+        """Refuse a statement that sets the mode that changes how the client reads a backslash."""
+        rules = self.rules
+        mode = rules.session_mode.upper()
+        if mode not in text.upper():
+            return
+        code = self._blank(text, self._spans)
+        verbs = "|".join(re.escape(verb) for verb in rules.session_mode_verbs)
+        openers = "|".join(re.escape(opener) for opener in rules.executable_openers)
+        sets = re.match(rf"\s*(?:(?:{openers})\d*\s*)?(?:{verbs})\b", code, re.IGNORECASE)
+        if not sets:
+            code = self._blank(code, self._literals)
+        setter = re.escape(rules.session_mode_verbs[0])
+        if mode in code.upper() and re.search(rf"\b{setter}\b", code, re.IGNORECASE):
+            raise UnsafeStatementSplitError(
+                f"the statement on line {self.start_line} sets {rules.session_mode}: the "
+                f"{self.client_name} client then reads backslashes as ordinary characters, "
+                "this splitter cannot follow"
+            )
+
+    def _blank(self, text: str, spans: List[Tuple[int, int]]) -> str:
+        """The statement text with the given spans blanked."""
         chars = list(text)
-        for begin, stop in self._spans:
+        for begin, stop in spans:
             for k in range(max(begin - self.start, 0), min(stop - self.start, len(chars))):
                 chars[k] = " "
         return "".join(chars)
@@ -169,6 +226,9 @@ class DelimiterScript:
     def executable(self, line: int) -> None:
         """An executable comment opens: its text is code until the closer."""
         self.block_opens(line)
+        self.exec_clean = not self.code_started
+        if not self.code_started:
+            self.exec_only = True
         self.exec_comment = True
         self.analysis_exec_comment = True
 
@@ -182,13 +242,16 @@ class DelimiterScript:
         self.block_opens(line)
         self.open_hint = None
 
-    def close(self) -> bool:
+    def close(self, pos: int, end: int, line: int) -> bool:
         """A closer in code ends an executable comment, else an open hint; else it is no closer."""
         self.analysis_exec_comment = False
         if self.exec_comment:
             self.exec_comment = False
+            if self.exec_clean:
+                self.after_comment(pos + 2, end, line)
         elif self.open_hint is not None:
             self.open_hint = None
+            self.exec_only = False
         else:
             return False
         self.qualifier = False

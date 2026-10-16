@@ -952,7 +952,7 @@ class LexicalTokenizer(BaseTokenizer):
                 continue
             if self._line_start:
                 self._line_start = False
-                if not script.code_started and script.line_head(
+                if (not script.code_started or script.exec_only) and script.line_head(
                     pos, self._delimiter_eol(), self.line
                 ):
                     self._delimiter = script.delimiter
@@ -961,6 +961,7 @@ class LexicalTokenizer(BaseTokenizer):
                     continue
             if char == rules.escape:
                 # a client command to the end of the line; the next character is not read as code
+                script.escape(pos, self._delimiter_eol(), self.line)
                 follows = pos + 1 < len(sql) and sql[pos + 1] != "\n"
                 script.reset_qualifier()
                 return self._delimiter_token(TokenType.SYMBOL, 2 if follows else 1)
@@ -976,7 +977,7 @@ class LexicalTokenizer(BaseTokenizer):
                 return self._delimiter_line_comment(script)
             if sql.startswith("/*", pos):
                 return self._delimiter_block(script)
-            if sql.startswith("*/", pos) and script.close():
+            if sql.startswith("*/", pos) and script.close(pos, self._delimiter_eol(), self.line):
                 return self._delimiter_token(TokenType.SYMBOL, 2)
             if char in rules.string_quotes:
                 return self._delimiter_literal(script, lambda: self._handle_escape_string(char))
@@ -1011,8 +1012,9 @@ class LexicalTokenizer(BaseTokenizer):
 
     def _delimiter_literal(self, script: DelimiterScript, read: Callable[[], Token]) -> Token:
         start_line = self.line
+        start_pos = self.pos
         token = read()
-        script.literal(start_line, self.line)
+        script.literal(start_pos, self.pos, start_line, self.line)
         return token
 
     def _delimiter_line_comment(self, script: DelimiterScript) -> Token:
@@ -1043,6 +1045,8 @@ class LexicalTokenizer(BaseTokenizer):
             raise
         script.lexeme(start_line, self.line)
         script.comment(start_pos, self.pos, False)
+        if not script.code_started:
+            script.after_comment(self.pos, self._delimiter_eol(), self.line)
         return token
 
     def _delimiter_hint(self, script: DelimiterScript) -> Token:
@@ -1060,4 +1064,6 @@ class LexicalTokenizer(BaseTokenizer):
         self.read(stop - start_pos)
         self.comments.append((start_pos, stop))
         script.comment(start_pos, stop, False)
+        if close >= 0 and not script.code_started:
+            script.after_comment(self.pos, self._delimiter_eol(), self.line)
         return Token(TokenType.COMMENT, "", start_pos, start_line, start_col, 0)

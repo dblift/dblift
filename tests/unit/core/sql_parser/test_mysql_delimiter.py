@@ -436,7 +436,7 @@ def test_a_literal_or_a_lexeme_spanning_lines_breaks_the_qualifier():
     script.lexeme(1, 2)
     assert script.word("end") is False
     script.symbol(".")
-    script.literal(1, 1)
+    script.literal(0, 1, 1, 1)
     assert script.word("end") is False
     script.symbol(".")
     script.reset_qualifier()
@@ -448,11 +448,11 @@ def test_a_closer_breaks_the_qualifier_and_ends_the_analysis_flag():
     script.executable(1)
     assert script.analysis_exec_comment is True
     script.symbol(".")
-    assert script.close() is True
+    assert script.close(0, 0, 1) is True
     assert script.analysis_exec_comment is False
     assert script.word("end") is False
     script.symbol(".")
-    assert script.close() is False
+    assert script.close(0, 0, 1) is False
     assert script.word("end") is True
 
 

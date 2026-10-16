@@ -740,3 +740,39 @@ def test_refusals_are_raised_in_source_order(index):
             assert result[0] == "ok", script
         else:
             assert result[0] == "error" and result[1:] == PAIRS["errors"][code], script
+
+
+@BOTH
+def test_preserved_quirks_match_the_recorded_values(spec):
+    def statements(script: str) -> list:
+        return LexicalEngine(spec).split_statements(script)
+
+    # a trailing NBSP or U+2028 is stripped from a statement; a leading one is kept
+    assert statements("SELECT 1\xa0;") == ["SELECT 1"]
+    assert statements("SELECT 1 ;") == ["SELECT 1"]
+    assert statements("\xa0SELECT 1;") == ["\xa0SELECT 1"]
+    # a delimiter counts characters, not bytes
+    assert statements("DELIMITER §\nSELECT 1§\nSELECT 2§\nDELIMITER ;") == [
+        "SELECT 1",
+        "SELECT 2",
+    ]
+    assert statements("DELIMITER " + "é" * 15 + "\nSELECT 1" + "é" * 15) == ["SELECT 1"]
+    assert statements("DELIMITER " + "é" * 8 + "\nSELECT 1" + "é" * 8) == ["SELECT 1"]
+    with pytest.raises(UnsafeStatementSplitError, match="longer than 15 characters"):
+        LexicalEngine(spec).split("DELIMITER " + "é" * 16 + "\nSELECT 1;")
+    # `delimiter` followed only by a vertical tab or form feed is the command, with that delimiter
+    assert statements("delimiter\x0b\nSELECT 1;") == ["SELECT 1;"]
+    assert statements("DELIMITER \x0c\nSELECT 1;") == ["SELECT 1;"]
+
+
+@BOTH
+@pytest.mark.parametrize(
+    "script",
+    [
+        "SELECT 1 /* SET NO_BACKSLASH_ESCAPES */;",
+        "SELECT 1 # SET NO_BACKSLASH_ESCAPES\n;",
+        "SET @a = 1 -- NO_BACKSLASH_ESCAPES\n;",
+    ],
+)
+def test_the_session_mode_name_in_a_comment_of_the_statement_is_not_a_setting(spec, script):
+    assert observed(spec, script)[0] == "ok"
