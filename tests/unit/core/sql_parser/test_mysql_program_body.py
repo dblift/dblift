@@ -770,6 +770,124 @@ PROGRAMS = [
         ["ok", ["CREATE PROCEDURE p() BEGIN SELECT 1", "SELECT 2"]],
     ],
     [
+        "CREATE PROCEDURE p() BEGIN SELECT CASE WHEN a THEN CASE WHEN b THEN IF(c,1,2) ELSE 3 END "
+        "END; SELECT 4; END; SELECT 5;",
+        [
+            "ok",
+            [
+                "CREATE PROCEDURE p() BEGIN SELECT CASE WHEN a THEN CASE WHEN b THEN IF(c,1,2) ELSE 3 END "
+                "END; SELECT 4; END",
+                "SELECT 5",
+            ],
+        ],
+        [
+            "ok",
+            [
+                "CREATE PROCEDURE p() BEGIN SELECT CASE WHEN a THEN CASE WHEN b THEN IF(c,1,2) ELSE 3 END "
+                "END; SELECT 4; END",
+                "SELECT 5",
+            ],
+        ],
+    ],
+    [
+        "CREATE PROCEDURE p() BEGIN SELECT 1 /*! END */; SELECT 2; END; SELECT 3;",
+        ["ok", ["CREATE PROCEDURE p() BEGIN SELECT 1 /*! END */", "SELECT 2", "END", "SELECT 3"]],
+        ["ok", ["CREATE PROCEDURE p() BEGIN SELECT 1 /*! END */", "SELECT 2", "END", "SELECT 3"]],
+    ],
+    [
+        "CREATE /* c */ PROCEDURE p() BEGIN SELECT 1; END; SELECT 3;",
+        ["ok", ["CREATE /* c */ PROCEDURE p() BEGIN SELECT 1; END", "SELECT 3"]],
+        ["ok", ["CREATE /* c */ PROCEDURE p() BEGIN SELECT 1; END", "SELECT 3"]],
+    ],
+    [
+        "DELIMITER //\nCREATE PROCEDURE p() BEGIN SELECT 1;",
+        ["ok", ["CREATE PROCEDURE p() BEGIN SELECT 1;"]],
+        ["ok", ["CREATE PROCEDURE p() BEGIN SELECT 1;"]],
+    ],
+    [
+        "CREATE PROCEDURE p() BEGIN IF 1 THEN SELECT 1; END; IF 2 THEN SELECT 2; END IF; END; SELECT "
+        "3;",
+        [
+            "ok",
+            [
+                "CREATE PROCEDURE p() BEGIN IF 1 THEN SELECT 1; END; IF 2 THEN SELECT 2; END IF; END",
+                "SELECT 3",
+            ],
+        ],
+        [
+            "ok",
+            [
+                "CREATE PROCEDURE p() BEGIN IF 1 THEN SELECT 1; END; IF 2 THEN SELECT 2; END IF; END",
+                "SELECT 3",
+            ],
+        ],
+    ],
+    [
+        "CREATE PROCEDURE p() BEGIN LOOP SELECT 1; END (LOOP); SELECT 2; END; SELECT 3;",
+        ["ok", ["CREATE PROCEDURE p() BEGIN LOOP SELECT 1; END (LOOP); SELECT 2; END", "SELECT 3"]],
+        ["ok", ["CREATE PROCEDURE p() BEGIN LOOP SELECT 1; END (LOOP); SELECT 2; END", "SELECT 3"]],
+    ],
+    [
+        "CREATE PROCEDURE p() BEGIN SELECT CASE WHEN 1 THEN CASE x WHEN 1 THEN 2 END END; IF 1 THEN "
+        "SELECT 1; END IF; END; SELECT 3;",
+        [
+            "ok",
+            [
+                "CREATE PROCEDURE p() BEGIN SELECT CASE WHEN 1 THEN CASE x WHEN 1 THEN 2 END END; IF 1 "
+                "THEN SELECT 1; END IF; END",
+                "SELECT 3",
+            ],
+        ],
+        [
+            "ok",
+            [
+                "CREATE PROCEDURE p() BEGIN SELECT CASE WHEN 1 THEN CASE x WHEN 1 THEN 2 END END; IF 1 "
+                "THEN SELECT 1; END IF; END",
+                "SELECT 3",
+            ],
+        ],
+    ],
+    [
+        "CREATE PROCEDURE p() BEGIN SET x = CASE WHEN 1 THEN CASE WHEN 2 THEN 3 END ELSE 4 END; "
+        "SELECT 2; END; SELECT 3;",
+        [
+            "ok",
+            [
+                "CREATE PROCEDURE p() BEGIN SET x = CASE WHEN 1 THEN CASE WHEN 2 THEN 3 END ELSE 4 END; "
+                "SELECT 2; END",
+                "SELECT 3",
+            ],
+        ],
+        [
+            "ok",
+            [
+                "CREATE PROCEDURE p() BEGIN SET x = CASE WHEN 1 THEN CASE WHEN 2 THEN 3 END ELSE 4 END; "
+                "SELECT 2; END",
+                "SELECT 3",
+            ],
+        ],
+    ],
+    [
+        "CREATE /*+ x\n*/ PROCEDURE p() BEGIN SELECT 1; END; SELECT 3;",
+        ["ok", ["CREATE /*+ x\n*/ PROCEDURE p() BEGIN SELECT 1", "END", "SELECT 3"]],
+        ["ok", ["CREATE /*+ x\n*/ PROCEDURE p() BEGIN SELECT 1; END", "SELECT 3"]],
+    ],
+    [
+        "CREATE PROCEDURE p() BEGIN SELECT 1; END END IF; SELECT 2;",
+        ["ok", ["CREATE PROCEDURE p() BEGIN SELECT 1; END END IF", "SELECT 2"]],
+        ["ok", ["CREATE PROCEDURE p() BEGIN SELECT 1; END END IF", "SELECT 2"]],
+    ],
+    [
+        "CREATE PROCEDURE p() BEGIN END; IF 1 THEN SELECT 1; END IF; SELECT 2;",
+        ["ok", ["CREATE PROCEDURE p() BEGIN END", "IF 1 THEN SELECT 1", "END IF", "SELECT 2"]],
+        ["ok", ["CREATE PROCEDURE p() BEGIN END", "IF 1 THEN SELECT 1", "END IF", "SELECT 2"]],
+    ],
+    [
+        "CREATE DEFINER = u@% PROCEDURE p() BEGIN SELECT 1; END; SELECT 3;",
+        ["ok", ["CREATE DEFINER = u@% PROCEDURE p() BEGIN SELECT 1", "END", "SELECT 3"]],
+        ["ok", ["CREATE DEFINER = u@% PROCEDURE p() BEGIN SELECT 1", "END", "SELECT 3"]],
+    ],
+    [
         "CREATE PROCEDURE p(x INT DEFAULT (BEGIN)) SELECT 1; SELECT 3;",
         ["ok", ["CREATE PROCEDURE p(x INT DEFAULT (BEGIN)) SELECT 1", "SELECT 3"]],
         ["ok", ["CREATE PROCEDURE p(x INT DEFAULT (BEGIN)) SELECT 1", "SELECT 3"]],
