@@ -26,7 +26,10 @@ MARIADB_ROWS = [row for row in ALL_ROWS if row.dialect == "mariadb"]
 #: mysql.md rows whose expected statements are MySQL's reading and not MariaDB's.
 MYSQL_ONLY_ROWS = frozenset({"16", "39a"})
 
-KNOWN_GAPS: frozenset[str] = frozenset()
+#: Rows 83 and 84: the splitter reads ``delimiter`` followed only by a vertical tab, and ``DELIMITER``
+#: followed by a form feed, as a DELIMITER command that sets that character as the delimiter; the
+#: clients take the first as text and refuse the second as an argument (docs/sql-parsing/mysql.md §12).
+KNOWN_GAPS: frozenset[str] = frozenset({"83", "84"})
 
 RUNS = (
     [pytest.param("mysql", row, id=f"mysql-{row.row_id}") for row in MYSQL_ROWS]
@@ -58,3 +61,13 @@ def test_spec_row(dialect: str, row: ConformanceRow, request: pytest.FixtureRequ
         f"{dialect} row {row.row_id}\nscript: {row.script!r}\n"
         f"expected: {row.expectation}\nactual: {outcome!r}"
     )
+
+
+@pytest.mark.parametrize("dialect", ["mysql", "mariadb"])
+@pytest.mark.parametrize("row_id", sorted(KNOWN_GAPS))
+def test_rows_83_and_84_are_known_gaps(dialect: str, row_id: str) -> None:
+    row = next(r for r in MYSQL_ROWS if r.row_id == row_id)
+    outcome = split_script(dialect, row.script)
+    assert outcome.error is None
+    assert list(outcome.statements) == ["SELECT 1;"]
+    assert not outcome.matches(row.expectation)

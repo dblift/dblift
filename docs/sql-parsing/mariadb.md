@@ -6,9 +6,9 @@
 | --- | --- |
 | Covers | MariaDB 11.8.8, read through the `mariadb` command-line client 15.2 (the only version measured: other versions, 10.5 to 11.7 and later, are extrapolated) |
 | Relation to [mysql.md](mysql.md) | mysql.md is normative for both engines; this file lists only what MariaDB does differently and the conformance rows for it. A script that uses none of the constructs below splits the same way on both |
-| Code facts taken from | OSS `develop` `94384ff` (2026-10-11): MariaDB shared the MySQL splitter (`mariadb/quirks.py` inherited `parser_class`) |
-| Live verification | measured 2026-10-11 with `mariadb from 11.8.8-MariaDB, client 15.2 for debian-linux-gnu (aarch64)` against MariaDB 11.8.8-MariaDB-ubu2404, the same probe set as the MySQL measurements (778 probes, run on both engines). Every "measured 2026-10-11" cell below is that pair |
-| Engine subclass | none: the scanner takes one flag, whether `/*M!` opens an executable comment |
+| Code facts taken from | OSS `develop` `35f0779` (2026-10-15): MariaDB has its own lexical specification, the MySQL rules with the differences below (`mariadb/lexical_spec.py`) |
+| Live verification | measured 2026-10-11 with `mariadb from 11.8.8-MariaDB, client 15.2 for debian-linux-gnu (aarch64)` against MariaDB 11.8.8-MariaDB-ubu2404, the same set of scripts as the MySQL measurements (778 probes, run on both engines). Every "measured 2026-10-11" cell below is that pair |
+| Engine subclass | none: the MySQL rules with `/*M!` read as code and a hint read as a comment across lines are data of the shared lexical tokenizer |
 
 ## 1-9. What changes with MariaDB
 
@@ -22,7 +22,7 @@ Everything in [mysql.md](mysql.md) §1-§9 holds, except:
 | client commands | `resetconnection`, `query_attributes`, `ssl_session_data_print` and `\x` are commands | the first three are text for the server (error 1064); `\x` is an unknown command (the client prints `Unknown command '\x'.` and stops, exit code 1); `\Q` is a command (and an unknown one on mysql) | refused on both engines |
 | `DELIMITER ''` and `DELIMITER '` | prints an error, keeps the old delimiter, exit code 0 | sends the line to the server as text (error 1064, exit code 1); `DELIMITER` and `DELIMITER;` print the same bare error as mysql | refused on both |
 | `\N` outside a string | text; the server rejects it | text; the server reads NULL | text on both |
-| several statements in one query | allowed by the client's connection | allowed by the client's connection | mysql.md §11 |
+| several statements in one query | allowed by the client's connection | allowed by the client's connection | sent as one query (mysql.md row 27) |
 | stored-program syntax | — | `CREATE OR REPLACE PROCEDURE\|FUNCTION\|TRIGGER`, `CREATE AGGREGATE FUNCTION`, `FOR i IN a..b DO … END FOR`, `BEGIN NOT ATOMIC … END` | the first three are in the §5 head and block rules (rows M3-M6); `BEGIN NOT ATOMIC` is not a stored program (mysql.md row 79) |
 
 ## 10. Conformance examples
@@ -43,4 +43,4 @@ The list of mysql.md §11 applies. MariaDB's Oracle-compatibility mode (`sql_mod
 
 ## 12. Current implementation
 
-Same code as mysql.md section 12: `dblift/db/plugins/mariadb/regex_parser.py` is the MySQL splitter with `/*M!` read as an executable comment, and `MariadbQuirks.parser_class("regex")` returns it.
+Same code as mysql.md section 12: `dblift/db/plugins/mariadb/lexical_spec.py` holds `MARIADB_SPEC`, the MySQL rules with `/*M!` as a second executable opener and a hint read as a block comment, `MariadbQuirks.lexical_spec()` returns it, and `dblift/db/plugins/mariadb/regex_parser.py` is the MySQL delegate holding it.
