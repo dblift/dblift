@@ -21,7 +21,7 @@ class DelimiterScript:
         self.rules = rules
         self.client_name = client_name
         self.text = text
-        self.removed = removed
+        self.removed = removed  # `removed` and `origin` map record offsets back to the source
         self.origin = origin
         self.exec_comment = False
         self.open_hint: Optional[Tuple[int, int]] = None
@@ -58,6 +58,11 @@ class DelimiterScript:
         """A hint opens on this line and may stay open on later ones."""
         self.block_opens(line)
         self.open_hint = (line, col)
+
+    def hint_closes(self, line: int) -> None:
+        """A hint that closes on its own line takes the place of one left open earlier."""
+        self.block_opens(line)
+        self.open_hint = None
 
     def close(self) -> bool:
         """A closer in code ends an executable comment, else an open hint; else it is no closer."""

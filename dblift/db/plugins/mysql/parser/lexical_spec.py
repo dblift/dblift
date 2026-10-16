@@ -64,7 +64,6 @@ MYSQL_SPEC = LexicalSpec(
     quoted_identifier="`",
     quoted_identifier_escape=False,
     string_quote_doubling=False,
-    plain_string_escapes=True,
     leading_bom_is_blank=True,
     redaction_reads_engine=False,
     delimiter_script=MYSQL_RULES,

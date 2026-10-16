@@ -354,11 +354,12 @@ def test_crlf_is_read_as_lf(spec):
 
 @BOTH
 def test_bom_columns(spec):
-    assert refusal("﻿SELECT 'a", spec) == "unterminated string opened at line 1, column 8"
+    assert refusal("\ufeffSELECT 'a", spec) == "unterminated string opened at line 1, column 8"
     assert (
-        refusal("﻿SELECT 1;\nSELECT 'a", spec) == "unterminated string opened at line 2, column 8"
+        refusal("\ufeffSELECT 1;\nSELECT 'a", spec)
+        == "unterminated string opened at line 2, column 8"
     )
-    assert texts(read("﻿SELECT 'a'", spec)[1], TokenType.STRING) == ["'a'"]
+    assert texts(read("\ufeffSELECT 'a'", spec)[1], TokenType.STRING) == ["'a'"]
 
 
 def test_backslash_outside_lexemes_consumes_the_next_character():
@@ -393,3 +394,36 @@ def test_three_client_rules_are_exclusive():
     with pytest.raises(ValueError):
         replace(ORACLE_SPEC, batch_script=SQLSERVER_SPEC.batch_script)
     assert replace(MYSQL_SPEC, delimiter_script=MYSQL_RULES) == MYSQL_SPEC
+
+
+def test_a_later_hint_replaces_an_open_hint():
+    tokenizer, tokens = read("SELECT /*+ a\n/*+ b */ 1;\nSELECT 2;", MYSQL_SPEC)
+    assert comments(tokenizer) == ["/*+ a", "/*+ b */"]
+    assert delimiters(tokens) == 2
+    read("SELECT /*+ a\n/*+ b */ 1;", MYSQL_SPEC)
+    # a later hint that stays open replaces the earlier one: the refusal names the later line
+    assert refusal("SELECT /*+ x\nSELECT /*+ y\n1", MYSQL_SPEC) == (
+        "unterminated optimizer hint starting at line 2, column 8"
+    )
+    assert refusal("SELECT /*+ x\n/*! 1 */\n;", MYSQL_SPEC) == (
+        "unterminated optimizer hint starting at line 1, column 8"
+    )
+
+
+@BOTH
+def test_a_string_closes_only_on_its_own_quote(spec):
+    for script in ['SELECT "a\'b;" AS x; SELECT 2;', "SELECT 'a\"b;' AS x; SELECT 2;"]:
+        tokens = read(script, spec)[1]
+        assert len(texts(tokens, TokenType.STRING)) == 1
+        assert delimiters(tokens) == 2
+
+
+def test_a_backslash_after_a_closed_hint_is_not_in_the_hint():
+    tokenizer, tokens = read("SELECT /*+ a */ \\N AS x; SELECT 2;", MYSQL_SPEC)
+    assert comments(tokenizer) == ["/*+ a */"]
+    assert delimiters(tokens) == 2
+
+
+def test_the_nul_line_ignores_lone_carriage_returns():
+    expected = "NUL byte on line 1: the mysql client refuses it unless --binary-mode is set"
+    assert refusal("SELECT 1;\rSELECT 2\x00;", MYSQL_SPEC) == expected

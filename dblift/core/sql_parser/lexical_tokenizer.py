@@ -1000,7 +1000,7 @@ class LexicalTokenizer(BaseTokenizer):
         if close < 0:
             script.hint_opens(start_line, start_col)
         else:
-            script.block_opens(start_line)
+            script.hint_closes(start_line)
         script.check_hint(text_from, end if close < 0 else close, start_line)
         stop = end if close < 0 else close + 2
         self.read(stop - start_pos)
