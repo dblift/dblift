@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import re
-from typing import Any, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, List, Optional, Tuple
 
 from dblift.db.base_quirks import BaseQuirks
 from dblift.db.error import ErrorCategory
+
+if TYPE_CHECKING:
+    from dblift.core.sql_parser.lexical_spec import LexicalSpec
 
 # Each entry: (compiled regex, ErrorCategory). Sourced by
 # ``DatabaseErrorClassifier`` via ``error_patterns()`` (ADR-26 A2).
@@ -45,6 +48,12 @@ class Db2Quirks(BaseQuirks):
     ``COMPRESS YES/NO`` storage clause, and migration-engine semantics
     where ``clean_schema`` auto-commits and DDL needs an explicit commit.
     """
+
+    def lexical_spec(self) -> "LexicalSpec":
+        """The lexical specification the shared engine splits Db2 scripts with."""
+        from dblift.db.plugins.db2.parser.lexical_spec import DB2_SPEC
+
+        return DB2_SPEC
 
     # Capability matrix (was ``_CAPABILITIES["db2"]``).
     supports_transactions = True

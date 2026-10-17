@@ -854,7 +854,6 @@ module = [
     "dblift.db.plugins.db2.quirks",
     "dblift.db.plugins.db2.db2",
     "dblift.db.plugins.db2.db2.schema_operations",
-    "dblift.db.plugins.db2.parser._script",
     "dblift.db.plugins.db2.parser.parser_config",
     "dblift.db.plugins.db2.parser.db2_regex_parser",
 ]

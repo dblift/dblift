@@ -165,6 +165,6 @@ def test_db2_nested_comment_text_is_never_executed(sql):
 
     assert len(statements) == 1, statements
     assert "CREATE TABLE t_after (x INT)" in statements[0], statements
-    live = StatementSplitter("db2").parser_factory.get_parser()
+    live = SqlParserFactory("db2", parser_type="regex").get_parser()
     stripped = live._strip_comments_preserving_quotes(statements[0])
     assert "t_in" not in stripped and "DROP" not in stripped, statements

@@ -18,7 +18,7 @@ DB2_ROUTINES = RoutineRules(
 )
 
 #: First words of CLP commands that no SQL statement starts with (the CLP's own ``?`` listing).
-_COMMAND_WORDS = frozenset("""
+FIRST_WORDS = frozenset("""
     ACTIVATE ADD ARCHIVE ATTACH AUTOCONFIGURE BACKUP BIND CATALOG CHANGE COMPLETE CONNECT
     DEACTIVATE DECOMPOSE DEREGISTER DESCRIBE DETACH ECHO EDIT EXPORT FORCE GET HELP HISTORY
     IMPORT INITIALIZE INSPECT LIST LOAD PING PRECOMPILE PREP PRUNE PUT QUERY QUIESCE QUIT
@@ -29,7 +29,7 @@ _COMMAND_WORDS = frozenset("""
 #: CLP commands whose first word also starts an SQL statement: the next words decide.
 #: ``CREATE DATABASE`` and ``DROP DATABASE`` are not here on purpose: the server rejects them
 #: with an error, and ``CREATE DATABASE LINK`` is SQL other dialects write.
-_COMMAND_PHRASES = frozenset(
+FIRST_PHRASES = frozenset(
     {
         ("DROP", "DBPARTITIONNUM"),
         ("REFRESH", "LDAP"),
@@ -70,8 +70,8 @@ DB2_RULES = TerminatorScriptRules(
     word=r"[A-Za-z_][A-Za-z0-9_$#@]*",
     leading_word=r"[A-Za-z_][A-Za-z0-9_]*",
     command_prefixes="!?",
-    command_words=_COMMAND_WORDS,
-    command_phrases=_COMMAND_PHRASES,
+    command_words=FIRST_WORDS,
+    command_phrases=FIRST_PHRASES,
     sql_phrases=frozenset({("GET", "DIAGNOSTICS")}),
     epilogue_words=frozenset({("TERMINATE",), ("QUIT",), ("CONNECT", "RESET")}),
     epilogue=r"(?i)(?:QUIT|TERMINATE|CONNECT[ \t]+RESET)[ \t]*(?:--.*|/\*.*?\*/[ \t]*)?\Z",
