@@ -163,12 +163,12 @@ class TestHandleDryRun(unittest.TestCase):
         self.assertIn("V1__a.sql", info_calls)
         self.assertIn("V2__b.sql", info_calls)
 
-    def test_returns_result(self):
+    def test_returns_nothing(self):
         cmd = _make_cmd()
         result = MigrateResult()
         with patch.object(cmd, "_log_command_completion"):
             returned = cmd._handle_dry_run([], result)
-        self.assertIs(returned, result)
+        self.assertIsNone(returned)
 
     def test_populates_result_migrations_with_pending_status(self):
         cmd = _make_cmd()
@@ -198,9 +198,8 @@ class TestHandleDryRun(unittest.TestCase):
         result = MigrateResult()
 
         with patch.object(cmd, "_log_command_completion"):
-            returned = cmd._handle_dry_run([migration], result, show_sql=True)
+            cmd._handle_dry_run([migration], result, show_sql=True)
 
-        self.assertIs(returned, result)
         self.assertTrue(result.show_sql)
         self.assertEqual(len(result.sql), 1)
         self.assertEqual(result.sql[0].script, "V1__a.sql")

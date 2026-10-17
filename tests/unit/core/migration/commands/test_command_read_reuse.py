@@ -73,7 +73,7 @@ def observe_reads(client, migrations):
 @pytest.mark.parametrize(
     "operation,populated,expected_history,expected_loads",
     [
-        ("migrate", False, 4, 2),
+        ("migrate", False, 4, 3),
         ("migrate", True, 2, 1),
         ("info", False, 0, 1),
         ("info", True, 2, 1),
@@ -438,7 +438,7 @@ def test_nonempty_recursion_map_preserves_validator_discovery_scope(database_cli
 
     assert result.success, result.error_message
     assert [m.script for m in result.migrations] == ["V1__app.sql"]
-    assert counts == {"history": 4, "files": {"V1__app.sql": 2}, "scans": 2}
+    assert counts == {"history": 4, "files": {"V1__app.sql": 3}, "scans": 3}
 
 
 def test_info_duplicate_warning_reuses_state_catalog(database_client):
@@ -504,7 +504,7 @@ def test_filtered_migrate_keeps_full_catalog_for_missing_file_validation(databas
     assert filtered.success, filtered.error_message
     assert [row.script for row in filtered.migrations] == ["V3__new[keep].sql"]
     assert not any("is missing from" in call.args[0] for call in warnings.call_args_list)
-    assert counts["scans"] == 2
+    assert counts["scans"] == 3
 
     excluded.unlink()
     with (
@@ -716,8 +716,8 @@ def test_callback_discovery_sees_file_created_during_lock_acquisition(database_c
     ]
     assert counts == {
         "history": 4,
-        "files": {"V1__app.sql": 2, "beforeMigrate__late.sql": 1},
-        "scans": 2,
+        "files": {"V1__app.sql": 3, "beforeMigrate__late.sql": 2},
+        "scans": 3,
     }
     with sqlite3.connect(database) as connection:
         assert connection.execute(
@@ -857,7 +857,9 @@ def test_commands_validate_state_snapshots_without_public_collection_adapters(
     ):
         result = getattr(client, operation)()
     assert result.success, result.error_message
-    assert build.call_count == validate.call_count == 1
+    # A real migrate validates again once it holds the lock.
+    expected_calls = 2 if operation == "migrate" else 1
+    assert build.call_count == validate.call_count == expected_calls
     assert validate.call_args.args[0].selected_migrations[0].script_name == "V1__app.sql"
 
 

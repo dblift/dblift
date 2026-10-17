@@ -51,9 +51,9 @@ def test_dry_run_preflight_does_not_bootstrap_schema_or_history():
 
 @pytest.mark.parametrize("dry_run", [False, True])
 def test_migrate_preflight_requests_schema_bootstrap_and_preserves_dry_run(dry_run):
-    from tests.unit.core.migration.commands.test_migrate_command_repeatable_lock_race import _cmd
+    from tests.unit.core.migration.commands.test_migrate_command_lock_refusal import _cmd
 
-    command = _cmd([], applied_after_lock=[])
+    command = _cmd([])
     preflight = MagicMock()
     command._run_preflight = preflight
     command._log_command_header_update = MagicMock()

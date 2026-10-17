@@ -5,7 +5,7 @@ Migrate command implementation.
 from contextlib import ExitStack
 from functools import partial
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union, cast
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union, cast
 
 from dblift.config import DbliftConfig
 from dblift.db.provider_interfaces import TransactionalProvider
@@ -17,28 +17,22 @@ if TYPE_CHECKING:
 from dblift.core.constants import DEFAULT_MIGRATION_LOCK_TIMEOUT_SECONDS
 from dblift.core.logger import Log
 from dblift.core.logger.results import MigrateResult, MigrationInfo, MigrationSqlInfo
-from dblift.core.migration._type_match import migration_type_name
 from dblift.core.migration.executor.execution_engine import ExecutionEngine
 from dblift.core.migration.executor.migration_helpers import MigrationHelpers
 from dblift.core.migration.history.migration_history_manager import MigrationHistoryManager
-from dblift.core.migration.migration import (
-    VERSIONED_SCRIPT_TYPES,
-    AppliedMigration,
-    Migration,
-    MigrationType,
-)
+from dblift.core.migration.migration import VERSIONED_SCRIPT_TYPES, Migration, MigrationType
 from dblift.core.migration.rules.migration_rules import MigrationRules
 from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
 from dblift.core.migration.sql.lint import SAFE, lint_pending_scripts
 from dblift.core.migration.sql.script_analysis import dialect_of
+from dblift.core.migration.state.migration_state import MigrationReadSnapshot, MigrationState
 from dblift.core.migration.state.migration_state_manager import (
     MigrationStateManager,
     StrictModeError,
 )
-from dblift.core.migration.state.rank_wins import installed_rank, latest_successful_ranks
 from dblift.core.migration.ui.migration_ui import MigrationUI
 from dblift.core.migration.ui.progress import migration_progress
-from dblift.core.migration.version_utils import compare_versions, is_migration_success
+from dblift.core.migration.version_utils import compare_versions
 from dblift.core.sql_validator.migration_validator import MigrationValidator
 from dblift.db.base_provider import BaseProvider
 
@@ -117,13 +111,13 @@ class MigrateCommand(BaseCommand):
         pending_migrations: List[Migration],
         result: MigrateResult,
         show_sql: bool = False,
-    ) -> MigrateResult:
+    ) -> None:
         """Handle dry run mode - log migrations without executing them."""
         result.show_sql = show_sql
         if show_sql:
             self._collect_visible_sql(pending_migrations, result)
             if result.error_message:
-                return result
+                return
 
         dialect = dialect_of(self.config)
         analysed = (
@@ -168,77 +162,6 @@ class MigrateCommand(BaseCommand):
             self.log.info("Run `dblift validate-sql` to see the statement behind each finding.")
         result.dry_run_count = len(pending_migrations)
         # Note: Callbacks are NOT executed in dry-run mode
-        return result
-
-    def _filter_already_applied(
-        self,
-        pending: List[Migration],
-        applied: List[AppliedMigration],
-    ) -> List[Migration]:
-        """Drop migrations already present in successful history rows.
-
-        Versioned migrations are uniquely keyed on ``(version, type)``; that
-        pair must be unique across history rows for installed_rank ordering
-        to work. Repeatables are content-checksum based, keyed on
-        script_name: a repeatable is only dropped if a successful history
-        row for the same script now has a matching checksum, since a
-        concurrent process may have applied it (with unchanged content)
-        while this process was waiting for the lock.
-        """
-        ranks = latest_successful_ranks(applied)
-
-        successful_keys = set()
-        for rec in applied:
-            if rec.version is None or not is_migration_success(rec.success):
-                continue
-            rec_type = migration_type_name(rec.type)
-            if rec_type not in VERSIONED_SCRIPT_TYPES:
-                continue
-            state = ranks.get(str(rec.version))
-            undo_rank = state.undo if state is not None else 0
-            if installed_rank(rec) <= undo_rank:
-                continue
-            successful_keys.add((str(rec.version), rec_type))
-
-        latest_repeatable_by_script: Dict[str, AppliedMigration] = {}
-        for rec in applied:
-            if not rec.success or migration_type_name(rec.type) != MigrationType.REPEATABLE.value:
-                continue
-            script = str(rec.script_name)
-            current = latest_repeatable_by_script.get(script)
-            if current is None or int(rec.installed_rank or 0) > int(current.installed_rank or 0):
-                latest_repeatable_by_script[script] = rec
-
-        filtered: List[Migration] = []
-        for migration in pending:
-            type_value = migration_type_name(migration.type)
-            if (
-                type_value in VERSIONED_SCRIPT_TYPES
-                and (str(migration.version), type_value) in successful_keys
-            ):
-                self.log.info(
-                    f"Skipping {migration.script_name} (version: "
-                    f"{migration.version}) — applied by concurrent process"
-                )
-                continue
-            if type_value == MigrationType.REPEATABLE.value:
-                applied_rec = latest_repeatable_by_script.get(migration.script_name)
-                current_checksum = getattr(migration, "checksum", None)
-                # Only skip when both sides have a known, matching checksum —
-                # a missing checksum on either side (None) must never count as
-                # a match, or a repeatable that was never actually verified
-                # against this content would be silently skipped.
-                if (
-                    applied_rec is not None
-                    and applied_rec.checksum is not None
-                    and applied_rec.checksum == current_checksum
-                ):
-                    self.log.info(
-                        f"Skipping {migration.script_name} — applied by " "concurrent process"
-                    )
-                    continue
-            filtered.append(migration)
-        return filtered
 
     def _mark_migrations_as_executed(
         self, pending_migrations: List[Migration], result: MigrateResult
@@ -503,29 +426,35 @@ class MigrateCommand(BaseCommand):
             # Catalog is unfiltered; migrate selects Pending then tags/versions.
             # target_version is label context only (Above target), not an omit filter.
             strict_mode = bool(getattr(self.config, "strict_mode", False))
-            migration_state = self.state_manager.build_state(
-                scripts_dir,
-                recursive=use_recursive,
-                additional_dirs=use_additional_dirs,
-                dir_recursive_map=dir_recursive_map,
-                target_version=target_version,
-                read_snapshot=read_snapshot,
-            )
+
+            def plan(
+                snapshot: MigrationReadSnapshot,
+            ) -> Tuple[MigrationState, Optional[str], List[Migration]]:
+                """Read the state through ``snapshot`` and select what migrate would run."""
+                state = self.state_manager.build_state(
+                    scripts_dir,
+                    recursive=use_recursive,
+                    additional_dirs=use_additional_dirs,
+                    dir_recursive_map=dir_recursive_map,
+                    target_version=target_version,
+                    read_snapshot=snapshot,
+                )
+                current = self.state_manager.get_current_version(state.applied_objects)
+                selected = self.state_manager.apply_filters_to_migrations(
+                    state.executable_pending_objects(),
+                    tags=tags,
+                    exclude_tags=exclude_tags,
+                    versions=versions,
+                    exclude_versions=exclude_versions,
+                )
+                return state, current, selected
+
+            migration_state, current_version, pending_migrations = plan(read_snapshot)
 
             # Store current schema version in result for HTML reports
-            applied_migrations = migration_state.applied_objects
-            current_version = self.state_manager.get_current_version(applied_migrations)
             if current_version:
                 result.current_schema_version = current_version
 
-            pending_migrations = migration_state.executable_pending_objects()
-            pending_migrations = self.state_manager.apply_filters_to_migrations(
-                pending_migrations,
-                tags=tags,
-                exclude_tags=exclude_tags,
-                versions=versions,
-                exclude_versions=exclude_versions,
-            )
             try:
                 self._enforce_strict_ordering(pending_migrations, current_version, strict_mode)
             except StrictModeError as e:
@@ -536,31 +465,36 @@ class MigrateCommand(BaseCommand):
                 result.set_error(str(e))
                 return
 
+            def preflight_sql(migrations: List[Migration]) -> None:
+                """Classify the SQL of ``migrations`` and of the callbacks they would fire."""
+                events = [
+                    "beforeMigrate",
+                    "afterMigrate",
+                    "afterMigrateError",
+                    "beforeEach",
+                    "afterEach",
+                    "beforeEachMigrate",
+                    "afterEachMigrate",
+                ]
+                if any(
+                    getattr(m.type, "value", m.type) in VERSIONED_SCRIPT_TYPES for m in migrations
+                ):
+                    events.extend(("beforeVersioned", "afterVersioned"))
+                if any(m.type == MigrationType.REPEATABLE for m in migrations):
+                    events.extend(("beforeRepeatable", "afterRepeatable"))
+                self._preflight_execution_sql(migrations + self._callbacks_for(events))
+
             if not dry_run and not mark_as_executed and not self._capture_objects:
                 if pending_migrations:
-                    events = [
-                        "beforeMigrate",
-                        "afterMigrate",
-                        "afterMigrateError",
-                        "beforeEach",
-                        "afterEach",
-                        "beforeEachMigrate",
-                        "afterEachMigrate",
-                    ]
-                    if any(
-                        getattr(m.type, "value", m.type) in VERSIONED_SCRIPT_TYPES
-                        for m in pending_migrations
-                    ):
-                        events.extend(("beforeVersioned", "afterVersioned"))
-                    if any(m.type == MigrationType.REPEATABLE for m in pending_migrations):
-                        events.extend(("beforeRepeatable", "afterRepeatable"))
-                    callbacks = self._callbacks_for(events)
-                    self._preflight_execution_sql(pending_migrations + callbacks)
+                    preflight_sql(pending_migrations)
                 self._run_preflight(result, ensure_history=True, ensure_schema=True)
 
-            if getattr(self, "validator", None) is None:
-                validation_success, validation_errors, validation_time = True, None, 0.0
-            else:
+            def validate(
+                state: MigrationState, snapshot: MigrationReadSnapshot
+            ) -> Tuple[bool, object]:
+                """Validate ``state`` read through ``snapshot``; return (valid, errors)."""
+                if getattr(self, "validator", None) is None:
+                    return True, None
                 validation_snapshot = self.state_manager.build_validation_snapshot(
                     scripts_dir,
                     "migrate",
@@ -573,16 +507,17 @@ class MigrateCommand(BaseCommand):
                     versions=versions,
                     exclude_versions=exclude_versions,
                     strict_mode=strict_mode,
-                    resolved_migrations=migration_state.resolved_objects,
-                    applied_migrations=migration_state.all_applied_objects,
-                    read_snapshot=read_snapshot,
+                    resolved_migrations=state.resolved_objects,
+                    applied_migrations=state.all_applied_objects,
+                    read_snapshot=snapshot,
                 )
-                validation_success, validation_errors, validation_time = (
-                    self.migration_helpers.validate_migrations_for_migrate(
-                        self.validator,
-                        validation_snapshot,
-                    )
+                valid, errors, _ = self.migration_helpers.validate_migrations_for_migrate(
+                    self.validator,
+                    validation_snapshot,
                 )
+                return valid, errors
+
+            validation_success, validation_errors = validate(migration_state, read_snapshot)
             if not validation_success:
                 result.set_error(f"Validation failed: {validation_errors}")
                 result.complete()
@@ -602,86 +537,110 @@ class MigrateCommand(BaseCommand):
                 self._handle_dry_run(pending_migrations, result, show_sql=show_sql)
                 return
 
-            if mark_as_executed:
-                if not self._mark_migrations_as_executed(pending_migrations, result):
-                    return
-                try:
-                    if isinstance(self.provider, TransactionalProvider):
-                        self.provider.commit_transaction()
-                except Exception as commit_error:
-                    self.log.error(
-                        f"Failed to commit mark-as-executed history records: {commit_error}"
-                    )
-                    result.set_error(
-                        f"Failed to commit mark-as-executed history records: {commit_error}"
-                    )
+            # Acquire the migration lock before changing anything
+            lock = ExitStack()
+            try:
+                if not lock.enter_context(self._migration_lock()):
+                    self.log.error(MIGRATION_LOCK_REFUSAL)
+                    result.set_error(MIGRATION_LOCK_REFUSAL)
                     result.complete()
                     return
-            else:
-                # Acquire migration lock before executing migrations
-                lock = ExitStack()
+
+                # Plan again now that the lock is held: another process may have
+                # applied (or undone) migrations while we were waiting, and
+                # running a stale plan would fail and write duplicate failure
+                # rows into the history table.
+                locked_snapshot = self.state_manager.new_read_snapshot()
+                locked_state, locked_version, locked_pending = plan(locked_snapshot)
                 try:
-                    if not lock.enter_context(self._migration_lock()):
-                        self.log.error(MIGRATION_LOCK_REFUSAL)
-                        result.set_error(MIGRATION_LOCK_REFUSAL)
+                    self._enforce_strict_ordering(locked_pending, locked_version, strict_mode)
+                except StrictModeError as e:
+                    # Nothing ran, so no error callbacks fire.
+                    self.log.error(str(e))
+                    result.set_error(str(e))
+                    return
+
+                locked_success, locked_errors = validate(locked_state, locked_snapshot)
+                if not locked_success:
+                    # Nothing ran, so no error callbacks fire.
+                    result.set_error(f"Validation failed: {locked_errors}")
+                    result.complete()
+                    return
+
+                planned = {m.script_name for m in pending_migrations}
+                newly_pending = [m for m in locked_pending if m.script_name not in planned]
+                if newly_pending and not mark_as_executed and not self._capture_objects:
+                    preflight_sql(newly_pending)
+
+                still_pending = {m.script_name for m in locked_pending}
+                skipped = [m for m in pending_migrations if m.script_name not in still_pending]
+                for migration in skipped:
+                    version = f" (version: {migration.version})" if migration.version else ""
+                    self.log.info(
+                        f"Skipping {migration.script_name}{version} — applied by concurrent process"
+                    )
+                if skipped:
+                    self.log.info(
+                        f"{len(skipped)} pending migration(s) "
+                        "applied by another process while waiting for the "
+                        "lock; skipping"
+                    )
+                pending_migrations = locked_pending
+
+                if not pending_migrations:
+                    self.log.info(
+                        "All pending migrations were applied by another "
+                        "process while waiting for the lock"
+                    )
+                elif mark_as_executed:
+                    if not self._mark_migrations_as_executed(pending_migrations, result):
+                        return
+                    try:
+                        if isinstance(self.provider, TransactionalProvider):
+                            self.provider.commit_transaction()
+                    except Exception as commit_error:
+                        self.log.error(
+                            f"Failed to commit mark-as-executed history records: {commit_error}"
+                        )
+                        result.set_error(
+                            f"Failed to commit mark-as-executed history records: {commit_error}"
+                        )
                         result.complete()
                         return
+                else:
+                    # Separate versioned and repeatable migrations for targeted callbacks
+                    versioned_migrations = [
+                        m
+                        for m in pending_migrations
+                        if getattr(m.type, "value", m.type) in VERSIONED_SCRIPT_TYPES
+                    ]
+                    repeatable_migrations = [
+                        m for m in pending_migrations if m.type == MigrationType.REPEATABLE
+                    ]
 
-                    # Re-read history after lock acquisition. Another
-                    # process may have applied versioned migrations while we
-                    # were waiting; running them again would fail and write
-                    # duplicate failure rows into the history table.
-                    applied_after_lock = self.state_manager.get_applied_migration_records()
-                    filtered_pending = self._filter_already_applied(
-                        pending_migrations, applied_after_lock
+                    # Execute before-migration callbacks
+                    self._execute_before_callbacks(versioned_migrations, repeatable_migrations)
+
+                    # Execute migrations normally
+                    self._execute_migration_loop(pending_migrations, result)
+
+                    # Execute after-migration callbacks if all migrations succeeded
+                    self._execute_after_callbacks(
+                        versioned_migrations, repeatable_migrations, result
                     )
-                    skipped_after_lock = len(pending_migrations) - len(filtered_pending)
-                    if skipped_after_lock > 0:
-                        self.log.info(
-                            f"{skipped_after_lock} pending migration(s) "
-                            "applied by another process while waiting for the "
-                            "lock; skipping"
-                        )
-                    pending_migrations = filtered_pending
 
-                    if not pending_migrations:
-                        self.log.info(
-                            "All pending migrations were applied by another "
-                            "process while waiting for the lock"
-                        )
-                    else:
-                        # Separate versioned and repeatable migrations for targeted callbacks
-                        versioned_migrations = [
-                            m
-                            for m in pending_migrations
-                            if getattr(m.type, "value", m.type) in VERSIONED_SCRIPT_TYPES
-                        ]
-                        repeatable_migrations = [
-                            m for m in pending_migrations if m.type == MigrationType.REPEATABLE
-                        ]
-
-                        # Execute before-migration callbacks
-                        self._execute_before_callbacks(versioned_migrations, repeatable_migrations)
-
-                        # Execute migrations normally
-                        self._execute_migration_loop(pending_migrations, result)
-
-                        # Execute after-migration callbacks if all migrations succeeded
-                        self._execute_after_callbacks(
-                            versioned_migrations, repeatable_migrations, result
-                        )
-
-                except Exception as e:
-                    # Handle any exception during lock acquisition or migration execution
-                    # Only log if error_message is not already set (migration execution already logged it)
-                    if not result.error_message:
-                        self.log.error(f"Exception during migration execution: {e}")
-                        result.set_error(f"Migration execution failed: {e}")
-                    # Execute afterMigrateError callbacks on exception
+            except Exception as e:
+                # Handle any exception during lock acquisition or migration execution
+                # Only log if error_message is not already set (migration execution already logged it)
+                if not result.error_message:
+                    self.log.error(f"Exception during migration execution: {e}")
+                    result.set_error(f"Migration execution failed: {e}")
+                # Execute afterMigrateError callbacks on exception
+                if not mark_as_executed:
                     self._fire("afterMigrateError")
-                finally:
-                    # Always release the migration lock if it was acquired
-                    lock.close()
+            finally:
+                # Always release the migration lock if it was acquired
+                lock.close()
 
             # Update final schema version
             self._update_final_state(result)
