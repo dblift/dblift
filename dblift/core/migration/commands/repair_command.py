@@ -3,7 +3,7 @@ Repair command implementation.
 """
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, cast
 
 if TYPE_CHECKING:
     pass
@@ -80,114 +80,107 @@ class RepairCommand(BaseCommand):
         result = RepairResult()
         result.target_schema = self.config.database.schema
 
+        def body() -> None:
+            try:
+                # Build migration state
+                migration_state = self._build_migration_state(
+                    scripts_dir,
+                    recursive=recursive,
+                    additional_dirs=additional_dirs,
+                    dir_recursive_map=dir_recursive_map,
+                )
+
+                # Collect all repairs needed
+                repairs_needed: List[Dict[str, Any]] = []
+                repairs_needed.extend(self._detect_checksum_changes(migration_state))
+                repairs_needed.extend(
+                    self._detect_missing_migrations(
+                        migration_state,
+                        scripts_dir,
+                        recursive=recursive,
+                        additional_dirs=additional_dirs,
+                        dir_recursive_map=dir_recursive_map,
+                    )
+                )
+                repairs_needed.extend(
+                    self._detect_checksum_drift(
+                        migration_state,
+                        repairs_needed,
+                        scripts_dir,
+                        recursive=recursive,
+                        additional_dirs=additional_dirs,
+                        dir_recursive_map=dir_recursive_map,
+                    )
+                )
+
+                if not repairs_needed:
+                    self.log.info(
+                        "Repair check completed: no checksum, failed migration, or history issues detected."
+                    )
+                    return
+
+                if dry_run:
+                    self.log.info("DRY RUN: the following repairs would be executed:")
+                    for repair in repairs_needed:
+                        self.log.info(f"  - {repair['type']}: {repair['script']}")
+                        script = str(repair.get("script", ""))
+                        kind = repair["type"]
+                        # Same routing as the repair loop: a checksum repair on a
+                        # failed row deletes the row, and a row is removed once.
+                        if kind == "CHECKSUM_MISMATCH" and self._is_failed_migration(
+                            script, migration_state
+                        ):
+                            kind = "FAILED_MIGRATION"
+                        if kind == "FAILED_MIGRATION" and any(
+                            removed.script == script for removed in result.removed_migrations
+                        ):
+                            continue
+                        record_repair(result, kind, repair, migration_state)
+                    return
+
+                # Execute repairs
+                repairs_executed, error = self._execute_repair_loop(
+                    repairs_needed, result, migration_state
+                )
+                if error:
+                    return
+
+                # Post-repair validation
+                if repairs_executed:
+                    validation_error = self._validate_post_repair_state(
+                        migration_state=migration_state,
+                        repairs_needed=repairs_needed,
+                        scripts_dir=scripts_dir,
+                        recursive=recursive,
+                        additional_dirs=additional_dirs,
+                        dir_recursive_map=dir_recursive_map,
+                        result=result,
+                    )
+                    if validation_error:
+                        return
+
+                # Log summary
+                self._build_repair_summary(result)
+            except RepairSafetyError as e:
+                # Operator-facing safety abort — not a crash. Log the exact
+                # message (already actionable) without stack-trace noise.
+                self.log.error(str(e))
+                result.set_error(str(e))
+
         # Connect, ensure the schema-history table exists and read connection
         # metadata. Failures raise PreflightConnectionError, as for every
         # other command.
-        self._run_preflight(result, ensure_history=True)
-
-        try:
-            # Log command execution with connection info (after connection is established)
-            self._log_command_header_update("repair", dry_run=dry_run)
-
-            # Build migration state
-            migration_state = self._build_migration_state(
-                scripts_dir,
-                recursive=recursive,
-                additional_dirs=additional_dirs,
-                dir_recursive_map=dir_recursive_map,
-            )
-
-            # Collect all repairs needed
-            repairs_needed: List[Dict[str, Any]] = []
-            repairs_needed.extend(self._detect_checksum_changes(migration_state))
-            repairs_needed.extend(
-                self._detect_missing_migrations(
-                    migration_state,
-                    scripts_dir,
-                    recursive=recursive,
-                    additional_dirs=additional_dirs,
-                    dir_recursive_map=dir_recursive_map,
-                )
-            )
-            repairs_needed.extend(
-                self._detect_checksum_drift(
-                    migration_state,
-                    repairs_needed,
-                    scripts_dir,
-                    recursive=recursive,
-                    additional_dirs=additional_dirs,
-                    dir_recursive_map=dir_recursive_map,
-                )
-            )
-
-            if not repairs_needed:
-                self.log.info(
-                    "Repair check completed: no checksum, failed migration, or history issues detected."
-                )
-                self._log_command_completion("repair", result)
-                return result
-
-            if dry_run:
-                self.log.info("DRY RUN: the following repairs would be executed:")
-                for repair in repairs_needed:
-                    self.log.info(f"  - {repair['type']}: {repair['script']}")
-                    script = str(repair.get("script", ""))
-                    kind = repair["type"]
-                    # Same routing as the repair loop: a checksum repair on a
-                    # failed row deletes the row, and a row is removed once.
-                    if kind == "CHECKSUM_MISMATCH" and self._is_failed_migration(
-                        script, migration_state
-                    ):
-                        kind = "FAILED_MIGRATION"
-                    if kind == "FAILED_MIGRATION" and any(
-                        removed.script == script for removed in result.removed_migrations
-                    ):
-                        continue
-                    record_repair(result, kind, repair, migration_state)
-                self._log_command_completion("repair", result)
-                return result
-
-            # Execute repairs
-            repairs_executed, error = self._execute_repair_loop(
-                repairs_needed, result, migration_state
-            )
-            if error:
-                self._log_command_completion("repair", result)
-                return result
-
-            # Post-repair validation
-            if repairs_executed:
-                validation_error = self._validate_post_repair_state(
-                    migration_state=migration_state,
-                    repairs_needed=repairs_needed,
-                    scripts_dir=scripts_dir,
-                    recursive=recursive,
-                    additional_dirs=additional_dirs,
-                    dir_recursive_map=dir_recursive_map,
-                    result=result,
-                )
-                if validation_error:
-                    self._log_command_completion("repair", result)
-                    return result
-
-            # Log summary
-            self._build_repair_summary(result)
-
-            self._log_command_completion("repair", result)
-            return result
-
-        except RepairSafetyError as e:
-            # Operator-facing safety abort — not a crash. Log the exact
-            # message (already actionable) without stack-trace noise.
-            self.log.error(str(e))
-            result.set_error(str(e))
-            self._log_command_completion("repair", result)
-            return result
-        except Exception as e:
-            self.log.error(f"Repair operation failed: {e}")
-            result.set_error(f"Repair operation failed: {e}")
-            self._log_command_completion("repair", result)
-            return result
+        return cast(
+            RepairResult,
+            self._run_command_lifecycle(
+                "repair",
+                result,
+                body,
+                preflight=lambda: self._run_preflight(result, ensure_history=True),
+                error_message_prefix="Repair operation failed",
+                header_kwargs={"dry_run": dry_run},
+            ),
+        )
 
     def _build_migration_state(
         self,
