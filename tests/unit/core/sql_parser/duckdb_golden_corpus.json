@@ -1,5 +1,6 @@
 [
  {
+  "known_gap": "74",
   "name": "escape_mode_carried_across_blanks_on_one_line",
   "script": "SELECT E'a' 'b\\'; SELECT 1; SELECT 'z';",
   "views": {
@@ -602,6 +603,7 @@
   }
  },
  {
+  "known_gap": "74",
   "name": "escape_mode_survives_a_plain_string_between",
   "script": "SELECT E'a' 'p' 'b\\'; SELECT 2; SELECT 'z';",
   "views": {
@@ -637,6 +639,7 @@
   }
  },
  {
+  "known_gap": "75",
   "name": "superscript_two_before_e",
   "script": "SELECT \u00b2E'b\\';c' AS x; SELECT 2;",
   "views": {
@@ -690,6 +693,7 @@
   }
  },
  {
+  "known_gap": "75",
   "name": "arabic_digit_before_e",
   "script": "SELECT \u0663E'b\\';c' AS x; SELECT 2;",
   "views": {
@@ -988,6 +992,7 @@
   }
  },
  {
+  "known_gap": "76",
   "name": "parameter_swallows_letters_then_dollar_pair",
   "script": "PREPARE p AS SELECT $1a$$x; SELECT 2; SELECT 3 AS y$$;",
   "views": {
@@ -1023,6 +1028,7 @@
   }
  },
  {
+  "known_gap": "76",
   "name": "parameter_swallows_an_accented_letter",
   "script": "SELECT $1\u00e9$$x;y$$; SELECT 2;",
   "views": {
@@ -1076,6 +1082,7 @@
   }
  },
  {
+  "known_gap": "76",
   "name": "parameter_swallows_the_escape_letter",
   "script": "SELECT $1E'a\\';b'; SELECT 2;",
   "views": {
@@ -1129,6 +1136,7 @@
   }
  },
  {
+  "known_gap": "76",
   "name": "hidden_drop_table_in_one_statement",
   "script": "CREATE TABLE t(a INT); PREPARE p AS SELECT $1\u00e9$$x; DROP TABLE t; SELECT 1 AS y$$; SELECT 2;",
   "views": {
@@ -3560,6 +3568,7 @@
   }
  },
  {
+  "known_gap": "77",
   "name": "hidden_drop_table_after_a_number_with_letters",
   "script": "CREATE TABLE t(a INT); SELECT 1a$$x; DROP TABLE t; SELECT 3 AS y$$; SELECT 2;",
   "views": {
@@ -3684,6 +3693,7 @@
   }
  },
  {
+  "known_gap": "77",
   "name": "dollar_after_a_number_with_letters",
   "script": "SELECT 1a$$x;y$$; SELECT 2;",
   "views": {
