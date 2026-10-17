@@ -29,6 +29,7 @@ from dblift.core.migration.commands.repair_command import (
     RepairSafetyError,
     _count_candidate_missing,
 )
+from dblift.core.migration.state.checksum_drift import ChecksumDrift
 from dblift.core.migration.state.migration_state import MigrationState
 from dblift.db.provider_interfaces import TransactionalProvider
 
@@ -197,65 +198,27 @@ class TestDetectChecksumChanges(unittest.TestCase):
 
 class TestDetectChecksumDrift(unittest.TestCase):
     def test_returns_mismatch_when_checksums_differ(self):
-        from dblift.core.migration.migration import MigrationType
-
-        script_manager = MagicMock()
-        fs_migration = SimpleNamespace(script_name="V1__a.sql", checksum=200)
-        script_manager.load_migration_scripts.return_value = {"1": [fs_migration]}
-
-        cmd = _make_cmd(script_manager=script_manager)
-        applied = SimpleNamespace(
-            script_name="V1__a.sql",
-            version="1",
-            type=MigrationType.SQL,
-            success=True,
-            checksum=100,
+        cmd = _make_cmd()
+        state = MigrationState(
+            grouped_objects={}, checksum_drift=(ChecksumDrift("V1__a.sql", 100, 200, False),)
         )
-        state = MigrationState()
-        state.all_applied_objects = [applied]
 
         repairs = cmd._detect_checksum_drift(state, [], Path("/migrations"))
         self.assertEqual(len(repairs), 1)
         self.assertEqual(repairs[0]["type"], "CHECKSUM_MISMATCH")
 
-    def test_no_mismatch_when_checksums_match(self):
-        from dblift.core.migration.migration import MigrationType
-
-        script_manager = MagicMock()
-        fs_migration = SimpleNamespace(script_name="V1__a.sql", checksum=100)
-        script_manager.load_migration_scripts.return_value = {"1": [fs_migration]}
-
-        cmd = _make_cmd(script_manager=script_manager)
-        applied = SimpleNamespace(
-            script_name="V1__a.sql",
-            version="1",
-            type=MigrationType.SQL,
-            success=True,
-            checksum=100,
-        )
-        state = MigrationState()
-        state.all_applied_objects = [applied]
+    def test_no_mismatch_when_state_reports_no_drift(self):
+        cmd = _make_cmd()
+        state = MigrationState(grouped_objects={})
 
         repairs = cmd._detect_checksum_drift(state, [], Path("/migrations"))
         self.assertEqual(repairs, [])
 
     def test_skips_scripts_already_in_existing_repairs(self):
-        from dblift.core.migration.migration import MigrationType
-
-        script_manager = MagicMock()
-        fs_migration = SimpleNamespace(script_name="V1__a.sql", checksum=200)
-        script_manager.load_migration_scripts.return_value = {"1": [fs_migration]}
-
-        cmd = _make_cmd(script_manager=script_manager)
-        applied = SimpleNamespace(
-            script_name="V1__a.sql",
-            version="1",
-            type=MigrationType.SQL,
-            success=True,
-            checksum=100,
+        cmd = _make_cmd()
+        state = MigrationState(
+            grouped_objects={}, checksum_drift=(ChecksumDrift("V1__a.sql", 100, 200, False),)
         )
-        state = MigrationState()
-        state.all_applied_objects = [applied]
 
         # V1__a.sql already in existing_repairs — should not duplicate
         existing = [{"script": "V1__a.sql", "type": "CHECKSUM_MISMATCH"}]
@@ -265,7 +228,7 @@ class TestDetectChecksumDrift(unittest.TestCase):
     def test_checksum_drift_propagates_catalog_load_failure(self):
         sm = MagicMock()
         cmd = _make_cmd(state_manager=sm)
-        sm.get_grouped_migrations.side_effect = OSError("permission denied")
+        sm.build_state.side_effect = OSError("permission denied")
         state = MigrationState()  # grouped_objects is None -> forces a load
         with pytest.raises(OSError, match="permission denied"):
             cmd._detect_checksum_drift(state, [], Path("/migrations"))
@@ -277,22 +240,11 @@ class TestDetectChecksumDrift(unittest.TestCase):
         for repair, not silently skipped because one side of the comparison
         is ``None``.
         """
-        from dblift.core.migration.migration import MigrationType
-
-        script_manager = MagicMock()
-        fs_migration = SimpleNamespace(script_name="V1__a.sql", checksum=1223190650)
-        script_manager.load_migration_scripts.return_value = {"1": [fs_migration]}
-
-        cmd = _make_cmd(script_manager=script_manager)
-        applied = SimpleNamespace(
-            script_name="V1__a.sql",
-            version="1",
-            type=MigrationType.SQL,
-            success=True,
-            checksum=None,  # normalize_migration_checksum("deadbeef") -> None
+        cmd = _make_cmd()
+        state = MigrationState(
+            grouped_objects={},
+            checksum_drift=(ChecksumDrift("V1__a.sql", None, 1223190650, False),),
         )
-        state = MigrationState()
-        state.all_applied_objects = [applied]
 
         repairs = cmd._detect_checksum_drift(state, [], Path("/migrations"))
         self.assertEqual(len(repairs), 1)

@@ -108,3 +108,33 @@ def test_supplied_runs_match_derived_runs():
     derived = _check([script], rows)
     supplied = _check([script], rows, runs=repeatable_runs([script], rows))
     assert derived.error_message == supplied.error_message == FAILED_MESSAGE
+
+
+def test_supplied_checksum_drift_replaces_the_comparison():
+    from unittest.mock import patch
+
+    from dblift.core.migration.state.checksum_drift import ChecksumDrift
+    from dblift.core.sql_validator._checksum_validator import validate_checksums
+
+    script = Migration(script_name="V1__a.sql", content="SELECT 1;", type=MigrationType.SQL)
+    row = SimpleNamespace(
+        script_name="V1__a.sql",
+        version="1",
+        type=MigrationType.SQL,
+        checksum=script.checksum,
+        success=True,
+        installed_rank=1,
+    )
+    drift = [ChecksumDrift("V1__a.sql", 1, 2, False)]
+    result, issues = ValidationResult(), []
+    with patch(
+        "dblift.core.sql_validator._checksum_validator.find_checksum_drift",
+        side_effect=AssertionError("drift was supplied"),
+    ):
+        validate_checksums(_validator(), [script], [row], result, issues, drift=drift)
+    assert any("V1__a.sql has been modified since it was applied" in i for i in issues)
+
+    # Without a supplied answer the same rule is derived from the inputs.
+    result, issues = ValidationResult(), []
+    validate_checksums(_validator(), [script], [row], result, issues)
+    assert not issues
