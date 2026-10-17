@@ -163,3 +163,65 @@ def test_a_name_that_ends_its_statement_is_read_with_the_blank_the_split_trimmed
     script = sql.format(c=NBSP)
     assert SqlParserFactory(dialect).extract_objects(script) == []
     assert all(s.names_unread for s in SqlParserFactory(dialect).parse_sql(script).statements)
+
+
+# The scanner's raw span for a name that ends the script: whether the script's last character is in it.
+SPAN_SCANNERS = (
+    "postgresql",
+    "redshift",
+    "cockroachdb",
+    "mysql",
+    "mariadb",
+    "db2",
+    "oracle",
+    "sqlserver",
+)
+FIX_TASK = {
+    "postgresql": "T2",
+    "redshift": "T2",
+    "cockroachdb": "T2",
+    "sqlserver": "T2",
+    "mysql": "T3",
+    "mariadb": "T3",
+    "db2": "T4",
+}
+
+
+@pytest.mark.parametrize("dialect", SPAN_SCANNERS)
+def test_the_scanner_span_of_a_name_that_ends_the_script_holds_the_blank_except_for_oracle(dialect):
+    """Green pin: only Oracle's last record ends at its last token, which is why the extension stays."""
+    script = f"DROP TABLE t{NBSP}"
+    records = SqlParserFactory(dialect).get_parser().regex_parser.split(script)
+    assert len(records) == 1
+    span = script[records[0].source_start : records[0].source_end]
+    assert span == ("DROP TABLE t" if dialect == "oracle" else script)
+
+
+@pytest.mark.parametrize("dialect", SPAN_SCANNERS)
+def test_statement_sources_returns_the_untrimmed_text_of_a_name_that_ends_the_script(dialect):
+    """Green pin: the span is the whole script for every dialect, Oracle's through the extension."""
+    script = f"DROP TABLE t{NBSP}"
+    scanner = SqlParserFactory(dialect).get_parser().regex_parser
+    statements = SqlAnalyzer(dialect).split_statements_for_analysis(script)
+    assert statement_sources(scanner, script, statements) == [script]
+
+
+@pytest.mark.parametrize(
+    "dialect",
+    [
+        pytest.param(
+            d,
+            marks=pytest.mark.xfail(
+                strict=True,
+                reason=f"the record trims the blank, so the analysed text is shorter than its span ({FIX_TASK[d]} removes this)",
+            ),
+        )
+        for d in SPAN_SCANNERS
+        if d != "oracle"
+    ],
+)
+def test_the_analysed_text_equals_its_span_once_the_record_keeps_the_blank(dialect):
+    script = f"DROP TABLE t{NBSP}"
+    scanner = SqlParserFactory(dialect).get_parser().regex_parser
+    statements = SqlAnalyzer(dialect).split_statements_for_analysis(script)
+    assert statements == statement_sources(scanner, script, statements) == [script]
