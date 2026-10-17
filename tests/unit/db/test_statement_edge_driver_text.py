@@ -219,9 +219,6 @@ def test_oracle_does_not_refuse_a_blank_the_driver_leaves_alone(script: str) -> 
     assert len(sent) == 1 and sent[0].startswith(("SELECT 1 FROM dual", "CREATE PROCEDURE p"))
 
 
-@pytest.mark.xfail(
-    strict=True, reason="the header is stripped with str.strip(), which removes the no-break space"
-)
 def test_copy_from_stdin_header_keeps_its_last_character() -> None:
     script = f"COPY t (a) FROM STDIN{NBSP};\n1\n\\.\n"
     statements = parse_migration_sql(SqlAnalyzer(dialect="postgresql"), script, mock.MagicMock())
