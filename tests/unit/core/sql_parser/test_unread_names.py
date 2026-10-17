@@ -8,7 +8,7 @@ import pytest
 
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.sql_parser.parser_factory import SqlParserFactory
-from dblift.core.sql_parser.unread_names import names_unreadable
+from dblift.core.sql_parser.unread_names import names_unreadable, with_trimmed_tails
 from dblift.db.dml_analysis import analyze_dml, statement_dml_table
 
 NBSP, ZWSP, ZWJ, ACCENT = " ", "​", "‍", "́"
@@ -126,9 +126,28 @@ def test_the_analyzer_checks_the_names_it_extracted():
 
 
 def test_the_schema_part_of_a_name_is_checked_too():
-    sql = "CREATE TABLE sché.t (id INT)"
-    (statement,) = SqlParserFactory("postgresql").parse_sql(sql).statements
-    assert statement.names_unread
+    from dblift.core.sql_model.base import SqlObject, SqlObjectType
+    from dblift.core.sql_parser.parser_factory import SqlParserFactory
+
+    source = "CREATE TABLE sch\u00e9.t (id INT)"
+    cut = SqlObject(name="t", schema="sch", object_type=SqlObjectType.TABLE)
+    whole = SqlObject(name="t", schema="sch\u00e9", object_type=SqlObjectType.TABLE)
+    for dialect in ("postgresql", "mysql"):
+        parser = SqlParserFactory(dialect).get_parser()
+        assert parser._names_unreadable(source, [cut])
+        assert not parser._names_unreadable(source, [whole])
+    sqlglot_parser = SqlParserFactory("snowflake").get_parser()
+    assert sqlglot_parser._names_unreadable(source, [cut])
+    assert not sqlglot_parser._names_unreadable(source, [whole])
+
+
+@pytest.mark.parametrize("dialect", ("postgresql", "mysql", "snowflake"))
+def test_a_statement_that_cannot_be_located_in_its_script_is_withheld(dialect):
+    parser = SqlParserFactory(dialect).get_parser()
+    assert parser._names_unreadable(None, [])
+    assert with_trimmed_tails("caf\u00e9; SELECT 1", ["SELECT 2"]) == [None]
+    assert with_trimmed_tails("caf\u00e9; SELECT 1", ["SELECT 1"]) == ["SELECT 1"]
+    assert with_trimmed_tails("SELECT 1", ["SELECT 2"]) == ["SELECT 2"]
 
 
 @pytest.mark.parametrize("dialect", LEGACY)

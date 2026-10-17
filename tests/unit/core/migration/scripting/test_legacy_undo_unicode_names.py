@@ -211,3 +211,18 @@ def test_the_unparsed_fallback_reads_the_blanks_the_split_trimmed():
     assert undo.requires_manual_review and "DROP" not in undo.sql
     assert generator._reverse_statement("CREATE SEQUENCE q", None).requires_manual_review
     assert "DROP" in generator._reverse_statement("CREATE SEQUENCE q").sql
+
+
+@pytest.mark.parametrize("dialect", ("postgresql", "mysql", "oracle"))
+def test_the_unparsed_fallback_of_a_script_reads_the_blanks_the_split_trimmed(dialect):
+    from types import SimpleNamespace
+
+    from dblift.core.sql_model.base import ParseResult
+
+    generator = UndoScriptGenerator(dialect)
+    generator.parser.parse_sql = lambda *a, **k: ParseResult(
+        success=False, statements=[], errors=["x"]
+    )
+    migration = SimpleNamespace(content=f"CREATE SEQUENCE q{chr(0xA0)};\n")
+    (undo,) = generator._generate_undo_statements(migration)
+    assert undo.requires_manual_review and "DROP" not in undo.sql
