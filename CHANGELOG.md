@@ -56,6 +56,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   stored as `False` there and is now read as no predicate.
 - **Faster provider lookup without installed entry points.** Running dblift from a checkout, or next
   to a foreign install, no longer rescans every installed distribution on each database lookup.
+- **`repair` no longer reports success when it cannot read state.** It now fails with
+  `Repair operation failed: <error>` when the schema history or the migration scripts cannot be
+  read. It used to report that nothing needed repairing.
 
 ### Removed
 
