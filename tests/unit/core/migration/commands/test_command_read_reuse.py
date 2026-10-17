@@ -827,11 +827,13 @@ def test_baseline_dry_run_consumes_fresh_typed_state_history(database_client):
         assert read.call_count == 1
 
         assert client.baseline("1").success
+        # The real baseline re-checks for existing history once under the lock.
+        assert read.call_count == 2
         before = database.read_bytes()
         populated = command.execute("2", dry_run=True)
         assert not populated.success
         assert "1 migration(s)" in populated.error_message
-        assert read.call_count == 2
+        assert read.call_count == 3
         assert database.read_bytes() == before
 
 

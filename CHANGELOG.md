@@ -59,6 +59,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ordering checked again. A repeatable migration another process applied while this one waited is skipped even when
   its stored checksum is unknown, as any later run would.
 - **`migrate --mark-as-executed` takes the migration lock.**
+- **`repair` and `baseline` take the migration lock.** `repair` and `baseline` now take the migration
+  lock, as `migrate` and `undo` do, so nothing that writes the schema history runs at the same time as
+  a migration. A real run waits up to 60 seconds and fails with
+  `Could not acquire migration lock - another migration may be running` if it cannot get the lock;
+  `baseline` checks again under the lock that the history is still empty. Dry runs do not lock.
 
 ### Fixed
 

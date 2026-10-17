@@ -32,6 +32,16 @@ def database_client(tmp_path):
         engine.dispose()
 
 
+def _contents(database):
+    """Schema and rows of the database, ignoring the file-header change counter.
+
+    A real run takes and releases the migration lock, which bumps the counter
+    without leaving a row behind.
+    """
+    with sqlite3.connect(database) as connection:
+        return list(connection.iterdump())
+
+
 def _history(database):
     with sqlite3.connect(database) as connection:
         return connection.execute(
@@ -54,7 +64,7 @@ def test_noop_and_preview_load_catalog_once(database_client, extension, drift):
     assert client.migrate().success
     if drift:
         script.write_text(body + ("-- edited\n" if extension == "sql" else "# edited\n"))
-    before = database.read_bytes()
+    before = _contents(database)
     before_history = _history(database)
     script_manager = client.executor.script_manager
     with patch.object(
@@ -67,7 +77,7 @@ def test_noop_and_preview_load_catalog_once(database_client, extension, drift):
     assert [m.script for m in result.aligned_migrations] == ([script.name] if drift else [])
     assert result.failed_migrations_removed == result.deleted_migrations_marked == 0
     assert _history(database) == before_history
-    assert database.read_bytes() == before
+    assert _contents(database) == before
     assert load.call_count == 1
     assert client.validate().success is (not drift)
 
@@ -132,14 +142,14 @@ def test_recursion_map_and_additional_directories_use_same_catalog(database_clie
     extra_script.write_text("CREATE TABLE extra (id INTEGER);")
     options = dict(recursive=False, additional_dirs=[extra], dir_recursive_map={extra: True})
     assert client.migrate(**options).success
-    before = database.read_bytes()
+    before = _contents(database)
     script_manager = client.executor.script_manager
     with patch.object(
         script_manager, "load_migration_scripts", wraps=script_manager.load_migration_scripts
     ) as load:
         result = client.repair(**options)
     assert result.success and result.deleted_migrations_marked == 0
-    assert database.read_bytes() == before
+    assert _contents(database) == before
     assert load.call_count == 1
     assert {row[0] for row in _history(database)} == {"V1__app.sql", "V2__extra.sql"}
 

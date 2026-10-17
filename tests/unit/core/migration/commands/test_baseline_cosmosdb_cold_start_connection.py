@@ -56,6 +56,15 @@ class _ColdStartProvider:
     def rollback_transaction(self) -> None:
         pass
 
+    def acquire_migration_lock(self, schema: str, wait_timeout_seconds: int = 60) -> bool:
+        return True
+
+    def release_migration_lock(self, schema: str) -> bool:
+        return True
+
+    def migration_lock_lost(self) -> bool:
+        return False
+
 
 _NO_CONNECTION_ERROR = (
     "CosmosDB provider has no active connection. "
@@ -94,6 +103,8 @@ def _make_config():
 
 
 def _make_command(command_cls, provider, history_manager, **extra_ctx):
+    state_manager = MagicMock()
+    state_manager.get_applied_migration_records.return_value = []
     ctx_kwargs = dict(
         config=_make_config(),
         log=MagicMock(),
@@ -103,7 +114,7 @@ def _make_command(command_cls, provider, history_manager, **extra_ctx):
         validator=MagicMock(),
         execution_engine=MagicMock(),
         migration_helpers=MagicMock(),
-        state_manager=MagicMock(),
+        state_manager=state_manager,
         migration_ui=MagicMock(),
         migration_rules=MagicMock(),
     )

@@ -2,6 +2,7 @@
 Repair command implementation.
 """
 
+from contextlib import ExitStack
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, cast
 
@@ -18,7 +19,7 @@ from dblift.db.provider_capabilities import ensure_provider_connection
 from dblift.db.provider_interfaces import TransactionalProvider
 
 from ._repair_records import record_repair
-from .base_command import BaseCommand
+from .base_command import MIGRATION_LOCK_REFUSAL, BaseCommand
 
 
 class RepairSafetyError(Exception):
@@ -80,7 +81,7 @@ class RepairCommand(BaseCommand):
         result = RepairResult()
         result.target_schema = self.config.database.schema
 
-        def body() -> None:
+        def detect_and_repair() -> None:
             try:
                 # Build migration state
                 migration_state = self._build_migration_state(
@@ -166,6 +167,16 @@ class RepairCommand(BaseCommand):
                 # message (already actionable) without stack-trace noise.
                 self.log.error(str(e))
                 result.set_error(str(e))
+
+        def body() -> None:
+            # A real run writes the schema history, so it must not overlap a
+            # migration: hold the lock from detection through verification.
+            with ExitStack() as lock:
+                if not dry_run and not lock.enter_context(self._migration_lock()):
+                    self.log.error(MIGRATION_LOCK_REFUSAL)
+                    result.set_error(MIGRATION_LOCK_REFUSAL)
+                    return
+                detect_and_repair()
 
         # Connect, ensure the schema-history table exists and read connection
         # metadata. Failures raise PreflightConnectionError, as for every
