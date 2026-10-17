@@ -449,6 +449,30 @@ def test_opaque_drop_keeps_its_caution(dialect, sql, code, reason):
     assert [(c.level, c.code, c.reason) for c in analysis.cautions] == [(DESTROYS, code, reason)]
 
 
+@pytest.mark.parametrize("dialect", ["sqlite", "duckdb"])
+def test_opaque_drop_view_keeps_the_caution_it_had(dialect):
+    analysis = analyse_script(f"DROP VIEW v{UNREAD_BLANK};", dialect)
+
+    assert [(c.level, c.code, c.reason) for c in analysis.cautions] == [
+        (DESTROYS, None, "DROP VIEW discards a view whose name could not be read, and its rows")
+    ]
+
+
+@pytest.mark.parametrize("dialect", ["sqlite", "duckdb"])
+@pytest.mark.parametrize(
+    ("sql", "tail"),
+    [
+        (f"UPDATE child SET parent_id = 1 WHERE a{UNREAD_BLANK}b = 2;", " of child"),
+        (f"DELETE FROM child WHERE a{UNREAD_BLANK}b = 2;", " of child"),
+        (f"UPDATE child{UNREAD_BLANK} SET parent_id = 1 WHERE b = 2;", ""),
+    ],
+)
+def test_opaque_dml_names_its_target_only_when_the_name_itself_was_read(dialect, sql, tail):
+    analysis = analyse_script(sql, dialect)
+
+    assert analysis.cautions[0].reason.endswith(f"treated as changing every row{tail}")
+
+
 def test_opaque_drop_of_something_that_holds_no_rows_raises_no_caution():
     analysis = analyse_script(f"DROP INDEX ix{UNREAD_BLANK};", "sqlite")
 
