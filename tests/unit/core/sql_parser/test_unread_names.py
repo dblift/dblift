@@ -12,7 +12,17 @@ from dblift.core.sql_parser.unread_names import names_unreadable
 from dblift.db.dml_analysis import analyze_dml, statement_dml_table
 
 NBSP, ZWSP, ZWJ, ACCENT = " ", "​", "‍", "́"
-LEGACY = ("postgresql", "mysql", "mariadb", "sqlserver", "oracle", "db2")
+LEGACY = (
+    "postgresql",
+    "mysql",
+    "mariadb",
+    "sqlserver",
+    "oracle",
+    "db2",
+    "snowflake",
+    "redshift",
+    "cockroachdb",
+)
 
 
 @pytest.fixture(autouse=True)
@@ -45,6 +55,7 @@ def test_a_name_cut_short_by_a_non_ascii_character_is_unreadable():
     assert names_unreadable(f"CREATE TABLE t{ZWJ}(id INT)", "postgres", ["t"])
     assert names_unreadable(f"CREATE TABLE t{ACCENT} (id INT)", "postgres", ["t"])
     assert names_unreadable("CREATE TABLE té (id INT)", "postgres", ["t"])
+    assert names_unreadable("CREATE TABLE ét (id INT)", "postgres", ["t"])
 
 
 def test_a_name_read_whole_is_kept():

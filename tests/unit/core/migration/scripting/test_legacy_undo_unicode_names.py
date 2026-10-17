@@ -125,14 +125,24 @@ def test_undo_names_a_non_ascii_letter_name_the_extractor_reads_whole(tmp_path, 
     assert any("é" in line.lower() for line in _code_lines(script))
 
 
-@pytest.mark.parametrize("dialect", ("postgresql", "mysql", "mariadb", "db2"))
+@pytest.mark.parametrize("dialect", ("postgresql", "mysql", "mariadb", "db2", "redshift"))
 def test_undo_does_not_cut_a_non_ascii_letter_name_short(tmp_path, dialect):
     """The extractor reads ``t`` from ``t<e acute>``: that is a different object."""
-    script = _undo(tmp_path, dialect, "CREATE TABLE té (id INT);")
-    assert not any(
-        line.rstrip(";").endswith(('"t"', "`t`", '"T"', '"SYSIBM"."T"'))
-        for line in _code_lines(script)
-    )
+    _assert_manual_review(_undo(tmp_path, dialect, "CREATE TABLE t\u00e9 (id INT);"))
+
+
+@pytest.mark.parametrize(
+    "sql", ['CREATE TABLE "q\u00e9" (id INT);', "INSERT INTO t\u00e9 (id) VALUES (1);"]
+)
+def test_undo_trusts_no_name_of_a_non_ascii_statement_that_named_nothing(tmp_path, sql):
+    """Oracle's extractor names neither; the undo's own pattern would read them again."""
+    _assert_manual_review(_undo(tmp_path, "oracle", sql))
+
+
+@pytest.mark.parametrize("dialect", LEGACY)
+def test_the_unparsed_fallback_names_nothing_either(dialect):
+    undo = UndoScriptGenerator(dialect)._reverse_statement(f"CREATE TABLE t{chr(0xA0)}(id INT)")
+    assert undo.requires_manual_review and "DROP" not in undo.sql
 
 
 @pytest.mark.parametrize("dialect", LEGACY)
