@@ -37,6 +37,9 @@ _DROP_TARGET = re.compile(
     r"^\s*DROP\s+(TABLE|MATERIALIZED\s+VIEW|SCHEMA|DATABASE)\s+(?:IF\s+EXISTS\s+)?([^\s;,(]+)",
     re.IGNORECASE,
 )
+_DROP_KEYWORD = re.compile(
+    r"^\s*DROP\s+(TABLE|MATERIALIZED\s+VIEW|SCHEMA|DATABASE)\b", re.IGNORECASE
+)
 # Objects whose DROP discards rows; dropping an index, a sequence or a routine does not.
 _DATA_HOLDERS = frozenset(
     {
@@ -198,7 +201,7 @@ def _analyse(text: str, dialect: str) -> ScriptAnalysis:
                 sql=body,
             )
             fact_statements.append(analysed)
-            caution = _caution_for(analysed, body)
+            caution = _caution_for(analysed, body, facts.opaque)
             if caution is not None:
                 fact_cautions.append(caution)
             if facts.error:
@@ -319,14 +322,29 @@ def _names(objects: Tuple[AnalysedObject, ...]) -> str:
     return ", ".join(names) if names else "its target"
 
 
-def _caution_for(stmt: AnalysedStatement, body: str) -> Optional[Caution]:
+def _unnamed_drop_caution(stmt: AnalysedStatement, body: str) -> Optional[Caution]:
+    """The caution of a DROP whose object could not be named, from its keyword alone."""
+    match = _DROP_KEYWORD.match(strip_leading_sql_comments(body))
+    if match is None:
+        return None
+    kind = " ".join(match.group(1).upper().split())
+    code = "drop-schema" if kind in ("SCHEMA", "DATABASE") else "drop-table"
+    return Caution(
+        DESTROYS,
+        stmt.index,
+        f"DROP {kind} discards a {kind.lower()} whose name could not be read, and its rows",
+        code,
+    )
+
+
+def _caution_for(stmt: AnalysedStatement, body: str, opaque: bool = False) -> Optional[Caution]:
     op = stmt.operation
     if op == "TRUNCATE":
         return Caution(DESTROYS, stmt.index, f"TRUNCATE empties {_names(stmt.objects)}", "truncate")
     if op == "DROP":
         held = tuple(o for o in stmt.objects if o.type in _DATA_HOLDERS)
         if not held:
-            return None
+            return _unnamed_drop_caution(stmt, body) if opaque else None
         if any(o.type in _SCHEMA_HOLDERS for o in held):
             code: Optional[str] = "drop-schema"
         elif any(o.type in _ROW_HOLDERS for o in held):
@@ -347,6 +365,13 @@ def _caution_for(stmt: AnalysedStatement, body: str) -> Optional[Caution]:
             "drop-column",
         )
     if op in ("UPDATE", "DELETE") or (op == "WITH" and stmt.kind == "DML"):
+        if stmt.full_table and opaque:
+            return Caution(
+                DESTROYS,
+                stmt.index,
+                f"{op}: the predicate could not be read; treated as changing every row",
+                "dml-no-where",
+            )
         if stmt.full_table:
             return Caution(
                 DESTROYS,
