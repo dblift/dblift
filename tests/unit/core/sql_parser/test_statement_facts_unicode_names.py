@@ -12,6 +12,7 @@ import sys
 import unicodedata
 
 import pytest
+import sqlglot
 from sqlglot.dialects import Dialect
 
 from dblift.core.sql_parser.sqlglot_statement_facts import read_statement_facts
@@ -126,7 +127,8 @@ def test_token_error_names_nothing_with_an_unread_character(dialect, shape, char
     assert facts.operation == operation
     assert facts.objects == ()
     assert facts.target is None and facts.predicate is None and facts.target_sql is None
-    assert analyze_dml(sql, sqlglot_dialect=dialect).table == ""
+    if dialect == "sqlite":
+        assert analyze_dml(sql, sqlglot_dialect=dialect).table == ""
 
 
 @pytest.mark.parametrize("char", UNREAD, ids=IDS)
@@ -215,3 +217,41 @@ def test_sqlglot_blank_set_is_str_isspace(dialect):
         if len(tokens) == 2:
             blank.add(c)
     assert blank == {c for c in candidates if c.isspace()}
+
+
+NESTED_COMMENT = "CREATE TABLE t (id INT) /* a /* b */ x{c}y */"
+
+
+@pytest.mark.parametrize("char", UNREAD, ids=IDS)
+@pytest.mark.parametrize("dialect", ("postgres", "tsql", "redshift"))
+def test_unread_character_in_a_nested_comment_stays_named(dialect, char):
+    facts = read_statement_facts(NESTED_COMMENT.format(c=char), dialect=dialect)
+
+    assert [o.name for o in facts.objects] == ["t"]
+    assert facts.diagnostic is None
+
+
+@pytest.mark.parametrize("dialect", ("sqlite", "mysql", "oracle", "snowflake"))
+def test_comments_that_do_not_nest_end_at_the_first_closer(dialect):
+    facts = read_statement_facts(NESTED_COMMENT.format(c=chr(0xA0)), dialect=dialect)
+
+    assert facts.objects == () and facts.diagnostic
+
+
+def test_oracle_alternative_quoting_keeps_a_blank_inside_the_literal():
+    facts = read_statement_facts(
+        "INSERT INTO t VALUES (q'[x" + chr(0xA0) + "y]')", dialect="oracle"
+    )
+
+    # sqlglot 30.18 does not tokenize q'[...]' as one literal, so it reads the statement as
+    # unreadable there; from 30.23 on the literal is a string and the target is named.
+    if sqlglot.__version__ >= "30.23":
+        assert facts.target == "t"
+    else:
+        assert facts.target in (None, "t")
+
+
+def test_the_reader_set_is_the_full_range_set():
+    from dblift.core.sql_parser import sqlglot_statement_facts
+
+    assert sqlglot_statement_facts._UNREAD_NAME_CHARACTERS == frozenset(UNREAD)

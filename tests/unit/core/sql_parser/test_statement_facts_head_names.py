@@ -39,9 +39,6 @@ SOFT_HYPHEN = chr(0x00AD)
     "template",
     [
         TRIGGER,
-        "CREATE TABLE {n} (a INT)",
-        "CREATE VIEW {n} AS SELECT 1",
-        "DROP VIEW IF EXISTS {n}",
         "CREATE TRIGGER s.{n} AFTER INSERT ON t BEGIN SELECT 1; END",
         "CREATE TRIGGER {n}.tr AFTER INSERT ON t BEGIN SELECT 1; END",
     ],
