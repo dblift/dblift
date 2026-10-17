@@ -4,6 +4,7 @@
 it (all records with their bounds, or the exception class and message), recorded before the engine took over.
 """
 
+import hashlib
 import json
 from dataclasses import replace
 from pathlib import Path
@@ -116,14 +117,17 @@ def test_overlap_rule_over_every_terminator_state_and_ending():
                 )
                 code = next(codes)
                 result = outcome(script)
-                if code == "A":
+                if code[0] == "A":
                     assert result[0] == "records", (script, result)
+                    assert (
+                        hashlib.sha1(json.dumps(result).encode()).hexdigest()[:8] == code[1:]
+                    ), script
                     continue
                 assert result[0] == "error" and result[1] == "UnsafeStatementSplitError", (
                     script,
                     result,
                 )
-                head = f"line {code[1:]} ends with {terminator!r}"
+                head = f"line {code[4:]} ends with {terminator!r}"
                 assert result[2] in (
                     head
                     + ", which is also part of a comment delimiter: the CLP cuts the statement "
@@ -184,6 +188,15 @@ def test_blanks_field_is_read_by_the_assembly():
         ["VALUES 1", 1, ";", "sql", 0, 15],
         ["VALUES 2", 2, ";", "sql", 15, 25],
     ]
+
+
+def test_line_comment_field_is_read_by_the_overlap_rule():
+    script = "--#SET TERMINATOR /*\nVALUES 1 #/*\nVALUES 2/*\n"
+    other = replace(DB2_SPEC, terminator_script=replace(DB2_RULES, line_comment="#"))
+    refused = outcome(script, other)
+    assert refused[:2] == ["error", "UnsafeStatementSplitError"]
+    assert refused[2].startswith("line 3 ends with '/*', which is also part of a comment delimiter")
+    assert outcome(script)[2].startswith("line 2 ends with '/*', which is also part")
 
 
 def test_blanks_field_is_read_for_the_statement_start():

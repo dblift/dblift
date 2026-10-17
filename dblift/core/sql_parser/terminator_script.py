@@ -232,8 +232,6 @@ class _Walk:
         if not comment_before and self.in_comment:
             self.block_code = read
             self.block_line = number
-        elif not self.in_comment:
-            self.block_code = False
         if body.stray and not stray_before:
             self.stray_line = number
 
