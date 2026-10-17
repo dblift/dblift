@@ -1,20 +1,23 @@
 """Splitting a Db2 script costs a bounded number of operations per character, counted not timed.
 
-Each stage is handed a counting object through the parameter it already has: the script text (a
-``str`` subclass that counts the characters every slice, search and scan touches), the tokens (every
+Each stage is handed a counting object through the parameter it already has: the script text (an
+object that counts the characters every slice, search and scan touches), the tokens (every
 visit is counted, any access but ``tokens[i]`` fails), the comment depth marks and the lines. A
 shape grows the script fourfold; the count may grow at most fivefold.
 
-What the counters cannot see, a source check covers (``test_engine_modules_never_copy_or_scan_their_
-inputs``): ``str.method(text)`` called unbound and regular expressions run over the text go straight to the
-interpreter, and a token value copied into a plain container once and rescanned later is invisible to a
-proxy; token attributes are therefore counting ints whose comparisons and sums count, so a copy that is
-rescanned shows in the ratio. The check refuses those forms in every module the terminator path imports.
-Out of scope: ``bytes(text, ...)`` spelled through another name and ``text.__class__.lower(text)``.
+The text is not a ``str``: the interpreter cannot read it behind the counters' back, so a regular
+expression run over it, an unbound ``str.find(text, ...)``, ``bytes(text)`` and ``text.__class__.lower(text)``
+all fail. The only pattern allowed on it is the word pattern, wrapped so that it may be matched at a
+position and is charged for what it matched. What a counter cannot see is a token value copied into a
+plain container once and rescanned later; token attributes are therefore counting ints whose comparisons
+and sums count, and a source check refuses the copy forms in every module the terminator path imports
+(subpackages included; imports from outside the package are listed with their reason).
+Known limit: arithmetic on a copied value that is first converted with ``int()`` is not counted.
 """
 
 import ast
 import inspect
+import re
 from collections import abc
 from pathlib import Path
 from types import SimpleNamespace
@@ -37,113 +40,103 @@ class Meter:
         self.count += amount
 
 
-COUNTED_METHODS = frozenset(
-    "find index rfind rindex count startswith endswith split splitlines partition rpartition strip "
-    "lstrip rstrip upper replace join".split()
-)
+class CountingText:
+    """The text, as an object that is not a ``str``: every operation on it is counted or refused.
 
-
-class CountingText(str):
-    """Counts the characters touched by every slice, search and scan; refuses a whole copy.
-
-    Allowed, and counted: ``len`` (free), indexing and slicing (the length of the result), the search
-    methods (the span scanned), ``startswith``/``endswith`` (the prefix), ``split``, ``splitlines``,
-    ``partition``, ``strip``, ``upper``, ``replace`` (the whole length), ``join`` (the result), iteration,
-    ``in``, ``==``, ``!=`` and ``hash`` (the whole length). Refused: every other method (``lower``,
-    ``encode``, ``format``, ...), ``+``, ``*``, ``%``, ordering, ``str()``, ``repr()`` and ``[:]``.
+    A ``str`` subclass can be read by the interpreter without calling any method of it (a regular
+    expression, an unbound ``str.find(text, ...)``, ``bytes(text)``). This is not a ``str``, so all of
+    those fail with a ``TypeError``; what remains is counted. Counted: ``len`` (free), indexing and
+    slicing (the length of the result; slices and characters are plain strings), the search methods (the
+    span scanned), ``startswith``/``endswith`` (the prefix), ``split``, ``splitlines``, ``partition``,
+    ``strip``, ``upper``, ``replace`` (the whole length), ``join`` (the result), iteration, ``in``,
+    ``==``, ``!=`` and ``hash`` (the whole length). Refused: every other method, ``str()``, ``repr()``,
+    formatting and ``[:]``. Not a ``str`` also means ``+``, ``%``, ``*`` and ordering are undefined.
     """
 
-    meter: Meter
+    def __init__(self, value: str, meter: "Meter") -> None:
+        self._value, self.meter = value, meter
 
-    def __new__(cls, value: str, meter: Meter) -> "CountingText":
-        text = super().__new__(cls, value)
-        text.meter = meter
-        return text
+    def __len__(self) -> int:
+        return len(self._value)
 
-    def __getattribute__(self, name: str) -> Any:
-        if name.startswith("__") or name == "meter" or name in COUNTED_METHODS or name[0] == "_":
-            return str.__getattribute__(self, name)
-        raise AssertionError(f"{name} is not a counted operation on the text")
-
-    def _refuse(self, *args: Any) -> Any:
-        raise AssertionError("an operation on the text that is not counted")
-
-    __add__ = __radd__ = __mul__ = __rmul__ = __mod__ = __rmod__ = _refuse  # type: ignore[assignment]
-    __lt__ = __le__ = __gt__ = __ge__ = __format__ = __repr__ = _refuse  # type: ignore[assignment]
-
-    def __eq__(self, other: Any) -> bool:
-        self.meter.add(len(self))
-        return str.__eq__(self, other)
-
-    def __ne__(self, other: Any) -> bool:
-        self.meter.add(len(self))
-        return str.__ne__(self, other)
-
-    def __hash__(self) -> int:
-        self.meter.add(len(self))
-        return str.__hash__(self)
-
-    def __getitem__(self, key: Any) -> Any:
+    def __getitem__(self, key: Any) -> str:
         if isinstance(key, slice):
             if key.start is None and key.stop is None:
                 raise AssertionError("a whole copy of the text")
-            self.meter.add(len(str.__getitem__(self, key)))
-        else:
-            self.meter.add(1)
-        return str.__getitem__(self, key)
+            result = self._value[key]
+            self.meter.add(len(result))
+            return result
+        self.meter.add(1)
+        return self._value[key]
+
+    def __getattr__(self, name: str) -> Any:
+        raise AssertionError(f"{name} is not a counted operation on the text")
 
     def __str__(self) -> str:
         raise AssertionError("str() of the text")
 
+    __repr__ = __format__ = __str__  # type: ignore[assignment]
+
     def __iter__(self) -> Iterator[str]:
-        self.meter.add(len(self))
-        return str.__iter__(self)
+        self.meter.add(len(self._value))
+        return iter(self._value)
 
     def __contains__(self, item: Any) -> bool:
-        self.meter.add(len(self))
-        return str.__contains__(self, item)
+        self.meter.add(len(self._value))
+        return item in self._value
+
+    def __eq__(self, other: Any) -> bool:
+        self.meter.add(len(self._value))
+        return self._value == (other._value if isinstance(other, CountingText) else other)
+
+    def __ne__(self, other: Any) -> bool:
+        return not self == other
+
+    def __hash__(self) -> int:
+        self.meter.add(len(self._value))
+        return hash(self._value)
 
     def _span(self, start: Any, end: Any) -> int:
-        stop = len(self) if end is None else min(end, len(self))
+        stop = len(self._value) if end is None else min(end, len(self._value))
         return max(stop - (start or 0), 0)
 
     def find(self, sub: str, start: Any = None, end: Any = None) -> int:
-        found = str.find(self, sub, start or 0, len(self) if end is None else end)
+        found = self._value.find(sub, start or 0, len(self._value) if end is None else end)
         self.meter.add(found - (start or 0) + len(sub) if found >= 0 else self._span(start, end))
         return found
 
     def index(self, sub: str, start: Any = None, end: Any = None) -> int:
-        found = str.index(self, sub, start or 0, len(self) if end is None else end)
+        found = self._value.index(sub, start or 0, len(self._value) if end is None else end)
         self.meter.add(found - (start or 0) + len(sub))
         return found
 
     def rfind(self, sub: str, start: Any = None, end: Any = None) -> int:
-        stop = len(self) if end is None else end
-        found = str.rfind(self, sub, start or 0, stop)
+        stop = len(self._value) if end is None else end
+        found = self._value.rfind(sub, start or 0, stop)
         self.meter.add(stop - found if found >= 0 else self._span(start, end))
         return found
 
     def rindex(self, sub: str, start: Any = None, end: Any = None) -> int:
-        stop = len(self) if end is None else end
-        found = str.rindex(self, sub, start or 0, stop)
+        stop = len(self._value) if end is None else end
+        found = self._value.rindex(sub, start or 0, stop)
         self.meter.add(stop - found)
         return found
 
     def count(self, sub: str, start: Any = None, end: Any = None) -> int:
         self.meter.add(self._span(start, end))
-        return str.count(self, sub, start or 0, len(self) if end is None else end)
+        return self._value.count(sub, start or 0, len(self._value) if end is None else end)
 
     def startswith(self, prefix: Any, start: Any = None, end: Any = None) -> bool:
         self.meter.add(sum(map(len, prefix)) if isinstance(prefix, tuple) else len(prefix))
-        return str.startswith(self, prefix, start or 0, len(self) if end is None else end)
+        return self._value.startswith(prefix, start or 0, len(self._value) if end is None else end)
 
     def endswith(self, suffix: Any, start: Any = None, end: Any = None) -> bool:
         self.meter.add(sum(map(len, suffix)) if isinstance(suffix, tuple) else len(suffix))
-        return str.endswith(self, suffix, start or 0, len(self) if end is None else end)
+        return self._value.endswith(suffix, start or 0, len(self._value) if end is None else end)
 
     def _whole(self, name: str, *args: Any) -> Any:
-        self.meter.add(len(self))
-        return getattr(str, name)(self, *args)
+        self.meter.add(len(self._value))
+        return getattr(self._value, name)(*args)
 
     def split(self, *args: Any) -> List[str]:
         return self._whole("split", *args)
@@ -173,9 +166,21 @@ class CountingText(str):
         return self._whole("replace", *args)
 
     def join(self, items: Any) -> str:
-        result = str.join(self, items)
+        result = self._value.join(items)
         self.meter.add(len(result))
         return result
+
+
+class CountingPattern:
+    """A compiled pattern that may only be matched at a position of the counted text (the word pattern)."""
+
+    def __init__(self, pattern: Any, meter: "Meter") -> None:
+        self._pattern, self._meter = pattern, meter
+
+    def match(self, text: CountingText, pos: int) -> Any:
+        found = self._pattern.match(text._value, pos)
+        self._meter.add(found.end() - pos if found else 1)
+        return found
 
 
 class CountingInt(int):
@@ -310,6 +315,7 @@ def counted(script: str) -> int:
     lines.meter = meter
     ts.lines = lines
     tokenizer.sql = CountingText(tokenizer.sql, meter)
+    tokenizer._word_re = CountingPattern(tokenizer._word_re, meter)
     tokens = tokenizer.tokenize()
     ts.text = CountingText(ts.text, meter)
     ts.assemble(
@@ -390,6 +396,8 @@ def test_the_counters_count_what_a_rescan_would_cost():
 
 def test_the_counted_text_refuses_what_it_does_not_count():
     text = CountingText("abc", Meter())
+    pattern = re.compile("a")
+    search = pattern.search
     for call in (
         lambda: text.lower(),
         lambda: text.encode(),
@@ -402,8 +410,18 @@ def test_the_counted_text_refuses_what_it_does_not_count():
         lambda: repr(text),
         lambda: text < "b",
         lambda: text.isspace(),
+        lambda: pattern.match(text, 0),
+        lambda: pattern.search(string=text),
+        lambda: search(text),
+        lambda: re.sub("a", "b", text),
+        lambda: str.find(text, "a"),
+        lambda: str.lower(text),
+        lambda: bytes(text, "utf8"),
+        lambda: text.__class__.lower(text),
+        lambda: text[:],
+        lambda: str(text),
     ):
-        with pytest.raises(AssertionError):
+        with pytest.raises((AssertionError, TypeError, AttributeError)):
             call()
     assert text == "abc" and text.meter.count == 3 and "b" in text
 
@@ -484,34 +502,65 @@ def forbidden(tree: ast.AST) -> List[str]:
     return found
 
 
-def import_closure(package: Path, start: Tuple[str, ...]) -> List[str]:
-    """The modules of the package the terminator path imports, transitively."""
-    seen: List[str] = []
-    todo = list(start)
+#: Imports from outside ``dblift.core.sql_parser`` that the scanned modules may have, each with the reason it
+#: needs no scan: it never receives the text, the tokens or the marks. Anything else fails the test.
+OUTSIDE_EXEMPT = {"dblift.core.exceptions": "exception classes only"}
+PACKAGE = "dblift.core.sql_parser"
+
+
+def _module_file(root: Path, dotted: str) -> Optional[Path]:
+    parts = dotted.split(".")[len(PACKAGE.split(".")) :]
+    for candidate in (
+        root.joinpath(*parts).with_suffix(".py"),
+        root.joinpath(*parts, "__init__.py"),
+    ):
+        if parts and candidate.exists():
+            return candidate
+    return None
+
+
+def import_closure(root: Path, start: Tuple[str, ...]) -> Tuple[Dict[str, Path], List[str]]:
+    """The modules of the package (subpackages included) the terminator path imports, and the outside imports."""
+    found: Dict[str, Path] = {}
+    outside: List[str] = []
+    todo = [f"{PACKAGE}.{name}" for name in start]
     while todo:
-        name = todo.pop()
-        if name in seen:
+        dotted = todo.pop()
+        if dotted in found:
             continue
-        seen.append(name)
-        for node in ast.walk(ast.parse((package / f"{name}.py").read_text(encoding="utf-8"))):
-            if (
-                isinstance(node, ast.ImportFrom)
-                and node.module
-                and node.module.startswith("dblift.core.sql_parser.")
-            ):
-                module = node.module.rsplit(".", 1)[1]
-                if (package / f"{module}.py").exists():
-                    todo.append(module)
-    return sorted(seen)
+        path = _module_file(root, dotted)
+        assert path is not None, dotted
+        found[dotted] = path
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.Import):
+                names = [alias.name for alias in node.names]
+            elif isinstance(node, ast.ImportFrom) and node.module and not node.level:
+                names = [node.module] + [f"{node.module}.{alias.name}" for alias in node.names]
+            else:
+                continue
+            for name in names:
+                if name.startswith(PACKAGE + ".") and _module_file(root, name) is not None:
+                    todo.append(name)
+                elif (
+                    name.startswith("dblift.")
+                    and not name.startswith(PACKAGE)
+                    and name not in outside
+                ):
+                    outside.append(name)
+    return found, sorted(outside)
 
 
 def test_engine_modules_never_copy_or_scan_their_inputs():
     package = Path(inspect.getfile(read_lines)).parent
-    closure = import_closure(package, ENGINE_MODULES)
-    assert set(ENGINE_MODULES) <= set(closure)
-    for name in closure:
-        tree = ast.parse((package / f"{name}.py").read_text(encoding="utf-8"))
-        assert forbidden(tree) == [], name
+    closure, outside = import_closure(package, ENGINE_MODULES)
+    assert {f"{PACKAGE}.{name}" for name in ENGINE_MODULES} <= set(closure)
+    assert [
+        name
+        for name in outside
+        if name.rsplit(".", 1)[0] not in OUTSIDE_EXEMPT and name not in OUTSIDE_EXEMPT
+    ] == []
+    for dotted, path in closure.items():
+        assert forbidden(ast.parse(path.read_text(encoding="utf-8"))) == [], dotted
     for module, functions in TOKENIZER_PASS:
         tree = ast.parse((package / f"{module}.py").read_text(encoding="utf-8"))
         found = [
