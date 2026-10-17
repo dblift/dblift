@@ -142,6 +142,7 @@ class TestRepairChecksumDrift:
                     version="1",
                     type=MigrationType.SQL,
                     checksum=0,
+                    success=True,
                 )
             ]
         )

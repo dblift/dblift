@@ -208,6 +208,7 @@ class TestDetectChecksumDrift(unittest.TestCase):
             script_name="V1__a.sql",
             version="1",
             type=MigrationType.SQL,
+            success=True,
             checksum=100,
         )
         state = MigrationState()
@@ -229,6 +230,7 @@ class TestDetectChecksumDrift(unittest.TestCase):
             script_name="V1__a.sql",
             version="1",
             type=MigrationType.SQL,
+            success=True,
             checksum=100,
         )
         state = MigrationState()
@@ -249,6 +251,7 @@ class TestDetectChecksumDrift(unittest.TestCase):
             script_name="V1__a.sql",
             version="1",
             type=MigrationType.SQL,
+            success=True,
             checksum=100,
         )
         state = MigrationState()
@@ -271,6 +274,7 @@ class TestDetectChecksumDrift(unittest.TestCase):
             script_name="V1__a.sql",
             version="1",
             type=MigrationType.SQL,
+            success=True,
             checksum=100,
         )
         state = MigrationState()
@@ -307,6 +311,7 @@ class TestDetectChecksumDrift(unittest.TestCase):
             script_name="V1__a.sql",
             version="1",
             type=MigrationType.SQL,
+            success=True,
             checksum=None,  # normalize_migration_checksum("deadbeef") -> None
         )
         state = MigrationState()

@@ -163,7 +163,7 @@ def _command(script_manager):
     return command
 
 
-def test_built_catalog_preserves_group_order_and_last_duplicate_wins(tmp_path):
+def test_built_catalog_preserves_group_order_and_first_duplicate_wins(tmp_path):
     first = Migration(script_name="V1__same.sql", content="SELECT 1;", type=MigrationType.SQL)
     last = Migration(script_name="V1__same.sql", content="SELECT 2;", type=MigrationType.SQL)
     catalog = {MigrationType.REPEATABLE: [first], MigrationType.SQL: [last]}
@@ -172,10 +172,12 @@ def test_built_catalog_preserves_group_order_and_last_duplicate_wins(tmp_path):
     command = _command(scripts)
     state = command.state_manager.build_state(tmp_path)
     state.all_applied_objects = [
-        SimpleNamespace(script_name=first.script_name, type=MigrationType.SQL, checksum=0)
+        SimpleNamespace(
+            script_name=first.script_name, type=MigrationType.SQL, checksum=0, success=True
+        )
     ]
     repairs = command._detect_checksum_drift(state, [], tmp_path)
-    assert repairs[0]["new_checksum"] == last.checksum
+    assert repairs[0]["new_checksum"] == first.checksum
     assert list(state.grouped_objects) == list(catalog)
     assert scripts.load_migration_scripts.call_count == 1
 
