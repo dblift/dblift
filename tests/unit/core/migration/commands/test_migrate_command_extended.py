@@ -2,7 +2,6 @@
 
 Covers previously untested paths to push coverage toward 70%+:
   - MigrateCommand construction
-  - _initialize_migration_execution
   - _handle_dry_run
   - _mark_migrations_as_executed — success, failure
   - _execute_before_callbacks — versioned/repeatable filtering
@@ -742,12 +741,14 @@ class TestMigrateCommandExecute(unittest.TestCase):
         m = _make_migration("V1__a.sql")
         cmd = self._make_execute_cmd(pending=[m])
 
-        # _initialize_migration_execution raises inside the try block → outer except catches it
-        with patch.object(
-            cmd, "_initialize_migration_execution", side_effect=RuntimeError("internal error")
-        ):
-            with patch.object(cmd, "_log_command_completion"):
-                result = cmd.execute(Path("/migrations"))
+        # The first collaborator of the body raises → the lifecycle reports it as a failed run
+        cmd.migration_helpers.setup_migration_parameters.side_effect = RuntimeError(
+            "internal error"
+        )
+        with patch.object(cmd, "_run_preflight"):
+            with patch.object(cmd, "_log_command_header_update"):
+                with patch.object(cmd, "_log_command_completion"):
+                    result = cmd.execute(Path("/migrations"))
 
         self.assertFalse(result.success)
         self.assertIn("Migration operation failed", result.error_message)
@@ -862,10 +863,12 @@ class TestStrictModeWarningSupression(unittest.TestCase):
         cmd.state_manager.build_state.return_value = state
         cmd.state_manager.apply_filters_to_migrations.side_effect = _pass_through_filters
 
-        with patch.object(cmd, "_initialize_migration_execution", return_value=(True, True, [])):
-            with patch.object(cmd, "_update_final_state"):
-                with patch.object(cmd, "_log_command_completion"):
-                    cmd.execute(Path("/migrations"))
+        cmd.migration_helpers.setup_migration_parameters.return_value = (True, [])
+        with patch.object(cmd, "_run_preflight"):
+            with patch.object(cmd, "_log_command_header_update"):
+                with patch.object(cmd, "_update_final_state"):
+                    with patch.object(cmd, "_log_command_completion"):
+                        cmd.execute(Path("/migrations"))
 
         call_kwargs = cmd.state_manager.build_state.call_args[1]
         self.assertFalse(
@@ -882,9 +885,11 @@ class TestStrictModeWarningSupression(unittest.TestCase):
         cmd = self._make_strict_cmd()
         cmd.state_manager.build_state.side_effect = ValueError("something else broke")
 
-        with patch.object(cmd, "_initialize_migration_execution", return_value=(True, True, [])):
-            with patch.object(cmd, "_log_command_completion"):
-                result = cmd.execute(Path("/migrations"))
+        cmd.migration_helpers.setup_migration_parameters.return_value = (True, [])
+        with patch.object(cmd, "_run_preflight"):
+            with patch.object(cmd, "_log_command_header_update"):
+                with patch.object(cmd, "_log_command_completion"):
+                    result = cmd.execute(Path("/migrations"))
 
         self.assertFalse(result.success)
         self.assertIn("Migration operation failed", result.error_message)
@@ -902,10 +907,12 @@ class TestStrictModeWarningSupression(unittest.TestCase):
         cmd.state_manager.build_state.return_value = state
         cmd.state_manager.apply_filters_to_migrations.side_effect = _pass_through_filters
 
-        with patch.object(cmd, "_initialize_migration_execution", return_value=(True, True, [])):
-            with patch.object(cmd, "_update_final_state"):
-                with patch.object(cmd, "_log_command_completion"):
-                    cmd.execute(Path("/migrations"))
+        cmd.migration_helpers.setup_migration_parameters.return_value = (True, [])
+        with patch.object(cmd, "_run_preflight"):
+            with patch.object(cmd, "_log_command_header_update"):
+                with patch.object(cmd, "_update_final_state"):
+                    with patch.object(cmd, "_log_command_completion"):
+                        cmd.execute(Path("/migrations"))
 
         call_kwargs = cmd.state_manager.build_state.call_args[1]
         self.assertFalse(call_kwargs.get("strict_mode", False))

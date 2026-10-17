@@ -23,7 +23,11 @@ def _command_with_pending_migration(monkeypatch, provider: MagicMock) -> Migrate
     command.journal = None
     command.history_manager = MagicMock()
     command.execution_engine = MagicMock()
-    command._initialize_migration_execution = MagicMock(return_value=(True, True, None))
+    command._run_preflight = MagicMock()
+    command._log_command_header_update = MagicMock()
+    command.migration_helpers = MagicMock()
+    command.migration_helpers.setup_migration_parameters.return_value = (True, None)
+    command.placeholder_service = MagicMock()
     command._update_final_state = MagicMock()
     command._log_command_completion = MagicMock()
     command.state_manager = MagicMock()

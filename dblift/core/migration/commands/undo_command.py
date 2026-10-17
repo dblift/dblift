@@ -5,7 +5,7 @@ Undo command implementation.
 from contextlib import ExitStack
 from functools import partial
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, cast
 
 if TYPE_CHECKING:
     pass
@@ -117,6 +117,22 @@ class UndoCommand(BaseCommand):
         )
         self.log.info(f"Successfully undone migration {migration.script_name}")
 
+    def _fire_error_callback_while_locked(
+        self,
+        exc_type: Optional[type],
+        exc: Optional[BaseException],
+        _traceback: object,
+    ) -> bool:
+        """Fire ``afterUndoError`` when the locked block raised; never swallow the error.
+
+        Pushed on the lock's ``ExitStack`` after the lock, so it runs before the
+        lock is released: error callbacks can run SQL, which must not overlap a
+        migrate. A connection failure is not an undo failure and fires nothing.
+        """
+        if isinstance(exc, Exception) and not isinstance(exc, PreflightConnectionError):
+            self._run_error_handler("undo", lambda: self._fire("afterUndoError"))
+        return False
+
     def execute(
         self,
         scripts_dir: Path,
@@ -147,332 +163,319 @@ class UndoCommand(BaseCommand):
         if not dry_run:
             self._prepare_required_analysis()
 
-        # Held from before the plan is read until the state is rebuilt, so a
-        # migration cannot run on the schema in between. Dry run never locks.
-        lock = ExitStack()
-        try:
-            # Connect before reading history; a missing history table means
-            # there are no applied migrations and must not create anything.
-            self._run_preflight(result)
+        def body() -> None:
+            # Held from before the plan is read until the state is rebuilt, so a
+            # migration cannot run on the schema in between. Dry run never locks.
+            # Released here, before the lifecycle logs the footer.
+            with ExitStack() as lock:
+                # Without a history table there is nothing to undo; the lock would
+                # create objects in a schema that was never migrated.
+                if not dry_run and not self.history_manager.has_history_table:
+                    self.log.info("No migrations to undo")
+                    result.complete()
+                    return
 
-            # Log command execution with connection info (after connection is established)
-            self._log_command_header_update(
-                "undo",
-                target_version=target_version,
-                dry_run=dry_run,
-                tags=tags,
-                exclude_tags=exclude_tags,
-                versions=versions,
-                exclude_versions=exclude_versions,
-                show_sql=show_sql,
-            )
+                if not dry_run and not lock.enter_context(self._migration_lock()):
+                    self.log.error(MIGRATION_LOCK_REFUSAL)
+                    result.set_error(MIGRATION_LOCK_REFUSAL)
+                    return
 
-            # Without a history table there is nothing to undo; the lock would
-            # create objects in a schema that was never migrated.
-            if not dry_run and not self.history_manager.has_history_table:
-                self.log.info("No migrations to undo")
-                result.complete()
-                return result
+                lock.push(self._fire_error_callback_while_locked)
 
-            if not dry_run and not lock.enter_context(self._migration_lock()):
-                self.log.error(MIGRATION_LOCK_REFUSAL)
-                result.set_error(MIGRATION_LOCK_REFUSAL)
-                self._log_command_completion("undo", result)
-                return result
+                # Setup parameters
+                use_recursive, use_additional_dirs = (
+                    self.migration_helpers.setup_migration_parameters(
+                        placeholders, recursive, additional_dirs, self.placeholder_service
+                    )
+                )
+                self._bind_callbacks(
+                    scripts_dir, use_recursive, use_additional_dirs, dir_recursive_map, result
+                )
 
-            # Setup parameters
-            use_recursive, use_additional_dirs = self.migration_helpers.setup_migration_parameters(
-                placeholders, recursive, additional_dirs, self.placeholder_service
-            )
-            self._bind_callbacks(
-                scripts_dir, use_recursive, use_additional_dirs, dir_recursive_map, result
-            )
+                # Catalog is unfiltered; undo selects applied Success then tags/versions.
+                # target_version is rollback-to (undo versions > target), not an omit filter.
+                migration_state = self.state_manager.build_state(
+                    scripts_dir,
+                    recursive=use_recursive,
+                    additional_dirs=use_additional_dirs,
+                    dir_recursive_map=dir_recursive_map,
+                    target_version=target_version,
+                )
 
-            # Catalog is unfiltered; undo selects applied Success then tags/versions.
-            # target_version is rollback-to (undo versions > target), not an omit filter.
-            migration_state = self.state_manager.build_state(
-                scripts_dir,
-                recursive=use_recursive,
-                additional_dirs=use_additional_dirs,
-                dir_recursive_map=dir_recursive_map,
-                target_version=target_version,
-            )
-
-            applied_migrations = self._coerced_applied_list(
-                getattr(migration_state, "all_applied_objects", None)
-            )
-            if not applied_migrations:
                 applied_migrations = self._coerced_applied_list(
+                    getattr(migration_state, "all_applied_objects", None)
+                )
+                if not applied_migrations:
+                    applied_migrations = self._coerced_applied_list(
+                        getattr(migration_state, "applied_objects", None)
+                    )
+
+                # Store current schema version in result for HTML reports
+                current_version = None
+                current_source = applied_migrations
+                applied_objects = self._coerced_applied_list(
                     getattr(migration_state, "applied_objects", None)
                 )
+                if applied_objects:
+                    current_source = applied_objects
+                if current_source:
+                    current_version = self.state_manager.get_current_version(current_source)
+                if current_version:
+                    result.current_schema_version = current_version
 
-            # Store current schema version in result for HTML reports
-            current_version = None
-            current_source = applied_migrations
-            applied_objects = self._coerced_applied_list(
-                getattr(migration_state, "applied_objects", None)
-            )
-            if applied_objects:
-                current_source = applied_objects
-            if current_source:
-                current_version = self.state_manager.get_current_version(current_source)
-            if current_version:
-                result.current_schema_version = current_version
-
-            success_applied = [
-                migration
-                for migration in applied_migrations
-                if getattr(migration, "type", None) in (MigrationType.SQL, MigrationType.PYTHON)
-                and is_migration_success(getattr(migration, "success", False))
-                and getattr(migration, "version", None)
-            ]
-            candidates = self.state_manager.apply_filters_to_migrations(
-                success_applied,
-                tags=tags,
-                exclude_tags=exclude_tags,
-                versions=versions,
-                exclude_versions=exclude_versions,
-            )
-            try:
-                candidates = list(candidates)
-            except (TypeError, AttributeError):
-                candidates = success_applied
-            version_ranks = latest_successful_ranks(applied_migrations)
-            # A version undone and then re-applied has several successful rows;
-            # only the latest one is currently applied, so plan that row alone.
-            candidates = [
-                migration
-                for migration in candidates
-                if installed_rank(migration) == version_ranks[str(migration.version)].versioned
-            ]
-
-            # Find migrations to undo using migration rules (based on state)
-            migrations_to_undo = []
-
-            if target_version is None:
-                # No target version specified - find the latest migration that can be undone.
-                # Walk applied migrations in reverse install-rank order (most recently
-                # applied first) -- every provider's get_applied_migrations() query is
-                # ORDER BY installed_rank, and the target-version branch below uses the
-                # same reversed(applied_migrations) convention. Install rank, not version
-                # number, determines what "most recent" means: migrations can be applied
-                # out of version order.
-                for migration in reversed(candidates):
-                    version = str(migration.version)
-                    # Auto-scan mode: silently skip candidates that are already
-                    # undone instead of routing through should_undo_version(),
-                    # which reports a refusal for an already-undone version.
-                    if self.migration_rules._is_currently_undone(
-                        version,
-                        applied_migrations,
-                        version_ranks=version_ranks,
-                    ):
-                        continue
-                    migrations_to_undo.append(migration)
-                    if not tag_filter_active:
-                        break  # Only undo the most recent undoable migration
-
-                if migrations_to_undo:
-                    migrations_to_undo, added = expand_undo_set_to_groups(
-                        self.migration_rules,
-                        migrations_to_undo,
-                        candidates,
-                        applied_migrations,
-                        version_ranks=version_ranks,
-                    )
-                    if added:
-                        self.log.info(
-                            "Undoing %d additional migration(s) written as one group with %s: %s"
-                            % (
-                                len(added),
-                                migrations_to_undo[-1].script_name,
-                                ", ".join(str(m.version) for m in added),
-                            )
-                        )
-            else:
-                # Target version specified - undo every installed version strictly
-                # above the target, regardless of install rank. Out-of-order history
-                # (e.g. V3 rank 1, V2 rank 2, --target-version 2) must still undo V3;
-                # stopping at the first version ≤ target would skip a higher version
-                # installed earlier.
-                for migration in reversed(candidates):
-                    if compare_versions(str(migration.version), str(target_version)) <= 0:
-                        continue
-                    version = str(migration.version)
-                    if self.migration_rules._is_currently_undone(
-                        version, applied_migrations, version_ranks=version_ranks
-                    ):
-                        continue
-                    can_undo, message = self.migration_rules.should_undo_version(
-                        version,
-                        applied_migrations,
-                        version_ranks=version_ranks,
-                    )
-                    if can_undo:
-                        migrations_to_undo.append(migration)
-                    elif message:
-                        result.set_error(message)
-                        self._log_command_completion("undo", result)
-                        return result
-
-                # --target-version undoes every version strictly above the
-                # target; if that boundary lands in the middle of a group,
-                # widen the plan to the whole group rather than leaving some
-                # of its migrations applied and others undone (same rule the
-                # no-target-version branch above applies).
-                if migrations_to_undo:
-                    migrations_to_undo, added = expand_undo_set_to_groups(
-                        self.migration_rules,
-                        migrations_to_undo,
-                        candidates,
-                        applied_migrations,
-                        version_ranks=version_ranks,
-                    )
-                    if added:
-                        self.log.info(
-                            "--target-version %s falls inside a group of migrations written "
-                            "as one unit; undoing %d additional migration(s) too: %s"
-                            % (
-                                target_version,
-                                len(added),
-                                ", ".join(str(m.version) for m in added),
-                            )
-                        )
-
-            if not migrations_to_undo:
-                self.log.info("No migrations to undo")
-                result.complete()
-                return result
-
-            self.log.info(f"Found {len(migrations_to_undo)} migration(s) to undo")
-
-            # Resolve every undo script before any write so a missing script
-            # anywhere in the plan refuses the real run exactly like the dry run,
-            # instead of failing midway and leaving a partial rollback.
-            undo_plan = []
-            for migration in migrations_to_undo:
-                undo_migration = self._find_undo_script(migration, migration_state)
-                if undo_migration is None:
-                    error_msg = f"No undo script found for {migration.script_name}"
-                    self.log.error(error_msg)
-                    result.set_error(error_msg)
-                    self._log_command_completion("undo", result)
-                    return result
-                undo_plan.append((migration, undo_migration))
-
-            if not dry_run and not self._capture_objects:
-                callbacks = self._callbacks_for(
-                    ("beforeUndo", "afterUndo", "afterUndoError", "beforeEach", "afterEach")
+                success_applied = [
+                    migration
+                    for migration in applied_migrations
+                    if getattr(migration, "type", None) in (MigrationType.SQL, MigrationType.PYTHON)
+                    and is_migration_success(getattr(migration, "success", False))
+                    and getattr(migration, "version", None)
+                ]
+                candidates = self.state_manager.apply_filters_to_migrations(
+                    success_applied,
+                    tags=tags,
+                    exclude_tags=exclude_tags,
+                    versions=versions,
+                    exclude_versions=exclude_versions,
                 )
-                self._preflight_execution_sql([undo for _, undo in undo_plan] + callbacks)
+                try:
+                    candidates = list(candidates)
+                except (TypeError, AttributeError):
+                    candidates = success_applied
+                version_ranks = latest_successful_ranks(applied_migrations)
+                # A version undone and then re-applied has several successful rows;
+                # only the latest one is currently applied, so plan that row alone.
+                candidates = [
+                    migration
+                    for migration in candidates
+                    if installed_rank(migration) == version_ranks[str(migration.version)].versioned
+                ]
 
-            if dry_run:
-                for migration, undo_migration in undo_plan:
-                    if show_sql:
-                        if undo_migration.format == MigrationFormat.PYTHON:
-                            self._add_empty_visible_sql(undo_migration, result)
-                        else:
-                            self._add_visible_sql(undo_migration, result)
-                        if result.error_message:
-                            self._log_command_completion("undo", result)
-                            return result
+                # Find migrations to undo using migration rules (based on state)
+                migrations_to_undo = []
 
-                self.log.info("DRY RUN: Would undo the following migrations:")
+                if target_version is None:
+                    # No target version specified - find the latest migration that can be undone.
+                    # Walk applied migrations in reverse install-rank order (most recently
+                    # applied first) -- every provider's get_applied_migrations() query is
+                    # ORDER BY installed_rank, and the target-version branch below uses the
+                    # same reversed(applied_migrations) convention. Install rank, not version
+                    # number, determines what "most recent" means: migrations can be applied
+                    # out of version order.
+                    for migration in reversed(candidates):
+                        version = str(migration.version)
+                        # Auto-scan mode: silently skip candidates that are already
+                        # undone instead of routing through should_undo_version(),
+                        # which reports a refusal for an already-undone version.
+                        if self.migration_rules._is_currently_undone(
+                            version,
+                            applied_migrations,
+                            version_ranks=version_ranks,
+                        ):
+                            continue
+                        migrations_to_undo.append(migration)
+                        if not tag_filter_active:
+                            break  # Only undo the most recent undoable migration
+
+                    if migrations_to_undo:
+                        migrations_to_undo, added = expand_undo_set_to_groups(
+                            self.migration_rules,
+                            migrations_to_undo,
+                            candidates,
+                            applied_migrations,
+                            version_ranks=version_ranks,
+                        )
+                        if added:
+                            self.log.info(
+                                "Undoing %d additional migration(s) written as one group with %s: %s"
+                                % (
+                                    len(added),
+                                    migrations_to_undo[-1].script_name,
+                                    ", ".join(str(m.version) for m in added),
+                                )
+                            )
+                else:
+                    # Target version specified - undo every installed version strictly
+                    # above the target, regardless of install rank. Out-of-order history
+                    # (e.g. V3 rank 1, V2 rank 2, --target-version 2) must still undo V3;
+                    # stopping at the first version ≤ target would skip a higher version
+                    # installed earlier.
+                    for migration in reversed(candidates):
+                        if compare_versions(str(migration.version), str(target_version)) <= 0:
+                            continue
+                        version = str(migration.version)
+                        if self.migration_rules._is_currently_undone(
+                            version, applied_migrations, version_ranks=version_ranks
+                        ):
+                            continue
+                        can_undo, message = self.migration_rules.should_undo_version(
+                            version,
+                            applied_migrations,
+                            version_ranks=version_ranks,
+                        )
+                        if can_undo:
+                            migrations_to_undo.append(migration)
+                        elif message:
+                            result.set_error(message)
+                            return
+
+                    # --target-version undoes every version strictly above the
+                    # target; if that boundary lands in the middle of a group,
+                    # widen the plan to the whole group rather than leaving some
+                    # of its migrations applied and others undone (same rule the
+                    # no-target-version branch above applies).
+                    if migrations_to_undo:
+                        migrations_to_undo, added = expand_undo_set_to_groups(
+                            self.migration_rules,
+                            migrations_to_undo,
+                            candidates,
+                            applied_migrations,
+                            version_ranks=version_ranks,
+                        )
+                        if added:
+                            self.log.info(
+                                "--target-version %s falls inside a group of migrations written "
+                                "as one unit; undoing %d additional migration(s) too: %s"
+                                % (
+                                    target_version,
+                                    len(added),
+                                    ", ".join(str(m.version) for m in added),
+                                )
+                            )
+
+                if not migrations_to_undo:
+                    self.log.info("No migrations to undo")
+                    result.complete()
+                    return
+
+                self.log.info(f"Found {len(migrations_to_undo)} migration(s) to undo")
+
+                # Resolve every undo script before any write so a missing script
+                # anywhere in the plan refuses the real run exactly like the dry run,
+                # instead of failing midway and leaving a partial rollback.
+                undo_plan = []
                 for migration in migrations_to_undo:
-                    self.log.info(f"  - {migration.script_name}")
-                # Note: Callbacks are NOT executed in dry-run mode
-                self._log_command_completion("undo", result)
-                return result
+                    undo_migration = self._find_undo_script(migration, migration_state)
+                    if undo_migration is None:
+                        error_msg = f"No undo script found for {migration.script_name}"
+                        self.log.error(error_msg)
+                        result.set_error(error_msg)
+                        return
+                    undo_plan.append((migration, undo_migration))
 
-            # Execute beforeUndo callbacks
-            try:
-                self._fire("beforeUndo")
-            except Exception as e:
-                self.log.error(f"beforeUndo callback failed: {e}")
-                result.set_error(f"beforeUndo callback failed: {e}")
-                self._fire("afterUndoError")
-                result.complete()
-                return result
-
-            # Execute undo for each migration
-            runner = ScriptRunner(self, UNDO_POLICY)
-            for migration, undo_migration in undo_plan:
-                if self._migration_lock_lost():
-                    # Another process may have taken the lock over; the undo in
-                    # flight could not be interrupted safely, the next must not start.
-                    message = (
-                        "The migration lock was lost (taken over by another process or "
-                        f"not renewable); stopping before {undo_migration.script_name}"
+                if not dry_run and not self._capture_objects:
+                    callbacks = self._callbacks_for(
+                        ("beforeUndo", "afterUndo", "afterUndoError", "beforeEach", "afterEach")
                     )
-                    self.log.error(message)
-                    result.set_error(message)
-                    break
-                if show_sql:
-                    self._add_visible_sql(undo_migration, result)
-                    if result.error_message:
+                    self._preflight_execution_sql([undo for _, undo in undo_plan] + callbacks)
+
+                if dry_run:
+                    for migration, undo_migration in undo_plan:
+                        if show_sql:
+                            if undo_migration.format == MigrationFormat.PYTHON:
+                                self._add_empty_visible_sql(undo_migration, result)
+                            else:
+                                self._add_visible_sql(undo_migration, result)
+                            if result.error_message:
+                                return
+
+                    self.log.info("DRY RUN: Would undo the following migrations:")
+                    for migration in migrations_to_undo:
+                        self.log.info(f"  - {migration.script_name}")
+                    # Note: Callbacks are NOT executed in dry-run mode
+                    return
+
+                # Execute beforeUndo callbacks
+                try:
+                    self._fire("beforeUndo")
+                except Exception as e:
+                    self.log.error(f"beforeUndo callback failed: {e}")
+                    result.set_error(f"beforeUndo callback failed: {e}")
+                    self._fire("afterUndoError")
+                    result.complete()
+                    return
+
+                # Execute undo for each migration
+                runner = ScriptRunner(self, UNDO_POLICY)
+                for migration, undo_migration in undo_plan:
+                    if self._migration_lock_lost():
+                        # Another process may have taken the lock over; the undo in
+                        # flight could not be interrupted safely, the next must not start.
+                        message = (
+                            "The migration lock was lost (taken over by another process or "
+                            f"not renewable); stopping before {undo_migration.script_name}"
+                        )
+                        self.log.error(message)
+                        result.set_error(message)
+                        break
+                    if show_sql:
+                        self._add_visible_sql(undo_migration, result)
+                        if result.error_message:
+                            break
+
+                    success = runner.run(
+                        undo_migration,
+                        result,
+                        event_data={
+                            "script": undo_migration.script_name,
+                            "version": migration.version,
+                            "description": f"Undo: {migration.description}",
+                            "type": "UNDO_SQL",
+                        },
+                        on_success=partial(self._record_undone, migration, undo_migration, result),
+                    )
+                    if not success:
                         break
 
-                success = runner.run(
-                    undo_migration,
-                    result,
-                    event_data={
-                        "script": undo_migration.script_name,
-                        "version": migration.version,
-                        "description": f"Undo: {migration.description}",
-                        "type": "UNDO_SQL",
-                    },
-                    on_success=partial(self._record_undone, migration, undo_migration, result),
+                # If we reach here, all undo migrations completed successfully
+                # Execute afterUndo callbacks
+                if not result.error_message:
+                    self._fire("afterUndo")
+
+                # Set journal on result for HTML formatter access
+                result.journal = self.journal
+
+                # Update schema version after migrations are undone
+                # Rebuild state to get accurate applied migrations after undo
+                migration_state_after = self.state_manager.build_state(
+                    scripts_dir,
+                    recursive=use_recursive,
+                    additional_dirs=use_additional_dirs,
+                    dir_recursive_map=dir_recursive_map,
+                    target_version=None,
+                    tags=None,
+                    exclude_tags=None,
+                    versions=None,
+                    exclude_versions=None,
                 )
-                if not success:
-                    break
+                applied_migrations_after = migration_state_after.applied_objects
+                updated_version = self.state_manager.get_current_version(applied_migrations_after)
+                if updated_version:
+                    result.current_schema_version = updated_version
+                else:
+                    # No versioned migrations left, set to None
+                    result.current_schema_version = None
 
-            # If we reach here, all undo migrations completed successfully
-            # Execute afterUndo callbacks
-            if not result.error_message:
-                self._fire("afterUndo")
+                return
 
-            # Set journal on result for HTML formatter access
-            result.journal = self.journal
-
-            # Update schema version after migrations are undone
-            # Rebuild state to get accurate applied migrations after undo
-            migration_state_after = self.state_manager.build_state(
-                scripts_dir,
-                recursive=use_recursive,
-                additional_dirs=use_additional_dirs,
-                dir_recursive_map=dir_recursive_map,
-                target_version=None,
-                tags=None,
-                exclude_tags=None,
-                versions=None,
-                exclude_versions=None,
-            )
-            applied_migrations_after = migration_state_after.applied_objects
-            updated_version = self.state_manager.get_current_version(applied_migrations_after)
-            if updated_version:
-                result.current_schema_version = updated_version
-            else:
-                # No versioned migrations left, set to None
-                result.current_schema_version = None
-
-            self._log_command_completion("undo", result)
-            return result
-
-        except PreflightConnectionError:
-            # Connection or schema-history setup failed before undo started;
-            # propagate it as info does rather than as a failed undo.
-            raise
-        except Exception as e:
-            self.log.error(f"Undo operation failed: {e}")
-            result.set_error(f"Undo operation failed: {e}")
-            # Execute afterUndoError callbacks on exception
-            try:
-                self._fire("afterUndoError")
-            except Exception as e:
-                self.log.debug(
-                    f"afterUndoError callback failed (ignored during exception handling): {e}"
-                )
-            self._log_command_completion("undo", result)
-            return result
-        finally:
-            lock.close()
+        # Connect before reading history; a missing history table means there
+        # are no applied migrations and must not create anything. A connection
+        # or schema-history failure propagates as it does for info.
+        return cast(
+            UndoResult,
+            self._run_command_lifecycle(
+                "undo",
+                result,
+                body,
+                preflight=lambda: self._run_preflight(result),
+                error_message_prefix="Undo operation failed",
+                header_kwargs={
+                    "target_version": target_version,
+                    "dry_run": dry_run,
+                    "tags": tags,
+                    "exclude_tags": exclude_tags,
+                    "versions": versions,
+                    "exclude_versions": exclude_versions,
+                    "show_sql": show_sql,
+                },
+            ),
+        )

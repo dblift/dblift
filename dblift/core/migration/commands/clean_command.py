@@ -3,7 +3,7 @@ Clean command implementation.
 """
 
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 
 from dblift.core.exceptions import FixedDboSchemaError
 from dblift.core.logger._null import NullLog
@@ -82,33 +82,34 @@ class CleanCommand(BaseCommand):
             result.complete()
             return result
 
-        if scripts_dir and not dry_run:
-            self._prepare_analysis_for_sql_callbacks(
-                scripts_dir,
-                ("beforeClean", "afterClean", "afterCleanError"),
-                recursive,
-                additional_dirs,
-                dir_recursive_map,
-            )
+        def preflight() -> None:
+            if scripts_dir and not dry_run:
+                self._prepare_analysis_for_sql_callbacks(
+                    scripts_dir,
+                    ("beforeClean", "afterClean", "afterCleanError"),
+                    recursive,
+                    additional_dirs,
+                    dir_recursive_map,
+                )
 
-        # Connect and read connection metadata (clean needs no history table).
-        # Needed for both dry-run enumeration and the actual clean: a failed
-        # connection must be reported, not hidden, otherwise a dry run shows
-        # "(schema appears empty)" when the schema may be full. Failures raise
-        # PreflightConnectionError, as for every other command.
-        self._run_preflight(result)
+            # Connect and read connection metadata (clean needs no history table).
+            # Needed for both dry-run enumeration and the actual clean: a failed
+            # connection must be reported, not hidden, otherwise a dry run shows
+            # "(schema appears empty)" when the schema may be full. Failures raise
+            # PreflightConnectionError, as for every other command.
+            self._run_preflight(result)
 
-        if isinstance(self.provider, CleanTargetProvider):
-            try:
-                self.provider.prepare_clean_target(self.config.database.schema)
-            except Exception as e:
-                error_message = f"Clean operation failed: {e}"
-                self.log.error(error_message)
-                result.set_error(error_message)
-                result.complete()
-                return result
+        def body() -> None:
+            if isinstance(self.provider, CleanTargetProvider):
+                try:
+                    self.provider.prepare_clean_target(self.config.database.schema)
+                except Exception as e:
+                    error_message = f"Clean operation failed: {e}"
+                    self.log.error(error_message)
+                    result.set_error(error_message)
+                    result.complete()
+                    return
 
-        try:
             if not isinstance(self.provider, CleanTargetProvider) and hasattr(
                 self.provider, "set_current_schema"
             ):
@@ -121,11 +122,6 @@ class CleanCommand(BaseCommand):
                     raise
                 except Exception as e:
                     self.log.debug(f"set_current_schema skipped: {e}")
-
-            try:
-                self._log_command_header_update("clean", dry_run=dry_run)
-            except Exception as e:
-                self.log.debug(f"_log_command_header_update skipped: {e}")
 
             if dry_run:
                 self.log.info(f"DRY RUN: Would clean schema '{self.config.database.schema}'")
@@ -145,8 +141,7 @@ class CleanCommand(BaseCommand):
                 if not objects_found:
                     self.log.info("  (schema appears empty or objects could not be enumerated)")
                 # Note: Callbacks are NOT executed in dry-run mode
-                self._log_command_completion("clean", result)
-                return result
+                return
 
             # Execute beforeClean callbacks if scripts_dir is provided
             try:
@@ -156,7 +151,7 @@ class CleanCommand(BaseCommand):
                 result.set_error(f"beforeClean callback failed: {e}")
                 self._fire("afterCleanError")
                 result.complete()
-                return result
+                return
 
             self.log.info(f"Cleaning schema '{self.config.database.schema}'")
 
@@ -225,21 +220,18 @@ class CleanCommand(BaseCommand):
                     f"{error_count} error(s))"
                 )
 
-            self._log_command_completion("clean", result)
-            return result
-
-        except Exception as e:
-            self.log.error(f"Clean operation failed: {e}")
-            result.set_error(f"Clean operation failed: {e}")
-            # Execute afterCleanError callbacks on exception if scripts_dir is provided
-            try:
-                self._fire("afterCleanError")
-            except Exception as cb_e:
-                self.log.debug(
-                    f"afterCleanError callback skipped: {cb_e}"
-                )  # Ignore errors in error callbacks during exception handling
-            self._log_command_completion("clean", result)
-            return result
+        return cast(
+            CleanResult,
+            self._run_command_lifecycle(
+                "clean",
+                result,
+                body,
+                preflight=preflight,
+                error_message_prefix="Clean operation failed",
+                header_kwargs={"dry_run": dry_run},
+                on_error=lambda: self._fire("afterCleanError"),
+            ),
+        )
 
     def _log_clean_summary(self, result: CleanResult) -> None:
         """Log summary of cleaned objects grouped by type."""

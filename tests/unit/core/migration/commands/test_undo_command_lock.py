@@ -137,3 +137,18 @@ class TestUndoMigrationLock:
         cmd.provider.acquire_migration_lock.assert_not_called()
         cmd.state_manager.build_state.assert_not_called()
         cmd.log.info.assert_any_call("No migrations to undo")
+
+    def test_undo_error_callback_runs_while_lock_held(self):
+        cmd, _ = _two_script_command()
+        cmd.history_manager.has_history_table = True
+        cmd._log_command_completion = MagicMock()
+        calls = _record_calls(cmd)
+        cmd.state_manager.build_state.side_effect = RuntimeError("x")
+        cmd._fire = MagicMock(side_effect=lambda event: calls.append(event))
+
+        result = cmd.execute(scripts_dir=MagicMock(), target_version="0")
+
+        assert result.error_message == "Undo operation failed: x"
+        assert calls.count("afterUndoError") == 1
+        assert calls.index("afterUndoError") < calls.index("release")
+        cmd._log_command_completion.assert_called_once_with("undo", result)

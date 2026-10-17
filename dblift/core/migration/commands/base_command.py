@@ -928,6 +928,13 @@ class BaseCommand:
         lock_lost = getattr(self.provider, "migration_lock_lost", None)
         return callable(lock_lost) and lock_lost() is True
 
+    def _run_error_handler(self, command_name: str, handler: Callable[[], None]) -> None:
+        """Run an error handler; a failure is logged at debug level, never raised."""
+        try:
+            handler()
+        except Exception as handler_error:
+            self.log.debug(f"Error handler for {command_name} failed: {handler_error}")
+
     def _run_command_lifecycle(
         self,
         command_name: str,
@@ -938,6 +945,7 @@ class BaseCommand:
         before_body: Optional[Callable[[], None]] = None,
         error_message_prefix: Optional[str] = None,
         header_kwargs: Optional[Dict[str, Any]] = None,
+        on_error: Optional[Callable[[], None]] = None,
     ) -> Any:
         """Run the common command skeleton while preserving legacy semantics.
 
@@ -947,6 +955,13 @@ class BaseCommand:
         Preflight and header exceptions still propagate, matching existing
         command behavior; only body exceptions are converted to ``result``
         errors for commands that previously did that locally.
+
+        Once preflight has run, the footer is logged exactly once on every exit.
+        When the body raises, the error is set, ``on_error`` runs (a failure in
+        it is only logged at debug level), then the footer is logged. A
+        ``PreflightConnectionError`` raised by the body, such as a second
+        connection or history check, propagates without a footer, as one from
+        ``preflight`` does.
         """
         if preflight is not None:
             preflight()
@@ -956,10 +971,14 @@ class BaseCommand:
 
         try:
             body()
+        except PreflightConnectionError:
+            raise
         except Exception as e:
             message = f"{error_message_prefix}: {e}" if error_message_prefix else str(e)
             self.log.error(message)
             result.set_error(message)
+            if on_error is not None:
+                self._run_error_handler(command_name, on_error)
 
         self._log_command_completion(command_name, result)
         return result

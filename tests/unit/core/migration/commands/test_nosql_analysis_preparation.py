@@ -57,10 +57,7 @@ def test_default_command_passes_analysis_preparation_without_sql_parser(
             lambda self, result: past_preparation(),
         )
 
-    if command_class is MigrateCommand:
-        with pytest.raises(_PastAnalysisPreparation):
-            command_class(context).execute(tmp_path)
-    else:
+    with pytest.raises(_PastAnalysisPreparation):
         command_class(context).execute(tmp_path)
 
     past_preparation.assert_called_once_with()

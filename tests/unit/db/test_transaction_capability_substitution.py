@@ -132,7 +132,9 @@ def test_clean_drops_objects_without_transaction_methods():
 def test_mark_as_executed_persists_without_transaction_methods(tmp_path):
     provider = NonTransactionalProvider()
     cmd = command(MigrateCommand, provider)
-    cmd._initialize_migration_execution = lambda *args, **kwargs: (True, True, None)
+    cmd._run_preflight = lambda *args, **kwargs: None
+    cmd._log_command_header_update = lambda *args, **kwargs: None
+    cmd.migration_helpers.setup_migration_parameters.return_value = (True, None)
     cmd._update_final_state = lambda *args, **kwargs: None
     cmd.state_manager.get_current_version.return_value = None
     cmd.state_manager.build_state.return_value.executable_pending_objects.return_value = [
