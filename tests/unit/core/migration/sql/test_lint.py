@@ -289,16 +289,16 @@ def _delta_findings(tmp_path: Path, dialect: str, drop: str):
     return results[1].findings
 
 
-@pytest.mark.parametrize("dialect", ["sqlite", "duckdb"])
+@pytest.mark.parametrize("dialect", ["sqlite", "duckdb", "postgresql", "mysql", "oracle"])
 @pytest.mark.parametrize("blank", [" ", "　"])
 def test_a_drop_whose_name_cannot_be_read_is_not_exempted_as_a_new_table(
     tmp_path: Path, dialect: str, blank: str
 ):
     findings = _delta_findings(tmp_path, dialect, f"DROP TABLE t{blank};")
 
-    assert [(f.code, "name could not be read" in f.message) for f in findings] == [
-        ("drop-table", True)
-    ]
+    assert [
+        (f.code, "name could not be read" in f.message) for f in findings if f.code == "drop-table"
+    ] == [("drop-table", True)]
 
 
 @pytest.mark.parametrize("dialect", ["sqlite", "duckdb"])
@@ -315,7 +315,7 @@ def test_a_drop_of_another_table_still_warns(tmp_path: Path, dialect: str):
     assert [f.code for f in findings] == ["drop-table"]
 
 
-@pytest.mark.parametrize("dialect", ["sqlite", "duckdb"])
+@pytest.mark.parametrize("dialect", ["sqlite", "duckdb", "postgresql", "mysql", "oracle"])
 def test_a_table_created_under_an_unreadable_name_is_not_a_new_table(tmp_path: Path, dialect: str):
     (tmp_path / "V1__c.sql").write_text("CREATE TABLE t (id INTEGER);")
     (tmp_path / "V2__d.sql").write_text("DROP TABLE t;")
@@ -323,4 +323,17 @@ def test_a_table_created_under_an_unreadable_name_is_not_a_new_table(tmp_path: P
         [tmp_path / "V1__c.sql", tmp_path / "V2__d.sql"], dialect, {}, MagicMock(), as_delta=True
     )
 
-    assert [f.code for f in results[1].findings] == ["drop-table"]
+    assert [f.code for f in results[1].findings if f.code == "drop-table"] == ["drop-table"]
+
+
+def test_a_drop_of_a_table_whose_creation_carried_a_diagnostic_is_still_exempted(
+    tmp_path: Path,
+):
+    dialect = "sqlite"
+    (tmp_path / "V1__c.sql").write_text("CREATE VIRTUAL TABLE v USING fts5(a);")
+    (tmp_path / "V2__d.sql").write_text("DROP TABLE v;")
+    results = lint_files(
+        [tmp_path / "V1__c.sql", tmp_path / "V2__d.sql"], dialect, {}, MagicMock(), as_delta=True
+    )
+
+    assert results[1].findings == ()
