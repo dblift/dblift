@@ -36,3 +36,26 @@ def test_refused_lock_is_not_released():
         assert acquired is False
 
     cmd.provider.release_migration_lock.assert_not_called()
+
+
+def test_release_reporting_not_held_warns():
+    cmd = _command(acquired=True)
+    cmd.provider.release_migration_lock.return_value = False
+
+    with cmd._migration_lock() as acquired:
+        assert acquired is True
+
+    cmd.log.warning.assert_called_once_with(
+        "The migration lock was no longer held by this run "
+        "(lost or already released); nothing to release"
+    )
+
+
+def test_release_failure_warns():
+    cmd = _command(acquired=True)
+    cmd.provider.release_migration_lock.side_effect = RuntimeError("boom")
+
+    with cmd._migration_lock() as acquired:
+        assert acquired is True
+
+    cmd.log.warning.assert_called_once_with("Could not release migration lock: boom")
