@@ -62,6 +62,7 @@ class TestRepairDeletesFailedMigrations:
         from dblift.core.logger.results import RepairResult
         from dblift.core.migration.commands.repair_command import RepairCommand
         from dblift.core.migration.migration import MigrationType
+        from dblift.core.migration.state.migration_state import MigrationState
 
         config = Mock()
         config.database.schema = "public"
@@ -86,15 +87,9 @@ class TestRepairDeletesFailedMigrations:
         failed.version = "1.0.0"
         failed.description = "broken"
 
-        state = Mock()
-        state.checksum_changes = []
-        state.deleted_scripts = set()
-        state.applied_objects = []
-        state.failed_objects = [failed]
-        state.grouped_objects = None
+        state = MigrationState(failed_objects=[failed])
 
-        post_state = Mock()
-        post_state.checksum_changes = []
+        post_state = MigrationState()
         state_manager.build_state = Mock(side_effect=[state, post_state])
 
         command = RepairCommand(
