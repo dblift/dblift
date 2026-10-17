@@ -59,6 +59,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`repair` no longer reports success when it cannot read state.** It now fails with
   `Repair operation failed: <error>` when the schema history or the migration scripts cannot be
   read. It used to report that nothing needed repairing.
+- **`baseline` rolls back when writing the baseline row fails.** It now rolls back its
+  transaction instead of leaving it open.
 
 ### Removed
 

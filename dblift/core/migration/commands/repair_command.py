@@ -11,6 +11,7 @@ if TYPE_CHECKING:
 from dblift.core.exceptions import ExecutionError
 from dblift.core.logger.results import RepairResult
 from dblift.core.migration._type_match import is_versioned
+from dblift.core.migration.history.history_transaction import history_transaction
 from dblift.core.migration.migration import Migration, MigrationType
 from dblift.core.migration.state.migration_state import MigrationState
 from dblift.db.provider_capabilities import ensure_provider_connection
@@ -523,156 +524,144 @@ class RepairCommand(BaseCommand):
             self.log.debug(f"Unable to eagerly ensure connection before repair: {ensure_err}")
 
         # Perform repairs
-        transaction_started = False
         repairs_executed = 0
-        if isinstance(self.provider, TransactionalProvider):
-            try:
-                self.provider.begin_transaction()
-                transaction_started = True
-            except Exception as begin_err:
-                self.log.warning(f"Failed to begin repair transaction: {begin_err}")
+        step_error: Optional[Exception] = None
 
         if repairs_needed:
             self.log.info(f"Repairing {len(repairs_needed)} migration history issue(s).")
 
-        for repair in repairs_needed:
-            try:
-                if repair["type"] == "CHECKSUM_MISMATCH":
-                    script = str(repair.get("script", ""))
-                    # If the targeted row is a failed migration, updating the checksum would
-                    # leave the row in a permanently-failed state that subsequent `migrate`
-                    # calls skip. Delete it instead so the migration can be retried cleanly.
-                    if self._is_failed_migration(script, migration_state):
-                        if self._delete_failed_migration_entry(repair, result, migration_state):
-                            repairs_executed += 1
-                            self.log.info(
-                                f"Removed failed migration entry: {script} - "
-                                "migration can now be retried"
+        try:
+            with history_transaction(self.provider, self.log, "repair"):
+                for repair in repairs_needed:
+                    try:
+                        if repair["type"] == "CHECKSUM_MISMATCH":
+                            script = str(repair.get("script", ""))
+                            # If the targeted row is a failed migration, updating the checksum would
+                            # leave the row in a permanently-failed state that subsequent `migrate`
+                            # calls skip. Delete it instead so the migration can be retried cleanly.
+                            if self._is_failed_migration(script, migration_state):
+                                if self._delete_failed_migration_entry(
+                                    repair, result, migration_state
+                                ):
+                                    repairs_executed += 1
+                                    self.log.info(
+                                        f"Removed failed migration entry: {script} - "
+                                        "migration can now be retried"
+                                    )
+                                continue
+
+                            new_checksum = repair.get("new_checksum")
+                            # The checksum column is INT; pass int for CRC32, not str
+                            if new_checksum is not None and not isinstance(new_checksum, int):
+                                try:
+                                    new_checksum = int(new_checksum)
+                                except (TypeError, ValueError):
+                                    pass
+                            if new_checksum is None:
+                                raise ExecutionError(
+                                    f"CHECKSUM_MISMATCH repair for {repair.get('script', '')} "
+                                    "requires new_checksum"
+                                )
+                            updated = self.history_manager.repair_checksum(
+                                str(repair.get("script", "")), new_checksum
                             )
-                        continue
+                            if not updated:
+                                raise ExecutionError(
+                                    f"No history entry updated for {repair['script']}. "
+                                    "Repair may require manual intervention."
+                                )
+                            repairs_executed += 1
+                            record_repair(result, "CHECKSUM_MISMATCH", repair, migration_state)
+                            self.log.info(f"Updated checksum for {repair['script']}")
 
-                    new_checksum = repair.get("new_checksum")
-                    # The checksum column is INT; pass int for CRC32, not str
-                    if new_checksum is not None and not isinstance(new_checksum, int):
-                        try:
-                            new_checksum = int(new_checksum)
-                        except (TypeError, ValueError):
-                            pass
-                    if new_checksum is None:
-                        raise ExecutionError(
-                            f"CHECKSUM_MISMATCH repair for {repair.get('script', '')} "
-                            "requires new_checksum"
-                        )
-                    updated = self.history_manager.repair_checksum(
-                        str(repair.get("script", "")), new_checksum
-                    )
-                    if not updated:
-                        raise ExecutionError(
-                            f"No history entry updated for {repair['script']}. "
-                            "Repair may require manual intervention."
-                        )
-                    repairs_executed += 1
-                    record_repair(result, "CHECKSUM_MISMATCH", repair, migration_state)
-                    self.log.info(f"Updated checksum for {repair['script']}")
+                        elif repair["type"] == "MISSING_SCRIPT":
+                            # For missing scripts, create a DELETE entry in the history table
+                            # This marks the migration as intentionally deleted
+                            script_name = repair.get("script", "")
+                            version = repair.get("version")
+                            description = repair.get("description", "")
+                            original_type_obj = repair.get(
+                                "original_type"
+                            )  # Get original type from repair dict
 
-                elif repair["type"] == "MISSING_SCRIPT":
-                    # For missing scripts, create a DELETE entry in the history table
-                    # This marks the migration as intentionally deleted
-                    script_name = repair.get("script", "")
-                    version = repair.get("version")
-                    description = repair.get("description", "")
-                    original_type_obj = repair.get(
-                        "original_type"
-                    )  # Get original type from repair dict
+                            try:
+                                # Convert original type to string for storing in description
+                                if original_type_obj:
+                                    if hasattr(original_type_obj, "name"):
+                                        original_type_name = original_type_obj.name
+                                    else:
+                                        original_type_name = str(original_type_obj).upper()
+                                else:
+                                    # Infer from script name
+                                    if script_name.startswith("V"):
+                                        original_type_name = MigrationType.SQL.name
+                                    elif script_name.startswith("R"):
+                                        original_type_name = MigrationType.REPEATABLE.name
+                                    elif script_name.startswith("U"):
+                                        original_type_name = MigrationType.UNDO_SQL.name
+                                    else:
+                                        original_type_name = MigrationType.SQL.name
 
-                    try:
-                        # Convert original type to string for storing in description
-                        if original_type_obj:
-                            if hasattr(original_type_obj, "name"):
-                                original_type_name = original_type_obj.name
-                            else:
-                                original_type_name = str(original_type_obj).upper()
-                        else:
-                            # Infer from script name
-                            if script_name.startswith("V"):
-                                original_type_name = MigrationType.SQL.name
-                            elif script_name.startswith("R"):
-                                original_type_name = MigrationType.REPEATABLE.name
-                            elif script_name.startswith("U"):
-                                original_type_name = MigrationType.UNDO_SQL.name
-                            else:
-                                original_type_name = MigrationType.SQL.name
+                                # Create DELETE entry with original type embedded in description
+                                delete_reason = (
+                                    description or "Marked as deleted via repair command"
+                                )
+                                # Store original type in description: [DELETE:ORIGINAL_TYPE] description
+                                enriched_description = (
+                                    f"[DELETE:{original_type_name}] {delete_reason}"
+                                )
 
-                        # Create DELETE entry with original type embedded in description
-                        delete_reason = description or "Marked as deleted via repair command"
-                        # Store original type in description: [DELETE:ORIGINAL_TYPE] description
-                        enriched_description = f"[DELETE:{original_type_name}] {delete_reason}"
+                                delete_migration = Migration(
+                                    script_name=script_name,
+                                    content=f"-- Delete operation: {enriched_description}",
+                                    version=version,
+                                    description=enriched_description,
+                                    type=MigrationType.DELETE,
+                                    tags=[],
+                                    _filename_metadata=self.script_manager.parse_filename(
+                                        script_name
+                                    ),
+                                )
 
-                        delete_migration = Migration(
-                            script_name=script_name,
-                            content=f"-- Delete operation: {enriched_description}",
-                            version=version,
-                            description=enriched_description,
-                            type=MigrationType.DELETE,
-                            tags=[],
-                            _filename_metadata=self.script_manager.parse_filename(script_name),
-                        )
+                                self.log.debug(
+                                    f"Creating DELETE entry for missing migration: {script_name} (version: {version})"
+                                )
 
-                        self.log.debug(
-                            f"Creating DELETE entry for missing migration: {script_name} (version: {version})"
-                        )
+                                # Record the DELETE entry in the history table
+                                self.history_manager.record_migration(
+                                    delete_migration, success=True, execution_time=0
+                                )
 
-                        # Record the DELETE entry in the history table
-                        self.history_manager.record_migration(
-                            delete_migration, success=True, execution_time=0
-                        )
+                                repairs_executed += 1
+                                record_repair(result, "MISSING_SCRIPT", repair, migration_state)
+                                self.log.info(
+                                    f"Marked migration as deleted: {script_name} - "
+                                    f"DELETE entry created in history"
+                                )
+                            except Exception as delete_err:
+                                self.log.error(
+                                    f"Failed to mark migration as deleted {script_name}: {delete_err}"
+                                )
+                                raise
 
-                        repairs_executed += 1
-                        record_repair(result, "MISSING_SCRIPT", repair, migration_state)
-                        self.log.info(
-                            f"Marked migration as deleted: {script_name} - "
-                            f"DELETE entry created in history"
-                        )
-                    except Exception as delete_err:
-                        self.log.error(
-                            f"Failed to mark migration as deleted {script_name}: {delete_err}"
-                        )
+                        elif repair["type"] == "FAILED_MIGRATION":
+                            # Remove failed migration entry from history to allow retry
+                            # (same approach as Flyway: repair deletes FAILED entries).
+                            if self._delete_failed_migration_entry(repair, result, migration_state):
+                                repairs_executed += 1
+                                self.log.info(
+                                    f"Removed failed migration entry: {repair.get('script', '')} - "
+                                    "migration can now be retried"
+                                )
+                    except Exception as e:
+                        self.log.error(f"Failed to repair {repair['script']}: {e}")
+                        result.set_error(f"Repair failed: {e}")
+                        step_error = e
                         raise
-
-                elif repair["type"] == "FAILED_MIGRATION":
-                    # Remove failed migration entry from history to allow retry
-                    # (same approach as Flyway: repair deletes FAILED entries).
-                    if self._delete_failed_migration_entry(repair, result, migration_state):
-                        repairs_executed += 1
-                        self.log.info(
-                            f"Removed failed migration entry: {repair.get('script', '')} - "
-                            "migration can now be retried"
-                        )
-            except Exception as e:
-                self.log.error(f"Failed to repair {repair['script']}: {e}")
-                result.set_error(f"Repair failed: {e}")
-                if isinstance(self.provider, TransactionalProvider) and transaction_started:
-                    try:
-                        self.provider.rollback_transaction()
-                        self.log.debug("Rolled back repair transaction due to failure")
-                    except Exception as rollback_err:
-                        self.log.warning(f"Failed to rollback repair transaction: {rollback_err}")
-                return repairs_executed, True
-
-        if repairs_executed and isinstance(self.provider, TransactionalProvider):
-            try:
-                self.provider.commit_transaction()
-                self.log.debug("Committed repair transaction")
-            except Exception as commit_err:
-                self.log.error(f"Failed to commit repair transaction: {commit_err}")
-                result.set_error(f"Repair operation failed: {commit_err}")
-                if isinstance(self.provider, TransactionalProvider) and transaction_started:
-                    try:
-                        self.provider.rollback_transaction()
-                        self.log.debug("Rolled back repair transaction after commit failure")
-                    except Exception as rollback_err:
-                        self.log.warning(f"Failed to rollback repair transaction: {rollback_err}")
-                return repairs_executed, True
+        except Exception as e:
+            if e is not step_error:
+                result.set_error(f"Repair operation failed: {e}")
+            return repairs_executed, True
 
         return repairs_executed, False
 

@@ -7,8 +7,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     pass
 from dblift.core.logger.results import BaselineResult
+from dblift.core.migration.history.history_transaction import history_transaction
 from dblift.core.migration.migration import Migration, MigrationType
-from dblift.db.provider_interfaces import TransactionalProvider
 
 from .base_command import BaseCommand, PreflightConnectionError
 
@@ -58,18 +58,6 @@ class BaselineCommand(BaseCommand):
             # Log command execution with connection info (after connection is established)
             self._log_command_header_update("baseline", baseline_version=baseline_version)
 
-            # CRITICAL: Start a transaction before recording baseline
-            # This ensures all operations (history recording, commit) use the same connection
-            transaction_started = False
-            if isinstance(self.provider, TransactionalProvider):
-                try:
-                    self.provider.begin_transaction()
-                    transaction_started = True
-                    self.log.debug("Started transaction for baseline recording")
-                except Exception as e:
-                    self.log.warning(f"Could not begin transaction for baseline: {e}")
-                    # Continue - some databases might use autoCommit mode
-
             # Create baseline migration record without script_path since baseline doesn't have a file
             script_name = f"B{baseline_version}__{baseline_description}.sql"
             baseline_migration = Migration(
@@ -82,26 +70,12 @@ class BaselineCommand(BaseCommand):
                 _filename_metadata=self.script_manager.parse_filename(script_name),
             )
 
-            # Record the baseline
-            self.history_manager.record_migration(
-                baseline_migration, success=True, execution_time=0
-            )
-
-            # CRITICAL: Commit the baseline record when autoCommit is disabled
-            # Without this, the baseline record will be rolled back when connection closes
-            if transaction_started and isinstance(self.provider, TransactionalProvider):
-                try:
-                    self.provider.commit_transaction()
-                    self.log.debug("Committed baseline transaction")
-                except Exception as commit_err:
-                    self.log.error(f"Failed to commit baseline transaction: {commit_err}")
-                    # Rollback on error
-                    try:
-                        self.provider.rollback_transaction()
-                        self.log.debug("Rolled back baseline transaction after commit failure")
-                    except Exception as rb_e:
-                        self.log.debug(f"Could not rollback baseline transaction: {rb_e}")
-                    raise
+            # Record the baseline in one transaction so the row is committed
+            # (autoCommit off) or rolled back if writing it fails.
+            with history_transaction(self.provider, self.log, "baseline"):
+                self.history_manager.record_migration(
+                    baseline_migration, success=True, execution_time=0
+                )
 
             result.baseline_version = baseline_version
 

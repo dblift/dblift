@@ -681,6 +681,7 @@ class TestExecuteRepairLoop(unittest.TestCase):
 
         self.assertTrue(had_error)
         provider.rollback_transaction.assert_called()
+        self.assertTrue(result.error_message.startswith("Repair failed: "))
 
     def test_commit_failure_triggers_rollback(self):
         provider = MagicMock()
@@ -706,6 +707,7 @@ class TestExecuteRepairLoop(unittest.TestCase):
 
         self.assertTrue(had_error)
         provider.rollback_transaction.assert_called()
+        self.assertEqual(result.error_message, "Repair operation failed: commit failed")
 
     def test_empty_repairs_no_begin_transaction(self):
         provider = MagicMock()
