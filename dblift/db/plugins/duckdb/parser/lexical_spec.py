@@ -34,6 +34,5 @@ DUCKDB_SPEC = LexicalSpec(
     client_name="duckdb shell",
     nested_comments=True,
     leading_bom_is_blank=True,
-    redaction_reads_engine=False,
     segment_script=DUCKDB_RULES,
 )

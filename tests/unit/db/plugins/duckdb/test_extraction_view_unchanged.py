@@ -1,11 +1,11 @@
-"""DuckDB literal masking, object extraction and statement facts read the text as they did before the
-shared engine cut its scripts: the recorded outputs below must not move.
+"""DuckDB object extraction and statement facts read the text as they did before the shared engine
+cut its scripts, and literal masking reads the text through the engine: the recorded outputs below
+must not move.
 
-``duckdb_masking_golden.json`` holds each input next to the output recorded from the scanner and
-readers this change started from. Masking reads the generic tokenizer (a dollar-quoted string is not
-read as a literal: the recorded outputs show it; the four leak shapes recorded here are the known
-masking leak, to be fixed on its own), extraction reads the DuckDB comment tokenizer, and
-statement facts read comment-blanked text.
+``duckdb_masking_golden.json`` holds each input next to its recorded output. Masking reads the
+dialect's lexical specification (a dollar-quoted string and an escape string with a backslash are
+literals), extraction reads the DuckDB comment tokenizer, and statement facts read comment-blanked
+text.
 """
 
 import dataclasses
@@ -13,7 +13,6 @@ import enum
 import hashlib
 import json
 import warnings
-from dataclasses import replace
 from pathlib import Path
 from typing import Any, Dict, List
 from unittest.mock import patch
@@ -23,7 +22,6 @@ import pytest
 from dblift.core.sql_parser.base_tokenizer import BaseTokenizer
 from dblift.core.sql_parser.lexical_spec import LexicalSpec
 from dblift.core.sql_parser.redaction import (
-    _dialect_tokenizer,
     describe_statement,
     mask_string_literals,
 )
@@ -191,16 +189,13 @@ def test_parser_config_patterns_unchanged():
     assert config_digest() == golden("config")["digest"]
 
 
-def test_the_leak_shapes_are_pinned_as_they_mask_today():
+def test_the_former_leak_shapes_are_masked():
     masked = {name: case["output"][0] for name, case in golden("masking").items()}
-    assert masked["leak_untagged_dollar"] == "UPDATE t SET pw = $$hunter2$$"
-    assert masked["leak_tagged_dollar"] == "UPDATE t SET pw = $t$hunter2$t$"
-    assert masked["leak_escape_backslash"] == "UPDATE"
-    assert (
-        "$k$secret$k$" in masked["leak_plain_and_tagged"]
-        and "'?'" in masked["leak_plain_and_tagged"]
-    )
-    assert "hunter2" not in masked["plain_literal"]
+    assert masked["leak_untagged_dollar"] == "UPDATE t SET pw = '?'"
+    assert masked["leak_tagged_dollar"] == "UPDATE t SET pw = '?'"
+    assert masked["leak_escape_backslash"] == "UPDATE t SET pw = E'?'"
+    assert masked["leak_plain_and_tagged"] == "INSERT INTO t VALUES ('?', '?')"
+    assert "hunter2" not in "".join(masked.values())
 
 
 def test_the_facts_reader_does_not_read_the_spec():
@@ -236,28 +231,10 @@ def test_extraction_comment_reading_is_not_re_pointed():
     assert DuckDBRegexParser.tokenizer_class is DuckDBTokenizer
 
 
-def test_redaction_keeps_the_generic_tokenizer_for_duckdb():
-    assert _dialect_tokenizer("duckdb") is BaseTokenizer
-
-
-def test_the_quirks_spec_does_not_move_masking_to_the_engine():
-    spec = ProviderRegistry.get_quirks("duckdb").lexical_spec()
-    assert spec is None or spec.redaction_reads_engine is False
-
-
-def test_the_duckdb_spec_does_not_move_masking_to_the_engine():
+def test_masking_reads_the_duckdb_specification():
     module = pytest.importorskip("dblift.db.plugins.duckdb.parser.lexical_spec")
-    assert module.DUCKDB_SPEC.redaction_reads_engine is False
-
-
-def test_masking_that_read_the_engine_would_be_seen():
-    module = pytest.importorskip("dblift.db.plugins.duckdb.parser.lexical_spec")
-    quirks = ProviderRegistry.get_quirks("duckdb")
-    engine_masking = replace(module.DUCKDB_SPEC, redaction_reads_engine=True)
-    with patch.object(type(quirks), "lexical_spec", lambda self: engine_masking):
-        moved = {name: observe_masking(case["input"]) for name, case in golden("masking").items()}
-    assert moved != {name: case["output"] for name, case in golden("masking").items()}
-    assert moved["leak_untagged_dollar"][0] != "UPDATE t SET pw = $$hunter2$$"
+    assert module.DUCKDB_SPEC.redaction_reads_engine is True
+    assert ProviderRegistry.get_quirks("duckdb").lexical_spec().redaction_reads_engine is True
 
 
 def test_strict_tokenizer_has_no_effect_for_duckdb():
