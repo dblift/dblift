@@ -12,7 +12,8 @@ position and is charged for what it matched. What a counter cannot see is a toke
 plain container once and rescanned later; token attributes are therefore counting ints whose comparisons
 and sums count, and a source check refuses the copy forms in every module the terminator path imports
 (subpackages included; imports from outside the package are listed with their reason).
-Known limit: arithmetic on a copied value that is first converted with ``int()`` is not counted.
+Not an evasion: reading the wrapper's ``_value`` attribute from engine code is a copy, and the source check
+refuses it by name. Known limit: arithmetic on a copied value that is first converted with ``int()`` is not counted.
 """
 
 import ast
@@ -488,6 +489,8 @@ def forbidden(tree: ast.AST) -> List[str]:
                 found.append(f"re.{func.attr}() at {where}")
             if _regex_call(node):
                 found.append(f"regular expression over unbounded input at {where}")
+        if isinstance(node, ast.Attribute) and node.attr == "_value":
+            found.append(f"the wrapper's _value at {where}")
         if isinstance(node, ast.Subscript) and isinstance(node.slice, ast.Slice):
             if node.slice.lower is None and node.slice.upper is None:
                 found.append(f"[:] at {where}")
@@ -534,8 +537,15 @@ def import_closure(root: Path, start: Tuple[str, ...]) -> Tuple[Dict[str, Path],
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
             if isinstance(node, ast.Import):
                 names = [alias.name for alias in node.names]
-            elif isinstance(node, ast.ImportFrom) and node.module and not node.level:
-                names = [node.module] + [f"{node.module}.{alias.name}" for alias in node.names]
+            elif isinstance(node, ast.ImportFrom) and node.module is not None:
+                base = node.module
+                if node.level:  # a relative import resolves against the importing module's package
+                    package = dotted if path.name == "__init__.py" else dotted.rsplit(".", 1)[0]
+                    parts = package.split(".")[: len(package.split(".")) - node.level + 1]
+                    base = ".".join(parts + ([node.module] if node.module else []))
+                names = [base] + [f"{base}.{alias.name}" for alias in node.names]
+            elif isinstance(node, ast.ImportFrom):
+                continue
             else:
                 continue
             for name in names:
@@ -587,6 +597,7 @@ def test_the_source_check_sees_the_forms_it_exists_for():
         "import re as r",
         "x = [tokens[i].pos for i in range(3)]",
         "x = [t for t in text]",
+        "x = text._value",
     ):
         assert forbidden(ast.parse(source)) != [], source
     allowed = "x = pattern.match(line, 3)\ny = text[1:3]\nz = re.compile('a')\nw = text.split(None, 3)\nv = p.search(text[1:5])"
