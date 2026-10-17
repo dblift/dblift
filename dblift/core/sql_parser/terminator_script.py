@@ -309,19 +309,19 @@ class _Walk:
         )
         self.epilogues.append(epilogue)
 
-    def _command(self, text: str, number: int) -> bool:
+    def _command(self, statement: str, number: int) -> bool:
         """True for the commands a script may end with; refuses every other client command."""
         rules, client = self.rules, self.client
-        if text[0] in rules.command_prefixes:
+        if statement[0] in rules.command_prefixes:
             raise UnsupportedMetaCommandError(
-                f"{client} command {text[0]!r} on line {number}: "
+                f"{client} command {statement[0]!r} on line {number}: "
                 "dblift does not run client commands"
             )
-        words = self._leading_words(text)
+        words = self._leading_words(statement)
         if not words:
             return False
         if any(words[: len(known)] == known for known in rules.epilogue_words):
-            if not self.epilogue.match(text):
+            if not self.epilogue.match(statement):
                 raise UnsafeStatementSplitError(
                     f"{words[0]} on line {number} is not alone on its line: the {client} joins it "
                     "with what follows and the server rejects the text; end it with the terminator"
@@ -337,16 +337,16 @@ class _Walk:
             )
         return False
 
-    def _leading_words(self, text: str) -> Tuple[str, ...]:
-        words: List[str] = []
-        for token in text.split(None, 3)[:3]:
+    def _leading_words(self, statement: str) -> Tuple[str, ...]:
+        words: Tuple[str, ...] = ()
+        for token in statement.split(None, 3)[:3]:
             match = self.leading.match(token)
             if match is None:
                 break
-            words.append(match.group().upper())
+            words += (match.group().upper(),)
             if match.end() < len(token):
                 break
-        return tuple(words)
+        return words
 
     def _epilogue(self) -> List[Statement]:
         """An epilogue command is recorded and dropped when nothing but epilogue commands follow."""

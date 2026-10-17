@@ -1539,6 +1539,121 @@ null,
 "expect": [
 "records",
 [
+"CREATE PROCEDURE p()\nBEGIN\n  SET x = (CASE WHEN 1 = 1 THEN 1 END);\n  SET y = 2;\nEND",
+1,
+";",
+"sql",
+0,
+85
+],
+[
+"VALUES 1",
+6,
+";",
+"sql",
+85,
+95
+]
+],
+"id": "case_expression_in_parentheses_in_body",
+"script": "CREATE PROCEDURE p()\nBEGIN\n  SET x = (CASE WHEN 1 = 1 THEN 1 END);\n  SET y = 2;\nEND;\nVALUES 1;\n"
+},
+{
+"expect": [
+"records",
+[
+"CREATE PROCEDURE p(IN a VARCHAR(10) DEFAULT '(')\nBEGIN\n  SET x = 1;\nEND",
+1,
+";",
+"sql",
+0,
+73
+],
+[
+"VALUES 1",
+5,
+";",
+"sql",
+73,
+83
+]
+],
+"id": "open_parenthesis_in_string_in_head",
+"script": "CREATE PROCEDURE p(IN a VARCHAR(10) DEFAULT '(')\nBEGIN\n  SET x = 1;\nEND;\nVALUES 1;\n"
+},
+{
+"expect": [
+"records",
+[
+"CREATE PROCEDURE p(IN a VARCHAR(10) DEFAULT ')')\nBEGIN\n  SET x = 1;\nEND",
+1,
+";",
+"sql",
+0,
+73
+],
+[
+"VALUES 1",
+5,
+";",
+"sql",
+73,
+83
+]
+],
+"id": "close_parenthesis_in_string_in_head",
+"script": "CREATE PROCEDURE p(IN a VARCHAR(10) DEFAULT ')')\nBEGIN\n  SET x = 1;\nEND;\nVALUES 1;\n"
+},
+{
+"expect": [
+"records",
+[
+"CREATE PROCEDURE p(IN \"a(\" INT)\nBEGIN\n  SET x = 1;\nEND",
+1,
+";",
+"sql",
+0,
+56
+],
+[
+"VALUES 1",
+5,
+";",
+"sql",
+56,
+66
+]
+],
+"id": "parenthesis_in_quoted_identifier_in_head",
+"script": "CREATE PROCEDURE p(IN \"a(\" INT)\nBEGIN\n  SET x = 1;\nEND;\nVALUES 1;\n"
+},
+{
+"expect": [
+"records",
+[
+"CREATE PROCEDURE p()\nBEGIN\n  INSERT INTO t VALUES ('(', ')', '((');\n  SET y = 2;\nEND",
+1,
+";",
+"sql",
+0,
+86
+],
+[
+"VALUES 1",
+6,
+";",
+"sql",
+86,
+96
+]
+],
+"id": "parenthesis_in_string_in_body",
+"script": "CREATE PROCEDURE p()\nBEGIN\n  INSERT INTO t VALUES ('(', ')', '((');\n  SET y = 2;\nEND;\nVALUES 1;\n"
+},
+{
+"expect": [
+"records",
+[
 "BEGIN\n  SET x = 1;\nEND 'x'",
 1,
 ";",

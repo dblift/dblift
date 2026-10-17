@@ -4,9 +4,17 @@ Each stage is handed a counting object through the parameter it already has: the
 ``str`` subclass that counts the characters every slice, search and scan touches), the tokens (every
 visit is counted, any access but ``tokens[i]`` fails), the comment depth marks and the lines. A
 shape grows the script fourfold; the count may grow at most fivefold.
+
+What the counters cannot see, a source check covers (``test_engine_modules_never_copy_or_scan_their_
+inputs``): ``str.method(text)`` called unbound and regular expressions run over the text go straight to the
+interpreter, and a token value copied into a plain container once and rescanned later is invisible to a
+proxy. The check refuses those forms in the engine modules.
 """
 
+import ast
+import inspect
 from collections import abc
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 
@@ -27,8 +35,21 @@ class Meter:
         self.count += amount
 
 
+COUNTED_METHODS = frozenset(
+    "find index rfind rindex count startswith endswith split splitlines partition rpartition strip "
+    "lstrip rstrip upper replace join".split()
+)
+
+
 class CountingText(str):
-    """Counts the characters touched by every slice, search and scan; refuses a whole copy."""
+    """Counts the characters touched by every slice, search and scan; refuses a whole copy.
+
+    Allowed, and counted: ``len`` (free), indexing and slicing (the length of the result), the search
+    methods (the span scanned), ``startswith``/``endswith`` (the prefix), ``split``, ``splitlines``,
+    ``partition``, ``strip``, ``upper``, ``replace`` (the whole length), ``join`` (the result), iteration,
+    ``in``, ``==``, ``!=`` and ``hash`` (the whole length). Refused: every other method (``lower``,
+    ``encode``, ``format``, ...), ``+``, ``*``, ``%``, ordering, ``str()``, ``repr()`` and ``[:]``.
+    """
 
     meter: Meter
 
@@ -36,6 +57,29 @@ class CountingText(str):
         text = super().__new__(cls, value)
         text.meter = meter
         return text
+
+    def __getattribute__(self, name: str) -> Any:
+        if name.startswith("__") or name == "meter" or name in COUNTED_METHODS or name[0] == "_":
+            return str.__getattribute__(self, name)
+        raise AssertionError(f"{name} is not a counted operation on the text")
+
+    def _refuse(self, *args: Any) -> Any:
+        raise AssertionError("an operation on the text that is not counted")
+
+    __add__ = __radd__ = __mul__ = __rmul__ = __mod__ = __rmod__ = _refuse  # type: ignore[assignment]
+    __lt__ = __le__ = __gt__ = __ge__ = __format__ = __repr__ = _refuse  # type: ignore[assignment]
+
+    def __eq__(self, other: Any) -> bool:
+        self.meter.add(len(self))
+        return str.__eq__(self, other)
+
+    def __ne__(self, other: Any) -> bool:
+        self.meter.add(len(self))
+        return str.__ne__(self, other)
+
+    def __hash__(self) -> int:
+        self.meter.add(len(self))
+        return str.__hash__(self)
 
     def __getitem__(self, key: Any) -> Any:
         if isinstance(key, slice):
@@ -286,3 +330,119 @@ def test_the_counters_count_what_a_rescan_would_cost():
     assert list(lines) == [1, 2, 3] and lines[1] == 2 and meter.count == 4
     with pytest.raises(AssertionError):
         lines[0:2]
+
+
+def test_the_counted_text_refuses_what_it_does_not_count():
+    text = CountingText("abc", Meter())
+    for call in (
+        lambda: text.lower(),
+        lambda: text.encode(),
+        lambda: text.casefold(),
+        lambda: text + "x",
+        lambda: "x" + text,
+        lambda: text * 2,
+        lambda: text % (),
+        lambda: f"{text}",
+        lambda: repr(text),
+        lambda: text < "b",
+        lambda: text.isspace(),
+    ):
+        with pytest.raises(AssertionError):
+            call()
+    assert text == "abc" and text.meter.count == 3 and "b" in text
+
+
+ENGINE_SOURCES = [
+    "terminator_script.py",
+    "terminator_lines.py",
+    "routine_body.py",
+]
+SCANNED_NAMES = {"text", "sql", "tokens", "marks", "lines"}
+
+
+def _name(node: ast.AST) -> str:
+    if isinstance(node, ast.Attribute):
+        return node.attr
+    return node.id if isinstance(node, ast.Name) else ""
+
+
+def forbidden(tree: ast.AST, exempt_regex: bool = False) -> List[str]:
+    """Forms the counters cannot see: copies, unbound str methods, regular expressions over the text."""
+    found = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            func = node.func
+            if isinstance(func, ast.Name) and func.id in {
+                "list",
+                "tuple",
+                "str",
+                "sorted",
+                "set",
+                "dict",
+            }:
+                found.append(f"{func.id}() at line {node.lineno}")
+            if isinstance(func, ast.Attribute) and _name(func.value) == "str":
+                found.append(f"str.{func.attr}() at line {node.lineno}")
+            if (
+                isinstance(func, ast.Attribute)
+                and _name(func.value) == "re"
+                and func.attr != "compile"
+            ):
+                found.append(f"re.{func.attr}() at line {node.lineno}")
+            if (
+                not exempt_regex
+                and isinstance(func, ast.Attribute)
+                and func.attr
+                in {"match", "search", "fullmatch", "finditer", "findall", "sub", "subn"}
+                and node.args
+                and _name(node.args[0]) in {"text", "sql"}
+            ):
+                found.append(f"{func.attr}() over the text at line {node.lineno}")
+        if isinstance(node, ast.Subscript) and isinstance(node.slice, ast.Slice):
+            if node.slice.lower is None and node.slice.upper is None:
+                found.append(f"[:] at line {node.lineno}")
+        if isinstance(node, (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)):
+            for inner in ast.walk(node):
+                if isinstance(inner, ast.Subscript) and _name(inner.value) in {"tokens", "marks"}:
+                    found.append(f"comprehension over tokens at line {node.lineno}")
+                    break
+            for generator in node.generators:
+                if _name(generator.iter) in SCANNED_NAMES - {"lines"}:
+                    found.append(
+                        f"comprehension over {_name(generator.iter)} at line {node.lineno}"
+                    )
+    return found
+
+
+def test_engine_modules_never_copy_or_scan_their_inputs():
+    package = Path(inspect.getfile(read_lines)).parent
+    for name in ENGINE_SOURCES:
+        tree = ast.parse((package / name).read_text(encoding="utf-8"))
+        assert forbidden(tree) == [], name
+    tokenizer = ast.parse((package / "lexical_tokenizer.py").read_text(encoding="utf-8"))
+    pass_ = next(
+        node
+        for node in ast.walk(tokenizer)
+        if isinstance(node, ast.FunctionDef) and node.name == "_tokenize_terminator_script"
+    )
+    assert (
+        forbidden(pass_, exempt_regex=True) == []
+    )  # the word pattern is matched at a position: bounded
+
+
+def test_the_source_check_sees_the_forms_it_exists_for():
+    for source in (
+        "x = list(tokens)",
+        "x = tuple(tokens)",
+        "x = str(text)",
+        "x = text[:]",
+        "x = str.find(text, 'a')",
+        "x = re.search('a', text)",
+        "x = pattern.search(text, 3)",
+        "x = [tokens[i].pos for i in range(3)]",
+        "x = [t for t in text]",
+    ):
+        assert forbidden(ast.parse(source)) != [], source
+    assert (
+        forbidden(ast.parse("x = pattern.match(line, 3)\ny = text[1:3]\nz = re.compile('a')")) == []
+    )
