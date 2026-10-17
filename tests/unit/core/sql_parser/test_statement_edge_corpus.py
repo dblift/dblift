@@ -161,3 +161,18 @@ def test_a_clean_tree_is_stamped_with_its_head(
     monkeypatch.setattr(statement_edge_corpus, "DIALECTS", ("sqlite",))
     statement_edge_corpus.write_recordings(tmp_path)
     assert json.loads((tmp_path / "sqlite.json").read_text())["commit"] == "e" * 40
+
+
+@pytest.mark.parametrize("flag", ["--help", "-h", "--bogus"])
+def test_a_flag_is_not_a_directory_to_write_into(
+    flag: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    written = []
+    monkeypatch.setattr(
+        statement_edge_corpus, "write_recordings", lambda directory, **kw: written.append(directory)
+    )
+    monkeypatch.chdir(tmp_path)
+    status = statement_edge_corpus.main(["statement_edge_corpus", flag])
+    assert status == (0 if flag in ("--help", "-h") else 2)
+    assert written == []
+    assert list(tmp_path.iterdir()) == []

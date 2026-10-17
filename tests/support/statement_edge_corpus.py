@@ -186,12 +186,15 @@ def load_recordings(directory: Path) -> Dict[str, Dict[str, Any]]:
     return {d: json.loads((directory / f"{d}.json").read_text(encoding="ascii")) for d in DIALECTS}
 
 
+USAGE = "usage: python -m tests.support.statement_edge_corpus <directory> [commit]"
+
+
 def main(argv: List[str]) -> int:
-    if len(argv) not in (2, 3):
-        print(
-            "usage: python -m tests.support.statement_edge_corpus <directory> [commit]",
-            file=sys.stderr,
-        )
+    if len(argv) > 1 and argv[1] in ("-h", "--help"):
+        print(USAGE)
+        return 0
+    if len(argv) not in (2, 3) or argv[1].startswith("-"):
+        print(USAGE, file=sys.stderr)
         return 2
     warnings.simplefilter("ignore")
     write_recordings(Path(argv[1]), commit=argv[2] if len(argv) == 3 else None)
