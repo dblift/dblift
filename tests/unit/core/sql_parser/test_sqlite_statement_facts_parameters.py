@@ -9,6 +9,9 @@ from dblift.core.sql_parser.statement_facts import SqlglotStatementFactsReader
 from dblift.db.dml_analysis import analyze_dml, is_full_table_dml
 from dblift.db.plugins.sqlite.parser.lexical_spec import SQLITE_SPEC
 from dblift.db.plugins.sqlite.quirks import SqliteQuirks
+from dblift.db.provider_registry import ProviderRegistry
+
+_quirks = ProviderRegistry.get_quirks
 
 READER = SqlglotStatementFactsReader("sqlite", SQLITE_SPEC)
 
@@ -36,8 +39,8 @@ def test_numbered_parameters_keep_the_target_and_the_where_verdict(sql, target, 
     assert statement.full_table is full
     assert any(c.code == "dml-no-where" for c in analyse_script(sql, "sqlite").cautions) is full
     assert SqliteQuirks().is_full_table_dml(sql) is full
-    assert is_full_table_dml(sql, sqlglot_dialect="sqlite") is full
-    assert analyze_dml(sql, sqlglot_dialect="sqlite").table == target
+    assert is_full_table_dml(sql, quirks=_quirks("sqlite")) is full
+    assert analyze_dml(sql, quirks=_quirks("sqlite")).table == target
 
 
 # --- undo text names no internal machinery ---------------------------------------------

@@ -18,6 +18,11 @@ from dblift.db.dml_analysis import (
 )
 from dblift.db.provider_registry import ProviderRegistry
 
+
+def _quirks(name):
+    return ProviderRegistry.get_quirks(name) if name else None
+
+
 _DEFAULT_KEYS = ("id", "pk", "uuid", "key")
 
 
@@ -70,63 +75,78 @@ def test_statement_dml_table_prefers_sqlglot_when_dialect_known():
     # With a dialect, table extraction goes through the sqlglot AST (dialect-
     # correct), not the regex scanner. Quoted/bracketed/backtick targets resolve
     # and the verbatim-quoted form is preserved for downstream raw SQL.
-    assert statement_dml_table('DELETE FROM "s"."t" WHERE id = 1;', dialect="postgres") == '"s"."t"'
     assert (
-        statement_dml_table('INSERT INTO "s"."t"(id) VALUES (1);', dialect="postgres") == '"s"."t"'
+        statement_dml_table('DELETE FROM "s"."t" WHERE id = 1;', quirks=_quirks("postgres"))
+        == '"s"."t"'
     )
-    assert statement_dml_table("DELETE FROM [s].[t] WHERE id = 1;", dialect="tsql") == "[s].[t]"
-    assert statement_dml_table("INSERT INTO `s`.`t` (id) VALUES (1);", dialect="mysql") == "`s`.`t`"
+    assert (
+        statement_dml_table('INSERT INTO "s"."t"(id) VALUES (1);', quirks=_quirks("postgres"))
+        == '"s"."t"'
+    )
+    assert (
+        statement_dml_table("DELETE FROM [s].[t] WHERE id = 1;", quirks=_quirks("tsql"))
+        == "[s].[t]"
+    )
+    assert (
+        statement_dml_table("INSERT INTO `s`.`t` (id) VALUES (1);", quirks=_quirks("mysql"))
+        == "`s`.`t`"
+    )
     # Unquoted is preserved unquoted (no spurious re-quoting).
     assert (
-        statement_dml_table("UPDATE users SET a = 1 WHERE id = 1;", dialect="postgres") == "users"
+        statement_dml_table("UPDATE users SET a = 1 WHERE id = 1;", quirks=_quirks("postgres"))
+        == "users"
     )
 
 
 def test_statement_dml_table_sqlglot_strips_merge_alias():
     # MERGE's table carries an alias in the AST; it must not leak into the name.
     stmt = 'MERGE INTO "S"."T" t USING x ON (t.id = x.id) WHEN MATCHED THEN UPDATE SET a = 1;'
-    assert statement_dml_table(stmt, dialect="oracle") == '"S"."T"'
+    assert statement_dml_table(stmt, quirks=_quirks("oracle")) == '"S"."T"'
 
 
 def test_analyze_dml_resolves_delete_alias_target_to_its_table():
     # ``DELETE <alias> FROM <table> <alias>`` puts the alias list ahead of the
     # real target in sqlglot's tree; the table must resolve, not the alias.
-    mysql = analyze_dml("DELETE o FROM orders o WHERE o.id = 2;", sqlglot_dialect="mysql")
+    mysql = analyze_dml("DELETE o FROM orders o WHERE o.id = 2;", quirks=_quirks("mysql"))
     assert mysql.table == "orders"
     assert mysql.events == {"DELETE"}
 
-    tsql = analyze_dml("DELETE o FROM [S].[t] AS o WHERE o.id = 1;", sqlglot_dialect="tsql")
+    tsql = analyze_dml("DELETE o FROM [S].[t] AS o WHERE o.id = 1;", quirks=_quirks("tsql"))
     assert tsql.table == "S.t"
 
     # Multi-table DELETE naming the second join member as the sole target.
     multi = analyze_dml(
-        "DELETE t2 FROM t1 JOIN t2 ON t2.a = t1.a WHERE t2.b = 1;", sqlglot_dialect="mysql"
+        "DELETE t2 FROM t1 JOIN t2 ON t2.a = t1.a WHERE t2.b = 1;", quirks=_quirks("mysql")
     )
     assert multi.table == "t2"
 
     # Multi-table DELETE naming the first join member as the sole target.
-    first = analyze_dml("DELETE t1 FROM t1 JOIN t2 ON t2.a = t1.a;", sqlglot_dialect="mysql")
+    first = analyze_dml("DELETE t1 FROM t1 JOIN t2 ON t2.a = t1.a;", quirks=_quirks("mysql"))
     assert first.table == "t1"
 
     # The plain single-table alias spelling (no leading alias list) is unaffected.
-    plain = analyze_dml("DELETE FROM orders o WHERE o.id = 1;", sqlglot_dialect="mysql")
+    plain = analyze_dml("DELETE FROM orders o WHERE o.id = 1;", quirks=_quirks("mysql"))
     assert plain.table == "orders"
 
 
 def test_statement_dml_table_sqlglot_resolves_delete_alias_target():
-    mysql = statement_dml_table("DELETE o FROM `s`.`t` o WHERE o.id = 2;", dialect="mysql")
+    mysql = statement_dml_table("DELETE o FROM `s`.`t` o WHERE o.id = 2;", quirks=_quirks("mysql"))
     assert mysql == "`s`.`t`"
 
-    tsql = statement_dml_table("DELETE o FROM [S].[t] AS o WHERE o.id = 1;", dialect="tsql")
+    tsql = statement_dml_table("DELETE o FROM [S].[t] AS o WHERE o.id = 1;", quirks=_quirks("tsql"))
     assert tsql == "[S].[t]"
 
     # Multi-table DELETE where the target is the FROM-anchor: sqlglot hangs the
     # JOIN list off that same Table node, so it must be stripped along with the
     # alias or it leaks into the returned reference.
-    my_join = statement_dml_table("DELETE t1 FROM t1 JOIN t2 ON t2.a = t1.a;", dialect="mysql")
+    my_join = statement_dml_table(
+        "DELETE t1 FROM t1 JOIN t2 ON t2.a = t1.a;", quirks=_quirks("mysql")
+    )
     assert my_join == "t1"
 
-    tsql_join = statement_dml_table("DELETE t1 FROM t1 JOIN t2 ON t2.a = t1.a;", dialect="tsql")
+    tsql_join = statement_dml_table(
+        "DELETE t1 FROM t1 JOIN t2 ON t2.a = t1.a;", quirks=_quirks("tsql")
+    )
     assert tsql_join == "t1"
 
 
@@ -135,16 +155,16 @@ def test_analyze_dml_resolves_delete_alias_that_differs_from_the_table_name():
     # not equal any table's real name here — this only resolves through the
     # ``table.alias`` arm of ``wanted in (table.alias, table.name)``.
     stmt = "DELETE x FROM t1 AS o JOIN t2 AS x ON o.id = x.id WHERE x.b = 1;"
-    mutation = analyze_dml(stmt, sqlglot_dialect="mysql")
+    mutation = analyze_dml(stmt, quirks=_quirks("mysql"))
     assert mutation.table == "t2"
-    assert statement_dml_table(stmt, dialect="mysql") == "t2"
+    assert statement_dml_table(stmt, quirks=_quirks("mysql")) == "t2"
 
 
 def test_analyze_dml_resolves_tsql_update_from_alias_to_its_table():
     # T-SQL's only valid aliased UPDATE form puts the bare alias in ``ast.this``
     # and the real target in the FROM clause; it must resolve, not the alias.
     stmt = "UPDATE o SET name = 'x' FROM [S].[t] AS o WHERE o.id = 2;"
-    mutation = analyze_dml(stmt, sqlglot_dialect="tsql")
+    mutation = analyze_dml(stmt, quirks=_quirks("tsql"))
     assert mutation.table == "S.t"
     assert mutation.events == {"UPDATE"}
     assert mutation.updated_columns == ["name"]
@@ -154,40 +174,40 @@ def test_analyze_dml_resolves_tsql_update_from_alias_to_its_table():
         "UPDATE o SET name = 'x' FROM [S].[t] AS o "
         "JOIN [S].[u] AS u ON u.id = o.id WHERE u.b = 1;"
     )
-    assert analyze_dml(joined, sqlglot_dialect="tsql").table == "S.t"
+    assert analyze_dml(joined, quirks=_quirks("tsql")).table == "S.t"
 
     # An unaliased target is unaffected by the alias resolution (regression pin).
     unaliased = "UPDATE [S].[t] SET name = 'x' FROM [S].[t] AS o WHERE o.id = 2;"
-    assert analyze_dml(unaliased, sqlglot_dialect="tsql").table == "S.t"
+    assert analyze_dml(unaliased, quirks=_quirks("tsql")).table == "S.t"
 
 
 def test_statement_dml_table_sqlglot_resolves_tsql_update_from_alias():
     stmt = "UPDATE o SET name = 'x' FROM [S].[t] AS o WHERE o.id = 2;"
-    assert statement_dml_table(stmt, dialect="tsql") == "[S].[t]"
+    assert statement_dml_table(stmt, quirks=_quirks("tsql")) == "[S].[t]"
 
 
 def test_analyze_dml_keeps_postgres_update_from_target():
     # A real aliased target (not a bare alias) must not be swapped for the
     # FROM table, even though a FROM clause is present.
     stmt = "UPDATE s.t AS o SET a = 1 FROM u WHERE o.id = u.id;"
-    assert analyze_dml(stmt, sqlglot_dialect="postgres").table == "s.t"
-    assert statement_dml_table(stmt, dialect="postgres") == "s.t"
+    assert analyze_dml(stmt, quirks=_quirks("postgres")).table == "s.t"
+    assert statement_dml_table(stmt, quirks=_quirks("postgres")) == "s.t"
 
 
 def test_analyze_dml_update_from_alias_does_not_hijack_an_aliased_target():
     # ``this`` here has its own alias ("x"); it must not be treated as a bare
     # T-SQL-style alias just because a FROM table happens to alias to "t".
     stmt = "UPDATE t AS x SET a = 1 FROM other AS t WHERE x.id = t.id;"
-    assert analyze_dml(stmt, sqlglot_dialect="postgres").table == "t"
-    assert statement_dml_table(stmt, dialect="postgres") == "t"
+    assert analyze_dml(stmt, quirks=_quirks("postgres")).table == "t"
+    assert statement_dml_table(stmt, quirks=_quirks("postgres")) == "t"
 
 
 def test_analyze_dml_update_from_alias_does_not_hijack_a_qualified_target():
     # ``this`` is schema-qualified (db="S"); it must not be treated as a bare
     # alias just because a FROM table happens to alias to its bare name.
     stmt = "UPDATE S.t SET a = 1 FROM other AS t WHERE t.id = 1;"
-    assert analyze_dml(stmt, sqlglot_dialect="tsql").table == "S.t"
-    assert statement_dml_table(stmt, dialect="tsql") == "S.t"
+    assert analyze_dml(stmt, quirks=_quirks("tsql")).table == "S.t"
+    assert statement_dml_table(stmt, quirks=_quirks("tsql")) == "S.t"
 
 
 def test_extract_dml_table_name_resolves_delete_alias_from_spelling():
@@ -213,8 +233,8 @@ def test_alias_targets_resolve_with_dblift_dialect_names(dialect, stmt, table):
     # sqlglot's ("tsql", "postgres"); the lookup must map them rather than let
     # sqlglot reject the name and drop to the regex scanner.
     assert ProviderRegistry.get_quirks(dialect).analyze_dml(stmt).table == table
-    assert analyze_dml(stmt, sqlglot_dialect=dialect).table == table
-    assert statement_dml_table(stmt, dialect=dialect) == table
+    assert analyze_dml(stmt, quirks=_quirks(dialect)).table == table
+    assert statement_dml_table(stmt, quirks=_quirks(dialect)) == table
 
 
 @pytest.mark.parametrize(("stmt", "table"), _ALIAS_TARGET_CASES)
@@ -291,10 +311,10 @@ def test_updates_restore_key_ignores_non_key_columns():
     ],
 )
 def test_sqlite_restore_key_checks_update_assignments(statement, columns, changes_key):
-    mutation = analyze_dml(statement, sqlglot_dialect="sqlite")
+    mutation = analyze_dml(statement, quirks=_quirks("sqlite"))
 
     assert mutation.updated_columns == columns
-    assert updates_restore_key(statement, ("id",), sqlglot_dialect="sqlite") is changes_key
+    assert updates_restore_key(statement, ("id",), quirks=_quirks("sqlite")) is changes_key
 
 
 @pytest.mark.parametrize("dialect", ["sqlite", "postgres", "duckdb"])
@@ -336,10 +356,10 @@ def test_sqlite_restore_key_checks_update_assignments(statement, columns, change
     ],
 )
 def test_restore_key_checks_tuple_update_assignments(dialect, statement, columns, changes_key):
-    mutation = analyze_dml(statement, sqlglot_dialect=dialect)
+    mutation = analyze_dml(statement, quirks=_quirks(dialect))
 
     assert mutation.updated_columns == columns
-    assert updates_restore_key(statement, ("id",), sqlglot_dialect=dialect) is changes_key
+    assert updates_restore_key(statement, ("id",), quirks=_quirks(dialect)) is changes_key
 
 
 @pytest.mark.parametrize("dialect", ["sqlite", "duckdb"])
@@ -364,10 +384,10 @@ def test_restore_key_checks_tuple_update_assignments(dialect, statement, columns
 def test_restore_key_checks_parenthesized_update_assignments(
     dialect, statement, columns, changes_key
 ):
-    mutation = analyze_dml(statement, sqlglot_dialect=dialect)
+    mutation = analyze_dml(statement, quirks=_quirks(dialect))
 
     assert mutation.updated_columns == columns
-    assert updates_restore_key(statement, ("id",), sqlglot_dialect=dialect) is changes_key
+    assert updates_restore_key(statement, ("id",), quirks=_quirks(dialect)) is changes_key
 
 
 def test_updates_restore_key_is_configurable():
@@ -388,8 +408,8 @@ def test_analyze_dml_routes_by_sqlglot_dialect():
     # Dialect-specific syntax is parsed correctly when the dialect is supplied.
     dialect = "mysql"
     mysql = "INSERT INTO users (id) VALUES (1) ON DUPLICATE KEY UPDATE id = id + 1;"
-    assert analyze_dml(mysql, sqlglot_dialect=dialect).events == {"INSERT", "UPDATE"}
-    assert updates_restore_key(mysql, _DEFAULT_KEYS, sqlglot_dialect=dialect)
+    assert analyze_dml(mysql, quirks=_quirks(dialect)).events == {"INSERT", "UPDATE"}
+    assert updates_restore_key(mysql, _DEFAULT_KEYS, quirks=_quirks(dialect))
 
 
 def test_analyze_dml_falls_back_to_regex_for_unparseable_sql():
@@ -401,7 +421,7 @@ def test_analyze_dml_falls_back_to_regex_for_unparseable_sql():
     # make this fail to find them.
     dialect = "postgres"
     procedural = "DO $$ BEGIN UPDATE users SET id = 1; END $$;"
-    assert updates_restore_key(procedural, _DEFAULT_KEYS, sqlglot_dialect=dialect)
+    assert updates_restore_key(procedural, _DEFAULT_KEYS, quirks=_quirks(dialect))
 
 
 def test_is_full_table_dml_flags_update_delete_without_top_level_where():
@@ -417,11 +437,11 @@ def test_is_full_table_dml_ignores_leading_dblift_directive_comments():
     # Regression: SQLite split_statements keeps leading comments; the guard
     # must still see the bare UPDATE/DELETE through them.
     commented = "-- dblift:formatted\n-- dblift: expect=>=1\nUPDATE accounts SET status = 'x';"
-    assert is_full_table_dml(commented, sqlglot_dialect="sqlite")
+    assert is_full_table_dml(commented, quirks=_quirks("sqlite"))
     with_where = (
         "-- dblift:formatted\n-- dblift: expect=1\nUPDATE accounts SET s = 'x' WHERE id = 1;"
     )
-    assert not is_full_table_dml(with_where, sqlglot_dialect="sqlite")
+    assert not is_full_table_dml(with_where, quirks=_quirks("sqlite"))
 
 
 def test_is_full_table_dml_treats_quoted_where_identifier_as_column_not_clause():
@@ -682,7 +702,7 @@ _TARGET_MODIFIER_CASES = [
 
 @pytest.mark.parametrize(("dialect", "stmt", "table"), _TARGET_MODIFIER_CASES)
 def test_statement_dml_table_skips_target_modifiers(dialect, stmt, table):
-    assert statement_dml_table(stmt, dialect=dialect) == table
+    assert statement_dml_table(stmt, quirks=_quirks(dialect)) == table
 
 
 @pytest.mark.parametrize(("dialect", "stmt", "table"), _TARGET_MODIFIER_CASES)
@@ -693,7 +713,7 @@ def test_statement_dml_table_without_dialect_skips_target_modifiers(dialect, stm
 @pytest.mark.parametrize(("dialect", "stmt", "table"), _TARGET_MODIFIER_CASES)
 def test_analyze_dml_target_skips_modifiers(dialect, stmt, table):
     bare = re.sub(r'[`"\[\]]', "", table)
-    assert analyze_dml(stmt, sqlglot_dialect=dialect).table == bare
+    assert analyze_dml(stmt, quirks=_quirks(dialect)).table == bare
 
 
 @pytest.mark.parametrize(
@@ -705,7 +725,7 @@ def test_analyze_dml_target_skips_modifiers(dialect, stmt, table):
     ],
 )
 def test_statement_dml_table_keeps_a_table_named_like_a_modifier(dialect, stmt, table):
-    assert statement_dml_table(stmt, dialect=dialect) == table
+    assert statement_dml_table(stmt, quirks=_quirks(dialect)) == table
     assert statement_dml_table(stmt) == table
 
 
@@ -715,8 +735,8 @@ def test_statement_dml_table_keeps_a_table_named_like_a_modifier(dialect, stmt, 
     ["DELETE TOP (", "DELETE TOP (5", "UPDATE IGNORE", "DELETE FROM ONLY", "INSERT", "DELETE"],
 )
 def test_statement_dml_table_never_raises_on_a_truncated_statement(dialect, stmt):
-    assert isinstance(statement_dml_table(stmt, dialect=dialect), str)
-    assert isinstance(analyze_dml(stmt, sqlglot_dialect=dialect).table, str)
+    assert isinstance(statement_dml_table(stmt, quirks=_quirks(dialect)), str)
+    assert isinstance(analyze_dml(stmt, quirks=_quirks(dialect)).table, str)
 
 
 # Identifiers that merely start with, or are, a modifier word are table names.
@@ -753,7 +773,7 @@ _MODIFIER_NAMED_TARGET_CASES = [
 @pytest.mark.parametrize(("dialect", "stmt", "table"), _MODIFIER_NAMED_TARGET_CASES)
 def test_statement_dml_table_keeps_names_that_start_with_a_modifier(dialect, stmt, table):
     # The dialect may quote a reserved word (`delayed`); the name must survive.
-    assert statement_dml_table(stmt, dialect=dialect).replace("`", "") == table
+    assert statement_dml_table(stmt, quirks=_quirks(dialect)).replace("`", "") == table
 
 
 @pytest.mark.parametrize(
@@ -813,11 +833,11 @@ def test_modifier_words_are_dropped_before_the_target(stmt, stripped):
 
 @pytest.mark.parametrize("dialect", [None, "postgres", "tsql", "mysql", "oracle"])
 def test_statement_dml_table_is_empty_when_only_a_keyword_follows_the_verb(dialect):
-    assert statement_dml_table("DELETE WHERE", dialect=dialect) == ""
+    assert statement_dml_table("DELETE WHERE", quirks=_quirks(dialect)) == ""
 
 
 @pytest.mark.parametrize("dialect", [None, "postgres", "mysql"])
 @pytest.mark.parametrize("stmt", ["DELETE FROM", "INSERT quick INTO t (a) VALUES (1)"])
 def test_statement_dml_table_is_empty_without_a_target(dialect, stmt):
     # QUICK is not an INSERT modifier, so the statement has no readable target.
-    assert statement_dml_table(stmt, dialect=dialect) == ""
+    assert statement_dml_table(stmt, quirks=_quirks(dialect)) == ""

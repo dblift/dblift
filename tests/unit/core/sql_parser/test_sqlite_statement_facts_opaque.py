@@ -21,6 +21,9 @@ from dblift.db.dml_analysis import analyze_dml, is_full_table_dml
 from dblift.db.plugins.sqlite.parser.lexical_spec import SQLITE_SPEC
 from dblift.db.plugins.sqlite.parser.sqlite_facts_parser import SQLiteFactsParser
 from dblift.db.plugins.sqlite.quirks import SqliteQuirks
+from dblift.db.provider_registry import ProviderRegistry
+
+_quirks = ProviderRegistry.get_quirks
 
 READER = SqlglotStatementFactsReader("sqlite", SQLITE_SPEC)
 PARSER = SQLiteFactsParser()
@@ -294,7 +297,7 @@ def test_undo_of_a_trigger_drops_it(create, undo):
 )
 def test_an_insert_is_never_a_full_table_dml(sql):
     assert SqliteQuirks().is_full_table_dml(sql) is False
-    assert is_full_table_dml(sql, sqlglot_dialect="sqlite") is False
+    assert is_full_table_dml(sql, quirks=_quirks("sqlite")) is False
 
 
 @pytest.mark.parametrize(
@@ -306,18 +309,18 @@ def test_an_insert_is_never_a_full_table_dml(sql):
     ],
 )
 def test_update_with_a_conflict_clause_keeps_events_columns_and_full_table_result(sql, full):
-    mutation = analyze_dml(sql, sqlglot_dialect="sqlite")
+    mutation = analyze_dml(sql, quirks=_quirks("sqlite"))
 
     assert mutation.events == {"UPDATE"}
     assert mutation.updated_columns == ["a"]
     assert SqliteQuirks().is_full_table_dml(sql) is full
-    assert is_full_table_dml(sql, sqlglot_dialect="sqlite") is full
+    assert is_full_table_dml(sql, quirks=_quirks("sqlite")) is full
     assert analyse_script(sql, "sqlite").statements[0].kind == "DML"
 
 
 def test_replace_into_keeps_its_kind_and_dml_result():
     sql = "REPLACE INTO t(a) VALUES (1)"
-    mutation = analyze_dml(sql, sqlglot_dialect="sqlite")
+    mutation = analyze_dml(sql, quirks=_quirks("sqlite"))
 
     assert (mutation.events, mutation.updated_columns) == (None, [])
     assert SqliteQuirks().is_full_table_dml(sql) is False

@@ -185,8 +185,7 @@ class UndoScriptGenerator(_UndoReversersMixin, _UndoExtractorsMixin):
         if quirks.supports_statement_facts:
             reverse = (
                 self._reverse_sqlite_facts
-                if quirks.sqlglot_dialect
-                == "sqlite"  # lint: allow-dialect-string: SQLite-only undo contract
+                if quirks.undo_reverses_statement_facts
                 else self._review_statement_facts
             )
             return [

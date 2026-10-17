@@ -81,6 +81,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the machine). Large literals and comments take much longer in proportion but
   stay small in absolute terms: a 1 MiB string literal went from 0.0004 s to
   0.045 s, and a 1 MiB block comment of `;` lines from 0.006 s to 0.39 s.
+- **Statement analysis uses the database plugin's own reader.** A plugin can provide its own
+  statement facts reader, with or without a sqlglot dialect, and every analysis path uses it:
+  data-change analysis, the dry-run target of a DML statement, object tracking during execution
+  and undo generation. A plugin that declares no reader no longer inherits another plugin's facts
+  through a shared sqlglot dialect name, when `quirks=` is passed.
+
+### Deprecated
+
+- **`sqlglot_dialect=` and `dialect=` in `dblift.db.dml_analysis`.** `analyze_dml`,
+  `dml_where_predicate`, `is_full_table_dml`, `statement_dml_table` and `updates_restore_key`
+  take the plugin's `quirks=`; the `sqlglot_dialect=` and `dialect=` keywords still work, warn,
+  and will be removed in the next major release. When both are passed, `quirks=` wins.
 
 ### Fixed
 

@@ -30,6 +30,7 @@ class SqliteQuirks(BaseQuirks):
     clean_strategy = "native"
     sqlglot_dialect = "sqlite"
     statement_facts_class = SqlglotStatementFactsReader
+    undo_reverses_statement_facts = True
     default_schema_name = "main"
     boolean_false_literal = "0"
     drop_supports_if_exists = True  # supported since SQLite 3.3.0 (2006)

@@ -18,6 +18,9 @@ from dblift.core.sql_parser.statement_facts import SqlglotStatementFactsReader
 from dblift.db.dml_analysis import analyze_dml, statement_dml_table
 from dblift.db.plugins.sqlite.parser.lexical_spec import SQLITE_SPEC
 from dblift.db.plugins.sqlite.quirks import SqliteQuirks
+from dblift.db.provider_registry import ProviderRegistry
+
+_quirks = ProviderRegistry.get_quirks
 
 UPDATE = "UPDATE child SET parent_id = 2 WHERE id = 1;"
 
@@ -111,9 +114,9 @@ def test_sqlite_dml_analysis_of_unparsed_mutation_names_only_the_head_target():
 
 def test_direct_sqlite_dml_helpers_read_only_the_head_after_parse_failure():
     sql = "UPDATE child SET parent_id ="
-    assert analyze_dml(sql, sqlglot_dialect="sqlite").table == "child"
-    assert statement_dml_table(sql, dialect="sqlite") == "child"
-    assert analyze_dml(sql, sqlglot_dialect="sqlite").updated_columns == []
+    assert analyze_dml(sql, quirks=_quirks("sqlite")).table == "child"
+    assert statement_dml_table(sql, quirks=_quirks("sqlite")) == "child"
+    assert analyze_dml(sql, quirks=_quirks("sqlite")).updated_columns == []
 
 
 def test_sqlite_parser_config_patterns_are_removed():

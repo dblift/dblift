@@ -6,6 +6,9 @@ from sqlglot import exp, parse_one
 import dblift.core.sql_parser.sqlglot_statement_facts as facts_module
 from dblift.core.sql_parser.sqlglot_statement_facts import read_statement_facts
 from dblift.db import dml_analysis
+from dblift.db.provider_registry import ProviderRegistry
+
+_quirks = ProviderRegistry.get_quirks
 
 
 def _with_false_where(sql, read=None, **kwargs):
@@ -31,4 +34,4 @@ def test_dml_where_reader_treats_false_where_as_absent(monkeypatch, sql):
     import sqlglot
 
     monkeypatch.setattr(sqlglot, "parse_one", _with_false_where)
-    assert dml_analysis.dml_where_predicate(sql, sqlglot_dialect="postgres") is None
+    assert dml_analysis.dml_where_predicate(sql, quirks=_quirks("postgres")) is None

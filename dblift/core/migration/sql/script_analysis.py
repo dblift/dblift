@@ -21,7 +21,6 @@ from dblift.core.sql_parser.unread_names import names_unreadable
 from dblift.db.base_quirks import BaseQuirks
 from dblift.db.dml_analysis import (
     cte_outer_statement_type,
-    statement_dml_table,
     strip_leading_sql_comments,
 )
 from dblift.db.provider_registry import ProviderRegistry
@@ -316,7 +315,7 @@ def _fallback_objects(
         operation == "WITH" and kind == "DML"
     ):
         try:
-            name = statement_dml_table(body, dialect=quirks.sqlglot_dialect)
+            name = quirks.statement_dml_table(body)
         except Exception:
             name = ""
     return (AnalysedObject("TABLE", name, None),) if name else ()

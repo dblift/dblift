@@ -12,13 +12,14 @@ knowledge while the scanning algorithm stays in one shared place.
 from __future__ import annotations
 
 import re
+import warnings
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Set, Tuple
 
 if TYPE_CHECKING:
     from sqlglot import exp
 
-    from dblift.core.sql_parser.statement_facts import StatementFacts
+    from dblift.db.base_quirks import BaseQuirks
 
 #: Quote delimiters understood by the scanner: opening char -> closing char.
 #: Union of every dialect's string/identifier quoting so the mechanics are
@@ -76,19 +77,28 @@ class DmlMutation:
     updated_columns: List[str]
 
 
-def _plugin_statement_facts(statement: str, dialect: Optional[str]) -> Optional["StatementFacts"]:
-    """Return a plugin's authoritative facts, or ``None`` for legacy dialects."""
-    if not dialect:
-        return None
+def _quirks_for(
+    quirks: Optional["BaseQuirks"], keyword: str, name: Optional[str]
+) -> Optional["BaseQuirks"]:
+    """``quirks`` itself, or the plugin a deprecated dialect keyword names (with a warning)."""
+    if name is None:
+        return quirks
+    warnings.warn(
+        f"{keyword}= is deprecated; pass quirks= (the database plugin's quirks)",
+        DeprecationWarning,
+        stacklevel=3,
+    )
+    if quirks is not None:
+        return quirks
     from dblift.db.provider_registry import ProviderRegistry
 
-    quirks = ProviderRegistry.get_quirks(dialect)
-    return quirks.statement_facts(statement) if quirks.supports_statement_facts else None
+    return ProviderRegistry.get_quirks(name)
 
 
 def analyze_dml(
     statement: str,
     *,
+    quirks: Optional["BaseQuirks"] = None,
     sqlglot_dialect: Optional[str] = None,
     quote_pairs: Dict[str, str] = DEFAULT_QUOTE_PAIRS,
     upsert_set_markers: Sequence[str] = DEFAULT_UPSERT_SET_MARKERS,
@@ -99,10 +109,12 @@ def analyze_dml(
     Prefers the ``sqlglot`` AST (dialect-correct, no hand-rolled SQL knowledge)
     and falls back to the regex scanner only when sqlglot cannot parse the
     statement or does not recognise it as DML — mirroring the hybrid-parser
-    philosophy used elsewhere.
+    philosophy used elsewhere. A plugin's own statement facts reader, when
+    ``quirks`` has one, takes precedence. ``sqlglot_dialect`` is deprecated.
     """
-    facts = _plugin_statement_facts(statement, sqlglot_dialect)
-    if facts is not None:
+    quirks = _quirks_for(quirks, "sqlglot_dialect", sqlglot_dialect)
+    if quirks is not None and quirks.supports_statement_facts:
+        facts = quirks.statement_facts(statement)
         return DmlMutation(
             facts.target or "",
             set(facts.events) if facts.events else None,
@@ -111,9 +123,10 @@ def analyze_dml(
 
     from dblift.core.sql_parser.unread_names import names_unreadable
 
-    if names_unreadable(statement, sqlglot_dialect):
+    dialect = quirks.sqlglot_dialect if quirks is not None else None
+    if names_unreadable(statement, dialect):
         return DmlMutation(table="", events=None, updated_columns=[])
-    mutation = _analyze_dml_sqlglot(statement, sqlglot_dialect)
+    mutation = _analyze_dml_sqlglot(statement, dialect)
     if mutation is not None:
         return mutation
     return DmlMutation(
@@ -283,6 +296,7 @@ def _eq_target_columns(expressions: Any) -> List[str]:
 def dml_where_predicate(
     statement: str,
     *,
+    quirks: Optional["BaseQuirks"] = None,
     sqlglot_dialect: Optional[str] = None,
 ) -> Optional[str]:
     """Return the WHERE condition of an UPDATE/DELETE, without the keyword.
@@ -292,11 +306,13 @@ def dml_where_predicate(
     the statement is not a parseable single UPDATE/DELETE, or it has no WHERE
     (a full-table mutation) — callers must treat ``None`` conservatively (the
     statement may touch every row). The predicate is rendered by ``sqlglot``
-    for ``sqlglot_dialect`` so it round-trips into a dialect-correct SELECT.
+    for the plugin's dialect so it round-trips into a dialect-correct SELECT.
+    ``sqlglot_dialect`` is deprecated.
     """
-    facts = _plugin_statement_facts(statement, sqlglot_dialect)
-    if facts is not None:
-        return facts.predicate
+    quirks = _quirks_for(quirks, "sqlglot_dialect", sqlglot_dialect)
+    if quirks is not None and quirks.supports_statement_facts:
+        return quirks.statement_facts(statement).predicate
+    dialect = quirks.sqlglot_dialect if quirks is not None else None
 
     text = strip_leading_sql_comments(statement).lstrip()
     if not text:
@@ -305,7 +321,7 @@ def dml_where_predicate(
     from sqlglot import exp
 
     try:
-        ast = sqlglot.parse_one(text, read=sqlglot_dialect)
+        ast = sqlglot.parse_one(text, read=dialect)
     except Exception:
         return None
     if not isinstance(ast, (exp.Update, exp.Delete)):
@@ -313,7 +329,7 @@ def dml_where_predicate(
     where = ast.args.get("where")
     if not isinstance(where, exp.Where) or where.this is None:
         return None
-    return str(where.this.sql(dialect=sqlglot_dialect))
+    return str(where.this.sql(dialect=dialect))
 
 
 _UNRESOLVED = object()
@@ -399,6 +415,7 @@ def updates_restore_key(
     statement: str,
     restore_key_columns: Sequence[str],
     *,
+    quirks: Optional["BaseQuirks"] = None,
     sqlglot_dialect: Optional[str] = None,
     quote_pairs: Dict[str, str] = DEFAULT_QUOTE_PAIRS,
     upsert_set_markers: Sequence[str] = DEFAULT_UPSERT_SET_MARKERS,
@@ -407,9 +424,10 @@ def updates_restore_key(
     keys = {str(column).strip().strip('"`[]').lower() for column in restore_key_columns}
     if not keys:
         return False
+    quirks = _quirks_for(quirks, "sqlglot_dialect", sqlglot_dialect)
     columns = analyze_dml(
         statement,
-        sqlglot_dialect=sqlglot_dialect,
+        quirks=quirks,
         quote_pairs=quote_pairs,
         upsert_set_markers=upsert_set_markers,
     ).updated_columns
@@ -419,6 +437,7 @@ def updates_restore_key(
 def is_full_table_dml(
     statement: str,
     *,
+    quirks: Optional["BaseQuirks"] = None,
     sqlglot_dialect: Optional[str] = None,
     quote_pairs: Dict[str, str] = DEFAULT_QUOTE_PAIRS,
 ) -> bool:
@@ -429,11 +448,13 @@ def is_full_table_dml(
     classifies the statement (so INSERT/MERGE and comment-prefixed text are
     handled), while the top-level ``WHERE`` decision uses the dialect-quote-safe
     scanner — ``sqlglot`` parsed with the wrong dialect can mis-read a quoted
-    column named ``where`` as a clause.
+    column named ``where`` as a clause. ``sqlglot_dialect`` is deprecated.
     """
-    facts = _plugin_statement_facts(statement, sqlglot_dialect)
-    if facts is not None:
+    quirks = _quirks_for(quirks, "sqlglot_dialect", sqlglot_dialect)
+    if quirks is not None and quirks.supports_statement_facts:
+        facts = quirks.statement_facts(statement)
         return facts.operation in ("UPDATE", "DELETE") and (not facts.predicate)
+    dialect = quirks.sqlglot_dialect if quirks is not None else None
 
     text = strip_leading_sql_comments(statement).lstrip()
     if not text:
@@ -442,7 +463,7 @@ def is_full_table_dml(
     from sqlglot import exp
 
     try:
-        ast = sqlglot.parse_one(text, read=sqlglot_dialect)
+        ast = sqlglot.parse_one(text, read=dialect)
     except Exception:
         ast = None
     if ast is not None:
@@ -608,29 +629,30 @@ def extract_dml_table_name(statement: str) -> str:
     return ""
 
 
-def statement_dml_table(statement: str, dialect: Optional[str] = None) -> str:
+def statement_dml_table(
+    statement: str, dialect: Optional[str] = None, *, quirks: Optional["BaseQuirks"] = None
+) -> str:
     """Table targeted by a DML statement, including ``MERGE INTO``.
 
-    When *dialect* is given, the dialect-correct sqlglot AST is preferred: it
-    resolves quoted / bracketed / schema-qualified targets that the regex
+    When the plugin has a sqlglot dialect, the dialect-correct AST is preferred:
+    it resolves quoted / bracketed / schema-qualified targets that the regex
     scanner can mishandle, and ``Table.sql`` re-emits the verbatim-quoted form
     so the result stays a valid SQL reference for downstream raw interpolation.
-    Falls back to the regex scanner when no dialect is known or sqlglot cannot
-    parse the statement — mirroring the hybrid-parser philosophy used by
-    :func:`analyze_dml`.
+    Falls back to the regex scanner when there is none or sqlglot cannot parse
+    the statement. ``dialect`` is deprecated.
     """
-    facts = _plugin_statement_facts(statement, dialect)
-    if facts is not None:
-        return facts.target_sql or ""
+    quirks = _quirks_for(quirks, "dialect", dialect)
+    if quirks is not None and quirks.supports_statement_facts:
+        return quirks.statement_facts(statement).target_sql or ""
 
-    from dblift.core.sql_model.dialect import get_sqlglot_dialect
     from dblift.core.sql_parser.unread_names import names_unreadable
 
-    if names_unreadable(statement, get_sqlglot_dialect(dialect) if dialect else None):
+    sqlglot_dialect = quirks.sqlglot_dialect if quirks is not None else None
+    if names_unreadable(statement, sqlglot_dialect):
         return ""
     text = _without_dml_modifiers(strip_leading_sql_comments(statement).lstrip())
-    if dialect:
-        ast_table = _sqlglot_dml_table_sql(text, get_sqlglot_dialect(dialect) or dialect)
+    if sqlglot_dialect:
+        ast_table = _sqlglot_dml_table_sql(text, sqlglot_dialect)
         if ast_table:
             return ast_table
     table = extract_dml_table_name(text)
