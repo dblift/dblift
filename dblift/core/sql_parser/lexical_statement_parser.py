@@ -25,6 +25,7 @@ class LexicalStatementParser(BaseStatementParser):
         spec: LexicalSpec,
         comments: Optional[Sequence[Tuple[int, int]]] = None,
         delimiter_script: Optional[DelimiterScript] = None,
+        terminator_records: Optional[List[Statement]] = None,
     ):
         """Bind token boundaries to their original source and plugin rules."""
         super().__init__(tokens, context, source)
@@ -53,6 +54,9 @@ class LexicalStatementParser(BaseStatementParser):
         # A delimiter script is cut by the tokenizer as it reads: its records are final.
         assert (spec.delimiter_script is None) == (delimiter_script is None)
         self._delimiter_script = delimiter_script
+        # A terminator script is cut by its own assembly: its records are final too.
+        assert (spec.terminator_script is None) == (terminator_records is None)
+        self._terminator_records = terminator_records
         self._script: Optional[ClientScript] = None
         if spec.client_script is not None:
             assert source is not None  # a client script is read line by line from its text
@@ -155,6 +159,8 @@ class LexicalStatementParser(BaseStatementParser):
         """
         if self._delimiter_script is not None:
             return [(record, record.text) for record in self._delimiter_script.records]
+        if self._terminator_records is not None:
+            return [(record, record.text) for record in self._terminator_records]
         if self._batches is not None:
             return self._batches.split(self.tokens)
         records: List[Tuple[Statement, str]] = []

@@ -1,0 +1,4894 @@
+[
+{
+"name": "slash_terminator_after_comment_opener_and_slash",
+"script": "--#SET TERMINATOR /\nVALUES 1 /*/\nVALUES 2 */ /\n",
+"views": {
+"analysis": [
+"VALUES 1 /*/\nVALUES 2 */"
+],
+"executed": [
+"VALUES 1 /*/\nVALUES 2 */"
+],
+"masking": [
+[
+"--#SET TERMINATOR /",
+""
+],
+[
+"VALUES 1 /*/\nVALUES 2 */",
+"VALUES 1"
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "directive",
+"line": 1,
+"multi": false,
+"repeat": 1,
+"source_end": 20,
+"source_start": 0,
+"terminator": null,
+"text": "--#SET TERMINATOR /"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 2,
+"multi": false,
+"repeat": 1,
+"source_end": 47,
+"source_start": 20,
+"terminator": "/",
+"text": "VALUES 1 /*/\nVALUES 2 */"
+}
+],
+"strings": [
+"VALUES 1 /*/\nVALUES 2 */"
+]
+}
+},
+{
+"name": "closer_terminator_after_nested_comment_closers",
+"script": "--#SET TERMINATOR */\nVALUES 1 /* /* a */*/\n*/ VALUES 2 */\n",
+"views": {
+"error": [
+"UnsafeStatementSplitError",
+"line 2 ends with '*/', which is also part of a comment delimiter: the CLP cuts the statement there, the splitter cannot tell the two readings apart; put the comment on a line of its own"
+]
+}
+},
+{
+"name": "line_comment_ending_in_the_comment_opener_terminator",
+"script": "--#SET TERMINATOR /*\nVALUES 1 -- x/*\n",
+"views": {
+"analysis": [
+"VALUES 1 -- x"
+],
+"executed": [
+"VALUES 1 -- x"
+],
+"masking": [
+[
+"--#SET TERMINATOR /*",
+""
+],
+[
+"VALUES 1 -- x",
+"VALUES 1"
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "directive",
+"line": 1,
+"multi": false,
+"repeat": 1,
+"source_end": 21,
+"source_start": 0,
+"terminator": null,
+"text": "--#SET TERMINATOR /*"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 2,
+"multi": false,
+"repeat": 1,
+"source_end": 37,
+"source_start": 21,
+"terminator": "/*",
+"text": "VALUES 1 -- x"
+}
+],
+"strings": [
+"VALUES 1 -- x"
+]
+}
+},
+{
+"name": "closer_terminator_after_comment",
+"script": "--#SET TERMINATOR */\nVALUES 1 /* c */\nVALUES 2*/\n",
+"views": {
+"error": [
+"UnsafeStatementSplitError",
+"line 2 ends with '*/', which is also part of a comment delimiter: the CLP cuts the statement there, the splitter cannot tell the two readings apart; put the comment on a line of its own"
+]
+}
+},
+{
+"name": "slash_terminator_after_comment",
+"script": "--#SET TERMINATOR /\nVALUES 1 /* c */\nVALUES 2/\n",
+"views": {
+"error": [
+"UnsafeStatementSplitError",
+"line 2 ends with '/', which is also part of a comment delimiter: the CLP cuts the statement there, the splitter cannot tell the two readings apart; put the comment on a line of its own"
+]
+}
+},
+{
+"name": "dash_comment_under_comment_opener_terminator",
+"script": "--#SET TERMINATOR /*\nVALUES 1 -- x/*\nVALUES 2/*\n",
+"views": {
+"error": [
+"UnsafeStatementSplitError",
+"line 3 ends with '/*', which is also part of a comment delimiter: the CLP cuts the statement there, the splitter cannot tell the two readings apart; put the comment on a line of its own"
+]
+}
+},
+{
+"name": "closer_at_depth_zero",
+"script": "--#SET TERMINATOR /\nVALUES 1 /* a *\nVALUES 2 */ /\n",
+"views": {
+"analysis": [
+"VALUES 1 /* a *\nVALUES 2 */"
+],
+"executed": [
+"VALUES 1 /* a *\nVALUES 2 */"
+],
+"masking": [
+[
+"--#SET TERMINATOR /",
+""
+],
+[
+"VALUES 1 /* a *\nVALUES 2 */",
+"VALUES 1"
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "directive",
+"line": 1,
+"multi": false,
+"repeat": 1,
+"source_end": 20,
+"source_start": 0,
+"terminator": null,
+"text": "--#SET TERMINATOR /"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 2,
+"multi": false,
+"repeat": 1,
+"source_end": 50,
+"source_start": 20,
+"terminator": "/",
+"text": "VALUES 1 /* a *\nVALUES 2 */"
+}
+],
+"strings": [
+"VALUES 1 /* a *\nVALUES 2 */"
+]
+}
+},
+{
+"name": "slash_after_star_symbol",
+"script": "--#SET TERMINATOR /\nVALUES 1 *\nVALUES 2 */\n",
+"views": {
+"analysis": [
+"VALUES 1 *\nVALUES 2 *"
+],
+"executed": [
+"VALUES 1 *\nVALUES 2 *"
+],
+"masking": [
+[
+"--#SET TERMINATOR /",
+""
+],
+[
+"VALUES 1 *\nVALUES 2 *",
+"VALUES 1"
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "directive",
+"line": 1,
+"multi": false,
+"repeat": 1,
+"source_end": 20,
+"source_start": 0,
+"terminator": null,
+"text": "--#SET TERMINATOR /"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 2,
+"multi": false,
+"repeat": 1,
+"source_end": 43,
+"source_start": 20,
+"terminator": "/",
+"text": "VALUES 1 *\nVALUES 2 *"
+}
+],
+"strings": [
+"VALUES 1 *\nVALUES 2 *"
+]
+}
+},
+{
+"name": "star_then_slash_symbol",
+"script": "--#SET TERMINATOR *\nVALUES 1 /*\nVALUES 2 /*\n",
+"views": {
+"error": [
+"UnsafeStatementSplitError",
+"line 2 ends with '*', which is also part of a comment delimiter: the CLP cuts the statement there, the splitter cannot tell the two readings apart; put the comment on a line of its own"
+]
+}
+},
+{
+"name": "dash_dash_after_dash",
+"script": "--#SET TERMINATOR -\nVALUES 1 -\nVALUES 2 -\n",
+"views": {
+"analysis": [
+"VALUES 1",
+"VALUES 2"
+],
+"executed": [
+"VALUES 1",
+"VALUES 2"
+],
+"masking": [
+[
+"--#SET TERMINATOR -",
+""
+],
+[
+"VALUES 1",
+"VALUES 1"
+],
+[
+"VALUES 2",
+"VALUES 2"
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "directive",
+"line": 1,
+"multi": false,
+"repeat": 1,
+"source_end": 20,
+"source_start": 0,
+"terminator": null,
+"text": "--#SET TERMINATOR -"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 2,
+"multi": false,
+"repeat": 1,
+"source_end": 31,
+"source_start": 20,
+"terminator": "-",
+"text": "VALUES 1"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 3,
+"multi": false,
+"repeat": 1,
+"source_end": 42,
+"source_start": 31,
+"terminator": "-",
+"text": "VALUES 2"
+}
+],
+"strings": [
+"VALUES 1",
+"VALUES 2"
+]
+}
+},
+{
+"name": "comment_line_in_string",
+"script": "VALUES 'x\n-- y;\nz';\nVALUES 2;\n",
+"views": {
+"analysis": [
+"VALUES 'x\n-- y;\nz'",
+"VALUES 2"
+],
+"executed": [
+"VALUES 'x\n-- y;\nz'",
+"VALUES 2"
+],
+"masking": [
+[
+"VALUES '?'",
+"VALUES"
+],
+[
+"VALUES 2",
+"VALUES 2"
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 1,
+"multi": false,
+"repeat": 1,
+"source_end": 20,
+"source_start": 0,
+"terminator": ";",
+"text": "VALUES 'x\n-- y;\nz'"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 4,
+"multi": false,
+"repeat": 1,
+"source_end": 30,
+"source_start": 20,
+"terminator": ";",
+"text": "VALUES 2"
+}
+],
+"strings": [
+"VALUES 'x\n-- y;\nz'",
+"VALUES 2"
+]
+}
+},
+{
+"name": "block_line_in_string",
+"script": "VALUES 'p\n(= q\n';\nVALUES 2;\n",
+"views": {
+"error": [
+"UnsupportedMetaCommandError",
+"CLP comment block '(=' on line 2: the CLP skips it, dblift does not run CLP input syntax"
+]
+}
+},
+{
+"name": "block_line_in_comment",
+"script": "VALUES 1 /*\n(=\n*/;\n",
+"views": {
+"error": [
+"UnsupportedMetaCommandError",
+"CLP comment block '(=' on line 2: the CLP skips it, dblift does not run CLP input syntax"
+]
+}
+},
+{
+"name": "cr_run_before_lf",
+"script": "VALUES 1;\r\r\nVALUES 2;\n",
+"views": {
+"error": [
+"UnsafeStatementSplitError",
+"line 2 has code after a ';' in the middle of a line: the CLP sends it whole and the server rejects it, and the ibm_db driver runs only the text before the ';'; put each statement on its own line, ended by the terminator, or declare another terminator with --#SET TERMINATOR"
+]
+}
+},
+{
+"name": "three_crs_before_lf",
+"script": "VALUES 1;\r\r\r\nVALUES 2;\n",
+"views": {
+"error": [
+"UnsafeStatementSplitError",
+"line 2 has code after a ';' in the middle of a line: the CLP sends it whole and the server rejects it, and the ibm_db driver runs only the text before the ';'; put each statement on its own line, ended by the terminator, or declare another terminator with --#SET TERMINATOR"
+]
+}
+},
+{
+"name": "two_non_ascii_chars_terminator",
+"script": "--#SET TERMINATOR \u00e9\u00e9\nVALUES 1\u00e9\u00e9\nVALUES 2;\n",
+"views": {
+"analysis": [
+"VALUES 1",
+"VALUES 2;"
+],
+"executed": [
+"VALUES 1",
+"VALUES 2;"
+],
+"masking": [
+[
+"--#SET TERMINATOR \u00e9\u00e9",
+""
+],
+[
+"VALUES 1",
+"VALUES 1"
+],
+[
+"VALUES 2;",
+"VALUES 2"
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "directive",
+"line": 1,
+"multi": false,
+"repeat": 1,
+"source_end": 21,
+"source_start": 0,
+"terminator": null,
+"text": "--#SET TERMINATOR \u00e9\u00e9"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 2,
+"multi": false,
+"repeat": 1,
+"source_end": 32,
+"source_start": 21,
+"terminator": "\u00e9\u00e9",
+"text": "VALUES 1"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 3,
+"multi": false,
+"repeat": 1,
+"source_end": 42,
+"source_start": 32,
+"terminator": null,
+"text": "VALUES 2;"
+}
+],
+"strings": [
+"VALUES 1",
+"VALUES 2;"
+]
+}
+},
+{
+"name": "euro_sign_terminator",
+"script": "--#SET TERMINATOR \u20ac\nVALUES 1\u20ac\nVALUES 2;\n",
+"views": {
+"analysis": [
+"VALUES 1",
+"VALUES 2;"
+],
+"executed": [
+"VALUES 1",
+"VALUES 2;"
+],
+"masking": [
+[
+"--#SET TERMINATOR \u20ac",
+""
+],
+[
+"VALUES 1",
+"VALUES 1"
+],
+[
+"VALUES 2;",
+"VALUES 2"
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "directive",
+"line": 1,
+"multi": false,
+"repeat": 1,
+"source_end": 20,
+"source_start": 0,
+"terminator": null,
+"text": "--#SET TERMINATOR \u20ac"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 2,
+"multi": false,
+"repeat": 1,
+"source_end": 30,
+"source_start": 20,
+"terminator": "\u20ac",
+"text": "VALUES 1"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 3,
+"multi": false,
+"repeat": 1,
+"source_end": 40,
+"source_start": 30,
+"terminator": null,
+"text": "VALUES 2;"
+}
+],
+"strings": [
+"VALUES 1",
+"VALUES 2;"
+]
+}
+},
+{
+"name": "two_astral_chars_terminator",
+"script": "--#SET TERMINATOR \ud83d\ude00\ud83d\ude00\nVALUES 1\ud83d\ude00\ud83d\ude00\n",
+"views": {
+"analysis": [
+"VALUES 1"
+],
+"executed": [
+"VALUES 1"
+],
+"masking": [
+[
+"--#SET TERMINATOR \ud83d\ude00\ud83d\ude00",
+""
+],
+[
+"VALUES 1",
+"VALUES 1"
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "directive",
+"line": 1,
+"multi": false,
+"repeat": 1,
+"source_end": 21,
+"source_start": 0,
+"terminator": null,
+"text": "--#SET TERMINATOR \ud83d\ude00\ud83d\ude00"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 2,
+"multi": false,
+"repeat": 1,
+"source_end": 32,
+"source_start": 21,
+"terminator": "\ud83d\ude00\ud83d\ude00",
+"text": "VALUES 1"
+}
+],
+"strings": [
+"VALUES 1"
+]
+}
+},
+{
+"name": "three_chars_terminator",
+"script": "--#SET TERMINATOR \u00e9\u00e9\u00e9\nVALUES 1;\n",
+"views": {
+"error": [
+"UnsafeStatementSplitError",
+"malformed --#SET TERMINATOR directive on line 1: expected one or two characters after the keyword, separated from it by blanks"
+]
+}
+},
+{
+"name": "terminator_then_lone_cr_at_end",
+"script": "VALUES 1;\r",
+"views": {
+"analysis": [
+"VALUES 1;"
+],
+"executed": [
+"VALUES 1;"
+],
+"masking": [
+[
+"VALUES 1;",
+"VALUES 1"
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 1,
+"multi": false,
+"repeat": 1,
+"source_end": 10,
+"source_start": 0,
+"terminator": null,
+"text": "VALUES 1;"
+}
+],
+"strings": [
+"VALUES 1;"
+]
+}
+},
+{
+"name": "last_line_ends_in_lone_cr",
+"script": "VALUES 1;\nVALUES 2;\r",
+"views": {
+"analysis": [
+"VALUES 1",
+"VALUES 2;"
+],
+"executed": [
+"VALUES 1",
+"VALUES 2;"
+],
+"masking": [
+[
+"VALUES 1",
+"VALUES 1"
+],
+[
+"VALUES 2;",
+"VALUES 2"
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 1,
+"multi": false,
+"repeat": 1,
+"source_end": 10,
+"source_start": 0,
+"terminator": ";",
+"text": "VALUES 1"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 2,
+"multi": false,
+"repeat": 1,
+"source_end": 20,
+"source_start": 10,
+"terminator": null,
+"text": "VALUES 2;"
+}
+],
+"strings": [
+"VALUES 1",
+"VALUES 2;"
+]
+}
+},
+{
+"name": "vt_after_directive_value",
+"script": "--#SET TERMINATOR @\u000b\nVALUES 1@\n",
+"views": {
+"error": [
+"UnsafeStatementSplitError",
+"malformed --#SET TERMINATOR directive on line 1: expected one or two characters after the keyword, separated from it by blanks"
+]
+}
+},
+{
+"name": "nbsp_after_directive_value",
+"script": "--#SET TERMINATOR @\u00a0\nVALUES 1@\n",
+"views": {
+"error": [
+"UnsafeStatementSplitError",
+"malformed --#SET TERMINATOR directive on line 1: expected one or two characters after the keyword, separated from it by blanks"
+]
+}
+},
+{
+"name": "form_feed_stripped",
+"script": "VALUES 1;\n\fVALUES 2;\n",
+"views": {
+"analysis": [
+"VALUES 1",
+"VALUES 2"
+],
+"executed": [
+"VALUES 1",
+"VALUES 2"
+],
+"masking": [
+[
+"VALUES 1",
+"VALUES 1"
+],
+[
+"VALUES 2",
+"VALUES 2"
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 1,
+"multi": false,
+"repeat": 1,
+"source_end": 10,
+"source_start": 0,
+"terminator": ";",
+"text": "VALUES 1"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 2,
+"multi": false,
+"repeat": 1,
+"source_end": 21,
+"source_start": 10,
+"terminator": ";",
+"text": "VALUES 2"
+}
+],
+"strings": [
+"VALUES 1",
+"VALUES 2"
+]
+}
+},
+{
+"name": "nbsp_stripped",
+"script": "\u00a0VALUES 1\u00a0;\n",
+"views": {
+"analysis": [
+"VALUES 1"
+],
+"executed": [
+"VALUES 1"
+],
+"masking": [
+[
+"VALUES 1",
+"VALUES 1"
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 1,
+"multi": false,
+"repeat": 1,
+"source_end": 12,
+"source_start": 0,
+"terminator": ";",
+"text": "VALUES 1"
+}
+],
+"strings": [
+"VALUES 1"
+]
+}
+},
+{
+"name": "create_or_alter_procedure",
+"script": "CREATE OR ALTER PROCEDURE p1()\nBEGIN\n  DECLARE v INT;\nEND;\nVALUES 2;\n",
+"views": {
+"analysis": [
+"CREATE OR ALTER PROCEDURE p1()\nBEGIN\n  DECLARE v INT;\nEND",
+"VALUES 2"
+],
+"executed": [
+"CREATE OR ALTER PROCEDURE p1()\nBEGIN\n  DECLARE v INT;\nEND",
+"VALUES 2"
+],
+"masking": [
+[
+"CREATE OR ALTER PROCEDURE p1()\nBEGIN\n  DECLARE v INT;\nEND",
+"CREATE OR ALTER PROCEDURE p1"
+],
+[
+"VALUES 2",
+"VALUES 2"
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 1,
+"multi": false,
+"repeat": 1,
+"source_end": 59,
+"source_start": 0,
+"terminator": ";",
+"text": "CREATE OR ALTER PROCEDURE p1()\nBEGIN\n  DECLARE v INT;\nEND"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 5,
+"multi": false,
+"repeat": 1,
+"source_end": 69,
+"source_start": 59,
+"terminator": ";",
+"text": "VALUES 2"
+}
+],
+"strings": [
+"CREATE OR ALTER PROCEDURE p1()\nBEGIN\n  DECLARE v INT;\nEND",
+"VALUES 2"
+]
+}
+},
+{
+"name": "create_or_any_word_procedure",
+"script": "CREATE OR xyz PROCEDURE p1()\nBEGIN\n  DECLARE v INT;\nEND;\nVALUES 2;\n",
+"views": {
+"analysis": [
+"CREATE OR xyz PROCEDURE p1()\nBEGIN\n  DECLARE v INT;\nEND",
+"VALUES 2"
+],
+"executed": [
+"CREATE OR xyz PROCEDURE p1()\nBEGIN\n  DECLARE v INT;\nEND",
+"VALUES 2"
+],
+"masking": [
+[
+"CREATE OR xyz PROCEDURE p1()\nBEGIN\n  DECLARE v INT;\nEND",
+"CREATE OR xyz"
+],
+[
+"VALUES 2",
+"VALUES 2"
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 1,
+"multi": false,
+"repeat": 1,
+"source_end": 57,
+"source_start": 0,
+"terminator": ";",
+"text": "CREATE OR xyz PROCEDURE p1()\nBEGIN\n  DECLARE v INT;\nEND"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 5,
+"multi": false,
+"repeat": 1,
+"source_end": 67,
+"source_start": 57,
+"terminator": ";",
+"text": "VALUES 2"
+}
+],
+"strings": [
+"CREATE OR xyz PROCEDURE p1()\nBEGIN\n  DECLARE v INT;\nEND",
+"VALUES 2"
+]
+}
+},
+{
+"name": "declaration_section_kept_old_shape",
+"script": "CREATE OR REPLACE FUNCTION f1 RETURN NUMBER IS\n  v NUMBER;\nBEGIN\n  v := 1;\n  RETURN v;\nEND;\n/\nVALUES f1();\n",
+"views": {
+"analysis": [
+"CREATE OR REPLACE FUNCTION f1 RETURN NUMBER IS\n  v NUMBER",
+"BEGIN\n  v := 1;\n  RETURN v;\nEND",
+"/\nVALUES f1()"
+],
+"executed": [
+"CREATE OR REPLACE FUNCTION f1 RETURN NUMBER IS\n  v NUMBER",
+"BEGIN\n  v := 1;\n  RETURN v;\nEND",
+"/\nVALUES f1()"
+],
+"masking": [
+[
+"CREATE OR REPLACE FUNCTION f1 RETURN NUMBER IS\n  v NUMBER",
+"CREATE OR REPLACE FUNCTION f1"
+],
+[
+"BEGIN\n  v := 1;\n  RETURN v;\nEND",
+"BEGIN v"
+],
+[
+"/\nVALUES f1()",
+""
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 1,
+"multi": false,
+"repeat": 1,
+"source_end": 59,
+"source_start": 0,
+"terminator": ";",
+"text": "CREATE OR REPLACE FUNCTION f1 RETURN NUMBER IS\n  v NUMBER"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 3,
+"multi": false,
+"repeat": 1,
+"source_end": 92,
+"source_start": 59,
+"terminator": ";",
+"text": "BEGIN\n  v := 1;\n  RETURN v;\nEND"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 7,
+"multi": false,
+"repeat": 1,
+"source_end": 107,
+"source_start": 92,
+"terminator": ";",
+"text": "/\nVALUES f1()"
+}
+],
+"strings": [
+"CREATE OR REPLACE FUNCTION f1 RETURN NUMBER IS\n  v NUMBER",
+"BEGIN\n  v := 1;\n  RETURN v;\nEND",
+"/\nVALUES f1()"
+]
+}
+},
+{
+"name": "label_compound_under_semicolon",
+"script": "lab: BEGIN\n  DECLARE v INT;\n  SET v = 1;\nEND lab;\nVALUES 2;\n",
+"views": {
+"analysis": [
+"lab: BEGIN\n  DECLARE v INT",
+"SET v = 1",
+"END lab",
+"VALUES 2"
+],
+"executed": [
+"lab: BEGIN\n  DECLARE v INT",
+"SET v = 1",
+"END lab",
+"VALUES 2"
+],
+"masking": [
+[
+"lab: BEGIN\n  DECLARE v INT",
+"lab"
+],
+[
+"SET v = 1",
+"SET v"
+],
+[
+"END lab",
+"END lab"
+],
+[
+"VALUES 2",
+"VALUES 2"
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 1,
+"multi": false,
+"repeat": 1,
+"source_end": 28,
+"source_start": 0,
+"terminator": ";",
+"text": "lab: BEGIN\n  DECLARE v INT"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 3,
+"multi": false,
+"repeat": 1,
+"source_end": 41,
+"source_start": 30,
+"terminator": ";",
+"text": "SET v = 1"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 4,
+"multi": false,
+"repeat": 1,
+"source_end": 50,
+"source_start": 41,
+"terminator": ";",
+"text": "END lab"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 5,
+"multi": false,
+"repeat": 1,
+"source_end": 60,
+"source_start": 50,
+"terminator": ";",
+"text": "VALUES 2"
+}
+],
+"strings": [
+"lab: BEGIN\n  DECLARE v INT",
+"SET v = 1",
+"END lab",
+"VALUES 2"
+]
+}
+},
+{
+"name": "body_closed_later_on_the_line_by_a_symbol",
+"script": "BEGIN\n  SET x = 1; /* c */ END)\nVALUES 2;\n",
+"views": {
+"analysis": [
+"BEGIN\n  SET x = 1; /* c */ END)\nVALUES 2"
+],
+"executed": [
+"BEGIN\n  SET x = 1; /* c */ END)\nVALUES 2"
+],
+"masking": [
+[
+"BEGIN\n  SET x = 1; /* c */ END)\nVALUES 2",
+"BEGIN SET x"
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 1,
+"multi": false,
+"repeat": 1,
+"source_end": 42,
+"source_start": 0,
+"terminator": ";",
+"text": "BEGIN\n  SET x = 1; /* c */ END)\nVALUES 2"
+}
+],
+"strings": [
+"BEGIN\n  SET x = 1; /* c */ END)\nVALUES 2"
+]
+}
+},
+{
+"name": "alter_table_named_module",
+"script": "ALTER TABLE module ADD COLUMN begin INT;\nVALUES 1;\n",
+"views": {
+"analysis": [
+"ALTER TABLE module ADD COLUMN begin INT",
+"VALUES 1"
+],
+"executed": [
+"ALTER TABLE module ADD COLUMN begin INT",
+"VALUES 1"
+],
+"masking": [
+[
+"ALTER TABLE module ADD COLUMN begin INT",
+"ALTER TABLE module"
+],
+[
+"VALUES 1",
+"VALUES 1"
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 1,
+"multi": false,
+"repeat": 1,
+"source_end": 41,
+"source_start": 0,
+"terminator": ";",
+"text": "ALTER TABLE module ADD COLUMN begin INT"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 2,
+"multi": false,
+"repeat": 1,
+"source_end": 51,
+"source_start": 41,
+"terminator": ";",
+"text": "VALUES 1"
+}
+],
+"strings": [
+"ALTER TABLE module ADD COLUMN begin INT",
+"VALUES 1"
+]
+}
+},
+{
+"name": "case_expression_in_parentheses_in_body",
+"script": "CREATE PROCEDURE p()\nBEGIN\n  SET x = (CASE WHEN 1 = 1 THEN 1 END);\n  SET y = 2;\nEND;\nVALUES 1;\n",
+"views": {
+"analysis": [
+"CREATE PROCEDURE p()\nBEGIN\n  SET x = (CASE WHEN 1 = 1 THEN 1 END);\n  SET y = 2;\nEND",
+"VALUES 1"
+],
+"executed": [
+"CREATE PROCEDURE p()\nBEGIN\n  SET x = (CASE WHEN 1 = 1 THEN 1 END);\n  SET y = 2;\nEND",
+"VALUES 1"
+],
+"masking": [
+[
+"CREATE PROCEDURE p()\nBEGIN\n  SET x = (CASE WHEN 1 = 1 THEN 1 END);\n  SET y = 2;\nEND",
+"CREATE PROCEDURE p"
+],
+[
+"VALUES 1",
+"VALUES 1"
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 1,
+"multi": false,
+"repeat": 1,
+"source_end": 85,
+"source_start": 0,
+"terminator": ";",
+"text": "CREATE PROCEDURE p()\nBEGIN\n  SET x = (CASE WHEN 1 = 1 THEN 1 END);\n  SET y = 2;\nEND"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 6,
+"multi": false,
+"repeat": 1,
+"source_end": 95,
+"source_start": 85,
+"terminator": ";",
+"text": "VALUES 1"
+}
+],
+"strings": [
+"CREATE PROCEDURE p()\nBEGIN\n  SET x = (CASE WHEN 1 = 1 THEN 1 END);\n  SET y = 2;\nEND",
+"VALUES 1"
+]
+}
+},
+{
+"name": "open_parenthesis_in_string_in_head",
+"script": "CREATE PROCEDURE p(IN a VARCHAR(10) DEFAULT '(')\nBEGIN\n  SET x = 1;\nEND;\nVALUES 1;\n",
+"views": {
+"analysis": [
+"CREATE PROCEDURE p(IN a VARCHAR(10) DEFAULT '(')\nBEGIN\n  SET x = 1;\nEND",
+"VALUES 1"
+],
+"executed": [
+"CREATE PROCEDURE p(IN a VARCHAR(10) DEFAULT '(')\nBEGIN\n  SET x = 1;\nEND",
+"VALUES 1"
+],
+"masking": [
+[
+"CREATE PROCEDURE p(IN a VARCHAR(10) DEFAULT '?')\nBEGIN\n  SET x = 1;\nEND",
+"CREATE PROCEDURE p"
+],
+[
+"VALUES 1",
+"VALUES 1"
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 1,
+"multi": false,
+"repeat": 1,
+"source_end": 73,
+"source_start": 0,
+"terminator": ";",
+"text": "CREATE PROCEDURE p(IN a VARCHAR(10) DEFAULT '(')\nBEGIN\n  SET x = 1;\nEND"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 5,
+"multi": false,
+"repeat": 1,
+"source_end": 83,
+"source_start": 73,
+"terminator": ";",
+"text": "VALUES 1"
+}
+],
+"strings": [
+"CREATE PROCEDURE p(IN a VARCHAR(10) DEFAULT '(')\nBEGIN\n  SET x = 1;\nEND",
+"VALUES 1"
+]
+}
+},
+{
+"name": "close_parenthesis_in_string_in_head",
+"script": "CREATE PROCEDURE p(IN a VARCHAR(10) DEFAULT ')')\nBEGIN\n  SET x = 1;\nEND;\nVALUES 1;\n",
+"views": {
+"analysis": [
+"CREATE PROCEDURE p(IN a VARCHAR(10) DEFAULT ')')\nBEGIN\n  SET x = 1;\nEND",
+"VALUES 1"
+],
+"executed": [
+"CREATE PROCEDURE p(IN a VARCHAR(10) DEFAULT ')')\nBEGIN\n  SET x = 1;\nEND",
+"VALUES 1"
+],
+"masking": [
+[
+"CREATE PROCEDURE p(IN a VARCHAR(10) DEFAULT '?')\nBEGIN\n  SET x = 1;\nEND",
+"CREATE PROCEDURE p"
+],
+[
+"VALUES 1",
+"VALUES 1"
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 1,
+"multi": false,
+"repeat": 1,
+"source_end": 73,
+"source_start": 0,
+"terminator": ";",
+"text": "CREATE PROCEDURE p(IN a VARCHAR(10) DEFAULT ')')\nBEGIN\n  SET x = 1;\nEND"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 5,
+"multi": false,
+"repeat": 1,
+"source_end": 83,
+"source_start": 73,
+"terminator": ";",
+"text": "VALUES 1"
+}
+],
+"strings": [
+"CREATE PROCEDURE p(IN a VARCHAR(10) DEFAULT ')')\nBEGIN\n  SET x = 1;\nEND",
+"VALUES 1"
+]
+}
+},
+{
+"name": "parenthesis_in_quoted_identifier_in_head",
+"script": "CREATE PROCEDURE p(IN \"a(\" INT)\nBEGIN\n  SET x = 1;\nEND;\nVALUES 1;\n",
+"views": {
+"analysis": [
+"CREATE PROCEDURE p(IN \"a(\" INT)\nBEGIN\n  SET x = 1;\nEND",
+"VALUES 1"
+],
+"executed": [
+"CREATE PROCEDURE p(IN \"a(\" INT)\nBEGIN\n  SET x = 1;\nEND",
+"VALUES 1"
+],
+"masking": [
+[
+"CREATE PROCEDURE p(IN \"a(\" INT)\nBEGIN\n  SET x = 1;\nEND",
+"CREATE PROCEDURE p"
+],
+[
+"VALUES 1",
+"VALUES 1"
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 1,
+"multi": false,
+"repeat": 1,
+"source_end": 56,
+"source_start": 0,
+"terminator": ";",
+"text": "CREATE PROCEDURE p(IN \"a(\" INT)\nBEGIN\n  SET x = 1;\nEND"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 5,
+"multi": false,
+"repeat": 1,
+"source_end": 66,
+"source_start": 56,
+"terminator": ";",
+"text": "VALUES 1"
+}
+],
+"strings": [
+"CREATE PROCEDURE p(IN \"a(\" INT)\nBEGIN\n  SET x = 1;\nEND",
+"VALUES 1"
+]
+}
+},
+{
+"name": "parenthesis_in_string_in_body",
+"script": "CREATE PROCEDURE p()\nBEGIN\n  INSERT INTO t VALUES ('(', ')', '((');\n  SET y = 2;\nEND;\nVALUES 1;\n",
+"views": {
+"analysis": [
+"CREATE PROCEDURE p()\nBEGIN\n  INSERT INTO t VALUES ('(', ')', '((');\n  SET y = 2;\nEND",
+"VALUES 1"
+],
+"executed": [
+"CREATE PROCEDURE p()\nBEGIN\n  INSERT INTO t VALUES ('(', ')', '((');\n  SET y = 2;\nEND",
+"VALUES 1"
+],
+"masking": [
+[
+"CREATE PROCEDURE p()\nBEGIN\n  INSERT INTO t VALUES ('?', '?', '?');\n  SET y = 2;\nEND",
+"CREATE PROCEDURE p"
+],
+[
+"VALUES 1",
+"VALUES 1"
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 1,
+"multi": false,
+"repeat": 1,
+"source_end": 86,
+"source_start": 0,
+"terminator": ";",
+"text": "CREATE PROCEDURE p()\nBEGIN\n  INSERT INTO t VALUES ('(', ')', '((');\n  SET y = 2;\nEND"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 6,
+"multi": false,
+"repeat": 1,
+"source_end": 96,
+"source_start": 86,
+"terminator": ";",
+"text": "VALUES 1"
+}
+],
+"strings": [
+"CREATE PROCEDURE p()\nBEGIN\n  INSERT INTO t VALUES ('(', ')', '((');\n  SET y = 2;\nEND",
+"VALUES 1"
+]
+}
+},
+{
+"name": "begin_as_parameter_name",
+"script": "CREATE PROCEDURE p(begin INT)\nBEGIN\n  SET x = 1;\nEND;\nVALUES 1;\n",
+"views": {
+"analysis": [
+"CREATE PROCEDURE p(begin INT)\nBEGIN\n  SET x = 1;\nEND",
+"VALUES 1"
+],
+"executed": [
+"CREATE PROCEDURE p(begin INT)\nBEGIN\n  SET x = 1;\nEND",
+"VALUES 1"
+],
+"masking": [
+[
+"CREATE PROCEDURE p(begin INT)\nBEGIN\n  SET x = 1;\nEND",
+"CREATE PROCEDURE p"
+],
+[
+"VALUES 1",
+"VALUES 1"
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 1,
+"multi": false,
+"repeat": 1,
+"source_end": 54,
+"source_start": 0,
+"terminator": ";",
+"text": "CREATE PROCEDURE p(begin INT)\nBEGIN\n  SET x = 1;\nEND"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 5,
+"multi": false,
+"repeat": 1,
+"source_end": 64,
+"source_start": 54,
+"terminator": ";",
+"text": "VALUES 1"
+}
+],
+"strings": [
+"CREATE PROCEDURE p(begin INT)\nBEGIN\n  SET x = 1;\nEND",
+"VALUES 1"
+]
+}
+},
+{
+"name": "end_then_string_then_qualifier",
+"script": "BEGIN\n  IF 1 = 1 THEN SET x = 1; END 'x' IF;\nEND;\nVALUES 1;\n",
+"views": {
+"analysis": [
+"BEGIN\n  IF 1 = 1 THEN SET x = 1; END 'x' IF;\nEND",
+"VALUES 1"
+],
+"executed": [
+"BEGIN\n  IF 1 = 1 THEN SET x = 1; END 'x' IF;\nEND",
+"VALUES 1"
+],
+"masking": [
+[
+"BEGIN\n  IF 1 = 1 THEN SET x = 1; END '?' IF;\nEND",
+"BEGIN IF 1"
+],
+[
+"VALUES 1",
+"VALUES 1"
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 1,
+"multi": false,
+"repeat": 1,
+"source_end": 50,
+"source_start": 0,
+"terminator": ";",
+"text": "BEGIN\n  IF 1 = 1 THEN SET x = 1; END 'x' IF;\nEND"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 4,
+"multi": false,
+"repeat": 1,
+"source_end": 60,
+"source_start": 50,
+"terminator": ";",
+"text": "VALUES 1"
+}
+],
+"strings": [
+"BEGIN\n  IF 1 = 1 THEN SET x = 1; END 'x' IF;\nEND",
+"VALUES 1"
+]
+}
+},
+{
+"name": "directive_in_body_under_at",
+"script": "--#SET TERMINATOR @\nBEGIN ATOMIC\n  DECLARE v INT;\n--#SET TERMINATOR ;\n  SET v = 1;\nEND;\nVALUES 2;\n",
+"views": {
+"analysis": [
+"BEGIN ATOMIC\n  DECLARE v INT;\n  SET v = 1;\nEND",
+"VALUES 2"
+],
+"executed": [
+"BEGIN ATOMIC\n  DECLARE v INT;\n  SET v = 1;\nEND",
+"VALUES 2"
+],
+"masking": [
+[
+"--#SET TERMINATOR @",
+""
+],
+[
+"--#SET TERMINATOR ;",
+""
+],
+[
+"BEGIN ATOMIC\n  DECLARE v INT;\n  SET v = 1;\nEND",
+"BEGIN ATOMIC"
+],
+[
+"VALUES 2",
+"VALUES 2"
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "directive",
+"line": 1,
+"multi": false,
+"repeat": 1,
+"source_end": 20,
+"source_start": 0,
+"terminator": null,
+"text": "--#SET TERMINATOR @"
+},
+{
+"analysis_statements": null,
+"kind": "directive",
+"line": 4,
+"multi": false,
+"repeat": 1,
+"source_end": 70,
+"source_start": 50,
+"terminator": null,
+"text": "--#SET TERMINATOR ;"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 2,
+"multi": false,
+"repeat": 1,
+"source_end": 88,
+"source_start": 20,
+"terminator": ";",
+"text": "BEGIN ATOMIC\n  DECLARE v INT;\n  SET v = 1;\nEND"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 7,
+"multi": false,
+"repeat": 1,
+"source_end": 98,
+"source_start": 88,
+"terminator": ";",
+"text": "VALUES 2"
+}
+],
+"strings": [
+"BEGIN ATOMIC\n  DECLARE v INT;\n  SET v = 1;\nEND",
+"VALUES 2"
+]
+}
+},
+{
+"name": "labelled_nested_under_at",
+"script": "--#SET TERMINATOR @\nBEGIN ATOMIC\n  lab: BEGIN\n    DECLARE v INT;\n  END lab;\nEND@\nVALUES 2@\n",
+"views": {
+"analysis": [
+"BEGIN ATOMIC\n  lab: BEGIN\n    DECLARE v INT;\n  END lab;\nEND",
+"VALUES 2"
+],
+"executed": [
+"BEGIN ATOMIC\n  lab: BEGIN\n    DECLARE v INT;\n  END lab;\nEND",
+"VALUES 2"
+],
+"masking": [
+[
+"--#SET TERMINATOR @",
+""
+],
+[
+"BEGIN ATOMIC\n  lab: BEGIN\n    DECLARE v INT;\n  END lab;\nEND",
+"BEGIN ATOMIC"
+],
+[
+"VALUES 2",
+"VALUES 2"
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "directive",
+"line": 1,
+"multi": false,
+"repeat": 1,
+"source_end": 20,
+"source_start": 0,
+"terminator": null,
+"text": "--#SET TERMINATOR @"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 2,
+"multi": false,
+"repeat": 1,
+"source_end": 81,
+"source_start": 20,
+"terminator": "@",
+"text": "BEGIN ATOMIC\n  lab: BEGIN\n    DECLARE v INT;\n  END lab;\nEND"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 7,
+"multi": false,
+"repeat": 1,
+"source_end": 91,
+"source_start": 81,
+"terminator": "@",
+"text": "VALUES 2"
+}
+],
+"strings": [
+"BEGIN ATOMIC\n  lab: BEGIN\n    DECLARE v INT;\n  END lab;\nEND",
+"VALUES 2"
+]
+}
+},
+{
+"name": "end_alone_then_terminator_line",
+"script": "--#SET TERMINATOR @\nBEGIN ATOMIC\n  DECLARE v INT;\n  SET v = 1;\nEND\n@\nVALUES 2@\n",
+"views": {
+"analysis": [
+"BEGIN ATOMIC\n  DECLARE v INT;\n  SET v = 1;\nEND",
+"VALUES 2"
+],
+"executed": [
+"BEGIN ATOMIC\n  DECLARE v INT;\n  SET v = 1;\nEND",
+"VALUES 2"
+],
+"masking": [
+[
+"--#SET TERMINATOR @",
+""
+],
+[
+"BEGIN ATOMIC\n  DECLARE v INT;\n  SET v = 1;\nEND",
+"BEGIN ATOMIC"
+],
+[
+"VALUES 2",
+"VALUES 2"
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "directive",
+"line": 1,
+"multi": false,
+"repeat": 1,
+"source_end": 20,
+"source_start": 0,
+"terminator": null,
+"text": "--#SET TERMINATOR @"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 2,
+"multi": false,
+"repeat": 1,
+"source_end": 69,
+"source_start": 20,
+"terminator": "@",
+"text": "BEGIN ATOMIC\n  DECLARE v INT;\n  SET v = 1;\nEND"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 7,
+"multi": false,
+"repeat": 1,
+"source_end": 79,
+"source_start": 69,
+"terminator": "@",
+"text": "VALUES 2"
+}
+],
+"strings": [
+"BEGIN ATOMIC\n  DECLARE v INT;\n  SET v = 1;\nEND",
+"VALUES 2"
+]
+}
+},
+{
+"name": "for_loop_under_at",
+"script": "--#SET TERMINATOR @\nBEGIN ATOMIC\n  DECLARE n INT DEFAULT 0;\n  FOR r AS SELECT 1 AS x FROM sysibm.sysdummy1 DO\n    SET n = n + r.x;\n  END FOR;\nEND@\n",
+"views": {
+"analysis": [
+"BEGIN ATOMIC\n  DECLARE n INT DEFAULT 0;\n  FOR r AS SELECT 1 AS x FROM sysibm.sysdummy1 DO\n    SET n = n + r.x;\n  END FOR;\nEND"
+],
+"executed": [
+"BEGIN ATOMIC\n  DECLARE n INT DEFAULT 0;\n  FOR r AS SELECT 1 AS x FROM sysibm.sysdummy1 DO\n    SET n = n + r.x;\n  END FOR;\nEND"
+],
+"masking": [
+[
+"--#SET TERMINATOR @",
+""
+],
+[
+"BEGIN ATOMIC\n  DECLARE n INT DEFAULT 0;\n  FOR r AS SELECT 1 AS x FROM sysibm.sysdummy1 DO\n    SET n = n + r.x;\n  END FOR;\nEND",
+"BEGIN ATOMIC"
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "directive",
+"line": 1,
+"multi": false,
+"repeat": 1,
+"source_end": 20,
+"source_start": 0,
+"terminator": null,
+"text": "--#SET TERMINATOR @"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 2,
+"multi": false,
+"repeat": 1,
+"source_end": 147,
+"source_start": 20,
+"terminator": "@",
+"text": "BEGIN ATOMIC\n  DECLARE n INT DEFAULT 0;\n  FOR r AS SELECT 1 AS x FROM sysibm.sysdummy1 DO\n    SET n = n + r.x;\n  END FOR;\nEND"
+}
+],
+"strings": [
+"BEGIN ATOMIC\n  DECLARE n INT DEFAULT 0;\n  FOR r AS SELECT 1 AS x FROM sysibm.sysdummy1 DO\n    SET n = n + r.x;\n  END FOR;\nEND"
+]
+}
+},
+{
+"name": "package_body_is",
+"script": "CREATE OR REPLACE PACKAGE BODY pk1 AS\nPROCEDURE proc1(x INT) IS\nBEGIN\n  INSERT INTO t VALUES (x);\nEND proc1;\nEND pk1;\nVALUES 1;\n",
+"views": {
+"analysis": [
+"CREATE OR REPLACE PACKAGE BODY pk1 AS\nPROCEDURE proc1(x INT) IS\nBEGIN\n  INSERT INTO t VALUES (x);\nEND proc1;\nEND pk1",
+"VALUES 1"
+],
+"executed": [
+"CREATE OR REPLACE PACKAGE BODY pk1 AS\nPROCEDURE proc1(x INT) IS\nBEGIN\n  INSERT INTO t VALUES (x);\nEND proc1;\nEND pk1",
+"VALUES 1"
+],
+"masking": [
+[
+"CREATE OR REPLACE PACKAGE BODY pk1 AS\nPROCEDURE proc1(x INT) IS\nBEGIN\n  INSERT INTO t VALUES (x);\nEND proc1;\nEND pk1",
+"CREATE OR REPLACE PACKAGE BODY pk1"
+],
+[
+"VALUES 1",
+"VALUES 1"
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 1,
+"multi": false,
+"repeat": 1,
+"source_end": 118,
+"source_start": 0,
+"terminator": ";",
+"text": "CREATE OR REPLACE PACKAGE BODY pk1 AS\nPROCEDURE proc1(x INT) IS\nBEGIN\n  INSERT INTO t VALUES (x);\nEND proc1;\nEND pk1"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 7,
+"multi": false,
+"repeat": 1,
+"source_end": 128,
+"source_start": 118,
+"terminator": ";",
+"text": "VALUES 1"
+}
+],
+"strings": [
+"CREATE OR REPLACE PACKAGE BODY pk1 AS\nPROCEDURE proc1(x INT) IS\nBEGIN\n  INSERT INTO t VALUES (x);\nEND proc1;\nEND pk1",
+"VALUES 1"
+]
+}
+},
+{
+"name": "alter_module_add",
+"script": "ALTER MODULE m ADD PROCEDURE p()\nBEGIN\n  SET x = 1;\nEND;\nVALUES 1;\n",
+"views": {
+"analysis": [
+"ALTER MODULE m ADD PROCEDURE p()\nBEGIN\n  SET x = 1;\nEND",
+"VALUES 1"
+],
+"executed": [
+"ALTER MODULE m ADD PROCEDURE p()\nBEGIN\n  SET x = 1;\nEND",
+"VALUES 1"
+],
+"masking": [
+[
+"ALTER MODULE m ADD PROCEDURE p()\nBEGIN\n  SET x = 1;\nEND",
+"ALTER MODULE"
+],
+[
+"VALUES 1",
+"VALUES 1"
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 1,
+"multi": false,
+"repeat": 1,
+"source_end": 57,
+"source_start": 0,
+"terminator": ";",
+"text": "ALTER MODULE m ADD PROCEDURE p()\nBEGIN\n  SET x = 1;\nEND"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 5,
+"multi": false,
+"repeat": 1,
+"source_end": 67,
+"source_start": 57,
+"terminator": ";",
+"text": "VALUES 1"
+}
+],
+"strings": [
+"ALTER MODULE m ADD PROCEDURE p()\nBEGIN\n  SET x = 1;\nEND",
+"VALUES 1"
+]
+}
+},
+{
+"name": "trigger_begin_atomic",
+"script": "CREATE TRIGGER tr AFTER INSERT ON t\nFOR EACH ROW\nBEGIN ATOMIC\n  UPDATE u SET a = 1;\n  UPDATE u SET a = 2;\nEND;\nVALUES 1;\n",
+"views": {
+"analysis": [
+"CREATE TRIGGER tr AFTER INSERT ON t\nFOR EACH ROW\nBEGIN ATOMIC\n  UPDATE u SET a = 1;\n  UPDATE u SET a = 2;\nEND",
+"VALUES 1"
+],
+"executed": [
+"CREATE TRIGGER tr AFTER INSERT ON t\nFOR EACH ROW\nBEGIN ATOMIC\n  UPDATE u SET a = 1;\n  UPDATE u SET a = 2;\nEND",
+"VALUES 1"
+],
+"masking": [
+[
+"CREATE TRIGGER tr AFTER INSERT ON t\nFOR EACH ROW\nBEGIN ATOMIC\n  UPDATE u SET a = 1;\n  UPDATE u SET a = 2;\nEND",
+"CREATE TRIGGER tr"
+],
+[
+"VALUES 1",
+"VALUES 1"
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 1,
+"multi": false,
+"repeat": 1,
+"source_end": 111,
+"source_start": 0,
+"terminator": ";",
+"text": "CREATE TRIGGER tr AFTER INSERT ON t\nFOR EACH ROW\nBEGIN ATOMIC\n  UPDATE u SET a = 1;\n  UPDATE u SET a = 2;\nEND"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 7,
+"multi": false,
+"repeat": 1,
+"source_end": 121,
+"source_start": 111,
+"terminator": ";",
+"text": "VALUES 1"
+}
+],
+"strings": [
+"CREATE TRIGGER tr AFTER INSERT ON t\nFOR EACH ROW\nBEGIN ATOMIC\n  UPDATE u SET a = 1;\n  UPDATE u SET a = 2;\nEND",
+"VALUES 1"
+]
+}
+},
+{
+"name": "unclosed_comment_before_body",
+"script": "CREATE PROCEDURE p()\nBEGIN\n  /* open\n",
+"views": {
+"error": [
+"UnsafeStatementSplitError",
+"the block comment opened on line 3 is not closed before the end of the script: the statements inside it would be dropped"
+]
+}
+},
+{
+"name": "bom",
+"script": "\ufeffVALUES 1;\nVALUES 2;\n",
+"views": {
+"analysis": [
+"VALUES 1",
+"VALUES 2"
+],
+"executed": [
+"VALUES 1",
+"VALUES 2"
+],
+"masking": [
+[
+"VALUES 1",
+"VALUES 1"
+],
+[
+"VALUES 2",
+"VALUES 2"
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 1,
+"multi": false,
+"repeat": 1,
+"source_end": 11,
+"source_start": 1,
+"terminator": ";",
+"text": "VALUES 1"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 2,
+"multi": false,
+"repeat": 1,
+"source_end": 21,
+"source_start": 11,
+"terminator": ";",
+"text": "VALUES 2"
+}
+],
+"strings": [
+"VALUES 1",
+"VALUES 2"
+]
+}
+},
+{
+"name": "bom_crlf",
+"script": "\ufeffVALUES 1;\r\nVALUES 2;\r\n",
+"views": {
+"analysis": [
+"VALUES 1",
+"VALUES 2"
+],
+"executed": [
+"VALUES 1",
+"VALUES 2"
+],
+"masking": [
+[
+"VALUES 1",
+"VALUES 1"
+],
+[
+"VALUES 2",
+"VALUES 2"
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 1,
+"multi": false,
+"repeat": 1,
+"source_end": 12,
+"source_start": 1,
+"terminator": ";",
+"text": "VALUES 1"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 2,
+"multi": false,
+"repeat": 1,
+"source_end": 23,
+"source_start": 12,
+"terminator": ";",
+"text": "VALUES 2"
+}
+],
+"strings": [
+"VALUES 1",
+"VALUES 2"
+]
+}
+},
+{
+"name": "crlf",
+"script": "VALUES 1;\r\nVALUES\r\n 2;\r\n",
+"views": {
+"analysis": [
+"VALUES 1",
+"VALUES\r\n 2"
+],
+"executed": [
+"VALUES 1",
+"VALUES\r\n 2"
+],
+"masking": [
+[
+"VALUES 1",
+"VALUES 1"
+],
+[
+"VALUES\r\n 2",
+"VALUES 2"
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 1,
+"multi": false,
+"repeat": 1,
+"source_end": 11,
+"source_start": 0,
+"terminator": ";",
+"text": "VALUES 1"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 2,
+"multi": false,
+"repeat": 1,
+"source_end": 24,
+"source_start": 11,
+"terminator": ";",
+"text": "VALUES\r\n 2"
+}
+],
+"strings": [
+"VALUES 1",
+"VALUES\r\n 2"
+]
+}
+},
+{
+"name": "crlf_directive",
+"script": "--#SET TERMINATOR @\r\nVALUES 1\r\n+ 1@\r\nVALUES 3@\r\n",
+"views": {
+"analysis": [
+"VALUES 1\r\n+ 1",
+"VALUES 3"
+],
+"executed": [
+"VALUES 1\r\n+ 1",
+"VALUES 3"
+],
+"masking": [
+[
+"--#SET TERMINATOR @",
+""
+],
+[
+"VALUES 1\r\n+ 1",
+"VALUES 1"
+],
+[
+"VALUES 3",
+"VALUES 3"
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "directive",
+"line": 1,
+"multi": false,
+"repeat": 1,
+"source_end": 21,
+"source_start": 0,
+"terminator": null,
+"text": "--#SET TERMINATOR @"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 2,
+"multi": false,
+"repeat": 1,
+"source_end": 37,
+"source_start": 21,
+"terminator": "@",
+"text": "VALUES 1\r\n+ 1"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 4,
+"multi": false,
+"repeat": 1,
+"source_end": 48,
+"source_start": 37,
+"terminator": "@",
+"text": "VALUES 3"
+}
+],
+"strings": [
+"VALUES 1\r\n+ 1",
+"VALUES 3"
+]
+}
+},
+{
+"name": "form_feed_first_line",
+"script": "\f\nVALUES 1;\n",
+"views": {
+"analysis": [
+"VALUES 1"
+],
+"executed": [
+"VALUES 1"
+],
+"masking": [
+[
+"VALUES 1",
+"VALUES 1"
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 2,
+"multi": false,
+"repeat": 1,
+"source_end": 12,
+"source_start": 0,
+"terminator": ";",
+"text": "VALUES 1"
+}
+],
+"strings": [
+"VALUES 1"
+]
+}
+},
+{
+"name": "u2028_edge",
+"script": "VALUES 1\u2028\n;\n",
+"views": {
+"analysis": [
+"VALUES 1"
+],
+"executed": [
+"VALUES 1"
+],
+"masking": [
+[
+"VALUES 1",
+"VALUES 1"
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 1,
+"multi": false,
+"repeat": 1,
+"source_end": 12,
+"source_start": 0,
+"terminator": ";",
+"text": "VALUES 1"
+}
+],
+"strings": [
+"VALUES 1"
+]
+}
+},
+{
+"name": "directive_mid_statement",
+"script": "VALUES 1,\n--#SET TERMINATOR @\n2@\nVALUES 3@\n",
+"views": {
+"analysis": [
+"VALUES 1,\n2",
+"VALUES 3"
+],
+"executed": [
+"VALUES 1,\n2",
+"VALUES 3"
+],
+"masking": [
+[
+"--#SET TERMINATOR @",
+""
+],
+[
+"VALUES 1,\n2",
+"VALUES 1"
+],
+[
+"VALUES 3",
+"VALUES 3"
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "directive",
+"line": 2,
+"multi": false,
+"repeat": 1,
+"source_end": 30,
+"source_start": 10,
+"terminator": null,
+"text": "--#SET TERMINATOR @"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 1,
+"multi": false,
+"repeat": 1,
+"source_end": 33,
+"source_start": 0,
+"terminator": "@",
+"text": "VALUES 1,\n2"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 4,
+"multi": false,
+"repeat": 1,
+"source_end": 43,
+"source_start": 33,
+"terminator": "@",
+"text": "VALUES 3"
+}
+],
+"strings": [
+"VALUES 1,\n2",
+"VALUES 3"
+]
+}
+},
+{
+"name": "epilogue",
+"script": "VALUES 1;\nCONNECT RESET;\nTERMINATE;\n",
+"views": {
+"analysis": [
+"VALUES 1"
+],
+"executed": [
+"VALUES 1"
+],
+"masking": [
+[
+"VALUES 1",
+"VALUES 1"
+],
+[
+"CONNECT RESET",
+"CONNECT RESET"
+],
+[
+"TERMINATE",
+"TERMINATE"
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 1,
+"multi": false,
+"repeat": 1,
+"source_end": 10,
+"source_start": 0,
+"terminator": ";",
+"text": "VALUES 1"
+},
+{
+"analysis_statements": null,
+"kind": "directive",
+"line": 2,
+"multi": false,
+"repeat": 1,
+"source_end": 25,
+"source_start": 10,
+"terminator": ";",
+"text": "CONNECT RESET"
+},
+{
+"analysis_statements": null,
+"kind": "directive",
+"line": 3,
+"multi": false,
+"repeat": 1,
+"source_end": 36,
+"source_start": 25,
+"terminator": ";",
+"text": "TERMINATE"
+}
+],
+"strings": [
+"VALUES 1"
+]
+}
+},
+{
+"name": "semicolon_comment",
+"script": "VALUES 1; -- c\nVALUES 2; /* d */\nVALUES 3;\n",
+"views": {
+"analysis": [
+"VALUES 1",
+"VALUES 2",
+"VALUES 3"
+],
+"executed": [
+"VALUES 1",
+"VALUES 2",
+"VALUES 3"
+],
+"masking": [
+[
+"VALUES 1",
+"VALUES 1"
+],
+[
+"VALUES 2",
+"VALUES 2"
+],
+[
+"VALUES 3",
+"VALUES 3"
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 1,
+"multi": false,
+"repeat": 1,
+"source_end": 15,
+"source_start": 0,
+"terminator": ";",
+"text": "VALUES 1"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 2,
+"multi": false,
+"repeat": 1,
+"source_end": 33,
+"source_start": 15,
+"terminator": ";",
+"text": "VALUES 2"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 3,
+"multi": false,
+"repeat": 1,
+"source_end": 43,
+"source_start": 33,
+"terminator": ";",
+"text": "VALUES 3"
+}
+],
+"strings": [
+"VALUES 1",
+"VALUES 2",
+"VALUES 3"
+]
+}
+},
+{
+"name": "two_character_terminator",
+"script": "--#SET TERMINATOR %%\nVALUES 1%%\nVALUES 2 %% \n",
+"views": {
+"analysis": [
+"VALUES 1",
+"VALUES 2"
+],
+"executed": [
+"VALUES 1",
+"VALUES 2"
+],
+"masking": [
+[
+"--#SET TERMINATOR %%",
+""
+],
+[
+"VALUES 1",
+"VALUES 1"
+],
+[
+"VALUES 2",
+"VALUES 2"
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "directive",
+"line": 1,
+"multi": false,
+"repeat": 1,
+"source_end": 21,
+"source_start": 0,
+"terminator": null,
+"text": "--#SET TERMINATOR %%"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 2,
+"multi": false,
+"repeat": 1,
+"source_end": 32,
+"source_start": 21,
+"terminator": "%%",
+"text": "VALUES 1"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 3,
+"multi": false,
+"repeat": 1,
+"source_end": 45,
+"source_start": 32,
+"terminator": "%%",
+"text": "VALUES 2"
+}
+],
+"strings": [
+"VALUES 1",
+"VALUES 2"
+]
+}
+},
+{
+"name": "vt_stray_line",
+"script": "VALUES 1;\u000b\nVALUES 2;\n",
+"views": {
+"error": [
+"UnsafeStatementSplitError",
+"line 2 has code after a ';' in the middle of a line: the CLP sends it whole and the server rejects it, and the ibm_db driver runs only the text before the ';'; put each statement on its own line, ended by the terminator, or declare another terminator with --#SET TERMINATOR"
+]
+}
+},
+{
+"name": "ff_stray_line",
+"script": "VALUES 1;\f\nVALUES 2;\n",
+"views": {
+"error": [
+"UnsafeStatementSplitError",
+"line 2 has code after a ';' in the middle of a line: the CLP sends it whole and the server rejects it, and the ibm_db driver runs only the text before the ';'; put each statement on its own line, ended by the terminator, or declare another terminator with --#SET TERMINATOR"
+]
+}
+},
+{
+"name": "nbsp_stray_line",
+"script": "VALUES 1;\u00a0\nVALUES 2;\n",
+"views": {
+"error": [
+"UnsafeStatementSplitError",
+"line 2 has code after a ';' in the middle of a line: the CLP sends it whole and the server rejects it, and the ibm_db driver runs only the text before the ';'; put each statement on its own line, ended by the terminator, or declare another terminator with --#SET TERMINATOR"
+]
+}
+},
+{
+"name": "u2028_stray_line",
+"script": "VALUES 1;\u2028\nVALUES 2;\n",
+"views": {
+"error": [
+"UnsafeStatementSplitError",
+"line 2 has code after a ';' in the middle of a line: the CLP sends it whole and the server rejects it, and the ibm_db driver runs only the text before the ';'; put each statement on its own line, ended by the terminator, or declare another terminator with --#SET TERMINATOR"
+]
+}
+},
+{
+"name": "placeholder",
+"script": "VALUES ${a;b};\n",
+"views": {
+"error": [
+"UnsafeStatementSplitError",
+"line 1 has code after a ';' in the middle of a line: the CLP sends it whole and the server rejects it, and the ibm_db driver runs only the text before the ';'; put each statement on its own line, ended by the terminator, or declare another terminator with --#SET TERMINATOR"
+]
+}
+},
+{
+"name": "quote_terminator",
+"script": "--#SET TERMINATOR '\nSELECT 1 FROM sysibm.sysdummy1'\nVALUES 'a'''\nVALUES 3'\n",
+"views": {
+"error": [
+"UnsafeStatementSplitError",
+"line 3 ends with \"'\" inside a string or a quoted identifier: the CLP cuts the statement there and the server rejects both halves; close the literal before the end of the line"
+]
+}
+},
+{
+"name": "row18_string",
+"script": "INSERT INTO t VALUES ('a;\nb');",
+"views": {
+"error": [
+"UnsafeStatementSplitError",
+"line 1 ends with ';' inside a string or a quoted identifier: the CLP cuts the statement there and the server rejects both halves; close the literal before the end of the line"
+]
+}
+},
+{
+"name": "row48_directive_in_string",
+"script": "INSERT INTO t VALUES ('x\n--#SET TERMINATOR @\ny')@",
+"views": {
+"error": [
+"UnsafeStatementSplitError",
+"--#SET TERMINATOR on line 2 stands inside a string, a quoted identifier or a comment: the CLP honours it there and cuts the statement; close it first"
+]
+}
+},
+{
+"name": "row49_directive_in_comment",
+"script": "/*\n--#SET TERMINATOR @\n*/ SELECT 1 FROM sysibm.sysdummy1@",
+"views": {
+"error": [
+"UnsafeStatementSplitError",
+"--#SET TERMINATOR on line 2 stands inside a string, a quoted identifier or a comment: the CLP honours it there and cuts the statement; close it first"
+]
+}
+},
+{
+"name": "indented_directive_in_string",
+"script": "VALUES 'x\n  --#SET TERMINATOR @\nz'@\nVALUES 2@\n",
+"views": {
+"error": [
+"UnsafeStatementSplitError",
+"--#SET TERMINATOR on line 2 stands inside a string, a quoted identifier or a comment: the CLP honours it there and cuts the statement; close it first"
+]
+}
+},
+{
+"name": "unclosed_block_comment",
+"script": "VALUES 1 /* a\nb\n",
+"views": {
+"error": [
+"UnsafeStatementSplitError",
+"the block comment opened on line 1 is not closed before the end of the script: the statements inside it would be dropped"
+]
+}
+},
+{
+"name": "string_open_at_eof_accepted",
+"script": "VALUES 'open",
+"views": {
+"analysis": [
+"VALUES 'open"
+],
+"executed": [
+"VALUES 'open"
+],
+"masking": [
+[
+"VALUES",
+"VALUES"
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 1,
+"multi": false,
+"repeat": 1,
+"source_end": 12,
+"source_start": 0,
+"terminator": null,
+"text": "VALUES 'open"
+}
+],
+"strings": [
+"VALUES 'open"
+]
+}
+},
+{
+"name": "terminator_in_nested_comment_kept",
+"script": "/* a /* b;\n*/ c;\n*/ VALUES 1;\n",
+"views": {
+"analysis": [
+"/* a /* b;\n*/ c;\n*/ VALUES 1"
+],
+"executed": [
+"/* a /* b;\n*/ c;\n*/ VALUES 1"
+],
+"masking": [
+[
+"/* a /* b;\n*/ c;\n*/ VALUES 1",
+"VALUES 1"
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 1,
+"multi": false,
+"repeat": 1,
+"source_end": 30,
+"source_start": 0,
+"terminator": ";",
+"text": "/* a /* b;\n*/ c;\n*/ VALUES 1"
+}
+],
+"strings": [
+"/* a /* b;\n*/ c;\n*/ VALUES 1"
+]
+}
+},
+{
+"name": "trailing_comment",
+"script": "--#SET TERMINATOR @ -- c\nVALUES 1;\n",
+"views": {
+"error": [
+"UnsafeStatementSplitError",
+"malformed --#SET TERMINATOR directive on line 1: expected one or two characters after the keyword, separated from it by blanks"
+]
+}
+},
+{
+"name": "no_value",
+"script": "--#SET TERMINATOR\nVALUES 1;\n",
+"views": {
+"error": [
+"UnsafeStatementSplitError",
+"malformed --#SET TERMINATOR directive on line 1: expected one or two characters after the keyword, separated from it by blanks"
+]
+}
+},
+{
+"name": "three_characters",
+"script": "--#SET TERMINATOR abc\nVALUES 1;\n",
+"views": {
+"error": [
+"UnsafeStatementSplitError",
+"malformed --#SET TERMINATOR directive on line 1: expected one or two characters after the keyword, separated from it by blanks"
+]
+}
+},
+{
+"name": "two_blocks",
+"script": "VALUES 1; /* c */ /* d */\nVALUES 2;\n",
+"views": {
+"analysis": [
+"VALUES 1",
+"VALUES 2"
+],
+"executed": [
+"VALUES 1",
+"VALUES 2"
+],
+"masking": [
+[
+"VALUES 1",
+"VALUES 1"
+],
+[
+"VALUES 2",
+"VALUES 2"
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 1,
+"multi": false,
+"repeat": 1,
+"source_end": 26,
+"source_start": 0,
+"terminator": ";",
+"text": "VALUES 1"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 2,
+"multi": false,
+"repeat": 1,
+"source_end": 36,
+"source_start": 26,
+"terminator": ";",
+"text": "VALUES 2"
+}
+],
+"strings": [
+"VALUES 1",
+"VALUES 2"
+]
+}
+},
+{
+"name": "under_at_is_not_an_ending",
+"script": "--#SET TERMINATOR @\nVALUES 1; -- c\n@\nVALUES 2@\n",
+"views": {
+"analysis": [
+"VALUES 1; -- c",
+"VALUES 2"
+],
+"executed": [
+"VALUES 1; -- c",
+"VALUES 2"
+],
+"masking": [
+[
+"--#SET TERMINATOR @",
+""
+],
+[
+"VALUES 1; -- c",
+"VALUES 1"
+],
+[
+"VALUES 2",
+"VALUES 2"
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "directive",
+"line": 1,
+"multi": false,
+"repeat": 1,
+"source_end": 20,
+"source_start": 0,
+"terminator": null,
+"text": "--#SET TERMINATOR @"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 2,
+"multi": false,
+"repeat": 1,
+"source_end": 37,
+"source_start": 20,
+"terminator": "@",
+"text": "VALUES 1; -- c"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 4,
+"multi": false,
+"repeat": 1,
+"source_end": 47,
+"source_start": 37,
+"terminator": "@",
+"text": "VALUES 2"
+}
+],
+"strings": [
+"VALUES 1; -- c",
+"VALUES 2"
+]
+}
+},
+{
+"name": "epilogue_between_sql",
+"script": "VALUES 1;\nCONNECT RESET;\nVALUES 2;\n",
+"views": {
+"error": [
+"UnsupportedMetaCommandError",
+"CLP command CONNECT on line 2: dblift does not run client commands"
+]
+}
+},
+{
+"name": "epilogue_first_only",
+"script": "TERMINATE;\n",
+"views": {
+"analysis": [],
+"executed": [],
+"masking": [
+[
+"TERMINATE",
+"TERMINATE"
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "directive",
+"line": 1,
+"multi": false,
+"repeat": 1,
+"source_end": 11,
+"source_start": 0,
+"terminator": ";",
+"text": "TERMINATE"
+}
+],
+"strings": []
+}
+},
+{
+"name": "bang",
+"script": "!echo shell;\n",
+"views": {
+"error": [
+"UnsupportedMetaCommandError",
+"CLP command '!' on line 1: dblift does not run client commands"
+]
+}
+},
+{
+"name": "question",
+"script": "? sql0104;\n",
+"views": {
+"error": [
+"UnsupportedMetaCommandError",
+"CLP command '?' on line 1: dblift does not run client commands"
+]
+}
+},
+{
+"name": "lower_case",
+"script": "connect to sample;\n",
+"views": {
+"error": [
+"UnsupportedMetaCommandError",
+"CLP command CONNECT on line 1: dblift does not run client commands"
+]
+}
+},
+{
+"name": "epilogue_terminate_lower",
+"script": "VALUES 1;\nterminate;\n",
+"views": {
+"analysis": [
+"VALUES 1"
+],
+"executed": [
+"VALUES 1"
+],
+"masking": [
+[
+"VALUES 1",
+"VALUES 1"
+],
+[
+"terminate",
+"terminate"
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 1,
+"multi": false,
+"repeat": 1,
+"source_end": 10,
+"source_start": 0,
+"terminator": ";",
+"text": "VALUES 1"
+},
+{
+"analysis_statements": null,
+"kind": "directive",
+"line": 2,
+"multi": false,
+"repeat": 1,
+"source_end": 21,
+"source_start": 10,
+"terminator": ";",
+"text": "terminate"
+}
+],
+"strings": [
+"VALUES 1"
+]
+}
+},
+{
+"name": "get_diagnostics_is_sql",
+"script": "GET DIAGNOSTICS x = ROW_COUNT;\n",
+"views": {
+"analysis": [
+"GET DIAGNOSTICS x = ROW_COUNT"
+],
+"executed": [
+"GET DIAGNOSTICS x = ROW_COUNT"
+],
+"masking": [
+[
+"GET DIAGNOSTICS x = ROW_COUNT",
+"GET DIAGNOSTICS"
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 1,
+"multi": false,
+"repeat": 1,
+"source_end": 31,
+"source_start": 0,
+"terminator": ";",
+"text": "GET DIAGNOSTICS x = ROW_COUNT"
+}
+],
+"strings": [
+"GET DIAGNOSTICS x = ROW_COUNT"
+]
+}
+},
+{
+"name": "command_word+stray",
+"script": "REORG TABLE t;\nVALUES 1; VALUES 2;\n",
+"views": {
+"error": [
+"UnsupportedMetaCommandError",
+"CLP command REORG on line 1: dblift does not run client commands"
+]
+}
+},
+{
+"name": "epilogue_before_sql+unclosed_comment",
+"script": "QUIT;\nVALUES 1;\nVALUES 1 /* open\n",
+"views": {
+"error": [
+"UnsafeStatementSplitError",
+"the block comment opened on line 3 is not closed before the end of the script: the statements inside it would be dropped"
+]
+}
+},
+{
+"name": "unclosed_comment+epilogue_before_sql",
+"script": "VALUES 1 /* open\nQUIT;\nVALUES 1;\n",
+"views": {
+"error": [
+"UnsafeStatementSplitError",
+"the block comment opened on line 1 is not closed before the end of the script: the statements inside it would be dropped"
+]
+}
+},
+{
+"name": "UPDATE COMMAND OPTIONS",
+"script": "UPDATE COMMAND OPTIONS x;\nVALUES 1;\n",
+"views": {
+"error": [
+"UnsupportedMetaCommandError",
+"CLP command UPDATE on line 1: dblift does not run client commands"
+]
+}
+},
+{
+"name": "REORG",
+"script": "REORG foo;\n",
+"views": {
+"error": [
+"UnsupportedMetaCommandError",
+"CLP command REORG on line 1: dblift does not run client commands"
+]
+}
+},
+{
+"name": "REORGCHK",
+"script": "REORGCHK foo;\n",
+"views": {
+"error": [
+"UnsupportedMetaCommandError",
+"CLP command REORGCHK on line 1: dblift does not run client commands"
+]
+}
+},
+{
+"name": "A_two_strays_first_line_named",
+"script": "VALUES 1; VALUES 2;\n  VALUES 3; VALUES 4;\n",
+"views": {
+"error": [
+"UnsafeStatementSplitError",
+"line 1 has code after a ';' in the middle of a line: the CLP sends it whole and the server rejects it, and the ibm_db driver runs only the text before the ';'; put each statement on its own line, ended by the terminator, or declare another terminator with --#SET TERMINATOR"
+]
+}
+},
+{
+"name": "A_stray_on_later_line",
+"script": "VALUES 1\n, 2; VALUES 3\n, 4; VALUES 5;\n",
+"views": {
+"error": [
+"UnsafeStatementSplitError",
+"line 2 has code after a ';' in the middle of a line: the CLP sends it whole and the server rejects it, and the ibm_db driver runs only the text before the ';'; put each statement on its own line, ended by the terminator, or declare another terminator with --#SET TERMINATOR"
+]
+}
+},
+{
+"name": "A_stray_after_semicolon_next_line",
+"script": "VALUES 1;\n;\nVALUES 2;\n",
+"views": {
+"analysis": [
+"VALUES 1",
+"VALUES 2"
+],
+"executed": [
+"VALUES 1",
+"VALUES 2"
+],
+"masking": [
+[
+"VALUES 1",
+"VALUES 1"
+],
+[
+"VALUES 2",
+"VALUES 2"
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 1,
+"multi": false,
+"repeat": 1,
+"source_end": 10,
+"source_start": 0,
+"terminator": ";",
+"text": "VALUES 1"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 3,
+"multi": false,
+"repeat": 1,
+"source_end": 22,
+"source_start": 12,
+"terminator": ";",
+"text": "VALUES 2"
+}
+],
+"strings": [
+"VALUES 1",
+"VALUES 2"
+]
+}
+},
+{
+"name": "A_stray_across_lines",
+"script": "VALUES (1); /* c\n*/ VALUES 2;\n",
+"views": {
+"error": [
+"UnsafeStatementSplitError",
+"line 2 has code after a ';' in the middle of a line: the CLP sends it whole and the server rejects it, and the ibm_db driver runs only the text before the ';'; put each statement on its own line, ended by the terminator, or declare another terminator with --#SET TERMINATOR"
+]
+}
+},
+{
+"name": "B_comment_opened_inside_comment",
+"script": "VALUES 1 /* a\n*/ /* b\n",
+"views": {
+"error": [
+"UnsafeStatementSplitError",
+"the block comment opened on line 1 is not closed before the end of the script: the statements inside it would be dropped"
+]
+}
+},
+{
+"name": "B_second_comment_on_later_line",
+"script": "VALUES 1\n/* a\n*/ x\n/* b\n",
+"views": {
+"error": [
+"UnsafeStatementSplitError",
+"the block comment opened on line 4 is not closed before the end of the script: the statements inside it would be dropped"
+]
+}
+},
+{
+"name": "B_comment_opens_after_closed",
+"script": "VALUES 1 /* a */ /* b\n",
+"views": {
+"error": [
+"UnsafeStatementSplitError",
+"the block comment opened on line 1 is not closed before the end of the script: the statements inside it would be dropped"
+]
+}
+},
+{
+"name": "C_block_comment_cut",
+"script": "VALUES 1 /* a\nb */\n-- c\n",
+"views": {
+"analysis": [
+"VALUES 1 /* a\nb */"
+],
+"executed": [
+"VALUES 1 /* a\nb */"
+],
+"masking": [
+[
+"VALUES 1 /* a\nb */",
+"VALUES 1"
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 1,
+"multi": false,
+"repeat": 1,
+"source_end": 24,
+"source_start": 0,
+"terminator": null,
+"text": "VALUES 1 /* a\nb */"
+}
+],
+"strings": [
+"VALUES 1 /* a\nb */"
+]
+}
+},
+{
+"name": "C_select_comment",
+"script": "SELECT 1 /* x;\n y */",
+"views": {
+"analysis": [
+"SELECT 1 /* x;\n y */"
+],
+"executed": [
+"SELECT 1 /* x;\n y */"
+],
+"masking": [
+[
+"SELECT 1 /* x;\n y */",
+"SELECT 1"
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 1,
+"multi": false,
+"repeat": 1,
+"source_end": 20,
+"source_start": 0,
+"terminator": null,
+"text": "SELECT 1 /* x;\n y */"
+}
+],
+"strings": [
+"SELECT 1 /* x;\n y */"
+]
+}
+},
+{
+"name": "C_comment_after_code",
+"script": "VALUES 1 -- c\n-- d\n",
+"views": {
+"analysis": [
+"VALUES 1 -- c"
+],
+"executed": [
+"VALUES 1 -- c"
+],
+"masking": [
+[
+"VALUES 1 -- c",
+"VALUES 1"
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 1,
+"multi": false,
+"repeat": 1,
+"source_end": 19,
+"source_start": 0,
+"terminator": null,
+"text": "VALUES 1 -- c"
+}
+],
+"strings": [
+"VALUES 1 -- c"
+]
+}
+},
+{
+"name": "C_block_after_code_closed_later",
+"script": "VALUES 1 /* a\n-- b\nc */\n-- d\n",
+"views": {
+"analysis": [
+"VALUES 1 /* a\n-- b\nc */"
+],
+"executed": [
+"VALUES 1 /* a\n-- b\nc */"
+],
+"masking": [
+[
+"VALUES 1 /* a\n-- b\nc */",
+"VALUES 1"
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 1,
+"multi": false,
+"repeat": 1,
+"source_end": 29,
+"source_start": 0,
+"terminator": null,
+"text": "VALUES 1 /* a\n-- b\nc */"
+}
+],
+"strings": [
+"VALUES 1 /* a\n-- b\nc */"
+]
+}
+},
+{
+"name": "C_block_before_code",
+"script": "/* a\nb */ VALUES 1\n-- c\n",
+"views": {
+"analysis": [
+"/* a\nb */ VALUES 1"
+],
+"executed": [
+"/* a\nb */ VALUES 1"
+],
+"masking": [
+[
+"/* a\nb */ VALUES 1",
+"VALUES 1"
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 1,
+"multi": false,
+"repeat": 1,
+"source_end": 24,
+"source_start": 0,
+"terminator": null,
+"text": "/* a\nb */ VALUES 1"
+}
+],
+"strings": [
+"/* a\nb */ VALUES 1"
+]
+}
+},
+{
+"name": "C_string_across_lines",
+"script": "VALUES 'a\n-- b\nc'\n-- d\n",
+"views": {
+"analysis": [
+"VALUES 'a\n-- b\nc'"
+],
+"executed": [
+"VALUES 'a\n-- b\nc'"
+],
+"masking": [
+[
+"VALUES '?'",
+"VALUES"
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 1,
+"multi": false,
+"repeat": 1,
+"source_end": 23,
+"source_start": 0,
+"terminator": null,
+"text": "VALUES 'a\n-- b\nc'"
+}
+],
+"strings": [
+"VALUES 'a\n-- b\nc'"
+]
+}
+},
+{
+"name": "C_comment_only_statement_head",
+"script": "/* a */\nVALUES 1\n",
+"views": {
+"analysis": [
+"/* a */\nVALUES 1"
+],
+"executed": [
+"/* a */\nVALUES 1"
+],
+"masking": [
+[
+"/* a */\nVALUES 1",
+"VALUES 1"
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 1,
+"multi": false,
+"repeat": 1,
+"source_end": 17,
+"source_start": 0,
+"terminator": null,
+"text": "/* a */\nVALUES 1"
+}
+],
+"strings": [
+"/* a */\nVALUES 1"
+]
+}
+},
+{
+"name": "unclosed_body",
+"script": "CREATE PROCEDURE p()\nBEGIN\n  SET x = 1;\n",
+"views": {
+"error": [
+"UnsafeStatementSplitError",
+"the routine body starting on line 1 is not closed before the end of the script"
+]
+}
+},
+{
+"name": "row12",
+"script": "SELECT 1 FROM sysibm.sysdummy1; SELECT 2 FROM sysibm.sysdummy1;",
+"views": {
+"error": [
+"UnsafeStatementSplitError",
+"line 1 has code after a ';' in the middle of a line: the CLP sends it whole and the server rejects it, and the ibm_db driver runs only the text before the ';'; put each statement on its own line, ended by the terminator, or declare another terminator with --#SET TERMINATOR"
+]
+}
+},
+{
+"name": "row13",
+"script": "CREATE TABLE t (id INT); -- trailing\nSELECT 1 FROM sysibm.sysdummy1;",
+"views": {
+"analysis": [
+"CREATE TABLE t (id INT)",
+"SELECT 1 FROM sysibm.sysdummy1"
+],
+"executed": [
+"CREATE TABLE t (id INT)",
+"SELECT 1 FROM sysibm.sysdummy1"
+],
+"masking": [
+[
+"CREATE TABLE t (id INT)",
+"CREATE TABLE t"
+],
+[
+"SELECT 1 FROM sysibm.sysdummy1",
+"SELECT 1"
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 1,
+"multi": false,
+"repeat": 1,
+"source_end": 37,
+"source_start": 0,
+"terminator": ";",
+"text": "CREATE TABLE t (id INT)"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 2,
+"multi": false,
+"repeat": 1,
+"source_end": 68,
+"source_start": 37,
+"terminator": ";",
+"text": "SELECT 1 FROM sysibm.sysdummy1"
+}
+],
+"strings": [
+"CREATE TABLE t (id INT)",
+"SELECT 1 FROM sysibm.sysdummy1"
+]
+}
+},
+{
+"name": "epilogue_after_vt_line_under_dash_terminator",
+"script": "--#SET TERMINATOR %%\r\n\r\nCREATE TYPE pt AS (x INT) MODE DB2SQL%%\r\n  --#SET TERMINATOR -\r\n-- comment line;\r\n\u000b TERMINATE--\r\n",
+"views": {
+"error": [
+"UnsafeStatementSplitError",
+"TERMINATE on line 6 is not alone on its line: the CLP joins it with what follows and the server rejects the text; end it with the terminator"
+]
+}
+},
+{
+"name": "semicolon_after_at_terminator_with_procedure_and_line_separator",
+"script": "--#SET TERMINATOR @; \nCREATE OR REPLACE PROCEDURE p(IN a INT)\nLANGUAGE \u00a0 SQL\nBEGIN ATOMIC\n  CASE x WHEN 0 THEN SET x = 1; ELSE SET x = 2; END CASE;\n  INSERT INTO t VALUES ('END;');\nEND@;\u2028\nECHO hello; --c;\n",
+"views": {
+"error": [
+"UnsafeStatementSplitError",
+"the routine body starting on line 2 is not closed before the end of the script"
+]
+}
+},
+{
+"name": "epilogue_with_open_quoted_identifier_at_end",
+"script": "QUIT \"",
+"views": {
+"error": [
+"UnsafeStatementSplitError",
+"QUIT on line 1 is not alone on its line: the CLP joins it with what follows and the server rejects the text; end it with the terminator"
+]
+}
+},
+{
+"name": "command_between_comment_opener_terminator_lines",
+"script": "--#SET TERMINATOR /* \nLIST TABLES\n/*/*\n",
+"views": {
+"error": [
+"UnsafeStatementSplitError",
+"the block comment opened on line 3 is not closed before the end of the script: the statements inside it would be dropped"
+]
+}
+},
+{
+"name": "row27",
+"script": "CREATE TABLE t (id INT);\n/* c */;\nSELECT 1 FROM sysibm.sysdummy1;",
+"views": {
+"analysis": [
+"CREATE TABLE t (id INT)",
+"SELECT 1 FROM sysibm.sysdummy1"
+],
+"executed": [
+"CREATE TABLE t (id INT)",
+"SELECT 1 FROM sysibm.sysdummy1"
+],
+"masking": [
+[
+"CREATE TABLE t (id INT)",
+"CREATE TABLE t"
+],
+[
+"SELECT 1 FROM sysibm.sysdummy1",
+"SELECT 1"
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 1,
+"multi": false,
+"repeat": 1,
+"source_end": 25,
+"source_start": 0,
+"terminator": ";",
+"text": "CREATE TABLE t (id INT)"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 3,
+"multi": false,
+"repeat": 1,
+"source_end": 65,
+"source_start": 34,
+"terminator": ";",
+"text": "SELECT 1 FROM sysibm.sysdummy1"
+}
+],
+"strings": [
+"CREATE TABLE t (id INT)",
+"SELECT 1 FROM sysibm.sysdummy1"
+]
+}
+},
+{
+"name": "row37",
+"script": "CREATE PROCEDURE p()\nBEGIN\n  DECLARE i INT DEFAULT 0;\n  WHILE i < 3 DO\n    SET i = i + 1;\n  END WHILE;\n  IF i = 3 THEN\n    SET i = 0;\n  END IF;\n  CASE i WHEN 0 THEN SET i = 1; ELSE SET i = 2; END CASE;\n  SET i = CASE WHEN i = 1 THEN 1 ELSE 2 END;\nEND;\nSELECT 1 FROM sysibm.sysdummy1;",
+"views": {
+"analysis": [
+"CREATE PROCEDURE p()\nBEGIN\n  DECLARE i INT DEFAULT 0;\n  WHILE i < 3 DO\n    SET i = i + 1;\n  END WHILE;\n  IF i = 3 THEN\n    SET i = 0;\n  END IF;\n  CASE i WHEN 0 THEN SET i = 1; ELSE SET i = 2; END CASE;\n  SET i = CASE WHEN i = 1 THEN 1 ELSE 2 END;\nEND",
+"SELECT 1 FROM sysibm.sysdummy1"
+],
+"executed": [
+"CREATE PROCEDURE p()\nBEGIN\n  DECLARE i INT DEFAULT 0;\n  WHILE i < 3 DO\n    SET i = i + 1;\n  END WHILE;\n  IF i = 3 THEN\n    SET i = 0;\n  END IF;\n  CASE i WHEN 0 THEN SET i = 1; ELSE SET i = 2; END CASE;\n  SET i = CASE WHEN i = 1 THEN 1 ELSE 2 END;\nEND",
+"SELECT 1 FROM sysibm.sysdummy1"
+],
+"masking": [
+[
+"CREATE PROCEDURE p()\nBEGIN\n  DECLARE i INT DEFAULT 0;\n  WHILE i < 3 DO\n    SET i = i + 1;\n  END WHILE;\n  IF i = 3 THEN\n    SET i = 0;\n  END IF;\n  CASE i WHEN 0 THEN SET i = 1; ELSE SET i = 2; END CASE;\n  SET i = CASE WHEN i = 1 THEN 1 ELSE 2 END;\nEND",
+"CREATE PROCEDURE p"
+],
+[
+"SELECT 1 FROM sysibm.sysdummy1",
+"SELECT 1"
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 1,
+"multi": false,
+"repeat": 1,
+"source_end": 252,
+"source_start": 0,
+"terminator": ";",
+"text": "CREATE PROCEDURE p()\nBEGIN\n  DECLARE i INT DEFAULT 0;\n  WHILE i < 3 DO\n    SET i = i + 1;\n  END WHILE;\n  IF i = 3 THEN\n    SET i = 0;\n  END IF;\n  CASE i WHEN 0 THEN SET i = 1; ELSE SET i = 2; END CASE;\n  SET i = CASE WHEN i = 1 THEN 1 ELSE 2 END;\nEND"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 13,
+"multi": false,
+"repeat": 1,
+"source_end": 283,
+"source_start": 252,
+"terminator": ";",
+"text": "SELECT 1 FROM sysibm.sysdummy1"
+}
+],
+"strings": [
+"CREATE PROCEDURE p()\nBEGIN\n  DECLARE i INT DEFAULT 0;\n  WHILE i < 3 DO\n    SET i = i + 1;\n  END WHILE;\n  IF i = 3 THEN\n    SET i = 0;\n  END IF;\n  CASE i WHEN 0 THEN SET i = 1; ELSE SET i = 2; END CASE;\n  SET i = CASE WHEN i = 1 THEN 1 ELSE 2 END;\nEND",
+"SELECT 1 FROM sysibm.sysdummy1"
+]
+}
+},
+{
+"name": "end_case_statement",
+"script": "BEGIN\n  CASE x WHEN 0 THEN SET x = 1; ELSE SET x = 2; END CASE;\nEND;\nVALUES 1;\n",
+"views": {
+"analysis": [
+"BEGIN\n  CASE x WHEN 0 THEN SET x = 1; ELSE SET x = 2; END CASE;\nEND",
+"VALUES 1"
+],
+"executed": [
+"BEGIN\n  CASE x WHEN 0 THEN SET x = 1; ELSE SET x = 2; END CASE;\nEND",
+"VALUES 1"
+],
+"masking": [
+[
+"BEGIN\n  CASE x WHEN 0 THEN SET x = 1; ELSE SET x = 2; END CASE;\nEND",
+"BEGIN CASE"
+],
+[
+"VALUES 1",
+"VALUES 1"
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 1,
+"multi": false,
+"repeat": 1,
+"source_end": 69,
+"source_start": 0,
+"terminator": ";",
+"text": "BEGIN\n  CASE x WHEN 0 THEN SET x = 1; ELSE SET x = 2; END CASE;\nEND"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 4,
+"multi": false,
+"repeat": 1,
+"source_end": 79,
+"source_start": 69,
+"terminator": ";",
+"text": "VALUES 1"
+}
+],
+"strings": [
+"BEGIN\n  CASE x WHEN 0 THEN SET x = 1; ELSE SET x = 2; END CASE;\nEND",
+"VALUES 1"
+]
+}
+},
+{
+"name": "bom_directive",
+"script": "\ufeff--#SET TERMINATOR @\nVALUES 1@\n",
+"views": {
+"analysis": [
+"VALUES 1"
+],
+"executed": [
+"VALUES 1"
+],
+"masking": [
+[
+"--#SET TERMINATOR @",
+""
+],
+[
+"VALUES 1",
+"VALUES 1"
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "directive",
+"line": 1,
+"multi": false,
+"repeat": 1,
+"source_end": 21,
+"source_start": 1,
+"terminator": null,
+"text": "--#SET TERMINATOR @"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 2,
+"multi": false,
+"repeat": 1,
+"source_end": 31,
+"source_start": 21,
+"terminator": "@",
+"text": "VALUES 1"
+}
+],
+"strings": [
+"VALUES 1"
+]
+}
+},
+{
+"name": "command_and_stray_semicolon_in_one_statement",
+"script": "REORG TABLE t; VALUES 1;",
+"views": {
+"error": [
+"UnsupportedMetaCommandError",
+"CLP command REORG on line 1: dblift does not run client commands"
+]
+}
+},
+{
+"name": "lone_carriage_return_in_the_middle_of_a_line",
+"script": "VALUES 1\rVALUES 2;\n",
+"views": {
+"analysis": [
+"VALUES 1\rVALUES 2"
+],
+"executed": [
+"VALUES 1\rVALUES 2"
+],
+"masking": [
+[
+"VALUES 1\rVALUES 2",
+"VALUES 1"
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 1,
+"multi": false,
+"repeat": 1,
+"source_end": 19,
+"source_start": 0,
+"terminator": ";",
+"text": "VALUES 1\rVALUES 2"
+}
+],
+"strings": [
+"VALUES 1\rVALUES 2"
+]
+}
+},
+{
+"name": "double_quote_terminator",
+"script": "--#SET TERMINATOR \"\nVALUES 1\"\nVALUES 2\"\n",
+"views": {
+"analysis": [
+"VALUES 1",
+"VALUES 2"
+],
+"executed": [
+"VALUES 1",
+"VALUES 2"
+],
+"masking": [
+[
+"--#SET TERMINATOR \"",
+""
+],
+[
+"VALUES 1",
+"VALUES 1"
+],
+[
+"VALUES 2",
+"VALUES 2"
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "directive",
+"line": 1,
+"multi": false,
+"repeat": 1,
+"source_end": 20,
+"source_start": 0,
+"terminator": null,
+"text": "--#SET TERMINATOR \""
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 2,
+"multi": false,
+"repeat": 1,
+"source_end": 30,
+"source_start": 20,
+"terminator": "\"",
+"text": "VALUES 1"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 3,
+"multi": false,
+"repeat": 1,
+"source_end": 40,
+"source_start": 30,
+"terminator": "\"",
+"text": "VALUES 2"
+}
+],
+"strings": [
+"VALUES 1",
+"VALUES 2"
+]
+}
+},
+{
+"name": "comment_block_line_between_statements",
+"script": "CREATE TABLE t (id INT);\n(=\nCREATE TABLE u (id INT);\n=)\nCREATE TABLE v (id INT);",
+"views": {
+"error": [
+"UnsupportedMetaCommandError",
+"CLP comment block '(=' on line 2: the CLP skips it, dblift does not run CLP input syntax"
+]
+}
+},
+{
+"name": "doubled_quote_inside_a_quoted_identifier",
+"script": "CREATE TABLE \"a\"\"b\" (id INT);\nSELECT \"c\"\";\" FROM t;\n",
+"views": {
+"analysis": [
+"CREATE TABLE \"a\"\"b\" (id INT)",
+"SELECT \"c\"\";\" FROM t"
+],
+"executed": [
+"CREATE TABLE \"a\"\"b\" (id INT)",
+"SELECT \"c\"\";\" FROM t"
+],
+"masking": [
+[
+"CREATE TABLE \"a\"\"b\" (id INT)",
+"CREATE TABLE \"a\"\"b\""
+],
+[
+"SELECT \"c\"\";\" FROM t",
+"SELECT \"c\"\""
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 1,
+"multi": false,
+"repeat": 1,
+"source_end": 30,
+"source_start": 0,
+"terminator": ";",
+"text": "CREATE TABLE \"a\"\"b\" (id INT)"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 2,
+"multi": false,
+"repeat": 1,
+"source_end": 52,
+"source_start": 30,
+"terminator": ";",
+"text": "SELECT \"c\"\";\" FROM t"
+}
+],
+"strings": [
+"CREATE TABLE \"a\"\"b\" (id INT)",
+"SELECT \"c\"\";\" FROM t"
+]
+}
+},
+{
+"name": "code_after_a_closed_body_on_the_same_line",
+"script": "CREATE PROCEDURE p() BEGIN END; SELECT 1 FROM sysibm.sysdummy1;",
+"views": {
+"error": [
+"UnsafeStatementSplitError",
+"line 1 has code after a ';' in the middle of a line: the CLP sends it whole and the server rejects it, and the ibm_db driver runs only the text before the ';'; put each statement on its own line, ended by the terminator, or declare another terminator with --#SET TERMINATOR"
+]
+}
+},
+{
+"name": "directive_text_after_code_is_not_a_directive",
+"script": "SELECT 1 FROM sysibm.sysdummy1 --#SET TERMINATOR @\n;\nVALUES 2;\n",
+"views": {
+"analysis": [
+"SELECT 1 FROM sysibm.sysdummy1 --#SET TERMINATOR @",
+"VALUES 2"
+],
+"executed": [
+"SELECT 1 FROM sysibm.sysdummy1 --#SET TERMINATOR @",
+"VALUES 2"
+],
+"masking": [
+[
+"SELECT 1 FROM sysibm.sysdummy1 --#SET TERMINATOR @",
+"SELECT 1"
+],
+[
+"VALUES 2",
+"VALUES 2"
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 1,
+"multi": false,
+"repeat": 1,
+"source_end": 53,
+"source_start": 0,
+"terminator": ";",
+"text": "SELECT 1 FROM sysibm.sysdummy1 --#SET TERMINATOR @"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 3,
+"multi": false,
+"repeat": 1,
+"source_end": 63,
+"source_start": 53,
+"terminator": ";",
+"text": "VALUES 2"
+}
+],
+"strings": [
+"SELECT 1 FROM sysibm.sysdummy1 --#SET TERMINATOR @",
+"VALUES 2"
+]
+}
+},
+{
+"name": "directive_text_in_a_comment_line_is_not_a_directive",
+"script": "-- x --#SET TERMINATOR @\nVALUES 1;\n",
+"views": {
+"analysis": [
+"VALUES 1"
+],
+"executed": [
+"VALUES 1"
+],
+"masking": [
+[
+"VALUES 1",
+"VALUES 1"
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 2,
+"multi": false,
+"repeat": 1,
+"source_end": 35,
+"source_start": 25,
+"terminator": ";",
+"text": "VALUES 1"
+}
+],
+"strings": [
+"VALUES 1"
+]
+}
+},
+{
+"name": "generated_script_with_procedure_under_at_terminator",
+"script": "-- Generated: 2026-10-17T00:16:56.174316\n-- Total statements: 3\n\n-- ========================================\n-- CREATE OBJECTS\n-- ========================================\n\n-- CREATE TABLE: x\nCREATE TABLE \"t\" (\n    \"id\" INTEGER,\n    \"c\" VARCHAR(20)\n);\n\n\n--#SET TERMINATOR @\n-- CREATE PROCEDURE: x\nCREATE PROCEDURE \"p0\"\nBEGIN\n  DECLARE x INT;\n  SET x = 1;\n  INSERT INTO t VALUES (x, 'a;b');\nEND@\n--#SET TERMINATOR ;\n\n\n-- CREATE VIEW: x\nCREATE VIEW \"v1\" AS\nSELECT id\nFROM t\nWHERE c = 'a;b';\n",
+"views": {
+"analysis": [
+"CREATE TABLE \"t\" (\n    \"id\" INTEGER,\n    \"c\" VARCHAR(20)\n)",
+"CREATE PROCEDURE \"p0\"\nBEGIN\n  DECLARE x INT;\n  SET x = 1;\n  INSERT INTO t VALUES (x, 'a;b');\nEND",
+"CREATE VIEW \"v1\" AS\nSELECT id\nFROM t\nWHERE c = 'a;b'"
+],
+"executed": [
+"CREATE TABLE \"t\" (\n    \"id\" INTEGER,\n    \"c\" VARCHAR(20)\n)",
+"CREATE PROCEDURE \"p0\"\nBEGIN\n  DECLARE x INT;\n  SET x = 1;\n  INSERT INTO t VALUES (x, 'a;b');\nEND",
+"CREATE VIEW \"v1\" AS\nSELECT id\nFROM t\nWHERE c = 'a;b'"
+],
+"masking": [
+[
+"CREATE TABLE \"t\" (\n    \"id\" INTEGER,\n    \"c\" VARCHAR(20)\n)",
+"CREATE TABLE \"t\""
+],
+[
+"--#SET TERMINATOR @",
+""
+],
+[
+"CREATE PROCEDURE \"p0\"\nBEGIN\n  DECLARE x INT;\n  SET x = 1;\n  INSERT INTO t VALUES (x, '?');\nEND",
+"CREATE PROCEDURE \"p0\""
+],
+[
+"--#SET TERMINATOR ;",
+""
+],
+[
+"CREATE VIEW \"v1\" AS\nSELECT id\nFROM t\nWHERE c = '?'",
+"CREATE VIEW \"v1\""
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 9,
+"multi": false,
+"repeat": 1,
+"source_end": 251,
+"source_start": 191,
+"terminator": ";",
+"text": "CREATE TABLE \"t\" (\n    \"id\" INTEGER,\n    \"c\" VARCHAR(20)\n)"
+},
+{
+"analysis_statements": null,
+"kind": "directive",
+"line": 15,
+"multi": false,
+"repeat": 1,
+"source_end": 273,
+"source_start": 253,
+"terminator": null,
+"text": "--#SET TERMINATOR @"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 17,
+"multi": false,
+"repeat": 1,
+"source_end": 394,
+"source_start": 296,
+"terminator": "@",
+"text": "CREATE PROCEDURE \"p0\"\nBEGIN\n  DECLARE x INT;\n  SET x = 1;\n  INSERT INTO t VALUES (x, 'a;b');\nEND"
+},
+{
+"analysis_statements": null,
+"kind": "directive",
+"line": 23,
+"multi": false,
+"repeat": 1,
+"source_end": 414,
+"source_start": 394,
+"terminator": null,
+"text": "--#SET TERMINATOR ;"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 27,
+"multi": false,
+"repeat": 1,
+"source_end": 488,
+"source_start": 434,
+"terminator": ";",
+"text": "CREATE VIEW \"v1\" AS\nSELECT id\nFROM t\nWHERE c = 'a;b'"
+}
+],
+"strings": [
+"CREATE TABLE \"t\" (\n    \"id\" INTEGER,\n    \"c\" VARCHAR(20)\n)",
+"CREATE PROCEDURE \"p0\"\nBEGIN\n  DECLARE x INT;\n  SET x = 1;\n  INSERT INTO t VALUES (x, 'a;b');\nEND",
+"CREATE VIEW \"v1\" AS\nSELECT id\nFROM t\nWHERE c = 'a;b'"
+]
+}
+},
+{
+"name": "generated_script_with_at_character_literal",
+"script": "-- Generated: 2026-10-17T00:16:56.191828\n-- Total statements: 3\n\n-- ========================================\n-- CREATE OBJECTS\n-- ========================================\n\n-- CREATE TABLE: x\nCREATE TABLE \"t\" (\n    \"id\" INTEGER,\n    \"c\" VARCHAR(20)\n);\n\n\n--#SET TERMINATOR #\n-- CREATE PROCEDURE: x\nCREATE PROCEDURE \"p4\"\nBEGIN\n  DECLARE c CHAR(1) DEFAULT '@';\n  SET c = '@';\nEND#\n--#SET TERMINATOR ;\n\n\n-- CREATE VIEW: x\nCREATE VIEW \"v1\" AS\nSELECT id\nFROM t\nWHERE c = 'a;b';\n",
+"views": {
+"analysis": [
+"CREATE TABLE \"t\" (\n    \"id\" INTEGER,\n    \"c\" VARCHAR(20)\n)",
+"CREATE PROCEDURE \"p4\"\nBEGIN\n  DECLARE c CHAR(1) DEFAULT '@';\n  SET c = '@';\nEND",
+"CREATE VIEW \"v1\" AS\nSELECT id\nFROM t\nWHERE c = 'a;b'"
+],
+"executed": [
+"CREATE TABLE \"t\" (\n    \"id\" INTEGER,\n    \"c\" VARCHAR(20)\n)",
+"CREATE PROCEDURE \"p4\"\nBEGIN\n  DECLARE c CHAR(1) DEFAULT '@';\n  SET c = '@';\nEND",
+"CREATE VIEW \"v1\" AS\nSELECT id\nFROM t\nWHERE c = 'a;b'"
+],
+"masking": [
+[
+"CREATE TABLE \"t\" (\n    \"id\" INTEGER,\n    \"c\" VARCHAR(20)\n)",
+"CREATE TABLE \"t\""
+],
+[
+"--#SET TERMINATOR #",
+""
+],
+[
+"CREATE PROCEDURE \"p4\"\nBEGIN\n  DECLARE c CHAR(1) DEFAULT '?';\n  SET c = '?';\nEND",
+"CREATE PROCEDURE \"p4\""
+],
+[
+"--#SET TERMINATOR ;",
+""
+],
+[
+"CREATE VIEW \"v1\" AS\nSELECT id\nFROM t\nWHERE c = '?'",
+"CREATE VIEW \"v1\""
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 9,
+"multi": false,
+"repeat": 1,
+"source_end": 251,
+"source_start": 191,
+"terminator": ";",
+"text": "CREATE TABLE \"t\" (\n    \"id\" INTEGER,\n    \"c\" VARCHAR(20)\n)"
+},
+{
+"analysis_statements": null,
+"kind": "directive",
+"line": 15,
+"multi": false,
+"repeat": 1,
+"source_end": 273,
+"source_start": 253,
+"terminator": null,
+"text": "--#SET TERMINATOR #"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 17,
+"multi": false,
+"repeat": 1,
+"source_end": 377,
+"source_start": 296,
+"terminator": "#",
+"text": "CREATE PROCEDURE \"p4\"\nBEGIN\n  DECLARE c CHAR(1) DEFAULT '@';\n  SET c = '@';\nEND"
+},
+{
+"analysis_statements": null,
+"kind": "directive",
+"line": 22,
+"multi": false,
+"repeat": 1,
+"source_end": 397,
+"source_start": 377,
+"terminator": null,
+"text": "--#SET TERMINATOR ;"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 26,
+"multi": false,
+"repeat": 1,
+"source_end": 471,
+"source_start": 417,
+"terminator": ";",
+"text": "CREATE VIEW \"v1\" AS\nSELECT id\nFROM t\nWHERE c = 'a;b'"
+}
+],
+"strings": [
+"CREATE TABLE \"t\" (\n    \"id\" INTEGER,\n    \"c\" VARCHAR(20)\n)",
+"CREATE PROCEDURE \"p4\"\nBEGIN\n  DECLARE c CHAR(1) DEFAULT '@';\n  SET c = '@';\nEND",
+"CREATE VIEW \"v1\" AS\nSELECT id\nFROM t\nWHERE c = 'a;b'"
+]
+}
+},
+{
+"name": "generated_script_with_labelled_compound_body",
+"script": "-- Generated: 2026-10-17T00:16:56.192556\n-- Total statements: 3\n\n-- ========================================\n-- CREATE OBJECTS\n-- ========================================\n\n-- CREATE TABLE: x\nCREATE TABLE \"t\" (\n    \"id\" INTEGER,\n    \"c\" VARCHAR(20)\n);\n\n\n--#SET TERMINATOR @\n-- CREATE PROCEDURE: x\nCREATE PROCEDURE \"p7\"\nBEGIN\n  lab: BEGIN\n    SET x = 1;\n  END lab;\nEND@\n--#SET TERMINATOR ;\n\n\n-- CREATE VIEW: x\nCREATE VIEW \"v1\" AS\nSELECT id\nFROM t\nWHERE c = 'a;b';\n",
+"views": {
+"analysis": [
+"CREATE TABLE \"t\" (\n    \"id\" INTEGER,\n    \"c\" VARCHAR(20)\n)",
+"CREATE PROCEDURE \"p7\"\nBEGIN\n  lab: BEGIN\n    SET x = 1;\n  END lab;\nEND",
+"CREATE VIEW \"v1\" AS\nSELECT id\nFROM t\nWHERE c = 'a;b'"
+],
+"executed": [
+"CREATE TABLE \"t\" (\n    \"id\" INTEGER,\n    \"c\" VARCHAR(20)\n)",
+"CREATE PROCEDURE \"p7\"\nBEGIN\n  lab: BEGIN\n    SET x = 1;\n  END lab;\nEND",
+"CREATE VIEW \"v1\" AS\nSELECT id\nFROM t\nWHERE c = 'a;b'"
+],
+"masking": [
+[
+"CREATE TABLE \"t\" (\n    \"id\" INTEGER,\n    \"c\" VARCHAR(20)\n)",
+"CREATE TABLE \"t\""
+],
+[
+"--#SET TERMINATOR @",
+""
+],
+[
+"CREATE PROCEDURE \"p7\"\nBEGIN\n  lab: BEGIN\n    SET x = 1;\n  END lab;\nEND",
+"CREATE PROCEDURE \"p7\""
+],
+[
+"--#SET TERMINATOR ;",
+""
+],
+[
+"CREATE VIEW \"v1\" AS\nSELECT id\nFROM t\nWHERE c = '?'",
+"CREATE VIEW \"v1\""
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 9,
+"multi": false,
+"repeat": 1,
+"source_end": 251,
+"source_start": 191,
+"terminator": ";",
+"text": "CREATE TABLE \"t\" (\n    \"id\" INTEGER,\n    \"c\" VARCHAR(20)\n)"
+},
+{
+"analysis_statements": null,
+"kind": "directive",
+"line": 15,
+"multi": false,
+"repeat": 1,
+"source_end": 273,
+"source_start": 253,
+"terminator": null,
+"text": "--#SET TERMINATOR @"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 17,
+"multi": false,
+"repeat": 1,
+"source_end": 368,
+"source_start": 296,
+"terminator": "@",
+"text": "CREATE PROCEDURE \"p7\"\nBEGIN\n  lab: BEGIN\n    SET x = 1;\n  END lab;\nEND"
+},
+{
+"analysis_statements": null,
+"kind": "directive",
+"line": 23,
+"multi": false,
+"repeat": 1,
+"source_end": 388,
+"source_start": 368,
+"terminator": null,
+"text": "--#SET TERMINATOR ;"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 27,
+"multi": false,
+"repeat": 1,
+"source_end": 462,
+"source_start": 408,
+"terminator": ";",
+"text": "CREATE VIEW \"v1\" AS\nSELECT id\nFROM t\nWHERE c = 'a;b'"
+}
+],
+"strings": [
+"CREATE TABLE \"t\" (\n    \"id\" INTEGER,\n    \"c\" VARCHAR(20)\n)",
+"CREATE PROCEDURE \"p7\"\nBEGIN\n  lab: BEGIN\n    SET x = 1;\n  END lab;\nEND",
+"CREATE VIEW \"v1\" AS\nSELECT id\nFROM t\nWHERE c = 'a;b'"
+]
+}
+},
+{
+"name": "generated_script_with_terminator_character_in_string",
+"script": "-- Generated: 2026-10-17T00:16:56.192794\n-- Total statements: 3\n\n-- ========================================\n-- CREATE OBJECTS\n-- ========================================\n\n-- CREATE TABLE: x\nCREATE TABLE \"t\" (\n    \"id\" INTEGER,\n    \"c\" VARCHAR(20)\n);\n\n\n--#SET TERMINATOR #\n-- CREATE PROCEDURE: x\nCREATE PROCEDURE \"p8\"\nBEGIN\n  INSERT INTO t VALUES (1, 'x@\ny');\nEND#\n--#SET TERMINATOR ;\n\n\n-- CREATE VIEW: x\nCREATE VIEW \"v1\" AS\nSELECT id\nFROM t\nWHERE c = 'a;b';\n",
+"views": {
+"analysis": [
+"CREATE TABLE \"t\" (\n    \"id\" INTEGER,\n    \"c\" VARCHAR(20)\n)",
+"CREATE PROCEDURE \"p8\"\nBEGIN\n  INSERT INTO t VALUES (1, 'x@\ny');\nEND",
+"CREATE VIEW \"v1\" AS\nSELECT id\nFROM t\nWHERE c = 'a;b'"
+],
+"executed": [
+"CREATE TABLE \"t\" (\n    \"id\" INTEGER,\n    \"c\" VARCHAR(20)\n)",
+"CREATE PROCEDURE \"p8\"\nBEGIN\n  INSERT INTO t VALUES (1, 'x@\ny');\nEND",
+"CREATE VIEW \"v1\" AS\nSELECT id\nFROM t\nWHERE c = 'a;b'"
+],
+"masking": [
+[
+"CREATE TABLE \"t\" (\n    \"id\" INTEGER,\n    \"c\" VARCHAR(20)\n)",
+"CREATE TABLE \"t\""
+],
+[
+"--#SET TERMINATOR #",
+""
+],
+[
+"CREATE PROCEDURE \"p8\"\nBEGIN\n  INSERT INTO t VALUES (1, '?');\nEND",
+"CREATE PROCEDURE \"p8\""
+],
+[
+"--#SET TERMINATOR ;",
+""
+],
+[
+"CREATE VIEW \"v1\" AS\nSELECT id\nFROM t\nWHERE c = '?'",
+"CREATE VIEW \"v1\""
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 9,
+"multi": false,
+"repeat": 1,
+"source_end": 251,
+"source_start": 191,
+"terminator": ";",
+"text": "CREATE TABLE \"t\" (\n    \"id\" INTEGER,\n    \"c\" VARCHAR(20)\n)"
+},
+{
+"analysis_statements": null,
+"kind": "directive",
+"line": 15,
+"multi": false,
+"repeat": 1,
+"source_end": 273,
+"source_start": 253,
+"terminator": null,
+"text": "--#SET TERMINATOR #"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 17,
+"multi": false,
+"repeat": 1,
+"source_end": 365,
+"source_start": 296,
+"terminator": "#",
+"text": "CREATE PROCEDURE \"p8\"\nBEGIN\n  INSERT INTO t VALUES (1, 'x@\ny');\nEND"
+},
+{
+"analysis_statements": null,
+"kind": "directive",
+"line": 22,
+"multi": false,
+"repeat": 1,
+"source_end": 385,
+"source_start": 365,
+"terminator": null,
+"text": "--#SET TERMINATOR ;"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 26,
+"multi": false,
+"repeat": 1,
+"source_end": 459,
+"source_start": 405,
+"terminator": ";",
+"text": "CREATE VIEW \"v1\" AS\nSELECT id\nFROM t\nWHERE c = 'a;b'"
+}
+],
+"strings": [
+"CREATE TABLE \"t\" (\n    \"id\" INTEGER,\n    \"c\" VARCHAR(20)\n)",
+"CREATE PROCEDURE \"p8\"\nBEGIN\n  INSERT INTO t VALUES (1, 'x@\ny');\nEND",
+"CREATE VIEW \"v1\" AS\nSELECT id\nFROM t\nWHERE c = 'a;b'"
+]
+}
+},
+{
+"name": "overlap_slash_terminator_in_comment_ending_1",
+"script": "--#SET TERMINATOR /\nVALUES 1 /* a\nVALUES 1 //\nVALUES 9 */ */ *//\nVALUES 8/\n",
+"views": {
+"analysis": [
+"VALUES 1 /* a\nVALUES 1 //\nVALUES 9 */ */ */",
+"VALUES 8"
+],
+"executed": [
+"VALUES 1 /* a\nVALUES 1 //\nVALUES 9 */ */ */",
+"VALUES 8"
+],
+"masking": [
+[
+"--#SET TERMINATOR /",
+""
+],
+[
+"VALUES 1 /* a\nVALUES 1 //\nVALUES 9 */ */ */",
+"VALUES 1"
+],
+[
+"VALUES 8",
+"VALUES 8"
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "directive",
+"line": 1,
+"multi": false,
+"repeat": 1,
+"source_end": 20,
+"source_start": 0,
+"terminator": null,
+"text": "--#SET TERMINATOR /"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 2,
+"multi": false,
+"repeat": 1,
+"source_end": 65,
+"source_start": 20,
+"terminator": "/",
+"text": "VALUES 1 /* a\nVALUES 1 //\nVALUES 9 */ */ */"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 5,
+"multi": false,
+"repeat": 1,
+"source_end": 75,
+"source_start": 65,
+"terminator": "/",
+"text": "VALUES 8"
+}
+],
+"strings": [
+"VALUES 1 /* a\nVALUES 1 //\nVALUES 9 */ */ */",
+"VALUES 8"
+]
+}
+},
+{
+"name": "overlap_closer_terminator_in_nested_comment_ending_2",
+"script": "--#SET TERMINATOR */\nVALUES 1 /* a\n/* b\n*/ VALUES 1 /*/\nVALUES 9 */ */ */*/\nVALUES 8*/\n",
+"views": {
+"error": [
+"UnsafeStatementSplitError",
+"line 5 ends with '*/', which is also part of a comment delimiter: the CLP cuts the statement there, the splitter cannot tell the two readings apart; put the comment on a line of its own"
+]
+}
+},
+{
+"name": "overlap_opener_terminator_in_code_ending_3",
+"script": "--#SET TERMINATOR /*\nVALUES 1\nVALUES 1 -- x/*\nVALUES 9 */ */ *//*\nVALUES 8/*\n",
+"views": {
+"error": [
+"UnsafeStatementSplitError",
+"line 4 ends with '/*', which is also part of a comment delimiter: the CLP cuts the statement there, the splitter cannot tell the two readings apart; put the comment on a line of its own"
+]
+}
+},
+{
+"name": "overlap_dash_terminator_in_code_ending_4",
+"script": "--#SET TERMINATOR -\nVALUES 1\nVALUES 1 --\nVALUES 9 */ */ */-\nVALUES 8-\n",
+"views": {
+"analysis": [
+"VALUES 1\nVALUES 1 -",
+"VALUES 9 */ */ */",
+"VALUES 8"
+],
+"executed": [
+"VALUES 1\nVALUES 1 -",
+"VALUES 9 */ */ */",
+"VALUES 8"
+],
+"masking": [
+[
+"--#SET TERMINATOR -",
+""
+],
+[
+"VALUES 1\nVALUES 1 -",
+"VALUES 1"
+],
+[
+"VALUES 9 */ */ */",
+"VALUES 9"
+],
+[
+"VALUES 8",
+"VALUES 8"
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "directive",
+"line": 1,
+"multi": false,
+"repeat": 1,
+"source_end": 20,
+"source_start": 0,
+"terminator": null,
+"text": "--#SET TERMINATOR -"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 2,
+"multi": false,
+"repeat": 1,
+"source_end": 41,
+"source_start": 20,
+"terminator": "-",
+"text": "VALUES 1\nVALUES 1 -"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 4,
+"multi": false,
+"repeat": 1,
+"source_end": 60,
+"source_start": 41,
+"terminator": "-",
+"text": "VALUES 9 */ */ */"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 5,
+"multi": false,
+"repeat": 1,
+"source_end": 70,
+"source_start": 60,
+"terminator": "-",
+"text": "VALUES 8"
+}
+],
+"strings": [
+"VALUES 1\nVALUES 1 -",
+"VALUES 9 */ */ */",
+"VALUES 8"
+]
+}
+},
+{
+"name": "overlap_dashdash_terminator_after_line_comment_ending_5",
+"script": "--#SET TERMINATOR --\nVALUES 1 -- q \nVALUES 1--\nVALUES 9 */ */ */--\nVALUES 8--\n",
+"views": {
+"analysis": [
+"VALUES 1 -- q \nVALUES 1",
+"VALUES 9 */ */ */",
+"VALUES 8"
+],
+"executed": [
+"VALUES 1 -- q \nVALUES 1",
+"VALUES 9 */ */ */",
+"VALUES 8"
+],
+"masking": [
+[
+"--#SET TERMINATOR --",
+""
+],
+[
+"VALUES 1 -- q \nVALUES 1",
+"VALUES 1"
+],
+[
+"VALUES 9 */ */ */",
+"VALUES 9"
+],
+[
+"VALUES 8",
+"VALUES 8"
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "directive",
+"line": 1,
+"multi": false,
+"repeat": 1,
+"source_end": 21,
+"source_start": 0,
+"terminator": null,
+"text": "--#SET TERMINATOR --"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 2,
+"multi": false,
+"repeat": 1,
+"source_end": 47,
+"source_start": 21,
+"terminator": "--",
+"text": "VALUES 1 -- q \nVALUES 1"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 4,
+"multi": false,
+"repeat": 1,
+"source_end": 67,
+"source_start": 47,
+"terminator": "--",
+"text": "VALUES 9 */ */ */"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 5,
+"multi": false,
+"repeat": 1,
+"source_end": 78,
+"source_start": 67,
+"terminator": "--",
+"text": "VALUES 8"
+}
+],
+"strings": [
+"VALUES 1 -- q \nVALUES 1",
+"VALUES 9 */ */ */",
+"VALUES 8"
+]
+}
+},
+{
+"name": "overlap_quote_terminator_in_string_ending_6",
+"script": "--#SET TERMINATOR '\nVALUES 'q\nVALUES 1 /'\nVALUES 9 */ */ */'\nVALUES 8'\n",
+"views": {
+"error": [
+"UnsafeStatementSplitError",
+"line 3 ends with \"'\" inside a string or a quoted identifier: the CLP cuts the statement there and the server rejects both halves; close the literal before the end of the line"
+]
+}
+},
+{
+"name": "overlap_star_terminator_in_comment_ending_7",
+"script": "--#SET TERMINATOR *\nVALUES 1 /* a\nx */**\nVALUES 9 */ */ */*\nVALUES 8*\n",
+"views": {
+"error": [
+"UnsafeStatementSplitError",
+"line 4 ends with '*', which is also part of a comment delimiter: the CLP cuts the statement there, the splitter cannot tell the two readings apart; put the comment on a line of its own"
+]
+}
+},
+{
+"name": "overlap_at_terminator_in_comment_ending_8",
+"script": "--#SET TERMINATOR @\nVALUES 1 /* a\na /*@\nVALUES 9 */ */ */@\nVALUES 8@\n",
+"views": {
+"analysis": [
+"VALUES 1 /* a\na /*@\nVALUES 9 */ */ */",
+"VALUES 8"
+],
+"executed": [
+"VALUES 1 /* a\na /*@\nVALUES 9 */ */ */",
+"VALUES 8"
+],
+"masking": [
+[
+"--#SET TERMINATOR @",
+""
+],
+[
+"VALUES 1 /* a\na /*@\nVALUES 9 */ */ */",
+"VALUES 1"
+],
+[
+"VALUES 8",
+"VALUES 8"
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "directive",
+"line": 1,
+"multi": false,
+"repeat": 1,
+"source_end": 20,
+"source_start": 0,
+"terminator": null,
+"text": "--#SET TERMINATOR @"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 2,
+"multi": false,
+"repeat": 1,
+"source_end": 59,
+"source_start": 20,
+"terminator": "@",
+"text": "VALUES 1 /* a\na /*@\nVALUES 9 */ */ */"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 5,
+"multi": false,
+"repeat": 1,
+"source_end": 69,
+"source_start": 59,
+"terminator": "@",
+"text": "VALUES 8"
+}
+],
+"strings": [
+"VALUES 1 /* a\na /*@\nVALUES 9 */ */ */",
+"VALUES 8"
+]
+}
+},
+{
+"name": "overlap_slash_terminator_in_code_ending_9",
+"script": "--#SET TERMINATOR /\nVALUES 1\nVALUES 1 */\nVALUES 9 */ */ *//\nVALUES 8/\n",
+"views": {
+"analysis": [
+"VALUES 1\nVALUES 1 *",
+"VALUES 9 */ */ */",
+"VALUES 8"
+],
+"executed": [
+"VALUES 1\nVALUES 1 *",
+"VALUES 9 */ */ */",
+"VALUES 8"
+],
+"masking": [
+[
+"--#SET TERMINATOR /",
+""
+],
+[
+"VALUES 1\nVALUES 1 *",
+"VALUES 1"
+],
+[
+"VALUES 9 */ */ */",
+"VALUES 9"
+],
+[
+"VALUES 8",
+"VALUES 8"
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "directive",
+"line": 1,
+"multi": false,
+"repeat": 1,
+"source_end": 20,
+"source_start": 0,
+"terminator": null,
+"text": "--#SET TERMINATOR /"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 2,
+"multi": false,
+"repeat": 1,
+"source_end": 41,
+"source_start": 20,
+"terminator": "/",
+"text": "VALUES 1\nVALUES 1 *"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 4,
+"multi": false,
+"repeat": 1,
+"source_end": 60,
+"source_start": 41,
+"terminator": "/",
+"text": "VALUES 9 */ */ */"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 5,
+"multi": false,
+"repeat": 1,
+"source_end": 70,
+"source_start": 60,
+"terminator": "/",
+"text": "VALUES 8"
+}
+],
+"strings": [
+"VALUES 1\nVALUES 1 *",
+"VALUES 9 */ */ */",
+"VALUES 8"
+]
+}
+},
+{
+"name": "overlap_closer_terminator_in_comment_ending_10",
+"script": "--#SET TERMINATOR */\nVALUES 1 /* a\n/* */*/\nVALUES 9 */ */ */*/\nVALUES 8*/\n",
+"views": {
+"error": [
+"UnsafeStatementSplitError",
+"line 3 ends with '*/', which is also part of a comment delimiter: the CLP cuts the statement there, the splitter cannot tell the two readings apart; put the comment on a line of its own"
+]
+}
+},
+{
+"name": "overlap_star_terminator_in_code_ending_11",
+"script": "--#SET TERMINATOR *\nVALUES 1\nVALUES 1 /* c */*\nVALUES 9 */ */ */*\nVALUES 8*\n",
+"views": {
+"error": [
+"UnsafeStatementSplitError",
+"line 4 ends with '*', which is also part of a comment delimiter: the CLP cuts the statement there, the splitter cannot tell the two readings apart; put the comment on a line of its own"
+]
+}
+},
+{
+"name": "overlap_opener_terminator_in_comment_ending_12",
+"script": "--#SET TERMINATOR /*\nVALUES 1 /* a\nx /*//*\nVALUES 9 */ */ *//*\nVALUES 8/*\n",
+"views": {
+"error": [
+"UnsafeStatementSplitError",
+"line 4 ends with '/*', which is also part of a comment delimiter: the CLP cuts the statement there, the splitter cannot tell the two readings apart; put the comment on a line of its own"
+]
+}
+},
+{
+"name": "overlap_dash_terminator_in_nested_comment_ending_13",
+"script": "--#SET TERMINATOR -\nVALUES 1 /* a\n/* b\n-- c-\nVALUES 9 */ */ */-\nVALUES 8-\n",
+"views": {
+"analysis": [
+"VALUES 1 /* a\n/* b\n-- c-\nVALUES 9 */ */ */",
+"VALUES 8"
+],
+"executed": [
+"VALUES 1 /* a\n/* b\n-- c-\nVALUES 9 */ */ */",
+"VALUES 8"
+],
+"masking": [
+[
+"--#SET TERMINATOR -",
+""
+],
+[
+"VALUES 1 /* a\n/* b\n-- c-\nVALUES 9 */ */ */",
+"VALUES 1"
+],
+[
+"VALUES 8",
+"VALUES 8"
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "directive",
+"line": 1,
+"multi": false,
+"repeat": 1,
+"source_end": 20,
+"source_start": 0,
+"terminator": null,
+"text": "--#SET TERMINATOR -"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 2,
+"multi": false,
+"repeat": 1,
+"source_end": 64,
+"source_start": 20,
+"terminator": "-",
+"text": "VALUES 1 /* a\n/* b\n-- c-\nVALUES 9 */ */ */"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 6,
+"multi": false,
+"repeat": 1,
+"source_end": 74,
+"source_start": 64,
+"terminator": "-",
+"text": "VALUES 8"
+}
+],
+"strings": [
+"VALUES 1 /* a\n/* b\n-- c-\nVALUES 9 */ */ */",
+"VALUES 8"
+]
+}
+}
+]

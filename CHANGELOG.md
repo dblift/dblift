@@ -33,6 +33,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   machine, a 3 MiB script of `INSERT` statements went from 0.95 s and a 19 MB
   peak to 2.9 s and a 176 MB peak, and a 132-byte migration from 42 to 81
   microseconds.
+- **Db2 splitting moved onto the shared lexical engine.** Splitting, analysis and
+  extraction use the command line processor's rules (the end-of-line terminator,
+  `--#SET TERMINATOR`, the client command list, the routine-body rule) as
+  specification data. The same scripts give the same statements, records and
+  execution strings, and the same refusals (class, line and message).
+- **Literal masking, object extraction and comment stripping are unchanged for Db2.**
+  They keep reading Db2 text as before.
+- **Splitting a large Db2 script takes longer and uses more memory.** The time
+  stays linear in the length of the script (4 times the input takes 4.0 to 4.5
+  times the time, 4.0 to 4.2 before). Measured on one machine, a 3 MiB script of
+  `INSERT` statements went from 1.70 s and a 20 MB peak to 1.97 s and a 226 MB
+  peak; a 1 MiB multi-line string literal went from 0.39 s and 18 MB to 1.33 s
+  and 189 MB, and the peak of a 1 MiB routine body from 16 MB to 102 MB. A
+  77-byte migration went from about 44 to about 50 microseconds.
 
 ### Fixed
 
@@ -45,6 +59,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- **The internal module `dblift.db.plugins.db2.parser._script`.** Use
+  `DB2RegexParser().split()`.
 - `dblift.db.plugins.mysql.parser._script` (an internal module; use
   `MySqlRegexParser().split()`) and the `MARIADB` class attribute of the MySQL
   and MariaDB regex parsers.

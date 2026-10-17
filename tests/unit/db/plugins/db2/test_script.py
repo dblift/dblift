@@ -1,16 +1,20 @@
-"""The Db2 script scanner: the rules of docs/sql-parsing/db2.md sections 3 to 6, one test per claim."""
+"""Db2 script splitting: the rules of docs/sql-parsing/db2.md sections 3 to 6, one test per claim."""
 
 from __future__ import annotations
 
 import pytest
 
 from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
-from dblift.db.plugins.db2.parser._script import Unit, scan_script
+from dblift.core.sql_parser.statement import Statement
 from dblift.db.plugins.db2.parser.db2_regex_parser import DB2RegexParser
 
 
+def split(script: str) -> list[Statement]:
+    return DB2RegexParser().split(script)
+
+
 def texts(script: str) -> list[str]:
-    return [u.text for u in scan_script(script) if u.kind == "sql"]
+    return [u.text for u in split(script) if u.kind == "sql"]
 
 
 def test_a_statement_ends_at_a_line_whose_last_non_blank_characters_are_the_terminator() -> None:
@@ -24,7 +28,7 @@ def test_a_statement_ends_at_a_line_whose_last_non_blank_characters_are_the_term
 def test_a_cr_is_a_line_end_only_before_a_lf_and_a_lone_cr_is_text() -> None:
     assert texts("SELECT 1;\r\nSELECT 2;\r\n") == ["SELECT 1", "SELECT 2"]
     with pytest.raises(UnsafeStatementSplitError):  # one line: a ';' in the middle, then code
-        scan_script("SELECT 1;\rSELECT 2;\r")
+        split("SELECT 1;\rSELECT 2;\r")
     assert texts("SELECT 1;\r") == ["SELECT 1;"]  # the last line ends in CR, not in the terminator
 
 
@@ -32,7 +36,7 @@ def test_a_cr_is_a_line_end_only_before_a_lf_and_a_lone_cr_is_text() -> None:
 def test_a_no_break_space_or_a_form_feed_after_the_terminator_is_not_blank(blank: str) -> None:
     """The statement has not ended: it runs on to the next line and has a ';' in the middle."""
     with pytest.raises(UnsafeStatementSplitError):
-        scan_script(f"SELECT 1;{blank}\nSELECT 2;")
+        split(f"SELECT 1;{blank}\nSELECT 2;")
 
 
 def test_a_statement_keeps_the_line_ends_it_was_written_with() -> None:
@@ -59,10 +63,10 @@ def test_a_comment_after_a_semicolon_is_trivia_and_the_statement_ends_at_the_sem
     assert texts("SELECT 1; -- c\nSELECT 2;") == ["SELECT 1", "SELECT 2"]
     assert texts("SELECT 1; /* c */\nSELECT 2;") == ["SELECT 1", "SELECT 2"]
     assert texts("CREATE TABLE t (\n  id INT\n); -- done") == ["CREATE TABLE t (\n  id INT\n)"]
-    assert [u.line for u in scan_script("SELECT 1; -- c\nSELECT 2;") if u.kind == "sql"] == [1, 2]
+    assert [u.line for u in split("SELECT 1; -- c\nSELECT 2;") if u.kind == "sql"] == [1, 2]
     # the custom terminator keeps the old rule: a ';' with code after it, on any line, is refused
     with pytest.raises(UnsafeStatementSplitError):
-        scan_script("--#SET TERMINATOR @\nSELECT 1; -- c\nSELECT 2@")
+        split("--#SET TERMINATOR @\nSELECT 1; -- c\nSELECT 2@")
 
 
 @pytest.mark.parametrize(
@@ -73,7 +77,7 @@ def test_a_terminator_at_a_line_end_inside_a_string_or_a_quoted_identifier_is_re
     script: str,
 ) -> None:
     with pytest.raises(UnsafeStatementSplitError, match="inside a string"):
-        scan_script(script)
+        split(script)
 
 
 def test_a_terminator_at_a_line_end_inside_a_block_comment_does_not_cut() -> None:
@@ -112,12 +116,12 @@ def test_a_semicolon_that_cannot_cut_is_not_refused(script: str) -> None:
 )
 def test_code_after_a_semicolon_in_the_middle_of_a_statement_is_refused(script: str) -> None:
     with pytest.raises(UnsafeStatementSplitError, match="code after a ';'"):
-        scan_script(script)
+        split(script)
 
 
 def test_the_semicolon_check_follows_a_custom_terminator_too() -> None:
     with pytest.raises(UnsafeStatementSplitError):
-        scan_script("--#SET TERMINATOR @\nSELECT 1; SELECT 2@")
+        split("--#SET TERMINATOR @\nSELECT 1; SELECT 2@")
     assert texts("--#SET TERMINATOR @\nSELECT 1;@") == ["SELECT 1;"]
 
 
@@ -125,7 +129,7 @@ def test_the_semicolon_check_follows_a_custom_terminator_too() -> None:
 
 
 def test_the_directive_changes_the_terminator_until_the_next_one() -> None:
-    units = scan_script("--#SET TERMINATOR @\nSELECT 1@\n--#SET TERMINATOR ;\nSELECT 2;")
+    units = split("--#SET TERMINATOR @\nSELECT 1@\n--#SET TERMINATOR ;\nSELECT 2;")
     assert [(u.kind, u.text, u.terminator) for u in units] == [
         ("directive", "--#SET TERMINATOR @", None),
         ("sql", "SELECT 1", "@"),
@@ -179,7 +183,7 @@ def test_what_is_not_the_directive_is_a_comment(line: str) -> None:
 )
 def test_a_malformed_directive_is_refused_with_its_line(line: str) -> None:
     with pytest.raises(UnsafeStatementSplitError, match="line 2"):
-        scan_script(f"SELECT 0;\n{line}\nSELECT 1;")
+        split(f"SELECT 0;\n{line}\nSELECT 1;")
 
 
 def test_the_directive_is_read_in_the_middle_of_a_statement() -> None:
@@ -198,7 +202,7 @@ def test_a_directive_inside_a_string_a_quoted_identifier_or_a_comment_is_refused
     script: str,
 ) -> None:
     with pytest.raises(UnsafeStatementSplitError, match="line 2 stands inside"):
-        scan_script(script)
+        split(script)
 
 
 def test_a_directive_after_code_on_its_line_is_not_a_directive() -> None:
@@ -215,7 +219,7 @@ def test_other_set_lines_are_comments() -> None:
 
 
 def test_a_last_statement_without_a_terminator_is_returned_with_no_terminator() -> None:
-    units = scan_script("SELECT 1;\nSELECT 2")
+    units = split("SELECT 1;\nSELECT 2")
     assert [(u.text, u.terminator) for u in units] == [("SELECT 1", ";"), ("SELECT 2", None)]
 
 
@@ -236,12 +240,12 @@ def test_a_block_comment_that_is_never_closed_is_refused_with_the_line_it_opened
     script: str,
 ) -> None:
     with pytest.raises(UnsafeStatementSplitError, match="not closed"):
-        scan_script(script)
+        split(script)
 
 
 def test_the_message_names_the_line_the_comment_opened_on() -> None:
     with pytest.raises(UnsafeStatementSplitError, match="line 2"):
-        scan_script("SELECT 1;\n/* oops\nCREATE TABLE t (id INT);")
+        split("SELECT 1;\n/* oops\nCREATE TABLE t (id INT);")
 
 
 @pytest.mark.parametrize("terminator", ["/", "*/"])
@@ -251,7 +255,7 @@ def test_a_terminator_that_completes_a_comment_close_is_refused_not_read_as_a_co
 ) -> None:
     script = f"--#SET TERMINATOR {terminator}\n{body}\nCREATE TABLE u (id INT)\n{terminator}\n"
     with pytest.raises(UnsafeStatementSplitError, match="line 2 ends with .* comment delimiter"):
-        scan_script(script)
+        split(script)
 
 
 def test_a_terminator_that_shares_a_character_with_a_comment_but_closes_nothing_is_fine() -> None:
@@ -281,12 +285,12 @@ def test_the_last_statement_is_returned_whole(script: str, expected: str) -> Non
 def test_a_terminator_at_a_line_end_inside_a_string_in_a_body_is_refused_too() -> None:
     script = "CREATE PROCEDURE p()\nBEGIN\n  INSERT INTO t VALUES ('a;\nb');\nEND;"
     with pytest.raises(UnsafeStatementSplitError, match="inside a string"):
-        scan_script(script)
+        split(script)
 
 
 def test_the_semicolon_refusal_names_the_line_holding_the_semicolon() -> None:
     with pytest.raises(UnsafeStatementSplitError, match="line 3"):
-        scan_script("CREATE TABLE t (\n  id INT\n); SELECT 1;\nSELECT 2;")
+        split("CREATE TABLE t (\n  id INT\n); SELECT 1;\nSELECT 2;")
 
 
 @pytest.mark.parametrize("line", ["--#SET TERMINATORX @", "--#SET TERMINATORS @"])
@@ -295,7 +299,7 @@ def test_a_comment_that_merely_starts_like_the_directive_is_text(line: str) -> N
 
 
 def test_a_statement_line_is_the_first_line_with_something_on_it() -> None:
-    assert [u.line for u in scan_script("\x0c\nSELECT 1;")] == [2]
+    assert [u.line for u in split("\x0c\nSELECT 1;")] == [2]
 
 
 def test_a_comment_alone_before_a_terminator_is_not_a_statement() -> None:
@@ -345,7 +349,7 @@ def test_empty_statements_are_not_statements() -> None:
 )
 def test_a_clp_command_is_refused_by_name_and_line(line: str) -> None:
     with pytest.raises(UnsupportedMetaCommandError, match="line 2"):
-        scan_script(f"SELECT 0;\n{line};\nSELECT 1;")
+        split(f"SELECT 0;\n{line};\nSELECT 1;")
 
 
 @pytest.mark.parametrize(
@@ -385,26 +389,26 @@ def test_a_command_word_in_the_middle_of_a_statement_is_text() -> None:
 
 
 def test_connect_reset_and_terminate_at_the_end_are_dropped_and_recorded() -> None:
-    units = scan_script("SELECT 1;\nCOMMIT;\nCONNECT RESET;\nTERMINATE;\n")
+    units = split("SELECT 1;\nCOMMIT;\nCONNECT RESET;\nTERMINATE;\n")
     assert [(u.kind, u.text) for u in units] == [
         ("sql", "SELECT 1"),
         ("sql", "COMMIT"),
         ("directive", "CONNECT RESET"),
         ("directive", "TERMINATE"),
     ]
-    assert [u.kind for u in scan_script("SELECT 1;\nterminate;")] == ["sql", "directive"]
+    assert [u.kind for u in split("SELECT 1;\nterminate;")] == ["sql", "directive"]
 
 
 @pytest.mark.parametrize("script", ["CONNECT RESET;\nSELECT 1;", "TERMINATE;\nSELECT 1;"])
 def test_connect_reset_and_terminate_before_a_statement_are_refused(script: str) -> None:
     with pytest.raises(UnsupportedMetaCommandError, match="line 1"):
-        scan_script(script)
+        split(script)
 
 
 def test_a_clp_comment_block_is_refused_where_it_opens() -> None:
     for line in ("(=", "   (= c =)"):
         with pytest.raises(UnsupportedMetaCommandError, match="line 2"):
-            scan_script(f"SELECT 1;\n{line}\nSELECT 2;")
+            split(f"SELECT 1;\n{line}\nSELECT 2;")
     assert texts("SELECT 1 (= c =);") == ["SELECT 1 (= c =)"]  # in the middle of a line it is text
 
 
@@ -494,7 +498,7 @@ def test_a_routine_without_a_body_ends_at_its_terminator() -> None:
 
 
 def test_a_directive_inside_a_body_is_consumed() -> None:
-    units = scan_script(
+    units = split(
         "--#SET TERMINATOR @\nCREATE PROCEDURE p()\nBEGIN\n--#SET TERMINATOR @\n  SET x = 1;\nEND@"
     )
     assert [u.kind for u in units] == ["directive", "directive", "sql"]
@@ -506,19 +510,19 @@ def test_a_directive_inside_a_body_is_consumed() -> None:
 )
 def test_a_body_that_is_not_closed_is_refused(script: str) -> None:
     with pytest.raises(UnsafeStatementSplitError, match="not closed"):
-        scan_script(script)
+        split(script)
 
 
 # ---- records ----
 
 
 def test_units_carry_line_terminator_and_kind() -> None:
-    units = scan_script("\n-- c\nSELECT 1;\n--#SET TERMINATOR @\n\nSELECT 2@\nSELECT 3")
+    units = split("\n-- c\nSELECT 1;\n--#SET TERMINATOR @\n\nSELECT 2@\nSELECT 3")
     assert units == [
-        Unit("SELECT 1", 3, ";", "sql"),
-        Unit("--#SET TERMINATOR @", 4, None, "directive"),
-        Unit("SELECT 2", 6, "@", "sql"),
-        Unit("SELECT 3", 7, None, "sql"),
+        Statement("SELECT 1", 3, ";", "sql"),
+        Statement("--#SET TERMINATOR @", 4, None, "directive"),
+        Statement("SELECT 2", 6, "@", "sql"),
+        Statement("SELECT 3", 7, None, "sql"),
     ]
 
 
@@ -571,7 +575,7 @@ def test_a_blank_or_comment_only_script_has_no_statements() -> None:
     ],
 )
 def test_every_form_of_the_epilogue_is_dropped_and_recorded(script: str) -> None:
-    units = scan_script(script)
+    units = split(script)
     assert [u.kind for u in units if u.kind == "sql"] == ["sql"]
     assert units[-1].kind == "directive"
 
@@ -582,7 +586,7 @@ def test_every_form_of_the_epilogue_is_dropped_and_recorded(script: str) -> None
 )
 def test_quit_before_a_statement_is_refused(script: str) -> None:
     with pytest.raises(UnsupportedMetaCommandError, match="QUIT"):
-        scan_script(script)
+        split(script)
 
 
 @pytest.mark.parametrize("command", ["CONNECT RESET", "QUIT", "TERMINATE"])
@@ -591,7 +595,7 @@ def test_an_epilogue_command_without_a_terminator_does_not_swallow_the_next_stat
     command: str, after: str
 ) -> None:
     with pytest.raises(UnsafeStatementSplitError, match="line 2"):
-        scan_script(f"SELECT 1;\n{command}{after}")
+        split(f"SELECT 1;\n{command}{after}")
 
 
 @pytest.mark.parametrize(
@@ -614,7 +618,7 @@ def test_the_accepted_epilogue_forms_are_recorded_and_dropped(script: str) -> No
 @pytest.mark.parametrize("tail", ["QUIT;;", "TERMINATE;;", "QUIT foo;", "CONNECT RESET now;"])
 def test_what_is_not_exactly_an_epilogue_command_is_refused(tail: str) -> None:
     with pytest.raises(UnsafeStatementSplitError, match="line 2"):
-        scan_script(f"SELECT 1;\n{tail}")
+        split(f"SELECT 1;\n{tail}")
 
 
 @pytest.mark.parametrize(
@@ -627,7 +631,7 @@ def test_what_is_not_exactly_an_epilogue_command_is_refused(tail: str) -> None:
 )
 def test_a_command_phrase_split_over_lines_is_still_a_command(statement: str) -> None:
     with pytest.raises(UnsupportedMetaCommandError, match="line 2"):
-        scan_script(f"SELECT 0;\n{statement};")
+        split(f"SELECT 0;\n{statement};")
 
 
 def test_a_statement_that_merely_starts_like_a_command_phrase_on_two_lines_is_sql() -> None:

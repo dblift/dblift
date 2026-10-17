@@ -5,7 +5,7 @@ that can be extended for dialect-specific behavior.
 """
 
 import warnings
-from typing import List, Optional
+from typing import Dict, List, Optional, Sequence, Tuple
 
 from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.core.sql_parser.tokens import Token, TokenType
@@ -343,6 +343,37 @@ class BaseTokenizer:
             self.parens_depth,
         )
 
+    def _read_block_comment(
+        self,
+        stops: Sequence[int] = (),
+        first: int = 0,
+        marks: Optional[Dict[int, Tuple[int, bool]]] = None,
+    ) -> Tuple[int, int]:
+        """Read from just after an opening ``/*`` to its matching close or the end.
+
+        Returns the depth left open and the index of the next unreached stop. When the cursor
+        reaches or passes ``stops[k]``, ``marks[stops[k]]`` records the depth there and whether the
+        last step read a single character (not the second character of ``/*`` or ``*/``). Without
+        ``marks`` the stops are not read: nothing is recorded and the index returned is ``first``.
+        """
+        depth, alone, index, count, size = 1, False, first, len(stops), len(self.sql)
+        while True:
+            if marks is not None and index < count and self.pos >= stops[index]:
+                while index < count and self.pos >= stops[index]:
+                    marks[stops[index]] = (depth, alone)
+                    index += 1
+            if depth == 0 or self.pos >= size:
+                return depth, index
+            if self.NESTED_BLOCK_COMMENTS and self.peek(2) == "/*":
+                self.read(2)
+                depth, alone = depth + 1, False
+            elif self.peek(2) == "*/":
+                self.read(2)
+                depth, alone = depth - 1, False
+            else:
+                self.read()
+                alone = True
+
     def _handle_comment(self) -> Token:
         """Handle comment tokens.
 
@@ -372,19 +403,7 @@ class BaseTokenizer:
             # opened; when nesting is off for this dialect, an inner "/*"
             # is never counted, so the first "*/" still closes it.
             self.read(2)
-            depth = 1
-            while self.pos < len(self.sql):
-                if self.NESTED_BLOCK_COMMENTS and self.peek(2) == "/*":
-                    self.read(2)
-                    depth += 1
-                    continue
-                if self.peek(2) == "*/":
-                    self.read(2)
-                    depth -= 1
-                    if depth == 0:
-                        break
-                    continue
-                self.read()
+            depth, _ = self._read_block_comment()
             if depth > 0:
                 raise UnsafeStatementSplitError(
                     f"unterminated block comment opened at line {start_line}, column {start_col}"

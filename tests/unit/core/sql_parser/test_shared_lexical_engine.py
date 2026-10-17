@@ -188,3 +188,43 @@ def test_other_specs_keep_the_new_defaults():
     assert [x.text for x in placeholder if "${" in x.text] == ["${x;"]
     brackets = LexicalTokenizer("SELECT [a]", spec=POSTGRESQL_SPEC).tokenize()
     assert [x.text for x in brackets if x.type == TokenType.SYMBOL] == ["[", "]"]
+
+
+def test_four_client_rules_are_exclusive():
+    from itertools import combinations
+
+    from dblift.db.plugins.db2.parser.lexical_spec import DB2_RULES
+    from dblift.db.plugins.mysql.parser.lexical_spec import MYSQL_RULES
+    from dblift.db.plugins.oracle.parser.lexical_spec import ORACLE_SPEC
+    from dblift.db.plugins.sqlserver.parser.lexical_spec import SQLSERVER_SPEC
+
+    rules = {
+        "client_script": ORACLE_SPEC.client_script,
+        "batch_script": SQLSERVER_SPEC.batch_script,
+        "delimiter_script": MYSQL_RULES,
+        "terminator_script": DB2_RULES,
+    }
+    for first, second in combinations(rules, 2):
+        with pytest.raises(ValueError, match="terminator_script are mutually exclusive"):
+            LexicalSpec(name="x", **{first: rules[first], second: rules[second]})
+    for single in rules:
+        LexicalSpec(name="x", **{single: rules[single]})
+
+
+def test_other_specs_keep_terminator_script_none():
+    from dblift.db.plugins.mariadb.lexical_spec import MARIADB_SPEC
+    from dblift.db.plugins.mysql.parser.lexical_spec import MYSQL_SPEC
+    from dblift.db.plugins.oracle.parser.lexical_spec import ORACLE_SPEC
+    from dblift.db.plugins.sqlite.parser.lexical_spec import SQLITE_SPEC
+    from dblift.db.plugins.sqlserver.parser.lexical_spec import SQLSERVER_SPEC
+
+    for spec in (
+        POSTGRESQL_SPEC,
+        REDSHIFT_SPEC,
+        SQLITE_SPEC,
+        ORACLE_SPEC,
+        SQLSERVER_SPEC,
+        MYSQL_SPEC,
+        MARIADB_SPEC,
+    ):
+        assert spec.terminator_script is None

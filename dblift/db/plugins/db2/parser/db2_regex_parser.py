@@ -1,4 +1,4 @@
-"""DB2 object parser backed by the CLP-aware script scanner."""
+"""DB2 object parser; scripts are cut by the shared lexical engine."""
 
 import logging
 import re
@@ -7,8 +7,10 @@ from typing import Any, Dict, List, Optional, Type
 from dblift.core.sql_model.base import ParseResult, SqlStatement, SqlStatementType
 from dblift.core.sql_parser.base_tokenizer import BaseTokenizer
 from dblift.core.sql_parser.enhanced_regex_parser import EnhancedRegexParser
+from dblift.core.sql_parser.lexical_engine import LexicalEngine
+from dblift.core.sql_parser.lexical_spec import LexicalSpec
 from dblift.core.sql_parser.statement import Statement, analysis_sql
-from dblift.db.plugins.db2.parser._script import scan_script
+from dblift.db.plugins.db2.parser.lexical_spec import DB2_SPEC
 from dblift.db.plugins.db2.parser.parser_config import DB2Config
 
 logger = logging.getLogger(__name__)
@@ -16,8 +18,8 @@ logger = logging.getLogger(__name__)
 
 class _DB2NestingCommentTokenizer(BaseTokenizer):
     """Carries only the flag: Db2 nests ``/* ... */`` (checked with the CLP
-    and ``ibm_db``). The Db2 splitter scans characters itself and never
-    instantiates a tokenizer."""
+    and ``ibm_db``). Object extraction and literal masking read it; the
+    splitter does not."""
 
     NESTED_BLOCK_COMMENTS = True
 
@@ -28,8 +30,12 @@ class DB2RegexParser(EnhancedRegexParser):
     dialect_name = "db2"  # lint: allow-dialect-string: dialect dispatch
 
     #: Object extraction's comment stripper reads Db2's nested-comment rule
-    #: here. Statement boundaries come from ``_script``.
+    #: here. Statement boundaries come from the shared engine.
     tokenizer_class: Type[BaseTokenizer] = _DB2NestingCommentTokenizer
+
+    #: The rules the engine cuts scripts with. Deliberately not named ``lexical_spec``: object
+    #: extraction blanks comments through the engine when a parser has that attribute.
+    _splitter_spec: LexicalSpec = DB2_SPEC
 
     def __init__(self) -> None:
         """Initialize DB2 regex parser."""
@@ -39,24 +45,14 @@ class DB2RegexParser(EnhancedRegexParser):
 
     def split(self, sql_content: str) -> List[Statement]:
         """The statements of a script as the CLP sends them (docs/sql-parsing/db2.md)."""
-        return [
-            Statement(
-                text=unit.text,
-                line=unit.line,
-                terminator=unit.terminator,
-                kind=unit.kind,
-                source_start=unit.source_start,
-                source_end=unit.source_end,
-            )
-            for unit in scan_script(sql_content)
-        ]
+        return LexicalEngine(self._splitter_spec).split(sql_content)
 
     def split_statements(self, sql_content: str, strict_tokenizer: bool = False) -> List[str]:
         """The statements execution sends; ``split()`` also records directives.
 
-        The scanner has no unknown characters, so ``strict_tokenizer`` changes nothing.
+        The engine has no unknown characters, so ``strict_tokenizer`` changes nothing.
         """
-        return [record.text for record in self.split(sql_content) if record.kind == "sql"]
+        return LexicalEngine(self._splitter_spec).split_statements(sql_content)
 
     def split_for_extraction(self, sql_content: str, strict_tokenizer: bool = False) -> List[str]:
         """Project analysable SQL from the CLP scanner."""

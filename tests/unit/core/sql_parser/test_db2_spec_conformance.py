@@ -17,11 +17,11 @@ from tests.support.splitter_spec.splitting import split_script
 SPEC_DIR = Path(__file__).resolve().parents[4] / "docs" / "sql-parsing"
 ROWS = [row for row in load_conformance_rows(SPEC_DIR) if row.dialect == "db2"]
 
-KNOWN_GAPS: frozenset[str] = frozenset()
+KNOWN_GAPS: frozenset[str] = frozenset({"51", "52", "53", "54"})
 
 
 def test_spec_compiles_to_at_least_the_rows_it_had_on_2026_10_11() -> None:
-    assert len(ROWS) >= 56
+    assert len(ROWS) >= 60
     assert len({row.row_id for row in ROWS}) == len(ROWS)
 
 
@@ -35,4 +35,33 @@ def test_spec_row(row: ConformanceRow, request: pytest.FixtureRequest) -> None:
     assert outcome.matches(row.expectation), (
         f"row {row.row_id}\nscript: {row.script!r}\n"
         f"expected: {row.expectation}\nactual: {outcome!r}"
+    )
+
+
+@pytest.mark.parametrize("row_id", sorted(KNOWN_GAPS))
+def test_rows_51_to_54_are_known_gaps(row_id: str) -> None:
+    row = next(r for r in ROWS if r.row_id == row_id)
+    outcome = split_script("db2", row.script)
+    assert not outcome.matches(row.expectation)
+    actual = {
+        "51": (None, ("VALUES 'x\n-- y;\nz'", "VALUES 2")),
+        "52": ("UnsupportedMetaCommandError", ()),
+        "53": ("UnsafeStatementSplitError", ()),
+        "54": (None, ("VALUES 1", "VALUES 2;")),
+    }[row_id]
+    assert (outcome.error, outcome.statements) == actual
+
+
+def test_row_53_script_holds_a_carriage_return_run() -> None:
+    assert "\r\r\n" in next(r for r in ROWS if r.row_id == "53").script
+
+
+def test_new_rows_have_no_code_span_in_prose() -> None:
+    by_id = {r.row_id: r for r in ROWS}
+    assert by_id["51"].script == "VALUES 'x\n-- y;\nz';\nVALUES 2;"
+    assert by_id["52"].expectation.statements == ("VALUES 'p\n(= q\n'", "VALUES 2")
+    assert by_id["53"].expectation.statements == ("VALUES 1", "VALUES 2")
+    assert (
+        by_id["54"].script
+        == "--#SET TERMINATOR " + chr(0xE9) * 2 + "\nVALUES 1" + chr(0xE9) * 2 + "\nVALUES 2;"
     )
