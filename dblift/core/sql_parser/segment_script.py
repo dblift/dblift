@@ -10,9 +10,12 @@ from dblift.core.sql_parser.tokens import Token, TokenType
 class SegmentScript:
     """The records of a segment script from its tokens."""
 
-    def __init__(self, rules: SegmentScriptRules, source: str, origin: int) -> None:
+    def __init__(
+        self, rules: SegmentScriptRules, source: str, origin: int, text_blanks: str
+    ) -> None:
         """Bind the rules to the source; ``origin`` is the length of the byte order mark."""
         self.rules = rules
+        self.text_blanks = text_blanks
         self.source = source
         self.origin = origin
 
@@ -46,7 +49,7 @@ class SegmentScript:
         include_comment_only: bool,
     ) -> None:
         """Append the record of the segment ``source[start:end]``, if it is one."""
-        blanks = self.rules.text_blanks
+        blanks = self.text_blanks
         raw = self.source[start:end]
         if not code and not (include_comment_only and raw.strip(blanks)):
             return

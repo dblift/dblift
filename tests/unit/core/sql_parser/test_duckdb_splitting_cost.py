@@ -54,9 +54,9 @@ def counted(script: str, refusal: bool = False) -> int:
         assert refusal, "only a refusal shape may end the pass early"
         return meter.count
     for analysis in (False, True):
-        SegmentScript(DUCKDB_RULES, CountingText(script, meter), tokenizer.origin).records(
-            CountingTokens(tokens, meter), analysis
-        )
+        SegmentScript(
+            DUCKDB_RULES, CountingText(script, meter), tokenizer.origin, DUCKDB_SPEC.text_blanks
+        ).records(CountingTokens(tokens, meter), analysis)
     return meter.count
 
 

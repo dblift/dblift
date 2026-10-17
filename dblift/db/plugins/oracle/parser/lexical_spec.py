@@ -108,6 +108,7 @@ _SET_OPTIONS: Tuple[DirectiveRule, ...] = (
 
 ORACLE_SPEC = LexicalSpec(
     name="oracle",
+    text_blanks=" \t\n\r\v\f\N{IDEOGRAPHIC SPACE}",
     client_name="SQL*Plus",
     terminator_respects_parens=True,
     alternative_quotes=("q'", "nq'"),

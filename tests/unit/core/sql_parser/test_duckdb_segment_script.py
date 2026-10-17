@@ -513,9 +513,7 @@ def test_text_blanks_is_read():
         ("SELECT 1 AS a", 1, ";", 0, 14),
         (VT + "SELECT 2 AS y", 1, ";", 14, 29),
     ]
-    wide = LexicalEngine(
-        replace(DUCKDB_SPEC, segment_script=replace(DUCKDB_RULES, text_blanks=" \t\n\f\r" + VT))
-    )
+    wide = LexicalEngine(replace(DUCKDB_SPEC, text_blanks=" \t\n\f\r" + VT))
     assert [fields(r) for r in wide.split(script)] == [
         ("SELECT 1 AS a", 1, ";", 0, 14),
         ("SELECT 2 AS y", 1, ";", 15, 29),

@@ -150,7 +150,7 @@ def test_a_statement_that_cannot_be_located_in_its_script_is_withheld(dialect):
     assert statement_sources(scanner, script, ["SELECT 2"]) == [None]
     assert statement_sources(scanner, script, ["SELECT 1"]) == ["SELECT 1;"]
     assert statement_sources(scanner, "SELECT 1", ["SELECT 2"]) == ["SELECT 2"]
-    assert statement_sources(scanner, "-- SELECT 1\nSELECT 1\u00a0;", ["SELECT 1"]) == [
+    assert statement_sources(scanner, "-- SELECT 1\nSELECT 1\u00a0;", ["SELECT 1\xa0"]) == [
         "SELECT 1\u00a0;"
     ]
 
@@ -197,14 +197,21 @@ def test_statement_sources_returns_the_untrimmed_text_of_a_name_that_ends_the_sc
     assert statement_sources(scanner, script, statements) == [script]
 
 
+KEEPS_THE_BLANK = ("postgresql", "redshift", "cockroachdb")
+
+
 @pytest.mark.parametrize(
     "dialect",
     [
         pytest.param(
             d,
-            marks=pytest.mark.xfail(
-                strict=True,
-                reason="the record trims the blank, so the analysed text is shorter than its span",
+            marks=(
+                []
+                if d in KEEPS_THE_BLANK
+                else pytest.mark.xfail(
+                    strict=True,
+                    reason="the record trims the blank, so the analysed text is shorter than its span",
+                )
             ),
         )
         for d in SPAN_SCANNERS

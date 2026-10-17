@@ -81,6 +81,7 @@ DB2_RULES = TerminatorScriptRules(
 
 DB2_SPEC = LexicalSpec(
     name="db2",
+    text_blanks=" \t\n\r",
     client_name="CLP",
     nested_comments=True,
     quoted_identifier='"',

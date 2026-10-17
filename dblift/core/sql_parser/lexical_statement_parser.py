@@ -33,6 +33,7 @@ class LexicalStatementParser(BaseStatementParser):
         super().__init__(tokens, context, source)
         self.spec = spec
         self.TERMINATOR_RESPECTS_PARENS = spec.terminator_respects_parens
+        self.text_blanks = spec.text_blanks
         self._head: List[str] = []
         self._head_limit = max(map(len, spec.routine_heads), default=0)
         self._previous: Optional[Token] = None
@@ -185,7 +186,7 @@ class LexicalStatementParser(BaseStatementParser):
             has_comments = any(t.type == TokenType.COMMENT for t in current)
             if current and (has_code or (include_comment_only and has_comments)):
                 text = self._render_statement(current, terminator, end_pos)
-                if text.strip(" \t\n\f\r" if self.spec.sqlite_shell else None):
+                if text.strip(self.text_blanks):
                     first = next((t for t in current if t.type != TokenType.COMMENT), None)
                     if self._script is not None and first is not None:
                         text = self._script.substitute(text, first.line)
@@ -271,7 +272,7 @@ class LexicalStatementParser(BaseStatementParser):
                 else len(self.source)
             )
         )
-        return self.source[start:end].rstrip(" \t\n\f\r")
+        return self.source[start:end].rstrip(self.text_blanks)
 
     def _check_sqlite_line(self, token: Token) -> None:
         """Refuse shell-only lines that would change SQLite statement boundaries."""
@@ -353,7 +354,7 @@ class LexicalStatementParser(BaseStatementParser):
             analysis_statements = tuple(
                 part
                 for start, stop in zip(starts, ends)
-                if (part := self.source[start:stop].strip())
+                if (part := self.source[start:stop].strip(self.text_blanks))
             )
             parts: List[str] = []
             cursor = 0
@@ -390,7 +391,7 @@ class LexicalStatementParser(BaseStatementParser):
             text = self.source[first.pos : end]
             ended = self.source.startswith("\\.", end)
             header_end = next(t.pos for t in tokens if t.type == TokenType.DELIMITER)
-            header = self.source[first.pos : header_end].strip()
+            header = self.source[first.pos : header_end].strip(self.text_blanks)
             record = Statement(
                 text=text,
                 line=first.line,
@@ -403,9 +404,7 @@ class LexicalStatementParser(BaseStatementParser):
             return record, rendered
         text = rendered
         if text.endswith(terminator.text):
-            text = text[: -len(terminator.text)].rstrip(
-                " \t\n\f\r" if self.spec.sqlite_shell else None
-            )
+            text = text[: -len(terminator.text)].rstrip(self.text_blanks)
         return (
             Statement(
                 text=text,

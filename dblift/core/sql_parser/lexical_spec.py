@@ -1,6 +1,6 @@
 """Plugin-owned facts consumed by the shared lexical scanner."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import FrozenSet, Optional, Tuple
 
@@ -213,15 +213,13 @@ class SegmentScriptRules:
     while no statement text is pending is a client command, refused.
 
     ``word``, ``number``, ``dollar_tag`` and ``parameter`` are regular expressions read at the
-    cursor. ``blanks`` are skipped between tokens; ``text_blanks`` are stripped from a record's ends
-    when records are assembled from the tokens.
+    cursor. ``blanks`` are skipped between tokens.
     A word ending in an ``escape_letters`` character (alone, or after characters ``str.isdigit()``
     accepts) that touches a quote opens an escape string. A line comment ends at the first of
     ``line_comment_ends``. ``refused_character`` is refused anywhere, before any other reading.
     """
 
     blanks: str
-    text_blanks: str
     word: str
     number: str
     escape_letters: str
@@ -236,9 +234,14 @@ class SegmentScriptRules:
 
 @dataclass(frozen=True)
 class LexicalSpec:
-    """Only lexical rules; no parser callbacks or alternative implementations."""
+    """Only lexical rules; no parser callbacks or alternative implementations.
+
+    ``text_blanks`` is what a statement may lose at either end of its text: the characters the
+    engine reads as blanks (docs/sql-parsing/<dialect>.md). Any other character stays in the text.
+    """
 
     name: str
+    text_blanks: str = field(kw_only=True)
     client_name: str = "SQL client"
     nested_comments: bool = False
     quoted_identifier: str = '"'
@@ -278,6 +281,8 @@ class LexicalSpec:
 
     def __post_init__(self) -> None:
         """A client reads a script by lines, batches, a delimiter, terminator lines or segments."""
+        if not self.text_blanks:
+            raise ValueError("text_blanks must name at least one character")
         rules = (
             self.client_script,
             self.batch_script,

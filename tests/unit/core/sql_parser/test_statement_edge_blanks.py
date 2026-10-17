@@ -58,20 +58,31 @@ def spec_of(dialect: str) -> Optional[LexicalSpec]:
     return ProviderRegistry.get_quirks(dialect).lexical_spec()
 
 
-@pytest.mark.xfail(strict=True, reason="LexicalSpec carries no text_blanks yet")
-@pytest.mark.parametrize("dialect", [*SPECS, "cockroachdb", "yugabytedb"])
+DUCKDB_WIDENING = pytest.mark.xfail(
+    strict=True, reason="DuckDB's set is widened together with its record builder"
+)
+
+
+@pytest.mark.parametrize(
+    "dialect",
+    [
+        *(d for d in SPECS if d != "duckdb"),
+        "cockroachdb",
+        "yugabytedb",
+        pytest.param("duckdb", marks=DUCKDB_WIDENING),
+    ],
+)
 def test_every_spec_holds_the_measured_text_blanks(dialect: str) -> None:
     spec = spec_of(dialect)
     assert spec is not None
     assert set(spec.text_blanks) == set(TEXT_BLANKS[dialect])
 
 
-@pytest.mark.xfail(strict=True, reason="text_blanks is not yet a required field of LexicalSpec")
 def test_text_blanks_is_required_and_never_empty() -> None:
     with pytest.raises(TypeError):
         LexicalSpec(name="x")  # type: ignore[call-arg]
     with pytest.raises(ValueError):
-        LexicalSpec(name="x", text_blanks="")  # type: ignore[call-arg]
+        LexicalSpec(name="x", text_blanks="")
 
 
 CHARACTERS = [
@@ -108,6 +119,10 @@ POSITIONS = {
 }
 
 
+#: Dialects whose record builders already strip exactly their text_blanks.
+FIXED_DIALECTS = (*PSQL_LIKE, "oracle")
+
+
 def keeps_the_terminator_in_the_text(dialect: str, position: str, view: str) -> bool:
     """The character sits inside a text that holds its terminator, so it is not at the text's edge."""
     return position == "before_terminator" and (
@@ -123,6 +138,8 @@ def stripped_today(dialect: str, position: str, view: str, char: str) -> bool:
         return False
     if dialect == "sqlite":
         return char in ASCII_BLANKS + FORM_FEED
+    if dialect in FIXED_DIALECTS:
+        return char in TEXT_BLANKS[dialect]
     if keeps_the_terminator_in_the_text(dialect, position, view):
         return False
     return True

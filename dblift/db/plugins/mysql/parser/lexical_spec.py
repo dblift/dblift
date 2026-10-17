@@ -61,6 +61,7 @@ MYSQL_RULES = DelimiterScriptRules(
 
 MYSQL_SPEC = LexicalSpec(
     name="mysql",
+    text_blanks=" \t\n\r\v\f",
     client_name="mysql",
     quoted_identifier="`",
     quoted_identifier_escape=False,

@@ -25,7 +25,6 @@ RED_ROWS: dict[str, str] = {
     "42": "a trailing no-break space is stripped, so the driver would run a different statement",
     "42a": "a no-break space before the terminator reaches the provider, which strips it",
     "42e": "a leading line separator is stripped, so the driver would run a different statement",
-    "42f": "a no-break space inside a trailing comment is stripped",
 }
 
 

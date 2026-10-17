@@ -111,9 +111,6 @@ CLIENT_SENDS = {
 
 #: (dialect, form) -> why the case fails today
 RED = {
-    ("postgresql", "end_of_file"): "the splitter strips the last character of the script",
-    ("redshift", "end_of_file"): "the splitter strips the last character of the script",
-    ("cockroachdb", "end_of_file"): "the splitter strips the last character of the script",
     ("mysql", "semicolon"): "the splitter strips the character before the terminator",
     ("mysql", "end_of_file"): "the splitter strips the last character of the script",
     ("mariadb", "semicolon"): "the splitter strips the character before the terminator",
