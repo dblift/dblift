@@ -145,7 +145,7 @@ class LexicalTokenizer(BaseTokenizer):
         # Delimiter scripts: client state, word alphabet, active delimiter, cached line end.
         self.delimiter_script: Optional[DelimiterScript] = None
         # Terminator scripts: the client's reading, where a lexeme left open at the end begins,
-        # and the nesting depth at each line end inside a comment.
+        # and the nesting depth at each consumed terminator that falls inside a comment.
         self.terminator_script = terminator_script
         self.open_lexeme = -1
         self.marks: Dict[int, Tuple[int, bool]] = {}
@@ -175,7 +175,7 @@ class LexicalTokenizer(BaseTokenizer):
         """Lexemes of a terminator script, read from the text with its terminators blanked.
 
         An unterminated string, identifier or comment runs to the end of the script: the assembly
-        decides what that means. The depth at each line end that falls inside a comment is marked.
+        decides what that means. The depth at each consumed terminator that falls inside a comment is marked.
         """
         sql = self.sql
         tokens: List[Token] = []
