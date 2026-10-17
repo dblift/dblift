@@ -448,7 +448,32 @@ def test_refusals_of_shell_command_lines():
     ],
 )
 def test_a_dot_that_is_not_a_command_line_is_text(script):
-    assert read(script)[1]
+    tokens = read(script)[1]
+    assert tokens
+    end = 0
+    for token in tokens:  # the tokens tile the script: only blanks lie between them
+        assert set(script[end : token.pos]) <= set(DUCKDB_RULES.blanks)
+        assert script[token.pos : token.pos + len(token.text)] == token.text
+        end = token.pos + len(token.text)
+    assert set(script[end:]) <= set(DUCKDB_RULES.blanks)
+
+
+@pytest.mark.parametrize(
+    "script,expected",
+    [
+        ('"a"\n.print x\n;', [ident('"a"'), sym("."), kw("print"), kw("x"), dl()]),
+        ("'a'\n.print x\n;", [st("'a'"), sym("."), kw("print"), kw("x"), dl()]),
+        ("$$a$$\n.print x\n;", [st("$$a$$"), sym("."), kw("print"), kw("x"), dl()]),
+        ("SELECT $$a\n.x;y$$;", [kw("SELECT"), st("$$a\n.x;y$$"), dl()]),
+        (
+            "SELECT 1; -- $$ x\nSELECT 2;",
+            [kw("SELECT"), ident("1"), dl(), cm("-- $$ x"), kw("SELECT"), ident("2"), dl()],
+        ),
+        ("SELECT $t$t$ ; $t$;", [kw("SELECT"), st("$t$t$ ; $t$"), dl()]),
+    ],
+)
+def test_pending_code_and_bodies_around_dot_lines_and_dollars(script, expected):
+    assert shape(script) == expected
 
 
 def test_command_message_and_refusal_are_read_from_the_spec():
