@@ -167,6 +167,13 @@ class UndoCommand(BaseCommand):
                 show_sql=show_sql,
             )
 
+            # Without a history table there is nothing to undo; the lock would
+            # create objects in a schema that was never migrated.
+            if not dry_run and not self.history_manager.has_history_table:
+                self.log.info("No migrations to undo")
+                result.complete()
+                return result
+
             if not dry_run and not lock.enter_context(self._migration_lock()):
                 self.log.error(MIGRATION_LOCK_REFUSAL)
                 result.set_error(MIGRATION_LOCK_REFUSAL)

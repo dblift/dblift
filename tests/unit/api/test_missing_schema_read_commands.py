@@ -32,15 +32,12 @@ def test_missing_schema_reads_empty_history_without_ddl(tmp_path, command, dry_r
     else:
         assert not result.migrations
     with duckdb.connect(str(database)) as connection:
-        # A real undo holds the migration lock, which lives in the target schema.
-        if command == "info" or dry_run:
-            assert (
-                connection.execute(
-                    "SELECT schema_name FROM information_schema.schemata "
-                    "WHERE schema_name = 'app'"
-                ).fetchall()
-                == []
-            )
+        assert (
+            connection.execute(
+                "SELECT schema_name FROM information_schema.schemata WHERE schema_name = 'app'"
+            ).fetchall()
+            == []
+        )
         assert (
             connection.execute(
                 "SELECT table_name FROM information_schema.tables "

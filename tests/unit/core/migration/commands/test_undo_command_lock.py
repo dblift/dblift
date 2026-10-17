@@ -126,3 +126,14 @@ class TestUndoMigrationLock:
 
         assert result.error_message == "Undo operation failed: rebuild failed"
         cmd.provider.release_migration_lock.assert_called_once_with("test")
+
+    def test_no_history_table_skips_lock(self):
+        cmd, _ = _two_script_command()
+        cmd.history_manager.has_history_table = False
+
+        result = cmd.execute(scripts_dir=MagicMock(), target_version="0")
+
+        assert result.success
+        cmd.provider.acquire_migration_lock.assert_not_called()
+        cmd.state_manager.build_state.assert_not_called()
+        cmd.log.info.assert_any_call("No migrations to undo")
