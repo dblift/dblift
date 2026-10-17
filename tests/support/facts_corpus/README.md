@@ -16,6 +16,8 @@ they are meant to replace. Real inputs only: no generated cases.
 | `input_ids.txt` | The input ids of the first recording; the corpus test requires all of them to remain, so removing one input and adding another fails. |
 | `not_idempotent.json` | Statements that do not split back to themselves (the splitter refuses a lone PL/SQL unit, a client command, or drops a trailing comment). Listed so the idempotence test is exact. |
 | `reserved/<family>.txt` | The vendor's reserved words, with source URL, retrieval date, engine version and category in the header. SQLite (the vendor draws no reserved/non-reserved line) and Db2 (page not retrievable in a checkable form) have none. |
+| `gated.json` | The families whose differences between extraction and reader must all be classified or explained (see below). |
+| `<family>.review.json` | The reasons given for differences that need one, per statement id. |
 | `SOURCES.md` | The test files the inputs were harvested from (string constants that start with an SQL verb; docstrings, f-string parts and the text of raise, exception, log and assert-message expressions are skipped). |
 
 Families: `postgresql` (also covers the PostgreSQL derivatives), `mysql` (also MariaDB), `oracle`,
@@ -63,8 +65,56 @@ python -m tests.support.facts_corpus measure         # sizes, counts, not_idempo
 `record floor` recreates every row; `record newest` must follow it and only adds the
 `*_newest` fields. The recorder refuses any other sqlglot version.
 
-## Not here yet
+## Comparing the extraction with the facts
 
-Refusing to re-record `old` for a family whose hook is active, carrying `old` over when a split
-change only alters whitespace or the terminator, and the list of gated families (`gated.json`) arrive
-with the comparison gate that consumes this corpus, not with the corpus itself.
+```
+python -m tests.support.facts_corpus diff <family|all> [--report] [--json] [--skeleton]
+```
+
+Every row is compared with each frozen extraction path (`hybrid`, `analyzer`) separately and falls
+in one class per path (`classes.py`, tried in this order: the first match wins):
+
+| Class | Meaning |
+| --- | --- |
+| `raised` | a path, the DML helpers or the reader raised |
+| `no-reader` | the family has no reader (Db2) |
+| `no-old-side` | the family's extraction already is the reader (SQLite, DuckDB): nothing to compare |
+| `no-old` | an activated family's row that has no recorded extraction |
+| `dml-differs` | target, predicate, events, updated columns or full-table flag differ |
+| `same` | identities are equal |
+| `old-cte-alias` | the extraction took CTE aliases for tables; none is written to |
+| `old-keyword` | the extraction took a word the engine reserves, unquoted, for an object; it is not written to and the reader names everything else |
+| `type-refined` | same name, the type moves to a strict subtype (`UNKNOWN` to any, `VIEW` to `MATERIALIZED_VIEW`) |
+| `quote-decoded` | the extraction cut the name at an escaped quote |
+| `case-folded` | an unquoted name differs by case in the engine's folding direction (PostgreSQL, Redshift: lower; Oracle, Snowflake: upper; never MySQL or SQL Server) |
+| `facts-adds-referenced` | the reader names extra objects that are only read |
+| `opaque-safety` | the reader names nothing because a name holds a character the engine may read as part of it |
+| `opaque-both-empty` | the reader is opaque and the extraction names nothing |
+| `opaque-reader-gap` | the reader is opaque and the extraction named something |
+| `facts-fewer` | the reader leaves out an object the extraction named |
+| `facts-adds-acted` | the reader names an extra object the statement creates, alters or drops |
+| `disagree` | any other difference |
+
+Every mechanical class also needs the statement-level fields equal, and none ever excuses an
+object the statement writes to. Names are compared case-exact, after the schema the extraction
+assigns to an unqualified name is removed from both sides. Nothing consults which test a statement
+was harvested from.
+
+`opaque-reader-gap`, `facts-fewer`, `facts-adds-acted`, `disagree`, `dml-differs`, `no-old` and
+`no-reader` need a reason. Reasons live in `<family>.review.json`, keyed by the statement id
+(`<id>` for both paths, `<id>/hybrid` or `<id>/analyzer` for one) with `path`, `class`, `reason`
+and, for a reader gap, an `issue`. An entry whose row is gone, or whose class is no longer the
+row's class, is stale.
+
+`gated.json` lists the families whose differences must all be classified or explained: `diff` exits 1
+and `tests/unit/core/sql_parser/test_facts_differential.py` fails on a row with neither, in a listed
+family. `--report` prints without failing; `--skeleton` adds an empty entry to the review file for
+each row that needs one. A family joins the list when its plugin reads statements through the reader.
+
+## Once a family reads through the reader
+
+The extraction of such a family can no longer be recomputed, so it is frozen:
+`record floor` and `record newest` refuse to run while a family is in that state. `record <arm>
+--frozen` reads the facts again and carries every row's extraction over; a row whose statement text
+changed only by outer whitespace or one trailing terminator inherits the extraction of the row it
+replaces, any other new row gets `old: null` and the class `no-old`.

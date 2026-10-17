@@ -1,4 +1,13 @@
-"""Command line: ``python -m tests.support.facts_corpus seed|record <arm>|measure``."""
+"""Command line.
+
+``python -m tests.support.facts_corpus seed | record <arm> [--frozen] | measure``
+
+``python -m tests.support.facts_corpus diff <family|all> [--report] [--json] [--skeleton]``
+compares the frozen object extraction with the statement facts. In a family listed in
+``gated.json`` a difference that is neither classified mechanically nor explained in the family's
+review file fails (exit 1); ``--report`` only prints. ``--skeleton`` adds an empty entry to the
+review file for each row that needs one.
+"""
 
 from __future__ import annotations
 
@@ -19,19 +28,28 @@ from tests.support.facts_corpus import (
     statement_id,
 )
 from tests.support.facts_corpus.canonical import dumps
+from tests.support.facts_corpus.differential import families, run
 from tests.support.facts_corpus.measure import update_versions
-from tests.support.facts_corpus.record import check_arm, record_family
+from tests.support.facts_corpus.record import check_arm, is_frozen, record_family
 from tests.support.facts_corpus.seed import seed, split
 
 
-def _record(arm: str) -> None:
+def _record(arm: str, frozen: bool) -> int:
     check_arm(arm, sqlglot.__version__, read_versions())
     inputs = read_rows(INPUTS_FILE)
-    for family in FAMILIES:
+    frozen_families = [family for family in FAMILIES if is_frozen(family)]
+    if frozen_families and not frozen:
+        print(
+            "the recorded extraction is frozen for: " + ", ".join(frozen_families) + "; "
+            "record them with --frozen, the others without"
+        )
+        return 1
+    for family in frozen_families if frozen else FAMILIES:
         path = family_file(family)
-        rows = record_family(family, arm, inputs, read_rows(path))
+        rows = record_family(family, arm, inputs, read_rows(path), frozen)
         path.write_text("".join(dumps(row) + "\n" for row in rows), encoding="utf-8")
         print(f"{family}: {len(rows)} statements")
+    return 0
 
 
 def _resplit_unstable(family: str) -> list:
@@ -83,10 +101,18 @@ def main(argv: list) -> int:
     command = argv[0] if argv else ""
     if command == "seed":
         print(seed(REPO_ROOT, INPUTS_FILE, CORPUS_DIR / "SOURCES.md"), "inputs")
-    elif command == "record" and len(argv) == 2:
-        _record(argv[1])
+    elif command == "record" and len(argv) in (2, 3):
+        return _record(argv[1], "--frozen" in argv[2:])
     elif command == "measure":
         _measure()
+    elif command == "diff" and len(argv) >= 2 and families(argv[1]):
+        flags = set(argv[2:])
+        return run(
+            families(argv[1]) or [],
+            report_only="--report" in flags,
+            as_json="--json" in flags,
+            write="--skeleton" in flags,
+        )
     else:
         print(__doc__)
         return 2
