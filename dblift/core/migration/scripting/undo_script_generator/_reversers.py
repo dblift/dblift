@@ -158,7 +158,7 @@ class _UndoReversersMixin:
         sql = stmt.sql_text
         sql_upper = sql.strip().upper()
         stmt_type = stmt.statement_type
-        if getattr(stmt, "names_unread", False) is True or self._names_not_trusted(
+        if stmt.names_unread is True or self._names_not_trusted(
             sql, [obj.name for obj in stmt.objects + stmt.affected_objects]
         ):
             return _names_not_read(sql)
