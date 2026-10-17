@@ -3,7 +3,7 @@ Validate command implementation.
 """
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Dict, List, Optional, Set
+from typing import TYPE_CHECKING, Dict, List, Optional, Set, cast
 
 if TYPE_CHECKING:
     pass
@@ -97,25 +97,8 @@ class ValidateCommand(BaseCommand):
             dir_recursive_map,
         )
 
-        # Ensure the schema history table exists before validating, the same
-        # way info/migrate/undo/baseline do. A failure here (e.g. missing DB
-        # privileges) is a real command failure and must propagate rather
-        # than be swallowed into a validation result: validating scripts
-        # against a history table that couldn't be created would report
-        # success while the schema was left in an unusable state.
-        self._run_preflight(result, ensure_history=True)
-
-        try:
-            # Log command execution with connection info (after connection is established)
-            self._log_command_header_update(
-                "validate",
-                target_version=target_version,
-                tags=tags,
-                exclude_tags=exclude_tags,
-                versions=versions,
-                exclude_versions=exclude_versions,
-                read_snapshot=read_snapshot,
-            )
+        def body() -> None:
+            nonlocal read_snapshot
 
             self._fire("beforeValidate")
 
@@ -158,11 +141,27 @@ class ValidateCommand(BaseCommand):
                     # Fallback to error_message if issues list is not available
                     self.log.error(f"Migration validation failed: {result.error_message}")
 
-            self._log_command_completion("validate", result)
-            return result
-
-        except Exception as e:
-            self.log.error(f"Validation operation failed: {e}")
-            result.set_error(f"Validation operation failed: {e}")
-            self._log_command_completion("validate", result)
-            return result
+        # Ensure the schema history table exists before validating, the same
+        # way info/migrate/undo/baseline do. A failure here (e.g. missing DB
+        # privileges) is a real command failure and must propagate rather
+        # than be swallowed into a validation result: validating scripts
+        # against a history table that couldn't be created would report
+        # success while the schema was left in an unusable state.
+        return cast(
+            ValidateResult,
+            self._run_command_lifecycle(
+                "validate",
+                result,
+                body,
+                preflight=lambda: self._run_preflight(result, ensure_history=True),
+                error_message_prefix="Validation operation failed",
+                header_kwargs={
+                    "target_version": target_version,
+                    "tags": tags,
+                    "exclude_tags": exclude_tags,
+                    "versions": versions,
+                    "exclude_versions": exclude_versions,
+                    "read_snapshot": read_snapshot,
+                },
+            ),
+        )

@@ -15,7 +15,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from dblift.core.migration.commands.base_command import BaseCommand
+from dblift.core.migration.commands.base_command import BaseCommand, PreflightConnectionError
 
 
 def _make_command_stub() -> BaseCommand:
@@ -194,3 +194,156 @@ class TestPrintMainHeaderOnceRouting:
         captured = capsys.readouterr()
         assert captured.out == "", "banner must NOT appear on stdout"
         assert "DBLIFT" in captured.err, "banner must appear on stderr"
+
+
+def _build_command(command_class, **collaborators):
+    """Build *command_class* with MagicMock collaborators, overridable by keyword."""
+    deps = {
+        "config": SimpleNamespace(database=SimpleNamespace(schema="public", type="postgresql")),
+        "log": MagicMock(),
+        "provider": MagicMock(),
+        "script_manager": MagicMock(),
+        "history_manager": MagicMock(),
+        "validator": MagicMock(),
+        "execution_engine": MagicMock(),
+        "migration_helpers": MagicMock(),
+        "state_manager": MagicMock(),
+        "migration_ui": MagicMock(),
+        "migration_rules": MagicMock(),
+    }
+    deps.update(collaborators)
+    command = command_class(**deps)
+    command._run_preflight = MagicMock()
+    command._log_command_header_update = MagicMock()
+    command._log_command_completion = MagicMock()
+    return command
+
+
+def _validate_case(fail_body: bool):
+    from dblift.core.migration.commands.validate_command import ValidateCommand
+
+    command = _build_command(ValidateCommand)
+    verdict = MagicMock(success=True, error_message="", issues=[])
+    command.validator.validate_snapshot.return_value = verdict
+    if fail_body:
+        command.state_manager.build_validation_snapshot.side_effect = RuntimeError("x")
+    return command, lambda: command.execute(Path("/migrations")), "validate"
+
+
+def _baseline_case(fail_body: bool):
+    from dblift.core.migration.commands.baseline_command import BaselineCommand
+    from dblift.db.provider_interfaces import TransactionalProvider
+
+    provider = MagicMock()
+    provider.__class__ = TransactionalProvider
+    command = _build_command(BaselineCommand, provider=provider)
+    if fail_body:
+        command.history_manager.record_migration.side_effect = RuntimeError("x")
+    return command, lambda: command.execute("1.0", "initial"), "baseline"
+
+
+def _import_flyway_case(fail_body: bool):
+    from dblift.core.migration.commands.import_flyway_command import ImportFlywayCommand
+
+    command = _build_command(ImportFlywayCommand)
+    command.state_manager.resolve_flyway_source_table.return_value = "flyway_schema_history"
+    command.state_manager.history_source_exists.return_value = True
+    command.state_manager.read_history_rows.return_value = []
+    if fail_body:
+        command.state_manager.resolve_flyway_source_table.side_effect = RuntimeError("x")
+    return command, lambda: command.execute(Path("/scripts")), "import-flyway"
+
+
+def _repair_case(fail_body: bool):
+    from dblift.core.migration.commands.repair_command import RepairCommand
+    from dblift.core.migration.state.migration_state import MigrationState
+
+    command = _build_command(RepairCommand)
+    command.state_manager.build_state.return_value = MigrationState()
+    command.state_manager.get_grouped_migrations.return_value = {}
+    if fail_body:
+        command.state_manager.build_state.side_effect = RuntimeError("x")
+    return command, lambda: command.execute(Path("/migrations")), "repair"
+
+
+_LIFECYCLE_COMMANDS = {
+    "validate": (_validate_case, "Validation operation failed"),
+    "baseline": (_baseline_case, "Baseline operation failed"),
+    "import-flyway": (_import_flyway_case, "Import Flyway operation failed"),
+    "repair": (_repair_case, "Repair operation failed"),
+}
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("name", list(_LIFECYCLE_COMMANDS))
+class TestMigrationCommandsShareTheLifecycle:
+    """validate, baseline, import-flyway and repair log one footer on every exit."""
+
+    def test_footer_logged_once_on_success(self, name):
+        build, _prefix = _LIFECYCLE_COMMANDS[name]
+        command, run, command_name = build(fail_body=False)
+
+        result = run()
+
+        assert result.success is True
+        command._log_command_completion.assert_called_once_with(command_name, result)
+
+    def test_footer_logged_once_on_body_error(self, name):
+        build, prefix = _LIFECYCLE_COMMANDS[name]
+        command, run, command_name = build(fail_body=True)
+
+        result = run()
+
+        assert result.success is False
+        assert result.error_message == f"{prefix}: x"
+        command._log_command_completion.assert_called_once_with(command_name, result)
+
+    def test_preflight_error_propagates(self, name):
+        build, _prefix = _LIFECYCLE_COMMANDS[name]
+        command, run, _command_name = build(fail_body=False)
+        command._run_preflight.side_effect = PreflightConnectionError("down")
+
+        with pytest.raises(PreflightConnectionError):
+            run()
+
+        command._log_command_completion.assert_not_called()
+
+
+@pytest.mark.unit
+def test_repair_safety_error_has_no_prefix():
+    from dblift.core.migration.commands.repair_command import RepairSafetyError
+
+    command, run, _name = _repair_case(fail_body=False)
+    command._detect_missing_migrations = MagicMock(side_effect=RepairSafetyError("refusing"))
+
+    result = run()
+
+    assert result.success is False
+    assert result.error_message == "refusing"
+    command._log_command_completion.assert_called_once_with("repair", result)
+
+
+@pytest.mark.unit
+class TestBaselineHeader:
+    """The baseline header is logged once per run; only a dry run carries ``dry_run``."""
+
+    def test_dry_run_header_marks_dry_run(self):
+        from dblift.core.migration.commands.baseline_command import BaselineCommand
+
+        command = _build_command(BaselineCommand)
+        command.history_manager.has_history_table = False
+
+        command.execute("1.0", "initial", dry_run=True)
+
+        command._log_command_header_update.assert_called_once_with(
+            "baseline", baseline_version="1.0", dry_run=True
+        )
+
+    def test_real_run_header_has_no_dry_run(self):
+        command, run, _name = _baseline_case(fail_body=False)
+
+        run()
+
+        command._log_command_header_update.assert_called_once_with(
+            "baseline", baseline_version="1.0"
+        )

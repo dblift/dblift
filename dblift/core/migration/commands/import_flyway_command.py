@@ -1,7 +1,7 @@
 """Import Flyway command handler."""
 
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, cast
 
 from dblift.core.constants import DEFAULT_HISTORY_TABLE
 from dblift.core.logger.results import OperationResult
@@ -44,113 +44,123 @@ class ImportFlywayCommand(BaseCommand):
             else DEFAULT_HISTORY_TABLE
         )
 
-        # Connect, create the schema-history table (skipped in dry-run so no
-        # table is created as a side effect) and read connection metadata.
-        # Failures raise PreflightConnectionError, as for every other command.
-        self._run_preflight(result, ensure_history=True, dry_run=dry_run)
+        def body() -> None:
+            nonlocal source_table
 
-        try:
+            try:
+                # Read entries from the Flyway history table
+                schema = self.config.database.schema
+                source_table = self.state_manager.resolve_flyway_source_table(schema, source_table)
+
+                # Distinguish "table missing" (configuration error) from "table empty"
+                # (benign but still notable). get_applied_migrations silently returns
+                # [] for both, so a user staring at "0 entries imported" cannot tell
+                # whether their --db-url is pointing at the wrong database.
+                if not self.state_manager.history_source_exists(schema, source_table):
+                    msg = (
+                        f"{source_table} table not found in schema '{schema}'. "
+                        "Verify the database connection points at a Flyway-managed schema, "
+                        "or pass the correct --db-schema/--flyway-table."
+                    )
+                    self.log.error(msg)
+                    result.set_error(msg)
+                    return
+
+                flyway_rows = self._get_flyway_rows(schema, source_table)
+
+                if not flyway_rows:
+                    self.log.warning(
+                        f"{source_table} exists but contains no rows — nothing to import"
+                    )
+                    result.message = f"0 entries imported from {source_table} (table empty)"
+                    result.complete()
+                    return
+
+                schema_marker_count = sum(is_flyway_schema_marker(row) for row in flyway_rows)
+                flyway_rows = [row for row in flyway_rows if not is_flyway_schema_marker(row)]
+
+                rows_to_import, skipped_count = self._filter_existing_rows(
+                    schema, target_table, flyway_rows
+                )
+
+                # Map every row before writing any of them. ``_row_with_mapped_type``
+                # raises on a Flyway type with no equivalent here, and that verdict
+                # has to be reached in dry-run too — a dry run that reports success
+                # for an import the real run refuses is worse than no dry run at
+                # all. Doing it up front also means the refusal lands before the
+                # first insert instead of partway through, so a rejected history
+                # leaves the target table untouched rather than half-populated.
+                mapped_rows = [self._row_with_mapped_type(row) for row in rows_to_import]
+
+                # Emit a user-visible preview in dry-run mode so callers
+                # see the list of rows that would be written to dblift_schema_history
+                # (previously only log.debug, invisible unless debug logging on).
+                if dry_run:
+                    noun = "entry" if len(rows_to_import) == 1 else "entries"
+                    self.log.info(
+                        f"DRY RUN: Would import {len(rows_to_import)} migration {noun} "
+                        f"from {source_table}:"
+                    )
+                    for row in rows_to_import:
+                        script = row.get("script", "<unknown>")
+                        version = row.get("version", "")
+                        checksum = row.get("checksum", "")
+                        self.log.info(f"  - {script} (version: {version}, checksum: {checksum})")
+
+                imported_count = 0
+                for mapped_row in mapped_rows:
+                    if not dry_run:
+                        self.provider.record_migration(schema, mapped_row, target_table)
+                    imported_count += 1
+
+                if not dry_run and imported_count:
+                    commit = getattr(self.provider, "commit_transaction", None)
+                    if callable(commit):
+                        commit()
+                    self.state_manager.new_read_snapshot()
+
+                action = "would be imported" if dry_run else "imported"
+                noun = "entry" if imported_count == 1 else "entries"
+                result.message = f"{imported_count} {noun} {action} from {source_table}"
+                if skipped_count:
+                    skip_noun = "duplicate" if skipped_count == 1 else "duplicates"
+                    result.message += f" ({skipped_count} {skip_noun} skipped)"
+                if schema_marker_count:
+                    marker_noun = "marker" if schema_marker_count == 1 else "markers"
+                    result.message += (
+                        f" ({schema_marker_count} Flyway schema {marker_noun} skipped)"
+                    )
+                result.complete()
+            except Exception:
+                rollback = getattr(self.provider, "rollback_transaction", None)
+                if callable(rollback):
+                    try:
+                        rollback()
+                    except Exception as rollback_error:
+                        self.log.debug(
+                            f"Rollback after import-flyway failure failed: {rollback_error}"
+                        )
+                raise
+
+        def preflight() -> None:
+            # Connect, create the schema-history table (skipped in dry-run so no
+            # table is created as a side effect) and read connection metadata.
+            # Failures raise PreflightConnectionError, as for every other command.
+            self._run_preflight(result, ensure_history=True, dry_run=dry_run)
             if not dry_run:
                 self.state_manager.new_read_snapshot()
 
-            # Log command execution with connection info (after connection is established)
-            self._log_command_header_update("import-flyway", dry_run=dry_run)
-
-            # Read entries from the Flyway history table
-            schema = self.config.database.schema
-            source_table = self.state_manager.resolve_flyway_source_table(schema, source_table)
-
-            # Distinguish "table missing" (configuration error) from "table empty"
-            # (benign but still notable). get_applied_migrations silently returns
-            # [] for both, so a user staring at "0 entries imported" cannot tell
-            # whether their --db-url is pointing at the wrong database.
-            if not self.state_manager.history_source_exists(schema, source_table):
-                msg = (
-                    f"{source_table} table not found in schema '{schema}'. "
-                    "Verify the database connection points at a Flyway-managed schema, "
-                    "or pass the correct --db-schema/--flyway-table."
-                )
-                self.log.error(msg)
-                result.set_error(msg)
-                self._log_command_completion("import-flyway", result)
-                return result
-
-            flyway_rows = self._get_flyway_rows(schema, source_table)
-
-            if not flyway_rows:
-                self.log.warning(f"{source_table} exists but contains no rows — nothing to import")
-                result.message = f"0 entries imported from {source_table} (table empty)"
-                result.complete()
-                self._log_command_completion("import-flyway", result)
-                return result
-
-            schema_marker_count = sum(is_flyway_schema_marker(row) for row in flyway_rows)
-            flyway_rows = [row for row in flyway_rows if not is_flyway_schema_marker(row)]
-
-            rows_to_import, skipped_count = self._filter_existing_rows(
-                schema, target_table, flyway_rows
-            )
-
-            # Map every row before writing any of them. ``_row_with_mapped_type``
-            # raises on a Flyway type with no equivalent here, and that verdict
-            # has to be reached in dry-run too — a dry run that reports success
-            # for an import the real run refuses is worse than no dry run at
-            # all. Doing it up front also means the refusal lands before the
-            # first insert instead of partway through, so a rejected history
-            # leaves the target table untouched rather than half-populated.
-            mapped_rows = [self._row_with_mapped_type(row) for row in rows_to_import]
-
-            # Emit a user-visible preview in dry-run mode so callers
-            # see the list of rows that would be written to dblift_schema_history
-            # (previously only log.debug, invisible unless debug logging on).
-            if dry_run:
-                noun = "entry" if len(rows_to_import) == 1 else "entries"
-                self.log.info(
-                    f"DRY RUN: Would import {len(rows_to_import)} migration {noun} "
-                    f"from {source_table}:"
-                )
-                for row in rows_to_import:
-                    script = row.get("script", "<unknown>")
-                    version = row.get("version", "")
-                    checksum = row.get("checksum", "")
-                    self.log.info(f"  - {script} (version: {version}, checksum: {checksum})")
-
-            imported_count = 0
-            for mapped_row in mapped_rows:
-                if not dry_run:
-                    self.provider.record_migration(schema, mapped_row, target_table)
-                imported_count += 1
-
-            if not dry_run and imported_count:
-                commit = getattr(self.provider, "commit_transaction", None)
-                if callable(commit):
-                    commit()
-                self.state_manager.new_read_snapshot()
-
-            action = "would be imported" if dry_run else "imported"
-            noun = "entry" if imported_count == 1 else "entries"
-            result.message = f"{imported_count} {noun} {action} from {source_table}"
-            if skipped_count:
-                skip_noun = "duplicate" if skipped_count == 1 else "duplicates"
-                result.message += f" ({skipped_count} {skip_noun} skipped)"
-            if schema_marker_count:
-                marker_noun = "marker" if schema_marker_count == 1 else "markers"
-                result.message += f" ({schema_marker_count} Flyway schema {marker_noun} skipped)"
-            result.complete()
-            self._log_command_completion("import-flyway", result)
-            return result
-
-        except Exception as e:
-            rollback = getattr(self.provider, "rollback_transaction", None)
-            if callable(rollback):
-                try:
-                    rollback()
-                except Exception as rollback_error:
-                    self.log.debug(f"Rollback after import-flyway failure failed: {rollback_error}")
-            self.log.error(f"Import Flyway operation failed: {e}")
-            result.set_error(f"Import Flyway operation failed: {e}")
-            self._log_command_completion("import-flyway", result)
-            return result
+        return cast(
+            OperationResult,
+            self._run_command_lifecycle(
+                "import-flyway",
+                result,
+                body,
+                preflight=preflight,
+                error_message_prefix="Import Flyway operation failed",
+                header_kwargs={"dry_run": dry_run},
+            ),
+        )
 
     def _get_flyway_rows(self, schema: str, source_table: str) -> List[Dict[str, Any]]:
         return self.state_manager.read_history_rows(schema, source_table, flyway_source=True)
