@@ -22,7 +22,7 @@ class Line:
 
 
 def read_lines(rules: TerminatorScriptRules, text: str) -> Tuple[List[Line], str, Optional[int]]:
-    """The lines, the text with every consumed terminator blanked, and the first malformed directive line.
+    """The lines, the text with its terminators blanked, and the first malformed directive line.
 
     A directive line, a comment line, a ``comment_block`` line and a blank line are never cut; any
     other line whose last non-blank characters are the active terminator is. The pass stops at a

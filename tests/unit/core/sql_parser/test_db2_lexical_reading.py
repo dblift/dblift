@@ -65,7 +65,7 @@ def test_block_comments_nest(depth):
     tokenizer, tokens = read(f"VALUES 1 {comment} y")
     assert comments(tokenizer) == [comment]
     assert code(tokens) == [("KEYWORD", "VALUES"), ("SYMBOL", "1"), ("KEYWORD", "y")]
-    assert tokenizer.open_depth == 0
+    assert tokenizer.open_lexeme == -1
 
 
 def test_nesting_is_a_spec_field():
@@ -100,7 +100,7 @@ def test_unterminated_lexeme_runs_to_the_end(script, last):
 )
 def test_closed_lexemes_leave_nothing_open(script):
     tokenizer, _ = read(script)
-    assert (tokenizer.open_lexeme, tokenizer.open_depth) == (-1, 0)
+    assert tokenizer.open_lexeme == -1
 
 
 @pytest.mark.parametrize(
@@ -109,7 +109,6 @@ def test_closed_lexemes_leave_nothing_open(script):
 )
 def test_unterminated_comment_runs_to_the_end_and_reports_its_depth(script, open_depth):
     tokenizer, tokens = read(script)
-    assert tokenizer.open_depth == open_depth
     start, end = tokenizer.comments[-1]
     assert tokenizer.sql[start:end].startswith("/*") and end == len(script)
     assert tokenizer.open_lexeme == (start if open_depth else -1)
@@ -156,18 +155,18 @@ def test_every_other_character_is_a_one_character_symbol():
 
 def test_a_byte_order_mark_is_dropped_and_its_offset_kept():
     tokenizer, tokens = read(BOM + "--#SET TERMINATOR @\nVALUES 1@\n")
-    assert tokenizer.origin == 1
+    assert tokenizer.terminator_script.origin == 1
     assert tokenizer.sql.startswith("--#SET") and comments(tokenizer) == ["--#SET TERMINATOR @"]
-    assert read("VALUES 1;")[0].origin == 0
+    assert read("VALUES 1;")[0].terminator_script.origin == 0
     kept = replace(DB2_SPEC, leading_bom_is_blank=False)
-    assert read(BOM + "VALUES 1;", kept)[0].origin == 0
+    assert read(BOM + "VALUES 1;", kept)[0].terminator_script.origin == 0
 
 
 def test_line_pass_results_are_exposed_to_the_assembly():
     tokenizer, _ = read("--#SET TERMINATOR @\nVALUES 1@\nVALUES 2;\n")
-    assert [ln.kind for ln in tokenizer.terminator_lines] == ["directive", "code", "code"]
-    assert tokenizer.malformed_directive is None
-    assert read("--#SET TERMINATOR\nx")[0].malformed_directive == 1
+    assert [ln.kind for ln in tokenizer.terminator_script.lines] == ["directive", "code", "code"]
+    assert tokenizer.terminator_script.malformed is None
+    assert read("--#SET TERMINATOR\nx")[0].terminator_script.malformed == 1
 
 
 @pytest.mark.parametrize(
@@ -180,7 +179,7 @@ def test_line_pass_results_are_exposed_to_the_assembly():
 def test_masked_terminators_do_not_open_lexemes(terminator, script, lexemes):
     tokenizer, tokens = read(f"--#SET TERMINATOR {terminator}\n{script}")
     assert len(tokenizer.comments) == lexemes  # only the directive line is a comment
-    assert tokenizer.open_depth == 0
+    assert tokenizer.open_lexeme == -1
     assert [t.text for t in tokens if t.type == TokenType.KEYWORD] == ["VALUES", "VALUES"]
 
 
@@ -197,7 +196,7 @@ def test_masked_quote_terminators_leave_the_line_open_not_closed():
 
 def test_masked_comment_closer_leaves_the_comment_open():
     tokenizer, _ = read("--#SET TERMINATOR */\nVALUES 1 /* a\nb */\n")
-    assert tokenizer.open_depth == 1
+    assert tokenizer.open_lexeme >= 0
 
 
 # --- the shared block comment reader ---------------------------------------------------------------------

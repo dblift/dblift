@@ -249,7 +249,7 @@ class LexicalSpec:
     terminator_script: Optional[TerminatorScriptRules] = None
 
     def __post_init__(self) -> None:
-        """A client reads a script by lines, by batches, up to a delimiter or to a terminator line, never two."""
+        """A client reads a script by lines, batches, a delimiter or a terminator line, never two."""
         rules = (
             self.client_script,
             self.batch_script,

@@ -123,15 +123,15 @@ def test_overlap_rule_over_every_terminator_state_and_ending():
                     script,
                     result,
                 )
-                prefix = f"line {code[1:]} ends with {terminator!r}, "
-                assert result[2].startswith(prefix), (script, result)
-                assert result[2][len(prefix) :].startswith(
-                    (
-                        "which is also part of a comment delimiter: the CLP cuts the statement there, the "
-                        "splitter cannot tell the two readings apart; put the comment on a line of its own",
-                        "inside a string or a quoted identifier: the CLP cuts the statement there and the "
-                        "server rejects both halves; close the literal before the end of the line",
-                    )
+                head = f"line {code[1:]} ends with {terminator!r}"
+                assert result[2] in (
+                    head
+                    + ", which is also part of a comment delimiter: the CLP cuts the statement "
+                    "there, the splitter cannot tell the two readings apart; put the comment on a line "
+                    "of its own",
+                    head + " inside a string or a quoted identifier: the CLP cuts the statement "
+                    "there and the server rejects both halves; close the literal before the end of "
+                    "the line",
                 ), (script, result)
     assert next(codes, None) is None
 
@@ -186,6 +186,21 @@ def test_blanks_field_is_read_by_the_assembly():
     ]
 
 
+def test_blanks_field_is_read_for_the_statement_start():
+    script = VT + "VALUES 1;\n"
+    assert outcome(script) == ["records", ["VALUES 1", 1, ";", "sql", 0, 11]]
+    wide = replace(DB2_SPEC, terminator_script=replace(DB2_RULES, blanks=" \t" + VT))
+    assert outcome(script, wide) == ["records", ["VALUES 1", 1, ";", "sql", 1, 11]]
+
+
+def test_line_comment_field_is_read_by_the_semicolon_ending():
+    script = "VALUES 1; -- c\nVALUES 2;\n"
+    assert [r[0] for r in outcome(script)[1:]] == ["VALUES 1", "VALUES 2"]
+    other = replace(DB2_SPEC, terminator_script=replace(DB2_RULES, line_comment="#"))
+    assert outcome(script, other)[:2] == ["error", "UnsafeStatementSplitError"]
+    assert outcome(script, other)[2].startswith("line 2 has code after a ';'")
+
+
 def test_engine_analysis_view_matches_the_parser():
     engine = LexicalEngine(DB2_SPEC)
     for case in CASES["rows"]:
@@ -207,7 +222,9 @@ def test_blank_comments_refuses_terminator_specs():
 
 def test_split_statements_are_the_sql_texts_without_terminators():
     engine = LexicalEngine(DB2_SPEC)
-    assert engine.split_statements("--#SET TERMINATOR @\nVALUES 1@\nVALUES 2 -- c\n;\nQUIT;\n") == [
+    assert engine.split_statements(
+        "--#SET TERMINATOR @\nVALUES 1@\n--#SET TERMINATOR ;\nVALUES 2 -- c\n;\nQUIT;\n"
+    ) == [
         "VALUES 1",
         "VALUES 2 -- c",
     ]

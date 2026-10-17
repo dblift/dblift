@@ -15,7 +15,8 @@ from dblift.core.sql_parser.batch_commands import (
 from dblift.core.sql_parser.client_directives import classify_directive, is_free_text
 from dblift.core.sql_parser.delimiter_script import DelimiterScript
 from dblift.core.sql_parser.lexical_spec import BOM, DirectiveAction, LexicalSpec
-from dblift.core.sql_parser.terminator_lines import Line, read_lines
+from dblift.core.sql_parser.statement import Statement
+from dblift.core.sql_parser.terminator_script import TerminatorScript
 from dblift.core.sql_parser.tokens import Token, TokenType
 from dblift.core.sql_parser.unit_heads import decide
 
@@ -83,13 +84,14 @@ class LexicalTokenizer(BaseTokenizer):
         """Read source positions with the plugin's lexical policies."""
         delimiter_rules = spec.delimiter_script
         terminator_rules = spec.terminator_script
-        origin = 0
-        lines: List[Line] = []
-        malformed: Optional[int] = None
+        terminator_script: Optional[TerminatorScript] = None
         if terminator_rules is not None:
-            # The terminator runs are blanked before lexing; offsets are those of the text after the mark.
+            # Terminator runs are blanked before lexing; offsets are into the text after the mark.
             origin = 1 if spec.leading_bom_is_blank and sql.startswith(BOM) else 0
-            lines, sql, malformed = read_lines(terminator_rules, sql[origin:])
+            terminator_script = TerminatorScript(
+                terminator_rules, spec.client_name, sql[origin:], origin
+            )
+            sql = terminator_script.masked
         removed: List[int] = []
         if delimiter_rules is not None:
             # The client reads lines and drops the CR of a CRLF pair; `removed` maps offsets back.
@@ -142,13 +144,9 @@ class LexicalTokenizer(BaseTokenizer):
         self._opener_re = re.compile("|".join(re.escape(o) for o in openers if o))
         # Delimiter scripts: client state, word alphabet, active delimiter, cached line end.
         self.delimiter_script: Optional[DelimiterScript] = None
-        # Terminator scripts: the lines, the first malformed directive line, the byte order mark offset,
-        # where a lexeme left open at the end begins, the depth of a block comment left open and the nesting
-        # depth at each line end inside one.
-        self.terminator_lines = lines
-        self.malformed_directive = malformed
-        self.origin = origin
-        self.open_depth = 0
+        # Terminator scripts: the client's reading, where a lexeme left open at the end begins,
+        # and the nesting depth at each line end inside a comment.
+        self.terminator_script = terminator_script
         self.open_lexeme = -1
         self.marks: Dict[int, Tuple[int, bool]] = {}
         self._word_re = re.compile("" if terminator_rules is None else terminator_rules.word)
@@ -181,7 +179,8 @@ class LexicalTokenizer(BaseTokenizer):
         """
         sql = self.sql
         tokens: List[Token] = []
-        stops = [line.body_end for line in self.terminator_lines if line.body_end >= 0]
+        assert self.terminator_script is not None
+        stops = [line.body_end for line in self.terminator_script.lines if line.body_end >= 0]
         index, size = 0, len(sql)
         while self.pos < size:
             pos, line, col = self.pos, self.line, self.col
@@ -205,7 +204,6 @@ class LexicalTokenizer(BaseTokenizer):
                 while index < len(stops) and stops[index] < self.pos:
                     index += 1
                 depth, index = self._read_block_comment(stops, index, self.marks)
-                self.open_depth = depth
                 if depth:
                     self.open_lexeme = pos
                 self.comments.append((pos, self.pos))
@@ -225,9 +223,14 @@ class LexicalTokenizer(BaseTokenizer):
                     self.read(word.end() - pos)
                 else:
                     self.read()
-            text = "" if kind == TokenType.COMMENT else sql[pos : self.pos]
-            tokens.append(Token(kind, text, pos, line, col, self.parens_depth))
+            tokens.append(Token(kind, sql[pos : self.pos], pos, line, col, self.parens_depth))
         return tokens
+
+    def assemble(self, tokens: List[Token]) -> Optional[List[Statement]]:
+        """The records of a terminator script read as ``tokens`` (or its refusal); else None."""
+        if self.terminator_script is None:
+            return None
+        return self.terminator_script.assemble(tokens, self.marks, self.open_lexeme)
 
     def _next_sql_token(self) -> Optional[Token]:
         """Get the next token from the input.
