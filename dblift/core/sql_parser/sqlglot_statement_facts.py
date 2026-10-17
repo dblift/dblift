@@ -81,19 +81,17 @@ _UNREAD_NAME_CHARACTERS = frozenset(
     c for c in map(chr, range(0x80, 0x10000)) if c.isspace()
 ) | frozenset({"\u200b", "\u2060", "\ufeff"})
 _QUOTED_TOKENS = frozenset(
-    getattr(TokenType, name)
-    for name in (
-        "STRING",
-        "NATIONAL_STRING",
-        "RAW_STRING",
-        "HEREDOC_STRING",
-        "BIT_STRING",
-        "HEX_STRING",
-        "BYTE_STRING",
-        "UNICODE_STRING",
-        "IDENTIFIER",
-    )
-    if hasattr(TokenType, name)
+    {
+        TokenType.STRING,
+        TokenType.NATIONAL_STRING,
+        TokenType.RAW_STRING,
+        TokenType.HEREDOC_STRING,
+        TokenType.BIT_STRING,
+        TokenType.HEX_STRING,
+        TokenType.BYTE_STRING,
+        TokenType.UNICODE_STRING,
+        TokenType.IDENTIFIER,
+    }
 )
 _ASCII_BLANKS = " \t\n\r\f\v"
 _NAME_CHARACTERS = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_$")
@@ -151,7 +149,7 @@ def unread_name_character(sql: str, *, dialect: str) -> Optional[int]:
     except TokenError:
         return _first_unread(sql, 0, len(sql))
     comments = tokenizer.tokenizer_class._COMMENTS
-    nested = bool(getattr(tokenizer.tokenizer_class, "NESTED_COMMENTS", False))
+    nested = tokenizer.tokenizer_class.NESTED_COMMENTS
     position = 0
     for token in tokens:
         found = _first_unread_outside_comments(sql, position, token.start, comments, nested)
