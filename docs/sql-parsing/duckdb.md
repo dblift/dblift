@@ -311,6 +311,15 @@ DuckDB specification; the shared tokenizer reads them and one core module assemb
 | 75 | `SELECT \u00b2E'b\';c'; SELECT 2;` | `SELECT \u00b2E'b\'` · `c'; SELECT 2;` (measured: a superscript two followed by E is one name for the engine, so a plain string follows and the first semicolon ends the statement; known gap: the splitter reads any character Python counts as a digit before E as a number and opens an escape string) |
 | 76 | `PREPARE p AS SELECT $1a$$x; SELECT 2; SELECT 3 AS y$$;` | `PREPARE p AS SELECT $1a$$x` · `SELECT 2` · `SELECT 3 AS y$$` (measured: a positional parameter is the dollar sign and its digits with underscore separators, so the letters after it start a word, the dollar pair inside that word opens nothing and each semicolon ends a statement; the driver's own statement splitter returns the same three) |
 | 77 | `SELECT 1a$$x; DROP TABLE t; SELECT 3 AS y$$;` | `SELECT 1a$$x` · `DROP TABLE t` · `SELECT 3 AS y$$` (measured: a number is digits with underscore separators, an optional fraction and an optional exponent, so the letters after it start a word, the dollar pair inside that word opens nothing and each semicolon ends a statement; the same for 1_000a, 1.5a, 1e5a and 0x1g, which is the number 0 and the word x1g, and the driver and the shell dropped the table) |
+| 78 | `DROP TABLE t\xa0;\nSELECT 1;` | `DROP TABLE t` · `SELECT 1` **exact text** (before a terminator a no-break space is a blank to DuckDB; the shell sends the terminator) |
+| 78a | `DROP TABLE t\xa0` | `DROP TABLE t\xa0` **exact text** (no terminator and the script ends in a no-break space: sent as the shell sends it; DuckDB reads a no-break space that ends the text as part of the name, and only there) |
+| 78b | `DROP TABLE t\u3000` | `DROP TABLE t` **exact text** (an ideographic space is a blank to DuckDB, at the end too) |
+| 78c | `DROP TABLE t\xa0\n` | `DROP TABLE t\xa0` **exact text** (the shell removes one final line ending, so the no-break space ends the text it sends: a name) |
+| 78d | `DROP TABLE t\xa0\x0d\n` | `DROP TABLE t\xa0` **exact text** (the same for a carriage return and a line feed) |
+| 78e | `DROP TABLE t\xa0\n\n` | `DROP TABLE t` **exact text** (only one line ending is removed: the no-break space is followed by a newline, a blank) |
+| 78f | `DROP TABLE t \xa0` | `DROP TABLE t` **exact text** (a space then a no-break space at the end of the file: the shell drops t; the driver given this text reports a parser error, and the shell is the reference) |
+| 78g | `DROP TABLE t\xa0\xa0` | `DROP TABLE t` **exact text** (two no-break spaces: the shell drops t, the driver reports a parser error) |
+| 78h | `SELECT 1\x0b` | `SELECT 1\x0b` **exact text** (rejected by the engine, kept: a vertical tab is a syntax error) |
 
 ## 11. Not handled
 

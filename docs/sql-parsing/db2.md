@@ -247,6 +247,10 @@ None. The CLP's rules are data of the shared lexical tokenizer: the active termi
 | 52 | `VALUES 'p\n(= q\n';\nVALUES 2;` | `VALUES 'p\n(= q\n'` · `VALUES 2` (measured: inside a string the CLP sends the line as string text and returns it; known gap: the splitter refuses the line as a CLP comment block) |
 | 53 | `VALUES 1;\x0d\x0d\nVALUES 2;` | `VALUES 1` · `VALUES 2` (measured: a run of carriage returns before the line feed ends the line for the CLP, both statements run; known gap: the splitter drops one carriage return only and refuses the semicolon as one in the middle of a line) |
 | 54 | `--#SET TERMINATOR \u00e9\u00e9\nVALUES 1\u00e9\u00e9\nVALUES 2;` | `UnsafeStatementSplitError` (line 1; measured with a UTF-8 file: the CLP counts the terminator in bytes, rejects a value of three or more bytes with DB21109E reason 1 and keeps the semicolon, so it never sends VALUES 1 alone; known gap: the splitter counts characters and accepts the directive) |
+| 55 | `DROP TABLE t\xa0;\nVALUES 1;` | `DROP TABLE t\xa0` · `VALUES 1` **exact text** (the CLP sends the no-break space and the server reads it as part of the name; measured 2026-10-17) |
+| 55a | `\xa0\nVALUES 1;` | `\xa0\nVALUES 1` **exact text** (a leading no-break space is part of the statement: the CLP sends it and the server rejects it) |
+| 55b | `VALUES 1\x0c;` | `VALUES 1\x0c` **exact text** (rejected by the engine, kept: SQL0007N, as when the CLP sends the file) |
+| 55c | `VALUES 1\x0b;` | `VALUES 1\x0b` **exact text** (rejected by the engine, kept: SQL0007N, as when the CLP sends the file) |
 
 ## 11. Not handled
 

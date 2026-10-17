@@ -237,6 +237,10 @@ sqlcmd rules are the data of `BatchScriptRules` and `DivisionRules` in
 | 30 | `SELECT 1\nGO 1000001` | `UnsafeStatementSplitError` (the splitter's own bound: split_statements returns one string per repetition; sqlcmd accepts the count) |
 | 31 | `\x0c\nGO\nSELECT 2` | `SELECT 2` (a batch holding only a form feed is not a statement; measured 2026-10-14, sqlcmd 18.6.0002.1: only the second batch runs, exit 0. Known gap: the splitter returns an empty-text record for the first batch, §12) |
 | 32 | `SELECT 1\n\xa0GO\nSELECT 2` | `SELECT 1\n\xa0GO\nSELECT 2` (one batch: a no-break space before GO makes the line text; measured 2026-10-14, sqlcmd 18.6.0002.1: Msg 102 near GO, exit 1, the same for a form feed, U+001C, U+0085 and U+2028 before GO) |
+| 33 | `DROP TABLE t\xa0` | `DROP TABLE t` **exact text** (a no-break space is a blank to SQL Server; sqlcmd agrees, measured 2026-10-17) |
+| 33a | `DROP TABLE t\u200b` | `DROP TABLE t` **exact text** (a zero width space is a blank to SQL Server though it is not Unicode white space) |
+| 33b | `SELECT 1\ufeff` | `SELECT 1\ufeff` **exact text** (a byte order mark is a name character: kept; the server reports a syntax error) |
+| 33c | `SELECT 1\u2029` | `SELECT 1\u2029` **exact text** (a paragraph separator is not measured, so it is kept until it is) |
 
 ## 11. Not handled
 

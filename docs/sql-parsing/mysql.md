@@ -205,6 +205,9 @@ None. The client's rules are data of the shared lexical tokenizer, one specifica
 | 85 | `DELIMITER "'$"\nSELECT 'a''$\nSELECT 2'$` | `SELECT 'a'` · `SELECT 2` a delimiter led by a quote is found between the two quotes of a doubled quote: the client reads a doubled quote as a close and a reopen and looks for the delimiter at every position outside a string (measured 2026-10-15 on the three clients: two statements, exit 0) |
 | 85a | ```DELIMITER '`x'\nSELECT 1 AS `a``x\nSELECT 2`x``` | `` SELECT 1 AS `a` `` · `SELECT 2` the same for a delimiter led by a backtick (measured 2026-10-15 on the three clients) |
 | 85b | `DELIMITER '"x'\nSELECT "a""x\nSELECT 2"x` | `SELECT "a"` · `SELECT 2` the same for a delimiter led by a double quote (measured 2026-10-15 on the three clients) |
+| 86 | `DROP TABLE t\xa0;\nSELECT 1;` | `DROP TABLE t\xa0` · `SELECT 1` **exact text** (the clients send the character and the server reads it as part of the name; measured 2026-10-17 on MySQL 8.0, 8.4 and MariaDB 11.8) |
+| 86a | `DROP TABLE t\u2028` | `DROP TABLE t\u2028` **exact text** (a line separator ends the file: the clients send it and the server reads it as part of the name) |
+| 86b | `SELECT 1\x0b;` | `SELECT 1` **exact text** (a vertical tab is a blank for the server) |
 
 ## 11. Not handled
 

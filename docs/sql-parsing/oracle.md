@@ -232,6 +232,13 @@ else in this spec is data.
 | 39 | `SELECT 1;\n/* a */ /* b */ / x` | `UnsafeStatementSplitError` at line 2, column 17: the `/` after block comments would re-execute the previous statement, the rest of the line is ignored (sqlplus 23.x, Oracle Free 23ai, 2026-10-13: the line is the `/` command, which re-executes the buffer) |
 | 40 | `SELECT 1;\n/x` | `UnsafeStatementSplitError` at line 2, column 1: SQL\*Plus reports the line as an unknown command (SP2-0042; sqlplus 23.x, Oracle Free 23ai, 2026-10-13) and does not re-execute the buffer |
 | 41 | `SELECT 1\n/* c */ /` | `SELECT 1\n/* c */ /` (an open buffer keeps a line made of a block comment and a slash as statement text; sqlplus 23.x, Oracle Free 23ai, 2026-10-13: a statement left open, then a line made of a block comment and a slash, then a second statement was rejected with ORA-03048, the line having been appended to the open statement) |
+| 42 | `DROP TABLE t\xa0` | `UnsafeStatementSplitError` (a no-break space at the end of a statement: the server rejects it with ORA-00911 and python-oracledb strips it before sending, which would run a different statement; measured 2026-10-17, error at line 1, column 13) |
+| 42a | `DROP TABLE t\xa0;` | `UnsafeStatementSplitError` (the same once the terminator is removed for the driver; SQL*Plus sends the text as written and fails with ORA-00911) |
+| 42b | `DROP TABLE t\u200b;` | `DROP TABLE t\u200b;` **exact text** (rejected by the server and kept: the driver sends it, ORA-00911) |
+| 42c | `DROP TABLE t\ufeff` | `DROP TABLE t\ufeff` **exact text** (rejected and kept, as 42b) |
+| 42d | `DROP TABLE t\u3000;` | `DROP TABLE t\u3000;` **exact text** (an ideographic space is a blank to Oracle) |
+| 42e | `\u2028SELECT 1 FROM dual;` | `UnsafeStatementSplitError` (leading edge: python-oracledb 26.0.1 strips both sides of a statement before sending, so the server would see a different text than the file holds; the server rejecting a leading line separator is inferred from a mid-text probe, not measured) |
+| 42f | `SELECT 1 FROM dual -- note\xa0` | `SELECT 1 FROM dual -- note\xa0` **exact text** (the no-break space is inside a trailing comment: the driver's strip only shortens the comment, the statement executed is unchanged, so the text is kept and not refused) |
 
 ## 11. Not handled
 

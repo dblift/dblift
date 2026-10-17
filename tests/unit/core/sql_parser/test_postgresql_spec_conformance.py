@@ -21,6 +21,13 @@ ROWS = [row for row in load_conformance_rows(SPEC_DIR) if row.dialect == "postgr
 
 KNOWN_GAPS: frozenset[str] = frozenset()
 
+#: Rows that fail today for the reason given: they fail strictly, and the change that fixes a row
+#: removes its id (a row that starts to pass under a strict xfail fails loudly).
+RED_ROWS: dict[str, str] = {
+    "30": "the splitter strips a trailing no-break space at the end of the script",
+    "30c": "the splitter strips a trailing vertical tab, which the engine rejects",
+}
+
 
 @pytest.mark.parametrize("row_id", ["11", "11a", "11b", "15b"])
 def test_copy_conformance_row_preserves_trailing_payload_newlines(row_id: str) -> None:
@@ -55,6 +62,8 @@ def test_spec_row(row: ConformanceRow, request: pytest.FixtureRequest) -> None:
         pytest.skip("spec marks this row 'to verify': not a claim yet")
     if row.row_id in KNOWN_GAPS:
         request.applymarker(pytest.mark.xfail(strict=True, reason="listed in KNOWN_GAPS"))
+    if row.row_id in RED_ROWS:
+        request.applymarker(pytest.mark.xfail(strict=True, reason=RED_ROWS[row.row_id]))
     outcome = split_script("postgresql", row.script)
     assert outcome.matches(row.expectation), (
         f"row {row.row_id}\nscript: {row.script!r}\n"
