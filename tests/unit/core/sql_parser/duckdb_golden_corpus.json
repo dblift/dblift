@@ -992,21 +992,32 @@
   }
  },
  {
-  "known_gap": "76",
-  "name": "parameter_swallows_letters_then_dollar_pair",
+  "name": "parameter_then_word_with_dollar_pair",
   "script": "PREPARE p AS SELECT $1a$$x; SELECT 2; SELECT 3 AS y$$;",
   "views": {
    "analysis": [
-    "PREPARE p AS SELECT $1a$$x; SELECT 2; SELECT 3 AS y$$"
+    "PREPARE p AS SELECT $1a$$x",
+    "SELECT 2",
+    "SELECT 3 AS y$$"
    ],
    "blanked": "PREPARE p AS SELECT $1a$$x; SELECT 2; SELECT 3 AS y$$;",
    "extraction": [
-    "PREPARE p AS SELECT $1a$$x; SELECT 2; SELECT 3 AS y$$"
+    "PREPARE p AS SELECT $1a$$x",
+    "SELECT 2",
+    "SELECT 3 AS y$$"
    ],
    "masking": [
     [
-     "PREPARE p AS SELECT $1a$$x; SELECT 2; SELECT 3 AS y$$",
+     "PREPARE p AS SELECT $1a$$x",
      "PREPARE p"
+    ],
+    [
+     "SELECT 2",
+     "SELECT 2"
+    ],
+    [
+     "SELECT 3 AS y$$",
+     "SELECT 3"
     ]
    ],
    "records": [
@@ -1016,34 +1027,128 @@
      "line": 1,
      "multi": false,
      "repeat": 1,
-     "source_end": 54,
+     "source_end": 27,
      "source_start": 0,
      "terminator": ";",
-     "text": "PREPARE p AS SELECT $1a$$x; SELECT 2; SELECT 3 AS y$$"
+     "text": "PREPARE p AS SELECT $1a$$x"
+    },
+    {
+     "analysis_statements": null,
+     "kind": "sql",
+     "line": 1,
+     "multi": false,
+     "repeat": 1,
+     "source_end": 37,
+     "source_start": 28,
+     "terminator": ";",
+     "text": "SELECT 2"
+    },
+    {
+     "analysis_statements": null,
+     "kind": "sql",
+     "line": 1,
+     "multi": false,
+     "repeat": 1,
+     "source_end": 54,
+     "source_start": 38,
+     "terminator": ";",
+     "text": "SELECT 3 AS y$$"
     }
    ],
    "strings": [
-    "PREPARE p AS SELECT $1a$$x; SELECT 2; SELECT 3 AS y$$"
+    "PREPARE p AS SELECT $1a$$x",
+    "SELECT 2",
+    "SELECT 3 AS y$$"
    ]
   }
  },
  {
-  "known_gap": "76",
-  "name": "parameter_swallows_an_accented_letter",
+  "name": "parameter_then_accented_word_with_dollar_pair",
   "script": "SELECT $1\u00e9$$x;y$$; SELECT 2;",
   "views": {
    "analysis": [
-    "SELECT $1\u00e9$$x;y$$",
+    "SELECT $1\u00e9$$x",
+    "y$$",
     "SELECT 2"
    ],
    "blanked": "SELECT $1\u00e9$$x;y$$; SELECT 2;",
    "extraction": [
-    "SELECT $1\u00e9$$x;y$$",
+    "SELECT $1\u00e9$$x",
+    "y$$",
     "SELECT 2"
    ],
    "masking": [
     [
-     "SELECT $1\u00e9$$x;y$$",
+     "SELECT $1\u00e9$$x",
+     "SELECT"
+    ],
+    [
+     "y$$",
+     "y$$"
+    ],
+    [
+     "SELECT 2",
+     "SELECT 2"
+    ]
+   ],
+   "records": [
+    {
+     "analysis_statements": null,
+     "kind": "sql",
+     "line": 1,
+     "multi": false,
+     "repeat": 1,
+     "source_end": 14,
+     "source_start": 0,
+     "terminator": ";",
+     "text": "SELECT $1\u00e9$$x"
+    },
+    {
+     "analysis_statements": null,
+     "kind": "sql",
+     "line": 1,
+     "multi": false,
+     "repeat": 1,
+     "source_end": 18,
+     "source_start": 14,
+     "terminator": ";",
+     "text": "y$$"
+    },
+    {
+     "analysis_statements": null,
+     "kind": "sql",
+     "line": 1,
+     "multi": false,
+     "repeat": 1,
+     "source_end": 28,
+     "source_start": 19,
+     "terminator": ";",
+     "text": "SELECT 2"
+    }
+   ],
+   "strings": [
+    "SELECT $1\u00e9$$x",
+    "y$$",
+    "SELECT 2"
+   ]
+  }
+ },
+ {
+  "name": "parameter_then_escape_string",
+  "script": "SELECT $1E'a\\';b'; SELECT 2;",
+  "views": {
+   "analysis": [
+    "SELECT $1E'a\\';b'",
+    "SELECT 2"
+   ],
+   "blanked": "SELECT $1E'a\\';b'; SELECT 2;",
+   "extraction": [
+    "SELECT $1E'a\\';b'",
+    "SELECT 2"
+   ],
+   "masking": [
+    [
+     "SELECT",
      "SELECT"
     ],
     [
@@ -1061,7 +1166,7 @@
      "source_end": 18,
      "source_start": 0,
      "terminator": ";",
-     "text": "SELECT $1\u00e9$$x;y$$"
+     "text": "SELECT $1E'a\\';b'"
     },
     {
      "analysis_statements": null,
@@ -1076,79 +1181,28 @@
     }
    ],
    "strings": [
-    "SELECT $1\u00e9$$x;y$$",
+    "SELECT $1E'a\\';b'",
     "SELECT 2"
    ]
   }
  },
  {
-  "known_gap": "76",
-  "name": "parameter_swallows_the_escape_letter",
-  "script": "SELECT $1E'a\\';b'; SELECT 2;",
-  "views": {
-   "analysis": [
-    "SELECT $1E'a\\'",
-    "b'; SELECT 2;"
-   ],
-   "blanked": "SELECT $1E'a\\';b'; SELECT 2;",
-   "extraction": [
-    "SELECT $1E'a\\'",
-    "b'; SELECT 2;"
-   ],
-   "masking": [
-    [
-     "SELECT $1E'?'",
-     "SELECT"
-    ],
-    [
-     "b",
-     "b"
-    ]
-   ],
-   "records": [
-    {
-     "analysis_statements": null,
-     "kind": "sql",
-     "line": 1,
-     "multi": false,
-     "repeat": 1,
-     "source_end": 15,
-     "source_start": 0,
-     "terminator": ";",
-     "text": "SELECT $1E'a\\'"
-    },
-    {
-     "analysis_statements": null,
-     "kind": "sql",
-     "line": 1,
-     "multi": false,
-     "repeat": 1,
-     "source_end": 28,
-     "source_start": 15,
-     "terminator": null,
-     "text": "b'; SELECT 2;"
-    }
-   ],
-   "strings": [
-    "SELECT $1E'a\\'",
-    "b'; SELECT 2;"
-   ]
-  }
- },
- {
-  "known_gap": "76",
-  "name": "hidden_drop_table_in_one_statement",
+  "name": "hidden_drop_table_after_a_parameter_and_a_word",
   "script": "CREATE TABLE t(a INT); PREPARE p AS SELECT $1\u00e9$$x; DROP TABLE t; SELECT 1 AS y$$; SELECT 2;",
   "views": {
    "analysis": [
     "CREATE TABLE t(a INT)",
-    "PREPARE p AS SELECT $1\u00e9$$x; DROP TABLE t; SELECT 1 AS y$$",
+    "PREPARE p AS SELECT $1\u00e9$$x",
+    "DROP TABLE t",
+    "SELECT 1 AS y$$",
     "SELECT 2"
    ],
    "blanked": "CREATE TABLE t(a INT); PREPARE p AS SELECT $1\u00e9$$x; DROP TABLE t; SELECT 1 AS y$$; SELECT 2;",
    "extraction": [
     "CREATE TABLE t(a INT)",
-    "PREPARE p AS SELECT $1\u00e9$$x; DROP TABLE t; SELECT 1 AS y$$",
+    "PREPARE p AS SELECT $1\u00e9$$x",
+    "DROP TABLE t",
+    "SELECT 1 AS y$$",
     "SELECT 2"
    ],
    "masking": [
@@ -1157,8 +1211,16 @@
      "CREATE TABLE t"
     ],
     [
-     "PREPARE p AS SELECT $1\u00e9$$x; DROP TABLE t; SELECT 1 AS y$$",
+     "PREPARE p AS SELECT $1\u00e9$$x",
      "PREPARE p"
+    ],
+    [
+     "DROP TABLE t",
+     "DROP TABLE t"
+    ],
+    [
+     "SELECT 1 AS y$$",
+     "SELECT 1"
     ],
     [
      "SELECT 2",
@@ -1183,10 +1245,32 @@
      "line": 1,
      "multi": false,
      "repeat": 1,
-     "source_end": 81,
+     "source_end": 50,
      "source_start": 23,
      "terminator": ";",
-     "text": "PREPARE p AS SELECT $1\u00e9$$x; DROP TABLE t; SELECT 1 AS y$$"
+     "text": "PREPARE p AS SELECT $1\u00e9$$x"
+    },
+    {
+     "analysis_statements": null,
+     "kind": "sql",
+     "line": 1,
+     "multi": false,
+     "repeat": 1,
+     "source_end": 64,
+     "source_start": 51,
+     "terminator": ";",
+     "text": "DROP TABLE t"
+    },
+    {
+     "analysis_statements": null,
+     "kind": "sql",
+     "line": 1,
+     "multi": false,
+     "repeat": 1,
+     "source_end": 81,
+     "source_start": 65,
+     "terminator": ";",
+     "text": "SELECT 1 AS y$$"
     },
     {
      "analysis_statements": null,
@@ -1202,7 +1286,9 @@
    ],
    "strings": [
     "CREATE TABLE t(a INT)",
-    "PREPARE p AS SELECT $1\u00e9$$x; DROP TABLE t; SELECT 1 AS y$$",
+    "PREPARE p AS SELECT $1\u00e9$$x",
+    "DROP TABLE t",
+    "SELECT 1 AS y$$",
     "SELECT 2"
    ]
   }
@@ -3568,19 +3654,22 @@
   }
  },
  {
-  "known_gap": "77",
-  "name": "hidden_drop_table_after_a_number_with_letters",
+  "name": "drop_table_after_a_number_and_a_word_is_a_statement",
   "script": "CREATE TABLE t(a INT); SELECT 1a$$x; DROP TABLE t; SELECT 3 AS y$$; SELECT 2;",
   "views": {
    "analysis": [
     "CREATE TABLE t(a INT)",
-    "SELECT 1a$$x; DROP TABLE t; SELECT 3 AS y$$",
+    "SELECT 1a$$x",
+    "DROP TABLE t",
+    "SELECT 3 AS y$$",
     "SELECT 2"
    ],
    "blanked": "CREATE TABLE t(a INT); SELECT 1a$$x; DROP TABLE t; SELECT 3 AS y$$; SELECT 2;",
    "extraction": [
     "CREATE TABLE t(a INT)",
-    "SELECT 1a$$x; DROP TABLE t; SELECT 3 AS y$$",
+    "SELECT 1a$$x",
+    "DROP TABLE t",
+    "SELECT 3 AS y$$",
     "SELECT 2"
    ],
    "masking": [
@@ -3589,8 +3678,16 @@
      "CREATE TABLE t"
     ],
     [
-     "SELECT 1a$$x; DROP TABLE t; SELECT 3 AS y$$",
+     "SELECT 1a$$x",
      "SELECT 1a$$x"
+    ],
+    [
+     "DROP TABLE t",
+     "DROP TABLE t"
+    ],
+    [
+     "SELECT 3 AS y$$",
+     "SELECT 3"
     ],
     [
      "SELECT 2",
@@ -3615,10 +3712,32 @@
      "line": 1,
      "multi": false,
      "repeat": 1,
-     "source_end": 67,
+     "source_end": 36,
      "source_start": 23,
      "terminator": ";",
-     "text": "SELECT 1a$$x; DROP TABLE t; SELECT 3 AS y$$"
+     "text": "SELECT 1a$$x"
+    },
+    {
+     "analysis_statements": null,
+     "kind": "sql",
+     "line": 1,
+     "multi": false,
+     "repeat": 1,
+     "source_end": 50,
+     "source_start": 37,
+     "terminator": ";",
+     "text": "DROP TABLE t"
+    },
+    {
+     "analysis_statements": null,
+     "kind": "sql",
+     "line": 1,
+     "multi": false,
+     "repeat": 1,
+     "source_end": 67,
+     "source_start": 51,
+     "terminator": ";",
+     "text": "SELECT 3 AS y$$"
     },
     {
      "analysis_statements": null,
@@ -3634,7 +3753,9 @@
    ],
    "strings": [
     "CREATE TABLE t(a INT)",
-    "SELECT 1a$$x; DROP TABLE t; SELECT 3 AS y$$",
+    "SELECT 1a$$x",
+    "DROP TABLE t",
+    "SELECT 3 AS y$$",
     "SELECT 2"
    ]
   }
@@ -3693,23 +3814,28 @@
   }
  },
  {
-  "known_gap": "77",
-  "name": "dollar_after_a_number_with_letters",
+  "name": "number_then_word_with_dollar_pair",
   "script": "SELECT 1a$$x;y$$; SELECT 2;",
   "views": {
    "analysis": [
-    "SELECT 1a$$x;y$$",
+    "SELECT 1a$$x",
+    "y$$",
     "SELECT 2"
    ],
    "blanked": "SELECT 1a$$x;y$$; SELECT 2;",
    "extraction": [
-    "SELECT 1a$$x;y$$",
+    "SELECT 1a$$x",
+    "y$$",
     "SELECT 2"
    ],
    "masking": [
     [
-     "SELECT 1a$$x;y$$",
+     "SELECT 1a$$x",
      "SELECT 1a$$x"
+    ],
+    [
+     "y$$",
+     "y$$"
     ],
     [
      "SELECT 2",
@@ -3723,10 +3849,21 @@
      "line": 1,
      "multi": false,
      "repeat": 1,
-     "source_end": 17,
+     "source_end": 13,
      "source_start": 0,
      "terminator": ";",
-     "text": "SELECT 1a$$x;y$$"
+     "text": "SELECT 1a$$x"
+    },
+    {
+     "analysis_statements": null,
+     "kind": "sql",
+     "line": 1,
+     "multi": false,
+     "repeat": 1,
+     "source_end": 17,
+     "source_start": 13,
+     "terminator": ";",
+     "text": "y$$"
     },
     {
      "analysis_statements": null,
@@ -3741,7 +3878,8 @@
     }
    ],
    "strings": [
-    "SELECT 1a$$x;y$$",
+    "SELECT 1a$$x",
+    "y$$",
     "SELECT 2"
    ]
   }

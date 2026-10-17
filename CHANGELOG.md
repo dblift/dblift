@@ -84,6 +84,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A DuckDB script where a number is followed by letters and a dollar-quoted string is split as DuckDB reads it.**
+  `SELECT 1a$$x; DROP TABLE t; SELECT 3 AS y$$;` (also `1_000a`, `1.5a`, `1e5a`, `0x1g` and a
+  positional parameter such as `$1a`) was read as one statement hiding the `DROP TABLE`, while DuckDB
+  reads the number, then a name, and runs the three statements. The number now ends where DuckDB ends it.
+
 - **`repair` now finds exactly the checksum drift `validate` reports for versioned
   migrations.** Before, an unsigned checksum returned by some drivers was treated as drift and
   rewritten, a history row recorded under a directory-qualified script name was reported by

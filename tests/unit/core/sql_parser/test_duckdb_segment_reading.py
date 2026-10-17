@@ -110,7 +110,7 @@ EXTENTS = [
     ),
     (
         "PREPARE p AS SELECT $a; SELECT 2;",
-        [kw("PREPARE"), kw("p"), kw("AS"), kw("SELECT"), sym("$a"), dl()]
+        [kw("PREPARE"), kw("p"), kw("AS"), kw("SELECT"), sym("$"), kw("a"), dl()]
         + [kw("SELECT"), ident("2"), dl()],
     ),
     (
@@ -286,44 +286,86 @@ def test_words_numbers_and_parameters():
     assert shape("a$$b") == [kw("a$$b")]
     assert shape("1$$a;b$$") == [ident("1"), st("$$a;b$$")]
     assert shape(f"{EURO}$$a;b$$;") == [kw(f"{EURO}$$a"), dl(), kw("b$$"), dl()]
-    assert shape("$1 $n $") == [sym("$1"), sym("$n"), sym("$")]
-    assert shape("$1a$") == [sym("$1a"), sym("$")]
-    assert shape("$a b$") == [sym("$a"), kw("b$")]
-    assert shape("1x 12_a .5") == [ident("1x"), ident("12_a"), sym("."), ident("5")]
+    assert shape("$1 $n $") == [sym("$1"), sym("$"), kw("n"), sym("$")]
+    assert shape("$1a$") == [sym("$1"), kw("a$")]
+    assert shape("$a b$") == [sym("$"), kw("a"), kw("b$")]
+    assert shape("1x 12_a .5") == [ident("1"), kw("x"), ident("12"), kw("_a"), sym("."), ident("5")]
     assert shape("${a;b}") == [sym("$"), sym("{"), kw("a"), dl(), kw("b"), sym("}")]
-    assert shape("$1$a;b$1$") == [sym("$1"), sym("$a"), dl(), kw("b$1$")]
+    assert shape("$1$a;b$1$") == [sym("$1"), sym("$"), kw("a"), dl(), kw("b$1$")]
 
 
-def test_a_parameter_swallows_the_letters_after_its_digits():
+def test_a_parameter_ends_at_its_digits_and_the_letters_start_a_word():
     one_dollar = f"SELECT $1{E_ACUTE}$$x;y$$; SELECT 2;"
     assert shape("SELECT $1a$$x;y$$; SELECT 2 AS b;") == [
         kw("SELECT"),
-        sym("$1a"),
-        st("$$x;y$$"),
+        sym("$1"),
+        kw("a$$x"),
+        dl(),
+        kw("y$$"),
         dl(),
     ] + [kw("SELECT"), ident("2"), kw("AS"), kw("b"), dl()]
-    assert [t for t in shape(one_dollar) if t == dl()] == [dl(), dl()]
-    ascii_parameter = replace(DUCKDB_RULES, parameter=r"\$[A-Za-z0-9_]*")
-    assert [
-        t
-        for t in shape(one_dollar, replace(DUCKDB_SPEC, segment_script=ascii_parameter))
-        if t == dl()
-    ] == [dl(), dl(), dl()]
-    assert shape("SELECT $1E'a\\';b'; SELECT 2;") == [
-        kw("SELECT"),
-        sym("$1E"),
-        st("'a\\'"),
-        dl(),
-        kw("b"),
-        st("'; SELECT 2;"),
-    ]
+    assert [t for t in shape(one_dollar) if t == dl()] == [dl(), dl(), dl()]
+    assert (
+        shape("SELECT $1E'a\\';b'; SELECT 2;")
+        == [
+            kw("SELECT"),
+            sym("$1"),
+            kw("E"),
+            st("'a\\';b'"),
+            dl(),
+        ]
+        + SELECT_2
+    )
+
+
+def test_a_parameter_is_digits_with_underscore_separators_or_a_name():
+    assert shape("$1_0 $1_ $1__0") == [sym("$1_0"), sym("$1"), kw("_"), sym("$1"), kw("__0")]
+    assert shape("$1$$x;y$$") == [sym("$1"), st("$$x;y$$")]
+    assert shape("$1_0$$x;y$$") == [sym("$1_0"), st("$$x;y$$")]
+
+
+NUMBER_THEN_WORD = [
+    ("1a", [ident("1"), kw("a")]),
+    ("1_000a", [ident("1_000"), kw("a")]),
+    ("1_000_a", [ident("1_000"), kw("_a")]),
+    ("1__0", [ident("1"), kw("__0")]),
+    ("1.5a", [ident("1.5"), kw("a")]),
+    ("1.5e3a", [ident("1.5e3"), kw("a")]),
+    ("1e5a", [ident("1e5"), kw("a")]),
+    ("1e+5a", [ident("1e+5"), kw("a")]),
+    ("1e5e5", [ident("1e5"), kw("e5")]),
+    ("1ea", [ident("1"), kw("ea")]),
+    ("1e", [ident("1"), kw("e")]),
+    ("0x1g", [ident("0"), kw("x1g")]),
+]
+
+
+@pytest.mark.parametrize("script,expected", NUMBER_THEN_WORD, ids=[c[0] for c in NUMBER_THEN_WORD])
+def test_a_number_is_digits_fraction_and_exponent_and_the_letters_start_a_word(script, expected):
+    assert shape(script) == expected
+
+
+@pytest.mark.parametrize("number", ["1", "1_000", "1.5", "1e5", "1.5e3", "0"])
+def test_a_dollar_pair_after_a_number_and_a_name_hides_nothing(number):
+    script = f"SELECT {number}a$$x; DROP TABLE t; SELECT 3 AS y$$;"
+    assert [t for t in shape(script) if t == dl()] == [dl(), dl(), dl()]
+
+
+def test_a_dollar_tag_after_a_number_and_a_name_hides_nothing():
+    script = "SELECT 1a$x$x; DROP TABLE t; SELECT 3 AS y$x$;"
+    assert [t for t in shape(script) if t == dl()] == [dl(), dl(), dl()]
+
+
+def test_a_dollar_string_straight_after_a_number_opens():
+    for number in ("1", "1_000", "1.5", "1e5"):
+        assert shape(f"{number}$$x;y$$")[-1] == st("$$x;y$$")
 
 
 def test_words_and_numbers_are_data():
     no_dollar = replace(DUCKDB_RULES, word=r"[A-Za-z_][A-Za-z0-9_]*")
     assert shape("a$$b", replace(DUCKDB_SPEC, segment_script=no_dollar)) == [kw("a"), st("$$b")]
-    no_letters = replace(DUCKDB_RULES, number=r"[0-9]+")
-    assert shape("12ab", replace(DUCKDB_SPEC, segment_script=no_letters)) == [ident("12"), kw("ab")]
+    letters_in_number = replace(DUCKDB_RULES, number=r"[0-9][0-9A-Za-z_]*")
+    assert shape("12ab", replace(DUCKDB_SPEC, segment_script=letters_in_number)) == [ident("12ab")]
     assert shape(
         "$ x", replace(DUCKDB_SPEC, segment_script=replace(DUCKDB_RULES, parameter=r"\$[0-9]+"))
     ) == [sym("$"), kw("x")]
@@ -339,7 +381,7 @@ def test_dollar_tags():
     ascii_tag = replace(DUCKDB_RULES, dollar_tag=r"\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$")
     assert shape(f"${EURO}$a;b${EURO}$")[0] == st(f"${EURO}$a;b${EURO}$")
     assert shape(f"${EURO}$a;b${EURO}$", replace(DUCKDB_SPEC, segment_script=ascii_tag))[0] == sym(
-        f"${EURO}"
+        "$"
     )
 
 
@@ -351,14 +393,14 @@ def test_dollar_tags():
         ("xE'a\\';b'", [kw("xE"), st("'a\\'"), dl(), kw("b"), st("'")]),
         ("(1)E'a\\';b'", [sym("("), ident("1"), sym(")"), kw("E"), st("'a\\';b'")]),
         ("'a'E'b\\';c'", [st("'a'"), kw("E"), st("'b\\';c'")]),
-        ("1E'b\\';c'", [ident("1E"), st("'b\\';c'")]),
-        ("12e'b\\';c'", [ident("12e"), st("'b\\';c'")]),
-        ("1xE'b\\';c'", [ident("1xE"), st("'b\\'"), dl(), kw("c"), st("'")]),
+        ("1E'b\\';c'", [ident("1"), kw("E"), st("'b\\';c'")]),
+        ("12e'b\\';c'", [ident("12"), kw("e"), st("'b\\';c'")]),
+        ("1xE'b\\';c'", [ident("1"), kw("xE"), st("'b\\'"), dl(), kw("c"), st("'")]),
         (SQUARED + "E'b\\';c'", [kw(SQUARED + "E"), st("'b\\';c'")]),
         (ARABIC_THREE + "E'b\\';c'", [kw(ARABIC_THREE + "E"), st("'b\\';c'")]),
         ("E 'a\\';b'", [kw("E"), st("'a\\'"), dl(), kw("b"), st("'")]),
         ("$$q$$E'a\\';b'", [st("$$q$$"), kw("E"), st("'a\\';b'")]),
-        ("$1E'a\\';b'", [sym("$1E"), st("'a\\'"), dl(), kw("b"), st("'")]),
+        ("$1E'a\\';b'", [sym("$1"), kw("E"), st("'a\\';b'")]),
     ],
 )
 def test_escape_rule(script, expected):

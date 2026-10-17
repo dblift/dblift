@@ -174,25 +174,44 @@ CASES = [
         "SELECT \u0663E'b\\';c' AS x; SELECT 2;",
     ),
     (
-        "parameter_swallows_letters",
+        "parameter_then_word_with_dollar_pair",
         "PREPARE p AS SELECT $1a$$x; SELECT 2; SELECT 3 AS y$$;",
-        [("PREPARE p AS SELECT $1a$$x; SELECT 2; SELECT 3 AS y$$", 1, ";", 0, 54)],
-        ["PREPARE p AS SELECT $1a$$x; SELECT 2; SELECT 3 AS y$$"],
+        [
+            ("PREPARE p AS SELECT $1a$$x", 1, ";", 0, 27),
+            ("SELECT 2", 1, ";", 28, 37),
+            ("SELECT 3 AS y$$", 1, ";", 38, 54),
+        ],
+        ["PREPARE p AS SELECT $1a$$x", "SELECT 2", "SELECT 3 AS y$$"],
         "PREPARE p AS SELECT $1a$$x; SELECT 2; SELECT 3 AS y$$;",
     ),
     (
-        "parameter_swallows_accented_letter",
+        "parameter_then_accented_word_with_dollar_pair",
         "SELECT $1" + chr(0xE9) + "$$x;y$$; SELECT 2;",
-        [("SELECT $1\xe9$$x;y$$", 1, ";", 0, 18), ("SELECT 2", 1, ";", 19, 28)],
-        ["SELECT $1\xe9$$x;y$$", "SELECT 2"],
+        [
+            ("SELECT $1\xe9$$x", 1, ";", 0, 14),
+            ("y$$", 1, ";", 14, 18),
+            ("SELECT 2", 1, ";", 19, 28),
+        ],
+        ["SELECT $1\xe9$$x", "y$$", "SELECT 2"],
         "SELECT $1\xe9$$x;y$$; SELECT 2;",
     ),
     (
-        "parameter_swallows_escape_letter",
+        "parameter_then_escape_string",
         "SELECT $1E'a\\';b'; SELECT 2;",
-        [("SELECT $1E'a\\'", 1, ";", 0, 15), ("b'; SELECT 2;", 1, None, 15, 28)],
-        ["SELECT $1E'a\\'", "b'; SELECT 2;"],
+        [("SELECT $1E'a\\';b'", 1, ";", 0, 18), ("SELECT 2", 1, ";", 19, 28)],
+        ["SELECT $1E'a\\';b'", "SELECT 2"],
         "SELECT $1E'a\\';b'; SELECT 2;",
+    ),
+    (
+        "number_then_word_with_dollar_pair",
+        "SELECT 1a$$x; DROP TABLE t; SELECT 3 AS y$$;",
+        [
+            ("SELECT 1a$$x", 1, ";", 0, 13),
+            ("DROP TABLE t", 1, ";", 14, 27),
+            ("SELECT 3 AS y$$", 1, ";", 28, 44),
+        ],
+        ["SELECT 1a$$x", "DROP TABLE t", "SELECT 3 AS y$$"],
+        "SELECT 1a$$x; DROP TABLE t; SELECT 3 AS y$$;",
     ),
     (
         "nul_on_line_two",
@@ -407,9 +426,7 @@ CASES = [
     ),
 ]
 IDS = [case[0] for case in CASES]
-KNOWN_GAPS = frozenset(
-    {"74", "75", "76", "77"}
-)  # the splitter differs from DuckDB there (see the spec)
+KNOWN_GAPS = frozenset({"74", "75"})  # the splitter differs from DuckDB there (see the spec)
 
 
 def outcome(call, script):
@@ -510,3 +527,30 @@ def test_a_refusal_comes_before_any_record():
     for script in (NUL + "SELECT 1;", ".mode csv\nSELECT 1;", ".mode csv\n" + NUL):
         with pytest.raises((UnsafeStatementSplitError, UnsupportedMetaCommandError)):
             ENGINE.split(script)
+
+
+@pytest.mark.parametrize(
+    "tail",
+    ["a$$x; DROP TABLE t; SELECT 3 AS y$$;", "a$x$x; DROP TABLE t; SELECT 3 AS y$x$;"],
+)
+@pytest.mark.parametrize(
+    "lead", ["SELECT 1", "SELECT 1_000", "SELECT 1.5", "SELECT 1e5", "SELECT 0"]
+)
+def test_a_number_then_a_name_is_cut_where_the_driver_cuts(lead, tail):
+    import duckdb
+
+    script = lead + tail
+    theirs = [q.query.strip() for q in duckdb.extract_statements(script)]
+    assert len(theirs) == 3
+    ours = ENGINE.split_statements(script)
+    assert [t.strip() for t in ours] == [t.rstrip(";") for t in theirs]
+
+
+@pytest.mark.parametrize("letter", ["E", "e"])
+def test_a_name_after_a_dollar_may_open_an_escape_string_as_the_driver_reads_it(letter):
+    import duckdb
+
+    script = f"SELECT ${letter}'a\\'; SELECT 42 AS boom; --';"
+    with pytest.raises(duckdb.ParserException, match=rf"at or near \"{letter}'a"):
+        duckdb.extract_statements(script)
+    assert ENGINE.split_statements(script) == [script.rstrip(";")]
