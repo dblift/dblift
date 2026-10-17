@@ -775,9 +775,6 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
     Text that does not tokenize is reported as an error. A statement the grammar does not
     model is classified from its leading words with an informational diagnostic.
     """
-    unread = unread_name_character(sql, dialect=dialect)
-    if unread is not None:
-        return _unread_name_facts(sql, dialect, unread)
     # MariaDB shares this grammar; without engine/version context both markers are opaque.
     if (
         dialect == "mysql"  # lint: allow-dialect-string: MySQL-family executable comments
@@ -790,6 +787,9 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
         return StatementFacts(
             "UNKNOWN", "UNKNOWN", diagnostic="mysql executable comment is opaque to statement facts"
         )
+    unread = unread_name_character(sql, dialect=dialect)
+    if unread is not None:
+        return _unread_name_facts(sql, dialect, unread)
     try:
         ast = parse_one(_UPDATE_OR.sub(r"\1", sql), read=dialect)
     except (ParseError, TokenError) as exc:

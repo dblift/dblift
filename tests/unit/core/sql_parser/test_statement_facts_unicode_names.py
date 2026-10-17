@@ -255,3 +255,9 @@ def test_the_reader_set_is_the_full_range_set():
     from dblift.core.sql_parser import sqlglot_statement_facts
 
     assert sqlglot_statement_facts._UNREAD_NAME_CHARACTERS == frozenset(UNREAD)
+
+
+def test_a_mysql_executable_comment_keeps_its_own_reading():
+    facts = read_statement_facts("/*! SET @a = 1" + chr(0x2028) + "*/ SELECT 1", dialect="mysql")
+
+    assert facts.diagnostic == "mysql executable comment is opaque to statement facts"
