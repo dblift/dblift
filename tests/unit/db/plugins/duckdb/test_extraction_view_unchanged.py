@@ -4,7 +4,7 @@ shared engine cut its scripts: the recorded outputs below must not move.
 ``duckdb_masking_golden.json`` holds each input next to the output recorded from the scanner and
 readers this change started from. Masking reads the generic tokenizer (a dollar-quoted string is not
 read as a literal: the recorded outputs show it; the four leak shapes pinned here are the known
-masking leak tracked as #1581), extraction reads the DuckDB comment tokenizer, and
+masking leak, to be fixed on its own), extraction reads the DuckDB comment tokenizer, and
 statement facts read comment-blanked text.
 """
 
