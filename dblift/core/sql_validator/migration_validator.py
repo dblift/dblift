@@ -1,7 +1,7 @@
 """Migration-validator entry point — verifies migration scripts against applied history."""
 
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Union
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Union
 
 from dblift.core.constants import TEST_PLACEHOLDER_TIME_MS
 from dblift.core.exceptions import UnsupportedMigrationFormatError
@@ -29,6 +29,7 @@ from dblift.core.migration.state.migration_state import (
     MigrationValidationSnapshot,
 )
 from dblift.core.migration.state.migration_state_manager import MigrationStateManager
+from dblift.core.migration.state.repeatable_status import RepeatableRun
 from dblift.core.migration.version_utils import compare_versions, is_migration_failure
 from dblift.db.base_quirks import BaseQuirks
 
@@ -199,10 +200,11 @@ class MigrationValidator:
         history_table_exists: bool,
         command: str,
         strict_mode: bool,
+        repeatable_runs: Optional[Mapping[str, RepeatableRun]] = None,
     ) -> ValidationResult:
         """Run the common checks over already prepared catalog and history inputs."""
         self._check_repeatable_migrations(
-            valid_scripts, repeatable_history, validation_result, command
+            valid_scripts, repeatable_history, validation_result, command, runs=repeatable_runs
         )
 
         if not self._validate_duplicate_repeatable_names(valid_scripts, validation_result, issues):
@@ -305,6 +307,7 @@ class MigrationValidator:
                 history_table_exists=snapshot.history_table_exists,
                 command=command,
                 strict_mode=snapshot.strict_mode,
+                repeatable_runs=snapshot.repeatable_runs,
             )
         except Exception as error:
             result.success = False
@@ -514,6 +517,7 @@ class MigrationValidator:
         applied_migrations: List[Migration],
         result: ValidationResult,
         command: str = "migrate",
+        runs: Optional[Mapping[str, RepeatableRun]] = None,
     ) -> None:
         """Delegate to
         :func:`dblift.core.sql_validator._checksum_validator.check_repeatable_migrations`.
@@ -522,7 +526,7 @@ class MigrationValidator:
             check_repeatable_migrations as _impl,
         )
 
-        _impl(self, scripts, applied_migrations, result, command)
+        _impl(self, scripts, applied_migrations, result, command, runs)
 
     def _validate_strict_mode_rules(
         self,

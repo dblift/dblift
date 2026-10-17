@@ -3,19 +3,19 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, List, Optional, cast
+from typing import TYPE_CHECKING, List, Mapping, Optional, cast
 
-from dblift.core.migration.migration import (
-    Migration,
-    MigrationType,
-    normalize_migration_checksum,
-)
+from dblift.core.migration.migration import Migration, MigrationType
 from dblift.core.migration.scripting.migration_script_manager import (  # noqa: F401
     _last_successful_non_delete_record,
     _successful_non_delete_records,
 )
 from dblift.core.migration.state.checksum_drift import find_checksum_drift
-from dblift.core.migration.version_utils import is_migration_success
+from dblift.core.migration.state.repeatable_status import (
+    RepeatableRun,
+    RepeatableStatus,
+    repeatable_runs,
+)
 
 if TYPE_CHECKING:
     from dblift.core.sql_validator.migration_validator import (
@@ -190,92 +190,62 @@ def validate_checksums(
         issues.append("Validation failed. Detected modified migration scripts.")
 
 
+def _stored_text(run: RepeatableRun) -> str:
+    return "" if run.stored_checksum is None else str(run.stored_checksum)
+
+
 def check_repeatable_migrations(
     mv: "MigrationValidator",
     scripts: List[Migration],
     applied_migrations: List[Migration],
     result: "ValidationResult",
     command: str = "migrate",
+    runs: Optional[Mapping[str, RepeatableRun]] = None,
 ) -> None:
-    """Identify repeatable migrations that need to be reapplied.
+    """Report repeatable migrations that will be reapplied, or are stuck on a failed run.
 
-    A repeatable migration is reapplied when its filesystem checksum
-    differs from the last applied checksum or when the previous run
-    failed (in which case we either re-record or surface the failure).
+    The state layer decides each script's status (``runs``, or derived from
+    ``applied_migrations`` when not given); this only turns it into validation
+    output. A failed run whose file has not changed is an error; a new, changed
+    or fixed-after-failure script is recorded as to be applied.
     """
-    latest_successful = {
-        getattr(row, "script_name", None): row
-        for row in _successful_non_delete_records(applied_migrations)
-    }
-    previous_runs: dict[Optional[str], Migration] = {}
-    for row in applied_migrations:
-        name = getattr(row, "script_name", None)
-        previous = previous_runs.get(name)
-        if previous is None or (getattr(row, "installed_rank", 0) or 0) > (
-            getattr(previous, "installed_rank", 0) or 0
-        ):
-            previous_runs[name] = row
+    if runs is None:
+        runs = repeatable_runs(scripts, applied_migrations)
     for script in scripts:
         if script.type != MigrationType.REPEATABLE:
             continue
-        applied_script = previous_runs.get(script.script_name)
-        if applied_script:
-            # Use migration rules to determine if migration was successful
-            success_value = getattr(applied_script, "success", False)
-            is_success = is_migration_success(success_value)
-
-            if not is_success and getattr(applied_script, "execution_time", 0) > 0:
-                if getattr(applied_script, "checksum", None) == script.checksum:
-                    mv.log.debug(
-                        f"[DEBUG] _check_repeatable_migrations: setting success=False "
-                        f"for failed repeatable {script.script_name}"
-                    )
-                    result.success = False
-                    error_msg = (
-                        f"Repeatable migration {script.script_name} previously failed "
-                        "and has not changed. Please fix the script before retrying."
-                    )
-                    if not result.error_message:
-                        result.error_message = error_msg
-                    else:
-                        result.error_message += f"\n{error_msg}"
-                    continue
-                else:
-                    mv.log.debug(
-                        f"Repeatable migration {script.script_name} previously failed "
-                        "but has changed; will be reapplied"
-                    )
-                    result.add_modified_repeatable(
-                        script.script_name,
-                        str(getattr(applied_script, "checksum", "")),
-                        script.checksum if script.checksum is not None else 0,
-                    )
-                    continue
-            successful_record = latest_successful.get(script.script_name)
-            applied_checksum = normalize_migration_checksum(
-                getattr(successful_record, "checksum", None)
+        run = runs.get(script.script_name)
+        if run is None:
+            continue
+        current = run.current_checksum if run.current_checksum is not None else 0
+        if run.status is RepeatableStatus.FAILED_UNCHANGED:
+            mv.log.debug(
+                f"[DEBUG] _check_repeatable_migrations: setting success=False "
+                f"for failed repeatable {script.script_name}"
             )
-            current_checksum = normalize_migration_checksum(getattr(script, "checksum", None))
-            script_changed = (
-                applied_checksum is None
-                or current_checksum is None
-                or applied_checksum != current_checksum
+            result.success = False
+            error_msg = (
+                f"Repeatable migration {script.script_name} previously failed "
+                "and has not changed. Please fix the script before retrying."
             )
-            if script_changed:
-                mv.log.debug(
-                    f"Repeatable migration {script.script_name} was modified and will "
-                    "be reapplied"
-                )
-                result.add_modified_repeatable(
-                    script.script_name,
-                    str(getattr(applied_script, "checksum", "")),
-                    script.checksum if script.checksum is not None else 0,
-                )
-        else:
+            if not result.error_message:
+                result.error_message = error_msg
+            else:
+                result.error_message += f"\n{error_msg}"
+        elif run.status is RepeatableStatus.NEW:
             mv.log.debug(f"Repeatable migration {script.script_name} has not been applied yet")
-            result.add_modified_repeatable(
-                script.script_name, "", script.checksum if script.checksum is not None else 0
+            result.add_modified_repeatable(script.script_name, "", current)
+        elif run.status is RepeatableStatus.FAILED_CHANGED:
+            mv.log.debug(
+                f"Repeatable migration {script.script_name} previously failed "
+                "but has changed; will be reapplied"
             )
+            result.add_modified_repeatable(script.script_name, _stored_text(run), current)
+        elif run.status is RepeatableStatus.CHANGED:
+            mv.log.debug(
+                f"Repeatable migration {script.script_name} was modified and will be reapplied"
+            )
+            result.add_modified_repeatable(script.script_name, _stored_text(run), current)
     if result.repeatable_migrations_to_reapply:
         first_time = [
             rep for rep in result.repeatable_migrations_to_reapply if not rep["database_checksum"]

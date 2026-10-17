@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple, cast
+from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple, cast
 
 from dblift.core.logger import Log
 from dblift.core.migration._type_match import migration_type_name
@@ -38,6 +38,11 @@ from dblift.core.migration.state.migration_state import (
 )
 from dblift.core.migration.state.migration_state_service import MigrationStateService
 from dblift.core.migration.state.rank_wins import latest_successful_ranks
+from dblift.core.migration.state.repeatable_status import (
+    PENDING_REPEATABLE_STATUSES,
+    RepeatableRun,
+    repeatable_runs,
+)
 from dblift.core.migration.version_utils import (
     is_migration_failure,
     is_migration_success,
@@ -198,13 +203,12 @@ class MigrationStateManager:
         if strict_mode is None:
             config = getattr(self.history_manager.provider, "config", None)
             strict_mode = bool(getattr(config, "strict_mode", False))
+        selected = self.apply_filters_to_migrations(
+            catalog, target_version, tags, exclude_tags, versions, exclude_versions
+        )
         return MigrationValidationSnapshot(
             resolved_migrations=tuple(catalog),
-            selected_migrations=tuple(
-                self.apply_filters_to_migrations(
-                    catalog, target_version, tags, exclude_tags, versions, exclude_versions
-                )
-            ),
+            selected_migrations=tuple(selected),
             all_applied_migrations=tuple(applied_migrations),
             scoped_applied_migrations=tuple(
                 self.apply_filters_to_migrations(
@@ -220,6 +224,7 @@ class MigrationStateManager:
             scripts_directory=scripts_dir,
             history_read_error=history_read_error,
             catalog_read_error=catalog_read_error,
+            repeatable_runs=repeatable_runs(selected, applied_migrations),
         )
 
     def get_applied_migrations(
@@ -386,6 +391,7 @@ class MigrationStateManager:
 
         pending_migrations: List[Migration] = []
         all_scripts: List[Migration] = []
+        runs: Dict[str, RepeatableRun] = {}
         grouped_scripts: Optional[Dict[Any, List[Migration]]] = {} if scripts_dir else None
         if scripts_dir:
             # Use NEW centralized pending computation method
@@ -403,6 +409,7 @@ class MigrationStateManager:
                 dir_recursive_map=dir_recursive_map,
                 out_all_scripts=all_scripts,
                 out_grouped_migrations=grouped_scripts,
+                out_repeatable_runs=runs,
             )
 
         self._mark_resolved_status(
@@ -468,6 +475,7 @@ class MigrationStateManager:
             failed_objects=history.failed_migrations,
             executed_scripts=sorted(history.executed_scripts),
             repeatable_checksums=dict(history.repeatable_checksums),
+            repeatable_runs=runs,
             resolved_objects=all_scripts if scripts_dir else None,
             grouped_objects=grouped_scripts,
         )
@@ -738,6 +746,7 @@ class MigrationStateManager:
         dir_recursive_map: Optional[Dict[Path, bool]] = None,
         out_all_scripts: Optional[List[Migration]] = None,
         out_grouped_migrations: Optional[Dict[Any, List[Migration]]] = None,
+        out_repeatable_runs: Optional[Dict[str, RepeatableRun]] = None,
     ) -> List[Migration]:
         """Catalog unresolved on-disk scripts (not migrate's execute-list).
 
@@ -762,6 +771,10 @@ class MigrationStateManager:
             all_scripts.extend(migration_list)
 
         self.logger.debug(f"Loaded {len(all_scripts)} migration objects")
+
+        runs = repeatable_runs(all_scripts, applied_migrations)
+        if out_repeatable_runs is not None:
+            out_repeatable_runs.update(runs)
 
         if out_all_scripts is not None:
             # Match get_migration_scripts order for consumers reusing the full catalog,
@@ -838,6 +851,7 @@ class MigrationStateManager:
                     repeatable_checksums,
                     executed_basenames=executed_basenames,
                     basename_checksums=basename_checksums,
+                    runs=runs,
                 ):
                     pending.append(migration)
 
@@ -941,8 +955,16 @@ class MigrationStateManager:
         *,
         executed_basenames: Optional[Set[str]] = None,
         basename_checksums: Optional[Dict[str, str]] = None,
+        runs: Optional[Mapping[str, RepeatableRun]] = None,
     ) -> bool:
-        """Check if a repeatable migration is pending."""
+        """Check if a repeatable migration is pending.
+
+        ``runs`` carries each script's latest-run status (``build_state`` computes
+        it once); without it the answer is derived from the other inputs alone.
+        """
+        run = runs.get(script_name) if runs is not None else None
+        if run is not None:
+            return run.status in PENDING_REPEATABLE_STATUSES
         # Never executed — check script_name directly, falling back to a
         # basename comparison for backward compatibility. A history row
         # written before PR #129 still has a directory-qualified

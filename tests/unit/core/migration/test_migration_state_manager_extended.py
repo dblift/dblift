@@ -661,3 +661,43 @@ class TestBuildStateCatalog(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestIsRepeatablePendingFromRuns(unittest.TestCase):
+    """``runs`` carries the latest-run status, so a failed run is judged by its file."""
+
+    def setUp(self):
+        self.mgr = _mk_manager()
+
+    def _pending(self, status):
+        from dblift.core.migration.state.repeatable_status import RepeatableRun
+
+        m = _mk_repeatable("R__a.sql", checksum=1)
+        runs = {"R__a.sql": RepeatableRun(status, 1, 1)}
+        # Inputs that would say "executed, unchanged" must not override the status.
+        return self.mgr._is_repeatable_pending(
+            "R__a.sql", m, {"R__a.sql"}, {"R__a.sql": 1}, runs=runs
+        )
+
+    def test_pending_statuses(self):
+        from dblift.core.migration.state.repeatable_status import RepeatableStatus
+
+        for status in (
+            RepeatableStatus.NEW,
+            RepeatableStatus.CHANGED,
+            RepeatableStatus.FAILED_CHANGED,
+        ):
+            assert self._pending(status) is True, status
+
+    def test_non_pending_statuses(self):
+        from dblift.core.migration.state.repeatable_status import RepeatableStatus
+
+        for status in (
+            RepeatableStatus.UNCHANGED,
+            RepeatableStatus.FAILED_UNCHANGED,
+        ):
+            assert self._pending(status) is False, status
+
+    def test_script_absent_from_runs_falls_back_to_inputs(self):
+        m = _mk_repeatable("R__a.sql", checksum=1)
+        assert self.mgr._is_repeatable_pending("R__a.sql", m, set(), {}, runs={}) is True

@@ -84,11 +84,12 @@ def compute_pending(
     manager: MigrationStateManager,
     executed_scripts,
     repeatable_checksums,
+    applied_migrations=(),
 ):
     return manager._compute_pending_migrations(
         Path("unused"),
         executed_scripts=executed_scripts,
-        applied_migrations=[],
+        applied_migrations=list(applied_migrations),
         undone_versions=set(),
         repeatable_checksums=repeatable_checksums,
     )
@@ -186,23 +187,33 @@ def test_indexed_checksum_lookup_precedence(checksums, script_name, expected):
     )
 
 
+def applied_repeatable(name: str, checksum: int) -> Migration:
+    row = Migration(script_name=name, content="SELECT 1;", type=MigrationType.REPEATABLE)
+    row.checksum = checksum
+    row.success = True
+    row.installed_rank = 1
+    return row
+
+
 def test_repeatable_indexes_are_fresh_for_each_aggregation_call():
-    migration = make_repeatable("R__view.sql", "current")
+    migration = make_repeatable("R__view.sql", 222)
     manager = make_manager([migration])
 
     unchanged = compute_pending(
         manager,
         {"old-directory/R__view.sql"},
-        {"old-directory/R__view.sql": "current"},
+        {"old-directory/R__view.sql": 222},
+        [applied_repeatable("old-directory/R__view.sql", 222)],
     )
     changed = compute_pending(
         manager,
         {"new-directory/R__view.sql"},
-        {"new-directory/R__view.sql": "previous"},
+        {"new-directory/R__view.sql": 111},
+        [applied_repeatable("new-directory/R__view.sql", 111)],
     )
     checksum_changes = manager._determine_checksum_changes(
         changed,
-        {"new-directory/R__view.sql": "previous"},
+        {"new-directory/R__view.sql": 111},
     )
 
     assert unchanged == []
@@ -210,4 +221,4 @@ def test_repeatable_indexes_are_fresh_for_each_aggregation_call():
     assert [
         (change.script_name, change.previous_checksum, change.current_checksum)
         for change in checksum_changes
-    ] == [("R__view.sql", "previous", "current")]
+    ] == [("R__view.sql", 111, 222)]

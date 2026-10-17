@@ -10,7 +10,7 @@ from __future__ import annotations
 import datetime as _dt
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Optional
 
 from dblift.core.migration.state.migration_display_state import MigrationDisplayState
 
@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from dblift.core.migration.history.migration_history_manager import FlywayCompatibilitySnapshot
     from dblift.core.migration.migration import Migration
     from dblift.core.migration.state.migration_state_manager import MigrationStateManager
+    from dblift.core.migration.state.repeatable_status import RepeatableRun
 
 
 @dataclass(frozen=True)
@@ -34,6 +35,7 @@ class MigrationValidationSnapshot:
     scripts_directory: Optional[Path] = None
     history_read_error: str = ""
     catalog_read_error: Optional[str] = None
+    repeatable_runs: Mapping[str, RepeatableRun] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
@@ -171,6 +173,7 @@ class MigrationState:
     failed_objects: List[Any] = field(default_factory=list, repr=False)
     executed_scripts: List[str] = field(default_factory=list, repr=False)
     repeatable_checksums: Dict[str, str] = field(default_factory=dict, repr=False)
+    repeatable_runs: Dict[str, RepeatableRun] = field(default_factory=dict, repr=False)
     resolved_objects: Optional[List[Any]] = field(default=None, repr=False)
     grouped_objects: Optional[Dict[Any, List[Any]]] = field(default=None, repr=False)
 
@@ -238,6 +241,7 @@ class MigrationState:
             failed_objects=list(self.failed_objects),
             executed_scripts=list(self.executed_scripts),
             repeatable_checksums=dict(self.repeatable_checksums),
+            repeatable_runs=dict(self.repeatable_runs),
             resolved_objects=(
                 list(self.resolved_objects) if self.resolved_objects is not None else None
             ),

@@ -126,8 +126,8 @@ def test_matching_numeric_checksum_applied_repeatable_is_success_not_outdated():
 
 def test_outdated_applied_repeatable_and_pending_file_reach_info_table():
     """On-disk checksum change: applied row Outdated, pending file Pending."""
-    applied = _mk_repeatable("R__data.sql", rank=1, checksum="old")
-    on_disk = _mk_repeatable("R__data.sql", checksum="new")
+    applied = _mk_repeatable("R__data.sql", rank=1, checksum=111)
+    on_disk = _mk_repeatable("R__data.sql", checksum=222)
     mgr = _mk_manager(applied=[applied], scripts=[on_disk])
 
     with tempfile.TemporaryDirectory() as tmp:
