@@ -228,9 +228,7 @@ def _analyse(text: str, dialect: str) -> ScriptAnalysis:
         # The regex parser fills ``affected_objects``; ``objects`` stays empty.
         found = getattr(stmt, "affected_objects", None) or getattr(stmt, "objects", None) or []
         objects = tuple(_object_of(o) for o in found)
-        unread = getattr(stmt, "names_unread", False) or names_unreadable(
-            body, quirks.sqlglot_dialect
-        )
+        unread = stmt.names_unread is True or names_unreadable(body, quirks.sqlglot_dialect)
         if unread:
             objects = ()
         else:
@@ -241,10 +239,19 @@ def _analyse(text: str, dialect: str) -> ScriptAnalysis:
             index, operation, kind, objects, full_table, _snippet(body), sql=body
         )
         statements.append(analysed)
-        caution = _caution_for(analysed, body, unread)
+        caution = _caution_for(analysed, body, _opaque_dialect(dialect) if unread else None)
         if caution is not None:
             cautions.append(caution)
     return ScriptAnalysis(tuple(statements), tuple(cautions), tuple(parsed.errors or []))
+
+
+def _opaque_dialect(dialect: str) -> str:
+    """The sqlglot dialect an unreadable statement is cautioned in (Db2 declares none)."""
+    from dblift.core.migration.scripting.undo_script_generator._helpers import (
+        resolve_sqlglot_read_dialect,
+    )
+
+    return resolve_sqlglot_read_dialect(dialect) or ""
 
 
 def _kind_of(statement_type: Any, operation: str, body: str, quirks: BaseQuirks) -> str:
