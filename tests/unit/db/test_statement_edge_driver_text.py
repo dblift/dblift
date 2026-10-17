@@ -239,13 +239,16 @@ def test_duckdb_returning_rewrite_keeps_a_final_no_break_space() -> None:
     assert result is None
 
 
+@pytest.mark.parametrize("terminator", ["", ";"])
 @pytest.mark.parametrize("method", ["execute_statement", "execute_query"])
-def test_oracle_provider_refuses_a_text_the_driver_would_strip(method: str) -> None:
+def test_oracle_provider_refuses_a_text_the_driver_would_strip(
+    method: str, terminator: str
+) -> None:
     """The provider is called directly, with no splitter in front of it."""
     provider, sent = provider_with_recorder("oracle")
     refusal: Optional[UnsafeStatementSplitError] = None
     try:
-        getattr(provider, method)(f"DROP TABLE t{NBSP}")
+        getattr(provider, method)(f"DROP TABLE t{NBSP}{terminator}")
     except UnsafeStatementSplitError as exc:
         refusal = exc
     assert sent == [], f"the driver was handed {sent!r}"

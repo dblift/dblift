@@ -14,6 +14,7 @@ from typing import Dict, List, Optional
 import pytest
 
 from dblift.core.exceptions import UnsafeStatementSplitError
+from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.sql_parser.lexical_spec import LexicalSpec
 from dblift.db.provider_registry import ProviderRegistry
 from tests.support.statement_edge_corpus import record_script
@@ -214,3 +215,28 @@ def test_a_statement_edge_loses_only_the_characters_of_text_blanks(
     else:
         ok = text == expected
     assert ok, f"U+{ord(char):04X}: got {text!r}, expected {expected!r}"
+
+
+@pytest.mark.parametrize("dialect", PSQL_LIKE)
+def test_the_parts_of_a_psql_combined_statement_keep_a_character_outside_the_blanks(
+    dialect: str,
+) -> None:
+    nbsp = chr(0xA0)
+    script = f"SELECT 1{nbsp}\;SELECT 2{nbsp};"
+    assert SqlAnalyzer(dialect).split_statements_for_analysis(script) == [
+        f"SELECT 1{nbsp}",
+        f"SELECT 2{nbsp}",
+    ]
+
+
+@pytest.mark.parametrize("dialect", PSQL_LIKE)
+def test_a_copy_header_keeps_a_character_outside_the_blanks(dialect: str) -> None:
+    script = f"COPY t (a) FROM STDIN{chr(0xA0)};\n1\n\\.\n"
+    assert SqlAnalyzer(dialect).split_statements_for_analysis(script) == [
+        f"COPY t (a) FROM STDIN{chr(0xA0)}"
+    ]
+
+
+def test_a_routine_batch_keeps_a_character_outside_the_blanks_when_analysis_divides_it() -> None:
+    text = f"CREATE PROCEDURE p AS SELECT 1{chr(0x2029)}"
+    assert SqlAnalyzer("sqlserver").split_statements_for_analysis(text) == [text]
