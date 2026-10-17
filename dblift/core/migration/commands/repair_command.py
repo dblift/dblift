@@ -195,7 +195,7 @@ class RepairCommand(BaseCommand):
         additional_dirs: Optional[List[Path]] = None,
         dir_recursive_map: Optional[Dict[Path, bool]] = None,
     ) -> MigrationState:
-        """Build the migration state object, returning an empty state on failure.
+        """Build the migration state object.
 
         Args:
             scripts_dir: Directory containing migration scripts
@@ -204,19 +204,18 @@ class RepairCommand(BaseCommand):
             dir_recursive_map: Per-directory recursive override map
 
         Returns:
-            MigrationState instance (empty if build fails)
+            MigrationState instance
+
+        Raises:
+            Exception: Whatever ``build_state`` raises when the history or the
+                migration scripts cannot be read.
         """
-        try:
-            return self.state_manager.build_state(
-                scripts_dir,
-                recursive=recursive,
-                additional_dirs=additional_dirs,
-                dir_recursive_map=dir_recursive_map,
-            )
-        except Exception as e:
-            # If build_state fails (e.g., due to mocked dependencies in tests), create empty state
-            self.log.debug(f"Could not build migration state: {e}")
-            return MigrationState()
+        return self.state_manager.build_state(
+            scripts_dir,
+            recursive=recursive,
+            additional_dirs=additional_dirs,
+            dir_recursive_map=dir_recursive_map,
+        )
 
     def _detect_checksum_changes(self, migration_state: MigrationState) -> List[Dict[str, Any]]:
         """Build repair entries for checksum changes reported by the state manager.
@@ -388,22 +387,18 @@ class RepairCommand(BaseCommand):
 
         # Additional safeguard: detect checksum drift for applied versioned migrations
         # MigrationState currently only tracks repeatable checksum changes, so perform an explicit comparison
-        try:
-            filesystem_migrations = migration_state.grouped_objects
-            if filesystem_migrations is None:
-                filesystem_migrations = self.state_manager.get_grouped_migrations(
-                    scripts_dir,
-                    recursive=recursive,
-                    additional_dirs=additional_dirs,
-                    dir_recursive_map=dir_recursive_map,
-                )
-            filesystem_lookup: Dict[str, object] = {}
-            for migration_group in filesystem_migrations.values():
-                for migration_entry in migration_group:
-                    filesystem_lookup[migration_entry.script_name] = migration_entry
-        except Exception as load_err:
-            self.log.warning(f"Unable to load filesystem migrations during repair: {load_err}")
-            filesystem_lookup = {}
+        filesystem_migrations = migration_state.grouped_objects
+        if filesystem_migrations is None:
+            filesystem_migrations = self.state_manager.get_grouped_migrations(
+                scripts_dir,
+                recursive=recursive,
+                additional_dirs=additional_dirs,
+                dir_recursive_map=dir_recursive_map,
+            )
+        filesystem_lookup: Dict[str, object] = {}
+        for migration_group in filesystem_migrations.values():
+            for migration_entry in migration_group:
+                filesystem_lookup[migration_entry.script_name] = migration_entry
 
         already_recorded_scripts = {
             entry["script"] for entry in existing_repairs if "script" in entry

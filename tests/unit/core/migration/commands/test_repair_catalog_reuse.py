@@ -12,6 +12,7 @@ from sqlalchemy import create_engine
 from dblift.api import DBLiftClient
 from dblift.core.migration.commands.repair_command import RepairCommand, RepairSafetyError
 from dblift.core.migration.migration import Migration, MigrationType
+from dblift.core.migration.state.migration_state import MigrationState
 from dblift.core.migration.state.migration_state_manager import MigrationStateManager
 
 pytestmark = [pytest.mark.unit, pytest.mark.sqlite]
@@ -189,17 +190,15 @@ def test_empty_built_catalog_is_authoritative(tmp_path, has_history):
     assert scripts.load_migration_scripts.call_count == 1
 
 
-def test_missing_catalog_fallback_preserves_errors_and_freshness(tmp_path):
+def test_missing_catalog_fallback_propagates_errors_and_preserves_freshness(tmp_path):
     scripts = MagicMock()
     scripts.load_migration_scripts.side_effect = PermissionError("unreadable catalog")
     command = _command(scripts)
-    state = command._build_migration_state(tmp_path)
+    state = MigrationState()  # no pre-built catalog, so each detector loads one itself
     with pytest.raises(PermissionError, match="unreadable catalog"):
         command._detect_missing_migrations(state, tmp_path)
-    assert command._detect_checksum_drift(state, [], tmp_path) == []
-    command.log.warning.assert_called_once_with(
-        "Unable to load filesystem migrations during repair: unreadable catalog"
-    )
+    with pytest.raises(PermissionError, match="unreadable catalog"):
+        command._detect_checksum_drift(state, [], tmp_path)
     scripts.load_migration_scripts.side_effect = None
     scripts.load_migration_scripts.return_value = {}
     assert command.state_manager.get_grouped_migrations(tmp_path) == {}

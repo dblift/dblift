@@ -2,9 +2,9 @@
 
 Covers previously untested paths to push coverage toward 70%+:
   - RepairCommand.execute() — happy path, dry_run, no repairs needed, exception paths
-  - _build_migration_state — exception fallback to empty state
+  - _build_migration_state — build failures propagate
   - _detect_checksum_changes — empty / non-empty checksum_changes
-  - _detect_checksum_drift — fallback when load fails, all_applied_objects fallback
+  - _detect_checksum_drift — load failures propagate, all_applied_objects fallback
   - _is_failed_migration — various inputs
   - _delete_failed_migration_entry — oracle dialect, non-transactional, fallback paths
   - _execute_repair_loop — CHECKSUM_MISMATCH, MISSING_SCRIPT, FAILED_MIGRATION,
@@ -19,6 +19,8 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, call, patch
+
+import pytest
 
 from dblift.core.logger.results import RepairResult
 from dblift.core.migration.commands.base_command import PreflightConnectionError
@@ -149,14 +151,13 @@ class TestBuildMigrationState(unittest.TestCase):
         result = cmd._build_migration_state(Path("/migrations"))
         self.assertIs(result, expected_state)
 
-    def test_returns_empty_state_on_exception(self):
+    def test_propagates_build_failure(self):
         state_manager = MagicMock()
         state_manager.build_state.side_effect = RuntimeError("build failed")
 
         cmd = _make_cmd(state_manager=state_manager)
-        result = cmd._build_migration_state(Path("/migrations"))
-        self.assertIsInstance(result, MigrationState)
-        self.assertEqual(result.applied_objects, [])
+        with pytest.raises(RuntimeError, match="build failed"):
+            cmd._build_migration_state(Path("/migrations"))
 
 
 # ---------------------------------------------------------------------------
@@ -280,18 +281,13 @@ class TestDetectChecksumDrift(unittest.TestCase):
         repairs = cmd._detect_checksum_drift(state, [], Path("/migrations"))
         self.assertEqual(len(repairs), 1)
 
-    def test_load_failure_returns_empty_with_warning(self):
-        script_manager = MagicMock()
-        script_manager.load_migration_scripts.side_effect = RuntimeError("load error")
-        log = MagicMock()
-
-        cmd = _make_cmd(script_manager=script_manager, log=log)
-        state = MigrationState()
-        state.all_applied_objects = []
-
-        repairs = cmd._detect_checksum_drift(state, [], Path("/migrations"))
-        self.assertEqual(repairs, [])
-        log.warning.assert_called()
+    def test_checksum_drift_propagates_catalog_load_failure(self):
+        sm = MagicMock()
+        cmd = _make_cmd(state_manager=sm)
+        sm.get_grouped_migrations.side_effect = OSError("permission denied")
+        state = MigrationState()  # grouped_objects is None -> forces a load
+        with pytest.raises(OSError, match="permission denied"):
+            cmd._detect_checksum_drift(state, [], Path("/migrations"))
 
     def test_returns_mismatch_when_db_checksum_failed_to_parse(self):
         """A stored checksum that isn't parseable as an int (e.g. a manually
@@ -885,6 +881,19 @@ class TestRepairCommandExecute(unittest.TestCase):
                     result = cmd.execute(Path("/migrations"))
 
         self.assertTrue(result.success)
+
+    def test_execute_fails_when_history_cannot_be_read(self):
+        sm = MagicMock()
+        sm.build_state.side_effect = RuntimeError("history read failed")
+        cmd = _make_cmd(state_manager=sm)
+        with patch.object(cmd, "_run_preflight"):
+            result = cmd.execute(Path("/migrations"))
+        assert result.success is False
+        assert result.error_message == "Repair operation failed: history read failed"
+        assert not any(
+            "no checksum, failed migration, or history issues detected" in str(c)
+            for c in cmd.log.info.call_args_list
+        )
 
     def test_dry_run_logs_repairs_without_executing(self):
         log = MagicMock()
