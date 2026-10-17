@@ -57,6 +57,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`validate-sql` no longer hides a `DROP TABLE` whose name could not be read.** In a delta,
+  a `DROP TABLE t<no-break space>;` after `CREATE TABLE t` was exempted as a drop of a new table, although
+  the engine may read another name than `t`; the caution "name could not be read" is now kept.
 - **On SQLite and DuckDB, statement analysis no longer names the wrong object.** A name touching
   an invisible or zero-width character (a no-break or ideographic space, a zero-width space, a
   byte-order mark, a combining accent) could be reported under a different name, so a generated

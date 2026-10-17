@@ -91,6 +91,9 @@ class AnalysedStatement:
     snippet: str
     # The whole statement, for rules that parse it; not part of the JSON payload.
     sql: str = field(default="", repr=False, compare=False)
+    # True when the statement's object names were withheld because the engine may read them
+    # differently; not part of the JSON payload.
+    names_unread: bool = field(default=False, repr=False, compare=False)
 
 
 @dataclass(frozen=True)
@@ -200,6 +203,7 @@ def _analyse(text: str, dialect: str) -> ScriptAnalysis:
                 full_table,
                 _snippet(body),
                 sql=body,
+                names_unread=facts.opaque,
             )
             fact_statements.append(analysed)
             caution = _caution_for(analysed, body, quirks.sqlglot_dialect if facts.opaque else None)
@@ -238,7 +242,14 @@ def _analyse(text: str, dialect: str) -> ScriptAnalysis:
                 objects = _fallback_objects(operation, kind, body, quirks)
             objects = _drop_target_objects(operation, body, objects)
         analysed = AnalysedStatement(
-            index, operation, kind, objects, full_table, _snippet(body), sql=body
+            index,
+            operation,
+            kind,
+            objects,
+            full_table,
+            _snippet(body),
+            sql=body,
+            names_unread=bool(unread),
         )
         statements.append(analysed)
         caution = _caution_for(

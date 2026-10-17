@@ -274,3 +274,53 @@ def test_lint_targets_per_directory_recursion_overrides_the_default(migration_tr
 
 def test_lint_targets_of_no_directory_is_empty():
     assert lint_targets([], recursive=True) == []
+
+
+def _delta_findings(tmp_path: Path, dialect: str, drop: str):
+    (tmp_path / "V1__c.sql").write_text("CREATE TABLE t (id INTEGER);")
+    (tmp_path / "V2__d.sql").write_text(drop)
+    results = lint_files(
+        [tmp_path / "V1__c.sql", tmp_path / "V2__d.sql"],
+        dialect,
+        {},
+        MagicMock(),
+        as_delta=True,
+    )
+    return results[1].findings
+
+
+@pytest.mark.parametrize("dialect", ["sqlite", "duckdb"])
+@pytest.mark.parametrize("blank", [" ", "　"])
+def test_a_drop_whose_name_cannot_be_read_is_not_exempted_as_a_new_table(
+    tmp_path: Path, dialect: str, blank: str
+):
+    findings = _delta_findings(tmp_path, dialect, f"DROP TABLE t{blank};")
+
+    assert [(f.code, "name could not be read" in f.message) for f in findings] == [
+        ("drop-table", True)
+    ]
+
+
+@pytest.mark.parametrize("dialect", ["sqlite", "duckdb"])
+def test_a_drop_of_a_table_created_earlier_in_the_delta_is_still_exempted(
+    tmp_path: Path, dialect: str
+):
+    assert _delta_findings(tmp_path, dialect, "DROP TABLE t;") == ()
+
+
+@pytest.mark.parametrize("dialect", ["sqlite", "duckdb"])
+def test_a_drop_of_another_table_still_warns(tmp_path: Path, dialect: str):
+    findings = _delta_findings(tmp_path, dialect, "DROP TABLE u;")
+
+    assert [f.code for f in findings] == ["drop-table"]
+
+
+@pytest.mark.parametrize("dialect", ["sqlite", "duckdb"])
+def test_a_table_created_under_an_unreadable_name_is_not_a_new_table(tmp_path: Path, dialect: str):
+    (tmp_path / "V1__c.sql").write_text("CREATE TABLE t (id INTEGER);")
+    (tmp_path / "V2__d.sql").write_text("DROP TABLE t;")
+    results = lint_files(
+        [tmp_path / "V1__c.sql", tmp_path / "V2__d.sql"], dialect, {}, MagicMock(), as_delta=True
+    )
+
+    assert [f.code for f in results[1].findings] == ["drop-table"]
