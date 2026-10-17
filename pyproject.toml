@@ -392,6 +392,7 @@ module = [
     "dblift.core.sql_parser.terminator_lines",
     "dblift.core.sql_parser.terminator_script",
     "dblift.db.plugins.db2.parser.lexical_spec",
+    "dblift.db.plugins.duckdb.parser.lexical_spec",
     "dblift.db.plugins.mysql.parser.lexical_spec",
     "dblift.db.plugins.mariadb.lexical_spec",
     "dblift.core.normalization",

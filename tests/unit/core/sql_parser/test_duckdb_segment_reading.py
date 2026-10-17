@@ -371,14 +371,15 @@ def test_escape_letters_are_data():
     assert shape("E'a\\';b'", upper_only) == [kw("E"), st("'a\\';b'")]
 
 
-ESCAPE_THEN = "SELECT E'a'{gap}'b\\'' AS x; SELECT 2;"
 CONTINUED = [kw("SELECT"), kw("E"), st("'a'")]
+ESCAPE_THEN = "SELECT E'a'{gap}'b\\'; SELECT 2;"
 
 
 @pytest.mark.parametrize("gap", [" ", "\n", "\r", "\r\n", " -- c\n", "\t", NBSP, "  -- c\n  "])
 def test_escape_mode_continues_across_blanks_and_line_comments(gap):
     items = shape(ESCAPE_THEN.format(gap=gap))
-    assert [i for i in items if i[0] == "STRING"] == [st("'a'"), st("'b\\''")]
+    assert [i for i in items if i[0] == "STRING"] == [st("'a'"), st("'b\\'; SELECT 2;")]
+    assert dl() not in items
 
 
 @pytest.mark.parametrize(
@@ -387,7 +388,7 @@ def test_escape_mode_continues_across_blanks_and_line_comments(gap):
 def test_escape_mode_ends_at_any_other_token(gap):
     items = shape(ESCAPE_THEN.format(gap=gap))
     assert st("'b\\'") in items
-    assert st("'b\\''") not in items
+    assert dl() in items
 
 
 def test_escape_mode_in_the_reference_cases():
@@ -396,8 +397,7 @@ def test_escape_mode_in_the_reference_cases():
     assert shape("SELECT E'a'\n'b\\'; SELECT 1 AS y; SELECT 'z';") == same_line
     assert shape("SELECT E'a' /* c */\n'b\\'' AS x; SELECT 2 AS y;")[3:] == [
         cm("/* c */"),
-        st("'b\\'"),
-        st("' AS x; SELECT 2 AS y;"),
+        st("'b\\'' AS x; SELECT 2 AS y;"),
     ]
     assert shape("SELECT E'a' 'p' 'b\\'' AS x;")[2:5] == [st("'a'"), st("'p'"), st("'b\\''")]
 

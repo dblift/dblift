@@ -1,9 +1,9 @@
 """Shared lexical tokenization driven by immutable plugin facts."""
 
 import re
-from typing import Callable, Dict, Iterable, List, Optional, Tuple
+from typing import Callable, Dict, FrozenSet, Iterable, List, NoReturn, Optional, Tuple
 
-from dblift.core.exceptions import UnsafeStatementSplitError
+from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
 from dblift.core.sql_parser.base_tokenizer import BaseTokenizer
 from dblift.core.sql_parser.batch_commands import (
     find_lone_cr,
@@ -14,7 +14,12 @@ from dblift.core.sql_parser.batch_commands import (
 )
 from dblift.core.sql_parser.client_directives import classify_directive, is_free_text
 from dblift.core.sql_parser.delimiter_script import DelimiterScript
-from dblift.core.sql_parser.lexical_spec import BOM, DirectiveAction, LexicalSpec
+from dblift.core.sql_parser.lexical_spec import (
+    BOM,
+    DirectiveAction,
+    LexicalSpec,
+    SegmentScriptRules,
+)
 from dblift.core.sql_parser.statement import Statement
 from dblift.core.sql_parser.terminator_script import TerminatorScript
 from dblift.core.sql_parser.tokens import Token, TokenType
@@ -161,13 +166,23 @@ class LexicalTokenizer(BaseTokenizer):
             )
             self._word_re = re.compile("[" + delimiter_rules.word_part + "]+")
             self._delimiter = delimiter_rules.initial
+        # Segment scripts: the patterns compiled once, and the two facts the next lexeme depends on.
+        self._segment = spec.segment_script
+        self._seg_blanks: FrozenSet[str] = frozenset()
+        self._seg_word = self._seg_number = self._seg_tag = re.compile("")
+        self._seg_parameter = self._seg_comment = re.compile("")
+        self._seg_origin = 0
+        self._seg_pending = False
+        self._seg_escape = False
+        if self._segment is not None:
+            self._init_segment_script(self._segment)
 
     def tokenize(self) -> List[Token]:
         """Read every token; a delimiter script then refuses what it left open."""
         if self.spec.terminator_script is not None:
             return self._tokenize_terminator_script()
-        if self.spec.segment_script is not None:
-            return []
+        if self._segment is not None:
+            return self._tokenize_segment_script(self._segment)
         tokens = super().tokenize()
         if self.delimiter_script is not None:
             self.delimiter_script.finish()
@@ -227,6 +242,174 @@ class LexicalTokenizer(BaseTokenizer):
                     self.read()
             tokens.append(Token(kind, sql[pos : self.pos], pos, line, col, self.parens_depth))
         return tokens
+
+    def _init_segment_script(self, rules: SegmentScriptRules) -> None:
+        """Compile the patterns a segment script reads at the cursor."""
+        self._seg_blanks = frozenset(rules.blanks)
+        self._seg_word = re.compile(rules.word)
+        self._seg_number = re.compile(rules.number)
+        self._seg_tag = re.compile(rules.dollar_tag)
+        self._seg_parameter = re.compile(rules.parameter)
+        self._seg_comment = re.compile("--[^" + re.escape(rules.line_comment_ends) + "]*")
+
+    def _tokenize_segment_script(self, rules: SegmentScriptRules) -> List[Token]:
+        """Lexemes of a segment script in one pass, after the refused character check.
+
+        An unterminated string, identifier, dollar-quoted string or comment runs to the end of the
+        script, and nothing at the end of a script is refused. Closed comments are recorded.
+        """
+        sql = self.sql
+        self._seg_origin = origin = (
+            1 if self.spec.leading_bom_is_blank and sql.startswith(BOM) else 0
+        )
+        bad = sql.find(rules.refused_character, origin)
+        if bad >= 0:
+            raise UnsafeStatementSplitError(
+                f"a {rules.refused_character_name} character on line "
+                f"{sql.count(chr(10), origin, bad) + 1}: {rules.refused_reason}"
+            )
+        self.pos = origin
+        tokens: List[Token] = []
+        size = len(sql)
+        while self.pos < size:
+            token = self._next_segment_token(rules)
+            if token is not None:
+                tokens.append(token)
+        return tokens
+
+    def _next_segment_token(self, rules: SegmentScriptRules) -> Optional[Token]:
+        """The lexeme at the cursor, or None for a blank."""
+        sql, pos = self.sql, self.pos
+        char = sql[pos]
+        if char in self._seg_blanks:
+            self.read()
+            return None
+        if self._at_command_line(rules, pos):
+            self._refuse_command_line(pos)
+        if sql.startswith("--", pos):
+            return self._segment_line_comment()
+        if sql.startswith("/*", pos):
+            return self._segment_block_comment()
+        if char == "'":
+            return self._segment_string()
+        if char == '"':
+            return self._segment_identifier()
+        if char == "$":
+            return self._segment_dollar()
+        if char == ";":
+            return self._segment_delimiter()
+        return self._segment_word()
+
+    def _at_command_line(self, rules: SegmentScriptRules, pos: int) -> bool:
+        """Whether the command prefix starts a line while no statement text is pending."""
+        prefix = rules.command_prefix
+        if not prefix or self._seg_pending or not self.sql.startswith(prefix, pos):
+            return False
+        return pos == self._seg_origin or self.sql[pos - 1] == "\n"
+
+    def _refuse_command_line(self, pos: int) -> NoReturn:
+        """Refuse a client command: the client runs it and the engine cannot."""
+        eol = self.sql.find("\n", pos)
+        word = self.sql[pos : len(self.sql) if eol < 0 else eol].split(None, 1)[0]
+        raise UnsupportedMetaCommandError(
+            f"{self.spec.client_name} command {word!r} on line {self.line}: the shell runs it "
+            "and the engine cannot; dblift does not run client commands"
+        )
+
+    def _segment_token(self, kind: TokenType, start: int, line: int, col: int) -> Token:
+        """The token for ``sql[start:pos]`` read from ``line`` and ``col``."""
+        return Token(kind, self.sql[start : self.pos], start, line, col, self.parens_depth)
+
+    def _segment_lexeme(self, kind: TokenType, read: Callable[[], Token]) -> Token:
+        """Read one lexeme with a shared handler; an unterminated one runs to the end."""
+        start, line, col = self.pos, self.line, self.col
+        try:
+            read()
+        except UnsafeStatementSplitError:
+            pass
+        return self._segment_token(kind, start, line, col)
+
+    def _segment_line_comment(self) -> Token:
+        """A line comment up to the first line end; it keeps the escape mode."""
+        start, line, col = self.pos, self.line, self.col
+        match = self._seg_comment.match(self.sql, start)
+        assert match is not None  # the pattern starts with the two dashes the caller found
+        self.read(match.end() - start)
+        self.comments.append((start, self.pos))
+        return self._segment_token(TokenType.COMMENT, start, line, col)
+
+    def _segment_block_comment(self) -> Token:
+        """A block comment; one left open is code, and the rest of the script is inside it."""
+        start, line, col = self.pos, self.line, self.col
+        self._seg_escape = False
+        self.read(2)
+        depth, _ = self._read_block_comment()
+        if depth:
+            self._seg_pending = True
+            return self._segment_token(TokenType.SYMBOL, start, line, col)
+        self.comments.append((start, self.pos))
+        return self._segment_token(TokenType.COMMENT, start, line, col)
+
+    def _segment_string(self) -> Token:
+        """A string; an escape string while the escape mode continues. A string keeps the mode."""
+        self._seg_pending = True
+        read = self._handle_escape_string if self._seg_escape else self._handle_standard_string
+        return self._segment_lexeme(TokenType.STRING, read)
+
+    def _segment_identifier(self) -> Token:
+        """A quoted identifier."""
+        self._seg_pending = True
+        self._seg_escape = False
+        return self._segment_lexeme(TokenType.IDENTIFIER, self._handle_quoted_identifier)
+
+    def _segment_dollar(self) -> Token:
+        """A dollar-quoted string closed by its own tag, else a parameter."""
+        start, line, col = self.pos, self.line, self.col
+        self._seg_pending = True
+        self._seg_escape = False
+        kind, end = TokenType.SYMBOL, start + 1
+        tag = self._seg_tag.match(self.sql, start)
+        if tag is not None:
+            close = self.sql.find(tag.group(), tag.end())
+            kind, end = TokenType.STRING, len(self.sql) if close < 0 else close + len(tag.group())
+        else:
+            parameter = self._seg_parameter.match(self.sql, start)
+            end = start + 1 if parameter is None else parameter.end()
+        self.read(end - start)
+        return self._segment_token(kind, start, line, col)
+
+    def _segment_delimiter(self) -> Token:
+        """A ``;``: the statement is complete and the escape mode ends."""
+        start, line, col = self.pos, self.line, self.col
+        self._seg_pending = self._seg_escape = False
+        self.read()
+        return self._segment_token(TokenType.DELIMITER, start, line, col)
+
+    def _segment_word(self) -> Token:
+        """A word, a number or one other character; an escape prefix opens the escape mode."""
+        start, line, col = self.pos, self.line, self.col
+        self._seg_pending = True
+        kind = TokenType.KEYWORD
+        match = self._seg_word.match(self.sql, start)
+        if match is None:
+            kind = TokenType.IDENTIFIER
+            match = self._seg_number.match(self.sql, start)
+        if match is None:
+            self._seg_escape = False
+            self.read()
+            return self._segment_token(TokenType.SYMBOL, start, line, col)
+        self._seg_escape = self._opens_escape_string(self.sql[start : match.end()], match.end())
+        self.read(match.end() - start)
+        return self._segment_token(kind, start, line, col)
+
+    def _opens_escape_string(self, word: str, end: int) -> bool:
+        """Whether ``word``, with a quote at ``end``, is an escape prefix (alone or after digits)."""
+        assert self._segment is not None
+        return (
+            self.sql.startswith("'", end)
+            and word[-1] in self._segment.escape_letters
+            and (len(word) == 1 or word[:-1].isdigit())
+        )
 
     def assemble(self, tokens: List[Token]) -> List[Statement]:
         """The records of a terminator script read as ``tokens``, or its refusal."""

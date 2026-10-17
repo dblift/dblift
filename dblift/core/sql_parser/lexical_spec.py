@@ -276,15 +276,18 @@ class LexicalSpec:
     segment_script: Optional[SegmentScriptRules] = None
 
     def __post_init__(self) -> None:
-        """A client reads a script by lines, batches, a delimiter or a terminator line, never two."""
+        """A client reads a script by lines, batches, a delimiter, terminator lines or segments."""
         rules = (
             self.client_script,
             self.batch_script,
             self.delimiter_script,
             self.terminator_script,
+            self.segment_script,
         )
         if sum(rule is not None for rule in rules) > 1:
             raise ValueError(
-                "client_script, batch_script, delimiter_script and terminator_script "
-                "are mutually exclusive"
+                "client_script, batch_script, delimiter_script, terminator_script and "
+                "segment_script are mutually exclusive"
             )
+        if self.segment_script is not None and self.sqlite_shell:
+            raise ValueError("segment_script and sqlite_shell are mutually exclusive")
