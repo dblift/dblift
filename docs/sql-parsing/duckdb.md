@@ -373,16 +373,13 @@ non-ASCII blanks stay, and the terminator is not part of it. Its line is the lin
 character, and its start and end are offsets in the script with a byte order mark counted. The last
 statement needs no terminator.
 
-Literal masking in failure messages reads a DuckDB statement with the generic tokenizer, not with the engine
-(the specification sets `redaction_reads_engine` to false), and object extraction strips comments with the
-DuckDB nesting tokenizer; neither moved with the splitter, and a parser object has no `lexical_spec`
-attribute, so extraction is not re-pointed. The generic tokenizer reads no dollar-quoted string as a
-literal and reads an escape string with a backslash as a plain one: measured on 34 819 distinct statements cut from about 41 000
-generated scripts, reading them through the engine would change the masked text of 18 885 and the description of
-7 933, and the current masking leaves a literal of five or more characters in the clear in 8 181. Four shapes
-are checked by tests as they behave today: a dollar-quoted value, the same value with a tag, an escape string with
-a backslash (the whole statement collapses to its first word) and a plain value next to a tagged one. They are
-known leaks, to be fixed on their own. `strict_tokenizer` has no effect: the engine has no unknown
+Literal masking in failure messages reads a DuckDB statement through the specification (the engine), so a
+dollar-quoted string (`$$…$$`, `$tag$…$tag$`, one holding quotes or line breaks) and an escape string with a
+backslash are literals and become `'?'`. A quoted name or a block comment that is never closed, and a dollar-quoted
+string that is never closed, run to the end of the text and are masked to the end, as the engine reads them.
+A shell command line (a line starting with `.`) is read as SQL text, not refused. Object extraction strips
+comments with the DuckDB nesting tokenizer; it did not move with the splitter, and a parser object has no
+`lexical_spec` attribute, so extraction is not re-pointed. `strict_tokenizer` has no effect: the engine has no unknown
 characters, every character that is no other lexeme is one symbol. A split writes no log record (measured: 0 records for a split before and after the change; building a regex
 parser object writes one DEBUG record, before and after).
 

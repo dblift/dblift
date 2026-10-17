@@ -89,6 +89,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   positional parameter such as `$1a`) was read as one statement hiding the `DROP TABLE`, while DuckDB
   reads the number, then a name, and runs the three statements. The number now ends where DuckDB ends it.
 
+- **DuckDB: dollar-quoted strings are now redacted in logs and reports.** A value written as
+  `$$…$$` or `$tag$…$tag$`, an escape string with a backslash (`E'…\'…'`), and a quoted name or
+  block comment that is never closed are replaced by `'?'` in failure messages and reports
+  instead of appearing in the clear.
 - **`repair` now finds exactly the checksum drift `validate` reports for versioned
   migrations.** Before, an unsigned checksum returned by some drivers was treated as drift and
   rewritten, a history row recorded under a directory-qualified script name was reported by

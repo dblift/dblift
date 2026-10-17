@@ -4120,7 +4120,7 @@
    "input": "\ufeffSELECT 1",
    "output": [
     "\ufeffSELECT 1",
-    ""
+    "SELECT 1"
    ]
   },
   "doubled_quote_literal": {
@@ -4140,49 +4140,49 @@
   "leak_after_a_comment": {
    "input": "UPDATE t SET a = 1 /* c */, pw = $$hunter2$$ -- tail",
    "output": [
-    "UPDATE t SET a = 1 /* c */, pw = $$hunter2$$ -- tail",
+    "UPDATE t SET a = 1 /* c */, pw = '?' -- tail",
     "UPDATE t"
    ]
   },
   "leak_after_a_line_comment": {
    "input": "UPDATE t SET a = 1 -- c\n, pw = $x$hunter2$x$",
    "output": [
-    "UPDATE t SET a = 1 -- c\n, pw = $x$hunter2$x$",
+    "UPDATE t SET a = 1 -- c\n, pw = '?'",
     "UPDATE t"
    ]
   },
   "leak_escape_backslash": {
    "input": "UPDATE t SET pw = E'hun\\'ter2'",
    "output": [
-    "UPDATE",
-    "UPDATE"
+    "UPDATE t SET pw = E'?'",
+    "UPDATE t"
    ]
   },
   "leak_nested_tag": {
    "input": "UPDATE t SET pw = $a$x $b$ y $b$ z$a$",
    "output": [
-    "UPDATE t SET pw = $a$x $b$ y $b$ z$a$",
+    "UPDATE t SET pw = '?'",
     "UPDATE t"
    ]
   },
   "leak_plain_and_tagged": {
    "input": "INSERT INTO t VALUES ('a', $k$secret$k$)",
    "output": [
-    "INSERT INTO t VALUES ('?', $k$secret$k$)",
+    "INSERT INTO t VALUES ('?', '?')",
     "INSERT INTO t"
    ]
   },
   "leak_tagged_dollar": {
    "input": "UPDATE t SET pw = $t$hunter2$t$",
    "output": [
-    "UPDATE t SET pw = $t$hunter2$t$",
+    "UPDATE t SET pw = '?'",
     "UPDATE t"
    ]
   },
   "leak_untagged_dollar": {
    "input": "UPDATE t SET pw = $$hunter2$$",
    "output": [
-    "UPDATE t SET pw = $$hunter2$$",
+    "UPDATE t SET pw = '?'",
     "UPDATE t"
    ]
   },
@@ -4210,14 +4210,14 @@
   "shape_01": {
    "input": "\"",
    "output": [
-    "\"",
+    "'?'",
     "\""
    ]
   },
   "shape_02": {
    "input": "'",
    "output": [
-    "",
+    "'?'",
     ""
    ]
   },
@@ -4280,7 +4280,7 @@
   "shape_11": {
    "input": "')",
    "output": [
-    "",
+    "'?'",
     ""
    ]
   },
@@ -4302,7 +4302,7 @@
    "input": "1_",
    "output": [
     "1_",
-    "1 _"
+    "1_"
    ]
   },
   "shape_15": {
@@ -4322,14 +4322,14 @@
   "shape_17": {
    "input": "$$;",
    "output": [
-    "$$;",
+    "'?'",
     ""
    ]
   },
   "shape_18": {
    "input": "'''",
    "output": [
-    "",
+    "'?'",
     ""
    ]
   },
@@ -4337,7 +4337,7 @@
    "input": "\u2029--",
    "output": [
     "\u2029--",
-    ""
+    "\u2029"
    ]
   },
   "shape_20": {
@@ -4357,7 +4357,7 @@
   "shape_22": {
    "input": "/* open",
    "output": [
-    "",
+    "'?'",
     ""
    ]
   },
@@ -4372,14 +4372,14 @@
    "input": "\u00b2SELECT",
    "output": [
     "\u00b2SELECT",
-    "\u00b2 SELECT"
+    "\u00b2SELECT"
    ]
   },
   "shape_25": {
    "input": "1E-- ;\n\\",
    "output": [
     "1E-- ;\n\\",
-    "1E-"
+    "1E"
    ]
   },
   "shape_26": {

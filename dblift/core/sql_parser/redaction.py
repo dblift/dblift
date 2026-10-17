@@ -73,11 +73,17 @@ def _tokens(sql: str, dialect: Optional[str]) -> List[Token]:
             # Masking reads the text as SQL: a client line (a directive, a batch separator) is not
             # a literal-free token.
             spec = replace(spec, client_script=None, batch_script=None)
+        elif spec is not None and spec.segment_script and spec.segment_script.command_prefix:
+            # Likewise a shell command line: masking refuses nothing, it reads the text as SQL.
+            spec = replace(spec, segment_script=replace(spec.segment_script, command_prefix=""))
         tokens = (
             LexicalTokenizer(sql, spec=spec).tokenize()
             if spec is not None
             else _dialect_tokenizer(dialect)(sql).tokenize()
         )
+    if spec is not None and spec.segment_script is not None:
+        # A segment script runs an unclosed name or comment to the end: it is quoted text.
+        tokens = [replace(t, type=TokenType.STRING) if _runs_unclosed(t) else t for t in tokens]
     return [t for t in tokens if t.type not in (TokenType.COMMENT, TokenType.EOF)]
 
 
@@ -103,6 +109,17 @@ def _closing_quote(sql: str, start: int) -> int:
         if sql[i + 1 : i + 2] != '"':
             return i + 1
         i += 2
+
+
+_CLOSED_NAME = re.compile(r'"(?:[^"]|"")*"')
+
+
+def _runs_unclosed(token: Token) -> bool:
+    """Whether *token* is a quoted name or block comment that never closes: it holds the rest."""
+    text = token.text
+    if token.type == TokenType.IDENTIFIER and text.startswith('"'):
+        return not _CLOSED_NAME.fullmatch(text)
+    return token.type == TokenType.SYMBOL and text.startswith("/*") and not text.endswith("*/")
 
 
 def _credential_span(
