@@ -204,57 +204,36 @@ def test_load_plugin_preserves_all_non_filesystem_declared_fields(_reset_registr
         ), f"field {field.name!r} was dropped by the _load_plugin reconstruction"
 
 
-def test_empty_entry_points_does_not_latch_discovered(_reset_registry):
-    """Same latch bug as AlterGeneratorFactory and feature_loading, one layer
-    over third-party ``dblift.providers`` plugins: OSS's own 19 dialects are
-    always found by the filesystem fallback regardless of entry-point
-    timing, which masks the fact that ``discover_plugins`` latches
-    ``_discovered = True`` unconditionally -- even on a call where the
-    entry-point pass found nothing. A third-party plugin package whose
-    ``dblift.providers`` entry point isn't yet visible in this process's
-    ``importlib.metadata`` view on the FIRST call would then never get a
-    second chance: the latch closes, and a later call that would have found
-    it short-circuits on ``if cls._discovered: return`` before ever
-    re-running the entry-point pass.
-    """
+def test_empty_entry_points_still_latches_discovered(_reset_registry):
+    """The bundled plugins are always found by the filesystem fallback, so an
+    empty entry-point result is a complete discovery: leaving the latch open
+    would rescan every installed distribution on each lookup."""
     with patch("importlib.metadata.entry_points", return_value=[]):
         ProviderRegistry.discover_plugins()
 
-    assert ProviderRegistry._discovered is False, (
-        "an empty entry-point result must not be latched as fully "
-        "discovered, or a later call that WOULD find a late-arriving "
-        "third-party plugin never retries"
-    )
+    assert ProviderRegistry._discovered is True
 
 
-def test_a_later_call_with_entry_points_available_succeeds_after_an_earlier_empty_call(
-    _reset_registry,
-):
-    """Reproduces the race directly: first call sees no entry points (as if
-    a third-party plugin's package metadata hadn't reached this process's
-    view yet), second call (as if it resolved in between) must actually
-    register it -- not stay unregistered because the first call already
-    latched ``_discovered``.
-    """
+def test_entry_points_appearing_after_discovery_are_not_rescanned(_reset_registry):
+    """Discovery runs once per process; a plugin that becomes visible later is
+    not picked up by lookups (it can still be registered explicitly)."""
     with patch("importlib.metadata.entry_points", return_value=[]):
         ProviderRegistry.discover_plugins()
-    assert "fakedb" not in ProviderRegistry._plugins
 
     fake_ep = SimpleNamespace(name="fakedb", value="x:y", load=lambda: _FAKE_PLUGIN)
-    with patch("importlib.metadata.entry_points", return_value=[fake_ep]):
+    with patch("importlib.metadata.entry_points", return_value=[fake_ep]) as mock_eps:
         ProviderRegistry.discover_plugins()
+        mock_eps.assert_not_called()
 
-    assert "fakedb" in ProviderRegistry._plugins
-    assert ProviderRegistry._discovered is True
+    assert "fakedb" not in ProviderRegistry._plugins
 
 
 def test_late_plugin_replaces_cached_unknown_quirks(_reset_registry):
     with patch("importlib.metadata.entry_points", return_value=[]):
         assert type(ProviderRegistry.get_quirks("fakedb")) is BaseQuirks
 
-    fake_ep = SimpleNamespace(name="fakedb", value="x:y", load=lambda: _FAKE_PLUGIN)
-    with patch("importlib.metadata.entry_points", return_value=[fake_ep]):
-        assert type(ProviderRegistry.get_quirks("fakedb")) is _FakeQuirks
+    ProviderRegistry.register_plugin(_FAKE_PLUGIN)
+    assert type(ProviderRegistry.get_quirks("fakedb")) is _FakeQuirks
 
 
 def test_failed_later_descriptor_keeps_earlier_alias_provider(_reset_registry):
@@ -324,15 +303,12 @@ def test_paired_descriptor_factory_supports_dotted_entry_point_attribute(_reset_
         assert ProviderRegistry.get_plugin_info("shared") is _COLLIDING_PLUGIN
 
 
-def test_all_invalid_entry_points_do_not_prevent_later_legacy_discovery(_reset_registry):
+def test_all_invalid_entry_points_do_not_hide_bundled_plugins(_reset_registry):
     invalid = SimpleNamespace(name="broken", value="broken:PLUGIN", load=lambda: object())
     with patch("importlib.metadata.entry_points", return_value=[invalid]):
         assert ProviderRegistry.get_plugin_info("fakedb") is None
-        assert ProviderRegistry._discovered is False
-
-    valid = SimpleNamespace(name="fakedb", value="valid:PLUGIN", load=lambda: _FAKE_PLUGIN)
-    with patch("importlib.metadata.entry_points", return_value=[valid]):
-        assert ProviderRegistry.get_plugin_info("fakedb") is _FAKE_PLUGIN
+        assert ProviderRegistry.get_plugin_info("sqlite") is not None
+        assert ProviderRegistry._discovered is True
 
 
 def test_failed_filesystem_descriptor_does_not_rediscover_during_same_lookup(_reset_registry):
@@ -379,7 +355,7 @@ def test_failed_duplicate_descriptor_alias_restores_earlier_plugin(_reset_regist
 
 
 @pytest.mark.parametrize("paired", [False, True])
-def test_failed_descriptor_only_discovery_allows_later_plugin(_reset_registry, paired):
+def test_failed_descriptor_only_discovery_leaves_registry_usable(_reset_registry, paired):
     owner = object()
     factory = "missing_factory:PLUGIN"
     broken = SimpleNamespace(
@@ -397,14 +373,7 @@ def test_failed_descriptor_only_discovery_allows_later_plugin(_reset_registry, p
         patch.object(ProviderRegistry, "_discover_via_filesystem"),
     ):
         assert ProviderRegistry.get_plugin_info("broken") is None
-        assert ProviderRegistry._discovered is False
-
-    valid = SimpleNamespace(name="fakedb", value="valid:PLUGIN", load=lambda: _FAKE_PLUGIN)
-    with (
-        patch("importlib.metadata.entry_points", return_value=[valid]),
-        patch.object(ProviderRegistry, "_discover_via_filesystem"),
-    ):
-        assert ProviderRegistry.get_plugin_info("fakedb") is _FAKE_PLUGIN
+        assert ProviderRegistry._discovered is True
 
 
 def test_malformed_filesystem_descriptor_does_not_hide_other_plugins(_reset_registry):
@@ -498,3 +467,45 @@ def test_first_party_plugins_round_trip_through_full_discovery(_reset_registry):
         "snowflake",
     ):
         assert dialect in ProviderRegistry._plugins or dialect in ProviderRegistry._pending
+
+
+def _scan_counting_entry_points(candidates, scans):
+    def entry_points(*, group):
+        if group == ProviderRegistry.ENTRY_POINT_GROUP:
+            scans.append(group)
+            return candidates
+        return []
+
+    return entry_points
+
+
+def test_discovery_latches_when_no_entry_point_is_valid(_reset_registry):
+    """With every entry point rejected (or none installed) the bundled plugins
+    still resolve, so repeated lookups must not rescan installed distributions."""
+    invalid = SimpleNamespace(name="foreign", value="foreign:PLUGIN", load=lambda: object())
+    scans: list = []
+
+    with patch(
+        "importlib.metadata.entry_points",
+        side_effect=_scan_counting_entry_points([invalid], scans),
+    ):
+        for dialect in ("sqlite", "postgresql", "mysql"):
+            assert ProviderRegistry.get_plugin_info(dialect) is not None
+
+    assert len(scans) == 1
+    assert ProviderRegistry._discovered is True
+
+
+def test_rejected_entry_point_is_warned_once_across_lookups(_reset_registry, caplog):
+    invalid = SimpleNamespace(name="foreign", value="foreign:PLUGIN", load=lambda: object())
+
+    with patch(
+        "importlib.metadata.entry_points",
+        side_effect=_scan_counting_entry_points([invalid], []),
+    ):
+        with caplog.at_level("WARNING"):
+            for dialect in ("sqlite", "postgresql", "mysql"):
+                ProviderRegistry.get_plugin_info(dialect)
+
+    warnings = [r for r in caplog.records if "foreign" in r.getMessage()]
+    assert len(warnings) == 1

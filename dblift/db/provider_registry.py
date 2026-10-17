@@ -157,14 +157,13 @@ class ProviderRegistry:
         with cls._lock:
             if cls._discovered:
                 return
-            found_entry_points = cls._discover_via_entry_points()
+            cls._discover_via_entry_points()
             cls._discover_via_filesystem()
-            cls._discovered = found_entry_points
+            cls._discovered = True
 
     @classmethod
-    def _discover_via_entry_points(cls) -> bool:
+    def _discover_via_entry_points(cls) -> None:
         """Register valid legacy plugins and index descriptors in entry-point order."""
-        found = False
         for candidate in entry_point_candidates(
             cls.ENTRY_POINT_GROUP, cls.DESCRIPTOR_ENTRY_POINT_GROUP
         ):
@@ -172,8 +171,6 @@ class ProviderRegistry:
                 cls._register_descriptor(candidate)
             else:
                 cls.register_plugin(candidate)
-            found = True
-        return found
 
     @classmethod
     def _register_descriptor(cls, descriptor: PluginDescriptor) -> None:
@@ -211,8 +208,6 @@ class ProviderRegistry:
                                     del cls._pending[alias]
                                 else:
                                     cls._pending[alias] = previous
-                        if not cls._pending and not cls._plugins:
-                            cls._discovered = False
                         continue
                 for alias, entry in list(cls._pending.items()):
                     if entry is pending:
