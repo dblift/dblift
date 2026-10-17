@@ -19,10 +19,16 @@ class TerminatorScript:
     """One script cut by lines, read from the lexemes found in its masked text."""
 
     def __init__(
-        self, rules: TerminatorScriptRules, client_name: str, text: str, origin: int
+        self,
+        rules: TerminatorScriptRules,
+        client_name: str,
+        text: str,
+        origin: int,
+        text_blanks: str,
     ) -> None:
         """Classify the lines of ``text``: the script without its byte order mark (``origin`` long)."""
         self.rules = rules
+        self.text_blanks = text_blanks
         self.client_name = client_name
         self.text = text
         self.origin = origin
@@ -52,6 +58,7 @@ class _Walk:
     ) -> None:
         self.script = script
         self.rules = script.rules
+        self.text_blanks = script.text_blanks
         self.client = script.client_name
         self.text = script.text
         self.tokens = tokens
@@ -278,10 +285,10 @@ class _Walk:
         segs = self.segs if cut < 0 else self.segs[:cut]
         text, start = self.text, self.start
         for first, last in segs:  # the statement starts on the first line with anything on it
-            if text[first:last].strip():
+            if text[first:last].strip(self.text_blanks):
                 break
             start += 1
-        statement = "\n".join(text[first:last] for first, last in segs).strip()
+        statement = "\n".join(text[first:last] for first, last in segs).strip(self.text_blanks)
         body, stray_line = self.body, self.stray_line
         self.segs, self.body = [], RoutineBody(self.rules.routine)
         if not statement or not body.code:

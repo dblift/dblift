@@ -121,7 +121,7 @@ POSITIONS = {
 
 
 #: Dialects whose record builders already strip exactly their text_blanks.
-FIXED_DIALECTS = (*PSQL_LIKE, "oracle", "sqlserver", "snowflake")
+FIXED_DIALECTS = (*PSQL_LIKE, "oracle", "sqlserver", "snowflake", "db2")
 
 
 def keeps_the_terminator_in_the_text(dialect: str, position: str, view: str) -> bool:
@@ -240,3 +240,24 @@ def test_a_copy_header_keeps_a_character_outside_the_blanks(dialect: str) -> Non
 def test_a_routine_batch_keeps_a_character_outside_the_blanks_when_analysis_divides_it() -> None:
     text = f"CREATE PROCEDURE p AS SELECT 1{chr(0x2029)}"
     assert SqlAnalyzer("sqlserver").split_statements_for_analysis(text) == [text]
+
+
+NBSP = chr(0xA0)
+DB2_BLOCK = (
+    "--#SET TERMINATOR @\n"
+    f"{NBSP}CREATE PROCEDURE p ()\nBEGIN\n  DECLARE x INT;\n  SET x = 1;\nEND{NBSP}@\n"
+    f"SELECT 1 FROM t{NBSP} @\n"
+)
+
+
+@pytest.mark.parametrize("view", ["execution", "analysis"])
+def test_db2_block_ended_by_a_set_terminator_keeps_a_character_outside_the_blanks(
+    view: str,
+) -> None:
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        recorded = record_script("db2", DB2_BLOCK)[view]
+    assert recorded == [
+        f"{NBSP}CREATE PROCEDURE p ()\nBEGIN\n  DECLARE x INT;\n  SET x = 1;\nEND{NBSP}",
+        f"SELECT 1 FROM t{NBSP}",
+    ]
