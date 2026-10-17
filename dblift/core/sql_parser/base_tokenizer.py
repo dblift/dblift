@@ -353,14 +353,14 @@ class BaseTokenizer:
 
         Returns the depth left open and the index of the next unreached stop. When the cursor
         reaches or passes ``stops[k]``, ``marks[stops[k]]`` records the depth there and whether the
-        last step read a single character (not the second character of ``/*`` or ``*/``).
+        last step read a single character (not the second character of ``/*`` or ``*/``). Without
+        ``marks`` nothing is recorded.
         """
         depth, alone, index, count, size = 1, False, first, len(stops), len(self.sql)
         while True:
-            if index < count and self.pos >= stops[index]:
+            if marks is not None and index < count and self.pos >= stops[index]:
                 while index < count and self.pos >= stops[index]:
-                    if marks is not None:
-                        marks[stops[index]] = (depth, alone)
+                    marks[stops[index]] = (depth, alone)
                     index += 1
             if depth == 0 or self.pos >= size:
                 return depth, index

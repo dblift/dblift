@@ -21,7 +21,7 @@ class LexicalEngine:
     def _parser(self, script: str) -> LexicalStatementParser:
         tokenizer = LexicalTokenizer(script, spec=self.spec)
         tokens = tokenizer.tokenize()
-        records = tokenizer.assemble(tokens)
+        records = tokenizer.assemble(tokens) if self.spec.terminator_script is not None else None
         return LexicalStatementParser(
             tokens,
             source=script,

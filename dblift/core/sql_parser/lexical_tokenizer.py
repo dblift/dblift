@@ -226,10 +226,9 @@ class LexicalTokenizer(BaseTokenizer):
             tokens.append(Token(kind, sql[pos : self.pos], pos, line, col, self.parens_depth))
         return tokens
 
-    def assemble(self, tokens: List[Token]) -> Optional[List[Statement]]:
-        """The records of a terminator script read as ``tokens`` (or its refusal); else None."""
-        if self.terminator_script is None:
-            return None
+    def assemble(self, tokens: List[Token]) -> List[Statement]:
+        """The records of a terminator script read as ``tokens``, or its refusal."""
+        assert self.terminator_script is not None  # only a terminator script is assembled
         return self.terminator_script.assemble(tokens, self.marks, self.open_lexeme)
 
     def _next_sql_token(self) -> Optional[Token]:
