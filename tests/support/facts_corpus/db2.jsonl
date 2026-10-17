@@ -155,7 +155,6 @@
 {"facts":null,"inputs":["e668b082ca202cf3"],"old":{"analyzer":[["TABLE","default_schema.users"]],"hybrid":[]},"sql":"COMMENT ON COLUMN users.email IS 'contact'"}
 {"facts":null,"inputs":["ab56e829bd7b839d"],"old":{"analyzer":[["INDEX","default_schema.idx"]],"hybrid":[]},"sql":"COMMENT ON INDEX idx IS 'note'"}
 {"facts":null,"inputs":["3f4f31194b81ce62"],"old":{"analyzer":[["SEQUENCE","default_schema.seq"]],"hybrid":[]},"sql":"COMMENT ON SEQUENCE seq IS 'note'"}
-{"facts":null,"inputs":["978f664067ef4fdb"],"old":{"analyzer":[],"hybrid":[]},"sql":"COMMENT ON TABLE"}
 {"facts":null,"inputs":["291da9c80e13e058"],"old":{"analyzer":[["TABLE","default_schema.child"]],"hybrid":[]},"sql":"COMMENT ON TABLE child IS 'note'"}
 {"facts":null,"inputs":["48c8bd634401c71d"],"old":{"analyzer":[["TABLE","default_schema.orders"]],"hybrid":[]},"sql":"COMMENT ON TABLE orders IS 'desc'"}
 {"facts":null,"inputs":["59b31d7e708a676e"],"old":{"analyzer":[["TABLE","public.orders"]],"hybrid":[]},"sql":"COMMENT ON TABLE public.orders IS 'x'"}
@@ -202,7 +201,7 @@
 {"facts":null,"inputs":["1be7ea0fba7b793f"],"old":{"analyzer":[],"hybrid":[]},"sql":"COPY t FROM STDIN"}
 {"facts":null,"inputs":["1487b9907d08380d","fb4921dad7f8b14c"],"old":{"analyzer":[],"hybrid":[]},"sql":"COPY t(a) FROM STDIN"}
 {"facts":null,"inputs":["b9f6d33dfb2788df"],"old":{"analyzer":[],"hybrid":[]},"sql":"COPY users TO '/tmp/users.csv' WITH (FORMAT CSV, HEADER)"}
-{"facts":null,"inputs":["311000d72d9a65a4","fde9c5013bf50610"],"old":{"analyzer":[],"hybrid":[]},"sql":"CREATE"}
+{"facts":null,"inputs":["fde9c5013bf50610"],"old":{"analyzer":[],"hybrid":[]},"sql":"CREATE"}
 {"facts":null,"inputs":["3c188fc0a2909f33"],"old":{"analyzer":[["INDEX","bx"]],"hybrid":[]},"sql":"CREATE BITMAP INDEX bx ON orders (status)"}
 {"facts":null,"inputs":["032fc2cd04cf482e"],"old":{"analyzer":[["INDEX","idx_b"]],"hybrid":[]},"sql":"CREATE BITMAP INDEX idx_b ON t (id)"}
 {"facts":null,"inputs":["27174829db8526ee"],"old":{"analyzer":[["INDEX","idx_status"]],"hybrid":[]},"sql":"CREATE BITMAP INDEX idx_status ON employees(status)"}
@@ -395,9 +394,7 @@
 {"facts":null,"inputs":["37501939e7d5124f"],"old":{"analyzer":[["PROCEDURE","default_schema.p"]],"hybrid":[["PROCEDURE","P","SYSIBM"]]},"sql":"CREATE OR REPLACE PROCEDURE p AS BEGIN NULL; END"}
 {"facts":null,"inputs":["8e4230a5ffc68974"],"old":{"analyzer":[["PROCEDURE","default_schema.p"]],"hybrid":[["PROCEDURE","P","SYSIBM"]]},"sql":"CREATE OR REPLACE PROCEDURE p IS BEGIN NULL; END"}
 {"facts":null,"inputs":["a3ce8a7cd4cb86ac"],"old":{"analyzer":[["PROCEDURE","default_schema.safe_insert"]],"hybrid":[["PROCEDURE","SAFE_INSERT","SYSIBM"]]},"sql":"CREATE OR REPLACE PROCEDURE safe_insert(IN val INTEGER)\nLANGUAGE SQL\nBEGIN\n    DECLARE CONTINUE HANDLER FOR SQLEXCEPTION\n    BEGIN\n        ROLLBACK;\n    END;\n    INSERT INTO t VALUES (val);\n    COMMIT;\nEND"}
-{"facts":null,"inputs":["1a958d710bf799d1"],"old":{"analyzer":[["PROCEDURE","default_schema.simple_proc"]],"hybrid":[["PROCEDURE","SIMPLE_PROC","SYSIBM"]]},"sql":"CREATE OR REPLACE PROCEDURE simple_proc"}
 {"facts":null,"inputs":["d5b32632ee70f2af"],"old":{"analyzer":[["PROCEDURE","default_schema.simple_proc"]],"hybrid":[["PROCEDURE","SIMPLE_PROC","SYSIBM"]]},"sql":"CREATE OR REPLACE PROCEDURE simple_proc AS\n        BEGIN\n            NULL;\n        END"}
-{"facts":null,"inputs":["05e1d72ad285a866"],"old":{"analyzer":[["PROCEDURE","default_schema.test_proc"]],"hybrid":[["PROCEDURE","TEST_PROC","SYSIBM"]]},"sql":"CREATE OR REPLACE PROCEDURE test_proc"}
 {"facts":null,"inputs":["298983e34e2dbdff"],"old":{"analyzer":[["PROCEDURE","default_schema.test_proc"]],"hybrid":[["PROCEDURE","TEST_PROC","SYSIBM"]]},"sql":"CREATE OR REPLACE PROCEDURE test_proc AS\n        BEGIN\n            NULL;\n        END"}
 {"facts":null,"inputs":["5c253ee4929c4323"],"old":{"analyzer":[["PROCEDURE","default_schema.test_proc"]],"hybrid":[["PROCEDURE","TEST_PROC","SYSIBM"]]},"sql":"CREATE OR REPLACE PROCEDURE test_proc AS\nBEGIN\n    NULL;\nEND"}
 {"facts":null,"inputs":["b5e5a30cfd12ea36"],"old":{"analyzer":[["PROCEDURE","default_schema.test_proc"]],"hybrid":[["PROCEDURE","TEST_PROC","SYSIBM"]]},"sql":"CREATE OR REPLACE PROCEDURE test_proc IS\n        BEGIN\n            INSERT INTO test_table VALUES (1);\n            COMMIT;\n        END"}
@@ -475,7 +472,6 @@
 {"facts":null,"inputs":["2dc171b33208f754"],"old":{"analyzer":[["SEQUENCE","default_schema.s"]],"hybrid":[["SEQUENCE","S","SYSIBM"]]},"sql":"CREATE SEQUENCE IF NOT EXISTS s START WITH 1"}
 {"facts":null,"inputs":["eba8a68eda3597b1"],"old":{"analyzer":[["SEQUENCE","default_schema.MiXed"]],"hybrid":[["SEQUENCE","MIXED","SYSIBM"]]},"sql":"CREATE SEQUENCE MiXed"}
 {"facts":null,"inputs":["f8e3239d700467a7"],"old":{"analyzer":[["SEQUENCE","app.users_seq"]],"hybrid":[["SEQUENCE","USERS_SEQ","APP"]]},"sql":"CREATE SEQUENCE app.users_seq START WITH 1"}
-{"facts":null,"inputs":["246ae25569ff69fa"],"old":{"analyzer":[["SEQUENCE","default_schema.emp_seq"]],"hybrid":[["SEQUENCE","EMP_SEQ","SYSIBM"]]},"sql":"CREATE SEQUENCE emp_seq"}
 {"facts":null,"inputs":["c1d88de870137f9e"],"old":{"analyzer":[["SEQUENCE","default_schema.emp_seq"]],"hybrid":[["SEQUENCE","EMP_SEQ","SYSIBM"]]},"sql":"CREATE SEQUENCE emp_seq START WITH 1"}
 {"facts":null,"inputs":["14e6d7dbd8093ca5"],"old":{"analyzer":[["SEQUENCE","default_schema.my_seq"]],"hybrid":[["SEQUENCE","MY_SEQ","SYSIBM"]]},"sql":"CREATE SEQUENCE my_seq"}
 {"facts":null,"inputs":["93fc2da7a8f4c9fa","f8423cd24ae9fb90"],"old":{"analyzer":[["SEQUENCE","default_schema.q"]],"hybrid":[["SEQUENCE","Q","SYSIBM"]]},"sql":"CREATE SEQUENCE q{c}"}
@@ -577,7 +573,6 @@
 {"facts":null,"inputs":["1d5777fc750913fc"],"old":{"analyzer":[["TABLE","default_schema.a"]],"hybrid":[["TABLE","A","SYSIBM"]]},"sql":"CREATE TABLE a(x INT)"}
 {"facts":null,"inputs":["0ed317032673da15","b8c2f006b34c2212"],"old":{"analyzer":[["TABLE","default_schema.a"]],"hybrid":[["TABLE","A","SYSIBM"]]},"sql":"CREATE TABLE a(x)"}
 {"facts":null,"inputs":["66cfedb44f55c426"],"old":{"analyzer":[["TABLE","default_schema.a"]],"hybrid":[["TABLE","A","SYSIBM"],["TABLE","B","SYSIBM"]]},"sql":"CREATE TABLE a(x)\n/\nCREATE TABLE b(y)"}
-{"facts":null,"inputs":["8909169656986b01"],"old":{"analyzer":[["TABLE","default_schema.after_proc"]],"hybrid":[["TABLE","AFTER_PROC","SYSIBM"]]},"sql":"CREATE TABLE after_proc"}
 {"facts":null,"inputs":["d245fae3d90e8d34"],"old":{"analyzer":[["TABLE","default_schema.audit"]],"hybrid":[["TABLE","AUDIT","SYSIBM"],["SEQUENCE","FAKE_SEQ","SYSIBM"]]},"sql":"CREATE TABLE audit (note VARCHAR(50) DEFAULT 'CREATE SEQUENCE fake_seq')"}
 {"facts":null,"inputs":["b12619922e3614e4"],"old":{"analyzer":[["TABLE","default_schema.a"]],"hybrid":[["TABLE","A","SYSIBM"]]},"sql":"CREATE TABLE a{c}b(id INT)"}
 {"facts":null,"inputs":["6571ca92f9f431d9","c73f0ff7369e4b32","efb23cda852349f0"],"old":{"analyzer":[["TABLE","default_schema.b"]],"hybrid":[["TABLE","B","SYSIBM"]]},"sql":"CREATE TABLE b (id INT)"}
@@ -597,7 +592,6 @@
 {"facts":null,"inputs":["298252240bfee607","c4b8f7e84ca31d25"],"old":{"analyzer":[["TABLE","default_schema.child"]],"hybrid":[["TABLE","CHILD","SYSIBM"]]},"sql":"CREATE TABLE child(id INT)"}
 {"facts":null,"inputs":["843ea58256504159"],"old":{"analyzer":[["TABLE","default_schema.customers"]],"hybrid":[["TABLE","CUSTOMERS","SYSIBM"]]},"sql":"CREATE TABLE customers"}
 {"facts":null,"inputs":["f65f28a2617ef368"],"old":{"analyzer":[["TABLE","default_schema.customers"]],"hybrid":[["TABLE","CUSTOMERS","SYSIBM"]]},"sql":"CREATE TABLE customers (id INTEGER PRIMARY KEY, name VARCHAR NOT NULL, active BOOLEAN DEFAULT TRUE)"}
-{"facts":null,"inputs":["509facd763e0f668"],"old":{"analyzer":[["TABLE","default_schema.employees"]],"hybrid":[["TABLE","EMPLOYEES","SYSIBM"]]},"sql":"CREATE TABLE employees"}
 {"facts":null,"inputs":["5751d632152a0858"],"old":{"analyzer":[["TABLE","default_schema.employees"]],"hybrid":[["TABLE","EMPLOYEES","SYSIBM"]]},"sql":"CREATE TABLE employees (\n            emp_id INT,\n            region VARCHAR(50)\n        ) PARTITION BY LIST (region)"}
 {"facts":null,"inputs":["74f6e1aab32713f6"],"old":{"analyzer":[["TABLE","default_schema.employees"]],"hybrid":[["TABLE","EMPLOYEES","SYSIBM"]]},"sql":"CREATE TABLE employees (\n            emp_id NUMBER,\n            region VARCHAR2(50)\n        )\n        PARTITION BY LIST (region) (\n            PARTITION p_west VALUES ('CA', 'WA', 'OR'),\n            PARTITION p_east VALUES ('NY', 'MA', 'CT')\n        )"}
 {"facts":null,"inputs":["93f1286f2d76a3ce"],"old":{"analyzer":[["TABLE","default_schema.employees"]],"hybrid":[["TABLE","EMPLOYEES","SYSIBM"]]},"sql":"CREATE TABLE employees (\n            id INTEGER NOT NULL,\n            name VARCHAR(100) NOT NULL\n        )"}
@@ -666,7 +660,6 @@
 {"facts":null,"inputs":["f34a6fc9e442585c"],"old":{"analyzer":[["TABLE","default_schema.t"]],"hybrid":[["TABLE","T","SYSIBM"]]},"sql":"CREATE TABLE t (id INTEGER) IN ts1"}
 {"facts":null,"inputs":["8c7fd785f8966433","9c1fc855a5023463","c70350153c87b6b4","d5f654e1582ba290","e50c3125f3d82ecc","f91d1bf42e155da1"],"old":{"analyzer":[["TABLE","default_schema.t"]],"hybrid":[["TABLE","T","SYSIBM"]]},"sql":"CREATE TABLE t (id NUMBER)"}
 {"facts":null,"inputs":["777e966196824d65"],"old":{"analyzer":[["TABLE","default_schema.t"]],"hybrid":[["TABLE","T","SYSIBM"]]},"sql":"CREATE TABLE t (id SERIAL PRIMARY KEY)"}
-{"facts":null,"inputs":["2a0f26dda670d698"],"old":{"analyzer":[["TABLE","default_schema.t"]],"hybrid":[["TABLE","T","SYSIBM"]]},"sql":"CREATE TABLE t (id int)"}
 {"facts":null,"inputs":["8da863068fd793bb"],"old":{"analyzer":[["TABLE","default_schema.t"]],"hybrid":[["TABLE","T","SYSIBM"]]},"sql":"CREATE TABLE t (note VARCHAR2(10) DEFAULT '-- not a comment')"}
 {"facts":null,"inputs":["a8f8a2e3c17f3404"],"old":{"analyzer":[["TABLE","default_schema.t"]],"hybrid":[["TABLE","T","SYSIBM"]]},"sql":"CREATE TABLE t (note VARCHAR2(10) DEFAULT '/* not a comment */')"}
 {"facts":null,"inputs":["94573b02cd64fcbe"],"old":{"analyzer":[["TABLE","default_schema.t"]],"hybrid":[["TABLE","T","SYSIBM"]]},"sql":"CREATE TABLE t (pid INT, CONSTRAINT fk FOREIGN KEY (pid) REFERENCES p(id))"}
@@ -716,12 +709,10 @@
 {"facts":null,"inputs":["418b19f8afa9c6c4","aac048c615eae503","ae1a1099923f9680"],"old":{"analyzer":[["TABLE","default_schema.test"]],"hybrid":[["TABLE","TEST","SYSIBM"]]},"sql":"CREATE TABLE test (id SERIAL PRIMARY KEY)"}
 {"facts":null,"inputs":["d6c26cc359d39e1d"],"old":{"analyzer":[["TABLE","default_schema.test"]],"hybrid":[["TABLE","TEST","SYSIBM"]]},"sql":"CREATE TABLE test (id UUID DEFAULT uuid_generate_v4())"}
 {"facts":null,"inputs":["1688bb5aa69440ee"],"old":{"analyzer":[["TABLE","default_schema.test"]],"hybrid":[["TABLE","TEST","SYSIBM"]]},"sql":"CREATE TABLE test (name VARCHAR(100) DEFAULT 'O''Connor')"}
-{"facts":null,"inputs":["e178ec666bc5bb96"],"old":{"analyzer":[["TABLE","default_schema.test1"]],"hybrid":[["TABLE","TEST1","SYSIBM"]]},"sql":"CREATE TABLE test1"}
 {"facts":null,"inputs":["97d8d6411d6e05fd"],"old":{"analyzer":[["TABLE","default_schema.test1"]],"hybrid":[["TABLE","TEST1","SYSIBM"]]},"sql":"CREATE TABLE test1 (id INT)"}
 {"facts":null,"inputs":["04c61985497c1abb","ea83c651f5afd478"],"old":{"analyzer":[["TABLE","default_schema.test1"]],"hybrid":[["TABLE","TEST1","SYSIBM"]]},"sql":"CREATE TABLE test1 (id INTEGER)"}
 {"facts":null,"inputs":["d5188a2f3723a810"],"old":{"analyzer":[["TABLE","default_schema.test1"]],"hybrid":[["TABLE","TEST1","SYSIBM"]]},"sql":"CREATE TABLE test1 (id NUMBER)"}
 {"facts":null,"inputs":["7e140f37fb9b7588"],"old":{"analyzer":[["TABLE","default_schema.test1"]],"hybrid":[["TABLE","TEST1","SYSIBM"]]},"sql":"CREATE TABLE test1 (id SERIAL PRIMARY KEY)"}
-{"facts":null,"inputs":["135545b4d921d8a8"],"old":{"analyzer":[["TABLE","default_schema.test2"]],"hybrid":[["TABLE","TEST2","SYSIBM"]]},"sql":"CREATE TABLE test2"}
 {"facts":null,"inputs":["97d8d6411d6e05fd"],"old":{"analyzer":[["TABLE","default_schema.test2"]],"hybrid":[["TABLE","TEST2","SYSIBM"]]},"sql":"CREATE TABLE test2 (id INT)"}
 {"facts":null,"inputs":["04c61985497c1abb","ea83c651f5afd478"],"old":{"analyzer":[["TABLE","default_schema.test2"]],"hybrid":[["TABLE","TEST2","SYSIBM"]]},"sql":"CREATE TABLE test2 (id INTEGER)"}
 {"facts":null,"inputs":["7e140f37fb9b7588"],"old":{"analyzer":[["TABLE","default_schema.test2"]],"hybrid":[["TABLE","TEST2","SYSIBM"]]},"sql":"CREATE TABLE test2 (id SERIAL PRIMARY KEY)"}
@@ -755,7 +746,6 @@
 {"facts":null,"inputs":["26fabade20a0f3e1","f5f0794a55d61124"],"old":{"analyzer":[["TABLE","default_schema.users"]],"hybrid":[["TABLE","USERS","SYSIBM"]]},"sql":"CREATE TABLE users (id SERIAL PRIMARY KEY, name VARCHAR(100))"}
 {"facts":null,"inputs":["bfb817436d5e34ea"],"old":{"analyzer":[["TABLE","default_schema.users"]],"hybrid":[["TABLE","USERS","SYSIBM"]]},"sql":"CREATE TABLE users (tags TEXT[])"}
 {"facts":null,"inputs":["4fa42bbf50fd67ca","f6fa0da521f1f6d3"],"old":{"analyzer":[["TABLE","default_schema.users"]],"hybrid":[["TABLE","USERS","SYSIBM"]]},"sql":"CREATE TABLE users(id INT)"}
-{"facts":null,"inputs":["d96cd95f37122352"],"old":{"analyzer":[["TABLE","default_schema.victim"]],"hybrid":[["TABLE","VICTIM","SYSIBM"]]},"sql":"CREATE TABLE victim"}
 {"facts":null,"inputs":["f0d58ac77c9e3869"],"old":{"analyzer":[["TABLE","default_schema.x"]],"hybrid":[["TABLE","X","SYSIBM"]]},"sql":"CREATE TABLE x (id INT)"}
 {"facts":null,"inputs":["c8b0b466742512db"],"old":{"analyzer":[["TABLE","default_schema.y"]],"hybrid":[["TABLE","Y","SYSIBM"]]},"sql":"CREATE TABLE y (id INT)"}
 {"facts":null,"inputs":["626cc837389df02f"],"old":{"analyzer":[["TABLE","default_schema.z"]],"hybrid":[["TABLE","Z","SYSIBM"]]},"sql":"CREATE TABLE z (id INT)"}
@@ -773,7 +763,6 @@
 {"facts":null,"inputs":["e29ead895745f65c"],"old":{"analyzer":[],"hybrid":[]},"sql":"CREATE TABLE\\s+(\\w+)"}
 {"facts":null,"inputs":["04776f227533a8cb"],"old":{"analyzer":[["TABLE","default_schema.tmp"]],"hybrid":[]},"sql":"CREATE TEMP TABLE tmp (id INT)"}
 {"facts":null,"inputs":["fe00f3450dcee2d7"],"old":{"analyzer":[["UNKNOWN","default_schema.d"]],"hybrid":[]},"sql":"CREATE TEXT SEARCH DICTIONARY d (TEMPLATE = simple)"}
-{"facts":null,"inputs":["8da7ba06b5f582f6"],"old":{"analyzer":[],"hybrid":[]},"sql":"CREATE TRIGGER"}
 {"facts":null,"inputs":["02c3072a2db436d6"],"old":{"analyzer":[["TRIGGER","default_schema.Tg"]],"hybrid":[["TRIGGER","Tg","SYSIBM"]]},"sql":"CREATE TRIGGER \"Tg\" AFTER INSERT ON \"T\" FOR EACH ROW BEGIN END"}
 {"facts":null,"inputs":["b9cd071323126787"],"old":{"analyzer":[["TRIGGER","default_schema.Tg"]],"hybrid":[["TRIGGER","Tg","SYSIBM"]]},"sql":"CREATE TRIGGER \"Tg\" AFTER INSERT ON \"T\" FOR EACH ROW EXECUTE FUNCTION f()"}
 {"facts":null,"inputs":["70d23765a6b648e2"],"old":{"analyzer":[["TRIGGER","default_schema.my_trigger"]],"hybrid":[["TRIGGER","my_trigger","SYSIBM"]]},"sql":"CREATE TRIGGER \"my_trigger\" AFTER INSERT ON t FOR EACH ROW BEGIN SELECT 1; END"}
@@ -831,7 +820,6 @@
 {"facts":null,"inputs":["5e94b2cbd6bbc7ca","8d10817961bff0d7","aab3fd4316019691"],"old":{"analyzer":[["VIEW","default_schema.active_users"]],"hybrid":[["VIEW","ACTIVE_USERS","SYSIBM"]]},"sql":"CREATE VIEW active_users AS SELECT * FROM users WHERE active = 1"}
 {"facts":null,"inputs":["9eadcb73d67800d2"],"old":{"analyzer":[["VIEW","default_schema.active_users"]],"hybrid":[["VIEW","ACTIVE_USERS","SYSIBM"]]},"sql":"CREATE VIEW active_users AS SELECT * FROM users WHERE active = true"}
 {"facts":null,"inputs":["66fe520c5a578576"],"old":{"analyzer":[["VIEW","dbo.v"]],"hybrid":[["VIEW","V","DBO"]]},"sql":"CREATE VIEW dbo.v AS SELECT 1"}
-{"facts":null,"inputs":["9b0946e45422b48a"],"old":{"analyzer":[["VIEW","default_schema.emp_view"]],"hybrid":[["VIEW","EMP_VIEW","SYSIBM"]]},"sql":"CREATE VIEW emp_view"}
 {"facts":null,"inputs":["c1d88de870137f9e"],"old":{"analyzer":[["VIEW","default_schema.emp_view"]],"hybrid":[["VIEW","EMP_VIEW","SYSIBM"]]},"sql":"CREATE VIEW emp_view AS \n        SELECT id, name, \n               CASE WHEN salary > 50000 THEN 'High' ELSE 'Low' END as salary_grade\n        FROM employees"}
 {"facts":null,"inputs":["10fa39bbb1af6368"],"old":{"analyzer":[["VIEW","default_schema.my_view"]],"hybrid":[["VIEW","MY_VIEW","SYSIBM"]]},"sql":"CREATE VIEW my_view AS SELECT 1"}
 {"facts":null,"inputs":["d7a3f1dd3608e5a4"],"old":{"analyzer":[["VIEW","myschema.active_users"]],"hybrid":[["VIEW","ACTIVE_USERS","MYSCHEMA"]]},"sql":"CREATE VIEW myschema.active_users AS SELECT * FROM users"}
@@ -858,11 +846,7 @@
 {"facts":null,"inputs":["4df51da110bcdcae"],"old":{"analyzer":[["UNKNOWN","default_schema.idx_xml"]],"hybrid":[]},"sql":"CREATE XML INDEX idx_xml ON docs(xml_col)"}
 {"facts":null,"inputs":["0dc75eb52c012130"],"old":{"analyzer":[],"hybrid":[]},"sql":"DECLARE\n            v_max NUMBER"}
 {"facts":null,"inputs":["641ea717b6427650"],"old":{"analyzer":[],"hybrid":[]},"sql":"DECLARE @x INT"}
-{"facts":null,"inputs":["9a95f60c2ae6c2cd"],"old":{"analyzer":[],"hybrid":[]},"sql":"DECLARE EXIT HANDLER"}
-{"facts":null,"inputs":["82075375415ef5d7"],"old":{"analyzer":[],"hybrid":[]},"sql":"DECLARE v_count"}
-{"facts":null,"inputs":["f3bcf83dc5156c91"],"old":{"analyzer":[],"hybrid":[]},"sql":"DECLARE v_error_code"}
 {"facts":null,"inputs":["65daeb378bdec35d"],"old":{"analyzer":[],"dml":{"events":["DELETE"],"full_table":true,"predicate":null,"table":"","updated_columns":[]},"hybrid":[]},"sql":"DELETE"}
-{"facts":null,"inputs":["e364d98c2276eef8"],"old":{"analyzer":[],"dml":{"events":["DELETE"],"full_table":true,"predicate":null,"table":"","updated_columns":[]},"hybrid":[]},"sql":"DELETE FROM"}
 {"facts":null,"inputs":["c08705fccd0ca556"],"old":{"analyzer":[["TABLE","default_schema.MyTable"]],"dml":{"events":["DELETE"],"full_table":true,"predicate":null,"table":"MyTable","updated_columns":[]},"hybrid":[]},"sql":"DELETE FROM MyTable"}
 {"facts":null,"inputs":["73eac041f8cc8224"],"old":{"analyzer":[["TABLE","default_schema.child"]],"dml":{"events":["DELETE"],"full_table":false,"predicate":"id = 1","table":"child","updated_columns":[]},"hybrid":[]},"sql":"DELETE FROM ONLY child WHERE id = 1"}
 {"facts":null,"inputs":["01958918fe7a8f3d"],"old":{"analyzer":[["TABLE","default_schema.child"]],"dml":{"events":["DELETE"],"full_table":false,"predicate":"c.id = 1","table":"child","updated_columns":[]},"hybrid":[]},"sql":"DELETE FROM child AS c WHERE c.id = 1"}
@@ -903,7 +887,6 @@
 {"facts":null,"inputs":["abee807e47cb0bfc"],"old":{"analyzer":[["EXTENSION","default_schema.my_ext"]],"hybrid":[]},"sql":"DROP EXTENSION my_ext"}
 {"facts":null,"inputs":["b174b094cfb487ee"],"old":{"analyzer":[["UNKNOWN","S.LAKE_ORDERS"]],"hybrid":[]},"sql":"DROP EXTERNAL TABLE IF EXISTS \"S\".\"LAKE_ORDERS\""}
 {"facts":null,"inputs":["4b52534407d0f882"],"old":{"analyzer":[["UNKNOWN","default_schema.FORMAT"]],"hybrid":[]},"sql":"DROP FILE FORMAT IF EXISTS \"S\".\"CSV_FMT\""}
-{"facts":null,"inputs":["eadbf0ac83c2a49e"],"old":{"analyzer":[["FUNCTION","S.\"fn\""]],"hybrid":[["FUNCTION","\"fn\"","S"]]},"sql":"DROP FUNCTION IF EXISTS \"S\".\"\"\"fn\"\"\"(NUMBER)"}
 {"facts":null,"inputs":["983a62f43b541432"],"old":{"analyzer":[["FUNCTION","S.ADD_TAX"]],"hybrid":[["FUNCTION","ADD_TAX","S"]]},"sql":"DROP FUNCTION IF EXISTS \"S\".\"ADD_TAX\"(NUMBER, VARCHAR)"}
 {"facts":null,"inputs":["587d6f31a464fd13"],"old":{"analyzer":[["FUNCTION","S.FD"]],"hybrid":[["FUNCTION","FD","S"]]},"sql":"DROP FUNCTION IF EXISTS \"S\".\"FD\"(NUMBER, NUMBER)"}
 {"facts":null,"inputs":["5c9851c7fddb6240"],"old":{"analyzer":[["FUNCTION","S.FD"]],"hybrid":[["FUNCTION","FD","S"]]},"sql":"DROP FUNCTION IF EXISTS \"S\".\"FD\"(VARCHAR)"}
@@ -977,7 +960,6 @@
 {"facts":null,"inputs":["77cd8b304612465f"],"old":{"analyzer":[["SEQUENCE","default_schema.seq_name"]],"hybrid":[["SEQUENCE","SEQ_NAME","SYSIBM"]]},"sql":"DROP SEQUENCE seq_name"}
 {"facts":null,"inputs":["384e94dfd29c0a22"],"old":{"analyzer":[["SEQUENCE","default_schema.users_seq"]],"hybrid":[["SEQUENCE","USERS_SEQ","SYSIBM"]]},"sql":"DROP SEQUENCE users_seq"}
 {"facts":null,"inputs":["b1ca0f3a7a7dd80f"],"old":{"analyzer":[["UNKNOWN","default_schema.POLICY"]],"hybrid":[]},"sql":"DROP SESSION POLICY IF EXISTS \"S\".\"IDLE_LIMIT\""}
-{"facts":null,"inputs":["e61d0f4836306635"],"old":{"analyzer":[["UNKNOWN","S.\"stage\""]],"hybrid":[]},"sql":"DROP STAGE IF EXISTS \"S\".\"\"\"stage\"\"\""}
 {"facts":null,"inputs":["f2e09deb93a6cabe"],"old":{"analyzer":[["UNKNOWN","S.LANDING"]],"hybrid":[]},"sql":"DROP STAGE IF EXISTS \"S\".\"LANDING\""}
 {"facts":null,"inputs":["db214cc5b0087f16"],"old":{"analyzer":[["UNKNOWN","default_schema.my_sg"]],"hybrid":[["UNKNOWN","MY_SG","SYSIBM"]]},"sql":"DROP STOGROUP my_sg"}
 {"facts":null,"inputs":["775ad3379b302946"],"old":{"analyzer":[["UNKNOWN","S.ORDERS_STREAM"]],"hybrid":[]},"sql":"DROP STREAM IF EXISTS \"S\".\"ORDERS_STREAM\""}
@@ -985,10 +967,6 @@
 {"facts":null,"inputs":["5584688983506583"],"old":{"analyzer":[["TABLE","S.Case"]],"hybrid":[["TABLE","Case","S"]]},"sql":"DROP TABLE \"S\".\"Case\""}
 {"facts":null,"inputs":["3fbb708c824061ff"],"old":{"analyzer":[],"hybrid":[["TABLE","orders","s"]]},"sql":"DROP TABLE /* keep */ \"s\".\"orders\""}
 {"facts":null,"inputs":["5437157bcb199d5c"],"old":{"analyzer":[["TABLE","ANALYTICS.EVENTS"]],"hybrid":[["TABLE","EVENTS","ANALYTICS"]]},"sql":"DROP TABLE IF EXISTS \"ANALYTICS\".\"EVENTS\" CASCADE"}
-{"facts":null,"inputs":["dc2b3bc4a09df6a4"],"old":{"analyzer":[["TABLE","S. padded "]],"hybrid":[["TABLE"," padded ","S"]]},"sql":"DROP TABLE IF EXISTS \"S\".\" padded \" CASCADE"}
-{"facts":null,"inputs":["ce85bf5174e05c4b"],"old":{"analyzer":[["TABLE","S.\"foo\""]],"hybrid":[["TABLE","\"foo\"","S"]]},"sql":"DROP TABLE IF EXISTS \"S\".\"\"\"foo\"\"\" CASCADE"}
-{"facts":null,"inputs":["dd847514d6adb464"],"old":{"analyzer":[["TABLE","S.APP_EVENTS"]],"hybrid":[["TABLE","APP_EVENTS","S"]]},"sql":"DROP TABLE IF EXISTS \"S\".\"APP_EVENTS\" CASCADE"}
-{"facts":null,"inputs":["e84d7afb97422cd6"],"old":{"analyzer":[["TABLE","S.DAILY_TOTALS"]],"hybrid":[["TABLE","DAILY_TOTALS","S"]]},"sql":"DROP TABLE IF EXISTS \"S\".\"DAILY_TOTALS\" CASCADE"}
 {"facts":null,"inputs":["4aa6f3e6b1135c7d"],"old":{"analyzer":[["TABLE","S.ORDERS"]],"hybrid":[["TABLE","ORDERS","S"]]},"sql":"DROP TABLE IF EXISTS \"S\".\"ORDERS\" CASCADE"}
 {"facts":null,"inputs":["9cc1c952b590b2ed"],"old":{"analyzer":[["TABLE","S.X"]],"hybrid":[["TABLE","X","S"]]},"sql":"DROP TABLE IF EXISTS \"S\".\"X\""}
 {"facts":null,"inputs":["42e0ec33ffcac4e3"],"old":{"analyzer":[["TABLE","my.schema.orders"]],"hybrid":[["TABLE","orders","my.schema"]]},"sql":"DROP TABLE IF EXISTS \"my.schema\".\"orders\""}
@@ -1012,7 +990,6 @@
 {"facts":null,"inputs":["16b8654a763b39dc"],"old":{"analyzer":[["TABLE","default_schema.test_table"]],"hybrid":[["TABLE","TEST_TABLE","SYSIBM"]]},"sql":"DROP TABLE test_table"}
 {"facts":null,"inputs":["22b9d3efc88e5bbb","77ff90a8d6c4bdf8"],"old":{"analyzer":[["TABLE","default_schema.t"]],"hybrid":[["TABLE","T","SYSIBM"]]},"sql":"DROP TABLE t{c}"}
 {"facts":null,"inputs":["0b380ffbd9e17e13","6c84380b12b4e53a","fb4921dad7f8b14c"],"old":{"analyzer":[["TABLE","default_schema.users"]],"hybrid":[["TABLE","USERS","SYSIBM"]]},"sql":"DROP TABLE users"}
-{"facts":null,"inputs":["a94bb7a74d5ce706"],"old":{"analyzer":[["TABLE","default_schema.victim"]],"hybrid":[["TABLE","VICTIM","SYSIBM"]]},"sql":"DROP TABLE victim"}
 {"facts":null,"inputs":["9e8740fc54d083bc"],"old":{"analyzer":[["TABLE","default_schema.victims"]],"hybrid":[["TABLE","VICTIMS","SYSIBM"]]},"sql":"DROP TABLE victims"}
 {"facts":null,"inputs":["b886aa7acf65ff21"],"old":{"analyzer":[["TABLE","default_schema.visible"]],"hybrid":[["TABLE","VISIBLE","SYSIBM"]]},"sql":"DROP TABLE visible"}
 {"facts":null,"inputs":["0469a66ccd562235"],"old":{"analyzer":[["TABLE","default_schema.x"]],"hybrid":[["TABLE","X","SYSIBM"]]},"sql":"DROP TABLE x"}
@@ -1041,7 +1018,6 @@
 {"facts":null,"inputs":["2da523abc44fe413"],"old":{"analyzer":[],"hybrid":[]},"sql":"DROP VIEW"}
 {"facts":null,"inputs":["ae7a78db7d42434c"],"old":{"analyzer":[["VIEW","default_schema.MyView"]],"hybrid":[["VIEW","MyView","SYSIBM"]]},"sql":"DROP VIEW \"MyView\""}
 {"facts":null,"inputs":["0ab90549eadd488c"],"old":{"analyzer":[["VIEW","ANALYTICS.active_events"]],"hybrid":[["VIEW","active_events","ANALYTICS"]]},"sql":"DROP VIEW IF EXISTS \"ANALYTICS\".\"active_events\""}
-{"facts":null,"inputs":["4c11568eb7d524e8"],"old":{"analyzer":[["VIEW","S.ORDER_COUNTS"]],"hybrid":[["VIEW","ORDER_COUNTS","S"]]},"sql":"DROP VIEW IF EXISTS \"S\".\"ORDER_COUNTS\""}
 {"facts":null,"inputs":["9ae7c3d4b8a1b001"],"old":{"analyzer":[["VIEW","S.active_orders"]],"hybrid":[["VIEW","active_orders","S"]]},"sql":"DROP VIEW IF EXISTS \"S\".\"active_orders\""}
 {"facts":null,"inputs":["d04e62da558a894b"],"old":{"analyzer":[["VIEW","default_schema.my_view"]],"hybrid":[["VIEW","MY_VIEW","SYSIBM"]]},"sql":"DROP VIEW my_view"}
 {"facts":null,"inputs":["c93077cdde2aaff7"],"old":{"analyzer":[["VIEW","default_schema.test_view"]],"hybrid":[["VIEW","TEST_VIEW","SYSIBM"]]},"sql":"DROP VIEW test_view"}
@@ -1051,7 +1027,6 @@
 {"facts":null,"inputs":["8c2a130217c3807a"],"old":{"analyzer":[],"hybrid":[]},"sql":"END $$"}
 {"facts":null,"inputs":["5fe781c1ee4831e6"],"old":{"analyzer":[],"hybrid":[]},"sql":"END MODULE"}
 {"facts":null,"inputs":["57bdc13b4115f578"],"old":{"analyzer":[],"hybrid":[]},"sql":"END//\n        DELIMITER"}
-{"facts":null,"inputs":["623c878499527112"],"old":{"analyzer":[],"hybrid":[]},"sql":"EXEC SQL"}
 {"facts":null,"inputs":["19ceb5bb1ecc7028"],"old":{"analyzer":[],"hybrid":[["TABLE","TEST","SYSIBM"]]},"sql":"EXEC SQL\n            CREATE TABLE test (id INTEGER)\n        END-EXEC"}
 {"facts":null,"inputs":["01bf7bb16a5296c2"],"old":{"analyzer":[],"hybrid":[["VIEW","TEST_VIEW","SYSIBM"]]},"sql":"EXEC SQL\n            CREATE VIEW test_view AS SELECT * FROM test\n        END-EXEC"}
 {"facts":null,"inputs":["ff2ba15c66850ce1"],"old":{"analyzer":[],"hybrid":[["TABLE","T","SYSIBM"]]},"sql":"EXEC SQL CREATE TABLE t (id INT) END-EXEC"}
@@ -1060,7 +1035,6 @@
 {"facts":null,"inputs":["50c3f023839381e5"],"old":{"analyzer":[],"hybrid":[["TABLE","TEST","SYSIBM"]]},"sql":"EXEC SQL CREATE TABLE test (id INTEGER) END-EXEC"}
 {"facts":null,"inputs":["408255c81a8537ca"],"old":{"analyzer":[],"hybrid":[]},"sql":"EXEC SQL SELECT 1"}
 {"facts":null,"inputs":["56511fef9e2a535e"],"old":{"analyzer":[],"hybrid":[]},"sql":"EXEC SQL SELECT 1 END-EXEC"}
-{"facts":null,"inputs":["b4b5caba56988753"],"old":{"analyzer":[],"hybrid":[]},"sql":"EXEC SQL block without END-EXEC"}
 {"facts":null,"inputs":["0e0c4d0e3d2d2d39"],"old":{"analyzer":[],"hybrid":[]},"sql":"EXEC sp_name"}
 {"facts":null,"inputs":["4617a59d263380ad"],"old":{"analyzer":[],"hybrid":[]},"sql":"EXEC sp_test"}
 {"facts":null,"inputs":["b092bec09b9741d8"],"old":{"analyzer":[],"hybrid":[]},"sql":"EXECUTE FUNCTION audit('a;b')"}
@@ -1095,7 +1069,6 @@
 {"facts":null,"inputs":["4bacb65d8d5a50da"],"old":{"analyzer":[["TABLE","default_schema.users"]],"hybrid":[]},"sql":"GRANT SELECT ON users TO analyst"}
 {"facts":null,"inputs":["5c7a00ac4db7cf34"],"old":{"analyzer":[],"hybrid":[]},"sql":"GRANT USAGE ON FOREIGN SERVER srv TO u"}
 {"facts":null,"inputs":["014413c294c5ac3b"],"old":{"analyzer":[],"dml":{"events":["INSERT"],"full_table":false,"predicate":null,"table":"","updated_columns":[]},"hybrid":[]},"sql":"INSERT"}
-{"facts":null,"inputs":["a3946cfcc37b8504"],"old":{"analyzer":[],"dml":{"events":["INSERT"],"full_table":false,"predicate":null,"table":"","updated_columns":[]},"hybrid":[]},"sql":"INSERT INTO"}
 {"facts":null,"inputs":["2f46279d7762dae0","942e6401cb2f6970","db58ca52767e30fb"],"old":{"analyzer":[["TABLE","default_schema.a"]],"dml":{"events":["INSERT"],"full_table":false,"predicate":null,"table":"a","updated_columns":[]},"hybrid":[]},"sql":"INSERT INTO a VALUES (1)"}
 {"facts":null,"inputs":["32baf084acfd7b9c","54bfc553b0a75f9b"],"old":{"analyzer":[["TABLE","default_schema.a"]],"dml":{"events":["INSERT"],"full_table":false,"predicate":null,"table":"a","updated_columns":[]},"hybrid":[]},"sql":"INSERT INTO a VALUES (1) /* n */"}
 {"facts":null,"inputs":["187e2a350bc9008a"],"old":{"analyzer":[["TABLE","default_schema.a"]],"dml":{"events":["INSERT"],"full_table":false,"predicate":null,"table":"a","updated_columns":[]},"hybrid":[]},"sql":"INSERT INTO a VALUES(1)"}
@@ -1103,7 +1076,6 @@
 {"facts":null,"inputs":["4df4845db0e3829f"],"old":{"analyzer":[["TABLE","default_schema.child"]],"dml":{"events":["INSERT"],"full_table":false,"predicate":null,"table":"child","updated_columns":[]},"hybrid":[]},"sql":"INSERT INTO child(id,value) VALUES(1,10)"}
 {"facts":null,"inputs":["751b454491e4d1dd"],"old":{"analyzer":[["TABLE","default_schema.child"]],"dml":{"events":["INSERT","UPDATE"],"full_table":false,"predicate":null,"table":"child","updated_columns":["value"]},"hybrid":[]},"sql":"INSERT INTO child(id,value) VALUES(1,10) ON CONFLICT(id) DO UPDATE SET value=20"}
 {"facts":null,"inputs":["ca832a0a4b9354ee"],"old":{"analyzer":[["TABLE","default_schema.child"]],"dml":{"events":["INSERT","UPDATE"],"full_table":false,"predicate":null,"table":"child","updated_columns":["id"]},"hybrid":[]},"sql":"INSERT INTO child(value) VALUES(10) ON CONFLICT(value) DO UPDATE SET id=2"}
-{"facts":null,"inputs":["1a6fac94bcd3eee9"],"old":{"analyzer":[["TABLE","default_schema.employees"]],"dml":{"events":["INSERT"],"full_table":false,"predicate":null,"table":"employees","updated_columns":[]},"hybrid":[]},"sql":"INSERT INTO employees"}
 {"facts":null,"inputs":["c1ba14c7c8d3ba58"],"old":{"analyzer":[["TABLE","default_schema.employees"]],"dml":{"events":["INSERT"],"full_table":false,"predicate":null,"table":"employees","updated_columns":[]},"hybrid":[]},"sql":"INSERT INTO employees (name, hire_date) VALUES ('Alice', '2024-01-01')"}
 {"facts":null,"inputs":["8b5430ef6e875460"],"old":{"analyzer":[["TABLE","default_schema.employees"]],"dml":{"events":["INSERT"],"full_table":false,"predicate":null,"table":"employees","updated_columns":[]},"hybrid":[]},"sql":"INSERT INTO employees VALUES (1, 'John')"}
 {"facts":null,"inputs":["c1d88de870137f9e"],"old":{"analyzer":[["TABLE","default_schema.employees"]],"dml":{"events":["INSERT"],"full_table":false,"predicate":null,"table":"employees","updated_columns":[]},"hybrid":[]},"sql":"INSERT INTO employees VALUES (emp_seq.NEXTVAL, 'Jane Smith', 55000)"}
@@ -1125,6 +1097,7 @@
 {"facts":null,"inputs":["ef55723f9c04906a"],"old":{"analyzer":[["TABLE","default_schema.t"]],"dml":{"events":["INSERT"],"full_table":false,"predicate":null,"table":"t","updated_columns":[]},"hybrid":[]},"sql":"INSERT INTO t SELECT [t\u00e9] FROM u"}
 {"facts":null,"inputs":["e97b0aa12bf9efba"],"old":{"analyzer":[["TABLE","default_schema.t"]],"dml":{"events":["INSERT"],"full_table":false,"predicate":null,"table":"t","updated_columns":[]},"hybrid":[]},"sql":"INSERT INTO t SELECT `t\u00e9` FROM u"}
 {"facts":null,"inputs":["3f454950b6d0cc2d"],"old":{"analyzer":[["TABLE","default_schema.t"]],"dml":{"events":["INSERT"],"full_table":false,"predicate":null,"table":"t","updated_columns":[]},"hybrid":[]},"sql":"INSERT INTO t VALUES (';')"}
+{"facts":null,"inputs":["c3995cfd11fb68f6"],"old":{"analyzer":[["TABLE","default_schema.t"]],"dml":{"events":["INSERT"],"full_table":false,"predicate":null,"table":"t","updated_columns":[]},"hybrid":[]},"sql":"INSERT INTO t VALUES ('?', '?')"}
 {"facts":null,"inputs":["b91432ca2d430f70"],"old":{"analyzer":[["TABLE","default_schema.t"]],"dml":{"events":["INSERT"],"full_table":false,"predicate":null,"table":"t","updated_columns":[]},"hybrid":[]},"sql":"INSERT INTO t VALUES ('Jones')"}
 {"facts":null,"inputs":["64afc85adb1b9943"],"old":{"analyzer":[["TABLE","default_schema.t"]],"dml":{"events":["INSERT"],"full_table":false,"predicate":null,"table":"t","updated_columns":[]},"hybrid":[]},"sql":"INSERT INTO t VALUES ('ab')"}
 {"facts":null,"inputs":["7198ba030c99bd01"],"old":{"analyzer":[["TABLE","default_schema.t"]],"dml":{"events":["INSERT"],"full_table":false,"predicate":null,"table":"t","updated_columns":[]},"hybrid":[]},"sql":"INSERT INTO t VALUES ('hello; world')"}
@@ -1184,7 +1157,6 @@
 {"facts":null,"inputs":["49ce8e69af2d51a0"],"old":{"analyzer":[],"dml":{"events":["INSERT"],"full_table":false,"predicate":null,"table":"","updated_columns":[]},"hybrid":[]},"sql":"INSERT OR REPLACE INTO t VALUES (1)"}
 {"facts":null,"inputs":["f01364145ff664bf"],"old":{"analyzer":[],"hybrid":[]},"sql":"LOCK TABLE t1"}
 {"facts":null,"inputs":["fc2b737d85448962"],"old":{"analyzer":[],"dml":{"events":null,"full_table":false,"predicate":null,"table":"","updated_columns":[]},"hybrid":[]},"sql":"MERGE"}
-{"facts":null,"inputs":["692cbd9bded2c5e9"],"old":{"analyzer":[],"dml":{"events":null,"full_table":false,"predicate":null,"table":"","updated_columns":[]},"hybrid":[]},"sql":"MERGE INTO"}
 {"facts":null,"inputs":["f10384f8a3c5688e"],"old":{"analyzer":[["TABLE","Sales.Order Items"]],"dml":{"events":["UPDATE"],"full_table":false,"predicate":null,"table":"","updated_columns":["Item Value"]},"hybrid":[]},"sql":"MERGE INTO \"Sales\".\"Order Items\" AS t USING staging.items AS s ON t.id = s.id WHEN MATCHED THEN UPDATE SET \"Item Value\" = s.val"}
 {"facts":null,"inputs":["28fb40fa4063f6c2"],"old":{"analyzer":[["TABLE","default_schema.child"]],"dml":{"events":["DELETE"],"full_table":false,"predicate":null,"table":"child","updated_columns":[]},"hybrid":[]},"sql":"MERGE INTO child AS c USING source AS s ON c.id = s.id WHEN MATCHED THEN DELETE"}
 {"facts":null,"inputs":["439aff16bc980c12"],"old":{"analyzer":[["TABLE","default_schema.t"]],"dml":{"events":["INSERT","UPDATE"],"full_table":false,"predicate":null,"table":"t","updated_columns":["val"]},"hybrid":[]},"sql":"MERGE INTO t USING s ON t.id = s.id WHEN MATCHED THEN UPDATE SET val = s.val WHEN NOT MATCHED THEN INSERT (id, val) VALUES (s.id, s.val)"}
@@ -1320,7 +1292,6 @@
 {"facts":null,"inputs":["b5c395d348a97ad9"],"old":{"analyzer":[],"hybrid":[]},"sql":"SELECT @ # \\ ` ~ ^ % & | ? !"}
 {"facts":null,"inputs":["bffa1b88301fc4eb"],"old":{"analyzer":[],"hybrid":[]},"sql":"SELECT @@@"}
 {"facts":null,"inputs":["27722652647c896d"],"old":{"analyzer":[],"hybrid":[]},"sql":"SELECT @@ROWCOUNT, @p, #t, ##g"}
-{"facts":null,"inputs":["9d585d7d1c2c3779"],"old":{"analyzer":[],"hybrid":[]},"sql":"SELECT COUNT(*)"}
 {"facts":null,"inputs":["b3bd989089e3d536"],"old":{"analyzer":[],"hybrid":[]},"sql":"SELECT COUNT(*) INTO @n FROM t"}
 {"facts":null,"inputs":["816ae1953ad4255c"],"old":{"analyzer":[],"hybrid":[]},"sql":"SELECT CURRENT_DATABASE()"}
 {"facts":null,"inputs":["bb472600d03b3d7e"],"old":{"analyzer":[],"hybrid":[]},"sql":"SELECT DELIMITER // FROM t"}
@@ -1357,7 +1328,6 @@
 {"facts":null,"inputs":["fc1b20e6dd9611c9"],"old":{"analyzer":[],"hybrid":[]},"sql":"SET NEW.a = 3"}
 {"facts":null,"inputs":["a5f7c4e6851e0eb4"],"old":{"analyzer":[],"hybrid":[]},"sql":"SET NULL"}
 {"facts":null,"inputs":["f91d1bf42e155da1"],"old":{"analyzer":[],"hybrid":[]},"sql":"SET SERVEROUTPUT ON"}
-{"facts":null,"inputs":["13a8e7e27159415a"],"old":{"analyzer":[],"hybrid":[]},"sql":"SET owner_token = NULL"}
 {"facts":null,"inputs":["45ea7f3cadc6e817"],"old":{"analyzer":[],"hybrid":[]},"sql":"SHOW"}
 {"facts":null,"inputs":["616a4f7fec8dcc80"],"old":{"analyzer":[],"hybrid":[]},"sql":"SHOW ALERTS"}
 {"facts":null,"inputs":["67e8a68d5e346f8b"],"old":{"analyzer":[],"hybrid":[]},"sql":"SHOW ALERTS IN SCHEMA \"ANALYTICS\".\"My Schema\""}
@@ -1376,7 +1346,6 @@
 {"facts":null,"inputs":["0bb4f91187f00c39"],"old":{"analyzer":[],"hybrid":[]},"sql":"SHOW MATERIALIZED VIEWS IN SCHEMA \"ANALYTICS\".\"My Schema\""}
 {"facts":null,"inputs":["2d315aec3e97c538"],"old":{"analyzer":[],"hybrid":[]},"sql":"SHOW NETWORK RULES"}
 {"facts":null,"inputs":["040d6ee873ca395c"],"old":{"analyzer":[],"hybrid":[]},"sql":"SHOW NETWORK RULES IN SCHEMA \"ANALYTICS\".\"My Schema\""}
-{"facts":null,"inputs":["c19af84c15f14b4b"],"old":{"analyzer":[],"hybrid":[]},"sql":"SHOW OBJECTS"}
 {"facts":null,"inputs":["6bb6150a51130829"],"old":{"analyzer":[],"hybrid":[]},"sql":"SHOW OBJECTS IN SCHEMA \"ANALYTICS\".\"APP\""}
 {"facts":null,"inputs":["abc544cdbd305566"],"old":{"analyzer":[],"hybrid":[]},"sql":"SHOW OBJECTS IN SCHEMA \"ANALYTICS\".\"My Schema\""}
 {"facts":null,"inputs":["809f64d420e9d412"],"old":{"analyzer":[],"hybrid":[]},"sql":"SHOW OBJECTS IN SCHEMA \"ANALYTICS\".\"app\""}
@@ -1428,8 +1397,8 @@
 {"facts":null,"inputs":["cabed7a5839c7236"],"old":{"analyzer":[["TABLE","default_schema.t"]],"dml":{"events":["UPDATE"],"full_table":true,"predicate":null,"table":"t","updated_columns":["a"]},"hybrid":[]},"sql":"UPDATE t SET a = (SELECT max(x) FROM s)"}
 {"facts":null,"inputs":["69901f7649a72b79","c241ede453837d01","e7ec07eafe4fde70"],"old":{"analyzer":[["TABLE","default_schema.t"]],"dml":{"events":["UPDATE"],"full_table":true,"predicate":null,"table":"t","updated_columns":["a"]},"hybrid":[]},"sql":"UPDATE t SET a = 1"}
 {"facts":null,"inputs":["2db56c8a557b23bb"],"old":{"analyzer":[["TABLE","default_schema.t"]],"dml":{"events":["UPDATE"],"full_table":false,"predicate":null,"table":"t","updated_columns":["a{c}b"]},"hybrid":[]},"sql":"UPDATE t SET a{c}b = 1 WHERE id = 2"}
-{"facts":null,"inputs":["cffb715b1770b5f8"],"old":{"analyzer":[["TABLE","default_schema.t"]],"dml":{"events":["UPDATE"],"full_table":true,"predicate":null,"table":"t","updated_columns":["pw"]},"hybrid":[]},"sql":"UPDATE t SET pw = $$hunter2$$"}
-{"facts":null,"inputs":["1dc31c590f9b423a"],"old":{"analyzer":[["TABLE","default_schema.t"]],"dml":{"events":["UPDATE"],"full_table":true,"predicate":null,"table":"t","updated_columns":["pw"]},"hybrid":[]},"sql":"UPDATE t SET pw = $t$hunter2$t$"}
+{"facts":null,"inputs":["4121fa70315cbfc1"],"old":{"analyzer":[["TABLE","default_schema.t"]],"dml":{"events":["UPDATE"],"full_table":true,"predicate":null,"table":"t","updated_columns":["pw"]},"hybrid":[]},"sql":"UPDATE t SET pw = '?'"}
+{"facts":null,"inputs":["b32bad6ef14eb555"],"old":{"analyzer":[["TABLE","default_schema.t"]],"dml":{"events":["UPDATE"],"full_table":true,"predicate":null,"table":"t","updated_columns":["pw"]},"hybrid":[]},"sql":"UPDATE t SET pw = E'?'"}
 {"facts":null,"inputs":["64620e2efe3499dc"],"old":{"analyzer":[["TABLE","default_schema.t"]],"dml":{"events":["UPDATE"],"full_table":false,"predicate":"id = 1","table":"t","updated_columns":["v"]},"hybrid":[]},"sql":"UPDATE t SET v = ' returning ' WHERE id = 1"}
 {"facts":null,"inputs":["25dcb11267c0bd02"],"old":{"analyzer":[["TABLE","default_schema.t"]],"dml":{"events":["UPDATE"],"full_table":false,"predicate":"id = 1","table":"t","updated_columns":["v"]},"hybrid":[]},"sql":"UPDATE t SET v = '50%' WHERE id = 1"}
 {"facts":null,"inputs":["f74d8eb5dbbb184b"],"old":{"analyzer":[["TABLE","default_schema.t"]],"dml":{"events":["UPDATE"],"full_table":false,"predicate":"id = 1","table":"t","updated_columns":["v"]},"hybrid":[]},"sql":"UPDATE t SET v = '50%' WHERE id = 1\nRETURNING 1"}
@@ -1503,7 +1472,6 @@
 {"facts":null,"inputs":["492a9a71d3dbaaef"],"old":{"analyzer":[],"dml":{"events":["INSERT"],"full_table":false,"predicate":null,"table":"","updated_columns":[]},"hybrid":[]},"sql":"WITH x AS (UPDATE src SET id = id RETURNING id) INSERT INTO app_logs(msg) SELECT 'x' FROM x"}
 {"facts":null,"inputs":["fb4921dad7f8b14c"],"old":{"analyzer":[],"hybrid":[]},"sql":"\\."}
 {"facts":null,"inputs":["0f19242a247c2150"],"old":{"analyzer":[],"hybrid":[]},"sql":"\\set x 1\nSELECT 2"}
-{"facts":null,"inputs":["7c0ea37f8baaead4"],"old":{"analyzer":[],"hybrid":[]},"sql":"alter"}
 {"facts":null,"inputs":["b81f37a043a6f767"],"old":{"analyzer":[],"hybrid":[]},"sql":"audit"}
 {"facts":null,"inputs":["c44bb2fd516909da"],"old":{"analyzer":[],"hybrid":[]},"sql":"comment"}
 {"facts":null,"inputs":["fa8847b0c3318327"],"old":{"analyzer":[],"hybrid":[]},"sql":"create"}
@@ -1511,7 +1479,6 @@
 {"facts":null,"inputs":["dc7f8af085247857"],"old":{"analyzer":[["TABLE","default_schema.test"]],"hybrid":[["TABLE","TEST","SYSIBM"]]},"sql":"create table test (id number)"}
 {"facts":null,"inputs":["6197595503f01ee2"],"old":{"analyzer":[],"dml":{"events":["DELETE"],"full_table":true,"predicate":null,"table":"","updated_columns":[]},"hybrid":[]},"sql":"delete"}
 {"facts":null,"inputs":["d90ee9ccf6bea1d2"],"old":{"analyzer":[],"hybrid":[]},"sql":"drop"}
-{"facts":null,"inputs":["8050fea1500f0262"],"old":{"analyzer":[["UNKNOWN","default_schema.above"]],"hybrid":[]},"sql":"drop errors above"}
 {"facts":null,"inputs":["1e22560cee2c4b72"],"old":{"analyzer":[],"dml":{"events":["INSERT"],"full_table":false,"predicate":null,"table":"","updated_columns":[]},"hybrid":[]},"sql":"insert"}
 {"facts":null,"inputs":["9e84869d369b2a53"],"old":{"analyzer":[],"hybrid":[]},"sql":"rename"}
 {"facts":null,"inputs":["1be7ea0fba7b793f"],"old":{"analyzer":[],"hybrid":[]},"sql":"row\n\\."}

@@ -2,7 +2,7 @@
 
 Test files calling `parse_sql(` or `extract_objects(`; their SQL string constants
 (under 4000 characters, starting with an SQL verb; docstrings, f-string parts and the text
-of raise, exception, log and assert-message expressions are skipped) are the inputs,
+of raise, exception, log, assert-message and `in` / `not in` expressions are skipped) are the inputs,
 plus the statements of the three hand-written facts corpora listed last.
 Regenerate with `python -m tests.support.facts_corpus seed`.
 
