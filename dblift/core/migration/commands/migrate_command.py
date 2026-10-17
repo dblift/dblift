@@ -2,6 +2,7 @@
 Migrate command implementation.
 """
 
+from contextlib import ExitStack
 from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
@@ -43,7 +44,12 @@ from dblift.core.sql_validator.migration_validator import MigrationValidator
 from dblift.db.base_provider import BaseProvider
 
 from ._script_runner import ScriptRunner, ScriptRunPolicy
-from .base_command import BaseCommand, BaseCommandContext, PreflightConnectionError
+from .base_command import (
+    MIGRATION_LOCK_REFUSAL,
+    BaseCommand,
+    BaseCommandContext,
+    PreflightConnectionError,
+)
 
 MIGRATE_POLICY = ScriptRunPolicy(
     before_events=("beforeEach", "beforeEachMigrate"),
@@ -424,11 +430,6 @@ class MigrateCommand(BaseCommand):
                     break
                 progress.advance()
 
-    def _migration_lock_lost(self) -> bool:
-        """Whether the provider reports the migration lock it holds as lost."""
-        lock_lost = getattr(self.provider, "migration_lock_lost", None)
-        return callable(lock_lost) and lock_lost() is True
-
     def _update_final_state(self, result: MigrateResult) -> None:
         """Update final schema version after migrations are applied."""
         # Rebuild state to get accurate applied migrations after migration.
@@ -681,22 +682,14 @@ class MigrateCommand(BaseCommand):
                     return result
             else:
                 # Acquire migration lock before executing migrations
-                lock_acquired = False
+                lock = ExitStack()
                 try:
-                    if not self.provider.acquire_migration_lock(
-                        self.config.database.schema, wait_timeout_seconds=60
-                    ):
-                        refusal = (
-                            "Could not acquire migration lock - another migration may be running"
-                        )
-                        self.log.error(refusal)
-                        result.set_error(refusal)
+                    if not lock.enter_context(self._migration_lock()):
+                        self.log.error(MIGRATION_LOCK_REFUSAL)
+                        result.set_error(MIGRATION_LOCK_REFUSAL)
                         result.complete()
                         self._log_command_completion("migrate", result)
                         return result
-
-                    lock_acquired = True
-                    self.log.info("Migration lock acquired successfully")
 
                     # Re-read history after lock acquisition. Another
                     # process may have applied versioned migrations while we
@@ -752,20 +745,7 @@ class MigrateCommand(BaseCommand):
                     self._fire("afterMigrateError")
                 finally:
                     # Always release the migration lock if it was acquired
-                    if lock_acquired:
-                        try:
-                            released = self.provider.release_migration_lock(
-                                self.config.database.schema
-                            )
-                            if released is False:
-                                self.log.warning(
-                                    "The migration lock was no longer held by this run "
-                                    "(lost or already released); nothing to release"
-                                )
-                            else:
-                                self.log.debug("Migration lock released successfully")
-                        except Exception as release_e:
-                            self.log.warning(f"Could not release migration lock: {release_e}")
+                    lock.close()
 
             # Update final schema version
             self._update_final_state(result)

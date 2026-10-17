@@ -49,6 +49,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   77-byte migration went from about 44 to about 50 microseconds.
 - **`undo` execution times include before-each callback time.** `undo` now measures each
   script from before its before-each callbacks run, as `migrate` already does.
+- **`undo` takes the migration lock.** `undo` now takes the migration lock, as `migrate` does,
+  so an undo and a migration can no longer run on the same schema at the same time. A real
+  `undo` waits up to 60 seconds for the lock and fails with
+  `Could not acquire migration lock - another migration may be running` if it cannot get it.
+  `undo --dry-run` does not lock.
 
 ### Fixed
 

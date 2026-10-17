@@ -38,6 +38,15 @@ class _OrderTrackingProvider:
     def rollback_transaction(self) -> None:
         pass
 
+    def acquire_migration_lock(self, schema, wait_timeout_seconds=60) -> bool:
+        return True
+
+    def release_migration_lock(self, schema) -> bool:
+        return True
+
+    def migration_lock_lost(self) -> bool:
+        return False
+
 
 def _make_undo_cmd(history_manager=None, provider=None):
     state_manager = MagicMock()
