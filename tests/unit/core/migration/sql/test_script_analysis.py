@@ -203,9 +203,19 @@ def test_parser_failure_yields_an_error_and_no_statements(monkeypatch):
 def test_blank_statements_are_skipped_and_unknown_text_has_unknown_kind(monkeypatch):
     parsed = SimpleNamespace(
         statements=[
-            SimpleNamespace(sql_text="   ", statement_type=None, affected_objects=[], objects=[]),
             SimpleNamespace(
-                sql_text="FROBNICATE x", statement_type=None, affected_objects=[], objects=[]
+                sql_text="   ",
+                statement_type=None,
+                affected_objects=[],
+                names_unread=False,
+                objects=[],
+            ),
+            SimpleNamespace(
+                sql_text="FROBNICATE x",
+                statement_type=None,
+                affected_objects=[],
+                names_unread=False,
+                objects=[],
             ),
         ],
         errors=[],

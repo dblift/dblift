@@ -15,8 +15,9 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
-from dblift.core.sql_model.base import SqlObject, SqlObjectType
+from dblift.core.sql_model.base import SqlObject, SqlObjectType, SqlStatement
 from dblift.core.sql_parser.parser_factory import SqlParserFactory
+from dblift.core.sql_parser.unread_names import names_unreadable
 from dblift.db.base_quirks import BaseQuirks
 from dblift.db.dml_analysis import (
     cte_outer_statement_type,
@@ -227,17 +228,34 @@ def _analyse(text: str, dialect: str) -> ScriptAnalysis:
         # The regex parser fills ``affected_objects``; ``objects`` stays empty.
         found = getattr(stmt, "affected_objects", None) or getattr(stmt, "objects", None) or []
         objects = tuple(_object_of(o) for o in found)
-        if not objects:
-            objects = _fallback_objects(operation, kind, body, quirks)
-        objects = _drop_target_objects(operation, body, objects)
+        unread = (isinstance(stmt, SqlStatement) and stmt.names_unread) or names_unreadable(
+            body, quirks.sqlglot_dialect
+        )
+        if unread:
+            objects = ()
+        else:
+            if not objects:
+                objects = _fallback_objects(operation, kind, body, quirks)
+            objects = _drop_target_objects(operation, body, objects)
         analysed = AnalysedStatement(
             index, operation, kind, objects, full_table, _snippet(body), sql=body
         )
         statements.append(analysed)
-        caution = _caution_for(analysed, body)
+        caution = _caution_for(
+            analysed, body, _opaque_dialect(dialect) if unread else None, name_target=not unread
+        )
         if caution is not None:
             cautions.append(caution)
     return ScriptAnalysis(tuple(statements), tuple(cautions), tuple(parsed.errors or []))
+
+
+def _opaque_dialect(dialect: str) -> str:
+    """The sqlglot dialect an unreadable statement is cautioned in (Db2 declares none)."""
+    from dblift.core.migration.scripting.undo_script_generator._helpers import (
+        resolve_sqlglot_read_dialect,
+    )
+
+    return resolve_sqlglot_read_dialect(dialect) or ""
 
 
 def _kind_of(statement_type: Any, operation: str, body: str, quirks: BaseQuirks) -> str:
@@ -340,7 +358,10 @@ def _unnamed_drop_caution(stmt: AnalysedStatement, body: str) -> Optional[Cautio
 
 
 def _caution_for(
-    stmt: AnalysedStatement, body: str, opaque_dialect: Optional[str] = None
+    stmt: AnalysedStatement,
+    body: str,
+    opaque_dialect: Optional[str] = None,
+    name_target: bool = True,
 ) -> Optional[Caution]:
     op = stmt.operation
     if op == "TRUNCATE":
@@ -372,7 +393,7 @@ def _caution_for(
         if stmt.full_table and opaque_dialect:
             from dblift.core.sql_parser.sqlglot_statement_facts import readable_dml_target
 
-            target = readable_dml_target(body, dialect=opaque_dialect)
+            target = readable_dml_target(body, dialect=opaque_dialect) if name_target else None
             return Caution(
                 DESTROYS,
                 stmt.index,

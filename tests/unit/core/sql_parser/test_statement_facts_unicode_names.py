@@ -136,12 +136,12 @@ def test_token_error_names_nothing_with_an_unread_character(dialect, shape, char
     "dialect", ("postgres", "mysql", "oracle", "tsql", "redshift", "snowflake")
 )
 @pytest.mark.parametrize("shape", ("delete", "update", "insert"))
-def test_dml_analysis_of_the_other_dialects_is_unchanged(dialect, shape):
-    # Only SQLite and DuckDB read statement facts for this analysis; the other dialects keep
-    # their previous reading, which still names the target next to a no-break space.
+def test_dml_analysis_of_the_other_dialects_names_nothing(dialect, shape):
+    # Legacy dialects: the object parsers read the name next to a no-break space differently from
+    # the engines, so no table is named (a non-ASCII-letter name is withheld too, for now).
     _, template = UNTERMINATED[shape]
 
-    assert analyze_dml(template.format(c=chr(0xA0)), sqlglot_dialect=dialect).table == "u"
+    assert analyze_dml(template.format(c=chr(0xA0)), sqlglot_dialect=dialect).table == ""
 
 
 @pytest.mark.parametrize("char", UNREAD, ids=IDS)

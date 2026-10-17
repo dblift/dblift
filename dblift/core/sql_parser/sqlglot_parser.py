@@ -26,6 +26,7 @@ from dblift.core.sql_model.base import (
 from dblift.core.sql_model.dialect import SQLGLOT_DIALECT_MAP as _SQLGLOT_DIALECT_MAP
 from dblift.core.sql_model.dialect import _ensure_sqlglot_dialect_map
 from dblift.core.sql_parser.parser_interface import SqlParserInterface
+from dblift.core.sql_parser.unread_names import names_unreadable, statement_sources
 
 # Setup logger
 logger = logging.getLogger(__name__)
@@ -107,10 +108,12 @@ class SqlGlotParser(SqlParserInterface):
             statements: List[SqlStatement] = []
             errors: List[str] = []
 
-            for sql_text in statement_strings:
+            for sql_text, source in zip(
+                statement_strings, self.statement_sources(sql_content, statement_strings)
+            ):
                 if not sql_text.strip():
                     continue
-                fragment_result = self.parse_fragment(sql_text, default_schema)
+                fragment_result = self.parse_fragment(sql_text, default_schema, source)
                 statements.extend(fragment_result.statements or [])
                 errors.extend(fragment_result.errors or [])
 
@@ -122,13 +125,22 @@ class SqlGlotParser(SqlParserInterface):
             logger.error(error_msg)
             return ParseResult(success=False, statements=[], errors=[error_msg])
 
-    def parse_fragment(self, sql_text: str, default_schema: Optional[str] = None) -> ParseResult:
-        """Analyze one SQL fragment already selected by the dialect scanner."""
+    def parse_fragment(
+        self, sql_text: str, default_schema: Optional[str] = None, source: Optional[str] = ""
+    ) -> ParseResult:
+        """Analyze one SQL fragment already selected by the dialect scanner.
+
+        ``source`` is the fragment as it stands in its script (``None`` when it could not be
+        located); empty means ``sql_text`` is.
+        """
         try:
             normalized_sql = self._preprocess_sql_content(sql_text)
             ast = parse_one(normalized_sql, read=self.sqlglot_dialect)
             statement = self._ast_to_statement(
-                cast(exp.Expression, ast), sql_text, default_schema  # type: ignore[redundant-cast]
+                cast(exp.Expression, ast),  # type: ignore[redundant-cast]
+                sql_text,
+                default_schema,
+                sql_text if source == "" else source,
             )
             return ParseResult(success=True, statements=[statement], errors=[])
         except ParseError as exc:
@@ -206,12 +218,13 @@ class SqlGlotParser(SqlParserInterface):
     ) -> List[SqlObject]:
         """Extract objects only from the dialect scanner's executed SQL."""
         objects: List[SqlObject] = []
-        for fragment in self._script_scanner().split_for_extraction(sql_content):
-            objects.extend(self.extract_fragment_objects(fragment, default_schema))
+        fragments = self._script_scanner().split_for_extraction(sql_content)
+        for fragment, source in zip(fragments, self.statement_sources(sql_content, fragments)):
+            objects.extend(self.extract_fragment_objects(fragment, default_schema, source))
         return objects
 
     def extract_fragment_objects(
-        self, sql_content: str, default_schema: Optional[str] = None
+        self, sql_content: str, default_schema: Optional[str] = None, source: Optional[str] = ""
     ) -> List[SqlObject]:
         """Extract objects from SQL already selected by the script scanner.
 
@@ -262,7 +275,8 @@ class SqlGlotParser(SqlParserInterface):
         except Exception as e:
             logger.error(f"Error extracting objects: {str(e)}")
 
-        return objects
+        unread = self._names_unreadable(sql_content if source == "" else source, objects)
+        return [] if unread else objects
 
     def _preprocess_sql_content(self, sql_content: str) -> str:
         """Apply dialect-specific preprocessing before sending SQL to sqlglot."""
@@ -274,7 +288,11 @@ class SqlGlotParser(SqlParserInterface):
         return quirks.preprocess_sql_for_sqlglot(sql_content)
 
     def _ast_to_statement(
-        self, ast: exp.Expression, sql_text: str, default_schema: Optional[str]
+        self,
+        ast: exp.Expression,
+        sql_text: str,
+        default_schema: Optional[str],
+        source: Optional[str],
     ) -> SqlStatement:
         """Convert sqlglot AST to dblift SqlStatement.
 
@@ -295,14 +313,33 @@ class SqlGlotParser(SqlParserInterface):
         # For DDL statements, the primary object is the one being created/altered/dropped
         affected_objects = self._extract_affected_objects(ast, default_schema)
 
+        unread = self._names_unreadable(source, objects + affected_objects)
         return SqlStatement(
             sql_text=sql_text,
             statement_type=statement_type,
-            objects=objects,
-            affected_objects=affected_objects,
+            objects=[] if unread else objects,
+            affected_objects=[] if unread else affected_objects,
             dialect=self.dialect,
             schema=default_schema,
+            names_unread=unread,
         )
+
+    def statement_sources(self, script: str, statements: List[str]) -> List[Optional[str]]:
+        """Each statement as it stands in ``script``, with the blanks the split trimmed."""
+        return statement_sources(self._script_scanner(), script, statements)
+
+    def _names_unreadable(self, source: Optional[str], objects: List[SqlObject]) -> bool:
+        """Whether the engine may read the names of ``objects`` differently from sqlglot.
+
+        ``source`` is the statement with the blanks the split trimmed after it; ``None`` when it
+        could not be located in its script.
+        """
+        if source is None:
+            return True
+        if source.isascii():
+            return False
+        names = [part for obj in objects for part in (obj.name, obj.schema) if part]
+        return names_unreadable(source, self.sqlglot_dialect, names)
 
     def _determine_statement_type(self, ast: exp.Expression) -> SqlStatementType:
         """Determine the statement type from sqlglot AST.

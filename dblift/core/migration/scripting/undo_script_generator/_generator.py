@@ -209,8 +209,9 @@ class UndoScriptGenerator(_UndoReversersMixin, _UndoExtractorsMixin):
                 for_analysis=True,
             )
             undo_statements = []
-            for statement in reversed(statements):
-                undo_stmt = self._reverse_statement(statement)
+            sources = self.parser.statement_sources(migration.content, statements)
+            for statement, source in reversed(list(zip(statements, sources))):
+                undo_stmt = self._reverse_statement(statement, source)
                 if undo_stmt:
                     undo_statements.append(undo_stmt)
             return undo_statements

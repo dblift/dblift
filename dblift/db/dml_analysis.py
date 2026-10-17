@@ -109,6 +109,10 @@ def analyze_dml(
             list(facts.affected_columns) if facts.events and "UPDATE" in facts.events else [],
         )
 
+    from dblift.core.sql_parser.unread_names import names_unreadable
+
+    if names_unreadable(statement, sqlglot_dialect):
+        return DmlMutation(table="", events=None, updated_columns=[])
     mutation = _analyze_dml_sqlglot(statement, sqlglot_dialect)
     if mutation is not None:
         return mutation
@@ -619,10 +623,13 @@ def statement_dml_table(statement: str, dialect: Optional[str] = None) -> str:
     if facts is not None:
         return facts.target_sql or ""
 
+    from dblift.core.sql_model.dialect import get_sqlglot_dialect
+    from dblift.core.sql_parser.unread_names import names_unreadable
+
+    if names_unreadable(statement, get_sqlglot_dialect(dialect) if dialect else None):
+        return ""
     text = _without_dml_modifiers(strip_leading_sql_comments(statement).lstrip())
     if dialect:
-        from dblift.core.sql_model.dialect import get_sqlglot_dialect
-
         ast_table = _sqlglot_dml_table_sql(text, get_sqlglot_dialect(dialect) or dialect)
         if ast_table:
             return ast_table

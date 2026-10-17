@@ -1333,6 +1333,9 @@ class TestUndoScriptGeneratorIntegration(unittest.TestCase):
             def parse_sql(self, content, default_schema):
                 return FakeParseResult()
 
+            def statement_sources(self, script, statements):
+                return list(statements)
+
         gen.parser = FakeParser()
         results = gen._generate_undo_statements(migration)
         # Fallback uses raw SQL split — should still produce something

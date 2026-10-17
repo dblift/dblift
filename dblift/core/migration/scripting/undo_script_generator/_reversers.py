@@ -8,14 +8,18 @@ reversed SQL statements for the undo script.
 
 import re
 import traceback
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from sqlglot import exp, parse_one
 
+from dblift.core.migration.scripting.undo_script_generator._helpers import (
+    resolve_sqlglot_read_dialect,
+)
 from dblift.core.migration.scripting.undo_script_generator._models import UndoStatement
 from dblift.core.migration.sql.sql_analyzer import DEFAULT_SCHEMA_PLACEHOLDER
 from dblift.core.sql_model.base import SqlStatementType
 from dblift.core.sql_parser.common.comment_stripping import strip_comments_preserving_quotes
+from dblift.core.sql_parser.unread_names import names_unreadable
 
 
 def _split_extracted_object_name(obj_name: str, schema: Optional[str]) -> Tuple[str, Optional[str]]:
@@ -32,6 +36,25 @@ def _split_extracted_object_name(obj_name: str, schema: Optional[str]) -> Tuple[
     if prefix == DEFAULT_SCHEMA_PLACEHOLDER:
         return bare_name, schema
     return bare_name, schema or prefix
+
+
+_NAMING_VERBS = ("CREATE", "ALTER", "DROP", "INSERT", "UPDATE", "DELETE")
+
+
+def _names_not_read(sql: str) -> UndoStatement:
+    """The undo entry for a statement whose object names the engine may read differently."""
+    verb = sql.strip().split(None, 1)[0].upper() if sql.strip() else "UNKNOWN"
+    return UndoStatement(
+        sql="-- WARNING: Cannot reverse a statement whose object names may be read differently",
+        original_statement=sql,
+        operation_type=verb,
+        warning=(
+            "A character in an object name (a no-break space, a zero-width or combining "
+            "character) may be part of the name the database reads; review it and write the "
+            "undo by hand"
+        ),
+        requires_manual_review=True,
+    )
 
 
 def _cannot_determine_index_table(obj_name: str, sql: str) -> UndoStatement:
@@ -105,6 +128,29 @@ class _UndoReversersMixin:
     logger: Any
     sql_analyzer: Any
 
+    def _names_not_trusted(self, sql: str, names: List[str], source: Optional[str] = "") -> bool:
+        """Whether the engine may read the names this statement's undo would use differently.
+
+        ``names`` are what the parser read; when it read none from a CREATE, the name the undo's
+        own pattern reads is checked instead. A non-ASCII statement naming nothing is not trusted.
+        ``source`` is the statement with the blanks the split trimmed after it (``None`` when it
+        could not be located in its script); empty means ``sql`` is.
+        """
+        if source is None:
+            return True
+        text = source or sql
+        if text.isascii():
+            return False
+        dialect = resolve_sqlglot_read_dialect(self.dialect)
+        if names_unreadable(text, dialect):
+            return True
+        if not sql.strip().upper().startswith(_NAMING_VERBS):
+            return False
+        if not names:
+            created = self._extract_create_object(sql)
+            names = [part for part in (created[1], created[2]) if part] if created else []
+        return not names or names_unreadable(text, dialect, names)
+
     def _reverse_statement_from_parsed(self, stmt: Any) -> Optional[UndoStatement]:
         """Reverse a parsed SQL statement.
 
@@ -117,6 +163,10 @@ class _UndoReversersMixin:
         sql = stmt.sql_text
         sql_upper = sql.strip().upper()
         stmt_type = stmt.statement_type
+        if stmt.names_unread is True or self._names_not_trusted(
+            sql, [obj.name for obj in stmt.objects + stmt.affected_objects]
+        ):
+            return _names_not_read(sql)
 
         # If statement type is UNKNOWN or generic (DDL/DML), infer from SQL text
         if stmt_type in (SqlStatementType.UNKNOWN, SqlStatementType.DDL, SqlStatementType.DML):
@@ -161,16 +211,24 @@ class _UndoReversersMixin:
             requires_manual_review=True,
         )
 
-    def _reverse_statement(self, sql: str) -> Optional[UndoStatement]:
+    def _reverse_statement(self, sql: str, source: Optional[str] = "") -> Optional[UndoStatement]:
         """Reverse a single SQL statement (fallback method using string parsing).
 
         Args:
             sql: SQL statement to reverse
+            source: the statement with the blanks the split trimmed after it; empty if none
 
         Returns:
             UndoStatement or None if statement cannot be reversed
         """
         sql_upper = sql.strip().upper()
+
+        if self._names_not_trusted(
+            sql,
+            [obj["object_name"] for obj in self.sql_analyzer.analyze_statement(sql)["objects"]],
+            source,
+        ):
+            return _names_not_read(sql)
 
         # Determine specific statement type by parsing SQL directly
         if sql_upper.startswith("CREATE"):
@@ -616,10 +674,6 @@ class _UndoReversersMixin:
 
         # Try to parse with sqlglot for better extraction
         try:
-            from dblift.core.migration.scripting.undo_script_generator._helpers import (
-                resolve_sqlglot_read_dialect,
-            )
-
             sqlglot_dialect = resolve_sqlglot_read_dialect(self.dialect)
             ast = parse_one(sql, read=sqlglot_dialect)
 

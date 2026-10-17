@@ -21,6 +21,7 @@ from dblift.core.sql_parser.dialects.identifier_tokens import (
 )
 from dblift.core.sql_parser.parser_factory import SqlParserFactory
 from dblift.core.sql_parser.parser_interface import SqlParserInterface
+from dblift.core.sql_parser.unread_names import names_unreadable
 from dblift.db.dml_analysis import (
     DEFAULT_QUOTE_PAIRS,
     _find_top_level_keyword,
@@ -549,7 +550,11 @@ class SqlAnalyzer:
                 }
                 for obj in facts.affected_objects
             ]
-        return self._extract_objects_regex(sql)
+        objects = self._extract_objects_regex(sql)
+        names = [obj["object_name"] for obj in objects if obj.get("object_name")]
+        if names_unreadable(sql, get_sqlglot_dialect(self.dialect), names):
+            return []
+        return objects
 
     def analyze_statement(self, sql: str) -> Dict[str, Any]:
         """Analyze a SQL statement for type and affected objects.
