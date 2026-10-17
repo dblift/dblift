@@ -460,3 +460,27 @@ def test_a_delimiter_free_script_is_cut_at_its_semicolons():
         "SELECT 'a;b' /* ; */",
         "SELECT 2 # c",
     ]
+
+
+NBSP = chr(0xA0)
+
+
+def _statements_of(spec, script):
+    return [r for r in LexicalEngine(spec).split(script) if r.kind != "directive"]
+
+
+@BOTH
+def test_a_delimiter_block_keeps_the_no_break_spaces_at_the_edges_of_its_statements(spec):
+    script = f"DELIMITER //\n{NBSP}SELECT 1{NBSP};{NBSP};{NBSP}SELECT 2{NBSP};{NBSP}//\nDELIMITER ;"
+    (record,) = _statements_of(spec, script)
+    assert record.text == f"{NBSP}SELECT 1{NBSP};{NBSP};{NBSP}SELECT 2{NBSP};{NBSP}"
+    assert record.analysis_statements == (
+        f"{NBSP}SELECT 1{NBSP}",
+        NBSP,
+        f"{NBSP}SELECT 2{NBSP}",
+        NBSP,
+    )
+    blanks = f"DELIMITER //\n \tSELECT 1 \t;\t ;\x0b\x0cSELECT 2\x0b;\n//\nDELIMITER ;"
+    (record,) = _statements_of(spec, blanks)
+    assert record.text == "SELECT 1 \t;\t ;\x0b\x0cSELECT 2\x0b;"
+    assert record.analysis_statements == ("SELECT 1", "SELECT 2")
