@@ -48,7 +48,7 @@ def names_unreadable(sql: str, sqlglot_dialect: Optional[str], names: Iterable[s
 
     try:
         at = unread_name_character(sql, dialect=sqlglot_dialect or "")
-    except Exception:  # an unknown dialect: the rule does not depend on it
+    except ValueError:  # sqlglot does not know the dialect: the rule does not depend on it
         at = unread_name_character(sql, dialect="")
     if at is not None:
         return True
@@ -68,10 +68,7 @@ def statement_sources(scanner: Any, script: str, statements: Sequence[str]) -> L
     """
     if script.isascii():
         return list(statements)
-    try:
-        records = scanner.split(script)
-    except Exception:  # the statements came from this split; if it fails now, trust nothing
-        return [None] * len(statements)
+    records = scanner.split(script)
     spans: List[Tuple[str, Optional[str]]] = []
     for record in records:
         if record.kind == "directive" or record.repeat <= 0:
