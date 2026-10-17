@@ -465,10 +465,10 @@ def test_the_refusals_do_not_depend_on_the_mode() -> None:
 @pytest.mark.parametrize(
     "script",
     [
-        "SELECT '" + "x;" * 2_000 + "';",
-        "SELECT $t$" + "x;$ " * 2_000 + "$t$;",
-        "/*" + " /* ; */ ;" * 1_000 + "*/ SELECT 1;",
-        "SELECT E'" + "a\\'" * 2_000 + "';",
+        "SELECT '" + "x;" * 200_000 + "';",
+        "SELECT $t$" + "x;$ " * 200_000 + "$t$;",
+        "/*" + " /* ; */ ;" * 100_000 + "*/ SELECT 1;",
+        "SELECT E'" + "a\\'" * 200_000 + "';",
     ],
     ids=["string", "dollar string", "comment", "escape string"],
 )

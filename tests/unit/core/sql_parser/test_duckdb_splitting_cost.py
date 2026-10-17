@@ -73,6 +73,7 @@ SHAPES = {
     "parameters": lambda n: "SELECT " + "$1, " * n + "1;",
     "line comments to the end": lambda n: "SELECT 1; " + "-- c " * n,
     "a refusal after many statements": lambda n: "SELECT 1;\n" * n + chr(0),
+    "one huge escape string": lambda n: "SELECT E'" + "a\\'" * n + "';",
     "unterminated lexeme": lambda n: "SELECT 1; '" + "a;" * n,
 }
 
