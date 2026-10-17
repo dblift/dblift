@@ -63,7 +63,7 @@ def test_postgresql_masks_the_same_shape():
     "sql,masked",
     [
         ("SELECT \"x, 'hunter2'", "SELECT '?'"),
-        ("INSERT INTO t VALUES (\"a\"\", 'hunter2')", "INSERT INTO t VALUES ('?'"),
+        ('INSERT INTO t VALUES ("a"", \'hunter2\')', "INSERT INTO t VALUES ('?'"),
         ("SELECT 1 /* open 'hunter2'", "SELECT 1 '?'"),
         ("SELECT 'a' /* open\n 'hunter2'", "SELECT '?' '?'"),
     ],
