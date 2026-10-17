@@ -299,7 +299,7 @@ def test_a_comment_that_merely_starts_like_the_directive_is_text(line: str) -> N
 
 
 def test_a_statement_line_is_the_first_line_with_something_on_it() -> None:
-    assert [u.line for u in split("\x0c\nSELECT 1;")] == [2]
+    assert [u.line for u in split("\t\nSELECT 1;")] == [2]
 
 
 def test_a_comment_alone_before_a_terminator_is_not_a_statement() -> None:

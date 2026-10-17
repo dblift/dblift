@@ -1518,7 +1518,7 @@ null,
 10
 ],
 [
-"VALUES 2",
+"\fVALUES 2",
 2,
 ";",
 "sql",
@@ -1526,14 +1526,14 @@ null,
 21
 ]
 ],
-"id": "form_feed_stripped",
+"id": "form_feed_kept",
 "script": "VALUES 1;\n\fVALUES 2;\n"
 },
 {
 "expect": [
 "records",
 [
-"VALUES 1",
+"\u00a0VALUES 1\u00a0",
 1,
 ";",
 "sql",
@@ -1541,7 +1541,7 @@ null,
 12
 ]
 ],
-"id": "nbsp_stripped",
+"id": "nbsp_kept",
 "script": "\u00a0VALUES 1\u00a0;\n"
 },
 {
@@ -7266,8 +7266,8 @@ null,
 "expect": [
 "records",
 [
-"VALUES 1",
-2,
+"\f\nVALUES 1",
+1,
 ";",
 "sql",
 0,
@@ -7289,8 +7289,8 @@ null,
 10
 ],
 [
-"VALUES 2",
-3,
+"\f\nVALUES 2",
+2,
 ";",
 "sql",
 10,
@@ -7304,7 +7304,7 @@ null,
 "expect": [
 "records",
 [
-"VALUES 1",
+"\u00a0VALUES 1\u00a0",
 1,
 ";",
 "sql",
@@ -7319,7 +7319,7 @@ null,
 "expect": [
 "records",
 [
-"VALUES 1",
+"VALUES 1\u2028",
 1,
 ";",
 "sql",
