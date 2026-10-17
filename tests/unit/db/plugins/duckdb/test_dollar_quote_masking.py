@@ -89,3 +89,15 @@ def test_closed_names_and_comments_are_kept():
 )
 def test_comment_nesting_decides_what_is_unclosed(sql, masked):
     assert mask_string_literals(sql, "duckdb") == masked
+
+
+@pytest.mark.parametrize(
+    "sql,masked",
+    [
+        ("SELECT 1a$q$, 'x $q$ hunter2', 'y'", "SELECT 1a$q$, '?', '?'"),
+        ("SELECT $1x$q$, 'x $q$ hunter2', 'y'", "SELECT $1x$q$, '?', '?'"),
+        ("SELECT $1E'a'\n'b\\'hunter2'", "SELECT $1E'?'\n'?'"),
+    ],
+)
+def test_letters_after_a_number_or_parameter_do_not_open_a_dollar_quote(sql, masked):
+    assert mask_string_literals(sql, "duckdb") == masked
