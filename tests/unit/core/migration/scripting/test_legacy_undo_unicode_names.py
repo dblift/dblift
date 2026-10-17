@@ -1,0 +1,147 @@
+"""The legacy undo generator and script analysis never name an object an engine reads differently.
+
+On dialects without an active statement-facts reader, a character the extractors skip or cut at
+(a no-break space, a zero-width space, a combining accent) can sit inside the name the engine
+reads, so ``CREATE TABLE t<NBSP>(id INT)`` makes ``t<NBSP>``. Naming ``t`` would make the
+generated undo drop the user's own ``t``. Such statements are left to manual review instead.
+"""
+
+from __future__ import annotations
+
+import logging
+import warnings
+
+import pytest
+
+from dblift.core.migration.scripting.undo_script_generator._generator import UndoScriptGenerator
+from dblift.core.migration.sql.script_analysis import analyse_script
+
+LEGACY = (
+    "postgresql",
+    "mysql",
+    "mariadb",
+    "sqlserver",
+    "oracle",
+    "db2",
+    "snowflake",
+    "redshift",
+    "cockroachdb",
+)
+
+# The 22 characters (sqlglot's non-ASCII blanks, plus the zero-width ones): a sample of each kind.
+BLANKS = [" ", " ", "　", "\u0085", " ", " "]
+ZERO_WIDTH = ["​", "⁠", "﻿"]
+# Not blanks: an engine keeps them in a name, and the extractors stop at them.
+READ_WHOLE = ("sqlserver", "snowflake")  # their extractors read these as part of the name
+NAME_PARTS = ["‍", "­", "́"]
+RULE = BLANKS + ZERO_WIDTH
+IDS = {c: f"U+{ord(c):04X}" for c in RULE + NAME_PARTS}
+
+TRIGGERS = {
+    "postgresql": "CREATE TRIGGER tr{c} BEFORE INSERT ON t FOR EACH ROW EXECUTE FUNCTION f();",
+    "mysql": "CREATE TRIGGER tr{c} BEFORE INSERT ON t FOR EACH ROW SET NEW.a = 1;",
+    "mariadb": "CREATE TRIGGER tr{c} BEFORE INSERT ON t FOR EACH ROW SET NEW.a = 1;",
+    "sqlserver": "CREATE TRIGGER tr{c} ON t AFTER INSERT AS SELECT 1;",
+}
+SHAPES = {
+    "table": "CREATE TABLE t{c}(id INT);",
+    "table-prefix": "CREATE TABLE {c}t(id INT);",
+    "table-qualified": "CREATE TABLE s.t{c}(id INT);",
+    "index": "CREATE INDEX ix{c} ON t(id);",
+    "view": "CREATE VIEW v{c} AS SELECT 1 AS a;",
+}
+
+
+@pytest.fixture(autouse=True)
+def _quiet():
+    logging.disable(logging.CRITICAL)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        yield
+    logging.disable(logging.NOTSET)
+
+
+def _undo(tmp_path, dialect: str, sql: str) -> str:
+    migration = tmp_path / "V1__x.sql"
+    migration.write_text(sql + "\n", encoding="utf-8")
+    out = UndoScriptGenerator(dialect).generate_undo_script(migration)
+    return out.read_text(encoding="utf-8")
+
+
+def _code_lines(script: str) -> list[str]:
+    return [line for line in script.split("\n") if line.strip() and not line.startswith("--")]
+
+
+def _assert_manual_review(script: str) -> None:
+    assert not _code_lines(script), f"an undo statement was written:\n{script}"
+    assert "WARNING" in script
+
+
+@pytest.mark.parametrize("dialect", LEGACY)
+@pytest.mark.parametrize("shape", sorted(SHAPES))
+@pytest.mark.parametrize("char", RULE + NAME_PARTS, ids=IDS.get)
+def test_undo_names_no_object_whose_name_holds_the_character(tmp_path, dialect, shape, char):
+    script = _undo(tmp_path, dialect, SHAPES[shape].format(c=char))
+    if dialect in READ_WHOLE and char in NAME_PARTS:
+        # it reads these as part of the name: whatever is dropped, it is that name
+        assert all(char in line for line in _code_lines(script))
+        return
+    _assert_manual_review(script)
+
+
+@pytest.mark.parametrize("dialect", sorted(TRIGGERS))
+@pytest.mark.parametrize("char", RULE + NAME_PARTS, ids=IDS.get)
+def test_undo_names_no_trigger_whose_name_holds_the_character(tmp_path, dialect, char):
+    script = _undo(tmp_path, dialect, TRIGGERS[dialect].format(c=char))
+    if dialect in READ_WHOLE and char in NAME_PARTS:
+        return
+    assert not any("DROP TRIGGER" in line for line in _code_lines(script))
+
+
+@pytest.mark.parametrize("dialect", LEGACY)
+def test_undo_keeps_dropping_ascii_names(tmp_path, dialect):
+    script = _undo(tmp_path, dialect, "CREATE TABLE t (id INT);\nCREATE INDEX ix ON t (id);")
+    assert len([line for line in _code_lines(script) if "DROP" in line]) >= 1
+
+
+@pytest.mark.parametrize("dialect", LEGACY)
+def test_undo_ignores_the_character_inside_strings_comments_and_quotes(tmp_path, dialect):
+    nbsp = " "
+    quote = {"mysql": "`", "mariadb": "`", "sqlserver": '"'}.get(dialect, '"')
+    sql = (
+        f"CREATE TABLE t (id INT);\n-- note{nbsp}here\n"
+        f"/* a{nbsp}b */\nCREATE INDEX ix ON t (id);\n"
+        f"CREATE VIEW v AS SELECT 'a{nbsp}b' AS c;\n"
+        f"CREATE TABLE {quote}q{nbsp}{quote} (id INT);"
+    )
+    drops = [line for line in _code_lines(_undo(tmp_path, dialect, sql)) if "DROP" in line]
+    # the statements around the quoted name are still reversed
+    assert len(drops) >= 2
+
+
+@pytest.mark.parametrize("dialect", ("sqlserver", "oracle"))
+def test_undo_names_a_non_ascii_letter_name_the_extractor_reads_whole(tmp_path, dialect):
+    script = _undo(tmp_path, dialect, "CREATE TABLE tété (id INT);")
+    assert any("é" in line.lower() for line in _code_lines(script))
+
+
+@pytest.mark.parametrize("dialect", ("postgresql", "mysql", "mariadb", "db2"))
+def test_undo_does_not_cut_a_non_ascii_letter_name_short(tmp_path, dialect):
+    """The extractor reads ``t`` from ``t<e acute>``: that is a different object."""
+    script = _undo(tmp_path, dialect, "CREATE TABLE té (id INT);")
+    assert not any(
+        line.rstrip(";").endswith(('"t"', "`t`", '"T"', '"SYSIBM"."T"'))
+        for line in _code_lines(script)
+    )
+
+
+@pytest.mark.parametrize("dialect", LEGACY)
+@pytest.mark.parametrize("char", RULE + NAME_PARTS, ids=IDS.get)
+@pytest.mark.parametrize("template", ["DELETE FROM t{c}WHERE a = 1;"])
+def test_analysis_names_no_object_whose_name_holds_the_character(dialect, char, template):
+    analysis = analyse_script(template.format(c=char), dialect)
+    if dialect in READ_WHOLE and char in NAME_PARTS:
+        return
+    names = {obj.name.lower() for stmt in analysis.statements for obj in stmt.objects}
+    assert "t" not in names
+    assert not any(" t " in f" {c.reason} ".lower() for c in analysis.cautions)
