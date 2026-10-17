@@ -238,7 +238,6 @@ Current implementation gaps, kept as the old splitter had them (the clients diff
 - `DELIMITER` followed by a form feed sets the form feed as the delimiter; the clients print an error and keep the old delimiter (row 84).
 - A word that follows `@` or `.` is a name for the §5 rule even when a line comment stands between them: `t. # c` then `END` reads `END` as a name.
 - A code point above U+007F, a no-break space included, is a word character of the §5 rule.
-- A statement's trailing no-break space or U+2028 is stripped from the text dblift sends; the clients send it and the server rejects it.
 - A non-ASCII delimiter is matched by character and the limit of 15 counts characters; the clients match bytes in the connection's character set (MariaDB never matches it) and keep 16 bytes.
 - A doubled quote in a `DEFINER` user or host breaks the §5 head, so the body is cut at its first semicolon.
 - After a `DELIMITER` line that is read as text (a statement is pending) the line feed is kept in the text; the clients drop it.

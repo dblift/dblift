@@ -26,9 +26,14 @@ class DelimiterScript:
         text: str,
         removed: Sequence[int],
         origin: int,
+        text_blanks: str,
     ) -> None:
-        """Take the script as read (CRLF as LF); ``removed`` maps offsets back."""
+        """Take the script as read (CRLF as LF); ``removed`` maps offsets back.
+
+        A statement loses only ``text_blanks`` at either end of its text.
+        """
         self.rules = rules
+        self.text_blanks = text_blanks
         self.client_name = client_name
         self.text = text
         self.removed = removed  # `removed` and `origin` map record offsets back to the source
@@ -171,7 +176,8 @@ class DelimiterScript:
         self._begin()
 
     def _emit(self, cut: int, terminator: Optional[str], source_end: int) -> None:
-        text = self.text[self.start : cut].rstrip()
+        blanks = self.text_blanks
+        text = self.text[self.start : cut].rstrip(blanks)
         self._refuse_session_mode(text)
         analysis: Optional[Tuple[str, ...]] = None
         if self._fragments and not self.program.is_program:
@@ -179,11 +185,11 @@ class DelimiterScript:
             parts = []
             begin = self.start
             for end in self._fragments:
-                if code[begin - self.start : end - 1 - self.start].strip():
-                    parts.append(self.text[begin : end - 1].strip())
+                if code[begin - self.start : end - 1 - self.start].strip(blanks):
+                    parts.append(self.text[begin : end - 1].strip(blanks))
                 begin = end
-            if code[begin - self.start :].strip():
-                parts.append(self.text[begin : self.start + len(text)].strip())
+            if code[begin - self.start :].strip(blanks):
+                parts.append(self.text[begin : self.start + len(text)].strip(blanks))
             analysis = tuple(parts)
         self.records.append(
             Statement(

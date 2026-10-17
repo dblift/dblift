@@ -403,7 +403,7 @@ def test_placeholder_is_code_for_mysql(spec):
 
 
 def script_with(rules_text: str = "SELECT 1") -> DelimiterScript:
-    return DelimiterScript(MYSQL_RULES, "mysql", rules_text, [], 0)
+    return DelimiterScript(MYSQL_RULES, "mysql", rules_text, [], 0, MYSQL_SPEC.text_blanks)
 
 
 # `word()` and the qualifier it reports have no reader until the stored-program tracker is wired in
