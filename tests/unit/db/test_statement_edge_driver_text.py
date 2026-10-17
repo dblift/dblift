@@ -152,10 +152,6 @@ def test_driver_receives_the_statement_as_the_client_sends_it(
     assert sent == [expected], f"the driver was handed {sent!r}, the client sends {expected!r}"
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="a paragraph separator at the end of a batch is stripped, it is not measured",
-)
 def test_sqlserver_batch_keeps_an_unmeasured_blank_at_its_end() -> None:
     text = f"SELECT 1{PARAGRAPH_SEPARATOR}"
     assert drive("sqlserver", text) == [text]

@@ -54,6 +54,7 @@ class LexicalStatementParser(BaseStatementParser):
                 source,
                 spec.client_name,
                 comments,
+                spec.text_blanks,
                 origin=int(spec.leading_bom_is_blank and source.startswith(BOM)),
             )
         # A delimiter script is cut by the tokenizer as it reads: its records are final.

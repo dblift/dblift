@@ -91,6 +91,7 @@ def divide(
     batch_end: int,
     spans: Sequence[Tuple[int, int]],
     positions: Sequence[int],
+    text_blanks: str,
 ) -> Tuple[str, ...]:
     """The analysis constituents of one batch; ``rules.division`` holds the data.
 
@@ -100,7 +101,7 @@ def divide(
     events = _events(rules, source, batch_start, batch_end, spans)
     words = [word for _, word, _ in events if word != ";"]
     if decide(division.routine_heads, words[:4], 4):
-        return (source[batch_start:batch_end].strip(),)
+        return (source[batch_start:batch_end].strip(text_blanks),)
     exemptions = dict(division.clause_exemptions)
     parts: List[str] = []
     start = batch_start
@@ -121,7 +122,7 @@ def divide(
                 depth -= 1
         elif word == ";" and depth == 0:
             if has_code(positions, start, offset):
-                parts.append(source[start : offset + 1].strip())
+                parts.append(source[start : offset + 1].strip(text_blanks))
             start = offset + 1
             part_head = []
         elif word in division.split_heads and depth == 0:
@@ -135,11 +136,11 @@ def divide(
                     found = _NOT_BLANK.search(source, line_start)
                     first_blank = (line_start, len(source) if found is None else found.start())
                 if first_blank[1] >= offset:
-                    parts.append(source[start:offset].strip())
+                    parts.append(source[start:offset].strip(text_blanks))
                     start = offset
                     part_head = []
         if word != ";" and len(part_head) < 2:
             part_head.append(word)
     if has_code(positions, start, batch_end - 1):
-        parts.append(source[start:batch_end].strip())
+        parts.append(source[start:batch_end].strip(text_blanks))
     return tuple(parts)

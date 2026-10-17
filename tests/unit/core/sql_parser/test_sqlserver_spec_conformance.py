@@ -21,10 +21,7 @@ KNOWN_GAPS: frozenset[str] = frozenset({"31"})
 
 #: Rows that fail today for the reason given: they fail strictly, and the change that fixes a row
 #: removes its id (a row that starts to pass under a strict xfail fails loudly).
-RED_ROWS: dict[str, str] = {
-    "33a": "a trailing zero width space is kept, it is a blank to the engine",
-    "33c": "a trailing paragraph separator is stripped, it is not measured",
-}
+RED_ROWS: dict[str, str] = {}
 
 
 def test_spec_compiles_to_at_least_the_rows_it_has_today() -> None:

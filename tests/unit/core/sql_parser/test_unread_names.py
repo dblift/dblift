@@ -185,7 +185,9 @@ SPAN_SCANNERS = (
 
 
 def _ending_blank(dialect):
-    return chr(0x3000) if dialect == "oracle" else NBSP
+    """A trailing white space character the dialect keeps in the text (a no-break space is a blank
+    to SQL Server and refused by Oracle)."""
+    return {"oracle": chr(0x3000), "sqlserver": chr(0x2029)}.get(dialect, NBSP)
 
 
 @pytest.mark.parametrize("dialect", SPAN_SCANNERS)
@@ -207,7 +209,7 @@ def test_statement_sources_returns_the_untrimmed_text_of_a_name_that_ends_the_sc
     assert statement_sources(scanner, script, statements) == [script]
 
 
-KEEPS_THE_BLANK = ("postgresql", "redshift", "cockroachdb")
+KEEPS_THE_BLANK = ("postgresql", "redshift", "cockroachdb", "sqlserver")
 
 
 @pytest.mark.parametrize(
@@ -229,7 +231,7 @@ KEEPS_THE_BLANK = ("postgresql", "redshift", "cockroachdb")
     ],
 )
 def test_the_analysed_text_equals_its_span_once_the_record_keeps_the_blank(dialect):
-    script = f"DROP TABLE t{NBSP}"
+    script = f"DROP TABLE t{_ending_blank(dialect)}"
     scanner = SqlParserFactory(dialect).get_parser().regex_parser
     statements = SqlAnalyzer(dialect).split_statements_for_analysis(script)
     assert statements == statement_sources(scanner, script, statements) == [script]

@@ -120,7 +120,7 @@ POSITIONS = {
 
 
 #: Dialects whose record builders already strip exactly their text_blanks.
-FIXED_DIALECTS = (*PSQL_LIKE, "oracle")
+FIXED_DIALECTS = (*PSQL_LIKE, "oracle", "sqlserver")
 
 
 def keeps_the_terminator_in_the_text(dialect: str, position: str, view: str) -> bool:
@@ -134,12 +134,12 @@ def stripped_today(dialect: str, position: str, view: str, char: str) -> bool:
     """Whether the splitters, as they are, remove ``char`` from that edge."""
     if position == "leading" and dialect in ("mysql", "mariadb"):
         return char in ASCII_BLANKS + VERTICAL_TAB + FORM_FEED
+    if dialect in FIXED_DIALECTS:
+        return char in TEXT_BLANKS[dialect]
     if not char.isspace():
         return False
     if dialect == "sqlite":
         return char in ASCII_BLANKS + FORM_FEED
-    if dialect in FIXED_DIALECTS:
-        return char in TEXT_BLANKS[dialect]
     if keeps_the_terminator_in_the_text(dialect, position, view):
         return False
     return True

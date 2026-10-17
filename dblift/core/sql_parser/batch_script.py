@@ -21,6 +21,7 @@ class BatchScript:
         source: str,
         client_name: str,
         comments: Sequence[Tuple[int, int]],
+        text_blanks: str,
         *,
         origin: int = 0,
     ) -> None:
@@ -29,6 +30,7 @@ class BatchScript:
         self.source = source
         self.client_name = client_name
         self.comments = comments
+        self.text_blanks = text_blanks
         self.origin = origin
 
     def split(self, tokens: Sequence[Token]) -> List[Tuple[Statement, str]]:
@@ -50,7 +52,7 @@ class BatchScript:
         for token in tokens:
             if token.type != TokenType.DIRECTIVE:
                 continue
-            cut = token.pos  # only blanks precede a separator on its line; strip() drops them
+            cut = token.pos  # only blanks precede a separator on its line; strip(text_blanks) drops them
             newline = source.find("\n", token.pos)
             following = len(source) if newline < 0 else newline + 1
             count = read_command(self.rules, self.client_name, token.text, 0, token.line, False)
@@ -77,14 +79,14 @@ class BatchScript:
         if not has_code(positions, start, cut - 1):
             return
         raw = self.source[start:cut]
-        text = raw.strip()
-        lead = len(raw) - len(raw.lstrip())
+        text = raw.strip(self.text_blanks)
+        lead = len(raw) - len(raw.lstrip(self.text_blanks))
         record = Statement(
             text=text,
             line=line + raw.count("\n", 0, lead),
             terminator=terminator,
             repeat=1 if count is None else count,
-            analysis_statements=divide(self.rules, self.source, start, cut, spans, positions),
+            analysis_statements=divide(self.rules, self.source, start, cut, spans, positions, self.text_blanks),
             source_start=start,
             source_end=end,
         )
