@@ -72,7 +72,12 @@ def test_nesting_is_a_spec_field():
     flat = replace(DB2_SPEC, nested_comments=False)
     tokenizer, tokens = read("VALUES /* a /* b */ c */ d", flat)
     assert comments(tokenizer) == ["/* a /* b */"]
-    assert code(tokens)[-3:] == [("KEYWORD", "c"), ("SYMBOL", "*"), ("SYMBOL", "/")]
+    assert code(tokens)[-4:] == [
+        ("KEYWORD", "c"),
+        ("SYMBOL", "*"),
+        ("SYMBOL", "/"),
+        ("KEYWORD", "d"),
+    ]
 
 
 @pytest.mark.parametrize(
@@ -85,8 +90,17 @@ def test_nesting_is_a_spec_field():
     ],
 )
 def test_unterminated_lexeme_runs_to_the_end(script, last):
-    _, tokens = read(script)
+    tokenizer, tokens = read(script)
     assert (tokens[-1].type.name, tokens[-1].text) == last
+    assert tokenizer.open_lexeme == tokens[-1].pos
+
+
+@pytest.mark.parametrize(
+    "script", ["VALUES 'a'", 'VALUES "a"', "VALUES 'a'''", "VALUES /* a */", "VALUES 1 -- c"]
+)
+def test_closed_lexemes_leave_nothing_open(script):
+    tokenizer, _ = read(script)
+    assert (tokenizer.open_lexeme, tokenizer.open_depth) == (-1, 0)
 
 
 @pytest.mark.parametrize(
@@ -96,8 +110,9 @@ def test_unterminated_lexeme_runs_to_the_end(script, last):
 def test_unterminated_comment_runs_to_the_end_and_reports_its_depth(script, open_depth):
     tokenizer, tokens = read(script)
     assert tokenizer.open_depth == open_depth
-    assert tokenizer.sql[tokenizer.comments[-1][0] : tokenizer.comments[-1][1]].startswith("/*")
-    assert tokenizer.comments[-1][1] == len(script) or open_depth == 0
+    start, end = tokenizer.comments[-1]
+    assert tokenizer.sql[start:end].startswith("/*") and end == len(script)
+    assert tokenizer.open_lexeme == (start if open_depth else -1)
 
 
 def test_blanks_inside_a_line_are_unicode_wide():
@@ -127,7 +142,7 @@ def test_word_alphabet_comes_from_the_spec():
 
 
 def test_every_other_character_is_a_one_character_symbol():
-    _, tokens = read("a.b,(c)=1;")
+    _, tokens = read("a.b,(c)=1; x")
     assert [t.text for t in tokens if t.type == TokenType.SYMBOL] == [
         ".",
         ",",
@@ -267,3 +282,11 @@ def test_handle_comment_still_refuses_an_unterminated_comment():
     with pytest.raises(UnsafeStatementSplitError):
         LexicalTokenizer("SELECT 1 /* a /* b */ c", spec=POSTGRESQL_SPEC).tokenize()
     LexicalTokenizer("SELECT 1 /* a /* b */ c", spec=ORACLE_SPEC).tokenize()
+
+
+def test_marks_are_stored_only_at_line_ends_that_fall_in_or_end_a_comment():
+    script = "VALUES 1;\n/* a\nb;\n*/ c;\n/* d\n*/;\n"
+    tokenizer, _ = read(script)
+    inside = script.index("b;") + 1
+    closing = script.rindex("*/;") + 2
+    assert tokenizer.marks == {inside: (1, True), closing: (0, False)}

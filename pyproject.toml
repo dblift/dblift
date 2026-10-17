@@ -388,6 +388,8 @@ module = [
     "dblift.core.sql_parser.hybrid_parser",
     "dblift.core.sql_parser.enhanced_regex_parser",
     "dblift.core.sql_parser.unified_regex_parser",
+    "dblift.core.sql_parser.terminator_lines",
+    "dblift.db.plugins.db2.parser.lexical_spec",
     "dblift.db.plugins.mysql.parser.lexical_spec",
     "dblift.db.plugins.mariadb.lexical_spec",
     "dblift.core.normalization",

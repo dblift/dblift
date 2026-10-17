@@ -249,9 +249,15 @@ class LexicalSpec:
     terminator_script: Optional[TerminatorScriptRules] = None
 
     def __post_init__(self) -> None:
-        """A client reads a script by lines, by batches or up to a delimiter, never two of them."""
-        rules = (self.client_script, self.batch_script, self.delimiter_script)
+        """A client reads a script by lines, by batches, up to a delimiter or to a terminator line, never two."""
+        rules = (
+            self.client_script,
+            self.batch_script,
+            self.delimiter_script,
+            self.terminator_script,
+        )
         if sum(rule is not None for rule in rules) > 1:
             raise ValueError(
-                "client_script, batch_script and delimiter_script are mutually exclusive"
+                "client_script, batch_script, delimiter_script and terminator_script "
+                "are mutually exclusive"
             )

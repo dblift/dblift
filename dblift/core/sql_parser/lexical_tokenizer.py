@@ -15,7 +15,7 @@ from dblift.core.sql_parser.batch_commands import (
 from dblift.core.sql_parser.client_directives import classify_directive, is_free_text
 from dblift.core.sql_parser.delimiter_script import DelimiterScript
 from dblift.core.sql_parser.lexical_spec import BOM, DirectiveAction, LexicalSpec
-from dblift.core.sql_parser.terminator_lines import Line
+from dblift.core.sql_parser.terminator_lines import Line, read_lines
 from dblift.core.sql_parser.tokens import Token, TokenType
 from dblift.core.sql_parser.unit_heads import decide
 
@@ -82,6 +82,14 @@ class LexicalTokenizer(BaseTokenizer):
     def __init__(self, sql: str, *, spec: LexicalSpec):
         """Read source positions with the plugin's lexical policies."""
         delimiter_rules = spec.delimiter_script
+        terminator_rules = spec.terminator_script
+        origin = 0
+        lines: List[Line] = []
+        malformed: Optional[int] = None
+        if terminator_rules is not None:
+            # The terminator runs are blanked before lexing; offsets are those of the text after the mark.
+            origin = 1 if spec.leading_bom_is_blank and sql.startswith(BOM) else 0
+            lines, sql, malformed = read_lines(terminator_rules, sql[origin:])
         removed: List[int] = []
         if delimiter_rules is not None:
             # The client reads lines and drops the CR of a CRLF pair; `removed` maps offsets back.
@@ -135,13 +143,15 @@ class LexicalTokenizer(BaseTokenizer):
         # Delimiter scripts: client state, word alphabet, active delimiter, cached line end.
         self.delimiter_script: Optional[DelimiterScript] = None
         # Terminator scripts: the lines, the first malformed directive line, the byte order mark offset,
-        # the depth of a block comment left open at the end and the nesting depth at each line end inside one.
-        self.terminator_lines: List[Line] = []
-        self.malformed_directive: Optional[int] = None
-        self.origin = 0
+        # where a lexeme left open at the end begins, the depth of a block comment left open and the nesting
+        # depth at each line end inside one.
+        self.terminator_lines = lines
+        self.malformed_directive = malformed
+        self.origin = origin
         self.open_depth = 0
+        self.open_lexeme = -1
         self.marks: Dict[int, Tuple[int, bool]] = {}
-        self._word_re = re.compile("")
+        self._word_re = re.compile("" if terminator_rules is None else terminator_rules.word)
         self._delimiter = ""
         self._eol_cache = -1
         self._line_start = True
@@ -156,9 +166,67 @@ class LexicalTokenizer(BaseTokenizer):
 
     def tokenize(self) -> List[Token]:
         """Read every token; a delimiter script then refuses what it left open."""
+        if self.spec.terminator_script is not None:
+            return self._tokenize_terminator_script()
         tokens = super().tokenize()
         if self.delimiter_script is not None:
             self.delimiter_script.finish()
+        return tokens
+
+    def _tokenize_terminator_script(self) -> List[Token]:
+        """Lexemes of a terminator script, read from the text with its terminators blanked.
+
+        An unterminated string, identifier or comment runs to the end of the script: the assembly
+        decides what that means. The depth at each line end that falls inside a comment is marked.
+        """
+        sql = self.sql
+        tokens: List[Token] = []
+        stops = [line.body_end for line in self.terminator_lines if line.body_end >= 0]
+        index, size = 0, len(sql)
+        while self.pos < size:
+            pos, line, col = self.pos, self.line, self.col
+            char = sql[pos]
+            if char.isspace():
+                end = pos + 1
+                while end < size and sql[end].isspace():
+                    end += 1
+                self.read(end - pos)
+                continue
+            kind = TokenType.SYMBOL
+            if sql.startswith("--", pos):
+                kind = TokenType.COMMENT
+                end = sql.find("\n", pos)
+                end = size if end < 0 else end
+                self.read(end - pos)
+                self.comments.append((pos, end))
+            elif sql.startswith("/*", pos):
+                kind = TokenType.COMMENT
+                self.read(2)
+                while index < len(stops) and stops[index] < self.pos:
+                    index += 1
+                depth, index = self._read_block_comment(stops, index, self.marks)
+                self.open_depth = depth
+                if depth:
+                    self.open_lexeme = pos
+                self.comments.append((pos, self.pos))
+            elif char == "'" or char == self.spec.quoted_identifier:
+                kind = TokenType.STRING if char == "'" else TokenType.IDENTIFIER
+                try:
+                    if char == "'":
+                        self._handle_standard_string()
+                    else:
+                        self._handle_quoted_identifier()
+                except UnsafeStatementSplitError:
+                    self.open_lexeme = pos  # the lexeme ran to the end of the script
+            else:
+                word = self._word_re.match(sql, pos)
+                if word is not None:
+                    kind = TokenType.KEYWORD
+                    self.read(word.end() - pos)
+                else:
+                    self.read()
+            text = "" if kind == TokenType.COMMENT else sql[pos : self.pos]
+            tokens.append(Token(kind, text, pos, line, col, self.parens_depth))
         return tokens
 
     def _next_sql_token(self) -> Optional[Token]:
