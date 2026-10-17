@@ -1493,6 +1493,52 @@ null,
 "expect": [
 "records",
 [
+"CREATE PROCEDURE p(begin INT)\nBEGIN\n  SET x = 1;\nEND",
+1,
+";",
+"sql",
+0,
+54
+],
+[
+"VALUES 1",
+5,
+";",
+"sql",
+54,
+64
+]
+],
+"id": "begin_as_parameter_name",
+"script": "CREATE PROCEDURE p(begin INT)\nBEGIN\n  SET x = 1;\nEND;\nVALUES 1;\n"
+},
+{
+"expect": [
+"records",
+[
+"BEGIN\n  IF 1 = 1 THEN SET x = 1; END 'x' IF;\nEND",
+1,
+";",
+"sql",
+0,
+50
+],
+[
+"VALUES 1",
+4,
+";",
+"sql",
+50,
+60
+]
+],
+"id": "end_then_string_then_qualifier",
+"script": "BEGIN\n  IF 1 = 1 THEN SET x = 1; END 'x' IF;\nEND;\nVALUES 1;\n"
+},
+{
+"expect": [
+"records",
+[
 "BEGIN\n  SET x = 1;\nEND 'x'",
 1,
 ";",
@@ -2751,7 +2797,7 @@ null,
 "default": [
 "records",
 [
-"CREATE PROCEDURE p()\nSTART\n  SET x = 1",
+"CREATE PROCEDURE p()\nBLOCK\n  SET x = 1",
 1,
 ";",
 "sql",
@@ -2778,7 +2824,7 @@ null,
 "expect": [
 "records",
 [
-"CREATE PROCEDURE p()\nSTART\n  SET x = 1;\nEND",
+"CREATE PROCEDURE p()\nBLOCK\n  SET x = 1;\nEND",
 1,
 ";",
 "sql",
@@ -2796,19 +2842,41 @@ null,
 ],
 "field": "body_open",
 "id": "body_open",
-"script": "CREATE PROCEDURE p()\nSTART\n  SET x = 1;\nEND;\nVALUES 1;\n",
-"value": "START"
+"script": "CREATE PROCEDURE p()\nBLOCK\n  SET x = 1;\nEND;\nVALUES 1;\n",
+"value": "BLOCK"
 },
 {
 "default": [
-"error",
-"UnsupportedMetaCommandError",
-"CLP command START on line 1: dblift does not run client commands"
+"records",
+[
+"BLOCK NOT ATOMIC\n  SET x = 1",
+1,
+";",
+"sql",
+0,
+30
+],
+[
+"END",
+3,
+";",
+"sql",
+30,
+35
+],
+[
+"VALUES 1",
+4,
+";",
+"sql",
+35,
+45
+]
 ],
 "expect": [
 "records",
 [
-"START NOT ATOMIC\n  SET x = 1;\nEND",
+"BLOCK NOT ATOMIC\n  SET x = 1;\nEND",
 1,
 ";",
 "sql",
@@ -2826,8 +2894,8 @@ null,
 ],
 "field": "body_open",
 "id": "body_open_compound_head",
-"script": "START NOT ATOMIC\n  SET x = 1;\nEND;\nVALUES 1;\n",
-"value": "START"
+"script": "BLOCK NOT ATOMIC\n  SET x = 1;\nEND;\nVALUES 1;\n",
+"value": "BLOCK"
 },
 {
 "default": [
@@ -2884,19 +2952,11 @@ null,
 "expect": [
 "records",
 [
-"BEGIN\n  BEGIN\n    BEGIN\n      SET x = 1",
+"BEGIN\n  BEGIN\n    BEGIN\n      SET x = 1;\n    END",
 1,
 ";",
 "sql",
 0,
-41
-],
-[
-"END",
-5,
-";",
-"sql",
-45,
 50
 ],
 [

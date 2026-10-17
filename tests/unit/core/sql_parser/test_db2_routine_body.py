@@ -77,6 +77,7 @@ def test_bodies_under_each_terminator(case):
     "begin_not_atomic",
     "begin_lower_case",
     "begin_inside_parentheses",
+    "begin_as_parameter_name",
     "begin_in_parameter_default",
     "specific_clause",
     "function_return_no_body",
@@ -114,6 +115,7 @@ def test_routine_heads(case):
     "end_at_line_end_then_label_next_line",
     "end_then_symbol",
     "end_then_string",
+    "end_then_string_then_qualifier",
     "end_then_word_begin",
 )
 def test_end_qualifiers_and_labels(case):

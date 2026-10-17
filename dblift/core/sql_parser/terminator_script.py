@@ -84,6 +84,11 @@ class _Walk:
                     f"the block comment opened on line {self.block_line} is not closed before "
                     "the end of the script: the statements inside it would be dropped"
                 )
+            if self.body.inside:
+                raise UnsafeStatementSplitError(
+                    f"the routine body starting on line {self.start} is not closed "
+                    "before the end of the script"
+                )
             self._end(None, self.last_code)
         return self._epilogue()
 
