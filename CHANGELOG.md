@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Requires sqlglot 30.18 or later.** Statement facts rely on grammar that arrived between
+  sqlglot 30.15 and 30.18; the declared range is now `sqlglot>=30.18.0,<31`.
 - **MySQL and MariaDB splitting moved onto the shared lexical engine.**
   Splitting, analysis and extraction use the `mysql` and `mariadb` client rules
   (the `DELIMITER` command, client commands, executable comments, optimizer
@@ -28,6 +30,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   machine, a 3 MiB script of `INSERT` statements went from 0.95 s and a 19 MB
   peak to 2.9 s and a 176 MB peak, and a 132-byte migration from 42 to 81
   microseconds.
+
+### Fixed
+
+- **Statement facts on older sqlglot.** With sqlglot 30.0 to 30.14 installed, an `INSERT` made
+  statement analysis fail silently (a DEBUG "Could not analyse" line), so `migrate --dry-run`
+  lost its `[SAFE]` label and data-plan analysis skipped the statement. An absent `WHERE` is
+  stored as `False` there and is now read as no predicate.
 
 ### Removed
 
