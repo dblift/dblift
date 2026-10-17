@@ -7,7 +7,8 @@ cost test (``tests/support/splitting_cost.py``).
 
 What no counter sees is caught by a source check over the segment path: open-ended slices of a text and
 rebuilds of a string from itself inside loops. Known limits: a rebuild through ``str.replace``, an f-string,
-``m = m + text[a:b]`` or a helper call is not seen; a rescan that happens once per script (the command word
+``m = m + text[a:b]`` or a helper call is not seen; an accumulator that is re-joined or re-sliced per cut
+(the masked-text accumulator of the Db2 pass has the same blind spot) is not seen either; a rescan that happens once per script (the command word
 of a refusal, which raises at once) is linear by construction and not measured.
 """
 
@@ -18,6 +19,7 @@ from typing import List
 
 import pytest
 
+from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
 from dblift.core.sql_parser import segment_script as segment_module
 from dblift.core.sql_parser.lexical_engine import LexicalEngine
 from dblift.core.sql_parser.lexical_tokenizer import LexicalTokenizer
@@ -39,7 +41,7 @@ PATTERNS = ("_seg_word", "_seg_number", "_seg_tag", "_seg_parameter", "_seg_comm
 UNICODE_BLANK = chr(0x3000)
 
 
-def counted(script: str) -> int:
+def counted(script: str, refusal: bool = False) -> int:
     """Operations of the lexeme pass and of the assembly, for both views, on ``script``."""
     meter = Meter()
     tokenizer = LexicalTokenizer(script, spec=DUCKDB_SPEC)
@@ -48,7 +50,8 @@ def counted(script: str) -> int:
         setattr(tokenizer, name, CountingPattern(getattr(tokenizer, name), meter))
     try:
         tokens = tokenizer.tokenize()
-    except Exception:  # a refusal ends the pass: what it cost is counted
+    except (UnsafeStatementSplitError, UnsupportedMetaCommandError):
+        assert refusal, "only a refusal shape may end the pass early"
         return meter.count
     for analysis in (False, True):
         SegmentScript(DUCKDB_RULES, CountingText(script, meter), tokenizer.origin).records(
@@ -74,9 +77,13 @@ SHAPES = {
 }
 
 
+REFUSAL_SHAPES = {"a refusal after many statements"}
+
+
 @pytest.mark.parametrize("shape", sorted(SHAPES))
 def test_duckdb_splitting_cost_grows_linearly(shape):
-    small, large = counted(SHAPES[shape](SMALL)), counted(SHAPES[shape](LARGE))
+    refusal = shape in REFUSAL_SHAPES
+    small, large = counted(SHAPES[shape](SMALL), refusal), counted(SHAPES[shape](LARGE), refusal)
     assert small > 0 and large <= BOUND * small, (shape, small, large)
 
 
@@ -148,6 +155,8 @@ def test_the_source_check_sees_the_forms_it_exists_for():
         "for i in r:\n    m += text[a:b]",
         "x = str.find(text, 'a')",
         "x = pattern.search(source, 3)",
+        "x = pattern.search(sql[start:])",
+        "x = self._comment.match(self.sql[pos + 1 :])",
     )
     for source in flagged:
         assert forbidden(ast.parse(source)) != [], source
@@ -159,6 +168,7 @@ def test_the_source_check_sees_the_forms_it_exists_for():
         "x = sql[pos:]",
         "for i in r:\n    x = other[a:]",
         "for i in r:\n    n += 1",
+        "x = pattern.search(sql[start:end])",
     )
     for source in allowed:
         assert forbidden(ast.parse(source)) == [], source

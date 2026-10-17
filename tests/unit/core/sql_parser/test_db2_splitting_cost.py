@@ -13,7 +13,8 @@ plain container once and rescanned later; token attributes are therefore countin
 and sums count, and a source check refuses the copy forms in every module the terminator path imports
 (subpackages included; imports from outside the package are listed with their reason).
 Not an evasion: reading the wrapper's ``_value`` attribute from engine code is a copy, and the source check
-refuses it by name. Known limit: arithmetic on a copied value that is first converted with ``int()`` is not counted.
+refuses it by name. Known limits: arithmetic on a copied value that is first converted with ``int()`` is not counted; an accumulator
+re-joined or re-sliced per cut (the masked-text accumulator) is not seen.
 """
 
 import ast

@@ -267,8 +267,11 @@ def _regex_call(node: ast.Call) -> bool:
     if not (isinstance(func, ast.Attribute) and func.attr in REGEX_METHODS):
         return False
     first = node.args[0] if node.args else None
+    if isinstance(first, ast.Subscript) and isinstance(first.slice, ast.Slice):
+        if first.slice.lower is not None and first.slice.upper is None:
+            return True  # a copy of the rest of the text
     if first is None or isinstance(first, (ast.Constant, ast.Subscript)):
-        return False  # str.split() and friends, or a slice of the text
+        return False  # str.split() and friends, or a bounded slice of the text
     if isinstance(first, ast.Name) and first.id in BOUNDED_ARGUMENTS:
         return False
     return not (
