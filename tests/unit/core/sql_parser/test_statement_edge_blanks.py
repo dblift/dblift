@@ -120,7 +120,7 @@ POSITIONS = {
 
 
 #: Dialects whose record builders already strip exactly their text_blanks.
-FIXED_DIALECTS = (*PSQL_LIKE, "oracle", "sqlserver")
+FIXED_DIALECTS = (*PSQL_LIKE, "oracle", "sqlserver", "snowflake")
 
 
 def keeps_the_terminator_in_the_text(dialect: str, position: str, view: str) -> bool:

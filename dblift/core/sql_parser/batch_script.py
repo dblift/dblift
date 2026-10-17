@@ -52,7 +52,9 @@ class BatchScript:
         for token in tokens:
             if token.type != TokenType.DIRECTIVE:
                 continue
-            cut = token.pos  # only blanks precede a separator on its line; strip(text_blanks) drops them
+            cut = (
+                token.pos
+            )  # only blanks precede a separator on its line; strip(text_blanks) drops them
             newline = source.find("\n", token.pos)
             following = len(source) if newline < 0 else newline + 1
             count = read_command(self.rules, self.client_name, token.text, 0, token.line, False)
@@ -86,7 +88,9 @@ class BatchScript:
             line=line + raw.count("\n", 0, lead),
             terminator=terminator,
             repeat=1 if count is None else count,
-            analysis_statements=divide(self.rules, self.source, start, cut, spans, positions, self.text_blanks),
+            analysis_statements=divide(
+                self.rules, self.source, start, cut, spans, positions, self.text_blanks
+            ),
             source_start=start,
             source_end=end,
         )

@@ -117,8 +117,6 @@ RED = {
     ("mariadb", "end_of_file"): "the splitter strips the last character of the script",
     ("db2", "semicolon"): "the splitter and the provider strip the character before the terminator",
     ("db2", "end_of_file"): "the splitter and the provider strip the last character",
-    ("snowflake", "semicolon"): "the parser strips the character before the terminator",
-    ("snowflake", "end_of_file"): "the parser strips the last character of the script",
     ("duckdb", "semicolon"): "the splitter keeps a no-break space the shell reads as a blank",
 }
 
