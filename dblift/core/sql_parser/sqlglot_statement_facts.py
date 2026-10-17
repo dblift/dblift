@@ -667,7 +667,7 @@ def _main_statement(head: str) -> str:
 
 def _head_object(match: "re.Match[str]") -> NamedObject:
     operation = match.group(1).upper()
-    object_type = SqlObjectType[match.group(2).upper().replace(" ", "_")]
+    object_type = SqlObjectType["_".join(match.group(2).upper().split())]
     name = strip_identifier_quotes(match.group(4) or match.group(3))
     schema = strip_identifier_quotes(match.group(3)) if match.group(4) else None
     role = {"CREATE": "created", "ALTER": "altered", "DROP": "dropped"}[operation]
