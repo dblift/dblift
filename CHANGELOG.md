@@ -75,9 +75,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Splitting a large DuckDB script takes longer and uses more memory.** The
   time stays linear in the length of the script (4 times the input takes 4.0 to
   4.3 times the time). Measured on one machine, a 3 MiB script of `INSERT`
-  statements went from 0.63 s and a 26 MB peak to 2.2 to 2.5 s and a 212 MB
-  peak, and a 66-byte migration from 12 to 39 microseconds; the slowest of six
-  shapes measured, nested block comments, takes about 6 times as long.
+  statements went from 0.65 s and a 26 MB peak to about 2 to 2.5 s and a 212 MB
+  peak, and a 66-byte migration from 12 to 39 microseconds; nested block
+  comments or one huge escape string take 4.5 to 8 times as long (depending on
+  the machine), and one huge plain string literal longer still (600 000
+  characters: 0.0002 s before, 0.026 s now).
 
 ### Fixed
 

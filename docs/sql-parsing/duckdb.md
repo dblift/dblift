@@ -329,8 +329,9 @@ patterns, the escape letters, the characters that end a line comment, the comman
 the refused character are data. The shared tokenizer (`LexicalTokenizer`) reads a script in one
 pass with its string, escape-string, quoted-identifier and nested-comment readers, and
 `SegmentScript` (`dblift/core/sql_parser/segment_script.py`) cuts the tokens at each `;` into the
-records. `StatementSplitter` and `SqlAnalyzer` reach the engine through the specification without
-constructing a parser. `DuckDBRegexParser` and `DuckDBFactsParser` are thin delegates: `split()`
+records. `StatementSplitter` (and so `SqlAnalyzer.split_statements`) reaches the engine through the
+specification without constructing a parser; `SqlAnalyzer.split_statements_for_analysis` reaches it through
+`DuckDBFactsParser.split_for_analysis`, which delegates to it. `DuckDBRegexParser` and `DuckDBFactsParser` are thin delegates: `split()`
 returns `Statement` records, `split_statements()` their execution text, `split_for_analysis()`
 and `split_for_extraction()` add comment-only segments, and `parse_sql()` honours the refusals.
 Statement facts, `DuckDBQuirks.blank_comments` and the provider's row-count rewrite blank
@@ -375,20 +376,22 @@ Literal masking in failure messages reads a DuckDB statement with the generic to
 (the specification sets `redaction_reads_engine` to false), and object extraction strips comments with the
 DuckDB nesting tokenizer; neither moved with the splitter, and a parser object has no `lexical_spec`
 attribute, so extraction is not re-pointed. The generic tokenizer reads no dollar-quoted string as a
-literal and reads an escape string with a backslash as a plain one: measured on 62 378 statements cut from
-generated scripts, reading them through the engine would change the masked text of 26 018 and the description of
-10 582, and the current masking leaves a literal of five or more characters in the clear in 11 528. Four shapes
+literal and reads an escape string with a backslash as a plain one: measured on 34 819 distinct statements cut from about 41 000
+generated scripts, reading them through the engine would change the masked text of 18 885 and the description of
+7 933, and the current masking leaves a literal of five or more characters in the clear in 8 181. Four shapes
 are checked by tests as they behave today: a dollar-quoted value, the same value with a tag, an escape string with
 a backslash (the whole statement collapses to its first word) and a plain value next to a tagged one. They are
 known leaks, to be fixed on their own. `strict_tokenizer` has no effect: the engine has no unknown
-characters, every character that is no other lexeme is one symbol. A split writes no log record (building a regex
-parser object writes one DEBUG record, as before: measured, 0 records for a split on both versions).
+characters, every character that is no other lexeme is one symbol. A split writes no log record (measured: 0 records for a split before and after the change; building a regex
+parser object writes one DEBUG record, before and after).
 
 Cost: cutting a script through the engine takes about 3.5 times as long as the separate scanner it replaced and
-about 8 times its peak memory (measured on one host, best of three, twice: a script of 3 240 000 characters
-2.2 to 2.5 s against 0.63 to 0.66 s and 212 MB against 26 MB; a file of 66 characters 38.5 us against 11.7 us); the
-worst of six measured shapes, nested comments, takes about 6 times as long. The time still grows in proportion to the
-script: a four-fold script takes 4.0 to 4.3 times as long, and a test counts the operations per character on fourteen shapes.
+about 8 times its peak memory (measured on one host, best of three, twice: a script of 3 240 000 characters took about
+2 to 2.5 s against 0.65 s and 212 MB against 26 MB; a file of 66 characters 39 us against 12 us). The worst shapes
+measured take 4.5 to 8 times as long (nested comments, or one huge escape string, depending on the host), and one huge
+plain string longer still (a literal of 600 000 characters: 0.0002 s before, 0.026 s now, because the old scanner
+searched for its end in one call). The time still grows in proportion to the script: a four-fold script takes 4.0 to
+4.3 times as long, and a test counts the operations per character on fourteen shapes.
 
 Current implementation gaps, each a place where the splitter and DuckDB differ (rows 74 to 76 record the first three):
 the splitter carries an escape string's mode across blanks on one line, where DuckDB carries it only across a line

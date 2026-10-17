@@ -54,7 +54,12 @@ def test_rows_74_to_76_compile_to_the_engine_cut() -> None:
 
 def test_new_rows_have_no_code_span_in_prose() -> None:
     text = (SPEC_DIR / "duckdb.md").read_text(encoding="utf-8")
-    for line in text.splitlines():
-        if line.startswith(("| 74 |", "| 75 |", "| 76 |")):
-            cells = line.split(" | ")
-            assert "`" not in cells[-1][cells[-1].index("(measured") :]
+    cells = {
+        line.split(" | ")[0]: line
+        for line in text.splitlines()
+        if line.startswith(("| 74 |", "| 75 |", "| 76 |"))
+    }
+    assert sorted(cells) == ["| 74", "| 75", "| 76"]
+    for line in cells.values():
+        assert "(measured" in line, line[:40]
+        assert "`" not in line[line.index("(measured") :]
