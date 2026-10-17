@@ -5,12 +5,12 @@
 | Item | Value |
 | --- | --- |
 | Covers | DuckDB 1.x scripts run through the Python `duckdb` driver (the path dblift executes through) and written for the `duckdb` command-line shell. Measured: shell v1.5.6 (Variegata, Homebrew) and v1.5.5 (Variegata, the `duckdb-cli` wheel) and the Python driver 1.5.5 and 1.5.6 (`duckdb.connect()`, `execute`, `duckdb.extract_statements`) with `duckdb_engine` 0.17.0 on SQLAlchemy 2.0.52 |
-| Code facts taken from | OSS `develop` `5074c563`, before the scanner of §12 |
+| Code facts taken from | the shared lexical engine with the DuckDB specification; §12 describes it. The DuckDB part of the conformance run is 77 rows: 73 passes and the four known gaps 74 to 77 (expected failures) |
 | Vendor references, fetched 2026-10-12 from `duckdb.org/docs/current` | *Literal Types* (`sql/data_types/literal_types`: strings, escape strings, dollar-quoted strings); *Keywords and Identifiers* (`sql/dialect/keywords_and_identifiers`: quoted identifiers); *SQL Dialect, Overview* ("DuckDB's SQL dialect is based on PostgreSQL."); *Prepared Statements* (`sql/query_syntax/prepared_statements`: `?`, `$1`, `$name`); *CLI, Dot Commands* (`clients/cli/dot_commands`); *CLI, Overview* (`clients/cli/overview`: scripts from standard input, `.read`, multi-line statements). No page on comments could be found: block-comment nesting rests on measurement alone |
 | Live verification | `duckdb -init /dev/null -bail <db> < script.sql` against the Python driver dblift executes through (`SqlAnalyzer("duckdb").split_statements`, then one `execute` per statement through `duckdb_engine`); the resulting files are compared through the `duckdb_*()` catalogue functions and the table rows; `duckdb.extract_statements` is compared with the splitter on every script it accepts. |
 | Second ground truth | the driver: `execute` takes **several** statements in one text, parses the whole text before it runs anything (a parse error in the last statement runs none of the first), and a runtime error leaves the statements before it done; dblift sends one statement per call, so the two stop at different places on a script with a parse error |
 | How the shell cuts | the shell reads the script line by line and sends the text so far to the engine when a line ends a statement: statements on one line are one chunk run as one text, like the driver (a parse error in the chunk runs none of it, a run-time error stops the rest of it), statements on later lines are separate chunks; its exit status is 0 when every statement ran and 1 when any failed, even if a later one succeeded; without `-bail` it goes on with the next line; standard input, `.read` and `-f` give the same result for every script tried |
-| Engine subclass | none: the scanner is one character scanner with one dollar-quote rule |
+| Engine subclass | none: the lexeme rules and the shell's dot-command rule are data of the shared tokenizer (`SegmentScriptRules`) |
 
 DuckDB's lexer is PostgreSQL's ("DuckDB's SQL dialect is based on PostgreSQL."), and
 every lexical fact below that was checked against the engine agrees with
@@ -27,7 +27,7 @@ quoted identifiers, dollar-quoted strings and comments.
 | Form | Opens | Closes | Escape inside | Note |
 | --- | --- | --- | --- | --- |
 | String | `'` | `'` | `''` | "To escape a single quote (apostrophe) character in a string literal, use ''." (*Literal Types*). A backslash is an ordinary character: `'a\'` is a complete string and `'a\''` leaves one open; `;`, `--`, `/*`, `*/` and `$$` inside are text |
-| Escape string | `E'` / `e'` | `'` | `''` and a backslash that takes the next character | "prefix a string literal with e (or E)" (*Literal Types*). The measured effect on splitting: `E'a\'b;c'` is one string, `E'a\\'` ends at the last quote, a doubled quote keeps the string open. The `E` is a prefix unless an identifier character precedes it: `xE'a\'` is the name `xE` and a plain string; after a quote, a closing parenthesis, a dollar-quoted string or digits the `E` still opens an escape string |
+| Escape string | `E'` / `e'` | `'` | `''` and a backslash that takes the next character | "prefix a string literal with e (or E)" (*Literal Types*). The measured effect on splitting: `E'a\'b;c'` is one string, `E'a\\'` ends at the last quote, a doubled quote keeps the string open. The `E` is a prefix unless an identifier character precedes it: `xE'a\'` is the name `xE` and a plain string; after a quote, a closing parenthesis, a dollar-quoted string or digits the `E` still opens an escape string; a superscript or a digit of another script before the `E` (U+00B2 or U+0663) is part of a name for the engine, so a plain string follows it (row 75) |
 | Dollar-quoted | `$$` or `$tag$` | the same `$$` / `$tag$` | none | "DuckDB supports dollar-quoted string literals, which are surrounded by double-dollar symbols ($$)" and "you can insert alphanumeric tags in the double-dollar symbols" (*Literal Types*). The tag starts with a letter, an underscore or a non-ASCII character and goes on with those and digits, no `$`; it is case sensitive and closes only on the identical tag; `$1a$` and `$a b$` are not tags; `;`, quotes and comment markers inside are text |
 
 Words and parameters decide where a dollar quote may open. A word is a letter,
@@ -40,11 +40,19 @@ are denoted with an integer ($1, $2)" and "named parameters where parameters are
 denoted with $parameter_name", *Prepared Statements*), and `;` after it ends the
 statement.
 
+The engine reads a positional parameter as the dollar sign and its digits only: in
+`PREPARE p AS SELECT $1a$$x; SELECT 2; SELECT 3 AS y$$;` the letters after `$1` start a word,
+the dollar pair inside that word opens nothing and each semicolon ends a statement (row 76).
+
 Adjacent literals separated by a newline are one string (`SELECT 'a'` newline `'b'`
-is `'ab'`); on one line they are a syntax error. The statement is cut at the same place either way.
+is `'ab'`); on one line they are a syntax error. The statement is cut at the same place either way when no escape string comes first.
 `x'…'`, `b'…'` and `N'…'` are a word followed by a plain string; `U&'…'` is read by the lexer and
 rejected by the engine; `[…]` is a list and
 `{…}` a struct, never an identifier.
+
+An escape string's mode continues into the next string only across a line break: `SELECT E'a'` newline
+`'b\'` is one string, but on one line (`SELECT E'a' 'b\';`) the second string is a plain string
+that the backslash does not escape, and the engine rejects the first statement (row 74).
 
 An unterminated string, quoted identifier or dollar-quoted string at the end of a
 script is returned as the last statement and the engine rejects it loudly: there is nothing to refuse (row 29).
@@ -79,26 +87,26 @@ comments (`//` is integer division).
 
 An unterminated block comment is **loud**: the driver and `extract_statements` both
 raise `unterminated /* comment` and nothing runs,
-so the scanner returns it as the last statement and refuses nothing (rows 40, 41). This
+so the splitter returns it as the last statement and refuses nothing (rows 40, 41). This
 differs from SQLite, where the same text is silently dropped.
 
 **Where the shell and the engine differ on comments** (measured on the shell v1.5.6 with
 `duckdb -init /dev/null -bail`, script on stdin). A script whose first line starts with `--` and holds a lone CR
 (`-- a` CR `SELECT 1 AS x;` LF `SELECT 2 AS y;`): the shell drops the whole line, runs only
 `SELECT 2 AS y` and exits 0, while `extract_statements` ends the comment at the CR and
-returns `SELECT 1 AS x` first, and the scanner does the same, so dblift runs one statement
+returns `SELECT 1 AS x` first, and the splitter does the same, so dblift runs one statement
 more than the shell and never silently. An unterminated block comment after a statement
 (`SELECT 1 AS a;` LF `/* open` LF `SELECT 2 AS b;` LF `SELECT 3 AS c;`): the shell runs
 the first statement, then rejects the rest as one unterminated comment and exits 1, as the
-engine does; the scanner returns the rest as the last statement and the engine rejects it,
+engine does; the splitter returns the rest as the last statement and the engine rejects it,
 so all three agree (the later lines do not run). A later `*/` closes it for the shell as
 for the engine (`SELECT 9 AS z` runs).
 
 **A comment-only segment is not a statement.** `extract_statements` returns nothing for
-`-- c` newline `;` and for a script of comments; the scanner returns nothing for them
+`-- c` newline `;` and for a script of comments; the splitter returns nothing for them
 (rows 44-46). A comment that follows a `;` on its line belongs to the next
 statement's text, as `extract_statements` hands it over (row 48); a comment before the `;` stays in the statement. `extract_statements` keeps a comment that trails the last
-statement in that statement's text; the scanner
+statement in that statement's text; the splitter
 drops it, as it drops every segment of comments only: the statement is the same.
 
 ## 4. Terminators
@@ -123,7 +131,7 @@ stricter than its main path: a lone no-break space after the last statement is a
 word with `$$` and a Unicode blank is rejected as a whole; a segment of one such blank
 between two terminators is nothing. A UTF-8 byte order mark is whitespace for the
 engine at the start and in the middle of a script and
-the scanner drops the one at the start.
+the splitter drops the one at the start.
 
 The shell removes the CR of a CRLF pair from every line it reads, also inside a literal and a
 macro body, and keeps a lone CR; the driver and dblift keep both, so the one divergence is a CR inside a
@@ -175,7 +183,7 @@ text everywhere else, which the engine then rejects: while a statement is pendin
 after a comment on the pending statement's line, indented by spaces or a tab, after code or a
 comment on its own line, and inside a string, a quoted identifier, a dollar-quoted string or a
 comment. `.read` is no different: while a statement is pending it is text too. `SELECT` newline `.5;` is one valid statement, so a dot at a line start is not a command while a statement is
-pending. A byte order mark before the first dot is not a command for the shell, which the scanner, dropping the mark first, refuses: the stricter side.
+pending. A byte order mark before the first dot is not a command for the shell, which the splitter, dropping the mark first, refuses: the stricter side.
 A comment line or a block comment that closed leaves nothing pending, so the dot line after it
 is a command.
 
@@ -218,8 +226,9 @@ with nothing open, exit 1.
 
 ## 9. Engine subclass
 
-None. The one rule that is not a fixed pair, a dollar-quote closing on the tag that
-opened it, is a regular expression and a substring search in the scanner.
+None. The lexeme rules (blanks, words, numbers, dollar-quote tags, parameters, the escape letters,
+the end of a line comment) and the shell's one line rule (the command prefix) are data, `SegmentScriptRules`, on the
+DuckDB specification; the shared tokenizer reads them and one core module assembles the records between `;`.
 
 ## 10. Conformance examples
 
@@ -298,6 +307,10 @@ opened it, is a regular expression and a substring search in the scanner.
 | 71 | `SELECT 'a /* b'; SELECT 'c -- d'; SELECT 3;` | `SELECT 'a /* b'` · `SELECT 'c -- d'` · `SELECT 3` |
 | 72 | `SELECT $$a;b$$; SELECT 2;` | `SELECT $$a;b$$` · `SELECT 2` (a no-break space, U+00A0, is a blank for the engine: the dollar quote still opens) |
 | 73 | `SELECT　E'a\'b;c'; SELECT 2;` | `SELECT　E'a\'b;c'` · `SELECT 2` (an ideographic space, U+3000, is a blank: the letter E still opens an escape string) |
+| 74 | `SELECT E'a' 'b\'; SELECT 1; SELECT 'z';` | `SELECT E'a' 'b\'` · `SELECT 1` · `SELECT 'z'` (measured: on one line the engine does not carry the escape mode of an E string into the next string, reads the second string as a plain string closed after the backslash and rejects the first statement; known gap: the splitter carries the escape mode across blanks on one line and sends the three statements as one) |
+| 75 | `SELECT \u00b2E'b\';c'; SELECT 2;` | `SELECT \u00b2E'b\'` · `c'; SELECT 2;` (measured: a superscript two followed by E is one name for the engine, so a plain string follows and the first semicolon ends the statement; known gap: the splitter reads any character Python counts as a digit before E as a number and opens an escape string) |
+| 76 | `PREPARE p AS SELECT $1a$$x; SELECT 2; SELECT 3 AS y$$;` | `PREPARE p AS SELECT $1a$$x` · `SELECT 2` · `SELECT 3 AS y$$` (measured: the engine reads a positional parameter as the dollar sign and its digits only, so the letters after it start a word, the dollar pair inside that word opens nothing and each semicolon ends a statement; known gap, unsafe direction: the splitter reads the letters as part of the parameter, opens a dollar-quoted string at the dollar pair and sends the three statements as one, which the driver then runs one after another) |
+| 77 | `SELECT 1a$$x; DROP TABLE t; SELECT 3 AS y$$;` | `SELECT 1a$$x` · `DROP TABLE t` · `SELECT 3 AS y$$` (measured: DuckDB reads a number as digits with underscore separators, an optional fraction and an optional exponent, so the letters after it start a word, the dollar pair inside that word opens nothing and each semicolon ends a statement; known gap, unsafe direction: the splitter reads the letters as part of the number, opens a dollar-quoted string at the dollar pair and sends the three statements as one, which the driver then runs one after another) |
 
 ## 11. Not handled
 
@@ -310,35 +323,87 @@ opened it, is a regular expression and a substring search in the scanner.
 
 ## 12. Current implementation
 
-Code: `dblift/db/plugins/duckdb/parser/_script.py` (`scan_script`, the engine's
-character scanner), wired by `DuckDBRegexParser`: `split()` returns `Statement`
-records, `split_statements()` their execution text, and `split_for_analysis()`
-adds comment-only segments. `split_for_extraction()` uses the same scanner view;
-`parse_sql()` honors its shell-command and unsafe-split refusals.
+Code: the shared lexical engine. `DuckDBQuirks.lexical_spec()` returns `DUCKDB_SPEC`
+(`dblift/db/plugins/duckdb/parser/lexical_spec.py`), whose rules, `DUCKDB_RULES`, are a
+`SegmentScriptRules`: the blank characters, the word, number, dollar-quote tag and parameter
+patterns, the escape letters, the characters that end a line comment, the command prefix and
+the refused character are data. The shared tokenizer (`LexicalTokenizer`) reads a script in one
+pass with its string, escape-string, quoted-identifier and nested-comment readers, and
+`SegmentScript` (`dblift/core/sql_parser/segment_script.py`) cuts the tokens at each `;` into the
+records. `StatementSplitter` (and so `SqlAnalyzer.split_statements`) reaches the engine through the
+specification without constructing a parser; `SqlAnalyzer.split_statements_for_analysis` reaches it through
+`DuckDBFactsParser.split_for_analysis`, which delegates to it. `DuckDBRegexParser` and `DuckDBFactsParser` are thin delegates: `split()`
+returns `Statement` records, `split_statements()` their execution text, `split_for_analysis()`
+and `split_for_extraction()` add comment-only segments, and `parse_sql()` honours the refusals.
+Statement facts, `DuckDBQuirks.blank_comments` and the provider's row-count rewrite blank
+comments through the same engine. There is no DuckDB subclass of the engine and no second
+scanner.
 
-The scanner reads a script as the engine's lexer does. A word is a letter, an
-underscore or a non-ASCII character followed by those, digits and `$`; a number is read
-up to its last letter or digit, so a `$$` opens a string after a number or an operator and
-never inside a word. A `$` that starts a token opens a dollar-quoted string when a tag
+The engine reads a script as DuckDB's lexer does. A word is a letter, an
+underscore or a non-ASCII character followed by those, digits and `$`; DuckDB reads a number as digits with underscore separators, an optional fraction and an optional exponent, so
+the letters after it start a word (`1a$$x` is the number 1 and the word `a$$x`; `1e5x` is a number and the name x),
+where the splitter takes every letter and underscore after the first digit as part of the number (row 77); a `$$` opens a string
+after a number or an operator and never inside a word. A `$` that starts a token opens a dollar-quoted string when a tag
 (letters, underscore, non-ASCII, digits, no `$`) and a second `$` follow, and closes it on
 the identical tag; otherwise it starts a parameter (`$1`, `$name`). `E'` and `e'` open an
-escape string unless the `E` ends a longer word, and the 18 non-ASCII blanks the engine reads (U+00A0, U+2000 to U+200B, U+202F, U+205F, U+2060, U+3000, U+FEFF) are blanks, so a dollar quote or an `E` right after one still opens; inside it a backslash takes the next
+escape string unless the `E` ends a longer word, and the 18 non-ASCII blanks DuckDB reads (U+00A0, U+2000 to U+200B, U+202F, U+205F, U+2060, U+3000, U+FEFF) are blanks, so a dollar quote or an `E` right after one still opens; inside it a backslash takes the next
 character and a doubled quote stays inside. Adjacent string literals separated by a newline,
 including a line comment, continue an `E` string's escape mode. A plain string and a quoted identifier end at
 the next quote, a doubled quote being two lexemes in a row. A line comment ends at the
 first LF or CR, a block comment nests and one that is never closed is sent as it stands,
-like a string, an identifier or a dollar-quoted string that is never closed: the engine
+like a string, an identifier or a dollar-quoted string that is never closed: DuckDB
 rejects each of them loudly, so nothing is refused for them. A `;` ends a statement
 wherever it stands outside those lexemes. A segment of comments only is not a statement
 for execution. The one line rule reads each line where no lexeme is open: a line that
 starts with `.` in column 0 while no statement text is pending is a `duckdb` shell
-command and is refused with `UnsupportedMetaCommandError`, the command and the line
-named. A NUL character is refused with `UnsafeStatementSplitError`: the engine reads
-the script as a C string and would silently drop everything after it. A byte order mark
-at the start of the script is dropped.
+command and is refused with `UnsupportedMetaCommandError`, with the message
+`duckdb shell command '.mode' on line 1: the shell runs it and the engine cannot; dblift does not run client commands`
+(the command is the first word of the line). A NUL character is refused first, before any other reading, with `UnsafeStatementSplitError` and the message
+`a NUL character on line 2: the engine reads the script up to it and silently drops the rest`:
+DuckDB reads the script as a C string and would silently drop everything after it. A byte order mark
+at the start of the script is dropped; elsewhere it is a blank.
 
-The text of a statement is a slice of the script (comments, line breaks and CRs kept)
-without its terminator. Before this scanner `split_statements` was a regex-free
-character scan that did not read dollar-quoted strings (a `;` inside `$$…$$` split),
-returned a segment of comments only and a bare `;` as statements, glued a dot-command
-onto the following statement, and kept the `;` in the text of every statement.
+Measured on both shell versions and both driver versions: U+0085, U+2028, U+2029, U+1680 and
+U+200C are part of the word before them (`SELECT 1 AS a` followed by one of them and `b` returns a
+single column named by all three characters), so a statement that starts with one of them has it in its text; a
+vertical tab is a syntax error for DuckDB and is code for the splitter, not a blank.
+
+The text of a statement is the slice of the script between two `;` without the ASCII blanks (space, tab,
+line feed, form feed, carriage return) at its ends: comments before and inside it, line breaks, CRs and
+non-ASCII blanks stay, and the terminator is not part of it. Its line is the line of its first
+character, and its start and end are offsets in the script with a byte order mark counted. The last
+statement needs no terminator.
+
+Literal masking in failure messages reads a DuckDB statement with the generic tokenizer, not with the engine
+(the specification sets `redaction_reads_engine` to false), and object extraction strips comments with the
+DuckDB nesting tokenizer; neither moved with the splitter, and a parser object has no `lexical_spec`
+attribute, so extraction is not re-pointed. The generic tokenizer reads no dollar-quoted string as a
+literal and reads an escape string with a backslash as a plain one: measured on 34 819 distinct statements cut from about 41 000
+generated scripts, reading them through the engine would change the masked text of 18 885 and the description of
+7 933, and the current masking leaves a literal of five or more characters in the clear in 8 181. Four shapes
+are checked by tests as they behave today: a dollar-quoted value, the same value with a tag, an escape string with
+a backslash (the whole statement collapses to its first word) and a plain value next to a tagged one. They are
+known leaks, to be fixed on their own. `strict_tokenizer` has no effect: the engine has no unknown
+characters, every character that is no other lexeme is one symbol. A split writes no log record (measured: 0 records for a split before and after the change; building a regex
+parser object writes one DEBUG record, before and after).
+
+Cost: cutting a script through the engine takes about 3.5 times as long as the separate scanner it replaced and
+about 8 times its peak memory (measured on one host, best of three, twice: a script of 3 240 000 characters took about
+2 to 2.5 s against 0.65 s and 212 MB against 26 MB; a file of 66 characters 39 us against 12 us). The worst shapes
+measured take 4.5 to 8 times as long (nested comments, or one huge escape string, depending on the host), and large
+literals and comments take much longer in proportion (a 1 MiB string literal 0.0004 s before, 0.045 s now; a 1 MiB block comment of
+lines 0.006 s before, 0.39 s now), because the old scanner searched for the end of a literal in one call; they stay small in absolute terms. The time still grows in proportion to the script: a four-fold script takes 4.0 to
+4.3 times as long, and a test counts the operations per character on fourteen shapes.
+
+Current implementation gaps, each a place where the splitter and DuckDB differ (rows 74 to 77 record the first four):
+the splitter carries an escape string's mode across blanks on one line, where DuckDB carries it only across a line
+break (row 74; the first statement fails for DuckDB either way); it opens an escape string after any character
+that Python counts as a digit, a superscript or a digit of another script, where DuckDB reads a name (row 75); and it
+reads letters after a positional parameter (`$1a`, `$1E`) or after the digits of a number (`1a`) as part of the parameter or the number,
+where DuckDB reads the digits and then a word. The last two are the unsafe direction when a dollar pair follows (rows 76 and 77): the splitter opens a
+dollar-quoted string, hides later statements inside one statement and sends it, and the driver then runs them one after
+another (measured with a DROP TABLE inside the hidden text: it was run); when an escape string follows instead
+(`SELECT $1E'a\';b'; SELECT 2;`) the splitter cuts inside DuckDB's string, which is the safe direction. Rows 76 and 77 are
+tracked and will be fixed separately. In the analysis view, a segment of only non-ASCII blanks between two `;`
+is a statement whose text is that blank (execution drops it). A byte order mark before a dot line on the first
+line is refused (§6).

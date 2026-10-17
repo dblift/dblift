@@ -1,21 +1,22 @@
-"""DuckDB statement facts projected through the engine script scanner."""
+"""DuckDB statement facts projected through the shared lexical engine."""
 
 from typing import Any, Dict, List, Optional
 
 from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
 from dblift.core.sql_model.base import ParseResult, SqlObject, SqlStatement
+from dblift.core.sql_parser.lexical_engine import LexicalEngine
 from dblift.core.sql_parser.parser_interface import SqlParserInterface
 from dblift.core.sql_parser.statement import Statement
 from dblift.core.sql_parser.statement_facts import SqlglotStatementFactsReader, StatementFacts
-from dblift.db.plugins.duckdb.parser._script import blank_comments, scan_script
+from dblift.db.plugins.duckdb.parser.lexical_spec import DUCKDB_SPEC
 
 
 class DuckDBStatementFactsReader(SqlglotStatementFactsReader):
     """Keep DuckDB comment semantics authoritative before reading the AST."""
 
     def read(self, sql: str) -> StatementFacts:
-        """Read scanner-selected SQL with nested comments removed."""
-        text = blank_comments(sql)
+        """Read engine-selected SQL with nested comments removed."""
+        text = LexicalEngine(DUCKDB_SPEC).blank_comments(sql)
         return super().read(text) if text.strip() else StatementFacts("UNKNOWN", "UNKNOWN")
 
 
@@ -23,7 +24,7 @@ _FACTS = DuckDBStatementFactsReader("duckdb")
 
 
 class DuckDBFactsParser(SqlParserInterface):
-    """Preserve scanner boundaries and project facts into the public parser result."""
+    """Preserve engine boundaries and project facts into the public parser result."""
 
     @property
     def dialect_name(self) -> str:
@@ -31,28 +32,19 @@ class DuckDBFactsParser(SqlParserInterface):
         return "duckdb"
 
     def split(self, sql_content: str) -> List[Statement]:
-        """Return source-positioned statements from the engine script scanner."""
-        return [
-            Statement(
-                text=unit.text,
-                line=unit.line,
-                terminator=unit.terminator,
-                source_start=unit.source_start,
-                source_end=unit.source_end,
-            )
-            for unit in scan_script(sql_content)
-        ]
+        """Return source-positioned statements from the shared lexical engine."""
+        return LexicalEngine(DUCKDB_SPEC).split(sql_content)
 
     def split_statements(self, sql_content: str, strict_tokenizer: bool = False) -> List[str]:
-        """Return execution text from the engine script scanner."""
-        return [record.text for record in self.split(sql_content)]
+        """Return execution text from the shared lexical engine."""
+        return LexicalEngine(DUCKDB_SPEC).split_statements(sql_content)
 
     def split_for_analysis(self, sql_content: str, strict_tokenizer: bool = False) -> List[str]:
-        """Include comment-only segments in scanner-selected analysis text."""
-        return [unit.text for unit in scan_script(sql_content, comment_only=True)]
+        """Include comment-only segments in the engine's analysis text."""
+        return LexicalEngine(DUCKDB_SPEC).split_for_analysis(sql_content)
 
     def split_for_extraction(self, sql_content: str, strict_tokenizer: bool = False) -> List[str]:
-        """Return the same scanner-selected constituents as analysis."""
+        """Return the same engine-selected constituents as analysis."""
         return self.split_for_analysis(sql_content, strict_tokenizer)
 
     def parse_sql(self, sql_content: str, default_schema: Optional[str] = None) -> ParseResult:
@@ -88,7 +80,7 @@ class DuckDBFactsParser(SqlParserInterface):
         ]
 
     def validate_sql(self, sql_content: str) -> Dict[str, Any]:
-        """Report whether every scanner-selected statement has readable facts."""
+        """Report whether every engine-selected statement has readable facts."""
         result = self.parse_sql(sql_content)
         return {
             "valid": result.success,

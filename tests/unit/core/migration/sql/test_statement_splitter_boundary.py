@@ -33,9 +33,16 @@ def test_unmigrated_statement_splitter_uses_regex_parser_factory(monkeypatch):
         def get_parser(self):
             return FakeParser()
 
-    monkeypatch.setattr(splitter_module, "SqlParserFactory", FakeFactory)
+    class UnmigratedQuirks:
+        def lexical_spec(self):
+            return None
 
-    splitter = StatementSplitter("duckdb")
+    monkeypatch.setattr(splitter_module, "SqlParserFactory", FakeFactory)
+    monkeypatch.setattr(
+        splitter_module.ProviderRegistry, "get_quirks", lambda dialect: UnmigratedQuirks()
+    )
+
+    splitter = StatementSplitter("unmigrated")
 
     assert splitter.split_statements("select 1;") == ["select 1;"]
     assert created_parser_types == ["regex"]

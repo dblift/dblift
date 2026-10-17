@@ -6,6 +6,7 @@ from typing import List
 from dblift.core.sql_parser.lexical_spec import LexicalSpec
 from dblift.core.sql_parser.lexical_statement_parser import LexicalStatementParser
 from dblift.core.sql_parser.lexical_tokenizer import LexicalTokenizer
+from dblift.core.sql_parser.segment_script import SegmentScript
 from dblift.core.sql_parser.statement import Statement, analysis_sql
 
 logger = logging.getLogger(__name__)
@@ -29,6 +30,11 @@ class LexicalEngine:
             comments=tokenizer.comments,
             delimiter_script=tokenizer.delimiter_script,
             terminator_records=records,
+            segment_script=(
+                None
+                if self.spec.segment_script is None
+                else SegmentScript(self.spec.segment_script, script, tokenizer.origin)
+            ),
         )
 
     @staticmethod
@@ -74,9 +80,10 @@ class LexicalEngine:
             )
         tokenizer = LexicalTokenizer(script, spec=self.spec)
         tokens = tokenizer.tokenize()
-        LexicalStatementParser(
-            tokens, source=script, spec=self.spec, comments=tokenizer.comments
-        ).split()
+        if self.spec.segment_script is None:
+            LexicalStatementParser(
+                tokens, source=script, spec=self.spec, comments=tokenizer.comments
+            ).split()
         parts: List[str] = []
         last = 0
         for start, end in tokenizer.comments:
@@ -84,4 +91,6 @@ class LexicalEngine:
             last = end
         parts.append(script[last:])
         masked = "".join(parts)
+        if self.spec.segment_script is not None:
+            return masked[tokenizer.origin :]  # a segment script's byte order mark is not text
         return masked[1:] if self.spec.sqlite_shell and script.startswith("\ufeff") else masked
