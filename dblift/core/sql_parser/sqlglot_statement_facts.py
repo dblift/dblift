@@ -163,6 +163,12 @@ def unread_name_character(sql: str, *, dialect: str) -> Optional[int]:
     return _first_unread_outside_comments(sql, position, len(sql), comments, nested)
 
 
+def readable_dml_target(sql: str, *, dialect: str) -> Optional[str]:
+    """The target of an INSERT, UPDATE or DELETE whose name is bounded by ASCII blanks, whatever
+    else the statement holds; ``None`` when the name itself is not safely readable."""
+    return _head_facts(sql, "", dialect=dialect).target
+
+
 def _unread_name_facts(sql: str, dialect: str, at: int) -> StatementFacts:
     """The statement's operation and kind, and nothing it names."""
     head = _head_facts(sql, "", dialect=dialect)

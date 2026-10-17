@@ -17,6 +17,7 @@ from typing import Any, Dict, Iterator, List, Optional, Tuple
 from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
 from dblift.core.sql_model.base import SqlObject, SqlObjectType
 from dblift.core.sql_parser.parser_factory import SqlParserFactory
+from dblift.core.sql_parser.sqlglot_statement_facts import readable_dml_target
 from dblift.db.base_quirks import BaseQuirks
 from dblift.db.dml_analysis import (
     cte_outer_statement_type,
@@ -38,7 +39,7 @@ _DROP_TARGET = re.compile(
     re.IGNORECASE,
 )
 _DROP_KEYWORD = re.compile(
-    r"^\s*DROP\s+(TABLE|MATERIALIZED\s+VIEW|SCHEMA|DATABASE)\b", re.IGNORECASE
+    r"^\s*DROP\s+(TABLE|MATERIALIZED\s+VIEW|VIEW|SCHEMA|DATABASE)\b", re.IGNORECASE
 )
 # Objects whose DROP discards rows; dropping an index, a sequence or a routine does not.
 _DATA_HOLDERS = frozenset(
@@ -201,7 +202,9 @@ def _analyse(text: str, dialect: str) -> ScriptAnalysis:
                 sql=body,
             )
             fact_statements.append(analysed)
-            caution = _caution_for(analysed, body, facts.opaque)
+            caution = _caution_for(
+                analysed, body, quirks.sqlglot_dialect if facts.opaque else None
+            )
             if caution is not None:
                 fact_cautions.append(caution)
             if facts.error:
@@ -328,7 +331,7 @@ def _unnamed_drop_caution(stmt: AnalysedStatement, body: str) -> Optional[Cautio
     if match is None:
         return None
     kind = " ".join(match.group(1).upper().split())
-    code = "drop-schema" if kind in ("SCHEMA", "DATABASE") else "drop-table"
+    code = {"SCHEMA": "drop-schema", "DATABASE": "drop-schema", "VIEW": None}.get(kind, "drop-table")
     return Caution(
         DESTROYS,
         stmt.index,
@@ -337,14 +340,16 @@ def _unnamed_drop_caution(stmt: AnalysedStatement, body: str) -> Optional[Cautio
     )
 
 
-def _caution_for(stmt: AnalysedStatement, body: str, opaque: bool = False) -> Optional[Caution]:
+def _caution_for(
+    stmt: AnalysedStatement, body: str, opaque_dialect: Optional[str] = None
+) -> Optional[Caution]:
     op = stmt.operation
     if op == "TRUNCATE":
         return Caution(DESTROYS, stmt.index, f"TRUNCATE empties {_names(stmt.objects)}", "truncate")
     if op == "DROP":
         held = tuple(o for o in stmt.objects if o.type in _DATA_HOLDERS)
         if not held:
-            return _unnamed_drop_caution(stmt, body) if opaque else None
+            return _unnamed_drop_caution(stmt, body) if opaque_dialect else None
         if any(o.type in _SCHEMA_HOLDERS for o in held):
             code: Optional[str] = "drop-schema"
         elif any(o.type in _ROW_HOLDERS for o in held):
@@ -365,11 +370,13 @@ def _caution_for(stmt: AnalysedStatement, body: str, opaque: bool = False) -> Op
             "drop-column",
         )
     if op in ("UPDATE", "DELETE") or (op == "WITH" and stmt.kind == "DML"):
-        if stmt.full_table and opaque:
+        if stmt.full_table and opaque_dialect:
+            target = readable_dml_target(body, dialect=opaque_dialect)
             return Caution(
                 DESTROYS,
                 stmt.index,
-                f"{op}: the predicate could not be read; treated as changing every row",
+                f"{op}: the predicate could not be read; treated as changing every row"
+                + (f" of {target}" if target else ""),
                 "dml-no-where",
             )
         if stmt.full_table:
