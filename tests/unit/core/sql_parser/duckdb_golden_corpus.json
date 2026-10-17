@@ -7030,7 +7030,7 @@
    "masking": [
     [
      "SELECT a$\u00a0E'?'",
-     "SELECT a$"
+     "SELECT a$\u00a0E"
     ],
     [
      "DROP TABLE t",
@@ -7096,7 +7096,7 @@
    ],
    "masking": [
     [
-     "SELECT 1 AS a$$ $t$x; DROP TABLE t; SELECT 3;",
+     "SELECT 1 AS a$$ '?'",
      "SELECT 1"
     ]
    ],
@@ -7131,7 +7131,7 @@
    ],
    "masking": [
     [
-     "SELECT 1 AS a\u00a0$$t$x; DROP TABLE t; SELECT 3;",
+     "SELECT 1 AS a\u00a0'?'",
      "SELECT 1"
     ]
    ],
@@ -7166,7 +7166,7 @@
    ],
    "masking": [
     [
-     "SELECT 1 AS a$1\u00a0$t$x; DROP TABLE t; SELECT 3;",
+     "SELECT 1 AS a$1\u00a0'?'",
      "SELECT 1"
     ]
    ],
@@ -7202,7 +7202,7 @@
    ],
    "masking": [
     [
-     "SELECT 1 AS a$$, 2 AS e\u00a0$t$x; DROP TABLE t; SELECT 3;",
+     "SELECT 1 AS a$$, 2 AS e\u00a0'?'",
      "SELECT 1"
     ]
    ],
@@ -7221,6 +7221,150 @@
    ],
    "strings": [
     "SELECT 1 AS a$$, 2 AS e\u00a0$t$x; DROP TABLE t; SELECT 3;"
+   ]
+  }
+ },
+ {
+  "known_gap": "86",
+  "name": "block_comment_apostrophe_keeps_later_blanks_in_words",
+  "script": "/* don't */ SELECT 2 AS e\u00a0$t$x; DROP TABLE t; SELECT 3;",
+  "views": {
+   "analysis": [
+    "/* don't */ SELECT 2 AS e\u00a0$t$x; DROP TABLE t; SELECT 3;"
+   ],
+   "blanked": "  SELECT 2 AS e\u00a0$t$x; DROP TABLE t; SELECT 3;",
+   "extraction": [
+    "/* don't */ SELECT 2 AS e\u00a0$t$x; DROP TABLE t; SELECT 3;"
+   ],
+   "masking": [
+    [
+     "/* don't */ SELECT 2 AS e\u00a0'?'",
+     "SELECT 2"
+    ]
+   ],
+   "records": [
+    {
+     "analysis_statements": null,
+     "kind": "sql",
+     "line": 1,
+     "multi": false,
+     "repeat": 1,
+     "source_end": 55,
+     "source_start": 0,
+     "terminator": null,
+     "text": "/* don't */ SELECT 2 AS e\u00a0$t$x; DROP TABLE t; SELECT 3;"
+    }
+   ],
+   "strings": [
+    "/* don't */ SELECT 2 AS e\u00a0$t$x; DROP TABLE t; SELECT 3;"
+   ]
+  }
+ },
+ {
+  "known_gap": "87",
+  "name": "block_comment_dollar_tag_keeps_later_blanks_in_words",
+  "script": "/* $$ */ SELECT 2 AS e\u00a0$t$x; DROP TABLE t; SELECT 3;",
+  "views": {
+   "analysis": [
+    "/* $$ */ SELECT 2 AS e\u00a0$t$x; DROP TABLE t; SELECT 3;"
+   ],
+   "blanked": "  SELECT 2 AS e\u00a0$t$x; DROP TABLE t; SELECT 3;",
+   "extraction": [
+    "/* $$ */ SELECT 2 AS e\u00a0$t$x; DROP TABLE t; SELECT 3;"
+   ],
+   "masking": [
+    [
+     "/* $$ */ SELECT 2 AS e\u00a0'?'",
+     "SELECT 2"
+    ]
+   ],
+   "records": [
+    {
+     "analysis_statements": null,
+     "kind": "sql",
+     "line": 1,
+     "multi": false,
+     "repeat": 1,
+     "source_end": 52,
+     "source_start": 0,
+     "terminator": null,
+     "text": "/* $$ */ SELECT 2 AS e\u00a0$t$x; DROP TABLE t; SELECT 3;"
+    }
+   ],
+   "strings": [
+    "/* $$ */ SELECT 2 AS e\u00a0$t$x; DROP TABLE t; SELECT 3;"
+   ]
+  }
+ },
+ {
+  "known_gap": "88",
+  "name": "escape_string_backslash_quote_keeps_later_blanks_in_words",
+  "script": "SELECT E'a\\'b' AS c, 2 AS e\u00a0$t$x; DROP TABLE t; SELECT 3;",
+  "views": {
+   "analysis": [
+    "SELECT E'a\\'b' AS c, 2 AS e\u00a0$t$x; DROP TABLE t; SELECT 3;"
+   ],
+   "blanked": "SELECT E'a\\'b' AS c, 2 AS e\u00a0$t$x; DROP TABLE t; SELECT 3;",
+   "extraction": [
+    "SELECT E'a\\'b' AS c, 2 AS e\u00a0$t$x; DROP TABLE t; SELECT 3;"
+   ],
+   "masking": [
+    [
+     "SELECT E'?' AS c, 2 AS e\u00a0'?'",
+     "SELECT E"
+    ]
+   ],
+   "records": [
+    {
+     "analysis_statements": null,
+     "kind": "sql",
+     "line": 1,
+     "multi": false,
+     "repeat": 1,
+     "source_end": 57,
+     "source_start": 0,
+     "terminator": null,
+     "text": "SELECT E'a\\'b' AS c, 2 AS e\u00a0$t$x; DROP TABLE t; SELECT 3;"
+    }
+   ],
+   "strings": [
+    "SELECT E'a\\'b' AS c, 2 AS e\u00a0$t$x; DROP TABLE t; SELECT 3;"
+   ]
+  }
+ },
+ {
+  "known_gap": "89",
+  "name": "closing_dollar_begins_the_next_tag_keeps_later_blanks_in_words",
+  "script": "SELECT 1 AS a$$x$$$, 2 AS e\u00a0$t$x; DROP TABLE t; SELECT 3;",
+  "views": {
+   "analysis": [
+    "SELECT 1 AS a$$x$$$, 2 AS e\u00a0$t$x; DROP TABLE t; SELECT 3;"
+   ],
+   "blanked": "SELECT 1 AS a$$x$$$, 2 AS e\u00a0$t$x; DROP TABLE t; SELECT 3;",
+   "extraction": [
+    "SELECT 1 AS a$$x$$$, 2 AS e\u00a0$t$x; DROP TABLE t; SELECT 3;"
+   ],
+   "masking": [
+    [
+     "SELECT 1 AS a$$x$$$, 2 AS e\u00a0'?'",
+     "SELECT 1"
+    ]
+   ],
+   "records": [
+    {
+     "analysis_statements": null,
+     "kind": "sql",
+     "line": 1,
+     "multi": false,
+     "repeat": 1,
+     "source_end": 57,
+     "source_start": 0,
+     "terminator": null,
+     "text": "SELECT 1 AS a$$x$$$, 2 AS e\u00a0$t$x; DROP TABLE t; SELECT 3;"
+    }
+   ],
+   "strings": [
+    "SELECT 1 AS a$$x$$$, 2 AS e\u00a0$t$x; DROP TABLE t; SELECT 3;"
    ]
   }
  }
