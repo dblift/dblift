@@ -381,3 +381,30 @@ def test_a_foreign_character_appended_to_a_real_psql_combined_recording_is_repor
             entry["records"][0]["text"] += " "
         found = [d for d in compare_recordings(old, new, BLANKS) if d.script_id == script_id]
         assert [d.view for d in found] == [path], path
+
+
+def test_a_span_may_hold_the_blanks_and_the_separator_line_around_the_kept_run() -> None:
+    vt = "\x0b"
+    script = "DROP TABLE t" + vt + "\nGO\n"
+    old = record("DROP TABLE t", 0, len(script))
+    old["terminator"] = "GO"
+    new = record("DROP TABLE t" + vt, 0, len(script))
+    new["terminator"] = "GO"
+    assert (
+        compare_recordings(
+            recording(script, [], [], [old]), recording(script, [], [], [new]), BLANKS
+        )
+        == []
+    )
+
+
+def test_a_span_whose_kept_run_is_not_the_texts_is_still_reported() -> None:
+    script = "DROP TABLE t" + NBSP + "\x0b\n"
+    old = record("DROP TABLE t", 0, len(script))
+    new = record("DROP TABLE t" + NBSP, 0, len(script))
+    found = compare_recordings(
+        recording(script, [], [], [old]), recording(script, [], [], [new]), BLANKS
+    )
+    assert [d.detail for d in found] == [
+        "span: its trailing characters differ from the text's kept run"
+    ]

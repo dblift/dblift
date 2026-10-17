@@ -166,8 +166,10 @@ def _span_runs(script: str, record: Dict[str, Any], blanks: str) -> Optional[Tup
     """The characters of a record's span before and after its text's core (terminator left out)."""
     span = script[record["source_start"] : record["source_end"]]
     terminator = record["terminator"]
-    if terminator and span.endswith(terminator):
-        span = span[: -len(terminator)]
+    if terminator and span.rstrip("\r\n").endswith(
+        terminator
+    ):  # a separator line ends with its newline
+        span = span.rstrip("\r\n")[: -len(terminator)]
     core = _runs(record["text"], frozenset(_WHITESPACE | set(blanks)))[1]
     for reading in _readings(span):
         at = reading.find(core) if core else -1
@@ -188,9 +190,10 @@ def _check_span(script: str, new: Dict[str, Any], blanks: str) -> None:
     edge = frozenset(_WHITESPACE | set(blanks))
     text_lead, _, text_trail = _runs(new["text"], edge)
     span_lead, span_trail = after
-    if span_lead != text_lead:
+    # a span also holds the blanks of the dialect that the text lost around its kept run
+    if span_lead.lstrip(blanks) != text_lead.lstrip(blanks):
         raise _Mismatch(None, "span: its leading characters differ from the text's kept run")
-    if span_trail != text_trail and span_trail != "":
+    if span_trail.rstrip(blanks) != text_trail.rstrip(blanks) and span_trail != "":
         raise _Mismatch(None, "span: its trailing characters differ from the text's kept run")
 
 
