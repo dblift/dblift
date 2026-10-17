@@ -1,6 +1,6 @@
 [
 {
-"name": "review1_slash",
+"name": "slash_terminator_after_comment_opener_and_slash",
 "script": "--#SET TERMINATOR /\nVALUES 1 /*/\nVALUES 2 */ /\n",
 "views": {
 "analysis": [
@@ -49,7 +49,7 @@
 }
 },
 {
-"name": "review2_closer",
+"name": "closer_terminator_after_nested_comment_closers",
 "script": "--#SET TERMINATOR */\nVALUES 1 /* /* a */*/\n*/ VALUES 2 */\n",
 "views": {
 "error": [
@@ -59,7 +59,7 @@
 }
 },
 {
-"name": "review3_dash_open",
+"name": "line_comment_ending_in_the_comment_opener_terminator",
 "script": "--#SET TERMINATOR /*\nVALUES 1 -- x/*\n",
 "views": {
 "analysis": [
@@ -3703,6 +3703,179 @@
 "error": [
 "UnsupportedMetaCommandError",
 "CLP command REORG on line 1: dblift does not run client commands"
+]
+}
+},
+{
+"name": "lone_carriage_return_in_the_middle_of_a_line",
+"script": "VALUES 1\rVALUES 2;\n",
+"views": {
+"analysis": [
+"VALUES 1\rVALUES 2"
+],
+"executed": [
+"VALUES 1\rVALUES 2"
+],
+"masking": [
+[
+"VALUES 1\rVALUES 2",
+"VALUES 1"
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 1,
+"multi": false,
+"repeat": 1,
+"source_end": 19,
+"source_start": 0,
+"terminator": ";",
+"text": "VALUES 1\rVALUES 2"
+}
+],
+"strings": [
+"VALUES 1\rVALUES 2"
+]
+}
+},
+{
+"name": "double_quote_terminator",
+"script": "--#SET TERMINATOR \"\nVALUES 1\"\nVALUES 2\"\n",
+"views": {
+"analysis": [
+"VALUES 1",
+"VALUES 2"
+],
+"executed": [
+"VALUES 1",
+"VALUES 2"
+],
+"masking": [
+[
+"--#SET TERMINATOR \"",
+""
+],
+[
+"VALUES 1",
+"VALUES 1"
+],
+[
+"VALUES 2",
+"VALUES 2"
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "directive",
+"line": 1,
+"multi": false,
+"repeat": 1,
+"source_end": 20,
+"source_start": 0,
+"terminator": null,
+"text": "--#SET TERMINATOR \""
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 2,
+"multi": false,
+"repeat": 1,
+"source_end": 30,
+"source_start": 20,
+"terminator": "\"",
+"text": "VALUES 1"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 3,
+"multi": false,
+"repeat": 1,
+"source_end": 40,
+"source_start": 30,
+"terminator": "\"",
+"text": "VALUES 2"
+}
+],
+"strings": [
+"VALUES 1",
+"VALUES 2"
+]
+}
+},
+{
+"name": "comment_block_line_between_statements",
+"script": "CREATE TABLE t (id INT);\n(=\nCREATE TABLE u (id INT);\n=)\nCREATE TABLE v (id INT);",
+"views": {
+"error": [
+"UnsupportedMetaCommandError",
+"CLP comment block '(=' on line 2: the CLP skips it, dblift does not run CLP input syntax"
+]
+}
+},
+{
+"name": "doubled_quote_inside_a_quoted_identifier",
+"script": "CREATE TABLE \"a\"\"b\" (id INT);\nSELECT \"c\"\";\" FROM t;\n",
+"views": {
+"analysis": [
+"CREATE TABLE \"a\"\"b\" (id INT)",
+"SELECT \"c\"\";\" FROM t"
+],
+"executed": [
+"CREATE TABLE \"a\"\"b\" (id INT)",
+"SELECT \"c\"\";\" FROM t"
+],
+"masking": [
+[
+"CREATE TABLE \"a\"\"b\" (id INT)",
+"CREATE TABLE \"a\"\"b\""
+],
+[
+"SELECT \"c\"\";\" FROM t",
+"SELECT \"c\"\""
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 1,
+"multi": false,
+"repeat": 1,
+"source_end": 30,
+"source_start": 0,
+"terminator": ";",
+"text": "CREATE TABLE \"a\"\"b\" (id INT)"
+},
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 2,
+"multi": false,
+"repeat": 1,
+"source_end": 52,
+"source_start": 30,
+"terminator": ";",
+"text": "SELECT \"c\"\";\" FROM t"
+}
+],
+"strings": [
+"CREATE TABLE \"a\"\"b\" (id INT)",
+"SELECT \"c\"\";\" FROM t"
+]
+}
+},
+{
+"name": "code_after_a_closed_body_on_the_same_line",
+"script": "CREATE PROCEDURE p() BEGIN END; SELECT 1 FROM sysibm.sysdummy1;",
+"views": {
+"error": [
+"UnsafeStatementSplitError",
+"line 1 has code after a ';' in the middle of a line: the CLP sends it whole and the server rejects it, and the ibm_db driver runs only the text before the ';'; put each statement on its own line, ended by the terminator, or declare another terminator with --#SET TERMINATOR"
 ]
 }
 },

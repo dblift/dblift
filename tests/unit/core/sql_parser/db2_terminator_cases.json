@@ -2061,7 +2061,7 @@ null,
 47
 ]
 ],
-"id": "review1_slash",
+"id": "slash_terminator_after_comment_opener_and_slash",
 "script": "--#SET TERMINATOR /\nVALUES 1 /*/\nVALUES 2 */ /\n"
 },
 {
@@ -2070,7 +2070,7 @@ null,
 "UnsafeStatementSplitError",
 "line 2 ends with '*/', which is also part of a comment delimiter: the CLP cuts the statement there, the splitter cannot tell the two readings apart; put the comment on a line of its own"
 ],
-"id": "review2_closer",
+"id": "closer_terminator_after_nested_comment_closers",
 "script": "--#SET TERMINATOR */\nVALUES 1 /* /* a */*/\n*/ VALUES 2 */\n"
 },
 {
@@ -2093,7 +2093,7 @@ null,
 37
 ]
 ],
-"id": "review3_dash_open",
+"id": "line_comment_ending_in_the_comment_opener_terminator",
 "script": "--#SET TERMINATOR /*\nVALUES 1 -- x/*\n"
 },
 {
