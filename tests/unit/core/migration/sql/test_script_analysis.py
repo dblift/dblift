@@ -254,11 +254,11 @@ def test_quirks_failures_never_raise(monkeypatch):
         def is_full_table_dml(self, statement):
             raise RuntimeError("broken")
 
+        def statement_dml_table(self, statement):
+            raise RuntimeError("broken")
+
     monkeypatch.setattr(
         script_analysis.ProviderRegistry, "get_quirks", lambda dialect: BrokenQuirks(dialect)
-    )
-    monkeypatch.setattr(
-        script_analysis, "statement_dml_table", MagicMock(side_effect=RuntimeError("broken"))
     )
 
     analysis = analyse_script("DELETE FROM sessions;", "postgresql")

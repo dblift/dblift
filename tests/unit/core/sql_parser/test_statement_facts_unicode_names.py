@@ -21,6 +21,8 @@ from dblift.db.plugins.duckdb.parser.duckdb_facts_parser import DuckDBFactsParse
 from dblift.db.plugins.sqlite.parser.sqlite_facts_parser import SQLiteFactsParser
 from dblift.db.provider_registry import ProviderRegistry
 
+_quirks = ProviderRegistry.get_quirks
+
 DIALECTS = ("sqlite", "duckdb", "postgres", "mysql", "oracle", "tsql", "redshift", "snowflake")
 
 # sqlglot's non-ASCII blanks, plus the zero-width characters DuckDB reads as blanks.
@@ -129,7 +131,7 @@ def test_token_error_names_nothing_with_an_unread_character(dialect, shape, char
     assert facts.objects == ()
     assert facts.target is None and facts.predicate is None and facts.target_sql is None
     if dialect == "sqlite":
-        assert analyze_dml(sql, sqlglot_dialect=dialect).table == ""
+        assert analyze_dml(sql, quirks=_quirks(dialect)).table == ""
 
 
 @pytest.mark.parametrize(
@@ -141,7 +143,7 @@ def test_dml_analysis_of_the_other_dialects_names_nothing(dialect, shape):
     # the engines, so no table is named (a non-ASCII-letter name is withheld too, for now).
     _, template = UNTERMINATED[shape]
 
-    assert analyze_dml(template.format(c=chr(0xA0)), sqlglot_dialect=dialect).table == ""
+    assert analyze_dml(template.format(c=chr(0xA0)), quirks=_quirks(dialect)).table == ""
 
 
 @pytest.mark.parametrize("char", UNREAD, ids=IDS)

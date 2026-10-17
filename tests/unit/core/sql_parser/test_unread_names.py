@@ -10,6 +10,9 @@ from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.sql_parser.parser_factory import SqlParserFactory
 from dblift.core.sql_parser.unread_names import names_unreadable, statement_sources
 from dblift.db.dml_analysis import analyze_dml, statement_dml_table
+from dblift.db.provider_registry import ProviderRegistry
+
+_quirks = ProviderRegistry.get_quirks
 
 NBSP, ZWSP, ZWJ, ACCENT = " ", "​", "‍", "́"
 LEGACY = (
@@ -105,7 +108,7 @@ def test_the_analyzer_names_nothing_for_an_unreadable_statement(dialect):
 def test_dml_analysis_names_no_table_for_an_unreadable_statement(dialect):
     statement = f"DELETE FROM t{NBSP}WHERE a = 1"
     assert statement_dml_table(statement, dialect) == ""
-    mutation = analyze_dml(statement, sqlglot_dialect=dialect)
+    mutation = analyze_dml(statement, quirks=_quirks(dialect))
     assert mutation.table == "" and mutation.events is None and mutation.updated_columns == []
     assert statement_dml_table("DELETE FROM t WHERE a = 1", dialect) == "t"
 

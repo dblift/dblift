@@ -184,9 +184,8 @@ class UndoScriptGenerator(_UndoReversersMixin, _UndoExtractorsMixin):
         quirks = ProviderRegistry.get_quirks(self.dialect)
         if quirks.supports_statement_facts:
             reverse = (
-                self._reverse_sqlite_facts
-                if quirks.sqlglot_dialect
-                == "sqlite"  # lint: allow-dialect-string: SQLite-only undo contract
+                self._reverse_statement_facts
+                if quirks.undo_reverses_statement_facts
                 else self._review_statement_facts
             )
             return [
@@ -294,8 +293,8 @@ class UndoScriptGenerator(_UndoReversersMixin, _UndoExtractorsMixin):
             f"-- WARNING: {reason}", sql, facts.operation, reason, requires_manual_review=True
         )
 
-    def _reverse_sqlite_facts(self, sql: str, facts: StatementFacts) -> Optional[UndoStatement]:
-        """Reverse only SQLite operations whose AST facts determine the target."""
+    def _reverse_statement_facts(self, sql: str, facts: StatementFacts) -> Optional[UndoStatement]:
+        """Reverse only operations whose statement facts determine the target."""
         if facts.operation == "UNKNOWN" and not facts.opaque:
             return None
         if facts.error is None and facts.operation == "CREATE" and facts.affected_objects:

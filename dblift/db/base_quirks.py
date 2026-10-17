@@ -8,6 +8,7 @@ provides their default bodies.
 
 from __future__ import annotations
 
+import inspect
 import re
 from typing import (
     TYPE_CHECKING,
@@ -26,7 +27,9 @@ from dblift.db.dml_analysis import (
     DEFAULT_UPSERT_SET_MARKERS,
     DmlMutation,
     analyze_dml,
+    dml_where_predicate,
     is_full_table_dml,
+    statement_dml_table,
 )
 from dblift.db.feature_gate import FeatureGate
 
@@ -83,20 +86,33 @@ class BaseQuirks:
     sqlglot_dialect: Optional[str] = None
     #: Plugin-owned reader class for statement facts.
     statement_facts_class: Optional[Type["StatementFactsReader"]] = None
+    #: Whether undo generation reverses statements from their facts (rather than
+    #: asking for a hand-written undo).
+    undo_reverses_statement_facts: bool = False
 
     @property
     def supports_statement_facts(self) -> bool:
         """Whether this plugin has an authoritative statement facts reader."""
         return self.statement_facts_class is not None
 
-    def statement_facts(self, statement: str) -> "StatementFacts":
-        """Return plugin statement facts when ``supports_statement_facts`` is true."""
+    def statement_facts_reader(self) -> "StatementFactsReader":
+        """Construct the plugin's reader; its class must accept ``(dialect, spec)``."""
         reader_class = self.statement_facts_class
-        dialect = self.sqlglot_dialect
-        spec = self.lexical_spec()
         if reader_class is None:
             raise NotImplementedError("This dialect has no statement facts reader")
-        return reader_class(dialect, spec).read(statement)
+        args = (self.sqlglot_dialect, self.lexical_spec())
+        try:
+            inspect.signature(reader_class).bind(*args)
+        except (TypeError, ValueError):
+            raise TypeError(
+                f"{type(self).__name__} statement facts reader {reader_class.__name__} "
+                "must accept (dialect, spec)"
+            ) from None
+        return reader_class(*args)
+
+    def statement_facts(self, statement: str) -> "StatementFacts":
+        """Return plugin statement facts when ``supports_statement_facts`` is true."""
+        return self.statement_facts_reader().read(statement)
 
     #: Upper-cased SQL patterns that signal sqlglot can't parse the
     #: statement faithfully. When *any* pattern appears in the
@@ -134,7 +150,7 @@ class BaseQuirks:
         """Classify a DML statement for undo-safety (table, events, updated columns)."""
         return analyze_dml(
             statement,
-            sqlglot_dialect=self.sqlglot_dialect,
+            quirks=self,
             quote_pairs=self.sql_scan_quote_pairs,
             upsert_set_markers=self.upsert_update_set_markers,
             upsert_marker_pairs=self.upsert_update_marker_pairs,
@@ -144,9 +160,17 @@ class BaseQuirks:
         """Whether the statement is an UPDATE/DELETE with no top-level WHERE."""
         return is_full_table_dml(
             statement,
-            sqlglot_dialect=self.sqlglot_dialect,
+            quirks=self,
             quote_pairs=self.sql_scan_quote_pairs,
         )
+
+    def dml_where_predicate(self, statement: str) -> "Optional[str]":
+        """The WHERE condition of an UPDATE/DELETE, or ``None`` (see ``dml_analysis``)."""
+        return dml_where_predicate(statement, quirks=self)
+
+    def statement_dml_table(self, statement: str) -> str:
+        """Table a DML statement writes to, quoted as written (see ``dml_analysis``)."""
+        return statement_dml_table(statement, quirks=self)
 
     def is_sqlglot_opaque_valid_ddl(self, sql_content: str) -> bool:
         """Return True if *sql_content* is valid DDL that sqlglot cannot parse
