@@ -38,31 +38,51 @@ ROW_KEYS = {"sql", "inputs", "facts", "old", "facts_newest", "old_newest"}
 # (family, word, page wording) -- one reserved word and one word the page does not reserve.
 SPOT_CHECKS: Dict[str, Dict[str, Any]] = {
     "postgresql": {
-        "in": ("SELECT", "SELECT | reserved | reserved | reserved | reserved"),
+        "in": [("SELECT", "SELECT | reserved | reserved | reserved | reserved")],
         "out": ("COMMENT", "COMMENT | non-reserved"),
     },
-    "mysql": {"in": ("SELECT", "SELECT (R)"), "out": ("COMMENT", "COMMENT")},
+    "mysql": {
+        "in": [
+            ("SELECT", "SELECT (R)"),
+            ("PERCENT_RANK", "PERCENT_RANK (R); added in 8.0.2 (reserved)"),
+        ],
+        "out": ("COMMENT", "COMMENT"),
+    },
     "oracle": {
-        "in": ("SELECT", "SELECT *"),
-        "out": ("TYPE", "Oracle SQL keywords are not reserved"),
+        "in": [("SELECT", "SELECT *")],
+        "out": ("TYPE", 'TYPE: not on the reserved list; "Oracle SQL keywords are not reserved"'),
     },
     "sqlserver": {
-        "in": ("SELECT", "SELECT"),
-        "out": ("ABSOLUTE", "Future Keywords: could be reserved in future releases"),
+        "in": [("SELECT", "SELECT")],
+        "out": ("ABSOLUTE", "ABSOLUTE under Future Keywords: could be reserved in future releases"),
     },
     "redshift": {
-        "in": ("SELECT", "SELECT"),
+        "in": [("SELECT", "SELECT")],
         "out": ("START", "While START and CONNECT are not reserved words"),
     },
     "snowflake": {
-        "in": ("SELECT", "SELECT Reserved by ANSI."),
+        "in": [("SELECT", "SELECT Reserved by ANSI.")],
         "out": ("LEFT", "LEFT Cannot be used as table name or alias in a FROM clause."),
     },
     "duckdb": {
-        "in": ("SELECT", "They must not be a reserved keyword ... SELECT 123 AS SELECT will fail"),
-        "out": ("COMMENT", "duckdb_keywords() category 'unreserved'"),
+        "in": [
+            ("SELECT", "They must not be a reserved keyword ... SELECT 123 AS SELECT will fail")
+        ],
+        "out": ("COMMENT", "COMMENT: duckdb_keywords() category 'unreserved'"),
     },
 }
+
+
+def _on_this_arm(row: Dict[str, Any]) -> Dict[str, Any]:
+    """The row's ``facts`` and ``old`` as recorded for the installed sqlglot."""
+    versions = read_versions()
+    newest = sqlglot.__version__ == versions["newest"] != versions["floor"]
+    if not newest:
+        return {"facts": row["facts"], "old": row["old"]}
+    return {
+        "facts": row.get("facts_newest", row["facts"]),
+        "old": row.get("old_newest", row["old"]),
+    }
 
 
 @pytest.fixture(scope="module")
@@ -81,11 +101,13 @@ def test_inputs_are_identified_by_their_text_and_unique(inputs: List[Dict[str, A
     assert all(row["id"] == statement_id(row["sql"]) for row in inputs)
     for row in inputs:
         assert set(row) == {"id", "sql", "origins"}
-        assert all(set(o) == {"file", "line", "dialects"} for o in row["origins"])
+        assert all(set(o) == {"file", "dialects"} for o in row["origins"])
 
 
 def test_inputs_are_only_ever_added(inputs: List[Dict[str, Any]]) -> None:
-    assert len(inputs) >= read_versions()["inputs"]
+    base = (CORPUS_DIR / "input_ids.txt").read_text(encoding="utf-8").split()
+    assert base == sorted(set(base)) and len(base) == read_versions()["inputs"]
+    assert set(base) <= {row["id"] for row in inputs}
 
 
 @pytest.mark.parametrize("family", FAMILIES)
@@ -189,12 +211,52 @@ def test_reserved_list_carries_its_provenance_and_only_words(family: str) -> Non
 @pytest.mark.parametrize("family", RESERVED_FAMILIES)
 def test_reserved_list_agrees_with_the_vendor_page_on_two_words(family: str) -> None:
     words = set(_reserved(family)["words"])
-    reserved, _ = SPOT_CHECKS[family]["in"]
-    unreserved, _ = SPOT_CHECKS[family]["out"]
-    assert reserved in words
-    assert unreserved not in words
+    checks = SPOT_CHECKS[family]
+    for word, wording in checks["in"]:
+        assert word in words
+        assert word.lower() in wording.lower()
+    word, wording = checks["out"]
+    assert word not in words
+    assert word.lower() in wording.lower()
 
 
 @pytest.mark.parametrize("family", ("sqlite", "db2"))
 def test_families_without_a_vendor_reserved_list_have_none(family: str) -> None:
     assert not (CORPUS_DIR / "reserved" / f"{family}.txt").exists()
+
+
+POSTGRESQL_DERIVATIVES = (
+    "alloydb",
+    "aurora-postgresql",
+    "citus",
+    "cockroachdb",
+    "neon",
+    "supabase",
+    "timescaledb",
+    "yugabytedb",
+)
+
+
+def test_postgresql_derivatives_record_exactly_what_postgresql_does(
+    corpus: Dict[str, List[Dict[str, Any]]],
+) -> None:
+    for derivative in POSTGRESQL_DERIVATIVES:
+        for row in corpus["postgresql"]:
+            now = record_statement(derivative, row["sql"])
+            assert now == _on_this_arm(row), (derivative, row["sql"])
+
+
+def test_mariadb_differs_from_mysql_only_in_the_client_command_error_text(
+    corpus: Dict[str, List[Dict[str, Any]]],
+) -> None:
+    differing = {}
+    for row in corpus["mysql"]:
+        now = record_statement("mariadb", row["sql"])
+        want = _on_this_arm(row)
+        if now != want:
+            differing[row["sql"]] = (want["old"]["hybrid"], now["old"]["hybrid"])
+            assert now["facts"] == want["facts"]
+            assert now["old"]["analyzer"] == want["old"]["analyzer"]
+    assert list(differing) == ["GO"]
+    mysql_error, mariadb_error = (v["raised"] for v in differing["GO"])
+    assert mysql_error.replace("mysql", "mariadb") == mariadb_error

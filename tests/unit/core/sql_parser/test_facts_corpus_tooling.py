@@ -11,6 +11,7 @@ from dblift.core.sql_model.base import SqlObjectType
 from dblift.core.sql_parser.statement_facts import NamedObject, StatementFacts
 from tests.support.facts_corpus import statement_id
 from tests.support.facts_corpus.canonical import compact_facts, dumps
+from tests.support.facts_corpus.measure import update_versions
 from tests.support.facts_corpus.record import check_arm, record_family, record_statement
 from tests.support.facts_corpus.seed import (
     assert_only_added,
@@ -81,7 +82,7 @@ def test_harvest_merges_origins_of_a_repeated_script(tmp_path: Path) -> None:
     root = _tree(tmp_path, "def test_a():\n    parse_sql('SELECT 1')\n    parse_sql('SELECT 1')\n")
     (row,) = harvest(root)
     assert row["id"] == statement_id("SELECT 1")
-    assert [o["line"] for o in row["origins"]] == [2, 3]
+    assert row["origins"] == [{"file": "tests/unit/test_one.py", "dialects": []}]
 
 
 def test_merge_never_drops_an_input_and_guard_rejects_a_removal() -> None:
@@ -165,3 +166,77 @@ def test_recorder_refuses_a_sqlglot_that_is_neither_floor_nor_newest() -> None:
     with pytest.raises(RuntimeError):
         check_arm("newest", "30.18.0", versions)
     assert json.loads(dumps(versions)) == versions
+
+
+CALLS_FILE = '''"""DROP TABLE in a module docstring."""
+X = "CREATE TABLE z (a int)"
+SQL = "ALTER TABLE a ADD b int"
+
+
+def test_a():
+    """CREATE INDEX in a function docstring."""
+    parse_sql("CREATE TABLE t (id int)")
+    analyzer.extract_objects("DROP TABLE t")
+    parse_sql(SQL)
+    log("SELECT 9")
+    raise ValueError("lock timeout exceeded")
+'''
+
+
+def test_harvest_takes_only_the_first_argument_of_the_two_entry_points(tmp_path: Path) -> None:
+    found = {row["sql"] for row in harvest(_tree(tmp_path, CALLS_FILE))}
+    assert found == {"CREATE TABLE t (id int)", "DROP TABLE t", "ALTER TABLE a ADD b int"}
+
+
+def test_source_files_exclude_the_corpus_package_itself(tmp_path: Path) -> None:
+    root = _tree(tmp_path)
+    own = root / "tests" / "support" / "facts_corpus"
+    own.mkdir(parents=True)
+    (own / "seed.py").write_text('extract_objects("SELECT 1")\n', encoding="utf-8")
+    assert source_files(root) == ["tests/unit/test_one.py"]
+
+
+def test_seed_output_does_not_depend_on_line_numbers(tmp_path: Path) -> None:
+    root = _tree(tmp_path)
+    inputs, sources = tmp_path / "inputs.jsonl", tmp_path / "SOURCES.md"
+    seed(root, inputs, sources)
+    first = inputs.read_bytes()
+    path = root / "tests/unit/test_one.py"
+    path.write_text("\n\n\n" + path.read_text(encoding="utf-8"), encoding="utf-8")
+    inputs.unlink()
+    seed(root, inputs, sources)
+    assert inputs.read_bytes() == first
+
+
+def test_versions_first_measurement_is_taken_as_is() -> None:
+    measured = {"size_bytes": 100, "inputs": 10, "newest_differing_rows": {"a": 1}}
+    assert update_versions({"floor": "1", "newest": "2"}, measured, [], ["a"]) == {
+        "floor": "1",
+        "newest": "2",
+        **measured,
+    }
+
+
+def test_versions_keep_the_first_size_and_never_lower_the_inputs() -> None:
+    existing = {
+        "floor": "1",
+        "newest": "2",
+        "size_bytes": 100,
+        "inputs": 10,
+        "newest_differing_rows": {},
+    }
+    ids = [str(i) for i in range(12)]
+    measured = {"size_bytes": 900, "inputs": 12, "newest_differing_rows": {"a": 3}}
+    result = update_versions(existing, measured, ids[:10], ids)
+    assert result["size_bytes"] == 100
+    assert result["inputs"] == 12
+    assert result["newest_differing_rows"] == {"a": 3}
+    with pytest.raises(ValueError, match="inputs"):
+        update_versions(existing, {**measured, "inputs": 9}, ids[:10], ids[:9])
+
+
+def test_versions_refuse_a_swapped_input() -> None:
+    existing = {"size_bytes": 100, "inputs": 3, "newest_differing_rows": {}}
+    measured = {"size_bytes": 100, "inputs": 3, "newest_differing_rows": {}}
+    with pytest.raises(ValueError, match="removed"):
+        update_versions(existing, measured, ["a", "b", "c"], ["a", "b", "z"])
