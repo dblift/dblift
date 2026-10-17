@@ -404,6 +404,6 @@ where DuckDB reads the digits and then a word. The last two are the unsafe direc
 dollar-quoted string, hides later statements inside one statement and sends it, and the driver then runs them one after
 another (measured with a DROP TABLE inside the hidden text: it was run); when an escape string follows instead
 (`SELECT $1E'a\';b'; SELECT 2;`) the splitter cuts inside DuckDB's string, which is the safe direction. Rows 76 and 77 are
-tracked and fixed on their own. In the analysis view, a segment of only non-ASCII blanks between two `;`
+tracked and will be fixed separately. In the analysis view, a segment of only non-ASCII blanks between two `;`
 is a statement whose text is that blank (execution drops it). A byte order mark before a dot line on the first
 line is refused (§6).
