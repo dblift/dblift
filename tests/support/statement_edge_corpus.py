@@ -14,8 +14,9 @@ import json
 import subprocess
 import sys
 import warnings
+from importlib.metadata import version
 from pathlib import Path
-from typing import Any, Dict, List, Mapping, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.migration.sql.statement_splitter import StatementSplitter
@@ -52,7 +53,15 @@ def character_name(char: str) -> str:
     return f"U+{ord(char):04X}"
 
 
-def _common(c: str) -> List[Tuple[str, str]]:
+def _quote(dialect: str, name: str) -> str:
+    if dialect in MYSQL_FAMILY:
+        return f"`{name}`"
+    if dialect == "sqlserver":
+        return f"[{name}]"
+    return f'"{name}"'
+
+
+def _common(dialect: str, c: str) -> List[Tuple[str, str]]:
     return [
         ("before_terminator", f"DROP TABLE t{c};\nSELECT 1;"),
         ("end_of_file", f"SELECT 1;\nDROP TABLE t{c}"),
@@ -60,6 +69,11 @@ def _common(c: str) -> List[Tuple[str, str]]:
         ("leading_first", f"{c}DROP TABLE t;\nSELECT 1;"),
         ("leading_later", f"SELECT 1;\n{c}DROP TABLE t;"),
         ("both_edges", f"SELECT 1;\n{c}DROP TABLE t{c};\nSELECT 2;"),
+        ("comment_end_of_file", f"SELECT 1 -- c{c}"),
+        ("comment_then_statement", f"SELECT 1 -- c{c}\nSELECT 2;"),
+        ("block_comment_before_terminator", f"SELECT 1 /* c */{c};"),
+        ("quoted_identifier", f"DROP TABLE {_quote(dialect, 't')}{c};"),
+        ("two_character_run", f"DROP TABLE t{c} ;"),
     ]
 
 
@@ -88,7 +102,7 @@ def corpus_for(dialect: str) -> Scripts:
     """The ``(script id, script)`` pairs of one dialect, in a fixed order."""
     scripts: Scripts = []
     for char in EDGE_CHARACTERS:
-        for position, script in _common(char) + _specific(dialect, char):
+        for position, script in _common(dialect, char) + _specific(dialect, char):
             scripts.append((f"{position}-{character_name(char)}", script))
     return scripts
 
@@ -122,6 +136,7 @@ def record_dialect(dialect: str, *, commit: str) -> Dict[str, Any]:
     return {
         "dialect": dialect,
         "commit": commit,
+        "sqlglot": version("sqlglot"),
         "scripts": {sid: record_script(dialect, script) for sid, script in corpus_for(dialect)},
     }
 
@@ -136,8 +151,20 @@ def manifest(texts: Mapping[str, str]) -> Dict[str, str]:
     return {name: hashlib.sha256(text.encode("ascii")).hexdigest() for name, text in texts.items()}
 
 
-def write_recordings(directory: Path, *, commit: str) -> Dict[str, str]:
-    """Write ``<dialect>.json`` per dialect and ``MANIFEST.sha256`` into ``directory``."""
+def _git(*args: str) -> str:
+    return subprocess.run(["git", *args], check=True, capture_output=True, text=True).stdout
+
+
+def write_recordings(directory: Path, *, commit: Optional[str] = None) -> Dict[str, str]:
+    """Write ``<dialect>.json`` per dialect and ``MANIFEST.sha256`` into ``directory``.
+
+    Without ``commit`` the recording is stamped with HEAD, and a tree with uncommitted changes to
+    tracked files is refused: the stamp would name code that is not the code that ran.
+    """
+    if commit is None:
+        if _git("status", "--porcelain", "--untracked-files=no").strip():
+            raise RuntimeError("uncommitted changes: pass the commit to stamp explicitly")
+        commit = _git("rev-parse", "HEAD").strip()
     directory.mkdir(parents=True, exist_ok=True)
     texts = {d: to_canonical_json(record_dialect(d, commit=commit)) for d in DIALECTS}
     for dialect, text in texts.items():
@@ -154,14 +181,14 @@ def load_recordings(directory: Path) -> Dict[str, Dict[str, Any]]:
 
 
 def main(argv: List[str]) -> int:
-    if len(argv) != 2:
-        print("usage: python -m tests.support.statement_edge_corpus <directory>", file=sys.stderr)
+    if len(argv) not in (2, 3):
+        print(
+            "usage: python -m tests.support.statement_edge_corpus <directory> [commit]",
+            file=sys.stderr,
+        )
         return 2
     warnings.simplefilter("ignore")
-    commit = subprocess.run(
-        ["git", "rev-parse", "HEAD"], check=True, capture_output=True, text=True
-    ).stdout.strip()
-    write_recordings(Path(argv[1]), commit=commit)
+    write_recordings(Path(argv[1]), commit=argv[2] if len(argv) == 3 else None)
     return 0
 
 

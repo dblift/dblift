@@ -197,3 +197,130 @@ def test_a_script_text_that_differs_between_recordings_is_reported() -> None:
     old = recording("x", ["x"], ["x"])
     new = recording("y", ["x"], ["x"])
     assert [d.view for d in compare_recordings(old, new, BLANKS)] == ["script"]
+
+
+def test_a_difference_that_only_the_analysis_view_holds_is_reported() -> None:
+    old = recording("SELECT 1", ["SELECT 1"], ["SELECT 1"])
+    new = recording("SELECT 1", ["SELECT 1"], ["SELECT" + NBSP + "1"])
+    [found] = compare_recordings(old, new, BLANKS)
+    assert found.view == "analysis" and found.offset == 6
+
+
+def test_a_blank_of_the_dialect_kept_at_the_leading_edge_is_reported() -> None:
+    old = recording("\tSELECT 1", ["SELECT 1"], ["SELECT 1"])
+    new = recording("\tSELECT 1", ["\tSELECT 1"], ["SELECT 1"])
+    [found] = compare_recordings(old, new, BLANKS)
+    assert found.view == "execution" and found.offset == 0
+
+
+def test_a_leading_run_shorter_than_the_old_one_is_reported() -> None:
+    old = recording(NBSP + "SELECT 1", [NBSP + "SELECT 1"], ["SELECT 1"])
+    new = recording(NBSP + "SELECT 1", ["SELECT 1"], ["SELECT 1"])
+    [found] = compare_recordings(old, new, BLANKS)
+    assert found.view == "execution"
+
+
+def test_a_kept_run_must_hold_the_characters_the_script_holds() -> None:
+    em_space = "\u3000"
+    old = recording("DROP TABLE t" + NBSP, ["DROP TABLE t"], ["DROP TABLE t"])
+    new = recording("DROP TABLE t" + NBSP, ["DROP TABLE t" + em_space], ["DROP TABLE t"])
+    [found] = compare_recordings(old, new, BLANKS)
+    assert found.view == "execution" and "script" in found.detail
+
+
+def test_a_kept_run_may_not_replace_the_run_the_old_text_held() -> None:
+    old = recording("t" + NBSP, ["t" + NBSP], ["t" + NBSP])
+    new = recording("t" + NBSP, ["t\u3000\u3000"], ["t" + NBSP])
+    [found] = compare_recordings(old, new, BLANKS)
+    assert found.view == "execution"
+
+
+def test_a_leading_run_may_not_replace_the_run_the_old_text_held() -> None:
+    old = recording(NBSP + "t", [NBSP + "t"], [NBSP + "t"])
+    new = recording(NBSP + "t", ["\u3000t"], [NBSP + "t"])
+    assert [d.view for d in compare_recordings(old, new, BLANKS)] == ["execution"]
+
+
+def test_one_character_of_the_script_cannot_be_kept_by_two_statements() -> None:
+    script = "SELECT 1\n" + NBSP + "SELECT 2"
+    old = recording(script, ["SELECT 1", "SELECT 2"], ["SELECT 1", "SELECT 2"])
+    new = recording(script, ["SELECT 1" + NBSP, NBSP + "SELECT 2"], ["SELECT 1", "SELECT 2"])
+    [found] = compare_recordings(old, new, BLANKS)
+    assert found.view == "execution" and found.statement == 0
+
+
+def test_a_kept_character_claimed_twice_in_a_row_is_reported() -> None:
+    script = "SELECT 1" + NBSP + "SELECT 2"
+    old = recording(script, ["SELECT 1", "SELECT 2"], ["SELECT 1", "SELECT 2"])
+    new = recording(script, ["SELECT 1" + NBSP, NBSP + "SELECT 2"], ["SELECT 1", "SELECT 2"])
+    [found] = compare_recordings(old, new, BLANKS)
+    assert found.view == "execution" and found.statement == 1
+
+
+def test_a_record_whose_text_keeps_a_leading_run_but_whose_span_did_not_move_is_reported() -> None:
+    script = NBSP + "\nVALUES 1"
+    old = recording(script, [], [], [record("VALUES 1", 2, 10, line=2)])
+    new = recording(script, [], [], [record(NBSP + "\nVALUES 1", 2, 10, line=1)])
+    [found] = compare_recordings(old, new, BLANKS)
+    assert found.view == "records" and "span" in found.detail
+
+
+def test_a_record_whose_span_moved_but_whose_text_did_not_is_reported() -> None:
+    script = NBSP + "\nVALUES 1"
+    old = recording(script, [], [], [record("VALUES 1", 2, 10, line=2)])
+    new = recording(script, [], [], [record("VALUES 1", 0, 10, line=2)])
+    [found] = compare_recordings(old, new, BLANKS)
+    assert found.view == "records" and "span" in found.detail
+
+
+def test_a_span_that_stops_at_the_last_token_is_accepted_when_it_did_before() -> None:
+    """A record whose span never held the trailing character keeps not holding it."""
+    script = "DROP TABLE t" + NBSP
+    old = recording(script, [], [], [record("DROP TABLE t", 0, 12)])
+    new = recording(script, [], [], [record("DROP TABLE t" + NBSP, 0, 12)])
+    assert compare_recordings(old, new, BLANKS) == []
+
+
+def test_a_span_that_gains_a_trailing_run_the_text_lacks_is_reported() -> None:
+    script = "DROP TABLE t" + NBSP
+    old = recording(script, [], [], [record("DROP TABLE t", 0, 12)])
+    new = recording(script, [], [], [record("DROP TABLE t", 0, 13)])
+    [found] = compare_recordings(old, new, BLANKS)
+    assert found.view == "records" and "span" in found.detail
+
+
+def test_a_terminator_after_the_kept_run_does_not_count_as_part_of_the_span_run() -> None:
+    script = "DROP TABLE t" + NBSP + ";"
+    old_record = record("DROP TABLE t", 0, 14)
+    old_record["terminator"] = ";"
+    new_record = record("DROP TABLE t" + NBSP, 0, 14)
+    new_record["terminator"] = ";"
+    old = recording(script, [], [], [old_record])
+    assert compare_recordings(old, recording(script, [], [], [new_record]), BLANKS) == []
+
+
+def test_a_record_missing_a_field_is_reported_not_raised() -> None:
+    old = recording("a", [], [], [record("a", 0, 1)])
+    no_terminator = record("a", 0, 1)
+    del no_terminator["terminator"]
+    no_text = record("a", 0, 1)
+    del no_text["text"]
+    [first] = compare_recordings(old, recording("a", [], [], [no_terminator]), BLANKS)
+    [second] = compare_recordings(old, recording("a", [], [], [no_text]), BLANKS)
+    assert first.view == second.view == "records"
+    assert "terminator" in first.detail and "text" in second.detail
+    [third] = compare_recordings(recording("a", [], [], [no_text]), old, BLANKS)
+    assert "text" in third.detail
+
+
+def test_one_character_of_the_script_cannot_be_kept_by_two_records() -> None:
+    script = "SELECT 1" + NBSP + "SELECT 2"
+    old = recording(script, [], [], [record("SELECT 1", 0, 8), record("SELECT 2", 9, 17)])
+    new = recording(
+        script,
+        [],
+        [],
+        [record("SELECT 1" + NBSP, 0, 9), record(NBSP + "SELECT 2", 8, 17)],
+    )
+    [found] = compare_recordings(old, new, BLANKS)
+    assert found.view == "records" and found.statement == 1

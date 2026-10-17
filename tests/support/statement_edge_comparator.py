@@ -3,8 +3,10 @@
 The allowed difference: a character of ``str.isspace()`` that is not one of the dialect's
 ``text_blanks`` sits at a statement's edge in the new recording where the old recording had trimmed it.
 Both sides are cut into ``leading run + core + trailing run`` (a run is made of the characters that
-class covers, the blanks included); the cores must be equal, the new runs may only be longer than the
-old ones, and a run of the new text may not begin or end at an edge with a blank of the dialect.
+class covers, the blanks included); the cores must be equal, each new run must extend the old one
+(the leading run at its left, the trailing run at its right), and a run of the new text may not begin
+or end at an edge with a blank of the dialect. A kept run must also be the characters the script holds
+next to the core, each claimed once, in script order; a record's span must show the same runs as its text.
 Everything else is reported with the dialect, the script id, the view and the first differing offset.
 """
 
@@ -13,6 +15,17 @@ from typing import Any, Dict, FrozenSet, List, Mapping, Optional, Tuple
 
 VIEWS = ("execution", "analysis", "records")
 RECORD_TEXT_FIELDS = ("text", "analysis_statements", "source_start", "source_end", "line")
+RECORD_FIELDS = (
+    "text",
+    "line",
+    "terminator",
+    "kind",
+    "multi",
+    "repeat",
+    "analysis_statements",
+    "source_start",
+    "source_end",
+)
 _WHITESPACE = frozenset(chr(i) for i in range(0x110000) if chr(i).isspace())
 
 
@@ -63,11 +76,38 @@ def _check_text(old: str, new: str, blanks: str) -> None:
         raise _Mismatch(
             len(new) - 1, f"trailing {new_trail[-1]!r} is a blank of the dialect and is kept"
         )
-    if len(new_lead) < len(old_lead) or len(new_trail) < len(old_trail):
-        raise _Mismatch(len(new), "an edge character the old text held is gone")
+    if not new_lead.endswith(old_lead) or not new_trail.startswith(old_trail):
+        raise _Mismatch(len(new), "an edge run of the old text is gone or was replaced")
 
 
-def _check_statements(old: Any, new: Any, blanks: str) -> None:
+def _check_claims(script: str, texts: List[str], blanks: str) -> None:
+    """Each kept edge run is the script's own characters, next to its core, claimed once."""
+    edge = frozenset(_WHITESPACE | set(blanks))
+    cursor = 0
+    for index, text in enumerate(texts):
+        lead, core, trail = _runs(text, edge)
+        if not core:
+            continue
+        at = script.find(core, cursor + len(lead))
+        if at < 0:
+            if script.find(core) >= 0:
+                raise _Mismatch(
+                    0, "the statement's characters were already kept by a previous one", index
+                )
+            continue
+        if script[at - len(lead) : at] != lead:
+            raise _Mismatch(0, "the kept leading run is not what the script holds there", index)
+        after = at + len(core)
+        if script[after : after + len(trail)] != trail:
+            raise _Mismatch(
+                len(text) - len(trail),
+                "the kept trailing run is not what the script holds there",
+                index,
+            )
+        cursor = after + len(trail)
+
+
+def _check_statements(old: Any, new: Any, blanks: str, script: Optional[str] = None) -> None:
     if not isinstance(old, list) or not isinstance(new, list):
         if old != new:
             raise _Mismatch(None, f"outcome differs: old {old!r}, new {new!r}")
@@ -79,13 +119,44 @@ def _check_statements(old: Any, new: Any, blanks: str) -> None:
             _check_text(before, after, blanks)
         except _Mismatch as found:
             raise _Mismatch(found.offset, found.detail, index) from None
+    if script is not None:
+        _check_claims(script, list(new), blanks)
 
 
 def _leading(text: str, blanks: str) -> str:
     return _runs(text, frozenset(_WHITESPACE | set(blanks)))[0]
 
 
+def _span_runs(script: str, record: Dict[str, Any], blanks: str) -> Optional[Tuple[str, str]]:
+    """The characters of a record's span before and after its text's core (terminator left out)."""
+    span = script[record["source_start"] : record["source_end"]]
+    terminator = record["terminator"]
+    if terminator and span.endswith(terminator):
+        span = span[: -len(terminator)]
+    core = _runs(record["text"], frozenset(_WHITESPACE | set(blanks)))[1]
+    at = span.find(core) if core else -1
+    return None if at < 0 else (span[:at], span[at + len(core) :])
+
+
+def _check_span(script: str, old: Dict[str, Any], new: Dict[str, Any], blanks: str) -> None:
+    """The new span shows the runs the new text shows; a span that stopped short stays short."""
+    after, before = _span_runs(script, new, blanks), _span_runs(script, old, blanks)
+    if after is None:
+        return
+    edge = frozenset(_WHITESPACE | set(blanks))
+    text_lead, _, text_trail = _runs(new["text"], edge)
+    span_lead, span_trail = after
+    if span_lead != text_lead:
+        raise _Mismatch(None, "span: its leading characters differ from the text's kept run")
+    if span_trail != text_trail and not (span_trail == "" and before and before[1] == ""):
+        raise _Mismatch(None, "span: its trailing characters differ from the text's kept run")
+
+
 def _check_record(script: str, old: Dict[str, Any], new: Dict[str, Any], blanks: str) -> None:
+    for key in RECORD_FIELDS:
+        for side, record in (("old", old), ("new", new)):
+            if key not in record:
+                raise _Mismatch(None, f"{key} is missing from the {side} record")
     for key in sorted(set(old) | set(new)):
         if key not in RECORD_TEXT_FIELDS and old.get(key) != new.get(key):
             raise _Mismatch(None, f"{key} differs: old {old.get(key)!r}, new {new.get(key)!r}")
@@ -109,6 +180,8 @@ def _check_record(script: str, old: Dict[str, Any], new: Dict[str, Any], blanks:
         )
     except _Mismatch as found:
         raise _Mismatch(found.offset, f"span: {found.detail}") from None
+    if old != new:
+        _check_span(script, old, new, blanks)
     shift = _leading(new["text"], blanks).count("\n") - _leading(old["text"], blanks).count("\n")
     if old["line"] != new["line"] + shift:
         raise _Mismatch(
@@ -129,6 +202,10 @@ def _check_records(script: str, old: Any, new: Any, blanks: str) -> None:
             _check_record(script, before, after, blanks)
         except _Mismatch as found:
             raise _Mismatch(found.offset, found.detail, index) from None
+    try:
+        _check_claims(script, [r["text"] for r in new], blanks)
+    except _Mismatch as found:
+        raise _Mismatch(found.offset, found.detail, found.statement) from None
 
 
 def compare_recordings(
@@ -163,7 +240,7 @@ def compare_recordings(
                 if view == "records":
                     _check_records(before["script"], before[view], after[view], text_blanks)
                 else:
-                    _check_statements(before[view], after[view], text_blanks)
+                    _check_statements(before[view], after[view], text_blanks, before["script"])
             except _Mismatch as mismatch:
                 add(script_id, view, mismatch)
     return found
