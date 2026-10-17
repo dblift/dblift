@@ -90,6 +90,9 @@ def test_command_prefixes_field_is_read():
 
 def test_leading_word_field_is_read():
     assert outcome("ECHO1 x;\n")[1][0] == "ECHO1 x"
+    assert outcome("ECHO" + chr(36) + " x;\n")[2] == (
+        "CLP command ECHO on line 1: dblift does not run client commands"
+    )
     spec = with_rules(leading_word=r"[A-Za-z_]+")
     assert (
         outcome("ECHO1 x;\n", spec)[2]
