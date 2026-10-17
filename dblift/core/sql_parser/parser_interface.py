@@ -46,6 +46,13 @@ class SqlParserInterface(ABC):
         """
         return self.split_statements(sql_content, strict_tokenizer=strict_tokenizer)
 
+    def statement_sources(self, script: str, statements: List[str]) -> List[Optional[str]]:
+        """Each of ``statements`` as it stands in ``script``, blanks the split trimmed included.
+
+        ``None`` marks one that cannot be located. Parsers that read names override this.
+        """
+        return list(statements)
+
     def split_for_analysis(self, sql_content: str, strict_tokenizer: bool = False) -> List[str]:
         """Scanner-derived executed constituents, once per execution unit.
 
