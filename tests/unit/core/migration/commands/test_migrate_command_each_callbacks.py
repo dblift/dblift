@@ -28,6 +28,7 @@ def test_migrate_dispatches_generic_and_command_specific_each_callbacks():
         checksum=123,
     )
     result = MigrateResult()
+    command._bind_callbacks(Path("migrations"), True, None, None, result)
 
     assert command._execute_single_migration(
         migration=migration,
@@ -69,6 +70,7 @@ def test_failing_beforeEachMigrate_callback_surfaces_its_own_error():
         checksum=123,
     )
     result = MigrateResult()
+    command._bind_callbacks(Path("migrations"), True, None, None, result)
 
     success = command._execute_single_migration(
         migration=migration,

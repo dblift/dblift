@@ -318,55 +318,26 @@ class MigrateCommand(BaseCommand):
 
     def _execute_before_callbacks(
         self,
-        scripts_dir: Path,
         versioned_migrations: List[Migration],
         repeatable_migrations: List[Migration],
-        use_recursive: bool,
-        use_additional_dirs: Optional[List[Path]],
-        dir_recursive_map: Optional[Dict[Path, bool]],
         result: MigrateResult,
     ) -> None:
         """Execute all before-migration callbacks."""
         # Execute beforeMigrate callbacks
-        self._execute_callbacks(
-            scripts_dir,
-            "beforeMigrate",
-            use_recursive,
-            use_additional_dirs,
-            dir_recursive_map,
-            result=result,
-        )
+        self._fire("beforeMigrate")
 
         # Execute beforeVersioned callbacks if there are versioned migrations
         if versioned_migrations:
-            self._execute_callbacks(
-                scripts_dir,
-                "beforeVersioned",
-                use_recursive,
-                use_additional_dirs,
-                dir_recursive_map,
-                result=result,
-            )
+            self._fire("beforeVersioned")
 
         # Execute beforeRepeatable callbacks if there are repeatable migrations
         if repeatable_migrations:
-            self._execute_callbacks(
-                scripts_dir,
-                "beforeRepeatable",
-                use_recursive,
-                use_additional_dirs,
-                dir_recursive_map,
-                result=result,
-            )
+            self._fire("beforeRepeatable")
 
     def _execute_after_callbacks(
         self,
-        scripts_dir: Path,
         versioned_migrations: List[Migration],
         repeatable_migrations: List[Migration],
-        use_recursive: bool,
-        use_additional_dirs: Optional[List[Path]],
-        dir_recursive_map: Optional[Dict[Path, bool]],
         result: MigrateResult,
     ) -> None:
         """Execute all after-migration callbacks if migrations completed successfully."""
@@ -375,35 +346,14 @@ class MigrateCommand(BaseCommand):
 
         # Execute afterVersioned callbacks if there were versioned migrations
         if versioned_migrations:
-            self._execute_callbacks(
-                scripts_dir,
-                "afterVersioned",
-                use_recursive,
-                use_additional_dirs,
-                dir_recursive_map,
-                result=result,
-            )
+            self._fire("afterVersioned")
 
         # Execute afterRepeatable callbacks if there were repeatable migrations
         if repeatable_migrations:
-            self._execute_callbacks(
-                scripts_dir,
-                "afterRepeatable",
-                use_recursive,
-                use_additional_dirs,
-                dir_recursive_map,
-                result=result,
-            )
+            self._fire("afterRepeatable")
 
         # Execute afterMigrate callbacks after all migrations complete successfully
-        self._execute_callbacks(
-            scripts_dir,
-            "afterMigrate",
-            use_recursive,
-            use_additional_dirs,
-            dir_recursive_map,
-            result=result,
-        )
+        self._fire("afterMigrate")
 
     def _handle_failed_migration(
         self,
@@ -443,14 +393,7 @@ class MigrateCommand(BaseCommand):
             result.set_error(f"Migration failed: {error_message}")
 
         # Execute afterMigrateError callbacks when migration fails
-        self._execute_callbacks(
-            scripts_dir,
-            "afterMigrateError",
-            use_recursive,
-            use_additional_dirs,
-            dir_recursive_map,
-            result=result,
-        )
+        self._fire("afterMigrateError")
 
     def _execute_single_migration(
         self,
@@ -478,22 +421,8 @@ class MigrateCommand(BaseCommand):
             start_time = time.time()
 
             # Execute beforeEach callbacks
-            self._execute_callbacks(
-                scripts_dir,
-                "beforeEach",
-                use_recursive,
-                use_additional_dirs,
-                dir_recursive_map,
-                result=result,
-            )
-            self._execute_callbacks(
-                scripts_dir,
-                "beforeEachMigrate",
-                use_recursive,
-                use_additional_dirs,
-                dir_recursive_map,
-                result=result,
-            )
+            self._fire("beforeEach")
+            self._fire("beforeEachMigrate")
 
             # Start journal tracking for this migration
             if self.journal:
@@ -539,14 +468,7 @@ class MigrateCommand(BaseCommand):
                     },
                 )
                 # Execute afterMigrateError callbacks before breaking
-                self._execute_callbacks(
-                    scripts_dir,
-                    "afterMigrateError",
-                    use_recursive,
-                    use_additional_dirs,
-                    dir_recursive_map,
-                    result=result,
-                )
+                self._fire("afterMigrateError")
                 return False
 
             # End journal tracking for successful migration
@@ -579,22 +501,8 @@ class MigrateCommand(BaseCommand):
             self.log.info(f"Successfully applied migration {migration.script_name}")
 
             # Execute afterEach callbacks after successful migration
-            self._execute_callbacks(
-                scripts_dir,
-                "afterEachMigrate",
-                use_recursive,
-                use_additional_dirs,
-                dir_recursive_map,
-                result=result,
-            )
-            self._execute_callbacks(
-                scripts_dir,
-                "afterEach",
-                use_recursive,
-                use_additional_dirs,
-                dir_recursive_map,
-                result=result,
-            )
+            self._fire("afterEachMigrate")
+            self._fire("afterEach")
 
             return True
 
@@ -664,14 +572,7 @@ class MigrateCommand(BaseCommand):
         lock_lost = getattr(self.provider, "migration_lock_lost", None)
         return callable(lock_lost) and lock_lost() is True
 
-    def _update_final_state(
-        self,
-        result: MigrateResult,
-        scripts_dir: Path,
-        use_recursive: bool,
-        use_additional_dirs: Optional[List[Path]],
-        dir_recursive_map: Optional[Dict[Path, bool]],
-    ) -> None:
+    def _update_final_state(self, result: MigrateResult) -> None:
         """Update final schema version after migrations are applied."""
         # Rebuild state to get accurate applied migrations after migration.
         # scripts_dir=None so build_state skips pending-migration computation
@@ -679,11 +580,12 @@ class MigrateCommand(BaseCommand):
         # exclusion filters aren't available at this point, so recomputing
         # pending here would misreport excluded, never-applied scripts as
         # out-of-order.
+        binding = self._bound_callbacks()
         migration_state_after = self.state_manager.build_state(
             None,
-            recursive=use_recursive,
-            additional_dirs=use_additional_dirs,
-            dir_recursive_map=dir_recursive_map,
+            recursive=binding.recursive,
+            additional_dirs=binding.additional_dirs,
+            dir_recursive_map=binding.dir_recursive_map,
             target_version=None,
             tags=None,
             exclude_tags=None,
@@ -804,6 +706,10 @@ class MigrateCommand(BaseCommand):
             if not validation_success:
                 return result
 
+            self._bind_callbacks(
+                scripts_dir, use_recursive, use_additional_dirs, dir_recursive_map, result
+            )
+
             # Catalog is unfiltered; migrate selects Pending then tags/versions.
             # target_version is label context only (Above target), not an omit filter.
             strict_mode = bool(getattr(self.config, "strict_mode", False))
@@ -850,19 +756,7 @@ class MigrateCommand(BaseCommand):
                         events.extend(("beforeVersioned", "afterVersioned"))
                     if any(m.type == MigrationType.REPEATABLE for m in pending_migrations):
                         events.extend(("beforeRepeatable", "afterRepeatable"))
-                    callback_snapshot = self.state_manager.new_callback_snapshot()
-                    callbacks = [
-                        callback
-                        for event in events
-                        for callback in self.state_manager.get_callbacks_by_event(
-                            scripts_dir,
-                            event,
-                            read_snapshot=callback_snapshot,
-                            recursive=use_recursive,
-                            additional_dirs=use_additional_dirs,
-                            dir_recursive_map=dir_recursive_map,
-                        )
-                    ]
+                    callbacks = self._callbacks_for(events)
                     self._preflight_execution_sql(pending_migrations + callbacks)
                 self._run_preflight(result, ensure_history=True, ensure_schema=True)
 
@@ -982,13 +876,7 @@ class MigrateCommand(BaseCommand):
 
                         # Execute before-migration callbacks
                         self._execute_before_callbacks(
-                            scripts_dir,
-                            versioned_migrations,
-                            repeatable_migrations,
-                            use_recursive,
-                            use_additional_dirs,
-                            dir_recursive_map,
-                            result,
+                            versioned_migrations, repeatable_migrations, result
                         )
 
                         # Execute migrations normally
@@ -1003,13 +891,7 @@ class MigrateCommand(BaseCommand):
 
                         # Execute after-migration callbacks if all migrations succeeded
                         self._execute_after_callbacks(
-                            scripts_dir,
-                            versioned_migrations,
-                            repeatable_migrations,
-                            use_recursive,
-                            use_additional_dirs,
-                            dir_recursive_map,
-                            result,
+                            versioned_migrations, repeatable_migrations, result
                         )
 
                 except Exception as e:
@@ -1019,14 +901,7 @@ class MigrateCommand(BaseCommand):
                         self.log.error(f"Exception during migration execution: {e}")
                         result.set_error(f"Migration execution failed: {e}")
                     # Execute afterMigrateError callbacks on exception
-                    self._execute_callbacks(
-                        scripts_dir,
-                        "afterMigrateError",
-                        use_recursive,
-                        use_additional_dirs,
-                        dir_recursive_map,
-                        result=result,
-                    )
+                    self._fire("afterMigrateError")
                 finally:
                     # Always release the migration lock if it was acquired
                     if lock_acquired:
@@ -1045,9 +920,7 @@ class MigrateCommand(BaseCommand):
                             self.log.warning(f"Could not release migration lock: {release_e}")
 
             # Update final schema version
-            self._update_final_state(
-                result, scripts_dir, use_recursive, use_additional_dirs, dir_recursive_map
-            )
+            self._update_final_state(result)
 
             self._log_command_completion("migrate", result)
             return result

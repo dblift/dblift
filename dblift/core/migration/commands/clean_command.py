@@ -39,6 +39,7 @@ class CleanCommand(BaseCommand):
         """
         self._reset_callback_catalog()
         result = CleanResult()
+        self._bind_callbacks(scripts_dir, recursive, additional_dirs, dir_recursive_map, result)
         clean_enabled = kwargs.pop("clean_enabled", False) is True
         result.show_query_results = kwargs.pop("show_query_results", False) is True
         # CosmosDB has no SQL schema, so ``config.database.schema`` is
@@ -148,30 +149,14 @@ class CleanCommand(BaseCommand):
                 return result
 
             # Execute beforeClean callbacks if scripts_dir is provided
-            if scripts_dir:
-                try:
-                    self._execute_callbacks(
-                        scripts_dir,
-                        "beforeClean",
-                        recursive,
-                        additional_dirs,
-                        dir_recursive_map,
-                        result=result,
-                    )
-                except Exception as e:
-                    self.log.error(f"beforeClean callback failed: {e}")
-                    result.set_error(f"beforeClean callback failed: {e}")
-                    if scripts_dir:
-                        self._execute_callbacks(
-                            scripts_dir,
-                            "afterCleanError",
-                            recursive,
-                            additional_dirs,
-                            dir_recursive_map,
-                            result=result,
-                        )
-                    result.complete()
-                    return result
+            try:
+                self._fire("beforeClean")
+            except Exception as e:
+                self.log.error(f"beforeClean callback failed: {e}")
+                result.set_error(f"beforeClean callback failed: {e}")
+                self._fire("afterCleanError")
+                result.complete()
+                return result
 
             self.log.info(f"Cleaning schema '{self.config.database.schema}'")
 
@@ -217,15 +202,7 @@ class CleanCommand(BaseCommand):
                     raise
 
             # Execute afterClean callbacks if scripts_dir is provided
-            if scripts_dir:
-                self._execute_callbacks(
-                    scripts_dir,
-                    "afterClean",
-                    recursive,
-                    additional_dirs,
-                    dir_recursive_map,
-                    result=result,
-                )
+            self._fire("afterClean")
 
             # Log summary of cleaned objects grouped by type
             self._log_clean_summary(result)
@@ -255,20 +232,12 @@ class CleanCommand(BaseCommand):
             self.log.error(f"Clean operation failed: {e}")
             result.set_error(f"Clean operation failed: {e}")
             # Execute afterCleanError callbacks on exception if scripts_dir is provided
-            if scripts_dir:
-                try:
-                    self._execute_callbacks(
-                        scripts_dir,
-                        "afterCleanError",
-                        recursive,
-                        additional_dirs,
-                        dir_recursive_map,
-                        result=result,
-                    )
-                except Exception as cb_e:
-                    self.log.debug(
-                        f"afterCleanError callback skipped: {cb_e}"
-                    )  # Ignore errors in error callbacks during exception handling
+            try:
+                self._fire("afterCleanError")
+            except Exception as cb_e:
+                self.log.debug(
+                    f"afterCleanError callback skipped: {cb_e}"
+                )  # Ignore errors in error callbacks during exception handling
             self._log_command_completion("clean", result)
             return result
 

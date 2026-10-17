@@ -262,9 +262,9 @@ class TestExecuteBeforeCallbacks(unittest.TestCase):
     def test_always_calls_before_migrate(self):
         cmd = _make_cmd()
         cmd._execute_callbacks = MagicMock()
-        cmd._execute_before_callbacks(
-            Path("/migrations"), [], [], True, None, None, MigrateResult()
-        )
+        result = MigrateResult()
+        cmd._bind_callbacks(Path("/migrations"), True, None, None, result)
+        cmd._execute_before_callbacks([], [], result)
         events = [c.args[1] for c in cmd._execute_callbacks.call_args_list]
         self.assertIn("beforeMigrate", events)
 
@@ -272,18 +272,18 @@ class TestExecuteBeforeCallbacks(unittest.TestCase):
         cmd = _make_cmd()
         cmd._execute_callbacks = MagicMock()
         m = _make_migration()
-        cmd._execute_before_callbacks(
-            Path("/migrations"), [m], [], True, None, None, MigrateResult()
-        )
+        result = MigrateResult()
+        cmd._bind_callbacks(Path("/migrations"), True, None, None, result)
+        cmd._execute_before_callbacks([m], [], result)
         events = [c.args[1] for c in cmd._execute_callbacks.call_args_list]
         self.assertIn("beforeVersioned", events)
 
     def test_skips_before_versioned_when_no_versioned_migrations(self):
         cmd = _make_cmd()
         cmd._execute_callbacks = MagicMock()
-        cmd._execute_before_callbacks(
-            Path("/migrations"), [], [], True, None, None, MigrateResult()
-        )
+        result = MigrateResult()
+        cmd._bind_callbacks(Path("/migrations"), True, None, None, result)
+        cmd._execute_before_callbacks([], [], result)
         events = [c.args[1] for c in cmd._execute_callbacks.call_args_list]
         self.assertNotIn("beforeVersioned", events)
 
@@ -291,18 +291,18 @@ class TestExecuteBeforeCallbacks(unittest.TestCase):
         cmd = _make_cmd()
         cmd._execute_callbacks = MagicMock()
         m = _make_migration(type_=MigrationType.REPEATABLE)
-        cmd._execute_before_callbacks(
-            Path("/migrations"), [], [m], True, None, None, MigrateResult()
-        )
+        result = MigrateResult()
+        cmd._bind_callbacks(Path("/migrations"), True, None, None, result)
+        cmd._execute_before_callbacks([], [m], result)
         events = [c.args[1] for c in cmd._execute_callbacks.call_args_list]
         self.assertIn("beforeRepeatable", events)
 
     def test_skips_before_repeatable_when_no_repeatable_migrations(self):
         cmd = _make_cmd()
         cmd._execute_callbacks = MagicMock()
-        cmd._execute_before_callbacks(
-            Path("/migrations"), [], [], True, None, None, MigrateResult()
-        )
+        result = MigrateResult()
+        cmd._bind_callbacks(Path("/migrations"), True, None, None, result)
+        cmd._execute_before_callbacks([], [], result)
         events = [c.args[1] for c in cmd._execute_callbacks.call_args_list]
         self.assertNotIn("beforeRepeatable", events)
 
@@ -311,9 +311,9 @@ class TestExecuteBeforeCallbacks(unittest.TestCase):
         cmd._execute_callbacks = MagicMock()
         m = _make_migration()
         dir_map = {Path("/extra"): False}
-        cmd._execute_before_callbacks(
-            Path("/migrations"), [m], [], True, None, dir_map, MigrateResult()
-        )
+        result = MigrateResult()
+        cmd._bind_callbacks(Path("/migrations"), True, None, dir_map, result)
+        cmd._execute_before_callbacks([m], [], result)
         versioned = [
             c for c in cmd._execute_callbacks.call_args_list if c.args[1] == "beforeVersioned"
         ]
@@ -335,7 +335,8 @@ class TestExecuteAfterCallbacks(unittest.TestCase):
         result = MigrateResult()
         result.set_error("Migration failed")
 
-        cmd._execute_after_callbacks(Path("/migrations"), [], [], True, None, None, result)
+        cmd._bind_callbacks(Path("/migrations"), True, None, None, result)
+        cmd._execute_after_callbacks([], [], result)
 
         cmd._execute_callbacks.assert_not_called()
 
@@ -344,7 +345,8 @@ class TestExecuteAfterCallbacks(unittest.TestCase):
         cmd._execute_callbacks = MagicMock()
         result = MigrateResult()
 
-        cmd._execute_after_callbacks(Path("/migrations"), [], [], True, None, None, result)
+        cmd._bind_callbacks(Path("/migrations"), True, None, None, result)
+        cmd._execute_after_callbacks([], [], result)
 
         events = [c.args[1] for c in cmd._execute_callbacks.call_args_list]
         self.assertIn("afterMigrate", events)
@@ -355,7 +357,8 @@ class TestExecuteAfterCallbacks(unittest.TestCase):
         m = _make_migration()
         result = MigrateResult()
 
-        cmd._execute_after_callbacks(Path("/migrations"), [m], [], True, None, None, result)
+        cmd._bind_callbacks(Path("/migrations"), True, None, None, result)
+        cmd._execute_after_callbacks([m], [], result)
 
         events = [c.args[1] for c in cmd._execute_callbacks.call_args_list]
         self.assertIn("afterVersioned", events)
@@ -366,7 +369,8 @@ class TestExecuteAfterCallbacks(unittest.TestCase):
         m = _make_migration(type_=MigrationType.REPEATABLE)
         result = MigrateResult()
 
-        cmd._execute_after_callbacks(Path("/migrations"), [], [m], True, None, None, result)
+        cmd._bind_callbacks(Path("/migrations"), True, None, None, result)
+        cmd._execute_after_callbacks([], [m], result)
 
         events = [c.args[1] for c in cmd._execute_callbacks.call_args_list]
         self.assertIn("afterRepeatable", events)
@@ -378,7 +382,8 @@ class TestExecuteAfterCallbacks(unittest.TestCase):
         result = MigrateResult()
         dir_map = {Path("/extra"): False}
 
-        cmd._execute_after_callbacks(Path("/migrations"), [m], [], True, None, dir_map, result)
+        cmd._bind_callbacks(Path("/migrations"), True, None, dir_map, result)
+        cmd._execute_after_callbacks([m], [], result)
 
         versioned = [
             c for c in cmd._execute_callbacks.call_args_list if c.args[1] == "afterVersioned"
@@ -400,6 +405,7 @@ class TestHandleFailedMigration(unittest.TestCase):
         cmd._execute_callbacks = MagicMock()
         m = _make_migration("V1__a.sql")
         result = MigrateResult()
+        cmd._bind_callbacks(Path("/migrations"), True, None, None, result)
 
         cmd._handle_failed_migration(
             m, 0.0, RuntimeError("oops"), result, Path("/migrations"), True, None, None
@@ -413,6 +419,7 @@ class TestHandleFailedMigration(unittest.TestCase):
         cmd._execute_callbacks = MagicMock()
         m = _make_migration("V1__a.sql")
         result = MigrateResult()
+        cmd._bind_callbacks(Path("/migrations"), True, None, None, result)
         result.set_error("original error")
 
         cmd._handle_failed_migration(
@@ -428,6 +435,7 @@ class TestHandleFailedMigration(unittest.TestCase):
         cmd._execute_callbacks = MagicMock()
         m = _make_migration("V1__a.sql")
         result = MigrateResult()
+        cmd._bind_callbacks(Path("/migrations"), True, None, None, result)
 
         import time
 
@@ -445,6 +453,7 @@ class TestHandleFailedMigration(unittest.TestCase):
         cmd._execute_callbacks = MagicMock()
         m = _make_migration("V1__a.sql")
         result = MigrateResult()
+        cmd._bind_callbacks(Path("/migrations"), True, None, None, result)
 
         cmd._handle_failed_migration(
             m, 0.0, RuntimeError("err"), result, Path("/migrations"), True, None, None
@@ -467,6 +476,7 @@ class TestExecuteSingleMigration(unittest.TestCase):
         cmd.journal = None
         m = _make_migration("V1__a.sql")
         result = MigrateResult()
+        cmd._bind_callbacks(Path("/migrations"), True, None, None, result)
 
         with patch("dblift.core.migration.commands.migrate_command._emit_script_event"):
             success = cmd._execute_single_migration(
@@ -489,6 +499,7 @@ class TestExecuteSingleMigration(unittest.TestCase):
         cmd.journal = None
         m = _make_migration("V1__a.sql")
         result = MigrateResult()
+        cmd._bind_callbacks(Path("/migrations"), True, None, None, result)
 
         with patch("dblift.core.migration.commands.migrate_command._emit_script_event"):
             success = cmd._execute_single_migration(
@@ -512,6 +523,7 @@ class TestExecuteSingleMigration(unittest.TestCase):
         m = _make_migration("V1__a.sql")
         result = MigrateResult()
         dir_map = {Path("/extra"): False}
+        cmd._bind_callbacks(Path("/migrations"), True, None, dir_map, result)
 
         with patch("dblift.core.migration.commands.migrate_command._emit_script_event"):
             success = cmd._execute_single_migration(
@@ -533,6 +545,7 @@ class TestExecuteSingleMigration(unittest.TestCase):
         cmd.journal = None
         m = _make_migration("V1__a.sql")
         result = MigrateResult()
+        cmd._bind_callbacks(Path("/migrations"), True, None, None, result)
 
         with patch("dblift.core.migration.commands.migrate_command._emit_script_event"):
             success = cmd._execute_single_migration(
@@ -548,6 +561,7 @@ class TestExecuteSingleMigration(unittest.TestCase):
         cmd._execute_callbacks = MagicMock()
         m = _make_migration("V1__a.sql")
         result = MigrateResult()
+        cmd._bind_callbacks(Path("/migrations"), True, None, None, result)
 
         with patch("dblift.core.migration.commands.migrate_command._emit_script_event"):
             cmd._execute_single_migration(m, Path("/migrations"), True, None, None, result)
@@ -648,7 +662,8 @@ class TestUpdateFinalState(unittest.TestCase):
         cmd = _make_cmd(state_manager=state_manager)
         result = MigrateResult()
 
-        cmd._update_final_state(result, Path("/migrations"), True, None, None)
+        cmd._bind_callbacks(Path("/migrations"), True, None, None, result)
+        cmd._update_final_state(result)
 
         self.assertEqual(result.current_schema_version, "3.0")
 
@@ -661,7 +676,8 @@ class TestUpdateFinalState(unittest.TestCase):
         cmd = _make_cmd(state_manager=state_manager)
         result = MigrateResult()
 
-        cmd._update_final_state(result, Path("/migrations"), True, None, None)
+        cmd._bind_callbacks(Path("/migrations"), True, None, None, result)
+        cmd._update_final_state(result)
 
         self.assertIsNone(result.current_schema_version)
 

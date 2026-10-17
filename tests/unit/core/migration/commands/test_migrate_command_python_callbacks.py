@@ -60,5 +60,5 @@ def test_python_migrations_trigger_versioned_callbacks(monkeypatch):
     assert result.success is True
     before_args = command._execute_before_callbacks.call_args.args
     after_args = command._execute_after_callbacks.call_args.args
-    assert before_args[1] == [python_migration]
-    assert after_args[1] == [python_migration]
+    assert before_args[0] == [python_migration]
+    assert after_args[0] == [python_migration]

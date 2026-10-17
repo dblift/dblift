@@ -139,6 +139,9 @@ class UndoCommand(BaseCommand):
             use_recursive, use_additional_dirs = self.migration_helpers.setup_migration_parameters(
                 placeholders, recursive, additional_dirs, self.placeholder_service
             )
+            self._bind_callbacks(
+                scripts_dir, use_recursive, use_additional_dirs, dir_recursive_map, result
+            )
 
             # Catalog is unfiltered; undo selects applied Success then tags/versions.
             # target_version is rollback-to (undo versions > target), not an omit filter.
@@ -313,25 +316,9 @@ class UndoCommand(BaseCommand):
                 undo_plan.append((migration, undo_migration))
 
             if not dry_run and not self._capture_objects:
-                callback_snapshot = self.state_manager.new_callback_snapshot()
-                callbacks = [
-                    callback
-                    for event in (
-                        "beforeUndo",
-                        "afterUndo",
-                        "afterUndoError",
-                        "beforeEach",
-                        "afterEach",
-                    )
-                    for callback in self.state_manager.get_callbacks_by_event(
-                        scripts_dir,
-                        event,
-                        read_snapshot=callback_snapshot,
-                        recursive=use_recursive,
-                        additional_dirs=use_additional_dirs,
-                        dir_recursive_map=dir_recursive_map,
-                    )
-                ]
+                callbacks = self._callbacks_for(
+                    ("beforeUndo", "afterUndo", "afterUndoError", "beforeEach", "afterEach")
+                )
                 self._preflight_execution_sql([undo for _, undo in undo_plan] + callbacks)
 
             if dry_run:
@@ -354,25 +341,11 @@ class UndoCommand(BaseCommand):
 
             # Execute beforeUndo callbacks
             try:
-                self._execute_callbacks(
-                    scripts_dir,
-                    "beforeUndo",
-                    use_recursive,
-                    use_additional_dirs,
-                    dir_recursive_map,
-                    result=result,
-                )
+                self._fire("beforeUndo")
             except Exception as e:
                 self.log.error(f"beforeUndo callback failed: {e}")
                 result.set_error(f"beforeUndo callback failed: {e}")
-                self._execute_callbacks(
-                    scripts_dir,
-                    "afterUndoError",
-                    use_recursive,
-                    use_additional_dirs,
-                    dir_recursive_map,
-                    result=result,
-                )
+                self._fire("afterUndoError")
                 result.complete()
                 return result
 
@@ -384,14 +357,7 @@ class UndoCommand(BaseCommand):
 
                 try:
                     # Execute beforeEach callbacks
-                    self._execute_callbacks(
-                        scripts_dir,
-                        "beforeEach",
-                        use_recursive,
-                        use_additional_dirs,
-                        dir_recursive_map,
-                        result=result,
-                    )
+                    self._fire("beforeEach")
 
                     start_time = time.time()
 
@@ -451,14 +417,7 @@ class UndoCommand(BaseCommand):
                                 "execution_time": execution_time,
                             },
                         )
-                        self._execute_callbacks(
-                            scripts_dir,
-                            "afterUndoError",
-                            use_recursive,
-                            use_additional_dirs,
-                            dir_recursive_map,
-                            result=result,
-                        )
+                        self._fire("afterUndoError")
                         break
 
                     # End journal tracking for undo migration (use undo script name for journal)
@@ -492,14 +451,7 @@ class UndoCommand(BaseCommand):
                     self.log.info(f"Successfully undone migration {migration.script_name}")
 
                     # Execute afterEach callbacks after successful undo
-                    self._execute_callbacks(
-                        scripts_dir,
-                        "afterEach",
-                        use_recursive,
-                        use_additional_dirs,
-                        dir_recursive_map,
-                        result=result,
-                    )
+                    self._fire("afterEach")
 
                 except Exception as e:
                     # Only log if error_message is not already set (execute_migration already logged it)
@@ -551,27 +503,13 @@ class UndoCommand(BaseCommand):
                     if not result.error_message:
                         result.set_error(f"Undo failed: {e}")
                     # Execute afterUndoError callbacks when undo fails
-                    self._execute_callbacks(
-                        scripts_dir,
-                        "afterUndoError",
-                        use_recursive,
-                        use_additional_dirs,
-                        dir_recursive_map,
-                        result=result,
-                    )
+                    self._fire("afterUndoError")
                     break
 
             # If we reach here, all undo migrations completed successfully
             # Execute afterUndo callbacks
             if not result.error_message:
-                self._execute_callbacks(
-                    scripts_dir,
-                    "afterUndo",
-                    use_recursive,
-                    use_additional_dirs,
-                    dir_recursive_map,
-                    result=result,
-                )
+                self._fire("afterUndo")
 
             # Set journal on result for HTML formatter access
             result.journal = self.journal
@@ -609,14 +547,7 @@ class UndoCommand(BaseCommand):
             result.set_error(f"Undo operation failed: {e}")
             # Execute afterUndoError callbacks on exception
             try:
-                self._execute_callbacks(
-                    scripts_dir,
-                    "afterUndoError",
-                    use_recursive,
-                    use_additional_dirs,
-                    dir_recursive_map,
-                    result=result,
-                )
+                self._fire("afterUndoError")
             except Exception as e:
                 self.log.debug(
                     f"afterUndoError callback failed (ignored during exception handling): {e}"

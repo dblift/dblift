@@ -107,6 +107,8 @@ class TestMigrateResultNoDuplicateForPythonMigration(unittest.TestCase):
         engine.executor_factory = MagicMock()
         engine.executor_factory.execute.return_value = exec_result
 
+        cmd._bind_callbacks(Path("/migrations"), True, None, None, result)
+
         with patch("dblift.core.migration.commands.migrate_command._emit_script_event"):
             with patch.object(engine, "_parse_sql_statements", return_value=["SELECT 1"]):
                 with patch.object(engine, "_classify_execution_statements", return_value=[]):

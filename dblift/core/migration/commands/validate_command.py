@@ -85,6 +85,7 @@ class ValidateCommand(BaseCommand):
         self._reset_callback_catalog()
         result = ValidateResult()
         result.target_schema = self.config.database.schema
+        self._bind_callbacks(scripts_dir, recursive, additional_dirs, dir_recursive_map, result)
 
         read_snapshot = self.state_manager.new_read_snapshot()
 
@@ -116,14 +117,7 @@ class ValidateCommand(BaseCommand):
                 read_snapshot=read_snapshot,
             )
 
-            self._execute_callbacks(
-                scripts_dir,
-                "beforeValidate",
-                recursive,
-                additional_dirs,
-                dir_recursive_map,
-                result=result,
-            )
+            self._fire("beforeValidate")
 
             if result.callbacks:
                 read_snapshot = self.state_manager.new_read_snapshot()
@@ -145,14 +139,7 @@ class ValidateCommand(BaseCommand):
 
             validation_result = self.validator.validate_snapshot(validation_snapshot, "validate")
 
-            self._execute_callbacks(
-                scripts_dir,
-                "afterValidate",
-                recursive,
-                additional_dirs,
-                dir_recursive_map,
-                result=result,
-            )
+            self._fire("afterValidate")
 
             result.success = validation_result.success
             result.error_message = validation_result.error_message or ""
