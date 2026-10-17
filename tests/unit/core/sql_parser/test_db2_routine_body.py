@@ -78,6 +78,7 @@ def test_bodies_under_each_terminator(case):
     "begin_lower_case",
     "begin_inside_parentheses",
     "begin_as_parameter_name",
+    "alter_table_named_module",
     "open_parenthesis_in_string_in_head",
     "close_parenthesis_in_string_in_head",
     "parenthesis_in_quoted_identifier_in_head",
@@ -120,6 +121,7 @@ def test_routine_heads(case):
     "end_at_line_end_then_label_next_line",
     "end_then_symbol",
     "end_then_string",
+    "body_closed_later_on_the_line_by_a_symbol",
     "end_then_string_then_qualifier",
     "end_then_word_begin",
 )

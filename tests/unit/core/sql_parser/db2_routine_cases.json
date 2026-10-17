@@ -1654,6 +1654,44 @@ null,
 "expect": [
 "records",
 [
+"BEGIN\n  SET x = 1; /* c */ END)\nVALUES 2",
+1,
+";",
+"sql",
+0,
+42
+]
+],
+"id": "body_closed_later_on_the_line_by_a_symbol",
+"script": "BEGIN\n  SET x = 1; /* c */ END)\nVALUES 2;\n"
+},
+{
+"expect": [
+"records",
+[
+"ALTER TABLE module ADD COLUMN begin INT",
+1,
+";",
+"sql",
+0,
+41
+],
+[
+"VALUES 1",
+2,
+";",
+"sql",
+41,
+51
+]
+],
+"id": "alter_table_named_module",
+"script": "ALTER TABLE module ADD COLUMN begin INT;\nVALUES 1;\n"
+},
+{
+"expect": [
+"records",
+[
 "BEGIN\n  SET x = 1;\nEND 'x'",
 1,
 ";",

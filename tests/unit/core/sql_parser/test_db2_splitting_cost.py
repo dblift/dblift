@@ -8,7 +8,9 @@ shape grows the script fourfold; the count may grow at most fivefold.
 What the counters cannot see, a source check covers (``test_engine_modules_never_copy_or_scan_their_
 inputs``): ``str.method(text)`` called unbound and regular expressions run over the text go straight to the
 interpreter, and a token value copied into a plain container once and rescanned later is invisible to a
-proxy. The check refuses those forms in the engine modules.
+proxy; token attributes are therefore counting ints whose comparisons and sums count, so a copy that is
+rescanned shows in the ratio. The check refuses those forms in every module the terminator path imports.
+Out of scope: ``bytes(text, ...)`` spelled through another name and ``text.__class__.lower(text)``.
 """
 
 import ast
@@ -16,7 +18,7 @@ import inspect
 from collections import abc
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, Dict, Iterator, List, Optional, Tuple
+from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
 
 import pytest
 
@@ -176,13 +178,64 @@ class CountingText(str):
         return result
 
 
+class CountingInt(int):
+    """An int whose comparisons and sums count one operation each and return plain values.
+
+    A token position copied into a container and rescanned later still counts every comparison.
+    """
+
+    meter: Meter
+
+    def __new__(cls, value: int, meter: Meter) -> "CountingInt":
+        number = super().__new__(cls, value)
+        number.meter = meter
+        return number
+
+    def _op(self, other: Any, operation: Callable[[int, int], Any]) -> Any:
+        self.meter.add(1)
+        return operation(int(self), int(other))
+
+    def __lt__(self, other: Any) -> bool:
+        return self._op(other, lambda a, b: a < b)
+
+    def __le__(self, other: Any) -> bool:
+        return self._op(other, lambda a, b: a <= b)
+
+    def __gt__(self, other: Any) -> bool:
+        return self._op(other, lambda a, b: a > b)
+
+    def __ge__(self, other: Any) -> bool:
+        return self._op(other, lambda a, b: a >= b)
+
+    def __eq__(self, other: Any) -> bool:  # type: ignore[override]
+        return self._op(other, lambda a, b: a == b)
+
+    def __ne__(self, other: Any) -> bool:  # type: ignore[override]
+        return self._op(other, lambda a, b: a != b)
+
+    def __add__(self, other: Any) -> int:  # type: ignore[override]
+        return self._op(other, lambda a, b: a + b)
+
+    def __radd__(self, other: Any) -> int:  # type: ignore[override]
+        return self._op(other, lambda a, b: b + a)
+
+    def __sub__(self, other: Any) -> int:  # type: ignore[override]
+        return self._op(other, lambda a, b: a - b)
+
+    def __rsub__(self, other: Any) -> int:  # type: ignore[override]
+        return self._op(other, lambda a, b: b - a)
+
+    __hash__ = int.__hash__
+
+
 class TokenProxy:
     def __init__(self, token: Any, meter: Meter) -> None:
         self._token, self._meter = token, meter
 
     def __getattr__(self, name: str) -> Any:
         self._meter.add(1)
-        return getattr(self._token, name)
+        value = getattr(self._token, name)
+        return CountingInt(value, self._meter) if type(value) is int else value
 
 
 class CountingTokens(abc.Sequence):  # type: ignore[type-arg]
@@ -308,7 +361,10 @@ def test_the_counters_count_what_a_rescan_would_cost():
         str(text)
     tokens = CountingTokens([SimpleNamespace(pos=5), SimpleNamespace(pos=6)], meter)
     meter.count = 0
-    assert tokens[0].pos == 5 and meter.count == 2
+    assert tokens[0].pos == 5 and meter.count == 3  # a visit, an attribute read, a comparison
+    copied = [tokens[1].pos]
+    meter.count = 0
+    assert copied[0] < 9 and copied[0] + 1 == 7 and 3 < copied[0] and meter.count == 3
     for access in (
         lambda: tokens[0:1],
         lambda: iter(tokens),
@@ -352,12 +408,18 @@ def test_the_counted_text_refuses_what_it_does_not_count():
     assert text == "abc" and text.meter.count == 3 and "b" in text
 
 
-ENGINE_SOURCES = [
-    "terminator_script.py",
-    "terminator_lines.py",
-    "routine_body.py",
-]
-SCANNED_NAMES = {"text", "sql", "tokens", "marks", "lines"}
+ENGINE_MODULES = ("terminator_script", "terminator_lines", "routine_body")
+TOKENIZER_PASS = (
+    (
+        "lexical_tokenizer",
+        {"_tokenize_terminator_script", "_handle_standard_string", "_handle_quoted_identifier"},
+    ),
+    ("base_tokenizer", {"_read_block_comment"}),
+)
+SCANNED_NAMES = {"text", "sql", "tokens", "marks"}
+REGEX_METHODS = {"search", "match", "finditer", "findall", "sub", "subn", "split", "fullmatch"}
+BOUNDED_ARGUMENTS = {"line", "token", "statement"}  # a slice of the text, never the text
+COPIES = {"list", "tuple", "str", "sorted", "set", "dict", "bytes", "bytearray", "memoryview"}
 
 
 def _name(node: ast.AST) -> str:
@@ -366,68 +428,98 @@ def _name(node: ast.AST) -> str:
     return node.id if isinstance(node, ast.Name) else ""
 
 
-def forbidden(tree: ast.AST, exempt_regex: bool = False) -> List[str]:
+def _regex_call(node: ast.Call) -> bool:
+    """A call shaped like a regular expression run, unless it reads a bounded piece or an anchored position."""
+    func = node.func
+    if not (isinstance(func, ast.Attribute) and func.attr in REGEX_METHODS):
+        return False
+    first = node.args[0] if node.args else None
+    if first is None or isinstance(first, (ast.Constant, ast.Subscript)):
+        return False  # str.split() and friends, or a slice of the text
+    if isinstance(first, ast.Name) and first.id in BOUNDED_ARGUMENTS:
+        return False
+    return not (
+        func.attr == "match" and len(node.args) + len(node.keywords) >= 2
+    )  # anchored at a position
+
+
+def forbidden(tree: ast.AST) -> List[str]:
     """Forms the counters cannot see: copies, unbound str methods, regular expressions over the text."""
     found = []
     for node in ast.walk(tree):
+        where = f"line {getattr(node, 'lineno', 0)}"
+        if isinstance(node, ast.Import):
+            found += [
+                f"import re as {a.asname} at {where}"
+                for a in node.names
+                if a.name == "re" and a.asname
+            ]
+        if isinstance(node, ast.ImportFrom) and node.module == "re":
+            found.append(f"from re import at {where}")
         if isinstance(node, ast.Call):
             func = node.func
-            if isinstance(func, ast.Name) and func.id in {
-                "list",
-                "tuple",
-                "str",
-                "sorted",
-                "set",
-                "dict",
-            }:
-                found.append(f"{func.id}() at line {node.lineno}")
+            if isinstance(func, ast.Name) and func.id in COPIES:
+                found.append(f"{func.id}() at {where}")
             if isinstance(func, ast.Attribute) and _name(func.value) == "str":
-                found.append(f"str.{func.attr}() at line {node.lineno}")
+                found.append(f"str.{func.attr}() at {where}")
             if (
                 isinstance(func, ast.Attribute)
                 and _name(func.value) == "re"
                 and func.attr != "compile"
             ):
-                found.append(f"re.{func.attr}() at line {node.lineno}")
-            if (
-                not exempt_regex
-                and isinstance(func, ast.Attribute)
-                and func.attr
-                in {"match", "search", "fullmatch", "finditer", "findall", "sub", "subn"}
-                and node.args
-                and _name(node.args[0]) in {"text", "sql"}
-            ):
-                found.append(f"{func.attr}() over the text at line {node.lineno}")
+                found.append(f"re.{func.attr}() at {where}")
+            if _regex_call(node):
+                found.append(f"regular expression over unbounded input at {where}")
         if isinstance(node, ast.Subscript) and isinstance(node.slice, ast.Slice):
             if node.slice.lower is None and node.slice.upper is None:
-                found.append(f"[:] at line {node.lineno}")
+                found.append(f"[:] at {where}")
         if isinstance(node, (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)):
             for inner in ast.walk(node):
                 if isinstance(inner, ast.Subscript) and _name(inner.value) in {"tokens", "marks"}:
-                    found.append(f"comprehension over tokens at line {node.lineno}")
+                    found.append(f"comprehension over tokens at {where}")
                     break
             for generator in node.generators:
-                if _name(generator.iter) in SCANNED_NAMES - {"lines"}:
-                    found.append(
-                        f"comprehension over {_name(generator.iter)} at line {node.lineno}"
-                    )
+                if _name(generator.iter) in SCANNED_NAMES:
+                    found.append(f"comprehension over {_name(generator.iter)} at {where}")
     return found
+
+
+def import_closure(package: Path, start: Tuple[str, ...]) -> List[str]:
+    """The modules of the package the terminator path imports, transitively."""
+    seen: List[str] = []
+    todo = list(start)
+    while todo:
+        name = todo.pop()
+        if name in seen:
+            continue
+        seen.append(name)
+        for node in ast.walk(ast.parse((package / f"{name}.py").read_text(encoding="utf-8"))):
+            if (
+                isinstance(node, ast.ImportFrom)
+                and node.module
+                and node.module.startswith("dblift.core.sql_parser.")
+            ):
+                module = node.module.rsplit(".", 1)[1]
+                if (package / f"{module}.py").exists():
+                    todo.append(module)
+    return sorted(seen)
 
 
 def test_engine_modules_never_copy_or_scan_their_inputs():
     package = Path(inspect.getfile(read_lines)).parent
-    for name in ENGINE_SOURCES:
-        tree = ast.parse((package / name).read_text(encoding="utf-8"))
+    closure = import_closure(package, ENGINE_MODULES)
+    assert set(ENGINE_MODULES) <= set(closure)
+    for name in closure:
+        tree = ast.parse((package / f"{name}.py").read_text(encoding="utf-8"))
         assert forbidden(tree) == [], name
-    tokenizer = ast.parse((package / "lexical_tokenizer.py").read_text(encoding="utf-8"))
-    pass_ = next(
-        node
-        for node in ast.walk(tokenizer)
-        if isinstance(node, ast.FunctionDef) and node.name == "_tokenize_terminator_script"
-    )
-    assert (
-        forbidden(pass_, exempt_regex=True) == []
-    )  # the word pattern is matched at a position: bounded
+    for module, functions in TOKENIZER_PASS:
+        tree = ast.parse((package / f"{module}.py").read_text(encoding="utf-8"))
+        found = [
+            n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name in functions
+        ]
+        assert {n.name for n in found} == functions
+        for node in found:
+            assert forbidden(node) == [], node.name
 
 
 def test_the_source_check_sees_the_forms_it_exists_for():
@@ -435,14 +527,20 @@ def test_the_source_check_sees_the_forms_it_exists_for():
         "x = list(tokens)",
         "x = tuple(tokens)",
         "x = str(text)",
+        "x = bytes(text)",
         "x = text[:]",
         "x = str.find(text, 'a')",
         "x = re.search('a', text)",
         "x = pattern.search(text, 3)",
+        "s = self.text\nx = pattern.search(s, 3)",
+        "x = pattern.finditer(s)",
+        "from re import search",
+        "import re as r",
         "x = [tokens[i].pos for i in range(3)]",
         "x = [t for t in text]",
     ):
         assert forbidden(ast.parse(source)) != [], source
-    assert (
-        forbidden(ast.parse("x = pattern.match(line, 3)\ny = text[1:3]\nz = re.compile('a')")) == []
-    )
+    allowed = "x = pattern.match(line, 3)\ny = text[1:3]\nz = re.compile('a')\nw = text.split(None, 3)\nv = p.search(text[1:5])"
+    assert forbidden(ast.parse(allowed)) == []
+    allowed_anchored = "m = word.match(sql, pos)\nk = leading.match(token)"
+    assert forbidden(ast.parse(allowed_anchored)) == []

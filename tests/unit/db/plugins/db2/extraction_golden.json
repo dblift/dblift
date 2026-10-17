@@ -8522,6 +8522,486 @@
 },
 {
 "extraction": {
+"clean": "CREATE TABLE a (id INT)'\nCREATE TABLE b (id INT)'",
+"empty": false,
+"objects": [
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "A",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+},
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "B",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+],
+"parse": {
+"errors": [],
+"statements": [
+[
+"CREATE TABLE a (id INT)",
+"DDL",
+[
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "A",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+]
+],
+[
+"CREATE TABLE b (id INT)",
+"DDL",
+[
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "B",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+]
+]
+],
+"success": true
+},
+"strip": "CREATE TABLE a (id INT)'\nCREATE TABLE b (id INT)'",
+"utility": false,
+"validate": {
+"errors": [],
+"statement_count": 2,
+"valid": true
+}
+},
+"id": "script-quote-terminator",
+"masking": {
+"describe": "CREATE TABLE a",
+"mask": "--#SET TERMINATOR '\nCREATE TABLE a (id INT)'?'\n"
+},
+"text": "--#SET TERMINATOR '\nCREATE TABLE a (id INT)'\nCREATE TABLE b (id INT)'\n",
+"tokens": [
+[
+"COMMENT",
+"",
+0,
+1,
+1
+],
+[
+"KEYWORD",
+"CREATE",
+20,
+2,
+1
+],
+[
+"KEYWORD",
+"TABLE",
+27,
+2,
+8
+],
+[
+"IDENTIFIER",
+"a",
+33,
+2,
+14
+],
+[
+"SYMBOL",
+"(",
+35,
+2,
+16
+],
+[
+"IDENTIFIER",
+"id",
+36,
+2,
+17
+],
+[
+"IDENTIFIER",
+"INT",
+39,
+2,
+20
+],
+[
+"SYMBOL",
+")",
+42,
+2,
+23
+],
+[
+"STRING",
+"'\nCREATE TABLE b (id INT)'",
+43,
+2,
+24
+],
+[
+"EOF",
+"",
+70,
+4,
+1
+]
+]
+},
+{
+"extraction": {
+"clean": "\ufeffCREATE TABLE a (id INT);\r\nCREATE TABLE b (id INT);",
+"empty": false,
+"objects": [
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "A",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+},
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "B",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+],
+"parse": {
+"errors": [],
+"statements": [
+[
+"CREATE TABLE a (id INT)",
+"DDL",
+[
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "A",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+]
+],
+[
+"CREATE TABLE b (id INT)",
+"DDL",
+[
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "B",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+]
+]
+],
+"success": true
+},
+"strip": "\ufeffCREATE TABLE a (id INT);\r\nCREATE TABLE b (id INT);",
+"utility": false,
+"validate": {
+"errors": [],
+"statement_count": 2,
+"valid": true
+}
+},
+"id": "script-bom-crlf",
+"masking": {
+"describe": "",
+"mask": "\ufeffCREATE TABLE a (id INT);\r\nCREATE TABLE b (id INT);\r\n"
+},
+"text": "\ufeffCREATE TABLE a (id INT);\r\nCREATE TABLE b (id INT);\r\n",
+"tokens": [
+[
+"SYMBOL",
+"\ufeff",
+0,
+1,
+1
+],
+[
+"KEYWORD",
+"CREATE",
+1,
+1,
+2
+],
+[
+"KEYWORD",
+"TABLE",
+8,
+1,
+9
+],
+[
+"IDENTIFIER",
+"a",
+14,
+1,
+15
+],
+[
+"SYMBOL",
+"(",
+16,
+1,
+17
+],
+[
+"IDENTIFIER",
+"id",
+17,
+1,
+18
+],
+[
+"IDENTIFIER",
+"INT",
+20,
+1,
+21
+],
+[
+"SYMBOL",
+")",
+23,
+1,
+24
+],
+[
+"DELIMITER",
+";",
+24,
+1,
+25
+],
+[
+"KEYWORD",
+"CREATE",
+27,
+2,
+1
+],
+[
+"KEYWORD",
+"TABLE",
+34,
+2,
+8
+],
+[
+"IDENTIFIER",
+"b",
+40,
+2,
+14
+],
+[
+"SYMBOL",
+"(",
+42,
+2,
+16
+],
+[
+"IDENTIFIER",
+"id",
+43,
+2,
+17
+],
+[
+"IDENTIFIER",
+"INT",
+46,
+2,
+20
+],
+[
+"SYMBOL",
+")",
+49,
+2,
+23
+],
+[
+"DELIMITER",
+";",
+50,
+2,
+24
+],
+[
+"EOF",
+"",
+53,
+3,
+1
+]
+]
+},
+{
+"extraction": {
+"clean": "\ufeff\r\nCREATE TABLE a (id INT)@",
+"empty": false,
+"objects": [
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "A",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+],
+"parse": {
+"errors": [],
+"statements": [
+[
+"CREATE TABLE a (id INT)",
+"DDL",
+[
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "A",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+]
+]
+],
+"success": true
+},
+"strip": "\ufeff\r\nCREATE TABLE a (id INT)@",
+"utility": false,
+"validate": {
+"errors": [],
+"statement_count": 1,
+"valid": true
+}
+},
+"id": "script-bom-crlf-directive",
+"masking": {
+"describe": "",
+"mask": "\ufeff--#SET TERMINATOR @\r\nCREATE TABLE a (id INT)@\r\n"
+},
+"text": "\ufeff--#SET TERMINATOR @\r\nCREATE TABLE a (id INT)@\r\n",
+"tokens": [
+[
+"SYMBOL",
+"\ufeff",
+0,
+1,
+1
+],
+[
+"COMMENT",
+"",
+1,
+1,
+2
+],
+[
+"KEYWORD",
+"CREATE",
+22,
+2,
+1
+],
+[
+"KEYWORD",
+"TABLE",
+29,
+2,
+8
+],
+[
+"IDENTIFIER",
+"a",
+35,
+2,
+14
+],
+[
+"SYMBOL",
+"(",
+37,
+2,
+16
+],
+[
+"IDENTIFIER",
+"id",
+38,
+2,
+17
+],
+[
+"IDENTIFIER",
+"INT",
+41,
+2,
+20
+],
+[
+"SYMBOL",
+")",
+44,
+2,
+23
+],
+[
+"SYMBOL",
+"@",
+45,
+2,
+24
+],
+[
+"EOF",
+"",
+48,
+3,
+1
+]
+]
+},
+{
+"extraction": {
 "clean": "",
 "empty": true,
 "objects": [],
