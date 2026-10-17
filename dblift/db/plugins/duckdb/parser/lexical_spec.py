@@ -7,6 +7,9 @@ _NON_BLANK = (
     r"\x80-\x9f\xa1-\u1fff\u200c-\u202e\u2030-\u205e\u2061-\u2fff\u3001-\ufefe\uff00-\U0010ffff"
 )
 
+#: Digits with single underscore separators; what follows a number or a positional parameter is the next lexeme.
+_DIGITS = r"[0-9](?:_?[0-9])*"
+
 DUCKDB_RULES = SegmentScriptRules(
     # ASCII blanks, then U+00A0, U+2000 to U+200B, U+202F, U+205F, U+2060, U+3000 and U+FEFF.
     blanks=(
@@ -15,10 +18,10 @@ DUCKDB_RULES = SegmentScriptRules(
     ),
     text_blanks=" \t\n\f\r",
     word=rf"[A-Za-z_{_NON_BLANK}][A-Za-z0-9_${_NON_BLANK}]*",
-    number=r"[0-9][0-9A-Za-z_]*",
+    number=rf"{_DIGITS}(?:\.(?:{_DIGITS})?)?(?:[Ee][+-]?{_DIGITS})?",
     escape_letters="Ee",
     dollar_tag=rf"\$(?:[A-Za-z_{_NON_BLANK}][A-Za-z0-9_{_NON_BLANK}]*)?\$",
-    parameter=rf"\$[A-Za-z0-9_{_NON_BLANK}]*",
+    parameter=rf"\$(?:{_DIGITS}|[A-Za-z_{_NON_BLANK}][A-Za-z0-9_{_NON_BLANK}]*)?",
     line_comment_ends="\r\n",
     command_prefix=".",
     refused_character="\x00",

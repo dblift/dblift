@@ -5,7 +5,7 @@
 | Item | Value |
 | --- | --- |
 | Covers | DuckDB 1.x scripts run through the Python `duckdb` driver (the path dblift executes through) and written for the `duckdb` command-line shell. Measured: shell v1.5.6 (Variegata, Homebrew) and v1.5.5 (Variegata, the `duckdb-cli` wheel) and the Python driver 1.5.5 and 1.5.6 (`duckdb.connect()`, `execute`, `duckdb.extract_statements`) with `duckdb_engine` 0.17.0 on SQLAlchemy 2.0.52 |
-| Code facts taken from | the shared lexical engine with the DuckDB specification; §12 describes it. The DuckDB part of the conformance run is 77 rows: 73 passes and the four known gaps 74 to 77 (expected failures) |
+| Code facts taken from | the shared lexical engine with the DuckDB specification; §12 describes it. The DuckDB part of the conformance run is 77 rows: 75 passes and the two known gaps 74 and 75 (expected failures) |
 | Vendor references, fetched 2026-10-12 from `duckdb.org/docs/current` | *Literal Types* (`sql/data_types/literal_types`: strings, escape strings, dollar-quoted strings); *Keywords and Identifiers* (`sql/dialect/keywords_and_identifiers`: quoted identifiers); *SQL Dialect, Overview* ("DuckDB's SQL dialect is based on PostgreSQL."); *Prepared Statements* (`sql/query_syntax/prepared_statements`: `?`, `$1`, `$name`); *CLI, Dot Commands* (`clients/cli/dot_commands`); *CLI, Overview* (`clients/cli/overview`: scripts from standard input, `.read`, multi-line statements). No page on comments could be found: block-comment nesting rests on measurement alone |
 | Live verification | `duckdb -init /dev/null -bail <db> < script.sql` against the Python driver dblift executes through (`SqlAnalyzer("duckdb").split_statements`, then one `execute` per statement through `duckdb_engine`); the resulting files are compared through the `duckdb_*()` catalogue functions and the table rows; `duckdb.extract_statements` is compared with the splitter on every script it accepts. |
 | Second ground truth | the driver: `execute` takes **several** statements in one text, parses the whole text before it runs anything (a parse error in the last statement runs none of the first), and a runtime error leaves the statements before it done; dblift sends one statement per call, so the two stop at different places on a script with a parse error |
@@ -309,8 +309,8 @@ DuckDB specification; the shared tokenizer reads them and one core module assemb
 | 73 | `SELECT　E'a\'b;c'; SELECT 2;` | `SELECT　E'a\'b;c'` · `SELECT 2` (an ideographic space, U+3000, is a blank: the letter E still opens an escape string) |
 | 74 | `SELECT E'a' 'b\'; SELECT 1; SELECT 'z';` | `SELECT E'a' 'b\'` · `SELECT 1` · `SELECT 'z'` (measured: on one line the engine does not carry the escape mode of an E string into the next string, reads the second string as a plain string closed after the backslash and rejects the first statement; known gap: the splitter carries the escape mode across blanks on one line and sends the three statements as one) |
 | 75 | `SELECT \u00b2E'b\';c'; SELECT 2;` | `SELECT \u00b2E'b\'` · `c'; SELECT 2;` (measured: a superscript two followed by E is one name for the engine, so a plain string follows and the first semicolon ends the statement; known gap: the splitter reads any character Python counts as a digit before E as a number and opens an escape string) |
-| 76 | `PREPARE p AS SELECT $1a$$x; SELECT 2; SELECT 3 AS y$$;` | `PREPARE p AS SELECT $1a$$x` · `SELECT 2` · `SELECT 3 AS y$$` (measured: the engine reads a positional parameter as the dollar sign and its digits only, so the letters after it start a word, the dollar pair inside that word opens nothing and each semicolon ends a statement; known gap, unsafe direction: the splitter reads the letters as part of the parameter, opens a dollar-quoted string at the dollar pair and sends the three statements as one, which the driver then runs one after another) |
-| 77 | `SELECT 1a$$x; DROP TABLE t; SELECT 3 AS y$$;` | `SELECT 1a$$x` · `DROP TABLE t` · `SELECT 3 AS y$$` (measured: DuckDB reads a number as digits with underscore separators, an optional fraction and an optional exponent, so the letters after it start a word, the dollar pair inside that word opens nothing and each semicolon ends a statement; known gap, unsafe direction: the splitter reads the letters as part of the number, opens a dollar-quoted string at the dollar pair and sends the three statements as one, which the driver then runs one after another) |
+| 76 | `PREPARE p AS SELECT $1a$$x; SELECT 2; SELECT 3 AS y$$;` | `PREPARE p AS SELECT $1a$$x` · `SELECT 2` · `SELECT 3 AS y$$` (measured: a positional parameter is the dollar sign and its digits with underscore separators, so the letters after it start a word, the dollar pair inside that word opens nothing and each semicolon ends a statement; the driver's own statement splitter returns the same three) |
+| 77 | `SELECT 1a$$x; DROP TABLE t; SELECT 3 AS y$$;` | `SELECT 1a$$x` · `DROP TABLE t` · `SELECT 3 AS y$$` (measured: a number is digits with underscore separators, an optional fraction and an optional exponent, so the letters after it start a word, the dollar pair inside that word opens nothing and each semicolon ends a statement; the same for 1_000a, 1.5a, 1e5a and 0x1g, which is the number 0 and the word x1g, and the driver and the shell dropped the table) |
 
 ## 11. Not handled
 
@@ -341,11 +341,10 @@ scanner.
 
 The engine reads a script as DuckDB's lexer does. A word is a letter, an
 underscore or a non-ASCII character followed by those, digits and `$`; DuckDB reads a number as digits with underscore separators, an optional fraction and an optional exponent, so
-the letters after it start a word (`1a$$x` is the number 1 and the word `a$$x`; `1e5x` is a number and the name x),
-where the splitter takes every letter and underscore after the first digit as part of the number (row 77); a `$$` opens a string
+the letters after it start a word (`1a$$x` is the number 1 and the word `a$$x`; `1e5x` is a number and the name x), and the splitter reads it the same way (row 77); a `$$` opens a string
 after a number or an operator and never inside a word. A `$` that starts a token opens a dollar-quoted string when a tag
 (letters, underscore, non-ASCII, digits, no `$`) and a second `$` follow, and closes it on
-the identical tag; otherwise it starts a parameter (`$1`, `$name`). `E'` and `e'` open an
+the identical tag; otherwise it starts a parameter (`$1`, `$1_0`, `$name`): digits with underscore separators, or a name. `E'` and `e'` open an
 escape string unless the `E` ends a longer word, and the 18 non-ASCII blanks DuckDB reads (U+00A0, U+2000 to U+200B, U+202F, U+205F, U+2060, U+3000, U+FEFF) are blanks, so a dollar quote or an `E` right after one still opens; inside it a backslash takes the next
 character and a doubled quote stays inside. Adjacent string literals separated by a newline,
 including a line comment, continue an `E` string's escape mode. A plain string and a quoted identifier end at
@@ -395,15 +394,9 @@ literals and comments take much longer in proportion (a 1 MiB string literal 0.0
 lines 0.006 s before, 0.39 s now), because the old scanner searched for the end of a literal in one call; they stay small in absolute terms. The time still grows in proportion to the script: a four-fold script takes 4.0 to
 4.3 times as long, and a test counts the operations per character on fourteen shapes.
 
-Current implementation gaps, each a place where the splitter and DuckDB differ (rows 74 to 77 record the first four):
+Current implementation gaps, each a place where the splitter and DuckDB differ (rows 74 and 75 record them):
 the splitter carries an escape string's mode across blanks on one line, where DuckDB carries it only across a line
-break (row 74; the first statement fails for DuckDB either way); it opens an escape string after any character
-that Python counts as a digit, a superscript or a digit of another script, where DuckDB reads a name (row 75); and it
-reads letters after a positional parameter (`$1a`, `$1E`) or after the digits of a number (`1a`) as part of the parameter or the number,
-where DuckDB reads the digits and then a word. The last two are the unsafe direction when a dollar pair follows (rows 76 and 77): the splitter opens a
-dollar-quoted string, hides later statements inside one statement and sends it, and the driver then runs them one after
-another (measured with a DROP TABLE inside the hidden text: it was run); when an escape string follows instead
-(`SELECT $1E'a\';b'; SELECT 2;`) the splitter cuts inside DuckDB's string, which is the safe direction. Rows 76 and 77 are
-tracked and will be fixed separately. In the analysis view, a segment of only non-ASCII blanks between two `;`
+break (row 74; the first statement fails for DuckDB either way); and it opens an escape string after any character
+that Python counts as a digit, a superscript or a digit of another script, where DuckDB reads a name (row 75). In the analysis view, a segment of only non-ASCII blanks between two `;`
 is a statement whose text is that blank (execution drops it). A byte order mark before a dot line on the first
 line is refused (§6).
