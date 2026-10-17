@@ -401,3 +401,114 @@ def test_analysis_does_not_let_sqlglot_log_its_fallback_warnings(caplog):
         analyse_script("ALTER TABLE users ADD COLUMN a INT, DROP COLUMN b;", "postgresql")
 
     assert not [r for r in caplog.records if r.name.startswith("sqlglot")]
+
+
+UNREAD_BLANK = chr(0x00A0)  # SQLite and PostgreSQL read it as part of a name; sqlglot skips it
+
+
+@pytest.mark.parametrize(
+    ("dialect", "sql", "code", "reason"),
+    [
+        (
+            "sqlite",
+            f"DROP TABLE t{UNREAD_BLANK};",
+            "drop-table",
+            "DROP TABLE discards a table whose name could not be read, and its rows",
+        ),
+        (
+            "sqlite",
+            f"DROP TABLE IF EXISTS {UNREAD_BLANK}t;",
+            "drop-table",
+            "DROP TABLE discards a table whose name could not be read, and its rows",
+        ),
+        (
+            "duckdb",
+            f"DROP SCHEMA s{UNREAD_BLANK};",
+            "drop-schema",
+            "DROP SCHEMA discards a schema whose name could not be read, and its rows",
+        ),
+        (
+            "duckdb",
+            f"DROP DATABASE d{UNREAD_BLANK};",
+            "drop-schema",
+            "DROP DATABASE discards a database whose name could not be read, and its rows",
+        ),
+        (
+            "duckdb",
+            f"DROP MATERIALIZED VIEW m{UNREAD_BLANK};",
+            "drop-table",
+            "DROP MATERIALIZED VIEW discards a materialized view whose name could not be read, "
+            "and its rows",
+        ),
+    ],
+)
+def test_opaque_drop_keeps_its_caution(dialect, sql, code, reason):
+    analysis = analyse_script(sql, dialect)
+
+    assert [s.objects for s in analysis.statements] == [()]
+    assert [(c.level, c.code, c.reason) for c in analysis.cautions] == [(DESTROYS, code, reason)]
+
+
+@pytest.mark.parametrize("dialect", ["sqlite", "duckdb"])
+def test_opaque_drop_view_keeps_the_caution_it_had(dialect):
+    analysis = analyse_script(f"DROP VIEW v{UNREAD_BLANK};", dialect)
+
+    assert [(c.level, c.code, c.reason) for c in analysis.cautions] == [
+        (DESTROYS, None, "DROP VIEW discards a view whose name could not be read, and its rows")
+    ]
+
+
+@pytest.mark.parametrize("dialect", ["sqlite", "duckdb"])
+@pytest.mark.parametrize(
+    ("sql", "tail"),
+    [
+        (f"UPDATE child SET parent_id = 1 WHERE a{UNREAD_BLANK}b = 2;", " of child"),
+        (f"DELETE FROM child WHERE a{UNREAD_BLANK}b = 2;", " of child"),
+        (f"UPDATE child{UNREAD_BLANK} SET parent_id = 1 WHERE b = 2;", ""),
+    ],
+)
+def test_opaque_dml_names_its_target_only_when_the_name_itself_was_read(dialect, sql, tail):
+    analysis = analyse_script(sql, dialect)
+
+    assert analysis.cautions[0].reason.endswith(f"treated as changing every row{tail}")
+
+
+def test_opaque_drop_of_something_that_holds_no_rows_raises_no_caution():
+    analysis = analyse_script(f"DROP INDEX ix{UNREAD_BLANK};", "sqlite")
+
+    assert analysis.cautions == ()
+
+
+@pytest.mark.parametrize("dialect", ["sqlite", "duckdb"])
+@pytest.mark.parametrize(
+    ("sql", "operation"),
+    [
+        (f"UPDATE t{UNREAD_BLANK} SET a = 1 WHERE b = 2;", "UPDATE"),
+        (f"DELETE FROM t{UNREAD_BLANK} WHERE b = 2;", "DELETE"),
+        (f"UPDATE t SET a{UNREAD_BLANK}b = 1 WHERE c = 2;", "UPDATE"),
+    ],
+)
+def test_opaque_update_where_reads_as_unread_predicate(dialect, sql, operation):
+    tail = " of t" if sql.startswith("UPDATE t SET") else ""
+    analysis = analyse_script(sql, dialect)
+
+    assert [(c.level, c.code, c.reason) for c in analysis.cautions] == [
+        (
+            DESTROYS,
+            "dml-no-where",
+            f"{operation}: the predicate could not be read; treated as changing every row{tail}",
+        )
+    ]
+    assert "without WHERE" not in analysis.cautions[0].reason
+
+
+def test_readable_statements_keep_their_exact_cautions():
+    analysis = analyse_script(
+        "DROP TABLE orders;\nDELETE FROM sessions;\nUPDATE users SET a = 1 WHERE b = 2;", "sqlite"
+    )
+
+    assert [(c.level, c.code, c.reason) for c in analysis.cautions] == [
+        (DESTROYS, "drop-table", "DROP TABLE discards orders and its rows"),
+        (DESTROYS, "dml-no-where", "DELETE without WHERE rewrites every row of sessions"),
+        (CHANGES_ROWS, None, "UPDATE changes rows of users"),
+    ]

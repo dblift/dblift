@@ -1535,5 +1535,62 @@ class TestUndoScriptGeneratorDialects(unittest.TestCase):
         self.assertTrue(len(drop_stmts) >= 1)
 
 
+class TestSqliteUndoWithInvisibleNameCharacters(unittest.TestCase):
+    """The undo of a migration must never drop an existing object whose name differs only by a
+    character SQLite reads as part of the name while the statement reader skips or truncates it."""
+
+    def test_undo_leaves_the_existing_table_and_trigger_in_place(self):
+        import sqlite3
+        import warnings
+
+        from dblift.api import DBLiftClient
+        from dblift.config import DbliftConfig
+        from dblift.core.logger import NullLog
+
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            database = sqlite3.connect(root / "app.db")
+            database.execute("CREATE TABLE t (id INT)")
+            database.executemany("INSERT INTO t VALUES (?)", [(1,), (2,), (3,)])
+            database.execute("CREATE TRIGGER cafe AFTER INSERT ON t BEGIN SELECT 1; END")
+            database.commit()
+            database.close()
+
+            migrations = root / "sql"
+            migrations.mkdir()
+            nbsp, accent = chr(0x00A0), chr(0x0301)
+            (migrations / "V1__lookalike_table.sql").write_text(
+                f"CREATE TABLE t{nbsp}(id INT);\n", encoding="utf-8"
+            )
+            (migrations / "V2__lookalike_trigger.sql").write_text(
+                f"CREATE TRIGGER cafe{accent} AFTER INSERT ON t BEGIN SELECT 1; END;\n",
+                encoding="utf-8",
+            )
+            config = DbliftConfig.from_dict(
+                {"database": {"type": "sqlite", "path": str(root / "app.db"), "schema": "main"}}
+            )
+            with DBLiftClient.from_config(
+                config, migrations_dir=migrations, logger=NullLog()
+            ) as client:
+                self.assertTrue(client.migrate().success)
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore", DeprecationWarning)
+                    for script in sorted(migrations.glob("V*.sql")):
+                        client.generate_undo_script(script)
+                client.undo(target_version="0.0.0")
+
+            database = sqlite3.connect(root / "app.db")
+            self.assertEqual(
+                [row[0] for row in database.execute("SELECT id FROM t ORDER BY id")], [1, 2, 3]
+            )
+            self.assertEqual(
+                database.execute(
+                    "SELECT count(*) FROM sqlite_master WHERE type = 'trigger' AND name = 'cafe'"
+                ).fetchone()[0],
+                1,
+            )
+            database.close()
+
+
 if __name__ == "__main__":
     unittest.main()

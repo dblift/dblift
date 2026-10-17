@@ -74,6 +74,132 @@ _KINDS = {
 }
 
 
+# Characters sqlglot reads as blanks while an engine may read them as part of a name (the
+# non-ASCII ones str.isspace accepts), and the zero-width characters an engine may read as blanks
+# while sqlglot keeps them in a name. Whitespace is all in the BMP; a test checks the full range.
+_UNREAD_NAME_CHARACTERS = frozenset(
+    c for c in map(chr, range(0x80, 0x10000)) if c.isspace()
+) | frozenset({"\u200b", "\u2060", "\ufeff"})
+_QUOTED_TOKENS = frozenset(
+    {
+        TokenType.STRING,
+        TokenType.NATIONAL_STRING,
+        TokenType.RAW_STRING,
+        TokenType.HEREDOC_STRING,
+        TokenType.BIT_STRING,
+        TokenType.HEX_STRING,
+        TokenType.BYTE_STRING,
+        TokenType.UNICODE_STRING,
+        TokenType.IDENTIFIER,
+    }
+)
+_ASCII_BLANKS = " \t\n\r\f\v"
+_NAME_CHARACTERS = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_$")
+
+
+def _first_unread(text: str, start: int, end: int) -> Optional[int]:
+    for at in range(start, end):
+        if text[at] in _UNREAD_NAME_CHARACTERS:
+            return at
+    return None
+
+
+def _first_unread_outside_comments(
+    sql: str, start: int, end: int, comments: "dict[str, Optional[str]]", nested: bool
+) -> Optional[int]:
+    """First unread character in ``sql[start:end]`` (between tokens) that is not in a comment."""
+    at = start
+    while at < end:
+        opener = next((o for o in comments if sql.startswith(o, at)), None)
+        if opener is None:
+            if sql[at] in _UNREAD_NAME_CHARACTERS:
+                return at
+            at += 1
+            continue
+        closer = comments[opener]
+        at += len(opener)
+        if closer is None:  # line comment
+            newline = sql.find("\n", at, end)
+            at = end if newline < 0 else newline + 1
+            continue
+        depth = 1
+        while at < end and depth:
+            if nested and sql.startswith(opener, at):
+                depth += 1
+                at += len(opener)
+            elif sql.startswith(closer, at):
+                depth -= 1
+                at += len(closer)
+            else:
+                at += 1
+    return None
+
+
+def unread_name_character(sql: str, *, dialect: str) -> Optional[int]:
+    """Offset of the first character the engine may read inside a name while sqlglot reads a blank
+    (or the reverse), outside strings, quoted identifiers and comments; ``None`` when there is none.
+
+    Text that does not tokenize has no spans: any such character in it counts.
+    """
+    if _first_unread(sql, 0, len(sql)) is None:
+        return None
+    tokenizer = Dialect.get_or_raise(dialect)
+    try:
+        tokens = tokenizer.tokenize(sql)
+    except TokenError:
+        return _first_unread(sql, 0, len(sql))
+    comments = tokenizer.tokenizer_class._COMMENTS
+    nested = tokenizer.tokenizer_class.NESTED_COMMENTS
+    position = 0
+    for token in tokens:
+        found = _first_unread_outside_comments(sql, position, token.start, comments, nested)
+        if found is not None:
+            return found
+        if token.token_type not in _QUOTED_TOKENS:
+            found = _first_unread(sql, token.start, token.end + 1)
+            if found is not None:
+                return found
+        position = token.end + 1
+    return _first_unread_outside_comments(sql, position, len(sql), comments, nested)
+
+
+def readable_dml_target(sql: str, *, dialect: str) -> Optional[str]:
+    """The target of an INSERT, UPDATE or DELETE whose name is bounded by ASCII blanks, whatever
+    else the statement holds; ``None`` when the name itself is not safely readable."""
+    return _head_facts(sql, "", dialect=dialect).target
+
+
+def _unread_name_facts(sql: str, dialect: str, at: int) -> StatementFacts:
+    """The statement's operation and kind, and nothing it names."""
+    head = _head_facts(sql, "", dialect=dialect)
+    reason = (
+        f"{dialect} statement holds U+{ord(sql[at]):04X}, which the engine may read as part of a "
+        "name; its objects are not named"
+    )
+    try:
+        Dialect.get_or_raise(dialect).tokenize(sql)
+    except TokenError:
+        return StatementFacts(
+            head.operation,
+            head.kind,
+            error=f"{dialect} statement could not be tokenized (unterminated quote or comment)",
+        )
+    return StatementFacts(head.operation, head.kind, diagnostic=reason)
+
+
+def _head_name_is_bounded(text: str, match: "re.Match[str]", groups: Tuple[int, ...]) -> bool:
+    """Each name part starts after an ASCII blank, ``.`` or ``(`` and ends before a character
+    that cannot continue a name; an engine may read anything else as part of the name."""
+    spans = [match.span(group) for group in groups if match.span(group)[0] >= 0]
+    for start, end in spans:
+        if start and text[start - 1] not in _ASCII_BLANKS + ".(":
+            return False
+        if end < len(text) and not (text[end].isascii() and text[end] not in _NAME_CHARACTERS):
+            return False
+    # A trailing ``.`` means another part follows that the pattern could not read.
+    return not spans or spans[-1][1] >= len(text) or text[spans[-1][1]] != "."
+
+
 def _named(node: exp.Expression, kind: SqlObjectType, role: str) -> Optional[NamedObject]:
     table = node if isinstance(node, exp.Table) else node.find(exp.Table)
     if isinstance(node, exp.Index):
@@ -547,7 +673,7 @@ def _main_statement(head: str) -> str:
 
 def _head_object(match: "re.Match[str]") -> NamedObject:
     operation = match.group(1).upper()
-    object_type = SqlObjectType[match.group(2).upper().replace(" ", "_")]
+    object_type = SqlObjectType["_".join(match.group(2).upper().split())]
     name = strip_identifier_quotes(match.group(4) or match.group(3))
     schema = strip_identifier_quotes(match.group(3)) if match.group(4) else None
     role = {"CREATE": "created", "ALTER": "altered", "DROP": "dropped"}[operation]
@@ -584,6 +710,10 @@ def _head_facts(sql: str, diagnostic: str, *, dialect: str = "") -> StatementFac
             operation = match.group(1).upper()
             kind = _KINDS[operation]
     dml = _DML_HEAD.match(head)
+    if match and not _head_name_is_bounded(head, match, (3, 4)):
+        match = None
+    if dml and not _head_name_is_bounded(head, dml, (2, 3)):
+        dml = None
     if match:
         found = _head_object(match)
         diagnostic = f"{found.type.value.lower().replace('_', ' ')}: {diagnostic}"
@@ -661,6 +791,9 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
         return StatementFacts(
             "UNKNOWN", "UNKNOWN", diagnostic="mysql executable comment is opaque to statement facts"
         )
+    unread = unread_name_character(sql, dialect=dialect)
+    if unread is not None:
+        return _unread_name_facts(sql, dialect, unread)
     try:
         ast = parse_one(_UPDATE_OR.sub(r"\1", sql), read=dialect)
     except (ParseError, TokenError) as exc:
@@ -749,7 +882,7 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
         objects: Tuple[NamedObject, ...] = (identity,) if identity else ()
         indexed_table = None
         indexed_columns = None
-        index_items: list[exp.Expression] = []
+        index_items: Optional[list[exp.Expression]] = []
         if isinstance(subject, exp.Index):
             params = subject.args.get("params")
             index_items = params.args.get("columns", []) if params else []
@@ -781,7 +914,7 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
             if not isinstance(definition, exp.ColumnDef)
             if (detail := _declared_constraint(definition))
         )
-        if isinstance(subject, exp.Index):
+        if isinstance(subject, exp.Index) and index_items is not None:
             simple = [item.this if isinstance(item, exp.Ordered) else item for item in index_items]
             if all(isinstance(item, exp.Column) for item in simple):
                 indexed_columns = tuple(item.name for item in simple)
@@ -855,7 +988,7 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
         object_type = SqlObjectType.__members__.get(
             str(ast.args.get("kind") or "").upper(), SqlObjectType.UNKNOWN
         )
-        identity = _named(ast.this, object_type, "altered")
+        identity = _named(ast.this, object_type, "altered") if ast.this is not None else None
         actions = ast.args.get("actions") or []
         columns = tuple(action.name for action in actions if isinstance(action, exp.ColumnDef))
         action = "add-column" if columns else None
@@ -870,6 +1003,7 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
                 detail for definition in added for detail in _column_constraints(definition)
             ),
             action=action,
+            diagnostic=None if ast.this is not None else f"{dialect} ALTER names no object",
         )
 
     if (
