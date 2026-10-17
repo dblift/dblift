@@ -84,10 +84,12 @@ def _make_cmd(state, *, strict_mode=False):
 
 
 def _execute(cmd, **kwargs):
-    with patch.object(cmd, "_initialize_migration_execution", return_value=(True, True, [])):
-        with patch.object(cmd, "_update_final_state"):
-            with patch.object(cmd, "_log_command_completion"):
-                return cmd.execute(Path("/migrations"), **kwargs)
+    cmd.migration_helpers.setup_migration_parameters.return_value = (True, [])
+    with patch.object(cmd, "_run_preflight"):
+        with patch.object(cmd, "_log_command_header_update"):
+            with patch.object(cmd, "_update_final_state"):
+                with patch.object(cmd, "_log_command_completion"):
+                    return cmd.execute(Path("/migrations"), **kwargs)
 
 
 class TestMigrateSelectsPendingFromCatalog(unittest.TestCase):

@@ -5,7 +5,7 @@ Migrate command implementation.
 from contextlib import ExitStack
 from functools import partial
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union, cast
 
 from dblift.config import DbliftConfig
 from dblift.db.provider_interfaces import TransactionalProvider
@@ -31,7 +31,6 @@ from dblift.core.migration.rules.migration_rules import MigrationRules
 from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
 from dblift.core.migration.sql.lint import SAFE, lint_pending_scripts
 from dblift.core.migration.sql.script_analysis import dialect_of
-from dblift.core.migration.state.migration_state import MigrationReadSnapshot
 from dblift.core.migration.state.migration_state_manager import (
     MigrationStateManager,
     StrictModeError,
@@ -44,12 +43,7 @@ from dblift.core.sql_validator.migration_validator import MigrationValidator
 from dblift.db.base_provider import BaseProvider
 
 from ._script_runner import ScriptRunner, ScriptRunPolicy
-from .base_command import (
-    MIGRATION_LOCK_REFUSAL,
-    BaseCommand,
-    BaseCommandContext,
-    PreflightConnectionError,
-)
+from .base_command import MIGRATION_LOCK_REFUSAL, BaseCommand, BaseCommandContext
 
 MIGRATE_POLICY = ScriptRunPolicy(
     before_events=("beforeEach", "beforeEachMigrate"),
@@ -103,56 +97,6 @@ class MigrateCommand(BaseCommand):
             config=config,
         )
 
-    def _initialize_migration_execution(
-        self,
-        result: MigrateResult,
-        scripts_dir: Path,
-        target_version: Optional[str],
-        dry_run: bool,
-        tags: Optional[str],
-        exclude_tags: Optional[str],
-        versions: Optional[str],
-        exclude_versions: Optional[str],
-        mark_as_executed: bool,
-        show_sql: bool,
-        placeholders: Optional[Dict[str, Any]],
-        recursive: Optional[bool],
-        additional_dirs: Optional[List[Path]],
-        read_snapshot: Optional[MigrationReadSnapshot] = None,
-    ) -> tuple[bool, bool, Optional[List[Path]]]:
-        """Initialize migration execution and resolve migration parameters.
-
-        Returns:
-            Tuple of (validation_success, use_recursive, use_additional_dirs)
-        """
-        # Connect before reading state. Execution mode delays history creation
-        # until selected SQL is classified; dry-run leaves the database untouched.
-        defer_history = not dry_run and not mark_as_executed and not self._capture_objects
-        self._run_preflight(
-            result, ensure_history=not defer_history, dry_run=dry_run, ensure_schema=True
-        )
-
-        # Log command execution with filters and connection info
-        self._log_command_header_update(
-            "migrate",
-            target_version=target_version,
-            dry_run=dry_run,
-            tags=tags,
-            exclude_tags=exclude_tags,
-            versions=versions,
-            exclude_versions=exclude_versions,
-            mark_as_executed=mark_as_executed,
-            show_sql=show_sql,
-            read_snapshot=read_snapshot,
-        )
-
-        # Setup migration parameters
-        use_recursive, use_additional_dirs = self.migration_helpers.setup_migration_parameters(
-            placeholders, recursive, additional_dirs, self.placeholder_service
-        )
-
-        return True, use_recursive, use_additional_dirs
-
     def _collect_visible_sql(self, migrations: List[Migration], result: MigrateResult) -> None:
         """Populate SQL visibility data for migration scripts."""
         for migration in migrations:
@@ -179,7 +123,6 @@ class MigrateCommand(BaseCommand):
         if show_sql:
             self._collect_visible_sql(pending_migrations, result)
             if result.error_message:
-                self._log_command_completion("migrate", result)
                 return result
 
         dialect = dialect_of(self.config)
@@ -225,7 +168,6 @@ class MigrateCommand(BaseCommand):
             self.log.info("Run `dblift validate-sql` to see the statement behind each finding.")
         result.dry_run_count = len(pending_migrations)
         # Note: Callbacks are NOT executed in dry-run mode
-        self._log_command_completion("migrate", result)
         return result
 
     def _filter_already_applied(
@@ -530,8 +472,13 @@ class MigrateCommand(BaseCommand):
 
         read_snapshot = self.state_manager.new_read_snapshot()
 
+        # Connect before reading state. Execution mode delays history creation
+        # until selected SQL is classified; dry-run leaves the database untouched.
+        defer_history = not dry_run and not mark_as_executed and not self._capture_objects
         restore_busy_timeout = None
-        try:
+
+        def preflight() -> None:
+            nonlocal restore_busy_timeout
             # SQLite only: widen busy_timeout for this command; the provider
             # returns what undoes it (None when nothing was changed). This
             # opens the connection, so connect through the preflight first:
@@ -541,29 +488,14 @@ class MigrateCommand(BaseCommand):
             if callable(widen_busy_timeout):
                 self._preflight_connect(result)
                 restore_busy_timeout = widen_busy_timeout(DEFAULT_MIGRATION_LOCK_TIMEOUT_SECONDS)
-
-            # Initialize and validate migrations
-            validation_success, use_recursive, use_additional_dirs = (
-                self._initialize_migration_execution(
-                    result,
-                    scripts_dir,
-                    target_version,
-                    dry_run,
-                    tags,
-                    exclude_tags,
-                    versions,
-                    exclude_versions,
-                    mark_as_executed,
-                    show_sql,
-                    placeholders,
-                    recursive,
-                    additional_dirs,
-                    read_snapshot=read_snapshot,
-                )
+            self._run_preflight(
+                result, ensure_history=not defer_history, dry_run=dry_run, ensure_schema=True
             )
-            if not validation_success:
-                return result
 
+        def body() -> None:
+            use_recursive, use_additional_dirs = self.migration_helpers.setup_migration_parameters(
+                placeholders, recursive, additional_dirs, self.placeholder_service
+            )
             self._bind_callbacks(
                 scripts_dir, use_recursive, use_additional_dirs, dir_recursive_map, result
             )
@@ -594,7 +526,15 @@ class MigrateCommand(BaseCommand):
                 versions=versions,
                 exclude_versions=exclude_versions,
             )
-            self._enforce_strict_ordering(pending_migrations, current_version, strict_mode)
+            try:
+                self._enforce_strict_ordering(pending_migrations, current_version, strict_mode)
+            except StrictModeError as e:
+                # A specific subclass of ``ValueError``: it keeps its bare
+                # message, while any other error in the body gets the
+                # "Migration operation failed:" prefix (PR #241 Bugbot).
+                self.log.error(str(e))
+                result.set_error(str(e))
+                return
 
             if not dry_run and not mark_as_executed and not self._capture_objects:
                 if pending_migrations:
@@ -646,13 +586,11 @@ class MigrateCommand(BaseCommand):
             if not validation_success:
                 result.set_error(f"Validation failed: {validation_errors}")
                 result.complete()
-                self._log_command_completion("migrate", result)
-                return result
+                return
 
             if not pending_migrations:
                 self.log.info("No pending migrations found")
-                self._log_command_completion("migrate", result)
-                return result
+                return
 
             self.log.info(f"Found {len(pending_migrations)} pending migration(s)")
             for pending_migration in pending_migrations:
@@ -661,12 +599,12 @@ class MigrateCommand(BaseCommand):
                 )
 
             if dry_run:
-                return self._handle_dry_run(pending_migrations, result, show_sql=show_sql)
+                self._handle_dry_run(pending_migrations, result, show_sql=show_sql)
+                return
 
             if mark_as_executed:
                 if not self._mark_migrations_as_executed(pending_migrations, result):
-                    self._log_command_completion("migrate", result)
-                    return result
+                    return
                 try:
                     if isinstance(self.provider, TransactionalProvider):
                         self.provider.commit_transaction()
@@ -678,8 +616,7 @@ class MigrateCommand(BaseCommand):
                         f"Failed to commit mark-as-executed history records: {commit_error}"
                     )
                     result.complete()
-                    self._log_command_completion("migrate", result)
-                    return result
+                    return
             else:
                 # Acquire migration lock before executing migrations
                 lock = ExitStack()
@@ -688,8 +625,7 @@ class MigrateCommand(BaseCommand):
                         self.log.error(MIGRATION_LOCK_REFUSAL)
                         result.set_error(MIGRATION_LOCK_REFUSAL)
                         result.complete()
-                        self._log_command_completion("migrate", result)
-                        return result
+                        return
 
                     # Re-read history after lock acquisition. Another
                     # process may have applied versioned migrations while we
@@ -750,30 +686,28 @@ class MigrateCommand(BaseCommand):
             # Update final schema version
             self._update_final_state(result)
 
-            self._log_command_completion("migrate", result)
-            return result
-
-        except PreflightConnectionError:
-            # The connection or schema-history setup failed before migrate
-            # produced anything: propagate it, as info and validate do,
-            # instead of reporting it as a failed migration.
-            raise
-        except StrictModeError as e:
-            # Strict-mode out-of-order violations raised when selecting
-            # executable pending. Specific subclass of ``ValueError`` so
-            # unrelated ``ValueError``s elsewhere in the try block
-            # (validation, lock acquisition, state updates) still fall
-            # through to the broader handler with the "Migration operation
-            # failed:" prefix (PR #241 Bugbot).
-            self.log.error(str(e))
-            result.set_error(str(e))
-            self._log_command_completion("migrate", result)
-            return result
-        except Exception as e:
-            self.log.error(f"Migration operation failed: {e}")
-            result.set_error(f"Migration operation failed: {e}")
-            self._log_command_completion("migrate", result)
-            return result
+        try:
+            return cast(
+                MigrateResult,
+                self._run_command_lifecycle(
+                    "migrate",
+                    result,
+                    body,
+                    preflight=preflight,
+                    error_message_prefix="Migration operation failed",
+                    header_kwargs={
+                        "target_version": target_version,
+                        "dry_run": dry_run,
+                        "tags": tags,
+                        "exclude_tags": exclude_tags,
+                        "versions": versions,
+                        "exclude_versions": exclude_versions,
+                        "mark_as_executed": mark_as_executed,
+                        "show_sql": show_sql,
+                        "read_snapshot": read_snapshot,
+                    },
+                ),
+            )
         finally:
             if callable(restore_busy_timeout):
                 restore_busy_timeout()

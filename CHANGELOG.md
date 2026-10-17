@@ -79,6 +79,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`migrate` reports a migration that raises an error.** It now emits
   `migration.script.failed` when a migration raises an error. A failing before-each
   callback no longer closes a journal entry that was never opened.
+- **`undo` and `clean` always print their closing summary after connecting.** They now print the
+  closing summary, and write the completion line to JSON and HTML log files, on every exit after
+  they connect. Before, `undo` with nothing to undo or with a failing `beforeUndo` callback, and
+  `clean` when preparing the target or a `beforeClean` callback failed, ended without one.
 
 ### Removed
 

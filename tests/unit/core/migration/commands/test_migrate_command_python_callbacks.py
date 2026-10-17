@@ -22,7 +22,11 @@ def test_python_migrations_trigger_versioned_callbacks(monkeypatch):
     command.provider.acquire_migration_lock.return_value = True
     command.log = MagicMock()
     command.journal = None
-    command._initialize_migration_execution = MagicMock(return_value=(True, True, None))
+    command._run_preflight = MagicMock()
+    command._log_command_header_update = MagicMock()
+    command.migration_helpers = MagicMock()
+    command.migration_helpers.setup_migration_parameters.return_value = (True, None)
+    command.placeholder_service = MagicMock()
     command._execute_before_callbacks = MagicMock()
     command._execute_migration_loop = MagicMock()
     command._execute_after_callbacks = MagicMock()
