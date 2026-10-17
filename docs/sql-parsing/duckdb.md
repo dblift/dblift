@@ -377,7 +377,7 @@ Literal masking in failure messages reads a DuckDB statement through the specifi
 dollar-quoted string (`$$…$$`, `$tag$…$tag$`, one holding quotes or line breaks) and an escape string with a
 backslash are literals and become `'?'`. A quoted name or a block comment that is never closed, and a dollar-quoted
 string that is never closed, run to the end of the text and are masked to the end, as the engine reads them.
-A shell command line (a line starting with `.`) is read as SQL text, not refused. Object extraction strips
+A shell command line (a line starting with `.`) is read as SQL text, not refused. Rows 74 and 75 apply to masking as well: where the splitter and DuckDB differ on them, a literal can be left in the clear. Object extraction strips
 comments with the DuckDB nesting tokenizer; it did not move with the splitter, and a parser object has no
 `lexical_spec` attribute, so extraction is not re-pointed. `strict_tokenizer` has no effect: the engine has no unknown
 characters, every character that is no other lexeme is one symbol. A split writes no log record (measured: 0 records for a split before and after the change; building a regex

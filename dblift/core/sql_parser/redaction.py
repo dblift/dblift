@@ -119,7 +119,9 @@ def _runs_unclosed(token: Token) -> bool:
     text = token.text
     if token.type == TokenType.IDENTIFIER and text.startswith('"'):
         return not _CLOSED_NAME.fullmatch(text)
-    return token.type == TokenType.SYMBOL and text.startswith("/*") and not text.endswith("*/")
+    # A closed comment (nested ones too) is a COMMENT token; a block comment read as a symbol never
+    # closed, whatever its text ends with.
+    return token.type == TokenType.SYMBOL and text.startswith("/*")
 
 
 def _credential_span(

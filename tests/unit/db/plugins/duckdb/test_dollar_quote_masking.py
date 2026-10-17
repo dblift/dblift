@@ -75,3 +75,17 @@ def test_an_unclosed_name_or_comment_hides_nothing_after_it(sql, masked):
 def test_closed_names_and_comments_are_kept():
     sql = "SELECT \"a'b\", \"c\"\"d\" /* it's 'fine' */ FROM t -- 'x'"
     assert mask_string_literals(sql, "duckdb") == sql
+
+
+@pytest.mark.parametrize(
+    "sql,masked",
+    [
+        ("SELECT 1 /* a /* b /* c */ 'hunter2' */", "SELECT 1 '?'"),
+        ("SELECT 1 /* a /* b */ 'hunter2'", "SELECT 1 '?'"),
+        ("SELECT 1 /* a /* b */ 'hunter2' */ */", "SELECT 1 /* a /* b */ 'hunter2' */ */"),
+        ("SELECT 1 /* a */ */ 'hunter2'", "SELECT 1 /* a */ */ '?'"),
+        ("SELECT 1 /* a /* b */ */ 'hunter2'", "SELECT 1 /* a /* b */ */ '?'"),
+    ],
+)
+def test_comment_nesting_decides_what_is_unclosed(sql, masked):
+    assert mask_string_literals(sql, "duckdb") == masked
