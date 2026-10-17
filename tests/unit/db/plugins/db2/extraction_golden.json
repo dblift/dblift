@@ -1,0 +1,8821 @@
+{
+"cases": [
+{
+"extraction": {
+"clean": "CREATE TABLE t (id INT NOT NULL, name VARCHAR(20))",
+"empty": false,
+"objects": [
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "T",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+],
+"parse": {
+"errors": [],
+"statements": [
+[
+"CREATE TABLE t (id INT NOT NULL, name VARCHAR(20))",
+"DDL",
+[
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "T",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+]
+]
+],
+"success": true
+},
+"strip": "CREATE TABLE t (id INT NOT NULL, name VARCHAR(20))",
+"utility": false,
+"validate": {
+"errors": [],
+"statement_count": 1,
+"valid": true
+}
+},
+"id": "plain-table",
+"masking": {
+"describe": "CREATE TABLE t",
+"mask": "CREATE TABLE t (id INT NOT NULL, name VARCHAR(20))"
+},
+"text": "CREATE TABLE t (id INT NOT NULL, name VARCHAR(20))",
+"tokens": [
+[
+"KEYWORD",
+"CREATE",
+0,
+1,
+1
+],
+[
+"KEYWORD",
+"TABLE",
+7,
+1,
+8
+],
+[
+"IDENTIFIER",
+"t",
+13,
+1,
+14
+],
+[
+"SYMBOL",
+"(",
+15,
+1,
+16
+],
+[
+"IDENTIFIER",
+"id",
+16,
+1,
+17
+],
+[
+"IDENTIFIER",
+"INT",
+19,
+1,
+20
+],
+[
+"KEYWORD",
+"NOT",
+23,
+1,
+24
+],
+[
+"KEYWORD",
+"NULL",
+27,
+1,
+28
+],
+[
+"SYMBOL",
+",",
+31,
+1,
+32
+],
+[
+"IDENTIFIER",
+"name",
+33,
+1,
+34
+],
+[
+"IDENTIFIER",
+"VARCHAR",
+38,
+1,
+39
+],
+[
+"SYMBOL",
+"(",
+45,
+1,
+46
+],
+[
+"IDENTIFIER",
+"20",
+46,
+1,
+47
+],
+[
+"SYMBOL",
+")",
+48,
+1,
+49
+],
+[
+"SYMBOL",
+")",
+49,
+1,
+50
+]
+]
+},
+{
+"extraction": {
+"clean": "CREATE TABLE \"S\".\"T\" (id INT)",
+"empty": false,
+"objects": [
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "T",
+"object_type": "TABLE",
+"schema": "S"
+}
+],
+"parse": {
+"errors": [],
+"statements": [
+[
+"CREATE TABLE \"S\".\"T\" (id INT)",
+"DDL",
+[
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "T",
+"object_type": "TABLE",
+"schema": "S"
+}
+]
+]
+],
+"success": true
+},
+"strip": "CREATE TABLE \"S\".\"T\" (id INT)",
+"utility": false,
+"validate": {
+"errors": [],
+"statement_count": 1,
+"valid": true
+}
+},
+"id": "plain-table-schema",
+"masking": {
+"describe": "CREATE TABLE \"S\".\"T\"",
+"mask": "CREATE TABLE \"S\".\"T\" (id INT)"
+},
+"text": "CREATE TABLE \"S\".\"T\" (id INT)",
+"tokens": [
+[
+"KEYWORD",
+"CREATE",
+0,
+1,
+1
+],
+[
+"KEYWORD",
+"TABLE",
+7,
+1,
+8
+],
+[
+"SYMBOL",
+"\"",
+13,
+1,
+14
+],
+[
+"IDENTIFIER",
+"S",
+14,
+1,
+15
+],
+[
+"SYMBOL",
+"\"",
+15,
+1,
+16
+],
+[
+"SYMBOL",
+".",
+16,
+1,
+17
+],
+[
+"SYMBOL",
+"\"",
+17,
+1,
+18
+],
+[
+"IDENTIFIER",
+"T",
+18,
+1,
+19
+],
+[
+"SYMBOL",
+"\"",
+19,
+1,
+20
+],
+[
+"SYMBOL",
+"(",
+21,
+1,
+22
+],
+[
+"IDENTIFIER",
+"id",
+22,
+1,
+23
+],
+[
+"IDENTIFIER",
+"INT",
+25,
+1,
+26
+],
+[
+"SYMBOL",
+")",
+28,
+1,
+29
+]
+]
+},
+{
+"extraction": {
+"clean": "CREATE UNIQUE INDEX ix ON s.t (a, b)",
+"empty": false,
+"objects": [
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "IX",
+"object_type": "INDEX",
+"schema": "SYSIBM"
+}
+],
+"parse": {
+"errors": [],
+"statements": [
+[
+"CREATE UNIQUE INDEX ix ON s.t (a, b)",
+"DDL",
+[
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "IX",
+"object_type": "INDEX",
+"schema": "SYSIBM"
+}
+]
+]
+],
+"success": true
+},
+"strip": "CREATE UNIQUE INDEX ix ON s.t (a, b)",
+"utility": false,
+"validate": {
+"errors": [],
+"statement_count": 1,
+"valid": true
+}
+},
+"id": "plain-index",
+"masking": {
+"describe": "CREATE UNIQUE INDEX ix",
+"mask": "CREATE UNIQUE INDEX ix ON s.t (a, b)"
+},
+"text": "CREATE UNIQUE INDEX ix ON s.t (a, b)",
+"tokens": [
+[
+"KEYWORD",
+"CREATE",
+0,
+1,
+1
+],
+[
+"IDENTIFIER",
+"UNIQUE",
+7,
+1,
+8
+],
+[
+"KEYWORD",
+"INDEX",
+14,
+1,
+15
+],
+[
+"IDENTIFIER",
+"ix",
+20,
+1,
+21
+],
+[
+"IDENTIFIER",
+"ON",
+23,
+1,
+24
+],
+[
+"IDENTIFIER",
+"s",
+26,
+1,
+27
+],
+[
+"SYMBOL",
+".",
+27,
+1,
+28
+],
+[
+"IDENTIFIER",
+"t",
+28,
+1,
+29
+],
+[
+"SYMBOL",
+"(",
+30,
+1,
+31
+],
+[
+"IDENTIFIER",
+"a",
+31,
+1,
+32
+],
+[
+"SYMBOL",
+",",
+32,
+1,
+33
+],
+[
+"IDENTIFIER",
+"b",
+34,
+1,
+35
+],
+[
+"SYMBOL",
+")",
+35,
+1,
+36
+]
+]
+},
+{
+"extraction": {
+"clean": "CREATE VIEW v AS SELECT id FROM t WHERE c = 'a;b'",
+"empty": false,
+"objects": [
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "V",
+"object_type": "VIEW",
+"schema": "SYSIBM"
+}
+],
+"parse": {
+"errors": [],
+"statements": [
+[
+"CREATE VIEW v AS SELECT id FROM t WHERE c = 'a;b'",
+"DDL",
+[
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "V",
+"object_type": "VIEW",
+"schema": "SYSIBM"
+}
+]
+]
+],
+"success": true
+},
+"strip": "CREATE VIEW v AS SELECT id FROM t WHERE c = 'a;b'",
+"utility": false,
+"validate": {
+"errors": [],
+"statement_count": 1,
+"valid": true
+}
+},
+"id": "plain-view",
+"masking": {
+"describe": "CREATE VIEW v",
+"mask": "CREATE VIEW v AS SELECT id FROM t WHERE c = '?'"
+},
+"text": "CREATE VIEW v AS SELECT id FROM t WHERE c = 'a;b'",
+"tokens": [
+[
+"KEYWORD",
+"CREATE",
+0,
+1,
+1
+],
+[
+"KEYWORD",
+"VIEW",
+7,
+1,
+8
+],
+[
+"IDENTIFIER",
+"v",
+12,
+1,
+13
+],
+[
+"KEYWORD",
+"AS",
+14,
+1,
+15
+],
+[
+"KEYWORD",
+"SELECT",
+17,
+1,
+18
+],
+[
+"IDENTIFIER",
+"id",
+24,
+1,
+25
+],
+[
+"KEYWORD",
+"FROM",
+27,
+1,
+28
+],
+[
+"IDENTIFIER",
+"t",
+32,
+1,
+33
+],
+[
+"KEYWORD",
+"WHERE",
+34,
+1,
+35
+],
+[
+"IDENTIFIER",
+"c",
+40,
+1,
+41
+],
+[
+"SYMBOL",
+"=",
+42,
+1,
+43
+],
+[
+"STRING",
+"'a;b'",
+44,
+1,
+45
+]
+]
+},
+{
+"extraction": {
+"clean": "ALTER TABLE s.t ADD COLUMN c INT",
+"empty": false,
+"objects": [
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "T",
+"object_type": "TABLE",
+"schema": "S"
+}
+],
+"parse": {
+"errors": [],
+"statements": [
+[
+"ALTER TABLE s.t ADD COLUMN c INT",
+"DDL",
+[
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "T",
+"object_type": "TABLE",
+"schema": "S"
+}
+]
+]
+],
+"success": true
+},
+"strip": "ALTER TABLE s.t ADD COLUMN c INT",
+"utility": false,
+"validate": {
+"errors": [],
+"statement_count": 1,
+"valid": true
+}
+},
+"id": "plain-alter",
+"masking": {
+"describe": "ALTER TABLE s.t",
+"mask": "ALTER TABLE s.t ADD COLUMN c INT"
+},
+"text": "ALTER TABLE s.t ADD COLUMN c INT",
+"tokens": [
+[
+"KEYWORD",
+"ALTER",
+0,
+1,
+1
+],
+[
+"KEYWORD",
+"TABLE",
+6,
+1,
+7
+],
+[
+"IDENTIFIER",
+"s",
+12,
+1,
+13
+],
+[
+"SYMBOL",
+".",
+13,
+1,
+14
+],
+[
+"IDENTIFIER",
+"t",
+14,
+1,
+15
+],
+[
+"IDENTIFIER",
+"ADD",
+16,
+1,
+17
+],
+[
+"IDENTIFIER",
+"COLUMN",
+20,
+1,
+21
+],
+[
+"IDENTIFIER",
+"c",
+27,
+1,
+28
+],
+[
+"IDENTIFIER",
+"INT",
+29,
+1,
+30
+]
+]
+},
+{
+"extraction": {
+"clean": "DROP TABLE s.t",
+"empty": false,
+"objects": [
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "T",
+"object_type": "TABLE",
+"schema": "S"
+}
+],
+"parse": {
+"errors": [],
+"statements": [
+[
+"DROP TABLE s.t",
+"DDL",
+[
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "T",
+"object_type": "TABLE",
+"schema": "S"
+}
+]
+]
+],
+"success": true
+},
+"strip": "DROP TABLE s.t",
+"utility": false,
+"validate": {
+"errors": [],
+"statement_count": 1,
+"valid": true
+}
+},
+"id": "plain-drop",
+"masking": {
+"describe": "DROP TABLE s.t",
+"mask": "DROP TABLE s.t"
+},
+"text": "DROP TABLE s.t",
+"tokens": [
+[
+"KEYWORD",
+"DROP",
+0,
+1,
+1
+],
+[
+"KEYWORD",
+"TABLE",
+5,
+1,
+6
+],
+[
+"IDENTIFIER",
+"s",
+11,
+1,
+12
+],
+[
+"SYMBOL",
+".",
+12,
+1,
+13
+],
+[
+"IDENTIFIER",
+"t",
+13,
+1,
+14
+]
+]
+},
+{
+"extraction": {
+"clean": "INSERT INTO t VALUES (1, 'it''s', X'3B3B')",
+"empty": false,
+"objects": [],
+"parse": {
+"errors": [],
+"statements": [
+[
+"INSERT INTO t VALUES (1, 'it''s', X'3B3B')",
+"DML",
+[]
+]
+],
+"success": true
+},
+"strip": "INSERT INTO t VALUES (1, 'it''s', X'3B3B')",
+"utility": false,
+"validate": {
+"errors": [],
+"statement_count": 1,
+"valid": true
+}
+},
+"id": "plain-insert",
+"masking": {
+"describe": "INSERT INTO t",
+"mask": "INSERT INTO t VALUES (1, '?', X'?')"
+},
+"text": "INSERT INTO t VALUES (1, 'it''s', X'3B3B')",
+"tokens": [
+[
+"KEYWORD",
+"INSERT",
+0,
+1,
+1
+],
+[
+"IDENTIFIER",
+"INTO",
+7,
+1,
+8
+],
+[
+"IDENTIFIER",
+"t",
+12,
+1,
+13
+],
+[
+"IDENTIFIER",
+"VALUES",
+14,
+1,
+15
+],
+[
+"SYMBOL",
+"(",
+21,
+1,
+22
+],
+[
+"IDENTIFIER",
+"1",
+22,
+1,
+23
+],
+[
+"SYMBOL",
+",",
+23,
+1,
+24
+],
+[
+"STRING",
+"'it''s'",
+25,
+1,
+26
+],
+[
+"SYMBOL",
+",",
+32,
+1,
+33
+],
+[
+"IDENTIFIER",
+"X",
+34,
+1,
+35
+],
+[
+"STRING",
+"'3B3B'",
+35,
+1,
+36
+],
+[
+"SYMBOL",
+")",
+41,
+1,
+42
+]
+]
+},
+{
+"extraction": {
+"clean": "UPDATE t SET a = 1 WHERE b = 'x'",
+"empty": false,
+"objects": [],
+"parse": {
+"errors": [],
+"statements": [
+[
+"UPDATE t SET a = 1 WHERE b = 'x'",
+"DML",
+[]
+]
+],
+"success": true
+},
+"strip": "UPDATE t SET a = 1 WHERE b = 'x'",
+"utility": false,
+"validate": {
+"errors": [],
+"statement_count": 1,
+"valid": true
+}
+},
+"id": "plain-update",
+"masking": {
+"describe": "UPDATE t",
+"mask": "UPDATE t SET a = 1 WHERE b = '?'"
+},
+"text": "UPDATE t SET a = 1 WHERE b = 'x'",
+"tokens": [
+[
+"KEYWORD",
+"UPDATE",
+0,
+1,
+1
+],
+[
+"IDENTIFIER",
+"t",
+7,
+1,
+8
+],
+[
+"IDENTIFIER",
+"SET",
+9,
+1,
+10
+],
+[
+"IDENTIFIER",
+"a",
+13,
+1,
+14
+],
+[
+"SYMBOL",
+"=",
+15,
+1,
+16
+],
+[
+"IDENTIFIER",
+"1",
+17,
+1,
+18
+],
+[
+"KEYWORD",
+"WHERE",
+19,
+1,
+20
+],
+[
+"IDENTIFIER",
+"b",
+25,
+1,
+26
+],
+[
+"SYMBOL",
+"=",
+27,
+1,
+28
+],
+[
+"STRING",
+"'x'",
+29,
+1,
+30
+]
+]
+},
+{
+"extraction": {
+"clean": "CREATE TRIGGER tr AFTER INSERT ON t FOR EACH ROW BEGIN ATOMIC UPDATE u SET a = 1; END",
+"empty": false,
+"objects": [
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "TR",
+"object_type": "TRIGGER",
+"schema": "SYSIBM"
+}
+],
+"parse": {
+"errors": [],
+"statements": [
+[
+"CREATE TRIGGER tr AFTER INSERT ON t FOR EACH ROW BEGIN ATOMIC UPDATE u SET a = 1; END",
+"DDL",
+[
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "TR",
+"object_type": "TRIGGER",
+"schema": "SYSIBM"
+}
+]
+]
+],
+"success": true
+},
+"strip": "CREATE TRIGGER tr AFTER INSERT ON t FOR EACH ROW BEGIN ATOMIC UPDATE u SET a = 1; END",
+"utility": false,
+"validate": {
+"errors": [],
+"statement_count": 1,
+"valid": true
+}
+},
+"id": "plain-trigger",
+"masking": {
+"describe": "CREATE TRIGGER tr",
+"mask": "CREATE TRIGGER tr AFTER INSERT ON t FOR EACH ROW BEGIN ATOMIC UPDATE u SET a = 1; END"
+},
+"text": "CREATE TRIGGER tr AFTER INSERT ON t FOR EACH ROW BEGIN ATOMIC UPDATE u SET a = 1; END",
+"tokens": [
+[
+"KEYWORD",
+"CREATE",
+0,
+1,
+1
+],
+[
+"KEYWORD",
+"TRIGGER",
+7,
+1,
+8
+],
+[
+"IDENTIFIER",
+"tr",
+15,
+1,
+16
+],
+[
+"IDENTIFIER",
+"AFTER",
+18,
+1,
+19
+],
+[
+"KEYWORD",
+"INSERT",
+24,
+1,
+25
+],
+[
+"IDENTIFIER",
+"ON",
+31,
+1,
+32
+],
+[
+"IDENTIFIER",
+"t",
+34,
+1,
+35
+],
+[
+"KEYWORD",
+"FOR",
+36,
+1,
+37
+],
+[
+"KEYWORD",
+"EACH",
+40,
+1,
+41
+],
+[
+"IDENTIFIER",
+"ROW",
+45,
+1,
+46
+],
+[
+"KEYWORD",
+"BEGIN",
+49,
+1,
+50
+],
+[
+"KEYWORD",
+"ATOMIC",
+55,
+1,
+56
+],
+[
+"KEYWORD",
+"UPDATE",
+62,
+1,
+63
+],
+[
+"IDENTIFIER",
+"u",
+69,
+1,
+70
+],
+[
+"IDENTIFIER",
+"SET",
+71,
+1,
+72
+],
+[
+"IDENTIFIER",
+"a",
+75,
+1,
+76
+],
+[
+"SYMBOL",
+"=",
+77,
+1,
+78
+],
+[
+"IDENTIFIER",
+"1",
+79,
+1,
+80
+],
+[
+"DELIMITER",
+";",
+80,
+1,
+81
+],
+[
+"KEYWORD",
+"END",
+82,
+1,
+83
+]
+]
+},
+{
+"extraction": {
+"clean": "CREATE PROCEDURE p() LANGUAGE SQL BEGIN DECLARE x INT; SET x = 1; END",
+"empty": false,
+"objects": [
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "P",
+"object_type": "PROCEDURE",
+"schema": "SYSIBM"
+}
+],
+"parse": {
+"errors": [],
+"statements": [
+[
+"CREATE PROCEDURE p() LANGUAGE SQL BEGIN DECLARE x INT; SET x = 1; END",
+"DDL",
+[
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "P",
+"object_type": "PROCEDURE",
+"schema": "SYSIBM"
+}
+]
+]
+],
+"success": true
+},
+"strip": "CREATE PROCEDURE p() LANGUAGE SQL BEGIN DECLARE x INT; SET x = 1; END",
+"utility": false,
+"validate": {
+"errors": [],
+"statement_count": 1,
+"valid": true
+}
+},
+"id": "plain-procedure",
+"masking": {
+"describe": "CREATE PROCEDURE p",
+"mask": "CREATE PROCEDURE p() LANGUAGE SQL BEGIN DECLARE x INT; SET x = 1; END"
+},
+"text": "CREATE PROCEDURE p() LANGUAGE SQL BEGIN DECLARE x INT; SET x = 1; END",
+"tokens": [
+[
+"KEYWORD",
+"CREATE",
+0,
+1,
+1
+],
+[
+"KEYWORD",
+"PROCEDURE",
+7,
+1,
+8
+],
+[
+"IDENTIFIER",
+"p",
+17,
+1,
+18
+],
+[
+"SYMBOL",
+"(",
+18,
+1,
+19
+],
+[
+"SYMBOL",
+")",
+19,
+1,
+20
+],
+[
+"KEYWORD",
+"LANGUAGE",
+21,
+1,
+22
+],
+[
+"IDENTIFIER",
+"SQL",
+30,
+1,
+31
+],
+[
+"KEYWORD",
+"BEGIN",
+34,
+1,
+35
+],
+[
+"KEYWORD",
+"DECLARE",
+40,
+1,
+41
+],
+[
+"IDENTIFIER",
+"x",
+48,
+1,
+49
+],
+[
+"IDENTIFIER",
+"INT",
+50,
+1,
+51
+],
+[
+"DELIMITER",
+";",
+53,
+1,
+54
+],
+[
+"IDENTIFIER",
+"SET",
+55,
+1,
+56
+],
+[
+"IDENTIFIER",
+"x",
+59,
+1,
+60
+],
+[
+"SYMBOL",
+"=",
+61,
+1,
+62
+],
+[
+"IDENTIFIER",
+"1",
+63,
+1,
+64
+],
+[
+"DELIMITER",
+";",
+64,
+1,
+65
+],
+[
+"KEYWORD",
+"END",
+66,
+1,
+67
+]
+]
+},
+{
+"extraction": {
+"clean": "CREATE SEQUENCE s.q START WITH 1",
+"empty": false,
+"objects": [
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "Q",
+"object_type": "SEQUENCE",
+"schema": "S"
+}
+],
+"parse": {
+"errors": [],
+"statements": [
+[
+"CREATE SEQUENCE s.q START WITH 1",
+"DDL",
+[
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "Q",
+"object_type": "SEQUENCE",
+"schema": "S"
+}
+]
+]
+],
+"success": true
+},
+"strip": "CREATE SEQUENCE s.q START WITH 1",
+"utility": false,
+"validate": {
+"errors": [],
+"statement_count": 1,
+"valid": true
+}
+},
+"id": "plain-sequence",
+"masking": {
+"describe": "CREATE SEQUENCE s.q",
+"mask": "CREATE SEQUENCE s.q START WITH 1"
+},
+"text": "CREATE SEQUENCE s.q START WITH 1",
+"tokens": [
+[
+"KEYWORD",
+"CREATE",
+0,
+1,
+1
+],
+[
+"IDENTIFIER",
+"SEQUENCE",
+7,
+1,
+8
+],
+[
+"IDENTIFIER",
+"s",
+16,
+1,
+17
+],
+[
+"SYMBOL",
+".",
+17,
+1,
+18
+],
+[
+"IDENTIFIER",
+"q",
+18,
+1,
+19
+],
+[
+"IDENTIFIER",
+"START",
+20,
+1,
+21
+],
+[
+"IDENTIFIER",
+"WITH",
+26,
+1,
+27
+],
+[
+"IDENTIFIER",
+"1",
+31,
+1,
+32
+]
+]
+},
+{
+"extraction": {
+"clean": "CREATE TABLESPACE ts MANAGED BY AUTOMATIC STORAGE",
+"empty": false,
+"objects": [
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "TS",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+],
+"parse": {
+"errors": [],
+"statements": [
+[
+"CREATE TABLESPACE ts MANAGED BY AUTOMATIC STORAGE",
+"DDL",
+[
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "TS",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+]
+]
+],
+"success": true
+},
+"strip": "CREATE TABLESPACE ts MANAGED BY AUTOMATIC STORAGE",
+"utility": false,
+"validate": {
+"errors": [],
+"statement_count": 1,
+"valid": true
+}
+},
+"id": "plain-tablespace",
+"masking": {
+"describe": "CREATE TABLESPACE ts",
+"mask": "CREATE TABLESPACE ts MANAGED BY AUTOMATIC STORAGE"
+},
+"text": "CREATE TABLESPACE ts MANAGED BY AUTOMATIC STORAGE",
+"tokens": [
+[
+"KEYWORD",
+"CREATE",
+0,
+1,
+1
+],
+[
+"IDENTIFIER",
+"TABLESPACE",
+7,
+1,
+8
+],
+[
+"IDENTIFIER",
+"ts",
+18,
+1,
+19
+],
+[
+"IDENTIFIER",
+"MANAGED",
+21,
+1,
+22
+],
+[
+"IDENTIFIER",
+"BY",
+29,
+1,
+30
+],
+[
+"IDENTIFIER",
+"AUTOMATIC",
+32,
+1,
+33
+],
+[
+"IDENTIFIER",
+"STORAGE",
+42,
+1,
+43
+]
+]
+},
+{
+"extraction": {
+"clean": "CREATE STOGROUP sg ON '/data'",
+"empty": false,
+"objects": [
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "SG",
+"object_type": "UNKNOWN",
+"schema": "SYSIBM"
+}
+],
+"parse": {
+"errors": [],
+"statements": [
+[
+"CREATE STOGROUP sg ON '/data'",
+"DDL",
+[
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "SG",
+"object_type": "UNKNOWN",
+"schema": "SYSIBM"
+}
+]
+]
+],
+"success": true
+},
+"strip": "CREATE STOGROUP sg ON '/data'",
+"utility": false,
+"validate": {
+"errors": [],
+"statement_count": 1,
+"valid": true
+}
+},
+"id": "plain-stogroup",
+"masking": {
+"describe": "CREATE STOGROUP",
+"mask": "CREATE STOGROUP sg ON '?'"
+},
+"text": "CREATE STOGROUP sg ON '/data'",
+"tokens": [
+[
+"KEYWORD",
+"CREATE",
+0,
+1,
+1
+],
+[
+"IDENTIFIER",
+"STOGROUP",
+7,
+1,
+8
+],
+[
+"IDENTIFIER",
+"sg",
+16,
+1,
+17
+],
+[
+"IDENTIFIER",
+"ON",
+19,
+1,
+20
+],
+[
+"STRING",
+"'/data'",
+22,
+1,
+23
+]
+]
+},
+{
+"extraction": {
+"clean": "COMMENT ON TABLE t IS 'it''s'",
+"empty": false,
+"objects": [],
+"parse": {
+"errors": [],
+"statements": [
+[
+"COMMENT ON TABLE t IS 'it''s'",
+"DDL",
+[]
+]
+],
+"success": true
+},
+"strip": "COMMENT ON TABLE t IS 'it''s'",
+"utility": false,
+"validate": {
+"errors": [],
+"statement_count": 1,
+"valid": true
+}
+},
+"id": "plain-comment-on",
+"masking": {
+"describe": "COMMENT ON TABLE t",
+"mask": "COMMENT ON TABLE t IS '?'"
+},
+"text": "COMMENT ON TABLE t IS 'it''s'",
+"tokens": [
+[
+"IDENTIFIER",
+"COMMENT",
+0,
+1,
+1
+],
+[
+"IDENTIFIER",
+"ON",
+8,
+1,
+9
+],
+[
+"KEYWORD",
+"TABLE",
+11,
+1,
+12
+],
+[
+"IDENTIFIER",
+"t",
+17,
+1,
+18
+],
+[
+"KEYWORD",
+"IS",
+19,
+1,
+20
+],
+[
+"STRING",
+"'it''s'",
+22,
+1,
+23
+]
+]
+},
+{
+"extraction": {
+"clean": "GRANT SELECT ON t TO u",
+"empty": false,
+"objects": [],
+"parse": {
+"errors": [],
+"statements": [
+[
+"GRANT SELECT ON t TO u",
+"DDL",
+[]
+]
+],
+"success": true
+},
+"strip": "GRANT SELECT ON t TO u",
+"utility": false,
+"validate": {
+"errors": [],
+"statement_count": 1,
+"valid": true
+}
+},
+"id": "plain-grant",
+"masking": {
+"describe": "GRANT SELECT ON t",
+"mask": "GRANT SELECT ON t TO u"
+},
+"text": "GRANT SELECT ON t TO u",
+"tokens": [
+[
+"IDENTIFIER",
+"GRANT",
+0,
+1,
+1
+],
+[
+"KEYWORD",
+"SELECT",
+6,
+1,
+7
+],
+[
+"IDENTIFIER",
+"ON",
+13,
+1,
+14
+],
+[
+"IDENTIFIER",
+"t",
+16,
+1,
+17
+],
+[
+"IDENTIFIER",
+"TO",
+18,
+1,
+19
+],
+[
+"IDENTIFIER",
+"u",
+21,
+1,
+22
+]
+]
+},
+{
+"extraction": {
+"clean": "RUNSTATS ON TABLE s.t",
+"empty": false,
+"objects": [],
+"parse": {
+"errors": [
+"Error splitting DB2 SQL: CLP command RUNSTATS on line 1: dblift does not run client commands"
+],
+"statements": [],
+"success": false
+},
+"strip": "RUNSTATS ON TABLE s.t",
+"utility": true,
+"validate": {
+"errors": [
+"Error splitting DB2 SQL: CLP command RUNSTATS on line 1: dblift does not run client commands"
+],
+"statement_count": 0,
+"valid": false
+}
+},
+"id": "utility-runstats",
+"masking": {
+"describe": "RUNSTATS ON TABLE s.t",
+"mask": "RUNSTATS ON TABLE s.t"
+},
+"text": "RUNSTATS ON TABLE s.t",
+"tokens": [
+[
+"IDENTIFIER",
+"RUNSTATS",
+0,
+1,
+1
+],
+[
+"IDENTIFIER",
+"ON",
+9,
+1,
+10
+],
+[
+"KEYWORD",
+"TABLE",
+12,
+1,
+13
+],
+[
+"IDENTIFIER",
+"s",
+18,
+1,
+19
+],
+[
+"SYMBOL",
+".",
+19,
+1,
+20
+],
+[
+"IDENTIFIER",
+"t",
+20,
+1,
+21
+]
+]
+},
+{
+"extraction": {
+"clean": "REORG TABLE s.t",
+"empty": false,
+"objects": [],
+"parse": {
+"errors": [
+"Error splitting DB2 SQL: CLP command REORG on line 1: dblift does not run client commands"
+],
+"statements": [],
+"success": false
+},
+"strip": "REORG TABLE s.t",
+"utility": true,
+"validate": {
+"errors": [
+"Error splitting DB2 SQL: CLP command REORG on line 1: dblift does not run client commands"
+],
+"statement_count": 0,
+"valid": false
+}
+},
+"id": "utility-reorg",
+"masking": {
+"describe": "REORG TABLE s.t",
+"mask": "REORG TABLE s.t"
+},
+"text": "REORG TABLE s.t",
+"tokens": [
+[
+"IDENTIFIER",
+"REORG",
+0,
+1,
+1
+],
+[
+"KEYWORD",
+"TABLE",
+6,
+1,
+7
+],
+[
+"IDENTIFIER",
+"s",
+12,
+1,
+13
+],
+[
+"SYMBOL",
+".",
+13,
+1,
+14
+],
+[
+"IDENTIFIER",
+"t",
+14,
+1,
+15
+]
+]
+},
+{
+"extraction": {
+"clean": "SELECT 1 FROM sysibm.sysdummy1",
+"empty": false,
+"objects": [],
+"parse": {
+"errors": [],
+"statements": [
+[
+"SELECT 1 FROM sysibm.sysdummy1",
+"QUERY",
+[]
+]
+],
+"success": true
+},
+"strip": "SELECT 1 FROM sysibm.sysdummy1",
+"utility": false,
+"validate": {
+"errors": [],
+"statement_count": 1,
+"valid": true
+}
+},
+"id": "utility-select",
+"masking": {
+"describe": "SELECT 1",
+"mask": "SELECT 1 FROM sysibm.sysdummy1"
+},
+"text": "SELECT 1 FROM sysibm.sysdummy1",
+"tokens": [
+[
+"KEYWORD",
+"SELECT",
+0,
+1,
+1
+],
+[
+"IDENTIFIER",
+"1",
+7,
+1,
+8
+],
+[
+"KEYWORD",
+"FROM",
+9,
+1,
+10
+],
+[
+"IDENTIFIER",
+"sysibm",
+14,
+1,
+15
+],
+[
+"SYMBOL",
+".",
+20,
+1,
+21
+],
+[
+"IDENTIFIER",
+"sysdummy1",
+21,
+1,
+22
+]
+]
+},
+{
+"extraction": {
+"clean": "VALUES 1",
+"empty": false,
+"objects": [],
+"parse": {
+"errors": [],
+"statements": [
+[
+"VALUES 1",
+"DML",
+[]
+]
+],
+"success": true
+},
+"strip": "VALUES 1",
+"utility": false,
+"validate": {
+"errors": [],
+"statement_count": 1,
+"valid": true
+}
+},
+"id": "utility-values",
+"masking": {
+"describe": "VALUES 1",
+"mask": "VALUES 1"
+},
+"text": "VALUES 1",
+"tokens": [
+[
+"IDENTIFIER",
+"VALUES",
+0,
+1,
+1
+],
+[
+"IDENTIFIER",
+"1",
+7,
+1,
+8
+]
+]
+},
+{
+"extraction": {
+"clean": "",
+"empty": true,
+"objects": [],
+"parse": {
+"errors": [],
+"statements": [],
+"success": true
+},
+"strip": "",
+"utility": false,
+"validate": {
+"errors": [
+"No valid statements found"
+],
+"statement_count": 0,
+"valid": false
+}
+},
+"id": "comment-line",
+"masking": {
+"describe": "",
+"mask": "-- only a comment"
+},
+"text": "-- only a comment",
+"tokens": [
+[
+"COMMENT",
+"",
+0,
+1,
+1
+]
+]
+},
+{
+"extraction": {
+"clean": "",
+"empty": true,
+"objects": [],
+"parse": {
+"errors": [],
+"statements": [],
+"success": true
+},
+"strip": "",
+"utility": false,
+"validate": {
+"errors": [
+"No valid statements found"
+],
+"statement_count": 0,
+"valid": false
+}
+},
+"id": "comment-block",
+"masking": {
+"describe": "",
+"mask": "/* only a comment */"
+},
+"text": "/* only a comment */",
+"tokens": [
+[
+"COMMENT",
+"",
+0,
+1,
+1
+]
+]
+},
+{
+"extraction": {
+"clean": "",
+"empty": true,
+"objects": [],
+"parse": {
+"errors": [],
+"statements": [],
+"success": true
+},
+"strip": "",
+"utility": false,
+"validate": {
+"errors": [
+"No valid statements found"
+],
+"statement_count": 0,
+"valid": false
+}
+},
+"id": "comment-nested",
+"masking": {
+"describe": "",
+"mask": "/* a /* b */ c */"
+},
+"text": "/* a /* b */ c */",
+"tokens": [
+[
+"COMMENT",
+"",
+0,
+1,
+1
+]
+]
+},
+{
+"extraction": {
+"clean": "CREATE TABLE t (id INT)",
+"empty": false,
+"objects": [
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "T",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+],
+"parse": {
+"errors": [],
+"statements": [
+[
+"/* a /* b /* c */ d */ e */ CREATE TABLE t (id INT)",
+"DDL",
+[
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "T",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+]
+]
+],
+"success": true
+},
+"strip": "CREATE TABLE t (id INT)",
+"utility": false,
+"validate": {
+"errors": [],
+"statement_count": 1,
+"valid": true
+}
+},
+"id": "comment-nested-three",
+"masking": {
+"describe": "CREATE TABLE t",
+"mask": "/* a /* b /* c */ d */ e */ CREATE TABLE t (id INT)"
+},
+"text": "/* a /* b /* c */ d */ e */ CREATE TABLE t (id INT)",
+"tokens": [
+[
+"COMMENT",
+"",
+0,
+1,
+1
+],
+[
+"KEYWORD",
+"CREATE",
+28,
+1,
+29
+],
+[
+"KEYWORD",
+"TABLE",
+35,
+1,
+36
+],
+[
+"IDENTIFIER",
+"t",
+41,
+1,
+42
+],
+[
+"SYMBOL",
+"(",
+43,
+1,
+44
+],
+[
+"IDENTIFIER",
+"id",
+44,
+1,
+45
+],
+[
+"IDENTIFIER",
+"INT",
+47,
+1,
+48
+],
+[
+"SYMBOL",
+")",
+50,
+1,
+51
+]
+]
+},
+{
+"extraction": {
+"clean": "CREATE TABLE t (id INT)",
+"empty": false,
+"objects": [
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "T",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+],
+"parse": {
+"errors": [],
+"statements": [
+[
+"/* a /* b */ c */ CREATE TABLE t (id INT)",
+"DDL",
+[
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "T",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+]
+]
+],
+"success": true
+},
+"strip": "CREATE TABLE t (id INT)",
+"utility": false,
+"validate": {
+"errors": [],
+"statement_count": 1,
+"valid": true
+}
+},
+"id": "comment-nested-then-code",
+"masking": {
+"describe": "CREATE TABLE t",
+"mask": "/* a /* b */ c */ CREATE TABLE t (id INT)"
+},
+"text": "/* a /* b */ c */ CREATE TABLE t (id INT)",
+"tokens": [
+[
+"COMMENT",
+"",
+0,
+1,
+1
+],
+[
+"KEYWORD",
+"CREATE",
+18,
+1,
+19
+],
+[
+"KEYWORD",
+"TABLE",
+25,
+1,
+26
+],
+[
+"IDENTIFIER",
+"t",
+31,
+1,
+32
+],
+[
+"SYMBOL",
+"(",
+33,
+1,
+34
+],
+[
+"IDENTIFIER",
+"id",
+34,
+1,
+35
+],
+[
+"IDENTIFIER",
+"INT",
+37,
+1,
+38
+],
+[
+"SYMBOL",
+")",
+40,
+1,
+41
+]
+]
+},
+{
+"extraction": {
+"clean": "CREATE TABLE t (id INT)",
+"empty": false,
+"objects": [
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "T",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+],
+"parse": {
+"errors": [],
+"statements": [
+[
+"CREATE TABLE t (id INT) /* a /* b */ c */",
+"DDL",
+[
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "T",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+]
+]
+],
+"success": true
+},
+"strip": "CREATE TABLE t (id INT)",
+"utility": false,
+"validate": {
+"errors": [],
+"statement_count": 1,
+"valid": true
+}
+},
+"id": "comment-first-closer-tail",
+"masking": {
+"describe": "CREATE TABLE t",
+"mask": "CREATE TABLE t (id INT) /* a /* b */ c */"
+},
+"text": "CREATE TABLE t (id INT) /* a /* b */ c */",
+"tokens": [
+[
+"KEYWORD",
+"CREATE",
+0,
+1,
+1
+],
+[
+"KEYWORD",
+"TABLE",
+7,
+1,
+8
+],
+[
+"IDENTIFIER",
+"t",
+13,
+1,
+14
+],
+[
+"SYMBOL",
+"(",
+15,
+1,
+16
+],
+[
+"IDENTIFIER",
+"id",
+16,
+1,
+17
+],
+[
+"IDENTIFIER",
+"INT",
+19,
+1,
+20
+],
+[
+"SYMBOL",
+")",
+22,
+1,
+23
+],
+[
+"COMMENT",
+"",
+24,
+1,
+25
+]
+]
+},
+{
+"extraction": {
+"clean": "SELECT 1",
+"empty": false,
+"objects": [],
+"parse": {
+"errors": [],
+"statements": [
+[
+"/* a */ SELECT 1 /* b */",
+"QUERY",
+[]
+]
+],
+"success": true
+},
+"strip": "SELECT 1",
+"utility": false,
+"validate": {
+"errors": [],
+"statement_count": 1,
+"valid": true
+}
+},
+"id": "comment-starts-and-ends-block",
+"masking": {
+"describe": "SELECT 1",
+"mask": "/* a */ SELECT 1 /* b */"
+},
+"text": "/* a */ SELECT 1 /* b */",
+"tokens": [
+[
+"COMMENT",
+"",
+0,
+1,
+1
+],
+[
+"KEYWORD",
+"SELECT",
+8,
+1,
+9
+],
+[
+"IDENTIFIER",
+"1",
+15,
+1,
+16
+],
+[
+"COMMENT",
+"",
+17,
+1,
+18
+]
+]
+},
+{
+"extraction": {
+"clean": "INSERT INTO t VALUES ('a -- b', '/* c */')",
+"empty": false,
+"objects": [],
+"parse": {
+"errors": [],
+"statements": [
+[
+"INSERT INTO t VALUES ('a -- b', '/* c */')",
+"DML",
+[]
+]
+],
+"success": true
+},
+"strip": "INSERT INTO t VALUES ('a -- b', '/* c */')",
+"utility": false,
+"validate": {
+"errors": [],
+"statement_count": 1,
+"valid": true
+}
+},
+"id": "comment-in-string",
+"masking": {
+"describe": "INSERT INTO t",
+"mask": "INSERT INTO t VALUES ('?', '?')"
+},
+"text": "INSERT INTO t VALUES ('a -- b', '/* c */')",
+"tokens": [
+[
+"KEYWORD",
+"INSERT",
+0,
+1,
+1
+],
+[
+"IDENTIFIER",
+"INTO",
+7,
+1,
+8
+],
+[
+"IDENTIFIER",
+"t",
+12,
+1,
+13
+],
+[
+"IDENTIFIER",
+"VALUES",
+14,
+1,
+15
+],
+[
+"SYMBOL",
+"(",
+21,
+1,
+22
+],
+[
+"STRING",
+"'a -- b'",
+22,
+1,
+23
+],
+[
+"SYMBOL",
+",",
+30,
+1,
+31
+],
+[
+"STRING",
+"'/* c */'",
+32,
+1,
+33
+],
+[
+"SYMBOL",
+")",
+41,
+1,
+42
+]
+]
+},
+{
+"extraction": {
+"clean": "CREATE TABLE \"a--b\" (\"c/*d*/\" INT)",
+"empty": false,
+"objects": [
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "a--b",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+],
+"parse": {
+"errors": [],
+"statements": [
+[
+"CREATE TABLE \"a--b\" (\"c/*d*/\" INT)",
+"UNKNOWN",
+[
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "a--b",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+]
+]
+],
+"success": true
+},
+"strip": "CREATE TABLE \"a--b\" (\"c/*d*/\" INT)",
+"utility": false,
+"validate": {
+"errors": [],
+"statement_count": 1,
+"valid": true
+}
+},
+"id": "comment-in-identifier",
+"masking": {
+"describe": "CREATE TABLE \"a",
+"mask": "CREATE TABLE \"a--b\" (\"c/*d*/\" INT)"
+},
+"text": "CREATE TABLE \"a--b\" (\"c/*d*/\" INT)",
+"tokens": [
+[
+"KEYWORD",
+"CREATE",
+0,
+1,
+1
+],
+[
+"KEYWORD",
+"TABLE",
+7,
+1,
+8
+],
+[
+"SYMBOL",
+"\"",
+13,
+1,
+14
+],
+[
+"IDENTIFIER",
+"a",
+14,
+1,
+15
+],
+[
+"COMMENT",
+"",
+15,
+1,
+16
+]
+]
+},
+{
+"extraction": {
+"clean": "CREATE TABLE t (id INT)",
+"empty": false,
+"objects": [
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "T",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+],
+"parse": {
+"errors": [],
+"statements": [
+[
+"CREATE TABLE t (id INT) -- c",
+"DDL",
+[
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "T",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+]
+]
+],
+"success": true
+},
+"strip": "CREATE TABLE t (id INT)",
+"utility": false,
+"validate": {
+"errors": [],
+"statement_count": 1,
+"valid": true
+}
+},
+"id": "comment-trailing-line",
+"masking": {
+"describe": "CREATE TABLE t",
+"mask": "CREATE TABLE t (id INT) -- c"
+},
+"text": "CREATE TABLE t (id INT) -- c",
+"tokens": [
+[
+"KEYWORD",
+"CREATE",
+0,
+1,
+1
+],
+[
+"KEYWORD",
+"TABLE",
+7,
+1,
+8
+],
+[
+"IDENTIFIER",
+"t",
+13,
+1,
+14
+],
+[
+"SYMBOL",
+"(",
+15,
+1,
+16
+],
+[
+"IDENTIFIER",
+"id",
+16,
+1,
+17
+],
+[
+"IDENTIFIER",
+"INT",
+19,
+1,
+20
+],
+[
+"SYMBOL",
+")",
+22,
+1,
+23
+],
+[
+"COMMENT",
+"",
+24,
+1,
+25
+]
+]
+},
+{
+"extraction": {
+"clean": "CREATE  TABLE  t (id INT)",
+"empty": false,
+"objects": [
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "T",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+],
+"parse": {
+"errors": [],
+"statements": [
+[
+"CREATE /* c */ TABLE /* d */ t (id INT)",
+"DDL",
+[
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "T",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+]
+]
+],
+"success": true
+},
+"strip": "CREATE  TABLE  t (id INT)",
+"utility": false,
+"validate": {
+"errors": [],
+"statement_count": 1,
+"valid": true
+}
+},
+"id": "comment-between",
+"masking": {
+"describe": "CREATE TABLE t",
+"mask": "CREATE /* c */ TABLE /* d */ t (id INT)"
+},
+"text": "CREATE /* c */ TABLE /* d */ t (id INT)",
+"tokens": [
+[
+"KEYWORD",
+"CREATE",
+0,
+1,
+1
+],
+[
+"COMMENT",
+"",
+7,
+1,
+8
+],
+[
+"KEYWORD",
+"TABLE",
+15,
+1,
+16
+],
+[
+"COMMENT",
+"",
+21,
+1,
+22
+],
+[
+"IDENTIFIER",
+"t",
+29,
+1,
+30
+],
+[
+"SYMBOL",
+"(",
+31,
+1,
+32
+],
+[
+"IDENTIFIER",
+"id",
+32,
+1,
+33
+],
+[
+"IDENTIFIER",
+"INT",
+35,
+1,
+36
+],
+[
+"SYMBOL",
+")",
+38,
+1,
+39
+]
+]
+},
+{
+"extraction": {
+"clean": "CREATE TABLE t (id INT)",
+"empty": false,
+"objects": [
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "T",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+],
+"parse": {
+"errors": [],
+"statements": [
+[
+"CREATE TABLE t (id INT)",
+"DDL",
+[
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "T",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+]
+]
+],
+"success": true
+},
+"strip": "CREATE TABLE t (id INT)",
+"utility": false,
+"validate": {
+"errors": [],
+"statement_count": 1,
+"valid": true
+}
+},
+"id": "comment-directive-line",
+"masking": {
+"describe": "CREATE TABLE t",
+"mask": "--#SET TERMINATOR @\nCREATE TABLE t (id INT)"
+},
+"text": "--#SET TERMINATOR @\nCREATE TABLE t (id INT)",
+"tokens": [
+[
+"COMMENT",
+"",
+0,
+1,
+1
+],
+[
+"KEYWORD",
+"CREATE",
+20,
+2,
+1
+],
+[
+"KEYWORD",
+"TABLE",
+27,
+2,
+8
+],
+[
+"IDENTIFIER",
+"t",
+33,
+2,
+14
+],
+[
+"SYMBOL",
+"(",
+35,
+2,
+16
+],
+[
+"IDENTIFIER",
+"id",
+36,
+2,
+17
+],
+[
+"IDENTIFIER",
+"INT",
+39,
+2,
+20
+],
+[
+"SYMBOL",
+")",
+42,
+2,
+23
+]
+]
+},
+{
+"extraction": {
+"clean": "CREATE TABLE t (\n\nid INT)",
+"empty": false,
+"objects": [
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "T",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+],
+"parse": {
+"errors": [],
+"statements": [
+[
+"CREATE TABLE t (\nid INT)",
+"DDL",
+[
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "T",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+]
+]
+],
+"success": true
+},
+"strip": "CREATE TABLE t (\n\nid INT)",
+"utility": false,
+"validate": {
+"errors": [],
+"statement_count": 1,
+"valid": true
+}
+},
+"id": "comment-directive-mid",
+"masking": {
+"describe": "CREATE TABLE t",
+"mask": "CREATE TABLE t (\n--#SET TERMINATOR @\nid INT)"
+},
+"text": "CREATE TABLE t (\n--#SET TERMINATOR @\nid INT)",
+"tokens": [
+[
+"KEYWORD",
+"CREATE",
+0,
+1,
+1
+],
+[
+"KEYWORD",
+"TABLE",
+7,
+1,
+8
+],
+[
+"IDENTIFIER",
+"t",
+13,
+1,
+14
+],
+[
+"SYMBOL",
+"(",
+15,
+1,
+16
+],
+[
+"COMMENT",
+"",
+17,
+2,
+1
+],
+[
+"IDENTIFIER",
+"id",
+37,
+3,
+1
+],
+[
+"IDENTIFIER",
+"INT",
+40,
+3,
+4
+],
+[
+"SYMBOL",
+")",
+43,
+3,
+7
+]
+]
+},
+{
+"extraction": {
+"clean": "CREATE TABLE t (id INT)",
+"empty": false,
+"objects": [
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "T",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+],
+"parse": {
+"errors": [],
+"statements": [
+[
+"CREATE TABLE t (id INT)",
+"DDL",
+[
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "T",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+]
+]
+],
+"success": true
+},
+"strip": "CREATE TABLE t (id INT)",
+"utility": false,
+"validate": {
+"errors": [],
+"statement_count": 1,
+"valid": true
+}
+},
+"id": "comment-directive-lower",
+"masking": {
+"describe": "CREATE TABLE t",
+"mask": "--#set terminator @\nCREATE TABLE t (id INT)"
+},
+"text": "--#set terminator @\nCREATE TABLE t (id INT)",
+"tokens": [
+[
+"COMMENT",
+"",
+0,
+1,
+1
+],
+[
+"KEYWORD",
+"CREATE",
+20,
+2,
+1
+],
+[
+"KEYWORD",
+"TABLE",
+27,
+2,
+8
+],
+[
+"IDENTIFIER",
+"t",
+33,
+2,
+14
+],
+[
+"SYMBOL",
+"(",
+35,
+2,
+16
+],
+[
+"IDENTIFIER",
+"id",
+36,
+2,
+17
+],
+[
+"IDENTIFIER",
+"INT",
+39,
+2,
+20
+],
+[
+"SYMBOL",
+")",
+42,
+2,
+23
+]
+]
+},
+{
+"extraction": {
+"clean": "CREATE TABLE t (id INT)",
+"empty": false,
+"objects": [
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "T",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+],
+"parse": {
+"errors": [],
+"statements": [
+[
+"/* a\n-- b */ CREATE TABLE t (id INT)",
+"UNKNOWN",
+[
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "T",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+]
+]
+],
+"success": true
+},
+"strip": "CREATE TABLE t (id INT)",
+"utility": false,
+"validate": {
+"errors": [],
+"statement_count": 1,
+"valid": true
+}
+},
+"id": "comment-block-in-block-line",
+"masking": {
+"describe": "CREATE TABLE t",
+"mask": "/* a\n-- b */ CREATE TABLE t (id INT)"
+},
+"text": "/* a\n-- b */ CREATE TABLE t (id INT)",
+"tokens": [
+[
+"COMMENT",
+"",
+0,
+1,
+1
+],
+[
+"KEYWORD",
+"CREATE",
+13,
+2,
+9
+],
+[
+"KEYWORD",
+"TABLE",
+20,
+2,
+16
+],
+[
+"IDENTIFIER",
+"t",
+26,
+2,
+22
+],
+[
+"SYMBOL",
+"(",
+28,
+2,
+24
+],
+[
+"IDENTIFIER",
+"id",
+29,
+2,
+25
+],
+[
+"IDENTIFIER",
+"INT",
+32,
+2,
+28
+],
+[
+"SYMBOL",
+")",
+35,
+2,
+31
+]
+]
+},
+{
+"extraction": {
+"clean": "VALUES X'3B', X''",
+"empty": false,
+"objects": [],
+"parse": {
+"errors": [],
+"statements": [
+[
+"VALUES X'3B', X''",
+"DML",
+[]
+]
+],
+"success": true
+},
+"strip": "VALUES X'3B', X''",
+"utility": false,
+"validate": {
+"errors": [],
+"statement_count": 1,
+"valid": true
+}
+},
+"id": "literal-hex",
+"masking": {
+"describe": "VALUES X",
+"mask": "VALUES X'?', X'?'"
+},
+"text": "VALUES X'3B', X''",
+"tokens": [
+[
+"IDENTIFIER",
+"VALUES",
+0,
+1,
+1
+],
+[
+"IDENTIFIER",
+"X",
+7,
+1,
+8
+],
+[
+"STRING",
+"'3B'",
+8,
+1,
+9
+],
+[
+"SYMBOL",
+",",
+12,
+1,
+13
+],
+[
+"IDENTIFIER",
+"X",
+14,
+1,
+15
+],
+[
+"STRING",
+"''",
+15,
+1,
+16
+]
+]
+},
+{
+"extraction": {
+"clean": "VALUES GX'0041', UX'0041'",
+"empty": false,
+"objects": [],
+"parse": {
+"errors": [],
+"statements": [
+[
+"VALUES GX'0041', UX'0041'",
+"DML",
+[]
+]
+],
+"success": true
+},
+"strip": "VALUES GX'0041', UX'0041'",
+"utility": false,
+"validate": {
+"errors": [],
+"statement_count": 1,
+"valid": true
+}
+},
+"id": "literal-hex-graphic",
+"masking": {
+"describe": "VALUES GX",
+"mask": "VALUES GX'?', UX'?'"
+},
+"text": "VALUES GX'0041', UX'0041'",
+"tokens": [
+[
+"IDENTIFIER",
+"VALUES",
+0,
+1,
+1
+],
+[
+"IDENTIFIER",
+"GX",
+7,
+1,
+8
+],
+[
+"STRING",
+"'0041'",
+9,
+1,
+10
+],
+[
+"SYMBOL",
+",",
+15,
+1,
+16
+],
+[
+"IDENTIFIER",
+"UX",
+17,
+1,
+18
+],
+[
+"STRING",
+"'0041'",
+19,
+1,
+20
+]
+]
+},
+{
+"extraction": {
+"clean": "VALUES U&'\\0041;' UESCAPE '\\'",
+"empty": false,
+"objects": [],
+"parse": {
+"errors": [],
+"statements": [
+[
+"VALUES U&'\\0041;' UESCAPE '\\'",
+"DML",
+[]
+]
+],
+"success": true
+},
+"strip": "VALUES U&'\\0041;' UESCAPE '\\'",
+"utility": false,
+"validate": {
+"errors": [],
+"statement_count": 1,
+"valid": true
+}
+},
+"id": "literal-unicode",
+"masking": {
+"describe": "VALUES U",
+"mask": "VALUES U&'?' UESCAPE '?'"
+},
+"text": "VALUES U&'\\0041;' UESCAPE '\\'",
+"tokens": [
+[
+"IDENTIFIER",
+"VALUES",
+0,
+1,
+1
+],
+[
+"IDENTIFIER",
+"U",
+7,
+1,
+8
+],
+[
+"SYMBOL",
+"&",
+8,
+1,
+9
+],
+[
+"STRING",
+"'\\0041;'",
+9,
+1,
+10
+],
+[
+"IDENTIFIER",
+"UESCAPE",
+18,
+1,
+19
+],
+[
+"STRING",
+"'\\'",
+26,
+1,
+27
+]
+]
+},
+{
+"extraction": {
+"clean": "VALUES N'abc', G'def'",
+"empty": false,
+"objects": [],
+"parse": {
+"errors": [],
+"statements": [
+[
+"VALUES N'abc', G'def'",
+"DML",
+[]
+]
+],
+"success": true
+},
+"strip": "VALUES N'abc', G'def'",
+"utility": false,
+"validate": {
+"errors": [],
+"statement_count": 1,
+"valid": true
+}
+},
+"id": "literal-national",
+"masking": {
+"describe": "VALUES N",
+"mask": "VALUES N'?', G'?'"
+},
+"text": "VALUES N'abc', G'def'",
+"tokens": [
+[
+"IDENTIFIER",
+"VALUES",
+0,
+1,
+1
+],
+[
+"IDENTIFIER",
+"N",
+7,
+1,
+8
+],
+[
+"STRING",
+"'abc'",
+8,
+1,
+9
+],
+[
+"SYMBOL",
+",",
+13,
+1,
+14
+],
+[
+"IDENTIFIER",
+"G",
+15,
+1,
+16
+],
+[
+"STRING",
+"'def'",
+16,
+1,
+17
+]
+]
+},
+{
+"extraction": {
+"clean": "VALUES 'it''s', \"a\"\"b\"",
+"empty": false,
+"objects": [],
+"parse": {
+"errors": [],
+"statements": [
+[
+"VALUES 'it''s', \"a\"\"b\"",
+"DML",
+[]
+]
+],
+"success": true
+},
+"strip": "VALUES 'it''s', \"a\"\"b\"",
+"utility": false,
+"validate": {
+"errors": [],
+"statement_count": 1,
+"valid": true
+}
+},
+"id": "literal-doubled",
+"masking": {
+"describe": "VALUES",
+"mask": "VALUES '?', \"a\"\"b\""
+},
+"text": "VALUES 'it''s', \"a\"\"b\"",
+"tokens": [
+[
+"IDENTIFIER",
+"VALUES",
+0,
+1,
+1
+],
+[
+"STRING",
+"'it''s'",
+7,
+1,
+8
+],
+[
+"SYMBOL",
+",",
+14,
+1,
+15
+],
+[
+"SYMBOL",
+"\"",
+16,
+1,
+17
+],
+[
+"IDENTIFIER",
+"a",
+17,
+1,
+18
+],
+[
+"SYMBOL",
+"\"",
+18,
+1,
+19
+],
+[
+"SYMBOL",
+"\"",
+19,
+1,
+20
+],
+[
+"IDENTIFIER",
+"b",
+20,
+1,
+21
+],
+[
+"SYMBOL",
+"\"",
+21,
+1,
+22
+]
+]
+},
+{
+"extraction": {
+"clean": "VALUES 'C:\\', 'a\\''b'",
+"empty": false,
+"objects": [],
+"parse": {
+"errors": [],
+"statements": [
+[
+"VALUES 'C:\\', 'a\\''b'",
+"DML",
+[]
+]
+],
+"success": true
+},
+"strip": "VALUES 'C:\\', 'a\\''b'",
+"utility": false,
+"validate": {
+"errors": [],
+"statement_count": 1,
+"valid": true
+}
+},
+"id": "literal-backslash",
+"masking": {
+"describe": "VALUES",
+"mask": "VALUES '?', '?'"
+},
+"text": "VALUES 'C:\\', 'a\\''b'",
+"tokens": [
+[
+"IDENTIFIER",
+"VALUES",
+0,
+1,
+1
+],
+[
+"STRING",
+"'C:\\'",
+7,
+1,
+8
+],
+[
+"SYMBOL",
+",",
+12,
+1,
+13
+],
+[
+"STRING",
+"'a\\''b'",
+14,
+1,
+15
+]
+]
+},
+{
+"extraction": {
+"clean": "VALUES 'x\ny'",
+"empty": false,
+"objects": [],
+"parse": {
+"errors": [],
+"statements": [
+[
+"VALUES 'x\ny'",
+"DML",
+[]
+]
+],
+"success": true
+},
+"strip": "VALUES 'x\ny'",
+"utility": false,
+"validate": {
+"errors": [],
+"statement_count": 1,
+"valid": true
+}
+},
+"id": "literal-multiline",
+"masking": {
+"describe": "VALUES",
+"mask": "VALUES '?'"
+},
+"text": "VALUES 'x\ny'",
+"tokens": [
+[
+"IDENTIFIER",
+"VALUES",
+0,
+1,
+1
+],
+[
+"STRING",
+"'x\ny'",
+7,
+1,
+8
+]
+]
+},
+{
+"extraction": {
+"clean": "VALUES '', \"\"",
+"empty": false,
+"objects": [],
+"parse": {
+"errors": [],
+"statements": [
+[
+"VALUES '', \"\"",
+"DML",
+[]
+]
+],
+"success": true
+},
+"strip": "VALUES '', \"\"",
+"utility": false,
+"validate": {
+"errors": [],
+"statement_count": 1,
+"valid": true
+}
+},
+"id": "literal-empty",
+"masking": {
+"describe": "VALUES",
+"mask": "VALUES '?', \"\""
+},
+"text": "VALUES '', \"\"",
+"tokens": [
+[
+"IDENTIFIER",
+"VALUES",
+0,
+1,
+1
+],
+[
+"STRING",
+"''",
+7,
+1,
+8
+],
+[
+"SYMBOL",
+",",
+9,
+1,
+10
+],
+[
+"SYMBOL",
+"\"",
+11,
+1,
+12
+],
+[
+"SYMBOL",
+"\"",
+12,
+1,
+13
+]
+]
+},
+{
+"extraction": {
+"clean": "CONNECT TO db USER u USING 'secret'",
+"empty": false,
+"objects": [],
+"parse": {
+"errors": [
+"Error splitting DB2 SQL: CLP command CONNECT on line 1: dblift does not run client commands"
+],
+"statements": [],
+"success": false
+},
+"strip": "CONNECT TO db USER u USING 'secret'",
+"utility": false,
+"validate": {
+"errors": [
+"Error splitting DB2 SQL: CLP command CONNECT on line 1: dblift does not run client commands"
+],
+"statement_count": 0,
+"valid": false
+}
+},
+"id": "literal-password",
+"masking": {
+"describe": "CONNECT TO",
+"mask": "CONNECT TO db USER u USING '?'"
+},
+"text": "CONNECT TO db USER u USING 'secret'",
+"tokens": [
+[
+"IDENTIFIER",
+"CONNECT",
+0,
+1,
+1
+],
+[
+"IDENTIFIER",
+"TO",
+8,
+1,
+9
+],
+[
+"IDENTIFIER",
+"db",
+11,
+1,
+12
+],
+[
+"IDENTIFIER",
+"USER",
+14,
+1,
+15
+],
+[
+"IDENTIFIER",
+"u",
+19,
+1,
+20
+],
+[
+"IDENTIFIER",
+"USING",
+21,
+1,
+22
+],
+[
+"STRING",
+"'secret'",
+27,
+1,
+28
+]
+]
+},
+{
+"extraction": {
+"clean": "CREATE USER MAPPING FOR u SERVER s OPTIONS (USER 'a', PASSWORD 'secret')",
+"empty": false,
+"objects": [],
+"parse": {
+"errors": [],
+"statements": [
+[
+"CREATE USER MAPPING FOR u SERVER s OPTIONS (USER 'a', PASSWORD 'secret')",
+"UNKNOWN",
+[]
+]
+],
+"success": true
+},
+"strip": "CREATE USER MAPPING FOR u SERVER s OPTIONS (USER 'a', PASSWORD 'secret')",
+"utility": false,
+"validate": {
+"errors": [],
+"statement_count": 1,
+"valid": true
+}
+},
+"id": "literal-identified-by",
+"masking": {
+"describe": "CREATE USER MAPPING",
+"mask": "CREATE USER MAPPING FOR u SERVER s OPTIONS (USER '?', PASSWORD '?')"
+},
+"text": "CREATE USER MAPPING FOR u SERVER s OPTIONS (USER 'a', PASSWORD 'secret')",
+"tokens": [
+[
+"KEYWORD",
+"CREATE",
+0,
+1,
+1
+],
+[
+"IDENTIFIER",
+"USER",
+7,
+1,
+8
+],
+[
+"IDENTIFIER",
+"MAPPING",
+12,
+1,
+13
+],
+[
+"KEYWORD",
+"FOR",
+20,
+1,
+21
+],
+[
+"IDENTIFIER",
+"u",
+24,
+1,
+25
+],
+[
+"IDENTIFIER",
+"SERVER",
+26,
+1,
+27
+],
+[
+"IDENTIFIER",
+"s",
+33,
+1,
+34
+],
+[
+"IDENTIFIER",
+"OPTIONS",
+35,
+1,
+36
+],
+[
+"SYMBOL",
+"(",
+43,
+1,
+44
+],
+[
+"IDENTIFIER",
+"USER",
+44,
+1,
+45
+],
+[
+"STRING",
+"'a'",
+49,
+1,
+50
+],
+[
+"SYMBOL",
+",",
+52,
+1,
+53
+],
+[
+"IDENTIFIER",
+"PASSWORD",
+54,
+1,
+55
+],
+[
+"STRING",
+"'secret'",
+63,
+1,
+64
+],
+[
+"SYMBOL",
+")",
+71,
+1,
+72
+]
+]
+},
+{
+"extraction": {
+"clean": "ALTER USER u IDENTIFIED BY 'secret'",
+"empty": false,
+"objects": [],
+"parse": {
+"errors": [],
+"statements": [
+[
+"ALTER USER u IDENTIFIED BY 'secret'",
+"UNKNOWN",
+[]
+]
+],
+"success": true
+},
+"strip": "ALTER USER u IDENTIFIED BY 'secret'",
+"utility": false,
+"validate": {
+"errors": [],
+"statement_count": 1,
+"valid": true
+}
+},
+"id": "literal-alter-user",
+"masking": {
+"describe": "ALTER USER u",
+"mask": "ALTER USER u IDENTIFIED BY '?'"
+},
+"text": "ALTER USER u IDENTIFIED BY 'secret'",
+"tokens": [
+[
+"KEYWORD",
+"ALTER",
+0,
+1,
+1
+],
+[
+"IDENTIFIER",
+"USER",
+6,
+1,
+7
+],
+[
+"IDENTIFIER",
+"u",
+11,
+1,
+12
+],
+[
+"IDENTIFIER",
+"IDENTIFIED",
+13,
+1,
+14
+],
+[
+"IDENTIFIER",
+"BY",
+24,
+1,
+25
+],
+[
+"STRING",
+"'secret'",
+27,
+1,
+28
+]
+]
+},
+{
+"extraction": {
+"clean": "VALUES \"open\nCREATE TABLE t (id INT)\n...GX'0041'",
+"empty": false,
+"objects": [
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "T",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+],
+"parse": {
+"errors": [],
+"statements": [
+[
+"VALUES \"open\nCREATE TABLE t (id INT)\n...GX'0041'",
+"DDL",
+[
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "T",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+]
+]
+],
+"success": true
+},
+"strip": "VALUES \"open\nCREATE TABLE t (id INT)\n...GX'0041'",
+"utility": false,
+"validate": {
+"errors": [
+"Unmatched quoted identifier"
+],
+"statement_count": 1,
+"valid": false
+}
+},
+"id": "lexeme-open-identifier",
+"masking": {
+"describe": "VALUES \"open",
+"mask": "VALUES \"open\nCREATE TABLE t (id INT)\n...GX'?'"
+},
+"text": "VALUES \"open\nCREATE TABLE t (id INT)\n...GX'0041'",
+"tokens": [
+[
+"IDENTIFIER",
+"VALUES",
+0,
+1,
+1
+],
+[
+"SYMBOL",
+"\"",
+7,
+1,
+8
+],
+[
+"IDENTIFIER",
+"open",
+8,
+1,
+9
+],
+[
+"KEYWORD",
+"CREATE",
+13,
+2,
+1
+],
+[
+"KEYWORD",
+"TABLE",
+20,
+2,
+8
+],
+[
+"IDENTIFIER",
+"t",
+26,
+2,
+14
+],
+[
+"SYMBOL",
+"(",
+28,
+2,
+16
+],
+[
+"IDENTIFIER",
+"id",
+29,
+2,
+17
+],
+[
+"IDENTIFIER",
+"INT",
+32,
+2,
+20
+],
+[
+"SYMBOL",
+")",
+35,
+2,
+23
+],
+[
+"SYMBOL",
+".",
+37,
+3,
+1
+],
+[
+"SYMBOL",
+".",
+38,
+3,
+2
+],
+[
+"SYMBOL",
+".",
+39,
+3,
+3
+],
+[
+"IDENTIFIER",
+"GX",
+40,
+3,
+4
+],
+[
+"STRING",
+"'0041'",
+42,
+3,
+6
+]
+]
+},
+{
+"extraction": {
+"clean": "SELECT \"open\n...GX'0041'",
+"empty": false,
+"objects": [],
+"parse": {
+"errors": [],
+"statements": [
+[
+"SELECT \"open\n...GX'0041'",
+"QUERY",
+[]
+]
+],
+"success": true
+},
+"strip": "SELECT \"open\n...GX'0041'",
+"utility": false,
+"validate": {
+"errors": [
+"Unmatched quoted identifier"
+],
+"statement_count": 1,
+"valid": false
+}
+},
+"id": "lexeme-open-identifier-then-hex",
+"masking": {
+"describe": "SELECT \"open",
+"mask": "SELECT \"open\n...GX'?'"
+},
+"text": "SELECT \"open\n...GX'0041'",
+"tokens": [
+[
+"KEYWORD",
+"SELECT",
+0,
+1,
+1
+],
+[
+"SYMBOL",
+"\"",
+7,
+1,
+8
+],
+[
+"IDENTIFIER",
+"open",
+8,
+1,
+9
+],
+[
+"SYMBOL",
+".",
+13,
+2,
+1
+],
+[
+"SYMBOL",
+".",
+14,
+2,
+2
+],
+[
+"SYMBOL",
+".",
+15,
+2,
+3
+],
+[
+"IDENTIFIER",
+"GX",
+16,
+2,
+4
+],
+[
+"STRING",
+"'0041'",
+18,
+2,
+6
+]
+]
+},
+{
+"extraction": {
+"clean": "VALUES 'open",
+"empty": false,
+"objects": [],
+"parse": {
+"errors": [],
+"statements": [
+[
+"VALUES 'open",
+"DML",
+[]
+]
+],
+"success": true
+},
+"strip": "VALUES 'open",
+"utility": false,
+"validate": {
+"errors": [],
+"statement_count": 1,
+"valid": true
+}
+},
+"id": "lexeme-open-string",
+"masking": {
+"describe": "VALUES",
+"mask": "VALUES"
+},
+"text": "VALUES 'open",
+"tokens": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated string opened at line 1, column 8"
+]
+},
+{
+"extraction": {
+"clean": "INSERT INTO t VALUES ('open\nCREATE TABLE u (id INT)",
+"empty": false,
+"objects": [
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "U",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+],
+"parse": {
+"errors": [],
+"statements": [
+[
+"INSERT INTO t VALUES ('open\nCREATE TABLE u (id INT)",
+"DDL",
+[
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "U",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+]
+]
+],
+"success": true
+},
+"strip": "INSERT INTO t VALUES ('open\nCREATE TABLE u (id INT)",
+"utility": false,
+"validate": {
+"errors": [],
+"statement_count": 1,
+"valid": true
+}
+},
+"id": "lexeme-open-string-lines",
+"masking": {
+"describe": "INSERT",
+"mask": "INSERT"
+},
+"text": "INSERT INTO t VALUES ('open\nCREATE TABLE u (id INT)",
+"tokens": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated string opened at line 1, column 23"
+]
+},
+{
+"extraction": {
+"clean": "VALUES 1",
+"empty": false,
+"objects": [],
+"parse": {
+"errors": [
+"Error splitting DB2 SQL: the block comment opened on line 1 is not closed before the end of the script: the statements inside it would be dropped"
+],
+"statements": [],
+"success": false
+},
+"strip": "VALUES 1",
+"utility": false,
+"validate": {
+"errors": [
+"Error splitting DB2 SQL: the block comment opened on line 1 is not closed before the end of the script: the statements inside it would be dropped"
+],
+"statement_count": 0,
+"valid": false
+}
+},
+"id": "lexeme-open-comment",
+"masking": {
+"describe": "VALUES",
+"mask": "VALUES"
+},
+"text": "VALUES 1 /* open",
+"tokens": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated block comment opened at line 1, column 10"
+]
+},
+{
+"extraction": {
+"clean": "VALUES 1",
+"empty": false,
+"objects": [],
+"parse": {
+"errors": [
+"Error splitting DB2 SQL: the block comment opened on line 1 is not closed before the end of the script: the statements inside it would be dropped"
+],
+"statements": [],
+"success": false
+},
+"strip": "VALUES 1",
+"utility": false,
+"validate": {
+"errors": [
+"Error splitting DB2 SQL: the block comment opened on line 1 is not closed before the end of the script: the statements inside it would be dropped"
+],
+"statement_count": 0,
+"valid": false
+}
+},
+"id": "lexeme-open-comment-nested",
+"masking": {
+"describe": "VALUES",
+"mask": "VALUES"
+},
+"text": "VALUES 1 /* a /* b */ c",
+"tokens": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated block comment opened at line 1, column 10"
+]
+},
+{
+"extraction": {
+"clean": "VALUES \"open 'x' 'y'",
+"empty": false,
+"objects": [],
+"parse": {
+"errors": [],
+"statements": [
+[
+"VALUES \"open 'x' 'y'",
+"DML",
+[]
+]
+],
+"success": true
+},
+"strip": "VALUES \"open 'x' 'y'",
+"utility": false,
+"validate": {
+"errors": [
+"Unmatched quoted identifier"
+],
+"statement_count": 1,
+"valid": false
+}
+},
+"id": "lexeme-open-then-literal",
+"masking": {
+"describe": "VALUES \"open",
+"mask": "VALUES \"open '?' '?'"
+},
+"text": "VALUES \"open 'x' 'y'",
+"tokens": [
+[
+"IDENTIFIER",
+"VALUES",
+0,
+1,
+1
+],
+[
+"SYMBOL",
+"\"",
+7,
+1,
+8
+],
+[
+"IDENTIFIER",
+"open",
+8,
+1,
+9
+],
+[
+"STRING",
+"'x'",
+13,
+1,
+14
+],
+[
+"STRING",
+"'y'",
+17,
+1,
+18
+]
+]
+},
+{
+"extraction": {
+"clean": "VALUES 'a''",
+"empty": false,
+"objects": [],
+"parse": {
+"errors": [],
+"statements": [
+[
+"VALUES 'a''",
+"DML",
+[]
+]
+],
+"success": true
+},
+"strip": "VALUES 'a''",
+"utility": false,
+"validate": {
+"errors": [],
+"statement_count": 1,
+"valid": true
+}
+},
+"id": "lexeme-doubled-open",
+"masking": {
+"describe": "VALUES",
+"mask": "VALUES"
+},
+"text": "VALUES 'a''",
+"tokens": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated string opened at line 1, column 8"
+]
+},
+{
+"extraction": {
+"clean": "CREATE TABLE ${schema}.t (id INT)",
+"empty": false,
+"objects": [
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "$",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+],
+"parse": {
+"errors": [],
+"statements": [
+[
+"CREATE TABLE ${schema}.t (id INT)",
+"DDL",
+[
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "$",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+]
+]
+],
+"success": true
+},
+"strip": "CREATE TABLE ${schema}.t (id INT)",
+"utility": false,
+"validate": {
+"errors": [],
+"statement_count": 1,
+"valid": true
+}
+},
+"id": "placeholder-simple",
+"masking": {
+"describe": "CREATE TABLE",
+"mask": "CREATE TABLE ${schema}.t (id INT)"
+},
+"text": "CREATE TABLE ${schema}.t (id INT)",
+"tokens": [
+[
+"KEYWORD",
+"CREATE",
+0,
+1,
+1
+],
+[
+"KEYWORD",
+"TABLE",
+7,
+1,
+8
+],
+[
+"SYMBOL",
+"$",
+13,
+1,
+14
+],
+[
+"SYMBOL",
+"{",
+14,
+1,
+15
+],
+[
+"IDENTIFIER",
+"schema",
+15,
+1,
+16
+],
+[
+"SYMBOL",
+"}",
+21,
+1,
+22
+],
+[
+"SYMBOL",
+".",
+22,
+1,
+23
+],
+[
+"IDENTIFIER",
+"t",
+23,
+1,
+24
+],
+[
+"SYMBOL",
+"(",
+25,
+1,
+26
+],
+[
+"IDENTIFIER",
+"id",
+26,
+1,
+27
+],
+[
+"IDENTIFIER",
+"INT",
+29,
+1,
+30
+],
+[
+"SYMBOL",
+")",
+32,
+1,
+33
+]
+]
+},
+{
+"extraction": {
+"clean": "VALUES ${a:b}, ${c}",
+"empty": false,
+"objects": [],
+"parse": {
+"errors": [],
+"statements": [
+[
+"VALUES ${a:b}, ${c}",
+"DML",
+[]
+]
+],
+"success": true
+},
+"strip": "VALUES ${a:b}, ${c}",
+"utility": false,
+"validate": {
+"errors": [],
+"statement_count": 1,
+"valid": true
+}
+},
+"id": "placeholder-default",
+"masking": {
+"describe": "VALUES",
+"mask": "VALUES ${a:b}, ${c}"
+},
+"text": "VALUES ${a:b}, ${c}",
+"tokens": [
+[
+"IDENTIFIER",
+"VALUES",
+0,
+1,
+1
+],
+[
+"SYMBOL",
+"$",
+7,
+1,
+8
+],
+[
+"SYMBOL",
+"{",
+8,
+1,
+9
+],
+[
+"IDENTIFIER",
+"a",
+9,
+1,
+10
+],
+[
+"SYMBOL",
+":",
+10,
+1,
+11
+],
+[
+"IDENTIFIER",
+"b",
+11,
+1,
+12
+],
+[
+"SYMBOL",
+"}",
+12,
+1,
+13
+],
+[
+"SYMBOL",
+",",
+13,
+1,
+14
+],
+[
+"SYMBOL",
+"$",
+15,
+1,
+16
+],
+[
+"SYMBOL",
+"{",
+16,
+1,
+17
+],
+[
+"IDENTIFIER",
+"c",
+17,
+1,
+18
+],
+[
+"SYMBOL",
+"}",
+18,
+1,
+19
+]
+]
+},
+{
+"extraction": {
+"clean": "VALUES ${a;b}",
+"empty": false,
+"objects": [],
+"parse": {
+"errors": [
+"Error splitting DB2 SQL: line 1 has code after a ';' in the middle of a line: the CLP sends it whole and the server rejects it, and the ibm_db driver runs only the text before the ';'; put each statement on its own line, ended by the terminator, or declare another terminator with --#SET TERMINATOR"
+],
+"statements": [],
+"success": false
+},
+"strip": "VALUES ${a;b}",
+"utility": false,
+"validate": {
+"errors": [
+"Error splitting DB2 SQL: line 1 has code after a ';' in the middle of a line: the CLP sends it whole and the server rejects it, and the ibm_db driver runs only the text before the ';'; put each statement on its own line, ended by the terminator, or declare another terminator with --#SET TERMINATOR"
+],
+"statement_count": 0,
+"valid": false
+}
+},
+"id": "placeholder-semicolon",
+"masking": {
+"describe": "VALUES",
+"mask": "VALUES ${a;b}"
+},
+"text": "VALUES ${a;b}",
+"tokens": [
+[
+"IDENTIFIER",
+"VALUES",
+0,
+1,
+1
+],
+[
+"SYMBOL",
+"$",
+7,
+1,
+8
+],
+[
+"SYMBOL",
+"{",
+8,
+1,
+9
+],
+[
+"IDENTIFIER",
+"a",
+9,
+1,
+10
+],
+[
+"DELIMITER",
+";",
+10,
+1,
+11
+],
+[
+"IDENTIFIER",
+"b",
+11,
+1,
+12
+],
+[
+"SYMBOL",
+"}",
+12,
+1,
+13
+]
+]
+},
+{
+"extraction": {
+"clean": "VALUES ${open",
+"empty": false,
+"objects": [],
+"parse": {
+"errors": [],
+"statements": [
+[
+"VALUES ${open",
+"DML",
+[]
+]
+],
+"success": true
+},
+"strip": "VALUES ${open",
+"utility": false,
+"validate": {
+"errors": [],
+"statement_count": 1,
+"valid": true
+}
+},
+"id": "placeholder-unclosed",
+"masking": {
+"describe": "VALUES",
+"mask": "VALUES ${open"
+},
+"text": "VALUES ${open",
+"tokens": [
+[
+"IDENTIFIER",
+"VALUES",
+0,
+1,
+1
+],
+[
+"SYMBOL",
+"$",
+7,
+1,
+8
+],
+[
+"SYMBOL",
+"{",
+8,
+1,
+9
+],
+[
+"IDENTIFIER",
+"open",
+9,
+1,
+10
+]
+]
+},
+{
+"extraction": {
+"clean": "SELECT * FROM t WHERE a = ? AND b = :p AND c = $1",
+"empty": false,
+"objects": [],
+"parse": {
+"errors": [],
+"statements": [
+[
+"SELECT * FROM t WHERE a = ? AND b = :p AND c = $1",
+"QUERY",
+[]
+]
+],
+"success": true
+},
+"strip": "SELECT * FROM t WHERE a = ? AND b = :p AND c = $1",
+"utility": false,
+"validate": {
+"errors": [],
+"statement_count": 1,
+"valid": true
+}
+},
+"id": "parameter-marker",
+"masking": {
+"describe": "SELECT",
+"mask": "SELECT * FROM t WHERE a = ? AND b = :p AND c = $1"
+},
+"text": "SELECT * FROM t WHERE a = ? AND b = :p AND c = $1",
+"tokens": [
+[
+"KEYWORD",
+"SELECT",
+0,
+1,
+1
+],
+[
+"SYMBOL",
+"*",
+7,
+1,
+8
+],
+[
+"KEYWORD",
+"FROM",
+9,
+1,
+10
+],
+[
+"IDENTIFIER",
+"t",
+14,
+1,
+15
+],
+[
+"KEYWORD",
+"WHERE",
+16,
+1,
+17
+],
+[
+"IDENTIFIER",
+"a",
+22,
+1,
+23
+],
+[
+"SYMBOL",
+"=",
+24,
+1,
+25
+],
+[
+"SYMBOL",
+"?",
+26,
+1,
+27
+],
+[
+"KEYWORD",
+"AND",
+28,
+1,
+29
+],
+[
+"IDENTIFIER",
+"b",
+32,
+1,
+33
+],
+[
+"SYMBOL",
+"=",
+34,
+1,
+35
+],
+[
+"SYMBOL",
+":",
+36,
+1,
+37
+],
+[
+"IDENTIFIER",
+"p",
+37,
+1,
+38
+],
+[
+"KEYWORD",
+"AND",
+39,
+1,
+40
+],
+[
+"IDENTIFIER",
+"c",
+43,
+1,
+44
+],
+[
+"SYMBOL",
+"=",
+45,
+1,
+46
+],
+[
+"SYMBOL",
+"$",
+47,
+1,
+48
+],
+[
+"IDENTIFIER",
+"1",
+48,
+1,
+49
+]
+]
+},
+{
+"extraction": {
+"clean": "CREATE TABLE t (id\u00a0INT)",
+"empty": false,
+"objects": [
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "T",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+],
+"parse": {
+"errors": [],
+"statements": [
+[
+"CREATE TABLE t (id\u00a0INT)",
+"DDL",
+[
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "T",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+]
+]
+],
+"success": true
+},
+"strip": "CREATE TABLE t (id\u00a0INT)",
+"utility": false,
+"validate": {
+"errors": [],
+"statement_count": 1,
+"valid": true
+}
+},
+"id": "gap-nbsp",
+"masking": {
+"describe": "CREATE TABLE t",
+"mask": "CREATE TABLE t (id\u00a0INT)"
+},
+"text": "CREATE TABLE t (id\u00a0INT)",
+"tokens": [
+[
+"KEYWORD",
+"CREATE",
+0,
+1,
+1
+],
+[
+"KEYWORD",
+"TABLE",
+7,
+1,
+8
+],
+[
+"IDENTIFIER",
+"t",
+13,
+1,
+14
+],
+[
+"SYMBOL",
+"(",
+15,
+1,
+16
+],
+[
+"IDENTIFIER",
+"id",
+16,
+1,
+17
+],
+[
+"IDENTIFIER",
+"INT",
+19,
+1,
+20
+],
+[
+"SYMBOL",
+")",
+22,
+1,
+23
+]
+]
+},
+{
+"extraction": {
+"clean": "CREATE TABLE a\u00a0b (id INT)",
+"empty": false,
+"objects": [
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "A",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+],
+"parse": {
+"errors": [],
+"statements": [
+[
+"CREATE TABLE a\u00a0b (id INT)",
+"DDL",
+[
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "A",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+]
+]
+],
+"success": true
+},
+"strip": "CREATE TABLE a\u00a0b (id INT)",
+"utility": false,
+"validate": {
+"errors": [],
+"statement_count": 1,
+"valid": true
+}
+},
+"id": "gap-nbsp-name",
+"masking": {
+"describe": "CREATE TABLE a",
+"mask": "CREATE TABLE a\u00a0b (id INT)"
+},
+"text": "CREATE TABLE a\u00a0b (id INT)",
+"tokens": [
+[
+"KEYWORD",
+"CREATE",
+0,
+1,
+1
+],
+[
+"KEYWORD",
+"TABLE",
+7,
+1,
+8
+],
+[
+"IDENTIFIER",
+"a",
+13,
+1,
+14
+],
+[
+"IDENTIFIER",
+"b",
+15,
+1,
+16
+],
+[
+"SYMBOL",
+"(",
+17,
+1,
+18
+],
+[
+"IDENTIFIER",
+"id",
+18,
+1,
+19
+],
+[
+"IDENTIFIER",
+"INT",
+21,
+1,
+22
+],
+[
+"SYMBOL",
+")",
+24,
+1,
+25
+]
+]
+},
+{
+"extraction": {
+"clean": "CREATE TABLE t (id INT)",
+"empty": false,
+"objects": [
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "T",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+],
+"parse": {
+"errors": [],
+"statements": [
+[
+"CREATE TABLE t (id INT)\u2028-- c",
+"DDL",
+[
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "T",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+]
+]
+],
+"success": true
+},
+"strip": "CREATE TABLE t (id INT)",
+"utility": false,
+"validate": {
+"errors": [],
+"statement_count": 1,
+"valid": true
+}
+},
+"id": "gap-u2028",
+"masking": {
+"describe": "CREATE TABLE t",
+"mask": "CREATE TABLE t (id INT)\u2028-- c"
+},
+"text": "CREATE TABLE t (id INT)\u2028-- c",
+"tokens": [
+[
+"KEYWORD",
+"CREATE",
+0,
+1,
+1
+],
+[
+"KEYWORD",
+"TABLE",
+7,
+1,
+8
+],
+[
+"IDENTIFIER",
+"t",
+13,
+1,
+14
+],
+[
+"SYMBOL",
+"(",
+15,
+1,
+16
+],
+[
+"IDENTIFIER",
+"id",
+16,
+1,
+17
+],
+[
+"IDENTIFIER",
+"INT",
+19,
+1,
+20
+],
+[
+"SYMBOL",
+")",
+22,
+1,
+23
+],
+[
+"COMMENT",
+"",
+24,
+1,
+25
+]
+]
+},
+{
+"extraction": {
+"clean": "VALUES 'a\u2028b'",
+"empty": false,
+"objects": [],
+"parse": {
+"errors": [],
+"statements": [
+[
+"VALUES 'a\u2028b'",
+"DML",
+[]
+]
+],
+"success": true
+},
+"strip": "VALUES 'a\u2028b'",
+"utility": false,
+"validate": {
+"errors": [],
+"statement_count": 1,
+"valid": true
+}
+},
+"id": "gap-u2028-string",
+"masking": {
+"describe": "VALUES",
+"mask": "VALUES '?'"
+},
+"text": "VALUES 'a\u2028b'",
+"tokens": [
+[
+"IDENTIFIER",
+"VALUES",
+0,
+1,
+1
+],
+[
+"STRING",
+"'a\u2028b'",
+7,
+1,
+8
+]
+]
+},
+{
+"extraction": {
+"clean": "CREATE\u000bTABLE\ft (id INT)",
+"empty": false,
+"objects": [
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "T",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+],
+"parse": {
+"errors": [],
+"statements": [
+[
+"CREATE\u000bTABLE\ft (id INT)",
+"DDL",
+[
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "T",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+]
+]
+],
+"success": true
+},
+"strip": "CREATE\u000bTABLE\ft (id INT)",
+"utility": false,
+"validate": {
+"errors": [],
+"statement_count": 1,
+"valid": true
+}
+},
+"id": "gap-vt-ff",
+"masking": {
+"describe": "CREATE TABLE t",
+"mask": "CREATE\u000bTABLE\ft (id INT)"
+},
+"text": "CREATE\u000bTABLE\ft (id INT)",
+"tokens": [
+[
+"KEYWORD",
+"CREATE",
+0,
+1,
+1
+],
+[
+"KEYWORD",
+"TABLE",
+7,
+1,
+8
+],
+[
+"IDENTIFIER",
+"t",
+13,
+1,
+14
+],
+[
+"SYMBOL",
+"(",
+15,
+1,
+16
+],
+[
+"IDENTIFIER",
+"id",
+16,
+1,
+17
+],
+[
+"IDENTIFIER",
+"INT",
+19,
+1,
+20
+],
+[
+"SYMBOL",
+")",
+22,
+1,
+23
+]
+]
+},
+{
+"extraction": {
+"clean": "\ufeffCREATE TABLE t (id INT)",
+"empty": false,
+"objects": [
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "T",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+],
+"parse": {
+"errors": [],
+"statements": [
+[
+"CREATE TABLE t (id INT)",
+"DDL",
+[
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "T",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+]
+]
+],
+"success": true
+},
+"strip": "\ufeffCREATE TABLE t (id INT)",
+"utility": false,
+"validate": {
+"errors": [],
+"statement_count": 1,
+"valid": true
+}
+},
+"id": "gap-bom",
+"masking": {
+"describe": "",
+"mask": "\ufeffCREATE TABLE t (id INT)"
+},
+"text": "\ufeffCREATE TABLE t (id INT)",
+"tokens": [
+[
+"SYMBOL",
+"\ufeff",
+0,
+1,
+1
+],
+[
+"KEYWORD",
+"CREATE",
+1,
+1,
+2
+],
+[
+"KEYWORD",
+"TABLE",
+8,
+1,
+9
+],
+[
+"IDENTIFIER",
+"t",
+14,
+1,
+15
+],
+[
+"SYMBOL",
+"(",
+16,
+1,
+17
+],
+[
+"IDENTIFIER",
+"id",
+17,
+1,
+18
+],
+[
+"IDENTIFIER",
+"INT",
+20,
+1,
+21
+],
+[
+"SYMBOL",
+")",
+23,
+1,
+24
+]
+]
+},
+{
+"extraction": {
+"clean": "\ufeff\nCREATE TABLE t (id INT)",
+"empty": false,
+"objects": [
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "T",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+],
+"parse": {
+"errors": [],
+"statements": [
+[
+"CREATE TABLE t (id INT)",
+"DDL",
+[
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "T",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+]
+]
+],
+"success": true
+},
+"strip": "\ufeff\nCREATE TABLE t (id INT)",
+"utility": false,
+"validate": {
+"errors": [],
+"statement_count": 1,
+"valid": true
+}
+},
+"id": "gap-bom-comment",
+"masking": {
+"describe": "",
+"mask": "\ufeff-- c\nCREATE TABLE t (id INT)"
+},
+"text": "\ufeff-- c\nCREATE TABLE t (id INT)",
+"tokens": [
+[
+"SYMBOL",
+"\ufeff",
+0,
+1,
+1
+],
+[
+"COMMENT",
+"",
+1,
+1,
+2
+],
+[
+"KEYWORD",
+"CREATE",
+6,
+2,
+1
+],
+[
+"KEYWORD",
+"TABLE",
+13,
+2,
+8
+],
+[
+"IDENTIFIER",
+"t",
+19,
+2,
+14
+],
+[
+"SYMBOL",
+"(",
+21,
+2,
+16
+],
+[
+"IDENTIFIER",
+"id",
+22,
+2,
+17
+],
+[
+"IDENTIFIER",
+"INT",
+25,
+2,
+20
+],
+[
+"SYMBOL",
+")",
+28,
+2,
+23
+]
+]
+},
+{
+"extraction": {
+"clean": "CREATE TABLE t (id INT)\u0000",
+"empty": false,
+"objects": [
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "T",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+],
+"parse": {
+"errors": [],
+"statements": [
+[
+"CREATE TABLE t (id INT)\u0000",
+"DDL",
+[
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "T",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+]
+]
+],
+"success": true
+},
+"strip": "CREATE TABLE t (id INT)\u0000",
+"utility": false,
+"validate": {
+"errors": [],
+"statement_count": 1,
+"valid": true
+}
+},
+"id": "gap-nul",
+"masking": {
+"describe": "CREATE TABLE t",
+"mask": "CREATE TABLE t (id INT)\u0000"
+},
+"text": "CREATE TABLE t (id INT)\u0000",
+"tokens": [
+[
+"KEYWORD",
+"CREATE",
+0,
+1,
+1
+],
+[
+"KEYWORD",
+"TABLE",
+7,
+1,
+8
+],
+[
+"IDENTIFIER",
+"t",
+13,
+1,
+14
+],
+[
+"SYMBOL",
+"(",
+15,
+1,
+16
+],
+[
+"IDENTIFIER",
+"id",
+16,
+1,
+17
+],
+[
+"IDENTIFIER",
+"INT",
+19,
+1,
+20
+],
+[
+"SYMBOL",
+")",
+22,
+1,
+23
+],
+[
+"SYMBOL",
+"\u0000",
+23,
+1,
+24
+]
+]
+},
+{
+"extraction": {
+"clean": "VALUES 'a\u0000b'",
+"empty": false,
+"objects": [],
+"parse": {
+"errors": [],
+"statements": [
+[
+"VALUES 'a\u0000b'",
+"DML",
+[]
+]
+],
+"success": true
+},
+"strip": "VALUES 'a\u0000b'",
+"utility": false,
+"validate": {
+"errors": [],
+"statement_count": 1,
+"valid": true
+}
+},
+"id": "gap-nul-string",
+"masking": {
+"describe": "VALUES",
+"mask": "VALUES '?'"
+},
+"text": "VALUES 'a\u0000b'",
+"tokens": [
+[
+"IDENTIFIER",
+"VALUES",
+0,
+1,
+1
+],
+[
+"STRING",
+"'a\u0000b'",
+7,
+1,
+8
+]
+]
+},
+{
+"extraction": {
+"clean": "\u0000VALUES 1",
+"empty": false,
+"objects": [],
+"parse": {
+"errors": [],
+"statements": [
+[
+"\u0000VALUES 1",
+"DML",
+[]
+]
+],
+"success": true
+},
+"strip": "\u0000VALUES 1",
+"utility": false,
+"validate": {
+"errors": [],
+"statement_count": 1,
+"valid": true
+}
+},
+"id": "gap-nul-start",
+"masking": {
+"describe": "",
+"mask": "\u0000VALUES 1"
+},
+"text": "\u0000VALUES 1",
+"tokens": [
+[
+"SYMBOL",
+"\u0000",
+0,
+1,
+1
+],
+[
+"IDENTIFIER",
+"VALUES",
+1,
+1,
+2
+],
+[
+"IDENTIFIER",
+"1",
+8,
+1,
+9
+]
+]
+},
+{
+"extraction": {
+"clean": "CREATE TABLE t (\r\n  id INT \r\n)",
+"empty": false,
+"objects": [
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "T",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+],
+"parse": {
+"errors": [],
+"statements": [
+[
+"CREATE TABLE t (\r\n  id INT -- c\r\n)",
+"DDL",
+[
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "T",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+]
+]
+],
+"success": true
+},
+"strip": "CREATE TABLE t (\r\n  id INT \r\n)",
+"utility": false,
+"validate": {
+"errors": [],
+"statement_count": 1,
+"valid": true
+}
+},
+"id": "gap-crlf",
+"masking": {
+"describe": "CREATE TABLE t",
+"mask": "CREATE TABLE t (\r\n  id INT -- c\r\n)\r\n"
+},
+"text": "CREATE TABLE t (\r\n  id INT -- c\r\n)\r\n",
+"tokens": [
+[
+"KEYWORD",
+"CREATE",
+0,
+1,
+1
+],
+[
+"KEYWORD",
+"TABLE",
+7,
+1,
+8
+],
+[
+"IDENTIFIER",
+"t",
+13,
+1,
+14
+],
+[
+"SYMBOL",
+"(",
+15,
+1,
+16
+],
+[
+"IDENTIFIER",
+"id",
+20,
+2,
+3
+],
+[
+"IDENTIFIER",
+"INT",
+23,
+2,
+6
+],
+[
+"COMMENT",
+"",
+27,
+2,
+10
+],
+[
+"SYMBOL",
+")",
+33,
+3,
+1
+],
+[
+"EOF",
+"",
+36,
+4,
+1
+]
+]
+},
+{
+"extraction": {
+"clean": "VALUES 'a\r\nb'",
+"empty": false,
+"objects": [],
+"parse": {
+"errors": [],
+"statements": [
+[
+"VALUES 'a\r\nb'",
+"DML",
+[]
+]
+],
+"success": true
+},
+"strip": "VALUES 'a\r\nb'",
+"utility": false,
+"validate": {
+"errors": [],
+"statement_count": 1,
+"valid": true
+}
+},
+"id": "gap-crlf-string",
+"masking": {
+"describe": "VALUES",
+"mask": "VALUES '?'"
+},
+"text": "VALUES 'a\r\nb'",
+"tokens": [
+[
+"IDENTIFIER",
+"VALUES",
+0,
+1,
+1
+],
+[
+"STRING",
+"'a\r\nb'",
+7,
+1,
+8
+]
+]
+},
+{
+"extraction": {
+"clean": "VALUES 1",
+"empty": false,
+"objects": [],
+"parse": {
+"errors": [],
+"statements": [
+[
+"/* a\r\n b */ VALUES 1",
+"DML",
+[]
+]
+],
+"success": true
+},
+"strip": "VALUES 1",
+"utility": false,
+"validate": {
+"errors": [],
+"statement_count": 1,
+"valid": true
+}
+},
+"id": "gap-crlf-comment",
+"masking": {
+"describe": "VALUES 1",
+"mask": "/* a\r\n b */ VALUES 1"
+},
+"text": "/* a\r\n b */ VALUES 1",
+"tokens": [
+[
+"COMMENT",
+"",
+0,
+1,
+1
+],
+[
+"IDENTIFIER",
+"VALUES",
+12,
+2,
+7
+],
+[
+"IDENTIFIER",
+"1",
+19,
+2,
+14
+]
+]
+},
+{
+"extraction": {
+"clean": "VALUES 1\rVALUES 2",
+"empty": false,
+"objects": [],
+"parse": {
+"errors": [],
+"statements": [
+[
+"VALUES 1\rVALUES 2",
+"DML",
+[]
+]
+],
+"success": true
+},
+"strip": "VALUES 1\rVALUES 2",
+"utility": false,
+"validate": {
+"errors": [],
+"statement_count": 1,
+"valid": true
+}
+},
+"id": "gap-lone-cr",
+"masking": {
+"describe": "VALUES 1",
+"mask": "VALUES 1\rVALUES 2"
+},
+"text": "VALUES 1\rVALUES 2",
+"tokens": [
+[
+"IDENTIFIER",
+"VALUES",
+0,
+1,
+1
+],
+[
+"IDENTIFIER",
+"1",
+7,
+1,
+8
+],
+[
+"IDENTIFIER",
+"VALUES",
+9,
+1,
+10
+],
+[
+"IDENTIFIER",
+"2",
+16,
+1,
+17
+]
+]
+},
+{
+"extraction": {
+"clean": "CREATE\tTABLE\tt\t(id INT)",
+"empty": false,
+"objects": [
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "T",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+],
+"parse": {
+"errors": [],
+"statements": [
+[
+"CREATE\tTABLE\tt\t(id INT)",
+"DDL",
+[
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "T",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+]
+]
+],
+"success": true
+},
+"strip": "CREATE\tTABLE\tt\t(id INT)",
+"utility": false,
+"validate": {
+"errors": [],
+"statement_count": 1,
+"valid": true
+}
+},
+"id": "gap-tab",
+"masking": {
+"describe": "CREATE TABLE t",
+"mask": "\tCREATE\tTABLE\tt\t(id INT)\t"
+},
+"text": "\tCREATE\tTABLE\tt\t(id INT)\t",
+"tokens": [
+[
+"KEYWORD",
+"CREATE",
+1,
+1,
+2
+],
+[
+"KEYWORD",
+"TABLE",
+8,
+1,
+9
+],
+[
+"IDENTIFIER",
+"t",
+14,
+1,
+15
+],
+[
+"SYMBOL",
+"(",
+16,
+1,
+17
+],
+[
+"IDENTIFIER",
+"id",
+17,
+1,
+18
+],
+[
+"IDENTIFIER",
+"INT",
+20,
+1,
+21
+],
+[
+"SYMBOL",
+")",
+23,
+1,
+24
+],
+[
+"EOF",
+"",
+25,
+1,
+26
+]
+]
+},
+{
+"extraction": {
+"clean": "CREATE TABLE a (id INT);\nCREATE TABLE b (id INT);",
+"empty": false,
+"objects": [
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "A",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+},
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "B",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+],
+"parse": {
+"errors": [],
+"statements": [
+[
+"CREATE TABLE a (id INT)",
+"DDL",
+[
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "A",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+]
+],
+[
+"CREATE TABLE b (id INT)",
+"DDL",
+[
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "B",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+]
+]
+],
+"success": true
+},
+"strip": "CREATE TABLE a (id INT);\nCREATE TABLE b (id INT);",
+"utility": false,
+"validate": {
+"errors": [],
+"statement_count": 2,
+"valid": true
+}
+},
+"id": "script-two",
+"masking": {
+"describe": "CREATE TABLE a",
+"mask": "CREATE TABLE a (id INT);\nCREATE TABLE b (id INT);\n"
+},
+"text": "CREATE TABLE a (id INT);\nCREATE TABLE b (id INT);\n",
+"tokens": [
+[
+"KEYWORD",
+"CREATE",
+0,
+1,
+1
+],
+[
+"KEYWORD",
+"TABLE",
+7,
+1,
+8
+],
+[
+"IDENTIFIER",
+"a",
+13,
+1,
+14
+],
+[
+"SYMBOL",
+"(",
+15,
+1,
+16
+],
+[
+"IDENTIFIER",
+"id",
+16,
+1,
+17
+],
+[
+"IDENTIFIER",
+"INT",
+19,
+1,
+20
+],
+[
+"SYMBOL",
+")",
+22,
+1,
+23
+],
+[
+"DELIMITER",
+";",
+23,
+1,
+24
+],
+[
+"KEYWORD",
+"CREATE",
+25,
+2,
+1
+],
+[
+"KEYWORD",
+"TABLE",
+32,
+2,
+8
+],
+[
+"IDENTIFIER",
+"b",
+38,
+2,
+14
+],
+[
+"SYMBOL",
+"(",
+40,
+2,
+16
+],
+[
+"IDENTIFIER",
+"id",
+41,
+2,
+17
+],
+[
+"IDENTIFIER",
+"INT",
+44,
+2,
+20
+],
+[
+"SYMBOL",
+")",
+47,
+2,
+23
+],
+[
+"DELIMITER",
+";",
+48,
+2,
+24
+],
+[
+"EOF",
+"",
+50,
+3,
+1
+]
+]
+},
+{
+"extraction": {
+"clean": "CREATE TABLE a (id INT)@\nCREATE TABLE b (id INT)@",
+"empty": false,
+"objects": [
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "A",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+},
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "B",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+],
+"parse": {
+"errors": [],
+"statements": [
+[
+"CREATE TABLE a (id INT)",
+"DDL",
+[
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "A",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+]
+],
+[
+"CREATE TABLE b (id INT)",
+"DDL",
+[
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "B",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+]
+]
+],
+"success": true
+},
+"strip": "CREATE TABLE a (id INT)@\nCREATE TABLE b (id INT)@",
+"utility": false,
+"validate": {
+"errors": [],
+"statement_count": 2,
+"valid": true
+}
+},
+"id": "script-directive",
+"masking": {
+"describe": "CREATE TABLE a",
+"mask": "--#SET TERMINATOR @\nCREATE TABLE a (id INT)@\nCREATE TABLE b (id INT)@\n"
+},
+"text": "--#SET TERMINATOR @\nCREATE TABLE a (id INT)@\nCREATE TABLE b (id INT)@\n",
+"tokens": [
+[
+"COMMENT",
+"",
+0,
+1,
+1
+],
+[
+"KEYWORD",
+"CREATE",
+20,
+2,
+1
+],
+[
+"KEYWORD",
+"TABLE",
+27,
+2,
+8
+],
+[
+"IDENTIFIER",
+"a",
+33,
+2,
+14
+],
+[
+"SYMBOL",
+"(",
+35,
+2,
+16
+],
+[
+"IDENTIFIER",
+"id",
+36,
+2,
+17
+],
+[
+"IDENTIFIER",
+"INT",
+39,
+2,
+20
+],
+[
+"SYMBOL",
+")",
+42,
+2,
+23
+],
+[
+"SYMBOL",
+"@",
+43,
+2,
+24
+],
+[
+"KEYWORD",
+"CREATE",
+45,
+3,
+1
+],
+[
+"KEYWORD",
+"TABLE",
+52,
+3,
+8
+],
+[
+"IDENTIFIER",
+"b",
+58,
+3,
+14
+],
+[
+"SYMBOL",
+"(",
+60,
+3,
+16
+],
+[
+"IDENTIFIER",
+"id",
+61,
+3,
+17
+],
+[
+"IDENTIFIER",
+"INT",
+64,
+3,
+20
+],
+[
+"SYMBOL",
+")",
+67,
+3,
+23
+],
+[
+"SYMBOL",
+"@",
+68,
+3,
+24
+],
+[
+"EOF",
+"",
+70,
+4,
+1
+]
+]
+},
+{
+"extraction": {
+"clean": "CREATE PROCEDURE p()\nBEGIN\n  DECLARE x INT;\n  SET x = 1;\nEND;\nCALL p();",
+"empty": false,
+"objects": [
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "P",
+"object_type": "PROCEDURE",
+"schema": "SYSIBM"
+}
+],
+"parse": {
+"errors": [],
+"statements": [
+[
+"CREATE PROCEDURE p()\nBEGIN\n  DECLARE x INT;\n  SET x = 1;\nEND",
+"DDL",
+[
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "P",
+"object_type": "PROCEDURE",
+"schema": "SYSIBM"
+}
+]
+],
+[
+"CALL p()",
+"DML",
+[]
+]
+],
+"success": true
+},
+"strip": "CREATE PROCEDURE p()\nBEGIN\n  DECLARE x INT;\n  SET x = 1;\nEND;\nCALL p();",
+"utility": false,
+"validate": {
+"errors": [],
+"statement_count": 2,
+"valid": true
+}
+},
+"id": "script-procedure",
+"masking": {
+"describe": "CREATE PROCEDURE p",
+"mask": "CREATE PROCEDURE p()\nBEGIN\n  DECLARE x INT;\n  SET x = 1;\nEND;\nCALL p();\n"
+},
+"text": "CREATE PROCEDURE p()\nBEGIN\n  DECLARE x INT;\n  SET x = 1;\nEND;\nCALL p();\n",
+"tokens": [
+[
+"KEYWORD",
+"CREATE",
+0,
+1,
+1
+],
+[
+"KEYWORD",
+"PROCEDURE",
+7,
+1,
+8
+],
+[
+"IDENTIFIER",
+"p",
+17,
+1,
+18
+],
+[
+"SYMBOL",
+"(",
+18,
+1,
+19
+],
+[
+"SYMBOL",
+")",
+19,
+1,
+20
+],
+[
+"KEYWORD",
+"BEGIN",
+21,
+2,
+1
+],
+[
+"KEYWORD",
+"DECLARE",
+29,
+3,
+3
+],
+[
+"IDENTIFIER",
+"x",
+37,
+3,
+11
+],
+[
+"IDENTIFIER",
+"INT",
+39,
+3,
+13
+],
+[
+"DELIMITER",
+";",
+42,
+3,
+16
+],
+[
+"IDENTIFIER",
+"SET",
+46,
+4,
+3
+],
+[
+"IDENTIFIER",
+"x",
+50,
+4,
+7
+],
+[
+"SYMBOL",
+"=",
+52,
+4,
+9
+],
+[
+"IDENTIFIER",
+"1",
+54,
+4,
+11
+],
+[
+"DELIMITER",
+";",
+55,
+4,
+12
+],
+[
+"KEYWORD",
+"END",
+57,
+5,
+1
+],
+[
+"DELIMITER",
+";",
+60,
+5,
+4
+],
+[
+"IDENTIFIER",
+"CALL",
+62,
+6,
+1
+],
+[
+"IDENTIFIER",
+"p",
+67,
+6,
+6
+],
+[
+"SYMBOL",
+"(",
+68,
+6,
+7
+],
+[
+"SYMBOL",
+")",
+69,
+6,
+8
+],
+[
+"DELIMITER",
+";",
+70,
+6,
+9
+],
+[
+"EOF",
+"",
+72,
+7,
+1
+]
+]
+},
+{
+"extraction": {
+"clean": "CREATE TABLE a (id INT);\r\nCREATE TABLE b (id INT);",
+"empty": false,
+"objects": [
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "A",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+},
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "B",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+],
+"parse": {
+"errors": [],
+"statements": [
+[
+"CREATE TABLE a (id INT)",
+"DDL",
+[
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "A",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+]
+],
+[
+"CREATE TABLE b (id INT)",
+"DDL",
+[
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "B",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+]
+]
+],
+"success": true
+},
+"strip": "CREATE TABLE a (id INT);\r\nCREATE TABLE b (id INT);",
+"utility": false,
+"validate": {
+"errors": [],
+"statement_count": 2,
+"valid": true
+}
+},
+"id": "script-crlf",
+"masking": {
+"describe": "CREATE TABLE a",
+"mask": "CREATE TABLE a (id INT);\r\nCREATE TABLE b (id INT);\r\n"
+},
+"text": "CREATE TABLE a (id INT);\r\nCREATE TABLE b (id INT);\r\n",
+"tokens": [
+[
+"KEYWORD",
+"CREATE",
+0,
+1,
+1
+],
+[
+"KEYWORD",
+"TABLE",
+7,
+1,
+8
+],
+[
+"IDENTIFIER",
+"a",
+13,
+1,
+14
+],
+[
+"SYMBOL",
+"(",
+15,
+1,
+16
+],
+[
+"IDENTIFIER",
+"id",
+16,
+1,
+17
+],
+[
+"IDENTIFIER",
+"INT",
+19,
+1,
+20
+],
+[
+"SYMBOL",
+")",
+22,
+1,
+23
+],
+[
+"DELIMITER",
+";",
+23,
+1,
+24
+],
+[
+"KEYWORD",
+"CREATE",
+26,
+2,
+1
+],
+[
+"KEYWORD",
+"TABLE",
+33,
+2,
+8
+],
+[
+"IDENTIFIER",
+"b",
+39,
+2,
+14
+],
+[
+"SYMBOL",
+"(",
+41,
+2,
+16
+],
+[
+"IDENTIFIER",
+"id",
+42,
+2,
+17
+],
+[
+"IDENTIFIER",
+"INT",
+45,
+2,
+20
+],
+[
+"SYMBOL",
+")",
+48,
+2,
+23
+],
+[
+"DELIMITER",
+";",
+49,
+2,
+24
+],
+[
+"EOF",
+"",
+52,
+3,
+1
+]
+]
+},
+{
+"extraction": {
+"clean": "\ufeffCREATE TABLE a (id INT);",
+"empty": false,
+"objects": [
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "A",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+],
+"parse": {
+"errors": [],
+"statements": [
+[
+"CREATE TABLE a (id INT)",
+"DDL",
+[
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "A",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+]
+]
+],
+"success": true
+},
+"strip": "\ufeffCREATE TABLE a (id INT);",
+"utility": false,
+"validate": {
+"errors": [],
+"statement_count": 1,
+"valid": true
+}
+},
+"id": "script-bom",
+"masking": {
+"describe": "",
+"mask": "\ufeffCREATE TABLE a (id INT);\n"
+},
+"text": "\ufeffCREATE TABLE a (id INT);\n",
+"tokens": [
+[
+"SYMBOL",
+"\ufeff",
+0,
+1,
+1
+],
+[
+"KEYWORD",
+"CREATE",
+1,
+1,
+2
+],
+[
+"KEYWORD",
+"TABLE",
+8,
+1,
+9
+],
+[
+"IDENTIFIER",
+"a",
+14,
+1,
+15
+],
+[
+"SYMBOL",
+"(",
+16,
+1,
+17
+],
+[
+"IDENTIFIER",
+"id",
+17,
+1,
+18
+],
+[
+"IDENTIFIER",
+"INT",
+20,
+1,
+21
+],
+[
+"SYMBOL",
+")",
+23,
+1,
+24
+],
+[
+"DELIMITER",
+";",
+24,
+1,
+25
+],
+[
+"EOF",
+"",
+26,
+2,
+1
+]
+]
+},
+{
+"extraction": {
+"clean": "CREATE TABLE a (id INT); \n\nCREATE TABLE b (id INT);",
+"empty": false,
+"objects": [
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "A",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+},
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "B",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+],
+"parse": {
+"errors": [],
+"statements": [
+[
+"CREATE TABLE a (id INT)",
+"DDL",
+[
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "A",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+]
+],
+[
+"/* c */\nCREATE TABLE b (id INT)",
+"DDL",
+[
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "B",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+]
+]
+],
+"success": true
+},
+"strip": "CREATE TABLE a (id INT); \n\nCREATE TABLE b (id INT);",
+"utility": false,
+"validate": {
+"errors": [],
+"statement_count": 2,
+"valid": true
+}
+},
+"id": "script-comments",
+"masking": {
+"describe": "CREATE TABLE a",
+"mask": "-- lead\nCREATE TABLE a (id INT); -- trail\n/* c */\nCREATE TABLE b (id INT);\n"
+},
+"text": "-- lead\nCREATE TABLE a (id INT); -- trail\n/* c */\nCREATE TABLE b (id INT);\n",
+"tokens": [
+[
+"COMMENT",
+"",
+0,
+1,
+1
+],
+[
+"KEYWORD",
+"CREATE",
+8,
+2,
+1
+],
+[
+"KEYWORD",
+"TABLE",
+15,
+2,
+8
+],
+[
+"IDENTIFIER",
+"a",
+21,
+2,
+14
+],
+[
+"SYMBOL",
+"(",
+23,
+2,
+16
+],
+[
+"IDENTIFIER",
+"id",
+24,
+2,
+17
+],
+[
+"IDENTIFIER",
+"INT",
+27,
+2,
+20
+],
+[
+"SYMBOL",
+")",
+30,
+2,
+23
+],
+[
+"DELIMITER",
+";",
+31,
+2,
+24
+],
+[
+"COMMENT",
+"",
+33,
+2,
+26
+],
+[
+"COMMENT",
+"",
+42,
+3,
+1
+],
+[
+"KEYWORD",
+"CREATE",
+50,
+4,
+1
+],
+[
+"KEYWORD",
+"TABLE",
+57,
+4,
+8
+],
+[
+"IDENTIFIER",
+"b",
+63,
+4,
+14
+],
+[
+"SYMBOL",
+"(",
+65,
+4,
+16
+],
+[
+"IDENTIFIER",
+"id",
+66,
+4,
+17
+],
+[
+"IDENTIFIER",
+"INT",
+69,
+4,
+20
+],
+[
+"SYMBOL",
+")",
+72,
+4,
+23
+],
+[
+"DELIMITER",
+";",
+73,
+4,
+24
+],
+[
+"EOF",
+"",
+75,
+5,
+1
+]
+]
+},
+{
+"extraction": {
+"clean": "CREATE TABLE a (id INT);",
+"empty": false,
+"objects": [
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "A",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+],
+"parse": {
+"errors": [],
+"statements": [
+[
+"/* a /* b;\n*/ c;\n*/ CREATE TABLE a (id INT)",
+"DDL",
+[
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "A",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+]
+]
+],
+"success": true
+},
+"strip": "CREATE TABLE a (id INT);",
+"utility": false,
+"validate": {
+"errors": [],
+"statement_count": 1,
+"valid": true
+}
+},
+"id": "script-nested-comment",
+"masking": {
+"describe": "CREATE TABLE a",
+"mask": "/* a /* b;\n*/ c;\n*/ CREATE TABLE a (id INT);\n"
+},
+"text": "/* a /* b;\n*/ c;\n*/ CREATE TABLE a (id INT);\n",
+"tokens": [
+[
+"COMMENT",
+"",
+0,
+1,
+1
+],
+[
+"KEYWORD",
+"CREATE",
+20,
+3,
+4
+],
+[
+"KEYWORD",
+"TABLE",
+27,
+3,
+11
+],
+[
+"IDENTIFIER",
+"a",
+33,
+3,
+17
+],
+[
+"SYMBOL",
+"(",
+35,
+3,
+19
+],
+[
+"IDENTIFIER",
+"id",
+36,
+3,
+20
+],
+[
+"IDENTIFIER",
+"INT",
+39,
+3,
+23
+],
+[
+"SYMBOL",
+")",
+42,
+3,
+26
+],
+[
+"DELIMITER",
+";",
+43,
+3,
+27
+],
+[
+"EOF",
+"",
+45,
+4,
+1
+]
+]
+},
+{
+"extraction": {
+"clean": "CREATE TABLE a (id INT); CREATE TABLE b (id INT);",
+"empty": false,
+"objects": [
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "A",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+},
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "B",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+],
+"parse": {
+"errors": [
+"Error splitting DB2 SQL: line 1 has code after a ';' in the middle of a line: the CLP sends it whole and the server rejects it, and the ibm_db driver runs only the text before the ';'; put each statement on its own line, ended by the terminator, or declare another terminator with --#SET TERMINATOR"
+],
+"statements": [],
+"success": false
+},
+"strip": "CREATE TABLE a (id INT); CREATE TABLE b (id INT);",
+"utility": false,
+"validate": {
+"errors": [
+"Error splitting DB2 SQL: line 1 has code after a ';' in the middle of a line: the CLP sends it whole and the server rejects it, and the ibm_db driver runs only the text before the ';'; put each statement on its own line, ended by the terminator, or declare another terminator with --#SET TERMINATOR"
+],
+"statement_count": 0,
+"valid": false
+}
+},
+"id": "script-stray",
+"masking": {
+"describe": "CREATE TABLE a",
+"mask": "CREATE TABLE a (id INT); CREATE TABLE b (id INT);"
+},
+"text": "CREATE TABLE a (id INT); CREATE TABLE b (id INT);",
+"tokens": [
+[
+"KEYWORD",
+"CREATE",
+0,
+1,
+1
+],
+[
+"KEYWORD",
+"TABLE",
+7,
+1,
+8
+],
+[
+"IDENTIFIER",
+"a",
+13,
+1,
+14
+],
+[
+"SYMBOL",
+"(",
+15,
+1,
+16
+],
+[
+"IDENTIFIER",
+"id",
+16,
+1,
+17
+],
+[
+"IDENTIFIER",
+"INT",
+19,
+1,
+20
+],
+[
+"SYMBOL",
+")",
+22,
+1,
+23
+],
+[
+"DELIMITER",
+";",
+23,
+1,
+24
+],
+[
+"KEYWORD",
+"CREATE",
+25,
+1,
+26
+],
+[
+"KEYWORD",
+"TABLE",
+32,
+1,
+33
+],
+[
+"IDENTIFIER",
+"b",
+38,
+1,
+39
+],
+[
+"SYMBOL",
+"(",
+40,
+1,
+41
+],
+[
+"IDENTIFIER",
+"id",
+41,
+1,
+42
+],
+[
+"IDENTIFIER",
+"INT",
+44,
+1,
+45
+],
+[
+"SYMBOL",
+")",
+47,
+1,
+48
+],
+[
+"DELIMITER",
+";",
+48,
+1,
+49
+]
+]
+},
+{
+"extraction": {
+"clean": "CONNECT TO sample;\nCREATE TABLE a (id INT);",
+"empty": false,
+"objects": [
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "A",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+],
+"parse": {
+"errors": [
+"Error splitting DB2 SQL: CLP command CONNECT on line 1: dblift does not run client commands"
+],
+"statements": [],
+"success": false
+},
+"strip": "CONNECT TO sample;\nCREATE TABLE a (id INT);",
+"utility": false,
+"validate": {
+"errors": [
+"Error splitting DB2 SQL: CLP command CONNECT on line 1: dblift does not run client commands"
+],
+"statement_count": 0,
+"valid": false
+}
+},
+"id": "script-command",
+"masking": {
+"describe": "CONNECT TO",
+"mask": "CONNECT TO sample;\nCREATE TABLE a (id INT);"
+},
+"text": "CONNECT TO sample;\nCREATE TABLE a (id INT);",
+"tokens": [
+[
+"IDENTIFIER",
+"CONNECT",
+0,
+1,
+1
+],
+[
+"IDENTIFIER",
+"TO",
+8,
+1,
+9
+],
+[
+"IDENTIFIER",
+"sample",
+11,
+1,
+12
+],
+[
+"DELIMITER",
+";",
+17,
+1,
+18
+],
+[
+"KEYWORD",
+"CREATE",
+19,
+2,
+1
+],
+[
+"KEYWORD",
+"TABLE",
+26,
+2,
+8
+],
+[
+"IDENTIFIER",
+"a",
+32,
+2,
+14
+],
+[
+"SYMBOL",
+"(",
+34,
+2,
+16
+],
+[
+"IDENTIFIER",
+"id",
+35,
+2,
+17
+],
+[
+"IDENTIFIER",
+"INT",
+38,
+2,
+20
+],
+[
+"SYMBOL",
+")",
+41,
+2,
+23
+],
+[
+"DELIMITER",
+";",
+42,
+2,
+24
+]
+]
+},
+{
+"extraction": {
+"clean": "CREATE TABLE a (id INT);\nCONNECT RESET;\nTERMINATE;",
+"empty": false,
+"objects": [
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "A",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+],
+"parse": {
+"errors": [],
+"statements": [
+[
+"CREATE TABLE a (id INT)",
+"DDL",
+[
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "A",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+]
+]
+],
+"success": true
+},
+"strip": "CREATE TABLE a (id INT);\nCONNECT RESET;\nTERMINATE;",
+"utility": false,
+"validate": {
+"errors": [],
+"statement_count": 1,
+"valid": true
+}
+},
+"id": "script-epilogue",
+"masking": {
+"describe": "CREATE TABLE a",
+"mask": "CREATE TABLE a (id INT);\nCONNECT RESET;\nTERMINATE;\n"
+},
+"text": "CREATE TABLE a (id INT);\nCONNECT RESET;\nTERMINATE;\n",
+"tokens": [
+[
+"KEYWORD",
+"CREATE",
+0,
+1,
+1
+],
+[
+"KEYWORD",
+"TABLE",
+7,
+1,
+8
+],
+[
+"IDENTIFIER",
+"a",
+13,
+1,
+14
+],
+[
+"SYMBOL",
+"(",
+15,
+1,
+16
+],
+[
+"IDENTIFIER",
+"id",
+16,
+1,
+17
+],
+[
+"IDENTIFIER",
+"INT",
+19,
+1,
+20
+],
+[
+"SYMBOL",
+")",
+22,
+1,
+23
+],
+[
+"DELIMITER",
+";",
+23,
+1,
+24
+],
+[
+"IDENTIFIER",
+"CONNECT",
+25,
+2,
+1
+],
+[
+"IDENTIFIER",
+"RESET",
+33,
+2,
+9
+],
+[
+"DELIMITER",
+";",
+38,
+2,
+14
+],
+[
+"IDENTIFIER",
+"TERMINATE",
+40,
+3,
+1
+],
+[
+"DELIMITER",
+";",
+49,
+3,
+10
+],
+[
+"EOF",
+"",
+51,
+4,
+1
+]
+]
+},
+{
+"extraction": {
+"clean": "INSERT INTO t VALUES ('a;\nb');",
+"empty": false,
+"objects": [],
+"parse": {
+"errors": [
+"Error splitting DB2 SQL: line 1 ends with ';' inside a string or a quoted identifier: the CLP cuts the statement there and the server rejects both halves; close the literal before the end of the line"
+],
+"statements": [],
+"success": false
+},
+"strip": "INSERT INTO t VALUES ('a;\nb');",
+"utility": false,
+"validate": {
+"errors": [
+"Error splitting DB2 SQL: line 1 ends with ';' inside a string or a quoted identifier: the CLP cuts the statement there and the server rejects both halves; close the literal before the end of the line"
+],
+"statement_count": 0,
+"valid": false
+}
+},
+"id": "script-string-eol",
+"masking": {
+"describe": "INSERT INTO t",
+"mask": "INSERT INTO t VALUES ('?');"
+},
+"text": "INSERT INTO t VALUES ('a;\nb');",
+"tokens": [
+[
+"KEYWORD",
+"INSERT",
+0,
+1,
+1
+],
+[
+"IDENTIFIER",
+"INTO",
+7,
+1,
+8
+],
+[
+"IDENTIFIER",
+"t",
+12,
+1,
+13
+],
+[
+"IDENTIFIER",
+"VALUES",
+14,
+1,
+15
+],
+[
+"SYMBOL",
+"(",
+21,
+1,
+22
+],
+[
+"STRING",
+"'a;\nb'",
+22,
+1,
+23
+],
+[
+"SYMBOL",
+")",
+28,
+2,
+3
+],
+[
+"DELIMITER",
+";",
+29,
+2,
+4
+]
+]
+},
+{
+"extraction": {
+"clean": "CREATE TABLE a (id INT);\nVALUES 'open",
+"empty": false,
+"objects": [
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "A",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+],
+"parse": {
+"errors": [],
+"statements": [
+[
+"CREATE TABLE a (id INT)",
+"DDL",
+[
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "A",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+]
+],
+[
+"VALUES 'open",
+"DML",
+[]
+]
+],
+"success": true
+},
+"strip": "CREATE TABLE a (id INT);\nVALUES 'open",
+"utility": false,
+"validate": {
+"errors": [],
+"statement_count": 2,
+"valid": true
+}
+},
+"id": "script-unterminated",
+"masking": {
+"describe": "CREATE",
+"mask": "CREATE"
+},
+"text": "CREATE TABLE a (id INT);\nVALUES 'open",
+"tokens": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated string opened at line 2, column 8"
+]
+},
+{
+"extraction": {
+"clean": "",
+"empty": true,
+"objects": [],
+"parse": {
+"errors": [],
+"statements": [],
+"success": true
+},
+"strip": "",
+"utility": false,
+"validate": {
+"errors": [
+"No valid statements found"
+],
+"statement_count": 0,
+"valid": false
+}
+},
+"id": "script-empty",
+"masking": {
+"describe": "",
+"mask": ""
+},
+"text": "",
+"tokens": []
+},
+{
+"extraction": {
+"clean": "",
+"empty": true,
+"objects": [],
+"parse": {
+"errors": [],
+"statements": [],
+"success": true
+},
+"strip": "",
+"utility": false,
+"validate": {
+"errors": [
+"No valid statements found"
+],
+"statement_count": 0,
+"valid": false
+}
+},
+"id": "script-blank",
+"masking": {
+"describe": "",
+"mask": "  \n\n"
+},
+"text": "  \n\n",
+"tokens": [
+[
+"EOF",
+"",
+4,
+3,
+1
+]
+]
+},
+{
+"extraction": {
+"clean": "",
+"empty": true,
+"objects": [],
+"parse": {
+"errors": [],
+"statements": [],
+"success": true
+},
+"strip": "",
+"utility": false,
+"validate": {
+"errors": [
+"No valid statements found"
+],
+"statement_count": 0,
+"valid": false
+}
+},
+"id": "script-comment-only",
+"masking": {
+"describe": "",
+"mask": "-- a\n/* b */\n"
+},
+"text": "-- a\n/* b */\n",
+"tokens": [
+[
+"COMMENT",
+"",
+0,
+1,
+1
+],
+[
+"COMMENT",
+"",
+5,
+2,
+1
+],
+[
+"EOF",
+"",
+13,
+3,
+1
+]
+]
+},
+{
+"extraction": {
+"clean": "CREATE TABLE a (id INT);\nCREATE TABLE b (id INT)",
+"empty": false,
+"objects": [
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "A",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+},
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "B",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+],
+"parse": {
+"errors": [],
+"statements": [
+[
+"CREATE TABLE a (id INT)",
+"DDL",
+[
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "A",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+]
+],
+[
+"CREATE TABLE b (id INT)",
+"DDL",
+[
+{
+"_class": "SqlObject",
+"dialect": "db2",
+"dialect_options": {},
+"explicit_properties": {},
+"name": "B",
+"object_type": "TABLE",
+"schema": "SYSIBM"
+}
+]
+]
+],
+"success": true
+},
+"strip": "CREATE TABLE a (id INT);\nCREATE TABLE b (id INT)",
+"utility": false,
+"validate": {
+"errors": [],
+"statement_count": 2,
+"valid": true
+}
+},
+"id": "script-no-final-terminator",
+"masking": {
+"describe": "CREATE TABLE a",
+"mask": "CREATE TABLE a (id INT);\nCREATE TABLE b (id INT)"
+},
+"text": "CREATE TABLE a (id INT);\nCREATE TABLE b (id INT)",
+"tokens": [
+[
+"KEYWORD",
+"CREATE",
+0,
+1,
+1
+],
+[
+"KEYWORD",
+"TABLE",
+7,
+1,
+8
+],
+[
+"IDENTIFIER",
+"a",
+13,
+1,
+14
+],
+[
+"SYMBOL",
+"(",
+15,
+1,
+16
+],
+[
+"IDENTIFIER",
+"id",
+16,
+1,
+17
+],
+[
+"IDENTIFIER",
+"INT",
+19,
+1,
+20
+],
+[
+"SYMBOL",
+")",
+22,
+1,
+23
+],
+[
+"DELIMITER",
+";",
+23,
+1,
+24
+],
+[
+"KEYWORD",
+"CREATE",
+25,
+2,
+1
+],
+[
+"KEYWORD",
+"TABLE",
+32,
+2,
+8
+],
+[
+"IDENTIFIER",
+"b",
+38,
+2,
+14
+],
+[
+"SYMBOL",
+"(",
+40,
+2,
+16
+],
+[
+"IDENTIFIER",
+"id",
+41,
+2,
+17
+],
+[
+"IDENTIFIER",
+"INT",
+44,
+2,
+20
+],
+[
+"SYMBOL",
+")",
+47,
+2,
+23
+]
+]
+}
+],
+"pattern_digest": "b7b5a89cd999039d"
+}
