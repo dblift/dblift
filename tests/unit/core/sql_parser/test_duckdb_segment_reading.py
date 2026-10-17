@@ -110,7 +110,7 @@ EXTENTS = [
     ),
     (
         "PREPARE p AS SELECT $a; SELECT 2;",
-        [kw("PREPARE"), kw("p"), kw("AS"), kw("SELECT"), sym("$a"), dl()]
+        [kw("PREPARE"), kw("p"), kw("AS"), kw("SELECT"), sym("$"), kw("a"), dl()]
         + [kw("SELECT"), ident("2"), dl()],
     ),
     (
@@ -286,12 +286,12 @@ def test_words_numbers_and_parameters():
     assert shape("a$$b") == [kw("a$$b")]
     assert shape("1$$a;b$$") == [ident("1"), st("$$a;b$$")]
     assert shape(f"{EURO}$$a;b$$;") == [kw(f"{EURO}$$a"), dl(), kw("b$$"), dl()]
-    assert shape("$1 $n $") == [sym("$1"), sym("$n"), sym("$")]
+    assert shape("$1 $n $") == [sym("$1"), sym("$"), kw("n"), sym("$")]
     assert shape("$1a$") == [sym("$1"), kw("a$")]
-    assert shape("$a b$") == [sym("$a"), kw("b$")]
+    assert shape("$a b$") == [sym("$"), kw("a"), kw("b$")]
     assert shape("1x 12_a .5") == [ident("1"), kw("x"), ident("12"), kw("_a"), sym("."), ident("5")]
     assert shape("${a;b}") == [sym("$"), sym("{"), kw("a"), dl(), kw("b"), sym("}")]
-    assert shape("$1$a;b$1$") == [sym("$1"), sym("$a"), dl(), kw("b$1$")]
+    assert shape("$1$a;b$1$") == [sym("$1"), sym("$"), kw("a"), dl(), kw("b$1$")]
 
 
 def test_a_parameter_ends_at_its_digits_and_the_letters_start_a_word():
@@ -381,7 +381,7 @@ def test_dollar_tags():
     ascii_tag = replace(DUCKDB_RULES, dollar_tag=r"\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$")
     assert shape(f"${EURO}$a;b${EURO}$")[0] == st(f"${EURO}$a;b${EURO}$")
     assert shape(f"${EURO}$a;b${EURO}$", replace(DUCKDB_SPEC, segment_script=ascii_tag))[0] == sym(
-        f"${EURO}"
+        "$"
     )
 
 

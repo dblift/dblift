@@ -544,3 +544,13 @@ def test_a_number_then_a_name_is_cut_where_the_driver_cuts(lead, tail):
     assert len(theirs) == 3
     ours = ENGINE.split_statements(script)
     assert [t.strip() for t in ours] == [t.rstrip(";") for t in theirs]
+
+
+@pytest.mark.parametrize("letter", ["E", "e"])
+def test_a_name_after_a_dollar_may_open_an_escape_string_as_the_driver_reads_it(letter):
+    import duckdb
+
+    script = f"SELECT ${letter}'a\\'; SELECT 42 AS boom; --';"
+    with pytest.raises(duckdb.ParserException, match=rf"at or near \"{letter}'a"):
+        duckdb.extract_statements(script)
+    assert ENGINE.split_statements(script) == [script.rstrip(";")]

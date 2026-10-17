@@ -340,11 +340,11 @@ comments through the same engine. There is no DuckDB subclass of the engine and 
 scanner.
 
 The engine reads a script as DuckDB's lexer does. A word is a letter, an
-underscore or a non-ASCII character followed by those, digits and `$`; DuckDB reads a number as digits with underscore separators, an optional fraction and an optional exponent, so
+underscore or a non-ASCII character followed by those, digits and `$`; DuckDB reads a number as digits with single `_` separators, an optional fraction (also one with no integer part, `.5`) and an optional exponent, so
 the letters after it start a word (`1a$$x` is the number 1 and the word `a$$x`; `1e5x` is a number and the name x), and the splitter reads it the same way (row 77); a `$$` opens a string
 after a number or an operator and never inside a word. A `$` that starts a token opens a dollar-quoted string when a tag
 (letters, underscore, non-ASCII, digits, no `$`) and a second `$` follow, and closes it on
-the identical tag; otherwise it starts a parameter (`$1`, `$1_0`, `$name`): digits with underscore separators, or a name. `E'` and `e'` open an
+the identical tag; otherwise it starts a parameter (`$1`, `$1_0`, `$name`): a `$` followed by digits with single `_` separators, and a name after a `$` is the next word (`$E'a'` is a `$` and an escape string). `E'` and `e'` open an
 escape string unless the `E` ends a longer word, and the 18 non-ASCII blanks DuckDB reads (U+00A0, U+2000 to U+200B, U+202F, U+205F, U+2060, U+3000, U+FEFF) are blanks, so a dollar quote or an `E` right after one still opens; inside it a backslash takes the next
 character and a doubled quote stays inside. Adjacent string literals separated by a newline,
 including a line comment, continue an `E` string's escape mode. A plain string and a quoted identifier end at
