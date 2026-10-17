@@ -3104,6 +3104,164 @@
      "target_sql": null
     }
    }
+  },
+  "statement_40": {
+   "input": "CREATE TABLE \"caf\u00e9\" (a INT)",
+   "output": {
+    "blank": "CREATE TABLE \"caf\u00e9\" (a INT)",
+    "dml": {
+     "events": null,
+     "table": "",
+     "updated_columns": []
+    },
+    "facts": {
+     "action": null,
+     "affected_columns": [],
+     "declared_column_comments": null,
+     "declared_columns": [
+      "a"
+     ],
+     "declared_constraints": [],
+     "diagnostic": null,
+     "error": null,
+     "events": null,
+     "indexed_columns": null,
+     "indexed_table": null,
+     "kind": "DDL",
+     "objects": [
+      {
+       "name": "caf\u00e9",
+       "role": "created",
+       "schema": null,
+       "type": "TABLE"
+      }
+     ],
+     "operation": "CREATE",
+     "predicate": null,
+     "target": null,
+     "target_sql": null
+    }
+   }
+  },
+  "statement_41": {
+   "input": "INSERT INTO caf\u00e9 VALUES (1)",
+   "output": {
+    "blank": "INSERT INTO caf\u00e9 VALUES (1)",
+    "dml": {
+     "events": [
+      "INSERT"
+     ],
+     "table": "caf\u00e9",
+     "updated_columns": []
+    },
+    "facts": {
+     "action": null,
+     "affected_columns": [],
+     "declared_column_comments": null,
+     "declared_columns": [],
+     "declared_constraints": [],
+     "diagnostic": null,
+     "error": null,
+     "events": [
+      "INSERT"
+     ],
+     "indexed_columns": null,
+     "indexed_table": null,
+     "kind": "DML",
+     "objects": [
+      {
+       "name": "caf\u00e9",
+       "role": "altered",
+       "schema": null,
+       "type": "TABLE"
+      }
+     ],
+     "operation": "INSERT",
+     "predicate": null,
+     "target": "caf\u00e9",
+     "target_sql": "caf\u00e9"
+    }
+   }
+  },
+  "statement_42": {
+   "input": "UPDATE \u00fcber.t SET a = 1 WHERE b = 2",
+   "output": {
+    "blank": "UPDATE \u00fcber.t SET a = 1 WHERE b = 2",
+    "dml": {
+     "events": [
+      "UPDATE"
+     ],
+     "table": "\u00fcber.t",
+     "updated_columns": [
+      "a"
+     ]
+    },
+    "facts": {
+     "action": null,
+     "affected_columns": [
+      "a"
+     ],
+     "declared_column_comments": null,
+     "declared_columns": [],
+     "declared_constraints": [],
+     "diagnostic": null,
+     "error": null,
+     "events": [
+      "UPDATE"
+     ],
+     "indexed_columns": null,
+     "indexed_table": null,
+     "kind": "DML",
+     "objects": [
+      {
+       "name": "t",
+       "role": "altered",
+       "schema": "\u00fcber",
+       "type": "TABLE"
+      }
+     ],
+     "operation": "UPDATE",
+     "predicate": "b = 2",
+     "target": "\u00fcber.t",
+     "target_sql": "\u00fcber.t"
+    }
+   }
+  },
+  "statement_43": {
+   "input": "DROP VIEW IF EXISTS \u4e2d\u6587",
+   "output": {
+    "blank": "DROP VIEW IF EXISTS \u4e2d\u6587",
+    "dml": {
+     "events": null,
+     "table": "",
+     "updated_columns": []
+    },
+    "facts": {
+     "action": null,
+     "affected_columns": [],
+     "declared_column_comments": null,
+     "declared_columns": [],
+     "declared_constraints": [],
+     "diagnostic": null,
+     "error": null,
+     "events": null,
+     "indexed_columns": null,
+     "indexed_table": null,
+     "kind": "DDL",
+     "objects": [
+      {
+       "name": "\u4e2d\u6587",
+       "role": "dropped",
+       "schema": null,
+       "type": "VIEW"
+      }
+     ],
+     "operation": "DROP",
+     "predicate": null,
+     "target": null,
+     "target_sql": null
+    }
+   }
   }
  },
  "masking": {
