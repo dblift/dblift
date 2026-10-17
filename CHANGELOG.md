@@ -33,6 +33,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   machine, a 3 MiB script of `INSERT` statements went from 0.95 s and a 19 MB
   peak to 2.9 s and a 176 MB peak, and a 132-byte migration from 42 to 81
   microseconds.
+- **Db2 splitting moved onto the shared lexical engine.** Splitting, analysis and
+  extraction use the command line processor's rules (the end-of-line terminator,
+  `--#SET TERMINATOR`, the client command list, the routine-body rule) as
+  specification data. The same scripts give the same statements, records and
+  execution strings, and the same refusals (class, line and message).
+- **Literal masking, object extraction and comment stripping are unchanged for Db2.**
+  They keep reading Db2 text as before.
+- **Splitting a large Db2 script takes longer and uses more memory.** The time
+  stays linear in the length of the script. Measured on one machine, a 3 MiB
+  script of `INSERT` statements went from 1.70 s and a 20 MB peak to 1.96 s and a
+  226 MB peak, and a 77-byte migration from 44 to 50 microseconds.
+
+### Removed
+
+- **The internal module `dblift.db.plugins.db2.parser._script`.** Use
+  `DB2RegexParser().split()`.
 
 ### Fixed
 
