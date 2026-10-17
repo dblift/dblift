@@ -226,3 +226,40 @@ def test_the_unparsed_fallback_of_a_script_reads_the_blanks_the_split_trimmed(di
     migration = SimpleNamespace(content=f"CREATE SEQUENCE q{chr(0xA0)};\n")
     (undo,) = generator._generate_undo_statements(migration)
     assert undo.requires_manual_review and "DROP" not in undo.sql
+
+
+# The statement text also stands, unchanged, in an earlier comment: the span must be the
+# statement's own, not the first place its text appears.
+BYPASS_DIALECTS = ("postgresql", "mysql", "oracle")
+BYPASS_CHARS = (" ", " ")
+
+
+@pytest.mark.parametrize("dialect", BYPASS_DIALECTS)
+@pytest.mark.parametrize("char", BYPASS_CHARS, ids=lambda c: f"U+{ord(c):04X}")
+@pytest.mark.parametrize(
+    "script",
+    [
+        "-- CREATE SEQUENCE q\nCREATE SEQUENCE q{c};",
+        "/* CREATE TABLE t */\nCREATE TABLE t{c};",
+        "-- CREATE SEQUENCE q\nCREATE SEQUENCE q{c}\n",
+    ],
+)
+def test_undo_of_a_statement_whose_text_also_stands_in_a_comment(tmp_path, dialect, char, script):
+    _assert_manual_review(_undo(tmp_path, dialect, script.format(c=char)))
+
+
+@pytest.mark.parametrize("dialect", BYPASS_DIALECTS)
+@pytest.mark.parametrize("char", BYPASS_CHARS, ids=lambda c: f"U+{ord(c):04X}")
+def test_analysis_of_a_statement_whose_text_also_stands_in_a_comment(dialect, char):
+    analysis = analyse_script(f"-- DROP TABLE t\nDROP TABLE t{char};", dialect)
+    assert not [obj for stmt in analysis.statements for obj in stmt.objects]
+    assert analysis.cautions and not any(" t " in f" {c.reason} " for c in analysis.cautions)
+
+
+def test_a_readable_statement_before_an_unreadable_one_is_still_reversed(tmp_path):
+    script = f"CREATE SEQUENCE q;\nCREATE SEQUENCE q{chr(0xA0)};\n"
+    text = _undo(tmp_path, "postgresql", script)
+    assert [line for line in _code_lines(text) if "DROP" in line] == [
+        'DROP SEQUENCE IF EXISTS "q";'
+    ]
+    assert text.count("WARNING: Cannot reverse a statement whose object names") == 1
