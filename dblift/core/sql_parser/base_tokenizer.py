@@ -5,7 +5,7 @@ that can be extended for dialect-specific behavior.
 """
 
 import warnings
-from typing import List, Optional
+from typing import Dict, List, Optional, Sequence, Tuple
 
 from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.core.sql_parser.tokens import Token, TokenType
@@ -342,6 +342,15 @@ class BaseTokenizer:
             start_col,
             self.parens_depth,
         )
+
+    def _read_block_comment(
+        self,
+        stops: Sequence[int] = (),
+        first: int = 0,
+        marks: Optional[Dict[int, Tuple[int, bool]]] = None,
+    ) -> Tuple[int, int]:
+        """Read from just after an opening ``/*`` to its matching close or the end."""
+        return 0, first
 
     def _handle_comment(self) -> Token:
         """Handle comment tokens.

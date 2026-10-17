@@ -1,7 +1,7 @@
 """Shared lexical tokenization driven by immutable plugin facts."""
 
 import re
-from typing import Callable, Iterable, List, Optional, Tuple
+from typing import Callable, Dict, Iterable, List, Optional, Tuple
 
 from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.core.sql_parser.base_tokenizer import BaseTokenizer
@@ -15,6 +15,7 @@ from dblift.core.sql_parser.batch_commands import (
 from dblift.core.sql_parser.client_directives import classify_directive, is_free_text
 from dblift.core.sql_parser.delimiter_script import DelimiterScript
 from dblift.core.sql_parser.lexical_spec import BOM, DirectiveAction, LexicalSpec
+from dblift.core.sql_parser.terminator_lines import Line
 from dblift.core.sql_parser.tokens import Token, TokenType
 from dblift.core.sql_parser.unit_heads import decide
 
@@ -133,6 +134,13 @@ class LexicalTokenizer(BaseTokenizer):
         self._opener_re = re.compile("|".join(re.escape(o) for o in openers if o))
         # Delimiter scripts: client state, word alphabet, active delimiter, cached line end.
         self.delimiter_script: Optional[DelimiterScript] = None
+        # Terminator scripts: the lines, the first malformed directive line, the byte order mark offset,
+        # the depth of a block comment left open at the end and the nesting depth at each line end inside one.
+        self.terminator_lines: List[Line] = []
+        self.malformed_directive: Optional[int] = None
+        self.origin = 0
+        self.open_depth = 0
+        self.marks: Dict[int, Tuple[int, bool]] = {}
         self._word_re = re.compile("")
         self._delimiter = ""
         self._eol_cache = -1

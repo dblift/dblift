@@ -160,6 +160,54 @@ class DelimiterScriptRules:
 
 
 @dataclass(frozen=True)
+class RoutineRules:
+    """Statements whose ``BEGIN ... END`` body a terminator at a line end does not end."""
+
+    create_verb: str
+    replace_word: str
+    kinds: FrozenSet[str]
+    package_kind: str
+    package_openers: FrozenSet[str]
+    alter_verb: str
+    alter_kinds: FrozenSet[str]
+    body_open: str
+    depth_words: FrozenSet[str]
+    body_close: str
+    end_qualifiers: FrozenSet[str]
+    case_word: str
+
+
+@dataclass(frozen=True)
+class TerminatorScriptRules:
+    """A client that reads a script line by line and ends a statement at a line whose last non-blank
+    characters are the active terminator.
+
+    The CR of a CRLF pair is not part of its line and a lone CR is a character (not fields: no such
+    client differs). ``initial`` is read for the starting terminator, for the stray-terminator
+    character and for the ``terminator then comment`` ending, which applies under it only.
+    """
+
+    initial: str
+    blanks: str
+    directive_name: str
+    directive: str
+    directive_value: str
+    directive_syntax: str
+    line_comment: str
+    comment_block: str
+    word: str
+    leading_word: str
+    command_prefixes: str
+    command_words: FrozenSet[str]
+    command_phrases: FrozenSet[Tuple[str, ...]]
+    sql_phrases: FrozenSet[Tuple[str, ...]]
+    epilogue_words: FrozenSet[Tuple[str, ...]]
+    epilogue: str
+    driver_name: str
+    routine: RoutineRules
+
+
+@dataclass(frozen=True)
 class LexicalSpec:
     """Only lexical rules; no parser callbacks or alternative implementations."""
 
@@ -198,6 +246,7 @@ class LexicalSpec:
     delimiter_script: Optional[DelimiterScriptRules] = None
     #: False: a doubled string quote closes the literal and opens the next, as a client does.
     string_quote_doubling: bool = True
+    terminator_script: Optional[TerminatorScriptRules] = None
 
     def __post_init__(self) -> None:
         """A client reads a script by lines, by batches or up to a delimiter, never two of them."""
