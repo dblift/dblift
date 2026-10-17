@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
-from dblift.core.sql_model.base import SqlObject, SqlObjectType
+from dblift.core.sql_model.base import SqlObject, SqlObjectType, SqlStatement
 from dblift.core.sql_parser.parser_factory import SqlParserFactory
 from dblift.core.sql_parser.unread_names import names_unreadable
 from dblift.db.base_quirks import BaseQuirks
@@ -228,7 +228,7 @@ def _analyse(text: str, dialect: str) -> ScriptAnalysis:
         # The regex parser fills ``affected_objects``; ``objects`` stays empty.
         found = getattr(stmt, "affected_objects", None) or getattr(stmt, "objects", None) or []
         objects = tuple(_object_of(o) for o in found)
-        unread = getattr(stmt, "names_unread", False) is True or names_unreadable(
+        unread = (isinstance(stmt, SqlStatement) and stmt.names_unread) or names_unreadable(
             body, quirks.sqlglot_dialect
         )
         if unread:
