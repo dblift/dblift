@@ -200,7 +200,7 @@ class LexicalStatementParser(BaseStatementParser):
                                 self.source,
                                 current,
                                 self._comments,
-                                self.text_blanks,
+                                self.spec.text_blanks,
                                 floor=(records[-1][0].source_end or 0) if records else 0,
                                 end=end_pos,
                                 terminator=terminator,
