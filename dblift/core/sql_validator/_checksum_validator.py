@@ -14,6 +14,7 @@ from dblift.core.migration.scripting.migration_script_manager import (  # noqa: 
     _last_successful_non_delete_record,
     _successful_non_delete_records,
 )
+from dblift.core.migration.state.checksum_drift import find_checksum_drift
 from dblift.core.migration.version_utils import is_migration_success
 
 if TYPE_CHECKING:
@@ -55,8 +56,9 @@ def validate_checksums(
     full_script_names = (
         {s.script_name for s in all_scripts} if all_scripts is not None else script_names
     )
-    latest_successful = {
-        getattr(row, "script_name", None): row
+    drift_by_name = {d.script_name: d for d in find_checksum_drift(scripts, applied_migrations)}
+    has_successful_row = {
+        getattr(row, "script_name", None)
         for row in _successful_non_delete_records(applied_migrations)
     }
     deleted_scripts = set()
@@ -66,7 +68,6 @@ def validate_checksums(
             deleted_scripts.add(getattr(row, "script_name", None))
         if getattr(row, "type", None) not in (MigrationType.REPEATABLE, "REPEATABLE"):
             non_repeatable_scripts.add(getattr(row, "script_name", None))
-    current_checksums: dict[str, Optional[int]] = {}
 
     for applied in applied_migrations:
         script_name = getattr(applied, "script_name", None)
@@ -144,29 +145,13 @@ def validate_checksums(
         if migration_type == MigrationType.BASELINE:
             mv.log.debug(f"Skipping checksum verification for {script_name} (baseline)")
             continue
-        script_obj = scripts_by_name.get(script_name)
-        if script_obj is None and script_name:
-            script_obj = scripts_by_name.get(Path(script_name).name)
-        applied_record = latest_successful.get(script_name)
-        if applied_record is None:
+        if script_name not in has_successful_row:
             # Failed history is reported separately; there is no successful checksum.
             continue
-        last_applied_checksum = normalize_migration_checksum(
-            getattr(applied_record, "checksum", None)
-        )
-        # Scope membership above guarantees a matching script, including legacy basenames.
-        script_obj = cast(Migration, script_obj)
-        checksum_key = script_obj.script_name
-        if checksum_key not in current_checksums:
-            current_checksums[checksum_key] = normalize_migration_checksum(
-                getattr(script_obj, "checksum", None)
-            )
-        current_checksum = current_checksums[checksum_key]
-        if (
-            last_applied_checksum is None
-            or current_checksum is None
-            or last_applied_checksum != current_checksum
-        ):
+        drift = drift_by_name.get(script_name)
+        if drift is not None:
+            current_checksum = drift.current_checksum
+            last_applied_checksum = drift.applied_checksum
             checksum_mismatches.append(
                 {
                     "script": script_name,

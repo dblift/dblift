@@ -67,6 +67,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`repair` now finds exactly the checksum drift `validate` reports for versioned
+  migrations.** Before, an unsigned checksum returned by some drivers was treated as drift and
+  rewritten, a history row recorded under a directory-qualified script name was reported by
+  `validate` but not fixed by `repair`, and failed rows were compared too.
 - **`validate-sql` no longer hides a `DROP TABLE` whose name could not be read.** For files
   passed together with `--files`, a `DROP TABLE t<no-break space>;` after `CREATE TABLE t` was
   exempted as a drop of a new table, although the engine may read another name than `t`. The

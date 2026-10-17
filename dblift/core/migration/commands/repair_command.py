@@ -11,9 +11,9 @@ if TYPE_CHECKING:
 
 from dblift.core.exceptions import ExecutionError
 from dblift.core.logger.results import RepairResult
-from dblift.core.migration._type_match import is_versioned
 from dblift.core.migration.history.history_transaction import history_transaction
 from dblift.core.migration.migration import Migration, MigrationType
+from dblift.core.migration.state.checksum_drift import find_checksum_drift
 from dblift.core.migration.state.migration_state import MigrationState
 from dblift.db.provider_capabilities import ensure_provider_connection
 from dblift.db.provider_interfaces import TransactionalProvider
@@ -335,8 +335,12 @@ class RepairCommand(BaseCommand):
             if script_name in deleted_scripts:
                 continue
 
-            # If the script is not in filesystem, add to repairs
-            if script_name not in filesystem_scripts:
+            # If the script is not in filesystem, add to repairs. A row recorded
+            # with a directory prefix still matches its script by basename, as
+            # ``validate`` matches it.
+            if script_name not in filesystem_scripts and Path(script_name).name not in (
+                filesystem_scripts
+            ):
                 repairs.append(
                     {
                         "type": "MISSING_SCRIPT",
@@ -374,8 +378,8 @@ class RepairCommand(BaseCommand):
         """Detect checksum drift for applied versioned migrations not already in repairs.
 
         MigrationState currently only tracks repeatable checksum changes, so this
-        performs an explicit comparison against the filesystem for all applied versioned
-        migrations, in every script format.
+        compares the filesystem with the applied history for versioned migrations in
+        every script format, using the same comparison ``validate`` reports.
 
         Args:
             migration_state: Current migration state
@@ -400,10 +404,11 @@ class RepairCommand(BaseCommand):
                 additional_dirs=additional_dirs,
                 dir_recursive_map=dir_recursive_map,
             )
-        filesystem_lookup: Dict[str, object] = {}
-        for migration_group in filesystem_migrations.values():
-            for migration_entry in migration_group:
-                filesystem_lookup[migration_entry.script_name] = migration_entry
+        scripts = [
+            migration_entry
+            for migration_group in filesystem_migrations.values()
+            for migration_entry in migration_group
+        ]
 
         already_recorded_scripts = {
             entry["script"] for entry in existing_repairs if "script" in entry
@@ -417,30 +422,24 @@ class RepairCommand(BaseCommand):
             all_applied = getattr(migration_state, "applied_objects", [])
             if not isinstance(all_applied, list):
                 all_applied = []
-        for applied_migration in all_applied:
-            # Versioned migrations of any format: the history records versioned
-            # Python scripts as PYTHON, and their checksums drift the same way.
-            if not is_versioned(getattr(applied_migration, "type", None)):
+        # The same comparison ``validate`` reports. Repeatable drift is handled by
+        # the repeatable checksum-change scan, not here.
+        for drift in find_checksum_drift(scripts, all_applied):
+            if (
+                drift.repeatable
+                or drift.current_checksum is None
+                or drift.script_name in already_recorded_scripts
+            ):
                 continue
-
-            script_name = getattr(applied_migration, "script_name", "")
-            if not script_name or script_name in already_recorded_scripts:
-                continue
-
-            db_checksum = getattr(applied_migration, "checksum", None)
-            fs_migration = filesystem_lookup.get(script_name)
-            fs_checksum = getattr(fs_migration, "checksum", None) if fs_migration else None
-
-            if fs_checksum is not None and fs_checksum != db_checksum:
-                repairs.append(
-                    {
-                        "type": "CHECKSUM_MISMATCH",
-                        "script": script_name,
-                        "old_checksum": db_checksum,
-                        "new_checksum": fs_checksum,
-                    }
-                )
-                already_recorded_scripts.add(script_name)
+            repairs.append(
+                {
+                    "type": "CHECKSUM_MISMATCH",
+                    "script": drift.script_name,
+                    "old_checksum": drift.applied_checksum,
+                    "new_checksum": drift.current_checksum,
+                }
+            )
+            already_recorded_scripts.add(drift.script_name)
 
         return repairs
 
