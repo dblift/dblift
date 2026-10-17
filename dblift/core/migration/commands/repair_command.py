@@ -44,9 +44,10 @@ def _count_candidate_missing(applied_migrations: Any, deleted_scripts: Set[str])
     """
     count = 0
     for applied in applied_migrations:
-        script_name = getattr(applied, "script_name", "")
+        script_name = applied.script_name
         if not script_name:
             continue
+        # type read defensively: history rows may carry an enum or a legacy string.
         migration_type = getattr(applied, "type", None)
         if (
             migration_type
@@ -232,7 +233,7 @@ class RepairCommand(BaseCommand):
             List of CHECKSUM_MISMATCH repair dicts from state manager
         """
         repairs: List[Dict[str, Any]] = []
-        for change in getattr(migration_state, "checksum_changes", []):
+        for change in migration_state.checksum_changes:
             repairs.append(
                 {
                     "type": "CHECKSUM_MISMATCH",
@@ -265,8 +266,8 @@ class RepairCommand(BaseCommand):
         """
         repairs: List[Dict[str, Any]] = []
 
-        applied_migrations = getattr(migration_state, "applied_objects", [])
-        deleted_scripts: Set[str] = getattr(migration_state, "deleted_scripts", set())
+        applied_migrations = migration_state.applied_objects
+        deleted_scripts: Set[str] = set(migration_state.deleted_scripts)
 
         # Reuse the built catalog, or load filesystem scripts when unavailable.
         # A load failure (permission denied, missing
@@ -287,7 +288,7 @@ class RepairCommand(BaseCommand):
         filesystem_scripts: Set[str] = set()
         for migration_group in filesystem_migrations.values():
             for migration in migration_group:
-                filesystem_scripts.add(getattr(migration, "script_name", ""))
+                filesystem_scripts.add(migration.script_name)
 
         # Safety gate: if the filesystem produced zero scripts but the
         # history has applied migrations that would all be marked MISSING,
@@ -308,10 +309,11 @@ class RepairCommand(BaseCommand):
 
         # Find migrations in history but not in filesystem
         for applied in applied_migrations:
-            script_name = getattr(applied, "script_name", "")
+            script_name = applied.script_name
             if not script_name:
                 continue
 
+            # type read defensively: history rows may carry an enum or a legacy string.
             migration_type = getattr(applied, "type", None)
 
             # Skip DELETE and BASELINE type migrations. BASELINE rows (e.g. the
@@ -345,22 +347,22 @@ class RepairCommand(BaseCommand):
                     {
                         "type": "MISSING_SCRIPT",
                         "script": script_name,
-                        "version": getattr(applied, "version", None),
-                        "description": getattr(applied, "description", ""),
-                        "original_type": getattr(applied, "type", None),  # Preserve original type
+                        "version": applied.version,
+                        "description": applied.description,
+                        "original_type": migration_type,  # Preserve original type
                     }
                 )
 
         # Check for failed migrations that need to be cleaned up
-        for failed_migration in getattr(migration_state, "failed_objects", []):
-            script_name = getattr(failed_migration, "script_name", "")
+        for failed_migration in migration_state.failed_objects:
+            script_name = failed_migration.script_name
             if script_name:
                 repairs.append(
                     {
                         "type": "FAILED_MIGRATION",
                         "script": script_name,
-                        "version": getattr(failed_migration, "version", None),
-                        "description": getattr(failed_migration, "description", ""),
+                        "version": failed_migration.version,
+                        "description": failed_migration.description,
                     }
                 )
 
@@ -415,13 +417,7 @@ class RepairCommand(BaseCommand):
         }
 
         # Use all_applied_objects (includes undone migrations) for integrity checks.
-        # Fall back to applied_objects only if all_applied_objects is missing or not a list —
-        # an empty list means "no applied rows in history", not "fetch applied_objects instead".
-        all_applied = getattr(migration_state, "all_applied_objects", None)
-        if not isinstance(all_applied, list):
-            all_applied = getattr(migration_state, "applied_objects", [])
-            if not isinstance(all_applied, list):
-                all_applied = []
+        all_applied = migration_state.all_applied_objects
         # The same comparison ``validate`` reports. Repeatable drift is handled by
         # the repeatable checksum-change scan, not here.
         for drift in find_checksum_drift(scripts, all_applied):
@@ -447,9 +443,8 @@ class RepairCommand(BaseCommand):
         """Return True if `script` is in the failed_objects set of `migration_state`."""
         if not script or migration_state is None:
             return False
-        failed_objects = getattr(migration_state, "failed_objects", []) or []
-        for failed in failed_objects:
-            if getattr(failed, "script_name", "") == script:
+        for failed in migration_state.failed_objects:
+            if failed.script_name == script:
                 return True
         return False
 
@@ -702,7 +697,7 @@ class RepairCommand(BaseCommand):
             repaired_scripts = {repair["script"] for repair in repairs_needed}
             remaining_issues = [
                 change.script_name
-                for change in getattr(post_state, "checksum_changes", [])
+                for change in post_state.checksum_changes
                 if change.script_name in repaired_scripts
             ]
             if remaining_issues:

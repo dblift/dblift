@@ -42,31 +42,22 @@ class UndoCommand(BaseCommand):
         return [str(value).strip().lower() for value in values if str(value).strip()]
 
     @staticmethod
-    def _coerced_applied_list(value: Any) -> List[Any]:
-        if value is None or not hasattr(value, "__iter__"):
-            return []
-        try:
-            return list(value)
-        except (TypeError, AttributeError):
-            return []
-
-    @staticmethod
     def _find_undo_script(migration: Any, state: Any) -> Optional[Any]:
         """Return the Available catalog undo script matching the applied version."""
-        version = getattr(migration, "version", None)
+        version = migration.version
         if version is None or state is None:
             return None
         version_s = str(version)
-        pending_objects = getattr(state, "pending_objects", None) or []
-        pending_entries = getattr(state, "pending", None) or []
+        pending_objects = state.pending_objects
+        pending_entries = state.pending
         try:
             pairs = zip(pending_objects, pending_entries)
         except TypeError:
             return None
         for obj, entry in pairs:
-            if getattr(entry, "status", None) != MigrationDisplayState.AVAILABLE.value:
+            if entry.status != MigrationDisplayState.AVAILABLE.value:
                 continue
-            if str(getattr(entry, "version", None)) == version_s:
+            if str(entry.version) == version_s:
                 return obj
         return None
 
@@ -202,20 +193,12 @@ class UndoCommand(BaseCommand):
                     target_version=target_version,
                 )
 
-                applied_migrations = self._coerced_applied_list(
-                    getattr(migration_state, "all_applied_objects", None)
-                )
-                if not applied_migrations:
-                    applied_migrations = self._coerced_applied_list(
-                        getattr(migration_state, "applied_objects", None)
-                    )
+                applied_migrations = list(migration_state.all_applied_objects)
 
                 # Store current schema version in result for HTML reports
                 current_version = None
                 current_source = applied_migrations
-                applied_objects = self._coerced_applied_list(
-                    getattr(migration_state, "applied_objects", None)
-                )
+                applied_objects = list(migration_state.applied_objects)
                 if applied_objects:
                     current_source = applied_objects
                 if current_source:
@@ -226,9 +209,10 @@ class UndoCommand(BaseCommand):
                 success_applied = [
                     migration
                     for migration in applied_migrations
+                    # type read defensively: history rows may carry an enum or a legacy string.
                     if getattr(migration, "type", None) in (MigrationType.SQL, MigrationType.PYTHON)
-                    and is_migration_success(getattr(migration, "success", False))
-                    and getattr(migration, "version", None)
+                    and is_migration_success(migration.success)
+                    and migration.version
                 ]
                 candidates = self.state_manager.apply_filters_to_migrations(
                     success_applied,

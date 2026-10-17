@@ -262,29 +262,6 @@ class TestDetectChecksumDrift(unittest.TestCase):
         repairs = cmd._detect_checksum_drift(state, existing, Path("/migrations"))
         self.assertEqual(repairs, [])
 
-    def test_fallback_to_applied_objects_when_all_applied_not_list(self):
-        from dblift.core.migration.migration import MigrationType
-
-        script_manager = MagicMock()
-        fs_migration = SimpleNamespace(script_name="V1__a.sql", checksum=200)
-        script_manager.load_migration_scripts.return_value = {"1": [fs_migration]}
-
-        cmd = _make_cmd(script_manager=script_manager)
-        applied = SimpleNamespace(
-            script_name="V1__a.sql",
-            version="1",
-            type=MigrationType.SQL,
-            success=True,
-            checksum=100,
-        )
-        state = MigrationState()
-        # all_applied_objects is not a list — should fall back to applied_objects
-        state.all_applied_objects = "not-a-list"
-        state.applied_objects = [applied]
-
-        repairs = cmd._detect_checksum_drift(state, [], Path("/migrations"))
-        self.assertEqual(len(repairs), 1)
-
     def test_checksum_drift_propagates_catalog_load_failure(self):
         sm = MagicMock()
         cmd = _make_cmd(state_manager=sm)
@@ -933,7 +910,9 @@ class TestRepairCommandExecute(unittest.TestCase):
         state.checksum_changes = [
             SimpleNamespace(script_name="R__x.sql", previous_checksum=1, current_checksum=2)
         ]
-        state.failed_objects = [SimpleNamespace(script_name="R__x.sql", version=None)]
+        state.failed_objects = [
+            SimpleNamespace(script_name="R__x.sql", version=None, description="")
+        ]
         cmd.state_manager.build_state.return_value = state
 
         with patch.object(cmd, "_populate_database_info"):
