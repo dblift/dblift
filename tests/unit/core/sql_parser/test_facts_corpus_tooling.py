@@ -171,6 +171,7 @@ def test_recorder_refuses_a_sqlglot_that_is_neither_floor_nor_newest() -> None:
 CALLS_FILE = '''"""DROP TABLE in a module docstring."""
 X = "CREATE TABLE z (a int)"
 SQL = "ALTER TABLE a ADD b int"
+SCRIPT = "import sys; DROP TABLE not_sql"
 
 
 def test_a():
@@ -183,9 +184,14 @@ def test_a():
 '''
 
 
-def test_harvest_takes_only_the_first_argument_of_the_two_entry_points(tmp_path: Path) -> None:
+def test_harvest_skips_docstrings_messages_and_foreign_scripts(tmp_path: Path) -> None:
     found = {row["sql"] for row in harvest(_tree(tmp_path, CALLS_FILE))}
-    assert found == {"CREATE TABLE t (id int)", "DROP TABLE t", "ALTER TABLE a ADD b int"}
+    assert found == {
+        "CREATE TABLE z (a int)",
+        "ALTER TABLE a ADD b int",
+        "CREATE TABLE t (id int)",
+        "DROP TABLE t",
+    }
 
 
 def test_source_files_exclude_the_corpus_package_itself(tmp_path: Path) -> None:

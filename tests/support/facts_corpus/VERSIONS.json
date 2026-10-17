@@ -1,6 +1,6 @@
 {
   "floor": "30.18.0",
-  "inputs": 1676,
+  "inputs": 1660,
   "newest": "30.23.0",
   "newest_differing_rows": {
     "db2": 0,
@@ -13,5 +13,5 @@
     "sqlite": 6,
     "sqlserver": 6
   },
-  "size_bytes": 4261335
+  "size_bytes": 4120496
 }

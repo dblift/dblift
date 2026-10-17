@@ -168,7 +168,6 @@
 {"facts":null,"inputs":["e335a81d5cd9ff68"],"old":{"analyzer":[["TABLE","default_schema.z"]],"hybrid":[]},"sql":"COMMENT ON TABLE z IS 'x'"}
 {"facts":null,"inputs":["e5131d0f67fcf2ae"],"old":{"analyzer":[["VIEW","default_schema.v"]],"hybrid":[]},"sql":"COMMENT ON VIEW v IS 'note'"}
 {"facts":null,"inputs":["2db35aa37c4005aa","79663c1d3b43ceaf"],"old":{"analyzer":[],"hybrid":[]},"sql":"COMMIT"}
-{"facts":null,"inputs":["c36033e18f7a9eb3"],"old":{"analyzer":[],"hybrid":[]},"sql":"COMMIT manages the transaction"}
 {"facts":null,"inputs":["dc26bc50abf8ce9c"],"old":{"analyzer":[],"hybrid":[]},"sql":"COPY"}
 {"facts":null,"inputs":["7d563c78603a0061"],"old":{"analyzer":[],"hybrid":[]},"sql":"COPY \"FROM\" 'a.csv'"}
 {"facts":null,"inputs":["8aeb17683b030e96"],"old":{"analyzer":[],"hybrid":[]},"sql":"COPY \"Sales\".\"Order Items\" (id, \"Item Value\") FROM '/tmp/items.csv' (FORMAT CSV, FORCE_NOT_NULL (id))"}
@@ -278,7 +277,6 @@
 {"facts":null,"inputs":["8508919f850fcc20"],"old":{"analyzer":[["INDEX","idx 1"]],"hybrid":[]},"sql":"CREATE INDEX `idx 1` ON `myschema`.`mytable` (col)"}
 {"facts":null,"inputs":["4d1602736b4a45de"],"old":{"analyzer":[["INDEX","idx`1"]],"hybrid":[]},"sql":"CREATE INDEX `idx``1` ON `db`.`t`(`c`)"}
 {"facts":null,"inputs":["e6628ad04a71e570"],"old":{"analyzer":[["INDEX","ix"]],"hybrid":[]},"sql":"CREATE INDEX `ix` ON `s`.`t` ((a + 1), id DESC) USING BTREE"}
-{"facts":null,"inputs":["dfe8848aacf5363a"],"old":{"analyzer":[["INDEX","default_schema.avec"]],"hybrid":[["INDEX","AVEC","SYSIBM"]]},"sql":"CREATE INDEX avec colonne vide dans la liste ne leve pas IndexError."}
 {"facts":null,"inputs":["cd2cfbff0e123b32"],"old":{"analyzer":[["INDEX","idx"]],"hybrid":[["INDEX","IDX","SYSIBM"]]},"sql":"CREATE INDEX idx ON my_sch.t (id)"}
 {"facts":null,"inputs":["719d7441d24116ad"],"old":{"analyzer":[["INDEX","idx"]],"hybrid":[["INDEX","IDX","SYSIBM"]]},"sql":"CREATE INDEX idx ON my_table( , , )"}
 {"facts":null,"inputs":["25095aec12b7f71b"],"old":{"analyzer":[["INDEX","idx"]],"hybrid":[["INDEX","IDX","SYSIBM"]]},"sql":"CREATE INDEX idx ON my_table(col1,   , col2)"}
@@ -855,12 +853,9 @@
 {"facts":null,"inputs":["3b2c996519b2a073"],"old":{"analyzer":[],"hybrid":[]},"sql":"CREATE VIEW\\s+(\\w+)"}
 {"facts":null,"inputs":["2a26fc16f277d5f6"],"old":{"analyzer":[["TABLE","default_schema.docs"]],"hybrid":[]},"sql":"CREATE VIRTUAL TABLE IF NOT EXISTS docs USING fts5(title, body)"}
 {"facts":null,"inputs":["bc3331d2735d5af7"],"old":{"analyzer":[["TABLE","s.t"]],"hybrid":[]},"sql":"CREATE VIRTUAL TABLE IF NOT EXISTS s.t USING rtree(id,a,b)"}
-{"facts":null,"inputs":["9beca73cad3a1a01"],"old":{"analyzer":[["TABLE","default_schema.must"]],"hybrid":[]},"sql":"CREATE VIRTUAL TABLE must keep VIRTUAL_TABLE type (not UNKNOWN)."}
 {"facts":null,"inputs":["b64d0dea0b91870a"],"old":{"analyzer":[["TABLE","default_schema.t"]],"hybrid":[]},"sql":"CREATE VIRTUAL TABLE t USING fts5(a)"}
 {"facts":null,"inputs":["12d54b06e14c9c0e"],"old":{"analyzer":[["UNKNOWN","default_schema.idx1"]],"hybrid":[]},"sql":"CREATE XML INDEX idx1 ON real_one (xml_col)"}
 {"facts":null,"inputs":["4df51da110bcdcae"],"old":{"analyzer":[["UNKNOWN","default_schema.idx_xml"]],"hybrid":[]},"sql":"CREATE XML INDEX idx_xml ON docs(xml_col)"}
-{"facts":null,"inputs":["945d74b4aba0f85a"],"old":{"analyzer":[],"hybrid":[]},"sql":"Comment removal through the _comments module (ADR-0012)."}
-{"facts":null,"inputs":["64577168f56febd7"],"old":{"analyzer":[],"hybrid":[]},"sql":"Comment stripping as object extraction reads it."}
 {"facts":null,"inputs":["0dc75eb52c012130"],"old":{"analyzer":[],"hybrid":[]},"sql":"DECLARE\n            v_max NUMBER"}
 {"facts":null,"inputs":["641ea717b6427650"],"old":{"analyzer":[],"hybrid":[]},"sql":"DECLARE @x INT"}
 {"facts":null,"inputs":["9a95f60c2ae6c2cd"],"old":{"analyzer":[],"hybrid":[]},"sql":"DECLARE EXIT HANDLER"}
@@ -1006,7 +1001,6 @@
 {"facts":null,"inputs":["812147f325614d3a"],"old":{"analyzer":[["TABLE","default_schema.users"]],"hybrid":[["TABLE","USERS","SYSIBM"]]},"sql":"DROP TABLE IF EXISTS users, orders CASCADE"}
 {"facts":null,"inputs":["46531d45afef5ff0"],"old":{"analyzer":[["TABLE","default_schema.child"]],"hybrid":[["TABLE","CHILD","SYSIBM"]]},"sql":"DROP TABLE child"}
 {"facts":null,"inputs":["a3a6ae6868edbc56"],"old":{"analyzer":[["TABLE","default_schema.employees"]],"hybrid":[["TABLE","EMPLOYEES","SYSIBM"]]},"sql":"DROP TABLE employees CASCADE CONSTRAINTS"}
-{"facts":null,"inputs":["6fff42e66996e9d5"],"old":{"analyzer":[["TABLE","default_schema.must"]],"hybrid":[["TABLE","MUST","SYSIBM"]]},"sql":"DROP TABLE must tolerate the quoting styles a migration may carry,\n    without losing the underlying object."}
 {"facts":null,"inputs":["1575b58ab6c9991a"],"old":{"analyzer":[["TABLE","default_schema.my_table"]],"hybrid":[["TABLE","MY_TABLE","SYSIBM"]]},"sql":"DROP TABLE my_table"}
 {"facts":null,"inputs":["0fdf130a9189b998"],"old":{"analyzer":[["TABLE","dbo.mytable"]],"hybrid":[["TABLE","DBO","MYDB"]]},"sql":"DROP TABLE mydb.dbo.mytable"}
 {"facts":null,"inputs":["702047f070eb2154"],"old":{"analyzer":[["TABLE","myschema.old_table"]],"hybrid":[["TABLE","OLD_TABLE","MYSCHEMA"]]},"sql":"DROP TABLE myschema.old_table"}
@@ -1053,7 +1047,6 @@
 {"facts":null,"inputs":["c93077cdde2aaff7"],"old":{"analyzer":[["VIEW","default_schema.test_view"]],"hybrid":[["VIEW","TEST_VIEW","SYSIBM"]]},"sql":"DROP VIEW test_view"}
 {"facts":null,"inputs":["82b7ef2b55e966b0","a7e8364fde4aaaf5"],"old":{"analyzer":[["VIEW","default_schema.v1"]],"hybrid":[["VIEW","V1","SYSIBM"]]},"sql":"DROP VIEW v1"}
 {"facts":null,"inputs":["aea134aa25298dd3"],"old":{"analyzer":[["UNKNOWN","default_schema.be"]],"hybrid":[]},"sql":"DROP cannot be reversed"}
-{"facts":null,"inputs":["441b2215c7f333eb"],"old":{"analyzer":[["UNKNOWN","default_schema.be"]],"hybrid":[["TABLE","IS","SYSIBM"],["TRIGGER","SUPPORT","SYSIBM"],["TRIGGER","IS","SYSIBM"]]},"sql":"DROP must be extracted for every object type this module knows how\n    to CREATE, plus TRIGGER (no CREATE TRIGGER support, but DROP TRIGGER is\n    unambiguous on its own). DROP TABLE is covered by\n    ``TestCreateTable.test_alter_and_drop_also_extracted``."}
 {"facts":null,"inputs":["22f01943affc5834"],"old":{"analyzer":[],"hybrid":[]},"sql":"END"}
 {"facts":null,"inputs":["8c2a130217c3807a"],"old":{"analyzer":[],"hybrid":[]},"sql":"END $$"}
 {"facts":null,"inputs":["5fe781c1ee4831e6"],"old":{"analyzer":[],"hybrid":[]},"sql":"END MODULE"}
@@ -1519,13 +1512,8 @@
 {"facts":null,"inputs":["6197595503f01ee2"],"old":{"analyzer":[],"dml":{"events":["DELETE"],"full_table":true,"predicate":null,"table":"","updated_columns":[]},"hybrid":[]},"sql":"delete"}
 {"facts":null,"inputs":["d90ee9ccf6bea1d2"],"old":{"analyzer":[],"hybrid":[]},"sql":"drop"}
 {"facts":null,"inputs":["8050fea1500f0262"],"old":{"analyzer":[["UNKNOWN","default_schema.above"]],"hybrid":[]},"sql":"drop errors above"}
-{"facts":null,"inputs":["7043e8bcd4148021"],"old":{"analyzer":[],"hybrid":[]},"sql":"drop failed"}
 {"facts":null,"inputs":["1e22560cee2c4b72"],"old":{"analyzer":[],"dml":{"events":["INSERT"],"full_table":false,"predicate":null,"table":"","updated_columns":[]},"hybrid":[]},"sql":"insert"}
-{"facts":null,"inputs":["30bfcf12f279bc57"],"old":{"analyzer":[],"hybrid":[]},"sql":"lock timeout"}
-{"facts":null,"inputs":["7a8e5d89bcf3b44f"],"old":{"analyzer":[],"hybrid":[]},"sql":"lock timeout exceeded"}
 {"facts":null,"inputs":["9e84869d369b2a53"],"old":{"analyzer":[],"hybrid":[]},"sql":"rename"}
-{"facts":null,"inputs":["7ab3778776cde4fa"],"old":{"analyzer":[],"dml":{"events":null,"full_table":false,"predicate":null,"table":"","updated_columns":[]},"hybrid":[]},"sql":"replace"}
-{"facts":null,"inputs":["67a01f103707765d"],"old":{"analyzer":[],"hybrid":[]},"sql":"rollback failed"}
 {"facts":null,"inputs":["1be7ea0fba7b793f"],"old":{"analyzer":[],"hybrid":[]},"sql":"row\n\\."}
 {"facts":null,"inputs":["63d22c883b0acb86"],"old":{"analyzer":[],"hybrid":[]},"sql":"select * from test"}
 {"facts":null,"inputs":["354b7196c9ba5fb4","822ae07d4783158b"],"old":{"analyzer":[],"hybrid":[]},"sql":"select 1"}

@@ -19,6 +19,7 @@ from tests.support.facts_corpus import (
     statement_id,
 )
 from tests.support.facts_corpus.canonical import dumps
+from tests.support.facts_corpus.measure import update_versions
 from tests.support.facts_corpus.record import check_arm, record_family
 from tests.support.facts_corpus.seed import seed, split
 
@@ -47,16 +48,26 @@ def _resplit_unstable(family: str) -> list:
 
 
 def _measure() -> None:
-    """Store the sizes of the first complete recording; the corpus test caps growth on it."""
-    versions = read_versions()
-    versions["size_bytes"] = sum(f.stat().st_size for f in CORPUS_DIR.glob("*.jsonl"))
-    versions["inputs"] = len(read_rows(INPUTS_FILE))
-    versions["newest_differing_rows"] = {
-        family: sum(
-            1 for r in read_rows(family_file(family)) if "facts_newest" in r or "old_newest" in r
-        )
-        for family in FAMILIES
+    """Record sizes and counts; the first measurement of inputs and size is never rewritten."""
+    ids = [row["id"] for row in read_rows(INPUTS_FILE)]
+    base_file = CORPUS_DIR / "input_ids.txt"
+    if not base_file.exists():
+        base_file.write_text("".join(i + "\n" for i in sorted(ids)), encoding="utf-8")
+    measured = {
+        "size_bytes": sum(f.stat().st_size for f in CORPUS_DIR.glob("*.jsonl")),
+        "inputs": len(ids),
+        "newest_differing_rows": {
+            family: sum(
+                1
+                for r in read_rows(family_file(family))
+                if "facts_newest" in r or "old_newest" in r
+            )
+            for family in FAMILIES
+        },
     }
+    versions = update_versions(
+        read_versions(), measured, base_file.read_text(encoding="utf-8").split(), ids
+    )
     unstable = {family: _resplit_unstable(family) for family in FAMILIES}
     (CORPUS_DIR / "not_idempotent.json").write_text(
         json.dumps(unstable, indent=1, sort_keys=True) + "\n", encoding="utf-8"

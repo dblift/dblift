@@ -10,12 +10,13 @@ they are meant to replace. Real inputs only: no generated cases.
 
 | File | Content |
 | --- | --- |
-| `inputs.jsonl` | One row per input script: `id` (sha256 of the text, 16 hex), `sql`, `origins` (`file`, `line`, `dialects`). Append-only. Origins are provenance for the reader of a diff; nothing classifies by them. |
+| `inputs.jsonl` | One row per input script: `id` (sha256 of the text, 16 hex), `sql`, `origins` (`file`, `dialects`; no line numbers, so reformatting a test file never changes the corpus). Append-only. Origins are provenance for the reader of a diff; nothing classifies by them. |
 | `<family>.jsonl` | One row per distinct statement after the family's `split_for_analysis`, sorted by `sql`: `inputs` (ids), `facts`, `old`, and `facts_newest` / `old_newest` only where the newest sqlglot differs. |
-| `VERSIONS.json` | The two recorded sqlglot versions, the size and input count measured at the first recording, and the number of rows that differ between the arms. |
+| `VERSIONS.json` | The two recorded sqlglot versions, the size and input count measured at the first recording (write-once: `measure` never rewrites the size and refuses to lower the count), and the number of rows that differ between the arms. |
+| `input_ids.txt` | The input ids of the first recording; the corpus test requires all of them to remain, so removing one input and adding another fails. |
 | `not_idempotent.json` | Statements that do not split back to themselves (the splitter refuses a lone PL/SQL unit, a client command, or drops a trailing comment). Listed so the idempotence test is exact. |
 | `reserved/<family>.txt` | The vendor's reserved words, with source URL, retrieval date, engine version and category in the header. SQLite (the vendor draws no reserved/non-reserved line) and Db2 (page not retrievable in a checkable form) have none. |
-| `SOURCES.md` | The test files the inputs were harvested from. |
+| `SOURCES.md` | The test files the inputs were harvested from (string constants that start with an SQL verb; docstrings, f-string parts and the text of raise, exception, log and assert-message expressions are skipped). |
 
 Families: `postgresql` (also covers the PostgreSQL derivatives), `mysql` (also MariaDB), `oracle`,
 `sqlserver`, `sqlite`, `duckdb`, `redshift`, `snowflake`, `db2`.
@@ -61,3 +62,9 @@ python -m tests.support.facts_corpus measure         # sizes, counts, not_idempo
 
 `record floor` recreates every row; `record newest` must follow it and only adds the
 `*_newest` fields. The recorder refuses any other sqlglot version.
+
+## Not here yet
+
+Refusing to re-record `old` for a family whose hook is active, carrying `old` over when a split
+change only alters whitespace or the terminator, and the list of gated families (`gated.json`) arrive
+with the comparison gate that consumes this corpus, not with the corpus itself.

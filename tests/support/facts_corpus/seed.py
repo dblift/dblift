@@ -18,7 +18,7 @@ _VERB = re.compile(
     r"(?:CREATE|ALTER|DROP|INSERT|UPDATE|DELETE|MERGE|SELECT|WITH|TRUNCATE|GRANT|REVOKE|"
     r"COMMENT|RENAME|SET|USE|BEGIN|DECLARE|CALL|EXEC|EXECUTE|REPLACE|EXPLAIN|VACUUM|ANALYZE|"
     r"COPY|PRAGMA|ATTACH|DETACH|REINDEX|LOCK|COMMIT|ROLLBACK|SAVEPOINT|VALUES|SHOW|DESCRIBE|"
-    r"REFRESH|OPTIMIZE|UNDROP|PURGE|FLASHBACK|AUDIT|CLUSTER|DO|LOAD|IMPORT|EXPORT)(?=[\s;]|\Z)",
+    r"REFRESH|OPTIMIZE|UNDROP|PURGE|FLASHBACK|AUDIT|CLUSTER|DO|LOAD|EXPORT)(?=[\s;]|\Z)",
     re.IGNORECASE,
 )
 _DIALECT_TOKENS = tuple(FAMILIES) + ("mariadb", "tsql", "postgres", "cockroachdb")
@@ -33,7 +33,7 @@ def source_files(root: Path) -> List[str]:
     """List the test files that call ``parse_sql(`` or ``extract_objects(``."""
     found = []
     for path in sorted((root / "tests").rglob("*.py")):
-        if path.name.startswith("test_facts_corpus"):
+        if path.name.startswith("test_facts_corpus") or "facts_corpus" in path.parts:
             continue
         if ENTRY_POINTS.search(path.read_text(encoding="utf-8", errors="replace")):
             found.append(path.relative_to(root).as_posix())
@@ -47,20 +47,6 @@ def _is_sql(text: str) -> bool:
 def _dialects(*texts: str) -> List[str]:
     blob = " ".join(texts).lower()
     return sorted({token for token in _DIALECT_TOKENS if token in blob})
-
-
-def _constants(tree: ast.AST):
-    """Yield string constants that are not pieces of an f-string."""
-    fstring_parts = {
-        id(part)
-        for node in ast.walk(tree)
-        if isinstance(node, ast.JoinedStr)
-        for part in node.values
-    }
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Constant) and isinstance(node.value, str):
-            if id(node) not in fstring_parts:
-                yield node
 
 
 def _enclosing_literals(tree: ast.AST) -> Dict[int, List[str]]:
@@ -78,11 +64,49 @@ def _enclosing_literals(tree: ast.AST) -> Dict[int, List[str]]:
     return out
 
 
-def _add(
-    rows: Dict[str, Dict[str, Any]], sql: str, file: str, line: int, dialects: List[str]
-) -> None:
+_NOT_INPUT_CALL = re.compile(
+    r"(Error|Exception|Warning|raises)$|^(print|log|warn|warning|info|debug|error|exception|fail|skip|exit)$"
+)
+
+
+def _script_constants(tree: ast.AST):
+    """Yield ``(line, text)`` for string constants that can be a script given to the parser.
+
+    Docstrings, f-string parts, text inside ``raise``, exception/log calls and ``assert``
+    messages are prose, not inputs.
+    """
+    parents = {child: node for node in ast.walk(tree) for child in ast.iter_child_nodes(node)}
+    docstrings = set()
+    for node in ast.walk(tree):
+        scope = (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
+        if isinstance(node, scope) and node.body and isinstance(node.body[0], ast.Expr):
+            docstrings.add(node.body[0].value)
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.Constant) and isinstance(node.value, str)):
+            continue
+        if node in docstrings or isinstance(parents.get(node), ast.JoinedStr):
+            continue
+        prose, up = False, node
+        while up in parents and not isinstance(up, (ast.FunctionDef, ast.ClassDef)):
+            up = parents[up]
+            if isinstance(up, ast.Raise):
+                prose = True
+            elif isinstance(up, ast.Assert) and up.msg is not None and node in ast.walk(up.msg):
+                prose = True
+            elif isinstance(up, ast.Call):
+                func = up.func
+                name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", "")
+                prose = prose or bool(_NOT_INPUT_CALL.search(name))
+        if not prose:
+            yield node.lineno, node.value
+
+
+def _add(rows: Dict[str, Dict[str, Any]], sql: str, file: str, dialects: List[str]) -> None:
     row = rows.setdefault(statement_id(sql), {"id": statement_id(sql), "sql": sql, "origins": []})
-    row["origins"].append({"file": file, "line": line, "dialects": dialects})
+    origin = {"file": file, "dialects": dialects}
+    if origin not in row["origins"]:
+        row["origins"].append(origin)
+        row["origins"].sort(key=lambda o: (o["file"], o["dialects"]))
 
 
 def harvest(root: Path) -> List[Dict[str, Any]]:
@@ -95,10 +119,9 @@ def harvest(root: Path) -> List[Dict[str, Any]]:
         except SyntaxError:
             continue
         literals = _enclosing_literals(tree)
-        for node in sorted(_constants(tree), key=lambda n: (n.lineno, n.col_offset)):
-            if _is_sql(node.value):
-                dialects = _dialects(rel, *literals.get(node.lineno, []))
-                _add(rows, node.value, rel, node.lineno, dialects)
+        for line, script in sorted(set(_script_constants(tree))):
+            if _is_sql(script):
+                _add(rows, script, rel, _dialects(rel, *literals.get(line, [])))
     for rel, key, field, ident in HAND_CORPORA:
         path = root / rel
         if not path.exists():
@@ -106,7 +129,7 @@ def harvest(root: Path) -> List[Dict[str, Any]]:
         for index, case in enumerate(json.loads(path.read_text(encoding="utf-8"))[key]):
             if isinstance(case.get(field), str) and case[field].strip():
                 label = f"{rel}#{case[ident] if ident else index}"
-                _add(rows, case[field], label, 0, _dialects(rel))
+                _add(rows, case[field], label, _dialects(rel))
     return [rows[key] for key in sorted(rows)]
 
 
@@ -145,7 +168,8 @@ def seed(root: Path, inputs_path: Path, sources_path: Path) -> int:
         "# Sources of the corpus inputs",
         "",
         "Test files calling `parse_sql(` or `extract_objects(`; their SQL string constants",
-        "(not f-string parts, under 4000 characters, starting with an SQL verb) are the inputs,",
+        "(under 4000 characters, starting with an SQL verb; docstrings, f-string parts and the text",
+        "of raise, exception, log and assert-message expressions are skipped) are the inputs,",
         "plus the statements of the three hand-written facts corpora listed last.",
         "Regenerate with `python -m tests.support.facts_corpus seed`.",
         "",
