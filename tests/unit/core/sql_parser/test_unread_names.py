@@ -108,3 +108,34 @@ def test_dml_analysis_names_no_table_for_an_unreadable_statement(dialect):
     mutation = analyze_dml(statement, sqlglot_dialect=dialect)
     assert mutation.table == "" and mutation.events is None and mutation.updated_columns == []
     assert statement_dml_table("DELETE FROM t WHERE a = 1", dialect) == "t"
+
+
+@pytest.mark.parametrize(
+    "dialect, sql",
+    [
+        ("mysql", "INSERT INTO t SELECT `té` FROM u"),
+        ("tsql", "INSERT INTO t SELECT [té] FROM u"),
+    ],
+)
+def test_a_quoted_identifier_is_not_a_name_cut_short(dialect, sql):
+    assert not names_unreadable(sql, dialect, ["t"])
+
+
+def test_the_analyzer_checks_the_names_it_extracted():
+    assert SqlAnalyzer("postgresql").extract_objects(f"CREATE TABLE t{ZWJ}(id INT)") == []
+
+
+def test_the_schema_part_of_a_name_is_checked_too():
+    sql = "CREATE TABLE sché.t (id INT)"
+    (statement,) = SqlParserFactory("postgresql").parse_sql(sql).statements
+    assert statement.names_unread
+
+
+@pytest.mark.parametrize("dialect", LEGACY)
+@pytest.mark.parametrize(
+    "sql", ["CREATE SEQUENCE q{c};", "CREATE SEQUENCE q{c}", "DROP TABLE t{c};"]
+)
+def test_a_name_that_ends_its_statement_is_read_with_the_blank_the_split_trimmed(dialect, sql):
+    script = sql.format(c=NBSP)
+    assert SqlParserFactory(dialect).extract_objects(script) == []
+    assert all(s.names_unread for s in SqlParserFactory(dialect).parse_sql(script).statements)

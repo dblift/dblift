@@ -190,3 +190,24 @@ def test_analysis_of_a_name_that_ends_its_statement_names_nothing(dialect, char,
     assert "t" not in names
     assert not any(" t " in f" {c.reason} ".lower() for c in analysis.cautions)
     assert analysis.cautions, "the statement still deserves its caution"
+
+
+@pytest.mark.parametrize("dialect", ("postgresql", "mysql", "redshift"))
+def test_analysis_respects_the_flag_the_parser_set_for_a_cut_name(dialect):
+    analysis = analyse_script("DROP TABLE tété;", dialect)
+    assert not [obj for stmt in analysis.statements for obj in stmt.objects]
+    assert analysis.cautions and not any("tété" in c.reason for c in analysis.cautions)
+
+
+@pytest.mark.parametrize("dialect", LEGACY)
+def test_unreadable_delete_is_cautioned_as_an_unreadable_one(dialect):
+    (caution,) = analyse_script(f"DELETE FROM t{chr(0xA0)} CASCADE;", dialect).cautions
+    assert "could not be read" in caution.reason and " of t" not in caution.reason
+
+
+def test_the_unparsed_fallback_reads_the_blanks_the_split_trimmed():
+    generator = UndoScriptGenerator("postgresql")
+    undo = generator._reverse_statement("CREATE SEQUENCE q", "CREATE SEQUENCE q ")
+    assert undo.requires_manual_review and "DROP" not in undo.sql
+    assert generator._reverse_statement("CREATE SEQUENCE q", None).requires_manual_review
+    assert "DROP" in generator._reverse_statement("CREATE SEQUENCE q").sql
