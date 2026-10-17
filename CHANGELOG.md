@@ -78,8 +78,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   statements went from 0.65 s and a 26 MB peak to about 2 to 2.5 s and a 212 MB
   peak, and a 66-byte migration from 12 to 39 microseconds; nested block
   comments or one huge escape string take 4.5 to 8 times as long (depending on
-  the machine), and one huge plain string literal longer still (600 000
-  characters: 0.0002 s before, 0.026 s now).
+  the machine). Large literals and comments take much longer in proportion but
+  stay small in absolute terms: a 1 MiB string literal went from 0.0004 s to
+  0.045 s, and a 1 MiB block comment of `;` lines from 0.006 s to 0.39 s.
 
 ### Fixed
 

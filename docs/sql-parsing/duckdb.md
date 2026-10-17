@@ -390,9 +390,9 @@ parser object writes one DEBUG record, before and after).
 Cost: cutting a script through the engine takes about 3.5 times as long as the separate scanner it replaced and
 about 8 times its peak memory (measured on one host, best of three, twice: a script of 3 240 000 characters took about
 2 to 2.5 s against 0.65 s and 212 MB against 26 MB; a file of 66 characters 39 us against 12 us). The worst shapes
-measured take 4.5 to 8 times as long (nested comments, or one huge escape string, depending on the host), and one huge
-plain string longer still (a literal of 600 000 characters: 0.0002 s before, 0.026 s now, because the old scanner
-searched for its end in one call). The time still grows in proportion to the script: a four-fold script takes 4.0 to
+measured take 4.5 to 8 times as long (nested comments, or one huge escape string, depending on the host), and large
+literals and comments take much longer in proportion (a 1 MiB string literal 0.0004 s before, 0.045 s now; a 1 MiB block comment of
+lines 0.006 s before, 0.39 s now), because the old scanner searched for the end of a literal in one call; they stay small in absolute terms. The time still grows in proportion to the script: a four-fold script takes 4.0 to
 4.3 times as long, and a test counts the operations per character on fourteen shapes.
 
 Current implementation gaps, each a place where the splitter and DuckDB differ (rows 74 to 77 record the first four):
