@@ -181,17 +181,36 @@ def test_failed_concurrent_row_does_not_skip(env: Env) -> None:
 
     result_a = a.migrate()
     c = env.client(copy)
-    # A validated before B failed; skip C's validation, which would refuse the
-    # failed row, so C shows what the canonical plan runs for the same history.
-    c.executor.validator = None
     result_c = c.migrate()
 
+    assert result_a.success is False
+    assert (result_a.error_message or "").startswith("Validation failed: Found 1 failed migration")
     assert (result_a.success, result_a.error_message, executed(result_a)) == (
         result_c.success,
         result_c.error_message,
         executed(result_c),
     )
-    assert env.rows() == env.rows(copy)
+    assert executed(result_a) == []
+    assert env.rows() == env.rows(copy) == [("V1__a.sql", "SQL", 0)]
+
+
+@pytest.mark.parametrize("dry_run,calls", [(False, 2), (True, 1)])
+def test_validation_rerun_under_lock(env: Env, dry_run: bool, calls: int) -> None:
+    env.write("V1__a.sql", "CREATE TABLE a (id INTEGER PRIMARY KEY);")
+    a = env.client()
+    helpers = a.executor.migration_helpers
+    real = helpers.validate_migrations_for_migrate
+    seen: List[str] = []
+
+    def validate(*args, **kwargs):
+        seen.append("validate")
+        return real(*args, **kwargs)
+
+    helpers.validate_migrations_for_migrate = validate
+
+    assert a.migrate(dry_run=dry_run).success
+
+    assert len(seen) == calls
 
 
 def test_undone_version_runs_again(env: Env) -> None:

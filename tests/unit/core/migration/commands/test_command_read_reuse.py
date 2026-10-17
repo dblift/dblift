@@ -857,7 +857,9 @@ def test_commands_validate_state_snapshots_without_public_collection_adapters(
     ):
         result = getattr(client, operation)()
     assert result.success, result.error_message
-    assert build.call_count == validate.call_count == 1
+    # A real migrate validates again once it holds the lock.
+    expected_calls = 2 if operation == "migrate" else 1
+    assert build.call_count == validate.call_count == expected_calls
     assert validate.call_args.args[0].selected_migrations[0].script_name == "V1__app.sql"
 
 

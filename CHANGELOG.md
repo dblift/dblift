@@ -55,8 +55,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Could not acquire migration lock - another migration may be running` if it cannot get it.
   `undo --dry-run` does not lock.
 - **`migrate` plans under the migration lock.** `migrate` now reads the schema state again after it
-  takes the migration lock and runs what is pending at that moment, with strict ordering checked
-  again. A repeatable migration another process applied while this one waited is skipped even when
+  takes the migration lock and runs what is pending at that moment, with validation and strict
+  ordering checked again. A repeatable migration another process applied while this one waited is skipped even when
   its stored checksum is unknown, as any later run would.
 - **`migrate --mark-as-executed` takes the migration lock.**
 

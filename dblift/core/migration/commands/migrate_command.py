@@ -489,9 +489,12 @@ class MigrateCommand(BaseCommand):
                     preflight_sql(pending_migrations)
                 self._run_preflight(result, ensure_history=True, ensure_schema=True)
 
-            if getattr(self, "validator", None) is None:
-                validation_success, validation_errors, validation_time = True, None, 0.0
-            else:
+            def validate(
+                state: MigrationState, snapshot: MigrationReadSnapshot
+            ) -> Tuple[bool, object]:
+                """Validate ``state`` read through ``snapshot``; return (valid, errors)."""
+                if getattr(self, "validator", None) is None:
+                    return True, None
                 validation_snapshot = self.state_manager.build_validation_snapshot(
                     scripts_dir,
                     "migrate",
@@ -504,16 +507,17 @@ class MigrateCommand(BaseCommand):
                     versions=versions,
                     exclude_versions=exclude_versions,
                     strict_mode=strict_mode,
-                    resolved_migrations=migration_state.resolved_objects,
-                    applied_migrations=migration_state.all_applied_objects,
-                    read_snapshot=read_snapshot,
+                    resolved_migrations=state.resolved_objects,
+                    applied_migrations=state.all_applied_objects,
+                    read_snapshot=snapshot,
                 )
-                validation_success, validation_errors, validation_time = (
-                    self.migration_helpers.validate_migrations_for_migrate(
-                        self.validator,
-                        validation_snapshot,
-                    )
+                valid, errors, _ = self.migration_helpers.validate_migrations_for_migrate(
+                    self.validator,
+                    validation_snapshot,
                 )
+                return valid, errors
+
+            validation_success, validation_errors = validate(migration_state, read_snapshot)
             if not validation_success:
                 result.set_error(f"Validation failed: {validation_errors}")
                 result.complete()
@@ -546,13 +550,21 @@ class MigrateCommand(BaseCommand):
                 # applied (or undone) migrations while we were waiting, and
                 # running a stale plan would fail and write duplicate failure
                 # rows into the history table.
-                _, locked_version, locked_pending = plan(self.state_manager.new_read_snapshot())
+                locked_snapshot = self.state_manager.new_read_snapshot()
+                locked_state, locked_version, locked_pending = plan(locked_snapshot)
                 try:
                     self._enforce_strict_ordering(locked_pending, locked_version, strict_mode)
                 except StrictModeError as e:
                     # Nothing ran, so no error callbacks fire.
                     self.log.error(str(e))
                     result.set_error(str(e))
+                    return
+
+                locked_success, locked_errors = validate(locked_state, locked_snapshot)
+                if not locked_success:
+                    # Nothing ran, so no error callbacks fire.
+                    result.set_error(f"Validation failed: {locked_errors}")
+                    result.complete()
                     return
 
                 planned = {m.script_name for m in pending_migrations}
