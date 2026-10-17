@@ -10,8 +10,9 @@ from dblift.core.constants import MIGRATION_LOCK_TABLE as _MIGRATION_LOCK_TABLE
 from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
 from dblift.core.logger import Log
 from dblift.core.migration.clean_summary import CleanExecutionSummary
+from dblift.core.sql_parser.lexical_engine import LexicalEngine
 from dblift.db.plugins.base_history_manager import UNDO_HISTORY_TYPE, installed_on_to_bind
-from dblift.db.plugins.duckdb.parser._script import blank_comments, scan_script
+from dblift.db.plugins.duckdb.parser.lexical_spec import DUCKDB_SPEC
 from dblift.db.plugins.sql_lease_store import (
     OWNER_COLUMN,
     SqlLeaseDialect,
@@ -97,14 +98,14 @@ class DuckDBProvider(SqlLeaseLockingProvider):
         bind-using paths get accurate counts.
         """
         try:
-            units = scan_script(sql)
+            units = LexicalEngine(DUCKDB_SPEC).split(sql)
         except (UnsafeStatementSplitError, UnsupportedMetaCommandError):
             return None
         # Zero or several statements: leave to super (no silent rewrite)
         if len(units) != 1:
             return None
         # The statement goes to the engine as written; comments are blanked only to read its shape
-        code = blank_comments(units[0].text).strip()
+        code = LexicalEngine(DUCKDB_SPEC).blank_comments(units[0].text).strip()
         # Already has a top-level RETURNING clause — do not double-append
         if self._has_top_level_keyword(code, "RETURNING"):
             return None

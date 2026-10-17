@@ -9,7 +9,6 @@ from sqlglot import exp
 from dblift.core.sql_model.base import SqlObjectType
 from dblift.core.sql_parser.sqlglot_statement_facts import _copy_facts, read_statement_facts
 from dblift.core.sql_parser.statement_facts import NamedObject
-from dblift.db.plugins.duckdb.parser._script import scan_script
 from dblift.db.plugins.duckdb.parser.duckdb_facts_parser import DuckDBFactsParser
 from dblift.db.plugins.duckdb.quirks import DuckDBQuirks
 
@@ -20,7 +19,7 @@ CASES = json.loads(
 
 @pytest.mark.parametrize("case", CASES, ids=lambda case: case["id"])
 def test_duckdb_facts_keep_targets_references_and_effects(case):
-    statements = scan_script(case["sql"])
+    statements = DuckDBFactsParser().split(case["sql"])
     assert len(statements) == 1
     facts = read_statement_facts(statements[0].text, dialect="duckdb")
 

@@ -5,7 +5,6 @@ import pytest
 from dblift.core.sql_model.base import SqlObjectType
 from dblift.core.sql_parser.sqlglot_statement_facts import read_statement_facts
 from dblift.core.sql_parser.statement_facts import NamedObject, StatementFacts
-from dblift.db.plugins.duckdb.parser._script import scan_script
 from dblift.db.plugins.duckdb.parser.duckdb_facts_parser import DuckDBFactsParser
 from dblift.db.plugins.duckdb.quirks import DuckDBQuirks
 
@@ -21,7 +20,7 @@ from dblift.db.plugins.duckdb.quirks import DuckDBQuirks
     ids=["unqualified", "if_not_exists", "catalog_qualified", "escaped_quote"],
 )
 def test_create_schema_facts_keep_the_created_identity(sql, name, qualification):
-    statements = scan_script(sql)
+    statements = DuckDBFactsParser().split(sql)
     assert len(statements) == 1
 
     facts = read_statement_facts(statements[0].text, dialect="duckdb")

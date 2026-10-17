@@ -1,0 +1,5711 @@
+{
+ "config": {
+  "digest": "d35e7d115e0ad320f86eb34410868e43d7db39c9d77b528f09bf00d57977219a"
+ },
+ "extraction": {
+  "script_00": {
+   "input": "MERGE INTO t USING s ON t.id = s.id WHEN MATCHED THEN UPDATE SET val = s.val WHEN NOT MATCHED THEN INSERT (id, val) VALUES (s.id, s.val);;\nMERGE INTO users USING s ON s.id = users.id WHEN MATCHED AND s.expired THEN DELETE;;\nMERGE INTO \"Sales\".\"Order Items\" AS t USING staging.items AS s ON t.id = s.id WHEN MATCHED THEN UPDATE SET \"Item Value\" = s.val;;",
+   "output": {
+    "facts_objects": [
+     {
+      "dialect": "duckdb",
+      "dialect_options": {},
+      "explicit_properties": {},
+      "name": "t",
+      "object_type": "TABLE",
+      "schema": "main"
+     },
+     {
+      "dialect": "duckdb",
+      "dialect_options": {},
+      "explicit_properties": {},
+      "name": "users",
+      "object_type": "TABLE",
+      "schema": "main"
+     },
+     {
+      "dialect": "duckdb",
+      "dialect_options": {},
+      "explicit_properties": {},
+      "name": "Order Items",
+      "object_type": "TABLE",
+      "schema": "Sales"
+     }
+    ],
+    "facts_parse": {
+     "errors": [],
+     "statements": [
+      {
+       "affected_objects": [
+        {
+         "dialect": "duckdb",
+         "dialect_options": {},
+         "explicit_properties": {},
+         "name": "t",
+         "object_type": "TABLE",
+         "schema": "main"
+        }
+       ],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [
+        {
+         "dialect": "duckdb",
+         "dialect_options": {},
+         "explicit_properties": {},
+         "name": "t",
+         "object_type": "TABLE",
+         "schema": "main"
+        }
+       ],
+       "schema": "main",
+       "sql_text": "MERGE INTO t USING s ON t.id = s.id WHEN MATCHED THEN UPDATE SET val = s.val WHEN NOT MATCHED THEN INSERT (id, val) VALUES (s.id, s.val)",
+       "statement_type": "DML"
+      },
+      {
+       "affected_objects": [
+        {
+         "dialect": "duckdb",
+         "dialect_options": {},
+         "explicit_properties": {},
+         "name": "users",
+         "object_type": "TABLE",
+         "schema": "main"
+        }
+       ],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [
+        {
+         "dialect": "duckdb",
+         "dialect_options": {},
+         "explicit_properties": {},
+         "name": "users",
+         "object_type": "TABLE",
+         "schema": "main"
+        }
+       ],
+       "schema": "main",
+       "sql_text": "MERGE INTO users USING s ON s.id = users.id WHEN MATCHED AND s.expired THEN DELETE",
+       "statement_type": "DML"
+      },
+      {
+       "affected_objects": [
+        {
+         "dialect": "duckdb",
+         "dialect_options": {},
+         "explicit_properties": {},
+         "name": "Order Items",
+         "object_type": "TABLE",
+         "schema": "Sales"
+        }
+       ],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [
+        {
+         "dialect": "duckdb",
+         "dialect_options": {},
+         "explicit_properties": {},
+         "name": "Order Items",
+         "object_type": "TABLE",
+         "schema": "Sales"
+        }
+       ],
+       "schema": "main",
+       "sql_text": "MERGE INTO \"Sales\".\"Order Items\" AS t USING staging.items AS s ON t.id = s.id WHEN MATCHED THEN UPDATE SET \"Item Value\" = s.val",
+       "statement_type": "DML"
+      }
+     ],
+     "success": true
+    },
+    "facts_validate": {
+     "errors": [],
+     "statements_found": 3,
+     "valid": true
+    },
+    "regex_extraction": [
+     "MERGE INTO t USING s ON t.id = s.id WHEN MATCHED THEN UPDATE SET val = s.val WHEN NOT MATCHED THEN INSERT (id, val) VALUES (s.id, s.val)",
+     "MERGE INTO users USING s ON s.id = users.id WHEN MATCHED AND s.expired THEN DELETE",
+     "MERGE INTO \"Sales\".\"Order Items\" AS t USING staging.items AS s ON t.id = s.id WHEN MATCHED THEN UPDATE SET \"Item Value\" = s.val"
+    ],
+    "regex_objects": [],
+    "regex_parse": {
+     "errors": [],
+     "statements": [
+      {
+       "affected_objects": [],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [],
+       "schema": "main",
+       "sql_text": "MERGE INTO t USING s ON t.id = s.id WHEN MATCHED THEN UPDATE SET val = s.val WHEN NOT MATCHED THEN INSERT (id, val) VALUES (s.id, s.val)",
+       "statement_type": "DML"
+      },
+      {
+       "affected_objects": [],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [],
+       "schema": "main",
+       "sql_text": "MERGE INTO users USING s ON s.id = users.id WHEN MATCHED AND s.expired THEN DELETE",
+       "statement_type": "UNKNOWN"
+      },
+      {
+       "affected_objects": [],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [],
+       "schema": "main",
+       "sql_text": "MERGE INTO \"Sales\".\"Order Items\" AS t USING staging.items AS s ON t.id = s.id WHEN MATCHED THEN UPDATE SET \"Item Value\" = s.val",
+       "statement_type": "DML"
+      }
+     ],
+     "success": true
+    }
+   }
+  },
+  "script_01": {
+   "input": "WITH incoming AS (SELECT id, val FROM staging.items) MERGE INTO items AS t USING incoming AS s ON t.id = s.id WHEN MATCHED THEN UPDATE SET val = $$changed;value$$;;\nMERGE INTO t USING s ON t.id=s.id WHEN MATCHED THEN UPDATE SET val=(WITH s AS (SELECT val FROM z) SELECT val FROM s);;\nCOPY items FROM '/tmp/items.csv' (FORMAT CSV, HEADER);;",
+   "output": {
+    "facts_objects": [
+     {
+      "dialect": "duckdb",
+      "dialect_options": {},
+      "explicit_properties": {},
+      "name": "items",
+      "object_type": "TABLE",
+      "schema": "main"
+     },
+     {
+      "dialect": "duckdb",
+      "dialect_options": {},
+      "explicit_properties": {},
+      "name": "t",
+      "object_type": "TABLE",
+      "schema": "main"
+     },
+     {
+      "dialect": "duckdb",
+      "dialect_options": {},
+      "explicit_properties": {},
+      "name": "items",
+      "object_type": "TABLE",
+      "schema": "main"
+     }
+    ],
+    "facts_parse": {
+     "errors": [],
+     "statements": [
+      {
+       "affected_objects": [
+        {
+         "dialect": "duckdb",
+         "dialect_options": {},
+         "explicit_properties": {},
+         "name": "items",
+         "object_type": "TABLE",
+         "schema": "main"
+        }
+       ],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [
+        {
+         "dialect": "duckdb",
+         "dialect_options": {},
+         "explicit_properties": {},
+         "name": "items",
+         "object_type": "TABLE",
+         "schema": "main"
+        }
+       ],
+       "schema": "main",
+       "sql_text": "WITH incoming AS (SELECT id, val FROM staging.items) MERGE INTO items AS t USING incoming AS s ON t.id = s.id WHEN MATCHED THEN UPDATE SET val = $$changed;value$$",
+       "statement_type": "DML"
+      },
+      {
+       "affected_objects": [
+        {
+         "dialect": "duckdb",
+         "dialect_options": {},
+         "explicit_properties": {},
+         "name": "t",
+         "object_type": "TABLE",
+         "schema": "main"
+        }
+       ],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [
+        {
+         "dialect": "duckdb",
+         "dialect_options": {},
+         "explicit_properties": {},
+         "name": "t",
+         "object_type": "TABLE",
+         "schema": "main"
+        }
+       ],
+       "schema": "main",
+       "sql_text": "MERGE INTO t USING s ON t.id=s.id WHEN MATCHED THEN UPDATE SET val=(WITH s AS (SELECT val FROM z) SELECT val FROM s)",
+       "statement_type": "DML"
+      },
+      {
+       "affected_objects": [
+        {
+         "dialect": "duckdb",
+         "dialect_options": {},
+         "explicit_properties": {},
+         "name": "items",
+         "object_type": "TABLE",
+         "schema": "main"
+        }
+       ],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [
+        {
+         "dialect": "duckdb",
+         "dialect_options": {},
+         "explicit_properties": {},
+         "name": "items",
+         "object_type": "TABLE",
+         "schema": "main"
+        }
+       ],
+       "schema": "main",
+       "sql_text": "COPY items FROM '/tmp/items.csv' (FORMAT CSV, HEADER)",
+       "statement_type": "DML"
+      }
+     ],
+     "success": true
+    },
+    "facts_validate": {
+     "errors": [],
+     "statements_found": 3,
+     "valid": true
+    },
+    "regex_extraction": [
+     "WITH incoming AS (SELECT id, val FROM staging.items) MERGE INTO items AS t USING incoming AS s ON t.id = s.id WHEN MATCHED THEN UPDATE SET val = $$changed;value$$",
+     "MERGE INTO t USING s ON t.id=s.id WHEN MATCHED THEN UPDATE SET val=(WITH s AS (SELECT val FROM z) SELECT val FROM s)",
+     "COPY items FROM '/tmp/items.csv' (FORMAT CSV, HEADER)"
+    ],
+    "regex_objects": [],
+    "regex_parse": {
+     "errors": [],
+     "statements": [
+      {
+       "affected_objects": [],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [],
+       "schema": "main",
+       "sql_text": "WITH incoming AS (SELECT id, val FROM staging.items) MERGE INTO items AS t USING incoming AS s ON t.id = s.id WHEN MATCHED THEN UPDATE SET val = $$changed;value$$",
+       "statement_type": "DML"
+      },
+      {
+       "affected_objects": [],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [],
+       "schema": "main",
+       "sql_text": "MERGE INTO t USING s ON t.id=s.id WHEN MATCHED THEN UPDATE SET val=(WITH s AS (SELECT val FROM z) SELECT val FROM s)",
+       "statement_type": "DML"
+      },
+      {
+       "affected_objects": [],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [],
+       "schema": "main",
+       "sql_text": "COPY items FROM '/tmp/items.csv' (FORMAT CSV, HEADER)",
+       "statement_type": "DML"
+      }
+     ],
+     "success": true
+    }
+   }
+  },
+  "script_02": {
+   "input": "COPY \"Sales\".\"Order Items\" (id, \"Item Value\") FROM '/tmp/items.csv' (FORMAT CSV, FORCE_NOT_NULL (id));;\n/* outer /* inner */ tail */ COPY /* target */ items (id) FROM '/tmp/items;--/*quoted*/.csv';;\nCOPY items TO '/tmp/items.csv' (FORMAT CSV, HEADER);;",
+   "output": {
+    "facts_objects": [
+     {
+      "dialect": "duckdb",
+      "dialect_options": {},
+      "explicit_properties": {},
+      "name": "Order Items",
+      "object_type": "TABLE",
+      "schema": "Sales"
+     },
+     {
+      "dialect": "duckdb",
+      "dialect_options": {},
+      "explicit_properties": {},
+      "name": "items",
+      "object_type": "TABLE",
+      "schema": "main"
+     }
+    ],
+    "facts_parse": {
+     "errors": [],
+     "statements": [
+      {
+       "affected_objects": [
+        {
+         "dialect": "duckdb",
+         "dialect_options": {},
+         "explicit_properties": {},
+         "name": "Order Items",
+         "object_type": "TABLE",
+         "schema": "Sales"
+        }
+       ],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [
+        {
+         "dialect": "duckdb",
+         "dialect_options": {},
+         "explicit_properties": {},
+         "name": "Order Items",
+         "object_type": "TABLE",
+         "schema": "Sales"
+        }
+       ],
+       "schema": "main",
+       "sql_text": "COPY \"Sales\".\"Order Items\" (id, \"Item Value\") FROM '/tmp/items.csv' (FORMAT CSV, FORCE_NOT_NULL (id))",
+       "statement_type": "DML"
+      },
+      {
+       "affected_objects": [
+        {
+         "dialect": "duckdb",
+         "dialect_options": {},
+         "explicit_properties": {},
+         "name": "items",
+         "object_type": "TABLE",
+         "schema": "main"
+        }
+       ],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [
+        {
+         "dialect": "duckdb",
+         "dialect_options": {},
+         "explicit_properties": {},
+         "name": "items",
+         "object_type": "TABLE",
+         "schema": "main"
+        }
+       ],
+       "schema": "main",
+       "sql_text": "/* outer /* inner */ tail */ COPY /* target */ items (id) FROM '/tmp/items;--/*quoted*/.csv'",
+       "statement_type": "DML"
+      },
+      {
+       "affected_objects": [],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [],
+       "schema": "main",
+       "sql_text": "COPY items TO '/tmp/items.csv' (FORMAT CSV, HEADER)",
+       "statement_type": "QUERY"
+      }
+     ],
+     "success": true
+    },
+    "facts_validate": {
+     "errors": [],
+     "statements_found": 3,
+     "valid": true
+    },
+    "regex_extraction": [
+     "COPY \"Sales\".\"Order Items\" (id, \"Item Value\") FROM '/tmp/items.csv' (FORMAT CSV, FORCE_NOT_NULL (id))",
+     "/* outer /* inner */ tail */ COPY /* target */ items (id) FROM '/tmp/items;--/*quoted*/.csv'",
+     "COPY items TO '/tmp/items.csv' (FORMAT CSV, HEADER)"
+    ],
+    "regex_objects": [],
+    "regex_parse": {
+     "errors": [],
+     "statements": [
+      {
+       "affected_objects": [],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [],
+       "schema": "main",
+       "sql_text": "COPY \"Sales\".\"Order Items\" (id, \"Item Value\") FROM '/tmp/items.csv' (FORMAT CSV, FORCE_NOT_NULL (id))",
+       "statement_type": "DML"
+      },
+      {
+       "affected_objects": [],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [],
+       "schema": "main",
+       "sql_text": "/* outer /* inner */ tail */ COPY /* target */ items (id) FROM '/tmp/items;--/*quoted*/.csv'",
+       "statement_type": "DML"
+      },
+      {
+       "affected_objects": [],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [],
+       "schema": "main",
+       "sql_text": "COPY items TO '/tmp/items.csv' (FORMAT CSV, HEADER)",
+       "statement_type": "DML"
+      }
+     ],
+     "success": true
+    }
+   }
+  },
+  "script_03": {
+   "input": "COPY \"Sales\".\"Order Items\" (id, \"Item Value\") TO '/tmp/items;out.parquet' (FORMAT PARQUET);;\nCOPY (SELECT id FROM items) TO '/tmp/items.csv';;\nCOPY FROM DATABASE source_db TO target_db;;",
+   "output": {
+    "facts_objects": [],
+    "facts_parse": {
+     "errors": [],
+     "statements": [
+      {
+       "affected_objects": [],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [],
+       "schema": "main",
+       "sql_text": "COPY \"Sales\".\"Order Items\" (id, \"Item Value\") TO '/tmp/items;out.parquet' (FORMAT PARQUET)",
+       "statement_type": "QUERY"
+      },
+      {
+       "affected_objects": [],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [],
+       "schema": "main",
+       "sql_text": "COPY (SELECT id FROM items) TO '/tmp/items.csv'",
+       "statement_type": "QUERY"
+      },
+      {
+       "affected_objects": [],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [],
+       "schema": "main",
+       "sql_text": "COPY FROM DATABASE source_db TO target_db",
+       "statement_type": "UNKNOWN"
+      }
+     ],
+     "success": true
+    },
+    "facts_validate": {
+     "errors": [],
+     "statements_found": 3,
+     "valid": true
+    },
+    "regex_extraction": [
+     "COPY \"Sales\".\"Order Items\" (id, \"Item Value\") TO '/tmp/items;out.parquet' (FORMAT PARQUET)",
+     "COPY (SELECT id FROM items) TO '/tmp/items.csv'",
+     "COPY FROM DATABASE source_db TO target_db"
+    ],
+    "regex_objects": [],
+    "regex_parse": {
+     "errors": [],
+     "statements": [
+      {
+       "affected_objects": [],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [],
+       "schema": "main",
+       "sql_text": "COPY \"Sales\".\"Order Items\" (id, \"Item Value\") TO '/tmp/items;out.parquet' (FORMAT PARQUET)",
+       "statement_type": "DML"
+      },
+      {
+       "affected_objects": [],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [],
+       "schema": "main",
+       "sql_text": "COPY (SELECT id FROM items) TO '/tmp/items.csv'",
+       "statement_type": "DML"
+      },
+      {
+       "affected_objects": [],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [],
+       "schema": "main",
+       "sql_text": "COPY FROM DATABASE source_db TO target_db",
+       "statement_type": "DML"
+      }
+     ],
+     "success": true
+    }
+   }
+  },
+  "script_04": {
+   "input": "COPY items FROM STDIN;;\nCOPY items TO STDOUT;;\nCOPY items FROM $path;;",
+   "output": {
+    "facts_objects": [],
+    "facts_parse": {
+     "errors": [],
+     "statements": [
+      {
+       "affected_objects": [],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [],
+       "schema": "main",
+       "sql_text": "COPY items FROM STDIN",
+       "statement_type": "UNKNOWN"
+      },
+      {
+       "affected_objects": [],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [],
+       "schema": "main",
+       "sql_text": "COPY items TO STDOUT",
+       "statement_type": "UNKNOWN"
+      },
+      {
+       "affected_objects": [],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [],
+       "schema": "main",
+       "sql_text": "COPY items FROM $path",
+       "statement_type": "UNKNOWN"
+      }
+     ],
+     "success": true
+    },
+    "facts_validate": {
+     "errors": [],
+     "statements_found": 3,
+     "valid": true
+    },
+    "regex_extraction": [
+     "COPY items FROM STDIN",
+     "COPY items TO STDOUT",
+     "COPY items FROM $path"
+    ],
+    "regex_objects": [],
+    "regex_parse": {
+     "errors": [],
+     "statements": [
+      {
+       "affected_objects": [],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [],
+       "schema": "main",
+       "sql_text": "COPY items FROM STDIN",
+       "statement_type": "DML"
+      },
+      {
+       "affected_objects": [],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [],
+       "schema": "main",
+       "sql_text": "COPY items TO STDOUT",
+       "statement_type": "DML"
+      },
+      {
+       "affected_objects": [],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [],
+       "schema": "main",
+       "sql_text": "COPY items FROM $path",
+       "statement_type": "DML"
+      }
+     ],
+     "success": true
+    }
+   }
+  },
+  "script_05": {
+   "input": "COPY items TO ('/tmp/' || 'items.csv');;\nCOPY items FROM '/tmp/' || 'items.csv';;\nCOPY items FROM ('/tmp/items.csv');;",
+   "output": {
+    "facts_objects": [],
+    "facts_parse": {
+     "errors": [],
+     "statements": [
+      {
+       "affected_objects": [],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [],
+       "schema": "main",
+       "sql_text": "COPY items TO ('/tmp/' || 'items.csv')",
+       "statement_type": "UNKNOWN"
+      },
+      {
+       "affected_objects": [],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [],
+       "schema": "main",
+       "sql_text": "COPY items FROM '/tmp/' || 'items.csv'",
+       "statement_type": "UNKNOWN"
+      },
+      {
+       "affected_objects": [],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [],
+       "schema": "main",
+       "sql_text": "COPY items FROM ('/tmp/items.csv')",
+       "statement_type": "UNKNOWN"
+      }
+     ],
+     "success": true
+    },
+    "facts_validate": {
+     "errors": [],
+     "statements_found": 3,
+     "valid": true
+    },
+    "regex_extraction": [
+     "COPY items TO ('/tmp/' || 'items.csv')",
+     "COPY items FROM '/tmp/' || 'items.csv'",
+     "COPY items FROM ('/tmp/items.csv')"
+    ],
+    "regex_objects": [],
+    "regex_parse": {
+     "errors": [],
+     "statements": [
+      {
+       "affected_objects": [],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [],
+       "schema": "main",
+       "sql_text": "COPY items TO ('/tmp/' || 'items.csv')",
+       "statement_type": "DML"
+      },
+      {
+       "affected_objects": [],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [],
+       "schema": "main",
+       "sql_text": "COPY items FROM '/tmp/' || 'items.csv'",
+       "statement_type": "DML"
+      },
+      {
+       "affected_objects": [],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [],
+       "schema": "main",
+       "sql_text": "COPY items FROM ('/tmp/items.csv')",
+       "statement_type": "DML"
+      }
+     ],
+     "success": true
+    }
+   }
+  },
+  "script_06": {
+   "input": "COPY items FROM 42;;\nCOPY items FROM 'a.csv', 'b.csv';;\nCOPY items FROM $$items.csv$$;;",
+   "output": {
+    "facts_objects": [],
+    "facts_parse": {
+     "errors": [],
+     "statements": [
+      {
+       "affected_objects": [],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [],
+       "schema": "main",
+       "sql_text": "COPY items FROM 42",
+       "statement_type": "UNKNOWN"
+      },
+      {
+       "affected_objects": [],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [],
+       "schema": "main",
+       "sql_text": "COPY items FROM 'a.csv', 'b.csv'",
+       "statement_type": "UNKNOWN"
+      },
+      {
+       "affected_objects": [],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [],
+       "schema": "main",
+       "sql_text": "COPY items FROM $$items.csv$$",
+       "statement_type": "UNKNOWN"
+      }
+     ],
+     "success": true
+    },
+    "facts_validate": {
+     "errors": [],
+     "statements_found": 3,
+     "valid": true
+    },
+    "regex_extraction": [
+     "COPY items FROM 42",
+     "COPY items FROM 'a.csv', 'b.csv'",
+     "COPY items FROM $$items.csv$$"
+    ],
+    "regex_objects": [],
+    "regex_parse": {
+     "errors": [],
+     "statements": [
+      {
+       "affected_objects": [],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [],
+       "schema": "main",
+       "sql_text": "COPY items FROM 42",
+       "statement_type": "DML"
+      },
+      {
+       "affected_objects": [],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [],
+       "schema": "main",
+       "sql_text": "COPY items FROM 'a.csv', 'b.csv'",
+       "statement_type": "DML"
+      },
+      {
+       "affected_objects": [],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [],
+       "schema": "main",
+       "sql_text": "COPY items FROM $$items.csv$$",
+       "statement_type": "DML"
+      }
+     ],
+     "success": true
+    }
+   }
+  },
+  "script_07": {
+   "input": "COPY items FROM E'items.csv';;\nINSERT INTO t VALUES (1) RETURNING a -- c;\n/* lead */ UPDATE t SET a = $$x;y$$ WHERE b = E'q\\'z';",
+   "output": {
+    "facts_objects": [
+     {
+      "dialect": "duckdb",
+      "dialect_options": {},
+      "explicit_properties": {},
+      "name": "t",
+      "object_type": "TABLE",
+      "schema": "main"
+     }
+    ],
+    "facts_parse": {
+     "errors": [],
+     "statements": [
+      {
+       "affected_objects": [],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [],
+       "schema": "main",
+       "sql_text": "COPY items FROM E'items.csv'",
+       "statement_type": "UNKNOWN"
+      },
+      {
+       "affected_objects": [
+        {
+         "dialect": "duckdb",
+         "dialect_options": {},
+         "explicit_properties": {},
+         "name": "t",
+         "object_type": "TABLE",
+         "schema": "main"
+        }
+       ],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [
+        {
+         "dialect": "duckdb",
+         "dialect_options": {},
+         "explicit_properties": {},
+         "name": "t",
+         "object_type": "TABLE",
+         "schema": "main"
+        }
+       ],
+       "schema": "main",
+       "sql_text": "INSERT INTO t VALUES (1) RETURNING a -- c;\n/* lead */ UPDATE t SET a = $$x;y$$ WHERE b = E'q\\'z'",
+       "statement_type": "DML"
+      }
+     ],
+     "success": true
+    },
+    "facts_validate": {
+     "errors": [],
+     "statements_found": 2,
+     "valid": true
+    },
+    "regex_extraction": [
+     "COPY items FROM E'items.csv'",
+     "INSERT INTO t VALUES (1) RETURNING a -- c;\n/* lead */ UPDATE t SET a = $$x;y$$ WHERE b = E'q\\'z'"
+    ],
+    "regex_objects": [],
+    "regex_parse": {
+     "errors": [],
+     "statements": [
+      {
+       "affected_objects": [],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [],
+       "schema": "main",
+       "sql_text": "COPY items FROM E'items.csv'",
+       "statement_type": "DML"
+      },
+      {
+       "affected_objects": [],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [],
+       "schema": "main",
+       "sql_text": "INSERT INTO t VALUES (1) RETURNING a -- c;\n/* lead */ UPDATE t SET a = $$x;y$$ WHERE b = E'q\\'z'",
+       "statement_type": "DML"
+      }
+     ],
+     "success": true
+    }
+   }
+  },
+  "script_08": {
+   "input": "DELETE FROM t -- c\n WHERE a = 1;\nCREATE TABLE \"a;b\" (x INT) /* c */;\nUPDATE t SET a = 1 /* /* n */ */ WHERE b = 2;",
+   "output": {
+    "facts_objects": [
+     {
+      "dialect": "duckdb",
+      "dialect_options": {},
+      "explicit_properties": {},
+      "name": "t",
+      "object_type": "TABLE",
+      "schema": "main"
+     },
+     {
+      "dialect": "duckdb",
+      "dialect_options": {},
+      "explicit_properties": {},
+      "name": "a;b",
+      "object_type": "TABLE",
+      "schema": "main"
+     },
+     {
+      "dialect": "duckdb",
+      "dialect_options": {},
+      "explicit_properties": {},
+      "name": "t",
+      "object_type": "TABLE",
+      "schema": "main"
+     }
+    ],
+    "facts_parse": {
+     "errors": [],
+     "statements": [
+      {
+       "affected_objects": [
+        {
+         "dialect": "duckdb",
+         "dialect_options": {},
+         "explicit_properties": {},
+         "name": "t",
+         "object_type": "TABLE",
+         "schema": "main"
+        }
+       ],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [
+        {
+         "dialect": "duckdb",
+         "dialect_options": {},
+         "explicit_properties": {},
+         "name": "t",
+         "object_type": "TABLE",
+         "schema": "main"
+        }
+       ],
+       "schema": "main",
+       "sql_text": "DELETE FROM t -- c\n WHERE a = 1",
+       "statement_type": "DML"
+      },
+      {
+       "affected_objects": [
+        {
+         "dialect": "duckdb",
+         "dialect_options": {},
+         "explicit_properties": {},
+         "name": "a;b",
+         "object_type": "TABLE",
+         "schema": "main"
+        }
+       ],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [
+        {
+         "dialect": "duckdb",
+         "dialect_options": {},
+         "explicit_properties": {},
+         "name": "a;b",
+         "object_type": "TABLE",
+         "schema": "main"
+        }
+       ],
+       "schema": "main",
+       "sql_text": "CREATE TABLE \"a;b\" (x INT) /* c */",
+       "statement_type": "DDL"
+      },
+      {
+       "affected_objects": [
+        {
+         "dialect": "duckdb",
+         "dialect_options": {},
+         "explicit_properties": {},
+         "name": "t",
+         "object_type": "TABLE",
+         "schema": "main"
+        }
+       ],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [
+        {
+         "dialect": "duckdb",
+         "dialect_options": {},
+         "explicit_properties": {},
+         "name": "t",
+         "object_type": "TABLE",
+         "schema": "main"
+        }
+       ],
+       "schema": "main",
+       "sql_text": "UPDATE t SET a = 1 /* /* n */ */ WHERE b = 2",
+       "statement_type": "DML"
+      }
+     ],
+     "success": true
+    },
+    "facts_validate": {
+     "errors": [],
+     "statements_found": 3,
+     "valid": true
+    },
+    "regex_extraction": [
+     "DELETE FROM t -- c\n WHERE a = 1",
+     "CREATE TABLE \"a;b\" (x INT) /* c */",
+     "UPDATE t SET a = 1 /* /* n */ */ WHERE b = 2"
+    ],
+    "regex_objects": [
+     {
+      "dialect": "duckdb",
+      "dialect_options": {},
+      "explicit_properties": {},
+      "name": "a;b",
+      "object_type": "TABLE",
+      "schema": "main"
+     }
+    ],
+    "regex_parse": {
+     "errors": [],
+     "statements": [
+      {
+       "affected_objects": [],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [],
+       "schema": "main",
+       "sql_text": "DELETE FROM t -- c\n WHERE a = 1",
+       "statement_type": "DML"
+      },
+      {
+       "affected_objects": [
+        {
+         "dialect": "duckdb",
+         "dialect_options": {},
+         "explicit_properties": {},
+         "name": "a;b",
+         "object_type": "TABLE",
+         "schema": "main"
+        }
+       ],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [
+        {
+         "dialect": "duckdb",
+         "dialect_options": {},
+         "explicit_properties": {},
+         "name": "a;b",
+         "object_type": "TABLE",
+         "schema": "main"
+        }
+       ],
+       "schema": "main",
+       "sql_text": "CREATE TABLE \"a;b\" (x INT) /* c */",
+       "statement_type": "DDL"
+      },
+      {
+       "affected_objects": [],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [],
+       "schema": "main",
+       "sql_text": "UPDATE t SET a = 1 /* /* n */ */ WHERE b = 2",
+       "statement_type": "DML"
+      }
+     ],
+     "success": true
+    }
+   }
+  },
+  "script_09": {
+   "input": "-- c\nINSERT INTO t SELECT * FROM s;\nCREATE MACRO m(a) AS a || ';';\nCOPY t TO 'f;x' (DELIMITER ';');",
+   "output": {
+    "facts_objects": [
+     {
+      "dialect": "duckdb",
+      "dialect_options": {},
+      "explicit_properties": {},
+      "name": "t",
+      "object_type": "TABLE",
+      "schema": "main"
+     }
+    ],
+    "facts_parse": {
+     "errors": [],
+     "statements": [
+      {
+       "affected_objects": [
+        {
+         "dialect": "duckdb",
+         "dialect_options": {},
+         "explicit_properties": {},
+         "name": "t",
+         "object_type": "TABLE",
+         "schema": "main"
+        }
+       ],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [
+        {
+         "dialect": "duckdb",
+         "dialect_options": {},
+         "explicit_properties": {},
+         "name": "t",
+         "object_type": "TABLE",
+         "schema": "main"
+        }
+       ],
+       "schema": "main",
+       "sql_text": "-- c\nINSERT INTO t SELECT * FROM s",
+       "statement_type": "DML"
+      },
+      {
+       "affected_objects": [],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [],
+       "schema": "main",
+       "sql_text": "CREATE MACRO m(a) AS a || ';'",
+       "statement_type": "DDL"
+      },
+      {
+       "affected_objects": [],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [],
+       "schema": "main",
+       "sql_text": "COPY t TO 'f;x' (DELIMITER ';')",
+       "statement_type": "QUERY"
+      }
+     ],
+     "success": true
+    },
+    "facts_validate": {
+     "errors": [],
+     "statements_found": 3,
+     "valid": true
+    },
+    "regex_extraction": [
+     "-- c\nINSERT INTO t SELECT * FROM s",
+     "CREATE MACRO m(a) AS a || ';'",
+     "COPY t TO 'f;x' (DELIMITER ';')"
+    ],
+    "regex_objects": [],
+    "regex_parse": {
+     "errors": [],
+     "statements": [
+      {
+       "affected_objects": [],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [],
+       "schema": "main",
+       "sql_text": "-- c\nINSERT INTO t SELECT * FROM s",
+       "statement_type": "DML"
+      },
+      {
+       "affected_objects": [],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [],
+       "schema": "main",
+       "sql_text": "CREATE MACRO m(a) AS a || ';'",
+       "statement_type": "DDL"
+      },
+      {
+       "affected_objects": [],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [],
+       "schema": "main",
+       "sql_text": "COPY t TO 'f;x' (DELIMITER ';')",
+       "statement_type": "DML"
+      }
+     ],
+     "success": true
+    }
+   }
+  },
+  "script_10": {
+   "input": "CREATE TABLE a(x INT); -- c\nCREATE TABLE b(y INT); /* d */ CREATE INDEX i ON a(x);",
+   "output": {
+    "facts_objects": [
+     {
+      "dialect": "duckdb",
+      "dialect_options": {},
+      "explicit_properties": {},
+      "name": "a",
+      "object_type": "TABLE",
+      "schema": "main"
+     },
+     {
+      "dialect": "duckdb",
+      "dialect_options": {},
+      "explicit_properties": {},
+      "name": "b",
+      "object_type": "TABLE",
+      "schema": "main"
+     },
+     {
+      "dialect": "duckdb",
+      "dialect_options": {},
+      "explicit_properties": {},
+      "name": "i",
+      "object_type": "INDEX",
+      "schema": "main"
+     }
+    ],
+    "facts_parse": {
+     "errors": [],
+     "statements": [
+      {
+       "affected_objects": [
+        {
+         "dialect": "duckdb",
+         "dialect_options": {},
+         "explicit_properties": {},
+         "name": "a",
+         "object_type": "TABLE",
+         "schema": "main"
+        }
+       ],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [
+        {
+         "dialect": "duckdb",
+         "dialect_options": {},
+         "explicit_properties": {},
+         "name": "a",
+         "object_type": "TABLE",
+         "schema": "main"
+        }
+       ],
+       "schema": "main",
+       "sql_text": "CREATE TABLE a(x INT)",
+       "statement_type": "DDL"
+      },
+      {
+       "affected_objects": [
+        {
+         "dialect": "duckdb",
+         "dialect_options": {},
+         "explicit_properties": {},
+         "name": "b",
+         "object_type": "TABLE",
+         "schema": "main"
+        }
+       ],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [
+        {
+         "dialect": "duckdb",
+         "dialect_options": {},
+         "explicit_properties": {},
+         "name": "b",
+         "object_type": "TABLE",
+         "schema": "main"
+        }
+       ],
+       "schema": "main",
+       "sql_text": "-- c\nCREATE TABLE b(y INT)",
+       "statement_type": "DDL"
+      },
+      {
+       "affected_objects": [
+        {
+         "dialect": "duckdb",
+         "dialect_options": {},
+         "explicit_properties": {},
+         "name": "i",
+         "object_type": "INDEX",
+         "schema": "main"
+        }
+       ],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [
+        {
+         "dialect": "duckdb",
+         "dialect_options": {},
+         "explicit_properties": {},
+         "name": "i",
+         "object_type": "INDEX",
+         "schema": "main"
+        }
+       ],
+       "schema": "main",
+       "sql_text": "/* d */ CREATE INDEX i ON a(x)",
+       "statement_type": "DDL"
+      }
+     ],
+     "success": true
+    },
+    "facts_validate": {
+     "errors": [],
+     "statements_found": 3,
+     "valid": true
+    },
+    "regex_extraction": [
+     "CREATE TABLE a(x INT)",
+     "-- c\nCREATE TABLE b(y INT)",
+     "/* d */ CREATE INDEX i ON a(x)"
+    ],
+    "regex_objects": [
+     {
+      "dialect": "duckdb",
+      "dialect_options": {},
+      "explicit_properties": {},
+      "name": "a",
+      "object_type": "TABLE",
+      "schema": "main"
+     },
+     {
+      "dialect": "duckdb",
+      "dialect_options": {},
+      "explicit_properties": {},
+      "name": "b",
+      "object_type": "TABLE",
+      "schema": "main"
+     },
+     {
+      "dialect": "duckdb",
+      "dialect_options": {},
+      "explicit_properties": {},
+      "name": "i",
+      "object_type": "INDEX",
+      "schema": "main"
+     }
+    ],
+    "regex_parse": {
+     "errors": [],
+     "statements": [
+      {
+       "affected_objects": [
+        {
+         "dialect": "duckdb",
+         "dialect_options": {},
+         "explicit_properties": {},
+         "name": "a",
+         "object_type": "TABLE",
+         "schema": "main"
+        }
+       ],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [
+        {
+         "dialect": "duckdb",
+         "dialect_options": {},
+         "explicit_properties": {},
+         "name": "a",
+         "object_type": "TABLE",
+         "schema": "main"
+        }
+       ],
+       "schema": "main",
+       "sql_text": "CREATE TABLE a(x INT)",
+       "statement_type": "DDL"
+      },
+      {
+       "affected_objects": [
+        {
+         "dialect": "duckdb",
+         "dialect_options": {},
+         "explicit_properties": {},
+         "name": "b",
+         "object_type": "TABLE",
+         "schema": "main"
+        }
+       ],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [
+        {
+         "dialect": "duckdb",
+         "dialect_options": {},
+         "explicit_properties": {},
+         "name": "b",
+         "object_type": "TABLE",
+         "schema": "main"
+        }
+       ],
+       "schema": "main",
+       "sql_text": "-- c\nCREATE TABLE b(y INT)",
+       "statement_type": "DDL"
+      },
+      {
+       "affected_objects": [
+        {
+         "dialect": "duckdb",
+         "dialect_options": {},
+         "explicit_properties": {},
+         "name": "i",
+         "object_type": "INDEX",
+         "schema": "main"
+        }
+       ],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [
+        {
+         "dialect": "duckdb",
+         "dialect_options": {},
+         "explicit_properties": {},
+         "name": "i",
+         "object_type": "INDEX",
+         "schema": "main"
+        }
+       ],
+       "schema": "main",
+       "sql_text": "/* d */ CREATE INDEX i ON a(x)",
+       "statement_type": "DDL"
+      }
+     ],
+     "success": true
+    }
+   }
+  },
+  "script_11": {
+   "input": "ALTER TABLE s.t ADD COLUMN c INT; DROP VIEW IF EXISTS v; CREATE SEQUENCE q;",
+   "output": {
+    "facts_objects": [
+     {
+      "dialect": "duckdb",
+      "dialect_options": {},
+      "explicit_properties": {},
+      "name": "t",
+      "object_type": "TABLE",
+      "schema": "s"
+     },
+     {
+      "dialect": "duckdb",
+      "dialect_options": {},
+      "explicit_properties": {},
+      "name": "v",
+      "object_type": "VIEW",
+      "schema": "main"
+     },
+     {
+      "dialect": "duckdb",
+      "dialect_options": {},
+      "explicit_properties": {},
+      "name": "q",
+      "object_type": "SEQUENCE",
+      "schema": "main"
+     }
+    ],
+    "facts_parse": {
+     "errors": [],
+     "statements": [
+      {
+       "affected_objects": [
+        {
+         "dialect": "duckdb",
+         "dialect_options": {},
+         "explicit_properties": {},
+         "name": "t",
+         "object_type": "TABLE",
+         "schema": "s"
+        }
+       ],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [
+        {
+         "dialect": "duckdb",
+         "dialect_options": {},
+         "explicit_properties": {},
+         "name": "t",
+         "object_type": "TABLE",
+         "schema": "s"
+        }
+       ],
+       "schema": "main",
+       "sql_text": "ALTER TABLE s.t ADD COLUMN c INT",
+       "statement_type": "DDL"
+      },
+      {
+       "affected_objects": [
+        {
+         "dialect": "duckdb",
+         "dialect_options": {},
+         "explicit_properties": {},
+         "name": "v",
+         "object_type": "VIEW",
+         "schema": "main"
+        }
+       ],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [
+        {
+         "dialect": "duckdb",
+         "dialect_options": {},
+         "explicit_properties": {},
+         "name": "v",
+         "object_type": "VIEW",
+         "schema": "main"
+        }
+       ],
+       "schema": "main",
+       "sql_text": "DROP VIEW IF EXISTS v",
+       "statement_type": "DDL"
+      },
+      {
+       "affected_objects": [
+        {
+         "dialect": "duckdb",
+         "dialect_options": {},
+         "explicit_properties": {},
+         "name": "q",
+         "object_type": "SEQUENCE",
+         "schema": "main"
+        }
+       ],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [
+        {
+         "dialect": "duckdb",
+         "dialect_options": {},
+         "explicit_properties": {},
+         "name": "q",
+         "object_type": "SEQUENCE",
+         "schema": "main"
+        }
+       ],
+       "schema": "main",
+       "sql_text": "CREATE SEQUENCE q",
+       "statement_type": "DDL"
+      }
+     ],
+     "success": true
+    },
+    "facts_validate": {
+     "errors": [],
+     "statements_found": 3,
+     "valid": true
+    },
+    "regex_extraction": [
+     "ALTER TABLE s.t ADD COLUMN c INT",
+     "DROP VIEW IF EXISTS v",
+     "CREATE SEQUENCE q"
+    ],
+    "regex_objects": [
+     {
+      "dialect": "duckdb",
+      "dialect_options": {},
+      "explicit_properties": {},
+      "name": "q",
+      "object_type": "SEQUENCE",
+      "schema": "main"
+     },
+     {
+      "dialect": "duckdb",
+      "dialect_options": {},
+      "explicit_properties": {},
+      "name": "t",
+      "object_type": "TABLE",
+      "schema": "s"
+     }
+    ],
+    "regex_parse": {
+     "errors": [],
+     "statements": [
+      {
+       "affected_objects": [
+        {
+         "dialect": "duckdb",
+         "dialect_options": {},
+         "explicit_properties": {},
+         "name": "t",
+         "object_type": "TABLE",
+         "schema": "s"
+        }
+       ],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [
+        {
+         "dialect": "duckdb",
+         "dialect_options": {},
+         "explicit_properties": {},
+         "name": "t",
+         "object_type": "TABLE",
+         "schema": "s"
+        }
+       ],
+       "schema": "main",
+       "sql_text": "ALTER TABLE s.t ADD COLUMN c INT",
+       "statement_type": "DDL"
+      },
+      {
+       "affected_objects": [],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [],
+       "schema": "main",
+       "sql_text": "DROP VIEW IF EXISTS v",
+       "statement_type": "DDL"
+      },
+      {
+       "affected_objects": [
+        {
+         "dialect": "duckdb",
+         "dialect_options": {},
+         "explicit_properties": {},
+         "name": "q",
+         "object_type": "SEQUENCE",
+         "schema": "main"
+        }
+       ],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [
+        {
+         "dialect": "duckdb",
+         "dialect_options": {},
+         "explicit_properties": {},
+         "name": "q",
+         "object_type": "SEQUENCE",
+         "schema": "main"
+        }
+       ],
+       "schema": "main",
+       "sql_text": "CREATE SEQUENCE q",
+       "statement_type": "DDL"
+      }
+     ],
+     "success": true
+    }
+   }
+  },
+  "script_12": {
+   "input": "CREATE TABLE c1(x INT); -- trailing comment only",
+   "output": {
+    "facts_objects": [
+     {
+      "dialect": "duckdb",
+      "dialect_options": {},
+      "explicit_properties": {},
+      "name": "c1",
+      "object_type": "TABLE",
+      "schema": "main"
+     }
+    ],
+    "facts_parse": {
+     "errors": [],
+     "statements": [
+      {
+       "affected_objects": [
+        {
+         "dialect": "duckdb",
+         "dialect_options": {},
+         "explicit_properties": {},
+         "name": "c1",
+         "object_type": "TABLE",
+         "schema": "main"
+        }
+       ],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [
+        {
+         "dialect": "duckdb",
+         "dialect_options": {},
+         "explicit_properties": {},
+         "name": "c1",
+         "object_type": "TABLE",
+         "schema": "main"
+        }
+       ],
+       "schema": "main",
+       "sql_text": "CREATE TABLE c1(x INT)",
+       "statement_type": "DDL"
+      },
+      {
+       "affected_objects": [],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [],
+       "schema": "main",
+       "sql_text": "-- trailing comment only",
+       "statement_type": "UNKNOWN"
+      }
+     ],
+     "success": true
+    },
+    "facts_validate": {
+     "errors": [],
+     "statements_found": 2,
+     "valid": true
+    },
+    "regex_extraction": [
+     "CREATE TABLE c1(x INT)",
+     "-- trailing comment only"
+    ],
+    "regex_objects": [
+     {
+      "dialect": "duckdb",
+      "dialect_options": {},
+      "explicit_properties": {},
+      "name": "c1",
+      "object_type": "TABLE",
+      "schema": "main"
+     }
+    ],
+    "regex_parse": {
+     "errors": [],
+     "statements": [
+      {
+       "affected_objects": [
+        {
+         "dialect": "duckdb",
+         "dialect_options": {},
+         "explicit_properties": {},
+         "name": "c1",
+         "object_type": "TABLE",
+         "schema": "main"
+        }
+       ],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [
+        {
+         "dialect": "duckdb",
+         "dialect_options": {},
+         "explicit_properties": {},
+         "name": "c1",
+         "object_type": "TABLE",
+         "schema": "main"
+        }
+       ],
+       "schema": "main",
+       "sql_text": "CREATE TABLE c1(x INT)",
+       "statement_type": "DDL"
+      },
+      {
+       "affected_objects": [],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [],
+       "schema": "main",
+       "sql_text": "-- trailing comment only",
+       "statement_type": "UNKNOWN"
+      }
+     ],
+     "success": true
+    }
+   }
+  },
+  "script_13": {
+   "input": "-- only a comment\n/* and another */",
+   "output": {
+    "facts_objects": [],
+    "facts_parse": {
+     "errors": [],
+     "statements": [
+      {
+       "affected_objects": [],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [],
+       "schema": "main",
+       "sql_text": "-- only a comment\n/* and another */",
+       "statement_type": "UNKNOWN"
+      }
+     ],
+     "success": true
+    },
+    "facts_validate": {
+     "errors": [],
+     "statements_found": 1,
+     "valid": true
+    },
+    "regex_extraction": [
+     "-- only a comment\n/* and another */"
+    ],
+    "regex_objects": [],
+    "regex_parse": {
+     "errors": [],
+     "statements": [
+      {
+       "affected_objects": [],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [],
+       "schema": "main",
+       "sql_text": "-- only a comment\n/* and another */",
+       "statement_type": "UNKNOWN"
+      }
+     ],
+     "success": true
+    }
+   }
+  },
+  "script_14": {
+   "input": "CREATE TABLE \"caf\u00e9\" (a INT)",
+   "output": {
+    "facts_objects": [
+     {
+      "dialect": "duckdb",
+      "dialect_options": {},
+      "explicit_properties": {},
+      "name": "caf\u00e9",
+      "object_type": "TABLE",
+      "schema": "main"
+     }
+    ],
+    "facts_parse": {
+     "errors": [],
+     "statements": [
+      {
+       "affected_objects": [
+        {
+         "dialect": "duckdb",
+         "dialect_options": {},
+         "explicit_properties": {},
+         "name": "caf\u00e9",
+         "object_type": "TABLE",
+         "schema": "main"
+        }
+       ],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [
+        {
+         "dialect": "duckdb",
+         "dialect_options": {},
+         "explicit_properties": {},
+         "name": "caf\u00e9",
+         "object_type": "TABLE",
+         "schema": "main"
+        }
+       ],
+       "schema": "main",
+       "sql_text": "CREATE TABLE \"caf\u00e9\" (a INT)",
+       "statement_type": "DDL"
+      }
+     ],
+     "success": true
+    },
+    "facts_validate": {
+     "errors": [],
+     "statements_found": 1,
+     "valid": true
+    },
+    "regex_extraction": [
+     "CREATE TABLE \"caf\u00e9\" (a INT)"
+    ],
+    "regex_objects": [
+     {
+      "dialect": "duckdb",
+      "dialect_options": {},
+      "explicit_properties": {},
+      "name": "caf\u00e9",
+      "object_type": "TABLE",
+      "schema": "main"
+     }
+    ],
+    "regex_parse": {
+     "errors": [],
+     "statements": [
+      {
+       "affected_objects": [
+        {
+         "dialect": "duckdb",
+         "dialect_options": {},
+         "explicit_properties": {},
+         "name": "caf\u00e9",
+         "object_type": "TABLE",
+         "schema": "main"
+        }
+       ],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [
+        {
+         "dialect": "duckdb",
+         "dialect_options": {},
+         "explicit_properties": {},
+         "name": "caf\u00e9",
+         "object_type": "TABLE",
+         "schema": "main"
+        }
+       ],
+       "schema": "main",
+       "sql_text": "CREATE TABLE \"caf\u00e9\" (a INT)",
+       "statement_type": "DDL"
+      }
+     ],
+     "success": true
+    }
+   }
+  },
+  "script_15": {
+   "input": "INSERT INTO caf\u00e9 VALUES (1)",
+   "output": {
+    "facts_objects": [
+     {
+      "dialect": "duckdb",
+      "dialect_options": {},
+      "explicit_properties": {},
+      "name": "caf\u00e9",
+      "object_type": "TABLE",
+      "schema": "main"
+     }
+    ],
+    "facts_parse": {
+     "errors": [],
+     "statements": [
+      {
+       "affected_objects": [
+        {
+         "dialect": "duckdb",
+         "dialect_options": {},
+         "explicit_properties": {},
+         "name": "caf\u00e9",
+         "object_type": "TABLE",
+         "schema": "main"
+        }
+       ],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [
+        {
+         "dialect": "duckdb",
+         "dialect_options": {},
+         "explicit_properties": {},
+         "name": "caf\u00e9",
+         "object_type": "TABLE",
+         "schema": "main"
+        }
+       ],
+       "schema": "main",
+       "sql_text": "INSERT INTO caf\u00e9 VALUES (1)",
+       "statement_type": "DML"
+      }
+     ],
+     "success": true
+    },
+    "facts_validate": {
+     "errors": [],
+     "statements_found": 1,
+     "valid": true
+    },
+    "regex_extraction": [
+     "INSERT INTO caf\u00e9 VALUES (1)"
+    ],
+    "regex_objects": [],
+    "regex_parse": {
+     "errors": [],
+     "statements": [
+      {
+       "affected_objects": [],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [],
+       "schema": "main",
+       "sql_text": "INSERT INTO caf\u00e9 VALUES (1)",
+       "statement_type": "DML"
+      }
+     ],
+     "success": true
+    }
+   }
+  },
+  "script_16": {
+   "input": "UPDATE \u00fcber.t SET a = 1 WHERE b = 2",
+   "output": {
+    "facts_objects": [
+     {
+      "dialect": "duckdb",
+      "dialect_options": {},
+      "explicit_properties": {},
+      "name": "t",
+      "object_type": "TABLE",
+      "schema": "\u00fcber"
+     }
+    ],
+    "facts_parse": {
+     "errors": [],
+     "statements": [
+      {
+       "affected_objects": [
+        {
+         "dialect": "duckdb",
+         "dialect_options": {},
+         "explicit_properties": {},
+         "name": "t",
+         "object_type": "TABLE",
+         "schema": "\u00fcber"
+        }
+       ],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [
+        {
+         "dialect": "duckdb",
+         "dialect_options": {},
+         "explicit_properties": {},
+         "name": "t",
+         "object_type": "TABLE",
+         "schema": "\u00fcber"
+        }
+       ],
+       "schema": "main",
+       "sql_text": "UPDATE \u00fcber.t SET a = 1 WHERE b = 2",
+       "statement_type": "DML"
+      }
+     ],
+     "success": true
+    },
+    "facts_validate": {
+     "errors": [],
+     "statements_found": 1,
+     "valid": true
+    },
+    "regex_extraction": [
+     "UPDATE \u00fcber.t SET a = 1 WHERE b = 2"
+    ],
+    "regex_objects": [],
+    "regex_parse": {
+     "errors": [],
+     "statements": [
+      {
+       "affected_objects": [],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [],
+       "schema": "main",
+       "sql_text": "UPDATE \u00fcber.t SET a = 1 WHERE b = 2",
+       "statement_type": "DML"
+      }
+     ],
+     "success": true
+    }
+   }
+  },
+  "script_17": {
+   "input": "DROP VIEW IF EXISTS \u4e2d\u6587",
+   "output": {
+    "facts_objects": [
+     {
+      "dialect": "duckdb",
+      "dialect_options": {},
+      "explicit_properties": {},
+      "name": "\u4e2d\u6587",
+      "object_type": "VIEW",
+      "schema": "main"
+     }
+    ],
+    "facts_parse": {
+     "errors": [],
+     "statements": [
+      {
+       "affected_objects": [
+        {
+         "dialect": "duckdb",
+         "dialect_options": {},
+         "explicit_properties": {},
+         "name": "\u4e2d\u6587",
+         "object_type": "VIEW",
+         "schema": "main"
+        }
+       ],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [
+        {
+         "dialect": "duckdb",
+         "dialect_options": {},
+         "explicit_properties": {},
+         "name": "\u4e2d\u6587",
+         "object_type": "VIEW",
+         "schema": "main"
+        }
+       ],
+       "schema": "main",
+       "sql_text": "DROP VIEW IF EXISTS \u4e2d\u6587",
+       "statement_type": "DDL"
+      }
+     ],
+     "success": true
+    },
+    "facts_validate": {
+     "errors": [],
+     "statements_found": 1,
+     "valid": true
+    },
+    "regex_extraction": [
+     "DROP VIEW IF EXISTS \u4e2d\u6587"
+    ],
+    "regex_objects": [],
+    "regex_parse": {
+     "errors": [],
+     "statements": [
+      {
+       "affected_objects": [],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [],
+       "schema": "main",
+       "sql_text": "DROP VIEW IF EXISTS \u4e2d\u6587",
+       "statement_type": "DDL"
+      }
+     ],
+     "success": true
+    }
+   }
+  },
+  "script_18": {
+   "input": "CREATE TABLE t\u00a0(a INT)",
+   "output": {
+    "facts_objects": [],
+    "facts_parse": {
+     "errors": [],
+     "statements": [
+      {
+       "affected_objects": [],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [],
+       "schema": "main",
+       "sql_text": "CREATE TABLE t\u00a0(a INT)",
+       "statement_type": "DDL"
+      }
+     ],
+     "success": true
+    },
+    "facts_validate": {
+     "errors": [],
+     "statements_found": 1,
+     "valid": true
+    },
+    "regex_extraction": [
+     "CREATE TABLE t\u00a0(a INT)"
+    ],
+    "regex_objects": [
+     {
+      "dialect": "duckdb",
+      "dialect_options": {},
+      "explicit_properties": {},
+      "name": "t",
+      "object_type": "TABLE",
+      "schema": "main"
+     }
+    ],
+    "regex_parse": {
+     "errors": [],
+     "statements": [
+      {
+       "affected_objects": [
+        {
+         "dialect": "duckdb",
+         "dialect_options": {},
+         "explicit_properties": {},
+         "name": "t",
+         "object_type": "TABLE",
+         "schema": "main"
+        }
+       ],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [
+        {
+         "dialect": "duckdb",
+         "dialect_options": {},
+         "explicit_properties": {},
+         "name": "t",
+         "object_type": "TABLE",
+         "schema": "main"
+        }
+       ],
+       "schema": "main",
+       "sql_text": "CREATE TABLE t\u00a0(a INT)",
+       "statement_type": "DDL"
+      }
+     ],
+     "success": true
+    }
+   }
+  },
+  "script_19": {
+   "input": "CREATE TABLE a\u3000b (x INT)",
+   "output": {
+    "facts_objects": [],
+    "facts_parse": {
+     "errors": [],
+     "statements": [
+      {
+       "affected_objects": [],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [],
+       "schema": "main",
+       "sql_text": "CREATE TABLE a\u3000b (x INT)",
+       "statement_type": "DDL"
+      }
+     ],
+     "success": true
+    },
+    "facts_validate": {
+     "errors": [],
+     "statements_found": 1,
+     "valid": true
+    },
+    "regex_extraction": [
+     "CREATE TABLE a\u3000b (x INT)"
+    ],
+    "regex_objects": [
+     {
+      "dialect": "duckdb",
+      "dialect_options": {},
+      "explicit_properties": {},
+      "name": "a",
+      "object_type": "TABLE",
+      "schema": "main"
+     }
+    ],
+    "regex_parse": {
+     "errors": [],
+     "statements": [
+      {
+       "affected_objects": [
+        {
+         "dialect": "duckdb",
+         "dialect_options": {},
+         "explicit_properties": {},
+         "name": "a",
+         "object_type": "TABLE",
+         "schema": "main"
+        }
+       ],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [
+        {
+         "dialect": "duckdb",
+         "dialect_options": {},
+         "explicit_properties": {},
+         "name": "a",
+         "object_type": "TABLE",
+         "schema": "main"
+        }
+       ],
+       "schema": "main",
+       "sql_text": "CREATE TABLE a\u3000b (x INT)",
+       "statement_type": "DDL"
+      }
+     ],
+     "success": true
+    }
+   }
+  },
+  "script_20": {
+   "input": "DROP TABLE t\u200b",
+   "output": {
+    "facts_objects": [],
+    "facts_parse": {
+     "errors": [],
+     "statements": [
+      {
+       "affected_objects": [],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [],
+       "schema": "main",
+       "sql_text": "DROP TABLE t\u200b",
+       "statement_type": "DDL"
+      }
+     ],
+     "success": true
+    },
+    "facts_validate": {
+     "errors": [],
+     "statements_found": 1,
+     "valid": true
+    },
+    "regex_extraction": [
+     "DROP TABLE t\u200b"
+    ],
+    "regex_objects": [
+     {
+      "dialect": "duckdb",
+      "dialect_options": {},
+      "explicit_properties": {},
+      "name": "t",
+      "object_type": "TABLE",
+      "schema": "main"
+     }
+    ],
+    "regex_parse": {
+     "errors": [],
+     "statements": [
+      {
+       "affected_objects": [
+        {
+         "dialect": "duckdb",
+         "dialect_options": {},
+         "explicit_properties": {},
+         "name": "t",
+         "object_type": "TABLE",
+         "schema": "main"
+        }
+       ],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [
+        {
+         "dialect": "duckdb",
+         "dialect_options": {},
+         "explicit_properties": {},
+         "name": "t",
+         "object_type": "TABLE",
+         "schema": "main"
+        }
+       ],
+       "schema": "main",
+       "sql_text": "DROP TABLE t\u200b",
+       "statement_type": "DDL"
+      }
+     ],
+     "success": true
+    }
+   }
+  }
+ },
+ "facts": {
+  "statement_00": {
+   "input": "MERGE INTO t USING s ON t.id = s.id WHEN MATCHED THEN UPDATE SET val = s.val WHEN NOT MATCHED THEN INSERT (id, val) VALUES (s.id, s.val);",
+   "output": {
+    "blank": "MERGE INTO t USING s ON t.id = s.id WHEN MATCHED THEN UPDATE SET val = s.val WHEN NOT MATCHED THEN INSERT (id, val) VALUES (s.id, s.val);",
+    "dml": {
+     "events": [
+      "INSERT",
+      "UPDATE"
+     ],
+     "table": "t",
+     "updated_columns": [
+      "val"
+     ]
+    },
+    "facts": {
+     "action": null,
+     "affected_columns": [
+      "val"
+     ],
+     "declared_column_comments": null,
+     "declared_columns": [],
+     "declared_constraints": [],
+     "diagnostic": null,
+     "error": null,
+     "events": [
+      "INSERT",
+      "UPDATE"
+     ],
+     "indexed_columns": null,
+     "indexed_table": null,
+     "kind": "DML",
+     "objects": [
+      {
+       "name": "t",
+       "role": "altered",
+       "schema": null,
+       "type": "TABLE"
+      },
+      {
+       "name": "s",
+       "role": "referenced",
+       "schema": null,
+       "type": "TABLE"
+      }
+     ],
+     "operation": "MERGE",
+     "predicate": null,
+     "target": "t",
+     "target_sql": "t"
+    }
+   }
+  },
+  "statement_01": {
+   "input": "MERGE INTO users USING s ON s.id = users.id WHEN MATCHED AND s.expired THEN DELETE;",
+   "output": {
+    "blank": "MERGE INTO users USING s ON s.id = users.id WHEN MATCHED AND s.expired THEN DELETE;",
+    "dml": {
+     "events": [
+      "DELETE"
+     ],
+     "table": "users",
+     "updated_columns": []
+    },
+    "facts": {
+     "action": null,
+     "affected_columns": [],
+     "declared_column_comments": null,
+     "declared_columns": [],
+     "declared_constraints": [],
+     "diagnostic": null,
+     "error": null,
+     "events": [
+      "DELETE"
+     ],
+     "indexed_columns": null,
+     "indexed_table": null,
+     "kind": "DML",
+     "objects": [
+      {
+       "name": "users",
+       "role": "altered",
+       "schema": null,
+       "type": "TABLE"
+      },
+      {
+       "name": "s",
+       "role": "referenced",
+       "schema": null,
+       "type": "TABLE"
+      }
+     ],
+     "operation": "MERGE",
+     "predicate": null,
+     "target": "users",
+     "target_sql": "users"
+    }
+   }
+  },
+  "statement_02": {
+   "input": "MERGE INTO \"Sales\".\"Order Items\" AS t USING staging.items AS s ON t.id = s.id WHEN MATCHED THEN UPDATE SET \"Item Value\" = s.val;",
+   "output": {
+    "blank": "MERGE INTO \"Sales\".\"Order Items\" AS t USING staging.items AS s ON t.id = s.id WHEN MATCHED THEN UPDATE SET \"Item Value\" = s.val;",
+    "dml": {
+     "events": [
+      "UPDATE"
+     ],
+     "table": "Sales.Order Items",
+     "updated_columns": [
+      "Item Value"
+     ]
+    },
+    "facts": {
+     "action": null,
+     "affected_columns": [
+      "Item Value"
+     ],
+     "declared_column_comments": null,
+     "declared_columns": [],
+     "declared_constraints": [],
+     "diagnostic": null,
+     "error": null,
+     "events": [
+      "UPDATE"
+     ],
+     "indexed_columns": null,
+     "indexed_table": null,
+     "kind": "DML",
+     "objects": [
+      {
+       "name": "Order Items",
+       "role": "altered",
+       "schema": "Sales",
+       "type": "TABLE"
+      },
+      {
+       "name": "items",
+       "role": "referenced",
+       "schema": "staging",
+       "type": "TABLE"
+      }
+     ],
+     "operation": "MERGE",
+     "predicate": null,
+     "target": "Sales.Order Items",
+     "target_sql": "\"Sales\".\"Order Items\""
+    }
+   }
+  },
+  "statement_03": {
+   "input": "WITH incoming AS (SELECT id, val FROM staging.items) MERGE INTO items AS t USING incoming AS s ON t.id = s.id WHEN MATCHED THEN UPDATE SET val = $$changed;value$$;",
+   "output": {
+    "blank": "WITH incoming AS (SELECT id, val FROM staging.items) MERGE INTO items AS t USING incoming AS s ON t.id = s.id WHEN MATCHED THEN UPDATE SET val = $$changed;value$$;",
+    "dml": {
+     "events": [
+      "UPDATE"
+     ],
+     "table": "items",
+     "updated_columns": [
+      "val"
+     ]
+    },
+    "facts": {
+     "action": null,
+     "affected_columns": [
+      "val"
+     ],
+     "declared_column_comments": null,
+     "declared_columns": [],
+     "declared_constraints": [],
+     "diagnostic": null,
+     "error": null,
+     "events": [
+      "UPDATE"
+     ],
+     "indexed_columns": null,
+     "indexed_table": null,
+     "kind": "DML",
+     "objects": [
+      {
+       "name": "items",
+       "role": "altered",
+       "schema": null,
+       "type": "TABLE"
+      },
+      {
+       "name": "items",
+       "role": "referenced",
+       "schema": "staging",
+       "type": "TABLE"
+      }
+     ],
+     "operation": "MERGE",
+     "predicate": null,
+     "target": "items",
+     "target_sql": "items"
+    }
+   }
+  },
+  "statement_04": {
+   "input": "MERGE INTO t USING s ON t.id=s.id WHEN MATCHED THEN UPDATE SET val=(WITH s AS (SELECT val FROM z) SELECT val FROM s);",
+   "output": {
+    "blank": "MERGE INTO t USING s ON t.id=s.id WHEN MATCHED THEN UPDATE SET val=(WITH s AS (SELECT val FROM z) SELECT val FROM s);",
+    "dml": {
+     "events": [
+      "UPDATE"
+     ],
+     "table": "t",
+     "updated_columns": [
+      "val"
+     ]
+    },
+    "facts": {
+     "action": null,
+     "affected_columns": [
+      "val"
+     ],
+     "declared_column_comments": null,
+     "declared_columns": [],
+     "declared_constraints": [],
+     "diagnostic": null,
+     "error": null,
+     "events": [
+      "UPDATE"
+     ],
+     "indexed_columns": null,
+     "indexed_table": null,
+     "kind": "DML",
+     "objects": [
+      {
+       "name": "t",
+       "role": "altered",
+       "schema": null,
+       "type": "TABLE"
+      },
+      {
+       "name": "s",
+       "role": "referenced",
+       "schema": null,
+       "type": "TABLE"
+      },
+      {
+       "name": "z",
+       "role": "referenced",
+       "schema": null,
+       "type": "TABLE"
+      }
+     ],
+     "operation": "MERGE",
+     "predicate": null,
+     "target": "t",
+     "target_sql": "t"
+    }
+   }
+  },
+  "statement_05": {
+   "input": "COPY items FROM '/tmp/items.csv' (FORMAT CSV, HEADER);",
+   "output": {
+    "blank": "COPY items FROM '/tmp/items.csv' (FORMAT CSV, HEADER);",
+    "dml": {
+     "events": [
+      "INSERT"
+     ],
+     "table": "items",
+     "updated_columns": []
+    },
+    "facts": {
+     "action": null,
+     "affected_columns": [],
+     "declared_column_comments": null,
+     "declared_columns": [],
+     "declared_constraints": [],
+     "diagnostic": null,
+     "error": null,
+     "events": [
+      "INSERT"
+     ],
+     "indexed_columns": null,
+     "indexed_table": null,
+     "kind": "DML",
+     "objects": [
+      {
+       "name": "items",
+       "role": "altered",
+       "schema": null,
+       "type": "TABLE"
+      }
+     ],
+     "operation": "COPY",
+     "predicate": null,
+     "target": "items",
+     "target_sql": "items"
+    }
+   }
+  },
+  "statement_06": {
+   "input": "COPY \"Sales\".\"Order Items\" (id, \"Item Value\") FROM '/tmp/items.csv' (FORMAT CSV, FORCE_NOT_NULL (id));",
+   "output": {
+    "blank": "COPY \"Sales\".\"Order Items\" (id, \"Item Value\") FROM '/tmp/items.csv' (FORMAT CSV, FORCE_NOT_NULL (id));",
+    "dml": {
+     "events": [
+      "INSERT"
+     ],
+     "table": "Sales.Order Items",
+     "updated_columns": []
+    },
+    "facts": {
+     "action": null,
+     "affected_columns": [
+      "id",
+      "Item Value"
+     ],
+     "declared_column_comments": null,
+     "declared_columns": [],
+     "declared_constraints": [],
+     "diagnostic": null,
+     "error": null,
+     "events": [
+      "INSERT"
+     ],
+     "indexed_columns": null,
+     "indexed_table": null,
+     "kind": "DML",
+     "objects": [
+      {
+       "name": "Order Items",
+       "role": "altered",
+       "schema": "Sales",
+       "type": "TABLE"
+      }
+     ],
+     "operation": "COPY",
+     "predicate": null,
+     "target": "Sales.Order Items",
+     "target_sql": "\"Sales\".\"Order Items\""
+    }
+   }
+  },
+  "statement_07": {
+   "input": "/* outer /* inner */ tail */ COPY /* target */ items (id) FROM '/tmp/items;--/*quoted*/.csv';",
+   "output": {
+    "blank": "  COPY   items (id) FROM '/tmp/items;--/*quoted*/.csv';",
+    "dml": {
+     "events": [
+      "INSERT"
+     ],
+     "table": "items",
+     "updated_columns": []
+    },
+    "facts": {
+     "action": null,
+     "affected_columns": [
+      "id"
+     ],
+     "declared_column_comments": null,
+     "declared_columns": [],
+     "declared_constraints": [],
+     "diagnostic": null,
+     "error": null,
+     "events": [
+      "INSERT"
+     ],
+     "indexed_columns": null,
+     "indexed_table": null,
+     "kind": "DML",
+     "objects": [
+      {
+       "name": "items",
+       "role": "altered",
+       "schema": null,
+       "type": "TABLE"
+      }
+     ],
+     "operation": "COPY",
+     "predicate": null,
+     "target": "items",
+     "target_sql": "items"
+    }
+   }
+  },
+  "statement_08": {
+   "input": "COPY items TO '/tmp/items.csv' (FORMAT CSV, HEADER);",
+   "output": {
+    "blank": "COPY items TO '/tmp/items.csv' (FORMAT CSV, HEADER);",
+    "dml": {
+     "events": null,
+     "table": "",
+     "updated_columns": []
+    },
+    "facts": {
+     "action": null,
+     "affected_columns": [],
+     "declared_column_comments": null,
+     "declared_columns": [],
+     "declared_constraints": [],
+     "diagnostic": null,
+     "error": null,
+     "events": null,
+     "indexed_columns": null,
+     "indexed_table": null,
+     "kind": "QUERY",
+     "objects": [
+      {
+       "name": "items",
+       "role": "referenced",
+       "schema": null,
+       "type": "TABLE"
+      }
+     ],
+     "operation": "COPY",
+     "predicate": null,
+     "target": null,
+     "target_sql": null
+    }
+   }
+  },
+  "statement_09": {
+   "input": "COPY \"Sales\".\"Order Items\" (id, \"Item Value\") TO '/tmp/items;out.parquet' (FORMAT PARQUET);",
+   "output": {
+    "blank": "COPY \"Sales\".\"Order Items\" (id, \"Item Value\") TO '/tmp/items;out.parquet' (FORMAT PARQUET);",
+    "dml": {
+     "events": null,
+     "table": "",
+     "updated_columns": []
+    },
+    "facts": {
+     "action": null,
+     "affected_columns": [],
+     "declared_column_comments": null,
+     "declared_columns": [],
+     "declared_constraints": [],
+     "diagnostic": null,
+     "error": null,
+     "events": null,
+     "indexed_columns": null,
+     "indexed_table": null,
+     "kind": "QUERY",
+     "objects": [
+      {
+       "name": "Order Items",
+       "role": "referenced",
+       "schema": "Sales",
+       "type": "TABLE"
+      }
+     ],
+     "operation": "COPY",
+     "predicate": null,
+     "target": null,
+     "target_sql": null
+    }
+   }
+  },
+  "statement_10": {
+   "input": "COPY (SELECT id FROM items) TO '/tmp/items.csv';",
+   "output": {
+    "blank": "COPY (SELECT id FROM items) TO '/tmp/items.csv';",
+    "dml": {
+     "events": null,
+     "table": "",
+     "updated_columns": []
+    },
+    "facts": {
+     "action": null,
+     "affected_columns": [],
+     "declared_column_comments": null,
+     "declared_columns": [],
+     "declared_constraints": [],
+     "diagnostic": null,
+     "error": null,
+     "events": null,
+     "indexed_columns": null,
+     "indexed_table": null,
+     "kind": "QUERY",
+     "objects": [
+      {
+       "name": "items",
+       "role": "referenced",
+       "schema": null,
+       "type": "TABLE"
+      }
+     ],
+     "operation": "COPY",
+     "predicate": null,
+     "target": null,
+     "target_sql": null
+    }
+   }
+  },
+  "statement_11": {
+   "input": "COPY FROM DATABASE source_db TO target_db;",
+   "output": {
+    "blank": "COPY FROM DATABASE source_db TO target_db;",
+    "dml": {
+     "events": null,
+     "table": "",
+     "updated_columns": []
+    },
+    "facts": {
+     "action": null,
+     "affected_columns": [],
+     "declared_column_comments": null,
+     "declared_columns": [],
+     "declared_constraints": [],
+     "diagnostic": "duckdb COPY source or destination is opaque",
+     "error": null,
+     "events": null,
+     "indexed_columns": null,
+     "indexed_table": null,
+     "kind": "UNKNOWN",
+     "objects": [],
+     "operation": "COPY",
+     "predicate": null,
+     "target": null,
+     "target_sql": null
+    }
+   }
+  },
+  "statement_12": {
+   "input": "COPY items FROM STDIN;",
+   "output": {
+    "blank": "COPY items FROM STDIN;",
+    "dml": {
+     "events": null,
+     "table": "",
+     "updated_columns": []
+    },
+    "facts": {
+     "action": null,
+     "affected_columns": [],
+     "declared_column_comments": null,
+     "declared_columns": [],
+     "declared_constraints": [],
+     "diagnostic": "duckdb COPY source or destination is opaque",
+     "error": null,
+     "events": null,
+     "indexed_columns": null,
+     "indexed_table": null,
+     "kind": "UNKNOWN",
+     "objects": [],
+     "operation": "COPY",
+     "predicate": null,
+     "target": null,
+     "target_sql": null
+    }
+   }
+  },
+  "statement_13": {
+   "input": "COPY items TO STDOUT;",
+   "output": {
+    "blank": "COPY items TO STDOUT;",
+    "dml": {
+     "events": null,
+     "table": "",
+     "updated_columns": []
+    },
+    "facts": {
+     "action": null,
+     "affected_columns": [],
+     "declared_column_comments": null,
+     "declared_columns": [],
+     "declared_constraints": [],
+     "diagnostic": "duckdb COPY source or destination is opaque",
+     "error": null,
+     "events": null,
+     "indexed_columns": null,
+     "indexed_table": null,
+     "kind": "UNKNOWN",
+     "objects": [],
+     "operation": "COPY",
+     "predicate": null,
+     "target": null,
+     "target_sql": null
+    }
+   }
+  },
+  "statement_14": {
+   "input": "COPY items FROM $path;",
+   "output": {
+    "blank": "COPY items FROM $path;",
+    "dml": {
+     "events": null,
+     "table": "",
+     "updated_columns": []
+    },
+    "facts": {
+     "action": null,
+     "affected_columns": [],
+     "declared_column_comments": null,
+     "declared_columns": [],
+     "declared_constraints": [],
+     "diagnostic": "duckdb COPY source or destination is opaque",
+     "error": null,
+     "events": null,
+     "indexed_columns": null,
+     "indexed_table": null,
+     "kind": "UNKNOWN",
+     "objects": [],
+     "operation": "COPY",
+     "predicate": null,
+     "target": null,
+     "target_sql": null
+    }
+   }
+  },
+  "statement_15": {
+   "input": "COPY items TO ('/tmp/' || 'items.csv');",
+   "output": {
+    "blank": "COPY items TO ('/tmp/' || 'items.csv');",
+    "dml": {
+     "events": null,
+     "table": "",
+     "updated_columns": []
+    },
+    "facts": {
+     "action": null,
+     "affected_columns": [],
+     "declared_column_comments": null,
+     "declared_columns": [],
+     "declared_constraints": [],
+     "diagnostic": "duckdb COPY source or destination is opaque",
+     "error": null,
+     "events": null,
+     "indexed_columns": null,
+     "indexed_table": null,
+     "kind": "UNKNOWN",
+     "objects": [],
+     "operation": "COPY",
+     "predicate": null,
+     "target": null,
+     "target_sql": null
+    }
+   }
+  },
+  "statement_16": {
+   "input": "COPY items FROM '/tmp/' || 'items.csv';",
+   "output": {
+    "blank": "COPY items FROM '/tmp/' || 'items.csv';",
+    "dml": {
+     "events": null,
+     "table": "",
+     "updated_columns": []
+    },
+    "facts": {
+     "action": null,
+     "affected_columns": [],
+     "declared_column_comments": null,
+     "declared_columns": [],
+     "declared_constraints": [],
+     "diagnostic": "duckdb COPY source or destination is opaque",
+     "error": null,
+     "events": null,
+     "indexed_columns": null,
+     "indexed_table": null,
+     "kind": "UNKNOWN",
+     "objects": [],
+     "operation": "COPY",
+     "predicate": null,
+     "target": null,
+     "target_sql": null
+    }
+   }
+  },
+  "statement_17": {
+   "input": "COPY items FROM ('/tmp/items.csv');",
+   "output": {
+    "blank": "COPY items FROM ('/tmp/items.csv');",
+    "dml": {
+     "events": null,
+     "table": "",
+     "updated_columns": []
+    },
+    "facts": {
+     "action": null,
+     "affected_columns": [],
+     "declared_column_comments": null,
+     "declared_columns": [],
+     "declared_constraints": [],
+     "diagnostic": "duckdb COPY source or destination is opaque",
+     "error": null,
+     "events": null,
+     "indexed_columns": null,
+     "indexed_table": null,
+     "kind": "UNKNOWN",
+     "objects": [],
+     "operation": "COPY",
+     "predicate": null,
+     "target": null,
+     "target_sql": null
+    }
+   }
+  },
+  "statement_18": {
+   "input": "COPY items FROM 42;",
+   "output": {
+    "blank": "COPY items FROM 42;",
+    "dml": {
+     "events": null,
+     "table": "",
+     "updated_columns": []
+    },
+    "facts": {
+     "action": null,
+     "affected_columns": [],
+     "declared_column_comments": null,
+     "declared_columns": [],
+     "declared_constraints": [],
+     "diagnostic": "duckdb COPY source or destination is opaque",
+     "error": null,
+     "events": null,
+     "indexed_columns": null,
+     "indexed_table": null,
+     "kind": "UNKNOWN",
+     "objects": [],
+     "operation": "COPY",
+     "predicate": null,
+     "target": null,
+     "target_sql": null
+    }
+   }
+  },
+  "statement_19": {
+   "input": "COPY items FROM 'a.csv', 'b.csv';",
+   "output": {
+    "blank": "COPY items FROM 'a.csv', 'b.csv';",
+    "dml": {
+     "events": null,
+     "table": "",
+     "updated_columns": []
+    },
+    "facts": {
+     "action": null,
+     "affected_columns": [],
+     "declared_column_comments": null,
+     "declared_columns": [],
+     "declared_constraints": [],
+     "diagnostic": "duckdb COPY source or destination is opaque",
+     "error": null,
+     "events": null,
+     "indexed_columns": null,
+     "indexed_table": null,
+     "kind": "UNKNOWN",
+     "objects": [],
+     "operation": "COPY",
+     "predicate": null,
+     "target": null,
+     "target_sql": null
+    }
+   }
+  },
+  "statement_20": {
+   "input": "COPY items FROM $$items.csv$$;",
+   "output": {
+    "blank": "COPY items FROM $$items.csv$$;",
+    "dml": {
+     "events": null,
+     "table": "",
+     "updated_columns": []
+    },
+    "facts": {
+     "action": null,
+     "affected_columns": [],
+     "declared_column_comments": null,
+     "declared_columns": [],
+     "declared_constraints": [],
+     "diagnostic": "duckdb COPY source or destination is opaque",
+     "error": null,
+     "events": null,
+     "indexed_columns": null,
+     "indexed_table": null,
+     "kind": "UNKNOWN",
+     "objects": [],
+     "operation": "COPY",
+     "predicate": null,
+     "target": null,
+     "target_sql": null
+    }
+   }
+  },
+  "statement_21": {
+   "input": "COPY items FROM E'items.csv';",
+   "output": {
+    "blank": "COPY items FROM E'items.csv';",
+    "dml": {
+     "events": null,
+     "table": "",
+     "updated_columns": []
+    },
+    "facts": {
+     "action": null,
+     "affected_columns": [],
+     "declared_column_comments": null,
+     "declared_columns": [],
+     "declared_constraints": [],
+     "diagnostic": "duckdb COPY source or destination is opaque",
+     "error": null,
+     "events": null,
+     "indexed_columns": null,
+     "indexed_table": null,
+     "kind": "UNKNOWN",
+     "objects": [],
+     "operation": "COPY",
+     "predicate": null,
+     "target": null,
+     "target_sql": null
+    }
+   }
+  },
+  "statement_22": {
+   "input": "INSERT INTO t VALUES (1) RETURNING a -- c",
+   "output": {
+    "blank": "INSERT INTO t VALUES (1) RETURNING a  ",
+    "dml": {
+     "events": [
+      "INSERT"
+     ],
+     "table": "t",
+     "updated_columns": []
+    },
+    "facts": {
+     "action": null,
+     "affected_columns": [],
+     "declared_column_comments": null,
+     "declared_columns": [],
+     "declared_constraints": [],
+     "diagnostic": null,
+     "error": null,
+     "events": [
+      "INSERT"
+     ],
+     "indexed_columns": null,
+     "indexed_table": null,
+     "kind": "DML",
+     "objects": [
+      {
+       "name": "t",
+       "role": "altered",
+       "schema": null,
+       "type": "TABLE"
+      }
+     ],
+     "operation": "INSERT",
+     "predicate": null,
+     "target": "t",
+     "target_sql": "t"
+    }
+   }
+  },
+  "statement_23": {
+   "input": "/* lead */ UPDATE t SET a = $$x;y$$ WHERE b = E'q\\'z'",
+   "output": {
+    "blank": "  UPDATE t SET a = $$x;y$$ WHERE b = E'q\\'z'",
+    "dml": {
+     "events": [
+      "UPDATE"
+     ],
+     "table": "t",
+     "updated_columns": [
+      "a"
+     ]
+    },
+    "facts": {
+     "action": null,
+     "affected_columns": [
+      "a"
+     ],
+     "declared_column_comments": null,
+     "declared_columns": [],
+     "declared_constraints": [],
+     "diagnostic": null,
+     "error": null,
+     "events": [
+      "UPDATE"
+     ],
+     "indexed_columns": null,
+     "indexed_table": null,
+     "kind": "DML",
+     "objects": [
+      {
+       "name": "t",
+       "role": "altered",
+       "schema": null,
+       "type": "TABLE"
+      }
+     ],
+     "operation": "UPDATE",
+     "predicate": "b = e'q''z'",
+     "target": "t",
+     "target_sql": "t"
+    }
+   }
+  },
+  "statement_24": {
+   "input": "DELETE FROM t -- c\n WHERE a = 1",
+   "output": {
+    "blank": "DELETE FROM t  \n WHERE a = 1",
+    "dml": {
+     "events": [
+      "DELETE"
+     ],
+     "table": "t",
+     "updated_columns": []
+    },
+    "facts": {
+     "action": null,
+     "affected_columns": [],
+     "declared_column_comments": null,
+     "declared_columns": [],
+     "declared_constraints": [],
+     "diagnostic": null,
+     "error": null,
+     "events": [
+      "DELETE"
+     ],
+     "indexed_columns": null,
+     "indexed_table": null,
+     "kind": "DML",
+     "objects": [
+      {
+       "name": "t",
+       "role": "altered",
+       "schema": null,
+       "type": "TABLE"
+      }
+     ],
+     "operation": "DELETE",
+     "predicate": "a = 1",
+     "target": "t",
+     "target_sql": "t"
+    }
+   }
+  },
+  "statement_25": {
+   "input": "CREATE TABLE \"a;b\" (x INT) /* c */",
+   "output": {
+    "blank": "CREATE TABLE \"a;b\" (x INT)  ",
+    "dml": {
+     "events": null,
+     "table": "",
+     "updated_columns": []
+    },
+    "facts": {
+     "action": null,
+     "affected_columns": [],
+     "declared_column_comments": null,
+     "declared_columns": [
+      "x"
+     ],
+     "declared_constraints": [],
+     "diagnostic": null,
+     "error": null,
+     "events": null,
+     "indexed_columns": null,
+     "indexed_table": null,
+     "kind": "DDL",
+     "objects": [
+      {
+       "name": "a;b",
+       "role": "created",
+       "schema": null,
+       "type": "TABLE"
+      }
+     ],
+     "operation": "CREATE",
+     "predicate": null,
+     "target": null,
+     "target_sql": null
+    }
+   }
+  },
+  "statement_26": {
+   "input": "UPDATE t SET a = 1 /* /* n */ */ WHERE b = 2",
+   "output": {
+    "blank": "UPDATE t SET a = 1   WHERE b = 2",
+    "dml": {
+     "events": [
+      "UPDATE"
+     ],
+     "table": "t",
+     "updated_columns": [
+      "a"
+     ]
+    },
+    "facts": {
+     "action": null,
+     "affected_columns": [
+      "a"
+     ],
+     "declared_column_comments": null,
+     "declared_columns": [],
+     "declared_constraints": [],
+     "diagnostic": null,
+     "error": null,
+     "events": [
+      "UPDATE"
+     ],
+     "indexed_columns": null,
+     "indexed_table": null,
+     "kind": "DML",
+     "objects": [
+      {
+       "name": "t",
+       "role": "altered",
+       "schema": null,
+       "type": "TABLE"
+      }
+     ],
+     "operation": "UPDATE",
+     "predicate": "b = 2",
+     "target": "t",
+     "target_sql": "t"
+    }
+   }
+  },
+  "statement_27": {
+   "input": "-- c\nINSERT INTO t SELECT * FROM s",
+   "output": {
+    "blank": " \nINSERT INTO t SELECT * FROM s",
+    "dml": {
+     "events": [
+      "INSERT"
+     ],
+     "table": "t",
+     "updated_columns": []
+    },
+    "facts": {
+     "action": null,
+     "affected_columns": [],
+     "declared_column_comments": null,
+     "declared_columns": [],
+     "declared_constraints": [],
+     "diagnostic": null,
+     "error": null,
+     "events": [
+      "INSERT"
+     ],
+     "indexed_columns": null,
+     "indexed_table": null,
+     "kind": "DML",
+     "objects": [
+      {
+       "name": "t",
+       "role": "altered",
+       "schema": null,
+       "type": "TABLE"
+      },
+      {
+       "name": "s",
+       "role": "referenced",
+       "schema": null,
+       "type": "TABLE"
+      }
+     ],
+     "operation": "INSERT",
+     "predicate": null,
+     "target": "t",
+     "target_sql": "t"
+    }
+   }
+  },
+  "statement_28": {
+   "input": "CREATE MACRO m(a) AS a || ';'",
+   "output": {
+    "blank": "CREATE MACRO m(a) AS a || ';'",
+    "dml": {
+     "events": null,
+     "table": "",
+     "updated_columns": []
+    },
+    "facts": {
+     "action": null,
+     "affected_columns": [],
+     "declared_column_comments": null,
+     "declared_columns": [],
+     "declared_constraints": [],
+     "diagnostic": "duckdb macro identity and body are opaque to statement facts",
+     "error": null,
+     "events": null,
+     "indexed_columns": null,
+     "indexed_table": null,
+     "kind": "DDL",
+     "objects": [],
+     "operation": "CREATE",
+     "predicate": null,
+     "target": null,
+     "target_sql": null
+    }
+   }
+  },
+  "statement_29": {
+   "input": "COPY t TO 'f;x' (DELIMITER ';')",
+   "output": {
+    "blank": "COPY t TO 'f;x' (DELIMITER ';')",
+    "dml": {
+     "events": null,
+     "table": "",
+     "updated_columns": []
+    },
+    "facts": {
+     "action": null,
+     "affected_columns": [],
+     "declared_column_comments": null,
+     "declared_columns": [],
+     "declared_constraints": [],
+     "diagnostic": null,
+     "error": null,
+     "events": null,
+     "indexed_columns": null,
+     "indexed_table": null,
+     "kind": "QUERY",
+     "objects": [
+      {
+       "name": "t",
+       "role": "referenced",
+       "schema": null,
+       "type": "TABLE"
+      }
+     ],
+     "operation": "COPY",
+     "predicate": null,
+     "target": null,
+     "target_sql": null
+    }
+   }
+  },
+  "statement_30": {
+   "input": "INSERT INTO s.t (a, b) SELECT a, b FROM u",
+   "output": {
+    "blank": "INSERT INTO s.t (a, b) SELECT a, b FROM u",
+    "dml": {
+     "events": [
+      "INSERT"
+     ],
+     "table": "s.t",
+     "updated_columns": []
+    },
+    "facts": {
+     "action": null,
+     "affected_columns": [],
+     "declared_column_comments": null,
+     "declared_columns": [],
+     "declared_constraints": [],
+     "diagnostic": null,
+     "error": null,
+     "events": [
+      "INSERT"
+     ],
+     "indexed_columns": null,
+     "indexed_table": null,
+     "kind": "DML",
+     "objects": [
+      {
+       "name": "t",
+       "role": "altered",
+       "schema": "s",
+       "type": "TABLE"
+      },
+      {
+       "name": "u",
+       "role": "referenced",
+       "schema": null,
+       "type": "TABLE"
+      }
+     ],
+     "operation": "INSERT",
+     "predicate": null,
+     "target": "s.t",
+     "target_sql": "s.t"
+    }
+   }
+  },
+  "statement_31": {
+   "input": "UPDATE t SET a = u.a FROM u WHERE t.id = u.id",
+   "output": {
+    "blank": "UPDATE t SET a = u.a FROM u WHERE t.id = u.id",
+    "dml": {
+     "events": [
+      "UPDATE"
+     ],
+     "table": "t",
+     "updated_columns": [
+      "a"
+     ]
+    },
+    "facts": {
+     "action": null,
+     "affected_columns": [
+      "a"
+     ],
+     "declared_column_comments": null,
+     "declared_columns": [],
+     "declared_constraints": [],
+     "diagnostic": null,
+     "error": null,
+     "events": [
+      "UPDATE"
+     ],
+     "indexed_columns": null,
+     "indexed_table": null,
+     "kind": "DML",
+     "objects": [
+      {
+       "name": "t",
+       "role": "altered",
+       "schema": null,
+       "type": "TABLE"
+      },
+      {
+       "name": "u",
+       "role": "referenced",
+       "schema": null,
+       "type": "TABLE"
+      }
+     ],
+     "operation": "UPDATE",
+     "predicate": "t.id = u.id",
+     "target": "t",
+     "target_sql": "t"
+    }
+   }
+  },
+  "statement_32": {
+   "input": "DELETE FROM t USING u WHERE t.id = u.id",
+   "output": {
+    "blank": "DELETE FROM t USING u WHERE t.id = u.id",
+    "dml": {
+     "events": [
+      "DELETE"
+     ],
+     "table": "t",
+     "updated_columns": []
+    },
+    "facts": {
+     "action": null,
+     "affected_columns": [],
+     "declared_column_comments": null,
+     "declared_columns": [],
+     "declared_constraints": [],
+     "diagnostic": null,
+     "error": null,
+     "events": [
+      "DELETE"
+     ],
+     "indexed_columns": null,
+     "indexed_table": null,
+     "kind": "DML",
+     "objects": [
+      {
+       "name": "t",
+       "role": "altered",
+       "schema": null,
+       "type": "TABLE"
+      },
+      {
+       "name": "u",
+       "role": "referenced",
+       "schema": null,
+       "type": "TABLE"
+      }
+     ],
+     "operation": "DELETE",
+     "predicate": "t.id = u.id",
+     "target": "t",
+     "target_sql": "t"
+    }
+   }
+  },
+  "statement_33": {
+   "input": "CREATE VIEW v AS SELECT 1 AS a",
+   "output": {
+    "blank": "CREATE VIEW v AS SELECT 1 AS a",
+    "dml": {
+     "events": null,
+     "table": "",
+     "updated_columns": []
+    },
+    "facts": {
+     "action": null,
+     "affected_columns": [],
+     "declared_column_comments": null,
+     "declared_columns": [],
+     "declared_constraints": [],
+     "diagnostic": null,
+     "error": null,
+     "events": null,
+     "indexed_columns": null,
+     "indexed_table": null,
+     "kind": "DDL",
+     "objects": [
+      {
+       "name": "v",
+       "role": "created",
+       "schema": null,
+       "type": "VIEW"
+      }
+     ],
+     "operation": "CREATE",
+     "predicate": null,
+     "target": null,
+     "target_sql": null
+    }
+   }
+  },
+  "statement_34": {
+   "input": "CREATE SEQUENCE seq START 5",
+   "output": {
+    "blank": "CREATE SEQUENCE seq START 5",
+    "dml": {
+     "events": null,
+     "table": "",
+     "updated_columns": []
+    },
+    "facts": {
+     "action": null,
+     "affected_columns": [],
+     "declared_column_comments": null,
+     "declared_columns": [],
+     "declared_constraints": [],
+     "diagnostic": null,
+     "error": null,
+     "events": null,
+     "indexed_columns": null,
+     "indexed_table": null,
+     "kind": "DDL",
+     "objects": [
+      {
+       "name": "seq",
+       "role": "created",
+       "schema": null,
+       "type": "SEQUENCE"
+      }
+     ],
+     "operation": "CREATE",
+     "predicate": null,
+     "target": null,
+     "target_sql": null
+    }
+   }
+  },
+  "statement_35": {
+   "input": "ALTER TABLE t ADD COLUMN c INTEGER DEFAULT 1",
+   "output": {
+    "blank": "ALTER TABLE t ADD COLUMN c INTEGER DEFAULT 1",
+    "dml": {
+     "events": null,
+     "table": "",
+     "updated_columns": []
+    },
+    "facts": {
+     "action": "add-column",
+     "affected_columns": [],
+     "declared_column_comments": null,
+     "declared_columns": [
+      "c"
+     ],
+     "declared_constraints": [],
+     "diagnostic": null,
+     "error": null,
+     "events": null,
+     "indexed_columns": null,
+     "indexed_table": null,
+     "kind": "DDL",
+     "objects": [
+      {
+       "name": "t",
+       "role": "altered",
+       "schema": null,
+       "type": "TABLE"
+      }
+     ],
+     "operation": "ALTER",
+     "predicate": null,
+     "target": null,
+     "target_sql": null
+    }
+   }
+  },
+  "statement_36": {
+   "input": "DROP TABLE IF EXISTS s.t",
+   "output": {
+    "blank": "DROP TABLE IF EXISTS s.t",
+    "dml": {
+     "events": null,
+     "table": "",
+     "updated_columns": []
+    },
+    "facts": {
+     "action": null,
+     "affected_columns": [],
+     "declared_column_comments": null,
+     "declared_columns": [],
+     "declared_constraints": [],
+     "diagnostic": null,
+     "error": null,
+     "events": null,
+     "indexed_columns": null,
+     "indexed_table": null,
+     "kind": "DDL",
+     "objects": [
+      {
+       "name": "t",
+       "role": "dropped",
+       "schema": "s",
+       "type": "TABLE"
+      }
+     ],
+     "operation": "DROP",
+     "predicate": null,
+     "target": null,
+     "target_sql": null
+    }
+   }
+  },
+  "statement_37": {
+   "input": "CREATE INDEX i ON t (a, b)",
+   "output": {
+    "blank": "CREATE INDEX i ON t (a, b)",
+    "dml": {
+     "events": null,
+     "table": "",
+     "updated_columns": []
+    },
+    "facts": {
+     "action": null,
+     "affected_columns": [],
+     "declared_column_comments": null,
+     "declared_columns": [],
+     "declared_constraints": [],
+     "diagnostic": null,
+     "error": null,
+     "events": null,
+     "indexed_columns": [
+      "a",
+      "b"
+     ],
+     "indexed_table": "t",
+     "kind": "DDL",
+     "objects": [
+      {
+       "name": "i",
+       "role": "created",
+       "schema": null,
+       "type": "INDEX"
+      },
+      {
+       "name": "t",
+       "role": "referenced",
+       "schema": null,
+       "type": "TABLE"
+      }
+     ],
+     "operation": "CREATE",
+     "predicate": null,
+     "target": null,
+     "target_sql": null
+    }
+   }
+  },
+  "statement_38": {
+   "input": "INSERT OR REPLACE INTO t VALUES (1, 'x')",
+   "output": {
+    "blank": "INSERT OR REPLACE INTO t VALUES (1, 'x')",
+    "dml": {
+     "events": [
+      "INSERT"
+     ],
+     "table": "t",
+     "updated_columns": []
+    },
+    "facts": {
+     "action": null,
+     "affected_columns": [],
+     "declared_column_comments": null,
+     "declared_columns": [],
+     "declared_constraints": [],
+     "diagnostic": null,
+     "error": null,
+     "events": [
+      "INSERT"
+     ],
+     "indexed_columns": null,
+     "indexed_table": null,
+     "kind": "DML",
+     "objects": [
+      {
+       "name": "t",
+       "role": "altered",
+       "schema": null,
+       "type": "TABLE"
+      }
+     ],
+     "operation": "INSERT",
+     "predicate": null,
+     "target": "t",
+     "target_sql": "t"
+    }
+   }
+  },
+  "statement_39": {
+   "input": "TRUNCATE t",
+   "output": {
+    "blank": "TRUNCATE t",
+    "dml": {
+     "events": null,
+     "table": "",
+     "updated_columns": []
+    },
+    "facts": {
+     "action": null,
+     "affected_columns": [],
+     "declared_column_comments": null,
+     "declared_columns": [],
+     "declared_constraints": [],
+     "diagnostic": null,
+     "error": null,
+     "events": null,
+     "indexed_columns": null,
+     "indexed_table": null,
+     "kind": "DDL",
+     "objects": [
+      {
+       "name": "t",
+       "role": "altered",
+       "schema": null,
+       "type": "TABLE"
+      }
+     ],
+     "operation": "TRUNCATE",
+     "predicate": null,
+     "target": null,
+     "target_sql": null
+    }
+   }
+  },
+  "statement_40": {
+   "input": "CREATE TABLE t\u00a0(a INT)",
+   "output": {
+    "blank": "CREATE TABLE t\u00a0(a INT)",
+    "dml": {
+     "events": null,
+     "table": "",
+     "updated_columns": []
+    },
+    "facts": {
+     "action": null,
+     "affected_columns": [],
+     "declared_column_comments": null,
+     "declared_columns": [],
+     "declared_constraints": [],
+     "diagnostic": "duckdb statement holds U+00A0, which the engine may read as part of a name; its objects are not named",
+     "error": null,
+     "events": null,
+     "indexed_columns": null,
+     "indexed_table": null,
+     "kind": "DDL",
+     "objects": [],
+     "operation": "CREATE",
+     "predicate": null,
+     "target": null,
+     "target_sql": null
+    }
+   }
+  },
+  "statement_41": {
+   "input": "DROP TABLE t\u200b",
+   "output": {
+    "blank": "DROP TABLE t\u200b",
+    "dml": {
+     "events": null,
+     "table": "",
+     "updated_columns": []
+    },
+    "facts": {
+     "action": null,
+     "affected_columns": [],
+     "declared_column_comments": null,
+     "declared_columns": [],
+     "declared_constraints": [],
+     "diagnostic": "duckdb statement holds U+200B, which the engine may read as part of a name; its objects are not named",
+     "error": null,
+     "events": null,
+     "indexed_columns": null,
+     "indexed_table": null,
+     "kind": "DDL",
+     "objects": [],
+     "operation": "DROP",
+     "predicate": null,
+     "target": null,
+     "target_sql": null
+    }
+   }
+  },
+  "statement_42": {
+   "input": "CREATE TABLE a\u3000b (x INT)",
+   "output": {
+    "blank": "CREATE TABLE a\u3000b (x INT)",
+    "dml": {
+     "events": null,
+     "table": "",
+     "updated_columns": []
+    },
+    "facts": {
+     "action": null,
+     "affected_columns": [],
+     "declared_column_comments": null,
+     "declared_columns": [],
+     "declared_constraints": [],
+     "diagnostic": "duckdb statement holds U+3000, which the engine may read as part of a name; its objects are not named",
+     "error": null,
+     "events": null,
+     "indexed_columns": null,
+     "indexed_table": null,
+     "kind": "DDL",
+     "objects": [],
+     "operation": "CREATE",
+     "predicate": null,
+     "target": null,
+     "target_sql": null
+    }
+   }
+  },
+  "statement_43": {
+   "input": "CREATE TABLE \"caf\u00e9\" (a INT)",
+   "output": {
+    "blank": "CREATE TABLE \"caf\u00e9\" (a INT)",
+    "dml": {
+     "events": null,
+     "table": "",
+     "updated_columns": []
+    },
+    "facts": {
+     "action": null,
+     "affected_columns": [],
+     "declared_column_comments": null,
+     "declared_columns": [
+      "a"
+     ],
+     "declared_constraints": [],
+     "diagnostic": null,
+     "error": null,
+     "events": null,
+     "indexed_columns": null,
+     "indexed_table": null,
+     "kind": "DDL",
+     "objects": [
+      {
+       "name": "caf\u00e9",
+       "role": "created",
+       "schema": null,
+       "type": "TABLE"
+      }
+     ],
+     "operation": "CREATE",
+     "predicate": null,
+     "target": null,
+     "target_sql": null
+    }
+   }
+  },
+  "statement_44": {
+   "input": "INSERT INTO caf\u00e9 VALUES (1)",
+   "output": {
+    "blank": "INSERT INTO caf\u00e9 VALUES (1)",
+    "dml": {
+     "events": [
+      "INSERT"
+     ],
+     "table": "caf\u00e9",
+     "updated_columns": []
+    },
+    "facts": {
+     "action": null,
+     "affected_columns": [],
+     "declared_column_comments": null,
+     "declared_columns": [],
+     "declared_constraints": [],
+     "diagnostic": null,
+     "error": null,
+     "events": [
+      "INSERT"
+     ],
+     "indexed_columns": null,
+     "indexed_table": null,
+     "kind": "DML",
+     "objects": [
+      {
+       "name": "caf\u00e9",
+       "role": "altered",
+       "schema": null,
+       "type": "TABLE"
+      }
+     ],
+     "operation": "INSERT",
+     "predicate": null,
+     "target": "caf\u00e9",
+     "target_sql": "caf\u00e9"
+    }
+   }
+  },
+  "statement_45": {
+   "input": "UPDATE \u00fcber.t SET a = 1 WHERE b = 2",
+   "output": {
+    "blank": "UPDATE \u00fcber.t SET a = 1 WHERE b = 2",
+    "dml": {
+     "events": [
+      "UPDATE"
+     ],
+     "table": "\u00fcber.t",
+     "updated_columns": [
+      "a"
+     ]
+    },
+    "facts": {
+     "action": null,
+     "affected_columns": [
+      "a"
+     ],
+     "declared_column_comments": null,
+     "declared_columns": [],
+     "declared_constraints": [],
+     "diagnostic": null,
+     "error": null,
+     "events": [
+      "UPDATE"
+     ],
+     "indexed_columns": null,
+     "indexed_table": null,
+     "kind": "DML",
+     "objects": [
+      {
+       "name": "t",
+       "role": "altered",
+       "schema": "\u00fcber",
+       "type": "TABLE"
+      }
+     ],
+     "operation": "UPDATE",
+     "predicate": "b = 2",
+     "target": "\u00fcber.t",
+     "target_sql": "\u00fcber.t"
+    }
+   }
+  },
+  "statement_46": {
+   "input": "DROP VIEW IF EXISTS \u4e2d\u6587",
+   "output": {
+    "blank": "DROP VIEW IF EXISTS \u4e2d\u6587",
+    "dml": {
+     "events": null,
+     "table": "",
+     "updated_columns": []
+    },
+    "facts": {
+     "action": null,
+     "affected_columns": [],
+     "declared_column_comments": null,
+     "declared_columns": [],
+     "declared_constraints": [],
+     "diagnostic": null,
+     "error": null,
+     "events": null,
+     "indexed_columns": null,
+     "indexed_table": null,
+     "kind": "DDL",
+     "objects": [
+      {
+       "name": "\u4e2d\u6587",
+       "role": "dropped",
+       "schema": null,
+       "type": "VIEW"
+      }
+     ],
+     "operation": "DROP",
+     "predicate": null,
+     "target": null,
+     "target_sql": null
+    }
+   }
+  }
+ },
+ "masking": {
+  "bom_statement": {
+   "input": "\ufeffSELECT 1",
+   "output": [
+    "\ufeffSELECT 1",
+    ""
+   ]
+  },
+  "doubled_quote_literal": {
+   "input": "SELECT 'it''s;' AS a",
+   "output": [
+    "SELECT '?' AS a",
+    "SELECT"
+   ]
+  },
+  "identified_by": {
+   "input": "CREATE USER bob IDENTIFIED BY secretpw",
+   "output": [
+    "CREATE USER bob IDENTIFIED BY ?",
+    "CREATE USER bob"
+   ]
+  },
+  "leak_after_a_comment": {
+   "input": "UPDATE t SET a = 1 /* c */, pw = $$hunter2$$ -- tail",
+   "output": [
+    "UPDATE t SET a = 1 /* c */, pw = $$hunter2$$ -- tail",
+    "UPDATE t"
+   ]
+  },
+  "leak_after_a_line_comment": {
+   "input": "UPDATE t SET a = 1 -- c\n, pw = $x$hunter2$x$",
+   "output": [
+    "UPDATE t SET a = 1 -- c\n, pw = $x$hunter2$x$",
+    "UPDATE t"
+   ]
+  },
+  "leak_escape_backslash": {
+   "input": "UPDATE t SET pw = E'hun\\'ter2'",
+   "output": [
+    "UPDATE",
+    "UPDATE"
+   ]
+  },
+  "leak_nested_tag": {
+   "input": "UPDATE t SET pw = $a$x $b$ y $b$ z$a$",
+   "output": [
+    "UPDATE t SET pw = $a$x $b$ y $b$ z$a$",
+    "UPDATE t"
+   ]
+  },
+  "leak_plain_and_tagged": {
+   "input": "INSERT INTO t VALUES ('a', $k$secret$k$)",
+   "output": [
+    "INSERT INTO t VALUES ('?', $k$secret$k$)",
+    "INSERT INTO t"
+   ]
+  },
+  "leak_tagged_dollar": {
+   "input": "UPDATE t SET pw = $t$hunter2$t$",
+   "output": [
+    "UPDATE t SET pw = $t$hunter2$t$",
+    "UPDATE t"
+   ]
+  },
+  "leak_untagged_dollar": {
+   "input": "UPDATE t SET pw = $$hunter2$$",
+   "output": [
+    "UPDATE t SET pw = $$hunter2$$",
+    "UPDATE t"
+   ]
+  },
+  "placeholder_statement": {
+   "input": "UPDATE t SET v = ${a;b}",
+   "output": [
+    "UPDATE t SET v = ${a;b}",
+    "UPDATE t"
+   ]
+  },
+  "plain_literal": {
+   "input": "UPDATE t SET pw = 'hunter2'",
+   "output": [
+    "UPDATE t SET pw = '?'",
+    "UPDATE t"
+   ]
+  },
+  "shape_00": {
+   "input": "\u000b",
+   "output": [
+    "\u000b",
+    ""
+   ]
+  },
+  "shape_01": {
+   "input": "\"",
+   "output": [
+    "\"",
+    "\""
+   ]
+  },
+  "shape_02": {
+   "input": "'",
+   "output": [
+    "",
+    ""
+   ]
+  },
+  "shape_03": {
+   "input": "(",
+   "output": [
+    "(",
+    ""
+   ]
+  },
+  "shape_04": {
+   "input": ")",
+   "output": [
+    ")",
+    ""
+   ]
+  },
+  "shape_05": {
+   "input": "*",
+   "output": [
+    "*",
+    ""
+   ]
+  },
+  "shape_06": {
+   "input": ",",
+   "output": [
+    ",",
+    ","
+   ]
+  },
+  "shape_07": {
+   "input": "1",
+   "output": [
+    "1",
+    "1"
+   ]
+  },
+  "shape_08": {
+   "input": "E",
+   "output": [
+    "E",
+    "E"
+   ]
+  },
+  "shape_09": {
+   "input": "\"\"",
+   "output": [
+    "\"\"",
+    "\"\""
+   ]
+  },
+  "shape_10": {
+   "input": "''",
+   "output": [
+    "'?'",
+    ""
+   ]
+  },
+  "shape_11": {
+   "input": "')",
+   "output": [
+    "",
+    ""
+   ]
+  },
+  "shape_12": {
+   "input": "1*",
+   "output": [
+    "1*",
+    "1"
+   ]
+  },
+  "shape_13": {
+   "input": "1E",
+   "output": [
+    "1E",
+    "1E"
+   ]
+  },
+  "shape_14": {
+   "input": "1_",
+   "output": [
+    "1_",
+    "1 _"
+   ]
+  },
+  "shape_15": {
+   "input": "E+",
+   "output": [
+    "E+",
+    "E"
+   ]
+  },
+  "shape_16": {
+   "input": "$\n.",
+   "output": [
+    "$\n.",
+    ""
+   ]
+  },
+  "shape_17": {
+   "input": "$$;",
+   "output": [
+    "$$;",
+    ""
+   ]
+  },
+  "shape_18": {
+   "input": "'''",
+   "output": [
+    "",
+    ""
+   ]
+  },
+  "shape_19": {
+   "input": "\u2029--",
+   "output": [
+    "\u2029--",
+    ""
+   ]
+  },
+  "shape_20": {
+   "input": "(--\u2028",
+   "output": [
+    "(--\u2028",
+    ""
+   ]
+  },
+  "shape_21": {
+   "input": "*/**/",
+   "output": [
+    "*/**/",
+    ""
+   ]
+  },
+  "shape_22": {
+   "input": "/* open",
+   "output": [
+    "",
+    ""
+   ]
+  },
+  "shape_23": {
+   "input": "CREATE/",
+   "output": [
+    "CREATE/",
+    "CREATE"
+   ]
+  },
+  "shape_24": {
+   "input": "\u00b2SELECT",
+   "output": [
+    "\u00b2SELECT",
+    "\u00b2 SELECT"
+   ]
+  },
+  "shape_25": {
+   "input": "1E-- ;\n\\",
+   "output": [
+    "1E-- ;\n\\",
+    "1E-"
+   ]
+  },
+  "shape_26": {
+   "input": "DROP TABLE t",
+   "output": [
+    "DROP TABLE t",
+    "DROP TABLE t"
+   ]
+  },
+  "shape_27": {
+   "input": "/* /* open */",
+   "output": [
+    "/* /* open */",
+    ""
+   ]
+  },
+  "shape_28": {
+   "input": "CREATE SEQUENCE s",
+   "output": [
+    "CREATE SEQUENCE s",
+    "CREATE SEQUENCE s"
+   ]
+  },
+  "shape_29": {
+   "input": "CREATE VIEW v AS SELECT 1",
+   "output": [
+    "CREATE VIEW v AS SELECT 1",
+    "CREATE VIEW v"
+   ]
+  },
+  "shape_30": {
+   "input": "CREATE TABLE o68.t68(a INT)",
+   "output": [
+    "CREATE TABLE o68.t68(a INT)",
+    "CREATE TABLE o68.t68"
+   ]
+  },
+  "unicode_blank_between": {
+   "input": "SELECT\u00a0'a;b'",
+   "output": [
+    "SELECT\u00a0'?'",
+    "SELECT"
+   ]
+  }
+ },
+ "placeholder": {
+  "split": [
+   "SELECT ${a",
+   "b}"
+  ]
+ },
+ "returning": {
+  "decision_00": {
+   "input": "INSERT INTO t VALUES (1)",
+   "output": [
+    1,
+    [
+     "INSERT INTO t VALUES (1)\nRETURNING 1"
+    ]
+   ]
+  },
+  "decision_01": {
+   "input": "INSERT INTO t VALUES (1); INSERT INTO t VALUES (2)",
+   "output": [
+    null,
+    []
+   ]
+  },
+  "decision_02": {
+   "input": "INSERT INTO t VALUES (1) -- c",
+   "output": [
+    1,
+    [
+     "INSERT INTO t VALUES (1) -- c\nRETURNING 1"
+    ]
+   ]
+  },
+  "decision_03": {
+   "input": "-- c\nUPDATE t SET v = 1",
+   "output": [
+    1,
+    [
+     "-- c\nUPDATE t SET v = 1\nRETURNING 1"
+    ]
+   ]
+  },
+  "decision_04": {
+   "input": "/* c */ DELETE FROM t WHERE id = 1",
+   "output": [
+    1,
+    [
+     "/* c */ DELETE FROM t WHERE id = 1\nRETURNING 1"
+    ]
+   ]
+  },
+  "decision_05": {
+   "input": "UPDATE t SET v = ' returning ' WHERE id = 1",
+   "output": [
+    1,
+    [
+     "UPDATE t SET v = ' returning ' WHERE id = 1\nRETURNING 1"
+    ]
+   ]
+  },
+  "decision_06": {
+   "input": "UPDATE t SET v = 'x' /* returning */ WHERE id = 1",
+   "output": [
+    1,
+    [
+     "UPDATE t SET v = 'x' /* returning */ WHERE id = 1\nRETURNING 1"
+    ]
+   ]
+  },
+  "decision_07": {
+   "input": "DELETE FROM t -- returning\nWHERE id = 1",
+   "output": [
+    1,
+    [
+     "DELETE FROM t -- returning\nWHERE id = 1\nRETURNING 1"
+    ]
+   ]
+  },
+  "decision_08": {
+   "input": "UPDATE t SET v = 1 RETURNING v",
+   "output": [
+    null,
+    []
+   ]
+  },
+  "decision_09": {
+   "input": "UPDATE t SET v = 1 /* c */ RETURNING v",
+   "output": [
+    null,
+    []
+   ]
+  },
+  "decision_10": {
+   "input": "SELECT 1",
+   "output": [
+    null,
+    []
+   ]
+  },
+  "decision_11": {
+   "input": ".mode csv\nINSERT INTO t VALUES (1)",
+   "output": [
+    null,
+    []
+   ]
+  },
+  "decision_12": {
+   "input": "INSERT INTO t VALUES (1)\u0000",
+   "output": [
+    null,
+    []
+   ]
+  },
+  "decision_13": {
+   "input": "INSERT INTO t SELECT $$a;b$$",
+   "output": [
+    1,
+    [
+     "INSERT INTO t SELECT $$a;b$$\nRETURNING 1"
+    ]
+   ]
+  },
+  "decision_14": {
+   "input": "UPDATE t SET a = 1;",
+   "output": [
+    1,
+    [
+     "UPDATE t SET a = 1\nRETURNING 1"
+    ]
+   ]
+  },
+  "decision_15": {
+   "input": "WITH x AS (SELECT 1) INSERT INTO t SELECT * FROM x",
+   "output": [
+    null,
+    []
+   ]
+  },
+  "decision_16": {
+   "input": "insert into t values (1)",
+   "output": [
+    1,
+    [
+     "insert into t values (1)\nRETURNING 1"
+    ]
+   ]
+  },
+  "decision_17": {
+   "input": "  ",
+   "output": [
+    null,
+    []
+   ]
+  },
+  "decision_18": {
+   "input": "",
+   "output": [
+    null,
+    []
+   ]
+  },
+  "decision_19": {
+   "input": "INSERT INTO t VALUES (1) /* open",
+   "output": [
+    1,
+    [
+     "INSERT INTO t VALUES (1) /* open\nRETURNING 1"
+    ]
+   ]
+  }
+ },
+ "tokens": {
+  "shape_00": {
+   "input": "\u000b",
+   "output": {
+    "base": [
+     [
+      "EOF",
+      "",
+      1,
+      1,
+      2
+     ]
+    ],
+    "duckdb": [
+     [
+      "EOF",
+      "",
+      1,
+      1,
+      2
+     ]
+    ]
+   }
+  },
+  "shape_01": {
+   "input": "\"",
+   "output": {
+    "base": [
+     [
+      "SYMBOL",
+      "\"",
+      0,
+      1,
+      1
+     ]
+    ],
+    "duckdb": [
+     [
+      "SYMBOL",
+      "\"",
+      0,
+      1,
+      1
+     ]
+    ]
+   }
+  },
+  "shape_02": {
+   "input": "'",
+   "output": {
+    "base": [
+     "error",
+     "UnsafeStatementSplitError",
+     "unterminated string opened at line 1, column 1"
+    ],
+    "duckdb": [
+     "error",
+     "UnsafeStatementSplitError",
+     "unterminated string opened at line 1, column 1"
+    ]
+   }
+  },
+  "shape_03": {
+   "input": "(",
+   "output": {
+    "base": [
+     [
+      "SYMBOL",
+      "(",
+      0,
+      1,
+      1
+     ]
+    ],
+    "duckdb": [
+     [
+      "SYMBOL",
+      "(",
+      0,
+      1,
+      1
+     ]
+    ]
+   }
+  },
+  "shape_04": {
+   "input": ")",
+   "output": {
+    "base": [
+     [
+      "SYMBOL",
+      ")",
+      0,
+      1,
+      1
+     ]
+    ],
+    "duckdb": [
+     [
+      "SYMBOL",
+      ")",
+      0,
+      1,
+      1
+     ]
+    ]
+   }
+  },
+  "shape_05": {
+   "input": "*",
+   "output": {
+    "base": [
+     [
+      "SYMBOL",
+      "*",
+      0,
+      1,
+      1
+     ]
+    ],
+    "duckdb": [
+     [
+      "SYMBOL",
+      "*",
+      0,
+      1,
+      1
+     ]
+    ]
+   }
+  },
+  "shape_06": {
+   "input": ",",
+   "output": {
+    "base": [
+     [
+      "SYMBOL",
+      ",",
+      0,
+      1,
+      1
+     ]
+    ],
+    "duckdb": [
+     [
+      "SYMBOL",
+      ",",
+      0,
+      1,
+      1
+     ]
+    ]
+   }
+  },
+  "shape_07": {
+   "input": "1",
+   "output": {
+    "base": [
+     [
+      "IDENTIFIER",
+      "1",
+      0,
+      1,
+      1
+     ]
+    ],
+    "duckdb": [
+     [
+      "IDENTIFIER",
+      "1",
+      0,
+      1,
+      1
+     ]
+    ]
+   }
+  },
+  "shape_08": {
+   "input": "E",
+   "output": {
+    "base": [
+     [
+      "IDENTIFIER",
+      "E",
+      0,
+      1,
+      1
+     ]
+    ],
+    "duckdb": [
+     [
+      "IDENTIFIER",
+      "E",
+      0,
+      1,
+      1
+     ]
+    ]
+   }
+  },
+  "shape_09": {
+   "input": "\"\"",
+   "output": {
+    "base": [
+     [
+      "SYMBOL",
+      "\"",
+      0,
+      1,
+      1
+     ],
+     [
+      "SYMBOL",
+      "\"",
+      1,
+      1,
+      2
+     ]
+    ],
+    "duckdb": [
+     [
+      "SYMBOL",
+      "\"",
+      0,
+      1,
+      1
+     ],
+     [
+      "SYMBOL",
+      "\"",
+      1,
+      1,
+      2
+     ]
+    ]
+   }
+  },
+  "shape_10": {
+   "input": "''",
+   "output": {
+    "base": [
+     [
+      "STRING",
+      "''",
+      0,
+      1,
+      1
+     ]
+    ],
+    "duckdb": [
+     [
+      "STRING",
+      "''",
+      0,
+      1,
+      1
+     ]
+    ]
+   }
+  },
+  "shape_11": {
+   "input": "')",
+   "output": {
+    "base": [
+     "error",
+     "UnsafeStatementSplitError",
+     "unterminated string opened at line 1, column 1"
+    ],
+    "duckdb": [
+     "error",
+     "UnsafeStatementSplitError",
+     "unterminated string opened at line 1, column 1"
+    ]
+   }
+  },
+  "shape_12": {
+   "input": "1*",
+   "output": {
+    "base": [
+     [
+      "IDENTIFIER",
+      "1",
+      0,
+      1,
+      1
+     ],
+     [
+      "SYMBOL",
+      "*",
+      1,
+      1,
+      2
+     ]
+    ],
+    "duckdb": [
+     [
+      "IDENTIFIER",
+      "1",
+      0,
+      1,
+      1
+     ],
+     [
+      "SYMBOL",
+      "*",
+      1,
+      1,
+      2
+     ]
+    ]
+   }
+  },
+  "shape_13": {
+   "input": "1E",
+   "output": {
+    "base": [
+     [
+      "IDENTIFIER",
+      "1E",
+      0,
+      1,
+      1
+     ]
+    ],
+    "duckdb": [
+     [
+      "IDENTIFIER",
+      "1E",
+      0,
+      1,
+      1
+     ]
+    ]
+   }
+  },
+  "shape_14": {
+   "input": "1_",
+   "output": {
+    "base": [
+     [
+      "IDENTIFIER",
+      "1",
+      0,
+      1,
+      1
+     ],
+     [
+      "IDENTIFIER",
+      "_",
+      1,
+      1,
+      2
+     ]
+    ],
+    "duckdb": [
+     [
+      "IDENTIFIER",
+      "1",
+      0,
+      1,
+      1
+     ],
+     [
+      "IDENTIFIER",
+      "_",
+      1,
+      1,
+      2
+     ]
+    ]
+   }
+  },
+  "shape_15": {
+   "input": "E+",
+   "output": {
+    "base": [
+     [
+      "IDENTIFIER",
+      "E",
+      0,
+      1,
+      1
+     ],
+     [
+      "SYMBOL",
+      "+",
+      1,
+      1,
+      2
+     ]
+    ],
+    "duckdb": [
+     [
+      "IDENTIFIER",
+      "E",
+      0,
+      1,
+      1
+     ],
+     [
+      "SYMBOL",
+      "+",
+      1,
+      1,
+      2
+     ]
+    ]
+   }
+  },
+  "shape_16": {
+   "input": "$\n.",
+   "output": {
+    "base": [
+     [
+      "SYMBOL",
+      "$",
+      0,
+      1,
+      1
+     ],
+     [
+      "SYMBOL",
+      ".",
+      2,
+      2,
+      1
+     ]
+    ],
+    "duckdb": [
+     [
+      "SYMBOL",
+      "$",
+      0,
+      1,
+      1
+     ],
+     [
+      "SYMBOL",
+      ".",
+      2,
+      2,
+      1
+     ]
+    ]
+   }
+  },
+  "shape_17": {
+   "input": "$$;",
+   "output": {
+    "base": [
+     [
+      "SYMBOL",
+      "$",
+      0,
+      1,
+      1
+     ],
+     [
+      "SYMBOL",
+      "$",
+      1,
+      1,
+      2
+     ],
+     [
+      "DELIMITER",
+      ";",
+      2,
+      1,
+      3
+     ]
+    ],
+    "duckdb": [
+     [
+      "SYMBOL",
+      "$",
+      0,
+      1,
+      1
+     ],
+     [
+      "SYMBOL",
+      "$",
+      1,
+      1,
+      2
+     ],
+     [
+      "DELIMITER",
+      ";",
+      2,
+      1,
+      3
+     ]
+    ]
+   }
+  },
+  "shape_18": {
+   "input": "'''",
+   "output": {
+    "base": [
+     "error",
+     "UnsafeStatementSplitError",
+     "unterminated string opened at line 1, column 1"
+    ],
+    "duckdb": [
+     "error",
+     "UnsafeStatementSplitError",
+     "unterminated string opened at line 1, column 1"
+    ]
+   }
+  },
+  "shape_19": {
+   "input": "\u2029--",
+   "output": {
+    "base": [
+     [
+      "COMMENT",
+      "",
+      1,
+      1,
+      2
+     ]
+    ],
+    "duckdb": [
+     [
+      "COMMENT",
+      "",
+      1,
+      1,
+      2
+     ]
+    ]
+   }
+  },
+  "shape_20": {
+   "input": "(--\u2028",
+   "output": {
+    "base": [
+     [
+      "SYMBOL",
+      "(",
+      0,
+      1,
+      1
+     ],
+     [
+      "COMMENT",
+      "",
+      1,
+      1,
+      2
+     ]
+    ],
+    "duckdb": [
+     [
+      "SYMBOL",
+      "(",
+      0,
+      1,
+      1
+     ],
+     [
+      "COMMENT",
+      "",
+      1,
+      1,
+      2
+     ]
+    ]
+   }
+  },
+  "shape_21": {
+   "input": "*/**/",
+   "output": {
+    "base": [
+     [
+      "SYMBOL",
+      "*",
+      0,
+      1,
+      1
+     ],
+     [
+      "COMMENT",
+      "",
+      1,
+      1,
+      2
+     ]
+    ],
+    "duckdb": [
+     [
+      "SYMBOL",
+      "*",
+      0,
+      1,
+      1
+     ],
+     [
+      "COMMENT",
+      "",
+      1,
+      1,
+      2
+     ]
+    ]
+   }
+  },
+  "shape_22": {
+   "input": "/* open",
+   "output": {
+    "base": [
+     "error",
+     "UnsafeStatementSplitError",
+     "unterminated block comment opened at line 1, column 1"
+    ],
+    "duckdb": [
+     "error",
+     "UnsafeStatementSplitError",
+     "unterminated block comment opened at line 1, column 1"
+    ]
+   }
+  },
+  "shape_23": {
+   "input": "CREATE/",
+   "output": {
+    "base": [
+     [
+      "KEYWORD",
+      "CREATE",
+      0,
+      1,
+      1
+     ],
+     [
+      "SYMBOL",
+      "/",
+      6,
+      1,
+      7
+     ]
+    ],
+    "duckdb": [
+     [
+      "KEYWORD",
+      "CREATE",
+      0,
+      1,
+      1
+     ],
+     [
+      "SYMBOL",
+      "/",
+      6,
+      1,
+      7
+     ]
+    ]
+   }
+  },
+  "shape_24": {
+   "input": "\u00b2SELECT",
+   "output": {
+    "base": [
+     [
+      "IDENTIFIER",
+      "\u00b2",
+      0,
+      1,
+      1
+     ],
+     [
+      "KEYWORD",
+      "SELECT",
+      1,
+      1,
+      2
+     ]
+    ],
+    "duckdb": [
+     [
+      "IDENTIFIER",
+      "\u00b2",
+      0,
+      1,
+      1
+     ],
+     [
+      "KEYWORD",
+      "SELECT",
+      1,
+      1,
+      2
+     ]
+    ]
+   }
+  },
+  "shape_25": {
+   "input": "1E-- ;\n\\",
+   "output": {
+    "base": [
+     [
+      "IDENTIFIER",
+      "1E-",
+      0,
+      1,
+      1
+     ],
+     [
+      "SYMBOL",
+      "-",
+      3,
+      1,
+      4
+     ],
+     [
+      "DELIMITER",
+      ";",
+      5,
+      1,
+      6
+     ],
+     [
+      "SYMBOL",
+      "\\",
+      7,
+      2,
+      1
+     ]
+    ],
+    "duckdb": [
+     [
+      "IDENTIFIER",
+      "1E-",
+      0,
+      1,
+      1
+     ],
+     [
+      "SYMBOL",
+      "-",
+      3,
+      1,
+      4
+     ],
+     [
+      "DELIMITER",
+      ";",
+      5,
+      1,
+      6
+     ],
+     [
+      "SYMBOL",
+      "\\",
+      7,
+      2,
+      1
+     ]
+    ]
+   }
+  },
+  "shape_26": {
+   "input": "DROP TABLE t",
+   "output": {
+    "base": [
+     [
+      "KEYWORD",
+      "DROP",
+      0,
+      1,
+      1
+     ],
+     [
+      "KEYWORD",
+      "TABLE",
+      5,
+      1,
+      6
+     ],
+     [
+      "IDENTIFIER",
+      "t",
+      11,
+      1,
+      12
+     ]
+    ],
+    "duckdb": [
+     [
+      "KEYWORD",
+      "DROP",
+      0,
+      1,
+      1
+     ],
+     [
+      "KEYWORD",
+      "TABLE",
+      5,
+      1,
+      6
+     ],
+     [
+      "IDENTIFIER",
+      "t",
+      11,
+      1,
+      12
+     ]
+    ]
+   }
+  },
+  "shape_27": {
+   "input": "/* /* open */",
+   "output": {
+    "base": [
+     [
+      "COMMENT",
+      "",
+      0,
+      1,
+      1
+     ]
+    ],
+    "duckdb": [
+     "error",
+     "UnsafeStatementSplitError",
+     "unterminated block comment opened at line 1, column 1"
+    ]
+   }
+  },
+  "shape_28": {
+   "input": "CREATE SEQUENCE s",
+   "output": {
+    "base": [
+     [
+      "KEYWORD",
+      "CREATE",
+      0,
+      1,
+      1
+     ],
+     [
+      "IDENTIFIER",
+      "SEQUENCE",
+      7,
+      1,
+      8
+     ],
+     [
+      "IDENTIFIER",
+      "s",
+      16,
+      1,
+      17
+     ]
+    ],
+    "duckdb": [
+     [
+      "KEYWORD",
+      "CREATE",
+      0,
+      1,
+      1
+     ],
+     [
+      "IDENTIFIER",
+      "SEQUENCE",
+      7,
+      1,
+      8
+     ],
+     [
+      "IDENTIFIER",
+      "s",
+      16,
+      1,
+      17
+     ]
+    ]
+   }
+  },
+  "shape_29": {
+   "input": "CREATE VIEW v AS SELECT 1",
+   "output": {
+    "base": [
+     [
+      "KEYWORD",
+      "CREATE",
+      0,
+      1,
+      1
+     ],
+     [
+      "KEYWORD",
+      "VIEW",
+      7,
+      1,
+      8
+     ],
+     [
+      "IDENTIFIER",
+      "v",
+      12,
+      1,
+      13
+     ],
+     [
+      "KEYWORD",
+      "AS",
+      14,
+      1,
+      15
+     ],
+     [
+      "KEYWORD",
+      "SELECT",
+      17,
+      1,
+      18
+     ],
+     [
+      "IDENTIFIER",
+      "1",
+      24,
+      1,
+      25
+     ]
+    ],
+    "duckdb": [
+     [
+      "KEYWORD",
+      "CREATE",
+      0,
+      1,
+      1
+     ],
+     [
+      "KEYWORD",
+      "VIEW",
+      7,
+      1,
+      8
+     ],
+     [
+      "IDENTIFIER",
+      "v",
+      12,
+      1,
+      13
+     ],
+     [
+      "KEYWORD",
+      "AS",
+      14,
+      1,
+      15
+     ],
+     [
+      "KEYWORD",
+      "SELECT",
+      17,
+      1,
+      18
+     ],
+     [
+      "IDENTIFIER",
+      "1",
+      24,
+      1,
+      25
+     ]
+    ]
+   }
+  },
+  "shape_30": {
+   "input": "CREATE TABLE o68.t68(a INT)",
+   "output": {
+    "base": [
+     [
+      "KEYWORD",
+      "CREATE",
+      0,
+      1,
+      1
+     ],
+     [
+      "KEYWORD",
+      "TABLE",
+      7,
+      1,
+      8
+     ],
+     [
+      "IDENTIFIER",
+      "o68",
+      13,
+      1,
+      14
+     ],
+     [
+      "SYMBOL",
+      ".",
+      16,
+      1,
+      17
+     ],
+     [
+      "IDENTIFIER",
+      "t68",
+      17,
+      1,
+      18
+     ],
+     [
+      "SYMBOL",
+      "(",
+      20,
+      1,
+      21
+     ],
+     [
+      "IDENTIFIER",
+      "a",
+      21,
+      1,
+      22
+     ],
+     [
+      "IDENTIFIER",
+      "INT",
+      23,
+      1,
+      24
+     ],
+     [
+      "SYMBOL",
+      ")",
+      26,
+      1,
+      27
+     ]
+    ],
+    "duckdb": [
+     [
+      "KEYWORD",
+      "CREATE",
+      0,
+      1,
+      1
+     ],
+     [
+      "KEYWORD",
+      "TABLE",
+      7,
+      1,
+      8
+     ],
+     [
+      "IDENTIFIER",
+      "o68",
+      13,
+      1,
+      14
+     ],
+     [
+      "SYMBOL",
+      ".",
+      16,
+      1,
+      17
+     ],
+     [
+      "IDENTIFIER",
+      "t68",
+      17,
+      1,
+      18
+     ],
+     [
+      "SYMBOL",
+      "(",
+      20,
+      1,
+      21
+     ],
+     [
+      "IDENTIFIER",
+      "a",
+      21,
+      1,
+      22
+     ],
+     [
+      "IDENTIFIER",
+      "INT",
+      23,
+      1,
+      24
+     ],
+     [
+      "SYMBOL",
+      ")",
+      26,
+      1,
+      27
+     ]
+    ]
+   }
+  }
+ }
+}
