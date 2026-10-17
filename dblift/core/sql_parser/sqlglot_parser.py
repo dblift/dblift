@@ -26,6 +26,7 @@ from dblift.core.sql_model.base import (
 from dblift.core.sql_model.dialect import SQLGLOT_DIALECT_MAP as _SQLGLOT_DIALECT_MAP
 from dblift.core.sql_model.dialect import _ensure_sqlglot_dialect_map
 from dblift.core.sql_parser.parser_interface import SqlParserInterface
+from dblift.core.sql_parser.unread_names import names_unreadable
 
 # Setup logger
 logger = logging.getLogger(__name__)
@@ -262,7 +263,7 @@ class SqlGlotParser(SqlParserInterface):
         except Exception as e:
             logger.error(f"Error extracting objects: {str(e)}")
 
-        return objects
+        return [] if self._names_unreadable(sql_content, objects) else objects
 
     def _preprocess_sql_content(self, sql_content: str) -> str:
         """Apply dialect-specific preprocessing before sending SQL to sqlglot."""
@@ -295,14 +296,23 @@ class SqlGlotParser(SqlParserInterface):
         # For DDL statements, the primary object is the one being created/altered/dropped
         affected_objects = self._extract_affected_objects(ast, default_schema)
 
+        unread = self._names_unreadable(sql_text, objects + affected_objects)
         return SqlStatement(
             sql_text=sql_text,
             statement_type=statement_type,
-            objects=objects,
-            affected_objects=affected_objects,
+            objects=[] if unread else objects,
+            affected_objects=[] if unread else affected_objects,
             dialect=self.dialect,
             schema=default_schema,
+            names_unread=unread,
         )
+
+    def _names_unreadable(self, sql_text: str, objects: List[SqlObject]) -> bool:
+        """Whether the engine may read the names of ``objects`` differently from sqlglot."""
+        if sql_text.isascii():
+            return False
+        names = [part for obj in objects for part in (obj.name, obj.schema) if part]
+        return names_unreadable(sql_text, self.sqlglot_dialect, names)
 
     def _determine_statement_type(self, ast: exp.Expression) -> SqlStatementType:
         """Determine the statement type from sqlglot AST.

@@ -50,6 +50,7 @@ from dblift.core.sql_model.view import View
 from dblift.core.sql_parser._sqlglot_builders import _SqlglotBuildersMixin
 from dblift.core.sql_parser.parser_interface import SqlParserInterface
 from dblift.core.sql_parser.sqlglot_parser import SqlGlotParser
+from dblift.core.sql_parser.unread_names import names_unreadable
 
 logger = logging.getLogger(__name__)
 
@@ -207,6 +208,7 @@ class HybridParser(_SqlglotBuildersMixin, SqlParserInterface):
             enhanced_statements: List[SqlStatement] = []
             for stmt in result.statements or []:
                 enhanced_stmt = self._enhance_statement(stmt, default_schema)
+                self._withhold_unreadable_names(enhanced_stmt)
                 enhanced_statements.append(enhanced_stmt)
 
                 if enhanced_stmt.objects:
@@ -347,10 +349,30 @@ class HybridParser(_SqlglotBuildersMixin, SqlParserInterface):
             return default_schema
         return self._quirks.derive_schema_name(None)
 
+    def _names_unreadable(self, stmt_text: str, objects: List[SqlObject]) -> bool:
+        """Whether the engine may read the names of ``objects`` differently from the extractors."""
+        if stmt_text.isascii():
+            return False
+        names = [part for obj in objects for part in (obj.name, obj.schema) if part]
+        return names_unreadable(stmt_text, self._quirks.sqlglot_dialect, names)
+
+    def _withhold_unreadable_names(self, stmt: SqlStatement) -> None:
+        """Name nothing in ``stmt`` (and say so) when the engine may read its names differently."""
+        if self._names_unreadable(stmt.sql_text, stmt.objects + stmt.affected_objects):
+            stmt.objects = []
+            stmt.affected_objects = []
+            stmt.names_unread = True
+
     def _extract_objects_for_statement(
         self, stmt_text: str, default_schema: Optional[str]
     ) -> List[SqlObject]:
         """Extract and reconcile objects for a single SQL statement."""
+        objects = self._merged_objects_for_statement(stmt_text, default_schema)
+        return [] if self._names_unreadable(stmt_text, objects) else objects
+
+    def _merged_objects_for_statement(
+        self, stmt_text: str, default_schema: Optional[str]
+    ) -> List[SqlObject]:
         regex_objects = self.regex_parser.extract_objects(stmt_text, default_schema)
 
         # Skip sqlglot for syntax it doesn't support at all (e.g. Oracle PARTITION BY

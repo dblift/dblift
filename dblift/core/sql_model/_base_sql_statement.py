@@ -47,6 +47,7 @@ class SqlStatement:
     affected_objects: List[SqlObject]
     dialect: Optional[str]
     schema: Optional[str]
+    names_unread: bool
 
     def __init__(
         self,
@@ -56,6 +57,7 @@ class SqlStatement:
         affected_objects: Optional[List[SqlObject]] = None,
         dialect: Optional[str] = None,
         schema: Optional[str] = None,
+        names_unread: bool = False,
     ) -> None:
         """Initialize a SQL statement.
 
@@ -66,6 +68,8 @@ class SqlStatement:
             affected_objects: Objects affected by the statement
             dialect: SQL dialect used
             schema: Default schema
+            names_unread: True when the objects were withheld because the engine may read
+                their names differently from the parser
         """
         self.sql_text = sql_text
 
@@ -82,6 +86,7 @@ class SqlStatement:
         self.affected_objects = affected_objects or []
         self.dialect = dialect.lower() if dialect else None
         self.schema = schema
+        self.names_unread = names_unread
 
     def get_primary_object(self) -> Optional[SqlObject]:
         """Get the primary object in the statement.

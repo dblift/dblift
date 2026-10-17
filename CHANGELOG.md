@@ -57,7 +57,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   object names and their undo needs manual review; an `UPDATE` or `DELETE` whose condition cannot
   be read is flagged as possibly changing every row, and DuckDB scripts with such spaces between
   tokens are reported unreadable for now; `CREATE INDEX ... USING` without columns no longer stops
-  statement analysis. The other engines keep their previous statement analysis for now.
+  statement analysis.
+- **Generated undo scripts no longer drop an existing table that looks like the migrated one.** On
+  PostgreSQL, MySQL, MariaDB, SQL Server, Oracle, Db2, Snowflake, Redshift and CockroachDB, a name
+  touching a no-break or zero-width space, a byte-order mark or a combining accent could be read
+  as a shorter name, so the undo dropped an existing `t` for `CREATE TABLE t<NBSP>(...)`. Such
+  statements now have no object names, their undo needs manual review, and `UPDATE`/`DELETE`
+  analysis names no table for them. On PostgreSQL, MySQL, MariaDB, Db2 and Redshift a name with
+  a non-ASCII letter (`tété`) also needs manual review until those engines get the SQLite reader.
 - **Statement facts on older sqlglot.** With sqlglot 30.0 to 30.14 installed, an `INSERT` made
   statement analysis fail silently (a DEBUG "Could not analyse" line), so `migrate --dry-run`
   lost its `[SAFE]` label and data-plan analysis skipped the statement. An absent `WHERE` is
