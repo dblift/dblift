@@ -50,7 +50,7 @@ from dblift.core.sql_model.view import View
 from dblift.core.sql_parser._sqlglot_builders import _SqlglotBuildersMixin
 from dblift.core.sql_parser.parser_interface import SqlParserInterface
 from dblift.core.sql_parser.sqlglot_parser import SqlGlotParser
-from dblift.core.sql_parser.unread_names import names_unreadable
+from dblift.core.sql_parser.unread_names import names_unreadable, with_trimmed_tails
 
 logger = logging.getLogger(__name__)
 
@@ -206,9 +206,10 @@ class HybridParser(_SqlglotBuildersMixin, SqlParserInterface):
                 return result
 
             enhanced_statements: List[SqlStatement] = []
-            for stmt in result.statements or []:
+            sources = with_trimmed_tails(sql_content, [s.sql_text for s in result.statements or []])
+            for stmt, source in zip(result.statements or [], sources):
                 enhanced_stmt = self._enhance_statement(stmt, default_schema)
-                self._withhold_unreadable_names(enhanced_stmt)
+                self._withhold_unreadable_names(enhanced_stmt, source)
                 enhanced_statements.append(enhanced_stmt)
 
                 if enhanced_stmt.objects:
@@ -323,10 +324,10 @@ class HybridParser(_SqlglotBuildersMixin, SqlParserInterface):
 
         objects: List[SqlObject] = []
         statements = self.split_for_extraction(sql_content)
-        for stmt_text in statements:
+        for stmt_text, source in zip(statements, with_trimmed_tails(sql_content, statements)):
             if not stmt_text or not stmt_text.strip():
                 continue
-            objects.extend(self.extract_statement_objects(stmt_text, effective_schema))
+            objects.extend(self._extract_objects_for_statement(stmt_text, effective_schema, source))
         return objects
 
     def extract_statement_objects(
@@ -349,26 +350,39 @@ class HybridParser(_SqlglotBuildersMixin, SqlParserInterface):
             return default_schema
         return self._quirks.derive_schema_name(None)
 
-    def _names_unreadable(self, stmt_text: str, objects: List[SqlObject]) -> bool:
-        """Whether the engine may read the names of ``objects`` differently from the extractors."""
-        if stmt_text.isascii():
+    def _names_unreadable(self, source: Optional[str], objects: List[SqlObject]) -> bool:
+        """Whether the engine may read the names of ``objects`` differently from the extractors.
+
+        ``source`` is the statement with the blanks the split trimmed after it; ``None`` when it
+        could not be located in the script.
+        """
+        if source is None:
+            return True
+        if source.isascii():
             return False
         names = [part for obj in objects for part in (obj.name, obj.schema) if part]
-        return names_unreadable(stmt_text, self._quirks.sqlglot_dialect, names)
+        return names_unreadable(source, self._quirks.sqlglot_dialect, names)
 
-    def _withhold_unreadable_names(self, stmt: SqlStatement) -> None:
+    def _withhold_unreadable_names(self, stmt: SqlStatement, source: Optional[str]) -> None:
         """Name nothing in ``stmt`` (and say so) when the engine may read its names differently."""
-        if self._names_unreadable(stmt.sql_text, stmt.objects + stmt.affected_objects):
+        if self._names_unreadable(source, stmt.objects + stmt.affected_objects):
             stmt.objects = []
             stmt.affected_objects = []
             stmt.names_unread = True
 
     def _extract_objects_for_statement(
-        self, stmt_text: str, default_schema: Optional[str]
+        self, stmt_text: str, default_schema: Optional[str], source: Optional[str] = ""
     ) -> List[SqlObject]:
-        """Extract and reconcile objects for a single SQL statement."""
+        """Extract and reconcile objects for a single SQL statement.
+
+        ``source`` is the statement as it stands in its script; empty means ``stmt_text`` is.
+        """
         objects = self._merged_objects_for_statement(stmt_text, default_schema)
-        return [] if self._names_unreadable(stmt_text, objects) else objects
+        return (
+            []
+            if self._names_unreadable(stmt_text if source == "" else source, objects)
+            else objects
+        )
 
     def _merged_objects_for_statement(
         self, stmt_text: str, default_schema: Optional[str]

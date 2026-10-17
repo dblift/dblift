@@ -228,7 +228,9 @@ def _analyse(text: str, dialect: str) -> ScriptAnalysis:
         # The regex parser fills ``affected_objects``; ``objects`` stays empty.
         found = getattr(stmt, "affected_objects", None) or getattr(stmt, "objects", None) or []
         objects = tuple(_object_of(o) for o in found)
-        unread = stmt.names_unread is True or names_unreadable(body, quirks.sqlglot_dialect)
+        unread = getattr(stmt, "names_unread", False) is True or names_unreadable(
+            body, quirks.sqlglot_dialect
+        )
         if unread:
             objects = ()
         else:
@@ -239,7 +241,9 @@ def _analyse(text: str, dialect: str) -> ScriptAnalysis:
             index, operation, kind, objects, full_table, _snippet(body), sql=body
         )
         statements.append(analysed)
-        caution = _caution_for(analysed, body, _opaque_dialect(dialect) if unread else None)
+        caution = _caution_for(
+            analysed, body, _opaque_dialect(dialect) if unread else None, name_target=not unread
+        )
         if caution is not None:
             cautions.append(caution)
     return ScriptAnalysis(tuple(statements), tuple(cautions), tuple(parsed.errors or []))
@@ -354,7 +358,10 @@ def _unnamed_drop_caution(stmt: AnalysedStatement, body: str) -> Optional[Cautio
 
 
 def _caution_for(
-    stmt: AnalysedStatement, body: str, opaque_dialect: Optional[str] = None
+    stmt: AnalysedStatement,
+    body: str,
+    opaque_dialect: Optional[str] = None,
+    name_target: bool = True,
 ) -> Optional[Caution]:
     op = stmt.operation
     if op == "TRUNCATE":
@@ -386,7 +393,7 @@ def _caution_for(
         if stmt.full_table and opaque_dialect:
             from dblift.core.sql_parser.sqlglot_statement_facts import readable_dml_target
 
-            target = readable_dml_target(body, dialect=opaque_dialect)
+            target = readable_dml_target(body, dialect=opaque_dialect) if name_target else None
             return Caution(
                 DESTROYS,
                 stmt.index,

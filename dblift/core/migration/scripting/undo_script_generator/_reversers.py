@@ -128,23 +128,28 @@ class _UndoReversersMixin:
     logger: Any
     sql_analyzer: Any
 
-    def _names_not_trusted(self, sql: str, names: List[str]) -> bool:
+    def _names_not_trusted(self, sql: str, names: List[str], source: Optional[str] = "") -> bool:
         """Whether the engine may read the names this statement's undo would use differently.
 
         ``names`` are what the parser read; when it read none from a CREATE, the name the undo's
         own pattern reads is checked instead. A non-ASCII statement naming nothing is not trusted.
+        ``source`` is the statement with the blanks the split trimmed after it (``None`` when it
+        could not be located in its script); empty means ``sql`` is.
         """
-        if sql.isascii():
+        if source is None:
+            return True
+        text = source or sql
+        if text.isascii():
             return False
         dialect = resolve_sqlglot_read_dialect(self.dialect)
-        if names_unreadable(sql, dialect):
+        if names_unreadable(text, dialect):
             return True
         if not sql.strip().upper().startswith(_NAMING_VERBS):
             return False
         if not names:
             created = self._extract_create_object(sql)
             names = [part for part in (created[1], created[2]) if part] if created else []
-        return not names or names_unreadable(sql, dialect, names)
+        return not names or names_unreadable(text, dialect, names)
 
     def _reverse_statement_from_parsed(self, stmt: Any) -> Optional[UndoStatement]:
         """Reverse a parsed SQL statement.
@@ -206,11 +211,12 @@ class _UndoReversersMixin:
             requires_manual_review=True,
         )
 
-    def _reverse_statement(self, sql: str) -> Optional[UndoStatement]:
+    def _reverse_statement(self, sql: str, source: Optional[str] = "") -> Optional[UndoStatement]:
         """Reverse a single SQL statement (fallback method using string parsing).
 
         Args:
             sql: SQL statement to reverse
+            source: the statement with the blanks the split trimmed after it; empty if none
 
         Returns:
             UndoStatement or None if statement cannot be reversed
@@ -218,7 +224,9 @@ class _UndoReversersMixin:
         sql_upper = sql.strip().upper()
 
         if self._names_not_trusted(
-            sql, [obj["object_name"] for obj in self.sql_analyzer.analyze_statement(sql)["objects"]]
+            sql,
+            [obj["object_name"] for obj in self.sql_analyzer.analyze_statement(sql)["objects"]],
+            source,
         ):
             return _names_not_read(sql)
 

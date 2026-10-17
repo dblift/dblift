@@ -9,7 +9,7 @@ the name the extractors read. Naming ``t`` for ``t<NBSP>`` makes an undo drop th
 from __future__ import annotations
 
 import re
-from typing import Iterable, Optional
+from typing import Iterable, List, Optional, Sequence
 
 _NAME_CHARACTER = re.compile(r"[\w$]")
 # What is not a name: the first match from the left wins, so a quote inside a comment is the
@@ -55,3 +55,29 @@ def names_unreadable(sql: str, sqlglot_dialect: Optional[str], names: Iterable[s
     return any(
         _cut_short(sql, part) for name in names for part in str(name).split(".") if part.strip()
     )
+
+
+def with_trimmed_tails(script: str, statements: Sequence[str]) -> List[Optional[str]]:
+    """Each statement followed by the blanks the analysis split trimmed after it.
+
+    The split trims trailing blanks, so a name that ends its statement is seen without the
+    character the engine reads as part of it. A statement that cannot be located in ``script``
+    (its text was rewritten) is ``None``: nothing can be said about its name. An ASCII script
+    has no such character and is returned as it is.
+    """
+    if script.isascii():
+        return list(statements)
+    sources: List[Optional[str]] = []
+    cursor = 0
+    for text in statements:
+        at = script.find(text, cursor) if text else -1
+        if at < 0:
+            sources.append(None)
+            continue
+        end = at + len(text)
+        stop = end
+        while stop < len(script) and script[stop].isspace():
+            stop += 1
+        sources.append(script[at:stop])
+        cursor = end
+    return sources
