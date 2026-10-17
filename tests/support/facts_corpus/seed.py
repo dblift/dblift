@@ -72,8 +72,8 @@ _NOT_INPUT_CALL = re.compile(
 def _script_constants(tree: ast.AST):
     """Yield ``(line, text)`` for string constants that can be a script given to the parser.
 
-    Docstrings, f-string parts, text inside ``raise``, exception/log calls and ``assert``
-    messages are prose, not inputs.
+    Docstrings, f-string parts, text inside ``raise``, exception/log calls, ``assert`` messages
+    and ``in`` / ``not in`` operands (expected fragments) are prose, not inputs.
     """
     parents = {child: node for node in ast.walk(tree) for child in ast.iter_child_nodes(node)}
     docstrings = set()
@@ -92,6 +92,10 @@ def _script_constants(tree: ast.AST):
             if isinstance(up, ast.Raise):
                 prose = True
             elif isinstance(up, ast.Assert) and up.msg is not None and node in ast.walk(up.msg):
+                prose = True
+            elif isinstance(up, ast.Compare) and any(
+                isinstance(op, (ast.In, ast.NotIn)) for op in up.ops
+            ):
                 prose = True
             elif isinstance(up, ast.Call):
                 func = up.func
@@ -169,7 +173,7 @@ def seed(root: Path, inputs_path: Path, sources_path: Path) -> int:
         "",
         "Test files calling `parse_sql(` or `extract_objects(`; their SQL string constants",
         "(under 4000 characters, starting with an SQL verb; docstrings, f-string parts and the text",
-        "of raise, exception, log and assert-message expressions are skipped) are the inputs,",
+        "of raise, exception, log, assert-message and `in` / `not in` expressions are skipped) are the inputs,",
         "plus the statements of the three hand-written facts corpora listed last.",
         "Regenerate with `python -m tests.support.facts_corpus seed`.",
         "",

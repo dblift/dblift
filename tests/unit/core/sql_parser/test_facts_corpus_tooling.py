@@ -180,6 +180,9 @@ def test_a():
     analyzer.extract_objects("DROP TABLE t")
     parse_sql(SQL)
     log("SELECT 9")
+    assert "INSERT INTO" in out
+    assert out and "DELETE FROM x" not in out
+    assert ok, "UPDATE t failed"
     raise ValueError("lock timeout exceeded")
 '''
 
