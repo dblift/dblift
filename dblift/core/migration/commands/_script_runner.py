@@ -37,6 +37,7 @@ class ScriptRunner:
     """Executes a single script: callbacks, journal, events and failure handling."""
 
     def __init__(self, command: "BaseCommand", policy: ScriptRunPolicy) -> None:
+        """Bind the command whose collaborators run scripts and the policy that shapes the run."""
         self._command = command
         self._policy = policy
 
