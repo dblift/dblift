@@ -37,6 +37,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   statement analysis fail silently (a DEBUG "Could not analyse" line), so `migrate --dry-run`
   lost its `[SAFE]` label and data-plan analysis skipped the statement. An absent `WHERE` is
   stored as `False` there and is now read as no predicate.
+- **Faster provider lookup without installed entry points.** Running dblift from a checkout, or next
+  to a foreign install, no longer rescans every installed distribution on each database lookup.
 
 ### Removed
 
