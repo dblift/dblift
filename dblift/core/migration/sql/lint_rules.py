@@ -162,7 +162,9 @@ def issues_and_created_tables(
     script, is new: a table-scoped finding on a statement whose target tables are all new
     is not reported. A target is new when its name matches a new table and either side
     names no schema or both name the same one: offline the search path is unknown, so
-    ``CREATE TABLE users`` also covers ``x.users``. ``CREATE TABLE IF NOT EXISTS`` creates
+    ``CREATE TABLE users`` also covers ``x.users``. A statement whose names the analysis
+    withheld (``names_unread``) is never exempted and creates no new table: the engine may read
+    another name than sqlglot does. ``CREATE TABLE IF NOT EXISTS`` creates
     nothing new, since the table may already exist with rows, and neither does a
     ``CREATE TABLE`` of a table matching *existing_tables*, the tables known to exist.
     *text* is the script: a dialect that runs batches judges transaction modes per batch.
@@ -185,7 +187,7 @@ def issues_and_created_tables(
         body = strip_leading_sql_comments(stmt.sql)
         tree = _parse(body, sqlglot_dialect)
         targets = _targets(tree)
-        if targets and all(_matches(target, new) for target in targets):
+        if targets and not stmt.names_unread and all(_matches(target, new) for target in targets):
             on_new_tables.add(stmt.index)
         for code in _statement_codes(body, tree, pg_locks=pg_locks):
             findings.append(_finding(code, stmt))
@@ -201,7 +203,7 @@ def issues_and_created_tables(
             findings.append(_finding("pg-missing-lock-timeout", stmt))
             lock_timeout_reported = True
         table = _created_table(tree)
-        if table and not _matches(table, existing):
+        if table and not stmt.names_unread and not _matches(table, existing):
             created.add(table)
             new.add(table)
     findings = [
