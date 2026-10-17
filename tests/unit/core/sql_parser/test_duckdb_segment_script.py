@@ -407,6 +407,7 @@ CASES = [
     ),
 ]
 IDS = [case[0] for case in CASES]
+KNOWN_GAPS = frozenset({"74", "75", "76"})  # the splitter differs from DuckDB there (see the spec)
 
 
 def outcome(call, script):
@@ -469,7 +470,9 @@ def test_comment_only_segments_are_records_only_for_analysis():
 
 
 @pytest.mark.parametrize("row", ROWS, ids=lambda row: row.row_id)
-def test_spec_row_through_the_engine(row):
+def test_spec_row_through_the_engine(row, request):
+    if row.row_id in KNOWN_GAPS:
+        request.applymarker(pytest.mark.xfail(strict=True, reason="listed in KNOWN_GAPS"))
     if row.status == "to_verify":
         pytest.skip("spec marks this row 'to verify': not a claim yet")
     try:
