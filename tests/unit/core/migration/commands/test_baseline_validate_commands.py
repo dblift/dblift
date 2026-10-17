@@ -51,6 +51,9 @@ def _make_baseline_cmd(
     _provider = provider or MagicMock()
     _provider.__class__ = TransactionalProvider
     _hm = history_manager or MagicMock()
+    if not isinstance(_hm.get_applied_migration_records.return_value, list):
+        # A real run re-reads history under the lock; an untouched mock is "empty".
+        _hm.get_applied_migration_records.return_value = []
     _stm = MagicMock()
     _stm.get_applied_migration_records.side_effect = _hm.get_applied_migration_records
 

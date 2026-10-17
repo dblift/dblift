@@ -2,6 +2,7 @@
 Baseline command implementation.
 """
 
+from contextlib import ExitStack
 from typing import TYPE_CHECKING, Any, Dict, cast
 
 if TYPE_CHECKING:
@@ -10,7 +11,15 @@ from dblift.core.logger.results import BaselineResult
 from dblift.core.migration.history.history_transaction import history_transaction
 from dblift.core.migration.migration import Migration, MigrationType
 
-from .base_command import BaseCommand
+from .base_command import MIGRATION_LOCK_REFUSAL, BaseCommand
+
+
+def _existing_history_message(schema: str, count: int) -> str:
+    """Error for a baseline attempted on a schema whose history already has rows."""
+    return (
+        f"Schema {schema} already contains a migration history table with {count} "
+        "migration(s). Baseline cannot be applied to a schema with existing migrations."
+    )
 
 
 class BaselineCommand(BaseCommand):
@@ -33,33 +42,45 @@ class BaselineCommand(BaseCommand):
                     existing = self.state_manager.get_applied_migration_records()
                     if existing:
                         raise RuntimeError(
-                            f"Schema {result.target_schema} already contains a migration "
-                            f"history table with {len(existing)} migration(s). Baseline "
-                            "cannot be applied to a schema with existing migrations."
+                            _existing_history_message(result.target_schema, len(existing))
                         )
                 result.baseline_version = baseline_version
                 result.message = f"Dry run: baseline {baseline_version} would be created"
                 self.log.info(f"DRY RUN: Would create baseline {baseline_version}")
                 return
 
-            # Create baseline migration record without script_path since baseline doesn't have a file
-            script_name = f"B{baseline_version}__{baseline_description}.sql"
-            baseline_migration = Migration(
-                script_name=script_name,
-                content=f"-- Baseline migration for version {baseline_version}",
-                version=baseline_version,
-                description=baseline_description,
-                type=MigrationType.BASELINE,
-                logger=self.log,
-                _filename_metadata=self.script_manager.parse_filename(script_name),
-            )
+            with ExitStack() as lock:
+                if not lock.enter_context(self._migration_lock()):
+                    self.log.error(MIGRATION_LOCK_REFUSAL)
+                    result.set_error(MIGRATION_LOCK_REFUSAL)
+                    return
 
-            # Record the baseline in one transaction so the row is committed
-            # (autoCommit off) or rolled back if writing it fails.
-            with history_transaction(self.provider, self.log, "baseline"):
-                self.history_manager.record_migration(
-                    baseline_migration, success=True, execution_time=0
+                # Another run may have written history since preflight looked.
+                if self.history_manager.has_history_table:
+                    existing = self.state_manager.get_applied_migration_records()
+                    if existing:
+                        raise RuntimeError(
+                            _existing_history_message(result.target_schema, len(existing))
+                        )
+
+                # Create baseline migration record without script_path since baseline doesn't have a file
+                script_name = f"B{baseline_version}__{baseline_description}.sql"
+                baseline_migration = Migration(
+                    script_name=script_name,
+                    content=f"-- Baseline migration for version {baseline_version}",
+                    version=baseline_version,
+                    description=baseline_description,
+                    type=MigrationType.BASELINE,
+                    logger=self.log,
+                    _filename_metadata=self.script_manager.parse_filename(script_name),
                 )
+
+                # Record the baseline in one transaction so the row is committed
+                # (autoCommit off) or rolled back if writing it fails.
+                with history_transaction(self.provider, self.log, "baseline"):
+                    self.history_manager.record_migration(
+                        baseline_migration, success=True, execution_time=0
+                    )
 
             result.baseline_version = baseline_version
 

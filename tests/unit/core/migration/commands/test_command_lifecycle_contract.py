@@ -284,6 +284,7 @@ def _baseline_case(fail_body: bool):
     provider = MagicMock()
     provider.__class__ = TransactionalProvider
     command = _build_command(BaselineCommand, provider=provider)
+    command.state_manager.get_applied_migration_records.return_value = []
     if fail_body:
         command.history_manager.record_migration.side_effect = RuntimeError("x")
     return command, lambda: command.execute("1.0", "initial"), "baseline"
