@@ -1,7 +1,7 @@
 """A corpus of DuckDB scripts with the exact outputs of the scanner the shared engine replaced.
 
 Each entry records what the public views returned for a script: the records (all nine fields,
-offsets included), the execution strings, the analysis statements, the statements the analyzer
+offsets included), the execution strings, the extraction statements, the analysis statements the analyzer
 reads, the script with its comments blanked, the masked and described text of every record, or the
 refusal (class and message). The recording was made from the scanner that preceded the shared
 lexical engine. The scripts are the shapes that found or guard a defect while the engine was
@@ -40,8 +40,8 @@ def evaluate(script: str) -> Dict[str, Any]:
         views = {
             "records": [dataclasses.asdict(r) for r in records],
             "strings": parser.split_statements(script),
-            "analysis": parser.split_for_extraction(script),
-            "executed": SqlAnalyzer("duckdb").split_statements_for_analysis(script),
+            "extraction": parser.split_for_extraction(script),
+            "analysis": SqlAnalyzer("duckdb").split_statements_for_analysis(script),
             "blanked": DuckDBQuirks().blank_comments(script),
             "masking": [
                 [mask_string_literals(r.text, "duckdb"), describe_statement(r.text, "duckdb")]
@@ -74,6 +74,6 @@ def test_the_engine_s_analysis_view_is_the_recorded_extraction() -> None:
     engine = LexicalEngine(DUCKDB_SPEC)
     for entry in entries():
         if "error" not in entry["views"]:
-            assert engine.split_for_analysis(entry["script"]) == entry["views"]["analysis"], entry[
-                "name"
-            ]
+            assert (
+                engine.split_for_analysis(entry["script"]) == entry["views"]["extraction"]
+            ), entry["name"]
