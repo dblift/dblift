@@ -21,14 +21,14 @@ from tests.support.facts_corpus.seed import (
     split,
 )
 
-SELECT_FILE = '''
+SELECT_FILE = """
 def test_a():
     parse_sql("CREATE TABLE t (id int)")
     parse_sql("-- lead\\n/* block */ DROP TABLE t")
     parse_sql(f"CREATE TABLE {name} (id int)")
     parse_sql("not sql at all")
     parse_sql(name + "x")
-'''
+"""
 
 
 def _tree(tmp_path: Path, body: str = SELECT_FILE) -> Path:

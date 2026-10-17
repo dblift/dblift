@@ -24,7 +24,15 @@ from tests.support.facts_corpus.record import record_statement
 from tests.support.facts_corpus.seed import split
 
 NO_OLD = ("sqlite", "duckdb")  # their text extraction already is the facts reader
-RESERVED_FAMILIES = ("postgresql", "mysql", "oracle", "sqlserver", "duckdb", "redshift", "snowflake")
+RESERVED_FAMILIES = (
+    "postgresql",
+    "mysql",
+    "oracle",
+    "sqlserver",
+    "duckdb",
+    "redshift",
+    "snowflake",
+)
 ROW_KEYS = {"sql", "inputs", "facts", "old", "facts_newest", "old_newest"}
 
 # (family, word, page wording) -- one reserved word and one word the page does not reserve.
@@ -158,7 +166,10 @@ def test_rows_match_what_the_installed_sqlglot_reads_now(
 
 def _reserved(family: str) -> Dict[str, Any]:
     lines = (CORPUS_DIR / "reserved" / f"{family}.txt").read_text(encoding="utf-8").splitlines()
-    header = {k: v for k, v in (m.groups() for m in map(re.compile(r"# (\w+): (.*)").fullmatch, lines) if m)}
+    header = {
+        k: v
+        for k, v in (m.groups() for m in map(re.compile(r"# (\w+): (.*)").fullmatch, lines) if m)
+    }
     words = [line for line in lines if line and not line.startswith("#")]
     return {"header": header, "words": words}
 

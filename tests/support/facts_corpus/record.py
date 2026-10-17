@@ -88,7 +88,10 @@ def _read_old(family: str, sql: str) -> Optional[Dict[str, Any]]:
         return None
     old: Dict[str, Any] = {
         "hybrid": _guarded(
-            lambda: [[o.object_type.value, o.name, o.schema] for o in _factory(family).extract_objects(sql)]
+            lambda: [
+                [o.object_type.value, o.name, o.schema]
+                for o in _factory(family).extract_objects(sql)
+            ]
         ),
         "analyzer": _guarded(
             lambda: [

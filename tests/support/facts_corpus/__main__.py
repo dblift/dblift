@@ -52,14 +52,18 @@ def _measure() -> None:
     versions["size_bytes"] = sum(f.stat().st_size for f in CORPUS_DIR.glob("*.jsonl"))
     versions["inputs"] = len(read_rows(INPUTS_FILE))
     versions["newest_differing_rows"] = {
-        family: sum(1 for r in read_rows(family_file(family)) if "facts_newest" in r or "old_newest" in r)
+        family: sum(
+            1 for r in read_rows(family_file(family)) if "facts_newest" in r or "old_newest" in r
+        )
         for family in FAMILIES
     }
     unstable = {family: _resplit_unstable(family) for family in FAMILIES}
     (CORPUS_DIR / "not_idempotent.json").write_text(
         json.dumps(unstable, indent=1, sort_keys=True) + "\n", encoding="utf-8"
     )
-    VERSIONS_FILE.write_text(json.dumps(versions, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    VERSIONS_FILE.write_text(
+        json.dumps(versions, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
     print(versions)
 
 

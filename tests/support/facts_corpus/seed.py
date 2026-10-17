@@ -52,7 +52,10 @@ def _dialects(*texts: str) -> List[str]:
 def _constants(tree: ast.AST):
     """Yield string constants that are not pieces of an f-string."""
     fstring_parts = {
-        id(part) for node in ast.walk(tree) if isinstance(node, ast.JoinedStr) for part in node.values
+        id(part)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.JoinedStr)
+        for part in node.values
     }
     for node in ast.walk(tree):
         if isinstance(node, ast.Constant) and isinstance(node.value, str):
@@ -75,7 +78,9 @@ def _enclosing_literals(tree: ast.AST) -> Dict[int, List[str]]:
     return out
 
 
-def _add(rows: Dict[str, Dict[str, Any]], sql: str, file: str, line: int, dialects: List[str]) -> None:
+def _add(
+    rows: Dict[str, Dict[str, Any]], sql: str, file: str, line: int, dialects: List[str]
+) -> None:
     row = rows.setdefault(statement_id(sql), {"id": statement_id(sql), "sql": sql, "origins": []})
     row["origins"].append({"file": file, "line": line, "dialects": dialects})
 
@@ -105,7 +110,9 @@ def harvest(root: Path) -> List[Dict[str, Any]]:
     return [rows[key] for key in sorted(rows)]
 
 
-def merge_inputs(existing: List[Dict[str, Any]], found: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def merge_inputs(
+    existing: List[Dict[str, Any]], found: List[Dict[str, Any]]
+) -> List[Dict[str, Any]]:
     """Merge harvested inputs into the existing ones; nothing is ever removed."""
     merged = {row["id"]: row for row in existing}
     for row in found:
