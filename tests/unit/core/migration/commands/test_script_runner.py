@@ -192,3 +192,42 @@ def test_execution_time_includes_before_callbacks():
 
     assert ok is True
     on_success.assert_called_once_with(500)
+
+
+@pytest.mark.unit
+def test_after_each_failure_emits_single_terminal_event():
+    calls: list = []
+    command = _command(calls, fire_raises=("afterEach", CallbackExecutionError("after")))
+    result = MigrateResult()
+
+    with _emit_into(calls):
+        ok = _run(command, MIGRATE_POLICY, result, MagicMock())
+
+    assert ok is False
+    assert calls.count("migration.script.completed") == 1
+    assert "migration.script.failed" not in calls
+    command.journal.end_migration.assert_called_once()
+    assert command.journal.end_migration.call_args.kwargs["success"] is True
+    assert calls.count("afterMigrateError") == 1
+    assert result.error_message == "Migration failed: after"
+
+
+@pytest.mark.unit
+def test_error_event_failure_does_not_duplicate_terminal_event():
+    calls: list = []
+    command = _command(calls, fire_raises=("afterMigrateError", RuntimeError("scan")))
+    result = MigrateResult()
+
+    def fail(script, res):
+        calls.append("execute")
+        res.set_error("boom")
+
+    command.execution_engine.execute_migration.side_effect = fail
+
+    with _emit_into(calls):
+        with pytest.raises(RuntimeError, match="scan"):
+            _run(command, MIGRATE_POLICY, result, MagicMock())
+
+    assert calls.count("migration.script.failed") == 1
+    command.journal.end_migration.assert_called_once()
+    assert calls.count("afterMigrateError") == 1

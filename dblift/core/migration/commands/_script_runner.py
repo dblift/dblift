@@ -60,6 +60,10 @@ class ScriptRunner:
         start_time = time.time()
         journal_started = False
         started_emitted = False
+        # Each started event gets exactly one terminal event, and the error
+        # event fires at most once per run.
+        terminal_emitted = False
+        error_event_fired = False
 
         try:
             for event in policy.before_events:
@@ -92,6 +96,7 @@ class ScriptRunner:
                         error_message=result.error_message,
                         execution_time=execution_time,
                     )
+                    journal_started = False
                 emit_script_event(
                     "migration.script.failed",
                     {
@@ -100,6 +105,8 @@ class ScriptRunner:
                         "execution_time": execution_time,
                     },
                 )
+                terminal_emitted = True
+                error_event_fired = True
                 command._fire(policy.error_event)
                 return False
 
@@ -113,12 +120,17 @@ class ScriptRunner:
 
             for event in policy.completed_events:
                 emit_script_event(event, {**event_data, "execution_time": execution_time})
+            terminal_emitted = True
 
             for event in policy.after_events:
                 command._fire(event)
             return True
 
         except Exception as e:
+            if error_event_fired:
+                # The failure was already reported in full; this is the error
+                # callback itself failing.
+                raise
             error = result.error_message or str(e)
             if not result.error_message:
                 command.log.error(f"{policy.failure_prefix} for {script.script_name}: {e}")
@@ -132,7 +144,7 @@ class ScriptRunner:
                     error_message=error,
                     execution_time=execution_time,
                 )
-            if started_emitted:
+            if started_emitted and not terminal_emitted:
                 emit_script_event(
                     "migration.script.failed",
                     {**event_data, "error": error, "execution_time": execution_time},
