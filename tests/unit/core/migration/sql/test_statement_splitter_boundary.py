@@ -35,7 +35,7 @@ def test_unmigrated_statement_splitter_uses_regex_parser_factory(monkeypatch):
 
     monkeypatch.setattr(splitter_module, "SqlParserFactory", FakeFactory)
 
-    splitter = StatementSplitter("duckdb")
+    splitter = StatementSplitter("snowflake")
 
     assert splitter.split_statements("select 1;") == ["select 1;"]
     assert created_parser_types == ["regex"]

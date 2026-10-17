@@ -124,10 +124,11 @@ def test_placeholder_is_code_for_duckdb():
 
 
 def test_nothing_is_logged(caplog):
+    regex, facts, splitter = DuckDBRegexParser(), DuckDBFactsParser(), StatementSplitter("duckdb")
     with caplog.at_level(logging.DEBUG):
-        DuckDBRegexParser().split(SCRIPT)
-        DuckDBFactsParser().split_statements(SCRIPT)
-        StatementSplitter("duckdb").split_statements(SCRIPT)
+        regex.split(SCRIPT)
+        facts.split_statements(SCRIPT)
+        splitter.split_statements(SCRIPT)
     assert [r for r in caplog.records if r.name.startswith("dblift")] == []
 
 

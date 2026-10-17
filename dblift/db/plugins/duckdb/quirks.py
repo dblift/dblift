@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from dblift.db.base_quirks import BaseQuirks
 from dblift.db.plugins.duckdb.parser.duckdb_facts_parser import DuckDBStatementFactsReader
+
+if TYPE_CHECKING:
+    from dblift.core.sql_parser.lexical_spec import LexicalSpec
 
 
 class DuckDBQuirks(BaseQuirks):
@@ -53,11 +56,17 @@ class DuckDBQuirks(BaseQuirks):
         ),
     )
 
-    def blank_comments(self, sql: str) -> str:
-        """The statement with its comments blanked by the DuckDB scanner."""
-        from dblift.db.plugins.duckdb.parser._script import blank_comments
+    def lexical_spec(self) -> "LexicalSpec":
+        """The lexical specification the shared engine cuts DuckDB scripts with."""
+        from dblift.db.plugins.duckdb.parser.lexical_spec import DUCKDB_SPEC
 
-        return blank_comments(sql)
+        return DUCKDB_SPEC
+
+    def blank_comments(self, sql: str) -> str:
+        """The statement with its comments blanked by the same scanner as execution."""
+        from dblift.core.sql_parser.lexical_engine import LexicalEngine
+
+        return LexicalEngine(self.lexical_spec()).blank_comments(sql)
 
     def __init__(self, dialect_name: str = "duckdb") -> None:
         """Initialize DuckDB quirks with the dialect name."""

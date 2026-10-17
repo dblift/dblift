@@ -363,11 +363,12 @@ class TestDuckDBDmlRowcount:
         assert provider.execute_statement(sql) == 1
 
     def test_has_top_level_keyword_helpers(self) -> None:
-        from dblift.db.plugins.duckdb.parser._script import blank_comments
+        from dblift.core.sql_parser.lexical_engine import LexicalEngine
+        from dblift.db.plugins.duckdb.parser.lexical_spec import DUCKDB_SPEC
         from dblift.db.plugins.duckdb.provider import DuckDBProvider
 
         has = DuckDBProvider._has_top_level_keyword
-        blank = blank_comments
+        blank = LexicalEngine(DUCKDB_SPEC).blank_comments
         assert has("UPDATE t SET v = 1 RETURNING id", "RETURNING") is True
         assert has("UPDATE t SET v = ' returning ' WHERE id = 1", "RETURNING") is False
         # After comment strip, mid-line/full-line comments mentioning returning are gone

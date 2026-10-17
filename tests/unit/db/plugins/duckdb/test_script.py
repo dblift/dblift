@@ -1,8 +1,8 @@
-"""The DuckDB scanner: where a statement ends, what the shell would run itself, what is refused.
+"""The DuckDB script cut: where a statement ends, what the shell would run itself, what is refused.
 
 Every expectation was measured with the Python driver and ``duckdb.extract_statements``
 (docs/sql-parsing/duckdb.md); the rows of its section 10 are pinned separately by the conformance
-test, these tests pin the rules behind them and the records the scanner returns.
+test, these tests pin the rules behind them and the records the engine returns.
 """
 
 from __future__ import annotations
@@ -12,11 +12,21 @@ import random
 import pytest
 
 from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
-from dblift.db.plugins.duckdb.parser._script import _Scanner, scan_script
+from dblift.core.sql_parser.lexical_engine import LexicalEngine
+from dblift.core.sql_parser.statement import Statement
+from dblift.db.plugins.duckdb.parser.duckdb_facts_parser import DuckDBFactsParser
+from dblift.db.plugins.duckdb.parser.lexical_spec import DUCKDB_SPEC
+
+
+def records(script: str, *, comment_only: bool = False) -> list[Statement]:
+    """The records the shared engine cuts ``script`` into (comment-only segments when asked)."""
+    if comment_only:
+        return LexicalEngine(DUCKDB_SPEC).split(script, include_comment_only=True)
+    return DuckDBFactsParser().split(script)
 
 
 def texts(script: str) -> list[str]:
-    return [unit.text for unit in scan_script(script)]
+    return [unit.text for unit in records(script)]
 
 
 # ---- the engine's own cut --------------------------------------------------------------------
@@ -337,7 +347,7 @@ def test_a_comment_before_a_statement_stays_with_it() -> None:
 )
 def test_a_dot_line_with_nothing_pending_is_refused(script: str, command: str, line: int) -> None:
     with pytest.raises(UnsupportedMetaCommandError) as raised:
-        scan_script(script)
+        records(script)
     assert command in str(raised.value) and f"line {line}" in str(raised.value)
 
 
@@ -378,12 +388,12 @@ def test_a_go_or_slash_line_is_part_of_the_statement(script: str) -> None:
 
 def test_a_nul_is_refused_with_its_line() -> None:
     with pytest.raises(UnsafeStatementSplitError, match="line 2"):
-        scan_script("SELECT 1;\nSELECT 2;\x00 SELECT 3;")
+        records("SELECT 1;\nSELECT 2;\x00 SELECT 3;")
 
 
 def test_a_nul_inside_a_literal_is_refused_too() -> None:
     with pytest.raises(UnsafeStatementSplitError):
-        scan_script("SELECT 'a\x00b;c'; SELECT 2;")
+        records("SELECT 'a\x00b;c'; SELECT 2;")
 
 
 def test_a_byte_order_mark_at_the_start_is_dropped_and_in_the_middle_kept() -> None:
@@ -407,7 +417,7 @@ def test_crlf_and_lone_cr_are_kept_in_the_text() -> None:
 
 def test_each_record_has_the_line_of_the_first_character_of_its_text() -> None:
     script = "SELECT 'a\nb';\n\n-- c\n/* d\ne */ SELECT\n1;\nSELECT 3"
-    assert [(unit.line, unit.terminator) for unit in scan_script(script)] == [
+    assert [(unit.line, unit.terminator) for unit in records(script)] == [
         (1, ";"),
         (4, ";"),
         (8, None),
@@ -416,26 +426,26 @@ def test_each_record_has_the_line_of_the_first_character_of_its_text() -> None:
 
 def test_lines_are_counted_across_strings_comments_and_identifiers() -> None:
     script = 'SELECT $$a\nb$$;\n/* c\nd */ SELECT "e\nf";\nSELECT 3;'
-    assert [unit.line for unit in scan_script(script)] == [1, 3, 6]
+    assert [unit.line for unit in records(script)] == [1, 3, 6]
 
 
 def test_the_last_statement_has_no_terminator() -> None:
-    assert [(u.text, u.terminator) for u in scan_script("SELECT 1; SELECT 2")] == [
+    assert [(u.text, u.terminator) for u in records("SELECT 1; SELECT 2")] == [
         ("SELECT 1", ";"),
         ("SELECT 2", None),
     ]
 
 
 def test_comment_only_segments_are_units_of_their_own_when_asked() -> None:
-    units = scan_script("SELECT 1; -- bye", comment_only=True)
+    units = records("SELECT 1; -- bye", comment_only=True)
     assert [(u.text, u.line, u.terminator) for u in units] == [
         ("SELECT 1", 1, ";"),
         ("-- bye", 1, None),
     ]
-    assert [u.text for u in scan_script("-- only\n/* here */\n", comment_only=True)] == [
+    assert [u.text for u in records("-- only\n/* here */\n", comment_only=True)] == [
         "-- only\n/* here */"
     ]
-    assert scan_script(";;;\n ; \n", comment_only=True) == []
+    assert records(";;;\n ; \n", comment_only=True) == []
 
 
 def test_the_refusals_do_not_depend_on_the_mode() -> None:
@@ -444,57 +454,23 @@ def test_the_refusals_do_not_depend_on_the_mode() -> None:
         ("SELECT 1;\x00", UnsafeStatementSplitError),
     ):
         with pytest.raises(error):
-            scan_script(script, comment_only=True)
+            records(script, comment_only=True)
 
 
-# ---- cost ---------------------------------------------------------------------------------------------------
-
-
-class _CountingText(str):
-    """A script that counts the characters sliced out of it: a scan that copies the rest of the
-    script at every lexeme is quadratic on a long script, however fast the machine. It catches
-    slicing quadratics only: a scan that recomputed the line number with ``count("\\n", 0, i)`` at
-    every lexeme is quadratic too and is not seen here (``str.count`` is not a slice)."""
-
-    sliced = 0
-
-    def __getitem__(self, key):  # type: ignore[no-untyped-def]
-        if isinstance(key, slice):
-            _CountingText.sliced += len(range(*key.indices(len(self))))
-        return super().__getitem__(key)
-
-
-def _sliced_characters(script: str) -> int:
-    _CountingText.sliced = 0
-    _Scanner(_CountingText(script), False).run()
-    return _CountingText.sliced
-
-
-@pytest.mark.parametrize(
-    "unit",
-    [
-        "INSERT INTO t VALUES('a;b', \"c;d\", $x$ e;f $x$); -- c\n",
-        "SELECT E'a\\'b;c', $$d;e$$, 1 AS a$$; /* n /* m */ */\n",
-        "SELECT 1\n-- comment\n/* block\ncomment */\n;\n",
-        "SELECT $1, $name, 'x', \"y\", \u00a0z;",
-    ],
-)
-def test_scanning_slices_each_character_a_bounded_number_of_times(unit: str) -> None:
-    for count in (2_000, 8_000):
-        script = unit * count
-        assert _sliced_characters(script) <= 2 * len(script)
+# ---- huge lexemes -----------------------------------------------------------------------------------------
+# The cost of reading a script (the number of operations per character) is held by
+# test_duckdb_splitting_cost_grows_linearly; these pin the cut.
 
 
 @pytest.mark.parametrize(
     "script",
     [
-        "SELECT '" + "x;" * 200_000 + "';",
-        "SELECT $t$" + "x;$ " * 200_000 + "$t$;",
-        "/*" + " /* ; */ ;" * 100_000 + "*/ SELECT 1;",
-        "SELECT E'" + "a\\'" * 200_000 + "';",
+        "SELECT '" + "x;" * 2_000 + "';",
+        "SELECT $t$" + "x;$ " * 2_000 + "$t$;",
+        "/*" + " /* ; */ ;" * 1_000 + "*/ SELECT 1;",
+        "SELECT E'" + "a\\'" * 2_000 + "';",
     ],
     ids=["string", "dollar string", "comment", "escape string"],
 )
-def test_a_huge_literal_and_a_huge_comment_cost_one_pass(script: str) -> None:
-    assert _sliced_characters(script) <= 2 * len(script)
+def test_a_huge_literal_and_a_huge_comment_are_one_statement(script: str) -> None:
     assert len(texts(script)) == 1

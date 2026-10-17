@@ -623,7 +623,6 @@ strict_equality = true
 # The DuckDB script scanner is new code, written typed: the rest of the DuckDB plugin keeps its looser settings.
 [[tool.mypy.overrides]]
 module = [
-    "dblift.db.plugins.duckdb.parser._script",
 ]
 disallow_any_generics = true
 disallow_subclassing_any = true
