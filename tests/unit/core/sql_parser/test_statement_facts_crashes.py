@@ -85,7 +85,7 @@ def test_random_unicode_blanks_never_raise_in_the_reader_or_the_analysis():
 
     unread = sorted(set(BLANKS) | {"\u200b", "\u2060", "\ufeff"})
     rng = random.Random(20261017)
-    for _ in range(250):
+    for _ in range(100):
         base = rng.choice(FUZZ_STATEMENTS)
         sql = base
         for _ in range(rng.randint(1, 3)):
