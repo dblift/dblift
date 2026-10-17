@@ -132,7 +132,9 @@ def test_token_error_names_nothing_with_an_unread_character(dialect, shape, char
         assert analyze_dml(sql, sqlglot_dialect=dialect).table == ""
 
 
-@pytest.mark.parametrize("dialect", ("postgres", "mysql", "oracle", "tsql", "redshift", "snowflake"))
+@pytest.mark.parametrize(
+    "dialect", ("postgres", "mysql", "oracle", "tsql", "redshift", "snowflake")
+)
 @pytest.mark.parametrize("shape", ("delete", "update", "insert"))
 def test_dml_analysis_of_the_other_dialects_is_unchanged(dialect, shape):
     # Only SQLite and DuckDB read statement facts for this analysis; the other dialects keep

@@ -17,7 +17,6 @@ from typing import Any, Dict, Iterator, List, Optional, Tuple
 from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
 from dblift.core.sql_model.base import SqlObject, SqlObjectType
 from dblift.core.sql_parser.parser_factory import SqlParserFactory
-from dblift.core.sql_parser.sqlglot_statement_facts import readable_dml_target
 from dblift.db.base_quirks import BaseQuirks
 from dblift.db.dml_analysis import (
     cte_outer_statement_type,
@@ -202,9 +201,7 @@ def _analyse(text: str, dialect: str) -> ScriptAnalysis:
                 sql=body,
             )
             fact_statements.append(analysed)
-            caution = _caution_for(
-                analysed, body, quirks.sqlglot_dialect if facts.opaque else None
-            )
+            caution = _caution_for(analysed, body, quirks.sqlglot_dialect if facts.opaque else None)
             if caution is not None:
                 fact_cautions.append(caution)
             if facts.error:
@@ -331,7 +328,9 @@ def _unnamed_drop_caution(stmt: AnalysedStatement, body: str) -> Optional[Cautio
     if match is None:
         return None
     kind = " ".join(match.group(1).upper().split())
-    code = {"SCHEMA": "drop-schema", "DATABASE": "drop-schema", "VIEW": None}.get(kind, "drop-table")
+    code = {"SCHEMA": "drop-schema", "DATABASE": "drop-schema", "VIEW": None}.get(
+        kind, "drop-table"
+    )
     return Caution(
         DESTROYS,
         stmt.index,
@@ -371,6 +370,8 @@ def _caution_for(
         )
     if op in ("UPDATE", "DELETE") or (op == "WITH" and stmt.kind == "DML"):
         if stmt.full_table and opaque_dialect:
+            from dblift.core.sql_parser.sqlglot_statement_facts import readable_dml_target
+
             target = readable_dml_target(body, dialect=opaque_dialect)
             return Caution(
                 DESTROYS,
