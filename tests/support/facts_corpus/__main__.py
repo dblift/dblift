@@ -16,10 +16,11 @@ from tests.support.facts_corpus import (
     family_file,
     read_rows,
     read_versions,
+    statement_id,
 )
 from tests.support.facts_corpus.canonical import dumps
 from tests.support.facts_corpus.record import check_arm, record_family
-from tests.support.facts_corpus.seed import seed
+from tests.support.facts_corpus.seed import seed, split
 
 
 def _record(arm: str) -> None:
@@ -32,6 +33,19 @@ def _record(arm: str) -> None:
         print(f"{family}: {len(rows)} statements")
 
 
+def _resplit_unstable(family: str) -> list:
+    """Statement ids whose text does not split back to itself (splitter refusals included)."""
+    unstable = []
+    for row in read_rows(family_file(family)):
+        try:
+            again = split(family, row["sql"])
+        except Exception:
+            again = None
+        if again != [row["sql"]]:
+            unstable.append(statement_id(row["sql"]))
+    return unstable
+
+
 def _measure() -> None:
     """Store the sizes of the first complete recording; the corpus test caps growth on it."""
     versions = read_versions()
@@ -41,6 +55,10 @@ def _measure() -> None:
         family: sum(1 for r in read_rows(family_file(family)) if "facts_newest" in r or "old_newest" in r)
         for family in FAMILIES
     }
+    unstable = {family: _resplit_unstable(family) for family in FAMILIES}
+    (CORPUS_DIR / "not_idempotent.json").write_text(
+        json.dumps(unstable, indent=1, sort_keys=True) + "\n", encoding="utf-8"
+    )
     VERSIONS_FILE.write_text(json.dumps(versions, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(versions)
 
