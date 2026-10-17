@@ -1003,7 +1003,7 @@ class ExecutionEngine:
                         return
 
                 # Do not add a successful MigrationInfo to the result here: the
-                # caller (MigrateCommand._execute_single_migration) already adds
+                # caller (MigrateCommand, via its script runner) already adds
                 # one for every migration that completes without an error,
                 # covering both SQL and non-SQL formats uniformly. Adding one
                 # here too duplicated the entry for non-SQL (e.g. Python)

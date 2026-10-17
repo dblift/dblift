@@ -661,7 +661,7 @@ class TestExecuteViaFactoryExtended(unittest.TestCase):
         """Lines 866-906: success + no history_manager → just commit.
 
         ``_execute_via_factory`` does not add a MigrationInfo to the result on
-        success — the caller (MigrateCommand._execute_single_migration) does
+        success — the caller (MigrateCommand, via its script runner) does
         that uniformly for every migration type. Adding it here too used to
         duplicate the entry for non-SQL (e.g. Python) migrations (issue #835).
         """

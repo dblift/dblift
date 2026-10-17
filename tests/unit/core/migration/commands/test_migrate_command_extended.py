@@ -7,9 +7,7 @@ Covers previously untested paths to push coverage toward 70%+:
   - _mark_migrations_as_executed — success, failure
   - _execute_before_callbacks — versioned/repeatable filtering
   - _execute_after_callbacks — skipped on error, versioned/repeatable
-  - _handle_failed_migration — journal, no prior error_message
-  - _execute_single_migration — success, engine error, exception path
-  - _execute_migration_loop — stops after first failure
+  - _execute_migration_loop — runs each script through the shared runner, stops after first failure
   - _update_final_state
   - execute() — no pending, dry_run, mark_as_executed, lock failure, commit error
 """
@@ -23,7 +21,7 @@ from sqlalchemy.exc import OperationalError
 
 from dblift.core.logger.results import MigrateResult, MigrationInfo
 from dblift.core.migration.commands.base_command import PreflightConnectionError
-from dblift.core.migration.commands.migrate_command import MigrateCommand
+from dblift.core.migration.commands.migrate_command import MIGRATE_POLICY, MigrateCommand
 from dblift.core.migration.migration import MigrationType
 from dblift.core.migration.state.migration_display_state import MigrationDisplayState
 from dblift.core.migration.state.migration_state import MigrationEntry, MigrationState
@@ -264,7 +262,7 @@ class TestExecuteBeforeCallbacks(unittest.TestCase):
         cmd._execute_callbacks = MagicMock()
         result = MigrateResult()
         cmd._bind_callbacks(Path("/migrations"), True, None, None, result)
-        cmd._execute_before_callbacks([], [], result)
+        cmd._execute_before_callbacks([], [])
         events = [c.args[1] for c in cmd._execute_callbacks.call_args_list]
         self.assertIn("beforeMigrate", events)
 
@@ -274,7 +272,7 @@ class TestExecuteBeforeCallbacks(unittest.TestCase):
         m = _make_migration()
         result = MigrateResult()
         cmd._bind_callbacks(Path("/migrations"), True, None, None, result)
-        cmd._execute_before_callbacks([m], [], result)
+        cmd._execute_before_callbacks([m], [])
         events = [c.args[1] for c in cmd._execute_callbacks.call_args_list]
         self.assertIn("beforeVersioned", events)
 
@@ -283,7 +281,7 @@ class TestExecuteBeforeCallbacks(unittest.TestCase):
         cmd._execute_callbacks = MagicMock()
         result = MigrateResult()
         cmd._bind_callbacks(Path("/migrations"), True, None, None, result)
-        cmd._execute_before_callbacks([], [], result)
+        cmd._execute_before_callbacks([], [])
         events = [c.args[1] for c in cmd._execute_callbacks.call_args_list]
         self.assertNotIn("beforeVersioned", events)
 
@@ -293,7 +291,7 @@ class TestExecuteBeforeCallbacks(unittest.TestCase):
         m = _make_migration(type_=MigrationType.REPEATABLE)
         result = MigrateResult()
         cmd._bind_callbacks(Path("/migrations"), True, None, None, result)
-        cmd._execute_before_callbacks([], [m], result)
+        cmd._execute_before_callbacks([], [m])
         events = [c.args[1] for c in cmd._execute_callbacks.call_args_list]
         self.assertIn("beforeRepeatable", events)
 
@@ -302,7 +300,7 @@ class TestExecuteBeforeCallbacks(unittest.TestCase):
         cmd._execute_callbacks = MagicMock()
         result = MigrateResult()
         cmd._bind_callbacks(Path("/migrations"), True, None, None, result)
-        cmd._execute_before_callbacks([], [], result)
+        cmd._execute_before_callbacks([], [])
         events = [c.args[1] for c in cmd._execute_callbacks.call_args_list]
         self.assertNotIn("beforeRepeatable", events)
 
@@ -313,7 +311,7 @@ class TestExecuteBeforeCallbacks(unittest.TestCase):
         dir_map = {Path("/extra"): False}
         result = MigrateResult()
         cmd._bind_callbacks(Path("/migrations"), True, None, dir_map, result)
-        cmd._execute_before_callbacks([m], [], result)
+        cmd._execute_before_callbacks([m], [])
         versioned = [
             c for c in cmd._execute_callbacks.call_args_list if c.args[1] == "beforeVersioned"
         ]
@@ -395,120 +393,116 @@ class TestExecuteAfterCallbacks(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# _handle_failed_migration
+# _execute_migration_loop
 # ---------------------------------------------------------------------------
 
 
-class TestHandleFailedMigration(unittest.TestCase):
-    def test_sets_error_when_no_prior_error(self):
+class TestExecuteMigrationLoop(unittest.TestCase):
+    def test_second_failure_advances_once_and_skips_third(self):
+        from contextlib import nullcontext
+
         cmd = _make_cmd()
-        cmd._execute_callbacks = MagicMock()
-        m = _make_migration("V1__a.sql")
-        result = MigrateResult()
-        cmd._bind_callbacks(Path("/migrations"), True, None, None, result)
+        migrations = [_make_migration(f"V{i}__step.sql") for i in range(1, 4)]
+        sink = MagicMock()
 
-        cmd._handle_failed_migration(
-            m, 0.0, RuntimeError("oops"), result, Path("/migrations"), True, None, None
-        )
+        with (
+            patch(
+                "dblift.core.migration.commands.migrate_command.migration_progress",
+                return_value=nullcontext(sink),
+            ) as progress,
+            patch("dblift.core.migration.commands.migrate_command.ScriptRunner") as runner_cls,
+        ):
+            runner_cls.return_value.run.side_effect = [True, False]
+            cmd._execute_migration_loop(migrations, MigrateResult())
 
-        self.assertFalse(result.success)
-        self.assertIn("oops", result.error_message)
+        progress.assert_called_once_with(cmd.log, 3)
+        self.assertEqual(runner_cls.return_value.run.call_count, 2)
+        self.assertEqual(sink.describe.call_count, 2)
+        sink.advance.assert_called_once_with()
 
-    def test_does_not_overwrite_existing_error_message(self):
+    def test_stops_after_first_failure(self):
+        """Migration loop should break after a failure (not execute next migration)."""
         cmd = _make_cmd()
-        cmd._execute_callbacks = MagicMock()
-        m = _make_migration("V1__a.sql")
-        result = MigrateResult()
-        cmd._bind_callbacks(Path("/migrations"), True, None, None, result)
-        result.set_error("original error")
+        m1 = _make_migration("V1__a.sql")
+        m2 = _make_migration("V2__b.sql")
 
-        cmd._handle_failed_migration(
-            m, 0.0, RuntimeError("new error"), result, Path("/migrations"), True, None, None
-        )
+        with patch("dblift.core.migration.commands.migrate_command.ScriptRunner") as runner_cls:
+            runner_cls.return_value.run.return_value = False
+            cmd._execute_migration_loop([m1, m2], MigrateResult())
 
-        # error_message should still be the original one
-        self.assertIn("original error", result.error_message)
+        self.assertEqual(runner_cls.return_value.run.call_count, 1)
 
-    def test_ends_journal_when_present(self):
-        journal = MagicMock()
-        cmd = _make_cmd(journal=journal)
-        cmd._execute_callbacks = MagicMock()
-        m = _make_migration("V1__a.sql")
-        result = MigrateResult()
-        cmd._bind_callbacks(Path("/migrations"), True, None, None, result)
-
-        import time
-
-        start_time = time.time()
-        cmd._handle_failed_migration(
-            m, start_time, RuntimeError("err"), result, Path("/migrations"), True, None, None
-        )
-
-        journal.end_migration.assert_called_once()
-        call_kwargs = journal.end_migration.call_args
-        self.assertFalse(call_kwargs.kwargs.get("success", True))
-
-    def test_executes_after_migrate_error_callback(self):
+    def test_executes_all_on_success(self):
         cmd = _make_cmd()
-        cmd._execute_callbacks = MagicMock()
-        m = _make_migration("V1__a.sql")
-        result = MigrateResult()
-        cmd._bind_callbacks(Path("/migrations"), True, None, None, result)
+        m1 = _make_migration("V1__a.sql")
+        m2 = _make_migration("V2__b.sql")
 
-        cmd._handle_failed_migration(
-            m, 0.0, RuntimeError("err"), result, Path("/migrations"), True, None, None
+        with patch("dblift.core.migration.commands.migrate_command.ScriptRunner") as runner_cls:
+            runner_cls.return_value.run.return_value = True
+            cmd._execute_migration_loop([m1, m2], MigrateResult())
+
+        self.assertEqual(runner_cls.return_value.run.call_count, 2)
+
+    def test_show_sql_collects_statement_before_failed_execution(self):
+        cmd = _make_cmd()
+        cmd.execution_engine.get_executable_sql_statements.return_value = [
+            "CREATE TABLE users (id INT)"
+        ]
+        migration = _make_migration("V1__a.sql", version="1", description="create users")
+        result = MigrateResult()
+        result.show_sql = True
+
+        with patch("dblift.core.migration.commands.migrate_command.ScriptRunner") as runner_cls:
+            runner_cls.return_value.run.return_value = False
+            cmd._execute_migration_loop([migration], result)
+
+        runner_cls.return_value.run.assert_called_once()
+        self.assertEqual(len(result.sql), 1)
+        self.assertEqual(result.sql[0].script, "V1__a.sql")
+        self.assertEqual(result.sql[0].statements, ["CREATE TABLE users (id INT)"])
+
+    def test_runner_uses_migrate_policy_and_migration_event_data(self):
+        cmd = _make_cmd()
+        migration = _make_migration("V1__a.sql", version="1", description="create users")
+
+        with patch("dblift.core.migration.commands.migrate_command.ScriptRunner") as runner_cls:
+            runner_cls.return_value.run.return_value = True
+            cmd._execute_migration_loop([migration], MigrateResult())
+
+        runner_cls.assert_called_once_with(cmd, MIGRATE_POLICY)
+        self.assertEqual(
+            runner_cls.return_value.run.call_args.kwargs["event_data"],
+            {
+                "script": "V1__a.sql",
+                "version": "1",
+                "description": "create users",
+                "type": "SQL",
+            },
         )
 
-        events = [c.args[1] for c in cmd._execute_callbacks.call_args_list]
-        self.assertIn("afterMigrateError", events)
 
+class TestExecuteMigrationLoopThroughRunner(unittest.TestCase):
+    """The loop with the real runner: what a single migration leaves behind."""
 
-# ---------------------------------------------------------------------------
-# _execute_single_migration
-# ---------------------------------------------------------------------------
+    def _run_loop(self, cmd, migrations, result):
+        with patch("dblift.core.migration.commands._script_runner.emit_script_event"):
+            cmd._execute_migration_loop(migrations, result)
 
-
-class TestExecuteSingleMigration(unittest.TestCase):
-    def test_successful_migration_returns_true(self):
-        execution_engine = MagicMock()
-        cmd = _make_cmd(execution_engine=execution_engine)
+    def test_successful_migration_is_recorded(self):
+        cmd = _make_cmd()
         cmd._execute_callbacks = MagicMock()
         cmd.journal = None
-        m = _make_migration("V1__a.sql")
         result = MigrateResult()
         cmd._bind_callbacks(Path("/migrations"), True, None, None, result)
 
-        with patch("dblift.core.migration.commands.migrate_command._emit_script_event"):
-            success = cmd._execute_single_migration(
-                m, Path("/migrations"), True, None, None, result
-            )
+        self._run_loop(cmd, [_make_migration("V1__a.sql")], result)
 
-        self.assertTrue(success)
+        self.assertIsNone(result.error_message)
         self.assertEqual(len(result.migrations), 1)
+        self.assertEqual(result.migrations[0].status, "SUCCESS")
+        self.assertEqual(result.migrations[0].script, "V1__a.sql")
 
-    def test_engine_sets_error_returns_false(self):
-        """When execution_engine sets result.error_message, returns False."""
-
-        def _set_error(migration, result):
-            result.set_error("migration failed")
-
-        execution_engine = MagicMock()
-        execution_engine.execute_migration.side_effect = _set_error
-        cmd = _make_cmd(execution_engine=execution_engine)
-        cmd._execute_callbacks = MagicMock()
-        cmd.journal = None
-        m = _make_migration("V1__a.sql")
-        result = MigrateResult()
-        cmd._bind_callbacks(Path("/migrations"), True, None, None, result)
-
-        with patch("dblift.core.migration.commands.migrate_command._emit_script_event"):
-            success = cmd._execute_single_migration(
-                m, Path("/migrations"), True, None, None, result
-            )
-
-        self.assertFalse(success)
-
-    def test_engine_error_after_migrate_error_forwards_dir_recursive_map(self):
+    def test_engine_error_stops_loop_and_fires_after_migrate_error_with_dir_map(self):
         """afterMigrateError on the execute_migration failure path must receive
         the same dir_recursive_map as sibling callbacks."""
 
@@ -520,130 +514,48 @@ class TestExecuteSingleMigration(unittest.TestCase):
         cmd = _make_cmd(execution_engine=execution_engine)
         cmd._execute_callbacks = MagicMock()
         cmd.journal = None
-        m = _make_migration("V1__a.sql")
         result = MigrateResult()
         dir_map = {Path("/extra"): False}
         cmd._bind_callbacks(Path("/migrations"), True, None, dir_map, result)
 
-        with patch("dblift.core.migration.commands.migrate_command._emit_script_event"):
-            success = cmd._execute_single_migration(
-                m, Path("/migrations"), True, None, dir_map, result
-            )
+        self._run_loop(cmd, [_make_migration("V1__a.sql"), _make_migration("V2__b.sql")], result)
 
-        self.assertFalse(success)
+        self.assertEqual(execution_engine.execute_migration.call_count, 1)
+        self.assertEqual(result.error_message, "migration failed")
         error_calls = [
             c for c in cmd._execute_callbacks.call_args_list if c.args[1] == "afterMigrateError"
         ]
         self.assertEqual(len(error_calls), 1)
         self.assertIs(_callback_dir_recursive_map(error_calls[0]), dir_map)
 
-    def test_exception_in_execute_migration_returns_false(self):
+    def test_exception_in_execute_migration_stops_loop(self):
         execution_engine = MagicMock()
         execution_engine.execute_migration.side_effect = RuntimeError("driver error")
         cmd = _make_cmd(execution_engine=execution_engine)
         cmd._execute_callbacks = MagicMock()
         cmd.journal = None
-        m = _make_migration("V1__a.sql")
         result = MigrateResult()
         cmd._bind_callbacks(Path("/migrations"), True, None, None, result)
 
-        with patch("dblift.core.migration.commands.migrate_command._emit_script_event"):
-            success = cmd._execute_single_migration(
-                m, Path("/migrations"), True, None, None, result
-            )
+        self._run_loop(cmd, [_make_migration("V1__a.sql"), _make_migration("V2__b.sql")], result)
 
-        self.assertFalse(success)
+        self.assertEqual(execution_engine.execute_migration.call_count, 1)
+        self.assertIn("driver error", result.error_message)
+        self.assertEqual(len(result.migrations), 0)
 
     def test_journal_started_and_ended_on_success(self):
         journal = MagicMock()
-        execution_engine = MagicMock()
-        cmd = _make_cmd(execution_engine=execution_engine, journal=journal)
+        cmd = _make_cmd(journal=journal)
         cmd._execute_callbacks = MagicMock()
-        m = _make_migration("V1__a.sql")
         result = MigrateResult()
         cmd._bind_callbacks(Path("/migrations"), True, None, None, result)
 
-        with patch("dblift.core.migration.commands.migrate_command._emit_script_event"):
-            cmd._execute_single_migration(m, Path("/migrations"), True, None, None, result)
+        self._run_loop(cmd, [_make_migration("V1__a.sql")], result)
 
         journal.start_migration.assert_called_once_with("V1__a.sql", details=unittest.mock.ANY)
         journal.end_migration.assert_called_once()
         kwargs = journal.end_migration.call_args.kwargs
         self.assertTrue(kwargs.get("success", False))
-
-
-# ---------------------------------------------------------------------------
-# _execute_migration_loop
-# ---------------------------------------------------------------------------
-
-
-class TestExecuteMigrationLoop(unittest.TestCase):
-    def test_second_failure_advances_once_and_skips_third(self):
-        from contextlib import nullcontext
-
-        cmd = _make_cmd()
-        migrations = [_make_migration(f"V{i}__step.sql") for i in range(1, 4)]
-        cmd._execute_single_migration = MagicMock(side_effect=[True, False])
-        sink = MagicMock()
-
-        with patch(
-            "dblift.core.migration.commands.migrate_command.migration_progress",
-            return_value=nullcontext(sink),
-        ) as progress:
-            cmd._execute_migration_loop(
-                migrations, Path("/migrations"), True, None, None, MigrateResult()
-            )
-
-        progress.assert_called_once_with(cmd.log, 3)
-        self.assertEqual(cmd._execute_single_migration.call_count, 2)
-        self.assertEqual(sink.describe.call_count, 2)
-        sink.advance.assert_called_once_with()
-
-    def test_stops_after_first_failure(self):
-        """Migration loop should break after a failure (not execute next migration)."""
-        cmd = _make_cmd()
-        call_count = {"n": 0}
-
-        def _failing_single(migration, *args, **kwargs):
-            call_count["n"] += 1
-            return False  # fail always
-
-        cmd._execute_single_migration = _failing_single
-        m1 = _make_migration("V1__a.sql")
-        m2 = _make_migration("V2__b.sql")
-        result = MigrateResult()
-
-        cmd._execute_migration_loop([m1, m2], Path("/migrations"), True, None, None, result)
-
-        self.assertEqual(call_count["n"], 1)
-
-    def test_executes_all_on_success(self):
-        cmd = _make_cmd()
-        cmd._execute_single_migration = MagicMock(return_value=True)
-        m1 = _make_migration("V1__a.sql")
-        m2 = _make_migration("V2__b.sql")
-        result = MigrateResult()
-
-        cmd._execute_migration_loop([m1, m2], Path("/migrations"), True, None, None, result)
-
-        self.assertEqual(cmd._execute_single_migration.call_count, 2)
-
-    def test_show_sql_collects_statement_before_failed_execution(self):
-        cmd = _make_cmd()
-        cmd._execute_single_migration = MagicMock(return_value=False)
-        cmd.execution_engine.get_executable_sql_statements.return_value = [
-            "CREATE TABLE users (id INT)"
-        ]
-        migration = _make_migration("V1__a.sql", version="1", description="create users")
-        result = MigrateResult()
-        result.show_sql = True
-
-        cmd._execute_migration_loop([migration], Path("/migrations"), True, None, None, result)
-
-        cmd._execute_single_migration.assert_called_once()
-        self.assertEqual(len(result.sql), 1)
-        self.assertEqual(result.sql[0].script, "V1__a.sql")
-        self.assertEqual(result.sql[0].statements, ["CREATE TABLE users (id INT)"])
 
 
 # ---------------------------------------------------------------------------

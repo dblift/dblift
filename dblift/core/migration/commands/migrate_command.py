@@ -2,7 +2,7 @@
 Migrate command implementation.
 """
 
-import time
+from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from dblift.core.migration.journals.migration_journal import MigrationJournal
     from dblift.core.migration.placeholders.placeholder_service import PlaceholderService
 
-from dblift.core.constants import DEFAULT_MIGRATION_LOCK_TIMEOUT_SECONDS, SECONDS_TO_MILLISECONDS
+from dblift.core.constants import DEFAULT_MIGRATION_LOCK_TIMEOUT_SECONDS
 from dblift.core.logger import Log
 from dblift.core.logger.results import MigrateResult, MigrationInfo, MigrationSqlInfo
 from dblift.core.migration._type_match import migration_type_name
@@ -42,8 +42,15 @@ from dblift.core.migration.version_utils import compare_versions, is_migration_s
 from dblift.core.sql_validator.migration_validator import MigrationValidator
 from dblift.db.base_provider import BaseProvider
 
-from ._script_events import emit_script_event as _emit_script_event
+from ._script_runner import ScriptRunner, ScriptRunPolicy
 from .base_command import BaseCommand, BaseCommandContext, PreflightConnectionError
+
+MIGRATE_POLICY = ScriptRunPolicy(
+    before_events=("beforeEach", "beforeEachMigrate"),
+    after_events=("afterEachMigrate", "afterEach"),
+    error_event="afterMigrateError",
+    failure_prefix="Migration failed",
+)
 
 
 class MigrateCommand(BaseCommand):
@@ -320,7 +327,6 @@ class MigrateCommand(BaseCommand):
         self,
         versioned_migrations: List[Migration],
         repeatable_migrations: List[Migration],
-        result: MigrateResult,
     ) -> None:
         """Execute all before-migration callbacks."""
         # Execute beforeMigrate callbacks
@@ -355,135 +361,12 @@ class MigrateCommand(BaseCommand):
         # Execute afterMigrate callbacks after all migrations complete successfully
         self._fire("afterMigrate")
 
-    def _handle_failed_migration(
-        self,
-        migration: Migration,
-        start_time: float,
-        exception: Exception,
-        result: MigrateResult,
-        scripts_dir: Path,
-        use_recursive: bool,
-        use_additional_dirs: Optional[List[Path]],
-        dir_recursive_map: Optional[Dict[Path, bool]],
+    def _record_applied(
+        self, migration: Migration, result: MigrateResult, execution_time: int
     ) -> None:
-        """Handle a failed migration - record error, journal, and history."""
-        # Only log if error_message is not already set (execute_migration already logged it)
-        if not result.error_message:
-            self.log.error(f"Migration {migration.script_name} failed: {exception}")
-            error_message = str(exception)
-        else:
-            # Error was already logged by execute_migration, just use the existing message
-            error_message = result.error_message
-
-        # End journal tracking for failed migration
-        execution_time = int((time.time() - start_time) * SECONDS_TO_MILLISECONDS)
-        if self.journal:
-            self.journal.end_migration(
-                migration.script_name,
-                success=False,
-                error_message=error_message,
-                execution_time=execution_time,
-            )
-
-        # Note: ExecutionEngine already records the failed migration in history
-        # (with its own transaction), so we do NOT record it again here.
-
-        # Only set error if not already set (execute_migration already set it)
-        if not result.error_message:
-            result.set_error(f"Migration failed: {error_message}")
-
-        # Execute afterMigrateError callbacks when migration fails
-        self._fire("afterMigrateError")
-
-    def _execute_single_migration(
-        self,
-        migration: Migration,
-        scripts_dir: Path,
-        use_recursive: bool,
-        use_additional_dirs: Optional[List[Path]],
-        dir_recursive_map: Optional[Dict[Path, bool]],
-        result: MigrateResult,
-    ) -> bool:
-        """Execute a single migration.
-
-        Returns:
-            True if migration succeeded, False if it failed
-        """
-        try:
-            # start_time must be bound before any fallible call in this block: if a
-            # beforeEach/beforeEachMigrate callback raises, the except clause below
-            # reports it via _handle_failed_migration(..., start_time, ...), and that
-            # read must not itself fail. As a side effect, reported execution_time
-            # now includes beforeEach/beforeEachMigrate callback dispatch time for
-            # every migration (previously only the migration script itself was
-            # timed) - relevant if you monitor migration duration and have callbacks
-            # with non-trivial runtime.
-            start_time = time.time()
-
-            # Execute beforeEach callbacks
-            self._fire("beforeEach")
-            self._fire("beforeEachMigrate")
-
-            # Start journal tracking for this migration
-            if self.journal:
-                self.journal.start_migration(
-                    migration.script_name,
-                    details={
-                        "version": migration.version,
-                        "description": migration.description,
-                        "type": migration.type.value if migration.type else "SQL",
-                    },
-                )
-
-            _script_event_data = {
-                "script": migration.script_name,
-                "version": migration.version,
-                "description": migration.description,
-                "type": migration.type.value if migration.type else "SQL",
-            }
-            _emit_script_event("migration.script.started", _script_event_data)
-            self.execution_engine.execute_migration(migration, result)
-            execution_time = int((time.time() - start_time) * SECONDS_TO_MILLISECONDS)
-
-            # Check if migration failed during execution
-            if result.error_message:
-                # Migration failed - ExecutionEngine.execute_migration() already:
-                # 1. Set the error in result
-                # 2. Added failed migration info to result
-                # 3. Rolled back the transaction (transaction management is handled by ExecutionEngine)
-                # We just need to end journal tracking and break
-                if self.journal:
-                    self.journal.end_migration(
-                        migration.script_name,
-                        success=False,
-                        error_message=result.error_message,
-                        execution_time=execution_time,
-                    )
-                _emit_script_event(
-                    "migration.script.failed",
-                    {
-                        **_script_event_data,
-                        "error": result.error_message,
-                        "execution_time": execution_time,
-                    },
-                )
-                # Execute afterMigrateError callbacks before breaking
-                self._fire("afterMigrateError")
-                return False
-
-            # End journal tracking for successful migration
-            if self.journal:
-                self.journal.end_migration(
-                    migration.script_name,
-                    success=True,
-                    execution_time=execution_time,
-                )
-
-            # Migration history is recorded within the transaction by ExecutionEngine.execute_migration()
-            # Transaction management (begin/commit/rollback) is handled by ExecutionEngine
-
-            # Add migration info to result
-            migration_info = MigrationInfo(
+        """Add the applied migration to the result and log it."""
+        result.add_migration(
+            MigrationInfo(
                 script=migration.script_name,
                 version=migration.version,
                 description=migration.description,
@@ -492,46 +375,17 @@ class MigrateCommand(BaseCommand):
                 execution_time=execution_time,
                 checksum=migration.checksum,
             )
-            result.add_migration(migration_info)
-
-            _emit_script_event(
-                "migration.script.completed",
-                {**_script_event_data, "execution_time": execution_time},
-            )
-            self.log.info(f"Successfully applied migration {migration.script_name}")
-
-            # Execute afterEach callbacks after successful migration
-            self._fire("afterEachMigrate")
-            self._fire("afterEach")
-
-            return True
-
-        except Exception as e:
-            self._handle_failed_migration(
-                migration,
-                start_time,
-                e,
-                result,
-                scripts_dir,
-                use_recursive,
-                use_additional_dirs,
-                dir_recursive_map,
-            )
-            return False
+        )
+        self.log.info(f"Successfully applied migration {migration.script_name}")
 
     def _execute_migration_loop(
-        self,
-        pending_migrations: List[Migration],
-        scripts_dir: Path,
-        use_recursive: bool,
-        use_additional_dirs: Optional[List[Path]],
-        dir_recursive_map: Optional[Dict[Path, bool]],
-        result: MigrateResult,
+        self, pending_migrations: List[Migration], result: MigrateResult
     ) -> None:
         """Execute the main migration loop."""
         self.log.debug(
             f"Starting execution loop for {len(pending_migrations)} pending migration(s)"
         )
+        runner = ScriptRunner(self, MIGRATE_POLICY)
         with migration_progress(self.log, len(pending_migrations)) as progress:
             for migration in pending_migrations:
                 if self._migration_lock_lost():
@@ -552,13 +406,16 @@ class MigrateCommand(BaseCommand):
                     self._collect_visible_sql([migration], result)
                     if result.error_message:
                         break
-                success = self._execute_single_migration(
+                success = runner.run(
                     migration,
-                    scripts_dir,
-                    use_recursive,
-                    use_additional_dirs,
-                    dir_recursive_map,
                     result,
+                    event_data={
+                        "script": migration.script_name,
+                        "version": migration.version,
+                        "description": migration.description,
+                        "type": migration.type.value if migration.type else "SQL",
+                    },
+                    on_success=partial(self._record_applied, migration, result),
                 )
                 if not success:
                     # Failed migration must not bump MofNCompleteColumn —
@@ -875,19 +732,10 @@ class MigrateCommand(BaseCommand):
                         ]
 
                         # Execute before-migration callbacks
-                        self._execute_before_callbacks(
-                            versioned_migrations, repeatable_migrations, result
-                        )
+                        self._execute_before_callbacks(versioned_migrations, repeatable_migrations)
 
                         # Execute migrations normally
-                        self._execute_migration_loop(
-                            pending_migrations,
-                            scripts_dir,
-                            use_recursive,
-                            use_additional_dirs,
-                            dir_recursive_map,
-                            result,
-                        )
+                        self._execute_migration_loop(pending_migrations, result)
 
                         # Execute after-migration callbacks if all migrations succeeded
                         self._execute_after_callbacks(
