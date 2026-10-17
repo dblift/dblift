@@ -90,6 +90,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   whatever its recorded execution time. `validate` and `info` match a repeatable migration
   recorded under a directory-qualified name by its file name, as `migrate` does.
 
+- **A DuckDB script where a `$` sits inside a word and a dollar tag follows a Unicode blank is split as DuckDB reads it.**
+  `SELECT 1 AS a$$` U+00A0 `$t$x; DROP TABLE t; SELECT 3;` (also U+3000 and the other 16 blanks DuckDB reads)
+  was read as one statement hiding the `DROP TABLE`, while DuckDB keeps the blank inside the word and runs the
+  three statements. A `$` inside a word now continues the word, and a dollar tag opens only after a word ends.
+
 - **A DuckDB script where a number is followed by letters and a dollar-quoted string is split as DuckDB reads it.**
   `SELECT 1a$$x; DROP TABLE t; SELECT 3 AS y$$;` (also `1_000a`, `1.5a`, `1e5a`, `0x1g` and a
   positional parameter such as `$1a`) was read as one statement hiding the `DROP TABLE`, while DuckDB

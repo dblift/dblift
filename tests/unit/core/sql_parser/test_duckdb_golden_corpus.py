@@ -54,7 +54,7 @@ def evaluate(script: str) -> Dict[str, Any]:
     return loaded
 
 
-KNOWN_GAP_ROWS = {"74", "75"}
+KNOWN_GAP_ROWS = {"74", "75", "85"}
 
 
 def describe(entry: Dict[str, Any]) -> str:
