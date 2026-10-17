@@ -781,7 +781,7 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
             if not isinstance(definition, exp.ColumnDef)
             if (detail := _declared_constraint(definition))
         )
-        if isinstance(subject, exp.Index):
+        if isinstance(subject, exp.Index) and index_items:
             simple = [item.this if isinstance(item, exp.Ordered) else item for item in index_items]
             if all(isinstance(item, exp.Column) for item in simple):
                 indexed_columns = tuple(item.name for item in simple)
@@ -855,7 +855,7 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
         object_type = SqlObjectType.__members__.get(
             str(ast.args.get("kind") or "").upper(), SqlObjectType.UNKNOWN
         )
-        identity = _named(ast.this, object_type, "altered")
+        identity = _named(ast.this, object_type, "altered") if ast.this is not None else None
         actions = ast.args.get("actions") or []
         columns = tuple(action.name for action in actions if isinstance(action, exp.ColumnDef))
         action = "add-column" if columns else None
@@ -870,6 +870,7 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
                 detail for definition in added for detail in _column_constraints(definition)
             ),
             action=action,
+            diagnostic=None if ast.this is not None else f"{dialect} ALTER names no object",
         )
 
     if (

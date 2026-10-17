@@ -63,7 +63,7 @@ TEMPLATES = {
         "DDL",
         "CREATE TRIGGER tr AFTER INSERT ON t BEGIN UPDATE u{c} SET a = 1; END",
     ),
-    "cte-delete": ("WITH", "DML", "WITH x AS (SELECT 1) DELETE FROM u{c} WHERE a = 1"),
+    "cte-delete": ("DELETE", "DML", "WITH x AS (SELECT 1) DELETE FROM u{c} WHERE a = 1"),
     "rename": ("ALTER", "DDL", "ALTER TABLE t RENAME TO u{c}"),
 }
 
