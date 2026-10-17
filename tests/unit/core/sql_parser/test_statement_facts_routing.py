@@ -116,13 +116,16 @@ def test_execution_tracking_records_no_parent_target_after_opt_out(monkeypatch):
     assert [obj["object_name"] for obj in objects] == ["zz"]
 
 
-@pytest.mark.parametrize("plugin", DERIVATIVES)
-def test_dry_run_dml_target_comes_from_the_plugin_reader(monkeypatch, plugin):
-    quirks = own_reader(monkeypatch, plugin)
+@pytest.mark.parametrize("child", ["cockroachdb", "mariadb"])
+def test_dry_run_dml_target_after_opt_out_is_not_the_parents(monkeypatch, child):
+    child_quirks = ProviderRegistry.get_quirks(child)
+    parent = ProviderRegistry.get_quirks(child_quirks.sqlglot_dialect)
+    monkeypatch.setattr(type(parent), "statement_facts_class", reader_named("parent_reader"))
+    monkeypatch.setattr(type(child_quirks), "statement_facts_class", None)
 
-    objects = _fallback_objects("UPDATE", "DML", UPDATE, quirks)
+    objects = _fallback_objects("UPDATE", "DML", UPDATE, child_quirks)
 
-    assert [obj.name for obj in objects] == ["from_reader"]
+    assert [obj.name for obj in objects] == ["zz"]
 
 
 def test_deprecated_dialect_keyword_routes_through_the_named_plugin(monkeypatch):
@@ -143,31 +146,44 @@ def test_quirks_wins_over_a_deprecated_keyword(monkeypatch):
     assert mutation.table == "from_reader"
 
 
-def _calls_of_the_five(tree):
-    names = {
-        "analyze_dml",
-        "dml_where_predicate",
-        "is_full_table_dml",
-        "statement_dml_table",
-        "updates_restore_key",
-    }
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Call):
-            func = node.func
-            name = func.id if isinstance(func, ast.Name) else None
-            if name in names:
-                yield node
+FIVE = {
+    "analyze_dml",
+    "dml_where_predicate",
+    "is_full_table_dml",
+    "statement_dml_table",
+    "updates_restore_key",
+}
 
 
 def routed_by_name(source):
-    """Calls of the five functions that omit ``quirks=`` or pass a dialect name."""
+    """Lines that call the five functions without ``quirks=`` (or with a dialect name),
+    or look a plugin up by a sqlglot dialect name."""
+    tree = ast.parse(source)
+    aliases = {
+        a.asname or a.name: a.name
+        for n in ast.walk(tree)
+        if isinstance(n, ast.ImportFrom)
+        for a in n.names
+    }
     flagged = []
-    for call in _calls_of_the_five(ast.parse(source)):
-        keywords = {kw.arg for kw in call.keywords}
-        if "quirks" not in keywords or keywords & {"sqlglot_dialect", "dialect"}:
-            flagged.append(call.lineno)
-        elif len(call.args) > 1 and call.func.id == "statement_dml_table":
-            flagged.append(call.lineno)
+    for call in (n for n in ast.walk(tree) if isinstance(n, ast.Call)):
+        func = call.func
+        if isinstance(func, ast.Name):
+            name = aliases.get(func.id, func.id)
+        elif isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name):
+            name = func.attr if func.value.id in {"dml_analysis", "dml"} else None
+        else:
+            name = None
+        if name in FIVE:
+            keywords = {kw.arg for kw in call.keywords}
+            if "quirks" not in keywords or keywords & {"sqlglot_dialect", "dialect"}:
+                flagged.append(call.lineno)
+            elif name == "statement_dml_table" and len(call.args) > 1:
+                flagged.append(call.lineno)
+        elif getattr(func, "attr", getattr(func, "id", "")) == "get_quirks":
+            arg = call.args[0] if call.args else None
+            if isinstance(arg, ast.Attribute) and arg.attr == "sqlglot_dialect":
+                flagged.append(call.lineno)
     return flagged
 
 
@@ -178,6 +194,10 @@ def test_the_guard_flags_a_call_that_routes_by_name():
     assert routed_by_name("statement_dml_table(sql, name, quirks=q)") == [1]
     assert routed_by_name("analyze_dml(sql, quirks=q)") == []
     assert routed_by_name("q.analyze_dml(sql)") == []
+    assert routed_by_name("dml_analysis.analyze_dml(sql, sqlglot_dialect=n)") == [1]
+    assert routed_by_name("from m import analyze_dml as a\na(sql)") == [2]
+    assert routed_by_name("R.get_quirks(q.sqlglot_dialect).statement_facts(s)") == [1]
+    assert routed_by_name("R.get_quirks(name)") == []
 
 
 def test_no_src_caller_routes_facts_by_name():
@@ -217,3 +237,15 @@ def test_undo_strategy_follows_the_quirks_flag(monkeypatch):
     assert SqliteQuirks.undo_reverses_statement_facts is True
     sqlite_undo = UndoScriptGenerator("sqlite")._generate_undo_statements(migration)
     assert [s.sql for s in sqlite_undo] == ['DROP TABLE IF EXISTS "t";']
+
+
+def test_deprecated_keyword_naming_no_plugin_keeps_the_sqlglot_grammar():
+    bigquery = "UPDATE `s`.`t` SET a = 1 WHERE b = 2"
+    with pytest.warns(DeprecationWarning):
+        assert analyze_dml(bigquery, sqlglot_dialect="bigquery").table == "s.t"
+    with pytest.warns(DeprecationWarning):
+        assert dml_where_predicate(bigquery, sqlglot_dialect="spark") == "b = 2"
+    with pytest.warns(DeprecationWarning):
+        assert (
+            statement_dml_table("WITH x AS (SELECT 1) UPDATE t SET a = 1", dialect="trino") == "t"
+        )

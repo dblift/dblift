@@ -86,6 +86,14 @@ def test_reader_without_the_constructor_contract_is_named():
         _no_argument_reader_quirks().statement_facts("SELECT 1")
 
 
+def test_a_reader_without_an_inspectable_signature_is_named():
+    class Quirks(BaseQuirks):
+        statement_facts_class = dict
+
+    with pytest.raises(TypeError, match=r"must accept \(dialect, spec\)"):
+        Quirks().statement_facts("SELECT 1")
+
+
 def test_a_type_error_inside_a_conforming_constructor_is_not_relabelled():
     class Reader:
         def __init__(self, dialect, spec=None):

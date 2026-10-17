@@ -103,7 +103,7 @@ class BaseQuirks:
         args = (self.sqlglot_dialect, self.lexical_spec())
         try:
             inspect.signature(reader_class).bind(*args)
-        except TypeError:
+        except (TypeError, ValueError):
             raise TypeError(
                 f"{type(self).__name__} statement facts reader {reader_class.__name__} "
                 "must accept (dialect, spec)"

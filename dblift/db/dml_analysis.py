@@ -90,9 +90,14 @@ def _quirks_for(
     )
     if quirks is not None:
         return quirks
+    from dblift.db.base_quirks import BaseQuirks
     from dblift.db.provider_registry import ProviderRegistry
 
-    return ProviderRegistry.get_quirks(name)
+    if ProviderRegistry.canonical_dialect_name(name) is not None:
+        return ProviderRegistry.get_quirks(name)
+    unclaimed = BaseQuirks()  # a sqlglot name no plugin owns: keep it as the read grammar
+    unclaimed.sqlglot_dialect = name
+    return unclaimed
 
 
 def analyze_dml(
