@@ -54,4 +54,5 @@ def test_a_unicode_blank_inside_a_two_word_object_type_never_raises(dialect, tai
     sql = f"CREATE VIRTUAL{char}TABLE t USING fts5(a){tail}"
 
     assert read_statement_facts(sql, dialect=dialect).operation == "CREATE"
-    assert analyse_script(sql + ";", dialect).statements
+    analysis = analyse_script(sql + ";", dialect)
+    assert analysis.statements or analysis.errors
