@@ -928,6 +928,13 @@ class BaseCommand:
         lock_lost = getattr(self.provider, "migration_lock_lost", None)
         return callable(lock_lost) and lock_lost() is True
 
+    def _run_error_handler(self, command_name: str, handler: Callable[[], None]) -> None:
+        """Run an error handler; a failure is logged at debug level, never raised."""
+        try:
+            handler()
+        except Exception as handler_error:
+            self.log.debug(f"Error handler for {command_name} failed: {handler_error}")
+
     def _run_command_lifecycle(
         self,
         command_name: str,
@@ -971,10 +978,7 @@ class BaseCommand:
             self.log.error(message)
             result.set_error(message)
             if on_error is not None:
-                try:
-                    on_error()
-                except Exception as handler_error:
-                    self.log.debug(f"Error handler for {command_name} failed: {handler_error}")
+                self._run_error_handler(command_name, on_error)
 
         self._log_command_completion(command_name, result)
         return result

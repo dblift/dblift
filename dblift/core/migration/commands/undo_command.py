@@ -19,7 +19,7 @@ from dblift.core.migration.state.rank_wins import installed_rank, latest_success
 from dblift.core.migration.version_utils import compare_versions, is_migration_success
 
 from ._script_runner import ScriptRunner, ScriptRunPolicy
-from .base_command import MIGRATION_LOCK_REFUSAL, BaseCommand
+from .base_command import MIGRATION_LOCK_REFUSAL, BaseCommand, PreflightConnectionError
 
 UNDO_POLICY = ScriptRunPolicy(
     before_events=("beforeEach",),
@@ -117,6 +117,22 @@ class UndoCommand(BaseCommand):
         )
         self.log.info(f"Successfully undone migration {migration.script_name}")
 
+    def _fire_error_callback_while_locked(
+        self,
+        exc_type: Optional[type],
+        exc: Optional[BaseException],
+        _traceback: object,
+    ) -> bool:
+        """Fire ``afterUndoError`` when the locked block raised; never swallow the error.
+
+        Pushed on the lock's ``ExitStack`` after the lock, so it runs before the
+        lock is released: error callbacks can run SQL, which must not overlap a
+        migrate. A connection failure is not an undo failure and fires nothing.
+        """
+        if isinstance(exc, Exception) and not isinstance(exc, PreflightConnectionError):
+            self._run_error_handler("undo", lambda: self._fire("afterUndoError"))
+        return False
+
     def execute(
         self,
         scripts_dir: Path,
@@ -163,6 +179,8 @@ class UndoCommand(BaseCommand):
                     self.log.error(MIGRATION_LOCK_REFUSAL)
                     result.set_error(MIGRATION_LOCK_REFUSAL)
                     return
+
+                lock.push(self._fire_error_callback_while_locked)
 
                 # Setup parameters
                 use_recursive, use_additional_dirs = (
@@ -459,6 +477,5 @@ class UndoCommand(BaseCommand):
                     "exclude_versions": exclude_versions,
                     "show_sql": show_sql,
                 },
-                on_error=lambda: self._fire("afterUndoError"),
             ),
         )
