@@ -43,7 +43,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Splitting a large Db2 script takes longer and uses more memory.** The time
   stays linear in the length of the script. Measured on one machine, a 3 MiB
   script of `INSERT` statements went from 1.70 s and a 20 MB peak to 1.96 s and a
-  226 MB peak, and a 77-byte migration from 44 to 50 microseconds.
+  226 MB peak, and a 77-byte migration from about 44 to about 50 microseconds.
 
 ### Removed
 
