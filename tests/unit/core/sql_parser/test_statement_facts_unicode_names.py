@@ -113,6 +113,7 @@ UNTERMINATED = {
     "create": ("CREATE", "CREATE TABLE {c}u (a INT) /* note"),
     "drop": ("DROP", "DROP TABLE {c}u /* note"),
     "quote": ("DELETE", "DELETE FROM u{c} WHERE a = 'x"),
+    "condition": ("DELETE", "DELETE FROM u WHERE a{c}b = 1 /* note"),
 }
 
 
