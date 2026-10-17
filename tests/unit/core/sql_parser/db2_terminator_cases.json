@@ -1,0 +1,8512 @@
+{
+"command_phrases": [
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command DROP on line 1: dblift does not run client commands"
+],
+"id": "DROP DBPARTITIONNUM",
+"script": "DROP DBPARTITIONNUM x;\nVALUES 1;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command REFRESH on line 1: dblift does not run client commands"
+],
+"id": "REFRESH LDAP",
+"script": "REFRESH LDAP x;\nVALUES 1;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command SET on line 1: dblift does not run client commands"
+],
+"id": "SET CLIENT",
+"script": "SET CLIENT x;\nVALUES 1;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command SET on line 1: dblift does not run client commands"
+],
+"id": "SET RUNTIME",
+"script": "SET RUNTIME x;\nVALUES 1;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command SET on line 1: dblift does not run client commands"
+],
+"id": "SET TABLESPACE",
+"script": "SET TABLESPACE x;\nVALUES 1;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command SET on line 1: dblift does not run client commands"
+],
+"id": "SET TAPE",
+"script": "SET TAPE x;\nVALUES 1;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command SET on line 1: dblift does not run client commands"
+],
+"id": "SET UTIL_IMPACT_PRIORITY",
+"script": "SET UTIL_IMPACT_PRIORITY x;\nVALUES 1;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command SET on line 1: dblift does not run client commands"
+],
+"id": "SET WRITE",
+"script": "SET WRITE x;\nVALUES 1;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command UPDATE on line 1: dblift does not run client commands"
+],
+"id": "UPDATE ALERT CFG",
+"script": "UPDATE ALERT CFG x;\nVALUES 1;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command UPDATE on line 1: dblift does not run client commands"
+],
+"id": "UPDATE ALERT CONFIGURATION",
+"script": "UPDATE ALERT CONFIGURATION x;\nVALUES 1;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command UPDATE on line 1: dblift does not run client commands"
+],
+"id": "UPDATE CLI CFG",
+"script": "UPDATE CLI CFG x;\nVALUES 1;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command UPDATE on line 1: dblift does not run client commands"
+],
+"id": "UPDATE CLI CONFIGURATION",
+"script": "UPDATE CLI CONFIGURATION x;\nVALUES 1;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command UPDATE on line 1: dblift does not run client commands"
+],
+"id": "UPDATE COMMAND OPTIONS",
+"script": "UPDATE COMMAND OPTIONS x;\nVALUES 1;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command UPDATE on line 1: dblift does not run client commands"
+],
+"id": "UPDATE DATABASE CONFIGURATION",
+"script": "UPDATE DATABASE CONFIGURATION x;\nVALUES 1;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command UPDATE on line 1: dblift does not run client commands"
+],
+"id": "UPDATE DATABASE MANAGER",
+"script": "UPDATE DATABASE MANAGER x;\nVALUES 1;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command UPDATE on line 1: dblift does not run client commands"
+],
+"id": "UPDATE DB CFG",
+"script": "UPDATE DB CFG x;\nVALUES 1;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command UPDATE on line 1: dblift does not run client commands"
+],
+"id": "UPDATE DB CONFIGURATION",
+"script": "UPDATE DB CONFIGURATION x;\nVALUES 1;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command UPDATE on line 1: dblift does not run client commands"
+],
+"id": "UPDATE DB MANAGER",
+"script": "UPDATE DB MANAGER x;\nVALUES 1;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command UPDATE on line 1: dblift does not run client commands"
+],
+"id": "UPDATE DBM CFG",
+"script": "UPDATE DBM CFG x;\nVALUES 1;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command UPDATE on line 1: dblift does not run client commands"
+],
+"id": "UPDATE DBM CONFIGURATION",
+"script": "UPDATE DBM CONFIGURATION x;\nVALUES 1;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command UPDATE on line 1: dblift does not run client commands"
+],
+"id": "UPDATE HISTORY EID",
+"script": "UPDATE HISTORY EID x;\nVALUES 1;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command UPDATE on line 1: dblift does not run client commands"
+],
+"id": "UPDATE HISTORY FOR",
+"script": "UPDATE HISTORY FOR x;\nVALUES 1;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command UPDATE on line 1: dblift does not run client commands"
+],
+"id": "UPDATE LDAP NODE",
+"script": "UPDATE LDAP NODE x;\nVALUES 1;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command UPDATE on line 1: dblift does not run client commands"
+],
+"id": "UPDATE MONITOR SWITCHES",
+"script": "UPDATE MONITOR SWITCHES x;\nVALUES 1;\n"
+}
+],
+"command_words": [
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command ACTIVATE on line 1: dblift does not run client commands"
+],
+"id": "ACTIVATE",
+"script": "ACTIVATE foo;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command ADD on line 1: dblift does not run client commands"
+],
+"id": "ADD",
+"script": "ADD foo;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command ARCHIVE on line 1: dblift does not run client commands"
+],
+"id": "ARCHIVE",
+"script": "ARCHIVE foo;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command ATTACH on line 1: dblift does not run client commands"
+],
+"id": "ATTACH",
+"script": "ATTACH foo;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command AUTOCONFIGURE on line 1: dblift does not run client commands"
+],
+"id": "AUTOCONFIGURE",
+"script": "AUTOCONFIGURE foo;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command BACKUP on line 1: dblift does not run client commands"
+],
+"id": "BACKUP",
+"script": "BACKUP foo;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command BIND on line 1: dblift does not run client commands"
+],
+"id": "BIND",
+"script": "BIND foo;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command CATALOG on line 1: dblift does not run client commands"
+],
+"id": "CATALOG",
+"script": "CATALOG foo;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command CHANGE on line 1: dblift does not run client commands"
+],
+"id": "CHANGE",
+"script": "CHANGE foo;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command COMPLETE on line 1: dblift does not run client commands"
+],
+"id": "COMPLETE",
+"script": "COMPLETE foo;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command CONNECT on line 1: dblift does not run client commands"
+],
+"id": "CONNECT",
+"script": "CONNECT foo;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command DEACTIVATE on line 1: dblift does not run client commands"
+],
+"id": "DEACTIVATE",
+"script": "DEACTIVATE foo;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command DECOMPOSE on line 1: dblift does not run client commands"
+],
+"id": "DECOMPOSE",
+"script": "DECOMPOSE foo;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command DEREGISTER on line 1: dblift does not run client commands"
+],
+"id": "DEREGISTER",
+"script": "DEREGISTER foo;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command DESCRIBE on line 1: dblift does not run client commands"
+],
+"id": "DESCRIBE",
+"script": "DESCRIBE foo;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command DETACH on line 1: dblift does not run client commands"
+],
+"id": "DETACH",
+"script": "DETACH foo;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command ECHO on line 1: dblift does not run client commands"
+],
+"id": "ECHO",
+"script": "ECHO foo;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command EDIT on line 1: dblift does not run client commands"
+],
+"id": "EDIT",
+"script": "EDIT foo;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command EXPORT on line 1: dblift does not run client commands"
+],
+"id": "EXPORT",
+"script": "EXPORT foo;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command FORCE on line 1: dblift does not run client commands"
+],
+"id": "FORCE",
+"script": "FORCE foo;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command GET on line 1: dblift does not run client commands"
+],
+"id": "GET",
+"script": "GET foo;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command HELP on line 1: dblift does not run client commands"
+],
+"id": "HELP",
+"script": "HELP foo;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command HISTORY on line 1: dblift does not run client commands"
+],
+"id": "HISTORY",
+"script": "HISTORY foo;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command IMPORT on line 1: dblift does not run client commands"
+],
+"id": "IMPORT",
+"script": "IMPORT foo;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command INITIALIZE on line 1: dblift does not run client commands"
+],
+"id": "INITIALIZE",
+"script": "INITIALIZE foo;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command INSPECT on line 1: dblift does not run client commands"
+],
+"id": "INSPECT",
+"script": "INSPECT foo;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command LIST on line 1: dblift does not run client commands"
+],
+"id": "LIST",
+"script": "LIST foo;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command LOAD on line 1: dblift does not run client commands"
+],
+"id": "LOAD",
+"script": "LOAD foo;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command PING on line 1: dblift does not run client commands"
+],
+"id": "PING",
+"script": "PING foo;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command PRECOMPILE on line 1: dblift does not run client commands"
+],
+"id": "PRECOMPILE",
+"script": "PRECOMPILE foo;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command PREP on line 1: dblift does not run client commands"
+],
+"id": "PREP",
+"script": "PREP foo;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command PRUNE on line 1: dblift does not run client commands"
+],
+"id": "PRUNE",
+"script": "PRUNE foo;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command PUT on line 1: dblift does not run client commands"
+],
+"id": "PUT",
+"script": "PUT foo;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command QUERY on line 1: dblift does not run client commands"
+],
+"id": "QUERY",
+"script": "QUERY foo;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command QUIESCE on line 1: dblift does not run client commands"
+],
+"id": "QUIESCE",
+"script": "QUIESCE foo;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"QUIT on line 1 is not alone on its line: the CLP joins it with what follows and the server rejects the text; end it with the terminator"
+],
+"id": "QUIT",
+"script": "QUIT foo;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command REBIND on line 1: dblift does not run client commands"
+],
+"id": "REBIND",
+"script": "REBIND foo;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command RECOVER on line 1: dblift does not run client commands"
+],
+"id": "RECOVER",
+"script": "RECOVER foo;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command REDISTRIBUTE on line 1: dblift does not run client commands"
+],
+"id": "REDISTRIBUTE",
+"script": "REDISTRIBUTE foo;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command REGISTER on line 1: dblift does not run client commands"
+],
+"id": "REGISTER",
+"script": "REGISTER foo;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command REORG on line 1: dblift does not run client commands"
+],
+"id": "REORG",
+"script": "REORG foo;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command REORGCHK on line 1: dblift does not run client commands"
+],
+"id": "REORGCHK",
+"script": "REORGCHK foo;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command RESET on line 1: dblift does not run client commands"
+],
+"id": "RESET",
+"script": "RESET foo;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command RESTART on line 1: dblift does not run client commands"
+],
+"id": "RESTART",
+"script": "RESTART foo;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command RESTORE on line 1: dblift does not run client commands"
+],
+"id": "RESTORE",
+"script": "RESTORE foo;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command REWIND on line 1: dblift does not run client commands"
+],
+"id": "REWIND",
+"script": "REWIND foo;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command ROLLFORWARD on line 1: dblift does not run client commands"
+],
+"id": "ROLLFORWARD",
+"script": "ROLLFORWARD foo;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command RUNCMD on line 1: dblift does not run client commands"
+],
+"id": "RUNCMD",
+"script": "RUNCMD foo;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command RUNSTATS on line 1: dblift does not run client commands"
+],
+"id": "RUNSTATS",
+"script": "RUNSTATS foo;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command START on line 1: dblift does not run client commands"
+],
+"id": "START",
+"script": "START foo;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command STOP on line 1: dblift does not run client commands"
+],
+"id": "STOP",
+"script": "STOP foo;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command TAKEOVER on line 1: dblift does not run client commands"
+],
+"id": "TAKEOVER",
+"script": "TAKEOVER foo;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"TERMINATE on line 1 is not alone on its line: the CLP joins it with what follows and the server rejects the text; end it with the terminator"
+],
+"id": "TERMINATE",
+"script": "TERMINATE foo;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command UNCATALOG on line 1: dblift does not run client commands"
+],
+"id": "UNCATALOG",
+"script": "UNCATALOG foo;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command UNQUIESCE on line 1: dblift does not run client commands"
+],
+"id": "UNQUIESCE",
+"script": "UNQUIESCE foo;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command UPGRADE on line 1: dblift does not run client commands"
+],
+"id": "UPGRADE",
+"script": "UPGRADE foo;\n"
+}
+],
+"commands": [
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command CONNECT on line 1: dblift does not run client commands"
+],
+"id": "lower_case",
+"script": "connect to sample;\n"
+},
+{
+"expect": [
+"records",
+[
+"/* c */ ECHO hello",
+1,
+";",
+"sql",
+0,
+20
+]
+],
+"id": "after_comment_is_sql",
+"script": "/* c */ ECHO hello;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command ECHO on line 2: dblift does not run client commands"
+],
+"id": "after_line_comment_line",
+"script": "-- c\nECHO hello;\n"
+},
+{
+"expect": [
+"records",
+[
+"CREATE TABLE t (\nconnect INT)",
+1,
+";",
+"sql",
+0,
+31
+]
+],
+"id": "mid_statement_is_a_column",
+"script": "CREATE TABLE t (\nconnect INT);\n"
+},
+{
+"expect": [
+"records",
+[
+"VALUES 1\nREORG",
+1,
+";",
+"sql",
+0,
+17
+]
+],
+"id": "mid_statement_command_word_line",
+"script": "VALUES 1\nREORG\n;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command '!' on line 1: dblift does not run client commands"
+],
+"id": "bang",
+"script": "!echo shell;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command '?' on line 1: dblift does not run client commands"
+],
+"id": "question",
+"script": "? sql0104;\n"
+},
+{
+"expect": [
+"records",
+[
+"VALUES 1\n!echo",
+1,
+";",
+"sql",
+0,
+16
+]
+],
+"id": "bang_mid_statement",
+"script": "VALUES 1\n!echo;\n"
+},
+{
+"expect": [
+"records",
+[
+"GET DIAGNOSTICS x = ROW_COUNT",
+1,
+";",
+"sql",
+0,
+31
+]
+],
+"id": "get_diagnostics_is_sql",
+"script": "GET DIAGNOSTICS x = ROW_COUNT;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command GET on line 1: dblift does not run client commands"
+],
+"id": "get_alone",
+"script": "GET DB CFG;\n"
+},
+{
+"expect": [
+"records",
+[
+"CREATE DATABASE x",
+1,
+";",
+"sql",
+0,
+19
+]
+],
+"id": "create_database_is_sql",
+"script": "CREATE DATABASE x;\n"
+},
+{
+"expect": [
+"records",
+[
+"DROP DB x",
+1,
+";",
+"sql",
+0,
+11
+]
+],
+"id": "drop_database_is_sql",
+"script": "DROP DB x;\n"
+},
+{
+"expect": [
+"records",
+[
+"SET CURRENT SCHEMA s",
+1,
+";",
+"sql",
+0,
+22
+]
+],
+"id": "set_current_schema_is_sql",
+"script": "SET CURRENT SCHEMA s;\n"
+},
+{
+"expect": [
+"records",
+[
+"UPDATE t SET a = 1",
+1,
+";",
+"sql",
+0,
+20
+]
+],
+"id": "update_sql",
+"script": "UPDATE t SET a = 1;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command REORG on line 2: dblift does not run client commands"
+],
+"id": "command_after_directive",
+"script": "--#SET TERMINATOR @\nREORG TABLE t@\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command REORG on line 2: dblift does not run client commands"
+],
+"id": "command_second_statement",
+"script": "VALUES 1;\nREORG TABLE t;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command LIST on line 1: dblift does not run client commands"
+],
+"id": "command_with_glued_symbol",
+"script": "LIST;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command ECHO on line 1: dblift does not run client commands"
+],
+"id": "command_word_then_paren",
+"script": "ECHO(x);\n"
+},
+{
+"expect": [
+"records",
+[
+"VALUES 1",
+1,
+";",
+"sql",
+0,
+10
+],
+[
+"QUIT",
+2,
+";",
+"directive",
+10,
+16
+]
+],
+"id": "epilogue_alone",
+"script": "VALUES 1;\nQUIT;\n"
+},
+{
+"expect": [
+"records",
+[
+"VALUES 1",
+1,
+";",
+"sql",
+0,
+10
+],
+[
+"QUIT",
+2,
+";",
+"directive",
+10,
+23
+]
+],
+"id": "epilogue_comment_line",
+"script": "VALUES 1;\nQUIT; -- bye\n"
+},
+{
+"expect": [
+"records",
+[
+"VALUES 1",
+1,
+";",
+"sql",
+0,
+10
+],
+[
+"QUIT -- bye",
+2,
+";",
+"directive",
+10,
+24
+]
+],
+"id": "epilogue_trailing_comment",
+"script": "VALUES 1;\nQUIT -- bye\n;\n"
+},
+{
+"expect": [
+"records",
+[
+"VALUES 1",
+1,
+";",
+"sql",
+0,
+10
+],
+[
+"QUIT /* b */",
+2,
+";",
+"directive",
+10,
+24
+]
+],
+"id": "epilogue_trailing_block",
+"script": "VALUES 1;\nQUIT /* b */;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"QUIT on line 2 is not alone on its line: the CLP joins it with what follows and the server rejects the text; end it with the terminator"
+],
+"id": "epilogue_doubled_terminator",
+"script": "VALUES 1;\nQUIT;;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"QUIT on line 2 is not alone on its line: the CLP joins it with what follows and the server rejects the text; end it with the terminator"
+],
+"id": "epilogue_followed_by_text",
+"script": "VALUES 1;\nQUIT foo;\n"
+},
+{
+"expect": [
+"records",
+[
+"VALUES 1",
+1,
+";",
+"sql",
+0,
+10
+],
+[
+"CONNECT RESET",
+2,
+";",
+"directive",
+10,
+25
+]
+],
+"id": "epilogue_connect_reset",
+"script": "VALUES 1;\nCONNECT RESET;\n"
+},
+{
+"expect": [
+"records",
+[
+"VALUES 1",
+1,
+";",
+"sql",
+0,
+10
+],
+[
+"CONNECT\tRESET",
+2,
+";",
+"directive",
+10,
+25
+]
+],
+"id": "epilogue_connect_reset_tab",
+"script": "VALUES 1;\nCONNECT\tRESET;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"CONNECT on line 2 is not alone on its line: the CLP joins it with what follows and the server rejects the text; end it with the terminator"
+],
+"id": "epilogue_connect_reset_text",
+"script": "VALUES 1;\nCONNECT RESET x;\n"
+},
+{
+"expect": [
+"records",
+[
+"VALUES 1",
+1,
+";",
+"sql",
+0,
+10
+],
+[
+"terminate",
+2,
+";",
+"directive",
+10,
+21
+]
+],
+"id": "epilogue_terminate_lower",
+"script": "VALUES 1;\nterminate;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command QUIT on line 1: dblift does not run client commands"
+],
+"id": "epilogue_before_last_sql",
+"script": "QUIT;\nVALUES 1;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command CONNECT on line 2: dblift does not run client commands"
+],
+"id": "epilogue_between_sql",
+"script": "VALUES 1;\nCONNECT RESET;\nVALUES 2;\n"
+},
+{
+"expect": [
+"records",
+[
+"VALUES 1",
+1,
+";",
+"sql",
+0,
+10
+],
+[
+"COMMIT",
+2,
+";",
+"sql",
+10,
+18
+],
+[
+"CONNECT RESET",
+3,
+";",
+"directive",
+18,
+33
+],
+[
+"TERMINATE",
+4,
+";",
+"directive",
+33,
+44
+],
+[
+"QUIT",
+5,
+";",
+"directive",
+44,
+50
+]
+],
+"id": "epilogue_several_last",
+"script": "VALUES 1;\nCOMMIT;\nCONNECT RESET;\nTERMINATE;\nQUIT;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"QUIT on line 2 is not alone on its line: the CLP joins it with what follows and the server rejects the text; end it with the terminator"
+],
+"id": "epilogue_multiline",
+"script": "VALUES 1;\nQUIT\n-- c\n;\n"
+},
+{
+"expect": [
+"records",
+[
+"VALUES 1",
+1,
+";",
+"sql",
+0,
+10
+],
+[
+"QUIT",
+2,
+null,
+"directive",
+10,
+14
+]
+],
+"id": "epilogue_no_terminator",
+"script": "VALUES 1;\nQUIT"
+},
+{
+"expect": [
+"records",
+[
+"TERMINATE",
+1,
+";",
+"directive",
+0,
+11
+]
+],
+"id": "epilogue_first_only",
+"script": "TERMINATE;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command QUIT on line 1: dblift does not run client commands"
+],
+"id": "epilogue_then_epilogue_then_sql",
+"script": "QUIT;\nTERMINATE;\nVALUES 1;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command CONNECT on line 1: dblift does not run client commands"
+],
+"id": "connect_without_reset",
+"script": "CONNECT TO sample;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command CONNECT on line 1: dblift does not run client commands"
+],
+"id": "connect_alone",
+"script": "CONNECT;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"TERMINATE on line 1 is not alone on its line: the CLP joins it with what follows and the server rejects the text; end it with the terminator"
+],
+"id": "terminate_not_alone_multiline",
+"script": "TERMINATE\nVALUES 1;\n"
+}
+],
+"initial_swapped": [
+{
+"expect": [
+"records",
+[
+"VALUES 1",
+1,
+"%",
+"sql",
+0,
+10
+],
+[
+"VALUES 2",
+2,
+"%",
+"sql",
+10,
+20
+],
+[
+"VALUES 3",
+3,
+null,
+"sql",
+20,
+28
+]
+],
+"id": "starting_terminator",
+"script": "VALUES 1%\nVALUES 2%\nVALUES 3"
+},
+{
+"expect": [
+"records",
+[
+"VALUES 1",
+1,
+"%",
+"sql",
+0,
+10
+],
+[
+"--#SET TERMINATOR @",
+2,
+null,
+"directive",
+10,
+30
+],
+[
+"VALUES 2",
+3,
+"@",
+"sql",
+30,
+40
+],
+[
+"--#SET TERMINATOR %",
+4,
+null,
+"directive",
+40,
+60
+],
+[
+"VALUES 3",
+5,
+"%",
+"sql",
+60,
+70
+]
+],
+"id": "starting_terminator_directive_back",
+"script": "VALUES 1%\n--#SET TERMINATOR @\nVALUES 2@\n--#SET TERMINATOR %\nVALUES 3%\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 1 has code after a '%' in the middle of a line: the CLP sends it whole and the server rejects it, and the ibm_db driver runs only the text before the '%'; put each statement on its own line, ended by the terminator, or declare another terminator with --#SET TERMINATOR"
+],
+"id": "stray_character",
+"script": "VALUES 1% VALUES 2%\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 2 has code after a '%' in the middle of a line: the CLP sends it whole and the server rejects it, and the ibm_db driver runs only the text before the '%'; put each statement on its own line, ended by the terminator, or declare another terminator with --#SET TERMINATOR"
+],
+"id": "stray_message_second_line",
+"script": "VALUES 1\n, 2% 3%\n"
+},
+{
+"expect": [
+"records",
+[
+"VALUES 1",
+1,
+"%",
+"sql",
+0,
+15
+],
+[
+"VALUES 2",
+2,
+"%",
+"sql",
+15,
+33
+],
+[
+"VALUES 3",
+3,
+"%",
+"sql",
+33,
+43
+]
+],
+"id": "semicolon_comment_ending",
+"script": "VALUES 1% -- c\nVALUES 2% /* d */\nVALUES 3%\n"
+},
+{
+"expect": [
+"records",
+[
+"--#SET TERMINATOR @",
+1,
+null,
+"directive",
+0,
+20
+],
+[
+"VALUES 1% -- c",
+2,
+"@",
+"sql",
+20,
+37
+],
+[
+"VALUES 2",
+4,
+"@",
+"sql",
+37,
+47
+]
+],
+"id": "semicolon_comment_not_under_other",
+"script": "--#SET TERMINATOR @\nVALUES 1% -- c\n@\nVALUES 2@\n"
+}
+],
+"kept_quirks": [
+{
+"expect": [
+"records",
+[
+"VALUES 'x\n-- y;\nz'",
+1,
+";",
+"sql",
+0,
+20
+],
+[
+"VALUES 2",
+4,
+";",
+"sql",
+20,
+30
+]
+],
+"id": "q1_comment_line_in_string",
+"script": "VALUES 'x\n-- y;\nz';\nVALUES 2;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP comment block '(=' on line 2: the CLP skips it, dblift does not run CLP input syntax"
+],
+"id": "q2_block_line_in_string",
+"script": "VALUES 'p\n(= q\n';\nVALUES 2;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP comment block '(=' on line 2: the CLP skips it, dblift does not run CLP input syntax"
+],
+"id": "q2_block_line_in_comment",
+"script": "VALUES 1 /*\n(=\n*/;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP comment block '(=' on line 2: the CLP skips it, dblift does not run CLP input syntax"
+],
+"id": "q2_block_line_plain",
+"script": "VALUES 1;\n(=\nVALUES 2;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 2 has code after a ';' in the middle of a line: the CLP sends it whole and the server rejects it, and the ibm_db driver runs only the text before the ';'; put each statement on its own line, ended by the terminator, or declare another terminator with --#SET TERMINATOR"
+],
+"id": "q3_cr_run",
+"script": "VALUES 1;\r\r\nVALUES 2;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 2 has code after a ';' in the middle of a line: the CLP sends it whole and the server rejects it, and the ibm_db driver runs only the text before the ';'; put each statement on its own line, ended by the terminator, or declare another terminator with --#SET TERMINATOR"
+],
+"id": "q3_three_crs",
+"script": "VALUES 1;\r\r\r\nVALUES 2;\n"
+},
+{
+"expect": [
+"records",
+[
+"VALUES 1",
+1,
+";",
+"sql",
+0,
+10
+],
+[
+"VALUES 2",
+2,
+";",
+"sql",
+10,
+21
+]
+],
+"id": "q4_form_feed_strip",
+"script": "VALUES 1;\n\fVALUES 2;\n"
+},
+{
+"expect": [
+"records",
+[
+"VALUES 1",
+1,
+";",
+"sql",
+0,
+12
+]
+],
+"id": "q4_nbsp_strip",
+"script": "\u00a0VALUES 1\u00a0;\n"
+},
+{
+"expect": [
+"records",
+[
+"VALUES 1;",
+1,
+null,
+"sql",
+0,
+10
+]
+],
+"id": "q5_semicolon_lone_cr_eof",
+"script": "VALUES 1;\r"
+},
+{
+"expect": [
+"records",
+[
+"VALUES 1",
+1,
+";",
+"sql",
+0,
+10
+],
+[
+"VALUES 2;",
+2,
+null,
+"sql",
+10,
+20
+]
+],
+"id": "q5_semicolon_cr_after_lf",
+"script": "VALUES 1;\nVALUES 2;\r"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"malformed --#SET TERMINATOR directive on line 1: expected one or two characters after the keyword, separated from it by blanks"
+],
+"id": "q6_vt_after_value",
+"script": "--#SET TERMINATOR @\u000b\nVALUES 1@\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"malformed --#SET TERMINATOR directive on line 1: expected one or two characters after the keyword, separated from it by blanks"
+],
+"id": "q6_nbsp_after_value",
+"script": "--#SET TERMINATOR @\u00a0\nVALUES 1@\n"
+},
+{
+"expect": [
+"records",
+[
+"--#SET TERMINATOR \u00e9\u00e9",
+1,
+null,
+"directive",
+0,
+21
+],
+[
+"VALUES 1",
+2,
+"\u00e9\u00e9",
+"sql",
+21,
+32
+],
+[
+"VALUES 2;",
+3,
+null,
+"sql",
+32,
+42
+]
+],
+"id": "q7_two_chars_utf8",
+"script": "--#SET TERMINATOR \u00e9\u00e9\nVALUES 1\u00e9\u00e9\nVALUES 2;\n"
+},
+{
+"expect": [
+"records",
+[
+"--#SET TERMINATOR \u20ac",
+1,
+null,
+"directive",
+0,
+20
+],
+[
+"VALUES 1",
+2,
+"\u20ac",
+"sql",
+20,
+30
+],
+[
+"VALUES 2;",
+3,
+null,
+"sql",
+30,
+40
+]
+],
+"id": "q7_euro",
+"script": "--#SET TERMINATOR \u20ac\nVALUES 1\u20ac\nVALUES 2;\n"
+},
+{
+"expect": [
+"records",
+[
+"--#SET TERMINATOR \ud83d\ude00\ud83d\ude00",
+1,
+null,
+"directive",
+0,
+21
+],
+[
+"VALUES 1",
+2,
+"\ud83d\ude00\ud83d\ude00",
+"sql",
+21,
+32
+]
+],
+"id": "q7_astral",
+"script": "--#SET TERMINATOR \ud83d\ude00\ud83d\ude00\nVALUES 1\ud83d\ude00\ud83d\ude00\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"malformed --#SET TERMINATOR directive on line 1: expected one or two characters after the keyword, separated from it by blanks"
+],
+"id": "q7_three_chars",
+"script": "--#SET TERMINATOR \u00e9\u00e9\u00e9\nVALUES 1;\n"
+}
+],
+"lexeme_refusals": [
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 1 ends with ';' inside a string or a quoted identifier: the CLP cuts the statement there and the server rejects both halves; close the literal before the end of the line"
+],
+"id": "row18_string",
+"script": "INSERT INTO t VALUES ('a;\nb');"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 1 ends with ';' inside a string or a quoted identifier: the CLP cuts the statement there and the server rejects both halves; close the literal before the end of the line"
+],
+"id": "row18a_identifier",
+"script": "CREATE TABLE \"a;\nb\" (id INT);"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"--#SET TERMINATOR on line 2 stands inside a string, a quoted identifier or a comment: the CLP honours it there and cuts the statement; close it first"
+],
+"id": "row48_directive_in_string",
+"script": "INSERT INTO t VALUES ('x\n--#SET TERMINATOR @\ny')@"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"--#SET TERMINATOR on line 2 stands inside a string, a quoted identifier or a comment: the CLP honours it there and cuts the statement; close it first"
+],
+"id": "row49_directive_in_comment",
+"script": "/*\n--#SET TERMINATOR @\n*/ SELECT 1 FROM sysibm.sysdummy1@"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 3 ends with \"'\" inside a string or a quoted identifier: the CLP cuts the statement there and the server rejects both halves; close the literal before the end of the line"
+],
+"id": "L13_quote_terminator",
+"script": "--#SET TERMINATOR '\nSELECT 1 FROM sysibm.sysdummy1'\nVALUES 'a'''\nVALUES 3'\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 2 ends with '@' inside a string or a quoted identifier: the CLP cuts the statement there and the server rejects both halves; close the literal before the end of the line"
+],
+"id": "L22_at_in_string",
+"script": "--#SET TERMINATOR @\nVALUES 'a@\nb'@\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"--#SET TERMINATOR on line 2 stands inside a string, a quoted identifier or a comment: the CLP honours it there and cuts the statement; close it first"
+],
+"id": "L64_indented_directive_in_string",
+"script": "VALUES 'x\n  --#SET TERMINATOR @\nz'@\nVALUES 2@\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 1 ends with ';' inside a string or a quoted identifier: the CLP cuts the statement there and the server rejects both halves; close the literal before the end of the line"
+],
+"id": "string_with_crlf",
+"script": "VALUES 'a;\r\nb';\r\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 1 ends with ';' inside a string or a quoted identifier: the CLP cuts the statement there and the server rejects both halves; close the literal before the end of the line"
+],
+"id": "identifier_doubled_quote",
+"script": "VALUES 1 AS \"a\"\";\nb\";\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 1 ends with ';' inside a string or a quoted identifier: the CLP cuts the statement there and the server rejects both halves; close the literal before the end of the line"
+],
+"id": "string_doubled_quote_eol",
+"script": "VALUES 'a'';\nb';\n"
+},
+{
+"expect": [
+"records",
+[
+"/* a;\nb */ VALUES 1",
+1,
+";",
+"sql",
+0,
+21
+]
+],
+"id": "terminator_in_comment_kept",
+"script": "/* a;\nb */ VALUES 1;\n"
+},
+{
+"expect": [
+"records",
+[
+"/* a /* b;\n*/ c;\n*/ VALUES 1",
+1,
+";",
+"sql",
+0,
+30
+]
+],
+"id": "terminator_in_nested_comment_kept",
+"script": "/* a /* b;\n*/ c;\n*/ VALUES 1;\n"
+},
+{
+"expect": [
+"records",
+[
+"VALUES 'open",
+1,
+null,
+"sql",
+0,
+12
+]
+],
+"id": "string_open_at_eof_accepted",
+"script": "VALUES 'open"
+},
+{
+"expect": [
+"records",
+[
+"VALUES \"open",
+1,
+null,
+"sql",
+0,
+12
+]
+],
+"id": "identifier_open_at_eof_accepted",
+"script": "VALUES \"open"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 2 ends with ';' inside a string or a quoted identifier: the CLP cuts the statement there and the server rejects both halves; close the literal before the end of the line"
+],
+"id": "string_open_before_terminator_line",
+"script": "VALUES 'x\nVALUES 2;"
+},
+{
+"expect": [
+"records",
+[
+"VALUES 'x\n-- y;\nz'",
+1,
+";",
+"sql",
+0,
+20
+],
+[
+"VALUES 2",
+4,
+";",
+"sql",
+20,
+30
+]
+],
+"id": "comment_line_in_string",
+"script": "VALUES 'x\n-- y;\nz';\nVALUES 2;\n"
+},
+{
+"expect": [
+"records",
+[
+"--#SET TERMINATOR @",
+2,
+null,
+"directive",
+11,
+31
+],
+[
+"VALUES 'x'\nVALUES 2",
+1,
+"@",
+"sql",
+0,
+41
+]
+],
+"id": "dir_after_closed_string",
+"script": "VALUES 'x'\n--#SET TERMINATOR @\nVALUES 2@\n"
+},
+{
+"expect": [
+"records",
+[
+"--#SET TERMINATOR @",
+3,
+null,
+"directive",
+17,
+37
+],
+[
+"VALUES 1 /* c\n*/\nVALUES 2",
+1,
+"@",
+"sql",
+0,
+47
+]
+],
+"id": "dir_after_closed_comment",
+"script": "VALUES 1 /* c\n*/\n--#SET TERMINATOR @\nVALUES 2@\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"--#SET TERMINATOR on line 2 stands inside a string, a quoted identifier or a comment: the CLP honours it there and cuts the statement; close it first"
+],
+"id": "dir_inside_identifier",
+"script": "VALUES \"x\n--#SET TERMINATOR @\ny\"@\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"the block comment opened on line 1 is not closed before the end of the script: the statements inside it would be dropped"
+],
+"id": "unclosed_block_comment",
+"script": "VALUES 1 /* a\nb\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"the block comment opened on line 1 is not closed before the end of the script: the statements inside it would be dropped"
+],
+"id": "unclosed_nested_comment",
+"script": "VALUES 1 /* a /* b */ c\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"the block comment opened on line 1 is not closed before the end of the script: the statements inside it would be dropped"
+],
+"id": "semicolon_then_unclosed_comment",
+"script": "VALUES 1; /* c"
+},
+{
+"expect": [
+"records",
+[
+"VALUES 1 /* c */",
+1,
+";",
+"sql",
+0,
+18
+],
+[
+"VALUES 2",
+2,
+";",
+"sql",
+18,
+28
+]
+],
+"id": "block_comment_then_statement",
+"script": "VALUES 1 /* c */;\nVALUES 2;\n"
+}
+],
+"malformed_directive": [
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"malformed --#SET TERMINATOR directive on line 1: expected one or two characters after the keyword, separated from it by blanks"
+],
+"id": "no_value",
+"script": "--#SET TERMINATOR\nVALUES 1;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"malformed --#SET TERMINATOR directive on line 1: expected one or two characters after the keyword, separated from it by blanks"
+],
+"id": "three_characters",
+"script": "--#SET TERMINATOR abc\nVALUES 1;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"malformed --#SET TERMINATOR directive on line 2: expected one or two characters after the keyword, separated from it by blanks"
+],
+"id": "tab_before_value",
+"script": "VALUES 1;\n--#SET TERMINATOR\t@\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"malformed --#SET TERMINATOR directive on line 1: expected one or two characters after the keyword, separated from it by blanks"
+],
+"id": "vt_after_value",
+"script": "--#SET TERMINATOR @\u000b\nVALUES 1@\n"
+}
+],
+"overlap": [
+{
+"expect": [
+"records",
+[
+"--#SET TERMINATOR /",
+1,
+null,
+"directive",
+0,
+20
+],
+[
+"VALUES 1 /*/\nVALUES 2 */",
+2,
+"/",
+"sql",
+20,
+47
+]
+],
+"id": "review1_slash",
+"script": "--#SET TERMINATOR /\nVALUES 1 /*/\nVALUES 2 */ /\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 2 ends with '*/', which is also part of a comment delimiter: the CLP cuts the statement there, the splitter cannot tell the two readings apart; put the comment on a line of its own"
+],
+"id": "review2_closer",
+"script": "--#SET TERMINATOR */\nVALUES 1 /* /* a */*/\n*/ VALUES 2 */\n"
+},
+{
+"expect": [
+"records",
+[
+"--#SET TERMINATOR /*",
+1,
+null,
+"directive",
+0,
+21
+],
+[
+"VALUES 1 -- x",
+2,
+"/*",
+"sql",
+21,
+37
+]
+],
+"id": "review3_dash_open",
+"script": "--#SET TERMINATOR /*\nVALUES 1 -- x/*\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 2 ends with '*/', which is also part of a comment delimiter: the CLP cuts the statement there, the splitter cannot tell the two readings apart; put the comment on a line of its own"
+],
+"id": "L58",
+"script": "--#SET TERMINATOR */\nVALUES 1 /* c */\nVALUES 2*/\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 2 ends with '/', which is also part of a comment delimiter: the CLP cuts the statement there, the splitter cannot tell the two readings apart; put the comment on a line of its own"
+],
+"id": "L59",
+"script": "--#SET TERMINATOR /\nVALUES 1 /* c */\nVALUES 2/\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 3 ends with '/*', which is also part of a comment delimiter: the CLP cuts the statement there, the splitter cannot tell the two readings apart; put the comment on a line of its own"
+],
+"id": "R08",
+"script": "--#SET TERMINATOR /*\nVALUES 1 -- x/*\nVALUES 2/*\n"
+},
+{
+"expect": [
+"records",
+[
+"--#SET TERMINATOR /",
+1,
+null,
+"directive",
+0,
+20
+],
+[
+"VALUES 1 /* a *\nVALUES 2 */",
+2,
+"/",
+"sql",
+20,
+50
+]
+],
+"id": "closer_at_depth_zero",
+"script": "--#SET TERMINATOR /\nVALUES 1 /* a *\nVALUES 2 */ /\n"
+},
+{
+"expect": [
+"records",
+[
+"--#SET TERMINATOR /",
+1,
+null,
+"directive",
+0,
+20
+],
+[
+"VALUES 1 *\nVALUES 2 *",
+2,
+"/",
+"sql",
+20,
+43
+]
+],
+"id": "slash_after_star_symbol",
+"script": "--#SET TERMINATOR /\nVALUES 1 *\nVALUES 2 */\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 2 ends with '*', which is also part of a comment delimiter: the CLP cuts the statement there, the splitter cannot tell the two readings apart; put the comment on a line of its own"
+],
+"id": "star_then_slash_symbol",
+"script": "--#SET TERMINATOR *\nVALUES 1 /*\nVALUES 2 /*\n"
+},
+{
+"expect": [
+"records",
+[
+"--#SET TERMINATOR -",
+1,
+null,
+"directive",
+0,
+20
+],
+[
+"VALUES 1",
+2,
+"-",
+"sql",
+20,
+31
+],
+[
+"VALUES 2",
+3,
+"-",
+"sql",
+31,
+42
+]
+],
+"id": "dash_dash_after_dash",
+"script": "--#SET TERMINATOR -\nVALUES 1 -\nVALUES 2 -\n"
+},
+{
+"expect": [
+"records",
+[
+"--#SET TERMINATOR *",
+1,
+null,
+"directive",
+0,
+20
+],
+[
+"VALUES a/\nVALUES 2",
+2,
+"*",
+"sql",
+20,
+40
+]
+],
+"id": "word_ends_with_slash_char",
+"script": "--#SET TERMINATOR *\nVALUES a/\nVALUES 2*\n"
+}
+],
+"overlap_grid": {
+"codes": [
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"R3",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"R3",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"R3",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"R4",
+"A",
+"A",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R4",
+"R3",
+"R3",
+"R3",
+"R3",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"R4",
+"R3",
+"R4",
+"R4",
+"R3",
+"R3",
+"R4",
+"R4",
+"R4",
+"R3",
+"R3",
+"R3",
+"R4",
+"R3",
+"R3",
+"R3",
+"R3",
+"R4",
+"R4",
+"R3",
+"R4",
+"R4",
+"R3",
+"R4",
+"R3",
+"R3",
+"R4",
+"R4",
+"R3",
+"R3",
+"R3",
+"R4",
+"R3",
+"R4",
+"R3",
+"R4",
+"R4",
+"R4",
+"R3",
+"R4",
+"R4",
+"R4",
+"R3",
+"R3",
+"R5",
+"R5",
+"R5",
+"R5",
+"A",
+"R4",
+"R5",
+"R5",
+"R5",
+"A",
+"R5",
+"R4",
+"R5",
+"R5",
+"A",
+"A",
+"R5",
+"R5",
+"A",
+"R4",
+"R5",
+"R5",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R4",
+"R3",
+"R3",
+"R3",
+"R3",
+"R4",
+"R3",
+"R4",
+"R4",
+"R3",
+"R3",
+"R4",
+"R4",
+"R4",
+"R3",
+"R3",
+"R3",
+"R4",
+"R3",
+"R3",
+"R3",
+"R3",
+"R4",
+"R4",
+"R3",
+"R4",
+"R4",
+"R3",
+"R3",
+"R3",
+"R3",
+"R4",
+"R3",
+"R4",
+"R4",
+"R3",
+"R4",
+"R3",
+"R3",
+"R3",
+"R3",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R3",
+"R3",
+"R4",
+"R4",
+"R3",
+"R4",
+"R4",
+"R3",
+"R4",
+"R4",
+"R4",
+"R4",
+"R3",
+"R3",
+"R3",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R3",
+"R3",
+"R4",
+"R5",
+"R5",
+"R5",
+"R5",
+"R5",
+"R5",
+"R5",
+"R5",
+"R5",
+"R5",
+"R5",
+"R5",
+"R5",
+"R5",
+"R5",
+"R5",
+"R5",
+"R5",
+"R5",
+"R4",
+"R5",
+"R5",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R4",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R4",
+"R3",
+"R4",
+"R4",
+"R3",
+"R4",
+"R3",
+"R3",
+"R3",
+"R3",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R3",
+"R3",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R4",
+"R3",
+"R3",
+"R3",
+"R3",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R4",
+"R3",
+"R3",
+"R3",
+"R3",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"A",
+"R3",
+"R3",
+"R3",
+"R3",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R4",
+"R3",
+"R3",
+"R3",
+"R3",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R4",
+"R3",
+"R3",
+"R3",
+"R3",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R4",
+"R3",
+"R3",
+"R3",
+"R3",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"R4",
+"R3",
+"R4",
+"R4",
+"R4",
+"R3",
+"R4",
+"R4",
+"R4",
+"R4",
+"R3",
+"R3",
+"R4",
+"R3",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R3",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R5",
+"R5",
+"R5",
+"R5",
+"A",
+"R5",
+"R5",
+"R5",
+"R5",
+"A",
+"R5",
+"R5",
+"R5",
+"R5",
+"A",
+"A",
+"R5",
+"R5",
+"A",
+"R5",
+"R5",
+"R5",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R4",
+"R3",
+"R3",
+"R3",
+"R3",
+"R4",
+"R3",
+"R4",
+"R4",
+"R4",
+"R3",
+"R4",
+"R4",
+"R4",
+"R4",
+"R3",
+"R3",
+"R4",
+"R3",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"R3",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"R3",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"R3",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"R4",
+"A",
+"A",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R4",
+"R3",
+"R3",
+"R3",
+"R3",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"R4",
+"R3",
+"R4",
+"R4",
+"R4",
+"R3",
+"R4",
+"R4",
+"R4",
+"R4",
+"R3",
+"R3",
+"R4",
+"R3",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R3",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R5",
+"R5",
+"R5",
+"R5",
+"A",
+"R5",
+"R5",
+"R5",
+"R5",
+"A",
+"R5",
+"R5",
+"R5",
+"R5",
+"A",
+"A",
+"R5",
+"R5",
+"A",
+"R5",
+"R5",
+"R5",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R4",
+"R3",
+"R3",
+"R3",
+"R3",
+"R4",
+"R3",
+"R4",
+"R4",
+"R4",
+"R3",
+"R4",
+"R4",
+"R4",
+"R4",
+"R3",
+"R3",
+"R4",
+"R3",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R4",
+"R3",
+"R3",
+"R3",
+"R3",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"R4",
+"R3",
+"R4",
+"R4",
+"R4",
+"R3",
+"R4",
+"R4",
+"R4",
+"R4",
+"R3",
+"R3",
+"R4",
+"R3",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R3",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R5",
+"R5",
+"R5",
+"R5",
+"A",
+"R5",
+"R5",
+"R5",
+"R5",
+"A",
+"R5",
+"R5",
+"R5",
+"R5",
+"A",
+"A",
+"R5",
+"R5",
+"A",
+"R5",
+"R5",
+"R5",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R4",
+"R3",
+"R3",
+"R3",
+"R3",
+"R4",
+"R3",
+"R4",
+"R4",
+"R4",
+"R3",
+"R4",
+"R4",
+"R4",
+"R4",
+"R3",
+"R3",
+"R4",
+"R3",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"R3",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"R3",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"R3",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"R4",
+"A",
+"A",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R4",
+"R3",
+"R3",
+"R3",
+"R3",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R4",
+"R3",
+"R3",
+"R3",
+"R3",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R4",
+"R3",
+"R3",
+"R3",
+"R3",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"R3",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"R3",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"R3",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"R4",
+"A",
+"A",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R4",
+"R3",
+"R3",
+"R3",
+"R3",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"R4",
+"R3",
+"R4",
+"R4",
+"R4",
+"R3",
+"R4",
+"R4",
+"R4",
+"R4",
+"R3",
+"R3",
+"R4",
+"R3",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R3",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R5",
+"R5",
+"R5",
+"R5",
+"A",
+"R5",
+"R5",
+"R5",
+"R5",
+"A",
+"R5",
+"R5",
+"R5",
+"R5",
+"A",
+"A",
+"R5",
+"R5",
+"A",
+"R5",
+"R5",
+"R5",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R4",
+"R3",
+"R3",
+"R3",
+"R3",
+"R4",
+"R3",
+"R4",
+"R4",
+"R4",
+"R3",
+"R4",
+"R4",
+"R4",
+"R4",
+"R3",
+"R3",
+"R4",
+"R3",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"R4",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R4",
+"R3",
+"R3",
+"R3",
+"R3",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R3",
+"R4",
+"R3",
+"R3",
+"R3",
+"R3",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A",
+"A"
+],
+"endings": [
+"VALUES 1 ",
+"VALUES 1 /",
+"VALUES 1 *",
+"VALUES 1 -",
+"VALUES 1 /*",
+"VALUES 1 */",
+"VALUES 1 --",
+"VALUES 1 -- x",
+"VALUES 1 /* c */",
+"VALUES 1 /* /* c */",
+"*/ VALUES 1 /",
+"*/",
+"*",
+"/",
+"/*",
+"a /*",
+"a */ /*",
+"-- c",
+"x /*/",
+"x */*",
+"**",
+"/* */"
+],
+"states": [
+"VALUES 1\n",
+"VALUES 1 /* a\n",
+"VALUES 1 /* a\n/* b\n",
+"VALUES 'q\n",
+"VALUES 1 -- q \n"
+],
+"terminators": [
+"/",
+"*/",
+"/*",
+"-",
+"--",
+"'",
+"\"",
+";",
+"@",
+"*",
+"//",
+"**",
+"-*",
+"*-",
+"/-",
+"-/",
+"x",
+"/x",
+"*x",
+"x/",
+"x*"
+]
+},
+"per_line_rules": [
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 1 has code after a ';' in the middle of a line: the CLP sends it whole and the server rejects it, and the ibm_db driver runs only the text before the ';'; put each statement on its own line, ended by the terminator, or declare another terminator with --#SET TERMINATOR"
+],
+"id": "A_two_strays_first_line_named",
+"script": "VALUES 1; VALUES 2;\n  VALUES 3; VALUES 4;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 2 has code after a ';' in the middle of a line: the CLP sends it whole and the server rejects it, and the ibm_db driver runs only the text before the ';'; put each statement on its own line, ended by the terminator, or declare another terminator with --#SET TERMINATOR"
+],
+"id": "A_stray_on_later_line",
+"script": "VALUES 1\n, 2; VALUES 3\n, 4; VALUES 5;\n"
+},
+{
+"expect": [
+"records",
+[
+"VALUES 1",
+1,
+";",
+"sql",
+0,
+10
+],
+[
+"VALUES 2",
+3,
+";",
+"sql",
+12,
+22
+]
+],
+"id": "A_stray_after_semicolon_next_line",
+"script": "VALUES 1;\n;\nVALUES 2;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 2 has code after a ';' in the middle of a line: the CLP sends it whole and the server rejects it, and the ibm_db driver runs only the text before the ';'; put each statement on its own line, ended by the terminator, or declare another terminator with --#SET TERMINATOR"
+],
+"id": "A_stray_across_lines",
+"script": "VALUES (1); /* c\n*/ VALUES 2;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"the block comment opened on line 1 is not closed before the end of the script: the statements inside it would be dropped"
+],
+"id": "B_comment_opened_inside_comment",
+"script": "VALUES 1 /* a\n*/ /* b\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"the block comment opened on line 4 is not closed before the end of the script: the statements inside it would be dropped"
+],
+"id": "B_second_comment_on_later_line",
+"script": "VALUES 1\n/* a\n*/ x\n/* b\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"the block comment opened on line 1 is not closed before the end of the script: the statements inside it would be dropped"
+],
+"id": "B_comment_opens_after_closed",
+"script": "VALUES 1 /* a */ /* b\n"
+},
+{
+"expect": [
+"records",
+[
+"VALUES 1 /* a\nb */",
+1,
+null,
+"sql",
+0,
+24
+]
+],
+"id": "C_block_comment_cut",
+"script": "VALUES 1 /* a\nb */\n-- c\n"
+},
+{
+"expect": [
+"records",
+[
+"SELECT 1 /* x;\n y */",
+1,
+null,
+"sql",
+0,
+20
+]
+],
+"id": "C_select_comment",
+"script": "SELECT 1 /* x;\n y */"
+},
+{
+"expect": [
+"records",
+[
+"VALUES 1 -- c",
+1,
+null,
+"sql",
+0,
+19
+]
+],
+"id": "C_comment_after_code",
+"script": "VALUES 1 -- c\n-- d\n"
+},
+{
+"expect": [
+"records",
+[
+"VALUES 1 /* a\n-- b\nc */",
+1,
+null,
+"sql",
+0,
+29
+]
+],
+"id": "C_block_after_code_closed_later",
+"script": "VALUES 1 /* a\n-- b\nc */\n-- d\n"
+},
+{
+"expect": [
+"records",
+[
+"/* a\nb */ VALUES 1",
+1,
+null,
+"sql",
+0,
+24
+]
+],
+"id": "C_block_before_code",
+"script": "/* a\nb */ VALUES 1\n-- c\n"
+},
+{
+"expect": [
+"records",
+[
+"VALUES 'a\n-- b\nc'",
+1,
+null,
+"sql",
+0,
+23
+]
+],
+"id": "C_string_across_lines",
+"script": "VALUES 'a\n-- b\nc'\n-- d\n"
+},
+{
+"expect": [
+"records",
+[
+"/* a */\nVALUES 1",
+1,
+null,
+"sql",
+0,
+17
+]
+],
+"id": "C_comment_only_statement_head",
+"script": "/* a */\nVALUES 1\n"
+}
+],
+"precedence_pairs": [
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"malformed --#SET TERMINATOR directive on line 1: expected one or two characters after the keyword, separated from it by blanks"
+],
+"id": "malformed+dir_in_string",
+"script": "--#SET TERMINATOR\nVALUES 'x\n--#SET TERMINATOR @\ny'\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"malformed --#SET TERMINATOR directive on line 1: expected one or two characters after the keyword, separated from it by blanks"
+],
+"id": "malformed+dir_in_comment",
+"script": "--#SET TERMINATOR\nVALUES 1 /*\n--#SET TERMINATOR @\n*/;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"malformed --#SET TERMINATOR directive on line 1: expected one or two characters after the keyword, separated from it by blanks"
+],
+"id": "malformed+block_line",
+"script": "--#SET TERMINATOR\n(=\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"malformed --#SET TERMINATOR directive on line 1: expected one or two characters after the keyword, separated from it by blanks"
+],
+"id": "malformed+term_in_string",
+"script": "--#SET TERMINATOR\nVALUES 'a;\nb';\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"malformed --#SET TERMINATOR directive on line 1: expected one or two characters after the keyword, separated from it by blanks"
+],
+"id": "malformed+overlap",
+"script": "--#SET TERMINATOR\n--#SET TERMINATOR */\nVALUES 1 /* /* a */*/\n*/ VALUES 2 */\n--#SET TERMINATOR ;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"malformed --#SET TERMINATOR directive on line 1: expected one or two characters after the keyword, separated from it by blanks"
+],
+"id": "malformed+stray",
+"script": "--#SET TERMINATOR\nVALUES 1; VALUES 2;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"malformed --#SET TERMINATOR directive on line 1: expected one or two characters after the keyword, separated from it by blanks"
+],
+"id": "malformed+command_word",
+"script": "--#SET TERMINATOR\nREORG TABLE t;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"malformed --#SET TERMINATOR directive on line 1: expected one or two characters after the keyword, separated from it by blanks"
+],
+"id": "malformed+command_phrase",
+"script": "--#SET TERMINATOR\nSET CLIENT X;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"malformed --#SET TERMINATOR directive on line 1: expected one or two characters after the keyword, separated from it by blanks"
+],
+"id": "malformed+command_bang",
+"script": "--#SET TERMINATOR\n!echo;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"malformed --#SET TERMINATOR directive on line 1: expected one or two characters after the keyword, separated from it by blanks"
+],
+"id": "malformed+command_question",
+"script": "--#SET TERMINATOR\n? x;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"malformed --#SET TERMINATOR directive on line 1: expected one or two characters after the keyword, separated from it by blanks"
+],
+"id": "malformed+epilogue_not_alone",
+"script": "--#SET TERMINATOR\nQUIT foo;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"malformed --#SET TERMINATOR directive on line 1: expected one or two characters after the keyword, separated from it by blanks"
+],
+"id": "malformed+epilogue_before_sql",
+"script": "--#SET TERMINATOR\nQUIT;\nVALUES 1;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"malformed --#SET TERMINATOR directive on line 1: expected one or two characters after the keyword, separated from it by blanks"
+],
+"id": "malformed+unclosed_comment",
+"script": "--#SET TERMINATOR\nVALUES 1 /* open\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"malformed --#SET TERMINATOR directive on line 1: expected one or two characters after the keyword, separated from it by blanks"
+],
+"id": "malformed+ok",
+"script": "--#SET TERMINATOR\nVALUES 7;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"--#SET TERMINATOR on line 2 stands inside a string, a quoted identifier or a comment: the CLP honours it there and cuts the statement; close it first"
+],
+"id": "dir_in_string+malformed",
+"script": "VALUES 'x\n--#SET TERMINATOR @\ny'\n--#SET TERMINATOR\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"--#SET TERMINATOR on line 2 stands inside a string, a quoted identifier or a comment: the CLP honours it there and cuts the statement; close it first"
+],
+"id": "dir_in_string+dir_in_comment",
+"script": "VALUES 'x\n--#SET TERMINATOR @\ny'\nVALUES 1 /*\n--#SET TERMINATOR @\n*/;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"--#SET TERMINATOR on line 2 stands inside a string, a quoted identifier or a comment: the CLP honours it there and cuts the statement; close it first"
+],
+"id": "dir_in_string+block_line",
+"script": "VALUES 'x\n--#SET TERMINATOR @\ny'\n(=\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"--#SET TERMINATOR on line 2 stands inside a string, a quoted identifier or a comment: the CLP honours it there and cuts the statement; close it first"
+],
+"id": "dir_in_string+term_in_string",
+"script": "VALUES 'x\n--#SET TERMINATOR @\ny'\nVALUES 'a;\nb';\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"--#SET TERMINATOR on line 2 stands inside a string, a quoted identifier or a comment: the CLP honours it there and cuts the statement; close it first"
+],
+"id": "dir_in_string+overlap",
+"script": "VALUES 'x\n--#SET TERMINATOR @\ny'\n--#SET TERMINATOR */\nVALUES 1 /* /* a */*/\n*/ VALUES 2 */\n--#SET TERMINATOR ;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"--#SET TERMINATOR on line 2 stands inside a string, a quoted identifier or a comment: the CLP honours it there and cuts the statement; close it first"
+],
+"id": "dir_in_string+stray",
+"script": "VALUES 'x\n--#SET TERMINATOR @\ny'\nVALUES 1; VALUES 2;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"--#SET TERMINATOR on line 2 stands inside a string, a quoted identifier or a comment: the CLP honours it there and cuts the statement; close it first"
+],
+"id": "dir_in_string+command_word",
+"script": "VALUES 'x\n--#SET TERMINATOR @\ny'\nREORG TABLE t;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"--#SET TERMINATOR on line 2 stands inside a string, a quoted identifier or a comment: the CLP honours it there and cuts the statement; close it first"
+],
+"id": "dir_in_string+command_phrase",
+"script": "VALUES 'x\n--#SET TERMINATOR @\ny'\nSET CLIENT X;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"--#SET TERMINATOR on line 2 stands inside a string, a quoted identifier or a comment: the CLP honours it there and cuts the statement; close it first"
+],
+"id": "dir_in_string+command_bang",
+"script": "VALUES 'x\n--#SET TERMINATOR @\ny'\n!echo;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"--#SET TERMINATOR on line 2 stands inside a string, a quoted identifier or a comment: the CLP honours it there and cuts the statement; close it first"
+],
+"id": "dir_in_string+command_question",
+"script": "VALUES 'x\n--#SET TERMINATOR @\ny'\n? x;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"--#SET TERMINATOR on line 2 stands inside a string, a quoted identifier or a comment: the CLP honours it there and cuts the statement; close it first"
+],
+"id": "dir_in_string+epilogue_not_alone",
+"script": "VALUES 'x\n--#SET TERMINATOR @\ny'\nQUIT foo;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"--#SET TERMINATOR on line 2 stands inside a string, a quoted identifier or a comment: the CLP honours it there and cuts the statement; close it first"
+],
+"id": "dir_in_string+epilogue_before_sql",
+"script": "VALUES 'x\n--#SET TERMINATOR @\ny'\nQUIT;\nVALUES 1;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"--#SET TERMINATOR on line 2 stands inside a string, a quoted identifier or a comment: the CLP honours it there and cuts the statement; close it first"
+],
+"id": "dir_in_string+unclosed_comment",
+"script": "VALUES 'x\n--#SET TERMINATOR @\ny'\nVALUES 1 /* open\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"--#SET TERMINATOR on line 2 stands inside a string, a quoted identifier or a comment: the CLP honours it there and cuts the statement; close it first"
+],
+"id": "dir_in_string+ok",
+"script": "VALUES 'x\n--#SET TERMINATOR @\ny'\nVALUES 7;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"--#SET TERMINATOR on line 2 stands inside a string, a quoted identifier or a comment: the CLP honours it there and cuts the statement; close it first"
+],
+"id": "dir_in_comment+malformed",
+"script": "VALUES 1 /*\n--#SET TERMINATOR @\n*/;\n--#SET TERMINATOR\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"--#SET TERMINATOR on line 2 stands inside a string, a quoted identifier or a comment: the CLP honours it there and cuts the statement; close it first"
+],
+"id": "dir_in_comment+dir_in_string",
+"script": "VALUES 1 /*\n--#SET TERMINATOR @\n*/;\nVALUES 'x\n--#SET TERMINATOR @\ny'\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"--#SET TERMINATOR on line 2 stands inside a string, a quoted identifier or a comment: the CLP honours it there and cuts the statement; close it first"
+],
+"id": "dir_in_comment+block_line",
+"script": "VALUES 1 /*\n--#SET TERMINATOR @\n*/;\n(=\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"--#SET TERMINATOR on line 2 stands inside a string, a quoted identifier or a comment: the CLP honours it there and cuts the statement; close it first"
+],
+"id": "dir_in_comment+term_in_string",
+"script": "VALUES 1 /*\n--#SET TERMINATOR @\n*/;\nVALUES 'a;\nb';\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"--#SET TERMINATOR on line 2 stands inside a string, a quoted identifier or a comment: the CLP honours it there and cuts the statement; close it first"
+],
+"id": "dir_in_comment+overlap",
+"script": "VALUES 1 /*\n--#SET TERMINATOR @\n*/;\n--#SET TERMINATOR */\nVALUES 1 /* /* a */*/\n*/ VALUES 2 */\n--#SET TERMINATOR ;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"--#SET TERMINATOR on line 2 stands inside a string, a quoted identifier or a comment: the CLP honours it there and cuts the statement; close it first"
+],
+"id": "dir_in_comment+stray",
+"script": "VALUES 1 /*\n--#SET TERMINATOR @\n*/;\nVALUES 1; VALUES 2;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"--#SET TERMINATOR on line 2 stands inside a string, a quoted identifier or a comment: the CLP honours it there and cuts the statement; close it first"
+],
+"id": "dir_in_comment+command_word",
+"script": "VALUES 1 /*\n--#SET TERMINATOR @\n*/;\nREORG TABLE t;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"--#SET TERMINATOR on line 2 stands inside a string, a quoted identifier or a comment: the CLP honours it there and cuts the statement; close it first"
+],
+"id": "dir_in_comment+command_phrase",
+"script": "VALUES 1 /*\n--#SET TERMINATOR @\n*/;\nSET CLIENT X;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"--#SET TERMINATOR on line 2 stands inside a string, a quoted identifier or a comment: the CLP honours it there and cuts the statement; close it first"
+],
+"id": "dir_in_comment+command_bang",
+"script": "VALUES 1 /*\n--#SET TERMINATOR @\n*/;\n!echo;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"--#SET TERMINATOR on line 2 stands inside a string, a quoted identifier or a comment: the CLP honours it there and cuts the statement; close it first"
+],
+"id": "dir_in_comment+command_question",
+"script": "VALUES 1 /*\n--#SET TERMINATOR @\n*/;\n? x;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"--#SET TERMINATOR on line 2 stands inside a string, a quoted identifier or a comment: the CLP honours it there and cuts the statement; close it first"
+],
+"id": "dir_in_comment+epilogue_not_alone",
+"script": "VALUES 1 /*\n--#SET TERMINATOR @\n*/;\nQUIT foo;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"--#SET TERMINATOR on line 2 stands inside a string, a quoted identifier or a comment: the CLP honours it there and cuts the statement; close it first"
+],
+"id": "dir_in_comment+epilogue_before_sql",
+"script": "VALUES 1 /*\n--#SET TERMINATOR @\n*/;\nQUIT;\nVALUES 1;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"--#SET TERMINATOR on line 2 stands inside a string, a quoted identifier or a comment: the CLP honours it there and cuts the statement; close it first"
+],
+"id": "dir_in_comment+unclosed_comment",
+"script": "VALUES 1 /*\n--#SET TERMINATOR @\n*/;\nVALUES 1 /* open\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"--#SET TERMINATOR on line 2 stands inside a string, a quoted identifier or a comment: the CLP honours it there and cuts the statement; close it first"
+],
+"id": "dir_in_comment+ok",
+"script": "VALUES 1 /*\n--#SET TERMINATOR @\n*/;\nVALUES 7;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP comment block '(=' on line 1: the CLP skips it, dblift does not run CLP input syntax"
+],
+"id": "block_line+malformed",
+"script": "(=\n--#SET TERMINATOR\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP comment block '(=' on line 1: the CLP skips it, dblift does not run CLP input syntax"
+],
+"id": "block_line+dir_in_string",
+"script": "(=\nVALUES 'x\n--#SET TERMINATOR @\ny'\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP comment block '(=' on line 1: the CLP skips it, dblift does not run CLP input syntax"
+],
+"id": "block_line+dir_in_comment",
+"script": "(=\nVALUES 1 /*\n--#SET TERMINATOR @\n*/;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP comment block '(=' on line 1: the CLP skips it, dblift does not run CLP input syntax"
+],
+"id": "block_line+term_in_string",
+"script": "(=\nVALUES 'a;\nb';\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP comment block '(=' on line 1: the CLP skips it, dblift does not run CLP input syntax"
+],
+"id": "block_line+overlap",
+"script": "(=\n--#SET TERMINATOR */\nVALUES 1 /* /* a */*/\n*/ VALUES 2 */\n--#SET TERMINATOR ;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP comment block '(=' on line 1: the CLP skips it, dblift does not run CLP input syntax"
+],
+"id": "block_line+stray",
+"script": "(=\nVALUES 1; VALUES 2;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP comment block '(=' on line 1: the CLP skips it, dblift does not run CLP input syntax"
+],
+"id": "block_line+command_word",
+"script": "(=\nREORG TABLE t;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP comment block '(=' on line 1: the CLP skips it, dblift does not run CLP input syntax"
+],
+"id": "block_line+command_phrase",
+"script": "(=\nSET CLIENT X;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP comment block '(=' on line 1: the CLP skips it, dblift does not run CLP input syntax"
+],
+"id": "block_line+command_bang",
+"script": "(=\n!echo;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP comment block '(=' on line 1: the CLP skips it, dblift does not run CLP input syntax"
+],
+"id": "block_line+command_question",
+"script": "(=\n? x;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP comment block '(=' on line 1: the CLP skips it, dblift does not run CLP input syntax"
+],
+"id": "block_line+epilogue_not_alone",
+"script": "(=\nQUIT foo;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP comment block '(=' on line 1: the CLP skips it, dblift does not run CLP input syntax"
+],
+"id": "block_line+epilogue_before_sql",
+"script": "(=\nQUIT;\nVALUES 1;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP comment block '(=' on line 1: the CLP skips it, dblift does not run CLP input syntax"
+],
+"id": "block_line+unclosed_comment",
+"script": "(=\nVALUES 1 /* open\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP comment block '(=' on line 1: the CLP skips it, dblift does not run CLP input syntax"
+],
+"id": "block_line+ok",
+"script": "(=\nVALUES 7;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 1 ends with ';' inside a string or a quoted identifier: the CLP cuts the statement there and the server rejects both halves; close the literal before the end of the line"
+],
+"id": "term_in_string+malformed",
+"script": "VALUES 'a;\nb';\n--#SET TERMINATOR\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 1 ends with ';' inside a string or a quoted identifier: the CLP cuts the statement there and the server rejects both halves; close the literal before the end of the line"
+],
+"id": "term_in_string+dir_in_string",
+"script": "VALUES 'a;\nb';\nVALUES 'x\n--#SET TERMINATOR @\ny'\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 1 ends with ';' inside a string or a quoted identifier: the CLP cuts the statement there and the server rejects both halves; close the literal before the end of the line"
+],
+"id": "term_in_string+dir_in_comment",
+"script": "VALUES 'a;\nb';\nVALUES 1 /*\n--#SET TERMINATOR @\n*/;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 1 ends with ';' inside a string or a quoted identifier: the CLP cuts the statement there and the server rejects both halves; close the literal before the end of the line"
+],
+"id": "term_in_string+block_line",
+"script": "VALUES 'a;\nb';\n(=\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 1 ends with ';' inside a string or a quoted identifier: the CLP cuts the statement there and the server rejects both halves; close the literal before the end of the line"
+],
+"id": "term_in_string+overlap",
+"script": "VALUES 'a;\nb';\n--#SET TERMINATOR */\nVALUES 1 /* /* a */*/\n*/ VALUES 2 */\n--#SET TERMINATOR ;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 1 ends with ';' inside a string or a quoted identifier: the CLP cuts the statement there and the server rejects both halves; close the literal before the end of the line"
+],
+"id": "term_in_string+stray",
+"script": "VALUES 'a;\nb';\nVALUES 1; VALUES 2;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 1 ends with ';' inside a string or a quoted identifier: the CLP cuts the statement there and the server rejects both halves; close the literal before the end of the line"
+],
+"id": "term_in_string+command_word",
+"script": "VALUES 'a;\nb';\nREORG TABLE t;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 1 ends with ';' inside a string or a quoted identifier: the CLP cuts the statement there and the server rejects both halves; close the literal before the end of the line"
+],
+"id": "term_in_string+command_phrase",
+"script": "VALUES 'a;\nb';\nSET CLIENT X;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 1 ends with ';' inside a string or a quoted identifier: the CLP cuts the statement there and the server rejects both halves; close the literal before the end of the line"
+],
+"id": "term_in_string+command_bang",
+"script": "VALUES 'a;\nb';\n!echo;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 1 ends with ';' inside a string or a quoted identifier: the CLP cuts the statement there and the server rejects both halves; close the literal before the end of the line"
+],
+"id": "term_in_string+command_question",
+"script": "VALUES 'a;\nb';\n? x;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 1 ends with ';' inside a string or a quoted identifier: the CLP cuts the statement there and the server rejects both halves; close the literal before the end of the line"
+],
+"id": "term_in_string+epilogue_not_alone",
+"script": "VALUES 'a;\nb';\nQUIT foo;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 1 ends with ';' inside a string or a quoted identifier: the CLP cuts the statement there and the server rejects both halves; close the literal before the end of the line"
+],
+"id": "term_in_string+epilogue_before_sql",
+"script": "VALUES 'a;\nb';\nQUIT;\nVALUES 1;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 1 ends with ';' inside a string or a quoted identifier: the CLP cuts the statement there and the server rejects both halves; close the literal before the end of the line"
+],
+"id": "term_in_string+unclosed_comment",
+"script": "VALUES 'a;\nb';\nVALUES 1 /* open\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 1 ends with ';' inside a string or a quoted identifier: the CLP cuts the statement there and the server rejects both halves; close the literal before the end of the line"
+],
+"id": "term_in_string+ok",
+"script": "VALUES 'a;\nb';\nVALUES 7;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 2 ends with '*/', which is also part of a comment delimiter: the CLP cuts the statement there, the splitter cannot tell the two readings apart; put the comment on a line of its own"
+],
+"id": "overlap+malformed",
+"script": "--#SET TERMINATOR */\nVALUES 1 /* /* a */*/\n*/ VALUES 2 */\n--#SET TERMINATOR ;\n--#SET TERMINATOR\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 2 ends with '*/', which is also part of a comment delimiter: the CLP cuts the statement there, the splitter cannot tell the two readings apart; put the comment on a line of its own"
+],
+"id": "overlap+dir_in_string",
+"script": "--#SET TERMINATOR */\nVALUES 1 /* /* a */*/\n*/ VALUES 2 */\n--#SET TERMINATOR ;\nVALUES 'x\n--#SET TERMINATOR @\ny'\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 2 ends with '*/', which is also part of a comment delimiter: the CLP cuts the statement there, the splitter cannot tell the two readings apart; put the comment on a line of its own"
+],
+"id": "overlap+dir_in_comment",
+"script": "--#SET TERMINATOR */\nVALUES 1 /* /* a */*/\n*/ VALUES 2 */\n--#SET TERMINATOR ;\nVALUES 1 /*\n--#SET TERMINATOR @\n*/;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 2 ends with '*/', which is also part of a comment delimiter: the CLP cuts the statement there, the splitter cannot tell the two readings apart; put the comment on a line of its own"
+],
+"id": "overlap+block_line",
+"script": "--#SET TERMINATOR */\nVALUES 1 /* /* a */*/\n*/ VALUES 2 */\n--#SET TERMINATOR ;\n(=\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 2 ends with '*/', which is also part of a comment delimiter: the CLP cuts the statement there, the splitter cannot tell the two readings apart; put the comment on a line of its own"
+],
+"id": "overlap+term_in_string",
+"script": "--#SET TERMINATOR */\nVALUES 1 /* /* a */*/\n*/ VALUES 2 */\n--#SET TERMINATOR ;\nVALUES 'a;\nb';\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 2 ends with '*/', which is also part of a comment delimiter: the CLP cuts the statement there, the splitter cannot tell the two readings apart; put the comment on a line of its own"
+],
+"id": "overlap+stray",
+"script": "--#SET TERMINATOR */\nVALUES 1 /* /* a */*/\n*/ VALUES 2 */\n--#SET TERMINATOR ;\nVALUES 1; VALUES 2;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 2 ends with '*/', which is also part of a comment delimiter: the CLP cuts the statement there, the splitter cannot tell the two readings apart; put the comment on a line of its own"
+],
+"id": "overlap+command_word",
+"script": "--#SET TERMINATOR */\nVALUES 1 /* /* a */*/\n*/ VALUES 2 */\n--#SET TERMINATOR ;\nREORG TABLE t;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 2 ends with '*/', which is also part of a comment delimiter: the CLP cuts the statement there, the splitter cannot tell the two readings apart; put the comment on a line of its own"
+],
+"id": "overlap+command_phrase",
+"script": "--#SET TERMINATOR */\nVALUES 1 /* /* a */*/\n*/ VALUES 2 */\n--#SET TERMINATOR ;\nSET CLIENT X;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 2 ends with '*/', which is also part of a comment delimiter: the CLP cuts the statement there, the splitter cannot tell the two readings apart; put the comment on a line of its own"
+],
+"id": "overlap+command_bang",
+"script": "--#SET TERMINATOR */\nVALUES 1 /* /* a */*/\n*/ VALUES 2 */\n--#SET TERMINATOR ;\n!echo;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 2 ends with '*/', which is also part of a comment delimiter: the CLP cuts the statement there, the splitter cannot tell the two readings apart; put the comment on a line of its own"
+],
+"id": "overlap+command_question",
+"script": "--#SET TERMINATOR */\nVALUES 1 /* /* a */*/\n*/ VALUES 2 */\n--#SET TERMINATOR ;\n? x;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 2 ends with '*/', which is also part of a comment delimiter: the CLP cuts the statement there, the splitter cannot tell the two readings apart; put the comment on a line of its own"
+],
+"id": "overlap+epilogue_not_alone",
+"script": "--#SET TERMINATOR */\nVALUES 1 /* /* a */*/\n*/ VALUES 2 */\n--#SET TERMINATOR ;\nQUIT foo;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 2 ends with '*/', which is also part of a comment delimiter: the CLP cuts the statement there, the splitter cannot tell the two readings apart; put the comment on a line of its own"
+],
+"id": "overlap+epilogue_before_sql",
+"script": "--#SET TERMINATOR */\nVALUES 1 /* /* a */*/\n*/ VALUES 2 */\n--#SET TERMINATOR ;\nQUIT;\nVALUES 1;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 2 ends with '*/', which is also part of a comment delimiter: the CLP cuts the statement there, the splitter cannot tell the two readings apart; put the comment on a line of its own"
+],
+"id": "overlap+unclosed_comment",
+"script": "--#SET TERMINATOR */\nVALUES 1 /* /* a */*/\n*/ VALUES 2 */\n--#SET TERMINATOR ;\nVALUES 1 /* open\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 2 ends with '*/', which is also part of a comment delimiter: the CLP cuts the statement there, the splitter cannot tell the two readings apart; put the comment on a line of its own"
+],
+"id": "overlap+ok",
+"script": "--#SET TERMINATOR */\nVALUES 1 /* /* a */*/\n*/ VALUES 2 */\n--#SET TERMINATOR ;\nVALUES 7;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 1 has code after a ';' in the middle of a line: the CLP sends it whole and the server rejects it, and the ibm_db driver runs only the text before the ';'; put each statement on its own line, ended by the terminator, or declare another terminator with --#SET TERMINATOR"
+],
+"id": "stray+malformed",
+"script": "VALUES 1; VALUES 2;\n--#SET TERMINATOR\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 1 has code after a ';' in the middle of a line: the CLP sends it whole and the server rejects it, and the ibm_db driver runs only the text before the ';'; put each statement on its own line, ended by the terminator, or declare another terminator with --#SET TERMINATOR"
+],
+"id": "stray+dir_in_string",
+"script": "VALUES 1; VALUES 2;\nVALUES 'x\n--#SET TERMINATOR @\ny'\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 1 has code after a ';' in the middle of a line: the CLP sends it whole and the server rejects it, and the ibm_db driver runs only the text before the ';'; put each statement on its own line, ended by the terminator, or declare another terminator with --#SET TERMINATOR"
+],
+"id": "stray+dir_in_comment",
+"script": "VALUES 1; VALUES 2;\nVALUES 1 /*\n--#SET TERMINATOR @\n*/;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 1 has code after a ';' in the middle of a line: the CLP sends it whole and the server rejects it, and the ibm_db driver runs only the text before the ';'; put each statement on its own line, ended by the terminator, or declare another terminator with --#SET TERMINATOR"
+],
+"id": "stray+block_line",
+"script": "VALUES 1; VALUES 2;\n(=\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 1 has code after a ';' in the middle of a line: the CLP sends it whole and the server rejects it, and the ibm_db driver runs only the text before the ';'; put each statement on its own line, ended by the terminator, or declare another terminator with --#SET TERMINATOR"
+],
+"id": "stray+term_in_string",
+"script": "VALUES 1; VALUES 2;\nVALUES 'a;\nb';\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 1 has code after a ';' in the middle of a line: the CLP sends it whole and the server rejects it, and the ibm_db driver runs only the text before the ';'; put each statement on its own line, ended by the terminator, or declare another terminator with --#SET TERMINATOR"
+],
+"id": "stray+overlap",
+"script": "VALUES 1; VALUES 2;\n--#SET TERMINATOR */\nVALUES 1 /* /* a */*/\n*/ VALUES 2 */\n--#SET TERMINATOR ;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 1 has code after a ';' in the middle of a line: the CLP sends it whole and the server rejects it, and the ibm_db driver runs only the text before the ';'; put each statement on its own line, ended by the terminator, or declare another terminator with --#SET TERMINATOR"
+],
+"id": "stray+command_word",
+"script": "VALUES 1; VALUES 2;\nREORG TABLE t;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 1 has code after a ';' in the middle of a line: the CLP sends it whole and the server rejects it, and the ibm_db driver runs only the text before the ';'; put each statement on its own line, ended by the terminator, or declare another terminator with --#SET TERMINATOR"
+],
+"id": "stray+command_phrase",
+"script": "VALUES 1; VALUES 2;\nSET CLIENT X;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 1 has code after a ';' in the middle of a line: the CLP sends it whole and the server rejects it, and the ibm_db driver runs only the text before the ';'; put each statement on its own line, ended by the terminator, or declare another terminator with --#SET TERMINATOR"
+],
+"id": "stray+command_bang",
+"script": "VALUES 1; VALUES 2;\n!echo;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 1 has code after a ';' in the middle of a line: the CLP sends it whole and the server rejects it, and the ibm_db driver runs only the text before the ';'; put each statement on its own line, ended by the terminator, or declare another terminator with --#SET TERMINATOR"
+],
+"id": "stray+command_question",
+"script": "VALUES 1; VALUES 2;\n? x;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 1 has code after a ';' in the middle of a line: the CLP sends it whole and the server rejects it, and the ibm_db driver runs only the text before the ';'; put each statement on its own line, ended by the terminator, or declare another terminator with --#SET TERMINATOR"
+],
+"id": "stray+epilogue_not_alone",
+"script": "VALUES 1; VALUES 2;\nQUIT foo;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 1 has code after a ';' in the middle of a line: the CLP sends it whole and the server rejects it, and the ibm_db driver runs only the text before the ';'; put each statement on its own line, ended by the terminator, or declare another terminator with --#SET TERMINATOR"
+],
+"id": "stray+epilogue_before_sql",
+"script": "VALUES 1; VALUES 2;\nQUIT;\nVALUES 1;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 1 has code after a ';' in the middle of a line: the CLP sends it whole and the server rejects it, and the ibm_db driver runs only the text before the ';'; put each statement on its own line, ended by the terminator, or declare another terminator with --#SET TERMINATOR"
+],
+"id": "stray+unclosed_comment",
+"script": "VALUES 1; VALUES 2;\nVALUES 1 /* open\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 1 has code after a ';' in the middle of a line: the CLP sends it whole and the server rejects it, and the ibm_db driver runs only the text before the ';'; put each statement on its own line, ended by the terminator, or declare another terminator with --#SET TERMINATOR"
+],
+"id": "stray+ok",
+"script": "VALUES 1; VALUES 2;\nVALUES 7;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command REORG on line 1: dblift does not run client commands"
+],
+"id": "command_word+malformed",
+"script": "REORG TABLE t;\n--#SET TERMINATOR\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command REORG on line 1: dblift does not run client commands"
+],
+"id": "command_word+dir_in_string",
+"script": "REORG TABLE t;\nVALUES 'x\n--#SET TERMINATOR @\ny'\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command REORG on line 1: dblift does not run client commands"
+],
+"id": "command_word+dir_in_comment",
+"script": "REORG TABLE t;\nVALUES 1 /*\n--#SET TERMINATOR @\n*/;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command REORG on line 1: dblift does not run client commands"
+],
+"id": "command_word+block_line",
+"script": "REORG TABLE t;\n(=\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command REORG on line 1: dblift does not run client commands"
+],
+"id": "command_word+term_in_string",
+"script": "REORG TABLE t;\nVALUES 'a;\nb';\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command REORG on line 1: dblift does not run client commands"
+],
+"id": "command_word+overlap",
+"script": "REORG TABLE t;\n--#SET TERMINATOR */\nVALUES 1 /* /* a */*/\n*/ VALUES 2 */\n--#SET TERMINATOR ;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command REORG on line 1: dblift does not run client commands"
+],
+"id": "command_word+stray",
+"script": "REORG TABLE t;\nVALUES 1; VALUES 2;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command REORG on line 1: dblift does not run client commands"
+],
+"id": "command_word+command_phrase",
+"script": "REORG TABLE t;\nSET CLIENT X;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command REORG on line 1: dblift does not run client commands"
+],
+"id": "command_word+command_bang",
+"script": "REORG TABLE t;\n!echo;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command REORG on line 1: dblift does not run client commands"
+],
+"id": "command_word+command_question",
+"script": "REORG TABLE t;\n? x;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command REORG on line 1: dblift does not run client commands"
+],
+"id": "command_word+epilogue_not_alone",
+"script": "REORG TABLE t;\nQUIT foo;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command REORG on line 1: dblift does not run client commands"
+],
+"id": "command_word+epilogue_before_sql",
+"script": "REORG TABLE t;\nQUIT;\nVALUES 1;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command REORG on line 1: dblift does not run client commands"
+],
+"id": "command_word+unclosed_comment",
+"script": "REORG TABLE t;\nVALUES 1 /* open\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command REORG on line 1: dblift does not run client commands"
+],
+"id": "command_word+ok",
+"script": "REORG TABLE t;\nVALUES 7;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command SET on line 1: dblift does not run client commands"
+],
+"id": "command_phrase+malformed",
+"script": "SET CLIENT X;\n--#SET TERMINATOR\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command SET on line 1: dblift does not run client commands"
+],
+"id": "command_phrase+dir_in_string",
+"script": "SET CLIENT X;\nVALUES 'x\n--#SET TERMINATOR @\ny'\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command SET on line 1: dblift does not run client commands"
+],
+"id": "command_phrase+dir_in_comment",
+"script": "SET CLIENT X;\nVALUES 1 /*\n--#SET TERMINATOR @\n*/;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command SET on line 1: dblift does not run client commands"
+],
+"id": "command_phrase+block_line",
+"script": "SET CLIENT X;\n(=\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command SET on line 1: dblift does not run client commands"
+],
+"id": "command_phrase+term_in_string",
+"script": "SET CLIENT X;\nVALUES 'a;\nb';\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command SET on line 1: dblift does not run client commands"
+],
+"id": "command_phrase+overlap",
+"script": "SET CLIENT X;\n--#SET TERMINATOR */\nVALUES 1 /* /* a */*/\n*/ VALUES 2 */\n--#SET TERMINATOR ;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command SET on line 1: dblift does not run client commands"
+],
+"id": "command_phrase+stray",
+"script": "SET CLIENT X;\nVALUES 1; VALUES 2;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command SET on line 1: dblift does not run client commands"
+],
+"id": "command_phrase+command_word",
+"script": "SET CLIENT X;\nREORG TABLE t;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command SET on line 1: dblift does not run client commands"
+],
+"id": "command_phrase+command_bang",
+"script": "SET CLIENT X;\n!echo;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command SET on line 1: dblift does not run client commands"
+],
+"id": "command_phrase+command_question",
+"script": "SET CLIENT X;\n? x;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command SET on line 1: dblift does not run client commands"
+],
+"id": "command_phrase+epilogue_not_alone",
+"script": "SET CLIENT X;\nQUIT foo;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command SET on line 1: dblift does not run client commands"
+],
+"id": "command_phrase+epilogue_before_sql",
+"script": "SET CLIENT X;\nQUIT;\nVALUES 1;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command SET on line 1: dblift does not run client commands"
+],
+"id": "command_phrase+unclosed_comment",
+"script": "SET CLIENT X;\nVALUES 1 /* open\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command SET on line 1: dblift does not run client commands"
+],
+"id": "command_phrase+ok",
+"script": "SET CLIENT X;\nVALUES 7;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command '!' on line 1: dblift does not run client commands"
+],
+"id": "command_bang+malformed",
+"script": "!echo;\n--#SET TERMINATOR\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command '!' on line 1: dblift does not run client commands"
+],
+"id": "command_bang+dir_in_string",
+"script": "!echo;\nVALUES 'x\n--#SET TERMINATOR @\ny'\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command '!' on line 1: dblift does not run client commands"
+],
+"id": "command_bang+dir_in_comment",
+"script": "!echo;\nVALUES 1 /*\n--#SET TERMINATOR @\n*/;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command '!' on line 1: dblift does not run client commands"
+],
+"id": "command_bang+block_line",
+"script": "!echo;\n(=\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command '!' on line 1: dblift does not run client commands"
+],
+"id": "command_bang+term_in_string",
+"script": "!echo;\nVALUES 'a;\nb';\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command '!' on line 1: dblift does not run client commands"
+],
+"id": "command_bang+overlap",
+"script": "!echo;\n--#SET TERMINATOR */\nVALUES 1 /* /* a */*/\n*/ VALUES 2 */\n--#SET TERMINATOR ;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command '!' on line 1: dblift does not run client commands"
+],
+"id": "command_bang+stray",
+"script": "!echo;\nVALUES 1; VALUES 2;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command '!' on line 1: dblift does not run client commands"
+],
+"id": "command_bang+command_word",
+"script": "!echo;\nREORG TABLE t;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command '!' on line 1: dblift does not run client commands"
+],
+"id": "command_bang+command_phrase",
+"script": "!echo;\nSET CLIENT X;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command '!' on line 1: dblift does not run client commands"
+],
+"id": "command_bang+command_question",
+"script": "!echo;\n? x;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command '!' on line 1: dblift does not run client commands"
+],
+"id": "command_bang+epilogue_not_alone",
+"script": "!echo;\nQUIT foo;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command '!' on line 1: dblift does not run client commands"
+],
+"id": "command_bang+epilogue_before_sql",
+"script": "!echo;\nQUIT;\nVALUES 1;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command '!' on line 1: dblift does not run client commands"
+],
+"id": "command_bang+unclosed_comment",
+"script": "!echo;\nVALUES 1 /* open\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command '!' on line 1: dblift does not run client commands"
+],
+"id": "command_bang+ok",
+"script": "!echo;\nVALUES 7;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command '?' on line 1: dblift does not run client commands"
+],
+"id": "command_question+malformed",
+"script": "? x;\n--#SET TERMINATOR\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command '?' on line 1: dblift does not run client commands"
+],
+"id": "command_question+dir_in_string",
+"script": "? x;\nVALUES 'x\n--#SET TERMINATOR @\ny'\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command '?' on line 1: dblift does not run client commands"
+],
+"id": "command_question+dir_in_comment",
+"script": "? x;\nVALUES 1 /*\n--#SET TERMINATOR @\n*/;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command '?' on line 1: dblift does not run client commands"
+],
+"id": "command_question+block_line",
+"script": "? x;\n(=\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command '?' on line 1: dblift does not run client commands"
+],
+"id": "command_question+term_in_string",
+"script": "? x;\nVALUES 'a;\nb';\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command '?' on line 1: dblift does not run client commands"
+],
+"id": "command_question+overlap",
+"script": "? x;\n--#SET TERMINATOR */\nVALUES 1 /* /* a */*/\n*/ VALUES 2 */\n--#SET TERMINATOR ;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command '?' on line 1: dblift does not run client commands"
+],
+"id": "command_question+stray",
+"script": "? x;\nVALUES 1; VALUES 2;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command '?' on line 1: dblift does not run client commands"
+],
+"id": "command_question+command_word",
+"script": "? x;\nREORG TABLE t;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command '?' on line 1: dblift does not run client commands"
+],
+"id": "command_question+command_phrase",
+"script": "? x;\nSET CLIENT X;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command '?' on line 1: dblift does not run client commands"
+],
+"id": "command_question+command_bang",
+"script": "? x;\n!echo;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command '?' on line 1: dblift does not run client commands"
+],
+"id": "command_question+epilogue_not_alone",
+"script": "? x;\nQUIT foo;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command '?' on line 1: dblift does not run client commands"
+],
+"id": "command_question+epilogue_before_sql",
+"script": "? x;\nQUIT;\nVALUES 1;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command '?' on line 1: dblift does not run client commands"
+],
+"id": "command_question+unclosed_comment",
+"script": "? x;\nVALUES 1 /* open\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command '?' on line 1: dblift does not run client commands"
+],
+"id": "command_question+ok",
+"script": "? x;\nVALUES 7;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"QUIT on line 1 is not alone on its line: the CLP joins it with what follows and the server rejects the text; end it with the terminator"
+],
+"id": "epilogue_not_alone+malformed",
+"script": "QUIT foo;\n--#SET TERMINATOR\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"QUIT on line 1 is not alone on its line: the CLP joins it with what follows and the server rejects the text; end it with the terminator"
+],
+"id": "epilogue_not_alone+dir_in_string",
+"script": "QUIT foo;\nVALUES 'x\n--#SET TERMINATOR @\ny'\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"QUIT on line 1 is not alone on its line: the CLP joins it with what follows and the server rejects the text; end it with the terminator"
+],
+"id": "epilogue_not_alone+dir_in_comment",
+"script": "QUIT foo;\nVALUES 1 /*\n--#SET TERMINATOR @\n*/;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"QUIT on line 1 is not alone on its line: the CLP joins it with what follows and the server rejects the text; end it with the terminator"
+],
+"id": "epilogue_not_alone+block_line",
+"script": "QUIT foo;\n(=\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"QUIT on line 1 is not alone on its line: the CLP joins it with what follows and the server rejects the text; end it with the terminator"
+],
+"id": "epilogue_not_alone+term_in_string",
+"script": "QUIT foo;\nVALUES 'a;\nb';\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"QUIT on line 1 is not alone on its line: the CLP joins it with what follows and the server rejects the text; end it with the terminator"
+],
+"id": "epilogue_not_alone+overlap",
+"script": "QUIT foo;\n--#SET TERMINATOR */\nVALUES 1 /* /* a */*/\n*/ VALUES 2 */\n--#SET TERMINATOR ;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"QUIT on line 1 is not alone on its line: the CLP joins it with what follows and the server rejects the text; end it with the terminator"
+],
+"id": "epilogue_not_alone+stray",
+"script": "QUIT foo;\nVALUES 1; VALUES 2;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"QUIT on line 1 is not alone on its line: the CLP joins it with what follows and the server rejects the text; end it with the terminator"
+],
+"id": "epilogue_not_alone+command_word",
+"script": "QUIT foo;\nREORG TABLE t;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"QUIT on line 1 is not alone on its line: the CLP joins it with what follows and the server rejects the text; end it with the terminator"
+],
+"id": "epilogue_not_alone+command_phrase",
+"script": "QUIT foo;\nSET CLIENT X;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"QUIT on line 1 is not alone on its line: the CLP joins it with what follows and the server rejects the text; end it with the terminator"
+],
+"id": "epilogue_not_alone+command_bang",
+"script": "QUIT foo;\n!echo;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"QUIT on line 1 is not alone on its line: the CLP joins it with what follows and the server rejects the text; end it with the terminator"
+],
+"id": "epilogue_not_alone+command_question",
+"script": "QUIT foo;\n? x;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"QUIT on line 1 is not alone on its line: the CLP joins it with what follows and the server rejects the text; end it with the terminator"
+],
+"id": "epilogue_not_alone+epilogue_before_sql",
+"script": "QUIT foo;\nQUIT;\nVALUES 1;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"QUIT on line 1 is not alone on its line: the CLP joins it with what follows and the server rejects the text; end it with the terminator"
+],
+"id": "epilogue_not_alone+unclosed_comment",
+"script": "QUIT foo;\nVALUES 1 /* open\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"QUIT on line 1 is not alone on its line: the CLP joins it with what follows and the server rejects the text; end it with the terminator"
+],
+"id": "epilogue_not_alone+ok",
+"script": "QUIT foo;\nVALUES 7;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"malformed --#SET TERMINATOR directive on line 3: expected one or two characters after the keyword, separated from it by blanks"
+],
+"id": "epilogue_before_sql+malformed",
+"script": "QUIT;\nVALUES 1;\n--#SET TERMINATOR\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"--#SET TERMINATOR on line 4 stands inside a string, a quoted identifier or a comment: the CLP honours it there and cuts the statement; close it first"
+],
+"id": "epilogue_before_sql+dir_in_string",
+"script": "QUIT;\nVALUES 1;\nVALUES 'x\n--#SET TERMINATOR @\ny'\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"--#SET TERMINATOR on line 4 stands inside a string, a quoted identifier or a comment: the CLP honours it there and cuts the statement; close it first"
+],
+"id": "epilogue_before_sql+dir_in_comment",
+"script": "QUIT;\nVALUES 1;\nVALUES 1 /*\n--#SET TERMINATOR @\n*/;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP comment block '(=' on line 3: the CLP skips it, dblift does not run CLP input syntax"
+],
+"id": "epilogue_before_sql+block_line",
+"script": "QUIT;\nVALUES 1;\n(=\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 3 ends with ';' inside a string or a quoted identifier: the CLP cuts the statement there and the server rejects both halves; close the literal before the end of the line"
+],
+"id": "epilogue_before_sql+term_in_string",
+"script": "QUIT;\nVALUES 1;\nVALUES 'a;\nb';\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 4 ends with '*/', which is also part of a comment delimiter: the CLP cuts the statement there, the splitter cannot tell the two readings apart; put the comment on a line of its own"
+],
+"id": "epilogue_before_sql+overlap",
+"script": "QUIT;\nVALUES 1;\n--#SET TERMINATOR */\nVALUES 1 /* /* a */*/\n*/ VALUES 2 */\n--#SET TERMINATOR ;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 3 has code after a ';' in the middle of a line: the CLP sends it whole and the server rejects it, and the ibm_db driver runs only the text before the ';'; put each statement on its own line, ended by the terminator, or declare another terminator with --#SET TERMINATOR"
+],
+"id": "epilogue_before_sql+stray",
+"script": "QUIT;\nVALUES 1;\nVALUES 1; VALUES 2;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command REORG on line 3: dblift does not run client commands"
+],
+"id": "epilogue_before_sql+command_word",
+"script": "QUIT;\nVALUES 1;\nREORG TABLE t;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command SET on line 3: dblift does not run client commands"
+],
+"id": "epilogue_before_sql+command_phrase",
+"script": "QUIT;\nVALUES 1;\nSET CLIENT X;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command '!' on line 3: dblift does not run client commands"
+],
+"id": "epilogue_before_sql+command_bang",
+"script": "QUIT;\nVALUES 1;\n!echo;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command '?' on line 3: dblift does not run client commands"
+],
+"id": "epilogue_before_sql+command_question",
+"script": "QUIT;\nVALUES 1;\n? x;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"QUIT on line 3 is not alone on its line: the CLP joins it with what follows and the server rejects the text; end it with the terminator"
+],
+"id": "epilogue_before_sql+epilogue_not_alone",
+"script": "QUIT;\nVALUES 1;\nQUIT foo;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"the block comment opened on line 3 is not closed before the end of the script: the statements inside it would be dropped"
+],
+"id": "epilogue_before_sql+unclosed_comment",
+"script": "QUIT;\nVALUES 1;\nVALUES 1 /* open\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command QUIT on line 1: dblift does not run client commands"
+],
+"id": "epilogue_before_sql+ok",
+"script": "QUIT;\nVALUES 1;\nVALUES 7;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"--#SET TERMINATOR on line 2 stands inside a string, a quoted identifier or a comment: the CLP honours it there and cuts the statement; close it first"
+],
+"id": "unclosed_comment+malformed",
+"script": "VALUES 1 /* open\n--#SET TERMINATOR\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"--#SET TERMINATOR on line 3 stands inside a string, a quoted identifier or a comment: the CLP honours it there and cuts the statement; close it first"
+],
+"id": "unclosed_comment+dir_in_string",
+"script": "VALUES 1 /* open\nVALUES 'x\n--#SET TERMINATOR @\ny'\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"--#SET TERMINATOR on line 3 stands inside a string, a quoted identifier or a comment: the CLP honours it there and cuts the statement; close it first"
+],
+"id": "unclosed_comment+dir_in_comment",
+"script": "VALUES 1 /* open\nVALUES 1 /*\n--#SET TERMINATOR @\n*/;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP comment block '(=' on line 2: the CLP skips it, dblift does not run CLP input syntax"
+],
+"id": "unclosed_comment+block_line",
+"script": "VALUES 1 /* open\n(=\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"the block comment opened on line 1 is not closed before the end of the script: the statements inside it would be dropped"
+],
+"id": "unclosed_comment+term_in_string",
+"script": "VALUES 1 /* open\nVALUES 'a;\nb';\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"--#SET TERMINATOR on line 2 stands inside a string, a quoted identifier or a comment: the CLP honours it there and cuts the statement; close it first"
+],
+"id": "unclosed_comment+overlap",
+"script": "VALUES 1 /* open\n--#SET TERMINATOR */\nVALUES 1 /* /* a */*/\n*/ VALUES 2 */\n--#SET TERMINATOR ;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"the block comment opened on line 1 is not closed before the end of the script: the statements inside it would be dropped"
+],
+"id": "unclosed_comment+stray",
+"script": "VALUES 1 /* open\nVALUES 1; VALUES 2;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"the block comment opened on line 1 is not closed before the end of the script: the statements inside it would be dropped"
+],
+"id": "unclosed_comment+command_word",
+"script": "VALUES 1 /* open\nREORG TABLE t;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"the block comment opened on line 1 is not closed before the end of the script: the statements inside it would be dropped"
+],
+"id": "unclosed_comment+command_phrase",
+"script": "VALUES 1 /* open\nSET CLIENT X;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"the block comment opened on line 1 is not closed before the end of the script: the statements inside it would be dropped"
+],
+"id": "unclosed_comment+command_bang",
+"script": "VALUES 1 /* open\n!echo;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"the block comment opened on line 1 is not closed before the end of the script: the statements inside it would be dropped"
+],
+"id": "unclosed_comment+command_question",
+"script": "VALUES 1 /* open\n? x;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"the block comment opened on line 1 is not closed before the end of the script: the statements inside it would be dropped"
+],
+"id": "unclosed_comment+epilogue_not_alone",
+"script": "VALUES 1 /* open\nQUIT foo;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"the block comment opened on line 1 is not closed before the end of the script: the statements inside it would be dropped"
+],
+"id": "unclosed_comment+epilogue_before_sql",
+"script": "VALUES 1 /* open\nQUIT;\nVALUES 1;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"the block comment opened on line 1 is not closed before the end of the script: the statements inside it would be dropped"
+],
+"id": "unclosed_comment+ok",
+"script": "VALUES 1 /* open\nVALUES 7;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"malformed --#SET TERMINATOR directive on line 2: expected one or two characters after the keyword, separated from it by blanks"
+],
+"id": "ok+malformed",
+"script": "VALUES 7;\n--#SET TERMINATOR\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"--#SET TERMINATOR on line 3 stands inside a string, a quoted identifier or a comment: the CLP honours it there and cuts the statement; close it first"
+],
+"id": "ok+dir_in_string",
+"script": "VALUES 7;\nVALUES 'x\n--#SET TERMINATOR @\ny'\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"--#SET TERMINATOR on line 3 stands inside a string, a quoted identifier or a comment: the CLP honours it there and cuts the statement; close it first"
+],
+"id": "ok+dir_in_comment",
+"script": "VALUES 7;\nVALUES 1 /*\n--#SET TERMINATOR @\n*/;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP comment block '(=' on line 2: the CLP skips it, dblift does not run CLP input syntax"
+],
+"id": "ok+block_line",
+"script": "VALUES 7;\n(=\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 2 ends with ';' inside a string or a quoted identifier: the CLP cuts the statement there and the server rejects both halves; close the literal before the end of the line"
+],
+"id": "ok+term_in_string",
+"script": "VALUES 7;\nVALUES 'a;\nb';\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 3 ends with '*/', which is also part of a comment delimiter: the CLP cuts the statement there, the splitter cannot tell the two readings apart; put the comment on a line of its own"
+],
+"id": "ok+overlap",
+"script": "VALUES 7;\n--#SET TERMINATOR */\nVALUES 1 /* /* a */*/\n*/ VALUES 2 */\n--#SET TERMINATOR ;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 2 has code after a ';' in the middle of a line: the CLP sends it whole and the server rejects it, and the ibm_db driver runs only the text before the ';'; put each statement on its own line, ended by the terminator, or declare another terminator with --#SET TERMINATOR"
+],
+"id": "ok+stray",
+"script": "VALUES 7;\nVALUES 1; VALUES 2;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command REORG on line 2: dblift does not run client commands"
+],
+"id": "ok+command_word",
+"script": "VALUES 7;\nREORG TABLE t;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command SET on line 2: dblift does not run client commands"
+],
+"id": "ok+command_phrase",
+"script": "VALUES 7;\nSET CLIENT X;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command '!' on line 2: dblift does not run client commands"
+],
+"id": "ok+command_bang",
+"script": "VALUES 7;\n!echo;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command '?' on line 2: dblift does not run client commands"
+],
+"id": "ok+command_question",
+"script": "VALUES 7;\n? x;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"QUIT on line 2 is not alone on its line: the CLP joins it with what follows and the server rejects the text; end it with the terminator"
+],
+"id": "ok+epilogue_not_alone",
+"script": "VALUES 7;\nQUIT foo;\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command QUIT on line 2: dblift does not run client commands"
+],
+"id": "ok+epilogue_before_sql",
+"script": "VALUES 7;\nQUIT;\nVALUES 1;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"the block comment opened on line 2 is not closed before the end of the script: the statements inside it would be dropped"
+],
+"id": "ok+unclosed_comment",
+"script": "VALUES 7;\nVALUES 1 /* open\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 1 ends with ';' inside a string or a quoted identifier: the CLP cuts the statement there and the server rejects both halves; close the literal before the end of the line"
+],
+"id": "stray+term_in_string",
+"script": "VALUES 1; VALUES 'a;\nb';"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 2 has code after a ';' in the middle of a line: the CLP sends it whole and the server rejects it, and the ibm_db driver runs only the text before the ';'; put each statement on its own line, ended by the terminator, or declare another terminator with --#SET TERMINATOR"
+],
+"id": "overlap+stray",
+"script": "--#SET TERMINATOR /\nVALUES 1; VALUES /*/\nVALUES 2 */ /\n"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command REORG on line 1: dblift does not run client commands"
+],
+"id": "command+stray",
+"script": "REORG TABLE t; VALUES 1;"
+},
+{
+"expect": [
+"records",
+[
+"--#SET TERMINATOR (=",
+1,
+null,
+"directive",
+0,
+21
+]
+],
+"id": "malformed+block",
+"script": "--#SET TERMINATOR (=\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"QUIT on line 1 is not alone on its line: the CLP joins it with what follows and the server rejects the text; end it with the terminator"
+],
+"id": "epilogue_not_alone+stray",
+"script": "QUIT; VALUES 1;"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"the block comment opened on line 2 is not closed before the end of the script: the statements inside it would be dropped"
+],
+"id": "unclosed+epilogue",
+"script": "QUIT;\nVALUES 1 /* open"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"the block comment opened on line 1 is not closed before the end of the script: the statements inside it would be dropped"
+],
+"id": "stray+unclosed",
+"script": "VALUES 1; VALUES 2 /* open"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP comment block '(=' on line 2: the CLP skips it, dblift does not run CLP input syntax"
+],
+"id": "block+directive_inside_string",
+"script": "VALUES 'x\n(=\n--#SET TERMINATOR @\n'"
+}
+],
+"record_bounds": [
+{
+"expect": [
+"records",
+[
+"VALUES 1",
+1,
+";",
+"sql",
+1,
+11
+],
+[
+"VALUES 2",
+2,
+";",
+"sql",
+11,
+21
+]
+],
+"id": "bom",
+"script": "\ufeffVALUES 1;\nVALUES 2;\n"
+},
+{
+"expect": [
+"records",
+[
+"--#SET TERMINATOR @",
+1,
+null,
+"directive",
+1,
+21
+],
+[
+"VALUES 1",
+2,
+"@",
+"sql",
+21,
+31
+]
+],
+"id": "bom_directive",
+"script": "\ufeff--#SET TERMINATOR @\nVALUES 1@\n"
+},
+{
+"expect": [
+"records",
+[
+"VALUES 1",
+1,
+";",
+"sql",
+0,
+11
+],
+[
+"VALUES\r\n 2",
+2,
+";",
+"sql",
+11,
+24
+]
+],
+"id": "crlf",
+"script": "VALUES 1;\r\nVALUES\r\n 2;\r\n"
+},
+{
+"expect": [
+"records",
+[
+"--#SET TERMINATOR @",
+1,
+null,
+"directive",
+0,
+21
+],
+[
+"VALUES 1\r\n+ 1",
+2,
+"@",
+"sql",
+21,
+37
+],
+[
+"VALUES 3",
+4,
+"@",
+"sql",
+37,
+48
+]
+],
+"id": "crlf_directive",
+"script": "--#SET TERMINATOR @\r\nVALUES 1\r\n+ 1@\r\nVALUES 3@\r\n"
+},
+{
+"expect": [
+"records",
+[
+"VALUES 1",
+1,
+";",
+"sql",
+1,
+12
+],
+[
+"VALUES 2",
+2,
+";",
+"sql",
+12,
+23
+]
+],
+"id": "bom_crlf",
+"script": "\ufeffVALUES 1;\r\nVALUES 2;\r\n"
+},
+{
+"expect": [
+"records",
+[
+"VALUES 1",
+2,
+";",
+"sql",
+8,
+18
+]
+],
+"id": "leading_comment_line",
+"script": "-- lead\nVALUES 1;\n"
+},
+{
+"expect": [
+"records",
+[
+"/* c */ VALUES 1",
+4,
+";",
+"sql",
+12,
+30
+]
+],
+"id": "leading_comment_lines_and_blanks",
+"script": "\n-- lead\n  \n/* c */ VALUES 1;\n"
+},
+{
+"expect": [
+"records",
+[
+"--#SET TERMINATOR @",
+2,
+null,
+"directive",
+10,
+30
+],
+[
+"VALUES 1,\n2",
+1,
+"@",
+"sql",
+0,
+33
+],
+[
+"VALUES 3",
+4,
+"@",
+"sql",
+33,
+43
+]
+],
+"id": "directive_mid_statement",
+"script": "VALUES 1,\n--#SET TERMINATOR @\n2@\nVALUES 3@\n"
+},
+{
+"expect": [
+"records",
+[
+"--#SET TERMINATOR @",
+1,
+null,
+"directive",
+0,
+20
+],
+[
+"VALUES 1",
+2,
+"@",
+"sql",
+20,
+30
+],
+[
+"--#SET TERMINATOR ;",
+3,
+null,
+"directive",
+30,
+50
+],
+[
+"VALUES 2",
+4,
+";",
+"sql",
+50,
+60
+]
+],
+"id": "directive_first_then_statement",
+"script": "--#SET TERMINATOR @\nVALUES 1@\n--#SET TERMINATOR ;\nVALUES 2;\n"
+},
+{
+"expect": [
+"records",
+[
+"VALUES 1",
+1,
+";",
+"sql",
+0,
+10
+],
+[
+"VALUES 2",
+2,
+null,
+"sql",
+10,
+18
+]
+],
+"id": "tail_no_terminator",
+"script": "VALUES 1;\nVALUES 2"
+},
+{
+"expect": [
+"records",
+[
+"VALUES 1",
+1,
+null,
+"sql",
+0,
+19
+]
+],
+"id": "tail_with_trailing_comments",
+"script": "VALUES 1\n-- c\n-- d\n"
+},
+{
+"expect": [
+"records",
+[
+"VALUES 1 /* a\nb */",
+1,
+null,
+"sql",
+0,
+24
+]
+],
+"id": "tail_with_trailing_block_comment",
+"script": "VALUES 1 /* a\nb */\n-- c\n"
+},
+{
+"expect": [
+"records",
+[
+"SELECT 1 /* x;\n y */",
+1,
+null,
+"sql",
+0,
+20
+]
+],
+"id": "tail_select_comment",
+"script": "SELECT 1 /* x;\n y */"
+},
+{
+"expect": [
+"records",
+[
+"VALUES 1",
+1,
+null,
+"sql",
+0,
+11
+]
+],
+"id": "tail_blank_lines",
+"script": "VALUES 1\n\n\n"
+},
+{
+"expect": [
+"records",
+[
+"--#SET TERMINATOR %%",
+1,
+null,
+"directive",
+0,
+21
+],
+[
+"VALUES 1",
+2,
+"%%",
+"sql",
+21,
+32
+],
+[
+"VALUES 2",
+3,
+"%%",
+"sql",
+32,
+45
+]
+],
+"id": "two_character_terminator",
+"script": "--#SET TERMINATOR %%\nVALUES 1%%\nVALUES 2 %% \n"
+},
+{
+"expect": [
+"records",
+[
+"VALUES 1",
+1,
+";",
+"sql",
+0,
+10
+],
+[
+"CONNECT RESET",
+2,
+";",
+"directive",
+10,
+25
+],
+[
+"TERMINATE",
+3,
+";",
+"directive",
+25,
+36
+]
+],
+"id": "epilogue",
+"script": "VALUES 1;\nCONNECT RESET;\nTERMINATE;\n"
+},
+{
+"expect": [
+"records",
+[
+"VALUES 1",
+1,
+";",
+"sql",
+0,
+10
+],
+[
+"QUIT",
+2,
+";",
+"directive",
+10,
+23
+]
+],
+"id": "epilogue_quit_comment",
+"script": "VALUES 1;\nQUIT; -- bye\n"
+},
+{
+"expect": [
+"records",
+[
+"QUIT",
+1,
+";",
+"directive",
+0,
+6
+]
+],
+"id": "epilogue_only",
+"script": "QUIT;\n"
+},
+{
+"expect": [
+"records",
+[
+"VALUES 1",
+1,
+";",
+"sql",
+0,
+10
+],
+[
+"QUIT",
+2,
+null,
+"directive",
+10,
+14
+]
+],
+"id": "epilogue_no_terminator",
+"script": "VALUES 1;\nQUIT"
+},
+{
+"expect": [
+"records",
+[
+"VALUES 1",
+1,
+";",
+"sql",
+0,
+15
+],
+[
+"VALUES 2",
+2,
+";",
+"sql",
+15,
+33
+],
+[
+"VALUES 3",
+3,
+";",
+"sql",
+33,
+43
+]
+],
+"id": "semicolon_comment",
+"script": "VALUES 1; -- c\nVALUES 2; /* d */\nVALUES 3;\n"
+},
+{
+"expect": [
+"records",
+[
+"VALUES 1",
+1,
+";",
+"sql",
+0,
+16
+],
+[
+"VALUES 2",
+2,
+";",
+"sql",
+16,
+27
+]
+],
+"id": "semicolon_comment_crlf",
+"script": "VALUES 1; -- c\r\nVALUES 2;\r\n"
+},
+{
+"expect": [
+"records",
+[
+"VALUES 1",
+1,
+";",
+"sql",
+3,
+13
+],
+[
+"VALUES 2",
+2,
+";",
+"sql",
+15,
+26
+]
+],
+"id": "leading_blanks_and_tab",
+"script": "  \tVALUES 1;\n\t VALUES 2 ;\n"
+},
+{
+"expect": [
+"records",
+[
+"VALUES 1",
+2,
+";",
+"sql",
+0,
+12
+]
+],
+"id": "form_feed_first_line",
+"script": "\f\nVALUES 1;\n"
+},
+{
+"expect": [
+"records",
+[
+"VALUES 1",
+1,
+";",
+"sql",
+0,
+10
+],
+[
+"VALUES 2",
+3,
+";",
+"sql",
+10,
+22
+]
+],
+"id": "form_feed_line_between",
+"script": "VALUES 1;\n\f\nVALUES 2;\n"
+},
+{
+"expect": [
+"records",
+[
+"VALUES 1",
+1,
+";",
+"sql",
+0,
+12
+]
+],
+"id": "nbsp_edges",
+"script": "\u00a0VALUES 1\u00a0;\n"
+},
+{
+"expect": [
+"records",
+[
+"VALUES 1",
+1,
+";",
+"sql",
+0,
+12
+]
+],
+"id": "u2028_edge",
+"script": "VALUES 1\u2028\n;\n"
+},
+{
+"expect": [
+"records"
+],
+"id": "empty",
+"script": ""
+},
+{
+"expect": [
+"records"
+],
+"id": "only_blank",
+"script": "  \n\n"
+},
+{
+"expect": [
+"records"
+],
+"id": "only_comments",
+"script": "-- a\n/* b */\n"
+},
+{
+"expect": [
+"records",
+[
+"VALUES 1",
+1,
+";",
+"sql",
+0,
+9
+]
+],
+"id": "statement_ends_at_eof_with_lf",
+"script": "VALUES 1;"
+},
+{
+"expect": [
+"records",
+[
+"--#SET TERMINATOR @",
+1,
+null,
+"directive",
+0,
+20
+]
+],
+"id": "directive_only",
+"script": "--#SET TERMINATOR @\n"
+},
+{
+"expect": [
+"records",
+[
+"--#SET TERMINATOR @",
+1,
+null,
+"directive",
+0,
+23
+],
+[
+"VALUES 1",
+2,
+"@",
+"sql",
+23,
+34
+]
+],
+"id": "directive_crlf_trailing_blank",
+"script": "--#SET TERMINATOR @ \t\r\nVALUES 1@\r\n"
+}
+],
+"rows": [
+{
+"expect": [
+"records",
+[
+"CREATE TABLE t (id INT)",
+1,
+";",
+"sql",
+0,
+25
+],
+[
+"INSERT INTO t VALUES (1)",
+2,
+";",
+"sql",
+25,
+50
+]
+],
+"id": "row1",
+"script": "CREATE TABLE t (id INT);\nINSERT INTO t VALUES (1);"
+},
+{
+"expect": [
+"records",
+[
+"--#SET TERMINATOR @",
+1,
+null,
+"directive",
+0,
+20
+],
+[
+"CREATE TABLE \"my@tbl\" (id INT)",
+2,
+"@",
+"sql",
+20,
+52
+],
+[
+"SELECT 1 FROM sysibm.sysdummy1",
+3,
+"@",
+"sql",
+52,
+83
+]
+],
+"id": "row3",
+"script": "--#SET TERMINATOR @\nCREATE TABLE \"my@tbl\" (id INT)@\nSELECT 1 FROM sysibm.sysdummy1@"
+},
+{
+"expect": [
+"records",
+[
+"CREATE TABLE MY@TBL (id INT)",
+1,
+";",
+"sql",
+0,
+30
+],
+[
+"SELECT 1 FROM sysibm.sysdummy1",
+2,
+";",
+"sql",
+30,
+61
+]
+],
+"id": "row4",
+"script": "CREATE TABLE MY@TBL (id INT);\nSELECT 1 FROM sysibm.sysdummy1;"
+},
+{
+"expect": [
+"records",
+[
+"CREATE TABLE \"a;b\" (id INT)",
+1,
+";",
+"sql",
+0,
+29
+],
+[
+"SELECT 1 FROM sysibm.sysdummy1",
+2,
+";",
+"sql",
+29,
+60
+]
+],
+"id": "row10",
+"script": "CREATE TABLE \"a;b\" (id INT);\nSELECT 1 FROM sysibm.sysdummy1;"
+},
+{
+"expect": [
+"records",
+[
+"/* a /* b */ ; */ CREATE TABLE t (id INT)",
+1,
+";",
+"sql",
+0,
+43
+],
+[
+"SELECT 1 FROM sysibm.sysdummy1",
+2,
+";",
+"sql",
+43,
+74
+]
+],
+"id": "row11",
+"script": "/* a /* b */ ; */ CREATE TABLE t (id INT);\nSELECT 1 FROM sysibm.sysdummy1;"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 1 has code after a ';' in the middle of a line: the CLP sends it whole and the server rejects it, and the ibm_db driver runs only the text before the ';'; put each statement on its own line, ended by the terminator, or declare another terminator with --#SET TERMINATOR"
+],
+"id": "row12",
+"script": "SELECT 1 FROM sysibm.sysdummy1; SELECT 2 FROM sysibm.sysdummy1;"
+},
+{
+"expect": [
+"records",
+[
+"CREATE TABLE t (id INT)",
+1,
+";",
+"sql",
+0,
+37
+],
+[
+"SELECT 1 FROM sysibm.sysdummy1",
+2,
+";",
+"sql",
+37,
+68
+]
+],
+"id": "row13",
+"script": "CREATE TABLE t (id INT); -- trailing\nSELECT 1 FROM sysibm.sysdummy1;"
+},
+{
+"expect": [
+"records",
+[
+"--#SET TERMINATOR %%",
+1,
+null,
+"directive",
+0,
+21
+],
+[
+"CREATE TABLE t (id INT)",
+2,
+"%%",
+"sql",
+21,
+47
+],
+[
+"SELECT 1 FROM sysibm.sysdummy1",
+3,
+"%%",
+"sql",
+47,
+79
+]
+],
+"id": "row13a",
+"script": "--#SET TERMINATOR %%\nCREATE TABLE t (id INT)%%\nSELECT 1 FROM sysibm.sysdummy1%%"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command CONNECT on line 1: dblift does not run client commands"
+],
+"id": "row14",
+"script": "CONNECT TO sample;\nCREATE TABLE t (id INT);\nCONNECT RESET;"
+},
+{
+"expect": [
+"records",
+[
+"CREATE TABLE t (id INT)",
+1,
+";",
+"sql",
+0,
+25
+],
+[
+"COMMIT",
+2,
+";",
+"sql",
+25,
+33
+],
+[
+"CONNECT RESET",
+3,
+";",
+"directive",
+33,
+48
+],
+[
+"TERMINATE",
+4,
+";",
+"directive",
+48,
+58
+]
+],
+"id": "row15",
+"script": "CREATE TABLE t (id INT);\nCOMMIT;\nCONNECT RESET;\nTERMINATE;"
+},
+{
+"expect": [
+"records",
+[
+"INSERT INTO t VALUES (X'3B3B')",
+1,
+";",
+"sql",
+0,
+32
+],
+[
+"SELECT 1 FROM sysibm.sysdummy1",
+2,
+";",
+"sql",
+32,
+63
+]
+],
+"id": "row16",
+"script": "INSERT INTO t VALUES (X'3B3B');\nSELECT 1 FROM sysibm.sysdummy1;"
+},
+{
+"expect": [
+"records",
+[
+"CREATE TABLE t (id INT)",
+1,
+";",
+"sql",
+0,
+25
+],
+[
+"INSERT INTO t VALUES (1)",
+2,
+null,
+"sql",
+25,
+49
+]
+],
+"id": "row17",
+"script": "CREATE TABLE t (id INT);\nINSERT INTO t VALUES (1)"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 1 ends with ';' inside a string or a quoted identifier: the CLP cuts the statement there and the server rejects both halves; close the literal before the end of the line"
+],
+"id": "row18",
+"script": "INSERT INTO t VALUES ('a;\nb');"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 1 ends with ';' inside a string or a quoted identifier: the CLP cuts the statement there and the server rejects both halves; close the literal before the end of the line"
+],
+"id": "row18a",
+"script": "CREATE TABLE \"a;\nb\" (id INT);"
+},
+{
+"expect": [
+"records",
+[
+"CREATE TABLE t (id INT)",
+2,
+";",
+"sql",
+6,
+30
+]
+],
+"id": "row19",
+"script": "-- a;\nCREATE TABLE t (id INT);"
+},
+{
+"expect": [
+"records",
+[
+"CREATE TABLE t (id INT) -- c",
+1,
+";",
+"sql",
+0,
+30
+],
+[
+"SELECT 1 FROM sysibm.sysdummy1",
+2,
+";",
+"sql",
+30,
+61
+]
+],
+"id": "row20",
+"script": "CREATE TABLE t (id INT) -- c;\nSELECT 1 FROM sysibm.sysdummy1;"
+},
+{
+"expect": [
+"records",
+[
+"CREATE TABLE t (id INT) -- c",
+1,
+";",
+"sql",
+0,
+31
+],
+[
+"SELECT 1 FROM sysibm.sysdummy1",
+2,
+";",
+"sql",
+31,
+62
+]
+],
+"id": "row21",
+"script": "CREATE TABLE t (id INT) -- c ;\nSELECT 1 FROM sysibm.sysdummy1;"
+},
+{
+"expect": [
+"records",
+[
+"CREATE TABLE t (id INT)@\nSELECT 1 FROM sysibm.sysdummy1",
+2,
+";",
+"sql",
+20,
+76
+]
+],
+"id": "row22",
+"script": "--#set terminator @\nCREATE TABLE t (id INT)@\nSELECT 1 FROM sysibm.sysdummy1;"
+},
+{
+"expect": [
+"records",
+[
+"--#SET  TERMINATOR  @",
+1,
+null,
+"directive",
+0,
+22
+],
+[
+"CREATE TABLE t (id INT)",
+2,
+"@",
+"sql",
+22,
+47
+],
+[
+"SELECT 1 FROM sysibm.sysdummy1",
+3,
+"@",
+"sql",
+47,
+78
+]
+],
+"id": "row22a",
+"script": "--#SET  TERMINATOR  @\nCREATE TABLE t (id INT)@\nSELECT 1 FROM sysibm.sysdummy1@"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"malformed --#SET TERMINATOR directive on line 1: expected one or two characters after the keyword, separated from it by blanks"
+],
+"id": "row23",
+"script": "--#SET TERMINATOR abc\nCREATE TABLE t (id INT);"
+},
+{
+"expect": [
+"records",
+[
+"--#SET TERMINATOR @",
+2,
+null,
+"directive",
+17,
+37
+],
+[
+"CREATE TABLE t (\nid INT)",
+1,
+"@",
+"sql",
+0,
+46
+],
+[
+"SELECT 1 FROM sysibm.sysdummy1",
+4,
+"@",
+"sql",
+46,
+77
+]
+],
+"id": "row24",
+"script": "CREATE TABLE t (\n--#SET TERMINATOR @\nid INT)@\nSELECT 1 FROM sysibm.sysdummy1@"
+},
+{
+"expect": [
+"records",
+[
+"CREATE TABLE t (id INT);",
+1,
+";",
+"sql",
+0,
+26
+],
+[
+"SELECT 1 FROM sysibm.sysdummy1",
+3,
+";",
+"sql",
+28,
+59
+]
+],
+"id": "row25",
+"script": "CREATE TABLE t (id INT);;\n;\nSELECT 1 FROM sysibm.sysdummy1;"
+},
+{
+"expect": [
+"records",
+[
+"--#SET TERMINATOR @",
+1,
+null,
+"directive",
+0,
+20
+],
+[
+"CREATE TABLE t (id INT);",
+2,
+"@",
+"sql",
+20,
+46
+],
+[
+"SELECT 1 FROM sysibm.sysdummy1",
+3,
+"@",
+"sql",
+46,
+77
+]
+],
+"id": "row26",
+"script": "--#SET TERMINATOR @\nCREATE TABLE t (id INT);@\nSELECT 1 FROM sysibm.sysdummy1@"
+},
+{
+"expect": [
+"records",
+[
+"CREATE TABLE t (id INT)",
+1,
+";",
+"sql",
+0,
+25
+],
+[
+"SELECT 1 FROM sysibm.sysdummy1",
+3,
+";",
+"sql",
+34,
+65
+]
+],
+"id": "row27",
+"script": "CREATE TABLE t (id INT);\n/* c */;\nSELECT 1 FROM sysibm.sysdummy1;"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command QUIT on line 2: dblift does not run client commands"
+],
+"id": "row28",
+"script": "CREATE TABLE t (id INT);\nQUIT;\nCREATE TABLE u (id INT);"
+},
+{
+"expect": [
+"records",
+[
+"CREATE TABLE t (id INT)",
+1,
+";",
+"sql",
+0,
+25
+],
+[
+"QUIT",
+2,
+";",
+"directive",
+25,
+30
+]
+],
+"id": "row28a",
+"script": "CREATE TABLE t (id INT);\nQUIT;"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP comment block '(=' on line 2: the CLP skips it, dblift does not run CLP input syntax"
+],
+"id": "row29",
+"script": "CREATE TABLE t (id INT);\n(=\nCREATE TABLE u (id INT);\n=)\nCREATE TABLE v (id INT);"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command UPDATE on line 1: dblift does not run client commands"
+],
+"id": "row30",
+"script": "UPDATE COMMAND OPTIONS USING S ON;\nCREATE TABLE t (id INT);"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command REORG on line 2: dblift does not run client commands"
+],
+"id": "row31",
+"script": "CREATE TABLE t (id INT);\nREORG TABLE t;"
+},
+{
+"expect": [
+"records",
+[
+"CREATE TABLE t (\nconnect INT)",
+1,
+";",
+"sql",
+0,
+30
+]
+],
+"id": "row32",
+"script": "CREATE TABLE t (\nconnect INT);"
+},
+{
+"expect": [
+"records",
+[
+"/* c */ ECHO hello",
+1,
+";",
+"sql",
+0,
+19
+]
+],
+"id": "row33",
+"script": "/* c */ ECHO hello;"
+},
+{
+"expect": [
+"error",
+"UnsupportedMetaCommandError",
+"CLP command CONNECT on line 1: dblift does not run client commands"
+],
+"id": "row34",
+"script": "connect to sample;"
+},
+{
+"expect": [
+"records",
+[
+"UPDATE t SET a = 1",
+1,
+";",
+"sql",
+0,
+20
+],
+[
+"SET CURRENT SCHEMA s",
+2,
+";",
+"sql",
+20,
+42
+],
+[
+"COMMIT WORK",
+3,
+";",
+"sql",
+42,
+54
+]
+],
+"id": "row35",
+"script": "UPDATE t SET a = 1;\nSET CURRENT SCHEMA s;\nCOMMIT WORK;"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 1 has code after a ';' in the middle of a line: the CLP sends it whole and the server rejects it, and the ibm_db driver runs only the text before the ';'; put each statement on its own line, ended by the terminator, or declare another terminator with --#SET TERMINATOR"
+],
+"id": "row42",
+"script": "CREATE PROCEDURE p() BEGIN END; SELECT 1 FROM sysibm.sysdummy1;"
+},
+{
+"expect": [
+"records",
+[
+"SELECT 1 FROM sysibm.sysdummy1 WHERE 1 != 2",
+1,
+";",
+"sql",
+0,
+45
+],
+[
+"SELECT 2 FROM sysibm.sysdummy1",
+2,
+";",
+"sql",
+45,
+76
+]
+],
+"id": "row43",
+"script": "SELECT 1 FROM sysibm.sysdummy1 WHERE 1 != 2;\nSELECT 2 FROM sysibm.sysdummy1;"
+},
+{
+"expect": [
+"records",
+[
+"CREATE TABLE t (c VARCHAR(20))",
+1,
+";",
+"sql",
+0,
+32
+],
+[
+"INSERT INTO t VALUES ('x\ny')",
+2,
+";",
+"sql",
+32,
+61
+]
+],
+"id": "row44",
+"script": "CREATE TABLE t (c VARCHAR(20));\nINSERT INTO t VALUES ('x\ny');"
+},
+{
+"expect": [
+"records",
+[
+"/*\nDROP TABLE old;\n*/\nCREATE TABLE t (id INT)",
+1,
+";",
+"sql",
+0,
+46
+]
+],
+"id": "row47",
+"script": "/*\nDROP TABLE old;\n*/\nCREATE TABLE t (id INT);"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"--#SET TERMINATOR on line 2 stands inside a string, a quoted identifier or a comment: the CLP honours it there and cuts the statement; close it first"
+],
+"id": "row48",
+"script": "INSERT INTO t VALUES ('x\n--#SET TERMINATOR @\ny')@"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"--#SET TERMINATOR on line 2 stands inside a string, a quoted identifier or a comment: the CLP honours it there and cuts the statement; close it first"
+],
+"id": "row49",
+"script": "/*\n--#SET TERMINATOR @\n*/ SELECT 1 FROM sysibm.sysdummy1@"
+}
+],
+"semicolon_then_comment": [
+{
+"expect": [
+"records",
+[
+"CREATE TABLE t (id INT)",
+1,
+";",
+"sql",
+0,
+37
+],
+[
+"SELECT 1 FROM sysibm.sysdummy1",
+2,
+";",
+"sql",
+37,
+68
+]
+],
+"id": "row13",
+"script": "CREATE TABLE t (id INT); -- trailing\nSELECT 1 FROM sysibm.sysdummy1;"
+},
+{
+"expect": [
+"records",
+[
+"VALUES 1",
+1,
+";",
+"sql",
+0,
+18
+],
+[
+"VALUES 2",
+2,
+";",
+"sql",
+18,
+28
+]
+],
+"id": "L55_block",
+"script": "VALUES 1; /* c */\nVALUES 2;\n"
+},
+{
+"expect": [
+"records",
+[
+"VALUES 1",
+1,
+";",
+"sql",
+0,
+26
+],
+[
+"VALUES 2",
+2,
+";",
+"sql",
+26,
+36
+]
+],
+"id": "two_blocks",
+"script": "VALUES 1; /* c */ /* d */\nVALUES 2;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 3 has code after a ';' in the middle of a line: the CLP sends it whole and the server rejects it, and the ibm_db driver runs only the text before the ';'; put each statement on its own line, ended by the terminator, or declare another terminator with --#SET TERMINATOR"
+],
+"id": "unclosed_block_continues",
+"script": "VALUES 1; /* c\nd */\nVALUES 2;\n"
+},
+{
+"expect": [
+"records",
+[
+"--#SET TERMINATOR @",
+1,
+null,
+"directive",
+0,
+20
+],
+[
+"VALUES 1; -- c",
+2,
+"@",
+"sql",
+20,
+37
+],
+[
+"VALUES 2",
+4,
+"@",
+"sql",
+37,
+47
+]
+],
+"id": "under_at_is_not_an_ending",
+"script": "--#SET TERMINATOR @\nVALUES 1; -- c\n@\nVALUES 2@\n"
+},
+{
+"expect": [
+"records",
+[
+"--#SET TERMINATOR @",
+1,
+null,
+"directive",
+0,
+20
+],
+[
+"VALUES 1@ -- c\nVALUES 2",
+2,
+"@",
+"sql",
+20,
+45
+]
+],
+"id": "comment_after_terminator_at",
+"script": "--#SET TERMINATOR @\nVALUES 1@ -- c\nVALUES 2@\n"
+},
+{
+"expect": [
+"records",
+[
+"VALUES 1",
+1,
+";",
+"sql",
+0,
+17
+],
+[
+"VALUES 2",
+2,
+";",
+"sql",
+17,
+27
+]
+],
+"id": "semicolon_blank_comment",
+"script": "VALUES 1;  \t-- c\nVALUES 2;\n"
+},
+{
+"expect": [
+"records",
+[
+"VALUES 'a; -- c\nb'",
+1,
+";",
+"sql",
+0,
+20
+]
+],
+"id": "string_open_then_semicolon_comment",
+"script": "VALUES 'a; -- c\nb';\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 1 has code after a ';' in the middle of a line: the CLP sends it whole and the server rejects it, and the ibm_db driver runs only the text before the ';'; put each statement on its own line, ended by the terminator, or declare another terminator with --#SET TERMINATOR"
+],
+"id": "stray_before_ending",
+"script": "VALUES 1; VALUES 2; -- c\n"
+}
+],
+"stray_semicolon": [
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 1 has code after a ';' in the middle of a line: the CLP sends it whole and the server rejects it, and the ibm_db driver runs only the text before the ';'; put each statement on its own line, ended by the terminator, or declare another terminator with --#SET TERMINATOR"
+],
+"id": "row12",
+"script": "SELECT 1 FROM sysibm.sysdummy1; SELECT 2 FROM sysibm.sysdummy1;"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 1 has code after a ';' in the middle of a line: the CLP sends it whole and the server rejects it, and the ibm_db driver runs only the text before the ';'; put each statement on its own line, ended by the terminator, or declare another terminator with --#SET TERMINATOR"
+],
+"id": "row42",
+"script": "CREATE PROCEDURE p() BEGIN END; SELECT 1 FROM sysibm.sysdummy1;"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 3 has code after a ';' in the middle of a line: the CLP sends it whole and the server rejects it, and the ibm_db driver runs only the text before the ';'; put each statement on its own line, ended by the terminator, or declare another terminator with --#SET TERMINATOR"
+],
+"id": "L10_double_semicolon_terminator",
+"script": "--#SET TERMINATOR ;;\nVALUES 1;\nVALUES 2;;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 2 has code after a ';' in the middle of a line: the CLP sends it whole and the server rejects it, and the ibm_db driver runs only the text before the ';'; put each statement on its own line, ended by the terminator, or declare another terminator with --#SET TERMINATOR"
+],
+"id": "L25_semicolon_under_at",
+"script": "--#SET TERMINATOR @\nVALUES 1; VALUES 2@\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 2 has code after a ';' in the middle of a line: the CLP sends it whole and the server rejects it, and the ibm_db driver runs only the text before the ';'; put each statement on its own line, ended by the terminator, or declare another terminator with --#SET TERMINATOR"
+],
+"id": "L28_vt",
+"script": "VALUES 1;\u000b\nVALUES 2;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 2 has code after a ';' in the middle of a line: the CLP sends it whole and the server rejects it, and the ibm_db driver runs only the text before the ';'; put each statement on its own line, ended by the terminator, or declare another terminator with --#SET TERMINATOR"
+],
+"id": "L29_ff",
+"script": "VALUES 1;\f\nVALUES 2;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 2 has code after a ';' in the middle of a line: the CLP sends it whole and the server rejects it, and the ibm_db driver runs only the text before the ';'; put each statement on its own line, ended by the terminator, or declare another terminator with --#SET TERMINATOR"
+],
+"id": "L30_nbsp",
+"script": "VALUES 1;\u00a0\nVALUES 2;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 2 has code after a ';' in the middle of a line: the CLP sends it whole and the server rejects it, and the ibm_db driver runs only the text before the ';'; put each statement on its own line, ended by the terminator, or declare another terminator with --#SET TERMINATOR"
+],
+"id": "L31_u2028",
+"script": "VALUES 1;\u2028\nVALUES 2;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 2 has code after a ';' in the middle of a line: the CLP sends it whole and the server rejects it, and the ibm_db driver runs only the text before the ';'; put each statement on its own line, ended by the terminator, or declare another terminator with --#SET TERMINATOR"
+],
+"id": "q3_cr_run",
+"script": "VALUES 1;\r\r\nVALUES 2;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 1 has code after a ';' in the middle of a line: the CLP sends it whole and the server rejects it, and the ibm_db driver runs only the text before the ';'; put each statement on its own line, ended by the terminator, or declare another terminator with --#SET TERMINATOR"
+],
+"id": "semicolon_before_string",
+"script": "VALUES 1; 'x';\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 1 has code after a ';' in the middle of a line: the CLP sends it whole and the server rejects it, and the ibm_db driver runs only the text before the ';'; put each statement on its own line, ended by the terminator, or declare another terminator with --#SET TERMINATOR"
+],
+"id": "semicolon_before_identifier",
+"script": "VALUES 1; \"x\";\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 1 has code after a ';' in the middle of a line: the CLP sends it whole and the server rejects it, and the ibm_db driver runs only the text before the ';'; put each statement on its own line, ended by the terminator, or declare another terminator with --#SET TERMINATOR"
+],
+"id": "semicolon_before_digit",
+"script": "VALUES 1; 2;\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 1 has code after a ';' in the middle of a line: the CLP sends it whole and the server rejects it, and the ibm_db driver runs only the text before the ';'; put each statement on its own line, ended by the terminator, or declare another terminator with --#SET TERMINATOR"
+],
+"id": "semicolon_before_symbol",
+"script": "VALUES 1; (2);\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 1 has code after a ';' in the middle of a line: the CLP sends it whole and the server rejects it, and the ibm_db driver runs only the text before the ';'; put each statement on its own line, ended by the terminator, or declare another terminator with --#SET TERMINATOR"
+],
+"id": "semicolon_then_comment_then_code",
+"script": "VALUES 1; /* c */ VALUES 2;\n"
+},
+{
+"expect": [
+"records",
+[
+"CREATE TABLE t (id INT);",
+1,
+";",
+"sql",
+0,
+26
+],
+[
+"VALUES 2",
+3,
+";",
+"sql",
+28,
+38
+]
+],
+"id": "double_semicolon_ok",
+"script": "CREATE TABLE t (id INT);;\n;\nVALUES 2;\n"
+},
+{
+"expect": [
+"records",
+[
+"--#SET TERMINATOR @",
+1,
+null,
+"directive",
+0,
+20
+],
+[
+"CREATE TABLE t (id INT);",
+2,
+"@",
+"sql",
+20,
+46
+],
+[
+"VALUES 2",
+3,
+"@",
+"sql",
+46,
+56
+]
+],
+"id": "semicolon_before_at_ok",
+"script": "--#SET TERMINATOR @\nCREATE TABLE t (id INT);@\nVALUES 2@\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 1 has code after a ';' in the middle of a line: the CLP sends it whole and the server rejects it, and the ibm_db driver runs only the text before the ';'; put each statement on its own line, ended by the terminator, or declare another terminator with --#SET TERMINATOR"
+],
+"id": "placeholder",
+"script": "VALUES ${a;b};\n"
+},
+{
+"expect": [
+"error",
+"UnsafeStatementSplitError",
+"line 2 has code after a ';' in the middle of a line: the CLP sends it whole and the server rejects it, and the ibm_db driver runs only the text before the ';'; put each statement on its own line, ended by the terminator, or declare another terminator with --#SET TERMINATOR"
+],
+"id": "stray_name_two_semicolons",
+"script": "VALUES 1;;\nVALUES 2; 3;\n"
+}
+]
+}

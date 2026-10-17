@@ -258,3 +258,18 @@ def test_terminator_length_counts_characters(value):
 
 def test_three_characters_are_a_malformed_directive():
     assert read_lines(DB2_RULES, f"--#SET TERMINATOR {E_ACUTE}{EURO}{SMILE}\n")[2] == 1
+
+
+def test_a_directive_matches_only_at_the_start_of_the_line():
+    after_code = "SELECT 1 FROM sysibm.sysdummy1 --#SET TERMINATOR @\n;\nVALUES 2;\n"
+    lines, _, malformed = read_lines(DB2_RULES, after_code)
+    assert malformed is None
+    assert [(ln.kind, ln.terminator, ln.body_end >= 0) for ln in lines] == [
+        ("code", ";", False),
+        ("code", ";", True),
+        ("code", ";", True),
+    ]
+    in_comment = read_lines(DB2_RULES, "-- x --#SET TERMINATOR @\nVALUES 1;\n")
+    assert [(ln.kind, ln.terminator) for ln in in_comment[0]] == [("comment", ";"), ("code", ";")]
+    in_string = read_lines(DB2_RULES, "VALUES 'x\n y --#SET TERMINATOR @ \n';\n")
+    assert in_string[2] is None and {ln.terminator for ln in in_string[0]} == {";"}
