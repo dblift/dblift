@@ -166,6 +166,8 @@ class LexicalTokenizer(BaseTokenizer):
         """Read every token; a delimiter script then refuses what it left open."""
         if self.spec.terminator_script is not None:
             return self._tokenize_terminator_script()
+        if self.spec.segment_script is not None:
+            return []
         tokens = super().tokenize()
         if self.delimiter_script is not None:
             self.delimiter_script.finish()
