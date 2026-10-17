@@ -89,7 +89,7 @@ jobs:
 
       - name: Install the declared sqlglot floor
         run: |
-          python -m pip install -e ".[dev,duckdb]"
+          python -m pip install -e ".[dev,postgresql,mysql,mariadb,oracle,sqlserver,db2,duckdb,cosmosdb,mongodb,django,mcp]"
           FLOOR=$(python -c "import re,pathlib; print(re.search(r'\"sqlglot>=([0-9][^,\"]*),', pathlib.Path('pyproject.toml').read_text()).group(1))")
           python -m pip install "sqlglot==$FLOOR"
           python -c "import sqlglot; print('sqlglot', sqlglot.__version__)"
