@@ -64,13 +64,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a migration. A real run waits up to 60 seconds and fails with
   `Could not acquire migration lock - another migration may be running` if it cannot get the lock;
   `baseline` checks again under the lock that the history is still empty. Dry runs do not lock.
-- **DuckDB splitting moved onto the shared lexical engine.** Splitting, analysis,
-  extraction and statement facts use the engine's lexeme rules (strings, escape
+- **DuckDB splitting moved onto the shared lexical engine.** Splitting, analysis
+  and the statement segmentation that extraction and statement facts start from use the engine's lexeme rules (strings, escape
   strings, dollar-quoted strings, nested comments, the blank characters DuckDB
   reads) and the `duckdb` shell's dot-command rule as specification data. The
   same scripts give the same statements, records, execution strings and
   refusals (class, line and message).
-- **Literal masking, object extraction and comment stripping are unchanged for DuckDB.**
+- **Literal masking, the objects parsed out of each statement and comment stripping are unchanged for DuckDB.**
   They keep reading DuckDB text as before.
 - **Splitting a large DuckDB script takes longer and uses more memory.** The
   time stays linear in the length of the script (4 times the input takes 4.0 to
