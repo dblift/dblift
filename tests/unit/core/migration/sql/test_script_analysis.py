@@ -489,7 +489,7 @@ def test_opaque_drop_of_something_that_holds_no_rows_raises_no_caution():
     ],
 )
 def test_opaque_update_where_reads_as_unread_predicate(dialect, sql, operation):
-    tail = " of t" if "SET a" in sql else ""
+    tail = " of t" if sql.startswith("UPDATE t SET") else ""
     analysis = analyse_script(sql, dialect)
 
     assert [(c.level, c.code, c.reason) for c in analysis.cautions] == [
