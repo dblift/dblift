@@ -27,6 +27,7 @@ RED_ROWS: dict[str, str] = {
     "78e": "a no-break space followed by a blank line is kept, it is a blank to the engine",
     "78f": "a no-break space after a space at the end of the script is kept",
     "78g": "two trailing no-break spaces are kept",
+    "78h": "a trailing vertical tab is kept, the shell drops it before it sends the statement",
 }
 
 

@@ -53,9 +53,8 @@ PROVIDERS = {
 }
 
 
-def drive(dialect: str, script: str) -> List[str]:
-    """Split ``script`` as a migration is, run each statement through the provider, return what the driver got."""
-    statements = parse_migration_sql(SqlAnalyzer(dialect=dialect), script, mock.MagicMock())
+def provider_with_recorder(dialect: str):  # type: ignore[no-untyped-def]
+    """A provider of ``dialect`` whose driver is a recorder; returns it with the list it records into."""
     provider = object.__new__(PROVIDERS[dialect])
     sent: List[str] = []
     connection = mock.MagicMock()
@@ -75,6 +74,13 @@ def drive(dialect: str, script: str) -> List[str]:
         provider.query_executor = executor
         provider._get_connection = lambda: None
         provider.connection = None
+    return provider, sent
+
+
+def drive(dialect: str, script: str) -> List[str]:
+    """Split ``script`` as a migration is, run each statement through the provider, return what the driver got."""
+    statements = parse_migration_sql(SqlAnalyzer(dialect=dialect), script, mock.MagicMock())
+    provider, sent = provider_with_recorder(dialect)
     for statement in statements:
         provider.execute_statement(statement)
     return sent
@@ -94,12 +100,13 @@ CLIENT_SENDS = {
     "db2": (END_OF_FILE, END_OF_FILE),
     "snowflake": (END_OF_FILE, END_OF_FILE),
     "sqlite": (END_OF_FILE, END_OF_FILE),
-    # a no-break space is a blank to SQL Server: the batch keeps its ``;`` and loses the blank at its end
+    # a no-break space is a blank to SQL Server (sqlcmd sends it, the server reads a blank): trimming it
+    # at the end of the batch changes nothing the server reads
     "sqlserver": (SEMICOLON, WITHOUT),
     # before the terminator the shell reads a blank; as the last character of the text it is a name
     "duckdb": (WITHOUT, END_OF_FILE),
-    # Oracle: the file's text or a refusal, never the text with the character removed
-    "oracle": (END_OF_FILE, END_OF_FILE),
+    # Oracle: python-oracledb would strip the character and the server rejects it, so it is refused
+    "oracle": (None, None),
 }
 
 #: (dialect, form) -> why the case fails today
@@ -140,14 +147,13 @@ def _cases() -> List[object]:
 
 @pytest.mark.parametrize("dialect,form,expected", _cases())
 def test_driver_receives_the_statement_as_the_client_sends_it(
-    dialect: str, form: str, expected: str
+    dialect: str, form: str, expected: Optional[str]
 ) -> None:
-    try:
-        sent: Optional[List[str]] = drive(dialect, SCRIPTS[form])
-    except UnsafeStatementSplitError:
-        # Oracle refuses an edge character the driver would strip: nothing is sent, which is also right
-        assert dialect == "oracle"
+    if expected is None:  # refused before anything is sent
+        with pytest.raises(UnsafeStatementSplitError):
+            drive(dialect, SCRIPTS[form])
         return
+    sent = drive(dialect, SCRIPTS[form])
     assert sent == [expected], f"the driver was handed {sent!r}, the client sends {expected!r}"
 
 
@@ -161,13 +167,16 @@ def test_sqlserver_batch_keeps_an_unmeasured_blank_at_its_end() -> None:
 
 
 # Oracle: python-oracledb strips both sides of a statement before sending, and the server rejects a
-# no-break space, so a character the driver would strip is refused rather than sent without it.
+# no-break space, so every white space character outside Oracle's blanks (probed or not) is refused
+# rather than sent without it.
 ORACLE_STRIPPED_BY_THE_DRIVER = {
     "U+00A0": f"DROP TABLE t{NBSP}",
     "U+00A0-semicolon": f"DROP TABLE t{NBSP};",
     "U+2003": f"DROP TABLE t{chr(0x2003)}",
     "U+0085": f"DROP TABLE t{chr(0x85)}",
     "U+2028": f"DROP TABLE t{chr(0x2028)}",
+    "U+2029": f"DROP TABLE t{chr(0x2029)}",
+    "U+1680": f"DROP TABLE t{chr(0x1680)}",
     "leading": f"{chr(0x2028)}SELECT 1 FROM dual;",
 }
 
@@ -248,3 +257,19 @@ def test_duckdb_returning_rewrite_keeps_a_final_no_break_space() -> None:
     result = provider._try_dml_rowcount_via_returning(f"DELETE FROM t{NBSP}")
     assert sent == [], f"the driver was handed {sent!r}"
     assert result is None
+
+
+@pytest.mark.xfail(
+    strict=True, reason="the driver is handed the statement with the no-break space removed"
+)
+@pytest.mark.parametrize("method", ["execute_statement", "execute_query"])
+def test_oracle_provider_refuses_a_text_the_driver_would_strip(method: str) -> None:
+    """The provider is called directly, with no splitter in front of it."""
+    provider, sent = provider_with_recorder("oracle")
+    refusal: Optional[UnsafeStatementSplitError] = None
+    try:
+        getattr(provider, method)(f"DROP TABLE t{NBSP}")
+    except UnsafeStatementSplitError as exc:
+        refusal = exc
+    assert sent == [], f"the driver was handed {sent!r}"
+    assert refusal is not None

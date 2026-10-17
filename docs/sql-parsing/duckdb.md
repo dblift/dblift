@@ -319,7 +319,7 @@ DuckDB specification; the shared tokenizer reads them and one core module assemb
 | 78e | `DROP TABLE t\xa0\n\n` | `DROP TABLE t` **exact text** (only one line ending is removed: the no-break space is followed by a newline, a blank) |
 | 78f | `DROP TABLE t \xa0` | `DROP TABLE t` **exact text** (a space then a no-break space at the end of the file: the shell drops t; the driver given this text reports a parser error, and the shell is the reference) |
 | 78g | `DROP TABLE t\xa0\xa0` | `DROP TABLE t` **exact text** (two no-break spaces: the shell drops t, the driver reports a parser error) |
-| 78h | `SELECT 1\x0b` | `SELECT 1\x0b` **exact text** (rejected by the engine, kept: a vertical tab is a syntax error) |
+| 78h | `SELECT 1\x0b` | `SELECT 1` **exact text** (the shell drops a leading or trailing vertical tab before it sends the statement, so it runs; a vertical tab in the middle of a statement is still rejected; the driver rejects the text with the tab, and the shell is the reference) |
 
 ## 11. Not handled
 

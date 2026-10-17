@@ -176,15 +176,6 @@ SPAN_SCANNERS = (
     "oracle",
     "sqlserver",
 )
-FIX_TASK = {
-    "postgresql": "T2",
-    "redshift": "T2",
-    "cockroachdb": "T2",
-    "sqlserver": "T2",
-    "mysql": "T3",
-    "mariadb": "T3",
-    "db2": "T4",
-}
 
 
 @pytest.mark.parametrize("dialect", SPAN_SCANNERS)
@@ -213,7 +204,7 @@ def test_statement_sources_returns_the_untrimmed_text_of_a_name_that_ends_the_sc
             d,
             marks=pytest.mark.xfail(
                 strict=True,
-                reason=f"the record trims the blank, so the analysed text is shorter than its span ({FIX_TASK[d]} removes this)",
+                reason="the record trims the blank, so the analysed text is shorter than its span",
             ),
         )
         for d in SPAN_SCANNERS

@@ -427,7 +427,8 @@ CASES = [
 ]
 IDS = [case[0] for case in CASES]
 KNOWN_GAPS = frozenset({"74", "75"})  # the splitter differs from DuckDB there (see the spec)
-RED_ROWS = frozenset({"78", "78b", "78e", "78f", "78g"})
+# Rows about a statement edge that fail today; the same ids are in test_duckdb_spec_conformance.RED_ROWS.
+RED_ROWS = frozenset({"78", "78b", "78e", "78f", "78g", "78h"})
 
 
 def outcome(call, script):

@@ -39,7 +39,7 @@ TEXT_BLANKS: Dict[str, str] = {
     "sqlserver": ASCII_BLANKS + VERTICAL_TAB + FORM_FEED + SQLSERVER_UNICODE,
     "snowflake": ASCII_BLANKS,
     "sqlite": ASCII_BLANKS + FORM_FEED,
-    "duckdb": ASCII_BLANKS + FORM_FEED + DUCKDB_UNICODE,
+    "duckdb": ASCII_BLANKS + FORM_FEED + VERTICAL_TAB + DUCKDB_UNICODE,
 }
 SPECS = [
     "postgresql",
@@ -58,9 +58,7 @@ def spec_of(dialect: str) -> Optional[LexicalSpec]:
     return ProviderRegistry.get_quirks(dialect).lexical_spec()
 
 
-@pytest.mark.xfail(
-    strict=True, reason="LexicalSpec has no text_blanks field yet (removed by the field task)"
-)
+@pytest.mark.xfail(strict=True, reason="LexicalSpec carries no text_blanks yet")
 @pytest.mark.parametrize("dialect", [*SPECS, "cockroachdb", "yugabytedb"])
 def test_every_spec_holds_the_measured_text_blanks(dialect: str) -> None:
     spec = spec_of(dialect)
@@ -68,9 +66,7 @@ def test_every_spec_holds_the_measured_text_blanks(dialect: str) -> None:
     assert set(spec.text_blanks) == set(TEXT_BLANKS[dialect])
 
 
-@pytest.mark.xfail(
-    strict=True, reason="text_blanks is not yet a required field (removed by the field task)"
-)
+@pytest.mark.xfail(strict=True, reason="text_blanks is not yet a required field of LexicalSpec")
 def test_text_blanks_is_required_and_never_empty() -> None:
     with pytest.raises(TypeError):
         LexicalSpec(name="x")  # type: ignore[call-arg]
