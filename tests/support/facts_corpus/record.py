@@ -67,16 +67,13 @@ def _read_facts(family: str, sql: str) -> Any:
 
 
 def _dml(family: str, sql: str) -> Dict[str, Any]:
-    from dblift.db.dml_analysis import dml_where_predicate, statement_dml_table
-
     quirks = _quirks(family)
-    dialect = quirks.sqlglot_dialect
     mutation = quirks.analyze_dml(sql)
     return {
-        "table": statement_dml_table(sql, dialect),
+        "table": quirks.statement_dml_table(sql),
         "events": sorted(mutation.events) if mutation.events else None,
         "updated_columns": list(mutation.updated_columns),
-        "predicate": dml_where_predicate(sql, sqlglot_dialect=dialect),
+        "predicate": quirks.dml_where_predicate(sql),
         "full_table": quirks.is_full_table_dml(sql),
     }
 
