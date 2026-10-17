@@ -95,7 +95,7 @@ fails strictly (`xfail(strict=True)`): the list can only shrink honestly.
 | [mariadb.md](mariadb.md) | where MariaDB differs from MySQL: the `/*M!` comment, `CREATE OR REPLACE`, `AGGREGATE`, `FOR` loops | none: the MySQL rules with `/*M!` read as code and the hint read as a comment |
 | [db2.md](db2.md) | Db2 for Linux, UNIX and Windows (scripts written for the command line processor) | none: the command line processor rules are spec data of the shared tokenizer |
 | [sqlite.md](sqlite.md) | SQLite scripts written for the `sqlite3` shell: the library's own statement-completeness rule, trigger bodies, dot-commands, `go` and `/` lines | SQLite script scanner |
-| [duckdb.md](duckdb.md) | DuckDB scripts run through the Python driver and written for the `duckdb` shell: dollar-quoted strings, nested block comments, `E'…'` strings, dot-commands | DuckDB script scanner |
+| [duckdb.md](duckdb.md) | DuckDB scripts run through the Python driver and written for the `duckdb` shell: dollar-quoted strings, nested block comments, `E'…'` strings, dot-commands | none: the shell rules are spec data of the shared tokenizer |
 
 ## Verification sources
 

@@ -389,9 +389,11 @@ module = [
     "dblift.core.sql_parser.enhanced_regex_parser",
     "dblift.core.sql_parser.unified_regex_parser",
     "dblift.core.sql_parser.routine_body",
+    "dblift.core.sql_parser.segment_script",
     "dblift.core.sql_parser.terminator_lines",
     "dblift.core.sql_parser.terminator_script",
     "dblift.db.plugins.db2.parser.lexical_spec",
+    "dblift.db.plugins.duckdb.parser.lexical_spec",
     "dblift.db.plugins.mysql.parser.lexical_spec",
     "dblift.db.plugins.mariadb.lexical_spec",
     "dblift.core.normalization",
@@ -607,21 +609,6 @@ module = [
     "dblift.db.plugins.sqlite.sqlite.query_executor",
     "dblift.db.plugins.sqlite.sqlite.schema_operations",
     "dblift.db.plugins.sqlite.parser",
-]
-disallow_any_generics = true
-disallow_subclassing_any = true
-disallow_untyped_calls = true
-disallow_untyped_defs = true
-disallow_incomplete_defs = true
-disallow_untyped_decorators = true
-no_implicit_optional = true
-warn_unused_ignores = true
-strict_equality = true
-
-# The DuckDB script scanner is new code, written typed: the rest of the DuckDB plugin keeps its looser settings.
-[[tool.mypy.overrides]]
-module = [
-    "dblift.db.plugins.duckdb.parser._script",
 ]
 disallow_any_generics = true
 disallow_subclassing_any = true

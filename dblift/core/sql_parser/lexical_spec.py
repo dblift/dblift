@@ -208,6 +208,33 @@ class TerminatorScriptRules:
 
 
 @dataclass(frozen=True)
+class SegmentScriptRules:
+    """A script cut at each ``;`` outside lexemes; a line that starts with the client's command prefix
+    while no statement text is pending is a client command, refused.
+
+    ``word``, ``number``, ``dollar_tag`` and ``parameter`` are regular expressions read at the
+    cursor. ``blanks`` are skipped between tokens; ``text_blanks`` are stripped from a record's ends
+    when records are assembled from the tokens.
+    A word ending in an ``escape_letters`` character (alone, or after characters ``str.isdigit()``
+    accepts) that touches a quote opens an escape string. A line comment ends at the first of
+    ``line_comment_ends``. ``refused_character`` is refused anywhere, before any other reading.
+    """
+
+    blanks: str
+    text_blanks: str
+    word: str
+    number: str
+    escape_letters: str
+    dollar_tag: str
+    parameter: str
+    line_comment_ends: str
+    command_prefix: str
+    refused_character: str
+    refused_character_name: str
+    refused_reason: str
+
+
+@dataclass(frozen=True)
 class LexicalSpec:
     """Only lexical rules; no parser callbacks or alternative implementations."""
 
@@ -247,17 +274,21 @@ class LexicalSpec:
     #: False: a doubled string quote closes the literal and opens the next, as a client does.
     string_quote_doubling: bool = True
     terminator_script: Optional[TerminatorScriptRules] = None
+    segment_script: Optional[SegmentScriptRules] = None
 
     def __post_init__(self) -> None:
-        """A client reads a script by lines, batches, a delimiter or a terminator line, never two."""
+        """A client reads a script by lines, batches, a delimiter, terminator lines or segments."""
         rules = (
             self.client_script,
             self.batch_script,
             self.delimiter_script,
             self.terminator_script,
+            self.segment_script,
         )
         if sum(rule is not None for rule in rules) > 1:
             raise ValueError(
-                "client_script, batch_script, delimiter_script and terminator_script "
-                "are mutually exclusive"
+                "client_script, batch_script, delimiter_script, terminator_script and "
+                "segment_script are mutually exclusive"
             )
+        if self.segment_script is not None and self.sqlite_shell:
+            raise ValueError("segment_script and sqlite_shell are mutually exclusive")

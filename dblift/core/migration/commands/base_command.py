@@ -904,24 +904,27 @@ class BaseCommand:
         acquired = self.provider.acquire_migration_lock(
             self.config.database.schema, wait_timeout_seconds=60
         )
-        if not acquired:
-            yield False
-            return
-        self.log.info("Migration lock acquired successfully")
+        # The guard starts on the very next statement: a signal turned into
+        # SystemExit anywhere after the acquire must still reach the release.
         try:
+            if not acquired:
+                yield False
+                return
+            self.log.info("Migration lock acquired successfully")
             yield True
         finally:
-            try:
-                released = self.provider.release_migration_lock(self.config.database.schema)
-                if released is False:
-                    self.log.warning(
-                        "The migration lock was no longer held by this run "
-                        "(lost or already released); nothing to release"
-                    )
-                else:
-                    self.log.debug("Migration lock released successfully")
-            except Exception as release_e:
-                self.log.warning(f"Could not release migration lock: {release_e}")
+            if acquired:
+                try:
+                    released = self.provider.release_migration_lock(self.config.database.schema)
+                    if released is False:
+                        self.log.warning(
+                            "The migration lock was no longer held by this run "
+                            "(lost or already released); nothing to release"
+                        )
+                    else:
+                        self.log.debug("Migration lock released successfully")
+                except Exception as release_e:
+                    self.log.warning(f"Could not release migration lock: {release_e}")
 
     def _migration_lock_lost(self) -> bool:
         """Whether the provider reports the migration lock it holds as lost."""
