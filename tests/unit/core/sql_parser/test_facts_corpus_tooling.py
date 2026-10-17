@@ -27,7 +27,7 @@ def test_a():
     parse_sql("-- lead\\n/* block */ DROP TABLE t")
     parse_sql(f"CREATE TABLE {name} (id int)")
     parse_sql("not sql at all")
-    parse_sql("SELECT " + "x" * 1)
+    parse_sql(name + "x")
 '''
 
 
