@@ -518,3 +518,10 @@ def test_strict_tokenizer_has_no_effect_for_duckdb():
         warnings.simplefilter("error")
         tokens = tokenizer.tokenize()
     assert [t.text for t in tokens if t.type.name == "SYMBOL"] == list("@#\\`~^%&|?!")
+
+
+def test_the_byte_order_mark_is_dropped_only_when_the_spec_says_so():
+    script = BOM + ".print x\nSELECT 1;"
+    assert refusal(script)[0] == "UnsupportedMetaCommandError"
+    kept = replace(DUCKDB_SPEC, leading_bom_is_blank=False)
+    assert shape(script, kept)[:2] == [sym("."), kw("print")]
