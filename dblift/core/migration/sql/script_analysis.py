@@ -17,6 +17,7 @@ from typing import Any, Dict, Iterator, List, Optional, Tuple
 from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
 from dblift.core.sql_model.base import SqlObject, SqlObjectType
 from dblift.core.sql_parser.parser_factory import SqlParserFactory
+from dblift.core.sql_parser.unread_names import names_unreadable
 from dblift.db.base_quirks import BaseQuirks
 from dblift.db.dml_analysis import (
     cte_outer_statement_type,
@@ -227,14 +228,20 @@ def _analyse(text: str, dialect: str) -> ScriptAnalysis:
         # The regex parser fills ``affected_objects``; ``objects`` stays empty.
         found = getattr(stmt, "affected_objects", None) or getattr(stmt, "objects", None) or []
         objects = tuple(_object_of(o) for o in found)
-        if not objects:
-            objects = _fallback_objects(operation, kind, body, quirks)
-        objects = _drop_target_objects(operation, body, objects)
+        unread = getattr(stmt, "names_unread", False) or names_unreadable(
+            body, quirks.sqlglot_dialect
+        )
+        if unread:
+            objects = ()
+        else:
+            if not objects:
+                objects = _fallback_objects(operation, kind, body, quirks)
+            objects = _drop_target_objects(operation, body, objects)
         analysed = AnalysedStatement(
             index, operation, kind, objects, full_table, _snippet(body), sql=body
         )
         statements.append(analysed)
-        caution = _caution_for(analysed, body)
+        caution = _caution_for(analysed, body, unread)
         if caution is not None:
             cautions.append(caution)
     return ScriptAnalysis(tuple(statements), tuple(cautions), tuple(parsed.errors or []))

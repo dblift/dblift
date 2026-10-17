@@ -120,13 +120,15 @@ def test_undo_ignores_the_character_inside_strings_comments_and_quotes(tmp_path,
 
 
 @pytest.mark.parametrize("dialect", ("sqlserver", "oracle"))
-def test_undo_names_a_non_ascii_letter_name_the_extractor_reads_whole(tmp_path, dialect):
+def test_non_ascii_letter_name_is_named_where_the_extractor_reads_it_whole(tmp_path, dialect):
     script = _undo(tmp_path, dialect, "CREATE TABLE tété (id INT);")
     assert any("é" in line.lower() for line in _code_lines(script))
 
 
 @pytest.mark.parametrize("dialect", ("postgresql", "mysql", "mariadb", "db2", "redshift"))
-def test_undo_does_not_cut_a_non_ascii_letter_name_short(tmp_path, dialect):
+def test_non_ascii_letter_name_needs_manual_review_on_cutting_dialects_until_facts_readers_activate(
+    tmp_path, dialect
+):
     """The extractor reads ``t`` from ``t<e acute>``: that is a different object."""
     _assert_manual_review(_undo(tmp_path, dialect, "CREATE TABLE t\u00e9 (id INT);"))
 
@@ -147,7 +149,7 @@ def test_the_unparsed_fallback_names_nothing_either(dialect):
 
 @pytest.mark.parametrize("dialect", LEGACY)
 @pytest.mark.parametrize("char", RULE + NAME_PARTS, ids=IDS.get)
-@pytest.mark.parametrize("template", ["DELETE FROM t{c}WHERE a = 1;"])
+@pytest.mark.parametrize("template", ["DROP TABLE t{c} CASCADE;", "DELETE FROM t{c}WHERE a = 1;"])
 def test_analysis_names_no_object_whose_name_holds_the_character(dialect, char, template):
     analysis = analyse_script(template.format(c=char), dialect)
     if dialect in READ_WHOLE and char in NAME_PARTS:
