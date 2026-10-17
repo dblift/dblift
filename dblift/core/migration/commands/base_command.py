@@ -9,7 +9,7 @@ import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional
 
 from dblift.config import DbliftConfig
 from dblift.config.database_config import BaseDatabaseConfig
@@ -17,6 +17,7 @@ from dblift.config.database_config import BaseDatabaseConfig
 if TYPE_CHECKING:
     from dblift.core.logger.results import OperationResult
     from dblift.core.migration.journals.migration_journal import MigrationJournal
+    from dblift.core.migration.migration import Migration
     from dblift.core.migration.placeholders.placeholder_service import PlaceholderService
     from rich.panel import Panel
     from rich.text import Text
@@ -179,12 +180,25 @@ _CALLBACK_LIFECYCLE_EVENTS: Dict[str, str] = {
 }
 
 
+@dataclass(frozen=True)
+class _CallbackBinding:
+    """Directory arguments a command passes to every callback dispatch."""
+
+    scripts_dir: Optional[Path]
+    recursive: bool
+    additional_dirs: Optional[List[Path]]
+    dir_recursive_map: Optional[Dict[Path, bool]]
+    result: Optional["OperationResult"]
+
+
 class BaseCommand:
     """Base class for migration commands with shared helper methods."""
 
     # Subclasses that render their own rich summary panel set this True
     # to skip the generic console footer and avoid duplication.
     _has_own_console_footer: bool = False
+
+    _callback_binding: Optional[_CallbackBinding] = None
 
     def __init__(
         self,
@@ -269,8 +283,64 @@ class BaseCommand:
         return getattr(self.journal, "capture_objects", True)
 
     def _reset_callback_catalog(self) -> None:
-        """Discard the manager snapshot reference before a command execution."""
+        """Discard the snapshot reference and callback binding before a command execution."""
         self._callback_snapshot = None
+        self._callback_binding = None
+
+    def _bind_callbacks(
+        self,
+        scripts_dir: Optional[Path],
+        recursive: bool,
+        additional_dirs: Optional[List[Path]],
+        dir_recursive_map: Optional[Dict[Path, bool]],
+        result: Optional["OperationResult"],
+    ) -> None:
+        """Remember the callback directory arguments for ``_fire``/``_callbacks_for``."""
+        self._callback_binding = _CallbackBinding(
+            scripts_dir, recursive, additional_dirs, dir_recursive_map, result
+        )
+
+    def _bound_callbacks(self) -> _CallbackBinding:
+        binding = self._callback_binding
+        if binding is None:
+            raise RuntimeError("callbacks are not bound")
+        return binding
+
+    def _fire(self, event: str) -> None:
+        """Run the callbacks of ``event`` with the arguments given to ``_bind_callbacks``.
+
+        Does nothing when the command has no scripts directory.
+        """
+        binding = self._bound_callbacks()
+        if binding.scripts_dir is None:
+            return
+        self._execute_callbacks(
+            binding.scripts_dir,
+            event,
+            binding.recursive,
+            binding.additional_dirs,
+            binding.dir_recursive_map,
+            result=binding.result,
+        )
+
+    def _callbacks_for(self, events: Iterable[str]) -> List[Migration]:
+        """List the bound callbacks of ``events``, in event order, from one fresh snapshot."""
+        binding = self._bound_callbacks()
+        if binding.scripts_dir is None:
+            return []
+        snapshot = self.state_manager.new_callback_snapshot()
+        return [
+            callback
+            for event in events
+            for callback in self.state_manager.get_callbacks_by_event(
+                binding.scripts_dir,
+                event,
+                read_snapshot=snapshot,
+                recursive=binding.recursive,
+                additional_dirs=binding.additional_dirs,
+                dir_recursive_map=binding.dir_recursive_map,
+            )
+        ]
 
     def _execute_callbacks(
         self,
