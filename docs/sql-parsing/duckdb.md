@@ -310,7 +310,7 @@ DuckDB specification; the shared tokenizer reads them and one core module assemb
 | 74 | `SELECT E'a' 'b\'; SELECT 1; SELECT 'z';` | `SELECT E'a' 'b\'` · `SELECT 1` · `SELECT 'z'` (measured: on one line the engine does not carry the escape mode of an E string into the next string, reads the second string as a plain string closed after the backslash and rejects the first statement; known gap: the splitter carries the escape mode across blanks on one line and sends the three statements as one) |
 | 75 | `SELECT \u00b2E'b\';c'; SELECT 2;` | `SELECT \u00b2E'b\'` · `c'; SELECT 2;` (measured: a superscript two followed by E is one name for the engine, so a plain string follows and the first semicolon ends the statement; known gap: the splitter reads any character Python counts as a digit before E as a number and opens an escape string) |
 | 76 | `PREPARE p AS SELECT $1a$$x; SELECT 2; SELECT 3 AS y$$;` | `PREPARE p AS SELECT $1a$$x` · `SELECT 2` · `SELECT 3 AS y$$` (measured: the engine reads a positional parameter as the dollar sign and its digits only, so the letters after it start a word, the dollar pair inside that word opens nothing and each semicolon ends a statement; known gap, unsafe direction: the splitter reads the letters as part of the parameter, opens a dollar-quoted string at the dollar pair and sends the three statements as one, which the driver then runs one after another) |
-| 77 | `SELECT 1a$$x; DROP TABLE t; SELECT 3 AS y$$;` | `SELECT 1a$$x` · `DROP TABLE t` · `SELECT 3 AS y$$` (measured: DuckDB ends a number at its first character that is not a digit, so the letters after it start a word, the dollar pair inside that word opens nothing and each semicolon ends a statement; known gap, unsafe direction: the splitter reads the letters as part of the number, opens a dollar-quoted string at the dollar pair and sends the three statements as one, which the driver then runs one after another) |
+| 77 | `SELECT 1a$$x; DROP TABLE t; SELECT 3 AS y$$;` | `SELECT 1a$$x` · `DROP TABLE t` · `SELECT 3 AS y$$` (measured: DuckDB reads a number as digits with underscore separators, an optional fraction and an optional exponent, so the letters after it start a word, the dollar pair inside that word opens nothing and each semicolon ends a statement; known gap, unsafe direction: the splitter reads the letters as part of the number, opens a dollar-quoted string at the dollar pair and sends the three statements as one, which the driver then runs one after another) |
 
 ## 11. Not handled
 
@@ -340,9 +340,9 @@ comments through the same engine. There is no DuckDB subclass of the engine and 
 scanner.
 
 The engine reads a script as DuckDB's lexer does. A word is a letter, an
-underscore or a non-ASCII character followed by those, digits and `$`; DuckDB ends a number at its
-first character that is not a digit, so the letters after it start a word (`1a$$x` is the number 1 and the word `a$$x`),
-where the splitter reads letters and underscores after the digits as part of the number (row 77); a `$$` opens a string
+underscore or a non-ASCII character followed by those, digits and `$`; DuckDB reads a number as digits with underscore separators, an optional fraction and an optional exponent, so
+the letters after it start a word (`1a$$x` is the number 1 and the word `a$$x`; `1e5x` is a number and the name x),
+where the splitter takes every letter and underscore after the first digit as part of the number (row 77); a `$$` opens a string
 after a number or an operator and never inside a word. A `$` that starts a token opens a dollar-quoted string when a tag
 (letters, underscore, non-ASCII, digits, no `$`) and a second `$` follow, and closes it on
 the identical tag; otherwise it starts a parameter (`$1`, `$name`). `E'` and `e'` open an
