@@ -50,13 +50,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **Statement analysis no longer names the wrong object.** A name touching an invisible or
-  zero-width character (a no-break or ideographic space, a zero-width space, a byte-order mark, a
-  combining accent) could be reported under a different name, so a generated undo script could drop
-  an existing table or trigger. Such statements are now reported without object names and their
-  undo needs manual review; an `UPDATE` or `DELETE` whose condition cannot be read is flagged as
-  possibly changing every row, and DuckDB scripts with such spaces between tokens are reported
-  unreadable for now; `CREATE INDEX ... USING` without columns no longer stops statement analysis.
+- **On SQLite and DuckDB, statement analysis no longer names the wrong object.** A name touching
+  an invisible or zero-width character (a no-break or ideographic space, a zero-width space, a
+  byte-order mark, a combining accent) could be reported under a different name, so a generated
+  undo script could drop an existing table or trigger. Such statements are now reported without
+  object names and their undo needs manual review; an `UPDATE` or `DELETE` whose condition cannot
+  be read is flagged as possibly changing every row, and DuckDB scripts with such spaces between
+  tokens are reported unreadable for now; `CREATE INDEX ... USING` without columns no longer stops
+  statement analysis. The other engines keep their previous statement analysis for now.
 - **Statement facts on older sqlglot.** With sqlglot 30.0 to 30.14 installed, an `INSERT` made
   statement analysis fail silently (a DEBUG "Could not analyse" line), so `migrate --dry-run`
   lost its `[SAFE]` label and data-plan analysis skipped the statement. An absent `WHERE` is
