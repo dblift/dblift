@@ -84,6 +84,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`migrate` runs a fixed repeatable migration whose last run failed.** Before, a repeatable
+  migration that failed and was then corrected was reported as ready by `validate` but never
+  run by `migrate`, which succeeded without applying it. A failed run now counts as failed
+  whatever its recorded execution time. `validate` and `info` match a repeatable migration
+  recorded under a directory-qualified name by its file name, as `migrate` does.
+
 - **A DuckDB script where a number is followed by letters and a dollar-quoted string is split as DuckDB reads it.**
   `SELECT 1a$$x; DROP TABLE t; SELECT 3 AS y$$;` (also `1_000a`, `1.5a`, `1e5a`, `0x1g` and a
   positional parameter such as `$1a`) was read as one statement hiding the `DROP TABLE`, while DuckDB

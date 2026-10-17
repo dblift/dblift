@@ -253,3 +253,17 @@ def test_client_validate_returns_failed_result_for_unreadable_history(client, tm
         result = client.validate()
     assert not result.success
     assert "could not read migration history" in result.error_message
+
+
+def test_snapshot_and_state_carry_repeatable_runs(client, tmp_path):
+    (tmp_path / "R__view.sql").write_text("SELECT 1;")
+    manager = client.executor.state_manager
+
+    before = manager.build_validation_snapshot(tmp_path, "validate")
+    assert before.repeatable_runs["R__view.sql"].status.value == "NEW"
+    assert manager.build_state(tmp_path).repeatable_runs["R__view.sql"].status.value == "NEW"
+
+    assert client.migrate().success
+    after = manager.build_validation_snapshot(tmp_path, "validate")
+    assert after.repeatable_runs["R__view.sql"].status.value == "UNCHANGED"
+    assert manager.build_state(tmp_path).repeatable_runs["R__view.sql"].status.value == "UNCHANGED"
