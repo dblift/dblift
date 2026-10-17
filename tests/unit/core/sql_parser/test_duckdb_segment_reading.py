@@ -240,6 +240,42 @@ def test_a_non_blank_non_ascii_character_is_a_word_character(char):
     assert shape(f"a{char}b;") == [kw(f"a{char}b"), dl()]
 
 
+@pytest.mark.parametrize("blank", ENGINE_BLANKS)
+def test_a_blank_after_a_dollar_inside_a_word_continues_the_word(blank):
+    assert shape(f"a${blank}b;") == [kw(f"a${blank}b"), dl()]
+    assert shape(f"a$b{blank}c;") == [kw(f"a$b{blank}c"), dl()]
+    assert shape(f"{E_ACUTE}${blank}{blank}b;") == [kw(f"{E_ACUTE}${blank}{blank}b"), dl()]
+
+
+@pytest.mark.parametrize("blank", ENGINE_BLANKS)
+def test_a_dollar_tag_after_a_blank_inside_a_word_opens_nothing(blank):
+    script = f"SELECT 1 AS a$${blank}$t$x; DROP TABLE t; SELECT 3 AS y$t$;"
+    assert [t for t in shape(script) if t == dl()] == [dl(), dl(), dl()]
+    assert shape(f"a$${blank}$t$x;y$t$") == [kw(f"a$${blank}$t$x"), dl(), kw("y$t$")]
+
+
+@pytest.mark.parametrize("blank", [" ", "\n", "\t"])
+def test_an_ascii_blank_after_a_dollar_ends_the_word_and_a_dollar_tag_opens(blank):
+    assert shape(f"a${blank}$t$x;y$t$") == [kw("a$"), st("$t$x;y$t$")]
+
+
+@pytest.mark.parametrize("blank", ENGINE_BLANKS)
+def test_a_blank_before_any_dollar_ends_the_word_and_a_dollar_tag_opens(blank):
+    assert shape(f"a{blank}$$x;y$$") == [kw("a"), st("$$x;y$$")]
+
+
+def test_a_blank_continuing_a_word_hides_the_escape_letter_after_it():
+    assert shape(f"a${NBSP}E'x\\';y'") == [kw(f"a${NBSP}E"), st("'x\\'"), dl(), kw("y"), st("'")]
+    assert shape(f"a{NBSP}E'x\\';y'") == [kw("a"), kw("E"), st("'x\\';y'")]
+
+
+def test_a_dollar_followed_by_a_digit_does_not_make_a_blank_continue_the_word():
+    assert shape(f"a$1{NBSP}b;") == [kw("a$1"), kw("b"), dl()]
+    assert shape(f"a$1$1{NBSP}b;") == [kw("a$1$1"), kw("b"), dl()]
+    assert shape(f"a$1${NBSP}b;") == [kw(f"a$1${NBSP}b"), dl()]
+    assert shape(f"a$$1{NBSP}b;") == [kw(f"a$$1{NBSP}b"), dl()]
+
+
 def test_a_vertical_tab_is_a_symbol():
     assert shape("a\x0bb") == [kw("a"), sym("\x0b"), kw("b")]
 
