@@ -26,7 +26,7 @@ from dblift.core.sql_model.base import (
 from dblift.core.sql_model.dialect import SQLGLOT_DIALECT_MAP as _SQLGLOT_DIALECT_MAP
 from dblift.core.sql_model.dialect import _ensure_sqlglot_dialect_map
 from dblift.core.sql_parser.parser_interface import SqlParserInterface
-from dblift.core.sql_parser.unread_names import names_unreadable, with_trimmed_tails
+from dblift.core.sql_parser.unread_names import names_unreadable, statement_sources
 
 # Setup logger
 logger = logging.getLogger(__name__)
@@ -109,7 +109,7 @@ class SqlGlotParser(SqlParserInterface):
             errors: List[str] = []
 
             for sql_text, source in zip(
-                statement_strings, with_trimmed_tails(sql_content, statement_strings)
+                statement_strings, self.statement_sources(sql_content, statement_strings)
             ):
                 if not sql_text.strip():
                     continue
@@ -219,7 +219,7 @@ class SqlGlotParser(SqlParserInterface):
         """Extract objects only from the dialect scanner's executed SQL."""
         objects: List[SqlObject] = []
         fragments = self._script_scanner().split_for_extraction(sql_content)
-        for fragment, source in zip(fragments, with_trimmed_tails(sql_content, fragments)):
+        for fragment, source in zip(fragments, self.statement_sources(sql_content, fragments)):
             objects.extend(self.extract_fragment_objects(fragment, default_schema, source))
         return objects
 
@@ -323,6 +323,10 @@ class SqlGlotParser(SqlParserInterface):
             schema=default_schema,
             names_unread=unread,
         )
+
+    def statement_sources(self, script: str, statements: List[str]) -> List[Optional[str]]:
+        """Each statement as it stands in ``script``, with the blanks the split trimmed."""
+        return statement_sources(self._script_scanner(), script, statements)
 
     def _names_unreadable(self, source: Optional[str], objects: List[SqlObject]) -> bool:
         """Whether the engine may read the names of ``objects`` differently from sqlglot.

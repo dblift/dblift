@@ -8,7 +8,7 @@ import pytest
 
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.sql_parser.parser_factory import SqlParserFactory
-from dblift.core.sql_parser.unread_names import names_unreadable, with_trimmed_tails
+from dblift.core.sql_parser.unread_names import names_unreadable, statement_sources
 from dblift.db.dml_analysis import analyze_dml, statement_dml_table
 
 NBSP, ZWSP, ZWJ, ACCENT = " ", "​", "‍", "́"
@@ -145,9 +145,14 @@ def test_the_schema_part_of_a_name_is_checked_too():
 def test_a_statement_that_cannot_be_located_in_its_script_is_withheld(dialect):
     parser = SqlParserFactory(dialect).get_parser()
     assert parser._names_unreadable(None, [])
-    assert with_trimmed_tails("caf\u00e9; SELECT 1", ["SELECT 2"]) == [None]
-    assert with_trimmed_tails("caf\u00e9; SELECT 1", ["SELECT 1"]) == ["SELECT 1"]
-    assert with_trimmed_tails("SELECT 1", ["SELECT 2"]) == ["SELECT 2"]
+    scanner = SqlParserFactory("postgresql").get_parser().regex_parser
+    script = "caf\u00e9; SELECT 1;"
+    assert statement_sources(scanner, script, ["SELECT 2"]) == [None]
+    assert statement_sources(scanner, script, ["SELECT 1"]) == ["SELECT 1;"]
+    assert statement_sources(scanner, "SELECT 1", ["SELECT 2"]) == ["SELECT 2"]
+    assert statement_sources(scanner, "-- SELECT 1\nSELECT 1\u00a0;", ["SELECT 1"]) == [
+        "SELECT 1\u00a0;"
+    ]
 
 
 @pytest.mark.parametrize("dialect", LEGACY)

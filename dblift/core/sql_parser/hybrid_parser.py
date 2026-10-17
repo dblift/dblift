@@ -50,7 +50,7 @@ from dblift.core.sql_model.view import View
 from dblift.core.sql_parser._sqlglot_builders import _SqlglotBuildersMixin
 from dblift.core.sql_parser.parser_interface import SqlParserInterface
 from dblift.core.sql_parser.sqlglot_parser import SqlGlotParser
-from dblift.core.sql_parser.unread_names import names_unreadable, with_trimmed_tails
+from dblift.core.sql_parser.unread_names import names_unreadable, statement_sources
 
 logger = logging.getLogger(__name__)
 
@@ -206,7 +206,9 @@ class HybridParser(_SqlglotBuildersMixin, SqlParserInterface):
                 return result
 
             enhanced_statements: List[SqlStatement] = []
-            sources = with_trimmed_tails(sql_content, [s.sql_text for s in result.statements or []])
+            sources = self.statement_sources(
+                sql_content, [s.sql_text for s in result.statements or []]
+            )
             for stmt, source in zip(result.statements or [], sources):
                 enhanced_stmt = self._enhance_statement(stmt, default_schema)
                 self._withhold_unreadable_names(enhanced_stmt, source)
@@ -324,7 +326,7 @@ class HybridParser(_SqlglotBuildersMixin, SqlParserInterface):
 
         objects: List[SqlObject] = []
         statements = self.split_for_extraction(sql_content)
-        for stmt_text, source in zip(statements, with_trimmed_tails(sql_content, statements)):
+        for stmt_text, source in zip(statements, self.statement_sources(sql_content, statements)):
             if not stmt_text or not stmt_text.strip():
                 continue
             objects.extend(self._extract_objects_for_statement(stmt_text, effective_schema, source))
@@ -349,6 +351,10 @@ class HybridParser(_SqlglotBuildersMixin, SqlParserInterface):
         if default_schema is not None:
             return default_schema
         return self._quirks.derive_schema_name(None)
+
+    def statement_sources(self, script: str, statements: List[str]) -> List[Optional[str]]:
+        """Each statement as it stands in ``script``, with the blanks the split trimmed."""
+        return statement_sources(self.regex_parser, script, statements)
 
     def _names_unreadable(self, source: Optional[str], objects: List[SqlObject]) -> bool:
         """Whether the engine may read the names of ``objects`` differently from the extractors.

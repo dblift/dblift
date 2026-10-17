@@ -9,7 +9,7 @@ the name the extractors read. Naming ``t`` for ``t<NBSP>`` makes an undo drop th
 from __future__ import annotations
 
 import re
-from typing import Iterable, List, Optional, Sequence
+from typing import Any, Iterable, List, Optional, Sequence, Tuple
 
 _NAME_CHARACTER = re.compile(r"[\w$]")
 # What is not a name: the first match from the left wins, so a quote inside a comment is the
@@ -57,27 +57,42 @@ def names_unreadable(sql: str, sqlglot_dialect: Optional[str], names: Iterable[s
     )
 
 
-def with_trimmed_tails(script: str, statements: Sequence[str]) -> List[Optional[str]]:
-    """Each statement followed by the blanks the analysis split trimmed after it.
+def statement_sources(scanner: Any, script: str, statements: Sequence[str]) -> List[Optional[str]]:
+    """Each statement as it stands in ``script``: the scanner's own span for it, untrimmed.
 
-    The split trims trailing blanks, so a name that ends its statement is seen without the
-    character the engine reads as part of it. A statement that cannot be located in ``script``
-    (its text was rewritten) is ``None``: nothing can be said about its name. An ASCII script
-    has no such character and is returned as it is.
+    The analysis split trims the blanks that end a statement, so a name that ends its statement
+    is seen without the character the engine reads as part of it. ``statements`` are matched, in
+    order, to the constituents of the scanner's records; one that matches none (its text was
+    rewritten) is ``None``: nothing can be said about its name. An ASCII script has no such
+    character and is returned as it is.
     """
     if script.isascii():
         return list(statements)
+    try:
+        records = scanner.split(script)
+    except Exception:  # the statements came from this split; if it fails now, trust nothing
+        return [None] * len(statements)
+    spans: List[Tuple[str, Optional[str]]] = []
+    for record in records:
+        if record.kind == "directive" or record.repeat <= 0:
+            continue
+        span = None
+        if record.source_start is not None and record.source_end is not None:
+            end = record.source_end
+            while end < len(script) and script[end].isspace():  # some scanners stop before them
+                end += 1
+            span = script[record.source_start : end]
+        texts = (
+            record.analysis_statements if record.analysis_statements is not None else (record.text,)
+        )
+        spans.extend((text, span) for text in texts)
     sources: List[Optional[str]] = []
     cursor = 0
     for text in statements:
-        at = script.find(text, cursor) if text else -1
-        if at < 0:
+        found = next((n for n in range(cursor, len(spans)) if spans[n][0] == text), None)
+        if found is None:
             sources.append(None)
             continue
-        end = at + len(text)
-        stop = end
-        while stop < len(script) and script[stop].isspace():
-            stop += 1
-        sources.append(script[at:stop])
-        cursor = end
+        sources.append(spans[found][1])
+        cursor = found + 1
     return sources

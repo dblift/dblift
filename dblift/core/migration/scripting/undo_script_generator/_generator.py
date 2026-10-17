@@ -19,7 +19,6 @@ from dblift.core.migration.sql.migration_sql_parser import parse_migration_sql
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.sql_parser.parser_factory import SqlParserFactory
 from dblift.core.sql_parser.statement_facts import StatementFacts
-from dblift.core.sql_parser.unread_names import with_trimmed_tails
 
 
 class UndoScriptGenerator(_UndoReversersMixin, _UndoExtractorsMixin):
@@ -210,7 +209,7 @@ class UndoScriptGenerator(_UndoReversersMixin, _UndoExtractorsMixin):
                 for_analysis=True,
             )
             undo_statements = []
-            sources = with_trimmed_tails(migration.content, statements)
+            sources = self.parser.statement_sources(migration.content, statements)
             for statement, source in reversed(list(zip(statements, sources))):
                 undo_stmt = self._reverse_statement(statement, source)
                 if undo_stmt:
