@@ -17,7 +17,7 @@ from tests.support.splitter_spec.splitting import split_script
 SPEC_DIR = Path(__file__).resolve().parents[4] / "docs" / "sql-parsing"
 ROWS = [row for row in load_conformance_rows(SPEC_DIR) if row.dialect == "duckdb"]
 
-KNOWN_GAPS: frozenset[str] = frozenset()
+KNOWN_GAPS: frozenset[str] = frozenset({"74", "75", "76"})
 
 
 def test_spec_compiles_to_at_least_the_rows_it_had_on_2026_10_12() -> None:
@@ -36,3 +36,25 @@ def test_spec_row(row: ConformanceRow, request: pytest.FixtureRequest) -> None:
         f"row {row.row_id}\nscript: {row.script!r}\n"
         f"expected: {row.expectation}\nactual: {outcome!r}"
     )
+
+
+def test_rows_74_to_76_compile_to_the_engine_cut() -> None:
+    rows = {row.row_id: row for row in ROWS}
+    assert rows["74"].script == "SELECT E'a' 'b\\'; SELECT 1; SELECT 'z';"
+    assert rows["74"].expectation.statements == ("SELECT E'a' 'b\\'", "SELECT 1", "SELECT 'z'")
+    assert rows["75"].script == "SELECT " + chr(0xB2) + "E'b\\';c'; SELECT 2;"
+    assert rows["75"].expectation.statements == ("SELECT " + chr(0xB2) + "E'b\\'", "c'; SELECT 2")
+    assert rows["76"].script == "PREPARE p AS SELECT $1a$$x; SELECT 2; SELECT 3 AS y$$;"
+    assert rows["76"].expectation.statements == (
+        "PREPARE p AS SELECT $1a$$x",
+        "SELECT 2",
+        "SELECT 3 AS y$$",
+    )
+
+
+def test_new_rows_have_no_code_span_in_prose() -> None:
+    text = (SPEC_DIR / "duckdb.md").read_text(encoding="utf-8")
+    for line in text.splitlines():
+        if line.startswith(("| 74 |", "| 75 |", "| 76 |")):
+            cells = line.split(" | ")
+            assert "`" not in cells[-1][cells[-1].index("(measured") :]
