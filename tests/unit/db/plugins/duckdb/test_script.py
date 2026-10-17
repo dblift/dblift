@@ -2,7 +2,7 @@
 
 Every expectation was measured with the Python driver and ``duckdb.extract_statements``
 (docs/sql-parsing/duckdb.md); the rows of its section 10 are pinned separately by the conformance
-test, these tests pin the rules behind them and the records the engine returns.
+test, these tests state the rules behind them and the records the engine returns.
 """
 
 from __future__ import annotations
@@ -459,7 +459,7 @@ def test_the_refusals_do_not_depend_on_the_mode() -> None:
 
 # ---- huge lexemes -----------------------------------------------------------------------------------------
 # The cost of reading a script (the number of operations per character) is held by
-# test_duckdb_splitting_cost_grows_linearly; these pin the cut.
+# test_duckdb_splitting_cost_grows_linearly; these check the cut.
 
 
 @pytest.mark.parametrize(
