@@ -18,6 +18,7 @@ from dblift.core.migration.scripting.migration_script_manager import (  # noqa: 
     MigrationScriptManager,
     _last_successful_non_delete_record,
 )
+from dblift.core.migration.state.checksum_drift import ChecksumDrift
 from dblift.core.migration.state.migration_selector import (
     normalize_filter,
     passes_filters,
@@ -201,6 +202,7 @@ class MigrationValidator:
         command: str,
         strict_mode: bool,
         repeatable_runs: Optional[Mapping[str, RepeatableRun]] = None,
+        checksum_drift: Optional[Sequence[ChecksumDrift]] = None,
     ) -> ValidationResult:
         """Run the common checks over already prepared catalog and history inputs."""
         self._check_repeatable_migrations(
@@ -246,6 +248,7 @@ class MigrationValidator:
                 issues,
                 strict_mode,
                 all_valid_scripts,
+                checksum_drift,
             )
             self._validate_reappeared_migrations(
                 valid_scripts, applied_migrations, validation_result, issues
@@ -308,6 +311,7 @@ class MigrationValidator:
                 command=command,
                 strict_mode=snapshot.strict_mode,
                 repeatable_runs=snapshot.repeatable_runs,
+                checksum_drift=snapshot.checksum_drift,
             )
         except Exception as error:
             result.success = False
@@ -501,6 +505,7 @@ class MigrationValidator:
         issues: List[str],
         strict_mode: bool = False,
         all_scripts: Optional[List[Migration]] = None,
+        drift: Optional[Sequence[ChecksumDrift]] = None,
     ) -> None:
         """Delegate to :func:`dblift.core.sql_validator._checksum_validator.validate_checksums`.
 
@@ -509,7 +514,7 @@ class MigrationValidator:
         """
         from dblift.core.sql_validator._checksum_validator import validate_checksums as _impl
 
-        _impl(self, scripts, applied_migrations, result, issues, strict_mode, all_scripts)
+        _impl(self, scripts, applied_migrations, result, issues, strict_mode, all_scripts, drift)
 
     def _check_repeatable_migrations(
         self,

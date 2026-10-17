@@ -219,6 +219,7 @@ class TestOtherCommandsColdStartRegression:
             deleted_scripts=set(),
             failed_objects=[],
             all_applied_objects=[],
+            checksum_drift=(),
         )
         cmd.state_manager.get_grouped_migrations.return_value = {}
 

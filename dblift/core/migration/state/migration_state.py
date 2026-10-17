@@ -10,13 +10,14 @@ from __future__ import annotations
 import datetime as _dt
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Optional, Tuple
 
 from dblift.core.migration.state.migration_display_state import MigrationDisplayState
 
 if TYPE_CHECKING:
     from dblift.core.migration.history.migration_history_manager import FlywayCompatibilitySnapshot
     from dblift.core.migration.migration import Migration
+    from dblift.core.migration.state.checksum_drift import ChecksumDrift
     from dblift.core.migration.state.migration_state_manager import MigrationStateManager
     from dblift.core.migration.state.repeatable_status import RepeatableRun
 
@@ -36,6 +37,7 @@ class MigrationValidationSnapshot:
     history_read_error: str = ""
     catalog_read_error: Optional[str] = None
     repeatable_runs: Mapping[str, RepeatableRun] = field(default_factory=dict)
+    checksum_drift: Tuple[ChecksumDrift, ...] = ()
 
 
 @dataclass(slots=True)
@@ -174,6 +176,7 @@ class MigrationState:
     executed_scripts: List[str] = field(default_factory=list, repr=False)
     repeatable_checksums: Dict[str, str] = field(default_factory=dict, repr=False)
     repeatable_runs: Dict[str, RepeatableRun] = field(default_factory=dict, repr=False)
+    checksum_drift: Tuple[ChecksumDrift, ...] = field(default=(), repr=False)
     resolved_objects: Optional[List[Any]] = field(default=None, repr=False)
     grouped_objects: Optional[Dict[Any, List[Any]]] = field(default=None, repr=False)
 
@@ -242,6 +245,7 @@ class MigrationState:
             executed_scripts=list(self.executed_scripts),
             repeatable_checksums=dict(self.repeatable_checksums),
             repeatable_runs=dict(self.repeatable_runs),
+            checksum_drift=self.checksum_drift,
             resolved_objects=(
                 list(self.resolved_objects) if self.resolved_objects is not None else None
             ),

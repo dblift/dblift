@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, List, Mapping, Optional, cast
+from typing import TYPE_CHECKING, List, Mapping, Optional, Sequence, cast
 
 from dblift.core.migration.migration import Migration, MigrationType
 from dblift.core.migration.scripting.migration_script_manager import (  # noqa: F401
     _last_successful_non_delete_record,
     _successful_non_delete_records,
 )
-from dblift.core.migration.state.checksum_drift import find_checksum_drift
+from dblift.core.migration.state.checksum_drift import ChecksumDrift, find_checksum_drift
 from dblift.core.migration.state.repeatable_status import (
     RepeatableRun,
     RepeatableStatus,
@@ -32,6 +32,7 @@ def validate_checksums(
     issues: List[str],
     strict_mode: bool = False,
     all_scripts: Optional[List[Migration]] = None,
+    drift: Optional[Sequence[ChecksumDrift]] = None,
 ) -> None:
     """Validate checksums of executed migrations.
 
@@ -43,6 +44,10 @@ def validate_checksums(
     when provided, is the full unfiltered set of on-disk scripts and is used only to
     decide whether an applied migration is genuinely missing from the migration
     directory (as opposed to merely filtered out of the current run's scope).
+
+    ``drift`` is the state layer's answer for these ``scripts`` and
+    ``applied_migrations``. When not given it is derived with the same
+    ``find_checksum_drift`` rule.
     """
     checksum_mismatches = []
     scripts_by_name: dict[str, Migration] = {}
@@ -56,7 +61,9 @@ def validate_checksums(
     full_script_names = (
         {s.script_name for s in all_scripts} if all_scripts is not None else script_names
     )
-    drift_by_name = {d.script_name: d for d in find_checksum_drift(scripts, applied_migrations)}
+    if drift is None:
+        drift = find_checksum_drift(scripts, applied_migrations)
+    drift_by_name = {d.script_name: d for d in drift}
     has_successful_row = {
         getattr(row, "script_name", None)
         for row in _successful_non_delete_records(applied_migrations)
@@ -148,10 +155,10 @@ def validate_checksums(
         if script_name not in has_successful_row:
             # Failed history is reported separately; there is no successful checksum.
             continue
-        drift = drift_by_name.get(script_name)
-        if drift is not None:
-            current_checksum = drift.current_checksum
-            last_applied_checksum = drift.applied_checksum
+        found = drift_by_name.get(script_name)
+        if found is not None:
+            current_checksum = found.current_checksum
+            last_applied_checksum = found.applied_checksum
             checksum_mismatches.append(
                 {
                     "script": script_name,

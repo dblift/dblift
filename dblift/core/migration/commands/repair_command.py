@@ -13,7 +13,6 @@ from dblift.core.exceptions import ExecutionError
 from dblift.core.logger.results import RepairResult
 from dblift.core.migration.history.history_transaction import history_transaction
 from dblift.core.migration.migration import Migration, MigrationType
-from dblift.core.migration.state.checksum_drift import find_checksum_drift
 from dblift.core.migration.state.migration_state import MigrationState
 from dblift.db.provider_capabilities import ensure_provider_connection
 from dblift.db.provider_interfaces import TransactionalProvider
@@ -379,9 +378,9 @@ class RepairCommand(BaseCommand):
     ) -> List[Dict[str, Any]]:
         """Detect checksum drift for applied versioned migrations not already in repairs.
 
-        MigrationState currently only tracks repeatable checksum changes, so this
-        compares the filesystem with the applied history for versioned migrations in
-        every script format, using the same comparison ``validate`` reports.
+        MigrationState currently only tracks repeatable checksum changes; the
+        versioned drift in every script format is read from
+        ``migration_state.checksum_drift``, the same answer ``validate`` reports.
 
         Args:
             migration_state: Current migration state
@@ -396,31 +395,24 @@ class RepairCommand(BaseCommand):
         """
         repairs: List[Dict[str, Any]] = []
 
-        # Additional safeguard: detect checksum drift for applied versioned migrations
-        # MigrationState currently only tracks repeatable checksum changes, so perform an explicit comparison
-        filesystem_migrations = migration_state.grouped_objects
-        if filesystem_migrations is None:
-            filesystem_migrations = self.state_manager.get_grouped_migrations(
+        # The state manager decides drift. A state built without scripts carries none,
+        # so ask it to rebuild with them.
+        if migration_state.grouped_objects is None:
+            migration_state = self.state_manager.build_state(
                 scripts_dir,
                 recursive=recursive,
                 additional_dirs=additional_dirs,
                 dir_recursive_map=dir_recursive_map,
             )
-        scripts = [
-            migration_entry
-            for migration_group in filesystem_migrations.values()
-            for migration_entry in migration_group
-        ]
 
         already_recorded_scripts = {
             entry["script"] for entry in existing_repairs if "script" in entry
         }
 
-        # Use all_applied_objects (includes undone migrations) for integrity checks.
-        all_applied = migration_state.all_applied_objects
-        # The same comparison ``validate`` reports. Repeatable drift is handled by
-        # the repeatable checksum-change scan, not here.
-        for drift in find_checksum_drift(scripts, all_applied):
+        # The same drift ``validate`` reports, computed over every applied row
+        # (undone ones included). Repeatable drift is handled by the repeatable
+        # checksum-change scan, not here.
+        for drift in migration_state.checksum_drift:
             if (
                 drift.repeatable
                 or drift.current_checksum is None

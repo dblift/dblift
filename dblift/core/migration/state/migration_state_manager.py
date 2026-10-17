@@ -20,6 +20,7 @@ from dblift.core.migration.migration import (
 )
 from dblift.core.migration.rules.migration_rules import MigrationRules
 from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
+from dblift.core.migration.state.checksum_drift import ChecksumDrift, find_checksum_drift
 from dblift.core.migration.state.migration_data_service import MigrationDataService
 from dblift.core.migration.state.migration_display_state import MigrationDisplayState
 from dblift.core.migration.state.migration_selector import (
@@ -206,18 +207,17 @@ class MigrationStateManager:
         selected = self.apply_filters_to_migrations(
             catalog, target_version, tags, exclude_tags, versions, exclude_versions
         )
+        scoped_applied = self.apply_filters_to_migrations(
+            applied_migrations,
+            target_version,
+            versions=versions,
+            exclude_versions=exclude_versions,
+        )
         return MigrationValidationSnapshot(
             resolved_migrations=tuple(catalog),
             selected_migrations=tuple(selected),
             all_applied_migrations=tuple(applied_migrations),
-            scoped_applied_migrations=tuple(
-                self.apply_filters_to_migrations(
-                    applied_migrations,
-                    target_version,
-                    versions=versions,
-                    exclude_versions=exclude_versions,
-                )
-            ),
+            scoped_applied_migrations=tuple(scoped_applied),
             history_table_exists=history_exists,
             scripts_directory_exists=directory_exists,
             strict_mode=strict_mode,
@@ -225,6 +225,7 @@ class MigrationStateManager:
             history_read_error=history_read_error,
             catalog_read_error=catalog_read_error,
             repeatable_runs=repeatable_runs(selected, applied_migrations),
+            checksum_drift=tuple(find_checksum_drift(selected, scoped_applied)),
         )
 
     def get_applied_migrations(
@@ -392,6 +393,7 @@ class MigrationStateManager:
         pending_migrations: List[Migration] = []
         all_scripts: List[Migration] = []
         runs: Dict[str, RepeatableRun] = {}
+        drift: List[ChecksumDrift] = []
         grouped_scripts: Optional[Dict[Any, List[Migration]]] = {} if scripts_dir else None
         if scripts_dir:
             # Use NEW centralized pending computation method
@@ -410,6 +412,7 @@ class MigrationStateManager:
                 out_all_scripts=all_scripts,
                 out_grouped_migrations=grouped_scripts,
                 out_repeatable_runs=runs,
+                out_checksum_drift=drift,
             )
 
         self._mark_resolved_status(
@@ -476,6 +479,7 @@ class MigrationStateManager:
             executed_scripts=sorted(history.executed_scripts),
             repeatable_checksums=dict(history.repeatable_checksums),
             repeatable_runs=runs,
+            checksum_drift=tuple(drift),
             resolved_objects=all_scripts if scripts_dir else None,
             grouped_objects=grouped_scripts,
         )
@@ -747,6 +751,7 @@ class MigrationStateManager:
         out_all_scripts: Optional[List[Migration]] = None,
         out_grouped_migrations: Optional[Dict[Any, List[Migration]]] = None,
         out_repeatable_runs: Optional[Dict[str, RepeatableRun]] = None,
+        out_checksum_drift: Optional[List[ChecksumDrift]] = None,
     ) -> List[Migration]:
         """Catalog unresolved on-disk scripts (not migrate's execute-list).
 
@@ -775,6 +780,8 @@ class MigrationStateManager:
         runs = repeatable_runs(all_scripts, applied_migrations)
         if out_repeatable_runs is not None:
             out_repeatable_runs.update(runs)
+        if out_checksum_drift is not None:
+            out_checksum_drift.extend(find_checksum_drift(all_scripts, applied_migrations))
 
         if out_all_scripts is not None:
             # Match get_migration_scripts order for consumers reusing the full catalog,
