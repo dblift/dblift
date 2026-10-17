@@ -316,9 +316,26 @@ class TestBaselineCommandTransactionFailures(unittest.TestCase):
                     result = cmd.execute("1.0")
 
         self.assertFalse(result.success)
-        # rollback failure should be logged at debug
-        debug_calls = " ".join(str(c) for c in log.debug.call_args_list)
-        self.assertIn("rollback", debug_calls.lower())
+        # rollback failure should be logged as a warning
+        warning_calls = " ".join(str(c) for c in log.warning.call_args_list)
+        self.assertIn("roll back", warning_calls.lower())
+
+    def test_baseline_rolls_back_when_record_fails(self):
+        """A failure writing the baseline row rolls the transaction back."""
+        provider = MagicMock()
+        hm = MagicMock()
+        hm.record_migration.side_effect = RuntimeError("write")
+
+        cmd = _make_baseline_cmd(provider=provider, history_manager=hm)
+
+        with patch.object(cmd, "_populate_database_info"):
+            with patch.object(cmd, "_log_command_header_update"):
+                with patch.object(cmd, "_log_command_completion"):
+                    result = cmd.execute("1.0")
+
+        provider.rollback_transaction.assert_called_once_with()
+        provider.commit_transaction.assert_not_called()
+        self.assertEqual(result.error_message, "Baseline operation failed: write")
 
     def test_history_table_creation_failure_raises_connection_error(self):
         """A history-table bootstrap failure stops baseline the way it stops
