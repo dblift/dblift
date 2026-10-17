@@ -171,7 +171,7 @@ class LexicalTokenizer(BaseTokenizer):
         self._seg_blanks: FrozenSet[str] = frozenset()
         self._seg_word = self._seg_number = self._seg_tag = re.compile("")
         self._seg_parameter = self._seg_comment = re.compile("")
-        self._seg_origin = 0
+        self.origin = 0
         self._seg_pending = False
         self._seg_escape = False
         if self._segment is not None:
@@ -259,9 +259,7 @@ class LexicalTokenizer(BaseTokenizer):
         script, and nothing at the end of a script is refused. Closed comments are recorded.
         """
         sql = self.sql
-        self._seg_origin = origin = (
-            1 if self.spec.leading_bom_is_blank and sql.startswith(BOM) else 0
-        )
+        self.origin = origin = 1 if self.spec.leading_bom_is_blank and sql.startswith(BOM) else 0
         bad = sql.find(rules.refused_character, origin)
         if bad >= 0:
             raise UnsafeStatementSplitError(
@@ -305,7 +303,7 @@ class LexicalTokenizer(BaseTokenizer):
         prefix = rules.command_prefix
         if not prefix or self._seg_pending or not self.sql.startswith(prefix, pos):
             return False
-        return pos == self._seg_origin or self.sql[pos - 1] == "\n"
+        return pos == self.origin or self.sql[pos - 1] == "\n"
 
     def _refuse_command_line(self, pos: int) -> NoReturn:
         """Refuse a client command: the client runs it and the engine cannot."""
