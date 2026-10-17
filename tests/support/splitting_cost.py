@@ -160,6 +160,12 @@ class CountingPattern:
         self._meter.add(found.end() - pos if found else 1)
         return found
 
+    def search(self, text: CountingText, pos: int) -> Any:
+        """Charged for the span it scans: to the match, or to the end of the text when there is none."""
+        found = self._pattern.search(text._value, pos)
+        self._meter.add((found.end() if found else len(text._value)) - pos)
+        return found
+
 
 class CountingInt(int):
     """An int whose comparisons and sums count one operation each and return plain values.
@@ -242,7 +248,8 @@ class CountingTokens(abc.Sequence):  # type: ignore[type-arg]
     __iter__ = __contains__ = __reversed__ = index = count = copy = _refuse  # type: ignore[assignment]
 
 
-SCANNED_NAMES = {"text", "sql", "tokens", "marks"}
+SCANNED_NAMES = {"text", "sql", "tokens", "marks", "source"}
+SLICED_TEXTS = {"text", "sql", "source"}  # names that hold a whole script or statement
 REGEX_METHODS = {"search", "match", "finditer", "findall", "sub", "subn", "split", "fullmatch"}
 BOUNDED_ARGUMENTS = {"line", "token", "statement"}  # a slice of the text, never the text
 COPIES = {"list", "tuple", "str", "sorted", "set", "dict", "bytes", "bytearray", "memoryview"}
@@ -269,9 +276,59 @@ def _regex_call(node: ast.Call) -> bool:
     )  # anchored at a position
 
 
+def _is_text(node: ast.AST) -> bool:
+    """A scanned text: a bare name, or one on ``self``; an attribute of another object is skipped."""
+    if isinstance(node, ast.Name):
+        return node.id in SLICED_TEXTS
+    return (
+        isinstance(node, ast.Attribute)
+        and isinstance(node.value, ast.Name)
+        and node.value.id == "self"
+        and node.attr in SLICED_TEXTS
+    )
+
+
+def _has_slice(node: ast.AST, of: Optional[str] = None) -> bool:
+    """Whether the expression slices a name (any name when ``of`` is None)."""
+    return any(
+        isinstance(n, ast.Subscript)
+        and isinstance(n.slice, ast.Slice)
+        and (of is None or (isinstance(n.value, ast.Name) and n.value.id == of))
+        for n in ast.walk(node)
+    )
+
+
+def loop_findings(tree: ast.AST) -> List[str]:
+    """Copies of the rest of a text, and rebuilds of a string from itself, inside a loop body."""
+    found = []
+    loops = [n for n in ast.walk(tree) if isinstance(n, (ast.For, ast.While))]
+    for loop in loops:
+        for statement in loop.body:
+            for node in ast.walk(statement):
+                where = f"line {getattr(node, 'lineno', 0)}"
+                if (
+                    isinstance(node, ast.Subscript)
+                    and isinstance(node.slice, ast.Slice)
+                    and node.slice.lower is not None
+                    and node.slice.upper is None
+                    and _is_text(node.value)
+                ):
+                    found.append(f"open-ended slice of a text in a loop at {where}")
+                if (
+                    isinstance(node, ast.Assign)
+                    and len(node.targets) == 1
+                    and isinstance(node.targets[0], ast.Name)
+                    and _has_slice(node.value, node.targets[0].id)
+                ):
+                    found.append(f"string rebuilt from its own slices in a loop at {where}")
+                if isinstance(node, ast.AugAssign) and _has_slice(node.value):
+                    found.append(f"string grown by slices in a loop at {where}")
+    return found
+
+
 def forbidden(tree: ast.AST) -> List[str]:
     """Forms the counters cannot see: copies, unbound str methods, regular expressions over the text."""
-    found = []
+    found = loop_findings(tree)
     for node in ast.walk(tree):
         where = f"line {getattr(node, 'lineno', 0)}"
         if isinstance(node, ast.Import):
