@@ -2103,7 +2103,7 @@ def test_snowflake_lock_refusal_reaches_the_user_through_migrate() -> None:
     from pathlib import Path
     from unittest.mock import patch
 
-    from tests.unit.core.migration.commands.test_migrate_command_repeatable_lock_race import (
+    from tests.unit.core.migration.commands.test_migrate_command_lock_refusal import (
         _cmd,
         _repeatable,
     )
@@ -2111,7 +2111,7 @@ def test_snowflake_lock_refusal_reaches_the_user_through_migrate() -> None:
     connection = _FakeConnection(
         fail_on="MERGE", error=_ProgrammingError(f"ProgrammingError: {_LOCK_LIMIT_ERROR}")
     )
-    cmd = _cmd([_repeatable()], applied_after_lock=[])
+    cmd = _cmd([_repeatable()])
     cmd.provider = _SnowflakeProvider(engine=_FakeEngine(connection))
 
     with (

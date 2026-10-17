@@ -411,12 +411,12 @@ def _quiet(command):
 
 
 def _migrate_command(pending=None):
-    from tests.unit.core.migration.commands.test_migrate_command_repeatable_lock_race import (
+    from tests.unit.core.migration.commands.test_migrate_command_lock_refusal import (
         _cmd,
         _repeatable,
     )
 
-    return _quiet(_cmd([_repeatable()] if pending is None else pending, applied_after_lock=[]))
+    return _quiet(_cmd([_repeatable()] if pending is None else pending))
 
 
 def _migrate_no_pending():
