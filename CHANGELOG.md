@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Providers are discovered once per process.** A `dblift.providers` entry point that
+  becomes installed after the first database lookup is no longer picked up until the
+  process restarts; register it explicitly with `ProviderRegistry.register_plugin`.
 - **Requires sqlglot 30.18 or later.** Statement facts rely on grammar that arrived between
   sqlglot 30.15 and 30.18; the declared range is now `sqlglot>=30.18.0,<31`.
 - **MySQL and MariaDB splitting moved onto the shared lexical engine.**
