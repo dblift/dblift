@@ -64,6 +64,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a migration. A real run waits up to 60 seconds and fails with
   `Could not acquire migration lock - another migration may be running` if it cannot get the lock;
   `baseline` checks again under the lock that the history is still empty. Dry runs do not lock.
+- **DuckDB splitting moved onto the shared lexical engine.** Splitting, analysis,
+  extraction and statement facts use the engine's lexeme rules (strings, escape
+  strings, dollar-quoted strings, nested comments, the blank characters DuckDB
+  reads) and the `duckdb` shell's dot-command rule as specification data. The
+  same scripts give the same statements, records, execution strings and
+  refusals (class, line and message).
+- **Literal masking, object extraction and comment stripping are unchanged for DuckDB.**
+  They keep reading DuckDB text as before.
+- **Splitting a large DuckDB script takes longer and uses more memory.** The
+  time stays linear in the length of the script (4 times the input takes 4.0 to
+  4.3 times the time). Measured on one machine, a 3 MiB script of `INSERT`
+  statements went from 0.63 s and a 26 MB peak to 2.2 to 2.5 s and a 212 MB
+  peak, and a 66-byte migration from 12 to 39 microseconds; the slowest of six
+  shapes measured, nested block comments, takes about 6 times as long.
 
 ### Fixed
 
@@ -109,6 +123,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- **The internal module `dblift.db.plugins.duckdb.parser._script`.** Use
+  `DuckDBFactsParser().split()`.
 - **The internal module `dblift.db.plugins.db2.parser._script`.** Use
   `DB2RegexParser().split()`.
 - `dblift.db.plugins.mysql.parser._script` (an internal module; use
