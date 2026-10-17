@@ -157,3 +157,36 @@ def test_analysis_names_no_object_whose_name_holds_the_character(dialect, char, 
     names = {obj.name.lower() for stmt in analysis.statements for obj in stmt.objects}
     assert "t" not in names
     assert not any(" t " in f" {c.reason} ".lower() for c in analysis.cautions)
+
+
+# The analysis split trims blanks that end a statement, so a name that ends its statement is
+# seen without the character the engine reads as part of it.
+ALL_BLANKS = [c for c in map(chr, range(0x80, 0x10000)) if c.isspace()]
+TAIL_DIALECTS = ("postgresql", "mysql", "mariadb", "oracle", "db2", "redshift", "cockroachdb")
+
+
+def test_there_are_19_trailing_blanks():
+    assert len(ALL_BLANKS) == 19
+
+
+@pytest.mark.parametrize("dialect", TAIL_DIALECTS)
+@pytest.mark.parametrize("char", ALL_BLANKS, ids=lambda c: f"U+{ord(c):04X}")
+@pytest.mark.parametrize(
+    "sql",
+    ["CREATE SEQUENCE q{c};", "CREATE SEQUENCE q{c}", "CREATE TABLE t{c}", "CREATE TABLE t{c};\n"],
+)
+def test_undo_of_a_name_that_ends_its_statement_is_manual_review(tmp_path, dialect, char, sql):
+    _assert_manual_review(_undo(tmp_path, dialect, sql.format(c=char)))
+
+
+@pytest.mark.parametrize("dialect", TAIL_DIALECTS)
+@pytest.mark.parametrize("char", ALL_BLANKS, ids=lambda c: f"U+{ord(c):04X}")
+@pytest.mark.parametrize(
+    "sql", ["DROP TABLE t{c};", "TRUNCATE TABLE t{c};", "DELETE FROM t{c};", "DROP TABLE t{c}"]
+)
+def test_analysis_of_a_name_that_ends_its_statement_names_nothing(dialect, char, sql):
+    analysis = analyse_script(sql.format(c=char), dialect)
+    names = {obj.name.lower() for stmt in analysis.statements for obj in stmt.objects}
+    assert "t" not in names
+    assert not any(" t " in f" {c.reason} ".lower() for c in analysis.cautions)
+    assert analysis.cautions, "the statement still deserves its caution"
