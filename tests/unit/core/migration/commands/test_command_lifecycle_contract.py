@@ -434,7 +434,7 @@ def _migrate_strict_mode_error():
     from dblift.core.migration.state.migration_state_manager import StrictModeError
 
     command = _migrate_command()
-    command._enforce_strict_ordering = MagicMock(side_effect=StrictModeError("out of order"))
+    command.state_manager.plan_migrate = MagicMock(side_effect=StrictModeError("out of order"))
     return command, lambda: command.execute(Path("/migrations"))
 
 

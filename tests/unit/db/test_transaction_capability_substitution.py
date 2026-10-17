@@ -19,6 +19,7 @@ from dblift.core.migration.sql.execution_statement import ExecutionStatement
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.db.base_quirks import BaseQuirks
 from dblift.db.provider_interfaces import DroppableObject, TransactionalProvider
+from tests.unit.core.migration.commands._plan_migrate_wiring import wire_plan_migrate
 
 
 class NonTransactionalProvider:
@@ -142,6 +143,7 @@ def test_mark_as_executed_persists_without_transaction_methods(tmp_path):
     cmd._log_command_header_update = lambda *args, **kwargs: None
     cmd.migration_helpers.setup_migration_parameters.return_value = (True, None)
     cmd._update_final_state = lambda *args, **kwargs: None
+    wire_plan_migrate(cmd.state_manager)
     cmd.state_manager.get_current_version.return_value = None
     cmd.state_manager.build_state.return_value.executable_pending_objects.return_value = [
         migration()

@@ -11,6 +11,7 @@ from dblift.core.migration.commands.migrate_command import MigrateCommand
 from dblift.core.migration.migration import MigrationType
 from dblift.core.migration.state.migration_display_state import MigrationDisplayState
 from dblift.core.migration.state.migration_state import MigrationEntry, MigrationState
+from tests.unit.core.migration.commands._plan_migrate_wiring import wire_plan_migrate
 
 
 def _migration(script_name, version, type_=MigrationType.SQL):
@@ -60,7 +61,7 @@ def _make_cmd(state, *, strict_mode=False):
     history_manager = MagicMock()
     history_manager.get_applied_migration_records.return_value = []
 
-    state_manager = MagicMock()
+    state_manager = wire_plan_migrate(MagicMock())
     state_manager.build_state.return_value = state
     state_manager.get_current_version.return_value = None
     state_manager.apply_filters_to_migrations.side_effect = lambda migrations, **kwargs: list(
@@ -156,3 +157,14 @@ class TestMigrateSelectsPendingFromCatalog(unittest.TestCase):
         self.assertIn("Strict mode: out-of-order migration", result.error_message or "")
         self.assertNotIn("Migration operation failed", result.error_message or "")
         cmd.execution_engine.execute_migration.assert_not_called()
+
+    def test_strict_mode_failure_still_reports_the_current_schema_version(self):
+        out_of_order = _migration("V1.5__late.sql", "1.5")
+        state = _catalog_state((out_of_order, MigrationDisplayState.PENDING.value))
+        cmd = _make_cmd(state, strict_mode=True)
+        cmd.state_manager.get_current_version.return_value = "2"
+
+        result = _execute(cmd)
+
+        self.assertFalse(result.success)
+        self.assertEqual(result.current_schema_version, "2")

@@ -20,7 +20,7 @@ from unittest.mock import MagicMock, patch
 # ---------------------------------------------------------------------------
 class TestStrictOutOfOrder(unittest.TestCase):
     def test_migrate_command_has_strict_out_of_order_messages(self) -> None:
-        import dblift.core.migration.commands.migrate_command as mod
+        import dblift.core.migration.state.migrate_plan as mod
 
         src = Path(mod.__file__).read_text()
         self.assertIn("Strict mode: out-of-order migration", src)
