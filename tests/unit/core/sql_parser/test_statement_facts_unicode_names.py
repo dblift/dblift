@@ -132,6 +132,16 @@ def test_token_error_names_nothing_with_an_unread_character(dialect, shape, char
         assert analyze_dml(sql, sqlglot_dialect=dialect).table == ""
 
 
+@pytest.mark.parametrize("dialect", ("postgres", "mysql", "oracle", "tsql", "redshift", "snowflake"))
+@pytest.mark.parametrize("shape", ("delete", "update", "insert"))
+def test_dml_analysis_of_the_other_dialects_is_unchanged(dialect, shape):
+    # Only SQLite and DuckDB read statement facts for this analysis; the other dialects keep
+    # their previous reading, which still names the target next to a no-break space.
+    _, template = UNTERMINATED[shape]
+
+    assert analyze_dml(template.format(c=chr(0xA0)), sqlglot_dialect=dialect).table == "u"
+
+
 @pytest.mark.parametrize("char", UNREAD, ids=IDS)
 def test_token_error_on_duckdb_names_nothing(char):
     facts = ProviderRegistry.get_quirks("duckdb").statement_facts(
@@ -262,3 +272,20 @@ def test_a_mysql_executable_comment_keeps_its_own_reading():
     facts = read_statement_facts("/*! SET @a = 1" + chr(0x2028) + "*/ SELECT 1", dialect="mysql")
 
     assert facts.diagnostic == "mysql executable comment is opaque to statement facts"
+
+
+NESTED_THEN_BLANK = "DELETE FROM t /* a /* b */{c}WHERE a = 1 */"
+
+
+@pytest.mark.parametrize("dialect", ("sqlite", "mysql", "oracle", "snowflake"))
+def test_a_blank_after_the_first_closer_is_outside_a_comment_that_does_not_nest(dialect):
+    facts = read_statement_facts(NESTED_THEN_BLANK.format(c=chr(0xA0)), dialect=dialect)
+
+    assert facts.objects == () and facts.opaque
+
+
+@pytest.mark.parametrize("dialect", ("postgres", "tsql", "redshift"))
+def test_a_blank_after_the_first_closer_is_inside_a_comment_that_nests(dialect):
+    facts = read_statement_facts(NESTED_THEN_BLANK.format(c=chr(0xA0)), dialect=dialect)
+
+    assert [o.name for o in facts.objects] == ["t"]
