@@ -6,6 +6,7 @@ import logging
 
 import pytest
 
+from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.sql_parser.parser_factory import SqlParserFactory
 from dblift.core.sql_parser.unread_names import names_unreadable, statement_sources
@@ -161,11 +162,16 @@ def test_a_statement_that_cannot_be_located_in_its_script_is_withheld(dialect):
 )
 def test_a_name_that_ends_its_statement_is_read_with_the_blank_the_split_trimmed(dialect, sql):
     script = sql.format(c=NBSP)
+    if dialect == "oracle":  # the driver would strip it and the engine rejects it: refused
+        with pytest.raises(UnsafeStatementSplitError):
+            SqlParserFactory(dialect).extract_objects(script)
+        return
     assert SqlParserFactory(dialect).extract_objects(script) == []
     assert all(s.names_unread for s in SqlParserFactory(dialect).parse_sql(script).statements)
 
 
-# The scanner's raw span for a name that ends the script: whether the script's last character is in it.
+# The scanner's raw span for a name that ends the script. Oracle refuses a no-break space there, so
+# its case uses an ideographic space, which it reads as a blank.
 SPAN_SCANNERS = (
     "postgresql",
     "redshift",
@@ -178,10 +184,14 @@ SPAN_SCANNERS = (
 )
 
 
+def _ending_blank(dialect):
+    return chr(0x3000) if dialect == "oracle" else NBSP
+
+
 @pytest.mark.parametrize("dialect", SPAN_SCANNERS)
 def test_the_scanner_span_of_a_name_that_ends_the_script_holds_the_blank_except_for_oracle(dialect):
     """Green pin: only Oracle's last record ends at its last token, which is why the extension stays."""
-    script = f"DROP TABLE t{NBSP}"
+    script = f"DROP TABLE t{_ending_blank(dialect)}"
     records = SqlParserFactory(dialect).get_parser().regex_parser.split(script)
     assert len(records) == 1
     span = script[records[0].source_start : records[0].source_end]
@@ -191,7 +201,7 @@ def test_the_scanner_span_of_a_name_that_ends_the_script_holds_the_blank_except_
 @pytest.mark.parametrize("dialect", SPAN_SCANNERS)
 def test_statement_sources_returns_the_untrimmed_text_of_a_name_that_ends_the_script(dialect):
     """Green pin: the span is the whole script for every dialect, Oracle's through the extension."""
-    script = f"DROP TABLE t{NBSP}"
+    script = f"DROP TABLE t{_ending_blank(dialect)}"
     scanner = SqlParserFactory(dialect).get_parser().regex_parser
     statements = SqlAnalyzer(dialect).split_statements_for_analysis(script)
     assert statement_sources(scanner, script, statements) == [script]

@@ -196,10 +196,11 @@ def test_a_statement_edge_loses_only_the_characters_of_text_blanks(
         warnings.simplefilter("ignore")
         recorded = record_script(dialect, POSITIONS[position].format(c=char))[view]
     inside = char in TEXT_BLANKS[dialect]
-    if isinstance(recorded, dict):
-        # Oracle refuses an edge character its driver would strip, rather than send it without it
-        assert dialect == "oracle" and char.isspace() and not inside, recorded
+    if dialect == "oracle" and char.isspace() and not inside:
+        # python-oracledb would strip the character and the engine rejects it: refused, not kept
+        assert isinstance(recorded, dict), recorded
         return
+    assert not isinstance(recorded, dict), recorded
     text = find_statement(recorded)
     body = "DROP TABLE t"
     expected = body if inside else (char + body if position == "leading" else body + char)

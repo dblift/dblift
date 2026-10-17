@@ -13,8 +13,10 @@ import warnings
 
 import pytest
 
+from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.core.migration.scripting.undo_script_generator._generator import UndoScriptGenerator
 from dblift.core.migration.sql.script_analysis import analyse_script
+from dblift.db.plugins.oracle.parser.lexical_spec import ORACLE_SPEC
 
 LEGACY = (
     "postgresql",
@@ -59,6 +61,11 @@ def _quiet():
         warnings.simplefilter("ignore")
         yield
     logging.disable(logging.NOTSET)
+
+
+def refused(dialect: str, char: str) -> bool:
+    """Oracle's driver strips an edge character its engine does not read as a blank: refused."""
+    return dialect == "oracle" and char.isspace() and char not in ORACLE_SPEC.text_blanks
 
 
 def _undo(tmp_path, dialect: str, sql: str) -> str:
@@ -176,6 +183,10 @@ def test_there_are_19_trailing_blanks():
     ["CREATE SEQUENCE q{c};", "CREATE SEQUENCE q{c}", "CREATE TABLE t{c}", "CREATE TABLE t{c};\n"],
 )
 def test_undo_of_a_name_that_ends_its_statement_is_manual_review(tmp_path, dialect, char, sql):
+    if refused(dialect, char):
+        with pytest.raises(UnsafeStatementSplitError):
+            _undo(tmp_path, dialect, sql.format(c=char))
+        return
     _assert_manual_review(_undo(tmp_path, dialect, sql.format(c=char)))
 
 
@@ -185,6 +196,9 @@ def test_undo_of_a_name_that_ends_its_statement_is_manual_review(tmp_path, diale
     "sql", ["DROP TABLE t{c};", "TRUNCATE TABLE t{c};", "DELETE FROM t{c};", "DROP TABLE t{c}"]
 )
 def test_analysis_of_a_name_that_ends_its_statement_names_nothing(dialect, char, sql):
+    if refused(dialect, char):  # the script is not parsed: nothing is named
+        assert not analyse_script(sql.format(c=char), dialect).statements
+        return
     analysis = analyse_script(sql.format(c=char), dialect)
     names = {obj.name.lower() for stmt in analysis.statements for obj in stmt.objects}
     assert "t" not in names
@@ -224,6 +238,10 @@ def test_the_unparsed_fallback_of_a_script_reads_the_blanks_the_split_trimmed(di
         success=False, statements=[], errors=["x"]
     )
     migration = SimpleNamespace(content=f"CREATE SEQUENCE q{chr(0xA0)};\n")
+    if refused(dialect, chr(0xA0)):
+        with pytest.raises(UnsafeStatementSplitError):
+            generator._generate_undo_statements(migration)
+        return
     (undo,) = generator._generate_undo_statements(migration)
     assert undo.requires_manual_review and "DROP" not in undo.sql
 
@@ -245,12 +263,19 @@ BYPASS_CHARS = (" ", " ")
     ],
 )
 def test_undo_of_a_statement_whose_text_also_stands_in_a_comment(tmp_path, dialect, char, script):
+    if refused(dialect, char):
+        with pytest.raises(UnsafeStatementSplitError):
+            _undo(tmp_path, dialect, script.format(c=char))
+        return
     _assert_manual_review(_undo(tmp_path, dialect, script.format(c=char)))
 
 
 @pytest.mark.parametrize("dialect", BYPASS_DIALECTS)
 @pytest.mark.parametrize("char", BYPASS_CHARS, ids=lambda c: f"U+{ord(c):04X}")
 def test_analysis_of_a_statement_whose_text_also_stands_in_a_comment(dialect, char):
+    if refused(dialect, char):  # the script is not parsed: nothing is named
+        assert not analyse_script(f"-- DROP TABLE t\nDROP TABLE t{char};", dialect).statements
+        return
     analysis = analyse_script(f"-- DROP TABLE t\nDROP TABLE t{char};", dialect)
     assert not [obj for stmt in analysis.statements for obj in stmt.objects]
     assert analysis.cautions and not any(" t " in f" {c.reason} " for c in analysis.cautions)

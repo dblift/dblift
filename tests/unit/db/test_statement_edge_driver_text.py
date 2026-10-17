@@ -117,8 +117,6 @@ RED = {
     ("mariadb", "end_of_file"): "the splitter strips the last character of the script",
     ("db2", "semicolon"): "the splitter and the provider strip the character before the terminator",
     ("db2", "end_of_file"): "the splitter and the provider strip the last character",
-    ("oracle", "semicolon"): "the provider strips the character before it removes the terminator",
-    ("oracle", "end_of_file"): "the splitter and the provider strip the last character",
     ("snowflake", "semicolon"): "the parser strips the character before the terminator",
     ("snowflake", "end_of_file"): "the parser strips the last character of the script",
     ("duckdb", "semicolon"): "the splitter keeps a no-break space the shell reads as a blank",
@@ -178,9 +176,6 @@ ORACLE_STRIPPED_BY_THE_DRIVER = {
 }
 
 
-@pytest.mark.xfail(
-    strict=True, reason="the driver is handed the statement with the character removed"
-)
 @pytest.mark.parametrize(
     "script", ORACLE_STRIPPED_BY_THE_DRIVER.values(), ids=ORACLE_STRIPPED_BY_THE_DRIVER
 )
@@ -196,9 +191,6 @@ def test_oracle_never_sends_the_driver_stripped_form(script: str) -> None:
     assert refusal is not None and f"U+{ord(edge):04X}" in str(refusal)
 
 
-@pytest.mark.xfail(
-    strict=True, reason="the trim removes the no-break space inside the trailing comment"
-)
 def test_oracle_sends_a_trailing_comment_with_its_blank() -> None:
     text = f"SELECT 1 FROM dual -- note{NBSP}"
     assert drive("oracle", text) == [text]
@@ -253,9 +245,6 @@ def test_duckdb_returning_rewrite_keeps_a_final_no_break_space() -> None:
     assert result is None
 
 
-@pytest.mark.xfail(
-    strict=True, reason="the driver is handed the statement with the no-break space removed"
-)
 @pytest.mark.parametrize("method", ["execute_statement", "execute_query"])
 def test_oracle_provider_refuses_a_text_the_driver_would_strip(method: str) -> None:
     """The provider is called directly, with no splitter in front of it."""

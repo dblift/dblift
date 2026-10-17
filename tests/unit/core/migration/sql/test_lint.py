@@ -289,8 +289,16 @@ def _delta_findings(tmp_path: Path, dialect: str, drop: str):
     return results[1].findings
 
 
-@pytest.mark.parametrize("dialect", ["sqlite", "duckdb", "postgresql", "mysql", "oracle"])
-@pytest.mark.parametrize("blank", [" ", "　"])
+# Oracle reads an ideographic space as a blank (the name is read whole) and refuses a no-break space
+# (the script is not parsed): neither leaves an unreadable name for the lint to report.
+@pytest.mark.parametrize(
+    "dialect,blank",
+    [
+        (dialect, blank)
+        for dialect in ["sqlite", "duckdb", "postgresql", "mysql"]
+        for blank in [chr(0xA0), chr(0x3000)]
+    ],
+)
 def test_a_drop_whose_name_cannot_be_read_is_not_exempted_as_a_new_table(
     tmp_path: Path, dialect: str, blank: str
 ):

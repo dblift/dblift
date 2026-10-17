@@ -137,5 +137,6 @@ ORACLE_SPEC = LexicalSpec(
         policy_projection=("WHENEVER SQLERROR",),
         substitution_char="&",
         exec_wrapper=("BEGIN ", "; END;"),
+        driver_strips_edges=True,
     ),
 )

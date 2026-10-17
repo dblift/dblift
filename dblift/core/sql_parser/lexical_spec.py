@@ -67,6 +67,9 @@ class ClientScriptRules:
     policy_projection: Tuple[str, ...]
     substitution_char: str
     exec_wrapper: Tuple[str, str]
+    #: The driver removes every white space character from both ends of a statement before it
+    #: sends it: an edge character outside ``text_blanks`` is refused instead of sent without it.
+    driver_strips_edges: bool
 
 
 @dataclass(frozen=True)

@@ -7,6 +7,7 @@ from dblift.core.sql_parser.base_statement_parser import BaseStatementParser
 from dblift.core.sql_parser.batch_script import BatchScript
 from dblift.core.sql_parser.client_script import ClientScript
 from dblift.core.sql_parser.delimiter_script import DelimiterScript
+from dblift.core.sql_parser.driver_strip import refuse_edges_the_driver_strips
 from dblift.core.sql_parser.lexical_spec import BOM, LexicalSpec
 from dblift.core.sql_parser.parser_context import ParserContext
 from dblift.core.sql_parser.segment_script import SegmentScript
@@ -34,6 +35,7 @@ class LexicalStatementParser(BaseStatementParser):
         self.spec = spec
         self.TERMINATOR_RESPECTS_PARENS = spec.terminator_respects_parens
         self.text_blanks = spec.text_blanks
+        self._comments: Sequence[Tuple[int, int]] = comments or ()
         self._head: List[str] = []
         self._head_limit = max(map(len, spec.routine_heads), default=0)
         self._previous: Optional[Token] = None
@@ -192,6 +194,16 @@ class LexicalStatementParser(BaseStatementParser):
                     first = next((t for t in current if t.type != TokenType.COMMENT), None)
                     if self._script is not None and first is not None:
                         text = self._script.substitute(text, first.line)
+                        if self._script.rules.driver_strips_edges and self.source is not None:
+                            refuse_edges_the_driver_strips(
+                                self.source,
+                                current,
+                                self._comments,
+                                self.text_blanks,
+                                floor=(records[-1][0].source_end or 0) if records else 0,
+                                end=end_pos,
+                                terminator=terminator,
+                            )
                     records.append(self._record(current, text, terminator, end_pos))
             current.clear()
             self.context.reset_for_new_statement()
