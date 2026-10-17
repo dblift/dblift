@@ -498,3 +498,45 @@ def test_first_party_plugins_round_trip_through_full_discovery(_reset_registry):
         "snowflake",
     ):
         assert dialect in ProviderRegistry._plugins or dialect in ProviderRegistry._pending
+
+
+def _scan_counting_entry_points(candidates, scans):
+    def entry_points(*, group):
+        if group == ProviderRegistry.ENTRY_POINT_GROUP:
+            scans.append(group)
+            return candidates
+        return []
+
+    return entry_points
+
+
+def test_discovery_latches_when_no_entry_point_is_valid(_reset_registry):
+    """With every entry point rejected (or none installed) the bundled plugins
+    still resolve, so repeated lookups must not rescan installed distributions."""
+    invalid = SimpleNamespace(name="foreign", value="foreign:PLUGIN", load=lambda: object())
+    scans: list = []
+
+    with patch(
+        "importlib.metadata.entry_points",
+        side_effect=_scan_counting_entry_points([invalid], scans),
+    ):
+        for dialect in ("sqlite", "postgresql", "mysql"):
+            assert ProviderRegistry.get_plugin_info(dialect) is not None
+
+    assert len(scans) == 1
+    assert ProviderRegistry._discovered is True
+
+
+def test_rejected_entry_point_is_warned_once_across_lookups(_reset_registry, caplog):
+    invalid = SimpleNamespace(name="foreign", value="foreign:PLUGIN", load=lambda: object())
+
+    with patch(
+        "importlib.metadata.entry_points",
+        side_effect=_scan_counting_entry_points([invalid], []),
+    ):
+        with caplog.at_level("WARNING"):
+            for dialect in ("sqlite", "postgresql", "mysql"):
+                ProviderRegistry.get_plugin_info(dialect)
+
+    warnings = [r for r in caplog.records if "foreign" in r.getMessage()]
+    assert len(warnings) == 1
