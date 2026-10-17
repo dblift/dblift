@@ -47,6 +47,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   peak; a 1 MiB multi-line string literal went from 0.39 s and 18 MB to 1.33 s
   and 189 MB, and the peak of a 1 MiB routine body from 16 MB to 102 MB. A
   77-byte migration went from about 44 to about 50 microseconds.
+- **`undo` execution times include before-each callback time.** `undo` now measures each
+  script from before its before-each callbacks run, as `migrate` already does.
 
 ### Fixed
 
@@ -61,6 +63,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   read. It used to report that nothing needed repairing.
 - **`baseline` rolls back when writing the baseline row fails.** It now rolls back its
   transaction instead of leaving it open.
+- **`migrate` reports a migration that raises an error.** It now emits
+  `migration.script.failed` when a migration raises an error. A failing before-each
+  callback no longer closes a journal entry that was never opened.
 
 ### Removed
 

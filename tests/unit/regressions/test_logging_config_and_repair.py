@@ -149,11 +149,11 @@ class TestScriptEventsEmitted(unittest.TestCase):
         self.assertEqual(len(received), 1)
         self.assertEqual(received[0].script, "V1__x.sql")
 
-    def test_migrate_command_imports_helper(self) -> None:
-        import dblift.core.migration.commands.migrate_command as mod
+    def test_script_runner_imports_helper(self) -> None:
+        import dblift.core.migration.commands._script_runner as mod
 
         src = Path(mod.__file__).read_text()
-        self.assertIn("_emit_script_event", src)
+        self.assertIn("emit_script_event", src)
         self.assertIn("migration.script.started", src)
         self.assertIn("migration.script.completed", src)
         self.assertIn("migration.script.failed", src)

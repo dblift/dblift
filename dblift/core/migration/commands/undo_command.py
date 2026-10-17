@@ -2,24 +2,31 @@
 Undo command implementation.
 """
 
-import time
+from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 if TYPE_CHECKING:
     pass
 
-from dblift.core.constants import SECONDS_TO_MILLISECONDS
 from dblift.core.logger.results import MigrationInfo, MigrationSqlInfo, UndoResult
 from dblift.core.migration.formats.migration_format import MigrationFormat
-from dblift.core.migration.migration import MigrationType
+from dblift.core.migration.migration import Migration, MigrationType
 from dblift.core.migration.rules.migration_rules import expand_undo_set_to_groups
 from dblift.core.migration.state.migration_display_state import MigrationDisplayState
 from dblift.core.migration.state.rank_wins import installed_rank, latest_successful_ranks
 from dblift.core.migration.version_utils import compare_versions, is_migration_success
 
-from ._script_events import emit_script_event as _emit_script_event
+from ._script_runner import ScriptRunner, ScriptRunPolicy
 from .base_command import BaseCommand, PreflightConnectionError
+
+UNDO_POLICY = ScriptRunPolicy(
+    before_events=("beforeEach",),
+    after_events=("afterEach",),
+    error_event="afterUndoError",
+    failure_prefix="Undo failed",
+    completed_events=("migration.script.completed", "undo.script.rolled_back"),
+)
 
 
 class UndoCommand(BaseCommand):
@@ -87,6 +94,27 @@ class UndoCommand(BaseCommand):
                 statements=[],
             )
         )
+
+    def _record_undone(
+        self,
+        migration: Migration,
+        undo_migration: Migration,
+        result: UndoResult,
+        execution_time: int,
+    ) -> None:
+        """Add the undone migration to the result (under the undo script name) and log it."""
+        result.add_undone_migration(
+            MigrationInfo(
+                script=undo_migration.script_name,
+                version=migration.version,
+                description=f"Undo: {migration.description}",
+                type="UNDO_SQL",
+                status="UNDONE",
+                execution_time=execution_time,
+                checksum=migration.checksum,
+            )
+        )
+        self.log.info(f"Successfully undone migration {migration.script_name}")
 
     def execute(
         self,
@@ -350,160 +378,25 @@ class UndoCommand(BaseCommand):
                 return result
 
             # Execute undo for each migration
+            runner = ScriptRunner(self, UNDO_POLICY)
             for migration, undo_migration in undo_plan:
-                # Initialize variables to avoid NameError in exception handler
-                start_time = None
-                journal_started = False
+                if show_sql:
+                    self._add_visible_sql(undo_migration, result)
+                    if result.error_message:
+                        break
 
-                try:
-                    # Execute beforeEach callbacks
-                    self._fire("beforeEach")
-
-                    start_time = time.time()
-
-                    # Start journal tracking for undo migration (use undo script name for journal)
-                    if self.journal:
-                        self.journal.start_migration(
-                            undo_migration.script_name,
-                            details={
-                                "version": undo_migration.version,
-                                "description": undo_migration.description,
-                                "type": undo_migration.type.value if undo_migration.type else "SQL",
-                            },
-                        )
-                        journal_started = True
-
-                    if show_sql:
-                        self._add_visible_sql(undo_migration, result)
-                        if result.error_message:
-                            if self.journal and journal_started:
-                                execution_time = int(
-                                    (time.time() - start_time) * SECONDS_TO_MILLISECONDS
-                                )
-                                self.journal.end_migration(
-                                    undo_migration.script_name,
-                                    success=False,
-                                    error_message=result.error_message,
-                                    execution_time=execution_time,
-                                )
-                                journal_started = False
-                            break
-
-                    _undo_script_data = {
+                success = runner.run(
+                    undo_migration,
+                    result,
+                    event_data={
                         "script": undo_migration.script_name,
                         "version": migration.version,
                         "description": f"Undo: {migration.description}",
                         "type": "UNDO_SQL",
-                    }
-                    _emit_script_event("migration.script.started", _undo_script_data)
-                    self.execution_engine.execute_migration(undo_migration, result)
-                    execution_time = int((time.time() - start_time) * SECONDS_TO_MILLISECONDS)
-
-                    if result.error_message:
-                        if self.journal and journal_started:
-                            self.journal.end_migration(
-                                undo_migration.script_name,
-                                success=False,
-                                error_message=result.error_message,
-                                execution_time=execution_time,
-                            )
-                            journal_started = False
-                        _emit_script_event(
-                            "migration.script.failed",
-                            {
-                                "script": undo_migration.script_name,
-                                "version": migration.version,
-                                "error": result.error_message,
-                                "execution_time": execution_time,
-                            },
-                        )
-                        self._fire("afterUndoError")
-                        break
-
-                    # End journal tracking for undo migration (use undo script name for journal)
-                    if self.journal:
-                        self.journal.end_migration(
-                            undo_migration.script_name, success=True, execution_time=execution_time
-                        )
-                        journal_started = False
-
-                    # Create MigrationInfo for the undone migration (use undo script name)
-                    migration_info = MigrationInfo(
-                        script=undo_migration.script_name,
-                        version=migration.version,
-                        description=f"Undo: {migration.description}",
-                        type="UNDO_SQL",
-                        status="UNDONE",
-                        execution_time=execution_time,
-                        checksum=migration.checksum,
-                    )
-                    result.add_undone_migration(migration_info)
-
-                    _emit_script_event(
-                        "migration.script.completed",
-                        {**_undo_script_data, "execution_time": execution_time},
-                    )
-                    _emit_script_event(
-                        "undo.script.rolled_back",
-                        {**_undo_script_data, "execution_time": execution_time},
-                    )
-
-                    self.log.info(f"Successfully undone migration {migration.script_name}")
-
-                    # Execute afterEach callbacks after successful undo
-                    self._fire("afterEach")
-
-                except Exception as e:
-                    # Only log if error_message is not already set (execute_migration already logged it)
-                    if not result.error_message:
-                        self.log.error(f"Failed to undo migration {migration.script_name}: {e}")
-                        error_message = str(e)
-                    else:
-                        # Error was already logged by execute_migration, just use the existing message
-                        error_message = result.error_message
-
-                    # End journal tracking for a failed undo migration. The journal
-                    # entry was opened under ``undo_migration.script_name``; fall back
-                    # to ``migration.script_name`` only for the rare case where the
-                    # failure occurred before ``undo_migration`` was resolved, so the
-                    # journal entry is always closed.
-                    execution_time = 0
-                    if start_time is not None:
-                        execution_time = int((time.time() - start_time) * SECONDS_TO_MILLISECONDS)
-
-                    if "_undo_script_data" in locals():
-                        _emit_script_event(
-                            "migration.script.failed",
-                            {
-                                "script": getattr(
-                                    locals().get("undo_migration"),
-                                    "script_name",
-                                    migration.script_name,
-                                ),
-                                "version": migration.version,
-                                "error": error_message,
-                                "execution_time": execution_time,
-                            },
-                        )
-
-                    if self.journal and journal_started:
-                        journal_script_name = (
-                            undo_migration.script_name
-                            if undo_migration is not None
-                            else migration.script_name
-                        )
-                        self.journal.end_migration(
-                            journal_script_name,
-                            success=False,
-                            error_message=error_message,
-                            execution_time=execution_time,
-                        )
-
-                    # Only set error if not already set (execute_migration already set it)
-                    if not result.error_message:
-                        result.set_error(f"Undo failed: {e}")
-                    # Execute afterUndoError callbacks when undo fails
-                    self._fire("afterUndoError")
+                    },
+                    on_success=partial(self._record_undone, migration, undo_migration, result),
+                )
+                if not success:
                     break
 
             # If we reach here, all undo migrations completed successfully
