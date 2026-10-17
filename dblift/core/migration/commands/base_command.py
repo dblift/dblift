@@ -7,9 +7,10 @@ from __future__ import annotations
 import re
 import sys
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, Iterator, List, Optional
 
 from dblift.config import DbliftConfig
 from dblift.config.database_config import BaseDatabaseConfig
@@ -51,6 +52,9 @@ from ._script_events import emit_script_event as _emit_script_event
 # Message text for a schema-history DDL failure during preflight. The
 # raised type is PreflightConnectionError; the wording stays stable.
 SCHEMA_HISTORY_CREATE_ERROR_PREFIX = "Could not create the schema-history table"
+
+# Error reported by the commands that hold the migration lock when they cannot get it.
+MIGRATION_LOCK_REFUSAL = "Could not acquire migration lock - another migration may be running"
 
 # Shared by the CLI config validation and the command preflight.
 SCHEMA_REQUIRED_ERROR = (
@@ -888,6 +892,41 @@ class BaseCommand:
                     result,
                 ) from exc
         self._populate_database_info(result)
+
+    @contextmanager
+    def _migration_lock(self) -> Iterator[bool]:
+        """Hold the cross-process migration lock for the duration of the block.
+
+        Yields whether the lock was acquired; the caller reports a refusal. The
+        lock is released on every exit, including exceptions, and only when it
+        was acquired.
+        """
+        acquired = self.provider.acquire_migration_lock(
+            self.config.database.schema, wait_timeout_seconds=60
+        )
+        if not acquired:
+            yield False
+            return
+        self.log.info("Migration lock acquired successfully")
+        try:
+            yield True
+        finally:
+            try:
+                released = self.provider.release_migration_lock(self.config.database.schema)
+                if released is False:
+                    self.log.warning(
+                        "The migration lock was no longer held by this run "
+                        "(lost or already released); nothing to release"
+                    )
+                else:
+                    self.log.debug("Migration lock released successfully")
+            except Exception as release_e:
+                self.log.warning(f"Could not release migration lock: {release_e}")
+
+    def _migration_lock_lost(self) -> bool:
+        """Whether the provider reports the migration lock it holds as lost."""
+        lock_lost = getattr(self.provider, "migration_lock_lost", None)
+        return callable(lock_lost) and lock_lost() is True
 
     def _run_command_lifecycle(
         self,

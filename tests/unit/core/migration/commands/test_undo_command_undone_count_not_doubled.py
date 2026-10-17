@@ -101,6 +101,7 @@ def _make_command(applied_migrations, undo_scripts):
         migration_ui=MagicMock(),
         migration_rules=migration_rules,
     )
+    cmd.provider.migration_lock_lost.return_value = False
     cmd.journal = None
     cmd.placeholder_service = MagicMock()
     cmd.migration_helpers.setup_migration_parameters.return_value = (True, None)

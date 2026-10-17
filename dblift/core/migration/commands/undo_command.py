@@ -2,6 +2,7 @@
 Undo command implementation.
 """
 
+from contextlib import ExitStack
 from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
@@ -18,7 +19,7 @@ from dblift.core.migration.state.rank_wins import installed_rank, latest_success
 from dblift.core.migration.version_utils import compare_versions, is_migration_success
 
 from ._script_runner import ScriptRunner, ScriptRunPolicy
-from .base_command import BaseCommand, PreflightConnectionError
+from .base_command import MIGRATION_LOCK_REFUSAL, BaseCommand, PreflightConnectionError
 
 UNDO_POLICY = ScriptRunPolicy(
     before_events=("beforeEach",),
@@ -146,6 +147,9 @@ class UndoCommand(BaseCommand):
         if not dry_run:
             self._prepare_required_analysis()
 
+        # Held from before the plan is read until the state is rebuilt, so a
+        # migration cannot run on the schema in between. Dry run never locks.
+        lock = ExitStack()
         try:
             # Connect before reading history; a missing history table means
             # there are no applied migrations and must not create anything.
@@ -162,6 +166,19 @@ class UndoCommand(BaseCommand):
                 exclude_versions=exclude_versions,
                 show_sql=show_sql,
             )
+
+            # Without a history table there is nothing to undo; the lock would
+            # create objects in a schema that was never migrated.
+            if not dry_run and not self.history_manager.has_history_table:
+                self.log.info("No migrations to undo")
+                result.complete()
+                return result
+
+            if not dry_run and not lock.enter_context(self._migration_lock()):
+                self.log.error(MIGRATION_LOCK_REFUSAL)
+                result.set_error(MIGRATION_LOCK_REFUSAL)
+                self._log_command_completion("undo", result)
+                return result
 
             # Setup parameters
             use_recursive, use_additional_dirs = self.migration_helpers.setup_migration_parameters(
@@ -380,6 +397,16 @@ class UndoCommand(BaseCommand):
             # Execute undo for each migration
             runner = ScriptRunner(self, UNDO_POLICY)
             for migration, undo_migration in undo_plan:
+                if self._migration_lock_lost():
+                    # Another process may have taken the lock over; the undo in
+                    # flight could not be interrupted safely, the next must not start.
+                    message = (
+                        "The migration lock was lost (taken over by another process or "
+                        f"not renewable); stopping before {undo_migration.script_name}"
+                    )
+                    self.log.error(message)
+                    result.set_error(message)
+                    break
                 if show_sql:
                     self._add_visible_sql(undo_migration, result)
                     if result.error_message:
@@ -447,3 +474,5 @@ class UndoCommand(BaseCommand):
                 )
             self._log_command_completion("undo", result)
             return result
+        finally:
+            lock.close()

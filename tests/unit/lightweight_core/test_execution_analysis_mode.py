@@ -503,7 +503,8 @@ with DBLiftClient.from_config(config, migrations_dir=sql, logger=NullLog(), anal
     outcome = client.undo(target_version='0.0.0')
     assert not outcome.success
     assert "analysis_mode='full'" in outcome.error_message
-    assert not [query for query in observed if query.lstrip().upper().startswith(
+    assert not [query for query in observed if 'dblift_migration_lock' not in query
+                and query.lstrip().upper().startswith(
         ('CREATE', 'ALTER', 'DROP', 'INSERT', 'UPDATE', 'DELETE', 'REPLACE'))], observed
 """,
         blocked=("sqlglot", "rich", "jinja2"),
