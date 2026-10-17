@@ -305,13 +305,17 @@ def test_a_parameter_ends_at_its_digits_and_the_letters_start_a_word():
         dl(),
     ] + [kw("SELECT"), ident("2"), kw("AS"), kw("b"), dl()]
     assert [t for t in shape(one_dollar) if t == dl()] == [dl(), dl(), dl()]
-    assert shape("SELECT $1E'a\\';b'; SELECT 2;") == [
-        kw("SELECT"),
-        sym("$1"),
-        kw("E"),
-        st("'a\\';b'"),
-        dl(),
-    ] + SELECT_2
+    assert (
+        shape("SELECT $1E'a\\';b'; SELECT 2;")
+        == [
+            kw("SELECT"),
+            sym("$1"),
+            kw("E"),
+            st("'a\\';b'"),
+            dl(),
+        ]
+        + SELECT_2
+    )
 
 
 def test_a_parameter_is_digits_with_underscore_separators_or_a_name():

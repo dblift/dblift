@@ -426,9 +426,7 @@ CASES = [
     ),
 ]
 IDS = [case[0] for case in CASES]
-KNOWN_GAPS = frozenset(
-    {"74", "75"}
-)  # the splitter differs from DuckDB there (see the spec)
+KNOWN_GAPS = frozenset({"74", "75"})  # the splitter differs from DuckDB there (see the spec)
 
 
 def outcome(call, script):
@@ -535,7 +533,9 @@ def test_a_refusal_comes_before_any_record():
     "tail",
     ["a$$x; DROP TABLE t; SELECT 3 AS y$$;", "a$x$x; DROP TABLE t; SELECT 3 AS y$x$;"],
 )
-@pytest.mark.parametrize("lead", ["SELECT 1", "SELECT 1_000", "SELECT 1.5", "SELECT 1e5", "SELECT 0"])
+@pytest.mark.parametrize(
+    "lead", ["SELECT 1", "SELECT 1_000", "SELECT 1.5", "SELECT 1e5", "SELECT 0"]
+)
 def test_a_number_then_a_name_is_cut_where_the_driver_cuts(lead, tail):
     import duckdb
 
