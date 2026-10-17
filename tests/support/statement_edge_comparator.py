@@ -80,8 +80,14 @@ def _check_text(old: str, new: str, blanks: str) -> None:
         raise _Mismatch(len(new), "an edge run of the old text is gone or was replaced")
 
 
-def _check_claims(script: str, texts: List[str], blanks: str) -> None:
-    """Each kept edge run is the script's own characters, next to its core, claimed once."""
+class _Unlocated(Exception):
+    def __init__(self, index: int):
+        super().__init__(index)
+        self.index = index
+
+
+def _claims(script: str, texts: List[str], changed: List[bool], blanks: str) -> None:
+    """Walk ``texts`` through ``script``; raise ``_Unlocated`` for a changed text it cannot find."""
     edge = frozenset(_WHITESPACE | set(blanks))
     cursor = 0
     for index, text in enumerate(texts):
@@ -94,6 +100,8 @@ def _check_claims(script: str, texts: List[str], blanks: str) -> None:
                 raise _Mismatch(
                     0, "the statement's characters were already kept by a previous one", index
                 )
+            if changed[index]:
+                raise _Unlocated(index)
             continue
         if script[at - len(lead) : at] != lead:
             raise _Mismatch(0, "the kept leading run is not what the script holds there", index)
@@ -105,6 +113,33 @@ def _check_claims(script: str, texts: List[str], blanks: str) -> None:
                 index,
             )
         cursor = after + len(trail)
+
+
+def _readings(script: str) -> List[str]:
+    """The script, then as a splitter may rewrite it: psql backslash-semicolon as `;`, CRLF as LF."""
+    return [script, script.replace("\\;", ";"), script.replace("\r\n", "\n")]
+
+
+def _check_claims(script: str, old: List[str], texts: List[str], blanks: str) -> None:
+    """Each kept edge run is the script's own characters, next to its core, claimed once.
+
+    A text that changed and is found in none of the script's readings is reported; an unchanged
+    one is not looked for.
+    """
+    changed = [before != after for before, after in zip(old, texts)]
+    readings = _readings(script)
+    for reading in readings[:-1]:
+        try:
+            _claims(reading, texts, changed, blanks)
+            return
+        except _Unlocated:
+            continue
+    try:
+        _claims(readings[-1], texts, changed, blanks)
+    except _Unlocated as missing:
+        raise _Mismatch(
+            0, "the statement's core is not found in the script", missing.index
+        ) from None
 
 
 def _check_statements(old: Any, new: Any, blanks: str, script: Optional[str] = None) -> None:
@@ -120,7 +155,7 @@ def _check_statements(old: Any, new: Any, blanks: str, script: Optional[str] = N
         except _Mismatch as found:
             raise _Mismatch(found.offset, found.detail, index) from None
     if script is not None:
-        _check_claims(script, list(new), blanks)
+        _check_claims(script, list(old), list(new), blanks)
 
 
 def _leading(text: str, blanks: str) -> str:
@@ -134,13 +169,20 @@ def _span_runs(script: str, record: Dict[str, Any], blanks: str) -> Optional[Tup
     if terminator and span.endswith(terminator):
         span = span[: -len(terminator)]
     core = _runs(record["text"], frozenset(_WHITESPACE | set(blanks)))[1]
-    at = span.find(core) if core else -1
-    return None if at < 0 else (span[:at], span[at + len(core) :])
+    for reading in _readings(span):
+        at = reading.find(core) if core else -1
+        if at >= 0:
+            return reading[:at], reading[at + len(core) :]
+    return None
 
 
-def _check_span(script: str, old: Dict[str, Any], new: Dict[str, Any], blanks: str) -> None:
-    """The new span shows the runs the new text shows; a span that stopped short stays short."""
-    after, before = _span_runs(script, new, blanks), _span_runs(script, old, blanks)
+def _check_span(script: str, new: Dict[str, Any], blanks: str) -> None:
+    """The new span shows the runs the new text shows.
+
+    A span that stops before the text's trailing run (a record ends at its last token) is not judged
+    here: the slice check in ``_check_record`` rejects it unless the old span stopped there too.
+    """
+    after = _span_runs(script, new, blanks)
     if after is None:
         return
     edge = frozenset(_WHITESPACE | set(blanks))
@@ -148,7 +190,7 @@ def _check_span(script: str, old: Dict[str, Any], new: Dict[str, Any], blanks: s
     span_lead, span_trail = after
     if span_lead != text_lead:
         raise _Mismatch(None, "span: its leading characters differ from the text's kept run")
-    if span_trail != text_trail and not (span_trail == "" and before and before[1] == ""):
+    if span_trail != text_trail and span_trail != "":
         raise _Mismatch(None, "span: its trailing characters differ from the text's kept run")
 
 
@@ -181,7 +223,7 @@ def _check_record(script: str, old: Dict[str, Any], new: Dict[str, Any], blanks:
     except _Mismatch as found:
         raise _Mismatch(found.offset, f"span: {found.detail}") from None
     if old != new:
-        _check_span(script, old, new, blanks)
+        _check_span(script, new, blanks)
     shift = _leading(new["text"], blanks).count("\n") - _leading(old["text"], blanks).count("\n")
     if old["line"] != new["line"] + shift:
         raise _Mismatch(
@@ -203,7 +245,7 @@ def _check_records(script: str, old: Any, new: Any, blanks: str) -> None:
         except _Mismatch as found:
             raise _Mismatch(found.offset, found.detail, index) from None
     try:
-        _check_claims(script, [r["text"] for r in new], blanks)
+        _check_claims(script, [r["text"] for r in old], [r["text"] for r in new], blanks)
     except _Mismatch as found:
         raise _Mismatch(found.offset, found.detail, found.statement) from None
 

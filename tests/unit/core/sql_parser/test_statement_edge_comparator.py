@@ -254,7 +254,7 @@ def test_a_kept_character_claimed_twice_in_a_row_is_reported() -> None:
     old = recording(script, ["SELECT 1", "SELECT 2"], ["SELECT 1", "SELECT 2"])
     new = recording(script, ["SELECT 1" + NBSP, NBSP + "SELECT 2"], ["SELECT 1", "SELECT 2"])
     [found] = compare_recordings(old, new, BLANKS)
-    assert found.view == "execution" and found.statement == 1
+    assert found.view == "execution" and found.statement == 1 and "already kept" in found.detail
 
 
 def test_a_record_whose_text_keeps_a_leading_run_but_whose_span_did_not_move_is_reported() -> None:
@@ -324,3 +324,60 @@ def test_one_character_of_the_script_cannot_be_kept_by_two_records() -> None:
     )
     [found] = compare_recordings(old, new, BLANKS)
     assert found.view == "records" and found.statement == 1
+
+
+def test_a_span_that_no_longer_reaches_the_text_is_reported_by_its_slice() -> None:
+    """The span does not hold the text's core (a record that ends in a comment), so only the slice
+    of the script it covers can show that it shrank."""
+    script = "SELECT 1" + NBSP
+    old = recording(script, [], [], [record("SELECT 1", 0, 9)])
+    new = recording(script, [], [], [record("SELECT 1" + NBSP, 0, 3)])
+    [found] = compare_recordings(old, new, BLANKS)
+    assert found.view == "records" and "span" in found.detail
+
+
+def test_a_span_that_covered_the_kept_run_may_not_stop_short_of_it() -> None:
+    script = "SELECT 1" + NBSP
+    old = recording(script, [], [], [record("SELECT 1", 0, 9)])
+    new = recording(script, [], [], [record("SELECT 1" + NBSP, 0, 8)])
+    [found] = compare_recordings(old, new, BLANKS)
+    assert found.view == "records" and "span" in found.detail
+
+
+def test_a_changed_statement_that_the_script_does_not_hold_is_reported() -> None:
+    old = recording("SELECT 1", ["x"], ["x"])
+    new = recording("SELECT 1", ["x" + NBSP], ["x"])
+    [found] = compare_recordings(old, new, BLANKS)
+    assert found.view == "execution" and "not found" in found.detail
+
+
+def test_an_unchanged_statement_that_the_script_does_not_hold_is_not_a_difference() -> None:
+    old = recording("SELECT 1", ["x"], ["x"], [record("x", 0, 1)])
+    assert compare_recordings(old, copy.deepcopy(old), BLANKS) == []
+
+
+def test_a_statement_joined_across_a_psql_combined_separator_is_located() -> None:
+    script = "SELECT 1\\;SELECT 2;" + NBSP
+    old = recording(script, ["SELECT 1;SELECT 2;"], [])
+    kept = recording(script, ["SELECT 1;SELECT 2;" + NBSP], [])
+    foreign = recording(script, ["SELECT 1;SELECT 2;\u2003"], [])
+    assert compare_recordings(old, kept, BLANKS) == []
+    [found] = compare_recordings(old, foreign, BLANKS)
+    assert found.view == "execution" and "script" in found.detail
+
+
+def test_a_foreign_character_appended_to_a_real_psql_combined_recording_is_reported() -> None:
+    from tests.support.statement_edge_corpus import record_dialect
+
+    old = record_dialect("postgresql", commit="c" * 40)
+    script_id = "psql_combined_leading-U+00A0"
+    assert compare_recordings(old, copy.deepcopy(old), BLANKS) == []
+    for path in ("execution", "records"):
+        new = copy.deepcopy(old)
+        entry = new["scripts"][script_id]
+        if path == "execution":
+            entry["execution"][0] += " "
+        else:
+            entry["records"][0]["text"] += " "
+        found = [d for d in compare_recordings(old, new, BLANKS) if d.script_id == script_id]
+        assert [d.view for d in found] == [path], path

@@ -121,6 +121,12 @@ def _records(dialect: str, script: str) -> Any:
 
 def record_script(dialect: str, script: str) -> Dict[str, Any]:
     """The three views of one script, as plain JSON data."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        return _record_script(dialect, script)
+
+
+def _record_script(dialect: str, script: str) -> Dict[str, Any]:
     views = {
         "script": script,
         "execution": _outcome(lambda: StatementSplitter(dialect).split_statements(script)),
