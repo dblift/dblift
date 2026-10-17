@@ -17,7 +17,7 @@ from tests.support.splitter_spec.splitting import split_script
 SPEC_DIR = Path(__file__).resolve().parents[4] / "docs" / "sql-parsing"
 ROWS = [row for row in load_conformance_rows(SPEC_DIR) if row.dialect == "duckdb"]
 
-KNOWN_GAPS: frozenset[str] = frozenset({"74", "75", "76"})
+KNOWN_GAPS: frozenset[str] = frozenset({"74", "75", "76", "77"})
 
 
 def test_spec_compiles_to_at_least_the_rows_it_had_on_2026_10_12() -> None:
@@ -38,7 +38,7 @@ def test_spec_row(row: ConformanceRow, request: pytest.FixtureRequest) -> None:
     )
 
 
-def test_rows_74_to_76_compile_to_the_engine_cut() -> None:
+def test_rows_74_to_77_compile_to_the_engine_cut() -> None:
     rows = {row.row_id: row for row in ROWS}
     assert rows["74"].script == "SELECT E'a' 'b\\'; SELECT 1; SELECT 'z';"
     assert rows["74"].expectation.statements == ("SELECT E'a' 'b\\'", "SELECT 1", "SELECT 'z'")
@@ -50,6 +50,8 @@ def test_rows_74_to_76_compile_to_the_engine_cut() -> None:
         "SELECT 2",
         "SELECT 3 AS y$$",
     )
+    assert rows["77"].script == "SELECT 1a$$x; DROP TABLE t; SELECT 3 AS y$$;"
+    assert rows["77"].expectation.statements == ("SELECT 1a$$x", "DROP TABLE t", "SELECT 3 AS y$$")
 
 
 def test_new_rows_have_no_code_span_in_prose() -> None:
@@ -57,9 +59,9 @@ def test_new_rows_have_no_code_span_in_prose() -> None:
     cells = {
         line.split(" | ")[0]: line
         for line in text.splitlines()
-        if line.startswith(("| 74 |", "| 75 |", "| 76 |"))
+        if line.startswith(("| 74 |", "| 75 |", "| 76 |", "| 77 |"))
     }
-    assert sorted(cells) == ["| 74", "| 75", "| 76"]
+    assert sorted(cells) == ["| 74", "| 75", "| 76", "| 77"]
     for line in cells.values():
         assert "(measured" in line, line[:40]
         assert "`" not in line[line.index("(measured") :]
