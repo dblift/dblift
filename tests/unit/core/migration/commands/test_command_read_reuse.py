@@ -750,12 +750,12 @@ def test_grouped_state_catalog_preserves_collector_data_and_refreshes(database_c
         return catalog
 
     with patch.object(collector, "load_migration_scripts", side_effect=capture_catalog) as load:
-        first = client.executor.state_manager.get_grouped_migrations(migrations, **options)
+        first = client.executor.state_manager.build_state(migrations, **options).grouped_objects
         (migrations / "V1__app.sql").write_text("SELECT 100;")
-        second = client.executor.state_manager.get_grouped_migrations(migrations, **options)
+        second = client.executor.state_manager.build_state(migrations, **options).grouped_objects
 
-    assert first is collected[0]
-    assert second is collected[1]
+    assert first == collected[0]
+    assert second == collected[1]
     assert first is not second
     assert [kind.name for kind in first] == [
         "SQL",

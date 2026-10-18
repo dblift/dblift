@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Optional, Set, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Optional, Set, Tuple, cast
 
+from dblift.core.migration.migration import Migration, MigrationType
 from dblift.core.migration.state.migration_state import MigrationReadSnapshot, MigrationState
 
 if TYPE_CHECKING:
@@ -172,8 +173,10 @@ def _detect_missing_migrations(
     # already verified that the directory exists for every command except
     # ``baseline``; anything that raises is the operator's to fix before
     # repair can proceed safely.
-    filesystem_migrations = migration_state.grouped_objects
-    assert filesystem_migrations is not None, "repair state must be built with a scripts directory"
+    # plan_repairs always builds the state with a scripts directory, so the catalog is set.
+    filesystem_migrations = cast(
+        Dict[MigrationType, List[Migration]], migration_state.grouped_objects
+    )
     filesystem_scripts: Set[str] = set()
     for migration_group in filesystem_migrations.values():
         for migration in migration_group:

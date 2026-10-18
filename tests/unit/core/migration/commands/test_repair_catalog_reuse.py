@@ -206,18 +206,21 @@ def test_empty_built_catalog_is_authoritative(tmp_path, has_history):
     assert scripts.load_migration_scripts.call_count == 1
 
 
-def test_grouped_catalog_errors_propagate_and_each_read_is_fresh(tmp_path):
+def test_catalog_load_errors_propagate_and_each_build_reads_fresh(tmp_path):
     scripts = MagicMock()
     scripts.load_migration_scripts.side_effect = PermissionError("unreadable catalog")
     command = _command(scripts)
     with pytest.raises(PermissionError, match="unreadable catalog"):
-        command.state_manager.get_grouped_migrations(tmp_path)
+        command.state_manager.build_state(tmp_path)
     scripts.load_migration_scripts.side_effect = None
     scripts.load_migration_scripts.return_value = {}
-    assert command.state_manager.get_grouped_migrations(tmp_path) == {}
-    scripts.load_migration_scripts.return_value = {MigrationType.SQL: ["new catalog"]}
-    assert command.state_manager.get_grouped_migrations(tmp_path) == {
-        MigrationType.SQL: ["new catalog"]
+    assert command.state_manager.build_state(tmp_path).grouped_objects == {}
+    new_script = make_migration(
+        script_name="V1__new.sql", content="SELECT 1;", type=MigrationType.SQL
+    )
+    scripts.load_migration_scripts.return_value = {MigrationType.SQL: [new_script]}
+    assert command.state_manager.build_state(tmp_path).grouped_objects == {
+        MigrationType.SQL: [new_script]
     }
 
 
