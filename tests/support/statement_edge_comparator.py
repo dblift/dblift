@@ -18,6 +18,8 @@ import re
 from dataclasses import dataclass
 from typing import Any, Dict, FrozenSet, List, Mapping, Optional, Tuple
 
+from dblift.db.plugins.oracle.parser.lexical_spec import ORACLE_SPEC
+
 VIEWS = ("execution", "analysis", "records")
 RECORD_TEXT_FIELDS = ("text", "analysis_statements", "source_start", "source_end", "line")
 RECORD_FIELDS = (
@@ -36,7 +38,6 @@ _REFUSAL = re.compile(
     r"U\+([0-9A-F]{4,6}) at line (\d+), column (\d+) is at the edge of a statement: .*", re.S
 )
 _SQLSERVER_NOW_STRIPPED = "\u200b"
-_ORACLE_BLANKS = " \t\n\r\v\f\u3000"
 
 
 @dataclass(frozen=True)
@@ -280,8 +281,30 @@ def _check_records(script: str, old: Any, new: Any, blanks: str, lost: str = "")
         raise _Mismatch(found.offset, found.detail, found.statement) from None
 
 
-def _is_declared_refusal(dialect: str, script: str, old: Any, new: Any) -> bool:
-    """An Oracle refusal naming a character the script holds there, outside Oracle's blanks."""
+def _at_record_edge(script: str, records: Any, offset: int) -> bool:
+    """The character at ``offset`` is the first or last of a record's span, or only blanks and
+    terminators lie between it and that edge."""
+    gap = _WHITESPACE | {";"}
+    if not script[:offset].strip() or not script[offset + 1 :].strip():
+        return True
+    for record in records if isinstance(records, list) else []:
+        start, end = record["source_start"], record["source_end"]
+        if offset < start:
+            near = script[offset:start]
+        elif offset >= end:
+            near = script[end : offset + 1]
+        elif offset - start < end - 1 - offset:
+            near = script[start:offset]
+        else:
+            near = script[offset + 1 : end]
+        if set(near) <= gap:
+            return True
+    return False
+
+
+def _is_declared_refusal(dialect: str, before: Dict[str, Any], view: str, new: Any) -> bool:
+    """An Oracle refusal naming a character at a statement edge, outside Oracle's blanks."""
+    script, old = before["script"], before[view]
     if dialect != "oracle" or not isinstance(new, dict) or "error" not in new:
         return False
     if isinstance(old, dict) and "error" in old:
@@ -296,9 +319,10 @@ def _is_declared_refusal(dialect: str, script: str, old: Any, new: Any) -> bool:
     lines = script.split("\n")
     if line > len(lines) or column > len(lines[line - 1]):
         return False
-    return (
-        lines[line - 1][column - 1] == char and char not in _ORACLE_BLANKS and char in _WHITESPACE
-    )
+    if lines[line - 1][column - 1] != char or char in ORACLE_SPEC.text_blanks:
+        return False
+    offset = sum(len(text) + 1 for text in lines[: line - 1]) + column - 1
+    return char in _WHITESPACE and _at_record_edge(script, before["records"], offset)
 
 
 def compare_recordings(
@@ -330,7 +354,7 @@ def compare_recordings(
             add(script_id, "script", _Mismatch(None, "the script text differs between recordings"))
             continue
         for view in VIEWS:
-            if _is_declared_refusal(dialect, before["script"], before[view], after[view]):
+            if _is_declared_refusal(dialect, before, view, after[view]):
                 continue
             try:
                 if view == "records":

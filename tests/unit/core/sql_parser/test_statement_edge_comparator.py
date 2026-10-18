@@ -7,6 +7,7 @@ statement's edge in the new recording and was trimmed in the old one. Every test
 import copy
 from typing import Any, Dict, List, Optional
 
+from dblift.db.plugins.oracle.parser.lexical_spec import ORACLE_SPEC
 from tests.support.statement_edge_comparator import compare_recordings
 
 BLANKS = " \t\n\r"
@@ -488,3 +489,60 @@ def test_a_zero_width_space_is_declared_when_it_is_also_one_of_the_dialects_blan
     old = recording(script, [script], [script], dialect="sqlserver")
     new = recording(script, ["SELECT 2"], ["SELECT 2"], dialect="sqlserver")
     assert compare_recordings(old, new, BLANKS + zwsp) == []
+
+
+def refusal_for(char: str, column: int) -> Any:
+    return (
+        OUTSIDE_SET_REFUSAL[0],
+        f"U+{ord(char):04X} at line 1, column {column} is at the edge of a statement: "
+        "the driver would strip it",
+    )
+
+
+def span_record(script: str, start: int, end: int) -> Dict[str, Any]:
+    return record(script[start:end], start, end)
+
+
+def edge_refusal_pair(script: str, char: str, column: int) -> List[Any]:
+    start, end = len(script) - len(script.lstrip()), len(script.rstrip())
+    old = recording(script, ["x"], ["x"], [span_record(script, start, end)], dialect="oracle")
+    new = recording(
+        script,
+        {"error": list(refusal_for(char, column))},
+        ["x"],
+        [span_record(script, start, end)],
+        dialect="oracle",
+    )
+    return compare_recordings(old, new, BLANKS)
+
+
+def test_the_oracle_refusal_exception_follows_the_blanks_of_the_oracle_spec() -> None:
+    whitespace = [chr(i) for i in range(0x110000) if chr(i).isspace()]
+    for char in whitespace:
+        found = refused_pair("oracle", "DROP TABLE t" + char, refusal_for(char, 13))
+        assert (found != []) == (char in ORACLE_SPEC.text_blanks), f"U+{ord(char):04X}"
+
+
+def test_a_refusal_at_the_trailing_edge_of_a_record_is_declared() -> None:
+    assert edge_refusal_pair("SELECT 1 FROM dual" + NBSP, NBSP, 19) == []
+
+
+def test_a_refusal_at_the_leading_edge_of_a_record_is_declared() -> None:
+    assert edge_refusal_pair(NBSP + "SELECT 1 FROM dual", NBSP, 1) == []
+
+
+def test_a_refusal_at_an_interior_character_is_reported() -> None:
+    script = "SELECT a" + NBSP + "b FROM dual"
+    assert [d.view for d in edge_refusal_pair(script, NBSP, 9)] == ["execution"]
+
+
+def test_a_refusal_naming_a_character_that_is_not_whitespace_is_reported() -> None:
+    zwj = chr(0x200D)
+    assert [d.view for d in edge_refusal_pair("SELECT 1 FROM dual" + zwj, zwj, 19)] == ["execution"]
+
+
+def test_a_zero_width_space_kept_by_both_sides_is_not_a_difference_on_sql_server() -> None:
+    zwsp = chr(0x200B)
+    text = "DROP TABLE t" + zwsp
+    rec = recording(text, [text], [text], dialect="sqlserver")
+    assert compare_recordings(rec, rec, BLANKS) == []
