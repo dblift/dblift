@@ -417,6 +417,11 @@ class LexicalTokenizer(BaseTokenizer):
         self.read(end - start)
         return self._segment_token(kind, start, line, col)
 
+    @property
+    def kept(self) -> List[int]:
+        """The stretches, flat, where the engine's pass over the script keeps blanks."""
+        return self._seg_kept
+
     def _kept_until(self, pos: int) -> int:
         """The end of the stretch of kept blanks that holds ``pos``, else 0."""
         kept, at = self._seg_kept, self._seg_kept_at

@@ -1,18 +1,19 @@
 """Where an engine's blank-replacing pass leaves the blanks of a script alone."""
 
-from typing import Dict, List
+from bisect import bisect_right
+from typing import Dict, List, Sequence
 
-from dblift.core.sql_parser.lexical_spec import BlankPassRules
+from dblift.core.sql_parser.lexical_spec import BlankPassRules, SegmentScriptRules
 
 
 def kept_stretches(
     sql: str, begin: int, last: int, line_ends: str, rules: BlankPassRules
 ) -> List[int]:
-    """The stretches ``[start, end)`` in which the pass keeps blanks, flat: start, end, start, end...
+    """The stretches ``[start, end)`` where the pass keeps blanks, flat: start, end, start, end...
 
     Only stretches that start at or before ``last``, the offset of the final blank, are looked for.
-    Each search for the next character that matters goes on from where the last one stopped, so the
-    cost is linear in the script.
+    Each search for the next character that matters goes on from where the last one stopped, so
+    the cost is linear in the script.
     """
     size = len(sql)
     stretches: List[int] = []
@@ -55,7 +56,7 @@ def kept_stretches(
 
 
 def _dollar(sql: str, pos: int, rules: BlankPassRules, stretches: List[int]) -> int:
-    """Read the dollar at ``pos``: where to go on, or -1 when a tag that is never closed ends the pass."""
+    """Read the dollar at ``pos``: where to go on, or -1 when an unclosed tag ends the pass."""
     size = len(sql)
     if pos + 1 >= size:
         return size
@@ -78,3 +79,40 @@ def _dollar(sql: str, pos: int, rules: BlankPassRules, stretches: List[int]) -> 
         return -1
     stretches += (pos, close + len(tag))
     return close + len(tag) - 1
+
+
+def differs_alone(
+    source: str, lo: int, hi: int, kept: Sequence[int], rules: SegmentScriptRules
+) -> int:
+    """The offset of the first blank of ``source[lo:hi]`` kept in the script, replaced run alone.
+
+    A statement is run on its own, so the pass reads its text afresh: a blank that the pass of the
+    whole script kept can be replaced there. The pass never reads the last two bytes of a text, so a
+    final two-byte blank is kept alone as well. Returns -1 when there is none.
+    """
+    first = bisect_right(kept, lo) // 2 * 2
+    if first >= len(kept) or kept[first] >= hi:
+        return -1
+    assert rules.blank_pass is not None
+    wide = [blank for blank in rules.blanks if blank >= "\x80"]
+    text = source[lo:hi]
+    last = max(text.rfind(blank) for blank in wide)
+    alone = kept_stretches(text, 0, last, rules.line_comment_ends, rules.blank_pass)
+    tail = last if last == len(text) - 1 and len(text[last].encode()) == 2 else -1
+    seen = 0
+    for index in range(first, len(kept), 2):
+        if kept[index] >= hi:
+            break
+        pos, stop = max(kept[index], lo) - lo, min(kept[index + 1], hi) - lo
+        while pos < stop:
+            while seen < len(alone) and alone[seen + 1] <= pos:
+                seen += 2
+            if seen < len(alone) and alone[seen] <= pos:
+                pos = alone[seen + 1]
+                continue
+            end = min(stop, alone[seen]) if seen < len(alone) else stop
+            found = [at for at in (text.find(blank, pos, end) for blank in wide) if at >= 0]
+            if found and min(found) != tail:
+                return lo + min(found)
+            pos = end
+    return -1

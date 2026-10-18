@@ -17,10 +17,12 @@ import inspect
 import textwrap
 from pathlib import Path
 from typing import List, Optional
+from unittest import mock
 
 import pytest
 
 from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
+from dblift.core.sql_parser import blank_pass
 from dblift.core.sql_parser import segment_script as segment_module
 from dblift.core.sql_parser.lexical_engine import LexicalEngine
 from dblift.core.sql_parser.lexical_tokenizer import LexicalTokenizer
@@ -74,10 +76,13 @@ def counted(script: str, refusal: bool = False, meter: Optional[Meter] = None) -
     except (UnsafeStatementSplitError, UnsupportedMetaCommandError):
         assert refusal, "only a refusal shape may end the pass early"
         return meter.count
-    for analysis in (False, True):
-        SegmentScript(DUCKDB_RULES, CountingText(script, meter), tokenizer.origin).records(
-            CountingTokens(tokens, meter), analysis
-        )
+    original = blank_pass.kept_stretches  # the pass each statement is read through alone
+    alone = lambda sql, *args: original(CountingText(sql, meter), *args)  # noqa: E731
+    with mock.patch.object(blank_pass, "kept_stretches", alone):
+        for analysis in (False, True):
+            SegmentScript(
+                DUCKDB_RULES, CountingText(script, meter), tokenizer.origin, tokenizer.kept
+            ).records(CountingTokens(tokens, meter), analysis)
     return meter.count
 
 
@@ -101,7 +106,11 @@ SHAPES = {
     "blank pass: failed tags": lambda n: "$a $b1 $_ $\u00e9 " * n + UNICODE_BLANK,
     "blank pass: one long failed tag": lambda n: "$" + "a" * (2 * n) + UNICODE_BLANK,
     "blank pass: long dollar tags": lambda n: "$" + "a" * n + "$;$" + "a" * n + "$" + UNICODE_BLANK,
-    "blank pass: words after a stop": lambda n: "SELECT a$$;" + ("x" + UNICODE_BLANK + "y;") * n,
+    "blank pass: words after a stop": lambda n: "SELECT a$$ " + ("x" + UNICODE_BLANK + "y ") * n,
+    "blank pass: each statement read alone": lambda n: ("/* ' */ x" + UNICODE_BLANK + "y;") * n,
+    "blank pass: one long statement read alone": lambda n: (
+        "SELECT a$$ " + ("x" + UNICODE_BLANK + "y ") * n + ";"
+    ),
     "blank pass: words in a kept stretch": lambda n: "'" + ("x" + UNICODE_BLANK + "y;") * n,
 }
 
@@ -171,9 +180,10 @@ def test_the_segment_path_never_copies_or_scans_its_inputs():
     found = _methods(package / "lexical_tokenizer.py", SEGMENT_METHODS)
     assert {n.name for n in found} == SEGMENT_METHODS
     found += _methods(package / "base_tokenizer.py", {"_read_block_comment"})
-    found += _methods(package / "blank_pass.py", {"kept_stretches", "_dollar"})
+    found += _methods(package / "blank_pass.py", {"kept_stretches", "_dollar", "differs_alone"})
     found += _methods(package / "lexical_engine.py", {"blank_comments"})
-    assert len(found) == len(SEGMENT_METHODS) + 4
+    found += _methods(package / "segment_script.py", {"_refuse_read_differently_alone"})
+    assert len(found) == len(SEGMENT_METHODS) + 6
     for node in found:
         assert forbidden(node) == [], node.name
 
@@ -246,14 +256,26 @@ def test_a_quadratic_pass_is_over_budget(monkeypatch):
     shape = SHAPES["blank pass: dollar strings"]
     honest = counted(shape(LARGE))
     assert honest <= BOUND * counted(shape(SMALL))
-    monkeypatch.setitem(namespace, "_dollar", mutant)
-    quadratic = _mutant(
+    quadratic = _mutant(  # exec'd in the namespace that holds the slow _dollar, which it then calls
         blank_pass.kept_stretches,
         "_dollar(sql, pos, rules, stretches)",
         "_dollar(sql, pos, rules, stretches)",
         namespace,
     )
     monkeypatch.setattr(lexical_tokenizer, "kept_stretches", quadratic)
+    assert counted(shape(LARGE)) > BOUND * counted(shape(SMALL))
+
+
+def test_reading_each_statement_alone_over_the_rest_of_the_script_is_over_budget(monkeypatch):
+    namespace = dict(vars(blank_pass))
+    mutant = _mutant(
+        blank_pass.differs_alone, "text = source[lo:hi]", "text = source[lo:]", namespace
+    )
+    shape = SHAPES["blank pass: each statement read alone"]
+    honest = counted(shape(LARGE))
+    assert honest <= BOUND * counted(shape(SMALL))
+    monkeypatch.setattr(blank_pass, "differs_alone", mutant)
+    monkeypatch.setattr(segment_module, "differs_alone", mutant)
     assert counted(shape(LARGE)) > BOUND * counted(shape(SMALL))
 
 

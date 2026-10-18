@@ -11,6 +11,7 @@ import random
 import duckdb
 import pytest
 
+from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.core.sql_parser.blank_pass import kept_stretches
 from dblift.core.sql_parser.lexical_engine import LexicalEngine
 from dblift.db.plugins.duckdb.parser.lexical_spec import DUCKDB_RULES, DUCKDB_SPEC
@@ -34,11 +35,6 @@ CUTS = [
     ("/* $" + NB + "$ */ SELECT 2 AS e" + NB + "$t$x;" + TAIL, 3),
     ("/* $$ $$$ */ SELECT 2 AS e" + NB + "$t$x;" + TAIL, 3),
     ("SELECT 1 AS a$b$, 2 AS e" + NB + "$t$x;" + TAIL, 3),
-    # after the stop every statement keeps its blanks as letters
-    (
-        "/* ' */ SELECT 1 AS e" + NB + "x; SELECT 2 AS f" + NB + "$t$y;" + TAIL + " SELECT 4 AS g",
-        5,
-    ),
     # a stretch the pass reads as a string holds code for the parser: its blanks are kept too
     ("/* it's */ SELECT 1 AS e" + NB + "$t$x;" + TAIL + " SELECT 'q'; SELECT 4;", 5),
 ]
@@ -134,3 +130,90 @@ def test_stretches_are_quoted_text_comments_failed_tags_and_the_rest_after_a_sto
     assert stretches("SELECT 1 -- c" + NB + "\n" + NB) == [9, 14]
     assert stretches("SELECT a$b" + NB + "c" + NB) == [8, 13]
     assert stretches("SELECT a$$ " + NB) == [8, 12]
+
+
+#: scripts whose second piece holds a blank the pass kept in the script and would replace in the piece alone
+ALONE = [
+    "SELECT 1 AS a$$; DROP TABLE t" + NB + "CASCADE;",
+    "/* ' */ SELECT 1; DROP TABLE t" + NB + "CASCADE;",
+    "SELECT 1 AS a$t$; DROP TABLE t" + NB + "CASCADE; SELECT 2 AS b$t$;",
+    "SELECT 1 AS a$$; DROP TABLE t" + NB + "CASCADE; SELECT 2 AS b$$;",
+]
+
+
+def run_whole(script):
+    con = duckdb.connect()
+    con.execute("CREATE TABLE t (i INT)")
+    try:
+        con.execute(script)
+    except duckdb.Error:
+        pass
+    return con
+
+
+def has_t(con):
+    return (
+        con.execute("SELECT count(*) FROM duckdb_tables() WHERE table_name = 't'").fetchone()[0]
+        == 1
+    )
+
+
+#: after the stop every statement keeps its blanks as letters, so the engine accepts these scripts; a
+#: later statement that does not stop the pass by itself reads differently alone, and is refused
+ACCEPTED_BY_THE_ENGINE = [
+    "/* ' */ SELECT 1 AS e" + NB + "x; SELECT 2 AS f" + NB + "$t$y;" + TAIL + " SELECT 4 AS g",
+]
+
+
+@pytest.mark.parametrize("script", ACCEPTED_BY_THE_ENGINE, ids=["0"])
+def test_a_script_the_engine_accepts_is_refused_when_a_statement_reads_differently_alone(script):
+    assert len(duckdb.extract_statements(script)) == 5
+    with pytest.raises(UnsafeStatementSplitError, match=r"U\+00A0 at line 1, column \d+"):
+        ENGINE.split_statements(script)
+
+
+@pytest.mark.parametrize("script", ALONE, ids=[str(i) for i in range(len(ALONE))])
+def test_a_statement_that_reads_differently_alone_is_refused(script):
+    assert has_t(run_whole(script))  # the engine rejects the script and the table stays
+    at = script.index(NB)
+    for split in (ENGINE.split_statements, ENGINE.split, ENGINE.split_for_analysis):
+        with pytest.raises(UnsafeStatementSplitError) as raised:
+            split(script)
+        message = str(raised.value)
+        assert f"U+00A0 at line 1, column {at + 1}" in message
+        assert "differently" in message and "alone" in message
+
+
+def test_a_refusal_names_the_line_and_column_of_the_blank():
+    script = "SELECT 1 AS a$$;\n\nSELECT 2\n  FROM t" + NB + "x;"
+    with pytest.raises(UnsafeStatementSplitError, match=r"U\+00A0 at line 4, column 9"):
+        ENGINE.split_statements(script)
+
+
+def test_a_kept_blank_that_the_statement_alone_keeps_too_is_not_refused():
+    # the unclosed tag is inside the same piece: run alone, the pass stops at it as well
+    prefixed = "SELECT 1 AS a$$, 2 AS e" + NB + "$t$x; DROP TABLE t; SELECT 3;"
+    pieces = ENGINE.split_statements(prefixed)
+    assert len(pieces) == 3 and len(duckdb.extract_statements(prefixed)) == 3
+    whole, split = run_whole(prefixed), duckdb.connect()
+    split.execute("CREATE TABLE t (i INT)")
+    for piece in pieces:
+        split.execute(piece)
+    assert not has_t(whole) and not has_t(split)
+
+
+def test_a_kept_blank_in_the_unread_tail_of_a_statement_is_not_refused():
+    # alone, the pass never reads the last two bytes, so a final U+00A0 is kept there as well
+    script = "/* ' */ SELECT 1 AS e" + NB + "; SELECT 2;"
+    assert len(ENGINE.split_statements(script)) == 2
+
+
+def test_a_line_comment_ends_at_a_carriage_return_for_the_pass():
+    script = "-- x\rSELECT 1 AS a$$, 2 AS e" + NB + "$t$x; DROP TABLE t; SELECT 3;"
+    pieces = ENGINE.split_statements(script)
+    assert len(pieces) == len(duckdb.extract_statements(script)) == 3
+    con = duckdb.connect()
+    con.execute("CREATE TABLE t (i INT)")
+    for piece in pieces:
+        con.execute(piece)
+    assert not has_t(con) and not has_t(run_whole(script))
