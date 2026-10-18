@@ -161,6 +161,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   closing summary, and write the completion line to JSON and HTML log files, on every exit after
   they connect. Before, `undo` with nothing to undo or with a failing `beforeUndo` callback, and
   `clean` when preparing the target or a `beforeClean` callback failed, ended without one.
+- **Strict validation judges migration order the way `migrate` does.** After an `undo`, a
+  strict `migrate` or `validate` refused a pending migration whose version was lower than the
+  undone one, because the undone migration still counted as applied. Order is now measured
+  against the schema's current version, with the same rule `migrate` applies.
 
 ### Security
 

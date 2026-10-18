@@ -4,8 +4,9 @@ The original ``_validate_strict_mode_rules`` enforces two strict-mode
 invariants:
 1. No applied migration may exist without a corresponding script file
    (excluding ``BASELINE`` and ``UNDO_SQL``).
-2. No pending versioned script may have a version lower than the
-   highest applied version (out-of-order detection).
+2. No pending versioned script may have a version at or below the
+   schema's current version (out-of-order detection). The state manager
+   decides this; the validator only reports its answer.
 
 Pulled out as a single standalone function taking the validator
 instance as its first parameter (``mv``). ``MigrationValidator`` keeps
@@ -15,11 +16,11 @@ a thin wrapper so existing tests calling
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING, List, Sequence
 
-from dblift.core.migration import is_versioned
 from dblift.core.migration.migration import Migration, MigrationType
-from dblift.core.migration.version_utils import compare_versions, is_migration_success
+from dblift.core.migration.state.ordering import OutOfOrder
+from dblift.core.migration.version_utils import is_migration_success
 
 if TYPE_CHECKING:
     from dblift.core.sql_validator.migration_validator import (
@@ -34,8 +35,13 @@ def validate_strict_mode_rules(
     applied_migrations: List[Migration],
     result: "ValidationResult",
     issues: List[str],
+    snapshot_out_of_order: Sequence[OutOfOrder],
 ) -> bool:
-    """Enforce strict-mode invariants on *scripts* + *applied_migrations*."""
+    """Enforce strict-mode invariants on *scripts* + *applied_migrations*.
+
+    *snapshot_out_of_order* is the state manager's answer for the pending
+    scripts below the current version; this function only reports it.
+    """
     script_names = [s.script_name for s in scripts]
 
     missing_migrations = []
@@ -72,66 +78,27 @@ def validate_strict_mode_rules(
         result.error_message = error_message
         return False
 
-    # Role, not format: MigrationType.SQL means "versioned", and a versioned
-    # .py script carries MigrationType.PYTHON instead.
-    pending_versioned = [
-        s
-        for s in scripts
-        if is_versioned(s.type)
-        and s.script_name
-        not in [
-            getattr(a, "script_name", None)
-            for a in applied_migrations
-            if is_migration_success(getattr(a, "success", None))
-        ]
-    ]
-
-    if not pending_versioned:
-        return True
-
-    applied_versions = [
-        getattr(a, "version", None)
-        for a in applied_migrations
-        if is_versioned(getattr(a, "type", None))
-        and is_migration_success(getattr(a, "success", None))
-    ]
-
-    if not applied_versions:
-        return True
-
-    sorted_versions = applied_versions.copy()
-    sorted_versions.sort(
-        key=lambda v: (
-            sum(1 for other_v in applied_versions if compare_versions(v, other_v) > 0),
-            v,
+    if snapshot_out_of_order:
+        mv.log.debug(
+            f"Strict mode: {len(snapshot_out_of_order)} out-of-order migration(s) detected"
         )
-    )
-    highest_applied_version = sorted_versions[-1] if sorted_versions else None
-
-    if highest_applied_version:
-        out_of_order_migrations = []
-        for script in pending_versioned:
-            comparison_result = compare_versions(script.version, highest_applied_version)
-            if comparison_result < 0:
-                out_of_order_migrations.append(script)
-
-        if out_of_order_migrations:
-            mv.log.debug(
-                f"Strict mode: {len(out_of_order_migrations)} out-of-order migration(s) detected"
-            )
-            result.success = False
-            script_list = ", ".join(
-                [f"{s.script_name} (version: {s.version})" for s in out_of_order_migrations]
-            )
-            error_message = (
-                f"Strict mode validation failed. Found {len(out_of_order_migrations)} "
-                "pending migration(s) with version(s) lower than the highest applied "
-                f"version ({highest_applied_version}): {script_list}. ."
-            )
-            issues.append(error_message)
-            for out_of_order in out_of_order_migrations:
-                result.add_failed_script(getattr(out_of_order, "script_name", None))
-            result.error_message = error_message
-            return False
+        result.success = False
+        script_list = ", ".join(
+            [
+                f"{entry.migration.script_name} (version: {entry.migration.version})"
+                for entry in snapshot_out_of_order
+            ]
+        )
+        current_version = snapshot_out_of_order[0].current_version
+        error_message = (
+            f"Strict mode validation failed. Found {len(snapshot_out_of_order)} "
+            "pending migration(s) with version(s) lower than the highest applied "
+            f"version ({current_version}): {script_list}. ."
+        )
+        issues.append(error_message)
+        for entry in snapshot_out_of_order:
+            result.add_failed_script(getattr(entry.migration, "script_name", None))
+        result.error_message = error_message
+        return False
 
     return True
