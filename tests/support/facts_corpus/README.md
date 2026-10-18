@@ -81,10 +81,10 @@ in one class per path (`classes.py`, tried in this order: the first match wins):
 | `no-old-side` | the family's extraction already is the reader (SQLite, DuckDB): nothing to compare |
 | `no-old` | an activated family's row that has no recorded extraction |
 | `dml-differs` | target, predicate, events, updated columns or full-table flag differ |
-| `role-differs` | the statement acts on an object (creates, drops, alters, truncates it) that the reader marks only as read, or the reader marks as acted on an object the statement only reads |
+| `role-differs` | a name the statement mentions has another role in the facts than in the statement: created, dropped, altered (also a truncated table and a DML target), or only referenced (the table under an index, a joined table, a COPY source, a foreign key target) |
 | `same` | identities are equal |
 | `old-cte-alias` | the extraction took CTE aliases for tables; none is written to |
-| `old-keyword` | the extraction took a word the engine reserves, unquoted, for an object; it is not written to and the reader names everything else |
+| `old-keyword` | the extraction took a word the engine reserves, unquoted and not after a dot, for an object; it is not written to and the reader names everything else |
 | `type-refined` | same name, the type moves to a strict subtype (`UNKNOWN` to any, `VIEW` to `MATERIALIZED_VIEW`) |
 | `quote-decoded` | the extraction cut the name at an escaped quote |
 | `case-folded` | the reader keeps an unquoted name as the statement spells it, the extraction holds the engine's folding of it (PostgreSQL, Redshift: lower; Oracle, Snowflake: upper; never MySQL or SQL Server), and the reader is not opaque; never the reverse direction |
@@ -112,8 +112,8 @@ stale.
 `gated.json` lists the families whose differences must all be classified or explained: `diff` exits 1
 and `tests/unit/core/sql_parser/test_facts_differential.py` fails on a row with neither, in a listed
 family. `--report` prints without failing; `--skeleton` adds an empty entry to the review file for
-each row that needs one. The list is empty until a family's differences are explained; a family joins it when its plugin
-reads statements through the reader.
+each row that needs one. The list is empty until a family's differences are explained; a family
+joins it when its plugin reads statements through the reader.
 
 ## Once a family reads through the reader
 

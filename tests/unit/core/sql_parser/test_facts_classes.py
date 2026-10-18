@@ -6,14 +6,20 @@ rules are tried is pinned by the triples that could match two of them.
 
 from __future__ import annotations
 
+import re
 from typing import Any, Dict, Iterable, Optional, Tuple
 
 import pytest
 
+from tests.support.facts_corpus import CORPUS_DIR
+from tests.support.facts_corpus import classes as classes_module
 from tests.support.facts_corpus.classes import (
     DEFAULT_SCHEMA,
+    FOLD,
+    MECHANICAL,
     NO_OLD_FAMILIES,
     ORDER,
+    REVIEW,
     classify,
     classify_row,
 )
@@ -454,7 +460,7 @@ def test_opaque_safety_matches_the_unread_name_diagnostic_only() -> None:
 
 def test_opaque_both_empty_needs_both_sides_to_name_nothing() -> None:
     assert cls("COPY t FROM STDIN", facts(diagnostic="x is opaque"), old()) == "opaque-both-empty"
-    named = facts(obj("t"), diagnostic="x is opaque")
+    named = facts(obj("t", role="altered"), diagnostic="x is opaque")
     assert cls("COPY t FROM STDIN", named, old()) == "facts-adds-acted"
 
 
@@ -596,3 +602,240 @@ def test_a_data_modifying_cte_acts_on_its_table() -> None:
     new = facts(obj("src", role="referenced"), op="SELECT", kind="QUERY")
     before = old(("TABLE", "d"), ("TABLE", "src"), dml=NO_DML)
     assert cls(sql, new, before) == "role-differs"
+
+
+# the full role of every name -------------------------------------------------------------------
+
+#: ``(family, sql, [(name, type, role the statement gives it)])``. Each must be ``same`` as written
+#: and ``role-differs`` when the reader gives any one of its names any other role.
+ROLE_CASES = [
+    ("postgresql", "DROP TABLE t", [("t", "TABLE", "dropped")]),
+    ("postgresql", "DROP TABLE a, b", [("a", "TABLE", "dropped"), ("b", "TABLE", "dropped")]),
+    ("postgresql", "CREATE TABLE t (i int)", [("t", "TABLE", "created")]),
+    (
+        "postgresql",
+        "CREATE TABLE t AS SELECT * FROM s",
+        [("t", "TABLE", "created"), ("s", "TABLE", "referenced")],
+    ),
+    (
+        "postgresql",
+        "CREATE VIEW v AS SELECT * FROM t",
+        [("v", "VIEW", "created"), ("t", "TABLE", "referenced")],
+    ),
+    (
+        "postgresql",
+        "CREATE INDEX ix ON t (c)",
+        [("ix", "INDEX", "created"), ("t", "TABLE", "referenced")],
+    ),
+    (
+        "mysql",
+        "CREATE INDEX s.ix ON t (c)",
+        [("ix", "INDEX", "created"), ("t", "TABLE", "referenced")],
+    ),
+    (
+        "sqlserver",
+        "CREATE PROCEDURE p AS BEGIN SELECT * FROM users; END",
+        [("p", "PROCEDURE", "created"), ("users", "TABLE", "referenced")],
+    ),
+    ("postgresql", "COPY t TO STDOUT", [("t", "TABLE", "referenced")]),
+    ("postgresql", "COPY t FROM STDIN", [("t", "TABLE", "altered")]),
+    ("postgresql", "TRUNCATE t", [("t", "TABLE", "altered")]),
+    ("postgresql", "ALTER TABLE t ADD COLUMN c int", [("t", "TABLE", "altered")]),
+    (
+        "postgresql",
+        "SELECT * FROM t JOIN u ON t.i = u.i",
+        [("t", "TABLE", "referenced"), ("u", "TABLE", "referenced")],
+    ),
+    (
+        "sqlserver",
+        "SELECT * INTO t2 FROM t",
+        [("t2", "TABLE", "created"), ("t", "TABLE", "referenced")],
+    ),
+    (
+        "postgresql",
+        "INSERT INTO t SELECT * FROM s",
+        [("t", "TABLE", "altered"), ("s", "TABLE", "referenced")],
+    ),
+    ("postgresql", "INSERT INTO t VALUES (1)", [("t", "TABLE", "altered")]),
+    (
+        "postgresql",
+        "DELETE FROM t USING u WHERE t.i = u.i",
+        [("t", "TABLE", "altered"), ("u", "TABLE", "referenced")],
+    ),
+    (
+        "mysql",
+        "UPDATE a JOIN b ON a.i = b.i SET a.v = 1",
+        [("a", "TABLE", "altered"), ("b", "TABLE", "referenced")],
+    ),
+    (
+        "postgresql",
+        "MERGE INTO t USING s ON t.i = s.i WHEN MATCHED THEN DELETE",
+        [("t", "TABLE", "altered"), ("s", "TABLE", "referenced")],
+    ),
+    (
+        "oracle",
+        "INSERT ALL INTO a VALUES (1) INTO b VALUES (2) SELECT * FROM dual",
+        [("a", "TABLE", "altered"), ("b", "TABLE", "altered")],
+    ),
+]
+ALL_ROLES = ("created", "altered", "dropped", "referenced")
+
+
+def _role_row(sql: str, family: str, wanted: list, wrong: Optional[Tuple[int, str]] = None) -> str:
+    objects = [
+        obj(n, k, wrong[1] if wrong and wrong[0] == i else r) for i, (n, k, r) in enumerate(wanted)
+    ]
+    return cls(sql, facts(*objects), old(*[(k, n) for n, k, _ in wanted]), family=family)
+
+
+@pytest.mark.parametrize("family,sql,wanted", ROLE_CASES, ids=[c[1] for c in ROLE_CASES])
+def test_every_name_must_carry_the_role_the_statement_gives_it(
+    family: str, sql: str, wanted: list
+) -> None:
+    assert _role_row(sql, family, wanted) == "same"
+    for index, (_, _, right) in enumerate(wanted):
+        for role in ALL_ROLES:
+            if role != right:
+                got = _role_row(sql, family, wanted, (index, role))
+                assert got == "role-differs", (wanted[index][0], role)
+
+
+def test_a_dropped_table_marked_created_is_a_role_difference() -> None:
+    assert cls("DROP TABLE t", facts(obj("t"), op="DROP"), old(("TABLE", "t"))) == "role-differs"
+
+
+def test_a_table_the_reader_calls_dropped_under_an_index_is_a_role_difference() -> None:
+    new = facts(obj("ix", "INDEX"), obj("t", role="dropped"))
+    assert cls("CREATE INDEX ix ON t (c)", new, old(("INDEX", "ix"), ("TABLE", "t"))) == (
+        "role-differs"
+    )
+
+
+def test_a_dml_target_marked_dropped_is_a_role_difference() -> None:
+    new = facts(obj("t", role="dropped"), op="INSERT", kind="DML")
+    assert cls("INSERT INTO t VALUES (1)", new, old(("TABLE", "t"))) == "role-differs"
+
+
+def test_the_table_of_a_joined_update_marked_created_is_a_role_difference() -> None:
+    sql = "UPDATE a JOIN b ON a.i = b.i SET a.v = 1"
+    new = update_facts("a", obj("a", role="altered"), obj("b"))
+    before = old(("TABLE", "a"), ("TABLE", "b"), dml={**UPDATE_DML, "table": "a"})
+    assert cls(sql, new, before, family="mysql") == "role-differs"
+
+
+def test_a_copy_source_marked_dropped_is_a_role_difference() -> None:
+    new = facts(obj("t", role="dropped"), op="COPY")
+    assert cls("COPY t TO STDOUT", new, old(("TABLE", "t"))) == "role-differs"
+
+
+# which classes need a reason ----------------------------------------------------------------
+
+
+def _readme() -> str:
+    return (CORPUS_DIR / "README.md").read_text(encoding="utf-8")
+
+
+def test_the_classes_that_need_a_reason_are_exactly_the_review_set() -> None:
+    paragraph = next((p for p in _readme().split("\n\n") if "need a reason" in p), "")
+    assert paragraph, "the README no longer says which classes need a reason"
+    listed = set(re.findall(r"`([a-z-]+)`", paragraph.partition("need a reason")[0]))
+    assert listed == set(REVIEW)
+    for name in REVIEW:
+        assert name in classes_module.__doc__, name
+
+
+def test_every_class_is_exactly_one_of_review_mechanical_or_neither_with_a_stated_reason() -> None:
+    neither = {"raised", "same", "no-old-side"}
+    assert not set(REVIEW) & set(MECHANICAL)
+    assert set(ORDER) == set(REVIEW) | set(MECHANICAL) | neither
+    table = set(re.findall(r"^\| `([a-z-]+)` \|", _readme(), re.M))
+    assert table == set(ORDER)
+    assert "role-differs" in REVIEW
+
+
+# a reserved word after a dot is a legal name ------------------------------------------------
+
+
+QUALIFIED = [
+    (
+        "postgresql",
+        "INSERT INTO a SELECT * FROM public.order",
+        facts(obj("a", role="altered"), op="INSERT", kind="DML"),
+    ),
+    (
+        "mysql",
+        "INSERT INTO a SELECT * FROM db.order",
+        facts(obj("a", role="altered"), op="INSERT", kind="DML"),
+    ),
+    (
+        "postgresql",
+        "SELECT * FROM a, public.order",
+        facts(obj("a", role="referenced"), op="SELECT", kind="QUERY"),
+    ),
+    (
+        "postgresql",
+        "ALTER TABLE a ADD CONSTRAINT fk FOREIGN KEY (x) REFERENCES public.order (id)",
+        facts(obj("a", role="altered"), op="ALTER"),
+    ),
+    (
+        "postgresql",
+        "CREATE FUNCTION a() RETURNS void AS $$ DROP TABLE public.order $$ LANGUAGE sql",
+        facts(obj("a", "FUNCTION")),
+    ),
+]
+
+
+@pytest.mark.parametrize("family,sql,new", QUALIFIED, ids=[q[1] for q in QUALIFIED])
+def test_old_keyword_never_excuses_a_name_written_after_a_dot(
+    family: str, sql: str, new: Dict[str, Any]
+) -> None:
+    kind = "FUNCTION" if "FUNCTION" in sql else "TABLE"
+    before = old((kind, "a"), ("TABLE", "order"))
+    assert cls(sql, new, before, family=family, reserved={"ORDER"}) == "facts-fewer"
+
+
+def test_old_keyword_still_excuses_the_same_word_unqualified() -> None:
+    sql = "SELECT * FROM a, order"
+    new = facts(obj("a", role="referenced"), op="SELECT", kind="QUERY")
+    before = old(("TABLE", "a"), ("TABLE", "order"))
+    assert cls(sql, new, before, family="mysql", reserved={"ORDER"}) == "old-keyword"
+
+
+# case-folded anchors to the names of the statement, not to its text -------------------------
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "CREATE TABLE users (c text DEFAULT 'Users')",
+        "CREATE TABLE users (c int) -- Users",
+        "CREATE TABLE users (Users int)",
+    ],
+)
+def test_case_folded_is_not_matched_inside_a_literal_a_comment_or_a_column(sql: str) -> None:
+    got = cls(sql, facts(obj("Users")), old(("TABLE", "users")), family="postgresql")
+    assert got != "case-folded"
+
+
+def test_case_folded_matches_a_schema_part_and_an_index_name() -> None:
+    new = facts(obj("Users", schema="Sch"))
+    assert cls("CREATE TABLE Sch.Users (i int)", new, old(("TABLE", "users", "sch"))) == (
+        "case-folded"
+    )
+    ix = facts(obj("Ix", "INDEX"), obj("t", role="referenced"))
+    got = cls("CREATE INDEX Ix ON t (c)", ix, old(("INDEX", "ix"), ("TABLE", "t")))
+    assert got == "case-folded"
+
+
+# the folding table is the engines' ---------------------------------------------------------
+
+
+def test_fold_agrees_with_the_quirks_and_is_stricter_where_folding_is_a_setting() -> None:
+    from dblift.db.provider_registry import ProviderRegistry
+
+    direction = {"uppercase": "upper", "lowercase": "lower"}
+    for family in ("postgresql", "redshift", "oracle", "snowflake", "db2"):
+        quirk = ProviderRegistry.get_quirks(family).unquoted_identifier_case
+        assert FOLD[family] == direction[quirk], family
+    # MySQL folds by lower_case_table_names and SQL Server by collation: no direction is certain.
+    assert "mysql" not in FOLD and "sqlserver" not in FOLD

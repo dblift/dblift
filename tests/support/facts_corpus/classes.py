@@ -7,9 +7,10 @@ The first rule that matches wins, in the order of ``ORDER``:
 2. ``no-reader`` / ``no-old-side`` / ``no-old`` -- one side is missing.
 3. ``dml-differs`` -- a statement-level field (target, predicate, events, columns, full-table)
    differs; no mechanical class below may hide it.
-4. ``role-differs`` -- the statement acts on an object (creates, drops, alters, truncates it) that
-   the reader marks only as read, or the reader marks as acted on an object the statement does
-   not write to. The extraction carries no roles, so the statement itself is the reference.
+4. ``role-differs`` -- a name the statement mentions carries another role in the facts than in the
+   statement: created, dropped or altered (a truncated table and a DML target are altered), or only
+   referenced (the table under an index, a joined table, a COPY source, a foreign key target). The
+   extraction carries no roles, so the statement itself is the reference.
 5. ``same`` -- identities are equal (unless the reader is opaque and both name nothing).
 6. The mechanical classes, each of which explains the whole difference by itself.
 7. The classes that need a human reason: ``opaque-reader-gap``, ``facts-fewer``,
@@ -100,8 +101,10 @@ DEFAULT_SCHEMA: Dict[str, Optional[str]] = {
     "redshift": "public",
     "sqlserver": "dbo",
 }
-#: The direction an engine folds an unquoted name. MySQL and SQL Server fold by setting or
-#: collation, so a case-only difference is never accepted there.
+#: The direction an engine folds an unquoted name, as the plugin quirks' ``unquoted_identifier_case``
+#: says (a test ties the two). MySQL (``lower_case_table_names``) and SQL Server (the collation)
+#: fold by setting, which the quirks reduce to a default; the corpus cannot know the setting, so
+#: a case-only difference is never accepted there.
 FOLD: Dict[str, Optional[str]] = {
     "postgresql": "lower",
     "redshift": "lower",
@@ -167,6 +170,11 @@ def _quoted_in(sql: str, part: str) -> bool:
 
 def _unquoted(sql: str, qualified: str) -> bool:
     return not any(_quoted_in(sql, part) for part in qualified.split("."))
+
+
+def _after_dot(sql: str, word: str) -> bool:
+    """The word follows a dot: a reserved word is a legal name there (``schema.order``)."""
+    return re.search(r"\.\s*" + re.escape(word) + r"(?![\w$])", sql, re.IGNORECASE) is not None
 
 
 @functools.lru_cache(maxsize=4096)
@@ -297,21 +305,97 @@ def _write_targets(
     return None if targets is None else targets[1] | _dml_names(dml_table)
 
 
-def _roles_differ(
-    ast: Optional[exp.Expression], family: str, facts: Dict[str, Any], dml_table: str
-) -> bool:
-    """An object the statement acts on is only read by the reader, or the reverse."""
-    targets = _targets(ast, family)
-    if ast is None or targets is None:
-        return False
-    acted, touched = targets
-    read = {t.name.lower() for t in ast.find_all(exp.Table)} - touched - _dml_names(dml_table)
+def _subject(item: Optional[exp.Expression]) -> Optional[exp.Expression]:
+    """The node carrying the name of a written object (``Schema``, function and index unwrapped)."""
+    if isinstance(item, (exp.Schema, exp.UserDefinedFunction, exp.StoredProcedure)):
+        item = item.this
+    return item.this if isinstance(item, exp.Index) else item
+
+
+def _index_on(subject: Optional[exp.Expression]) -> Optional[exp.Expression]:
+    """The table of ``CREATE INDEX schema.index ON table``, which sqlglot reads as an index named
+    by the schema, on a table named by the index, with the real table as an ``ON`` argument."""
+    params = subject.args.get("params") if isinstance(subject, exp.Index) else None
+    return params.args.get("on") if params is not None else None
+
+
+def _expected_roles(ast: Optional[exp.Expression], family: str) -> Optional[Dict[str, Set[str]]]:
+    """The roles the statement gives each name it mentions; ``None`` when it cannot be read.
+
+    A written object is created, dropped or altered (a truncated table and a DML target are
+    altered, as the reader says); every other table is only referenced, the table under an index,
+    a joined table, a COPY source and a foreign key target included. A rename target may be read
+    as created or altered. A name written only inside a routine body has no role here: creating
+    the routine does not run the body.
+    """
+    if ast is None or _targets(ast, family) is None:
+        return None
     roles: Dict[str, Set[str]] = {}
+    free: Set[str] = set()
+    given: Set[int] = set()
+
+    def give(item: Optional[exp.Expression], allowed: Set[str], nested: bool = False) -> None:
+        node = _subject(item)
+        if not isinstance(node, (exp.Table, exp.Identifier, exp.Var, exp.Column)) or not node.name:
+            return
+        given.add(id(node))
+        name = node.name.lower()
+        if nested:
+            free.add(name)
+        else:
+            roles.setdefault(name, set()).update(allowed)
+
+    for node in ast.walk():
+        nested = node is not ast and isinstance(ast, exp.Create)
+        if isinstance(node, exp.Drop):
+            for item in node.args.get("tables") or node.args.get("expressions") or [node.this]:
+                give(item, {"dropped"}, nested)
+        elif isinstance(node, exp.TruncateTable):
+            for item in node.expressions:
+                give(item, {"altered"}, nested)
+        elif isinstance(node, exp.Create):
+            on = _index_on(node.this)
+            give(node.this.args.get("table") if on is not None else node.this, {"created"}, nested)
+            if on is not None and on.name and not nested:
+                roles.setdefault(on.name.lower(), set()).add("referenced")
+        elif isinstance(node, exp.Alter):
+            give(node.this, {"altered"}, nested)
+            for action in node.args.get("actions") or []:
+                if isinstance(action, exp.AlterRename):
+                    give(action.this, {"created", "altered"}, nested)
+                elif isinstance(action, exp.SwapTable):
+                    give(action.this, {"altered"}, nested)
+        elif isinstance(node, exp.Delete):
+            for item in [node.this] + list(node.args.get("tables") or []):
+                give(item, {"altered"}, nested)
+        elif isinstance(node, (exp.Insert, exp.Update, exp.Merge, exp.LoadData)):
+            give(node.this, {"altered"}, nested)
+        elif isinstance(node, exp.Copy) and node.args.get("kind"):
+            give(node.this, {"altered"}, nested)  # COPY ... FROM imports; TO only reads
+        elif isinstance(node, exp.Into):
+            give(node.this, {"created"}, nested or family not in SELECT_INTO_CREATES)
+    for table in ast.find_all(exp.Table):
+        if table.name and id(table) not in given:
+            roles.setdefault(table.name.lower(), set()).add("referenced")
+    return {name: allowed for name, allowed in roles.items() if name not in free}
+
+
+def _roles_differ(ast: Optional[exp.Expression], family: str, facts: Dict[str, Any]) -> bool:
+    """For a name the statement mentions, the reader's role is not the statement's.
+
+    Wrong when the reader gives a role the statement does not, or only reads an object the
+    statement creates, drops or alters.
+    """
+    expected = _expected_roles(ast, family)
+    if expected is None:
+        return False
+    found: Dict[str, Set[str]] = {}
     for name, _kind, role, _schema in facts.get("objects", []):
-        roles.setdefault(name.lower(), set()).add(role)
+        found.setdefault(name.lower(), set()).add(role)
     return any(
-        (name in acted and found == {"referenced"}) or (name in read and found & set(ACTED_ROLES))
-        for name, found in roles.items()
+        got - expected[name] or (expected[name] & set(ACTED_ROLES) and got <= {"referenced"})
+        for name, got in found.items()
+        if name in expected
     )
 
 
@@ -335,16 +419,31 @@ def _fold(family: str, name: str) -> Optional[str]:
     return name.lower() if direction == "lower" else name.upper()
 
 
-def _spelled_unquoted(sql: str, name: str) -> bool:
-    """Every part of ``name`` is written exactly so in the statement, and never quoted."""
-    return all(
-        re.search(r"(?<![\w$#\"`\[])" + re.escape(part) + r"(?![\w$#\"`\]])", sql)
-        and not _quoted_in(sql, part)
-        for part in name.split(".")
-    )
+def _name_identifiers(ast: Optional[exp.Expression]) -> Set[str]:
+    """The unquoted identifiers that name an object in the statement: the parts of every table
+    and the name of what a statement creates, drops or alters (not a column, literal or comment)."""
+    parts: List[exp.Expression] = []
+    for table in (ast.find_all(exp.Table) if ast is not None else ()):
+        parts += [table.args.get(key) for key in ("this", "db", "catalog")]
+    for node in ast.walk() if ast is not None else ():
+        if isinstance(node, (exp.Create, exp.Alter)):
+            parts.append(_subject(node.this))
+    return {
+        part.name
+        for part in parts
+        if isinstance(part, exp.Identifier) and not part.args.get("quoted")
+    }
 
 
-def _case_folded(sql: str, family: str, opaque: bool, old: Identity, new: Identity) -> bool:
+def _spelled_unquoted(ast: Optional[exp.Expression], name: str) -> bool:
+    """Every part of ``name`` is written exactly so as an unquoted object name in the statement."""
+    written = _name_identifiers(ast)
+    return all(part in written for part in name.split("."))
+
+
+def _case_folded(
+    ast: Optional[exp.Expression], family: str, opaque: bool, old: Identity, new: Identity
+) -> bool:
     """The reader keeps the unquoted spelling of the statement; the extraction holds the engine's
     folding of it. Never the reverse, and never from an opaque reader."""
     return (
@@ -352,7 +451,7 @@ def _case_folded(sql: str, family: str, opaque: bool, old: Identity, new: Identi
         and old[0] == new[0]
         and old[1] != new[1]
         and _fold(family, new[1]) == old[1]
-        and _spelled_unquoted(sql, new[1])
+        and _spelled_unquoted(ast, new[1])
     )
 
 
@@ -393,14 +492,18 @@ def _old_keyword(
     dml_table: str,
 ) -> bool:
     """Every name the reader does not have is an unquoted word the engine reserves, none is
-    written to, and the reader (not opaque) names everything else."""
+    written to, and the reader (not opaque) names everything else. A word after a dot is a name:
+    ``schema.order`` is an object the reader lost."""
     targets = _write_targets(_parse(sql, DIALECTS[family]), family, dml_table)
     words = {word.upper() for word in reserved}
     return (
         targets is not None
         and bool(new)
         and all(
-            item[1].upper() in words and _unquoted(sql, item[1]) and item[1].lower() not in targets
+            item[1].upper() in words
+            and _unquoted(sql, item[1])
+            and not _after_dot(sql, item[1])
+            and item[1].lower() not in targets
             for item in missing
         )
     )
@@ -425,11 +528,12 @@ def _mechanical(
         if not opaque and _old_keyword(sql, family, missing, new, reserved, dml_table):
             return OLD_KEYWORD
     if missing and extra:
+        ast = _parse(sql, DIALECTS[family])
         if _bijection(missing, extra, _type_refined):
             return TYPE_REFINED
         if _bijection(missing, extra, lambda o, n: _quote_decoded(sql, o, n)):
             return QUOTE_DECODED
-        if _bijection(missing, extra, lambda o, n: _case_folded(sql, family, opaque, o, n)):
+        if _bijection(missing, extra, lambda o, n: _case_folded(ast, family, opaque, o, n)):
             return CASE_FOLDED
     if extra and not missing and all(new[item] == {"referenced"} for item in extra):
         return FACTS_ADDS_REFERENCED
@@ -469,7 +573,7 @@ def classify(
         "full_table": dml["full_table"],
     }:
         return DML_DIFFERS
-    if _roles_differ(_parse(sql, DIALECTS[family]), family, facts, dml["table"] if dml else ""):
+    if _roles_differ(_parse(sql, DIALECTS[family]), family, facts):
         return ROLE_DIFFERS
     before = _old_identities(path, old[path], default)
     after = _facts_identities(facts, default)
