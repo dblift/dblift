@@ -359,9 +359,11 @@ def _case_folded(sql: str, family: str, opaque: bool, old: Identity, new: Identi
 def _quote_decoded(sql: str, old: Identity, new: Identity) -> bool:
     cut = len(old[1])
     quote = new[1][cut : cut + 1]
-    closing = {'"': '"', "`": "`", "]": "]"}.get(quote)
     return (
-        old[0] == new[0] and new[1].startswith(old[1]) and closing is not None and quote * 2 in sql
+        old[0] == new[0]
+        and new[1].startswith(old[1])
+        and quote in ('"', "`", "]")
+        and quote * 2 in sql
     )
 
 

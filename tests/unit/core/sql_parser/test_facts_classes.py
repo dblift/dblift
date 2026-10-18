@@ -395,6 +395,13 @@ def test_case_folded_is_directional_the_facts_side_is_never_the_folded_one() -> 
     )
 
 
+def test_case_folded_never_accepts_the_extraction_as_the_unfolded_side() -> None:
+    sql = "CREATE TABLE users (id int)"
+    assert cls(sql, facts(obj("users")), old(("TABLE", "USERS")), family="postgresql") == (
+        "disagree"
+    )
+
+
 def test_case_folded_needs_the_facts_name_as_the_statement_spells_it() -> None:
     sql = "CREATE TABLE users (id int)"
     assert cls(sql, facts(obj("Users")), old(("TABLE", "USERS")), family="oracle") == "disagree"
