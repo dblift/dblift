@@ -10,11 +10,10 @@ from dblift.core.migration.scripting.migration_script_manager import (  # noqa: 
     _last_successful_non_delete_record,
     _successful_non_delete_records,
 )
-from dblift.core.migration.state.checksum_drift import ChecksumDrift, find_checksum_drift
+from dblift.core.migration.state.checksum_drift import ChecksumDrift
 from dblift.core.migration.state.repeatable_status import (
     RepeatableRun,
     RepeatableStatus,
-    repeatable_runs,
 )
 
 if TYPE_CHECKING:
@@ -32,7 +31,8 @@ def validate_checksums(
     issues: List[str],
     strict_mode: bool = False,
     all_scripts: Optional[List[Migration]] = None,
-    drift: Optional[Sequence[ChecksumDrift]] = None,
+    *,
+    drift: Sequence[ChecksumDrift],
 ) -> None:
     """Validate checksums of executed migrations.
 
@@ -46,8 +46,7 @@ def validate_checksums(
     directory (as opposed to merely filtered out of the current run's scope).
 
     ``drift`` is the state layer's answer for these ``scripts`` and
-    ``applied_migrations``. When not given it is derived with the same
-    ``find_checksum_drift`` rule.
+    ``applied_migrations``.
     """
     checksum_mismatches = []
     scripts_by_name: dict[str, Migration] = {}
@@ -61,8 +60,6 @@ def validate_checksums(
     full_script_names = (
         {s.script_name for s in all_scripts} if all_scripts is not None else script_names
     )
-    if drift is None:
-        drift = find_checksum_drift(scripts, applied_migrations)
     drift_by_name = {d.script_name: d for d in drift}
     has_successful_row = {
         getattr(row, "script_name", None)
@@ -207,17 +204,15 @@ def check_repeatable_migrations(
     applied_migrations: List[Migration],
     result: "ValidationResult",
     command: str = "migrate",
-    runs: Optional[Mapping[str, RepeatableRun]] = None,
+    *,
+    runs: Mapping[str, RepeatableRun],
 ) -> None:
     """Report repeatable migrations that will be reapplied, or are stuck on a failed run.
 
-    The state layer decides each script's status (``runs``, or derived from
-    ``applied_migrations`` when not given); this only turns it into validation
-    output. A failed run whose file has not changed is an error; a new, changed
+    The state layer decides each script's status (``runs``); this only turns
+    it into validation output. A failed run whose file has not changed is an error; a new, changed
     or fixed-after-failure script is recorded as to be applied.
     """
-    if runs is None:
-        runs = repeatable_runs(scripts, applied_migrations)
     for script in scripts:
         if script.type != MigrationType.REPEATABLE:
             continue

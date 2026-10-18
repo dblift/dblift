@@ -45,9 +45,12 @@ def _row(name="R__v.sql", *, checksum=None, success=True, rank=1, execution_time
     )
 
 
-def _check(scripts, rows, **kwargs) -> ValidationResult:
+def _check(scripts, rows, *, runs=None) -> ValidationResult:
+    """Validate with the state layer's ``repeatable_runs`` unless ``runs`` is supplied."""
     result = ValidationResult()
-    _validator()._check_repeatable_migrations(scripts, rows, result, "validate", **kwargs)
+    if runs is None:
+        runs = repeatable_runs(scripts, rows)
+    _validator()._check_repeatable_migrations(scripts, rows, result, "validate", runs=runs)
     return result
 
 
@@ -103,18 +106,8 @@ def test_script_missing_from_supplied_runs_is_skipped():
     assert _check([_script()], [], runs={}).repeatable_migrations_to_reapply == []
 
 
-def test_supplied_runs_match_derived_runs():
-    script = _script()
-    rows = [_row(checksum=script.checksum, success=False)]
-    derived = _check([script], rows)
-    supplied = _check([script], rows, runs=repeatable_runs([script], rows))
-    assert derived.error_message == supplied.error_message == FAILED_MESSAGE
-
-
 def test_supplied_checksum_drift_replaces_the_comparison():
-    from unittest.mock import patch
-
-    from dblift.core.migration.state.checksum_drift import ChecksumDrift
+    from dblift.core.migration.state.checksum_drift import ChecksumDrift, find_checksum_drift
     from dblift.core.sql_validator._checksum_validator import validate_checksums
 
     script = make_migration(script_name="V1__a.sql", content="SELECT 1;", type=MigrationType.SQL)
@@ -128,14 +121,12 @@ def test_supplied_checksum_drift_replaces_the_comparison():
     )
     drift = [ChecksumDrift("V1__a.sql", 1, 2, False)]
     result, issues = ValidationResult(), []
-    with patch(
-        "dblift.core.sql_validator._checksum_validator.find_checksum_drift",
-        side_effect=AssertionError("drift was supplied"),
-    ):
-        validate_checksums(_validator(), [script], [row], result, issues, drift=drift)
+    validate_checksums(_validator(), [script], [row], result, issues, drift=drift)
     assert any("V1__a.sql has been modified since it was applied" in i for i in issues)
 
-    # Without a supplied answer the same rule is derived from the inputs.
+    # The state layer's own answer for the same inputs reports nothing.
     result, issues = ValidationResult(), []
-    validate_checksums(_validator(), [script], [row], result, issues)
+    validate_checksums(
+        _validator(), [script], [row], result, issues, drift=find_checksum_drift([script], [row])
+    )
     assert not issues

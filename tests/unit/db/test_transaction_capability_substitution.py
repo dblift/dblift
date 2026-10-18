@@ -81,6 +81,8 @@ class NonTransactionalProvider:
 
 
 def command(command_class, provider):
+    migration_helpers = MagicMock()
+    migration_helpers.validate_migrations_for_migrate.return_value = (True, None, 0.0)
     config = SimpleNamespace(
         database=SimpleNamespace(schema="main", type="sqlite"), clean_disabled=False
     )
@@ -90,9 +92,9 @@ def command(command_class, provider):
         provider=provider,
         script_manager=MigrationScriptManager(NullLog()),
         history_manager=MigrationHistoryManager(provider, "main", "tester", NullLog()),
-        validator=None,
+        validator=MagicMock(),
         execution_engine=MagicMock(),
-        migration_helpers=MagicMock(),
+        migration_helpers=migration_helpers,
         state_manager=MagicMock(),
         migration_ui=MagicMock(),
         migration_rules=MagicMock(),

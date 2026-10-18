@@ -457,8 +457,6 @@ class MigrateCommand(BaseCommand):
                 state: MigrationState, snapshot: MigrationReadSnapshot
             ) -> Tuple[bool, object]:
                 """Validate ``state`` read through ``snapshot``; return (valid, errors)."""
-                if getattr(self, "validator", None) is None:
-                    return True, None
                 validation_snapshot = self.state_manager.build_validation_snapshot(
                     scripts_dir,
                     "migrate",

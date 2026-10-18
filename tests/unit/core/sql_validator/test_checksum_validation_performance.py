@@ -8,6 +8,8 @@ import pytest
 from dblift.core.logger import NullLog
 from dblift.core.migration.migration import MigrationType
 from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
+from dblift.core.migration.state.checksum_drift import find_checksum_drift
+from dblift.core.migration.state.repeatable_status import repeatable_runs
 from dblift.core.sql_validator.migration_validator import MigrationValidator, ValidationResult
 from tests.unit._migration_factory import make_migration
 
@@ -61,7 +63,9 @@ def test_resolved_checksums_do_not_reread_files(tmp_path, changed, encoding, det
     instance.script_manager.script_encoding = encoding
     instance.script_manager.detect_encoding = detect
     with patch("pathlib.Path.read_text", wraps=path.read_text) as reads:
-        instance._validate_checksums([script], rows, result, issues)
+        instance._validate_checksums(
+            [script], rows, result, issues, drift=find_checksum_drift([script], rows)
+        )
     assert result.failed_scripts == ([script.script_name] if changed else [])
     assert any("has been modified" in issue for issue in issues) == changed
     assert reads.call_count == 0
@@ -86,7 +90,9 @@ def test_history_lookup_scales_and_preserves_supplied_order(tmp_path):
     rows = CountingList(rows)
     scripts = CountingList(scripts)
     result, issues = ValidationResult(), []
-    validator()._validate_checksums(scripts, rows, result, issues)
+    validator()._validate_checksums(
+        scripts, rows, result, issues, drift=find_checksum_drift(scripts, rows)
+    )
     assert issues == []
     assert result.checked_scripts == [script.script_name for script in scripts]
     assert rows.visits <= 4 * len(rows)
@@ -107,7 +113,9 @@ def test_repeatable_history_is_indexed_and_previous_run_uses_rank(tmp_path, fail
         )
     rows = CountingList(rows)
     result = ValidationResult()
-    validator()._check_repeatable_migrations(scripts, rows, result)
+    validator()._check_repeatable_migrations(
+        scripts, rows, result, runs=repeatable_runs(scripts, rows)
+    )
     assert result.success is not failed
     assert result.error_message.count("previously failed") == (len(scripts) if failed else 0)
     assert result.repeatable_migrations_to_reapply == []
@@ -142,6 +150,7 @@ def test_qualified_names_choose_first_match_and_filtered_deleted_missing_rows(tm
         issues,
         strict_mode=True,
         all_scripts=[script, duplicate, filtered],
+        drift=find_checksum_drift([script, duplicate], rows),
     )
     assert result.failed_scripts == [missing.script_name]
     assert len(issues) == 1
@@ -166,7 +175,9 @@ def test_validation_uses_supplied_checksum_and_standalone_observes_edits(tmp_pat
         "pathlib.Path.read_text",
         wraps=path.read_text,
     ) as reads:
-        instance._validate_checksums([legacy], rows, result, issues)
+        instance._validate_checksums(
+            [legacy], rows, result, issues, drift=find_checksum_drift([legacy], rows)
+        )
     assert result.failed_scripts == [script.script_name]
     assert "has been modified" in issues[0]
     assert reads.call_count == 0

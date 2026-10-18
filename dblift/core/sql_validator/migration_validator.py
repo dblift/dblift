@@ -201,8 +201,8 @@ class MigrationValidator:
         history_table_exists: bool,
         command: str,
         strict_mode: bool,
-        repeatable_runs: Optional[Mapping[str, RepeatableRun]] = None,
-        checksum_drift: Optional[Sequence[ChecksumDrift]] = None,
+        repeatable_runs: Mapping[str, RepeatableRun],
+        checksum_drift: Sequence[ChecksumDrift],
     ) -> ValidationResult:
         """Run the common checks over already prepared catalog and history inputs."""
         self._check_repeatable_migrations(
@@ -248,7 +248,7 @@ class MigrationValidator:
                 issues,
                 strict_mode,
                 all_valid_scripts,
-                checksum_drift,
+                drift=checksum_drift,
             )
             self._validate_reappeared_migrations(
                 valid_scripts, applied_migrations, validation_result, issues
@@ -505,16 +505,22 @@ class MigrationValidator:
         issues: List[str],
         strict_mode: bool = False,
         all_scripts: Optional[List[Migration]] = None,
-        drift: Optional[Sequence[ChecksumDrift]] = None,
+        *,
+        drift: Sequence[ChecksumDrift],
     ) -> None:
-        """Delegate to :func:`dblift.core.sql_validator._checksum_validator.validate_checksums`.
-
-        Kept as a method so test code that calls
-        ``v._validate_checksums(...)`` directly continues to work.
-        """
+        """Delegate to :func:`dblift.core.sql_validator._checksum_validator.validate_checksums`."""
         from dblift.core.sql_validator._checksum_validator import validate_checksums as _impl
 
-        _impl(self, scripts, applied_migrations, result, issues, strict_mode, all_scripts, drift)
+        _impl(
+            self,
+            scripts,
+            applied_migrations,
+            result,
+            issues,
+            strict_mode,
+            all_scripts,
+            drift=drift,
+        )
 
     def _check_repeatable_migrations(
         self,
@@ -522,7 +528,8 @@ class MigrationValidator:
         applied_migrations: List[Migration],
         result: ValidationResult,
         command: str = "migrate",
-        runs: Optional[Mapping[str, RepeatableRun]] = None,
+        *,
+        runs: Mapping[str, RepeatableRun],
     ) -> None:
         """Delegate to
         :func:`dblift.core.sql_validator._checksum_validator.check_repeatable_migrations`.
@@ -531,7 +538,7 @@ class MigrationValidator:
             check_repeatable_migrations as _impl,
         )
 
-        _impl(self, scripts, applied_migrations, result, command, runs)
+        _impl(self, scripts, applied_migrations, result, command, runs=runs)
 
     def _validate_strict_mode_rules(
         self,

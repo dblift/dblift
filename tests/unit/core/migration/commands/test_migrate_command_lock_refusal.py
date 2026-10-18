@@ -53,6 +53,7 @@ def _cmd(pending, execute_side_effect=None):
 
     migration_helpers = MagicMock()
     migration_helpers.setup_migration_parameters.return_value = (True, None)
+    migration_helpers.validate_migrations_for_migrate.return_value = (True, None, 0.0)
 
     execution_engine = MagicMock()
     if execute_side_effect is not None:
@@ -68,7 +69,7 @@ def _cmd(pending, execute_side_effect=None):
         provider=provider,
         script_manager=MagicMock(),
         history_manager=history_manager,
-        validator=None,
+        validator=MagicMock(),
         execution_engine=execution_engine,
         migration_helpers=migration_helpers,
         state_manager=state_manager,

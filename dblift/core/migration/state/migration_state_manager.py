@@ -21,10 +21,7 @@ from dblift.core.migration.migration import (
 from dblift.core.migration.rules.migration_rules import MigrationRules
 from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
 from dblift.core.migration.state.checksum_drift import ChecksumDrift, find_checksum_drift
-from dblift.core.migration.state.migrate_plan import (  # noqa: F401  StrictModeError re-export
-    MigratePlan,
-    StrictModeError,
-)
+from dblift.core.migration.state.migrate_plan import MigratePlan
 from dblift.core.migration.state.migrate_plan import plan_migrate as _plan_migrate
 from dblift.core.migration.state.migration_data_service import MigrationDataService
 from dblift.core.migration.state.migration_display_state import MigrationDisplayState
@@ -404,7 +401,6 @@ class MigrationStateManager:
                 history.executed_scripts,
                 applied_migrations,
                 history.undone_versions,
-                history.repeatable_checksums,
                 history.executed_versions,
                 recursive=recursive,
                 additional_dirs=list(additional_dirs) if additional_dirs else None,
@@ -742,7 +738,6 @@ class MigrationStateManager:
         executed_scripts: Set[str],
         applied_migrations: List[Migration],
         undone_versions: Set[str],
-        repeatable_checksums: Dict[str, str],
         executed_versions: Optional[Set[str]] = None,
         *,
         recursive: bool = True,
@@ -826,8 +821,6 @@ class MigrationStateManager:
         # Step 4: Catalog unresolved on-disk scripts (do not omit by
         # baseline/target/undo/tags — commands select from this set later)
         pending: List[Migration] = []
-        executed_basenames: Optional[Set[str]] = None
-        basename_checksums: Optional[Dict[str, str]] = None
 
         for migration in all_scripts:
             script_name = migration.script_name
@@ -845,21 +838,7 @@ class MigrationStateManager:
                     pending.append(migration)
 
             elif migration_type_name == "REPEATABLE":
-                if executed_basenames is None:
-                    executed_basenames = {Path(name).name for name in executed_scripts}
-                if basename_checksums is None:
-                    basename_checksums = {}
-                    for name, checksum in repeatable_checksums.items():
-                        basename_checksums.setdefault(Path(name).name, checksum)
-                if self._is_repeatable_pending(
-                    script_name,
-                    migration,
-                    executed_scripts,
-                    repeatable_checksums,
-                    executed_basenames=executed_basenames,
-                    basename_checksums=basename_checksums,
-                    runs=runs,
-                ):
+                if self._is_repeatable_pending(script_name, runs=runs):
                     pending.append(migration)
 
             elif migration_type_name == "UNDO_SQL":
@@ -954,59 +933,14 @@ class MigrationStateManager:
         return False
 
     def _is_repeatable_pending(
-        self,
-        script_name: str,
-        migration: Migration,
-        executed_scripts: Set[str],
-        repeatable_checksums: Dict[str, str],
-        *,
-        executed_basenames: Optional[Set[str]] = None,
-        basename_checksums: Optional[Dict[str, str]] = None,
-        runs: Optional[Mapping[str, RepeatableRun]] = None,
+        self, script_name: str, *, runs: Mapping[str, RepeatableRun]
     ) -> bool:
-        """Check if a repeatable migration is pending.
+        """Check if a repeatable migration is pending from its latest-run status.
 
         ``runs`` carries each script's latest-run status (``build_state`` computes
-        it once); without it the answer is derived from the other inputs alone.
+        it once).
         """
-        run = runs.get(script_name) if runs is not None else None
-        if run is not None:
-            return run.status in PENDING_REPEATABLE_STATUSES
-        # Never executed — check script_name directly, falling back to a
-        # basename comparison for backward compatibility. A history row
-        # written before PR #129 still has a directory-qualified
-        # script_name (e.g. "extra-migrations/R__cleanup.sql"), while the
-        # freshly-loaded Migration now always computes the bare filename;
-        # compare basenames on both sides so either an already-bare or an
-        # already-qualified executed_scripts entry matches. Mirrors
-        # _is_versioned_pending's fallback.
-        script_basename = Path(script_name).name
-        is_executed = script_name in executed_scripts or (
-            script_basename in executed_basenames
-            if executed_basenames is not None
-            else any(Path(executed).name == script_basename for executed in executed_scripts)
-        )
-        if not is_executed:
-            return True
-
-        # Check if checksum changed
-        current_checksum = getattr(migration, "checksum", None)
-
-        stored_checksum = self._lookup_checksum(
-            repeatable_checksums,
-            script_name,
-            basename_checksums=basename_checksums,
-        )
-
-        # If checksum changed, it's pending
-        if (
-            stored_checksum
-            and current_checksum
-            and self.state_service._checksums_differ(stored_checksum, current_checksum)
-        ):
-            return True
-
-        return False
+        return runs[script_name].status in PENDING_REPEATABLE_STATUSES
 
     def plan_migrate(
         self,

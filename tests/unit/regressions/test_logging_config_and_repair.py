@@ -173,7 +173,7 @@ class TestRepairSkipsBaseline(unittest.TestCase):
         return obj
 
     def test_count_candidate_missing_skips_baseline(self) -> None:
-        from dblift.core.migration.commands.repair_command import _count_candidate_missing
+        from dblift.core.migration.state.repair_plan import _count_candidate_missing
 
         applied = [
             self._make_applied("B2__.sql", "BASELINE"),
@@ -182,7 +182,7 @@ class TestRepairSkipsBaseline(unittest.TestCase):
         self.assertEqual(_count_candidate_missing(applied, set()), 1)
 
     def test_count_candidate_missing_skips_baseline_string(self) -> None:
-        from dblift.core.migration.commands.repair_command import _count_candidate_missing
+        from dblift.core.migration.state.repair_plan import _count_candidate_missing
 
         applied = [self._make_applied("B2__.sql", "anything")]
         # type provided as a plain string rather than an enum-like MagicMock.

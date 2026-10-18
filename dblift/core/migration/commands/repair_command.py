@@ -14,11 +14,7 @@ from dblift.core.logger.results import RepairResult
 from dblift.core.migration.history.history_transaction import history_transaction
 from dblift.core.migration.migration import MigrationType
 from dblift.core.migration.state.migration_state import MigrationState
-from dblift.core.migration.state.repair_plan import (  # noqa: F401  re-exports
-    RepairAction,
-    RepairSafetyError,
-    _count_candidate_missing,
-)
+from dblift.core.migration.state.repair_plan import RepairAction, RepairSafetyError
 from dblift.db.provider_capabilities import ensure_provider_connection
 from dblift.db.provider_interfaces import TransactionalProvider
 

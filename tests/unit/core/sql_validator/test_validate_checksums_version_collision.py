@@ -5,6 +5,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from dblift.core.migration.migration import MigrationType
+from dblift.core.migration.state.checksum_drift import find_checksum_drift
 from dblift.core.sql_validator.migration_validator import MigrationValidator, ValidationResult
 
 
@@ -51,6 +52,7 @@ class TestValidateChecksumsVersionCollision:
             result=result,
             issues=issues,
             strict_mode=False,
+            drift=find_checksum_drift([alt_script], [applied]),
         )
 
         warning_calls = [str(c) for c in validator.log.warning.call_args_list]
@@ -82,6 +84,7 @@ class TestValidateChecksumsTagVersionScope:
             issues=issues,
             strict_mode=False,
             all_scripts=[in_scope_script, filtered_out_script],
+            drift=find_checksum_drift([in_scope_script], [applied_filtered_out]),
         )
 
         assert issues == []

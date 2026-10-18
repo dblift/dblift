@@ -40,7 +40,6 @@ def _on_disk(*script_names: str) -> dict:
 def _plan(state: MigrationState, **overrides) -> RepairPlan:
     manager = MigrationStateManager(MagicMock(), MagicMock(), MagicMock(), MagicMock())
     manager.build_state = MagicMock(return_value=state)
-    manager.get_grouped_migrations = MagicMock(return_value=overrides.pop("catalog", {}))
     kwargs = dict(recursive=True, additional_dirs=None, dir_recursive_map=None)
     kwargs.update(overrides)
     return manager.plan_repairs(Path("/migrations"), **kwargs)
@@ -172,23 +171,6 @@ class TestPlanRepairsKinds:
 
         assert _kinds(plan) == [("FAILED_MIGRATION", "V1__a.sql")]
 
-    def test_state_without_a_catalog_is_rebuilt_for_drift(self):
-        bare = MigrationState()
-        built = MigrationState(
-            grouped_objects=_on_disk("V1__a.sql"),
-            checksum_drift=(ChecksumDrift("V1__a.sql", 1, 2, False),),
-        )
-        manager = MigrationStateManager(MagicMock(), MagicMock(), MagicMock(), MagicMock())
-        manager.build_state = MagicMock(side_effect=[bare, built])
-        manager.get_grouped_migrations = MagicMock(return_value=_on_disk("V1__a.sql"))
-
-        plan = manager.plan_repairs(
-            Path("/migrations"), recursive=True, additional_dirs=None, dir_recursive_map=None
-        )
-
-        assert plan.state is bare
-        assert _kinds(plan) == [("CHECKSUM_MISMATCH", "V1__a.sql")]
-
 
 class TestFailedRowRouting:
     def test_checksum_repair_on_a_failed_row_becomes_a_removal(self):
@@ -253,15 +235,6 @@ class TestMissingScripts:
 
         assert _plan(state).actions == ()
 
-    def test_catalog_comes_from_the_manager_when_the_state_has_none(self):
-        state = MigrationState()
-        state.applied_objects = [_applied("V1__a.sql"), _applied("V2__gone.sql", "2")]
-
-        plan = _plan(state, catalog=_on_disk("V1__a.sql"))
-
-        # The drift pass then rebuilds the bare state; the mock hands the same one back.
-        assert _kinds(plan) == [("MISSING_SCRIPT", "V2__gone.sql")]
-
     def test_zero_scripts_with_applied_history_is_refused(self):
         state = MigrationState(grouped_objects={})
         state.applied_objects = [_applied("V1__a.sql"), _applied("V2__b.sql", "2")]
@@ -280,11 +253,8 @@ class TestMissingScripts:
         assert _plan(MigrationState(grouped_objects={})).actions == ()
 
     def test_load_failure_propagates(self):
-        state = MigrationState()
-        state.applied_objects = [_applied("V1__a.sql")]
         manager = MigrationStateManager(MagicMock(), MagicMock(), MagicMock(), MagicMock())
-        manager.build_state = MagicMock(return_value=state)
-        manager.get_grouped_migrations = MagicMock(side_effect=PermissionError("unreadable"))
+        manager.build_state = MagicMock(side_effect=PermissionError("unreadable"))
 
         with pytest.raises(PermissionError, match="unreadable"):
             manager.plan_repairs(
