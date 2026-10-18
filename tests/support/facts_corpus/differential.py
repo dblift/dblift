@@ -98,7 +98,8 @@ def entry_class(entry: Entry, arm: str) -> Optional[str]:
 
 
 def _explained(entry: Entry, arm: str) -> bool:
-    if not str(entry.get("reason", "")).strip():
+    """A reason is written, and the arm's class is not one the skeleton set under another's."""
+    if arm in entry.get("unreviewed", ()) or not str(entry.get("reason", "")).strip():
         return False
     return entry_class(entry, arm) != OPAQUE_READER_GAP or bool(str(entry.get("issue", "")).strip())
 
@@ -147,6 +148,9 @@ def _for_arm(
 ) -> Optional[Entry]:
     """A stale entry with the class of ``arm`` set to the row's, and the other arm kept as it is.
 
+    The reason belongs to the class it explained, so the arm is listed under ``unreviewed`` until
+    a person has read the row for its new class and removes it.
+
     ``None`` when nothing of it is worth keeping: its row is gone, it explains nothing, or the row
     has no single class on its paths here (an entry that holds a class per arm is then left alone).
     """
@@ -159,7 +163,11 @@ def _for_arm(
         return entry if isinstance(value, dict) else None
     held = dict(value) if isinstance(value, dict) else {"floor": value, "newest": value}
     held[arm] = current
-    return None if set(held.values()) == {SAME} else {**entry, "class": held}
+    if set(held.values()) == {SAME}:
+        return None
+    unreviewed = set(entry.get("unreviewed", ()))
+    unreviewed = unreviewed | {arm} if current in REVIEW else unreviewed - {arm}
+    return {**entry, "class": held, **({"unreviewed": sorted(unreviewed)} if unreviewed else {})}
 
 
 def skeleton(
@@ -170,7 +178,7 @@ def skeleton(
     A new entry holds the class of this arm only; a row whose class depends on the sqlglot release
     is completed by hand with ``{"floor": ..., "newest": ...}``. An entry that is stale on this arm
     keeps its reason and the class of the other arm; only this arm's class is set to the row's, and
-    the reason is to be reviewed for it.
+    this arm is listed under ``unreviewed`` so the reason does not count for it until it is read.
     """
     problems = check_review(results, review, arm)
     by_id = {row_id: classes for row_id, _, classes in results}

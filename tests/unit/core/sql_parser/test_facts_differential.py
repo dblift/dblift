@@ -311,6 +311,7 @@ def test_the_skeleton_fills_only_the_running_arm_of_an_entry_and_keeps_the_other
     out = skeleton(results, kept, "newest")
     assert out["r/hybrid"]["class"] == {"floor": "opaque-reader-gap", "newest": "facts-fewer"}
     assert out["r/hybrid"]["reason"] == "differs by release" and out["r/hybrid"]["issue"] == "#1"
+    assert out["r/hybrid"]["unreviewed"] == ["newest"]
     assert set(out) == {"r/hybrid"}
     assert check_review(results, out, "floor")["stale"] == ["r/hybrid"]  # the floor is rechecked
 
@@ -320,7 +321,33 @@ def test_the_skeleton_keeps_the_other_arm_of_a_class_that_no_longer_holds_here()
     wrong = {"r/hybrid": {"path": "hybrid", "class": "disagree", "reason": "why", "issue": ""}}
     out = skeleton(results, wrong, "newest")
     assert out["r/hybrid"]["class"] == {"floor": "disagree", "newest": "facts-fewer"}
-    assert out["r/hybrid"]["reason"] == "why"
+    assert out["r/hybrid"]["reason"] == "why" and out["r/hybrid"]["unreviewed"] == ["newest"]
+    assert check_review(results, out, "newest")["unclassified"] == ["r/hybrid"]
+
+
+def test_a_reason_written_for_another_class_does_not_explain_the_class_the_skeleton_set(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    results: Results = [
+        ("r", _row("s", {}, {}), {"hybrid": "facts-adds-acted", "analyzer": "same"})
+    ]
+    monkeypatch.setattr(differential, "classify_family", lambda family, arm: results)
+    monkeypatch.setattr(differential, "review_file", lambda family: tmp_path / "f.json")
+    monkeypatch.setattr(differential, "current_arm", lambda: "floor")
+    monkeypatch.setattr(differential, "gated_families", lambda: [])
+    ledger = tmp_path / "f.json"
+    entry = {"path": "hybrid", "class": "disagree", "reason": "R", "issue": ""}
+    ledger.write_text(json.dumps({"r/hybrid": entry}), encoding="utf-8")
+    assert differential.run(["f"], write=True) == 1  # the entry was stale
+    assert differential.run(["f"]) == 0  # not gated
+    after = differential.report_family("f", "floor")
+    assert after["stale"] == [] and after["unclassified"] == ["r/hybrid"]
+    written = json.loads(ledger.read_text(encoding="utf-8"))["r/hybrid"]
+    assert written["class"] == {"floor": "facts-adds-acted", "newest": "disagree"}
+    assert written["reason"] == "R" and written["unreviewed"] == ["floor"]
+    del written["unreviewed"]  # a person read the row and kept the reason
+    ledger.write_text(json.dumps({"r/hybrid": written}), encoding="utf-8")
+    assert differential.report_family("f", "floor")["unclassified"] == []
 
 
 def test_the_skeleton_drops_an_entry_whose_row_is_gone_or_whose_class_explains_nothing() -> None:

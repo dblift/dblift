@@ -81,7 +81,7 @@ in one class per path (`classes.py`, tried in this order: the first match wins):
 | `no-old-side` | the family's extraction already is the reader (SQLite, DuckDB): nothing to compare |
 | `no-old` | an activated family's row that has no recorded extraction |
 | `dml-differs` | target, predicate, events, updated columns or full-table flag differ |
-| `role-differs` | a name the statement mentions has another role in the facts than in the statement: created, dropped, altered (also a truncated table and a DML target), or only referenced (the table under an index, a joined table, a COPY source, a foreign key target) |
+| `role-differs` | a name the statement mentions (schema and name: the same name in two schemas is two objects) has another role in the facts than in the statement: created, dropped, altered (also a truncated table and a DML target), or only referenced (the table under an index, a joined table, a COPY source, a foreign key target) |
 | `same` | identities are equal |
 | `old-cte-alias` | the extraction took CTE aliases for tables; none is written to |
 | `old-keyword` | the extraction took a word the engine reserves, unquoted and not after a dot, for an object; it is not written to and the reader names everything else |
@@ -114,7 +114,9 @@ stale entry fails `diff` and the test module in every family, gated or not.
 and `tests/unit/core/sql_parser/test_facts_differential.py` fails on a row with neither, in a listed
 family. `--report` prints without failing; `--skeleton` adds an empty entry to the review file for
 each row that needs one, and on an entry that is stale on the running arm sets only that arm's
-class (the other arm's class and the reason are kept, the reason is to be reviewed). The list is empty until a family's differences are explained; a family
+class and lists the arm under `unreviewed`. The other arm's class and the reason are kept; the
+reason belonged to the class it explained, so the arm does not count as explained until a person
+has read the row for its new class and removes the arm from `unreviewed`. The list is empty until a family's differences are explained; a family
 joins it when its plugin reads statements through the reader.
 
 ## Once a family reads through the reader
