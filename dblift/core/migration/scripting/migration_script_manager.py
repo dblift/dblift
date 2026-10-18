@@ -23,6 +23,7 @@ from dblift.core.migration.scripting.filename_parser import (
     _matches_callback_event,
     parse_migration_filename,
 )
+from dblift.core.migration.scripting.migration_markers import MigrationMarkerMixin
 from dblift.core.migration.version_utils import compare_versions as _compare_versions_shared
 from dblift.core.migration.version_utils import is_migration_success
 
@@ -84,7 +85,7 @@ def _current_script_checksum(
     return None
 
 
-class MigrationScriptManager:
+class MigrationScriptManager(MigrationMarkerMixin):
     """Resolves on-disk migration scripts, computes checksums, and orders them by version."""
 
     def __init__(self, logger: Log, script_encoding: str = "utf-8", detect_encoding: bool = False):
@@ -172,6 +173,7 @@ class MigrationScriptManager:
             script_encoding=self.script_encoding,
             detect_encoding=self.detect_encoding,
             _filename_metadata=metadata,
+            checksum=self.calculate_checksum(content),
         )
         migration.path = script_path
         if migration.type == MigrationType.SQL and migration.format not in (

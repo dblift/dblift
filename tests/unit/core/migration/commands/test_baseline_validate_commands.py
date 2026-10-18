@@ -30,6 +30,7 @@ from dblift.core.logger.results import BaselineResult, ValidateResult
 from dblift.core.migration.commands.base_command import PreflightConnectionError
 from dblift.core.migration.commands.baseline_command import BaselineCommand
 from dblift.core.migration.commands.validate_command import ValidateCommand
+from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
 from dblift.db.provider_interfaces import TransactionalProvider
 
 # ---------------------------------------------------------------------------
@@ -61,7 +62,7 @@ def _make_baseline_cmd(
         config=_config,
         log=_log,
         provider=_provider,
-        script_manager=MagicMock(),
+        script_manager=MigrationScriptManager(MagicMock()),
         history_manager=_hm,
         validator=MagicMock(),
         execution_engine=MagicMock(),

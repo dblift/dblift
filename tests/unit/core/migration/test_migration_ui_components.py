@@ -9,10 +9,11 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from dblift.core.migration.migration import Migration, MigrationType
+from dblift.core.migration.migration import MigrationType
 from dblift.core.migration.state.migration_state import MigrationState
 from dblift.core.migration.ui.migration_ui import MigrationUI
 from dblift.core.migration.ui.table_renderer import TableRenderer
+from tests.unit._migration_factory import make_migration
 
 pytestmark = [pytest.mark.unit]
 
@@ -38,7 +39,7 @@ def _make_migration(
     installed_on=None,
     installed_by=None,
 ):
-    m = Migration(
+    m = make_migration(
         script_name=script_name,
         content="SELECT 1;",
         version=version,

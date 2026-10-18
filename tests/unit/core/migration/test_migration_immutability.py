@@ -21,11 +21,12 @@ from __future__ import annotations
 import pytest
 
 from dblift.core.migration.migration import Migration
+from tests.unit._migration_factory import make_migration
 
 
 def _make_migration(content: str) -> Migration:
     """Build a Migration object directly (no script file) with given content."""
-    return Migration(
+    return make_migration(
         script_name="V1__test.sql",
         content=content,
         version="1",

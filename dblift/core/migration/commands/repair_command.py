@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 from dblift.core.exceptions import ExecutionError
 from dblift.core.logger.results import RepairResult
 from dblift.core.migration.history.history_transaction import history_transaction
-from dblift.core.migration.migration import Migration, MigrationType
+from dblift.core.migration.migration import MigrationType
 from dblift.core.migration.state.migration_state import MigrationState
 from dblift.core.migration.state.repair_plan import (  # noqa: F401  re-exports
     RepairAction,
@@ -261,21 +261,8 @@ class RepairCommand(BaseCommand):
                                 delete_reason = (
                                     description or "Marked as deleted via repair command"
                                 )
-                                # Store original type in description: [DELETE:ORIGINAL_TYPE] description
-                                enriched_description = (
-                                    f"[DELETE:{original_type_name}] {delete_reason}"
-                                )
-
-                                delete_migration = Migration(
-                                    script_name=script_name,
-                                    content=f"-- Delete operation: {enriched_description}",
-                                    version=version,
-                                    description=enriched_description,
-                                    type=MigrationType.DELETE,
-                                    tags=[],
-                                    _filename_metadata=self.script_manager.parse_filename(
-                                        script_name
-                                    ),
+                                delete_migration = self.script_manager.delete_marker(
+                                    script_name, version, delete_reason, original_type_name
                                 )
 
                                 self.log.debug(

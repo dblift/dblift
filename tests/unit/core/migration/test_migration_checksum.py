@@ -12,6 +12,7 @@ from dblift.core.migration.migration import (
     normalize_migration_checksum,
 )
 from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
+from tests.unit._migration_factory import make_migration
 
 
 @pytest.mark.unit
@@ -36,7 +37,7 @@ class TestFlywayChecksumAlgorithm:
     """Verify CRC32 line-by-line checksum matches Flyway behavior."""
 
     def _make_migration(self, content: str) -> Migration:
-        return Migration(script_name="V1__test.sql", content=content)
+        return make_migration(script_name="V1__test.sql", content=content)
 
     def test_empty_content_returns_zero(self):
         m = self._make_migration("")

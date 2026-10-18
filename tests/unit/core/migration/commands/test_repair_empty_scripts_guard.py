@@ -24,13 +24,14 @@ from unittest.mock import MagicMock
 import pytest
 
 from dblift.core.migration.commands.repair_command import RepairCommand, RepairSafetyError
-from dblift.core.migration.migration import Migration, MigrationType
+from dblift.core.migration.migration import MigrationType
 from dblift.core.migration.state.migration_state import MigrationState
 from dblift.core.migration.state.migration_state_manager import MigrationStateManager
 from dblift.core.migration.state.repair_plan import (
     _detect_checksum_drift,
     _detect_missing_migrations,
 )
+from tests.unit._migration_factory import make_migration
 
 
 def _make_applied(script_name: str, version: str = "1") -> SimpleNamespace:
@@ -134,7 +135,9 @@ class TestRepairEmptyScriptsGuard:
 class TestRepairChecksumDrift:
     def test_zero_checksum_is_compared_instead_of_skipped(self, tmp_path: Path):
         """A stored checksum of 0 is still a real value for drift detection."""
-        script = Migration(script_name="V1__a.sql", content="SELECT 1;", type=MigrationType.SQL)
+        script = make_migration(
+            script_name="V1__a.sql", content="SELECT 1;", type=MigrationType.SQL
+        )
         script_manager = MagicMock()
         script_manager.load_migration_scripts.return_value = {MigrationType.SQL: [script]}
         cmd = _make_repair_command(script_manager)

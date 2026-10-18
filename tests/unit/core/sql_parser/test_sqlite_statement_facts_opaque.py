@@ -9,7 +9,6 @@ from unittest.mock import Mock
 import pytest
 
 from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
-from dblift.core.migration.migration import Migration
 from dblift.core.migration.scripting.undo_script_generator import UndoScriptGenerator
 from dblift.core.migration.sql.lint import lint_script
 from dblift.core.migration.sql.script_analysis import analyse_script
@@ -22,6 +21,7 @@ from dblift.db.plugins.sqlite.parser.lexical_spec import SQLITE_SPEC
 from dblift.db.plugins.sqlite.parser.sqlite_facts_parser import SQLiteFactsParser
 from dblift.db.plugins.sqlite.quirks import SqliteQuirks
 from dblift.db.provider_registry import ProviderRegistry
+from tests.unit._migration_factory import make_migration
 
 _quirks = ProviderRegistry.get_quirks
 
@@ -276,7 +276,7 @@ def test_undo_of_a_trigger_drops_it(create, undo):
     generator = UndoScriptGenerator("sqlite")
 
     statements = generator._generate_undo_statements(
-        Migration(script_name="V1__trigger.sql", content=create)
+        make_migration(script_name="V1__trigger.sql", content=create)
     )
 
     assert [(s.sql, s.requires_manual_review) for s in statements] == [(undo, False)]

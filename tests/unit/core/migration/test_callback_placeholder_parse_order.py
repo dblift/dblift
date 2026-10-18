@@ -30,6 +30,7 @@ from dblift.core.migration.executor.execution_engine import ExecutionEngine
 from dblift.core.migration.migration import Migration
 from dblift.core.migration.placeholders.placeholder_service import PlaceholderService
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+from tests.unit._migration_factory import make_migration
 
 pytestmark = [pytest.mark.unit]
 
@@ -65,7 +66,7 @@ def _engine_for(dialect: str, tmp_path: Path, placeholders=PLACEHOLDERS):
 def _callback(tmp_path: Path, dialect: str, content: str = CALLBACK_SQL) -> Migration:
     path = tmp_path / f"beforeMigrate__{dialect}_setup.sql"
     path.write_text(content)
-    return Migration(path, logger=Mock(spec=DbliftLogger))
+    return make_migration(path, logger=Mock(spec=DbliftLogger))
 
 
 def _executed(provider) -> str:

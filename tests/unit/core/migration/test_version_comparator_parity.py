@@ -15,11 +15,14 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from dblift.core.logger import NullLog
 from dblift.core.migration.migration import Migration
+from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
 from dblift.core.migration.state.migration_data_service import MigrationDataService
 from dblift.core.migration.state.migration_selector import prune_baseline_migrations
 from dblift.core.migration.version_utils import compare_versions
 from dblift.core.sql_validator.migration_validator import MigrationValidator
+from tests.unit._migration_factory import make_migration
 
 
 def _validator() -> MigrationValidator:
@@ -32,7 +35,7 @@ def _validator() -> MigrationValidator:
 def _script(tmp_path: Path, name: str) -> Migration:
     path = tmp_path / name
     path.write_text("SELECT 1;\n")
-    return Migration(script_path=path)
+    return make_migration(script_path=path)
 
 
 def _data_service() -> MigrationDataService:
@@ -60,7 +63,7 @@ class TestBaselineFilteringUsesSharedComparator:
     def test_drops_pre_baseline_and_keeps_later(
         self, tmp_path: Path, baseline_version: str, old_version: str, new_version: str
     ):
-        baseline = Migration.create_baseline_migration("-- baseline", baseline_version, "based")
+        baseline = MigrationScriptManager(NullLog()).baseline_marker(baseline_version, "based")
         old = _script(tmp_path, f"V{old_version}__old.sql")
         new = _script(tmp_path, f"V{new_version}__new.sql")
 
@@ -76,7 +79,7 @@ class TestBaselineFilteringUsesSharedComparator:
         arises when the helper is called directly — but pruning every versioned
         script (or raising) is the wrong answer either way.
         """
-        baseline = Migration.create_baseline_migration("-- baseline", "", "based")
+        baseline = MigrationScriptManager(NullLog()).baseline_marker("", "based")
         old = _script(tmp_path, "V1__old.sql")
 
         kept = [s.script_name for s in prune_baseline_migrations([baseline, old])]

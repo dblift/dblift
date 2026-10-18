@@ -991,10 +991,6 @@ class MigrationStateManager:
 
         # Check if checksum changed
         current_checksum = getattr(migration, "checksum", None)
-        if not current_checksum:
-            # Calculate checksum if not already set
-            if migration.content:
-                current_checksum = self.script_manager.calculate_checksum(migration.content)
 
         stored_checksum = self._lookup_checksum(
             repeatable_checksums,

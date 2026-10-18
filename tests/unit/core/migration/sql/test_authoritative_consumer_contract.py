@@ -8,7 +8,6 @@ from dblift.core.exceptions import (
     UnsupportedMetaCommandError,
 )
 from dblift.core.logger import NullLog
-from dblift.core.migration.migration import Migration
 from dblift.core.migration.scripting.undo_script_generator import UndoScriptGenerator
 from dblift.core.migration.sql.execution_statement import (
     execution_units,
@@ -21,11 +20,12 @@ from dblift.core.sql_model.base import ParseResult
 from dblift.core.sql_parser.parser_factory import SqlParserFactory
 from dblift.core.sql_parser.sqlglot_parser import SqlGlotParser
 from dblift.db.plugins.snowflake.statement_parser import SnowflakeStatementParser
+from tests.unit._migration_factory import make_migration
 
 
 def test_go_zero_create_cannot_generate_a_drop_undo() -> None:
     sql = "CREATE TABLE users(id INT);\nGO 0\nSELECT 2;"
-    migration = Migration(
+    migration = make_migration(
         script_name="V1__skip.sql",
         content=sql,
         version="1",
@@ -68,7 +68,7 @@ def test_hybrid_does_not_extract_from_a_script_with_no_executed_statements(monke
 
 
 def test_migration_sql_statements_property_uses_dialect_scanner() -> None:
-    migration = Migration(
+    migration = make_migration(
         script_name="V1__quoted.sql",
         content="SELECT 'a;b';\nGO 0\nSELECT 2;",
         dialect="sqlserver",

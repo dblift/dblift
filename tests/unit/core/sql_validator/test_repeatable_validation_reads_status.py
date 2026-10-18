@@ -14,6 +14,7 @@ from dblift.core.migration.state.repeatable_status import (
     repeatable_runs,
 )
 from dblift.core.sql_validator.migration_validator import MigrationValidator, ValidationResult
+from tests.unit._migration_factory import make_migration
 
 pytestmark = [pytest.mark.unit]
 
@@ -30,7 +31,7 @@ def _validator() -> MigrationValidator:
 
 
 def _script(content: str = "SELECT 1;", name: str = "R__v.sql") -> Migration:
-    return Migration(script_name=name, content=content, type=MigrationType.REPEATABLE)
+    return make_migration(script_name=name, content=content, type=MigrationType.REPEATABLE)
 
 
 def _row(name="R__v.sql", *, checksum=None, success=True, rank=1, execution_time=10):
@@ -116,7 +117,7 @@ def test_supplied_checksum_drift_replaces_the_comparison():
     from dblift.core.migration.state.checksum_drift import ChecksumDrift
     from dblift.core.sql_validator._checksum_validator import validate_checksums
 
-    script = Migration(script_name="V1__a.sql", content="SELECT 1;", type=MigrationType.SQL)
+    script = make_migration(script_name="V1__a.sql", content="SELECT 1;", type=MigrationType.SQL)
     row = SimpleNamespace(
         script_name="V1__a.sql",
         version="1",

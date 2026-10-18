@@ -4,9 +4,9 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from dblift.core.logger import NullLog
-from dblift.core.migration.migration import Migration
 from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
 from dblift.core.sql_validator.migration_validator import MigrationValidator, ValidationResult
+from tests.unit._migration_factory import make_migration
 
 
 def _validator(
@@ -36,7 +36,7 @@ def _script(tmp_path, name, *, content="SELECT 1;\n", directory=None, tags=()):
     parent.mkdir(exist_ok=True)
     path = parent / name
     path.write_text(content, encoding="utf-8")
-    script = Migration(path)
+    script = make_migration(path)
     script.tags = list(tags)
     return script
 

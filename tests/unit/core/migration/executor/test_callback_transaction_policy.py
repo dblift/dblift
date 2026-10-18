@@ -7,9 +7,9 @@ import pytest
 from dblift.core.exceptions import CallbackExecutionError
 from dblift.core.migration.executor.execution_engine import ExecutionEngine
 from dblift.core.migration.executor.transaction_policy import TransactionPolicyDecision
-from dblift.core.migration.migration import Migration
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.db.provider_interfaces import TransactionalProvider
+from tests.unit._migration_factory import make_migration
 
 pytestmark = pytest.mark.unit
 
@@ -18,7 +18,7 @@ SQL = "CREATE INDEX CONCURRENTLY idx_t_id ON t(id)"
 
 @pytest.fixture
 def callback():
-    return Migration(script_name="beforeMigrate__index.sql", content=SQL, sql_statements=[SQL])
+    return make_migration(script_name="beforeMigrate__index.sql", content=SQL, sql_statements=[SQL])
 
 
 @pytest.fixture

@@ -5,7 +5,6 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from dblift.core.migration.migration import Migration
 from dblift.core.migration.scripting.undo_script_generator import UndoScriptGenerator
 from dblift.core.migration.sql.script_analysis import analyse_script
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
@@ -19,6 +18,7 @@ from dblift.db.dml_analysis import analyze_dml, statement_dml_table
 from dblift.db.plugins.sqlite.parser.lexical_spec import SQLITE_SPEC
 from dblift.db.plugins.sqlite.quirks import SqliteQuirks
 from dblift.db.provider_registry import ProviderRegistry
+from tests.unit._migration_factory import make_migration
 
 _quirks = ProviderRegistry.get_quirks
 
@@ -151,7 +151,7 @@ def test_sqlite_undo_add_column_uses_facts_instead_of_regex_extractor(monkeypatc
         raise AssertionError("legacy column extractor reached")
 
     monkeypatch.setattr(generator, "_extract_column_name_from_add", forbidden)
-    migration = Migration(
+    migration = make_migration(
         script_name="V1__alter.sql", content="ALTER TABLE child ADD COLUMN value INT;"
     )
 
@@ -163,7 +163,7 @@ def test_sqlite_undo_add_column_uses_facts_instead_of_regex_extractor(monkeypatc
 
 def test_sqlite_undo_of_an_opaque_trigger_drops_it():
     generator = UndoScriptGenerator("sqlite")
-    migration = Migration(
+    migration = make_migration(
         script_name="V1__trigger.sql",
         content="CREATE TRIGGER trg AFTER INSERT ON child BEGIN UPDATE child SET id = 2; END;",
     )
