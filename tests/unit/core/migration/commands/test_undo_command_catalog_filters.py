@@ -11,6 +11,7 @@ from dblift.core.migration.commands.undo_command import UndoCommand
 from dblift.core.migration.migration import MigrationType
 from dblift.core.migration.state.migration_display_state import MigrationDisplayState
 from dblift.core.migration.state.migration_state import MigrationEntry, MigrationState
+from tests.unit.core.migration.commands._plan_undo_wiring import wire_plan_undo
 
 
 def _applied(version, *, success=True, mtype=MigrationType.SQL, tags=None):
@@ -44,7 +45,7 @@ def _entry(script, version, status, type_="UNDO_SQL"):
 
 
 def _make_command(state, *, scan_scripts=None):
-    state_manager = MagicMock()
+    state_manager = wire_plan_undo(MagicMock())
     state_manager.build_state.return_value = state
     state_manager.get_current_version.return_value = None
     state_manager.apply_filters_to_migrations.side_effect = lambda migrations, **kwargs: list(

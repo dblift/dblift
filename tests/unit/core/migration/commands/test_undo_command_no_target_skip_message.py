@@ -17,6 +17,7 @@ from dblift.core.migration.rules.migration_rules import MigrationRules
 from dblift.core.migration.state.migration_display_state import MigrationDisplayState
 from dblift.core.migration.state.migration_state import MigrationEntry
 from dblift.core.migration.state.migration_state_manager import MigrationStateManager
+from tests.unit.core.migration.commands._plan_undo_wiring import wire_plan_undo
 
 
 def _make_migration(version, mtype=MigrationType.SQL, success=True, installed_rank=1):
@@ -46,7 +47,7 @@ def _make_undo_script(version):
 
 
 def _make_command(applied_migrations, *, migration_rules, undo_scripts=None):
-    state_manager = MagicMock()
+    state_manager = wire_plan_undo(MagicMock())
     migration_state = MagicMock()
     migration_state.applied_objects = applied_migrations
     migration_state.all_applied_objects = list(applied_migrations)

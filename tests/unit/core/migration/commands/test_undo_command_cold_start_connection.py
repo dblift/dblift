@@ -27,6 +27,7 @@ import pytest
 from dblift.core.migration.commands.undo_command import UndoCommand
 from dblift.core.migration.migration import MigrationType
 from dblift.core.migration.state.migration_state_manager import MigrationStateManager
+from tests.unit.core.migration.commands._plan_undo_wiring import wire_plan_undo
 
 
 class _ColdStartProvider:
@@ -72,7 +73,7 @@ def _make_migration(version: str, mtype=MigrationType.SQL, success: bool = True)
 def _make_command(applied_migrations):
     provider = _ColdStartProvider()
 
-    state_manager = MagicMock()
+    state_manager = wire_plan_undo(MagicMock())
 
     def _build_state(*args, **kwargs):
         if not provider.connected:
