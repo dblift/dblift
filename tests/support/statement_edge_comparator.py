@@ -7,9 +7,14 @@ class covers, the blanks included); the cores must be equal, each new run must e
 (the leading run at its left, the trailing run at its right), and a run of the new text may not begin
 or end at an edge with a blank of the dialect. A kept run must also be the characters the script holds
 next to the core, each claimed once, in script order; a record's span must show the same runs as its text.
+Two declared exceptions, each for one dialect only: Oracle refuses a script whose statement edge holds a
+character the driver would strip and the dialect does not (the refusal must name a character the script
+holds at the reported line and column); SQL Server now strips U+200B at a statement edge, where the old
+recording kept it.
 Everything else is reported with the dialect, the script id, the view and the first differing offset.
 """
 
+import re
 from dataclasses import dataclass
 from typing import Any, Dict, FrozenSet, List, Mapping, Optional, Tuple
 
@@ -27,6 +32,12 @@ RECORD_FIELDS = (
     "source_end",
 )
 _WHITESPACE = frozenset(chr(i) for i in range(0x110000) if chr(i).isspace())
+_REFUSAL = re.compile(
+    r"U\+([0-9A-F]{4,6}) at line (\d+), column (\d+) is at the edge of a statement: "
+    r"the driver would strip it"
+)
+_SQLSERVER_NOW_STRIPPED = "\u200b"
+_ORACLE_BLANKS = " \t\n\r\v\f\u3000"
 
 
 @dataclass(frozen=True)
@@ -57,11 +68,18 @@ def _runs(text: str, edge: FrozenSet[str]) -> Tuple[str, str, str]:
     return lead, core, text[len(lead) + len(core) :]
 
 
-def _check_text(old: str, new: str, blanks: str) -> None:
-    """Raise ``_Mismatch`` unless ``new`` differs from ``old`` only by kept edge characters."""
+def _check_text(old: str, new: str, blanks: str, lost: str = "") -> None:
+    """Raise ``_Mismatch`` unless ``new`` differs from ``old`` only by kept edge characters.
+
+    ``lost`` are characters the old text kept at its core's edge and the new text strips.
+    """
+    edge = frozenset(_WHITESPACE | set(blanks))
+    if lost:
+        old_lead, old_core, old_trail = _runs(old, edge)
+        if old_core.strip(lost) != old_core and not set(new).intersection(lost):
+            old = old_lead + old_core.strip(lost) + old_trail
     if old == new:
         return
-    edge = frozenset(_WHITESPACE | set(blanks))
     old_lead, old_core, old_trail = _runs(old, edge)
     new_lead, new_core, new_trail = _runs(new, edge)
     if old_core != new_core:
@@ -142,7 +160,9 @@ def _check_claims(script: str, old: List[str], texts: List[str], blanks: str) ->
         ) from None
 
 
-def _check_statements(old: Any, new: Any, blanks: str, script: Optional[str] = None) -> None:
+def _check_statements(
+    old: Any, new: Any, blanks: str, script: Optional[str] = None, lost: str = ""
+) -> None:
     if not isinstance(old, list) or not isinstance(new, list):
         if old != new:
             raise _Mismatch(None, f"outcome differs: old {old!r}, new {new!r}")
@@ -151,7 +171,7 @@ def _check_statements(old: Any, new: Any, blanks: str, script: Optional[str] = N
         raise _Mismatch(None, f"old has {len(old)} statements, new has {len(new)}")
     for index, (before, after) in enumerate(zip(old, new)):
         try:
-            _check_text(before, after, blanks)
+            _check_text(before, after, blanks, lost)
         except _Mismatch as found:
             raise _Mismatch(found.offset, found.detail, index) from None
     if script is not None:
@@ -197,7 +217,9 @@ def _check_span(script: str, new: Dict[str, Any], blanks: str) -> None:
         raise _Mismatch(None, "span: its trailing characters differ from the text's kept run")
 
 
-def _check_record(script: str, old: Dict[str, Any], new: Dict[str, Any], blanks: str) -> None:
+def _check_record(
+    script: str, old: Dict[str, Any], new: Dict[str, Any], blanks: str, lost: str = ""
+) -> None:
     for key in RECORD_FIELDS:
         for side, record in (("old", old), ("new", new)):
             if key not in record:
@@ -205,14 +227,14 @@ def _check_record(script: str, old: Dict[str, Any], new: Dict[str, Any], blanks:
     for key in sorted(set(old) | set(new)):
         if key not in RECORD_TEXT_FIELDS and old.get(key) != new.get(key):
             raise _Mismatch(None, f"{key} differs: old {old.get(key)!r}, new {new.get(key)!r}")
-    _check_text(old["text"], new["text"], blanks)
+    _check_text(old["text"], new["text"], blanks, lost)
     before, after = old["analysis_statements"], new["analysis_statements"]
     if before is None or after is None:
         if before != after:
             raise _Mismatch(None, f"analysis_statements differs: old {before!r}, new {after!r}")
     else:
         try:
-            _check_statements(list(before), list(after), blanks)
+            _check_statements(list(before), list(after), blanks, lost=lost)
         except _Mismatch as found:
             raise _Mismatch(
                 found.offset, f"analysis_statements: {found.detail}", found.statement
@@ -222,6 +244,7 @@ def _check_record(script: str, old: Dict[str, Any], new: Dict[str, Any], blanks:
             script[old["source_start"] : old["source_end"]],
             script[new["source_start"] : new["source_end"]],
             blanks,
+            lost,
         )
     except _Mismatch as found:
         raise _Mismatch(found.offset, f"span: {found.detail}") from None
@@ -235,7 +258,7 @@ def _check_record(script: str, old: Dict[str, Any], new: Dict[str, Any], blanks:
         )
 
 
-def _check_records(script: str, old: Any, new: Any, blanks: str) -> None:
+def _check_records(script: str, old: Any, new: Any, blanks: str, lost: str = "") -> None:
     if not isinstance(old, list) or not isinstance(new, list):
         if old != new:
             raise _Mismatch(None, f"outcome differs: old {old!r}, new {new!r}")
@@ -244,13 +267,34 @@ def _check_records(script: str, old: Any, new: Any, blanks: str) -> None:
         raise _Mismatch(None, f"old has {len(old)} records, new has {len(new)}")
     for index, (before, after) in enumerate(zip(old, new)):
         try:
-            _check_record(script, before, after, blanks)
+            _check_record(script, before, after, blanks, lost)
         except _Mismatch as found:
             raise _Mismatch(found.offset, found.detail, index) from None
     try:
         _check_claims(script, [r["text"] for r in old], [r["text"] for r in new], blanks)
     except _Mismatch as found:
         raise _Mismatch(found.offset, found.detail, found.statement) from None
+
+
+def _is_declared_refusal(dialect: str, script: str, old: Any, new: Any) -> bool:
+    """An Oracle refusal naming a character the script holds there, outside Oracle's blanks."""
+    if dialect != "oracle" or not isinstance(new, dict) or "error" not in new:
+        return False
+    if isinstance(old, dict) and "error" in old:
+        return False
+    error = new["error"]
+    if not isinstance(error, list) or len(error) != 2 or error[0] != "UnsafeStatementSplitError":
+        return False
+    match = _REFUSAL.fullmatch(str(error[1]))
+    if match is None:
+        return False
+    char, line, column = chr(int(match.group(1), 16)), int(match.group(2)), int(match.group(3))
+    lines = script.split("\n")
+    if line > len(lines) or column > len(lines[line - 1]):
+        return False
+    return (
+        lines[line - 1][column - 1] == char and char not in _ORACLE_BLANKS and char in _WHITESPACE
+    )
 
 
 def compare_recordings(
@@ -270,6 +314,7 @@ def compare_recordings(
             )
         )
 
+    lost = _SQLSERVER_NOW_STRIPPED if dialect == "sqlserver" else ""
     old_scripts, new_scripts = old["scripts"], new["scripts"]
     for script_id in sorted(set(old_scripts) | set(new_scripts)):
         if script_id not in new_scripts or script_id not in old_scripts:
@@ -281,11 +326,15 @@ def compare_recordings(
             add(script_id, "script", _Mismatch(None, "the script text differs between recordings"))
             continue
         for view in VIEWS:
+            if _is_declared_refusal(dialect, before["script"], before[view], after[view]):
+                continue
             try:
                 if view == "records":
-                    _check_records(before["script"], before[view], after[view], text_blanks)
+                    _check_records(before["script"], before[view], after[view], text_blanks, lost)
                 else:
-                    _check_statements(before[view], after[view], text_blanks, before["script"])
+                    _check_statements(
+                        before[view], after[view], text_blanks, before["script"], lost
+                    )
             except _Mismatch as mismatch:
                 add(script_id, view, mismatch)
     return found

@@ -18,9 +18,10 @@ def recording(
     execution: Any,
     analysis: Any,
     records: Optional[List[Dict[str, Any]]] = None,
+    dialect: str = "demo",
 ) -> Dict[str, Any]:
     return {
-        "dialect": "demo",
+        "dialect": dialect,
         "commit": "0" * 40,
         "scripts": {
             "s1": {
@@ -408,3 +409,65 @@ def test_a_span_whose_kept_run_is_not_the_texts_is_still_reported() -> None:
     assert [d.detail for d in found] == [
         "span: its trailing characters differ from the text's kept run"
     ]
+
+
+def test_a_span_may_hold_a_blank_of_the_dialect_before_the_kept_leading_run() -> None:
+    script = " " + NBSP + "DROP TABLE t"
+    old = record("DROP TABLE t", 0, len(script))
+    new = record(NBSP + "DROP TABLE t", 0, len(script))
+    assert (
+        compare_recordings(
+            recording(script, [], [], [old]), recording(script, [], [], [new]), BLANKS
+        )
+        == []
+    )
+
+
+OUTSIDE_SET_REFUSAL = (
+    "UnsafeStatementSplitError",
+    "U+00A0 at line 1, column 13 is at the edge of a statement: the driver would strip it",
+)
+
+
+def refused_pair(dialect: str, script: str, refusal: Any) -> List[Any]:
+    old = recording(script, ["DROP TABLE t"], ["DROP TABLE t"], dialect=dialect)
+    new = recording(script, {"error": list(refusal)}, ["DROP TABLE t"], dialect=dialect)
+    return compare_recordings(old, new, BLANKS)
+
+
+def test_a_refusal_at_the_reported_character_outside_the_blanks_is_declared_for_oracle() -> None:
+    assert refused_pair("oracle", "DROP TABLE t" + NBSP, OUTSIDE_SET_REFUSAL) == []
+
+
+def test_a_refusal_is_not_declared_for_another_dialect() -> None:
+    found = refused_pair("postgresql", "DROP TABLE t" + NBSP, OUTSIDE_SET_REFUSAL)
+    assert [d.view for d in found] == ["execution"]
+
+
+def test_a_refusal_that_reports_a_position_holding_another_character_is_reported() -> None:
+    wrong_column = (OUTSIDE_SET_REFUSAL[0], OUTSIDE_SET_REFUSAL[1].replace("column 13", "column 5"))
+    assert [d.view for d in refused_pair("oracle", "DROP TABLE t" + NBSP, wrong_column)] == [
+        "execution"
+    ]
+
+
+def test_a_refusal_at_a_blank_of_the_dialect_is_reported() -> None:
+    ideographic = (OUTSIDE_SET_REFUSAL[0], OUTSIDE_SET_REFUSAL[1].replace("U+00A0", "U+3000"))
+    script = "DROP TABLE t" + chr(0x3000)
+    assert [d.view for d in refused_pair("oracle", script, ideographic)] == ["execution"]
+
+
+def zero_width_pair(dialect: str) -> List[Any]:
+    zwsp = chr(0x200B)
+    script = "DROP TABLE t" + zwsp
+    old = recording(script, ["DROP TABLE t" + zwsp], ["DROP TABLE t" + zwsp], dialect=dialect)
+    new = recording(script, ["DROP TABLE t"], ["DROP TABLE t"], dialect=dialect)
+    return compare_recordings(old, new, BLANKS)
+
+
+def test_a_zero_width_space_stripped_on_the_new_side_is_declared_for_sql_server() -> None:
+    assert zero_width_pair("sqlserver") == []
+
+
+def test_a_zero_width_space_stripped_on_the_new_side_is_reported_for_another_dialect() -> None:
+    assert {d.view for d in zero_width_pair("postgresql")} == {"execution", "analysis"}
