@@ -6,9 +6,10 @@ from unittest.mock import patch
 import pytest
 
 from dblift.core.logger import NullLog
-from dblift.core.migration.migration import Migration, MigrationType
+from dblift.core.migration.migration import MigrationType
 from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
 from dblift.core.sql_validator.migration_validator import MigrationValidator, ValidationResult
+from tests.unit._migration_factory import make_migration
 
 
 class CountingList(list):
@@ -35,7 +36,7 @@ def validator():
 
 
 def history(script, *, checksum=None, success=True, type=None, rank=1, name=None):
-    row = Migration(script_name=name or script.script_name, type=type or script.type)
+    row = make_migration(script_name=name or script.script_name, type=type or script.type)
     row.checksum = script.checksum if checksum is None else checksum
     row.success = success
     row.installed_rank = rank
@@ -50,11 +51,11 @@ def history(script, *, checksum=None, success=True, type=None, rank=1, name=None
 def test_resolved_checksums_do_not_reread_files(tmp_path, changed, encoding, detect):
     path = tmp_path / "V1__example.sql"
     path.write_text("SELECT 1; -- café\n", encoding=encoding)
-    script = Migration(path, script_encoding=encoding, detect_encoding=detect)
+    script = make_migration(path, script_encoding=encoding, detect_encoding=detect)
     rows = [history(script)]
     if changed:
         path.write_text("SELECT 2; -- café\n", encoding=encoding)
-        script = Migration(path, script_encoding=encoding, detect_encoding=detect)
+        script = make_migration(path, script_encoding=encoding, detect_encoding=detect)
     result, issues = ValidationResult(), []
     instance = validator()
     instance.script_manager.script_encoding = encoding
@@ -71,7 +72,7 @@ def test_history_lookup_scales_and_preserves_supplied_order(tmp_path):
     for number in range(120):
         path = tmp_path / f"V{number + 1}__example.sql"
         path.write_text("SELECT 1;\n")
-        script = Migration(path)
+        script = make_migration(path)
         scripts.append(script)
         rows.extend(
             [
@@ -99,7 +100,7 @@ def test_repeatable_history_is_indexed_and_previous_run_uses_rank(tmp_path, fail
     for number in range(80):
         path = tmp_path / f"R__example_{number}.sql"
         path.write_text("SELECT 1;\n")
-        script = Migration(path)
+        script = make_migration(path)
         scripts.append(script)
         rows.extend(
             [history(script, success=not failed, rank=20), history(script, rank=later_rank)]
@@ -120,12 +121,12 @@ def test_qualified_names_choose_first_match_and_filtered_deleted_missing_rows(tm
     second.parent.mkdir()
     first.write_text("SELECT 1;\n")
     second.write_text("SELECT 2;\n")
-    script, duplicate = Migration(first), Migration(second)
+    script, duplicate = make_migration(first), make_migration(second)
     filtered_path = tmp_path / "V2__filtered.sql"
     filtered_path.write_text("SELECT 2;\n")
-    filtered = Migration(filtered_path)
-    missing = Migration(script_name="V3__missing.sql")
-    deleted = Migration(script_name="V4__deleted.sql")
+    filtered = make_migration(filtered_path)
+    missing = make_migration(script_name="V3__missing.sql")
+    deleted = make_migration(script_name="V4__deleted.sql")
     rows = [
         history(script, name="old/directory/V1__example.sql"),
         history(filtered, checksum=1),
@@ -150,11 +151,14 @@ def test_qualified_names_choose_first_match_and_filtered_deleted_missing_rows(tm
 def test_validation_uses_supplied_checksum_and_standalone_observes_edits(tmp_path):
     path = tmp_path / "V1__example.sql"
     path.write_text("SELECT 1;\n")
-    script = Migration(path)
+    script = make_migration(path)
     rows = [history(script)]
     path.write_text("SELECT 2;\n")
     legacy = SimpleNamespace(
-        script_name=script.script_name, path=path, version="1", checksum=Migration(path).checksum
+        script_name=script.script_name,
+        path=path,
+        version="1",
+        checksum=make_migration(path).checksum,
     )
     instance = validator()
     result, issues = ValidationResult(), []

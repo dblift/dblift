@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from dblift.core.migration.migration import Migration
+from tests.unit._migration_factory import make_migration
 
 
 @pytest.mark.unit
@@ -24,7 +24,7 @@ class TestMigrationConfigInjection:
     def test_migration_stores_injected_config(self):
         """Migration.__init__ stores config in self.config."""
         mock_config = self._make_config()
-        migration = Migration(
+        migration = make_migration(
             script_name="V001__test.sql",
             content="SELECT 1;",
             config=mock_config,
@@ -33,7 +33,7 @@ class TestMigrationConfigInjection:
 
     def test_migration_config_none_by_default(self):
         """config defaults to None when not provided."""
-        migration = Migration(
+        migration = make_migration(
             script_name="V001__test.sql",
             content="SELECT 1;",
         )
@@ -42,7 +42,7 @@ class TestMigrationConfigInjection:
     def test_parse_sql_statements_uses_config_dialect_when_no_explicit_dialect(self):
         """parse_sql_statements() uses self.config.database.type as dialect fallback."""
         mock_config = self._make_config("postgresql")
-        migration = Migration(
+        migration = make_migration(
             script_name="V001__test.sql",
             content="SELECT 1;",
             config=mock_config,
@@ -73,7 +73,7 @@ class TestMigrationConfigInjection:
     def test_parse_sql_statements_explicit_dialect_takes_precedence_over_config(self):
         """Explicit dialect= overrides self.config when both are present."""
         mock_config = self._make_config("sqlserver")
-        migration = Migration(
+        migration = make_migration(
             script_name="V001__test.sql",
             content="SELECT 1;",
             config=mock_config,
@@ -98,7 +98,7 @@ class TestMigrationConfigInjection:
 
     def test_parse_sql_statements_with_config_none_falls_back_to_env_or_warning(self):
         """When config=None and no dialect, falls through to env/warning path."""
-        migration = Migration(
+        migration = make_migration(
             script_name="V001__test.sql",
             content="SELECT 1;",
             config=None,
@@ -131,7 +131,7 @@ class TestMigrationConfigInjection:
         """
         from dblift.db.provider_registry import ProviderRegistry
 
-        migration = Migration(
+        migration = make_migration(
             script_name="V001__test.sql",
             content="SELECT 1;",
             config=None,

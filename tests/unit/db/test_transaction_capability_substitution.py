@@ -14,12 +14,13 @@ from dblift.core.migration.commands.repair_command import RepairCommand
 from dblift.core.migration.executor.execution_engine import ExecutionEngine
 from dblift.core.migration.executor.transaction_policy import TransactionPolicy
 from dblift.core.migration.history.migration_history_manager import MigrationHistoryManager
-from dblift.core.migration.migration import Migration, MigrationType
+from dblift.core.migration.migration import MigrationType
 from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
 from dblift.core.migration.sql.execution_statement import ExecutionStatement
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.db.base_quirks import BaseQuirks
 from dblift.db.provider_interfaces import DroppableObject, TransactionalProvider
+from tests.unit._migration_factory import make_migration
 from tests.unit.core.migration.commands._plan_migrate_wiring import wire_plan_migrate
 from tests.unit.core.migration.commands._plan_repairs_wiring import as_actions
 
@@ -99,7 +100,7 @@ def command(command_class, provider):
 
 
 def migration():
-    return Migration(
+    return make_migration(
         script_name="V1__items.sql",
         content="CREATE TABLE items(id INT);",
         version="1",
@@ -225,7 +226,7 @@ def test_python_execution_persists_history_without_transaction_methods(tmp_path,
         provider, SqlAnalyzer(dialect="sqlite"), NullLog(), history_manager=history
     )
     result = MigrateResult()
-    engine.execute_migration(Migration(script_path=script), result)
+    engine.execute_migration(make_migration(script_path=script), result)
     assert result.success is (not failure), result.error_message
     assert provider.statements == ["python ran"]
     assert len(provider.records) == 1
@@ -236,7 +237,7 @@ def test_python_execution_persists_history_without_transaction_methods(tmp_path,
 @pytest.mark.parametrize("failure", [False, True])
 def test_sql_callback_never_uses_missing_transaction_methods(failure):
     provider = NonTransactionalProvider()
-    callback = Migration(
+    callback = make_migration(
         script_name="beforeMigrate__items.sql", content="CREATE TABLE items(id INT);"
     )
     engine = ExecutionEngine(provider, SqlAnalyzer(dialect="sqlite"), NullLog())

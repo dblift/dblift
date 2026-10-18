@@ -19,6 +19,7 @@ from dblift.db.dml_analysis import (
     updates_restore_key,
 )
 from dblift.db.provider_registry import ProviderRegistry
+from tests.unit._migration_factory import make_migration
 
 UPDATE = "UPDATE zz SET a = 1 WHERE id = 1;"
 DELETE = "DELETE FROM zz WHERE id = 1;"
@@ -223,11 +224,10 @@ def test_dml_analysis_looks_a_plugin_up_by_name_only_for_the_deprecated_keywords
 
 
 def test_undo_strategy_follows_the_quirks_flag(monkeypatch):
-    from dblift.core.migration.migration import Migration
     from dblift.core.migration.scripting.undo_script_generator import UndoScriptGenerator
     from dblift.db.plugins.sqlite.quirks import SqliteQuirks
 
-    migration = Migration(script_name="V1__t.sql", content="CREATE TABLE t (id INT);")
+    migration = make_migration(script_name="V1__t.sql", content="CREATE TABLE t (id INT);")
     other = ProviderRegistry.get_quirks("duckdb")
     monkeypatch.setattr(type(other), "sqlglot_dialect", "sqlite")
 

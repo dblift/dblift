@@ -8,13 +8,14 @@ from dblift.core.logger import NullLog
 from dblift.core.logger.results import MigrateResult
 from dblift.core.migration.executor.execution_engine import ExecutionEngine
 from dblift.core.migration.executor.transaction_policy import TransactionPolicy
-from dblift.core.migration.migration import Migration, MigrationType
+from dblift.core.migration.migration import MigrationType
 from dblift.core.migration.sql.execution_statement import (
     ExecutionStatement,
     classify_execution_statement,
 )
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.db.provider_interfaces import TransactionalProvider
+from tests.unit._migration_factory import make_migration
 
 
 class RecordingTransactionalProvider(TransactionalProvider):
@@ -167,7 +168,7 @@ def test_execution_engine_runs_autocommit_only_statement_without_migration_trans
         log=NullLog(),
         history_manager=history_manager,
     )
-    migration = Migration(
+    migration = make_migration(
         script_name="V1__index.sql",
         content="CREATE INDEX CONCURRENTLY idx_users_id ON users(id);",
         version="1",
@@ -197,7 +198,7 @@ def test_execution_engine_runs_sqlserver_fulltext_catalog_without_migration_tran
         log=NullLog(),
         history_manager=history_manager,
     )
-    migration = Migration(
+    migration = make_migration(
         script_name="V1__fulltext.sql",
         content="CREATE FULLTEXT CATALOG dblift_ft_catalog AS DEFAULT;",
         version="1",
@@ -223,7 +224,7 @@ def test_execution_engine_rejects_mixed_transaction_policy_before_execution():
         sql_analyzer=SqlAnalyzer(dialect="postgresql"),
         log=NullLog(),
     )
-    migration = Migration(
+    migration = make_migration(
         script_name="V1__mixed.sql",
         content="""
         CREATE TABLE users(id int);
@@ -250,7 +251,7 @@ def test_get_executable_sql_statements_rejects_mixed_transaction_policy():
         sql_analyzer=SqlAnalyzer(dialect="postgresql"),
         log=NullLog(),
     )
-    migration = Migration(
+    migration = make_migration(
         script_name="V1__mixed.sql",
         content="""
         CREATE TABLE users(id int);

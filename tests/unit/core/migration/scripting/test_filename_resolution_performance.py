@@ -9,8 +9,9 @@ import pytest
 
 from dblift.core.logger import NullLog
 from dblift.core.migration.formats import MigrationFormat
-from dblift.core.migration.migration import Migration, MigrationType
+from dblift.core.migration.migration import MigrationType
 from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
+from tests.unit._migration_factory import make_migration
 
 pytestmark = pytest.mark.unit
 
@@ -144,9 +145,9 @@ def test_direct_construction_parses_once_with_canonical_type_semantics(
     monkeypatch.setattr(filename_parser, "parse_migration_filename", counting_parse)
 
     migration = (
-        Migration(script_path=script)
+        make_migration(script_path=script)
         if use_path
-        else Migration(script_name=filename, content="SELECT 1;")
+        else make_migration(script_name=filename, content="SELECT 1;")
     )
 
     assert parse_calls == [filename]
@@ -155,7 +156,7 @@ def test_direct_construction_parses_once_with_canonical_type_semantics(
 
 
 def test_direct_construction_preserves_truthy_metadata_overrides() -> None:
-    migration = Migration(
+    migration = make_migration(
         script_name="V1__from_name[source].py",
         content="pass",
         version="9",
@@ -173,7 +174,7 @@ def test_direct_construction_preserves_truthy_metadata_overrides() -> None:
 
 
 def test_direct_construction_preserves_falsey_metadata_fallbacks() -> None:
-    migration = Migration(
+    migration = make_migration(
         script_name="V1__from_name[source].sql",
         content="SELECT 1;",
         version="",
@@ -191,7 +192,7 @@ def test_script_path_preserves_file_metadata_precedence(tmp_path: Path) -> None:
     script = tmp_path / "V1__from_path[source].sql"
     script.write_text("SELECT 1;", encoding="utf-8")
 
-    migration = Migration(
+    migration = make_migration(
         script_path=script,
         script_name="R__ignored.py",
         content="ignored",

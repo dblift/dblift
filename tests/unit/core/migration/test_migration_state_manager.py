@@ -2,10 +2,11 @@ from pathlib import Path
 
 import pytest
 
-from dblift.core.migration.migration import Migration, MigrationType
+from dblift.core.migration.migration import MigrationType
 from dblift.core.migration.rules.migration_rules import MigrationRules
 from dblift.core.migration.state.migration_state_manager import MigrationStateManager
 from dblift.core.migration.version_utils import compare_versions
+from tests.unit._migration_factory import make_migration
 
 pytestmark = [pytest.mark.unit]
 
@@ -55,7 +56,7 @@ class StubScriptManager:
 
 
 def _create_versioned_migration(version, installed_rank, success=True):
-    migration = Migration(
+    migration = make_migration(
         script_name=f"V{version.replace('.', '_')}__test.sql",
         content="SELECT 1;",
         version=version,
@@ -68,7 +69,7 @@ def _create_versioned_migration(version, installed_rank, success=True):
 
 
 def _create_undo_migration(version, installed_rank, success=True):
-    migration = Migration(
+    migration = make_migration(
         script_name=f"U{version.replace('.', '_')}__test.sql",
         content="SELECT 1;",
         version=version,
@@ -313,7 +314,7 @@ class TestIsRepeatablePendingNestedPath:
     def test_nested_path_not_pending_when_checksum_unchanged(self):
         """Repeatable with nested path not pending when checksum matches basename-keyed entry."""
         manager = self._make_manager()
-        migration = Migration(
+        migration = make_migration(
             script_name="migrations/v1/R__init.sql",
             content="SELECT 1;",
             type=MigrationType.REPEATABLE,
@@ -332,7 +333,7 @@ class TestIsRepeatablePendingNestedPath:
     def test_nested_path_pending_when_checksum_changed(self):
         """Repeatable with nested path is pending when checksum changed."""
         manager = self._make_manager()
-        migration = Migration(
+        migration = make_migration(
             script_name="migrations/v1/R__init.sql",
             content="new_content",
             type=MigrationType.REPEATABLE,
@@ -383,7 +384,7 @@ class TestIsRepeatablePendingLegacyQualifiedHistory:
         not be treated as pending just because the fresh Migration now
         computes a bare script_name."""
         manager = self._make_manager()
-        migration = Migration(
+        migration = make_migration(
             script_name="R__cleanup.sql",  # bare, as computed post-PR#129
             content="SELECT 1;",
             type=MigrationType.REPEATABLE,
@@ -405,7 +406,7 @@ class TestIsRepeatablePendingLegacyQualifiedHistory:
         """The basename fallback must not suppress genuine checksum drift
         detection for a legacy-scheme row."""
         manager = self._make_manager()
-        migration = Migration(
+        migration = make_migration(
             script_name="R__cleanup.sql",
             content="new_content",
             type=MigrationType.REPEATABLE,

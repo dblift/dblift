@@ -15,8 +15,8 @@ from dblift.core.logger.results import MigrateResult
 from dblift.core.migration.commands.base_command import BaseCommand
 from dblift.core.migration.executor import execution_engine
 from dblift.core.migration.executor.execution_engine import ExecutionEngine
-from dblift.core.migration.migration import Migration
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+from tests.unit._migration_factory import make_migration
 
 pytestmark = pytest.mark.unit
 
@@ -32,7 +32,7 @@ def _engine(dialect="sqlite"):
 
 
 def _script(engine, content, name="V1__x.sql"):
-    return Migration(script_name=name, content=content, logger=engine.log)
+    return make_migration(script_name=name, content=content, logger=engine.log)
 
 
 def _executed(engine):

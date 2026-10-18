@@ -12,7 +12,6 @@ from dblift.core.migration.migration import (
     Migration,
     MigrationType,
     ResolvedMigration,
-    calculate_migration_script_checksum,
 )
 from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
 
@@ -59,7 +58,7 @@ def test_baseline_marker_fields(manager):
     assert marker.version == "5"
     assert marker.description == "init"
     assert marker.type == MigrationType.BASELINE
-    assert marker.checksum == calculate_migration_script_checksum(marker.content)
+    assert marker.checksum == manager.calculate_checksum(marker.content)
 
 
 def test_delete_marker_fields(manager):
@@ -71,24 +70,7 @@ def test_delete_marker_fields(manager):
     assert marker.description == "[DELETE:SQL] gone"
     assert marker.type == MigrationType.DELETE
     assert marker.tags == []
-    assert marker.checksum == calculate_migration_script_checksum(marker.content)
-
-
-def test_deprecated_factories_keep_their_output():
-    baseline = Migration.create_baseline_migration("-- baseline", "2", "baselined")
-    assert (baseline.script_name, baseline.content, baseline.version) == (
-        "Base Migration",
-        "-- baseline",
-        "2",
-    )
-    assert baseline.type == MigrationType.BASELINE
-    assert baseline.checksum == -1914276400
-
-    deleted = Migration.create_delete_migration("V1_2__removed[tag].sql", version="1.2")
-    assert deleted.content == "-- Delete operation: Marked as deleted via repair command"
-    assert deleted.description == "Marked as deleted via repair command"
-    assert deleted.type == MigrationType.DELETE
-    assert deleted.checksum == 2015665797
+    assert marker.checksum == manager.calculate_checksum(marker.content)
 
 
 def test_explicit_checksum_is_used_as_is():
@@ -97,10 +79,15 @@ def test_explicit_checksum_is_used_as_is():
     assert migration.checksum == 7
 
 
-def test_omitted_checksum_is_computed_from_content():
-    migration = Migration(script_name="V1__a.sql", content="SELECT 1;")
+def test_checksum_is_required():
+    with pytest.raises(TypeError, match="checksum"):
+        Migration(script_name="V1__a.sql", content="SELECT 1;")
 
-    assert migration.checksum == calculate_migration_script_checksum("SELECT 1;")
+
+def test_explicit_none_checksum_is_kept():
+    migration = Migration(script_name="V1__a.sql", content="SELECT 1;", checksum=None)
+
+    assert migration.checksum is None
 
 
 def test_history_row_checksum_is_passed_through():
@@ -177,8 +164,8 @@ class _CallCollector(ast.NodeVisitor):
 
 
 def test_only_script_manager_computes_checksums():
-    """Only the script manager and Migration's compat branch compute checksums, and
-    every Migration(...) built under dblift/ is handed its checksum."""
+    """Only the script manager computes checksums, and every Migration(...) built under
+    dblift/ is handed its checksum."""
     computing = {}
     unchecked = []
     builders = {}
@@ -192,11 +179,7 @@ def test_only_script_manager_computes_checksums():
             builders[rel] = collector.migration_calls
         unchecked += [f"{rel}:{line}" for line in collector.migration_calls_without_checksum]
 
-    assert set(computing) <= {
-        "core/migration/migration.py",
-        "core/migration/scripting/migration_script_manager.py",
-    }
-    assert computing.get("core/migration/migration.py", []) == ["Migration.__init__"]
+    assert set(computing) == {"core/migration/scripting/migration_script_manager.py"}
     assert unchecked == []
     assert "core/migration/commands/baseline_command.py" not in builders
     assert "core/migration/commands/repair_command.py" not in builders

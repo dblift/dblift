@@ -13,6 +13,8 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import MagicMock
 
+from tests.unit._migration_factory import make_migration
+
 
 class TestUndoStatement(unittest.TestCase):
     """Tests for the UndoStatement dataclass (_models.py)."""
@@ -1121,12 +1123,11 @@ class TestUndoScriptGeneratorIntegration(unittest.TestCase):
         return UndoScriptGenerator(dialect=dialect)
 
     def _make_migration(self, script_name, content):
-        from dblift.core.migration.migration import Migration
 
         parts = script_name.replace(".sql", "").split("__", 1)
         version = parts[0].lstrip("Vv").replace(".", "_")
         description = parts[1] if len(parts) > 1 else "test"
-        return Migration(
+        return make_migration(
             script_name=script_name,
             content=content,
             version=version,
@@ -1220,21 +1221,19 @@ class TestUndoScriptGeneratorIntegration(unittest.TestCase):
 
     # generate_undo_script_for_migration
     def test_generate_undo_script_for_migration_happy(self):
-        from dblift.core.migration.migration import Migration
 
         gen = self._make_generator()
         with TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "V1__test.sql"
             path.write_text("CREATE TABLE y (id INT);")
-            migration = Migration(script_path=path)
+            migration = make_migration(script_path=path)
             undo_path = gen.generate_undo_script_for_migration(migration, overwrite=True)
             self.assertTrue(undo_path.exists())
 
     def test_generate_undo_script_for_migration_no_path_raises(self):
-        from dblift.core.migration.migration import Migration
 
         gen = self._make_generator()
-        migration = Migration(
+        migration = make_migration(
             script_name="V1__test.sql",
             content="CREATE TABLE y (id INT);",
             version="1",
@@ -1244,34 +1243,31 @@ class TestUndoScriptGeneratorIntegration(unittest.TestCase):
             gen.generate_undo_script_for_migration(migration)
 
     def test_generate_undo_script_for_migration_exists_no_overwrite_raises(self):
-        from dblift.core.migration.migration import Migration
 
         gen = self._make_generator()
         with TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "V1__test.sql"
             path.write_text("CREATE TABLE y (id INT);")
-            migration = Migration(script_path=path)
+            migration = make_migration(script_path=path)
             gen.generate_undo_script_for_migration(migration, overwrite=True)
             with self.assertRaises(FileExistsError):
                 gen.generate_undo_script_for_migration(migration, overwrite=False)
 
     # get_undo_script_path_for_migration
     def test_get_undo_script_path_for_migration(self):
-        from dblift.core.migration.migration import Migration
 
         gen = self._make_generator()
         with TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "V1_2__my_migration.sql"
             path.write_text("SELECT 1;")
-            migration = Migration(script_path=path)
+            migration = make_migration(script_path=path)
             undo_path = gen.get_undo_script_path_for_migration(migration)
             self.assertTrue(undo_path.name.startswith("U1_2__"))
 
     def test_get_undo_script_path_no_path_raises(self):
-        from dblift.core.migration.migration import Migration
 
         gen = self._make_generator()
-        migration = Migration(
+        migration = make_migration(
             script_name="V1__test.sql", content="x", version="1", description="test"
         )
         with self.assertRaises(ValueError):
@@ -1311,12 +1307,11 @@ class TestUndoScriptGeneratorIntegration(unittest.TestCase):
 
     def test_generate_undo_statements_fallback_no_parse_result(self):
         """Test fallback path when parser returns no statements."""
-        from dblift.core.migration.migration import Migration
 
         gen = self._make_generator()
         # Create migration with content that will force parse failure path
         # We mock the parser to return failure
-        migration = Migration(
+        migration = make_migration(
             script_name="V1__test.sql",
             content="CREATE TABLE fallback_test (id INT);",
             version="1",
@@ -1456,9 +1451,8 @@ class TestUndoScriptGeneratorDialects(unittest.TestCase):
         return UndoScriptGenerator(dialect=dialect, default_schema=default_schema)
 
     def _make_migration(self, content):
-        from dblift.core.migration.migration import Migration
 
-        return Migration(
+        return make_migration(
             script_name="V1__test.sql",
             content=content,
             version="1",

@@ -6,11 +6,11 @@ from tempfile import TemporaryDirectory
 import pytest
 
 from dblift.core.logger import LogFactory
-from dblift.core.migration.migration import Migration
 from dblift.core.migration.scripting.undo_script_generator import (
     UndoScriptGenerator,
     UndoStatement,
 )
+from tests.unit._migration_factory import make_migration
 
 
 class TestUndoScriptGenerator:
@@ -39,7 +39,7 @@ class TestUndoScriptGenerator:
         );
         """
 
-        migration = Migration(
+        migration = make_migration(
             script_name="V1_0_1__Create_users_table.sql",
             content=migration_sql,
             version="1_0_1",
@@ -61,7 +61,7 @@ class TestUndoScriptGenerator:
         CREATE INDEX idx_users_name ON users(name);
         """
 
-        migration = Migration(
+        migration = make_migration(
             script_name="V1_0_2__Add_indexes.sql",
             content=migration_sql,
             version="1_0_2",
@@ -87,7 +87,7 @@ class TestUndoScriptGenerator:
         CREATE INDEX idx_users_email ON users(email);
         """
 
-        migration = Migration(
+        migration = make_migration(
             script_name="V1_0_1__Create_users_table.sql",
             content=migration_sql,
             version="1_0_1",
@@ -114,7 +114,7 @@ class TestUndoScriptGenerator:
         COMMENT ON TABLE users IS 'User accounts table';
         """
 
-        migration = Migration(
+        migration = make_migration(
             script_name="V1_0_1__Create_users_table.sql",
             content=migration_sql,
             version="1_0_1",
@@ -141,7 +141,7 @@ class TestUndoScriptGenerator:
         INSERT INTO products (name) VALUES ('Product A'), ('Product B');
         """
 
-        migration = Migration(
+        migration = make_migration(
             script_name="V1_0_1__Create_products_table.sql",
             content=migration_sql,
             version="1_0_1",
@@ -166,7 +166,7 @@ class TestUndoScriptGenerator:
         ('Product B', 29.99);
         """
 
-        migration = Migration(
+        migration = make_migration(
             script_name="V1_0_2__Add_products.sql",
             content=migration_sql,
             version="1_0_2",
@@ -191,7 +191,7 @@ class TestUndoScriptGenerator:
         ALTER TABLE users ADD COLUMN age INTEGER;
         """
 
-        migration = Migration(
+        migration = make_migration(
             script_name="V1_0_3__Add_columns.sql",
             content=migration_sql,
             version="1_0_3",
@@ -213,7 +213,7 @@ class TestUndoScriptGenerator:
         ALTER TABLE users ADD PRIMARY KEY (id);
         """
 
-        migration = Migration(
+        migration = make_migration(
             script_name="V1_0_4__Add_constraints.sql",
             content=migration_sql,
             version="1_0_4",
@@ -239,7 +239,7 @@ class TestUndoScriptGenerator:
         SELECT * FROM users WHERE active = true;
         """
 
-        migration = Migration(
+        migration = make_migration(
             script_name="V1_0_5__Create_view.sql",
             content=migration_sql,
             version="1_0_5",
@@ -260,7 +260,7 @@ class TestUndoScriptGenerator:
         CREATE SEQUENCE order_id_seq;
         """
 
-        migration = Migration(
+        migration = make_migration(
             script_name="V1_0_6__Create_sequences.sql",
             content=migration_sql,
             version="1_0_6",
@@ -292,7 +292,7 @@ class TestUndoScriptGenerator:
         INSERT INTO orders (user_id, total) VALUES (1, 100.00);
         """
 
-        migration = Migration(
+        migration = make_migration(
             script_name="V1_0_7__Create_orders.sql",
             content=migration_sql,
             version="1_0_7",
@@ -332,7 +332,7 @@ class TestUndoScriptGenerator:
         INSERT INTO products (name) VALUES ('Product A');
         """
 
-        migration = Migration(
+        migration = make_migration(
             script_name="V1_0_8__Add_products.sql",
             content=migration_sql,
             version="1_0_8",
@@ -367,7 +367,7 @@ class TestUndoScriptGenerator:
         ('Tool C', 99.99, 'tools');
         """
 
-        migration = Migration(
+        migration = make_migration(
             script_name="V1_0_9__Add_products.sql",
             content=migration_sql,
             version="1_0_9",
@@ -454,7 +454,7 @@ class TestUndoScriptGenerator:
         SELECT * FROM users;
         """
 
-        migration = Migration(
+        migration = make_migration(
             script_name="V1_0_1__Test.sql",
             content=migration_sql,
             version="1_0_1",
@@ -475,7 +475,7 @@ class TestUndoScriptGenerator:
         ('Product A', 19.99, true, CURRENT_TIMESTAMP);
         """
 
-        migration = Migration(
+        migration = make_migration(
             script_name="V1_0_1__Add_product.sql",
             content=migration_sql,
             version="1_0_1",
@@ -499,7 +499,7 @@ class TestUndoScriptGenerator:
         CREATE VIEW user_view AS SELECT * FROM users;
         """
 
-        migration = Migration(
+        migration = make_migration(
             script_name="V1_0_1__Create_objects.sql",
             content=migration_sql,
             version="1_0_1",
@@ -524,7 +524,7 @@ class TestUndoScriptGenerator:
 def test_oracle_undo_keeps_statement_with_close_marker_in_string():
     """A ``*/`` in a string after a ``;`` does not join statements."""
     generator = UndoScriptGenerator(dialect="oracle", logger=LogFactory.get_log("test"))
-    migration = Migration(
+    migration = make_migration(
         script_name="V1__star.sql",
         # One statement per line: spec §4 row 16b refuses two on a line.
         content="CREATE TABLE ua (id NUMBER);\nCREATE TABLE ub (v VARCHAR2(10) DEFAULT '*/');\n",
@@ -542,7 +542,7 @@ def test_oracle_undo_keeps_statement_with_close_marker_in_string():
 
 def _mysql_undo_sql(dialect, content):
     generator = UndoScriptGenerator(dialect=dialect, logger=LogFactory.get_log("test"))
-    migration = Migration(
+    migration = make_migration(
         script_name="V1__names.sql",
         content=content,
         version="1",
@@ -613,7 +613,7 @@ _ORA_PKG_BODY = (
 def test_oracle_undo_drops_package_next_to_other_plsql_block(content, expected):
     """A block followed by a package yields one undo entry each, and the package is dropped."""
     generator = UndoScriptGenerator(dialect="oracle", logger=LogFactory.get_log("test"))
-    migration = Migration(
+    migration = make_migration(
         script_name="V1__plsql.sql",
         content=content,
         version="1",
@@ -637,7 +637,7 @@ def test_oracle_undo_drops_package_next_to_other_plsql_block(content, expected):
 def test_oracle_undo_keeps_statements_after_comment_marker_in_string(literal):
     """``--`` or ``/*`` inside a literal does not hide the statements after it."""
     generator = UndoScriptGenerator(dialect="oracle", logger=LogFactory.get_log("test"))
-    migration = Migration(
+    migration = make_migration(
         script_name="V1__dash.sql",
         content=(
             f"CREATE TABLE da (v VARCHAR2(20) DEFAULT {literal});\n"
@@ -701,7 +701,7 @@ CREATE TABLE DBLIFT_TEST.sp_last (id NUMBER);
 def test_oracle_undo_with_apostrophes_in_sqlplus_directives():
     """``PROMPT ...'s`` / ``REM don't`` do not open a literal that hides DDL."""
     generator = UndoScriptGenerator(dialect="oracle", logger=LogFactory.get_log("test"))
-    migration = Migration(
+    migration = make_migration(
         script_name="V10__sqlplus_directives.sql",
         content=SQLPLUS_DIRECTIVES_SCRIPT,
         version="10",
@@ -718,7 +718,7 @@ def test_oracle_undo_with_apostrophes_in_sqlplus_directives():
 
 def _oracle_undo_sql(content):
     generator = UndoScriptGenerator(dialect="oracle", logger=LogFactory.get_log("test"))
-    migration = Migration(
+    migration = make_migration(
         script_name="V1__directives.sql",
         content=content,
         version="1",

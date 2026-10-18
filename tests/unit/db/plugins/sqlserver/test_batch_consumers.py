@@ -5,8 +5,9 @@ from unittest.mock import MagicMock
 from dblift.core.logger import NullLog
 from dblift.core.logger.results import MigrateResult
 from dblift.core.migration.executor.execution_engine import ExecutionEngine
-from dblift.core.migration.migration import Migration, MigrationType
+from dblift.core.migration.migration import MigrationType
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+from tests.unit._migration_factory import make_migration
 
 SCRIPT = (
     "CREATE TABLE a (id INT);\n"
@@ -25,7 +26,7 @@ BATCHES = [
 
 
 def _migration(content=SCRIPT):
-    return Migration(
+    return make_migration(
         script_name="V1__batches.sql",
         content=content,
         version="1",

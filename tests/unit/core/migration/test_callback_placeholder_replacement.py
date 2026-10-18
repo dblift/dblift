@@ -15,6 +15,7 @@ from dblift.core.migration.executor.execution_engine import ExecutionEngine
 from dblift.core.migration.migration import Migration, MigrationType
 from dblift.core.migration.placeholders.placeholder_service import PlaceholderService
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+from tests.unit._migration_factory import make_migration
 
 pytestmark = [pytest.mark.unit]
 
@@ -64,7 +65,7 @@ class TestCallbackPlaceholderReplacement:
         """Helper to create a callback migration file."""
         file_path = self.temp_dir / filename
         file_path.write_text(content)
-        migration = Migration(file_path, logger=self.log)
+        migration = make_migration(file_path, logger=self.log)
         return migration
 
     def test_callback_placeholder_replacement(self):

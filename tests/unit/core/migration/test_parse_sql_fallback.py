@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from dblift.core.exceptions import UnsafeStatementSplitError
-from dblift.core.migration.migration import Migration
+from tests.unit._migration_factory import make_migration
 
 
 @pytest.mark.unit
@@ -23,7 +23,7 @@ class TestParseSqlFallback:
         """A scanner failure does not return guessed statements."""
         config = MagicMock()
         config.database.type = "postgresql"
-        migration = Migration(
+        migration = make_migration(
             script_name="V1__test.sql",
             content="SELECT 1; SELECT 2; SELECT 3;",
             config=config,
@@ -37,7 +37,7 @@ class TestParseSqlFallback:
         """A failure is returned without a second analyzer attempt."""
         config = MagicMock()
         config.database.type = "postgresql"
-        migration = Migration(
+        migration = make_migration(
             script_name="V1__test.sql",
             content="INSERT INTO t VALUES (1); UPDATE t SET x=2;",
             config=config,

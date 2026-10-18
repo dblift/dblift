@@ -15,6 +15,7 @@ from dblift.core.migration.executors.executor_factory import MigrationExecutorFa
 from dblift.core.migration.formats import MigrationFormat
 from dblift.core.migration.migration import Migration
 from dblift.db.base_quirks import BaseQuirks
+from tests.unit._migration_factory import make_migration
 
 
 class _NoSqlQuirks(BaseQuirks):
@@ -34,7 +35,7 @@ class _Provider:
 def _migration(tmp_path: Path, name: str, content: str) -> Migration:
     script = tmp_path / name
     script.write_text(content, encoding="utf-8")
-    return Migration(script_path=script)
+    return make_migration(script_path=script)
 
 
 def _factory(quirks) -> MigrationExecutorFactory:

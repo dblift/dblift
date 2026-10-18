@@ -11,7 +11,7 @@ from sqlalchemy import create_engine
 
 from dblift.api import DBLiftClient
 from dblift.core.migration.commands.repair_command import RepairCommand, RepairSafetyError
-from dblift.core.migration.migration import Migration, MigrationType
+from dblift.core.migration.migration import MigrationType
 from dblift.core.migration.state.checksum_drift import ChecksumDrift
 from dblift.core.migration.state.migration_state import MigrationState
 from dblift.core.migration.state.migration_state_manager import MigrationStateManager
@@ -19,6 +19,7 @@ from dblift.core.migration.state.repair_plan import (
     _detect_checksum_drift,
     _detect_missing_migrations,
 )
+from tests.unit._migration_factory import make_migration
 
 pytestmark = [pytest.mark.unit, pytest.mark.sqlite]
 
@@ -169,8 +170,8 @@ def _command(script_manager):
 
 
 def test_built_catalog_preserves_group_order_and_first_duplicate_wins(tmp_path):
-    first = Migration(script_name="V1__same.sql", content="SELECT 1;", type=MigrationType.SQL)
-    last = Migration(script_name="V1__same.sql", content="SELECT 2;", type=MigrationType.SQL)
+    first = make_migration(script_name="V1__same.sql", content="SELECT 1;", type=MigrationType.SQL)
+    last = make_migration(script_name="V1__same.sql", content="SELECT 2;", type=MigrationType.SQL)
     catalog = {MigrationType.REPEATABLE: [first], MigrationType.SQL: [last]}
     scripts = MagicMock()
     scripts.load_migration_scripts.return_value = catalog

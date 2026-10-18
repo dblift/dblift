@@ -14,12 +14,13 @@ from dblift.core.migration.state.repeatable_status import (
     RepeatableStatus,
     repeatable_runs,
 )
+from tests.unit._migration_factory import make_migration
 
 pytestmark = [pytest.mark.unit]
 
 
 def _script(name: str = "R__v.sql", content: str = "SELECT 1;") -> Migration:
-    return Migration(script_name=name, content=content, type=MigrationType.REPEATABLE)
+    return make_migration(script_name=name, content=content, type=MigrationType.REPEATABLE)
 
 
 def _row(
@@ -126,7 +127,7 @@ def test_null_success_row_is_not_a_recorded_run():
 
 
 def test_only_repeatable_scripts_are_keyed_by_script_name():
-    versioned = Migration(
+    versioned = make_migration(
         script_name="V1__a.sql", content="SELECT 1;", version="1", type=MigrationType.SQL
     )
     runs = repeatable_runs([versioned, _script("R__a.sql"), _script("R__b.sql")], [])

@@ -11,13 +11,14 @@ from dblift.core.migration.executor.execution_engine import ExecutionEngine
 from dblift.core.migration.migration import Migration, MigrationType
 from dblift.core.migration.sql.migration_sql_parser import parse_migration_sql
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+from tests.unit._migration_factory import make_migration
 
 SCRIPT = "UPDATE t SET a = 1;\nSELECT a FROM t\\G\nUPDATE t SET a = 2;\n"
 DIALECTS = ["mysql", "mariadb"]
 
 
 def _migration(dialect: str, content: str = SCRIPT) -> Migration:
-    return Migration(
+    return make_migration(
         script_name="V1__update.sql",
         content=content,
         version="1",

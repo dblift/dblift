@@ -2,7 +2,6 @@
 
 import pytest
 
-from dblift.core.migration.migration import Migration
 from dblift.core.migration.scripting.undo_script_generator import UndoScriptGenerator
 from dblift.core.migration.sql.script_analysis import analyse_script
 from dblift.core.sql_parser.statement_facts import SqlglotStatementFactsReader
@@ -10,6 +9,7 @@ from dblift.db.dml_analysis import analyze_dml, is_full_table_dml
 from dblift.db.plugins.sqlite.parser.lexical_spec import SQLITE_SPEC
 from dblift.db.plugins.sqlite.quirks import SqliteQuirks
 from dblift.db.provider_registry import ProviderRegistry
+from tests.unit._migration_factory import make_migration
 
 _quirks = ProviderRegistry.get_quirks
 
@@ -58,7 +58,7 @@ UNDO_INPUTS = [
 @pytest.mark.parametrize("content", UNDO_INPUTS)
 def test_undo_comments_use_plain_wording(content):
     statements = UndoScriptGenerator("sqlite")._generate_undo_statements(
-        Migration(script_name="V1__x.sql", content=content)
+        make_migration(script_name="V1__x.sql", content=content)
     )
 
     assert statements

@@ -24,24 +24,14 @@ class MigrationMarkerMixin:
             self, filename: str
         ) -> Tuple[MigrationType, Optional[str], str, List[str]]: ...
 
-    def baseline_marker(
-        self,
-        version: Optional[str],
-        description: str,
-        *,
-        script_name: Optional[str] = None,
-        content: Optional[str] = None,
-    ) -> Migration:
+    def baseline_marker(self, version: Optional[str], description: str) -> Migration:
         """Build the synthetic history row that records a baseline.
 
-        The row has no script file. ``script_name`` defaults to ``B{version}__{description}.sql``
-        and ``content`` to a comment naming the version; the checksum is computed here, from
-        that content, like every other script's.
+        The row is named ``B{version}__{description}.sql`` and its content is a comment
+        naming the version.
         """
-        marker_name = script_name or f"B{version}__{description}.sql"
-        marker_content = (
-            content if content is not None else f"-- Baseline migration for version {version}"
-        )
+        marker_name = f"B{version}__{description}.sql"
+        marker_content = f"-- Baseline migration for version {version}"
         return Migration(
             script_name=marker_name,
             content=marker_content,
@@ -58,19 +48,15 @@ class MigrationMarkerMixin:
         script_name: str,
         version: Optional[str],
         description: str,
-        original_type_name: Optional[str] = None,
+        original_type_name: str,
     ) -> Migration:
         """Build the synthetic history row that records a script as deleted.
 
-        ``description`` is the reason. With ``original_type_name`` the stored description reads
+        ``description`` is the reason; the stored description reads
         ``[DELETE:{original_type_name}] {description}``, so the original type survives in the
-        history row. The checksum is computed here, from the marker's content.
+        history row.
         """
-        marker_description = (
-            f"[DELETE:{original_type_name}] {description}"
-            if original_type_name is not None
-            else description
-        )
+        marker_description = f"[DELETE:{original_type_name}] {description}"
         marker_content = f"-- Delete operation: {marker_description}"
         return Migration(
             script_name=script_name,

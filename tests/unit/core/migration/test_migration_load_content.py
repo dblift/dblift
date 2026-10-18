@@ -18,7 +18,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from dblift.core.migration.migration import Migration, MigrationType
+from dblift.core.migration.migration import MigrationType
+from tests.unit._migration_factory import make_migration
 
 
 class TestMigrationLoadContent:
@@ -27,7 +28,9 @@ class TestMigrationLoadContent:
     def test_load_content_from_scripts_dir(self, tmp_path):
         script = tmp_path / "V2__create_orders.py"
         script.write_text("def migrate(ctx): pass\n")
-        m = Migration(script_name="V2__create_orders.py", content="", type=MigrationType.PYTHON)
+        m = make_migration(
+            script_name="V2__create_orders.py", content="", type=MigrationType.PYTHON
+        )
         assert m.content == ""
         m.load_content(tmp_path)
         assert "def migrate(" in m.content
@@ -35,32 +38,32 @@ class TestMigrationLoadContent:
     def test_load_content_noop_when_already_populated(self, tmp_path):
         script = tmp_path / "V1__init.py"
         script.write_text("new content on disk")
-        m = Migration(script_name="V1__init.py", content="original", type=MigrationType.PYTHON)
+        m = make_migration(script_name="V1__init.py", content="original", type=MigrationType.PYTHON)
         m.load_content(tmp_path)
         assert m.content == "original"  # not replaced
 
     def test_load_content_noop_when_file_missing(self, tmp_path):
-        m = Migration(script_name="V99__missing.py", content="", type=MigrationType.PYTHON)
+        m = make_migration(script_name="V99__missing.py", content="", type=MigrationType.PYTHON)
         m.load_content(tmp_path)  # should not raise
         assert m.content == ""
 
     def test_load_content_sets_path(self, tmp_path):
         script = tmp_path / "V3__tbl.py"
         script.write_text("def migrate(ctx): pass\n")
-        m = Migration(script_name="V3__tbl.py", content="", type=MigrationType.PYTHON)
+        m = make_migration(script_name="V3__tbl.py", content="", type=MigrationType.PYTHON)
         assert m.path is None
         m.load_content(tmp_path)
         assert m.path == script
 
     def test_load_content_none_scripts_dir(self):
-        m = Migration(script_name="V1__x.py", content="", type=MigrationType.PYTHON)
+        m = make_migration(script_name="V1__x.py", content="", type=MigrationType.PYTHON)
         m.load_content(None)  # should not raise
         assert m.content == ""
 
     def test_load_content_reads_self_path_when_no_scripts_dir(self, tmp_path):
         script = tmp_path / "V5__x.py"
         script.write_text("def migrate(ctx): pass\n")
-        m = Migration(script_path=script)
+        m = make_migration(script_path=script)
         m.content = ""  # simulate DB-load erasure
         m.load_content(None)
         assert "def migrate(" in m.content
@@ -91,11 +94,11 @@ class TestChecksumValidationIncludesPython:
 
         path = tmp_path / "V6__orders.py"
         path.write_text("def migrate(ctx): ctx.execute('CREATE TABLE orders (id INT)')\n")
-        applied = Migration(path)
+        applied = make_migration(path)
         applied.success = True
         if changed:
             path.write_text("def migrate(ctx): ctx.execute('CREATE TABLE orders (id BIGINT)')\n")
-        script = Migration(path)
+        script = make_migration(path)
 
         validator = MigrationValidator.__new__(MigrationValidator)
         validator.log = NullLog()
@@ -115,7 +118,7 @@ class TestChecksumValidationIncludesPython:
 
         script = tmp_path / "V7__python_migrate.py"
         script.write_text("def migrate(ctx): ctx.execute('CREATE TABLE t (id INT)')\n")
-        applied = Migration(script_path=script)
+        applied = make_migration(script_path=script)
         applied.success = True
 
         undo = SimpleNamespace(
@@ -147,7 +150,7 @@ class TestChecksumValidationIncludesPython:
 
         script = tmp_path / "V7__python_migrate.py"
         script.write_text("def migrate(ctx): ctx.execute('CREATE TABLE t (id INT)')\n")
-        applied = Migration(script_path=script)
+        applied = make_migration(script_path=script)
         applied.success = True
 
         undo = SimpleNamespace(
