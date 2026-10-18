@@ -13,6 +13,7 @@ from dblift.core.migration.migration import MigrationType
 from dblift.core.migration.state.migration_display_state import MigrationDisplayState
 from dblift.core.migration.state.migration_state import MigrationEntry, MigrationState
 from dblift.db.provider_interfaces import TransactionalProvider
+from tests.unit.core.migration.commands._plan_migrate_wiring import wire_plan_migrate
 
 
 def _command_with_pending_migration(monkeypatch, provider: MagicMock) -> MigrateCommand:
@@ -30,7 +31,7 @@ def _command_with_pending_migration(monkeypatch, provider: MagicMock) -> Migrate
     command.placeholder_service = MagicMock()
     command._update_final_state = MagicMock()
     command._log_command_completion = MagicMock()
-    command.state_manager = MagicMock()
+    command.state_manager = wire_plan_migrate(MagicMock())
     command.state_manager.get_current_version.return_value = None
     pending = SimpleNamespace(
         script_name="V2__second.sql",

@@ -25,6 +25,7 @@ from dblift.core.migration.migration import MigrationType
 from dblift.core.migration.state.migration_display_state import MigrationDisplayState
 from dblift.core.migration.state.migration_state import MigrationEntry, MigrationState
 from dblift.db.provider_interfaces import TransactionalProvider
+from tests.unit.core.migration.commands._plan_migrate_wiring import wire_plan_migrate
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -77,7 +78,7 @@ def _make_cmd(
     _provider = provider or MagicMock()
     _hm = history_manager or MagicMock()
     _sm = script_manager or MagicMock()
-    _stm = state_manager or MagicMock()
+    _stm = wire_plan_migrate(state_manager or MagicMock())
     _ee = execution_engine or MagicMock()
     _mh = migration_helpers or MagicMock()
     _validator = validator  # None is valid (skips validation)

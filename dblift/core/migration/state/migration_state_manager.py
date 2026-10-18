@@ -21,6 +21,11 @@ from dblift.core.migration.migration import (
 from dblift.core.migration.rules.migration_rules import MigrationRules
 from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
 from dblift.core.migration.state.checksum_drift import ChecksumDrift, find_checksum_drift
+from dblift.core.migration.state.migrate_plan import (  # noqa: F401  StrictModeError re-export
+    MigratePlan,
+    StrictModeError,
+)
+from dblift.core.migration.state.migrate_plan import plan_migrate as _plan_migrate
 from dblift.core.migration.state.migration_data_service import MigrationDataService
 from dblift.core.migration.state.migration_display_state import MigrationDisplayState
 from dblift.core.migration.state.migration_selector import (
@@ -49,15 +54,6 @@ from dblift.core.migration.version_utils import (
     is_migration_success,
 )
 from dblift.db.base_quirks import BaseQuirks
-
-
-class StrictModeError(ValueError):
-    """Raised by migrate when ``strict_mode=True`` and an out-of-order
-    executable pending migration is selected. Subclasses :class:`ValueError` so
-    callers that haven't migrated to the narrower type still catch it,
-    but lets ``MigrateCommand`` distinguish strict-mode violations from
-    arbitrary :class:`ValueError` instances raised elsewhere in the
-    migrate flow (PR #241 Bugbot)."""
 
 
 @dataclass(slots=True)
@@ -1011,6 +1007,37 @@ class MigrationStateManager:
             return True
 
         return False
+
+    def plan_migrate(
+        self,
+        scripts_dir: Optional[Path],
+        *,
+        recursive: bool,
+        additional_dirs: Optional[Sequence[Path]],
+        dir_recursive_map: Optional[Dict[Path, bool]],
+        target_version: Optional[str],
+        tags: Optional[Sequence[str]],
+        exclude_tags: Optional[Sequence[str]],
+        versions: Optional[Sequence[str]],
+        exclude_versions: Optional[Sequence[str]],
+        strict_mode: bool,
+        read_snapshot: Optional[MigrationReadSnapshot] = None,
+    ) -> MigratePlan:
+        """Select what ``migrate`` runs; raises ``StrictModeError`` when strict and out of order."""
+        return _plan_migrate(
+            self,
+            scripts_dir,
+            recursive=recursive,
+            additional_dirs=additional_dirs,
+            dir_recursive_map=dir_recursive_map,
+            target_version=target_version,
+            tags=tags,
+            exclude_tags=exclude_tags,
+            versions=versions,
+            exclude_versions=exclude_versions,
+            strict_mode=strict_mode,
+            read_snapshot=read_snapshot,
+        )
 
     _passes_filters = staticmethod(passes_filters)
     apply_filters_to_migrations = staticmethod(select_migrations)

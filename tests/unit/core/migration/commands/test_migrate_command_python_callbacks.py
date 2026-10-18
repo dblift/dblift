@@ -12,6 +12,7 @@ from dblift.core.migration.commands.migrate_command import MigrateCommand
 from dblift.core.migration.migration import MigrationType
 from dblift.core.migration.state.migration_display_state import MigrationDisplayState
 from dblift.core.migration.state.migration_state import MigrationEntry, MigrationState
+from tests.unit.core.migration.commands._plan_migrate_wiring import wire_plan_migrate
 
 
 @pytest.mark.unit
@@ -32,7 +33,7 @@ def test_python_migrations_trigger_versioned_callbacks(monkeypatch):
     command._execute_after_callbacks = MagicMock()
     command._update_final_state = MagicMock()
     command._log_command_completion = MagicMock()
-    command.state_manager = MagicMock()
+    command.state_manager = wire_plan_migrate(MagicMock())
     command.history_manager = MagicMock()
     command.history_manager.get_applied_migration_records.return_value = []
     python_migration = SimpleNamespace(
