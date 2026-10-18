@@ -248,7 +248,10 @@ def test_a_quadratic_pass_is_over_budget(monkeypatch):
     assert honest <= BOUND * counted(shape(SMALL))
     monkeypatch.setitem(namespace, "_dollar", mutant)
     quadratic = _mutant(
-        blank_pass.kept_stretches, "_dollar(sql, pos, rules, stretches)", "_dollar(sql, pos, rules, stretches)", namespace
+        blank_pass.kept_stretches,
+        "_dollar(sql, pos, rules, stretches)",
+        "_dollar(sql, pos, rules, stretches)",
+        namespace,
     )
     monkeypatch.setattr(lexical_tokenizer, "kept_stretches", quadratic)
     assert counted(shape(LARGE)) > BOUND * counted(shape(SMALL))

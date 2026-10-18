@@ -5,7 +5,6 @@ from typing import Callable, Dict, FrozenSet, Iterable, List, NoReturn, Optional
 
 from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
 from dblift.core.sql_parser.base_tokenizer import BaseTokenizer
-from dblift.core.sql_parser.blank_pass import kept_stretches
 from dblift.core.sql_parser.batch_commands import (
     find_lone_cr,
     read_command,
@@ -13,6 +12,7 @@ from dblift.core.sql_parser.batch_commands import (
     refuse_variable_in_code,
     refuse_variable_in_lexeme,
 )
+from dblift.core.sql_parser.blank_pass import kept_stretches
 from dblift.core.sql_parser.client_directives import classify_directive, is_free_text
 from dblift.core.sql_parser.delimiter_script import DelimiterScript
 from dblift.core.sql_parser.lexical_spec import (

@@ -97,7 +97,24 @@ def predicted(script):
 
 def test_the_stretches_are_the_text_duckdb_keeps():
     rng = random.Random(7)
-    pieces = ["$", "$$", "$a$", "a", "1", "'", '"', "-", "--", NB, chr(0x3000), "\n", "\r", ";", "é", " "]
+    pieces = [
+        "$",
+        "$$",
+        "$a$",
+        "a",
+        "1",
+        "'",
+        '"',
+        "-",
+        "--",
+        NB,
+        chr(0x3000),
+        "\n",
+        "\r",
+        ";",
+        "é",
+        " ",
+    ]
     compared = 0
     for _ in range(4000):
         body = "".join(rng.choice(pieces) for _ in range(rng.randint(1, 12)))
