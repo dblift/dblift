@@ -154,6 +154,10 @@ DuckDB retains its existing scanner until it is migrated.
 | 27 | `SELECT E'a\'--b'; DROP TABLE visible;` | `SELECT E'a\'--b'` · `DROP TABLE visible` (comment masking for analysis uses these same literal boundaries and keeps the following statement) |
 | 28 | `SELECT 0 \; CREATE FUNCTION f() RETURNS int LANGUAGE SQL BEGIN ATOMIC SELECT 1; END; SELECT 2;` | `SELECT 0 ; CREATE FUNCTION f() RETURNS int LANGUAGE SQL BEGIN ATOMIC SELECT 1; END` with multi=True · `SELECT 2` (the combined query starts a fresh routine head after its escaped semicolon; analysis has three constituents) |
 | 29 | `CREATE TABLE stdin(copy int); SELECT copy FROM stdin; SELECT 2;` | `CREATE TABLE stdin(copy int)` · `SELECT copy FROM stdin` · `SELECT 2` (a column named COPY never opens a data header) |
+| 30 | `DROP TABLE t\xa0` | `DROP TABLE t\xa0` **exact text** (no terminator: the last statement keeps a trailing no-break space; psql 16 sends it and the server reads it as part of the name, measured 2026-10-17; CockroachDB and YugabyteDB the same, measured) |
+| 30a | `DROP TABLE t\u3000;\nSELECT 1;` | `DROP TABLE t\u3000;` · `SELECT 1;` **exact text** (an ideographic space before the terminator is a name character on PostgreSQL, CockroachDB and YugabyteDB, measured 2026-10-17: the text keeps it) |
+| 30b | `SELECT 1\x0c` | `SELECT 1` **exact text** (a form feed is a blank for the server, CockroachDB and YugabyteDB included) |
+| 30c | `SELECT 1\x0b` | `SELECT 1\x0b` **exact text** (rejected by the engine, kept: a vertical tab is a syntax error on PostgreSQL, CockroachDB and YugabyteDB, so the statement fails as it does under psql) |
 
 ## 11. Not handled
 

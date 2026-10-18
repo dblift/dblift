@@ -11,10 +11,15 @@ from sqlalchemy import create_engine
 
 from dblift.api import DBLiftClient
 from dblift.core.migration.commands.repair_command import RepairCommand, RepairSafetyError
-from dblift.core.migration.migration import Migration, MigrationType
+from dblift.core.migration.migration import MigrationType
 from dblift.core.migration.state.checksum_drift import ChecksumDrift
 from dblift.core.migration.state.migration_state import MigrationState
 from dblift.core.migration.state.migration_state_manager import MigrationStateManager
+from dblift.core.migration.state.repair_plan import (
+    _detect_checksum_drift,
+    _detect_missing_migrations,
+)
+from tests.unit._migration_factory import make_migration
 
 pytestmark = [pytest.mark.unit, pytest.mark.sqlite]
 
@@ -165,8 +170,8 @@ def _command(script_manager):
 
 
 def test_built_catalog_preserves_group_order_and_first_duplicate_wins(tmp_path):
-    first = Migration(script_name="V1__same.sql", content="SELECT 1;", type=MigrationType.SQL)
-    last = Migration(script_name="V1__same.sql", content="SELECT 2;", type=MigrationType.SQL)
+    first = make_migration(script_name="V1__same.sql", content="SELECT 1;", type=MigrationType.SQL)
+    last = make_migration(script_name="V1__same.sql", content="SELECT 2;", type=MigrationType.SQL)
     catalog = {MigrationType.REPEATABLE: [first], MigrationType.SQL: [last]}
     scripts = MagicMock()
     scripts.load_migration_scripts.return_value = catalog
@@ -177,7 +182,7 @@ def test_built_catalog_preserves_group_order_and_first_duplicate_wins(tmp_path):
         )
     ]
     state = command.state_manager.build_state(tmp_path)
-    repairs = command._detect_checksum_drift(state, [], tmp_path)
+    repairs = _detect_checksum_drift(command.state_manager, state, [], tmp_path)
     assert repairs[0]["new_checksum"] == first.checksum
     assert list(state.grouped_objects) == list(catalog)
     assert scripts.load_migration_scripts.call_count == 1
@@ -196,10 +201,10 @@ def test_empty_built_catalog_is_authoritative(tmp_path, has_history):
     scripts.load_migration_scripts.side_effect = AssertionError("must reuse empty catalog")
     if has_history:
         with pytest.raises(RepairSafetyError):
-            command._detect_missing_migrations(state, tmp_path)
+            _detect_missing_migrations(command.state_manager, state, tmp_path)
     else:
-        assert command._detect_missing_migrations(state, tmp_path) == []
-    assert command._detect_checksum_drift(state, [], tmp_path) == []
+        assert _detect_missing_migrations(command.state_manager, state, tmp_path) == []
+    assert _detect_checksum_drift(command.state_manager, state, [], tmp_path) == []
     assert scripts.load_migration_scripts.call_count == 1
 
 
@@ -209,9 +214,9 @@ def test_missing_catalog_fallback_propagates_errors_and_preserves_freshness(tmp_
     command = _command(scripts)
     state = MigrationState()  # no pre-built catalog, so each detector loads one itself
     with pytest.raises(PermissionError, match="unreadable catalog"):
-        command._detect_missing_migrations(state, tmp_path)
+        _detect_missing_migrations(command.state_manager, state, tmp_path)
     with pytest.raises(PermissionError, match="unreadable catalog"):
-        command._detect_checksum_drift(state, [], tmp_path)
+        _detect_checksum_drift(command.state_manager, state, [], tmp_path)
     scripts.load_migration_scripts.side_effect = None
     scripts.load_migration_scripts.return_value = {}
     assert command.state_manager.get_grouped_migrations(tmp_path) == {}
@@ -279,7 +284,7 @@ def test_repair_reads_state_drift(database_client):
     script.write_text("CREATE TABLE app (id INTEGER PRIMARY KEY);\n-- edited\n")
     # The command module must not compare checksums itself; guard against it coming back.
     with patch(
-        "dblift.core.migration.commands.repair_command.find_checksum_drift",
+        "dblift.core.migration.state.repair_plan.find_checksum_drift",
         create=True,
         side_effect=AssertionError("repair must read the state's drift"),
     ):
@@ -294,6 +299,6 @@ def test_missing_catalog_fallback_asks_the_state_manager_for_drift(tmp_path):
     command.state_manager.build_state = MagicMock(
         return_value=MigrationState(checksum_drift=(drift,))
     )
-    repairs = command._detect_checksum_drift(MigrationState(), [], tmp_path)
+    repairs = _detect_checksum_drift(command.state_manager, MigrationState(), [], tmp_path)
     assert [r["script"] for r in repairs] == ["V1__a.sql"]
     command.state_manager.build_state.assert_called_once()

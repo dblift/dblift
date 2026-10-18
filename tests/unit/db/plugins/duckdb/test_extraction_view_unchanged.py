@@ -199,9 +199,10 @@ def test_the_former_leak_shapes_are_masked():
 
 
 def test_the_facts_reader_does_not_read_the_spec():
-    plain_spec = LexicalSpec(name="x")
+    plain_spec = LexicalSpec(name="x", text_blanks=" ")
     changed = LexicalSpec(
         name="y",
+        text_blanks=" ",
         client_name="other",
         nested_comments=True,
         quoted_identifier="`",

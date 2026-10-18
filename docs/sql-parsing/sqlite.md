@@ -325,6 +325,8 @@ rules are a table and one regular expression (the word pattern); the `go` and `/
 | 61 | `SELECT 6\ngo /* c */ -- d\n2;` | `UnsafeStatementSplitError` (line 2: closed block comments and a line comment after go) |
 | 62 | `SELECT 6 -- six\n/\n2;` | `SELECT 6 -- six\n/\n2` (the statement so far ends in a line comment: a semicolon added to it would be inside the comment, the shell does not end the statement, and shell and driver both print 3) |
 | 63 | `SELECT 6\ngo x\n;` | `SELECT 6\ngo x` (go with other text after it is text; the engine rejects it) |
+| 64 | `DROP TABLE t\xa0;` | `DROP TABLE t\xa0` **exact text** (a no-break space is a name character for SQLite, measured 2026-10-17 on 3.45; the text keeps it) |
+| 65 | `SELECT 1\x0b;` | `SELECT 1\x0b` **exact text** (rejected by the engine, kept: a vertical tab is an unrecognized token, so the statement fails as it does under the sqlite3 shell) |
 
 ## 11. Not handled
 

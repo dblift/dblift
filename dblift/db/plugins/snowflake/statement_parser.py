@@ -8,6 +8,10 @@ from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.core.sql_parser.sqlglot_parser import SqlGlotParser
 from dblift.core.sql_parser.statement import Statement
 
+#: What a statement loses at its ends: the blanks every measured engine reads as blanks. Snowflake
+#: is not measured, so any other white space character stays in the text.
+TEXT_BLANKS = " \t\n\r"
+
 
 class SnowflakeStatementParser(SqlGlotParser):
     """Keep statement text intact while respecting Snowflake string delimiters."""
@@ -162,10 +166,10 @@ class SnowflakeStatementParser(SqlGlotParser):
             raise UnsafeStatementSplitError(
                 "Unquoted Snowflake Scripting blocks are not qualified for SQL migrations"
             )
-        lead = sql[: len(sql) - len(sql.lstrip())]
+        lead = sql[: len(sql) - len(sql.lstrip(TEXT_BLANKS))]
         statements.append(
             Statement(
-                text=sql.strip(),
+                text=sql.strip(TEXT_BLANKS),
                 line=start_line + lead.count("\n"),
                 terminator=";" if source_end > source_start + len(sql) else None,
                 source_start=source_start,

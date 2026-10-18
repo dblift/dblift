@@ -98,6 +98,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Statements keep the characters at their edges that the engine reads as part of the text.**
+  Only the engine's own blanks are trimmed, so a name ending in a no-break space is executed
+  and analysed as written. On Oracle, a statement whose edge character the driver would strip
+  is refused, naming the character, line and column.
 - **DuckDB scripts with non-ASCII blanks are cut where DuckDB cuts them, and a statement
   that would read differently alone is refused.** DuckDB replaces its Unicode blanks (such
   as U+00A0) with spaces in one pass over the whole script before parsing, and the pass

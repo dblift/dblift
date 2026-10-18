@@ -81,7 +81,11 @@ def counted(script: str, refusal: bool = False, meter: Optional[Meter] = None) -
     with mock.patch.object(blank_pass, "kept_stretches", alone):
         for analysis in (False, True):
             SegmentScript(
-                DUCKDB_RULES, CountingText(script, meter), tokenizer.origin, tokenizer.kept
+                DUCKDB_RULES,
+                CountingText(script, meter),
+                tokenizer.origin,
+                DUCKDB_SPEC.text_blanks,
+                tokenizer.kept,
             ).records(CountingTokens(tokens, meter), analysis)
     return meter.count
 

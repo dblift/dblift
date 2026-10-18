@@ -19,6 +19,15 @@ ROWS = [row for row in load_conformance_rows(SPEC_DIR) if row.dialect == "db2"]
 
 KNOWN_GAPS: frozenset[str] = frozenset({"51", "52", "53", "54"})
 
+#: Rows that fail today for the reason given: they fail strictly, and the change that fixes a row
+#: removes its id (a row that starts to pass under a strict xfail fails loudly).
+RED_ROWS: dict[str, str] = {
+    "55": "the splitter strips a no-break space before the terminator",
+    "55a": "the splitter strips a leading no-break space",
+    "55b": "the splitter strips a form feed the engine rejects",
+    "55c": "the splitter strips a vertical tab the engine rejects",
+}
+
 
 def test_spec_compiles_to_at_least_the_rows_it_had_on_2026_10_11() -> None:
     assert len(ROWS) >= 60
@@ -31,6 +40,8 @@ def test_spec_row(row: ConformanceRow, request: pytest.FixtureRequest) -> None:
         pytest.skip("spec marks this row 'to verify': not a claim yet")
     if row.row_id in KNOWN_GAPS:
         request.applymarker(pytest.mark.xfail(strict=True, reason="listed in KNOWN_GAPS"))
+    if row.row_id in RED_ROWS:
+        request.applymarker(pytest.mark.xfail(strict=True, reason=RED_ROWS[row.row_id]))
     outcome = split_script("db2", row.script)
     assert outcome.matches(row.expectation), (
         f"row {row.row_id}\nscript: {row.script!r}\n"

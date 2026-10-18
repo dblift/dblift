@@ -8,6 +8,7 @@ from dblift.core.logger import NullLog
 from dblift.core.migration.migration import Migration, MigrationType
 from dblift.core.migration.rules.migration_rules import MigrationRules
 from dblift.core.migration.state.migration_state_manager import MigrationStateManager
+from tests.unit._migration_factory import make_migration
 
 pytestmark = [pytest.mark.unit]
 
@@ -56,13 +57,13 @@ class StubScriptManager:
 
 
 def make_repeatable(name: str, checksum: str) -> Migration:
-    migration = Migration(script_name=name, content="SELECT 1;", type=MigrationType.REPEATABLE)
+    migration = make_migration(script_name=name, content="SELECT 1;", type=MigrationType.REPEATABLE)
     migration.checksum = checksum
     return migration
 
 
 def make_versioned(name: str, version: str) -> Migration:
-    return Migration(
+    return make_migration(
         script_name=name,
         content="SELECT 1;",
         version=version,
@@ -188,7 +189,7 @@ def test_indexed_checksum_lookup_precedence(checksums, script_name, expected):
 
 
 def applied_repeatable(name: str, checksum: int) -> Migration:
-    row = Migration(script_name=name, content="SELECT 1;", type=MigrationType.REPEATABLE)
+    row = make_migration(script_name=name, content="SELECT 1;", type=MigrationType.REPEATABLE)
     row.checksum = checksum
     row.success = True
     row.installed_rank = 1

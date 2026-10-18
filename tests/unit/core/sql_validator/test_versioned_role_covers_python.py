@@ -18,10 +18,13 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from dblift.core.logger import NullLog
 from dblift.core.migration.migration import AppliedMigration, Migration
+from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
 from dblift.core.migration.state.migration_selector import prune_baseline_migrations
 from dblift.core.sql_validator._strict_mode_validator import validate_strict_mode_rules
 from dblift.core.sql_validator.migration_validator import MigrationValidator, ValidationResult
+from tests.unit._migration_factory import make_migration
 
 VERSIONED_EXTENSIONS = (".sql", ".py")
 
@@ -32,7 +35,7 @@ def _script(tmp_path: Path, name: str) -> Migration:
     """Build a real ``Migration`` from a file so ``type`` is derived, not asserted."""
     path = tmp_path / name
     path.write_text(_CONTENT[path.suffix])
-    return Migration(script_path=path)
+    return make_migration(script_path=path)
 
 
 def _applied(script_name: str, version: str) -> Migration:
@@ -67,7 +70,7 @@ def test_baseline_filtering_drops_pre_baseline_versioned_script(tmp_path: Path, 
     A surviving script is re-executed against a schema that was baselined
     precisely to declare it already applied.
     """
-    baseline = Migration.create_baseline_migration("-- baseline", "2", "baselined")
+    baseline = MigrationScriptManager(NullLog()).baseline_marker("2", "baselined")
     old = _script(tmp_path, f"V1__old{extension}")
     new = _script(tmp_path, f"V3__new{extension}")
 

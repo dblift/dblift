@@ -4,7 +4,7 @@ Repair command implementation.
 
 from contextlib import ExitStack
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, cast
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, cast
 
 if TYPE_CHECKING:
     pass
@@ -12,58 +12,18 @@ if TYPE_CHECKING:
 from dblift.core.exceptions import ExecutionError
 from dblift.core.logger.results import RepairResult
 from dblift.core.migration.history.history_transaction import history_transaction
-from dblift.core.migration.migration import Migration, MigrationType
+from dblift.core.migration.migration import MigrationType
 from dblift.core.migration.state.migration_state import MigrationState
+from dblift.core.migration.state.repair_plan import (  # noqa: F401  re-exports
+    RepairAction,
+    RepairSafetyError,
+    _count_candidate_missing,
+)
 from dblift.db.provider_capabilities import ensure_provider_connection
 from dblift.db.provider_interfaces import TransactionalProvider
 
 from ._repair_records import record_repair
 from .base_command import MIGRATION_LOCK_REFUSAL, BaseCommand
-
-
-class RepairSafetyError(Exception):
-    """Raised when a repair operation would make a dangerous bulk change.
-
-    Specifically: when the scripts directory is empty (or unreadable) but
-    the history table has applied migrations that would all be converted
-    to DELETE entries. Almost always a misconfigured ``--scripts`` or an
-    operator pointing at the wrong repo — silently marking every applied
-    migration as deleted is not a recoverable mistake, so the command
-    refuses and asks the operator to confirm the directory.
-    """
-
-
-def _count_candidate_missing(applied_migrations: Any, deleted_scripts: Set[str]) -> int:
-    """Count applied migrations that would be flagged MISSING_SCRIPT.
-
-    Mirrors the filter the main loop applies: skip DELETE-type entries and
-    scripts already recorded as deleted. Used by the empty-filesystem
-    safety gate so the error message reports the number of rows the user
-    is being protected from.
-    """
-    count = 0
-    for applied in applied_migrations:
-        script_name = applied.script_name
-        if not script_name:
-            continue
-        # type read defensively: history rows may carry an enum or a legacy string.
-        migration_type = getattr(applied, "type", None)
-        if (
-            migration_type
-            and hasattr(migration_type, "name")
-            and migration_type.name
-            in (
-                "DELETE",
-                "BASELINE",
-            )
-        ):
-            continue
-        if isinstance(migration_type, str) and migration_type.upper() in ("DELETE", "BASELINE"):
-            continue
-        if script_name in deleted_scripts:
-            continue
-        count += 1
-    return count
 
 
 class RepairCommand(BaseCommand):
@@ -83,38 +43,15 @@ class RepairCommand(BaseCommand):
 
         def detect_and_repair() -> None:
             try:
-                # Build migration state
-                migration_state = self._build_migration_state(
+                plan = self.state_manager.plan_repairs(
                     scripts_dir,
                     recursive=recursive,
                     additional_dirs=additional_dirs,
                     dir_recursive_map=dir_recursive_map,
                 )
+                migration_state = plan.state
 
-                # Collect all repairs needed
-                repairs_needed: List[Dict[str, Any]] = []
-                repairs_needed.extend(self._detect_checksum_changes(migration_state))
-                repairs_needed.extend(
-                    self._detect_missing_migrations(
-                        migration_state,
-                        scripts_dir,
-                        recursive=recursive,
-                        additional_dirs=additional_dirs,
-                        dir_recursive_map=dir_recursive_map,
-                    )
-                )
-                repairs_needed.extend(
-                    self._detect_checksum_drift(
-                        migration_state,
-                        repairs_needed,
-                        scripts_dir,
-                        recursive=recursive,
-                        additional_dirs=additional_dirs,
-                        dir_recursive_map=dir_recursive_map,
-                    )
-                )
-
-                if not repairs_needed:
+                if not plan.actions:
                     self.log.info(
                         "Repair check completed: no checksum, failed migration, or history issues detected."
                     )
@@ -122,26 +59,14 @@ class RepairCommand(BaseCommand):
 
                 if dry_run:
                     self.log.info("DRY RUN: the following repairs would be executed:")
-                    for repair in repairs_needed:
-                        self.log.info(f"  - {repair['type']}: {repair['script']}")
-                        script = str(repair.get("script", ""))
-                        kind = repair["type"]
-                        # Same routing as the repair loop: a checksum repair on a
-                        # failed row deletes the row, and a row is removed once.
-                        if kind == "CHECKSUM_MISMATCH" and self._is_failed_migration(
-                            script, migration_state
-                        ):
-                            kind = "FAILED_MIGRATION"
-                        if kind == "FAILED_MIGRATION" and any(
-                            removed.script == script for removed in result.removed_migrations
-                        ):
-                            continue
-                        record_repair(result, kind, repair, migration_state)
+                    for action in plan.actions:
+                        self.log.info(f"  - {action.details['type']}: {action.details['script']}")
+                        record_repair(result, action.kind, dict(action.details), migration_state)
                     return
 
                 # Execute repairs
                 repairs_executed, error = self._execute_repair_loop(
-                    repairs_needed, result, migration_state
+                    plan.actions, result, migration_state
                 )
                 if error:
                     return
@@ -150,7 +75,7 @@ class RepairCommand(BaseCommand):
                 if repairs_executed:
                     validation_error = self._validate_post_repair_state(
                         migration_state=migration_state,
-                        repairs_needed=repairs_needed,
+                        actions=plan.actions,
                         scripts_dir=scripts_dir,
                         recursive=recursive,
                         additional_dirs=additional_dirs,
@@ -192,253 +117,6 @@ class RepairCommand(BaseCommand):
                 header_kwargs={"dry_run": dry_run},
             ),
         )
-
-    def _build_migration_state(
-        self,
-        scripts_dir: Path,
-        recursive: bool = True,
-        additional_dirs: Optional[List[Path]] = None,
-        dir_recursive_map: Optional[Dict[Path, bool]] = None,
-    ) -> MigrationState:
-        """Build the migration state object.
-
-        Args:
-            scripts_dir: Directory containing migration scripts
-            recursive: Whether to scan directories recursively
-            additional_dirs: Additional directories to scan
-            dir_recursive_map: Per-directory recursive override map
-
-        Returns:
-            MigrationState instance
-
-        Raises:
-            Exception: Whatever ``build_state`` raises when the history or the
-                migration scripts cannot be read.
-        """
-        return self.state_manager.build_state(
-            scripts_dir,
-            recursive=recursive,
-            additional_dirs=additional_dirs,
-            dir_recursive_map=dir_recursive_map,
-        )
-
-    def _detect_checksum_changes(self, migration_state: MigrationState) -> List[Dict[str, Any]]:
-        """Build repair entries for checksum changes reported by the state manager.
-
-        Args:
-            migration_state: Current migration state
-
-        Returns:
-            List of CHECKSUM_MISMATCH repair dicts from state manager
-        """
-        repairs: List[Dict[str, Any]] = []
-        for change in migration_state.checksum_changes:
-            repairs.append(
-                {
-                    "type": "CHECKSUM_MISMATCH",
-                    "script": change.script_name,
-                    "old_checksum": change.previous_checksum,
-                    "new_checksum": change.current_checksum,
-                }
-            )
-        return repairs
-
-    def _detect_missing_migrations(
-        self,
-        migration_state: MigrationState,
-        scripts_dir: Path,
-        recursive: bool = True,
-        additional_dirs: Optional[List[Path]] = None,
-        dir_recursive_map: Optional[Dict[Path, bool]] = None,
-    ) -> List[Dict[str, Any]]:
-        """Detect missing migrations (applied but script file no longer exists) and failed migrations.
-
-        Args:
-            migration_state: Current migration state
-            scripts_dir: Directory containing migration scripts
-            recursive: Whether to scan directories recursively
-            additional_dirs: Additional directories to scan
-            dir_recursive_map: Per-directory recursive override map
-
-        Returns:
-            List of MISSING_SCRIPT and FAILED_MIGRATION repair dicts
-        """
-        repairs: List[Dict[str, Any]] = []
-
-        applied_migrations = migration_state.applied_objects
-        deleted_scripts: Set[str] = set(migration_state.deleted_scripts)
-
-        # Reuse the built catalog, or load filesystem scripts when unavailable.
-        # A load failure (permission denied, missing
-        # directory not caught by the CLI layer, malformed script) propagates
-        # — silently falling back to an empty set turned this into a
-        # mass-mark-missing footgun. The CLI has already verified
-        # that the directory exists for every command except ``baseline``;
-        # anything that raises here is the operator's to fix before repair
-        # can proceed safely.
-        filesystem_migrations = migration_state.grouped_objects
-        if filesystem_migrations is None:
-            filesystem_migrations = self.state_manager.get_grouped_migrations(
-                scripts_dir,
-                recursive=recursive,
-                additional_dirs=additional_dirs,
-                dir_recursive_map=dir_recursive_map,
-            )
-        filesystem_scripts: Set[str] = set()
-        for migration_group in filesystem_migrations.values():
-            for migration in migration_group:
-                filesystem_scripts.add(migration.script_name)
-
-        # Safety gate: if the filesystem produced zero scripts but the
-        # history has applied migrations that would all be marked MISSING,
-        # refuse — this is almost always a misconfigured ``--scripts`` or
-        # empty default ``./migrations`` directory. Without this
-        # guard, a single ``repair`` invocation without ``--dry-run`` would
-        # convert every applied migration into a DELETE entry.
-        if not filesystem_scripts:
-            candidate_missing_count = _count_candidate_missing(applied_migrations, deleted_scripts)
-            if candidate_missing_count > 0:
-                raise RepairSafetyError(
-                    f"Refusing to mark {candidate_missing_count} applied migration(s) "
-                    f"as missing: no migration scripts found in {scripts_dir}. "
-                    "Pass --scripts <dir> pointing to your migration files, or "
-                    "verify that the configured directory contains at least one "
-                    "matching file before retrying."
-                )
-
-        # Find migrations in history but not in filesystem
-        for applied in applied_migrations:
-            script_name = applied.script_name
-            if not script_name:
-                continue
-
-            # type read defensively: history rows may carry an enum or a legacy string.
-            migration_type = getattr(applied, "type", None)
-
-            # Skip DELETE and BASELINE type migrations. BASELINE rows (e.g. the
-            # synthetic ``B2__.sql`` marker written by ``baseline``) never have
-            # a matching filesystem script by design — flagging them as missing
-            # produces noisy false positives and, worse, a subsequent repair
-            # would rewrite history to delete them.
-            if (
-                migration_type
-                and hasattr(migration_type, "name")
-                and migration_type.name in ("DELETE", "BASELINE")
-            ):
-                continue
-            if isinstance(migration_type, str) and migration_type.upper() in (
-                "DELETE",
-                "BASELINE",
-            ):
-                continue
-
-            # Skip if already marked as deleted (has DELETE entry)
-            if script_name in deleted_scripts:
-                continue
-
-            # If the script is not in filesystem, add to repairs. A row recorded
-            # with a directory prefix still matches its script by basename, as
-            # ``validate`` matches it.
-            if script_name not in filesystem_scripts and Path(script_name).name not in (
-                filesystem_scripts
-            ):
-                repairs.append(
-                    {
-                        "type": "MISSING_SCRIPT",
-                        "script": script_name,
-                        "version": applied.version,
-                        "description": applied.description,
-                        "original_type": migration_type,  # Preserve original type
-                    }
-                )
-
-        # Check for failed migrations that need to be cleaned up
-        for failed_migration in migration_state.failed_objects:
-            script_name = failed_migration.script_name
-            if script_name:
-                repairs.append(
-                    {
-                        "type": "FAILED_MIGRATION",
-                        "script": script_name,
-                        "version": failed_migration.version,
-                        "description": failed_migration.description,
-                    }
-                )
-
-        return repairs
-
-    def _detect_checksum_drift(
-        self,
-        migration_state: MigrationState,
-        existing_repairs: List[Dict[str, Any]],
-        scripts_dir: Path,
-        recursive: bool = True,
-        additional_dirs: Optional[List[Path]] = None,
-        dir_recursive_map: Optional[Dict[Path, bool]] = None,
-    ) -> List[Dict[str, Any]]:
-        """Detect checksum drift for applied versioned migrations not already in repairs.
-
-        MigrationState currently only tracks repeatable checksum changes; the
-        versioned drift in every script format is read from
-        ``migration_state.checksum_drift``, the same answer ``validate`` reports.
-
-        Args:
-            migration_state: Current migration state
-            existing_repairs: Already-collected repair dicts (to avoid duplicates)
-            scripts_dir: Directory containing migration scripts
-            recursive: Whether to scan directories recursively
-            additional_dirs: Additional directories to scan
-            dir_recursive_map: Per-directory recursive override map
-
-        Returns:
-            List of additional CHECKSUM_MISMATCH repair dicts
-        """
-        repairs: List[Dict[str, Any]] = []
-
-        # The state manager decides drift. A state built without scripts carries none,
-        # so ask it to rebuild with them.
-        if migration_state.grouped_objects is None:
-            migration_state = self.state_manager.build_state(
-                scripts_dir,
-                recursive=recursive,
-                additional_dirs=additional_dirs,
-                dir_recursive_map=dir_recursive_map,
-            )
-
-        already_recorded_scripts = {
-            entry["script"] for entry in existing_repairs if "script" in entry
-        }
-
-        # The same drift ``validate`` reports, computed over every applied row
-        # (undone ones included). Repeatable drift is handled by the repeatable
-        # checksum-change scan, not here.
-        for drift in migration_state.checksum_drift:
-            if (
-                drift.repeatable
-                or drift.current_checksum is None
-                or drift.script_name in already_recorded_scripts
-            ):
-                continue
-            repairs.append(
-                {
-                    "type": "CHECKSUM_MISMATCH",
-                    "script": drift.script_name,
-                    "old_checksum": drift.applied_checksum,
-                    "new_checksum": drift.current_checksum,
-                }
-            )
-            already_recorded_scripts.add(drift.script_name)
-
-        return repairs
-
-    def _is_failed_migration(self, script: str, migration_state: Any) -> bool:
-        """Return True if `script` is in the failed_objects set of `migration_state`."""
-        if not script or migration_state is None:
-            return False
-        for failed in migration_state.failed_objects:
-            if failed.script_name == script:
-                return True
-        return False
 
     def _delete_failed_migration_entry(
         self, repair: Dict[str, Any], result: RepairResult, migration_state: Any = None
@@ -492,17 +170,18 @@ class RepairCommand(BaseCommand):
 
     def _execute_repair_loop(
         self,
-        repairs_needed: List[Dict[str, Any]],
+        actions: Sequence[RepairAction],
         result: RepairResult,
         migration_state: Any = None,
     ) -> "tuple[int, bool]":
-        """Execute all repairs in a transaction, rolling back on any failure.
+        """Execute all repair actions in a transaction, rolling back on any failure.
 
         Args:
-            repairs_needed: List of repair dicts to execute
+            actions: Planned repairs to execute; a checksum repair on a failed row
+                arrives already routed as a FAILED_MIGRATION.
             result: RepairResult to update with counters and errors
-            migration_state: Current migration state; used to detect when a CHECKSUM_MISMATCH
-                repair actually targets a failed row that should be deleted instead of updated.
+            migration_state: Migration state the actions were planned from; describes the
+                history row each repair targets on the result.
 
         Returns:
             Tuple of (repairs_executed: int, had_error: bool)
@@ -517,29 +196,15 @@ class RepairCommand(BaseCommand):
         repairs_executed = 0
         step_error: Optional[Exception] = None
 
-        if repairs_needed:
-            self.log.info(f"Repairing {len(repairs_needed)} migration history issue(s).")
+        if actions:
+            self.log.info(f"Repairing {len(actions)} migration history issue(s).")
 
         try:
             with history_transaction(self.provider, self.log, "repair"):
-                for repair in repairs_needed:
+                for action in actions:
+                    repair = dict(action.details)
                     try:
-                        if repair["type"] == "CHECKSUM_MISMATCH":
-                            script = str(repair.get("script", ""))
-                            # If the targeted row is a failed migration, updating the checksum would
-                            # leave the row in a permanently-failed state that subsequent `migrate`
-                            # calls skip. Delete it instead so the migration can be retried cleanly.
-                            if self._is_failed_migration(script, migration_state):
-                                if self._delete_failed_migration_entry(
-                                    repair, result, migration_state
-                                ):
-                                    repairs_executed += 1
-                                    self.log.info(
-                                        f"Removed failed migration entry: {script} - "
-                                        "migration can now be retried"
-                                    )
-                                continue
-
+                        if action.kind == "CHECKSUM_MISMATCH":
                             new_checksum = repair.get("new_checksum")
                             # The checksum column is INT; pass int for CRC32, not str
                             if new_checksum is not None and not isinstance(new_checksum, int):
@@ -564,7 +229,7 @@ class RepairCommand(BaseCommand):
                             record_repair(result, "CHECKSUM_MISMATCH", repair, migration_state)
                             self.log.info(f"Updated checksum for {repair['script']}")
 
-                        elif repair["type"] == "MISSING_SCRIPT":
+                        elif action.kind == "MISSING_SCRIPT":
                             # For missing scripts, create a DELETE entry in the history table
                             # This marks the migration as intentionally deleted
                             script_name = repair.get("script", "")
@@ -596,21 +261,8 @@ class RepairCommand(BaseCommand):
                                 delete_reason = (
                                     description or "Marked as deleted via repair command"
                                 )
-                                # Store original type in description: [DELETE:ORIGINAL_TYPE] description
-                                enriched_description = (
-                                    f"[DELETE:{original_type_name}] {delete_reason}"
-                                )
-
-                                delete_migration = Migration(
-                                    script_name=script_name,
-                                    content=f"-- Delete operation: {enriched_description}",
-                                    version=version,
-                                    description=enriched_description,
-                                    type=MigrationType.DELETE,
-                                    tags=[],
-                                    _filename_metadata=self.script_manager.parse_filename(
-                                        script_name
-                                    ),
+                                delete_migration = self.script_manager.delete_marker(
+                                    script_name, version, delete_reason, original_type_name
                                 )
 
                                 self.log.debug(
@@ -634,7 +286,7 @@ class RepairCommand(BaseCommand):
                                 )
                                 raise
 
-                        elif repair["type"] == "FAILED_MIGRATION":
+                        elif action.kind == "FAILED_MIGRATION":
                             # Remove failed migration entry from history to allow retry
                             # (same approach as Flyway: repair deletes FAILED entries).
                             if self._delete_failed_migration_entry(repair, result, migration_state):
@@ -658,7 +310,7 @@ class RepairCommand(BaseCommand):
     def _validate_post_repair_state(
         self,
         migration_state: MigrationState,
-        repairs_needed: List[Dict[str, Any]],
+        actions: Sequence[RepairAction],
         scripts_dir: Path,
         recursive: bool,
         additional_dirs: Optional[List[Path]],
@@ -669,7 +321,7 @@ class RepairCommand(BaseCommand):
 
         Args:
             migration_state: The pre-repair migration state (unused; kept for symmetry)
-            repairs_needed: The repairs that were attempted
+            actions: The repairs that were attempted
             scripts_dir: Directory containing migration scripts
             recursive: Whether to scan directories recursively
             additional_dirs: Additional directories to scan
@@ -686,7 +338,7 @@ class RepairCommand(BaseCommand):
                 additional_dirs=additional_dirs,
                 dir_recursive_map=dir_recursive_map,
             )
-            repaired_scripts = {repair["script"] for repair in repairs_needed}
+            repaired_scripts = {action.script for action in actions}
             remaining_issues = [
                 change.script_name
                 for change in post_state.checksum_changes

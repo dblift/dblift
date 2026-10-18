@@ -26,6 +26,9 @@ class BaseStatementParser:
     # (PostgreSQL: psql tracks parentheses)
     TERMINATOR_RESPECTS_PARENS: bool = False
 
+    #: What a statement's text may lose at its end; ``None`` strips every white space character.
+    text_blanks: Optional[str] = None
+
     def __init__(
         self,
         tokens: List[Token],
@@ -130,7 +133,7 @@ class BaseStatementParser:
             end = terminator.pos + len(terminator.text)
         else:
             end = len(self.source)
-        return self.source[start:end].rstrip()
+        return self.source[start:end].rstrip(self.text_blanks)
 
     def _is_statement_end(self, token: Token) -> bool:
         """Check if token marks the end of a statement.

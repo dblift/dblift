@@ -372,11 +372,11 @@ CASES = [
     ("case 113", "SELECT 1;\r\nSELECT 2;\r\n", ("ok", [("SELECT 1;", "SELECT 2;")])),
     ("batch start 0", "\xa0 DROP TABLE t", ("ok", [("DROP TABLE t",)])),
     ("batch start 1", "\x0cDROP TABLE t", ("ok", [("DROP TABLE t",)])),
-    ("batch start 2", "\x1c DROP t", ("ok", [("DROP t",)])),
+    ("batch start 2", "\x1c DROP t", ("ok", [("\x1c DROP t",)])),
     ("batch start 3", "x\nGO\n\xa0DROP t", ("ok", [("x",), ("DROP t",)])),
     ("batch start 4", "\x85DROP TABLE t", ("ok", [("DROP TABLE t",)])),
     ("batch start 5", "\u2028 CREATE TABLE t (a INT)", ("ok", [("CREATE TABLE t (a INT)",)])),
-    ("batch start 6", "\x1dTRUNCATE TABLE t", ("ok", [("TRUNCATE TABLE t",)])),
+    ("batch start 6", "\x1dTRUNCATE TABLE t", ("ok", [("\x1dTRUNCATE TABLE t",)])),
     ("batch start 7", "\x0b DROP t", ("ok", [("DROP t",)])),
     (
         "batch start 8",
@@ -695,7 +695,15 @@ EQUIVALENCE_CASES = [
     ),
     (
         "\n\x1c PROC; DROP;DROP\n\x1c table ",
-        [("PROC; DROP;DROP\n\x1c table", 2, 1, False, ("PROC;", "DROP;", "DROP\n\x1c table"))],
+        [
+            (
+                "\x1c PROC; DROP;DROP\n\x1c table",
+                2,
+                1,
+                False,
+                ("\x1c PROC;", "DROP;", "DROP\n\x1c table"),
+            )
+        ],
     ),
     (
         "\xa0proc\nGO\n\xa0PROC\x0b replace\nBEGIN; ",
@@ -924,11 +932,11 @@ EQUIVALENCE_CASES = [
         ";\nCASE /* c */ ALTER; TRUNCATE\xa0REPLACE\n\x1c ",
         [
             (
-                ";\nCASE /* c */ ALTER; TRUNCATE\xa0REPLACE",
+                ";\nCASE /* c */ ALTER; TRUNCATE\xa0REPLACE\n\x1c",
                 1,
                 1,
                 False,
-                ("CASE /* c */ ALTER;", "TRUNCATE\xa0REPLACE"),
+                ("CASE /* c */ ALTER;", "TRUNCATE\xa0REPLACE\n\x1c"),
             )
         ],
     ),
@@ -940,11 +948,11 @@ EQUIVALENCE_CASES = [
         "\n  case\x0cFUNCTION FUNCTION PROCEDURE\n\x1c ",
         [
             (
-                "case\x0cFUNCTION FUNCTION PROCEDURE",
+                "case\x0cFUNCTION FUNCTION PROCEDURE\n\x1c",
                 2,
                 1,
                 False,
-                ("case\x0cFUNCTION FUNCTION PROCEDURE",),
+                ("case\x0cFUNCTION FUNCTION PROCEDURE\n\x1c",),
             )
         ],
     ),
@@ -1023,7 +1031,7 @@ EQUIVALENCE_CASES = [
                 2,
                 1,
                 False,
-                ("TRIGGER\x0b PROC", "DROP\n\nEND\n  REPLACE\x85DROP"),
+                ("TRIGGER\x0b PROC\n\x1c", "DROP\n\nEND\n  REPLACE\x85DROP"),
             )
         ],
     ),
@@ -1112,7 +1120,7 @@ EQUIVALENCE_CASES = [
                 1,
                 1,
                 True,
-                ("PROCEDURE;", "or\x0cALTER", "drop\x0cALTER"),
+                ("PROCEDURE;", "or\x0cALTER\n\x1c", "drop\x0cALTER"),
             ),
             (
                 "begin /* c */ REPLACE;BEGIN;\nOR\x0cPROCEDURE;\nCASE; begin",

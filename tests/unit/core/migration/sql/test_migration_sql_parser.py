@@ -14,6 +14,7 @@ from dblift.core.migration.migration import Migration
 from dblift.core.migration.placeholders.placeholder_service import PlaceholderService
 from dblift.core.migration.scripting.undo_script_generator import UndoScriptGenerator
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+from tests.unit._migration_factory import make_migration
 
 pytestmark = pytest.mark.unit
 
@@ -56,7 +57,9 @@ def test_execution_paths_do_not_call_model_sql_parser(operation, monkeypatch):
     provider = MagicMock()
     provider.execute_statement.return_value = 0
     engine = ExecutionEngine(provider, SqlAnalyzer("sqlite"), NullLog())
-    migration = Migration(script_name="V1__example.sql", content="CREATE TABLE example (id INT);")
+    migration = make_migration(
+        script_name="V1__example.sql", content="CREATE TABLE example (id INT);"
+    )
     migration._sql_statements = ["canonical cache"]
     monkeypatch.setattr(
         Migration, "parse_sql_statements", MagicMock(side_effect=AssertionError("model parser"))
@@ -85,7 +88,7 @@ def test_resolved_config_dialect_replaces_mismatched_analyzer(monkeypatch):
     )
     config = SimpleNamespace(database=SimpleNamespace(type="mssql"))
     engine = ExecutionEngine(MagicMock(), wrong, NullLog(), config=config)
-    migration = Migration(script_name="V1__x.sql", content="SELECT 1\nGO\nSELECT 2\nGO")
+    migration = make_migration(script_name="V1__x.sql", content="SELECT 1\nGO\nSELECT 2\nGO")
     monkeypatch.setattr(
         Migration, "parse_sql_statements", MagicMock(side_effect=AssertionError("model parser"))
     )
@@ -95,7 +98,7 @@ def test_resolved_config_dialect_replaces_mismatched_analyzer(monkeypatch):
 def test_execution_refuses_analyzer_construction_failure(monkeypatch):
     config = SimpleNamespace(database=SimpleNamespace(type="sqlserver"))
     engine = ExecutionEngine(MagicMock(), SqlAnalyzer("sqlite"), NullLog(), config=config)
-    migration = Migration(script_name="V1__x.sql", content="SELECT 'a;b';")
+    migration = make_migration(script_name="V1__x.sql", content="SELECT 'a;b';")
 
     def fail(*args, **kwargs):
         raise ValueError("analyzer bug")
@@ -108,7 +111,7 @@ def test_execution_refuses_analyzer_construction_failure(monkeypatch):
 def test_sqlplus_order_and_context_reset_without_model_parsing(monkeypatch):
     engine = ExecutionEngine(MagicMock(), SqlAnalyzer("oracle"), MagicMock())
     placeholders = PlaceholderService({"owner": "APP"}, NullLog())
-    migration = Migration(
+    migration = make_migration(
         script_name="V1__x.sql",
         content="DEFINE owner = ${owner}\nPROMPT Ready\nCREATE TABLE &owner..example (id INT);",
     )
@@ -124,7 +127,7 @@ def test_sqlplus_order_and_context_reset_without_model_parsing(monkeypatch):
     engine.log.info.assert_any_call("[PROMPT] Ready")
     engine.sql_analyzer = SqlAnalyzer("sqlite")
     assert engine._prepare_sql_statements(
-        Migration(script_name="V2__x.sql", content="SELECT 2;")
+        make_migration(script_name="V2__x.sql", content="SELECT 2;")
     ) == ["SELECT 2"]
     assert engine._current_sqlplus_ctx is None
 
@@ -135,7 +138,7 @@ def test_undo_fallback_does_not_call_model_sql_parser(success, monkeypatch):
     generator.parser = SimpleNamespace(
         parse_sql=lambda *args, **kwargs: SimpleNamespace(success=success, statements=[])
     )
-    migration = Migration(
+    migration = make_migration(
         script_name="V1__x.sql",
         content="CREATE TABLE first (id INT); CREATE TABLE second (id INT);",
     )
@@ -158,14 +161,16 @@ def test_shim_refuses_parser_failures_for_known_and_default_dialects(dialect, fa
     else:
         analyzer.return_value.split_statements.side_effect = ValueError("bad parser")
     monkeypatch.setattr("dblift.core.migration.sql.sql_analyzer.SqlAnalyzer", analyzer)
-    migration = Migration(script_name="V1__x.sql", content="SELECT 1; SELECT 2;", logger=NullLog())
+    migration = make_migration(
+        script_name="V1__x.sql", content="SELECT 1; SELECT 2;", logger=NullLog()
+    )
     with pytest.raises(UnsafeStatementSplitError, match="bad parser"):
         migration.parse_sql_statements(dialect)
     assert migration._sql_statements is None
 
 
 def test_shim_recomputes_canonical_cache_and_leaves_overrides_uncached():
-    migration = Migration(script_name="V1__x.sql", content="SELECT 1;", dialect="sqlite")
+    migration = make_migration(script_name="V1__x.sql", content="SELECT 1;", dialect="sqlite")
     migration._sql_statements = ["stale"]
     assert migration.parse_sql_statements() == ["SELECT 1"]
     cache = migration._sql_statements
@@ -180,7 +185,7 @@ def test_shim_recomputes_canonical_cache_and_leaves_overrides_uncached():
 @pytest.mark.parametrize("source", ["migration", "config", "environment", "default"])
 def test_empty_analyzer_dialect_uses_legacy_split_fallbacks(source, monkeypatch):
     monkeypatch.setenv("DBLIFT_DATABASE_TYPE", "mysql")
-    migration = Migration(script_name="V1__x.sql", content="SELECT 1\nGO\nSELECT 2\nGO")
+    migration = make_migration(script_name="V1__x.sql", content="SELECT 1\nGO\nSELECT 2\nGO")
     if source == "migration":
         migration.dialect = "sqlserver"
         migration.config = SimpleNamespace(database=SimpleNamespace(type="mysql"))
@@ -212,7 +217,7 @@ def test_empty_analyzer_dialect_uses_legacy_split_fallbacks(source, monkeypatch)
 
 
 def test_execution_dialect_is_available_to_subsequent_compatibility_parse(monkeypatch):
-    migration = Migration(
+    migration = make_migration(
         script_name="V1__x.sql", content="SELECT 1\nGO\nSELECT 2\nGO", dialect="mysql"
     )
     engine = ExecutionEngine(
@@ -232,7 +237,7 @@ def test_execution_dialect_is_available_to_subsequent_compatibility_parse(monkey
 
 def test_split_fallback_does_not_retroactively_enable_sqlplus_preprocessing(monkeypatch):
     engine = ExecutionEngine(MagicMock(), SqlAnalyzer(""), MagicMock())
-    migration = Migration(
+    migration = make_migration(
         script_name="V1__x.sql",
         content="DEFINE owner = APP\nSELECT * FROM &owner.users;",
         dialect="oracle",
@@ -247,6 +252,6 @@ def test_split_fallback_does_not_retroactively_enable_sqlplus_preprocessing(monk
 
 def test_empty_execution_content_keeps_legacy_no_dialect_mutation():
     engine = ExecutionEngine(MagicMock(), SqlAnalyzer("sqlserver"), NullLog())
-    migration = Migration(script_name="V1__x.sql", content="", dialect="mysql")
+    migration = make_migration(script_name="V1__x.sql", content="", dialect="mysql")
     assert engine._prepare_sql_statements(migration) == []
     assert migration.dialect == "mysql"

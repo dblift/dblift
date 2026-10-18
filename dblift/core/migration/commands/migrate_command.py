@@ -25,14 +25,11 @@ from dblift.core.migration.rules.migration_rules import MigrationRules
 from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
 from dblift.core.migration.sql.lint import SAFE, lint_pending_scripts
 from dblift.core.migration.sql.script_analysis import dialect_of
+from dblift.core.migration.state.migrate_plan import StrictModeError
 from dblift.core.migration.state.migration_state import MigrationReadSnapshot, MigrationState
-from dblift.core.migration.state.migration_state_manager import (
-    MigrationStateManager,
-    StrictModeError,
-)
+from dblift.core.migration.state.migration_state_manager import MigrationStateManager
 from dblift.core.migration.ui.migration_ui import MigrationUI
 from dblift.core.migration.ui.progress import migration_progress
-from dblift.core.migration.version_utils import compare_versions
 from dblift.core.sql_validator.migration_validator import MigrationValidator
 from dblift.db.base_provider import BaseProvider
 
@@ -320,34 +317,6 @@ class MigrateCommand(BaseCommand):
         if updated_version:
             result.current_schema_version = updated_version
 
-    def _enforce_strict_ordering(
-        self,
-        migrations: List[Migration],
-        current_version: Optional[str],
-        strict_mode: bool,
-    ) -> None:
-        """Raise or warn when executable pending is out of version order."""
-        if not current_version:
-            return
-        for migration in migrations:
-            version = getattr(migration, "version", None)
-            if not version:
-                continue
-            if compare_versions(str(version), str(current_version)) <= 0:
-                script_name = getattr(migration, "script_name", "")
-                if strict_mode:
-                    raise StrictModeError(
-                        f"Strict mode: out-of-order migration {script_name} "
-                        f"(version {version} <= current version {current_version}). "
-                        f"Renumber the script above {current_version} or run "
-                        f"without --strict to apply it anyway."
-                    )
-                self.log.warning(
-                    f"Out-of-order migration {script_name} "
-                    f"(version {version} <= current version {current_version}). "
-                    f"Applying anyway; use --strict to enforce strict ordering."
-                )
-
     def execute(
         self,
         scripts_dir: Path,
@@ -427,43 +396,38 @@ class MigrateCommand(BaseCommand):
             # target_version is label context only (Above target), not an omit filter.
             strict_mode = bool(getattr(self.config, "strict_mode", False))
 
-            def plan(
-                snapshot: MigrationReadSnapshot,
-            ) -> Tuple[MigrationState, Optional[str], List[Migration]]:
-                """Read the state through ``snapshot`` and select what migrate would run."""
-                state = self.state_manager.build_state(
-                    scripts_dir,
-                    recursive=use_recursive,
-                    additional_dirs=use_additional_dirs,
-                    dir_recursive_map=dir_recursive_map,
-                    target_version=target_version,
-                    read_snapshot=snapshot,
-                )
-                current = self.state_manager.get_current_version(state.applied_objects)
-                selected = self.state_manager.apply_filters_to_migrations(
-                    state.executable_pending_objects(),
-                    tags=tags,
-                    exclude_tags=exclude_tags,
-                    versions=versions,
-                    exclude_versions=exclude_versions,
-                )
-                return state, current, selected
-
-            migration_state, current_version, pending_migrations = plan(read_snapshot)
-
-            # Store current schema version in result for HTML reports
-            if current_version:
-                result.current_schema_version = current_version
+            plan_migrate = partial(
+                self.state_manager.plan_migrate,
+                scripts_dir,
+                recursive=use_recursive,
+                additional_dirs=use_additional_dirs,
+                dir_recursive_map=dir_recursive_map,
+                target_version=target_version,
+                tags=tags,
+                exclude_tags=exclude_tags,
+                versions=versions,
+                exclude_versions=exclude_versions,
+                strict_mode=strict_mode,
+            )
 
             try:
-                self._enforce_strict_ordering(pending_migrations, current_version, strict_mode)
+                plan = plan_migrate(read_snapshot=read_snapshot)
             except StrictModeError as e:
                 # A specific subclass of ``ValueError``: it keeps its bare
                 # message, while any other error in the body gets the
                 # "Migration operation failed:" prefix (PR #241 Bugbot).
+                if e.current_version:
+                    result.current_schema_version = e.current_version
                 self.log.error(str(e))
                 result.set_error(str(e))
                 return
+            migration_state = plan.state
+            current_version = plan.current_version
+            pending_migrations = list(plan.pending)
+
+            # Store current schema version in result for HTML reports
+            if current_version:
+                result.current_schema_version = current_version
 
             def preflight_sql(migrations: List[Migration]) -> None:
                 """Classify the SQL of ``migrations`` and of the callbacks they would fire."""
@@ -551,14 +515,15 @@ class MigrateCommand(BaseCommand):
                 # running a stale plan would fail and write duplicate failure
                 # rows into the history table.
                 locked_snapshot = self.state_manager.new_read_snapshot()
-                locked_state, locked_version, locked_pending = plan(locked_snapshot)
                 try:
-                    self._enforce_strict_ordering(locked_pending, locked_version, strict_mode)
+                    locked_plan = plan_migrate(read_snapshot=locked_snapshot)
                 except StrictModeError as e:
                     # Nothing ran, so no error callbacks fire.
                     self.log.error(str(e))
                     result.set_error(str(e))
                     return
+                locked_state = locked_plan.state
+                locked_pending = list(locked_plan.pending)
 
                 locked_success, locked_errors = validate(locked_state, locked_snapshot)
                 if not locked_success:

@@ -51,10 +51,13 @@ def test_replaced_scanner_modules_are_absent():
 def test_rules_change_boundaries_without_a_dialect_scanner():
     script = "SELECT (1; SELECT 2); SELECT 3;"
     assert len(LexicalEngine(POSTGRESQL_SPEC).split(script)) == 2
-    assert len(LexicalEngine(LexicalSpec(name="plain")).split(script)) == 3
+    assert len(LexicalEngine(LexicalSpec(name="plain", text_blanks=" \t\n\r")).split(script)) == 3
     comment_script = "/* outer /* inner */ SELECT 1; */ SELECT 2;"
     assert len(LexicalEngine(POSTGRESQL_SPEC).split(comment_script)) == 1
-    assert len(LexicalEngine(LexicalSpec(name="plain")).split(comment_script)) == 2
+    assert (
+        len(LexicalEngine(LexicalSpec(name="plain", text_blanks=" \t\n\r")).split(comment_script))
+        == 2
+    )
     routine = "CREATE FUNCTION f() RETURNS int BEGIN ATOMIC SELECT 1; SELECT 2; END;"
     assert len(LexicalEngine(POSTGRESQL_SPEC).split(routine)) == 1
     assert len(LexicalEngine(replace(POSTGRESQL_SPEC, routine_heads=())).split(routine)) == 3
@@ -210,12 +213,12 @@ def test_five_client_rules_are_exclusive():
         with pytest.raises(
             ValueError, match="terminator_script and segment_script are mutually exclusive"
         ):
-            LexicalSpec(name="x", **{first: rules[first], second: rules[second]})
+            LexicalSpec(name="x", text_blanks=" ", **{first: rules[first], second: rules[second]})
     for single in rules:
-        LexicalSpec(name="x", **{single: rules[single]})
+        LexicalSpec(name="x", text_blanks=" ", **{single: rules[single]})
     with pytest.raises(ValueError, match="segment_script and sqlite_shell are mutually exclusive"):
-        LexicalSpec(name="x", segment_script=DUCKDB_RULES, sqlite_shell=True)
-    LexicalSpec(name="x", sqlite_shell=True)
+        LexicalSpec(name="x", text_blanks=" ", segment_script=DUCKDB_RULES, sqlite_shell=True)
+    LexicalSpec(name="x", text_blanks=" ", sqlite_shell=True)
 
 
 def test_other_specs_keep_segment_script_none():

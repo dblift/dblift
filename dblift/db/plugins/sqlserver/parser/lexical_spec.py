@@ -66,6 +66,9 @@ SQLSERVER_BATCHES = BatchScriptRules(
 
 SQLSERVER_SPEC = LexicalSpec(
     name="sqlserver",
+    text_blanks=(
+        " \t\n\r\v\f\x85\xa0\N{EM SPACE}\N{ZERO WIDTH SPACE}\N{LINE SEPARATOR}\N{IDEOGRAPHIC SPACE}"
+    ),
     client_name="sqlcmd",
     nested_comments=False,
     quoted_identifier='"',

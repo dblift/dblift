@@ -21,7 +21,6 @@ DUCKDB_RULES = SegmentScriptRules(
         " \t\n\f\r\u00a0\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u200b"
         "\u202f\u205f\u2060\u3000\ufeff"
     ),
-    text_blanks=" \t\n\f\r",
     # A dollar sign inside a word continues it. The 18 non-ASCII blanks continue it too where the engine's
     # pass over the script kept them (``blank_pass``).
     word=rf"[A-Za-z_{_NON_BLANK}][A-Za-z0-9_${_NON_BLANK}]*",
@@ -47,6 +46,7 @@ DUCKDB_RULES = SegmentScriptRules(
 
 DUCKDB_SPEC = LexicalSpec(
     name="duckdb",
+    text_blanks=" \t\n\f\r",
     client_name="duckdb shell",
     nested_comments=True,
     leading_bom_is_blank=True,

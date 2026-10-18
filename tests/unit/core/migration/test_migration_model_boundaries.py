@@ -4,11 +4,13 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from dblift.core.logger import NullLog
 from dblift.core.migration import AppliedMigration, MigrationResource, ResolvedMigration
 from dblift.core.migration.history.migration_history_manager import MigrationHistoryManager
 from dblift.core.migration.migration import Migration, MigrationType, dict_to_migration
 from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
 from dblift.core.migration.state.migration_state_manager import MigrationStateManager
+from tests.unit._migration_factory import make_migration
 
 
 @pytest.mark.unit
@@ -96,14 +98,14 @@ def test_history_manager_can_return_applied_records():
 @pytest.mark.unit
 def test_state_layer_marks_history_rows_distinct_from_resolved_scripts():
     manager = MigrationStateManager.__new__(MigrationStateManager)
-    applied = Migration(
+    applied = make_migration(
         script_name="V1__create_users.sql",
         content="",
         version="1",
         description="create_users",
         type=MigrationType.SQL,
     )
-    pending = Migration(
+    pending = make_migration(
         script_name="V2__create_orders.sql",
         content="",
         version="2",
@@ -169,8 +171,10 @@ def test_history_materialization_uses_script_manager_metadata(monkeypatch, injec
 
 @pytest.mark.unit
 @pytest.mark.parametrize("version,expected", [(None, "1.2"), ("9", "9")])
-def test_public_delete_factory_preserves_optional_version_inference(version, expected):
-    migration = Migration.create_delete_migration("V1_2__removed[tag].sql", version=version)
+def test_delete_marker_preserves_optional_version_inference(version, expected):
+    migration = MigrationScriptManager(NullLog()).delete_marker(
+        "V1_2__removed[tag].sql", version, "removed", "SQL"
+    )
     assert migration.version == expected
     assert migration.tags == ["tag"]
     assert migration.type == MigrationType.DELETE

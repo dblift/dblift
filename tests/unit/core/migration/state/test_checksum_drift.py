@@ -6,14 +6,15 @@ from typing import Optional
 
 import pytest
 
-from dblift.core.migration.migration import Migration, MigrationType
+from dblift.core.migration.migration import MigrationType
 from dblift.core.migration.state.checksum_drift import ChecksumDrift, find_checksum_drift
+from tests.unit._migration_factory import make_migration
 
 pytestmark = pytest.mark.unit
 
 
 def _script(name: str, checksum: Optional[int], type_: MigrationType = MigrationType.SQL):
-    script = Migration(script_name=name, content="x", type=type_)
+    script = make_migration(script_name=name, content="x", type=type_)
     script.checksum = checksum
     return script
 
@@ -26,7 +27,7 @@ def _row(
     success=True,
     rank: int = 1,
 ):
-    row = Migration(script_name=name, content="x", type=MigrationType.SQL)
+    row = make_migration(script_name=name, content="x", type=MigrationType.SQL)
     row.type = type_
     row.checksum = checksum
     row.success = success

@@ -20,7 +20,7 @@ from dblift.db.plugins.sqlite.parser.lexical_spec import SQLITE_SPEC
 from dblift.db.plugins.sqlserver.parser.lexical_spec import SQLSERVER_SPEC
 
 BOM, NBSP, LS = chr(0xFEFF), chr(0xA0), chr(0x2028)
-PLAIN_NESTED = LexicalSpec(name="plain", nested_comments=True)
+PLAIN_NESTED = LexicalSpec(name="plain", text_blanks=" ", nested_comments=True)
 
 
 def read(script: str, spec: LexicalSpec = DB2_SPEC) -> Tuple[LexicalTokenizer, List[Token]]:
@@ -247,7 +247,9 @@ def test_without_stops_nothing_is_recorded():
 
 
 def test_non_nested_dialects_close_at_the_first_closer():
-    (depth, _), _, end = block("/* a /* b */ c */ d", spec=LexicalSpec(name="flat"))
+    (depth, _), _, end = block(
+        "/* a /* b */ c */ d", spec=LexicalSpec(name="flat", text_blanks=" ")
+    )
     assert (depth, end) == (0, len("/* a /* b */"))
 
 

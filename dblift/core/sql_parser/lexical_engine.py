@@ -34,7 +34,11 @@ class LexicalEngine:
                 None
                 if self.spec.segment_script is None
                 else SegmentScript(
-                    self.spec.segment_script, script, tokenizer.origin, tokenizer.kept
+                    self.spec.segment_script,
+                    script,
+                    tokenizer.origin,
+                    self.spec.text_blanks,
+                    tokenizer.kept,
                 )
             ),
         )

@@ -17,6 +17,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from tests.unit._migration_factory import make_migration
+
 pytestmark = [pytest.mark.unit]
 
 _ROOT = Path(__file__).resolve().parent.parent.parent
@@ -113,13 +115,12 @@ class TestPythonExecutorSpecGuard:
         )
 
     def _make_python_migration(self, content: str = "def migrate(ctx): pass"):
-        from dblift.core.migration.migration import Migration
 
         tmp = tempfile.NamedTemporaryFile(suffix=".py", mode="w", delete=False, prefix="V1__test_")
         tmp.write(content)
         tmp.flush()
         tmp.close()
-        return Migration(script_path=Path(tmp.name)), Path(tmp.name)
+        return make_migration(script_path=Path(tmp.name)), Path(tmp.name)
 
     def test_none_spec_produces_runtime_error_in_result(self):
         """When importlib returns spec=None, result.error contains RuntimeError message."""

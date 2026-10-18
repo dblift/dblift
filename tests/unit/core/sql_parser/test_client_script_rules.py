@@ -28,8 +28,16 @@ def test_a_define_without_a_value_defines_nothing():
 
 
 def test_exit_as_the_last_line_has_no_ignored_tail():
-    script = ClientScript(RULES, "SELECT 1 FROM dual;\nEXIT")
+    script = ClientScript(RULES, "SELECT 1 FROM dual;\nEXIT", text_blanks=" ")
     exit_token = next(
         t for t in tokens("SELECT 1 FROM dual;\nEXIT") if t.type == TokenType.DIRECTIVE
     )
     assert script.ignored_tail_message(exit_token) is None
+
+
+def test_an_exec_body_loses_only_the_blanks_of_the_dialect_before_its_wrapper():
+    engine = LexicalEngine(ORACLE_SPEC)
+    assert engine.split_statements("EXEC p\x0c;\n") == ["BEGIN p; END;"]
+    assert engine.split_statements("EXEC p" + chr(0xA0) + ";\n") == [
+        "BEGIN p" + chr(0xA0) + "; END;"
+    ]

@@ -24,6 +24,8 @@ from unittest.mock import Mock, patch
 
 import pytest
 
+from tests.unit.core.migration.commands._plan_repairs_wiring import wire_plan_repairs
+
 pytestmark = [pytest.mark.unit]
 
 
@@ -91,6 +93,7 @@ class TestRepairDeletesFailedMigrations:
 
         post_state = MigrationState()
         state_manager.build_state = Mock(side_effect=[state, post_state])
+        wire_plan_repairs(state_manager)
 
         command = RepairCommand(
             config=config,

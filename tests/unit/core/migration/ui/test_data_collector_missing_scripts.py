@@ -5,16 +5,17 @@ Flyway reports missing migrations, without info calling validate."""
 import pytest
 
 from dblift.core.logger import NullLog
-from dblift.core.migration.migration import Migration, MigrationType
+from dblift.core.migration.migration import MigrationType
 from dblift.core.migration.state.migration_state import MigrationEntry, MigrationState
 from dblift.core.migration.state.migration_state_service import MigrationStateService
 from dblift.core.migration.ui.data_collector import MigrationDataCollector
+from tests.unit._migration_factory import make_migration
 
 pytestmark = pytest.mark.unit
 
 
 def _mk_versioned(version, rank, script_name=None, success=True, resolved=True):
-    m = Migration(
+    m = make_migration(
         script_name=script_name or f"V{version}__test.sql",
         content="SELECT 1;",
         version=version,
@@ -147,7 +148,7 @@ def test_undone_migration_still_detected_with_resolved_scripts():
     are still present."""
     collector = MigrationDataCollector(NullLog())
     sql = _mk_versioned("1", rank=1, resolved=True)
-    undo = Migration(
+    undo = make_migration(
         script_name="U1__test.sql",
         content="SELECT 1;",
         version="1",
@@ -175,7 +176,7 @@ def test_pending_migration_with_undo_script_shows_pending():
     from pathlib import Path
 
     collector = MigrationDataCollector(NullLog())
-    pending = Migration(
+    pending = make_migration(
         script_name="V2__test.sql",
         content="SELECT 1;",
         version="2",

@@ -9,7 +9,6 @@ if TYPE_CHECKING:
     pass
 from dblift.core.logger.results import BaselineResult
 from dblift.core.migration.history.history_transaction import history_transaction
-from dblift.core.migration.migration import Migration, MigrationType
 
 from .base_command import MIGRATION_LOCK_REFUSAL, BaseCommand
 
@@ -64,15 +63,8 @@ class BaselineCommand(BaseCommand):
                         )
 
                 # Create baseline migration record without script_path since baseline doesn't have a file
-                script_name = f"B{baseline_version}__{baseline_description}.sql"
-                baseline_migration = Migration(
-                    script_name=script_name,
-                    content=f"-- Baseline migration for version {baseline_version}",
-                    version=baseline_version,
-                    description=baseline_description,
-                    type=MigrationType.BASELINE,
-                    logger=self.log,
-                    _filename_metadata=self.script_manager.parse_filename(script_name),
+                baseline_migration = self.script_manager.baseline_marker(
+                    baseline_version, baseline_description
                 )
 
                 # Record the baseline in one transaction so the row is committed

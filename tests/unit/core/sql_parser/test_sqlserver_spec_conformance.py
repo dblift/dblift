@@ -19,6 +19,10 @@ ROWS = [row for row in load_conformance_rows(SPEC_DIR) if row.dialect == "sqlser
 
 KNOWN_GAPS: frozenset[str] = frozenset({"31"})
 
+#: Rows that fail today for the reason given: they fail strictly, and the change that fixes a row
+#: removes its id (a row that starts to pass under a strict xfail fails loudly).
+RED_ROWS: dict[str, str] = {}
+
 
 def test_spec_compiles_to_at_least_the_rows_it_has_today() -> None:
     assert len(ROWS) >= 49
@@ -31,6 +35,8 @@ def test_spec_row(row: ConformanceRow, request: pytest.FixtureRequest) -> None:
         pytest.skip("spec marks this row 'to verify': not a claim yet")
     if row.row_id in KNOWN_GAPS:
         request.applymarker(pytest.mark.xfail(strict=True, reason="listed in KNOWN_GAPS"))
+    if row.row_id in RED_ROWS:
+        request.applymarker(pytest.mark.xfail(strict=True, reason=RED_ROWS[row.row_id]))
     outcome = split_script("sqlserver", row.script)
     assert outcome.matches(row.expectation), (
         f"row {row.row_id}\nscript: {row.script!r}\n"

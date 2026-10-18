@@ -10,6 +10,7 @@ import pytest
 from dblift.core.migration.commands.base_command import PreflightConnectionError
 from dblift.core.migration.commands.baseline_command import BaselineCommand
 from dblift.core.migration.commands.undo_command import UndoCommand
+from tests.unit.core.migration.commands._plan_undo_wiring import wire_plan_undo
 
 
 class _OrderTrackingProvider:
@@ -49,7 +50,7 @@ class _OrderTrackingProvider:
 
 
 def _make_undo_cmd(history_manager=None, provider=None):
-    state_manager = MagicMock()
+    state_manager = wire_plan_undo(MagicMock())
     migration_state = MagicMock()
     migration_state.applied_objects = []
     migration_state.all_applied_objects = []

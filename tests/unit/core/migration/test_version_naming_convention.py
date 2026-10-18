@@ -24,8 +24,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from dblift.core.migration.migration import Migration, MigrationType
+from dblift.core.migration.migration import MigrationType
 from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
+from tests.unit._migration_factory import make_migration
 
 
 def _manager() -> MigrationScriptManager:
@@ -70,7 +71,7 @@ class TestAcceptedVersions:
     @pytest.mark.parametrize("filename, expected_type, expected_version", ACCEPTED)
     def test_classifiers_agree(self, filename, expected_type, expected_version):
         parsed_type, _, _, _ = _manager().parse_filename(filename)
-        assert Migration(script_name=filename, content="SELECT 1;").type == parsed_type
+        assert make_migration(script_name=filename, content="SELECT 1;").type == parsed_type
 
 
 @pytest.mark.unit
@@ -83,7 +84,9 @@ class TestRejectedVersions:
 
     @pytest.mark.parametrize("filename", REJECTED)
     def test_classifiers_agree(self, filename):
-        assert Migration(script_name=filename, content="SELECT 1;").type == MigrationType.UNKNOWN
+        assert (
+            make_migration(script_name=filename, content="SELECT 1;").type == MigrationType.UNKNOWN
+        )
 
     @pytest.mark.parametrize("filename", REJECTED)
     def test_loader_excludes(self, tmp_path: Path, filename: str):

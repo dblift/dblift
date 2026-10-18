@@ -21,6 +21,11 @@ from dblift.core.migration.migration import (
 from dblift.core.migration.rules.migration_rules import MigrationRules
 from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
 from dblift.core.migration.state.checksum_drift import ChecksumDrift, find_checksum_drift
+from dblift.core.migration.state.migrate_plan import (  # noqa: F401  StrictModeError re-export
+    MigratePlan,
+    StrictModeError,
+)
+from dblift.core.migration.state.migrate_plan import plan_migrate as _plan_migrate
 from dblift.core.migration.state.migration_data_service import MigrationDataService
 from dblift.core.migration.state.migration_display_state import MigrationDisplayState
 from dblift.core.migration.state.migration_selector import (
@@ -39,25 +44,20 @@ from dblift.core.migration.state.migration_state import (
 )
 from dblift.core.migration.state.migration_state_service import MigrationStateService
 from dblift.core.migration.state.rank_wins import latest_successful_ranks
+from dblift.core.migration.state.repair_plan import RepairPlan
+from dblift.core.migration.state.repair_plan import plan_repairs as _plan_repairs
 from dblift.core.migration.state.repeatable_status import (
     PENDING_REPEATABLE_STATUSES,
     RepeatableRun,
     repeatable_runs,
 )
+from dblift.core.migration.state.undo_plan import UndoPlan
+from dblift.core.migration.state.undo_plan import plan_undo as _plan_undo
 from dblift.core.migration.version_utils import (
     is_migration_failure,
     is_migration_success,
 )
 from dblift.db.base_quirks import BaseQuirks
-
-
-class StrictModeError(ValueError):
-    """Raised by migrate when ``strict_mode=True`` and an out-of-order
-    executable pending migration is selected. Subclasses :class:`ValueError` so
-    callers that haven't migrated to the narrower type still catch it,
-    but lets ``MigrateCommand`` distinguish strict-mode violations from
-    arbitrary :class:`ValueError` instances raised elsewhere in the
-    migrate flow (PR #241 Bugbot)."""
 
 
 @dataclass(slots=True)
@@ -991,10 +991,6 @@ class MigrationStateManager:
 
         # Check if checksum changed
         current_checksum = getattr(migration, "checksum", None)
-        if not current_checksum:
-            # Calculate checksum if not already set
-            if migration.content:
-                current_checksum = self.script_manager.calculate_checksum(migration.content)
 
         stored_checksum = self._lookup_checksum(
             repeatable_checksums,
@@ -1011,6 +1007,87 @@ class MigrationStateManager:
             return True
 
         return False
+
+    def plan_migrate(
+        self,
+        scripts_dir: Optional[Path],
+        *,
+        recursive: bool,
+        additional_dirs: Optional[Sequence[Path]],
+        dir_recursive_map: Optional[Dict[Path, bool]],
+        target_version: Optional[str],
+        tags: Optional[Sequence[str]],
+        exclude_tags: Optional[Sequence[str]],
+        versions: Optional[Sequence[str]],
+        exclude_versions: Optional[Sequence[str]],
+        strict_mode: bool,
+        read_snapshot: Optional[MigrationReadSnapshot] = None,
+    ) -> MigratePlan:
+        """Select what ``migrate`` runs; raises ``StrictModeError`` when strict and out of order."""
+        return _plan_migrate(
+            self,
+            scripts_dir,
+            recursive=recursive,
+            additional_dirs=additional_dirs,
+            dir_recursive_map=dir_recursive_map,
+            target_version=target_version,
+            tags=tags,
+            exclude_tags=exclude_tags,
+            versions=versions,
+            exclude_versions=exclude_versions,
+            strict_mode=strict_mode,
+            read_snapshot=read_snapshot,
+        )
+
+    def plan_undo(
+        self,
+        scripts_dir: Optional[Path],
+        *,
+        recursive: bool,
+        additional_dirs: Optional[Sequence[Path]],
+        dir_recursive_map: Optional[Dict[Path, bool]],
+        target_version: Optional[str],
+        tags: Optional[Sequence[str]],
+        exclude_tags: Optional[Sequence[str]],
+        versions: Optional[Sequence[str]],
+        exclude_versions: Optional[Sequence[str]],
+        migration_rules: MigrationRules,
+        read_snapshot: Optional[MigrationReadSnapshot] = None,
+    ) -> UndoPlan:
+        """Select what ``undo`` reverts; a refused plan carries its message in ``refusal``."""
+        return _plan_undo(
+            self,
+            scripts_dir,
+            recursive=recursive,
+            additional_dirs=additional_dirs,
+            dir_recursive_map=dir_recursive_map,
+            target_version=target_version,
+            tags=tags,
+            exclude_tags=exclude_tags,
+            versions=versions,
+            exclude_versions=exclude_versions,
+            migration_rules=migration_rules,
+            read_snapshot=read_snapshot,
+        )
+
+    def plan_repairs(
+        self,
+        scripts_dir: Path,
+        *,
+        recursive: bool,
+        additional_dirs: Optional[List[Path]],
+        dir_recursive_map: Optional[Dict[Path, bool]],
+        read_snapshot: Optional[MigrationReadSnapshot] = None,
+    ) -> RepairPlan:
+        """Decide what ``repair`` fixes; raises ``RepairSafetyError`` when it would mark everything missing."""
+        return _plan_repairs(
+            self,
+            scripts_dir,
+            recursive=recursive,
+            additional_dirs=additional_dirs,
+            dir_recursive_map=dir_recursive_map,
+            read_snapshot=read_snapshot,
+        )
 
     _passes_filters = staticmethod(passes_filters)
     apply_filters_to_migrations = staticmethod(select_migrations)

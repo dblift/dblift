@@ -371,6 +371,33 @@ def test_strict_mode_rechecked_under_lock(env: Env) -> None:
     other.provider.release_migration_lock(a.config.database.schema)
 
 
+def test_out_of_order_warning_reaches_the_command_log(env: Env) -> None:
+    env.write("V1__a.sql", "CREATE TABLE a (id INTEGER PRIMARY KEY);")
+    env.write("V3__c.sql", "CREATE TABLE c (id INTEGER PRIMARY KEY);")
+    client = env.client()
+    assert client.migrate().success
+    env.write("V2__b.sql", "CREATE TABLE b (id INTEGER PRIMARY KEY);")
+    warnings: List[str] = []
+    log = client.executor.log
+    real = log.warning
+    log.warning = lambda message, *args, **kwargs: (
+        warnings.append(str(message)),
+        real(message, *args, **kwargs),
+    )
+
+    result = client.migrate()
+
+    assert result.success, result.error_message
+    assert executed(result) == ["V2__b.sql"]
+    assert (
+        warnings.count(
+            "Out-of-order migration V2__b.sql (version 2 <= current version 3). "
+            "Applying anyway; use --strict to enforce strict ordering."
+        )
+        == 2
+    )
+
+
 def test_new_pending_after_lock_is_preflighted(env: Env) -> None:
     env.write("V1__a.sql", "CREATE TABLE a (id INTEGER PRIMARY KEY);")
     env.write("U1__a.sql", "DROP TABLE a;")
