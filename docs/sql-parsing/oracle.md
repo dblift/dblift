@@ -268,6 +268,9 @@ skips the parser factory for Oracle. The `Statement` record is the internal
 unit; string APIs project its selected SQL. Object extraction remains a
 separate semantic step after splitting.
 
+A line holding `/` followed by a no-break space is read as a slash line. How
+SQL*Plus reads that line is unmeasured.
+
 The tokenizer stops at `EXIT` or `QUIT` before reading the ignored tail. A
 malformed quote or comment after that point cannot make an earlier executable
 statement fail to split. The warning about the ignored tail is logged by the
