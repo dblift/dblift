@@ -291,8 +291,8 @@ class _Walk:
         statement = "\n".join(text[first:last] for first, last in segs).strip(self.text_blanks)
         body, stray_line = self.body, self.stray_line
         self.segs, self.body = [], RoutineBody(self.rules.routine)
-        if not statement or not (body.code or statement.isspace()):
-            return  # only characters the client keeps are a statement: the server rejects it
+        if not statement or not (body.code or self._keeps_a_character(statement)):
+            return  # a character the client keeps is a statement: the server rejects it
         epilogue = self._command(statement, start)
         if body.stray:
             raise UnsafeStatementSplitError(
@@ -315,6 +315,29 @@ class _Walk:
             )
         )
         self.epilogues.append(epilogue)
+
+    def _keeps_a_character(self, statement: str) -> bool:
+        """Whether a statement of comments and white space holds a character outside ``text_blanks``."""
+        blanks, line_comment = self.text_blanks, self.rules.line_comment
+        level, i, size = 0, 0, len(statement)
+        while i < size:
+            if level:
+                if statement.startswith(_COMMENT_OPENER, i):
+                    level, i = level + 1, i + 2
+                elif statement.startswith(_COMMENT_CLOSER, i):
+                    level, i = level - 1, i + 2
+                else:
+                    i += 1
+            elif statement.startswith(line_comment, i):
+                end = statement.find("\n", i)
+                i = size if end < 0 else end
+            elif statement.startswith(_COMMENT_OPENER, i):
+                level, i = 1, i + 2
+            elif statement[i].isspace() and statement[i] not in blanks:
+                return True
+            else:
+                i += 1
+        return False
 
     def _command(self, statement: str, number: int) -> bool:
         """True for the commands a script may end with; refuses every other client command."""

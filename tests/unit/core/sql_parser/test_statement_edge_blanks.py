@@ -277,3 +277,30 @@ def test_db2_comment_only_record_is_still_dropped() -> None:
         warnings.simplefilter("ignore")
         recorded = record_script("db2", f"VALUES 1;\n-- c{NBSP}\n;\nVALUES 2;")["execution"]
     assert recorded == ["VALUES 1", "VALUES 2"]
+
+
+@pytest.mark.parametrize("view", ["execution", "analysis"])
+@pytest.mark.parametrize(
+    "record, script_tail",
+    [
+        (f"{NBSP} -- c", "\n;"),
+        ("\x0c -- c", "\n;"),
+        (f"{NBSP}/* c */", ";"),
+        (f"/* c */{NBSP}", ";"),
+    ],
+)
+def test_db2_record_of_kept_characters_and_a_comment_is_a_statement(
+    view: str, record: str, script_tail: str
+) -> None:
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        recorded = record_script("db2", f"VALUES 1;\n{record}{script_tail}\nVALUES 2;")[view]
+    assert recorded == ["VALUES 1", record, "VALUES 2"]
+
+
+@pytest.mark.parametrize("comment", [f"/* {NBSP} */", f"-- {NBSP}"])
+def test_db2_kept_character_inside_a_comment_does_not_make_a_statement(comment: str) -> None:
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        recorded = record_script("db2", f"VALUES 1;\n{comment}\n;\nVALUES 2;")["execution"]
+    assert recorded == ["VALUES 1", "VALUES 2"]
