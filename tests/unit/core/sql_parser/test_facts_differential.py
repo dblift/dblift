@@ -60,11 +60,13 @@ def _results() -> Results:
 # which families are gated ------------------------------------------------------------------------
 
 
-def test_gated_families_are_the_known_families_with_a_reader() -> None:
+def test_no_family_is_gated_until_its_differences_are_explained() -> None:
+    assert gated_families() == []
+
+
+def test_gated_families_are_known_families_with_a_reader() -> None:
     gated = gated_families()
     assert gated == sorted(gated) and set(gated) <= set(FAMILIES)
-    active = {f for f in FAMILIES if ProviderRegistry.get_quirks(f).supports_statement_facts}
-    assert active <= set(gated), "a family that reads through the reader must be gated"
     assert not {f for f in gated if DIALECTS[f] is None}, "a family without a reader is not gated"
 
 
@@ -73,13 +75,25 @@ def test_every_family_has_a_review_file_of_entries_that_say_why() -> None:
         entries = json.loads(differential.review_file(family).read_text(encoding="utf-8"))
         for key, entry in entries.items():
             assert key.partition("/")[0] and {"sql", "path", "class", "reason"} <= set(entry), key
-            assert entry["class"] in REVIEW and entry["path"] in ("hybrid", "analyzer", "both")
+            assert entry["path"] in ("hybrid", "analyzer", "both")
+            per_arm = entry["class"] if isinstance(entry["class"], dict) else {"": entry["class"]}
+            assert all(c in REVIEW + ("same",) for c in per_arm.values()), key
 
 
-@pytest.mark.parametrize("family", gated_families())
-def test_a_gated_family_has_no_unexplained_difference(family: str) -> None:
-    report = differential.report_family(family, current_arm())
-    assert report["unclassified"] == [] and report["stale"] == []
+def test_the_listed_families_have_no_unexplained_difference() -> None:
+    for family in gated_families():
+        report = differential.report_family(family, current_arm())
+        assert report["unclassified"] == [] and report["stale"] == [], family
+
+
+def test_a_family_planted_in_the_gate_fails_on_its_real_unexplained_rows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(differential, "gated_families", lambda: ["postgresql"])
+    report = differential.report_family("postgresql", current_arm())
+    assert report["gated"] and report["unclassified"], "the corpus has rows no entry explains"
+    assert differential.run(["postgresql"]) == 1
+    assert differential.run(["postgresql"], report_only=True) == 0
 
 
 @pytest.mark.parametrize("family", FAMILIES)
@@ -134,16 +148,16 @@ def test_the_newest_arm_reads_the_newest_fields_where_the_row_has_them() -> None
 
 def test_a_row_that_needs_a_reason_is_unclassified_until_the_file_gives_one() -> None:
     results = _results()
-    assert check_review(results, {})["unclassified"] == ["r2/analyzer"]
+    assert check_review(results, {}, "newest")["unclassified"] == ["r2/analyzer"]
     empty = {"r2/analyzer": {"path": "analyzer", "class": "facts-fewer", "reason": ""}}
-    assert check_review(results, empty)["unclassified"] == ["r2/analyzer"]
+    assert check_review(results, empty, "newest")["unclassified"] == ["r2/analyzer"]
     given = {"r2/analyzer": {"path": "analyzer", "class": "facts-fewer", "reason": "ok"}}
-    assert check_review(results, given) == {"unclassified": [], "stale": []}
+    assert check_review(results, given, "newest") == {"unclassified": [], "stale": []}
 
 
 def test_an_entry_for_the_other_path_does_not_cover_the_path_that_differs() -> None:
     wrong = {"r2/hybrid": {"path": "hybrid", "class": "facts-fewer", "reason": "ok"}}
-    problems = check_review(_results(), wrong)
+    problems = check_review(_results(), wrong, "newest")
     assert problems == {"unclassified": ["r2/analyzer"], "stale": ["r2/hybrid"]}
 
 
@@ -153,7 +167,7 @@ def test_an_entry_for_a_row_that_is_gone_or_now_agrees_is_stale() -> None:
         "r1/analyzer": {"path": "analyzer", "class": "facts-fewer", "reason": "ok"},
         "r2/analyzer": {"path": "analyzer", "class": "disagree", "reason": "ok"},
     }
-    problems = check_review(_results(), entries)
+    problems = check_review(_results(), entries, "newest")
     assert problems["stale"] == ["gone/analyzer", "r1/analyzer", "r2/analyzer"]
     assert problems["unclassified"] == ["r2/analyzer"]
 
@@ -161,9 +175,56 @@ def test_an_entry_for_a_row_that_is_gone_or_now_agrees_is_stale() -> None:
 def test_an_entry_for_both_paths_needs_the_same_class_on_both() -> None:
     results: Results = [("r", _row("s", {}, {}), {"hybrid": "disagree", "analyzer": "disagree"})]
     both = {"r": {"path": "both", "class": "disagree", "reason": "ok"}}
-    assert check_review(results, both) == {"unclassified": [], "stale": []}
+    assert check_review(results, both, "newest") == {"unclassified": [], "stale": []}
     results = [("r", _row("s", {}, {}), {"hybrid": "disagree", "analyzer": "facts-fewer"})]
-    assert check_review(results, both)["stale"] == ["r"]
+    assert check_review(results, both, "newest")["stale"] == ["r"]
+
+
+ARM_ROW: Results = [("r", _row("s", {}, {}), {"hybrid": "same", "analyzer": "same"})]
+
+
+def _per_arm_entry(floor: str, newest: str) -> Dict[str, Any]:
+    return {
+        "r/hybrid": {
+            "path": "hybrid",
+            "class": {"floor": floor, "newest": newest},
+            "reason": "differs by release",
+            "issue": "#1",
+        }
+    }
+
+
+def test_an_entry_can_hold_the_class_each_sqlglot_arm_gives() -> None:
+    """A row that is ``same`` on one release and a reader gap on the other."""
+    entry = _per_arm_entry("same", "opaque-reader-gap")
+    floor: Results = [("r", _row("s", {}, {}), {"hybrid": "same", "analyzer": "same"})]
+    newest: Results = [
+        ("r", _row("s", {}, {}), {"hybrid": "opaque-reader-gap", "analyzer": "same"})
+    ]
+    assert check_review(floor, entry, "floor") == {"unclassified": [], "stale": []}
+    assert check_review(newest, entry, "newest") == {"unclassified": [], "stale": []}
+
+
+def test_an_entry_whose_class_for_the_running_arm_does_not_match_is_stale_on_that_arm() -> None:
+    entry = _per_arm_entry("same", "opaque-reader-gap")
+    newest: Results = [("r", _row("s", {}, {}), {"hybrid": "disagree", "analyzer": "same"})]
+    floor: Results = [("r", _row("s", {}, {}), {"hybrid": "opaque-reader-gap", "analyzer": "same"})]
+    assert check_review(newest, entry, "newest") == {
+        "unclassified": ["r/hybrid"],
+        "stale": ["r/hybrid"],
+    }
+    assert check_review(floor, entry, "floor")["stale"] == ["r/hybrid"]
+
+
+def test_a_per_arm_reader_gap_names_an_issue_on_the_arm_that_has_the_gap() -> None:
+    entry = _per_arm_entry("same", "opaque-reader-gap")
+    newest: Results = [
+        ("r", _row("s", {}, {}), {"hybrid": "opaque-reader-gap", "analyzer": "same"})
+    ]
+    del entry["r/hybrid"]["issue"]
+    assert check_review(newest, entry, "newest")["unclassified"] == ["r/hybrid"]
+    floor: Results = [("r", _row("s", {}, {}), {"hybrid": "same", "analyzer": "same"})]
+    assert check_review(floor, entry, "floor") == {"unclassified": [], "stale": []}
 
 
 def test_a_reader_gap_names_an_issue() -> None:
@@ -171,14 +232,17 @@ def test_a_reader_gap_names_an_issue() -> None:
         ("r", _row("s", {}, {}), {"hybrid": "opaque-reader-gap", "analyzer": "same"})
     ]
     entry = {"path": "hybrid", "class": "opaque-reader-gap", "reason": "opaque is safer"}
-    assert check_review(results, {"r/hybrid": entry})["unclassified"] == ["r/hybrid"]
-    assert check_review(results, {"r/hybrid": {**entry, "issue": "#1"}})["unclassified"] == []
+    assert check_review(results, {"r/hybrid": entry}, "newest")["unclassified"] == ["r/hybrid"]
+    assert (
+        check_review(results, {"r/hybrid": {**entry, "issue": "#1"}}, "newest")["unclassified"]
+        == []
+    )
 
 
 def test_the_skeleton_adds_an_empty_entry_for_each_unexplained_row_and_keeps_the_rest() -> None:
     kept = {"r2/analyzer": {"path": "analyzer", "class": "facts-fewer", "reason": "ok"}}
-    assert skeleton(_results(), kept) == kept
-    out = skeleton(_results(), {})
+    assert skeleton(_results(), kept, "newest") == kept
+    out = skeleton(_results(), {}, "newest")
     assert set(out) == {"r2/analyzer"}
     assert out["r2/analyzer"]["reason"] == "" and out["r2/analyzer"]["class"] == "facts-fewer"
     both: Results = [
@@ -188,7 +252,10 @@ def test_the_skeleton_adds_an_empty_entry_for_each_unexplained_row_and_keeps_the
             {"hybrid": "disagree", "analyzer": "disagree"},
         )
     ]
-    assert set(skeleton(both, {})) == {"r"} and skeleton(both, {})["r"]["path"] == "both"
+    assert (
+        set(skeleton(both, {}, "newest")) == {"r"}
+        and skeleton(both, {}, "newest")["r"]["path"] == "both"
+    )
 
 
 def test_counts_are_per_path_in_rule_order() -> None:

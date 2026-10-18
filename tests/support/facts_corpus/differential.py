@@ -90,16 +90,22 @@ def _entry_paths(key: str, entry: Entry) -> Tuple[str, ...]:
     return PATHS if entry.get("path") == "both" else (entry.get("path", key.rpartition("/")[2]),)
 
 
-def _explained(entry: Entry) -> bool:
+def entry_class(entry: Entry, arm: str) -> Optional[str]:
+    """The class an entry expects on an arm: ``class`` is one string, or ``{floor, newest}``."""
+    value = entry.get("class")
+    return value.get(arm) if isinstance(value, dict) else value
+
+
+def _explained(entry: Entry, arm: str) -> bool:
     if not str(entry.get("reason", "")).strip():
         return False
-    return entry.get("class") != OPAQUE_READER_GAP or bool(str(entry.get("issue", "")).strip())
+    return entry_class(entry, arm) != OPAQUE_READER_GAP or bool(str(entry.get("issue", "")).strip())
 
 
 def check_review(
-    results: List[Tuple[str, Dict[str, Any], Dict[str, str]]], review: Dict[str, Entry]
+    results: List[Tuple[str, Dict[str, Any], Dict[str, str]]], review: Dict[str, Entry], arm: str
 ) -> Dict[str, List[str]]:
-    """Rows needing an entry that has none, and entries that no longer match a row.
+    """Rows needing an entry that has none, and entries that no longer match a row on ``arm``.
 
     ``unclassified`` and ``stale`` hold ``"<id>/<path>"`` and entry keys respectively.
     """
@@ -110,9 +116,9 @@ def check_review(
         row_id = key.partition("/")[0]
         classes = by_id.get(row_id)
         paths = _entry_paths(key, entry)
-        if classes is None or any(classes.get(p) != entry.get("class") for p in paths):
+        if classes is None or any(classes.get(p) != entry_class(entry, arm) for p in paths):
             stale.append(key)
-        elif _explained(entry):
+        elif _explained(entry, arm):
             covered.update(f"{row_id}/{p}" for p in paths)
     unclassified = [
         f"{row_id}/{path}"
@@ -124,10 +130,14 @@ def check_review(
 
 
 def skeleton(
-    results: List[Tuple[str, Dict[str, Any], Dict[str, str]]], review: Dict[str, Entry]
+    results: List[Tuple[str, Dict[str, Any], Dict[str, str]]], review: Dict[str, Entry], arm: str
 ) -> Dict[str, Entry]:
-    """``review`` plus an entry with an empty reason for every row that still needs one."""
-    problems = check_review(results, review)
+    """``review`` plus an entry with an empty reason for every row that still needs one.
+
+    A new entry holds the class of this arm only; a row whose class depends on the sqlglot release
+    is completed by hand with ``{"floor": ..., "newest": ...}``.
+    """
+    problems = check_review(results, review, arm)
     missing = set(problems["unclassified"])
     out = {key: entry for key, entry in review.items() if key not in problems["stale"]}
     for row_id, row, classes in results:
@@ -162,7 +172,7 @@ def counts(results: List[Tuple[str, Dict[str, Any], Dict[str, str]]]) -> Dict[st
 def report_family(family: str, arm: str) -> Dict[str, Any]:
     """Counts and unresolved rows of one family on one arm."""
     results = classify_family(family, arm)
-    problems = check_review(results, load_review(family))
+    problems = check_review(results, load_review(family), arm)
     return {
         "gated": family in gated_families(),
         "rows": len(results),
@@ -190,7 +200,7 @@ def run(
     reports = {family: report_family(family, arm) for family in targets}
     if write:
         for family in targets:
-            skeleton_entries = skeleton(classify_family(family, arm), load_review(family))
+            skeleton_entries = skeleton(classify_family(family, arm), load_review(family), arm)
             review_file(family).write_text(
                 json.dumps(skeleton_entries, indent=1, sort_keys=True) + "\n", encoding="utf-8"
             )
