@@ -259,6 +259,35 @@ class TestDuckDBDmlRowcount:
         assert provider.execute_statement("INSERT INTO t VALUES (1, 'a'), (2, 'b'), (3, 'c')") == 3
         assert provider.execute_statement("DELETE FROM t WHERE id >= 2") == 2
 
+    @pytest.mark.parametrize(
+        "statement",
+        [
+            "DELETE FROM t WHERE x\u00a0",
+            "UPDATE t SET a = 9 WHERE x\u00a0",
+            "INSERT INTO t VALUES (3, true)\u00a0",
+        ],
+    )
+    def test_a_final_no_break_space_is_not_moved_out_of_the_tail_by_the_rewrite(
+        self, tmp_path: Path, statement: str
+    ) -> None:
+        """The engine keeps a final U+00A0 and fails; RETURNING after it would make it run another statement."""
+        provider = self._provider(tmp_path)
+        provider.execute_statement("CREATE TABLE t (a INT, x BOOL)")
+        provider.execute_statement("INSERT INTO t VALUES (1, true), (2, false)")
+        with pytest.raises(Exception):
+            provider.execute_statement(statement)
+        conn = provider._ensure_connection()
+        rows = conn.exec_driver_sql("SELECT a, x FROM t ORDER BY a").fetchall()
+        assert [tuple(r) for r in rows] == [(1, True), (2, False)]
+
+    def test_a_statement_without_a_final_blank_still_reports_its_rowcount(
+        self, tmp_path: Path
+    ) -> None:
+        provider = self._provider(tmp_path)
+        provider.execute_statement("CREATE TABLE t (a INT, x BOOL)")
+        provider.execute_statement("INSERT INTO t VALUES (1, true), (2, false)")
+        assert provider.execute_statement("DELETE FROM t WHERE x") == 1
+
     def test_returning_rewrite_runs_unbound_sql_through_exec_unbound(self, tmp_path: Path) -> None:
         """The RETURNING rewrite sends unbound SQL with no parameter argument."""
         from unittest.mock import patch

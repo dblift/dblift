@@ -112,6 +112,9 @@ class DuckDBProvider(SqlLeaseLockingProvider):
         if code.split(None, 1)[0].upper() not in ("INSERT", "UPDATE", "DELETE"):
             return None
 
+        # The engine keeps a U+00A0 in the last two bytes of a script; after RETURNING it replaces it
+        if units[0].text.endswith("\xa0"):
+            return None
         # A newline keeps RETURNING out of a trailing ``--`` comment
         rewritten = f"{units[0].text}\nRETURNING 1"
         conn = self._ensure_connection()

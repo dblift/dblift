@@ -258,7 +258,7 @@ def test_a_quadratic_pass_is_over_budget(monkeypatch):
     from dblift.core.sql_parser import blank_pass, lexical_tokenizer
 
     namespace = dict(vars(blank_pass))
-    mutant = _mutant(
+    _ = _mutant(  # the slow _dollar lands in ``namespace``, which the quadratic pass below is built in
         blank_pass._dollar,
         "    close = sql.find(tag, end)\n",
         '    sql.find("\\x00")\n    close = sql.find(tag, end)\n',
@@ -288,6 +288,17 @@ def test_reading_each_statement_alone_over_the_rest_of_the_script_is_over_budget
     monkeypatch.setattr(blank_pass, "reads_differently_alone", mutant)
     monkeypatch.setattr(segment_module, "reads_differently_alone", mutant)
     assert counted(shape(LARGE)) > BOUND * counted(shape(SMALL))
+
+
+def test_the_alone_pass_runs_only_on_statements_holding_a_non_ascii_blank(monkeypatch):
+    calls = []
+    original = blank_pass.kept_stretches
+    monkeypatch.setattr(
+        blank_pass, "kept_stretches", lambda *args: calls.append(args[0]) or original(*args)
+    )
+    script = "SELECT 1; " * 20 + "SELECT x" + UNICODE_BLANK + "y; " + "SELECT 2; " * 20
+    LexicalEngine(DUCKDB_SPEC).split(script)
+    assert [UNICODE_BLANK in sql for sql in calls] == [True]
 
 
 def test_a_word_loop_that_does_not_advance_is_refused_by_the_cap(monkeypatch):
