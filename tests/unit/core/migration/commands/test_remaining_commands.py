@@ -18,6 +18,7 @@ import pytest
 
 from dblift.core.logger.results import InfoResult
 from dblift.db.provider_interfaces import SchemaProvider
+from tests.unit.core.migration.commands._plan_undo_wiring import wire_plan_undo
 
 # ===========================================================================
 # Helpers
@@ -87,7 +88,7 @@ def _make_undo_command(applied_migrations, *, rules_return=None, provider=None, 
     from dblift.core.migration.commands.undo_command import UndoCommand
     from dblift.core.migration.migration import MigrationType
 
-    state_manager = MagicMock()
+    state_manager = wire_plan_undo(MagicMock())
     migration_state = MagicMock()
     migration_state.applied_objects = applied_migrations
     state_manager.build_state.return_value = migration_state

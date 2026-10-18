@@ -12,7 +12,7 @@ the tag, never inferred from naming.
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -25,6 +25,16 @@ from dblift.core.migration.rules.migration_rules import (
     group_tag_of,
 )
 from dblift.core.migration.state.migration_state_manager import MigrationStateManager
+from tests.unit.core.migration.commands._plan_undo_wiring import (
+    patch_undo_script_lookup,
+    wire_plan_undo,
+)
+
+
+@pytest.fixture(autouse=True)
+def _stop_undo_script_lookup_patches():
+    yield
+    patch.stopall()
 
 
 def _make_migration(version, tags=(), mtype=MigrationType.SQL, success=True):
@@ -41,7 +51,7 @@ def _make_migration(version, tags=(), mtype=MigrationType.SQL, success=True):
 
 
 def _make_command(applied_migrations, undo_scripts=None):
-    state_manager = MagicMock()
+    state_manager = wire_plan_undo(MagicMock())
     migration_state = MagicMock()
     migration_state.applied_objects = applied_migrations
     migration_state.all_applied_objects = list(applied_migrations)
@@ -79,13 +89,15 @@ def _make_command(applied_migrations, undo_scripts=None):
     cmd.placeholder_service = MagicMock()
     cmd.migration_helpers.setup_migration_parameters.return_value = (True, None)
     if undo_scripts:
-        cmd._find_undo_script = MagicMock(
-            side_effect=lambda migration, state: next(
-                (s for s in undo_scripts if str(s.version) == str(migration.version)), None
+        cmd._find_undo_script = patch_undo_script_lookup(
+            MagicMock(
+                side_effect=lambda migration, state: next(
+                    (s for s in undo_scripts if str(s.version) == str(migration.version)), None
+                )
             )
         )
     else:
-        cmd._find_undo_script = MagicMock(return_value=MagicMock())
+        cmd._find_undo_script = patch_undo_script_lookup(MagicMock(return_value=MagicMock()))
     return cmd
 
 
