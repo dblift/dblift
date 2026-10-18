@@ -14,8 +14,9 @@ of a refusal, which raises at once) is linear by construction and not measured.
 
 import ast
 import inspect
+import textwrap
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 import pytest
 
@@ -37,13 +38,33 @@ from tests.support.splitting_cost import (
 )
 
 SMALL, LARGE, BOUND = 100, 400, 5
-PATTERNS = ("_seg_word", "_seg_number", "_seg_tag", "_seg_parameter", "_seg_comment")
+PATTERNS = (
+    "_seg_word",
+    "_seg_number",
+    "_seg_tag",
+    "_seg_parameter",
+    "_seg_comment",
+    "_seg_word_part",
+    "_seg_kept_part",
+)
 UNICODE_BLANK = chr(0x3000)
 
 
-def counted(script: str, refusal: bool = False) -> int:
+class Capped(Meter):
+    """A meter that refuses once a script has cost more operations than any bounded pass needs."""
+
+    def __init__(self, cap: int) -> None:
+        super().__init__()
+        self.cap = cap
+
+    def add(self, amount: int) -> None:
+        super().add(amount)
+        assert self.count <= self.cap, "a pass that does not return"
+
+
+def counted(script: str, refusal: bool = False, meter: Optional[Meter] = None) -> int:
     """Operations of the lexeme pass and of the assembly, for both views, on ``script``."""
-    meter = Meter()
+    meter = Meter() if meter is None else meter
     tokenizer = LexicalTokenizer(script, spec=DUCKDB_SPEC)
     tokenizer.sql = CountingText(tokenizer.sql, meter)
     for name in PATTERNS:
@@ -75,6 +96,13 @@ SHAPES = {
     "a refusal after many statements": lambda n: "SELECT 1;\n" * n + chr(0),
     "one huge escape string": lambda n: "SELECT E'" + "a\\'" * n + "';",
     "unterminated lexeme": lambda n: "SELECT 1; '" + "a;" * n,
+    "blank pass: dollar strings": lambda n: "$t$;$t$ $$;$$ " * n + UNICODE_BLANK,
+    "blank pass: quotes and comments": lambda n: "'a' \"b\" -- c\n/* d */ " * n + UNICODE_BLANK,
+    "blank pass: failed tags": lambda n: "$a $b1 $_ $\u00e9 " * n + UNICODE_BLANK,
+    "blank pass: one long failed tag": lambda n: "$" + "a" * (2 * n) + UNICODE_BLANK,
+    "blank pass: long dollar tags": lambda n: "$" + "a" * n + "$;$" + "a" * n + "$" + UNICODE_BLANK,
+    "blank pass: words after a stop": lambda n: "SELECT a$$;" + ("x" + UNICODE_BLANK + "y;") * n,
+    "blank pass: words in a kept stretch": lambda n: "'" + ("x" + UNICODE_BLANK + "y;") * n,
 }
 
 
@@ -102,6 +130,8 @@ def test_the_pattern_counter_charges_the_span_a_search_scans():
 
 
 SEGMENT_METHODS = {
+    "_kept_until",
+    "_kept_word",
     "_tokenize_segment_script",
     "_next_segment_token",
     "_at_command_line",
@@ -141,8 +171,9 @@ def test_the_segment_path_never_copies_or_scans_its_inputs():
     found = _methods(package / "lexical_tokenizer.py", SEGMENT_METHODS)
     assert {n.name for n in found} == SEGMENT_METHODS
     found += _methods(package / "base_tokenizer.py", {"_read_block_comment"})
+    found += _methods(package / "blank_pass.py", {"kept_stretches", "_dollar"})
     found += _methods(package / "lexical_engine.py", {"blank_comments"})
-    assert len(found) == len(SEGMENT_METHODS) + 2
+    assert len(found) == len(SEGMENT_METHODS) + 4
     for node in found:
         assert forbidden(node) == [], node.name
 
@@ -178,3 +209,59 @@ def test_the_source_check_sees_the_forms_it_exists_for():
 def test_the_engine_still_blanks_comments_with_one_join():
     source = inspect.getsource(LexicalEngine.blank_comments)
     assert source.count('"".join') == 1
+
+
+KNOWN_GAP_SHAPES = [
+    "SELECT 1 AS a$$, 2 AS e\u00a0$t$x; DROP TABLE t; SELECT 3;",
+    "/* don't */ SELECT 2 AS e\u00a0$t$x; DROP TABLE t; SELECT 3;",
+    "/* $$ */ SELECT 2 AS e\u00a0$t$x; DROP TABLE t; SELECT 3;",
+    "SELECT E'a\\'b' AS c, 2 AS e\u00a0$t$x; DROP TABLE t; SELECT 3;",
+    "SELECT 1 AS a$$x$$$, 2 AS e\u00a0$t$x; DROP TABLE t; SELECT 3;",
+]
+
+
+@pytest.mark.parametrize("script", KNOWN_GAP_SHAPES)
+def test_the_scripts_with_kept_blanks_return_within_the_counted_budget(script):
+    assert 0 < counted(script, meter=Capped(50 * len(script))) <= 50 * len(script)
+
+
+def _mutant(function, anchor, replacement, namespace):
+    """``function`` with one line changed, compiled in ``namespace``."""
+    source = textwrap.dedent(inspect.getsource(function))
+    assert source.count(anchor) == 1, anchor  # a mutation that changes nothing proves nothing
+    exec(source.replace(anchor, replacement), namespace)  # noqa: S102 - test-owned source
+    return namespace[function.__name__]
+
+
+def test_a_quadratic_pass_is_over_budget(monkeypatch):
+    from dblift.core.sql_parser import blank_pass, lexical_tokenizer
+
+    namespace = dict(vars(blank_pass))
+    mutant = _mutant(
+        blank_pass._dollar,
+        "    close = sql.find(tag, end)\n",
+        '    sql.find("\\x00")\n    close = sql.find(tag, end)\n',
+        namespace,
+    )
+    shape = SHAPES["blank pass: dollar strings"]
+    honest = counted(shape(LARGE))
+    assert honest <= BOUND * counted(shape(SMALL))
+    monkeypatch.setitem(namespace, "_dollar", mutant)
+    quadratic = _mutant(
+        blank_pass.kept_stretches, "_dollar(sql, pos, rules, stretches)", "_dollar(sql, pos, rules, stretches)", namespace
+    )
+    monkeypatch.setattr(lexical_tokenizer, "kept_stretches", quadratic)
+    assert counted(shape(LARGE)) > BOUND * counted(shape(SMALL))
+
+
+def test_a_word_loop_that_does_not_advance_is_refused_by_the_cap(monkeypatch):
+    anchor = "while stretch and self.sql[end] in self._seg_wide:"
+    mutant = _mutant(
+        LexicalTokenizer._kept_word,
+        anchor,
+        "while stretch and self.sql[end] in self._seg_blanks:",
+        dict(vars(inspect.getmodule(LexicalTokenizer))),
+    )
+    monkeypatch.setattr(LexicalTokenizer, "_kept_word", mutant)
+    with pytest.raises(AssertionError, match="does not return"):
+        counted(KNOWN_GAP_SHAPES[0], meter=Capped(5000))
