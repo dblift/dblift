@@ -106,8 +106,8 @@ class ResolvedMigration:
             tags=list(self.tags),
             logger=logger,
             dialect=dialect,
+            checksum=self.checksum,
         )
-        migration.checksum = self.checksum
         migration.resolved_migration = self
         return migration
 
@@ -194,8 +194,8 @@ class AppliedMigration:
             logger=logger,
             dialect=dialect,
             _filename_metadata=_filename_metadata,
+            checksum=self.checksum,
         )
-        migration.checksum = self.checksum
         for key, value in self.raw.items():
             if not hasattr(migration, key) or key in {
                 "success",
@@ -246,6 +246,10 @@ def normalize_migration_checksum(value: Optional[Any]) -> Optional[int]:
     return val
 
 
+#: Default for ``Migration(checksum=...)``: compute the checksum from the content.
+_COMPUTE_FROM_CONTENT = cast("Optional[int]", object())
+
+
 class Migration:
     """Represents a migration script."""
 
@@ -266,6 +270,7 @@ class Migration:
         detect_encoding: bool = False,
         config: Any = None,
         _filename_metadata: Optional[Tuple[MigrationType, Optional[str], str, List[str]]] = None,
+        checksum: Optional[int] = _COMPUTE_FROM_CONTENT,
     ) -> None:
         """
         Initialize a Migration object.
@@ -283,6 +288,10 @@ class Migration:
             logger: Optional logger to use instead of creating a new one
             dialect: Optional SQL dialect to use for parsing
             config: Optional application configuration for dialect fallback
+            checksum: The script checksum, used as given (``None`` means "no checksum", as for
+                a history row without one). MigrationScriptManager computes it for every script
+                it builds. When the argument is omitted the checksum is computed from the content;
+                that fallback exists only for external callers that build a Migration directly.
         """
         self.logger = logger
         self.dialect = dialect
@@ -363,7 +372,9 @@ class Migration:
             else:
                 self.format = MigrationFormatDetector.detect_from_filename(self.script_name)
 
-        self.checksum: Optional[int] = self._calculate_checksum()
+        if checksum is _COMPUTE_FROM_CONTENT:
+            checksum = calculate_migration_script_checksum(self.content)
+        self.checksum: Optional[int] = checksum
 
         # Add attributes expected by migration_ui.py
         self.name = self.script_name  # Alias for script_name
@@ -400,6 +411,9 @@ class Migration:
     def create_baseline_migration(content: str, version: str, description: str) -> "Migration":
         """Create a baseline migration entry.
 
+        Deprecated: use :meth:`MigrationScriptManager.baseline_marker`, which also
+        owns the checksum.
+
         Args:
             content: Content of the migration script (typically a comment about the baseline)
             version: Version to baseline at
@@ -408,15 +422,14 @@ class Migration:
         Returns:
             A Migration object representing a baseline migration
         """
+        from dblift.core.logger import DbliftLogger
+        from dblift.core.migration.scripting.migration_script_manager import (
+            MigrationScriptManager,
+        )
+
         # For baselines, use a simpler script name format like Flyway
-        baseline_name = "Base Migration"
-        return Migration(
-            script_name=baseline_name,
-            content=content,
-            version=version,
-            description=description,
-            type=MigrationType.BASELINE,
-            tags=[],
+        return MigrationScriptManager(DbliftLogger()).baseline_marker(
+            version, description, script_name="Base Migration", content=content
         )
 
     @staticmethod
@@ -427,6 +440,9 @@ class Migration:
     ) -> "Migration":
         """Create a delete migration entry for audit trail.
 
+        Deprecated: use :meth:`MigrationScriptManager.delete_marker`, which also
+        owns the checksum.
+
         Args:
             script_name: Name of the original script that was deleted
             version: Version of the script (optional, extracted from script_name if not provided)
@@ -435,14 +451,12 @@ class Migration:
         Returns:
             A Migration object representing a delete operation
         """
-        return Migration(
-            script_name=script_name,
-            content=f"-- Delete operation: {reason}",
-            version=version,
-            description=reason,
-            type=MigrationType.DELETE,
-            tags=[],
+        from dblift.core.logger import DbliftLogger
+        from dblift.core.migration.scripting.migration_script_manager import (
+            MigrationScriptManager,
         )
+
+        return MigrationScriptManager(DbliftLogger()).delete_marker(script_name, version, reason)
 
     def load_content(self, scripts_dir: Optional[Path] = None) -> None:
         """Populate self.content from disk when it is empty (e.g. for DB-loaded migrations).
@@ -572,15 +586,6 @@ class Migration:
     def _extract_tags(self) -> List[str]:
         """Extract tags from script name through the canonical parser."""
         return self._parse_filename()[3]
-
-    def _calculate_checksum(self) -> int:
-        """Calculate a CRC32 checksum compatible with Flyway.
-
-        Uses CRC32 line-by-line (line separators excluded), identical to
-        org.flywaydb.core.internal.resource.ResourceName in Flyway Java.
-        Returns a signed 32-bit integer (can be negative, like Java int).
-        """
-        return calculate_migration_script_checksum(self.content)
 
     def __repr__(self) -> str:
         # Import the shared type matcher only when formatting a migration.

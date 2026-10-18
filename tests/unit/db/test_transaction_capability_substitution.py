@@ -15,6 +15,7 @@ from dblift.core.migration.executor.execution_engine import ExecutionEngine
 from dblift.core.migration.executor.transaction_policy import TransactionPolicy
 from dblift.core.migration.history.migration_history_manager import MigrationHistoryManager
 from dblift.core.migration.migration import Migration, MigrationType
+from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
 from dblift.core.migration.sql.execution_statement import ExecutionStatement
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.db.base_quirks import BaseQuirks
@@ -86,7 +87,7 @@ def command(command_class, provider):
         config=config,
         log=NullLog(),
         provider=provider,
-        script_manager=MagicMock(),
+        script_manager=MigrationScriptManager(NullLog()),
         history_manager=MigrationHistoryManager(provider, "main", "tester", NullLog()),
         validator=None,
         execution_engine=MagicMock(),
