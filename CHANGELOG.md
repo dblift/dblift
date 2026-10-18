@@ -98,6 +98,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The current schema version reflects successful migrations still in effect.**
+  `info`, migration state, migrate/undo plans and results now agree on the highest
+  active SQL or Python migration version or baseline. Undoing every version clears it.
 - **Statements keep the characters at their edges that the engine reads as part of the text.**
   Only the engine's own blanks are trimmed, so a name ending in a no-break space is executed
   and analysed as written. On Oracle, a statement whose edge character the driver would strip
