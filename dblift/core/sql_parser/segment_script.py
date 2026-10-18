@@ -3,7 +3,7 @@
 from typing import List, Optional, Sequence
 
 from dblift.core.exceptions import UnsafeStatementSplitError
-from dblift.core.sql_parser.blank_pass import differs_alone, kept_alone_only
+from dblift.core.sql_parser.blank_pass import reads_differently_alone
 from dblift.core.sql_parser.lexical_spec import SegmentScriptRules
 from dblift.core.sql_parser.statement import Statement
 from dblift.core.sql_parser.tokens import Token, TokenType
@@ -74,18 +74,18 @@ class SegmentScript:
         )
 
     def _refuse_read_differently_alone(self, lo: int, text: str) -> None:
-        """Refuse a statement with a blank the engine reads differently alone than in its script."""
-        hi = lo + len(text)
-        pos = differs_alone(self.source, lo, hi, self.kept, self.rules)
-        how = "where the engine keeps this blank in a word and, run alone, replaces it"
-        if pos < 0:
-            pos = kept_alone_only(self.source, lo, hi, self.kept, self.rules)
-            how = "this blank is kept when run alone, replaced in its script"
+        """Refuse a statement with a blank the engine keeps in one reading and replaces in the other."""
+        pos, in_script = reads_differently_alone(
+            self.source, lo, lo + len(text), self.kept, self.rules
+        )
         if pos < 0:
             return
+        how = "kept in its script, replaced when run alone"
+        if not in_script:
+            how = "kept when run alone, replaced in its script"
         line = self.source.count("\n", 0, pos) + 1
         column = pos - self.source.rfind("\n", 0, pos)
         raise UnsafeStatementSplitError(
             f"U+{ord(self.source[pos]):04X} at line {line}, column {column}: the statement reads "
-            f"differently run alone than in its script, {how}"
+            f"differently run alone than in its script, this blank is {how}; remove the character"
         )

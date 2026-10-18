@@ -1,7 +1,7 @@
 """Where an engine's blank-replacing pass leaves the blanks of a script alone."""
 
 from bisect import bisect_right
-from typing import Dict, List, Sequence
+from typing import Dict, List, Sequence, Tuple
 
 from dblift.core.sql_parser.lexical_spec import BlankPassRules, SegmentScriptRules
 
@@ -81,54 +81,30 @@ def _dollar(sql: str, pos: int, rules: BlankPassRules, stretches: List[int]) -> 
     return close + len(tag) - 1
 
 
-def differs_alone(
+def reads_differently_alone(
     source: str, lo: int, hi: int, kept: Sequence[int], rules: SegmentScriptRules
-) -> int:
-    """The offset of the first blank of ``source[lo:hi]`` kept in the script, replaced run alone.
+) -> Tuple[int, bool]:
+    """The first wide blank of ``source[lo:hi]`` the pass keeps in one reading and replaces in the other.
 
-    A statement is run on its own, so the pass reads its text afresh: a blank that the pass of the
-    whole script kept can be replaced there. The pass never reads the last two bytes of a text, so a
-    final two-byte blank is kept alone as well. Returns -1 when there is none.
+    The statement is run on its own, so the pass reads its text afresh: an opener in a comment can
+    close a stretch of an earlier statement in the script, but not alone. A blank is kept when it
+    lies in a kept stretch, and also when it is two bytes wide and ends its text, since the pass
+    never reads the last two bytes. Returns ``(offset, kept in the script)``, or ``(-1, False)``.
     """
-    first = bisect_right(kept, lo) // 2 * 2
-    if first >= len(kept) or kept[first] >= hi:
-        return -1
     assert rules.blank_pass is not None
-    wide = [blank for blank in rules.blanks if blank >= "\x80"]
     text = source[lo:hi]
-    last = max(text.rfind(blank) for blank in wide)
-    alone = kept_stretches(text, 0, last, rules.line_comment_ends, rules.blank_pass)
-    tail = last if last == len(text) - 1 and len(text[last].encode()) == 2 else -1
-    seen = 0
-    for index in range(first, len(kept), 2):
-        if kept[index] >= hi:
-            break
-        pos, stop = max(kept[index], lo) - lo, min(kept[index + 1], hi) - lo
-        while pos < stop:
-            while seen < len(alone) and alone[seen + 1] <= pos:
-                seen += 2
-            if seen < len(alone) and alone[seen] <= pos:
-                pos = alone[seen + 1]
-                continue
-            end = min(stop, alone[seen]) if seen < len(alone) else stop
-            found = [at for at in (text.find(blank, pos, end) for blank in wide) if at >= 0]
-            if found and min(found) != tail:
-                return lo + min(found)
-            pos = end
-    return -1
+    wide = [at for at, char in enumerate(text) if char in rules.blanks and char >= "\x80"]
+    if not wide:
+        return -1, False
+    alone = kept_stretches(text, 0, wide[-1], rules.line_comment_ends, rules.blank_pass)
+    for at in wide:
+        in_script = bisect_right(kept, lo + at) % 2 == 1 or _unread(source, lo + at)
+        in_alone = bisect_right(alone, at) % 2 == 1 or _unread(text, at)
+        if in_script != in_alone:
+            return lo + at, in_script
+    return -1, False
 
 
-def kept_alone_only(
-    source: str, lo: int, hi: int, kept: Sequence[int], rules: SegmentScriptRules
-) -> int:
-    """The offset of the final two-byte blank of ``source[lo:hi]`` that the script replaces, or -1.
-
-    Run alone, the pass never reads the last two bytes of the text, so that blank is kept; in the
-    script it is kept only inside a kept stretch or at the very end of the script.
-    """
-    if rules.blank_pass is None or hi <= lo or hi >= len(source):
-        return -1
-    pos = hi - 1
-    if source[pos] not in rules.blanks or len(source[pos].encode()) != 2:
-        return -1
-    return -1 if bisect_right(kept, pos) % 2 else pos
+def _unread(text: str, at: int) -> bool:
+    """Whether the pass leaves the blank at ``at`` alone as one of the last two bytes of ``text``."""
+    return at == len(text) - 1 and len(text[at].encode()) == 2

@@ -107,7 +107,11 @@ SHAPES = {
     "blank pass: one long failed tag": lambda n: "$" + "a" * (2 * n) + UNICODE_BLANK,
     "blank pass: long dollar tags": lambda n: "$" + "a" * n + "$;$" + "a" * n + "$" + UNICODE_BLANK,
     "blank pass: words after a stop": lambda n: "SELECT a$$ " + ("x" + UNICODE_BLANK + "y ") * n,
-    "blank pass: each statement read alone": lambda n: ("/* ' */ x" + UNICODE_BLANK + "y;") * n,
+    "blank pass: each statement read alone": lambda n: ("SELECT x" + UNICODE_BLANK + "y;") * n,
+    "blank pass: each statement read alone in a kept stretch": lambda n: (
+        "SELECT 'x" + UNICODE_BLANK + "y';"
+    )
+    * n,
     "blank pass: one long statement read alone": lambda n: (
         "SELECT a$$ " + ("x" + UNICODE_BLANK + "y ") * n + ";"
     ),
@@ -180,10 +184,13 @@ def test_the_segment_path_never_copies_or_scans_its_inputs():
     found = _methods(package / "lexical_tokenizer.py", SEGMENT_METHODS)
     assert {n.name for n in found} == SEGMENT_METHODS
     found += _methods(package / "base_tokenizer.py", {"_read_block_comment"})
-    found += _methods(package / "blank_pass.py", {"kept_stretches", "_dollar", "differs_alone"})
+    found += _methods(
+        package / "blank_pass.py",
+        {"kept_stretches", "_dollar", "reads_differently_alone", "_unread"},
+    )
     found += _methods(package / "lexical_engine.py", {"blank_comments"})
     found += _methods(package / "segment_script.py", {"_refuse_read_differently_alone"})
-    assert len(found) == len(SEGMENT_METHODS) + 6
+    assert len(found) == len(SEGMENT_METHODS) + 7
     for node in found:
         assert forbidden(node) == [], node.name
 
@@ -269,13 +276,13 @@ def test_a_quadratic_pass_is_over_budget(monkeypatch):
 def test_reading_each_statement_alone_over_the_rest_of_the_script_is_over_budget(monkeypatch):
     namespace = dict(vars(blank_pass))
     mutant = _mutant(
-        blank_pass.differs_alone, "text = source[lo:hi]", "text = source[lo:]", namespace
+        blank_pass.reads_differently_alone, "text = source[lo:hi]", "text = source[lo:]", namespace
     )
     shape = SHAPES["blank pass: each statement read alone"]
     honest = counted(shape(LARGE))
     assert honest <= BOUND * counted(shape(SMALL))
-    monkeypatch.setattr(blank_pass, "differs_alone", mutant)
-    monkeypatch.setattr(segment_module, "differs_alone", mutant)
+    monkeypatch.setattr(blank_pass, "reads_differently_alone", mutant)
+    monkeypatch.setattr(segment_module, "reads_differently_alone", mutant)
     assert counted(shape(LARGE)) > BOUND * counted(shape(SMALL))
 
 

@@ -181,7 +181,8 @@ def test_a_statement_that_reads_differently_alone_is_refused(script):
             split(script)
         message = str(raised.value)
         assert f"U+00A0 at line 1, column {at + 1}" in message
-        assert "differently" in message and "alone" in message
+        assert "kept in its script, replaced when run alone" in message
+        assert message.endswith("remove the character")
 
 
 def test_a_refusal_names_the_line_and_column_of_the_blank():
@@ -238,6 +239,7 @@ def test_a_final_blank_kept_alone_and_replaced_in_the_script_is_refused(script):
             split(script)
         assert f"U+00A0 at line 1, column {at + 1}" in str(raised.value)
         assert "kept when run alone, replaced in its script" in str(raised.value)
+        assert str(raised.value).endswith("remove the character")
 
 
 def test_the_engine_drops_the_table_the_statement_alone_would_not():
@@ -256,3 +258,58 @@ def test_the_engine_drops_the_table_the_statement_alone_would_not():
 )
 def test_a_final_blank_kept_in_the_script_as_well_is_not_refused(script):
     assert len(ENGINE.split_statements(script)) == 1
+
+
+#: a piece whose own pass stops where the script's pass does not: an opener inside a comment (or a word)
+#: closes, for the script, a stretch opened in an earlier piece; the blank after it is replaced there
+#: and kept when the piece is run alone (or the reverse)
+OPPOSITE = [
+    (
+        "SELECT 1 AS a$t$; /* $t$ */ DROP TABLE IF EXISTS t" + NB + "CASCADE;",
+        "replaced in its script",
+    ),
+    (
+        "SELECT 1 AS a$$; /* $$ */ DROP TABLE IF EXISTS t" + NB + "CASCADE;",
+        "replaced in its script",
+    ),
+    (
+        "/* ' */ SELECT 1; /* ' */ DROP TABLE IF EXISTS t" + NB + "CASCADE;",
+        "replaced in its script",
+    ),
+    (
+        '/* " */ SELECT 1; /* " */ DROP TABLE IF EXISTS t' + NB + "CASCADE;",
+        "replaced in its script",
+    ),
+    (
+        "SELECT 1 AS a$t$;\n/* $t$ */ DROP TABLE IF EXISTS t" + chr(0x3000) + "CASCADE;",
+        "replaced in its script",
+    ),
+    (
+        "/* it's */ SELECT 1; /* don't */ CREATE TABLE x(a INT," + NB + "b INT);",
+        "replaced in its script",
+    ),
+    (
+        "/* ' */ SELECT 1 AS x" + NB + "y; /* ' */ SELECT 1 AS x" + NB + "y; DROP TABLE t;",
+        "replaced in its script",
+    ),
+]
+
+
+@pytest.mark.parametrize("script,how", OPPOSITE, ids=[str(i) for i in range(len(OPPOSITE))])
+def test_a_blank_kept_in_one_reading_and_replaced_in_the_other_is_refused(script, how):
+    at = next(i for i, c in enumerate(script) if c >= "\x80")
+    for split in (ENGINE.split_statements, ENGINE.split, ENGINE.split_for_analysis):
+        with pytest.raises(UnsafeStatementSplitError) as raised:
+            split(script)
+        message = str(raised.value)
+        assert f"U+{ord(script[at]):04X} at line {script.count(chr(10), 0, at) + 1}" in message
+        assert how in message and message.endswith("remove the character")
+
+
+def test_the_engine_drops_the_table_the_piece_alone_would_not_name():
+    script = OPPOSITE[0][0]
+    assert not has_t(run_whole(script))
+    alone = duckdb.connect()
+    alone.execute("CREATE TABLE t (i INT)")
+    alone.execute("/* $t$ */ DROP TABLE IF EXISTS t" + NB + "CASCADE")
+    assert has_t(alone)
