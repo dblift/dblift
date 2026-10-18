@@ -7,13 +7,18 @@ The first rule that matches wins, in the order of ``ORDER``:
 2. ``no-reader`` / ``no-old-side`` / ``no-old`` -- one side is missing.
 3. ``dml-differs`` -- a statement-level field (target, predicate, events, columns, full-table)
    differs; no mechanical class below may hide it.
-4. ``same`` -- identities are equal (unless the reader is opaque and both name nothing).
-5. The mechanical classes, each of which explains the whole difference by itself.
-6. The classes that need a human reason: ``opaque-reader-gap``, ``facts-fewer``,
+4. ``role-differs`` -- the statement acts on an object (creates, drops, alters, truncates it) that
+   the reader marks only as read, or the reader marks as acted on an object the statement does
+   not write to. The extraction carries no roles, so the statement itself is the reference.
+5. ``same`` -- identities are equal (unless the reader is opaque and both name nothing).
+6. The mechanical classes, each of which explains the whole difference by itself.
+7. The classes that need a human reason: ``opaque-reader-gap``, ``facts-fewer``,
    ``facts-adds-acted``, ``disagree``.
 
 Names are compared case-exact, after the schema the extraction assigns to an unqualified name is
-removed from both sides. Nothing here consults where a statement was harvested from.
+removed from both sides. ``case-folded`` is the one exception and is directional: the facts name is
+the spelling written in the statement, unquoted, the extraction holds the engine's folding of it,
+and the reader is not opaque. Nothing here consults where a statement was harvested from.
 """
 
 from __future__ import annotations
@@ -33,6 +38,7 @@ NO_READER = "no-reader"
 NO_OLD_SIDE = "no-old-side"
 NO_OLD = "no-old"
 DML_DIFFERS = "dml-differs"
+ROLE_DIFFERS = "role-differs"
 OLD_CTE_ALIAS = "old-cte-alias"
 OLD_KEYWORD = "old-keyword"
 TYPE_REFINED = "type-refined"
@@ -59,6 +65,7 @@ MECHANICAL = (
 #: Classes that need a reason in the family's review file.
 REVIEW = (
     DML_DIFFERS,
+    ROLE_DIFFERS,
     OPAQUE_READER_GAP,
     FACTS_FEWER,
     FACTS_ADDS_ACTED,
@@ -66,7 +73,11 @@ REVIEW = (
     NO_OLD,
     NO_READER,
 )
-ORDER = (RAISED, NO_READER, NO_OLD_SIDE, NO_OLD, DML_DIFFERS, SAME) + MECHANICAL + REVIEW[1:5]
+ORDER = (
+    (RAISED, NO_READER, NO_OLD_SIDE, NO_OLD, DML_DIFFERS, ROLE_DIFFERS, SAME)
+    + MECHANICAL
+    + (OPAQUE_READER_GAP, FACTS_FEWER, FACTS_ADDS_ACTED, DISAGREE)
+)
 PATHS = ("hybrid", "analyzer")
 
 #: Families whose text extraction already is the facts reader: there is nothing to compare.
@@ -171,21 +182,137 @@ def _parse(sql: str, dialect: Optional[str]) -> Optional[exp.Expression]:
         log.setLevel(level)
 
 
-def _write_targets(ast: Optional[exp.Expression], dml_table: str) -> Optional[Set[str]]:
-    """Lower-cased names the statement writes to; ``None`` when they cannot be established."""
-    if ast is None:
+Targets = Tuple[Set[str], Set[str]]  # (acted on, possibly written to), lower-cased names
+
+#: Statements that write somewhere; every other statement that is not a query is unreadable here.
+_WRITES = (
+    exp.Create,
+    exp.Alter,
+    exp.Drop,
+    exp.TruncateTable,
+    exp.Insert,
+    exp.MultitableInserts,
+    exp.Update,
+    exp.Delete,
+    exp.Merge,
+    exp.Copy,
+    exp.LoadData,
+)
+
+
+def _names_of(node: Optional[exp.Expression]) -> Targets:
+    """``(acted, touched)`` for one expression a statement writes to.
+
+    ``acted`` holds only names certain to be created, dropped or altered; ``touched`` also holds
+    every table the expression mentions (a join, the table an index is on).
+    """
+    if isinstance(node, (exp.Schema, exp.UserDefinedFunction)):
+        node = node.this
+    if node is None:
+        return set(), set()
+    touched = {t.name.lower() for t in node.find_all(exp.Table) if t.name}
+    if isinstance(node, exp.Index) and node.this is not None:
+        node = node.this
+    own = (
+        {node.name.lower()} - {""}
+        if isinstance(node, (exp.Table, exp.Identifier, exp.Var, exp.Column))
+        else set()
+    )
+    return own, touched | own
+
+
+def _write_node(node: exp.Expression) -> Targets:
+    acted: Set[str] = set()
+    touched: Set[str] = set()
+
+    def add(item: Optional[exp.Expression], certain: bool = True) -> None:
+        names, mentioned = _names_of(item)
+        acted.update(names if certain else ())
+        touched.update(mentioned)
+
+    if isinstance(node, (exp.Drop, exp.TruncateTable)):
+        for item in node.args.get("tables" if isinstance(node, exp.Drop) else "expressions") or []:
+            add(item)
+        add(node.args.get("cluster"), certain=False)
+    elif isinstance(node, (exp.Copy, exp.LoadData)):
+        add(node.this, certain=False)  # COPY reads or writes by direction
+    else:
+        add(node.this)
+        if isinstance(node, exp.Delete):
+            for item in node.args.get("tables") or []:
+                add(item)
+        if isinstance(node, exp.Create):
+            add(node.args.get("properties"), certain=False)
+        if isinstance(node, exp.Alter):
+            for action in node.args.get("actions") or []:
+                if isinstance(action, (exp.AlterRename, exp.SwapTable)):
+                    add(action.this)
+    return acted, touched
+
+
+#: Families where ``SELECT ... INTO name`` creates a table (elsewhere it assigns a variable).
+SELECT_INTO_CREATES = ("postgresql", "redshift", "sqlserver")
+
+
+def _targets(ast: Optional[exp.Expression], family: str) -> Optional[Targets]:
+    """What the statement writes to; ``None`` when that cannot be established.
+
+    Covers every write form sqlglot has: CREATE, ALTER (including RENAME TO and SWAP WITH), DROP and
+    TRUNCATE of several tables, INSERT (also ``INSERT ALL``), UPDATE and DELETE (also the
+    multi-table forms), MERGE, COPY, and ``SELECT ... INTO``. A statement that is neither a query
+    nor one of those (a ``Command`` fallback, ``COMMENT``, ``GRANT``) is unreadable, and so is a
+    write that yields no name. A statement nested in a ``CREATE`` (a routine body) is not run by
+    it, so it only adds to what is possibly written.
+    """
+    if ast is None or not isinstance(ast, (exp.Query,) + _WRITES):
         return None
-    names = {part.strip('"`[]').lower() for part in dml_table.split(".")} - {""}
-    writes = (exp.Create, exp.Alter, exp.Drop, exp.Insert, exp.Update, exp.Delete, exp.Merge)
-    if isinstance(ast, writes) and ast.this is not None:
-        target = ast.this
-        if isinstance(target, exp.Index):
-            names.add(target.name.lower())
-        for table in target.find_all(exp.Table):
-            names.add(table.name.lower())
-        if isinstance(target, exp.Table):
-            names.add(target.name.lower())
-    return names
+    acted: Set[str] = set()
+    touched: Set[str] = set()
+    found = False
+    for node in ast.walk():
+        if isinstance(node, _WRITES):
+            found = True
+            names, mentioned = _write_node(node)
+        elif isinstance(node, exp.Into):
+            names, mentioned = _names_of(node.this)
+            names = names if family in SELECT_INTO_CREATES else set()
+        else:
+            continue
+        acted |= names if node is ast or not isinstance(ast, exp.Create) else set()
+        touched |= mentioned
+    if (found or isinstance(ast, _WRITES)) and not touched:
+        return None
+    return acted, touched
+
+
+def _dml_names(dml_table: str) -> Set[str]:
+    return {part.strip('"`[]').lower() for part in dml_table.split(".")} - {""}
+
+
+def _write_targets(
+    ast: Optional[exp.Expression], family: str, dml_table: str
+) -> Optional[Set[str]]:
+    """Lower-cased names the statement may write to; ``None`` when they cannot be established."""
+    targets = _targets(ast, family)
+    return None if targets is None else targets[1] | _dml_names(dml_table)
+
+
+def _roles_differ(
+    ast: Optional[exp.Expression], family: str, facts: Dict[str, Any], dml_table: str
+) -> bool:
+    """An object the statement acts on is only read by the reader, or the reverse."""
+    targets = _targets(ast, family)
+    if ast is None or targets is None:
+        return False
+    acted, touched = targets
+    read = {t.name.lower() for t in ast.find_all(exp.Table)} - touched - _dml_names(dml_table)
+    roles: Dict[str, Set[str]] = {}
+    for name, _kind, role, _schema in facts.get("objects", []):
+        roles.setdefault(name.lower(), set()).add(role)
+    return any(
+        (name in acted and found == {"referenced"}) or (name in read and found & set(ACTED_ROLES))
+        for name, found in roles.items()
+    )
 
 
 def _bijection(a: Set[Identity], b: Set[Identity], pair) -> bool:
@@ -208,18 +335,33 @@ def _fold(family: str, name: str) -> Optional[str]:
     return name.lower() if direction == "lower" else name.upper()
 
 
-def _case_folded(sql: str, family: str, old: Identity, new: Identity) -> bool:
-    if old[0] != new[0] or old[1] == new[1] or old[1].lower() != new[1].lower():
-        return False
-    if not (_unquoted(sql, old[1]) and _unquoted(sql, new[1])):
-        return False
-    return _fold(family, new[1]) == old[1] or _fold(family, old[1]) == new[1]
+def _spelled_unquoted(sql: str, name: str) -> bool:
+    """Every part of ``name`` is written exactly so in the statement, and never quoted."""
+    return all(
+        re.search(r"(?<![\w$#\"`\[])" + re.escape(part) + r"(?![\w$#\"`\]])", sql)
+        and not _quoted_in(sql, part)
+        for part in name.split(".")
+    )
 
 
-def _quote_decoded(old: Identity, new: Identity) -> bool:
-    cut = len(old[1])
+def _case_folded(sql: str, family: str, opaque: bool, old: Identity, new: Identity) -> bool:
+    """The reader keeps the unquoted spelling of the statement; the extraction holds the engine's
+    folding of it. Never the reverse, and never from an opaque reader."""
     return (
-        old[0] == new[0] and new[1].startswith(old[1]) and new[1][cut : cut + 1] in ('"', "`", "]")
+        not opaque
+        and old[0] == new[0]
+        and old[1] != new[1]
+        and _fold(family, new[1]) == old[1]
+        and _spelled_unquoted(sql, new[1])
+    )
+
+
+def _quote_decoded(sql: str, old: Identity, new: Identity) -> bool:
+    cut = len(old[1])
+    quote = new[1][cut : cut + 1]
+    closing = {'"': '"', "`": "`", "]": "]"}.get(quote)
+    return (
+        old[0] == new[0] and new[1].startswith(old[1]) and closing is not None and quote * 2 in sql
     )
 
 
@@ -232,7 +374,7 @@ def _type_refined(old: Identity, new: Identity) -> bool:
 def _old_cte_alias(sql: str, family: str, missing: Set[Identity], dml_table: str) -> bool:
     """Every name the reader does not have is a CTE alias, and none is written to."""
     ast = _parse(sql, DIALECTS[family])
-    targets = _write_targets(ast, dml_table)
+    targets = _write_targets(ast, family, dml_table)
     if ast is None or targets is None:
         return False
     aliases = {cte.alias.lower() for cte in ast.find_all(exp.CTE)}
@@ -250,7 +392,7 @@ def _old_keyword(
 ) -> bool:
     """Every name the reader does not have is an unquoted word the engine reserves, none is
     written to, and the reader (not opaque) names everything else."""
-    targets = _write_targets(_parse(sql, DIALECTS[family]), dml_table)
+    targets = _write_targets(_parse(sql, DIALECTS[family]), family, dml_table)
     words = {word.upper() for word in reserved}
     return (
         targets is not None
@@ -283,9 +425,9 @@ def _mechanical(
     if missing and extra:
         if _bijection(missing, extra, _type_refined):
             return TYPE_REFINED
-        if _bijection(missing, extra, _quote_decoded):
+        if _bijection(missing, extra, lambda o, n: _quote_decoded(sql, o, n)):
             return QUOTE_DECODED
-        if _bijection(missing, extra, lambda o, n: _case_folded(sql, family, o, n)):
+        if _bijection(missing, extra, lambda o, n: _case_folded(sql, family, opaque, o, n)):
             return CASE_FOLDED
     if extra and not missing and all(new[item] == {"referenced"} for item in extra):
         return FACTS_ADDS_REFERENCED
@@ -325,6 +467,8 @@ def classify(
         "full_table": dml["full_table"],
     }:
         return DML_DIFFERS
+    if _roles_differ(_parse(sql, DIALECTS[family]), family, facts, dml["table"] if dml else ""):
+        return ROLE_DIFFERS
     before = _old_identities(path, old[path], default)
     after = _facts_identities(facts, default)
     opaque = "diagnostic" in facts or "error" in facts

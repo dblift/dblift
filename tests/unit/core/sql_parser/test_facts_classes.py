@@ -164,12 +164,22 @@ def test_old_cte_alias_accepts_an_alias_the_extraction_took_for_a_table() -> Non
 
 
 def test_old_cte_alias_never_hides_a_statement_field_that_differs() -> None:
-    """The reviewer's case: facts target the CTE instead of ``t``. Also pins the order: the
-    statement-field check precedes every mechanical class."""
+    """Facts target the CTE instead of ``t``."""
     sql = "WITH src AS (SELECT id FROM s) UPDATE t SET v = 1 FROM src WHERE t.id = src.id"
     before = old(("TABLE", "t"), ("TABLE", "src"), ("TABLE", "s"), dml=UPDATE_DML)
     new = update_facts("src", obj("src", role="altered"), obj("s", role="referenced"))
     assert cls(sql, new, before) == "dml-differs"
+
+
+def test_the_statement_fields_are_compared_before_any_mechanical_class() -> None:
+    """The facts name exactly the objects that leave only the CTE alias unmatched, so
+    ``old-cte-alias`` would explain the difference; only the wrong target tells them apart."""
+    sql = "WITH src AS (SELECT id FROM s) UPDATE t SET v = 1 FROM src WHERE t.id = src.id"
+    before = old(("TABLE", "t"), ("TABLE", "src"), ("TABLE", "s"), dml=UPDATE_DML)
+    right = update_facts("t", obj("t", role="altered"), obj("s", role="referenced"))
+    assert cls(sql, right, before) == "old-cte-alias"
+    wrong = update_facts("src", obj("t", role="altered"), obj("s", role="referenced"))
+    assert cls(sql, wrong, before) == "dml-differs"
 
 
 def test_old_cte_alias_never_accepts_a_missing_write_target() -> None:
@@ -239,6 +249,59 @@ def test_old_keyword_does_not_cover_a_schema_taken_for_the_index() -> None:
     assert cls(sql, new, before, family="mysql", reserved={"IF"}) == "disagree"
 
 
+def test_old_keyword_needs_the_reader_not_to_be_opaque() -> None:
+    opaque = facts(obj("ix", "INDEX"), obj("t", role="referenced"), diagnostic="x is opaque")
+    assert cls(IF_SQL, opaque, IF_OLD, family="mysql", reserved={"IF"}) == "opaque-reader-gap"
+
+
+#: Every statement form that writes, each with a reserved word ``b`` the extraction took for an
+#: object and the reader does not name: the word is a write target there, so it is never excused.
+WRITE_FORMS = [
+    ("postgresql", "DROP TABLE a, b", facts(obj("a", role="dropped"), op="DROP")),
+    ("postgresql", "DROP TABLE a, public.b", facts(obj("a", role="dropped"), op="DROP")),
+    ("postgresql", "TRUNCATE a, b", facts(obj("a", role="altered"), op="TRUNCATE")),
+    (
+        "mysql",
+        "DELETE a, b FROM a JOIN c ON a.i = c.i",
+        facts(obj("a", role="altered"), op="DELETE"),
+    ),
+    ("postgresql", "DELETE FROM b USING a WHERE a.i = b.i", facts(obj("a", role="referenced"))),
+    ("mysql", "UPDATE a JOIN b ON a.i = b.i SET a.v = 1", facts(obj("a", role="altered"))),
+    ("postgresql", "UPDATE b SET v = 1 FROM a", facts(obj("a", role="referenced"), op="UPDATE")),
+    ("postgresql", "INSERT INTO b SELECT * FROM a", facts(obj("a", role="referenced"))),
+    (
+        "oracle",
+        "INSERT ALL INTO a VALUES (1) INTO b VALUES (2) SELECT * FROM dual",
+        facts(obj("a", role="altered"), op="INSERT"),
+    ),
+    ("postgresql", "CREATE TABLE b AS SELECT * FROM a", facts(obj("a", role="referenced"))),
+    ("postgresql", "CREATE INDEX b ON a (c)", facts(obj("a", role="referenced"))),
+    ("postgresql", "ALTER TABLE b RENAME TO a", facts(obj("a", role="altered"), op="ALTER")),
+    ("snowflake", "ALTER TABLE a SWAP WITH b", facts(obj("a", role="altered"), op="ALTER")),
+    (
+        "postgresql",
+        "MERGE INTO b USING a ON a.i = b.i WHEN MATCHED THEN DELETE",
+        facts(obj("a", role="referenced")),
+    ),
+    ("postgresql", "COPY b FROM STDIN", facts(obj("a", role="referenced"))),
+    ("mysql", "RENAME TABLE b TO a", facts(obj("a", role="altered"), op="ALTER")),
+]
+
+
+@pytest.mark.parametrize("family,sql,new", WRITE_FORMS, ids=[f[1] for f in WRITE_FORMS])
+def test_old_keyword_never_excuses_a_name_any_write_form_targets(
+    family: str, sql: str, new: Dict[str, Any]
+) -> None:
+    before = old(("TABLE", "a"), ("TABLE", "b"))
+    assert cls(sql, new, before, family=family, reserved={"B"}) == "facts-fewer"
+
+
+def test_old_keyword_still_excuses_a_reserved_word_in_a_read_position() -> None:
+    sql = "INSERT INTO a SELECT * FROM b"
+    new = facts(obj("a", role="altered"), op="INSERT")
+    assert cls(sql, new, old(("TABLE", "a"), ("TABLE", "b")), reserved={"B"}) == "old-keyword"
+
+
 # type-refined -------------------------------------------------------------------------------
 
 
@@ -283,6 +346,11 @@ def test_quote_decoded_accepts_a_name_cut_at_an_escaped_quote() -> None:
     )
 
 
+def test_quote_decoded_needs_an_escaped_quote_in_the_statement() -> None:
+    sql = "CREATE TABLE a (x int)"
+    assert cls(sql, facts(obj('a"; x')), old(("TABLE", "a")), family="oracle") == "disagree"
+
+
 def test_a_name_that_is_merely_longer_is_not_quote_decoded() -> None:
     assert (
         cls("CREATE TABLE ab (a int)", facts(obj("ab")), old(("TABLE", "a")), family="oracle")
@@ -302,31 +370,52 @@ def test_a_name_that_is_merely_longer_is_not_quote_decoded() -> None:
 # case-folded --------------------------------------------------------------------------------
 
 
-def test_case_folded_on_an_engine_that_folds_in_the_direction_seen() -> None:
-    sql = "CREATE TABLE Users (id int)"
-    assert (
-        cls(sql, facts(obj("users")), old(("TABLE", "Users")), family="postgresql") == "case-folded"
+SPELLED = "CREATE TABLE Users (id int)"
+
+
+@pytest.mark.parametrize(
+    "family,folded",
+    [("postgresql", "users"), ("redshift", "users"), ("oracle", "USERS"), ("snowflake", "USERS")],
+)
+def test_case_folded_when_the_facts_keep_the_spelling_and_the_extraction_folded(
+    family: str, folded: str
+) -> None:
+    assert cls(SPELLED, facts(obj("Users")), old(("TABLE", folded)), family=family) == "case-folded"
+
+
+def test_case_folded_is_directional_the_facts_side_is_never_the_folded_one() -> None:
+    """Facts that fold the name themselves, or hold a spelling the statement does not, are
+    reviewed: nothing proves the reader and the extraction mean the same object."""
+    for family, folded in (("postgresql", "users"), ("oracle", "USERS")):
+        assert cls(SPELLED, facts(obj(folded)), old(("TABLE", "Users")), family=family) == (
+            "disagree"
+        )
+    assert cls(SPELLED, facts(obj("Users")), old(("TABLE", "USERS")), family="postgresql") == (
+        "disagree"
     )
+
+
+def test_case_folded_needs_the_facts_name_as_the_statement_spells_it() -> None:
+    sql = "CREATE TABLE users (id int)"
+    assert cls(sql, facts(obj("Users")), old(("TABLE", "USERS")), family="oracle") == "disagree"
     assert cls(sql, facts(obj("users")), old(("TABLE", "USERS")), family="oracle") == "case-folded"
-    assert (
-        cls(sql, facts(obj("users")), old(("TABLE", "USERS")), family="snowflake") == "case-folded"
-    )
+
+
+def test_case_folded_is_refused_when_the_reader_is_opaque() -> None:
+    new = facts(obj("Users"), diagnostic="index expression columns are opaque")
+    assert cls(SPELLED, new, old(("TABLE", "users")), family="postgresql") == "opaque-reader-gap"
 
 
 def test_a_quoted_name_is_never_case_folded() -> None:
     sql = 'CREATE TABLE "Users" (id int)'
-    assert cls(sql, facts(obj("users")), old(("TABLE", "Users")), family="postgresql") == "disagree"
-
-
-def test_case_folded_is_refused_in_the_wrong_direction() -> None:
-    sql = "CREATE TABLE Users (id int)"
-    assert cls(sql, facts(obj("users")), old(("TABLE", "Users")), family="oracle") == "disagree"
+    assert cls(sql, facts(obj("Users")), old(("TABLE", "users")), family="postgresql") == (
+        "disagree"
+    )
 
 
 @pytest.mark.parametrize("family", ["mysql", "sqlserver"])
 def test_case_only_differences_need_a_review_entry_where_folding_is_a_setting(family: str) -> None:
-    sql = "CREATE TABLE Users (id int)"
-    assert cls(sql, facts(obj("users")), old(("TABLE", "Users")), family=family) == "disagree"
+    assert cls(SPELLED, facts(obj("Users")), old(("TABLE", "users")), family=family) == "disagree"
 
 
 # facts-adds-referenced / facts-adds-acted -------------------------------------------------------
@@ -422,3 +511,81 @@ def test_the_analyzer_path_reads_schema_qualified_names() -> None:
 
 def test_every_class_is_ordered_once() -> None:
     assert len(ORDER) == len(set(ORDER))
+
+
+# roles --------------------------------------------------------------------------------------
+
+
+def test_an_object_the_statement_acts_on_cannot_be_demoted_to_a_read() -> None:
+    sql = "DROP TABLE t"
+    assert cls(sql, facts(obj("t", role="dropped"), op="DROP"), old(("TABLE", "t"))) == "same"
+    assert cls(sql, facts(obj("t", role="referenced"), op="DROP"), old(("TABLE", "t"))) == (
+        "role-differs"
+    )
+
+
+def test_a_created_object_marked_as_a_read_is_a_role_difference() -> None:
+    """``SELECT ... INTO`` creates ``t2``; the reader marks it as a read."""
+    new = facts(
+        obj("t2", role="referenced"), obj("t", role="referenced"), op="SELECT", kind="QUERY"
+    )
+    before = old(("TABLE", "t"), ("TABLE", "t2"), dml=NO_DML)
+    assert cls("SELECT * INTO t2 FROM t", new, before) == "role-differs"
+    fixed = facts(obj("t2"), obj("t", role="referenced"), op="SELECT", kind="QUERY")
+    assert cls("SELECT * INTO t2 FROM t", fixed, before) == "same"
+
+
+def test_a_role_difference_is_found_on_an_extra_object_too() -> None:
+    assert cls("DROP TABLE t", facts(obj("t", role="referenced"), op="DROP"), old()) == (
+        "role-differs"
+    )
+
+
+def test_an_object_the_statement_only_reads_cannot_be_promoted_to_an_action() -> None:
+    sql = "SELECT * FROM t"
+    new = facts(obj("t", role="created"), op="SELECT", kind="QUERY")
+    assert cls(sql, new, old(("TABLE", "t"), dml=NO_DML)) == "role-differs"
+    read = facts(obj("t", role="referenced"), op="SELECT", kind="QUERY")
+    assert cls(sql, read, old(("TABLE", "t"), dml=NO_DML)) == "same"
+
+
+def test_the_table_of_a_created_index_may_be_a_read() -> None:
+    new = facts(obj("ix", "INDEX"), obj("t", role="referenced"))
+    assert cls("CREATE INDEX ix ON t (c)", new, old(("INDEX", "ix"), ("TABLE", "t"))) == "same"
+
+
+def test_roles_are_not_judged_when_the_statement_does_not_say_what_it_writes() -> None:
+    new = facts(obj("a", role="referenced"), op="ALTER")
+    assert cls("RENAME TABLE a TO b", new, old(("TABLE", "a")), family="mysql") == "same"
+
+
+# the schema the extraction adds ------------------------------------------------------------
+
+
+def test_the_analyzer_path_drops_the_default_schema_it_prefixes() -> None:
+    sql = "CREATE TABLE x (i int)"
+    prefixed = {"hybrid": [], "analyzer": [["TABLE", "public.x"]]}
+    assert cls(sql, facts(obj("x")), prefixed, path="analyzer") == "same"
+    other = {"hybrid": [], "analyzer": [["TABLE", "other.x"]]}
+    assert cls(sql, facts(obj("x")), other, path="analyzer") == "disagree"
+
+
+def test_select_into_is_a_write_only_where_it_creates_a_table() -> None:
+    sql = "SELECT COUNT(*) INTO v FROM t"
+    new = facts(obj("v", role="referenced"), obj("t", role="referenced"), op="SELECT", kind="QUERY")
+    before = old(("TABLE", "v"), ("TABLE", "t"), dml=NO_DML)
+    assert cls(sql, new, before, family="mysql") == "same"
+    assert cls(sql, new, before, family="sqlserver") == "role-differs"
+
+
+def test_a_statement_nested_in_a_routine_body_is_not_run_by_its_creation() -> None:
+    sql = "CREATE PROCEDURE p() BEGIN DROP TABLE users; END"
+    new = facts(obj("p", "PROCEDURE"), obj("users", role="referenced"))
+    assert cls(sql, new, old(("PROCEDURE", "p"), ("TABLE", "users")), family="mysql") == "same"
+
+
+def test_a_data_modifying_cte_acts_on_its_table() -> None:
+    sql = "WITH d AS (DELETE FROM src RETURNING id) SELECT * FROM d"
+    new = facts(obj("src", role="referenced"), op="SELECT", kind="QUERY")
+    before = old(("TABLE", "d"), ("TABLE", "src"), dml=NO_DML)
+    assert cls(sql, new, before) == "role-differs"
