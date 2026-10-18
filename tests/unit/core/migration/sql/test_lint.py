@@ -303,7 +303,10 @@ def _delta_findings(tmp_path: Path, dialect: str, drop: str):
 def test_a_drop_whose_name_cannot_be_read_is_not_exempted_as_a_new_table(
     tmp_path: Path, dialect: str, blank: str
 ):
-    findings = _delta_findings(tmp_path, dialect, f"DROP TABLE t{blank};")
+    # DuckDB replaces a no-break space before a terminator and refuses the statement (the statement
+    # alone would keep it); at the end of the script the engine keeps it, as the lint reads it
+    terminator = "" if dialect == "duckdb" and blank == chr(0xA0) else ";"
+    findings = _delta_findings(tmp_path, dialect, f"DROP TABLE t{blank}{terminator}")
 
     assert [
         (f.code, "name could not be read" in f.message) for f in findings if f.code == "drop-table"
