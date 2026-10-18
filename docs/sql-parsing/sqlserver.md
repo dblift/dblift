@@ -267,9 +267,6 @@ Code in `dblift/core/sql_parser/` and `dblift/db/plugins/sqlserver/parser/`:
   ODBC sqlcmd 18.6.0002.1 (`SELECT 1 AS a\nGO\x0b\nSELECT 2 AS b` and
   the same script with `\x0c`): exit 1, Msg 102 near `GO`. The splitter's
   existing refusal is preserved.
-  A batch holding only U+001C is a record with that character as its text (not
-  an empty one); the executor skips it. How sqlcmd reads a batch holding only
-  U+001C is unmeasured.
 - `batch_commands.py`: `read_command` classifies the line whose first token is a
   command word (separator, client command, malformed separator) and the refusals
   for scripting variables and lone carriage returns, all raised by the tokenizer
@@ -304,6 +301,9 @@ a test; none is changed by the move to the engine):
 - A batch holding only a form feed, a vertical tab or a no-break space is a batch
   with code: the splitter returns an empty-text record where sqlcmd runs nothing
   (row 31, listed in `KNOWN_GAPS` of the conformance test).
+  A batch holding only U+001C is a record with that character as its text (not an
+  empty one); the executor skips it. How sqlcmd reads a batch holding only U+001C is
+  unmeasured.
 - The blank set of the line-head rules is `" \t\r"` only: a command word or `GO`
   after any other whitespace character on its line is text. Before `GO`, agreement
   with sqlcmd was measured on 2026-10-14 for NBSP, form feed, U+001C, U+0085 and
