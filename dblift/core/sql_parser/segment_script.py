@@ -80,7 +80,7 @@ class SegmentScript:
         )
 
     def _refuse_read_differently_alone(self, lo: int, text: str) -> None:
-        """Refuse a statement with a blank the engine keeps in one reading and replaces in the other."""
+        """Refuse a statement with a blank the engine keeps in one reading only."""
         pos, in_script = reads_differently_alone(
             self.source, lo, lo + len(text), self.kept, self.rules
         )

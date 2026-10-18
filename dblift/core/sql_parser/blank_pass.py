@@ -84,7 +84,7 @@ def _dollar(sql: str, pos: int, rules: BlankPassRules, stretches: List[int]) -> 
 def reads_differently_alone(
     source: str, lo: int, hi: int, kept: Sequence[int], rules: SegmentScriptRules
 ) -> Tuple[int, bool]:
-    """The first wide blank of ``source[lo:hi]`` the pass keeps in one reading and replaces in the other.
+    """The first wide blank of ``source[lo:hi]`` the pass keeps in one reading only.
 
     The statement is run on its own, so the pass reads its text afresh: an opener in a comment can
     close a stretch of an earlier statement in the script, but not alone. A blank is kept when it
@@ -106,5 +106,5 @@ def reads_differently_alone(
 
 
 def _unread(text: str, at: int) -> bool:
-    """Whether the pass leaves the blank at ``at`` alone as one of the last two bytes of ``text``."""
+    """Whether the blank at ``at`` begins one of the last two bytes of ``text``."""
     return at == len(text) - 1 and len(text[at].encode()) == 2
