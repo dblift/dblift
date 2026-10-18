@@ -15,6 +15,7 @@ import pytest
 from dblift.core.migration.commands.baseline_command import BaselineCommand
 from dblift.core.migration.commands.repair_command import RepairCommand
 from dblift.db.provider_interfaces import TransactionalProvider
+from tests.unit.core.migration.commands._plan_repairs_wiring import wire_plan_repairs
 
 REFUSAL = "Could not acquire migration lock - another migration may be running"
 
@@ -62,6 +63,7 @@ def _repair_command(calls: list, *, acquired: bool = True):
         return MagicMock(applied_objects=[], failed_objects=[])
 
     cmd.state_manager.build_state.side_effect = build_state
+    wire_plan_repairs(cmd.state_manager)
     cmd.state_manager.get_applied_migration_records.return_value = []
     return cmd
 

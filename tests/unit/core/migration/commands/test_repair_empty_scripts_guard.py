@@ -27,6 +27,10 @@ from dblift.core.migration.commands.repair_command import RepairCommand, RepairS
 from dblift.core.migration.migration import Migration, MigrationType
 from dblift.core.migration.state.migration_state import MigrationState
 from dblift.core.migration.state.migration_state_manager import MigrationStateManager
+from dblift.core.migration.state.repair_plan import (
+    _detect_checksum_drift,
+    _detect_missing_migrations,
+)
 
 
 def _make_applied(script_name: str, version: str = "1") -> SimpleNamespace:
@@ -73,7 +77,7 @@ class TestRepairEmptyScriptsGuard:
         )
 
         with pytest.raises(RepairSafetyError) as exc_info:
-            cmd._detect_missing_migrations(state, tmp_path)
+            _detect_missing_migrations(cmd.state_manager, state, tmp_path)
 
         msg = str(exc_info.value)
         assert "3" in msg, "error message should say how many migrations would be affected"
@@ -88,7 +92,7 @@ class TestRepairEmptyScriptsGuard:
         state = MigrationState(applied_objects=[])
 
         # Should not raise; returns an empty repair list.
-        repairs = cmd._detect_missing_migrations(state, tmp_path)
+        repairs = _detect_missing_migrations(cmd.state_manager, state, tmp_path)
         assert repairs == []
 
     def test_happy_path_still_flags_genuinely_missing_script(self, tmp_path: Path):
@@ -106,7 +110,7 @@ class TestRepairEmptyScriptsGuard:
             ],
         )
 
-        repairs = cmd._detect_missing_migrations(state, tmp_path)
+        repairs = _detect_missing_migrations(cmd.state_manager, state, tmp_path)
         missing_scripts: List[str] = [r["script"] for r in repairs if r["type"] == "MISSING_SCRIPT"]
         assert missing_scripts == ["V2__b.sql"]
 
@@ -123,7 +127,7 @@ class TestRepairEmptyScriptsGuard:
         )
 
         with pytest.raises(PermissionError):
-            cmd._detect_missing_migrations(state, tmp_path)
+            _detect_missing_migrations(cmd.state_manager, state, tmp_path)
 
 
 @pytest.mark.unit
@@ -145,7 +149,7 @@ class TestRepairChecksumDrift:
         ]
         state = cmd.state_manager.build_state(tmp_path)
 
-        repairs = cmd._detect_checksum_drift(state, [], tmp_path)
+        repairs = _detect_checksum_drift(cmd.state_manager, state, [], tmp_path)
 
         assert repairs == [
             {

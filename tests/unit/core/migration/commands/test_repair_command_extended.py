@@ -2,7 +2,7 @@
 
 Covers previously untested paths to push coverage toward 70%+:
   - RepairCommand.execute() — happy path, dry_run, no repairs needed, exception paths
-  - _build_migration_state — build failures propagate
+  - plan_repairs — build failures propagate
   - _detect_checksum_changes — empty / non-empty checksum_changes
   - _detect_checksum_drift — load failures propagate, all_applied_objects fallback
   - _is_failed_migration — various inputs
@@ -31,7 +31,18 @@ from dblift.core.migration.commands.repair_command import (
 )
 from dblift.core.migration.state.checksum_drift import ChecksumDrift
 from dblift.core.migration.state.migration_state import MigrationState
+from dblift.core.migration.state.repair_plan import (
+    RepairAction,
+    _detect_checksum_changes,
+    _detect_checksum_drift,
+    _is_failed_migration,
+    plan_repairs,
+)
 from dblift.db.provider_interfaces import TransactionalProvider
+from tests.unit.core.migration.commands._plan_repairs_wiring import (
+    as_actions,
+    wire_plan_repairs,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -60,6 +71,7 @@ def _make_cmd(
     _sm = script_manager or MagicMock()
     _stm = state_manager or MagicMock()
     _stm.get_grouped_migrations.side_effect = _sm.load_migration_scripts
+    wire_plan_repairs(_stm)
 
     cmd = RepairCommand(
         config=_config,
@@ -138,7 +150,7 @@ class TestCountCandidateMissing(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# _build_migration_state
+# plan_repairs reads the state
 # ---------------------------------------------------------------------------
 
 
@@ -148,17 +160,27 @@ class TestBuildMigrationState(unittest.TestCase):
         expected_state = MigrationState()
         state_manager.build_state.return_value = expected_state
 
-        cmd = _make_cmd(state_manager=state_manager)
-        result = cmd._build_migration_state(Path("/migrations"))
+        result = plan_repairs(
+            state_manager,
+            Path("/migrations"),
+            recursive=True,
+            additional_dirs=None,
+            dir_recursive_map=None,
+        ).state
         self.assertIs(result, expected_state)
 
     def test_propagates_build_failure(self):
         state_manager = MagicMock()
         state_manager.build_state.side_effect = RuntimeError("build failed")
 
-        cmd = _make_cmd(state_manager=state_manager)
         with pytest.raises(RuntimeError, match="build failed"):
-            cmd._build_migration_state(Path("/migrations"))
+            plan_repairs(
+                state_manager,
+                Path("/migrations"),
+                recursive=True,
+                additional_dirs=None,
+                dir_recursive_map=None,
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -170,7 +192,7 @@ class TestDetectChecksumChanges(unittest.TestCase):
     def test_returns_empty_when_no_checksum_changes(self):
         cmd = _make_cmd()
         state = MigrationState()
-        repairs = cmd._detect_checksum_changes(state)
+        repairs = _detect_checksum_changes(state)
         self.assertEqual(repairs, [])
 
     def test_returns_repair_entry_per_change(self):
@@ -183,7 +205,7 @@ class TestDetectChecksumChanges(unittest.TestCase):
         )
         state.checksum_changes = [change]
 
-        repairs = cmd._detect_checksum_changes(state)
+        repairs = _detect_checksum_changes(state)
         self.assertEqual(len(repairs), 1)
         self.assertEqual(repairs[0]["type"], "CHECKSUM_MISMATCH")
         self.assertEqual(repairs[0]["script"], "V1__a.sql")
@@ -203,7 +225,7 @@ class TestDetectChecksumDrift(unittest.TestCase):
             grouped_objects={}, checksum_drift=(ChecksumDrift("V1__a.sql", 100, 200, False),)
         )
 
-        repairs = cmd._detect_checksum_drift(state, [], Path("/migrations"))
+        repairs = _detect_checksum_drift(cmd.state_manager, state, [], Path("/migrations"))
         self.assertEqual(len(repairs), 1)
         self.assertEqual(repairs[0]["type"], "CHECKSUM_MISMATCH")
 
@@ -211,7 +233,7 @@ class TestDetectChecksumDrift(unittest.TestCase):
         cmd = _make_cmd()
         state = MigrationState(grouped_objects={})
 
-        repairs = cmd._detect_checksum_drift(state, [], Path("/migrations"))
+        repairs = _detect_checksum_drift(cmd.state_manager, state, [], Path("/migrations"))
         self.assertEqual(repairs, [])
 
     def test_skips_scripts_already_in_existing_repairs(self):
@@ -222,7 +244,7 @@ class TestDetectChecksumDrift(unittest.TestCase):
 
         # V1__a.sql already in existing_repairs — should not duplicate
         existing = [{"script": "V1__a.sql", "type": "CHECKSUM_MISMATCH"}]
-        repairs = cmd._detect_checksum_drift(state, existing, Path("/migrations"))
+        repairs = _detect_checksum_drift(cmd.state_manager, state, existing, Path("/migrations"))
         self.assertEqual(repairs, [])
 
     def test_checksum_drift_propagates_catalog_load_failure(self):
@@ -231,7 +253,7 @@ class TestDetectChecksumDrift(unittest.TestCase):
         sm.build_state.side_effect = OSError("permission denied")
         state = MigrationState()  # grouped_objects is None -> forces a load
         with pytest.raises(OSError, match="permission denied"):
-            cmd._detect_checksum_drift(state, [], Path("/migrations"))
+            _detect_checksum_drift(cmd.state_manager, state, [], Path("/migrations"))
 
     def test_returns_mismatch_when_db_checksum_failed_to_parse(self):
         """A stored checksum that isn't parseable as an int (e.g. a manually
@@ -246,7 +268,7 @@ class TestDetectChecksumDrift(unittest.TestCase):
             checksum_drift=(ChecksumDrift("V1__a.sql", None, 1223190650, False),),
         )
 
-        repairs = cmd._detect_checksum_drift(state, [], Path("/migrations"))
+        repairs = _detect_checksum_drift(cmd.state_manager, state, [], Path("/migrations"))
         self.assertEqual(len(repairs), 1)
         self.assertEqual(repairs[0]["type"], "CHECKSUM_MISMATCH")
         self.assertEqual(repairs[0]["script"], "V1__a.sql")
@@ -262,24 +284,24 @@ class TestDetectChecksumDrift(unittest.TestCase):
 class TestIsFailedMigration(unittest.TestCase):
     def test_returns_false_for_empty_script(self):
         cmd = _make_cmd()
-        self.assertFalse(cmd._is_failed_migration("", None))
+        self.assertFalse(_is_failed_migration("", None))
 
     def test_returns_false_when_state_is_none(self):
         cmd = _make_cmd()
-        self.assertFalse(cmd._is_failed_migration("V1__a.sql", None))
+        self.assertFalse(_is_failed_migration("V1__a.sql", None))
 
     def test_returns_true_when_in_failed_objects(self):
         cmd = _make_cmd()
         state = MigrationState()
         failed = SimpleNamespace(script_name="V1__a.sql")
         state.failed_objects = [failed]
-        self.assertTrue(cmd._is_failed_migration("V1__a.sql", state))
+        self.assertTrue(_is_failed_migration("V1__a.sql", state))
 
     def test_returns_false_when_not_in_failed_objects(self):
         cmd = _make_cmd()
         state = MigrationState()
         state.failed_objects = [SimpleNamespace(script_name="V2__b.sql")]
-        self.assertFalse(cmd._is_failed_migration("V1__a.sql", state))
+        self.assertFalse(_is_failed_migration("V1__a.sql", state))
 
 
 # ---------------------------------------------------------------------------
@@ -438,7 +460,7 @@ class TestExecuteRepairLoop(unittest.TestCase):
         result = RepairResult()
 
         with patch("dblift.core.migration.commands.repair_command.ensure_provider_connection"):
-            executed, had_error = cmd._execute_repair_loop(repairs, result)
+            executed, had_error = cmd._execute_repair_loop(as_actions(repairs), result)
 
         self.assertFalse(had_error)
         self.assertEqual(executed, 1)
@@ -450,7 +472,7 @@ class TestExecuteRepairLoop(unittest.TestCase):
         result = RepairResult()
 
         with patch("dblift.core.migration.commands.repair_command.ensure_provider_connection"):
-            executed, had_error = cmd._execute_repair_loop(repairs, result)
+            executed, had_error = cmd._execute_repair_loop(as_actions(repairs), result)
 
         self.assertFalse(had_error)
         # repair_checksum should be called with int 200
@@ -462,7 +484,7 @@ class TestExecuteRepairLoop(unittest.TestCase):
         result = RepairResult()
 
         with patch("dblift.core.migration.commands.repair_command.ensure_provider_connection"):
-            executed, had_error = cmd._execute_repair_loop(repairs, result)
+            executed, had_error = cmd._execute_repair_loop(as_actions(repairs), result)
 
         self.assertTrue(had_error)
         self.assertIsNotNone(result.error_message)
@@ -482,7 +504,7 @@ class TestExecuteRepairLoop(unittest.TestCase):
         result = RepairResult()
 
         with patch("dblift.core.migration.commands.repair_command.ensure_provider_connection"):
-            executed, had_error = cmd._execute_repair_loop(repairs, result)
+            executed, had_error = cmd._execute_repair_loop(as_actions(repairs), result)
 
         self.assertTrue(had_error)
 
@@ -500,7 +522,7 @@ class TestExecuteRepairLoop(unittest.TestCase):
         result = RepairResult()
 
         with patch("dblift.core.migration.commands.repair_command.ensure_provider_connection"):
-            executed, had_error = cmd._execute_repair_loop(repairs, result)
+            executed, had_error = cmd._execute_repair_loop(as_actions(repairs), result)
 
         self.assertFalse(had_error)
         self.assertEqual(executed, 1)
@@ -522,7 +544,7 @@ class TestExecuteRepairLoop(unittest.TestCase):
         result = RepairResult()
 
         with patch("dblift.core.migration.commands.repair_command.ensure_provider_connection"):
-            executed, had_error = cmd._execute_repair_loop(repairs, result)
+            executed, had_error = cmd._execute_repair_loop(as_actions(repairs), result)
 
         self.assertFalse(had_error)
         self.assertEqual(executed, 1)
@@ -551,7 +573,7 @@ class TestExecuteRepairLoop(unittest.TestCase):
         result = RepairResult()
 
         with patch("dblift.core.migration.commands.repair_command.ensure_provider_connection"):
-            executed, had_error = cmd._execute_repair_loop(repairs, result)
+            executed, had_error = cmd._execute_repair_loop(as_actions(repairs), result)
 
         self.assertFalse(had_error)
         self.assertEqual(executed, 1)
@@ -580,11 +602,16 @@ class TestExecuteRepairLoop(unittest.TestCase):
         failed = SimpleNamespace(script_name="V1__a.sql")
         state.failed_objects = [failed]
 
-        repairs = [{"type": "CHECKSUM_MISMATCH", "script": "V1__a.sql", "new_checksum": 200}]
+        # The plan routes a checksum repair on a failed row to a removal.
+        action = RepairAction(
+            kind="FAILED_MIGRATION",
+            script="V1__a.sql",
+            details={"type": "CHECKSUM_MISMATCH", "script": "V1__a.sql", "new_checksum": 200},
+        )
         result = RepairResult()
 
         with patch("dblift.core.migration.commands.repair_command.ensure_provider_connection"):
-            executed, had_error = cmd._execute_repair_loop(repairs, result, migration_state=state)
+            executed, had_error = cmd._execute_repair_loop([action], result, migration_state=state)
 
         self.assertFalse(had_error)
         # repair_checksum should NOT be called
@@ -611,7 +638,7 @@ class TestExecuteRepairLoop(unittest.TestCase):
         result = RepairResult()
 
         with patch("dblift.core.migration.commands.repair_command.ensure_provider_connection"):
-            executed, had_error = cmd._execute_repair_loop(repairs, result)
+            executed, had_error = cmd._execute_repair_loop(as_actions(repairs), result)
 
         self.assertTrue(had_error)
         provider.rollback_transaction.assert_called()
@@ -637,7 +664,7 @@ class TestExecuteRepairLoop(unittest.TestCase):
         result = RepairResult()
 
         with patch("dblift.core.migration.commands.repair_command.ensure_provider_connection"):
-            executed, had_error = cmd._execute_repair_loop(repairs, result)
+            executed, had_error = cmd._execute_repair_loop(as_actions(repairs), result)
 
         self.assertTrue(had_error)
         provider.rollback_transaction.assert_called()
@@ -673,7 +700,7 @@ class TestValidatePostRepairState(unittest.TestCase):
         result = RepairResult()
         had_error = cmd._validate_post_repair_state(
             migration_state=MigrationState(),
-            repairs_needed=[{"script": "V1__a.sql", "type": "CHECKSUM_MISMATCH"}],
+            actions=as_actions([{"script": "V1__a.sql", "type": "CHECKSUM_MISMATCH"}]),
             scripts_dir=Path("/migrations"),
             recursive=True,
             additional_dirs=None,
@@ -693,7 +720,7 @@ class TestValidatePostRepairState(unittest.TestCase):
         result = RepairResult()
         had_error = cmd._validate_post_repair_state(
             migration_state=MigrationState(),
-            repairs_needed=[{"script": "V1__a.sql", "type": "CHECKSUM_MISMATCH"}],
+            actions=as_actions([{"script": "V1__a.sql", "type": "CHECKSUM_MISMATCH"}]),
             scripts_dir=Path("/migrations"),
             recursive=True,
             additional_dirs=None,
@@ -712,7 +739,7 @@ class TestValidatePostRepairState(unittest.TestCase):
         # Should not raise
         had_error = cmd._validate_post_repair_state(
             migration_state=MigrationState(),
-            repairs_needed=[{"script": "V1__a.sql"}],
+            actions=as_actions([{"script": "V1__a.sql", "type": "CHECKSUM_MISMATCH"}]),
             scripts_dir=Path("/migrations"),
             recursive=True,
             additional_dirs=None,
@@ -879,6 +906,34 @@ class TestRepairCommandExecute(unittest.TestCase):
         self.assertEqual(result.checksums_fixed, 0)
         cmd.history_manager.delete_failed_migration_entry.assert_not_called()
 
+    def test_real_run_deletes_a_failed_row_once_instead_of_realigning_it(self):
+        """The loop executes the plan: one removal, no checksum update."""
+        cmd = self._make_execute_cmd()
+        state = MigrationState()
+        state.checksum_changes = [
+            SimpleNamespace(script_name="R__x.sql", previous_checksum=1, current_checksum=2)
+        ]
+        state.failed_objects = [
+            SimpleNamespace(script_name="R__x.sql", version=None, description="")
+        ]
+        # Planning, the drift pass on a bare state, then the post-repair check.
+        cmd.state_manager.build_state.side_effect = [state, MigrationState(), MigrationState()]
+        cmd.history_manager.delete_failed_migration_entry.return_value = True
+
+        with patch.object(cmd, "_populate_database_info"):
+            with patch.object(cmd, "_log_command_header_update"):
+                with patch.object(cmd, "_log_command_completion"):
+                    with patch(
+                        "dblift.core.migration.commands.repair_command.ensure_provider_connection"
+                    ):
+                        result = cmd.execute(Path("/migrations"))
+
+        self.assertTrue(result.success, result.error_message)
+        self.assertEqual([m.script for m in result.removed_migrations], ["R__x.sql"])
+        self.assertEqual(result.aligned_migrations, [])
+        cmd.history_manager.delete_failed_migration_entry.assert_called_once_with("R__x.sql")
+        cmd.history_manager.repair_checksum.assert_not_called()
+
     def test_history_table_failure_raises_preflight_error(self):
         cmd = self._make_execute_cmd()
         cmd.history_manager.create_schema_and_history_table.side_effect = RuntimeError("no DB")
@@ -895,7 +950,7 @@ class TestRepairCommandExecute(unittest.TestCase):
         cmd = self._make_execute_cmd()
 
         with patch.object(cmd, "_populate_database_info"):
-            with patch.object(cmd, "_build_migration_state", side_effect=RuntimeError("no DB")):
+            with patch.object(cmd.state_manager, "plan_repairs", side_effect=RuntimeError("no DB")):
                 with patch.object(cmd, "_log_command_completion"):
                     result = cmd.execute(Path("/migrations"))
 

@@ -20,6 +20,7 @@ from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.db.base_quirks import BaseQuirks
 from dblift.db.provider_interfaces import DroppableObject, TransactionalProvider
 from tests.unit.core.migration.commands._plan_migrate_wiring import wire_plan_migrate
+from tests.unit.core.migration.commands._plan_repairs_wiring import as_actions
 
 
 class NonTransactionalProvider:
@@ -162,7 +163,8 @@ def test_repair_records_delete_marker_without_transaction_methods():
     cmd = command(RepairCommand, provider)
     result = RepairResult()
     count, failed = cmd._execute_repair_loop(
-        [{"type": "MISSING_SCRIPT", "script": "V1__items.sql", "version": "1"}], result
+        as_actions([{"type": "MISSING_SCRIPT", "script": "V1__items.sql", "version": "1"}]),
+        result,
     )
     assert (count, failed) == (1, False)
     assert provider.records[0]["type"] == "DELETE"

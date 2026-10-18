@@ -16,6 +16,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from dblift.core.migration.commands.base_command import BaseCommand, PreflightConnectionError
+from tests.unit.core.migration.commands._plan_repairs_wiring import wire_plan_repairs
 
 
 def _make_command_stub() -> BaseCommand:
@@ -307,6 +308,7 @@ def _repair_case(fail_body: bool):
     from dblift.core.migration.state.migration_state import MigrationState
 
     command = _build_command(RepairCommand)
+    wire_plan_repairs(command.state_manager)
     command.state_manager.build_state.return_value = MigrationState()
     command.state_manager.get_grouped_migrations.return_value = {}
     if fail_body:
@@ -362,7 +364,7 @@ def test_repair_safety_error_has_no_prefix():
     from dblift.core.migration.commands.repair_command import RepairSafetyError
 
     command, run, _name = _repair_case(fail_body=False)
-    command._detect_missing_migrations = MagicMock(side_effect=RepairSafetyError("refusing"))
+    command.state_manager.plan_repairs = MagicMock(side_effect=RepairSafetyError("refusing"))
 
     result = run()
 
