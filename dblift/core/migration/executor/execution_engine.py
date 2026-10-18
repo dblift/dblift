@@ -41,7 +41,6 @@ from dblift.core.migration.sql.execution_statement import (
     neutralise_transaction_statements,
 )
 from dblift.core.migration.sql.migration_sql_parser import (
-    EMPTY_STATEMENT_BLANKS,
     parse_migration_sql,
     resolve_migration_sql_dialect,
 )
@@ -220,13 +219,14 @@ class ExecutionEngine:
         """Attach transaction metadata to executable SQL statements."""
         dialect = self._probe_dialect_key() or getattr(self.sql_analyzer, "dialect", "") or ""
         quirks = ProviderRegistry.get_quirks(dialect)
+        blanks = quirks.empty_statement_blanks()
         execution_statements: List[ExecutionStatement] = []
         for statement in statements:
-            stripped = statement.strip(EMPTY_STATEMENT_BLANKS)
+            stripped = statement.strip(blanks)
             if (
                 not stripped
                 or quirks.is_batch_separator(stripped)
-                or self._is_comment_only_statement(stripped)
+                or self._is_comment_only_statement(stripped, blanks=blanks)
             ):
                 continue
             statement_type = self.sql_analyzer.get_statement_type(statement)
@@ -254,16 +254,17 @@ class ExecutionEngine:
 
         dialect = self._probe_dialect_key() or getattr(self.sql_analyzer, "dialect", "") or ""
         quirks = ProviderRegistry.get_quirks(dialect)
+        blanks = quirks.empty_statement_blanks()
         is_oracle_sqlplus = self._current_sqlplus_ctx is not None
         executable: List[str] = []
         execution_statements: List[ExecutionStatement] = []
         for statement in statements:
-            stripped = statement.strip(EMPTY_STATEMENT_BLANKS)
+            stripped = statement.strip(blanks)
             if not stripped:
                 continue
             if quirks.is_batch_separator(stripped):
                 continue
-            if self._is_comment_only_statement(stripped):
+            if self._is_comment_only_statement(stripped, blanks=blanks):
                 continue
             if is_oracle_sqlplus and quirks.parse_error_policy_directive(stripped) is not None:
                 continue
@@ -387,7 +388,7 @@ class ExecutionEngine:
                 )
             except Exception as exc:
                 raise UnsafeStatementSplitError(f"statement splitter failed: {exc}") from exc
-        statements = parse_migration_sql(analyzer, content, self.log)
+        statements = parse_migration_sql(analyzer, content, self.log, dialect=dialect_key)
         return neutralise_transaction_statements(
             statements,
             dialect=dialect_key,
@@ -582,6 +583,7 @@ class ExecutionEngine:
         ctx = self._current_sqlplus_ctx
         dialect = self._probe_dialect_key() or getattr(self.sql_analyzer, "dialect", "") or ""
         quirks = ProviderRegistry.get_quirks(dialect)
+        blanks = quirks.empty_statement_blanks()
         _session_output_conn = getattr(self.provider, "connection", None)
         _session_output_active = False
         if (
@@ -607,14 +609,14 @@ class ExecutionEngine:
                 f"Executing statement {i+1}/{len(statements)} from {migration.script_name}"
             )
 
-            stripped_stmt = statement.strip(EMPTY_STATEMENT_BLANKS)
+            stripped_stmt = statement.strip(blanks)
             # Skip empty statements
             if not stripped_stmt:
                 continue
             # Dialect-specific batch separator (T-SQL ``GO``); not executable by the native driver
             if quirks.is_batch_separator(stripped_stmt):
                 continue
-            if self._is_comment_only_statement(stripped_stmt):
+            if self._is_comment_only_statement(stripped_stmt, blanks=blanks):
                 continue
             # Positional error-handling directive (Oracle WHENEVER SQLERROR) — update
             # policy positionally, do not send to the provider. Gated on the script context
@@ -1144,15 +1146,16 @@ class ExecutionEngine:
 
         dialect = self._probe_dialect_key() or getattr(self.sql_analyzer, "dialect", "") or ""
         quirks = ProviderRegistry.get_quirks(dialect)
+        blanks = quirks.empty_statement_blanks()
 
         # Execute SQL statements in the callback
         try:
             for statement in sql_statements:
-                stripped = statement.strip(EMPTY_STATEMENT_BLANKS)
+                stripped = statement.strip(blanks)
                 if (
                     not stripped
                     or quirks.is_batch_separator(stripped)
-                    or self._is_comment_only_statement(stripped)
+                    or self._is_comment_only_statement(stripped, blanks=blanks)
                 ):
                     continue
                 if (

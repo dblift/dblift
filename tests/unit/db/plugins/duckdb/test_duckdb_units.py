@@ -243,3 +243,11 @@ class TestProviderHelpers:
 
     def test_get_schema_qualified_name(self, provider):
         assert provider.get_schema_qualified_name("main", "t") == '"main"."t"'
+
+
+@pytest.mark.parametrize("sql", ["\x0b", " ", "\x85"])
+def test_a_statement_of_white_space_alone_is_not_rewritten_with_returning(sql):
+    from dblift.db.plugins.duckdb.provider import DuckDBProvider
+
+    provider = object.__new__(DuckDBProvider)
+    assert provider._try_dml_rowcount_via_returning(sql) is None

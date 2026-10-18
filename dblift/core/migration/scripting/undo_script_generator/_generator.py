@@ -206,6 +206,7 @@ class UndoScriptGenerator(_UndoReversersMixin, _UndoExtractorsMixin):
                 migration.content,
                 self.logger or DbliftLogger(),
                 for_analysis=True,
+                dialect=self.dialect,
             )
             undo_statements = []
             sources = self.parser.statement_sources(migration.content, statements)
