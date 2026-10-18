@@ -253,3 +253,48 @@ def test_client_validate_returns_failed_result_for_unreadable_history(client, tm
         result = client.validate()
     assert not result.success
     assert "could not read migration history" in result.error_message
+
+
+def test_snapshot_and_state_carry_repeatable_runs(client, tmp_path):
+    (tmp_path / "R__view.sql").write_text("SELECT 1;")
+    manager = client.executor.state_manager
+
+    before = manager.build_validation_snapshot(tmp_path, "validate")
+    assert before.repeatable_runs["R__view.sql"].status.value == "NEW"
+    assert manager.build_state(tmp_path).repeatable_runs["R__view.sql"].status.value == "NEW"
+
+    assert client.migrate().success
+    after = manager.build_validation_snapshot(tmp_path, "validate")
+    assert after.repeatable_runs["R__view.sql"].status.value == "UNCHANGED"
+    assert manager.build_state(tmp_path).repeatable_runs["R__view.sql"].status.value == "UNCHANGED"
+
+
+def _edited_v1(tmp_path):
+    (tmp_path / "V1__init.sql").write_text("SELECT 1;")
+    (tmp_path / "V2__more.sql").write_text("SELECT 2;")
+
+
+def test_build_state_reports_drift(client, tmp_path):
+    _edited_v1(tmp_path)
+    assert client.migrate().success
+    manager = client.executor.state_manager
+    assert manager.build_state(tmp_path).checksum_drift == ()
+    (tmp_path / "V1__init.sql").write_text("SELECT 1; -- edited")
+    state = manager.build_state(tmp_path)
+    assert [d.script_name for d in state.checksum_drift] == ["V1__init.sql"]
+    assert not state.checksum_drift[0].repeatable
+    assert state.copy().checksum_drift == state.checksum_drift
+    assert manager.build_state(None).checksum_drift == ()
+
+
+def test_snapshot_reports_drift(client, tmp_path):
+    _edited_v1(tmp_path)
+    assert client.migrate().success
+    manager = client.executor.state_manager
+    assert manager.build_validation_snapshot(tmp_path, "validate").checksum_drift == ()
+    (tmp_path / "V1__init.sql").write_text("SELECT 1; -- edited")
+    snapshot = manager.build_validation_snapshot(tmp_path, "validate")
+    assert [d.script_name for d in snapshot.checksum_drift] == ["V1__init.sql"]
+    # A script outside the version scope is not reported.
+    scoped = manager.build_validation_snapshot(tmp_path, "validate", versions=["2"])
+    assert scoped.checksum_drift == ()

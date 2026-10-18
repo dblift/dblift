@@ -14,6 +14,9 @@ from dblift.core.sql_parser import SqlParserFactory
 from dblift.db.dml_analysis import analyze_dml, statement_dml_table, updates_restore_key
 from dblift.db.plugins.duckdb.parser.parser_config import DuckDBParserConfig
 from dblift.db.plugins.duckdb.quirks import DuckDBQuirks
+from dblift.db.provider_registry import ProviderRegistry
+
+_quirks = ProviderRegistry.get_quirks
 
 CTE_UPDATE = "WITH x AS (SELECT 1) UPDATE child SET id = 2"
 COPY_FROM = "COPY child FROM 'input.csv'"
@@ -308,8 +311,8 @@ def test_opaque_metadata_preserves_high_level_classification(sql, kind):
 def test_insert_facts_keep_update_assignments_for_restore_key_checks(
     sql, columns, updates_key, dialect
 ):
-    assert analyze_dml(sql, sqlglot_dialect=dialect).updated_columns == columns
-    assert updates_restore_key(sql, ["id"], sqlglot_dialect=dialect) is updates_key
+    assert analyze_dml(sql, quirks=_quirks(dialect)).updated_columns == columns
+    assert updates_restore_key(sql, ["id"], quirks=_quirks(dialect)) is updates_key
 
 
 def test_prepared_execute_keeps_dml_classification():
@@ -325,5 +328,5 @@ def test_copy_import_columns_do_not_count_as_restore_key_updates():
     facts = DuckDBQuirks().statement_facts(sql)
     assert facts.events == frozenset({"INSERT"})
     assert facts.affected_columns == ("id",)
-    assert analyze_dml(sql, sqlglot_dialect="duckdb").updated_columns == []
-    assert not updates_restore_key(sql, ["id"], sqlglot_dialect="duckdb")
+    assert analyze_dml(sql, quirks=_quirks("duckdb")).updated_columns == []
+    assert not updates_restore_key(sql, ["id"], quirks=_quirks("duckdb"))

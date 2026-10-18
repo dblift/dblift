@@ -136,7 +136,6 @@ def test_the_parser_keeps_the_nesting_tokenizer_for_extraction():
     assert DuckDBRegexParser.tokenizer_class is DuckDBTokenizer
     assert getattr(DuckDBRegexParser(), "lexical_spec", None) is None
     assert getattr(DuckDBFactsParser(), "lexical_spec", None) is None
-    assert DUCKDB_SPEC.redaction_reads_engine is False
 
 
 def test_the_engine_is_the_one_the_quirks_name():

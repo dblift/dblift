@@ -24,7 +24,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from dblift.core.migration.commands.repair_command import RepairCommand, RepairSafetyError
-from dblift.core.migration.migration import MigrationType
+from dblift.core.migration.migration import Migration, MigrationType
 from dblift.core.migration.state.migration_state import MigrationState
 from dblift.core.migration.state.migration_state_manager import MigrationStateManager
 
@@ -130,22 +130,20 @@ class TestRepairEmptyScriptsGuard:
 class TestRepairChecksumDrift:
     def test_zero_checksum_is_compared_instead_of_skipped(self, tmp_path: Path):
         """A stored checksum of 0 is still a real value for drift detection."""
+        script = Migration(script_name="V1__a.sql", content="SELECT 1;", type=MigrationType.SQL)
         script_manager = MagicMock()
-        script_manager.load_migration_scripts.return_value = {
-            "1": [SimpleNamespace(script_name="V1__a.sql", checksum=123)]
-        }
+        script_manager.load_migration_scripts.return_value = {MigrationType.SQL: [script]}
         cmd = _make_repair_command(script_manager)
-        state = MigrationState(
-            all_applied_objects=[
-                SimpleNamespace(
-                    script_name="V1__a.sql",
-                    version="1",
-                    type=MigrationType.SQL,
-                    checksum=0,
-                    success=True,
-                )
-            ]
-        )
+        cmd.state_manager.history_manager.get_applied_migrations.return_value = [
+            SimpleNamespace(
+                script_name="V1__a.sql",
+                version="1",
+                type=MigrationType.SQL,
+                checksum=0,
+                success=True,
+            )
+        ]
+        state = cmd.state_manager.build_state(tmp_path)
 
         repairs = cmd._detect_checksum_drift(state, [], tmp_path)
 
@@ -154,6 +152,6 @@ class TestRepairChecksumDrift:
                 "type": "CHECKSUM_MISMATCH",
                 "script": "V1__a.sql",
                 "old_checksum": 0,
-                "new_checksum": 123,
+                "new_checksum": script.checksum,
             }
         ]

@@ -70,8 +70,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reads) and the `duckdb` shell's dot-command rule as specification data. The
   same scripts give the same statements, records, execution strings and
   refusals (class, line and message).
-- **Literal masking, the objects parsed out of each statement and comment stripping are unchanged for DuckDB.**
-  They keep reading DuckDB text as before.
+- **The objects parsed out of each DuckDB statement and comment stripping are unchanged.**
+  They keep reading DuckDB text as before; literal masking now reads it as the engine does (see Security).
 - **Splitting a large DuckDB script takes longer and uses more memory.** The
   time stays linear in the length of the script (4 times the input takes 4.0 to
   4.3 times the time). Measured on one machine, a 3 MiB script of `INSERT`
@@ -81,8 +81,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the machine). Large literals and comments take much longer in proportion but
   stay small in absolute terms: a 1 MiB string literal went from 0.0004 s to
   0.045 s, and a 1 MiB block comment of `;` lines from 0.006 s to 0.39 s.
+- **Statement analysis uses the database plugin's own reader.** The data-change analysis
+  entry points, the dry-run target of a DML statement and object tracking during execution
+  read statements through the plugin's own statement facts reader; a plugin that provides a
+  reader also provides its facts parser. A plugin that declares no reader no longer inherits
+  another plugin's facts through a shared sqlglot dialect name, when `quirks=` is passed.
+
+### Deprecated
+
+- **`sqlglot_dialect=` and `dialect=` in `dblift.db.dml_analysis`.** `analyze_dml`,
+  `dml_where_predicate`, `is_full_table_dml`, `statement_dml_table` and `updates_restore_key`
+  take the plugin's `quirks=`; the `sqlglot_dialect=` and `dialect=` keywords still work, warn,
+  and will be removed in the next major release. When both are passed, `quirks=` wins. A
+  plugin name passed to `sqlglot_dialect=` now resolves to that plugin instead of being read as
+  an (invalid) sqlglot name.
 
 ### Fixed
+
+- **`migrate` runs a fixed repeatable migration whose last run failed.** Before, a repeatable
+  migration that failed and was then corrected was reported as ready by `validate` but never
+  run by `migrate`, which succeeded without applying it. A failed run now counts as failed
+  whatever its recorded execution time. `validate` and `info` match a repeatable migration
+  recorded under a directory-qualified name by its file name, as `migrate` does.
+
+- **A DuckDB script where a `$` sits inside a word and a dollar tag follows a Unicode blank is split as DuckDB reads it.**
+  `SELECT 1 AS a$$` U+00A0 `$t$x; DROP TABLE t; SELECT 3;` (also U+3000 and the other 16 blanks DuckDB reads)
+  was read as one statement hiding the `DROP TABLE`, while DuckDB keeps the blank inside the word and runs the
+  three statements. A `$` inside a word now continues the word, and a dollar tag opens only after a word ends.
 
 - **A DuckDB script where a number is followed by letters and a dollar-quoted string is split as DuckDB reads it.**
   `SELECT 1a$$x; DROP TABLE t; SELECT 3 AS y$$;` (also `1_000a`, `1.5a`, `1e5a`, `0x1g` and a
@@ -132,6 +157,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   closing summary, and write the completion line to JSON and HTML log files, on every exit after
   they connect. Before, `undo` with nothing to undo or with a failing `beforeUndo` callback, and
   `clean` when preparing the target or a `beforeClean` callback failed, ended without one.
+
+### Security
+
+- **DuckDB: dollar-quoted strings are now redacted in logs and reports.** A value written as
+  `$$…$$` or `$tag$…$tag$`, an escape string with a backslash (`E'…\'…'`), and a quoted name or
+  block comment that is never closed are replaced by `'?'` in failure messages and reports
+  instead of appearing in the clear.
 
 ### Removed
 

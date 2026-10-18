@@ -1,7 +1,7 @@
 """Migration-validator entry point — verifies migration scripts against applied history."""
 
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Union
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Union
 
 from dblift.core.constants import TEST_PLACEHOLDER_TIME_MS
 from dblift.core.exceptions import UnsupportedMigrationFormatError
@@ -18,6 +18,7 @@ from dblift.core.migration.scripting.migration_script_manager import (  # noqa: 
     MigrationScriptManager,
     _last_successful_non_delete_record,
 )
+from dblift.core.migration.state.checksum_drift import ChecksumDrift
 from dblift.core.migration.state.migration_selector import (
     normalize_filter,
     passes_filters,
@@ -29,6 +30,7 @@ from dblift.core.migration.state.migration_state import (
     MigrationValidationSnapshot,
 )
 from dblift.core.migration.state.migration_state_manager import MigrationStateManager
+from dblift.core.migration.state.repeatable_status import RepeatableRun
 from dblift.core.migration.version_utils import compare_versions, is_migration_failure
 from dblift.db.base_quirks import BaseQuirks
 
@@ -199,10 +201,12 @@ class MigrationValidator:
         history_table_exists: bool,
         command: str,
         strict_mode: bool,
+        repeatable_runs: Optional[Mapping[str, RepeatableRun]] = None,
+        checksum_drift: Optional[Sequence[ChecksumDrift]] = None,
     ) -> ValidationResult:
         """Run the common checks over already prepared catalog and history inputs."""
         self._check_repeatable_migrations(
-            valid_scripts, repeatable_history, validation_result, command
+            valid_scripts, repeatable_history, validation_result, command, runs=repeatable_runs
         )
 
         if not self._validate_duplicate_repeatable_names(valid_scripts, validation_result, issues):
@@ -244,6 +248,7 @@ class MigrationValidator:
                 issues,
                 strict_mode,
                 all_valid_scripts,
+                checksum_drift,
             )
             self._validate_reappeared_migrations(
                 valid_scripts, applied_migrations, validation_result, issues
@@ -305,6 +310,8 @@ class MigrationValidator:
                 history_table_exists=snapshot.history_table_exists,
                 command=command,
                 strict_mode=snapshot.strict_mode,
+                repeatable_runs=snapshot.repeatable_runs,
+                checksum_drift=snapshot.checksum_drift,
             )
         except Exception as error:
             result.success = False
@@ -498,6 +505,7 @@ class MigrationValidator:
         issues: List[str],
         strict_mode: bool = False,
         all_scripts: Optional[List[Migration]] = None,
+        drift: Optional[Sequence[ChecksumDrift]] = None,
     ) -> None:
         """Delegate to :func:`dblift.core.sql_validator._checksum_validator.validate_checksums`.
 
@@ -506,7 +514,7 @@ class MigrationValidator:
         """
         from dblift.core.sql_validator._checksum_validator import validate_checksums as _impl
 
-        _impl(self, scripts, applied_migrations, result, issues, strict_mode, all_scripts)
+        _impl(self, scripts, applied_migrations, result, issues, strict_mode, all_scripts, drift)
 
     def _check_repeatable_migrations(
         self,
@@ -514,6 +522,7 @@ class MigrationValidator:
         applied_migrations: List[Migration],
         result: ValidationResult,
         command: str = "migrate",
+        runs: Optional[Mapping[str, RepeatableRun]] = None,
     ) -> None:
         """Delegate to
         :func:`dblift.core.sql_validator._checksum_validator.check_repeatable_migrations`.
@@ -522,7 +531,7 @@ class MigrationValidator:
             check_repeatable_migrations as _impl,
         )
 
-        _impl(self, scripts, applied_migrations, result, command)
+        _impl(self, scripts, applied_migrations, result, command, runs)
 
     def _validate_strict_mode_rules(
         self,

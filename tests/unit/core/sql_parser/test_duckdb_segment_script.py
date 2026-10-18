@@ -426,9 +426,11 @@ CASES = [
     ),
 ]
 IDS = [case[0] for case in CASES]
-KNOWN_GAPS = frozenset({"74", "75"})  # the splitter differs from DuckDB there (see the spec)
+KNOWN_GAPS = frozenset(
+    {"74", "75", "85", "86", "87", "88", "89"}
+)  # the splitter differs from DuckDB there (see the spec)
 # Rows about a statement edge that fail today; the same ids are in test_duckdb_spec_conformance.RED_ROWS.
-RED_ROWS = frozenset({"78", "78b", "78e", "78f", "78g", "78h"})
+RED_ROWS = frozenset({"90", "90b", "90e", "90f", "90g", "90h"})
 
 
 def outcome(call, script):
@@ -558,3 +560,52 @@ def test_a_name_after_a_dollar_may_open_an_escape_string_as_the_driver_reads_it(
     with pytest.raises(duckdb.ParserException, match=rf"at or near \"{letter}'a"):
         duckdb.extract_statements(script)
     assert ENGINE.split_statements(script) == [script.rstrip(";")]
+
+
+WORD_BLANKS = [chr(0xA0), chr(0x2003), chr(0x200B), chr(0x3000), chr(0xFEFF)]
+
+
+@pytest.mark.parametrize("blank", WORD_BLANKS)
+@pytest.mark.parametrize(
+    "head",
+    ["a$$", "a$", "a$b", f"{chr(0xE9)}$", "_a$$"],
+)
+def test_a_dollar_tag_after_a_blank_inside_a_word_is_cut_where_the_driver_cuts(head, blank):
+    import duckdb
+
+    script = f"SELECT 1 AS {head}{blank}$t$x; DROP TABLE t; SELECT 3;"
+    theirs = [q.query for q in duckdb.extract_statements(script)]
+    assert len(theirs) == 3
+    assert [t.strip() for t in ENGINE.split_statements(script)] == [
+        t.strip().rstrip(";") for t in theirs
+    ]
+
+
+def test_an_escape_letter_after_a_blank_inside_a_word_is_cut_where_the_driver_cuts():
+    import duckdb
+
+    script = f"SELECT a${NBSP}E'x\\'; DROP TABLE t; SELECT 'y';"
+    theirs = [q.query for q in duckdb.extract_statements(script)]
+    assert len(theirs) == 3
+    assert [t.strip() for t in ENGINE.split_statements(script)] == [
+        t.strip().rstrip(";") for t in theirs
+    ]
+
+
+@pytest.mark.parametrize("gap", [" ", "\n", NBSP])
+def test_a_dollar_tag_that_the_driver_reads_as_a_string_stays_one_statement(gap):
+    import duckdb
+
+    script = f"SELECT 1 AS a{gap}$$t$x; DROP TABLE t; SELECT 3;"
+    with pytest.raises(duckdb.ParserException, match="unterminated dollar-quoted"):
+        duckdb.extract_statements(script)
+    assert ENGINE.split_statements(script) == [script]
+
+
+def test_a_dollar_followed_by_a_digit_leaves_the_blank_after_it_a_blank():
+    import duckdb
+
+    script = f"SELECT 1 AS a$1{NBSP}$t$x; DROP TABLE t; SELECT 3;"
+    with pytest.raises(duckdb.ParserException, match="unterminated dollar-quoted"):
+        duckdb.extract_statements(script)
+    assert ENGINE.split_statements(script) == [script]

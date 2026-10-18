@@ -14,6 +14,9 @@ from dblift.core.sql_parser.statement_facts import SqlglotStatementFactsReader
 from dblift.db.dml_analysis import analyze_dml, is_full_table_dml, statement_dml_table
 from dblift.db.plugins.sqlite.parser.lexical_spec import SQLITE_SPEC
 from dblift.db.plugins.sqlite.parser.sqlite_facts_parser import SQLiteFactsParser
+from dblift.db.provider_registry import ProviderRegistry
+
+_quirks = ProviderRegistry.get_quirks
 
 READER = SqlglotStatementFactsReader("sqlite", SQLITE_SPEC)
 PARSER = SQLiteFactsParser()
@@ -305,9 +308,9 @@ def test_cte_write_script_analysis_reports_the_write_operation(sql, operation):
 
 @pytest.mark.parametrize("sql, operation", CTE_WRITES)
 def test_cte_write_dml_analysis_reports_the_write_target(sql, operation):
-    mutation = analyze_dml(sql, sqlglot_dialect="sqlite")
+    mutation = analyze_dml(sql, quirks=_quirks("sqlite"))
 
     assert mutation.table == "t"
     assert mutation.events == {operation}
     assert statement_dml_table(sql, "sqlite") == "t"
-    assert is_full_table_dml(sql, sqlglot_dialect="sqlite") is False
+    assert is_full_table_dml(sql, quirks=_quirks("sqlite")) is False

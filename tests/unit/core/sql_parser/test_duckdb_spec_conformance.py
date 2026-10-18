@@ -17,17 +17,17 @@ from tests.support.splitter_spec.splitting import split_script
 SPEC_DIR = Path(__file__).resolve().parents[4] / "docs" / "sql-parsing"
 ROWS = [row for row in load_conformance_rows(SPEC_DIR) if row.dialect == "duckdb"]
 
-KNOWN_GAPS: frozenset[str] = frozenset({"74", "75"})
+KNOWN_GAPS: frozenset[str] = frozenset({"74", "75", "85", "86", "87", "88", "89"})
 
 #: Rows that fail today for the reason given: they fail strictly, and the change that fixes a row
 #: removes its id (a row that starts to pass under a strict xfail fails loudly).
 RED_ROWS: dict[str, str] = {
-    "78": "a no-break space before the terminator is kept, the shell reads it as a blank",
-    "78b": "a trailing ideographic space is kept, the engine reads it as a blank",
-    "78e": "a no-break space followed by a blank line is kept, it is a blank to the engine",
-    "78f": "a no-break space after a space at the end of the script is kept",
-    "78g": "two trailing no-break spaces are kept",
-    "78h": "a trailing vertical tab is kept, the shell drops it before it sends the statement",
+    "90": "a no-break space before the terminator is kept, the shell reads it as a blank",
+    "90b": "a trailing ideographic space is kept, the engine reads it as a blank",
+    "90e": "a no-break space followed by a blank line is kept, it is a blank to the engine",
+    "90f": "a no-break space after a space at the end of the script is kept",
+    "90g": "two trailing no-break spaces are kept",
+    "90h": "a trailing vertical tab is kept, the shell drops it before it sends the statement",
 }
 
 
