@@ -10,7 +10,10 @@ The first rule that matches wins, in the order of ``ORDER``:
 4. ``role-differs`` -- a name the statement mentions carries another role in the facts than in the
    statement: created, dropped or altered (a truncated table and a DML target are altered), or only
    referenced (the table under an index, a joined table, a COPY source, a foreign key target). The
-   extraction carries no roles, so the statement itself is the reference.
+   extraction carries no roles, so the statement itself is the reference. A name is its schema and
+   its name: the same name in two schemas is two objects, each judged on its own. A rename target
+   may be created or altered (the facts have no ``renamed`` role); the body of a stored routine is
+   not run by its creation and is not judged, but the query of ``CREATE ... AS`` is.
 5. ``same`` -- identities are equal (unless the reader is opaque and both name nothing).
 6. The mechanical classes, each of which explains the whole difference by itself.
 7. The classes that need a human reason: ``opaque-reader-gap``, ``facts-fewer``,
@@ -214,7 +217,7 @@ def _names_of(node: Optional[exp.Expression]) -> Targets:
     ``acted`` holds only names certain to be created, dropped or altered; ``touched`` also holds
     every table the expression mentions (a join, the table an index is on).
     """
-    if isinstance(node, (exp.Schema, exp.UserDefinedFunction)):
+    if isinstance(node, (exp.Schema, exp.UserDefinedFunction, exp.OnProperty)):
         node = node.this
     if node is None:
         return set(), set()
@@ -286,11 +289,16 @@ def _targets(ast: Optional[exp.Expression], family: str) -> Optional[Targets]:
             names = names if family in SELECT_INTO_CREATES else set()
         else:
             continue
-        acted |= names if node is ast or not isinstance(ast, exp.Create) else set()
+        acted |= names if node is ast or not _is_routine(ast) else set()
         touched |= mentioned
     if (found or isinstance(ast, _WRITES)) and not touched:
         return None
     return acted, touched
+
+
+def _is_routine(ast: exp.Expression) -> bool:
+    """A ``CREATE`` whose body is stored, not run: only ``CREATE ... AS <query>`` runs its query."""
+    return isinstance(ast, exp.Create) and not isinstance(ast.args.get("expression"), exp.Query)
 
 
 def _dml_names(dml_table: str) -> Set[str]:
@@ -319,45 +327,76 @@ def _index_on(subject: Optional[exp.Expression]) -> Optional[exp.Expression]:
     return params.args.get("on") if params is not None else None
 
 
-def _expected_roles(ast: Optional[exp.Expression], family: str) -> Optional[Dict[str, Set[str]]]:
+RoleKey = Tuple[Optional[str], str]  # (schema, name), lower-cased, the default schema removed
+
+
+def _role_key(schema: Optional[str], name: str, family: str) -> RoleKey:
+    schema = (schema or "").lower()
+    return (None if schema in ("", (DEFAULT_SCHEMA.get(family) or "").lower()) else schema), (
+        name.lower()
+    )
+
+
+def _expected_roles(
+    ast: Optional[exp.Expression], family: str
+) -> Optional[Dict[RoleKey, Set[str]]]:
     """The roles the statement gives each name it mentions; ``None`` when it cannot be read.
 
-    A written object is created, dropped or altered (a truncated table and a DML target are
-    altered, as the reader says); every other table is only referenced, the table under an index,
-    a joined table, a COPY source and a foreign key target included. A rename target may be read
-    as created or altered. A name written only inside a routine body has no role here: creating
-    the routine does not run the body.
+    A name is a schema and a name: ``archive.orders`` and ``public.orders`` are two objects, and the
+    schema the extraction assigns to an unqualified name is removed, as for identities. A written
+    object is created, dropped or altered (a truncated table and a DML target are altered, as the
+    reader says); every other table is only referenced, the table under an index, a joined table, a
+    COPY source and a foreign key target included. A rename target may be read as created or
+    altered: the facts have no ``renamed`` role, and the reader does not emit the target today. A
+    name written only inside a routine body has no role here: creating the routine does not run it.
     """
     if ast is None or _targets(ast, family) is None:
         return None
-    roles: Dict[str, Set[str]] = {}
-    free: Set[str] = set()
+    roles: Dict[RoleKey, Set[str]] = {}
+    free: Set[RoleKey] = set()
     given: Set[int] = set()
 
-    def give(item: Optional[exp.Expression], allowed: Set[str], nested: bool = False) -> None:
+    def key_of(node: exp.Expression, schema: Optional[str] = None) -> RoleKey:
+        db = node.args.get("db") if isinstance(node, exp.Table) else None
+        return _role_key(schema or (db.name if db is not None else None), node.name, family)
+
+    def give(
+        item: Optional[exp.Expression],
+        allowed: Set[str],
+        nested: bool = False,
+        schema: Optional[str] = None,
+    ) -> None:
         node = _subject(item)
         if not isinstance(node, (exp.Table, exp.Identifier, exp.Var, exp.Column)) or not node.name:
             return
         given.add(id(node))
-        name = node.name.lower()
+        key = key_of(node, schema)
         if nested:
-            free.add(name)
+            free.add(key)
         else:
-            roles.setdefault(name, set()).update(allowed)
+            roles.setdefault(key, set()).update(allowed)
 
     for node in ast.walk():
-        nested = node is not ast and isinstance(ast, exp.Create)
+        nested = node is not ast and _is_routine(ast)
         if isinstance(node, exp.Drop):
             for item in node.args.get("tables") or node.args.get("expressions") or [node.this]:
                 give(item, {"dropped"}, nested)
+            on = node.args.get("cluster")  # DROP INDEX ix ON t
+            on = on.this if isinstance(on, exp.OnProperty) else None
+            if isinstance(on, (exp.Table, exp.Identifier)) and on.name and not nested:
+                roles.setdefault(key_of(on), set()).add("referenced")
         elif isinstance(node, exp.TruncateTable):
             for item in node.expressions:
                 give(item, {"altered"}, nested)
         elif isinstance(node, exp.Create):
             on = _index_on(node.this)
-            give(node.this.args.get("table") if on is not None else node.this, {"created"}, nested)
-            if on is not None and on.name and not nested:
-                roles.setdefault(on.name.lower(), set()).add("referenced")
+            if on is None:
+                give(node.this, {"created"}, nested)
+            else:  # sqlglot reads the schema as the index and the index as the table
+                index = node.this
+                give(index.args.get("table"), {"created"}, nested, schema=index.this.name)
+                if on.name and not nested:
+                    roles.setdefault(key_of(on), set()).add("referenced")
         elif isinstance(node, exp.Alter):
             give(node.this, {"altered"}, nested)
             for action in node.args.get("actions") or []:
@@ -376,8 +415,8 @@ def _expected_roles(ast: Optional[exp.Expression], family: str) -> Optional[Dict
             give(node.this, {"created"}, nested or family not in SELECT_INTO_CREATES)
     for table in ast.find_all(exp.Table):
         if table.name and id(table) not in given:
-            roles.setdefault(table.name.lower(), set()).add("referenced")
-    return {name: allowed for name, allowed in roles.items() if name not in free}
+            roles.setdefault(key_of(table), set()).add("referenced")
+    return {key: allowed for key, allowed in roles.items() if key not in free}
 
 
 def _roles_differ(ast: Optional[exp.Expression], family: str, facts: Dict[str, Any]) -> bool:
@@ -389,13 +428,13 @@ def _roles_differ(ast: Optional[exp.Expression], family: str, facts: Dict[str, A
     expected = _expected_roles(ast, family)
     if expected is None:
         return False
-    found: Dict[str, Set[str]] = {}
-    for name, _kind, role, _schema in facts.get("objects", []):
-        found.setdefault(name.lower(), set()).add(role)
+    found: Dict[RoleKey, Set[str]] = {}
+    for name, _kind, role, schema in facts.get("objects", []):
+        found.setdefault(_role_key(schema, name, family), set()).add(role)
     return any(
-        got - expected[name] or (expected[name] & set(ACTED_ROLES) and got <= {"referenced"})
-        for name, got in found.items()
-        if name in expected
+        got - expected[key] or (expected[key] & set(ACTED_ROLES) and got <= {"referenced"})
+        for key, got in found.items()
+        if key in expected
     )
 
 

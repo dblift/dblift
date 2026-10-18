@@ -630,7 +630,12 @@ ROLE_CASES = [
     (
         "mysql",
         "CREATE INDEX s.ix ON t (c)",
-        [("ix", "INDEX", "created"), ("t", "TABLE", "referenced")],
+        [("ix", "INDEX", "created", "s"), ("t", "TABLE", "referenced")],
+    ),
+    (
+        "mysql",
+        "DROP INDEX ix ON t",
+        [("ix", "INDEX", "dropped"), ("t", "TABLE", "referenced")],
     ),
     (
         "sqlserver",
@@ -683,9 +688,10 @@ ALL_ROLES = ("created", "altered", "dropped", "referenced")
 
 def _role_row(sql: str, family: str, wanted: list, wrong: Optional[Tuple[int, str]] = None) -> str:
     objects = [
-        obj(n, k, wrong[1] if wrong and wrong[0] == i else r) for i, (n, k, r) in enumerate(wanted)
+        obj(w[0], w[1], wrong[1] if wrong and wrong[0] == i else w[2], *w[3:])
+        for i, w in enumerate(wanted)
     ]
-    return cls(sql, facts(*objects), old(*[(k, n) for n, k, _ in wanted]), family=family)
+    return cls(sql, facts(*objects), old(*[(w[1], w[0], *w[3:]) for w in wanted]), family=family)
 
 
 @pytest.mark.parametrize("family,sql,wanted", ROLE_CASES, ids=[c[1] for c in ROLE_CASES])
@@ -693,11 +699,11 @@ def test_every_name_must_carry_the_role_the_statement_gives_it(
     family: str, sql: str, wanted: list
 ) -> None:
     assert _role_row(sql, family, wanted) == "same"
-    for index, (_, _, right) in enumerate(wanted):
+    for index, item in enumerate(wanted):
         for role in ALL_ROLES:
-            if role != right:
+            if role != item[2]:
                 got = _role_row(sql, family, wanted, (index, role))
-                assert got == "role-differs", (wanted[index][0], role)
+                assert got == "role-differs", (item[0], role)
 
 
 def test_a_dropped_table_marked_created_is_a_role_difference() -> None:
@@ -839,3 +845,58 @@ def test_fold_agrees_with_the_quirks_and_is_stricter_where_folding_is_a_setting(
         assert FOLD[family] == direction[quirk], family
     # MySQL folds by lower_case_table_names and SQL Server by collation: no direction is certain.
     assert "mysql" not in FOLD and "sqlserver" not in FOLD
+
+
+# the same name in two schemas ---------------------------------------------------------------
+
+
+def _copy_rows(archive: str, public: str) -> str:
+    sql = "INSERT INTO archive.orders SELECT * FROM public.orders"
+    new = facts(
+        obj("orders", role=archive, schema="archive"),
+        obj("orders", role=public, schema="public"),
+        op="INSERT",
+        kind="DML",
+    )
+    return cls(sql, new, old(("TABLE", "orders", "archive"), ("TABLE", "orders")))
+
+
+def test_a_name_in_two_schemas_keeps_the_role_of_each() -> None:
+    assert _copy_rows("altered", "referenced") == "same"
+    assert _copy_rows("referenced", "altered") == "role-differs"
+    assert _copy_rows("altered", "altered") == "role-differs"
+    assert _copy_rows("referenced", "referenced") == "role-differs"
+
+
+def test_the_default_schema_is_the_unqualified_name_when_roles_are_compared() -> None:
+    wrong = facts(obj("t", role="created", schema="public"), op="SELECT", kind="QUERY")
+    assert cls("SELECT * FROM t", wrong, old(("TABLE", "t"))) == "role-differs"
+    assert cls("SELECT * FROM public.t", wrong, old(("TABLE", "t"))) == "role-differs"
+    right = facts(obj("t", role="referenced", schema="public"), op="SELECT", kind="QUERY")
+    assert cls("SELECT * FROM t", right, old(("TABLE", "t"))) == "same"
+
+
+# the allowances -----------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("role", ["created", "altered"])
+def test_a_rename_target_may_be_read_as_created_or_altered(role: str) -> None:
+    """The facts vocabulary has no ``renamed``: the new name is created or the table altered."""
+    new = facts(obj("a", role="altered"), obj("b", role=role), op="ALTER")
+    assert cls("ALTER TABLE a RENAME TO b", new, old(("TABLE", "a"), ("TABLE", "b"))) == "same"
+
+
+@pytest.mark.parametrize("role", ["dropped", "referenced"])
+def test_a_rename_target_is_not_dropped_or_only_read(role: str) -> None:
+    new = facts(obj("a", role="altered"), obj("b", role=role), op="ALTER")
+    got = cls("ALTER TABLE a RENAME TO b", new, old(("TABLE", "a"), ("TABLE", "b")))
+    assert got == "role-differs"
+
+
+def test_a_data_modifying_cte_of_a_create_table_as_is_run_by_it() -> None:
+    sql = "CREATE TABLE t2 AS WITH d AS (DELETE FROM t RETURNING id) SELECT * FROM d"
+    read = facts(obj("t2"), obj("t", role="referenced"), diagnostic="opaque")
+    before = old(("TABLE", "t2"), ("TABLE", "t"))
+    assert cls(sql, read, before) == "role-differs"
+    done = facts(obj("t2"), obj("t", role="altered"), diagnostic="opaque")
+    assert cls(sql, done, before) != "role-differs"
