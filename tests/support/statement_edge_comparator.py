@@ -7,10 +7,11 @@ class covers, the blanks included); the cores must be equal, each new run must e
 (the leading run at its left, the trailing run at its right), and a run of the new text may not begin
 or end at an edge with a blank of the dialect. A kept run must also be the characters the script holds
 next to the core, each claimed once, in script order; a record's span must show the same runs as its text.
-Two declared exceptions, each for one dialect only: Oracle refuses a script whose statement edge holds a
+Three declared exceptions, each for one dialect only: Oracle refuses a script whose statement edge holds a
 character the driver would strip and the dialect does not (the refusal must name a character the script
 holds at the reported line and column); SQL Server now strips U+200B at a statement edge, where the old
-recording kept it.
+recording kept it; Db2 executes a statement made only of kept characters, which the old recording dropped
+(the script must hold it; the other statements are compared as usual).
 Everything else is reported with the dialect, the script id, the view and the first differing offset.
 """
 
@@ -165,13 +166,39 @@ def _check_claims(script: str, old: List[str], texts: List[str], blanks: str) ->
         ) from None
 
 
+def _kept_only(text: str, blanks: str) -> bool:
+    """Whether ``text`` is made only of white space characters the dialect keeps at an edge."""
+    return bool(text) and text.isspace() and not any(c in blanks for c in text)
+
+
+def _without_declared(
+    new: List[Any], old_count: int, script: Optional[str], blanks: str, text_of: Any
+) -> List[Any]:
+    """``new`` without the statements made only of kept characters, when that explains the count."""
+    if len(new) == old_count:
+        return new
+    kept = [item for item in new if _kept_only(text_of(item), blanks)]
+    if script is None or len(new) - len(kept) != old_count:
+        return new
+    if not all(text_of(item) in script for item in kept):
+        return new
+    return [item for item in new if item not in kept]
+
+
 def _check_statements(
-    old: Any, new: Any, blanks: str, script: Optional[str] = None, lost: str = ""
+    old: Any,
+    new: Any,
+    blanks: str,
+    script: Optional[str] = None,
+    lost: str = "",
+    count_change: bool = False,
 ) -> None:
     if not isinstance(old, list) or not isinstance(new, list):
         if old != new:
             raise _Mismatch(None, f"outcome differs: old {old!r}, new {new!r}")
         return
+    if count_change:
+        new = _without_declared(new, len(old), script, blanks, lambda text: text)
     if len(old) != len(new):
         raise _Mismatch(None, f"old has {len(old)} statements, new has {len(new)}")
     for index, (before, after) in enumerate(zip(old, new)):
@@ -263,11 +290,15 @@ def _check_record(
         )
 
 
-def _check_records(script: str, old: Any, new: Any, blanks: str, lost: str = "") -> None:
+def _check_records(
+    script: str, old: Any, new: Any, blanks: str, lost: str = "", count_change: bool = False
+) -> None:
     if not isinstance(old, list) or not isinstance(new, list):
         if old != new:
             raise _Mismatch(None, f"outcome differs: old {old!r}, new {new!r}")
         return
+    if count_change:
+        new = _without_declared(new, len(old), script, blanks, lambda record: record["text"])
     if len(old) != len(new):
         raise _Mismatch(None, f"old has {len(old)} records, new has {len(new)}")
     for index, (before, after) in enumerate(zip(old, new)):
@@ -343,6 +374,7 @@ def compare_recordings(
         )
 
     lost = _SQLSERVER_NOW_STRIPPED if dialect == "sqlserver" else ""
+    count_change = dialect == "db2"
     old_scripts, new_scripts = old["scripts"], new["scripts"]
     for script_id in sorted(set(old_scripts) | set(new_scripts)):
         if script_id not in new_scripts or script_id not in old_scripts:
@@ -358,10 +390,12 @@ def compare_recordings(
                 continue
             try:
                 if view == "records":
-                    _check_records(before["script"], before[view], after[view], text_blanks, lost)
+                    _check_records(
+                        before["script"], before[view], after[view], text_blanks, lost, count_change
+                    )
                 else:
                     _check_statements(
-                        before[view], after[view], text_blanks, before["script"], lost
+                        before[view], after[view], text_blanks, before["script"], lost, count_change
                     )
             except _Mismatch as mismatch:
                 add(script_id, view, mismatch)

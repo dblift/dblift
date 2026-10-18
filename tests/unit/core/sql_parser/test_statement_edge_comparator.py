@@ -546,3 +546,52 @@ def test_a_zero_width_space_kept_by_both_sides_is_not_a_difference_on_sql_server
     text = "DROP TABLE t" + zwsp
     rec = recording(text, [text], [text], dialect="sqlserver")
     assert compare_recordings(rec, rec, BLANKS) == []
+
+
+def test_a_statement_of_kept_characters_that_the_old_recording_dropped_is_a_declared_count_change() -> (
+    None
+):
+    script = f"VALUES 1;\n{NBSP};\nVALUES 2;"
+    old = recording(
+        script,
+        ["VALUES 1", "VALUES 2"],
+        ["VALUES 1", "VALUES 2"],
+        [record("VALUES 1", 0, 10), record("VALUES 2", 14, 22, line=3)],
+        dialect="db2",
+    )
+    new = recording(
+        script,
+        ["VALUES 1", NBSP, "VALUES 2"],
+        ["VALUES 1", NBSP, "VALUES 2"],
+        [
+            record("VALUES 1", 0, 10),
+            record(NBSP, 10, 13, line=2),
+            record("VALUES 2", 14, 22, line=3),
+        ],
+        dialect="db2",
+    )
+    assert compare_recordings(old, new, BLANKS) == []
+
+
+def test_an_added_statement_that_is_not_made_of_kept_characters_is_reported() -> None:
+    script = "VALUES 1;\nVALUES 3;\nVALUES 2;"
+    old = recording(script, ["VALUES 1", "VALUES 2"], ["VALUES 1", "VALUES 2"])
+    new = recording(
+        script, ["VALUES 1", "VALUES 3", "VALUES 2"], ["VALUES 1", "VALUES 2"], dialect="db2"
+    )
+    found = compare_recordings(old, new, BLANKS)
+    assert [(d.view, d.detail) for d in found] == [("execution", "old has 2 statements, new has 3")]
+
+
+def test_an_added_statement_of_kept_characters_that_the_script_does_not_hold_is_reported() -> None:
+    script = "VALUES 1;\nVALUES 2;"
+    old = recording(script, ["VALUES 1", "VALUES 2"], ["VALUES 1", "VALUES 2"])
+    new = recording(script, ["VALUES 1", NBSP, "VALUES 2"], ["VALUES 1", "VALUES 2"], dialect="db2")
+    assert [d.view for d in compare_recordings(old, new, BLANKS)] == ["execution"]
+
+
+def test_a_statement_of_kept_characters_is_reported_outside_db2() -> None:
+    script = f"VALUES 1;\n{NBSP};\nVALUES 2;"
+    old = recording(script, ["VALUES 1", "VALUES 2"], ["VALUES 1", "VALUES 2"])
+    new = recording(script, ["VALUES 1", NBSP, "VALUES 2"], ["VALUES 1", NBSP, "VALUES 2"])
+    assert [d.view for d in compare_recordings(old, new, BLANKS)] == ["execution", "analysis"]
