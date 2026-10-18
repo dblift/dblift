@@ -110,7 +110,8 @@ def test_parser_projection_names_nothing(parser, char):
         # the engine replaces the blank before the second `;`, the statement alone keeps it
         with pytest.raises(UnsafeStatementSplitError, match="kept when run alone"):
             parser().extract_objects(sql)
-        return
+        # the same blank inside a name, where the pass of the script and of the statement agree
+        sql = f"CREATE TABLE t{char}(id INT); DROP TABLE u{char}x; UPDATE v{char} SET a = 1"
     assert parser().extract_objects(sql) == []
 
 
