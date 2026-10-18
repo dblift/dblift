@@ -471,3 +471,20 @@ def test_a_zero_width_space_stripped_on_the_new_side_is_declared_for_sql_server(
 
 def test_a_zero_width_space_stripped_on_the_new_side_is_reported_for_another_dialect() -> None:
     assert {d.view for d in zero_width_pair("postgresql")} == {"execution", "analysis"}
+
+
+def test_a_refusal_with_the_providers_full_message_is_declared_for_oracle() -> None:
+    full = (
+        OUTSIDE_SET_REFUSAL[0],
+        "U+00A0 at line 1, column 13 is at the edge of a statement: the driver removes it before "
+        "it sends the statement; remove the character",
+    )
+    assert refused_pair("oracle", "DROP TABLE t" + NBSP, full) == []
+
+
+def test_a_zero_width_space_is_declared_when_it_is_also_one_of_the_dialects_blanks() -> None:
+    zwsp = chr(0x200B)
+    script = zwsp + "SELECT 2" + zwsp
+    old = recording(script, [script], [script], dialect="sqlserver")
+    new = recording(script, ["SELECT 2"], ["SELECT 2"], dialect="sqlserver")
+    assert compare_recordings(old, new, BLANKS + zwsp) == []

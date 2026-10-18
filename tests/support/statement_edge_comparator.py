@@ -33,8 +33,7 @@ RECORD_FIELDS = (
 )
 _WHITESPACE = frozenset(chr(i) for i in range(0x110000) if chr(i).isspace())
 _REFUSAL = re.compile(
-    r"U\+([0-9A-F]{4,6}) at line (\d+), column (\d+) is at the edge of a statement: "
-    r"the driver would strip it"
+    r"U\+([0-9A-F]{4,6}) at line (\d+), column (\d+) is at the edge of a statement: .*", re.S
 )
 _SQLSERVER_NOW_STRIPPED = "\u200b"
 _ORACLE_BLANKS = " \t\n\r\v\f\u3000"
@@ -76,8 +75,13 @@ def _check_text(old: str, new: str, blanks: str, lost: str = "") -> None:
     edge = frozenset(_WHITESPACE | set(blanks))
     if lost:
         old_lead, old_core, old_trail = _runs(old, edge)
-        if old_core.strip(lost) != old_core and not set(new).intersection(lost):
-            old = old_lead + old_core.strip(lost) + old_trail
+        new_lead, new_core, new_trail = _runs(new, edge)
+        if not (set(new_lead + new_trail + new_core[:1] + new_core[-1:]) & set(lost)):
+            old = (
+                old_lead.translate({ord(c): None for c in lost})
+                + old_core.strip(lost)
+                + old_trail.translate({ord(c): None for c in lost})
+            )
     if old == new:
         return
     old_lead, old_core, old_trail = _runs(old, edge)
