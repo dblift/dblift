@@ -426,7 +426,7 @@ class LexicalTokenizer(BaseTokenizer):
         return kept[at + 1] if at < len(kept) and kept[at] <= pos else 0
 
     def _kept_word(self, end: int) -> int:
-        """Carry a word on from ``end`` through the blanks the pass kept: for the parser they are letters."""
+        """Carry a word on from ``end`` through the blanks the pass kept, letters to the parser."""
         stretch = self._kept_until(end)
         while stretch and self.sql[end] in self._seg_wide:
             kept = self._seg_kept_part.match(self.sql, end, stretch)

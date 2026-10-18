@@ -209,19 +209,20 @@ class TerminatorScriptRules:
 
 @dataclass(frozen=True)
 class BlankPassRules:
-    """The pass an engine runs over the whole script before it parses, replacing each blank by a space.
+    """The pass an engine runs over the whole script before it parses, replacing each blank.
 
     The pass skips quoted text (a doubled quote stays inside; a backslash means nothing to it), a
     ``comment`` to the end of its line and a dollar-quoted string, and knows no other comment. A
     ``dollar`` followed by tag characters and a second ``dollar`` opens a string closed by the same
     tag, searched from the opener's last ``dollar``; the closing tag's last ``dollar`` may begin the
     next tag. A tag that is never closed ends the pass, and so does a quote that is never closed:
-    from there every blank is kept, and the parser reads it as a word character. A ``dollar`` followed
-    by tag characters but no second ``dollar`` skips that run of characters, blanks included, and
-    reads on from the character that ended it. A tag starts with a ``tag_first`` character or any
-    non-ASCII one and goes on with ``tag_rest`` characters or non-ASCII ones.
+    from there every blank is kept, and the parser reads it as a word character. A ``dollar``
+    followed by tag characters but no second ``dollar`` skips that run of characters, blanks
+    included, and reads on from the character that ended it. A tag starts with a ``tag_first``
+    character or any non-ASCII one and goes on with ``tag_rest`` characters or non-ASCII ones.
 
-    ``word_part`` is what a word may hold where blanks were replaced, ``kept_word_part`` where they were kept.
+    ``word_part`` is what a word may hold where blanks were replaced, ``kept_word_part`` where
+    they were kept.
     """
 
     quotes: str
