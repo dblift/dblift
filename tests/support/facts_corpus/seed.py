@@ -6,7 +6,7 @@ import ast
 import json
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from tests.support.facts_corpus import FAMILIES, read_rows, statement_id
 from tests.support.facts_corpus.canonical import dumps
