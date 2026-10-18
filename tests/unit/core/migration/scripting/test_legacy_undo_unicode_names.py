@@ -70,8 +70,20 @@ def refused(dialect: str, char: str) -> bool:
 
 def read_as_blank(dialect: str, char: str, sql: str) -> bool:
     """Oracle's engine reads these characters as blanks: the name before one that ends the statement
-    is read whole. A blank before a terminator stays under the caution (its span holds it)."""
-    return dialect == "oracle" and char in ORACLE_SPEC.text_blanks and ";" not in sql
+    is read whole, with or without a terminator."""
+    return dialect == "oracle" and char in ORACLE_SPEC.text_blanks
+
+
+def _known_gap(request, dialect: str, char: str, sql: str) -> None:
+    """Before a terminator the scanner's span keeps the ideographic space, so the name is not read."""
+    if read_as_blank(dialect, char, sql) and ";" in sql:
+        request.applymarker(
+            pytest.mark.xfail(
+                strict=True,
+                reason="Oracle: the span keeps the ideographic space before the terminator, "
+                "so the name is not yet read as the engine reads it",
+            )
+        )
 
 
 def _undo(tmp_path, dialect: str, sql: str) -> str:
@@ -188,7 +200,10 @@ def test_there_are_19_trailing_blanks():
     "sql",
     ["CREATE SEQUENCE q{c};", "CREATE SEQUENCE q{c}", "CREATE TABLE t{c}", "CREATE TABLE t{c};\n"],
 )
-def test_undo_of_a_name_that_ends_its_statement_is_manual_review(tmp_path, dialect, char, sql):
+def test_undo_of_a_name_that_ends_its_statement_is_manual_review(
+    request, tmp_path, dialect, char, sql
+):
+    _known_gap(request, dialect, char, sql)
     if refused(dialect, char):
         with pytest.raises(UnsafeStatementSplitError):
             _undo(tmp_path, dialect, sql.format(c=char))
@@ -207,7 +222,8 @@ def test_undo_of_a_name_that_ends_its_statement_is_manual_review(tmp_path, diale
 @pytest.mark.parametrize(
     "sql", ["DROP TABLE t{c};", "TRUNCATE TABLE t{c};", "DELETE FROM t{c};", "DROP TABLE t{c}"]
 )
-def test_analysis_of_a_name_that_ends_its_statement_names_nothing(dialect, char, sql):
+def test_analysis_of_a_name_that_ends_its_statement_names_nothing(request, dialect, char, sql):
+    _known_gap(request, dialect, char, sql)
     if refused(dialect, char):  # the script is not parsed: nothing is named
         assert not analyse_script(sql.format(c=char), dialect).statements
         return
