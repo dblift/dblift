@@ -104,6 +104,12 @@ def _explained(entry: Entry, arm: str) -> bool:
     return entry_class(entry, arm) != OPAQUE_READER_GAP or bool(str(entry.get("issue", "")).strip())
 
 
+def _malformed(entry: Entry) -> bool:
+    """``unreviewed`` is present and is not a list of arm names: a typo would explain the arm."""
+    value = entry.get("unreviewed", [])
+    return not isinstance(value, list) or not set(value) <= {"floor", "newest"}
+
+
 def _pointless(entry: Entry) -> bool:
     """An entry whose class is ``same`` on every arm explains no difference."""
     value = entry.get("class")
@@ -116,7 +122,8 @@ def check_review(
     """Rows needing an entry that has none, and entries that no longer match a row on ``arm``.
 
     An entry is stale when its row is gone, its class (for ``arm``) is not the class of the row on
-    any path it names, or it explains nothing (``same`` on every arm). ``unclassified`` and
+    any path it names, it explains nothing (``same`` on every arm), or its ``unreviewed`` is not a
+    list of ``floor`` / ``newest``. ``unclassified`` and
     ``stale`` hold ``"<id>/<path>"`` and entry keys respectively.
     """
     by_id = {row_id: classes for row_id, _, classes in results}
@@ -129,6 +136,7 @@ def check_review(
         if (
             classes is None
             or _pointless(entry)
+            or _malformed(entry)
             or any(classes.get(p) != entry_class(entry, arm) for p in paths)
         ):
             stale.append(key)
@@ -157,6 +165,8 @@ def _for_arm(
     value = entry.get("class")
     if classes is None or _pointless(entry):
         return None
+    if _malformed(entry):
+        return entry  # for a person to correct
     seen = {classes.get(p) for p in _entry_paths(key, entry)}
     current = next(iter(seen)) if len(seen) == 1 else None
     if current not in REVIEW + (SAME,):

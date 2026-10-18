@@ -926,3 +926,73 @@ def test_a_data_modifying_cte_of_a_create_table_as_is_run_by_it() -> None:
     assert cls(sql, read, before) == "role-differs"
     done = facts(obj("t2"), obj("t", role="altered"), diagnostic="opaque")
     assert cls(sql, done, before) != "role-differs"
+
+
+# a name the reader qualifies differently from the statement ------------------------------------
+
+
+def _one(family: str, sql: str, name: str, role: str, schema: Optional[str], *ids: Tuple) -> str:
+    new = facts(obj(name, role=role, schema=schema), op="DROP", kind="DDL")
+    return cls(sql, new, old(*ids), family=family)
+
+
+QUALIFIED_ROLES = [
+    # (family, sql, name, schema the reader reports, old identity, role wrong for the statement)
+    ("snowflake", "CREATE TABLE db.sch.t (id int)", "t", "db.sch", "referenced"),
+    ("snowflake", "CREATE TABLE db.sch.t (id int)", "t", "db.sch", "dropped"),
+    ("sqlserver", "DROP TABLE db.sch.t", "t", "db.sch", "referenced"),
+    ("postgresql", "DROP TABLE other.orders", "orders", None, "referenced"),
+    ("mysql", "DROP TABLE t", "t", "db", "referenced"),
+]
+
+
+@pytest.mark.parametrize(
+    "family,sql,name,schema,role",
+    QUALIFIED_ROLES,
+    ids=[f"{q[0]} {q[1]} {q[4]}" for q in QUALIFIED_ROLES],
+)
+def test_a_wrong_role_is_found_whichever_way_the_name_is_qualified(
+    family: str, sql: str, name: str, schema: Optional[str], role: str
+) -> None:
+    ident = ("TABLE", name, schema) if schema else ("TABLE", name)
+    assert _one(family, sql, name, role, schema, ident) == "role-differs"
+
+
+def test_a_three_part_name_is_keyed_by_catalog_and_schema() -> None:
+    sql = "INSERT INTO db.a.t SELECT * FROM db.b.t"
+    new = facts(
+        obj("t", role="referenced", schema="db.a"),
+        obj("t", role="altered", schema="db.b"),
+        op="INSERT",
+        kind="DML",
+    )
+    before = old(("TABLE", "t", "db.a"), ("TABLE", "t", "db.b"))
+    assert cls(sql, new, before, family="snowflake") == "role-differs"
+    right = facts(
+        obj("t", role="altered", schema="db.a"),
+        obj("t", role="referenced", schema="db.b"),
+        op="INSERT",
+        kind="DML",
+    )
+    assert cls(sql, right, before, family="snowflake") == "same"
+
+
+def test_a_bare_facts_name_is_judged_against_the_only_expected_name_of_that_spelling() -> None:
+    assert _one("postgresql", "DROP TABLE other.t", "t", "dropped", None, ("TABLE", "t")) == "same"
+
+
+def test_a_bare_facts_name_is_not_judged_when_two_expected_names_share_it() -> None:
+    sql = "INSERT INTO a.t SELECT * FROM b.t"
+    new = facts(obj("t", role="created"), op="INSERT", kind="DML")
+    got = cls(sql, new, old(("TABLE", "t", "a"), ("TABLE", "t", "b")))
+    assert got != "role-differs"  # ambiguous: not judged, the identities decide
+
+
+# a plain CREATE TABLE is read from its parse, not from its text ----------------------------------
+
+
+def test_a_comment_after_the_dot_of_a_foreign_key_target_does_not_excuse_it() -> None:
+    sql = "CREATE TABLE a (x int REFERENCES public./*c*/order (id))"
+    new = facts(obj("a"))
+    before = old(("TABLE", "a"), ("TABLE", "order", "public"))
+    assert cls(sql, new, before, reserved={"ORDER"}) == "facts-fewer"

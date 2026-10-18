@@ -457,3 +457,24 @@ def test_skeleton_flag_writes_the_empty_entries(
     assert cli.main(["diff", "postgresql", "--skeleton"]) == 0
     written = json.loads((tmp_path / "postgresql.json").read_text(encoding="utf-8"))
     assert list(written) == ["r2/analyzer"] and written["r2/analyzer"]["reason"] == ""
+
+
+@pytest.mark.parametrize("unreviewed", ["newset", "floor", ["newset"], ["floor", 1], None])
+def test_unreviewed_must_be_a_list_of_known_arms(
+    monkeypatch: pytest.MonkeyPatch, unreviewed: Any
+) -> None:
+    """A misspelt arm would leave the arm explained; a string would match by substring."""
+    results: Results = [("r", _row("s", {}, {}), {"hybrid": "disagree", "analyzer": "same"})]
+    entry = {"path": "hybrid", "class": "disagree", "reason": "ok", "unreviewed": unreviewed}
+    assert check_review(results, {"r/hybrid": entry}, "floor")["stale"] == ["r/hybrid"]
+    monkeypatch.setattr(differential, "classify_family", lambda family, arm: results)
+    monkeypatch.setattr(differential, "load_review", lambda family: {"r/hybrid": entry})
+    monkeypatch.setattr(differential, "gated_families", lambda: [])
+    assert differential.run(["f"]) == 1
+
+
+@pytest.mark.parametrize("unreviewed", [[], ["floor"], ["floor", "newest"]])
+def test_unreviewed_lists_known_arms(unreviewed: List[str]) -> None:
+    results: Results = [("r", _row("s", {}, {}), {"hybrid": "disagree", "analyzer": "same"})]
+    entry = {"path": "hybrid", "class": "disagree", "reason": "ok", "unreviewed": unreviewed}
+    assert check_review(results, {"r/hybrid": entry}, "floor")["stale"] == []

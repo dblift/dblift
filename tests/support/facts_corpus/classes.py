@@ -180,8 +180,9 @@ def _after_dot(sql: str, ast: Optional[exp.Expression], word: str) -> bool:
 
     Where the statement parses, a table of this name with a schema says so, whatever sits between
     the dot and the word (a comment), and a dot in a literal or comment says nothing. The text is
-    searched only when there is no parse or the parse holds a routine body as a string
-    (``$$ ... $$``); a dot in a literal then refuses too, and the row gets a reason.
+    searched only when there is no parse or the statement creates a procedure, function or trigger,
+    whose body the parse holds as a string (``$$ ... $$``); a dot in a literal then refuses too,
+    and the row gets a reason.
     """
     if ast is not None and not _is_routine(ast):
         return any(
@@ -283,8 +284,8 @@ def _targets(ast: Optional[exp.Expression], family: str) -> Optional[Targets]:
     TRUNCATE of several tables, INSERT (also ``INSERT ALL``), UPDATE and DELETE (also the
     multi-table forms), MERGE, COPY, and ``SELECT ... INTO``. A statement that is neither a query
     nor one of those (a ``Command`` fallback, ``COMMENT``, ``GRANT``) is unreadable, and so is a
-    write that yields no name. A statement nested in a ``CREATE`` (a routine body) is not run by
-    it, so it only adds to what is possibly written.
+    write that yields no name. A statement nested in a ``CREATE`` of a stored routine is not run
+    by it, so it only adds to what is possibly written.
     """
     if ast is None or not isinstance(ast, (exp.Query,) + _WRITES):
         return None
@@ -307,9 +308,16 @@ def _targets(ast: Optional[exp.Expression], family: str) -> Optional[Targets]:
     return acted, touched
 
 
+#: What sqlglot calls the ``kind`` of a ``CREATE`` whose body is stored, not run (``PROC`` is T-SQL).
+_ROUTINE_KINDS = frozenset({"PROCEDURE", "PROC", "FUNCTION", "TRIGGER"})
+
+
 def _is_routine(ast: exp.Expression) -> bool:
-    """A ``CREATE`` whose body is stored, not run: only ``CREATE ... AS <query>`` runs its query."""
-    return isinstance(ast, exp.Create) and not isinstance(ast.args.get("expression"), exp.Query)
+    """A ``CREATE`` of a procedure, function or trigger: its body is stored, not run.
+
+    A table, a view or ``CREATE TABLE ... AS <query>`` is read from its parse like any statement.
+    """
+    return isinstance(ast, exp.Create) and str(ast.args.get("kind") or "").upper() in _ROUTINE_KINDS
 
 
 def _dml_names(dml_table: str) -> Set[str]:
@@ -368,8 +376,11 @@ def _expected_roles(
     given: Set[int] = set()
 
     def key_of(node: exp.Expression, schema: Optional[str] = None) -> RoleKey:
-        db = node.args.get("db") if isinstance(node, exp.Table) else None
-        return _role_key(schema or (db.name if db is not None else None), node.name, family)
+        parts = (
+            [node.args.get("catalog"), node.args.get("db")] if isinstance(node, exp.Table) else []
+        )
+        written = ".".join(part.name for part in parts if part is not None)
+        return _role_key(schema or written, node.name, family)
 
     def give(
         item: Optional[exp.Expression],
@@ -434,14 +445,23 @@ def _roles_differ(ast: Optional[exp.Expression], family: str, facts: Dict[str, A
     """For a name the statement mentions, the reader's role is not the statement's.
 
     Wrong when the reader gives a role the statement does not, or only reads an object the
-    statement creates, drops or alters.
+    statement creates, drops or alters. A name is matched by schema (catalog and schema for a
+    three-part name); when only one side qualifies it, by its bare name if exactly one name of the
+    statement has that spelling. With two (``archive.orders``, ``public.orders``) the reader's bare
+    name cannot be attributed and is not judged.
     """
     expected = _expected_roles(ast, family)
     if expected is None:
         return False
+    spelled: Dict[str, List[RoleKey]] = {}
+    for key in expected:
+        spelled.setdefault(key[1], []).append(key)
     found: Dict[RoleKey, Set[str]] = {}
     for name, _kind, role, schema in facts.get("objects", []):
-        found.setdefault(_role_key(schema, name, family), set()).add(role)
+        key = _role_key(schema, name, family)
+        if key not in expected:  # qualified on one side only: the bare name, if it is unambiguous
+            key = spelled[key[1]][0] if len(spelled.get(key[1], ())) == 1 else key
+        found.setdefault(key, set()).add(role)
     return any(
         got - expected[key] or (expected[key] & set(ACTED_ROLES) and got <= {"referenced"})
         for key, got in found.items()

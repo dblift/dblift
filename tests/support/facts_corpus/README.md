@@ -116,7 +116,14 @@ family. `--report` prints without failing; `--skeleton` adds an empty entry to t
 each row that needs one, and on an entry that is stale on the running arm sets only that arm's
 class and lists the arm under `unreviewed`. The other arm's class and the reason are kept; the
 reason belonged to the class it explained, so the arm does not count as explained until a person
-has read the row for its new class and removes the arm from `unreviewed`. The list is empty until a family's differences are explained; a family
+has read the row for its new class and removes the arm from `unreviewed`. `unreviewed` is a list of
+`floor` and `newest` only; anything else (a misspelt arm, a string) is stale and fails the run.
+When the row's paths no longer share one class, or its new class here is mechanical (`case-folded`,
+`old-keyword`, ...), the skeleton drops a string-class entry, reason included, and leaves a per-arm
+entry as it is. The other arm's row then shows as unclassified until the entry is written again and
+re-reviewed; git keeps the text of a dropped reason.
+
+The list of gated families is empty until a family's differences are explained; a family
 joins it when its plugin reads statements through the reader.
 
 ## Once a family reads through the reader
