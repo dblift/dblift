@@ -31,6 +31,13 @@ MYSQL_ONLY_ROWS = frozenset({"16", "39a"})
 #: clients take the first as text and refuse the second as an argument (docs/sql-parsing/mysql.md §12).
 KNOWN_GAPS: frozenset[str] = frozenset({"83", "84"})
 
+#: Rows that fail today for the reason given: they fail strictly, and the change that fixes a row
+#: removes its id (a row that starts to pass under a strict xfail fails loudly).
+RED_ROWS: dict[str, str] = {
+    "86": "the splitter strips a no-break space before the terminator",
+    "86a": "the splitter strips a trailing line separator",
+}
+
 RUNS = (
     [pytest.param("mysql", row, id=f"mysql-{row.row_id}") for row in MYSQL_ROWS]
     + [
@@ -56,6 +63,8 @@ def test_spec_row(dialect: str, row: ConformanceRow, request: pytest.FixtureRequ
         pytest.skip("spec marks this row 'to verify': not a claim yet")
     if row.row_id in KNOWN_GAPS:
         request.applymarker(pytest.mark.xfail(strict=True, reason="listed in KNOWN_GAPS"))
+    if row.row_id in RED_ROWS:
+        request.applymarker(pytest.mark.xfail(strict=True, reason=RED_ROWS[row.row_id]))
     outcome = split_script(dialect, row.script)
     assert outcome.matches(row.expectation), (
         f"{dialect} row {row.row_id}\nscript: {row.script!r}\n"

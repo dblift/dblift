@@ -12,13 +12,18 @@ if TYPE_CHECKING:  # pragma: no cover
 ANY_ERROR = "error"
 
 
+#: The blanks every engine reads as a blank. ``str.strip()`` would also remove U+00A0 and the other
+#: Unicode spaces, which most engines read as part of a name, so a row could not tell them apart.
+BLANKS = " \t\n\r"
+
+
 def normalize(statements: Iterable[str]) -> tuple[str, ...]:
-    """Strip each statement, remove one trailing ``;``, strip again. Nothing else."""
+    """Strip each statement of ASCII blanks, remove one trailing ``;``, strip again. Nothing else."""
     out = []
     for statement in statements:
-        text = statement.strip()
+        text = statement.strip(BLANKS)
         if text.endswith(";"):
-            text = text[:-1].strip()
+            text = text[:-1].strip(BLANKS)
         out.append(text)
     return tuple(out)
 

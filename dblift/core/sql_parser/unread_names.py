@@ -75,10 +75,7 @@ def statement_sources(scanner: Any, script: str, statements: Sequence[str]) -> L
             continue
         span = None
         if record.source_start is not None and record.source_end is not None:
-            end = record.source_end
-            while end < len(script) and script[end].isspace():  # some scanners stop before them
-                end += 1
-            span = script[record.source_start : end]
+            span = script[record.source_start : record.source_end]
         texts = (
             record.analysis_statements if record.analysis_statements is not None else (record.text,)
         )

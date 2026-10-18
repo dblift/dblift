@@ -6,6 +6,7 @@ from dblift.core.sql_parser.lexical_spec import LexicalSpec
 # TEMP/TEMPORARY, TRIGGER, END. Row zero is unused.
 SQLITE_SPEC = LexicalSpec(
     name="sqlite",
+    text_blanks=" \t\n\r\f",
     client_name="sqlite3 shell",
     sqlite_shell=True,
     completion_table=(

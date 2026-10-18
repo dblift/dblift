@@ -429,6 +429,8 @@ IDS = [case[0] for case in CASES]
 KNOWN_GAPS = frozenset(
     {"74", "75", "85", "86", "87", "88", "89"}
 )  # the splitter differs from DuckDB there (see the spec)
+# Rows about a statement edge that fail today; the same ids are in test_duckdb_spec_conformance.RED_ROWS.
+RED_ROWS = frozenset({"90", "90b", "90e", "90f", "90g", "90h"})
 
 
 def outcome(call, script):
@@ -494,6 +496,10 @@ def test_comment_only_segments_are_records_only_for_analysis():
 def test_spec_row_through_the_engine(row, request):
     if row.row_id in KNOWN_GAPS:
         request.applymarker(pytest.mark.xfail(strict=True, reason="listed in KNOWN_GAPS"))
+    if row.row_id in RED_ROWS:
+        request.applymarker(
+            pytest.mark.xfail(strict=True, reason="a statement edge the engine keeps")
+        )
     if row.status == "to_verify":
         pytest.skip("spec marks this row 'to verify': not a claim yet")
     try:
@@ -509,9 +515,7 @@ def test_text_blanks_is_read():
         ("SELECT 1 AS a", 1, ";", 0, 14),
         (VT + "SELECT 2 AS y", 1, ";", 14, 29),
     ]
-    wide = LexicalEngine(
-        replace(DUCKDB_SPEC, segment_script=replace(DUCKDB_RULES, text_blanks=" \t\n\f\r" + VT))
-    )
+    wide = LexicalEngine(replace(DUCKDB_SPEC, text_blanks=" \t\n\f\r" + VT))
     assert [fields(r) for r in wide.split(script)] == [
         ("SELECT 1 AS a", 1, ";", 0, 14),
         ("SELECT 2 AS y", 1, ";", 15, 29),

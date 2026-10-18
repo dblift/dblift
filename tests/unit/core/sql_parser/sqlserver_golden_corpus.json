@@ -4608,14 +4608,14 @@
 "expected": {
 "records": [
 {
-"text": "",
+"text": "\u001c",
 "line": 1,
 "terminator": null,
 "kind": "sql",
 "multi": false,
 "repeat": 1,
 "analysis_statements": [
-""
+"\u001c"
 ],
 "source_start": 0,
 "source_end": 1
@@ -4623,23 +4623,23 @@
 ],
 "strings": [
 [
-"",
+"\u001c",
 1
 ]
 ],
 "analysis": [
-""
+"\u001c"
 ],
 "executed": [
-""
+"\u001c"
 ],
 "masking": [
 [
-"",
+"\u001c",
 ""
 ],
 [
-"",
+"\u001c",
 ""
 ]
 ]
@@ -5321,14 +5321,14 @@
 "expected": {
 "records": [
 {
-"text": "TRUNCATE TABLE t",
+"text": "\u001cTRUNCATE TABLE t",
 "line": 2,
 "terminator": "GO",
 "kind": "sql",
 "multi": false,
 "repeat": 1,
 "analysis_statements": [
-"",
+"\u001c",
 "TRUNCATE TABLE t"
 ],
 "source_start": 0,
@@ -5337,25 +5337,25 @@
 ],
 "strings": [
 [
-"TRUNCATE TABLE t",
+"\u001cTRUNCATE TABLE t",
 1
 ]
 ],
 "analysis": [
-"",
+"\u001c",
 "TRUNCATE TABLE t"
 ],
 "executed": [
-"",
+"\u001c",
 "TRUNCATE TABLE t"
 ],
 "masking": [
 [
-"TRUNCATE TABLE t",
+"\u001cTRUNCATE TABLE t",
 "TRUNCATE TABLE t"
 ],
 [
-"",
+"\u001c",
 ""
 ],
 [

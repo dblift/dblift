@@ -33,7 +33,9 @@ class LexicalEngine:
             segment_script=(
                 None
                 if self.spec.segment_script is None
-                else SegmentScript(self.spec.segment_script, script, tokenizer.origin)
+                else SegmentScript(
+                    self.spec.segment_script, script, tokenizer.origin, self.spec.text_blanks
+                )
             ),
         )
 

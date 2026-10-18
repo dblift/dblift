@@ -321,6 +321,15 @@ DuckDB specification; the shared tokenizer reads them and one core module assemb
 | 87 | `/* $$ */ SELECT 2 AS e\u00a0$t$x; DROP TABLE t; SELECT 3;` | `/* $$ */ SELECT 2 AS e\u00a0$t$x` · `DROP TABLE t` · `SELECT 3` (measured: a dollar tag with no closing tag inside a block comment stops the pass of row 85 too; known gap, unsafe direction, as row 86) |
 | 88 | `SELECT E'a\'b' AS c, 2 AS e\u00a0$t$x; DROP TABLE t; SELECT 3;` | `SELECT E'a\'b' AS c, 2 AS e\u00a0$t$x` · `DROP TABLE t` · `SELECT 3` (measured: the pass reads a backslash as an ordinary character, so the quote after it closes the string and the last quote opens one that never closes; every later blank is kept; known gap, unsafe direction, as row 86) |
 | 89 | `SELECT 1 AS a$$x$$$, 2 AS e\u00a0$t$x; DROP TABLE t; SELECT 3;` | `SELECT 1 AS a$$x$$$, 2 AS e\u00a0$t$x` · `DROP TABLE t` · `SELECT 3` (measured: the pass shares a dollar sign between a tag and its closing tag, so the last dollar sign of a closed dollar-quoted string can begin the next tag; here a second tag opens and never closes, while a letter and a comma after the closing tag start none; known gap, unsafe direction, as row 86) |
+| 90 | `DROP TABLE t\xa0;\nSELECT 1;` | `DROP TABLE t` · `SELECT 1` **exact text** (before a terminator a no-break space is a blank to DuckDB; the shell sends the terminator) |
+| 90a | `DROP TABLE t\xa0` | `DROP TABLE t\xa0` **exact text** (no terminator and the script ends in a no-break space: sent as the shell sends it; DuckDB reads a no-break space that ends the text as part of the name, and only there) |
+| 90b | `DROP TABLE t\u3000` | `DROP TABLE t` **exact text** (an ideographic space is a blank to DuckDB, at the end too) |
+| 90c | `DROP TABLE t\xa0\n` | `DROP TABLE t\xa0` **exact text** (the shell removes one final line ending, so the no-break space ends the text it sends: a name) |
+| 90d | `DROP TABLE t\xa0\x0d\n` | `DROP TABLE t\xa0` **exact text** (the same for a carriage return and a line feed) |
+| 90e | `DROP TABLE t\xa0\n\n` | `DROP TABLE t` **exact text** (only one line ending is removed: the no-break space is followed by a newline, a blank) |
+| 90f | `DROP TABLE t \xa0` | `DROP TABLE t` **exact text** (a space then a no-break space at the end of the file: the shell drops t; the driver given this text reports a parser error, and the shell is the reference) |
+| 90g | `DROP TABLE t\xa0\xa0` | `DROP TABLE t` **exact text** (two no-break spaces: the shell drops t, the driver reports a parser error) |
+| 90h | `SELECT 1\x0b` | `SELECT 1` **exact text** (the shell drops a leading or trailing vertical tab before it sends the statement, so it runs; a vertical tab in the middle of a statement is still rejected; the driver rejects the text with the tab, and the shell is the reference) |
 
 ## 11. Not handled
 

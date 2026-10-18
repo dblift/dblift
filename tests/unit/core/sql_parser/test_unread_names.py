@@ -6,6 +6,7 @@ import logging
 
 import pytest
 
+from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.sql_parser.parser_factory import SqlParserFactory
 from dblift.core.sql_parser.unread_names import names_unreadable, statement_sources
@@ -153,7 +154,7 @@ def test_a_statement_that_cannot_be_located_in_its_script_is_withheld(dialect):
     assert statement_sources(scanner, script, ["SELECT 2"]) == [None]
     assert statement_sources(scanner, script, ["SELECT 1"]) == ["SELECT 1;"]
     assert statement_sources(scanner, "SELECT 1", ["SELECT 2"]) == ["SELECT 2"]
-    assert statement_sources(scanner, "-- SELECT 1\nSELECT 1\u00a0;", ["SELECT 1"]) == [
+    assert statement_sources(scanner, "-- SELECT 1\nSELECT 1\u00a0;", ["SELECT 1\xa0"]) == [
         "SELECT 1\u00a0;"
     ]
 
@@ -164,5 +165,79 @@ def test_a_statement_that_cannot_be_located_in_its_script_is_withheld(dialect):
 )
 def test_a_name_that_ends_its_statement_is_read_with_the_blank_the_split_trimmed(dialect, sql):
     script = sql.format(c=NBSP)
+    if dialect == "oracle":  # the driver would strip it and the engine rejects it: refused
+        with pytest.raises(UnsafeStatementSplitError):
+            SqlParserFactory(dialect).extract_objects(script)
+        return
     assert SqlParserFactory(dialect).extract_objects(script) == []
     assert all(s.names_unread for s in SqlParserFactory(dialect).parse_sql(script).statements)
+
+
+# The scanner's raw span for a name that ends the script. Oracle refuses a no-break space there, so
+# its case uses an ideographic space, which it reads as a blank.
+SPAN_SCANNERS = (
+    "postgresql",
+    "redshift",
+    "cockroachdb",
+    "mysql",
+    "mariadb",
+    "db2",
+    "oracle",
+    "sqlserver",
+)
+
+
+def _ending_blank(dialect):
+    """A trailing white space character the dialect keeps in the text (a no-break space is a blank
+    to SQL Server and refused by Oracle)."""
+    return {"oracle": chr(0x3000), "sqlserver": chr(0x2029)}.get(dialect, NBSP)
+
+
+@pytest.mark.parametrize("dialect", SPAN_SCANNERS)
+def test_the_scanner_span_of_a_name_that_ends_the_script_holds_the_blank_except_for_oracle(dialect):
+    """Green pin: only Oracle's last record ends at its last token."""
+    script = f"DROP TABLE t{_ending_blank(dialect)}"
+    records = SqlParserFactory(dialect).get_parser().regex_parser.split(script)
+    assert len(records) == 1
+    span = script[records[0].source_start : records[0].source_end]
+    assert span == ("DROP TABLE t" if dialect == "oracle" else script)
+
+
+@pytest.mark.parametrize("dialect", SPAN_SCANNERS)
+def test_statement_sources_returns_the_untrimmed_text_of_a_name_that_ends_the_script(dialect):
+    """Green pin: the span is the whole script for every dialect that keeps the blank."""
+    script = f"DROP TABLE t{_ending_blank(dialect)}"
+    scanner = SqlParserFactory(dialect).get_parser().regex_parser
+    statements = SqlAnalyzer(dialect).split_statements_for_analysis(script)
+    # Oracle reads the ideographic space as a blank: its record, and so its span, ends at the name.
+    assert statement_sources(scanner, script, statements) == [
+        "DROP TABLE t" if dialect == "oracle" else script
+    ]
+
+
+KEEPS_THE_BLANK = ("postgresql", "redshift", "cockroachdb", "sqlserver")
+
+
+@pytest.mark.parametrize(
+    "dialect",
+    [
+        pytest.param(
+            d,
+            marks=(
+                []
+                if d in KEEPS_THE_BLANK
+                else pytest.mark.xfail(
+                    strict=True,
+                    reason="the record trims the blank, so the analysed text is shorter than its span",
+                )
+            ),
+        )
+        for d in SPAN_SCANNERS
+        if d != "oracle"
+    ],
+)
+def test_the_analysed_text_equals_its_span_once_the_record_keeps_the_blank(dialect):
+    script = f"DROP TABLE t{_ending_blank(dialect)}"
+    scanner = SqlParserFactory(dialect).get_parser().regex_parser
+    statements = SqlAnalyzer(dialect).split_statements_for_analysis(script)
+    assert statements == statement_sources(scanner, script, statements) == [script]

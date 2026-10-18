@@ -53,7 +53,7 @@ def _split_copy_from_stdin(sql: str) -> Optional[Tuple[str, str]]:
     if not copy_header_reads(header_tokens, "FROM", "STDIN"):
         return None
     data_token = next((t for t in tokens if t.type == TokenType.COPY_DATA), None)
-    header = sql[: token.pos].strip()
+    header = sql[: token.pos].strip(POSTGRESQL_SPEC.text_blanks)
     data = data_token.text if data_token else ""
     return header, data
 

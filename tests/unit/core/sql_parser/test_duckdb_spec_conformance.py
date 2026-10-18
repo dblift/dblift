@@ -19,6 +19,17 @@ ROWS = [row for row in load_conformance_rows(SPEC_DIR) if row.dialect == "duckdb
 
 KNOWN_GAPS: frozenset[str] = frozenset({"74", "75", "85", "86", "87", "88", "89"})
 
+#: Rows that fail today for the reason given: they fail strictly, and the change that fixes a row
+#: removes its id (a row that starts to pass under a strict xfail fails loudly).
+RED_ROWS: dict[str, str] = {
+    "90": "a no-break space before the terminator is kept, the shell reads it as a blank",
+    "90b": "a trailing ideographic space is kept, the engine reads it as a blank",
+    "90e": "a no-break space followed by a blank line is kept, it is a blank to the engine",
+    "90f": "a no-break space after a space at the end of the script is kept",
+    "90g": "two trailing no-break spaces are kept",
+    "90h": "a trailing vertical tab is kept, the shell drops it before it sends the statement",
+}
+
 
 def test_spec_compiles_to_at_least_the_rows_it_had_on_2026_10_12() -> None:
     assert len(ROWS) >= 73
@@ -31,6 +42,8 @@ def test_spec_row(row: ConformanceRow, request: pytest.FixtureRequest) -> None:
         pytest.skip("spec marks this row 'to verify': not a claim yet")
     if row.row_id in KNOWN_GAPS:
         request.applymarker(pytest.mark.xfail(strict=True, reason="listed in KNOWN_GAPS"))
+    if row.row_id in RED_ROWS:
+        request.applymarker(pytest.mark.xfail(strict=True, reason=RED_ROWS[row.row_id]))
     outcome = split_script("duckdb", row.script)
     assert outcome.matches(row.expectation), (
         f"row {row.row_id}\nscript: {row.script!r}\n"

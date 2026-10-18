@@ -26,12 +26,18 @@ class ClientScript:
     """
 
     def __init__(
-        self, rules: ClientScriptRules, source: str, client_name: str = "SQL client"
+        self,
+        rules: ClientScriptRules,
+        source: str,
+        client_name: str = "SQL client",
+        *,
+        text_blanks: str,
     ) -> None:
         """Start a script with no previous terminator."""
         self.rules = rules
         self.source = source
         self.client_name = client_name
+        self.text_blanks = text_blanks
         self._words: List[str] = []
         self._head_line = 0
         self._unit: Optional[bool] = None
@@ -233,7 +239,7 @@ class ClientScript:
         body = _EXEC_BODY.match(token.text)
         stmt = body.group(1) if body else ""
         if stmt.endswith(";"):
-            stmt = stmt[:-1].rstrip()
+            stmt = stmt[:-1].rstrip(self.text_blanks)
         if not stmt:
             raise UnsupportedMetaCommandError(
                 f"EXECUTE on line {token.line} has no statement to run"

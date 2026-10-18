@@ -19,7 +19,6 @@ DUCKDB_RULES = SegmentScriptRules(
         " \t\n\f\r\u00a0\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u200b"
         "\u202f\u205f\u2060\u3000\ufeff"
     ),
-    text_blanks=" \t\n\f\r",
     # A dollar sign inside a word continues it. From the first dollar sign not followed by a digit (a
     # dollar delimiter start for the engine, where `$1` is a parameter) every non-ASCII blank continues it too.
     word=(
@@ -39,6 +38,7 @@ DUCKDB_RULES = SegmentScriptRules(
 
 DUCKDB_SPEC = LexicalSpec(
     name="duckdb",
+    text_blanks=" \t\n\f\r",
     client_name="duckdb shell",
     nested_comments=True,
     leading_bom_is_blank=True,

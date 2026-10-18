@@ -12,8 +12,14 @@ from dblift.core.exceptions import ExecutionError
 from dblift.core.logger import Log
 from dblift.core.migration.clean_summary import CleanExecutionSummary
 from dblift.core.migration.migration import success_to_bool
+from dblift.core.sql_parser.driver_strip import (
+    edge_characters_outside,
+    refuse_edges_the_driver_strips,
+)
+from dblift.core.sql_parser.lexical_tokenizer import LexicalTokenizer
 from dblift.db.object_naming import dictionary_identifier, get_normalized_object_name
 from dblift.db.plugins.base_history_manager import UNDO_HISTORY_TYPE, installed_on_to_bind
+from dblift.db.plugins.oracle.parser.lexical_spec import ORACLE_SPEC
 from dblift.db.plugins.sql_lease_store import (
     OWNER_COLUMN,
     SqlLeaseDialect,
@@ -22,6 +28,20 @@ from dblift.db.plugins.sql_lease_store import (
 )
 from dblift.db.provider_interfaces import DroppableObject
 from dblift.db.provider_registry import ProviderRegistry
+
+
+def _refuse_edges_the_driver_strips(sql: str) -> str:
+    """``sql`` unchanged, or a refusal when the driver would send a different statement.
+
+    python-oracledb removes every white space character from both ends of a statement. A character
+    Oracle does not read as a blank would go with them, so the statement that runs would not be the
+    one given: it is refused instead.
+    """
+    blanks = ORACLE_SPEC.text_blanks
+    if edge_characters_outside(sql, blanks):
+        tokenizer = LexicalTokenizer(sql, spec=ORACLE_SPEC)
+        refuse_edges_the_driver_strips(sql, tokenizer.tokenize(), tokenizer.comments, blanks)
+    return sql
 
 
 def _q(name: str) -> str:
@@ -245,7 +265,7 @@ class OracleProvider(SqlLeaseLockingProvider):
     ) -> int:
         """Execute SQL, preserving PL/SQL block semicolons and stripping plain SQL ones."""
         self._ensure_schema_ready(schema)
-        stmt = sql.strip()
+        stmt = sql.strip(ORACLE_SPEC.text_blanks)
         if not stmt:
             return 0
         stmt_upper = stmt.upper()
@@ -259,14 +279,16 @@ class OracleProvider(SqlLeaseLockingProvider):
             or stmt_upper.startswith("BEGIN")
         )
         if not is_plsql_block and stmt.endswith(";"):
-            stmt = stmt[:-1].rstrip()
+            stmt = stmt[:-1].rstrip(ORACLE_SPEC.text_blanks)
+        stmt = _refuse_edges_the_driver_strips(stmt)
         return super().execute_statement(stmt, schema=schema, params=params)
 
     def execute_query(self, sql: str, params: Optional[List[Any]] = None) -> List[Dict[str, Any]]:
         """Execute Oracle query SQL after stripping plain trailing semicolons."""
-        stmt = sql.strip()
+        stmt = sql.strip(ORACLE_SPEC.text_blanks)
         if stmt.endswith(";"):
-            stmt = stmt[:-1].rstrip()
+            stmt = stmt[:-1].rstrip(ORACLE_SPEC.text_blanks)
+        stmt = _refuse_edges_the_driver_strips(stmt)
         return super().execute_query(stmt, params=params)
 
     def create_schema_if_not_exists(self, schema: str) -> None:

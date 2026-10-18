@@ -98,6 +98,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Statements keep the characters at their edges that the engine reads as part of the text.**
+  Only the engine's own blanks are trimmed, so a name ending in a no-break space is executed
+  and analysed as written. On Oracle, a statement whose edge character the driver would strip
+  is refused, naming the character, line and column.
 - **`migrate` runs a fixed repeatable migration whose last run failed.** Before, a repeatable
   migration that failed and was then corrected was reported as ready by `validate` but never
   run by `migrate`, which succeeded without applying it. A failed run now counts as failed
