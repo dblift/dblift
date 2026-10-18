@@ -19,6 +19,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from dblift.core.migration.migration import MigrationType
+from dblift.core.migration.state.checksum_drift import find_checksum_drift
 from tests.unit._migration_factory import make_migration
 
 
@@ -105,7 +106,9 @@ class TestChecksumValidationIncludesPython:
         validator.script_manager = MigrationScriptManager(validator.log)
         issues: list = []
         result = ValidationResult()
-        validator._validate_checksums([script], [applied], result, issues)
+        validator._validate_checksums(
+            [script], [applied], result, issues, drift=find_checksum_drift([script], [applied])
+        )
 
         assert result.checked_scripts == [script.script_name]
         assert result.failed_scripts == ([script.script_name] if changed else [])
@@ -173,6 +176,7 @@ class TestChecksumValidationIncludesPython:
             result=result,
             issues=issues,
             strict_mode=False,
+            drift=find_checksum_drift([applied], [applied, undo]),
         )
 
         assert not any("has been modified" in issue for issue in issues)

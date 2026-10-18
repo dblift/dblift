@@ -68,15 +68,17 @@ def _make_cmd(state, *, strict_mode=False):
         migrations
     )
 
+    migration_helpers = MagicMock()
+    migration_helpers.validate_migrations_for_migrate.return_value = (True, None, 0.0)
     cmd = MigrateCommand(
         config=config,
         log=MagicMock(),
         provider=provider,
         script_manager=MagicMock(),
         history_manager=history_manager,
-        validator=None,
+        validator=MagicMock(),
         execution_engine=MagicMock(),
-        migration_helpers=MagicMock(),
+        migration_helpers=migration_helpers,
         state_manager=state_manager,
         migration_ui=MagicMock(),
         migration_rules=MagicMock(),

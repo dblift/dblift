@@ -78,7 +78,7 @@ class TestRepairDeletesFailedMigrations:
         # Ensure supports_transactions returns True (default for SQL providers)
         provider.supports_transactions.return_value = True
 
-        state_manager = Mock(get_grouped_migrations=Mock(return_value={}))
+        state_manager = Mock()
         history_manager = Mock()
         history_manager.create_schema_and_history_table = Mock()
         history_manager.history_table = "dblift_schema_history"
@@ -89,7 +89,7 @@ class TestRepairDeletesFailedMigrations:
         failed.version = "1.0.0"
         failed.description = "broken"
 
-        state = MigrationState(failed_objects=[failed])
+        state = MigrationState(failed_objects=[failed], grouped_objects={})
 
         post_state = MigrationState()
         state_manager.build_state = Mock(side_effect=[state, post_state])

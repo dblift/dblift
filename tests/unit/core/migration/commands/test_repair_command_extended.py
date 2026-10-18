@@ -4,7 +4,7 @@ Covers previously untested paths to push coverage toward 70%+:
   - RepairCommand.execute() — happy path, dry_run, no repairs needed, exception paths
   - plan_repairs — build failures propagate
   - _detect_checksum_changes — empty / non-empty checksum_changes
-  - _detect_checksum_drift — load failures propagate, all_applied_objects fallback
+  - _detect_checksum_drift — reads the drift the state carries
   - _is_failed_migration — various inputs
   - _delete_failed_migration_entry — oracle dialect, non-transactional, fallback paths
   - _execute_repair_loop — CHECKSUM_MISMATCH, MISSING_SCRIPT, FAILED_MIGRATION,
@@ -24,15 +24,12 @@ import pytest
 
 from dblift.core.logger.results import RepairResult
 from dblift.core.migration.commands.base_command import PreflightConnectionError
-from dblift.core.migration.commands.repair_command import (
-    RepairCommand,
-    RepairSafetyError,
-    _count_candidate_missing,
-)
+from dblift.core.migration.commands.repair_command import RepairCommand, RepairSafetyError
 from dblift.core.migration.state.checksum_drift import ChecksumDrift
 from dblift.core.migration.state.migration_state import MigrationState
 from dblift.core.migration.state.repair_plan import (
     RepairAction,
+    _count_candidate_missing,
     _detect_checksum_changes,
     _detect_checksum_drift,
     _is_failed_migration,
@@ -70,7 +67,6 @@ def _make_cmd(
     _hm = history_manager or MagicMock()
     _sm = script_manager or MagicMock()
     _stm = state_manager or MagicMock()
-    _stm.get_grouped_migrations.side_effect = _sm.load_migration_scripts
     wire_plan_repairs(_stm)
 
     cmd = RepairCommand(
@@ -157,7 +153,7 @@ class TestCountCandidateMissing(unittest.TestCase):
 class TestBuildMigrationState(unittest.TestCase):
     def test_returns_state_on_success(self):
         state_manager = MagicMock()
-        expected_state = MigrationState()
+        expected_state = MigrationState(grouped_objects={})
         state_manager.build_state.return_value = expected_state
 
         result = plan_repairs(
@@ -225,7 +221,7 @@ class TestDetectChecksumDrift(unittest.TestCase):
             grouped_objects={}, checksum_drift=(ChecksumDrift("V1__a.sql", 100, 200, False),)
         )
 
-        repairs = _detect_checksum_drift(cmd.state_manager, state, [], Path("/migrations"))
+        repairs = _detect_checksum_drift(state, [])
         self.assertEqual(len(repairs), 1)
         self.assertEqual(repairs[0]["type"], "CHECKSUM_MISMATCH")
 
@@ -233,7 +229,7 @@ class TestDetectChecksumDrift(unittest.TestCase):
         cmd = _make_cmd()
         state = MigrationState(grouped_objects={})
 
-        repairs = _detect_checksum_drift(cmd.state_manager, state, [], Path("/migrations"))
+        repairs = _detect_checksum_drift(state, [])
         self.assertEqual(repairs, [])
 
     def test_skips_scripts_already_in_existing_repairs(self):
@@ -244,16 +240,8 @@ class TestDetectChecksumDrift(unittest.TestCase):
 
         # V1__a.sql already in existing_repairs — should not duplicate
         existing = [{"script": "V1__a.sql", "type": "CHECKSUM_MISMATCH"}]
-        repairs = _detect_checksum_drift(cmd.state_manager, state, existing, Path("/migrations"))
+        repairs = _detect_checksum_drift(state, existing)
         self.assertEqual(repairs, [])
-
-    def test_checksum_drift_propagates_catalog_load_failure(self):
-        sm = MagicMock()
-        cmd = _make_cmd(state_manager=sm)
-        sm.build_state.side_effect = OSError("permission denied")
-        state = MigrationState()  # grouped_objects is None -> forces a load
-        with pytest.raises(OSError, match="permission denied"):
-            _detect_checksum_drift(cmd.state_manager, state, [], Path("/migrations"))
 
     def test_returns_mismatch_when_db_checksum_failed_to_parse(self):
         """A stored checksum that isn't parseable as an int (e.g. a manually
@@ -268,7 +256,7 @@ class TestDetectChecksumDrift(unittest.TestCase):
             checksum_drift=(ChecksumDrift("V1__a.sql", None, 1223190650, False),),
         )
 
-        repairs = _detect_checksum_drift(cmd.state_manager, state, [], Path("/migrations"))
+        repairs = _detect_checksum_drift(state, [])
         self.assertEqual(len(repairs), 1)
         self.assertEqual(repairs[0]["type"], "CHECKSUM_MISMATCH")
         self.assertEqual(repairs[0]["script"], "V1__a.sql")
@@ -816,7 +804,7 @@ class TestRepairCommandExecute(unittest.TestCase):
         history_manager.normalized_history_table = "dblift_schema_history"
 
         state_manager = MagicMock()
-        state_manager.build_state.return_value = MigrationState()
+        state_manager.build_state.return_value = MigrationState(grouped_objects={})
         state_manager.get_current_version.return_value = None
 
         script_manager = MagicMock()
@@ -869,7 +857,7 @@ class TestRepairCommandExecute(unittest.TestCase):
             previous_checksum=100,
             current_checksum=200,
         )
-        state_with_changes = MigrationState()
+        state_with_changes = MigrationState(grouped_objects={})
         state_with_changes.checksum_changes = [checksum_change]
         cmd.state_manager.build_state.return_value = state_with_changes
 
@@ -885,7 +873,7 @@ class TestRepairCommandExecute(unittest.TestCase):
     def test_dry_run_reports_checksum_change_on_failed_row_as_one_removal(self):
         """Mirrors the repair loop: the failed row is deleted once, not realigned."""
         cmd = self._make_execute_cmd()
-        state = MigrationState()
+        state = MigrationState(grouped_objects={})
         state.checksum_changes = [
             SimpleNamespace(script_name="R__x.sql", previous_checksum=1, current_checksum=2)
         ]
@@ -909,15 +897,15 @@ class TestRepairCommandExecute(unittest.TestCase):
     def test_real_run_deletes_a_failed_row_once_instead_of_realigning_it(self):
         """The loop executes the plan: one removal, no checksum update."""
         cmd = self._make_execute_cmd()
-        state = MigrationState()
+        state = MigrationState(grouped_objects={})
         state.checksum_changes = [
             SimpleNamespace(script_name="R__x.sql", previous_checksum=1, current_checksum=2)
         ]
         state.failed_objects = [
             SimpleNamespace(script_name="R__x.sql", version=None, description="")
         ]
-        # Planning, the drift pass on a bare state, then the post-repair check.
-        cmd.state_manager.build_state.side_effect = [state, MigrationState(), MigrationState()]
+        # Planning, then the post-repair check.
+        cmd.state_manager.build_state.side_effect = [state, MigrationState()]
         cmd.history_manager.delete_failed_migration_entry.return_value = True
 
         with patch.object(cmd, "_populate_database_info"):
@@ -966,7 +954,7 @@ class TestRepairCommandExecute(unittest.TestCase):
 
         cmd.script_manager.load_migration_scripts.return_value = {}
         # Give the state some applied migrations so safety gate fires
-        applied_state = MigrationState()
+        applied_state = MigrationState(grouped_objects={})
         applied_state.applied_objects = [_make_applied("V1__a.sql")]
         cmd.state_manager.build_state.return_value = applied_state
 

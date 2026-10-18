@@ -309,8 +309,7 @@ def _repair_case(fail_body: bool):
 
     command = _build_command(RepairCommand)
     wire_plan_repairs(command.state_manager)
-    command.state_manager.build_state.return_value = MigrationState()
-    command.state_manager.get_grouped_migrations.return_value = {}
+    command.state_manager.build_state.return_value = MigrationState(grouped_objects={})
     if fail_body:
         command.state_manager.build_state.side_effect = RuntimeError("x")
     return command, lambda: command.execute(Path("/migrations")), "repair"
@@ -433,7 +432,7 @@ def _migrate_dry_run():
 
 
 def _migrate_strict_mode_error():
-    from dblift.core.migration.state.migration_state_manager import StrictModeError
+    from dblift.core.migration.state.migrate_plan import StrictModeError
 
     command = _migrate_command()
     command.state_manager.plan_migrate = MagicMock(side_effect=StrictModeError("out of order"))

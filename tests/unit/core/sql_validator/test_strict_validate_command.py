@@ -269,7 +269,7 @@ def test_target_version_filter_keeps_applied_scripts_in_checksum_scope(tmp_path:
     checksum_scope = []
     applied_scope = []
 
-    def capture_checksum_scope(scripts, applied_migrations, *_args):
+    def capture_checksum_scope(scripts, applied_migrations, *_args, **_kwargs):
         checksum_scope.extend(script.script_name for script in scripts)
         applied_scope.extend(migration.script_name for migration in applied_migrations)
 

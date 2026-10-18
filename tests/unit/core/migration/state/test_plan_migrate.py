@@ -9,13 +9,10 @@ from unittest.mock import MagicMock
 import pytest
 
 from dblift.core.migration.migration import MigrationType
-from dblift.core.migration.state.migrate_plan import MigratePlan
+from dblift.core.migration.state.migrate_plan import MigratePlan, StrictModeError
 from dblift.core.migration.state.migration_display_state import MigrationDisplayState
 from dblift.core.migration.state.migration_state import MigrationEntry, MigrationState
-from dblift.core.migration.state.migration_state_manager import (
-    MigrationStateManager,
-    StrictModeError,
-)
+from dblift.core.migration.state.migration_state_manager import MigrationStateManager
 
 PENDING = MigrationDisplayState.PENDING.value
 

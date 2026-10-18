@@ -84,7 +84,6 @@ def make_manager(scripts) -> MigrationStateManager:
 def compute_pending(
     manager: MigrationStateManager,
     executed_scripts,
-    repeatable_checksums,
     applied_migrations=(),
 ):
     return manager._compute_pending_migrations(
@@ -92,20 +91,19 @@ def compute_pending(
         executed_scripts=executed_scripts,
         applied_migrations=list(applied_migrations),
         undone_versions=set(),
-        repeatable_checksums=repeatable_checksums,
     )
 
 
-def test_pending_repeatables_visit_executed_names_once():
+def test_pending_repeatables_do_not_scan_executed_names():
     scripts = [make_repeatable(f"R__new_{number}.sql", f"new-{number}") for number in range(500)]
     executed_scripts = CountingSet(f"legacy/R__executed_{number}.sql" for number in range(500))
 
-    pending = compute_pending(make_manager(scripts), executed_scripts, {})
+    pending = compute_pending(make_manager(scripts), executed_scripts)
 
     assert [migration.script_name for migration in pending] == [
         f"R__new_{number}.sql" for number in range(500)
     ]
-    assert executed_scripts.visits == len(executed_scripts)
+    assert executed_scripts.visits == 0
 
 
 def test_checksum_changes_visit_qualified_history_once():
@@ -138,7 +136,7 @@ def test_versioned_only_aggregations_do_not_scan_repeatable_inputs():
     )
     manager = make_manager([migration])
 
-    pending = compute_pending(manager, executed_scripts, previous_checksums)
+    pending = compute_pending(manager, executed_scripts)
     changes = manager._determine_checksum_changes([migration], previous_checksums)
 
     assert pending == [migration]
@@ -203,13 +201,11 @@ def test_repeatable_indexes_are_fresh_for_each_aggregation_call():
     unchanged = compute_pending(
         manager,
         {"old-directory/R__view.sql"},
-        {"old-directory/R__view.sql": 222},
         [applied_repeatable("old-directory/R__view.sql", 222)],
     )
     changed = compute_pending(
         manager,
         {"new-directory/R__view.sql"},
-        {"new-directory/R__view.sql": 111},
         [applied_repeatable("new-directory/R__view.sql", 111)],
     )
     checksum_changes = manager._determine_checksum_changes(

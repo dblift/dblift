@@ -134,7 +134,6 @@ def test_versioned_migration_pending_only_when_not_reapplied(include_reapply):
         executed_scripts=history_analysis.executed_scripts,
         applied_migrations=applied,
         undone_versions={version},
-        repeatable_checksums=history_analysis.repeatable_checksums,
         recursive=False,
     )
 
@@ -296,59 +295,52 @@ class TestIsVersionedPendingNestedPath:
         assert result is True
 
 
-class TestIsRepeatablePendingNestedPath:
-    """Tests for _is_repeatable_pending with nested paths — exercises _lookup_checksum chain."""
+def _repeatable_is_pending(script, history_rows):
+    """Whether ``build_state`` leaves ``script`` pending given ``history_rows``."""
+    log = DummyLog()
+    manager = MigrationStateManager(
+        log,
+        history_manager=StubHistoryManager(history_rows),
+        script_manager=StubScriptManager([script]),
+        migration_rules=MigrationRules(log),
+    )
+    state = manager.build_state(scripts_dir=Path("dummy"), recursive=False)
+    return script in state.pending_objects
 
-    def _make_manager(self):
-        log = DummyLog()
-        rules = MigrationRules(log)
-        script_manager = StubScriptManager([])
-        history_manager = StubHistoryManager([])
-        return MigrationStateManager(
-            log,
-            history_manager=history_manager,
-            script_manager=script_manager,
-            migration_rules=rules,
-        )
+
+def _repeatable_history_row(script_name, content):
+    row = make_migration(script_name=script_name, content=content, type=MigrationType.REPEATABLE)
+    row.success = True
+    row.installed_rank = 1
+    return row
+
+
+class TestRepeatablePendingNestedPath:
+    """Repeatable pending state for nested script paths, as ``build_state`` decides it."""
 
     def test_nested_path_not_pending_when_checksum_unchanged(self):
         """Repeatable with nested path not pending when checksum matches basename-keyed entry."""
-        manager = self._make_manager()
         migration = make_migration(
             script_name="migrations/v1/R__init.sql",
             content="SELECT 1;",
             type=MigrationType.REPEATABLE,
         )
-        # Migration.__init__ computes Flyway CRC32(content) — use that as the stored value
         # Stored by basename only (historical pattern without directory prefix)
-        checksums = {"R__init.sql": migration.checksum}
-        result = manager._is_repeatable_pending(
-            "migrations/v1/R__init.sql",
-            migration,
-            executed_scripts={"migrations/v1/R__init.sql"},
-            repeatable_checksums=checksums,
-        )
-        assert result is False  # Not pending: checksum found via Path.name and matches
+        history = [_repeatable_history_row("R__init.sql", "SELECT 1;")]
+        assert _repeatable_is_pending(migration, history) is False
 
     def test_nested_path_pending_when_checksum_changed(self):
         """Repeatable with nested path is pending when checksum changed."""
-        manager = self._make_manager()
         migration = make_migration(
             script_name="migrations/v1/R__init.sql",
             content="new_content",
             type=MigrationType.REPEATABLE,
         )
-        checksums = {"R__init.sql": "old_checksum"}
-        result = manager._is_repeatable_pending(
-            "migrations/v1/R__init.sql",
-            migration,
-            executed_scripts={"migrations/v1/R__init.sql"},
-            repeatable_checksums=checksums,
-        )
-        assert result is True  # Pending: checksum changed
+        history = [_repeatable_history_row("R__init.sql", "SELECT 1;")]
+        assert _repeatable_is_pending(migration, history) is True
 
 
-class TestIsRepeatablePendingLegacyQualifiedHistory:
+class TestRepeatablePendingLegacyQualifiedHistory:
     """PR #129 removed the override that stored a directory-qualified
     ``script_name`` for migrations found in a secondary ``--scripts``
     directory, so freshly-loaded migrations now always get the bare
@@ -357,7 +349,7 @@ class TestIsRepeatablePendingLegacyQualifiedHistory:
     value stored as ``script_name`` (e.g. ``extra-migrations/R__cleanup.sql``).
 
     Without a basename fallback on the "never executed" check,
-    ``_is_repeatable_pending`` treats the exact-match miss between the old
+    ``build_state`` treats the exact-match miss between the old
     qualified history row and the new bare script_name as "never executed"
     and re-runs an already-applied repeatable migration on upgrade.
 
@@ -367,36 +359,18 @@ class TestIsRepeatablePendingLegacyQualifiedHistory:
     the repeatable path.
     """
 
-    def _make_manager(self):
-        log = DummyLog()
-        rules = MigrationRules(log)
-        script_manager = StubScriptManager([])
-        history_manager = StubHistoryManager([])
-        return MigrationStateManager(
-            log,
-            history_manager=history_manager,
-            script_manager=script_manager,
-            migration_rules=rules,
-        )
-
     def test_old_qualified_history_row_not_re_executed_for_bare_fresh_name(self):
         """A repeatable migration already applied under the old scheme must
         not be treated as pending just because the fresh Migration now
         computes a bare script_name."""
-        manager = self._make_manager()
         migration = make_migration(
             script_name="R__cleanup.sql",  # bare, as computed post-PR#129
             content="SELECT 1;",
             type=MigrationType.REPEATABLE,
         )
-        checksums = {"extra-migrations/R__cleanup.sql": migration.checksum}
-        result = manager._is_repeatable_pending(
-            "R__cleanup.sql",
-            migration,
-            executed_scripts={"extra-migrations/R__cleanup.sql"},  # old qualified history row
-            repeatable_checksums=checksums,
-        )
-        assert result is False, (
+        # old qualified history row
+        history = [_repeatable_history_row("extra-migrations/R__cleanup.sql", "SELECT 1;")]
+        assert _repeatable_is_pending(migration, history) is False, (
             "An already-applied repeatable migration whose history row still has the "
             "pre-PR#129 directory-qualified script_name must not be re-executed just "
             "because the fresh in-memory Migration now computes the bare filename."
@@ -405,17 +379,10 @@ class TestIsRepeatablePendingLegacyQualifiedHistory:
     def test_old_qualified_history_row_with_changed_checksum_is_still_pending(self):
         """The basename fallback must not suppress genuine checksum drift
         detection for a legacy-scheme row."""
-        manager = self._make_manager()
         migration = make_migration(
             script_name="R__cleanup.sql",
             content="new_content",
             type=MigrationType.REPEATABLE,
         )
-        checksums = {"extra-migrations/R__cleanup.sql": "old_checksum"}
-        result = manager._is_repeatable_pending(
-            "R__cleanup.sql",
-            migration,
-            executed_scripts={"extra-migrations/R__cleanup.sql"},
-            repeatable_checksums=checksums,
-        )
-        assert result is True  # Pending: checksum changed
+        history = [_repeatable_history_row("extra-migrations/R__cleanup.sql", "SELECT 1;")]
+        assert _repeatable_is_pending(migration, history) is True  # Pending: checksum changed

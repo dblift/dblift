@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Optional, Set, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Optional, Set, Tuple, cast
 
+from dblift.core.migration.migration import Migration, MigrationType
 from dblift.core.migration.state.migration_state import MigrationReadSnapshot, MigrationState
 
 if TYPE_CHECKING:
@@ -107,27 +108,8 @@ def plan_repairs(
 
     repairs: List[Dict[str, Any]] = []
     repairs.extend(_detect_checksum_changes(state))
-    repairs.extend(
-        _detect_missing_migrations(
-            state_manager,
-            state,
-            scripts_dir,
-            recursive=recursive,
-            additional_dirs=additional_dirs,
-            dir_recursive_map=dir_recursive_map,
-        )
-    )
-    repairs.extend(
-        _detect_checksum_drift(
-            state_manager,
-            state,
-            repairs,
-            scripts_dir,
-            recursive=recursive,
-            additional_dirs=additional_dirs,
-            dir_recursive_map=dir_recursive_map,
-        )
-    )
+    repairs.extend(_detect_missing_migrations(state, scripts_dir))
+    repairs.extend(_detect_checksum_drift(state, repairs))
 
     actions: List[RepairAction] = []
     removed: Set[str] = set()
@@ -168,22 +150,13 @@ def _detect_checksum_changes(migration_state: MigrationState) -> List[Dict[str, 
 
 
 def _detect_missing_migrations(
-    state_manager: MigrationStateManager,
-    migration_state: MigrationState,
-    scripts_dir: Path,
-    recursive: bool = True,
-    additional_dirs: Optional[List[Path]] = None,
-    dir_recursive_map: Optional[Dict[Path, bool]] = None,
+    migration_state: MigrationState, scripts_dir: Path
 ) -> List[Dict[str, Any]]:
     """Detect missing migrations (applied but script file no longer exists) and failed migrations.
 
     Args:
-        state_manager: State manager used to load the scripts when the state has no catalog
-        migration_state: Current migration state
-        scripts_dir: Directory containing migration scripts
-        recursive: Whether to scan directories recursively
-        additional_dirs: Additional directories to scan
-        dir_recursive_map: Per-directory recursive override map
+        migration_state: Current migration state, built with a scripts directory
+        scripts_dir: Directory containing migration scripts (named in the safety error)
 
     Returns:
         List of MISSING_SCRIPT and FAILED_MIGRATION repair dicts
@@ -193,22 +166,17 @@ def _detect_missing_migrations(
     applied_migrations = migration_state.applied_objects
     deleted_scripts: Set[str] = set(migration_state.deleted_scripts)
 
-    # Reuse the built catalog, or load filesystem scripts when unavailable.
-    # A load failure (permission denied, missing
-    # directory not caught by the CLI layer, malformed script) propagates
-    # — silently falling back to an empty set turned this into a
-    # mass-mark-missing footgun. The CLI has already verified
-    # that the directory exists for every command except ``baseline``;
-    # anything that raises here is the operator's to fix before repair
-    # can proceed safely.
-    filesystem_migrations = migration_state.grouped_objects
-    if filesystem_migrations is None:
-        filesystem_migrations = state_manager.get_grouped_migrations(
-            scripts_dir,
-            recursive=recursive,
-            additional_dirs=additional_dirs,
-            dir_recursive_map=dir_recursive_map,
-        )
+    # Reuse the catalog the state was built with. A load failure (permission
+    # denied, missing directory not caught by the CLI layer, malformed script)
+    # already propagated from ``build_state`` — silently falling back to an
+    # empty set turned this into a mass-mark-missing footgun. The CLI has
+    # already verified that the directory exists for every command except
+    # ``baseline``; anything that raises is the operator's to fix before
+    # repair can proceed safely.
+    # plan_repairs always builds the state with a scripts directory, so the catalog is set.
+    filesystem_migrations = cast(
+        Dict[MigrationType, List[Migration]], migration_state.grouped_objects
+    )
     filesystem_scripts: Set[str] = set()
     for migration_group in filesystem_migrations.values():
         for migration in migration_group:
@@ -294,13 +262,7 @@ def _detect_missing_migrations(
 
 
 def _detect_checksum_drift(
-    state_manager: MigrationStateManager,
-    migration_state: MigrationState,
-    existing_repairs: List[Dict[str, Any]],
-    scripts_dir: Path,
-    recursive: bool = True,
-    additional_dirs: Optional[List[Path]] = None,
-    dir_recursive_map: Optional[Dict[Path, bool]] = None,
+    migration_state: MigrationState, existing_repairs: List[Dict[str, Any]]
 ) -> List[Dict[str, Any]]:
     """Detect checksum drift for applied versioned migrations not already in repairs.
 
@@ -309,28 +271,13 @@ def _detect_checksum_drift(
     ``migration_state.checksum_drift``, the same answer ``validate`` reports.
 
     Args:
-        state_manager: State manager asked to rebuild the state when it carries no scripts
-        migration_state: Current migration state
+        migration_state: Current migration state, built with a scripts directory
         existing_repairs: Already-collected repair dicts (to avoid duplicates)
-        scripts_dir: Directory containing migration scripts
-        recursive: Whether to scan directories recursively
-        additional_dirs: Additional directories to scan
-        dir_recursive_map: Per-directory recursive override map
 
     Returns:
         List of additional CHECKSUM_MISMATCH repair dicts
     """
     repairs: List[Dict[str, Any]] = []
-
-    # The state manager decides drift. A state built without scripts carries none,
-    # so ask it to rebuild with them.
-    if migration_state.grouped_objects is None:
-        migration_state = state_manager.build_state(
-            scripts_dir,
-            recursive=recursive,
-            additional_dirs=additional_dirs,
-            dir_recursive_map=dir_recursive_map,
-        )
 
     already_recorded_scripts = {entry["script"] for entry in existing_repairs if "script" in entry}
 

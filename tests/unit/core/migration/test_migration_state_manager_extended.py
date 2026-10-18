@@ -28,6 +28,7 @@ from dblift.core.migration.migration import MigrationType
 from dblift.core.migration.rules.migration_rules import MigrationRules
 from dblift.core.migration.state.migration_state import ChecksumChange
 from dblift.core.migration.state.migration_state_manager import MigrationStateManager
+from dblift.core.migration.state.repeatable_status import repeatable_runs
 from dblift.core.migration.version_utils import compare_versions
 from tests.unit._migration_factory import make_migration
 
@@ -315,9 +316,25 @@ class TestIsRepeatablePending(unittest.TestCase):
     def setUp(self):
         self.mgr = _mk_manager()
 
+    def _pending(self, script, history):
+        runs = repeatable_runs([script], history)
+        return self.mgr._is_repeatable_pending(script.script_name, runs=runs)
+
+    @staticmethod
+    def _history_row(script_name, checksum):
+        row = make_migration(
+            script_name=script_name,
+            content="SELECT 1;",
+            type=MigrationType.REPEATABLE,
+            checksum=checksum,
+        )
+        row.success = True
+        row.installed_rank = 1
+        return row
+
     def test_never_executed_is_pending(self):
         m = _mk_repeatable("R__a.sql", checksum="abc")
-        assert self.mgr._is_repeatable_pending("R__a.sql", m, set(), {}) is True
+        assert self._pending(m, []) is True
 
     def test_executed_same_checksum_not_pending(self):
         m = make_migration(
@@ -325,8 +342,7 @@ class TestIsRepeatablePending(unittest.TestCase):
             content="SELECT 1;",
             type=MigrationType.REPEATABLE,
         )
-        checksums = {"R__a.sql": m.checksum}
-        assert self.mgr._is_repeatable_pending("R__a.sql", m, {"R__a.sql"}, checksums) is False
+        assert self._pending(m, [self._history_row("R__a.sql", m.checksum)]) is False
 
     def test_executed_changed_checksum_is_pending(self):
         m = make_migration(
@@ -334,8 +350,7 @@ class TestIsRepeatablePending(unittest.TestCase):
             content="SELECT 1;",
             type=MigrationType.REPEATABLE,
         )
-        checksums = {"R__a.sql": "old_checksum_that_differs"}
-        assert self.mgr._is_repeatable_pending("R__a.sql", m, {"R__a.sql"}, checksums) is True
+        assert self._pending(m, [self._history_row("R__a.sql", m.checksum + 1)]) is True
 
     def test_no_checksum_uses_content(self):
         """Migration without pre-set checksum uses calculate_checksum from content."""
@@ -346,8 +361,8 @@ class TestIsRepeatablePending(unittest.TestCase):
         )
         m.checksum = None  # force recalculation
         # With no stored checksum entry, not pending (no previous → no change)
-        result = self.mgr._is_repeatable_pending("R__b.sql", m, {"R__b.sql"}, {})
-        # No stored checksum means stored_checksum=None → condition `stored_checksum and ...` is False → not pending
+        result = self._pending(m, [self._history_row("R__b.sql", None)])
+        # No stored checksum means nothing to compare against → not pending
         assert result is False
 
 
@@ -673,12 +688,8 @@ class TestIsRepeatablePendingFromRuns(unittest.TestCase):
     def _pending(self, status):
         from dblift.core.migration.state.repeatable_status import RepeatableRun
 
-        m = _mk_repeatable("R__a.sql", checksum=1)
         runs = {"R__a.sql": RepeatableRun(status, 1, 1)}
-        # Inputs that would say "executed, unchanged" must not override the status.
-        return self.mgr._is_repeatable_pending(
-            "R__a.sql", m, {"R__a.sql"}, {"R__a.sql": 1}, runs=runs
-        )
+        return self.mgr._is_repeatable_pending("R__a.sql", runs=runs)
 
     def test_pending_statuses(self):
         from dblift.core.migration.state.repeatable_status import RepeatableStatus
@@ -698,7 +709,3 @@ class TestIsRepeatablePendingFromRuns(unittest.TestCase):
             RepeatableStatus.FAILED_UNCHANGED,
         ):
             assert self._pending(status) is False, status
-
-    def test_script_absent_from_runs_falls_back_to_inputs(self):
-        m = _mk_repeatable("R__a.sql", checksum=1)
-        assert self.mgr._is_repeatable_pending("R__a.sql", m, set(), {}, runs={}) is True

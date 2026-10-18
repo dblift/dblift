@@ -81,7 +81,9 @@ def _make_cmd(
     _stm = wire_plan_migrate(state_manager or MagicMock())
     _ee = execution_engine or MagicMock()
     _mh = migration_helpers or MagicMock()
-    _validator = validator  # None is valid (skips validation)
+    if migration_helpers is None:
+        _mh.validate_migrations_for_migrate.return_value = (True, None, 0.0)
+    _validator = validator or MagicMock()
 
     cmd = MigrateCommand(
         config=_config,
@@ -134,7 +136,7 @@ class TestMigrateCommandConstruction(unittest.TestCase):
             provider=MagicMock(),
             script_manager=MagicMock(),
             history_manager=MagicMock(),
-            validator=None,
+            validator=MagicMock(),
             execution_engine=MagicMock(),
             migration_helpers=MagicMock(),
             state_manager=MagicMock(),
@@ -623,6 +625,7 @@ class TestMigrateCommandExecute(unittest.TestCase):
 
         migration_helpers = MagicMock()
         migration_helpers.setup_migration_parameters.return_value = (True, None)
+        migration_helpers.validate_migrations_for_migrate.return_value = (True, None, 0.0)
 
         config = MagicMock()
         config.database.schema = "public"
