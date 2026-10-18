@@ -1,17 +1,18 @@
 """The comparison of the recorded object extraction with the statement facts, and its gate.
 
 A family listed in ``gated.json`` fails here on any difference that is neither one of the
-mechanical classes nor explained in its review file; other families are only counted.
+mechanical classes nor explained in its review file; other families are only counted. A review
+entry that names no row, or a class the row does not have, fails in every family.
 """
 
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
 import pytest
 
-from dblift.db.provider_registry import ProviderRegistry
 from tests.support.facts_corpus import FAMILIES
 from tests.support.facts_corpus import __main__ as cli
 from tests.support.facts_corpus import differential, family_file, read_rows
@@ -76,8 +77,52 @@ def test_every_family_has_a_review_file_of_entries_that_say_why() -> None:
         for key, entry in entries.items():
             assert key.partition("/")[0] and {"sql", "path", "class", "reason"} <= set(entry), key
             assert entry["path"] in ("hybrid", "analyzer", "both")
-            per_arm = entry["class"] if isinstance(entry["class"], dict) else {"": entry["class"]}
-            assert all(c in REVIEW + ("same",) for c in per_arm.values()), key
+            if isinstance(entry["class"], dict):
+                assert set(entry["class"]) <= {"floor", "newest"}, key
+                assert all(c in REVIEW + ("same",) for c in entry["class"].values()), key
+                assert set(entry["class"].values()) != {"same"}, key
+            else:
+                assert entry["class"] in REVIEW, key
+
+
+@pytest.mark.parametrize("family", FAMILIES)
+def test_no_ledger_entry_is_stale_whether_or_not_its_family_is_gated(family: str) -> None:
+    """Each entry names an existing row and the class that row has on this arm."""
+    assert differential.report_family(family, current_arm())["stale"] == []
+
+
+def _plant(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, family: str, extra: Dict) -> None:
+    """A copy of the family's ledger with ``extra`` added; the tracked file is not touched."""
+    copy = tmp_path / f"{family}.review.json"
+    copy.write_text(json.dumps({**differential.load_review(family), **extra}), encoding="utf-8")
+    monkeypatch.setattr(differential, "review_file", lambda name: copy)
+
+
+def _some_row(family: str) -> Tuple[str, str]:
+    row_id, _, classes = classify_family(family, current_arm())[0]
+    return row_id, classes["hybrid"]
+
+
+@pytest.mark.parametrize("kind", ["wrong class", "no such row"])
+def test_a_wrong_or_orphaned_ledger_entry_fails_a_family_that_is_not_gated(
+    kind: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    row_id, actual = _some_row("postgresql")
+    wrong = "disagree" if actual != "disagree" else "facts-fewer"
+    key, entry_class = (
+        (f"{row_id}/hybrid", wrong)
+        if kind == "wrong class"
+        else (
+            "nosuchrow0000000/hybrid",
+            "disagree",
+        )
+    )
+    entry = {"sql": "s", "path": "hybrid", "class": entry_class, "reason": "ok"}
+    _plant(monkeypatch, tmp_path, "postgresql", {key: entry})
+    assert gated_families() == []
+    assert differential.report_family("postgresql", current_arm())["stale"] == [key]
+    assert differential.run(["postgresql"]) == 1
+    assert differential.run(["postgresql"], report_only=True) == 0
 
 
 def test_the_listed_families_have_no_unexplained_difference() -> None:
@@ -239,6 +284,52 @@ def test_a_reader_gap_names_an_issue() -> None:
     )
 
 
+def test_an_entry_that_lacks_the_running_arm_is_stale_on_that_arm() -> None:
+    entry = {"r/hybrid": {**_per_arm_entry("same", "disagree")["r/hybrid"]}}
+    entry["r/hybrid"]["class"] = {"floor": "disagree"}
+    row: Results = [("r", _row("s", {}, {}), {"hybrid": "disagree", "analyzer": "same"})]
+    assert check_review(row, entry, "floor") == {"unclassified": [], "stale": []}
+    assert check_review(row, entry, "newest") == {
+        "unclassified": ["r/hybrid"],
+        "stale": ["r/hybrid"],
+    }
+
+
+def test_an_entry_whose_class_is_same_explains_nothing_and_is_stale() -> None:
+    results: Results = [("r", _row("s", {}, {}), {"hybrid": "same", "analyzer": "same"})]
+    for value in ("same", {"floor": "same", "newest": "same"}):
+        entry = {"r/hybrid": {"path": "hybrid", "class": value, "reason": "ok"}}
+        assert check_review(results, entry, "newest")["stale"] == ["r/hybrid"], value
+    mixed = _per_arm_entry("same", "disagree")
+    assert check_review(results, mixed, "floor") == {"unclassified": [], "stale": []}
+
+
+def test_the_skeleton_fills_only_the_running_arm_of_an_entry_and_keeps_the_other() -> None:
+    results: Results = [("r", _row("s", {}, {}), {"hybrid": "facts-fewer", "analyzer": "same"})]
+    kept = _per_arm_entry("opaque-reader-gap", "opaque-reader-gap")
+    kept["r/hybrid"]["class"] = {"floor": "opaque-reader-gap"}
+    out = skeleton(results, kept, "newest")
+    assert out["r/hybrid"]["class"] == {"floor": "opaque-reader-gap", "newest": "facts-fewer"}
+    assert out["r/hybrid"]["reason"] == "differs by release" and out["r/hybrid"]["issue"] == "#1"
+    assert set(out) == {"r/hybrid"}
+    assert check_review(results, out, "floor")["stale"] == ["r/hybrid"]  # the floor is rechecked
+
+
+def test_the_skeleton_keeps_the_other_arm_of_a_class_that_no_longer_holds_here() -> None:
+    results: Results = [("r", _row("s", {}, {}), {"hybrid": "facts-fewer", "analyzer": "same"})]
+    wrong = {"r/hybrid": {"path": "hybrid", "class": "disagree", "reason": "why", "issue": ""}}
+    out = skeleton(results, wrong, "newest")
+    assert out["r/hybrid"]["class"] == {"floor": "disagree", "newest": "facts-fewer"}
+    assert out["r/hybrid"]["reason"] == "why"
+
+
+def test_the_skeleton_drops_an_entry_whose_row_is_gone_or_whose_class_explains_nothing() -> None:
+    results: Results = [("r", _row("s", {}, {}), {"hybrid": "same", "analyzer": "same"})]
+    gone = {"x/hybrid": {"path": "hybrid", "class": "disagree", "reason": "why"}}
+    pointless = {"r/hybrid": {"path": "hybrid", "class": "same", "reason": "why"}}
+    assert skeleton(results, {**gone, **pointless}, "newest") == {}
+
+
 def test_the_skeleton_adds_an_empty_entry_for_each_unexplained_row_and_keeps_the_rest() -> None:
     kept = {"r2/analyzer": {"path": "analyzer", "class": "facts-fewer", "reason": "ok"}}
     assert skeleton(_results(), kept, "newest") == kept
@@ -294,6 +385,15 @@ def test_report_only_prints_and_never_fails(
     fabricated: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(differential, "gated_families", lambda: ["postgresql"])
+    assert differential.run(["postgresql"], report_only=True) == 0
+
+
+def test_a_stale_entry_fails_a_family_that_is_not_listed(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(differential, "classify_family", lambda family, arm: _results())
+    stale = {"r1/hybrid": {"path": "hybrid", "class": "disagree", "reason": "ok"}}
+    monkeypatch.setattr(differential, "load_review", lambda family: stale)
+    monkeypatch.setattr(differential, "gated_families", lambda: [])
+    assert differential.run(["postgresql"]) == 1
     assert differential.run(["postgresql"], report_only=True) == 0
 
 

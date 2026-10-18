@@ -105,14 +105,16 @@ was harvested from.
 `no-old` and `no-reader` need a reason. Reasons live in `<family>.review.json`, keyed by the statement id
 (`<id>` for both paths, `<id>/hybrid` or `<id>/analyzer` for one) with `path`, `class`, `reason`
 and, for a reader gap, an `issue`. `class` is one string, or `{"floor": ..., "newest": ...}` for a
-row whose class depends on the sqlglot release (`same` is allowed there for the arm that agrees).
-An entry whose row is gone, or whose class is no longer the row's class on the arm being run, is
-stale.
+row whose class depends on the sqlglot release (`same` is allowed there for the arm that agrees,
+never on every arm). An entry whose row is gone, whose class is no longer the row's class on the arm
+being run (an entry without a key for that arm included), or that explains nothing is stale. A
+stale entry fails `diff` and the test module in every family, gated or not.
 
 `gated.json` lists the families whose differences must all be classified or explained: `diff` exits 1
 and `tests/unit/core/sql_parser/test_facts_differential.py` fails on a row with neither, in a listed
 family. `--report` prints without failing; `--skeleton` adds an empty entry to the review file for
-each row that needs one. The list is empty until a family's differences are explained; a family
+each row that needs one, and on an entry that is stale on the running arm sets only that arm's
+class (the other arm's class and the reason are kept, the reason is to be reviewed). The list is empty until a family's differences are explained; a family
 joins it when its plugin reads statements through the reader.
 
 ## Once a family reads through the reader

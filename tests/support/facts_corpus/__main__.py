@@ -5,7 +5,8 @@
 ``python -m tests.support.facts_corpus diff <family|all> [--report] [--json] [--skeleton]``
 compares the frozen object extraction with the statement facts. In a family listed in
 ``gated.json`` a difference that is neither classified mechanically nor explained in the family's
-review file fails (exit 1); ``--report`` only prints. ``--skeleton`` adds an empty entry to the
+review file fails (exit 1), and a review entry that matches no row fails in every family;
+``--report`` only prints. ``--skeleton`` adds an empty entry to the
 review file for each row that needs one.
 """
 

@@ -23,6 +23,7 @@ from tests.support.facts_corpus.classes import (
     ORDER,
     PATHS,
     REVIEW,
+    SAME,
     classify_row,
 )
 
@@ -102,12 +103,20 @@ def _explained(entry: Entry, arm: str) -> bool:
     return entry_class(entry, arm) != OPAQUE_READER_GAP or bool(str(entry.get("issue", "")).strip())
 
 
+def _pointless(entry: Entry) -> bool:
+    """An entry whose class is ``same`` on every arm explains no difference."""
+    value = entry.get("class")
+    return set(value.values() if isinstance(value, dict) else [value]) == {SAME}
+
+
 def check_review(
     results: List[Tuple[str, Dict[str, Any], Dict[str, str]]], review: Dict[str, Entry], arm: str
 ) -> Dict[str, List[str]]:
     """Rows needing an entry that has none, and entries that no longer match a row on ``arm``.
 
-    ``unclassified`` and ``stale`` hold ``"<id>/<path>"`` and entry keys respectively.
+    An entry is stale when its row is gone, its class (for ``arm``) is not the class of the row on
+    any path it names, or it explains nothing (``same`` on every arm). ``unclassified`` and
+    ``stale`` hold ``"<id>/<path>"`` and entry keys respectively.
     """
     by_id = {row_id: classes for row_id, _, classes in results}
     covered = set()
@@ -116,7 +125,11 @@ def check_review(
         row_id = key.partition("/")[0]
         classes = by_id.get(row_id)
         paths = _entry_paths(key, entry)
-        if classes is None or any(classes.get(p) != entry_class(entry, arm) for p in paths):
+        if (
+            classes is None
+            or _pointless(entry)
+            or any(classes.get(p) != entry_class(entry, arm) for p in paths)
+        ):
             stale.append(key)
         elif _explained(entry, arm):
             covered.update(f"{row_id}/{p}" for p in paths)
@@ -129,17 +142,50 @@ def check_review(
     return {"unclassified": unclassified, "stale": sorted(stale)}
 
 
+def _for_arm(
+    key: str, entry: Entry, classes: Optional[Dict[str, str]], arm: str
+) -> Optional[Entry]:
+    """A stale entry with the class of ``arm`` set to the row's, and the other arm kept as it is.
+
+    ``None`` when nothing of it is worth keeping: its row is gone, it explains nothing, or the row
+    has no single class on its paths here (an entry that holds a class per arm is then left alone).
+    """
+    value = entry.get("class")
+    if classes is None or _pointless(entry):
+        return None
+    seen = {classes.get(p) for p in _entry_paths(key, entry)}
+    current = next(iter(seen)) if len(seen) == 1 else None
+    if current not in REVIEW + (SAME,):
+        return entry if isinstance(value, dict) else None
+    held = dict(value) if isinstance(value, dict) else {"floor": value, "newest": value}
+    held[arm] = current
+    return None if set(held.values()) == {SAME} else {**entry, "class": held}
+
+
 def skeleton(
     results: List[Tuple[str, Dict[str, Any], Dict[str, str]]], review: Dict[str, Entry], arm: str
 ) -> Dict[str, Entry]:
     """``review`` plus an entry with an empty reason for every row that still needs one.
 
     A new entry holds the class of this arm only; a row whose class depends on the sqlglot release
-    is completed by hand with ``{"floor": ..., "newest": ...}``.
+    is completed by hand with ``{"floor": ..., "newest": ...}``. An entry that is stale on this arm
+    keeps its reason and the class of the other arm; only this arm's class is set to the row's, and
+    the reason is to be reviewed for it.
     """
     problems = check_review(results, review, arm)
-    missing = set(problems["unclassified"])
-    out = {key: entry for key, entry in review.items() if key not in problems["stale"]}
+    by_id = {row_id: classes for row_id, _, classes in results}
+    out: Dict[str, Entry] = {}
+    for key, entry in review.items():
+        if key not in problems["stale"]:
+            out[key] = entry
+        elif (revised := _for_arm(key, entry, by_id.get(key.partition("/")[0]), arm)) is not None:
+            out[key] = revised
+    held = {
+        f"{key.partition('/')[0]}/{p}"
+        for key, entry in out.items()
+        for p in _entry_paths(key, entry)
+    }
+    missing = set(problems["unclassified"]) - held
     for row_id, row, classes in results:
         need = {p: c for p, c in _needed(classes).items() if f"{row_id}/{p}" in missing}
         if not need:
@@ -195,7 +241,8 @@ def format_report(family: str, report: Dict[str, Any]) -> str:
 def run(
     targets: List[str], *, report_only: bool = False, as_json: bool = False, write: bool = False
 ) -> int:
-    """Compare the families; return 1 when a gated family has unexplained or stale rows."""
+    """Compare the families; return 1 on a stale entry in any family, or an unexplained row in a
+    gated one."""
     arm = current_arm()
     reports = {family: report_family(family, arm) for family in targets}
     if write:
@@ -212,10 +259,10 @@ def run(
     failed = [
         family
         for family, report in reports.items()
-        if report["gated"] and (report["unclassified"] or report["stale"])
+        if report["stale"] or (report["gated"] and report["unclassified"])
     ]
     if failed and not report_only:
-        print("unexplained differences in gated families: " + ", ".join(failed), flush=True)
+        print("stale entries or unexplained differences in: " + ", ".join(failed), flush=True)
         return 1
     return 0
 
