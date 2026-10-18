@@ -68,6 +68,12 @@ def refused(dialect: str, char: str) -> bool:
     return dialect == "oracle" and char.isspace() and char not in ORACLE_SPEC.text_blanks
 
 
+def read_as_blank(dialect: str, char: str, sql: str) -> bool:
+    """Oracle's engine reads these characters as blanks: the name before one that ends the statement
+    is read whole. A blank before a terminator stays under the caution (its span holds it)."""
+    return dialect == "oracle" and char in ORACLE_SPEC.text_blanks and ";" not in sql
+
+
 def _undo(tmp_path, dialect: str, sql: str) -> str:
     migration = tmp_path / "V1__x.sql"
     migration.write_text(sql + "\n", encoding="utf-8")
@@ -187,7 +193,13 @@ def test_undo_of_a_name_that_ends_its_statement_is_manual_review(tmp_path, diale
         with pytest.raises(UnsafeStatementSplitError):
             _undo(tmp_path, dialect, sql.format(c=char))
         return
-    _assert_manual_review(_undo(tmp_path, dialect, sql.format(c=char)))
+    script = _undo(tmp_path, dialect, sql.format(c=char))
+    if read_as_blank(
+        dialect, char, sql
+    ):  # the engine reads the name before the blank: it is dropped
+        assert any(line.startswith("DROP") for line in _code_lines(script)), script
+        return
+    _assert_manual_review(script)
 
 
 @pytest.mark.parametrize("dialect", TAIL_DIALECTS)
@@ -201,6 +213,9 @@ def test_analysis_of_a_name_that_ends_its_statement_names_nothing(dialect, char,
         return
     analysis = analyse_script(sql.format(c=char), dialect)
     names = {obj.name.lower() for stmt in analysis.statements for obj in stmt.objects}
+    if read_as_blank(dialect, char, sql):  # the engine reads the name before the blank
+        assert "t" in names
+        return
     assert "t" not in names
     assert not any(" t " in f" {c.reason} ".lower() for c in analysis.cautions)
     assert analysis.cautions, "the statement still deserves its caution"

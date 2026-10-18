@@ -205,11 +205,14 @@ def test_the_scanner_span_of_a_name_that_ends_the_script_holds_the_blank_except_
 
 @pytest.mark.parametrize("dialect", SPAN_SCANNERS)
 def test_statement_sources_returns_the_untrimmed_text_of_a_name_that_ends_the_script(dialect):
-    """Green pin: the span is the whole script for every dialect, Oracle's through the extension."""
+    """Green pin: the span is the whole script for every dialect that keeps the blank."""
     script = f"DROP TABLE t{_ending_blank(dialect)}"
     scanner = SqlParserFactory(dialect).get_parser().regex_parser
     statements = SqlAnalyzer(dialect).split_statements_for_analysis(script)
-    assert statement_sources(scanner, script, statements) == [script]
+    # Oracle reads the ideographic space as a blank: its record, and so its span, ends at the name.
+    assert statement_sources(scanner, script, statements) == [
+        "DROP TABLE t" if dialect == "oracle" else script
+    ]
 
 
 KEEPS_THE_BLANK = ("postgresql", "redshift", "cockroachdb", "sqlserver")
