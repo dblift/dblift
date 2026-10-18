@@ -175,8 +175,19 @@ def _unquoted(sql: str, qualified: str) -> bool:
     return not any(_quoted_in(sql, part) for part in qualified.split("."))
 
 
-def _after_dot(sql: str, word: str) -> bool:
-    """The word follows a dot: a reserved word is a legal name there (``schema.order``)."""
+def _after_dot(sql: str, ast: Optional[exp.Expression], word: str) -> bool:
+    """The word follows a dot: a reserved word is a legal name there (``schema.order``).
+
+    Where the statement parses, a table of this name with a schema says so, whatever sits between
+    the dot and the word (a comment), and a dot in a literal or comment says nothing. The text is
+    searched only when there is no parse or the parse holds a routine body as a string
+    (``$$ ... $$``); a dot in a literal then refuses too, and the row gets a reason.
+    """
+    if ast is not None and not _is_routine(ast):
+        return any(
+            t.name.lower() == word.lower() and t.args.get("db") is not None
+            for t in ast.find_all(exp.Table)
+        )
     return re.search(r"\.\s*" + re.escape(word) + r"(?![\w$])", sql, re.IGNORECASE) is not None
 
 
@@ -458,26 +469,28 @@ def _fold(family: str, name: str) -> Optional[str]:
     return name.lower() if direction == "lower" else name.upper()
 
 
-def _name_identifiers(ast: Optional[exp.Expression]) -> Set[str]:
-    """The unquoted identifiers that name an object in the statement: the parts of every table
-    and the name of what a statement creates, drops or alters (not a column, literal or comment)."""
+def _name_identifiers(ast: Optional[exp.Expression]) -> Tuple[Set[str], Set[str]]:
+    """``(unquoted, quoted)`` identifiers that name an object in the statement: the parts of every
+    table and the name of what a statement creates, drops or alters (not a column, literal or
+    comment)."""
     parts: List[exp.Expression] = []
     for table in (ast.find_all(exp.Table) if ast is not None else ()):
         parts += [table.args.get(key) for key in ("this", "db", "catalog")]
     for node in ast.walk() if ast is not None else ():
         if isinstance(node, (exp.Create, exp.Alter)):
             parts.append(_subject(node.this))
-    return {
-        part.name
-        for part in parts
-        if isinstance(part, exp.Identifier) and not part.args.get("quoted")
-    }
+    names = [part for part in parts if isinstance(part, exp.Identifier)]
+    return (
+        {part.name for part in names if not part.args.get("quoted")},
+        {part.name for part in names if part.args.get("quoted")},
+    )
 
 
 def _spelled_unquoted(ast: Optional[exp.Expression], name: str) -> bool:
-    """Every part of ``name`` is written exactly so as an unquoted object name in the statement."""
-    written = _name_identifiers(ast)
-    return all(part in written for part in name.split("."))
+    """Every part of ``name`` is written exactly so as an unquoted object name in the statement,
+    and never quoted: a quoted spelling of it is another object."""
+    unquoted, quoted = _name_identifiers(ast)
+    return all(part in unquoted and part not in quoted for part in name.split("."))
 
 
 def _case_folded(
@@ -533,7 +546,8 @@ def _old_keyword(
     """Every name the reader does not have is an unquoted word the engine reserves, none is
     written to, and the reader (not opaque) names everything else. A word after a dot is a name:
     ``schema.order`` is an object the reader lost."""
-    targets = _write_targets(_parse(sql, DIALECTS[family]), family, dml_table)
+    ast = _parse(sql, DIALECTS[family])
+    targets = _write_targets(ast, family, dml_table)
     words = {word.upper() for word in reserved}
     return (
         targets is not None
@@ -541,7 +555,7 @@ def _old_keyword(
         and all(
             item[1].upper() in words
             and _unquoted(sql, item[1])
-            and not _after_dot(sql, item[1])
+            and not _after_dot(sql, ast, item[1])
             and item[1].lower() not in targets
             for item in missing
         )

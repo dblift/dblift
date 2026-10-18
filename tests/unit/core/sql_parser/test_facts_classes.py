@@ -780,6 +780,16 @@ QUALIFIED = [
     ),
     (
         "postgresql",
+        "SELECT * FROM a, public./*c*/order",
+        facts(obj("a", role="referenced"), op="SELECT", kind="QUERY"),
+    ),
+    (
+        "mysql",
+        "SELECT * FROM a, db./*c*/order",
+        facts(obj("a", role="referenced"), op="SELECT", kind="QUERY"),
+    ),
+    (
+        "postgresql",
         "ALTER TABLE a ADD CONSTRAINT fk FOREIGN KEY (x) REFERENCES public.order (id)",
         facts(obj("a", role="altered"), op="ALTER"),
     ),
@@ -807,6 +817,16 @@ def test_old_keyword_still_excuses_the_same_word_unqualified() -> None:
     assert cls(sql, new, before, family="mysql", reserved={"ORDER"}) == "old-keyword"
 
 
+def test_old_keyword_is_not_refused_by_a_dot_in_a_literal_or_a_comment() -> None:
+    new = facts(obj("a", role="referenced"), op="SELECT", kind="QUERY")
+    before = old(("TABLE", "a"), ("TABLE", "order"))
+    for sql in (
+        "SELECT * FROM a, order WHERE x = 'y.order'",
+        "SELECT * FROM a, order -- see y.order",
+    ):
+        assert cls(sql, new, before, family="mysql", reserved={"ORDER"}) == "old-keyword", sql
+
+
 # case-folded anchors to the names of the statement, not to its text -------------------------
 
 
@@ -821,6 +841,12 @@ def test_old_keyword_still_excuses_the_same_word_unqualified() -> None:
 def test_case_folded_is_not_matched_inside_a_literal_a_comment_or_a_column(sql: str) -> None:
     got = cls(sql, facts(obj("Users")), old(("TABLE", "users")), family="postgresql")
     assert got != "case-folded"
+
+
+def test_case_folded_needs_the_name_never_quoted() -> None:
+    sql = 'SELECT * FROM "Users" JOIN Users ON true'
+    new = facts(obj("Users", role="referenced"), op="SELECT", kind="QUERY")
+    assert cls(sql, new, old(("TABLE", "users"))) != "case-folded"
 
 
 def test_case_folded_matches_a_schema_part_and_an_index_name() -> None:
