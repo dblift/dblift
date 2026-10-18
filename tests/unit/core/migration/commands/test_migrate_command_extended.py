@@ -570,7 +570,7 @@ class TestUpdateFinalState(unittest.TestCase):
         post_state = MigrationState()
         post_state.applied_objects = []
         state_manager.build_state.return_value = post_state
-        state_manager.get_current_version.return_value = "3.0"
+        post_state.current_version = "3.0"
 
         cmd = _make_cmd(state_manager=state_manager)
         result = MigrateResult()
@@ -584,7 +584,6 @@ class TestUpdateFinalState(unittest.TestCase):
         state_manager = MagicMock()
         post_state = MigrationState()
         state_manager.build_state.return_value = post_state
-        state_manager.get_current_version.return_value = None
 
         cmd = _make_cmd(state_manager=state_manager)
         result = MigrateResult()

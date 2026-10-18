@@ -127,11 +127,7 @@ class InfoCommand(BaseCommand):
             # but for info command we need to show ALL migrations in chronological order
             all_applied_migrations = migration_state.all_applied_objects
 
-            # Populate current schema version from applied (non-undone) migrations
-            applied_migrations = migration_state.applied_objects
-            current_version = self.state_manager.get_current_version(applied_migrations)
-            if current_version:
-                result.current_schema_version = current_version
+            result.current_schema_version = migration_state.current_version
 
             # Use the migration UI to display the information properly
             # Pass the full state so UI can access undone_versions and other state info

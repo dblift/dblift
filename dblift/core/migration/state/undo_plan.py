@@ -84,13 +84,7 @@ def plan_undo(
 
     applied_migrations = list(state.all_applied_objects)
 
-    current_version = None
-    current_source = applied_migrations
-    applied_objects = list(state.applied_objects)
-    if applied_objects:
-        current_source = applied_objects
-    if current_source:
-        current_version = state_manager.get_current_version(current_source)
+    current_version = state.current_version
 
     success_applied = [
         migration

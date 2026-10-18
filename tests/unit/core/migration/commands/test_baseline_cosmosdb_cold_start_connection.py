@@ -27,6 +27,7 @@ from dblift.core.migration.commands.baseline_command import BaselineCommand
 from dblift.core.migration.commands.info_command import InfoCommand
 from dblift.core.migration.commands.repair_command import RepairCommand
 from dblift.core.migration.commands.validate_command import ValidateCommand
+from dblift.core.migration.state.migration_state import MigrationState
 
 
 class _ColdStartProvider:
@@ -182,9 +183,7 @@ class TestOtherCommandsColdStartRegression:
         provider = _ColdStartProvider()
         history_manager = _make_history_manager(provider)
         cmd = _make_command(InfoCommand, provider, history_manager)
-        cmd.state_manager.build_state.return_value = SimpleNamespace(
-            applied_objects=[], all_applied_objects=[]
-        )
+        cmd.state_manager.build_state.return_value = MigrationState()
         cmd.migration_ui.get_migration_data.return_value = []
 
         result = cmd.execute(scripts_dir=MagicMock(), display_human=False)

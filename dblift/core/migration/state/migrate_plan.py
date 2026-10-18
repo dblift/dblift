@@ -69,7 +69,7 @@ def plan_migrate(
         target_version=target_version,
         read_snapshot=read_snapshot,
     )
-    current = state_manager.get_current_version(state.applied_objects)
+    current = state.current_version
     selected = state_manager.apply_filters_to_migrations(
         state.executable_pending_objects(),
         tags=tags,
