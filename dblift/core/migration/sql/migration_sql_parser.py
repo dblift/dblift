@@ -8,6 +8,9 @@ from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCom
 from dblift.core.logger import Log
 from dblift.core.migration.sql.execution_contracts import ExecutionSqlParser
 
+#: What makes a split statement empty. Any other white space character is one its dialect keeps.
+EMPTY_STATEMENT_BLANKS = " \t\r\n"
+
 
 def _default_splitter_dialect() -> str:
     """Registry-derived generic dialect for statement splitting (ADR-26 E5).
@@ -62,7 +65,7 @@ def parse_migration_sql(
             else analyzer.split_statements(content)
         )
         log.debug(f"SqlAnalyzer split returned {len(statements)} statements")
-        return [statement for statement in statements if statement.strip()]
+        return [statement for statement in statements if statement.strip(EMPTY_STATEMENT_BLANKS)]
     except (UnsafeStatementSplitError, UnsupportedMetaCommandError):
         # Preserve the dialect scanner's deliberate refusal and its location.
         raise

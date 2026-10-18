@@ -261,3 +261,19 @@ def test_db2_block_ended_by_a_set_terminator_keeps_a_character_outside_the_blank
         f"{NBSP}CREATE PROCEDURE p ()\nBEGIN\n  DECLARE x INT;\n  SET x = 1;\nEND{NBSP}",
         f"SELECT 1 FROM t{NBSP}",
     ]
+
+
+@pytest.mark.parametrize("view", ["execution", "analysis"])
+@pytest.mark.parametrize("kept", [NBSP, "\x0c"])
+def test_db2_record_made_only_of_kept_characters_is_a_statement(view: str, kept: str) -> None:
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        recorded = record_script("db2", f"VALUES 1;\n{kept};\nVALUES 2;")[view]
+    assert recorded == ["VALUES 1", kept, "VALUES 2"]
+
+
+def test_db2_comment_only_record_is_still_dropped() -> None:
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        recorded = record_script("db2", f"VALUES 1;\n-- c{NBSP}\n;\nVALUES 2;")["execution"]
+    assert recorded == ["VALUES 1", "VALUES 2"]

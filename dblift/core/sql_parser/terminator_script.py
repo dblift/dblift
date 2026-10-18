@@ -291,8 +291,8 @@ class _Walk:
         statement = "\n".join(text[first:last] for first, last in segs).strip(self.text_blanks)
         body, stray_line = self.body, self.stray_line
         self.segs, self.body = [], RoutineBody(self.rules.routine)
-        if not statement or not body.code:
-            return
+        if not statement or not (body.code or statement.isspace()):
+            return  # only characters the client keeps are a statement: the server rejects it
         epilogue = self._command(statement, start)
         if body.stray:
             raise UnsafeStatementSplitError(

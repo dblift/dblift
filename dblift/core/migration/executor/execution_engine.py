@@ -41,6 +41,7 @@ from dblift.core.migration.sql.execution_statement import (
     neutralise_transaction_statements,
 )
 from dblift.core.migration.sql.migration_sql_parser import (
+    EMPTY_STATEMENT_BLANKS,
     parse_migration_sql,
     resolve_migration_sql_dialect,
 )
@@ -221,7 +222,7 @@ class ExecutionEngine:
         quirks = ProviderRegistry.get_quirks(dialect)
         execution_statements: List[ExecutionStatement] = []
         for statement in statements:
-            stripped = statement.strip()
+            stripped = statement.strip(EMPTY_STATEMENT_BLANKS)
             if (
                 not stripped
                 or quirks.is_batch_separator(stripped)
@@ -257,7 +258,7 @@ class ExecutionEngine:
         executable: List[str] = []
         execution_statements: List[ExecutionStatement] = []
         for statement in statements:
-            stripped = statement.strip()
+            stripped = statement.strip(EMPTY_STATEMENT_BLANKS)
             if not stripped:
                 continue
             if quirks.is_batch_separator(stripped):
@@ -606,7 +607,7 @@ class ExecutionEngine:
                 f"Executing statement {i+1}/{len(statements)} from {migration.script_name}"
             )
 
-            stripped_stmt = statement.strip()
+            stripped_stmt = statement.strip(EMPTY_STATEMENT_BLANKS)
             # Skip empty statements
             if not stripped_stmt:
                 continue
@@ -1147,7 +1148,7 @@ class ExecutionEngine:
         # Execute SQL statements in the callback
         try:
             for statement in sql_statements:
-                stripped = statement.strip()
+                stripped = statement.strip(EMPTY_STATEMENT_BLANKS)
                 if (
                     not stripped
                     or quirks.is_batch_separator(stripped)

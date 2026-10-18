@@ -8,6 +8,7 @@ from functools import lru_cache
 from typing import Any, List, Optional
 
 from dblift.core.exceptions import TransactionStatementError
+from dblift.core.migration.sql.migration_sql_parser import EMPTY_STATEMENT_BLANKS
 from dblift.core.sql_parser.common.comment_stripping import strip_comments_preserving_quotes
 from dblift.core.utils.row_access import strip_leading_comments
 
@@ -35,7 +36,7 @@ def is_comment_only_statement(sql: str, *, nested_block_comments: bool = False) 
     comments do not nest, so their directives always take the default path.
     """
 
-    body = sql.strip()
+    body = sql.strip(EMPTY_STATEMENT_BLANKS)
     if not body:
         return True
     if nested_block_comments:
@@ -44,7 +45,7 @@ def is_comment_only_statement(sql: str, *, nested_block_comments: bool = False) 
         )
     body = re.sub(r"/\*(?!!|M!).*?\*/", "", body, flags=re.DOTALL)
     body = re.sub(r"--.*?$", "", body, flags=re.MULTILINE)
-    return not body.strip()
+    return not body.strip(EMPTY_STATEMENT_BLANKS)
 
 
 @lru_cache(maxsize=None)
@@ -229,7 +230,7 @@ def _position(statements: List[str], index: int, dialect: str, content: str) -> 
 
     parser_class = ProviderRegistry.get_quirks(dialect.lower()).parser_class("regex")
     try:
-        records = [r for r in parser_class().split(content) if r.text.strip()]  # type: ignore[misc]
+        records = [r for r in parser_class().split(content) if r.text.strip(EMPTY_STATEMENT_BLANKS)]  # type: ignore[misc]
     except Exception:  # noqa: BLE001 - the line is a courtesy; the refusal stands without it
         records = []
     if [r.text for r in records] == statements:
