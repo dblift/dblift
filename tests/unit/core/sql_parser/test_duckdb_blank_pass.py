@@ -217,3 +217,42 @@ def test_a_line_comment_ends_at_a_carriage_return_for_the_pass():
     for piece in pieces:
         con.execute(piece)
     assert not has_t(con) and not has_t(run_whole(script))
+
+
+#: a final U+00A0 of a statement that the pass of the script replaces (the script goes on after it)
+#: and the pass of the statement alone keeps, because it never reads the last two bytes of a text
+KEPT_ALONE = [
+    "DROP TABLE IF EXISTS t" + NB + "; SELECT 1;",
+    "DROP TABLE IF EXISTS t" + NB + " ; SELECT 1;",
+    "SELECT 1 AS x" + NB + "; SELECT 2;",
+    "SELECT 1 AS a " + NB + "; SELECT -- '\n$t$\ra$b-- c$\né e $t$x; DROP TABLE t; SELECT 3;",
+]
+
+
+@pytest.mark.parametrize("script", KEPT_ALONE, ids=[str(i) for i in range(len(KEPT_ALONE))])
+def test_a_final_blank_kept_alone_and_replaced_in_the_script_is_refused(script):
+    assert len(duckdb.extract_statements(script)) >= 2
+    at = script.index(NB)
+    for split in (ENGINE.split_statements, ENGINE.split, ENGINE.split_for_analysis):
+        with pytest.raises(UnsafeStatementSplitError) as raised:
+            split(script)
+        assert f"U+00A0 at line 1, column {at + 1}" in str(raised.value)
+        assert "kept when run alone, replaced in its script" in str(raised.value)
+
+
+def test_the_engine_drops_the_table_the_statement_alone_would_not():
+    script = KEPT_ALONE[0]
+    assert not has_t(run_whole(script))
+    alone = duckdb.connect()
+    alone.execute("CREATE TABLE t (i INT)")
+    alone.execute("DROP TABLE IF EXISTS t" + NB)  # a silent no-op: it names another table
+    assert has_t(alone)
+
+
+@pytest.mark.parametrize(
+    "script",
+    ["SELECT 1 AS e" + NB, "/* ' */ SELECT 1 AS e" + NB, "SELECT 1;　", "SELECT 1;" + NB],
+    ids=["script-end", "script-end-kept-stretch", "wide-after", "empty-after"],
+)
+def test_a_final_blank_kept_in_the_script_as_well_is_not_refused(script):
+    assert len(ENGINE.split_statements(script)) == 1

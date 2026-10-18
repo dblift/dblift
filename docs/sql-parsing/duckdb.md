@@ -330,6 +330,8 @@ DuckDB specification; the shared tokenizer reads them and one core module assemb
 | 97 | `/* ' */ SELECT 1 AS e\u00a0x; SELECT 2 AS f\u00a0$t$y; DROP TABLE t; SELECT 3;` | `UnsafeStatementSplitError` (the driver and the shell accept the script and drop `t`: the apostrophe in the comment stops the pass and every blank after it is a letter. The second statement alone has its blank replaced before an unclosed dollar tag, so it would not parse; the refusal is the same as in row 91) |
 | 98 | `/* ' */ SELECT 1 AS e\u00a0; SELECT 2;` | `/* ' */ SELECT 1 AS e\u00a0` · `SELECT 2` (a blank kept in the script that is kept alone too is no refusal: the pass reads the last two bytes of a text no further, so a final U+00A0 is kept when the statement runs alone. The first statement alone has the same alias as in the script) |
 | 99 | `SELECT 1;\u00a0` | `SELECT 1` (measured: the pass keeps a final U+00A0, so the engine reads it as a one-character statement that does not parse: the driver's statement extraction and its execution reject the whole script (syntax error at the NBSP) and run nothing, while the shell exits 0 and runs the first statement. The splitter drops the trailing blank like the shell and runs one statement. A final U+3000 or a space is accepted by all three: only a two-byte blank at the very end is kept) |
+| 100 | `DROP TABLE IF EXISTS t\u00a0; SELECT 1;` | `UnsafeStatementSplitError` (measured: the pass of the script reads the blank before the `;` and replaces it, so the driver and the shell drop `t`. The first statement alone ends in the U+00A0, which the pass never reads, so it is kept and `DROP TABLE IF EXISTS t\u00a0` names another table: a silent no-op. The statement reads differently alone than in its script and is refused, naming the character, its line and its column, and saying that the blank is kept when run alone, replaced in its script (the live `dblift migrate` fails and `t` is still there)) |
+| 101 | `SELECT 1 AS x\u00a0; SELECT 2;` | `UnsafeStatementSplitError` (the same direction, harmless in effect: the alias differs between the script and the statement alone. It is refused as well: a loud failure beats a quiet divergence, and the user removes the character) |
 
 ## 11. Not handled
 
@@ -396,8 +398,8 @@ keeps `t`; the second statement alone is `DROP TABLE t CASCADE` and drops it). F
 that statement's text alone, one more linear scan of that text only, and compares it with the stretches of the whole script: a statement that holds a blank kept in
 the script and replaced alone is refused with `UnsafeStatementSplitError` before anything runs, naming the character (`U+00A0`), its line and its
 column, and saying that the statement reads differently run alone than in its script (rows 91 to 97). A final two-byte blank is kept alone too, so
-it is no refusal (row 98). The opposite direction is not refused: a blank the script replaces and the statement alone keeps (only a final
-U+00A0 before a `;`) makes the statement fail loudly or, for an `IF EXISTS` form, name another object.
+it is no refusal (row 98). The opposite direction is refused too: a final U+00A0 of a statement that the script replaces (it is followed by a `;` or by more text) and that the statement alone keeps
+would make it fail or, for an `IF EXISTS` form, name another object; the refusal says that the blank is kept when run alone, replaced in its script (rows 100 and 101). The blank at the very end of the script is kept both ways (row 99).
 
 Measured on both shell versions and both driver versions: U+0085, U+2028, U+2029, U+1680 and
 U+200C are part of the word before them (`SELECT 1 AS a` followed by one of them and `b` returns a

@@ -3,7 +3,7 @@
 from typing import List, Optional, Sequence
 
 from dblift.core.exceptions import UnsafeStatementSplitError
-from dblift.core.sql_parser.blank_pass import differs_alone
+from dblift.core.sql_parser.blank_pass import differs_alone, kept_alone_only
 from dblift.core.sql_parser.lexical_spec import SegmentScriptRules
 from dblift.core.sql_parser.statement import Statement
 from dblift.core.sql_parser.tokens import Token, TokenType
@@ -61,7 +61,7 @@ class SegmentScript:
         text = raw.lstrip(blanks)
         lead = len(raw) - len(text)
         text = text.rstrip(blanks)
-        if code and self.kept:
+        if code:
             self._refuse_read_differently_alone(start + lead, text)
         found.append(
             Statement(
@@ -74,14 +74,18 @@ class SegmentScript:
         )
 
     def _refuse_read_differently_alone(self, lo: int, text: str) -> None:
-        """Refuse a statement with a blank the engine keeps in the script and replaces alone."""
-        pos = differs_alone(self.source, lo, lo + len(text), self.kept, self.rules)
+        """Refuse a statement with a blank the engine reads differently alone than in its script."""
+        hi = lo + len(text)
+        pos = differs_alone(self.source, lo, hi, self.kept, self.rules)
+        how = "where the engine keeps this blank in a word and, run alone, replaces it"
+        if pos < 0:
+            pos = kept_alone_only(self.source, lo, hi, self.kept, self.rules)
+            how = "this blank is kept when run alone, replaced in its script"
         if pos < 0:
             return
         line = self.source.count("\n", 0, pos) + 1
         column = pos - self.source.rfind("\n", 0, pos)
         raise UnsafeStatementSplitError(
             f"U+{ord(self.source[pos]):04X} at line {line}, column {column}: the statement reads "
-            "differently run alone than in its script, where the engine keeps this blank as part "
-            "of a word and, run alone, replaces it by a space"
+            f"differently run alone than in its script, {how}"
         )

@@ -116,3 +116,19 @@ def differs_alone(
                 return lo + min(found)
             pos = end
     return -1
+
+
+def kept_alone_only(
+    source: str, lo: int, hi: int, kept: Sequence[int], rules: SegmentScriptRules
+) -> int:
+    """The offset of the final two-byte blank of ``source[lo:hi]`` that the script replaces, or -1.
+
+    Run alone, the pass never reads the last two bytes of the text, so that blank is kept; in the
+    script it is kept only inside a kept stretch or at the very end of the script.
+    """
+    if rules.blank_pass is None or hi <= lo or hi >= len(source):
+        return -1
+    pos = hi - 1
+    if source[pos] not in rules.blanks or len(source[pos].encode()) != 2:
+        return -1
+    return -1 if bisect_right(kept, pos) % 2 else pos

@@ -15,6 +15,7 @@ import pytest
 import sqlglot
 from sqlglot.dialects import Dialect
 
+from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.core.sql_parser.sqlglot_statement_facts import read_statement_facts
 from dblift.db.dml_analysis import analyze_dml
 from dblift.db.plugins.duckdb.parser.duckdb_facts_parser import DuckDBFactsParser
@@ -105,6 +106,11 @@ def test_active_plugin_readers_name_nothing(dialect, char):
 @pytest.mark.parametrize("parser", (SQLiteFactsParser, DuckDBFactsParser), ids=("sqlite", "duckdb"))
 def test_parser_projection_names_nothing(parser, char):
     sql = f"CREATE TABLE t{char}(id INT); DROP TABLE u{char}; UPDATE v{char} SET a = 1"
+    if parser is DuckDBFactsParser and char == "\u00a0":
+        # the engine replaces the blank before the second `;`, the statement alone keeps it
+        with pytest.raises(UnsafeStatementSplitError, match="kept when run alone"):
+            parser().extract_objects(sql)
+        return
     assert parser().extract_objects(sql) == []
 
 
