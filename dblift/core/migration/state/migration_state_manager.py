@@ -44,6 +44,8 @@ from dblift.core.migration.state.migration_state import (
 )
 from dblift.core.migration.state.migration_state_service import MigrationStateService
 from dblift.core.migration.state.rank_wins import latest_successful_ranks
+from dblift.core.migration.state.repair_plan import RepairPlan
+from dblift.core.migration.state.repair_plan import plan_repairs as _plan_repairs
 from dblift.core.migration.state.repeatable_status import (
     PENDING_REPEATABLE_STATUSES,
     RepeatableRun,
@@ -1069,6 +1071,25 @@ class MigrationStateManager:
             versions=versions,
             exclude_versions=exclude_versions,
             migration_rules=migration_rules,
+            read_snapshot=read_snapshot,
+        )
+
+    def plan_repairs(
+        self,
+        scripts_dir: Path,
+        *,
+        recursive: bool,
+        additional_dirs: Optional[List[Path]],
+        dir_recursive_map: Optional[Dict[Path, bool]],
+        read_snapshot: Optional[MigrationReadSnapshot] = None,
+    ) -> RepairPlan:
+        """Decide what ``repair`` fixes; raises ``RepairSafetyError`` when it would mark everything missing."""
+        return _plan_repairs(
+            self,
+            scripts_dir,
+            recursive=recursive,
+            additional_dirs=additional_dirs,
+            dir_recursive_map=dir_recursive_map,
             read_snapshot=read_snapshot,
         )
 

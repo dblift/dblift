@@ -21,6 +21,7 @@ from dblift.core.migration.commands.repair_command import RepairCommand
 from dblift.core.migration.commands.validate_command import ValidateCommand
 from dblift.core.migration.state.migration_data_service import MigrationDataService
 from dblift.core.migration.state.migration_state import MigrationState
+from tests.unit.core.migration.commands._plan_repairs_wiring import as_actions
 
 pytestmark = [pytest.mark.unit, pytest.mark.sqlite]
 
@@ -969,15 +970,17 @@ def test_repair_delete_record_never_uses_model_filename_inference(
     monkeypatch.setattr(Migration, "_parse_filename", forbidden)
     result = RepairResult()
     count, failed = command._execute_repair_loop(
-        [
-            {
-                "type": "MISSING_SCRIPT",
-                "script": "V1_2__missing[tag].sql",
-                "version": version,
-                "description": "missing",
-                "original_type": MigrationType.SQL,
-            }
-        ],
+        as_actions(
+            [
+                {
+                    "type": "MISSING_SCRIPT",
+                    "script": "V1_2__missing[tag].sql",
+                    "version": version,
+                    "description": "missing",
+                    "original_type": MigrationType.SQL,
+                }
+            ]
+        ),
         result,
     )
     assert not failed, result.error_message

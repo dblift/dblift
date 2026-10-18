@@ -29,6 +29,7 @@ from dblift.core.logger.results import RepairResult
 from dblift.core.migration.commands.repair_command import RepairCommand
 from dblift.core.migration.migration import MigrationType
 from dblift.core.migration.ui.data_collector import MigrationDataCollector
+from tests.unit.core.migration.commands._plan_repairs_wiring import as_actions
 
 
 def _make_repair_cmd():
@@ -82,7 +83,7 @@ def _run_missing_script_repair(script_name: str, original_type):
     result = RepairResult()
 
     with patch("dblift.core.migration.commands.repair_command.ensure_provider_connection"):
-        executed, had_error = cmd._execute_repair_loop(repairs, result)
+        executed, had_error = cmd._execute_repair_loop(as_actions(repairs), result)
 
     assert not had_error, "repair loop reported an error"
     assert executed == 1
