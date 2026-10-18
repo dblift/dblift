@@ -166,23 +166,59 @@ def _check_claims(script: str, old: List[str], texts: List[str], blanks: str) ->
         ) from None
 
 
+_COMMENT = re.compile(r"--[^\n]*|/\*.*?\*/", re.DOTALL)
+_TERMINATORS = ";@"
+
+
 def _kept_only(text: str, blanks: str) -> bool:
-    """Whether ``text`` is made only of white space characters the dialect keeps at an edge."""
-    return bool(text) and text.isspace() and not any(c in blanks for c in text)
+    """Whether ``text`` holds, outside comments, only white space and some character kept at an edge."""
+    code = _COMMENT.sub("", text)
+    return bool(code) and code.isspace() and any(c not in blanks for c in code)
+
+
+def _stands_alone(script: str, text: str, at: int, blanks: str) -> bool:
+    """Whether ``text`` at ``at`` is a statement of its own: terminators (or the script's ends) around it."""
+    gap = blanks + " \t\r\n"
+    before = script[:at].rstrip(gap)
+    after = script[at + len(text) :].lstrip(gap)
+    return (not before or before[-1] in _TERMINATORS) and (not after or after[0] in _TERMINATORS)
+
+
+def _in_place(new: List[Any], kept: List[Any], script: str, blanks: str, text_of: Any) -> bool:
+    """Whether each statement of kept characters stands alone in the script where ``new`` has it."""
+    position = 0
+    for item in new:
+        text = text_of(item)
+        if any(item is other for other in kept):
+            at = script.find(text, position)
+            while at >= 0 and not _stands_alone(script, text, at, blanks):
+                at = script.find(text, at + 1)
+            if at < 0:
+                return False
+            position = at + len(text)
+        else:
+            core = text.strip()
+            at = script.find(core, position) if core else -1
+            if at < 0:
+                if core and core in script:
+                    return False  # the script holds it before a statement that precedes it
+                continue
+            position = at + len(core)
+    return True
 
 
 def _without_declared(
     new: List[Any], old_count: int, script: Optional[str], blanks: str, text_of: Any
 ) -> List[Any]:
-    """``new`` without the statements made only of kept characters, when that explains the count."""
+    """``new`` without the statements of kept characters, when that explains the count."""
     if len(new) == old_count:
         return new
     kept = [item for item in new if _kept_only(text_of(item), blanks)]
     if script is None or len(new) - len(kept) != old_count:
         return new
-    if not all(text_of(item) in script for item in kept):
+    if not _in_place(new, kept, script, blanks, text_of):
         return new
-    return [item for item in new if item not in kept]
+    return [item for item in new if not any(item is other for other in kept)]
 
 
 def _check_statements(
