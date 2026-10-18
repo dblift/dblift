@@ -1,0 +1,40 @@
+{
+ "db2": [
+  "143547f146c54084"
+ ],
+ "duckdb": [],
+ "mysql": [
+  "a0f949497a74dde0"
+ ],
+ "oracle": [
+  "5089bdd36bb68eab",
+  "7548bdea2093ef1d",
+  "60f08a96bb67908a",
+  "f6d8feeacdd783cf",
+  "2c120904be52f81f",
+  "3a9416a9ee588b18",
+  "a72983f402bdbd22",
+  "fbfddad30a7e0ca6",
+  "07419b56c2b34592",
+  "0198793e23a5008e",
+  "524fbc438328ba9d",
+  "fe7d4ca277c89d37",
+  "30bbed6b10d3003a",
+  "12c8552d90a71483",
+  "67720dc9ec28f763",
+  "54cd6008b8af3e85",
+  "33d320f753ef43c7",
+  "41e9873defa6d01f",
+  "cb45841be3ca8f6d",
+  "6517d4c460104209",
+  "cc379944f054e0a8",
+  "212c6af2cfb45f25",
+  "08bc81b3a2a748cf",
+  "d08518bd2d1d01e7"
+ ],
+ "postgresql": [],
+ "redshift": [],
+ "snowflake": [],
+ "sqlite": [],
+ "sqlserver": []
+}
