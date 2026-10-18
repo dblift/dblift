@@ -77,6 +77,16 @@ def test_both_legs_install_the_extras_without_the_constraints_file_first() -> No
     assert "PIP_CONSTRAINT" not in json.dumps(job)
 
 
+def test_each_leg_fails_unless_the_installed_sqlglot_is_the_one_it_intended() -> None:
+    """A leg that silently ran the other release would certify nothing."""
+    floor, newest = _install_steps(_jobs()["sqlglot-floor"]).values()
+    for step, variable in ((floor, "FLOOR"), (newest, "NEWEST")):
+        lines = [line for line in step["run"].splitlines() if "sqlglot.__version__" in line]
+        asserting = [line for line in lines if "assert" in line and f"${variable}" in line]
+        assert asserting, f"{variable}: no line asserts the installed version"
+        assert 'pip install "sqlglot==$' + variable in step["run"]
+
+
 def test_both_legs_run_the_corpus_tests() -> None:
     job = _jobs()["sqlglot-floor"]
     tests = [step["run"] for step in _steps(job) if "pytest" in step.get("run", "")]

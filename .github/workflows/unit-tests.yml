@@ -101,7 +101,7 @@ jobs:
           python -m pip install -e ".[dev,postgresql,mysql,mariadb,oracle,sqlserver,db2,duckdb,cosmosdb,mongodb,django,mcp]"
           FLOOR=$(python -c "import re,pathlib; print(re.search(r'\"sqlglot>=([0-9][^,\"]*),', pathlib.Path('pyproject.toml').read_text()).group(1))")
           python -m pip install "sqlglot==$FLOOR"
-          python -c "import sqlglot; print('sqlglot', sqlglot.__version__)"
+          python -c "import sqlglot; assert sqlglot.__version__ == '$FLOOR', sqlglot.__version__"
 
       - name: Install the newest recorded sqlglot
         if: matrix.arm == 'newest'
@@ -109,7 +109,7 @@ jobs:
           python -m pip install -e ".[dev,postgresql,mysql,mariadb,oracle,sqlserver,db2,duckdb,cosmosdb,mongodb,django,mcp]"
           NEWEST=$(python -c "import json,pathlib; print(json.loads(pathlib.Path('tests/support/facts_corpus/VERSIONS.json').read_text())['newest'])")
           python -m pip install "sqlglot==$NEWEST"
-          python -c "import sqlglot; print('sqlglot', sqlglot.__version__)"
+          python -c "import sqlglot; assert sqlglot.__version__ == '$NEWEST', sqlglot.__version__"
 
       - name: Run statement-facts tests
         run: |
