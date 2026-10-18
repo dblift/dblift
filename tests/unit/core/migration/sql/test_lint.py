@@ -290,7 +290,8 @@ def _delta_findings(tmp_path: Path, dialect: str, drop: str):
 
 
 # Oracle reads an ideographic space as a blank (the name is read whole) and refuses a no-break space
-# (the script is not parsed): neither leaves an unreadable name for the lint to report.
+# (the script is not parsed): neither leaves an unreadable name for the lint to report, except the
+# ideographic space before a terminator, pinned below.
 @pytest.mark.parametrize(
     "dialect,blank",
     [
@@ -345,3 +346,16 @@ def test_a_drop_of_a_table_whose_creation_carried_a_diagnostic_is_still_exempted
     )
 
     assert results[1].findings == ()
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="Oracle: the span keeps the ideographic space before the terminator, "
+    "so the name is not yet read as the engine reads it",
+)
+def test_an_oracle_drop_whose_name_ends_with_an_ideographic_space_before_a_terminator_is_read(
+    tmp_path: Path,
+):
+    findings = _delta_findings(tmp_path, "oracle", f"DROP TABLE t{chr(0x3000)};")
+
+    assert not [f for f in findings if "name could not be read" in f.message]

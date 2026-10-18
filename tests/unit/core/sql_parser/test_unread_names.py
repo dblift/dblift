@@ -195,7 +195,7 @@ def _ending_blank(dialect):
 
 @pytest.mark.parametrize("dialect", SPAN_SCANNERS)
 def test_the_scanner_span_of_a_name_that_ends_the_script_holds_the_blank_except_for_oracle(dialect):
-    """Green pin: only Oracle's last record ends at its last token, which is why the extension stays."""
+    """Green pin: only Oracle's last record ends at its last token."""
     script = f"DROP TABLE t{_ending_blank(dialect)}"
     records = SqlParserFactory(dialect).get_parser().regex_parser.split(script)
     assert len(records) == 1

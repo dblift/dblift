@@ -9,6 +9,7 @@ generated undo drop the user's own ``t``. Such statements are left to manual rev
 from __future__ import annotations
 
 import logging
+import re
 import warnings
 
 import pytest
@@ -68,7 +69,7 @@ def refused(dialect: str, char: str) -> bool:
     return dialect == "oracle" and char.isspace() and char not in ORACLE_SPEC.text_blanks
 
 
-def read_as_blank(dialect: str, char: str, sql: str) -> bool:
+def read_as_blank(dialect: str, char: str) -> bool:
     """Oracle's engine reads these characters as blanks: the name before one that ends the statement
     is read whole, with or without a terminator."""
     return dialect == "oracle" and char in ORACLE_SPEC.text_blanks
@@ -76,7 +77,7 @@ def read_as_blank(dialect: str, char: str, sql: str) -> bool:
 
 def _known_gap(request, dialect: str, char: str, sql: str) -> None:
     """Before a terminator the scanner's span keeps the ideographic space, so the name is not read."""
-    if read_as_blank(dialect, char, sql) and ";" in sql:
+    if read_as_blank(dialect, char) and ";" in sql:
         request.applymarker(
             pytest.mark.xfail(
                 strict=True,
@@ -200,7 +201,7 @@ def test_there_are_19_trailing_blanks():
     "sql",
     ["CREATE SEQUENCE q{c};", "CREATE SEQUENCE q{c}", "CREATE TABLE t{c}", "CREATE TABLE t{c};\n"],
 )
-def test_undo_of_a_name_that_ends_its_statement_is_manual_review(
+def test_undo_of_a_name_that_ends_its_statement_follows_the_engine_reading(
     request, tmp_path, dialect, char, sql
 ):
     _known_gap(request, dialect, char, sql)
@@ -209,10 +210,12 @@ def test_undo_of_a_name_that_ends_its_statement_is_manual_review(
             _undo(tmp_path, dialect, sql.format(c=char))
         return
     script = _undo(tmp_path, dialect, sql.format(c=char))
-    if read_as_blank(
-        dialect, char, sql
-    ):  # the engine reads the name before the blank: it is dropped
-        assert any(line.startswith("DROP") for line in _code_lines(script)), script
+    if read_as_blank(dialect, char):  # the engine reads the name before the blank: it is dropped
+        name = "q" if "SEQUENCE" in sql else "t"
+        assert any(
+            line.startswith("DROP") and re.search(rf"\b{name}\b", line, re.I)
+            for line in _code_lines(script)
+        ), script
         return
     _assert_manual_review(script)
 
@@ -222,14 +225,16 @@ def test_undo_of_a_name_that_ends_its_statement_is_manual_review(
 @pytest.mark.parametrize(
     "sql", ["DROP TABLE t{c};", "TRUNCATE TABLE t{c};", "DELETE FROM t{c};", "DROP TABLE t{c}"]
 )
-def test_analysis_of_a_name_that_ends_its_statement_names_nothing(request, dialect, char, sql):
+def test_analysis_of_a_name_that_ends_its_statement_names_what_the_engine_reads(
+    request, dialect, char, sql
+):
     _known_gap(request, dialect, char, sql)
     if refused(dialect, char):  # the script is not parsed: nothing is named
         assert not analyse_script(sql.format(c=char), dialect).statements
         return
     analysis = analyse_script(sql.format(c=char), dialect)
     names = {obj.name.lower() for stmt in analysis.statements for obj in stmt.objects}
-    if read_as_blank(dialect, char, sql):  # the engine reads the name before the blank
+    if read_as_blank(dialect, char):  # the engine reads the name before the blank
         assert "t" in names
         return
     assert "t" not in names
