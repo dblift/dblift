@@ -85,14 +85,17 @@ class BatchScript:
         if not text:
             return
         lead = len(raw) - len(raw.lstrip(self.text_blanks))
+        constituents = divide(
+            self.rules, self.source, start, cut, spans, positions, self.text_blanks
+        )
+        if constituents and not any(constituents) and not text.strip(self.text_blanks + ";"):
+            return  # a terminator and blanks the code scan counted as code: no statement
         record = Statement(
             text=text,
             line=line + raw.count("\n", 0, lead),
             terminator=terminator,
             repeat=1 if count is None else count,
-            analysis_statements=divide(
-                self.rules, self.source, start, cut, spans, positions, self.text_blanks
-            ),
+            analysis_statements=constituents,
             source_start=start,
             source_end=end,
         )

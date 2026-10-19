@@ -1177,3 +1177,11 @@ def test_division_matches_the_values_recorded_from_the_previous_heuristic(script
         for r in engine().split(script)
     ]
     assert found == expected
+
+
+@pytest.mark.parametrize("tail", ["\xa0", "\x0c ", "​"])
+def test_a_batch_whose_constituents_are_all_empty_is_no_statement(tail):
+    engine = LexicalEngine(SQLSERVER_SPEC)
+    assert engine.split(f";{tail}") == []
+    kept = engine.split(f"SELECT 1\nGO\n;{tail}\nGO\nSELECT 2")
+    assert [r.text for r in kept] == ["SELECT 1", "SELECT 2"]
