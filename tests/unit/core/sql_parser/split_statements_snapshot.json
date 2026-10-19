@@ -7297,7 +7297,7 @@
 "sha256": "d33767030fb567ebf4699543cf51a835e6b5eced5e52adf95a4e7fbfd5c4910d"
 },
 "spec_rows": {
-"count": 680,
+"count": 692,
 "observed": [
 [
 "db2",
@@ -14946,6 +14946,57 @@
 }
 ],
 [
+"postgresql",
+"SELECT 1;\n\u00a0\nSELECT 2;",
+{
+"analysis": [
+"SELECT 1",
+"\u00a0\nSELECT 2"
+],
+"engine": [
+"SELECT 1;",
+"\u00a0\nSELECT 2;"
+],
+"splitter": [
+"SELECT 1;",
+"\u00a0\nSELECT 2;"
+]
+}
+],
+[
+"postgresql",
+"\u00a0SELECT 1;",
+{
+"analysis": [
+"\u00a0SELECT 1"
+],
+"engine": [
+"\u00a0SELECT 1;"
+],
+"splitter": [
+"\u00a0SELECT 1;"
+]
+}
+],
+[
+"postgresql",
+"SELECT 1;\u00a0",
+{
+"analysis": [
+"SELECT 1",
+"\u00a0"
+],
+"engine": [
+"SELECT 1;",
+"\u00a0"
+],
+"splitter": [
+"SELECT 1;",
+"\u00a0"
+]
+}
+],
+[
 "sqlite",
 "CREATE TABLE t(a); INSERT INTO t VALUES(1);",
 {
@@ -19711,8 +19762,161 @@
 "SELECT 2;"
 ]
 }
+],
+[
+"cockroachdb",
+"SELECT 1;\n\u00a0\nSELECT 2;",
+{
+"analysis": [
+"SELECT 1",
+"\u00a0\nSELECT 2"
+],
+"engine": [
+"SELECT 1;",
+"\u00a0\nSELECT 2;"
+],
+"splitter": [
+"SELECT 1;",
+"\u00a0\nSELECT 2;"
+]
+}
+],
+[
+"yugabytedb",
+"SELECT 1;\n\u00a0\nSELECT 2;",
+{
+"analysis": [
+"SELECT 1",
+"\u00a0\nSELECT 2"
+],
+"engine": [
+"SELECT 1;",
+"\u00a0\nSELECT 2;"
+],
+"splitter": [
+"SELECT 1;",
+"\u00a0\nSELECT 2;"
+]
+}
+],
+[
+"redshift",
+"SELECT 1;\n\u00a0\nSELECT 2;",
+{
+"analysis": [
+"SELECT 1",
+"\u00a0\nSELECT 2"
+],
+"engine": [
+"SELECT 1;",
+"\u00a0\nSELECT 2;"
+],
+"splitter": [
+"SELECT 1;",
+"\u00a0\nSELECT 2;"
+]
+}
+],
+[
+"cockroachdb",
+"\u00a0SELECT 1;",
+{
+"analysis": [
+"\u00a0SELECT 1"
+],
+"engine": [
+"\u00a0SELECT 1;"
+],
+"splitter": [
+"\u00a0SELECT 1;"
+]
+}
+],
+[
+"yugabytedb",
+"\u00a0SELECT 1;",
+{
+"analysis": [
+"\u00a0SELECT 1"
+],
+"engine": [
+"\u00a0SELECT 1;"
+],
+"splitter": [
+"\u00a0SELECT 1;"
+]
+}
+],
+[
+"redshift",
+"\u00a0SELECT 1;",
+{
+"analysis": [
+"\u00a0SELECT 1"
+],
+"engine": [
+"\u00a0SELECT 1;"
+],
+"splitter": [
+"\u00a0SELECT 1;"
+]
+}
+],
+[
+"cockroachdb",
+"SELECT 1;\u00a0",
+{
+"analysis": [
+"SELECT 1",
+"\u00a0"
+],
+"engine": [
+"SELECT 1;",
+"\u00a0"
+],
+"splitter": [
+"SELECT 1;",
+"\u00a0"
+]
+}
+],
+[
+"yugabytedb",
+"SELECT 1;\u00a0",
+{
+"analysis": [
+"SELECT 1",
+"\u00a0"
+],
+"engine": [
+"SELECT 1;",
+"\u00a0"
+],
+"splitter": [
+"SELECT 1;",
+"\u00a0"
+]
+}
+],
+[
+"redshift",
+"SELECT 1;\u00a0",
+{
+"analysis": [
+"SELECT 1",
+"\u00a0"
+],
+"engine": [
+"SELECT 1;",
+"\u00a0"
+],
+"splitter": [
+"SELECT 1;",
+"\u00a0"
+]
+}
 ]
 ],
-"sha256": "ca692e6ad60933a4fc83ffa564628c66667fbedd1c0d96c30f54c5d6d0fafd18"
+"sha256": "f0ba01c8d08e8232789b5f423697eb909c5346b2ddd0af430e1161a4747a8734"
 }
 }

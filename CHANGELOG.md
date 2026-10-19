@@ -123,10 +123,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **`migrate` sends a statement made only of a character the engine does not read as a blank.**
-  On PostgreSQL, CockroachDB and YugabyteDB, a piece such as a lone no-break space between two
-  semicolons used to be skipped silently; it is now sent and fails as `psql` does. Redshift follows
-  the same rule (unmeasured there).
+- **`migrate` sends a statement that starts or ends with a character the engine does not read as a
+  blank.** On PostgreSQL, CockroachDB and YugabyteDB, a statement that starts or ends with a
+  no-break space, an ideographic space, a control character, U+2028 or a similar character, or a piece
+  made only of one, used to be sent without it, or skipped. It is now sent with the character and
+  fails with a syntax error, as it does under `psql`. A migration indented with no-break spaces, for
+  example one pasted from a web page, now fails where it used to run: replace those characters with
+  ordinary spaces. A form feed is still a blank.
 
 - **`info`, `migrate --dry-run` and the parsers' listings list the statements `migrate` sends,
   on every engine.** A trailing comment is no longer listed as a statement on SQLite and DuckDB

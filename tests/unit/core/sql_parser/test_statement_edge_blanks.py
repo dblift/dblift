@@ -315,3 +315,43 @@ def test_postgresql_family_record_made_only_of_a_kept_character_is_a_statement(
 def test_postgresql_record_made_only_of_a_blank_is_still_dropped(blank: str) -> None:
     recorded = record_script("postgresql", f"SELECT 1;\n{blank};\nSELECT 2;")["execution"]
     assert recorded == ["SELECT 1;", "SELECT 2;"]
+
+
+@pytest.mark.parametrize("dialect", ["postgresql", "cockroachdb", "yugabytedb", "redshift"])
+@pytest.mark.parametrize(
+    ("script", "execution", "analysis"),
+    [
+        (
+            "SELECT 1;\n{k}\nSELECT 2;",
+            ["SELECT 1;", "{k}\nSELECT 2;"],
+            ["SELECT 1", "{k}\nSELECT 2"],
+        ),
+        ("{k}SELECT 1;", ["{k}SELECT 1;"], ["{k}SELECT 1"]),
+        ("{k}DROP TABLE t;", ["{k}DROP TABLE t;"], ["{k}DROP TABLE t"]),
+        ("SELECT 1;{k}", ["SELECT 1;", "{k}"], ["SELECT 1", "{k}"]),
+    ],
+)
+@pytest.mark.parametrize("kept", [NBSP, chr(0x3000), "\x1c"])
+def test_postgresql_family_kept_character_at_statement_edge_is_sent(
+    kept: str, script: str, execution: List[str], analysis: List[str], dialect: str
+) -> None:
+    recorded = record_script(dialect, script.format(k=kept))
+    assert recorded["execution"] == [e.format(k=kept) for e in execution]
+    assert recorded["analysis"] == [a.format(k=kept) for a in analysis]
+
+
+@pytest.mark.parametrize("dialect", ["postgresql", "redshift"])
+def test_postgresql_family_statement_after_a_kept_character_starts_on_its_line(
+    dialect: str,
+) -> None:
+    records = record_script(dialect, f"SELECT 1;\n{NBSP}\nSELECT 2;")["records"]
+    assert [r["line"] for r in records] == [1, 2]
+
+
+@pytest.mark.parametrize("dialect", ["postgresql", "cockroachdb", "yugabytedb"])
+@pytest.mark.parametrize("script", ["{f}SELECT 1;", "SELECT 1;{f}", "SELECT 1;\n{f};\nSELECT 2;"])
+def test_postgresql_family_form_feed_at_statement_edge_is_still_a_blank(
+    dialect: str, script: str
+) -> None:
+    recorded = record_script(dialect, script.format(f=FORM_FEED))["execution"]
+    assert recorded == ["SELECT 1;"] + (["SELECT 2;"] if "SELECT 2" in script else [])

@@ -5,7 +5,7 @@
 | Item | Value |
 | --- | --- |
 | Covers | PostgreSQL 12+; AlloyDB, Aurora PostgreSQL, Citus, CockroachDB, Neon, Supabase, TimescaleDB, YugabyteDB (all inherit this spec unchanged, see §13) |
-| Code facts taken from | OSS `develop` `61b1d83f`; the pieces without code and the statement records at OSS `develop` `48051ff` (2026-10-19) |
+| Code facts taken from | OSS `develop` `61b1d83f`; the pieces without code and the statement records at OSS `develop` `48051ff` (2026-10-19); the kept-character rows (30d to 30i) rest on the change that makes the PostgreSQL family send a statement holding a character the engine does not read as blank |
 | Vendor references, fetched 2026-10-10 | *PostgreSQL 18 documentation*, §4.1.1 Identifiers, §4.1.2.1–4.1.2.5 Constants, §4.1.5 Comments; *psql* reference, "Meta-Commands" and `\;` |
 | Live verification | psql against PostgreSQL 15 and 16, 2026-10-10 (rows 16, 21, 25); psql 16.14 and psycopg 3.3.5 against PostgreSQL 16.14, and ysqlsh, cockroach sql and psycopg 3 against YugabyteDB 2026.1.2.0 and CockroachDB v24.3.18, 2026-10-19 (rows 30d to 30f: U+00A0, U+3000 and U+001C are rejected with SQLSTATE 42601 everywhere, U+0020 and U+0009 are accepted); Redshift not measured |
 | Engine subclass | none; tagged strings use the shared lexical primitive (§9) |
@@ -161,6 +161,9 @@ DuckDB retains its existing scanner until it is migrated.
 | 30d | `SELECT 1;\n\xa0;\nSELECT 2;` | `SELECT 1` · `\xa0` · `SELECT 2` (a piece made only of a no-break space is a statement and is sent; psql and the drivers send it and the server answers a syntax error near the character, so a migration fails as a client run does; measured 2026-10-19 with psql 16.14, ysqlsh, cockroach sql and psycopg 3 against PostgreSQL 16.14, CockroachDB v24.3.18 and YugabyteDB 2026.1.2.0: each rejects the piece with SQLSTATE 42601) |
 | 30e | `SELECT 1;\n　;\nSELECT 2;` | `SELECT 1` · `\u3000` · `SELECT 2` (a piece made only of an ideographic space is a statement and is sent; the server answers a syntax error near the character; measured 2026-10-19 with psql 16.14, ysqlsh, cockroach sql and psycopg 3 against PostgreSQL 16.14, CockroachDB v24.3.18 and YugabyteDB 2026.1.2.0: each rejects the piece with SQLSTATE 42601) |
 | 30f | `SELECT 1;\n\x1c;\nSELECT 2;` | `SELECT 1` · `\x1c` · `SELECT 2` (a piece made only of a control character is a statement and is sent; the server answers a syntax error near the character; a form feed alone is a blank and is accepted; measured 2026-10-19 with psql 16.14, ysqlsh, cockroach sql and psycopg 3 against PostgreSQL 16.14, CockroachDB v24.3.18 and YugabyteDB 2026.1.2.0: each rejects the piece with SQLSTATE 42601) |
+| 30g | `SELECT 1;\n\xa0\nSELECT 2;` | `SELECT 1` · `\xa0\nSELECT 2` (a kept character at the head of a statement is part of it, not skipped, and the statement starts on the line that holds it; measured 2026-10-19 with psql 16.14 against PostgreSQL 16.14: the statement is rejected with SQLSTATE 42601; CockroachDB and YugabyteDB were measured only on a piece made of the character alone, rows 30d to 30f) |
+| 30h | `\xa0SELECT 1;` | `\xa0SELECT 1` (the leading no-break space is sent with the statement, which the engine rejects; measured 2026-10-19 with psql 16.14 against PostgreSQL 16.14; CockroachDB and YugabyteDB were measured only on the lone-piece case, rows 30d to 30f) |
+| 30i | `SELECT 1;\xa0` | `SELECT 1` · `\xa0` (a kept character after the last terminator is a piece of its own and is sent, and the engine rejects it; measured 2026-10-19 with psql 16.14 against PostgreSQL 16.14; CockroachDB and YugabyteDB were measured only on the lone-piece case, rows 30d to 30f) |
 
 ## 11. Not handled
 
