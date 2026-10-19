@@ -316,30 +316,13 @@ class TestProbeDialectKeyAdditional(unittest.TestCase):
 
 class TestClassifyExecutionStatements(unittest.TestCase):
 
-    def test_skips_empty_statements(self):
-        """Lines 203-220: Empty statements are skipped."""
+    def test_classifies_every_statement_it_is_handed(self):
+        """The splitter decides what a statement is; the engine classifies the whole list."""
         engine = _make_engine()
         engine.sql_analyzer.get_statement_type.return_value = "DML"
 
-        result = engine._classify_execution_statements(["", "   ", "SELECT 1"])
-        # Only "SELECT 1" should be classified
-        self.assertEqual(len(result), 1)
-
-    def test_skips_comment_only_statements(self):
-        """Lines 203-220: Comment-only statements skipped."""
-        engine = _make_engine()
-        engine.sql_analyzer.get_statement_type.return_value = "DML"
-
-        result = engine._classify_execution_statements(["-- comment only"])
-        self.assertEqual(len(result), 0)
-
-    def test_skips_tsql_batch_separator(self):
-        """Lines 203-220: GO is a TSQL batch separator, skipped."""
-        engine = _make_engine(dialect="sqlserver")
-        engine.sql_analyzer.get_statement_type.return_value = "DML"
-
-        result = engine._classify_execution_statements(["GO", "SELECT 1"])
-        self.assertEqual(len(result), 1)
+        result = engine._classify_execution_statements(["SELECT 1", "SELECT 2"])
+        self.assertEqual([c.sql for c in result], ["SELECT 1", "SELECT 2"])
 
     def test_classifies_normal_statement(self):
         """Lines 203-220: Normal statement gets classified."""

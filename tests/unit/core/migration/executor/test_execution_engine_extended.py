@@ -134,20 +134,17 @@ class TestIsCommentOnlyStatement(unittest.TestCase):
 
 
 class TestExecutableSqlStatements(unittest.TestCase):
-    def test_filters_non_executable_statements_after_parsing(self):
+    def test_returns_every_statement_the_parser_handed_over(self):
         engine = _make_engine()
         migration = _make_sql_migration(
-            statements=[
-                "",
-                "-- comment only",
-                "/* block comment */",
-                "CREATE TABLE users (id INT)",
-            ]
+            statements=["CREATE TABLE users (id INT)", "INSERT INTO users VALUES (1)"]
         )
 
         statements = engine.get_executable_sql_statements(migration, MagicMock())
 
-        self.assertEqual(statements, ["CREATE TABLE users (id INT)"])
+        self.assertEqual(
+            statements, ["CREATE TABLE users (id INT)", "INSERT INTO users VALUES (1)"]
+        )
 
 
 # ---------------------------------------------------------------------------

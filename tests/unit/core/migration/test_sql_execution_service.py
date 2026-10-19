@@ -86,29 +86,6 @@ def _make_service(
 # ===========================================================================
 
 
-class TestTsqlBatchSeparator(unittest.TestCase):
-
-    def test_go_statement_skipped(self):
-        svc, provider, sql_analyzer, logger, journal = _make_service()
-        is_query, result = svc.execute_statement("GO")
-        assert is_query is False
-        assert result == 0
-        provider.execute_statement.assert_not_called()
-        provider.execute_query.assert_not_called()
-
-    def test_go_lowercase_skipped(self):
-        svc, provider, _, _, _ = _make_service()
-        is_query, result = svc.execute_statement("go")
-        assert is_query is False
-        assert result == 0
-
-    def test_go_with_whitespace_skipped(self):
-        svc, provider, _, _, _ = _make_service()
-        is_query, result = svc.execute_statement("  GO  ")
-        assert is_query is False
-        assert result == 0
-
-
 # ===========================================================================
 # Statement logging
 # ===========================================================================

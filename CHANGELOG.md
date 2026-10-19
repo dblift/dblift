@@ -116,6 +116,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`migrate` sends every statement the splitter returns.** SQLite and DuckDB no longer skip
+  a statement made only of a character the engine rejects (such as U+001C): it is sent and
+  fails as the engine does. On DuckDB a comment that ends at a carriage return no longer hides
+  the statement after it. A `GO 0` batch is now reported once, not twice, when a migration is
+  prepared.
 - **A piece of a script with no code is no longer a statement, in every dialect.**
   On SQLite and DuckDB, a segment made only of comments no longer shows up as an
   `UNKNOWN` statement in `info` or linting, and a nested comment counts as a comment on

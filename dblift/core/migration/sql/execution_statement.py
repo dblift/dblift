@@ -9,7 +9,7 @@ from typing import Any, List, Optional
 
 from dblift.core.exceptions import TransactionStatementError
 from dblift.core.sql_parser.common.comment_stripping import strip_comments_preserving_quotes
-from dblift.core.sql_parser.statement import executable_records, execution_strings
+from dblift.core.sql_parser.statement import Statement, executable_records, execution_strings
 from dblift.core.sql_parser.statement import execution_units as unit_texts
 from dblift.core.utils.row_access import strip_leading_comments
 
@@ -124,6 +124,7 @@ def neutralise_transaction_statements(
     log: Any,
     script_name: str = "the script",
     content: str = "",
+    records: Optional[List[Statement]] = None,
 ) -> List[str]:
     """*statements* with a script's ``BEGIN ... COMMIT`` envelope dropped, or a refusal.
 
@@ -133,6 +134,10 @@ def neutralise_transaction_statements(
     would end or fail against dblift's transaction, and is refused before anything runs, as is
     an envelope around a statement that cannot run in a transaction.
     A dialect with no patterns gets *statements* back untouched.
+
+    *statements* is the splitter's list for *content* (or for *records*, when the caller has them
+    already); it is no longer cross-checked against *content*, deliberately: the list is trusted
+    as the splitter returned it.
     """
     from dblift.db.provider_registry import ProviderRegistry
 
@@ -140,10 +145,12 @@ def neutralise_transaction_statements(
     patterns = quirks.transaction_control_sql_patterns
     if not patterns:
         parser = _script_parser(dialect.lower())
-        if not content or parser is None or not hasattr(parser, "split"):
-            return statements
+        if records is None:
+            if not content or parser is None or not hasattr(parser, "split"):
+                return statements
+            records = parser.split(content)
         sent = 0  # how many strings the records before this one are sent as
-        for record in parser.split(content):
+        for record in records:
             index, sent = sent, sent + len(execution_strings([record]))
             if not (executable_records([record]) and record.multi):
                 continue
@@ -163,8 +170,6 @@ def neutralise_transaction_statements(
     # (index, normalised text, kind) of every executable statement.
     executable = []
     for index, statement in enumerate(statements):
-        if is_comment_only_statement(statement):
-            continue
         text = re.sub(r"\s+", " ", _without_comments(quirks, statement)).upper()
         executable.append((index, text, next((k for p, k in patterns if re.match(p, text)), None)))
     marked = [entry for entry in executable if entry[2]]
@@ -232,13 +237,14 @@ def _position(statements: List[str], index: int, dialect: str, content: str) -> 
 
     quirks = ProviderRegistry.get_quirks(dialect.lower())
     parser_class = quirks.parser_class("regex")
-    blanks = quirks.empty_statement_blanks()
     try:
-        records = [r for r in parser_class().split(content) if r.text.strip(blanks)]  # type: ignore[misc]
+        records = parser_class().split(content)  # type: ignore[misc]
     except Exception:  # noqa: BLE001 - the line is a courtesy; the refusal stands without it
         records = []
-    if [r.text for r in records] == statements:
-        record = records[index]
+    # One entry per string execution sends, so a statement's index is its record's.
+    owners = [(record, text) for record in records for text in execution_strings([record])]
+    if [text for _, text in owners] == statements:
+        record = owners[index][0]
         # The record's line is where its leading comments start; the keyword is after them.
         offset = max(record.text.rfind(strip_leading_comments(record.text).strip()), 0)
         return f"line {record.line + record.text.count(chr(10), 0, offset)}"

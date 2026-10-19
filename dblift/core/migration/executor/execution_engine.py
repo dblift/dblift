@@ -218,19 +218,8 @@ class ExecutionEngine:
     def _classify_execution_statements(self, statements: List[str]) -> List[ExecutionStatement]:
         """Attach transaction metadata to executable SQL statements."""
         dialect = self._probe_dialect_key() or getattr(self.sql_analyzer, "dialect", "") or ""
-        quirks = ProviderRegistry.get_quirks(dialect)
-        blanks = quirks.empty_statement_blanks()
         execution_statements: List[ExecutionStatement] = []
         for statement in statements:
-            stripped = statement.strip(blanks)
-            if (
-                not stripped
-                or quirks.is_batch_separator(stripped)
-                or self._is_comment_only_statement(
-                    stripped, blanks=blanks, hash_comments=quirks.hash_line_comments()
-                )
-            ):
-                continue
             statement_type = self.sql_analyzer.get_statement_type(statement)
             execution_statements.append(
                 classify_execution_statement(
@@ -256,21 +245,11 @@ class ExecutionEngine:
 
         dialect = self._probe_dialect_key() or getattr(self.sql_analyzer, "dialect", "") or ""
         quirks = ProviderRegistry.get_quirks(dialect)
-        blanks = quirks.empty_statement_blanks()
         is_oracle_sqlplus = self._current_sqlplus_ctx is not None
         executable: List[str] = []
         execution_statements: List[ExecutionStatement] = []
         for statement in statements:
-            stripped = statement.strip(blanks)
-            if not stripped:
-                continue
-            if quirks.is_batch_separator(stripped):
-                continue
-            if self._is_comment_only_statement(
-                stripped, blanks=blanks, hash_comments=quirks.hash_line_comments()
-            ):
-                continue
-            if is_oracle_sqlplus and quirks.parse_error_policy_directive(stripped) is not None:
+            if is_oracle_sqlplus and quirks.parse_error_policy_directive(statement) is not None:
                 continue
             statement_type = self.sql_analyzer.get_statement_type(statement)
             execution_statements.append(
@@ -399,6 +378,7 @@ class ExecutionEngine:
             log=self.log,
             script_name=migration.script_name,
             content=content,
+            records=analyzer.statement_splitter.last_split(content),
         )
 
     def _reset_provider_schema_cache(self) -> None:
@@ -576,7 +556,6 @@ class ExecutionEngine:
         ctx = self._current_sqlplus_ctx
         dialect = self._probe_dialect_key() or getattr(self.sql_analyzer, "dialect", "") or ""
         quirks = ProviderRegistry.get_quirks(dialect)
-        blanks = quirks.empty_statement_blanks()
         _session_output_conn = getattr(self.provider, "connection", None)
         _session_output_active = False
         if (
@@ -601,22 +580,11 @@ class ExecutionEngine:
                 f"Executing statement {i+1}/{len(statements)} from {migration.script_name}"
             )
 
-            stripped_stmt = statement.strip(blanks)
-            # Skip empty statements
-            if not stripped_stmt:
-                continue
-            # Dialect-specific batch separator (T-SQL ``GO``); not executable by the native driver
-            if quirks.is_batch_separator(stripped_stmt):
-                continue
-            if self._is_comment_only_statement(
-                stripped_stmt, blanks=blanks, hash_comments=quirks.hash_line_comments()
-            ):
-                continue
             # Positional error-handling directive (Oracle WHENEVER SQLERROR) — update
             # policy positionally, do not send to the provider. Gated on the script context
             # so non-Oracle dialects never consume CONTINUE/EXIT lookalikes.
             if is_oracle_sqlplus:
-                _new_policy = quirks.parse_error_policy_directive(stripped_stmt)
+                _new_policy = quirks.parse_error_policy_directive(statement)
                 if _new_policy is not None:
                     whenever_policy = _new_policy
                     self.log.debug(f"WHENEVER SQLERROR policy → {whenever_policy}")
@@ -1115,23 +1083,13 @@ class ExecutionEngine:
 
         dialect = self._probe_dialect_key() or getattr(self.sql_analyzer, "dialect", "") or ""
         quirks = ProviderRegistry.get_quirks(dialect)
-        blanks = quirks.empty_statement_blanks()
 
         # Execute SQL statements in the callback
         try:
             for statement in sql_statements:
-                stripped = statement.strip(blanks)
-                if (
-                    not stripped
-                    or quirks.is_batch_separator(stripped)
-                    or self._is_comment_only_statement(
-                        stripped, blanks=blanks, hash_comments=quirks.hash_line_comments()
-                    )
-                ):
-                    continue
                 if (
                     self._current_sqlplus_ctx is not None
-                    and quirks.parse_error_policy_directive(stripped) is not None
+                    and quirks.parse_error_policy_directive(statement) is not None
                 ):
                     continue
                 if record is not None:

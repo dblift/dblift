@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging as _logging
-from typing import Callable, List, Optional, Set, TypeVar, Union
+from typing import Callable, List, Optional, Set, Tuple, TypeVar, Union
 
 from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
 from dblift.core.logger import Log
@@ -37,6 +37,7 @@ class StatementSplitter:
             SqlParserFactory(self.dialect, parser_type="regex") if self._engine is None else None
         )
         self._parser: Optional[SqlParserInterface] = None
+        self._last: Optional[Tuple[str, bool, List[Statement]]] = None
 
     def _record_parser(self) -> SqlParserInterface:
         if self._parser is None:
@@ -57,6 +58,22 @@ class StatementSplitter:
 
     def split(self, sql: str, *, strict_tokenizer: bool = False) -> List[Statement]:
         """The records of *sql* as the dialect's scanner cuts them, or its refusal."""
+        records = self._split(sql, strict_tokenizer)
+        self._last = (sql, strict_tokenizer, records)
+        return list(records)
+
+    def last_split(self, sql: str, *, strict_tokenizer: bool = False) -> List[Statement]:
+        """The records of the last ``split`` when it was of *sql*, else a fresh split.
+
+        A caller that needs the records of a script it has just split reads them here instead
+        of splitting, and so logging the scanner's notices, a second time.
+        """
+        last = self._last
+        if last is not None and last[0] == sql and last[1] == strict_tokenizer:
+            return list(last[2])
+        return self.split(sql, strict_tokenizer=strict_tokenizer)
+
+    def _split(self, sql: str, strict_tokenizer: bool) -> List[Statement]:
         engine = self._engine
         if engine is not None:
             return self._refusing(lambda: engine.split(sql))
