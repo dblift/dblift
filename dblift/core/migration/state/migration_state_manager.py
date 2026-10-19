@@ -39,6 +39,7 @@ from dblift.core.migration.state.migration_state import (
     MigrationValidationSnapshot,
 )
 from dblift.core.migration.state.migration_state_service import MigrationStateService
+from dblift.core.migration.state.ordering import OutOfOrder, out_of_order
 from dblift.core.migration.state.rank_wins import effective_current_version, latest_successful_ranks
 from dblift.core.migration.state.repair_plan import RepairPlan
 from dblift.core.migration.state.repair_plan import plan_repairs as _plan_repairs
@@ -221,7 +222,64 @@ class MigrationStateManager:
             catalog_read_error=catalog_read_error,
             repeatable_runs=repeatable_runs(selected, applied_migrations),
             checksum_drift=tuple(find_checksum_drift(selected, scoped_applied)),
+            # Only strict validation reads the answer; the other commands skip the
+            # second history analysis it costs.
+            out_of_order=(
+                self._snapshot_out_of_order(selected, applied_migrations, target_version)
+                if strict_mode
+                else ()
+            ),
         )
+
+    def _snapshot_out_of_order(
+        self,
+        selected: Sequence[Migration],
+        applied_migrations: List[Migration],
+        target_version: Optional[str],
+    ) -> Tuple[OutOfOrder, ...]:
+        """Executable pending versioned scripts among ``selected`` at or below the current version.
+
+        The pending set is the one ``build_state`` produces, here taken over the
+        caller's catalog and history; the current version excludes undone
+        versions, as in ``plan_migrate``.
+        """
+        context = MigrationDataService(
+            self.logger, target_version=target_version
+        )._build_analysis_context(applied_migrations)
+        history = self._analyse_history(applied_migrations, context)
+        undone = history.undone_versions - history.reapplied_versions
+        pending = [
+            migration
+            for migration in selected
+            if self._get_type_name(migration) in VERSIONED_SCRIPT_TYPES
+            and self._is_versioned_pending(
+                migration.script_name,
+                migration.version,
+                history.executed_scripts,
+                history.executed_versions,
+                undone,
+            )
+            and self.state_service.determine_pending_state(migration, context)
+            == MigrationDisplayState.PENDING
+        ]
+        return out_of_order(
+            pending, self.get_current_version(self._without_undone(applied_migrations, undone))
+        )
+
+    def _without_undone(
+        self, applied_migrations: List[Migration], undone_versions: Set[str]
+    ) -> List[Migration]:
+        """History without the versioned rows whose version was undone and not reapplied."""
+        return [
+            m
+            for m in applied_migrations
+            if (
+                # Keep non-versioned migrations (repeatable, callback, etc.)
+                self._get_type_name(m) not in VERSIONED_SCRIPT_TYPES
+                # Keep versioned migrations that haven't been undone
+                or str(getattr(m, "version", "")) not in undone_versions
+            )
+        ]
 
     def get_applied_migrations(
         self, snapshot: Optional[MigrationReadSnapshot] = None
@@ -387,16 +445,9 @@ class MigrationStateManager:
         # Filter out undone migrations from applied_objects (unless they were reapplied)
         # This ensures that migrations that were undone don't appear in the applied list
         undone_but_not_reapplied = history.undone_versions - history.reapplied_versions
-        applied_objects_filtered = [
-            m
-            for m in applied_migrations
-            if (
-                # Keep non-versioned migrations (repeatable, callback, etc.)
-                self._get_type_name(m) not in VERSIONED_SCRIPT_TYPES
-                # Keep versioned migrations that haven't been undone
-                or str(getattr(m, "version", "")) not in undone_but_not_reapplied
-            )
-        ]
+        applied_objects_filtered = self._without_undone(
+            applied_migrations, undone_but_not_reapplied
+        )
 
         state = MigrationState(
             current_version=analysis_context.get("current_version"),

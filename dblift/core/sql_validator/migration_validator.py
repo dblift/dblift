@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence, Union
 from dblift.core.constants import TEST_PLACEHOLDER_TIME_MS
 from dblift.core.exceptions import UnsupportedMigrationFormatError
 from dblift.core.logger import Log, NullLog
-from dblift.core.migration._type_match import is_migration_type, is_versioned
+from dblift.core.migration._type_match import is_migration_type
 from dblift.core.migration.executors.executor_factory import check_format_supported
 from dblift.core.migration.history.migration_history_manager import MigrationHistoryManager
 from dblift.core.migration.migration import (
@@ -30,8 +30,9 @@ from dblift.core.migration.state.migration_state import (
     MigrationValidationSnapshot,
 )
 from dblift.core.migration.state.migration_state_manager import MigrationStateManager
+from dblift.core.migration.state.ordering import OutOfOrder
 from dblift.core.migration.state.repeatable_status import RepeatableRun
-from dblift.core.migration.version_utils import compare_versions, is_migration_failure
+from dblift.core.migration.version_utils import is_migration_failure
 from dblift.db.base_quirks import BaseQuirks
 
 
@@ -203,6 +204,7 @@ class MigrationValidator:
         strict_mode: bool,
         repeatable_runs: Mapping[str, RepeatableRun],
         checksum_drift: Sequence[ChecksumDrift],
+        out_of_order: Sequence[OutOfOrder],
     ) -> ValidationResult:
         """Run the common checks over already prepared catalog and history inputs."""
         self._check_repeatable_migrations(
@@ -235,7 +237,7 @@ class MigrationValidator:
             if strict_mode and command in ("migrate", "validate"):
                 self.log.info("Strict mode is enabled. Validating with strict migration rules.")
                 if not self._validate_strict_mode_rules(
-                    valid_scripts, applied_migrations, validation_result, issues
+                    valid_scripts, applied_migrations, validation_result, issues, out_of_order
                 ):
                     validation_result.issues = issues
                     return validation_result
@@ -312,6 +314,7 @@ class MigrationValidator:
                 strict_mode=snapshot.strict_mode,
                 repeatable_runs=snapshot.repeatable_runs,
                 checksum_drift=snapshot.checksum_drift,
+                out_of_order=snapshot.out_of_order,
             )
         except Exception as error:
             result.success = False
@@ -546,6 +549,7 @@ class MigrationValidator:
         applied_migrations: List[Migration],
         result: ValidationResult,
         issues: List[str],
+        out_of_order: Sequence[OutOfOrder],
     ) -> bool:
         """Delegate to
         :func:`dblift.core.sql_validator._strict_mode_validator.validate_strict_mode_rules`.
@@ -554,51 +558,7 @@ class MigrationValidator:
             validate_strict_mode_rules as _impl,
         )
 
-        return _impl(self, scripts, applied_migrations, result, issues)
-
-    def validate_out_of_order(
-        self, migration: Migration, executed_migrations: List[Migration]
-    ) -> bool:
-        """Check if a migration was executed out of order.
-
-        Args:
-            migration: Migration to check
-            executed_migrations: List of all executed migrations
-
-        Returns:
-            bool: True if executed out of order, False otherwise
-        """
-        # Get the applied migration record
-        applied_migration = next(
-            (
-                m
-                for m in executed_migrations
-                if getattr(m, "script_name", None) == migration.script_name
-                and getattr(m, "success", False)
-            ),
-            None,
-        )
-        if not applied_migration:
-            return False
-
-        # Check if this is a versioned migration (any format, not SQL only)
-        if not is_versioned(migration.type) or not migration.version:
-            return False
-
-        # Get all migrations with higher version numbers
-        higher_version_migrations = [
-            m
-            for m in executed_migrations
-            if getattr(m, "success", False)
-            and getattr(m, "version", None)
-            and compare_versions(str(getattr(m, "version", "")), str(migration.version)) > 0
-        ]
-
-        # If any higher version migration has a lower installed_rank, this migration is out of order
-        return any(
-            getattr(m, "installed_rank", 0) < getattr(applied_migration, "installed_rank", 0)
-            for m in higher_version_migrations
-        )
+        return _impl(self, scripts, applied_migrations, result, issues, out_of_order)
 
     def _validate_reappeared_migrations(
         self,

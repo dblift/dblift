@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Dict, Optional, Sequence, Tuple
 
 from dblift.core.migration.migration import Migration
 from dblift.core.migration.state.migration_state import MigrationReadSnapshot, MigrationState
-from dblift.core.migration.version_utils import compare_versions
+from dblift.core.migration.state.ordering import out_of_order
 
 if TYPE_CHECKING:
     from dblift.core.migration.state.migration_state_manager import MigrationStateManager
@@ -88,24 +88,20 @@ def _enforce_strict_ordering(
     strict_mode: bool,
 ) -> None:
     """Raise or warn when executable pending is out of version order."""
-    if not current_version:
-        return
-    for migration in migrations:
-        version = getattr(migration, "version", None)
-        if not version:
-            continue
-        if compare_versions(str(version), str(current_version)) <= 0:
-            script_name = getattr(migration, "script_name", "")
-            if strict_mode:
-                raise StrictModeError(
-                    f"Strict mode: out-of-order migration {script_name} "
-                    f"(version {version} <= current version {current_version}). "
-                    f"Renumber the script above {current_version} or run "
-                    f"without --strict to apply it anyway.",
-                    current_version,
-                )
-            state_manager.logger.warning(
-                f"Out-of-order migration {script_name} "
+    for entry in out_of_order(migrations, current_version):
+        migration = entry.migration
+        version = migration.version
+        script_name = getattr(migration, "script_name", "")
+        if strict_mode:
+            raise StrictModeError(
+                f"Strict mode: out-of-order migration {script_name} "
                 f"(version {version} <= current version {current_version}). "
-                f"Applying anyway; use --strict to enforce strict ordering."
+                f"Renumber the script above {current_version} or run "
+                f"without --strict to apply it anyway.",
+                current_version,
             )
+        state_manager.logger.warning(
+            f"Out-of-order migration {script_name} "
+            f"(version {version} <= current version {current_version}). "
+            f"Applying anyway; use --strict to enforce strict ordering."
+        )

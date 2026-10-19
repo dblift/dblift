@@ -298,3 +298,83 @@ def test_snapshot_reports_drift(client, tmp_path):
     # A script outside the version scope is not reported.
     scoped = manager.build_validation_snapshot(tmp_path, "validate", versions=["2"])
     assert scoped.checksum_drift == ()
+
+
+def _plan_refuses(manager, tmp_path):
+    from dblift.core.migration.state.migrate_plan import StrictModeError
+
+    try:
+        manager.plan_migrate(
+            tmp_path,
+            recursive=True,
+            additional_dirs=None,
+            dir_recursive_map=None,
+            target_version=None,
+            tags=None,
+            exclude_tags=None,
+            versions=None,
+            exclude_versions=None,
+            strict_mode=True,
+        )
+    except StrictModeError:
+        return True
+    return False
+
+
+def _applied_v1_v3(tmp_path):
+    (tmp_path / "V1__a.sql").write_text("SELECT 1;")
+    (tmp_path / "V3__c.sql").write_text("SELECT 3;")
+    (tmp_path / "U3__c.sql").write_text("SELECT -3;")
+
+
+def test_snapshot_out_of_order_is_measured_against_current_version(client, tmp_path):
+    _applied_v1_v3(tmp_path)
+    assert client.migrate().success
+    (tmp_path / "V2__b.sql").write_text("SELECT 2;")
+    manager = client.executor.state_manager
+
+    snapshot = manager.build_validation_snapshot(tmp_path, "validate", strict_mode=True)
+
+    assert [(o.migration.script_name, o.current_version) for o in snapshot.out_of_order] == [
+        ("V2__b.sql", "3")
+    ]
+    assert _plan_refuses(manager, tmp_path)
+
+
+def test_snapshot_out_of_order_ignores_undone_versions(client, tmp_path):
+    _applied_v1_v3(tmp_path)
+    assert client.migrate().success
+    assert client.undo().success
+    (tmp_path / "V2__b.sql").write_text("SELECT 2;")
+    manager = client.executor.state_manager
+
+    snapshot = manager.build_validation_snapshot(tmp_path, "validate", strict_mode=True)
+
+    assert snapshot.out_of_order == ()
+    assert not _plan_refuses(manager, tmp_path)
+
+
+def test_snapshot_out_of_order_follows_the_selection(client, tmp_path):
+    _applied_v1_v3(tmp_path)
+    assert client.migrate().success
+    (tmp_path / "V2__b.sql").write_text("SELECT 2;")
+    manager = client.executor.state_manager
+
+    excluded = manager.build_validation_snapshot(
+        tmp_path, "validate", strict_mode=True, exclude_versions=["2"]
+    )
+
+    assert excluded.out_of_order == ()
+
+
+def test_snapshot_out_of_order_is_only_computed_for_strict_validation(client, tmp_path):
+    _applied_v1_v3(tmp_path)
+    assert client.migrate().success
+    (tmp_path / "V2__b.sql").write_text("SELECT 2;")
+    manager = client.executor.state_manager
+
+    with patch.object(manager, "_analyse_history", wraps=manager._analyse_history) as analyse:
+        loose = manager.build_validation_snapshot(tmp_path, "validate", strict_mode=False)
+
+    assert loose.out_of_order == ()
+    analyse.assert_not_called()

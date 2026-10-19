@@ -51,6 +51,21 @@ def test_no_test_only_fallbacks():
             "checksum_drift",
         ),
         ("core/migration/state/migration_state_manager.py", "_is_repeatable_pending", "runs"),
+        (
+            "core/sql_validator/migration_validator.py",
+            "_validate_prepared_migrations",
+            "out_of_order",
+        ),
+        (
+            "core/sql_validator/migration_validator.py",
+            "_validate_strict_mode_rules",
+            "out_of_order",
+        ),
+        (
+            "core/sql_validator/_strict_mode_validator.py",
+            "validate_strict_mode_rules",
+            "snapshot_out_of_order",
+        ),
     ]
     for relative, function, parameter in checks:
         defaults = _defaults(_function(_tree(relative), function))
@@ -65,3 +80,19 @@ def test_no_test_only_fallbacks():
             assert "StrictModeError" not in [alias.name for alias in node.names]
         if isinstance(node, ast.Name):
             assert node.id != "StrictModeError"
+
+
+def test_snapshot_out_of_order_has_no_default():
+    snapshot_class = next(
+        node
+        for node in ast.walk(_tree("core/migration/state/migration_state.py"))
+        if isinstance(node, ast.ClassDef) and node.name == "MigrationValidationSnapshot"
+    )
+    field = next(
+        node
+        for node in snapshot_class.body
+        if isinstance(node, ast.AnnAssign)
+        and isinstance(node.target, ast.Name)
+        and node.target.id == "out_of_order"
+    )
+    assert field.value is None
