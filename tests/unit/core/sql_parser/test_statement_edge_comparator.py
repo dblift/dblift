@@ -5,6 +5,7 @@ statement's edge in the new recording and was trimmed in the old one. Every test
 """
 
 import copy
+import re
 from typing import Any, Dict, List, Optional
 
 import pytest
@@ -888,3 +889,96 @@ def test_a_duckdb_statement_refused_for_an_edge_blank_and_now_run_without_it_is_
     sent = [record("DROP TABLE t" + NBSP, 0, 14)]
     new = recording(script, ["DROP TABLE t" + NBSP], ["DROP TABLE t" + NBSP], sent, "duckdb")
     assert compare_recordings(old, new, BLANKS) != []
+
+
+def accepted_pair(
+    script: str, refusal: Any, execution: Any, analysis: Any, records: Any
+) -> List[Any]:
+    """A script the old recording refused with ``refusal`` and the new one runs as given."""
+    error = {"error": list(refusal)}
+    old = recording(script, error, error, error, "duckdb")
+    return compare_recordings(
+        old, recording(script, execution, analysis, records, "duckdb"), BLANKS
+    )
+
+
+ACCEPTED_SCRIPT = "DROP TABLE t" + NBSP + ";"
+ACCEPTED_RECORDS = [record("DROP TABLE t", 0, 14)]
+
+
+def test_the_texts_a_newly_accepted_duckdb_script_runs_must_be_the_scripts_statements() -> None:
+    same = ["DROP TABLE t"]
+    assert accepted_pair(ACCEPTED_SCRIPT, DUCKDB_REFUSAL, same, same, ACCEPTED_RECORDS) == []
+    other = ["DROP TABLE x"]
+    assert accepted_pair(ACCEPTED_SCRIPT, DUCKDB_REFUSAL, other, same, ACCEPTED_RECORDS) != []
+    assert (
+        accepted_pair(ACCEPTED_SCRIPT, DUCKDB_REFUSAL, same, ["SELECT 2"], ACCEPTED_RECORDS) != []
+    )
+    elsewhere = ["SELECT 2"]
+    moved = [record("SELECT 2", 0, 14)]
+    assert accepted_pair(ACCEPTED_SCRIPT, DUCKDB_REFUSAL, elsewhere, elsewhere, moved) != []
+    assert accepted_pair(ACCEPTED_SCRIPT, DUCKDB_REFUSAL, [], same, ACCEPTED_RECORDS) != []
+    assert accepted_pair(ACCEPTED_SCRIPT, DUCKDB_REFUSAL, same, [], ACCEPTED_RECORDS) != []
+
+
+@pytest.mark.parametrize(
+    "refusal", [DUCKDB_SHELL_REFUSAL, DUCKDB_STRAY_REFUSAL], ids=["shell", "stray"]
+)
+def test_a_refusal_of_the_shell_or_of_a_stray_tail_is_not_declared_accepted_by_running_it(
+    refusal: Any,
+) -> None:
+    refusal = (refusal[0], re.sub(r"column \d+", "column 13", refusal[1]))
+    same = ["DROP TABLE t"]
+    assert accepted_pair(ACCEPTED_SCRIPT, refusal, same, same, ACCEPTED_RECORDS) != []
+
+
+def test_a_stray_refusal_is_declared_only_for_the_last_character_after_the_last_record() -> None:
+    old = recording(
+        "SELECT 1;" + NBSP, ["SELECT 1"], ["SELECT 1"], [record("SELECT 1", 0, 9)], "duckdb"
+    )
+
+    def refused(script: str) -> List[Any]:
+        error = {"error": list(DUCKDB_STRAY_REFUSAL)}
+        moved = recording(script, error, error, error, "duckdb")
+        return compare_recordings(
+            {**old, "scripts": {"s1": {**old["scripts"]["s1"], "script": script}}}, moved, BLANKS
+        )
+
+    assert refused("SELECT 1;" + NBSP) == []
+    # the blank is not the last character of the script
+    assert refused("SELECT 1;" + NBSP + " ") != []
+    # the blank lies inside the last record, which ends after it
+    inside = DUCKDB_STRAY_REFUSAL[1].replace("column 10", "column 9")
+    error = {"error": [DUCKDB_STRAY_REFUSAL[0], inside]}
+    script = "SELECT 1" + NBSP
+    before = recording(script, ["SELECT 1"], ["SELECT 1"], [record("SELECT 1", 0, 9)], "duckdb")
+    assert (
+        compare_recordings(before, recording(script, error, error, error, "duckdb"), BLANKS) != []
+    )
+
+
+@pytest.mark.parametrize(
+    "dialect, refusal", [("duckdb", DUCKDB_REFUSAL), ("oracle", OUTSIDE_SET_REFUSAL)]
+)
+def test_a_refusal_that_replaces_another_kind_of_error_is_not_declared(
+    dialect: str, refusal: Any
+) -> None:
+    script = "DROP TABLE t" + NBSP
+    other = {"error": ["ParserError", "unrelated"]}
+    old = recording(script, other, other, other, dialect)
+    new = recording(script, {"error": list(refusal)}, other, other, dialect)
+    assert [d.view for d in compare_recordings(old, new, BLANKS)] == ["execution"]
+
+
+def test_a_duckdb_refusal_that_replaces_another_duckdb_refusal_is_declared() -> None:
+    script = "DROP TABLE t" + NBSP
+    old = {"error": list(DUCKDB_SHELL_REFUSAL)}
+    new = {"error": list(DUCKDB_REFUSAL)}
+    assert (
+        compare_recordings(
+            recording(script, old, old, old, "duckdb"),
+            recording(script, new, new, new, "duckdb"),
+            BLANKS,
+        )
+        == []
+    )

@@ -471,10 +471,11 @@ def _is_declared_acceptance(
     """DuckDB now runs a statement the old recording refused for an edge blank, without that blank.
 
     The old refusal must name a blank of the engine at a record edge; the new records must hold the
-    script's statements with that blank outside every record's text (it is stripped, not kept).
+    script's statements with that blank outside every record's text (it is stripped, not kept), and
+    the execution and analysis texts must be those records' texts.
     """
     script, old = before["script"], before[view]
-    if dialect != "duckdb" or not isinstance(old, dict) or "error" not in old or "error" in new:
+    if not isinstance(old, dict) or "error" not in old or "error" in new:
         return False
     if not _is_duckdb_refusal(dialect, old):
         return False
@@ -490,8 +491,15 @@ def _is_declared_acceptance(
         return False
     offset = sum(len(text) + 1 for text in lines[: line - 1]) + column - 1
     inside = any(r["source_start"] <= offset < r["source_start"] + len(r["text"]) for r in records)
+    texts = [r["text"] for r in records]
+    in_script = all(script[r["source_start"] :].startswith(r["text"]) for r in records)
     return (
-        char in _NOW_STRIPPED["duckdb"] and not inside and _at_record_edge(script, records, offset)
+        char in _NOW_STRIPPED["duckdb"]
+        and not inside
+        and _at_record_edge(script, records, offset)
+        and in_script
+        and new["execution"] == texts
+        and new["analysis"] == texts
     )
 
 
