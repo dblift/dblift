@@ -250,6 +250,22 @@ def test_execution_failure_json_has_one_error_payload(
     assert not _table_exists(project)
 
 
+def test_failed_callback_keeps_one_sql_preview_and_error_cause(tmp_path: Path) -> None:
+    project = _project(tmp_path)
+    (project / "migrations" / "beforeMigrate__fail.sql").write_text(
+        "SELECT id FROM absent;\n", encoding="utf-8"
+    )
+
+    process = _run(project, "migrate")
+
+    assert process.returncode == 1
+    assert process.stdout.count("Command MIGRATE failed") == 1
+    assert "Callback beforeMigrate__fail.sql failed" in process.stdout
+    assert "Error executing query: no such table: absent" in process.stderr
+    assert process.stderr.count("ERROR: SQL: SELECT id") == 1
+    assert not _table_exists(project)
+
+
 def test_info_json_pending_and_applied_statuses(tmp_path: Path) -> None:
     project = _project(tmp_path)
 
