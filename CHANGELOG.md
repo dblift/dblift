@@ -154,6 +154,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   its last statement (`DROP TABLE t;<U+00A0>`) is now refused, naming the character, its line
   and its column: DuckDB rejects the whole script, and dblift used to drop the blank and run
   the statement.
+- **A DuckDB migration no longer succeeds after skipping a statement the engine rejects.**
+  A statement made only of a non-ASCII blank DuckDB keeps, or of a control character it does
+  not count as a blank (a vertical tab, U+0085, U+2028, U+001F), was skipped as empty, so
+  `/* ' */ DROP TABLE t;<U+00A0>` reported success and dropped `t` although DuckDB rejects the
+  whole script and keeps `t`. The statement is now sent and the migration fails at it.
 - **A Db2 statement made only of characters such as a no-break space or a form feed is executed.**
   It was skipped and the migration succeeded; the command line processor sends it and the server
   rejects it (SQL0104N, SQL0007N), and dblift now fails at that statement the same way. The same
