@@ -378,3 +378,49 @@ def test_snapshot_out_of_order_is_only_computed_for_strict_validation(client, tm
 
     assert loose.out_of_order == ()
     analyse.assert_not_called()
+
+
+def test_snapshot_missing_applied_ignores_tag_and_version_filters(client, tmp_path):
+    (tmp_path / "V1__a.sql").write_text("SELECT 1;")
+    (tmp_path / "V2__b.sql").write_text("SELECT 2;")
+    assert client.migrate().success
+    (tmp_path / "V2__b.sql").unlink()
+    manager = client.executor.state_manager
+
+    everything = manager.build_validation_snapshot(tmp_path, "validate")
+    filtered = manager.build_validation_snapshot(tmp_path, "validate", versions=["1"])
+
+    assert [m.script_name for m in everything.missing_applied] == ["V2__b.sql"]
+    # Version 2 is outside the filter, so its row is out of scope, not missing.
+    assert filtered.missing_applied == ()
+    (tmp_path / "V2__b.sql").write_text("SELECT 2;")
+    present = manager.build_validation_snapshot(tmp_path, "validate", versions=["1"])
+    assert present.missing_applied == ()
+
+
+def test_snapshot_missing_applied_is_filled_without_strict_mode(client, tmp_path):
+    (tmp_path / "V1__a.sql").write_text("SELECT 1;")
+    assert client.migrate().success
+    (tmp_path / "V1__a.sql").unlink()
+    manager = client.executor.state_manager
+
+    with patch.object(manager, "_analyse_history", wraps=manager._analyse_history) as analyse:
+        loose = manager.build_validation_snapshot(tmp_path, "validate", strict_mode=False)
+
+    assert [m.script_name for m in loose.missing_applied] == ["V1__a.sql"]
+    analyse.assert_not_called()
+
+
+def test_state_missing_applied_follows_the_catalog(client, tmp_path):
+    (tmp_path / "V1__a.sql").write_text("SELECT 1;")
+    (tmp_path / "V2__b.sql").write_text("SELECT 2;")
+    assert client.migrate().success
+    (tmp_path / "V2__b.sql").unlink()
+    manager = client.executor.state_manager
+
+    state = manager.build_state(tmp_path)
+    without_catalog = manager.build_state(None)
+
+    assert [m.script_name for m in state.missing_applied] == ["V2__b.sql"]
+    assert state.copy().missing_applied == state.missing_applied
+    assert without_catalog.missing_applied == ()

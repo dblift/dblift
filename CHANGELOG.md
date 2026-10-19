@@ -168,6 +168,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   strict `migrate` or `validate` refused a pending migration whose version was lower than the
   undone one, because the undone migration still counted as applied. Order is now measured
   against the schema's current version, with the same rule `migrate` applies.
+- **Strict validation accepts a script that `repair` marked as deleted.** A strict `validate` or
+  `migrate` failed with "applied migration(s) without corresponding script files" for a script
+  `repair` had marked as intentionally deleted, and listed it twice. `validate`, `migrate` and
+  `repair` now share one rule for missing scripts, which honours the deleted marker and matches a
+  row recorded under a directory-qualified name by its file name.
 
 ### Security
 

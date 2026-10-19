@@ -11,7 +11,6 @@ Covers previously untested paths to push coverage toward 70%+:
     transaction rollback, commit failure
   - _validate_post_repair_state — remaining issues, exception swallowed
   - _build_repair_summary — all summary parts
-  - _count_candidate_missing — module-level helper
   - RepairSafetyError handling in execute()
 """
 
@@ -29,7 +28,6 @@ from dblift.core.migration.state.checksum_drift import ChecksumDrift
 from dblift.core.migration.state.migration_state import MigrationState
 from dblift.core.migration.state.repair_plan import (
     RepairAction,
-    _count_candidate_missing,
     _detect_checksum_changes,
     _detect_checksum_drift,
     _is_failed_migration,
@@ -94,55 +92,6 @@ def _make_applied(script_name, version="1", type_name="SQL"):
         type=SimpleNamespace(name=type_name),
         checksum=100,
     )
-
-
-# ---------------------------------------------------------------------------
-# _count_candidate_missing (module-level helper)
-# ---------------------------------------------------------------------------
-
-
-class TestCountCandidateMissing(unittest.TestCase):
-    def test_counts_regular_migrations(self):
-        applied = [
-            _make_applied("V1__a.sql"),
-            _make_applied("V2__b.sql"),
-        ]
-        count = _count_candidate_missing(applied, set())
-        self.assertEqual(count, 2)
-
-    def test_skips_delete_type(self):
-        applied = [
-            _make_applied("V1__a.sql", type_name="DELETE"),
-        ]
-        count = _count_candidate_missing(applied, set())
-        self.assertEqual(count, 0)
-
-    def test_skips_baseline_type(self):
-        applied = [
-            _make_applied("B1__base.sql", type_name="BASELINE"),
-        ]
-        count = _count_candidate_missing(applied, set())
-        self.assertEqual(count, 0)
-
-    def test_skips_already_deleted_scripts(self):
-        applied = [_make_applied("V1__a.sql")]
-        count = _count_candidate_missing(applied, {"V1__a.sql"})
-        self.assertEqual(count, 0)
-
-    def test_skips_entries_with_no_script_name(self):
-        applied = [SimpleNamespace(script_name="", version="1", type=None)]
-        count = _count_candidate_missing(applied, set())
-        self.assertEqual(count, 0)
-
-    def test_string_type_delete_skipped(self):
-        applied = [SimpleNamespace(script_name="V1__a.sql", version="1", type="DELETE")]
-        count = _count_candidate_missing(applied, set())
-        self.assertEqual(count, 0)
-
-    def test_string_type_baseline_skipped(self):
-        applied = [SimpleNamespace(script_name="B1__b.sql", version="1", type="BASELINE")]
-        count = _count_candidate_missing(applied, set())
-        self.assertEqual(count, 0)
 
 
 # ---------------------------------------------------------------------------
@@ -956,6 +905,7 @@ class TestRepairCommandExecute(unittest.TestCase):
         # Give the state some applied migrations so safety gate fires
         applied_state = MigrationState(grouped_objects={})
         applied_state.applied_objects = [_make_applied("V1__a.sql")]
+        applied_state.missing_applied = tuple(applied_state.applied_objects)
         cmd.state_manager.build_state.return_value = applied_state
 
         with patch.object(cmd, "_populate_database_info"):
