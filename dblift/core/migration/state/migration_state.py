@@ -19,6 +19,7 @@ if TYPE_CHECKING:
     from dblift.core.migration.migration import Migration
     from dblift.core.migration.state.checksum_drift import ChecksumDrift
     from dblift.core.migration.state.migration_state_manager import MigrationStateManager
+    from dblift.core.migration.state.ordering import OutOfOrder
     from dblift.core.migration.state.repeatable_status import RepeatableRun
 
 
@@ -33,6 +34,7 @@ class MigrationValidationSnapshot:
     history_table_exists: bool
     scripts_directory_exists: bool
     strict_mode: bool
+    out_of_order: Tuple[OutOfOrder, ...]
     scripts_directory: Optional[Path] = None
     history_read_error: str = ""
     catalog_read_error: Optional[str] = None

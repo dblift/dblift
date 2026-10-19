@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from dblift.core.migration.state.checksum_drift import find_checksum_drift
+from dblift.core.migration.state.ordering import out_of_order
 from dblift.core.migration.state.repeatable_status import repeatable_runs
 
 # ---------------------------------------------------------------------------
@@ -1364,7 +1365,7 @@ class TestValidateStrictModeRules(unittest.TestCase):
         issues = []
         s1 = self._sql_script("V1__a.sql", "1")
         a1 = self._applied("V1__a.sql", "1")
-        r = v._validate_strict_mode_rules([s1], [a1], result, issues)
+        r = v._validate_strict_mode_rules([s1], [a1], result, issues, ())
         self.assertTrue(r)
 
     def test_missing_applied_script_returns_false(self):
@@ -1375,7 +1376,7 @@ class TestValidateStrictModeRules(unittest.TestCase):
         issues = []
         s1 = self._sql_script("V1__a.sql", "1")
         a1 = self._applied("V0__old.sql", "0")
-        r = v._validate_strict_mode_rules([s1], [a1], result, issues)
+        r = v._validate_strict_mode_rules([s1], [a1], result, issues, ())
         self.assertFalse(r)
         self.assertTrue(any("Strict mode" in i for i in issues))
 
@@ -1388,7 +1389,7 @@ class TestValidateStrictModeRules(unittest.TestCase):
         issues = []
         s1 = self._sql_script("V1__a.sql", "1")
         baseline = self._applied("B1__base.sql", "1", mtype=MigrationType.BASELINE)
-        r = v._validate_strict_mode_rules([s1], [baseline], result, issues)
+        r = v._validate_strict_mode_rules([s1], [baseline], result, issues, ())
         self.assertTrue(r)
 
     def test_undo_applied_skipped(self):
@@ -1400,7 +1401,7 @@ class TestValidateStrictModeRules(unittest.TestCase):
         issues = []
         s1 = self._sql_script("V1__a.sql", "1")
         undo = self._applied("U1__undo.sql", "1", mtype=MigrationType.UNDO_SQL)
-        r = v._validate_strict_mode_rules([s1], [undo], result, issues)
+        r = v._validate_strict_mode_rules([s1], [undo], result, issues, ())
         self.assertTrue(r)
 
     def test_out_of_order_migration_fails(self):
@@ -1421,7 +1422,7 @@ class TestValidateStrictModeRules(unittest.TestCase):
         # V2 is applied successfully
         a2 = self._applied("V2__new.sql", "2")
         sm.compare_versions.side_effect = lambda a, b: int(a) - int(b)
-        r = v._validate_strict_mode_rules([s1, s2], [a2], result, issues)
+        r = v._validate_strict_mode_rules([s1, s2], [a2], result, issues, out_of_order([s1], "2"))
         self.assertFalse(r)
         self.assertTrue(any("lower" in i.lower() or "strict mode" in i.lower() for i in issues))
 
@@ -1432,7 +1433,7 @@ class TestValidateStrictModeRules(unittest.TestCase):
         result = ValidationResult()
         issues = []
         s1 = self._sql_script("V1__a.sql", "1")
-        r = v._validate_strict_mode_rules([s1], [], result, issues)
+        r = v._validate_strict_mode_rules([s1], [], result, issues, ())
         self.assertTrue(r)
 
     def test_all_pending_applied_returns_true(self):
@@ -1444,97 +1445,8 @@ class TestValidateStrictModeRules(unittest.TestCase):
         issues = []
         s1 = self._sql_script("V1__a.sql", "1")
         a1 = self._applied("V1__a.sql", "1")
-        r = v._validate_strict_mode_rules([s1], [a1], result, issues)
+        r = v._validate_strict_mode_rules([s1], [a1], result, issues, ())
         self.assertTrue(r)
-
-
-# ---------------------------------------------------------------------------
-# Lines 1624-1669: validate_out_of_order
-# ---------------------------------------------------------------------------
-
-
-class TestValidateOutOfOrder(unittest.TestCase):
-    def _sql_migration(self, name, version):
-        from dblift.core.migration.migration import MigrationType
-
-        return SimpleNamespace(
-            type=MigrationType.SQL,
-            version=version,
-            script_name=name,
-            success=True,
-            checksum=100,
-            installed_rank=5,
-            path=None,
-        )
-
-    def test_not_applied_returns_false(self):
-        v, sm, *_ = _make_validator()
-        migration = self._sql_migration("V2__new.sql", "2")
-        # migration not in executed_migrations
-        self.assertFalse(v.validate_out_of_order(migration, []))
-
-    def test_not_versioned_returns_false(self):
-        from dblift.core.migration.migration import MigrationType
-
-        v, sm, *_ = _make_validator()
-        rep = SimpleNamespace(
-            type=MigrationType.REPEATABLE,
-            version=None,
-            script_name="R__rep.sql",
-            success=True,
-        )
-        applied_rep = SimpleNamespace(
-            type=MigrationType.REPEATABLE,
-            script_name="R__rep.sql",
-            success=True,
-            installed_rank=1,
-        )
-        self.assertFalse(v.validate_out_of_order(rep, [applied_rep]))
-
-    def test_in_order_returns_false(self):
-        v, sm, *_ = _make_validator()
-        sm.compare_versions.return_value = 1  # higher version migration has rank 10
-        migration = self._sql_migration("V3__new.sql", "3")
-        applied_v3 = SimpleNamespace(
-            script_name="V3__new.sql",
-            type="SQL",
-            version="3",
-            success=True,
-            installed_rank=5,
-        )
-        applied_v2 = SimpleNamespace(
-            script_name="V2__old.sql",
-            type="SQL",
-            version="2",
-            success=True,
-            installed_rank=10,
-        )
-        # compare_versions("2", "3") > 0 is False
-        sm.compare_versions.side_effect = lambda a, b: int(a) - int(b)
-        result = v.validate_out_of_order(migration, [applied_v3, applied_v2])
-        # No higher version has lower rank
-        self.assertFalse(result)
-
-    def test_out_of_order_detected(self):
-        v, sm, *_ = _make_validator()
-        migration = self._sql_migration("V1__old.sql", "1")
-        applied_v1 = SimpleNamespace(
-            script_name="V1__old.sql",
-            type="SQL",
-            version="1",
-            success=True,
-            installed_rank=10,  # applied at rank 10
-        )
-        applied_v2 = SimpleNamespace(
-            script_name="V2__new.sql",
-            type="SQL",
-            version="2",
-            success=True,
-            installed_rank=5,  # applied at rank 5, which is lower than V1's rank
-        )
-        sm.compare_versions.side_effect = lambda a, b: int(a) - int(b)
-        result = v.validate_out_of_order(migration, [applied_v1, applied_v2])
-        self.assertTrue(result)
 
 
 # ---------------------------------------------------------------------------
