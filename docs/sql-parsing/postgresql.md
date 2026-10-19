@@ -7,7 +7,7 @@
 | Covers | PostgreSQL 12+; AlloyDB, Aurora PostgreSQL, Citus, CockroachDB, Neon, Supabase, TimescaleDB, YugabyteDB (all inherit this spec unchanged, see §13) |
 | Code facts taken from | OSS `develop` `61b1d83f` |
 | Vendor references, fetched 2026-10-10 | *PostgreSQL 18 documentation*, §4.1.1 Identifiers, §4.1.2.1–4.1.2.5 Constants, §4.1.5 Comments; *psql* reference, "Meta-Commands" and `\;` |
-| Live verification | psql against PostgreSQL 15 and 16, 2026-10-10 (rows 16, 21, 25) |
+| Live verification | psql against PostgreSQL 15 and 16, 2026-10-10 (rows 16, 21, 25); psql 16.14 and psycopg 3.3.5 against PostgreSQL 16.14, 2026-10-19 (rows 30d to 30f) |
 | Engine subclass | none; tagged strings use the shared lexical primitive (§9) |
 
 ## 1. String literals
@@ -158,6 +158,9 @@ DuckDB retains its existing scanner until it is migrated.
 | 30a | `DROP TABLE t\u3000;\nSELECT 1;` | `DROP TABLE t\u3000;` · `SELECT 1;` **exact text** (an ideographic space before the terminator is a name character on PostgreSQL, CockroachDB and YugabyteDB, measured 2026-10-17: the text keeps it) |
 | 30b | `SELECT 1\x0c` | `SELECT 1` **exact text** (a form feed is a blank for the server, CockroachDB and YugabyteDB included) |
 | 30c | `SELECT 1\x0b` | `SELECT 1\x0b` **exact text** (rejected by the engine, kept: a vertical tab is a syntax error on PostgreSQL, CockroachDB and YugabyteDB, so the statement fails as it does under psql) |
+| 30d | `SELECT 1;\n\xa0;\nSELECT 2;` | `SELECT 1` · `SELECT 2` (**deviation from the engine, by the current design**: a piece made only of a no-break space is dropped here, but psql sends it and the server answers a syntax error near the character, and the driver fails the same way, so a client run stops at that piece while a migration skips it; measured 2026-10-19 with psql 16.14 and the psycopg 3.3.5 driver against PostgreSQL 16.14) |
+| 30e | `SELECT 1;\n　;\nSELECT 2;` | `SELECT 1` · `SELECT 2` (**deviation from the engine, by the current design**: an ideographic space alone is sent by psql and the driver and rejected by the server with a syntax error, and the splitter drops it; measured 2026-10-19 with psql 16.14 and the psycopg 3.3.5 driver against PostgreSQL 16.14) |
+| 30f | `SELECT 1;\n\x1c;\nSELECT 2;` | `SELECT 1` · `SELECT 2` (**deviation from the engine, by the current design**: a control character alone is sent by psql and the driver and rejected by the server with a syntax error, and the splitter drops it; a form feed alone is a blank and is accepted by both; measured 2026-10-19 with psql 16.14 and the psycopg 3.3.5 driver against PostgreSQL 16.14) |
 
 ## 11. Not handled
 

@@ -241,6 +241,8 @@ sqlcmd rules are the data of `BatchScriptRules` and `DivisionRules` in
 | 33a | `DROP TABLE t\u200b` | `DROP TABLE t` **exact text** (a zero width space is a blank to SQL Server though it is not Unicode white space) |
 | 33b | `SELECT 1\ufeff` | `SELECT 1\ufeff` **exact text** (a byte order mark is a name character: kept; the server reports a syntax error) |
 | 33c | `SELECT 1\u2029` | `SELECT 1\u2029` **exact text** (a paragraph separator is not measured, so it is kept until it is) |
+| 34 | `\xa0` | `(empty)` (a script of a no-break space alone is a batch of blanks and not a statement; not re-measured: it follows from rows 31 and 33, where sqlcmd 18.6.0002.1 reads a no-break space as a blank and runs nothing for a batch of blanks) |
+| 34a | `SELECT 1\nGO\n\xa0\nGO\nSELECT 2` | `SELECT 1` · `SELECT 2` (the middle batch holds only a no-break space, so it is not a statement and no record is returned for it; not re-measured: it follows from rows 31 and 33, measured 2026-10-14 and 2026-10-17 with sqlcmd 18.6.0002.1) |
 
 ## 11. Not handled
 

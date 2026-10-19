@@ -108,6 +108,11 @@ for the engine (`SELECT 9 AS z` runs).
 statement's text, as `extract_statements` hands it over (row 48); a comment before the `;` stays in the statement. `extract_statements` keeps a comment that trails the last
 statement in that statement's text; the splitter
 drops it, as it drops every segment of comments only: the statement is the same.
+The splitter returns no record for a segment of comments only for any caller: execution and the readers
+that go through `split_for_analysis` (linting, analysis, undo) receive the same statements. Nesting counts:
+`/* a /* b */ c */;` is one comment and returns nothing, while on SQLite, whose comments do not nest, the
+same text ends with the code `c */` (rows 106c, 106d). An unterminated block comment is the one comment-like
+piece that is returned: it is sent as the last statement and the engine rejects it (rows 40, 41).
 
 ## 4. Terminators
 
@@ -352,6 +357,12 @@ DuckDB specification; the shared tokenizer reads them and one core module assemb
 | 103 | `/* it's */ SELECT 1; /* don't */ CREATE TABLE x(a INT,\u00a0b INT);` | `UnsafeStatementSplitError` (measured with duckdb 1.5.6, the Python driver and the shell: the apostrophe in the first comment is closed by the apostrophe in the second, so the pass of the script replaces the blank and the table gets the columns `a` and `b`, in the driver and in the shell. The second statement alone has an unclosed quote, keeps the blank and creates a column named `\u00a0b`: a silent rename. Refused as in row 102) |
 | 104 | `/* ' */ SELECT 1 AS x\u00a0y; /* ' */ SELECT 1 AS x\u00a0y; DROP TABLE t;` | `UnsafeStatementSplitError` (measured with duckdb 1.5.6, the Python driver and the shell: the script is rejected (`syntax error at or near "y"`, the shell exits 1) and `t` stays, because the second comment closes the quote of the first and the blank in the second statement is replaced. Each statement alone has an unclosed quote and keeps its blank, so it would parse, and dblift would have dropped `t`. Refused as in row 102) |
 | 105 | `DELETE FROM t WHERE x\u00a0` | `DELETE FROM t WHERE x\u00a0` (measured with duckdb 1.5.6 and a table of columns a INT and x BOOL holding rows (1, true) and (2, false): the driver on the whole script gives a Binder Error, column "x " not found, and changes nothing; the shell exits 1 and changes nothing; dblift migrate exits 1 with the same error and both rows remain. The splitter keeps the final blank, as in row 99. The provider's row-count rewrite for INSERT, UPDATE and DELETE appends a RETURNING clause after the statement, which would move the blank out of the last two bytes and run a different statement; it sends a statement that ends in U+00A0 as written. An UPDATE ending in the same blank behaves the same. An INSERT ending in it fails in the driver (syntax error at the blank) and in dblift migrate; the shell alone inserts the row) |
+| 106 | `SELECT 1;\n\xa0;\nSELECT 2;` | `SELECT 1` · `SELECT 2` (a no-break space is a blank for DuckDB, so the piece is empty: the driver runs the script, statement extraction returns two statements and the shell exits 0; the same for U+3000 and for a form feed; measured 2026-10-19 with the driver 1.5.5 and the shell 1.5.6) |
+| 106a | `SELECT 1;\n\x1c;\nSELECT 2;` | `SELECT 1` · `\x1c` · `SELECT 2` (a control character is not a blank: the driver and statement extraction reject the script with a parser error at the character and the shell exits 1; dblift sends the piece and the statement fails as it does for the engine; measured 2026-10-19 with the driver 1.5.5 and the shell 1.5.6) |
+| 106b | `SELECT 1;\n\x0b;\nSELECT 2;` | `SELECT 1` · `\x0b` · `SELECT 2` (a vertical tab is not one of the engine's blanks: the driver and statement extraction reject the script with a parser error, while the shell trims it and runs both statements; dblift follows the driver, as in row 90h; measured 2026-10-19 with the driver 1.5.5 and the shell 1.5.6) |
+| 106c | `/* a /* b */ c */;` | `(empty)` (block comments nest, so this is one comment: the driver runs it, statement extraction returns nothing and the shell exits 0; on SQLite the same text is a comment followed by code; measured 2026-10-19 with the driver 1.5.5 and the shell 1.5.6) |
+| 106d | `SELECT 1; /* a /* b */ c */` | `SELECT 1` (a nested comment after the last terminator is a piece of comments only and not a statement: the driver runs the script and statement extraction keeps the comment in the text of the statement before it; measured 2026-10-19 with the driver 1.5.5 and the shell 1.5.6) |
+| 106e | `SELECT 1;\n-- c\n/* d */;\nSELECT 2;` | `SELECT 1` · `SELECT 2` (a piece of comments and a terminator is not a statement; the driver and the shell run both statements; measured 2026-10-19 with the driver 1.5.5 and the shell 1.5.6) |
 
 ## 11. Not handled
 
