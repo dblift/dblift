@@ -6,6 +6,9 @@ must not move.
 dialect's lexical specification (a dollar-quoted string and an escape string with a backslash are
 literals), extraction reads the DuckDB comment tokenizer, and statement facts read comment-blanked
 text.
+
+One recording moved on purpose: ``script_20`` ends in a zero-width space, which the engine reads as a
+blank, so the statement no longer carries it and its object is named.
 """
 
 import dataclasses

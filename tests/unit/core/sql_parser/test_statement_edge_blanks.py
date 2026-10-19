@@ -27,7 +27,7 @@ DUCKDB_UNICODE = "".join(
 )
 
 #: dialect -> the measured set (docs/sql-parsing); Redshift and Snowflake keep the intersection of
-#: the measured engines until they are probed.
+#: the measured engines until they are probed. DuckDB's vertical tab is no blank: the driver rejects it.
 TEXT_BLANKS: Dict[str, str] = {
     "postgresql": ASCII_BLANKS + FORM_FEED,
     "cockroachdb": ASCII_BLANKS + FORM_FEED,
@@ -40,7 +40,7 @@ TEXT_BLANKS: Dict[str, str] = {
     "sqlserver": ASCII_BLANKS + VERTICAL_TAB + FORM_FEED + SQLSERVER_UNICODE,
     "snowflake": ASCII_BLANKS,
     "sqlite": ASCII_BLANKS + FORM_FEED,
-    "duckdb": ASCII_BLANKS + FORM_FEED + VERTICAL_TAB + DUCKDB_UNICODE,
+    "duckdb": ASCII_BLANKS + FORM_FEED + DUCKDB_UNICODE,
 }
 SPECS = [
     "postgresql",
@@ -59,18 +59,12 @@ def spec_of(dialect: str) -> Optional[LexicalSpec]:
     return ProviderRegistry.get_quirks(dialect).lexical_spec()
 
 
-DUCKDB_WIDENING = pytest.mark.xfail(
-    strict=True, reason="DuckDB's set is widened together with its record builder"
-)
-
-
 @pytest.mark.parametrize(
     "dialect",
     [
-        *(d for d in SPECS if d != "duckdb"),
+        *SPECS,
         "cockroachdb",
         "yugabytedb",
-        pytest.param("duckdb", marks=DUCKDB_WIDENING),
     ],
 )
 def test_every_spec_holds_the_measured_text_blanks(dialect: str) -> None:

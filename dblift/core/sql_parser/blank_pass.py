@@ -98,11 +98,16 @@ def reads_differently_alone(
         return -1, False
     alone = kept_stretches(text, 0, wide[-1], rules.line_comment_ends, rules.blank_pass)
     for at in wide:
-        in_script = bisect_right(kept, lo + at) % 2 == 1 or _unread(source, lo + at)
+        in_script = kept_in_script(source, kept, lo + at)
         in_alone = bisect_right(alone, at) % 2 == 1 or _unread(text, at)
         if in_script != in_alone:
             return lo + at, in_script
     return -1, False
+
+
+def kept_in_script(source: str, kept: Sequence[int], at: int) -> bool:
+    """Whether the pass over the whole script keeps the blank at ``at``."""
+    return bisect_right(kept, at) % 2 == 1 or _unread(source, at)
 
 
 def _unread(text: str, at: int) -> bool:

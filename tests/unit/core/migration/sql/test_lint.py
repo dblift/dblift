@@ -298,6 +298,7 @@ def _delta_findings(tmp_path: Path, dialect: str, drop: str):
         (dialect, blank)
         for dialect in ["sqlite", "duckdb", "postgresql", "mysql"]
         for blank in [chr(0xA0), chr(0x3000)]
+        if (dialect, blank) != ("duckdb", chr(0x3000))  # a blank for DuckDB: see the test below
     ],
 )
 def test_a_drop_whose_name_cannot_be_read_is_not_exempted_as_a_new_table(
@@ -311,6 +312,12 @@ def test_a_drop_whose_name_cannot_be_read_is_not_exempted_as_a_new_table(
     assert [
         (f.code, "name could not be read" in f.message) for f in findings if f.code == "drop-table"
     ] == [("drop-table", True)]
+
+
+def test_a_drop_ending_in_an_ideographic_space_is_read_by_duckdb_as_a_drop_of_the_named_table(
+    tmp_path: Path,
+):
+    assert _delta_findings(tmp_path, "duckdb", f"DROP TABLE t{chr(0x3000)};") == ()
 
 
 @pytest.mark.parametrize("dialect", ["sqlite", "duckdb"])

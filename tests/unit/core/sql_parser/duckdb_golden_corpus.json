@@ -856,36 +856,34 @@
   "name": "blank_only_segment_between_semicolons",
   "script": "SELECT 1;\u00a0;",
   "views": {
+   "records": [
+    {
+     "text": "SELECT 1",
+     "line": 1,
+     "terminator": ";",
+     "kind": "sql",
+     "multi": false,
+     "repeat": 1,
+     "analysis_statements": null,
+     "source_start": 0,
+     "source_end": 9
+    }
+   ],
+   "strings": [
+    "SELECT 1"
+   ],
+   "extraction": [
+    "SELECT 1"
+   ],
    "analysis": [
-    "SELECT 1",
-    "\u00a0"
+    "SELECT 1"
    ],
    "blanked": "SELECT 1;\u00a0;",
-   "extraction": [
-    "SELECT 1",
-    "\u00a0"
-   ],
    "masking": [
     [
      "SELECT 1",
      "SELECT 1"
     ]
-   ],
-   "records": [
-    {
-     "analysis_statements": null,
-     "kind": "sql",
-     "line": 1,
-     "multi": false,
-     "repeat": 1,
-     "source_end": 9,
-     "source_start": 0,
-     "terminator": ";",
-     "text": "SELECT 1"
-    }
-   ],
-   "strings": [
-    "SELECT 1"
    ]
   }
  },
@@ -893,17 +891,43 @@
   "name": "blank_only_segment_then_statement",
   "script": "SELECT 1;\u00a0;SELECT 2;",
   "views": {
+   "records": [
+    {
+     "text": "SELECT 1",
+     "line": 1,
+     "terminator": ";",
+     "kind": "sql",
+     "multi": false,
+     "repeat": 1,
+     "analysis_statements": null,
+     "source_start": 0,
+     "source_end": 9
+    },
+    {
+     "text": "SELECT 2",
+     "line": 1,
+     "terminator": ";",
+     "kind": "sql",
+     "multi": false,
+     "repeat": 1,
+     "analysis_statements": null,
+     "source_start": 11,
+     "source_end": 20
+    }
+   ],
+   "strings": [
+    "SELECT 1",
+    "SELECT 2"
+   ],
+   "extraction": [
+    "SELECT 1",
+    "SELECT 2"
+   ],
    "analysis": [
     "SELECT 1",
-    "\u00a0",
     "SELECT 2"
    ],
    "blanked": "SELECT 1;\u00a0;SELECT 2;",
-   "extraction": [
-    "SELECT 1",
-    "\u00a0",
-    "SELECT 2"
-   ],
    "masking": [
     [
      "SELECT 1",
@@ -913,34 +937,6 @@
      "SELECT 2",
      "SELECT 2"
     ]
-   ],
-   "records": [
-    {
-     "analysis_statements": null,
-     "kind": "sql",
-     "line": 1,
-     "multi": false,
-     "repeat": 1,
-     "source_end": 9,
-     "source_start": 0,
-     "terminator": ";",
-     "text": "SELECT 1"
-    },
-    {
-     "analysis_statements": null,
-     "kind": "sql",
-     "line": 1,
-     "multi": false,
-     "repeat": 1,
-     "source_end": 20,
-     "source_start": 11,
-     "terminator": ";",
-     "text": "SELECT 2"
-    }
-   ],
-   "strings": [
-    "SELECT 1",
-    "SELECT 2"
    ]
   }
  },
@@ -948,36 +944,34 @@
   "name": "mid_script_bom_segment",
   "script": "SELECT 1;\ufeff;",
   "views": {
+   "records": [
+    {
+     "text": "SELECT 1",
+     "line": 1,
+     "terminator": ";",
+     "kind": "sql",
+     "multi": false,
+     "repeat": 1,
+     "analysis_statements": null,
+     "source_start": 0,
+     "source_end": 9
+    }
+   ],
+   "strings": [
+    "SELECT 1"
+   ],
+   "extraction": [
+    "SELECT 1"
+   ],
    "analysis": [
-    "SELECT 1",
-    "\ufeff"
+    "SELECT 1"
    ],
    "blanked": "SELECT 1;\ufeff;",
-   "extraction": [
-    "SELECT 1",
-    "\ufeff"
-   ],
    "masking": [
     [
      "SELECT 1",
      "SELECT 1"
     ]
-   ],
-   "records": [
-    {
-     "analysis_statements": null,
-     "kind": "sql",
-     "line": 1,
-     "multi": false,
-     "repeat": 1,
-     "source_end": 9,
-     "source_start": 0,
-     "terminator": ";",
-     "text": "SELECT 1"
-    }
-   ],
-   "strings": [
-    "SELECT 1"
    ]
   }
  },
@@ -2680,55 +2674,55 @@
   }
  },
  {
-  "name": "leading_no_break_space_kept",
+  "name": "leading_no_break_space_is_a_blank",
   "script": "SELECT 1;\u00a0SELECT 2",
   "views": {
-   "analysis": [
-    "SELECT 1",
-    "\u00a0SELECT 2"
+   "records": [
+    {
+     "text": "SELECT 1",
+     "line": 1,
+     "terminator": ";",
+     "kind": "sql",
+     "multi": false,
+     "repeat": 1,
+     "analysis_statements": null,
+     "source_start": 0,
+     "source_end": 9
+    },
+    {
+     "text": "SELECT 2",
+     "line": 1,
+     "terminator": null,
+     "kind": "sql",
+     "multi": false,
+     "repeat": 1,
+     "analysis_statements": null,
+     "source_start": 10,
+     "source_end": 18
+    }
    ],
-   "blanked": "SELECT 1;\u00a0SELECT 2",
+   "strings": [
+    "SELECT 1",
+    "SELECT 2"
+   ],
    "extraction": [
     "SELECT 1",
-    "\u00a0SELECT 2"
+    "SELECT 2"
    ],
+   "analysis": [
+    "SELECT 1",
+    "SELECT 2"
+   ],
+   "blanked": "SELECT 1;\u00a0SELECT 2",
    "masking": [
     [
      "SELECT 1",
      "SELECT 1"
     ],
     [
-     "\u00a0SELECT 2",
+     "SELECT 2",
      "SELECT 2"
     ]
-   ],
-   "records": [
-    {
-     "analysis_statements": null,
-     "kind": "sql",
-     "line": 1,
-     "multi": false,
-     "repeat": 1,
-     "source_end": 9,
-     "source_start": 0,
-     "terminator": ";",
-     "text": "SELECT 1"
-    },
-    {
-     "analysis_statements": null,
-     "kind": "sql",
-     "line": 1,
-     "multi": false,
-     "repeat": 1,
-     "source_end": 18,
-     "source_start": 9,
-     "terminator": null,
-     "text": "\u00a0SELECT 2"
-    }
-   ],
-   "strings": [
-    "SELECT 1",
-    "\u00a0SELECT 2"
    ]
   }
  },
@@ -2789,52 +2783,52 @@
   "name": "mid_script_bom_between_statements",
   "script": "SELECT 1;\ufeffSELECT 2;",
   "views": {
-   "analysis": [
-    "SELECT 1",
-    "\ufeffSELECT 2"
+   "records": [
+    {
+     "text": "SELECT 1",
+     "line": 1,
+     "terminator": ";",
+     "kind": "sql",
+     "multi": false,
+     "repeat": 1,
+     "analysis_statements": null,
+     "source_start": 0,
+     "source_end": 9
+    },
+    {
+     "text": "SELECT 2",
+     "line": 1,
+     "terminator": ";",
+     "kind": "sql",
+     "multi": false,
+     "repeat": 1,
+     "analysis_statements": null,
+     "source_start": 10,
+     "source_end": 19
+    }
    ],
-   "blanked": "SELECT 1;\ufeffSELECT 2;",
+   "strings": [
+    "SELECT 1",
+    "SELECT 2"
+   ],
    "extraction": [
     "SELECT 1",
-    "\ufeffSELECT 2"
+    "SELECT 2"
    ],
+   "analysis": [
+    "SELECT 1",
+    "SELECT 2"
+   ],
+   "blanked": "SELECT 1;\ufeffSELECT 2;",
    "masking": [
     [
      "SELECT 1",
      "SELECT 1"
     ],
     [
-     "\ufeffSELECT 2",
+     "SELECT 2",
      "SELECT 2"
     ]
-   ],
-   "records": [
-    {
-     "analysis_statements": null,
-     "kind": "sql",
-     "line": 1,
-     "multi": false,
-     "repeat": 1,
-     "source_end": 9,
-     "source_start": 0,
-     "terminator": ";",
-     "text": "SELECT 1"
-    },
-    {
-     "analysis_statements": null,
-     "kind": "sql",
-     "line": 1,
-     "multi": false,
-     "repeat": 1,
-     "source_end": 19,
-     "source_start": 9,
-     "terminator": ";",
-     "text": "\ufeffSELECT 2"
-    }
-   ],
-   "strings": [
-    "SELECT 1",
-    "\ufeffSELECT 2"
    ]
   }
  },
@@ -3372,17 +3366,43 @@
   "name": "ideographic_space_only_segment",
   "script": "SELECT 1;\u3000;SELECT 2;",
   "views": {
+   "records": [
+    {
+     "text": "SELECT 1",
+     "line": 1,
+     "terminator": ";",
+     "kind": "sql",
+     "multi": false,
+     "repeat": 1,
+     "analysis_statements": null,
+     "source_start": 0,
+     "source_end": 9
+    },
+    {
+     "text": "SELECT 2",
+     "line": 1,
+     "terminator": ";",
+     "kind": "sql",
+     "multi": false,
+     "repeat": 1,
+     "analysis_statements": null,
+     "source_start": 11,
+     "source_end": 20
+    }
+   ],
+   "strings": [
+    "SELECT 1",
+    "SELECT 2"
+   ],
+   "extraction": [
+    "SELECT 1",
+    "SELECT 2"
+   ],
    "analysis": [
     "SELECT 1",
-    "\u3000",
     "SELECT 2"
    ],
    "blanked": "SELECT 1;\u3000;SELECT 2;",
-   "extraction": [
-    "SELECT 1",
-    "\u3000",
-    "SELECT 2"
-   ],
    "masking": [
     [
      "SELECT 1",
@@ -3392,34 +3412,6 @@
      "SELECT 2",
      "SELECT 2"
     ]
-   ],
-   "records": [
-    {
-     "analysis_statements": null,
-     "kind": "sql",
-     "line": 1,
-     "multi": false,
-     "repeat": 1,
-     "source_end": 9,
-     "source_start": 0,
-     "terminator": ";",
-     "text": "SELECT 1"
-    },
-    {
-     "analysis_statements": null,
-     "kind": "sql",
-     "line": 1,
-     "multi": false,
-     "repeat": 1,
-     "source_end": 20,
-     "source_start": 11,
-     "terminator": ";",
-     "text": "SELECT 2"
-    }
-   ],
-   "strings": [
-    "SELECT 1",
-    "SELECT 2"
    ]
   }
  },
@@ -3888,17 +3880,43 @@
   "name": "zero_width_space_between_semicolons",
   "script": "SELECT 1;\u200b;SELECT 2;",
   "views": {
+   "records": [
+    {
+     "text": "SELECT 1",
+     "line": 1,
+     "terminator": ";",
+     "kind": "sql",
+     "multi": false,
+     "repeat": 1,
+     "analysis_statements": null,
+     "source_start": 0,
+     "source_end": 9
+    },
+    {
+     "text": "SELECT 2",
+     "line": 1,
+     "terminator": ";",
+     "kind": "sql",
+     "multi": false,
+     "repeat": 1,
+     "analysis_statements": null,
+     "source_start": 11,
+     "source_end": 20
+    }
+   ],
+   "strings": [
+    "SELECT 1",
+    "SELECT 2"
+   ],
+   "extraction": [
+    "SELECT 1",
+    "SELECT 2"
+   ],
    "analysis": [
     "SELECT 1",
-    "\u200b",
     "SELECT 2"
    ],
    "blanked": "SELECT 1;\u200b;SELECT 2;",
-   "extraction": [
-    "SELECT 1",
-    "\u200b",
-    "SELECT 2"
-   ],
    "masking": [
     [
      "SELECT 1",
@@ -3908,34 +3926,6 @@
      "SELECT 2",
      "SELECT 2"
     ]
-   ],
-   "records": [
-    {
-     "analysis_statements": null,
-     "kind": "sql",
-     "line": 1,
-     "multi": false,
-     "repeat": 1,
-     "source_end": 9,
-     "source_start": 0,
-     "terminator": ";",
-     "text": "SELECT 1"
-    },
-    {
-     "analysis_statements": null,
-     "kind": "sql",
-     "line": 1,
-     "multi": false,
-     "repeat": 1,
-     "source_end": 20,
-     "source_start": 11,
-     "terminator": ";",
-     "text": "SELECT 2"
-    }
-   ],
-   "strings": [
-    "SELECT 1",
-    "SELECT 2"
    ]
   }
  },

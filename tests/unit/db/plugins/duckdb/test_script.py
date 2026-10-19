@@ -396,13 +396,15 @@ def test_a_nul_inside_a_literal_is_refused_too() -> None:
         records("SELECT 'a\x00b;c'; SELECT 2;")
 
 
-def test_a_byte_order_mark_at_the_start_is_dropped_and_in_the_middle_kept() -> None:
+def test_a_byte_order_mark_is_a_blank_at_the_start_and_in_the_middle() -> None:
     assert texts("\ufeffSELECT 1; SELECT 2;") == ["SELECT 1", "SELECT 2"]
-    assert texts("SELECT 1;\ufeffSELECT 2;") == ["SELECT 1", "\ufeffSELECT 2"]
+    assert texts("SELECT 1;\ufeffSELECT 2;") == ["SELECT 1", "SELECT 2"]
 
 
-def test_only_the_ascii_blanks_are_trimmed_from_a_statement() -> None:
-    assert texts("SELECT 1;\u00a0SELECT 2;") == ["SELECT 1", "\u00a0SELECT 2"]
+def test_only_the_blanks_of_the_engine_are_trimmed_from_a_statement() -> None:
+    assert texts("SELECT 1;\u00a0SELECT 2;") == ["SELECT 1", "SELECT 2"]
+    assert texts("SELECT 1;\u3000SELECT 2;") == ["SELECT 1", "SELECT 2"]
+    assert texts("SELECT 1;\u0085SELECT 2;") == ["SELECT 1", "\u0085SELECT 2"]
     assert texts("SELECT 1;\x0bSELECT 2;") == ["SELECT 1", "\x0bSELECT 2"]
     assert texts("SELECT 1;\x0cSELECT 2;") == ["SELECT 1", "SELECT 2"]
 
