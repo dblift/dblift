@@ -125,10 +125,11 @@ class RegexParser(SqlParserInterface):
 
             # Split into individual statements using dialect-aware logic
             sql_statements = self.split_statements(cleaned_sql)
+            blanks = self._empty_statement_blanks()
 
             # Parse each statement
             for sql in sql_statements:
-                if not sql.strip():
+                if not sql.strip(blanks):
                     continue
 
                 try:

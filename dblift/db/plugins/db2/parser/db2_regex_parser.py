@@ -135,8 +135,9 @@ class DB2RegexParser(EnhancedRegexParser):
             sql_statements = self.split_for_extraction(sql_content)
 
             # Parse each statement with DB2-specific handling
+            blanks = self._empty_statement_blanks()
             for sql in sql_statements:
-                if not sql.strip():
+                if not sql.strip(blanks):
                     continue
 
                 try:

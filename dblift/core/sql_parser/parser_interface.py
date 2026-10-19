@@ -14,6 +14,12 @@ class SqlParserInterface(ABC):
     def dialect_name(self) -> str:
         """Return the name of the SQL dialect this parser handles."""
 
+    def _empty_statement_blanks(self) -> Optional[str]:
+        """The characters this dialect reads as an empty statement, as execution does."""
+        from dblift.db.provider_registry import ProviderRegistry
+
+        return ProviderRegistry.get_quirks(self.dialect_name.lower()).empty_statement_blanks()
+
     @abstractmethod
     def parse_sql(self, sql_content: str, default_schema: Optional[str] = None) -> ParseResult:
         """Parse SQL content into statements.

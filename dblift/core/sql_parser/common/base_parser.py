@@ -57,10 +57,11 @@ class RegexBasedParser(SqlParserInterface):
         try:
             # Split into individual statements
             sql_statements = self.split_statements(sql_content)
+            blanks = self._empty_statement_blanks()
 
             # Parse each statement
             for sql in sql_statements:
-                if not sql.strip():
+                if not sql.strip(blanks):
                     continue
 
                 try:

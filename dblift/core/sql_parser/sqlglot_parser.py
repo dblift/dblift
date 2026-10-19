@@ -108,10 +108,11 @@ class SqlGlotParser(SqlParserInterface):
             statements: List[SqlStatement] = []
             errors: List[str] = []
 
+            blanks = self._empty_statement_blanks()
             for sql_text, source in zip(
                 statement_strings, self.statement_sources(sql_content, statement_strings)
             ):
-                if not sql_text.strip():
+                if not sql_text.strip(blanks):
                     continue
                 fragment_result = self.parse_fragment(sql_text, default_schema, source)
                 statements.extend(fragment_result.statements or [])

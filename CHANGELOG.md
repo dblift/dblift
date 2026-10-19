@@ -102,6 +102,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Analysis sees the statements migrate runs on Db2, MySQL and MariaDB.** A statement made
+  only of characters the engine keeps (for example a no-break space) was dropped by validate,
+  undo and lint while migrate sent it; it is now analysed as an unreadable statement.
 - **SQLite execution errors show one failed SQL preview in CLI logs.**
   For versioned migrations and SQL callbacks, the execution service reports the
   failed statement while SQLite still reports the database error.

@@ -183,8 +183,9 @@ def _analyse(text: str, dialect: str) -> ScriptAnalysis:
             bodies = SqlParserFactory(dialect).get_parser().split_for_analysis(text)
         except (UnsafeStatementSplitError, UnsupportedMetaCommandError) as error:
             return ScriptAnalysis((), (), (f"Error splitting SQL: {error}",))
+        blanks = quirks.empty_statement_blanks()
         for body in bodies:
-            if not body.strip():
+            if not body.strip(blanks):
                 continue
             facts = quirks.statement_facts(body)
             objects = tuple(
@@ -221,8 +222,9 @@ def _analyse(text: str, dialect: str) -> ScriptAnalysis:
 
     statements: List[AnalysedStatement] = []
     cautions: List[Caution] = []
+    blanks = quirks.empty_statement_blanks()
     for stmt in parsed.statements or []:
-        body = (getattr(stmt, "sql_text", "") or "").strip()
+        body = (getattr(stmt, "sql_text", "") or "").strip(blanks)
         if not body:
             continue
         index = len(statements)
