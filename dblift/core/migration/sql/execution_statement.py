@@ -82,12 +82,15 @@ def _statements_of(sql: str, dialect: str) -> List[str]:
 def execution_units(sql: str, dialect: str) -> Optional[List[str]]:
     """The scanner's executable units once each, omitting skipped client batches.
 
-    ``None`` means the dialect has no record API. A scanner refusal propagates.
+    ``None`` means the dialect has no parser. A parser that returns strings only is read through
+    the splitter's adapter. A scanner refusal propagates.
     """
+    from dblift.core.migration.sql.statement_splitter import StatementSplitter
+
     parser = _script_parser(dialect.lower())
-    if parser is None or not hasattr(parser, "split"):
+    if parser is None:
         return None
-    return unit_texts(parser.split(sql))
+    return unit_texts(StatementSplitter(dialect).split(sql))
 
 
 def classify_execution_statement(

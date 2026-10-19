@@ -327,8 +327,6 @@ class HybridParser(_SqlglotBuildersMixin, SqlParserInterface):
         objects: List[SqlObject] = []
         statements = self.split_for_extraction(sql_content)
         for stmt_text, source in zip(statements, self.statement_sources(sql_content, statements)):
-            if not stmt_text or not stmt_text.strip():
-                continue
             objects.extend(self._extract_objects_for_statement(stmt_text, effective_schema, source))
         return objects
 

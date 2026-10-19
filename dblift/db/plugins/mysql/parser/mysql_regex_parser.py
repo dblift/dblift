@@ -115,9 +115,6 @@ class MySqlRegexParser(EnhancedRegexParser):
 
             # Parse each statement with MySQL-specific handling
             for sql in sql_statements:
-                if not sql.strip():
-                    continue
-
                 try:
                     stmt_type = self._classify_statement_enhanced(sql)
                     objects = self.extract_objects(self._clean_mysql_comments(sql), default_schema)

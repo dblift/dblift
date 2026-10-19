@@ -124,9 +124,6 @@ class EnhancedRegexParser(RegexParser):
 
             # Parse each statement with enhanced error handling
             for sql in sql_statements:
-                if not sql.strip():
-                    continue
-
                 try:
                     stmt_type = self._classify_statement_enhanced(sql)
                     objects = self.extract_objects(sql, default_schema)

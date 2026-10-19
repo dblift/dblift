@@ -104,6 +104,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   record of an unknown kind is no statement. `split_statements` is the execution projection and
   returns the same strings as before. A parser that returns strings only is adapted to records
   and told once to return records. The `GO 0` notice is logged where the record is cut.
+- **A custom dialect that only implements `split_statements` keeps working unchanged.** Its
+  comment-only pieces and batch separators are still skipped, and a one-time deprecation
+  message asks it to return `Statement` records from `split()`; the skips end in the next
+  major release.
 
 ### Deprecated
 
@@ -116,6 +120,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`info`, `migrate --dry-run` and the parsers' listings list the statements `migrate` sends,
+  on every engine.** A trailing comment is no longer listed as a statement on SQLite and DuckDB
+  (`validate_sql` of their parsers and `Migration.sql_statements` follow), a statement made of
+  a character MySQL, MariaDB or Db2 keep is listed, and a listed statement is the text that is
+  sent, with no characters trimmed from its edges.
 - **`migrate` sends every statement the splitter returns.** SQLite and DuckDB no longer skip
   a statement made only of a character the engine rejects (such as U+001C): it is sent and
   fails as the engine does. On DuckDB a comment that ends at a carriage return no longer hides

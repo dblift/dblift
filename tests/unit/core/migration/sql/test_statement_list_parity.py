@@ -106,16 +106,23 @@ def test_a_strip_planted_in_a_consumer_turns_a_kept_character_cell_red():
         assert _verdict(view, "mysql", shape) != ""
 
 
-def test_a_comment_record_planted_in_the_list_turns_a_comment_only_cell_red():
-    real = LexicalEngine.split
+def test_a_comment_filter_planted_in_a_consumer_turns_a_comment_record_cell_red():
+    """The splitter returns a comment record (planted); a consumer that skips it disagrees."""
+    real_split = LexicalEngine.split
+    real_parse = migration_sql_parser.parse_migration_sql
 
     def with_comment(self, script, *args, **kwargs):
-        return [*real(self, script, *args, **kwargs), Statement("-- planted", 1, None)]
+        return [*real_split(self, script, *args, **kwargs), Statement("-- planted", 1, None)]
+
+    def drop_comments(analyzer, content, log, **kwargs):
+        return [s for s in real_parse(analyzer, content, log, **kwargs) if not s.startswith("--")]
 
     shape = next(s for s in SHAPES if s.name == "only_cmt")
     view = next(v for v in VIEWS if v.name == "migrate_classified")
     with patch.object(LexicalEngine, "split", with_comment):
-        assert _verdict(view, "postgresql", shape) != ""
+        assert _verdict(view, "postgresql", shape) == ""  # the list is read as it is
+        with patch.object(execution_engine, "parse_migration_sql", drop_comments):
+            assert _verdict(view, "postgresql", shape) != ""
 
 
 def test_the_reference_takes_only_statements_from_a_record_it_knows():
