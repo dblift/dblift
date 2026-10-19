@@ -375,7 +375,9 @@ def _mixed_transaction_modes(
     if not autocommit or len(autocommit) == len(modes):
         return []
     unit, mode = autocommit[0]
-    stmt = next((s for s in statements if s.sql in unit), None)
+    stmt = next((s for s in statements if s.sql == unit), None) or next(
+        (s for s in statements if s.sql in unit), None
+    )
     reason = f"{mode.transaction_reason}: " if mode.transaction_reason else ""
     return [
         Finding(

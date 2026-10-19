@@ -92,9 +92,8 @@ Overrides, including an empty string, leave that cache untouched.
 the next major release. It warns when called. Use `StatementSplitter(dialect).split()`; its
 records are the statements, and each carries `kind`.
 
-This provider-free helper preserves the executor's existing behavior, including
-MySQL/MariaDB executable comment directives. Existing executor callers remain
-compatible; ordinary migration behavior is unchanged.
+Until it is removed the helper answers as before: it needs no provider, and it treats
+MySQL/MariaDB executable comment directives as statements, not comments.
 
 ::: dblift.core.sql_parser
     options:

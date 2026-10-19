@@ -120,6 +120,15 @@ def test_the_adapter_announces_itself_once(caplog, monkeypatch):
     assert "postgresql" in notices[0].getMessage()
 
 
-def test_a_parser_with_only_strings_still_returns_its_strings_as_they_are():
-    strings = ["SELECT 1;", "-- only a comment", ""]
-    assert _adapted(strings).split_statements("x") == strings
+def test_a_parser_with_only_strings_returns_its_statements_without_the_pieces_that_are_none():
+    strings = ["SELECT 1;", "-- only a comment", "", "  ", "SELECT 2"]
+    assert _adapted(strings).split_statements("x") == ["SELECT 1;", "SELECT 2"]
+
+
+def test_split_statements_of_a_strings_only_parser_announces_itself_once(caplog, monkeypatch):
+    monkeypatch.setattr(statement_splitter, "_ANNOUNCED", set())
+    splitter = _adapted(["SELECT 1"])
+    with caplog.at_level(logging.WARNING):
+        splitter.split_statements("x")
+        splitter.split_statements("x")
+    assert len([r for r in caplog.records if "return Statement records" in r.getMessage()]) == 1

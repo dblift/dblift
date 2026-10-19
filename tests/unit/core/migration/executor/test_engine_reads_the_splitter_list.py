@@ -21,7 +21,14 @@ pytestmark = pytest.mark.unit
 
 REPO = Path(__file__).resolve().parents[5]
 SRC = REPO / "dblift"
-FILTERS = {"strip", "is_comment_only_statement", "_is_comment_only_statement", "is_batch_separator"}
+FILTERS = {
+    "strip",
+    "is_comment_only_statement",
+    "_is_comment_only_statement",
+    "_comment_only",
+    "_is_empty_or_comment",
+    "is_batch_separator",
+}
 
 
 def _engine(dialect: str) -> ExecutionEngine:
@@ -77,6 +84,21 @@ def test_execute_statement_filters_nothing():
     assert _filter_calls(path, {"execute_statement"}) == []
 
 
+# The analysis path reads the splitter's list too: a skip planted in one of these loops is
+# caught here, not only by the parity matrix.
+ANALYSIS_LOOPS = [
+    ("core/migration/sql/script_analysis.py", {"_analyse"}),
+    ("core/migration/sql/lint_rules.py", {"_mixed_transaction_modes", "issues_and_created_tables"}),
+    ("core/sql_parser/unified_regex_parser.py", {"parse_sql"}),
+    ("core/sql_parser/hybrid_parser.py", {"parse_sql"}),
+]
+
+
+@pytest.mark.parametrize("relative, functions", ANALYSIS_LOOPS)
+def test_no_loop_of_the_analysis_path_filters_a_statement(relative, functions):
+    assert _filter_calls(SRC / relative, functions) == []
+
+
 def test_the_scan_sees_a_planted_filter(tmp_path):
     planted = tmp_path / "engine.py"
     planted.write_text("def _execute_statements(s):\n    return [x for x in s if x.strip()]\n")
@@ -107,6 +129,22 @@ def test_duckdb_sends_the_statement_after_a_comment_ended_by_a_carriage_return()
         "SELECT 1",
         "-- c\rSELECT 2",
     ]
+
+
+class _StringsOnly:
+    """A custom dialect parser with no ``split``: strings, some of them no statement."""
+
+    def split_statements(self, sql_content, strict_tokenizer=False):
+        return ["SELECT 1", "", "  ", "-- c", "GO", "SELECT 2"]
+
+
+def test_a_strings_only_parser_hands_the_provider_statements_only():
+    engine = _engine("sqlserver")
+    splitter = engine.sql_analyzer.statement_splitter
+    splitter._engine = None
+    splitter._parser = _StringsOnly()
+    migration = make_migration(script_name="V1__x.sql", content="ignored", logger=engine.log)
+    assert engine.get_executable_sql_statements(migration, MagicMock()) == ["SELECT 1", "SELECT 2"]
 
 
 def test_prepare_logs_the_go_0_notice_once(caplog):

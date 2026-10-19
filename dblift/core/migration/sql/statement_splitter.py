@@ -88,11 +88,6 @@ class StatementSplitter:
 
     def split_statements(self, sql: str, *, strict_tokenizer: bool = False) -> List[str]:
         """Return executable units or refuse; never guess a second split."""
-        if self._engine is None and not hasattr(self._record_parser(), "split"):
-            parser = self._record_parser()
-            return self._refusing(
-                lambda: list(parser.split_statements(sql, strict_tokenizer=strict_tokenizer))
-            )
         return execution_strings(self.split(sql, strict_tokenizer=strict_tokenizer))
 
     def _records_of_strings(self, strings: List[str]) -> List[Statement]:

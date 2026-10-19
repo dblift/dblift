@@ -19,12 +19,12 @@ CLASSIFIERS = {
     "_comment_only",
     "is_batch_separator",
 }
-# (file, enclosing function, classifier): the only calls left, all of them for a parser that
-# returns strings and not records, plus the deprecated public helper's own body.
+# (path under dblift/, enclosing function, classifier): the only calls left, all of them for a
+# parser that returns strings and not records, plus the deprecated public helper's own body.
 ADAPTER = {
-    ("statement_splitter.py", "_records_of_strings", "_comment_only"),
-    ("statement_splitter.py", "_records_of_strings", "is_batch_separator"),
-    ("execution_statement.py", "is_comment_only_statement", "_comment_only"),
+    ("core/migration/sql/statement_splitter.py", "_records_of_strings", "_comment_only"),
+    ("core/migration/sql/statement_splitter.py", "_records_of_strings", "is_batch_separator"),
+    ("core/migration/sql/execution_statement.py", "is_comment_only_statement", "_comment_only"),
 }
 
 
@@ -34,43 +34,46 @@ def _name(node: ast.AST) -> str:
     return getattr(node, "id", "")
 
 
+def _rel(path: Path, root: Path) -> str:
+    return path.relative_to(root).as_posix()
+
+
 def removed_names_used(root: Path) -> list:
     """Every definition, reference or keyword that brings a deleted name back."""
     found = []
     for path in root.rglob("*.py"):
+        rel = _rel(path, root)
         for node in ast.walk(ast.parse(path.read_text())):
             if isinstance(node, ast.FunctionDef) and node.name in GONE:
-                found.append((path.name, node.name))
+                found.append((rel, node.name))
             elif isinstance(node, (ast.Attribute, ast.Name)) and _name(node) in GONE:
-                found.append((path.name, _name(node)))
+                found.append((rel, _name(node)))
             elif isinstance(node, ast.Call) and _name(node.func) in CLASSIFIERS:
                 found += [
-                    (path.name, kw.arg)
-                    for kw in node.keywords
-                    if kw.arg in {"blanks", "hash_comments"}
+                    (rel, kw.arg) for kw in node.keywords if kw.arg in {"blanks", "hash_comments"}
                 ]
     return found
 
 
 def classifier_calls(root: Path) -> set:
-    """``(file, enclosing function, classifier)`` of every call of a classifier under *root*."""
+    """``(path under root, enclosing function, classifier)`` of every call of a classifier.
+
+    Every node is visited, so a call in a class body or at module level counts too; those are
+    reported under ``<module>``.
+    """
     found = set()
+
+    def visit(node: ast.AST, rel: str, scope: str) -> None:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            scope = node.name
+        if isinstance(node, ast.Call) and _name(node.func) in CLASSIFIERS:
+            found.add((rel, scope, _name(node.func)))
+        for child in ast.iter_child_nodes(node):
+            visit(child, rel, scope)
+
     for path in root.rglob("*.py"):
-        tree = ast.parse(path.read_text())
-        for func in [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)] + [tree]:
-            body = ast.walk(func) if func is not tree else _module_level(tree)
-            for call in body:
-                if isinstance(call, ast.Call) and _name(call.func) in CLASSIFIERS:
-                    found.add((path.name, getattr(func, "name", "<module>"), _name(call.func)))
+        visit(ast.parse(path.read_text()), _rel(path, root), "<module>")
     return found
-
-
-def _module_level(tree: ast.Module):
-    stack = [n for n in tree.body if not isinstance(n, (ast.FunctionDef, ast.ClassDef))]
-    while stack:
-        node = stack.pop()
-        yield node
-        stack.extend(ast.iter_child_nodes(node))
 
 
 def test_the_two_hooks_and_the_keywords_are_gone():
@@ -84,18 +87,30 @@ def test_only_the_adapter_calls_a_text_classifier():
 
 
 def test_the_scans_see_a_planted_defect(tmp_path):
-    (tmp_path / "bad.py").write_text(
+    (tmp_path / "pkg").mkdir()
+    (tmp_path / "pkg" / "bad.py").write_text(
         "class Q:\n"
         "    def empty_statement_blanks(self):\n        return None\n"
         "def run(s, q):\n"
         "    return q.is_batch_separator(s) or is_comment_only_statement(s, blanks=' ')\n"
     )
-    assert ("bad.py", "empty_statement_blanks") in removed_names_used(tmp_path)
-    assert ("bad.py", "blanks") in removed_names_used(tmp_path)
+    (tmp_path / "pkg" / "cls.py").write_text('class _Z:\n    w = is_comment_only_statement("x")\n')
+    assert ("pkg/bad.py", "empty_statement_blanks") in removed_names_used(tmp_path)
+    assert ("pkg/bad.py", "blanks") in removed_names_used(tmp_path)
     assert classifier_calls(tmp_path) == {
-        ("bad.py", "run", "is_batch_separator"),
-        ("bad.py", "run", "is_comment_only_statement"),
+        ("pkg/bad.py", "run", "is_batch_separator"),
+        ("pkg/bad.py", "run", "is_comment_only_statement"),
+        ("pkg/cls.py", "<module>", "is_comment_only_statement"),
     }
+
+
+def test_an_allowed_call_is_allowed_only_at_its_own_path(tmp_path):
+    other = tmp_path / "elsewhere"
+    other.mkdir()
+    (other / "statement_splitter.py").write_text(
+        "def _records_of_strings(t):\n    return _comment_only(t)\n"
+    )
+    assert classifier_calls(tmp_path) - ADAPTER != set()
 
 
 def test_the_helper_is_deprecated_and_still_answers():

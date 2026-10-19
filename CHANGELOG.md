@@ -105,9 +105,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   returns the same strings as before. A parser that returns strings only is adapted to records
   and told once to return records. The `GO 0` notice is logged where the record is cut.
 - **A custom dialect that only implements `split_statements` keeps working unchanged.** Its
-  comment-only pieces and batch separators are still skipped, and a one-time deprecation
-  message asks it to return `Statement` records from `split()`; the skips end in the next
-  major release.
+  empty and comment-only pieces and batch separators are still skipped, and a one-time
+  deprecation message asks it to implement `split()` and return `Statement` records; the
+  skips end in the next major release.
 
 ### Deprecated
 
