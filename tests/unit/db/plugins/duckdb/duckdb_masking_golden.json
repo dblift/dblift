@@ -2266,30 +2266,6 @@
   "script_20": {
    "input": "DROP TABLE t\u200b",
    "output": {
-    "facts_objects": [],
-    "facts_parse": {
-     "errors": [],
-     "statements": [
-      {
-       "affected_objects": [],
-       "dialect": "duckdb",
-       "names_unread": false,
-       "objects": [],
-       "schema": "main",
-       "sql_text": "DROP TABLE t\u200b",
-       "statement_type": "DDL"
-      }
-     ],
-     "success": true
-    },
-    "facts_validate": {
-     "errors": [],
-     "statements_found": 1,
-     "valid": true
-    },
-    "regex_extraction": [
-     "DROP TABLE t\u200b"
-    ],
     "regex_objects": [
      {
       "dialect": "duckdb",
@@ -2301,6 +2277,7 @@
      }
     ],
     "regex_parse": {
+     "success": true,
      "errors": [],
      "statements": [
       {
@@ -2327,11 +2304,61 @@
         }
        ],
        "schema": "main",
-       "sql_text": "DROP TABLE t\u200b",
+       "sql_text": "DROP TABLE t",
        "statement_type": "DDL"
       }
-     ],
-     "success": true
+     ]
+    },
+    "regex_extraction": [
+     "DROP TABLE t"
+    ],
+    "facts_objects": [
+     {
+      "dialect": "duckdb",
+      "dialect_options": {},
+      "explicit_properties": {},
+      "name": "t",
+      "object_type": "TABLE",
+      "schema": "main"
+     }
+    ],
+    "facts_parse": {
+     "success": true,
+     "errors": [],
+     "statements": [
+      {
+       "affected_objects": [
+        {
+         "dialect": "duckdb",
+         "dialect_options": {},
+         "explicit_properties": {},
+         "name": "t",
+         "object_type": "TABLE",
+         "schema": "main"
+        }
+       ],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [
+        {
+         "dialect": "duckdb",
+         "dialect_options": {},
+         "explicit_properties": {},
+         "name": "t",
+         "object_type": "TABLE",
+         "schema": "main"
+        }
+       ],
+       "schema": "main",
+       "sql_text": "DROP TABLE t",
+       "statement_type": "DDL"
+      }
+     ]
+    },
+    "facts_validate": {
+     "valid": true,
+     "statements_found": 1,
+     "errors": []
     }
    }
   }
