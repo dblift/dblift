@@ -4,10 +4,12 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from dblift.core.exceptions import TransactionAbortedError
 from dblift.core.logger import NullLog
 from dblift.core.logger.results import MigrateResult
 from dblift.core.migration.executor.execution_engine import ExecutionEngine
 from dblift.core.migration.migration import Migration, MigrationType
+from dblift.core.migration.sql.sql_execution_service import SqlExecutionService
 from dblift.db.provider_interfaces import TransactionalProvider
 
 
@@ -31,6 +33,7 @@ class _HealthOwningProvider(TransactionalProvider):
         self.prebegin_reads = 0
         self.postbegin_reads = 0
         self._connection = _PreBeginConnection()
+        self.health_error: Exception | None = None
 
     @property
     def connection(self) -> _PreBeginConnection:
@@ -56,6 +59,8 @@ class _HealthOwningProvider(TransactionalProvider):
     def check_transaction_state(self) -> None:
         self._connection.probe("SELECT 1")
         self.events.append("health")
+        if self.health_error is not None:
+            raise self.health_error
 
     def execute_statement(self, sql: str, schema=None, params=None) -> int:
         self.events.append(f"execute:{sql}")
@@ -108,3 +113,65 @@ def test_provider_health_hook_precedes_each_statement() -> None:
     ]
     assert provider._connection.probes == ["SELECT 1", "SELECT 1"]
     assert provider.postbegin_reads <= 1
+
+
+@pytest.mark.unit
+def test_typed_health_failure_rolls_back_before_failure_history() -> None:
+    provider = _HealthOwningProvider()
+    cause = RuntimeError("current transaction is aborted")
+    provider.health_error = TransactionAbortedError("transaction is aborted")
+    provider.health_error.__cause__ = cause
+    analyzer = MagicMock()
+    analyzer.dialect = "sqlite"
+    analyzer.split_statements.return_value = ["INSERT INTO t VALUES (1)"]
+    analyzer.get_statement_type.return_value = "DML"
+    history = MagicMock()
+    history.record_migration.side_effect = lambda *args, **kwargs: provider.events.append("history")
+    engine = ExecutionEngine(provider, analyzer, NullLog(), history_manager=history)
+    migration = Migration(
+        script_name="V1__abort.sql",
+        content="INSERT INTO t VALUES (1);",
+        version="1",
+        type=MigrationType.SQL,
+        checksum=1,
+    )
+
+    result = MigrateResult()
+    engine.execute_migration(migration, result)
+
+    assert "Transaction is aborted before executing statement 1: transaction is aborted" in (
+        result.error_message or ""
+    )
+    assert provider.events == ["begin", "health", "rollback", "begin", "history", "commit"]
+    history.record_migration.assert_called_once()
+    assert history.record_migration.call_args.kwargs["success"] is False
+    assert result.failed_history_persisted is True
+
+
+@pytest.mark.unit
+def test_health_hook_precedes_query_send() -> None:
+    provider = _HealthOwningProvider()
+    analyzer = MagicMock()
+    analyzer.dialect = "sqlite"
+    analyzer.split_statements.return_value = ["SELECT 1"]
+    analyzer.get_statement_type.return_value = "QUERY"
+    engine = ExecutionEngine(
+        provider,
+        analyzer,
+        NullLog(),
+        sql_execution_service=SqlExecutionService(provider, analyzer),
+    )
+    migration = Migration(
+        script_name="V1__query.sql",
+        content="SELECT 1;",
+        version="1",
+        type=MigrationType.SQL,
+        checksum=1,
+    )
+
+    result = MigrateResult()
+    engine.execute_migration(migration, result)
+
+    assert result.error_message is None
+    assert provider.events == ["begin", "health", "query:SELECT 1", "commit"]
+    assert provider._connection.probes == ["SELECT 1"]

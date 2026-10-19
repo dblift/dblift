@@ -258,6 +258,9 @@ class TestDeleteFailedMigrationEntry(unittest.TestCase):
         def __init__(self):
             self.connection = MagicMock()
 
+        def check_transaction_state(self):
+            pass
+
         def begin_transaction(self):
             pass
 

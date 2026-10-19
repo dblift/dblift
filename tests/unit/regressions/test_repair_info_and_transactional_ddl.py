@@ -521,6 +521,9 @@ class TestTransactionalDdlSupport:
 
         # Create a minimal concrete subclass to test the default
         class DummyProvider(TransactionalProvider):
+            def check_transaction_state(self):
+                pass
+
             def begin_transaction(self):
                 pass
 

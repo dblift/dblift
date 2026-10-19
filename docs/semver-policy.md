@@ -176,6 +176,18 @@ Concrete examples of internal APIs:
 - `core/introspection/**` — internal schema-discovery implementation.
 - `db/plugins/nosql_base.SamplingIntrospector` — internal plugin helper.
 
+### 1.3 Transactional provider contract in 5.0
+
+Custom providers implementing `TransactionalProvider` must implement
+`check_transaction_state() -> None`. The engine calls it immediately before
+each executed SQL statement. The provider must send its dialect's
+`connection_probe_sql` through its native query path, manage any driver-owned
+query resources, and raise `TransactionAbortedError` from the original driver
+error when the transaction is aborted. Other probe errors retain their type
+and identity. The hook adds no explicit begin, commit or rollback; its existing
+native query path retains its normal transaction behavior.
+This required hook is a breaking change for custom transactional providers.
+
 ## 2. What triggers each version bump
 
 | Change | Bump | Example |
@@ -267,8 +279,7 @@ removes the surface, next to the CHANGELOG entry that announces it.
 
 - At most one patch release every two weeks and one minor release per month.
   Security fixes are the only exception.
-- No new major version is planned. A change that would require one waits, or
-  ships behind a deprecation (section 3).
+- Version 5.0 includes the provider contract change in section 1.3.
 - Fixes accumulate on `develop`; the `Unreleased` section of the CHANGELOG is
   where they wait.
 

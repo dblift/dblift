@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Transactional provider health is provider-owned.** Custom transactional
+  providers must implement `check_transaction_state()`. The engine calls it
+  immediately before each executed SQL statement; the provider sends its
+  dialect's connection probe through its native query path, closes any
+  driver-owned resources, and maps an aborted transaction to
+  `TransactionAbortedError` while preserving other errors. This is a v5
+  provider contract break.
 - **Migration selection uses typed catalog eligibility.** Changing displayed state
   labels no longer changes which scripts migrate or undo selects. Internal
   `MigrationState` constructors now take `catalog` records instead of `pending`

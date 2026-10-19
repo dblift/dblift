@@ -22,6 +22,9 @@ class RecordingTransactionalProvider(TransactionalProvider):
     def __init__(self):
         self.events = []
 
+    def check_transaction_state(self) -> None:
+        self.events.append("health")
+
     def begin_transaction(self) -> None:
         self.events.append("begin")
 
@@ -183,6 +186,10 @@ def test_execution_engine_runs_autocommit_only_statement_without_migration_trans
     # The flagged statement goes through the provider's autocommit call — the
     # provider owns how it reaches the server outside a transaction block.
     assert "autocommit:CREATE INDEX CONCURRENTLY idx_users_id ON users(id);" in provider.events
+    assert provider.events[:2] == [
+        "health",
+        "autocommit:CREATE INDEX CONCURRENTLY idx_users_id ON users(id);",
+    ]
     assert provider.events[-2:] == ["begin", "commit"]
     assert provider.events.count("begin") == 1
     history_manager.record_migration.assert_called_once()
@@ -211,6 +218,10 @@ def test_execution_engine_runs_sqlserver_fulltext_catalog_without_migration_tran
 
     assert result.success is True
     assert "autocommit:CREATE FULLTEXT CATALOG dblift_ft_catalog AS DEFAULT;" in provider.events
+    assert provider.events[:2] == [
+        "health",
+        "autocommit:CREATE FULLTEXT CATALOG dblift_ft_catalog AS DEFAULT;",
+    ]
     assert provider.events[-2:] == ["begin", "commit"]
     assert provider.events.count("begin") == 1
     history_manager.record_migration.assert_called_once()

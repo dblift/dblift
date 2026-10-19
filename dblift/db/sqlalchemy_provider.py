@@ -14,8 +14,10 @@ from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 from sqlalchemy import text
 from sqlalchemy.engine import Connection, Engine, Transaction
+from sqlalchemy.exc import SQLAlchemyError
 
 from dblift.config import DbliftConfig
+from dblift.core.exceptions import TransactionAbortedError
 from dblift.core.logger import Log
 from dblift.db.base_provider import NativeProvider
 from dblift.db.native_connection_manager import NativeConnectionManager
@@ -389,6 +391,15 @@ class SqlAlchemyProvider(NativeProvider, TransactionalProvider):
     # ------------------------------------------------------------------
     # TransactionalProvider
     # ------------------------------------------------------------------
+
+    def check_transaction_state(self) -> None:
+        """Probe the transaction through the native query path."""
+        try:
+            self.execute_query(self.quirks.connection_probe_sql)
+        except SQLAlchemyError as exc:
+            if "transaction is aborted" in str(exc).lower():
+                raise TransactionAbortedError(str(exc)) from exc
+            raise
 
     def begin_transaction(self) -> None:
         """Begin an explicit database transaction."""

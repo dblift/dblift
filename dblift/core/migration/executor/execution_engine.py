@@ -550,17 +550,6 @@ class ExecutionEngine:
                 return d
         return _normalize(getattr(self.provider, "dialect", None))
 
-    def _transaction_liveness_probe_sql(self) -> str:
-        """Return a single-row SELECT valid for the active dialect.
-
-        Delegates to ``provider.quirks.connection_probe_sql`` so the
-        framework no longer hardcodes the dialect-specific variants
-        (DB2 rejects bare ``SELECT 1``; Oracle requires ``FROM DUAL``).
-        """
-        from dblift.db.provider_registry import ProviderRegistry
-
-        return ProviderRegistry.get_quirks(self._probe_dialect_key() or "").connection_probe_sql
-
     def _execute_statements(
         self,
         statements: List[str],
@@ -607,7 +596,6 @@ class ExecutionEngine:
         is_oracle_sqlplus = ctx is not None
         whenever_policy = "exit"  # SQL*Plus default; only meaningful when is_oracle_sqlplus
 
-        probe_sql = self._transaction_liveness_probe_sql()
         for i, statement in enumerate(statements):
             self.log.debug(
                 f"Executing statement {i+1}/{len(statements)} from {migration.script_name}"
@@ -646,38 +634,13 @@ class ExecutionEngine:
 
             stmt_start_time = time.time()
             try:
-                # Pre-check transaction state (PostgreSQL anti-aborted-transaction).
-                # Only transactional providers own a SQL transaction to probe.
-                try:
-                    run_precheck = isinstance(self.provider, TransactionalProvider)
-                    if run_precheck:
-                        if hasattr(self.provider, "connection") and self.provider.connection:
-                            conn = self.provider.connection
-                            stmt_check: Any = None
-                            try:
-                                stmt_check = conn.prepareStatement(probe_sql)
-                            except AttributeError:
-                                self.provider.execute_query(probe_sql)
-                            else:
-                                try:
-                                    rs = stmt_check.executeQuery()
-                                    rs.close()
-                                finally:
-                                    if stmt_check is not None:
-                                        stmt_check.close()
-                        else:
-                            self.provider.execute_query(probe_sql)
-                except Exception as pre_check_e:
-                    error_msg = str(pre_check_e).lower()
-                    if (
-                        "transaction is aborted" in error_msg
-                        or "current transaction is aborted" in error_msg
-                    ):
+                if isinstance(self.provider, TransactionalProvider):
+                    try:
+                        self.provider.check_transaction_state()
+                    except TransactionAbortedError as health_error:
                         raise TransactionAbortedError(
-                            f"Transaction is aborted before executing statement {i+1}: {pre_check_e}"
-                        ) from pre_check_e
-                    else:
-                        raise
+                            f"Transaction is aborted before executing statement {i+1}: {health_error}"
+                        ) from (health_error.__cause__ or health_error)
 
                 if self.sql_execution_service:
                     is_query, result_data = self.sql_execution_service.execute_statement(
