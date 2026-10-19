@@ -17,8 +17,6 @@ TEXT_BLANKS = " \t\n\r\u2002"
 class SnowflakeStatementParser(SqlGlotParser):
     """Keep statement text intact while respecting Snowflake string delimiters."""
 
-    end_blanks = TEXT_BLANKS
-
     def __init__(self) -> None:
         """Use Snowflake's AST grammar for non-splitting parser operations."""
         super().__init__("snowflake")
