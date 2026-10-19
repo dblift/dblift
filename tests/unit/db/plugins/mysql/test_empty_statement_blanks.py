@@ -44,3 +44,11 @@ def test_mariadb_reads_its_own_lexical_spec():
             return spec
 
     assert Probe().empty_statement_blanks() == " \x1d"
+
+
+def test_a_spec_without_trailing_blanks_strips_its_trailing_edge_as_its_leading_edge():
+    from dblift.db.plugins.mysql.parser.lexical_spec import MYSQL_SPEC
+
+    plain = replace(MYSQL_SPEC, trailing_blanks="")
+    assert plain.trailing_edge_blanks == plain.text_blanks
+    assert MYSQL_SPEC.trailing_edge_blanks == MYSQL_SPEC.trailing_blanks

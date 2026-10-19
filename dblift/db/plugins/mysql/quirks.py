@@ -59,6 +59,10 @@ class MysqlQuirks(BaseQuirks):
         """The server's blanks: a statement of other characters, a control one leading it included, is sent."""
         return self.lexical_spec().text_blanks
 
+    def hash_line_comments(self) -> bool:
+        """MySQL and MariaDB read ``#`` as a line comment."""
+        return True
+
     # Capability matrix (was ``_CAPABILITIES["mysql"]``).
     supports_transactions = True
     supports_transactional_ddl = False  # DDL auto-commits

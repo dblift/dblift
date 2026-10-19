@@ -226,7 +226,9 @@ class ExecutionEngine:
             if (
                 not stripped
                 or quirks.is_batch_separator(stripped)
-                or self._is_comment_only_statement(stripped, blanks=blanks)
+                or self._is_comment_only_statement(
+                    stripped, blanks=blanks, hash_comments=quirks.hash_line_comments()
+                )
             ):
                 continue
             statement_type = self.sql_analyzer.get_statement_type(statement)
@@ -264,7 +266,9 @@ class ExecutionEngine:
                 continue
             if quirks.is_batch_separator(stripped):
                 continue
-            if self._is_comment_only_statement(stripped, blanks=blanks):
+            if self._is_comment_only_statement(
+                stripped, blanks=blanks, hash_comments=quirks.hash_line_comments()
+            ):
                 continue
             if is_oracle_sqlplus and quirks.parse_error_policy_directive(stripped) is not None:
                 continue
@@ -616,7 +620,9 @@ class ExecutionEngine:
             # Dialect-specific batch separator (T-SQL ``GO``); not executable by the native driver
             if quirks.is_batch_separator(stripped_stmt):
                 continue
-            if self._is_comment_only_statement(stripped_stmt, blanks=blanks):
+            if self._is_comment_only_statement(
+                stripped_stmt, blanks=blanks, hash_comments=quirks.hash_line_comments()
+            ):
                 continue
             # Positional error-handling directive (Oracle WHENEVER SQLERROR) — update
             # policy positionally, do not send to the provider. Gated on the script context
@@ -1155,7 +1161,9 @@ class ExecutionEngine:
                 if (
                     not stripped
                     or quirks.is_batch_separator(stripped)
-                    or self._is_comment_only_statement(stripped, blanks=blanks)
+                    or self._is_comment_only_statement(
+                        stripped, blanks=blanks, hash_comments=quirks.hash_line_comments()
+                    )
                 ):
                     continue
                 if (

@@ -23,7 +23,11 @@ class ExecutionStatement:
 
 
 def is_comment_only_statement(
-    sql: str, *, nested_block_comments: bool = False, blanks: Optional[str] = None
+    sql: str,
+    *,
+    nested_block_comments: bool = False,
+    blanks: Optional[str] = None,
+    hash_comments: bool = False,
 ) -> bool:
     """True if *sql* has no executable tokens after removing block and line comments.
 
@@ -37,7 +41,8 @@ def is_comment_only_statement(
     comments do not nest, so their directives always take the default path.
 
     ``blanks`` are the characters the dialect reads as empty (``empty_statement_blanks``);
-    ``None`` is every white space character.
+    ``None`` is every white space character. ``hash_comments`` also strips ``#`` line comments
+    (``hash_line_comments``).
     """
 
     body = sql.strip(blanks)
@@ -49,6 +54,8 @@ def is_comment_only_statement(
         )
     body = re.sub(r"/\*(?!!|M!).*?\*/", "", body, flags=re.DOTALL)
     body = re.sub(r"--.*?$", "", body, flags=re.MULTILINE)
+    if hash_comments:
+        body = re.sub(r"#.*?$", "", body, flags=re.MULTILINE)
     return not body.strip(blanks)
 
 

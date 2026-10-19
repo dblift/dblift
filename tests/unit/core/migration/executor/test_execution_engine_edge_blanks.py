@@ -39,12 +39,20 @@ CASES = [
     ("mariadb", "\x1c -- c", False),
     ("mariadb", "\x7f /* c */", False),
     ("mariadb", "\x1c SELECT 1", True),
+    ("mysql", "\x1c # c", True),
+    ("mariadb", "\x1c # c", False),
+    ("mariadb", "\x01 # c\n", False),
+    ("mariadb", "\x7f # c", False),
+    ("mysql", "# c", False),
+    ("mariadb", "# c", False),
     ("mysql", "\x0b", False),
     ("mysql", "\x0c -- c", False),
     ("mariadb", NBSP, True),
     ("mariadb", f"{NBSP} -- c", True),
     ("mariadb", "\x0b", False),
     ("postgresql", NBSP, False),
+    ("postgresql", "# c", True),
+    ("sqlserver", "# c", True),
 ]
 IDS = [f"{dialect}-{text!r}" for dialect, text, _ in CASES]
 
@@ -116,3 +124,21 @@ def test_a_callback_sends_only_what_the_dialect_does_not_read_as_empty(dialect, 
 def test_the_line_of_a_statement_counts_the_record_of_kept_characters_before_it():
     script = f"VALUES 1;\n{NBSP};\nVALUES 2;"
     assert _position(_script(NBSP), 2, "db2", script) == "line 3"
+
+
+@pytest.mark.parametrize(
+    "dialect, expected",
+    [("mysql", True), ("mariadb", True), ("postgresql", False), ("sqlserver", False)],
+)
+def test_only_mysql_and_mariadb_read_a_hash_as_a_line_comment(dialect, expected):
+    from dblift.db.provider_registry import ProviderRegistry
+
+    assert ProviderRegistry.get_quirks(dialect).hash_line_comments() is expected
+
+
+def test_a_statement_of_hash_comments_is_empty_only_when_asked():
+    from dblift.core.migration.sql.execution_statement import is_comment_only_statement
+
+    assert is_comment_only_statement("# c\n# d", hash_comments=True)
+    assert not is_comment_only_statement("# c\n# d")
+    assert not is_comment_only_statement("# c\nSELECT 1", hash_comments=True)

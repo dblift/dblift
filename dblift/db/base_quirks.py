@@ -440,6 +440,10 @@ class BaseQuirks:
         """
         return None
 
+    def hash_line_comments(self) -> bool:
+        """Whether ``#`` starts a line comment, so a statement of nothing else is empty. Default: ``False``."""
+        return False
+
     def is_batch_separator(self, stmt: str) -> bool:
         """Return ``True`` when *stmt* is a non-executable batch separator.
 
