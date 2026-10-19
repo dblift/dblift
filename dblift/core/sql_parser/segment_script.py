@@ -94,7 +94,9 @@ class SegmentScript:
         """Whether the character at ``at`` is a blank the engine reads as one."""
         char = self.source[at]
         return char in self.text_blanks and not (
-            char >= "\x80" and kept_in_script(self.source, self.kept, at)
+            self.rules.blank_pass is not None
+            and char >= "\x80"
+            and kept_in_script(self.source, self.kept, at)
         )
 
     def _refuse_read_differently_alone(self, lo: int, text: str) -> None:
