@@ -220,7 +220,9 @@ def test_execution_failure_text_keeps_error_and_failed_footer(
     assert process.stdout.count("Command MIGRATE failed") == 1
     assert "Failed to execute statement 2 in V1__create_items.sql" in process.stdout
     assert "no such table: absent" in process.stderr
-    assert process.stderr.count(f"ERROR: SQL: {sql_preview}") == 1
+    assert [line for line in process.stderr.splitlines() if line.startswith("ERROR: SQL:")] == [
+        f"ERROR: SQL: {sql_preview}"
+    ]
     assert "Command MIGRATE completed successfully" not in process.stdout
     assert _history_outcomes(project) == [("1", 0)]
     assert not _table_exists(project)
@@ -249,7 +251,9 @@ def test_execution_failure_json_has_one_error_payload(
     assert payload["success"] is False
     assert "no such table: absent" in payload["error"]
     assert payload["migrations_applied"] == []
-    assert process.stderr.count(f"ERROR: SQL: {sql_preview}") == 1
+    assert [line for line in process.stderr.splitlines() if line.startswith("ERROR: SQL:")] == [
+        f"ERROR: SQL: {sql_preview}"
+    ]
     assert "Command MIGRATE failed" not in process.stdout
     assert _history_outcomes(project) == [("1", 0)]
     assert not _table_exists(project)
@@ -267,7 +271,9 @@ def test_failed_callback_keeps_one_sql_preview_and_error_cause(tmp_path: Path) -
     assert process.stdout.count("Command MIGRATE failed") == 1
     assert "Callback beforeMigrate__fail.sql failed" in process.stdout
     assert "Error executing query: no such table: absent" in process.stderr
-    assert process.stderr.count("ERROR: SQL: SELECT id") == 1
+    assert [line for line in process.stderr.splitlines() if line.startswith("ERROR: SQL:")] == [
+        "ERROR: SQL: SELECT id"
+    ]
     assert not _table_exists(project)
 
 
