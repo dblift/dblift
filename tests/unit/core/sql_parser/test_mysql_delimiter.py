@@ -480,7 +480,7 @@ def test_a_delimiter_block_keeps_the_no_break_spaces_at_the_edges_of_its_stateme
         f"{NBSP}SELECT 2{NBSP}",
         NBSP,
     )
-    blanks = f"DELIMITER //\n \tSELECT 1 \t;\t ;\x0b\x0cSELECT 2\x0b;\n//\nDELIMITER ;"
+    blanks = "DELIMITER //\n \tSELECT 1 \t;\t ;\x0b\x0cSELECT 2\x0b;\n//\nDELIMITER ;"
     (record,) = _statements_of(spec, blanks)
     assert record.text == "SELECT 1 \t;\t ;\x0b\x0cSELECT 2\x0b;"
     assert record.analysis_statements == ("SELECT 1", "SELECT 2")
