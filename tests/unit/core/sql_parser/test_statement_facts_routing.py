@@ -223,22 +223,6 @@ def test_dml_analysis_looks_a_plugin_up_by_name_only_for_the_deprecated_keywords
     assert lookups == ["_quirks_for"]
 
 
-def test_undo_strategy_follows_the_quirks_flag(monkeypatch):
-    from dblift.core.migration.scripting.undo_script_generator import UndoScriptGenerator
-    from dblift.db.plugins.sqlite.quirks import SqliteQuirks
-
-    migration = make_migration(script_name="V1__t.sql", content="CREATE TABLE t (id INT);")
-    other = ProviderRegistry.get_quirks("duckdb")
-    monkeypatch.setattr(type(other), "sqlglot_dialect", "sqlite")
-
-    undo = UndoScriptGenerator("duckdb")._generate_undo_statements(migration)
-
-    assert [s.requires_manual_review for s in undo] == [True]
-    assert SqliteQuirks.undo_reverses_statement_facts is True
-    sqlite_undo = UndoScriptGenerator("sqlite")._generate_undo_statements(migration)
-    assert [s.sql for s in sqlite_undo] == ['DROP TABLE IF EXISTS "t";']
-
-
 def test_deprecated_keyword_naming_no_plugin_keeps_the_sqlglot_grammar():
     bigquery = "UPDATE `s`.`t` SET a = 1 WHERE b = 2"
     with pytest.warns(DeprecationWarning):

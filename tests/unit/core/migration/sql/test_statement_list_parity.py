@@ -1,6 +1,6 @@
 """Every consumer of a script's statements reads the list the splitter returned.
 
-The splitter decides what a statement is. Migrate, analysis, undo and lint each take that list
+The splitter decides what a statement is. Migrate, analysis and lint each take that list
 through their own code path; a consumer that strips, filters or re-classifies it disagrees with
 the others on the pieces that sit at the edge of "a statement" (a lone ``;``, a comment, a
 character the dialect does not treat as blank). For every dialect and every shape of script, the

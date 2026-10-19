@@ -6,7 +6,6 @@ import sys
 import pytest
 
 from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
-from dblift.core.migration.scripting.undo_script_generator import UndoScriptGenerator
 from dblift.core.migration.sql.script_analysis import analyse_script
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.sql_parser import SqlParserFactory
@@ -121,7 +120,7 @@ def test_comment_only_script_is_successful_and_has_no_statements(mode):
         ("CREATE TABLE child(id INT);\x00DROP TABLE child;", UnsafeStatementSplitError),
     ],
 )
-def test_refused_script_has_no_partial_analysis_or_undo(sql, error):
+def test_refused_script_has_no_partial_analysis(sql, error):
     analysis = analyse_script(sql, "duckdb")
     assert analysis.statements == ()
     assert analysis.errors
@@ -132,27 +131,16 @@ def test_refused_script_has_no_partial_analysis_or_undo(sql, error):
         parsed = factory.parse_sql(sql)
         assert not parsed.success
         assert parsed.statements == []
-    migration = make_migration(script_name="V1__child.sql", content=sql)
-    with pytest.raises(error):
-        UndoScriptGenerator("duckdb")._generate_undo_statements(migration)
 
 
-@pytest.mark.parametrize(
-    "sql",
-    [
-        "CREATE OR REPLACE TABLE child(id INT)",
-        "CREATE TABLE IF NOT EXISTS child(id INT)",
-        "CREATE TABLE catalog.schema.items(id INT)",
-    ],
-)
-def test_undo_requires_review_when_table_creation_cannot_be_safely_reversed(sql):
-    migration = make_migration(script_name="V1__child.sql", content=sql)
-    undo = UndoScriptGenerator("duckdb")._generate_undo_statements(migration)
+@pytest.mark.parametrize("sql", ["CREATE TYPE mood AS ENUM ('ok')", "DROP TYPE mood"])
+def test_opaque_type_keeps_ddl_classification_without_guessing_an_object(sql):
+    facts = DuckDBQuirks().statement_facts(sql)
+    analysis = analyse_script(sql, "duckdb")
 
-    assert len(undo) == 1
-    assert undo[0].requires_manual_review
-    assert undo[0].warning
-    assert all(line.lstrip().startswith("--") for line in undo[0].sql.splitlines() if line.strip())
+    assert facts.kind == "DDL" and facts.opaque and facts.objects == ()
+    assert [statement.kind for statement in analysis.statements] == ["DDL"]
+    assert analysis.statements[0].objects == ()
 
 
 @pytest.mark.parametrize("sql", [CTE_UPDATE, COPY_FROM])
@@ -178,24 +166,6 @@ def test_execution_analyzer_does_not_import_sqlglot():
         text=True,
     )
     assert probe.returncode == 0, probe.stdout + probe.stderr
-
-
-@pytest.mark.parametrize(
-    "sql", ["SELECT * FROM child", "COPY child TO 'output.csv'", "/* outer /* inner */ tail */"]
-)
-def test_read_only_statements_and_comments_need_no_undo(sql):
-    migration = make_migration(script_name="V1__read.sql", content=sql)
-    assert UndoScriptGenerator("duckdb")._generate_undo_statements(migration) == []
-
-
-@pytest.mark.parametrize("sql", ["CREATE TABLE child(id INT)", "FUTURE COMMAND child"])
-def test_mutations_and_unknown_commands_require_manual_undo(sql):
-    migration = make_migration(script_name="V1__child.sql", content=sql)
-    undo = UndoScriptGenerator("duckdb")._generate_undo_statements(migration)
-    assert len(undo) == 1
-    assert undo[0].requires_manual_review
-    assert undo[0].warning
-    assert all(line.lstrip().startswith("--") for line in undo[0].sql.splitlines() if line.strip())
 
 
 @pytest.mark.parametrize("mode", ["regex", "hybrid", "sqlglot"])
@@ -259,20 +229,6 @@ def test_dml_target_sql_excludes_statement_local_modifiers(sql):
 def test_dml_target_sql_preserves_qualified_quoted_identity_without_alias():
     sql = 'UPDATE "Warehouse"."Sales"."Order Items" AS c SET id = 2 WHERE c.id = 1'
     assert statement_dml_table(sql, "duckdb") == '"Warehouse"."Sales"."Order Items"'
-
-
-@pytest.mark.parametrize("sql", ["CREATE TYPE mood AS ENUM ('ok')", "DROP TYPE mood"])
-def test_opaque_type_statements_require_manual_review_without_guessed_identity(sql):
-    facts = DuckDBQuirks().statement_facts(sql)
-    assert facts.kind == "DDL"
-    assert facts.opaque
-    assert facts.objects == ()
-    undo = UndoScriptGenerator("duckdb")._generate_undo_statements(
-        make_migration(script_name="V1__type.sql", content=sql)
-    )
-    assert len(undo) == 1
-    assert undo[0].requires_manual_review
-    assert undo[0].sql.startswith("-- WARNING:")
 
 
 @pytest.mark.parametrize(

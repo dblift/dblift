@@ -1,15 +1,13 @@
-"""Valid SQLite the grammar cannot read still names its write target; undo text is plain."""
+"""Valid SQLite the grammar cannot read still names its write target."""
 
 import pytest
 
-from dblift.core.migration.scripting.undo_script_generator import UndoScriptGenerator
 from dblift.core.migration.sql.script_analysis import analyse_script
 from dblift.core.sql_parser.statement_facts import SqlglotStatementFactsReader
 from dblift.db.dml_analysis import analyze_dml, is_full_table_dml
 from dblift.db.plugins.sqlite.parser.lexical_spec import SQLITE_SPEC
 from dblift.db.plugins.sqlite.quirks import SqliteQuirks
 from dblift.db.provider_registry import ProviderRegistry
-from tests.unit._migration_factory import make_migration
 
 _quirks = ProviderRegistry.get_quirks
 
@@ -43,33 +41,21 @@ def test_numbered_parameters_keep_the_target_and_the_where_verdict(sql, target, 
     assert analyze_dml(sql, quirks=_quirks("sqlite")).table == target
 
 
-# --- undo text names no internal machinery ---------------------------------------------
-
-UNDO_INPUTS = [
-    "INSERT INTO t VALUES (1);",
-    "DROP TABLE t;",
-    "PRAGMA foreign_keys=ON;",
-    "CREATE VIRTUAL TABLE v USING fts5(a);",
-    "UPDATE t SET a = 1;",
-    "ALTER TABLE t RENAME TO u;",
-]
-
-
-@pytest.mark.parametrize("content", UNDO_INPUTS)
-def test_undo_comments_use_plain_wording(content):
-    statements = UndoScriptGenerator("sqlite")._generate_undo_statements(
-        make_migration(script_name="V1__x.sql", content=content)
-    )
-
-    assert statements
-    for undo in statements:
-        text = f"{undo.sql} {undo.warning or ''}".lower()
-        assert "facts" not in text
-        assert "opaque" not in text
-        assert "mapping" not in text
-        assert "grammar" not in text
-        if undo.requires_manual_review:
-            assert "review" in text
+@pytest.mark.parametrize(
+    "sql,operation",
+    [
+        ("INSERT INTO t VALUES (1);", "INSERT"),
+        ("DROP TABLE t;", "DROP"),
+        ("PRAGMA foreign_keys=ON;", "PRAGMA"),
+        ("CREATE VIRTUAL TABLE v USING fts5(a);", "CREATE"),
+        ("UPDATE t SET a = 1;", "UPDATE"),
+        ("ALTER TABLE t RENAME TO u;", "ALTER"),
+    ],
+)
+def test_script_analysis_classifies_retained_sql_shapes(sql, operation):
+    analysis = analyse_script(sql, "sqlite")
+    assert [statement.operation for statement in analysis.statements] == [operation]
+    assert analysis.errors == ()
 
 
 # --- a write behind a WITH clause the grammar cannot read ------------------------------

@@ -44,7 +44,7 @@ SQLite-only distribution.
 | Package | What it holds | Depends on |
 | --- | --- | --- |
 | `dblift/config/` | Configuration model, YAML/env/CLI merging, the property registry that derives `--flags` and `DBLIFT_*` variables. | `core.constants`, `core.utils`; `db.provider_registry` lazily, for dialect lookup |
-| `dblift/core/` | The engine: migration commands and executors, history and locking, the SQL model, parsers, undo generation, validators, logging. Dialect-neutral; it asks the provider's `quirks` for anything dialect-specific. | `config`, `db` |
+| `dblift/core/` | The engine: migration commands and executors, history and locking, the SQL model, parsers, undo execution, validators, logging. Dialect-neutral; it asks the provider's `quirks` for anything dialect-specific. | `config`, `db` |
 | `dblift/db/` | Provider contract and registry, plus one plugin per engine under `db/plugins/<engine>/` (provider, quirks, parser, history and lock managers). | `config`, `core` (constants, sql_model, sql_parser, logger, utils, migration, among others) |
 | `dblift/api/` | `DBLiftClient` and the async client: the programmatic surface, events and callbacks. | `core`, `config`, `db` |
 | `dblift/cli/` | argparse setup, command dispatch, the MCP server. The only package that may import everything else. | all of the above except `db` (see the layer rules below) |

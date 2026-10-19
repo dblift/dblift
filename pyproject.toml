@@ -365,8 +365,6 @@ module = [
     "dblift.core.migration.executor.transaction_policy",
     "dblift.core.migration.commands.validate_command",
 
-    "dblift.core.migration.scripting.undo_script_generator._extractors",
-    "dblift.core.migration.scripting.undo_script_generator._helpers",
     "dblift.core.migration.rules.migration_rules",
 ]
 disallow_any_generics = true
@@ -1009,10 +1007,6 @@ module = [
     "dblift.core.migration.journals.migration_journal",
     "dblift.core.migration.executor",
     "dblift.core.migration.executor.migration_executor",
-    "dblift.core.migration.scripting.undo_script_generator",
-    "dblift.core.migration.scripting.undo_script_generator._generator",
-    "dblift.core.migration.scripting.undo_script_generator._models",
-    "dblift.core.migration.scripting.undo_script_generator._reversers",
     "dblift.core.migration.executors",
     "dblift.core.migration.executors.base_executor",
     "dblift.core.migration.executors.executor_factory",

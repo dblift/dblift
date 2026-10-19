@@ -54,8 +54,8 @@ The client and its three factories accept `analysis_mode="full"` (default) or
 Execution mode keeps SQL dispatch, transactions, runtime checks, events, and
 statement timing/error journal entries while disabling object extraction. Its
 journal has `capture_objects=False`, and `info()`/dry-run results explicitly
-mark pending script object analysis as disabled. Use an explicit undo script;
-text-based undo generation still needs its analysis dependencies.
+mark pending script object analysis as disabled. Undo uses explicit `U*__.sql`
+or `U*__.py` scripts.
 
 ```python
 with DBLiftClient.from_config_file(

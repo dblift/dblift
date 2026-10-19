@@ -159,6 +159,18 @@ def test_opaque_dialect_uses_own_mapping_without_listing_plugins(monkeypatch):
     assert script_analysis._opaque_dialect("sqlserver") == "tsql"
 
 
+@pytest.mark.parametrize(
+    "dialect,expected", [("oracle", "oracle"), ("sqlserver", "tsql"), ("mysql", "mysql")]
+)
+def test_opaque_dialect_keeps_registered_mapping(dialect, expected):
+    assert script_analysis._opaque_dialect(dialect) == expected
+
+
+@pytest.mark.parametrize("dialect", ["", "unknown", "db2", "cosmosdb"])
+def test_opaque_dialect_keeps_registered_fallback(dialect):
+    assert script_analysis._opaque_dialect(dialect) == "postgres"
+
+
 @pytest.mark.parametrize("dialect", ["", "unknown", "db2"])
 def test_opaque_dialect_uses_sorted_marked_registry_fallback(monkeypatch, dialect):
     mappings = {
@@ -185,9 +197,7 @@ def test_opaque_dialect_without_fallback_mapping_returns_empty(monkeypatch, mark
     monkeypatch.setattr(
         script_analysis.ProviderRegistry,
         "get_quirks",
-        lambda name: SimpleNamespace(
-            sqlglot_dialect=None, is_default_sqlglot_read_fallback=marked
-        ),
+        lambda name: SimpleNamespace(sqlglot_dialect=None, is_default_sqlglot_read_fallback=marked),
     )
     monkeypatch.setattr(
         script_analysis.ProviderRegistry,

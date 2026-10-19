@@ -8,18 +8,16 @@ doubled pair as part of the token -- the same class of defect #375 fixed in
 unfixed here because ``sql_analyzer.py`` carries a separate copy of
 identifier handling for the regex-fallback path.
 
-Covers the same matrix #375 used (plain bracketed name, trailing doubled
+The parser coverage retains the same matrix #375 used (plain bracketed name, trailing doubled
 bracket, doubled bracket at the start, two doublings in one identifier,
 adjacent bracketed identifiers, a three-part db.schema.object name, and the
-``"`` and backtick spellings), plus the literal reported symptom end to end
-through the undo generator, plus a cross-check that the escape-aware
+``"`` and backtick spellings), plus a cross-check that the escape-aware
 delimiters ``sql_analyzer.py`` and ``parser_config.py`` both use cannot
 silently drift apart again.
 """
 
 import unittest
 
-from dblift.core.migration.scripting.undo_script_generator import UndoScriptGenerator
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 
 
@@ -109,59 +107,15 @@ class TestGenericDdlBracketDoubling(unittest.TestCase):
         obj = _only(self.analyzer, "DROP INDEX [idx_users_email];")
         self.assertEqual(obj["object_name"], "default_schema.idx_users_email")
 
+    def test_escaped_bracket_in_index_target_is_unescaped(self):
+        obj = _only(self.analyzer, "CREATE INDEX idx_x ON [dbo].[foo]]bar]([email]);")
+        self.assertEqual(obj["object_name"], "idx_x")
+        self.assertEqual(obj["on_object"], "dbo.foo]bar")
 
-class TestUndoScriptEndToEnd(unittest.TestCase):
-    """The literal reported symptom: a bracket-quoted CREATE INDEX reaching
-    the undo generator's regex-fallback path (``_reverse_statement`` /
-    ``_reverse_create``) must not emit a double-bracketed DROP INDEX name."""
-
-    def _undo_sql(self, dialect: str, sql: str) -> str:
-        gen = UndoScriptGenerator(dialect=dialect)
-        undo = gen._reverse_statement(sql)
-        assert undo is not None, f"expected an undo statement for {sql!r}"
-        return undo.sql
-
-    def test_reported_case(self):
-        sql = "CREATE INDEX [idx_users_email] ON [dbo].[users]([email]);"
-        undo_sql = self._undo_sql("sqlserver", sql)
-        self.assertEqual(undo_sql, "DROP INDEX IF EXISTS [idx_users_email] ON [dbo].[users];")
-        # The specific shape the bug produced must not reappear.
-        self.assertNotIn("[[idx_users_email]]]", undo_sql)
-
-    def test_doubled_bracket_index_name_resolves_rather_than_refuses(self):
-        # Before this fix, the truncated regex match made the extractor
-        # refuse to name the table at all (see the corresponding update in
-        # tests/unit/core/migration/test_undo_script_generator.py).
-        sql = "CREATE INDEX idx_x ON [dbo].[foo]]bar]([email]);"
-        undo_sql = self._undo_sql("sqlserver", sql)
-        self.assertEqual(undo_sql, "DROP INDEX IF EXISTS [idx_x] ON [dbo].[foo]]bar];")
-
-
-class TestLongIdentifierIsNotSilentlyTruncated(unittest.TestCase):
-    """A length cap on the repeated group was tried (and reverted) as a
-    mitigation for the O(n^2) cost of an unterminated delimiter. It failed
-    exactly the way an atomic/possessive quantifier does: past the cap, the
-    second identifier of a two-part ON-target stopped matching at all rather
-    than matching short, so the trailing ``(?:\\.\\s*_IDENTIFIER)*`` never
-    extended, the schema was silently reported as the table, and the real
-    (long) table name vanished -- with no leftover delimiter character for
-    the truncation guard to catch, since the unconsumed character was ``.``,
-    not a closing bracket/quote. This pins the correct behaviour: a bracketed
-    identifier far longer than any bounding quantifier tried (SQLite and
-    DuckDB accept and round-trip identifiers at least this long) must still
-    resolve to the real table, not silently collapse to its schema."""
-
-    def test_two_hundred_char_identifier_resolves_correctly(self):
-        long_table = "x" * 300
-        sql = f"CREATE INDEX [idx_test] ON [dbo].[{long_table}](col);"
-        gen = UndoScriptGenerator(dialect="sqlserver")
-        self.assertEqual(gen._extract_table_ref_from_create_index(sql), ("dbo", long_table))
-
-    def test_thousand_char_identifier_still_resolves_correctly(self):
-        long_table = "y" * 1000
-        sql = f"CREATE INDEX [idx_test] ON [dbo].[{long_table}](col);"
-        gen = UndoScriptGenerator(dialect="sqlserver")
-        self.assertEqual(gen._extract_table_ref_from_create_index(sql), ("dbo", long_table))
+    def test_long_index_target_does_not_collapse_to_its_schema(self):
+        for name in ("x" * 300, "y" * 1000):
+            obj = _only(self.analyzer, f"CREATE INDEX [idx_test] ON [dbo].[{name}](col);")
+            self.assertEqual(obj["on_object"], f"dbo.{name}")
 
 
 class TestSharedDelimitersDoNotDrift(unittest.TestCase):

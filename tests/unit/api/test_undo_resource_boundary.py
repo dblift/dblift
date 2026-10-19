@@ -56,24 +56,6 @@ def test_manager_uses_configured_encoding(tmp_path):
     assert migration.content == sql
 
 
-def test_missing_file_check_is_manager_owned_with_legacy_message(tmp_path, monkeypatch):
-    import inspect
-
-    from dblift.core.migration.scripting.undo_script_generator import UndoScriptGenerator
-
-    source = tmp_path / "not_a_migration.sql"
-    real_exists = Path.exists
-
-    def manager_exists(path):
-        if path == source:
-            assert inspect.currentframe().f_back.f_globals["__name__"] == manager_module.__name__
-        return real_exists(path)
-
-    monkeypatch.setattr(Path, "exists", manager_exists)
-    with pytest.raises(FileNotFoundError, match=f"^Migration file not found: {source}$"):
-        UndoScriptGenerator("sqlite", logger=NullLog()).generate_undo_script(source)
-
-
 def test_invalid_undo_candidate_is_rejected_before_reading(tmp_path):
     source = tmp_path / "Vbad.sql"
     source.write_bytes(b"\xff")
