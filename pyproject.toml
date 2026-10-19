@@ -330,15 +330,14 @@ no_implicit_reexport = true
 strict_equality = true
 
 # PR-F1: extend the strict zone to the rest of ``api/``. Same flag set as
-# above except ``no_implicit_reexport`` — enforcing it on these two
-# modules would require touching ``core.logger.results`` to add explicit
+# above except ``no_implicit_reexport`` — enforcing it on this
+# module would require touching ``core.logger.results`` to add explicit
 # ``__all__`` re-exports, which
 # is scope creep beyond the ``api/`` package. When Phase F+ extends the
 # strict zone into ``core/``, those re-exports become a one-shot fix and
 # this carve-out can be removed.
 [[tool.mypy.overrides]]
 module = [
-    "dblift.api._client_operations",
     "dblift.api.client",
 ]
 disallow_any_generics = true
