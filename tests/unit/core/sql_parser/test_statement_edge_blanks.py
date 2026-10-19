@@ -296,3 +296,12 @@ def test_db2_kept_character_inside_a_comment_does_not_make_a_statement(comment: 
         warnings.simplefilter("ignore")
         recorded = record_script("db2", f"VALUES 1;\n{comment}\n;\nVALUES 2;")["execution"]
     assert recorded == ["VALUES 1", "VALUES 2"]
+
+
+@pytest.mark.parametrize("dialect", ["mysql", "mariadb"])
+def test_sqlglot_parse_sql_keeps_a_statement_of_kept_characters(dialect):
+    from dblift.core.sql_parser.parser_factory import SqlParserFactory
+
+    parser = SqlParserFactory(dialect, parser_type="sqlglot").get_parser()
+    result = parser.parse_sql("SELECT 1;\n\xa0;\nSELECT 2;")
+    assert [s.sql_text for s in result.statements] == ["SELECT 1", "\xa0", "SELECT 2"]
