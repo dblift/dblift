@@ -26,6 +26,7 @@ def strip_comments_preserving_quotes(
     supports_dollar_quoting: bool = False,
     block_comment_replacement: str = "",
     blanks: Optional[str] = None,
+    keep_executable_comments: bool = False,
 ) -> str:
     """Remove comments without touching text inside a quoted span.
 
@@ -40,6 +41,8 @@ def strip_comments_preserving_quotes(
     comment becomes ``block_comment_replacement``; pass ``" "`` when the
     result is sent to a server, so ``a/* c */b`` stays two tokens. The result
     is stripped of ``blanks`` (``None``: every white-space character).
+    ``keep_executable_comments`` leaves MySQL/MariaDB ``/*! ... */`` and ``/*M! ... */`` in
+    place: the server runs their contents.
     """
     markers = list(line_prefixes) + (["/*"] if has_block_comments else [])
     if not any(marker in sql for marker in markers):
@@ -53,6 +56,7 @@ def strip_comments_preserving_quotes(
         supports_dollar_quoting=supports_dollar_quoting,
         block_comment_replacement=block_comment_replacement,
         blanks=blanks,
+        keep_executable_comments=keep_executable_comments,
     )
     return scanner.run()
 
@@ -77,8 +81,10 @@ class _Scanner:
         supports_dollar_quoting: bool,
         block_comment_replacement: str = "",
         blanks: Optional[str] = None,
+        keep_executable_comments: bool = False,
     ) -> None:
         self.sql = sql
+        self.keep_executable_comments = keep_executable_comments
         self.blanks = blanks
         self.line_prefixes = line_prefixes
         self.has_block_comments = has_block_comments
@@ -229,6 +235,8 @@ class _Scanner:
 
     def _try_comment_start(self, char: str) -> bool:
         if self.has_block_comments and char == "/" and self.sql[self.i + 1 : self.i + 2] == "*":
+            if self.keep_executable_comments and re.match(r"/\*(?:!|M!)", self.sql[self.i :]):
+                return False
             self.block_comment_depth = 1
             self.result.append(self.block_comment_replacement)
             self.i += 2
