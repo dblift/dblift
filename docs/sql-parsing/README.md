@@ -54,8 +54,14 @@ the extractor's concern and is covered by the model snapshot tests, not here.
   `GO n` that ended a T-SQL batch (0 sends it never); `multi` stays psql's `\;`.
 - **An empty statement is not a statement.** Nothing but whitespace and
   comments between two terminators (a bare `;`, a `GO` after a `GO`) yields
-  no entry; a comment-only segment is dropped. PostgreSQL follows this
-  rule today; other dialects adopt it as their specifications land; a spec states it only where the client's behaviour is worth citing.
+  no entry, for every dialect: a piece with no code (comment-only, or an empty
+  batch) is not a statement, and no statement record is returned for it (a
+  client directive such as `DELIMITER` is still recorded, as `kind="directive"`). A piece
+  made only of characters the engine's client keeps (a no-break space for
+  SQLite, MySQL and Db2; on MySQL also a control character followed by a
+  comment) is a statement and is sent, so the engine rejects it as it rejects
+  it for the client. A spec states which
+  characters are blanks where the client's behaviour is worth citing.
 - **Examples are tests.** Every row of the conformance table is a test case.
   A bug report adds a row before a fix changes the engine.
 
