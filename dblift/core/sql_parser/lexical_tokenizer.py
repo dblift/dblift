@@ -970,7 +970,11 @@ class LexicalTokenizer(BaseTokenizer):
     def _skip_whitespace(self) -> None:
         """Skip what ``str.isspace`` accepts; a character that is not a blank ends the line head."""
         if self._batches is None:
-            super()._skip_whitespace()
+            if self.spec.unread_blanks_are_code:
+                while self.pos < len(self.sql) and self.sql[self.pos] in self.spec.text_blanks:
+                    self.read()
+            else:
+                super()._skip_whitespace()
             return
         blanks = self._batches.blanks
         self._region_start = self.pos

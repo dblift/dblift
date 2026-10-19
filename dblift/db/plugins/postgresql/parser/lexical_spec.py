@@ -5,6 +5,7 @@ from dblift.core.sql_parser.lexical_spec import LexicalSpec
 POSTGRESQL_SPEC = LexicalSpec(
     name="postgresql",
     text_blanks=" \t\n\r\f",
+    unread_blanks_are_code=True,
     client_name="psql",
     nested_comments=True,
     escape_prefixes=("E'", "e'"),

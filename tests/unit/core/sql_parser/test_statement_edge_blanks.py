@@ -296,3 +296,62 @@ def test_db2_kept_character_inside_a_comment_does_not_make_a_statement(comment: 
         warnings.simplefilter("ignore")
         recorded = record_script("db2", f"VALUES 1;\n{comment}\n;\nVALUES 2;")["execution"]
     assert recorded == ["VALUES 1", "VALUES 2"]
+
+
+@pytest.mark.parametrize("view", ["execution", "analysis"])
+@pytest.mark.parametrize("kept", [NBSP, chr(0x3000), "\x1c"])
+@pytest.mark.parametrize(
+    "dialect", ["postgresql", "cockroachdb", "yugabytedb", "redshift", "aurora-postgresql"]
+)
+def test_postgresql_family_record_made_only_of_a_kept_character_is_a_statement(
+    dialect: str, kept: str, view: str
+) -> None:
+    recorded = record_script(dialect, f"SELECT 1;\n{kept};\nSELECT 2;")[view]
+    end = ";" if view == "execution" else ""
+    assert recorded == [f"SELECT 1{end}", f"{kept}{end}", f"SELECT 2{end}"]
+
+
+@pytest.mark.parametrize("blank", [" ", "\t", "\f"])
+def test_postgresql_record_made_only_of_a_blank_is_still_dropped(blank: str) -> None:
+    recorded = record_script("postgresql", f"SELECT 1;\n{blank};\nSELECT 2;")["execution"]
+    assert recorded == ["SELECT 1;", "SELECT 2;"]
+
+
+@pytest.mark.parametrize("dialect", ["postgresql", "cockroachdb", "yugabytedb", "redshift"])
+@pytest.mark.parametrize(
+    ("script", "execution", "analysis"),
+    [
+        (
+            "SELECT 1;\n{k}\nSELECT 2;",
+            ["SELECT 1;", "{k}\nSELECT 2;"],
+            ["SELECT 1", "{k}\nSELECT 2"],
+        ),
+        ("{k}SELECT 1;", ["{k}SELECT 1;"], ["{k}SELECT 1"]),
+        ("{k}DROP TABLE t;", ["{k}DROP TABLE t;"], ["{k}DROP TABLE t"]),
+        ("SELECT 1;{k}", ["SELECT 1;", "{k}"], ["SELECT 1", "{k}"]),
+    ],
+)
+@pytest.mark.parametrize("kept", [NBSP, chr(0x3000), "\x1c"])
+def test_postgresql_family_kept_character_at_statement_edge_is_sent(
+    kept: str, script: str, execution: List[str], analysis: List[str], dialect: str
+) -> None:
+    recorded = record_script(dialect, script.format(k=kept))
+    assert recorded["execution"] == [e.format(k=kept) for e in execution]
+    assert recorded["analysis"] == [a.format(k=kept) for a in analysis]
+
+
+@pytest.mark.parametrize("dialect", ["postgresql", "redshift"])
+def test_postgresql_family_statement_after_a_kept_character_starts_on_its_line(
+    dialect: str,
+) -> None:
+    records = record_script(dialect, f"SELECT 1;\n{NBSP}\nSELECT 2;")["records"]
+    assert [r["line"] for r in records] == [1, 2]
+
+
+@pytest.mark.parametrize("dialect", ["postgresql", "cockroachdb", "yugabytedb"])
+@pytest.mark.parametrize("script", ["{f}SELECT 1;", "SELECT 1;{f}", "SELECT 1;\n{f};\nSELECT 2;"])
+def test_postgresql_family_form_feed_at_statement_edge_is_still_a_blank(
+    dialect: str, script: str
+) -> None:
+    recorded = record_script(dialect, script.format(f=FORM_FEED))["execution"]
+    assert recorded == ["SELECT 1;"] + (["SELECT 2;"] if "SELECT 2" in script else [])

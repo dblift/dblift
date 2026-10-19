@@ -84,7 +84,7 @@ which the server rejects (`Msg 113`); the commented-out text never runs.
 go-sqlcmd 1.10.0 reads comments the same way except that a `GO` after a `*/` on the same line is text for it (`/* a /* b */ GO */` runs there and creates the table, where the ODBC sqlcmd refuses it).
 
 The splitter therefore ends a block comment at the first `*/`, passes the batch
-text through verbatim, and leaves nesting to the server. A script whose nesting
+text through verbatim, and leaves nesting to the server. The one place it reads nesting is the decision whether a batch is a statement at all: a batch the server reads as nothing but closed comments (`/* a /* b */ */`, `/* a */`) is not one, and a batch the server reads as an unclosed comment (`/* a /* b */`) is, so it is sent and fails as the server does (`Msg 113`; rows 6d to 6g). A script whose nesting
 makes the two readers disagree is rejected by sqlcmd and gets the same verdict
 here: row 6 is refused by the splitter, row 6c is cut where sqlcmd cuts and the
 server rejects the first half.
@@ -199,6 +199,13 @@ sqlcmd rules are the data of `BatchScriptRules` and `DivisionRules` in
 | 6a | `SELECT /* a /* b */ */ 1\nGO` | `SELECT /* a /* b */ */ 1` (no GO involved: the nested comment is the server's, the text is passed through) |
 | 6b | `SELECT 1 /* a\nGO\n*/\nGO` | `SELECT 1 /* a\nGO\n*/` (a GO alone on a line inside a block comment is text) |
 | 6c | `SELECT 1 /* a\nGO\n/* b */\nGO\n*/` | `SELECT 1 /* a\nGO\n/* b */` · `*/` (the client cuts at the GO of line 4 because the comment it opened at line 1 ended at the first star-slash; the server then rejects the first half, Msg 113) |
+| 6d | `SELECT 1\nGO\n/* a /* b */\nGO\nSELECT 2\nGO\n` | `SELECT 1` · `/* a /* b */` · `SELECT 2` (measured 2026-10-19, sqlcmd 18.6.0002.1, SQL Server 2022 RTM-CU25 16.0.4255.1: the second GO is a separator, because sqlcmd ends the comment at the first star-slash; the fragment is sent as its own batch and the server nests, so it is not a closed comment: Msg 113 Missing end comment mark, through sqlcmd and pymssql alike; SELECT 2 then runs. A batch is a statement when the server does not read it as comment only) |
+| 6e | `/* a /* b */ */` | `(empty)` (measured 2026-10-19, sqlcmd 18.6.0002.1, SQL Server 2022 RTM-CU25 16.0.4255.1: the server nests, the comment is closed, the batch is accepted and does nothing; no record, though the client reading leaves a stray star-slash after the first one) |
+| 6f | `/* a */` | `(empty)` (measured 2026-10-19, sqlcmd 18.6.0002.1, SQL Server 2022 RTM-CU25 16.0.4255.1: accepted, a comment only) |
+| 6g | `/* a /* b */ SELECT 1` | `/* a /* b */ SELECT 1` (measured 2026-10-19, sqlcmd 18.6.0002.1, SQL Server 2022 RTM-CU25 16.0.4255.1: the server reads all of it as one open comment, Msg 113; the batch is kept whole and sent, so it fails as the server does) |
+| 6h | `/* a /* b */ */ /* c` | `error` (the comment opened last is never closed, in either reading: the splitter refuses the script as it refuses any unterminated block comment; the server answers `Msg 113`) |
+| 6i | `/* a /* b */ 'x */ y'` | `/* a /* b */ 'x */ y'` (the client reads a comment and then the string, which is code; the server reads a nested comment through the first star-slash after the b and then an unclosed quotation mark; not measured itself: it follows from the measured nesting rule (row 6d), under which the server reads the star-slash inside the quotes as the end of the nested comment and the quotation mark that follows is left unclosed; expected Msg 105 unclosed quotation mark) |
+| 6j | `/*/**/'*/'` | `/*/**/'*/'` (the same: not measured itself: it follows from the measured nesting rule (row 6d), under which the server reads the star-slash inside the quotes as the end of the nested comment and the quotation mark that follows is left unclosed; expected Msg 105 unclosed quotation mark) |
 | 7 | `SELECT [go] FROM t\ngo -- end\n` | `SELECT [go] FROM t` |
 | 7a | `SELECT 1\nGO /* c */\nSELECT 2` | `error` (measured: only a `--` comment may follow `GO`; `Sqlcmd: Error: Syntax error … near command 'GO'`, exit 1) |
 | 7b | `SELECT 1\nGO--c\nSELECT 2` | `error` at line 2 (ODBC sqlcmd: `GO--c` is a separator, both batches run; go-sqlcmd: `GO` goes to the server as text, which a batch ending in an expression takes as an alias, so `SELECT * FROM t\nGO--end\nSELECT 2` runs as one batch with exit 0 (measured 2026-10-11); the splitter refuses `--` directly after `GO`: "GO must be followed by a blank, a count or end of line; `--` directly after GO is read differently by sqlcmd clients") |
