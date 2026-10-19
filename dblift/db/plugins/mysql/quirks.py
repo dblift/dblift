@@ -56,10 +56,8 @@ class MysqlQuirks(BaseQuirks):
         return MYSQL_SPEC
 
     def empty_statement_blanks(self) -> Optional[str]:
-        """The server keeps every white space character outside its ``text_blanks``: a statement of them is sent."""
-        from dblift.db.plugins.mysql.parser.lexical_spec import MYSQL_SPEC
-
-        return MYSQL_SPEC.text_blanks
+        """The server's blanks: a statement of other characters, a control one leading it included, is sent."""
+        return self.lexical_spec().text_blanks
 
     # Capability matrix (was ``_CAPABILITIES["mysql"]``).
     supports_transactions = True
