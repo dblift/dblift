@@ -7297,7 +7297,7 @@
 "sha256": "d33767030fb567ebf4699543cf51a835e6b5eced5e52adf95a4e7fbfd5c4910d"
 },
 "spec_rows": {
-"count": 692,
+"count": 699,
 "observed": [
 [
 "db2",
@@ -16565,6 +16565,110 @@
 ],
 [
 "sqlserver",
+"SELECT 1\nGO\n/* a /* b */\nGO\nSELECT 2\nGO\n",
+{
+"analysis": [
+"SELECT 1",
+"SELECT 2"
+],
+"engine": [
+"SELECT 1",
+"/* a /* b */",
+"SELECT 2"
+],
+"splitter": [
+"SELECT 1",
+"/* a /* b */",
+"SELECT 2"
+]
+}
+],
+[
+"sqlserver",
+"/* a /* b */ */",
+{
+"analysis": [],
+"engine": [],
+"splitter": []
+}
+],
+[
+"sqlserver",
+"/* a */",
+{
+"analysis": [],
+"engine": [],
+"splitter": []
+}
+],
+[
+"sqlserver",
+"/* a /* b */ SELECT 1",
+{
+"analysis": [
+"/* a /* b */ SELECT 1"
+],
+"engine": [
+"/* a /* b */ SELECT 1"
+],
+"splitter": [
+"/* a /* b */ SELECT 1"
+]
+}
+],
+[
+"sqlserver",
+"/* a /* b */ */ /* c",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated block comment opened at line 1, column 17"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated block comment opened at line 1, column 17"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated block comment opened at line 1, column 17"
+]
+}
+],
+[
+"sqlserver",
+"/* a /* b */ 'x */ y'",
+{
+"analysis": [
+"/* a /* b */ 'x */ y'"
+],
+"engine": [
+"/* a /* b */ 'x */ y'"
+],
+"splitter": [
+"/* a /* b */ 'x */ y'"
+]
+}
+],
+[
+"sqlserver",
+"/*/**/'*/'",
+{
+"analysis": [
+"/*/**/'*/'"
+],
+"engine": [
+"/*/**/'*/'"
+],
+"splitter": [
+"/*/**/'*/'"
+]
+}
+],
+[
+"sqlserver",
 "SELECT [go] FROM t\ngo -- end\n",
 {
 "analysis": [
@@ -19917,6 +20021,6 @@
 }
 ]
 ],
-"sha256": "f0ba01c8d08e8232789b5f423697eb909c5346b2ddd0af430e1161a4747a8734"
+"sha256": "6469c5b8019865ecc9f3872e7551e5977f3b2038717cd563efdd8cd28326db73"
 }
 }

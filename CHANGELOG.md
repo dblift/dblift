@@ -130,7 +130,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   fails with a syntax error, as it does under `psql`. A migration indented with no-break spaces, for
   example one pasted from a web page, now fails where it used to run: replace those characters with
   ordinary spaces. A form feed is still a blank.
-
+- **SQL Server: a batch that opens a nested comment and never closes it is sent.** A batch such as
+  `/* a /* b */` is not a closed comment to the server, which nests block comments and
+  answers "Missing end comment mark"; migrate used to skip it as comment-only and report
+  success. It is now sent and fails as the server does, while `/* a /* b */ */` and `/* a */`
+  are still skipped as comments.
 - **`info`, `migrate --dry-run` and the parsers' listings list the statements `migrate` sends,
   on every engine.** A trailing comment is no longer listed as a statement on SQLite and DuckDB
   (`validate_sql` of their parsers and `Migration.sql_statements` follow), a statement made of
