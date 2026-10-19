@@ -1,10 +1,14 @@
 """Batch records of a script cut at separator lines."""
 
+import dataclasses
+from bisect import bisect_left
 from typing import List, Optional, Sequence, Tuple
 
+from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.core.sql_parser.batch_commands import read_command
 from dblift.core.sql_parser.batch_division import code_positions, code_spans, divide, has_code
-from dblift.core.sql_parser.lexical_spec import BatchScriptRules
+from dblift.core.sql_parser.lexical_spec import BatchScriptRules, LexicalSpec
+from dblift.core.sql_parser.lexical_tokenizer import LexicalTokenizer
 from dblift.core.sql_parser.statement import Statement
 from dblift.core.sql_parser.tokens import Token, TokenType
 
@@ -24,14 +28,23 @@ class BatchScript:
         text_blanks: str,
         *,
         origin: int = 0,
+        spec: Optional[LexicalSpec] = None,
     ) -> None:
-        """``comments`` are the extents the tokenizer read; ``origin`` is where the text starts."""
+        """``comments`` are the extents the tokenizer read; ``origin`` is where the text starts.
+
+        ``spec`` is read for the server's own reading of a batch when the rules say it nests comments.
+        """
         self.rules = rules
         self.source = source
         self.client_name = client_name
         self.comments = comments
         self.text_blanks = text_blanks
         self.origin = origin
+        self._server_spec = (
+            dataclasses.replace(spec, nested_comments=True, batch_script=None)
+            if spec is not None and rules.server_nests_comments
+            else None
+        )
 
     def split(self, tokens: Sequence[Token]) -> List[Statement]:
         """The record of every batch that holds code; execution sends its text."""
@@ -78,7 +91,10 @@ class BatchScript:
         end: int,
     ) -> None:
         """Append the record of ``source[start:cut]`` when the batch holds code, not just ``;`` and blanks."""
-        if not has_code(positions, start, cut - 1):
+        code = has_code(positions, start, cut - 1)
+        if self._server_spec is not None and self._comment_nests(start, cut):
+            code = self._server_has_code(start, cut)
+        if not code:
             return
         raw = self.source[start:cut]
         text = raw.strip(self.text_blanks)
@@ -100,3 +116,30 @@ class BatchScript:
             source_end=end,
         )
         records.append(record)
+
+    def _comment_nests(self, start: int, cut: int) -> bool:
+        """Whether a block comment the client read in ``source[start:cut]`` holds a ``/*`` the server nests."""
+        index = bisect_left(self.comments, (start, -1))
+        while index < len(self.comments) and self.comments[index][0] < cut:
+            first, last = self.comments[index]
+            if self.source.startswith("/*", first) and self.source.find("/*", first + 2, last) >= 0:
+                return True
+            index += 1
+        return False
+
+    def _server_has_code(self, start: int, cut: int) -> bool:
+        """Whether the server, which nests block comments, reads ``source[start:cut]`` as more than comments.
+
+        A comment the server leaves open is not a comment: the batch is sent and the server rejects it.
+        """
+        assert self._server_spec is not None
+        text = self.source[start:cut]
+        try:
+            tokens = LexicalTokenizer(text, spec=self._server_spec).tokenize()
+        except UnsafeStatementSplitError as error:
+            return str(error).startswith("unterminated block comment")
+        ignored = self.text_blanks + self.rules.ignored_in_code
+        return any(
+            token.type not in (TokenType.COMMENT, TokenType.EOF) and token.text.strip(ignored)
+            for token in tokens
+        )

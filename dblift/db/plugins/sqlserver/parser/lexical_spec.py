@@ -62,6 +62,7 @@ SQLSERVER_BATCHES = BatchScriptRules(
     blanks=" \t\r",
     ignored_in_code=";",
     division=_DIVISION,
+    server_nests_comments=True,
 )
 
 SQLSERVER_SPEC = LexicalSpec(
