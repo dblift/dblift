@@ -1,5 +1,6 @@
 """Executable migration selection is independent of display rows."""
 
+from dataclasses import FrozenInstanceError
 from pathlib import Path
 from unittest.mock import patch
 
@@ -7,6 +8,7 @@ import pytest
 from sqlalchemy import create_engine
 
 from dblift.api import DBLiftClient
+from dblift.core.migration.state import migration_state
 from dblift.core.migration.state.migration_display_state import MigrationDisplayState
 
 pytestmark = [pytest.mark.unit, pytest.mark.sqlite]
@@ -91,6 +93,41 @@ def test_display_list_mutation_cannot_change_execute_list(catalog) -> None:
     actual = state.executable_pending_objects()
     assert actual == selected
     assert actual[0] is selected[0]
+
+
+def test_has_pending_ignores_display_mutation(catalog) -> None:
+    """The executable flag follows eligibility even when display rows change."""
+    state = _state(catalog)
+    assert state.has_pending
+
+    for entry in state.pending:
+        if entry.script == "V3__third.sql":
+            entry.status = "Ready to run"
+    assert state.has_pending
+
+    state.pending.clear()
+    assert state.has_pending
+
+
+def test_catalog_is_immutable_and_owns_selected_objects(catalog) -> None:
+    """Catalog records retain selection identity independently of display rows."""
+    assert hasattr(migration_state, "MigrationEligibility")
+    assert hasattr(migration_state, "CatalogMigration")
+    state = _state(catalog)
+    assert hasattr(state, "catalog")
+
+    eligibility = migration_state.MigrationEligibility
+    assert isinstance(state.catalog, tuple)
+    assert [(record.migration.script_name, record.eligibility) for record in state.catalog] == [
+        ("V1__first.sql", eligibility.BELOW_BASELINE),
+        ("V3__third.sql", eligibility.PENDING),
+        ("V4__fourth.sql", eligibility.ABOVE_TARGET),
+        ("U3__third.sql", eligibility.UNDO_AVAILABLE),
+    ]
+    selected = state.executable_pending_objects()
+    assert selected[0] is state.catalog[1].migration
+    with pytest.raises(FrozenInstanceError):
+        state.catalog[1].eligibility = eligibility.ABOVE_TARGET
 
 
 def test_target_and_baseline_are_eligibility(catalog) -> None:
