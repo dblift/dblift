@@ -37,7 +37,7 @@
 "edge_redshift": {
 "count": 403,
 "observed": null,
-"sha256": "2e71ea692b7e4ae7164d0f5e5d2145da7ffc5c39200431693084d78e215faecd"
+"sha256": "ff4a8abdb5122560de7ec9bde821697fd15c733b5d613792ea1de08f59e77042"
 },
 "edge_snowflake": {
 "count": 341,
@@ -19623,13 +19623,13 @@
 "SELECT 1\f",
 {
 "analysis": [
-"SELECT 1\f"
+"SELECT 1"
 ],
 "engine": [
-"SELECT 1\f"
+"SELECT 1"
 ],
 "splitter": [
-"SELECT 1\f"
+"SELECT 1"
 ]
 }
 ],
@@ -20021,6 +20021,6 @@
 }
 ]
 ],
-"sha256": "6469c5b8019865ecc9f3872e7551e5977f3b2038717cd563efdd8cd28326db73"
+"sha256": "6b9bd00bfed73f7859e36d9edf8e301c9d536f4cae38b5f8a64d75a4d8d22f3c"
 }
 }

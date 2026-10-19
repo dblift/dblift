@@ -123,6 +123,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Redshift reads a form feed between statements as a blank.** A page break in a script no longer
+  becomes a statement of its own, and a form feed at the start of a statement is no longer sent with it.
 - **`migrate` sends a statement that starts or ends with a character the engine does not read as a
   blank.** On PostgreSQL, CockroachDB and YugabyteDB, a statement that starts or ends with a
   no-break space, an ideographic space, a control character, U+2028 or a similar character, or a piece
