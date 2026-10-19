@@ -9,6 +9,7 @@ from dblift.core.logger import NullLog
 from dblift.core.migration.migration import MigrationType
 from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
 from dblift.core.migration.state.checksum_drift import find_checksum_drift
+from dblift.core.migration.state.missing_scripts import missing_applied
 from dblift.core.migration.state.repeatable_status import repeatable_runs
 from dblift.core.sql_validator.migration_validator import MigrationValidator, ValidationResult
 from tests.unit._migration_factory import make_migration
@@ -64,7 +65,12 @@ def test_resolved_checksums_do_not_reread_files(tmp_path, changed, encoding, det
     instance.script_manager.detect_encoding = detect
     with patch("pathlib.Path.read_text", wraps=path.read_text) as reads:
         instance._validate_checksums(
-            [script], rows, result, issues, drift=find_checksum_drift([script], rows)
+            [script],
+            rows,
+            result,
+            issues,
+            drift=find_checksum_drift([script], rows),
+            missing=missing_applied([script], rows),
         )
     assert result.failed_scripts == ([script.script_name] if changed else [])
     assert any("has been modified" in issue for issue in issues) == changed
@@ -87,12 +93,13 @@ def test_history_lookup_scales_and_preserves_supplied_order(tmp_path):
                 history(script, checksum=4, type=MigrationType.DELETE, rank=5),
             ]
         )
+    # The state layer's answers come from plain copies, so the counters measure the validator.
+    drift = find_checksum_drift(list(scripts), list(rows))
+    missing = missing_applied(list(scripts), list(rows))
     rows = CountingList(rows)
     scripts = CountingList(scripts)
     result, issues = ValidationResult(), []
-    validator()._validate_checksums(
-        scripts, rows, result, issues, drift=find_checksum_drift(scripts, rows)
-    )
+    validator()._validate_checksums(scripts, rows, result, issues, drift=drift, missing=missing)
     assert issues == []
     assert result.checked_scripts == [script.script_name for script in scripts]
     assert rows.visits <= 4 * len(rows)
@@ -149,8 +156,8 @@ def test_qualified_names_choose_first_match_and_filtered_deleted_missing_rows(tm
         result,
         issues,
         strict_mode=True,
-        all_scripts=[script, duplicate, filtered],
         drift=find_checksum_drift([script, duplicate], rows),
+        missing=missing_applied([script, duplicate, filtered], rows),
     )
     assert result.failed_scripts == [missing.script_name]
     assert len(issues) == 1
@@ -176,7 +183,12 @@ def test_validation_uses_supplied_checksum_and_standalone_observes_edits(tmp_pat
         wraps=path.read_text,
     ) as reads:
         instance._validate_checksums(
-            [legacy], rows, result, issues, drift=find_checksum_drift([legacy], rows)
+            [legacy],
+            rows,
+            result,
+            issues,
+            drift=find_checksum_drift([legacy], rows),
+            missing=missing_applied([legacy], rows),
         )
     assert result.failed_scripts == [script.script_name]
     assert "has been modified" in issues[0]

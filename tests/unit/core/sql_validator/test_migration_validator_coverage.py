@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from dblift.core.migration.state.checksum_drift import find_checksum_drift
+from dblift.core.migration.state.missing_scripts import missing_applied
 from dblift.core.migration.state.ordering import out_of_order
 from dblift.core.migration.state.repeatable_status import repeatable_runs
 
@@ -963,7 +964,12 @@ class TestValidateChecksums(unittest.TestCase):
         issues = []
         applied = self._make_applied("V1__x.sql", MigrationType.UNKNOWN)
         v._validate_checksums(
-            [], [applied], result, issues, drift=find_checksum_drift([], [applied])
+            [],
+            [applied],
+            result,
+            issues,
+            drift=find_checksum_drift([], [applied]),
+            missing=missing_applied([], [applied]),
         )
         self.assertEqual(issues, [])
 
@@ -976,7 +982,12 @@ class TestValidateChecksums(unittest.TestCase):
         issues = []
         applied = self._make_applied("V1__x.sql", MigrationType.DELETE)
         v._validate_checksums(
-            [], [applied], result, issues, drift=find_checksum_drift([], [applied])
+            [],
+            [applied],
+            result,
+            issues,
+            drift=find_checksum_drift([], [applied]),
+            missing=missing_applied([], [applied]),
         )
         self.assertEqual(issues, [])
 
@@ -989,7 +1000,12 @@ class TestValidateChecksums(unittest.TestCase):
         issues = []
         applied = self._make_applied("V1__x.sql", MigrationType.UNDO_SQL)
         v._validate_checksums(
-            [], [applied], result, issues, drift=find_checksum_drift([], [applied])
+            [],
+            [applied],
+            result,
+            issues,
+            drift=find_checksum_drift([], [applied]),
+            missing=missing_applied([], [applied]),
         )
         self.assertEqual(issues, [])
 
@@ -1002,7 +1018,12 @@ class TestValidateChecksums(unittest.TestCase):
         issues = []
         applied = self._make_applied("V1__x.sql", MigrationType.BASELINE)
         v._validate_checksums(
-            [], [applied], result, issues, drift=find_checksum_drift([], [applied])
+            [],
+            [applied],
+            result,
+            issues,
+            drift=find_checksum_drift([], [applied]),
+            missing=missing_applied([], [applied]),
         )
         self.assertEqual(issues, [])
 
@@ -1022,6 +1043,7 @@ class TestValidateChecksums(unittest.TestCase):
             issues,
             strict_mode=True,
             drift=find_checksum_drift([], [applied]),
+            missing=missing_applied([], [applied]),
         )
         self.assertTrue(any("missing" in i.lower() for i in issues))
 
@@ -1041,6 +1063,7 @@ class TestValidateChecksums(unittest.TestCase):
             issues,
             strict_mode=False,
             drift=find_checksum_drift([], [applied]),
+            missing=missing_applied([], [applied]),
         )
         # Issues should be empty (only warning logged)
         self.assertEqual(issues, [])
@@ -1062,6 +1085,7 @@ class TestValidateChecksums(unittest.TestCase):
             issues,
             strict_mode=True,
             drift=find_checksum_drift([], [applied, delete_record]),
+            missing=missing_applied([], [applied, delete_record]),
         )
         # Should not add issue because it's marked as deleted
         self.assertEqual(issues, [])
@@ -1090,6 +1114,7 @@ class TestValidateChecksums(unittest.TestCase):
             issues,
             strict_mode=True,
             drift=find_checksum_drift([alt_script], [applied]),
+            missing=missing_applied([alt_script], [applied]),
         )
         self.assertTrue(any("repair" in i.lower() for i in issues))
 
@@ -1114,7 +1139,12 @@ class TestValidateChecksums(unittest.TestCase):
         applied.success = True
         applied.type = MigrationType.SQL
         v._validate_checksums(
-            [script], [applied], result, issues, drift=find_checksum_drift([script], [applied])
+            [script],
+            [applied],
+            result,
+            issues,
+            drift=find_checksum_drift([script], [applied]),
+            missing=missing_applied([script], [applied]),
         )
         # Either adds issue or logs debug - depends on path/script_path
         # with path=None, current_checksum stays None, so false positive check passes
@@ -1140,7 +1170,12 @@ class TestValidateChecksums(unittest.TestCase):
             path=None,
         )
         v._validate_checksums(
-            [script], [applied], result, issues, drift=find_checksum_drift([script], [applied])
+            [script],
+            [applied],
+            result,
+            issues,
+            drift=find_checksum_drift([script], [applied]),
+            missing=missing_applied([script], [applied]),
         )
         self.assertEqual(issues, [])
         self.assertTrue(result.success)
@@ -1365,7 +1400,7 @@ class TestValidateStrictModeRules(unittest.TestCase):
         issues = []
         s1 = self._sql_script("V1__a.sql", "1")
         a1 = self._applied("V1__a.sql", "1")
-        r = v._validate_strict_mode_rules([s1], [a1], result, issues, ())
+        r = v._validate_strict_mode_rules(result, issues, missing_applied([s1], [a1]), ())
         self.assertTrue(r)
 
     def test_missing_applied_script_returns_false(self):
@@ -1376,7 +1411,7 @@ class TestValidateStrictModeRules(unittest.TestCase):
         issues = []
         s1 = self._sql_script("V1__a.sql", "1")
         a1 = self._applied("V0__old.sql", "0")
-        r = v._validate_strict_mode_rules([s1], [a1], result, issues, ())
+        r = v._validate_strict_mode_rules(result, issues, missing_applied([s1], [a1]), ())
         self.assertFalse(r)
         self.assertTrue(any("Strict mode" in i for i in issues))
 
@@ -1389,7 +1424,7 @@ class TestValidateStrictModeRules(unittest.TestCase):
         issues = []
         s1 = self._sql_script("V1__a.sql", "1")
         baseline = self._applied("B1__base.sql", "1", mtype=MigrationType.BASELINE)
-        r = v._validate_strict_mode_rules([s1], [baseline], result, issues, ())
+        r = v._validate_strict_mode_rules(result, issues, missing_applied([s1], [baseline]), ())
         self.assertTrue(r)
 
     def test_undo_applied_skipped(self):
@@ -1401,7 +1436,7 @@ class TestValidateStrictModeRules(unittest.TestCase):
         issues = []
         s1 = self._sql_script("V1__a.sql", "1")
         undo = self._applied("U1__undo.sql", "1", mtype=MigrationType.UNDO_SQL)
-        r = v._validate_strict_mode_rules([s1], [undo], result, issues, ())
+        r = v._validate_strict_mode_rules(result, issues, missing_applied([s1], [undo]), ())
         self.assertTrue(r)
 
     def test_out_of_order_migration_fails(self):
@@ -1422,7 +1457,9 @@ class TestValidateStrictModeRules(unittest.TestCase):
         # V2 is applied successfully
         a2 = self._applied("V2__new.sql", "2")
         sm.compare_versions.side_effect = lambda a, b: int(a) - int(b)
-        r = v._validate_strict_mode_rules([s1, s2], [a2], result, issues, out_of_order([s1], "2"))
+        r = v._validate_strict_mode_rules(
+            result, issues, missing_applied([s1, s2], [a2]), out_of_order([s1], "2")
+        )
         self.assertFalse(r)
         self.assertTrue(any("lower" in i.lower() or "strict mode" in i.lower() for i in issues))
 
@@ -1433,7 +1470,7 @@ class TestValidateStrictModeRules(unittest.TestCase):
         result = ValidationResult()
         issues = []
         s1 = self._sql_script("V1__a.sql", "1")
-        r = v._validate_strict_mode_rules([s1], [], result, issues, ())
+        r = v._validate_strict_mode_rules(result, issues, missing_applied([s1], []), ())
         self.assertTrue(r)
 
     def test_all_pending_applied_returns_true(self):
@@ -1445,7 +1482,7 @@ class TestValidateStrictModeRules(unittest.TestCase):
         issues = []
         s1 = self._sql_script("V1__a.sql", "1")
         a1 = self._applied("V1__a.sql", "1")
-        r = v._validate_strict_mode_rules([s1], [a1], result, issues, ())
+        r = v._validate_strict_mode_rules(result, issues, missing_applied([s1], [a1]), ())
         self.assertTrue(r)
 
 

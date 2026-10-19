@@ -191,11 +191,13 @@ def test_empty_built_catalog_is_authoritative(tmp_path, has_history):
     scripts = MagicMock()
     scripts.load_migration_scripts.return_value = {}
     command = _command(scripts)
-    state = command.state_manager.build_state(tmp_path)
     if has_history:
-        state.applied_objects = [
-            SimpleNamespace(script_name="V1__gone.sql", type=MigrationType.SQL)
+        command.state_manager.history_manager.get_applied_migrations.return_value = [
+            SimpleNamespace(
+                script_name="V1__gone.sql", type=MigrationType.SQL, checksum=0, success=True
+            )
         ]
+    state = command.state_manager.build_state(tmp_path)
     scripts.load_migration_scripts.side_effect = AssertionError("must reuse empty catalog")
     if has_history:
         with pytest.raises(RepairSafetyError):

@@ -48,39 +48,6 @@ class RepairPlan:
     actions: Tuple[RepairAction, ...]
 
 
-def _count_candidate_missing(applied_migrations: Any, deleted_scripts: Set[str]) -> int:
-    """Count applied migrations that would be flagged MISSING_SCRIPT.
-
-    Mirrors the filter the main loop applies: skip DELETE-type entries and
-    scripts already recorded as deleted. Used by the empty-filesystem
-    safety gate so the error message reports the number of rows the user
-    is being protected from.
-    """
-    count = 0
-    for applied in applied_migrations:
-        script_name = applied.script_name
-        if not script_name:
-            continue
-        # type read defensively: history rows may carry an enum or a legacy string.
-        migration_type = getattr(applied, "type", None)
-        if (
-            migration_type
-            and hasattr(migration_type, "name")
-            and migration_type.name
-            in (
-                "DELETE",
-                "BASELINE",
-            )
-        ):
-            continue
-        if isinstance(migration_type, str) and migration_type.upper() in ("DELETE", "BASELINE"):
-            continue
-        if script_name in deleted_scripts:
-            continue
-        count += 1
-    return count
-
-
 def plan_repairs(
     state_manager: MigrationStateManager,
     scripts_dir: Path,
@@ -163,9 +130,6 @@ def _detect_missing_migrations(
     """
     repairs: List[Dict[str, Any]] = []
 
-    applied_migrations = migration_state.applied_objects
-    deleted_scripts: Set[str] = set(migration_state.deleted_scripts)
-
     # Reuse the catalog the state was built with. A load failure (permission
     # denied, missing directory not caught by the CLI layer, malformed script)
     # already propagated from ``build_state`` — silently falling back to an
@@ -177,10 +141,6 @@ def _detect_missing_migrations(
     filesystem_migrations = cast(
         Dict[MigrationType, List[Migration]], migration_state.grouped_objects
     )
-    filesystem_scripts: Set[str] = set()
-    for migration_group in filesystem_migrations.values():
-        for migration in migration_group:
-            filesystem_scripts.add(migration.script_name)
 
     # Safety gate: if the filesystem produced zero scripts but the
     # history has applied migrations that would all be marked MISSING,
@@ -188,62 +148,28 @@ def _detect_missing_migrations(
     # empty default ``./migrations`` directory. Without this
     # guard, a single ``repair`` invocation without ``--dry-run`` would
     # convert every applied migration into a DELETE entry.
-    if not filesystem_scripts:
-        candidate_missing_count = _count_candidate_missing(applied_migrations, deleted_scripts)
-        if candidate_missing_count > 0:
-            raise RepairSafetyError(
-                f"Refusing to mark {candidate_missing_count} applied migration(s) "
-                f"as missing: no migration scripts found in {scripts_dir}. "
-                "Pass --scripts <dir> pointing to your migration files, or "
-                "verify that the configured directory contains at least one "
-                "matching file before retrying."
-            )
+    if not any(filesystem_migrations.values()) and migration_state.missing_applied:
+        raise RepairSafetyError(
+            f"Refusing to mark {len(migration_state.missing_applied)} applied migration(s) "
+            f"as missing: no migration scripts found in {scripts_dir}. "
+            "Pass --scripts <dir> pointing to your migration files, or "
+            "verify that the configured directory contains at least one "
+            "matching file before retrying."
+        )
 
-    # Find migrations in history but not in filesystem
-    for applied in applied_migrations:
-        script_name = applied.script_name
-        if not script_name:
-            continue
-
-        # type read defensively: history rows may carry an enum or a legacy string.
-        migration_type = getattr(applied, "type", None)
-
-        # Skip DELETE and BASELINE type migrations. BASELINE rows (e.g. the
-        # synthetic ``B2__.sql`` marker written by ``baseline``) never have
-        # a matching filesystem script by design — flagging them as missing
-        # produces noisy false positives and, worse, a subsequent repair
-        # would rewrite history to delete them.
-        if (
-            migration_type
-            and hasattr(migration_type, "name")
-            and migration_type.name in ("DELETE", "BASELINE")
-        ):
-            continue
-        if isinstance(migration_type, str) and migration_type.upper() in (
-            "DELETE",
-            "BASELINE",
-        ):
-            continue
-
-        # Skip if already marked as deleted (has DELETE entry)
-        if script_name in deleted_scripts:
-            continue
-
-        # If the script is not in filesystem, add to repairs. A row recorded
-        # with a directory prefix still matches its script by basename, as
-        # ``validate`` matches it.
-        if script_name not in filesystem_scripts and Path(script_name).name not in (
-            filesystem_scripts
-        ):
-            repairs.append(
-                {
-                    "type": "MISSING_SCRIPT",
-                    "script": script_name,
-                    "version": applied.version,
-                    "description": applied.description,
-                    "original_type": migration_type,  # Preserve original type
-                }
-            )
+    # Applied scripts whose file is gone: the state manager's answer, the one
+    # ``validate`` reads. BASELINE rows (e.g. the synthetic ``B2__.sql`` marker
+    # written by ``baseline``) have no script by design and are never listed.
+    for applied in migration_state.missing_applied:
+        repairs.append(
+            {
+                "type": "MISSING_SCRIPT",
+                "script": applied.script_name,
+                "version": applied.version,
+                "description": applied.description,
+                "original_type": applied.type,  # Preserve original type
+            }
+        )
 
     # Check for failed migrations that need to be cleaned up
     for failed_migration in migration_state.failed_objects:

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, List, Mapping, Optional, Sequence, cast
+from typing import TYPE_CHECKING, List, Mapping, Sequence, cast
 
 from dblift.core.migration.migration import Migration, MigrationType
 from dblift.core.migration.scripting.migration_script_manager import (  # noqa: F401
@@ -11,6 +11,7 @@ from dblift.core.migration.scripting.migration_script_manager import (  # noqa: 
     _successful_non_delete_records,
 )
 from dblift.core.migration.state.checksum_drift import ChecksumDrift
+from dblift.core.migration.state.missing_scripts import is_delete_marker
 from dblift.core.migration.state.repeatable_status import (
     RepeatableRun,
     RepeatableStatus,
@@ -30,9 +31,9 @@ def validate_checksums(
     result: "ValidationResult",
     issues: List[str],
     strict_mode: bool = False,
-    all_scripts: Optional[List[Migration]] = None,
     *,
     drift: Sequence[ChecksumDrift],
+    missing: Sequence[Migration],
 ) -> None:
     """Validate checksums of executed migrations.
 
@@ -40,13 +41,13 @@ def validate_checksums(
     file's checksum, flagging drift either as an error (versioned scripts)
     or a recorded reapply (repeatable scripts).
 
-    ``scripts`` may be scoped by ``--tags``/``--versions`` filters; ``all_scripts``,
-    when provided, is the full unfiltered set of on-disk scripts and is used only to
-    decide whether an applied migration is genuinely missing from the migration
-    directory (as opposed to merely filtered out of the current run's scope).
+    ``scripts`` may be scoped by ``--tags``/``--versions`` filters; an applied
+    migration that is absent from them is skipped as out of scope unless it is
+    in ``missing``.
 
-    ``drift`` is the state layer's answer for these ``scripts`` and
-    ``applied_migrations``.
+    ``drift`` and ``missing`` are the state layer's answers for these
+    ``scripts`` and ``applied_migrations``: the scripts whose checksum changed
+    and the applied scripts that are gone from the migration directory.
     """
     checksum_mismatches = []
     scripts_by_name: dict[str, Migration] = {}
@@ -57,10 +58,9 @@ def validate_checksums(
         if getattr(script, "version", None) is not None:
             scripts_by_version.setdefault(str(script.version), []).append(script)
     script_names = set(scripts_by_name)
-    full_script_names = (
-        {s.script_name for s in all_scripts} if all_scripts is not None else script_names
-    )
     drift_by_name = {d.script_name: d for d in drift}
+    missing_by_name = {getattr(row, "script_name", None): row for row in missing}
+    reported_missing = set()
     has_successful_row = {
         getattr(row, "script_name", None)
         for row in _successful_non_delete_records(applied_migrations)
@@ -68,7 +68,7 @@ def validate_checksums(
     deleted_scripts = set()
     non_repeatable_scripts = set()
     for row in applied_migrations:
-        if getattr(row, "type", None) == MigrationType.DELETE:
+        if is_delete_marker(row):
             deleted_scripts.add(getattr(row, "script_name", None))
         if getattr(row, "type", None) not in (MigrationType.REPEATABLE, "REPEATABLE"):
             non_repeatable_scripts.add(getattr(row, "script_name", None))
@@ -76,7 +76,6 @@ def validate_checksums(
     for applied in applied_migrations:
         script_name = getattr(applied, "script_name", None)
         migration_type = getattr(applied, "type", None)
-        version_val = getattr(applied, "version", "")
 
         # Skip types that have no stored checksum or are exempt from drift detection.
         # Inverted guard: only skip UNKNOWN, DELETE, and BASELINE (no script to compare).
@@ -95,56 +94,52 @@ def validate_checksums(
 
         result.add_checked_script(script_name)
 
-        if script_name not in full_script_names and (
-            not script_name or Path(script_name).name not in full_script_names
-        ):
-            if migration_type != MigrationType.BASELINE and str(version_val).lower() != "baseline":
-                # Check if this script has been marked as deleted
-                is_deleted = script_name in deleted_scripts
-
-                if not is_deleted:
-                    # Check for a different script with the same version
-                    same_version = [
-                        s
-                        for s in scripts_by_version.get(str(version_val), [])
-                        if getattr(s, "script_name", None) != script_name
-                    ]
-                    if same_version:
-                        alt_names = ", ".join(
-                            getattr(s, "script_name", str(s)) for s in same_version
-                        )
-                        msg = (
-                            f"Applied migration '{script_name}' is missing from the "
-                            "migration directory."
-                            f" A script with the same version exists under a "
-                            f"different name: {alt_names}."
-                            " Run 'repair' to resolve the name mismatch."
-                        )
-                    else:
-                        msg = (
-                            f"Applied migration '{script_name}' is missing from the "
-                            "migration directory. Use 'repair' command to mark it as "
-                            "intentionally deleted."
-                        )
-                    if strict_mode:
-                        issues.append(msg)
-                        result.add_failed_script(script_name)
-                    else:
-                        mv.log.warning(msg)
-                else:
-                    # Script is missing but marked as deleted - this is OK
-                    mv.log.debug(
-                        f"Migration '{script_name}' is missing from filesystem but "
-                        "marked as deleted - OK"
-                    )
+        missing_row = missing_by_name.get(script_name)
+        if missing_row is not None:
+            if script_name in reported_missing:
+                continue
+            reported_missing.add(script_name)
+            # Check for a different script with the same version
+            same_version = [
+                s
+                for s in scripts_by_version.get(str(getattr(missing_row, "version", "")), [])
+                if getattr(s, "script_name", None) != script_name
+            ]
+            if same_version:
+                alt_names = ", ".join(getattr(s, "script_name", str(s)) for s in same_version)
+                msg = (
+                    f"Applied migration '{script_name}' is missing from the "
+                    "migration directory."
+                    f" A script with the same version exists under a "
+                    f"different name: {alt_names}."
+                    " Run 'repair' to resolve the name mismatch."
+                )
+            else:
+                msg = (
+                    f"Applied migration '{script_name}' is missing from the "
+                    "migration directory. Use 'repair' command to mark it as "
+                    "intentionally deleted."
+                )
+            if strict_mode:
+                issues.append(msg)
+                result.add_failed_script(script_name)
+            else:
+                mv.log.warning(msg)
             continue
         if script_name not in script_names and (
             not script_name or Path(script_name).name not in script_names
         ):
-            # Present on disk but filtered out of scope by --tags/--versions - not missing.
-            mv.log.debug(
-                f"Migration '{script_name}' is out of scope for this run's filters - skipping"
-            )
+            if script_name in deleted_scripts:
+                # Script is missing but marked as deleted - this is OK
+                mv.log.debug(
+                    f"Migration '{script_name}' is missing from filesystem but "
+                    "marked as deleted - OK"
+                )
+            else:
+                # Present on disk but filtered out of scope by --tags/--versions - not missing.
+                mv.log.debug(
+                    f"Migration '{script_name}' is out of scope for this run's filters - skipping"
+                )
             continue
         if migration_type == MigrationType.BASELINE:
             mv.log.debug(f"Skipping checksum verification for {script_name} (baseline)")

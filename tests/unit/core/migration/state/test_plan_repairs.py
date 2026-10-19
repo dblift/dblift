@@ -17,7 +17,6 @@ from dblift.core.migration.state.repair_plan import (
     RepairAction,
     RepairPlan,
     RepairSafetyError,
-    _count_candidate_missing,
 )
 
 pytestmark = pytest.mark.unit
@@ -103,7 +102,7 @@ class TestPlanRepairsKinds:
 
     def test_missing_script_keeps_the_original_type(self):
         state = MigrationState(grouped_objects=_on_disk("V1__a.sql"))
-        state.applied_objects = [_applied("V1__a.sql"), _applied("V2__gone.sql", "2")]
+        state.missing_applied = (_applied("V2__gone.sql", "2"),)
 
         plan = _plan(state)
 
@@ -148,7 +147,7 @@ class TestPlanRepairsKinds:
         state.checksum_changes = [
             SimpleNamespace(script_name="R__x.sql", previous_checksum=1, current_checksum=2)
         ]
-        state.applied_objects = [_applied("V2__gone.sql", "2")]
+        state.missing_applied = (_applied("V2__gone.sql", "2"),)
         state.failed_objects = [_failed("V1__a.sql")]
 
         plan = _plan(state)
@@ -214,30 +213,16 @@ class TestFailedRowRouting:
 
 
 class TestMissingScripts:
-    def test_legacy_directory_qualified_row_is_not_missing(self):
+    def test_nothing_missing_plans_nothing(self):
         state = MigrationState(grouped_objects=_on_disk("V1__a.sql"))
-        state.applied_objects = [_applied("sub/dir/V1__a.sql")]
-
-        assert _plan(state).actions == ()
-
-    @pytest.mark.parametrize("type_", ["DELETE", "BASELINE"])
-    def test_delete_and_baseline_rows_are_not_missing(self, type_):
-        state = MigrationState(grouped_objects=_on_disk("V1__a.sql"))
-        state.applied_objects = [_applied("V9__x.sql", "9", SimpleNamespace(name=type_))]
-
-        assert _plan(state).actions == ()
-
-    def test_already_deleted_script_is_not_missing(self):
-        state = MigrationState(
-            grouped_objects=_on_disk("V1__a.sql"), deleted_scripts=["V2__gone.sql"]
-        )
-        state.applied_objects = [_applied("V2__gone.sql", "2")]
+        state.applied_objects = [_applied("V1__a.sql")]
 
         assert _plan(state).actions == ()
 
     def test_zero_scripts_with_applied_history_is_refused(self):
         state = MigrationState(grouped_objects={})
         state.applied_objects = [_applied("V1__a.sql"), _applied("V2__b.sql", "2")]
+        state.missing_applied = tuple(state.applied_objects)
 
         with pytest.raises(RepairSafetyError) as raised:
             _plan(state)
@@ -294,15 +279,3 @@ class TestPlanReads:
             dir_recursive_map=recursive_map,
             read_snapshot=snapshot,
         )
-
-
-def test_count_candidate_missing_skips_deleted_baseline_and_nameless_rows():
-    applied = [
-        _applied("V1__a.sql"),
-        _applied("V2__b.sql", "2", SimpleNamespace(name="DELETE")),
-        _applied("B3__c.sql", "3", "BASELINE"),
-        _applied("V4__d.sql", "4"),
-        SimpleNamespace(script_name="", version="5", type=None),
-    ]
-
-    assert _count_candidate_missing(applied, {"V4__d.sql"}) == 1

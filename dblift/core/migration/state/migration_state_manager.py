@@ -39,6 +39,7 @@ from dblift.core.migration.state.migration_state import (
     MigrationValidationSnapshot,
 )
 from dblift.core.migration.state.migration_state_service import MigrationStateService
+from dblift.core.migration.state.missing_scripts import deleted_script_names, missing_applied
 from dblift.core.migration.state.ordering import OutOfOrder, out_of_order
 from dblift.core.migration.state.rank_wins import effective_current_version, latest_successful_ranks
 from dblift.core.migration.state.repair_plan import RepairPlan
@@ -222,8 +223,14 @@ class MigrationStateManager:
             catalog_read_error=catalog_read_error,
             repeatable_runs=repeatable_runs(selected, applied_migrations),
             checksum_drift=tuple(find_checksum_drift(selected, scoped_applied)),
+            # Judged against the full catalog, so a tag or version filter never
+            # makes an applied script look missing; an undone version is not applied.
+            missing_applied=missing_applied(
+                catalog,
+                self._without_undone(scoped_applied, self._undone_versions(applied_migrations)),
+            ),
             # Only strict validation reads the answer; the other commands skip the
-            # second history analysis it costs.
+            # history analysis it costs.
             out_of_order=(
                 self._snapshot_out_of_order(selected, applied_migrations, target_version)
                 if strict_mode
@@ -265,6 +272,13 @@ class MigrationStateManager:
         return out_of_order(
             pending, self.get_current_version(self._without_undone(applied_migrations, undone))
         )
+
+    def _undone_versions(self, applied_migrations: List[Migration]) -> Set[str]:
+        """Versions undone and not reapplied, as the data service detects them."""
+        data_service = MigrationDataService(self.logger)
+        return data_service._get_undone_versions(
+            applied_migrations
+        ) - data_service._get_reapplied_versions(applied_migrations)
 
     def _without_undone(
         self, applied_migrations: List[Migration], undone_versions: Set[str]
@@ -470,6 +484,10 @@ class MigrationStateManager:
             repeatable_checksums=dict(history.repeatable_checksums),
             repeatable_runs=runs,
             checksum_drift=tuple(drift),
+            # Without a scripts directory there is no catalog to judge against.
+            missing_applied=(
+                missing_applied(all_scripts, applied_objects_filtered) if scripts_dir else ()
+            ),
             resolved_objects=all_scripts if scripts_dir else None,
             grouped_objects=grouped_scripts,
         )
@@ -528,7 +546,7 @@ class MigrationStateManager:
 
         executed_scripts: Set[str] = set()
         repeatable_successes: Dict[str, Migration] = {}
-        deleted_scripts: Set[str] = set()
+        deleted_scripts = deleted_script_names(applied_migrations)
         failed_migrations: List[Migration] = []
         version_groups: Dict[str, List[Migration]] = {}
 
@@ -537,7 +555,6 @@ class MigrationStateManager:
             script_name = getattr(migration, "script_name", "")
 
             if migration_type == "DELETE":
-                deleted_scripts.add(script_name)
                 continue
 
             # Only add to failed_migrations if explicitly failed (success=False)
