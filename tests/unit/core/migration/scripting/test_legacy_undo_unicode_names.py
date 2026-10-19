@@ -75,18 +75,6 @@ def read_as_blank(dialect: str, char: str) -> bool:
     return dialect == "oracle" and char in ORACLE_SPEC.text_blanks
 
 
-def _known_gap(request, dialect: str, char: str, sql: str) -> None:
-    """Before a terminator the scanner's span keeps the ideographic space, so the name is not read."""
-    if read_as_blank(dialect, char) and ";" in sql:
-        request.applymarker(
-            pytest.mark.xfail(
-                strict=True,
-                reason="Oracle: the span keeps the ideographic space before the terminator, "
-                "so the name is not yet read as the engine reads it",
-            )
-        )
-
-
 def _undo(tmp_path, dialect: str, sql: str) -> str:
     migration = tmp_path / "V1__x.sql"
     migration.write_text(sql + "\n", encoding="utf-8")
@@ -202,9 +190,8 @@ def test_there_are_19_trailing_blanks():
     ["CREATE SEQUENCE q{c};", "CREATE SEQUENCE q{c}", "CREATE TABLE t{c}", "CREATE TABLE t{c};\n"],
 )
 def test_undo_of_a_name_that_ends_its_statement_follows_the_engine_reading(
-    request, tmp_path, dialect, char, sql
+    tmp_path, dialect, char, sql
 ):
-    _known_gap(request, dialect, char, sql)
     if refused(dialect, char):
         with pytest.raises(UnsafeStatementSplitError):
             _undo(tmp_path, dialect, sql.format(c=char))
@@ -225,10 +212,7 @@ def test_undo_of_a_name_that_ends_its_statement_follows_the_engine_reading(
 @pytest.mark.parametrize(
     "sql", ["DROP TABLE t{c};", "TRUNCATE TABLE t{c};", "DELETE FROM t{c};", "DROP TABLE t{c}"]
 )
-def test_analysis_of_a_name_that_ends_its_statement_names_what_the_engine_reads(
-    request, dialect, char, sql
-):
-    _known_gap(request, dialect, char, sql)
+def test_analysis_of_a_name_that_ends_its_statement_names_what_the_engine_reads(dialect, char, sql):
     if refused(dialect, char):  # the script is not parsed: nothing is named
         assert not analyse_script(sql.format(c=char), dialect).statements
         return

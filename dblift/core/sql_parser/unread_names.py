@@ -11,6 +11,8 @@ from __future__ import annotations
 import re
 from typing import Any, Iterable, List, Optional, Sequence, Tuple
 
+from dblift.core.sql_parser.statement import Statement
+
 _NAME_CHARACTER = re.compile(r"[\w$]")
 # What is not a name: the first match from the left wins, so a quote inside a comment is the
 # comment's. An opener that never closes matches nothing and its text stays, which only
@@ -57,8 +59,24 @@ def names_unreadable(sql: str, sqlglot_dialect: Optional[str], names: Iterable[s
     )
 
 
+def _without_blanks_before_terminator(span: str, record: Statement) -> str:
+    """``span`` without the blanks the scanner trimmed between the text and its terminator.
+
+    The engine reads those as blanks, so the name before them ends the statement as it does with
+    no terminator. A character the scanner kept in the text stays in the span.
+    """
+    terminator = record.terminator
+    if not terminator or not span.endswith(terminator):
+        return span
+    body = span[: -len(terminator)]
+    if len(body) > len(record.text) and body.startswith(record.text):
+        return record.text + terminator
+    return span
+
+
 def statement_sources(scanner: Any, script: str, statements: Sequence[str]) -> List[Optional[str]]:
-    """Each statement as it stands in ``script``: the scanner's own span for it, untrimmed.
+    """Each statement as it stands in ``script``: the scanner's own span for it, untrimmed
+    except for the blanks the engine reads between the text and its terminator.
 
     The analysis split trims the blanks that end a statement, so a name that ends its statement
     is seen without the character the engine reads as part of it. ``statements`` are matched, in
@@ -75,7 +93,9 @@ def statement_sources(scanner: Any, script: str, statements: Sequence[str]) -> L
             continue
         span = None
         if record.source_start is not None and record.source_end is not None:
-            span = script[record.source_start : record.source_end]
+            span = _without_blanks_before_terminator(
+                script[record.source_start : record.source_end], record
+            )
         texts = (
             record.analysis_statements if record.analysis_statements is not None else (record.text,)
         )
