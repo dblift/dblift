@@ -484,3 +484,8 @@ def test_a_delimiter_block_keeps_the_no_break_spaces_at_the_edges_of_its_stateme
     (record,) = _statements_of(spec, blanks)
     assert record.text == "SELECT 1 \t;\t ;\x0b\x0cSELECT 2\x0b;"
     assert record.analysis_statements == ("SELECT 1", "SELECT 2")
+
+    dollars = f"DELIMITER $$\nSELECT 1;{NBSP}$$\nDELIMITER ;"
+    (record,) = _statements_of(spec, dollars)
+    assert record.text == f"SELECT 1;{NBSP}"
+    assert record.analysis_statements == ("SELECT 1", NBSP)
