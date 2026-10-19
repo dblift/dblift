@@ -105,6 +105,9 @@ class BatchScriptRules:
     blanks: str
     ignored_in_code: str
     division: DivisionRules
+    #: The server nests block comments though the client ends one at the first ``*/``: a batch is
+    #: a statement unless the server reads it as nothing but closed comments.
+    server_nests_comments: bool = False
 
 
 @dataclass(frozen=True)
