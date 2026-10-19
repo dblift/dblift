@@ -6,7 +6,7 @@
 "/* /* */ */ GO": false,
 "/* a */ b */ SELECT 1": false,
 "/* a -- b */ SELECT 1 */ SELECT 2": false,
-"/* a /* b */": true,
+"/* a /* b */": false,
 "/* a /* b */ */ SELECT 1 /* c */": false,
 "/* a /* b */ c */": true,
 "/* a /* b */ c */ CREATE VIEW dbo.v AS SELECT 1 AS a": false,
