@@ -115,6 +115,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Oracle names followed by a blank and a terminator are read.** `DROP TABLE t<U+3000>;`
   now names `t` and its undo is generated, as the engine drops `t`; before, the name was
   reported as unreadable and the undo went to manual review.
+- **Comment detection reads comments in source order.** A `--` or `#` comment holding `/*` no
+  longer hides the code after it from the comment-only check, a carriage return ends a `--`
+  comment, `-/**/-` is code rather than a `--` comment, and an unclosed block comment is never
+  comment-only, so it fails as the engine does.
 - **SQLite execution errors show one failed SQL preview in CLI logs.**
   For versioned migrations and SQL callbacks, the execution service reports the
   failed statement while SQLite still reports the database error.
