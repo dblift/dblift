@@ -123,6 +123,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`migrate` sends a statement made only of a character the engine does not read as a blank.**
+  On PostgreSQL, CockroachDB and YugabyteDB, a piece such as a lone no-break space between two
+  semicolons used to be skipped silently; it is now sent and fails as `psql` does. Redshift follows
+  the same rule (unmeasured there).
+
 - **`info`, `migrate --dry-run` and the parsers' listings list the statements `migrate` sends,
   on every engine.** A trailing comment is no longer listed as a statement on SQLite and DuckDB
   (`validate_sql` of their parsers and `Migration.sql_statements` follow), a statement made of

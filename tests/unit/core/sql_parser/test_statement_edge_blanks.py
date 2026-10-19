@@ -296,3 +296,22 @@ def test_db2_kept_character_inside_a_comment_does_not_make_a_statement(comment: 
         warnings.simplefilter("ignore")
         recorded = record_script("db2", f"VALUES 1;\n{comment}\n;\nVALUES 2;")["execution"]
     assert recorded == ["VALUES 1", "VALUES 2"]
+
+
+@pytest.mark.parametrize("view", ["execution", "analysis"])
+@pytest.mark.parametrize("kept", [NBSP, chr(0x3000), "\x1c"])
+@pytest.mark.parametrize(
+    "dialect", ["postgresql", "cockroachdb", "yugabytedb", "redshift", "aurora-postgresql"]
+)
+def test_postgresql_family_record_made_only_of_a_kept_character_is_a_statement(
+    dialect: str, kept: str, view: str
+) -> None:
+    recorded = record_script(dialect, f"SELECT 1;\n{kept};\nSELECT 2;")[view]
+    end = ";" if view == "execution" else ""
+    assert recorded == [f"SELECT 1{end}", f"{kept}{end}", f"SELECT 2{end}"]
+
+
+@pytest.mark.parametrize("blank", [" ", "\t", "\f"])
+def test_postgresql_record_made_only_of_a_blank_is_still_dropped(blank: str) -> None:
+    recorded = record_script("postgresql", f"SELECT 1;\n{blank};\nSELECT 2;")["execution"]
+    assert recorded == ["SELECT 1;", "SELECT 2;"]

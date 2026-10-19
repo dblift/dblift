@@ -15,7 +15,7 @@ pytestmark = pytest.mark.unit
 NBSP = "\xa0"
 
 #: (dialect, piece, sent): whether the splitter returns the piece of a script as a statement of its
-#: own. Db2, MySQL, MariaDB, SQLite and DuckDB keep these characters, so the piece is sent; the
+#: own. Db2, MySQL, MariaDB, PostgreSQL and its family, SQLite and DuckDB keep these characters, so the piece is sent; the
 #: other dialects read them as white space, so the piece is empty (or a comment) and is no statement.
 #: DuckDB replaces a no-break space like any blank (the driver runs ``<NBSP> -- c``), but keeps a
 #: vertical tab, NEL or U+001F, which the driver rejects: the piece is a statement and the
@@ -59,7 +59,12 @@ CASES = [
     ("mariadb", NBSP, True),
     ("mariadb", f"{NBSP} -- c", True),
     ("mariadb", "\x0b", False),
-    ("postgresql", NBSP, False),
+    ("postgresql", NBSP, True),
+    ("postgresql", "\u3000", True),
+    ("postgresql", "\x1c", True),
+    ("postgresql", "\x0c", False),
+    ("cockroachdb", NBSP, True),
+    ("yugabytedb", NBSP, True),
     ("postgresql", "# c", True),
     ("sqlserver", "# c", True),
 ]

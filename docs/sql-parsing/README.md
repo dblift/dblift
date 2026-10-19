@@ -58,7 +58,7 @@ the extractor's concern and is covered by the model snapshot tests, not here.
   batch) is not a statement, and no statement record is returned for it (a
   client directive such as `DELIMITER` is still recorded, as `kind="directive"`). A piece
   made only of characters the engine's client keeps (a no-break space for
-  SQLite, MySQL and Db2; on MySQL also a control character followed by a
+  SQLite, MySQL, Db2 and the PostgreSQL family; on MySQL also a control character followed by a
   comment) is a statement and is sent, so the engine rejects it as it rejects
   it for the client. A spec states which
   characters are blanks where the client's behaviour is worth citing.
