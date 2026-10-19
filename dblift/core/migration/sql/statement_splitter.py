@@ -7,7 +7,7 @@ from typing import Callable, List, Optional, Set, Tuple, TypeVar, Union
 
 from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
 from dblift.core.logger import Log
-from dblift.core.migration.sql.execution_statement import is_comment_only_statement
+from dblift.core.migration.sql.execution_statement import _comment_only
 from dblift.core.sql_parser.lexical_engine import LexicalEngine
 from dblift.core.sql_parser.parser_factory import SqlParserFactory
 from dblift.core.sql_parser.parser_interface import SqlParserInterface
@@ -114,5 +114,5 @@ class StatementSplitter:
             for text in strings
             if text.strip()
             and not quirks.is_batch_separator(text.strip())
-            and not is_comment_only_statement(text)
+            and not _comment_only(text)
         ]

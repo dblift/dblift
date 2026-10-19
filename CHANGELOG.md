@@ -117,6 +117,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and will be removed in the next major release. When both are passed, `quirks=` wins. A
   plugin name passed to `sqlglot_dialect=` now resolves to that plugin instead of being read as
   an (invalid) sqlglot name.
+- **`dblift.core.migration.sql.is_comment_only_statement`.** It is deprecated and will be
+  removed in the next major release; use `StatementSplitter(dialect).split()`, whose records
+  carry `kind`. It warns when called; its answers are unchanged.
 
 ### Fixed
 
@@ -272,6 +275,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- The `blanks=` and `hash_comments=` keywords of `is_comment_only_statement`, the quirks hooks
+  `empty_statement_blanks()` and `hash_line_comments()` and the `ExecutionEngine`
+  `_is_comment_only_statement` alias (none was in a release). The migration layer decides nothing
+  about a statement the splitter returned.
 - **The internal module `dblift.db.plugins.duckdb.parser._script`.** Use
   `DuckDBFactsParser().split()`.
 - **The internal module `dblift.db.plugins.db2.parser._script`.** Use

@@ -55,12 +55,6 @@ class Db2Quirks(BaseQuirks):
 
         return DB2_SPEC
 
-    def empty_statement_blanks(self) -> Optional[str]:
-        """Db2 keeps every white space character outside its ``text_blanks``: a statement of them is sent."""
-        from dblift.db.plugins.db2.parser.lexical_spec import DB2_SPEC
-
-        return DB2_SPEC.text_blanks
-
     # Capability matrix (was ``_CAPABILITIES["db2"]``).
     supports_transactions = True
     supports_transactional_ddl = True

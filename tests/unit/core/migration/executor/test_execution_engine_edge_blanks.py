@@ -139,21 +139,3 @@ def test_the_line_of_a_statement_counts_the_record_of_kept_characters_before_it(
     statements = StatementSplitter("db2").split_statements(script)
     assert _position(statements, 1, "db2", script) == "line 2"
     assert _position(statements, 2, "db2", script) == "line 3"
-
-
-@pytest.mark.parametrize(
-    "dialect, expected",
-    [("mysql", True), ("mariadb", True), ("postgresql", False), ("sqlserver", False)],
-)
-def test_only_mysql_and_mariadb_read_a_hash_as_a_line_comment(dialect, expected):
-    from dblift.db.provider_registry import ProviderRegistry
-
-    assert ProviderRegistry.get_quirks(dialect).hash_line_comments() is expected
-
-
-def test_a_statement_of_hash_comments_is_empty_only_when_asked():
-    from dblift.core.migration.sql.execution_statement import is_comment_only_statement
-
-    assert is_comment_only_statement("# c\n# d", hash_comments=True)
-    assert not is_comment_only_statement("# c\n# d")
-    assert not is_comment_only_statement("# c\nSELECT 1", hash_comments=True)

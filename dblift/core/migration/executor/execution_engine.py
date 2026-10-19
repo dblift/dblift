@@ -37,7 +37,6 @@ from dblift.core.migration.placeholders.placeholder_service import PlaceholderSe
 from dblift.core.migration.sql.execution_statement import (
     ExecutionStatement,
     classify_execution_statement,
-    is_comment_only_statement,
     neutralise_transaction_statements,
 )
 from dblift.core.migration.sql.migration_sql_parser import (
@@ -115,9 +114,6 @@ class ExecutionEngine:
             log=self.log,
             placeholder_service=placeholder_service,
         )
-
-    # Compatibility alias; script tooling and the engine share one implementation.
-    _is_comment_only_statement = staticmethod(is_comment_only_statement)
 
     def execute_migration(self, migration: Migration, result: OperationResult) -> None:
         """Execute a single migration.

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import warnings
 from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any, List, Optional
@@ -24,42 +25,41 @@ class ExecutionStatement:
     transaction_reason: Optional[str] = None
 
 
-def is_comment_only_statement(
-    sql: str,
-    *,
-    nested_block_comments: bool = False,
-    blanks: Optional[str] = None,
-    hash_comments: bool = False,
-) -> bool:
+def _comment_only(sql: str, *, nested_block_comments: bool = False) -> bool:
     """True if *sql* has no executable tokens after removing block and line comments.
 
     MySQL/MariaDB executable comment directives (``/*!...*/``, ``/*M!...*/``) are not
-    comments the server skips — it runs their contents — so they are excluded from the
-    strip and never count as "comment only".
-
-    Pass ``nested_block_comments=True`` for a dialect whose block comments nest
-    (its tokenizer's ``NESTED_BLOCK_COMMENTS``): ``/* a /* b */ c */`` is then one
-    comment, stripped by the same scanner the dialect parsers use. MySQL/MariaDB
-    comments do not nest, so their directives always take the default path.
-
-    ``blanks`` are the characters the dialect reads as empty (``empty_statement_blanks``);
-    ``None`` is every white space character. ``hash_comments`` also strips ``#`` line comments
-    (``hash_line_comments``).
+    comments the server skips, so they never count as "comment only".
     """
 
-    body = sql.strip(blanks)
+    body = sql.strip()
     if not body:
         return True
     code = strip_comments_preserving_quotes(
         body,
-        line_prefixes=["--", "#"] if hash_comments else ["--"],
+        line_prefixes=["--"],
         has_block_comments=True,
         nested_block_comments=nested_block_comments,
-        blanks=blanks,
         keep_executable_comments=not nested_block_comments,
         keep_unterminated_comment=True,
     )
     return not code
+
+
+def is_comment_only_statement(sql: str, *, nested_block_comments: bool = False) -> bool:
+    """Deprecated: True if *sql* has no executable tokens after removing comments.
+
+    Use ``StatementSplitter(dialect).split()``, whose records carry ``kind`` and never include
+    a statement that is empty or only comments. Pass ``nested_block_comments=True`` for a
+    dialect whose block comments nest.
+    """
+    warnings.warn(
+        "is_comment_only_statement is deprecated and will be removed in the next major "
+        "release; use StatementSplitter(dialect).split(), whose records carry kind.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return _comment_only(sql, nested_block_comments=nested_block_comments)
 
 
 @lru_cache(maxsize=None)
