@@ -1,7 +1,6 @@
-"""Tests for api/_client_operations.py."""
+"""Tests for retained SQL text inspection helpers."""
 
 import unittest
-from unittest.mock import MagicMock
 
 
 class TestHeuristicStatementCount(unittest.TestCase):
@@ -64,31 +63,3 @@ class TestApplySqlScriptWarningScan(unittest.TestCase):
         result = self._result()
         self._scan(result, "-- WARNING: data loss possible\nDROP TABLE users;")
         self.assertTrue(result.requires_manual_review)
-
-
-class TestGenerateUndoScriptOperation(unittest.TestCase):
-    def test_missing_script_raises_or_errors(self):
-        from pathlib import Path
-
-        from dblift.api._client_operations import generate_undo_script_operation
-
-        client = MagicMock()
-        client.migrations_dirs = [Path("/nonexistent")]
-        try:
-            result = generate_undo_script_operation(
-                client, migration_path=Path("/nonexistent/V1.sql")
-            )
-            self.assertIsNotNone(result)
-        except (FileNotFoundError, ValueError, RuntimeError):
-            pass  # Expected — file doesn't exist
-
-
-class TestUndoScriptErrorResult(unittest.TestCase):
-    def test_creates_failure_result(self):
-        from pathlib import Path
-
-        from dblift.api._client_operations import _undo_script_error_result
-
-        result = _undo_script_error_result(Path("/tmp/V1.sql"), "test error")
-        self.assertIsNotNone(result)
-        self.assertFalse(result.success)

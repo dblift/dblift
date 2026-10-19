@@ -1538,7 +1538,6 @@ class TestSqliteUndoWithInvisibleNameCharacters(unittest.TestCase):
 
     def test_undo_leaves_the_existing_table_and_trigger_in_place(self):
         import sqlite3
-        import warnings
 
         from dblift.api import DBLiftClient
         from dblift.config import DbliftConfig
@@ -1563,6 +1562,12 @@ class TestSqliteUndoWithInvisibleNameCharacters(unittest.TestCase):
                 f"CREATE TRIGGER cafe{accent} AFTER INSERT ON t BEGIN SELECT 1; END;\n",
                 encoding="utf-8",
             )
+            (migrations / "U1__lookalike_table.sql").write_text(
+                f'DROP TABLE "t{nbsp}";\n', encoding="utf-8"
+            )
+            (migrations / "U2__lookalike_trigger.sql").write_text(
+                f'DROP TRIGGER "cafe{accent}";\n', encoding="utf-8"
+            )
             config = DbliftConfig.from_dict(
                 {"database": {"type": "sqlite", "path": str(root / "app.db"), "schema": "main"}}
             )
@@ -1570,11 +1575,7 @@ class TestSqliteUndoWithInvisibleNameCharacters(unittest.TestCase):
                 config, migrations_dir=migrations, logger=NullLog()
             ) as client:
                 self.assertTrue(client.migrate().success)
-                with warnings.catch_warnings():
-                    warnings.simplefilter("ignore", DeprecationWarning)
-                    for script in sorted(migrations.glob("V*.sql")):
-                        client.generate_undo_script(script)
-                client.undo(target_version="0.0.0")
+                self.assertTrue(client.undo(target_version="0.0.0").success)
 
             database = sqlite3.connect(root / "app.db")
             self.assertEqual(

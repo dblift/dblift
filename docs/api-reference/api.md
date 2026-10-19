@@ -92,7 +92,7 @@ over `recursive` for its entries. Call overrides do not change subsequent calls.
 
 ### undo()
 
-Rollback applied migrations.
+Rollback applied migrations using an explicit `U*__.sql` or `U*__.py` companion.
 
 ```python
 result = client.undo(
@@ -135,31 +135,6 @@ result = client.baseline(
     version="1.0.0",
     description="Existing production database"
 )
-```
-
-### generate_undo_script()
-
-> **Deprecated since v4.10.** Text-based undo script generation (`generate_undo_script()` and `generate_undo_scripts()`, on `DBLiftClient` and `AsyncDBLiftClient`) emits a `DeprecationWarning` and will be removed in the next major release. It reverses the migration's SQL text, so it cannot reverse changes whose prior state the file does not hold (`DROP COLUMN`, `DROP CONSTRAINT`, column modifications, any `DROP`); for those it returns a warning instead of SQL. Write the `U*__.sql` undo script by hand for such migrations.
-
-Generate an undo script for a single versioned migration.
-
-```python
-result = client.generate_undo_script(
-    "migrations/V1_0_1__Create_table.sql",
-    overwrite=True
-)
-print(f"Generated: {result.undo_script_path}")
-```
-
-### generate_undo_scripts()
-
-> **Deprecated since v4.10.** See [`generate_undo_script()`](#generate_undo_script).
-
-Generate undo scripts for one or more versioned migrations (defaults to all versioned migrations in the migrations directory).
-
-```python
-results = client.generate_undo_scripts(overwrite=True)
-print(f"Generated {len(results)} undo scripts")
 ```
 
 ## Event System
