@@ -7213,7 +7213,7 @@
 "sha256": "d33767030fb567ebf4699543cf51a835e6b5eced5e52adf95a4e7fbfd5c4910d"
 },
 "spec_rows": {
-"count": 685,
+"count": 687,
 "observed": [
 [
 "db2",
@@ -16495,6 +16495,36 @@
 ],
 [
 "sqlserver",
+"/* a /* b */ 'x */ y'",
+{
+"analysis": [
+"/* a /* b */ 'x */ y'"
+],
+"engine": [
+"/* a /* b */ 'x */ y'"
+],
+"splitter": [
+"/* a /* b */ 'x */ y'"
+]
+}
+],
+[
+"sqlserver",
+"/*/**/'*/'",
+{
+"analysis": [
+"/*/**/'*/'"
+],
+"engine": [
+"/*/**/'*/'"
+],
+"splitter": [
+"/*/**/'*/'"
+]
+}
+],
+[
+"sqlserver",
 "SELECT [go] FROM t\ngo -- end\n",
 {
 "analysis": [
@@ -19667,6 +19697,6 @@
 }
 ]
 ],
-"sha256": "22f6e84c2f3067c28f302b18b63251f2b067cb21ee9ca065c45eae20ff8feb51"
+"sha256": "665a6e0cc76501e2078c15d65d38d76f8c89a89e56f64bfb61c211732b76cf74"
 }
 }

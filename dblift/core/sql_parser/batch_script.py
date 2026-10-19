@@ -130,14 +130,14 @@ class BatchScript:
     def _server_has_code(self, start: int, cut: int) -> bool:
         """Whether the server, which nests block comments, reads ``source[start:cut]`` as code.
 
-        A comment the server leaves open is not a comment: the batch is sent and rejected.
+        A lexeme the server leaves open is not a comment: the batch is sent and rejected.
         """
         assert self._server_spec is not None
         text = self.source[start:cut]
         try:
             tokens = LexicalTokenizer(text, spec=self._server_spec).tokenize()
-        except UnsafeStatementSplitError as error:
-            return str(error).startswith("unterminated block comment")
+        except UnsafeStatementSplitError:
+            return True  # an unclosed comment, string or identifier: the server rejects it
         ignored = self.text_blanks + self.rules.ignored_in_code
         return any(
             token.type not in (TokenType.COMMENT, TokenType.EOF) and token.text.strip(ignored)
