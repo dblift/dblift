@@ -6,7 +6,7 @@ remaining ``# lint: allow-dialect-string`` annotations:
 
 1. ``BaseQuirks.is_default_sqlglot_read_fallback`` — exactly one native
    plugin (PostgreSQL) flags itself as the permissive sqlglot read-dialect
-   fallback. The undo-script generators resolve their fallback from it
+   fallback. Script analysis cautions resolve their fallback from it
    instead of hardcoding ``"postgres"``. The resolved value must remain
    ``"postgres"`` (behaviour parity).
 2. ``BaseQuirks.is_sqlserver_family`` — only the SQL Server plugin (and its

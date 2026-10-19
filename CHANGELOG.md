@@ -295,9 +295,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
-- The internal text-based undo-script generator package. Write `U*__.sql` or
-  `U*__.py` files for explicit undo; migration discovery and `undo` continue
-  to use those files.
+- **5.0.0 breaking change:** Removed `DBLiftClient` and `AsyncDBLiftClient`
+  `generate_undo_script()` and `generate_undo_scripts()`, `GenerateUndoScriptResult`,
+  and the internal text-based undo-script generator package. Hand-written
+  `U*__.sql` and `U*__.py` files continue to execute through `undo()`.
 - The `blanks=` and `hash_comments=` keywords of `is_comment_only_statement`, the quirks hooks
   `empty_statement_blanks()` and `hash_line_comments()` and the `ExecutionEngine`
   `_is_comment_only_statement` alias (none was in a release). The migration layer decides nothing

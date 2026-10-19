@@ -19,16 +19,15 @@ RETIRED_SUITES = {
 
 
 def _cases():
-    cases = []
-    for line in INPUTS.read_text(encoding="utf-8").splitlines():
-        row = json.loads(line)
-        origins = [origin for origin in row["origins"] if origin["file"] in RETIRED_SUITES]
-        if not origins:
-            continue
-        dialects = {dialect for origin in origins for dialect in origin["dialects"]}
-        for dialect in sorted(dialects or {"postgresql"}):
-            cases.append(pytest.param(row["sql"], dialect, id=f"{row['id']}-{dialect}"))
-    return cases
+    sql_by_id = {
+        row["id"]: row["sql"]
+        for row in (json.loads(line) for line in INPUTS.read_text(encoding="utf-8").splitlines())
+    }
+    return [
+        pytest.param(sql_by_id[input_id], dialect, id=key)
+        for key in EXPECTED
+        for input_id, dialect in [key.split("-", 1)]
+    ]
 
 
 def test_retained_cases_survive_refreshed_corpus_origins(tmp_path, monkeypatch):

@@ -86,9 +86,6 @@ class BaseQuirks:
     sqlglot_dialect: Optional[str] = None
     #: Plugin-owned reader class for statement facts.
     statement_facts_class: Optional[Type["StatementFactsReader"]] = None
-    #: Whether undo generation reverses statements from their facts (rather than
-    #: asking for a hand-written undo).
-    undo_reverses_statement_facts: bool = False
 
     @property
     def supports_statement_facts(self) -> bool:
@@ -262,7 +259,7 @@ class BaseQuirks:
     #: the last-resort fallback when a dialect declares no ``sqlglot_dialect``
     #: of its own (e.g. DB2, CosmosDB). Exactly one native plugin (PostgreSQL,
     #: whose ``sqlglot_dialect`` is ``"postgres"``) advertises this so the
-    #: undo-script generators resolve the fallback from the registry rather
+    #: script analysis cautions resolve the fallback from the registry rather
     #: than hardcoding ``"postgres"``.
     is_default_sqlglot_read_fallback: bool = False
     #: This dialect is the ANSI/generic rendering reference when a model
