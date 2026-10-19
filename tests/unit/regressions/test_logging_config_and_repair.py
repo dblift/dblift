@@ -159,36 +159,5 @@ class TestScriptEventsEmitted(unittest.TestCase):
         self.assertIn("migration.script.failed", src)
 
 
-# ---------------------------------------------------------------------------
-# repair must not flag baseline rows as MISSING_SCRIPT
-# ---------------------------------------------------------------------------
-class TestRepairSkipsBaseline(unittest.TestCase):
-    def _make_applied(self, script_name: str, type_name: str) -> Any:
-        obj = MagicMock()
-        obj.script_name = script_name
-        obj.version = "2"
-        obj.description = ""
-        obj.type = MagicMock(name="MigType")
-        obj.type.name = type_name
-        return obj
-
-    def test_count_candidate_missing_skips_baseline(self) -> None:
-        from dblift.core.migration.state.repair_plan import _count_candidate_missing
-
-        applied = [
-            self._make_applied("B2__.sql", "BASELINE"),
-            self._make_applied("V3__add_col.sql", "SQL"),
-        ]
-        self.assertEqual(_count_candidate_missing(applied, set()), 1)
-
-    def test_count_candidate_missing_skips_baseline_string(self) -> None:
-        from dblift.core.migration.state.repair_plan import _count_candidate_missing
-
-        applied = [self._make_applied("B2__.sql", "anything")]
-        # type provided as a plain string rather than an enum-like MagicMock.
-        applied[0].type = "BASELINE"
-        self.assertEqual(_count_candidate_missing(applied, set()), 0)
-
-
 if __name__ == "__main__":
     unittest.main()

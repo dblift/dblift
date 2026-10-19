@@ -194,7 +194,6 @@ class MigrationValidator:
         self,
         *,
         valid_scripts: List[Migration],
-        all_valid_scripts: List[Migration],
         applied_migrations: List[Migration],
         repeatable_history: List[Migration],
         validation_result: ValidationResult,
@@ -205,6 +204,7 @@ class MigrationValidator:
         repeatable_runs: Mapping[str, RepeatableRun],
         checksum_drift: Sequence[ChecksumDrift],
         out_of_order: Sequence[OutOfOrder],
+        missing_applied: Sequence[Migration],
     ) -> ValidationResult:
         """Run the common checks over already prepared catalog and history inputs."""
         self._check_repeatable_migrations(
@@ -237,7 +237,7 @@ class MigrationValidator:
             if strict_mode and command in ("migrate", "validate"):
                 self.log.info("Strict mode is enabled. Validating with strict migration rules.")
                 if not self._validate_strict_mode_rules(
-                    valid_scripts, applied_migrations, validation_result, issues, out_of_order
+                    validation_result, issues, missing_applied, out_of_order
                 ):
                     validation_result.issues = issues
                     return validation_result
@@ -249,8 +249,8 @@ class MigrationValidator:
                 validation_result,
                 issues,
                 strict_mode,
-                all_valid_scripts,
                 drift=checksum_drift,
+                missing=missing_applied,
             )
             self._validate_reappeared_migrations(
                 valid_scripts, applied_migrations, validation_result, issues
@@ -304,7 +304,6 @@ class MigrationValidator:
                 return result
             return self._validate_prepared_migrations(
                 valid_scripts=scripts,
-                all_valid_scripts=list(snapshot.resolved_migrations),
                 applied_migrations=list(snapshot.scoped_applied_migrations),
                 repeatable_history=list(snapshot.all_applied_migrations),
                 validation_result=result,
@@ -315,6 +314,7 @@ class MigrationValidator:
                 repeatable_runs=snapshot.repeatable_runs,
                 checksum_drift=snapshot.checksum_drift,
                 out_of_order=snapshot.out_of_order,
+                missing_applied=snapshot.missing_applied,
             )
         except Exception as error:
             result.success = False
@@ -507,9 +507,9 @@ class MigrationValidator:
         result: ValidationResult,
         issues: List[str],
         strict_mode: bool = False,
-        all_scripts: Optional[List[Migration]] = None,
         *,
         drift: Sequence[ChecksumDrift],
+        missing: Sequence[Migration],
     ) -> None:
         """Delegate to :func:`dblift.core.sql_validator._checksum_validator.validate_checksums`."""
         from dblift.core.sql_validator._checksum_validator import validate_checksums as _impl
@@ -521,8 +521,8 @@ class MigrationValidator:
             result,
             issues,
             strict_mode,
-            all_scripts,
             drift=drift,
+            missing=missing,
         )
 
     def _check_repeatable_migrations(
@@ -545,10 +545,9 @@ class MigrationValidator:
 
     def _validate_strict_mode_rules(
         self,
-        scripts: List[Migration],
-        applied_migrations: List[Migration],
         result: ValidationResult,
         issues: List[str],
+        missing_applied: Sequence[Migration],
         out_of_order: Sequence[OutOfOrder],
     ) -> bool:
         """Delegate to
@@ -558,7 +557,7 @@ class MigrationValidator:
             validate_strict_mode_rules as _impl,
         )
 
-        return _impl(self, scripts, applied_migrations, result, issues, out_of_order)
+        return _impl(self, result, issues, missing_applied, out_of_order)
 
     def _validate_reappeared_migrations(
         self,

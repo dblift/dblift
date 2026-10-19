@@ -6,6 +6,7 @@ import pytest
 
 from dblift.core.migration.migration import MigrationType
 from dblift.core.migration.state.checksum_drift import find_checksum_drift
+from dblift.core.migration.state.missing_scripts import missing_applied
 from dblift.core.sql_validator.migration_validator import MigrationValidator, ValidationResult
 
 
@@ -53,6 +54,7 @@ class TestValidateChecksumsVersionCollision:
             issues=issues,
             strict_mode=False,
             drift=find_checksum_drift([alt_script], [applied]),
+            missing=missing_applied([alt_script], [applied]),
         )
 
         warning_calls = [str(c) for c in validator.log.warning.call_args_list]
@@ -83,8 +85,8 @@ class TestValidateChecksumsTagVersionScope:
             result=result,
             issues=issues,
             strict_mode=False,
-            all_scripts=[in_scope_script, filtered_out_script],
             drift=find_checksum_drift([in_scope_script], [applied_filtered_out]),
+            missing=missing_applied([in_scope_script, filtered_out_script], [applied_filtered_out]),
         )
 
         assert issues == []
@@ -94,3 +96,53 @@ class TestValidateChecksumsTagVersionScope:
         assert any(
             "V2__add_index.sql" in c and "out of scope" in c for c in debug_calls
         ), f"Expected an out-of-scope debug log for V2__add_index.sql. Got: {debug_calls}"
+
+
+@pytest.mark.unit
+class TestValidateChecksumsMissingScripts:
+    def _validate(self, validator, scripts, applied, *, strict):
+        result = ValidationResult()
+        issues = []
+        validator._validate_checksums(
+            scripts,
+            applied,
+            result,
+            issues,
+            strict_mode=strict,
+            drift=find_checksum_drift(scripts, applied),
+            missing=missing_applied(scripts, applied),
+        )
+        return result, issues
+
+    def test_script_applied_twice_is_reported_once(self):
+        validator = _make_validator()
+        rows = [_make_migration("V1__gone.sql", "1"), _make_migration("V1__gone.sql", "1")]
+
+        result, issues = self._validate(validator, [], rows, strict=True)
+
+        assert len(issues) == 1
+        assert result.failed_scripts == ["V1__gone.sql"]
+
+    def test_deleted_script_logs_the_deleted_marker_and_raises_nothing(self):
+        validator = _make_validator()
+        rows = [
+            _make_migration("V1__gone.sql", "1"),
+            _make_migration("V1__gone.sql", "1", MigrationType.DELETE),
+        ]
+
+        result, issues = self._validate(validator, [], rows, strict=True)
+
+        assert issues == []
+        assert result.failed_scripts == []
+        debug_calls = [str(c) for c in validator.log.debug.call_args_list]
+        assert any("V1__gone.sql" in c and "marked as deleted" in c for c in debug_calls)
+
+    def test_script_with_only_a_failed_row_is_not_reported_missing(self):
+        validator = _make_validator()
+        failed = _make_migration("V1__gone.sql", "1")
+        failed.success = False
+
+        result, issues = self._validate(validator, [], [failed], strict=True)
+
+        assert issues == []
+        assert result.failed_scripts == []

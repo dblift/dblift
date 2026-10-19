@@ -60,7 +60,7 @@ def _repair_command(calls: list, *, acquired: bool = True):
 
     def build_state(*args, **kwargs):
         calls.append("build_state")
-        return MagicMock(applied_objects=[], failed_objects=[])
+        return MagicMock(applied_objects=[], failed_objects=[], missing_applied=())
 
     cmd.state_manager.build_state.side_effect = build_state
     wire_plan_repairs(cmd.state_manager)
