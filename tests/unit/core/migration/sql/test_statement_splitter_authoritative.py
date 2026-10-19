@@ -48,7 +48,7 @@ def test_a_parser_bug_is_a_refusal_not_a_semicolon_split(monkeypatch) -> None:
         LexicalStatementParser,
     )
 
-    monkeypatch.setattr(LexicalStatementParser, "split_statements", _boom)
+    monkeypatch.setattr(LexicalStatementParser, "split", _boom)
     script = "SELECT 1; SELECT $$a;b$$;"
     with pytest.raises(UnsafeStatementSplitError):
         SqlAnalyzer("postgresql").split_statements(script)
@@ -60,7 +60,7 @@ def test_an_oracle_parser_bug_is_a_refusal_not_a_regex_split(monkeypatch) -> Non
     from dblift.core.migration.sql.migration_sql_parser import parse_migration_sql
     from dblift.core.sql_parser.lexical_statement_parser import LexicalStatementParser
 
-    monkeypatch.setattr(LexicalStatementParser, "split_statements", _boom)
+    monkeypatch.setattr(LexicalStatementParser, "split", _boom)
     script = "SELECT 1 FROM dual;"
     with pytest.raises(UnsafeStatementSplitError):
         SqlAnalyzer("oracle").split_statements(script)

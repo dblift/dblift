@@ -69,14 +69,14 @@ CASES = [
         "comment_only_tail",
         "SELECT 1; -- bye",
         [("SELECT 1", 1, ";", 0, 9)],
-        ["SELECT 1", "-- bye"],
+        ["SELECT 1"],
         "SELECT 1;  ",
     ),
     (
         "comment_only_script",
         "-- only a comment\n/* here */",
         [],
-        ["-- only a comment\n/* here */"],
+        [],
         " \n ",
     ),
     (
@@ -480,12 +480,9 @@ def test_records_keep_every_other_field_at_its_default():
         )
 
 
-def test_comment_only_segments_are_records_only_for_analysis():
+def test_comment_only_segments_are_records_in_no_projection():
     assert [r.text for r in ENGINE.split("SELECT 1; -- bye")] == ["SELECT 1"]
-    assert [r.text for r in ENGINE.split("SELECT 1; -- bye", include_comment_only=True)] == [
-        "SELECT 1",
-        "-- bye",
-    ]
+    assert ENGINE.split_for_analysis("SELECT 1; -- bye") == ["SELECT 1"]
 
 
 @pytest.mark.parametrize("row", ROWS, ids=lambda row: row.row_id)

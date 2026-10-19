@@ -128,9 +128,6 @@ class RegexParser(SqlParserInterface):
 
             # Parse each statement
             for sql in sql_statements:
-                if not sql.strip():
-                    continue
-
                 try:
                     stmt_type = self._classify_statement(sql)
                     objects = self.extract_objects(sql, default_schema)

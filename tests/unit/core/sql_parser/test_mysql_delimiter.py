@@ -231,7 +231,9 @@ def test_delimiter_not_first_on_its_line_is_refused(spec):
 
 
 def fields(record: Statement) -> Tuple[object, ...]:
-    return tuple(getattr(record, f.name) for f in dataclasses.fields(record))
+    return tuple(
+        getattr(record, f.name) for f in dataclasses.fields(record) if f.name != "execution_text"
+    )
 
 
 RecordTuple = Tuple[object, ...]

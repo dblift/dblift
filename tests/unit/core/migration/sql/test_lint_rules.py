@@ -138,6 +138,17 @@ def test_mixed_transaction_modes_is_an_error():
     assert len(mixed) == 1 and mixed[0].severity == ERROR and mixed[0].statement == 1
 
 
+def test_mixed_transaction_modes_names_the_statement_not_one_its_text_is_inside():
+    findings = find_issues(
+        analyse_script(
+            "SELECT 1;\nCREATE INDEX CONCURRENTLY i2 ON t (a) -- SELECT 1\n;", "postgresql"
+        ),
+        "postgresql",
+    )
+    mixed = [f for f in findings if f.code == "mixed-transaction-modes"]
+    assert [f.statement for f in mixed] == [1]
+
+
 def test_a_script_of_only_autocommit_statements_is_not_mixed():
     assert _codes("CREATE INDEX CONCURRENTLY idx ON users (email);", "postgresql") == []
 

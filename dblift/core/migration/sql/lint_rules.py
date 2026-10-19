@@ -21,7 +21,6 @@ from sqlglot.errors import ParseError, TokenError
 from dblift.core.migration.sql.execution_statement import (
     classify_execution_statement,
     execution_units,
-    is_comment_only_statement,
 )
 from dblift.core.migration.sql.script_analysis import (
     AnalysedStatement,
@@ -370,17 +369,15 @@ def _mixed_transaction_modes(
     statements = list(statements)
     units = execution_units(text, dialect) if text else None
     if units is None:
-        units = [stmt.sql for stmt in statements if stmt.sql]
-    modes = [
-        (unit, classify_execution_statement(unit, dialect=dialect))
-        for unit in units
-        if unit and not is_comment_only_statement(unit)
-    ]
+        units = [stmt.sql for stmt in statements]
+    modes = [(unit, classify_execution_statement(unit, dialect=dialect)) for unit in units]
     autocommit = [(unit, mode) for unit, mode in modes if not mode.can_execute_in_transaction]
     if not autocommit or len(autocommit) == len(modes):
         return []
     unit, mode = autocommit[0]
-    stmt = next((s for s in statements if s.sql and s.sql.strip() in unit), None)
+    stmt = next((s for s in statements if s.sql == unit), None) or next(
+        (s for s in statements if s.sql in unit), None
+    )
     reason = f"{mode.transaction_reason}: " if mode.transaction_reason else ""
     return [
         Finding(

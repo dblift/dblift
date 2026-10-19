@@ -11,7 +11,7 @@ from __future__ import annotations
 import re
 from typing import Any, Iterable, List, Optional, Sequence, Tuple
 
-from dblift.core.sql_parser.statement import Statement
+from dblift.core.sql_parser.statement import Statement, executable_records
 
 _NAME_CHARACTER = re.compile(r"[\w$]")
 # What is not a name: the first match from the left wins, so a quote inside a comment is the
@@ -86,11 +86,8 @@ def statement_sources(scanner: Any, script: str, statements: Sequence[str]) -> L
     """
     if script.isascii():
         return list(statements)
-    records = scanner.split(script)
     spans: List[Tuple[str, Optional[str]]] = []
-    for record in records:
-        if record.kind == "directive" or record.repeat <= 0:
-            continue
+    for record in executable_records(scanner.split(script)):
         span = None
         if record.source_start is not None and record.source_end is not None:
             span = _without_blanks_before_terminator(

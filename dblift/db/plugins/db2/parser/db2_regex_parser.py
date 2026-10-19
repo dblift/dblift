@@ -136,9 +136,6 @@ class DB2RegexParser(EnhancedRegexParser):
 
             # Parse each statement with DB2-specific handling
             for sql in sql_statements:
-                if not sql.strip():
-                    continue
-
                 try:
                     stmt_type = self._classify_statement_enhanced(sql)
                     objects = self.extract_objects(self._clean_db2_comments(sql), default_schema)

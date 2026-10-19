@@ -58,12 +58,8 @@ def parse_migration_sql(
     """Split the supplied content without modifying migration state.
 
     ``for_analysis`` asks for the statements a statement-by-statement reader needs (a T-SQL batch
-    divided) instead of what execution sends. A statement is empty when it holds only the blanks
-    of ``dialect`` (any white space character when it names none).
+    divided) instead of what execution sends. The splitter's list is returned as it is.
     """
-    from dblift.db.provider_registry import ProviderRegistry
-
-    blanks = ProviderRegistry.get_quirks(dialect).empty_statement_blanks()
     try:
         statements = (
             analyzer.split_statements_for_analysis(content)
@@ -71,7 +67,7 @@ def parse_migration_sql(
             else analyzer.split_statements(content)
         )
         log.debug(f"SqlAnalyzer split returned {len(statements)} statements")
-        return [statement for statement in statements if statement.strip(blanks)]
+        return statements
     except (UnsafeStatementSplitError, UnsupportedMetaCommandError):
         # Preserve the dialect scanner's deliberate refusal and its location.
         raise

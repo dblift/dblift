@@ -167,6 +167,6 @@ def test_a_splitter_failure_is_a_refusal_and_never_a_guess(monkeypatch):
     def broken(self, script):
         raise ValueError("boom")
 
-    monkeypatch.setattr(LexicalEngine, "split_statements", broken)
+    monkeypatch.setattr(LexicalEngine, "split", broken)
     with pytest.raises(UnsafeStatementSplitError, match="sqlserver statement splitter failed"):
         SqlAnalyzer("sqlserver").split_statements("SELECT 1;\nSELECT 2;")

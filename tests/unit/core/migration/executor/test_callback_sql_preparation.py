@@ -105,19 +105,20 @@ def test_preparation_errors_keep_migration_result_and_callback_exception_contrac
 
 
 @pytest.mark.parametrize(
-    "dialect, non_executable",
-    [("sqlserver", "GO"), ("postgresql", "-- comment only"), ("postgresql", "  ")],
+    "dialect, content",
+    [
+        ("sqlserver", "GO\nCREATE TABLE t (id INT)\nGO\n"),
+        ("postgresql", "-- comment only\n;\nCREATE TABLE t (id INT);"),
+        ("postgresql", "  ;\nCREATE TABLE t (id INT);"),
+    ],
 )
-def test_callback_skips_non_executable_statements(dialect, non_executable):
+def test_callback_sends_only_the_statements_the_splitter_returns(dialect, content):
     engine = _engine(dialect)
     callback = make_migration(
-        script_name="beforeMigrate__log.sql", content="SELECT 1", logger=engine.log
+        script_name="beforeMigrate__log.sql", content=content, logger=engine.log
     )
-    with patch.object(
-        engine.sql_analyzer,
-        "split_statements",
-        return_value=[non_executable, "CREATE TABLE t (id INT)"],
-    ):
-        engine.execute_callback(callback)
 
-    engine.provider.execute_statement.assert_called_once_with("CREATE TABLE t (id INT)")
+    engine.execute_callback(callback)
+
+    engine.provider.execute_statement.assert_called_once()
+    assert engine.provider.execute_statement.call_args.args[0].startswith("CREATE TABLE t (id INT)")

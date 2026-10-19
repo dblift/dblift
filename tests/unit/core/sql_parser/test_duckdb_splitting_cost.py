@@ -65,7 +65,7 @@ class Capped(Meter):
 
 
 def counted(script: str, refusal: bool = False, meter: Optional[Meter] = None) -> int:
-    """Operations of the lexeme pass and of the assembly, for both views, on ``script``."""
+    """Operations of the lexeme pass and of the assembly on ``script``."""
     meter = Meter() if meter is None else meter
     tokenizer = LexicalTokenizer(script, spec=DUCKDB_SPEC)
     tokenizer.sql = CountingText(tokenizer.sql, meter)
@@ -79,14 +79,13 @@ def counted(script: str, refusal: bool = False, meter: Optional[Meter] = None) -
     original = blank_pass.kept_stretches  # the pass each statement is read through alone
     alone = lambda sql, *args: original(CountingText(sql, meter), *args)  # noqa: E731
     with mock.patch.object(blank_pass, "kept_stretches", alone):
-        for analysis in (False, True):
-            SegmentScript(
-                DUCKDB_RULES,
-                CountingText(script, meter),
-                tokenizer.origin,
-                DUCKDB_SPEC.text_blanks,
-                tokenizer.kept,
-            ).records(CountingTokens(tokens, meter), analysis)
+        SegmentScript(
+            DUCKDB_RULES,
+            CountingText(script, meter),
+            tokenizer.origin,
+            DUCKDB_SPEC.text_blanks,
+            tokenizer.kept,
+        ).records(CountingTokens(tokens, meter))
     return meter.count
 
 

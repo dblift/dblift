@@ -28,15 +28,18 @@ class DelimiterScript:
         origin: int,
         text_blanks: str,
         trailing_blanks: str,
+        comment_adjacent_blanks: str = "",
     ) -> None:
         """Take the script as read (CRLF as LF); ``removed`` maps offsets back.
 
         A statement loses only ``text_blanks`` at its start and ``trailing_blanks`` at its end;
-        one made only of ``trailing_blanks`` is empty.
+        one made only of ``trailing_blanks`` is empty. One made only of comments and
+        ``text_blanks`` or ``comment_adjacent_blanks`` is not sent either.
         """
         self.rules = rules
         self.text_blanks = text_blanks
         self.trailing_blanks = trailing_blanks
+        self.comment_adjacent_blanks = comment_adjacent_blanks
         self.client_name = client_name
         self.text = text
         self.removed = removed  # `removed` and `origin` map record offsets back to the source
@@ -182,6 +185,10 @@ class DelimiterScript:
         blanks, trailing = self.text_blanks, self.trailing_blanks
         text = self.text[self.start : cut].rstrip(trailing)
         if not text:
+            return
+        if self.comment_adjacent_blanks and not self._blank(text, self._spans).strip(
+            blanks + self.comment_adjacent_blanks
+        ):
             return
         self._refuse_session_mode(text)
         analysis: Optional[Tuple[str, ...]] = None

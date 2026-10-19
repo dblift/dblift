@@ -118,10 +118,10 @@ def test_sqlserver_carriage_return_go_inside_literal_is_sql() -> None:
 
 
 def test_snowflake_scanner_failure_cannot_become_guessed_executable_sql(monkeypatch) -> None:
-    def fail(self, sql_content: str, strict_tokenizer: bool = False) -> list[str]:
+    def fail(self, sql_content: str) -> list[str]:
         raise ValueError("scanner bug")
 
-    monkeypatch.setattr(SnowflakeStatementParser, "split_statements", fail)
+    monkeypatch.setattr(SnowflakeStatementParser, "split", fail)
     with pytest.raises(UnsafeStatementSplitError, match="scanner bug"):
         SqlAnalyzer("snowflake").split_statements("SELECT 'a;b'; SELECT 2;")
 

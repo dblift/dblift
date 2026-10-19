@@ -1,7 +1,7 @@
 """Statement ends and refusals for a client that reads a script line by line."""
 
 import re
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence
 
 from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
 from dblift.core.sql_parser.client_directives import classify_directive
@@ -199,10 +199,10 @@ class ClientScript:
         found = classify_directive(self.rules, token.text)
         return found is not None and found[1] is DirectiveAction.EXIT
 
-    def directive_record(self, token: Token) -> Tuple[Statement, str]:
+    def directive_record(self, token: Token) -> Statement:
         """Record a directive line, or refuse it.
 
-        The string is empty, except for a policy directive: execution reads
+        Nothing is sent for it, except for a policy directive: execution reads
         that policy from the statement list, so it gets ``<line>;``.
         """
         found = classify_directive(self.rules, token.text)
@@ -217,24 +217,25 @@ class ClientScript:
                 f"Unsupported {self.client_name} directive {name!r} at line {token.line}; "
                 "dblift does not run it"
             )
-        record = Statement(
+        sent = None
+        if name in self.rules.policy_projection:
+            if self._policy.match(token.text) is None:
+                raise UnsupportedMetaCommandError(
+                    f"Unsupported {name} action at line {token.line}: "
+                    f"expected {' or '.join(self.rules.policy_actions)}"
+                )
+            sent = token.text if token.text.endswith(";") else token.text + ";"
+        return Statement(
             text=token.text,
             line=token.line,
             terminator=None,
             kind="directive",
+            execution_text=sent,
             source_start=token.pos,
             source_end=self._line_end(token.pos),
         )
-        if name not in self.rules.policy_projection:
-            return record, ""
-        if self._policy.match(token.text) is None:
-            raise UnsupportedMetaCommandError(
-                f"Unsupported {name} action at line {token.line}: "
-                f"expected {' or '.join(self.rules.policy_actions)}"
-            )
-        return record, token.text if token.text.endswith(";") else token.text + ";"
 
-    def exec_record(self, token: Token) -> Tuple[Statement, str]:
+    def exec_record(self, token: Token) -> Statement:
         """``EXEC[UTE] stmt[;]`` is the unit ``BEGIN stmt; END;``."""
         body = _EXEC_BODY.match(token.text)
         stmt = body.group(1) if body else ""
@@ -246,16 +247,13 @@ class ClientScript:
             )
         opener, closer = self.rules.exec_wrapper
         text = self.substitute(f"{opener}{stmt}{closer}", token.line)
-        return (
-            Statement(
-                text=text,
-                line=token.line,
-                terminator=None,
-                kind="sql",
-                source_start=token.pos,
-                source_end=self._line_end(token.pos),
-            ),
-            text,
+        return Statement(
+            text=text,
+            line=token.line,
+            terminator=None,
+            kind="sql",
+            source_start=token.pos,
+            source_end=self._line_end(token.pos),
         )
 
     def ignored_tail_message(self, exit_token: Token) -> Optional[str]:

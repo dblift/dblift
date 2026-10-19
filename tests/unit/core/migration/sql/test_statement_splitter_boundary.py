@@ -37,6 +37,9 @@ def test_unmigrated_statement_splitter_uses_regex_parser_factory(monkeypatch):
         def lexical_spec(self):
             return None
 
+        def is_batch_separator(self, text):
+            return False
+
     monkeypatch.setattr(splitter_module, "SqlParserFactory", FakeFactory)
     monkeypatch.setattr(
         splitter_module.ProviderRegistry, "get_quirks", lambda dialect: UnmigratedQuirks()

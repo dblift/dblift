@@ -1,7 +1,7 @@
 """Extended unit tests for ExecutionEngine covering uncovered branches.
 
 Target file: core/migration/executor/execution_engine.py
-Focuses on: execute_migration full path, _is_comment_only_statement, _prepare_transaction,
+Focuses on: execute_migration full path, _prepare_transaction,
 _probe_dialect_key, _record_migration_history,
 _record_autocommit_migration_history, _commit_migration, _handle_statement_failure,
 execute_callback, _execute_via_factory, autocommit statement routing.
@@ -86,68 +86,18 @@ def _make_python_migration(name="V2__migrate.py"):
     return m
 
 
-# ---------------------------------------------------------------------------
-# _is_comment_only_statement
-# ---------------------------------------------------------------------------
-
-
-class TestIsCommentOnlyStatement(unittest.TestCase):
-    def test_empty_string_is_comment_only(self):
-        self.assertTrue(ExecutionEngine._is_comment_only_statement(""))
-
-    def test_whitespace_only_is_comment_only(self):
-        self.assertTrue(ExecutionEngine._is_comment_only_statement("   \n\t  "))
-
-    def test_block_comment_only(self):
-        self.assertTrue(ExecutionEngine._is_comment_only_statement("/* this is a comment */"))
-
-    def test_line_comment_only(self):
-        self.assertTrue(ExecutionEngine._is_comment_only_statement("-- line comment"))
-
-    def test_multi_line_block_comment(self):
-        self.assertTrue(ExecutionEngine._is_comment_only_statement("/* \n multi\n line\n */"))
-
-    def test_sql_with_comment_is_not_comment_only(self):
-        self.assertFalse(ExecutionEngine._is_comment_only_statement("-- comment\nSELECT 1"))
-
-    def test_plain_sql_is_not_comment_only(self):
-        self.assertFalse(ExecutionEngine._is_comment_only_statement("SELECT 1"))
-
-    def test_block_comment_followed_by_sql(self):
-        self.assertFalse(
-            ExecutionEngine._is_comment_only_statement("/* intro */ CREATE TABLE t (id INT)")
-        )
-
-    def test_mysql_versioned_comment_directive_is_not_comment_only(self):
-        """``/*!...*/`` is code MySQL/MariaDB execute, not a comment to skip —
-        mysqldump wraps FK-check toggles in it."""
-        self.assertFalse(
-            ExecutionEngine._is_comment_only_statement("/*!40014 SET FOREIGN_KEY_CHECKS=0 */")
-        )
-
-    def test_mariadb_comment_directive_is_not_comment_only(self):
-        self.assertFalse(
-            ExecutionEngine._is_comment_only_statement(
-                "/*M!100001 SET STATEMENT sql_log_bin=0 FOR SET GLOBAL x=1 */"
-            )
-        )
-
-
 class TestExecutableSqlStatements(unittest.TestCase):
-    def test_filters_non_executable_statements_after_parsing(self):
+    def test_returns_every_statement_the_parser_handed_over(self):
         engine = _make_engine()
         migration = _make_sql_migration(
-            statements=[
-                "",
-                "-- comment only",
-                "/* block comment */",
-                "CREATE TABLE users (id INT)",
-            ]
+            statements=["CREATE TABLE users (id INT)", "INSERT INTO users VALUES (1)"]
         )
 
         statements = engine.get_executable_sql_statements(migration, MagicMock())
 
-        self.assertEqual(statements, ["CREATE TABLE users (id INT)"])
+        self.assertEqual(
+            statements, ["CREATE TABLE users (id INT)", "INSERT INTO users VALUES (1)"]
+        )
 
 
 # ---------------------------------------------------------------------------

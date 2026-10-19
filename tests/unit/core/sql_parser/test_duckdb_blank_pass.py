@@ -12,11 +12,9 @@ import duckdb
 import pytest
 
 from dblift.core.exceptions import UnsafeStatementSplitError
-from dblift.core.migration.sql.execution_statement import is_comment_only_statement
 from dblift.core.sql_parser.blank_pass import kept_stretches
 from dblift.core.sql_parser.lexical_engine import LexicalEngine
 from dblift.db.plugins.duckdb.parser.lexical_spec import DUCKDB_RULES, DUCKDB_SPEC
-from dblift.db.provider_registry import ProviderRegistry
 
 ENGINE = LexicalEngine(DUCKDB_SPEC)
 NB = chr(0xA0)
@@ -431,20 +429,6 @@ def test_a_final_blank_that_is_no_stray_tail_is_not_refused(script):
     assert ENGINE.split_statements(script)
 
 
-def migrate_statements(statements):
-    """The statements ``migrate`` sends: it drops the empty and the comment-only ones, as the engine does."""
-    quirks = ProviderRegistry.get_quirks("duckdb")
-    blanks = quirks.empty_statement_blanks()
-    kept = []
-    for statement in statements:
-        stripped = statement.strip(blanks)
-        if stripped and not is_comment_only_statement(
-            stripped, blanks=blanks, hash_comments=quirks.hash_line_comments()
-        ):
-            kept.append(statement)
-    return kept
-
-
 def outcome(con, run):
     """``run`` inside one transaction, as a migration does: whether it failed, and the tables left."""
     con.execute("BEGIN")
@@ -487,7 +471,7 @@ def effect_fuzz(split, seed, count):
             script += rng.choice(ends)
         script += rng.choice(blanks)
         try:
-            statements = migrate_statements(split(script))
+            statements = split(script)  # migrate sends every statement the splitter returns
         except UnsafeStatementSplitError:
             refused += 1
             continue

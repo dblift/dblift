@@ -97,6 +97,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   read statements through the plugin's own statement facts reader; a plugin that provides a
   reader also provides its facts parser. A plugin that declares no reader no longer inherits
   another plugin's facts through a shared sqlglot dialect name, when `quirks=` is passed.
+- **`StatementSplitter.split` returns the records, and the statement lists are projections of
+  them.** `Statement` gains `execution_text` (the string execution sends when it is not `text`),
+  and `executable_records`, `execution_strings`, `execution_units` and `analysis_sql` in
+  `dblift.core.sql_parser.statement` select and project the records, positively on `kind`: a
+  record of an unknown kind is no statement. `split_statements` is the execution projection and
+  returns the same strings as before. A parser that returns strings only is adapted to records
+  and told once to return records. The `GO 0` notice is logged where the record is cut.
+- **A custom dialect that only implements `split_statements` keeps working unchanged.** Its
+  empty and comment-only pieces and batch separators are still skipped, and a one-time
+  deprecation message asks it to implement `split()` and return `Statement` records; the
+  skips end in the next major release.
 
 ### Deprecated
 
@@ -106,9 +117,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and will be removed in the next major release. When both are passed, `quirks=` wins. A
   plugin name passed to `sqlglot_dialect=` now resolves to that plugin instead of being read as
   an (invalid) sqlglot name.
+- **`dblift.core.migration.sql.is_comment_only_statement`.** It is deprecated and will be
+  removed in the next major release; use `StatementSplitter(dialect).split()`, whose records
+  carry `kind`. It warns when called; its answers are unchanged.
 
 ### Fixed
 
+- **`info`, `migrate --dry-run` and the parsers' listings list the statements `migrate` sends,
+  on every engine.** A trailing comment is no longer listed as a statement on SQLite and DuckDB
+  (`validate_sql` of their parsers and `Migration.sql_statements` follow), a statement made of
+  a character MySQL, MariaDB or Db2 keep is listed, and a listed statement is the text that is
+  sent, with no characters trimmed from its edges.
+- **`migrate` sends every statement the splitter returns.** SQLite and DuckDB no longer skip
+  a statement made only of a character the engine rejects (such as U+001C): it is sent and
+  fails as the engine does. On DuckDB a comment that ends at a carriage return no longer hides
+  the statement after it. A `GO 0` batch is now reported once, not twice, when a migration is
+  prepared.
+- **A piece of a script with no code is no longer a statement, in every dialect.**
+  On SQLite and DuckDB, a segment made only of comments no longer shows up as an
+  `UNKNOWN` statement in `info` or linting, and a nested comment counts as a comment on
+  DuckDB. On SQL Server, a batch holding only `;` and blanks (a no-break space, a form feed, a
+  vertical tab, a zero-width space and the other blanks of the dialect), in any order, is no
+  longer returned as a statement. The
+  `mariadb` client sends nothing for a piece made only of a control character and
+  comments, and neither does the MariaDB splitter now; the MySQL splitter still sends it,
+  as the `mysql` client does.
 - **A Snowflake statement ending in an en space (U+2002) is now read as Snowflake reads it.**
   The en space at a statement edge is trimmed like any blank and the object name before it is
   recognised; the other Unicode blanks stay in the text, as Snowflake rejects them. A SQL Server
@@ -262,6 +295,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- The `blanks=` and `hash_comments=` keywords of `is_comment_only_statement`, the quirks hooks
+  `empty_statement_blanks()` and `hash_line_comments()` and the `ExecutionEngine`
+  `_is_comment_only_statement` alias (none was in a release). The migration layer decides nothing
+  about a statement the splitter returned.
 - **The internal module `dblift.db.plugins.duckdb.parser._script`.** Use
   `DuckDBFactsParser().split()`.
 - **The internal module `dblift.db.plugins.db2.parser._script`.** Use

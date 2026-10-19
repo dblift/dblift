@@ -37,11 +37,11 @@ class SegmentScript:
         self.kept = kept
         self.comment_tail = False
 
-    def records(self, tokens: Sequence[Token], include_comment_only: bool) -> List[Statement]:
+    def records(self, tokens: Sequence[Token]) -> List[Statement]:
         """The records of the script, read with one cursor over ``tokens``.
 
         A segment runs from just after a ``;`` to the next one (or the end). It is a record when it
-        holds a token that is not a comment, or, for analysis, a character outside ``text_blanks``.
+        holds a token that is not a comment.
         The text is the segment without the blanks the engine reads at both ends; comments stay in it.
         """
         found: List[Statement] = []
@@ -49,7 +49,7 @@ class SegmentScript:
         for index in range(len(tokens)):
             token = tokens[index]
             if token.type == TokenType.DELIMITER:
-                self._finish(found, start, token.pos, ";", line, code, include_comment_only)
+                self._finish(found, start, token.pos, ";", line, code)
                 start, line, code = token.pos + 1, token.line, False
             elif token.type != TokenType.COMMENT:
                 code = True
@@ -58,7 +58,7 @@ class SegmentScript:
         self.comment_tail = (
             last is not None and last.type == TokenType.COMMENT and last.pos + len(last.text) >= end
         )
-        self._finish(found, start, end, None, line, code, include_comment_only)
+        self._finish(found, start, end, None, line, code)
         return found
 
     def _finish(
@@ -69,31 +69,28 @@ class SegmentScript:
         terminator: Optional[str],
         line: int,
         code: bool,
-        include_comment_only: bool,
     ) -> None:
         """Append the record of the segment ``source[start:end]``, if it is one."""
-        blanks = self.text_blanks
         raw = self.source[start:end]
         if terminator is None and not code and not self.comment_tail:
             self._refuse_blank_at(
                 stray_final_blank(self.source, self.rules),
                 "the engine keeps this blank at the end of the script and rejects the script",
             )
-        if not code and not (include_comment_only and raw.strip(blanks)):
+        if not code:
             return
         plain = self.plain_blanks
         text = raw.lstrip(plain)
         lo = start + len(raw) - len(text)
         hi = lo + len(text.rstrip(plain))
         lo, hi = self._strip_replaced(lo, hi)
-        if code:
-            self._refuse_read_differently_alone(lo, self.source[lo:hi])
-            if terminator is None:
-                at = shell_keeps_blank(self.source, self.kept, self.rules)
-                if at >= start:
-                    self._refuse_blank_at(
-                        at, "the engine replaces this blank and the duckdb shell keeps it"
-                    )
+        self._refuse_read_differently_alone(lo, self.source[lo:hi])
+        if terminator is None:
+            at = shell_keeps_blank(self.source, self.kept, self.rules)
+            if at >= start:
+                self._refuse_blank_at(
+                    at, "the engine replaces this blank and the duckdb shell keeps it"
+                )
         found.append(
             Statement(
                 text=self.source[lo:hi],

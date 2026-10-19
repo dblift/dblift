@@ -6,7 +6,7 @@ from typing import List
 
 from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.core.sql_parser.sqlglot_parser import SqlGlotParser
-from dblift.core.sql_parser.statement import Statement
+from dblift.core.sql_parser.statement import Statement, execution_strings
 
 #: What a statement loses at its ends. Measured on Snowflake 10.37.102 through the Python connector,
 #: 2026-10-19: of the Unicode and C0 blanks only U+2002 (EN SPACE) is read as a blank at a statement
@@ -23,7 +23,7 @@ class SnowflakeStatementParser(SqlGlotParser):
 
     def split_statements(self, sql_content: str, strict_tokenizer: bool = False) -> List[str]:
         """Execution text from the script scanner."""
-        return [record.text for record in self.split(sql_content)]
+        return execution_strings(self.split(sql_content))
 
     def split(self, sql_content: str) -> List[Statement]:
         """Split on unquoted semicolons and reject unquoted scripting blocks."""

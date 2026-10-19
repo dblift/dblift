@@ -11,7 +11,7 @@ from dblift.core.sql_parser.driver_strip import refuse_edges_the_driver_strips
 from dblift.core.sql_parser.lexical_spec import BOM, LexicalSpec
 from dblift.core.sql_parser.parser_context import ParserContext
 from dblift.core.sql_parser.segment_script import SegmentScript
-from dblift.core.sql_parser.statement import Statement
+from dblift.core.sql_parser.statement import Statement, execution_strings
 from dblift.core.sql_parser.tokens import Token, TokenType
 
 
@@ -152,16 +152,18 @@ class LexicalStatementParser(BaseStatementParser):
         next_token = self._peek_next_token(skip_comments=False)
         return next_token is None or next_token.type != TokenType.COPY_DATA
 
-    def split(self, *, include_comment_only: bool = False) -> List[Statement]:
-        """Cut the token stream into Statement records (see ``_split_with_rendered``)."""
-        return [record for record, _ in self._split_with_rendered(include_comment_only)]
+    def split(self) -> List[Statement]:
+        """Cut the token stream into Statement records (see ``_cut``)."""
+        records = self._cut()
+        for record in records:
+            if record.repeat == 0:
+                self.notices.append(
+                    f"GO 0 follows the batch starting on line {record.line}: it is not run"
+                )
+        return records
 
-    def _split_with_rendered(
-        self, include_comment_only: bool = False
-    ) -> List[Tuple[Statement, str]]:
-        """Cut the token stream into ``(Statement, rendered)`` pairs.
-
-        ``rendered`` is the verbatim source slice of the statement, terminator included.
+    def _cut(self) -> List[Statement]:
+        """Cut the token stream into Statement records.
 
         A psql meta-command is not SQL and never joins the statement around
         it, so it is pulled out here rather than in ``_is_statement_end``
@@ -169,17 +171,14 @@ class LexicalStatementParser(BaseStatementParser):
         A safe one is recorded as a ``directive``; any other is refused.
         """
         if self._delimiter_script is not None:
-            return [(record, record.text) for record in self._delimiter_script.records]
+            return list(self._delimiter_script.records)
         if self._terminator_records is not None:
-            return [(record, record.text) for record in self._terminator_records]
+            return list(self._terminator_records)
         if self._segments is not None:
-            return [
-                (record, record.text)
-                for record in self._segments.records(self.tokens, include_comment_only)
-            ]
+            return self._segments.records(self.tokens)
         if self._batches is not None:
             return self._batches.split(self.tokens)
-        records: List[Tuple[Statement, str]] = []
+        records: List[Statement] = []
         current: List[Token] = []
 
         def flush(terminator: Optional[Token], end_pos: Optional[int]) -> None:
@@ -188,8 +187,7 @@ class LexicalStatementParser(BaseStatementParser):
                 if self.spec.sqlite_shell
                 else any(t.type not in (TokenType.COMMENT, TokenType.DELIMITER) for t in current)
             )
-            has_comments = any(t.type == TokenType.COMMENT for t in current)
-            if current and (has_code or (include_comment_only and has_comments)):
+            if current and has_code:
                 text = self._render_statement(current, terminator, end_pos)
                 if text.strip(self.text_blanks):
                     first = next((t for t in current if t.type != TokenType.COMMENT), None)
@@ -201,7 +199,7 @@ class LexicalStatementParser(BaseStatementParser):
                                 current,
                                 self._comments,
                                 self.spec.text_blanks,
-                                floor=(records[-1][0].source_end or 0) if records else 0,
+                                floor=(records[-1].source_end or 0) if records else 0,
                                 end=end_pos,
                                 terminator=terminator,
                             )
@@ -244,16 +242,14 @@ class LexicalStatementParser(BaseStatementParser):
                         f"dblift does not run it (column {token.col})"
                     )
                 records.append(
-                    (
-                        Statement(
-                            text=token.text,
-                            line=token.line,
-                            terminator=None,
-                            kind="directive",
-                            source_start=token.pos if self.source is not None else None,
-                            source_end=self._line_end(token.pos),
-                        ),
-                        token.text,
+                    Statement(
+                        text=token.text,
+                        line=token.line,
+                        terminator=None,
+                        kind="directive",
+                        execution_text=token.text if self._script is not None else None,
+                        source_start=token.pos if self.source is not None else None,
+                        source_end=self._line_end(token.pos),
                     )
                 )
                 continue
@@ -331,10 +327,11 @@ class LexicalStatementParser(BaseStatementParser):
         rendered: str,
         terminator: Optional[Token],
         end_pos: Optional[int],
-    ) -> Tuple[Statement, str]:
-        """Build the record for one rendered statement and its verbatim string.
+    ) -> Statement:
+        """Build the record for one rendered statement.
 
-        The record's text has the terminator stripped; the string keeps it.
+        The record's text has the terminator stripped; ``execution_text`` is the rendered
+        statement with its terminator when that is what execution sends.
         """
         first = (
             tokens[0]
@@ -380,17 +377,14 @@ class LexicalStatementParser(BaseStatementParser):
             parts.append(rendered[cursor:])
             rendered = "".join(parts)
         if terminator is None:
-            return (
-                Statement(
-                    text=rendered,
-                    line=first.line,
-                    terminator=None,
-                    multi=multi,
-                    analysis_statements=analysis_statements,
-                    source_start=source_start,
-                    source_end=source_end,
-                ),
-                rendered,
+            return Statement(
+                text=rendered,
+                line=first.line,
+                terminator=None,
+                multi=multi,
+                analysis_statements=analysis_statements,
+                source_start=source_start,
+                source_end=source_end,
             )
         if terminator.type == TokenType.COPY_DATA:
             if combinators:
@@ -398,16 +392,15 @@ class LexicalStatementParser(BaseStatementParser):
                     "COPY FROM STDIN cannot be combined with another statement using psql \\;"
                 )
             if self.source is None:
-                record = Statement(
+                return Statement(
                     text=rendered, line=first.line, terminator="\\.", kind="copy_stdin"
                 )
-                return record, rendered
             end = terminator.pos + len(terminator.text)
             text = self.source[first.pos : end]
             ended = self.source.startswith("\\.", end)
             header_end = next(t.pos for t in tokens if t.type == TokenType.DELIMITER)
             header = self.source[first.pos : header_end].strip(self.text_blanks)
-            record = Statement(
+            return Statement(
                 text=text,
                 line=first.line,
                 terminator="\\." if ended else None,
@@ -416,46 +409,27 @@ class LexicalStatementParser(BaseStatementParser):
                 source_start=source_start,
                 source_end=self._line_end(end) if ended else end,
             )
-            return record, rendered
         text = rendered
         if text.endswith(terminator.text):
             text = text[: -len(terminator.text)].rstrip(self.text_blanks)
-        return (
-            Statement(
-                text=text,
-                line=first.line,
-                terminator=terminator.text,
-                multi=multi,
-                analysis_statements=analysis_statements,
-                source_start=source_start,
-                source_end=source_end,
-            ),
-            rendered,
+        ends_at_line = (
+            self._script is not None and terminator.text == self._script.rules.line_terminator
+        )
+        sends_text = self.spec.sqlite_shell or ends_at_line
+        return Statement(
+            text=text,
+            line=first.line,
+            terminator=terminator.text,
+            multi=multi,
+            execution_text=None if sends_text or rendered == text else rendered,
+            analysis_statements=analysis_statements,
+            source_start=source_start,
+            source_end=source_end,
         )
 
     def split_statements(self) -> List[str]:
         """Statement strings as execution receives them (``;`` kept, directives dropped)."""
-        out: List[str] = []
-        if self._batches is not None:
-            for record, rendered in self._split_with_rendered():
-                if record.repeat == 0:
-                    self.notices.append(
-                        f"GO 0 follows the batch starting on line {record.line}: it is not run"
-                    )
-                out.extend([rendered] * record.repeat)
-            return out
-        for record, rendered in self._split_with_rendered():
-            if record.kind == "sql":
-                ends_at_line = (
-                    self._script is not None
-                    and record.terminator == self._script.rules.line_terminator
-                )
-                out.append(record.text if self.spec.sqlite_shell or ends_at_line else rendered)
-            elif record.kind != "directive":
-                out.append(record.text)
-            elif self._script is not None and rendered:
-                out.append(rendered)
-        return out
+        return execution_strings(self.split())
 
 
 def _sqlite_terminator_line(line: str) -> bool:
