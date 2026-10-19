@@ -123,6 +123,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`migrate` sends a statement that starts or ends with a character the engine does not read as a
+  blank.** On PostgreSQL, CockroachDB and YugabyteDB, a statement that starts or ends with a
+  no-break space, an ideographic space, a control character, U+2028 or a similar character, or a piece
+  made only of one, used to be sent without it, or skipped. It is now sent with the character and
+  fails with a syntax error, as it does under `psql`. A migration indented with no-break spaces, for
+  example one pasted from a web page, now fails where it used to run: replace those characters with
+  ordinary spaces. A form feed is still a blank.
 - **SQL Server: a batch that opens a nested comment and never closes it is sent.** A batch such as
   `/* a /* b */` is not a closed comment to the server, which nests block comments and
   answers "Missing end comment mark"; migrate used to skip it as comment-only and report

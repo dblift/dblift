@@ -277,6 +277,8 @@ class LexicalSpec:
     ``comment_adjacent_blanks`` names what a client also reads as blank when it decides that a
     statement holds nothing but blanks and comments (empty: only ``text_blanks``); such a
     statement is not sent. It does not change the text of a statement that holds code.
+    ``unread_blanks_are_code`` makes the scanner skip between tokens only ``text_blanks``: any other
+    character ``str.isspace`` accepts is code, so a piece made of it is a statement and is sent.
     """
 
     name: str
@@ -319,6 +321,7 @@ class LexicalSpec:
     string_quote_doubling: bool = True
     terminator_script: Optional[TerminatorScriptRules] = None
     segment_script: Optional[SegmentScriptRules] = None
+    unread_blanks_are_code: bool = False
 
     @property
     def trailing_edge_blanks(self) -> str:
