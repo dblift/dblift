@@ -26,13 +26,12 @@ DUCKDB_UNICODE = "".join(
     chr(c) for c in (0xA0, *range(0x2000, 0x200C), 0x202F, 0x205F, 0x2060, 0x3000, 0xFEFF)
 )
 
-#: dialect -> the measured set (docs/sql-parsing); Redshift keeps the intersection of
-#: the measured engines until it is probed. DuckDB's vertical tab is no blank: the driver rejects it.
+#: dialect -> the measured set (docs/sql-parsing); DuckDB's vertical tab is no blank: the driver rejects it.
 TEXT_BLANKS: Dict[str, str] = {
     "postgresql": ASCII_BLANKS + FORM_FEED,
     "cockroachdb": ASCII_BLANKS + FORM_FEED,
     "yugabytedb": ASCII_BLANKS + FORM_FEED,
-    "redshift": ASCII_BLANKS,
+    "redshift": ASCII_BLANKS + FORM_FEED,
     "mysql": ASCII_BLANKS + VERTICAL_TAB + FORM_FEED,
     "mariadb": ASCII_BLANKS + VERTICAL_TAB + FORM_FEED,
     "db2": ASCII_BLANKS,
@@ -348,7 +347,7 @@ def test_postgresql_family_statement_after_a_kept_character_starts_on_its_line(
     assert [r["line"] for r in records] == [1, 2]
 
 
-@pytest.mark.parametrize("dialect", ["postgresql", "cockroachdb", "yugabytedb"])
+@pytest.mark.parametrize("dialect", ["postgresql", "cockroachdb", "yugabytedb", "redshift"])
 @pytest.mark.parametrize("script", ["{f}SELECT 1;", "SELECT 1;{f}", "SELECT 1;\n{f};\nSELECT 2;"])
 def test_postgresql_family_form_feed_at_statement_edge_is_still_a_blank(
     dialect: str, script: str
