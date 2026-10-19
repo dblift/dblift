@@ -11,6 +11,7 @@ from sqlalchemy import create_engine
 
 from dblift.api.async_client import AsyncDBLiftClient
 from dblift.api.client import DBLiftClient
+from dblift.core.logger import results
 
 pytestmark = [pytest.mark.unit, pytest.mark.sqlite]
 
@@ -84,6 +85,10 @@ def test_text_undo_reverser_package_is_removed() -> None:
 
 def test_retired_client_operations_module_is_removed() -> None:
     assert importlib.util.find_spec("dblift.api._client_operations") is None
+
+
+def test_text_undo_generation_result_is_removed() -> None:
+    assert not hasattr(results, "GenerateUndoScriptResult")
 
 
 def test_sync_hand_authored_undo_and_reapply_remain_executable(tmp_path: Path) -> None:
