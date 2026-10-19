@@ -55,6 +55,7 @@ def is_comment_only_statement(
         nested_block_comments=nested_block_comments,
         blanks=blanks,
         keep_executable_comments=not nested_block_comments,
+        keep_unterminated_comment=True,
     )
     return not code
 
