@@ -5,7 +5,7 @@
 | Item | Value |
 | --- | --- |
 | Covers | PostgreSQL 12+; AlloyDB, Aurora PostgreSQL, Citus, CockroachDB, Neon, Supabase, TimescaleDB, YugabyteDB (all inherit this spec unchanged, see §13) |
-| Code facts taken from | OSS `develop` `61b1d83f` |
+| Code facts taken from | OSS `develop` `61b1d83f`; the pieces without code and the statement records at OSS `develop` `48051ff` (2026-10-19) |
 | Vendor references, fetched 2026-10-10 | *PostgreSQL 18 documentation*, §4.1.1 Identifiers, §4.1.2.1–4.1.2.5 Constants, §4.1.5 Comments; *psql* reference, "Meta-Commands" and `\;` |
 | Live verification | psql against PostgreSQL 15 and 16, 2026-10-10 (rows 16, 21, 25); psql 16.14 and psycopg 3.3.5 against PostgreSQL 16.14, 2026-10-19 (rows 30d to 30f) |
 | Engine subclass | none; tagged strings use the shared lexical primitive (§9) |

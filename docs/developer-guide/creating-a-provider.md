@@ -97,6 +97,30 @@ The layout deliberately mirrors `db/plugins/postgresql/` (and siblings) so the s
    myprovider = ["mydriver>=x.y"]
    ```
 
+## Statement splitting contract
+
+`StatementSplitter(dialect).split(script)` returns `Statement` records
+(`dblift.core.sql_parser.statement`). A parser that implements `split(script)` returns them itself:
+
+| Field | Meaning |
+| --- | --- |
+| `text` | the statement verbatim, without its terminator |
+| `line` | the line where it starts |
+| `terminator` | what ended it (`";"`), or `None` when the script ended it |
+| `kind` | `"sql"`, `"copy_stdin"` (a COPY header with its data) or `"directive"` (a client directive dropped and recorded). Execution runs `sql` and `copy_stdin` records only; a record of any other kind is not a statement |
+| `repeat` | how often execution sends it: 1 by default, 0 never |
+| `execution_text` | the string to send when it is not `text`; `None` sends `text` |
+
+A record is a statement: do not return empty pieces, comment-only pieces or batch separators.
+`split_statements` is the list of strings execution sends, derived from the records.
+
+A parser that implements only `split_statements` (strings) still works. dblift adapts its strings
+to records, skipping empty and comment-only pieces and any piece the dialect's
+`is_batch_separator` accepts, and logs once per dialect and process a message asking the
+parser to implement `split()` and return `Statement` records. The adaptation, and so the
+skipping, ends in the next major release; return only statements from `split_statements`
+before then, or implement `split()`.
+
 ## Step 3: Install & discover
 
 ```bash
