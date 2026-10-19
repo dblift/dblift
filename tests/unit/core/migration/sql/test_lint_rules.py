@@ -340,14 +340,17 @@ def test_byte_equal_quoted_names_stay_exempt(dialect):
 def test_quoting_of_the_schema_part_counts(dialect):
     create = f"CREATE TABLE app.t (id INT);\nDROP TABLE {_quote(dialect, 'APP')}.t;"
     assert "drop-table" in _codes(create, dialect)
-    same = f"CREATE TABLE {_quote(dialect, 'APP')}.t (id INT);\nDROP TABLE {_quote(dialect, 'APP')}.t;"
+    same = (
+        f"CREATE TABLE {_quote(dialect, 'APP')}.t (id INT);\nDROP TABLE {_quote(dialect, 'APP')}.t;"
+    )
     assert _codes(same, dialect) == []
 
 
 def test_quoting_survives_the_hand_over_between_scripts():
     created = lint_script("CREATE TABLE t (id INT);", "postgresql").created_tables
     assert "drop-table" in [
-        f.code for f in lint_script('DROP TABLE "T";', "postgresql", created_before=created).findings
+        f.code
+        for f in lint_script('DROP TABLE "T";', "postgresql", created_before=created).findings
     ]
     quoted = lint_script('CREATE TABLE "a.b"."T" (id INT);', "postgresql").created_tables
     same = lint_script('DROP TABLE "a.b"."T";', "postgresql", created_before=quoted)
