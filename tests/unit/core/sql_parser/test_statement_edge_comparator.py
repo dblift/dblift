@@ -614,3 +614,108 @@ def test_a_duckdb_refusal_at_an_interior_or_other_character_is_reported() -> Non
     ] == ["execution"]
     vt = (DUCKDB_REFUSAL[0], DUCKDB_REFUSAL[1].replace("U+00A0", "U+000B"))
     assert [d.view for d in refused_pair("duckdb", "DROP TABLE t" + chr(0x0B), vt)] == ["execution"]
+
+
+def test_a_statement_of_kept_characters_that_the_old_recording_dropped_is_a_declared_count_change() -> (
+    None
+):
+    script = f"VALUES 1;\n{NBSP};\nVALUES 2;"
+    old = recording(
+        script,
+        ["VALUES 1", "VALUES 2"],
+        ["VALUES 1", "VALUES 2"],
+        [record("VALUES 1", 0, 10), record("VALUES 2", 14, 22, line=3)],
+        dialect="db2",
+    )
+    new = recording(
+        script,
+        ["VALUES 1", NBSP, "VALUES 2"],
+        ["VALUES 1", NBSP, "VALUES 2"],
+        [
+            record("VALUES 1", 0, 10),
+            record(NBSP, 10, 13, line=2),
+            record("VALUES 2", 14, 22, line=3),
+        ],
+        dialect="db2",
+    )
+    assert compare_recordings(old, new, BLANKS) == []
+
+
+def test_an_added_statement_that_is_not_made_of_kept_characters_is_reported() -> None:
+    script = "VALUES 1;\nVALUES 3;\nVALUES 2;"
+    old = recording(script, ["VALUES 1", "VALUES 2"], ["VALUES 1", "VALUES 2"])
+    new = recording(
+        script, ["VALUES 1", "VALUES 3", "VALUES 2"], ["VALUES 1", "VALUES 2"], dialect="db2"
+    )
+    found = compare_recordings(old, new, BLANKS)
+    assert [(d.view, d.detail) for d in found] == [("execution", "old has 2 statements, new has 3")]
+
+
+def test_an_added_statement_of_kept_characters_that_the_script_does_not_hold_is_reported() -> None:
+    script = "VALUES 1;\nVALUES 2;"
+    old = recording(script, ["VALUES 1", "VALUES 2"], ["VALUES 1", "VALUES 2"])
+    new = recording(script, ["VALUES 1", NBSP, "VALUES 2"], ["VALUES 1", "VALUES 2"], dialect="db2")
+    assert [d.view for d in compare_recordings(old, new, BLANKS)] == ["execution"]
+
+
+def test_a_statement_of_kept_characters_is_reported_outside_db2() -> None:
+    script = f"VALUES 1;\n{NBSP};\nVALUES 2;"
+    old = recording(script, ["VALUES 1", "VALUES 2"], ["VALUES 1", "VALUES 2"])
+    new = recording(script, ["VALUES 1", NBSP, "VALUES 2"], ["VALUES 1", NBSP, "VALUES 2"])
+    assert [d.view for d in compare_recordings(old, new, BLANKS)] == ["execution", "analysis"]
+
+
+def test_a_statement_of_kept_characters_and_a_comment_is_a_declared_count_change() -> None:
+    kept = f"{NBSP} -- c"
+    script = f"VALUES 1;\n{kept}\n;\nVALUES 2;"
+    old = recording(script, ["VALUES 1", "VALUES 2"], ["VALUES 1", "VALUES 2"], dialect="db2")
+    new = recording(
+        script,
+        ["VALUES 1", kept, "VALUES 2"],
+        ["VALUES 1", kept, "VALUES 2"],
+        dialect="db2",
+    )
+    assert [d.view for d in compare_recordings(old, new, BLANKS)] == []
+
+
+def test_a_statement_of_kept_characters_in_another_place_than_the_script_holds_it_is_reported() -> (
+    None
+):
+    script = f"VALUES 1;\nVALUES 2;\n{NBSP};"
+    old = recording(script, ["VALUES 1", "VALUES 2"], ["VALUES 1", "VALUES 2"], dialect="db2")
+    new = recording(
+        script,
+        [NBSP, "VALUES 1", "VALUES 2"],
+        [NBSP, "VALUES 1", "VALUES 2"],
+        dialect="db2",
+    )
+    assert [d.view for d in compare_recordings(old, new, BLANKS)] == ["execution", "analysis"]
+
+
+def test_a_statement_of_kept_characters_that_is_part_of_a_name_in_the_script_is_reported() -> None:
+    script = f"DROP TABLE t{NBSP};\nVALUES 2;"
+    old = recording(
+        script, ["DROP TABLE t", "VALUES 2"], ["DROP TABLE t", "VALUES 2"], dialect="db2"
+    )
+    new = recording(
+        script,
+        [NBSP, "DROP TABLE t", "VALUES 2"],
+        [NBSP, "DROP TABLE t", "VALUES 2"],
+        dialect="db2",
+    )
+    assert [d.view for d in compare_recordings(old, new, BLANKS)] == ["execution", "analysis"]
+
+
+def test_a_statement_of_kept_characters_that_the_script_holds_only_inside_a_name_is_reported() -> (
+    None
+):
+    name = f"DROP TABLE t{NBSP}"
+    script = f"VALUES 1;\n{name};\nVALUES 2;"
+    old = recording(script, ["VALUES 1", name, "VALUES 2"], ["VALUES 1", name, "VALUES 2"])
+    new = recording(
+        script,
+        ["VALUES 1", name, NBSP, "VALUES 2"],
+        ["VALUES 1", name, NBSP, "VALUES 2"],
+        dialect="db2",
+    )
+    assert [d.view for d in compare_recordings(old, new, BLANKS)] == ["execution", "analysis"]

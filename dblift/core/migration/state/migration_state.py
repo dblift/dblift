@@ -35,6 +35,7 @@ class MigrationValidationSnapshot:
     scripts_directory_exists: bool
     strict_mode: bool
     out_of_order: Tuple[OutOfOrder, ...]
+    missing_applied: Tuple[Migration, ...]
     scripts_directory: Optional[Path] = None
     history_read_error: str = ""
     catalog_read_error: Optional[str] = None
@@ -179,6 +180,7 @@ class MigrationState:
     repeatable_checksums: Dict[str, str] = field(default_factory=dict, repr=False)
     repeatable_runs: Dict[str, RepeatableRun] = field(default_factory=dict, repr=False)
     checksum_drift: Tuple[ChecksumDrift, ...] = field(default=(), repr=False)
+    missing_applied: Tuple[Migration, ...] = field(default=(), repr=False)
     resolved_objects: Optional[List[Any]] = field(default=None, repr=False)
     grouped_objects: Optional[Dict[Any, List[Any]]] = field(default=None, repr=False)
 
@@ -248,6 +250,7 @@ class MigrationState:
             repeatable_checksums=dict(self.repeatable_checksums),
             repeatable_runs=dict(self.repeatable_runs),
             checksum_drift=self.checksum_drift,
+            missing_applied=self.missing_applied,
             resolved_objects=(
                 list(self.resolved_objects) if self.resolved_objects is not None else None
             ),

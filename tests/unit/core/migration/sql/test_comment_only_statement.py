@@ -36,3 +36,24 @@ def test_comment_check_follows_dialect_nesting_rule(statement, nested, expected)
     assert (
         migration_sql.is_comment_only_statement(statement, nested_block_comments=nested) is expected
     )
+
+
+@pytest.mark.parametrize(
+    ("statement", "expected"),
+    [
+        ("\xa0", False),
+        ("\x0c", False),
+        ("\xa0 -- c", False),
+        ("\xa0/* c */", False),
+        (" \t\r\n-- c", True),
+        ("", True),
+    ],
+)
+def test_a_dialect_that_keeps_a_character_does_not_read_it_as_white_space(statement, expected):
+    blanks = " \t\n\r"
+    assert migration_sql.is_comment_only_statement(statement, blanks=blanks) is expected
+
+
+@pytest.mark.parametrize("statement", ["\xa0", "\x0b", " ", "\x85", "\xa0 -- c"])
+def test_without_blanks_every_white_space_character_still_empties_a_statement(statement):
+    assert migration_sql.is_comment_only_statement(statement) is True

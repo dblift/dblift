@@ -109,7 +109,8 @@ class DuckDBProvider(SqlLeaseLockingProvider):
         # Already has a top-level RETURNING clause — do not double-append
         if self._has_top_level_keyword(code, "RETURNING"):
             return None
-        if code.split(None, 1)[0].upper() not in ("INSERT", "UPDATE", "DELETE"):
+        words = code.split(None, 1)
+        if not words or words[0].upper() not in ("INSERT", "UPDATE", "DELETE"):
             return None
 
         # The engine keeps a U+00A0 in the last two bytes of a script; after RETURNING it replaces it

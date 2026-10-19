@@ -115,8 +115,6 @@ RED = {
     ("mysql", "end_of_file"): "the splitter strips the last character of the script",
     ("mariadb", "semicolon"): "the splitter strips the character before the terminator",
     ("mariadb", "end_of_file"): "the splitter strips the last character of the script",
-    ("db2", "semicolon"): "the splitter and the provider strip the character before the terminator",
-    ("db2", "end_of_file"): "the splitter and the provider strip the last character",
     ("duckdb", "semicolon"): "the splitter keeps a no-break space the shell reads as a blank",
 }
 

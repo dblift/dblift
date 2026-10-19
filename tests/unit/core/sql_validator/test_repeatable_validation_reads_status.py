@@ -108,6 +108,7 @@ def test_script_missing_from_supplied_runs_is_skipped():
 
 def test_supplied_checksum_drift_replaces_the_comparison():
     from dblift.core.migration.state.checksum_drift import ChecksumDrift, find_checksum_drift
+    from dblift.core.migration.state.missing_scripts import missing_applied
     from dblift.core.sql_validator._checksum_validator import validate_checksums
 
     script = make_migration(script_name="V1__a.sql", content="SELECT 1;", type=MigrationType.SQL)
@@ -121,12 +122,26 @@ def test_supplied_checksum_drift_replaces_the_comparison():
     )
     drift = [ChecksumDrift("V1__a.sql", 1, 2, False)]
     result, issues = ValidationResult(), []
-    validate_checksums(_validator(), [script], [row], result, issues, drift=drift)
+    validate_checksums(
+        _validator(),
+        [script],
+        [row],
+        result,
+        issues,
+        drift=drift,
+        missing=missing_applied([script], [row]),
+    )
     assert any("V1__a.sql has been modified since it was applied" in i for i in issues)
 
     # The state layer's own answer for the same inputs reports nothing.
     result, issues = ValidationResult(), []
     validate_checksums(
-        _validator(), [script], [row], result, issues, drift=find_checksum_drift([script], [row])
+        _validator(),
+        [script],
+        [row],
+        result,
+        issues,
+        drift=find_checksum_drift([script], [row]),
+        missing=missing_applied([script], [row]),
     )
     assert not issues

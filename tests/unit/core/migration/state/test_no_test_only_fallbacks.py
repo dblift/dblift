@@ -6,6 +6,8 @@ import ast
 from pathlib import Path
 from typing import Dict, Optional
 
+import pytest
+
 import dblift
 
 _ROOT = Path(dblift.__file__).parent
@@ -39,7 +41,9 @@ def test_no_test_only_fallbacks():
         ("core/sql_validator/_checksum_validator.py", "check_repeatable_migrations", "runs"),
         ("core/sql_validator/_checksum_validator.py", "validate_checksums", "drift"),
         ("core/sql_validator/migration_validator.py", "_check_repeatable_migrations", "runs"),
+        ("core/sql_validator/_checksum_validator.py", "validate_checksums", "missing"),
         ("core/sql_validator/migration_validator.py", "_validate_checksums", "drift"),
+        ("core/sql_validator/migration_validator.py", "_validate_checksums", "missing"),
         (
             "core/sql_validator/migration_validator.py",
             "_validate_prepared_migrations",
@@ -62,9 +66,24 @@ def test_no_test_only_fallbacks():
             "out_of_order",
         ),
         (
+            "core/sql_validator/migration_validator.py",
+            "_validate_prepared_migrations",
+            "missing_applied",
+        ),
+        (
+            "core/sql_validator/migration_validator.py",
+            "_validate_strict_mode_rules",
+            "missing_applied",
+        ),
+        (
             "core/sql_validator/_strict_mode_validator.py",
             "validate_strict_mode_rules",
             "snapshot_out_of_order",
+        ),
+        (
+            "core/sql_validator/_strict_mode_validator.py",
+            "validate_strict_mode_rules",
+            "snapshot_missing_applied",
         ),
     ]
     for relative, function, parameter in checks:
@@ -82,7 +101,8 @@ def test_no_test_only_fallbacks():
             assert node.id != "StrictModeError"
 
 
-def test_snapshot_out_of_order_has_no_default():
+@pytest.mark.parametrize("field_name", ["out_of_order", "missing_applied"])
+def test_snapshot_state_answers_have_no_default(field_name):
     snapshot_class = next(
         node
         for node in ast.walk(_tree("core/migration/state/migration_state.py"))
@@ -93,6 +113,6 @@ def test_snapshot_out_of_order_has_no_default():
         for node in snapshot_class.body
         if isinstance(node, ast.AnnAssign)
         and isinstance(node.target, ast.Name)
-        and node.target.id == "out_of_order"
+        and node.target.id == field_name
     )
     assert field.value is None

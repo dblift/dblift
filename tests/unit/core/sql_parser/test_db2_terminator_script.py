@@ -201,9 +201,9 @@ def test_line_comment_field_is_read_by_the_overlap_rule():
 
 def test_blanks_field_is_read_for_the_statement_start():
     script = VT + "VALUES 1;\n"
-    assert outcome(script) == ["records", ["VALUES 1", 1, ";", "sql", 0, 11]]
+    assert outcome(script) == ["records", [VT + "VALUES 1", 1, ";", "sql", 0, 11]]
     wide = replace(DB2_SPEC, terminator_script=replace(DB2_RULES, blanks=" \t" + VT))
-    assert outcome(script, wide) == ["records", ["VALUES 1", 1, ";", "sql", 1, 11]]
+    assert outcome(script, wide) == ["records", [VT + "VALUES 1", 1, ";", "sql", 1, 11]]
 
 
 def test_line_comment_field_is_read_by_the_semicolon_ending():

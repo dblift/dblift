@@ -115,7 +115,7 @@ POSITIONS = {
 
 
 #: Dialects whose record builders already strip exactly their text_blanks.
-FIXED_DIALECTS = (*PSQL_LIKE, "oracle", "sqlserver", "snowflake")
+FIXED_DIALECTS = (*PSQL_LIKE, "oracle", "sqlserver", "snowflake", "db2")
 
 
 def keeps_the_terminator_in_the_text(dialect: str, position: str, view: str) -> bool:
@@ -234,3 +234,67 @@ def test_a_copy_header_keeps_a_character_outside_the_blanks(dialect: str) -> Non
 def test_a_routine_batch_keeps_a_character_outside_the_blanks_when_analysis_divides_it() -> None:
     text = f"CREATE PROCEDURE p AS SELECT 1{chr(0x2029)}"
     assert SqlAnalyzer("sqlserver").split_statements_for_analysis(text) == [text]
+
+
+NBSP = chr(0xA0)
+DB2_BLOCK = (
+    "--#SET TERMINATOR @\n"
+    f"{NBSP}CREATE PROCEDURE p ()\nBEGIN\n  DECLARE x INT;\n  SET x = 1;\nEND{NBSP}@\n"
+    f"SELECT 1 FROM t{NBSP} @\n"
+)
+
+
+@pytest.mark.parametrize("view", ["execution", "analysis"])
+def test_db2_block_ended_by_a_set_terminator_keeps_a_character_outside_the_blanks(
+    view: str,
+) -> None:
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        recorded = record_script("db2", DB2_BLOCK)[view]
+    assert recorded == [
+        f"{NBSP}CREATE PROCEDURE p ()\nBEGIN\n  DECLARE x INT;\n  SET x = 1;\nEND{NBSP}",
+        f"SELECT 1 FROM t{NBSP}",
+    ]
+
+
+@pytest.mark.parametrize("view", ["execution", "analysis"])
+@pytest.mark.parametrize("kept", [NBSP, "\x0c"])
+def test_db2_record_made_only_of_kept_characters_is_a_statement(view: str, kept: str) -> None:
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        recorded = record_script("db2", f"VALUES 1;\n{kept};\nVALUES 2;")[view]
+    assert recorded == ["VALUES 1", kept, "VALUES 2"]
+
+
+def test_db2_comment_only_record_is_still_dropped() -> None:
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        recorded = record_script("db2", f"VALUES 1;\n-- c{NBSP}\n;\nVALUES 2;")["execution"]
+    assert recorded == ["VALUES 1", "VALUES 2"]
+
+
+@pytest.mark.parametrize("view", ["execution", "analysis"])
+@pytest.mark.parametrize(
+    "record, script_tail",
+    [
+        (f"{NBSP} -- c", "\n;"),
+        ("\x0c -- c", "\n;"),
+        (f"{NBSP}/* c */", ";"),
+        (f"/* c */{NBSP}", ";"),
+    ],
+)
+def test_db2_record_of_kept_characters_and_a_comment_is_a_statement(
+    view: str, record: str, script_tail: str
+) -> None:
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        recorded = record_script("db2", f"VALUES 1;\n{record}{script_tail}\nVALUES 2;")[view]
+    assert recorded == ["VALUES 1", record, "VALUES 2"]
+
+
+@pytest.mark.parametrize("comment", [f"/* {NBSP} */", f"-- {NBSP}"])
+def test_db2_kept_character_inside_a_comment_does_not_make_a_statement(comment: str) -> None:
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        recorded = record_script("db2", f"VALUES 1;\n{comment}\n;\nVALUES 2;")["execution"]
+    assert recorded == ["VALUES 1", "VALUES 2"]

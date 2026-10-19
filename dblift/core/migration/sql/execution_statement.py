@@ -22,7 +22,9 @@ class ExecutionStatement:
     transaction_reason: Optional[str] = None
 
 
-def is_comment_only_statement(sql: str, *, nested_block_comments: bool = False) -> bool:
+def is_comment_only_statement(
+    sql: str, *, nested_block_comments: bool = False, blanks: Optional[str] = None
+) -> bool:
     """True if *sql* has no executable tokens after removing block and line comments.
 
     MySQL/MariaDB executable comment directives (``/*!...*/``, ``/*M!...*/``) are not
@@ -33,9 +35,12 @@ def is_comment_only_statement(sql: str, *, nested_block_comments: bool = False) 
     (its tokenizer's ``NESTED_BLOCK_COMMENTS``): ``/* a /* b */ c */`` is then one
     comment, stripped by the same scanner the dialect parsers use. MySQL/MariaDB
     comments do not nest, so their directives always take the default path.
+
+    ``blanks`` are the characters the dialect reads as empty (``empty_statement_blanks``);
+    ``None`` is every white space character.
     """
 
-    body = sql.strip()
+    body = sql.strip(blanks)
     if not body:
         return True
     if nested_block_comments:
@@ -44,7 +49,7 @@ def is_comment_only_statement(sql: str, *, nested_block_comments: bool = False) 
         )
     body = re.sub(r"/\*(?!!|M!).*?\*/", "", body, flags=re.DOTALL)
     body = re.sub(r"--.*?$", "", body, flags=re.MULTILINE)
-    return not body.strip()
+    return not body.strip(blanks)
 
 
 @lru_cache(maxsize=None)
@@ -227,9 +232,11 @@ def _position(statements: List[str], index: int, dialect: str, content: str) -> 
     """``line N`` of ``statements[index]``, from the splitter's own records; else ``statement N``."""
     from dblift.db.provider_registry import ProviderRegistry
 
-    parser_class = ProviderRegistry.get_quirks(dialect.lower()).parser_class("regex")
+    quirks = ProviderRegistry.get_quirks(dialect.lower())
+    parser_class = quirks.parser_class("regex")
+    blanks = quirks.empty_statement_blanks()
     try:
-        records = [r for r in parser_class().split(content) if r.text.strip()]  # type: ignore[misc]
+        records = [r for r in parser_class().split(content) if r.text.strip(blanks)]  # type: ignore[misc]
     except Exception:  # noqa: BLE001 - the line is a courtesy; the refusal stands without it
         records = []
     if [r.text for r in records] == statements:

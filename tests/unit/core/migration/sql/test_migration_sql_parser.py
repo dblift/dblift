@@ -29,6 +29,35 @@ def test_helper_splits_with_dialect_and_filters_empty_statements():
     assert helper.parse_migration_sql(analyzer, "SELECT 3;", NullLog()) == ["SELECT 3"]
 
 
+def test_helper_keeps_a_statement_made_of_characters_the_dialect_does_not_strip():
+    helper = importlib.import_module("dblift.core.migration.sql.migration_sql_parser")
+    assert helper.parse_migration_sql(
+        SqlAnalyzer("db2"), "VALUES 1;\n\xa0;\nVALUES 2;", NullLog(), dialect="db2"
+    ) == ["VALUES 1", "\xa0", "VALUES 2"]
+
+
+@pytest.mark.parametrize(
+    "dialect, text",
+    [
+        ("sqlite", "\x0b"),
+        ("duckdb", "\x0b"),
+        ("duckdb", "\u2028"),
+        ("duckdb", "\x85"),
+        ("mysql", "\xa0"),
+        ("mariadb", "\xa0"),
+        ("postgresql", "\xa0"),
+    ],
+)
+def test_helper_still_drops_a_statement_that_is_white_space_outside_db2(dialect, text):
+    helper = importlib.import_module("dblift.core.migration.sql.migration_sql_parser")
+    analyzer = MagicMock()
+    analyzer.split_statements.return_value = ["SELECT 1", text, "SELECT 2"]
+    assert helper.parse_migration_sql(analyzer, "x", NullLog(), dialect=dialect) == [
+        "SELECT 1",
+        "SELECT 2",
+    ]
+
+
 def test_helper_split_failure_refuses_instead_of_guessing():
     helper = importlib.import_module("dblift.core.migration.sql.migration_sql_parser")
     analyzer, log = MagicMock(), MagicMock()

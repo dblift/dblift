@@ -297,26 +297,23 @@ def test_genuinely_missing_script_keeps_strict_failure_behavior(tmp_path):
     ]
 
 
-def test_strict_tag_scope_keeps_existing_missing_file_result(tmp_path):
+def test_strict_tag_scope_does_not_report_a_filtered_script_as_missing(tmp_path):
     included = _script(tmp_path, "V1__included.sql", tags=["keep"])
     excluded = _script(tmp_path, "V2__excluded.sql", tags=["other"])
-    applied = _history(excluded)
-    validator = _validator(history=[applied], strict=True)
+    history = [_history(included), _history(excluded, installed_rank=2)]
+    validator = _validator(history=history, strict=True)
 
     result = validator.validate_migrations(
         tmp_path,
         command="validate",
         tags=["keep"],
         resolved_migrations=[included, excluded],
-        preloaded_records=[applied],
+        preloaded_records=history,
     )
 
-    assert result.success is False
-    assert result.failed_scripts == ["V2__excluded.sql"]
-    assert result.issues == [
-        "Strict mode validation failed. Found 1 applied migration(s) without "
-        "corresponding script files: V2__excluded.sql (version: 2). ."
-    ]
+    assert result.success is True
+    assert result.issues == []
+    assert result.failed_scripts == []
 
 
 def test_legacy_constructor_uses_provider_owned_quirks(tmp_path):

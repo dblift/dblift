@@ -432,6 +432,14 @@ class BaseQuirks:
         """
         return None
 
+    def empty_statement_blanks(self) -> Optional[str]:
+        """The characters a split statement may be made of and still be empty to the migration layer.
+
+        ``None`` (the default) is every white space character. A dialect whose client keeps some
+        of them (the characters outside its ``text_blanks``) names the rest.
+        """
+        return None
+
     def is_batch_separator(self, stmt: str) -> bool:
         """Return ``True`` when *stmt* is a non-executable batch separator.
 
