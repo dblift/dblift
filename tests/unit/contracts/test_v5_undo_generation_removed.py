@@ -12,6 +12,8 @@ from sqlalchemy import create_engine
 from dblift.api.async_client import AsyncDBLiftClient
 from dblift.api.client import DBLiftClient
 from dblift.core.logger import results
+from dblift.db.base_quirks import BaseQuirks
+from dblift.db.plugins.sqlite.quirks import SqliteQuirks
 
 pytestmark = [pytest.mark.unit, pytest.mark.sqlite]
 
@@ -81,6 +83,11 @@ async def test_async_text_undo_generation_is_removed(tmp_path: Path, method: str
 
 def test_text_undo_reverser_package_is_removed() -> None:
     assert importlib.util.find_spec("dblift.core.migration.scripting.undo_script_generator") is None
+
+
+@pytest.mark.parametrize("quirks_class", [BaseQuirks, SqliteQuirks])
+def test_generator_only_quirk_is_removed(quirks_class) -> None:
+    assert not hasattr(quirks_class, "undo_reverses_statement_facts")
 
 
 def test_retired_client_operations_module_is_removed() -> None:

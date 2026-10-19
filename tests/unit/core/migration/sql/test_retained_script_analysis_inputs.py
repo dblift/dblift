@@ -1,6 +1,7 @@
 """Parser and analysis coverage for SQL kept in the historical input corpus."""
 
 import json
+import sys
 from pathlib import Path
 
 import pytest
@@ -28,6 +29,19 @@ def _cases():
         for dialect in sorted(dialects or {"postgresql"}):
             cases.append(pytest.param(row["sql"], dialect, id=f"{row['id']}-{dialect}"))
     return cases
+
+
+def test_retained_cases_survive_refreshed_corpus_origins(tmp_path, monkeypatch):
+    rows = [json.loads(line) for line in INPUTS.read_text(encoding="utf-8").splitlines()]
+    for row in rows:
+        row["origins"] = [
+            origin for origin in row["origins"] if origin["file"] not in RETIRED_SUITES
+        ]
+    refreshed = tmp_path / "inputs.jsonl"
+    refreshed.write_text("\n".join(json.dumps(row) for row in rows), encoding="utf-8")
+    monkeypatch.setattr(sys.modules[__name__], "INPUTS", refreshed)
+
+    assert {case.id for case in _cases()} == set(EXPECTED)
 
 
 @pytest.mark.parametrize("sql,dialect", _cases())
