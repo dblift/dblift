@@ -109,6 +109,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A piece of a script with no code is no longer a statement, in every dialect.**
+  SQLite and DuckDB no longer list a segment made only of comments (`info`, linting,
+  `validate_sql` and the parsers' statement listings no longer show an `UNKNOWN`
+  statement for it, and a nested comment counts as a comment on DuckDB). SQL Server no
+  longer returns an empty batch for a script holding only a no-break space, form feed or
+  vertical tab. The `mariadb` client sends nothing for a piece made only of a control
+  character and comments, and neither does the MariaDB splitter now; the MySQL splitter
+  still sends it, as the `mysql` client does. `LexicalEngine.split` and
+  `LexicalStatementParser.split` lose their `include_comment_only` keyword.
 - **Oracle names followed by a blank and a terminator are read.** `DROP TABLE t<U+3000>;`
   now names `t` and its undo is generated, as the engine drops `t`; before, the name was
   reported as unreadable and the undo went to manual review.

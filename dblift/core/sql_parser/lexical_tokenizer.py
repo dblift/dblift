@@ -170,6 +170,7 @@ class LexicalTokenizer(BaseTokenizer):
                 origin,
                 spec.text_blanks,
                 spec.trailing_edge_blanks,
+                spec.comment_adjacent_blanks,
             )
             self._word_re = re.compile("[" + delimiter_rules.word_part + "]+")
             self._delimiter = delimiter_rules.initial

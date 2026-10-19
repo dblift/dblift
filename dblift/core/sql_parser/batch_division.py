@@ -143,4 +143,4 @@ def divide(
             part_head.append(word)
     if has_code(positions, start, batch_end - 1):
         parts.append(source[start:batch_end].strip(text_blanks))
-    return tuple(parts)
+    return tuple(part for part in parts if part) or tuple(parts)

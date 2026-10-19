@@ -31,11 +31,11 @@ class SegmentScript:
         self.origin = origin
         self.kept = kept
 
-    def records(self, tokens: Sequence[Token], include_comment_only: bool) -> List[Statement]:
+    def records(self, tokens: Sequence[Token]) -> List[Statement]:
         """The records of the script, read with one cursor over ``tokens``.
 
         A segment runs from just after a ``;`` to the next one (or the end). It is a record when it
-        holds a token that is not a comment, or, for analysis, a character outside ``text_blanks``.
+        holds a token that is not a comment.
         The text is the segment without the blanks the engine reads at both ends; comments stay in it.
         """
         found: List[Statement] = []
@@ -43,11 +43,11 @@ class SegmentScript:
         for index in range(len(tokens)):
             token = tokens[index]
             if token.type == TokenType.DELIMITER:
-                self._finish(found, start, token.pos, ";", line, code, include_comment_only)
+                self._finish(found, start, token.pos, ";", line, code)
                 start, line, code = token.pos + 1, token.line, False
             elif token.type != TokenType.COMMENT:
                 code = True
-        self._finish(found, start, len(self.source), None, line, code, include_comment_only)
+        self._finish(found, start, len(self.source), None, line, code)
         return found
 
     def _finish(
@@ -58,19 +58,16 @@ class SegmentScript:
         terminator: Optional[str],
         line: int,
         code: bool,
-        include_comment_only: bool,
     ) -> None:
         """Append the record of the segment ``source[start:end]``, if it is one."""
-        blanks = self.text_blanks
-        raw = self.source[start:end]
-        if not code and not (include_comment_only and raw.strip(blanks)):
+        if not code:
             return
+        raw = self.source[start:end]
         plain = self.plain_blanks
         text = raw.lstrip(plain)
         lo = start + len(raw) - len(text)
         hi = lo + len(text.rstrip(plain))
-        if code:
-            self._refuse_read_differently_alone(lo, self.source[lo:hi])
+        self._refuse_read_differently_alone(lo, self.source[lo:hi])
         lo, hi = self._strip_replaced(lo, hi)
         found.append(
             Statement(

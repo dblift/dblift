@@ -42,8 +42,8 @@ def test_factory_projects_facts_without_constructing_regex_config(mode, monkeypa
     assert factory.split_statements("SELECT 1;\n-- note\n") == ["SELECT 1"]
     parser = factory.get_parser()
     assert parser.dialect_name == "duckdb"
-    assert parser.split_for_analysis("SELECT 1;\n-- note\n") == ["SELECT 1", "-- note"]
-    assert parser.split_for_extraction("SELECT 1;\n-- note\n") == ["SELECT 1", "-- note"]
+    assert parser.split_for_analysis("SELECT 1;\n-- note\n") == ["SELECT 1"]
+    assert parser.split_for_extraction("SELECT 1;\n-- note\n") == ["SELECT 1"]
     records = parser.split("SELECT 1;\nSELECT 2")
     assert [
         (record.text, record.line, record.terminator, record.source_start, record.source_end)
@@ -89,7 +89,6 @@ def test_factory_preserves_mutation_target_in_each_supported_mode(mode, sql):
         (CTE_UPDATE, "UPDATE", "DML", [("TABLE", "child")]),
         (COPY_FROM, "COPY", "DML", [("TABLE", "child")]),
         ("/* outer /* inner ; */ tail */ SELECT 1;", "SELECT", "QUERY", []),
-        ("-- note\n", "UNKNOWN", "UNKNOWN", []),
     ],
 )
 def test_script_analysis_uses_facts_and_preserves_scanner_units(sql, operation, kind, objects):
@@ -106,13 +105,12 @@ def test_script_analysis_uses_facts_and_preserves_scanner_units(sql, operation, 
 
 
 @pytest.mark.parametrize("mode", ["regex", "hybrid", "sqlglot"])
-def test_comment_only_analysis_is_successful_but_execution_has_no_statements(mode):
+def test_comment_only_script_is_successful_and_has_no_statements(mode):
     factory = SqlParserFactory("duckdb", mode)
     result = factory.parse_sql("/* outer /* inner */ tail */")
 
     assert result.success, result.errors
-    assert len(result.statements) == 1
-    assert result.statements[0].statement_type.value == "UNKNOWN"
+    assert result.statements == []
     assert factory.split_statements("/* outer /* inner */ tail */") == []
 
 

@@ -29,7 +29,7 @@ def test_sqlite_analysis_does_not_call_the_legacy_scanner(monkeypatch):
         raise AssertionError("legacy analysis scanner reached")
 
     monkeypatch.setattr(SQLiteFactsParser, "split_for_analysis", forbidden)
-    assert SqlAnalyzer("sqlite").split_statements_for_analysis("-- note\n") == ["-- note"]
+    assert SqlAnalyzer("sqlite").split_statements_for_analysis("-- note\n") == []
 
 
 def test_sqlite_masking_uses_the_shared_engine_after_legacy_scanner_removal():

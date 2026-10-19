@@ -332,12 +332,12 @@ CASES = [
     ("case 93", "SELECT 1; -- c\nSELECT 2", ("ok", [("SELECT 1;", "-- c\nSELECT 2")])),
     ("case 94", "x ; y ; z", ("ok", [("x ;", "y ;", "z")])),
     ("case 95", "SELECT 1;SELECT 2;SELECT 3", ("ok", [("SELECT 1;", "SELECT 2;", "SELECT 3")])),
-    ("case 96", "\xa0", ("ok", [("",)])),
-    ("case 97", "\x0c", ("ok", [("",)])),
-    ("case 98", "\x0b", ("ok", [("",)])),
+    ("case 96", "\xa0", ("ok", [])),
+    ("case 97", "\x0c", ("ok", [])),
+    ("case 98", "\x0b", ("ok", [])),
     ("case 99", "  ;  ", ("ok", [])),
     ("case 100", "\x0c;", ("ok", [(";",)])),
-    ("case 101", "SELECT 1\nGO\n\x0c\nGO\nSELECT 2", ("ok", [("SELECT 1",), ("",), ("SELECT 2",)])),
+    ("case 101", "SELECT 1\nGO\n\x0c\nGO\nSELECT 2", ("ok", [("SELECT 1",), ("SELECT 2",)])),
     ("case 102", "GO\nGO", ("ok", [])),
     ("case 103", "SELECT 1\nGO\nGO\nSELECT 2", ("ok", [("SELECT 1",), ("SELECT 2",)])),
     ("case 104", "SELECT [end]; SELECT 2;", ("ok", [("SELECT [end];", "SELECT 2;")])),
@@ -538,7 +538,7 @@ EQUIVALENCE_CASES = [
     ),
     (
         "\n\xa0CREATE; ALTER\n  begin\n  or;;",
-        [("CREATE; ALTER\n  begin\n  or;;", 2, 1, False, ("", "ALTER\n  begin\n  or;;"))],
+        [("CREATE; ALTER\n  begin\n  or;;", 2, 1, False, ("ALTER\n  begin\n  or;;",))],
     ),
     (
         "\x0cCREATE\n\nPROC\n\x1c CREATE\xa0REPLACE\nGO\n\xa0",
@@ -550,7 +550,6 @@ EQUIVALENCE_CASES = [
                 True,
                 ("CREATE\n\nPROC\n\x1c CREATE\xa0REPLACE",),
             ),
-            ("", 6, 1, False, ("",)),
         ],
     ),
     (
@@ -585,7 +584,6 @@ EQUIVALENCE_CASES = [
         [
             ("ALTER\n\x1c CASE", 1, 1, True, ("ALTER\n\x1c CASE",)),
             ("ALTER\n-- c\nTABLE", 4, 1, True, ("ALTER\n-- c\nTABLE",)),
-            ("", 8, 1, False, ("",)),
         ],
     ),
     (
@@ -593,7 +591,6 @@ EQUIVALENCE_CASES = [
         [
             ("DROP", 1, 1, True, ("DROP",)),
             ("TRUNCATE\n-- c\norBEGIN", 3, 1, True, ("TRUNCATE\n-- c\norBEGIN",)),
-            ("", 7, 1, False, ("",)),
         ],
     ),
     (
@@ -863,7 +860,6 @@ EQUIVALENCE_CASES = [
         "\nTABLE\nCASE\nFUNCTION\u2028END\nGO\n\xa0",
         [
             ("TABLE\nCASE\nFUNCTION\u2028END", 2, 1, True, ("TABLE\nCASE\nFUNCTION\u2028END",)),
-            ("", 6, 1, False, ("",)),
         ],
     ),
     (

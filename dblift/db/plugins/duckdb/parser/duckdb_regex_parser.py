@@ -41,13 +41,9 @@ class DuckDBRegexParser(EnhancedRegexParser):
         return LexicalEngine(self._splitter_spec).split_statements(sql_content)
 
     def split_for_analysis(self, sql_content: str, strict_tokenizer: bool = False) -> List[str]:
-        """The statements of a script for callers that read it statement by statement.
-
-        Execution drops a segment of comments only; the readers of a script (linting, analysis)
-        still see it, as they did before the engine.
-        """
+        """The statements of a script for callers that read it statement by statement."""
         return LexicalEngine(self._splitter_spec).split_for_analysis(sql_content)
 
     def split_for_extraction(self, sql_content: str, strict_tokenizer: bool = False) -> List[str]:
-        """Project extraction text from the engine, retaining comment-only segments."""
+        """Return the same engine-selected constituents as analysis."""
         return self.split_for_analysis(sql_content, strict_tokenizer)

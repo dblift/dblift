@@ -4,17 +4,12 @@
 {"facts":{"declared_columns":["id"],"kind":"DDL","objects":[["real_one","TABLE","created",null]],"operation":"CREATE"},"inputs":["c25ed8f543690951"],"old":null,"sql":"-- CREATE TABLE commented_out (id int);\nCREATE TABLE real_one (id int)"}
 {"facts":{"kind":"QUERY","operation":"SELECT"},"inputs":["2377b6a7ee55add4"],"old":null,"sql":"-- DELIMITER //\nSELECT 1"}
 {"facts":{"action":"add-column","declared_columns":["x"],"kind":"DDL","objects":[["orders","TABLE","altered","s"]],"operation":"ALTER"},"inputs":["4a838379dbb215cf"],"old":null,"sql":"-- DROP TABLE old_orders, nothing to see\nALTER TABLE \"s\".\"orders\" ADD COLUMN \"x\" INT"}
-{"facts":{"kind":"UNKNOWN","operation":"UNKNOWN"},"inputs":["6ba4a800ab034d57"],"old":null,"sql":"-- DuckDB cannot add this constraint; rebuild the table"}
-{"facts":{"kind":"UNKNOWN","operation":"UNKNOWN"},"inputs":["0963a66ccc0aef2f","524b9edb6ec1e5b9"],"old":null,"sql":"-- Missing closing parenthesis"}
 {"facts":{"diagnostic":"duckdb statement holds U+00A0, which the engine may read as part of a name; its objects are not named","kind":"QUERY","operation":"SELECT"},"inputs":["963e098d8a77b46b"],"old":null,"sql":"-- SELECT 1\nSELECT 1\u00a0"}
-{"facts":{"kind":"UNKNOWN","operation":"UNKNOWN"},"inputs":["24e2993c250e06c9"],"old":null,"sql":"-- SQLite cannot add this constraint; rebuild the table"}
 {"facts":{"declared_columns":["id"],"declared_constraints":[{"columns":["id"],"kind":"PRIMARY_KEY","name":null,"referenced_columns":[],"referenced_table":null}],"kind":"DDL","objects":[["test","TABLE","created",null]],"operation":"CREATE"},"inputs":["418b19f8afa9c6c4"],"old":null,"sql":"-- This is a comment\n        CREATE TABLE test (id SERIAL PRIMARY KEY)"}
 {"facts":{"declared_columns":["id"],"kind":"DDL","objects":[["users","TABLE","created",null]],"operation":"CREATE"},"inputs":["af82c53e2539a172"],"old":null,"sql":"-- This is a comment\n        CREATE TABLE users (id INTEGER)"}
 {"facts":{"diagnostic":"table: duckdb grammar is not modelled for this statement","kind":"DDL","objects":[["test","TABLE","created",null]],"operation":"CREATE"},"inputs":["733bd29d3730cf0b"],"old":null,"sql":"-- This is a line comment\n        CREATE TABLE test (\n            id INT, -- Column comment\n            name VARCHAR(100) # MySQL hash comment\n        )"}
 {"facts":{"declared_columns":["id","name"],"kind":"DDL","objects":[["test","TABLE","created",null]],"operation":"CREATE"},"inputs":["20d879370136f64c"],"old":null,"sql":"-- This is a line comment\n        CREATE TABLE test (\n            id INTEGER, -- Column comment\n            name VARCHAR(100) /* Block comment */\n        )"}
 {"facts":{"declared_columns":["id","name"],"kind":"DDL","objects":[["test","TABLE","created",null]],"operation":"CREATE"},"inputs":["117e2b1a5b04ebfd"],"old":null,"sql":"-- This is a single line comment\n        CREATE TABLE test (\n            id NUMBER, /* inline comment */\n            name VARCHAR2(50)\n        )"}
-{"facts":{"kind":"UNKNOWN","operation":"UNKNOWN"},"inputs":["4ab499858712a24a"],"old":null,"sql":"-- after"}
-{"facts":{"kind":"UNKNOWN","operation":"UNKNOWN"},"inputs":["8c7fd785f8966433"],"old":null,"sql":"-- c"}
 {"facts":{"declared_columns":["id"],"kind":"DDL","objects":[["real_one","TABLE","created",null]],"operation":"CREATE"},"inputs":["9f237de1b77ef4ee"],"old":null,"sql":"-- c\nCREATE TABLE real_one (id int)"}
 {"facts":{"declared_columns":["a"],"kind":"DDL","objects":[["t","TABLE","created",null]],"operation":"CREATE"},"inputs":["75434e58334372ef"],"old":null,"sql":"-- c\nCREATE TABLE t(a INT)"}
 {"facts":{"declared_columns":["a"],"kind":"DDL","objects":[["t","TABLE","created",null]],"operation":"CREATE"},"inputs":["53154201ae1e2991"],"old":null,"sql":"-- c\nCREATE TABLE t(a)"}
@@ -28,19 +23,14 @@
 {"facts":{"kind":"QUERY","objects":[["t","TABLE","referenced",null]],"operation":"SELECT"},"inputs":["f52b891d258978fb"],"old":null,"sql":"-- copy\n/* lead */ SELECT 1 AS id INTO t"}
 {"facts":{"kind":"DDL","objects":[["users_seq","SEQUENCE","created",null]],"operation":"CREATE"},"inputs":["b4bfcac4a0fbf398"],"old":null,"sql":"-- create the sequence\nCREATE SEQUENCE users_seq START WITH 1"}
 {"facts":{"affected_columns":["v"],"events":["UPDATE"],"kind":"DML","objects":[["t","TABLE","altered",null]],"operation":"UPDATE","predicate":"id = 1","target":"t","target_sql":"t"},"inputs":["8851f7b0a614c9fc"],"old":null,"sql":"-- dblift:formatted\n-- dblift: expect=1 onfail=halt\nUPDATE t SET v = 'x' WHERE id = 1"}
-{"facts":{"kind":"UNKNOWN","operation":"UNKNOWN"},"inputs":["382c004f1affdcc0","e69cfbb54b12c10c"],"old":null,"sql":"-- end"}
 {"facts":{"diagnostic":"duckdb grammar is not modelled for this statement","kind":"UNKNOWN","operation":"ROW"},"inputs":["1be7ea0fba7b793f"],"old":null,"sql":"-- header\nrow\n\\."}
 {"facts":{"declared_columns":["id"],"declared_constraints":[{"columns":["id"],"kind":"PRIMARY_KEY","name":null,"referenced_columns":[],"referenced_table":null}],"kind":"DDL","objects":[["test","TABLE","created",null]],"operation":"CREATE"},"inputs":["a9d1dcc290f84521"],"old":null,"sql":"-- header comment\nCREATE TABLE test (\n    id SERIAL PRIMARY KEY  -- inline comment\n)"}
 {"facts":{"kind":"QUERY","objects":[["users","TABLE","referenced",null]],"operation":"SELECT"},"inputs":["af82c53e2539a172"],"old":null,"sql":"-- inline comment\n        /* Block\n           comment */\n        SELECT * FROM users"}
 {"facts":{"events":["INSERT"],"kind":"DML","objects":[["t","TABLE","altered",null]],"operation":"INSERT","target":"t","target_sql":"t"},"inputs":["714231b7cf039f00"],"old":null,"sql":"-- lead\n/* lead */\nINSERT INTO t VALUES (1, 'a')"}
 {"facts":{"declared_columns":["id"],"kind":"DDL","objects":[["t","TABLE","created",null]],"operation":"CREATE"},"inputs":["d5f654e1582ba290"],"old":null,"sql":"-- leading comment\nCREATE TABLE t (id NUMBER)"}
-{"facts":{"kind":"UNKNOWN","operation":"UNKNOWN"},"inputs":["87e8742138a815a9"],"old":null,"sql":"-- line comment"}
-{"facts":{"kind":"UNKNOWN","operation":"UNKNOWN"},"inputs":["1199d7fb0f21cf87"],"old":null,"sql":"-- note"}
 {"facts":{"declared_columns":["id"],"kind":"DDL","objects":[["t","TABLE","created",null]],"operation":"CREATE"},"inputs":["fac4fcf6ce0caa68"],"old":null,"sql":"-- note{c}x\nCREATE TABLE t (id INT)"}
 {"facts":{"declared_columns":["V"],"kind":"DDL","objects":[["A;B","TABLE","created","QA"]],"operation":"CREATE"},"inputs":["28b0926c1cd8ca84","8b80249a2b9b75d0"],"old":null,"sql":"-- setup; comment\nCREATE TABLE \"QA\".\"A;B\" (\"V\" VARCHAR)"}
 {"facts":{"kind":"QUERY","operation":"SELECT"},"inputs":["cb35b45d3e35d01b"],"old":null,"sql":"-- this is a comment; not a separator\nSELECT 1"}
-{"facts":{"kind":"UNKNOWN","operation":"UNKNOWN"},"inputs":["12bbb1355b9f675f","1b7112078ce50249","94edea7f575e31b4","ccc4e4c22c1e6b57","e1025e965f9c1ccb"],"old":null,"sql":"-- trailing"}
-{"facts":{"kind":"UNKNOWN","operation":"UNKNOWN"},"inputs":["ac61d7fa87d56083"],"old":null,"sql":"-- trailing comment"}
 {"facts":{"kind":"DDL","objects":[["test1","PROCEDURE","created",null]],"operation":"CREATE"},"inputs":["74c272ade365299f"],"old":null,"sql":"--#SET TERMINATOR @\n        CREATE PROCEDURE test1() LANGUAGE SQL BEGIN SELECT 1"}
 {"facts":{"diagnostic":"table: duckdb Command is opaque to statement facts","kind":"DDL","objects":[["test","TABLE","created",null]],"operation":"CREATE"},"inputs":["98a1622c401de2dc"],"old":null,"sql":"--#SET TERMINATOR @\n        CREATE TABLE test (id INTEGER)@\n        INSERT INTO test VALUES (1)@\n        --#SET TERMINATOR ;\n        SELECT * FROM test"}
 {"facts":{"diagnostic":"table: duckdb Command is opaque to statement facts","kind":"DDL","objects":[["t","TABLE","created",null]],"operation":"CREATE"},"inputs":["7061617684823402"],"old":null,"sql":"--#SET TERMINATOR @\nCREATE TABLE t (id INTEGER)@"}
@@ -60,10 +50,8 @@
 {"facts":{"error":"duckdb statement could not be tokenized (unterminated quote or comment)","kind":"DDL","objects":[["victim","TABLE","dropped",null]],"operation":"DROP"},"inputs":["ed50c96789c7e2e1"],"old":null,"sql":"/* L1 /* L2 /* L3 */ DROP TABLE victim; still L3 */\nSELECT 1;"}
 {"facts":{"kind":"QUERY","operation":"SELECT"},"inputs":["0a02fe56a518850c"],"old":null,"sql":"/* L1 /* L2 /* L3 */ DROP TABLE victim; still L3 */ still L2 */\nSELECT 1"}
 {"facts":{"events":["INSERT"],"kind":"DML","objects":[["test","TABLE","altered",null]],"operation":"INSERT","target":"test","target_sql":"test"},"inputs":["20d879370136f64c"],"old":null,"sql":"/* Multi-line\n           block comment */\n        INSERT INTO test VALUES (1, 'Test')"}
-{"facts":{"kind":"UNKNOWN","operation":"UNKNOWN"},"inputs":["117e2b1a5b04ebfd","733bd29d3730cf0b"],"old":null,"sql":"/* Multi-line\n           comment */"}
 {"facts":{"events":["INSERT"],"kind":"DML","objects":[["test","TABLE","altered",null]],"operation":"INSERT","target":"test","target_sql":"test"},"inputs":["418b19f8afa9c6c4"],"old":null,"sql":"/* Multi-line\n           comment */\n        INSERT INTO test VALUES (DEFAULT)"}
 {"facts":{"kind":"QUERY","operation":"SELECT"},"inputs":["4cc5dbf6b23689e9","57215e5cf9d40033"],"old":null,"sql":"/* a\nb */\nSELECT 3"}
-{"facts":{"kind":"UNKNOWN","operation":"UNKNOWN"},"inputs":["95ac4df2138adf1c"],"old":null,"sql":"/* a /* b */ CREATE TABLE t (id int); */"}
 {"facts":{"declared_columns":["x"],"kind":"DDL","objects":[["t_after","TABLE","created",null]],"operation":"CREATE"},"inputs":["261da7f0eb95d793"],"old":null,"sql":"/* a /* b */ DROP TABLE t_keep; */ CREATE TABLE t_after (x INT) /* tail */"}
 {"facts":{"kind":"QUERY","operation":"SELECT"},"inputs":["2e2c66104320cacb"],"old":null,"sql":"/* a /* b */ DROP c */ SELECT 1"}
 {"facts":{"events":["INSERT"],"kind":"DML","objects":[["test","TABLE","altered",null]],"operation":"INSERT","target":"test","target_sql":"test"},"inputs":["a9d1dcc290f84521"],"old":null,"sql":"/* block comment */\nINSERT INTO test DEFAULT VALUES"}
@@ -83,13 +71,11 @@
 {"facts":{"kind":"DDL","objects":[["orders","TABLE","dropped","s"]],"operation":"DROP"},"inputs":["94710a107ce3a543"],"old":null,"sql":"/* migration header */\nDROP TABLE IF EXISTS \"s\".\"orders\""}
 {"facts":{"kind":"UNKNOWN","operation":"UNKNOWN"},"inputs":["0747effbbab5f264","627b49562fce34df","79c36901349250ca"],"old":null,"sql":"/* open"}
 {"facts":{"error":"duckdb statement could not be tokenized (unterminated quote or comment)","kind":"QUERY","operation":"SELECT"},"inputs":["854e31288286b12e"],"old":null,"sql":"/* outer /* inner */\nSELECT 1;"}
-{"facts":{"kind":"UNKNOWN","operation":"UNKNOWN"},"inputs":["cb907c44f5585ff6"],"old":null,"sql":"/* outer /* inner */ */"}
 {"facts":{"error":"duckdb statement could not be tokenized (unterminated quote or comment)","kind":"DDL","objects":[["victim","TABLE","created",null]],"operation":"CREATE"},"inputs":["e0086494b3932c9b"],"old":null,"sql":"/* outer /* inner */ CREATE TABLE victim (id INT);"}
 {"facts":{"kind":"QUERY","operation":"SELECT"},"inputs":["2525eb2147771477"],"old":null,"sql":"/* outer /* inner */ CREATE TABLE victim (id INT); still outer */\nSELECT 1"}
 {"facts":{"kind":"QUERY","operation":"SELECT"},"inputs":["dea95bef31aa7b5a"],"old":null,"sql":"/* outer /* inner */ DROP TABLE victim; still outer */\nSELECT 1"}
 {"facts":{"kind":"QUERY","operation":"SELECT"},"inputs":["8093f69be0b83fb5"],"old":null,"sql":"/* outer /* inner */ SELECT 1; */ SELECT 2"}
 {"facts":{"affected_columns":["id"],"events":["INSERT"],"kind":"DML","objects":[["items","TABLE","altered",null]],"operation":"COPY","target":"items","target_sql":"items"},"inputs":["19b9fb152eed381b"],"old":null,"sql":"/* outer /* inner */ tail */ COPY /* target */ items (id) FROM '/tmp/items;--/*quoted*/.csv'"}
-{"facts":{"kind":"UNKNOWN","operation":"UNKNOWN"},"inputs":["5f933e0522070de2"],"old":null,"sql":"/* trailing */"}
 {"facts":{"indexed_columns":["id"],"indexed_table":"t","kind":"DDL","objects":[["idx_t","INDEX","created",null],["t","TABLE","referenced",null]],"operation":"CREATE"},"inputs":["d5f654e1582ba290"],"old":null,"sql":"/* trailing */\n/* block\n   comment */\nCREATE INDEX idx_t ON t(id)"}
 {"facts":{"kind":"UNKNOWN","operation":"UNKNOWN"},"inputs":["f2e1040a84e50e12"],"old":null,"sql":"/* unterminated"}
 {"facts":{"declared_columns":["x"],"kind":"DDL","objects":[["t_after","TABLE","created",null]],"operation":"CREATE"},"inputs":["cf0e2fd94053d6ff"],"old":null,"sql":"/* x /* y */ DROP TABLE t_keep; */ CREATE TABLE t_after (x INT) /* tail */"}

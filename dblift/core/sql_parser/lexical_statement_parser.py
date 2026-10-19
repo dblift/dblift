@@ -152,13 +152,11 @@ class LexicalStatementParser(BaseStatementParser):
         next_token = self._peek_next_token(skip_comments=False)
         return next_token is None or next_token.type != TokenType.COPY_DATA
 
-    def split(self, *, include_comment_only: bool = False) -> List[Statement]:
+    def split(self) -> List[Statement]:
         """Cut the token stream into Statement records (see ``_split_with_rendered``)."""
-        return [record for record, _ in self._split_with_rendered(include_comment_only)]
+        return [record for record, _ in self._split_with_rendered()]
 
-    def _split_with_rendered(
-        self, include_comment_only: bool = False
-    ) -> List[Tuple[Statement, str]]:
+    def _split_with_rendered(self) -> List[Tuple[Statement, str]]:
         """Cut the token stream into ``(Statement, rendered)`` pairs.
 
         ``rendered`` is the verbatim source slice of the statement, terminator included.
@@ -173,10 +171,7 @@ class LexicalStatementParser(BaseStatementParser):
         if self._terminator_records is not None:
             return [(record, record.text) for record in self._terminator_records]
         if self._segments is not None:
-            return [
-                (record, record.text)
-                for record in self._segments.records(self.tokens, include_comment_only)
-            ]
+            return [(record, record.text) for record in self._segments.records(self.tokens)]
         if self._batches is not None:
             return self._batches.split(self.tokens)
         records: List[Tuple[Statement, str]] = []
@@ -188,8 +183,7 @@ class LexicalStatementParser(BaseStatementParser):
                 if self.spec.sqlite_shell
                 else any(t.type not in (TokenType.COMMENT, TokenType.DELIMITER) for t in current)
             )
-            has_comments = any(t.type == TokenType.COMMENT for t in current)
-            if current and (has_code or (include_comment_only and has_comments)):
+            if current and has_code:
                 text = self._render_statement(current, terminator, end_pos)
                 if text.strip(self.text_blanks):
                     first = next((t for t in current if t.type != TokenType.COMMENT), None)

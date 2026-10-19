@@ -2570,13 +2570,11 @@
   "script": "SELECT 1; -- bye",
   "views": {
    "analysis": [
-    "SELECT 1",
-    "-- bye"
+    "SELECT 1"
    ],
    "blanked": "SELECT 1;  ",
    "extraction": [
-    "SELECT 1",
-    "-- bye"
+    "SELECT 1"
    ],
    "masking": [
     [
@@ -2606,13 +2604,9 @@
   "name": "comment_only_script",
   "script": "-- only a comment\n/* here */",
   "views": {
-   "analysis": [
-    "-- only a comment\n/* here */"
-   ],
+   "analysis": [],
    "blanked": " \n ",
-   "extraction": [
-    "-- only a comment\n/* here */"
-   ],
+   "extraction": [],
    "masking": [],
    "records": [],
    "strings": []
@@ -2624,14 +2618,12 @@
   "views": {
    "analysis": [
     "-- c\nSELECT 1",
-    "/* b */ SELECT 2",
-    "-- t"
+    "/* b */ SELECT 2"
    ],
    "blanked": " \nSELECT 1;   SELECT 2;  ",
    "extraction": [
     "-- c\nSELECT 1",
-    "/* b */ SELECT 2",
-    "-- t"
+    "/* b */ SELECT 2"
    ],
    "masking": [
     [

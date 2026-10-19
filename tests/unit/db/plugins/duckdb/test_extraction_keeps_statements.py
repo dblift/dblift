@@ -69,19 +69,16 @@ def test_parse_sql_reports_a_shell_command_refusal() -> None:
     assert any(".mode" in error for error in result.errors)
 
 
-def test_analysis_keeps_a_segment_of_comments_only_and_execution_drops_it() -> None:
+def test_analysis_and_execution_drop_a_segment_of_comments_only() -> None:
     script = "CREATE TABLE t(a INT);\n-- DuckDB cannot add this constraint; rebuild the table\n"
     assert PARSER.split_statements(script) == ["CREATE TABLE t(a INT)"]
-    assert PARSER.split_for_analysis(script) == [
-        "CREATE TABLE t(a INT)",
-        "-- DuckDB cannot add this constraint; rebuild the table",
-    ]
+    assert PARSER.split_for_analysis(script) == ["CREATE TABLE t(a INT)"]
     assert SqlAnalyzer("duckdb").split_statements_for_analysis(script) == PARSER.split_for_analysis(
         script
     )
 
 
-def test_analysis_is_the_execution_split_when_a_script_has_no_comment_only_segment() -> None:
+def test_analysis_is_the_execution_split() -> None:
     script = "-- c\nCREATE TABLE t(a INT); INSERT INTO t VALUES (1); /* d */ SELECT 1;"
     assert PARSER.split_for_analysis(script) == PARSER.split_statements(script)
 

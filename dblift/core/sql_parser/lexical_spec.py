@@ -271,11 +271,15 @@ class LexicalSpec:
     engine reads as blanks (docs/sql-parsing/<dialect>.md). Any other character stays in the text.
     ``trailing_blanks`` names what a client strips from the trailing edge when that is more than
     ``text_blanks`` (empty: the same set); a statement made only of it is not sent.
+    ``comment_adjacent_blanks`` names what a client also reads as blank when it decides that a
+    statement holds nothing but blanks and comments (empty: only ``text_blanks``); such a
+    statement is not sent. It does not change the text of a statement that holds code.
     """
 
     name: str
     text_blanks: str = field(kw_only=True)
     trailing_blanks: str = field(default="", kw_only=True)
+    comment_adjacent_blanks: str = field(default="", kw_only=True)
     client_name: str = "SQL client"
     nested_comments: bool = False
     quoted_identifier: str = '"'

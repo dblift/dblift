@@ -82,6 +82,8 @@ class BatchScript:
             return
         raw = self.source[start:cut]
         text = raw.strip(self.text_blanks)
+        if not text:
+            return
         lead = len(raw) - len(raw.lstrip(self.text_blanks))
         record = Statement(
             text=text,
