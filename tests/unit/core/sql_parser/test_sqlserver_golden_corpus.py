@@ -23,6 +23,12 @@ from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.sql_parser.redaction import describe_statement, mask_string_literals
 from dblift.db.plugins.sqlserver.parser.sqlserver_regex_parser import SqlServerRegexParser
 
+
+def recorded(record):
+    """The fields the corpus records; ``execution_text`` is pinned by the string comparison."""
+    return {k: v for k, v in dataclasses.asdict(record).items() if k != "execution_text"}
+
+
 CORPUS = Path(__file__).with_name("sqlserver_golden_corpus.json")
 CHUNK = 50
 
@@ -46,7 +52,7 @@ def _views(records: Any, strings: Any, analysis: Any, executed: Any) -> Dict[str
         texts.append(record.text)
         texts.extend(record.analysis_statements or ())
     return {
-        "records": [dataclasses.asdict(r) for r in records],
+        "records": [recorded(r) for r in records],
         "strings": [[text, len(list(run))] for text, run in itertools.groupby(strings)],
         "analysis": analysis,
         "executed": executed,

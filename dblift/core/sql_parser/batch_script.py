@@ -33,8 +33,8 @@ class BatchScript:
         self.text_blanks = text_blanks
         self.origin = origin
 
-    def split(self, tokens: Sequence[Token]) -> List[Tuple[Statement, str]]:
-        """``(record, the string execution sends once)`` for every batch that holds code."""
+    def split(self, tokens: Sequence[Token]) -> List[Statement]:
+        """The record of every batch that holds code; execution sends its text."""
         source = self.source
         extents = list(self.comments)
         lexeme_starts: List[int] = []
@@ -47,7 +47,7 @@ class BatchScript:
         extents.sort()
         spans = code_spans(source, self.origin, len(source), extents)
         positions = code_positions(self.rules, source, spans, lexeme_starts)
-        records: List[Tuple[Statement, str]] = []
+        records: List[Statement] = []
         start, line = self.origin, 1
         for token in tokens:
             if token.type != TokenType.DIRECTIVE:
@@ -67,7 +67,7 @@ class BatchScript:
 
     def _add(
         self,
-        records: List[Tuple[Statement, str]],
+        records: List[Statement],
         spans: Sequence[Tuple[int, int]],
         positions: Sequence[int],
         start: int,
@@ -96,4 +96,4 @@ class BatchScript:
             source_start=start,
             source_end=end,
         )
-        records.append((record, text))
+        records.append(record)

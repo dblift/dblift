@@ -26,6 +26,12 @@ from dblift.db.plugins.oracle.parser._comments import strip_comments, strip_sql_
 from dblift.db.plugins.oracle.parser.oracle_parser import OracleParser
 from dblift.db.plugins.oracle.parser.sqlplus_context import extract_sqlplus_context
 
+
+def recorded(record):
+    """The fields the corpus records; ``execution_text`` is pinned by the string comparison."""
+    return {k: v for k, v in dataclasses.asdict(record).items() if k != "execution_text"}
+
+
 CORPUS = json.loads(Path(__file__).with_name("oracle_golden_corpus.json").read_text())
 CHUNK = 50
 DECLARED = {
@@ -58,7 +64,7 @@ def observed(script):
         }
 
     return {
-        "records": outcome(lambda: [dataclasses.asdict(r) for r in parser.split(script)]),
+        "records": outcome(lambda: [recorded(r) for r in parser.split(script)]),
         "execution": outcome(lambda: parser.split_statements(script)),
         "analysis": outcome(lambda: parser.split_for_analysis(script)),
         "analyzer": outcome(lambda: analyzer.split_statements(script)),

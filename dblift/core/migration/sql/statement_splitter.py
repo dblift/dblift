@@ -3,14 +3,21 @@
 from __future__ import annotations
 
 import logging as _logging
-from typing import List, Optional, Union
+from typing import Callable, List, Optional, Set, TypeVar, Union
 
 from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
 from dblift.core.logger import Log
+from dblift.core.migration.sql.execution_statement import is_comment_only_statement
 from dblift.core.sql_parser.lexical_engine import LexicalEngine
 from dblift.core.sql_parser.parser_factory import SqlParserFactory
 from dblift.core.sql_parser.parser_interface import SqlParserInterface
+from dblift.core.sql_parser.statement import Statement, execution_strings
 from dblift.db.provider_registry import ProviderRegistry
+
+_T = TypeVar("_T")
+
+# Dialects whose parser returns strings only, already told to return records.
+_ANNOUNCED: Set[str] = set()
 
 
 class StatementSplitter:
@@ -31,19 +38,64 @@ class StatementSplitter:
         )
         self._parser: Optional[SqlParserInterface] = None
 
-    def split_statements(self, sql: str, *, strict_tokenizer: bool = False) -> List[str]:
-        """Return executable units or refuse; never guess a second split."""
-        if self._engine is None and self._parser is None:
+    def _record_parser(self) -> SqlParserInterface:
+        if self._parser is None:
             assert self.parser_factory is not None
             self._parser = self.parser_factory.get_parser()
+        return self._parser
+
+    def _refusing(self, split: Callable[[], _T]) -> _T:
+        """Run *split*; a refusal passes through, any other failure becomes one."""
         try:
-            if self._engine is not None:
-                return self._engine.split_statements(sql)
-            assert self._parser is not None
-            return list(self._parser.split_statements(sql, strict_tokenizer=strict_tokenizer))
+            return split()
         except (UnsafeStatementSplitError, UnsupportedMetaCommandError):
             raise
         except Exception as exc:
             raise UnsafeStatementSplitError(
                 f"{self.dialect} statement splitter failed: {exc}"
             ) from exc
+
+    def split(self, sql: str, *, strict_tokenizer: bool = False) -> List[Statement]:
+        """The records of *sql* as the dialect's scanner cuts them, or its refusal."""
+        engine = self._engine
+        if engine is not None:
+            return self._refusing(lambda: engine.split(sql))
+        parser = self._record_parser()
+        if hasattr(parser, "split"):
+            return self._refusing(lambda: list(parser.split(sql)))
+        return self._refusing(
+            lambda: self._records_of_strings(
+                parser.split_statements(sql, strict_tokenizer=strict_tokenizer)
+            )
+        )
+
+    def split_statements(self, sql: str, *, strict_tokenizer: bool = False) -> List[str]:
+        """Return executable units or refuse; never guess a second split."""
+        if self._engine is None and not hasattr(self._record_parser(), "split"):
+            parser = self._record_parser()
+            return self._refusing(
+                lambda: list(parser.split_statements(sql, strict_tokenizer=strict_tokenizer))
+            )
+        return execution_strings(self.split(sql, strict_tokenizer=strict_tokenizer))
+
+    def _records_of_strings(self, strings: List[str]) -> List[Statement]:
+        """Records for a parser that returns strings only, minus what execution used to skip.
+
+        A parser without records leaves the empty, comment-only and batch-separator strings to
+        the caller; they are dropped here so that every dialect hands over statements only.
+        """
+        if self.dialect not in _ANNOUNCED:
+            _ANNOUNCED.add(self.dialect)
+            _logging.getLogger(__name__).warning(
+                "The %s statement parser returns strings only; return Statement records from "
+                "split() so that dblift does not have to guess which strings are statements.",
+                self.dialect,
+            )
+        quirks = ProviderRegistry.get_quirks(self.dialect)
+        return [
+            Statement(text=text, line=1, terminator=None)
+            for text in strings
+            if text.strip()
+            and not quirks.is_batch_separator(text.strip())
+            and not is_comment_only_statement(text)
+        ]

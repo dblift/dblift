@@ -97,6 +97,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   read statements through the plugin's own statement facts reader; a plugin that provides a
   reader also provides its facts parser. A plugin that declares no reader no longer inherits
   another plugin's facts through a shared sqlglot dialect name, when `quirks=` is passed.
+- **`StatementSplitter.split` returns the records, and the statement lists are projections of
+  them.** `Statement` gains `execution_text` (the string execution sends when it is not `text`),
+  and `executable_records`, `execution_strings`, `execution_units` and `analysis_sql` in
+  `dblift.core.sql_parser.statement` select and project the records, positively on `kind`: a
+  record of an unknown kind is no statement. `split_statements` is the execution projection and
+  returns the same strings as before. A parser that returns strings only is adapted to records
+  and told once to return records. The `GO 0` notice is logged where the record is cut.
 
 ### Deprecated
 

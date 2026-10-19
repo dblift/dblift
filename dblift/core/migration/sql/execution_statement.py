@@ -9,6 +9,8 @@ from typing import Any, List, Optional
 
 from dblift.core.exceptions import TransactionStatementError
 from dblift.core.sql_parser.common.comment_stripping import strip_comments_preserving_quotes
+from dblift.core.sql_parser.statement import executable_records, execution_strings
+from dblift.core.sql_parser.statement import execution_units as unit_texts
 from dblift.core.utils.row_access import strip_leading_comments
 
 
@@ -85,11 +87,7 @@ def execution_units(sql: str, dialect: str) -> Optional[List[str]]:
     parser = _script_parser(dialect.lower())
     if parser is None or not hasattr(parser, "split"):
         return None
-    return [
-        record.text
-        for record in parser.split(sql)
-        if record.kind != "directive" and record.repeat > 0
-    ]
+    return unit_texts(parser.split(sql))
 
 
 def classify_execution_statement(
@@ -144,18 +142,10 @@ def neutralise_transaction_statements(
         parser = _script_parser(dialect.lower())
         if not content or parser is None or not hasattr(parser, "split"):
             return statements
-        records = [
-            record
-            for record in parser.split(content)
-            if record.kind != "directive" and record.repeat > 0
-            for _ in range(record.repeat)
-        ]
-        if [record.text.strip().rstrip(";") for record in records] != [
-            statement.strip().rstrip(";") for statement in statements
-        ]:
-            return statements
-        for index, record in enumerate(records):
-            if not record.multi:
+        sent = 0  # how many strings the records before this one are sent as
+        for record in parser.split(content):
+            index, sent = sent, sent + len(execution_strings([record]))
+            if not (executable_records([record]) and record.multi):
                 continue
             parts = record.analysis_statements or (record.text,)
             if len(parts) < 2:

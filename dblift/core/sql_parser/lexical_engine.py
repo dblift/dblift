@@ -66,14 +66,7 @@ class LexicalEngine:
 
     def split_for_analysis(self, script: str) -> List[str]:
         """Project the analysis text of each record of the script."""
-        records = self.split(script)
-        if (
-            self.spec.batch_script is not None
-            or self.spec.delimiter_script is not None
-            or self.spec.terminator_script is not None
-        ):
-            return analysis_sql(records)
-        return [record.text for record in records]
+        return analysis_sql(self.split(script))
 
     def blank_comments(self, script: str) -> str:
         """Replace each scanned comment with a space, preserving quoted text."""

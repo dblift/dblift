@@ -6,7 +6,7 @@ from typing import List
 
 from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.core.sql_parser.sqlglot_parser import SqlGlotParser
-from dblift.core.sql_parser.statement import Statement
+from dblift.core.sql_parser.statement import Statement, execution_strings
 
 #: What a statement loses at its ends: the blanks every measured engine reads as blanks. Snowflake
 #: is not measured, so any other white space character stays in the text.
@@ -22,7 +22,7 @@ class SnowflakeStatementParser(SqlGlotParser):
 
     def split_statements(self, sql_content: str, strict_tokenizer: bool = False) -> List[str]:
         """Execution text from the script scanner."""
-        return [record.text for record in self.split(sql_content)]
+        return execution_strings(self.split(sql_content))
 
     def split(self, sql_content: str) -> List[Statement]:
         """Split on unquoted semicolons and reject unquoted scripting blocks."""

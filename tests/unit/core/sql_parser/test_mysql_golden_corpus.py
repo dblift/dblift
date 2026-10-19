@@ -22,6 +22,12 @@ from dblift.core.sql_parser.redaction import describe_statement, mask_string_lit
 from dblift.db.plugins.mariadb.regex_parser import MariaDbRegexParser
 from dblift.db.plugins.mysql.parser.mysql_regex_parser import MySqlRegexParser
 
+
+def recorded(record):
+    """The fields the corpus records; ``execution_text`` is pinned by the string comparison."""
+    return {k: v for k, v in dataclasses.asdict(record).items() if k != "execution_text"}
+
+
 CORPUS = Path(__file__).with_name("mysql_golden_corpus.json")
 CHUNK = 50
 PARSERS: Dict[str, Type[MySqlRegexParser]] = {
@@ -42,7 +48,7 @@ def evaluate(script: str, dialect: str) -> Dict[str, Any]:
     try:
         records = parser.split(script)
         views = {
-            "records": [dataclasses.asdict(r) for r in records],
+            "records": [recorded(r) for r in records],
             "strings": parser.split_statements(script),
             "analysis": parser.split_for_analysis(script),
             "executed": SqlAnalyzer(dialect).split_statements_for_analysis(script),
