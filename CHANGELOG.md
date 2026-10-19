@@ -102,6 +102,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **SQLite execution errors show one failed SQL preview in CLI logs.**
+  For versioned migrations and SQL callbacks, the execution service reports the
+  failed statement while SQLite still reports the database error.
 - **The current schema version reflects successful migrations still in effect.**
   `info`, migration state, migrate/undo plans and results now agree on the highest
   active SQL or Python migration version or baseline. Undoing every version clears it.

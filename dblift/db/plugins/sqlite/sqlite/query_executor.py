@@ -9,7 +9,6 @@ import sqlite3
 from typing import Any, Dict, List, Optional
 
 from dblift.core.logger import Log, NullLog
-from dblift.core.sql_parser.redaction import describe_statement
 
 
 class SQLiteQueryExecutor:
@@ -69,7 +68,6 @@ class SQLiteQueryExecutor:
         except Exception as e:
             error_msg = f"Error executing SQL statement: {str(e)}"
             self.log.error(error_msg)
-            self.log.error(f"SQL: {describe_statement(sql)}")
             self.log.debug(f"SQL: {sql}")
             if params:
                 self.log.debug(f"Parameters: {params}")
@@ -122,7 +120,6 @@ class SQLiteQueryExecutor:
         except Exception as e:
             error_msg = f"Error executing query: {str(e)}"
             self.log.error(error_msg)
-            self.log.error(f"SQL: {describe_statement(sql)}")
             self.log.debug(f"SQL: {sql}")
             if params:
                 self.log.debug(f"Parameters: {params}")
