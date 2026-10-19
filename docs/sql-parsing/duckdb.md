@@ -386,7 +386,8 @@ records. `StatementSplitter` (and so `SqlAnalyzer.split_statements`) reaches the
 specification without constructing a parser; `SqlAnalyzer.split_statements_for_analysis` reaches it through
 `DuckDBFactsParser.split_for_analysis`, which delegates to it. `DuckDBRegexParser` and `DuckDBFactsParser` are thin delegates: `split()`
 returns `Statement` records, `split_statements()` their execution text, `split_for_analysis()`
-and `split_for_extraction()` add comment-only segments, and `parse_sql()` honours the refusals.
+and `split_for_extraction()` the same statements (a segment of comments only is in none of them),
+and `parse_sql()` honours the refusals.
 Statement facts, `DuckDBQuirks.blank_comments` and the provider's row-count rewrite blank
 comments through the same engine. There is no DuckDB subclass of the engine and no second
 scanner.
