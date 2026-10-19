@@ -12,7 +12,7 @@
 "edge_duckdb": {
 "count": 341,
 "observed": null,
-"sha256": "0be0b008bd32b27f8bf1f706b12fe85fe03056bfbcc754dc0f702cbb8fdf59fc"
+"sha256": "c8c5f7b30ce03262d2ef48595fa2ee142729a65b7c7c22195a2ff0f004930b3f"
 },
 "edge_mariadb": {
 "count": 372,
@@ -42,7 +42,7 @@
 "edge_snowflake": {
 "count": 341,
 "observed": null,
-"sha256": "c6c8eed6577def1e4ca3a1bf6b3085c9be7b1a3a3160b7eacc9b2dcd0fe1d3da"
+"sha256": "a9562c08e30a9c0d2f2b6fc591aedebfe1a90f788d78f42cb77583aa2f8a5038"
 },
 "edge_sqlite": {
 "count": 341,
@@ -6623,13 +6623,19 @@
 "SELECT 1;\n\u00a0",
 {
 "analysis": [
-"SELECT 1"
+"error",
+"UnsafeStatementSplitError",
+"U+00A0 at line 2, column 1: the engine keeps this blank at the end of the script and rejects the script; remove the character"
 ],
 "engine": [
-"SELECT 1"
+"error",
+"UnsafeStatementSplitError",
+"U+00A0 at line 2, column 1: the engine keeps this blank at the end of the script and rejects the script; remove the character"
 ],
 "splitter": [
-"SELECT 1"
+"error",
+"UnsafeStatementSplitError",
+"U+00A0 at line 2, column 1: the engine keeps this blank at the end of the script and rejects the script; remove the character"
 ]
 }
 ],
@@ -7132,7 +7138,7 @@
 }
 ]
 ],
-"sha256": "aa378ca1dacd9ca355961233d1d2649ae48a2133b37e14ae22149c61639a484f"
+"sha256": "f65f5b8056e1926e08422ac5815dc0e40981d299023ec0ea2d64cd3704c4e304"
 },
 "snowflake": {
 "count": 5,
@@ -7207,7 +7213,7 @@
 "sha256": "d33767030fb567ebf4699543cf51a835e6b5eced5e52adf95a4e7fbfd5c4910d"
 },
 "spec_rows": {
-"count": 679,
+"count": 680,
 "observed": [
 [
 "db2",
@@ -10103,19 +10109,16 @@
 "DROP TABLE t\u00a0;\nSELECT 1;",
 {
 "analysis": [
-"error",
-"UnsafeStatementSplitError",
-"U+00A0 at line 1, column 13: the statement reads differently run alone than in its script, this blank is kept when run alone, replaced in its script; remove the character"
+"DROP TABLE t",
+"SELECT 1"
 ],
 "engine": [
-"error",
-"UnsafeStatementSplitError",
-"U+00A0 at line 1, column 13: the statement reads differently run alone than in its script, this blank is kept when run alone, replaced in its script; remove the character"
+"DROP TABLE t",
+"SELECT 1"
 ],
 "splitter": [
-"error",
-"UnsafeStatementSplitError",
-"U+00A0 at line 1, column 13: the statement reads differently run alone than in its script, this blank is kept when run alone, replaced in its script; remove the character"
+"DROP TABLE t",
+"SELECT 1"
 ]
 }
 ],
@@ -10156,17 +10159,17 @@
 "analysis": [
 "error",
 "UnsafeStatementSplitError",
-"U+00A0 at line 1, column 13: the statement reads differently run alone than in its script, this blank is kept when run alone, replaced in its script; remove the character"
+"U+00A0 at line 1, column 13: the engine replaces this blank and the duckdb shell keeps it; remove the character"
 ],
 "engine": [
 "error",
 "UnsafeStatementSplitError",
-"U+00A0 at line 1, column 13: the statement reads differently run alone than in its script, this blank is kept when run alone, replaced in its script; remove the character"
+"U+00A0 at line 1, column 13: the engine replaces this blank and the duckdb shell keeps it; remove the character"
 ],
 "splitter": [
 "error",
 "UnsafeStatementSplitError",
-"U+00A0 at line 1, column 13: the statement reads differently run alone than in its script, this blank is kept when run alone, replaced in its script; remove the character"
+"U+00A0 at line 1, column 13: the engine replaces this blank and the duckdb shell keeps it; remove the character"
 ]
 }
 ],
@@ -10177,17 +10180,17 @@
 "analysis": [
 "error",
 "UnsafeStatementSplitError",
-"U+00A0 at line 1, column 13: the statement reads differently run alone than in its script, this blank is kept when run alone, replaced in its script; remove the character"
+"U+00A0 at line 1, column 13: the engine replaces this blank and the duckdb shell keeps it; remove the character"
 ],
 "engine": [
 "error",
 "UnsafeStatementSplitError",
-"U+00A0 at line 1, column 13: the statement reads differently run alone than in its script, this blank is kept when run alone, replaced in its script; remove the character"
+"U+00A0 at line 1, column 13: the engine replaces this blank and the duckdb shell keeps it; remove the character"
 ],
 "splitter": [
 "error",
 "UnsafeStatementSplitError",
-"U+00A0 at line 1, column 13: the statement reads differently run alone than in its script, this blank is kept when run alone, replaced in its script; remove the character"
+"U+00A0 at line 1, column 13: the engine replaces this blank and the duckdb shell keeps it; remove the character"
 ]
 }
 ],
@@ -10196,19 +10199,13 @@
 "DROP TABLE t\u00a0\n\n",
 {
 "analysis": [
-"error",
-"UnsafeStatementSplitError",
-"U+00A0 at line 1, column 13: the statement reads differently run alone than in its script, this blank is kept when run alone, replaced in its script; remove the character"
+"DROP TABLE t"
 ],
 "engine": [
-"error",
-"UnsafeStatementSplitError",
-"U+00A0 at line 1, column 13: the statement reads differently run alone than in its script, this blank is kept when run alone, replaced in its script; remove the character"
+"DROP TABLE t"
 ],
 "splitter": [
-"error",
-"UnsafeStatementSplitError",
-"U+00A0 at line 1, column 13: the statement reads differently run alone than in its script, this blank is kept when run alone, replaced in its script; remove the character"
+"DROP TABLE t"
 ]
 }
 ],
@@ -10277,19 +10274,13 @@
 "DROP TABLE t\u00a0 ",
 {
 "analysis": [
-"error",
-"UnsafeStatementSplitError",
-"U+00A0 at line 1, column 13: the statement reads differently run alone than in its script, this blank is kept when run alone, replaced in its script; remove the character"
+"DROP TABLE t"
 ],
 "engine": [
-"error",
-"UnsafeStatementSplitError",
-"U+00A0 at line 1, column 13: the statement reads differently run alone than in its script, this blank is kept when run alone, replaced in its script; remove the character"
+"DROP TABLE t"
 ],
 "splitter": [
-"error",
-"UnsafeStatementSplitError",
-"U+00A0 at line 1, column 13: the statement reads differently run alone than in its script, this blank is kept when run alone, replaced in its script; remove the character"
+"DROP TABLE t"
 ]
 }
 ],
@@ -10511,13 +10502,19 @@
 "SELECT 1;\u00a0",
 {
 "analysis": [
-"SELECT 1"
+"error",
+"UnsafeStatementSplitError",
+"U+00A0 at line 1, column 10: the engine keeps this blank at the end of the script and rejects the script; remove the character"
 ],
 "engine": [
-"SELECT 1"
+"error",
+"UnsafeStatementSplitError",
+"U+00A0 at line 1, column 10: the engine keeps this blank at the end of the script and rejects the script; remove the character"
 ],
 "splitter": [
-"SELECT 1"
+"error",
+"UnsafeStatementSplitError",
+"U+00A0 at line 1, column 10: the engine keeps this blank at the end of the script and rejects the script; remove the character"
 ]
 }
 ],
@@ -10526,19 +10523,46 @@
 "DROP TABLE t;\u00a0\u00a0",
 {
 "analysis": [
-"DROP TABLE t"
+"error",
+"UnsafeStatementSplitError",
+"U+00A0 at line 1, column 15: the engine keeps this blank at the end of the script and rejects the script; remove the character"
 ],
 "engine": [
-"DROP TABLE t"
+"error",
+"UnsafeStatementSplitError",
+"U+00A0 at line 1, column 15: the engine keeps this blank at the end of the script and rejects the script; remove the character"
 ],
 "splitter": [
-"DROP TABLE t"
+"error",
+"UnsafeStatementSplitError",
+"U+00A0 at line 1, column 15: the engine keeps this blank at the end of the script and rejects the script; remove the character"
 ]
 }
 ],
 [
 "duckdb",
 "DROP TABLE t;\n\u00a0",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"U+00A0 at line 2, column 1: the engine keeps this blank at the end of the script and rejects the script; remove the character"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"U+00A0 at line 2, column 1: the engine keeps this blank at the end of the script and rejects the script; remove the character"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"U+00A0 at line 2, column 1: the engine keeps this blank at the end of the script and rejects the script; remove the character"
+]
+}
+],
+[
+"duckdb",
+"DROP TABLE t;\u00a0\n",
 {
 "analysis": [
 "DROP TABLE t"
@@ -10556,19 +10580,16 @@
 "DROP TABLE IF EXISTS t\u00a0; SELECT 1;",
 {
 "analysis": [
-"error",
-"UnsafeStatementSplitError",
-"U+00A0 at line 1, column 23: the statement reads differently run alone than in its script, this blank is kept when run alone, replaced in its script; remove the character"
+"DROP TABLE IF EXISTS t",
+"SELECT 1"
 ],
 "engine": [
-"error",
-"UnsafeStatementSplitError",
-"U+00A0 at line 1, column 23: the statement reads differently run alone than in its script, this blank is kept when run alone, replaced in its script; remove the character"
+"DROP TABLE IF EXISTS t",
+"SELECT 1"
 ],
 "splitter": [
-"error",
-"UnsafeStatementSplitError",
-"U+00A0 at line 1, column 23: the statement reads differently run alone than in its script, this blank is kept when run alone, replaced in its script; remove the character"
+"DROP TABLE IF EXISTS t",
+"SELECT 1"
 ]
 }
 ],
@@ -10577,19 +10598,16 @@
 "SELECT 1 AS x\u00a0; SELECT 2;",
 {
 "analysis": [
-"error",
-"UnsafeStatementSplitError",
-"U+00A0 at line 1, column 14: the statement reads differently run alone than in its script, this blank is kept when run alone, replaced in its script; remove the character"
+"SELECT 1 AS x",
+"SELECT 2"
 ],
 "engine": [
-"error",
-"UnsafeStatementSplitError",
-"U+00A0 at line 1, column 14: the statement reads differently run alone than in its script, this blank is kept when run alone, replaced in its script; remove the character"
+"SELECT 1 AS x",
+"SELECT 2"
 ],
 "splitter": [
-"error",
-"UnsafeStatementSplitError",
-"U+00A0 at line 1, column 14: the statement reads differently run alone than in its script, this blank is kept when run alone, replaced in its script; remove the character"
+"SELECT 1 AS x",
+"SELECT 2"
 ]
 }
 ],
@@ -19575,6 +19593,6 @@
 }
 ]
 ],
-"sha256": "5ac7000bdca469a6732c2306f54bae566c7ca5bb16ae165bbf53959e67ac22ed"
+"sha256": "6af7ab9be1c6a29d64b164aa4cd5dfb3fe994a2e8de13d9ff448f5063bce1c12"
 }
 }
