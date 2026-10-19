@@ -491,7 +491,7 @@ class Migration:
         except Exception as exc:
             raise UnsafeStatementSplitError(f"statement splitter failed: {exc}") from exc
         else:
-            statements = parse_migration_sql(sql_analyzer, content, log)
+            statements = parse_migration_sql(sql_analyzer, content, log, dialect=dialect)
 
         # Cache only when the parse used canonical content. When called with
         # content_override (placeholder-substituted), the result is per-execution

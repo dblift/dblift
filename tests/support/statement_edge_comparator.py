@@ -7,10 +7,11 @@ class covers, the blanks included); the cores must be equal, each new run must e
 (the leading run at its left, the trailing run at its right), and a run of the new text may not begin
 or end at an edge with a blank of the dialect. A kept run must also be the characters the script holds
 next to the core, each claimed once, in script order; a record's span must show the same runs as its text.
-Two declared exceptions, each for one dialect only: Oracle refuses a script whose statement edge holds a
+Three declared exceptions, each for one dialect only: Oracle refuses a script whose statement edge holds a
 character the driver would strip and the dialect does not (the refusal must name a character the script
 holds at the reported line and column); SQL Server now strips U+200B at a statement edge, where the old
-recording kept it.
+recording kept it; Db2 executes a statement made only of kept characters, which the old recording dropped
+(the script must hold it; the other statements are compared as usual).
 Everything else is reported with the dialect, the script id, the view and the first differing offset.
 """
 
@@ -165,13 +166,75 @@ def _check_claims(script: str, old: List[str], texts: List[str], blanks: str) ->
         ) from None
 
 
+_COMMENT = re.compile(r"--[^\n]*|/\*.*?\*/", re.DOTALL)
+_TERMINATORS = ";@"
+
+
+def _kept_only(text: str, blanks: str) -> bool:
+    """Whether ``text`` holds, outside comments, only white space and some character kept at an edge."""
+    code = _COMMENT.sub("", text)
+    return bool(code) and code.isspace() and any(c not in blanks for c in code)
+
+
+def _stands_alone(script: str, text: str, at: int, blanks: str) -> bool:
+    """Whether ``text`` at ``at`` is a statement of its own: terminators (or the script's ends) around it."""
+    gap = blanks + " \t\r\n"
+    before = script[:at].rstrip(gap)
+    after = script[at + len(text) :].lstrip(gap)
+    return (not before or before[-1] in _TERMINATORS) and (not after or after[0] in _TERMINATORS)
+
+
+def _in_place(new: List[Any], kept: List[Any], script: str, blanks: str, text_of: Any) -> bool:
+    """Whether each statement of kept characters stands alone in the script where ``new`` has it."""
+    position = 0
+    for item in new:
+        text = text_of(item)
+        if any(item is other for other in kept):
+            at = script.find(text, position)
+            while at >= 0 and not _stands_alone(script, text, at, blanks):
+                at = script.find(text, at + 1)
+            if at < 0:
+                return False
+            position = at + len(text)
+        else:
+            core = text.strip()
+            at = script.find(core, position) if core else -1
+            if at < 0:
+                if core and core in script:
+                    return False  # the script holds it before a statement that precedes it
+                continue
+            position = at + len(core)
+    return True
+
+
+def _without_declared(
+    new: List[Any], old_count: int, script: Optional[str], blanks: str, text_of: Any
+) -> List[Any]:
+    """``new`` without the statements of kept characters, when that explains the count."""
+    if len(new) == old_count:
+        return new
+    kept = [item for item in new if _kept_only(text_of(item), blanks)]
+    if script is None or len(new) - len(kept) != old_count:
+        return new
+    if not _in_place(new, kept, script, blanks, text_of):
+        return new
+    return [item for item in new if not any(item is other for other in kept)]
+
+
 def _check_statements(
-    old: Any, new: Any, blanks: str, script: Optional[str] = None, lost: str = ""
+    old: Any,
+    new: Any,
+    blanks: str,
+    script: Optional[str] = None,
+    lost: str = "",
+    count_change: bool = False,
 ) -> None:
     if not isinstance(old, list) or not isinstance(new, list):
         if old != new:
             raise _Mismatch(None, f"outcome differs: old {old!r}, new {new!r}")
         return
+    if count_change:
+        new = _without_declared(new, len(old), script, blanks, lambda text: text)
     if len(old) != len(new):
         raise _Mismatch(None, f"old has {len(old)} statements, new has {len(new)}")
     for index, (before, after) in enumerate(zip(old, new)):
@@ -263,11 +326,15 @@ def _check_record(
         )
 
 
-def _check_records(script: str, old: Any, new: Any, blanks: str, lost: str = "") -> None:
+def _check_records(
+    script: str, old: Any, new: Any, blanks: str, lost: str = "", count_change: bool = False
+) -> None:
     if not isinstance(old, list) or not isinstance(new, list):
         if old != new:
             raise _Mismatch(None, f"outcome differs: old {old!r}, new {new!r}")
         return
+    if count_change:
+        new = _without_declared(new, len(old), script, blanks, lambda record: record["text"])
     if len(old) != len(new):
         raise _Mismatch(None, f"old has {len(old)} records, new has {len(new)}")
     for index, (before, after) in enumerate(zip(old, new)):
@@ -343,6 +410,7 @@ def compare_recordings(
         )
 
     lost = _SQLSERVER_NOW_STRIPPED if dialect == "sqlserver" else ""
+    count_change = dialect == "db2"
     old_scripts, new_scripts = old["scripts"], new["scripts"]
     for script_id in sorted(set(old_scripts) | set(new_scripts)):
         if script_id not in new_scripts or script_id not in old_scripts:
@@ -358,10 +426,12 @@ def compare_recordings(
                 continue
             try:
                 if view == "records":
-                    _check_records(before["script"], before[view], after[view], text_blanks, lost)
+                    _check_records(
+                        before["script"], before[view], after[view], text_blanks, lost, count_change
+                    )
                 else:
                     _check_statements(
-                        before[view], after[view], text_blanks, before["script"], lost
+                        before[view], after[view], text_blanks, before["script"], lost, count_change
                     )
             except _Mismatch as mismatch:
                 add(script_id, view, mismatch)
