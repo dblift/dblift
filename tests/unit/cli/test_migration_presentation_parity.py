@@ -1,13 +1,15 @@
-"""Visible migration presentation through the installed CLI entry point."""
+"""Visible migration presentation through the source CLI entry point."""
 
 from __future__ import annotations
 
 import json
 import os
+import re
 import sqlite3
 import subprocess
 import sys
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -50,6 +52,7 @@ def _run(project: Path, command: str, *options: str) -> subprocess.CompletedProc
         capture_output=True,
         text=True,
         check=False,
+        timeout=60,
     )
 
 
@@ -133,7 +136,9 @@ def test_dry_run_warning_and_sql_stay_visible_without_database_effect(tmp_path: 
     assert process.stderr.count("V1__create_items.sql [UNSAFE]") == 1
     assert "WARNING:" in process.stderr
     assert "drop-table" in process.stderr
-    assert process.stderr.count("DROP TABLE items") >= 1
+    assert process.stderr.count("SQL Statements:") == 1
+    assert process.stderr.count("-- V1__create_items.sql") == 1
+    assert "\nDROP TABLE items\n" in process.stderr.split("SQL Statements:", 1)[1]
     assert not _table_exists(project)
 
 
@@ -188,7 +193,7 @@ def test_show_query_results_renders_one_table_without_show_sql(tmp_path: Path) -
 
     assert process.returncode == 0, process.stderr
     assert process.stdout.count("Command MIGRATE completed successfully") == 1
-    assert process.stderr.count("│ 7  │") == 1
+    assert len(re.findall(r"│\s*7\s*│", process.stderr)) == 1
     assert "SQL Statements:" not in process.stderr
     assert _table_exists(project)
 
@@ -264,6 +269,30 @@ def test_failed_callback_keeps_one_sql_preview_and_error_cause(tmp_path: Path) -
     assert "Error executing query: no such table: absent" in process.stderr
     assert process.stderr.count("ERROR: SQL: SELECT id") == 1
     assert not _table_exists(project)
+
+
+def test_callback_without_execution_service_keeps_sql_preview() -> None:
+    from dblift.core.migration.executor.execution_engine import ExecutionEngine
+    from tests.unit._migration_factory import make_migration
+
+    provider = MagicMock()
+    provider.execute_query.side_effect = sqlite3.OperationalError("no such table: absent")
+    analyzer = MagicMock()
+    analyzer.dialect = "sqlite"
+    analyzer.split_statements.return_value = ["SELECT id FROM absent"]
+    analyzer.get_statement_type.return_value = "QUERY"
+    log = MagicMock()
+    engine = ExecutionEngine(provider, analyzer, log, sql_execution_service=None)
+    callback = make_migration(
+        script_name="beforeMigrate__fail.sql", content="SELECT id FROM absent", dialect="sqlite"
+    )
+
+    with pytest.raises(sqlite3.OperationalError, match="no such table: absent"):
+        engine.execute_callback(callback)
+
+    log.error.assert_any_call("Error executing callback SQL statement: no such table: absent")
+    assert [call.args[0] for call in log.error.call_args_list].count("SQL: SELECT id") == 1
+    provider.execute_query.assert_called_once_with("SELECT id FROM absent")
 
 
 def test_info_json_pending_and_applied_statuses(tmp_path: Path) -> None:

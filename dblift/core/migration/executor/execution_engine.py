@@ -1300,7 +1300,8 @@ class ExecutionEngine:
                         "Error executing callback SQL statement: "
                         f"{strip_sql_statement_block(str(e))}"
                     )
-                    self.log.error(f"SQL: {describe_statement(statement)}")
+                    if not self.sql_execution_service:
+                        self.log.error(f"SQL: {describe_statement(statement)}")
                     self.log.debug(f"Failed statement: {statement}")
                     raise
 
