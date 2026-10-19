@@ -93,3 +93,18 @@ def test_a_hash_comment_hides_a_block_opener():
 )
 def test_comments_are_stripped_in_source_order(statement, kwargs, expected):
     assert migration_sql.is_comment_only_statement(statement, **kwargs) is expected
+
+
+@pytest.mark.parametrize(
+    ("statement", "kwargs"),
+    [
+        ("/* oops\nCREATE TABLE b (i int);", {}),
+        ("/* oops\nSELECT 1", {}),
+        ("/* a /* b */", {"nested_block_comments": True}),
+        ("-- c\n/* oops", {}),
+        ("SELECT 'abc", {}),
+        ('/* a */ "abc', {}),
+    ],
+)
+def test_text_that_ends_inside_a_comment_or_quote_is_not_comment_only(statement, kwargs):
+    assert migration_sql.is_comment_only_statement(statement, **kwargs) is False
