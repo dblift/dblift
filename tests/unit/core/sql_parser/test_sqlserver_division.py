@@ -336,7 +336,7 @@ CASES = [
     ("case 97", "\x0c", ("ok", [])),
     ("case 98", "\x0b", ("ok", [])),
     ("case 99", "  ;  ", ("ok", [])),
-    ("case 100", "\x0c;", ("ok", [(";",)])),
+    ("case 100", "\x0c;", ("ok", [])),
     ("case 101", "SELECT 1\nGO\n\x0c\nGO\nSELECT 2", ("ok", [("SELECT 1",), ("SELECT 2",)])),
     ("case 102", "GO\nGO", ("ok", [])),
     ("case 103", "SELECT 1\nGO\nGO\nSELECT 2", ("ok", [("SELECT 1",), ("SELECT 2",)])),
@@ -1185,3 +1185,13 @@ def test_a_batch_whose_constituents_are_all_empty_is_no_statement(tail):
     assert engine.split(f";{tail}") == []
     kept = engine.split(f"SELECT 1\nGO\n;{tail}\nGO\nSELECT 2")
     assert [r.text for r in kept] == ["SELECT 1", "SELECT 2"]
+
+
+@pytest.mark.parametrize("head", ["\xa0", "\x0c", "\x0b", "\x85", "​", "　", " \xa0 "])
+def test_a_batch_of_blanks_and_a_terminator_is_no_statement_in_either_order(head):
+    engine = LexicalEngine(SQLSERVER_SPEC)
+    for batch in (f"{head};", f";{head}", f"{head};{head}", f";{head};"):
+        assert engine.split(batch) == []
+        assert engine.split_statements(batch) == []
+        kept = engine.split(f"SELECT 1\nGO\n{batch}\nGO\nSELECT 2")
+        assert [r.text for r in kept] == ["SELECT 1", "SELECT 2"]

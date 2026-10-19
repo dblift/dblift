@@ -27,9 +27,6 @@ class Statement:
     kind: StatementKind = "sql"
     multi: bool = False
     repeat: int = 1
-    # The string execution sends for this record when it is not ``text``. None sends ``text``
-    # (SQL and COPY) or nothing (a directive: only one with text to send is sent).
-    execution_text: Optional[str] = field(default=None, compare=False)
     # Derived by the same dialect scan as ``text``. None means this execution
     # unit is one analysis statement; () deliberately contributes none.
     analysis_statements: Optional[Tuple[str, ...]] = field(default=None, compare=False)
@@ -37,6 +34,10 @@ class Statement:
     # terminator such as GO. Optional for externally constructed records.
     source_start: Optional[int] = field(default=None, compare=False)
     source_end: Optional[int] = field(default=None, compare=False)
+    # Last, so that a positional ``Statement(...)`` keeps its meaning. The string execution
+    # sends for this record when it is not ``text``. None sends ``text`` (SQL and COPY) or
+    # nothing (a directive: only one with text to send is sent).
+    execution_text: Optional[str] = field(default=None, compare=False)
 
 
 def executable_records(records: Iterable[Statement]) -> List[Statement]:

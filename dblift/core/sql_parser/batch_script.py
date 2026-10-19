@@ -77,7 +77,7 @@ class BatchScript:
         count: Optional[int],
         end: int,
     ) -> None:
-        """Append the record of ``source[start:cut]`` when the batch holds code."""
+        """Append the record of ``source[start:cut]`` when the batch holds code, not just ``;`` and blanks."""
         if not has_code(positions, start, cut - 1):
             return
         raw = self.source[start:cut]
@@ -88,8 +88,8 @@ class BatchScript:
         constituents = divide(
             self.rules, self.source, start, cut, spans, positions, self.text_blanks
         )
-        if constituents and not any(constituents) and not text.strip(self.text_blanks + ";"):
-            return  # a terminator and blanks the code scan counted as code: no statement
+        if not text.strip(self.text_blanks + ";"):
+            return  # only terminators and blanks, in any order: no statement
         record = Statement(
             text=text,
             line=line + raw.count("\n", 0, lead),

@@ -234,8 +234,10 @@ sqlcmd rules are the data of `BatchScriptRules` and `DivisionRules` in
 | 26 | `SELECT 'abc\nGO\n` | `UnsafeStatementSplitError` (unterminated string literal swallows the `GO`) |
 | 27 | `USE db\nCREATE PROCEDURE p AS SELECT 1\nGO` | `USE db\nCREATE PROCEDURE p AS SELECT 1` (one batch; the server rejects it, Msg 111) |
 | 29 | `;\nGO\nSELECT 2` | `SELECT 2` (a batch of only a semicolon is not a statement) |
+| 29a | `\xa0;\nGO\nSELECT 2` | `SELECT 2` (a batch holding only a semicolon and the spec's blanks is not a statement; the same for a form feed, a vertical tab, U+0085, U+200B and U+3000 in place of the no-break space) |
+| 29b | `;\xa0\nGO\nSELECT 2` | `SELECT 2` (the order of the semicolon and the blanks does not matter) |
 | 30 | `SELECT 1\nGO 1000001` | `UnsafeStatementSplitError` (the splitter's own bound: split_statements returns one string per repetition; sqlcmd accepts the count) |
-| 31 | `\x0c\nGO\nSELECT 2` | `SELECT 2` (a batch holding only a form feed is not a statement; measured 2026-10-14, sqlcmd 18.6.0002.1: only the second batch runs, exit 0. Known gap: the splitter returns an empty-text record for the first batch, §12) |
+| 31 | `\x0c\nGO\nSELECT 2` | `SELECT 2` (a batch holding only a form feed is not a statement; measured 2026-10-14, sqlcmd 18.6.0002.1: only the second batch runs, exit 0.) |
 | 32 | `SELECT 1\n\xa0GO\nSELECT 2` | `SELECT 1\n\xa0GO\nSELECT 2` (one batch: a no-break space before GO makes the line text; measured 2026-10-14, sqlcmd 18.6.0002.1: Msg 102 near GO, exit 1, the same for a form feed, U+001C, U+0085 and U+2028 before GO) |
 | 33 | `DROP TABLE t\xa0` | `DROP TABLE t` **exact text** (a no-break space is a blank to SQL Server; sqlcmd agrees, measured 2026-10-17) |
 | 33a | `DROP TABLE t\u200b` | `DROP TABLE t` **exact text** (a zero width space is a blank to SQL Server though it is not Unicode white space) |

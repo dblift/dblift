@@ -157,3 +157,10 @@ def test_the_go_0_notice_is_logged_once_by_split(caplog):
     with caplog.at_level(logging.INFO):
         StatementSplitter("sqlserver").split("SELECT 1\nGO 0\nSELECT 2")
     assert len([r for r in caplog.records if "GO 0 follows" in r.getMessage()]) == 1
+
+
+def test_the_positional_fields_of_a_record_keep_their_order():
+    """A parser built before ``execution_text`` existed passes the fields by position."""
+    record = Statement("SELECT 1", 3, ";", "sql", False, 2, ("a",), 4, 9)
+    assert (record.repeat, record.analysis_statements) == (2, ("a",))
+    assert (record.source_start, record.source_end, record.execution_text) == (4, 9, None)

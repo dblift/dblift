@@ -119,8 +119,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A piece of a script with no code is no longer a statement, in every dialect.**
   On SQLite and DuckDB, a segment made only of comments no longer shows up as an
   `UNKNOWN` statement in `info` or linting, and a nested comment counts as a comment on
-  DuckDB. On SQL Server, a batch holding only a `;`, a no-break space, a form feed, a
-  vertical tab or a zero-width space is no longer returned as an empty statement. The
+  DuckDB. On SQL Server, a batch holding only `;` and blanks (a no-break space, a form feed, a
+  vertical tab, a zero-width space and the other blanks of the dialect), in any order, is no
+  longer returned as a statement. The
   `mariadb` client sends nothing for a piece made only of a control character and
   comments, and neither does the MariaDB splitter now; the MySQL splitter still sends it,
   as the `mysql` client does.

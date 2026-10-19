@@ -7207,7 +7207,7 @@
 "sha256": "d33767030fb567ebf4699543cf51a835e6b5eced5e52adf95a4e7fbfd5c4910d"
 },
 "spec_rows": {
-"count": 677,
+"count": 679,
 "observed": [
 [
 "db2",
@@ -17038,6 +17038,36 @@
 ],
 [
 "sqlserver",
+"\u00a0;\nGO\nSELECT 2",
+{
+"analysis": [
+"SELECT 2"
+],
+"engine": [
+"SELECT 2"
+],
+"splitter": [
+"SELECT 2"
+]
+}
+],
+[
+"sqlserver",
+";\u00a0\nGO\nSELECT 2",
+{
+"analysis": [
+"SELECT 2"
+],
+"engine": [
+"SELECT 2"
+],
+"splitter": [
+"SELECT 2"
+]
+}
+],
+[
+"sqlserver",
 "SELECT 1\nGO 1000001",
 {
 "analysis": [
@@ -19545,6 +19575,6 @@
 }
 ]
 ],
-"sha256": "0b7f1abfee6a06d48ac61500d4b27b8ddf7d579159b7a0ede37cd8f000cb7170"
+"sha256": "5ac7000bdca469a6732c2306f54bae566c7ca5bb16ae165bbf53959e67ac22ed"
 }
 }
