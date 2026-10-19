@@ -3,8 +3,11 @@
 Each entry records what the public views returned for a script: the records (all nine fields,
 offsets included), the execution strings, the analysis statements, the statements the analyzer
 executes, the masked and described text of every record, or the refusal (class and message). The
-recording was made from the scanner that preceded the shared lexical engine. The scripts are the
-shapes that found or guard a defect while the engine was written (see ``name``), plus the few
+recording was made from the scanner that preceded the shared lexical engine, except entries 23, 24,
+50 and 51 (``form_feed_kept``, ``nbsp_kept``, ``form_feed_first_line``, ``u2028_edge``): a statement
+now keeps a character outside space, tab, line feed and carriage return at its edge, so those four
+were re-recorded from the splitter that keeps it. The scripts are the shapes that found or guard a
+defect while the engine was written (see ``name``), plus the few
 scripts that reach every branch of the terminator path.
 """
 

@@ -704,16 +704,16 @@
 }
 },
 {
-"name": "form_feed_stripped",
+"name": "form_feed_kept",
 "script": "VALUES 1;\n\fVALUES 2;\n",
 "views": {
 "analysis": [
 "VALUES 1",
-"VALUES 2"
+"\fVALUES 2"
 ],
 "executed": [
 "VALUES 1",
-"VALUES 2"
+"\fVALUES 2"
 ],
 "masking": [
 [
@@ -721,7 +721,7 @@
 "VALUES 1"
 ],
 [
-"VALUES 2",
+"\fVALUES 2",
 "VALUES 2"
 ]
 ],
@@ -746,28 +746,28 @@
 "source_end": 21,
 "source_start": 10,
 "terminator": ";",
-"text": "VALUES 2"
+"text": "\fVALUES 2"
 }
 ],
 "strings": [
 "VALUES 1",
-"VALUES 2"
+"\fVALUES 2"
 ]
 }
 },
 {
-"name": "nbsp_stripped",
+"name": "nbsp_kept",
 "script": "\u00a0VALUES 1\u00a0;\n",
 "views": {
 "analysis": [
-"VALUES 1"
+"\u00a0VALUES 1\u00a0"
 ],
 "executed": [
-"VALUES 1"
+"\u00a0VALUES 1\u00a0"
 ],
 "masking": [
 [
-"VALUES 1",
+"\u00a0VALUES 1\u00a0",
 "VALUES 1"
 ]
 ],
@@ -781,11 +781,11 @@
 "source_end": 12,
 "source_start": 0,
 "terminator": ";",
-"text": "VALUES 1"
+"text": "\u00a0VALUES 1\u00a0"
 }
 ],
 "strings": [
-"VALUES 1"
+"\u00a0VALUES 1\u00a0"
 ]
 }
 },
@@ -2160,48 +2160,14 @@
 "script": "\f\nVALUES 1;\n",
 "views": {
 "analysis": [
-"VALUES 1"
+"\f\nVALUES 1"
 ],
 "executed": [
-"VALUES 1"
+"\f\nVALUES 1"
 ],
 "masking": [
 [
-"VALUES 1",
-"VALUES 1"
-]
-],
-"records": [
-{
-"analysis_statements": null,
-"kind": "sql",
-"line": 2,
-"multi": false,
-"repeat": 1,
-"source_end": 12,
-"source_start": 0,
-"terminator": ";",
-"text": "VALUES 1"
-}
-],
-"strings": [
-"VALUES 1"
-]
-}
-},
-{
-"name": "u2028_edge",
-"script": "VALUES 1\u2028\n;\n",
-"views": {
-"analysis": [
-"VALUES 1"
-],
-"executed": [
-"VALUES 1"
-],
-"masking": [
-[
-"VALUES 1",
+"\f\nVALUES 1",
 "VALUES 1"
 ]
 ],
@@ -2215,11 +2181,45 @@
 "source_end": 12,
 "source_start": 0,
 "terminator": ";",
-"text": "VALUES 1"
+"text": "\f\nVALUES 1"
 }
 ],
 "strings": [
+"\f\nVALUES 1"
+]
+}
+},
+{
+"name": "u2028_edge",
+"script": "VALUES 1\u2028\n;\n",
+"views": {
+"analysis": [
+"VALUES 1\u2028"
+],
+"executed": [
+"VALUES 1\u2028"
+],
+"masking": [
+[
+"VALUES 1\u2028",
 "VALUES 1"
+]
+],
+"records": [
+{
+"analysis_statements": null,
+"kind": "sql",
+"line": 1,
+"multi": false,
+"repeat": 1,
+"source_end": 12,
+"source_start": 0,
+"terminator": ";",
+"text": "VALUES 1\u2028"
+}
+],
+"strings": [
+"VALUES 1\u2028"
 ]
 }
 },

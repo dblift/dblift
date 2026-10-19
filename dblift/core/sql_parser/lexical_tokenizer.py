@@ -95,7 +95,7 @@ class LexicalTokenizer(BaseTokenizer):
             # Terminator runs are blanked before lexing; offsets are into the text after the mark.
             origin = 1 if spec.leading_bom_is_blank and sql.startswith(BOM) else 0
             terminator_script = TerminatorScript(
-                terminator_rules, spec.client_name, sql[origin:], origin
+                terminator_rules, spec.client_name, sql[origin:], origin, spec.text_blanks
             )
             sql = terminator_script.masked
         removed: List[int] = []
