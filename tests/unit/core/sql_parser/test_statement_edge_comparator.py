@@ -546,3 +546,71 @@ def test_a_zero_width_space_kept_by_both_sides_is_not_a_difference_on_sql_server
     text = "DROP TABLE t" + zwsp
     rec = recording(text, [text], [text], dialect="sqlserver")
     assert compare_recordings(rec, rec, BLANKS) == []
+
+
+DUCKDB_REFUSAL = (
+    "UnsafeStatementSplitError",
+    "U+00A0 at line 1, column 13: the statement reads differently run alone than in its script, "
+    "this blank is kept when run alone, replaced in its script; remove the character",
+)
+
+
+def duckdb_pair(script: str, old: List[str], new: List[str], dialect: str = "duckdb") -> List[Any]:
+    return compare_recordings(
+        recording(script, old, old, dialect=dialect),
+        recording(script, new, new, dialect=dialect),
+        BLANKS,
+    )
+
+
+def test_a_blank_of_the_engine_stripped_on_the_new_side_is_declared_for_duckdb() -> None:
+    script = "DROP TABLE t" + chr(0x3000)
+    assert duckdb_pair(script, [script], ["DROP TABLE t"]) == []
+    assert {d.view for d in duckdb_pair(script, [script], ["DROP TABLE t"], "postgresql")} == {
+        "execution",
+        "analysis",
+    }
+
+
+def test_a_character_that_is_not_a_blank_of_the_engine_stripped_on_the_new_side_is_reported() -> (
+    None
+):
+    script = "DROP TABLE t" + chr(0x85)
+    assert {d.view for d in duckdb_pair(script, [script], ["DROP TABLE t"])} == {
+        "execution",
+        "analysis",
+    }
+
+
+def test_a_statement_made_only_of_blanks_of_the_engine_may_vanish_for_duckdb_only() -> None:
+    script = "SELECT 1;" + NBSP + ";"
+    assert duckdb_pair(script, ["SELECT 1", NBSP], ["SELECT 1"]) == []
+    assert duckdb_pair(script, ["SELECT 1", NBSP], ["SELECT 1"], "postgresql") != []
+    assert duckdb_pair(script, ["SELECT 1", "x" + NBSP], ["SELECT 1"]) != []
+    assert duckdb_pair(script, ["SELECT 1", chr(0x85)], ["SELECT 1"]) != []
+
+
+def test_a_duckdb_refusal_at_an_edge_blank_is_declared() -> None:
+    assert refused_pair("duckdb", "DROP TABLE t" + NBSP, DUCKDB_REFUSAL) == []
+    other_way = (
+        DUCKDB_REFUSAL[0],
+        DUCKDB_REFUSAL[1].replace(
+            "kept when run alone, replaced in its script",
+            "kept in its script, replaced when run alone",
+        ),
+    )
+    assert refused_pair("duckdb", "DROP TABLE t" + NBSP, other_way) == []
+
+
+def test_a_duckdb_refusal_at_an_interior_or_other_character_is_reported() -> None:
+    interior = "SELECT a" + NBSP + "b FROM t"
+    assert [
+        d.view
+        for d in refused_pair(
+            "duckdb",
+            interior,
+            DUCKDB_REFUSAL[:1] + (DUCKDB_REFUSAL[1].replace("column 13", "column 9"),),
+        )
+    ] == ["execution"]
+    vt = (DUCKDB_REFUSAL[0], DUCKDB_REFUSAL[1].replace("U+00A0", "U+000B"))
+    assert [d.view for d in refused_pair("duckdb", "DROP TABLE t" + chr(0x0B), vt)] == ["execution"]
