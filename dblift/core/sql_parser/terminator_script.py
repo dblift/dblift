@@ -119,7 +119,7 @@ class _Walk:
             if line.kind == "blank":
                 return
             self.start, self.body = line.number, RoutineBody(self.rules.routine)
-            self.unit_start = line.start + len(line.text) - len(line.text.lstrip(self.rules.blanks))
+            self.unit_start = line.start + len(line.text) - len(line.text.lstrip(self.text_blanks))
             self.stray_line = self.last_code = 0
         self._append(line)
         if line.body_end >= 0:

@@ -199,11 +199,32 @@ def test_line_comment_field_is_read_by_the_overlap_rule():
     assert outcome(script)[2].startswith("line 2 ends with '/*', which is also part")
 
 
-def test_blanks_field_is_read_for_the_statement_start():
-    script = VT + "VALUES 1;\n"
-    assert outcome(script) == ["records", [VT + "VALUES 1", 1, ";", "sql", 0, 11]]
+def test_blanks_field_governs_the_directive_line_not_the_statement_start():
     wide = replace(DB2_SPEC, terminator_script=replace(DB2_RULES, blanks=" \t" + VT))
-    assert outcome(script, wide) == ["records", [VT + "VALUES 1", 1, ";", "sql", 1, 11]]
+    directive = VT + "--#SET TERMINATOR @\nVALUES 1@\n"
+    assert outcome(directive)[1][3:5] == ["sql", 0]  # VT is no blank here: not a directive
+    assert outcome(directive, wide)[1][:2] == ["VALUES 1@", 2]  # in the wide set it is
+    script = VT + "VALUES 1;\n"
+    expected = ["records", [VT + "VALUES 1", 1, ";", "sql", 0, 11]]
+    assert outcome(script) == expected
+    assert outcome(script, wide) == expected
+
+
+@pytest.mark.parametrize(
+    "script, line",
+    [
+        ("\rVALUES 1;\n", 1),
+        ("\n\nVALUES 1;\n", 3),
+        ("\r\n  VALUES 1;\n", 2),
+        ("\u00a0VALUES 1;\n", 1),
+    ],
+    ids=["cr", "blank-lines", "crlf-indent", "nbsp"],
+)
+def test_statement_span_starts_at_the_first_kept_character(script, line):
+    (record,) = LexicalEngine(DB2_SPEC).split(script)
+    assert record.line == line
+    assert script[record.source_start : record.source_end].startswith(record.text)
+    assert script[record.source_start] == record.text[0]
 
 
 def test_line_comment_field_is_read_by_the_semicolon_ending():
