@@ -21,7 +21,9 @@ def test_duckdb_migrate_fails_on_an_unclosed_block_comment(tmp_path):
     finally:
         client.close()
     with engine.connect() as conn:
-        tables = {r[0] for r in conn.execute(text("select table_name from information_schema.tables"))}
+        tables = {
+            r[0] for r in conn.execute(text("select table_name from information_schema.tables"))
+        }
     engine.dispose()
 
     assert result.success is False
