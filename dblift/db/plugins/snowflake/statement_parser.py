@@ -8,13 +8,16 @@ from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.core.sql_parser.sqlglot_parser import SqlGlotParser
 from dblift.core.sql_parser.statement import Statement
 
-#: What a statement loses at its ends: the blanks every measured engine reads as blanks. Snowflake
-#: is not measured, so any other white space character stays in the text.
-TEXT_BLANKS = " \t\n\r"
+#: What a statement loses at its ends. Measured on Snowflake 10.37.102 through the Python connector,
+#: 2026-10-19: of the Unicode and C0 blanks only U+2002 (EN SPACE) is read as a blank at a statement
+#: edge; the others are rejected with a syntax error, so they stay in the text and Snowflake fails.
+TEXT_BLANKS = " \t\n\r\u2002"
 
 
 class SnowflakeStatementParser(SqlGlotParser):
     """Keep statement text intact while respecting Snowflake string delimiters."""
+
+    end_blanks = TEXT_BLANKS
 
     def __init__(self) -> None:
         """Use Snowflake's AST grammar for non-splitting parser operations."""
