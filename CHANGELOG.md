@@ -144,8 +144,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   A control character at the end of a statement (such as U+0001 or U+001B) is stripped as the
   clients strip it; it was sent and the server rejected it. A control character followed by a
   comment (`<U+001C> -- c`, `/* c */` or `# c`) is sent on MySQL, which rejects it as with its
-  client (a migration holding one, skipped before, now fails there), and skipped on MariaDB, as
-  its client skips it. A MariaDB database needs a `mariadb+pymysql://` URL for the MariaDB rules.
+  client (a migration holding one after `--` or `/* */`, skipped before, now fails there), and
+  skipped on MariaDB, as its client skips it. A MariaDB database needs a `mariadb+pymysql://`
+  URL for the MariaDB rules.
 - **`migrate` runs a fixed repeatable migration whose last run failed.** Before, a repeatable
   migration that failed and was then corrected was reported as ready by `validate` but never
   run by `migrate`, which succeeded without applying it. A failed run now counts as failed
