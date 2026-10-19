@@ -76,9 +76,6 @@ def test_helper_strips_the_control_characters_the_mysql_clients_strip(dialect, s
     "dialect, text",
     [
         ("sqlite", "\x0b"),
-        ("duckdb", "\x0b"),
-        ("duckdb", "\u2028"),
-        ("duckdb", "\x85"),
         ("mysql", "\x0b"),
         ("mariadb", "\x0c"),
         ("postgresql", "\xa0"),
@@ -90,6 +87,19 @@ def test_helper_still_drops_a_statement_that_is_white_space_outside_db2(dialect,
     analyzer.split_statements.return_value = ["SELECT 1", text, "SELECT 2"]
     assert helper.parse_migration_sql(analyzer, "x", NullLog(), dialect=dialect) == [
         "SELECT 1",
+        "SELECT 2",
+    ]
+
+
+@pytest.mark.parametrize("text", ["\x0b", "\u2028", "\x85", "\x1f"])
+def test_helper_keeps_a_duckdb_statement_the_driver_rejects(text):
+    """``SELECT 1;<text>;SELECT 2;`` is a ParserException for the driver (measured, duckdb 1.5.5)."""
+    helper = importlib.import_module("dblift.core.migration.sql.migration_sql_parser")
+    analyzer = MagicMock()
+    analyzer.split_statements.return_value = ["SELECT 1", text, "SELECT 2"]
+    assert helper.parse_migration_sql(analyzer, "x", NullLog(), dialect="duckdb") == [
+        "SELECT 1",
+        text,
         "SELECT 2",
     ]
 

@@ -15,6 +15,9 @@ NBSP = "\xa0"
 
 #: (dialect, statement, sent): Db2, MySQL and MariaDB keep these characters; every other dialect
 #: still reads them as white space, so the statement is empty (or a comment) and is skipped, as it always was.
+#: DuckDB is the exception to "every other": the driver rejects a script holding a VT, NEL, U+2028 or U+001F
+#: statement (and keeps a no-break space after a quote opener in a comment), so skipping it would let a
+#: migration succeed that the engine refuses; only ASCII blanks are empty to it.
 CASES = [
     ("db2", NBSP, True),
     ("db2", "\x0c", True),
@@ -28,9 +31,13 @@ CASES = [
     ("sqlite", "\x0b", False),
     ("sqlite", NBSP, False),
     ("sqlite", f"{NBSP} -- c", False),
-    ("duckdb", "\x0b", False),
-    ("duckdb", " ", False),
-    ("duckdb", "\x85", False),
+    ("duckdb", "\x0b", True),
+    ("duckdb", " ", True),
+    ("duckdb", "\x85", True),
+    ("duckdb", "\x1f", True),
+    ("duckdb", f"{NBSP} -- c", True),
+    ("duckdb", " \t\n", False),
+    ("duckdb", " \t -- c", False),
     ("mysql", NBSP, True),
     ("mysql", "\u3000", True),
     ("mysql", "\u2028", True),

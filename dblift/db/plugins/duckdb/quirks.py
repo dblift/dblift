@@ -62,6 +62,17 @@ class DuckDBQuirks(BaseQuirks):
 
         return DUCKDB_SPEC
 
+    def empty_statement_blanks(self) -> Optional[str]:
+        """Only the ASCII blanks: the splitter trims every blank the driver's pass replaces.
+
+        A non-ASCII blank (or a control character the driver does not count as one) still on a piece
+        is one the driver keeps, so the piece is a statement it rejects: dropping it as empty would
+        let a migration succeed that the engine refuses.
+        """
+        from dblift.db.plugins.duckdb.parser.lexical_spec import DUCKDB_SPEC
+
+        return "".join(c for c in DUCKDB_SPEC.text_blanks if c.isascii())
+
     def blank_comments(self, sql: str) -> str:
         """The statement with its comments blanked by the same scanner as execution."""
         from dblift.core.sql_parser.lexical_engine import LexicalEngine
