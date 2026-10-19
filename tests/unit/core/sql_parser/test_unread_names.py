@@ -170,6 +170,14 @@ def test_a_name_that_ends_its_statement_is_read_with_the_blank_the_split_trimmed
         with pytest.raises(UnsafeStatementSplitError):
             SqlParserFactory(dialect).extract_objects(script)
         return
+    if dialect == "sqlserver" and sql == "CREATE SEQUENCE q{c}":
+        # Measured (test_statement_edge_blanks.py SQLSERVER_UNICODE): U+00A0 is a blank to SQL Server,
+        # so the record text drops it and the name ends the script as it does when terminated.
+        assert [o.name.lower() for o in SqlParserFactory(dialect).extract_objects(script)] == ["q"]
+        assert not any(
+            s.names_unread for s in SqlParserFactory(dialect).parse_sql(script).statements
+        )
+        return
     assert SqlParserFactory(dialect).extract_objects(script) == []
     assert all(s.names_unread for s in SqlParserFactory(dialect).parse_sql(script).statements)
 

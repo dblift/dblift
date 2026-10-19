@@ -60,15 +60,15 @@ def names_unreadable(sql: str, sqlglot_dialect: Optional[str], names: Iterable[s
 
 
 def _without_blanks_before_terminator(span: str, record: Statement) -> str:
-    """``span`` without the blanks the scanner trimmed between the text and its terminator.
+    """``span`` without the blanks the scanner trimmed between the text and its terminator, if any.
 
     The engine reads those as blanks, so the name before them ends the statement as it does with
     no terminator. A character the scanner kept in the text stays in the span.
     """
-    terminator = record.terminator
-    if not terminator or not span.endswith(terminator):
+    terminator = record.terminator or ""
+    if not span.endswith(terminator):
         return span
-    body = span[: -len(terminator)]
+    body = span[: len(span) - len(terminator)]
     if len(body) > len(record.text) and body.startswith(record.text):
         return record.text + terminator
     return span

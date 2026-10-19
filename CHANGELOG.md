@@ -109,6 +109,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A Snowflake statement ending in an en space (U+2002) is now read as Snowflake reads it.**
+  The en space at a statement edge is trimmed like any blank and the object name before it is
+  recognised; the other Unicode blanks stay in the text, as Snowflake rejects them. A SQL Server
+  name followed by a no-break space at the end of a script is read the same way.
 - **Oracle names followed by a blank and a terminator are read.** `DROP TABLE t<U+3000>;`
   now names `t` and its undo is generated, as the engine drops `t`; before, the name was
   reported as unreadable and the undo went to manual review.
