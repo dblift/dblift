@@ -125,6 +125,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   It was skipped and the migration succeeded; the command line processor sends it and the server
   rejects it (SQL0104N, SQL0007N), and dblift now fails at that statement the same way. The same
   holds when a comment stands beside such a character.
+- **A Db2 statement with a nested comment keeps a no-break space at its edge.** A table named
+  with a trailing no-break space, dropped with a nested comment after it, was not the one
+  dropped (`t` went instead); it is now, as with the command line processor.
 - **`migrate` runs a fixed repeatable migration whose last run failed.** Before, a repeatable
   migration that failed and was then corrected was reported as ready by `validate` but never
   run by `migrate`, which succeeded without applying it. A failed run now counts as failed

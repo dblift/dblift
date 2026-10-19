@@ -68,6 +68,7 @@ def _without_nested_comments(sql: str) -> str:
             has_block_comments=True,
             nested_block_comments=nested,
             block_comment_replacement=" ",
+            blanks=DB2_SPEC.text_blanks,
         )
 
     stripped = strip(True)

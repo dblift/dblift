@@ -636,3 +636,18 @@ def test_a_statement_of_kept_characters_that_is_part_of_a_name_in_the_script_is_
         dialect="db2",
     )
     assert [d.view for d in compare_recordings(old, new, BLANKS)] == ["execution", "analysis"]
+
+
+def test_a_statement_of_kept_characters_that_the_script_holds_only_inside_a_name_is_reported() -> (
+    None
+):
+    name = f"DROP TABLE t{NBSP}"
+    script = f"VALUES 1;\n{name};\nVALUES 2;"
+    old = recording(script, ["VALUES 1", name, "VALUES 2"], ["VALUES 1", name, "VALUES 2"])
+    new = recording(
+        script,
+        ["VALUES 1", name, NBSP, "VALUES 2"],
+        ["VALUES 1", name, NBSP, "VALUES 2"],
+        dialect="db2",
+    )
+    assert [d.view for d in compare_recordings(old, new, BLANKS)] == ["execution", "analysis"]

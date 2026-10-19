@@ -25,6 +25,7 @@ def strip_comments_preserving_quotes(
     nested_block_comments: bool,
     supports_dollar_quoting: bool = False,
     block_comment_replacement: str = "",
+    blanks: Optional[str] = None,
 ) -> str:
     """Remove comments without touching text inside a quoted span.
 
@@ -37,11 +38,12 @@ def strip_comments_preserving_quotes(
     ``nested_block_comments`` is true; otherwise the first ``*/`` closes,
     matching statement splitting for the same dialect. Each removed block
     comment becomes ``block_comment_replacement``; pass ``" "`` when the
-    result is sent to a server, so ``a/* c */b`` stays two tokens.
+    result is sent to a server, so ``a/* c */b`` stays two tokens. The result
+    is stripped of ``blanks`` (``None``: every white-space character).
     """
     markers = list(line_prefixes) + (["/*"] if has_block_comments else [])
     if not any(marker in sql for marker in markers):
-        return sql.strip()
+        return sql.strip(blanks)
 
     scanner = _Scanner(
         sql,
@@ -50,6 +52,7 @@ def strip_comments_preserving_quotes(
         nested_block_comments=nested_block_comments,
         supports_dollar_quoting=supports_dollar_quoting,
         block_comment_replacement=block_comment_replacement,
+        blanks=blanks,
     )
     return scanner.run()
 
@@ -73,8 +76,10 @@ class _Scanner:
         nested_block_comments: bool,
         supports_dollar_quoting: bool,
         block_comment_replacement: str = "",
+        blanks: Optional[str] = None,
     ) -> None:
         self.sql = sql
+        self.blanks = blanks
         self.line_prefixes = line_prefixes
         self.has_block_comments = has_block_comments
         self.nested_block_comments = nested_block_comments
@@ -102,7 +107,7 @@ class _Scanner:
                 self._advance_dollar_body()
             else:
                 self._advance_default()
-        return "".join(self.result).strip()
+        return "".join(self.result).strip(self.blanks)
 
     def _advance_line_comment(self) -> None:
         char = self.sql[self.i]
