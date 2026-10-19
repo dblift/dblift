@@ -358,11 +358,6 @@ def test_a_drop_of_a_table_whose_creation_carried_a_diagnostic_is_still_exempted
     assert results[1].findings == ()
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="Oracle: the span keeps the ideographic space before the terminator, "
-    "so the name is not yet read as the engine reads it",
-)
 def test_an_oracle_drop_whose_name_ends_with_an_ideographic_space_before_a_terminator_is_read(
     tmp_path: Path,
 ):

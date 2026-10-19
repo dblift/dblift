@@ -109,6 +109,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Oracle names followed by a blank and a terminator are read.** `DROP TABLE t<U+3000>;`
+  now names `t` and its undo is generated, as the engine drops `t`; before, the name was
+  reported as unreadable and the undo went to manual review.
 - **SQLite execution errors show one failed SQL preview in CLI logs.**
   For versioned migrations and SQL callbacks, the execution service reports the
   failed statement while SQLite still reports the database error.
