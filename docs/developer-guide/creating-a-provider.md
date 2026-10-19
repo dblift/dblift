@@ -107,7 +107,7 @@ The layout deliberately mirrors `db/plugins/postgresql/` (and siblings) so the s
 | `text` | the statement verbatim, without its terminator |
 | `line` | the line where it starts |
 | `terminator` | what ended it (`";"`), or `None` when the script ended it |
-| `kind` | `"sql"`, `"copy_stdin"` (a COPY header with its data) or `"directive"` (a client directive dropped and recorded). Execution runs `sql` and `copy_stdin` records only; a record of any other kind is not a statement. A `directive` is sent only when it has `execution_text` |
+| `kind` | `"sql"`, `"copy_stdin"` (a COPY header with its data) or `"directive"` (a client directive dropped and recorded). Execution sends `sql` and `copy_stdin` records, and a `directive` only when it has `execution_text`; a record of any other kind is not a statement |
 | `multi` | reserved for psql's `\;` |
 | `repeat` | how often execution sends it: 1 by default, or the count of the `GO n` that ended a T-SQL batch (0 sends it never) |
 | `execution_text` | the string to send when it is not `text`. `None` sends `text` for `sql` and `copy_stdin`, and nothing for a `directive` |
