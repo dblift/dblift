@@ -55,10 +55,12 @@ the extractor's concern and is covered by the model snapshot tests, not here.
 - **An empty statement is not a statement.** Nothing but whitespace and
   comments between two terminators (a bare `;`, a `GO` after a `GO`) yields
   no entry, for every dialect: a piece with no code (comment-only, or an empty
-  batch) is not a statement, and no caller receives a record for it. A piece
+  batch) is not a statement, and no statement record is returned for it (a
+  client directive such as `DELIMITER` is still recorded, as `kind="directive"`). A piece
   made only of characters the engine's client keeps (a no-break space for
-  SQLite, a control character for MySQL) is a statement and is sent, so the
-  engine rejects it as it rejects it for the client. A spec states which
+  SQLite, MySQL and Db2; on MySQL also a control character followed by a
+  comment) is a statement and is sent, so the engine rejects it as it rejects
+  it for the client. A spec states which
   characters are blanks where the client's behaviour is worth citing.
 - **Examples are tests.** Every row of the conformance table is a test case.
   A bug report adds a row before a fix changes the engine.
