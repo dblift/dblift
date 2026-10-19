@@ -168,6 +168,7 @@ def _check_claims(script: str, old: List[str], texts: List[str], blanks: str) ->
 
 _COMMENT = re.compile(r"--[^\n]*|/\*.*?\*/", re.DOTALL)
 _TERMINATORS = ";@"
+_DELIMITER_LINE = re.compile(r"^DELIMITER[ \t]+(\S+)", re.MULTILINE | re.IGNORECASE)
 
 
 def _kept_only(text: str, blanks: str) -> bool:
@@ -177,11 +178,17 @@ def _kept_only(text: str, blanks: str) -> bool:
 
 
 def _stands_alone(script: str, text: str, at: int, blanks: str) -> bool:
-    """Whether ``text`` at ``at`` is a statement of its own: terminators (or the script's ends) around it."""
+    """Whether ``text`` at ``at`` is a statement of its own: terminators (or the script's ends) around it.
+
+    A terminator is also a delimiter the script sets with a ``DELIMITER`` line.
+    """
     gap = blanks + " \t\r\n"
+    terminators = (*_TERMINATORS, *_DELIMITER_LINE.findall(script))
     before = script[:at].rstrip(gap)
     after = script[at + len(text) :].lstrip(gap)
-    return (not before or before[-1] in _TERMINATORS) and (not after or after[0] in _TERMINATORS)
+    return (not before or before.endswith(terminators)) and (
+        not after or after.startswith(terminators)
+    )
 
 
 def _in_place(new: List[Any], kept: List[Any], script: str, blanks: str, text_of: Any) -> bool:
@@ -221,6 +228,14 @@ def _without_declared(
     return [item for item in new if not any(item is other for other in kept)]
 
 
+def _without_emptied(old: List[Any], new_count: int, text_of: Any) -> List[Any]:
+    """``old`` without its empty statements, when the new recording no longer holds them."""
+    if len(old) <= new_count:
+        return old
+    kept = [item for item in old if text_of(item).strip()]
+    return kept if len(kept) == new_count else old
+
+
 def _check_statements(
     old: Any,
     new: Any,
@@ -235,6 +250,7 @@ def _check_statements(
         return
     if count_change:
         new = _without_declared(new, len(old), script, blanks, lambda text: text)
+        old = _without_emptied(old, len(new), lambda text: text)
     if len(old) != len(new):
         raise _Mismatch(None, f"old has {len(old)} statements, new has {len(new)}")
     for index, (before, after) in enumerate(zip(old, new)):
@@ -286,7 +302,12 @@ def _check_span(script: str, new: Dict[str, Any], blanks: str) -> None:
 
 
 def _check_record(
-    script: str, old: Dict[str, Any], new: Dict[str, Any], blanks: str, lost: str = ""
+    script: str,
+    old: Dict[str, Any],
+    new: Dict[str, Any],
+    blanks: str,
+    lost: str = "",
+    count_change: bool = False,
 ) -> None:
     for key in RECORD_FIELDS:
         for side, record in (("old", old), ("new", new)):
@@ -302,7 +323,9 @@ def _check_record(
             raise _Mismatch(None, f"analysis_statements differs: old {before!r}, new {after!r}")
     else:
         try:
-            _check_statements(list(before), list(after), blanks, lost=lost)
+            _check_statements(
+                list(before), list(after), blanks, script, lost=lost, count_change=count_change
+            )
         except _Mismatch as found:
             raise _Mismatch(
                 found.offset, f"analysis_statements: {found.detail}", found.statement
@@ -335,11 +358,12 @@ def _check_records(
         return
     if count_change:
         new = _without_declared(new, len(old), script, blanks, lambda record: record["text"])
+        old = _without_emptied(old, len(new), lambda record: record["text"])
     if len(old) != len(new):
         raise _Mismatch(None, f"old has {len(old)} records, new has {len(new)}")
     for index, (before, after) in enumerate(zip(old, new)):
         try:
-            _check_record(script, before, after, blanks, lost)
+            _check_record(script, before, after, blanks, lost, count_change)
         except _Mismatch as found:
             raise _Mismatch(found.offset, found.detail, index) from None
     try:
