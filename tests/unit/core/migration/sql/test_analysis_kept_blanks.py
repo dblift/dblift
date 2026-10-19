@@ -69,3 +69,16 @@ def test_lint_does_not_crash_on_the_kept_character_statement(dialect):
 
     script = f"CREATE TABLE a (i int);\n{NBSP};\nCREATE TABLE b (i int);"
     assert lint_script(script, dialect, "V1.sql").verdict == "SAFE"
+
+
+@pytest.mark.parametrize(
+    ("dialect", "text", "snippet"),
+    [
+        ("db2", NBSP, "U+00A0"),
+        ("mysql", NBSP, "U+00A0"),
+        ("mysql", "\x1c SELECT 1", "U+001C SELECT 1"),
+    ],
+)
+def test_the_snippet_shows_a_kept_character_as_its_code_point(dialect, text, snippet):
+    analysis = analyse_script(f"SELECT 1;\n{text};", dialect)
+    assert analysis.statements[1].snippet == snippet

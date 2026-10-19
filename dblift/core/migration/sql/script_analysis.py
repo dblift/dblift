@@ -344,7 +344,10 @@ def _drop_target_objects(
 
 def _snippet(body: str) -> str:
     # Some splitters keep the statement's ``;`` and some drop it; the snippet never shows it.
-    flat = " ".join(body.rstrip().rstrip(";").split())
+    shown = "".join(
+        f"U+{ord(c):04X}" if c.isspace() and c not in " \t\n\r\f\v" else c for c in body
+    )
+    flat = " ".join(shown.rstrip().rstrip(";").split())
     return flat if len(flat) <= SNIPPET else flat[: SNIPPET - 1] + "…"
 
 
