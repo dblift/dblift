@@ -48,15 +48,15 @@ def is_comment_only_statement(
     body = sql.strip(blanks)
     if not body:
         return True
-    if nested_block_comments:
-        return not strip_comments_preserving_quotes(
-            body, line_prefixes=["--"], has_block_comments=True, nested_block_comments=True
-        )
-    body = re.sub(r"/\*(?!!|M!).*?\*/", "", body, flags=re.DOTALL)
-    body = re.sub(r"--.*?$", "", body, flags=re.MULTILINE)
-    if hash_comments:
-        body = re.sub(r"#.*?$", "", body, flags=re.MULTILINE)
-    return not body.strip(blanks)
+    code = strip_comments_preserving_quotes(
+        body,
+        line_prefixes=["--", "#"] if hash_comments else ["--"],
+        has_block_comments=True,
+        nested_block_comments=nested_block_comments,
+        blanks=blanks,
+        keep_executable_comments=not nested_block_comments,
+    )
+    return not code
 
 
 @lru_cache(maxsize=None)
