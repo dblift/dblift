@@ -105,6 +105,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Only the engine's own blanks are trimmed, so a name ending in a no-break space is executed
   and analysed as written. On Oracle, a statement whose edge character the driver would strip
   is refused, naming the character, line and column.
+- **DuckDB scripts with non-ASCII blanks are cut where DuckDB cuts them, and a statement
+  that would read differently alone is refused.** DuckDB replaces its Unicode blanks (such
+  as U+00A0) with spaces in one pass over the whole script before parsing, and the pass
+  stops at a dollar tag or a quote it never sees closed (an apostrophe in a block comment,
+  an escape string with a backslash before its quote, a name such as `a$$`). Past that point
+  a blank is a letter, so `e<U+00A0>$t$x` is one name and the statements that follow are
+  separate. dblift read a dollar-quoted string there and ran those statements as one; it now
+  cuts the same statements DuckDB runs. Because dblift runs each statement on its own, DuckDB
+  runs its blank pass again over that statement, and the two passes can disagree: a blank kept
+  in the script can be replaced alone (`DROP TABLE t<U+00A0>CASCADE` after such a stop is
+  rejected by DuckDB and leaves `t`, but alone it read `DROP TABLE t CASCADE` and dropped it),
+  and a blank replaced in the script can be kept alone (`DROP TABLE IF EXISTS t<U+00A0>CASCADE`
+  after a block comment holding `$t$` that closes a tag opened earlier drops `t`, but alone it
+  named another table and did nothing). A statement with a blank read either way is now
+  refused before anything runs, naming the character, its line and its column, and asking you
+  to remove the character.
 - **`migrate` runs a fixed repeatable migration whose last run failed.** Before, a repeatable
   migration that failed and was then corrected was reported as ready by `validate` but never
   run by `migrate`, which succeeded without applying it. A failed run now counts as failed

@@ -433,19 +433,19 @@ UNREAD_BLANK = chr(0x00A0)  # SQLite and PostgreSQL read it as part of a name; s
         ),
         (
             "duckdb",
-            f"DROP SCHEMA s{UNREAD_BLANK};",
+            f"DROP SCHEMA s{UNREAD_BLANK}",
             "drop-schema",
             "DROP SCHEMA discards a schema whose name could not be read, and its rows",
         ),
         (
             "duckdb",
-            f"DROP DATABASE d{UNREAD_BLANK};",
+            f"DROP DATABASE d{UNREAD_BLANK}",
             "drop-schema",
             "DROP DATABASE discards a database whose name could not be read, and its rows",
         ),
         (
             "duckdb",
-            f"DROP MATERIALIZED VIEW m{UNREAD_BLANK};",
+            f"DROP MATERIALIZED VIEW m{UNREAD_BLANK}",
             "drop-table",
             "DROP MATERIALIZED VIEW discards a materialized view whose name could not be read, "
             "and its rows",
@@ -459,9 +459,19 @@ def test_opaque_drop_keeps_its_caution(dialect, sql, code, reason):
     assert [(c.level, c.code, c.reason) for c in analysis.cautions] == [(DESTROYS, code, reason)]
 
 
+def test_a_duckdb_name_ending_in_a_no_break_space_before_a_terminator_is_refused():
+    analysis = analyse_script(f"DROP SCHEMA s{UNREAD_BLANK};", "duckdb")
+
+    assert analysis.statements == () and analysis.cautions == ()
+    assert len(analysis.errors) == 1 and "kept when run alone" in analysis.errors[0]
+
+
 @pytest.mark.parametrize("dialect", ["sqlite", "duckdb"])
 def test_opaque_drop_view_keeps_the_caution_it_had(dialect):
-    analysis = analyse_script(f"DROP VIEW v{UNREAD_BLANK};", dialect)
+    # DuckDB keeps a no-break space that ends the script and replaces one before a terminator
+    analysis = analyse_script(
+        f"DROP VIEW v{UNREAD_BLANK}" + ("" if dialect == "duckdb" else ";"), dialect
+    )
 
     assert [(c.level, c.code, c.reason) for c in analysis.cautions] == [
         (DESTROYS, None, "DROP VIEW discards a view whose name could not be read, and its rows")

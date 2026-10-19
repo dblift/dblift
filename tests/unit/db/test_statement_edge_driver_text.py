@@ -220,11 +220,8 @@ def test_copy_from_stdin_header_keeps_its_last_character() -> None:
     assert headers == [(f"COPY t (a) FROM STDIN{NBSP}", "1\n")]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="RETURNING is appended after the no-break space, which turns it into a blank",
-)
 def test_duckdb_returning_rewrite_keeps_a_final_no_break_space() -> None:
+    """A statement ending in a no-break space is sent as written: no RETURNING is appended."""
     provider = object.__new__(DuckDBProvider)
     sent: List[str] = []
     connection = mock.MagicMock()

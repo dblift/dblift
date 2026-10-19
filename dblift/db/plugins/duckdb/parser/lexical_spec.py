@@ -1,6 +1,8 @@
 """DuckDB lexical facts from docs/sql-parsing/duckdb.md."""
 
-from dblift.core.sql_parser.lexical_spec import LexicalSpec, SegmentScriptRules
+import string
+
+from dblift.core.sql_parser.lexical_spec import BlankPassRules, LexicalSpec, SegmentScriptRules
 
 #: Code points from U+0080 on that an identifier may hold: every one except the engine's blanks.
 _NON_BLANK = (
@@ -19,12 +21,9 @@ DUCKDB_RULES = SegmentScriptRules(
         " \t\n\f\r\u00a0\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u200b"
         "\u202f\u205f\u2060\u3000\ufeff"
     ),
-    # A dollar sign inside a word continues it. From the first dollar sign not followed by a digit (a
-    # dollar delimiter start for the engine, where `$1` is a parameter) every non-ASCII blank continues it too.
-    word=(
-        rf"[A-Za-z_{_NON_BLANK}](?:[A-Za-z0-9_{_NON_BLANK}]|\$(?=[0-9]))*"
-        rf"(?:\$(?![0-9])[A-Za-z0-9_${_NON_ASCII}]*)?"
-    ),
+    # A dollar sign inside a word continues it. The 18 non-ASCII blanks continue it too where the engine's
+    # pass over the script kept them (``blank_pass``).
+    word=rf"[A-Za-z_{_NON_BLANK}][A-Za-z0-9_${_NON_BLANK}]*",
     number=rf"{_DIGITS}(?:\.(?:{_DIGITS})?)?(?:[Ee][+-]?{_DIGITS})?",
     escape_letters="Ee",
     dollar_tag=rf"\$(?:[A-Za-z_{_NON_BLANK}][A-Za-z0-9_{_NON_BLANK}]*)?\$",
@@ -34,6 +33,15 @@ DUCKDB_RULES = SegmentScriptRules(
     refused_character="\x00",
     refused_character_name="NUL",
     refused_reason="the engine reads the script up to it and silently drops the rest",
+    blank_pass=BlankPassRules(
+        quotes="'\"",
+        comment="--",
+        dollar="$",
+        tag_first=string.ascii_letters + "_",
+        tag_rest=string.ascii_letters + string.digits + "_",
+        word_part=rf"[A-Za-z0-9_${_NON_BLANK}]*",
+        kept_word_part=rf"[A-Za-z0-9_${_NON_ASCII}]*",
+    ),
 )
 
 DUCKDB_SPEC = LexicalSpec(

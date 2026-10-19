@@ -12,6 +12,7 @@ from dblift.core.sql_parser.batch_commands import (
     refuse_variable_in_code,
     refuse_variable_in_lexeme,
 )
+from dblift.core.sql_parser.blank_pass import kept_stretches
 from dblift.core.sql_parser.client_directives import classify_directive, is_free_text
 from dblift.core.sql_parser.delimiter_script import DelimiterScript
 from dblift.core.sql_parser.lexical_spec import (
@@ -169,7 +170,11 @@ class LexicalTokenizer(BaseTokenizer):
         # Segment scripts: the patterns compiled once, and the two facts the next lexeme depends on.
         self._segment = spec.segment_script
         self._seg_blanks: FrozenSet[str] = frozenset()
+        self._seg_wide: FrozenSet[str] = frozenset()
         self._seg_word = self._seg_number = self._seg_tag = re.compile("")
+        self._seg_word_part = self._seg_kept_part = re.compile("")
+        self._seg_kept: List[int] = []
+        self._seg_kept_at = 0
         self._seg_parameter = self._seg_comment = re.compile("")
         self.origin = 0
         self._seg_pending = False
@@ -246,7 +251,11 @@ class LexicalTokenizer(BaseTokenizer):
     def _init_segment_script(self, rules: SegmentScriptRules) -> None:
         """Compile the patterns a segment script reads at the cursor."""
         self._seg_blanks = frozenset(rules.blanks)
+        self._seg_wide = frozenset(blank for blank in rules.blanks if blank >= "\x80")
         self._seg_word = re.compile(rules.word)
+        pass_rules = rules.blank_pass
+        self._seg_word_part = re.compile(pass_rules.word_part if pass_rules else "")
+        self._seg_kept_part = re.compile(pass_rules.kept_word_part if pass_rules else "")
         self._seg_number = re.compile(rules.number)
         self._seg_tag = re.compile(rules.dollar_tag)
         self._seg_parameter = re.compile(rules.parameter)
@@ -269,6 +278,12 @@ class LexicalTokenizer(BaseTokenizer):
         self.pos = origin
         tokens: List[Token] = []
         size = len(sql)
+        if rules.blank_pass is not None:
+            last = max(sql.rfind(blank) for blank in rules.blanks)
+            if last >= origin:
+                self._seg_kept = kept_stretches(
+                    sql, origin, last, rules.line_comment_ends, rules.blank_pass
+                )
         while self.pos < size:
             token = self._next_segment_token(rules)
             if token is not None:
@@ -279,7 +294,7 @@ class LexicalTokenizer(BaseTokenizer):
         """The lexeme at the cursor, or None for a blank."""
         sql, pos = self.sql, self.pos
         char = sql[pos]
-        if char in self._seg_blanks:
+        if char in self._seg_blanks and not (char in self._seg_wide and self._kept_until(pos)):
             self.read()
             return None
         if self._at_command_line(rules, pos):
@@ -389,16 +404,43 @@ class LexicalTokenizer(BaseTokenizer):
         self._seg_pending = True
         kind = TokenType.KEYWORD
         match = self._seg_word.match(self.sql, start)
-        if match is None:
+        end = self._kept_word(start if match is None else match.end())
+        if end == start:
             kind = TokenType.IDENTIFIER
             match = self._seg_number.match(self.sql, start)
-        if match is None:
+            end = start if match is None else match.end()
+        if end == start:
             self._seg_escape = False
             self.read()
             return self._segment_token(TokenType.SYMBOL, start, line, col)
-        self._seg_escape = self._opens_escape_string(self.sql[start : match.end()], match.end())
-        self.read(match.end() - start)
+        self._seg_escape = self._opens_escape_string(self.sql[start:end], end)
+        self.read(end - start)
         return self._segment_token(kind, start, line, col)
+
+    @property
+    def kept(self) -> List[int]:
+        """The stretches, flat, where the engine's pass over the script keeps blanks."""
+        return self._seg_kept
+
+    def _kept_until(self, pos: int) -> int:
+        """The end of the stretch of kept blanks that holds ``pos``, else 0."""
+        kept, at = self._seg_kept, self._seg_kept_at
+        while at < len(kept) and kept[at + 1] <= pos:
+            at += 2
+        self._seg_kept_at = at
+        return kept[at + 1] if at < len(kept) and kept[at] <= pos else 0
+
+    def _kept_word(self, end: int) -> int:
+        """Carry a word on from ``end`` through the blanks the pass kept, letters to the parser."""
+        stretch = self._kept_until(end)
+        while stretch and self.sql[end] in self._seg_wide:
+            kept = self._seg_kept_part.match(self.sql, end, stretch)
+            assert kept is not None  # both patterns can match nothing
+            plain = self._seg_word_part.match(self.sql, kept.end())
+            assert plain is not None
+            end = plain.end()
+            stretch = self._kept_until(end)
+        return end
 
     def _opens_escape_string(self, word: str, end: int) -> bool:
         """Whether ``word``, with a quote at ``end``, is an escape prefix (alone or after digits)."""

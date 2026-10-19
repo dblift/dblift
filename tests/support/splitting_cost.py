@@ -155,8 +155,10 @@ class CountingPattern:
     def __init__(self, pattern: Any, meter: "Meter") -> None:
         self._pattern, self._meter = pattern, meter
 
-    def match(self, text: CountingText, pos: int) -> Any:
-        found = self._pattern.match(text._value, pos)
+    def match(self, text: CountingText, pos: int, endpos: Optional[int] = None) -> Any:
+        found = self._pattern.match(
+            text._value, pos, len(text._value) if endpos is None else endpos
+        )
         self._meter.add(found.end() - pos if found else 1)
         return found
 
