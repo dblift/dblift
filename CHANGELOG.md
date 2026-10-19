@@ -123,6 +123,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A plugin can declare `statement_facts_class` without a `parser_class` of its own.** The parser
+  factory now serves such a plugin a parser built from its facts reader and `lexical_spec()`, instead
+  of the hybrid parser refusing it. Script analysis and undo generation no longer raise for it, and
+  script analysis reports a parser that cannot be built as an error instead of raising.
 - **Redshift reads a form feed between statements as a blank.** A page break in a script no longer
   becomes a statement of its own, and a form feed at the start of a statement is no longer sent with it.
 - **`migrate` sends a statement that starts or ends with a character the engine does not read as a

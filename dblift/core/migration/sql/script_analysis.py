@@ -183,6 +183,8 @@ def _analyse(text: str, dialect: str) -> ScriptAnalysis:
             bodies = SqlParserFactory(dialect).get_parser().split_for_analysis(text)
         except (UnsafeStatementSplitError, UnsupportedMetaCommandError) as error:
             return ScriptAnalysis((), (), (f"Error splitting SQL: {error}",))
+        except Exception as error:  # the parser is not supposed to raise; the command must go on
+            return ScriptAnalysis((), (), (f"parser error: {error}",))
         for body in bodies:
             facts = quirks.statement_facts(body)
             objects = tuple(

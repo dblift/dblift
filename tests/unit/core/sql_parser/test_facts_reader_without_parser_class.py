@@ -43,7 +43,7 @@ def test_factory_serves_a_plugin_whose_parser_class_is_the_default(mode, monkeyp
     parser = SqlParserFactory("cockroachdb", mode).get_parser()
 
     assert parser.dialect_name == "cockroachdb"
-    assert parser.split_statements("DROP TABLE t;") == ["DROP TABLE t"]
+    assert parser.split_for_analysis("DROP TABLE t;") == ["DROP TABLE t"]
 
 
 def test_analyse_script_analyses_instead_of_raising(reader_dialect):
