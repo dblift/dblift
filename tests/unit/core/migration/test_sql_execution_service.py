@@ -575,6 +575,9 @@ class _AutocommitRecordingProvider(TransactionalProvider):
     def __init__(self):
         self.calls = []
 
+    def check_transaction_state(self):  # noqa: D102
+        pass
+
     def begin_transaction(self):  # noqa: D102
         pass
 
