@@ -13,8 +13,8 @@ pytestmark = pytest.mark.unit
 
 NBSP = "\xa0"
 
-#: (dialect, statement, sent): Db2 keeps these characters; every other dialect still reads them
-#: as white space, so the statement is empty (or a comment) and is skipped, as it always was.
+#: (dialect, statement, sent): Db2, MySQL and MariaDB keep these characters; every other dialect
+#: still reads them as white space, so the statement is empty (or a comment) and is skipped, as it always was.
 CASES = [
     ("db2", NBSP, True),
     ("db2", "\x0c", True),
@@ -31,9 +31,15 @@ CASES = [
     ("duckdb", "\x0b", False),
     ("duckdb", " ", False),
     ("duckdb", "\x85", False),
-    ("mysql", NBSP, False),
-    ("mysql", f"{NBSP} -- c", False),
-    ("mariadb", f"{NBSP} -- c", False),
+    ("mysql", NBSP, True),
+    ("mysql", "\u3000", True),
+    ("mysql", "\u2028", True),
+    ("mysql", f"{NBSP} -- c", True),
+    ("mysql", "\x0b", False),
+    ("mysql", "\x0c -- c", False),
+    ("mariadb", NBSP, True),
+    ("mariadb", f"{NBSP} -- c", True),
+    ("mariadb", "\x0b", False),
     ("postgresql", NBSP, False),
 ]
 IDS = [f"{dialect}-{text!r}" for dialect, text, _ in CASES]

@@ -410,7 +410,7 @@ def compare_recordings(
         )
 
     lost = _SQLSERVER_NOW_STRIPPED if dialect == "sqlserver" else ""
-    count_change = dialect == "db2"
+    count_change = dialect in {"db2", "mysql", "mariadb"}
     old_scripts, new_scripts = old["scripts"], new["scripts"]
     for script_id in sorted(set(old_scripts) | set(new_scripts)):
         if script_id not in new_scripts or script_id not in old_scripts:

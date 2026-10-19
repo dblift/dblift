@@ -36,6 +36,19 @@ def test_helper_keeps_a_statement_made_of_characters_the_dialect_does_not_strip(
     ) == ["VALUES 1", "\xa0", "VALUES 2"]
 
 
+@pytest.mark.parametrize("dialect", ["mysql", "mariadb"])
+def test_helper_keeps_a_mysql_statement_made_only_of_characters_the_server_does_not_read_as_blank(
+    dialect,
+):
+    helper = importlib.import_module("dblift.core.migration.sql.migration_sql_parser")
+    script = "CREATE TABLE a (x INT);\xa0;CREATE TABLE b (x INT);"
+    assert helper.parse_migration_sql(SqlAnalyzer(dialect), script, NullLog(), dialect=dialect) == [
+        "CREATE TABLE a (x INT)",
+        "\xa0",
+        "CREATE TABLE b (x INT)",
+    ]
+
+
 @pytest.mark.parametrize(
     "dialect, text",
     [
@@ -43,8 +56,8 @@ def test_helper_keeps_a_statement_made_of_characters_the_dialect_does_not_strip(
         ("duckdb", "\x0b"),
         ("duckdb", "\u2028"),
         ("duckdb", "\x85"),
-        ("mysql", "\xa0"),
-        ("mariadb", "\xa0"),
+        ("mysql", "\x0b"),
+        ("mariadb", "\x0c"),
         ("postgresql", "\xa0"),
     ],
 )
