@@ -12,9 +12,11 @@ import duckdb
 import pytest
 
 from dblift.core.exceptions import UnsafeStatementSplitError
+from dblift.core.migration.sql.execution_statement import is_comment_only_statement
 from dblift.core.sql_parser.blank_pass import kept_stretches
 from dblift.core.sql_parser.lexical_engine import LexicalEngine
 from dblift.db.plugins.duckdb.parser.lexical_spec import DUCKDB_RULES, DUCKDB_SPEC
+from dblift.db.provider_registry import ProviderRegistry
 
 ENGINE = LexicalEngine(DUCKDB_SPEC)
 NB = chr(0xA0)
@@ -429,11 +431,42 @@ def test_a_final_blank_that_is_no_stray_tail_is_not_refused(script):
     assert ENGINE.split_statements(script)
 
 
-def effect_fuzz(split, seed, count):
-    """Run random scripts through the driver whole and through ``split`` one statement at a time.
+def migrate_statements(statements):
+    """The statements ``migrate`` sends: it drops the empty and the comment-only ones, as the engine does."""
+    quirks = ProviderRegistry.get_quirks("duckdb")
+    blanks = quirks.empty_statement_blanks()
+    kept = []
+    for statement in statements:
+        stripped = statement.strip(blanks)
+        if stripped and not is_comment_only_statement(
+            stripped, blanks=blanks, hash_comments=quirks.hash_line_comments()
+        ):
+            kept.append(statement)
+    return kept
 
-    Returns accepted, refused, same and differ: a script the driver runs without error is compared
-    with the statements ``split`` returns, by the tables left; a refused script is not run.
+
+def outcome(con, run):
+    """``run`` inside one transaction, as a migration does: whether it failed, and the tables left."""
+    con.execute("BEGIN")
+    try:
+        run(con)
+    except duckdb.Error:
+        con.execute("ROLLBACK")
+        failed = True
+    else:
+        con.execute("COMMIT")
+        failed = False
+    return failed, tables(con)
+
+
+def effect_fuzz(split, seed, count):
+    """Run random scripts through the driver whole and through ``split`` as ``migrate`` runs them.
+
+    Returns accepted, refused, same and differ. A refused script is not run. Otherwise the driver
+    runs the script whole and ``migrate`` runs the statements ``split`` returns, less those it
+    skips as empty, one by one; both in one transaction, rolled back on an error. They are the
+    same when both fail or both succeed with the same tables: a script the driver rejects whole must
+    make ``migrate`` fail too, however it was cut.
     """
     rng = random.Random(seed)
     blanks = [NB, NB, "\u3000", "\u205f", "\ufeff", " ", " ", "\n", "\r\n", "", "", ""]
@@ -454,31 +487,23 @@ def effect_fuzz(split, seed, count):
             script += rng.choice(ends)
         script += rng.choice(blanks)
         try:
-            statements = split(script)
+            statements = migrate_statements(split(script))
         except UnsafeStatementSplitError:
             refused += 1
             continue
+        accepted += 1
         engine = duckdb.connect()
         setup(engine)
-        try:
-            engine.execute(script)
-        except duckdb.ParserException:
-            continue  # a script the engine rejects whole runs none of it; dblift runs it per statement
-        except duckdb.Error:
-            engine_failed = True
-        else:
-            engine_failed = False
-        accepted += 1
         mine = duckdb.connect()
         setup(mine)
-        failed = False
-        for statement in statements:
-            try:
-                mine.execute(statement)
-            except duckdb.Error:
-                failed = True
-                break
-        if failed == engine_failed and tables(mine) == tables(engine):
+
+        def run_pieces_one_by_one(con, statements=statements):
+            for statement in statements:
+                con.execute(statement)
+
+        if outcome(engine, lambda con, script=script: con.execute(script)) == outcome(
+            mine, run_pieces_one_by_one
+        ):
             same += 1
         else:
             differ += 1
