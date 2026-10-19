@@ -242,11 +242,11 @@ def _without_declared(
     return [item for item in new if not any(item is other for other in kept)]
 
 
-def _without_emptied(old: List[Any], new_count: int, text_of: Any) -> List[Any]:
+def _without_emptied(old: List[Any], new_count: int, blanks: str, text_of: Any) -> List[Any]:
     """``old`` without its empty statements, when the new recording no longer holds them."""
     if len(old) <= new_count:
         return old
-    kept = [item for item in old if text_of(item).strip()]
+    kept = [item for item in old if text_of(item).strip(blanks)]
     return kept if len(kept) == new_count else old
 
 
@@ -266,7 +266,7 @@ def _check_statements(
         return
     if count_change:
         new = _without_declared(new, len(old), script, blanks, lambda text: text)
-        old = _without_emptied(old, len(new), lambda text: text)
+        old = _without_emptied(old, len(new), blanks, lambda text: text)
     if len(old) != len(new) and dropped:
         old = [t for t in old if not (isinstance(t, str) and t and not t.strip(dropped))]
     if len(old) != len(new):
@@ -376,7 +376,7 @@ def _check_records(
         return
     if count_change:
         new = _without_declared(new, len(old), script, blanks, lambda record: record["text"])
-        old = _without_emptied(old, len(new), lambda record: record["text"])
+        old = _without_emptied(old, len(new), blanks, lambda record: record["text"])
     if len(old) != len(new):
         raise _Mismatch(None, f"old has {len(old)} records, new has {len(new)}")
     for index, (before, after) in enumerate(zip(old, new)):

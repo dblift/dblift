@@ -795,3 +795,33 @@ def test_a_statement_with_code_that_the_new_recording_drops_is_reported() -> Non
     )
     new = recording(script, ["VALUES 1", "VALUES 2"], ["VALUES 1", "VALUES 2"], dialect="mysql")
     assert [d.view for d in compare_recordings(old, new, BLANKS)] == ["execution", "analysis"]
+
+
+@pytest.mark.parametrize("dialect", ["db2", "mysql", "mariadb"])
+def test_a_statement_of_kept_characters_that_the_new_recording_drops_is_reported(
+    dialect: str,
+) -> None:
+    script = f"VALUES 1;\n{NBSP};\nVALUES 2;"
+    old = recording(
+        script,
+        ["VALUES 1", NBSP, "VALUES 2"],
+        ["VALUES 1", NBSP, "VALUES 2"],
+        [
+            record("VALUES 1", 0, 10),
+            record(NBSP, 10, 13, line=2),
+            record("VALUES 2", 14, 22, line=3),
+        ],
+        dialect=dialect,
+    )
+    new = recording(
+        script,
+        ["VALUES 1", "VALUES 2"],
+        ["VALUES 1", "VALUES 2"],
+        [record("VALUES 1", 0, 10), record("VALUES 2", 14, 22, line=3)],
+        dialect=dialect,
+    )
+    assert [d.view for d in compare_recordings(old, new, BLANKS)] == [
+        "execution",
+        "analysis",
+        "records",
+    ]
