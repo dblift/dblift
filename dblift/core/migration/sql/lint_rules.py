@@ -92,8 +92,10 @@ _TABLE_CODES = frozenset(
         "pg-missing-lock-timeout",
     }
 )
-# A table as (schema or None, name), lower-cased.
-_TableKey = Tuple[Optional[str], str]
+# One identifier as (text, quoted); the text of an unquoted one is lower-cased.
+_Part = Tuple[str, bool]
+# A table as (schema or None, name).
+_TableKey = Tuple[Optional[_Part], _Part]
 _NOT_NULL_EXEMPT = (
     exp.DefaultColumnConstraint,
     exp.ComputedColumnConstraint,
@@ -156,11 +158,13 @@ def issues_and_created_tables(
 ) -> Tuple[List[Finding], FrozenSet[str]]:
     """The script's findings, and the tables it creates.
 
-    A table is named ``schema.name``, or ``name`` when the statement gives no schema,
-    lower-cased. A table in *created_before*, or created by an earlier statement of the
-    script, is new: a table-scoped finding on a statement whose target tables are all new
-    is not reported. A target is new when its name matches a new table and either side
-    names no schema or both name the same one: offline the search path is unknown, so
+    A table is named ``schema.name``, or ``name`` when the statement gives no schema: an
+    unquoted part lower-cased, a quoted one kept as written between ``"``. A table in
+    *created_before*, or created by an earlier statement of the script, is new: a table-scoped
+    finding on a statement whose target tables are all new is not reported. A target is new
+    when its name matches a new table (both unquoted and equal ignoring case, or both quoted
+    and byte-equal; a mixed pair never matches) and either side names no schema or both name
+    the same one: offline the search path is unknown, so
     ``CREATE TABLE users`` also covers ``x.users``. A statement whose names the analysis
     withheld (``names_unread``) is never exempted and creates no new table: the engine may read
     another name than sqlglot does. ``CREATE TABLE IF NOT EXISTS`` creates
@@ -202,7 +206,7 @@ def issues_and_created_tables(
             findings.append(_finding("pg-missing-lock-timeout", stmt))
             lock_timeout_reported = True
         table = _created_table(tree)
-        if table and not stmt.names_unread and not _matches(table, existing):
+        if table and not stmt.names_unread and not _matches(table, existing, lenient=True):
             created.add(table)
             new.add(table)
     findings = [
@@ -213,7 +217,7 @@ def issues_and_created_tables(
     if not analysis.errors:
         findings.extend(_mixed_transaction_modes(analysis.statements, dialect, text))
     return sorted(findings, key=lambda f: (f.statement, f.code)), frozenset(
-        f"{schema}.{name}" if schema else name for schema, name in created
+        _text_of(key) for key in created
     )
 
 
@@ -234,19 +238,51 @@ def _parse(sql: str, sqlglot_dialect: Optional[str]) -> Optional[exp.Expression]
     return tree
 
 
+def _part_of(identifier: Any) -> _Part:
+    text = identifier.name
+    quoted = bool(identifier.args.get("quoted"))
+    return (text if quoted else text.lower(), quoted)
+
+
 def _key_of(table: exp.Table) -> _TableKey:
-    return (table.db.lower() or None, table.name.lower())
+    schema = table.args.get("db")
+    return (_part_of(schema) if schema is not None and schema.name else None, _part_of(table.this))
+
+
+_QUOTED_OR_BARE = re.compile(r'"((?:[^"]|"")*)"|([^.]+)')
 
 
 def _key_from_text(text: str) -> _TableKey:
-    schema, _, name = text.lower().rpartition(".")
-    return (schema or None, name)
+    """Read ``schema.name``, a quoted part written ``"Text"`` (a ``"`` doubled)."""
+    parts: List[_Part] = [
+        (m.group(1).replace('""', '"'), True) if m.group(2) is None else (m.group(2).lower(), False)
+        for m in _QUOTED_OR_BARE.finditer(text)
+    ]
+    return (parts[-2] if len(parts) > 1 else None, parts[-1])
 
 
-def _matches(target: _TableKey, tables: AbstractSet[_TableKey]) -> bool:
+def _text_of(key: _TableKey) -> str:
+    def part(p: _Part) -> str:
+        return '"' + p[0].replace('"', '""') + '"' if p[1] else p[0]
+
+    schema, name = key
+    return f"{part(schema)}.{part(name)}" if schema else part(name)
+
+
+def _same(a: _Part, b: _Part, *, lenient: bool) -> bool:
+    """Both unquoted and equal, or both quoted and byte-equal; *lenient* ignores quoting.
+
+    Engines fold unquoted names in different directions, so a mixed pair is never the same
+    table here: the caller keeps its caution.
+    """
+    return a[0].lower() == b[0].lower() if lenient else a == b
+
+
+def _matches(target: _TableKey, tables: AbstractSet[_TableKey], *, lenient: bool = False) -> bool:
     schema, name = target
     return any(
-        name == other_name and (schema is None or other_schema is None or schema == other_schema)
+        _same(name, other_name, lenient=lenient)
+        and (schema is None or other_schema is None or _same(schema, other_schema, lenient=lenient))
         for other_schema, other_name in tables
     )
 
