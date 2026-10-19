@@ -142,10 +142,6 @@ class SqlExecutionService:
               - is_query_result is True for query results, False for DDL/DML row counts
               - result is either a list of row dictionaries (for queries) or row count (for DDL/DML)
         """
-        if self.quirks.is_batch_separator(statement):
-            self.log.debug("Skipping dialect batch separator statement")
-            return False, 0
-
         self.prepare_analysis()
 
         # Log statement for debugging

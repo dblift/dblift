@@ -18,10 +18,8 @@ from dblift.db.plugins.duckdb.parser.duckdb_facts_parser import DuckDBFactsParse
 from dblift.db.plugins.duckdb.parser.lexical_spec import DUCKDB_SPEC
 
 
-def records(script: str, *, comment_only: bool = False) -> list[Statement]:
-    """The records the shared engine cuts ``script`` into (comment-only segments when asked)."""
-    if comment_only:
-        return LexicalEngine(DUCKDB_SPEC).split(script, include_comment_only=True)
+def records(script: str) -> list[Statement]:
+    """The records the shared engine cuts ``script`` into."""
     return DuckDBFactsParser().split(script)
 
 
@@ -438,25 +436,25 @@ def test_the_last_statement_has_no_terminator() -> None:
     ]
 
 
-def test_comment_only_segments_are_units_of_their_own_when_asked() -> None:
-    units = records("SELECT 1; -- bye", comment_only=True)
-    assert [(u.text, u.line, u.terminator) for u in units] == [
-        ("SELECT 1", 1, ";"),
-        ("-- bye", 1, None),
-    ]
-    assert [u.text for u in records("-- only\n/* here */\n", comment_only=True)] == [
-        "-- only\n/* here */"
-    ]
-    assert records(";;;\n ; \n", comment_only=True) == []
+def test_comment_only_segments_are_not_units_in_either_projection() -> None:
+    engine = LexicalEngine(DUCKDB_SPEC)
+    for script, expected in (
+        ("SELECT 1; -- bye", ["SELECT 1"]),
+        ("-- only\n/* here */\n", []),
+        ("/* a /* b */ c */", []),
+    ):
+        assert [u.text for u in records(script)] == expected
+        assert engine.split_for_analysis(script) == expected
+    assert records(";;;\n ; \n") == []
 
 
-def test_the_refusals_do_not_depend_on_the_mode() -> None:
+def test_the_refusals_do_not_depend_on_the_projection() -> None:
     for script, error in (
         (".mode csv\nSELECT 1;", UnsupportedMetaCommandError),
         ("SELECT 1;\x00", UnsafeStatementSplitError),
     ):
         with pytest.raises(error):
-            records(script, comment_only=True)
+            LexicalEngine(DUCKDB_SPEC).split_for_analysis(script)
 
 
 # ---- huge lexemes -----------------------------------------------------------------------------------------

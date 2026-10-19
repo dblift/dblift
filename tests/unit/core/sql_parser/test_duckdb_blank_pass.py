@@ -221,40 +221,28 @@ def test_a_line_comment_ends_at_a_carriage_return_for_the_pass():
 
 
 #: a final U+00A0 of a statement that the pass of the script replaces (the script goes on after it)
-#: and the pass of the statement alone keeps, because it never reads the last two bytes of a text
+#: and the pass of the statement alone would keep, because it never reads the last two bytes of a
+#: text: the statement is sent without it, as the engine reads the script, so nothing differs
 KEPT_ALONE = [
     "DROP TABLE IF EXISTS t" + NB + "; SELECT 1;",
     "DROP TABLE IF EXISTS t" + NB + " ; SELECT 1;",
     "SELECT 1 AS x" + NB + "; SELECT 2;",
-    "SELECT 1 AS a " + NB + "; SELECT -- '\n$t$\ra$b-- c$\né e $t$x; DROP TABLE t; SELECT 3;",
+    "SELECT 1 AS a " + NB + "; SELECT -- '\n$t$\ra$b-- c$\né e $t$x; DROP TABLE t; SELECT 3;",
 ]
 
 
 @pytest.mark.parametrize("script", KEPT_ALONE, ids=[str(i) for i in range(len(KEPT_ALONE))])
-def test_a_final_blank_kept_alone_and_replaced_in_the_script_is_refused(script):
-    assert len(duckdb.extract_statements(script)) >= 2
-    at = script.index(NB)
-    for split in (ENGINE.split_statements, ENGINE.split, ENGINE.split_for_analysis):
-        with pytest.raises(UnsafeStatementSplitError) as raised:
-            split(script)
-        assert f"U+00A0 at line 1, column {at + 1}" in str(raised.value)
-        assert "kept when run alone, replaced in its script" in str(raised.value)
-        assert str(raised.value).endswith("remove the character")
-
-
-def test_the_engine_drops_the_table_the_statement_alone_would_not():
-    script = KEPT_ALONE[0]
-    assert not has_t(run_whole(script))
-    alone = duckdb.connect()
-    alone.execute("CREATE TABLE t (i INT)")
-    alone.execute("DROP TABLE IF EXISTS t" + NB)  # a silent no-op: it names another table
-    assert has_t(alone)
+def test_a_final_blank_kept_alone_and_replaced_in_the_script_is_trimmed_not_refused(script):
+    pieces = ENGINE.split_statements(script)
+    assert len(pieces) == len(duckdb.extract_statements(script))
+    assert pieces[0] == script[: script.index(NB)].rstrip(" ")
+    assert tables(run_pieces(pieces)) == tables(whole(script))
 
 
 @pytest.mark.parametrize(
     "script",
-    ["SELECT 1 AS e" + NB, "/* ' */ SELECT 1 AS e" + NB, "SELECT 1;　", "SELECT 1;" + NB],
-    ids=["script-end", "script-end-kept-stretch", "wide-after", "empty-after"],
+    ["SELECT 1 AS e" + NB, "/* ' */ SELECT 1 AS e" + NB, "SELECT 1;　"],
+    ids=["script-end", "script-end-kept-stretch", "wide-after"],
 )
 def test_a_final_blank_kept_in_the_script_as_well_is_not_refused(script):
     assert len(ENGINE.split_statements(script)) == 1
@@ -313,3 +301,201 @@ def test_the_engine_drops_the_table_the_piece_alone_would_not_name():
     alone.execute("CREATE TABLE t (i INT)")
     alone.execute("/* $t$ */ DROP TABLE IF EXISTS t" + NB + "CASCADE")
     assert has_t(alone)
+
+
+def run_pieces(pieces):
+    con = duckdb.connect()
+    setup(con)
+    for piece in pieces:
+        con.execute(piece)
+    return con
+
+
+def setup(con):
+    con.execute("CREATE TABLE t (i INT)")
+    con.execute(f'CREATE TABLE "t{NB}" (i INT)')
+
+
+def tables(con):
+    return sorted(r[0] for r in con.execute("SELECT table_name FROM duckdb_tables()").fetchall())
+
+
+def whole(script):
+    con = duckdb.connect()
+    setup(con)
+    con.execute(script)
+    return con
+
+
+#: a blank at the edge of a statement that the script's pass replaces is trimmed, so the text sent
+#: equals the engine's reading of the script: nothing is read differently, nothing is refused
+EDGE_REPLACED = [
+    ("DROP TABLE t" + NB + ";\nSELECT 1;", ["DROP TABLE t", "SELECT 1"]),
+    ("DROP TABLE t" + NB + "\n\n", ["DROP TABLE t"]),
+    ("DROP TABLE t" + NB + " ", ["DROP TABLE t"]),
+    ("DROP TABLE IF EXISTS t" + NB + "; SELECT 1;", ["DROP TABLE IF EXISTS t", "SELECT 1"]),
+    ("DROP TABLE IF EXISTS t" + NB + " ; SELECT 1;", ["DROP TABLE IF EXISTS t", "SELECT 1"]),
+    ("SELECT 1 AS x" + NB + "; SELECT 2;", ["SELECT 1 AS x", "SELECT 2"]),
+]
+
+
+@pytest.mark.parametrize(
+    "script,sent", EDGE_REPLACED, ids=[str(i) for i in range(len(EDGE_REPLACED))]
+)
+def test_an_edge_blank_the_script_replaces_is_trimmed_and_nothing_is_refused(script, sent):
+    assert ENGINE.split_statements(script) == sent
+    assert [s.text for s in ENGINE.split(script)] == sent
+
+
+def test_an_edge_blank_the_script_replaces_runs_the_statement_the_engine_runs():
+    script = "DROP TABLE t" + NB + ";\nSELECT 1;"
+    assert (
+        tables(run_pieces(ENGINE.split_statements(script))) == tables(whole(script)) == ["t" + NB]
+    )
+
+
+#: the driver replaces the blank before the final line ending and the shell, which removes that line
+#: ending first, keeps it as part of the name: the two read the script differently
+DRIVER_AND_SHELL_DISAGREE = [
+    "DROP TABLE t" + NB + "\n",
+    "DROP TABLE t" + NB + "\r\n",
+    "SELECT 1 AS e" + NB + "\n",
+]
+
+
+@pytest.mark.parametrize("script", DRIVER_AND_SHELL_DISAGREE, ids=["lf", "crlf", "alias"])
+def test_a_final_blank_before_the_last_line_ending_is_refused_as_the_shell_reads_it_differently(
+    script,
+):
+    for split in (ENGINE.split_statements, ENGINE.split, ENGINE.split_for_analysis):
+        with pytest.raises(UnsafeStatementSplitError, match=r"U\+00A0 at line 1, column 13?"):
+            split(script)
+
+
+@pytest.mark.parametrize(
+    "script",
+    [
+        "DROP TABLE t" + NB + "\n\n",  # the shell removes one line ending only
+        "DROP TABLE t" + NB + " \n",
+        "DROP TABLE t" + NB + "\r",
+        "/* ' */ DROP TABLE t" + NB + "\n",  # kept in the script: the shell keeps it too
+        "DROP TABLE t;" + NB + "\n",  # the tail carries no statement
+    ],
+    ids=["two-line-endings", "space-between", "lone-cr", "kept-in-script", "tail"],
+)
+def test_a_blank_the_driver_and_the_shell_read_alike_is_not_refused(script):
+    assert ENGINE.split_statements(script)
+
+
+#: the engine keeps a final U+00A0 and reads it as a statement of its own that does not parse: the
+#: driver rejects the whole script, so the stray blank is refused instead of dropped
+STRAY_TAIL = [
+    "SELECT 1;" + NB,
+    "DROP TABLE t;" + NB + NB,
+    "DROP TABLE t;\n" + NB,
+    "DROP TABLE t; /* c */" + NB,
+    "DROP TABLE t; -- c\n" + NB,
+]
+
+
+@pytest.mark.parametrize("script", STRAY_TAIL, ids=[str(i) for i in range(len(STRAY_TAIL))])
+def test_a_stray_no_break_space_after_the_last_statement_is_refused_as_the_driver_rejects_it(
+    script,
+):
+    with pytest.raises(duckdb.ParserException):
+        whole(script)
+    line = script.count("\n") + 1
+    column = len(script) - script.rfind("\n") - 1 if "\n" in script else len(script)
+    for split in (ENGINE.split_statements, ENGINE.split, ENGINE.split_for_analysis):
+        with pytest.raises(UnsafeStatementSplitError) as raised:
+            split(script)
+        assert f"U+00A0 at line {line}, column {column}" in str(raised.value)
+        assert str(raised.value).endswith("remove the character")
+
+
+@pytest.mark.parametrize(
+    "script",
+    [
+        "DROP TABLE t;" + NB + "\n",  # the pass replaces it: the driver accepts the script
+        "SELECT 1;　",
+        "SELECT 1; -- c" + NB,  # inside a comment
+        "SELECT 1; /* c" + NB + "*/",
+        "DROP TABLE t" + NB,  # the final blank of a statement is a character of its name (row 90a)
+        "/* ' */ SELECT 1 AS e" + NB,
+    ],
+    ids=["replaced", "ideographic", "line-comment", "block-comment", "name", "name-kept-stretch"],
+)
+def test_a_final_blank_that_is_no_stray_tail_is_not_refused(script):
+    assert ENGINE.split_statements(script)
+
+
+def outcome(con, run):
+    """``run`` inside one transaction, as a migration does: whether it failed, and the tables left."""
+    con.execute("BEGIN")
+    try:
+        run(con)
+    except duckdb.Error:
+        con.execute("ROLLBACK")
+        failed = True
+    else:
+        con.execute("COMMIT")
+        failed = False
+    return failed, tables(con)
+
+
+def effect_fuzz(split, seed, count):
+    """Run random scripts through the driver whole and through ``split`` as ``migrate`` runs them.
+
+    Returns accepted, refused, same and differ. A refused script is not run. Otherwise the driver
+    runs the script whole and ``migrate`` runs the statements ``split`` returns, less those it
+    skips as empty, one by one; both in one transaction, rolled back on an error. They are the
+    same when both fail or both succeed with the same tables: a script the driver rejects whole must
+    make ``migrate`` fail too, however it was cut.
+    """
+    rng = random.Random(seed)
+    blanks = [NB, NB, "\u3000", "\u205f", "\ufeff", " ", " ", "\n", "\r\n", "", "", ""]
+    openers = ["/* ' */", "/* $t$ */", "/* $$ */", "-- '\n", "/* it's */", "", "", "", "", ""]
+    templates = [
+        "SELECT 1", "SELECT 1 AS x", "DROP TABLE t", "DROP TABLE IF EXISTS t", "SELECT 1 AS a$$",
+        "SELECT 1 AS a$t$", "SELECT 2 AS b$t$", "DROP TABLE IF EXISTS t{b}CASCADE",
+        "SELECT 1 AS x{b}y", "SELECT 1 AS e{b}", "SELECT 1 e{b}y", "SELECT 1", "DROP TABLE t",
+        "DROP TABLE IF EXISTS t", "SELECT 1 AS x", "SELECT 2",
+    ]  # fmt: skip
+    ends = [";", ";", ";\n", "; ", ";\r\n", ""]
+    accepted = refused = same = differ = 0
+    for _ in range(count):
+        script = ""
+        for _ in range(rng.randint(1, 4)):
+            statement = rng.choice(templates).format(b=rng.choice(blanks))
+            script += rng.choice(openers) + rng.choice(blanks) + statement + rng.choice(blanks)
+            script += rng.choice(ends)
+        script += rng.choice(blanks)
+        try:
+            statements = split(script)  # migrate sends every statement the splitter returns
+        except UnsafeStatementSplitError:
+            refused += 1
+            continue
+        accepted += 1
+        engine = duckdb.connect()
+        setup(engine)
+        mine = duckdb.connect()
+        setup(mine)
+
+        def run_pieces_one_by_one(con, statements=statements):
+            for statement in statements:
+                con.execute(statement)
+
+        if outcome(engine, lambda con, script=script: con.execute(script)) == outcome(
+            mine, run_pieces_one_by_one
+        ):
+            same += 1
+        else:
+            differ += 1
+    return accepted, refused, same, differ
+
+
+@pytest.mark.parametrize("seed", [1, 2, 3])
+def test_no_statement_dblift_runs_has_another_effect_than_the_engine_gives_the_script(seed):
+    accepted, refused, same, differ = effect_fuzz(ENGINE.split_statements, seed, 2000)
+    assert differ == 0
+    assert accepted > 300 and refused > 0 and same == accepted

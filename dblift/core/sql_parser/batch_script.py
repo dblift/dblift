@@ -33,8 +33,8 @@ class BatchScript:
         self.text_blanks = text_blanks
         self.origin = origin
 
-    def split(self, tokens: Sequence[Token]) -> List[Tuple[Statement, str]]:
-        """``(record, the string execution sends once)`` for every batch that holds code."""
+    def split(self, tokens: Sequence[Token]) -> List[Statement]:
+        """The record of every batch that holds code; execution sends its text."""
         source = self.source
         extents = list(self.comments)
         lexeme_starts: List[int] = []
@@ -47,7 +47,7 @@ class BatchScript:
         extents.sort()
         spans = code_spans(source, self.origin, len(source), extents)
         positions = code_positions(self.rules, source, spans, lexeme_starts)
-        records: List[Tuple[Statement, str]] = []
+        records: List[Statement] = []
         start, line = self.origin, 1
         for token in tokens:
             if token.type != TokenType.DIRECTIVE:
@@ -67,7 +67,7 @@ class BatchScript:
 
     def _add(
         self,
-        records: List[Tuple[Statement, str]],
+        records: List[Statement],
         spans: Sequence[Tuple[int, int]],
         positions: Sequence[int],
         start: int,
@@ -77,21 +77,26 @@ class BatchScript:
         count: Optional[int],
         end: int,
     ) -> None:
-        """Append the record of ``source[start:cut]`` when the batch holds code."""
+        """Append the record of ``source[start:cut]`` when the batch holds code, not just ``;`` and blanks."""
         if not has_code(positions, start, cut - 1):
             return
         raw = self.source[start:cut]
         text = raw.strip(self.text_blanks)
+        if not text:
+            return
         lead = len(raw) - len(raw.lstrip(self.text_blanks))
+        constituents = divide(
+            self.rules, self.source, start, cut, spans, positions, self.text_blanks
+        )
+        if not text.strip(self.text_blanks + ";"):
+            return  # only terminators and blanks, in any order: no statement
         record = Statement(
             text=text,
             line=line + raw.count("\n", 0, lead),
             terminator=terminator,
             repeat=1 if count is None else count,
-            analysis_statements=divide(
-                self.rules, self.source, start, cut, spans, positions, self.text_blanks
-            ),
+            analysis_statements=constituents,
             source_start=start,
             source_end=end,
         )
-        records.append((record, text))
+        records.append(record)

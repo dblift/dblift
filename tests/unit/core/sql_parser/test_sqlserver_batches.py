@@ -946,11 +946,11 @@ CASES = [
             [["SELECT 1", 1], ["-- header\nSELECT 2", 1]],
         ),
     ),
-    ("nbsp", "\xa0", ("ok", [("", 1, None, 1, 0, 1)], [["", 1]])),
-    ("ff", "\x0c", ("ok", [("", 1, None, 1, 0, 1)], [["", 1]])),
+    ("nbsp", "\xa0", ("ok", [], [])),
+    ("ff", "\x0c", ("ok", [], [])),
     ("spaces", "  \n", ("ok", [], [])),
     ("empty", "", ("ok", [], [])),
-    ("vt", "\x0b", ("ok", [("", 1, None, 1, 0, 1)], [["", 1]])),
+    ("vt", "\x0b", ("ok", [], [])),
     ("semi", "; ;\n", ("ok", [], [])),
     ("semis", ";;", ("ok", [], [])),
     ("semi row", "\n;\nGO\nSELECT 2", ("ok", [("SELECT 2", 4, None, 1, 6, 14)], [["SELECT 2", 1]])),
@@ -1201,9 +1201,9 @@ def test_a_non_blank_before_go_makes_it_text(blank):
 
 
 @pytest.mark.parametrize("script", ["\xa0", "\x0c", "\x0b"])
-def test_blank_but_not_empty_input_keeps_the_old_record(script):
-    assert records(script) == [("", 1, None, 1, 0, 1)]
-    assert strings(script) == [["", 1]]
+def test_blank_but_not_empty_input_has_no_record(script):
+    assert records(script) == []
+    assert strings(script) == []
 
 
 @pytest.mark.parametrize("script", ["  \n", ""])

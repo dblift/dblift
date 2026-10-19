@@ -50,10 +50,10 @@ class LexicalEngine:
         for message in parser.notices:
             logger.info(message)
 
-    def split(self, script: str, *, include_comment_only: bool = False) -> List[Statement]:
+    def split(self, script: str) -> List[Statement]:
         """Return source-positioned execution units and analysis projections."""
         parser = self._parser(script)
-        records = parser.split(include_comment_only=include_comment_only)
+        records = parser.split()
         self._report(parser)
         return records
 
@@ -65,14 +65,8 @@ class LexicalEngine:
         return statements
 
     def split_for_analysis(self, script: str) -> List[str]:
-        """Project executed batch constituents, retaining SQLite comment-only segments."""
-        if (
-            self.spec.batch_script is not None
-            or self.spec.delimiter_script is not None
-            or self.spec.terminator_script is not None
-        ):
-            return analysis_sql(self.split(script))
-        return [record.text for record in self.split(script, include_comment_only=True)]
+        """Project the analysis text of each record of the script."""
+        return analysis_sql(self.split(script))
 
     def blank_comments(self, script: str) -> str:
         """Replace each scanned comment with a space, preserving quoted text."""

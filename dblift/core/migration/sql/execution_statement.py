@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import re
+import warnings
 from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any, List, Optional
 
 from dblift.core.exceptions import TransactionStatementError
 from dblift.core.sql_parser.common.comment_stripping import strip_comments_preserving_quotes
+from dblift.core.sql_parser.statement import Statement, executable_records, execution_strings
+from dblift.core.sql_parser.statement import execution_units as unit_texts
 from dblift.core.utils.row_access import strip_leading_comments
 
 
@@ -22,41 +25,41 @@ class ExecutionStatement:
     transaction_reason: Optional[str] = None
 
 
-def is_comment_only_statement(
-    sql: str,
-    *,
-    nested_block_comments: bool = False,
-    blanks: Optional[str] = None,
-    hash_comments: bool = False,
-) -> bool:
+def _comment_only(sql: str, *, nested_block_comments: bool = False) -> bool:
     """True if *sql* has no executable tokens after removing block and line comments.
 
     MySQL/MariaDB executable comment directives (``/*!...*/``, ``/*M!...*/``) are not
-    comments the server skips — it runs their contents — so they are excluded from the
-    strip and never count as "comment only".
-
-    Pass ``nested_block_comments=True`` for a dialect whose block comments nest
-    (its tokenizer's ``NESTED_BLOCK_COMMENTS``): ``/* a /* b */ c */`` is then one
-    comment, stripped by the same scanner the dialect parsers use. MySQL/MariaDB
-    comments do not nest, so their directives always take the default path.
-
-    ``blanks`` are the characters the dialect reads as empty (``empty_statement_blanks``);
-    ``None`` is every white space character. ``hash_comments`` also strips ``#`` line comments
-    (``hash_line_comments``).
+    comments the server skips, so they never count as "comment only".
     """
 
-    body = sql.strip(blanks)
+    body = sql.strip()
     if not body:
         return True
-    if nested_block_comments:
-        return not strip_comments_preserving_quotes(
-            body, line_prefixes=["--"], has_block_comments=True, nested_block_comments=True
-        )
-    body = re.sub(r"/\*(?!!|M!).*?\*/", "", body, flags=re.DOTALL)
-    body = re.sub(r"--.*?$", "", body, flags=re.MULTILINE)
-    if hash_comments:
-        body = re.sub(r"#.*?$", "", body, flags=re.MULTILINE)
-    return not body.strip(blanks)
+    code = strip_comments_preserving_quotes(
+        body,
+        line_prefixes=["--"],
+        has_block_comments=True,
+        nested_block_comments=nested_block_comments,
+        keep_executable_comments=not nested_block_comments,
+        keep_unterminated_comment=True,
+    )
+    return not code
+
+
+def is_comment_only_statement(sql: str, *, nested_block_comments: bool = False) -> bool:
+    """Deprecated: True if *sql* has no executable tokens after removing comments.
+
+    Use ``StatementSplitter(dialect).split()``, whose records carry ``kind`` and never include
+    a statement that is empty or only comments. Pass ``nested_block_comments=True`` for a
+    dialect whose block comments nest.
+    """
+    warnings.warn(
+        "is_comment_only_statement is deprecated and will be removed in the next major "
+        "release; use StatementSplitter(dialect).split(), whose records carry kind.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return _comment_only(sql, nested_block_comments=nested_block_comments)
 
 
 @lru_cache(maxsize=None)
@@ -79,16 +82,15 @@ def _statements_of(sql: str, dialect: str) -> List[str]:
 def execution_units(sql: str, dialect: str) -> Optional[List[str]]:
     """The scanner's executable units once each, omitting skipped client batches.
 
-    ``None`` means the dialect has no record API. A scanner refusal propagates.
+    ``None`` means the dialect has no parser. A parser that returns strings only is read through
+    the splitter's adapter. A scanner refusal propagates.
     """
+    from dblift.core.migration.sql.statement_splitter import StatementSplitter
+
     parser = _script_parser(dialect.lower())
-    if parser is None or not hasattr(parser, "split"):
+    if parser is None:
         return None
-    return [
-        record.text
-        for record in parser.split(sql)
-        if record.kind != "directive" and record.repeat > 0
-    ]
+    return unit_texts(StatementSplitter(dialect).split(sql))
 
 
 def classify_execution_statement(
@@ -125,6 +127,7 @@ def neutralise_transaction_statements(
     log: Any,
     script_name: str = "the script",
     content: str = "",
+    records: Optional[List[Statement]] = None,
 ) -> List[str]:
     """*statements* with a script's ``BEGIN ... COMMIT`` envelope dropped, or a refusal.
 
@@ -134,6 +137,10 @@ def neutralise_transaction_statements(
     would end or fail against dblift's transaction, and is refused before anything runs, as is
     an envelope around a statement that cannot run in a transaction.
     A dialect with no patterns gets *statements* back untouched.
+
+    *statements* is the splitter's list for *content* (or for *records*, when the caller has them
+    already); it is no longer cross-checked against *content*, deliberately: the list is trusted
+    as the splitter returned it.
     """
     from dblift.db.provider_registry import ProviderRegistry
 
@@ -141,20 +148,14 @@ def neutralise_transaction_statements(
     patterns = quirks.transaction_control_sql_patterns
     if not patterns:
         parser = _script_parser(dialect.lower())
-        if not content or parser is None or not hasattr(parser, "split"):
-            return statements
-        records = [
-            record
-            for record in parser.split(content)
-            if record.kind != "directive" and record.repeat > 0
-            for _ in range(record.repeat)
-        ]
-        if [record.text.strip().rstrip(";") for record in records] != [
-            statement.strip().rstrip(";") for statement in statements
-        ]:
-            return statements
-        for index, record in enumerate(records):
-            if not record.multi:
+        if records is None:
+            if not content or parser is None or not hasattr(parser, "split"):
+                return statements
+            records = parser.split(content)
+        sent = 0  # how many strings the records before this one are sent as
+        for record in records:
+            index, sent = sent, sent + len(execution_strings([record]))
+            if not (executable_records([record]) and record.multi):
                 continue
             parts = record.analysis_statements or (record.text,)
             if len(parts) < 2:
@@ -172,8 +173,6 @@ def neutralise_transaction_statements(
     # (index, normalised text, kind) of every executable statement.
     executable = []
     for index, statement in enumerate(statements):
-        if is_comment_only_statement(statement):
-            continue
         text = re.sub(r"\s+", " ", _without_comments(quirks, statement)).upper()
         executable.append((index, text, next((k for p, k in patterns if re.match(p, text)), None)))
     marked = [entry for entry in executable if entry[2]]
@@ -241,13 +240,14 @@ def _position(statements: List[str], index: int, dialect: str, content: str) -> 
 
     quirks = ProviderRegistry.get_quirks(dialect.lower())
     parser_class = quirks.parser_class("regex")
-    blanks = quirks.empty_statement_blanks()
     try:
-        records = [r for r in parser_class().split(content) if r.text.strip(blanks)]  # type: ignore[misc]
+        records = parser_class().split(content)  # type: ignore[misc]
     except Exception:  # noqa: BLE001 - the line is a courtesy; the refusal stands without it
         records = []
-    if [r.text for r in records] == statements:
-        record = records[index]
+    # One entry per string execution sends, so a statement's index is its record's.
+    owners = [(record, text) for record in records for text in execution_strings([record])]
+    if [text for _, text in owners] == statements:
+        record = owners[index][0]
         # The record's line is where its leading comments start; the keyword is after them.
         offset = max(record.text.rfind(strip_leading_comments(record.text).strip()), 0)
         return f"line {record.line + record.text.count(chr(10), 0, offset)}"

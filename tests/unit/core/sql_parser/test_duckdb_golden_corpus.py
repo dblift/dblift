@@ -22,6 +22,12 @@ from dblift.core.sql_parser.redaction import describe_statement, mask_string_lit
 from dblift.db.plugins.duckdb.parser.duckdb_regex_parser import DuckDBRegexParser
 from dblift.db.plugins.duckdb.quirks import DuckDBQuirks
 
+
+def recorded(record):
+    """The fields the corpus records; ``execution_text`` is pinned by the string comparison."""
+    return {k: v for k, v in dataclasses.asdict(record).items() if k != "execution_text"}
+
+
 CORPUS = Path(__file__).with_name("duckdb_golden_corpus.json")
 CHUNK = 50
 
@@ -38,7 +44,7 @@ def evaluate(script: str) -> Dict[str, Any]:
     try:
         records = parser.split(script)
         views = {
-            "records": [dataclasses.asdict(r) for r in records],
+            "records": [recorded(r) for r in records],
             "strings": parser.split_statements(script),
             "extraction": parser.split_for_extraction(script),
             "analysis": SqlAnalyzer("duckdb").split_statements_for_analysis(script),

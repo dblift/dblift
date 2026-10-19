@@ -26,8 +26,8 @@ DUCKDB_UNICODE = "".join(
     chr(c) for c in (0xA0, *range(0x2000, 0x200C), 0x202F, 0x205F, 0x2060, 0x3000, 0xFEFF)
 )
 
-#: dialect -> the measured set (docs/sql-parsing); Redshift and Snowflake keep the intersection of
-#: the measured engines until they are probed. DuckDB's vertical tab is no blank: the driver rejects it.
+#: dialect -> the measured set (docs/sql-parsing); Redshift keeps the intersection of
+#: the measured engines until it is probed. DuckDB's vertical tab is no blank: the driver rejects it.
 TEXT_BLANKS: Dict[str, str] = {
     "postgresql": ASCII_BLANKS + FORM_FEED,
     "cockroachdb": ASCII_BLANKS + FORM_FEED,
@@ -38,7 +38,7 @@ TEXT_BLANKS: Dict[str, str] = {
     "db2": ASCII_BLANKS,
     "oracle": ASCII_BLANKS + VERTICAL_TAB + FORM_FEED + chr(0x3000),
     "sqlserver": ASCII_BLANKS + VERTICAL_TAB + FORM_FEED + SQLSERVER_UNICODE,
-    "snowflake": ASCII_BLANKS,
+    "snowflake": ASCII_BLANKS + chr(0x2002),
     "sqlite": ASCII_BLANKS + FORM_FEED,
     "duckdb": ASCII_BLANKS + FORM_FEED + DUCKDB_UNICODE,
 }

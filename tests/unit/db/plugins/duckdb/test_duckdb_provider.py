@@ -599,3 +599,42 @@ class TestDuckDBAutocommit:
         assert not result.success
         assert "mixes transactional and autocommit-only statements" in result.error_message
         assert provider.execute_query("SELECT * FROM pending") == []
+
+
+NB = "\xa0"
+
+#: scripts the driver rejects whole (a ParserException, the table kept) because a piece made of a
+#: character it does not count as blank is a statement of its own
+REJECTED_WHOLE = [
+    "/* ' */ DROP TABLE t;" + NB,
+    "/* ' */ SELECT 1;" + NB + ";DROP TABLE t;",
+    "/* ' */ DROP TABLE t; /* c */" + NB,
+    "/* ' */ DROP TABLE t; -- c\n" + NB,
+    "/* $t$ */ DROP TABLE t;" + NB,
+    "DROP TABLE t;\x0b",
+    "DROP TABLE t;\x85",
+    "DROP TABLE t;\x1f",
+]
+
+
+@pytest.mark.unit
+class TestDuckDBMigrateFailsWhereTheDriverRejects:
+    @pytest.mark.parametrize("script", REJECTED_WHOLE, ids=[repr(s) for s in REJECTED_WHOLE])
+    def test_a_migration_does_not_succeed_after_skipping_a_statement_the_engine_rejects(
+        self, duckdb_provider, script
+    ) -> None:
+        from dblift.api.client import DBLiftClient
+
+        con = duckdb.connect()
+        con.execute("CREATE TABLE t (i INT)")
+        with pytest.raises(duckdb.ParserException):
+            con.execute(script)
+
+        provider, tmp = duckdb_provider
+        provider.execute_statement("CREATE TABLE t (i INT)")
+        migrations = tmp / "migrations"
+        migrations.mkdir()
+        (migrations / "V1__drop.sql").write_text(script, encoding="utf-8")
+        result = DBLiftClient(provider, migrations).migrate()
+        assert not result.success
+        assert provider.table_exists("main", "t") is True

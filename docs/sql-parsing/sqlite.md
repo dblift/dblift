@@ -5,7 +5,7 @@
 | Item | Value |
 | --- | --- |
 | Covers | SQLite 3.x scripts written for the `sqlite3` command-line shell and run through Python's `sqlite3` driver. Measured: shell 3.51.0 (`/usr/bin/sqlite3`) and shell 3.45.1 (built from the amalgamation `sqlite-autoconf-3450100`, sha256 `cd9c27841b7a5932c9897651e20b86c701dd740556989b01ca596fcfa3d49a0a`) against the 3.45.1 library of the Python 3.11.8 `sqlite3` module; 557 shell runs, 9 differ between the two shells and none concerns splitting (`.timer`, `EXPLAIN` comments, `load_extension`) |
-| Code facts taken from | OSS `develop` `c5513b99`, before the scanner of §12 |
+| Code facts taken from | OSS `develop` `c5513b99`, before the scanner of §12; the pieces without code and the statement records at OSS `develop` `48051ff` (2026-10-19) |
 | Vendor references, fetched 2026-10-11 from `sqlite.org` | *SQL Comment Syntax* (`lang_comment.html`); *SQLite Keywords* (`lang_keywords.html`: the quoting forms); *Command Line Shell For SQLite* (`cli.html`: "CLI comments", dot-commands); *Test For Complete SQL Statements* (`c3ref/complete.html`); *BEGIN TRANSACTION* (`lang_transaction.html`); *VACUUM* (`lang_vacuum.html`) |
 | Live verification | `sqlite3 -bail <db> < script.sql` (shell 3.51.0 and 3.45.1) against the driver dblift executes through (`SqlAnalyzer("sqlite").split_statements`, then one `cursor.execute` per statement on a connection in autocommit with `PRAGMA foreign_keys = ON`); the resulting files are compared through `sqlite_master`, `PRAGMA table_xinfo`, `index_list`, `foreign_key_list` and the table rows. |
 | Second ground truth | the driver dblift executes through: `cursor.execute` takes **one** statement and raises `ProgrammingError: You can only execute one statement at a time.` for a text that holds two, so a piece cut too late fails loudly; the silent hazards are in the shell, not in the driver |
@@ -107,13 +107,11 @@ line belongs to the next statement's text, as the shell hands it over
 (row 17); a comment before the `;` stays in the
 statement.
 
-Callers that read a script statement by statement (linting, analysis) go
-through `split_for_analysis`, which returns a segment of comments only as a
-unit of its own, as the splitter did before the scanner: those readers look
-at the explanatory comments a script holds, and execution, which sends
-nothing for them, is the only caller that drops them. Dropping them for the
-readers too would silently remove information they receive today, so the two
-splits differ in this one respect and nowhere else.
+A segment of comments only is not a statement for any caller: the splitter returns no record for it, so
+execution and the readers that go through `split_for_analysis` (linting, analysis, undo) receive the same
+statements and none receives a statement made of explanatory comments. A comment is read only where it
+belongs to a statement (row 17). Comments do not nest: `/* a /* b */ c */;` is the comment
+`/* a /* b */` followed by the code `c */`, which both clients reject (rows 66e, 66f).
 
 ## 4. Terminators
 
@@ -327,6 +325,14 @@ rules are a table and one regular expression (the word pattern); the `go` and `/
 | 63 | `SELECT 6\ngo x\n;` | `SELECT 6\ngo x` (go with other text after it is text; the engine rejects it) |
 | 64 | `DROP TABLE t\xa0;` | `DROP TABLE t\xa0` **exact text** (a no-break space is a name character for SQLite, measured 2026-10-17 on 3.45; the text keeps it) |
 | 65 | `SELECT 1\x0b;` | `SELECT 1\x0b` **exact text** (rejected by the engine, kept: a vertical tab is an unrecognized token, so the statement fails as it does under the sqlite3 shell) |
+| 66 | `SELECT 1;\n\xa0;\nSELECT 2;` | `SELECT 1` · `\xa0` · `SELECT 2` (a piece made only of a no-break space is a statement and is sent: the library and the shell both reject it with a syntax error near the character, so the statement fails as it does for the engine instead of being skipped; measured 2026-10-19 with the library 3.45.1 through the Python driver and the shell 3.51.0) |
+| 66a | `SELECT 1;\n　;\nSELECT 2;` | `SELECT 1` · `　` · `SELECT 2` (an ideographic space is not a blank for SQLite: both clients reject it with a syntax error near the character; measured 2026-10-19 with the library 3.45.1 through the Python driver and the shell 3.51.0) |
+| 66b | `SELECT 1;\n\x1c;\nSELECT 2;` | `SELECT 1` · `\x1c` · `SELECT 2` (a control character other than tab, line feed, form feed and carriage return is not a blank: both clients reject it as an unrecognized token; measured 2026-10-19 with the library 3.45.1 through the Python driver and the shell 3.51.0) |
+| 66c | `SELECT 1;\n\x0b;\nSELECT 2;` | `SELECT 1` · `\x0b` · `SELECT 2` (a vertical tab on its own is sent: the library rejects the statement alone as an unrecognized token, while the whole script run by executescript and the shell skip it; dblift sends one statement per call, so it follows the library; measured 2026-10-19 with the library 3.45.1 through the Python driver and the shell 3.51.0) |
+| 66d | `SELECT 1;\n\x0c;\nSELECT 2;` | `SELECT 1` · `SELECT 2` (a form feed is a blank: the library and the shell run both statements and the empty piece is nothing; measured 2026-10-19 with the library 3.45.1 through the Python driver and the shell 3.51.0) |
+| 66e | `/* a /* b */ c */;` | `/* a /* b */ c */` (comments do not nest: the comment ends at the first close marker and the rest is code, which both clients reject with a syntax error; measured 2026-10-19 with the library 3.45.1 through the Python driver and the shell 3.51.0) |
+| 66f | `SELECT 1; /* a /* b */ c */` | `SELECT 1` · `/* a /* b */ c */` (the same after the last terminator: the second piece holds code, so it is a statement and the engine rejects it; measured 2026-10-19 with the library 3.45.1 through the Python driver and the shell 3.51.0) |
+| 66g | `SELECT 1;\n-- c\n/* d */;\nSELECT 2;` | `SELECT 1` · `SELECT 2` (a piece of comments and a terminator is not a statement; the library and the shell run both statements; measured 2026-10-19 with the library 3.45.1 through the Python driver and the shell 3.51.0) |
 
 ## 11. Not handled
 
@@ -351,7 +357,7 @@ Code: `dblift/db/plugins/sqlite/parser/lexical_spec.py` supplies the library's
 seven-state table to `LexicalEngine`. Its shared tokenizer and statement parser
 apply the two shell line rules, comments and quoting. `split()` returns
 `Statement` records, `split_statements()` their execution text, and
-`split_for_analysis()` adds segments of comments only (§3).
+`split_for_analysis()` the same statements: a segment of comments only is in none of them (§3).
 `SQLiteFactsParser` delegates its splitter entrypoints to this engine.
 `split_for_extraction()` and `extract_objects()` propagate scanner refusals;
 `parse_sql()` reports them in its errors without returning statements.

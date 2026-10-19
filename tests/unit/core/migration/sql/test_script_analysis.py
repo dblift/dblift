@@ -200,16 +200,9 @@ def test_parser_failure_yields_an_error_and_no_statements(monkeypatch):
     assert analysis.errors == ("parser error: no parser",)
 
 
-def test_blank_statements_are_skipped_and_unknown_text_has_unknown_kind(monkeypatch):
+def test_unknown_text_has_unknown_kind_and_is_listed_as_it_is(monkeypatch):
     parsed = SimpleNamespace(
         statements=[
-            SimpleNamespace(
-                sql_text="   ",
-                statement_type=None,
-                affected_objects=[],
-                names_unread=False,
-                objects=[],
-            ),
             SimpleNamespace(
                 sql_text="FROBNICATE x",
                 statement_type=None,
@@ -231,6 +224,7 @@ def test_blank_statements_are_skipped_and_unknown_text_has_unknown_kind(monkeypa
     assert [(s.index, s.operation, s.kind) for s in analysis.statements] == [
         (0, "FROBNICATE", "UNKNOWN")
     ]
+    assert [s.sql for s in analysis.statements] == ["FROBNICATE x"]
     assert analysis.cautions == ()
 
 
@@ -459,11 +453,11 @@ def test_opaque_drop_keeps_its_caution(dialect, sql, code, reason):
     assert [(c.level, c.code, c.reason) for c in analysis.cautions] == [(DESTROYS, code, reason)]
 
 
-def test_a_duckdb_name_ending_in_a_no_break_space_before_a_terminator_is_refused():
+def test_a_duckdb_no_break_space_before_a_terminator_is_a_blank_the_engine_replaces():
     analysis = analyse_script(f"DROP SCHEMA s{UNREAD_BLANK};", "duckdb")
 
-    assert analysis.statements == () and analysis.cautions == ()
-    assert len(analysis.errors) == 1 and "kept when run alone" in analysis.errors[0]
+    assert analysis == analyse_script("DROP SCHEMA s;", "duckdb")
+    assert [c.code for c in analysis.cautions] == ["drop-schema"] and analysis.errors == ()
 
 
 @pytest.mark.parametrize("dialect", ["sqlite", "duckdb"])

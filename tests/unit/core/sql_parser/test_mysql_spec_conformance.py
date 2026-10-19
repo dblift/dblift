@@ -24,7 +24,7 @@ MYSQL_ROWS = [row for row in ALL_ROWS if row.dialect == "mysql"]
 MARIADB_ROWS = [row for row in ALL_ROWS if row.dialect == "mariadb"]
 
 #: mysql.md rows whose expected statements are MySQL's reading and not MariaDB's.
-MYSQL_ONLY_ROWS = frozenset({"16", "39a"})
+MYSQL_ONLY_ROWS = frozenset({"16", "39a", "86f", "86g", "86h", "86i", "86j"})
 
 #: Rows 83 and 84: the splitter reads ``delimiter`` followed only by a vertical tab, and ``DELIMITER``
 #: followed by a form feed, as a DELIMITER command that sets that character as the delimiter; the

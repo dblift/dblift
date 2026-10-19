@@ -6,6 +6,7 @@ from typing import List, Tuple
 import pytest
 
 from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
+from dblift.core.sql_parser.lexical_engine import LexicalEngine
 from dblift.core.sql_parser.lexical_spec import LexicalSpec
 from dblift.core.sql_parser.lexical_tokenizer import LexicalTokenizer
 from dblift.core.sql_parser.tokens import Token, TokenType
@@ -429,3 +430,18 @@ def test_a_backslash_after_a_closed_hint_is_not_in_the_hint():
 def test_the_nul_line_ignores_lone_carriage_returns():
     expected = "NUL byte on line 1: the mysql client refuses it unless --binary-mode is set"
     assert refusal("SELECT 1;\rSELECT 2\x00;", MYSQL_SPEC) == expected
+
+
+@pytest.mark.parametrize(
+    "script", ["\x1c # c\n;", "\x1c -- c\n;", "\x1c /* c */;", "\x01 # c\n;", "\x7f # c\n;"]
+)
+def test_a_control_character_and_comments_are_sent_by_mysql_and_not_by_mariadb(script):
+    assert [r.text for r in LexicalEngine(MARIADB_SPEC).split(script)] == []
+    assert [r.text for r in LexicalEngine(MYSQL_SPEC).split(script)] != []
+
+
+@pytest.mark.parametrize(
+    "script", ["\x1c SELECT 1;", "\x1c # c\nSELECT 1;", "\x1c /* c */ SELECT 1;"]
+)
+def test_a_control_character_before_code_stays_in_the_mariadb_statement(script):
+    assert [r.text for r in LexicalEngine(MARIADB_SPEC).split(script)] == [script.rstrip(";")]

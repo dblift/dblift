@@ -19,14 +19,14 @@ from tests.unit._migration_factory import make_migration
 pytestmark = pytest.mark.unit
 
 
-def test_helper_splits_with_dialect_and_filters_empty_statements():
+def test_helper_splits_with_dialect_and_returns_the_splitters_list_as_it_is():
     helper = importlib.import_module("dblift.core.migration.sql.migration_sql_parser")
     assert helper.parse_migration_sql(
         SqlAnalyzer("sqlite"), "SELECT 'a;b'; SELECT 2;", NullLog()
     ) == ["SELECT 'a;b'", "SELECT 2"]
     analyzer = MagicMock()
     analyzer.split_statements.return_value = ["", "  ", "SELECT 3"]
-    assert helper.parse_migration_sql(analyzer, "SELECT 3;", NullLog()) == ["SELECT 3"]
+    assert helper.parse_migration_sql(analyzer, "SELECT 3;", NullLog()) == ["", "  ", "SELECT 3"]
 
 
 def test_helper_keeps_a_statement_made_of_characters_the_dialect_does_not_strip():
@@ -76,20 +76,31 @@ def test_helper_strips_the_control_characters_the_mysql_clients_strip(dialect, s
     "dialect, text",
     [
         ("sqlite", "\x0b"),
-        ("duckdb", "\x0b"),
-        ("duckdb", "\u2028"),
-        ("duckdb", "\x85"),
         ("mysql", "\x0b"),
         ("mariadb", "\x0c"),
         ("postgresql", "\xa0"),
     ],
 )
-def test_helper_still_drops_a_statement_that_is_white_space_outside_db2(dialect, text):
+def test_helper_does_not_strip_what_the_splitter_returned(dialect, text):
     helper = importlib.import_module("dblift.core.migration.sql.migration_sql_parser")
     analyzer = MagicMock()
     analyzer.split_statements.return_value = ["SELECT 1", text, "SELECT 2"]
     assert helper.parse_migration_sql(analyzer, "x", NullLog(), dialect=dialect) == [
         "SELECT 1",
+        text,
+        "SELECT 2",
+    ]
+
+
+@pytest.mark.parametrize("text", ["\x0b", "\u2028", "\x85", "\x1f"])
+def test_helper_keeps_a_duckdb_statement_the_driver_rejects(text):
+    """``SELECT 1;<text>;SELECT 2;`` is a ParserException for the driver (measured, duckdb 1.5.5)."""
+    helper = importlib.import_module("dblift.core.migration.sql.migration_sql_parser")
+    analyzer = MagicMock()
+    analyzer.split_statements.return_value = ["SELECT 1", text, "SELECT 2"]
+    assert helper.parse_migration_sql(analyzer, "x", NullLog(), dialect="duckdb") == [
+        "SELECT 1",
+        text,
         "SELECT 2",
     ]
 

@@ -4480,127 +4480,31 @@
 {
 "script": "\u00a0",
 "expected": {
-"records": [
-{
-"text": "",
-"line": 1,
-"terminator": null,
-"kind": "sql",
-"multi": false,
-"repeat": 1,
-"analysis_statements": [
-""
-],
-"source_start": 0,
-"source_end": 1
-}
-],
-"strings": [
-[
-"",
-1
-]
-],
-"analysis": [
-""
-],
-"executed": [
-""
-],
-"masking": [
-[
-"",
-""
-],
-[
-"",
-""
-]
-]
+"records": [],
+"strings": [],
+"analysis": [],
+"executed": [],
+"masking": []
 }
 },
 {
 "script": "\f",
 "expected": {
-"records": [
-{
-"text": "",
-"line": 1,
-"terminator": null,
-"kind": "sql",
-"multi": false,
-"repeat": 1,
-"analysis_statements": [
-""
-],
-"source_start": 0,
-"source_end": 1
-}
-],
-"strings": [
-[
-"",
-1
-]
-],
-"analysis": [
-""
-],
-"executed": [
-""
-],
-"masking": [
-[
-"",
-""
-],
-[
-"",
-""
-]
-]
+"records": [],
+"strings": [],
+"analysis": [],
+"executed": [],
+"masking": []
 }
 },
 {
 "script": "\u000b",
 "expected": {
-"records": [
-{
-"text": "",
-"line": 1,
-"terminator": null,
-"kind": "sql",
-"multi": false,
-"repeat": 1,
-"analysis_statements": [
-""
-],
-"source_start": 0,
-"source_end": 1
-}
-],
-"strings": [
-[
-"",
-1
-]
-],
-"analysis": [
-""
-],
-"executed": [
-""
-],
-"masking": [
-[
-"",
-""
-],
-[
-"",
-""
-]
-]
+"records": [],
+"strings": [],
+"analysis": [],
+"executed": [],
+"masking": []
 }
 },
 {
@@ -4648,85 +4552,21 @@
 {
 "script": "\u0085",
 "expected": {
-"records": [
-{
-"text": "",
-"line": 1,
-"terminator": null,
-"kind": "sql",
-"multi": false,
-"repeat": 1,
-"analysis_statements": [
-""
-],
-"source_start": 0,
-"source_end": 1
-}
-],
-"strings": [
-[
-"",
-1
-]
-],
-"analysis": [
-""
-],
-"executed": [
-""
-],
-"masking": [
-[
-"",
-""
-],
-[
-"",
-""
-]
-]
+"records": [],
+"strings": [],
+"analysis": [],
+"executed": [],
+"masking": []
 }
 },
 {
 "script": "\u2028",
 "expected": {
-"records": [
-{
-"text": "",
-"line": 1,
-"terminator": null,
-"kind": "sql",
-"multi": false,
-"repeat": 1,
-"analysis_statements": [
-""
-],
-"source_start": 0,
-"source_end": 1
-}
-],
-"strings": [
-[
-"",
-1
-]
-],
-"analysis": [
-""
-],
-"executed": [
-""
-],
-"masking": [
-[
-"",
-""
-],
-[
-"",
-""
-]
-]
+"records": [],
+"strings": [],
+"analysis": [],
+"executed": [],
+"masking": []
 }
 },
 {
@@ -5377,7 +5217,6 @@
 "multi": false,
 "repeat": 1,
 "analysis_statements": [
-"",
 "TRUNCATE TABLE t"
 ],
 "source_start": 0,
@@ -5391,21 +5230,15 @@
 ]
 ],
 "analysis": [
-"",
 "TRUNCATE TABLE t"
 ],
 "executed": [
-"",
 "TRUNCATE TABLE t"
 ],
 "masking": [
 [
 "TRUNCATE TABLE t",
 "TRUNCATE TABLE t"
-],
-[
-"",
-""
 ],
 [
 "TRUNCATE TABLE t",

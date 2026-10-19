@@ -15,6 +15,7 @@ import pytest
 
 from dblift.core.exceptions import TransactionStatementError, UnsupportedMetaCommandError
 from dblift.core.migration.sql.execution_statement import neutralise_transaction_statements
+from dblift.core.migration.sql.statement_splitter import StatementSplitter
 from dblift.db.base_quirks import BaseQuirks
 from dblift.db.provider_registry import ProviderRegistry
 
@@ -137,9 +138,11 @@ class TestEnvelope:
         assert "Dropped BEGIN TRANSACTION and END TRANSACTION from" in log.warning.call_args.args[0]
 
     def test_comments_around_the_envelope_are_not_statements(self, dialect):
-        statements = ["-- header", "BEGIN", "-- note", *BODY, "COMMIT", "-- done"]
-        out, _ = _run(statements, dialect)
-        assert out == ["-- header", "-- note", *BODY, "-- done"]
+        script = "-- header\nBEGIN;\n-- note\nCREATE TABLE t (a INT);\nINSERT INTO t VALUES (1);\nCOMMIT;\n-- done\n"
+        statements = StatementSplitter(dialect).split_statements(script)
+        assert len(statements) == 4  # the comments are no statements
+        out, _ = _run(statements, dialect, content=script)
+        assert out == statements[1:-1]
 
     def test_a_leading_comment_on_the_statement_itself(self, dialect):
         out, _ = _run(["-- hi\nBEGIN", *BODY, "/* x */ COMMIT"], dialect)

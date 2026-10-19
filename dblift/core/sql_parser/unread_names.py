@@ -11,7 +11,7 @@ from __future__ import annotations
 import re
 from typing import Any, Iterable, List, Optional, Sequence, Tuple
 
-from dblift.core.sql_parser.statement import Statement
+from dblift.core.sql_parser.statement import Statement, executable_records
 
 _NAME_CHARACTER = re.compile(r"[\w$]")
 # What is not a name: the first match from the left wins, so a quote inside a comment is the
@@ -60,15 +60,15 @@ def names_unreadable(sql: str, sqlglot_dialect: Optional[str], names: Iterable[s
 
 
 def _without_blanks_before_terminator(span: str, record: Statement) -> str:
-    """``span`` without the blanks the scanner trimmed between the text and its terminator.
+    """``span`` without the blanks the scanner trimmed between the text and its terminator, if any.
 
     The engine reads those as blanks, so the name before them ends the statement as it does with
     no terminator. A character the scanner kept in the text stays in the span.
     """
-    terminator = record.terminator
-    if not terminator or not span.endswith(terminator):
+    terminator = record.terminator or ""
+    if not span.endswith(terminator):
         return span
-    body = span[: -len(terminator)]
+    body = span[: len(span) - len(terminator)]
     if len(body) > len(record.text) and body.startswith(record.text):
         return record.text + terminator
     return span
@@ -86,11 +86,8 @@ def statement_sources(scanner: Any, script: str, statements: Sequence[str]) -> L
     """
     if script.isascii():
         return list(statements)
-    records = scanner.split(script)
     spans: List[Tuple[str, Optional[str]]] = []
-    for record in records:
-        if record.kind == "directive" or record.repeat <= 0:
-            continue
+    for record in executable_records(scanner.split(script)):
         span = None
         if record.source_start is not None and record.source_end is not None:
             span = _without_blanks_before_terminator(

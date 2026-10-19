@@ -184,8 +184,6 @@ def _analyse(text: str, dialect: str) -> ScriptAnalysis:
         except (UnsafeStatementSplitError, UnsupportedMetaCommandError) as error:
             return ScriptAnalysis((), (), (f"Error splitting SQL: {error}",))
         for body in bodies:
-            if not body.strip():
-                continue
             facts = quirks.statement_facts(body)
             objects = tuple(
                 AnalysedObject(obj.type.value, obj.name, obj.schema)
@@ -222,9 +220,7 @@ def _analyse(text: str, dialect: str) -> ScriptAnalysis:
     statements: List[AnalysedStatement] = []
     cautions: List[Caution] = []
     for stmt in parsed.statements or []:
-        body = (getattr(stmt, "sql_text", "") or "").strip()
-        if not body:
-            continue
+        body = getattr(stmt, "sql_text", "") or ""
         index = len(statements)
         operation = operation_of(body)
         kind = _kind_of(getattr(stmt, "statement_type", None), operation, body, quirks)

@@ -24,8 +24,8 @@ from dblift.db.plugins.sqlite.parser.lexical_spec import SQLITE_SPEC
 ROOT = Path(__file__).resolve().parents[5]
 
 
-def scan_script(script: str, *, comment_only: bool = False) -> list[Statement]:
-    return LexicalEngine(SQLITE_SPEC).split(script, include_comment_only=comment_only)
+def scan_script(script: str) -> list[Statement]:
+    return LexicalEngine(SQLITE_SPEC).split(script)
 
 
 def texts(script: str) -> list[str]:
@@ -536,41 +536,36 @@ def test_a_huge_literal_and_a_huge_comment_cost_one_pass() -> None:
     ]
 
 
-# ---- the segments of comments only, for the callers that read a script -------------------------------
+# ---- the segments of comments only are not statements -------------------------------------------------
 
 
-def test_comment_only_segments_are_units_of_their_own_when_asked() -> None:
-    units = scan_script("SELECT 1; -- bye", comment_only=True)
-    assert [(u.text, u.line, u.terminator) for u in units] == [
-        ("SELECT 1", 1, ";"),
-        ("-- bye", 1, None),
-    ]
-    assert [u.text for u in scan_script("-- only\n/* here */\n", comment_only=True)] == [
-        "-- only\n/* here */"
-    ]
-    assert [u.text for u in scan_script("SELECT 1;\n-- one\n;\n-- two\n", comment_only=True)] == [
-        "SELECT 1",
-        "-- one",
-        "-- two",
-    ]
+def test_comment_only_segments_are_not_units_in_either_projection() -> None:
+    engine = LexicalEngine(SQLITE_SPEC)
+    for script, expected in (
+        ("SELECT 1; -- bye", ["SELECT 1"]),
+        ("-- only\n/* here */\n", []),
+        ("SELECT 1;\n-- one\n;\n-- two\n", ["SELECT 1"]),
+    ):
+        assert [u.text for u in scan_script(script)] == expected
+        assert engine.split_for_analysis(script) == expected
 
 
 def test_nothing_but_terminators_and_blanks_is_never_a_unit() -> None:
-    assert scan_script(";;;\n ; \n", comment_only=True) == []
-    assert scan_script("", comment_only=True) == []
+    assert scan_script(";;;\n ; \n") == []
+    assert scan_script("") == []
 
 
-def test_a_comment_before_a_statement_stays_with_it_in_both_modes() -> None:
+def test_a_comment_before_a_statement_stays_with_it() -> None:
     script = "-- c\nSELECT 1; /* d */ SELECT 2;"
     assert texts(script) == ["-- c\nSELECT 1", "/* d */ SELECT 2"]
-    assert [u.text for u in scan_script(script, comment_only=True)] == texts(script)
+    assert LexicalEngine(SQLITE_SPEC).split_for_analysis(script) == texts(script)
 
 
-def test_the_refusals_do_not_depend_on_the_mode() -> None:
+def test_the_refusals_do_not_depend_on_the_projection() -> None:
     for script, error in (
         ("SELECT 1; /* open", UnsafeStatementSplitError),
         (".mode csv\nSELECT 1;", UnsupportedMetaCommandError),
         ("SELECT 6\n/\n2;", UnsafeStatementSplitError),
     ):
         with pytest.raises(error):
-            scan_script(script, comment_only=True)
+            LexicalEngine(SQLITE_SPEC).split_for_analysis(script)

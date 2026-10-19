@@ -110,9 +110,7 @@ CLIENT_SENDS = {
 }
 
 #: (dialect, form) -> why the case fails today
-RED = {
-    ("duckdb", "semicolon"): "the splitter keeps a no-break space the shell reads as a blank",
-}
+RED: dict = {}
 
 SCRIPTS = {"semicolon": SEMICOLON, "end_of_file": END_OF_FILE}
 

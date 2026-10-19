@@ -60,9 +60,6 @@ class RegexBasedParser(SqlParserInterface):
 
             # Parse each statement
             for sql in sql_statements:
-                if not sql.strip():
-                    continue
-
                 try:
                     stmt_type = self._get_statement_type(sql)
                     objects = self.extract_objects(sql, default_schema)

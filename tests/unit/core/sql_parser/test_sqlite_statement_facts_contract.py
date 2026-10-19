@@ -123,10 +123,9 @@ def test_sqlite_parser_config_patterns_are_removed():
     assert importlib.util.find_spec("dblift.db.plugins.sqlite.parser.parser_config") is None
 
 
-def test_comment_only_segment_remains_visible_without_parse_diagnostic():
+def test_comment_only_script_has_no_statement_and_no_parse_diagnostic():
     analysis = analyse_script("-- note\n", "sqlite")
-    assert len(analysis.statements) == 1
-    assert analysis.statements[0].kind == "UNKNOWN"
+    assert analysis.statements == ()
     assert analysis.errors == ()
 
 

@@ -82,10 +82,10 @@ def test_refusal_cannot_be_softened_at_the_legacy_entry_point(strict):
 
 
 @pytest.mark.parametrize("script", ["\xa0", "\x0c"])
-def test_blank_but_not_empty_input_keeps_its_record(script):
+def test_blank_but_not_empty_input_has_no_record(script):
     parser = SqlServerRegexParser()
-    assert [r.text for r in parser.split(script)] == [""]
-    assert parser.split_statements(script) == [""]
+    assert parser.split(script) == []
+    assert parser.split_statements(script) == []
 
 
 def test_empty_input_has_no_records():
@@ -240,8 +240,5 @@ def test_shared_analysis_projects_executed_batch_constituents(count):
     assert LexicalEngine(SQLSERVER_SPEC).split_for_analysis(script) == expected
 
 
-def test_shared_analysis_keeps_sqlite_comment_only_segments():
-    assert LexicalEngine(SQLITE_SPEC).split_for_analysis("SELECT 1; -- only") == [
-        "SELECT 1",
-        "-- only",
-    ]
+def test_shared_analysis_drops_sqlite_comment_only_segments():
+    assert LexicalEngine(SQLITE_SPEC).split_for_analysis("SELECT 1; -- only") == ["SELECT 1"]

@@ -32,7 +32,7 @@ class SQLiteFactsParser(SqlParserInterface):
         return LexicalEngine(SQLITE_SPEC).split_statements(sql_content)
 
     def split_for_analysis(self, sql_content: str, strict_tokenizer: bool = False) -> List[str]:
-        """Include comment-only segments in analysis text."""
+        """Return the analysis text of each statement the scanner finds."""
         return LexicalEngine(SQLITE_SPEC).split_for_analysis(sql_content)
 
     def split_for_extraction(self, sql_content: str, strict_tokenizer: bool = False) -> List[str]:
