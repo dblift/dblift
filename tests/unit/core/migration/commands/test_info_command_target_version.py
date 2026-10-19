@@ -22,7 +22,6 @@ def _make_info_command(*, config_target_version=None):
     state_manager = MagicMock()
     state_manager.build_state.return_value = MigrationState(
         applied_objects=[],
-        pending_objects=[],
     )
     state_manager.get_current_version.return_value = None
 

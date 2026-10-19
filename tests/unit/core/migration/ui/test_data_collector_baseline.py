@@ -19,7 +19,6 @@ def test_migration_data_from_state_successful_baseline_uses_baseline_state():
     # applied/all_applied_objects mirror what MigrationStateManager.build_state()
     # produces: MigrationEntry.status is computed by MigrationStateService.
     state = MigrationState(
-        pending_objects=[],
         all_applied_objects=[baseline],
         applied=[MigrationEntry.from_migration(baseline, status="Baseline")],
     )

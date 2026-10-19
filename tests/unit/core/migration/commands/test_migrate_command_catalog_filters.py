@@ -9,8 +9,11 @@ from unittest.mock import MagicMock, patch
 
 from dblift.core.migration.commands.migrate_command import MigrateCommand
 from dblift.core.migration.migration import MigrationType
-from dblift.core.migration.state.migration_display_state import MigrationDisplayState
-from dblift.core.migration.state.migration_state import MigrationEntry, MigrationState
+from dblift.core.migration.state.migration_state import (
+    CatalogMigration,
+    MigrationEligibility,
+    MigrationState,
+)
 from tests.unit.core.migration.commands._plan_migrate_wiring import wire_plan_migrate
 
 
@@ -24,26 +27,9 @@ def _migration(script_name, version, type_=MigrationType.SQL):
     )
 
 
-def _entry(script, version, status, type_="SQL"):
-    return MigrationEntry(script, version, "test", type_, status, None)
-
-
 def _catalog_state(*rows):
-    pending = []
-    pending_objects = []
-    for obj, status in rows:
-        pending_objects.append(obj)
-        pending.append(
-            _entry(
-                obj.script_name,
-                str(obj.version) if obj.version is not None else None,
-                status,
-                getattr(getattr(obj, "type", None), "name", "SQL"),
-            )
-        )
     return MigrationState(
-        pending=pending,
-        pending_objects=pending_objects,
+        catalog=tuple(CatalogMigration(obj, eligibility) for obj, eligibility in rows),
         applied_objects=[],
     )
 
@@ -102,10 +88,10 @@ class TestMigrateSelectsPendingFromCatalog(unittest.TestCase):
         above = _migration("V5__future.sql", "5")
         available = _migration("U3__new.sql", "3", MigrationType.UNDO_SQL)
         state = _catalog_state(
-            (below, MigrationDisplayState.BELOW_BASELINE.value),
-            (pending, MigrationDisplayState.PENDING.value),
-            (above, MigrationDisplayState.ABOVE_TARGET.value),
-            (available, MigrationDisplayState.AVAILABLE.value),
+            (below, MigrationEligibility.BELOW_BASELINE),
+            (pending, MigrationEligibility.PENDING),
+            (above, MigrationEligibility.ABOVE_TARGET),
+            (available, MigrationEligibility.UNDO_AVAILABLE),
         )
         cmd = _make_cmd(state)
 
@@ -118,7 +104,7 @@ class TestMigrateSelectsPendingFromCatalog(unittest.TestCase):
 
     def test_apply_filters_does_not_receive_target_version(self):
         pending = _migration("V3__new.sql", "3")
-        state = _catalog_state((pending, MigrationDisplayState.PENDING.value))
+        state = _catalog_state((pending, MigrationEligibility.PENDING))
         cmd = _make_cmd(state)
 
         with patch.object(cmd, "_execute_migration_loop"):
@@ -131,7 +117,7 @@ class TestMigrateSelectsPendingFromCatalog(unittest.TestCase):
 
     def test_build_state_does_not_receive_tag_or_version_omit_filters(self):
         pending = _migration("V3__new.sql", "3")
-        state = _catalog_state((pending, MigrationDisplayState.PENDING.value))
+        state = _catalog_state((pending, MigrationEligibility.PENDING))
         cmd = _make_cmd(state)
 
         with patch.object(cmd, "_execute_migration_loop"):
@@ -146,7 +132,7 @@ class TestMigrateSelectsPendingFromCatalog(unittest.TestCase):
 
     def test_strict_mode_fails_when_selecting_out_of_order_pending(self):
         out_of_order = _migration("V1.5__late.sql", "1.5")
-        state = _catalog_state((out_of_order, MigrationDisplayState.PENDING.value))
+        state = _catalog_state((out_of_order, MigrationEligibility.PENDING))
         cmd = _make_cmd(state, strict_mode=True)
         state.current_version = "2"
         cmd.state_manager.build_state.side_effect = None
@@ -162,7 +148,7 @@ class TestMigrateSelectsPendingFromCatalog(unittest.TestCase):
 
     def test_strict_mode_failure_still_reports_the_current_schema_version(self):
         out_of_order = _migration("V1.5__late.sql", "1.5")
-        state = _catalog_state((out_of_order, MigrationDisplayState.PENDING.value))
+        state = _catalog_state((out_of_order, MigrationEligibility.PENDING))
         cmd = _make_cmd(state, strict_mode=True)
         state.current_version = "2"
 

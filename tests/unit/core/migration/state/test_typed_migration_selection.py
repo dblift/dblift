@@ -130,6 +130,21 @@ def test_catalog_is_immutable_and_owns_selected_objects(catalog) -> None:
         state.catalog[1].eligibility = eligibility.ABOVE_TARGET
 
 
+def test_copy_preserves_catalog_identity_and_missing_applied(catalog) -> None:
+    """Copy keeps canonical selection and unrelated missing-script evidence."""
+    state = _state(catalog)
+    selected = state.executable_pending_objects()
+    state.missing_applied = (selected[0],)
+    copied = state.copy()
+
+    assert copied.catalog == state.catalog
+    assert copied.catalog is state.catalog
+    assert copied.executable_pending_objects()[0] is selected[0]
+    assert copied.pending is not state.pending
+    assert copied.pending_objects is not state.pending_objects
+    assert copied.missing_applied == state.missing_applied
+
+
 def test_target_and_baseline_are_eligibility(catalog) -> None:
     """Baseline, target and undo categories retain their current behavior."""
     state = _state(catalog)

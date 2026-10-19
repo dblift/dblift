@@ -10,11 +10,14 @@ import pytest
 
 from dblift.core.migration.migration import MigrationType
 from dblift.core.migration.state.migrate_plan import MigratePlan, StrictModeError
-from dblift.core.migration.state.migration_display_state import MigrationDisplayState
-from dblift.core.migration.state.migration_state import MigrationEntry, MigrationState
+from dblift.core.migration.state.migration_state import (
+    CatalogMigration,
+    MigrationEligibility,
+    MigrationState,
+)
 from dblift.core.migration.state.migration_state_manager import MigrationStateManager
 
-PENDING = MigrationDisplayState.PENDING.value
+PENDING = MigrationEligibility.PENDING
 
 
 def _migration(version: str) -> SimpleNamespace:
@@ -29,15 +32,12 @@ def _migration(version: str) -> SimpleNamespace:
 
 
 def _manager(rows, current_version):
-    """A manager whose catalog holds ``rows`` ((migration, status) pairs)."""
+    """A manager whose catalog holds ``rows`` ((migration, eligibility) pairs)."""
     logger = MagicMock()
     manager = MigrationStateManager(logger, MagicMock(), MagicMock(), MagicMock())
     state = MigrationState(
         current_version=current_version,
-        pending=[
-            MigrationEntry(m.script_name, m.version, "m", "SQL", status, None) for m, status in rows
-        ],
-        pending_objects=[m for m, _ in rows],
+        catalog=tuple(CatalogMigration(m, eligibility) for m, eligibility in rows),
         applied_objects=[],
     )
     manager.build_state = MagicMock(return_value=state)
@@ -63,7 +63,7 @@ def _plan(manager, **overrides):
 def test_plan_is_the_executable_pending_of_the_state() -> None:
     v3, v4 = _migration("3"), _migration("4")
     manager, state, _ = _manager(
-        [(v3, PENDING), (_migration("2"), MigrationDisplayState.SUCCESS.value), (v4, PENDING)],
+        [(v3, PENDING), (v4, PENDING)],
         current_version="1",
     )
     snapshot = MagicMock()

@@ -12,8 +12,11 @@ from unittest.mock import MagicMock, patch
 
 from dblift.core.migration.commands.migrate_command import MigrateCommand
 from dblift.core.migration.migration import MigrationType
-from dblift.core.migration.state.migration_display_state import MigrationDisplayState
-from dblift.core.migration.state.migration_state import MigrationEntry, MigrationState
+from dblift.core.migration.state.migration_state import (
+    CatalogMigration,
+    MigrationEligibility,
+    MigrationState,
+)
 from tests.unit.core.migration.commands._plan_migrate_wiring import wire_plan_migrate
 
 REFUSAL = "Could not acquire migration lock - another migration may be running"
@@ -29,20 +32,10 @@ def _cmd(pending, execute_side_effect=None):
     history_manager.create_schema_and_history_table.return_value = None
     history_manager.get_applied_migrations.return_value = []
 
-    state = MigrationState()
-    state.applied_objects = []
-    state.pending_objects = pending
-    state.pending = [
-        MigrationEntry(
-            getattr(obj, "script_name", ""),
-            str(getattr(obj, "version", "") or "") or None,
-            getattr(obj, "description", None),
-            getattr(getattr(obj, "type", None), "name", None),
-            MigrationDisplayState.PENDING.value,
-            None,
-        )
-        for obj in pending
-    ]
+    state = MigrationState(
+        applied_objects=[],
+        catalog=tuple(CatalogMigration(obj, MigrationEligibility.PENDING) for obj in pending),
+    )
 
     state_manager = wire_plan_migrate(MagicMock())
     state_manager.build_state.return_value = state

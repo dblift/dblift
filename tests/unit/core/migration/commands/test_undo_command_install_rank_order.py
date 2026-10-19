@@ -49,8 +49,7 @@ def _make_command(applied_migrations):
     migration_state = MagicMock()
     migration_state.applied_objects = applied_migrations
     migration_state.all_applied_objects = list(applied_migrations)
-    migration_state.pending_objects = []
-    migration_state.pending = []
+    migration_state.catalog = ()
     state_manager.build_state.return_value = migration_state
     state_manager.get_current_version.return_value = None
     _filter_mgr = MigrationStateManager.__new__(MigrationStateManager)

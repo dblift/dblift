@@ -2,7 +2,7 @@
 
 Below baseline, Above target, Pending, and Outdated must be produced by
 ``MigrationStateManager.build_state()`` (via determine_state /
-determine_pending_state), then copied into the collector ``state`` cell and
+typed eligibility), then copied into the collector ``state`` cell and
 ``TableRenderer`` text. Status is never hand-set on MigrationEntry.
 """
 

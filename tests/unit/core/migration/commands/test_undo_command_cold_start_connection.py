@@ -86,8 +86,7 @@ def _make_command(applied_migrations):
         migration_state = MagicMock()
         migration_state.applied_objects = applied_migrations
         migration_state.all_applied_objects = list(applied_migrations)
-        migration_state.pending_objects = []
-        migration_state.pending = []
+        migration_state.catalog = ()
         return migration_state
 
     state_manager.build_state.side_effect = _build_state

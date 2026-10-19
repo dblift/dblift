@@ -14,8 +14,7 @@ import pytest
 from dblift.core.migration.commands.undo_command import UndoCommand
 from dblift.core.migration.migration import MigrationType
 from dblift.core.migration.rules.migration_rules import MigrationRules
-from dblift.core.migration.state.migration_display_state import MigrationDisplayState
-from dblift.core.migration.state.migration_state import MigrationEntry
+from dblift.core.migration.state.migration_state import CatalogMigration, MigrationEligibility
 from dblift.core.migration.state.migration_state_manager import MigrationStateManager
 from tests.unit.core.migration.commands._plan_undo_wiring import wire_plan_undo
 
@@ -52,18 +51,9 @@ def _make_command(applied_migrations, *, migration_rules, undo_scripts=None):
     migration_state.applied_objects = applied_migrations
     migration_state.all_applied_objects = list(applied_migrations)
     undo_scripts = list(undo_scripts or [])
-    migration_state.pending_objects = undo_scripts
-    migration_state.pending = [
-        MigrationEntry(
-            s.script_name,
-            str(s.version),
-            s.description,
-            "UNDO_SQL",
-            MigrationDisplayState.AVAILABLE.value,
-            None,
-        )
-        for s in undo_scripts
-    ]
+    migration_state.catalog = tuple(
+        CatalogMigration(s, MigrationEligibility.UNDO_AVAILABLE) for s in undo_scripts
+    )
     state_manager.build_state.return_value = migration_state
     state_manager.get_current_version.return_value = None
     _filter_mgr = MigrationStateManager.__new__(MigrationStateManager)
