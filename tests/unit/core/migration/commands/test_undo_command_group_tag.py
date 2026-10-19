@@ -24,6 +24,7 @@ from dblift.core.migration.rules.migration_rules import (
     expand_undo_set_to_groups,
     group_tag_of,
 )
+from dblift.core.migration.state.migration_state import CatalogMigration, MigrationEligibility
 from dblift.core.migration.state.migration_state_manager import MigrationStateManager
 from tests.unit.core.migration.commands._plan_undo_wiring import (
     patch_undo_script_lookup,
@@ -55,10 +56,9 @@ def _make_command(applied_migrations, undo_scripts=None):
     migration_state = MagicMock()
     migration_state.applied_objects = applied_migrations
     migration_state.all_applied_objects = list(applied_migrations)
-    migration_state.pending_objects = [s for s in (undo_scripts or [])]
-    migration_state.pending = [
-        MagicMock(status="Available", version=str(s.version)) for s in (undo_scripts or [])
-    ]
+    migration_state.catalog = tuple(
+        CatalogMigration(s, MigrationEligibility.UNDO_AVAILABLE) for s in (undo_scripts or [])
+    )
     state_manager.build_state.return_value = migration_state
     state_manager.get_current_version.return_value = None
     _filter_mgr = MigrationStateManager.__new__(MigrationStateManager)

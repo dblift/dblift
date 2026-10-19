@@ -32,7 +32,9 @@ from dblift.core.migration.state.migration_selector import (
 )
 from dblift.core.migration.state.migration_state import (
     CallbackReadSnapshot,
+    CatalogMigration,
     ChecksumChange,
+    MigrationEligibility,
     MigrationEntry,
     MigrationReadSnapshot,
     MigrationState,
@@ -266,8 +268,8 @@ class MigrationStateManager:
                 history.executed_versions,
                 undone,
             )
-            and self.state_service.determine_pending_state(migration, context)
-            == MigrationDisplayState.PENDING
+            and self.state_service.determine_pending_eligibility(migration, context)
+            == MigrationEligibility.PENDING
         ]
         return out_of_order(
             pending, self.get_current_version(self._without_undone(applied_migrations, undone))
@@ -382,8 +384,8 @@ class MigrationStateManager:
     ) -> MigrationState:
         """Rebuild and return the current migration state as a JSON-ready snapshot.
 
-        ``pending`` / ``pending_objects`` are the unresolved on-disk catalog,
-        not migrate's execute-list. ``target_version`` labels Above target and
+        ``catalog`` owns unresolved on-disk scripts; ``pending`` and
+        ``pending_objects`` are derived display views. ``target_version`` labels Above target and
         does not drop rows. ``tags`` / ``versions`` stay on the signature for
         callers; they are not omit filters here.
         ``read_snapshot`` reuses history from the same command phase. Without a
@@ -454,7 +456,13 @@ class MigrationStateManager:
         applied_entries, failed_entries = self._build_applied_entries(
             applied_migrations, analysis_context
         )
-        pending_entries = self._build_pending_entries(pending_migrations, analysis_context)
+        catalog = tuple(
+            CatalogMigration(
+                migration,
+                self.state_service.determine_pending_eligibility(migration, analysis_context),
+            )
+            for migration in pending_migrations
+        )
 
         # Filter out undone migrations from applied_objects (unless they were reapplied)
         # This ensures that migrations that were undone don't appear in the applied list
@@ -467,7 +475,6 @@ class MigrationStateManager:
             current_version=analysis_context.get("current_version"),
             baseline_version=analysis_context.get("baseline_version"),
             applied=applied_entries,
-            pending=pending_entries,
             failed=failed_entries,
             undone_versions=sorted(
                 version
@@ -478,7 +485,7 @@ class MigrationStateManager:
             checksum_changes=checksum_changes,
             applied_objects=applied_objects_filtered,
             all_applied_objects=list(applied_migrations),
-            pending_objects=pending_migrations,
+            catalog=catalog,
             failed_objects=history.failed_migrations,
             executed_scripts=sorted(history.executed_scripts),
             repeatable_checksums=dict(history.repeatable_checksums),
@@ -648,17 +655,6 @@ class MigrationStateManager:
                 failed_entries.append(entry)
 
         return applied_entries, failed_entries
-
-    def _build_pending_entries(
-        self, pending_migrations: List[Migration], context: Dict[str, Optional[str]]
-    ) -> List[MigrationEntry]:
-        pending_entries: List[MigrationEntry] = []
-
-        for migration in pending_migrations:
-            state = self.state_service.determine_pending_state(migration, context)
-            pending_entries.append(MigrationEntry.from_migration(migration, status=state.value))
-
-        return pending_entries
 
     def _determine_checksum_changes(
         self,

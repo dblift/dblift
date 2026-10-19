@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import datetime as _dt
 from dataclasses import asdict, dataclass, field
+from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Optional, Tuple
 
@@ -155,6 +156,31 @@ class MigrationEntry:
         return {key: value for key, value in data.items() if value is not None}
 
 
+class MigrationEligibility(str, Enum):
+    """Execution eligibility of an unresolved on-disk migration."""
+
+    PENDING = "PENDING"
+    ABOVE_TARGET = "ABOVE_TARGET"
+    BELOW_BASELINE = "BELOW_BASELINE"
+    UNDO_AVAILABLE = "UNDO_AVAILABLE"
+
+
+@dataclass(frozen=True)
+class CatalogMigration:
+    """An unresolved script and its eligibility independent of display text."""
+
+    migration: Migration
+    eligibility: MigrationEligibility
+
+
+_ELIGIBILITY_DISPLAY_STATE = {
+    MigrationEligibility.PENDING: MigrationDisplayState.PENDING,
+    MigrationEligibility.ABOVE_TARGET: MigrationDisplayState.ABOVE_TARGET,
+    MigrationEligibility.BELOW_BASELINE: MigrationDisplayState.BELOW_BASELINE,
+    MigrationEligibility.UNDO_AVAILABLE: MigrationDisplayState.AVAILABLE,
+}
+
+
 @dataclass(slots=True)
 class MigrationState:
     """Snapshot of migration state consumed by commands and formatters."""
@@ -167,14 +193,15 @@ class MigrationState:
     current_version: Optional[str] = None
     baseline_version: Optional[str] = None
     applied: List[MigrationEntry] = field(default_factory=list)
-    pending: List[MigrationEntry] = field(default_factory=list)
+    pending: List[MigrationEntry] = field(default_factory=list, init=False)
     failed: List[MigrationEntry] = field(default_factory=list)
     undone_versions: List[str] = field(default_factory=list)
     deleted_scripts: List[str] = field(default_factory=list)
     checksum_changes: List[ChecksumChange] = field(default_factory=list)
     applied_objects: List[Any] = field(default_factory=list, repr=False)
     all_applied_objects: List[Any] = field(default_factory=list, repr=False)
-    pending_objects: List[Any] = field(default_factory=list, repr=False)
+    pending_objects: List[Migration] = field(default_factory=list, init=False, repr=False)
+    catalog: Tuple[CatalogMigration, ...] = field(default=(), repr=False)
     failed_objects: List[Any] = field(default_factory=list, repr=False)
     executed_scripts: List[str] = field(default_factory=list, repr=False)
     repeatable_checksums: Dict[str, str] = field(default_factory=dict, repr=False)
@@ -184,6 +211,16 @@ class MigrationState:
     resolved_objects: Optional[List[Any]] = field(default=None, repr=False)
     grouped_objects: Optional[Dict[Any, List[Any]]] = field(default=None, repr=False)
 
+    def __post_init__(self) -> None:
+        self.catalog = tuple(self.catalog)
+        self.pending_objects = [record.migration for record in self.catalog]
+        self.pending = [
+            MigrationEntry.from_migration(
+                record.migration, status=_ELIGIBILITY_DISPLAY_STATE[record.eligibility].value
+            )
+            for record in self.catalog
+        ]
+
     @property
     def has_failures(self) -> bool:
         """True when any migration is in the failed bucket."""
@@ -192,16 +229,14 @@ class MigrationState:
     @property
     def has_pending(self) -> bool:
         """True when any catalog entry is still executable Pending."""
-        pending_status = MigrationDisplayState.PENDING.value
-        return any(entry.status == pending_status for entry in self.pending)
+        return any(record.eligibility == MigrationEligibility.PENDING for record in self.catalog)
 
-    def executable_pending_objects(self) -> List[Any]:
-        """Return catalog objects whose paired entry status is Pending."""
-        pending_status = MigrationDisplayState.PENDING.value
+    def executable_pending_objects(self) -> List[Migration]:
+        """Return eligible catalog objects in discovery order."""
         return [
-            obj
-            for obj, entry in zip(self.pending_objects, self.pending)
-            if entry.status == pending_status
+            record.migration
+            for record in self.catalog
+            if record.eligibility == MigrationEligibility.PENDING
         ]
 
     @property
@@ -237,14 +272,13 @@ class MigrationState:
             current_version=self.current_version,
             baseline_version=self.baseline_version,
             applied=list(self.applied),
-            pending=list(self.pending),
             failed=list(self.failed),
             undone_versions=list(self.undone_versions),
             deleted_scripts=list(self.deleted_scripts),
             checksum_changes=list(self.checksum_changes),
             applied_objects=list(self.applied_objects),
             all_applied_objects=list(self.all_applied_objects),
-            pending_objects=list(self.pending_objects),
+            catalog=self.catalog,
             failed_objects=list(self.failed_objects),
             executed_scripts=list(self.executed_scripts),
             repeatable_checksums=dict(self.repeatable_checksums),

@@ -22,28 +22,17 @@ from dblift.core.logger.results import MigrateResult, MigrationInfo
 from dblift.core.migration.commands.base_command import PreflightConnectionError
 from dblift.core.migration.commands.migrate_command import MIGRATE_POLICY, MigrateCommand
 from dblift.core.migration.migration import MigrationType
-from dblift.core.migration.state.migration_display_state import MigrationDisplayState
-from dblift.core.migration.state.migration_state import MigrationEntry, MigrationState
+from dblift.core.migration.state.migration_state import (
+    CatalogMigration,
+    MigrationEligibility,
+    MigrationState,
+)
 from dblift.db.provider_interfaces import TransactionalProvider
 from tests.unit.core.migration.commands._plan_migrate_wiring import wire_plan_migrate
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-
-def _pending_entries(objects):
-    return [
-        MigrationEntry(
-            getattr(obj, "script_name", ""),
-            str(getattr(obj, "version", "") or "") or None,
-            getattr(obj, "description", None),
-            getattr(getattr(obj, "type", None), "name", None),
-            MigrationDisplayState.PENDING.value,
-            None,
-        )
-        for obj in objects
-    ]
 
 
 def _pass_through_filters(migrations, **kwargs):
@@ -612,10 +601,10 @@ class TestMigrateCommandExecute(unittest.TestCase):
         history_manager.get_applied_migrations.return_value = []
 
         pending = pending or []
-        state = MigrationState()
-        state.applied_objects = []
-        state.pending_objects = pending
-        state.pending = _pending_entries(pending)
+        state = MigrationState(
+            applied_objects=[],
+            catalog=tuple(CatalogMigration(obj, MigrationEligibility.PENDING) for obj in pending),
+        )
 
         state_manager = MagicMock()
         state_manager.build_state.return_value = state
@@ -860,7 +849,6 @@ class TestStrictModeWarningSupression(unittest.TestCase):
     def test_build_state_called_without_strict_mode(self):
         cmd = self._make_strict_cmd()
         state = MigrationState()
-        state.pending_objects = []
         state.applied_objects = []
         cmd.state_manager.build_state.return_value = state
         cmd.state_manager.apply_filters_to_migrations.side_effect = _pass_through_filters
@@ -904,7 +892,6 @@ class TestStrictModeWarningSupression(unittest.TestCase):
         config.strict_mode = False
         cmd = _make_cmd(config=config)
         state = MigrationState()
-        state.pending_objects = []
         state.applied_objects = []
         cmd.state_manager.build_state.return_value = state
         cmd.state_manager.apply_filters_to_migrations.side_effect = _pass_through_filters

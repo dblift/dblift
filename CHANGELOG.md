@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Migration selection uses typed catalog eligibility.** Changing displayed state
+  labels no longer changes which scripts migrate or undo selects. Internal
+  `MigrationState` constructors now take `catalog` records instead of `pending`
+  and `pending_objects`; serialized state and CLI output keep their existing keys.
 - **Providers are discovered once per process.** A `dblift.providers` entry point that
   becomes installed after the first database lookup is no longer picked up until the
   process restarts; register it explicitly with `ProviderRegistry.register_plugin`.
@@ -105,6 +109,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Only the engine's own blanks are trimmed, so a name ending in a no-break space is executed
   and analysed as written. On Oracle, a statement whose edge character the driver would strip
   is refused, naming the character, line and column.
+  On DuckDB the trimmed blanks are the ones its engine replaces (the ASCII blanks and 18
+  Unicode ones), except a final U+00A0 in the last two bytes of a script, which the engine
+  keeps as part of the name before it, and a blank inside a stretch its pass keeps (after
+  a quote it never sees closed), which stays part of the name; a segment of only such
+  blanks between two `;` is no longer an analysis statement.
 - **DuckDB scripts with non-ASCII blanks are cut where DuckDB cuts them, and a statement
   that would read differently alone is refused.** DuckDB replaces its Unicode blanks (such
   as U+00A0) with spaces in one pass over the whole script before parsing, and the pass

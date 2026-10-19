@@ -10,6 +10,9 @@ next to the core, each claimed once, in script order; a record's span must show 
 Three declared exceptions, each for one dialect only: Oracle refuses a script whose statement edge holds a
 character the driver would strip and the dialect does not (the refusal must name a character the script
 holds at the reported line and column); SQL Server now strips U+200B at a statement edge, where the old
+recording kept it; DuckDB now strips the non-ASCII blanks its engine replaces at a statement edge, where
+the old recording kept them, and refuses a statement whose edge blank the engine reads differently alone
+and in its script (the refusal must name such a blank, at a record edge, at the reported line and column).
 recording kept it; Db2 executes a statement made only of kept characters, which the old recording dropped
 (the script must hold it; the other statements are compared as usual).
 Everything else is reported with the dialect, the script id, the view and the first differing offset.
@@ -19,6 +22,7 @@ import re
 from dataclasses import dataclass
 from typing import Any, Dict, FrozenSet, List, Mapping, Optional, Tuple
 
+from dblift.db.plugins.duckdb.parser.lexical_spec import DUCKDB_SPEC
 from dblift.db.plugins.oracle.parser.lexical_spec import ORACLE_SPEC
 
 VIEWS = ("execution", "analysis", "records")
@@ -38,7 +42,17 @@ _WHITESPACE = frozenset(chr(i) for i in range(0x110000) if chr(i).isspace())
 _REFUSAL = re.compile(
     r"U\+([0-9A-F]{4,6}) at line (\d+), column (\d+) is at the edge of a statement: .*", re.S
 )
-_SQLSERVER_NOW_STRIPPED = "\u200b"
+_DUCKDB_REFUSAL = re.compile(
+    r"U\+([0-9A-F]{4,6}) at line (\d+), column (\d+): the statement reads differently run alone "
+    r"than in its script, this blank is (?:kept in its script, replaced when run alone|"
+    r"kept when run alone, replaced in its script); remove the character",
+    re.S,
+)
+#: dialect -> the characters its new records strip at an edge where the old recording kept them
+_NOW_STRIPPED = {
+    "sqlserver": "\u200b",
+    "duckdb": "".join(c for c in DUCKDB_SPEC.text_blanks if c >= "\x80"),
+}
 
 
 @dataclass(frozen=True)
@@ -242,8 +256,10 @@ def _check_statements(
     blanks: str,
     script: Optional[str] = None,
     lost: str = "",
+    dropped: str = "",
     count_change: bool = False,
 ) -> None:
+    """``dropped``: an old statement made only of these characters may be missing from ``new``."""
     if not isinstance(old, list) or not isinstance(new, list):
         if old != new:
             raise _Mismatch(None, f"outcome differs: old {old!r}, new {new!r}")
@@ -251,6 +267,8 @@ def _check_statements(
     if count_change:
         new = _without_declared(new, len(old), script, blanks, lambda text: text)
         old = _without_emptied(old, len(new), lambda text: text)
+    if len(old) != len(new) and dropped:
+        old = [t for t in old if not (isinstance(t, str) and t and not t.strip(dropped))]
     if len(old) != len(new):
         raise _Mismatch(None, f"old has {len(old)} statements, new has {len(new)}")
     for index, (before, after) in enumerate(zip(old, new)):
@@ -394,26 +412,30 @@ def _at_record_edge(script: str, records: Any, offset: int) -> bool:
 
 
 def _is_declared_refusal(dialect: str, before: Dict[str, Any], view: str, new: Any) -> bool:
-    """An Oracle refusal naming a character at a statement edge, outside Oracle's blanks."""
+    """A refusal naming a character at a statement edge: Oracle's outside its blanks, DuckDB's blank."""
     script, old = before["script"], before[view]
-    if dialect != "oracle" or not isinstance(new, dict) or "error" not in new:
+    if dialect not in ("oracle", "duckdb") or not isinstance(new, dict) or "error" not in new:
         return False
     if isinstance(old, dict) and "error" in old:
         return False
     error = new["error"]
     if not isinstance(error, list) or len(error) != 2 or error[0] != "UnsafeStatementSplitError":
         return False
-    match = _REFUSAL.fullmatch(str(error[1]))
+    match = (_DUCKDB_REFUSAL if dialect == "duckdb" else _REFUSAL).fullmatch(str(error[1]))
     if match is None:
         return False
     char, line, column = chr(int(match.group(1), 16)), int(match.group(2)), int(match.group(3))
     lines = script.split("\n")
     if line > len(lines) or column > len(lines[line - 1]):
         return False
-    if lines[line - 1][column - 1] != char or char in ORACLE_SPEC.text_blanks:
+    if lines[line - 1][column - 1] != char:
         return False
+    if dialect == "duckdb":
+        edge_char = char in _NOW_STRIPPED["duckdb"]
+    else:
+        edge_char = char in _WHITESPACE and char not in ORACLE_SPEC.text_blanks
     offset = sum(len(text) + 1 for text in lines[: line - 1]) + column - 1
-    return char in _WHITESPACE and _at_record_edge(script, before["records"], offset)
+    return edge_char and _at_record_edge(script, before["records"], offset)
 
 
 def compare_recordings(
@@ -433,7 +455,8 @@ def compare_recordings(
             )
         )
 
-    lost = _SQLSERVER_NOW_STRIPPED if dialect == "sqlserver" else ""
+    lost = _NOW_STRIPPED.get(dialect, "")
+    dropped = _NOW_STRIPPED["duckdb"] if dialect == "duckdb" else ""
     count_change = dialect in {"db2", "mysql", "mariadb"}
     old_scripts, new_scripts = old["scripts"], new["scripts"]
     for script_id in sorted(set(old_scripts) | set(new_scripts)):
@@ -455,7 +478,13 @@ def compare_recordings(
                     )
                 else:
                     _check_statements(
-                        before[view], after[view], text_blanks, before["script"], lost, count_change
+                        before[view],
+                        after[view],
+                        text_blanks,
+                        before["script"],
+                        lost,
+                        dropped,
+                        count_change,
                     )
             except _Mismatch as mismatch:
                 add(script_id, view, mismatch)

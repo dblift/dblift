@@ -46,7 +46,7 @@ DUCKDB_RULES = SegmentScriptRules(
 
 DUCKDB_SPEC = LexicalSpec(
     name="duckdb",
-    text_blanks=" \t\n\f\r",
+    text_blanks=DUCKDB_RULES.blanks,
     client_name="duckdb shell",
     nested_comments=True,
     leading_bom_is_blank=True,

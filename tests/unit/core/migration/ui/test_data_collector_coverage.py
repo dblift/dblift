@@ -17,7 +17,12 @@ import pytest
 
 from dblift.core.logger import NullLog
 from dblift.core.migration.migration import Migration, MigrationType
-from dblift.core.migration.state.migration_state import MigrationEntry, MigrationState
+from dblift.core.migration.state.migration_state import (
+    CatalogMigration,
+    MigrationEligibility,
+    MigrationEntry,
+    MigrationState,
+)
 from dblift.core.migration.ui.data_collector import MigrationDataCollector
 
 pytestmark = pytest.mark.unit
@@ -540,7 +545,7 @@ class TestGetMigrationDataWrapperCoverage(unittest.TestCase):
     def test_delegates_to_get_migration_data_from_state(self):
         coll = self._c()
         m = _make_migration("1.0", success=True, installed_rank=1)
-        state = _applied_state([(m, "Success")], pending_objects=[])
+        state = _applied_state([(m, "Success")])
         result = coll.get_migration_data(migration_state=state, all_applied_migrations=[m])
         assert len(result) == 1
         assert result[0]["version"] == "1.0"
@@ -558,7 +563,7 @@ class TestGetMigrationDataFromStateCoverage(unittest.TestCase):
 
     def test_empty_state_returns_empty(self):
         coll = self._c()
-        state = MigrationState(pending_objects=[])
+        state = MigrationState()
         result = coll._get_migration_data_from_state(
             migration_state=state, all_applied_migrations=[]
         )
@@ -567,7 +572,7 @@ class TestGetMigrationDataFromStateCoverage(unittest.TestCase):
     def test_applied_migration_in_result(self):
         coll = self._c()
         m = _make_migration("1.0", success=True, installed_rank=1)
-        state = MigrationState(pending_objects=[])
+        state = MigrationState()
         result = coll._get_migration_data_from_state(
             migration_state=state, all_applied_migrations=[m]
         )
@@ -586,7 +591,6 @@ class TestGetMigrationDataFromStateCoverage(unittest.TestCase):
         )
         state = _applied_state(
             [(m, "Undone"), (undo, "Success")],
-            pending_objects=[],
             undone_versions=["1.0"],
         )
         result = coll._get_migration_data_from_state(
@@ -599,7 +603,7 @@ class TestGetMigrationDataFromStateCoverage(unittest.TestCase):
         coll = self._c()
         pending = _make_migration("2.0")
         pending.success = None
-        state = MigrationState(pending_objects=[pending])
+        state = MigrationState(catalog=(CatalogMigration(pending, MigrationEligibility.PENDING),))
         result = coll._get_migration_data_from_state(
             migration_state=state, all_applied_migrations=[]
         )
@@ -608,7 +612,7 @@ class TestGetMigrationDataFromStateCoverage(unittest.TestCase):
     def test_exclude_filter_applied(self):
         coll = self._c()
         m = _make_migration("1.0", success=True, installed_rank=1)
-        state = MigrationState(pending_objects=[])
+        state = MigrationState()
         result = coll._get_migration_data_from_state(
             migration_state=state,
             all_applied_migrations=[m],
@@ -618,14 +622,14 @@ class TestGetMigrationDataFromStateCoverage(unittest.TestCase):
 
     def test_creates_script_manager_when_none(self):
         coll = MigrationDataCollector(log=MagicMock(), script_manager=None)
-        state = MigrationState(pending_objects=[])
+        state = MigrationState()
         coll._get_migration_data_from_state(migration_state=state, all_applied_migrations=[])
         assert coll.script_manager is not None
 
     def test_failed_migration_state(self):
         coll = self._c()
         m = _make_migration("1.0", success=False, installed_rank=1)
-        state = _applied_state([(m, "Failed")], pending_objects=[])
+        state = _applied_state([(m, "Failed")])
         result = coll._get_migration_data_from_state(
             migration_state=state, all_applied_migrations=[m]
         )
@@ -634,7 +638,7 @@ class TestGetMigrationDataFromStateCoverage(unittest.TestCase):
     def test_delete_type_shows_deleted(self):
         coll = self._c()
         m = _make_migration("1.0", mtype=MigrationType.DELETE, success=True, installed_rank=1)
-        state = _applied_state([(m, "Deleted")], pending_objects=[])
+        state = _applied_state([(m, "Deleted")])
         result = coll._get_migration_data_from_state(
             migration_state=state, all_applied_migrations=[m]
         )
@@ -643,7 +647,7 @@ class TestGetMigrationDataFromStateCoverage(unittest.TestCase):
     def test_baseline_shows_baseline(self):
         coll = self._c()
         m = _make_migration("1.0", mtype=MigrationType.BASELINE, success=True, installed_rank=1)
-        state = _applied_state([(m, "Baseline")], pending_objects=[])
+        state = _applied_state([(m, "Baseline")])
         result = coll._get_migration_data_from_state(
             migration_state=state, all_applied_migrations=[m]
         )
@@ -661,7 +665,6 @@ class TestGetMigrationDataFromStateCoverage(unittest.TestCase):
         new.script_name = "R__init.sql"
         state = _applied_state(
             [(old, "Superseded"), (new, "Success")],
-            pending_objects=[],
             repeatable_checksums={"R__init.sql": "new"},
         )
         result = coll._get_migration_data_from_state(
@@ -673,7 +676,7 @@ class TestGetMigrationDataFromStateCoverage(unittest.TestCase):
     def test_versions_filter(self):
         coll = self._c()
         m = _make_migration("1.0", success=True, installed_rank=1)
-        state = MigrationState(pending_objects=[])
+        state = MigrationState()
         result = coll._get_migration_data_from_state(
             migration_state=state, all_applied_migrations=[m], versions=["2.0"]
         )
@@ -692,7 +695,7 @@ class TestGetMigrationDataFromStateCoverage(unittest.TestCase):
             checksum="abc",
         )
         m.script_name = "R__tagged[alpha].sql"
-        state = MigrationState(pending_objects=[])
+        state = MigrationState()
         result = coll._get_migration_data_from_state(
             migration_state=state,
             all_applied_migrations=[m],
@@ -716,7 +719,7 @@ class TestGetMigrationDataFromStateCoverage(unittest.TestCase):
             checksum="abc",
         )
         m.script_name = "R__tagged[alpha].sql"
-        state = MigrationState(pending_objects=[])
+        state = MigrationState()
         result = coll._get_migration_data_from_state(
             migration_state=state,
             all_applied_migrations=[m],
@@ -742,7 +745,7 @@ class TestGetMigrationDataFromStateCoverage(unittest.TestCase):
             checksum="abc",
         )
         m.script_name = "R__untagged.sql"
-        state = MigrationState(pending_objects=[])
+        state = MigrationState()
         result = coll._get_migration_data_from_state(
             migration_state=state,
             all_applied_migrations=[m],
@@ -790,7 +793,7 @@ class TestStatePathRemainingLines(unittest.TestCase):
         """Line 514: success=None in state path produces UNKNOWN."""
         coll = self._c()
         m = _make_migration("1.0", success=None, installed_rank=1)
-        state = MigrationState(pending_objects=[])
+        state = MigrationState()
         result = coll._get_migration_data_from_state(
             migration_state=state, all_applied_migrations=[m]
         )
@@ -801,7 +804,7 @@ class TestStatePathRemainingLines(unittest.TestCase):
         coll = self._c()
         pending = _make_migration("3.0", success=None)
         pending.script_name = "V3__init.sql"
-        state = MigrationState(pending_objects=[pending])
+        state = MigrationState(catalog=(CatalogMigration(pending, MigrationEligibility.PENDING),))
         result = coll._get_migration_data_from_state(
             migration_state=state,
             all_applied_migrations=[],
@@ -879,7 +882,9 @@ class TestPendingMigrationsNumericSort(unittest.TestCase):
             _make_migration("2", success=None),
             _make_migration("3", success=None),
         ]
-        state = MigrationState(pending_objects=pending)
+        state = MigrationState(
+            catalog=tuple(CatalogMigration(m, MigrationEligibility.PENDING) for m in pending)
+        )
         result = coll.get_migration_data(migration_state=state, all_applied_migrations=[])
         assert [r["version"] for r in result] == ["2", "3", "10"]
 
@@ -891,7 +896,9 @@ class TestPendingMigrationsNumericSort(unittest.TestCase):
             ),
             _make_migration("5", success=None),
         ]
-        state = MigrationState(pending_objects=pending)
+        state = MigrationState(
+            catalog=tuple(CatalogMigration(m, MigrationEligibility.PENDING) for m in pending)
+        )
         result = coll.get_migration_data(migration_state=state, all_applied_migrations=[])
         assert [r["script"] for r in result] == ["V5__test.sql", "R__z.sql"]
 
@@ -905,6 +912,8 @@ class TestPendingMigrationsNumericSort(unittest.TestCase):
                 None, mtype=MigrationType.REPEATABLE, script_name="R__a.sql", success=None
             ),
         ]
-        state = MigrationState(pending_objects=pending)
+        state = MigrationState(
+            catalog=tuple(CatalogMigration(m, MigrationEligibility.PENDING) for m in pending)
+        )
         result = coll.get_migration_data(migration_state=state, all_applied_migrations=[])
         assert [r["script"] for r in result] == ["R__a.sql", "R__b.sql"]

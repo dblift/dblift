@@ -14,7 +14,7 @@ from dblift.core.logger import Log, NullLog
 from dblift.core.migration.migration import VERSIONED_SCRIPT_TYPES, Migration
 from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
 from dblift.core.migration.state.migration_display_state import MigrationDisplayState
-from dblift.core.migration.state.migration_state import MigrationState
+from dblift.core.migration.state.migration_state import MigrationEligibility, MigrationState
 from dblift.core.migration.version_utils import compare_versions as _compare_versions_shared
 
 
@@ -178,10 +178,8 @@ class MigrationDataCollector:
         # Get pending migrations from state (already sorted by migration order)
         pending_migrations = migration_state.pending_objects
 
-        # migration_state.applied/pending were built 1:1 (same order, same objects)
-        # from migration_state.all_applied_objects/pending_objects by MigrationStateManager,
-        # using MigrationStateService as the single source of truth for status. Reuse those
-        # already-computed statuses instead of re-deriving them here.
+        # Applied rows come from the manager and unresolved display rows are
+        # derived from the typed catalog. Reuse their existing display statuses.
         applied_status_by_id = {
             id(migration): entry.status
             for migration, entry in zip(
@@ -311,10 +309,10 @@ class MigrationDataCollector:
         """
         if migration_state is not None:
             return {
-                str(migration.version)
-                for migration in migration_state.pending_objects
-                if self._is_migration_type_equal(getattr(migration, "type", None), "UNDO_SQL")
-                and getattr(migration, "version", None) is not None
+                str(record.migration.version)
+                for record in migration_state.catalog
+                if record.eligibility == MigrationEligibility.UNDO_AVAILABLE
+                and getattr(record.migration, "version", None) is not None
             }
 
         undo_versions = set()

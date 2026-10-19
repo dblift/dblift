@@ -857,13 +857,11 @@
   "script": "SELECT 1;\u00a0;",
   "views": {
    "analysis": [
-    "SELECT 1",
-    "\u00a0"
+    "SELECT 1"
    ],
    "blanked": "SELECT 1;\u00a0;",
    "extraction": [
-    "SELECT 1",
-    "\u00a0"
+    "SELECT 1"
    ],
    "masking": [
     [
@@ -895,13 +893,11 @@
   "views": {
    "analysis": [
     "SELECT 1",
-    "\u00a0",
     "SELECT 2"
    ],
    "blanked": "SELECT 1;\u00a0;SELECT 2;",
    "extraction": [
     "SELECT 1",
-    "\u00a0",
     "SELECT 2"
    ],
    "masking": [
@@ -949,13 +945,11 @@
   "script": "SELECT 1;\ufeff;",
   "views": {
    "analysis": [
-    "SELECT 1",
-    "\ufeff"
+    "SELECT 1"
    ],
    "blanked": "SELECT 1;\ufeff;",
    "extraction": [
-    "SELECT 1",
-    "\ufeff"
+    "SELECT 1"
    ],
    "masking": [
     [
@@ -2680,17 +2674,17 @@
   }
  },
  {
-  "name": "leading_no_break_space_kept",
+  "name": "leading_no_break_space_is_a_blank",
   "script": "SELECT 1;\u00a0SELECT 2",
   "views": {
    "analysis": [
     "SELECT 1",
-    "\u00a0SELECT 2"
+    "SELECT 2"
    ],
    "blanked": "SELECT 1;\u00a0SELECT 2",
    "extraction": [
     "SELECT 1",
-    "\u00a0SELECT 2"
+    "SELECT 2"
    ],
    "masking": [
     [
@@ -2698,7 +2692,7 @@
      "SELECT 1"
     ],
     [
-     "\u00a0SELECT 2",
+     "SELECT 2",
      "SELECT 2"
     ]
    ],
@@ -2721,14 +2715,14 @@
      "multi": false,
      "repeat": 1,
      "source_end": 18,
-     "source_start": 9,
+     "source_start": 10,
      "terminator": null,
-     "text": "\u00a0SELECT 2"
+     "text": "SELECT 2"
     }
    ],
    "strings": [
     "SELECT 1",
-    "\u00a0SELECT 2"
+    "SELECT 2"
    ]
   }
  },
@@ -2791,12 +2785,12 @@
   "views": {
    "analysis": [
     "SELECT 1",
-    "\ufeffSELECT 2"
+    "SELECT 2"
    ],
    "blanked": "SELECT 1;\ufeffSELECT 2;",
    "extraction": [
     "SELECT 1",
-    "\ufeffSELECT 2"
+    "SELECT 2"
    ],
    "masking": [
     [
@@ -2804,7 +2798,7 @@
      "SELECT 1"
     ],
     [
-     "\ufeffSELECT 2",
+     "SELECT 2",
      "SELECT 2"
     ]
    ],
@@ -2827,14 +2821,14 @@
      "multi": false,
      "repeat": 1,
      "source_end": 19,
-     "source_start": 9,
+     "source_start": 10,
      "terminator": ";",
-     "text": "\ufeffSELECT 2"
+     "text": "SELECT 2"
     }
    ],
    "strings": [
     "SELECT 1",
-    "\ufeffSELECT 2"
+    "SELECT 2"
    ]
   }
  },
@@ -3374,13 +3368,11 @@
   "views": {
    "analysis": [
     "SELECT 1",
-    "\u3000",
     "SELECT 2"
    ],
    "blanked": "SELECT 1;\u3000;SELECT 2;",
    "extraction": [
     "SELECT 1",
-    "\u3000",
     "SELECT 2"
    ],
    "masking": [
@@ -3890,13 +3882,11 @@
   "views": {
    "analysis": [
     "SELECT 1",
-    "\u200b",
     "SELECT 2"
    ],
    "blanked": "SELECT 1;\u200b;SELECT 2;",
    "extraction": [
     "SELECT 1",
-    "\u200b",
     "SELECT 2"
    ],
    "masking": [

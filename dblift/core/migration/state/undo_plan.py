@@ -8,9 +8,12 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Tuple
 
 from dblift.core.migration.migration import Migration, MigrationType
 from dblift.core.migration.rules.migration_rules import MigrationRules, expand_undo_set_to_groups
-from dblift.core.migration.state.migration_display_state import MigrationDisplayState
 from dblift.core.migration.state.migration_selector import normalize_filter
-from dblift.core.migration.state.migration_state import MigrationReadSnapshot, MigrationState
+from dblift.core.migration.state.migration_state import (
+    MigrationEligibility,
+    MigrationReadSnapshot,
+    MigrationState,
+)
 from dblift.core.migration.state.rank_wins import installed_rank, latest_successful_ranks
 from dblift.core.migration.version_utils import compare_versions, is_migration_success
 
@@ -221,9 +224,9 @@ def _find_undo_script(migration: Any, state: MigrationState) -> Optional[Any]:
     if version is None:
         return None
     version_s = str(version)
-    for obj, entry in zip(state.pending_objects, state.pending):
-        if entry.status != MigrationDisplayState.AVAILABLE.value:
+    for record in state.catalog:
+        if record.eligibility != MigrationEligibility.UNDO_AVAILABLE:
             continue
-        if str(entry.version) == version_s:
-            return obj
+        if str(record.migration.version) == version_s:
+            return record.migration
     return None

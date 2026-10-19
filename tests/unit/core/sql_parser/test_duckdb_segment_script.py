@@ -38,10 +38,10 @@ CASES = [
         " \nSELECT 1;   SELECT 2;",
     ),
     (
-        "leading_nbsp_kept",
+        "leading_nbsp_is_a_blank",
         "SELECT 1;" + NBSP + "SELECT 2",
-        [("SELECT 1", 1, ";", 0, 9), ("\xa0SELECT 2", 1, None, 9, 18)],
-        ["SELECT 1", "\xa0SELECT 2"],
+        [("SELECT 1", 1, ";", 0, 9), ("SELECT 2", 1, None, 10, 18)],
+        ["SELECT 1", "SELECT 2"],
         "SELECT 1;\xa0SELECT 2",
     ),
     (
@@ -118,14 +118,14 @@ CASES = [
         "blank_only_segment",
         "SELECT 1;" + NBSP + ";",
         [("SELECT 1", 1, ";", 0, 9)],
-        ["SELECT 1", "\xa0"],
+        ["SELECT 1"],
         "SELECT 1;\xa0;",
     ),
     (
         "blank_only_segment_then_statement",
         "SELECT 1;" + NBSP + ";SELECT 2;",
         [("SELECT 1", 1, ";", 0, 9), ("SELECT 2", 1, ";", 11, 20)],
-        ["SELECT 1", "\xa0", "SELECT 2"],
+        ["SELECT 1", "SELECT 2"],
         "SELECT 1;\xa0;SELECT 2;",
     ),
     (
@@ -145,8 +145,8 @@ CASES = [
     (
         "blank_in_the_middle",
         "SELECT 1;" + BOM + "SELECT 2;",
-        [("SELECT 1", 1, ";", 0, 9), ("\ufeffSELECT 2", 1, ";", 9, 19)],
-        ["SELECT 1", "\ufeffSELECT 2"],
+        [("SELECT 1", 1, ";", 0, 9), ("SELECT 2", 1, ";", 10, 19)],
+        ["SELECT 1", "SELECT 2"],
         "SELECT 1;\ufeffSELECT 2;",
     ),
     ("empty_script", "", [], [], ""),
@@ -427,8 +427,6 @@ CASES = [
 ]
 IDS = [case[0] for case in CASES]
 KNOWN_GAPS = frozenset({"74", "75"})  # the splitter differs from DuckDB there (see the spec)
-# Rows about a statement edge that fail today; the same ids are in test_duckdb_spec_conformance.RED_ROWS.
-RED_ROWS = frozenset({"90b", "90f", "90g", "90h"})
 
 
 def outcome(call, script):
@@ -494,10 +492,6 @@ def test_comment_only_segments_are_records_only_for_analysis():
 def test_spec_row_through_the_engine(row, request):
     if row.row_id in KNOWN_GAPS:
         request.applymarker(pytest.mark.xfail(strict=True, reason="listed in KNOWN_GAPS"))
-    if row.row_id in RED_ROWS:
-        request.applymarker(
-            pytest.mark.xfail(strict=True, reason="a statement edge the engine keeps")
-        )
     if row.status == "to_verify":
         pytest.skip("spec marks this row 'to verify': not a claim yet")
     try:
@@ -521,10 +515,10 @@ def test_text_blanks_is_read():
     assert wide.split_for_analysis(script) == ["SELECT 1 AS a", "SELECT 2 AS y"]
 
 
-def test_a_blank_only_segment_is_an_analysis_record_not_an_execution_record():
+def test_a_blank_only_segment_is_no_record_in_either_view():
     script = "SELECT 1;" + NBSP + ";"
     assert ENGINE.split_statements(script) == ["SELECT 1"]
-    assert ENGINE.split_for_analysis(script) == ["SELECT 1", NBSP]
+    assert ENGINE.split_for_analysis(script) == ["SELECT 1"]
 
 
 def test_a_refusal_comes_before_any_record():
@@ -607,3 +601,77 @@ def test_a_dollar_followed_by_a_digit_leaves_the_blank_after_it_a_blank():
     with pytest.raises(duckdb.ParserException, match="unterminated dollar-quoted"):
         duckdb.extract_statements(script)
     assert ENGINE.split_statements(script) == [script]
+
+
+U3000 = chr(0x3000)
+
+
+def texts(script):
+    return [record.text for record in ENGINE.split(script)]
+
+
+@pytest.mark.parametrize(
+    "script,expected",
+    [
+        ("DROP TABLE t" + U3000, ["DROP TABLE t"]),
+        ("DROP TABLE t" + U3000 + " \n", ["DROP TABLE t"]),
+        ("DROP TABLE t \xa0\n\n".rstrip("\n"), ["DROP TABLE t \xa0"]),
+        ("SELECT 1;" + U3000 + "SELECT 2", ["SELECT 1", "SELECT 2"]),
+        ("SELECT 1;\xa0\xa0SELECT 2", ["SELECT 1", "SELECT 2"]),
+        ("SELECT 1" + U3000 + ";SELECT 2", ["SELECT 1", "SELECT 2"]),
+        ("DROP TABLE t\xa0", ["DROP TABLE t\xa0"]),
+        ("DROP TABLE t \xa0", ["DROP TABLE t \xa0"]),
+        ("DROP TABLE t\xa0\xa0", ["DROP TABLE t\xa0\xa0"]),
+        ("DROP TABLE t" + U3000 + "\xa0", ["DROP TABLE t" + U3000 + "\xa0"]),
+        ("SELECT 1" + VT, ["SELECT 1" + VT]),
+        ("/* ' */ SELECT 1 AS e" + U3000, ["/* ' */ SELECT 1 AS e" + U3000]),
+        ("/* ' */ \n" + U3000 + "SELECT 1", ["/* ' */ \n" + U3000 + "SELECT 1"]),
+    ],
+    ids=[
+        "trailing_u3000",
+        "trailing_u3000_then_ascii",
+        "space_then_final_nbsp_is_kept",
+        "leading_u3000",
+        "leading_nbsp_pair",
+        "u3000_before_terminator",
+        "final_nbsp_is_kept",
+        "final_nbsp_after_space",
+        "two_final_nbsp",
+        "u3000_then_final_nbsp",
+        "vertical_tab_is_no_blank",
+        "trailing_blank_kept_by_the_pass",
+        "leading_blank_kept_by_the_pass",
+    ],
+)
+def test_a_statement_loses_only_the_blanks_the_engine_reads_at_its_edges(script, expected):
+    assert texts(script) == expected
+
+
+def test_a_stripped_edge_moves_the_start_and_keeps_the_span_to_the_terminator():
+    record = ENGINE.split("SELECT 1;" + U3000 + "SELECT 2" + U3000 + ";")[1]
+    assert fields(record) == ("SELECT 2", 1, ";", 10, 20)
+
+
+def test_the_line_of_a_record_skips_the_stripped_lead():
+    record = ENGINE.split("SELECT 1;" + U3000 + "\nSELECT 2")[1]
+    assert (record.text, record.line) == ("SELECT 2", 2)
+
+
+@pytest.mark.parametrize(
+    "script",
+    [
+        "DROP TABLE t\xa0;\nSELECT 1;",
+        "DROP TABLE t\xa0\n",
+        "DROP TABLE t\xa0\r\n",
+        "DROP TABLE t\xa0\n\n",
+        "DROP TABLE t\xa0 ",
+    ],
+)
+def test_a_final_nbsp_the_script_replaces_is_still_refused(script):
+    with pytest.raises(UnsafeStatementSplitError, match="U\\+00A0"):
+        ENGINE.split_statements(script)
+
+
+def test_an_edge_blank_the_script_keeps_and_the_statement_alone_replaces_is_still_refused():
+    with pytest.raises(UnsafeStatementSplitError, match="U\\+3000"):
+        ENGINE.split_statements("/* ' */ SELECT 1; " + U3000 + "SELECT 2;")

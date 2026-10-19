@@ -10,8 +10,11 @@ import pytest
 
 from dblift.core.migration.commands.migrate_command import MigrateCommand
 from dblift.core.migration.migration import MigrationType
-from dblift.core.migration.state.migration_display_state import MigrationDisplayState
-from dblift.core.migration.state.migration_state import MigrationEntry, MigrationState
+from dblift.core.migration.state.migration_state import (
+    CatalogMigration,
+    MigrationEligibility,
+    MigrationState,
+)
 from dblift.db.provider_interfaces import TransactionalProvider
 from tests.unit.core.migration.commands._plan_migrate_wiring import wire_plan_migrate
 
@@ -45,17 +48,7 @@ def _command_with_pending_migration(monkeypatch, provider: MagicMock) -> Migrate
     )
     command.state_manager.build_state.return_value = MigrationState(
         applied_objects=[],
-        pending_objects=[pending],
-        pending=[
-            MigrationEntry(
-                pending.script_name,
-                pending.version,
-                pending.description,
-                "SQL",
-                MigrationDisplayState.PENDING.value,
-                None,
-            )
-        ],
+        catalog=(CatalogMigration(pending, MigrationEligibility.PENDING),),
     )
     command.state_manager.apply_filters_to_migrations.side_effect = (
         lambda migrations, **kwargs: list(migrations)
