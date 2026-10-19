@@ -32,7 +32,7 @@ class BatchScript:
     ) -> None:
         """``comments`` are the extents the tokenizer read; ``origin`` is where the text starts.
 
-        ``spec`` is read for the server's own reading of a batch when the rules say it nests comments.
+        ``spec`` serves the server's own reading of a batch when the rules say it nests comments.
         """
         self.rules = rules
         self.source = source
@@ -118,7 +118,7 @@ class BatchScript:
         records.append(record)
 
     def _comment_nests(self, start: int, cut: int) -> bool:
-        """Whether a block comment the client read in ``source[start:cut]`` holds a ``/*`` the server nests."""
+        """Whether a client block comment in ``source[start:cut]`` holds a nested ``/*``."""
         index = bisect_left(self.comments, (start, -1))
         while index < len(self.comments) and self.comments[index][0] < cut:
             first, last = self.comments[index]
@@ -128,9 +128,9 @@ class BatchScript:
         return False
 
     def _server_has_code(self, start: int, cut: int) -> bool:
-        """Whether the server, which nests block comments, reads ``source[start:cut]`` as more than comments.
+        """Whether the server, which nests block comments, reads ``source[start:cut]`` as code.
 
-        A comment the server leaves open is not a comment: the batch is sent and the server rejects it.
+        A comment the server leaves open is not a comment: the batch is sent and rejected.
         """
         assert self._server_spec is not None
         text = self.source[start:cut]
