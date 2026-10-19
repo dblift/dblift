@@ -82,6 +82,10 @@ def test_text_undo_reverser_package_is_removed() -> None:
     assert importlib.util.find_spec("dblift.core.migration.scripting.undo_script_generator") is None
 
 
+def test_retired_client_operations_module_is_removed() -> None:
+    assert importlib.util.find_spec("dblift.api._client_operations") is None
+
+
 def test_sync_hand_authored_undo_and_reapply_remain_executable(tmp_path: Path) -> None:
     migrations = _migrations(tmp_path)
     (migrations / "U1__drop_users.sql").write_text(
