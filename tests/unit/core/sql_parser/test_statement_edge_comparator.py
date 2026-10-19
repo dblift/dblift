@@ -7,6 +7,8 @@ statement's edge in the new recording and was trimmed in the old one. Every test
 import copy
 from typing import Any, Dict, List, Optional
 
+import pytest
+
 from dblift.db.plugins.oracle.parser.lexical_spec import ORACLE_SPEC
 from tests.support.statement_edge_comparator import compare_recordings
 
@@ -719,3 +721,107 @@ def test_a_statement_of_kept_characters_that_the_script_holds_only_inside_a_name
         dialect="db2",
     )
     assert [d.view for d in compare_recordings(old, new, BLANKS)] == ["execution", "analysis"]
+
+
+@pytest.mark.parametrize("dialect", ["mysql", "mariadb"])
+def test_a_statement_of_kept_characters_is_a_declared_count_change_for_mysql_and_mariadb(
+    dialect: str,
+) -> None:
+    script = f"VALUES 1;\n{NBSP};\nVALUES 2;"
+    old = recording(script, ["VALUES 1", "VALUES 2"], ["VALUES 1", "VALUES 2"], dialect=dialect)
+    new = recording(
+        script, ["VALUES 1", NBSP, "VALUES 2"], ["VALUES 1", NBSP, "VALUES 2"], dialect=dialect
+    )
+    assert compare_recordings(old, new, BLANKS) == []
+
+
+def _block(analysis: List[str], text: str, dialect: str = "mysql") -> Dict[str, Any]:
+    script = f"DELIMITER //\nVALUES 1;{NBSP}//\nDELIMITER ;"
+    directive = {**record("DELIMITER //", 0, 13), "kind": "directive"}
+    block = {**record(text, 13, 25, line=2), "terminator": "//", "analysis_statements": analysis}
+    return recording(script, [text], list(analysis), [directive, block], dialect=dialect)
+
+
+@pytest.mark.parametrize("dialect", ["mysql", "mariadb"])
+def test_the_fragment_a_delimiter_block_gains_before_its_delimiter_is_a_declared_count_change(
+    dialect: str,
+) -> None:
+    old = _block(["VALUES 1"], "VALUES 1;", dialect)
+    new = _block(["VALUES 1", NBSP], "VALUES 1;" + NBSP, dialect)
+    assert compare_recordings(old, new, BLANKS) == []
+
+
+def test_a_fragment_with_code_that_a_delimiter_block_gains_is_reported() -> None:
+    old = _block(["VALUES 1"], "VALUES 1;")
+    new = _block(["VALUES 1", f"{NBSP}VALUES 3"], "VALUES 1;" + NBSP)
+    assert [d.view for d in compare_recordings(old, new, BLANKS)] == ["analysis", "records"]
+
+
+def test_a_fragment_that_a_delimiter_block_gains_is_reported_outside_mysql_and_mariadb() -> None:
+    old = _block(["VALUES 1"], "VALUES 1;", "demo")
+    new = _block(["VALUES 1", NBSP], "VALUES 1;" + NBSP, "demo")
+    assert [d.view for d in compare_recordings(old, new, BLANKS)] == ["analysis", "records"]
+
+
+@pytest.mark.parametrize("dialect", ["mysql", "mariadb"])
+def test_a_statement_the_old_recording_held_empty_and_the_new_one_drops_is_a_declared_count_change(
+    dialect: str,
+) -> None:
+    script = "VALUES 1;\n\x1c;\nVALUES 2;"
+    old = recording(
+        script,
+        ["VALUES 1", "", "VALUES 2"],
+        ["VALUES 1", "", "VALUES 2"],
+        [record("VALUES 1", 0, 10), record("", 10, 13, line=2), record("VALUES 2", 14, 22, line=3)],
+        dialect=dialect,
+    )
+    new = recording(
+        script,
+        ["VALUES 1", "VALUES 2"],
+        ["VALUES 1", "VALUES 2"],
+        [record("VALUES 1", 0, 10), record("VALUES 2", 14, 22, line=3)],
+        dialect=dialect,
+    )
+    assert compare_recordings(old, new, BLANKS) == []
+
+
+def test_a_statement_with_code_that_the_new_recording_drops_is_reported() -> None:
+    script = "VALUES 1;\nVALUES 3;\nVALUES 2;"
+    old = recording(
+        script,
+        ["VALUES 1", "VALUES 3", "VALUES 2"],
+        ["VALUES 1", "VALUES 3", "VALUES 2"],
+        dialect="mysql",
+    )
+    new = recording(script, ["VALUES 1", "VALUES 2"], ["VALUES 1", "VALUES 2"], dialect="mysql")
+    assert [d.view for d in compare_recordings(old, new, BLANKS)] == ["execution", "analysis"]
+
+
+@pytest.mark.parametrize("dialect", ["db2", "mysql", "mariadb"])
+def test_a_statement_of_kept_characters_that_the_new_recording_drops_is_reported(
+    dialect: str,
+) -> None:
+    script = f"VALUES 1;\n{NBSP};\nVALUES 2;"
+    old = recording(
+        script,
+        ["VALUES 1", NBSP, "VALUES 2"],
+        ["VALUES 1", NBSP, "VALUES 2"],
+        [
+            record("VALUES 1", 0, 10),
+            record(NBSP, 10, 13, line=2),
+            record("VALUES 2", 14, 22, line=3),
+        ],
+        dialect=dialect,
+    )
+    new = recording(
+        script,
+        ["VALUES 1", "VALUES 2"],
+        ["VALUES 1", "VALUES 2"],
+        [record("VALUES 1", 0, 10), record("VALUES 2", 14, 22, line=3)],
+        dialect=dialect,
+    )
+    assert [d.view for d in compare_recordings(old, new, BLANKS)] == [
+        "execution",
+        "analysis",
+        "records",
+    ]

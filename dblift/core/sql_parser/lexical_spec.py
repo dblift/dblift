@@ -269,10 +269,13 @@ class LexicalSpec:
 
     ``text_blanks`` is what a statement may lose at either end of its text: the characters the
     engine reads as blanks (docs/sql-parsing/<dialect>.md). Any other character stays in the text.
+    ``trailing_blanks`` names what a client strips from the trailing edge when that is more than
+    ``text_blanks`` (empty: the same set); a statement made only of it is not sent.
     """
 
     name: str
     text_blanks: str = field(kw_only=True)
+    trailing_blanks: str = field(default="", kw_only=True)
     client_name: str = "SQL client"
     nested_comments: bool = False
     quoted_identifier: str = '"'
@@ -309,6 +312,11 @@ class LexicalSpec:
     string_quote_doubling: bool = True
     terminator_script: Optional[TerminatorScriptRules] = None
     segment_script: Optional[SegmentScriptRules] = None
+
+    @property
+    def trailing_edge_blanks(self) -> str:
+        """What a statement loses at its trailing edge, and what makes it empty."""
+        return self.trailing_blanks or self.text_blanks
 
     def __post_init__(self) -> None:
         """A client reads a script by lines, batches, a delimiter, terminator lines or segments."""

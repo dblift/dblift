@@ -36,6 +36,42 @@ def test_helper_keeps_a_statement_made_of_characters_the_dialect_does_not_strip(
     ) == ["VALUES 1", "\xa0", "VALUES 2"]
 
 
+@pytest.mark.parametrize("dialect", ["mysql", "mariadb"])
+def test_helper_keeps_a_mysql_statement_made_only_of_characters_the_server_does_not_read_as_blank(
+    dialect,
+):
+    helper = importlib.import_module("dblift.core.migration.sql.migration_sql_parser")
+    script = "CREATE TABLE a (x INT);\xa0;CREATE TABLE b (x INT);"
+    assert helper.parse_migration_sql(SqlAnalyzer(dialect), script, NullLog(), dialect=dialect) == [
+        "CREATE TABLE a (x INT)",
+        "\xa0",
+        "CREATE TABLE b (x INT)",
+    ]
+
+
+@pytest.mark.parametrize("dialect", ["mysql", "mariadb"])
+@pytest.mark.parametrize(
+    "script, expected",
+    [
+        (
+            "CREATE TABLE a (x INT)\x1c;\nCREATE TABLE b (x INT);",
+            ["CREATE TABLE a (x INT)", "CREATE TABLE b (x INT)"],
+        ),
+        (
+            "CREATE TABLE a (x INT);\n\x1c;\nCREATE TABLE b (x INT);",
+            ["CREATE TABLE a (x INT)", "CREATE TABLE b (x INT)"],
+        ),
+        ("CREATE TABLE a (x INT);\n\x7f", ["CREATE TABLE a (x INT)"]),
+    ],
+)
+def test_helper_strips_the_control_characters_the_mysql_clients_strip(dialect, script, expected):
+    helper = importlib.import_module("dblift.core.migration.sql.migration_sql_parser")
+    assert (
+        helper.parse_migration_sql(SqlAnalyzer(dialect), script, NullLog(), dialect=dialect)
+        == expected
+    )
+
+
 @pytest.mark.parametrize(
     "dialect, text",
     [
@@ -43,8 +79,8 @@ def test_helper_keeps_a_statement_made_of_characters_the_dialect_does_not_strip(
         ("duckdb", "\x0b"),
         ("duckdb", "\u2028"),
         ("duckdb", "\x85"),
-        ("mysql", "\xa0"),
-        ("mariadb", "\xa0"),
+        ("mysql", "\x0b"),
+        ("mariadb", "\x0c"),
         ("postgresql", "\xa0"),
     ],
 )

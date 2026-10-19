@@ -757,9 +757,9 @@ def test_preserved_quirks_match_the_recorded_values(spec):
     def statements(script: str) -> list:
         return LexicalEngine(spec).split_statements(script)
 
-    # a trailing NBSP or U+2028 is stripped from a statement; a leading one is kept
-    assert statements("SELECT 1\xa0;") == ["SELECT 1"]
-    assert statements(f"SELECT 1{LS};") == ["SELECT 1"]
+    # a no-break space and U+2028 are name characters to the server: kept at either end
+    assert statements("SELECT 1\xa0;") == ["SELECT 1\xa0"]
+    assert statements(f"SELECT 1{LS};") == [f"SELECT 1{LS}"]
     assert statements("\xa0SELECT 1;") == ["\xa0SELECT 1"]
     # a delimiter counts characters, not bytes
     assert statements(f"DELIMITER {SEC}\nSELECT 1{SEC}\nSELECT 2{SEC}\nDELIMITER ;") == [

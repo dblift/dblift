@@ -43,4 +43,4 @@ The list of mysql.md §11 applies. MariaDB's Oracle-compatibility mode (`sql_mod
 
 ## 12. Current implementation
 
-Same code as mysql.md section 12: `dblift/db/plugins/mariadb/lexical_spec.py` holds `MARIADB_SPEC`, the MySQL rules with `/*M!` as a second executable opener and a hint read as a block comment, `MariadbQuirks.lexical_spec()` returns it, and `dblift/db/plugins/mariadb/regex_parser.py` is the MySQL delegate holding it.
+The MariaDB rules apply to a `mariadb+pymysql://` URL; `mysql+pymysql://` selects the MySQL rules, also against a MariaDB server. Same code as mysql.md section 12: `dblift/db/plugins/mariadb/lexical_spec.py` holds `MARIADB_SPEC`, the MySQL rules with `/*M!` as a second executable opener and a hint read as a block comment, `MariadbQuirks.lexical_spec()` returns it, and `dblift/db/plugins/mariadb/regex_parser.py` is the MySQL delegate holding it.

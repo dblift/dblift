@@ -111,10 +111,6 @@ CLIENT_SENDS = {
 
 #: (dialect, form) -> why the case fails today
 RED = {
-    ("mysql", "semicolon"): "the splitter strips the character before the terminator",
-    ("mysql", "end_of_file"): "the splitter strips the last character of the script",
-    ("mariadb", "semicolon"): "the splitter strips the character before the terminator",
-    ("mariadb", "end_of_file"): "the splitter strips the last character of the script",
     ("duckdb", "semicolon"): "the splitter keeps a no-break space the shell reads as a blank",
 }
 

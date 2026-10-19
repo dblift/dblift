@@ -33,10 +33,7 @@ KNOWN_GAPS: frozenset[str] = frozenset({"83", "84"})
 
 #: Rows that fail today for the reason given: they fail strictly, and the change that fixes a row
 #: removes its id (a row that starts to pass under a strict xfail fails loudly).
-RED_ROWS: dict[str, str] = {
-    "86": "the splitter strips a no-break space before the terminator",
-    "86a": "the splitter strips a trailing line separator",
-}
+RED_ROWS: dict[str, str] = {}
 
 RUNS = (
     [pytest.param("mysql", row, id=f"mysql-{row.row_id}") for row in MYSQL_ROWS]

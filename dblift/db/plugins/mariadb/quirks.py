@@ -35,6 +35,10 @@ class MariadbQuirks(MysqlQuirks):
 
         return MARIADB_SPEC
 
+    def empty_statement_blanks(self) -> Optional[str]:
+        """The mariadb client reads a control character as blank too: it sends no statement of them and comments."""
+        return self.lexical_spec().trailing_edge_blanks
+
     # Plain-view redefinition inherits MySQL's CREATE OR REPLACE support.
     # https://mariadb.com/docs/server/server-usage/views/create-view
 

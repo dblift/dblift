@@ -26,9 +26,17 @@ class DelimiterScript:
         text: str,
         removed: Sequence[int],
         origin: int,
+        text_blanks: str,
+        trailing_blanks: str,
     ) -> None:
-        """Take the script as read (CRLF as LF); ``removed`` maps offsets back."""
+        """Take the script as read (CRLF as LF); ``removed`` maps offsets back.
+
+        A statement loses only ``text_blanks`` at its start and ``trailing_blanks`` at its end;
+        one made only of ``trailing_blanks`` is empty.
+        """
         self.rules = rules
+        self.text_blanks = text_blanks
+        self.trailing_blanks = trailing_blanks
         self.client_name = client_name
         self.text = text
         self.removed = removed  # `removed` and `origin` map record offsets back to the source
@@ -171,7 +179,10 @@ class DelimiterScript:
         self._begin()
 
     def _emit(self, cut: int, terminator: Optional[str], source_end: int) -> None:
-        text = self.text[self.start : cut].rstrip()
+        blanks, trailing = self.text_blanks, self.trailing_blanks
+        text = self.text[self.start : cut].rstrip(trailing)
+        if not text:
+            return
         self._refuse_session_mode(text)
         analysis: Optional[Tuple[str, ...]] = None
         if self._fragments and not self.program.is_program:
@@ -179,11 +190,11 @@ class DelimiterScript:
             parts = []
             begin = self.start
             for end in self._fragments:
-                if code[begin - self.start : end - 1 - self.start].strip():
-                    parts.append(self.text[begin : end - 1].strip())
+                if code[begin - self.start : end - 1 - self.start].strip(trailing):
+                    parts.append(self.text[begin : end - 1].lstrip(blanks).rstrip(trailing))
                 begin = end
-            if code[begin - self.start :].strip():
-                parts.append(self.text[begin : self.start + len(text)].strip())
+            if code[begin - self.start :].strip(trailing):
+                parts.append(self.text[begin : self.start + len(text)].lstrip(blanks))
             analysis = tuple(parts)
         self.records.append(
             Statement(

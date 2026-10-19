@@ -215,7 +215,7 @@ def test_statement_sources_returns_the_untrimmed_text_of_a_name_that_ends_the_sc
     ]
 
 
-KEEPS_THE_BLANK = ("postgresql", "redshift", "cockroachdb", "sqlserver", "db2")
+KEEPS_THE_BLANK = ("postgresql", "redshift", "cockroachdb", "mysql", "mariadb", "sqlserver", "db2")
 
 
 @pytest.mark.parametrize(

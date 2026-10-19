@@ -62,6 +62,8 @@ MYSQL_RULES = DelimiterScriptRules(
 MYSQL_SPEC = LexicalSpec(
     name="mysql",
     text_blanks=" \t\n\r\v\f",
+    # the clients strip every trailing control character too (NUL is refused); a leading one is sent
+    trailing_blanks=" \t\n\r\v\f" + "".join(map(chr, range(1, 32))) + "\x7f",
     client_name="mysql",
     quoted_identifier="`",
     quoted_identifier_escape=False,

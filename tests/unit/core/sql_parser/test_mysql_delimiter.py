@@ -403,7 +403,15 @@ def test_placeholder_is_code_for_mysql(spec):
 
 
 def script_with(rules_text: str = "SELECT 1") -> DelimiterScript:
-    return DelimiterScript(MYSQL_RULES, "mysql", rules_text, [], 0)
+    return DelimiterScript(
+        MYSQL_RULES,
+        "mysql",
+        rules_text,
+        [],
+        0,
+        MYSQL_SPEC.text_blanks,
+        MYSQL_SPEC.trailing_edge_blanks,
+    )
 
 
 # `word()` and the qualifier it reports have no reader until the stored-program tracker is wired in
@@ -460,3 +468,55 @@ def test_a_delimiter_free_script_is_cut_at_its_semicolons():
         "SELECT 'a;b' /* ; */",
         "SELECT 2 # c",
     ]
+
+
+NBSP = chr(0xA0)
+
+
+def _statements_of(spec, script):
+    return [r for r in LexicalEngine(spec).split(script) if r.kind != "directive"]
+
+
+@BOTH
+def test_a_delimiter_block_keeps_the_no_break_spaces_at_the_edges_of_its_statements(spec):
+    script = f"DELIMITER //\n{NBSP}SELECT 1{NBSP};{NBSP};{NBSP}SELECT 2{NBSP};{NBSP}//\nDELIMITER ;"
+    (record,) = _statements_of(spec, script)
+    assert record.text == f"{NBSP}SELECT 1{NBSP};{NBSP};{NBSP}SELECT 2{NBSP};{NBSP}"
+    assert record.analysis_statements == (
+        f"{NBSP}SELECT 1{NBSP}",
+        NBSP,
+        f"{NBSP}SELECT 2{NBSP}",
+        NBSP,
+    )
+    blanks = "DELIMITER //\n \tSELECT 1 \t;\t ;\x0b\x0cSELECT 2\x0b;\n//\nDELIMITER ;"
+    (record,) = _statements_of(spec, blanks)
+    assert record.text == "SELECT 1 \t;\t ;\x0b\x0cSELECT 2\x0b;"
+    assert record.analysis_statements == ("SELECT 1", "SELECT 2")
+
+    dollars = f"DELIMITER $$\nSELECT 1;{NBSP}$$\nDELIMITER ;"
+    (record,) = _statements_of(spec, dollars)
+    assert record.text == f"SELECT 1;{NBSP}"
+    assert record.analysis_statements == ("SELECT 1", NBSP)
+
+
+CONTROLS = ["\x01", "\x08", "\x1c", "\x1f", "\x7f"]
+
+
+@BOTH
+@pytest.mark.parametrize("char", CONTROLS, ids=[hex(ord(c)) for c in CONTROLS])
+def test_the_client_strips_a_trailing_control_character_and_sends_no_statement_made_of_them(
+    spec, char
+):
+    texts = [
+        r.text for r in _statements_of(spec, f"SELECT 1{char};\n{char};\n{char}\n;SELECT 2{char}")
+    ]
+    assert texts == ["SELECT 1", "SELECT 2"]
+    assert [r.text for r in _statements_of(spec, f"{char}SELECT 1;")] == [f"{char}SELECT 1"]
+
+
+@BOTH
+def test_a_delimiter_block_loses_a_trailing_control_character_before_its_delimiter(spec):
+    script = "DELIMITER //\nSELECT 1;\x1c//\nSELECT 2;\x1c;\x1f//\nDELIMITER ;"
+    first, second = _statements_of(spec, script)
+    assert (first.text, first.analysis_statements) == ("SELECT 1;", ("SELECT 1",))
+    assert (second.text, second.analysis_statements) == ("SELECT 2;\x1c;", ("SELECT 2",))

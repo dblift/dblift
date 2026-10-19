@@ -145,11 +145,13 @@ DBLift works with these databases:
 | SQL Server | `mssql+pymssql://localhost:1433/mydb` | `dblift[sqlserver]` |
 | Oracle | `oracle+oracledb://localhost:1521?sid=SID` | `dblift[oracle]` |
 | MySQL | `mysql+pymysql://localhost:3306/mydb` | `dblift[mysql]` |
-| MariaDB | `mysql+pymysql://localhost:3306/mydb` | `dblift[mariadb]` |
+| MariaDB | `mariadb+pymysql://localhost:3306/mydb` | `dblift[mariadb]` |
 | DB2 | `ibm_db_sa://localhost:50000/mydb` | `dblift[db2]` |
 | SQLite | `/path/to/database.db` or `:memory:` (see [SQLite Configuration](#sqlite-configuration)) |
 | Azure Cosmos DB | `https://account.documents.azure.com:443/` (see [CosmosDB Configuration](#cosmosdb-configuration)) | `dblift[cosmosdb]` |
 | MongoDB | `mongodb://host:27017` or `mongodb+srv://…` (see [MongoDB Configuration](#mongodb-configuration)) | `dblift[mongodb]` |
+
+A `mysql+pymysql://` URL selects the MySQL rules, also against a MariaDB server; use `mariadb+pymysql://` for MariaDB.
 
 ## SQL Server Configuration
 
