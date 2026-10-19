@@ -825,3 +825,66 @@ def test_a_statement_of_kept_characters_that_the_new_recording_drops_is_reported
         "analysis",
         "records",
     ]
+
+
+DUCKDB_SHELL_REFUSAL = (
+    "UnsafeStatementSplitError",
+    "U+00A0 at line 1, column 13: the engine replaces this blank and the duckdb shell keeps it; "
+    "remove the character",
+)
+DUCKDB_STRAY_REFUSAL = (
+    "UnsafeStatementSplitError",
+    "U+00A0 at line 1, column 10: the engine keeps this blank at the end of the script and "
+    "rejects the script; remove the character",
+)
+
+
+def test_a_duckdb_refusal_of_the_blank_only_the_shell_keeps_is_declared() -> None:
+    assert refused_pair("duckdb", "DROP TABLE t" + NBSP + "\n", DUCKDB_SHELL_REFUSAL) == []
+    assert refused_pair("duckdb", "DROP TABLE t" + NBSP + "\r\n", DUCKDB_SHELL_REFUSAL) == []
+    assert refused_pair("postgresql", "DROP TABLE t" + NBSP + "\n", DUCKDB_SHELL_REFUSAL) != []
+    # not just before the last line ending
+    assert refused_pair("duckdb", "DROP TABLE t" + NBSP + "\n\n", DUCKDB_SHELL_REFUSAL) != []
+    assert refused_pair("duckdb", "DROP TABLE t" + NBSP + " \n", DUCKDB_SHELL_REFUSAL) != []
+
+
+def test_a_duckdb_refusal_of_a_stray_blank_that_ends_the_script_is_declared() -> None:
+    script = "SELECT 1;" + NBSP
+    old = recording(script, ["SELECT 1"], ["SELECT 1"], [record("SELECT 1", 0, 9)], "duckdb")
+    new = recording(
+        script,
+        {"error": list(DUCKDB_STRAY_REFUSAL)},
+        {"error": list(DUCKDB_STRAY_REFUSAL)},
+        {"error": list(DUCKDB_STRAY_REFUSAL)},
+        "duckdb",
+    )
+    assert compare_recordings(old, new, BLANKS) == []
+    moved = DUCKDB_STRAY_REFUSAL[1].replace("column 10", "column 5")
+    new = recording(script, {"error": [DUCKDB_STRAY_REFUSAL[0], moved]}, ["SELECT 1"], [], "duckdb")
+    assert "execution" in [d.view for d in compare_recordings(old, new, BLANKS)]
+    # a blank that is inside a statement is no stray tail
+    inside = "SELECT 1" + NBSP + ";"
+    old = recording(inside, ["SELECT 1"], ["SELECT 1"], [record("SELECT 1", 0, 10)], "duckdb")
+    new = recording(inside, {"error": list(DUCKDB_STRAY_REFUSAL)}, ["SELECT 1"], [], "duckdb")
+    assert compare_recordings(old, new, BLANKS) != []
+
+
+def test_a_duckdb_statement_refused_for_an_edge_blank_and_now_run_without_it_is_declared() -> None:
+    script = "DROP TABLE t" + NBSP + ";"
+    refusal = {"error": list(DUCKDB_REFUSAL[:1] + (DUCKDB_REFUSAL[1],))}
+    kept = [record("DROP TABLE t", 0, 14)]
+    old = recording(script, refusal, refusal, refusal, "duckdb")
+    new = recording(script, ["DROP TABLE t"], ["DROP TABLE t"], kept, "duckdb")
+    assert compare_recordings(old, new, BLANKS) == []
+    assert (
+        compare_recordings(
+            recording(script, refusal, refusal, refusal, "postgresql"),
+            recording(script, ["DROP TABLE t"], ["DROP TABLE t"], kept, "postgresql"),
+            BLANKS,
+        )
+        != []
+    )
+    # the blank still inside the text sent is not a stripped edge
+    sent = [record("DROP TABLE t" + NBSP, 0, 14)]
+    new = recording(script, ["DROP TABLE t" + NBSP], ["DROP TABLE t" + NBSP], sent, "duckdb")
+    assert compare_recordings(old, new, BLANKS) != []

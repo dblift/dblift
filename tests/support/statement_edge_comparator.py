@@ -12,7 +12,9 @@ character the driver would strip and the dialect does not (the refusal must name
 holds at the reported line and column); SQL Server now strips U+200B at a statement edge, where the old
 recording kept it; DuckDB now strips the non-ASCII blanks its engine replaces at a statement edge, where
 the old recording kept them, and refuses a statement whose edge blank the engine reads differently alone
-and in its script (the refusal must name such a blank, at a record edge, at the reported line and column).
+and in its script (the refusal must name such a blank, at a record edge, at the reported line and column),
+runs the statement it refused for an edge blank it now strips, and refuses a U+00A0 that only the shell keeps
+(just before the last line ending) or that ends the script after its last statement.
 recording kept it; Db2 executes a statement made only of kept characters, which the old recording dropped
 (the script must hold it; the other statements are compared as usual).
 Everything else is reported with the dialect, the script id, the view and the first differing offset.
@@ -42,10 +44,15 @@ _WHITESPACE = frozenset(chr(i) for i in range(0x110000) if chr(i).isspace())
 _REFUSAL = re.compile(
     r"U\+([0-9A-F]{4,6}) at line (\d+), column (\d+) is at the edge of a statement: .*", re.S
 )
+_DUCKDB_ALONE = (
+    "the statement reads differently run alone than in its script, this blank is "
+    "(?:kept in its script, replaced when run alone|kept when run alone, replaced in its script)"
+)
+_DUCKDB_SHELL = "the engine replaces this blank and the duckdb shell keeps it"
+_DUCKDB_STRAY = "the engine keeps this blank at the end of the script and rejects the script"
 _DUCKDB_REFUSAL = re.compile(
-    r"U\+([0-9A-F]{4,6}) at line (\d+), column (\d+): the statement reads differently run alone "
-    r"than in its script, this blank is (?:kept in its script, replaced when run alone|"
-    r"kept when run alone, replaced in its script); remove the character",
+    r"U\+([0-9A-F]{4,6}) at line (\d+), column (\d+): "
+    rf"(?:({_DUCKDB_ALONE})|({_DUCKDB_SHELL})|({_DUCKDB_STRAY})); remove the character",
     re.S,
 )
 #: dialect -> the characters its new records strip at an edge where the old recording kept them
@@ -416,7 +423,7 @@ def _is_declared_refusal(dialect: str, before: Dict[str, Any], view: str, new: A
     script, old = before["script"], before[view]
     if dialect not in ("oracle", "duckdb") or not isinstance(new, dict) or "error" not in new:
         return False
-    if isinstance(old, dict) and "error" in old:
+    if isinstance(old, dict) and "error" in old and not _is_duckdb_refusal(dialect, old):
         return False
     error = new["error"]
     if not isinstance(error, list) or len(error) != 2 or error[0] != "UnsafeStatementSplitError":
@@ -430,12 +437,62 @@ def _is_declared_refusal(dialect: str, before: Dict[str, Any], view: str, new: A
         return False
     if lines[line - 1][column - 1] != char:
         return False
-    if dialect == "duckdb":
-        edge_char = char in _NOW_STRIPPED["duckdb"]
-    else:
-        edge_char = char in _WHITESPACE and char not in ORACLE_SPEC.text_blanks
     offset = sum(len(text) + 1 for text in lines[: line - 1]) + column - 1
+    if dialect == "duckdb":
+        shell, stray = match.group(5), match.group(6)
+        if shell:  # the shell drops one last line ending, then keeps the blank before it
+            return char == "\u00a0" and re.fullmatch(r"\r?\n", script[offset + 1 :]) is not None
+        if stray:  # a blank the engine keeps at the very end, after the last record
+            records = before["records"] if isinstance(before["records"], list) else []
+            ends = max((r["source_end"] for r in records), default=0)
+            return char == "\u00a0" and offset == len(script) - 1 and offset >= ends
+        return char in _NOW_STRIPPED["duckdb"] and _at_record_edge(
+            script, before["records"], offset
+        )
+    edge_char = char in _WHITESPACE and char not in ORACLE_SPEC.text_blanks
     return edge_char and _at_record_edge(script, before["records"], offset)
+
+
+def _is_duckdb_refusal(dialect: str, outcome: Dict[str, Any]) -> bool:
+    """Whether the outcome is one of DuckDB's refusals of a blank."""
+    error = outcome["error"]
+    return (
+        dialect == "duckdb"
+        and isinstance(error, list)
+        and len(error) == 2
+        and error[0] == "UnsafeStatementSplitError"
+        and _DUCKDB_REFUSAL.fullmatch(str(error[1])) is not None
+    )
+
+
+def _is_declared_acceptance(
+    dialect: str, before: Dict[str, Any], view: str, new: Dict[str, Any]
+) -> bool:
+    """DuckDB now runs a statement the old recording refused for an edge blank, without that blank.
+
+    The old refusal must name a blank of the engine at a record edge; the new records must hold the
+    script's statements with that blank outside every record's text (it is stripped, not kept).
+    """
+    script, old = before["script"], before[view]
+    if dialect != "duckdb" or not isinstance(old, dict) or "error" not in old or "error" in new:
+        return False
+    if not _is_duckdb_refusal(dialect, old):
+        return False
+    match = _DUCKDB_REFUSAL.fullmatch(str(old["error"][1]))
+    if match is None or match.group(5) or match.group(6):
+        return False
+    records = new["records"]
+    if not isinstance(records, list):
+        return False
+    char, line, column = chr(int(match.group(1), 16)), int(match.group(2)), int(match.group(3))
+    lines = script.split("\n")
+    if line > len(lines) or column > len(lines[line - 1]) or lines[line - 1][column - 1] != char:
+        return False
+    offset = sum(len(text) + 1 for text in lines[: line - 1]) + column - 1
+    inside = any(r["source_start"] <= offset < r["source_start"] + len(r["text"]) for r in records)
+    return (
+        char in _NOW_STRIPPED["duckdb"] and not inside and _at_record_edge(script, records, offset)
+    )
 
 
 def compare_recordings(
@@ -470,6 +527,8 @@ def compare_recordings(
             continue
         for view in VIEWS:
             if _is_declared_refusal(dialect, before, view, after[view]):
+                continue
+            if _is_declared_acceptance(dialect, before, view, after):
                 continue
             try:
                 if view == "records":
