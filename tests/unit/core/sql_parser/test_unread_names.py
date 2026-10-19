@@ -7,6 +7,7 @@ import logging
 import pytest
 
 from dblift.core.exceptions import UnsafeStatementSplitError
+from dblift.core.migration.sql.script_analysis import analyse_script
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.sql_parser.parser_factory import SqlParserFactory
 from dblift.core.sql_parser.unread_names import names_unreadable, statement_sources
@@ -241,3 +242,23 @@ def test_the_analysed_text_equals_its_span_once_the_record_keeps_the_blank(diale
     scanner = SqlParserFactory(dialect).get_parser().regex_parser
     statements = SqlAnalyzer(dialect).split_statements_for_analysis(script)
     assert statements == statement_sources(scanner, script, statements) == [script]
+
+
+@pytest.mark.parametrize("blank", ("\x0b", "\x0c", "\x0b　", "　\x0c "))
+def test_oracle_span_ends_at_the_name_before_blanks_and_a_terminator(blank):
+    scanner = SqlParserFactory("oracle").get_parser().regex_parser
+    script = f"DROP TABLE t　{blank};"
+    assert statement_sources(scanner, script, ["DROP TABLE t"]) == ["DROP TABLE t;"]
+    names = {
+        obj.name.lower()
+        for stmt in analyse_script(script, "oracle").statements
+        for obj in stmt.objects
+    }
+    assert "t" in names
+
+
+def test_a_character_the_engine_keeps_stays_in_the_span_before_a_terminator():
+    scanner = SqlParserFactory("postgresql").get_parser().regex_parser
+    script = "DROP TABLE t 　;"
+    [text] = scanner.split_for_extraction(script)
+    assert statement_sources(scanner, script, [text])[0].startswith("DROP TABLE t ")

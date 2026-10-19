@@ -229,9 +229,8 @@ class TestDbmsOutputEnableFailure(unittest.TestCase):
             "dblift.db.plugins.oracle.oracle.dbms_output.enable_dbms_output",
             side_effect=RuntimeError("dbms_output broken"),
         ):
-            with patch.object(engine, "_transaction_liveness_probe_sql", return_value="SELECT 1"):
-                # Use an empty statements list so the per-statement loop is a no-op.
-                ok = engine._execute_statements([], migration, result, 0.0)
+            # Use an empty statements list so the per-statement loop is a no-op.
+            ok = engine._execute_statements([], migration, result, 0.0)
 
         assert ok is True
         engine.log.warning.assert_called()
@@ -258,21 +257,12 @@ class TestDbmsOutputReadFailure(unittest.TestCase):
 
         # provider.execute_statement returns 0 rows affected (DDL-ish).
         engine.provider.execute_statement.return_value = 0
-        # Pre-check probe path: prepareStatement raises AttributeError so we
-        # fall back to provider.execute_query (which is harmless).
-        engine.provider.connection.prepareStatement.side_effect = AttributeError
-
         with patch("dblift.db.plugins.oracle.oracle.dbms_output.enable_dbms_output"):
             with patch(
                 "dblift.db.plugins.oracle.oracle.dbms_output.read_dbms_output",
                 side_effect=RuntimeError("read failed"),
             ):
-                with patch.object(
-                    engine, "_transaction_liveness_probe_sql", return_value="SELECT 1"
-                ):
-                    ok = engine._execute_statements(
-                        ["CREATE TABLE t (id INT)"], migration, result, 0.0
-                    )
+                ok = engine._execute_statements(["CREATE TABLE t (id INT)"], migration, result, 0.0)
 
         assert ok is True
         warning_msgs = [str(c) for c in engine.log.warning.call_args_list]
@@ -299,11 +289,7 @@ class TestSqlExecutionServiceTypeError(unittest.TestCase):
         svc.execute_statement.return_value = (False, "not-an-int")
         engine.sql_execution_service = svc
 
-        # Make the pre-check provider path harmless.
-        engine.provider.connection.prepareStatement.side_effect = AttributeError
-
-        with patch.object(engine, "_transaction_liveness_probe_sql", return_value="SELECT 1"):
-            ok = engine._execute_statements(["UPDATE t SET x = 1"], migration, result, 0.0)
+        ok = engine._execute_statements(["UPDATE t SET x = 1"], migration, result, 0.0)
 
         # Statement-level failure → engine returns False.
         assert ok is False

@@ -207,6 +207,11 @@ class TransactionalProvider(ABC):
     """Capacité de gestion des transactions."""
 
     @abstractmethod
+    def check_transaction_state(self) -> None:
+        """Probe the current transaction before sending a statement."""
+        ...
+
+    @abstractmethod
     def begin_transaction(self) -> None:
         """Begin a database transaction."""
         ...

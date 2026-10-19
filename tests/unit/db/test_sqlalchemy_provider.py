@@ -14,8 +14,11 @@ from typing import Any, Dict, List, Optional
 from unittest.mock import MagicMock, patch
 
 import pytest
+from sqlalchemy.exc import SQLAlchemyError
 
 from dblift.config.dblift_config import DbliftConfig
+from dblift.core.exceptions import TransactionAbortedError
+from dblift.db.provider_registry import ProviderRegistry
 from dblift.db.sqlalchemy_provider import SqlAlchemyProvider, _SqlAlchemyQueryExecutor
 
 # ---------------------------------------------------------------------------
@@ -119,6 +122,93 @@ def test_execute_statement_then_query(provider: _Concrete) -> None:
     provider.execute_statement("INSERT INTO t (id, name) VALUES (1, 'a')")
     rows = provider.execute_query("SELECT id, name FROM t")
     assert rows == [{"id": 1, "name": "a"}]
+
+
+def test_transaction_probe_query_preserves_native_send(provider: _Concrete) -> None:
+    """The existing query path sends one dialect probe without ending a transaction."""
+    from sqlalchemy import event
+
+    sends = []
+
+    def record_send(conn, cursor, statement, parameters, context, executemany):
+        sends.append(statement)
+
+    engine = provider.connection.engine
+    event.listen(engine, "before_cursor_execute", record_send)
+    try:
+        provider.begin_transaction()
+        assert provider.execute_query(provider.quirks.connection_probe_sql) == [{"1": 1}]
+        assert provider._tx is not None
+        assert sends == [provider.quirks.connection_probe_sql]
+        provider.rollback_transaction()
+    finally:
+        event.remove(engine, "before_cursor_execute", record_send)
+
+
+def test_transaction_health_uses_one_native_query(provider: _Concrete) -> None:
+    from sqlalchemy import event
+
+    sends = []
+
+    def record_send(conn, cursor, statement, parameters, context, executemany):
+        sends.append(statement)
+
+    engine = provider.connection.engine
+    event.listen(engine, "before_cursor_execute", record_send)
+    try:
+        provider.begin_transaction()
+        provider.check_transaction_state()
+        assert provider._tx is not None
+        assert sends == [provider.quirks.connection_probe_sql]
+        provider.rollback_transaction()
+    finally:
+        event.remove(engine, "before_cursor_execute", record_send)
+
+
+def test_transaction_health_maps_only_aborted_query_errors(
+    provider: _Concrete, monkeypatch
+) -> None:
+    aborted = SQLAlchemyError("current transaction is aborted")
+
+    def fail_aborted(sql):
+        assert sql == provider.quirks.connection_probe_sql
+        raise aborted
+
+    monkeypatch.setattr(provider, "execute_query", fail_aborted)
+    with pytest.raises(TransactionAbortedError) as exc:
+        provider.check_transaction_state()
+    assert exc.value.__cause__ is aborted
+    assert str(aborted) in str(exc.value)
+
+    other = SQLAlchemyError("connection lost")
+
+    def fail_other(sql):
+        raise other
+
+    monkeypatch.setattr(provider, "execute_query", fail_other)
+    with pytest.raises(SQLAlchemyError) as exc:
+        provider.check_transaction_state()
+    assert exc.value is other
+
+
+@pytest.mark.parametrize(
+    "dialect, expected",
+    [
+        ("oracle", "SELECT 1 FROM DUAL"),
+        ("db2", "SELECT 1 FROM SYSIBM.SYSDUMMY1"),
+        ("postgresql", "SELECT 1"),
+    ],
+)
+def test_transaction_health_uses_dialect_probe_sql(
+    provider: _Concrete, monkeypatch, dialect: str, expected: str
+) -> None:
+    provider._quirks = ProviderRegistry.get_quirks(dialect)
+    queries = []
+    monkeypatch.setattr(provider, "execute_query", lambda sql: queries.append(sql))
+
+    provider.check_transaction_state()
+
+    assert queries == [expected]
 
 
 def test_connection_property_returns_active_connection(provider: _Concrete) -> None:
@@ -843,6 +933,9 @@ def test_autocommit_statement_default_delegates_to_plain_execution() -> None:
     class _Plain(TransactionalProvider):
         def __init__(self) -> None:
             self.executed: List[Any] = []
+
+        def check_transaction_state(self) -> None:  # noqa: D102
+            pass
 
         def begin_transaction(self) -> None:  # noqa: D102
             pass

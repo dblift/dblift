@@ -2,7 +2,7 @@
 
 Target file: core/migration/executor/execution_engine.py
 Focuses on: execute_migration full path, _is_comment_only_statement, _prepare_transaction,
-_probe_dialect_key, _transaction_liveness_probe_sql, _record_migration_history,
+_probe_dialect_key, _record_migration_history,
 _record_autocommit_migration_history, _commit_migration, _handle_statement_failure,
 execute_callback, _execute_via_factory, autocommit statement routing.
 """
@@ -1101,38 +1101,6 @@ class TestProbeDialectKey(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# _transaction_liveness_probe_sql
-# ---------------------------------------------------------------------------
-
-
-class TestTransactionLivenessProbeSQL(unittest.TestCase):
-    """PR-F4: the per-dialect probe SQL comes from ``ProviderRegistry.get_quirks(...)``.
-
-    The dialect key the registry receives now flows through
-    ``provider.canonical_dialect_key`` (set by each plugin) instead of a
-    framework-side URL-sniff.
-    """
-
-    def test_oracle_returns_dual(self):
-        engine = _make_engine()
-        engine.provider.canonical_dialect_key = "oracle"
-        probe = engine._transaction_liveness_probe_sql()
-        self.assertIn("DUAL", probe)
-
-    def test_db2_returns_sysibm(self):
-        engine = _make_engine()
-        engine.provider.canonical_dialect_key = "db2"
-        probe = engine._transaction_liveness_probe_sql()
-        self.assertIn("SYSIBM", probe)
-
-    def test_postgresql_returns_select_1(self):
-        engine = _make_engine(dialect="postgresql")
-        engine.provider.canonical_dialect_key = "postgresql"
-        probe = engine._transaction_liveness_probe_sql()
-        self.assertEqual(probe, "SELECT 1")
-
-
-# ---------------------------------------------------------------------------
 # _record_migration_history
 # ---------------------------------------------------------------------------
 
@@ -1665,6 +1633,9 @@ class _RoutingProvider(TransactionalProvider):
     def __init__(self):
         self.connection = None
         self.calls = []
+
+    def check_transaction_state(self):  # noqa: D102
+        self.calls.append(("health", ""))
 
     def begin_transaction(self):  # noqa: D102
         pass
