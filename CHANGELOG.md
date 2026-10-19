@@ -132,6 +132,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   It was skipped and the migration succeeded; the `mysql` and `mariadb` clients send it and the
   server rejects it (error 1064), and dblift now fails at that statement the same way. A
   `DELIMITER` block ending with such a character before its delimiter sends it too.
+  A control character at the end of a statement (such as U+0001 or U+001B) is stripped as the
+  clients strip it; it was sent and the server rejected it.
 - **`migrate` runs a fixed repeatable migration whose last run failed.** Before, a repeatable
   migration that failed and was then corrected was reported as ready by `validate` but never
   run by `migrate`, which succeeded without applying it. A failed run now counts as failed

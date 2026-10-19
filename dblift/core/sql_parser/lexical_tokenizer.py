@@ -163,7 +163,13 @@ class LexicalTokenizer(BaseTokenizer):
         if delimiter_rules is not None:
             origin = 1 if spec.leading_bom_is_blank and sql.startswith(BOM) else 0
             self.delimiter_script = DelimiterScript(
-                delimiter_rules, spec.client_name, sql, removed, origin, spec.text_blanks
+                delimiter_rules,
+                spec.client_name,
+                sql,
+                removed,
+                origin,
+                spec.text_blanks,
+                spec.trailing_edge_blanks,
             )
             self._word_re = re.compile("[" + delimiter_rules.word_part + "]+")
             self._delimiter = delimiter_rules.initial

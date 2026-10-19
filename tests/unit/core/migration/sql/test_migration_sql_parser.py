@@ -49,6 +49,29 @@ def test_helper_keeps_a_mysql_statement_made_only_of_characters_the_server_does_
     ]
 
 
+@pytest.mark.parametrize("dialect", ["mysql", "mariadb"])
+@pytest.mark.parametrize(
+    "script, expected",
+    [
+        (
+            "CREATE TABLE a (x INT)\x1c;\nCREATE TABLE b (x INT);",
+            ["CREATE TABLE a (x INT)", "CREATE TABLE b (x INT)"],
+        ),
+        (
+            "CREATE TABLE a (x INT);\n\x1c;\nCREATE TABLE b (x INT);",
+            ["CREATE TABLE a (x INT)", "CREATE TABLE b (x INT)"],
+        ),
+        ("CREATE TABLE a (x INT);\n\x7f", ["CREATE TABLE a (x INT)"]),
+    ],
+)
+def test_helper_strips_the_control_characters_the_mysql_clients_strip(dialect, script, expected):
+    helper = importlib.import_module("dblift.core.migration.sql.migration_sql_parser")
+    assert (
+        helper.parse_migration_sql(SqlAnalyzer(dialect), script, NullLog(), dialect=dialect)
+        == expected
+    )
+
+
 @pytest.mark.parametrize(
     "dialect, text",
     [
