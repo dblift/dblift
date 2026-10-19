@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple, cast
 
 from dblift.core.logger import Log
-from dblift.core.migration._type_match import migration_type_name
 from dblift.core.migration.history.migration_history_manager import (
     FlywayCompatibilitySnapshot,
     MigrationHistoryManager,
@@ -41,7 +40,7 @@ from dblift.core.migration.state.migration_state import (
 )
 from dblift.core.migration.state.migration_state_service import MigrationStateService
 from dblift.core.migration.state.ordering import OutOfOrder, out_of_order
-from dblift.core.migration.state.rank_wins import latest_successful_ranks
+from dblift.core.migration.state.rank_wins import effective_current_version, latest_successful_ranks
 from dblift.core.migration.state.repair_plan import RepairPlan
 from dblift.core.migration.state.repair_plan import plan_repairs as _plan_repairs
 from dblift.core.migration.state.repeatable_status import (
@@ -53,7 +52,6 @@ from dblift.core.migration.state.undo_plan import UndoPlan
 from dblift.core.migration.state.undo_plan import plan_undo as _plan_undo
 from dblift.core.migration.version_utils import (
     is_migration_failure,
-    is_migration_success,
 )
 from dblift.db.base_quirks import BaseQuirks
 
@@ -347,51 +345,12 @@ class MigrationStateManager:
     def resolve_current_schema_version(
         self, snapshot: Optional[MigrationReadSnapshot] = None
     ) -> Optional[str]:
-        """Derive the header/footer version, excluding undone but not reapplied versions."""
+        """Derive the header/footer version from effective history."""
         applied_migrations = self.get_applied_migrations(snapshot)
         if not applied_migrations:
             self.logger.debug("No applied migrations found, schema version will be <none>")
             return None
-
-        ranks = latest_successful_ranks(applied_migrations)
-        # Undo presence also counts zero/missing ranks and case-insensitive types,
-        # while the shared reapply predicate keeps its existing rank/type rules.
-        undone_versions = {
-            str(m.version)
-            for m in applied_migrations
-            if migration_type_name(getattr(m, "type", None)).upper() == "UNDO_SQL"
-            and getattr(m, "version", None)
-            and is_migration_success(getattr(m, "success", None))
-        }
-        reapplied_versions = {version for version, state in ranks.items() if state.reapplied}
-        undone_but_not_reapplied = undone_versions - reapplied_versions
-        applied_migrations_filtered = [
-            m
-            for m in applied_migrations
-            if (
-                self._get_type_name(m) not in VERSIONED_SCRIPT_TYPES
-                or str(getattr(m, "version", "")) not in undone_but_not_reapplied
-            )
-        ]
-        current_version = self.get_current_version(applied_migrations_filtered)
-        schema_version = current_version if current_version else None
-
-        try:
-            applied_count = (
-                len(applied_migrations) if hasattr(applied_migrations, "__len__") else "unknown"
-            )
-            filtered_count = (
-                len(applied_migrations_filtered)
-                if hasattr(applied_migrations_filtered, "__len__")
-                else "unknown"
-            )
-            self.logger.debug(
-                f"Retrieved schema version: {schema_version} from {applied_count} applied migrations (filtered: {filtered_count})"
-            )
-        except (TypeError, AttributeError):
-            pass
-
-        return schema_version
+        return self.get_current_version(applied_migrations)
 
     def build_state(
         self,
@@ -827,8 +786,7 @@ class MigrationStateManager:
                     all_migrations.get(migration_type, all_migrations.get(migration_type.name, []))
                 )
 
-        # Step 3: Determine current version from applied migrations (excluding undone ones)
-        # Filter out undone migrations before calculating current version.
+        # Step 3: Identify versions left undone for pending catalog selection.
         # Reapplied versions are those whose latest successful versioned rank
         # outranks the latest successful undo (see latest_successful_ranks).
         ranks = latest_successful_ranks(applied_migrations)
@@ -839,20 +797,6 @@ class MigrationStateManager:
         }
 
         effective_undone_versions = undone_versions - reapplied_versions
-        applied_migrations_filtered = [
-            m
-            for m in applied_migrations
-            if (
-                # Keep non-versioned migrations (repeatable, callback, etc.)
-                self._get_type_name(m) not in VERSIONED_SCRIPT_TYPES
-                # Keep versioned migrations that haven't been undone
-                or str(getattr(m, "version", "")) not in effective_undone_versions
-            )
-        ]
-        current_version = self.get_current_version(applied_migrations_filtered)
-        if current_version:
-            self.logger.debug(f"Current applied version: {current_version}")
-
         # Step 4: Catalog unresolved on-disk scripts (do not omit by
         # baseline/target/undo/tags — commands select from this set later)
         pending: List[Migration] = []
@@ -887,38 +831,8 @@ class MigrationStateManager:
         return pending
 
     def get_current_version(self, applied_migrations: List[Migration]) -> Optional[str]:
-        """Highest successfully applied version among SQL and BASELINE migrations.
-
-        Args:
-            applied_migrations: Applied migration rows (e.g. from state or history)
-
-        Returns:
-            Version string, or ``None`` if none qualify.
-        """
-        return self._get_current_version(applied_migrations)
-
-    def _get_current_version(self, applied_migrations: List[Migration]) -> Optional[str]:
-        """Get the highest successfully applied version."""
-        applied_versions = []
-
-        for m in applied_migrations:
-            m_type = self._get_type_name(m)
-            # Include both SQL and BASELINE migrations
-            if m_type in VERSIONED_SCRIPT_TYPES | {"BASELINE"}:
-                is_success = self.migration_rules.is_success(m)
-                if is_success and getattr(m, "version", None):
-                    applied_versions.append(m.version)
-
-        if not applied_versions:
-            return None
-
-        # Find highest version
-        highest = applied_versions[0]
-        for v in applied_versions[1:]:
-            if self.script_manager.compare_versions(v, highest) > 0:
-                highest = v
-
-        return highest
+        """Return the highest active successful version or baseline."""
+        return effective_current_version(applied_migrations, self.script_manager.compare_versions)
 
     def _is_versioned_pending(
         self,

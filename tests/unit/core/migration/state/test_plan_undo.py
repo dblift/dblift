@@ -54,6 +54,7 @@ def _manager(
     """A manager whose history is ``applied`` and whose catalog holds ``U`` scripts."""
     scripts = [_undo_script(v) for v in undo_versions]
     state = MigrationState(
+        current_version=current_version if applied else None,
         pending=[
             MigrationEntry(s.script_name, s.version, "m", "UNDO_SQL", AVAILABLE, None)
             for s in scripts
@@ -64,7 +65,6 @@ def _manager(
     )
     manager = MigrationStateManager(MagicMock(), MagicMock(), MagicMock(), MagicMock())
     manager.build_state = MagicMock(return_value=state)
-    manager.get_current_version = MagicMock(return_value=current_version)
     return manager, state, scripts
 
 
@@ -108,13 +108,11 @@ def test_plan_is_the_latest_undoable_migration_with_its_script() -> None:
     assert "tags" not in kwargs and "versions" not in kwargs
 
 
-def test_current_version_is_read_from_the_applied_objects() -> None:
+def test_current_version_is_read_from_the_state() -> None:
     v1 = _applied("1", 1)
     manager, state, _ = _manager([v1], ["1"])
 
-    _plan(manager)
-
-    manager.get_current_version.assert_called_once_with(state.applied_objects)
+    assert _plan(manager).current_version == state.current_version
 
 
 def test_no_history_gives_no_current_version_and_no_steps() -> None:
@@ -124,7 +122,6 @@ def test_no_history_gives_no_current_version_and_no_steps() -> None:
 
     assert plan.current_version is None
     assert plan.steps == () and plan.selected == () and plan.refusal is None
-    manager.get_current_version.assert_not_called()
 
 
 def test_failed_and_non_versioned_rows_are_not_candidates() -> None:

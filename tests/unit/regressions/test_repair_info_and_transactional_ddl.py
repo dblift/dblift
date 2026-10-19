@@ -12,7 +12,7 @@ These tests guard against re-introduction of the following bugs:
   → Fixed: ValueError/FileExistsError return result with success=False; FileNotFoundError
     emits failure then re-raises for exception-based callers / batch flows
 - InfoCommand current_schema_version never populated
-  → Fixed: populated from applied_migrations via state_manager.get_current_version
+  → Fixed: populated from the built migration state
 - InfoCommand status normalized to "APPLIED" instead of "SUCCESS"
   → Fixed: "APPLIED" maps to "SUCCESS"; "BASELINE" stays distinct as "BASELINE"
 - SQLite CASE...END inside triggers confused BEGIN/END detection
@@ -239,20 +239,25 @@ class TestValidateSqlClientInit:
 class TestInfoCommandRegressions:
     """Regression: InfoCommand must populate current_schema_version and normalize status."""
 
-    def test_current_schema_version_populated(self):
-        """InfoCommand must populate current_schema_version from applied migrations."""
-        import inspect
+    def test_current_schema_version_populated(self, tmp_path):
+        """InfoCommand reports the effective version in a real SQLite history."""
+        from sqlalchemy import create_engine
 
-        from dblift.core.migration.commands.info_command import InfoCommand
+        from dblift.api import DBLiftClient
 
-        source = inspect.getsource(InfoCommand.execute)
-        # Must resolve current version from state manager and set result.current_schema_version
-        assert (
-            "get_current_version" in source
-        ), "InfoCommand.execute must call state_manager.get_current_version"
-        assert (
-            "result.current_schema_version" in source
-        ), "InfoCommand.execute must set result.current_schema_version"
+        scripts = tmp_path / "migrations"
+        scripts.mkdir()
+        (scripts / "V3__create_t.sql").write_text("CREATE TABLE t (id INTEGER);")
+        engine = create_engine(f"sqlite:///{tmp_path / 'app.db'}")
+        client = DBLiftClient.from_sqlalchemy(engine, migrations_dir=str(scripts))
+        try:
+            assert client.migrate().success
+            info = client.info()
+            assert info.success, info.error_message
+            assert info.current_schema_version == "3"
+        finally:
+            client.close()
+            engine.dispose()
 
     def test_status_applied_maps_to_success(self):
         """Status 'APPLIED' must be normalized to 'SUCCESS'."""

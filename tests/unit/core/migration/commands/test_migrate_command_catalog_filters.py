@@ -148,7 +148,7 @@ class TestMigrateSelectsPendingFromCatalog(unittest.TestCase):
         out_of_order = _migration("V1.5__late.sql", "1.5")
         state = _catalog_state((out_of_order, MigrationDisplayState.PENDING.value))
         cmd = _make_cmd(state, strict_mode=True)
-        cmd.state_manager.get_current_version.return_value = "2"
+        state.current_version = "2"
         cmd.state_manager.build_state.side_effect = None
         cmd.state_manager.build_state.return_value = state
 
@@ -164,7 +164,7 @@ class TestMigrateSelectsPendingFromCatalog(unittest.TestCase):
         out_of_order = _migration("V1.5__late.sql", "1.5")
         state = _catalog_state((out_of_order, MigrationDisplayState.PENDING.value))
         cmd = _make_cmd(state, strict_mode=True)
-        cmd.state_manager.get_current_version.return_value = "2"
+        state.current_version = "2"
 
         result = _execute(cmd)
 

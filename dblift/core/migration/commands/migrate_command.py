@@ -312,10 +312,7 @@ class MigrateCommand(BaseCommand):
             versions=None,
             exclude_versions=None,
         )
-        applied_migrations_after = migration_state_after.applied_objects
-        updated_version = self.state_manager.get_current_version(applied_migrations_after)
-        if updated_version:
-            result.current_schema_version = updated_version
+        result.current_schema_version = migration_state_after.current_version
 
     def execute(
         self,

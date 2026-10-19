@@ -33,6 +33,7 @@ def _manager(rows, current_version):
     logger = MagicMock()
     manager = MigrationStateManager(logger, MagicMock(), MagicMock(), MagicMock())
     state = MigrationState(
+        current_version=current_version,
         pending=[
             MigrationEntry(m.script_name, m.version, "m", "SQL", status, None) for m, status in rows
         ],
@@ -40,7 +41,6 @@ def _manager(rows, current_version):
         applied_objects=[],
     )
     manager.build_state = MagicMock(return_value=state)
-    manager.get_current_version = MagicMock(return_value=current_version)
     return manager, state, logger
 
 

@@ -308,7 +308,7 @@ class TestUndoCommandBuildStateFailure(unittest.TestCase):
         migration = _make_migration("1", MigrationType.SQL)
         cmd = _make_undo_command([migration])
         cmd.state_manager.build_state.return_value.all_applied_objects = [migration]
-        cmd.state_manager.get_current_version.side_effect = RuntimeError("version unavailable")
+        cmd.state_manager.build_state.side_effect = RuntimeError("version unavailable")
         cmd._run_preflight = MagicMock()
         cmd._log_command_header_update = MagicMock()
         cmd._log_current_schema_version = MagicMock()
@@ -318,6 +318,7 @@ class TestUndoCommandBuildStateFailure(unittest.TestCase):
 
         self.assertFalse(result.success)
         self.assertEqual(result.error_message, "Undo operation failed: version unavailable")
+        cmd.execution_engine.execute_migration.assert_not_called()
 
 
 class TestInfoCommandScriptScanFailure(unittest.TestCase):
@@ -456,7 +457,7 @@ class TestInfoCommandDatabaseInfo(unittest.TestCase):
 
         applied = [SimpleNamespace(version="3", type=MigrationType.SQL, success=True)]
         cmd, _ = _make_info_command(applied_objects=applied)
-        cmd.state_manager.get_current_version.return_value = "3"
+        cmd.state_manager.build_state.return_value.current_version = "3"
         result = cmd.execute(Path("/tmp"))
         self.assertEqual(result.current_schema_version, "3")
 
