@@ -200,16 +200,9 @@ def test_parser_failure_yields_an_error_and_no_statements(monkeypatch):
     assert analysis.errors == ("parser error: no parser",)
 
 
-def test_blank_statements_are_skipped_and_unknown_text_has_unknown_kind(monkeypatch):
+def test_unknown_text_has_unknown_kind_and_is_listed_as_it_is(monkeypatch):
     parsed = SimpleNamespace(
         statements=[
-            SimpleNamespace(
-                sql_text="   ",
-                statement_type=None,
-                affected_objects=[],
-                names_unread=False,
-                objects=[],
-            ),
             SimpleNamespace(
                 sql_text="FROBNICATE x",
                 statement_type=None,
@@ -231,6 +224,7 @@ def test_blank_statements_are_skipped_and_unknown_text_has_unknown_kind(monkeypa
     assert [(s.index, s.operation, s.kind) for s in analysis.statements] == [
         (0, "FROBNICATE", "UNKNOWN")
     ]
+    assert [s.sql for s in analysis.statements] == ["FROBNICATE x"]
     assert analysis.cautions == ()
 
 
