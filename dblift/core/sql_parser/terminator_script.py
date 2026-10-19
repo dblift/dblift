@@ -119,7 +119,6 @@ class _Walk:
             if line.kind == "blank":
                 return
             self.start, self.body = line.number, RoutineBody(self.rules.routine)
-            self.unit_start = line.start + len(line.text) - len(line.text.lstrip(self.text_blanks))
             self.stray_line = self.last_code = 0
         self._append(line)
         if line.body_end >= 0:
@@ -285,7 +284,9 @@ class _Walk:
         segs = self.segs if cut < 0 else self.segs[:cut]
         text, start = self.text, self.start
         for first, last in segs:  # the statement starts on the first line with anything on it
-            if text[first:last].strip(self.text_blanks):
+            kept = text[first:last].lstrip(self.text_blanks)
+            if kept.rstrip(self.text_blanks):
+                self.unit_start = last - len(kept)
                 break
             start += 1
         statement = "\n".join(text[first:last] for first, last in segs).strip(self.text_blanks)

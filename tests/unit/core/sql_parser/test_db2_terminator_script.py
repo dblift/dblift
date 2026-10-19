@@ -199,12 +199,12 @@ def test_line_comment_field_is_read_by_the_overlap_rule():
     assert outcome(script)[2].startswith("line 2 ends with '/*', which is also part")
 
 
-def test_blanks_field_governs_the_directive_line_not_the_statement_start():
+def test_blanks_field_classifies_lines_and_does_not_move_a_statement_start_within_a_line():
     wide = replace(DB2_SPEC, terminator_script=replace(DB2_RULES, blanks=" \t" + VT))
-    directive = VT + "--#SET TERMINATOR @\nVALUES 1@\n"
-    assert outcome(directive)[1][3:5] == ["sql", 0]  # VT is no blank here: not a directive
-    assert outcome(directive, wide)[1][:2] == ["VALUES 1@", 2]  # in the wide set it is
-    script = VT + "VALUES 1;\n"
+    only_vt = VT + "\nVALUES 1;\n"  # a line of VT: code by default, a blank line in the wide set
+    assert outcome(only_vt) == ["records", [VT + "\nVALUES 1", 1, ";", "sql", 0, 12]]
+    assert outcome(only_vt, wide) == ["records", ["VALUES 1", 2, ";", "sql", 2, 12]]
+    script = VT + "VALUES 1;\n"  # VT before the text on its line: text_blanks decides, not blanks
     expected = ["records", [VT + "VALUES 1", 1, ";", "sql", 0, 11]]
     assert outcome(script) == expected
     assert outcome(script, wide) == expected
@@ -217,14 +217,23 @@ def test_blanks_field_governs_the_directive_line_not_the_statement_start():
         ("\n\nVALUES 1;\n", 3),
         ("\r\n  VALUES 1;\n", 2),
         ("\u00a0VALUES 1;\n", 1),
+        ("\r\r\nVALUES 1;\n", 2),
+        ("\r \r\nVALUES 1;\n", 2),
     ],
-    ids=["cr", "blank-lines", "crlf-indent", "nbsp"],
+    ids=["cr", "blank-lines", "crlf-indent", "nbsp", "cr-only-line", "cr-blank-cr-line"],
 )
 def test_statement_span_starts_at_the_first_kept_character(script, line):
     (record,) = LexicalEngine(DB2_SPEC).split(script)
     assert record.line == line
     assert script[record.source_start : record.source_end].startswith(record.text)
     assert script[record.source_start] == record.text[0]
+
+
+def test_statement_span_after_a_cr_only_line_in_a_later_statement():
+    script = "VALUES 1;\r\n\r\r\n  VALUES 2;\r\n"
+    first, second = LexicalEngine(DB2_SPEC).split(script)
+    assert (second.text, second.line) == ("VALUES 2", 3)
+    assert script[second.source_start :].startswith("VALUES 2")
 
 
 def test_line_comment_field_is_read_by_the_semicolon_ending():
