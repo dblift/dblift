@@ -96,7 +96,9 @@ def _undone_then_deleted(env: Env) -> Set[str]:
     env.write("U2__b.sql", "DROP TABLE b;")
     assert env.client().undo().success
     (env.migrations / "U2__b.sql").unlink()
-    return _delete_v2(env)
+    _delete_v2(env)
+    # An undone version is not applied, so its script is not missing.
+    return set()
 
 
 def _reapplied_then_deleted(env: Env) -> Set[str]:
@@ -110,7 +112,7 @@ def _reapplied_then_deleted(env: Env) -> Set[str]:
 _SCENARIOS: Dict[str, Callable[[Env], Set[str]]] = {
     "missing": _delete_v2,
     "qualified_row_matches_by_file_name": _qualified_row_and_delete_v2,
-    "undone_then_deleted": _undone_then_deleted,
+    "undone_version_is_not_missing": _undone_then_deleted,
     "reapplied_then_deleted": _reapplied_then_deleted,
 }
 
@@ -139,3 +141,37 @@ def test_strict_lists_a_reapplied_missing_script_once(env: Env) -> None:
         "Strict mode validation failed. Found 1 applied migration(s) without corresponding "
         "script files: V2__b.sql (version: 2). ."
     )
+
+
+def test_undone_version_with_deleted_script_is_not_missing_end_to_end(env: Env) -> None:
+    assert env.client().migrate().success
+    env.write("U2__b.sql", "DROP TABLE b;")
+    assert env.client().undo().success
+    (env.migrations / "V2__b.sql").unlink()
+    warnings: List[str] = []
+    loose = env.client()
+    logger = loose.executor.state_manager.logger
+    real = logger.warning
+
+    def warning(message, *args, **kwargs):
+        warnings.append(str(message))
+        return real(message, *args, **kwargs)
+
+    logger.warning = warning
+
+    strict = env.client(strict=True).validate()
+    non_strict = loose.validate()
+    repair = env.client().repair(dry_run=True)
+
+    assert strict.success, strict.error_message
+    assert non_strict.success, non_strict.error_message
+    assert not [w for w in warnings if "missing from the migration directory" in w]
+    assert repair.repaired_migrations == []
+
+
+def test_reapplied_version_with_deleted_script_is_missing_end_to_end(env: Env) -> None:
+    assert env.client().migrate().success
+    _reapplied_then_deleted(env)
+
+    assert env.strict_validate_missing() == {"V2__b.sql"}
+    assert env.repair_missing() == {"V2__b.sql"}

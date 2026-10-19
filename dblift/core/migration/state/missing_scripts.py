@@ -33,6 +33,9 @@ def missing_applied(
     the catalog by its file name, and a catalog script matches by its file
     name as well. Baseline and undo rows, audit rows, scripts that have a
     DELETE marker and scripts with no successful row are never missing.
+    ``history`` is the caller's applied history: the state manager passes it
+    without the versions that were undone and not reapplied, which are not
+    applied and so never missing.
     """
     present: Set[str] = set()
     for script in catalog:

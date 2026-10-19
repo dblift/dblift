@@ -93,24 +93,17 @@ def test_history_lookup_scales_and_preserves_supplied_order(tmp_path):
                 history(script, checksum=4, type=MigrationType.DELETE, rank=5),
             ]
         )
+    # The state layer's answers come from plain copies, so the counters measure the validator.
+    drift = find_checksum_drift(list(scripts), list(rows))
+    missing = missing_applied(list(scripts), list(rows))
     rows = CountingList(rows)
     scripts = CountingList(scripts)
     result, issues = ValidationResult(), []
-    validator()._validate_checksums(
-        scripts,
-        rows,
-        result,
-        issues,
-        drift=find_checksum_drift(scripts, rows),
-        missing=missing_applied(scripts, rows),
-    )
+    validator()._validate_checksums(scripts, rows, result, issues, drift=drift, missing=missing)
     assert issues == []
     assert result.checked_scripts == [script.script_name for script in scripts]
-    # The validator scans the history 3 times; the drift and missing-script answers it
-    # is given take 1 and 2.
-    assert rows.visits <= 6 * len(rows)
-    # The missing-script answer scans the catalog once more.
-    assert scripts.visits <= 4 * len(scripts)
+    assert rows.visits <= 4 * len(rows)
+    assert scripts.visits <= 3 * len(scripts)
 
 
 @pytest.mark.parametrize("failed", [False, True])

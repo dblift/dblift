@@ -424,3 +424,37 @@ def test_state_missing_applied_follows_the_catalog(client, tmp_path):
     assert [m.script_name for m in state.missing_applied] == ["V2__b.sql"]
     assert state.copy().missing_applied == state.missing_applied
     assert without_catalog.missing_applied == ()
+
+
+def _applied_v1_v2_with_undo(client, tmp_path):
+    (tmp_path / "V1__a.sql").write_text("SELECT 1;")
+    (tmp_path / "V2__b.sql").write_text("SELECT 2;")
+    (tmp_path / "U2__b.sql").write_text("SELECT -2;")
+    assert client.migrate().success
+
+
+def test_undone_version_with_deleted_script_is_not_missing(client, tmp_path):
+    _applied_v1_v2_with_undo(client, tmp_path)
+    assert client.undo().success
+    (tmp_path / "V2__b.sql").unlink()
+    manager = client.executor.state_manager
+
+    snapshot = manager.build_validation_snapshot(tmp_path, "validate")
+    state = manager.build_state(tmp_path)
+
+    assert snapshot.missing_applied == ()
+    assert state.missing_applied == ()
+
+
+def test_reapplied_version_with_deleted_script_is_missing(client, tmp_path):
+    _applied_v1_v2_with_undo(client, tmp_path)
+    assert client.undo().success
+    assert client.migrate().success
+    (tmp_path / "V2__b.sql").unlink()
+    manager = client.executor.state_manager
+
+    snapshot = manager.build_validation_snapshot(tmp_path, "validate")
+    state = manager.build_state(tmp_path)
+
+    assert [m.script_name for m in snapshot.missing_applied] == ["V2__b.sql"]
+    assert [m.script_name for m in state.missing_applied] == ["V2__b.sql"]
