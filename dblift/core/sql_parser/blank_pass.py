@@ -113,3 +113,31 @@ def kept_in_script(source: str, kept: Sequence[int], at: int) -> bool:
 def _unread(text: str, at: int) -> bool:
     """Whether the blank at ``at`` begins one of the last two bytes of ``text``."""
     return at == len(text) - 1 and len(text[at].encode()) == 2
+
+
+def shell_keeps_blank(source: str, kept: Sequence[int], rules: SegmentScriptRules) -> int:
+    """The offset of a blank the shell keeps and the pass over the whole script replaces, or -1.
+
+    The shell drops one final line ending before it parses, so a two-byte blank just before it ends
+    the text and is never read; the engine, given the script with its line ending, replaces it.
+    """
+    end = len(source) - (2 if source.endswith("\r\n") else 1 if source.endswith("\n") else 0)
+    at = end - 1
+    if rules.blank_pass is None or end == len(source) or at < 0:
+        return -1
+    if not _two_byte_blank(source[at], rules):
+        return -1
+    return -1 if kept_in_script(source, kept, at) else at
+
+
+def stray_final_blank(source: str, rules: SegmentScriptRules) -> int:
+    """The offset of a two-byte blank that ends the script, which the pass never reads, or -1."""
+    last = len(source) - 1
+    if rules.blank_pass is None or last < 0 or not _two_byte_blank(source[last], rules):
+        return -1
+    return last
+
+
+def _two_byte_blank(char: str, rules: SegmentScriptRules) -> bool:
+    """Whether ``char`` is a blank of the engine of two bytes, which the pass can leave unread."""
+    return char in rules.blanks and char >= "\x80" and len(char.encode()) == 2

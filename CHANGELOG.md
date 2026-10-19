@@ -142,6 +142,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `mariadb` client sends nothing for a piece made only of a control character and
   comments, and neither does the MariaDB splitter now; the MySQL splitter still sends it,
   as the `mysql` client does.
+- **A Snowflake statement ending in an en space (U+2002) is now read as Snowflake reads it.**
+  The en space at a statement edge is trimmed like any blank and the object name before it is
+  recognised; the other Unicode blanks stay in the text, as Snowflake rejects them. A SQL Server
+  name followed by a no-break space at the end of a script is read the same way.
 - **Oracle names followed by a blank and a terminator are read.** `DROP TABLE t<U+3000>;`
   now names `t` and its undo is generated, as the engine drops `t`; before, the name was
   reported as unreadable and the undo went to manual review.
@@ -180,6 +184,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   named another table and did nothing). A statement with a blank read either way is now
   refused before anything runs, naming the character, its line and its column, and asking you
   to remove the character.
+- **DuckDB runs the statements it needlessly refused, and refuses a stray no-break space
+  after the last statement.** A blank at the edge of a statement that DuckDB's pass replaces
+  is trimmed before the statement is compared with its script, so `DROP TABLE t<U+00A0>;`,
+  `SELECT 1 AS x<U+00A0>;` and the same with a trailing space or blank line now run what
+  DuckDB runs; they were refused because the blank, still on the statement, would be kept
+  when run alone. A statement is refused only for a blank inside its text that the two
+  readings treat differently, or for a U+00A0 just before the last line ending of the script,
+  which the `duckdb` shell keeps and the driver replaces. A U+00A0 that ends the script after
+  its last statement (`DROP TABLE t;<U+00A0>`) is now refused, naming the character, its line
+  and its column: DuckDB rejects the whole script, and dblift used to drop the blank and run
+  the statement.
+- **A DuckDB migration no longer succeeds after skipping a statement the engine rejects.**
+  A statement made only of a non-ASCII blank DuckDB keeps, or of a control character it does
+  not count as a blank (a vertical tab, U+0085, U+2028, U+001F), was skipped as empty, so
+  `/* ' */ DROP TABLE t;<U+00A0>` reported success and dropped `t` although DuckDB rejects the
+  whole script and keeps `t`. The statement is now sent and the migration fails at it.
 - **A Db2 statement made only of characters such as a no-break space or a form feed is executed.**
   It was skipped and the migration succeeded; the command line processor sends it and the server
   rejects it (SQL0104N, SQL0007N), and dblift now fails at that statement the same way. The same

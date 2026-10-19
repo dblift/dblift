@@ -453,11 +453,11 @@ def test_opaque_drop_keeps_its_caution(dialect, sql, code, reason):
     assert [(c.level, c.code, c.reason) for c in analysis.cautions] == [(DESTROYS, code, reason)]
 
 
-def test_a_duckdb_name_ending_in_a_no_break_space_before_a_terminator_is_refused():
+def test_a_duckdb_no_break_space_before_a_terminator_is_a_blank_the_engine_replaces():
     analysis = analyse_script(f"DROP SCHEMA s{UNREAD_BLANK};", "duckdb")
 
-    assert analysis.statements == () and analysis.cautions == ()
-    assert len(analysis.errors) == 1 and "kept when run alone" in analysis.errors[0]
+    assert analysis == analyse_script("DROP SCHEMA s;", "duckdb")
+    assert [c.code for c in analysis.cautions] == ["drop-schema"] and analysis.errors == ()
 
 
 @pytest.mark.parametrize("dialect", ["sqlite", "duckdb"])

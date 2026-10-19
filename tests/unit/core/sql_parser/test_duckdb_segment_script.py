@@ -655,17 +655,20 @@ def test_the_line_of_a_record_skips_the_stripped_lead():
 
 
 @pytest.mark.parametrize(
-    "script",
+    ("script", "sent"),
     [
-        "DROP TABLE t\xa0;\nSELECT 1;",
-        "DROP TABLE t\xa0\n",
-        "DROP TABLE t\xa0\r\n",
-        "DROP TABLE t\xa0\n\n",
-        "DROP TABLE t\xa0 ",
+        ("DROP TABLE t\xa0;\nSELECT 1;", ["DROP TABLE t", "SELECT 1"]),
+        ("DROP TABLE t\xa0\n\n", ["DROP TABLE t"]),
+        ("DROP TABLE t\xa0 ", ["DROP TABLE t"]),
     ],
 )
-def test_a_final_nbsp_the_script_replaces_is_still_refused(script):
-    with pytest.raises(UnsafeStatementSplitError, match="U\\+00A0"):
+def test_a_final_nbsp_the_script_replaces_is_trimmed(script, sent):
+    assert ENGINE.split_statements(script) == sent
+
+
+@pytest.mark.parametrize("script", ["DROP TABLE t\xa0\n", "DROP TABLE t\xa0\r\n"])
+def test_a_final_nbsp_only_the_shell_keeps_is_still_refused(script):
+    with pytest.raises(UnsafeStatementSplitError, match="U\\+00A0 at line 1, column 13"):
         ENGINE.split_statements(script)
 
 
