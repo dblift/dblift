@@ -428,28 +428,26 @@ class TestExecuteStatements(unittest.TestCase):
         self.assertTrue(success)
 
     def test_transaction_aborted_raises_transaction_aborted_error(self):
-        """Lines 520-528: TransactionAbortedError raised when transaction is aborted."""
+        """A typed provider health failure stops the statement."""
         engine = _make_engine()
-        engine.provider.supports_transactions.return_value = True
-
-        # prepareStatement raises "transaction is aborted"
-        engine.provider.connection.prepareStatement.side_effect = Exception(
+        engine.provider.check_transaction_state.side_effect = TransactionAbortedError(
             "current transaction is aborted"
         )
         migration, result = self._make_migration_result()
 
         success = engine._execute_statements(["SELECT 1"], migration, result, time.time())
         self.assertFalse(success)
+        engine.provider.execute_statement.assert_not_called()
 
     def test_non_transaction_aborted_precheck_error_propagates(self):
-        """Lines 529-530: Non-aborted pre-check error → raised → failure path."""
+        """A distinct provider health error reaches the failure path unchanged."""
         engine = _make_engine()
-        engine.provider.supports_transactions.return_value = True
-        engine.provider.connection.prepareStatement.side_effect = Exception("connection lost")
+        engine.provider.check_transaction_state.side_effect = ConnectionError("connection lost")
         migration, result = self._make_migration_result()
 
         success = engine._execute_statements(["SELECT 1"], migration, result, time.time())
         self.assertFalse(success)
+        engine.provider.execute_statement.assert_not_called()
 
     def test_sql_execution_service_query_result(self):
         """Lines 532-547: sql_execution_service returns is_query=True."""
@@ -484,31 +482,28 @@ class TestExecuteStatements(unittest.TestCase):
         success = engine._execute_statements(["SELECT 1"], migration, result, time.time())
         self.assertFalse(success)
 
-    def test_precheck_attribute_error_falls_back_to_execute_query(self):
-        """Lines 508-510: prepareStatement raises AttributeError → execute_query."""
+    def test_health_hook_is_used_before_statement(self):
+        """The engine delegates health to the provider before execution."""
         engine = _make_engine()
-        engine.provider.supports_transactions.return_value = True
-        engine.provider.connection.prepareStatement.side_effect = AttributeError(
-            "no prepareStatement"
-        )
-        engine.provider.execute_query.return_value = [{"1": 1}]
         engine.provider.execute_statement.return_value = 0
         migration, result = self._make_migration_result()
 
         success = engine._execute_statements(["SELECT 1"], migration, result, time.time())
         self.assertTrue(success)
+        engine.provider.check_transaction_state.assert_called_once_with()
+        engine.provider.execute_query.assert_not_called()
 
-    def test_no_connection_uses_execute_query_fallback(self):
-        """Lines 518-519: No connection → execute_query directly."""
+    def test_health_hook_does_not_require_engine_connection(self):
+        """The engine can delegate health without inspecting a connection."""
         engine = _make_engine()
-        engine.provider.supports_transactions.return_value = True
-        engine.provider.connection = None  # No connection
-        engine.provider.execute_query.return_value = [{"1": 1}]
+        engine.provider.connection = None
         engine.provider.execute_statement.return_value = 0
         migration, result = self._make_migration_result()
 
         success = engine._execute_statements(["SELECT 1"], migration, result, time.time())
         self.assertTrue(success)
+        engine.provider.check_transaction_state.assert_called_once_with()
+        engine.provider.execute_query.assert_not_called()
 
     def test_whenever_sqlerror_continue_skips_statement_error(self):
         """Lines 573-584: WHENEVER SQLERROR CONTINUE → continue on DB error."""

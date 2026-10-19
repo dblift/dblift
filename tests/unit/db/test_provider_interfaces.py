@@ -75,7 +75,12 @@ class TestSchemaProviderABC:
 
 class TestTransactionalProviderABC:
     def test_abstract_methods(self):
-        expected = {"begin_transaction", "commit_transaction", "rollback_transaction"}
+        expected = {
+            "begin_transaction",
+            "commit_transaction",
+            "rollback_transaction",
+            "check_transaction_state",
+        }
         assert TransactionalProvider.__abstractmethods__ == expected
 
     def test_supports_transactions_is_concrete(self):
@@ -86,6 +91,7 @@ class TestTransactionalProviderABC:
         """Default supports_transactions() returns True."""
 
         class ConcreteTransactional(TransactionalProvider):
+            def check_transaction_state(self) -> None: ...
             def begin_transaction(self) -> None: ...
             def commit_transaction(self) -> None: ...
             def rollback_transaction(self) -> None: ...
@@ -94,6 +100,7 @@ class TestTransactionalProviderABC:
 
     def test_supports_snapshots_compatibility_shim_delegates_to_schema(self, monkeypatch):
         class ConcreteTransactional(TransactionalProvider):
+            def check_transaction_state(self) -> None: ...
             def begin_transaction(self) -> None: ...
             def commit_transaction(self) -> None: ...
             def rollback_transaction(self) -> None: ...

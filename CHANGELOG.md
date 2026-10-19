@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Transactional provider health is provider-owned.** Custom transactional
+  providers must implement `check_transaction_state()`. The engine calls it
+  immediately before each executed SQL statement; the provider sends its
+  dialect's connection probe through its native query path, closes any
+  driver-owned resources, and maps an aborted transaction to
+  `TransactionAbortedError` while preserving other errors. This is a v5
+  provider contract break.
 - **Migration selection uses typed catalog eligibility.** Changing displayed state
   labels no longer changes which scripts migrate or undo selects. Internal
   `MigrationState` constructors now take `catalog` records instead of `pending`
@@ -102,6 +109,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Oracle names followed by a blank and a terminator are read.** `DROP TABLE t<U+3000>;`
+  now names `t` and its undo is generated, as the engine drops `t`; before, the name was
+  reported as unreadable and the undo went to manual review.
 - **SQLite execution errors show one failed SQL preview in CLI logs.**
   For versioned migrations and SQL callbacks, the execution service reports the
   failed statement while SQLite still reports the database error.
