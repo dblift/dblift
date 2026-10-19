@@ -9,8 +9,11 @@ import pytest
 
 from dblift.core.migration.commands.undo_command import UndoCommand
 from dblift.core.migration.migration import MigrationType
-from dblift.core.migration.state.migration_display_state import MigrationDisplayState
-from dblift.core.migration.state.migration_state import MigrationEntry, MigrationState
+from dblift.core.migration.state.migration_state import (
+    CatalogMigration,
+    MigrationEligibility,
+    MigrationState,
+)
 from tests.unit.core.migration.commands._plan_undo_wiring import wire_plan_undo
 
 
@@ -38,10 +41,6 @@ def _undo_script(version, script_name=None):
         format=SimpleNamespace(name="SQL"),
         content=None,
     )
-
-
-def _entry(script, version, status, type_="UNDO_SQL"):
-    return MigrationEntry(script, str(version), "test", type_, status, None)
 
 
 def _make_command(state, *, scan_scripts=None):
@@ -92,10 +91,7 @@ class TestUndoResolvesAvailableFromCatalog:
         catalog_undo = _undo_script(2, "U2__from_catalog.sql")
         scan_undo = _undo_script(2, "U2__from_scan.sql")
         state = MigrationState(
-            pending=[
-                _entry("U2__from_catalog.sql", "2", MigrationDisplayState.AVAILABLE.value),
-            ],
-            pending_objects=[catalog_undo],
+            catalog=(CatalogMigration(catalog_undo, MigrationEligibility.UNDO_AVAILABLE),),
             applied_objects=[applied],
             all_applied_objects=[applied],
         )
@@ -111,8 +107,7 @@ class TestUndoResolvesAvailableFromCatalog:
         applied = _applied(2)
         catalog_undo = _undo_script(2)
         state = MigrationState(
-            pending=[_entry(catalog_undo.script_name, "2", MigrationDisplayState.AVAILABLE.value)],
-            pending_objects=[catalog_undo],
+            catalog=(CatalogMigration(catalog_undo, MigrationEligibility.UNDO_AVAILABLE),),
             applied_objects=[applied],
             all_applied_objects=[applied],
         )
@@ -141,11 +136,10 @@ class TestUndoResolvesAvailableFromCatalog:
         u2 = _undo_script(2)
         u3 = _undo_script(3)
         state = MigrationState(
-            pending=[
-                _entry(u2.script_name, "2", MigrationDisplayState.AVAILABLE.value),
-                _entry(u3.script_name, "3", MigrationDisplayState.AVAILABLE.value),
-            ],
-            pending_objects=[u2, u3],
+            catalog=(
+                CatalogMigration(u2, MigrationEligibility.UNDO_AVAILABLE),
+                CatalogMigration(u3, MigrationEligibility.UNDO_AVAILABLE),
+            ),
             applied_objects=[v1, v2, v3],
             all_applied_objects=[v1, v2, v3],
         )

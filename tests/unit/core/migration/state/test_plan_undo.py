@@ -11,13 +11,16 @@ import pytest
 
 from dblift.core.migration.migration import MigrationType
 from dblift.core.migration.rules.migration_rules import GROUP_TAG_PREFIX, MigrationRules
-from dblift.core.migration.state.migration_display_state import MigrationDisplayState
-from dblift.core.migration.state.migration_state import MigrationEntry, MigrationState
+from dblift.core.migration.state.migration_state import (
+    CatalogMigration,
+    MigrationEligibility,
+    MigrationState,
+)
 from dblift.core.migration.state.migration_state_manager import MigrationStateManager
 from dblift.core.migration.state.undo_plan import UndoPlan, UndoStep
 
-AVAILABLE = MigrationDisplayState.AVAILABLE.value
-PENDING = MigrationDisplayState.PENDING.value
+AVAILABLE = MigrationEligibility.UNDO_AVAILABLE
+PENDING = MigrationEligibility.PENDING
 
 
 def _applied(
@@ -50,16 +53,13 @@ def _manager(
     undo_versions: Sequence[str],
     *,
     current_version: Optional[str] = "9",
+    eligibility: MigrationEligibility = AVAILABLE,
 ):
     """A manager whose history is ``applied`` and whose catalog holds ``U`` scripts."""
     scripts = [_undo_script(v) for v in undo_versions]
     state = MigrationState(
         current_version=current_version if applied else None,
-        pending=[
-            MigrationEntry(s.script_name, s.version, "m", "UNDO_SQL", AVAILABLE, None)
-            for s in scripts
-        ],
-        pending_objects=scripts,
+        catalog=tuple(CatalogMigration(s, eligibility) for s in scripts),
         applied_objects=[a for a in applied if a.type != MigrationType.UNDO_SQL],
         all_applied_objects=applied,
     )
@@ -230,8 +230,7 @@ def test_a_missing_undo_script_refuses_the_whole_plan() -> None:
 
 def test_a_catalog_script_that_is_not_available_does_not_count() -> None:
     v1 = _applied("1", 1)
-    manager, state, _ = _manager([v1], ["1"])
-    state.pending[0].status = PENDING
+    manager, _, _ = _manager([v1], ["1"], eligibility=PENDING)
 
     plan = _plan(manager)
 

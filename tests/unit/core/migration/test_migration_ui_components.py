@@ -198,7 +198,7 @@ class TestMigrationUIGetMigrationData(unittest.TestCase):
     def test_new_mode_with_migration_state(self):
         """migration_state-based path returns a list."""
         all_applied = [_make_migration()]
-        state = MigrationState(pending_objects=[], all_applied_objects=all_applied)
+        state = MigrationState(all_applied_objects=all_applied)
         result = self.ui.get_migration_data(
             migration_state=state,
             all_applied_migrations=all_applied,
@@ -209,7 +209,7 @@ class TestMigrationUIGetMigrationData(unittest.TestCase):
         """When the UI already holds a script_manager, it's handed to the collector."""
         sm = MagicMock()
         self.ui.script_manager = sm
-        state = MigrationState(pending_objects=[], all_applied_objects=[])
+        state = MigrationState(all_applied_objects=[])
         self.ui.get_migration_data(migration_state=state, all_applied_migrations=[])
         assert self.ui.data_collector.script_manager is sm
 
@@ -223,7 +223,7 @@ class TestMigrationUIDisplayMigrationInfo(unittest.TestCase):
     def test_renders_table_and_logs_summary(self):
         """End-to-end: real MigrationUI/TableRenderer, no mocked collaborators."""
         m = _make_migration()
-        state = MigrationState(pending_objects=[], all_applied_objects=[m])
+        state = MigrationState(all_applied_objects=[m])
         self.ui.display_migration_info(migration_state=state, all_applied_migrations=[m])
 
         self.ui.log.info.assert_called_once()

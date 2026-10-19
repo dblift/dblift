@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Migration selection uses typed catalog eligibility.** Changing displayed state
+  labels no longer changes which scripts migrate or undo selects. Internal
+  `MigrationState` constructors now take `catalog` records instead of `pending`
+  and `pending_objects`; serialized state and CLI output keep their existing keys.
 - **Providers are discovered once per process.** A `dblift.providers` entry point that
   becomes installed after the first database lookup is no longer picked up until the
   process restarts; register it explicitly with `ProviderRegistry.register_plugin`.

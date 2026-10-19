@@ -10,8 +10,11 @@ import pytest
 
 from dblift.core.migration.commands.migrate_command import MigrateCommand
 from dblift.core.migration.migration import MigrationType
-from dblift.core.migration.state.migration_display_state import MigrationDisplayState
-from dblift.core.migration.state.migration_state import MigrationEntry, MigrationState
+from dblift.core.migration.state.migration_state import (
+    CatalogMigration,
+    MigrationEligibility,
+    MigrationState,
+)
 from tests.unit.core.migration.commands._plan_migrate_wiring import wire_plan_migrate
 
 
@@ -45,17 +48,7 @@ def test_python_migrations_trigger_versioned_callbacks(monkeypatch):
     )
     command.state_manager.build_state.return_value = MigrationState(
         applied_objects=[],
-        pending_objects=[python_migration],
-        pending=[
-            MigrationEntry(
-                python_migration.script_name,
-                python_migration.version,
-                None,
-                "PYTHON",
-                MigrationDisplayState.PENDING.value,
-                None,
-            )
-        ],
+        catalog=(CatalogMigration(python_migration, MigrationEligibility.PENDING),),
     )
     command.state_manager.get_current_version.return_value = None
     command.state_manager.apply_filters_to_migrations.side_effect = (

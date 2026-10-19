@@ -54,8 +54,7 @@ def _make_undo_cmd(history_manager=None, provider=None):
     migration_state = MagicMock()
     migration_state.applied_objects = []
     migration_state.all_applied_objects = []
-    migration_state.pending_objects = []
-    migration_state.pending = []
+    migration_state.catalog = ()
     state_manager.build_state.return_value = migration_state
     state_manager.get_current_version.return_value = None
     from dblift.core.migration.state.migration_state_manager import MigrationStateManager

@@ -11,6 +11,7 @@ from typing import Any, Dict
 from dblift.core.logger import Log
 from dblift.core.migration.migration import normalize_migration_checksum
 from dblift.core.migration.state.migration_display_state import MigrationDisplayState
+from dblift.core.migration.state.migration_state import MigrationEligibility
 from dblift.core.migration.version_utils import compare_versions as _compare_versions_shared
 from dblift.core.migration.version_utils import is_migration_failure, is_migration_success
 
@@ -140,17 +141,17 @@ class MigrationStateService:
         # Default fallback
         return MigrationDisplayState.UNKNOWN
 
-    def determine_pending_state(
+    def determine_pending_eligibility(
         self, migration: Any, context: Dict[str, Any]
-    ) -> MigrationDisplayState:
-        """Determine the display state for a pending migration.
+    ) -> MigrationEligibility:
+        """Determine eligibility for an unresolved on-disk migration.
 
         Args:
             migration: Migration object to analyze
             context: Context dictionary containing analysis results
 
         Returns:
-            MigrationDisplayState: The appropriate display state
+            MigrationEligibility: The migration's execution eligibility
         """
         # Get context data
         baseline_version = context.get("baseline_version")
@@ -164,25 +165,25 @@ class MigrationStateService:
 
         # Handle different migration types
         if migration_type == "REPEATABLE":
-            return MigrationDisplayState.PENDING
+            return MigrationEligibility.PENDING
 
         if migration_type == "UNDO_SQL":
             # Check if the corresponding versioned migration was undone
             # For now, just show as available
-            return MigrationDisplayState.AVAILABLE
+            return MigrationEligibility.UNDO_AVAILABLE
 
         # Handle versioned migrations
         if version:
             # Check if at or below baseline (baselined versions must not be Pending)
             if baseline_version and self._compare_versions(version, baseline_version) <= 0:
-                return MigrationDisplayState.BELOW_BASELINE
+                return MigrationEligibility.BELOW_BASELINE
 
             # Check if above target
             if target_version and self._compare_versions(version, target_version) > 0:
-                return MigrationDisplayState.ABOVE_TARGET
+                return MigrationEligibility.ABOVE_TARGET
 
         # Default pending state
-        return MigrationDisplayState.PENDING
+        return MigrationEligibility.PENDING
 
     def _compare_versions(self, version1: str, version2: str) -> int:
         """Compare two version strings. Delegates to shared compare_versions utility."""
