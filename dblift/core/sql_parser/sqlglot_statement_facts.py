@@ -50,8 +50,9 @@ _POSTGRES_HEAD = re.compile(
     rf"^\s*(CREATE|ALTER|DROP)\s+"
     rf"(?:(?:OR\s+REPLACE|UNLOGGED|TEMP|TEMPORARY|UNIQUE|CONSTRAINT|IF|NOT|EXISTS)\s+)*"
     rf"(VIRTUAL\s+TABLE|MATERIALIZED\s+VIEW|TABLE|VIEW|INDEX|TRIGGER|FUNCTION|PROCEDURE"
-    rf"|SEQUENCE|TYPE|SCHEMA|EXTENSION)\s+(?:(?:IF|NOT|EXISTS)\s+)*"
-    rf"(?!(?:IF|NOT|EXISTS|AUTHORIZATION|OR|REPLACE)\b)({_NAME})(?:\s*\.\s*({_NAME}))?",
+    rf"|SEQUENCE|TYPE|SCHEMA|EXTENSION)\s+(?:(?:CONCURRENTLY|IF|NOT|EXISTS)\s+)*"
+    rf"(?!(?:IF|NOT|EXISTS|AUTHORIZATION|OR|REPLACE|CONCURRENTLY)\b)"
+    rf"({_NAME})(?:\s*\.\s*({_NAME}))?",
     re.IGNORECASE,
 )
 _POSTGRES_HEAD_SCAN = re.compile(
@@ -1211,6 +1212,15 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
                     sources = _referenced(ast, tuple(into.find_all(exp.Table)))
                     return StatementFacts("SELECT", "DML", (created,) + sources)
         return StatementFacts("SELECT", "QUERY", _referenced(ast))
+    if (
+        dialect == "postgres"  # lint: allow-dialect-string: PostgreSQL privileges are DDL
+        and isinstance(ast, (exp.Grant, exp.Revoke))
+    ):
+        return StatementFacts(
+            type(ast).__name__.upper(),
+            "DDL",
+            diagnostic=f"{dialect} {type(ast).__name__} privilege targets are not modelled",
+        )
     return _head_facts(
         sql, f"{dialect} {type(ast).__name__} has no statement facts mapping", dialect=dialect
     )

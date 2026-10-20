@@ -256,3 +256,37 @@ def test_a_head_name_glued_to_a_no_break_space_stays_unnamed():
 
     assert facts.objects == ()
     assert (facts.operation, facts.kind) == ("CREATE", "DDL")
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "CREATE INDEX CONCURRENTLY ix ON ONLY t (a)",
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS ix ON ONLY t (a)",
+    ],
+)
+def test_concurrently_is_a_modifier_never_the_index_name(sql):
+    facts = _pg(sql)
+    assert facts.objects == (NamedObject("ix", T.INDEX, "created"),)
+
+
+def test_drop_index_concurrently_names_the_index():
+    assert _pg("DROP INDEX CONCURRENTLY IF EXISTS ix").objects == (
+        NamedObject("ix", T.INDEX, "dropped"),
+    )
+
+
+@pytest.mark.parametrize(
+    "sql,operation",
+    [("GRANT SELECT ON t TO r", "GRANT"), ("REVOKE SELECT ON t FROM r", "REVOKE")],
+)
+def test_grant_and_revoke_are_ddl_without_objects(sql, operation):
+    facts = _pg(sql)
+    assert (facts.operation, facts.kind, facts.objects) == (operation, "DDL", ())
+
+
+@pytest.mark.parametrize("dialect", ["mysql", "oracle"])
+@pytest.mark.parametrize("sql", ["GRANT SELECT ON t TO r", "REVOKE SELECT ON t FROM r"])
+def test_grant_and_revoke_keep_their_kind_on_other_dialects(sql, dialect):
+    facts = read_statement_facts(sql, dialect=dialect)
+    assert facts.kind == "UNKNOWN"
