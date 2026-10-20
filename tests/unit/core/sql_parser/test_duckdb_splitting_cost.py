@@ -6,7 +6,9 @@ A shape grows the script fourfold; the count may grow at most fivefold. The coun
 cost test (``tests/support/splitting_cost.py``).
 
 What no counter sees is caught by a source check over the segment path: open-ended slices of a text and
-rebuilds of a string from itself inside loops. Known limits: a rebuild through ``str.replace``, an f-string,
+rebuilds of a string from itself inside loops. Regex shapes are certified before the native matcher runs;
+the native regex VM's steps are not counted. The public-path probe constructs the tokenizer on the plain
+script before wrapping its inputs, so tokenizer construction is outside that probe. Known limits: a rebuild through ``str.replace``, an f-string,
 ``m = m + text[a:b]`` or a helper call is not seen; an accumulator that is re-joined or re-sliced per cut
 (the masked-text accumulator of the Db2 pass has the same blind spot) is not seen either; a rescan that happens once per script (the command word
 of a refusal, which raises at once) is linear by construction and not measured.
@@ -15,6 +17,7 @@ of a refusal, which raises at once) is linear by construction and not measured.
 import ast
 import inspect
 import re
+from dataclasses import replace
 import textwrap
 from pathlib import Path
 from typing import List, Optional
@@ -91,7 +94,7 @@ def counted(script: str, refusal: bool = False, meter: Optional[Meter] = None) -
     return meter.count
 
 
-def public_counted(script: str) -> tuple[int, int]:
+def public_counted(script: str) -> tuple[int, List]:
     """Enter the public engine with counted source and tokenizer inputs."""
     meter = Meter()
     original = LexicalTokenizer
@@ -105,7 +108,7 @@ def public_counted(script: str) -> tuple[int, int]:
 
     with mock.patch.object(engine_module, "LexicalTokenizer", tokenizer):
         records = LexicalEngine(DUCKDB_SPEC).split(CountingText(script, meter))
-    return meter.count, len(records)
+    return meter.count, records
 
 
 SHAPES = {
@@ -164,8 +167,18 @@ def test_duckdb_public_split_counts_repeated_record_prefixes(monkeypatch):
     shape = SHAPES["statements and comment lines"]
     small, small_records = public_counted(shape(SMALL))
     large, large_records = public_counted(shape(LARGE))
-    assert (small_records, large_records) == (SMALL, LARGE)
+    assert (len(small_records), len(large_records)) == (SMALL, LARGE)
     assert large > BOUND * small, (small, large)
+
+
+def test_duckdb_public_split_has_bounded_cost_and_ordered_records():
+    shape = SHAPES["statements and comment lines"]
+    small, first = public_counted(shape(SMALL))
+    large, records = public_counted(shape(LARGE))
+    assert len(first) == SMALL and len(records) == LARGE
+    assert [r.source_start for r in records] == [0, *range(10, 10 + (LARGE - 1) * 15, 15)]
+    assert records[0].text == "SELECT 1" and records[-1].text.endswith("SELECT 1")
+    assert small > 0 and large <= BOUND * small
 
 
 def test_the_pattern_counter_charges_the_span_a_search_scans():
@@ -185,10 +198,39 @@ def test_the_pattern_counter_charges_the_span_a_search_scans():
     "mutant",
     (r"[\s\S]*?(?=\$)", r"(?![\s\S]*\$\$)", r"(?:[\s\S]*?)?"),
 )
-def test_duckdb_number_regex_rejects_unbounded_scanning(mutant):
+def test_duckdb_number_regex_rejects_unbounded_scanning(mutant, monkeypatch):
     assert CountingPattern(re.compile(DUCKDB_RULES.number), Meter()).match(
         CountingText("123", Meter()), 0
     ) is not None
+    monkeypatch.setattr(
+        "tests.unit.core.sql_parser.test_duckdb_splitting_cost.DUCKDB_SPEC",
+        replace(DUCKDB_SPEC, segment_script=replace(DUCKDB_RULES, number=mutant)),
+    )
+    with pytest.raises(AssertionError, match="uncertified regex"):
+        public_counted("SELECT 1;")
+
+
+def test_a_failed_duckdb_tag_probe_charges_the_identifier_run():
+    meter = Meter()
+    script = "$" + "a" * 100 + "!"
+    pattern = CountingPattern(re.compile(DUCKDB_RULES.dollar_tag), meter)
+    assert pattern.match(CountingText(script, meter), 0) is None
+    assert meter.count >= 101
+    meter.count = 0
+    assert pattern.match(CountingText(script, meter), 0, 11) is None
+    assert 10 <= meter.count <= 12
+
+
+@pytest.mark.parametrize(
+    "mutant",
+    (
+        r"[A-Z_][A-Z_0-9]{100000000,}",
+        r"[A-Z_]*X",
+        r"(?:[A-Z_]+)+",
+        r"(?=[A-Z_]*X)",
+    ),
+)
+def test_uncertified_regex_shapes_are_refused(mutant):
     with pytest.raises(AssertionError, match="uncertified regex"):
         CountingPattern(re.compile(mutant), Meter())
 
