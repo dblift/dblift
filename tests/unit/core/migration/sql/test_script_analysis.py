@@ -193,7 +193,7 @@ def test_parser_failure_yields_an_error_and_no_statements(monkeypatch):
 
     monkeypatch.setattr(script_analysis, "SqlParserFactory", Boom)
 
-    analysis = analyse_script("DROP TABLE a;", "postgresql")
+    analysis = analyse_script("DROP TABLE a;", "oracle")
 
     assert analysis.statements == ()
     assert analysis.cautions == ()
@@ -219,7 +219,7 @@ def test_unknown_text_has_unknown_kind_and_is_listed_as_it_is(monkeypatch):
         lambda dialect: SimpleNamespace(parse_sql=lambda text: parsed),
     )
 
-    analysis = analyse_script("ignored", "postgresql")
+    analysis = analyse_script("ignored", "oracle")
 
     assert [(s.index, s.operation, s.kind) for s in analysis.statements] == [
         (0, "FROBNICATE", "UNKNOWN")
@@ -236,13 +236,13 @@ def test_cte_delete_is_dml_and_names_its_table():
     )
 
     statement = analysis.statements[0]
-    assert (statement.operation, statement.kind, statement.full_table) == ("WITH", "DML", False)
+    assert (statement.operation, statement.kind, statement.full_table) == ("DELETE", "DML", False)
     assert [o.name for o in statement.objects] == ["sessions"]
     assert [c.level for c in analysis.cautions] == [CHANGES_ROWS]
 
 
 def test_quirks_failures_never_raise(monkeypatch):
-    real = script_analysis.ProviderRegistry.get_quirks("postgresql")
+    real = script_analysis.ProviderRegistry.get_quirks("oracle")
 
     class BrokenQuirks(type(real)):  # the parser still needs the real quirks' parser class
         def is_full_table_dml(self, statement):
@@ -255,7 +255,7 @@ def test_quirks_failures_never_raise(monkeypatch):
         script_analysis.ProviderRegistry, "get_quirks", lambda dialect: BrokenQuirks(dialect)
     )
 
-    analysis = analyse_script("DELETE FROM sessions;", "postgresql")
+    analysis = analyse_script("DELETE FROM sessions;", "oracle")
 
     statement = analysis.statements[0]
     assert statement.full_table is False
@@ -264,7 +264,7 @@ def test_quirks_failures_never_raise(monkeypatch):
 
 
 def test_full_table_dml_respects_provider_quirks_override(monkeypatch):
-    real = script_analysis.ProviderRegistry.get_quirks("postgresql")
+    real = script_analysis.ProviderRegistry.get_quirks("oracle")
 
     class OverrideQuirks(type(real)):
         def is_full_table_dml(self, statement):
@@ -274,7 +274,7 @@ def test_full_table_dml_respects_provider_quirks_override(monkeypatch):
         script_analysis.ProviderRegistry, "get_quirks", lambda dialect: OverrideQuirks(dialect)
     )
 
-    analysis = analyse_script("DELETE FROM sessions;", "postgresql")
+    analysis = analyse_script("DELETE FROM sessions;", "oracle")
 
     assert analysis.statements[0].full_table is False
     assert [c.level for c in analysis.cautions] == [CHANGES_ROWS]

@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from dblift.core.exceptions import ParserError
+from dblift.core.sql_parser import SqlParserFactory
 from dblift.core.sql_parser.hybrid_parser import HybridParser
 from dblift.core.sql_parser.parser_factory import SqlParserFactory
 
@@ -74,14 +75,14 @@ def test_extract_objects_refuses_a_script_the_scanner_refuses(
 
 def test_postgresql_extraction_refuses_a_refused_script_and_parse_reports_it() -> None:
     script, message, with_table = POSTGRESQL
-    parser = HybridParser("postgresql")
+    parser = SqlParserFactory("postgresql", "hybrid").get_parser()
     with pytest.raises(ParserError):
         parser.split_statements(script)
     with pytest.raises(ParserError):
         parser.extract_objects(script)
     with pytest.raises(ParserError):
         parser.extract_objects(with_table)
-    # the PostgreSQL regex parser fails its own parse first, with the message and the line
+    # the parse reports the refusal with the message and the line
     result = parser.parse_sql(script)
     assert not result.success
     assert any(message in error for error in result.errors)

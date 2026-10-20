@@ -6,13 +6,12 @@ from dblift.core.sql_model.base import ConstraintType
 from dblift.core.sql_parser import SqlParserFactory
 
 pytestmark = pytest.mark.unit
-DIALECTS = ("postgresql", "sqlserver")
+DIALECTS = ("oracle", "sqlserver")
 
 
 @pytest.mark.parametrize(
     "dialect, definition, stored",
     [
-        ("postgresql", "f INT GENERATED ALWAYS AS (a + 1) STORED", True),
         ("sqlserver", "f AS (a + 1) PERSISTED", True),
         ("sqlserver", "f AS (a + 1)", False),
     ],
@@ -39,21 +38,6 @@ def test_plain_column_is_not_computed(dialect):
     assert column.computed_stored is False
 
 
-@pytest.mark.parametrize(
-    "dialect, key, expression",
-    [
-        ("postgresql", "(lower(x))", "(LOWER(x))"),
-        ("postgresql", "(lower(t.x))", "(LOWER(t.x))"),
-    ],
-)
-def test_functional_index_marks_expression_and_preserves_sql(dialect, key, expression):
-    result = SqlParserFactory(dialect).get_parser().parse_sql(f"CREATE INDEX ix ON t ({key}, id)")
-    assert result.success
-    index = result.indexes[0]
-    assert index.expression_flags == [True, False]
-    assert index.columns == [expression, "id"]
-
-
 @pytest.mark.parametrize("dialect", DIALECTS)
 def test_plain_index_key_is_not_an_expression(dialect):
     result = SqlParserFactory(dialect).get_parser().parse_sql("CREATE INDEX ix ON t (a)")
@@ -76,17 +60,6 @@ def test_plain_index_key_is_not_an_expression(dialect):
 def test_index_keeps_key_sort_directions(dialect, keys, directions):
     result = SqlParserFactory(dialect).get_parser().parse_sql(f"CREATE INDEX ix ON t ({keys})")
     assert result.indexes[0].sort_directions == directions
-
-
-@pytest.mark.parametrize("method", ["btree", "gin", "hash"])
-def test_postgresql_index_without_explicit_direction_keeps_empty_sort_directions(method):
-    result = (
-        SqlParserFactory("postgresql")
-        .get_parser()
-        .parse_sql(f"CREATE INDEX ix ON t USING {method} (a)")
-    )
-    assert len(result.indexes) == 1
-    assert result.indexes[0].sort_directions == []
 
 
 @pytest.mark.parametrize("dialect", DIALECTS)
@@ -126,42 +99,6 @@ def test_foreign_key_without_actions_keeps_none(dialect):
     assert fk.on_update is None
 
 
-@pytest.mark.parametrize(
-    "dialect, table, body",
-    [
-        ("postgresql", "t", "EXECUTE FUNCTION audit()"),
-        ("postgresql", '"t"', "EXECUTE FUNCTION audit()"),
-    ],
-)
-def test_trigger_on_unqualified_table_is_preserved(dialect, table, body):
-    result = (
-        SqlParserFactory(dialect)
-        .get_parser()
-        .parse_sql(f"CREATE TRIGGER trg BEFORE INSERT ON {table} FOR EACH ROW {body};")
-    )
-    assert len(result.triggers) == 1
-    trigger = result.triggers[0]
-    assert trigger.name == "trg"
-    assert trigger.table_name == "t"
-    assert trigger.timing == "BEFORE"
-    assert trigger.events == ["INSERT"]
-    assert trigger.definition == body
-
-
-def test_trigger_on_qualified_table_still_parses():
-    result = (
-        SqlParserFactory("postgresql")
-        .get_parser()
-        .parse_sql(
-            "CREATE TRIGGER s.trg BEFORE INSERT ON s.t FOR EACH ROW EXECUTE FUNCTION audit();"
-        )
-    )
-    assert len(result.triggers) == 1
-    assert result.triggers[0].name == "trg"
-    assert result.triggers[0].schema == "s"
-    assert result.triggers[0].table_name == "t"
-
-
 @pytest.mark.parametrize("quote_left, quote_right", [("`", "`"), ('"', '"'), ("[", "]")])
 @pytest.mark.parametrize("qualified", [False, True])
 def test_trigger_header_accepts_quoted_identifiers(quote_left, quote_right, qualified):
@@ -178,14 +115,3 @@ def test_trigger_header_accepts_quoted_identifiers(quote_left, quote_right, qual
     assert header.name == "trg"
     assert header.schema == "s"
     assert header.table_name == "t"
-
-
-def test_postgresql_trigger_body_keeps_semicolon_in_argument():
-    result = (
-        SqlParserFactory("postgresql")
-        .get_parser()
-        .parse_sql(
-            "CREATE TRIGGER trg BEFORE INSERT ON s.t FOR EACH ROW EXECUTE FUNCTION audit('a;b');"
-        )
-    )
-    assert result.triggers[0].definition == "EXECUTE FUNCTION audit('a;b')"

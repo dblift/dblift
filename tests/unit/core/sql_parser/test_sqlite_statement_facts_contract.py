@@ -63,7 +63,7 @@ def test_direct_generic_parser_construction_rejects_sqlite(parser_class):
 
 @pytest.mark.parametrize("parser_class", [HybridParser, SqlGlotParser])
 def test_direct_generic_parser_remains_available_for_unmigrated_dialect(parser_class):
-    assert parser_class("postgresql").dialect_name == "postgresql"
+    assert parser_class("oracle").dialect_name == "oracle"
 
 
 def test_index_facts_separate_indexed_columns_from_declared_table_columns():

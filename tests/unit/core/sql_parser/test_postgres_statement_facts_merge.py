@@ -182,8 +182,8 @@ def test_postgres_merge_unmodelled_effects_remain_opaque(sql):
     assert facts.affected_columns == ()
 
 
-def test_postgres_merge_does_not_activate_the_plugin():
-    assert not PostgresqlQuirks().supports_statement_facts
+def test_postgres_merge_facts_are_read_by_the_plugin():
+    assert PostgresqlQuirks().supports_statement_facts
 
 
 @pytest.mark.parametrize(

@@ -23,13 +23,6 @@ class TestSqlGlotParser:
         with pytest.raises(TypeError):
             SqlGlotParser()
 
-    def test_parser_creation_postgresql(self):
-        """Test parser can be created for PostgreSQL."""
-        parser = SqlGlotParser(dialect="postgresql")
-        assert parser is not None
-        assert parser.dialect_name == "postgresql"
-        assert parser.sqlglot_dialect == "postgres"
-
     def test_parser_creation_oracle(self):
         """Test parser can be created for Oracle."""
         parser = SqlGlotParser(dialect="oracle")
@@ -44,25 +37,11 @@ class TestSqlGlotParser:
         assert parser.dialect_name == "sqlserver"
         assert parser.sqlglot_dialect == "tsql"
 
-    # ==================== PostgreSQL Tests ====================
+    # ==================== Oracle Tests ====================
 
-    def test_parse_postgresql_create_table(self):
-        """Test parsing PostgreSQL CREATE TABLE."""
-        parser = SqlGlotParser(dialect="postgresql")
-        sql = "CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT NOT NULL)"
-
-        result = parser.parse_sql(sql)
-
-        assert result.success
-        assert len(result.statements) == 1
-        assert result.statements[0].statement_type == SqlStatementType.CREATE
-        assert len(result.statements[0].objects) == 1
-        assert result.statements[0].objects[0].name == "users"
-        assert result.statements[0].objects[0].object_type == SqlObjectType.TABLE
-
-    def test_parse_postgresql_create_view(self):
-        """Test parsing PostgreSQL CREATE VIEW."""
-        parser = SqlGlotParser(dialect="postgresql")
+    def test_parse_oracle_create_view(self):
+        """Test parsing Oracle CREATE VIEW."""
+        parser = SqlGlotParser(dialect="oracle")
         sql = "CREATE VIEW user_emails AS SELECT id, email FROM users"
 
         result = parser.parse_sql(sql)
@@ -73,9 +52,9 @@ class TestSqlGlotParser:
         # Should have both the view and the referenced table
         assert len(result.statements[0].objects) >= 1
 
-    def test_parse_postgresql_multiple_statements(self):
-        """Test parsing multiple PostgreSQL statements."""
-        parser = SqlGlotParser(dialect="postgresql")
+    def test_parse_oracle_multiple_statements(self):
+        """Test parsing multiple Oracle statements."""
+        parser = SqlGlotParser(dialect="oracle")
         sql = """
         CREATE TABLE users (id INTEGER);
         CREATE TABLE posts (id INTEGER, user_id INTEGER);
@@ -87,9 +66,9 @@ class TestSqlGlotParser:
         assert len(result.statements) == 2
         assert all(stmt.statement_type == SqlStatementType.CREATE for stmt in result.statements)
 
-    def test_parse_postgresql_with_schema(self):
-        """Test parsing PostgreSQL statements with schema."""
-        parser = SqlGlotParser(dialect="postgresql")
+    def test_parse_oracle_with_schema(self):
+        """Test parsing Oracle statements with schema."""
+        parser = SqlGlotParser(dialect="oracle")
         sql = "CREATE TABLE public.users (id INTEGER)"
 
         result = parser.parse_sql(sql, default_schema="public")
@@ -100,18 +79,18 @@ class TestSqlGlotParser:
         table_obj = result.statements[0].objects[0]
         assert table_obj.name == "users"
 
-    def test_split_statements_postgresql(self):
-        """Test splitting PostgreSQL statements."""
-        parser = SqlGlotParser(dialect="postgresql")
-        sql = "SELECT 1; SELECT 2; SELECT 3"
+    def test_split_statements_one_per_line(self):
+        """Test splitting statements written one per line."""
+        parser = SqlGlotParser(dialect="oracle")
+        sql = "SELECT 1;\nSELECT 2;\nSELECT 3"
 
         statements = parser.split_statements(sql)
 
         assert len(statements) == 3
 
-    def test_validate_sql_postgresql_valid(self):
-        """Test validating valid PostgreSQL SQL."""
-        parser = SqlGlotParser(dialect="postgresql")
+    def test_validate_sql_oracle_valid(self):
+        """Test validating valid Oracle SQL."""
+        parser = SqlGlotParser(dialect="oracle")
         sql = "SELECT * FROM users WHERE id = 1"
 
         result = parser.validate_sql(sql)
@@ -119,9 +98,9 @@ class TestSqlGlotParser:
         assert result["valid"] is True
         assert len(result["errors"]) == 0
 
-    def test_validate_sql_postgresql_invalid(self):
-        """Test validating invalid PostgreSQL SQL."""
-        parser = SqlGlotParser(dialect="postgresql")
+    def test_validate_sql_oracle_invalid(self):
+        """Test validating invalid Oracle SQL."""
+        parser = SqlGlotParser(dialect="oracle")
         sql = "SELECT * FROM"  # Incomplete statement
 
         result = parser.validate_sql(sql)
@@ -129,9 +108,9 @@ class TestSqlGlotParser:
         assert result["valid"] is False
         assert len(result["errors"]) > 0
 
-    def test_extract_objects_postgresql(self):
-        """Test extracting objects from PostgreSQL SQL."""
-        parser = SqlGlotParser(dialect="postgresql")
+    def test_extract_objects_oracle(self):
+        """Test extracting objects from Oracle SQL."""
+        parser = SqlGlotParser(dialect="oracle")
         sql = """
         SELECT u.id, p.title
         FROM users u
@@ -235,7 +214,7 @@ class TestSqlGlotParser:
 
     def test_parse_drop_table(self):
         """Test parsing DROP TABLE."""
-        parser = SqlGlotParser(dialect="postgresql")
+        parser = SqlGlotParser(dialect="oracle")
         sql = "DROP TABLE users"
 
         result = parser.parse_sql(sql)
@@ -246,7 +225,7 @@ class TestSqlGlotParser:
 
     def test_parse_alter_table(self):
         """Test parsing ALTER TABLE."""
-        parser = SqlGlotParser(dialect="postgresql")
+        parser = SqlGlotParser(dialect="oracle")
         sql = "ALTER TABLE users ADD COLUMN age INTEGER"
 
         result = parser.parse_sql(sql)
@@ -257,7 +236,7 @@ class TestSqlGlotParser:
 
     def test_parse_update(self):
         """Test parsing UPDATE."""
-        parser = SqlGlotParser(dialect="postgresql")
+        parser = SqlGlotParser(dialect="oracle")
         sql = "UPDATE users SET name = 'John' WHERE id = 1"
 
         result = parser.parse_sql(sql)
@@ -268,7 +247,7 @@ class TestSqlGlotParser:
 
     def test_parse_delete(self):
         """Test parsing DELETE."""
-        parser = SqlGlotParser(dialect="postgresql")
+        parser = SqlGlotParser(dialect="oracle")
         sql = "DELETE FROM users WHERE id = 1"
 
         result = parser.parse_sql(sql)
@@ -281,7 +260,7 @@ class TestSqlGlotParser:
 
     def test_parse_cte(self):
         """Test parsing Common Table Expression (CTE)."""
-        parser = SqlGlotParser(dialect="postgresql")
+        parser = SqlGlotParser(dialect="oracle")
         sql = """
         WITH active_users AS (
             SELECT * FROM users WHERE active = true
@@ -296,7 +275,7 @@ class TestSqlGlotParser:
 
     def test_parse_subquery(self):
         """Test parsing subquery."""
-        parser = SqlGlotParser(dialect="postgresql")
+        parser = SqlGlotParser(dialect="oracle")
         sql = "SELECT * FROM users WHERE id IN (SELECT user_id FROM posts)"
 
         result = parser.parse_sql(sql)
@@ -306,7 +285,7 @@ class TestSqlGlotParser:
 
     def test_parse_join(self):
         """Test parsing JOIN."""
-        parser = SqlGlotParser(dialect="postgresql")
+        parser = SqlGlotParser(dialect="oracle")
         sql = """
         SELECT u.name, p.title
         FROM users u
@@ -322,7 +301,7 @@ class TestSqlGlotParser:
 
     def test_parse_empty_string(self):
         """Test parsing empty string."""
-        parser = SqlGlotParser(dialect="postgresql")
+        parser = SqlGlotParser(dialect="oracle")
         sql = ""
 
         result = parser.parse_sql(sql)
@@ -332,7 +311,7 @@ class TestSqlGlotParser:
 
     def test_parse_invalid_sql(self):
         """Test parsing invalid SQL."""
-        parser = SqlGlotParser(dialect="postgresql")
+        parser = SqlGlotParser(dialect="oracle")
         sql = "CREATE TABLE"  # Incomplete
 
         result = parser.parse_sql(sql)
@@ -342,7 +321,7 @@ class TestSqlGlotParser:
 
     def test_extract_objects_empty_sql(self):
         """Test extracting objects from empty SQL."""
-        parser = SqlGlotParser(dialect="postgresql")
+        parser = SqlGlotParser(dialect="oracle")
         sql = ""
 
         objects = parser.extract_objects(sql)
@@ -368,7 +347,7 @@ class TestSqlGlotParser:
         assert any(record.levelname == "WARNING" for record in caplog.records)
 
     def test_extract_objects_warning_has_no_ansi_escape_codes(self, caplog):
-        parser = SqlGlotParser(dialect="postgresql")
+        parser = SqlGlotParser(dialect="oracle")
 
         with caplog.at_level("WARNING", logger="dblift.core.sql_parser.sqlglot_parser"):
             parser.extract_objects("DROP TRIGGER IF EXISTS trg_items_touch ON public.items;")
@@ -383,7 +362,7 @@ class TestSqlGlotParser:
 
     def test_affected_objects_create_table(self):
         """Test affected objects for CREATE TABLE."""
-        parser = SqlGlotParser(dialect="postgresql")
+        parser = SqlGlotParser(dialect="oracle")
         sql = "CREATE TABLE users (id INTEGER)"
 
         result = parser.parse_sql(sql)
@@ -395,7 +374,7 @@ class TestSqlGlotParser:
 
     def test_affected_objects_drop_table(self):
         """Test affected objects for DROP TABLE."""
-        parser = SqlGlotParser(dialect="postgresql")
+        parser = SqlGlotParser(dialect="oracle")
         sql = "DROP TABLE users"
 
         result = parser.parse_sql(sql)
@@ -405,7 +384,7 @@ class TestSqlGlotParser:
 
     def test_affected_objects_drop_multiple_tables(self):
         """Test affected objects for DROP TABLE naming several tables."""
-        parser = SqlGlotParser(dialect="postgresql")
+        parser = SqlGlotParser(dialect="oracle")
         sql = "DROP TABLE IF EXISTS users, orders CASCADE"
 
         result = parser.parse_sql(sql)
@@ -419,7 +398,7 @@ class TestSqlGlotParser:
 
     def test_affected_objects_insert(self):
         """Test affected objects for INSERT."""
-        parser = SqlGlotParser(dialect="postgresql")
+        parser = SqlGlotParser(dialect="oracle")
         sql = "INSERT INTO users (id) VALUES (1)"
 
         result = parser.parse_sql(sql)
@@ -465,9 +444,9 @@ class TestSqlGlotParser:
 
     # ==================== Quoted Identifiers Tests ====================
 
-    def test_parse_quoted_identifiers_postgresql(self):
-        """Test parsing quoted identifiers in PostgreSQL."""
-        parser = SqlGlotParser(dialect="postgresql")
+    def test_parse_quoted_identifiers_oracle(self):
+        """Test parsing quoted identifiers in Oracle."""
+        parser = SqlGlotParser(dialect="oracle")
         sql = 'CREATE TABLE "User Table" (id INTEGER)'
 
         result = parser.parse_sql(sql)
@@ -477,9 +456,9 @@ class TestSqlGlotParser:
 
     # ==================== Dialect-Specific Features ====================
 
-    def test_postgresql_array_type(self):
-        """Test parsing PostgreSQL array type."""
-        parser = SqlGlotParser(dialect="postgresql")
+    def test_oracle_array_type(self):
+        """Test parsing Oracle array type."""
+        parser = SqlGlotParser(dialect="oracle")
         sql = "CREATE TABLE users (tags TEXT[])"
 
         result = parser.parse_sql(sql)
