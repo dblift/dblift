@@ -123,9 +123,11 @@ def test_record_statement_freezes_both_old_paths_and_dml() -> None:
     assert isinstance(row["old"]["hybrid"], list) and isinstance(row["old"]["analyzer"], list)
 
 
-def test_record_statement_for_families_without_old_or_without_reader() -> None:
+def test_record_statement_for_a_family_without_old_and_one_that_folds() -> None:
     assert record_statement("sqlite", "CREATE TABLE t (a int)")["old"] is None
-    assert record_statement("db2", "CREATE TABLE t (a int)")["facts"] is None
+    assert record_statement("db2", "CREATE TABLE t (a int)")["facts"]["objects"] == [
+        ["T", "TABLE", "created", None]
+    ]
 
 
 def test_inactive_family_reads_facts_through_the_sqlglot_reader() -> None:

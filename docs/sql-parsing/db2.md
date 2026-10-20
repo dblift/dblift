@@ -304,3 +304,52 @@ Current implementation gaps, kept as the earlier scanner had them (the CLP and d
 - A routine with a declaration section before `BEGIN` (`CREATE OR REPLACE FUNCTION f RETURN NUMBER IS`, declarations, `BEGIN`) and a labelled compound statement (`lbl: BEGIN … END lbl;`) under the `;` terminator are cut at their semicolon lines, where the CLP cuts them; the server rejects both on a default database, the first needing the Oracle compatibility vector.
 
 Tests: `tests/unit/core/sql_parser/test_db2_spec_conformance.py` runs every row of section 10 through `SqlAnalyzer.split_statements`; `test_db2_line_pass.py`, `test_db2_lexical_reading.py`, `test_db2_terminator_script.py`, `test_db2_client_commands.py` and `test_db2_routine_body.py` cover the stages rule by rule against recorded output of the scanner they replaced, `test_db2_shared_lexical_path.py` holds the routing, `test_db2_splitting_cost.py` bounds the work, `tests/unit/db/plugins/db2/test_script.py` covers the splitter rule by rule, `test_extraction_keeps_statements.py` checks that extraction and execution agree on refusals, and `test_extraction_view_unchanged.py` holds masking and extraction to their recorded output.
+
+## 13. Statement facts
+
+The statement facts of a Db2 script (the kind of a statement, the objects it names and the target of a data change) are read from the tokens of the shared lexical engine by a head classifier: the first words of the statement select a row of the table below, and the name that follows is read as one to three parts separated by `.`. There is no SQL grammar behind it, so only what the head states is reported. Everything else is opaque: `operation` is the first word, `objects` is empty and the diagnostic reads `db2 <WORD> statement: not classified`. A head that starts with a client command (§6, for example `UPDATE DB CFG`, `RUNSTATS`, `CONNECT`) is opaque with `db2 client command: not an SQL statement`. A head that is found but whose name cannot be read (no name, more parts than the row allows, a stop word where a name belongs, an `UPDATE` without its `SET`) is opaque with `db2 <OPERATION> <TYPE>: name not read`.
+
+| Head (words upper-cased, `[ ]` optional) | Operation | Kind | Objects | Other fields |
+| --- | --- | --- | --- | --- |
+| `CREATE [GLOBAL TEMPORARY] TABLE name` | CREATE | DDL | `TABLE` created | columns diagnostic |
+| `DECLARE GLOBAL TEMPORARY TABLE name` | DECLARE | DDL | `TABLE` created | columns diagnostic |
+| `CREATE [OR REPLACE] VIEW name` | CREATE | DDL | `VIEW` created | |
+| `CREATE [UNIQUE] INDEX name ON table` | CREATE | DDL | `INDEX` created, `TABLE` referenced | `indexed_table`; columns diagnostic |
+| `CREATE [OR REPLACE] {SEQUENCE, ALIAS, TRIGGER, PROCEDURE, FUNCTION} name` | CREATE | DDL | that type created (`ALIAS` is a synonym) | |
+| `CREATE SCHEMA name` | CREATE | DDL | `SCHEMA` created (one part) | |
+| `ALTER {TABLE, VIEW, SEQUENCE, TRIGGER, PROCEDURE, FUNCTION} name`, `ALTER SCHEMA name` | ALTER | DDL | that type altered | `ALTER TABLE`: columns diagnostic |
+| `DROP {TABLE, VIEW, INDEX, SEQUENCE, ALIAS, SCHEMA, TRIGGER, PROCEDURE, FUNCTION} [IF EXISTS] name` | DROP | DDL | that type dropped (`SCHEMA`: one part) | |
+| `RENAME [TABLE] name TO new`, `RENAME INDEX name TO new` | RENAME | DDL | `TABLE` or `INDEX` altered (the old name) | |
+| `COMMENT ON {TABLE, VIEW, INDEX, SEQUENCE, ALIAS, SCHEMA, TRIGGER, PROCEDURE, FUNCTION} name` | COMMENT | DDL | that type altered | |
+| `COMMENT ON COLUMN table.column` | COMMENT | DDL | `TABLE` altered (two or three parts; the last is the column) | |
+| `TRUNCATE [TABLE] name` | TRUNCATE | DDL | `TABLE` altered | no `target`, no `events` |
+| `GRANT … ON [object type] name TO …`, `REVOKE … ON … FROM …` | GRANT, REVOKE | DDL | that type referenced (`TABLE` when no type is written) | |
+| `INSERT INTO name` followed by `(`, `VALUES`, `SELECT`, `WITH` or the end | INSERT | DML | `TABLE` altered | `target`, `target_sql`, `events` = INSERT |
+| `UPDATE name [AS] [alias] SET …` | UPDATE | DML | `TABLE` altered | `target`, `target_sql`, `events` = UPDATE, `predicate`, `affected_columns` |
+| `DELETE FROM name [AS] [alias]` followed by `WHERE`, `WITH`, a comment or the end | DELETE | DML | `TABLE` altered | `target`, `target_sql`, `events` = DELETE, `predicate` |
+| `MERGE INTO name [AS] [alias] USING …` | MERGE | DML | `TABLE` altered | `target`, `target_sql`, `events`, `affected_columns` |
+| `COMMIT`, `ROLLBACK`, `SAVEPOINT`, `RELEASE` | that word | UNKNOWN | none | not opaque |
+| `LOCK TABLE name` | LOCK | UNKNOWN | `TABLE` referenced | not opaque |
+| `CALL name` | CALL | UNKNOWN | `PROCEDURE` referenced | not opaque |
+| `SET …` | SET | UNKNOWN | none | not opaque; `SET INTEGRITY` is opaque (`db2 SET INTEGRITY: tables not named`) |
+| `SELECT`, `VALUES`, `WITH` | that word | QUERY | none | not opaque, unless the statement holds `FINAL TABLE`, `NEW TABLE` or `OLD TABLE` (a data change inside a query): then opaque (`db2 data-change query: target not named`) |
+
+`ALTER INDEX`, `ALTER ALIAS` and `LABEL ON` are not in the table: the server rejects them with SQL0104N, so they are opaque. `CREATE TABLE IF NOT EXISTS` and `DROP TABLE IF EXISTS` run on the server and are read. The first word decides the kind of an opaque statement: `CREATE`, `ALTER`, `DROP`, `RENAME`, `COMMENT`, `DECLARE`, `GRANT`, `REVOKE` and `TRUNCATE` are `DDL`; `INSERT`, `UPDATE`, `DELETE` and `MERGE` are `DML`; `SELECT`, `WITH` and `VALUES` are `QUERY`; any other word is `UNKNOWN`.
+
+**Folding.** An unquoted name part is folded to upper case, as the catalog holds it (`Db2Quirks.unquoted_identifier_case` is `uppercase`): `create table app.Orders` names `APP.ORDERS`. A delimited part keeps the text between the quotes with `""` read as `"`. This differs from the readers of the other engines, which keep the spelling the statement uses.
+
+**Data change fields.** `target` is `SCHEMA.NAME` after folding, with no quotes. `target_sql` is the name as written in the statement, followed by the alias for `UPDATE`, `DELETE` and `MERGE`, so that `FROM {target_sql} WHERE {predicate}` resolves `o.id` in `UPDATE app.orders AS o SET a = 1 WHERE o.id = 1`. `predicate` is the source text from the token after the first `WHERE` outside parentheses to the end of the last token that is not a comment (`id = 1`, `CURRENT OF c1`), and is absent when there is no `WHERE`. `affected_columns` of an `UPDATE` holds each assignment target after `SET` outside parentheses (the last part of the name, spelling kept), including every name of a `( … )` list before `=`; for a `MERGE` it holds those of every `UPDATE SET` list outside parentheses. The `events` of a `MERGE` are the `UPDATE`, `INSERT` and `DELETE` words that follow a `THEN` outside parentheses. A DML statement (`INSERT`, `UPDATE`, `DELETE`, `MERGE`) whose tokens hold `FINAL TABLE`, `NEW TABLE` or `OLD TABLE` is opaque like a query that holds one (`db2 data-change query: target not named`), since the data change inside it writes a table the head does not name; `INSERT INTO t SELECT * FROM u` without one still names `T`. An empty delimited identifier (`""`) is not a name, so the statement is opaque with the name-not-read diagnostic. `TRUNCATE` has no `events`: `TRUNCATE TABLE … IMMEDIATE` on a table with an `AFTER DELETE` trigger fires nothing (0 rows logged, measured).
+
+**Names the engine may read differently.** The shared tokenizer does not treat a non-ASCII letter as a word character, and it splits a word at a no-break space or a zero-width space. The engine reads them as part of the name, so a name taken from the tokens could be another object than the one the statement acts on. A statement whose head holds a non-ASCII character touching an unquoted word (on either side, with no blank between), or where a name part is expected, is therefore opaque with no objects: `db2 statement holds U+00E9, which the engine may read as part of a name; its objects are not named`. Measured on Db2 12.1.0 (community edition, UTF-8 database, read from `SYSCAT.TABLES`, 2026-10-20):
+
+| Statement | Name in the catalog | Hex |
+| --- | --- | --- |
+| `CREATE TABLE café (a INT)` | `CAFÉ` | `434146C389` |
+| `CREATE TABLE 表 (a INT)` | `表`, kept | |
+| `CREATE TABLE tnb<U+00A0>x (a INT)` | `TNB X` (one name) | `544E42C2A058` |
+| `CREATE TABLE tzw<U+200B>x (a INT)` | `TZW<U+200B>X` (one name) | |
+| `CREATE TABLE t<U+001F>x (a INT)` | rejected, SQL0007N | |
+
+Unquoted names thus fold to upper case including non-ASCII letters, and U+00A0 and U+200B are name characters. `ALTER INDEX`, `ALTER ALIAS` and `LABEL ON` are rejected with SQL0104N; `CREATE TABLE IF NOT EXISTS` and `DROP TABLE IF EXISTS` run.
+
+**Unavailable.** The reader does not parse a column list, so `declared_columns`, `declared_constraints` and `indexed_columns` are never filled. `CREATE TABLE`, `DECLARE GLOBAL TEMPORARY TABLE`, `ALTER TABLE` and `CREATE INDEX` carry the diagnostic `db2 column-level facts are unavailable: declared columns, constraints and indexed columns are not read`, so that a check which needs a column reports that it was not evaluated instead of finding nothing.

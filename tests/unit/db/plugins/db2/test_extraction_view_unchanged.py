@@ -25,6 +25,7 @@ from dblift.db.plugins.db2.parser.db2_regex_parser import (
     DB2RegexParser,
     _DB2NestingCommentTokenizer,
 )
+from dblift.db.plugins.db2.parser.statement_facts import Db2StatementFactsReader
 from dblift.db.provider_registry import ProviderRegistry
 
 GOLDEN = json.loads(Path(__file__).with_name("extraction_golden.json").read_text(encoding="utf-8"))
@@ -180,8 +181,7 @@ def test_placeholder_is_code_for_db2():
     assert [r.text for r in parser.split("VALUES ${a}, ${b:c};\n")] == ["VALUES ${a}, ${b:c}"]
 
 
-def test_statement_facts_have_no_reader_for_db2():
+def test_statement_facts_reader_for_db2():
     quirks = ProviderRegistry.get_quirks("db2")
-    assert quirks.statement_facts_class is None
-    with pytest.raises(NotImplementedError):
-        quirks.statement_facts("SELECT 1")
+    assert quirks.statement_facts_class is Db2StatementFactsReader
+    assert quirks.statement_facts("SELECT 1").operation == "SELECT"

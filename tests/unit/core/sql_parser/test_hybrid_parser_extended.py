@@ -14,8 +14,8 @@ class TestHybridParserInit(unittest.TestCase):
         self.assertEqual(p.dialect, "postgresql")
 
     def test_db2_no_sqlglot(self):
-        p = self._make("db2")
-        self.assertIsNone(p.sqlglot_parser)
+        with self.assertRaises(ValueError):
+            self._make("db2")
 
     def test_dialect_name_property(self):
         p = self._make("oracle")
@@ -45,7 +45,9 @@ class TestHybridParserSplitStatements(unittest.TestCase):
         self.assertIsInstance(stmts, list)
 
     def test_db2_dialect(self):
-        p = self._make("db2")
+        from dblift.core.sql_parser import SqlParserFactory
+
+        p = SqlParserFactory("db2").get_parser()
         stmts = p.split_statements("SELECT 1 FROM SYSIBM.SYSDUMMY1")
         self.assertIsInstance(stmts, list)
 

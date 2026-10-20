@@ -31,8 +31,8 @@ LEGACY = (
     "cockroachdb",
 )
 
-# MySQL and MariaDB read statement facts: their undo is a review placeholder, never a DROP.
-FACTS_DIALECTS = ("mysql", "mariadb")
+# MySQL, MariaDB and Db2 read statement facts: their undo is a review placeholder, never a DROP.
+FACTS_DIALECTS = ("mysql", "mariadb", "db2")
 DROPPING = tuple(d for d in LEGACY if d not in FACTS_DIALECTS)
 
 # The 22 characters (sqlglot's non-ASCII blanks, plus the zero-width ones): a sample of each kind.
@@ -119,6 +119,9 @@ def test_undo_names_no_trigger_whose_name_holds_the_character(tmp_path, dialect,
 @pytest.mark.parametrize("dialect", DROPPING)
 def test_undo_keeps_dropping_ascii_names(tmp_path, dialect):
     script = _undo(tmp_path, dialect, "CREATE TABLE t (id INT);\nCREATE INDEX ix ON t (id);")
+    if dialect == "db2":  # facts reader without undo reversal: every mutation goes to review
+        _assert_manual_review(script)
+        return
     assert len([line for line in _code_lines(script) if "DROP" in line]) >= 1
 
 

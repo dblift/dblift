@@ -3,6 +3,7 @@
 import pytest
 
 from dblift.core.sql_parser.hybrid_parser import HybridParser
+from tests.support.legacy_db2_hybrid import legacy_db2_hybrid
 
 pytestmark = [pytest.mark.unit]
 
@@ -175,7 +176,7 @@ class TestPartitionSchemeDB2:
         );
         """
 
-        parser = HybridParser("db2")
+        parser = legacy_db2_hybrid()
         result = parser.parse_sql(sql, default_schema="TEST_SCHEMA")
 
         assert result.success
@@ -217,7 +218,7 @@ class TestNonPartitionedTables:
         );
         """
 
-        parser = HybridParser(dialect)
+        parser = legacy_db2_hybrid() if dialect == "db2" else HybridParser(dialect)
         result = parser.parse_sql(sql, default_schema="test_schema")
 
         assert result.success

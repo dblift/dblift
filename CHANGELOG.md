@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Db2 statement facts.** `info --format json`, `migrate --dry-run`, execution-time object
+  tracking and the DML helpers read Db2 statements through a head classifier: the statement kind
+  and the DDL or DML target are named for CREATE/ALTER/DROP TABLE, VIEW, INDEX, SEQUENCE, ALIAS,
+  SCHEMA, TRIGGER, PROCEDURE and FUNCTION, RENAME, COMMENT ON, TRUNCATE, GRANT/REVOKE,
+  INSERT/UPDATE/DELETE/MERGE, transaction control, CALL and SET; unquoted names fold to upper
+  case as Db2 does; column-level facts (declared columns, constraints, indexed columns) are
+  reported as unavailable.
+
 ### Changed
 
 - **MySQL and MariaDB read statement facts from the SQL grammar.** `info --format json`,
@@ -120,6 +130,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   empty and comment-only pieces and batch separators are still skipped, and a one-time
   deprecation message asks it to implement `split()` and return `Statement` records; the
   skips end in the next major release.
+- **Db2 analysis kinds and DML targets.** `migrate --dry-run` reports CALL, COMMIT and SET as
+  `UNKNOWN` (CALL and SET were `DML`); DML targets are reported folded, with the schema when the statement gives one
+  (`APP.ORDERS`). Undo generation for Db2 (deprecated) now marks every statement other than a
+  query for manual review instead of building a model from the text.
 
 ### Deprecated
 
