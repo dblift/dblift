@@ -23,6 +23,10 @@ from dblift.core.sql_model.user_defined_type import UserDefinedType
 from dblift.core.sql_model.view import View
 from dblift.core.sql_parser.hybrid_parser import _COLLECT_DISPATCH, HybridParser
 from dblift.core.sql_parser.parser_factory import SqlParserFactory
+from tests.support.legacy_sqlserver_parsers import (
+    legacy_sqlserver_hybrid,
+    legacy_sqlserver_sqlglot,
+)
 
 
 @pytest.mark.unit
@@ -44,11 +48,9 @@ class TestHybridParser:
             HybridParser("postgresql")
 
     def test_parser_creation_sqlserver(self):
-        """Test creating hybrid parser for SQL Server."""
-        parser = HybridParser("sqlserver")
-        assert parser.dialect_name == "sqlserver"
-        assert parser.regex_parser is not None
-        assert parser.sqlglot_parser is not None
+        """SQL Server now serves the statement-facts parser publicly."""
+        with pytest.raises(ValueError, match="StatementFactsParser"):
+            HybridParser("sqlserver")
 
     def test_parser_creation_db2(self):
         """Db2 reads statement facts, so the hybrid parser refuses it."""
@@ -85,7 +87,7 @@ class TestHybridParser:
 
     def test_split_sqlserver_go(self):
         """Test splitting SQL Server statements with GO."""
-        parser = HybridParser("sqlserver")
+        parser = legacy_sqlserver_hybrid()
         sql = """
         CREATE TABLE users (id INT PRIMARY KEY);
         GO
@@ -109,7 +111,7 @@ class TestHybridParser:
 
     def test_parse_pure_sql_select(self):
         """Test parsing pure SQL SELECT with sqlglot enhancement."""
-        parser = HybridParser("sqlserver")
+        parser = legacy_sqlserver_hybrid()
         sql = "SELECT u.name, o.total FROM users u JOIN orders o ON u.id = o.user_id;"
 
         result = parser.parse_sql(sql, "public")
@@ -149,7 +151,7 @@ class TestHybridParser:
 
     def test_parse_pure_sql_insert(self):
         """Test parsing INSERT with sqlglot enhancement."""
-        parser = HybridParser("sqlserver")
+        parser = legacy_sqlserver_hybrid()
         sql = "INSERT INTO users (name, email) VALUES ('John', 'john@example.com');"
 
         result = parser.parse_sql(sql)
@@ -187,7 +189,7 @@ class TestHybridParser:
 
     def test_parse_sqlserver_tsql_procedure(self):
         """Test parsing SQL Server T-SQL procedure (uses regex, not sqlglot)."""
-        parser = HybridParser("sqlserver")
+        parser = legacy_sqlserver_hybrid()
         sql = """
         CREATE PROCEDURE GetUserOrders @UserId INT
         AS
@@ -261,7 +263,7 @@ class TestHybridParser:
 
     def test_extract_objects_pure_sql(self):
         """Test extracting objects from pure SQL."""
-        parser = HybridParser("sqlserver")
+        parser = legacy_sqlserver_hybrid()
         sql = "SELECT * FROM users JOIN orders ON users.id = orders.user_id;"
 
         objects = parser.extract_objects(sql)
@@ -367,7 +369,7 @@ class TestHybridParser:
 
     def test_comments_only(self):
         """Test parsing SQL with only comments."""
-        parser = HybridParser("sqlserver")
+        parser = legacy_sqlserver_hybrid()
         sql = "-- This is a comment\n/* Another comment */"
 
         result = parser.parse_sql(sql)
@@ -418,7 +420,7 @@ class TestMergeObjectsReconcilesPerStatementPerType:
         play), so this is the collision case: exactly one object survives,
         and it must not have lost its schema.
         """
-        parser = HybridParser("sqlserver")
+        parser = legacy_sqlserver_hybrid()
         sql = "CREATE TABLE [plainname] (id int);"
 
         regex_objects = parser.regex_parser.extract_objects(sql, None)
@@ -443,7 +445,7 @@ class TestMergeObjectsReconcilesPerStatementPerType:
         reads the name whole, so the divergence is fed in directly to keep
         the merge mechanism itself -- not just that one instance -- pinned.
         """
-        parser = HybridParser("sqlserver")
+        parser = legacy_sqlserver_hybrid()
         regex_objects = [SqlObject("real", SqlObjectType.TABLE, schema=None, dialect="sqlserver")]
         sqlglot_objects = [
             SqlObject("real]one", SqlObjectType.TABLE, schema=None, dialect="sqlserver")
@@ -543,7 +545,7 @@ class TestMergeObjectsTypeMismatchPhantomOutOfScope:
         production path (``HybridParser.extract_objects``) — not a TRIGGER
         alongside a phantom TABLE sqlglot's DROP-kind dispatch used to
         invent by defaulting every kind it didn't special-case to TABLE."""
-        parser = HybridParser(dialect)
+        parser = legacy_sqlserver_hybrid() if dialect == "sqlserver" else HybridParser(dialect)
 
         merged = parser.extract_objects(sql, None)
 
@@ -590,7 +592,7 @@ class TestSqlGlotDropKindDispatchMapsKnownKinds:
     def test_sqlglot_parser_reports_the_correct_type(self, dialect, sql, expected_type):
         from dblift.core.sql_parser.sqlglot_parser import SqlGlotParser
 
-        parser = SqlGlotParser(dialect)
+        parser = legacy_sqlserver_sqlglot() if dialect == "sqlserver" else SqlGlotParser(dialect)
         objects = parser.extract_objects(sql, "public")
 
         assert len(objects) == 1
@@ -625,7 +627,7 @@ class TestSqlGlotDropKindDispatchMapsKnownKinds:
         wrong."""
         from dblift.core.sql_parser.sqlglot_parser import SqlGlotParser
 
-        parser = SqlGlotParser("sqlserver")
+        parser = legacy_sqlserver_sqlglot()
         objects = parser.extract_objects("DROP INDEX idx1 ON mytable;", "dbo")
 
         assert len(objects) == 1
@@ -666,7 +668,7 @@ class TestExtractObjectsCrossDialectDropFunctionProcedure:
         ],
     )
     def test_no_phantom_table_alongside_the_correct_object(self, dialect, sql, expected_type):
-        parser = HybridParser(dialect)
+        parser = legacy_sqlserver_hybrid() if dialect == "sqlserver" else HybridParser(dialect)
         objects = parser.extract_objects(sql, "public")
 
         assert len(objects) == 1
@@ -722,7 +724,7 @@ class TestExtractObjectsQuietOnRoutineDropIndexOnQualifiedTable:
     """
 
     def test_sqlserver_schema_qualified_drop_index_on_does_not_warn(self, caplog):
-        parser = HybridParser("sqlserver")
+        parser = legacy_sqlserver_hybrid()
         sql = "DROP INDEX idx1 ON dbo.mytable;"
 
         with caplog.at_level("WARNING"):
@@ -737,7 +739,7 @@ class TestExtractObjectsQuietOnRoutineDropIndexOnQualifiedTable:
         """The genuine #379 failure — a shape neither parser can read — must
         keep warning. This is the regression guard against 'fixing' the
         noise by reverting the log level instead of narrowing the trigger."""
-        parser = HybridParser("sqlserver")
+        parser = legacy_sqlserver_hybrid()
         sql = "DROP INDEX a.idx1, b.idx2;"
 
         with caplog.at_level("WARNING"):
@@ -764,7 +766,7 @@ class TestExtractObjectsQuietOnRoutineDropIndexOnQualifiedTable:
         ``extract_objects``'s own docstring warns about, now reachable
         through this guard instead of through sqlglot itself.
         """
-        parser = HybridParser("sqlserver")
+        parser = legacy_sqlserver_hybrid()
         sql = (
             "DROP INDEX idx1 ON mytable; "
             "CREATE TABLE [real]]one] (id int); "

@@ -3,6 +3,7 @@
 import pytest
 
 from dblift.core.sql_parser import SqlParserFactory
+from tests.support.legacy_sqlserver_parsers import legacy_sqlserver_hybrid
 
 pytestmark = pytest.mark.unit
 
@@ -22,7 +23,11 @@ pytestmark = pytest.mark.unit
     ],
 )
 def test_column_keeps_explicit_collation(dialect, definition, collation, data_type):
-    parser = SqlParserFactory(dialect).get_parser()
+    parser = (
+        legacy_sqlserver_hybrid()
+        if dialect == "sqlserver"
+        else SqlParserFactory(dialect).get_parser()
+    )
     result = parser.parse_sql(f"CREATE TABLE t (c {definition}, d VARCHAR(10))")
     assert result.success
     column, plain_column = result.tables[0].columns
