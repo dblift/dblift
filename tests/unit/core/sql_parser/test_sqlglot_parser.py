@@ -8,7 +8,18 @@ from dblift.core.sql_model.base import (
     SqlObjectType,
     SqlStatementType,
 )
+from dblift.core.sql_parser.parser_factory import SqlParserFactory
 from dblift.core.sql_parser.sqlglot_parser import SqlGlotParser
+
+
+def test_snowflake_qualified_drop_index_on_relation_stays_unread():
+    sql = "DROP INDEX idx1 ON dbo.mytable"
+    parser = SqlParserFactory("snowflake")
+
+    with pytest.raises(ValueError, match="Failed to parse SQL"):
+        parser.parse(sql)
+    assert not parser.validate_sql(sql)["valid"]
+    assert parser.extract_objects(sql) == []
 
 
 @pytest.mark.unit

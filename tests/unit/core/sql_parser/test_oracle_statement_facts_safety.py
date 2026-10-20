@@ -91,5 +91,14 @@ def test_oracle_predicate_subquery_does_not_make_a_direct_target_opaque():
     )
 
 
+def test_oracle_q_quoted_literal_keeps_the_source_table():
+    facts = read_statement_facts(
+        "SELECT q'[It's a string with 'quotes']' FROM DUAL", dialect="oracle"
+    )
+
+    assert facts.error is None
+    assert facts.objects == (NamedObject("DUAL", SqlObjectType.TABLE, "referenced"),)
+
+
 def test_oracle_statement_facts_remain_dormant():
     assert not OracleQuirks().supports_statement_facts

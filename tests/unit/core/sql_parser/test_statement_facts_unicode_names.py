@@ -12,7 +12,6 @@ import sys
 import unicodedata
 
 import pytest
-import sqlglot
 from sqlglot.dialects import Dialect
 
 from dblift.core.sql_parser.sqlglot_statement_facts import read_statement_facts
@@ -263,12 +262,7 @@ def test_oracle_alternative_quoting_keeps_a_blank_inside_the_literal():
         "INSERT INTO t VALUES (q'[x" + chr(0xA0) + "y]')", dialect="oracle"
     )
 
-    # sqlglot 30.18 does not tokenize q'[...]' as one literal, so it reads the statement as
-    # unreadable there; from 30.23 on the literal is a string and the target is named.
-    if sqlglot.__version__ >= "30.23":
-        assert facts.target == "t"
-    else:
-        assert facts.target in (None, "t")
+    assert facts.target == "t"
 
 
 def test_the_reader_set_is_the_full_range_set():

@@ -1293,6 +1293,18 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
         indexed_table = None
         on = ast.args.get("cluster")
         if (
+            object_type == SqlObjectType.INDEX
+            and isinstance(on, exp.OnProperty)
+            and dialect
+            not in {"mysql", "tsql"}  # lint: allow-dialect-string: DROP INDEX ON grammar
+        ):
+            return StatementFacts(
+                "DROP",
+                "DDL",
+                dropped_objects,
+                diagnostic=f"index: {dialect} grammar is not modelled for this statement",
+            )
+        if (
             dialect == "mysql"  # lint: allow-dialect-string: MySQL DROP INDEX names its table
             and object_type == SqlObjectType.INDEX
         ):

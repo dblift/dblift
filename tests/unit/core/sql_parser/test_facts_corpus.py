@@ -165,17 +165,21 @@ def test_corpus_size_stays_within_a_fifth_of_the_first_recording() -> None:
     assert 0 < versions["size_bytes"] and size <= 1.2 * versions["size_bytes"]
 
 
-def test_both_sqlglot_arms_are_recorded(corpus: Dict[str, List[Dict[str, Any]]]) -> None:
+def test_recorded_sqlglot_arms_match_the_declared_floor(
+    corpus: Dict[str, List[Dict[str, Any]]],
+) -> None:
     versions = read_versions()
     pyproject = (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
     assert f'"sqlglot>={versions["floor"]},<' in pyproject
-    assert versions["floor"] != versions["newest"]
     counts = {
         family: sum(1 for r in rows if "facts_newest" in r or "old_newest" in r)
         for family, rows in corpus.items()
     }
     assert counts == versions["newest_differing_rows"]
-    assert sum(counts.values()) > 0
+    if versions["floor"] == versions["newest"]:
+        assert sum(counts.values()) == 0
+    else:
+        assert sum(counts.values()) > 0
 
 
 @pytest.mark.parametrize("family", FAMILIES)

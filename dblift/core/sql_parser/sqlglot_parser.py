@@ -134,6 +134,7 @@ class SqlGlotParser(SqlParserInterface):
         try:
             normalized_sql = self._preprocess_sql_content(sql_text)
             ast = parse_one(normalized_sql, read=self.sqlglot_dialect)
+            self._reject_unmodelled_qualified_drop_index(ast)
             statement = self._ast_to_statement(
                 cast(exp.Expression, ast),  # type: ignore[redundant-cast]
                 sql_text,
@@ -201,7 +202,9 @@ class SqlGlotParser(SqlParserInterface):
                 errors.append("No valid SQL statements found")
             for fragment in fragments:
                 normalized = self._preprocess_sql_content(fragment)
-                if parse_one(normalized, read=self.sqlglot_dialect) is None:
+                ast = parse_one(normalized, read=self.sqlglot_dialect)
+                self._reject_unmodelled_qualified_drop_index(ast)
+                if ast is None:
                     errors.append("Invalid or empty statement")
 
         except ParseError as e:
@@ -247,6 +250,7 @@ class SqlGlotParser(SqlParserInterface):
             for stmt in statements:
                 if stmt is None:
                     continue
+                self._reject_unmodelled_qualified_drop_index(stmt)
 
                 # Extract objects based on statement type
                 objects.extend(
@@ -275,6 +279,20 @@ class SqlGlotParser(SqlParserInterface):
 
         unread = self._names_unreadable(sql_content if source == "" else source, objects)
         return [] if unread else objects
+
+    def _reject_unmodelled_qualified_drop_index(self, ast: Optional[exp.Expr]) -> None:
+        """Retain the unread result for a qualified DROP INDEX relation in Snowflake."""
+        if (
+            self.sqlglot_dialect
+            != "snowflake"  # lint: allow-dialect-string: Snowflake index grammar
+            or not isinstance(ast, exp.Drop)
+            or str(ast.args.get("kind") or "").upper() != "INDEX"
+        ):
+            return
+        on = ast.args.get("cluster")
+        table = on.this if isinstance(on, exp.OnProperty) else None
+        if isinstance(table, exp.Table) and (table.db or table.catalog):
+            raise ParseError("snowflake DROP INDEX ON qualified relation is not modelled")
 
     def _preprocess_sql_content(self, sql_content: str) -> str:
         """Apply dialect-specific preprocessing before sending SQL to sqlglot."""

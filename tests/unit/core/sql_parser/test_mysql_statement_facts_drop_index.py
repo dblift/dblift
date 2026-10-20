@@ -130,14 +130,34 @@ def test_mysql_drop_index_empty_qualifiers_remain_opaque(index):
 
 
 @pytest.mark.parametrize("dialect", ["sqlite", "duckdb", "postgres", "oracle", "tsql"])
-@pytest.mark.parametrize("sql", ["DROP INDEX idx", "DROP INDEX idx ON t"])
-def test_other_dialect_drop_indexes_do_not_gain_a_mysql_relation(dialect, sql):
+def test_other_dialect_drop_indexes_do_not_gain_a_mysql_relation(dialect):
     """These dialects return exactly the single dropped index they returned before."""
-    facts = read_statement_facts(sql, dialect=dialect)
+    facts = read_statement_facts("DROP INDEX idx", dialect=dialect)
 
     assert facts == StatementFacts(
         "DROP", "DDL", (NamedObject("idx", SqlObjectType.INDEX, "dropped"),)
     )
+
+
+@pytest.mark.parametrize("sql", ["DROP INDEX idx ON t", "DROP INDEX idx ON s.t"])
+def test_tsql_drop_index_on_relation_keeps_its_modelled_index(sql):
+    facts = read_statement_facts(sql, dialect="tsql")
+
+    assert facts == StatementFacts(
+        "DROP", "DDL", (NamedObject("idx", SqlObjectType.INDEX, "dropped"),)
+    )
+
+
+@pytest.mark.parametrize(
+    "dialect", ["sqlite", "duckdb", "postgres", "oracle", "redshift", "snowflake"]
+)
+@pytest.mark.parametrize("sql", ["DROP INDEX idx ON t", "DROP INDEX idx ON s.t"])
+def test_drop_index_on_relation_without_modelled_grammar_stays_opaque(dialect, sql):
+    facts = read_statement_facts(sql, dialect=dialect)
+
+    assert facts.opaque
+    assert facts.objects == (NamedObject("idx", SqlObjectType.INDEX, "dropped"),)
+    assert facts.indexed_table is None
 
 
 def test_mysql_drop_index_if_exists_keeps_the_on_table_relation():
