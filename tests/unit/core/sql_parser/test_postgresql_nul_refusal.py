@@ -79,9 +79,7 @@ def test_one_refusal_field_set_serves_every_specification():
     assert not any(field.startswith("refused") for field in SegmentScriptRules.__dataclass_fields__)
 
 
-@pytest.mark.parametrize(
-    "fields", [{"refused_character_name": "NUL"}, {"refused_reason": "r"}, {}]
-)
+@pytest.mark.parametrize("fields", [{"refused_character_name": "NUL"}, {"refused_reason": "r"}, {}])
 def test_a_refused_character_needs_its_name_and_reason(fields):
     with pytest.raises(ValueError, match="refused_character needs"):
         replace(POSTGRESQL_SPEC, **{"refused_character_name": "", "refused_reason": "", **fields})

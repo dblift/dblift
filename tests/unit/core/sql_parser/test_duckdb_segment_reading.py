@@ -512,7 +512,10 @@ def test_escape_mode_in_the_reference_cases():
 
 def test_refusals_of_the_refused_character():
     message = "a NUL character on line {}, column {}: the engine reads the script up to it and silently drops the rest"
-    assert refusal("SELECT 1;\n\x00SELECT 2;") == ("UnsafeStatementSplitError", message.format(2, 1))
+    assert refusal("SELECT 1;\n\x00SELECT 2;") == (
+        "UnsafeStatementSplitError",
+        message.format(2, 1),
+    )
     assert refusal(".mode csv\n\x00") == ("UnsafeStatementSplitError", message.format(2, 1))
     assert refusal(BOM + "\x00") == ("UnsafeStatementSplitError", message.format(1, 1))
     assert refusal("'a\x00b'")[1] == message.format(1, 3)
@@ -597,7 +600,10 @@ def test_command_message_and_refusal_are_read_from_the_spec():
         "duckdb shell command '!print' on line 1:"
     )
     assert shape(".mode\nSELECT 1;", bang)[0] == sym(".")
-    assert refusal("a\x00", bang) == ("UnsafeStatementSplitError", "a X character on line 1, column 2: r")
+    assert refusal("a\x00", bang) == (
+        "UnsafeStatementSplitError",
+        "a X character on line 1, column 2: r",
+    )
     other_char = replace(DUCKDB_SPEC, refused_character="@")
     assert refusal("a\nb@", other_char)[1].startswith("a NUL character on line 2, column 2:")
     assert shape("a\x00b", other_char) == [kw("a"), sym("\x00"), kw("b")]
