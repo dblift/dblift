@@ -20,7 +20,7 @@ from tests.support.facts_corpus import (
     read_versions,
     statement_id,
 )
-from tests.support.facts_corpus.record import record_statement
+from tests.support.facts_corpus.record import is_frozen, record_statement
 from tests.support.facts_corpus.seed import split
 
 NO_OLD = ("sqlite", "duckdb")  # their text extraction already is the facts reader
@@ -120,7 +120,8 @@ def test_rows_follow_the_schema(
         assert set(row) <= ROW_KEYS and {"sql", "inputs", "facts", "old"} <= set(row), row["sql"]
         assert isinstance(row["sql"], str) and row["sql"].strip()
         assert row["inputs"] == sorted(set(row["inputs"])) and set(row["inputs"]) <= known
-        assert (row["old"] is None) == (family in NO_OLD)
+        if not is_frozen(family):  # a frozen family's new statement has no recorded extraction
+            assert (row["old"] is None) == (family in NO_OLD)
         assert row["facts"] is not None
         if row["old"] is not None:
             assert {"hybrid", "analyzer"} <= set(row["old"]) <= {"hybrid", "analyzer", "dml"}
@@ -183,7 +184,8 @@ def test_rows_match_what_the_installed_sqlglot_reads_now(
         want_facts = row.get("facts_newest", row["facts"]) if newest else row["facts"]
         want_old = row.get("old_newest", row["old"]) if newest else row["old"]
         assert now["facts"] == want_facts, row["sql"]
-        assert now["old"] == want_old, row["sql"]
+        if not is_frozen(family):  # its extraction is carried, never recomputed
+            assert now["old"] == want_old, row["sql"]
 
 
 def _reserved(family: str) -> Dict[str, Any]:
