@@ -45,8 +45,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Providers are discovered once per process.** A `dblift.providers` entry point that
   becomes installed after the first database lookup is no longer picked up until the
   process restarts; register it explicitly with `ProviderRegistry.register_plugin`.
-- **Requires sqlglot 30.18 or later.** Statement facts rely on grammar that arrived between
-  sqlglot 30.15 and 30.18; the declared range is now `sqlglot>=30.18.0,<31`.
+- **Requires sqlglot 30.23 or later.** Oracle q-quoted strings no longer prevent source-table
+  extraction, and MySQL named foreign keys in `ALTER TABLE` no longer report unmodelled grammar.
+  The declared range is now `sqlglot>=30.23.0,<31`.
 - **MySQL and MariaDB splitting moved onto the shared lexical engine.**
   Splitting, analysis and extraction use the `mysql` and `mariadb` client rules
   (the `DELIMITER` command, client commands, executable comments, optimizer

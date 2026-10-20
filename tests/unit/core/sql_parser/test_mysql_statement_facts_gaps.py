@@ -30,6 +30,13 @@ def objects(facts):
     return [(obj.name, obj.type, obj.role, obj.schema) for obj in facts.objects]
 
 
+def test_named_foreign_key_alter_is_read_without_a_grammar_gap():
+    facts = mysql("ALTER TABLE t ADD FOREIGN KEY fk_user(user_id) REFERENCES users(id)")
+
+    assert facts.diagnostic is None
+    assert objects(facts) == [("t", SqlObjectType.TABLE, "altered", None)]
+
+
 # --- TRUNCATE -----------------------------------------------------------------------------
 
 
