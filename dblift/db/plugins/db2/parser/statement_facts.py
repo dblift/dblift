@@ -44,6 +44,12 @@ _TYPES = {
     "PROCEDURE": SqlObjectType.PROCEDURE,
     "FUNCTION": SqlObjectType.FUNCTION,
 }
+_DML_PREFIX = {
+    "INSERT": ("INSERT", "INTO"),
+    "UPDATE": ("UPDATE",),
+    "DELETE": ("DELETE", "FROM"),
+    "MERGE": ("MERGE", "INTO"),
+}
 _GRANT_TYPES = ("TABLE", "VIEW", "INDEX", "SEQUENCE", "ALIAS", "SCHEMA", "PROCEDURE", "FUNCTION")
 
 
@@ -290,10 +296,8 @@ def _head_facts(
         return None, end
     if grants and ups[end : end + 1] not in (["TO"], ["FROM"]):
         return None, end
-    if (
-        head.follow
-        and ups[_skip_group(words, end) : _skip_group(words, end) + 1] != [*head.follow][:1]
-    ):
+    after = _skip_group(words, end)
+    if head.follow and ups[after : after + 1] != list(head.follow):
         return None, end
     objects = [_object(parts, otype, head.role)]
     indexed_table = None
@@ -327,6 +331,29 @@ def _depth(words: List[Token], index: int) -> int:
             depth += token.text == "("
             depth -= token.text == ")"
     return depth
+
+
+def _unread_character(sql: str, words: List[Token], head_end: int) -> Optional[int]:
+    """Offset of the first non-ASCII character the engine may read as part of a head name."""
+    for token in words[:head_end]:
+        if token.type is TokenType.SYMBOL:
+            for k, char in enumerate(token.text):
+                if ord(char) > 127:
+                    return token.pos + k
+        elif token.type is TokenType.KEYWORD:
+            for at in (token.pos - 1, token.pos + len(token.text)):
+                if 0 <= at < len(sql) and ord(sql[at]) > 127:
+                    return at
+    return None
+
+
+def _head_end(words: List[Token], at: int) -> int:
+    """The head words and the next eight tokens, cut after the first opening parenthesis."""
+    end = min(len(words), at + 8)
+    for i, token in enumerate(words[:end]):
+        if token.type is TokenType.SYMBOL and token.text == "(":
+            return i + 1
+    return end
 
 
 def _is_client_command(ups: List[str]) -> bool:
@@ -372,13 +399,23 @@ class Db2StatementFactsReader:
             return StatementFacts(first, kind)
         for head in HEADS:
             at = _match(ups, head)
-            if at is not None:
-                facts, _ = _head_facts(words, ups, head, at)
-                if facts is not None:
-                    return facts
-                return _opaque(
-                    head.operation,
-                    head.kind,
-                    NAME_NOT_READ.format(operation=head.operation, type=head.object_type.name),
-                )
+            if at is None:
+                continue
+            facts, reached = _head_facts(words, ups, head, at)
+            end = reached + 1 if head.operation in ("GRANT", "REVOKE") else _head_end(words, at)
+            char = _unread_character(sql, words, end)
+            if char is not None:
+                return _opaque(head.operation, head.kind, UNREAD_NAME.format(code=ord(sql[char])))
+            if facts is not None:
+                return facts
+            return _opaque(
+                head.operation,
+                head.kind,
+                NAME_NOT_READ.format(operation=head.operation, type=head.object_type.name),
+            )
+        prefix = _DML_PREFIX.get(first)
+        if prefix and tuple(ups[: len(prefix)]) == prefix:
+            char = _unread_character(sql, words, _head_end(words, len(prefix)))
+            if char is not None:
+                return _opaque(first, kind, UNREAD_NAME.format(code=ord(sql[char])))
         return _opaque(first, kind, NOT_CLASSIFIED.format(word=first))
