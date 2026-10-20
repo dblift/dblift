@@ -31,6 +31,7 @@ import pytest
 
 from dblift.core.sql_parser.lexical_engine import LexicalEngine
 from dblift.core.sql_parser.lexical_tokenizer import LexicalTokenizer
+from dblift.core.sql_parser.terminator_script import TerminatorScript
 from dblift.core.sql_parser.terminator_lines import read_lines
 from dblift.db.plugins.db2.parser.lexical_spec import DB2_RULES, DB2_SPEC
 from tests.support.splitting_cost import (
@@ -157,6 +158,22 @@ def test_db2_public_split_counts_repeated_record_prefixes(monkeypatch):
     large, large_records = public_counted(shape(LARGE))
     assert (len(small_records), len(large_records)) == (SMALL, LARGE)
     assert large > BOUND * small, (small, large)
+
+
+def test_db2_public_split_counts_assembly_prefix_rescans(monkeypatch):
+    original = TerminatorScript.assemble
+
+    def rescanning_assemble(self, tokens, marks, open_lexeme):
+        records = original(self, tokens, marks, open_lexeme)
+        for record in records:
+            self.text[: record.source_start].count("\n")
+        return records
+
+    monkeypatch.setattr(TerminatorScript, "assemble", rescanning_assemble)
+    shape = SHAPES["one statement per line"]
+    small, _ = public_counted(shape(SMALL))
+    large, records = public_counted(shape(LARGE))
+    assert len(records) == LARGE and large > BOUND * small
 
 
 def test_db2_public_split_has_bounded_cost_and_ordered_records():
