@@ -280,7 +280,7 @@ class SqlGlotParser(SqlParserInterface):
         unread = self._names_unreadable(sql_content if source == "" else source, objects)
         return [] if unread else objects
 
-    def _reject_unmodelled_qualified_drop_index(self, ast: Optional[exp.Expression]) -> None:
+    def _reject_unmodelled_qualified_drop_index(self, ast: Optional[exp.Expr]) -> None:
         """Retain the unread result for a qualified DROP INDEX relation in Snowflake."""
         if (
             self.sqlglot_dialect
