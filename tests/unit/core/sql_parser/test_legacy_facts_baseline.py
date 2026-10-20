@@ -13,6 +13,7 @@ from dblift.db.plugins.sqlite.parser.lexical_spec import SQLITE_SPEC
 CORPUS = Path(__file__).with_name("legacy_facts_baseline.json")
 CORPUS_DATA = json.loads(CORPUS.read_text(encoding="utf-8"))
 CASES = CORPUS_DATA["cases"]
+ACCEPTED_DIFFERENCES = {"sqlite": 3, "duckdb": 3, "mysql": 2}
 REQUIRED_DIALECTS = {"postgresql", "oracle", "sqlserver", "mysql", "db2", "sqlite", "duckdb"}
 
 
@@ -68,7 +69,7 @@ def test_legacy_facts_corpus(case):
                 assert all(ob["schema"] == "SYSIBM" for ob in old["objects"])
             assert new["objects"] == new["affected_objects"] == expected
         return
-    if case["dialect"] in ("sqlite", "duckdb"):
+    if case["dialect"] in ACCEPTED_DIFFERENCES:
         assert observed["success"] == case["legacy_observed"]["success"]
         assert observed["errors"] == case["legacy_observed"]["errors"]
         assert len(observed["statements"]) == 5
@@ -83,7 +84,7 @@ def test_legacy_facts_corpus(case):
                 == new["affected_objects"]
                 == [{"type": "TABLE", "name": "child", "schema": None}]
             )
-        assert len(case["accepted_differences"]) == 3
+        assert len(case["accepted_differences"]) == ACCEPTED_DIFFERENCES[case["dialect"]]
         return
     assert observed == case["legacy_observed"]
 

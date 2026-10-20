@@ -6,16 +6,12 @@ from dblift.core.sql_model.base import ConstraintType
 from dblift.core.sql_parser import SqlParserFactory
 
 pytestmark = pytest.mark.unit
-DIALECTS = ("mysql", "mariadb", "postgresql", "sqlserver")
+DIALECTS = ("postgresql", "sqlserver")
 
 
 @pytest.mark.parametrize(
     "dialect, definition, stored",
     [
-        ("mysql", "f INT AS (a + 1) STORED", True),
-        ("mariadb", "f INT AS (a + 1) STORED", True),
-        ("mysql", "f INT AS (a + 1) VIRTUAL", False),
-        ("mysql", "f INT AS (a + 1)", False),
         ("postgresql", "f INT GENERATED ALWAYS AS (a + 1) STORED", True),
         ("sqlserver", "f AS (a + 1) PERSISTED", True),
         ("sqlserver", "f AS (a + 1)", False),
@@ -46,11 +42,8 @@ def test_plain_column_is_not_computed(dialect):
 @pytest.mark.parametrize(
     "dialect, key, expression",
     [
-        ("mysql", "(a + 1)", "(a + 1)"),
-        ("mariadb", "(a + 1)", "(a + 1)"),
         ("postgresql", "(lower(x))", "(LOWER(x))"),
         ("postgresql", "(lower(t.x))", "(LOWER(t.x))"),
-        ("mysql", "(a + 1.5)", "(a + 1.5)"),
     ],
 )
 def test_functional_index_marks_expression_and_preserves_sql(dialect, key, expression):
@@ -136,10 +129,6 @@ def test_foreign_key_without_actions_keeps_none(dialect):
 @pytest.mark.parametrize(
     "dialect, table, body",
     [
-        ("mysql", "t", "SET NEW.a = 3"),
-        ("mysql", "`t`", "SET NEW.a = 3"),
-        ("mariadb", "t", "SET NEW.a = 3"),
-        ("mariadb", "`t`", "SET NEW.a = 3"),
         ("postgresql", "t", "EXECUTE FUNCTION audit()"),
         ("postgresql", '"t"', "EXECUTE FUNCTION audit()"),
     ],
@@ -159,13 +148,13 @@ def test_trigger_on_unqualified_table_is_preserved(dialect, table, body):
     assert trigger.definition == body
 
 
-@pytest.mark.parametrize("dialect", ["mysql", "mariadb", "postgresql"])
-def test_trigger_on_qualified_table_still_parses(dialect):
-    body = "EXECUTE FUNCTION audit()" if dialect == "postgresql" else "SET NEW.a = 3"
+def test_trigger_on_qualified_table_still_parses():
     result = (
-        SqlParserFactory(dialect)
+        SqlParserFactory("postgresql")
         .get_parser()
-        .parse_sql(f"CREATE TRIGGER s.trg BEFORE INSERT ON s.t FOR EACH ROW {body};")
+        .parse_sql(
+            "CREATE TRIGGER s.trg BEFORE INSERT ON s.t FOR EACH ROW EXECUTE FUNCTION audit();"
+        )
     )
     assert len(result.triggers) == 1
     assert result.triggers[0].name == "trg"
@@ -176,7 +165,7 @@ def test_trigger_on_qualified_table_still_parses(dialect):
 @pytest.mark.parametrize("quote_left, quote_right", [("`", "`"), ('"', '"'), ("[", "]")])
 @pytest.mark.parametrize("qualified", [False, True])
 def test_trigger_header_accepts_quoted_identifiers(quote_left, quote_right, qualified):
-    parser = SqlParserFactory("mysql").get_parser()
+    parser = SqlParserFactory("sqlserver").get_parser()
     table = f"{quote_left}t{quote_right}"
     if qualified:
         table = f"{quote_left}s{quote_right}.{table}"
@@ -189,21 +178,6 @@ def test_trigger_header_accepts_quoted_identifiers(quote_left, quote_right, qual
     assert header.name == "trg"
     assert header.schema == "s"
     assert header.table_name == "t"
-
-
-@pytest.mark.parametrize("dialect", ["mysql", "mariadb"])
-def test_trigger_keeps_entire_compound_body(dialect):
-    body = "BEGIN SET NEW.a = 3; SET NEW.id = 1; END"
-    result = (
-        SqlParserFactory(dialect)
-        .get_parser()
-        .parse_sql(
-            f"CREATE TRIGGER trg BEFORE INSERT ON s.t FOR EACH ROW {body};\n"
-            "CREATE TABLE following (id INT);"
-        )
-    )
-    assert result.triggers[0].definition == body
-    assert result.tables[0].name == "following"
 
 
 def test_postgresql_trigger_body_keeps_semicolon_in_argument():

@@ -91,7 +91,7 @@ class TestSqlParserFactory:
         from dblift.core.sql_parser.hybrid_parser import HybridParser
         from dblift.db.provider_registry import ProviderRegistry
 
-        for dialect in ("oracle", "sqlserver", "postgresql", "mysql"):
+        for dialect in ("oracle", "sqlserver", "postgresql"):
             cls = ProviderRegistry.get_quirks(dialect).parser_class("hybrid")
             assert cls is HybridParser, f"{dialect}: expected HybridParser, got {cls!r}"
 

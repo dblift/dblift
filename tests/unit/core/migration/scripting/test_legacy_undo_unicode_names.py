@@ -31,6 +31,10 @@ LEGACY = (
     "cockroachdb",
 )
 
+# MySQL, MariaDB and Db2 read statement facts: their undo is a review placeholder, never a DROP.
+FACTS_DIALECTS = ("mysql", "mariadb", "db2")
+DROPPING = tuple(d for d in LEGACY if d not in FACTS_DIALECTS)
+
 # The 22 characters (sqlglot's non-ASCII blanks, plus the zero-width ones): a sample of each kind.
 BLANKS = [" ", " ", "　", "\u0085", " ", " "]
 ZERO_WIDTH = ["​", "⁠", "﻿"]
@@ -112,13 +116,20 @@ def test_undo_names_no_trigger_whose_name_holds_the_character(tmp_path, dialect,
     assert not any("DROP TRIGGER" in line for line in _code_lines(script))
 
 
-@pytest.mark.parametrize("dialect", LEGACY)
+@pytest.mark.parametrize("dialect", DROPPING)
 def test_undo_keeps_dropping_ascii_names(tmp_path, dialect):
     script = _undo(tmp_path, dialect, "CREATE TABLE t (id INT);\nCREATE INDEX ix ON t (id);")
     if dialect == "db2":  # facts reader without undo reversal: every mutation goes to review
         _assert_manual_review(script)
         return
     assert len([line for line in _code_lines(script) if "DROP" in line]) >= 1
+
+
+@pytest.mark.parametrize("dialect", FACTS_DIALECTS)
+def test_undo_of_ascii_names_asks_for_a_manual_review_of_each_statement(tmp_path, dialect):
+    script = _undo(tmp_path, dialect, "CREATE TABLE t (id INT);\nCREATE INDEX ix ON t (id);")
+    assert script.count("-- WARNING: CREATE cannot be reversed") == 2
+    assert not [line for line in _code_lines(script) if "DROP" in line]
 
 
 @pytest.mark.parametrize("dialect", LEGACY)
@@ -131,10 +142,12 @@ def test_undo_ignores_the_character_inside_strings_comments_and_quotes(tmp_path,
         f"CREATE VIEW v AS SELECT 'a{nbsp}b' AS c;\n"
         f"CREATE TABLE {quote}q{nbsp}{quote} (id INT);"
     )
-    if dialect == "db2":  # facts reader without undo reversal: every mutation goes to review
-        _assert_manual_review(_undo(tmp_path, dialect, sql))
+    script = _undo(tmp_path, dialect, sql)
+    if dialect in FACTS_DIALECTS:
+        # each of the four statements is reported for review, the quoted name included
+        assert script.count("-- WARNING: CREATE cannot be reversed") == 4
         return
-    drops = [line for line in _code_lines(_undo(tmp_path, dialect, sql)) if "DROP" in line]
+    drops = [line for line in _code_lines(script) if "DROP" in line]
     # the statements around the quoted name are still reversed
     assert len(drops) >= 2
 
@@ -232,7 +245,7 @@ def test_analysis_of_a_name_that_ends_its_statement_names_what_the_engine_reads(
     assert analysis.cautions, "the statement still deserves its caution"
 
 
-@pytest.mark.parametrize("dialect", ("postgresql", "mysql", "redshift"))
+@pytest.mark.parametrize("dialect", ("postgresql", "redshift"))
 def test_analysis_respects_the_flag_the_parser_set_for_a_cut_name(dialect):
     analysis = analyse_script("DROP TABLE tété;", dialect)
     assert not [obj for stmt in analysis.statements for obj in stmt.objects]

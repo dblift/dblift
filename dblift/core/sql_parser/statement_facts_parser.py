@@ -74,7 +74,15 @@ class StatementFactsParser(SqlParserInterface):
                 obj.as_sql_object(default_schema, self._dialect) for obj in facts.affected_objects
             ]
             statements.append(
-                SqlStatement(sql, facts.kind, objects, objects, self._dialect, default_schema)
+                SqlStatement(
+                    sql,
+                    facts.kind,
+                    objects,
+                    objects,
+                    self._dialect,
+                    default_schema,
+                    names_unread=facts.opaque and not facts.affected_objects,
+                )
             )
             if facts.error:
                 errors.append(facts.error)

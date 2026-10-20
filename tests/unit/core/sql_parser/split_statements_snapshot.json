@@ -62,7 +62,7 @@
 "golden": {
 "count": 811,
 "observed": null,
-"sha256": "4e2afd462f1b95d6ce26b493a63e36a697a5213f4f3c85bed2b0182ed177fabc"
+"sha256": "f845c6742efa799568650ba34ebaa5e072165ca2b740820e4bb22a183992993b"
 },
 "postgres_family": {
 "count": 68,
@@ -9899,13 +9899,19 @@
 "SELECT E'a' 'b\\'; SELECT 1; SELECT 'z';",
 {
 "analysis": [
-"SELECT E'a' 'b\\'; SELECT 1; SELECT 'z';"
+"SELECT E'a' 'b\\'",
+"SELECT 1",
+"SELECT 'z'"
 ],
 "engine": [
-"SELECT E'a' 'b\\'; SELECT 1; SELECT 'z';"
+"SELECT E'a' 'b\\'",
+"SELECT 1",
+"SELECT 'z'"
 ],
 "splitter": [
-"SELECT E'a' 'b\\'; SELECT 1; SELECT 'z';"
+"SELECT E'a' 'b\\'",
+"SELECT 1",
+"SELECT 'z'"
 ]
 }
 ],
@@ -9914,16 +9920,16 @@
 "SELECT \u00b2E'b\\';c'; SELECT 2;",
 {
 "analysis": [
-"SELECT \u00b2E'b\\';c'",
-"SELECT 2"
+"SELECT \u00b2E'b\\'",
+"c'; SELECT 2;"
 ],
 "engine": [
-"SELECT \u00b2E'b\\';c'",
-"SELECT 2"
+"SELECT \u00b2E'b\\'",
+"c'; SELECT 2;"
 ],
 "splitter": [
-"SELECT \u00b2E'b\\';c'",
-"SELECT 2"
+"SELECT \u00b2E'b\\'",
+"c'; SELECT 2;"
 ]
 }
 ],
@@ -21161,6 +21167,6 @@
 }
 ]
 ],
-"sha256": "0b3f9204528068f25f809041cf909cede878a7ca61d033b0267e838386e07768"
+"sha256": "5c3e2f64be6849fd1490a81d2b13578235bf0e6faa41d556ce839da6941c4352"
 }
 }

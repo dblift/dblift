@@ -491,21 +491,21 @@ class TestEnsureIndexMetadata:
 
 class TestEnsureTriggerMetadata:
     def test_non_create_returns_early(self):
-        parser = HybridParser("mysql")
+        parser = HybridParser("sqlserver")
         result = ParseResult(success=True, statements=[])
         stmt = SqlStatement(
             sql_text="SELECT 1",
             statement_type=SqlStatementType.SELECT,
             objects=[],
             affected_objects=[],
-            dialect="mysql",
+            dialect="sqlserver",
             schema=None,
         )
         parser._ensure_trigger_metadata(stmt, None, result)
         assert result.triggers == []
 
     def test_create_trigger_builds_trigger(self):
-        parser = HybridParser("mysql")
+        parser = HybridParser("sqlserver")
         result = ParseResult(success=True, statements=[])
         sql = "CREATE TRIGGER trg1 BEFORE INSERT ON app.orders FOR EACH ROW SET NEW.created_at = NOW();"
         stmt = SqlStatement(
@@ -513,7 +513,7 @@ class TestEnsureTriggerMetadata:
             statement_type=SqlStatementType.QUERY,
             objects=[],
             affected_objects=[],
-            dialect="mysql",
+            dialect="sqlserver",
             schema=None,
         )
         parser._ensure_trigger_metadata(stmt, None, result)

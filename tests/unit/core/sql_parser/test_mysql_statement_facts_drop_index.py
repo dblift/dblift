@@ -9,7 +9,11 @@ from dblift.core.sql_parser.sqlglot_statement_facts import (
     _mysql_on_table_name,
     read_statement_facts,
 )
-from dblift.core.sql_parser.statement_facts import NamedObject, StatementFacts
+from dblift.core.sql_parser.statement_facts import (
+    NamedObject,
+    SqlglotStatementFactsReader,
+    StatementFacts,
+)
 from dblift.db.plugins.mariadb.quirks import MariadbQuirks
 from dblift.db.plugins.mysql.quirks import MysqlQuirks
 
@@ -148,8 +152,9 @@ def test_mysql_drop_index_if_exists_keeps_the_on_table_relation():
 
 
 @pytest.mark.parametrize("quirks_class", [MysqlQuirks, MariadbQuirks])
-def test_mysql_family_drop_index_preparation_keeps_facts_dormant(quirks_class):
-    assert not quirks_class().supports_statement_facts
+def test_mysql_family_drop_index_preparation_runs_with_facts_active(quirks_class):
+    assert quirks_class().supports_statement_facts
+    assert quirks_class().statement_facts_class is SqlglotStatementFactsReader
 
 
 def test_mysql_create_index_relation_is_unchanged():
