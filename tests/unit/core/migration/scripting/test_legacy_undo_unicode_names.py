@@ -30,8 +30,8 @@ LEGACY = (
 )
 FACTS = ("postgresql", "cockroachdb")
 
-# MySQL, MariaDB and Db2 read statement facts: their undo is a review placeholder, never a DROP.
-FACTS_DIALECTS = ("mysql", "mariadb", "db2")
+# Activated facts readers leave reversal to manual review.
+FACTS_DIALECTS = ("mysql", "mariadb", "db2", "sqlserver")
 DROPPING = tuple(d for d in LEGACY if d not in FACTS_DIALECTS)
 
 # The 22 characters (sqlglot's non-ASCII blanks, plus the zero-width ones): a sample of each kind.
@@ -99,6 +99,9 @@ def _assert_manual_review(script: str) -> None:
 @pytest.mark.parametrize("char", RULE + NAME_PARTS, ids=IDS.get)
 def test_undo_names_no_object_whose_name_holds_the_character(tmp_path, dialect, shape, char):
     script = _undo(tmp_path, dialect, SHAPES[shape].format(c=char))
+    if dialect in FACTS_DIALECTS:
+        _assert_manual_review(script)
+        return
     if dialect in READ_WHOLE and char in NAME_PARTS:
         # it reads these as part of the name: whatever is dropped, it is that name
         assert all(char in line for line in _code_lines(script))
@@ -158,10 +161,16 @@ def test_undo_ignores_the_character_inside_strings_comments_and_quotes(tmp_path,
     assert len(drops) >= 2
 
 
-@pytest.mark.parametrize("dialect", ("sqlserver", "oracle"))
+@pytest.mark.parametrize("dialect", ("oracle",))
 def test_non_ascii_letter_name_is_named_where_the_extractor_reads_it_whole(tmp_path, dialect):
     script = _undo(tmp_path, dialect, "CREATE TABLE tété (id INT);")
     assert any("é" in line.lower() for line in _code_lines(script))
+
+
+def test_sqlserver_non_ascii_letter_name_requires_manual_undo_review(tmp_path):
+    script = _undo(tmp_path, "sqlserver", "CREATE TABLE tété (id INT);")
+    _assert_manual_review(script)
+    assert "tété" in script
 
 
 @pytest.mark.parametrize("dialect", ("postgresql", "mysql", "mariadb", "db2", "redshift"))

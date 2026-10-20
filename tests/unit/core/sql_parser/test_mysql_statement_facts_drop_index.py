@@ -131,9 +131,14 @@ def test_mysql_drop_index_empty_qualifiers_remain_opaque(index):
 
 @pytest.mark.parametrize("dialect", ["sqlite", "duckdb", "postgres", "oracle", "tsql"])
 def test_other_dialect_drop_indexes_do_not_gain_a_mysql_relation(dialect):
-    """These dialects return exactly the single dropped index they returned before."""
+    """A bare T-SQL index has no proven owner; other dialects retain their reading."""
     facts = read_statement_facts("DROP INDEX idx", dialect=dialect)
 
+    if dialect == "tsql":
+        assert (facts.operation, facts.kind) == ("DROP", "DDL")
+        assert facts.objects == () and facts.indexed_table is None
+        assert facts.opaque and facts.diagnostic == "tsql index relation is opaque"
+        return
     assert facts == StatementFacts(
         "DROP", "DDL", (NamedObject("idx", SqlObjectType.INDEX, "dropped"),)
     )
@@ -143,8 +148,16 @@ def test_other_dialect_drop_indexes_do_not_gain_a_mysql_relation(dialect):
 def test_tsql_drop_index_on_relation_keeps_its_modelled_index(sql):
     facts = read_statement_facts(sql, dialect="tsql")
 
+    schema = "s" if sql.endswith("s.t") else None
+    table = "s.t" if schema else "t"
     assert facts == StatementFacts(
-        "DROP", "DDL", (NamedObject("idx", SqlObjectType.INDEX, "dropped"),)
+        "DROP",
+        "DDL",
+        (
+            NamedObject("idx", SqlObjectType.INDEX, "dropped", schema),
+            NamedObject("t", SqlObjectType.TABLE, "referenced", schema),
+        ),
+        indexed_table=table,
     )
 
 
