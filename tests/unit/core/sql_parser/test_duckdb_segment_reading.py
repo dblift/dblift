@@ -7,6 +7,7 @@ from typing import List, Tuple
 import pytest
 
 from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
+from dblift.core.sql_parser.lexical_engine import LexicalEngine
 from dblift.core.sql_parser.lexical_spec import LexicalSpec
 from dblift.core.sql_parser.lexical_tokenizer import LexicalTokenizer
 from dblift.core.sql_parser.tokens import Token
@@ -228,6 +229,35 @@ def test_unterminated_block_comment_is_code_not_a_comment():
     assert shape("SELECT 1; /* open") == [kw("SELECT"), ident("1"), dl(), sym("/* open")]
     assert comments("SELECT 1; /* open") == []
     assert shape("SELECT 1; /* /* a */ b") == [kw("SELECT"), ident("1"), dl(), sym("/* /* a */ b")]
+
+
+@pytest.mark.parametrize(
+    "script, where",
+    [
+        ("SELECT 1; /* open", "line 1, column 11"),
+        ("SELECT 1;\n/* /* a */ b", "line 2, column 1"),
+        ("/* a /* b */", "line 1, column 1"),
+        ("SELECT 1" + NBSP + "/* open", "line 1, column 10"),
+        ("SELECT 1; SELECT 2 -- /* x\n/* open;", "line 2, column 1"),
+    ],
+)
+def test_the_split_refuses_an_unterminated_block_comment(script, where):
+    with pytest.raises(UnsafeStatementSplitError) as raised:
+        LexicalEngine(DUCKDB_SPEC).split(script)
+    assert str(raised.value) == f"unterminated block comment opened at {where}"
+
+
+@pytest.mark.parametrize(
+    "script",
+    [
+        "/* a /* b */ */ SELECT 1",
+        "SELECT '/* x'; SELECT 1 AS \"/* y\"; SELECT 2 -- /* z\n",
+        "SELECT $t$ /* x",
+        "SELECT 1 /*/ x */",
+    ],
+)
+def test_the_split_does_not_refuse_what_opens_no_open_comment(script):
+    assert LexicalEngine(DUCKDB_SPEC).split(script)
 
 
 @pytest.mark.parametrize("blank", ENGINE_BLANKS + list(" \t\n\f\r"))

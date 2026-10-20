@@ -179,13 +179,13 @@ class TestDuckDBNestedBlockComments(unittest.TestCase):
         stmts = self.parser.split_statements(THREE_DEEP)
         self.assertEqual(stmts, [THREE_DEEP.removesuffix(";")])
 
-    def test_unterminated_inner_comment_swallows_rest_of_file(self):
-        stmts = self.parser.split_statements(UNTERMINATED_INNER)
-        self.assertEqual(stmts, [UNTERMINATED_INNER])
+    def test_unterminated_inner_comment_is_refused(self):
+        with self.assertRaises(UnsafeStatementSplitError):
+            self.parser.split_statements(UNTERMINATED_INNER)
 
-    def test_three_deep_with_unterminated_middle_swallows_rest_of_file(self):
-        stmts = self.parser.split_statements(THREE_DEEP_UNTERMINATED_MIDDLE)
-        self.assertEqual(stmts, [THREE_DEEP_UNTERMINATED_MIDDLE])
+    def test_three_deep_with_unterminated_middle_is_refused(self):
+        with self.assertRaises(UnsafeStatementSplitError):
+            self.parser.split_statements(THREE_DEEP_UNTERMINATED_MIDDLE)
 
 
 class TestNonNestingDialectsUnchanged(unittest.TestCase):

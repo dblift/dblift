@@ -56,7 +56,7 @@ def test_sqlite_sqlglot_factory_type_remains_unsupported():
 
 @pytest.mark.parametrize("parser_class", [HybridParser, SqlGlotParser])
 def test_direct_generic_parser_construction_rejects_sqlite(parser_class):
-    with pytest.raises(ValueError, match="SQLiteFactsParser"):
+    with pytest.raises(ValueError, match="StatementFactsParser"):
         parser_class("sqlite")
 
 

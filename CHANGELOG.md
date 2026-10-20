@@ -123,6 +123,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **DuckDB refuses a script with an unclosed block comment.** A script holding a
+  `/*` that is never closed (nested comments count) is now refused before anything
+  runs, as on the other engines. The statements before the comment used to be executed
+  first and the migration then failed in the engine; now nothing runs.
+- **A plugin can declare `statement_facts_class` without a `parser_class` of its own.** The parser
+  factory now serves such a plugin a parser built from its facts reader and `lexical_spec()`, instead
+  of the hybrid parser, or a subclass of it, refusing it. Script analysis and undo generation no
+  longer raise for it. Script analysis reports a facts parser that cannot be built (a missing
+  `lexical_spec()`, or a reader that does not accept `(dialect, spec)`) as an error; a reader raising
+  while it reads a statement still propagates.
+- **Linting no longer skips cautions on a quoted name.** A table created earlier in a
+  script or delta exempts later statements from the table-scoped cautions (`drop-table`,
+  `truncate`, `drop-column`, ...) only when the names are the same table. A quoted name
+  matches an unquoted one only when it is spelled the way the engine stores the unquoted
+  name (`"users"` on PostgreSQL, `"USERS"` on Oracle); `CREATE TABLE t; DROP TABLE "T";`
+  is now reported. Unquoted names equal ignoring case, and quoted names that are
+  byte-equal, still match.
 - **Redshift reads a form feed between statements as a blank.** A page break in a script no longer
   becomes a statement of its own, and a form feed at the start of a statement is no longer sent with it.
 - **`migrate` sends a statement that starts or ends with a character the engine does not read as a

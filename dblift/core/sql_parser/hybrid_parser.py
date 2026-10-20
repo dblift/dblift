@@ -152,7 +152,7 @@ class HybridParser(_SqlglotBuildersMixin, SqlParserInterface):
         self._quirks = ProviderRegistry.get_quirks(self.dialect)
         if self._quirks.supports_statement_facts:
             raise ValueError(
-                f"Use the statement-facts parser for {self.dialect} (SQLiteFactsParser)"
+                f"Use the statement-facts parser for {self.dialect} (StatementFactsParser)"
             )
 
         # Initialize regex parser for this dialect
