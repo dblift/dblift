@@ -773,6 +773,60 @@ def _mysql_unresolved_mutation_target(ast: exp.Expression) -> bool:
     return False
 
 
+_MYSQL_QUALIFIED = rf"({_NAME})(?:\s*\.\s*({_NAME}))?"
+_MYSQL_RENAME_PAIR = rf"{_MYSQL_QUALIFIED}\s+TO\s+{_MYSQL_QUALIFIED}"
+_MYSQL_RENAME = re.compile(
+    rf"^\s*RENAME\s+TABLE\s+{_MYSQL_RENAME_PAIR}(?:\s*,\s*{_MYSQL_RENAME_PAIR})*\s*;?\s*$",
+    re.IGNORECASE,
+)
+_MYSQL_RENAME_SOURCE = re.compile(rf"{_MYSQL_QUALIFIED}\s+TO\s+{_MYSQL_QUALIFIED}", re.IGNORECASE)
+_MYSQL_SPECIAL_INDEX = re.compile(
+    rf"^\s*CREATE\s+(?:FULLTEXT|SPATIAL)\s+INDEX\s+({_NAME})\s+ON\s+{_MYSQL_QUALIFIED}\s*\(",
+    re.IGNORECASE,
+)
+
+
+def _mysql_command_facts(sql: str) -> Optional[StatementFacts]:
+    """RENAME TABLE and CREATE FULLTEXT / SPATIAL INDEX, which sqlglot's MySQL grammar leaves as
+    an opaque command."""
+    head = _blanked(sql)
+    first = _FIRST_WORD.match(head)
+    if first and first.group(1).upper() == "RENAME":
+        if not _MYSQL_RENAME.match(head):
+            return StatementFacts(
+                "RENAME", "DDL", diagnostic="mysql RENAME form is opaque to statement facts"
+            )
+        body = re.sub(r"^\s*RENAME\s+TABLE\s+", "", head, flags=re.IGNORECASE)
+        sources = []
+        for pair in _MYSQL_RENAME_SOURCE.finditer(body):
+            schema, name = (pair.group(1), pair.group(2)) if pair.group(2) else (None, pair.group(1))
+            sources.append(
+                NamedObject(
+                    strip_identifier_quotes(name),
+                    SqlObjectType.TABLE,
+                    "altered",
+                    strip_identifier_quotes(schema) if schema else None,
+                )
+            )
+        return StatementFacts("RENAME", "DDL", tuple(sources))
+    match = _MYSQL_SPECIAL_INDEX.match(head)
+    if match is None:
+        return None
+    schema, name = (match.group(2), match.group(3)) if match.group(3) else (None, match.group(2))
+    table = strip_identifier_quotes(name)
+    schema = strip_identifier_quotes(schema) if schema else None
+    return StatementFacts(
+        "CREATE",
+        "DDL",
+        (
+            NamedObject(strip_identifier_quotes(match.group(1)), SqlObjectType.INDEX, "created"),
+            NamedObject(table, SqlObjectType.TABLE, "referenced", schema),
+        ),
+        indexed_table=f"{schema}.{table}" if schema else table,
+        diagnostic="mysql index columns are opaque to statement facts",
+    )
+
+
 def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
     """Read one already-split statement; never retry a second extractor.
 
@@ -809,6 +863,12 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
         return _head_facts(
             sql, f"{dialect} grammar is not modelled for this statement", dialect=dialect
         )
+    if (
+        dialect == "mysql"  # lint: allow-dialect-string: sqlglot reads these MySQL forms as Command
+        and isinstance(ast, exp.Command)
+        and (command := _mysql_command_facts(sql)) is not None
+    ):
+        return command
     if ast is None or isinstance(ast, (exp.Command, exp.Block)):
         construct = type(ast).__name__ if ast is not None else "empty statement"
         return _head_facts(
