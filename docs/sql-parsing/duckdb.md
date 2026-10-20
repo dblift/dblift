@@ -419,7 +419,7 @@ starts with `.` in column 0 while no statement text is pending is a `duckdb` she
 command and is refused with `UnsupportedMetaCommandError`, with the message
 `duckdb shell command '.mode' on line 1: the shell runs it and the engine cannot; dblift does not run client commands`
 (the command is the first word of the line). A NUL character is refused first, before any other reading, with `UnsafeStatementSplitError` and the message
-`a NUL character on line 2: the engine reads the script up to it and silently drops the rest`:
+`a NUL character on line 2, column 1: the engine reads the script up to it and silently drops the rest`:
 DuckDB reads the script as a C string and would silently drop everything after it. A byte order mark
 at the start of the script is dropped; elsewhere it is a blank.
 
