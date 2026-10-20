@@ -861,7 +861,7 @@ _MYSQL_DML_VERB = re.compile(
 # MySQL also ends a modifier gap with ``# ...`` and ``-- ...`` line comments.
 _MYSQL_MODIFIER_GAP = {
     verb: re.compile(
-        rf"\s*(?:#[^\n]*(?:\n|$)|--(?=[\x00-\x20\x7f])[^\n]*(?:\n|$)|"
+        r"\s*(?:#[^\n]*(?:\n|$)|--(?=[\x00-\x20\x7f])[^\n]*(?:\n|$)|"
         + pattern.pattern.removeprefix(r"\s*(?:"),
         pattern.flags,
     )
