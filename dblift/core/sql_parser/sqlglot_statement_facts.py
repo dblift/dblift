@@ -842,6 +842,7 @@ def _select_into_table(ast: exp.Expr) -> Optional[exp.Expression]:
     into = first.args.get("into")
     return into.this if isinstance(into, exp.Into) else None
 
+
 _MYSQL_QUALIFIED = rf"({_NAME})(?:\s*\.\s*({_NAME}))?"
 _MYSQL_RENAME_PAIR = rf"{_MYSQL_QUALIFIED}\s+TO\s+{_MYSQL_QUALIFIED}"
 _MYSQL_RENAME = re.compile(

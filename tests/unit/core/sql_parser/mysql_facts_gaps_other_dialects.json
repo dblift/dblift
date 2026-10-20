@@ -1937,7 +1937,14 @@
    "events": null,
    "indexed_table": null,
    "kind": "DDL",
-   "objects": [],
+   "objects": [
+    [
+     "s",
+     "SCHEMA",
+     "dropped",
+     null
+    ]
+   ],
    "opaque": false,
    "operation": "DROP",
    "predicate": null,
@@ -1951,7 +1958,14 @@
    "events": null,
    "indexed_table": null,
    "kind": "DDL",
-   "objects": [],
+   "objects": [
+    [
+     "s",
+     "SCHEMA",
+     "dropped",
+     null
+    ]
+   ],
    "opaque": false,
    "operation": "DROP",
    "predicate": null,
@@ -2250,7 +2264,7 @@
    "operation": "UPDATE",
    "predicate": null,
    "target": "LOW_PRIORITY",
-   "target_sql": "LOW_PRIORITY AS t"
+   "target_sql": "LOW_PRIORITY"
   },
   "UPDATE IGNORE t SET b = 1": {
    "affected_columns": [
@@ -2275,7 +2289,7 @@
    "operation": "UPDATE",
    "predicate": null,
    "target": "IGNORE",
-   "target_sql": "IGNORE AS t"
+   "target_sql": "IGNORE"
   },
   "UPDATE LOW_PRIORITY IGNORE `s`.`t` SET b = 1": {
    "affected_columns": [],
@@ -2323,7 +2337,7 @@
    "operation": "UPDATE",
    "predicate": null,
    "target": "LOW_PRIORITY",
-   "target_sql": "LOW_PRIORITY AS t"
+   "target_sql": "LOW_PRIORITY"
   },
   "UPDATE `ignore` SET a = 1": {
    "affected_columns": [],
@@ -2371,7 +2385,7 @@
    "operation": "UPDATE",
    "predicate": null,
    "target": "delayed",
-   "target_sql": "delayed AS t"
+   "target_sql": "delayed"
   },
   "UPDATE ignore\n.t SET a = 1": {
    "affected_columns": [
@@ -2521,7 +2535,7 @@
    "operation": "UPDATE",
    "predicate": null,
    "target": "quick",
-   "target_sql": "quick AS t"
+   "target_sql": "quick"
   },
   "UPDATE t SET ignore = 1": {
    "affected_columns": [
