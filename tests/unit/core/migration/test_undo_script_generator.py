@@ -994,11 +994,13 @@ class TestUndoReversersMixin(unittest.TestCase):
     def test_reverse_statement_create_index_unresolvable_table_flags_review(self):
         # The deliberate refusal outcome (#368 follow-up): SQL Server needs
         # the table and none can be found here, so this must come back as a
-        # flagged warning, not a guessed, invalid DROP INDEX.
+        # flagged warning with the original SQL, not a guessed DROP INDEX.
         gen = self._make_generator("sqlserver")
-        result = gen._reverse_statement("CREATE INDEX idx_mystery;")
+        sql = "CREATE INDEX idx_mystery;"
+        result = gen._reverse_statement(sql)
         self.assertTrue(result.sql.startswith("-- WARNING"))
-        self.assertIn("idx_mystery", result.sql)
+        self.assertEqual(result.original_statement, sql)
+        self.assertNotIn("DROP INDEX", result.sql)
         self.assertTrue(result.requires_manual_review)
 
     def test_routing_create_fulltext_index_has_no_name_of_its_own_sqlserver(self):
@@ -1486,8 +1488,10 @@ class TestUndoScriptGeneratorDialects(unittest.TestCase):
         gen = self._make_generator("sqlserver")
         migration = self._make_migration("CREATE TABLE t (id INT);")
         results = gen._generate_undo_statements(migration)
-        drop_stmts = [s for s in results if "DROP TABLE" in s.sql]
-        self.assertTrue(len(drop_stmts) >= 1)
+        self.assertEqual(len(results), 1)
+        self.assertTrue(results[0].requires_manual_review)
+        self.assertEqual(results[0].original_statement, "CREATE TABLE t (id INT);")
+        self.assertNotIn("DROP TABLE", results[0].sql)
 
 
 class TestSqliteUndoWithInvisibleNameCharacters(unittest.TestCase):

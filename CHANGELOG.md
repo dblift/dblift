@@ -19,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **SQL Server reads statement facts through the T-SQL grammar.** Object extraction, script
+  analysis and DML helpers use the plugin's facts reader after lexical `GO` batch splitting.
+  Unread names and effects are reported as opaque rather than guessed. Newly activated SQL
+  Server statements require manual undo review instead of automatic text reversal.
 - **MySQL and MariaDB read statement facts from the SQL grammar.** `info --format json`,
   `migrate --dry-run`, object tracking during `migrate`, data-change analysis and lint read each
   statement's kind, objects, target and predicate from the sqlglot AST after the client rules split
