@@ -154,7 +154,7 @@ class LexicalTokenizer(BaseTokenizer):
         # and the nesting depth at each consumed terminator that falls inside a comment.
         self.terminator_script = terminator_script
         self.open_lexeme = -1
-        # Segment scripts: the line and column of a block comment left open, for the split to refuse.
+        # Segment scripts: where a block comment was left open (line, column).
         self.open_comment: Optional[Tuple[int, int]] = None
         self.marks: Dict[int, Tuple[int, bool]] = {}
         self._word_re = re.compile("" if terminator_rules is None else terminator_rules.word)
