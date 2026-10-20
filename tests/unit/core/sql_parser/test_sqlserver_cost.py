@@ -197,11 +197,82 @@ def test_sqlserver_cost_detects_a_whole_source_scan_outside_a_loop(function, mon
     )
 
 
+@pytest.mark.parametrize("renamed_parameter", (False, True), ids=("alias", "renamed parameter"))
+def test_sqlserver_cost_detects_a_whole_source_scan_through_a_local_name(
+    renamed_parameter, monkeypatch
+):
+    source = textwrap.dedent(inspect.getsource(batch_commands.find_lone_cr))
+    anchor = "    match = _patterns(rules).lone_cr.search(source, start, end)"
+    assert source.count(anchor) == 1
+    if renamed_parameter:
+        mutant = source.replace("source: str", "payload: str").replace(
+            anchor,
+            "    payload.count('\\n')\n    visits.append(1)\n"
+            "    match = _patterns(rules).lone_cr.search(payload, start, end)",
+        )
+    else:
+        mutant = source.replace(
+            anchor, "    text = source\n    text.count('\\n')\n    visits.append(1)\n" + anchor
+        )
+    namespace = {**vars(batch_commands), "visits": []}
+    exec(mutant, namespace)  # noqa: S102 - test-owned mutation
+    monkeypatch.setattr(tokenizer_module, "find_lone_cr", namespace["find_lone_cr"])
+    make = SHAPES["many GO batches"]
+    small, large = counted(make(SMALL)), counted(make(LARGE))
+    assert namespace["visits"]
+    assert large <= BOUND * small  # the helper still receives a plain string
+    assert (
+        loop_findings(
+            ast.parse(mutant),
+            plain_source=True,
+            source_parameter=1 if renamed_parameter else None,
+        )
+        != []
+    ), (small, large)
+
+
 def test_sqlserver_source_guard_accepts_renamed_advancing_line_search():
     source = textwrap.dedent(inspect.getsource(batch_division._events))
     renamed = source.replace("cursor", "scan_position").replace("offset", "word_position")
     assert renamed != source
     assert loop_findings(ast.parse(renamed), plain_source=True) == []
+
+
+@pytest.mark.parametrize(
+    "tail",
+    (
+        "        position = 0\n        break\n",
+        "        if False:\n            position = 0\n        position = 0\n        break\n",
+    ),
+)
+def test_sqlserver_source_guard_rejects_an_advancing_search_reset(tail):
+    source = (
+        "def helper(source, end):\n"
+        "    position = 0\n"
+        "    while position < end:\n"
+        "        hit = source.find('\\n', position, end)\n"
+        "        if hit < 0:\n"
+        "            position = end\n"
+        "        else:\n"
+        "            position = hit + 1\n" + tail
+    )
+    assert loop_findings(ast.parse(source), plain_source=True) != []
+
+
+def test_sqlserver_source_guard_rejects_dead_advancement():
+    source = (
+        "def helper(source, end):\n"
+        "    position = 0\n"
+        "    while position < end:\n"
+        "        hit = source.find('\\n', position, end)\n"
+        "        if hit < 0:\n"
+        "            position = end\n"
+        "            break\n"
+        "        if False:\n"
+        "            position = hit + 1\n"
+        "        position = end\n"
+    )
+    assert loop_findings(ast.parse(source), plain_source=True) != []
 
 
 @pytest.mark.parametrize(
@@ -285,11 +356,30 @@ BATCH_COST_DECISIONS = {
     },
 }
 BATCH_INVENTORY = {name: set(decisions) for name, decisions in BATCH_COST_DECISIONS.items()}
+BATCH_SOURCE_PARAMETER = {
+    "batch_commands.py": {
+        "read_command": 2,
+        "find_lone_cr": 1,
+        "refuse_variable_in_code": 2,
+        "refuse_variable_in_lexeme": 2,
+    },
+    "batch_division.py": {"code_positions": 1, "_events": 1, "divide": 1},
+}
 
 
 def test_sqlserver_batch_helper_inventory_is_explicit():
     root = Path(batch_commands.__file__).parent
     assert _batch_inventory(root) == BATCH_INVENTORY
+    plain_source = {
+        filename: {
+            name for name, decision in decisions.items() if decision.startswith("plain source:")
+        }
+        for filename, decisions in BATCH_COST_DECISIONS.items()
+        if any(decision.startswith("plain source:") for decision in decisions.values())
+    }
+    assert {
+        filename: set(positions) for filename, positions in BATCH_SOURCE_PARAMETER.items()
+    } == plain_source
 
 
 def test_sqlserver_all_classified_plain_source_helpers_are_guarded():
@@ -298,7 +388,14 @@ def test_sqlserver_all_classified_plain_source_helpers_are_guarded():
     for filename, decisions in BATCH_COST_DECISIONS.items():
         for name, decision in decisions.items():
             if decision.startswith("plain source:"):
-                assert loop_findings(functions[filename][name], plain_source=True) == [], name
+                assert (
+                    loop_findings(
+                        functions[filename][name],
+                        plain_source=True,
+                        source_parameter=BATCH_SOURCE_PARAMETER[filename][name],
+                    )
+                    == []
+                ), name
 
 
 def test_sqlserver_no_script_classification_does_not_read_the_script():

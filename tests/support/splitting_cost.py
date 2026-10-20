@@ -496,8 +496,8 @@ def _has_slice(node: ast.AST, of: Optional[str] = None) -> bool:
 
 
 def _advancing_line_search(call: ast.Call, loop: ast.AST) -> bool:
-    """Recognize a newline search whose cursor moves to the hit or the bounded end."""
-    if not isinstance(loop, ast.While) or len(call.args) != 3:
+    """Accept only the line scanner's direct hit, exit, and advance sequence."""
+    if not isinstance(loop, ast.While) or len(call.args) != 3 or len(loop.body) != 3:
         return False
     needle, start, end = call.args
     if not (
@@ -515,34 +515,47 @@ def _advancing_line_search(call: ast.Call, loop: ast.AST) -> bool:
         and loop.test.comparators[0].id == end.id
     ):
         return False
-    assigned = [
-        statement.targets[0]
-        for statement in ast.walk(loop)
-        if isinstance(statement, ast.Assign)
-        and statement.value is call
-        and len(statement.targets) == 1
-        and isinstance(statement.targets[0], ast.Name)
-    ]
-    if len(assigned) != 1:
-        return False
-    hit = assigned[0].id
-    advances = bounds = False
-    for statement in ast.walk(loop):
-        if not isinstance(statement, ast.Assign) or not any(
-            isinstance(target, ast.Name) and target.id == start.id for target in statement.targets
-        ):
-            continue
-        value = statement.value
-        bounds |= isinstance(value, ast.Name) and value.id == end.id
-        advances |= (
-            isinstance(value, ast.BinOp)
-            and isinstance(value.op, ast.Add)
-            and isinstance(value.left, ast.Name)
-            and value.left.id == hit
-            and isinstance(value.right, ast.Constant)
-            and value.right.value == 1
+    assigned, exhausted, advanced = loop.body
+    if not (
+        isinstance(assigned, ast.Assign)
+        and assigned.value is call
+        and len(assigned.targets) == 1
+        and isinstance(assigned.targets[0], ast.Name)
+        and isinstance(exhausted, ast.If)
+        and not exhausted.orelse
+        and len(exhausted.body) == 2
+        and isinstance(exhausted.body[0], ast.Assign)
+        and len(exhausted.body[0].targets) == 1
+        and isinstance(exhausted.body[0].targets[0], ast.Name)
+        and exhausted.body[0].targets[0].id == start.id
+        and isinstance(exhausted.body[0].value, ast.Name)
+        and exhausted.body[0].value.id == end.id
+        and isinstance(exhausted.body[1], ast.Break)
+        and isinstance(advanced, ast.Assign)
+        and any(
+            isinstance(target, ast.Name) and target.id == start.id for target in advanced.targets
         )
-    return advances and bounds
+    ):
+        return False
+    hit = assigned.targets[0].id
+    test = exhausted.test
+    value = advanced.value
+    return (
+        isinstance(test, ast.Compare)
+        and isinstance(test.left, ast.Name)
+        and test.left.id == hit
+        and len(test.ops) == 1
+        and isinstance(test.ops[0], ast.Lt)
+        and len(test.comparators) == 1
+        and isinstance(test.comparators[0], ast.Constant)
+        and test.comparators[0].value == 0
+        and isinstance(value, ast.BinOp)
+        and isinstance(value.op, ast.Add)
+        and isinstance(value.left, ast.Name)
+        and value.left.id == hit
+        and isinstance(value.right, ast.Constant)
+        and value.right.value == 1
+    )
 
 
 def _bounded_plain_source_scan(call: ast.Call) -> bool:
@@ -574,9 +587,35 @@ def _bounded_plain_source_scan(call: ast.Call) -> bool:
     return not full_start and not full_end
 
 
-def loop_findings(tree: ast.AST, *, plain_source: bool = False) -> List[str]:
+def loop_findings(
+    tree: ast.AST, *, plain_source: bool = False, source_parameter: Optional[int] = None
+) -> List[str]:
     """Copies in loops and uncharged scans in helpers given plain source strings."""
     found = []
+    source_names = {"source"}
+    if source_parameter is not None:
+        if isinstance(tree, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            function = tree
+        else:
+            assert isinstance(tree, ast.Module), "source parameter requires a function"
+            functions = [
+                n for n in tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+            ]
+            assert len(functions) == 1, "source parameter requires one function"
+            function = functions[0]
+        args = function.args.posonlyargs + function.args.args
+        assert source_parameter < len(args), "source parameter position is missing"
+        source_names.add(args[source_parameter].arg)
+    changed = True
+    while changed:
+        prior = len(source_names)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Assign) and isinstance(node.value, ast.Name):
+                if node.value.id in source_names:
+                    source_names.update(
+                        target.id for target in node.targets if isinstance(target, ast.Name)
+                    )
+        changed = len(source_names) != prior
     scanning_methods = {
         "count",
         "find",
@@ -600,7 +639,7 @@ def loop_findings(tree: ast.AST, *, plain_source: bool = False) -> List[str]:
             if (
                 isinstance(node, ast.Subscript)
                 and isinstance(node.slice, ast.Slice)
-                and _name(node.value) == "source"
+                and _name(node.value) in source_names
                 and (
                     node.slice.lower is None
                     or isinstance(node.slice.lower, ast.Constant)
@@ -610,14 +649,14 @@ def loop_findings(tree: ast.AST, *, plain_source: bool = False) -> List[str]:
                     and isinstance(node.slice.upper.func, ast.Name)
                     and node.slice.upper.func.id == "len"
                     and len(node.slice.upper.args) == 1
-                    and _name(node.slice.upper.args[0]) == "source"
+                    and _name(node.slice.upper.args[0]) == _name(node.value)
                 )
             ):
                 found.append(f"unbounded source slice at line {node.lineno}")
             if not (
                 isinstance(node, ast.Call)
                 and isinstance(node.func, ast.Attribute)
-                and _name(node.func.value) in {"source", "sql", "script"}
+                and _name(node.func.value) in source_names | {"sql", "script"}
                 and node.func.attr in scanning_methods
             ):
                 continue
@@ -627,7 +666,7 @@ def loop_findings(tree: ast.AST, *, plain_source: bool = False) -> List[str]:
                     _advancing_line_search(node, loop) for loop in enclosing
                 ):
                     continue
-            elif _name(node.func.value) != "source" or _bounded_plain_source_scan(node):
+            elif _name(node.func.value) not in source_names or _bounded_plain_source_scan(node):
                 continue
             found.append(f"source scan at line {node.lineno}")
     for loop in loops:
