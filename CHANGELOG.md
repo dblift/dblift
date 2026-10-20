@@ -123,10 +123,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **Linting no longer skips the drop-table caution on a quoted name.** A script that
-  drops a quoted table whose name differs only in case from a table it created
-  (`CREATE TABLE t ...; DROP TABLE "T";`) is now reported; unquoted names, and quoted
-  names that are byte-equal, still count as the same table.
+- **Linting no longer skips cautions on a quoted name.** A table created earlier in a
+  script or delta exempts later statements from the table-scoped cautions (`drop-table`,
+  `truncate`, `drop-column`, ...) only when the names are the same table. A quoted name
+  matches an unquoted one only when it is spelled the way the engine stores the unquoted
+  name (`"users"` on PostgreSQL, `"USERS"` on Oracle); `CREATE TABLE t; DROP TABLE "T";`
+  is now reported. Unquoted names equal ignoring case, and quoted names that are
+  byte-equal, still match.
 - **Redshift reads a form feed between statements as a blank.** A page break in a script no longer
   becomes a statement of its own, and a form feed at the start of a statement is no longer sent with it.
 - **`migrate` sends a statement that starts or ends with a character the engine does not read as a

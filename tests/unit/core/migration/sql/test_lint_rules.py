@@ -301,6 +301,11 @@ def _quote(dialect: str, name: str) -> str:
     return f'"{name}"'
 
 
+def _foreign(dialect: str, name: str) -> str:
+    """*name* spelled the way the engine does not store an unquoted *name*."""
+    return name.lower() if dialect == "oracle" else name.upper()
+
+
 _QUOTING_DIALECTS = ["postgresql", "oracle", "mysql", "sqlserver", "sqlite"]
 
 
@@ -310,13 +315,12 @@ def _drops(dialect: str, create_name: str, drop_name: str):
 
 @pytest.mark.parametrize("dialect", _QUOTING_DIALECTS)
 def test_a_quoted_drop_of_a_differently_cased_new_table_is_reported(dialect):
-    assert "drop-table" in _drops(dialect, "t", _quote(dialect, "T"))
+    assert "drop-table" in _drops(dialect, "t", _quote(dialect, _foreign(dialect, "t")))
 
 
 @pytest.mark.parametrize("dialect", _QUOTING_DIALECTS)
 def test_an_unquoted_drop_of_a_quoted_new_table_is_reported(dialect):
-    assert "drop-table" in _drops(dialect, _quote(dialect, "T"), "t")
-    assert "drop-table" in _drops(dialect, _quote(dialect, "t"), "t")
+    assert "drop-table" in _drops(dialect, _quote(dialect, _foreign(dialect, "t")), "t")
 
 
 @pytest.mark.parametrize("dialect", _QUOTING_DIALECTS)
@@ -338,7 +342,9 @@ def test_byte_equal_quoted_names_stay_exempt(dialect):
 
 @pytest.mark.parametrize("dialect", _QUOTING_DIALECTS)
 def test_quoting_of_the_schema_part_counts(dialect):
-    create = f"CREATE TABLE app.t (id INT);\nDROP TABLE {_quote(dialect, 'APP')}.t;"
+    create = (
+        f"CREATE TABLE app.t (id INT);\nDROP TABLE {_quote(dialect, _foreign(dialect, 'app'))}.t;"
+    )
     assert "drop-table" in _codes(create, dialect)
     same = (
         f"CREATE TABLE {_quote(dialect, 'APP')}.t (id INT);\nDROP TABLE {_quote(dialect, 'APP')}.t;"
@@ -363,3 +369,61 @@ def test_a_known_existing_table_matches_whatever_the_quoting():
     analysis = analyse_script('CREATE TABLE "T" (a INT);\nDROP TABLE "T";', "postgresql")
     codes = [f.code for f in find_issues(analysis, "postgresql", existing_tables={"t"})]
     assert "drop-table" in codes
+
+
+# A quoted name matches an unquoted one when spelled as the engine stores the unquoted one.
+_STORED = [
+    ("postgresql", "users", "Users"),
+    ("oracle", "USERS", "users"),
+    ("mysql", "users", "Users"),
+    ("sqlserver", "users", "Users"),
+    ("sqlite", "users", "Users"),
+]
+
+
+@pytest.mark.parametrize("dialect, stored, other", _STORED)
+def test_a_quoted_name_spelled_as_the_engine_stores_it_matches_the_unquoted_one(
+    dialect, stored, other
+):
+    assert _drops(dialect, _quote(dialect, stored), "users") == []
+    assert _drops(dialect, "users", _quote(dialect, stored)) == []
+    assert (
+        _codes(f"CREATE TABLE {_quote(dialect, stored)}.t (id INT);\nDROP TABLE users.t;", dialect)
+        == []
+    )
+
+
+@pytest.mark.parametrize("dialect, stored, other", _STORED)
+def test_a_quoted_name_spelled_otherwise_does_not_match_the_unquoted_one(dialect, stored, other):
+    assert "drop-table" in _drops(dialect, _quote(dialect, other), "users")
+    assert "drop-table" in _drops(dialect, "users", _quote(dialect, other))
+    assert "drop-table" in _codes(
+        f"CREATE TABLE {_quote(dialect, other)}.t (id INT);\nDROP TABLE users.t;", dialect
+    )
+
+
+@pytest.mark.parametrize("dialect", _QUOTING_DIALECTS)
+@pytest.mark.parametrize(
+    "create_name", ["users", "Users", "USERS", '"users"', '"Users"', '"USERS"']
+)
+@pytest.mark.parametrize("drop_name", ["users", "Users", "USERS", '"users"', '"Users"', '"USERS"'])
+def test_the_exemption_is_never_wider_than_folding_every_name(dialect, create_name, drop_name):
+    if _drops(dialect, create_name, drop_name) == []:
+        assert create_name.strip('"').lower() == drop_name.strip('"').lower()
+
+
+@pytest.mark.parametrize("text", ["", "."])
+def test_an_empty_created_table_name_is_not_an_error(text):
+    analysis = analyse_script("DROP TABLE t;", "postgresql")
+    assert "drop-table" in [
+        f.code for f in find_issues(analysis, "postgresql", created_before={text})
+    ]
+
+
+def test_a_doubled_quote_in_a_name_survives_the_hand_over():
+    created = lint_script('CREATE TABLE "a""b" (id INT);', "postgresql").created_tables
+    same = lint_script('DROP TABLE "a""b";', "postgresql", created_before=created)
+    assert [f.code for f in same.findings] == []
+    for other in ('DROP TABLE "a";', 'DROP TABLE "a""";', 'DROP TABLE "ab";'):
+        got = lint_script(other, "postgresql", created_before=created)
+        assert "drop-table" in [f.code for f in got.findings], other
