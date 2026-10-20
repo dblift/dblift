@@ -253,7 +253,11 @@
             ]
           }
         ]
-      }
+      },
+      "accepted_differences": [
+        "UPDATE and DELETE expose their changed TABLE target instead of an empty object list.",
+        "Undo requires manual review for all mutations, including plain CREATE; queries and comment-only units need no undo."
+      ]
     },
     {
       "dialect": "db2",

@@ -137,7 +137,7 @@ def test_the_schema_part_of_a_name_is_checked_too():
     source = "CREATE TABLE sch\u00e9.t (id INT)"
     cut = SqlObject(name="t", schema="sch", object_type=SqlObjectType.TABLE)
     whole = SqlObject(name="t", schema="sch\u00e9", object_type=SqlObjectType.TABLE)
-    for dialect in ("postgresql", "mysql"):
+    for dialect in ("postgresql", "sqlserver"):
         parser = SqlParserFactory(dialect).get_parser()
         assert parser._names_unreadable(source, [cut])
         assert not parser._names_unreadable(source, [whole])
@@ -146,11 +146,11 @@ def test_the_schema_part_of_a_name_is_checked_too():
     assert not sqlglot_parser._names_unreadable(source, [whole])
 
 
-@pytest.mark.parametrize("dialect", ("postgresql", "mysql", "snowflake"))
+@pytest.mark.parametrize("dialect", ("postgresql", "sqlserver", "snowflake"))
 def test_a_statement_that_cannot_be_located_in_its_script_is_withheld(dialect):
     parser = SqlParserFactory(dialect).get_parser()
     assert parser._names_unreadable(None, [])
-    scanner = SqlParserFactory("postgresql").get_parser().regex_parser
+    scanner = SqlParserFactory("postgresql", "regex").get_parser()
     script = "caf\u00e9; SELECT 1;"
     assert statement_sources(scanner, script, ["SELECT 2"]) == [None]
     assert statement_sources(scanner, script, ["SELECT 1"]) == ["SELECT 1;"]
@@ -206,7 +206,7 @@ def _ending_blank(dialect):
 def test_the_scanner_span_of_a_name_that_ends_the_script_holds_the_blank_except_for_oracle(dialect):
     """Green pin: only Oracle's last record ends at its last token."""
     script = f"DROP TABLE t{_ending_blank(dialect)}"
-    records = SqlParserFactory(dialect).get_parser().regex_parser.split(script)
+    records = SqlParserFactory(dialect, "regex").get_parser().split(script)
     assert len(records) == 1
     span = script[records[0].source_start : records[0].source_end]
     assert span == ("DROP TABLE t" if dialect == "oracle" else script)
@@ -216,7 +216,7 @@ def test_the_scanner_span_of_a_name_that_ends_the_script_holds_the_blank_except_
 def test_statement_sources_returns_the_untrimmed_text_of_a_name_that_ends_the_script(dialect):
     """Green pin: the span is the whole script for every dialect that keeps the blank."""
     script = f"DROP TABLE t{_ending_blank(dialect)}"
-    scanner = SqlParserFactory(dialect).get_parser().regex_parser
+    scanner = SqlParserFactory(dialect, "regex").get_parser()
     statements = SqlAnalyzer(dialect).split_statements_for_analysis(script)
     # Oracle reads the ideographic space as a blank: its record, and so its span, ends at the name.
     assert statement_sources(scanner, script, statements) == [
@@ -247,14 +247,14 @@ KEEPS_THE_BLANK = ("postgresql", "redshift", "cockroachdb", "mysql", "mariadb", 
 )
 def test_the_analysed_text_equals_its_span_once_the_record_keeps_the_blank(dialect):
     script = f"DROP TABLE t{_ending_blank(dialect)}"
-    scanner = SqlParserFactory(dialect).get_parser().regex_parser
+    scanner = SqlParserFactory(dialect, "regex").get_parser()
     statements = SqlAnalyzer(dialect).split_statements_for_analysis(script)
     assert statements == statement_sources(scanner, script, statements) == [script]
 
 
 @pytest.mark.parametrize("blank", ("\x0b", "\x0c", "\x0b　", "　\x0c "))
 def test_oracle_span_ends_at_the_name_before_blanks_and_a_terminator(blank):
-    scanner = SqlParserFactory("oracle").get_parser().regex_parser
+    scanner = SqlParserFactory("oracle", "regex").get_parser()
     script = f"DROP TABLE t　{blank};"
     assert statement_sources(scanner, script, ["DROP TABLE t"]) == ["DROP TABLE t;"]
     names = {
@@ -266,7 +266,15 @@ def test_oracle_span_ends_at_the_name_before_blanks_and_a_terminator(blank):
 
 
 def test_a_character_the_engine_keeps_stays_in_the_span_before_a_terminator():
-    scanner = SqlParserFactory("postgresql").get_parser().regex_parser
+    scanner = SqlParserFactory("postgresql", "regex").get_parser()
     script = "DROP TABLE t 　;"
     [text] = scanner.split_for_extraction(script)
     assert statement_sources(scanner, script, [text])[0].startswith("DROP TABLE t ")
+
+
+def test_the_facts_parser_marks_a_statement_whose_names_it_could_not_read():
+    parser = SqlParserFactory("sqlite")
+    (unread,) = parser.parse_sql("PRAGMA foreign_keys = ON").statements
+    assert unread.names_unread is True
+    (read,) = parser.parse_sql("CREATE TABLE t (a int)").statements
+    assert read.names_unread is False

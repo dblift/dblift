@@ -6,6 +6,7 @@ import pytest
 
 from dblift.core.exceptions import ParserError
 from dblift.core.sql_parser.hybrid_parser import HybridParser
+from dblift.core.sql_parser.parser_factory import SqlParserFactory
 
 #: (dialect, a refused script without objects, the refusal message, a refused script with a table)
 CASES = [
@@ -39,7 +40,7 @@ POSTGRESQL = (
 def test_parse_sql_reports_the_refusal_and_keeps_the_parse(
     dialect: str, script: str, message: str, with_table: str
 ) -> None:
-    parser = HybridParser(dialect)
+    parser = SqlParserFactory(dialect, "hybrid").get_parser()
     with pytest.raises(ParserError):
         parser.split_statements(script)
     result = parser.parse_sql(script)
@@ -53,7 +54,7 @@ def test_parse_sql_reports_the_refusal_and_keeps_the_parse(
 def test_parse_sql_reports_the_refusal_of_a_script_that_declares_objects(
     dialect: str, script: str, message: str, with_table: str
 ) -> None:
-    result = HybridParser(dialect).parse_sql(with_table)
+    result = SqlParserFactory(dialect, "hybrid").get_parser().parse_sql(with_table)
     assert not result.success
     assert any(message in error for error in result.errors)
     assert result.statements == []
@@ -64,7 +65,7 @@ def test_parse_sql_reports_the_refusal_of_a_script_that_declares_objects(
 def test_extract_objects_refuses_a_script_the_scanner_refuses(
     dialect: str, script: str, message: str, with_table: str
 ) -> None:
-    parser = HybridParser(dialect)
+    parser = SqlParserFactory(dialect, "hybrid").get_parser()
     with pytest.raises(ParserError):
         parser.extract_objects(script)
     with pytest.raises(ParserError):

@@ -5,8 +5,10 @@ done to them; ``forbidden`` finds the copy and rescan forms that no counter can 
 """
 
 import ast
+import re
 from collections import abc
 from pathlib import Path
+from re import _parser as regex_parser
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
 
 
@@ -150,16 +152,24 @@ class CountingText:
 
 
 class CountingPattern:
-    """A compiled pattern that may only be matched at a position of the counted text (the word pattern)."""
+    """A compiled pattern with a certified local scan shape, not a regex VM-step counter."""
 
-    def __init__(self, pattern: Any, meter: "Meter") -> None:
+    def __init__(self, pattern: Any, meter: "Meter", *, allow_empty: bool = False) -> None:
+        data = list(regex_parser.parse(pattern.pattern, pattern.flags))
+        assert _certified_regex(pattern, data), f"uncertified regex: {pattern.pattern!r}"
+        assert allow_empty or pattern.match("") is None, f"uncertified regex: {pattern.pattern!r}"
         self._pattern, self._meter = pattern, meter
+        self._allow_empty = allow_empty
+        self._tag_data = data if len(data) == 3 and _tag_or_parameter(data) else None
 
     def match(self, text: CountingText, pos: int, endpos: Optional[int] = None) -> Any:
         found = self._pattern.match(
             text._value, pos, len(text._value) if endpos is None else endpos
         )
-        self._meter.add(found.end() - pos if found else 1)
+        assert found is None or found.end() > pos or self._allow_empty, "an empty lexeme match"
+        self._meter.add(
+            found.end() - pos if found else _tag_failure_cost(self._tag_data, text, pos, endpos)
+        )
         return found
 
     def search(self, text: CountingText, pos: int) -> Any:
@@ -167,6 +177,170 @@ class CountingPattern:
         found = self._pattern.search(text._value, pos)
         self._meter.add((found.end() if found else len(text._value)) - pos)
         return found
+
+
+def _ranges(token: Any) -> Optional[List[Tuple[int, int]]]:
+    """A positive one-character class; categories and arbitrary assertions are not certified."""
+    op, value = token
+    if op == regex_parser.LITERAL:
+        return [(value, value)]
+    if op != regex_parser.IN:
+        return None
+    ranges = []
+    for kind, member in value:
+        if kind == regex_parser.LITERAL:
+            ranges.append((member, member))
+        elif kind == regex_parser.RANGE:
+            ranges.append(member)
+        else:
+            return None
+    return ranges
+
+
+def _member(token: Any, char: str) -> bool:
+    ranges = _ranges(token)
+    return ranges is not None and any(lo <= ord(char) <= hi for lo, hi in ranges)
+
+
+def _tag_failure_cost(
+    data: Optional[List[Any]], text: CountingText, pos: int, endpos: Optional[int]
+) -> int:
+    """Charge the failed dollar-tag probe through its local identifier run."""
+    if data is None:
+        return 1
+    end = len(text._value) if endpos is None else min(endpos, len(text._value))
+    if pos >= end or not _member(data[0], text._value[pos]):
+        return 1
+    body = _optional(data[1])
+    assert body is not None
+    run = _run(body[1])
+    assert run is not None
+    cursor = pos + 1
+    if cursor < end and _member(body[0], text._value[cursor]):
+        cursor += 1
+        while cursor < end and any(_member(part, text._value[cursor]) for part in run):
+            cursor += 1
+    return cursor - pos + 1
+
+
+def _atom(token: Any) -> bool:
+    """Also allow a negated class for a trailing comment run."""
+    if _ranges(token) is not None:
+        return True
+    op, value = token
+    return (
+        op == regex_parser.IN
+        and bool(value)
+        and value[0][0] == regex_parser.NEGATE
+        and all(kind in (regex_parser.LITERAL, regex_parser.RANGE) for kind, _ in value[1:])
+    )
+
+
+def _disjoint(left: Any, right: Any) -> bool:
+    a, b = _ranges(left), _ranges(right)
+    return (
+        a is not None
+        and b is not None
+        and all(hi_a < lo_b or hi_b < lo_a for lo_a, hi_a in a for lo_b, hi_b in b)
+    )
+
+
+def _optional(token: Any) -> Optional[List[Any]]:
+    op, value = token
+    if op == regex_parser.MAX_REPEAT and value[:2] == (0, 1):
+        return list(value[2])
+    return None
+
+
+def _run(token: Any) -> Optional[List[Any]]:
+    """A greedy character run, optionally with a distinct one-character separator."""
+    op, value = token
+    if (
+        op != regex_parser.MAX_REPEAT
+        or value[0] not in (0, 1)
+        or value[1] != regex_parser.MAXREPEAT
+    ):
+        return None
+    body = list(value[2])
+    if len(body) == 1 and _atom(body[0]):
+        return [body[0]]
+    if len(body) == 2 and _atom(body[1]):
+        prefix = _optional(body[0])
+        if prefix is not None and len(prefix) == 1 and _disjoint(prefix[0], body[1]):
+            return [prefix[0], body[1]]
+    return None
+
+
+def _simple(data: List[Any]) -> bool:
+    """Fixed character tests followed by at most one final greedy run."""
+    return bool(data) and (
+        all(_atom(token) for token in data)
+        or (all(_atom(token) for token in data[:-1]) and _run(data[-1]) is not None)
+    )
+
+
+def _number(data: List[Any]) -> bool:
+    if len(data) != 4 or not _atom(data[0]) or _run(data[1]) is None:
+        return False
+    decimal, exponent = _optional(data[2]), _optional(data[3])
+    if decimal is None or exponent is None or len(decimal) != 2 or len(exponent) != 4:
+        return False
+    digits = _run(data[1])
+    assert digits is not None
+    decimal_digits = _optional(decimal[1])
+    sign = _optional(exponent[1])
+    return (
+        _atom(decimal[0])
+        and all(_disjoint(decimal[0], digit) for digit in digits)
+        and decimal_digits is not None
+        and len(decimal_digits) == 2
+        and _atom(decimal_digits[0])
+        and _run(decimal_digits[1]) is not None
+        and _atom(exponent[0])
+        and all(_disjoint(exponent[0], digit) for digit in digits)
+        and _disjoint(exponent[0], decimal[0])
+        and sign is not None
+        and len(sign) == 1
+        and _atom(sign[0])
+        and _disjoint(sign[0], exponent[2])
+        and _atom(exponent[2])
+        and _run(exponent[3]) is not None
+    )
+
+
+def _tag_or_parameter(data: List[Any]) -> bool:
+    if len(data) not in (2, 3) or data[0][0] != regex_parser.LITERAL:
+        return False
+    body = _optional(data[1])
+    if body is None or len(body) != 2 or not _atom(body[0]):
+        return False
+    run = _run(body[1])
+    if (
+        run is None
+        or not _disjoint(data[0], body[0])
+        or not all(_disjoint(data[0], part) for part in run)
+    ):
+        return False
+    return len(data) == 2 or data[2] == data[0]
+
+
+def _certified_regex(pattern: Any, data: List[Any]) -> bool:
+    """Accept only the deterministic lexeme shapes used by this cost harness.
+
+    This is deliberately a syntax certificate: Python's native regex VM does not expose a work
+    counter. Unknown assertions, lazy scans, broad categories and ambiguous repetitions are refused.
+    """
+    if pattern.flags != re.UNICODE:
+        return False
+    if _simple(data) or _number(data) or _tag_or_parameter(data):
+        return True
+    if len(data) == 1 and data[0][0] == regex_parser.BRANCH:
+        alternatives = data[0][1][1]
+        if len(alternatives) != 2 or any(len(alt) != 1 for alt in alternatives):
+            return False
+        first = [(_run(alt[0]) or [alt[0]])[0] for alt in alternatives]
+        return all(_simple(list(alt)) for alt in alternatives) and _disjoint(first[0], first[1])
+    return False
 
 
 class CountingInt(int):

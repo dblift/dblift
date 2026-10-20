@@ -101,7 +101,22 @@ def _explained(entry: Entry, arm: str) -> bool:
     """A reason is written, and the arm's class is not one the skeleton set under another's."""
     if arm in entry.get("unreviewed", ()) or not str(entry.get("reason", "")).strip():
         return False
-    return entry_class(entry, arm) != OPAQUE_READER_GAP or bool(str(entry.get("issue", "")).strip())
+    return entry_class(entry, arm) != OPAQUE_READER_GAP or _names_issue_or_rejection(entry)
+
+
+def _names_issue_or_rejection(entry: Entry) -> bool:
+    """An ``issue``, or ``rejected_by``: engine name -> the error identifier it answered with."""
+    if str(entry.get("issue", "")).strip():
+        return True
+    rejected = entry.get("rejected_by")
+    return (
+        isinstance(rejected, dict)
+        and bool(rejected)
+        and all(
+            isinstance(k, str) and k.strip() and isinstance(v, str) and v.strip()
+            for k, v in rejected.items()
+        )
+    )
 
 
 def _malformed(entry: Entry) -> bool:

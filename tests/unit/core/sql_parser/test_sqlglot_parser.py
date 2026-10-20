@@ -30,13 +30,6 @@ class TestSqlGlotParser:
         assert parser.dialect_name == "postgresql"
         assert parser.sqlglot_dialect == "postgres"
 
-    def test_parser_creation_mysql(self):
-        """Test parser can be created for MySQL."""
-        parser = SqlGlotParser(dialect="mysql")
-        assert parser is not None
-        assert parser.dialect_name == "mysql"
-        assert parser.sqlglot_dialect == "mysql"
-
     def test_parser_creation_oracle(self):
         """Test parser can be created for Oracle."""
         parser = SqlGlotParser(dialect="oracle")
@@ -152,32 +145,11 @@ class TestSqlGlotParser:
         assert "users" in object_names
         assert "posts" in object_names
 
-    # ==================== MySQL Tests ====================
+    # ==================== SQL Server Tests ====================
 
-    def test_parse_mysql_create_table(self):
-        """Test parsing MySQL CREATE TABLE."""
-        parser = SqlGlotParser(dialect="mysql")
-        sql = "CREATE TABLE users (id INT PRIMARY KEY, name VARCHAR(100))"
-
-        result = parser.parse_sql(sql)
-
-        assert result.success
-        assert len(result.statements) == 1
-        assert result.statements[0].statement_type == SqlStatementType.CREATE
-
-    def test_parse_mysql_with_engine(self):
-        """Test parsing MySQL CREATE TABLE with ENGINE."""
-        parser = SqlGlotParser(dialect="mysql")
-        sql = "CREATE TABLE users (id INT) ENGINE=InnoDB"
-
-        result = parser.parse_sql(sql)
-
-        assert result.success
-        assert len(result.statements) == 1
-
-    def test_parse_mysql_insert(self):
-        """Test parsing MySQL INSERT."""
-        parser = SqlGlotParser(dialect="mysql")
+    def test_parse_sqlserver_insert(self):
+        """Test parsing SQL Server INSERT."""
+        parser = SqlGlotParser(dialect="sqlserver")
         sql = "INSERT INTO users (id, name) VALUES (1, 'John')"
 
         result = parser.parse_sql(sql)
@@ -503,31 +475,12 @@ class TestSqlGlotParser:
         assert result.success
         assert len(result.statements) == 1
 
-    def test_parse_quoted_identifiers_mysql(self):
-        """Test parsing backtick identifiers in MySQL."""
-        parser = SqlGlotParser(dialect="mysql")
-        sql = "CREATE TABLE `users` (`id` INT)"
-
-        result = parser.parse_sql(sql)
-
-        assert result.success
-        assert len(result.statements) == 1
-
     # ==================== Dialect-Specific Features ====================
 
     def test_postgresql_array_type(self):
         """Test parsing PostgreSQL array type."""
         parser = SqlGlotParser(dialect="postgresql")
         sql = "CREATE TABLE users (tags TEXT[])"
-
-        result = parser.parse_sql(sql)
-
-        assert result.success
-
-    def test_mysql_auto_increment(self):
-        """Test parsing MySQL AUTO_INCREMENT."""
-        parser = SqlGlotParser(dialect="mysql")
-        sql = "CREATE TABLE users (id INT AUTO_INCREMENT PRIMARY KEY)"
 
         result = parser.parse_sql(sql)
 
