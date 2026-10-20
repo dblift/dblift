@@ -18,6 +18,7 @@ import pytest
 
 from dblift.core.sql_parser import delimiter_script as delimiter_module
 from dblift.core.sql_parser import lexical_engine as engine_module
+from dblift.core.sql_parser.delimiter_script import DelimiterScript
 from dblift.core.sql_parser.lexical_engine import LexicalEngine
 from dblift.core.sql_parser.lexical_spec import LexicalSpec
 from dblift.core.sql_parser.lexical_tokenizer import LexicalTokenizer
@@ -155,6 +156,22 @@ def test_mysql_public_split_counts_repeated_record_prefixes(monkeypatch) -> None
     large, large_records = public_work(shape(4 * size))
     assert (len(small_records), len(large_records)) == (size, 4 * size)
     assert large > MAX_RATIO * small, (small, large)
+
+
+def test_mysql_public_split_counts_delimiter_assembly_prefix_rescans(monkeypatch) -> None:
+    original = DelimiterScript.end
+
+    def rescanning_end(self, pos):  # type: ignore[no-untyped-def]
+        before = len(self.records)
+        original(self, pos)
+        for record in self.records[before:]:
+            self.text[: record.source_start].count("\n")
+
+    monkeypatch.setattr(DelimiterScript, "end", rescanning_end)
+    shape, size = SHAPES["crlf-statements"]
+    small, _ = public_work(shape(size))
+    large, records = public_work(shape(4 * size))
+    assert len(records) == 4 * size and large > MAX_RATIO * small
 
 
 def test_mysql_public_split_has_bounded_cost_and_ordered_records() -> None:

@@ -187,6 +187,22 @@ def test_duckdb_public_split_counts_repeated_record_prefixes(monkeypatch):
     assert large > BOUND * small, (small, large)
 
 
+def test_duckdb_public_split_counts_segment_assembly_prefix_rescans(monkeypatch):
+    original = SegmentScript.records
+
+    def rescanning_records(self, tokens):
+        records = original(self, tokens)
+        for record in records:
+            self.source[: record.source_start].count("\n")
+        return records
+
+    monkeypatch.setattr(SegmentScript, "records", rescanning_records)
+    shape = SHAPES["statements and comment lines"]
+    small, _ = public_counted(shape(SMALL))
+    large, records = public_counted(shape(LARGE))
+    assert len(records) == LARGE and large > BOUND * small
+
+
 def test_duckdb_public_split_has_bounded_cost_and_ordered_records():
     shape = SHAPES["statements and comment lines"]
     small, first = public_counted(shape(SMALL))

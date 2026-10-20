@@ -26,13 +26,15 @@ from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Dict, Iterator, Optional, Tuple
+from unittest import mock
 
 import pytest
 
+from dblift.core.sql_parser import lexical_engine as engine_module
 from dblift.core.sql_parser.lexical_engine import LexicalEngine
 from dblift.core.sql_parser.lexical_tokenizer import LexicalTokenizer
-from dblift.core.sql_parser.terminator_script import TerminatorScript
 from dblift.core.sql_parser.terminator_lines import read_lines
+from dblift.core.sql_parser.terminator_script import TerminatorScript
 from dblift.db.plugins.db2.parser.lexical_spec import DB2_RULES, DB2_SPEC
 from tests.support.splitting_cost import (
     OUTSIDE_EXEMPT,
@@ -110,7 +112,29 @@ def counted(script: str) -> int:
 
 def public_counted(script: str) -> Tuple[int, list]:
     meter = Meter()
-    records = LexicalEngine(DB2_SPEC).split(CountingText(script, meter))
+
+    def tokenizer(source, *, spec):
+        wrapped = LexicalTokenizer(source._value, spec=spec)
+        ts = wrapped.terminator_script
+        assert ts is not None
+        ts.text = CountingText(ts.text, meter)
+        lines = CountingLines(ts.lines)
+        lines.meter = meter
+        ts.lines = lines
+        wrapped.sql = CountingText(wrapped.sql, meter)
+        wrapped._word_re = CountingPattern(wrapped._word_re, meter)
+        original_assemble = ts.assemble
+
+        def assemble(tokens, marks, open_lexeme):
+            return original_assemble(
+                CountingTokens(tokens, meter), CountingMarks(marks, meter), open_lexeme
+            )
+
+        ts.assemble = assemble
+        return wrapped
+
+    with mock.patch.object(engine_module, "LexicalTokenizer", tokenizer):
+        records = LexicalEngine(DB2_SPEC).split(CountingText(script, meter))
     return meter.count, records
 
 
