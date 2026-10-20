@@ -71,4 +71,7 @@ MYSQL_SPEC = LexicalSpec(
     leading_bom_is_blank=True,
     redaction_reads_engine=False,
     delimiter_script=MYSQL_RULES,
+    refused_character="\x00",
+    refused_character_name="NUL",
+    refused_reason="the mysql client refuses it unless --binary-mode is set",
 )

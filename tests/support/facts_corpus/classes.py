@@ -22,7 +22,9 @@ The first rule that matches wins, in the order of ``ORDER``:
 Names are compared case-exact, after the schema the extraction assigns to an unqualified name is
 removed from both sides. ``case-folded`` is the one exception and is directional: the facts name is
 the spelling written in the statement, unquoted, the extraction holds the engine's folding of it,
-and the reader is not opaque. Nothing here consults where a statement was harvested from.
+and the reader is not opaque. For a family in ``READER_FOLDS`` (the reader folds the name itself)
+the direction is the reverse: the facts hold the folded name and the extraction the spelling.
+Nothing here consults where a statement was harvested from.
 """
 
 from __future__ import annotations
@@ -103,6 +105,7 @@ DEFAULT_SCHEMA: Dict[str, Optional[str]] = {
     "postgresql": "public",
     "redshift": "public",
     "sqlserver": "dbo",
+    "db2": "SYSIBM",
 }
 #: The direction an engine folds an unquoted name, as the plugin quirks' ``unquoted_identifier_case``
 #: says (a test ties the two). MySQL (``lower_case_table_names``) and SQL Server (the collation)
@@ -117,6 +120,9 @@ FOLD: Dict[str, Optional[str]] = {
 }
 #: ``old`` type -> the facts types it may become without the name changing.
 REFINEMENTS = {"VIEW": ("MATERIALIZED_VIEW",)}
+#: Families whose reader folds the name itself: the facts hold the folded name and the extraction the
+#: spelling written in the statement, the reverse of every other family.
+READER_FOLDS = frozenset({"db2"})
 ACTED_ROLES = ("created", "altered", "dropped")
 UNREAD_NAME_MARK = "may read as part of a name"
 _QUOTE_PAIRS = (('"', '"'), ("`", "`"), ("[", "]"))
@@ -517,14 +523,13 @@ def _case_folded(
     ast: Optional[exp.Expression], family: str, opaque: bool, old: Identity, new: Identity
 ) -> bool:
     """The reader keeps the unquoted spelling of the statement; the extraction holds the engine's
-    folding of it. Never the reverse, and never from an opaque reader."""
-    return (
-        not opaque
-        and old[0] == new[0]
-        and old[1] != new[1]
-        and _fold(family, new[1]) == old[1]
-        and _spelled_unquoted(ast, new[1])
-    )
+    folding of it. The reverse only for a family in ``READER_FOLDS``, and never from an opaque
+    reader."""
+    if opaque or old[0] != new[0] or old[1] == new[1]:
+        return False
+    if family in READER_FOLDS:
+        return _fold(family, old[1]) == new[1] and _spelled_unquoted(ast, old[1])
+    return _fold(family, new[1]) == old[1] and _spelled_unquoted(ast, new[1])
 
 
 def _quote_decoded(sql: str, old: Identity, new: Identity) -> bool:

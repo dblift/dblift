@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Db2 statement facts.** `info --format json`, `migrate --dry-run`, execution-time object
+  tracking and the DML helpers read Db2 statements through a head classifier: the statement kind
+  and the DDL or DML target are named for CREATE/ALTER/DROP TABLE, VIEW, INDEX, SEQUENCE, ALIAS,
+  SCHEMA, TRIGGER, PROCEDURE and FUNCTION, RENAME, COMMENT ON, TRUNCATE, GRANT/REVOKE,
+  INSERT/UPDATE/DELETE/MERGE, transaction control, CALL and SET; unquoted names fold to upper
+  case as Db2 does; column-level facts (declared columns, constraints, indexed columns) are
+  reported as unavailable.
+
 ### Changed
 
 - **MySQL and MariaDB read statement facts from the SQL grammar.** `info --format json`,
@@ -124,6 +134,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   empty and comment-only pieces and batch separators are still skipped, and a one-time
   deprecation message asks it to implement `split()` and return `Statement` records; the
   skips end in the next major release.
+- **Db2 analysis kinds and DML targets.** `migrate --dry-run` reports CALL, COMMIT and SET as
+  `UNKNOWN` (CALL and SET were `DML`); DML targets are reported folded, with the schema when the statement gives one
+  (`APP.ORDERS`). Undo generation for Db2 (deprecated) now marks every statement other than a
+  query for manual review instead of building a model from the text.
 
 ### Deprecated
 
@@ -151,6 +165,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `CREATE`, so a migration could run partly and report success. The script is now refused whole,
   naming the line and column of the NUL, and nothing runs. Remove the NUL byte; it often comes from
   a file saved in another encoding such as UTF-16.
+- **The refusal of a NUL character in a MySQL or MariaDB script names its column as well as
+  its line.** The script is still refused whole, as the `mysql` and `mariadb` clients refuse it.
 
 - **MySQL and MariaDB statement facts read more of the grammar.** `TRUNCATE` names its table,
   `CREATE SCHEMA` / `DROP SCHEMA` name the schema, `RENAME TABLE` names each source table,

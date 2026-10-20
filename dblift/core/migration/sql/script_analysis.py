@@ -216,7 +216,13 @@ def _analyse(text: str, dialect: str) -> ScriptAnalysis:
                 names_unread=facts.opaque and not facts.affected_objects,
             )
             fact_statements.append(analysed)
-            caution = _caution_for(analysed, body, quirks.sqlglot_dialect if facts.opaque else None)
+            caution = _caution_for(
+                analysed,
+                body,
+                _opaque_dialect(dialect) if facts.opaque else None,
+                # a plugin without a sqlglot dialect has no second reader to name an unread target
+                name_target=not (analysed.names_unread and quirks.sqlglot_dialect is None),
+            )
             if caution is not None:
                 fact_cautions.append(caution)
             if facts.error:
