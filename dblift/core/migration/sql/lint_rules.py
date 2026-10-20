@@ -163,8 +163,8 @@ def issues_and_created_tables(
     *created_before*, or created by an earlier statement of the script, is new: a table-scoped
     finding on a statement whose target tables are all new is not reported. A target is new
     when its name matches a new table (both unquoted and equal ignoring case, both quoted
-    and byte-equal, or one quoted spelled as the engine stores the unquoted one) and either side names no schema or both name
-    the same one: offline the search path is unknown, so
+    and byte-equal, or one quoted spelled as the engine stores the unquoted one) and either side
+    names no schema or both name the same one: offline the search path is unknown, so
     ``CREATE TABLE users`` also covers ``x.users``. A statement whose names the analysis
     withheld (``names_unread``) is never exempted and creates no new table: the engine may read
     another name than sqlglot does. ``CREATE TABLE IF NOT EXISTS`` creates
