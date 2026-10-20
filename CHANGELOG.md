@@ -173,6 +173,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Oracle scripts refuse an invalid blank before a client command.** A no-break
+  space or U+001C before `EXIT`, `PROMPT` or `/` no longer makes the splitter
+  recognize it as a client command; unsafe scripts are explicitly refused.
+
 - **DuckDB splits adjacent strings at the engine's boundaries.** An `E'...'`
   string carries its backslash escape mode into the next literal only across a
   CR or LF; a literal on the same line is plain. A non-ASCII digit before `E`
