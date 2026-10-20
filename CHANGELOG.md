@@ -66,6 +66,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   machine, a 3 MiB script of `INSERT` statements went from 0.95 s and a 19 MB
   peak to 2.9 s and a 176 MB peak, and a 132-byte migration from 42 to 81
   microseconds.
+- **MySQL and MariaDB delimiter scripts use less memory while splitting.**
+  The engine scans without keeping a token list; the client still assembles the
+  same statement records. For one 3 MiB `INSERT` script on one machine, peak memory
+  fell from about 210 MiB to 70 MiB on MySQL and 70 MiB on MariaDB.
 - **Db2 splitting moved onto the shared lexical engine.** Splitting, analysis and
   extraction use the command line processor's rules (the end-of-line terminator,
   `--#SET TERMINATOR`, the client command list, the routine-body rule) as

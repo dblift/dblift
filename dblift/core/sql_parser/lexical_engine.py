@@ -22,7 +22,15 @@ class LexicalEngine:
 
     def _parser(self, script: str) -> LexicalStatementParser:
         tokenizer = LexicalTokenizer(script, spec=self.spec)
-        tokens = tokenizer.tokenize()
+        if tokenizer.delimiter_script is not None:
+            if tokenizer.spec.refused_character:
+                tokenizer._refuse_character()
+            while tokenizer.pos < len(tokenizer.sql):
+                tokenizer._next_token()
+            tokenizer.delimiter_script.finish()
+            tokens = []
+        else:
+            tokens = tokenizer.tokenize()
         if tokenizer.open_comment is not None:  # the engine rejects the whole script
             line, col = tokenizer.open_comment
             raise UnsafeStatementSplitError(

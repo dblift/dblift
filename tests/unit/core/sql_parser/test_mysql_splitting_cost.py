@@ -99,6 +99,7 @@ def public_work(script: str) -> Tuple[int, list]:
     meter = Meter()
     original_tokenizer = LexicalTokenizer
     original_classify = delimiter_module.classify_line
+    original_parser = engine_module.LexicalStatementParser.__init__
     line_word = CountingPattern(re.compile(MYSQL_RULES.line_word), meter)
 
     def tokenizer(source, *, spec):  # type: ignore[no-untyped-def]
@@ -106,9 +107,10 @@ def public_work(script: str) -> Tuple[int, list]:
         wrapped.sql = GuardedText(wrapped.sql, meter)
         wrapped.delimiter_script.text = wrapped.sql
         wrapped._word_re = CountingPattern(wrapped._word_re, meter)
-        original_tokenize = wrapped.tokenize
-        wrapped.tokenize = lambda: CountingParserTokens(original_tokenize(), meter)
         return wrapped
+
+    def parser(self, tokens, *args, **kwargs):  # type: ignore[no-untyped-def]
+        original_parser(self, CountingParserTokens(tokens, meter), *args, **kwargs)
 
     def classify(rules, source, start, end, delimiter):  # type: ignore[no-untyped-def]
         pos = start
@@ -121,6 +123,7 @@ def public_work(script: str) -> Tuple[int, list]:
 
     with (
         mock.patch.object(engine_module, "LexicalTokenizer", tokenizer),
+        mock.patch.object(engine_module.LexicalStatementParser, "__init__", parser),
         mock.patch.object(delimiter_module, "classify_line", classify),
     ):
         records = LexicalEngine(MYSQL_SPEC).split(GuardedText(script, meter))
@@ -201,15 +204,27 @@ def test_mysql_public_split_has_bounded_cost_and_ordered_records() -> None:
     assert small > 0 and large <= MAX_RATIO * small
 
 
-def test_mysql_public_split_counts_tokens_before_the_statement_parser(monkeypatch) -> None:
+def test_mysql_public_split_counts_scanner_and_passes_no_tokens_to_parser(monkeypatch) -> None:
     original = engine_module.LexicalStatementParser.__init__
+    original_next = LexicalTokenizer._next_token
+    scanned = []
 
     def checked_parser(self, tokens, *args, **kwargs):  # type: ignore[no-untyped-def]
         assert isinstance(tokens, CountingTokens)
+        assert len(tokens) == 0
         original(self, tokens, *args, **kwargs)
 
+    def checked_next(self):  # type: ignore[no-untyped-def]
+        token = original_next(self)
+        if token is not None:
+            scanned.append(token)
+        return token
+
     monkeypatch.setattr(engine_module.LexicalStatementParser, "__init__", checked_parser)
-    public_work("SELECT 1;")
+    monkeypatch.setattr(LexicalTokenizer, "_next_token", checked_next)
+    count, records = public_work("SELECT 1;")
+    assert len(scanned) > 0 and count > len(scanned)
+    assert len(records) == 1
 
 
 def test_mysql_public_split_detects_a_prefix_rescan_per_comment(monkeypatch) -> None:
@@ -228,16 +243,16 @@ def test_mysql_public_split_detects_a_prefix_rescan_per_comment(monkeypatch) -> 
     assert large > MAX_RATIO * small, (small, large)
 
 
-def test_mysql_public_split_detects_a_token_prefix_copy_in_the_parser(monkeypatch) -> None:
-    original = LexicalEngine._parser
+def test_mysql_public_split_detects_a_prefix_copy_per_scanned_token(monkeypatch) -> None:
+    original = LexicalTokenizer._next_token
 
-    def rescanning_parser(self, script):  # type: ignore[no-untyped-def]
-        parser = original(self, script)
-        for index in range(len(parser.tokens)):
-            parser.tokens[:index]
-        return parser
+    def copying_next(self):  # type: ignore[no-untyped-def]
+        token = original(self)
+        if token is not None:
+            self.sql[: self.pos]
+        return token
 
-    monkeypatch.setattr(LexicalEngine, "_parser", rescanning_parser)
+    monkeypatch.setattr(LexicalTokenizer, "_next_token", copying_next)
     make, _ = SHAPES["crlf-statements"]
     small, _ = public_work(make(100))
     large, _ = public_work(make(400))
