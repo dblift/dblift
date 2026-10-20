@@ -313,6 +313,45 @@
     "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took `IF` from its head; the reader names `APP`.",
     "sql": "CREATE SCHEMA IF NOT EXISTS \"APP\""
   },
+  "07992903c6bc05de": {
+    "class": "opaque-reader-gap",
+    "facts": {
+      "diagnostic": "mysql index expression columns are opaque",
+      "indexed_table": "orders",
+      "kind": "DDL",
+      "objects": [
+        [
+          "orders",
+          "TABLE",
+          "referenced",
+          null
+        ]
+      ],
+      "operation": "CREATE"
+    },
+    "old": {
+      "analyzer": [
+        [
+          "INDEX",
+          "idx"
+        ]
+      ],
+      "hybrid": [
+        [
+          "INDEX",
+          "idx",
+          null
+        ]
+      ]
+    },
+    "path": "both",
+    "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took `idx` from its head; the reader names `orders`.",
+    "rejected_by": {
+      "MariaDB 11.8.8-MariaDB-ubu2404": "1064",
+      "MySQL 8.4.11": "1064"
+    },
+    "sql": "CREATE UNIQUE INDEX CONCURRENTLY idx ON orders (email)"
+  },
   "07b4ca35106a6b70/hybrid": {
     "class": "facts-adds-acted",
     "facts": {
@@ -1659,7 +1698,7 @@
       "hybrid": []
     },
     "path": "both",
-    "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took `t` from its head; the reader names nothing.",
+    "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took `t` from its head; the reader names `t`.",
     "sql": "UPDATE t SET a{c}b = 1 WHERE id = 2"
   },
   "2e8dfaa46133b649": {
@@ -2541,7 +2580,7 @@
       ]
     },
     "path": "hybrid",
-    "reason": "Runs on both engines (1146: table missing). DESCRIBE is a metadata query the reader does not map; `info` lists it with no object where the hybrid extraction named the table. Nothing is written, so no caution is lost.",
+    "reason": "Runs on both engines (1146: table missing). DESCRIBE is a metadata query the reader does not map; it names nothing, the hybrid extraction named the table. No consumer reads it.",
     "sql": "DESCRIBE t"
   },
   "416027f2c751fce5/hybrid": {
@@ -2710,6 +2749,45 @@
     "path": "hybrid",
     "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took nothing from its head; the reader names `idx`.",
     "sql": "CREATE INDEX [idx] ON [mydb].[dbo].[mytable]([col])"
+  },
+  "469f0b3b3931ea66": {
+    "class": "opaque-reader-gap",
+    "facts": {
+      "diagnostic": "mysql index expression columns are opaque",
+      "indexed_table": "orders",
+      "kind": "DDL",
+      "objects": [
+        [
+          "orders",
+          "TABLE",
+          "referenced",
+          null
+        ]
+      ],
+      "operation": "CREATE"
+    },
+    "old": {
+      "analyzer": [
+        [
+          "INDEX",
+          "idx"
+        ]
+      ],
+      "hybrid": [
+        [
+          "INDEX",
+          "idx",
+          null
+        ]
+      ]
+    },
+    "path": "both",
+    "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took `idx` from its head; the reader names `orders`.",
+    "rejected_by": {
+      "MariaDB 11.8.8-MariaDB-ubu2404": "1064",
+      "MySQL 8.4.11": "1064"
+    },
+    "sql": "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx ON orders (email)"
   },
   "48743a1003568b72/hybrid": {
     "class": "opaque-reader-gap",
@@ -3424,7 +3502,7 @@
       ]
     },
     "path": "hybrid",
-    "reason": "Runs on both engines (1146: table missing). DESCRIBE is a metadata query the reader does not map; `info` lists it with no object where the hybrid extraction named the table. Nothing is written, so no caution is lost.",
+    "reason": "Runs on both engines (1146: table missing). DESCRIBE is a metadata query the reader does not map; it names nothing, the hybrid extraction named the table. No consumer reads it.",
     "sql": "DESCRIBE t1"
   },
   "5cc7ddb6c37225a1/hybrid": {
@@ -4607,7 +4685,7 @@
       "hybrid": []
     },
     "path": "both",
-    "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took `t` from its head; the reader names nothing.",
+    "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took `t` from its head; the reader names `t`.",
     "sql": "DELETE FROM t WHERE a{c}b = 1"
   },
   "798fe268446a29c2/analyzer": {
@@ -5920,6 +5998,45 @@
     "reason": "Runs on both engines (1146: table missing). REPLACE INTO writes `t`; the reader names it as the target, the old DML helper returned no table and no events (unchanged: events stay unknown for REPLACE).",
     "sql": "REPLACE INTO t(a) VALUES (1)"
   },
+  "a0f12d306ea5a1a9": {
+    "class": "opaque-reader-gap",
+    "facts": {
+      "diagnostic": "mysql index expression columns are opaque",
+      "indexed_table": "orders",
+      "kind": "DDL",
+      "objects": [
+        [
+          "orders",
+          "TABLE",
+          "referenced",
+          null
+        ]
+      ],
+      "operation": "CREATE"
+    },
+    "old": {
+      "analyzer": [
+        [
+          "INDEX",
+          "idx"
+        ]
+      ],
+      "hybrid": [
+        [
+          "INDEX",
+          "idx",
+          null
+        ]
+      ]
+    },
+    "path": "both",
+    "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took `idx` from its head; the reader names `orders`.",
+    "rejected_by": {
+      "MariaDB 11.8.8-MariaDB-ubu2404": "1064",
+      "MySQL 8.4.11": "1064"
+    },
+    "sql": "CREATE INDEX CONCURRENTLY idx ON orders (email)"
+  },
   "a2002102f8175bb1/hybrid": {
     "class": "opaque-reader-gap",
     "facts": {
@@ -6651,7 +6768,7 @@
       "hybrid": []
     },
     "path": "both",
-    "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took `child` from its head; the reader names nothing.",
+    "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took `child` from its head; the reader names `child`.",
     "sql": "UPDATE child SET parent_id ="
   },
   "b24b8641c2e26f7e/hybrid": {
@@ -6779,7 +6896,7 @@
       "hybrid": []
     },
     "path": "both",
-    "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took `t` from its head; the reader names nothing.",
+    "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took `t` from its head; the reader names `t`.",
     "sql": "UPDATE t SET pw = E'?'"
   },
   "b36df5fa20ff108d/analyzer": {
@@ -6925,7 +7042,7 @@
       ]
     },
     "path": "hybrid",
-    "reason": "Runs on both engines (1146: table missing). DESCRIBE is a metadata query the reader does not map; `info` lists it with no object where the hybrid extraction named the table. Nothing is written, so no caution is lost.",
+    "reason": "Runs on both engines (1146: table missing). DESCRIBE is a metadata query the reader does not map; it names nothing, the hybrid extraction named the table. No consumer reads it.",
     "sql": "DESCRIBE child"
   },
   "b8a98133b12db722/hybrid": {
@@ -7307,7 +7424,7 @@
       "kind": "UNKNOWN",
       "operation": "UNKNOWN"
     },
-    "issue": "dblift/dblift#670",
+    "issue": "dblift/dblift#587",
     "old": {
       "hybrid": [
         [
@@ -7771,7 +7888,7 @@
       "analyzer": []
     },
     "path": "analyzer",
-    "reason": "MySQL has no CONCURRENTLY keyword: both engines read it as the index name on `orders` (1146: Table 'orders' doesn't exist). The reader names the index created and the table referenced; the analyzer named nothing.",
+    "reason": "MySQL has no CONCURRENTLY keyword: both engines read it as the index name on  (1146: Table 'orders' doesn't exist). The reader names the index created and the table referenced; the analyzer named nothing.",
     "sql": "CREATE INDEX CONCURRENTLY ON orders (email)"
   },
   "cd8b42252de53aaf/hybrid": {

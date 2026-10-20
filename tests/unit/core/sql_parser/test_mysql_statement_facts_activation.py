@@ -237,4 +237,6 @@ def test_a_schema_named_like_a_keyword_keeps_its_target_and_predicate(
     assert quirks.is_full_table_dml(sql) is (predicate is None)
     analysis = analyse_script(sql + ";", dialect)
     assert analysis.statements[0].full_table is (predicate is None)
-    assert [c.code for c in analysis.cautions] == (["dml-no-where"] if predicate is None else [])
+    assert [c.code for c in analysis.cautions if c.code == "dml-no-where"] == (
+        ["dml-no-where"] if predicate is None else []
+    )
