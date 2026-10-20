@@ -177,6 +177,8 @@ DuckDB retains its existing scanner until it is migrated.
 | 31c | `CREATE TABLE c\x00d (x int);` | `UnsafeStatementSplitError` (line 1, column 15: the server reads `CREATE TABLE c` and answers `syntax error at end of input`; a prefix that is a complete statement would run instead) |
 | 31d | `SELECT 1;\n-- a\x00b\nSELECT 2;` | `UnsafeStatementSplitError` (line 2, column 5: a NUL in a comment cuts the statement that carries the comment; psycopg returned one result set, and psql 16.14 -f ran `SELECT 1` and dropped `SELECT 2`, exit 0, the server log held `statement: SELECT 1; -- a`) |
 | 31e | `SELECT 1;␍\n\x00` | `UnsafeStatementSplitError` (line 2, column 1: a NUL alone after the last terminator is refused too) |
+| 32 | `SELECT $\xa0$x;y$\xa0$; SELECT 2;` | `SELECT $\xa0$x;y$\xa0$` · `SELECT 2` (a no-break space can begin and end a dollar-quote tag; PostgreSQL 16.14 returned x;y and 2, measured 2026-10-20) |
+| 32a | `SELECT $a\xa0$x;y$a\xa0$; SELECT 2;` | `SELECT $a\xa0$x;y$a\xa0$` · `SELECT 2` (a no-break space can also continue a tag; PostgreSQL 16.14 returned x;y and 2, measured 2026-10-20) |
 
 ## 11. Not handled
 

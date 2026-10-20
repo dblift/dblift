@@ -166,6 +166,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   quote there (and, except on Redshift, an escape string) and could run a different set of statements than the engine
   reads. The name now continues through the character, and a script such as `COPY ... FROM
   STDIN<NBSP>;` is refused instead of read as a COPY header.
+- **A dollar-quoted string whose tag holds a non-ASCII character is read as the engine reads it
+  (PostgreSQL, CockroachDB, YugabyteDB, Redshift).** A tag such as `$é$` or one holding a
+  no-break space was cut at the first character or refused as a malformed tag; the string is now
+  kept whole, so a `;` inside it no longer splits the statement. A tag holding a space, a hyphen,
+  a dot or a control character is still refused.
 - **`SqlAnalyzer.validate_sql` and the parsers' `validate_sql` report the parser's verdict.**
   The Python API now returns the dialect parser's verdict with its first error message; a
   parser answer with no verdict is reported invalid. PostgreSQL-family parser results
