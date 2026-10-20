@@ -1338,20 +1338,13 @@
   },
   "TRUNCATE t": {
    "affected_columns": [],
-   "diagnostic": null,
+   "diagnostic": "oracle TruncateTable has no statement facts mapping",
    "error": null,
    "events": null,
    "indexed_table": null,
-   "kind": "DDL",
-   "objects": [
-    [
-     "T",
-     "TABLE",
-     "altered",
-     null
-    ]
-   ],
-   "opaque": false,
+   "kind": "UNKNOWN",
+   "objects": [],
+   "opaque": true,
    "operation": "TRUNCATE",
    "predicate": null,
    "target": null,

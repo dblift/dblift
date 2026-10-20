@@ -110,6 +110,7 @@ def test_legacy_facts_corpus(case):
             assert new["type"] == kind
             assert new["objects"] == new["affected_objects"]
             assert new["objects"] == [{"type": object_type, "name": name, "schema": None}]
+        return
     if case["dialect"] == "sqlserver":
         # The facts path keeps the five executed statements and names proven DML targets.
         # It does not invent dbo for unqualified names.

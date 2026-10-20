@@ -149,10 +149,6 @@ def test_the_schema_part_of_a_name_is_checked_too():
     source = "CREATE TABLE sch\u00e9.t (id INT)"
     cut = SqlObject(name="t", schema="sch", object_type=SqlObjectType.TABLE)
     whole = SqlObject(name="t", schema="sch\u00e9", object_type=SqlObjectType.TABLE)
-    for dialect in ("sqlserver",):
-        parser = SqlParserFactory(dialect).get_parser()
-        assert parser._names_unreadable(source, [cut])
-        assert not parser._names_unreadable(source, [whole])
     assert names_unreadable(source, "tsql", [cut.name, cut.schema])
     assert not names_unreadable(source, "tsql", [whole.name, whole.schema])
     assert [

@@ -2,9 +2,8 @@
 
 import pytest
 
-from dblift.core.sql_parser.hybrid_parser import HybridParser
 from tests.support.legacy_db2_hybrid import legacy_db2_hybrid
-from tests.support.legacy_oracle_hybrid import legacy_oracle_hybrid
+from tests.support.legacy_oracle_hybrid import hybrid_for, legacy_oracle_hybrid
 
 pytestmark = [pytest.mark.unit]
 
@@ -160,12 +159,7 @@ class TestNonPartitionedTables:
         );
         """
 
-        if dialect == "db2":
-            parser = legacy_db2_hybrid()
-        elif dialect == "oracle":
-            parser = legacy_oracle_hybrid()
-        else:
-            parser = HybridParser(dialect)
+        parser = legacy_db2_hybrid() if dialect == "db2" else hybrid_for(dialect)
         result = parser.parse_sql(sql, default_schema="test_schema")
 
         assert result.success
