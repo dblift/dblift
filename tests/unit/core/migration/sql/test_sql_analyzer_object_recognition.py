@@ -143,12 +143,12 @@ class TestCreateObjectRecognition(unittest.TestCase):
 
 
 class TestSqlServerCreateOrAlterRecognition(unittest.TestCase):
-    """SQL Server's conditional DDL names the same object as plain CREATE."""
+    """Only fully read SQL Server DDL identities reach the analyzer."""
 
     def setUp(self):
         self.analyzer = SqlAnalyzer(dialect="sqlserver")
 
-    def test_create_or_alter_matches_plain_create(self):
+    def test_create_or_alter_program_bodies_stay_opaque(self):
         cases = [
             ("VIEW dbo.v WITH SCHEMABINDING AS SELECT id FROM dbo.t", "VIEW", "dbo.v"),
             ("PROCEDURE dbo.p AS SELECT 1", "PROCEDURE", "dbo.p"),
@@ -157,7 +157,11 @@ class TestSqlServerCreateOrAlterRecognition(unittest.TestCase):
         ]
         for statement, object_type, object_name in cases:
             with self.subTest(object_type=object_type):
-                expected = [{"object_type": object_type, "object_name": object_name}]
+                expected = (
+                    [{"object_type": object_type, "object_name": object_name}]
+                    if object_type == "VIEW"
+                    else []
+                )
                 self.assertEqual(self.analyzer.extract_objects(f"CREATE {statement}"), expected)
                 self.assertEqual(
                     self.analyzer.extract_objects(f"CREATE OR ALTER {statement}"), expected

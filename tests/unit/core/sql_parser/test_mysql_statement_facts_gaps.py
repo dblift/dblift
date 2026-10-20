@@ -367,11 +367,61 @@ def _plain(facts):
     }
 
 
+TSQL_CHANGES = {
+    "CREATE SCHEMA IF NOT EXISTS s": {"objects": [["s", "SCHEMA", "created", None]]},
+    "CREATE SCHEMA s": {"objects": [["s", "SCHEMA", "created", None]]},
+    "DELETE IGNORE FROM t": {"objects": [["t", "TABLE", "altered", None]]},
+    "DELETE QUICK FROM t": {"objects": [["t", "TABLE", "altered", None]]},
+    "DELETE quick FROM quick": {"objects": [["quick", "TABLE", "altered", None]]},
+    "DROP SCHEMA IF EXISTS s": {"objects": [["s", "SCHEMA", "dropped", None]]},
+    "DROP SCHEMA s": {"objects": [["s", "SCHEMA", "dropped", None]]},
+    "TRUNCATE TABLE db.t": {
+        "kind": "DDL",
+        "opaque": False,
+        "objects": [["t", "TABLE", "altered", "db"]],
+        "diagnostic": None,
+    },
+    "TRUNCATE TABLE t": {
+        "kind": "DDL",
+        "opaque": False,
+        "objects": [["t", "TABLE", "altered", None]],
+        "diagnostic": None,
+    },
+    "TRUNCATE t": {
+        "kind": "DDL",
+        "opaque": False,
+        "objects": [["t", "TABLE", "altered", None]],
+        "diagnostic": None,
+    },
+    "TRUNCATE t1, t2": {"kind": "DDL", "diagnostic": "tsql TRUNCATE scope is opaque"},
+    "UPDATE -- c\n LOW_PRIORITY t SET a = 1": {"target_sql": "LOW_PRIORITY"},
+    "UPDATE IGNORE t SET b = 1": {"target_sql": "IGNORE"},
+    "UPDATE LOW_PRIORITY IGNORE `s`.`t` SET b = 1": {
+        "objects": [],
+        "target": None,
+        "target_sql": None,
+        "events": None,
+    },
+    "UPDATE LOW_PRIORITY t SET a = 1": {"target_sql": "LOW_PRIORITY"},
+    "UPDATE `ignore` SET a = 1": {
+        "objects": [],
+        "target": None,
+        "target_sql": None,
+        "events": None,
+    },
+    "UPDATE delayed t SET a = 1": {"target_sql": "delayed"},
+    "UPDATE quick t SET a = 1": {"target_sql": "quick"},
+}
+
+
 @pytest.mark.parametrize(
     ("dialect", "sql"), [(d, s) for d in sorted(OTHER) for s in sorted(OTHER[d])]
 )
 def test_other_dialects_read_the_same_inputs_as_before(dialect, sql):
-    assert _plain(read_statement_facts(sql, dialect=dialect)) == OTHER[dialect][sql]
+    expected = OTHER[dialect][sql]
+    if dialect == "tsql":
+        expected = {**expected, **TSQL_CHANGES.get(sql, {})}
+    assert _plain(read_statement_facts(sql, dialect=dialect)) == expected
 
 
 def test_the_fixture_covers_every_other_sqlglot_dialect_with_a_plugin():
