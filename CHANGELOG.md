@@ -123,6 +123,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Offline SQL validation reports the parser's verdict and message.** For PostgreSQL-family engines
+  a script with an unclosed quote or unbalanced parentheses was reported valid, and for the other
+  engines the reason a script was rejected was dropped. `SqlAnalyzer.validate_sql` now returns the
+  dialect parser's verdict with its first error message. The PostgreSQL-family parsers and the
+  parser factory report validity under `valid`, like every other parser, instead of `success`.
 - **DuckDB refuses a script with an unclosed block comment.** A script holding a
   `/*` that is never closed (nested comments count) is now refused before anything
   runs, as on the other engines. The statements before the comment used to be executed

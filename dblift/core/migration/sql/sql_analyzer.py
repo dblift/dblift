@@ -640,8 +640,13 @@ class SqlAnalyzer:
                 if isinstance(result, tuple) and len(result) == 2:
                     is_valid, error_message = result
                 elif isinstance(result, dict):
-                    is_valid = bool(result.get("is_valid", result.get("valid", True)))
-                    raw_error_message = result.get("error_message", None)
+                    # Parsers answer {"valid": bool, "errors": [str, ...]}; the legacy
+                    # {"is_valid", "error_message"} spelling is still read.
+                    is_valid = bool(result.get("valid", result.get("is_valid", True)))
+                    errors = result.get("errors")
+                    raw_error_message = (
+                        errors[0] if errors else result.get("error_message", None)
+                    )
                     error_message = (
                         str(raw_error_message) if raw_error_message is not None else None
                     )
