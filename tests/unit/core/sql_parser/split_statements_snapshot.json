@@ -62,7 +62,7 @@
 "golden": {
 "count": 811,
 "observed": null,
-"sha256": "f845c6742efa799568650ba34ebaa5e072165ca2b740820e4bb22a183992993b"
+"sha256": "95cd188e8cb48483b03689c838c2dee0e8d11331792625b6d4f9bd05c026604a"
 },
 "postgres_family": {
 "count": 68,
@@ -7306,7 +7306,7 @@
 "sha256": "d33767030fb567ebf4699543cf51a835e6b5eced5e52adf95a4e7fbfd5c4910d"
 },
 "spec_rows": {
-"count": 763,
+"count": 765,
 "observed": [
 [
 "db2",
@@ -11194,6 +11194,27 @@
 }
 ],
 [
+"mariadb",
+"SELECT 1;\nSELECT /* a\u0000b */ 2;",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 2, column 12: the mariadb client refuses it unless --binary-mode is set"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 2, column 12: the mariadb client refuses it unless --binary-mode is set"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 2, column 12: the mariadb client refuses it unless --binary-mode is set"
+]
+}
+],
+[
 "mysql",
 "CREATE TABLE t (id INT); INSERT INTO t VALUES (1);",
 {
@@ -13288,6 +13309,27 @@
 "SELECT 1",
 "\u007f # c",
 "SELECT 2"
+]
+}
+],
+[
+"mysql",
+"SELECT 1;\nSELECT 'a\u0000b'; SELECT 2;",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 2, column 10: the mysql client refuses it unless --binary-mode is set"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 2, column 10: the mysql client refuses it unless --binary-mode is set"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 2, column 10: the mysql client refuses it unless --binary-mode is set"
 ]
 }
 ],
@@ -21311,6 +21353,6 @@
 }
 ]
 ],
-"sha256": "6cee6495033a2d5ee1e12069ae9225a72da070a6b29fc7c74a2f92715ebb01b7"
+"sha256": "7ad212713f026052c950e7b4d15407793ca462fec655fba8f5a3998f1e92b50c"
 }
 }
