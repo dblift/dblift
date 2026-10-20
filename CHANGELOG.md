@@ -102,12 +102,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and `executable_records`, `execution_strings`, `execution_units` and `analysis_sql` in
   `dblift.core.sql_parser.statement` select and project the records, positively on `kind`: a
   record of an unknown kind is no statement. `split_statements` is the execution projection and
-  returns the same strings as before. A parser that returns strings only is adapted to records
-  and told once to return records. The `GO 0` notice is logged where the record is cut.
-- **A custom dialect that only implements `split_statements` keeps working unchanged.** Its
-  empty and comment-only pieces and batch separators are still skipped, and a one-time
-  deprecation message asks it to implement `split()` and return `Statement` records; the
-  skips end in the next major release.
+  returns the same strings as before. The `GO 0` notice is logged where the record is cut.
 
 ### Removed
 
@@ -124,18 +119,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   occurrence raises an error; use `migrations.directory`. CLI and Python API
   `migrations_dir` arguments remain available.
 
-### Deprecated
-
-- **`sqlglot_dialect=` and `dialect=` in `dblift.db.dml_analysis`.** `analyze_dml`,
-  `dml_where_predicate`, `is_full_table_dml`, `statement_dml_table` and `updates_restore_key`
-  take the plugin's `quirks=`; the `sqlglot_dialect=` and `dialect=` keywords still work, warn,
-  and will be removed in the next major release. When both are passed, `quirks=` wins. A
-  plugin name passed to `sqlglot_dialect=` now resolves to that plugin instead of being read as
-  an (invalid) sqlglot name.
-- **`dblift.core.migration.sql.is_comment_only_statement`.** It is deprecated and will be
-  removed in the next major release; use `StatementSplitter(dialect).split()`, whose records
-  carry `kind`. It warns when called; its answers are unchanged.
-
 ### Fixed
 
 - **DuckDB refuses a script with an unclosed block comment.** A script holding a
@@ -144,8 +127,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   first and the migration then failed in the engine; now nothing runs.
 - **A plugin can declare `statement_facts_class` without a `parser_class` of its own.** The parser
   factory now serves such a plugin a parser built from its facts reader and `lexical_spec()`, instead
-  of the hybrid parser, or a subclass of it, refusing it. Script analysis and undo generation no
-  longer raise for it. Script analysis reports a facts parser that cannot be built (a missing
+  of the hybrid parser, or a subclass of it, refusing it. Script analysis no longer raises for
+  it. Script analysis reports a facts parser that cannot be built (a missing
   `lexical_spec()`, or a reader that does not accept `(dialect, spec)`) as an error; a reader raising
   while it reads a statement still propagates.
 - **Linting no longer skips cautions on a quoted name.** A table created earlier in a
