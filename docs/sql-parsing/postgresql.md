@@ -226,6 +226,17 @@ stays opaque), #668 (`MERGE` forms and CTE-led DML keep the outer target opaque)
 and #669 (event trigger, FDW, server, publication, operator class, text search,
 tablespace objects and `GRANT`/`REVOKE` name nothing).
 
+YugabyteDB uses its own facts reader for `CREATE [UNIQUE] INDEX NONCONCURRENTLY`.
+Its unquoted `NONCONCURRENTLY` is an index-head modifier that the PostgreSQL
+sqlglot grammar can misread as the index name. The reader keeps these facts
+opaque, with no guessed index or table identity. Named and omitted index-name
+forms were checked through psycopg and ysqlsh against the SQL-reported
+YugabyteDB 2026.1.2.0-b0 build: named forms create `ix` or `ux`, while omitted
+names produce `t_id_idx`; the modifier is not an index name. Ordinary and
+`CONCURRENTLY` indexes, and a quoted `"NONCONCURRENTLY"` index name, keep the
+normal AST facts. This exception does not change YugabyteDB's inherited
+lexical specification.
+
 The string projection `split_statements()` keeps the trailing `;`; the
 `Statement.text` excludes it.
 
@@ -234,7 +245,7 @@ The string projection `split_statements()` keeps the trailing `;`; the
 | Plugin | Override of this spec | Evidence |
 | --- | --- | --- |
 | AlloyDB, Aurora PostgreSQL, Citus, Neon, Supabase, TimescaleDB | none | `make_pg_compatible_plugin` with no parser override |
-| YugabyteDB | none | `yugabytedb/plugin.py:31-39` records a live check that block comments nest |
+| YugabyteDB | none; a plugin-owned facts reader handles the `NONCONCURRENTLY` index-head exception (§12) | `yugabytedb/plugin.py` records a live check that block comments nest; psycopg and ysqlsh checked the index-head forms on YugabyteDB 2026.1.2.0-b0 |
 | CockroachDB | none | `cockroachdb/quirks.py:24-32` records a live check that block comments nest |
 | Redshift | plugin spec derives from PostgreSQL with backslash escapes in plain strings, the form feed among its blanks, and the differences listed in [redshift.md](redshift.md) §2 (nested comments as PostgreSQL; no `COPY … FROM STDIN` data block, no `BEGIN ATOMIC` body, no `E'…'` prefix) | measured 2026-10-20 on Redshift Serverless 1.0.477953 (reports `PostgreSQL 8.0.2`) with psycopg 3.3.5 (autocommit, simple protocol) and psql: space, tab, line feed, carriage return and form feed are blanks alone, before, after and between tokens; the vertical tab, C0 controls U+0001 and U+001C to U+001F and DEL are rejected with SQLSTATE 42601 everywhere; the no-break space, U+0085, U+1680, U+2000 to U+200B, U+2028, U+2029, U+202F, U+205F, U+3000 and U+FEFF are rejected with 42601 alone, before a statement, between tokens and as a piece of its own (rows 30d to 30f and 30h are measured; 30g and 30i follow from the lone-piece and leading shapes, not measured in their own form). Unlike PostgreSQL 16, Redshift accepts these Unicode spaces at the end of a statement (`SELECT 1\xa0` and `SELECT 1\xa0;` run). dblift sends them and does not trim them, so there is no difference to correct |
 | NUL byte (every member above) | refused for the whole family through the specification's `refused_character` | PostgreSQL 16.14, CockroachDB v24.3.18 and YugabyteDB 2026.1.2.0 (`SELECT 1;` NUL `SELECT 2;` returns one result set, a table created before the NUL remains and the statement after it never runs; psql, ysqlsh and `cockroach sql` exit 0) drop the query from the NUL on, measured 2026-10-20 through libpq. Redshift Serverless 1.0.477953 dropped the rest too (one result set of two), but only through psycopg 3.3.5: dblift reaches Redshift through `redshift_connector`, not libpq, and that driver was not measured; the NUL is refused anyway, which is the safe answer. AlloyDB, Aurora PostgreSQL, Citus, Neon, Supabase and TimescaleDB are PostgreSQL servers that dblift reaches through psycopg, hence libpq, which cuts the query at the NUL before it leaves the client, so they were not measured separately |

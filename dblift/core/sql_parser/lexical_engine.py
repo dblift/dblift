@@ -93,8 +93,10 @@ class LexicalEngine:
                 "comments of a terminator script are not blanked by the engine"
             )
         tokenizer = LexicalTokenizer(script, spec=self.spec)
-        tokens = tokenizer.tokenize()
-        if self.spec.segment_script is None:
+        if self.spec.segment_script is not None:
+            tokenizer._scan_segment_comments()
+        else:
+            tokens = tokenizer.tokenize()
             LexicalStatementParser(
                 tokens, source=script, spec=self.spec, comments=tokenizer.comments
             ).split()

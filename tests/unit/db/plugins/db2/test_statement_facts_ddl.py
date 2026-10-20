@@ -205,6 +205,39 @@ def test_ddl_heads_name_their_target(sql, operation, kind, objects):
 
 
 @pytest.mark.parametrize(
+    ("sql", "name", "schema"),
+    [
+        ("CALL proc()", "PROC", None),
+        ("CALL app.p1(1)", "P1", "APP"),
+        ('CALL "App"."Proc"(1)', "Proc", "App"),
+    ],
+)
+def test_call_keeps_its_proven_head_identity_but_reports_unknown_effects(sql, name, schema):
+    facts = READ(sql)
+
+    assert (facts.operation, facts.kind) == ("CALL", "UNKNOWN")
+    assert [(o.name, o.type.value, o.role, o.schema) for o in facts.objects] == [
+        (name, "PROCEDURE", "referenced", schema)
+    ]
+    assert facts.opaque and facts.diagnostic and facts.error is None
+    assert facts.affected_objects == ()
+    assert (facts.target, facts.predicate, facts.events, facts.affected_columns) == (
+        None,
+        None,
+        None,
+        (),
+    )
+
+
+@pytest.mark.parametrize("sql", ["CALL", "CALL .proc()", 'CALL ""()', 'CALL "unterminated()'])
+def test_call_with_unreadable_head_names_no_procedure(sql):
+    facts = READ(sql)
+
+    assert (facts.operation, facts.kind, facts.objects) == ("CALL", "UNKNOWN", ())
+    assert facts.opaque
+
+
+@pytest.mark.parametrize(
     ("sql", "diagnostic"),
     [
         ("CREATE TABLE a.b.c (id INT)", NAME_NOT_READ.format(operation="CREATE", type="TABLE")),
@@ -254,7 +287,6 @@ def test_statements_without_column_facts_are_not_opaque():
         "CREATE SEQUENCE s",
         "GRANT SELECT ON t TO PUBLIC",
         "TRUNCATE t",
-        "CALL p(1)",
     ):
         assert not READ(sql).opaque, sql
 
