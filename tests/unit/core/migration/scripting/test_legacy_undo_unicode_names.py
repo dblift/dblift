@@ -26,9 +26,8 @@ LEGACY = (
     "oracle",
     "db2",
     "snowflake",
-    "redshift",
 )
-FACTS = ("postgresql", "cockroachdb")
+FACTS = ("postgresql", "cockroachdb", "redshift")
 
 # Activated facts readers leave reversal to manual review.
 FACTS_DIALECTS = ("mysql", "mariadb", "db2", "sqlserver")
@@ -260,7 +259,7 @@ def test_analysis_of_a_name_that_ends_its_statement_names_what_the_engine_reads(
     assert analysis.cautions, "the statement still deserves its caution"
 
 
-@pytest.mark.parametrize("dialect", ("redshift",))
+@pytest.mark.parametrize("dialect", ("db2",))
 def test_analysis_respects_the_flag_the_parser_set_for_a_cut_name(dialect):
     analysis = analyse_script("DROP TABLE tété;", dialect)
     assert not [obj for stmt in analysis.statements for obj in stmt.objects]
@@ -351,7 +350,7 @@ def test_the_facts_path_reviews_every_statement_of_a_script_with_an_unreadable_o
 
 def test_a_readable_statement_before_an_unreadable_one_is_still_reversed(tmp_path):
     script = f"CREATE SEQUENCE q;\nCREATE SEQUENCE q{chr(0xA0)};\n"
-    text = _undo(tmp_path, "redshift", script)
+    text = _undo(tmp_path, "snowflake", script)
     assert [line for line in _code_lines(text) if "DROP" in line] == [
         'DROP SEQUENCE IF EXISTS "q";'
     ]

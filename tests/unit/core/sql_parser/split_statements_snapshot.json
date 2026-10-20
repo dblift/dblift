@@ -1093,16 +1093,19 @@
 "COPY t FROM STDIN;\n1\t2\n\\.\nSELECT 2;",
 {
 "analysis": [
-"COPY t FROM STDIN",
-"SELECT 2"
+"error",
+"UnsupportedMetaCommandError",
+"Unsupported psql meta-command '\\\\.' at line 3; dblift does not run it (column 1)"
 ],
 "engine": [
-"COPY t FROM STDIN;\n1\t2\n",
-"SELECT 2;"
+"error",
+"UnsupportedMetaCommandError",
+"Unsupported psql meta-command '\\\\.' at line 3; dblift does not run it (column 1)"
 ],
 "splitter": [
-"COPY t FROM STDIN;\n1\t2\n",
-"SELECT 2;"
+"error",
+"UnsupportedMetaCommandError",
+"Unsupported psql meta-command '\\\\.' at line 3; dblift does not run it (column 1)"
 ]
 }
 ],
@@ -1111,13 +1114,19 @@
 "COPY t FROM STDIN;\n1\t2\n\\.\n",
 {
 "analysis": [
-"COPY t FROM STDIN"
+"error",
+"UnsupportedMetaCommandError",
+"Unsupported psql meta-command '\\\\.' at line 3; dblift does not run it (column 1)"
 ],
 "engine": [
-"COPY t FROM STDIN;\n1\t2\n"
+"error",
+"UnsupportedMetaCommandError",
+"Unsupported psql meta-command '\\\\.' at line 3; dblift does not run it (column 1)"
 ],
 "splitter": [
-"COPY t FROM STDIN;\n1\t2\n"
+"error",
+"UnsupportedMetaCommandError",
+"Unsupported psql meta-command '\\\\.' at line 3; dblift does not run it (column 1)"
 ]
 }
 ],
@@ -1248,7 +1257,7 @@
 }
 ]
 ],
-"sha256": "a9bf145e373a69357aabd3e6b464560f61ed14f44072ad9196d1c35554cc2fc7"
+"sha256": "3ae6274899454c5a93320ad971f0b8e9f127a5eb0965202d3793136337fb350c"
 },
 "shapes": {
 "count": 352,
@@ -2969,17 +2978,14 @@
 {
 "analysis": [
 "SELECT 1",
-"c */",
 "SELECT 2"
 ],
 "engine": [
 "SELECT 1;",
-"c */;",
 "SELECT 2;"
 ],
 "splitter": [
 "SELECT 1;",
-"c */;",
 "SELECT 2;"
 ]
 }
@@ -3244,16 +3250,13 @@
 "SELECT 1;\n/* a /* b */ c */",
 {
 "analysis": [
-"SELECT 1",
-"c */"
+"SELECT 1"
 ],
 "engine": [
-"SELECT 1;",
-"c */"
+"SELECT 1;"
 ],
 "splitter": [
-"SELECT 1;",
-"c */"
+"SELECT 1;"
 ]
 }
 ],
@@ -3328,16 +3331,19 @@
 "COPY t FROM STDIN;\n1\t2\n\\.\nSELECT 2;",
 {
 "analysis": [
-"COPY t FROM STDIN",
-"SELECT 2"
+"error",
+"UnsupportedMetaCommandError",
+"Unsupported psql meta-command '\\\\.' at line 3; dblift does not run it (column 1)"
 ],
 "engine": [
-"COPY t FROM STDIN;\n1\t2\n",
-"SELECT 2;"
+"error",
+"UnsupportedMetaCommandError",
+"Unsupported psql meta-command '\\\\.' at line 3; dblift does not run it (column 1)"
 ],
 "splitter": [
-"COPY t FROM STDIN;\n1\t2\n",
-"SELECT 2;"
+"error",
+"UnsupportedMetaCommandError",
+"Unsupported psql meta-command '\\\\.' at line 3; dblift does not run it (column 1)"
 ]
 }
 ],
@@ -7231,7 +7237,7 @@
 }
 ]
 ],
-"sha256": "e69783918f70c93a0c636de1a2937a8d1e69c772444c6233a4a8d2e21881682f"
+"sha256": "57888ea28a84187fb0179ed5279cdaa5b0935fb83d67c821d09877597f170d65"
 },
 "snowflake": {
 "count": 5,
@@ -7306,7 +7312,7 @@
 "sha256": "d33767030fb567ebf4699543cf51a835e6b5eced5e52adf95a4e7fbfd5c4910d"
 },
 "spec_rows": {
-"count": 772,
+"count": 802,
 "observed": [
 [
 "db2",
@@ -15582,6 +15588,564 @@
 }
 ],
 [
+"redshift",
+"/* a /* b */ c */ SELECT 1;",
+{
+"analysis": [
+"SELECT 1"
+],
+"engine": [
+"SELECT 1;"
+],
+"splitter": [
+"SELECT 1;"
+]
+}
+],
+[
+"redshift",
+"/* a /* b */ SELECT 1;",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated block comment opened at line 1, column 1"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated block comment opened at line 1, column 1"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated block comment opened at line 1, column 1"
+]
+}
+],
+[
+"redshift",
+"SELECT 1 /* a /* b */ c */; SELECT 2;",
+{
+"analysis": [
+"SELECT 1 /* a /* b */ c */",
+"SELECT 2"
+],
+"engine": [
+"SELECT 1 /* a /* b */ c */;",
+"SELECT 2;"
+],
+"splitter": [
+"SELECT 1 /* a /* b */ c */;",
+"SELECT 2;"
+]
+}
+],
+[
+"redshift",
+"SELECT /* /* */ 1;",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated block comment opened at line 1, column 8"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated block comment opened at line 1, column 8"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated block comment opened at line 1, column 8"
+]
+}
+],
+[
+"redshift",
+"SELECT 1; /* a /* b */ c */ SELECT 2;",
+{
+"analysis": [
+"SELECT 1",
+"SELECT 2"
+],
+"engine": [
+"SELECT 1;",
+"SELECT 2;"
+],
+"splitter": [
+"SELECT 1;",
+"SELECT 2;"
+]
+}
+],
+[
+"redshift",
+"SELECT 1; /* a /* b */ SELECT 2;",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated block comment opened at line 1, column 11"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated block comment opened at line 1, column 11"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated block comment opened at line 1, column 11"
+]
+}
+],
+[
+"redshift",
+"SELECT 1 /* x",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated block comment opened at line 1, column 10"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated block comment opened at line 1, column 10"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated block comment opened at line 1, column 10"
+]
+}
+],
+[
+"redshift",
+"SELECT 1; -- x",
+{
+"analysis": [
+"SELECT 1"
+],
+"engine": [
+"SELECT 1;"
+],
+"splitter": [
+"SELECT 1;"
+]
+}
+],
+[
+"redshift",
+"SELECT 1; /* x */",
+{
+"analysis": [
+"SELECT 1"
+],
+"engine": [
+"SELECT 1;"
+],
+"splitter": [
+"SELECT 1;"
+]
+}
+],
+[
+"redshift",
+"/* only */",
+{
+"analysis": [],
+"engine": [],
+"splitter": []
+}
+],
+[
+"redshift",
+"SELECT 'a\\'b;c'; SELECT 2;",
+{
+"analysis": [
+"SELECT 'a\\'b;c'",
+"SELECT 2"
+],
+"engine": [
+"SELECT 'a\\'b;c';",
+"SELECT 2;"
+],
+"splitter": [
+"SELECT 'a\\'b;c';",
+"SELECT 2;"
+]
+}
+],
+[
+"redshift",
+"SELECT 'a\\\\'; SELECT 2;",
+{
+"analysis": [
+"SELECT 'a\\\\'",
+"SELECT 2"
+],
+"engine": [
+"SELECT 'a\\\\';",
+"SELECT 2;"
+],
+"splitter": [
+"SELECT 'a\\\\';",
+"SELECT 2;"
+]
+}
+],
+[
+"redshift",
+"SELECT 'a\\'; SELECT 2;",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated string opened at line 1, column 8"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated string opened at line 1, column 8"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated string opened at line 1, column 8"
+]
+}
+],
+[
+"redshift",
+"SELECT E'a\\'b;c'; SELECT 2;",
+{
+"analysis": [
+"SELECT E'a\\'b;c'",
+"SELECT 2"
+],
+"engine": [
+"SELECT E'a\\'b;c';",
+"SELECT 2;"
+],
+"splitter": [
+"SELECT E'a\\'b;c';",
+"SELECT 2;"
+]
+}
+],
+[
+"redshift",
+"SELECT 'a\\\\\\'b;c'; SELECT 2;",
+{
+"analysis": [
+"SELECT 'a\\\\\\'b;c'",
+"SELECT 2"
+],
+"engine": [
+"SELECT 'a\\\\\\'b;c';",
+"SELECT 2;"
+],
+"splitter": [
+"SELECT 'a\\\\\\'b;c';",
+"SELECT 2;"
+]
+}
+],
+[
+"redshift",
+"SELECT 'it''s;'; SELECT 2;",
+{
+"analysis": [
+"SELECT 'it''s;'",
+"SELECT 2"
+],
+"engine": [
+"SELECT 'it''s;';",
+"SELECT 2;"
+],
+"splitter": [
+"SELECT 'it''s;';",
+"SELECT 2;"
+]
+}
+],
+[
+"redshift",
+"SELECT $$a;b$$; SELECT 2;",
+{
+"analysis": [
+"SELECT $$a;b$$",
+"SELECT 2"
+],
+"engine": [
+"SELECT $$a;b$$;",
+"SELECT 2;"
+],
+"splitter": [
+"SELECT $$a;b$$;",
+"SELECT 2;"
+]
+}
+],
+[
+"redshift",
+"SELECT $tag$a;b$tag$; SELECT 2;",
+{
+"analysis": [
+"SELECT $tag$a;b$tag$",
+"SELECT 2"
+],
+"engine": [
+"SELECT $tag$a;b$tag$;",
+"SELECT 2;"
+],
+"splitter": [
+"SELECT $tag$a;b$tag$;",
+"SELECT 2;"
+]
+}
+],
+[
+"redshift",
+"SELECT $$a; SELECT 2;",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated dollar-quoted string opened at line 1, column 8"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated dollar-quoted string opened at line 1, column 8"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated dollar-quoted string opened at line 1, column 8"
+]
+}
+],
+[
+"redshift",
+"SELECT 1 AS \"a\"\"b;\"; SELECT 2;",
+{
+"analysis": [
+"SELECT 1 AS \"a\"\"b;\"",
+"SELECT 2"
+],
+"engine": [
+"SELECT 1 AS \"a\"\"b;\";",
+"SELECT 2;"
+],
+"splitter": [
+"SELECT 1 AS \"a\"\"b;\";",
+"SELECT 2;"
+]
+}
+],
+[
+"redshift",
+"SELECT 1 AS \"a\\\"b\"; SELECT 2;",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated quoted identifier opened at line 1, column 18"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated quoted identifier opened at line 1, column 18"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated quoted identifier opened at line 1, column 18"
+]
+}
+],
+[
+"redshift",
+"SELECT 1 AS a$x$; SELECT 2;",
+{
+"analysis": [
+"SELECT 1 AS a$x$",
+"SELECT 2"
+],
+"engine": [
+"SELECT 1 AS a$x$;",
+"SELECT 2;"
+],
+"splitter": [
+"SELECT 1 AS a$x$;",
+"SELECT 2;"
+]
+}
+],
+[
+"redshift",
+"COPY t FROM STDIN;\n1\nSELECT 2;",
+{
+"analysis": [
+"COPY t FROM STDIN",
+"1\nSELECT 2"
+],
+"engine": [
+"COPY t FROM STDIN;",
+"1\nSELECT 2;"
+],
+"splitter": [
+"COPY t FROM STDIN;",
+"1\nSELECT 2;"
+]
+}
+],
+[
+"redshift",
+"CREATE FUNCTION f() RETURNS int BEGIN ATOMIC SELECT 1; SELECT 2; END; SELECT 3;",
+{
+"analysis": [
+"CREATE FUNCTION f() RETURNS int BEGIN ATOMIC SELECT 1",
+"SELECT 2",
+"END",
+"SELECT 3"
+],
+"engine": [
+"CREATE FUNCTION f() RETURNS int BEGIN ATOMIC SELECT 1;",
+"SELECT 2;",
+"END;",
+"SELECT 3;"
+],
+"splitter": [
+"CREATE FUNCTION f() RETURNS int BEGIN ATOMIC SELECT 1;",
+"SELECT 2;",
+"END;",
+"SELECT 3;"
+]
+}
+],
+[
+"redshift",
+"SELECT 1;; SELECT 2;",
+{
+"analysis": [
+"SELECT 1",
+"SELECT 2"
+],
+"engine": [
+"SELECT 1;",
+"SELECT 2;"
+],
+"splitter": [
+"SELECT 1;",
+"SELECT 2;"
+]
+}
+],
+[
+"redshift",
+"SELECT 1 AS a\u00a0; SELECT 2;",
+{
+"analysis": [
+"SELECT 1 AS a\u00a0",
+"SELECT 2"
+],
+"engine": [
+"SELECT 1 AS a\u00a0;",
+"SELECT 2;"
+],
+"splitter": [
+"SELECT 1 AS a\u00a0;",
+"SELECT 2;"
+]
+}
+],
+[
+"redshift",
+"SELECT 1 AS [a;b]; SELECT 2;",
+{
+"analysis": [
+"SELECT 1 AS [a",
+"b]",
+"SELECT 2"
+],
+"engine": [
+"SELECT 1 AS [a;",
+"b];",
+"SELECT 2;"
+],
+"splitter": [
+"SELECT 1 AS [a;",
+"b];",
+"SELECT 2;"
+]
+}
+],
+[
+"redshift",
+"/*DELIMITER //*/ SELECT 1;",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated block comment opened at line 1, column 1"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated block comment opened at line 1, column 1"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated block comment opened at line 1, column 1"
+]
+}
+],
+[
+"redshift",
+"COPY t (a) FROM STDIN;\n1\n\\.\nSELECT 1;",
+{
+"analysis": [
+"error",
+"UnsupportedMetaCommandError",
+"Unsupported psql meta-command '\\\\.' at line 3; dblift does not run it (column 1)"
+],
+"engine": [
+"error",
+"UnsupportedMetaCommandError",
+"Unsupported psql meta-command '\\\\.' at line 3; dblift does not run it (column 1)"
+],
+"splitter": [
+"error",
+"UnsupportedMetaCommandError",
+"Unsupported psql meta-command '\\\\.' at line 3; dblift does not run it (column 1)"
+]
+}
+],
+[
+"redshift",
+"SELECT 1;\n/* a /* b */ c */;\nSELECT 2;",
+{
+"analysis": [
+"SELECT 1",
+"SELECT 2"
+],
+"engine": [
+"SELECT 1;",
+"SELECT 2;"
+],
+"splitter": [
+"SELECT 1;",
+"SELECT 2;"
+]
+}
+],
+[
 "sqlite",
 "CREATE TABLE t(a); INSERT INTO t VALUES(1);",
 {
@@ -18426,13 +18990,13 @@
 "/* a /* b */ ; */ SELECT 1;",
 {
 "analysis": [
-"*/ SELECT 1"
+"SELECT 1"
 ],
 "engine": [
-"*/ SELECT 1;"
+"SELECT 1;"
 ],
 "splitter": [
-"*/ SELECT 1;"
+"SELECT 1;"
 ]
 }
 ],
@@ -18531,15 +19095,21 @@
 "CREATE FUNCTION h() RETURNS int BEGIN ATOMIC SELECT CASE WHEN true THEN 1 END; SELECT 2; END; SELECT 9;",
 {
 "analysis": [
-"CREATE FUNCTION h() RETURNS int BEGIN ATOMIC SELECT CASE WHEN true THEN 1 END; SELECT 2; END",
+"CREATE FUNCTION h() RETURNS int BEGIN ATOMIC SELECT CASE WHEN true THEN 1 END",
+"SELECT 2",
+"END",
 "SELECT 9"
 ],
 "engine": [
-"CREATE FUNCTION h() RETURNS int BEGIN ATOMIC SELECT CASE WHEN true THEN 1 END; SELECT 2; END;",
+"CREATE FUNCTION h() RETURNS int BEGIN ATOMIC SELECT CASE WHEN true THEN 1 END;",
+"SELECT 2;",
+"END;",
 "SELECT 9;"
 ],
 "splitter": [
-"CREATE FUNCTION h() RETURNS int BEGIN ATOMIC SELECT CASE WHEN true THEN 1 END; SELECT 2; END;",
+"CREATE FUNCTION h() RETURNS int BEGIN ATOMIC SELECT CASE WHEN true THEN 1 END;",
+"SELECT 2;",
+"END;",
 "SELECT 9;"
 ]
 }
@@ -18648,16 +19218,19 @@
 "COPY t (a) FROM STDIN;\n1\n2\n\\.\nSELECT count(*) FROM t;",
 {
 "analysis": [
-"COPY t (a) FROM STDIN",
-"SELECT count(*) FROM t"
+"error",
+"UnsupportedMetaCommandError",
+"Unsupported psql meta-command '\\\\.' at line 4; dblift does not run it (column 1)"
 ],
 "engine": [
-"COPY t (a) FROM STDIN;\n1\n2\n",
-"SELECT count(*) FROM t;"
+"error",
+"UnsupportedMetaCommandError",
+"Unsupported psql meta-command '\\\\.' at line 4; dblift does not run it (column 1)"
 ],
 "splitter": [
-"COPY t (a) FROM STDIN;\n1\n2\n",
-"SELECT count(*) FROM t;"
+"error",
+"UnsupportedMetaCommandError",
+"Unsupported psql meta-command '\\\\.' at line 4; dblift does not run it (column 1)"
 ]
 }
 ],
@@ -18702,16 +19275,19 @@
 "COPY t (a) FROM STDIN;\n1\n\n\\.\nSELECT 1;",
 {
 "analysis": [
-"COPY t (a) FROM STDIN",
-"SELECT 1"
+"error",
+"UnsupportedMetaCommandError",
+"Unsupported psql meta-command '\\\\.' at line 4; dblift does not run it (column 1)"
 ],
 "engine": [
-"COPY t (a) FROM STDIN;\n1\n\n",
-"SELECT 1;"
+"error",
+"UnsupportedMetaCommandError",
+"Unsupported psql meta-command '\\\\.' at line 4; dblift does not run it (column 1)"
 ],
 "splitter": [
-"COPY t (a) FROM STDIN;\n1\n\n",
-"SELECT 1;"
+"error",
+"UnsupportedMetaCommandError",
+"Unsupported psql meta-command '\\\\.' at line 4; dblift does not run it (column 1)"
 ]
 }
 ],
@@ -18756,16 +19332,19 @@
 "COPY t (a) FROM STDIN; -- header\n1\n\n\\.\nSELECT 1;",
 {
 "analysis": [
-"COPY t (a) FROM STDIN",
-"SELECT 1"
+"error",
+"UnsupportedMetaCommandError",
+"Unsupported psql meta-command '\\\\.' at line 4; dblift does not run it (column 1)"
 ],
 "engine": [
-"COPY t (a) FROM STDIN; -- header\n1\n\n",
-"SELECT 1;"
+"error",
+"UnsupportedMetaCommandError",
+"Unsupported psql meta-command '\\\\.' at line 4; dblift does not run it (column 1)"
 ],
 "splitter": [
-"COPY t (a) FROM STDIN; -- header\n1\n\n",
-"SELECT 1;"
+"error",
+"UnsupportedMetaCommandError",
+"Unsupported psql meta-command '\\\\.' at line 4; dblift does not run it (column 1)"
 ]
 }
 ],
@@ -18817,18 +19396,18 @@
 {
 "analysis": [
 "error",
-"UnsafeStatementSplitError",
-"text after COPY FROM STDIN header terminator at line 1, column 24"
+"UnsupportedMetaCommandError",
+"Unsupported psql meta-command '\\\\.' at line 3; dblift does not run it (column 1)"
 ],
 "engine": [
 "error",
-"UnsafeStatementSplitError",
-"text after COPY FROM STDIN header terminator at line 1, column 24"
+"UnsupportedMetaCommandError",
+"Unsupported psql meta-command '\\\\.' at line 3; dblift does not run it (column 1)"
 ],
 "splitter": [
 "error",
-"UnsafeStatementSplitError",
-"text after COPY FROM STDIN header terminator at line 1, column 24"
+"UnsupportedMetaCommandError",
+"Unsupported psql meta-command '\\\\.' at line 3; dblift does not run it (column 1)"
 ]
 }
 ],
@@ -18873,16 +19452,19 @@
 "COPY t (a) FROM STDIN; /* header */\n1\n\n\\.\nSELECT 1;",
 {
 "analysis": [
-"COPY t (a) FROM STDIN",
-"SELECT 1"
+"error",
+"UnsupportedMetaCommandError",
+"Unsupported psql meta-command '\\\\.' at line 4; dblift does not run it (column 1)"
 ],
 "engine": [
-"COPY t (a) FROM STDIN; /* header */\n1\n\n",
-"SELECT 1;"
+"error",
+"UnsupportedMetaCommandError",
+"Unsupported psql meta-command '\\\\.' at line 4; dblift does not run it (column 1)"
 ],
 "splitter": [
-"COPY t (a) FROM STDIN; /* header */\n1\n\n",
-"SELECT 1;"
+"error",
+"UnsupportedMetaCommandError",
+"Unsupported psql meta-command '\\\\.' at line 4; dblift does not run it (column 1)"
 ]
 }
 ],
@@ -18934,18 +19516,18 @@
 {
 "analysis": [
 "error",
-"UnsafeStatementSplitError",
-"text after COPY FROM STDIN header terminator at line 1, column 23"
+"UnsupportedMetaCommandError",
+"Unsupported psql meta-command '\\\\.' at line 3; dblift does not run it (column 1)"
 ],
 "engine": [
 "error",
-"UnsafeStatementSplitError",
-"text after COPY FROM STDIN header terminator at line 1, column 23"
+"UnsupportedMetaCommandError",
+"Unsupported psql meta-command '\\\\.' at line 3; dblift does not run it (column 1)"
 ],
 "splitter": [
 "error",
-"UnsafeStatementSplitError",
-"text after COPY FROM STDIN header terminator at line 1, column 23"
+"UnsupportedMetaCommandError",
+"Unsupported psql meta-command '\\\\.' at line 3; dblift does not run it (column 1)"
 ]
 }
 ],
@@ -19278,16 +19860,19 @@
 "COPY t (a) FROM STDIN;\n1\n  \\.\n\\.\nSELECT 1;",
 {
 "analysis": [
-"COPY t (a) FROM STDIN",
-"SELECT 1"
+"error",
+"UnsupportedMetaCommandError",
+"Unsupported psql meta-command '\\\\.' at line 3; dblift does not run it (column 3)"
 ],
 "engine": [
-"COPY t (a) FROM STDIN;\n1\n  \\.\n",
-"SELECT 1;"
+"error",
+"UnsupportedMetaCommandError",
+"Unsupported psql meta-command '\\\\.' at line 3; dblift does not run it (column 3)"
 ],
 "splitter": [
-"COPY t (a) FROM STDIN;\n1\n  \\.\n",
-"SELECT 1;"
+"error",
+"UnsupportedMetaCommandError",
+"Unsupported psql meta-command '\\\\.' at line 3; dblift does not run it (column 3)"
 ]
 }
 ],
@@ -19593,13 +20178,19 @@
 "/*DELIMITER //*/ SELECT 1;",
 {
 "analysis": [
-"SELECT 1"
+"error",
+"UnsafeStatementSplitError",
+"unterminated block comment opened at line 1, column 1"
 ],
 "engine": [
-"SELECT 1;"
+"error",
+"UnsafeStatementSplitError",
+"unterminated block comment opened at line 1, column 1"
 ],
 "splitter": [
-"SELECT 1;"
+"error",
+"UnsafeStatementSplitError",
+"unterminated block comment opened at line 1, column 1"
 ]
 }
 ],
@@ -19998,15 +20589,18 @@
 {
 "analysis": [
 "SELECT 0",
-"CREATE FUNCTION f() RETURNS int LANGUAGE SQL BEGIN ATOMIC SELECT 1; END",
+"CREATE FUNCTION f() RETURNS int LANGUAGE SQL BEGIN ATOMIC SELECT 1",
+"END",
 "SELECT 2"
 ],
 "engine": [
-"SELECT 0 ; CREATE FUNCTION f() RETURNS int LANGUAGE SQL BEGIN ATOMIC SELECT 1; END;",
+"SELECT 0 ; CREATE FUNCTION f() RETURNS int LANGUAGE SQL BEGIN ATOMIC SELECT 1;",
+"END;",
 "SELECT 2;"
 ],
 "splitter": [
-"SELECT 0 ; CREATE FUNCTION f() RETURNS int LANGUAGE SQL BEGIN ATOMIC SELECT 1; END;",
+"SELECT 0 ; CREATE FUNCTION f() RETURNS int LANGUAGE SQL BEGIN ATOMIC SELECT 1;",
+"END;",
 "SELECT 2;"
 ]
 }
@@ -21500,6 +22094,6 @@
 }
 ]
 ],
-"sha256": "75606f23e2007c8a7f8f3e0f6b50d638cf6f7c6e7242b3d63a74966fd4b1cf9f"
+"sha256": "4712446546d93ec5513f1c175ab415abea9994efd53452f7165e3d412357f0f3"
 }
 }

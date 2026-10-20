@@ -141,7 +141,8 @@ SHAPES: Tuple[Shape, ...] = (
     Shape(
         "copy_stdin",
         f"COPY t FROM STDIN;\n1\t2\n\\.\n{S2};",
-        PSQL_WIRE,
+        # Redshift rejects COPY ... FROM STDIN (docs/sql-parsing/redshift.md): no data block.
+        tuple(d for d in PSQL_WIRE if d != "redshift"),
         execution=("COPY t FROM STDIN;\n1\t2\n", "SELECT 2;"),
     ),
     Shape(

@@ -381,7 +381,7 @@ def _created_object_type(ast: exp.Create, dialect: str) -> SqlObjectType:
     if properties and properties.find(exp.VirtualProperty):
         object_type = SqlObjectType.VIRTUAL_TABLE
     if (
-        dialect == "postgres"  # lint: allow-dialect-string: PostgreSQL materialized views
+        dialect in {"postgres", "redshift"}  # lint: allow-dialect-string: materialized views
         and kind == "VIEW"
         and properties
         and properties.find(exp.MaterializedProperty)
@@ -437,7 +437,7 @@ def _postgresql_opaque_cte(ast: exp.Expr, dialect: str) -> Optional[StatementFac
         operation,
         kind,
         (identity,) if identity is not None else (),
-        diagnostic="postgres CTE source scopes or effects are opaque to statement facts",
+        diagnostic=f"{dialect} CTE source scopes or effects are opaque to statement facts",
     )
 
 
@@ -1032,6 +1032,119 @@ def _without_mysql_dml_modifiers(sql: str) -> str:
     return sql if pos == verb.end() else f"{sql[: verb.end()]} {sql[pos:].lstrip()}"
 
 
+_REDSHIFT_BRACKETED_HEAD = re.compile(r"^\s*(?:CREATE|ALTER|DROP)\b[^(\[]*\[", re.IGNORECASE)
+
+
+def _redshift_bracketed_name(sql: str, dialect: str) -> Optional[StatementFacts]:
+    """A DDL head with ``[`` before its first parenthesis, or ``None``.
+
+    Redshift drops the brackets around a name (``[t]`` is ``t``, ``["a""b"]`` is ``a"b``) and
+    rejects a space or ``;`` inside them, so the text between the brackets is not the name.
+    """
+    if _REDSHIFT_BRACKETED_HEAD.match(_blanked(sql)) is None:
+        return None
+    head = _head_facts(sql, "", dialect=dialect)
+    return StatementFacts(
+        head.operation, head.kind, diagnostic="redshift bracketed name is not modelled"
+    )
+
+
+def _redshift_facts(ast: exp.Expr, sql: str, dialect: str) -> Optional[StatementFacts]:
+    """The statements Redshift reads differently from the generic reading, or ``None``.
+
+    Measured on Redshift Serverless 1.0.485645 (docs/sql-parsing/redshift.md): ``COPY`` loads (the
+    unload direction is ``UNLOAD``), ``TRUNCATE`` takes one table, a two-part schema name is
+    database.schema, and ``SELECT ... INTO`` creates the table.
+    """
+    opaque_cte = _postgresql_opaque_cte(ast, dialect)
+    if opaque_cte is not None:
+        return opaque_cte
+    if isinstance(ast, exp.Copy):
+        # The options follow the source and cannot change the table it loads; sqlglot misreads
+        # some (``IGNOREHEADER 1``), so only the table, columns and source are checked.
+        loaded = ast.copy()
+        loaded.set("params", None)
+        return _copy_facts(loaded, sql, dialect=dialect)
+    if isinstance(ast, exp.Merge):
+        table = ast.this
+        identity = (
+            _named(table, SqlObjectType.TABLE, "altered")
+            if isinstance(table, exp.Table) and isinstance(table.this, exp.Identifier)
+            else None
+        )
+        bare = table.copy() if identity is not None else None
+        if bare is not None:
+            bare.set("alias", None)
+        return StatementFacts(
+            "MERGE",
+            "DML",
+            (identity,) if identity else (),
+            target=(
+                ".".join(part for part in (table.catalog, table.db, table.name) if part)
+                if identity
+                else None
+            ),
+            target_sql=bare.sql(dialect=dialect) if bare is not None else None,
+            diagnostic="redshift MERGE sources and actions are not read",
+        )
+    if isinstance(ast, (exp.Grant, exp.Revoke)):
+        return StatementFacts(
+            type(ast).__name__.upper(),
+            "DDL",
+            diagnostic=f"redshift {type(ast).__name__} privilege targets are not modelled",
+        )
+    if isinstance(ast, exp.Comment):
+        identity = _postgres_comment_identity(ast)
+        if identity is not None and identity.type in {SqlObjectType.TABLE, SqlObjectType.VIEW}:
+            return StatementFacts("COMMENT", "DDL", (identity,))
+        return StatementFacts(
+            "COMMENT", "DDL", diagnostic="redshift COMMENT target is not modelled"
+        )
+    if isinstance(ast, exp.TruncateTable):
+        target = ast.expressions[0] if len(ast.expressions) == 1 else None
+        identity = (
+            _named(target, SqlObjectType.TABLE, "altered")
+            if isinstance(target, exp.Table)
+            and isinstance(target.this, exp.Identifier)
+            and not target.catalog
+            and not any(value for key, value in ast.args.items() if key != "expressions")
+            else None
+        )
+        if identity is None:
+            return StatementFacts(
+                "TRUNCATE", "DDL", diagnostic="redshift TRUNCATE target is not a single table"
+            )
+        return StatementFacts("TRUNCATE", "DDL", (identity,))
+    if (
+        isinstance(ast, (exp.Create, exp.Drop))
+        and str(ast.args.get("kind") or "").upper() == "SCHEMA"
+    ):
+        role = "created" if isinstance(ast, exp.Create) else "dropped"
+        targets = [ast.this] if isinstance(ast, exp.Create) else list(ast.args.get("tables") or [])
+        # Schema names sit in Table.db; a name with a second part is database.schema.
+        schemas = tuple(
+            NamedObject(target.db, SqlObjectType.SCHEMA, role)
+            for target in targets
+            if isinstance(target, exp.Table)
+            and target.db
+            and not target.catalog
+            and not target.name
+        )
+        if len(schemas) == len(targets) == 1:
+            return StatementFacts(type(ast).__name__.upper(), "DDL", schemas)
+        return StatementFacts(
+            type(ast).__name__.upper(),
+            "DDL",
+            diagnostic="redshift schema name has a database part or is not a plain name",
+        )
+    if isinstance(ast, exp.Query):
+        into = _select_into_table(ast)
+        if into is not None and (created := _named(into, SqlObjectType.TABLE, "created")):
+            sources = _referenced(ast, tuple(into.find_all(exp.Table)))
+            return StatementFacts("SELECT", "DML", (created,) + sources)
+    return None
+
+
 def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
     """Read one already-split statement; never retry a second extractor.
 
@@ -1074,6 +1187,10 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
         return _head_facts(sql, "tsql OR DML modifier is not modelled", dialect=dialect)
     if dialect == "mysql":  # lint: allow-dialect-string: MySQL DML modifiers
         sql = _without_mysql_dml_modifiers(sql)
+    if dialect == "redshift":  # lint: allow-dialect-string: Redshift bracketed names
+        bracketed = _redshift_bracketed_name(sql, dialect)
+        if bracketed is not None:
+            return bracketed
     try:
         ast = parse_one(_UPDATE_OR.sub(r"\1", sql), read=dialect)
     except (ParseError, TokenError) as exc:
@@ -1115,6 +1232,11 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
         return _head_facts(
             sql, f"{dialect} {construct} is opaque to statement facts", dialect=dialect
         )
+
+    if dialect == "redshift":  # lint: allow-dialect-string: Redshift statement forms
+        redshift_facts = _redshift_facts(ast, sql, dialect)
+        if redshift_facts is not None:
+            return redshift_facts
 
     if dialect == "tsql":  # lint: allow-dialect-string: T-SQL multi-part names and modules
         ctes = tuple(ast.find_all(exp.CTE))
@@ -1389,7 +1511,7 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
         kind = str(ast.args.get("kind") or "").upper()
         object_type = SqlObjectType.__members__.get(kind, SqlObjectType.UNKNOWN)
         if (
-            dialect == "postgres"  # lint: allow-dialect-string: PostgreSQL materialized views
+            dialect in {"postgres", "redshift"}  # lint: allow-dialect-string: materialized views
             and kind == "VIEW"
             and ast.args.get("materialized")
         ):
@@ -1671,7 +1793,13 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
         target_table = table
         if (
             dialect
-            in {"duckdb", "mysql", "postgres", "tsql"}  # lint: allow-dialect-string: bare targets
+            in {
+                "duckdb",
+                "mysql",
+                "postgres",
+                "redshift",
+                "tsql",
+            }  # lint: allow-dialect-string: bare targets
             and table is not None
             and (table.args.get("alias") or table.args.get("joins") or table.args.get("only"))
         ):

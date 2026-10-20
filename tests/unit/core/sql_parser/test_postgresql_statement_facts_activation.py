@@ -1,4 +1,4 @@
-"""PostgreSQL-family statement facts activate every consumer; Redshift keeps text extraction."""
+"""PostgreSQL-family statement facts activate every consumer."""
 
 from unittest.mock import MagicMock
 
@@ -53,10 +53,6 @@ def test_family_plugins_read_statement_facts(dialect):
 
     assert quirks.supports_statement_facts
     assert isinstance(quirks.statement_facts_reader(), SqlglotStatementFactsReader)
-
-
-def test_redshift_keeps_text_extraction():
-    assert not _quirks("redshift").supports_statement_facts
 
 
 @pytest.mark.parametrize("dialect", FAMILY)

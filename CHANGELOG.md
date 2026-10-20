@@ -19,6 +19,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Redshift reads statement facts from the SQL grammar.** `info --format json`,
+  `migrate --dry-run`, object tracking during `migrate`, data-change analysis and lint read each
+  statement's kind, objects, target and predicate from the sqlglot AST after the shared lexical
+  splitter. `SELECT … INTO` is read as the table creation it is, `COPY … FROM` as a load into its
+  table, `TRUNCATE` as a single-table statement, `COMMENT ON TABLE`/`COLUMN`/`VIEW` as a change to
+  the commented relation, `CREATE`/`DROP SCHEMA` by a plain schema name, and `CREATE`/`DROP
+  MATERIALIZED VIEW` as a materialized view. Statements Redshift-only DDL cannot be proven for
+  (`CREATE EXTERNAL SCHEMA`, `CREATE LIBRARY`, `UNLOAD`, `GRANT`/`REVOKE` targets, a schema name
+  with a database part, a bracketed name) are reported as unread instead of guessed. Newly
+  activated Redshift statements require manual undo review instead of automatic text reversal.
 - **SQL Server reads statement facts through the T-SQL grammar.** Object extraction, script
   analysis and DML helpers use the plugin's facts reader after lexical `GO` batch splitting.
   Unread names and effects are reported as opaque rather than guessed. Newly activated SQL
@@ -181,6 +191,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Redshift scripts are split the way Redshift reads them.** Block comments nest, so
+  `/* a /* b */ c */ SELECT 1` is one statement and an unterminated nested comment is refused;
+  a `COPY … FROM STDIN` line is no longer taken for the start of a data block and a function body
+  `BEGIN ATOMIC … END` no longer holds statements together, since Redshift rejects both forms.
+  Each rule was measured on Redshift Serverless 1.0.485645.
 - **Oracle scripts refuse an invalid blank before a client command.** A no-break
   space or U+001C before `EXIT`, `PROMPT` or `/` no longer makes the splitter
   recognize it as a client command; unsafe scripts are explicitly refused.
