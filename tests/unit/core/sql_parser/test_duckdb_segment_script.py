@@ -10,6 +10,8 @@ import pytest
 
 from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
 from dblift.core.sql_parser.lexical_engine import LexicalEngine
+from dblift.core.sql_parser.lexical_tokenizer import LexicalTokenizer
+from dblift.core.sql_parser.tokens import TokenType
 from dblift.db.plugins.duckdb.parser.duckdb_facts_parser import DuckDBFactsParser
 from dblift.db.plugins.duckdb.parser.lexical_spec import DUCKDB_RULES, DUCKDB_SPEC
 from tests.support.splitter_spec.spec_tables import load_conformance_rows
@@ -435,6 +437,35 @@ CASES = [
 ]
 IDS = [case[0] for case in CASES]
 KNOWN_GAPS = frozenset()
+
+
+@pytest.mark.parametrize(
+    "script",
+    [
+        "SELECT E'a'\t'b\\'; SELECT 2;",
+        "SELECT E'a'\n'b\\';c'; SELECT 2;",
+        "SELECT E'a'\r\n'b\\';c'; SELECT 2;",
+        "SELECT E'a' -- note\n'b\\';c'; SELECT 2;",
+        "SELECT E'a' /* note\n */ 'b\\';c'; SELECT 2;",
+        "SELECT E'a' 'b\\'",
+        "SELECT ٣E'b\\';c'; SELECT 2;",
+        "SELECT ３E'b\\';c'; SELECT 2;",
+    ],
+)
+def test_string_boundary_delimiters_match_duckdb_tokens(script):
+    import duckdb
+
+    native = [
+        len(script.encode()[:offset].decode())
+        for offset, _kind in duckdb.tokenize(script)
+        if script.encode()[offset : offset + 1] == b";"
+    ]
+    ours = [
+        token.pos
+        for token in LexicalTokenizer(script, spec=DUCKDB_SPEC).tokenize()
+        if token.type == TokenType.DELIMITER
+    ]
+    assert ours == native
 
 
 def outcome(call, script):
