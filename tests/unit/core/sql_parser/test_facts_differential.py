@@ -62,14 +62,14 @@ def _results() -> Results:
 # which families are gated ------------------------------------------------------------------------
 
 
-def test_the_activated_families_are_gated() -> None:
-    assert gated_families() == ["mysql", "postgresql"]
+def test_only_families_whose_differences_are_explained_are_gated() -> None:
+    assert gated_families() == ["db2", "mysql", "postgresql"]
 
 
 def test_gated_families_are_known_families_with_a_reader() -> None:
     gated = gated_families()
     assert gated == sorted(gated) and set(gated) <= set(FAMILIES)
-    assert not {f for f in gated if DIALECTS[f] is None}, "a family without a reader is not gated"
+    assert not set(gated) & set(NO_OLD_FAMILIES), "a family with nothing to compare is not gated"
 
 
 def test_every_family_has_a_review_file_of_entries_that_say_why() -> None:
@@ -147,11 +147,6 @@ def test_every_row_of_every_family_is_classified_on_this_arm(family: str) -> Non
     results = classify_family(family, current_arm())
     assert len(results) == len(read_rows(family_file(family)))
     assert {c for _, _, classes in results for c in classes.values()} <= set(ORDER)
-
-
-def test_a_family_without_a_reader_is_no_reader_everywhere() -> None:
-    seen = {c for _, _, classes in classify_family("db2", current_arm()) for c in classes.values()}
-    assert seen == {"no-reader"}
 
 
 def test_a_family_whose_extraction_is_the_reader_has_nothing_to_compare() -> None:

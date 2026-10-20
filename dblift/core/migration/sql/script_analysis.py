@@ -216,7 +216,13 @@ def _analyse(text: str, dialect: str) -> ScriptAnalysis:
                 names_unread=facts.opaque and not facts.affected_objects,
             )
             fact_statements.append(analysed)
-            caution = _caution_for(analysed, body, quirks.sqlglot_dialect if facts.opaque else None)
+            caution = _caution_for(
+                analysed,
+                body,
+                _opaque_dialect(dialect) if facts.opaque else None,
+                # a plugin without a sqlglot dialect has no second reader to name an unread target
+                name_target=not (analysed.names_unread and quirks.sqlglot_dialect is None),
+            )
             if caution is None and facts.opaque and facts.kind == "DML" and facts.target is None:
                 # A data-changing CTE leaves no readable target; its outer table still changes.
                 altered = tuple(

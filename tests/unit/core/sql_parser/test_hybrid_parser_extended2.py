@@ -21,6 +21,7 @@ from dblift.core.sql_model.index import Index
 from dblift.core.sql_model.table import Table
 from dblift.core.sql_model.view import View
 from dblift.core.sql_parser.hybrid_parser import HybridParser
+from tests.support.legacy_db2_hybrid import legacy_db2_hybrid
 
 pytestmark = [pytest.mark.unit]
 
@@ -97,7 +98,7 @@ class TestExtractObjectsSqlglotException:
 
 class TestExtractDependenciesNoSqlglot:
     def test_db2_returns_empty_deps(self):
-        parser = HybridParser("db2")
+        parser = legacy_db2_hybrid()
         deps = parser.extract_dependencies("SELECT * FROM t")
         assert deps == {"tables": [], "views": [], "schemas": []}
 
@@ -172,7 +173,7 @@ class TestExtractTableDepsFromAst:
 
 class TestExtractViewDepsFromObjects:
     def test_raises_if_sqlglot_parser_none(self):
-        parser = HybridParser("db2")
+        parser = legacy_db2_hybrid()
         with pytest.raises(RuntimeError):
             parser._extract_view_deps_from_objects(
                 "SELECT 1", None, {"tables": [], "views": [], "schemas": []}
@@ -394,13 +395,13 @@ class TestEnsureAlterTableMetadataSqlglot:
 
 class TestParseAlterTableWithRegex:
     def test_no_table_match_returns_early(self):
-        parser = HybridParser("db2")
+        parser = legacy_db2_hybrid()
         result = ParseResult(success=True, statements=[])
         parser._parse_alter_table_with_regex("ALTER TABLE", None, result)
         assert result.tables == []
 
     def test_no_check_constraint_creates_table_only(self):
-        parser = HybridParser("db2")
+        parser = legacy_db2_hybrid()
         result = ParseResult(success=True, statements=[])
         parser._parse_alter_table_with_regex(
             "ALTER TABLE app.orders ADD COLUMN foo INT", None, result
@@ -410,7 +411,7 @@ class TestParseAlterTableWithRegex:
         assert table.constraints == []
 
     def test_existing_constraint_with_check_expression_not_overwritten(self):
-        parser = HybridParser("db2")
+        parser = legacy_db2_hybrid()
         result = ParseResult(success=True, statements=[])
         sql = "ALTER TABLE app.orders ADD CONSTRAINT chk1 CHECK (status IN ('A'))"
         parser._parse_alter_table_with_regex(sql, None, result)
@@ -421,7 +422,7 @@ class TestParseAlterTableWithRegex:
         assert len(table.constraints) == 1
 
     def test_existing_constraint_without_check_expression_gets_updated(self):
-        parser = HybridParser("db2")
+        parser = legacy_db2_hybrid()
         result = ParseResult(success=True, statements=[])
         table = Table(name="ORDERS", schema="APP", dialect="db2")
         table.add_constraint(SqlConstraint(ConstraintType.CHECK, name="CHK1", dialect="db2"))
@@ -433,7 +434,7 @@ class TestParseAlterTableWithRegex:
 
     def test_nested_parens_in_check_body_round_trip_balanced(self):
         """ADD CONSTRAINT CHECK must not truncate at the first inner ')'."""
-        parser = HybridParser("db2")
+        parser = legacy_db2_hybrid()
         result = ParseResult(success=True, statements=[])
         sql = (
             "ALTER TABLE app.orders ADD CONSTRAINT chk_amount "
@@ -564,29 +565,29 @@ class TestMergeTableMetadata:
 
 class TestBuildTableModelFromRegex:
     def test_no_create_match_returns_none(self):
-        parser = HybridParser("db2")
+        parser = legacy_db2_hybrid()
         assert parser._build_table_model_from_regex("SELECT 1", None) is None
 
 
 class TestExtractColumnBlock:
     def test_no_opening_paren_returns_none(self):
-        parser = HybridParser("db2")
+        parser = legacy_db2_hybrid()
         assert parser._extract_column_block("CREATE TABLE t", 0) is None
 
     def test_quoted_parens_preserved(self):
-        parser = HybridParser("db2")
+        parser = legacy_db2_hybrid()
         block = parser._extract_column_block("CREATE TABLE t (col VARCHAR(10) DEFAULT 'a)b')", 0)
         assert "a)b" in block
 
     def test_closing_paren_ends_block(self):
-        parser = HybridParser("db2")
+        parser = legacy_db2_hybrid()
         block = parser._extract_column_block("CREATE TABLE t (id INT)", 0)
         assert block == "id INT"
 
 
 class TestParseTableDefinition:
     def test_table_level_primary_key_constraint(self):
-        parser = HybridParser("db2")
+        parser = legacy_db2_hybrid()
         columns, constraints = parser._parse_table_definition(
             "id INT, name VARCHAR(50), PRIMARY KEY (id)"
         )
@@ -596,7 +597,7 @@ class TestParseTableDefinition:
 
 class TestSplitDefinitionItems:
     def test_splits_on_commas_respecting_parens_and_quotes(self):
-        parser = HybridParser("db2")
+        parser = legacy_db2_hybrid()
         items = parser._split_definition_items(
             "a INT DEFAULT 1, b VARCHAR(10) DEFAULT 'x,y', c INT"
         )
@@ -606,23 +607,23 @@ class TestSplitDefinitionItems:
 
 class TestParseColumnDefinition:
     def test_constraint_leading_returns_none(self):
-        parser = HybridParser("db2")
+        parser = legacy_db2_hybrid()
         assert parser._parse_column_definition("CONSTRAINT pk1 PRIMARY KEY (id)") == (None, None)
 
     def test_no_match_returns_none(self):
-        parser = HybridParser("db2")
+        parser = legacy_db2_hybrid()
         assert parser._parse_column_definition("") == (None, None)
 
     def test_no_remainder_returns_none(self):
-        parser = HybridParser("db2")
+        parser = legacy_db2_hybrid()
         assert parser._parse_column_definition("colname") == (None, None)
 
     def test_no_data_type_tokens_returns_none(self):
-        parser = HybridParser("db2")
+        parser = legacy_db2_hybrid()
         assert parser._parse_column_definition("colname NOT NULL") == (None, None)
 
     def test_primary_key_inline_creates_constraint(self):
-        parser = HybridParser("db2")
+        parser = legacy_db2_hybrid()
         column, constraint = parser._parse_column_definition("id INT PRIMARY KEY")
         assert column is not None and column.is_primary_key
         assert constraint is not None and constraint.constraint_type == ConstraintType.PRIMARY_KEY
@@ -630,17 +631,17 @@ class TestParseColumnDefinition:
 
 class TestParseTableConstraint:
     def test_no_primary_key_returns_none(self):
-        parser = HybridParser("db2")
+        parser = legacy_db2_hybrid()
         assert parser._parse_table_constraint("FOREIGN KEY (a) REFERENCES b(c)") is None
 
     def test_named_constraint_extracts_name_and_columns(self):
-        parser = HybridParser("db2")
+        parser = legacy_db2_hybrid()
         constraint = parser._parse_table_constraint("CONSTRAINT pk1 PRIMARY KEY (id, name)")
         assert constraint.name == "pk1"
         assert constraint.column_names == ["ID", "NAME"]
 
     def test_unnamed_constraint(self):
-        parser = HybridParser("db2")
+        parser = legacy_db2_hybrid()
         constraint = parser._parse_table_constraint("PRIMARY KEY (id)")
         assert constraint.name is None
         assert constraint.column_names == ["ID"]
@@ -648,39 +649,39 @@ class TestParseTableConstraint:
 
 class TestExtractIdentifierList:
     def test_no_parens_returns_empty(self):
-        parser = HybridParser("db2")
+        parser = legacy_db2_hybrid()
         assert parser._extract_identifier_list("PRIMARY KEY") == []
 
 
 class TestSplitIdentifier:
     def test_schema_qualified(self):
-        parser = HybridParser("db2")
+        parser = legacy_db2_hybrid()
         assert parser._split_identifier("app.orders", None) == ("APP", "ORDERS")
 
     def test_default_schema_used(self):
-        parser = HybridParser("db2")
+        parser = legacy_db2_hybrid()
         assert parser._split_identifier("orders", "app") == ("APP", "ORDERS")
 
     def test_no_schema_no_default(self):
-        parser = HybridParser("db2")
+        parser = legacy_db2_hybrid()
         assert parser._split_identifier("orders", None) == (None, "ORDERS")
 
 
 class TestNormalizeIdentifier:
     def test_none_returns_empty(self):
-        parser = HybridParser("db2")
+        parser = legacy_db2_hybrid()
         assert parser._normalize_identifier(None, preserve_case=False) == ""
 
     def test_bracket_stripping(self):
-        parser = HybridParser("db2")
+        parser = legacy_db2_hybrid()
         assert parser._normalize_identifier("[MyCol]", preserve_case=True) == "MyCol"
 
     def test_dot_qualified_takes_last_part(self):
-        parser = HybridParser("db2")
+        parser = legacy_db2_hybrid()
         assert parser._normalize_identifier("schema.table", preserve_case=False) == "TABLE"
 
     def test_quote_stripping_and_uppercase(self):
-        parser = HybridParser("db2")
+        parser = legacy_db2_hybrid()
         assert parser._normalize_identifier('"mycol"', preserve_case=False) == "MYCOL"
 
 
@@ -707,7 +708,7 @@ class TestExtractTableDepsFromAstExceptionPath:
 
 class TestEnsureTableMetadataNoModel:
     def test_create_table_without_identifier_returns_early(self):
-        parser = HybridParser("db2")
+        parser = legacy_db2_hybrid()
         result = ParseResult(success=True, statements=[])
         stmt = SqlStatement(
             sql_text="CREATE TABLE (ID INT)",
@@ -807,7 +808,7 @@ class TestEnsureIndexMetadataNewIndex:
 
 class TestFindTableNoMatchInNonEmptyList:
     def test_returns_none_when_no_table_matches(self):
-        parser = HybridParser("db2")
+        parser = legacy_db2_hybrid()
         tables = [Table(name="other", schema=None, dialect="db2")]
 
         assert parser._find_table(tables, "orders", None) is None
@@ -815,7 +816,7 @@ class TestFindTableNoMatchInNonEmptyList:
 
 class TestExtractColumnBlockDoubleQuotes:
     def test_double_quoted_identifier_with_parens_preserved(self):
-        parser = HybridParser("db2")
+        parser = legacy_db2_hybrid()
         sql = 'CREATE TABLE t ("col,with(paren)" INT)'
         match = re.search(
             r"CREATE\s+(?:OR\s+REPLACE\s+)?(?:GLOBAL\s+TEMPORARY\s+)?"
@@ -831,7 +832,7 @@ class TestExtractColumnBlockDoubleQuotes:
 
 class TestSplitDefinitionItemsDoubleQuotes:
     def test_double_quoted_identifier_with_comma_and_parens_not_split(self):
-        parser = HybridParser("db2")
+        parser = legacy_db2_hybrid()
 
         items = parser._split_definition_items('"col,with(paren)" INT, col2 INT')
 
@@ -840,7 +841,7 @@ class TestSplitDefinitionItemsDoubleQuotes:
 
 class TestParseColumnDefinitionEmptyRemainder:
     def test_trailing_whitespace_only_returns_none(self):
-        parser = HybridParser("db2")
+        parser = legacy_db2_hybrid()
 
         assert parser._parse_column_definition("colname  ") == (None, None)
 

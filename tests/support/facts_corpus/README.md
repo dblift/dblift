@@ -26,9 +26,9 @@ Families: `postgresql` (also covers the PostgreSQL derivatives), `mysql` (also M
 ## Row fields
 
 * `facts`: the reader's `StatementFacts`, `None` and empty fields dropped, enums by value,
-  `objects` as `[name, type, role, schema]` in reader order, `events` sorted. `null` for Db2, which has
-  no reader. Families whose plugin has no reader are read through `SqlglotStatementFactsReader`
-  for their sqlglot dialect.
+  `objects` as `[name, type, role, schema]` in reader order, `events` sorted. Every
+  family has facts: Db2 is read by its own head classifier, and a family whose plugin has no reader
+  is read through `SqlglotStatementFactsReader` for its sqlglot dialect.
 * `old.hybrid` / `old.analyzer`: `[type, name, schema]` / `[type, "schema.name"]` lists from the two
   extraction paths, frozen separately because they disagree on a quarter of the statements. A path
   that raises is recorded as `{"raised": ...}`. `old.dml` (DML statements only): `table`
@@ -77,7 +77,7 @@ in one class per path (`classes.py`, tried in this order: the first match wins):
 | Class | Meaning |
 | --- | --- |
 | `raised` | a path, the DML helpers or the reader raised |
-| `no-reader` | the family has no reader (Db2) |
+| `no-reader` | the family has no reader (none today; kept for a family added without one) |
 | `no-old-side` | the family's extraction already is the reader (SQLite, DuckDB): nothing to compare |
 | `no-old` | an activated family's row that has no recorded extraction |
 | `dml-differs` | target, predicate, events, updated columns or full-table flag differ |
@@ -104,7 +104,7 @@ was harvested from.
 `opaque-reader-gap`, `facts-fewer`, `facts-adds-acted`, `disagree`, `dml-differs`, `role-differs`,
 `no-old` and `no-reader` need a reason. Reasons live in `<family>.review.json`, keyed by the statement id
 (`<id>` for both paths, `<id>/hybrid` or `<id>/analyzer` for one) with `path`, `class`, `reason`
-and, for a reader gap, an `issue` (or `rejected_by`, below). `class` is one string, or `{"floor": ..., "newest": ...}` for a
+and, for a reader gap, an `issue` (or `rejected_by`, below): the OSS issue number (`#N`) for a gap still to be closed, or `by design: <doc section>` for an outcome the reader's documentation states. `class` is one string, or `{"floor": ..., "newest": ...}` for a
 row whose class depends on the sqlglot release (`same` is allowed there for the arm that agrees,
 never on every arm). An entry whose row is gone, whose class is no longer the row's class on the arm
 being run (an entry without a key for that arm included), or that explains nothing is stale. A

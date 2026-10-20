@@ -22,7 +22,6 @@ LEGACY = (
     "mariadb",
     "sqlserver",
     "oracle",
-    "db2",
     "snowflake",
     "redshift",
 )
@@ -204,7 +203,6 @@ SPAN_SCANNERS = (
     "cockroachdb",
     "mysql",
     "mariadb",
-    "db2",
     "oracle",
     "sqlserver",
 )
@@ -238,7 +236,7 @@ def test_statement_sources_returns_the_untrimmed_text_of_a_name_that_ends_the_sc
     ]
 
 
-KEEPS_THE_BLANK = ("postgresql", "redshift", "cockroachdb", "mysql", "mariadb", "sqlserver", "db2")
+KEEPS_THE_BLANK = ("postgresql", "redshift", "cockroachdb", "mysql", "mariadb", "sqlserver")
 
 
 @pytest.mark.parametrize(
@@ -284,6 +282,18 @@ def test_a_character_the_engine_keeps_stays_in_the_span_before_a_terminator():
     script = "DROP TABLE t 　;"
     [text] = scanner.split_for_extraction(script)
     assert statement_sources(scanner, script, [text])[0].startswith("DROP TABLE t ")
+
+
+@pytest.mark.parametrize(
+    "sql",
+    ["CREATE TABLE t{c}(id INT);", "CREATE SEQUENCE q{c};", "DROP TABLE t{c};", "DROP TABLE t{c}"],
+)
+def test_db2_facts_name_nothing_for_a_name_the_engine_may_read_whole(sql):
+    """Db2 reads statement facts: the reader leaves the objects unnamed instead of flagging the parse."""
+    script = sql.format(c=NBSP)
+    assert SqlParserFactory("db2").extract_objects(script) == []
+    (statement,) = SqlParserFactory("db2").parse_sql(script).statements
+    assert statement.objects == [] and statement.affected_objects == []
 
 
 def test_the_facts_parser_marks_a_statement_whose_names_it_could_not_read():

@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
-from dblift.core.sql_parser.hybrid_parser import HybridParser
+from dblift.core.sql_parser import SqlParserFactory
 from dblift.db.plugins.db2.parser.db2_regex_parser import DB2RegexParser
 
 PARSER = DB2RegexParser()
@@ -39,7 +39,11 @@ def test_parse_sql_reports_a_client_command_refusal() -> None:
 
 
 def test_hybrid_parse_sql_reports_a_refusal_without_extracted_statements() -> None:
-    result = HybridParser("db2").parse_sql("CONNECT TO sample;\nINSERT INTO t VALUES (1);")
+    result = (
+        SqlParserFactory("db2")
+        .get_parser()
+        .parse_sql("CONNECT TO sample;\nINSERT INTO t VALUES (1);")
+    )
     assert not result.success
     assert result.statements == []
     assert any("CONNECT" in error for error in result.errors)

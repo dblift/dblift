@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any, List, Optional, Tuple
 
 from dblift.db.base_quirks import BaseQuirks
 from dblift.db.error import ErrorCategory
+from dblift.db.plugins.db2.parser.statement_facts import Db2StatementFactsReader
 
 if TYPE_CHECKING:
     from dblift.core.sql_parser.lexical_spec import LexicalSpec
@@ -54,6 +55,8 @@ class Db2Quirks(BaseQuirks):
         from dblift.db.plugins.db2.parser.lexical_spec import DB2_SPEC
 
         return DB2_SPEC
+
+    statement_facts_class = Db2StatementFactsReader
 
     # Capability matrix (was ``_CAPABILITIES["db2"]``).
     supports_transactions = True
@@ -117,15 +120,16 @@ class Db2Quirks(BaseQuirks):
     def parser_class(self, parser_type: str) -> Optional[type]:
         """Return the Db2 parser class for ``parser_type``, or ``None``.
 
-        ``"hybrid"`` → ``HybridParser`` (which falls back to regex since
-        sqlglot has no Db2 dialect), ``"regex"`` → ``DB2RegexParser``,
+        ``"hybrid"`` → ``Db2FactsParser`` (statement facts read from the
+        statement head, since sqlglot has no Db2 dialect), ``"regex"`` →
+        ``DB2RegexParser``,
         ``"sqlglot"`` → ``None`` (no Db2 sqlglot dialect — factory raises
         ``UnsupportedDialectError``, matching the legacy ``SQLGLOT_PARSER_MAP``).
         """
         if parser_type == "hybrid":
-            from dblift.core.sql_parser.hybrid_parser import HybridParser
+            from dblift.db.plugins.db2.parser.statement_facts import Db2FactsParser
 
-            return HybridParser
+            return Db2FactsParser
         if parser_type == "regex":
             from dblift.db.plugins.db2.parser.db2_regex_parser import DB2RegexParser
 

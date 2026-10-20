@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Db2 statement facts.** `info --format json`, `migrate --dry-run`, execution-time object
+  tracking and the DML helpers read Db2 statements through a head classifier: the statement kind
+  and the DDL or DML target are named for CREATE/ALTER/DROP TABLE, VIEW, INDEX, SEQUENCE, ALIAS,
+  SCHEMA, TRIGGER, PROCEDURE and FUNCTION, RENAME, COMMENT ON, TRUNCATE, GRANT/REVOKE,
+  INSERT/UPDATE/DELETE/MERGE, transaction control, CALL and SET; unquoted names fold to upper
+  case as Db2 does; column-level facts (declared columns, constraints, indexed columns) are
+  reported as unavailable.
+
 ### Changed
 
 - **MySQL and MariaDB read statement facts from the SQL grammar.** `info --format json`,
@@ -120,6 +130,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   empty and comment-only pieces and batch separators are still skipped, and a one-time
   deprecation message asks it to implement `split()` and return `Statement` records; the
   skips end in the next major release.
+- **Db2 analysis kinds and DML targets.** `migrate --dry-run` reports CALL, COMMIT and SET as
+  `UNKNOWN` (CALL and SET were `DML`); DML targets are reported folded, with the schema when the statement gives one
+  (`APP.ORDERS`). Undo generation for Db2 (deprecated) now marks every statement other than a
+  query for manual review instead of building a model from the text.
 
 - **PostgreSQL and its compatible engines read statement facts from the SQL grammar.**
   PostgreSQL, CockroachDB, YugabyteDB, Aurora PostgreSQL, AlloyDB, Citus, Neon, Supabase and
@@ -182,6 +196,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   quote there (and, except on Redshift, an escape string) and could run a different set of statements than the engine
   reads. The name now continues through the character, and a script such as `COPY ... FROM
   STDIN<NBSP>;` is refused instead of read as a COPY header.
+- **A dollar-quoted string whose tag holds a non-ASCII character is read as the engine reads it
+  (PostgreSQL, CockroachDB, YugabyteDB, Redshift).** A tag such as `$é$` or one holding a
+  no-break space was cut at the first character or refused as a malformed tag; the string is now
+  kept whole, so a `;` inside it no longer splits the statement. A tag holding a space, a hyphen,
+  a dot or a control character is still refused.
 - **`SqlAnalyzer.validate_sql` and the parsers' `validate_sql` report the parser's verdict.**
   The Python API now returns the dialect parser's verdict with its first error message; a
   parser answer with no verdict is reported invalid. PostgreSQL-family parser results

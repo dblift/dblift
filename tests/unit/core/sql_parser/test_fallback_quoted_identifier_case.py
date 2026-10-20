@@ -13,27 +13,31 @@ import pytest
 from dblift.core.sql_model.base import SqlObjectType
 from dblift.core.sql_parser import SqlParserFactory
 from dblift.core.sql_parser.hybrid_parser import HybridParser
+from dblift.db.plugins.db2.parser.db2_regex_parser import DB2RegexParser
 from dblift.db.provider_registry import ProviderRegistry
 
 
-def _extract(dialect, sql):
-    return [
-        (obj.object_type, obj.schema, obj.name)
-        for obj in HybridParser(dialect).extract_objects(sql)
-    ]
+def _hybrid(dialect):
+    """Db2 reads statement facts and has no hybrid parser; it was regex-only before."""
+    return DB2RegexParser() if dialect == "db2" else HybridParser(dialect)
 
 
-def _regex_parser(dialect):
+def _regex(dialect):
+    if dialect == "db2":
+        return DB2RegexParser()
     if dialect == "postgresql":
         return SqlParserFactory(dialect, "regex").get_parser()
     return HybridParser(dialect).regex_parser
 
 
-def _extract_regex(dialect, sql):
+def _extract(dialect, sql):
     return [
-        (obj.object_type, obj.schema, obj.name)
-        for obj in _regex_parser(dialect).extract_objects(sql)
+        (obj.object_type, obj.schema, obj.name) for obj in _hybrid(dialect).extract_objects(sql)
     ]
+
+
+def _extract_regex(dialect, sql):
+    return [(obj.object_type, obj.schema, obj.name) for obj in _regex(dialect).extract_objects(sql)]
 
 
 def _created_by_facts(sql):
@@ -224,7 +228,7 @@ def _statement_for(key):
 
 
 def _pattern_cases(dialect, excluded=frozenset()):
-    config = _regex_parser(dialect).config
+    config = _regex(dialect).config
     return [
         pytest.param(dialect, key, _statement_for(key), id=f"{dialect}-{key}")
         for key in config.object_patterns
@@ -239,7 +243,7 @@ def _pattern_cases(dialect, excluded=frozenset()):
 )
 def test_every_object_pattern_keeps_quoted_name(dialect, key, sql):
     """Each object pattern on its own captures the quoted name whole."""
-    config = _regex_parser(dialect).config
+    config = _regex(dialect).config
     match = config.object_patterns[key].search(sql)
 
     assert match is not None, sql

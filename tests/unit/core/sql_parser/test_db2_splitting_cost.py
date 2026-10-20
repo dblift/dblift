@@ -39,6 +39,7 @@ from dblift.db.plugins.db2.parser.lexical_spec import DB2_RULES, DB2_SPEC
 from tests.support.splitting_cost import (
     OUTSIDE_EXEMPT,
     PACKAGE,
+    CountingParserTokens,
     CountingPattern,
     CountingText,
     CountingTokens,
@@ -123,12 +124,12 @@ def public_counted(script: str) -> Tuple[int, list]:
         ts.lines = lines
         wrapped.sql = CountingText(wrapped.sql, meter)
         wrapped._word_re = CountingPattern(wrapped._word_re, meter)
+        original_tokenize = wrapped.tokenize
+        wrapped.tokenize = lambda: CountingParserTokens(original_tokenize(), meter)
         original_assemble = ts.assemble
 
         def assemble(tokens, marks, open_lexeme):
-            return original_assemble(
-                CountingTokens(tokens, meter), CountingMarks(marks, meter), open_lexeme
-            )
+            return original_assemble(tokens, CountingMarks(marks, meter), open_lexeme)
 
         ts.assemble = assemble
         return wrapped
@@ -165,6 +166,13 @@ SHAPES = {
 def test_db2_splitting_cost_grows_linearly(shape):
     small, large = counted(SHAPES[shape](SMALL)), counted(SHAPES[shape](LARGE))
     assert large <= BOUND * small, (shape, small, large)
+
+
+@pytest.mark.parametrize("shape", sorted(SHAPES))
+def test_db2_public_split_cost_grows_linearly(shape):
+    small, _ = public_counted(SHAPES[shape](SMALL))
+    large, _ = public_counted(SHAPES[shape](LARGE))
+    assert small > 0 and large <= BOUND * small, (shape, small, large)
 
 
 def test_db2_public_split_counts_repeated_record_prefixes(monkeypatch):

@@ -172,10 +172,11 @@ class CountingPattern:
         )
         return found
 
-    def search(self, text: CountingText, pos: int) -> Any:
+    def search(self, text: CountingText, pos: int, endpos: Optional[int] = None) -> Any:
         """Charged for the span it scans: to the match, or to the end of the text when there is none."""
-        found = self._pattern.search(text._value, pos)
-        self._meter.add((found.end() if found else len(text._value)) - pos)
+        stop = len(text._value) if endpos is None else endpos
+        found = self._pattern.search(text._value, pos, stop)
+        self._meter.add((found.end() if found else stop) - pos)
         return found
 
 
@@ -336,10 +337,14 @@ def _certified_regex(pattern: Any, data: List[Any]) -> bool:
         return True
     if len(data) == 1 and data[0][0] == regex_parser.BRANCH:
         alternatives = data[0][1][1]
-        if len(alternatives) != 2 or any(len(alt) != 1 for alt in alternatives):
+        if len(alternatives) < 2 or any(not alt for alt in alternatives):
             return False
         first = [(_run(alt[0]) or [alt[0]])[0] for alt in alternatives]
-        return all(_simple(list(alt)) for alt in alternatives) and _disjoint(first[0], first[1])
+        return all(_simple(list(alt)) for alt in alternatives) and all(
+            _disjoint(left, right)
+            for index, left in enumerate(first)
+            for right in first[index + 1 :]
+        )
     return False
 
 
@@ -424,6 +429,19 @@ class CountingTokens(abc.Sequence):  # type: ignore[type-arg]
     __iter__ = __contains__ = __reversed__ = index = count = copy = _refuse  # type: ignore[assignment]
 
 
+class CountingParserTokens(CountingTokens):
+    """Count iteration and slices as token visits when a public parser consumes the stream."""
+
+    def __getitem__(self, index: Any) -> Any:
+        if isinstance(index, slice):
+            return [CountingTokens.__getitem__(self, i) for i in range(*index.indices(len(self)))]
+        return CountingTokens.__getitem__(self, index)
+
+    def __iter__(self) -> Iterator[Any]:
+        for index in range(len(self)):
+            yield self[index]
+
+
 SCANNED_NAMES = {"text", "sql", "tokens", "marks", "source"}
 SLICED_TEXTS = {"text", "sql", "source"}  # names that hold a whole script or statement
 REGEX_METHODS = {"search", "match", "finditer", "findall", "sub", "subn", "split", "fullmatch"}
@@ -477,14 +495,51 @@ def _has_slice(node: ast.AST, of: Optional[str] = None) -> bool:
     )
 
 
-def loop_findings(tree: ast.AST) -> List[str]:
-    """Copies of the rest of a text, and rebuilds of a string from itself, inside a loop body."""
+def loop_findings(tree: ast.AST, *, plain_source: bool = False) -> List[str]:
+    """Copies and rebuilds in loops; optionally check helpers given plain source strings."""
     found = []
+    scanning_methods = {
+        "count",
+        "find",
+        "rfind",
+        "index",
+        "rindex",
+        "split",
+        "splitlines",
+        "replace",
+        "partition",
+        "rpartition",
+        "upper",
+        "lower",
+        "strip",
+        "lstrip",
+        "rstrip",
+    }
     loops = [n for n in ast.walk(tree) if isinstance(n, (ast.For, ast.While))]
     for loop in loops:
         for statement in loop.body:
             for node in ast.walk(statement):
                 where = f"line {getattr(node, 'lineno', 0)}"
+                if (
+                    plain_source
+                    and isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Attribute)
+                ):
+                    method = node.func
+                    if (
+                        _name(method.value) in {"source", "sql", "script"}
+                        and method.attr in scanning_methods
+                    ):
+                        advancing_line_search = (
+                            method.attr == "find"
+                            and len(node.args) == 3
+                            and isinstance(node.args[0], ast.Constant)
+                            and node.args[0].value == "\n"
+                            and _name(node.args[1]) == "cursor"
+                            and _name(node.args[2]) == "offset"
+                        )
+                        if not advancing_line_search:
+                            found.append(f"source scan in a loop at {where}")
                 if (
                     isinstance(node, ast.Subscript)
                     and isinstance(node.slice, ast.Slice)

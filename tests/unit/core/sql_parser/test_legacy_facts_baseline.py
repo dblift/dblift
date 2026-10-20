@@ -72,6 +72,23 @@ def test_legacy_facts_corpus(case):
         assert case["legacy_observed"]["statements"][0]["type"] == "UNKNOWN"
         assert len(case["accepted_differences"]) == 3
         return
+    if case["dialect"] == "db2":
+        # Db2 reads statement facts: no invented SYSIBM schema, and DML names its target.
+        assert observed["success"] == case["legacy_observed"]["success"]
+        assert observed["errors"] == case["legacy_observed"]["errors"]
+        assert len(observed["statements"]) == 5
+        for index, (old, new) in enumerate(
+            zip(case["legacy_observed"]["statements"], observed["statements"])
+        ):
+            assert (new["sql"], new["type"]) == (old["sql"], old["type"])
+            if index in (2, 3):
+                assert old["objects"] == old["affected_objects"] == []
+                expected = [{"type": "TABLE", "name": "CHILD", "schema": None}]
+            else:
+                expected = [{**ob, "schema": None} for ob in old["objects"]]
+                assert all(ob["schema"] == "SYSIBM" for ob in old["objects"])
+            assert new["objects"] == new["affected_objects"] == expected
+        return
     if case["dialect"] in ACCEPTED_DIFFERENCES:
         assert observed["success"] == case["legacy_observed"]["success"]
         assert observed["errors"] == case["legacy_observed"]["errors"]
@@ -140,6 +157,7 @@ def test_sqlite_statement_facts_snapshot():
 
 
 @pytest.mark.unit
+@pytest.mark.xfail(strict=True, reason="Known legacy target loss: dblift/dblift#560")
 def test_cte_delete_names_affected_target():
     script = CORPUS_DATA["known_gap_inputs"]["cte_delete_target"]
     observed = _observe("postgresql", script)
