@@ -7,7 +7,8 @@
 | Covers | PostgreSQL 12+; AlloyDB, Aurora PostgreSQL, Citus, CockroachDB, Neon, Supabase, TimescaleDB, YugabyteDB (all inherit this spec unchanged, see §13) |
 | Code facts taken from | OSS `develop` `61b1d83f`; the pieces without code and the statement records at OSS `develop` `48051ff` (2026-10-19); the kept-character rows (30d to 30i) rest on the change that makes the PostgreSQL family send a statement holding a character the engine does not read as blank |
 | Vendor references, fetched 2026-10-10 | *PostgreSQL 18 documentation*, §4.1.1 Identifiers, §4.1.2.1–4.1.2.5 Constants, §4.1.5 Comments; *psql* reference, "Meta-Commands" and `\;` |
-| Live verification | psql against PostgreSQL 15 and 16, 2026-10-10 (rows 16, 21, 25); psql 16.14 and psycopg 3.3.5 against PostgreSQL 16.14, and ysqlsh, cockroach sql and psycopg 3 against YugabyteDB 2026.1.2.0 and CockroachDB v24.3.18, 2026-10-19, and psql and psycopg 3.3.5 against Redshift Serverless 1.0.477953, 2026-10-20 (rows 30d to 30f: U+00A0, U+3000 and U+001C are rejected with SQLSTATE 42601 everywhere, U+0020 and U+0009 are accepted; rows 30d to 30i hold on Redshift too; a Unicode space at the end of a statement, before its terminator, is accepted there, see section 13) |
+| Live verification | psql against PostgreSQL 15 and 16, 2026-10-10 (rows 16, 21, 25); psql 16.14 and psycopg 3.3.5 against PostgreSQL 16.14, and ysqlsh, cockroach sql and psycopg 3 against YugabyteDB 2026.1.2.0 and CockroachDB v24.3.18, 2026-10-19, and psql and psycopg 3.3.5 against Redshift Serverless 1.0.477953, 2026-10-20 (rows 30d to 30f: U+00A0, U+3000 and U+001C are rejected with SQLSTATE 42601 everywhere, U+0020 and U+0009 are accepted; rows 30d to 30i hold on Redshift too; a Unicode space at the end of a statement, before its terminator, is accepted there, see section 13); statement facts differences probed with psycopg 3.3.5 against PostgreSQL 16.14, CockroachDB v24.3.18 and YugabyteDB 2026.1.2.0 on 2026-10-20 (every corpus statement the reader and the old extraction disagree on was run in a rolled-back transaction; SQLSTATE 42601 marks the text the engine's grammar rejects) |
+| Statement facts | active for the nine family members listed in §13; Redshift keeps text extraction |
 | Engine subclass | none; tagged strings use the shared lexical primitive (§9) |
 
 ## 1. String literals
@@ -180,8 +181,10 @@ Code: the shared `dblift/core/sql_parser/lexical_engine.py`,
 `lexical_tokenizer.py` and `lexical_statement_parser.py`, driven by
 `dblift/db/plugins/postgresql/parser/lexical_spec.py`. The former dialect
 tokenizer and statement parser are removed. Execution resolves the specification
-from the plugin; `postgresql_regex_parser.py` projects the same shared engine
-for analysis and extraction. Comment masking uses the same token scan. The
+from the plugin; `postgresql_regex_parser.py` serves splitting, masking and head
+classification, while analysis and extraction go through `StatementFactsParser`
+over the lexical engine and the sqlglot `postgres` AST. Comment masking uses the
+same token scan. The
 splitter returns `Statement` records (`dblift/core/sql_parser/statement.py`):
 text without its terminator, line, terminator, kind, and scanner-derived analysis constituents. COPY text retains the exact row payload and line endings. The conformance
 table in section 10 is compiled into
@@ -193,6 +196,18 @@ unsupported meta-commands are refusals, not input to a fallback.
 The shared engine checks COPY terminators at their source position without
 copying the remainder of the script for each block; repeated COPY units have
 bounded source-slicing cost.
+
+Statement facts: the objects, targets and predicates of each statement of the
+nine family members in §13 (Redshift excepted) are read from the sqlglot AST by
+the `postgres` branches of `dblift/core/sql_parser/sqlglot_statement_facts.py`. The
+corpus `tests/support/facts_corpus/postgresql.jsonl` and the ledger
+`postgresql.review.json` (every difference against the former extraction,
+explained) are the evidence, and `gated.json` gates the family. Known gaps:
+dblift/dblift#666 (`CREATE TABLE … TABLESPACE` and storage parameters read from
+the head only), #667 (`COPY` with options, `STDIN`/`STDOUT` or a query source
+stays opaque), #668 (`MERGE` forms and CTE-led DML keep the outer target opaque)
+and #669 (event trigger, FDW, server, publication, operator class, text search,
+tablespace objects and `GRANT`/`REVOKE` name nothing).
 
 The string projection `split_statements()` keeps the trailing `;`; the
 `Statement.text` excludes it.
