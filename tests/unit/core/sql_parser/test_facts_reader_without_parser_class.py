@@ -72,3 +72,57 @@ def test_undo_generator_builds_and_reverses_from_facts(reader_dialect, monkeypat
 
     assert len(undo) == 1
     assert "DROP TABLE" in undo[0].sql.upper()
+
+
+def _plugin_returning(monkeypatch, cls):
+    quirks = ProviderRegistry.get_quirks("cockroachdb")
+    monkeypatch.setattr(type(quirks), "statement_facts_class", SqlglotStatementFactsReader)
+    monkeypatch.setattr(type(quirks), "parser_class", lambda self, parser_type: cls)
+
+
+def test_a_plugin_whose_parser_class_is_the_sqlglot_parser_is_served_the_facts_parser(monkeypatch):
+    from dblift.core.sql_parser.sqlglot_parser import SqlGlotParser
+
+    _plugin_returning(monkeypatch, SqlGlotParser)
+
+    parser = SqlParserFactory("cockroachdb").get_parser()
+
+    assert type(parser).__name__ == "StatementFactsParser"
+
+
+def test_a_subclass_of_the_hybrid_parser_is_served_the_facts_parser(monkeypatch):
+    from dblift.core.sql_parser.hybrid_parser import HybridParser
+
+    class MyHybrid(HybridParser):
+        pass
+
+    _plugin_returning(monkeypatch, MyHybrid)
+
+    assert type(SqlParserFactory("cockroachdb").get_parser()).__name__ == "StatementFactsParser"
+
+
+def test_an_unrelated_class_named_like_the_hybrid_parser_is_left_alone(monkeypatch):
+    class HybridParser:  # same name, not the library's
+        def __init__(self, *args, **kwargs):
+            pass
+
+    _plugin_returning(monkeypatch, HybridParser)
+
+    assert type(SqlParserFactory("cockroachdb").get_parser()) is HybridParser
+
+
+def test_analyse_script_does_not_swallow_a_programming_error_from_construction(
+    reader_dialect, monkeypatch
+):
+    def broken(self):
+        raise AttributeError("plugin bug")
+
+    monkeypatch.setattr(type(ProviderRegistry.get_quirks(reader_dialect)), "lexical_spec", broken)
+
+    with pytest.raises(AttributeError):
+        analyse_script("DROP TABLE t;", reader_dialect)
+
+
+def test_sqlglot_type_refusal_names_the_parser_to_use(reader_dialect):
+    with pytest.raises(ValueError, match="StatementFactsParser"):
+        SqlParserFactory(reader_dialect, "sqlglot").get_parser()
