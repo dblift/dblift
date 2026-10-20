@@ -129,6 +129,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   longer raise for it. Script analysis reports a facts parser that cannot be built (a missing
   `lexical_spec()`, or a reader that does not accept `(dialect, spec)`) as an error; a reader raising
   while it reads a statement still propagates.
+- **Linting no longer skips cautions on a quoted name.** A table created earlier in a
+  script or delta exempts later statements from the table-scoped cautions (`drop-table`,
+  `truncate`, `drop-column`, ...) only when the names are the same table. A quoted name
+  matches an unquoted one only when it is spelled the way the engine stores the unquoted
+  name (`"users"` on PostgreSQL, `"USERS"` on Oracle); `CREATE TABLE t; DROP TABLE "T";`
+  is now reported. Unquoted names equal ignoring case, and quoted names that are
+  byte-equal, still match.
 - **Redshift reads a form feed between statements as a blank.** A page break in a script no longer
   becomes a statement of its own, and a form feed at the start of a statement is no longer sent with it.
 - **`migrate` sends a statement that starts or ends with a character the engine does not read as a
