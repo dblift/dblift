@@ -17,7 +17,9 @@ COLUMNS_UNAVAILABLE = "db2 column-level facts are unavailable: declared columns,
 UNREAD_NAME = "db2 statement holds U+{code:04X}, which the engine may read as part of a name; its objects are not named"
 NOT_CLASSIFIED = "db2 {word} statement: not classified"
 CLIENT_COMMAND = "db2 client command: not an SQL statement"
-UNTERMINATED_IDENTIFIER = "db2 statement holds an unterminated quoted identifier; its objects are not named"
+UNTERMINATED_IDENTIFIER = (
+    "db2 statement holds an unterminated quoted identifier; its objects are not named"
+)
 NAME_NOT_READ = "db2 {operation} {type}: name not read"
 DATA_CHANGE_QUERY = "db2 data-change query: target not named"
 SET_INTEGRITY = "db2 SET INTEGRITY: tables not named"
