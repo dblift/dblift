@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
-from typing import List, Optional
+from dataclasses import dataclass
+from typing import FrozenSet, List, Optional, Tuple
 
 from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
+from dblift.core.sql_model.base import SqlObjectType
 from dblift.core.sql_parser.lexical_spec import LexicalSpec
 from dblift.core.sql_parser.lexical_tokenizer import LexicalTokenizer
-from dblift.core.sql_parser.statement_facts import StatementFacts
+from dblift.core.sql_parser.statement_facts import NamedObject, StatementFacts
 from dblift.core.sql_parser.tokens import Token, TokenType
 from dblift.db.plugins.db2.parser.lexical_spec import DB2_RULES, DB2_SPEC
 
@@ -24,6 +26,150 @@ _DML = frozenset("INSERT UPDATE DELETE MERGE".split())
 _QUERY = frozenset("SELECT WITH VALUES".split())
 _TRANSACTION = frozenset("COMMIT ROLLBACK SAVEPOINT RELEASE".split())
 _DATA_CHANGE = frozenset("FINAL NEW OLD".split())
+
+#: Words that are never a name part.
+STOP_WORDS: FrozenSet[str] = frozenset(
+    """TO ON IS IN FOR AS LIKE WITH SET USING VALUES FROM WHERE INTO IF RESTRICT IMMEDIATE ONLY
+    FOREIGN DATABASE DB CFG SELECT TABLE AUTHORIZATION""".split()
+)
+
+_TYPES = {
+    "TABLE": SqlObjectType.TABLE,
+    "VIEW": SqlObjectType.VIEW,
+    "INDEX": SqlObjectType.INDEX,
+    "SEQUENCE": SqlObjectType.SEQUENCE,
+    "ALIAS": SqlObjectType.SYNONYM,
+    "SCHEMA": SqlObjectType.SCHEMA,
+    "TRIGGER": SqlObjectType.TRIGGER,
+    "PROCEDURE": SqlObjectType.PROCEDURE,
+    "FUNCTION": SqlObjectType.FUNCTION,
+}
+_GRANT_TYPES = ("TABLE", "VIEW", "INDEX", "SEQUENCE", "ALIAS", "SCHEMA", "PROCEDURE", "FUNCTION")
+
+
+@dataclass(frozen=True)
+class Head:
+    """A statement head: its words, the optional word groups it skips, and what it names."""
+
+    words: Tuple[str, ...]
+    operation: str
+    kind: str
+    object_type: SqlObjectType
+    role: str
+    optional: Tuple[Tuple[str, ...], ...] = ()
+    max_parts: int = 2
+    column_facts: bool = False
+    follow: Tuple[str, ...] = ()
+
+
+def _heads() -> Tuple[Head, ...]:
+    or_replace, if_exists = ("OR", "REPLACE"), ("IF", "EXISTS")
+    heads = [
+        Head(
+            ("CREATE", "TABLE"),
+            "CREATE",
+            "DDL",
+            SqlObjectType.TABLE,
+            "created",
+            (("GLOBAL", "TEMPORARY"), ("IF", "NOT", "EXISTS")),
+            column_facts=True,
+        ),
+        Head(
+            ("DECLARE", "GLOBAL", "TEMPORARY", "TABLE"),
+            "DECLARE",
+            "DDL",
+            SqlObjectType.TABLE,
+            "created",
+            column_facts=True,
+        ),
+        Head(("CREATE", "VIEW"), "CREATE", "DDL", SqlObjectType.VIEW, "created", (or_replace,)),
+        Head(
+            ("CREATE", "INDEX"),
+            "CREATE",
+            "DDL",
+            SqlObjectType.INDEX,
+            "created",
+            (("UNIQUE",),),
+            column_facts=True,
+        ),
+        Head(("CREATE", "SCHEMA"), "CREATE", "DDL", SqlObjectType.SCHEMA, "created", max_parts=1),
+    ]
+    for word in ("SEQUENCE", "ALIAS", "TRIGGER", "PROCEDURE", "FUNCTION"):
+        heads.append(
+            Head(("CREATE", word), "CREATE", "DDL", _TYPES[word], "created", (or_replace,))
+        )
+    for word in ("TABLE", "VIEW", "SEQUENCE", "TRIGGER", "PROCEDURE", "FUNCTION"):
+        heads.append(
+            Head(
+                ("ALTER", word),
+                "ALTER",
+                "DDL",
+                _TYPES[word],
+                "altered",
+                column_facts=word == "TABLE",
+            )
+        )
+    for word, otype in _TYPES.items():
+        heads.append(
+            Head(
+                ("DROP", word),
+                "DROP",
+                "DDL",
+                otype,
+                "dropped",
+                (if_exists,),
+                max_parts=1 if word == "SCHEMA" else 2,
+            )
+        )
+    heads.append(
+        Head(("RENAME", "INDEX"), "RENAME", "DDL", SqlObjectType.INDEX, "altered", follow=("TO",))
+    )
+    heads.append(
+        Head(
+            ("RENAME",),
+            "RENAME",
+            "DDL",
+            SqlObjectType.TABLE,
+            "altered",
+            (("TABLE",),),
+            follow=("TO",),
+        )
+    )
+    for verb in ("COMMENT", "LABEL"):
+        for word, otype in _TYPES.items():
+            heads.append(
+                Head(
+                    (verb, "ON", word),
+                    verb,
+                    "DDL",
+                    otype,
+                    "altered",
+                    max_parts=1 if word == "SCHEMA" else 2,
+                    follow=("IS",),
+                )
+            )
+        heads.append(
+            Head(
+                (verb, "ON", "COLUMN"),
+                verb,
+                "DDL",
+                SqlObjectType.TABLE,
+                "altered",
+                max_parts=3,
+                follow=("IS",),
+            )
+        )
+    heads.append(
+        Head(("TRUNCATE",), "TRUNCATE", "DDL", SqlObjectType.TABLE, "altered", (("TABLE",),))
+    )
+    for verb in ("GRANT", "REVOKE"):
+        heads.append(Head((verb,), verb, "DDL", SqlObjectType.TABLE, "referenced"))
+    heads.append(Head(("LOCK", "TABLE"), "LOCK", "UNKNOWN", SqlObjectType.TABLE, "referenced"))
+    heads.append(Head(("CALL",), "CALL", "UNKNOWN", SqlObjectType.PROCEDURE, "referenced"))
+    return tuple(heads)
+
+
+HEADS = _heads()
 
 
 def fold_name(token_text: str) -> str:
@@ -53,6 +199,134 @@ def _words(tokens: List[Token]) -> List[Token]:
     while words and words[-1].type is TokenType.SYMBOL and words[-1].text == ";":
         words.pop()
     return words
+
+
+def _skip_optional(ups: List[str], at: int, groups: Tuple[Tuple[str, ...], ...]) -> int:
+    moved = True
+    while moved:
+        moved = False
+        for group in groups:
+            if tuple(ups[at : at + len(group)]) == group:
+                at += len(group)
+                moved = True
+    return at
+
+
+def _match(ups: List[str], head: Head) -> Optional[int]:
+    """The index after the head's words, or None when the statement does not start with them."""
+    at = 0
+    for word in head.words:
+        at = _skip_optional(ups, at, head.optional) if at else 0
+        if ups[at : at + 1] != [word]:
+            return None
+        at += 1
+    return _skip_optional(ups, at, head.optional)
+
+
+def _is_dot(token: Token) -> bool:
+    return token.type is TokenType.SYMBOL and token.text == "."
+
+
+def _is_part(token: Token) -> bool:
+    return token.type in (TokenType.KEYWORD, TokenType.IDENTIFIER)
+
+
+def _read_name(
+    words: List[Token], at: int, max_parts: int
+) -> Optional[Tuple[Tuple[str, ...], int, int]]:
+    """The folded parts of the name at ``at``, its source offset and the index after it."""
+    i = at
+    run: List[Token] = []
+    while i < len(words) and _is_part(words[i]):
+        run.append(words[i])
+        i += 1
+        if i + 1 < len(words) and _is_dot(words[i]) and _is_part(words[i + 1]):
+            i += 1
+        else:
+            break
+    if not run or len(run) > max_parts or (i < len(words) and _is_dot(words[i])):
+        return None
+    if any(t.type is TokenType.KEYWORD and t.text.upper() in STOP_WORDS for t in run):
+        return None
+    return tuple(fold_name(t.text) for t in run), run[0].pos, i
+
+
+def _skip_group(words: List[Token], at: int) -> int:
+    """Skip one parenthesised group starting at ``at``, if any."""
+    if at < len(words) and words[at].type is TokenType.SYMBOL and words[at].text == "(":
+        depth = 0
+        for i in range(at, len(words)):
+            if words[i].type is TokenType.SYMBOL:
+                depth += words[i].text == "("
+                depth -= words[i].text == ")"
+            if depth == 0:
+                return i + 1
+    return at
+
+
+def _object(parts: Tuple[str, ...], otype: SqlObjectType, role: str) -> NamedObject:
+    return NamedObject(parts[-1], otype, role, parts[-2] if len(parts) > 1 else None)
+
+
+def _head_facts(
+    words: List[Token], ups: List[str], head: Head, at: int
+) -> Tuple[Optional[StatementFacts], int]:
+    """The facts of a DDL head and the index its name reading reached (None when unreadable)."""
+    otype, grants = head.object_type, head.operation in ("GRANT", "REVOKE")
+    if grants:
+        on = next((i for i, w in enumerate(ups) if w == "ON" and _depth(words, i) == 0), None)
+        if on is None:
+            return None, at
+        at = on + 1
+        if ups[at : at + 1] and ups[at] in _GRANT_TYPES:
+            otype, at = _TYPES[ups[at]], at + 1
+    name = _read_name(words, at, head.max_parts)
+    if name is None:
+        return None, at
+    parts, _, end = name
+    if head.words[-1] == "COLUMN":
+        parts = parts[:-1]
+    if not parts:
+        return None, end
+    if grants and ups[end : end + 1] not in (["TO"], ["FROM"]):
+        return None, end
+    if (
+        head.follow
+        and ups[_skip_group(words, end) : _skip_group(words, end) + 1] != [*head.follow][:1]
+    ):
+        return None, end
+    objects = [_object(parts, otype, head.role)]
+    indexed_table = None
+    if head.words == ("CREATE", "INDEX"):
+        if ups[end : end + 1] != ["ON"]:
+            return None, end
+        table = _read_name(words, end + 1, 2)
+        if table is None:
+            return None, end + 1
+        end = table[2]
+        indexed_table = ".".join(table[0])
+        objects.append(_object(table[0], SqlObjectType.TABLE, "referenced"))
+    diagnostic = COLUMNS_UNAVAILABLE if head.column_facts else None
+    return (
+        StatementFacts(
+            head.operation,
+            head.kind,
+            tuple(objects),
+            indexed_table=indexed_table,
+            diagnostic=diagnostic,
+        ),
+        end,
+    )
+
+
+def _depth(words: List[Token], index: int) -> int:
+    """Parenthesis depth in front of ``words[index]``."""
+    depth = 0
+    for token in words[:index]:
+        if token.type is TokenType.SYMBOL:
+            depth += token.text == "("
+            depth -= token.text == ")"
+    return depth
 
 
 def _is_client_command(ups: List[str]) -> bool:
@@ -96,4 +370,15 @@ class Db2StatementFactsReader:
             if any(a in _DATA_CHANGE and b == "TABLE" for a, b in zip(ups, ups[1:])):
                 return _opaque(first, kind, DATA_CHANGE_QUERY)
             return StatementFacts(first, kind)
+        for head in HEADS:
+            at = _match(ups, head)
+            if at is not None:
+                facts, _ = _head_facts(words, ups, head, at)
+                if facts is not None:
+                    return facts
+                return _opaque(
+                    head.operation,
+                    head.kind,
+                    NAME_NOT_READ.format(operation=head.operation, type=head.object_type.name),
+                )
         return _opaque(first, kind, NOT_CLASSIFIED.format(word=first))
