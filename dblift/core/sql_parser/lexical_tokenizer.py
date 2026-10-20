@@ -42,7 +42,7 @@ def copy_header_reads(tokens: Iterable[Token], direction: str, stream: str) -> b
     return any(a == direction and b == stream for a, b in zip(words, words[1:]))
 
 
-def is_alone_on_line(sql: str, pos: int) -> bool:
+def is_alone_on_line(sql: str, pos: int, text_blanks: Optional[str] = None) -> bool:
     """Whether ``sql[pos]`` is the only non-blank text on its line.
 
     Looks only at the blanks adjacent to ``pos``, so the cost does not grow
@@ -50,12 +50,14 @@ def is_alone_on_line(sql: str, pos: int) -> bool:
     """
     i = pos - 1
     while i >= 0 and sql[i] != "\n":
-        if not sql[i].isspace():
+        blank = sql[i] in text_blanks if text_blanks is not None else sql[i].isspace()
+        if not blank:
             return False
         i -= 1
     i = pos + 1
     while i < len(sql) and sql[i] != "\n":
-        if not sql[i].isspace():
+        blank = sql[i] in text_blanks if text_blanks is not None else sql[i].isspace()
+        if not blank:
             return False
         i += 1
     return True
@@ -711,8 +713,8 @@ class LexicalTokenizer(BaseTokenizer):
         assert rules is not None
         if not self._line_is_clear(self.pos):
             return None
-        first = self.sql[self.pos : self._eol(self.pos)].strip()
-        found = classify_directive(rules, first)
+        first = self.sql[self.pos : self._eol(self.pos)].strip(self.spec.text_blanks)
+        found = classify_directive(rules, first, text_blanks=self.spec.text_blanks)
         free_text = found is not None and is_free_text(rules, found[0])
         parts: List[str] = []
         cursor = self.pos
@@ -720,15 +722,15 @@ class LexicalTokenizer(BaseTokenizer):
             eol = self._eol(cursor)
             comment, closed = (-1, True) if free_text else _scan_line(self.sql, cursor, eol)
             end = comment if comment != -1 else eol
-            part = self.sql[cursor:end].strip()
+            part = self.sql[cursor:end].strip(self.spec.text_blanks)
             if comment == -1 and closed and part.endswith("-") and eol < len(self.sql):
-                parts.append(part[:-1].rstrip())
+                parts.append(part[:-1].rstrip(self.spec.text_blanks))
                 cursor = eol + 1
                 continue
             parts.append(part)
             break
         text = " ".join(p for p in parts if p)
-        directive = classify_directive(rules, text)
+        directive = classify_directive(rules, text, text_blanks=self.spec.text_blanks)
         if directive is None:
             return None
         token = Token(TokenType.DIRECTIVE, text, self.pos, self.line, self.col, self.parens_depth)
@@ -745,9 +747,11 @@ class LexicalTokenizer(BaseTokenizer):
     def _line_is_clear(self, pos: int) -> bool:
         """Whether only blanks and block comments precede ``pos`` on its line."""
         line_start = self.sql.rfind("\n", 0, pos) + 1
-        if not self.sql[line_start:pos].strip():
+        if not self.sql[line_start:pos].strip(self.spec.text_blanks):
             return True
-        return self._clear_from is not None and not self.sql[self._clear_from : pos].strip()
+        return self._clear_from is not None and not self.sql[self._clear_from : pos].strip(
+            self.spec.text_blanks
+        )
 
     def _is_delimiter_start(self) -> bool:
         """A ``;``, or a line terminator and discard line when alone on their line."""
@@ -756,7 +760,7 @@ class LexicalTokenizer(BaseTokenizer):
             return True
         rules = self.spec.client_script
         if rules is not None and char in (rules.line_terminator, rules.discard_line):
-            return is_alone_on_line(self.sql, self.pos)
+            return is_alone_on_line(self.sql, self.pos, self.spec.text_blanks)
         return False
 
     def _alternative_quote_opener(self) -> int:

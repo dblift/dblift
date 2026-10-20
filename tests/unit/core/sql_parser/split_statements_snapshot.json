@@ -7306,7 +7306,7 @@
 "sha256": "d33767030fb567ebf4699543cf51a835e6b5eced5e52adf95a4e7fbfd5c4910d"
 },
 "spec_rows": {
-"count": 765,
+"count": 772,
 "observed": [
 [
 "db2",
@@ -14283,6 +14283,153 @@
 ],
 "splitter": [
 "SELECT 1 FROM dual -- note\u00a0"
+]
+}
+],
+[
+"oracle",
+"\u00a0EXIT\nSELECT 'FOLLOWUP_OK' FROM dual;",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"U+00A0 at line 1, column 1 is at the edge of a statement: the driver removes it before it sends the statement and the database does not read it as a blank, so the statement that would run is not the one in the file; remove the character"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"U+00A0 at line 1, column 1 is at the edge of a statement: the driver removes it before it sends the statement and the database does not read it as a blank, so the statement that would run is not the one in the file; remove the character"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"U+00A0 at line 1, column 1 is at the edge of a statement: the driver removes it before it sends the statement and the database does not read it as a blank, so the statement that would run is not the one in the file; remove the character"
+]
+}
+],
+[
+"oracle",
+"\u001cPROMPT PREFIX_OK\nSELECT 'FOLLOWUP_OK' FROM dual;",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"U+001C at line 1, column 1 is at the edge of a statement: the driver removes it before it sends the statement and the database does not read it as a blank, so the statement that would run is not the one in the file; remove the character"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"U+001C at line 1, column 1 is at the edge of a statement: the driver removes it before it sends the statement and the database does not read it as a blank, so the statement that would run is not the one in the file; remove the character"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"U+001C at line 1, column 1 is at the edge of a statement: the driver removes it before it sends the statement and the database does not read it as a blank, so the statement that would run is not the one in the file; remove the character"
+]
+}
+],
+[
+"oracle",
+"\u00a0/\nSELECT 'FOLLOWUP_OK' FROM dual;",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"U+00A0 at line 1, column 1 is at the edge of a statement: the driver removes it before it sends the statement and the database does not read it as a blank, so the statement that would run is not the one in the file; remove the character"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"U+00A0 at line 1, column 1 is at the edge of a statement: the driver removes it before it sends the statement and the database does not read it as a blank, so the statement that would run is not the one in the file; remove the character"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"U+00A0 at line 1, column 1 is at the edge of a statement: the driver removes it before it sends the statement and the database does not read it as a blank, so the statement that would run is not the one in the file; remove the character"
+]
+}
+],
+[
+"oracle",
+"BEGIN DBMS_OUTPUT.PUT_LINE('BLOCK_OK'); END;\n\u001c/\nSELECT 'FOLLOWUP_OK' FROM dual;",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"PL/SQL unit starting at line 1 is not terminated by a '/' line before the end of the script"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"PL/SQL unit starting at line 1 is not terminated by a '/' line before the end of the script"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"PL/SQL unit starting at line 1 is not terminated by a '/' line before the end of the script"
+]
+}
+],
+[
+"oracle",
+"/\u00a0\nSELECT 'FOLLOWUP_OK' FROM dual;",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"'/' on line 1, column 1 would run an empty buffer"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"'/' on line 1, column 1 would run an empty buffer"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"'/' on line 1, column 1 would run an empty buffer"
+]
+}
+],
+[
+"oracle",
+"SELECT 'FIRST_OK' FROM dual;\n/\u001c\nSELECT 'FOLLOWUP_OK' FROM dual;",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"'/' on line 2, column 1 would re-execute the previous statement"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"'/' on line 2, column 1 would re-execute the previous statement"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"'/' on line 2, column 1 would re-execute the previous statement"
+]
+}
+],
+[
+"oracle",
+"BEGIN DBMS_OUTPUT.PUT_LINE('BLOCK_OK'); END;\n/\u00a0\nSELECT 'FOLLOWUP_OK' FROM dual;",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"PL/SQL unit starting at line 1 is not terminated by a '/' line before the end of the script"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"PL/SQL unit starting at line 1 is not terminated by a '/' line before the end of the script"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"PL/SQL unit starting at line 1 is not terminated by a '/' line before the end of the script"
 ]
 }
 ],
@@ -21353,6 +21500,6 @@
 }
 ]
 ],
-"sha256": "7ad212713f026052c950e7b4d15407793ca462fec655fba8f5a3998f1e92b50c"
+"sha256": "75606f23e2007c8a7f8f3e0f6b50d638cf6f7c6e7242b3d63a74966fd4b1cf9f"
 }
 }
