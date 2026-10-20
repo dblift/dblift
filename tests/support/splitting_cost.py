@@ -597,6 +597,23 @@ def loop_findings(tree: ast.AST, *, plain_source: bool = False) -> List[str]:
     loops = [n for n in ast.walk(tree) if isinstance(n, (ast.For, ast.While))]
     if plain_source:
         for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.Subscript)
+                and isinstance(node.slice, ast.Slice)
+                and _name(node.value) == "source"
+                and (
+                    node.slice.lower is None
+                    or isinstance(node.slice.lower, ast.Constant)
+                    and node.slice.lower.value == 0
+                    or node.slice.upper is None
+                    or isinstance(node.slice.upper, ast.Call)
+                    and isinstance(node.slice.upper.func, ast.Name)
+                    and node.slice.upper.func.id == "len"
+                    and len(node.slice.upper.args) == 1
+                    and _name(node.slice.upper.args[0]) == "source"
+                )
+            ):
+                found.append(f"unbounded source slice at line {node.lineno}")
             if not (
                 isinstance(node, ast.Call)
                 and isinstance(node.func, ast.Attribute)

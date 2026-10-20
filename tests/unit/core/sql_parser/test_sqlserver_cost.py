@@ -221,6 +221,14 @@ def test_sqlserver_source_guard_rejects_explicit_whole_source_bounds_outside_a_l
     assert loop_findings(ast.parse(source), plain_source=True) != []
 
 
+@pytest.mark.parametrize(
+    "slice_text", ("source[:]", "source[:offset]", "source[offset:]", "source[0:len(source)]")
+)
+def test_sqlserver_source_guard_rejects_unbounded_helper_slices(slice_text):
+    source = f"def helper(source, offset):\n    {slice_text}\n"
+    assert loop_findings(ast.parse(source), plain_source=True) != []
+
+
 def _batch_functions(root: Path) -> dict[str, dict[str, ast.AST]]:
     inventory = {}
     for path in root.glob("batch_*.py"):
