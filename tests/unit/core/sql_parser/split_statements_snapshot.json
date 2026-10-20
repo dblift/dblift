@@ -1260,7 +1260,7 @@
 "sha256": "3ae6274899454c5a93320ad971f0b8e9f127a5eb0965202d3793136337fb350c"
 },
 "shapes": {
-"count": 352,
+"count": 351,
 "observed": [
 [
 "postgresql",
@@ -3323,27 +3323,6 @@
 "splitter": [
 "SELECT 1;",
 "SELECT 2;"
-]
-}
-],
-[
-"redshift",
-"COPY t FROM STDIN;\n1\t2\n\\.\nSELECT 2;",
-{
-"analysis": [
-"error",
-"UnsupportedMetaCommandError",
-"Unsupported psql meta-command '\\\\.' at line 3; dblift does not run it (column 1)"
-],
-"engine": [
-"error",
-"UnsupportedMetaCommandError",
-"Unsupported psql meta-command '\\\\.' at line 3; dblift does not run it (column 1)"
-],
-"splitter": [
-"error",
-"UnsupportedMetaCommandError",
-"Unsupported psql meta-command '\\\\.' at line 3; dblift does not run it (column 1)"
 ]
 }
 ],
@@ -7237,7 +7216,7 @@
 }
 ]
 ],
-"sha256": "57888ea28a84187fb0179ed5279cdaa5b0935fb83d67c821d09877597f170d65"
+"sha256": "cd972b6eeb039eb9c96d647052ef622465347e06346197cb0e5f69ff8c02b9b5"
 },
 "snowflake": {
 "count": 5,

@@ -1795,11 +1795,11 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
             dialect
             in {
                 "duckdb",
-                "mysql",
-                "postgres",
+                "mysql",  # lint: allow-dialect-string: bare targets
+                "postgres",  # lint: allow-dialect-string: bare targets
                 "redshift",
                 "tsql",
-            }  # lint: allow-dialect-string: bare targets
+            }
             and table is not None
             and (table.args.get("alias") or table.args.get("joins") or table.args.get("only"))
         ):
