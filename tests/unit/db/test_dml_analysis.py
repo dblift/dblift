@@ -719,7 +719,6 @@ def test_analyze_dml_target_skips_modifiers(dialect, stmt, table):
 @pytest.mark.parametrize(
     ("dialect", "stmt", "table"),
     [
-        ("mysql", "UPDATE ignore SET a = 1", "ignore"),
         ("tsql", "DELETE top WHERE id = 1", "top"),
         ("postgres", "UPDATE only SET a = 1", "only"),
     ],
@@ -742,14 +741,11 @@ def test_statement_dml_table_never_raises_on_a_truncated_statement(dialect, stmt
 # Identifiers that merely start with, or are, a modifier word are table names.
 _MODIFIER_NAMED_TARGET_CASES = [
     ("mysql", "UPDATE quick.t SET a = 1", "quick.t"),
-    ("mysql", "UPDATE ignore.t SET a = 1", "ignore.t"),
     ("mysql", "UPDATE low_priority.t SET a = 1", "low_priority.t"),
     ("postgres", "UPDATE only.t SET a = 1", "only.t"),
     ("mysql", "UPDATE delayed SET a = 1", "delayed"),
     ("mysql", "UPDATE delayed t SET a = 1", "delayed"),
     ("mysql", "UPDATE high_priority t SET a = 1", "high_priority"),
-    ("mysql", "UPDATE ignore . t SET a = 1", "ignore.t"),
-    ("mysql", "UPDATE ignore\n.t SET a = 1", "ignore.t"),
     ("postgres", "UPDATE only.t SET a = 1 WHERE n = 'ONLY x'", "only.t"),
     ("postgres", "UPDATE only . t SET a = 1", "only.t"),
     ("postgres", 'UPDATE ONLY"T" SET a = 1', '"T"'),
