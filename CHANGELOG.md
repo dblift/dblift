@@ -127,6 +127,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **DuckDB splits adjacent strings at the engine's boundaries.** An `E'...'`
+  string carries its backslash escape mode into the next literal only across a
+  CR or LF; a literal on the same line is plain. A non-ASCII digit before `E`
+  remains part of a name, so it does not open an escape string. Statement cuts
+  and literal masking now follow those rules.
 - **`SqlAnalyzer.validate_sql` and the parsers' `validate_sql` report the parser's verdict.**
   The Python API now returns the dialect parser's verdict with its first error message; a
   parser answer with no verdict is reported invalid. PostgreSQL-family parser results
