@@ -15,6 +15,7 @@ from dblift.db.provider_registry import ProviderRegistry
 
 _T = TypeVar("_T")
 
+
 class StatementSplitter:
     """Split migration scripts with the dialect's authoritative scanner."""
 
@@ -73,11 +74,12 @@ class StatementSplitter:
         if engine is not None:
             return self._refusing(lambda: engine.split(sql))
         parser = self._record_parser()
-        if not callable(getattr(parser, "split", None)):
+        split = getattr(parser, "split", None)
+        if not callable(split):
             raise UnsafeStatementSplitError(
                 f"{self.dialect} statement parser must return Statement records from split()"
             )
-        records = self._refusing(lambda: list(parser.split(sql)))
+        records = self._refusing(lambda: list(split(sql)))
         if not all(isinstance(record, Statement) for record in records):
             raise UnsafeStatementSplitError(
                 f"{self.dialect} statement parser must return Statement records from split()"
@@ -87,4 +89,3 @@ class StatementSplitter:
     def split_statements(self, sql: str, *, strict_tokenizer: bool = False) -> List[str]:
         """Return executable units or refuse; never guess a second split."""
         return execution_strings(self.split(sql, strict_tokenizer=strict_tokenizer))
-

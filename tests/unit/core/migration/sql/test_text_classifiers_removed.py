@@ -7,7 +7,6 @@ from pathlib import Path
 
 import pytest
 
-
 pytestmark = pytest.mark.unit
 
 SRC = Path(__file__).resolve().parents[5] / "dblift"
@@ -18,6 +17,8 @@ CLASSIFIERS = {
     "_comment_only",
     "is_batch_separator",
 }
+
+
 def _name(node: ast.AST) -> str:
     if isinstance(node, ast.Attribute):
         return node.attr
@@ -99,5 +100,3 @@ def test_an_allowed_call_is_allowed_only_at_its_own_path(tmp_path):
         "def _records_of_strings(t):\n    return _comment_only(t)\n"
     )
     assert classifier_calls(tmp_path) != set()
-
-

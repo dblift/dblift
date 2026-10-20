@@ -103,7 +103,9 @@ def test_record_parser_preserves_source_metadata():
     records = [
         Statement("SELECT 1", 3, "GO", repeat=0, source_start=5, source_end=17),
         Statement("DELIMITER $$", 4, "\n", kind="directive", source_start=18, source_end=31),
-        Statement("SELECT 2", 5, ";", execution_text="SELECT 2 /* sent */", source_start=32, source_end=41),
+        Statement(
+            "SELECT 2", 5, ";", execution_text="SELECT 2 /* sent */", source_start=32, source_end=41
+        ),
     ]
 
     class RecordParser:
@@ -115,7 +117,9 @@ def test_record_parser_preserves_source_metadata():
     assert splitter.split_statements("ignored") == ["SELECT 2 /* sent */"]
 
 
-@pytest.mark.parametrize("error", [UnsafeStatementSplitError("unsafe"), UnsupportedMetaCommandError("meta")])
+@pytest.mark.parametrize(
+    "error", [UnsafeStatementSplitError("unsafe"), UnsupportedMetaCommandError("meta")]
+)
 def test_parser_refusals_keep_their_class_and_message(error):
     class RefusingParser:
         def split(self, sql):

@@ -22,7 +22,11 @@ pytestmark = pytest.mark.unit
 def test_legacy_dml_keyword_is_absent_and_rejected(name, keyword):
     function = getattr(dml_analysis, name)
     assert keyword not in inspect.signature(function).parameters
-    args = ("UPDATE t SET id = 1", ("id",)) if name == "updates_restore_key" else ("UPDATE t SET id = 1",)
+    args = (
+        ("UPDATE t SET id = 1", ("id",))
+        if name == "updates_restore_key"
+        else ("UPDATE t SET id = 1",)
+    )
     with pytest.raises(TypeError):
         function(*args, **{keyword: "postgres"})
 
