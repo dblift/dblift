@@ -137,18 +137,14 @@ def test_configured_refusal_precedes_late_open_string_without_returning_prefix(s
     with pytest.raises(UnsafeStatementSplitError) as caught:
         LexicalEngine(strict).split(script)
 
-    assert str(caught.value) == (
-        "a control character on line 9, column 13: client rejects it"
-    )
+    assert str(caught.value) == ("a control character on line 9, column 13: client rejects it")
 
 
 @pytest.mark.parametrize("spec", [MYSQL_SPEC, MARIADB_SPEC], ids=["mysql", "mariadb"])
 def test_engine_preserves_direct_tokenizer_records_for_mysql_facts_corpus(spec):
     scripts = [row["sql"] for row in read_rows(family_file("mysql"))]
     assert len(scripts) >= 1500
-    scripts.extend(
-        ["SELECT 1;\nSELECT 'open", "SELECT 1;\n/* open", "SELECT 1;\nDELIMITER\n"]
-    )
+    scripts.extend(["SELECT 1;\nSELECT 'open", "SELECT 1;\n/* open", "SELECT 1;\nDELIMITER\n"])
     engine = LexicalEngine(spec)
 
     for script in scripts:
