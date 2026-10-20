@@ -14,6 +14,7 @@ of a refusal, which raises at once) is linear by construction and not measured.
 
 import ast
 import inspect
+import re
 import textwrap
 from pathlib import Path
 from typing import List, Optional
@@ -90,6 +91,23 @@ def counted(script: str, refusal: bool = False, meter: Optional[Meter] = None) -
     return meter.count
 
 
+def public_counted(script: str) -> tuple[int, int]:
+    """Enter the public engine with counted source and tokenizer inputs."""
+    meter = Meter()
+    original = LexicalTokenizer
+
+    def tokenizer(source, *, spec):
+        wrapped = original(source._value, spec=spec)
+        wrapped.sql = CountingText(wrapped.sql, meter)
+        for name in PATTERNS:
+            setattr(wrapped, name, CountingPattern(getattr(wrapped, name), meter))
+        return wrapped
+
+    with mock.patch.object(engine_module, "LexicalTokenizer", tokenizer):
+        records = LexicalEngine(DUCKDB_SPEC).split(CountingText(script, meter))
+    return meter.count, len(records)
+
+
 SHAPES = {
     "statements and comment lines": lambda n: "SELECT 1; -- c\n" * n,
     "one statement of many tokens": lambda n: "SELECT " + "1 + " * n + "1;",
@@ -144,7 +162,9 @@ def test_duckdb_public_split_counts_repeated_record_prefixes(monkeypatch):
 
     monkeypatch.setattr(LexicalEngine, "split", rescanning_split)
     shape = SHAPES["statements and comment lines"]
-    small, large = counted(shape(SMALL)), counted(shape(LARGE))
+    small, small_records = public_counted(shape(SMALL))
+    large, large_records = public_counted(shape(LARGE))
+    assert (small_records, large_records) == (SMALL, LARGE)
     assert large > BOUND * small, (small, large)
 
 
@@ -159,6 +179,18 @@ def test_the_pattern_counter_charges_the_span_a_search_scans():
     assert pattern.search(text, 3).start() == 30 and meter.count == 28
     meter.count = 0
     assert CountingPattern(re.compile("zz"), meter).search(text, 3) is None and meter.count == 28
+
+
+@pytest.mark.parametrize(
+    "mutant",
+    (r"[\s\S]*?(?=\$)", r"(?![\s\S]*\$\$)", r"(?:[\s\S]*?)?"),
+)
+def test_duckdb_number_regex_rejects_unbounded_scanning(mutant):
+    assert CountingPattern(re.compile(DUCKDB_RULES.number), Meter()).match(
+        CountingText("123", Meter()), 0
+    ) is not None
+    with pytest.raises(AssertionError, match="uncertified regex"):
+        CountingPattern(re.compile(mutant), Meter())
 
 
 SEGMENT_METHODS = {

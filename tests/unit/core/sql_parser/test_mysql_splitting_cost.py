@@ -7,6 +7,7 @@ search of a line or a per-statement scan from the start of the script gives abou
 not depend on the machine, so S only has to be large enough for the quadratic terms to dominate.
 """
 
+import re
 from typing import Callable, Dict, List, Tuple
 
 import pytest
@@ -15,6 +16,8 @@ from dblift.core.sql_parser.lexical_spec import LexicalSpec
 from dblift.core.sql_parser.lexical_tokenizer import LexicalTokenizer
 from dblift.core.sql_parser.lexical_engine import LexicalEngine
 from dblift.db.plugins.mysql.parser.lexical_spec import MYSQL_SPEC
+from dblift.db.plugins.mysql.parser.lexical_spec import MYSQL_RULES
+from tests.support.splitting_cost import CountingPattern, Meter
 
 MAX_RATIO = 5.0
 COUNT = [0]
@@ -79,6 +82,13 @@ def work(script: str, spec: LexicalSpec) -> int:
     return COUNT[0]
 
 
+def public_work(script: str) -> Tuple[int, int]:
+    count = work(script, MYSQL_SPEC)
+    COUNT[0] = 0
+    records = LexicalEngine(MYSQL_SPEC).split(CountingText(script))
+    return count + COUNT[0], len(records)
+
+
 #: shape -> (script of n repeats, S).
 SHAPES: Dict[str, Tuple[Callable[[int], str], int]] = {
     "one-line-of-statements-and-comments": (
@@ -113,7 +123,9 @@ def test_mysql_public_split_counts_repeated_record_prefixes(monkeypatch) -> None
 
     monkeypatch.setattr(LexicalEngine, "split", rescanning_split)
     shape, size = SHAPES["crlf-statements"]
-    small, large = work(shape(size), MYSQL_SPEC), work(shape(4 * size), MYSQL_SPEC)
+    small, small_records = public_work(shape(size))
+    large, large_records = public_work(shape(4 * size))
+    assert (small_records, large_records) == (size, 4 * size)
     assert large > MAX_RATIO * small, (small, large)
 
 
@@ -126,3 +138,13 @@ def test_the_counting_text_counts_what_a_per_token_search_would_cost() -> None:
     offsets: List[int] = CountingOffsets(range(100))
     COUNT[0] = 0
     assert sum(1 for _ in offsets) == 100 and COUNT[0] == 100
+
+
+@pytest.mark.parametrize(
+    "mutant",
+    (r"[\s\S]*?(?=\$)", r"(?![\s\S]*\$\$)", r"(?:[\s\S]*?)?"),
+)
+def test_mysql_line_word_regex_rejects_unbounded_scanning(mutant: str) -> None:
+    CountingPattern(re.compile(MYSQL_RULES.line_word), Meter())
+    with pytest.raises(AssertionError, match="uncertified regex"):
+        CountingPattern(re.compile(mutant), Meter())

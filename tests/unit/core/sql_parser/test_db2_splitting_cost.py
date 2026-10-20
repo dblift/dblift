@@ -105,6 +105,12 @@ def counted(script: str) -> int:
     return meter.count
 
 
+def public_counted(script: str) -> Tuple[int, int]:
+    meter = Meter()
+    records = LexicalEngine(DB2_SPEC).split(CountingText(script, meter))
+    return meter.count, len(records)
+
+
 SHAPES = {
     "one statement per line": lambda n: "INSERT INTO t VALUES (1, 'a;b');\n" * n,
     "block comment of terminator lines": lambda n: "/*\n"
@@ -145,7 +151,9 @@ def test_db2_public_split_counts_repeated_record_prefixes(monkeypatch):
 
     monkeypatch.setattr(LexicalEngine, "split", rescanning_split)
     shape = SHAPES["one statement per line"]
-    small, large = counted(shape(SMALL)), counted(shape(LARGE))
+    small, small_records = public_counted(shape(SMALL))
+    large, large_records = public_counted(shape(LARGE))
+    assert (small_records, large_records) == (SMALL, LARGE)
     assert large > BOUND * small, (small, large)
 
 
@@ -188,6 +196,18 @@ def test_the_counters_count_what_a_rescan_would_cost():
     assert list(lines) == [1, 2, 3] and lines[1] == 2 and meter.count == 4
     with pytest.raises(AssertionError):
         lines[0:2]
+
+
+@pytest.mark.parametrize(
+    "mutant",
+    (r"[\s\S]*?(?=\$)", r"(?![\s\S]*\$\$)", r"(?:[\s\S]*?)?"),
+)
+def test_db2_word_regex_rejects_unbounded_scanning(mutant):
+    assert CountingPattern(re.compile(DB2_RULES.word), Meter()).match(
+        CountingText("VALUES", Meter()), 0
+    ) is not None
+    with pytest.raises(AssertionError, match="uncertified regex"):
+        CountingPattern(re.compile(mutant), Meter())
 
 
 def test_the_counted_text_refuses_what_it_does_not_count():
