@@ -109,6 +109,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   deprecation message asks it to implement `split()` and return `Statement` records; the
   skips end in the next major release.
 
+- **PostgreSQL and its compatible engines read statement facts from the SQL grammar.**
+  PostgreSQL, CockroachDB, YugabyteDB, Aurora PostgreSQL, AlloyDB, Citus, Neon, Supabase and
+  TimescaleDB now take the objects, targets and predicates of each statement from the sqlglot
+  AST instead of regular expressions, in `info --format json`, `migrate --dry-run`, object
+  tracking during execution, `SqlAnalyzer.extract_objects` and the DML analysis functions
+  (`analyze_dml`, `statement_dml_table`, `dml_where_predicate`, `is_full_table_dml`). `COMMENT ON`
+  targets, the trigger of `CREATE TRIGGER`, `DROP SCHEMA`, the table created by `SELECT … INTO`,
+  `CREATE FUNCTION/PROCEDURE … $$ … $$`, `CREATE EXTENSION`, `ALTER SEQUENCE`, `CREATE TYPE`
+  and `CREATE TABLE … TABLESPACE` are now named, and a DML caution no longer names a table
+  whose name ends in a non-ASCII blank. Redshift is unchanged. Known gaps: #666, #667, #668
+  and #669.
+- **Parsers for the PostgreSQL family are built from the facts reader.** Constructing
+  `HybridParser` or `SqlGlotParser` for a PostgreSQL-family dialect, or asking the parser
+  factory for the `sqlglot` type, now raises `ValueError` naming `StatementFactsParser`; the
+  `hybrid` type returns the facts parser, and the `regex` type still returns the regex parser,
+  whose splitting is unchanged.
+- **Undo generation for the PostgreSQL family asks for a hand-written undo.** The generator
+  marks every data or schema change for manual review instead of generating a reversal. Undo
+  scripts you write are unaffected. The generator is deprecated and removed in 5.0 (#649).
+
 ### Deprecated
 
 - **`sqlglot_dialect=` and `dialect=` in `dblift.db.dml_analysis`.** `analyze_dml`,
