@@ -23,7 +23,6 @@ class TestSqlGlotParser:
         with pytest.raises(TypeError):
             SqlGlotParser()
 
-
     def test_parser_creation_oracle(self):
         """Test parser can be created for Oracle."""
         parser = SqlGlotParser(dialect="oracle")
