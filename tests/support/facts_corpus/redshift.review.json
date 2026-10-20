@@ -5481,6 +5481,35 @@
   },
   "sql": "EXEC SQL\n            CREATE TABLE test (id INTEGER)\n        END-EXEC"
  },
+ "97aded136a54daa1": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "redshift TRUNCATE target is not a single table",
+   "kind": "DDL",
+   "operation": "TRUNCATE"
+  },
+  "old": {
+   "analyzer": [
+    [
+     "TABLE",
+     "default_schema.users"
+    ]
+   ],
+   "hybrid": [
+    [
+     "TABLE",
+     "users",
+     "public"
+    ]
+   ]
+  },
+  "path": "both",
+  "reason": "Redshift 1.0.485645 rejects this text with SQLSTATE 42601 (syntax error at or near \"ONLY\"); it is another dialect's statement or an incomplete fragment harvested into the corpus and never runs on this family, so the reader's opaque result costs nothing.",
+  "rejected_by": {
+   "redshift 1.0.485645": "42601"
+  },
+  "sql": "TRUNCATE TABLE ONLY users"
+ },
  "9811ed52c07c19ba/analyzer": {
   "class": "facts-adds-acted",
   "facts": {

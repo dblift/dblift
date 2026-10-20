@@ -81,7 +81,7 @@ stays false: undo asks for review.
 | `MERGE INTO t USING …` | `t` is altered, the sources and actions are unread | the target takes no alias; `WITH … MERGE` is a syntax error; the single-`WHEN` form answers 0A000 |
 | `WITH … UPDATE`/`DELETE`/`SELECT`, `INSERT INTO t WITH … SELECT` | as PostgreSQL's: a flat CTE is read, a recursive or shadowing one is unread | `WITH … INSERT` and data-changing CTEs are syntax errors |
 | `UPDATE t [AS] a SET … FROM u`, `DELETE FROM t USING u`, `DELETE t` | `t` is altered (alias removed), `u` is referenced | run; `UPDATE ONLY`/`DELETE FROM ONLY` answer 0A000, `DELETE FROM t AS a` is a syntax error |
-| `[name]` | unread (diagnostic) | the brackets are dropped; the text between them is not always the name (`["a""b"]` is `a"b`) |
+| `[name]` in a DDL head or as a DML target | unread (diagnostic) | the brackets are dropped; the text between them is not always the name (`["a""b"]` is `a"b`) |
 
 Read as unread (a diagnostic, no object) rather than guessed: `CREATE EXTERNAL SCHEMA`, `CREATE EXTERNAL FUNCTION`,
 `CREATE LIBRARY`, `CREATE USER`, `CREATE GROUP`, `CREATE MODEL`, `UNLOAD`, `CALL`, `USE`, `GRANT`/`REVOKE` targets, a schema

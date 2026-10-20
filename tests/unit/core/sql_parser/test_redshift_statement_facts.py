@@ -371,6 +371,31 @@ def test_a_bracketed_name_is_not_read(sql, operation):
     assert result.opaque
 
 
+@pytest.mark.parametrize(
+    "sql",
+    [
+        'INSERT INTO ["a""b"] VALUES (1)',
+        'INSERT INTO s.["a""b"] VALUES (1)',
+        'DELETE FROM ["a""b"]',
+        'UPDATE ["a""b"] SET x = 1',
+    ],
+)
+def test_a_bracketed_dml_target_is_not_read(sql):
+    result = facts(sql)
+
+    assert result.kind == "DML"
+    assert result.objects == ()
+    assert result.opaque
+
+
+@pytest.mark.parametrize("sql", ["TRUNCATE ONLY t", "TRUNCATE TABLE ONLY t"])
+def test_truncate_only_is_a_syntax_error_so_it_names_nothing(sql):
+    result = facts(sql)
+
+    assert result.objects == ()
+    assert result.opaque
+
+
 def test_brackets_after_the_head_are_not_a_name():
     sql = "ALTER TABLE t ADD COLUMN c super DEFAULT json_parse('[1]')"
 

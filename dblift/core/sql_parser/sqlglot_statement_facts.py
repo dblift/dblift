@@ -1032,11 +1032,15 @@ def _without_mysql_dml_modifiers(sql: str) -> str:
     return sql if pos == verb.end() else f"{sql[: verb.end()]} {sql[pos:].lstrip()}"
 
 
-_REDSHIFT_BRACKETED_HEAD = re.compile(r"^\s*(?:CREATE|ALTER|DROP)\b[^(\[]*\[", re.IGNORECASE)
+_REDSHIFT_BRACKETED_HEAD = re.compile(
+    r"^\s*(?:(?:CREATE|ALTER|DROP)\b[^(\[]*\["
+    r"|(?:INSERT\s+INTO|UPDATE|DELETE(?:\s+FROM)?)\s+(?:[\w$\"]+\s*\.\s*)?\[)",
+    re.IGNORECASE,
+)
 
 
 def _redshift_bracketed_name(sql: str, dialect: str) -> Optional[StatementFacts]:
-    """A DDL head with ``[`` before its first parenthesis, or ``None``.
+    """A DDL head with ``[`` before its first parenthesis, or a DML target in brackets, or ``None``.
 
     Redshift drops the brackets around a name (``[t]`` is ``t``, ``["a""b"]`` is ``a"b``) and
     rejects a space or ``;`` inside them, so the text between the brackets is not the name.
@@ -1107,6 +1111,7 @@ def _redshift_facts(ast: exp.Expr, sql: str, dialect: str) -> Optional[Statement
             if isinstance(target, exp.Table)
             and isinstance(target.this, exp.Identifier)
             and not target.catalog
+            and not target.args.get("only")
             and not any(value for key, value in ast.args.items() if key != "expressions")
             else None
         )
