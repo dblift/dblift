@@ -212,7 +212,9 @@ class SqlParserFactory:
             # The hybrid and sqlglot parsers (and their subclasses) refuse a plugin
             # that reads statement facts; with no parser class of its own, its
             # reader is the parser.
-            if cls is None or any(base.__module__ in _FACTS_REFUSING_MODULES for base in cls.__mro__):
+            if cls is None or any(
+                base.__module__ in _FACTS_REFUSING_MODULES for base in cls.__mro__
+            ):
                 return StatementFactsParser(quirks)
         if cls is None:
             raise UnsupportedDialectError(f"Unsupported dialect: {dialect}")
