@@ -540,7 +540,7 @@ def test_oracle_undo_keeps_statement_with_close_marker_in_string():
     assert "UA" in undo_sql[1].upper() and "DROP TABLE" in undo_sql[1]
 
 
-def _mysql_undo_sql(dialect, content):
+def _mysql_undo_statements(dialect, content):
     generator = UndoScriptGenerator(dialect=dialect, logger=LogFactory.get_log("test"))
     migration = make_migration(
         script_name="V1__names.sql",
@@ -549,42 +549,54 @@ def _mysql_undo_sql(dialect, content):
         description="names",
         logger=generator.logger,
     )
-    return [stmt.sql.strip() for stmt in generator._generate_undo_statements(migration)]
+    return generator._generate_undo_statements(migration)
 
 
 @pytest.mark.parametrize("dialect", ["mysql", "mariadb"])
 @pytest.mark.parametrize(
-    ("create_sql", "expected_drop"),
+    "create_sql",
     [
-        # Table names are case-sensitive on a Linux server, so the name is
-        # dropped exactly as it was created.
-        ("CREATE TABLE MyTable (id INT);", "DROP TABLE IF EXISTS `MyTable`;"),
-        ("CREATE TABLE `Quoted Mixed` (id INT);", "DROP TABLE IF EXISTS `Quoted Mixed`;"),
-        # A doubled backtick is one literal backtick, not the end of the name:
-        # stopping there would drop a different table called `we`.
-        ("CREATE TABLE `we``ird` (id INT);", "DROP TABLE IF EXISTS `we``ird`;"),
-        ("CREATE TABLE `db`.`T` (id INT);", "DROP TABLE IF EXISTS `db`.`T`;"),
-        ("CREATE TABLE Db.T2 (id INT);", "DROP TABLE IF EXISTS `Db`.`T2`;"),
-        ("CREATE TABLE `d``b`.`x``y` (id INT);", "DROP TABLE IF EXISTS `d``b`.`x``y`;"),
-        ("CREATE VIEW MyView AS SELECT 1 AS a;", "DROP VIEW IF EXISTS `MyView`;"),
-        ("CREATE VIEW `V``x` AS SELECT 1 AS a;", "DROP VIEW IF EXISTS `V``x`;"),
-        ("CREATE INDEX IxB ON MyTable (id);", "DROP INDEX `IxB` ON `MyTable`;"),
-        ("CREATE INDEX `Ix``A` ON `we``ird` (id);", "DROP INDEX `Ix``A` ON `we``ird`;"),
+        # The statement is echoed in the review placeholder exactly as it was
+        # written: case, quoting and doubled backticks are never rewritten.
+        "CREATE TABLE MyTable (id INT);",
+        "CREATE TABLE `Quoted Mixed` (id INT);",
+        "CREATE TABLE `we``ird` (id INT);",
+        "CREATE TABLE `db`.`T` (id INT);",
+        "CREATE TABLE Db.T2 (id INT);",
+        "CREATE TABLE `d``b`.`x``y` (id INT);",
+        "CREATE VIEW MyView AS SELECT 1 AS a;",
+        "CREATE VIEW `V``x` AS SELECT 1 AS a;",
+        "CREATE INDEX IxB ON MyTable (id);",
+        "CREATE INDEX `Ix``A` ON `we``ird` (id);",
     ],
 )
-def test_mysql_undo_keeps_identifiers_exactly_as_written(dialect, create_sql, expected_drop):
-    """Generated DROPs name the object that was created, case and quoting intact."""
-    assert _mysql_undo_sql(dialect, create_sql) == [expected_drop]
+def test_mysql_undo_keeps_identifiers_exactly_as_written(dialect, create_sql):
+    """The review placeholder carries the statement unchanged and asks for a manual undo."""
+    (undo,) = _mysql_undo_statements(dialect, create_sql)
+
+    assert undo.original_statement.strip() == create_sql.rstrip(";")
+    assert undo.requires_manual_review
+    assert undo.sql.startswith("-- WARNING:")
+    assert "DROP" not in undo.sql
 
 
 @pytest.mark.parametrize("dialect", ["mysql", "mariadb"])
-def test_mysql_undo_does_not_drop_a_prefix_named_table(dialect):
-    """`we``ird` and a separate table `we` each get their own DROP."""
-    undo_sql = _mysql_undo_sql(
+def test_mysql_undo_keeps_a_prefix_named_table_apart(dialect):
+    """`we``ird` and a separate table `we` each get their own placeholder, last first."""
+    undo = _mysql_undo_statements(
         dialect, "CREATE TABLE `we``ird` (id INT);\nCREATE TABLE we (id INT);\n"
     )
 
-    assert undo_sql == ["DROP TABLE IF EXISTS `we`;", "DROP TABLE IF EXISTS `we``ird`;"]
+    assert [u.original_statement.strip() for u in undo] == [
+        "CREATE TABLE we (id INT)",
+        "CREATE TABLE `we``ird` (id INT)",
+    ]
+    assert all(u.requires_manual_review for u in undo)
+
+
+@pytest.mark.parametrize("dialect", ["mysql", "mariadb"])
+def test_mysql_undo_of_a_read_only_statement_is_empty(dialect):
+    assert _mysql_undo_statements(dialect, "SELECT 1;") == []
 
 
 _ORA_PROC = "CREATE OR REPLACE PROCEDURE pp AS\nBEGIN\n  NULL;\nEND;\n/\n"

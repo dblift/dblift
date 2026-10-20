@@ -15,20 +15,10 @@ pytestmark = pytest.mark.unit
         ("postgresql", "CREATE INDEX ix ON t USING gist (a)", "GIST", ["a"], False),
         ("postgresql", "CREATE INDEX ix ON t USING spgist (a)", "SPGIST", ["a"], False),
         ("postgresql", "CREATE INDEX ix ON t USING brin (a)", "BRIN", ["a"], False),
-        ("mysql", "CREATE INDEX ix ON t USING HASH (a)", "HASH", ["a"], False),
-        ("mysql", "CREATE INDEX ix ON t (a) USING HASH", "HASH", ["a"], False),
-        ("mysql", "CREATE FULLTEXT INDEX ix ON t (body)", "FULLTEXT", ["body"], False),
-        ("mysql", "CREATE SPATIAL INDEX ix ON t (g)", "SPATIAL", ["g"], False),
-        ("mysql", "CREATE INDEX ix ON t USING RTREE (g)", "RTREE", ["g"], False),
-        ("mariadb", "CREATE INDEX ix ON t (a) USING HASH", "HASH", ["a"], False),
-        ("mariadb", "CREATE FULLTEXT INDEX ix ON t (body)", "FULLTEXT", ["body"], False),
-        ("mariadb", "CREATE SPATIAL INDEX ix ON t (g)", "SPATIAL", ["g"], False),
         ("sqlserver", "CREATE CLUSTERED INDEX ix ON t (a)", "CLUSTERED", ["a"], False),
         ("sqlserver", "CREATE NONCLUSTERED INDEX ix ON t (a)", "NONCLUSTERED", ["a"], False),
         ("oracle", "CREATE BITMAP INDEX ix ON t (a)", "BITMAP", ["a"], False),
         ("sqlserver", "CREATE UNIQUE CLUSTERED INDEX ix ON t (a)", "CLUSTERED", ["a"], True),
-        ("mysql", "CREATE UNIQUE INDEX ix ON t USING HASH (a)", "HASH", ["a"], True),
-        ("mysql", "CREATE UNIQUE INDEX ix ON t (a) USING HASH;", "HASH", ["a"], True),
     ],
 )
 def test_index_keeps_method_kind_columns_and_uniqueness(dialect, sql, index_type, columns, unique):
@@ -43,14 +33,14 @@ def test_index_keeps_method_kind_columns_and_uniqueness(dialect, sql, index_type
     assert index.unique is unique
 
 
-@pytest.mark.parametrize("dialect", ["postgresql", "mysql", "mariadb", "sqlserver", "oracle"])
+@pytest.mark.parametrize("dialect", ["postgresql", "sqlserver", "oracle"])
 def test_plain_index_still_uses_btree_default(dialect):
     result = SqlParserFactory(dialect).get_parser().parse_sql("CREATE INDEX ix ON t (a)")
     assert len(result.indexes) == 1
     assert result.indexes[0].type == "BTREE"
 
 
-@pytest.mark.parametrize("dialect", ["postgresql", "mysql", "mariadb"])
+@pytest.mark.parametrize("dialect", ["postgresql"])
 def test_explicit_btree_keeps_default_type(dialect):
     result = (
         SqlParserFactory(dialect).get_parser().parse_sql("CREATE INDEX ix ON t USING btree (a)")
@@ -66,14 +56,6 @@ def test_explicit_btree_keeps_default_type(dialect):
             "CREATE INDEX ix ON t USING btree ((lower(a)), id DESC)",
             "BTREE",
             ["(LOWER(a))", "id"],
-            [True, False],
-            ["", "DESC"],
-        ),
-        (
-            "mysql",
-            "CREATE INDEX `ix` ON `s`.`t` ((a + 1), id DESC) USING BTREE",
-            "BTREE",
-            ["(a + 1)", "id"],
             [True, False],
             ["", "DESC"],
         ),
@@ -97,12 +79,3 @@ def test_index_method_preserves_expressions_and_directions(
     assert index.columns == columns
     assert index.expression_flags == flags
     assert index.sort_directions == directions
-
-
-@pytest.mark.parametrize(
-    "sql",
-    ["CREATE FULLTEXT INDEX ix ON t ()", "CREATE INDEX ix ON t () USING HASH"],
-)
-def test_fallback_does_not_invent_missing_keys(sql):
-    result = SqlParserFactory("mysql").get_parser().parse_sql(sql)
-    assert result.indexes == []

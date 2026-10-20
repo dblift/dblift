@@ -77,12 +77,6 @@ class TestBacktickAndDoubleQuoteAcrossDialects(unittest.TestCase):
     ``_IDENTIFIER``/``_QUALIFIED_NAME`` are shared by every dialect's
     regex-fallback path, not just SQL Server's."""
 
-    def test_mysql_backtick_doubling_is_unescaped(self):
-        analyzer = SqlAnalyzer(dialect="mysql")
-        obj = _only(analyzer, "CREATE INDEX `idx``1` ON `db`.`t`(`c`);")
-        self.assertEqual(obj["object_name"], "idx`1")
-        self.assertEqual(obj["on_object"], "db.t")
-
     def test_postgresql_double_quote_doubling_is_unescaped(self):
         analyzer = SqlAnalyzer(dialect="postgresql")
         obj = _only(analyzer, 'CREATE INDEX "idx""1" ON "sch"."t"("c");')

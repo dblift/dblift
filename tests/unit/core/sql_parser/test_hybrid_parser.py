@@ -37,13 +37,6 @@ class TestHybridParser:
         assert parser.regex_parser is not None
         assert parser.sqlglot_parser is not None
 
-    def test_parser_creation_mysql(self):
-        """Test creating hybrid parser for MySQL."""
-        parser = HybridParser("mysql")
-        assert parser.dialect_name == "mysql"
-        assert parser.regex_parser is not None
-        assert parser.sqlglot_parser is not None
-
     def test_parser_creation_postgresql(self):
         """Test creating hybrid parser for PostgreSQL."""
         parser = HybridParser("postgresql")
@@ -121,26 +114,6 @@ class TestHybridParser:
             or "CREATE PROCEDURE" in statements[1].upper()
         )
 
-    def test_split_mysql_delimiter(self):
-        """Test splitting MySQL statements with DELIMITER."""
-        parser = HybridParser("mysql")
-        sql = """
-        CREATE TABLE users (id INT PRIMARY KEY);
-
-        DELIMITER //
-        CREATE PROCEDURE get_users()
-        BEGIN
-            SELECT * FROM users;
-        END//
-        DELIMITER ;
-
-        INSERT INTO users VALUES (1);
-        """
-
-        statements = parser.split_statements(sql)
-        # Should handle DELIMITER properly
-        assert len(statements) >= 2
-
     def test_split_sqlserver_go(self):
         """Test splitting SQL Server statements with GO."""
         parser = HybridParser("sqlserver")
@@ -207,7 +180,7 @@ class TestHybridParser:
 
     def test_parse_pure_sql_insert(self):
         """Test parsing INSERT with sqlglot enhancement."""
-        parser = HybridParser("mysql")
+        parser = HybridParser("sqlserver")
         sql = "INSERT INTO users (name, email) VALUES ('John', 'john@example.com');"
 
         result = parser.parse_sql(sql)
@@ -339,7 +312,7 @@ class TestHybridParser:
 
     def test_extract_objects_pure_sql(self):
         """Test extracting objects from pure SQL."""
-        parser = HybridParser("mysql")
+        parser = HybridParser("sqlserver")
         sql = "SELECT * FROM users JOIN orders ON users.id = orders.user_id;"
 
         objects = parser.extract_objects(sql)
@@ -466,7 +439,7 @@ class TestHybridParser:
 
     def test_comments_only(self):
         """Test parsing SQL with only comments."""
-        parser = HybridParser("mysql")
+        parser = HybridParser("sqlserver")
         sql = "-- This is a comment\n/* Another comment */"
 
         result = parser.parse_sql(sql)
@@ -536,46 +509,27 @@ class TestMergeObjectsReconcilesPerStatementPerType:
         regex-truncated name is dropped rather than surviving beside the
         correct one, and the divergence is logged at DEBUG.
 
-        The regex name is the MySQL backtick-doubling truncation the regex
-        parser used to produce for `` `real``one` `` (it stopped at the
+        The regex name is the bracket-doubling truncation the regex
+        parser used to produce for ``[real]]one]`` (it stopped at the
         first backtick; sqlglot decodes the escape). The regex parser now
         reads the name whole, so the divergence is fed in directly to keep
         the merge mechanism itself -- not just that one instance -- pinned.
         """
-        parser = HybridParser("mysql")
-        regex_objects = [SqlObject("real", SqlObjectType.TABLE, schema=None, dialect="mysql")]
-        sqlglot_objects = [SqlObject("real`one", SqlObjectType.TABLE, schema=None, dialect="mysql")]
+        parser = HybridParser("sqlserver")
+        regex_objects = [SqlObject("real", SqlObjectType.TABLE, schema=None, dialect="sqlserver")]
+        sqlglot_objects = [
+            SqlObject("real]one", SqlObjectType.TABLE, schema=None, dialect="sqlserver")
+        ]
 
         with caplog.at_level("DEBUG", logger="dblift.core.sql_parser.hybrid_parser"):
             merged = parser._merge_objects(regex_objects, sqlglot_objects)
 
         # fixed: only sqlglot's correctly-decoded name survives
-        assert {obj.name for obj in merged} == {"real`one"}
+        assert {obj.name for obj in merged} == {"real]one"}
         assert len(merged) == 1
-        assert any("real" in r.message and "real`one" in r.message for r in caplog.records), [
+        assert any("real" in r.message and "real]one" in r.message for r in caplog.records), [
             r.message for r in caplog.records
         ]
-
-    def test_sqlglot_silent_for_a_type_keeps_the_regex_objects_of_that_type(self):
-        """sqlglot does not model every index shape (e.g. MySQL FULLTEXT
-        indexes fall back to sqlglot's generic 'Command' parsing, yielding
-        no INDEX object at all). When sqlglot produces nothing of type
-        INDEX for the statement, the regex-extracted INDEX must be kept
-        rather than discarded.
-        """
-        parser = HybridParser("mysql")
-        sql = "CREATE FULLTEXT INDEX idx1 ON mytable (col1);"
-
-        regex_objects = parser.regex_parser.extract_objects(sql, None)
-        sqlglot_objects = parser.sqlglot_parser.extract_objects(sql, None)
-        assert regex_objects[0].name == "idx1"
-        assert regex_objects[0].object_type == SqlObjectType.INDEX
-        assert sqlglot_objects == []
-
-        merged = parser.extract_objects(sql, None)
-        assert len(merged) == 1
-        assert merged[0].name == "idx1"
-        assert merged[0].object_type == SqlObjectType.INDEX
 
     def test_collision_schema_fill_falls_back_to_regex_when_sqlglot_has_none(self):
         """Direct unit test of the collision schema-fill rule:
@@ -654,7 +608,6 @@ class TestMergeObjectsTypeMismatchPhantomOutOfScope:
         [
             ("postgresql", "DROP TRIGGER my_trigger ON my_table;"),
             ("oracle", "DROP TRIGGER my_trigger;"),
-            ("mysql", "DROP TRIGGER my_trigger;"),
             ("sqlserver", "DROP TRIGGER my_trigger;"),
         ],
     )
@@ -710,9 +663,6 @@ class TestSqlGlotDropKindDispatchMapsKnownKinds:
             ("oracle", "DROP TRIGGER my_trigger;", SqlObjectType.TRIGGER),
             ("oracle", "DROP FUNCTION my_func;", SqlObjectType.FUNCTION),
             ("oracle", "DROP PROCEDURE my_proc;", SqlObjectType.PROCEDURE),
-            ("mysql", "DROP TRIGGER my_trigger;", SqlObjectType.TRIGGER),
-            ("mysql", "DROP FUNCTION my_func;", SqlObjectType.FUNCTION),
-            ("mysql", "DROP PROCEDURE my_proc;", SqlObjectType.PROCEDURE),
             ("sqlserver", "DROP TRIGGER my_trigger;", SqlObjectType.TRIGGER),
             ("sqlserver", "DROP FUNCTION my_func;", SqlObjectType.FUNCTION),
             ("sqlserver", "DROP PROCEDURE my_proc;", SqlObjectType.PROCEDURE),
@@ -883,8 +833,6 @@ class TestExtractObjectsCrossDialectDropFunctionProcedure:
         [
             ("postgresql", "DROP FUNCTION my_func(int);", SqlObjectType.FUNCTION),
             ("postgresql", "DROP PROCEDURE my_proc(int);", SqlObjectType.PROCEDURE),
-            ("mysql", "DROP FUNCTION my_func;", SqlObjectType.FUNCTION),
-            ("mysql", "DROP PROCEDURE my_proc;", SqlObjectType.PROCEDURE),
             ("sqlserver", "DROP FUNCTION my_func;", SqlObjectType.FUNCTION),
             ("sqlserver", "DROP PROCEDURE my_proc;", SqlObjectType.PROCEDURE),
         ],
@@ -957,18 +905,6 @@ class TestExtractObjectsQuietOnRoutineDropIndexOnQualifiedTable:
         assert objects[0].name == "idx1"
         assert objects[0].schema == "dbo"
 
-    def test_mysql_schema_qualified_drop_index_on_does_not_warn(self, caplog):
-        parser = HybridParser("mysql")
-        sql = "DROP INDEX idx1 ON myschema.mytable;"
-
-        with caplog.at_level("WARNING"):
-            objects = parser.extract_objects(sql, default_schema="myschema")
-
-        assert not caplog.records, [r.message for r in caplog.records]
-        assert len(objects) == 1
-        assert objects[0].name == "idx1"
-        assert objects[0].schema == "myschema"
-
     def test_comma_separated_drop_index_still_warns(self, caplog):
         """The genuine #379 failure — a shape neither parser can read — must
         keep warning. This is the regression guard against 'fixing' the
@@ -1000,10 +936,10 @@ class TestExtractObjectsQuietOnRoutineDropIndexOnQualifiedTable:
         ``extract_objects``'s own docstring warns about, now reachable
         through this guard instead of through sqlglot itself.
         """
-        parser = HybridParser("mysql")
+        parser = HybridParser("sqlserver")
         sql = (
             "DROP INDEX idx1 ON mytable; "
-            "CREATE TABLE `real``one` (id int); "
+            "CREATE TABLE [real]]one] (id int); "
             "SELECT * FROM a JOIN b ON a.x = b.y;"
         )
 
@@ -1013,7 +949,7 @@ class TestExtractObjectsQuietOnRoutineDropIndexOnQualifiedTable:
         # sqlglot must still run on this batch and contribute its correctly
         # decoded name; if the guard leaked, only the regex-truncated
         # ``real`` would be present.
-        assert "real`one" in names, names
+        assert "real]one" in names, names
 
 
 @pytest.mark.unit

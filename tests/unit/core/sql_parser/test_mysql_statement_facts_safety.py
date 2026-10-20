@@ -4,7 +4,7 @@ import pytest
 
 from dblift.core.sql_model.base import SqlObjectType
 from dblift.core.sql_parser.sqlglot_statement_facts import read_statement_facts
-from dblift.core.sql_parser.statement_facts import NamedObject
+from dblift.core.sql_parser.statement_facts import NamedObject, SqlglotStatementFactsReader
 from dblift.db.plugins.mariadb.quirks import MariadbQuirks
 from dblift.db.plugins.mysql.quirks import MysqlQuirks
 
@@ -93,11 +93,12 @@ def test_mysql_upsert_keeps_insert_and_update_events():
 
 
 @pytest.mark.parametrize("quirks_class", [MysqlQuirks, MariadbQuirks])
-def test_mysql_and_mariadb_facts_remain_dormant(quirks_class):
+def test_mysql_and_mariadb_facts_are_active(quirks_class):
     quirks = quirks_class()
 
     assert quirks.sqlglot_dialect == "mysql"
-    assert not quirks.supports_statement_facts
+    assert quirks.supports_statement_facts
+    assert quirks.statement_facts_class is SqlglotStatementFactsReader
 
 
 @pytest.mark.parametrize("dialect", ["sqlite", "duckdb", "postgres", "oracle", "tsql"])

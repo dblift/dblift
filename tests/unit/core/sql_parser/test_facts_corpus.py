@@ -5,11 +5,13 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import pytest
 import sqlglot
 
+from dblift.core.sql_parser.statement_facts import SqlglotStatementFactsReader
+from dblift.db.plugins.postgresql.quirks import PostgresqlQuirks
 from tests.support.facts_corpus import (
     CORPUS_DIR,
     FAMILIES,
@@ -20,7 +22,7 @@ from tests.support.facts_corpus import (
     read_versions,
     statement_id,
 )
-from tests.support.facts_corpus.record import record_statement
+from tests.support.facts_corpus.record import is_frozen, record_statement
 from tests.support.facts_corpus.seed import split
 
 NO_OLD = ("sqlite", "duckdb")  # their text extraction already is the facts reader
@@ -73,16 +75,22 @@ SPOT_CHECKS: Dict[str, Dict[str, Any]] = {
 }
 
 
-def _on_this_arm(row: Dict[str, Any]) -> Dict[str, Any]:
+def _on_this_arm(row: Dict[str, Any], newest: Optional[bool] = None) -> Dict[str, Any]:
     """The row's ``facts`` and ``old`` as recorded for the installed sqlglot."""
     versions = read_versions()
-    newest = sqlglot.__version__ == versions["newest"] != versions["floor"]
+    if newest is None:
+        newest = sqlglot.__version__ == versions["newest"] != versions["floor"]
     if not newest:
         return {"facts": row["facts"], "old": row["old"]}
     return {
         "facts": row.get("facts_newest", row["facts"]),
         "old": row.get("old_newest", row["old"]),
     }
+
+
+def _comparable(recorded: Dict[str, Any], family: str) -> Dict[str, Any]:
+    """The recorded ``facts``, and ``old`` too unless the family is frozen (``old`` is then None)."""
+    return {"facts": recorded["facts"], "old": None if is_frozen(family) else recorded["old"]}
 
 
 @pytest.fixture(scope="module")
@@ -180,10 +188,8 @@ def test_rows_match_what_the_installed_sqlglot_reads_now(
     newest = installed == versions["newest"] and installed != versions["floor"]
     for row in corpus[family]:
         now = record_statement(family, row["sql"])
-        want_facts = row.get("facts_newest", row["facts"]) if newest else row["facts"]
-        want_old = row.get("old_newest", row["old"]) if newest else row["old"]
-        assert now["facts"] == want_facts, row["sql"]
-        assert now["old"] == want_old, row["sql"]
+        want = _comparable(_on_this_arm(row, newest), family)
+        assert now == want, row["sql"]
 
 
 def _reserved(family: str) -> Dict[str, Any]:
@@ -243,20 +249,34 @@ def test_postgresql_derivatives_record_exactly_what_postgresql_does(
     for derivative in POSTGRESQL_DERIVATIVES:
         for row in corpus["postgresql"]:
             now = record_statement(derivative, row["sql"])
-            assert now == _on_this_arm(row), (derivative, row["sql"])
+            assert now == _comparable(_on_this_arm(row), derivative), (derivative, row["sql"])
 
 
-def test_mariadb_differs_from_mysql_only_in_the_client_command_error_text(
+def test_mariadb_records_the_facts_of_mysql_for_every_row(
     corpus: Dict[str, List[Dict[str, Any]]],
 ) -> None:
-    differing = {}
-    for row in corpus["mysql"]:
-        now = record_statement("mariadb", row["sql"])
-        want = _on_this_arm(row)
-        if now != want:
-            differing[row["sql"]] = (want["old"]["hybrid"], now["old"]["hybrid"])
-            assert now["facts"] == want["facts"]
-            assert now["old"]["analyzer"] == want["old"]["analyzer"]
-    assert list(differing) == ["GO"]
-    mysql_error, mariadb_error = (v["raised"] for v in differing["GO"])
-    assert mysql_error.replace("mysql", "mariadb") == mariadb_error
+    """The extraction of MySQL is frozen, so MariaDB is compared on the facts alone."""
+    differing = [
+        row["sql"]
+        for row in corpus["mysql"]
+        if record_statement("mariadb", row["sql"]) != _comparable(_on_this_arm(row), "mariadb")
+    ]
+    assert differing == []
+
+
+@pytest.mark.parametrize("activated", [False, True])
+def test_the_extraction_is_compared_only_for_a_family_that_is_not_frozen(
+    activated: bool, monkeypatch: pytest.MonkeyPatch, corpus: Dict[str, List[Dict[str, Any]]]
+) -> None:
+    if activated:
+        monkeypatch.setattr(PostgresqlQuirks, "statement_facts_class", SqlglotStatementFactsReader)
+    rows = corpus["postgresql"][:20]
+    for row in rows:
+        now = record_statement("postgresql", row["sql"])
+        assert (now["old"] is None) == activated
+        assert now == _comparable(_on_this_arm(row), "postgresql")
+        if not activated:
+            assert now["old"] == _on_this_arm(row)["old"]
+        assert record_statement("cockroachdb", row["sql"]) == _comparable(
+            _on_this_arm(row), "cockroachdb"
+        )

@@ -251,14 +251,14 @@ def test_a_table_named_like_a_modifier_is_the_target(sql, target):
     assert not facts.opaque
 
 
-def test_a_schema_named_ignore_is_reported_unread_not_guessed():
+def test_a_schema_named_like_a_keyword_is_proven_from_the_head():
     # ``UPDATE ignore.t SET a = 1`` runs on both engines, but sqlglot's MySQL grammar rejects the
-    # reserved word as a schema name; the reader says so rather than naming ``ignore`` or ``t``.
-    facts = mysql("UPDATE ignore.t SET a = 1")
+    # reserved word as a schema name; the single target is proven from the statement head.
+    facts = mysql("UPDATE ignore.t SET a = 1 WHERE id = 1")
 
-    assert facts.opaque
-    assert facts.objects == ()
-    assert facts.target is None
+    assert facts.target == "ignore.t"
+    assert facts.predicate == "id = 1"
+    assert [(o.name, o.schema, o.role) for o in facts.objects] == [("t", "ignore", "altered")]
 
 
 def test_modifier_words_elsewhere_in_the_statement_are_untouched():
