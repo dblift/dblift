@@ -14,7 +14,11 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 
-from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
+from dblift.core.exceptions import (
+    ParserError,
+    UnsafeStatementSplitError,
+    UnsupportedMetaCommandError,
+)
 from dblift.core.sql_model.base import SqlObject, SqlObjectType, SqlStatement
 from dblift.core.sql_parser.parser_factory import SqlParserFactory
 from dblift.core.sql_parser.unread_names import names_unreadable
@@ -168,7 +172,12 @@ def quiet_sqlglot() -> Iterator[None]:
 
 
 def analyse_script(text: str, dialect: str) -> ScriptAnalysis:
-    """Analyse one script's text in *dialect*; never raises."""
+    """Analyse one script's text in *dialect*.
+
+    A script the parser refuses, or a plugin whose facts parser cannot be built
+    (``ParserError``, ``ValueError`` or ``TypeError``), comes back as ``errors``;
+    any other failure, such as a reader raising while reading a statement, propagates.
+    """
     with quiet_sqlglot():
         return _analyse(text, dialect)
 
@@ -183,7 +192,8 @@ def _analyse(text: str, dialect: str) -> ScriptAnalysis:
             bodies = SqlParserFactory(dialect).get_parser().split_for_analysis(text)
         except (UnsafeStatementSplitError, UnsupportedMetaCommandError) as error:
             return ScriptAnalysis((), (), (f"Error splitting SQL: {error}",))
-        except Exception as error:  # the parser is not supposed to raise; the command must go on
+        except (ParserError, ValueError, TypeError) as error:
+            # No parser could be built from the plugin's facts reader and spec.
             return ScriptAnalysis((), (), (f"parser error: {error}",))
         for body in bodies:
             facts = quirks.statement_facts(body)

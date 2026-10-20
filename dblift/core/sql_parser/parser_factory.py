@@ -11,6 +11,13 @@ from dblift.core.sql_parser.parser_interface import SqlParserInterface
 logger = logging.getLogger(__name__)
 
 
+# Modules defining the parsers whose constructors refuse a plugin with a facts reader.
+_FACTS_REFUSING_MODULES = (
+    "dblift.core.sql_parser.hybrid_parser",
+    "dblift.core.sql_parser.sqlglot_parser",
+)
+
+
 class SqlParserFactory:
     """Factory for creating SQL parsers.
 
@@ -202,10 +209,10 @@ class SqlParserFactory:
         if quirks.supports_statement_facts and parser_type in ("hybrid", "regex"):
             from dblift.core.sql_parser.statement_facts_parser import StatementFactsParser
 
-            # The hybrid and sqlglot parsers refuse a plugin that reads statement
-            # facts (matched by name so as not to import sqlglot); with no parser
-            # class of its own, its reader is the parser.
-            if cls is None or cls.__name__ in ("SqlGlotParser", "HybridParser"):
+            # The hybrid and sqlglot parsers (and their subclasses) refuse a plugin
+            # that reads statement facts; with no parser class of its own, its
+            # reader is the parser.
+            if cls is None or any(base.__module__ in _FACTS_REFUSING_MODULES for base in cls.__mro__):
                 return StatementFactsParser(quirks)
         if cls is None:
             raise UnsupportedDialectError(f"Unsupported dialect: {dialect}")
