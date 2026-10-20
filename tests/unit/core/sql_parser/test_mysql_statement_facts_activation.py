@@ -240,3 +240,32 @@ def test_a_schema_named_like_a_keyword_keeps_its_target_and_predicate(
     assert [c.code for c in analysis.cautions if c.code == "dml-no-where"] == (
         ["dml-no-where"] if predicate is None else []
     )
+
+
+@pytest.mark.parametrize(
+    ("sql", "full_table"),
+    [
+        ("UPDATE ignore.t SET a = 1 # WHERE z", True),
+        ("UPDATE ignore.t SET a = 1 WHERE id = 3 # WHERE z", False),
+        ("UPDATE ignore.t SET a = 1 # WHERE z\n WHERE id = 3", False),
+        ("UPDATE ignore.t SET a = 'x\\' WHERE y'", True),
+        ("UPDATE ignore.t SET a = 'x\\' WHERE y' WHERE id = 1", False),
+        ("DELETE FROM ignore.t # c\n WHERE id = 1", False),
+        ("DELETE FROM ignore.t WHERE a = 'it\\'s' # tail", False),
+    ],
+)
+def test_a_hash_comment_or_an_escaped_quote_never_feeds_the_predicate(sql, full_table):
+    # ``#`` opens a comment and ``\'`` is an escaped quote in MySQL: a WHERE inside either is text.
+    # The reader may prove the predicate or report the statement unread; it may not misread it.
+    quirks = _quirks("mysql")
+    facts = quirks.statement_facts(sql)
+
+    if facts.predicate is not None:
+        assert "z" not in facts.predicate and "y" not in facts.predicate
+        assert "#" not in facts.predicate and "'" not in facts.predicate.replace("'it\\'s'", "")
+        assert quirks.is_full_table_dml(sql) is False
+        assert full_table is False
+    else:
+        assert quirks.is_full_table_dml(sql) is True
+    if facts.target is not None:
+        assert facts.target == "ignore.t"
