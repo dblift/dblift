@@ -1365,6 +1365,18 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
                 operation, "DML", diagnostic="mysql mutation has multiple or unproven targets"
             )
         table = _dml_target_table(ast)
+        if (
+            dialect == "mysql"  # lint: allow-dialect-string: MySQL modifier words are not tables
+            and not isinstance(ast, exp.Delete)  # DELETE's table follows FROM
+            and table is not None
+            and isinstance(table.this, exp.Identifier)
+            and not table.this.args.get("quoted")
+            and not table.db
+            and table.name.upper() in MYSQL_DML_MODIFIER_WORDS[operation].split("|")
+        ):
+            return StatementFacts(
+                operation, "DML", diagnostic="mysql modifier word read where a table belongs"
+            )
         identity = _named(table, SqlObjectType.TABLE, "altered") if table else None
         target = (
             ".".join(part for part in (table.catalog, table.db, table.name) if part)

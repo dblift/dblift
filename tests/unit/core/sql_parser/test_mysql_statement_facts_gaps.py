@@ -194,6 +194,23 @@ def test_modifiers_are_not_the_target(sql, operation, target, target_sql):
     assert facts.diagnostic is None or facts.operation == "REPLACE"
 
 
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "UPDATE --x\n LOW_PRIORITY t SET a = 1",
+        "UPDATE --x LOW_PRIORITY t SET a = 1",
+        "UPDATE LOW_PRIORITY LOW_PRIORITY t SET a = 1",
+    ],
+)
+def test_a_modifier_word_is_never_the_target(sql):
+    # ``--x`` without a following blank is not a comment in MySQL and the engine rejects all
+    # three (error 1064); whatever the reader makes of them, the modifier word is not a table.
+    facts = mysql(sql)
+
+    assert facts.target != "LOW_PRIORITY"
+    assert all(obj.name.upper() != "LOW_PRIORITY" for obj in facts.objects)
+
+
 def test_modifier_elision_keeps_the_predicate_and_the_assignments():
     facts = mysql("UPDATE LOW_PRIORITY IGNORE t SET b = 1, c = 2 WHERE id = 1")
 
