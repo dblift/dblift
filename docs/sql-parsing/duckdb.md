@@ -5,7 +5,7 @@
 | Item | Value |
 | --- | --- |
 | Covers | DuckDB 1.x scripts run through the Python `duckdb` driver (the path dblift executes through) and written for the `duckdb` command-line shell. Measured: shell v1.5.6 (Variegata, Homebrew) and v1.5.5 (Variegata, the `duckdb-cli` wheel) and the Python driver 1.5.5 and 1.5.6 (`duckdb.connect()`, `execute`, `duckdb.extract_statements`) with `duckdb_engine` 0.17.0 on SQLAlchemy 2.0.52 |
-| Code facts taken from | the shared lexical engine with the DuckDB specification; §12 describes it. The DuckDB part of the conformance run is 130 rows: 128 passes and the two known gaps 74 and 75 (expected failures); the pieces without code and the statement records at OSS `develop` `48051ff` (2026-10-19) |
+| Code facts taken from | the shared lexical engine with the DuckDB specification; §12 describes it. The DuckDB part of the conformance run is 134 rows: 132 passes and the two known gaps 74 and 75 (expected failures); the pieces without code and the statement records at OSS `develop` `48051ff` (2026-10-19) |
 | Vendor references, fetched 2026-10-12 from `duckdb.org/docs/current` | *Literal Types* (`sql/data_types/literal_types`: strings, escape strings, dollar-quoted strings); *Keywords and Identifiers* (`sql/dialect/keywords_and_identifiers`: quoted identifiers); *SQL Dialect, Overview* ("DuckDB's SQL dialect is based on PostgreSQL."); *Prepared Statements* (`sql/query_syntax/prepared_statements`: `?`, `$1`, `$name`); *CLI, Dot Commands* (`clients/cli/dot_commands`); *CLI, Overview* (`clients/cli/overview`: scripts from standard input, `.read`, multi-line statements). No page on comments could be found: block-comment nesting rests on measurement alone |
 | Live verification | `duckdb -init /dev/null -bail <db> < script.sql` against the Python driver dblift executes through (`SqlAnalyzer("duckdb").split_statements`, then one `execute` per statement through `duckdb_engine`); the resulting files are compared through the `duckdb_*()` catalogue functions and the table rows; `duckdb.extract_statements` is compared with the splitter on every script it accepts. |
 | Second ground truth | the driver: `execute` takes **several** statements in one text, parses the whole text before it runs anything (a parse error in the last statement runs none of the first), and a runtime error leaves the statements before it done; dblift sends one statement per call, so the two stop at different places on a script with a parse error |
@@ -87,8 +87,9 @@ comments (`//` is integer division).
 
 An unterminated block comment is **loud**: the driver and `extract_statements` both
 raise `unterminated /* comment` and nothing runs,
-so the splitter returns it as the last statement and refuses nothing (rows 40, 41). This
-differs from SQLite, where the same text is silently dropped.
+so the splitter refuses the script with `UnsafeStatementSplitError`, naming the line and column of the
+opener, before anything runs (rows 40, 41, 107, 107a). Nesting counts: `/* a /* b */` is open. A `/*` in a
+string, a quoted name or a line comment opens nothing (row 107c). The SQLite shell drops the same text silently, and the splitter refuses it there too.
 
 **Where the shell and the engine differ on comments** (measured on the shell v1.5.6 with
 `duckdb -init /dev/null -bail`, script on stdin). A script whose first line starts with `--` and holds a lone CR
@@ -98,8 +99,8 @@ returns `SELECT 1 AS x` first, and the splitter does the same, so dblift runs on
 more than the shell and never silently. An unterminated block comment after a statement
 (`SELECT 1 AS a;` LF `/* open` LF `SELECT 2 AS b;` LF `SELECT 3 AS c;`): the shell runs
 the first statement, then rejects the rest as one unterminated comment and exits 1, as the
-engine does; the splitter returns the rest as the last statement and the engine rejects it,
-so all three agree (the later lines do not run). A later `*/` closes it for the shell as
+engine does; the splitter refuses the script, so all three agree (nothing runs, not even
+the first statement). A later `*/` closes it for the shell as
 for the engine (`SELECT 9 AS z` runs).
 
 **A comment-only segment is not a statement.** `extract_statements` returns nothing for
@@ -112,7 +113,7 @@ The splitter returns no record for a segment of comments only for any caller: ex
 that go through `split_for_analysis` (linting, analysis, undo) receive the same statements. Nesting counts:
 `/* a /* b */ c */;` is one comment and returns nothing, while on SQLite, whose comments do not nest, the
 same text ends with the code `c */` (rows 106c, 106d). An unterminated block comment is the one comment-like
-piece that is returned: it is sent as the last statement and the engine rejects it (rows 40, 41).
+piece that is refused (rows 40, 41).
 
 ## 4. Terminators
 
@@ -276,8 +277,8 @@ DuckDB specification; the shared tokenizer reads them and one core module assemb
 | 37 | `/* a /* b */ SELECT 1; */ SELECT 2;` | `/* a /* b */ SELECT 1; */ SELECT 2` (the comment ends at the matching close marker: one statement) |
 | 38 | `/* a /* b /* c */ ; */ ; */ SELECT 1;` | `/* a /* b /* c */ ; */ ; */ SELECT 1` |
 | 39 | `SELECT 1; */ SELECT 2;` | `SELECT 1` · `*/ SELECT 2` (a stray close marker is sent; the engine rejects it) |
-| 40 | `SELECT 1; /* open` | `SELECT 1` · `/* open` (an unterminated comment is sent as the last statement; the engine rejects it, nothing is dropped) |
-| 41 | `SELECT 1; /* never closed\nSELECT 2;` | `SELECT 1` · `/* never closed\nSELECT 2` (the semicolon inside the open comment ends nothing) |
+| 40 | `SELECT 1; /* open` | `UnsafeStatementSplitError` (line 1, column 11; the driver rejects the whole script with `unterminated /* comment`, so the script is refused before anything runs; it was sent as the last statement) |
+| 41 | `SELECT 1; /* never closed\nSELECT 2;` | `UnsafeStatementSplitError` (line 1, column 11; the semicolon inside the open comment ends nothing and the driver rejects the whole script; it was sent as the last statement) |
 | 42 | `SELECT 1 -- ; \n+ 1; SELECT 2;` | `SELECT 1 -- ; \n+ 1` · `SELECT 2` (a semicolon inside a line comment ends nothing) |
 | 43 | `SELECT 1; -- c␍SELECT 2;` | `SELECT 1` · `-- c␍SELECT 2` (a CR ends a line comment: the second statement is code) |
 | 44 | `SELECT 1; -- bye` | `SELECT 1` (a segment of comments only is not a statement) |
@@ -364,6 +365,10 @@ DuckDB specification; the shared tokenizer reads them and one core module assemb
 | 106c | `/* a /* b */ c */;` | `(empty)` (block comments nest, so this is one comment: the driver runs it, statement extraction returns nothing and the shell exits 0; on SQLite the same text is a comment followed by code; measured 2026-10-19 with the driver 1.5.5 and the shell 1.5.6) |
 | 106d | `SELECT 1; /* a /* b */ c */` | `SELECT 1` (a nested comment after the last terminator is a piece of comments only and not a statement: the driver runs the script and statement extraction keeps the comment in the text of the statement before it; measured 2026-10-19 with the driver 1.5.5 and the shell 1.5.6) |
 | 106e | `SELECT 1;\n-- c\n/* d */;\nSELECT 2;` | `SELECT 1` · `SELECT 2` (a piece of comments and a terminator is not a statement; the driver and the shell run both statements; measured 2026-10-19 with the driver 1.5.5 and the shell 1.5.6) |
+| 107 | `CREATE TABLE a (i int);\n/* forgot to close\nCREATE TABLE b (i int);` | `UnsafeStatementSplitError` (line 2, column 1; measured with the Python driver 1.5.5 on 2026-10-19: `execute` and `extract_statements` both raise `Parser Error: unterminated /* comment`, so nothing runs; the other engines refuse the same script up front) |
+| 107a | `/* a /* b */` | `UnsafeStatementSplitError` (line 1, column 1; measured with the Python driver 1.5.5 on 2026-10-19: comments nest, the inner one closes and the outer one never does, and the driver raises `unterminated /* comment`) |
+| 107b | `/* a /* b */ */ SELECT 1;` | `/* a /* b */ */ SELECT 1` (measured with the Python driver 1.5.5 on 2026-10-19: a nested comment that closes is a comment and the driver runs the script; the comment stays in the statement text) |
+| 107c | `SELECT '/* x' AS a; SELECT 1 AS "/* y"; SELECT 2 -- /* z\n;` | `SELECT '/* x' AS a` · `SELECT 1 AS "/* y"` · `SELECT 2 -- /* z` (measured with the Python driver 1.5.5 on 2026-10-19: a comment opener inside a string, a quoted name or a line comment opens nothing and the driver runs every statement) |
 
 ## 11. Not handled
 

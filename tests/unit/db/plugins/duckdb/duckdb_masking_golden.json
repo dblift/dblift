@@ -4574,10 +4574,8 @@
   "decision_19": {
    "input": "INSERT INTO t VALUES (1) /* open",
    "output": [
-    1,
-    [
-     "INSERT INTO t VALUES (1) /* open\nRETURNING 1"
-    ]
+    null,
+    []
    ]
   }
  },

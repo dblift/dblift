@@ -154,6 +154,8 @@ class LexicalTokenizer(BaseTokenizer):
         # and the nesting depth at each consumed terminator that falls inside a comment.
         self.terminator_script = terminator_script
         self.open_lexeme = -1
+        # Segment scripts: where a block comment was left open (line, column).
+        self.open_comment: Optional[Tuple[int, int]] = None
         self.marks: Dict[int, Tuple[int, bool]] = {}
         self._word_re = re.compile("" if terminator_rules is None else terminator_rules.word)
         self._delimiter = ""
@@ -366,6 +368,7 @@ class LexicalTokenizer(BaseTokenizer):
         depth, _ = self._read_block_comment()
         if depth:
             self._seg_pending = True
+            self.open_comment = self.open_comment or (line, col)
             return self._segment_token(TokenType.SYMBOL, start, line, col)
         self.comments.append((start, self.pos))
         return self._segment_token(TokenType.COMMENT, start, line, col)
@@ -986,6 +989,17 @@ class LexicalTokenizer(BaseTokenizer):
             elif char not in blanks:
                 self._line_head = False
             self.read()
+
+    def _is_keyword_start(self) -> bool:
+        """A name also begins at a non-ASCII character when the spec says the engine reads it so."""
+        return super()._is_keyword_start() or self._is_non_ascii_name_char(self.peek())
+
+    def _is_word_char(self, char: str) -> bool:
+        """A name also goes on through a non-ASCII character when the spec says so."""
+        return super()._is_word_char(char) or self._is_non_ascii_name_char(char)
+
+    def _is_non_ascii_name_char(self, char: str) -> bool:
+        return self.spec.non_ascii_names and char >= "\x80"
 
     def _is_lexeme(self, token: Token) -> bool:
         """Whether a token is a string or a quoted or bracketed name."""

@@ -275,17 +275,12 @@ def test_block_comments_nest(script: str, expected: list[str]) -> None:
 
 
 @pytest.mark.parametrize(
-    "script, expected",
-    [
-        ("SELECT 1; /* open", ["SELECT 1", "/* open"]),
-        ("/* open\nSELECT 1;", ["/* open\nSELECT 1;"]),
-        ("SELECT 1 /* a /* b */ ; ", ["SELECT 1 /* a /* b */ ;"]),
-    ],
+    "script",
+    ["SELECT 1; /* open", "/* open\nSELECT 1;", "SELECT 1 /* a /* b */ ; "],
 )
-def test_an_unterminated_block_comment_is_sent_as_the_last_statement(
-    script: str, expected: list[str]
-) -> None:
-    assert texts(script) == expected
+def test_an_unterminated_block_comment_is_refused(script: str) -> None:
+    with pytest.raises(UnsafeStatementSplitError, match="unterminated block comment"):
+        texts(script)
 
 
 def test_a_cr_ends_a_line_comment_as_a_lf_does() -> None:
