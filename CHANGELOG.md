@@ -19,6 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **DuckDB comment masking retains fewer tokens.** The shared segment scanner
+  records the same comment spans and refusals while `blank_comments()` drains
+  its tokens instead of keeping the full stream.
 - **SQL Server reads statement facts through the T-SQL grammar.** Object extraction, script
   analysis and DML helpers use the plugin's facts reader after lexical `GO` batch splitting.
   Unread names and effects are reported as opaque rather than guessed. Newly activated SQL
