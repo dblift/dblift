@@ -249,7 +249,7 @@ class SegmentScriptRules:
     cursor. ``blanks`` are skipped between tokens.
     A word ending in an ``escape_letters`` character (alone, or after characters ``str.isdigit()``
     accepts) that touches a quote opens an escape string. A line comment ends at the first of
-    ``line_comment_ends``. ``refused_character`` is refused anywhere, before any other reading.
+    ``line_comment_ends``.
     """
 
     blanks: str
@@ -260,9 +260,6 @@ class SegmentScriptRules:
     parameter: str
     line_comment_ends: str
     command_prefix: str
-    refused_character: str
-    refused_character_name: str
-    refused_reason: str
     blank_pass: Optional[BlankPassRules] = None
 
 

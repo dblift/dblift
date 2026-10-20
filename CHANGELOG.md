@@ -128,11 +128,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **A NUL byte in a PostgreSQL-family script is refused instead of silently cutting the statement
-  (PostgreSQL, CockroachDB, YugabyteDB, Redshift and the other engines reached through the same
-  client).** The client sends a statement to the server as a C string, so everything from the NUL
-  on was dropped without an error: `CREATE TABLE a (i int);<NUL>DROP TABLE a;` ran only the
-  `CREATE`, and a migration holding a NUL could run partially and report success. The script is
-  now refused as a whole with the line and column of the NUL, and nothing runs.
+  (PostgreSQL, CockroachDB, YugabyteDB and the other engines of the family; Redshift as a precaution).** Everything
+  after a NUL byte was silently ignored: `CREATE TABLE a (i int);<NUL>DROP TABLE a;` ran only the
+  `CREATE`, so a migration could run partly and report success. The script is now refused whole,
+  naming the line and column of the NUL, and nothing runs. Remove the NUL byte; it often comes from
+  a file saved in another encoding such as UTF-16.
 
 - **Statements are split correctly after a name that holds a non-ASCII space or symbol (PostgreSQL,
   CockroachDB, YugabyteDB, Redshift).** These engines read every character above U+007F, such as a

@@ -62,7 +62,7 @@
 "golden": {
 "count": 811,
 "observed": null,
-"sha256": "2795664701e81accc23496b8bbba9b212bb698ea15e6e012e1a779e1df0aff8b"
+"sha256": "4e2afd462f1b95d6ce26b493a63e36a697a5213f4f3c85bed2b0182ed177fabc"
 },
 "postgres_family": {
 "count": 68,

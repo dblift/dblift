@@ -205,12 +205,16 @@ class LexicalTokenizer(BaseTokenizer):
         return tokens
 
     def _refuse_character(self) -> None:
-        """Refuse the script when it holds the specification's ``refused_character``."""
+        """Refuse the script when it holds the specification's ``refused_character``.
+
+        A leading byte order mark that the specification reads as a blank is not counted.
+        """
         spec, sql = self.spec, self.sql
-        bad = sql.find(spec.refused_character)
+        origin = 1 if spec.leading_bom_is_blank and sql.startswith(BOM) else 0
+        bad = sql.find(spec.refused_character, origin)
         if bad >= 0:
-            line = sql.count("\n", 0, bad) + 1
-            column = bad - sql.rfind("\n", 0, bad)
+            line = sql.count("\n", origin, bad) + 1
+            column = bad - max(sql.rfind("\n", origin, bad) + 1, origin) + 1
             raise UnsafeStatementSplitError(
                 f"a {spec.refused_character_name} character on line {line}, column {column}: "
                 f"{spec.refused_reason}"
@@ -292,12 +296,6 @@ class LexicalTokenizer(BaseTokenizer):
         """
         sql = self.sql
         self.origin = origin = 1 if self.spec.leading_bom_is_blank and sql.startswith(BOM) else 0
-        bad = sql.find(rules.refused_character, origin)
-        if bad >= 0:
-            raise UnsafeStatementSplitError(
-                f"a {rules.refused_character_name} character on line "
-                f"{sql.count(chr(10), origin, bad) + 1}: {rules.refused_reason}"
-            )
         self.pos = origin
         tokens: List[Token] = []
         size = len(sql)
