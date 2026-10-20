@@ -8,6 +8,8 @@ from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.core.sql_parser.lexical_tokenizer import LexicalTokenizer
 from dblift.core.sql_parser.tokens import TokenType
 from dblift.db.plugins.postgresql.parser.lexical_spec import POSTGRESQL_SPEC
+from tests.support.splitter_spec.splitting import normalize, split_script
+from tests.support.statement_list_parity import PSQL_WIRE
 
 
 def _types(script: str) -> list[tuple[str, str]]:
@@ -49,3 +51,19 @@ def test_non_ascii_tag_characters_are_strings(tag: str) -> None:
 def test_unclosed_non_ascii_tag_is_refused() -> None:
     with pytest.raises(UnsafeStatementSplitError, match="unterminated dollar-quoted string"):
         _types("SELECT $a\xa0$x;y; SELECT 2;")
+
+
+@pytest.mark.parametrize("dialect", PSQL_WIRE)
+@pytest.mark.parametrize("tag", ["a b", "a\x1c", "a-b", "a.b"])
+def test_a_tag_holding_a_non_name_character_is_refused(dialect: str, tag: str) -> None:
+    outcome = split_script(dialect, f"SELECT ${tag}$x;y${tag}$; SELECT 2;")
+    assert outcome.error == "UnsafeStatementSplitError"
+    assert "malformed dollar-quote tag" in (outcome.detail or "")
+
+
+@pytest.mark.parametrize("dialect", PSQL_WIRE)
+@pytest.mark.parametrize("tag", ["\x80", "\ufeff", "\U0001f600"])
+def test_a_tag_holding_a_non_ascii_name_character_is_a_string(dialect: str, tag: str) -> None:
+    outcome = split_script(dialect, f"SELECT ${tag}$x;y${tag}$; SELECT 2;")
+    assert outcome.error is None
+    assert normalize(outcome.statements) == (f"SELECT ${tag}$x;y${tag}$", "SELECT 2")
