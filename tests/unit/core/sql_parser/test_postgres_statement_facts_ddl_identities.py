@@ -290,3 +290,21 @@ def test_grant_and_revoke_are_ddl_without_objects(sql, operation):
 def test_grant_and_revoke_keep_their_kind_on_other_dialects(sql, dialect):
     facts = read_statement_facts(sql, dialect=dialect)
     assert facts.kind == "UNKNOWN"
+
+
+@pytest.mark.parametrize(
+    "sql,named",
+    [
+        (
+            "CREATE TABLE concurrently (a int) TABLESPACE ts",
+            NamedObject("concurrently", T.TABLE, "created"),
+        ),
+        ("CREATE SEQUENCE concurrently", NamedObject("concurrently", T.SEQUENCE, "created")),
+        (
+            "CREATE INDEX CONCURRENTLY concurrently ON ONLY t (a)",
+            NamedObject("concurrently", T.INDEX, "created"),
+        ),
+    ],
+)
+def test_concurrently_is_an_ordinary_name_except_as_the_index_modifier(sql, named):
+    assert _pg(sql).objects == (named,)

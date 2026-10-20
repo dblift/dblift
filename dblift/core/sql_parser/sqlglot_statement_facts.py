@@ -45,13 +45,15 @@ _HEAD = re.compile(
 _HEAD_SCAN = re.compile(
     _HEAD.pattern.replace(r"^\s*", r"(?:^|;)\s*", 1), re.IGNORECASE | re.MULTILINE
 )
-# PostgreSQL names more kinds than the generic head and skips its creation modifiers.
+# PostgreSQL names more kinds than the generic head and skips its creation modifiers;
+# CONCURRENTLY is a modifier after INDEX only, elsewhere an ordinary name.
 _POSTGRES_HEAD = re.compile(
     rf"^\s*(CREATE|ALTER|DROP)\s+"
     rf"(?:(?:OR\s+REPLACE|UNLOGGED|TEMP|TEMPORARY|UNIQUE|CONSTRAINT|IF|NOT|EXISTS)\s+)*"
     rf"(VIRTUAL\s+TABLE|MATERIALIZED\s+VIEW|TABLE|VIEW|INDEX|TRIGGER|FUNCTION|PROCEDURE"
-    rf"|SEQUENCE|TYPE|SCHEMA|EXTENSION)\s+(?:(?:CONCURRENTLY|IF|NOT|EXISTS)\s+)*"
-    rf"(?!(?:IF|NOT|EXISTS|AUTHORIZATION|OR|REPLACE|CONCURRENTLY)\b)"
+    rf"|SEQUENCE|TYPE|SCHEMA|EXTENSION)(?:(?<=INDEX)\s+CONCURRENTLY\b)?\s+"
+    rf"(?:(?:IF|NOT|EXISTS)\s+)*"
+    rf"(?!(?:IF|NOT|EXISTS|AUTHORIZATION|OR|REPLACE)\b)"
     rf"({_NAME})(?:\s*\.\s*({_NAME}))?",
     re.IGNORECASE,
 )
