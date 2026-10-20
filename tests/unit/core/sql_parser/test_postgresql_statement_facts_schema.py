@@ -50,7 +50,7 @@ def test_authorization_only_schema_facts_remain_opaque():
     assert facts.error is None
 
 
-@pytest.mark.parametrize("dialect", ["sqlite", "mysql", "oracle"])
+@pytest.mark.parametrize("dialect", ["sqlite", "oracle"])
 def test_schema_identity_projection_does_not_expand_to_other_dialects(dialect):
     facts = read_statement_facts("CREATE SCHEMA sales", dialect=dialect)
 

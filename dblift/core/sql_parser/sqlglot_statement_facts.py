@@ -22,6 +22,10 @@ from dblift.core.sql_parser.dialects.identifier_tokens import (
     DOUBLE_QUOTED_IDENTIFIER,
     strip_identifier_quotes,
 )
+from dblift.core.sql_parser.dml_modifiers import (  # noqa: F401  (re-exported)
+    MYSQL_DML_MODIFIER,
+    MYSQL_DML_MODIFIER_WORDS,
+)
 from dblift.core.sql_parser.statement_facts import (
     DeclaredConstraint,
     NamedObject,
@@ -176,6 +180,24 @@ def unread_name_character(sql: str, *, dialect: str) -> Optional[int]:
                 return found
         position = token.end + 1
     return _first_unread_outside_comments(sql, position, len(sql), comments, nested)
+
+
+def _supplementary_name_character(sql: str) -> Optional[str]:
+    """First character outside the Basic Multilingual Plane in a MySQL name, or ``None``.
+
+    Scans the text outside string literals and comments, because sqlglot reads statements such
+    as ``RENAME TABLE`` as a command whose names are not tokens.
+    """
+    if sql.isascii() or max(sql) <= "\uffff":
+        return None
+    at = 0
+    for span in _MYSQL_QUOTES_AND_COMMENTS.finditer(sql):
+        end = span.end() if span.group().startswith("`") else span.start()
+        wide = next((c for c in sql[at:end] if c > "\uffff"), None)
+        if wide:
+            return str(wide)
+        at = span.end()
+    return next((str(c) for c in sql[at:] if c > "\uffff"), None)
 
 
 def readable_dml_target(sql: str, *, dialect: str) -> Optional[str]:
@@ -820,6 +842,93 @@ def _select_into_table(ast: exp.Expr) -> Optional[exp.Expression]:
     into = first.args.get("into")
     return into.this if isinstance(into, exp.Into) else None
 
+_MYSQL_QUALIFIED = rf"({_NAME})(?:\s*\.\s*({_NAME}))?"
+_MYSQL_RENAME_PAIR = rf"{_MYSQL_QUALIFIED}\s+TO\s+{_MYSQL_QUALIFIED}"
+_MYSQL_RENAME = re.compile(
+    rf"^\s*RENAME\s+TABLE\s+{_MYSQL_RENAME_PAIR}(?:\s*,\s*{_MYSQL_RENAME_PAIR})*\s*;?\s*$",
+    re.IGNORECASE,
+)
+_MYSQL_RENAME_SOURCE = re.compile(rf"{_MYSQL_QUALIFIED}\s+TO\s+{_MYSQL_QUALIFIED}", re.IGNORECASE)
+_MYSQL_SPECIAL_INDEX = re.compile(
+    rf"^\s*CREATE\s+(?:FULLTEXT|SPATIAL)\s+INDEX\s+({_NAME})\s+ON\s+{_MYSQL_QUALIFIED}\s*\(",
+    re.IGNORECASE,
+)
+
+
+def _mysql_command_facts(sql: str) -> Optional[StatementFacts]:
+    """RENAME TABLE and CREATE FULLTEXT / SPATIAL INDEX, which sqlglot's MySQL grammar leaves as
+    an opaque command."""
+    head = _blanked(sql)
+    first = _FIRST_WORD.match(head)
+    if first and first.group(1).upper() == "RENAME":
+        if not _MYSQL_RENAME.match(head):
+            return StatementFacts(
+                "RENAME", "DDL", diagnostic="mysql RENAME form is opaque to statement facts"
+            )
+        body = re.sub(r"^\s*RENAME\s+TABLE\s+", "", head, flags=re.IGNORECASE)
+        sources = []
+        for pair in _MYSQL_RENAME_SOURCE.finditer(body):
+            schema, name = (
+                (pair.group(1), pair.group(2)) if pair.group(2) else (None, pair.group(1))
+            )
+            sources.append(
+                NamedObject(
+                    strip_identifier_quotes(name),
+                    SqlObjectType.TABLE,
+                    "altered",
+                    strip_identifier_quotes(schema) if schema else None,
+                )
+            )
+        return StatementFacts("RENAME", "DDL", tuple(sources))
+    match = _MYSQL_SPECIAL_INDEX.match(head)
+    if match is None:
+        return None
+    schema, name = (match.group(2), match.group(3)) if match.group(3) else (None, match.group(2))
+    table = strip_identifier_quotes(name)
+    schema = strip_identifier_quotes(schema) if schema else None
+    return StatementFacts(
+        "CREATE",
+        "DDL",
+        (
+            NamedObject(strip_identifier_quotes(match.group(1)), SqlObjectType.INDEX, "created"),
+            NamedObject(table, SqlObjectType.TABLE, "referenced", schema),
+        ),
+        indexed_table=f"{schema}.{table}" if schema else table,
+        diagnostic="mysql index columns are opaque to statement facts",
+    )
+
+
+_MYSQL_DML_VERB = re.compile(
+    r"^((?:\s|#[^\n]*\n|--\s[^\n]*\n|/\*.*?\*/)*(UPDATE|DELETE|INSERT|REPLACE))\b",
+    re.IGNORECASE | re.DOTALL,
+)
+
+
+# The shared pattern skips only block comments (``#`` starts a T-SQL temporary table elsewhere);
+# MySQL also ends a modifier gap with ``# ...`` and ``-- ...`` line comments.
+_MYSQL_MODIFIER_GAP = {
+    verb: re.compile(
+        r"\s*(?:#[^\n]*(?:\n|$)|--(?=[\x00-\x20\x7f])[^\n]*(?:\n|$)|"
+        + pattern.pattern.removeprefix(r"\s*(?:"),
+        pattern.flags,
+    )
+    for verb, pattern in MYSQL_DML_MODIFIER.items()
+}
+
+
+def _without_mysql_dml_modifiers(sql: str) -> str:
+    """Drop the modifier words and comments between a DML verb and its target.
+
+    sqlglot's MySQL grammar does not read these modifiers.
+    """
+    verb = _MYSQL_DML_VERB.match(sql)
+    if verb is None:
+        return sql
+    pos = verb.end()
+    while modifier := _MYSQL_MODIFIER_GAP[verb.group(2).upper()].match(sql, pos):
+        pos = modifier.end()
+    return sql if pos == verb.end() else f"{sql[: verb.end()]} {sql[pos:].lstrip()}"
+
 
 def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
     """Read one already-split statement; never retry a second extractor.
@@ -842,6 +951,23 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
     unread = unread_name_character(sql, dialect=dialect)
     if unread is not None:
         return _unread_name_facts(sql, dialect, unread)
+    wide = (
+        _supplementary_name_character(sql)
+        if dialect == "mysql"  # lint: allow-dialect-string: MySQL name characters
+        else None
+    )
+    if wide:
+        head = _head_facts(sql, "", dialect=dialect)
+        return StatementFacts(
+            head.operation,
+            head.kind,
+            diagnostic=(
+                f"mysql statement holds U+{ord(wide):04X} in a name, which MySQL stores as ? "
+                "and MariaDB rejects; its objects are not named"
+            ),
+        )
+    if dialect == "mysql":  # lint: allow-dialect-string: MySQL DML modifiers
+        sql = _without_mysql_dml_modifiers(sql)
     try:
         ast = parse_one(_UPDATE_OR.sub(r"\1", sql), read=dialect)
     except (ParseError, TokenError) as exc:
@@ -857,6 +983,12 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
         return _head_facts(
             sql, f"{dialect} grammar is not modelled for this statement", dialect=dialect
         )
+    if (
+        dialect == "mysql"  # lint: allow-dialect-string: sqlglot reads these MySQL forms as Command
+        and isinstance(ast, exp.Command)
+        and (command := _mysql_command_facts(sql)) is not None
+    ):
+        return command
     if ast is None or isinstance(ast, (exp.Command, exp.Block)):
         construct = type(ast).__name__ if ast is not None else "empty statement"
         return _head_facts(
@@ -941,6 +1073,15 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
             and subject.name
         ):
             identity = NamedObject(subject.name, object_type, "created")
+        if (
+            dialect == "mysql"  # lint: allow-dialect-string: MySQL names a schema as a database
+            and object_type == SqlObjectType.SCHEMA
+            and isinstance(subject, exp.Table)
+            and subject.db
+            and not subject.catalog
+            and not subject.name
+        ):
+            identity = NamedObject(subject.db, object_type, "created")
         objects: Tuple[NamedObject, ...] = (identity,) if identity else ()
         indexed_table = None
         indexed_columns = None
@@ -1014,6 +1155,15 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
                 NamedObject(node.db, object_type, "dropped", node.catalog or None)
                 for node in targets
                 if isinstance(node, exp.Table) and node.db
+            )
+        elif (
+            dialect == "mysql"  # lint: allow-dialect-string: MySQL names a schema as a database
+            and object_type == SqlObjectType.SCHEMA
+        ):
+            dropped_objects = tuple(
+                NamedObject(node.db, object_type, "dropped")
+                for node in targets
+                if isinstance(node, exp.Table) and node.db and not node.catalog and not node.name
             )
         else:
             dropped_objects = tuple(
@@ -1101,7 +1251,10 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
         )
         return StatementFacts("TRUNCATE", "DDL", identities)
 
-    if dialect == "duckdb" and isinstance(ast, exp.TruncateTable):
+    if dialect in {
+        "duckdb",
+        "mysql",  # lint: allow-dialect-string: MySQL TRUNCATE takes exactly one table
+    } and isinstance(ast, exp.TruncateTable):
         targets = ast.expressions
         target = targets[0] if len(targets) == 1 else None
         if isinstance(target, exp.Table) and isinstance(target.this, exp.Identifier):
@@ -1158,6 +1311,18 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
                 operation, "DML", diagnostic="mysql mutation has multiple or unproven targets"
             )
         table = _dml_target_table(ast)
+        if (
+            dialect == "mysql"  # lint: allow-dialect-string: MySQL modifier words are not tables
+            and not isinstance(ast, exp.Delete)  # DELETE's table follows FROM
+            and table is not None
+            and isinstance(table.this, exp.Identifier)
+            and not table.this.args.get("quoted")
+            and not table.db
+            and table.name.upper() in MYSQL_DML_MODIFIER_WORDS[operation].split("|")
+        ):
+            return StatementFacts(
+                operation, "DML", diagnostic="mysql modifier word read where a table belongs"
+            )
         identity = _named(table, SqlObjectType.TABLE, "altered") if table else None
         target = (
             ".".join(part for part in (table.catalog, table.db, table.name) if part)
