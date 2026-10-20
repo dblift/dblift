@@ -51,6 +51,23 @@ def test_legacy_facts_corpus_shape():
 @pytest.mark.parametrize("case", CASES, ids=[case["dialect"] for case in CASES])
 def test_legacy_facts_corpus(case):
     observed = _observe(case["dialect"], case["script"])
+    if case["dialect"] == "db2":
+        # Db2 reads statement facts: no invented SYSIBM schema, and DML names its target.
+        assert observed["success"] == case["legacy_observed"]["success"]
+        assert observed["errors"] == case["legacy_observed"]["errors"]
+        assert len(observed["statements"]) == 5
+        for index, (old, new) in enumerate(
+            zip(case["legacy_observed"]["statements"], observed["statements"])
+        ):
+            assert (new["sql"], new["type"]) == (old["sql"], old["type"])
+            if index in (2, 3):
+                assert old["objects"] == old["affected_objects"] == []
+                expected = [{"type": "TABLE", "name": "CHILD", "schema": None}]
+            else:
+                expected = [{**ob, "schema": None} for ob in old["objects"]]
+                assert all(ob["schema"] == "SYSIBM" for ob in old["objects"])
+            assert new["objects"] == new["affected_objects"] == expected
+        return
     if case["dialect"] in ("sqlite", "duckdb"):
         assert observed["success"] == case["legacy_observed"]["success"]
         assert observed["errors"] == case["legacy_observed"]["errors"]

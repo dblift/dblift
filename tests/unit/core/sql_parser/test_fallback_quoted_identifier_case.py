@@ -12,20 +12,26 @@ import pytest
 
 from dblift.core.sql_model.base import SqlObjectType
 from dblift.core.sql_parser.hybrid_parser import HybridParser
+from dblift.db.plugins.db2.parser.db2_regex_parser import DB2RegexParser
+
+
+def _hybrid(dialect):
+    """Db2 reads statement facts and has no hybrid parser; it was regex-only before."""
+    return DB2RegexParser() if dialect == "db2" else HybridParser(dialect)
+
+
+def _regex(dialect):
+    return DB2RegexParser() if dialect == "db2" else HybridParser(dialect).regex_parser
 
 
 def _extract(dialect, sql):
     return [
-        (obj.object_type, obj.schema, obj.name)
-        for obj in HybridParser(dialect).extract_objects(sql)
+        (obj.object_type, obj.schema, obj.name) for obj in _hybrid(dialect).extract_objects(sql)
     ]
 
 
 def _extract_regex(dialect, sql):
-    return [
-        (obj.object_type, obj.schema, obj.name)
-        for obj in HybridParser(dialect).regex_parser.extract_objects(sql)
-    ]
+    return [(obj.object_type, obj.schema, obj.name) for obj in _regex(dialect).extract_objects(sql)]
 
 
 @pytest.mark.unit
@@ -232,7 +238,7 @@ def _statement_for(key):
 
 
 def _pattern_cases(dialect, excluded=frozenset()):
-    config = HybridParser(dialect).regex_parser.config
+    config = _regex(dialect).config
     return [
         pytest.param(dialect, key, _statement_for(key), id=f"{dialect}-{key}")
         for key in config.object_patterns
@@ -247,7 +253,7 @@ def _pattern_cases(dialect, excluded=frozenset()):
 )
 def test_every_object_pattern_keeps_quoted_name(dialect, key, sql):
     """Each object pattern on its own captures the quoted name whole."""
-    config = HybridParser(dialect).regex_parser.config
+    config = _regex(dialect).config
     match = config.object_patterns[key].search(sql)
 
     assert match is not None, sql

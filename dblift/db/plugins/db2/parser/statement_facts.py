@@ -10,6 +10,7 @@ from dblift.core.sql_model.base import SqlObjectType
 from dblift.core.sql_parser.lexical_spec import LexicalSpec
 from dblift.core.sql_parser.lexical_tokenizer import LexicalTokenizer
 from dblift.core.sql_parser.statement_facts import NamedObject, StatementFacts
+from dblift.core.sql_parser.statement_facts_parser import StatementFactsParser
 from dblift.core.sql_parser.tokens import Token, TokenType
 from dblift.db.plugins.db2.parser.lexical_spec import DB2_RULES, DB2_SPEC
 
@@ -559,3 +560,13 @@ class Db2StatementFactsReader:
                 return _opaque(first, kind, UNREAD_NAME.format(code=ord(sql[char])))
             return _read_dml(sql, words, ups, first)
         return _opaque(first, kind, NOT_CLASSIFIED.format(word=first))
+
+
+class Db2FactsParser(StatementFactsParser):
+    """The generic statement-facts parser, bound to the Db2 plugin."""
+
+    def __init__(self) -> None:
+        """Bind the Db2 plugin's spec and facts reader."""
+        from dblift.db.provider_registry import ProviderRegistry
+
+        super().__init__(ProviderRegistry.get_quirks("db2"))

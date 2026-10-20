@@ -2,10 +2,10 @@
 
 import pytest
 
-from dblift.core.sql_parser.hybrid_parser import HybridParser
 from dblift.core.sql_parser.statement_facts import SqlglotStatementFactsReader, StatementFacts
 from dblift.db.base_quirks import BaseQuirks
 from dblift.db.plugins.db2.parser.db2_regex_parser import DB2RegexParser
+from dblift.db.plugins.db2.parser.statement_facts import Db2FactsParser
 from dblift.db.plugins.db2.quirks import Db2Quirks
 from dblift.db.plugins.duckdb.quirks import DuckDBQuirks
 from dblift.db.plugins.sqlite.parser.lexical_spec import SQLITE_SPEC
@@ -52,18 +52,17 @@ def test_existing_plugin_readers_keep_drop_identity(quirks_class):
     ]
 
 
-@pytest.mark.parametrize("quirks_class", [BaseQuirks, Db2Quirks])
-def test_plugin_without_reader_refuses_facts(quirks_class):
-    quirks = quirks_class()
+def test_plugin_without_reader_refuses_facts():
+    quirks = BaseQuirks()
     assert not quirks.supports_statement_facts
     with pytest.raises(NotImplementedError, match="no statement facts reader"):
         quirks.statement_facts("DROP TABLE t")
 
 
-def test_db2_parser_routes_remain_available_without_statement_facts():
+def test_db2_parser_routes():
     quirks = Db2Quirks()
     assert quirks.parser_class("regex") is DB2RegexParser
-    assert quirks.parser_class("hybrid") is HybridParser
+    assert quirks.parser_class("hybrid") is Db2FactsParser
     assert quirks.parser_class("sqlglot") is None
 
 

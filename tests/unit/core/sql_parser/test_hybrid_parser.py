@@ -22,6 +22,7 @@ from dblift.core.sql_model.trigger import Trigger
 from dblift.core.sql_model.user_defined_type import UserDefinedType
 from dblift.core.sql_model.view import View
 from dblift.core.sql_parser.hybrid_parser import _COLLECT_DISPATCH, HybridParser
+from dblift.core.sql_parser.parser_factory import SqlParserFactory
 
 
 @pytest.mark.unit
@@ -59,11 +60,9 @@ class TestHybridParser:
         assert parser.sqlglot_parser is not None
 
     def test_parser_creation_db2(self):
-        """Test creating hybrid parser for DB2 (no sqlglot)."""
-        parser = HybridParser("db2")
-        assert parser.dialect_name == "db2"
-        assert parser.regex_parser is not None
-        assert parser.sqlglot_parser is None  # DB2 not supported by sqlglot
+        """Db2 reads statement facts, so the hybrid parser refuses it."""
+        with pytest.raises(ValueError, match="statement-facts parser"):
+            HybridParser("db2")
 
     # ========== Statement Splitting (Regex-based) ==========
 
@@ -446,14 +445,13 @@ class TestHybridParser:
     # ========== DB2 (Regex-Only) ==========
 
     def test_db2_regex_only(self):
-        """Test that DB2 uses regex-only (no sqlglot)."""
-        parser = HybridParser("db2")
+        """Test that DB2 is parsed by the statement-facts parser, not the hybrid one."""
+        parser = SqlParserFactory("db2").get_parser()
         sql = "CREATE TABLE test (id INTEGER PRIMARY KEY);"
 
         result = parser.parse_sql(sql, "TESTDB")
         assert result.success
-        # Verify sqlglot is not used
-        assert parser.sqlglot_parser is None
+        assert not isinstance(parser, HybridParser)
 
     # ========== Edge Cases ==========
 

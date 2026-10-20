@@ -115,6 +115,9 @@ def test_undo_names_no_trigger_whose_name_holds_the_character(tmp_path, dialect,
 @pytest.mark.parametrize("dialect", LEGACY)
 def test_undo_keeps_dropping_ascii_names(tmp_path, dialect):
     script = _undo(tmp_path, dialect, "CREATE TABLE t (id INT);\nCREATE INDEX ix ON t (id);")
+    if dialect == "db2":  # facts reader without undo reversal: every mutation goes to review
+        _assert_manual_review(script)
+        return
     assert len([line for line in _code_lines(script) if "DROP" in line]) >= 1
 
 
@@ -128,6 +131,9 @@ def test_undo_ignores_the_character_inside_strings_comments_and_quotes(tmp_path,
         f"CREATE VIEW v AS SELECT 'a{nbsp}b' AS c;\n"
         f"CREATE TABLE {quote}q{nbsp}{quote} (id INT);"
     )
+    if dialect == "db2":  # facts reader without undo reversal: every mutation goes to review
+        _assert_manual_review(_undo(tmp_path, dialect, sql))
+        return
     drops = [line for line in _code_lines(_undo(tmp_path, dialect, sql)) if "DROP" in line]
     # the statements around the quoted name are still reversed
     assert len(drops) >= 2
