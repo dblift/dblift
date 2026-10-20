@@ -92,8 +92,10 @@ _TABLE_CODES = frozenset(
         "pg-missing-lock-timeout",
     }
 )
-# A table as (schema or None, name), lower-cased.
-_TableKey = Tuple[Optional[str], str]
+# One identifier as (text, quoted), the text as written.
+_Part = Tuple[str, bool]
+# A table as (schema or None, name).
+_TableKey = Tuple[Optional[_Part], _Part]
 _NOT_NULL_EXEMPT = (
     exp.DefaultColumnConstraint,
     exp.ComputedColumnConstraint,
@@ -156,10 +158,12 @@ def issues_and_created_tables(
 ) -> Tuple[List[Finding], FrozenSet[str]]:
     """The script's findings, and the tables it creates.
 
-    A table is named ``schema.name``, or ``name`` when the statement gives no schema,
-    lower-cased. A table in *created_before*, or created by an earlier statement of the
-    script, is new: a table-scoped finding on a statement whose target tables are all new
-    is not reported. A target is new when its name matches a new table and either side
+    A table is named ``schema.name``, or ``name`` when the statement gives no schema: an
+    unquoted part lower-cased, a quoted one as written between ``"``. A table in
+    *created_before*, or created by an earlier statement of the script, is new: a table-scoped
+    finding on a statement whose target tables are all new is not reported. A target is new
+    when its name matches a new table (both unquoted and equal ignoring case, both quoted
+    and byte-equal, or one quoted spelled as the engine stores the unquoted one) and either side
     names no schema or both name the same one: offline the search path is unknown, so
     ``CREATE TABLE users`` also covers ``x.users``. A statement whose names the analysis
     withheld (``names_unread``) is never exempted and creates no new table: the engine may read
@@ -169,7 +173,9 @@ def issues_and_created_tables(
     *text* is the script: a dialect that runs batches judges transaction modes per batch.
     """
     sqlglot_dialect = get_sqlglot_dialect(dialect)
-    pg_locks = ProviderRegistry.get_quirks(dialect).postgresql_lock_rules
+    quirks = ProviderRegistry.get_quirks(dialect)
+    pg_locks = quirks.postgresql_lock_rules
+    case = quirks.unquoted_identifier_case
     snippets = {s.index: s.snippet for s in analysis.statements}
     findings = [
         Finding(c.code, SEVERITY[c.code], c.statement, c.reason, snippets.get(c.statement, ""))
@@ -186,7 +192,11 @@ def issues_and_created_tables(
         body = strip_leading_sql_comments(stmt.sql)
         tree = _parse(body, sqlglot_dialect)
         targets = _targets(tree)
-        if targets and not stmt.names_unread and all(_matches(target, new) for target in targets):
+        if (
+            targets
+            and not stmt.names_unread
+            and all(_matches(target, new, case) for target in targets)
+        ):
             on_new_tables.add(stmt.index)
         for code in _statement_codes(body, tree, pg_locks=pg_locks):
             findings.append(_finding(code, stmt))
@@ -202,7 +212,7 @@ def issues_and_created_tables(
             findings.append(_finding("pg-missing-lock-timeout", stmt))
             lock_timeout_reported = True
         table = _created_table(tree)
-        if table and not stmt.names_unread and not _matches(table, existing):
+        if table and not stmt.names_unread and not _matches(table, existing, None):
             created.add(table)
             new.add(table)
     findings = [
@@ -213,7 +223,7 @@ def issues_and_created_tables(
     if not analysis.errors:
         findings.extend(_mixed_transaction_modes(analysis.statements, dialect, text))
     return sorted(findings, key=lambda f: (f.statement, f.code)), frozenset(
-        f"{schema}.{name}" if schema else name for schema, name in created
+        _text_of(key) for key in created
     )
 
 
@@ -234,19 +244,59 @@ def _parse(sql: str, sqlglot_dialect: Optional[str]) -> Optional[exp.Expression]
     return tree
 
 
+def _part_of(identifier: Any) -> _Part:
+    text = identifier.name
+    quoted = bool(identifier.args.get("quoted"))
+    return (text, quoted)
+
+
 def _key_of(table: exp.Table) -> _TableKey:
-    return (table.db.lower() or None, table.name.lower())
+    schema = table.args.get("db")
+    return (_part_of(schema) if schema is not None and schema.name else None, _part_of(table.this))
+
+
+_QUOTED_OR_BARE = re.compile(r'"((?:[^"]|"")*)"|([^.]+)')
 
 
 def _key_from_text(text: str) -> _TableKey:
-    schema, _, name = text.lower().rpartition(".")
-    return (schema or None, name)
+    """Read ``schema.name``, a quoted part written ``"Text"`` (a ``"`` doubled)."""
+    parts: List[_Part] = [
+        (m.group(1).replace('""', '"'), True) if m.group(2) is None else (m.group(2), False)
+        for m in _QUOTED_OR_BARE.finditer(text)
+    ]
+    return (parts[-2] if len(parts) > 1 else None, parts[-1] if parts else ("", False))
 
 
-def _matches(target: _TableKey, tables: AbstractSet[_TableKey]) -> bool:
+def _text_of(key: _TableKey) -> str:
+    def part(p: _Part) -> str:
+        return '"' + p[0].replace('"', '""') + '"' if p[1] else p[0].lower()
+
+    schema, name = key
+    return f"{part(schema)}.{part(name)}" if schema else part(name)
+
+
+def _same(a: _Part, b: _Part, case: Optional[str]) -> bool:
+    """Two unquoted parts equal ignoring case, two quoted ones byte-equal.
+
+    A quoted part matches an unquoted one only when it is spelled as the engine stores the
+    unquoted one (*case*: the dialect's ``unquoted_identifier_case``; any other value reads
+    the unquoted text as written). *case* ``None`` ignores quoting and case, for names known
+    to exist.
+    """
+    if case is None:
+        return a[0].lower() == b[0].lower()
+    if a[1] == b[1]:
+        return a[0] == b[0] if a[1] else a[0].lower() == b[0].lower()
+    quoted, bare = (a, b) if a[1] else (b, a)
+    folded = {"uppercase": bare[0].upper(), "lowercase": bare[0].lower()}.get(case, bare[0])
+    return quoted[0] == folded
+
+
+def _matches(target: _TableKey, tables: AbstractSet[_TableKey], case: Optional[str]) -> bool:
     schema, name = target
     return any(
-        name == other_name and (schema is None or other_schema is None or schema == other_schema)
+        _same(name, other_name, case)
+        and (schema is None or other_schema is None or _same(schema, other_schema, case))
         for other_schema, other_name in tables
     )
 
