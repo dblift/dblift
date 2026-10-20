@@ -163,7 +163,18 @@ def test_execution_journal_receives_the_facts_objects(sql):
 
 @pytest.mark.parametrize(
     "sql",
-    ["CREATE TABLE s.t (a int)", "ALTER TABLE t ADD COLUMN c INT", TRIGGER, FUNCTION],
+    [
+        "CREATE TABLE s.t (a int)",
+        "ALTER TABLE t ADD COLUMN c INT",
+        "ALTER TABLE t ADD CONSTRAINT uq UNIQUE (c)",
+        "CREATE INDEX ix ON t (c)",
+        "CREATE VIEW v AS SELECT 1",
+        "CREATE SEQUENCE q",
+        "COMMENT ON TABLE t IS 'x'",
+        "INSERT INTO t VALUES (1)",
+        TRIGGER,
+        FUNCTION,
+    ],
 )
 def test_undo_asks_for_a_hand_written_reversal(sql):
     undo = _undo(sql)

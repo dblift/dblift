@@ -80,5 +80,5 @@ def test_postgres_truncate_facts_preserve_other_dialect_mappings(dialect):
     assert facts.opaque
 
 
-def test_postgres_statement_facts_hook_remains_inactive():
-    assert not PostgresqlQuirks().supports_statement_facts
+def test_postgres_statement_facts_hook_is_active():
+    assert PostgresqlQuirks().supports_statement_facts

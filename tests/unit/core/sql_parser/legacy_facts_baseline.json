@@ -61,7 +61,12 @@
             ]
           }
         ]
-      }
+      },
+      "accepted_differences": [
+        "CREATE TABLE is now classified DDL instead of UNKNOWN.",
+        "CREATE TABLE, CREATE INDEX and DROP TABLE now report the object they change in both objects and affected_objects; the legacy extractor filled affected_objects only.",
+        "UPDATE and DELETE now name child as their affected TABLE; the legacy extractor omitted both targets."
+      ]
     },
     {
       "dialect": "oracle",
