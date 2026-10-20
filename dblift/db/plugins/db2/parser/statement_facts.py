@@ -23,6 +23,7 @@ UNTERMINATED_IDENTIFIER = (
 NAME_NOT_READ = "db2 {operation} {type}: name not read"
 DATA_CHANGE_QUERY = "db2 data-change query: target not named"
 SET_INTEGRITY = "db2 SET INTEGRITY: tables not named"
+CALL_EFFECTS_UNAVAILABLE = "db2 CALL: procedure effects are not read"
 
 _DDL = frozenset("CREATE ALTER DROP RENAME COMMENT DECLARE GRANT REVOKE TRUNCATE".split())
 _DML = frozenset("INSERT UPDATE DELETE MERGE".split())
@@ -328,7 +329,11 @@ def _head_facts(
         end = table[2]
         indexed_table = ".".join(table[0])
         objects.append(_object(table[0], SqlObjectType.TABLE, "referenced"))
-    diagnostic = COLUMNS_UNAVAILABLE if head.column_facts else None
+    diagnostic = (
+        CALL_EFFECTS_UNAVAILABLE
+        if head.operation == "CALL"
+        else COLUMNS_UNAVAILABLE if head.column_facts else None
+    )
     return (
         StatementFacts(
             head.operation,

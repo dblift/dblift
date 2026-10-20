@@ -19,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **YugabyteDB index facts remain opaque when `NONCONCURRENTLY` follows `CREATE [UNIQUE] INDEX`.**
+  Its reader no longer reports that modifier as an index name or guesses the affected table.
+- **Db2 CALL facts report unknown procedure effects.** The referenced routine remains named,
+  while a diagnostic marks the other effects as unread.
 - **DuckDB comment masking retains fewer tokens.** The shared segment scanner
   records the same comment spans and refusals while `blank_comments()` drains
   its tokens instead of keeping the full stream.
