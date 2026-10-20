@@ -275,6 +275,23 @@ def test_sqlserver_source_guard_rejects_dead_advancement():
     assert loop_findings(ast.parse(source), plain_source=True) != []
 
 
+def test_sqlserver_source_guard_rejects_while_else_reset():
+    source = (
+        "def helper(source, ends):\n"
+        "    position = 0\n"
+        "    for end in ends:\n"
+        "        while position < end:\n"
+        "            hit = source.find('\\n', position, end)\n"
+        "            if hit < 0:\n"
+        "                position = end\n"
+        "                break\n"
+        "            position = hit + 1\n"
+        "        else:\n"
+        "            position = 0\n"
+    )
+    assert loop_findings(ast.parse(source), plain_source=True) != []
+
+
 @pytest.mark.parametrize(
     "scan",
     (

@@ -497,7 +497,7 @@ def _has_slice(node: ast.AST, of: Optional[str] = None) -> bool:
 
 def _advancing_line_search(call: ast.Call, loop: ast.AST) -> bool:
     """Accept only the line scanner's direct hit, exit, and advance sequence."""
-    if not isinstance(loop, ast.While) or len(call.args) != 3 or len(loop.body) != 3:
+    if not isinstance(loop, ast.While) or len(call.args) != 3 or len(loop.body) != 3 or loop.orelse:
         return False
     needle, start, end = call.args
     if not (
