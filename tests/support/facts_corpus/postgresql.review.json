@@ -1277,8 +1277,8 @@
  "27fb88d0000fdd25": {
   "class": "opaque-reader-gap",
   "facts": {
-   "diagnostic": "postgres Grant has no statement facts mapping",
-   "kind": "UNKNOWN",
+   "diagnostic": "postgres Grant privilege targets are not modelled",
+   "kind": "DDL",
    "operation": "GRANT"
   },
   "issue": "#669",
@@ -1298,7 +1298,7 @@
    ]
   },
   "path": "both",
-  "reason": "GRANT and REVOKE have no statement-facts mapping, so the reader names no object where the old extraction named TABLE t / TABLE default_schema.t (#669). PostgreSQL 16.14 parses it (SQLSTATE 42P01 at run time).",
+  "reason": "GRANT and REVOKE are read as DDL whose privilege targets are not modelled, so the reader names no object where the old extraction named TABLE t / TABLE default_schema.t (#669). PostgreSQL 16.14 parses it (SQLSTATE 42P01 at run time).",
   "sql": "GRANT SELECT ON t TO user1"
  },
  "28a2214906323fa1/analyzer": {
@@ -2724,8 +2724,8 @@
  "4bacb65d8d5a50da": {
   "class": "opaque-reader-gap",
   "facts": {
-   "diagnostic": "postgres Grant has no statement facts mapping",
-   "kind": "UNKNOWN",
+   "diagnostic": "postgres Grant privilege targets are not modelled",
+   "kind": "DDL",
    "operation": "GRANT"
   },
   "issue": "#669",
@@ -2745,7 +2745,7 @@
    ]
   },
   "path": "both",
-  "reason": "GRANT and REVOKE have no statement-facts mapping, so the reader names no object where the old extraction named TABLE users / TABLE default_schema.users (#669). PostgreSQL 16.14 parses it (SQLSTATE 42P01 at run time).",
+  "reason": "GRANT and REVOKE are read as DDL whose privilege targets are not modelled, so the reader names no object where the old extraction named TABLE users / TABLE default_schema.users (#669). PostgreSQL 16.14 parses it (SQLSTATE 42P01 at run time).",
   "sql": "GRANT SELECT ON users TO analyst"
  },
  "4f396193162c9a78/analyzer": {
@@ -3036,8 +3036,8 @@
  "58d35a8bf55d8d54": {
   "class": "opaque-reader-gap",
   "facts": {
-   "diagnostic": "postgres Grant has no statement facts mapping",
-   "kind": "UNKNOWN",
+   "diagnostic": "postgres Grant privilege targets are not modelled",
+   "kind": "DDL",
    "operation": "GRANT"
   },
   "issue": "#669",
@@ -3057,7 +3057,7 @@
    ]
   },
   "path": "both",
-  "reason": "GRANT and REVOKE have no statement-facts mapping, so the reader names no object where the old extraction named TABLE checkpoint / TABLE default_schema.checkpoint (#669). PostgreSQL 16.14 parses it (SQLSTATE 42P01 at run time).",
+  "reason": "GRANT and REVOKE are read as DDL whose privilege targets are not modelled, so the reader names no object where the old extraction named TABLE checkpoint / TABLE default_schema.checkpoint (#669). PostgreSQL 16.14 parses it (SQLSTATE 42P01 at run time).",
   "sql": "GRANT SELECT ON TABLE checkpoint TO r"
  },
  "5a55d5c483c0bdbf/analyzer": {
@@ -3523,8 +3523,8 @@
  "66e8449ef5304c8d": {
   "class": "opaque-reader-gap",
   "facts": {
-   "diagnostic": "postgres Revoke has no statement facts mapping",
-   "kind": "UNKNOWN",
+   "diagnostic": "postgres Revoke privilege targets are not modelled",
+   "kind": "DDL",
    "operation": "REVOKE"
   },
   "issue": "#669",
@@ -3544,7 +3544,7 @@
    ]
   },
   "path": "both",
-  "reason": "GRANT and REVOKE have no statement-facts mapping, so the reader names no object where the old extraction named TABLE t / TABLE default_schema.t (#669). PostgreSQL 16.14 parses it (SQLSTATE 42P01 at run time).",
+  "reason": "GRANT and REVOKE are read as DDL whose privilege targets are not modelled, so the reader names no object where the old extraction named TABLE t / TABLE default_schema.t (#669). PostgreSQL 16.14 parses it (SQLSTATE 42P01 at run time).",
   "sql": "REVOKE SELECT ON t FROM user1"
  },
  "686001cd0f92670c/analyzer": {
@@ -6768,8 +6768,8 @@
  "c37bd2a51a3698be": {
   "class": "opaque-reader-gap",
   "facts": {
-   "diagnostic": "postgres Grant has no statement facts mapping",
-   "kind": "UNKNOWN",
+   "diagnostic": "postgres Grant privilege targets are not modelled",
+   "kind": "DDL",
    "operation": "GRANT"
   },
   "issue": "#669",
@@ -6789,7 +6789,7 @@
    ]
   },
   "path": "both",
-  "reason": "GRANT and REVOKE have no statement-facts mapping, so the reader names no object where the old extraction named TABLE z / TABLE default_schema.z (#669). PostgreSQL 16.14 parses it (SQLSTATE 42P01 at run time).",
+  "reason": "GRANT and REVOKE are read as DDL whose privilege targets are not modelled, so the reader names no object where the old extraction named TABLE z / TABLE default_schema.z (#669). PostgreSQL 16.14 parses it (SQLSTATE 42P01 at run time).",
   "sql": "GRANT ALL ON z TO admin"
  },
  "c442e634bfb4214b/hybrid": {
@@ -7931,8 +7931,8 @@
  "e07fc09ef4350d3e": {
   "class": "opaque-reader-gap",
   "facts": {
-   "diagnostic": "postgres Grant has no statement facts mapping",
-   "kind": "UNKNOWN",
+   "diagnostic": "postgres Grant privilege targets are not modelled",
+   "kind": "DDL",
    "operation": "GRANT"
   },
   "issue": "#669",
@@ -7952,7 +7952,7 @@
    ]
   },
   "path": "both",
-  "reason": "GRANT and REVOKE have no statement-facts mapping, so the reader names no object where the old extraction named TABLE test / TABLE default_schema.test (#669). PostgreSQL 16.14 parses it (SQLSTATE 42P01 at run time).",
+  "reason": "GRANT and REVOKE are read as DDL whose privilege targets are not modelled, so the reader names no object where the old extraction named TABLE test / TABLE default_schema.test (#669). PostgreSQL 16.14 parses it (SQLSTATE 42P01 at run time).",
   "sql": "GRANT SELECT ON test TO user1"
  },
  "e0ca86d4ebc62716/hybrid": {
