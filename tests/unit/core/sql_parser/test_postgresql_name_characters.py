@@ -13,7 +13,7 @@ from typing import Tuple
 import pytest
 
 from dblift.db.provider_registry import ProviderRegistry
-from tests.support.splitter_spec.splitting import SplitOutcome, split_script
+from tests.support.splitter_spec.splitting import SplitOutcome, normalize, split_script
 from tests.support.statement_list_parity import DIALECTS, PSQL_WIRE
 
 #: C1 edges U+0080 and U+009F, no-break space, em space, ideographic space, next line,
@@ -59,6 +59,14 @@ def test_a_dollar_quote_after_a_name_with_the_character_is_part_of_the_name(dial
     outcome = split_script(dialect, "SELECT 1 AS a\xa0$x$;\nSELECT 2 AS $x$;")
     assert outcome.error == "UnsafeStatementSplitError"
     assert "line 2" in (outcome.detail or "")
+
+
+@pytest.mark.parametrize("dialect", PSQL_WIRE)
+def test_non_ascii_dollar_tag_keeps_its_inner_semicolon(dialect):
+    script = "SELECT $\xa0$x;y$\xa0$; SELECT 2;"
+    outcome = split_script(dialect, script)
+    assert outcome.error is None
+    assert normalize(outcome.statements) == ("SELECT $\xa0$x;y$\xa0$", "SELECT 2")
 
 
 @pytest.mark.parametrize("dialect", PSQL_WIRE)
