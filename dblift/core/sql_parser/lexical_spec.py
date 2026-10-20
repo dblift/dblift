@@ -279,6 +279,8 @@ class LexicalSpec:
     statement is not sent. It does not change the text of a statement that holds code.
     ``unread_blanks_are_code`` makes the scanner skip between tokens only ``text_blanks``: any other
     character ``str.isspace`` accepts is code, so a piece made of it is a statement and is sent.
+    ``non_ascii_names`` makes the word reader begin and continue a name at every character above
+    U+007F, as the engine's own scanner does: no lexeme opens inside a name.
     """
 
     name: str
@@ -322,6 +324,7 @@ class LexicalSpec:
     terminator_script: Optional[TerminatorScriptRules] = None
     segment_script: Optional[SegmentScriptRules] = None
     unread_blanks_are_code: bool = False
+    non_ascii_names: bool = False
 
     @property
     def trailing_edge_blanks(self) -> str:
