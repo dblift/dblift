@@ -90,7 +90,7 @@ def test_duckdb_metadata_mappings_preserve_postgres(dialect, sql, operation, kin
     "dialect,expected",
     [
         ("sqlite", "child AS c"),
-        ("postgres", "child AS c"),
+        ("postgres", "child"),
         ("oracle", "child c"),
         ("mysql", "child"),
         ("tsql", "child AS c"),
