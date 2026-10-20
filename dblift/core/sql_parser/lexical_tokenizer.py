@@ -675,7 +675,9 @@ class LexicalTokenizer(BaseTokenizer):
         if after == "$":
             return True  # empty tag
         # A tag starts like an unquoted identifier; $1 is a parameter, ${ a placeholder.
-        return bool(after) and (after.isalpha() or after == "_")
+        return bool(after) and (
+            after.isalpha() or after == "_" or self._is_non_ascii_name_char(after)
+        )
 
     def _track(self, token: Token) -> None:
         """Follow where statements end, as the statement parser does."""
@@ -898,9 +900,9 @@ class LexicalTokenizer(BaseTokenizer):
         tag = self.read()  # $
         string_text += tag
         while self.pos < len(self.sql) and self.peek() != "$":
-            # Tag can contain letters, numbers, underscore
+            # Tag can contain identifier characters except dollar signs.
             char = self.peek()
-            if char.isalnum() or char == "_":
+            if char.isalnum() or char == "_" or self._is_non_ascii_name_char(char):
                 tag += self.read()
                 string_text += char
             else:
