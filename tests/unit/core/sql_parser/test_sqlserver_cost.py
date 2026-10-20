@@ -1,21 +1,31 @@
 """Count the work of splitting SQL Server scripts through the public lexical engine.
 
-Native-regex helpers are charged for their bounded input spans before receiving plain strings;
-their internal VM steps and extra scans inside those helpers are not counted.
+Native-regex helpers are charged for their bounded input spans before receiving plain strings.
+A source check rejects repeated whole-source method calls inside the listed helpers; native VM
+steps remain outside the counter.
 """
 
+import ast
+import inspect
 import re
+import textwrap
 from unittest import mock
 
 import pytest
 
-from dblift.core.sql_parser import batch_script
+from dblift.core.sql_parser import batch_commands, batch_division, batch_script
 from dblift.core.sql_parser import lexical_engine as engine_module
 from dblift.core.sql_parser import lexical_tokenizer as tokenizer_module
 from dblift.core.sql_parser.lexical_engine import LexicalEngine
 from dblift.core.sql_parser.lexical_tokenizer import LexicalTokenizer
 from dblift.db.plugins.sqlserver.parser.lexical_spec import SQLSERVER_SPEC
-from tests.support.splitting_cost import CountingParserTokens, CountingPattern, CountingText, Meter
+from tests.support.splitting_cost import (
+    CountingParserTokens,
+    CountingPattern,
+    CountingText,
+    Meter,
+    loop_findings,
+)
 
 SMALL, LARGE, BOUND = 100, 400, 5
 
@@ -141,3 +151,41 @@ def test_sqlserver_search_pattern_certificate_refuses_ambiguous_alternatives(pat
     CountingPattern(LexicalTokenizer("", spec=SQLSERVER_SPEC)._opener_re, Meter())
     with pytest.raises(AssertionError, match="uncertified regex"):
         CountingPattern(re.compile(pattern), Meter())
+
+
+def test_sqlserver_source_guard_sees_the_divide_rescan_the_meter_cannot(monkeypatch):
+    source = textwrap.dedent(inspect.getsource(batch_division.divide))
+    anchor = "    division = rules.division\n"
+    assert source.count(anchor) == 1
+    mutant = source.replace(
+        anchor,
+        "    for _ in range(len(source)):\n"
+        "        source.count('never-present', batch_start, batch_end)\n" + anchor,
+    )
+    namespace = dict(vars(batch_division))
+    exec(mutant, namespace)  # noqa: S102 - test-owned mutation
+    monkeypatch.setattr(batch_script, "divide", namespace["divide"])
+    make = SHAPES["one lexeme across many lines"]
+    small, large = counted(make(SMALL)), counted(make(LARGE))
+    assert large <= BOUND * small  # the plain-string helper hides this scan from the meter
+    assert loop_findings(ast.parse(mutant), plain_source=True) != []
+
+
+@pytest.mark.parametrize(
+    "function",
+    (
+        LexicalEngine._parser,
+        LexicalTokenizer.__init__,
+        batch_commands.read_command,
+        batch_commands.find_lone_cr,
+        batch_commands.refuse_variable_in_code,
+        batch_commands.refuse_variable_in_lexeme,
+        batch_division.code_positions,
+        batch_division._events,
+        batch_division.divide,
+    ),
+    ids=lambda function: function.__qualname__,
+)
+def test_sqlserver_plain_source_helpers_do_not_rescan_the_source_in_a_loop(function):
+    source = textwrap.dedent(inspect.getsource(function))
+    assert loop_findings(ast.parse(source), plain_source=True) == [], function.__qualname__

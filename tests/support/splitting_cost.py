@@ -495,14 +495,51 @@ def _has_slice(node: ast.AST, of: Optional[str] = None) -> bool:
     )
 
 
-def loop_findings(tree: ast.AST) -> List[str]:
-    """Copies of the rest of a text, and rebuilds of a string from itself, inside a loop body."""
+def loop_findings(tree: ast.AST, *, plain_source: bool = False) -> List[str]:
+    """Copies and rebuilds in loops; optionally check helpers given plain source strings."""
     found = []
+    scanning_methods = {
+        "count",
+        "find",
+        "rfind",
+        "index",
+        "rindex",
+        "split",
+        "splitlines",
+        "replace",
+        "partition",
+        "rpartition",
+        "upper",
+        "lower",
+        "strip",
+        "lstrip",
+        "rstrip",
+    }
     loops = [n for n in ast.walk(tree) if isinstance(n, (ast.For, ast.While))]
     for loop in loops:
         for statement in loop.body:
             for node in ast.walk(statement):
                 where = f"line {getattr(node, 'lineno', 0)}"
+                if (
+                    plain_source
+                    and isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Attribute)
+                ):
+                    method = node.func
+                    if (
+                        _name(method.value) in {"source", "sql", "script"}
+                        and method.attr in scanning_methods
+                    ):
+                        advancing_line_search = (
+                            method.attr == "find"
+                            and len(node.args) == 3
+                            and isinstance(node.args[0], ast.Constant)
+                            and node.args[0].value == "\n"
+                            and _name(node.args[1]) == "cursor"
+                            and _name(node.args[2]) == "offset"
+                        )
+                        if not advancing_line_search:
+                            found.append(f"source scan in a loop at {where}")
                 if (
                     isinstance(node, ast.Subscript)
                     and isinstance(node.slice, ast.Slice)
