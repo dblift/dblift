@@ -207,3 +207,8 @@ def test_data_changing_cte_keeps_the_changes_rows_caution_for_its_outer_target()
 
 def test_read_only_cte_raises_no_caution():
     assert analyse_script("WITH x AS (SELECT 1) SELECT * FROM x", "postgresql").cautions == ()
+
+
+@pytest.mark.parametrize("sql", ["REPLACE INTO t VALUES (1)", "INSERT INTO t VALUES (1)"])
+def test_an_opaque_dml_with_a_target_gets_no_second_caution(sql):
+    assert analyse_script(sql, "postgresql").cautions == ()
