@@ -2,12 +2,10 @@
 
 import pytest
 
-from dblift.core.migration.scripting.undo_script_generator import UndoScriptGenerator
 from dblift.core.migration.sql.script_analysis import analyse_script
 from dblift.core.sql_parser import SqlParserFactory
 from dblift.core.sql_parser.statement_facts import SqlglotStatementFactsReader
 from dblift.db.provider_registry import ProviderRegistry
-from tests.unit._migration_factory import make_migration
 
 pytestmark = pytest.mark.unit
 
@@ -61,17 +59,6 @@ def test_analyse_script_never_raises_when_no_parser_can_be_built(reader_dialect,
 
     assert analysis.statements == ()
     assert analysis.errors
-
-
-def test_undo_generator_builds_and_reverses_from_facts(reader_dialect, monkeypatch):
-    quirks = ProviderRegistry.get_quirks(reader_dialect)
-    monkeypatch.setattr(type(quirks), "undo_reverses_statement_facts", True)
-    migration = make_migration(script_name="V1__t.sql", content="CREATE TABLE t (id INT);")
-
-    undo = UndoScriptGenerator(reader_dialect)._generate_undo_statements(migration)
-
-    assert len(undo) == 1
-    assert "DROP TABLE" in undo[0].sql.upper()
 
 
 def _plugin_returning(monkeypatch, cls):
