@@ -7306,7 +7306,7 @@
 "sha256": "d33767030fb567ebf4699543cf51a835e6b5eced5e52adf95a4e7fbfd5c4910d"
 },
 "spec_rows": {
-"count": 755,
+"count": 763,
 "observed": [
 [
 "db2",
@@ -15357,6 +15357,42 @@
 }
 ],
 [
+"postgresql",
+"SELECT $\u00a0$x;y$\u00a0$; SELECT 2;",
+{
+"analysis": [
+"SELECT $\u00a0$x;y$\u00a0$",
+"SELECT 2"
+],
+"engine": [
+"SELECT $\u00a0$x;y$\u00a0$;",
+"SELECT 2;"
+],
+"splitter": [
+"SELECT $\u00a0$x;y$\u00a0$;",
+"SELECT 2;"
+]
+}
+],
+[
+"postgresql",
+"SELECT $a\u00a0$x;y$a\u00a0$; SELECT 2;",
+{
+"analysis": [
+"SELECT $a\u00a0$x;y$a\u00a0$",
+"SELECT 2"
+],
+"engine": [
+"SELECT $a\u00a0$x;y$a\u00a0$;",
+"SELECT 2;"
+],
+"splitter": [
+"SELECT $a\u00a0$x;y$a\u00a0$;",
+"SELECT 2;"
+]
+}
+],
+[
 "sqlite",
 "CREATE TABLE t(a); INSERT INTO t VALUES(1);",
 {
@@ -21165,8 +21201,116 @@
 "a NUL character on line 2, column 1: the client sends the query as a C string, so the server never sees the rest"
 ]
 }
+],
+[
+"cockroachdb",
+"SELECT $\u00a0$x;y$\u00a0$; SELECT 2;",
+{
+"analysis": [
+"SELECT $\u00a0$x;y$\u00a0$",
+"SELECT 2"
+],
+"engine": [
+"SELECT $\u00a0$x;y$\u00a0$;",
+"SELECT 2;"
+],
+"splitter": [
+"SELECT $\u00a0$x;y$\u00a0$;",
+"SELECT 2;"
+]
+}
+],
+[
+"yugabytedb",
+"SELECT $\u00a0$x;y$\u00a0$; SELECT 2;",
+{
+"analysis": [
+"SELECT $\u00a0$x;y$\u00a0$",
+"SELECT 2"
+],
+"engine": [
+"SELECT $\u00a0$x;y$\u00a0$;",
+"SELECT 2;"
+],
+"splitter": [
+"SELECT $\u00a0$x;y$\u00a0$;",
+"SELECT 2;"
+]
+}
+],
+[
+"redshift",
+"SELECT $\u00a0$x;y$\u00a0$; SELECT 2;",
+{
+"analysis": [
+"SELECT $\u00a0$x;y$\u00a0$",
+"SELECT 2"
+],
+"engine": [
+"SELECT $\u00a0$x;y$\u00a0$;",
+"SELECT 2;"
+],
+"splitter": [
+"SELECT $\u00a0$x;y$\u00a0$;",
+"SELECT 2;"
+]
+}
+],
+[
+"cockroachdb",
+"SELECT $a\u00a0$x;y$a\u00a0$; SELECT 2;",
+{
+"analysis": [
+"SELECT $a\u00a0$x;y$a\u00a0$",
+"SELECT 2"
+],
+"engine": [
+"SELECT $a\u00a0$x;y$a\u00a0$;",
+"SELECT 2;"
+],
+"splitter": [
+"SELECT $a\u00a0$x;y$a\u00a0$;",
+"SELECT 2;"
+]
+}
+],
+[
+"yugabytedb",
+"SELECT $a\u00a0$x;y$a\u00a0$; SELECT 2;",
+{
+"analysis": [
+"SELECT $a\u00a0$x;y$a\u00a0$",
+"SELECT 2"
+],
+"engine": [
+"SELECT $a\u00a0$x;y$a\u00a0$;",
+"SELECT 2;"
+],
+"splitter": [
+"SELECT $a\u00a0$x;y$a\u00a0$;",
+"SELECT 2;"
+]
+}
+],
+[
+"redshift",
+"SELECT $a\u00a0$x;y$a\u00a0$; SELECT 2;",
+{
+"analysis": [
+"SELECT $a\u00a0$x;y$a\u00a0$",
+"SELECT 2"
+],
+"engine": [
+"SELECT $a\u00a0$x;y$a\u00a0$;",
+"SELECT 2;"
+],
+"splitter": [
+"SELECT $a\u00a0$x;y$a\u00a0$;",
+"SELECT 2;"
+]
+}
 ]
 ],
-"sha256": "5c3e2f64be6849fd1490a81d2b13578235bf0e6faa41d556ce839da6941c4352"
+"sha256": "6cee6495033a2d5ee1e12069ae9225a72da070a6b29fc7c74a2f92715ebb01b7"
 }
 }

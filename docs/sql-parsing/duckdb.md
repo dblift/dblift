@@ -410,9 +410,9 @@ escape string unless the `E` ends a longer word, and the 18 non-ASCII blanks Duc
 character and a doubled quote stays inside. Adjacent string literals separated by a newline,
 including a line comment, continue an `E` string's escape mode. A plain string and a quoted identifier end at
 the next quote, a doubled quote being two lexemes in a row. A line comment ends at the
-first LF or CR, a block comment nests and one that is never closed is sent as it stands,
-like a string, an identifier or a dollar-quoted string that is never closed: DuckDB
-rejects each of them loudly, so nothing is refused for them. A `;` ends a statement
+first LF or CR, a block comment nests; an unclosed block comment is refused before any
+statement runs (rows 40, 41 and 107), while an unclosed string, identifier or dollar-quoted
+string is sent as it stands and DuckDB rejects it. A `;` ends a statement
 wherever it stands outside those lexemes. A segment of comments only is not a statement
 for execution. The one line rule reads each line where no lexeme is open: a line that
 starts with `.` in column 0 while no statement text is pending is a `duckdb` shell
