@@ -177,9 +177,9 @@ def _supplementary_name_character(sql: str) -> Optional[str]:
         return None
     for token in tokens:
         if token.token_type in {TokenType.VAR, TokenType.IDENTIFIER}:
-            found = next((c for c in token.text if c > "\uffff"), None)
-            if found is not None:
-                return found
+            for character in token.text:
+                if character > "\uffff":
+                    return str(character)
     return None
 
 
@@ -890,9 +890,12 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
     unread = unread_name_character(sql, dialect=dialect)
     if unread is not None:
         return _unread_name_facts(sql, dialect, unread)
-    if dialect == "mysql" and (
-        wide := _supplementary_name_character(sql)
-    ):  # lint: allow-dialect-string: MySQL name characters
+    wide = (
+        _supplementary_name_character(sql)
+        if dialect == "mysql"  # lint: allow-dialect-string: MySQL name characters
+        else None
+    )
+    if wide:
         head = _head_facts(sql, "", dialect=dialect)
         return StatementFacts(
             head.operation,
