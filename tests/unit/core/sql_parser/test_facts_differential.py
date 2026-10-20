@@ -284,6 +284,46 @@ def test_a_reader_gap_names_an_issue() -> None:
     )
 
 
+GOOD_REJECTION = {"postgresql 16.14": "42601", "mysql 8.4": "1064"}
+
+
+def _gap_unclassified(entry: dict, cls: str = "opaque-reader-gap") -> list:
+    results: Results = [("r", _row("s", {}, {}), {"hybrid": cls, "analyzer": "same"})]
+    base = {"path": "hybrid", "class": cls, "reason": "the engine rejects it"}
+    return check_review(results, {"r/hybrid": {**base, **entry}}, "newest")["unclassified"]
+
+
+def test_a_reader_gap_the_engines_reject_is_explained_by_rejected_by() -> None:
+    assert _gap_unclassified({"rejected_by": GOOD_REJECTION}) == []
+
+
+@pytest.mark.parametrize(
+    "rejected_by",
+    [
+        {},
+        "42601",
+        ["42601"],
+        None,
+        {"postgresql 16.14": ""},
+        {"": "42601"},
+        {"postgresql 16.14": 42601},
+        {"postgresql 16.14": "42601", "mysql 8.4": " "},
+    ],
+)
+def test_a_malformed_rejected_by_does_not_explain_a_reader_gap(rejected_by: object) -> None:
+    assert _gap_unclassified({"rejected_by": rejected_by}) == ["r/hybrid"]
+
+
+def test_an_issue_still_explains_a_reader_gap_alone() -> None:
+    assert _gap_unclassified({"issue": "#1"}) == []
+    assert _gap_unclassified({"issue": "#1", "rejected_by": {}}) == []
+
+
+def test_rejected_by_is_ignored_for_a_class_that_is_not_a_reader_gap() -> None:
+    assert _gap_unclassified({"rejected_by": {}}, "disagree") == []
+    assert _gap_unclassified({"reason": " ", "rejected_by": GOOD_REJECTION}) == ["r/hybrid"]
+
+
 def test_an_entry_that_lacks_the_running_arm_is_stale_on_that_arm() -> None:
     entry = {"r/hybrid": {**_per_arm_entry("same", "disagree")["r/hybrid"]}}
     entry["r/hybrid"]["class"] = {"floor": "disagree"}
