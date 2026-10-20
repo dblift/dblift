@@ -19,6 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **DuckDB comment masking retains fewer tokens.** The shared segment scanner
+  records the same comment spans and refusals while `blank_comments()` drains
+  its tokens instead of keeping the full stream.
 - **MySQL and MariaDB read statement facts from the SQL grammar.** `info --format json`,
   `migrate --dry-run`, object tracking during `migrate`, data-change analysis and lint read each
   statement's kind, objects, target and predicate from the sqlglot AST after the client rules split
