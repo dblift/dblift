@@ -252,20 +252,16 @@ def test_postgresql_derivatives_record_exactly_what_postgresql_does(
             assert now == _comparable(_on_this_arm(row), derivative), (derivative, row["sql"])
 
 
-def test_mariadb_differs_from_mysql_only_in_the_client_command_error_text(
+def test_mariadb_records_the_facts_of_mysql_for_every_row(
     corpus: Dict[str, List[Dict[str, Any]]],
 ) -> None:
-    differing = {}
-    for row in corpus["mysql"]:
-        now = record_statement("mariadb", row["sql"])
-        want = _on_this_arm(row)
-        if now != want:
-            differing[row["sql"]] = (want["old"]["hybrid"], now["old"]["hybrid"])
-            assert now["facts"] == want["facts"]
-            assert now["old"]["analyzer"] == want["old"]["analyzer"]
-    assert list(differing) == ["GO"]
-    mysql_error, mariadb_error = (v["raised"] for v in differing["GO"])
-    assert mysql_error.replace("mysql", "mariadb") == mariadb_error
+    """The extraction of MySQL is frozen, so MariaDB is compared on the facts alone."""
+    differing = [
+        row["sql"]
+        for row in corpus["mysql"]
+        if record_statement("mariadb", row["sql"]) != _comparable(_on_this_arm(row), "mariadb")
+    ]
+    assert differing == []
 
 
 @pytest.mark.parametrize("activated", [False, True])
