@@ -1180,7 +1180,7 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
         )
         target_table = table
         if (
-            dialect in {"duckdb", "mysql"}  # lint: allow-dialect-string: bare mutation targets
+            dialect in {"duckdb", "mysql", "postgres"}  # lint: allow-dialect-string: bare targets
             and table is not None
             and (table.args.get("alias") or table.args.get("joins") or table.args.get("only"))
         ):
