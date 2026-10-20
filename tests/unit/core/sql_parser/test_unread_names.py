@@ -137,7 +137,7 @@ def test_the_schema_part_of_a_name_is_checked_too():
     source = "CREATE TABLE sch\u00e9.t (id INT)"
     cut = SqlObject(name="t", schema="sch", object_type=SqlObjectType.TABLE)
     whole = SqlObject(name="t", schema="sch\u00e9", object_type=SqlObjectType.TABLE)
-    for dialect in ("postgresql", "mysql"):
+    for dialect in ("postgresql", "sqlserver"):
         parser = SqlParserFactory(dialect).get_parser()
         assert parser._names_unreadable(source, [cut])
         assert not parser._names_unreadable(source, [whole])
@@ -146,7 +146,7 @@ def test_the_schema_part_of_a_name_is_checked_too():
     assert not sqlglot_parser._names_unreadable(source, [whole])
 
 
-@pytest.mark.parametrize("dialect", ("postgresql", "mysql", "snowflake"))
+@pytest.mark.parametrize("dialect", ("postgresql", "sqlserver", "snowflake"))
 def test_a_statement_that_cannot_be_located_in_its_script_is_withheld(dialect):
     parser = SqlParserFactory(dialect).get_parser()
     assert parser._names_unreadable(None, [])
