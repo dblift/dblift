@@ -45,6 +45,18 @@ _HEAD = re.compile(
 _HEAD_SCAN = re.compile(
     _HEAD.pattern.replace(r"^\s*", r"(?:^|;)\s*", 1), re.IGNORECASE | re.MULTILINE
 )
+# PostgreSQL names more kinds than the generic head and skips its creation modifiers.
+_POSTGRES_HEAD = re.compile(
+    rf"^\s*(CREATE|ALTER|DROP)\s+"
+    rf"(?:(?:OR\s+REPLACE|UNLOGGED|TEMP|TEMPORARY|UNIQUE|CONSTRAINT|IF|NOT|EXISTS)\s+)*"
+    rf"(VIRTUAL\s+TABLE|MATERIALIZED\s+VIEW|TABLE|VIEW|INDEX|TRIGGER|FUNCTION|PROCEDURE"
+    rf"|SEQUENCE|TYPE|SCHEMA|EXTENSION)\s+(?:(?:IF|NOT|EXISTS)\s+)*"
+    rf"(?!AUTHORIZATION\b)({_NAME})(?:\s*\.\s*({_NAME}))?",
+    re.IGNORECASE,
+)
+_POSTGRES_HEAD_SCAN = re.compile(
+    _POSTGRES_HEAD.pattern.replace(r"^\s*", r"(?:^|;)\s*", 1), re.IGNORECASE | re.MULTILINE
+)
 _DML_HEAD = re.compile(
     rf"^\s*(INSERT|REPLACE|UPDATE|DELETE)\s+(?:OR\s+\w+\s+)?(?:(?:INTO|FROM)\s+)?"
     rf"({_NAME})(?:\s*\.\s*({_NAME}))?",
@@ -701,11 +713,15 @@ def _head_facts(sql: str, diagnostic: str, *, dialect: str = "") -> StatementFac
         return StatementFacts(operation, kind, diagnostic=diagnostic)
     if dialect == "duckdb":  # lint: allow-dialect-string: preserve DuckDB opaque metadata kinds
         kind = {"COMMENT": "DDL", "SHOW": "QUERY", "EXECUTE": "DML"}.get(operation, kind)
+    postgres = dialect == "postgres"  # lint: allow-dialect-string: PostgreSQL head kinds
+    if postgres:
+        kind = "DDL" if operation == "COMMENT" else kind
     objects: Tuple[NamedObject, ...] = ()
-    match = _HEAD.match(head)
+    match = (_POSTGRES_HEAD if postgres else _HEAD).match(head)
     if match is None and first is None:
         # Stray characters (a NUL, a lone ``/``) ahead of the statement; the engine reads past them.
-        match = _HEAD_SCAN.search(head.replace("\x00", " "))
+        scan = _POSTGRES_HEAD_SCAN if postgres else _HEAD_SCAN
+        match = scan.search(head.replace("\x00", " "))
         if match:
             operation = match.group(1).upper()
             kind = _KINDS[operation]
@@ -771,6 +787,32 @@ def _mysql_unresolved_mutation_target(ast: exp.Expression) -> bool:
         ):
             return True
     return False
+
+
+def _postgres_comment_identity(ast: exp.Comment) -> Optional[NamedObject]:
+    """The object ``COMMENT ON`` changes; a column comment changes its table."""
+    kind = str(ast.args.get("kind") or "").upper()
+    node = ast.this
+    if kind == "COLUMN" and isinstance(node, exp.Column):
+        node = exp.Table(
+            this=node.args.get("table"), db=node.args.get("db"), catalog=node.args.get("catalog")
+        )
+        kind = "TABLE"
+    elif kind == "VIEW" and ast.args.get("materialized"):
+        kind = "MATERIALIZED_VIEW"
+    object_type = SqlObjectType.__members__.get(kind)
+    if object_type is None or not isinstance(node, exp.Table):
+        return None
+    return _named(node, object_type, "altered")
+
+
+def _select_into_table(ast: exp.Expr) -> Optional[exp.Expression]:
+    """The table of a top-level ``SELECT ... INTO``, also when it leads a set operation."""
+    first: exp.Expr = ast
+    while isinstance(first, exp.SetOperation):
+        first = first.this
+    into = first.args.get("into")
+    return into.this if isinstance(into, exp.Into) else None
 
 
 def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
@@ -848,6 +890,13 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
     ):
         return _copy_facts(ast, sql)
 
+    if dialect == "postgres" and isinstance(  # lint: allow-dialect-string: PostgreSQL COMMENT ON
+        ast, exp.Comment
+    ):
+        identity = _postgres_comment_identity(ast)
+        if identity is not None:
+            return StatementFacts("COMMENT", "DDL", (identity,))
+
     if dialect == "duckdb":  # lint: allow-dialect-string: DuckDB metadata statement mappings
         if isinstance(ast, exp.Comment) and ast.args.get("kind") == "TABLE":
             identity = _named(ast.this, SqlObjectType.TABLE, "altered")
@@ -879,6 +928,13 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
             and not subject.name
         ):
             identity = NamedObject(subject.db, object_type, "created")
+        if (
+            dialect == "postgres"  # lint: allow-dialect-string: PostgreSQL trigger name
+            and object_type == SqlObjectType.TRIGGER
+            and isinstance(subject, exp.Identifier)
+            and subject.name
+        ):
+            identity = NamedObject(subject.name, object_type, "created")
         objects: Tuple[NamedObject, ...] = (identity,) if identity else ()
         indexed_table = None
         indexed_columns = None
@@ -945,7 +1001,7 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
             object_type = SqlObjectType.MATERIALIZED_VIEW
         targets = ast.args.get("tables") or ast.args.get("expressions") or [ast.this]
         if (
-            dialect == "duckdb"  # lint: allow-dialect-string: DuckDB schema identity projection
+            dialect in {"duckdb", "postgres"}  # lint: allow-dialect-string: schema identity
             and object_type == SqlObjectType.SCHEMA
         ):
             dropped_objects = tuple(
@@ -1144,6 +1200,13 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
         )
 
     if isinstance(ast, exp.Query):
+        if dialect == "postgres":  # lint: allow-dialect-string: PostgreSQL SELECT INTO
+            into = _select_into_table(ast)
+            if into is not None:
+                created = _named(into, SqlObjectType.TABLE, "created")
+                if created is not None:
+                    sources = _referenced(ast, tuple(into.find_all(exp.Table)))
+                    return StatementFacts("SELECT", "DML", (created,) + sources)
         return StatementFacts("SELECT", "QUERY", _referenced(ast))
     return _head_facts(
         sql, f"{dialect} {type(ast).__name__} has no statement facts mapping", dialect=dialect
