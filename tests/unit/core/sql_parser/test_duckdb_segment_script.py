@@ -227,17 +227,17 @@ CASES = [
         (
             "error",
             "UnsafeStatementSplitError",
-            "a NUL character on line 2: the engine reads the script up to it and silently drops the rest",
+            "a NUL character on line 2, column 1: the engine reads the script up to it and silently drops the rest",
         ),
         (
             "error",
             "UnsafeStatementSplitError",
-            "a NUL character on line 2: the engine reads the script up to it and silently drops the rest",
+            "a NUL character on line 2, column 1: the engine reads the script up to it and silently drops the rest",
         ),
         (
             "error",
             "UnsafeStatementSplitError",
-            "a NUL character on line 2: the engine reads the script up to it and silently drops the rest",
+            "a NUL character on line 2, column 1: the engine reads the script up to it and silently drops the rest",
         ),
     ),
     (
@@ -246,17 +246,17 @@ CASES = [
         (
             "error",
             "UnsafeStatementSplitError",
-            "a NUL character on line 2: the engine reads the script up to it and silently drops the rest",
+            "a NUL character on line 2, column 1: the engine reads the script up to it and silently drops the rest",
         ),
         (
             "error",
             "UnsafeStatementSplitError",
-            "a NUL character on line 2: the engine reads the script up to it and silently drops the rest",
+            "a NUL character on line 2, column 1: the engine reads the script up to it and silently drops the rest",
         ),
         (
             "error",
             "UnsafeStatementSplitError",
-            "a NUL character on line 2: the engine reads the script up to it and silently drops the rest",
+            "a NUL character on line 2, column 1: the engine reads the script up to it and silently drops the rest",
         ),
     ),
     (
@@ -265,17 +265,17 @@ CASES = [
         (
             "error",
             "UnsafeStatementSplitError",
-            "a NUL character on line 1: the engine reads the script up to it and silently drops the rest",
+            "a NUL character on line 1, column 1: the engine reads the script up to it and silently drops the rest",
         ),
         (
             "error",
             "UnsafeStatementSplitError",
-            "a NUL character on line 1: the engine reads the script up to it and silently drops the rest",
+            "a NUL character on line 1, column 1: the engine reads the script up to it and silently drops the rest",
         ),
         (
             "error",
             "UnsafeStatementSplitError",
-            "a NUL character on line 1: the engine reads the script up to it and silently drops the rest",
+            "a NUL character on line 1, column 1: the engine reads the script up to it and silently drops the rest",
         ),
     ),
     (

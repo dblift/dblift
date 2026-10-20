@@ -14,7 +14,7 @@ they are meant to replace. Real inputs only: no generated cases.
 | `<family>.jsonl` | One row per distinct statement after the family's `split_for_analysis`, sorted by `sql`: `inputs` (ids), `facts`, `old`, and `facts_newest` / `old_newest` only where the newest sqlglot differs. |
 | `VERSIONS.json` | The two recorded sqlglot versions, the size and input count measured at the first recording (write-once: `measure` never rewrites the size and refuses to lower the count), and the number of rows that differ between the arms. |
 | `input_ids.txt` | The input ids of the first recording; the corpus test requires all of them to remain, so removing one input and adding another fails. |
-| `not_idempotent.json` | Statements that do not split back to themselves (the splitter refuses a lone PL/SQL unit, a client command, or drops a trailing comment). Listed so the idempotence test is exact. |
+| `not_idempotent.json` | Statements that do not split back to themselves (the splitter refuses a lone PL/SQL unit, a client command or a NUL byte, or drops a trailing comment). Listed so the idempotence test is exact. |
 | `reserved/<family>.txt` | The vendor's reserved words, with source URL, retrieval date, engine version and category in the header. SQLite (the vendor draws no reserved/non-reserved line) and Db2 (page not retrievable in a checkable form) have none. |
 | `gated.json` | The families whose differences between extraction and reader must all be classified or explained (see below). |
 | `<family>.review.json` | The reasons given for differences that need one, per statement id. |

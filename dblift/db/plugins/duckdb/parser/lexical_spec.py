@@ -30,9 +30,6 @@ DUCKDB_RULES = SegmentScriptRules(
     parameter=rf"\$(?:{_DIGITS})?",
     line_comment_ends="\r\n",
     command_prefix=".",
-    refused_character="\x00",
-    refused_character_name="NUL",
-    refused_reason="the engine reads the script up to it and silently drops the rest",
     blank_pass=BlankPassRules(
         quotes="'\"",
         comment="--",
@@ -51,4 +48,7 @@ DUCKDB_SPEC = LexicalSpec(
     nested_comments=True,
     leading_bom_is_blank=True,
     segment_script=DUCKDB_RULES,
+    refused_character="\x00",
+    refused_character_name="NUL",
+    refused_reason="the engine reads the script up to it and silently drops the rest",
 )
