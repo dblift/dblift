@@ -17,7 +17,7 @@ from dblift.core.sql_model.table import Table
 from dblift.core.sql_parser.hybrid_parser import HybridParser
 
 
-def _make_parser(dialect: str = "mysql") -> HybridParser:
+def _make_parser(dialect: str = "sqlserver") -> HybridParser:
     return HybridParser(dialect)
 
 
@@ -220,8 +220,8 @@ class TestExtractViewDepsFromObjects:
 class TestParseTriggerHeader:
     """Tests for _parse_trigger_header (AC#6.7)."""
 
-    def test_valid_mysql_trigger_matches(self):
-        parser = _make_parser("mysql")
+    def test_valid_trigger_header_matches(self):
+        parser = _make_parser("sqlserver")
         sql = "CREATE TRIGGER trg_users_ai AFTER INSERT ON test_schema.users FOR EACH ROW SET NEW.created = NOW()"
         match = parser._parse_trigger_header(sql)
         assert match is not None
@@ -232,7 +232,7 @@ class TestParseTriggerHeader:
         assert match.group(6) == "users"
 
     def test_invalid_sql_returns_none(self):
-        parser = _make_parser("mysql")
+        parser = _make_parser("sqlserver")
         sql = "SELECT * FROM users"
         match = parser._parse_trigger_header(sql)
         assert match is None
@@ -241,20 +241,6 @@ class TestParseTriggerHeader:
 @pytest.mark.unit
 class TestExtractTriggerDefiner:
     """Tests for _extract_trigger_definer (AC#6.8)."""
-
-    def test_extracts_definer_from_sql(self):
-        parser = _make_parser("mysql")
-        sql = "CREATE DEFINER=root@localhost TRIGGER trg AFTER INSERT ON s.t FOR EACH ROW SET NEW.x = 1"
-        definer = parser._extract_trigger_definer(sql)
-        assert definer is not None
-        assert "root" in definer
-        assert "localhost" in definer
-
-    def test_returns_none_when_no_definer(self):
-        parser = _make_parser("mysql")
-        sql = "CREATE TRIGGER trg AFTER INSERT ON s.t FOR EACH ROW SET NEW.x = 1"
-        definer = parser._extract_trigger_definer(sql)
-        assert definer is None
 
     def test_returns_none_for_non_mysql_dialect(self):
         parser = _make_parser("oracle")

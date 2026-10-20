@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **MySQL and MariaDB read statement facts from the SQL grammar.** `info --format json`,
+  `migrate --dry-run`, object tracking during `migrate`, data-change analysis and lint read each
+  statement's kind, objects, target and predicate from the sqlglot AST after the client rules split
+  the script; executable comments (`/*! … */`, `/*M! … */`) are reported as unread statements,
+  since whether they run depends on the server version; a statement whose objects cannot be
+  established is reported as unread instead of guessed.
+- **Undo generation for MySQL and MariaDB writes a manual-review placeholder** for every
+  statement except a `SELECT`, which produces no undo.
 - **Splitting a large script uses less memory.** Tokens no longer carry a per-instance
   dictionary. Peak memory when splitting a 3 MiB INSERT script falls from 201 MB to 157 MB
   on DuckDB, 197 MB to 152 MB on MySQL, 276 MB to 213 MB on Db2 and 200 MB to 155 MB on
@@ -146,6 +154,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   carry `kind`. It warns when called; its answers are unchanged.
 
 ### Fixed
+
+- **DuckDB splits adjacent strings at the engine's boundaries.** An `E'...'`
+  string carries its backslash escape mode into the next literal only across a
+  CR or LF; a literal on the same line is plain. A non-ASCII digit before `E`
+  remains part of a name, so it does not open an escape string. Statement cuts
+  and literal masking now follow those rules.
 
 - **A NUL byte in a PostgreSQL-family script is refused instead of silently cutting the statement
   (PostgreSQL, CockroachDB, YugabyteDB and the other engines of the family; Redshift as a precaution).** Everything

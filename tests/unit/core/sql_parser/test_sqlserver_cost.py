@@ -7,6 +7,11 @@ import pytest
 from dblift.core.sql_parser.lexical_engine import LexicalEngine
 from dblift.db.plugins.sqlserver.parser.lexical_spec import SQLSERVER_SPEC
 
+# Wall-clock ratios over several sizes, best of N: under coverage on a CI runner the
+# largest shape takes about 40 s locally and over 120 s there, so the suite-wide
+# 120 s timeout cut it. The bound being tested is the growth ratio, not the time.
+pytestmark = pytest.mark.timeout(600)
+
 #: shape name -> (script of n units, n for the small size). Each shape stresses one reader.
 SHAPES = {
     "one lexeme across many lines": (

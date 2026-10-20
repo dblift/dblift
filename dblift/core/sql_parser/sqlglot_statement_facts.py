@@ -691,6 +691,29 @@ _DML_FORM = {
     "UPDATE": re.compile(r"^\s*UPDATE\b", re.IGNORECASE),
     "DELETE": re.compile(r"^\s*DELETE\s+FROM\b", re.IGNORECASE),
 }
+_MYSQL_NAME = r"(?:`[^`]*`|[\w$]+)"
+_MYSQL_QUALIFIED = rf"{_MYSQL_NAME}(?:\s*\.\s*{_MYSQL_NAME})?"
+_MYSQL_SINGLE_TARGET = re.compile(
+    rf"^\s*(?:UPDATE\s+{_MYSQL_QUALIFIED}\s+SET\b"
+    rf"|DELETE\s+FROM\s+{_MYSQL_QUALIFIED}(?:\s*;?\s*$|\s+(?:WHERE|ORDER|LIMIT)\b))",
+    re.IGNORECASE | re.ASCII,
+)
+
+
+def _mysql_single_target(sql: str, head: str) -> bool:
+    """The head text proves one target and every quote in it closes; a non-ASCII statement may
+    hide a name character that comment stripping trimmed, so it proves nothing. ``#`` opens a MySQL
+    comment and a backslash escapes a quote; the head blanking knows neither, so either proves
+    nothing."""
+    if not sql.isascii() or "#" in sql or "\\" in sql or not _MYSQL_SINGLE_TARGET.match(head):
+        return False
+    try:
+        Dialect.get_or_raise("mysql").tokenize(head)  # lint: allow-dialect-string: MySQL tokens
+    except TokenError:
+        return False
+    return True
+
+
 _NOT_A_TABLE = frozenset({"FROM", "INTO", "WHERE", "SET", "VALUES", "SELECT", "DEFAULT"})
 _MAIN_KEYWORDS = ("INSERT", "REPLACE", "UPDATE", "DELETE", "MERGE", "SELECT")
 
@@ -732,6 +755,7 @@ def _head_facts(sql: str, diagnostic: str, *, dialect: str = "") -> StatementFac
     if (
         dialect == "mysql"  # lint: allow-dialect-string: unread MySQL mutations may be multi-target
         and operation in {"UPDATE", "DELETE"}
+        and not _mysql_single_target(sql, head)
     ):
         return StatementFacts(operation, kind, diagnostic=diagnostic)
     if (
@@ -768,13 +792,20 @@ def _head_facts(sql: str, diagnostic: str, *, dialect: str = "") -> StatementFac
         objects = (NamedObject(name, SqlObjectType.TABLE, "altered", schema),)
         target = f"{schema}.{name}" if schema else name
         where = _top_level_where(head)
+        predicate = head[where:].strip() if where is not None else None
+        if (
+            dialect == "mysql"  # lint: allow-dialect-string: MySQL single-target text
+            and operation in {"UPDATE", "DELETE"}
+            and predicate
+        ):
+            predicate = predicate[len("WHERE") :].strip()
         events = None if operation == "REPLACE" else frozenset({operation})
         return StatementFacts(
             operation,
             kind,
             objects,
             target,
-            head[where:].strip() if where is not None else None,
+            predicate,
             events=events,
             diagnostic=diagnostic,
             target_sql=target,
@@ -850,6 +881,56 @@ _MYSQL_RENAME = re.compile(
     re.IGNORECASE,
 )
 _MYSQL_RENAME_SOURCE = re.compile(rf"{_MYSQL_QUALIFIED}\s+TO\s+{_MYSQL_QUALIFIED}", re.IGNORECASE)
+_MYSQL_DEFINER_USER = r"(?:`(?:``|[^`])*`|'(?:''|[^'])*'|[\w$]+)"
+_MYSQL_PROGRAM = re.compile(
+    rf"^\s*(?:(CREATE)\s+(?:OR\s+REPLACE\s+)?"
+    rf"(?:DEFINER\s*=\s*(?:CURRENT_USER(?:\s*\(\s*\))?|{_MYSQL_DEFINER_USER}"
+    rf"(?:\s*@\s*(?:{_MYSQL_DEFINER_USER}|[\w$.%-]+))?)\s+)?"
+    rf"(FUNCTION|PROCEDURE|EVENT|TRIGGER)\s+(?:IF\s+NOT\s+EXISTS\s+)?"
+    rf"|(DROP)\s+(EVENT)\s+(?:IF\s+EXISTS\s+)?)"
+    rf"{_MYSQL_QUALIFIED}"
+    rf"(?:\s+(?:BEFORE|AFTER)\s+(?:INSERT|UPDATE|DELETE)\s+ON\s+{_MYSQL_QUALIFIED})?",
+    re.IGNORECASE,
+)
+
+
+def _mysql_program_facts(sql: str, diagnostic: str) -> Optional[StatementFacts]:
+    """The program a CREATE / DROP of a function, procedure, event or trigger names, read from the
+    head alone; the body is not read."""
+    head = _blanked(sql)
+    match = _MYSQL_PROGRAM.match(head)
+    if match is None:
+        return None
+    operation = (match.group(1) or match.group(3)).upper()
+    kind = SqlObjectType[(match.group(2) or match.group(4)).upper()]
+    parts = [match.group(i) for i in (5, 6)]
+    if not _head_name_is_bounded(head, match, (5, 6, 7, 8)):
+        return None
+    schema, name = (parts[0], parts[1]) if parts[1] else (None, parts[0])
+    role = "created" if operation == "CREATE" else "dropped"
+    objects = [
+        NamedObject(
+            strip_identifier_quotes(name),
+            kind,
+            role,
+            strip_identifier_quotes(schema) if schema else None,
+        )
+    ]
+    if match.group(7):
+        t_schema, t_name = (
+            (match.group(7), match.group(8)) if match.group(8) else (None, match.group(7))
+        )
+        objects.append(
+            NamedObject(
+                strip_identifier_quotes(t_name),
+                SqlObjectType.TABLE,
+                "referenced",
+                strip_identifier_quotes(t_schema) if t_schema else None,
+            )
+        )
+    return StatementFacts(operation, "DDL", tuple(objects), diagnostic=diagnostic)
+
+
 _MYSQL_SPECIAL_INDEX = re.compile(
     rf"^\s*CREATE\s+(?:FULLTEXT|SPATIAL)\s+INDEX\s+({_NAME})\s+ON\s+{_MYSQL_QUALIFIED}\s*\(",
     re.IGNORECASE,
@@ -981,9 +1062,13 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
                 diagnostic=None,
                 error=f"{dialect} statement could not be tokenized (unterminated quote or comment)",
             )
-        return _head_facts(
-            sql, f"{dialect} grammar is not modelled for this statement", dialect=dialect
-        )
+        reason = f"{dialect} grammar is not modelled for this statement"
+        if (
+            dialect == "mysql"  # lint: allow-dialect-string: MySQL stored programs and events
+            and (program := _mysql_program_facts(sql, reason)) is not None
+        ):
+            return program
+        return _head_facts(sql, reason, dialect=dialect)
     if (
         dialect == "mysql"  # lint: allow-dialect-string: sqlglot reads these MySQL forms as Command
         and isinstance(ast, exp.Command)
@@ -992,6 +1077,17 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
         return command
     if ast is None or isinstance(ast, (exp.Command, exp.Block)):
         construct = type(ast).__name__ if ast is not None else "empty statement"
+        if (
+            dialect == "mysql"  # lint: allow-dialect-string: MySQL stored programs and events
+            and ast is not None
+            and (
+                program := _mysql_program_facts(
+                    sql, f"{dialect} {construct} is opaque to statement facts"
+                )
+            )
+            is not None
+        ):
+            return program
         return _head_facts(
             sql, f"{dialect} {construct} is opaque to statement facts", dialect=dialect
         )
@@ -1083,6 +1179,13 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
             and not subject.name
         ):
             identity = NamedObject(subject.db, object_type, "created")
+        if (
+            dialect
+            == "mysql"  # lint: allow-dialect-string: MySQL names a trigger by its identifier
+            and object_type == SqlObjectType.TRIGGER
+            and _mysql_identifier_is_proven(subject, sql)
+        ):
+            identity = NamedObject(subject.name, object_type, "created")
         objects: Tuple[NamedObject, ...] = (identity,) if identity else ()
         indexed_table = None
         indexed_columns = None
@@ -1099,6 +1202,20 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
                     NamedObject(indexed_table, SqlObjectType.TABLE, "referenced"),
                 )
             else:
+                if (
+                    dialect == "mysql"  # lint: allow-dialect-string: MySQL has no CONCURRENTLY
+                    and ast.args.get("concurrently")
+                    and not subject.this
+                ):
+                    # The word is the index name.
+                    objects = (NamedObject("CONCURRENTLY", object_type, "created"),)
+                elif (
+                    dialect == "mysql"  # lint: allow-dialect-string: MySQL has no CONCURRENTLY
+                    and ast.args.get("concurrently")
+                ):
+                    # The word is the index name and the engine rejects what follows it.
+                    objects = ()
+                    index_items = None
                 reference = _named(table, SqlObjectType.TABLE, "referenced") if table else None
                 if reference:
                     objects += (reference,)

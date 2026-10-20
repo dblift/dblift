@@ -18,8 +18,8 @@ class TestHybridParserInit(unittest.TestCase):
         self.assertIsNone(p.sqlglot_parser)
 
     def test_dialect_name_property(self):
-        p = self._make("mysql")
-        self.assertEqual(p.dialect_name, "mysql")
+        p = self._make("oracle")
+        self.assertEqual(p.dialect_name, "oracle")
 
 
 class TestHybridParserSplitStatements(unittest.TestCase):
@@ -105,23 +105,6 @@ class TestHybridParserExtractDependencies(unittest.TestCase):
         sql = "CREATE VIEW v AS SELECT * FROM users JOIN orders ON users.id = orders.user_id"
         result = p.extract_dependencies(sql)
         self.assertIsInstance(result, dict)
-
-
-class TestHybridParserMysql(unittest.TestCase):
-    def _make(self):
-        from dblift.core.sql_parser.hybrid_parser import HybridParser
-
-        return HybridParser(dialect="mysql")
-
-    def test_mysql_create_table(self):
-        p = self._make()
-        result = p.extract_objects("CREATE TABLE `users` (`id` INT PRIMARY KEY)")
-        self.assertIsNotNone(result)
-
-    def test_mysql_split(self):
-        p = self._make()
-        stmts = p.split_statements("SELECT 1; SELECT 2;")
-        self.assertIsInstance(stmts, list)
 
 
 class TestHybridParserOracle(unittest.TestCase):
