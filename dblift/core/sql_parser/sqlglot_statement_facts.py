@@ -879,6 +879,15 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
             and not subject.name
         ):
             identity = NamedObject(subject.db, object_type, "created")
+        if (
+            dialect == "mysql"  # lint: allow-dialect-string: MySQL names a schema as a database
+            and object_type == SqlObjectType.SCHEMA
+            and isinstance(subject, exp.Table)
+            and subject.db
+            and not subject.catalog
+            and not subject.name
+        ):
+            identity = NamedObject(subject.db, object_type, "created")
         objects: Tuple[NamedObject, ...] = (identity,) if identity else ()
         indexed_table = None
         indexed_columns = None
@@ -952,6 +961,15 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
                 NamedObject(node.db, object_type, "dropped", node.catalog or None)
                 for node in targets
                 if isinstance(node, exp.Table) and node.db
+            )
+        elif (
+            dialect == "mysql"  # lint: allow-dialect-string: MySQL names a schema as a database
+            and object_type == SqlObjectType.SCHEMA
+        ):
+            dropped_objects = tuple(
+                NamedObject(node.db, object_type, "dropped")
+                for node in targets
+                if isinstance(node, exp.Table) and node.db and not node.catalog and not node.name
             )
         else:
             dropped_objects = tuple(
@@ -1039,7 +1057,10 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
         )
         return StatementFacts("TRUNCATE", "DDL", identities)
 
-    if dialect == "duckdb" and isinstance(ast, exp.TruncateTable):
+    if dialect in {
+        "duckdb",
+        "mysql",  # lint: allow-dialect-string: MySQL TRUNCATE takes exactly one table
+    } and isinstance(ast, exp.TruncateTable):
         targets = ast.expressions
         target = targets[0] if len(targets) == 1 else None
         if isinstance(target, exp.Table) and isinstance(target.this, exp.Identifier):
