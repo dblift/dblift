@@ -2891,7 +2891,7 @@
    "hybrid": null
   },
   "path": "both",
-  "reason": "Row added when the corpus was re-recorded: the text ends with U+00A0, which the engine may read as part of a name, so the splitter keeps it in the statement instead of trimming it; no extraction was recorded for this exact text. The reader names nothing and says so (its objects are not named).",
+  "reason": "Row added at the frozen re-record: the family keeps a character the engine does not read as blank (U+00A0 here) at the edge of a statement since the kept-character splitting change, so 'SELECT 1' followed by U+00A0 is now its own statement next to the older 'SELECT 1' row; the extraction was never recorded for this exact text and can no longer be computed. The analysis split of every corpus input is identical between the regex parser and the facts parser, so the row does not come from the activation. The reader names nothing and says why (U+00A0 may be read as part of a name).",
   "sql": "SELECT 1\u00a0"
  },
  "56b9b0fed9f6c44a/analyzer": {
