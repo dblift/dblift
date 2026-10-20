@@ -673,6 +673,27 @@ _DML_FORM = {
     "UPDATE": re.compile(r"^\s*UPDATE\b", re.IGNORECASE),
     "DELETE": re.compile(r"^\s*DELETE\s+FROM\b", re.IGNORECASE),
 }
+_MYSQL_NAME = r"(?:`[^`]*`|[\w$]+)"
+_MYSQL_QUALIFIED = rf"{_MYSQL_NAME}(?:\s*\.\s*{_MYSQL_NAME})?"
+_MYSQL_SINGLE_TARGET = re.compile(
+    rf"^\s*(?:UPDATE\s+{_MYSQL_QUALIFIED}\s+SET\b"
+    rf"|DELETE\s+FROM\s+{_MYSQL_QUALIFIED}(?:\s*;?\s*$|\s+(?:WHERE|ORDER|LIMIT)\b))",
+    re.IGNORECASE | re.ASCII,
+)
+
+
+def _mysql_single_target(sql: str, head: str) -> bool:
+    """The head text proves one target and every quote in it closes; a non-ASCII statement may
+    hide a name character that comment stripping trimmed, so it proves nothing."""
+    if not sql.isascii() or not _MYSQL_SINGLE_TARGET.match(head):
+        return False
+    try:
+        Dialect.get_or_raise("mysql").tokenize(head)  # lint: allow-dialect-string: MySQL tokens
+    except TokenError:
+        return False
+    return True
+
+
 _NOT_A_TABLE = frozenset({"FROM", "INTO", "WHERE", "SET", "VALUES", "SELECT", "DEFAULT"})
 _MAIN_KEYWORDS = ("INSERT", "REPLACE", "UPDATE", "DELETE", "MERGE", "SELECT")
 
@@ -714,6 +735,7 @@ def _head_facts(sql: str, diagnostic: str, *, dialect: str = "") -> StatementFac
     if (
         dialect == "mysql"  # lint: allow-dialect-string: unread MySQL mutations may be multi-target
         and operation in {"UPDATE", "DELETE"}
+        and not _mysql_single_target(sql, head)
     ):
         return StatementFacts(operation, kind, diagnostic=diagnostic)
     if (
@@ -746,13 +768,20 @@ def _head_facts(sql: str, diagnostic: str, *, dialect: str = "") -> StatementFac
         objects = (NamedObject(name, SqlObjectType.TABLE, "altered", schema),)
         target = f"{schema}.{name}" if schema else name
         where = _top_level_where(head)
+        predicate = head[where:].strip() if where is not None else None
+        if (
+            dialect == "mysql"  # lint: allow-dialect-string: MySQL single-target text
+            and operation in {"UPDATE", "DELETE"}
+            and predicate
+        ):
+            predicate = predicate[len("WHERE") :].strip()
         events = None if operation == "REPLACE" else frozenset({operation})
         return StatementFacts(
             operation,
             kind,
             objects,
             target,
-            head[where:].strip() if where is not None else None,
+            predicate,
             events=events,
             diagnostic=diagnostic,
             target_sql=target,
@@ -1116,6 +1145,13 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
                 ):
                     # The word is the index name.
                     objects = (NamedObject("CONCURRENTLY", object_type, "created"),)
+                elif (
+                    dialect == "mysql"  # lint: allow-dialect-string: MySQL has no CONCURRENTLY
+                    and ast.args.get("concurrently")
+                ):
+                    # The word is the index name and the engine rejects what follows it.
+                    objects = ()
+                    index_items = None
                 reference = _named(table, SqlObjectType.TABLE, "referenced") if table else None
                 if reference:
                     objects += (reference,)
