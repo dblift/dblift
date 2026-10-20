@@ -79,7 +79,12 @@ class StatementSplitter:
             raise UnsafeStatementSplitError(
                 f"{self.dialect} statement parser must return Statement records from split()"
             )
-        records = self._refusing(lambda: list(split(sql)))
+        raw_records = self._refusing(lambda: split(sql))
+        if isinstance(raw_records, (str, bytes)):
+            raise UnsafeStatementSplitError(
+                f"{self.dialect} statement parser must return Statement records from split()"
+            )
+        records = self._refusing(lambda: list(raw_records))
         if not all(isinstance(record, Statement) for record in records):
             raise UnsafeStatementSplitError(
                 f"{self.dialect} statement parser must return Statement records from split()"

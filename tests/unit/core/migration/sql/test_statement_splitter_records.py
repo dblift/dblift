@@ -109,6 +109,16 @@ def test_an_empty_raw_string_result_does_not_discard_sql(returned):
         _with_parser(InvalidParser()).split("SELECT 1")
 
 
+def test_an_empty_record_list_remains_valid():
+    class EmptyParser:
+        def split(self, sql):
+            return []
+
+    splitter = _with_parser(EmptyParser())
+    assert splitter.split("-- only a comment") == []
+    assert splitter.split_statements("-- only a comment") == []
+
+
 def test_record_parser_preserves_source_metadata():
     records = [
         Statement("SELECT 1", 3, "GO", repeat=0, source_start=5, source_end=17),
