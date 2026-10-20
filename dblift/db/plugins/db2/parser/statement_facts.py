@@ -17,6 +17,7 @@ COLUMNS_UNAVAILABLE = "db2 column-level facts are unavailable: declared columns,
 UNREAD_NAME = "db2 statement holds U+{code:04X}, which the engine may read as part of a name; its objects are not named"
 NOT_CLASSIFIED = "db2 {word} statement: not classified"
 CLIENT_COMMAND = "db2 client command: not an SQL statement"
+UNTERMINATED_IDENTIFIER = "db2 statement holds an unterminated quoted identifier; its objects are not named"
 NAME_NOT_READ = "db2 {operation} {type}: name not read"
 DATA_CHANGE_QUERY = "db2 data-change query: target not named"
 SET_INTEGRITY = "db2 SET INTEGRITY: tables not named"
@@ -198,6 +199,10 @@ def _opaque(operation: str, kind: str, diagnostic: str) -> StatementFacts:
     return StatementFacts(operation, kind, diagnostic=diagnostic)
 
 
+def _unterminated(operation: str, kind: str) -> StatementFacts:
+    return StatementFacts(operation, kind, error=UNTERMINATED_IDENTIFIER)
+
+
 def _kind(word: str) -> str:
     if word in _DDL:
         return "DDL"
@@ -297,6 +302,8 @@ def _head_facts(
     parts, _, end = name
     if head.operation in ("CREATE", "ALTER", "DROP") and _second_word_taken(words, ups, at, end):
         return None, end
+    if not _may_follow(words, ups, head, end):
+        return None, end
     if head.words[-1] == "COLUMN":
         parts = parts[:-1]
     if not parts:
@@ -327,6 +334,25 @@ def _head_facts(
             diagnostic=diagnostic,
         ),
         end,
+    )
+
+
+def _may_follow(words: List[Token], ups: List[str], head: Head, end: int) -> bool:
+    """Whether what follows the name is something the head's form allows after a name."""
+    if end >= len(words):
+        return True
+    if head.operation == "DROP":
+        return _is_symbol(words[end], "(") or ups[end] in ("RESTRICT", "CASCADE")
+    return words[end].type is not TokenType.SYMBOL or words[end].text == "("
+
+
+def _is_unterminated(token: Token) -> bool:
+    """Whether a quoted identifier lacks its closing quote (a doubled quote does not close it)."""
+    text = token.text
+    return (
+        token.type is TokenType.IDENTIFIER
+        and text.startswith('"')
+        and (len(text) < 2 or not text.endswith('"') or '"' in text[1:-1].replace('""', ""))
     )
 
 
@@ -539,6 +565,8 @@ class Db2StatementFactsReader:
                 continue
             facts, reached = _head_facts(words, ups, head, at)
             end = reached + 1 if head.operation in ("GRANT", "REVOKE") else _head_end(words, at)
+            if any(_is_unterminated(t) for t in words[:end]):
+                return _unterminated(head.operation, head.kind)
             char = _unread_character(sql, words, end)
             if char is not None:
                 return _opaque(head.operation, head.kind, UNREAD_NAME.format(code=ord(sql[char])))
@@ -551,7 +579,10 @@ class Db2StatementFactsReader:
             )
         prefix = _DML_PREFIX.get(first)
         if prefix and tuple(ups[: len(prefix)]) == prefix:
-            char = _unread_character(sql, words, _head_end(words, len(prefix)))
+            window = _head_end(words, len(prefix))
+            if any(_is_unterminated(t) for t in words[:window]):
+                return _unterminated(first, kind)
+            char = _unread_character(sql, words, window)
             if char is not None:
                 return _opaque(first, kind, UNREAD_NAME.format(code=ord(sql[char])))
             return _read_dml(sql, words, ups, first)

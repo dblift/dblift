@@ -6,6 +6,7 @@ from dblift.db.plugins.db2.parser.statement_facts import (
     COLUMNS_UNAVAILABLE,
     NAME_NOT_READ,
     NOT_CLASSIFIED,
+    UNTERMINATED_IDENTIFIER,
     Db2StatementFactsReader,
     fold_name,
 )
@@ -333,3 +334,58 @@ def test_a_second_word_alone_is_still_a_name(sql, name):
 def test_head_guards_leave_the_statement_opaque(sql):
     facts = READ(sql)
     assert facts.objects == () and facts.opaque
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        'CREATE TABLE "test (id INTEGER PRIMARY KEY)',
+        'DROP TABLE "t',
+        'INSERT INTO "t VALUES (1)',
+        'CREATE TABLE "a""b (id INT)',
+    ],
+)
+def test_an_unterminated_quoted_identifier_names_nothing(sql):
+    facts = READ(sql)
+    assert facts.objects == ()
+    assert facts.error == UNTERMINATED_IDENTIFIER
+    assert facts.opaque
+
+
+def test_a_doubled_quote_inside_a_closed_identifier_is_one_character_of_the_name():
+    facts = READ('CREATE TABLE "a""b" (id INT)')
+    assert [o.name for o in facts.objects] == ['a"b']
+
+
+@pytest.mark.parametrize(
+    ("sql", "operation", "type_"),
+    [
+        ("DROP INDEX CONCURRENTLY idx", "DROP", "INDEX"),
+        ("DROP TABLE t{", "DROP", "TABLE"),
+        ("DROP TABLE t}", "DROP", "TABLE"),
+        ("CREATE SEQUENCE q[", "CREATE", "SEQUENCE"),
+        ("CREATE SEQUENCE q]", "CREATE", "SEQUENCE"),
+        ("CREATE SEQUENCE q`", "CREATE", "SEQUENCE"),
+        ("CREATE TRIGGER tr{ AFTER INSERT ON t FOR EACH ROW BEGIN END", "CREATE", "TRIGGER"),
+        ("CREATE SEQUENCE q=1", "CREATE", "SEQUENCE"),
+        ("CREATE SEQUENCE q @", "CREATE", "SEQUENCE"),
+    ],
+)
+def test_a_name_followed_by_what_the_form_does_not_allow_is_not_named(sql, operation, type_):
+    facts = READ(sql)
+    assert facts.objects == ()
+    assert facts.diagnostic == NAME_NOT_READ.format(operation=operation, type=type_)
+
+
+@pytest.mark.parametrize(
+    ("sql", "name"),
+    [
+        ("DROP TABLE t RESTRICT", "T"),
+        ("DROP PROCEDURE p (INT)", "P"),
+        ("DROP TABLE t -- c", "T"),
+        ("CREATE SEQUENCE q AS BIGINT", "Q"),
+        ("CREATE TABLE t(id INT)", "T"),
+    ],
+)
+def test_a_name_followed_by_what_the_form_allows_is_named(sql, name):
+    assert [o.name for o in READ(sql).objects] == [name]

@@ -251,18 +251,58 @@
   "reason": "CREATE TABLE: the reader names `T` but states column facts (columns, constraints, indexed columns) unavailable rather than guess; it agrees with the extraction on the name",
   "sql": "CREATE TABLE t (y INT) PARTITION BY RANGE (y) SUBPARTITION BY HASH (y) SUBPARTITIONS 2 (PARTITION `p.0` values  less tha"
  },
- "0d48af6372707fc2/analyzer": {
+ "0d48af6372707fc2": {
   "class": "opaque-reader-gap",
-  "issue": "by design: the reader states what it cannot read as unavailable (docs/sql-parsing/db2.md section 13)",
-  "path": "analyzer",
-  "reason": "CREATE TABLE: the reader names `T` but states column facts (columns, constraints, indexed columns) unavailable rather than guess; it agrees with the extraction on the name",
+  "facts": {
+   "diagnostic": "db2 CREATE TABLE: name not read",
+   "kind": "DDL",
+   "operation": "CREATE"
+  },
+  "issue": "not Db2 SQL: no reader gap, the statement is another engine's or a client command",
+  "old": {
+   "analyzer": [
+    [
+     "TABLE",
+     "default_schema.t"
+    ]
+   ],
+   "hybrid": [
+    [
+     "TABLE",
+     "T",
+     "SYSIBM"
+    ]
+   ]
+  },
+  "path": "both",
+  "reason": "`{c}` is a literal template placeholder after the name, not Db2 text: a symbol after a name is not a form Db2 allows, so the reader leaves the name unread; the old extraction named the part before it",
   "sql": "CREATE TABLE t{c}(id INT)"
  },
- "0d4e4d01e1c754a1/analyzer": {
-  "class": "disagree",
-  "issue": "",
-  "path": "analyzer",
-  "reason": "the analyzer path qualifies the unqualified `tr` with a placeholder schema `default_schema` and keeps its spelling; the reader names `TR` with no schema, folded to upper case as Db2 stores it (`{c}` is a literal template placeholder after the name)",
+ "0d4e4d01e1c754a1": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "db2 CREATE TRIGGER: name not read",
+   "kind": "DDL",
+   "operation": "CREATE"
+  },
+  "issue": "not Db2 SQL: no reader gap, the statement is another engine's or a client command",
+  "old": {
+   "analyzer": [
+    [
+     "TRIGGER",
+     "default_schema.tr"
+    ]
+   ],
+   "hybrid": [
+    [
+     "TRIGGER",
+     "TR",
+     "SYSIBM"
+    ]
+   ]
+  },
+  "path": "both",
+  "reason": "`{c}` is a literal template placeholder after the name, not Db2 text: a symbol after a name is not a form Db2 allows, so the reader leaves the name unread; the old extraction named the part before it",
   "sql": "CREATE TRIGGER tr{c} AFTER INSERT ON t BEGIN SELECT 1; END"
  },
  "0d70443377fbac9c/analyzer": {
@@ -363,11 +403,31 @@
   "reason": "the old hybrid path names no object for INSERT statements; the reader names `T` as altered, folded to upper case as Db2 does, and is right: the statement writes to it",
   "sql": "INSERT INTO t VALUES (2)"
  },
- "1128b450bafb09bd/analyzer": {
-  "class": "disagree",
-  "issue": "",
-  "path": "analyzer",
-  "reason": "the analyzer path qualifies the unqualified `idx1` with a placeholder schema `default_schema` and keeps its spelling; the reader names `IDX1` with no schema, folded to upper case as Db2 stores it (the ON clause is MySQL's, PostgreSQL's and SQL Server's; Db2 has none, the reader reads the first name)",
+ "1128b450bafb09bd": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "db2 DROP INDEX: name not read",
+   "kind": "DDL",
+   "operation": "DROP"
+  },
+  "issue": "not Db2 SQL: no reader gap, the statement is another engine's or a client command",
+  "old": {
+   "analyzer": [
+    [
+     "INDEX",
+     "default_schema.idx1"
+    ]
+   ],
+   "hybrid": [
+    [
+     "INDEX",
+     "IDX1",
+     "SYSIBM"
+    ]
+   ]
+  },
+  "path": "both",
+  "reason": "DROP ... ON <table> is MySQL's, PostgreSQL's and SQL Server's; Db2's DROP names the object alone, so the reader leaves the name unread where the old extraction named the first name",
   "sql": "DROP INDEX idx1 ON myschema.mytable"
  },
  "11379019204f52f4/analyzer": {
@@ -776,11 +836,31 @@
   "reason": "ALTER TABLE: the reader names `T` but states column facts (columns, constraints, indexed columns) unavailable rather than guess; it agrees with the extraction on the name",
   "sql": "ALTER TABLE t ADD COLUMN z INT"
  },
- "22b9d3efc88e5bbb/analyzer": {
-  "class": "disagree",
-  "issue": "",
-  "path": "analyzer",
-  "reason": "the analyzer path qualifies the unqualified `t` with a placeholder schema `default_schema` and keeps its spelling; the reader names `T` with no schema, folded to upper case as Db2 stores it (`{c}` is a literal template placeholder after the name)",
+ "22b9d3efc88e5bbb": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "db2 DROP TABLE: name not read",
+   "kind": "DDL",
+   "operation": "DROP"
+  },
+  "issue": "not Db2 SQL: no reader gap, the statement is another engine's or a client command",
+  "old": {
+   "analyzer": [
+    [
+     "TABLE",
+     "default_schema.t"
+    ]
+   ],
+   "hybrid": [
+    [
+     "TABLE",
+     "T",
+     "SYSIBM"
+    ]
+   ]
+  },
+  "path": "both",
+  "reason": "`{c}` is a literal template placeholder after the name, not Db2 text: a symbol after a name is not a form Db2 allows, so the reader leaves the name unread; the old extraction named the part before it",
   "sql": "DROP TABLE t{c}"
  },
  "22c18e2b74f78d69/analyzer": {
@@ -789,6 +869,33 @@
   "path": "analyzer",
   "reason": "CREATE TABLE: the reader names `TEST2` but states column facts (columns, constraints, indexed columns) unavailable rather than guess; it agrees with the extraction on the name",
   "sql": "CREATE TABLE test2 (id INTEGER)"
+ },
+ "232281a9e7ec7912": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "db2 DROP INDEX: name not read",
+   "kind": "DDL",
+   "operation": "DROP"
+  },
+  "issue": "not Db2 SQL: no reader gap, the statement is another engine's or a client command",
+  "old": {
+   "analyzer": [
+    [
+     "INDEX",
+     "default_schema.idx_users"
+    ]
+   ],
+   "hybrid": [
+    [
+     "INDEX",
+     "IDX_USERS",
+     "SYSIBM"
+    ]
+   ]
+  },
+  "path": "both",
+  "reason": "DROP ... ON <table> is MySQL's, PostgreSQL's and SQL Server's; Db2's DROP names the object alone, so the reader leaves the name unread where the old extraction named the first name",
+  "sql": "DROP INDEX idx_users ON users"
  },
  "242a420e6eef55a0/analyzer": {
   "class": "opaque-reader-gap",
@@ -951,11 +1058,31 @@
   "reason": "CREATE TABLE: the reader names `ORDERS` but states column facts (columns, constraints, indexed columns) unavailable rather than guess; it agrees with the extraction on the name",
   "sql": "CREATE TABLE myschema.orders AS SELECT * FROM myschema.orders"
  },
- "2ad6a77976901666/analyzer": {
-  "class": "disagree",
-  "issue": "",
-  "path": "analyzer",
-  "reason": "not a Db2 statement: CONCURRENTLY is PostgreSQL's; the reader takes it for the dropped index's name (it is not reserved in Db2) and ignores `idx`, where the analyzer named `idx` with the invented `default_schema`",
+ "2ad6a77976901666": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "db2 DROP INDEX: name not read",
+   "kind": "DDL",
+   "operation": "DROP"
+  },
+  "issue": "not Db2 SQL: no reader gap, the statement is another engine's or a client command",
+  "old": {
+   "analyzer": [
+    [
+     "INDEX",
+     "default_schema.idx"
+    ]
+   ],
+   "hybrid": [
+    [
+     "INDEX",
+     "CONCURRENTLY",
+     "SYSIBM"
+    ]
+   ]
+  },
+  "path": "both",
+  "reason": "not a Db2 statement: CONCURRENTLY is PostgreSQL's; a second name after the first is not a form Db2 allows after a DROP, so the reader leaves the name unread where the old extraction named `CONCURRENTLY` or `idx`",
   "sql": "DROP INDEX CONCURRENTLY idx"
  },
  "2b2d7702c7a94c68/analyzer": {
@@ -1329,6 +1456,33 @@
   "reason": "CREATE TABLE: the reader names `TEST2` but states column facts (columns, constraints, indexed columns) unavailable rather than guess (the body uses PostgreSQL's SERIAL); it agrees with the extraction on the name",
   "sql": "CREATE TABLE test2 (id SERIAL PRIMARY KEY)"
  },
+ "3924c2ff839ce47d": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "db2 DROP TRIGGER: name not read",
+   "kind": "DDL",
+   "operation": "DROP"
+  },
+  "issue": "not Db2 SQL: no reader gap, the statement is another engine's or a client command",
+  "old": {
+   "analyzer": [
+    [
+     "TRIGGER",
+     "default_schema.users_bi"
+    ]
+   ],
+   "hybrid": [
+    [
+     "TRIGGER",
+     "USERS_BI",
+     "SYSIBM"
+    ]
+   ]
+  },
+  "path": "both",
+  "reason": "DROP ... ON <table> is MySQL's, PostgreSQL's and SQL Server's; Db2's DROP names the object alone, so the reader leaves the name unread where the old extraction named the first name",
+  "sql": "DROP TRIGGER users_bi ON users"
+ },
  "392b93b9e856f3e5/analyzer": {
   "class": "opaque-reader-gap",
   "issue": "by design: the reader states what it cannot read as unavailable (docs/sql-parsing/db2.md section 13)",
@@ -1398,6 +1552,33 @@
   "path": "analyzer",
   "reason": "ALTER TABLE: the reader names `T` but states column facts (columns, constraints, indexed columns) unavailable rather than guess; it agrees with the extraction on the name",
   "sql": "ALTER TABLE t ADD COLUMN x INT"
+ },
+ "3bb4e2c5b872f698": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "db2 DROP TRIGGER: name not read",
+   "kind": "DDL",
+   "operation": "DROP"
+  },
+  "issue": "not Db2 SQL: no reader gap, the statement is another engine's or a client command",
+  "old": {
+   "analyzer": [
+    [
+     "TRIGGER",
+     "default_schema.my_trigger"
+    ]
+   ],
+   "hybrid": [
+    [
+     "TRIGGER",
+     "MY_TRIGGER",
+     "SYSIBM"
+    ]
+   ]
+  },
+  "path": "both",
+  "reason": "DROP ... ON <table> is MySQL's, PostgreSQL's and SQL Server's; Db2's DROP names the object alone, so the reader leaves the name unread where the old extraction named the first name",
+  "sql": "DROP TRIGGER my_trigger ON my_table"
  },
  "3bcbef9c78876c6f/analyzer": {
   "class": "opaque-reader-gap",
@@ -1881,6 +2062,33 @@
   "path": "analyzer",
   "reason": "the analyzer path qualifies the unqualified `audit_trigger` with a placeholder schema `default_schema` and keeps its spelling; the reader names `AUDIT_TRIGGER` with no schema, folded to upper case as Db2 stores it",
   "sql": "CREATE OR REPLACE TRIGGER audit_trigger\n        AFTER INSERT ON employees\n        FOR EACH ROW\n        BEGIN ATOMIC\n    "
+ },
+ "5141f73f731d24d7": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "db2 DROP INDEX: name not read",
+   "kind": "DDL",
+   "operation": "DROP"
+  },
+  "issue": "not Db2 SQL: no reader gap, the statement is another engine's or a client command",
+  "old": {
+   "analyzer": [
+    [
+     "INDEX",
+     "default_schema.idx1"
+    ]
+   ],
+   "hybrid": [
+    [
+     "INDEX",
+     "IDX1",
+     "SYSIBM"
+    ]
+   ]
+  },
+  "path": "both",
+  "reason": "DROP ... ON <table> is MySQL's, PostgreSQL's and SQL Server's; Db2's DROP names the object alone, so the reader leaves the name unread where the old extraction named the first name",
+  "sql": "DROP INDEX idx1 ON mytable"
  },
  "528d3216790b936c/analyzer": {
   "class": "disagree",
@@ -2372,13 +2580,6 @@
   "reason": "the old hybrid path names no object for DELETE statements; the reader names `T` as altered, folded to upper case as Db2 does, and is right: the statement writes to it",
   "sql": "DELETE FROM t -- trailing"
  },
- "66afb803c260d3da": {
-  "class": "facts-adds-acted",
-  "issue": "",
-  "path": "both",
-  "reason": "unterminated quote: `\"test (id INTEGER PRIMARY KEY)` opens a delimited name that never closes; the reader names the rest of the text as the table `test (id INTEGER PRIMARY KEY` (a reader defect: it names an object of text Db2 rejects), while the old extraction named nothing",
-  "sql": "CREATE TABLE \"test (id INTEGER PRIMARY KEY)"
- },
  "66f6f8ebf9f5f579/analyzer": {
   "class": "opaque-reader-gap",
   "issue": "by design: the reader states what it cannot read as unavailable (docs/sql-parsing/db2.md section 13)",
@@ -2582,11 +2783,31 @@
   "reason": "the old hybrid path names no object for MERGE statements; the reader names `USERS` as altered, folded to upper case as Db2 does, and is right: the statement writes to it",
   "sql": "MERGE INTO users USING s ON s.id = users.id WHEN MATCHED AND s.expired THEN DELETE"
  },
- "6f44db1be97a7ffa/analyzer": {
+ "6f44db1be97a7ffa": {
   "class": "opaque-reader-gap",
-  "issue": "by design: the reader states what it cannot read as unavailable (docs/sql-parsing/db2.md section 13)",
-  "path": "analyzer",
-  "reason": "CREATE TABLE: the reader names `T` but states column facts (columns, constraints, indexed columns) unavailable rather than guess; it agrees with the extraction on the name",
+  "facts": {
+   "diagnostic": "db2 CREATE TABLE: name not read",
+   "kind": "DDL",
+   "operation": "CREATE"
+  },
+  "issue": "not Db2 SQL: no reader gap, the statement is another engine's or a client command",
+  "old": {
+   "analyzer": [
+    [
+     "TABLE",
+     "s.t"
+    ]
+   ],
+   "hybrid": [
+    [
+     "TABLE",
+     "T",
+     "S"
+    ]
+   ]
+  },
+  "path": "both",
+  "reason": "`{c}` is a literal template placeholder after the name, not Db2 text: a symbol after a name is not a form Db2 allows, so the reader leaves the name unread; the old extraction named the part before it",
   "sql": "CREATE TABLE s.t{c}(id INT)"
  },
  "6fbd20b947265821/analyzer": {
@@ -2659,11 +2880,31 @@
   "reason": "the analyzer path qualifies the unqualified `cafe` with a placeholder schema `default_schema` and keeps its spelling; the reader names `CAFE` with no schema, folded to upper case as Db2 stores it",
   "sql": "CREATE TRIGGER cafe AFTER INSERT ON t BEGIN SELECT 1; END"
  },
- "7268421cc174659e/analyzer": {
+ "7268421cc174659e": {
   "class": "opaque-reader-gap",
-  "issue": "by design: the reader states what it cannot read as unavailable (docs/sql-parsing/db2.md section 13)",
-  "path": "analyzer",
-  "reason": "CREATE TABLE: the reader names `S` but states column facts (columns, constraints, indexed columns) unavailable rather than guess; it agrees with the extraction on the name",
+  "facts": {
+   "diagnostic": "db2 CREATE TABLE: name not read",
+   "kind": "DDL",
+   "operation": "CREATE"
+  },
+  "issue": "not Db2 SQL: no reader gap, the statement is another engine's or a client command",
+  "old": {
+   "analyzer": [
+    [
+     "TABLE",
+     "default_schema.s"
+    ]
+   ],
+   "hybrid": [
+    [
+     "TABLE",
+     "S",
+     "SYSIBM"
+    ]
+   ]
+  },
+  "path": "both",
+  "reason": "`{c}` is a literal template placeholder after the name, not Db2 text: a symbol after a name is not a form Db2 allows, so the reader leaves the name unread; the old extraction named the part before it",
   "sql": "CREATE TABLE s{c}.t(id INT)"
  },
  "727b1b986aade562/analyzer": {
@@ -2981,6 +3222,33 @@
   "reason": "CREATE TABLE: the reader names `TEST` but states column facts (columns, constraints, indexed columns) unavailable rather than guess; it agrees with the extraction on the name",
   "sql": "CREATE TABLE test (\n            tags TEXT[],\n            numbers INTEGER[]\n        )"
  },
+ "812147f325614d3a": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "db2 DROP TABLE: name not read",
+   "kind": "DDL",
+   "operation": "DROP"
+  },
+  "issue": "not Db2 SQL: no reader gap, the statement is another engine's or a client command",
+  "old": {
+   "analyzer": [
+    [
+     "TABLE",
+     "default_schema.users"
+    ]
+   ],
+   "hybrid": [
+    [
+     "TABLE",
+     "USERS",
+     "SYSIBM"
+    ]
+   ]
+  },
+  "path": "both",
+  "reason": "a comma list of dropped names is not Db2; only the end, `(`, RESTRICT or CASCADE may follow a DROP's name, so the reader leaves the name unread where the old extraction named the first",
+  "sql": "DROP TABLE IF EXISTS users, orders CASCADE"
+ },
  "81235bd7fb4f3804": {
   "class": "dml-differs",
   "issue": "",
@@ -3001,6 +3269,33 @@
   "path": "analyzer",
   "reason": "CREATE TABLE: the reader names `PRODUCTS` but states column facts (columns, constraints, indexed columns) unavailable rather than guess (the body uses PostgreSQL's SERIAL); it agrees with the extraction on the name",
   "sql": "CREATE TABLE products (id SERIAL PRIMARY KEY, name VARCHAR(100), price DECIMAL(10,2))"
+ },
+ "819acb2059b60968": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "db2 CREATE PROCEDURE: name not read",
+   "kind": "DDL",
+   "operation": "CREATE"
+  },
+  "issue": "not Db2 SQL: no reader gap, the statement is another engine's or a client command",
+  "old": {
+   "analyzer": [
+    [
+     "PROCEDURE",
+     "default_schema.p"
+    ]
+   ],
+   "hybrid": [
+    [
+     "PROCEDURE",
+     "P",
+     "SYSIBM"
+    ]
+   ]
+  },
+  "path": "both",
+  "reason": "`@name` is T-SQL's parameter syntax; Db2 has no symbol after a procedure name, so the reader leaves the name unread where the old extraction named it",
+  "sql": "CREATE PROCEDURE p @MinPrice INT AS BEGIN SELECT N'x;y', @MinPrice; END"
  },
  "822d4556ac9e2a3b": {
   "class": "opaque-reader-gap",
@@ -3226,6 +3521,33 @@
   "reason": "the old hybrid path names no object for INSERT statements; the reader names `T` as altered, folded to upper case as Db2 does, and is right: the statement writes to it",
   "sql": "INSERT INTO t VALUES ('hello; world')"
  },
+ "8c71d100a80a073e": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "db2 DROP TRIGGER: name not read",
+   "kind": "DDL",
+   "operation": "DROP"
+  },
+  "issue": "not Db2 SQL: no reader gap, the statement is another engine's or a client command",
+  "old": {
+   "analyzer": [
+    [
+     "TRIGGER",
+     "default_schema.my trigger"
+    ]
+   ],
+   "hybrid": [
+    [
+     "TRIGGER",
+     "my trigger",
+     "SYSIBM"
+    ]
+   ]
+  },
+  "path": "both",
+  "reason": "DROP ... ON <table> is MySQL's, PostgreSQL's and SQL Server's; Db2's DROP names the object alone, so the reader leaves the name unread where the old extraction named the first name",
+  "sql": "DROP TRIGGER \"my trigger\" ON my_table"
+ },
  "8cb881d12fef59a1/analyzer": {
   "class": "opaque-reader-gap",
   "issue": "not Db2 SQL: no reader gap, the statement is another engine's or a client command",
@@ -3380,11 +3702,31 @@
   "reason": "not a Db2 statement: CREATE VIRTUAL TABLE is SQLite's; the old extraction named `default_schema.docs`",
   "sql": "CREATE VIRTUAL TABLE IF NOT EXISTS docs USING fts5(title, body)"
  },
- "93fc2da7a8f4c9fa/analyzer": {
-  "class": "disagree",
-  "issue": "",
-  "path": "analyzer",
-  "reason": "the analyzer path qualifies the unqualified `q` with a placeholder schema `default_schema` and keeps its spelling; the reader names `Q` with no schema, folded to upper case as Db2 stores it (`{c}` is a literal template placeholder after the name)",
+ "93fc2da7a8f4c9fa": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "db2 CREATE SEQUENCE: name not read",
+   "kind": "DDL",
+   "operation": "CREATE"
+  },
+  "issue": "not Db2 SQL: no reader gap, the statement is another engine's or a client command",
+  "old": {
+   "analyzer": [
+    [
+     "SEQUENCE",
+     "default_schema.q"
+    ]
+   ],
+   "hybrid": [
+    [
+     "SEQUENCE",
+     "Q",
+     "SYSIBM"
+    ]
+   ]
+  },
+  "path": "both",
+  "reason": "`{c}` is a literal template placeholder after the name, not Db2 text: a symbol after a name is not a form Db2 allows, so the reader leaves the name unread; the old extraction named the part before it",
   "sql": "CREATE SEQUENCE q{c}"
  },
  "944d2c9f82935056/analyzer": {
@@ -3779,11 +4121,31 @@
   "reason": "CREATE TABLE: the reader names `USERS` but states column facts (columns, constraints, indexed columns) unavailable rather than guess; it agrees with the extraction on the name",
   "sql": "CREATE TABLE users (id NUMBER(10,0))"
  },
- "a79ddcc1ee0aeb72/analyzer": {
-  "class": "disagree",
-  "issue": "",
-  "path": "analyzer",
-  "reason": "the analyzer path qualifies the unqualified `idx1` with a placeholder schema `default_schema` and keeps its spelling; the reader names `IDX1` with no schema, folded to upper case as Db2 stores it (the ON clause is MySQL's, PostgreSQL's and SQL Server's; Db2 has none, the reader reads the first name)",
+ "a79ddcc1ee0aeb72": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "db2 DROP INDEX: name not read",
+   "kind": "DDL",
+   "operation": "DROP"
+  },
+  "issue": "not Db2 SQL: no reader gap, the statement is another engine's or a client command",
+  "old": {
+   "analyzer": [
+    [
+     "INDEX",
+     "default_schema.idx1"
+    ]
+   ],
+   "hybrid": [
+    [
+     "INDEX",
+     "IDX1",
+     "SYSIBM"
+    ]
+   ]
+  },
+  "path": "both",
+  "reason": "DROP ... ON <table> is MySQL's, PostgreSQL's and SQL Server's; Db2's DROP names the object alone, so the reader leaves the name unread where the old extraction named the first name",
   "sql": "DROP INDEX idx1 ON dbo.mytable"
  },
  "a7eae99120881330": {
@@ -3975,11 +4337,31 @@
   "reason": "the old hybrid path names no object for INSERT statements; the reader names `T` as altered, folded to upper case as Db2 does, and is right: the statement writes to it",
   "sql": "INSERT INTO t SELECT * FROM s"
  },
- "afa844944baef2cf/analyzer": {
-  "class": "disagree",
-  "issue": "",
-  "path": "analyzer",
-  "reason": "the analyzer path qualifies the unqualified `trg_items_touch` with a placeholder schema `default_schema` and keeps its spelling; the reader names `TRG_ITEMS_TOUCH` with no schema, folded to upper case as Db2 stores it (the ON clause is MySQL's, PostgreSQL's and SQL Server's; Db2 has none, the reader reads the first name)",
+ "afa844944baef2cf": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "db2 DROP TRIGGER: name not read",
+   "kind": "DDL",
+   "operation": "DROP"
+  },
+  "issue": "not Db2 SQL: no reader gap, the statement is another engine's or a client command",
+  "old": {
+   "analyzer": [
+    [
+     "TRIGGER",
+     "default_schema.trg_items_touch"
+    ]
+   ],
+   "hybrid": [
+    [
+     "TRIGGER",
+     "TRG_ITEMS_TOUCH",
+     "SYSIBM"
+    ]
+   ]
+  },
+  "path": "both",
+  "reason": "DROP ... ON <table> is MySQL's, PostgreSQL's and SQL Server's; Db2's DROP names the object alone, so the reader leaves the name unread where the old extraction named the first name",
   "sql": "DROP TRIGGER IF EXISTS trg_items_touch ON public.items"
  },
  "b05104a115e86847/analyzer": {
@@ -4003,11 +4385,31 @@
   "reason": "not a Db2 statement: FORCE VIEW is Oracle's; the old extraction named `default_schema.vw_test` (the analyzer typed it UNKNOWN)",
   "sql": "CREATE OR REPLACE FORCE VIEW vw_test AS\n        SELECT * FROM nonexistent_table"
  },
- "b12619922e3614e4/analyzer": {
+ "b12619922e3614e4": {
   "class": "opaque-reader-gap",
-  "issue": "by design: the reader states what it cannot read as unavailable (docs/sql-parsing/db2.md section 13)",
-  "path": "analyzer",
-  "reason": "CREATE TABLE: the reader names `A` but states column facts (columns, constraints, indexed columns) unavailable rather than guess; it agrees with the extraction on the name",
+  "facts": {
+   "diagnostic": "db2 CREATE TABLE: name not read",
+   "kind": "DDL",
+   "operation": "CREATE"
+  },
+  "issue": "not Db2 SQL: no reader gap, the statement is another engine's or a client command",
+  "old": {
+   "analyzer": [
+    [
+     "TABLE",
+     "default_schema.a"
+    ]
+   ],
+   "hybrid": [
+    [
+     "TABLE",
+     "A",
+     "SYSIBM"
+    ]
+   ]
+  },
+  "path": "both",
+  "reason": "`{c}` is a literal template placeholder after the name, not Db2 text: a symbol after a name is not a form Db2 allows, so the reader leaves the name unread; the old extraction named the part before it",
   "sql": "CREATE TABLE a{c}b(id INT)"
  },
  "b1302612249a68c8/hybrid": {
@@ -4570,6 +4972,33 @@
   "reason": "CREATE TABLE: the reader names `T` but states column facts (columns, constraints, indexed columns) unavailable rather than guess; it agrees with the extraction on the name",
   "sql": "CREATE TABLE t (id NUMBER)"
  },
+ "c7c95344df97c977": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "db2 DROP TABLE: name not read",
+   "kind": "DDL",
+   "operation": "DROP"
+  },
+  "issue": "not Db2 SQL: no reader gap, the statement is another engine's or a client command",
+  "old": {
+   "analyzer": [
+    [
+     "TABLE",
+     "default_schema.a"
+    ]
+   ],
+   "hybrid": [
+    [
+     "TABLE",
+     "A",
+     "SYSIBM"
+    ]
+   ]
+  },
+  "path": "both",
+  "reason": "a comma list of dropped names is not Db2; only the end, `(`, RESTRICT or CASCADE may follow a DROP's name, so the reader leaves the name unread where the old extraction named the first",
+  "sql": "DROP TABLE IF EXISTS a, b"
+ },
  "c7d563dcca2a0a6f/analyzer": {
   "class": "opaque-reader-gap",
   "issue": "not Db2 SQL: no reader gap, the statement is another engine's or a client command",
@@ -4906,6 +5335,33 @@
   "reason": "ALTER TABLESPACE is a Db2 statement outside the head table: the reader states it not classified rather than name it; the old extraction named `MY_TS` / `default_schema.my_ts` (the hybrid path typed a tablespace as a table)",
   "sql": "ALTER TABLESPACE my_ts ADD FILE 1000"
  },
+ "d38c644d287615e7": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "db2 DROP INDEX: name not read",
+   "kind": "DDL",
+   "operation": "DROP"
+  },
+  "issue": "not Db2 SQL: no reader gap, the statement is another engine's or a client command",
+  "old": {
+   "analyzer": [
+    [
+     "INDEX",
+     "default_schema.idx1"
+    ]
+   ],
+   "hybrid": [
+    [
+     "INDEX",
+     "IDX1",
+     "SYSIBM"
+    ]
+   ]
+  },
+  "path": "both",
+  "reason": "DROP ... ON <table> is MySQL's, PostgreSQL's and SQL Server's; Db2's DROP names the object alone, so the reader leaves the name unread where the old extraction named the first name",
+  "sql": "DROP INDEX idx1 ON real_one"
+ },
  "d484fc1b1bc65c1d/hybrid": {
   "class": "facts-adds-acted",
   "issue": "",
@@ -4927,18 +5383,36 @@
   "reason": "the old hybrid path names no object for UPDATE statements; the reader names `T` as altered, folded to upper case as Db2 does, and is right: the statement writes to it",
   "sql": "UPDATE t SET v = 'z' /* trail */"
  },
- "d573d80e2943549a/analyzer": {
-  "class": "disagree",
-  "issue": "",
-  "path": "analyzer",
-  "reason": "the analyzer path qualifies the unqualified `users` with a placeholder schema `default_schema` and keeps its spelling; the reader names `USERS` with no schema, folded to upper case as Db2 stores it",
-  "sql": "DROP TABLE IF EXISTS users\nDROP TABLE IF EXISTS orders"
- },
- "d573d80e2943549a/hybrid": {
-  "class": "facts-fewer",
-  "issue": "",
-  "path": "hybrid",
-  "reason": "two statements with no terminator between them reach the reader as one: it names the first object `USERS` and not the second, which the extraction also named",
+ "d573d80e2943549a": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "db2 DROP TABLE: name not read",
+   "kind": "DDL",
+   "operation": "DROP"
+  },
+  "issue": "not Db2 SQL: no reader gap, the statement is another engine's or a client command",
+  "old": {
+   "analyzer": [
+    [
+     "TABLE",
+     "default_schema.users"
+    ]
+   ],
+   "hybrid": [
+    [
+     "TABLE",
+     "USERS",
+     "SYSIBM"
+    ],
+    [
+     "TABLE",
+     "ORDERS",
+     "SYSIBM"
+    ]
+   ]
+  },
+  "path": "both",
+  "reason": "DROP ... ON <table> is MySQL's, PostgreSQL's and SQL Server's; Db2's DROP names the object alone, so the reader leaves the name unread where the old extraction named the first name",
   "sql": "DROP TABLE IF EXISTS users\nDROP TABLE IF EXISTS orders"
  },
  "d5913062bed155f6/analyzer": {
@@ -5032,11 +5506,31 @@
   "reason": "CREATE TABLE: the reader names `A` but states column facts (columns, constraints, indexed columns) unavailable rather than guess; it agrees with the extraction on the name",
   "sql": "CREATE TABLE a (id INT)"
  },
- "da3571ef320a0c63/analyzer": {
-  "class": "disagree",
-  "issue": "",
-  "path": "analyzer",
-  "reason": "the analyzer path keeps the spelling `a.idx1`; the reader names `IDX1` in schema `A`, with the unquoted parts folded to upper case as Db2 stores them (a comma list is not Db2; the reader reads the first name only)",
+ "da3571ef320a0c63": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "db2 DROP INDEX: name not read",
+   "kind": "DDL",
+   "operation": "DROP"
+  },
+  "issue": "not Db2 SQL: no reader gap, the statement is another engine's or a client command",
+  "old": {
+   "analyzer": [
+    [
+     "INDEX",
+     "a.idx1"
+    ]
+   ],
+   "hybrid": [
+    [
+     "INDEX",
+     "IDX1",
+     "A"
+    ]
+   ]
+  },
+  "path": "both",
+  "reason": "a comma list of dropped names is not Db2; only the end, `(`, RESTRICT or CASCADE may follow a DROP's name, so the reader leaves the name unread where the old extraction named the first",
   "sql": "DROP INDEX a.idx1, b.idx2"
  },
  "da75e55369072e05/analyzer": {
@@ -5248,6 +5742,33 @@
   "path": "hybrid",
   "reason": "the old hybrid path names no object for TRUNCATE statements; the reader names `USERS` as altered, folded to upper case as Db2 does, and is right: the statement writes to it",
   "sql": "TRUNCATE TABLE users"
+ },
+ "e4ef5c439a37ce69": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "db2 CREATE PROCEDURE: name not read",
+   "kind": "DDL",
+   "operation": "CREATE"
+  },
+  "issue": "not Db2 SQL: no reader gap, the statement is another engine's or a client command",
+  "old": {
+   "analyzer": [
+    [
+     "PROCEDURE",
+     "default_schema.GetUserOrders"
+    ]
+   ],
+   "hybrid": [
+    [
+     "PROCEDURE",
+     "GETUSERORDERS",
+     "SYSIBM"
+    ]
+   ]
+  },
+  "path": "both",
+  "reason": "`@name` is T-SQL's parameter syntax; Db2 has no symbol after a procedure name, so the reader leaves the name unread where the old extraction named it",
+  "sql": "CREATE PROCEDURE GetUserOrders @UserId INT\n        AS\n        BEGIN\n            SELECT o.*\n         "
  },
  "e5131d0f67fcf2ae/hybrid": {
   "class": "facts-adds-acted",
@@ -5704,11 +6225,31 @@
   "reason": "the analyzer path qualifies the unqualified `test_trigger` with a placeholder schema `default_schema` and keeps its spelling; the reader names `TEST_TRIGGER` with no schema, folded to upper case as Db2 stores it",
   "sql": "CREATE TRIGGER test_trigger AFTER INSERT ON test FOR EACH ROW BEGIN SELECT 1; END"
  },
- "faae6108307176c5/analyzer": {
-  "class": "disagree",
-  "issue": "",
-  "path": "analyzer",
-  "reason": "the analyzer path qualifies the unqualified `my_trigger` with a placeholder schema `default_schema` and keeps its spelling; the reader names `MY_TRIGGER` with no schema, folded to upper case as Db2 stores it (the ON clause is MySQL's, PostgreSQL's and SQL Server's; Db2 has none, the reader reads the first name)",
+ "faae6108307176c5": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "db2 DROP TRIGGER: name not read",
+   "kind": "DDL",
+   "operation": "DROP"
+  },
+  "issue": "not Db2 SQL: no reader gap, the statement is another engine's or a client command",
+  "old": {
+   "analyzer": [
+    [
+     "TRIGGER",
+     "default_schema.my_trigger"
+    ]
+   ],
+   "hybrid": [
+    [
+     "TRIGGER",
+     "MY_TRIGGER",
+     "SYSIBM"
+    ]
+   ]
+  },
+  "path": "both",
+  "reason": "DROP ... ON <table> is MySQL's, PostgreSQL's and SQL Server's; Db2's DROP names the object alone, so the reader leaves the name unread where the old extraction named the first name",
   "sql": "DROP TRIGGER IF EXISTS my_trigger ON myschema.my_table"
  },
  "fad26c7050157a6e/hybrid": {
