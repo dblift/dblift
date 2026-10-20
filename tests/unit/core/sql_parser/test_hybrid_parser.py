@@ -44,12 +44,10 @@ class TestHybridParser:
         assert parser.regex_parser is not None
         assert parser.sqlglot_parser is not None
 
-    def test_parser_creation_postgresql(self):
-        """Test creating hybrid parser for PostgreSQL."""
-        parser = HybridParser("postgresql")
-        assert parser.dialect_name == "postgresql"
-        assert parser.regex_parser is not None
-        assert parser.sqlglot_parser is not None
+    def test_parser_creation_postgresql_is_refused(self):
+        """PostgreSQL reads statement facts: the generic parser is not built for it."""
+        with pytest.raises(ValueError, match="StatementFactsParser"):
+            HybridParser("postgresql")
 
     def test_parser_creation_sqlserver(self):
         """Test creating hybrid parser for SQL Server."""
@@ -66,34 +64,6 @@ class TestHybridParser:
         assert parser.sqlglot_parser is None  # DB2 not supported by sqlglot
 
     # ========== Statement Splitting (Regex-based) ==========
-
-    def test_split_postgresql_procedural(self):
-        """Test splitting PostgreSQL statements with PL/pgSQL procedure."""
-        parser = HybridParser("postgresql")
-        sql = """
-        CREATE TABLE users (id SERIAL PRIMARY KEY, name VARCHAR(100));
-
-        CREATE OR REPLACE FUNCTION get_user_count() RETURNS INTEGER AS $$
-        DECLARE
-            user_count INTEGER;
-        BEGIN
-            SELECT COUNT(*) INTO user_count FROM users;
-            RETURN user_count;
-        END;
-        $$ LANGUAGE plpgsql;
-
-        INSERT INTO users (name) VALUES ('Alice');
-        """
-
-        statements = parser.split_statements(sql)
-        # Should split into 3 statements (CREATE TABLE, CREATE FUNCTION, INSERT)
-        assert len(statements) >= 3
-        assert "CREATE TABLE" in statements[0].upper()
-        assert (
-            "CREATE OR REPLACE FUNCTION" in statements[1].upper()
-            or "CREATE FUNCTION" in statements[1].upper()
-        )
-        assert "INSERT INTO" in statements[2].upper()
 
     def test_split_oracle_procedural(self):
         """Test splitting Oracle statements with PL/SQL procedure."""
@@ -167,7 +137,7 @@ class TestHybridParser:
 
     def test_parse_pure_sql_select(self):
         """Test parsing pure SQL SELECT with sqlglot enhancement."""
-        parser = HybridParser("postgresql")
+        parser = HybridParser("sqlserver")
         sql = "SELECT u.name, o.total FROM users u JOIN orders o ON u.id = o.user_id;"
 
         result = parser.parse_sql(sql, "public")
@@ -184,7 +154,7 @@ class TestHybridParser:
 
     def test_parse_pure_sql_create_table(self):
         """Test parsing CREATE TABLE with sqlglot enhancement."""
-        parser = HybridParser("postgresql")
+        parser = HybridParser("oracle")
         sql = "CREATE TABLE users (id SERIAL PRIMARY KEY, name VARCHAR(100));"
 
         result = parser.parse_sql(sql, "public")
@@ -243,26 +213,6 @@ class TestHybridParser:
             SqlStatementType.UNKNOWN,
         ]
 
-    def test_parse_postgresql_plpgsql_function(self):
-        """Test parsing PostgreSQL PL/pgSQL function (uses regex, not sqlglot)."""
-        parser = HybridParser("postgresql")
-        sql = """
-        CREATE OR REPLACE FUNCTION calculate_total(order_id INTEGER) RETURNS NUMERIC AS $$
-        DECLARE
-            total NUMERIC;
-        BEGIN
-            SELECT SUM(price * quantity) INTO total
-            FROM order_items
-            WHERE order_id = $1;
-            RETURN total;
-        END;
-        $$ LANGUAGE plpgsql;
-        """
-
-        result = parser.parse_sql(sql, "public")
-        assert result.success
-        assert len(result.statements) >= 1
-
     def test_parse_sqlserver_tsql_procedure(self):
         """Test parsing SQL Server T-SQL procedure (uses regex, not sqlglot)."""
         parser = HybridParser("sqlserver")
@@ -285,7 +235,7 @@ class TestHybridParser:
 
     def test_extract_dependencies_select(self):
         """Test extracting dependencies from SELECT query."""
-        parser = HybridParser("postgresql")
+        parser = HybridParser("oracle")
         sql = """
         SELECT c.name, c.email, o.total, o.order_date
         FROM customers c
@@ -317,7 +267,7 @@ class TestHybridParser:
 
     def test_extract_dependencies_procedural_skipped(self):
         """Test that procedural SQL is skipped for dependency extraction."""
-        parser = HybridParser("postgresql")
+        parser = HybridParser("oracle")
         sql = """
         CREATE OR REPLACE FUNCTION complex_calculation() RETURNS INTEGER AS $$
         DECLARE
@@ -351,7 +301,7 @@ class TestHybridParser:
 
     def test_extract_objects_create_table(self):
         """Test extracting objects from CREATE TABLE."""
-        parser = HybridParser("postgresql")
+        parser = HybridParser("oracle")
         sql = (
             "CREATE TABLE products (id SERIAL PRIMARY KEY, name VARCHAR(100), price DECIMAL(10,2));"
         )
@@ -379,7 +329,7 @@ class TestHybridParser:
 
     def test_validate_pure_sql_valid(self):
         """Test validating valid pure SQL."""
-        parser = HybridParser("postgresql")
+        parser = HybridParser("oracle")
         sql = "SELECT * FROM users WHERE id = 1;"
 
         result = parser.validate_sql(sql)
@@ -389,7 +339,7 @@ class TestHybridParser:
 
     def test_validate_pure_sql_invalid(self):
         """Test validating invalid pure SQL."""
-        parser = HybridParser("postgresql")
+        parser = HybridParser("oracle")
         sql = "SELECT * FORM users;"  # FORM instead of FROM
 
         result = parser.validate_sql(sql)
@@ -412,26 +362,6 @@ class TestHybridParser:
         assert result["valid"] or len(result["errors"]) == 0
 
     # ========== Hybrid Behavior ==========
-
-    def test_hybrid_mixed_statements(self):
-        """Test parsing mixed pure SQL and procedural statements."""
-        parser = HybridParser("postgresql")
-        sql = """
-        CREATE TABLE logs (id SERIAL, message TEXT);
-
-        CREATE OR REPLACE FUNCTION log_message(msg TEXT) RETURNS VOID AS $$
-        BEGIN
-            INSERT INTO logs (message) VALUES (msg);
-        END;
-        $$ LANGUAGE plpgsql;
-
-        INSERT INTO logs (message) VALUES ('Test message');
-        """
-
-        result = parser.parse_sql(sql, "public")
-        assert result.success
-        # Should have 3 statements
-        assert len(result.statements) >= 3
 
     def test_hybrid_fallback_on_sqlglot_failure(self):
         """Test graceful fallback when sqlglot fails."""
@@ -459,7 +389,7 @@ class TestHybridParser:
 
     def test_empty_sql(self):
         """Test parsing empty SQL."""
-        parser = HybridParser("postgresql")
+        parser = HybridParser("oracle")
         result = parser.parse_sql("")
         # Should handle gracefully
         assert result.success or len(result.errors) > 0
@@ -475,7 +405,7 @@ class TestHybridParser:
 
     def test_multiple_pure_sql_statements(self):
         """Test parsing multiple pure SQL statements."""
-        parser = HybridParser("postgresql")
+        parser = HybridParser("oracle")
         sql = """
         INSERT INTO users (name) VALUES ('Alice');
         INSERT INTO users (name) VALUES ('Bob');
@@ -590,11 +520,9 @@ class TestMergeObjectsReconcilesPerStatementPerType:
         schema after that resolution (e.g. one side reads an explicit
         qualifier the other does not).
         """
-        parser = HybridParser("postgresql")
-        regex_objects = [
-            SqlObject("foo", SqlObjectType.TABLE, schema="myschema", dialect="postgresql")
-        ]
-        sqlglot_objects = [SqlObject("foo", SqlObjectType.TABLE, schema=None, dialect="postgresql")]
+        parser = HybridParser("oracle")
+        regex_objects = [SqlObject("foo", SqlObjectType.TABLE, schema="myschema", dialect="oracle")]
+        sqlglot_objects = [SqlObject("foo", SqlObjectType.TABLE, schema=None, dialect="oracle")]
 
         merged = parser._merge_objects(regex_objects, sqlglot_objects)
 
@@ -605,12 +533,12 @@ class TestMergeObjectsReconcilesPerStatementPerType:
     def test_collision_schema_fill_prefers_sqlglot_when_both_present(self):
         """``schema = sqlglot.schema or regex.schema``: sqlglot's schema
         wins when both sides have one."""
-        parser = HybridParser("postgresql")
+        parser = HybridParser("oracle")
         regex_objects = [
-            SqlObject("foo", SqlObjectType.TABLE, schema="regexschema", dialect="postgresql")
+            SqlObject("foo", SqlObjectType.TABLE, schema="regexschema", dialect="oracle")
         ]
         sqlglot_objects = [
-            SqlObject("foo", SqlObjectType.TABLE, schema="sqlglotschema", dialect="postgresql")
+            SqlObject("foo", SqlObjectType.TABLE, schema="sqlglotschema", dialect="oracle")
         ]
 
         merged = parser._merge_objects(regex_objects, sqlglot_objects)
@@ -652,7 +580,6 @@ class TestMergeObjectsTypeMismatchPhantomOutOfScope:
     @pytest.mark.parametrize(
         "dialect,sql",
         [
-            ("postgresql", "DROP TRIGGER my_trigger ON my_table;"),
             ("oracle", "DROP TRIGGER my_trigger;"),
             ("mysql", "DROP TRIGGER my_trigger;"),
             ("sqlserver", "DROP TRIGGER my_trigger;"),
@@ -701,12 +628,6 @@ class TestSqlGlotDropKindDispatchMapsKnownKinds:
     @pytest.mark.parametrize(
         "dialect,sql,expected_type",
         [
-            ("postgresql", "DROP TRIGGER my_trigger ON my_table;", SqlObjectType.TRIGGER),
-            ("postgresql", 'DROP TRIGGER "my trigger" ON my_table;', SqlObjectType.TRIGGER),
-            ("postgresql", "DROP FUNCTION my_func(int);", SqlObjectType.FUNCTION),
-            ("postgresql", "DROP PROCEDURE my_proc(int);", SqlObjectType.PROCEDURE),
-            ("postgresql", "DROP TYPE my_type;", SqlObjectType.TYPE),
-            ("postgresql", "DROP DATABASE my_db;", SqlObjectType.DATABASE),
             ("oracle", "DROP TRIGGER my_trigger;", SqlObjectType.TRIGGER),
             ("oracle", "DROP FUNCTION my_func;", SqlObjectType.FUNCTION),
             ("oracle", "DROP PROCEDURE my_proc;", SqlObjectType.PROCEDURE),
@@ -741,7 +662,7 @@ class TestSqlGlotDropKindDispatchMapsKnownKinds:
         them (INDEX has its own test below, since it carries a side effect)."""
         from dblift.core.sql_parser.sqlglot_parser import SqlGlotParser
 
-        parser = SqlGlotParser("postgresql")
+        parser = SqlGlotParser("oracle")
         objects = parser.extract_objects(sql, "public")
 
         assert len(objects) == 1
@@ -774,99 +695,10 @@ class TestSqlGlotDropKindDispatchMapsKnownKinds:
         stable object-shaped contract to assert against."""
         from dblift.core.sql_parser.sqlglot_parser import SqlGlotParser
 
-        parser = SqlGlotParser("postgresql")
+        parser = SqlGlotParser("oracle")
         objects = parser.extract_objects("DROP EXTENSION my_ext;", "public")
 
         assert objects == []
-
-
-@pytest.mark.unit
-class TestExtractObjectsPostgresDropTriggerReportsTrigger:
-    """PostgreSQL ``DROP TRIGGER name ON table`` must report a TRIGGER, not a
-    TABLE, through the full production path (dblift/dblift#384). The root
-    cause and its fix are covered by
-    ``TestSqlGlotDropKindDispatchMapsKnownKinds`` above; these tests confirm
-    it end to end through ``HybridParser.extract_objects``, across the
-    shapes the statement can take.
-    """
-
-    def test_regex_parser_already_gets_it_right(self):
-        """The regex side has always reported this correctly — establishing
-        that a correct answer exists independent of sqlglot."""
-        parser = HybridParser("postgresql")
-        objects = parser.regex_parser.extract_objects(
-            "DROP TRIGGER my_trigger ON my_table;", "public"
-        )
-
-        assert len(objects) == 1
-        assert objects[0].name == "my_trigger"
-        assert objects[0].object_type == SqlObjectType.TRIGGER
-
-    def test_hybrid_extract_objects_reports_trigger_not_table(self):
-        """The production path, unqualified form: must not produce a phantom
-        TABLE alongside (or instead of) the correct TRIGGER."""
-        parser = HybridParser("postgresql")
-        objects = parser.extract_objects("DROP TRIGGER my_trigger ON my_table;", "public")
-
-        assert len(objects) == 1
-        assert objects[0].name == "my_trigger"
-        assert objects[0].object_type == SqlObjectType.TRIGGER
-
-    def test_hybrid_extract_objects_quoted_trigger_name_reports_trigger(self):
-        """Quoting the trigger name (without schema-qualifying the table)
-        does not make sqlglot raise — it mis-parsed this exactly like the
-        unqualified form before this fix, via the same dispatch fallthrough."""
-        parser = HybridParser("postgresql")
-        objects = parser.extract_objects('DROP TRIGGER "my trigger" ON my_table;', "public")
-
-        assert len(objects) == 1
-        assert objects[0].name == "my trigger"
-        assert objects[0].object_type == SqlObjectType.TRIGGER
-
-    def test_hybrid_extract_objects_schema_qualified_table_reports_trigger(self):
-        """Schema-qualified ON target: sqlglot raises here (this is the one
-        shape that actually does reject, not merely mis-parse), and this
-        shape already self-healed before this fix — the internal
-        try/except in ``SqlGlotParser.extract_objects`` swallows the raise,
-        so the merge falls back to the regex parser's correct answer
-        regardless of the dispatch fix. This is a regression guard for an
-        already-correct shape, not a test of the fix itself."""
-        parser = HybridParser("postgresql")
-        objects = parser.extract_objects(
-            "DROP TRIGGER IF EXISTS my_trigger ON myschema.my_table;", "public"
-        )
-
-        assert len(objects) == 1
-        assert objects[0].name == "my_trigger"
-        assert objects[0].object_type == SqlObjectType.TRIGGER
-
-    def test_batch_with_drop_trigger_does_not_disable_sqlglot_for_later_statements(self):
-        """A per-statement guard keyed on a dialect-wide regex (an earlier
-        revision of this fix used one) can disable sqlglot for every
-        statement in a multi-statement ``extract_objects`` call once it
-        matches the first, not just the one it was meant to skip (the same
-        class of bug #383 fixed for the sibling regex predicates with
-        ``[^;]+``). This fix removes that risk instead of bounding it: the
-        dispatch fix means a DROP TRIGGER statement no longer needs sqlglot
-        skipped for it at all, so a later statement's case-sensitive quoted
-        identifiers survive rather than being folded by the regex fallback."""
-        parser = HybridParser("postgresql")
-        batch = 'DROP TRIGGER my_trigger ON my_table;\nCREATE VIEW "Sales"."MyView" AS SELECT 1;'
-
-        objects = parser.extract_objects(batch, "public")
-
-        # No phantom TABLE for the trigger — the actual anchor for this fix.
-        # (Without it, regex's correct TRIGGER and sqlglot's wrong TABLE
-        # would both survive non-colliding keys, and the assertions below
-        # would pass anyway, silently failing to catch a regression here.)
-        assert not any(o.object_type == SqlObjectType.TABLE for o in objects)
-        by_type = {o.object_type: o for o in objects}
-        assert by_type[SqlObjectType.TRIGGER].name == "my_trigger"
-        # Case preserved: proves sqlglot ran on the second statement too,
-        # rather than the whole batch falling back to the regex parser
-        # (which would fold this to "myview" / "sales").
-        assert by_type[SqlObjectType.VIEW].name == "MyView"
-        assert by_type[SqlObjectType.VIEW].schema == "Sales"
 
 
 @pytest.mark.unit
@@ -881,8 +713,6 @@ class TestExtractObjectsCrossDialectDropFunctionProcedure:
     @pytest.mark.parametrize(
         "dialect,sql,expected_type",
         [
-            ("postgresql", "DROP FUNCTION my_func(int);", SqlObjectType.FUNCTION),
-            ("postgresql", "DROP PROCEDURE my_proc(int);", SqlObjectType.PROCEDURE),
             ("mysql", "DROP FUNCTION my_func;", SqlObjectType.FUNCTION),
             ("mysql", "DROP PROCEDURE my_proc;", SqlObjectType.PROCEDURE),
             ("sqlserver", "DROP FUNCTION my_func;", SqlObjectType.FUNCTION),
@@ -1057,7 +887,7 @@ class TestCollectObjectsDispatch:
     """Tests for _collect_objects dispatch dict pattern (story 14-9)."""
 
     def _make_parser(self):
-        return HybridParser("postgresql")
+        return HybridParser("oracle")
 
     def test_collect_table_calls_add_table(self):
         """AC#3.1: TABLE dispatches to result.add_table."""

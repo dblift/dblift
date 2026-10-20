@@ -4,14 +4,14 @@ import unittest
 
 
 class TestHybridParserInit(unittest.TestCase):
-    def _make(self, dialect="postgresql"):
+    def _make(self, dialect="oracle"):
         from dblift.core.sql_parser.hybrid_parser import HybridParser
 
         return HybridParser(dialect=dialect)
 
-    def test_postgresql_dialect(self):
-        p = self._make("postgresql")
-        self.assertEqual(p.dialect, "postgresql")
+    def test_oracle_dialect(self):
+        p = self._make("oracle")
+        self.assertEqual(p.dialect, "oracle")
 
     def test_db2_no_sqlglot(self):
         p = self._make("db2")
@@ -23,7 +23,7 @@ class TestHybridParserInit(unittest.TestCase):
 
 
 class TestHybridParserSplitStatements(unittest.TestCase):
-    def _make(self, dialect="postgresql"):
+    def _make(self, dialect="oracle"):
         from dblift.core.sql_parser.hybrid_parser import HybridParser
 
         return HybridParser(dialect=dialect)
@@ -51,7 +51,7 @@ class TestHybridParserSplitStatements(unittest.TestCase):
 
 
 class TestHybridParserValidateSql(unittest.TestCase):
-    def _make(self, dialect="postgresql"):
+    def _make(self, dialect="oracle"):
         from dblift.core.sql_parser.hybrid_parser import HybridParser
 
         return HybridParser(dialect=dialect)
@@ -68,7 +68,7 @@ class TestHybridParserValidateSql(unittest.TestCase):
 
 
 class TestHybridParserExtractObjects(unittest.TestCase):
-    def _make(self, dialect="postgresql"):
+    def _make(self, dialect="oracle"):
         from dblift.core.sql_parser.hybrid_parser import HybridParser
 
         return HybridParser(dialect=dialect)
@@ -90,7 +90,7 @@ class TestHybridParserExtractObjects(unittest.TestCase):
 
 
 class TestHybridParserExtractDependencies(unittest.TestCase):
-    def _make(self, dialect="postgresql"):
+    def _make(self, dialect="oracle"):
         from dblift.core.sql_parser.hybrid_parser import HybridParser
 
         return HybridParser(dialect=dialect)

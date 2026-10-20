@@ -6,7 +6,7 @@ from dblift.core.sql_model.base import ConstraintType
 from dblift.core.sql_parser import SqlParserFactory
 
 pytestmark = pytest.mark.unit
-DIALECTS = ("mysql", "mariadb", "postgresql", "sqlserver")
+DIALECTS = ("mysql", "mariadb", "oracle", "sqlserver")
 
 
 @pytest.mark.parametrize(
@@ -16,7 +16,6 @@ DIALECTS = ("mysql", "mariadb", "postgresql", "sqlserver")
         ("mariadb", "f INT AS (a + 1) STORED", True),
         ("mysql", "f INT AS (a + 1) VIRTUAL", False),
         ("mysql", "f INT AS (a + 1)", False),
-        ("postgresql", "f INT GENERATED ALWAYS AS (a + 1) STORED", True),
         ("sqlserver", "f AS (a + 1) PERSISTED", True),
         ("sqlserver", "f AS (a + 1)", False),
     ],
@@ -48,8 +47,6 @@ def test_plain_column_is_not_computed(dialect):
     [
         ("mysql", "(a + 1)", "(a + 1)"),
         ("mariadb", "(a + 1)", "(a + 1)"),
-        ("postgresql", "(lower(x))", "(LOWER(x))"),
-        ("postgresql", "(lower(t.x))", "(LOWER(t.x))"),
         ("mysql", "(a + 1.5)", "(a + 1.5)"),
     ],
 )
@@ -83,17 +80,6 @@ def test_plain_index_key_is_not_an_expression(dialect):
 def test_index_keeps_key_sort_directions(dialect, keys, directions):
     result = SqlParserFactory(dialect).get_parser().parse_sql(f"CREATE INDEX ix ON t ({keys})")
     assert result.indexes[0].sort_directions == directions
-
-
-@pytest.mark.parametrize("method", ["btree", "gin", "hash"])
-def test_postgresql_index_without_explicit_direction_keeps_empty_sort_directions(method):
-    result = (
-        SqlParserFactory("postgresql")
-        .get_parser()
-        .parse_sql(f"CREATE INDEX ix ON t USING {method} (a)")
-    )
-    assert len(result.indexes) == 1
-    assert result.indexes[0].sort_directions == []
 
 
 @pytest.mark.parametrize("dialect", DIALECTS)
@@ -140,8 +126,6 @@ def test_foreign_key_without_actions_keeps_none(dialect):
         ("mysql", "`t`", "SET NEW.a = 3"),
         ("mariadb", "t", "SET NEW.a = 3"),
         ("mariadb", "`t`", "SET NEW.a = 3"),
-        ("postgresql", "t", "EXECUTE FUNCTION audit()"),
-        ("postgresql", '"t"', "EXECUTE FUNCTION audit()"),
     ],
 )
 def test_trigger_on_unqualified_table_is_preserved(dialect, table, body):
@@ -159,9 +143,9 @@ def test_trigger_on_unqualified_table_is_preserved(dialect, table, body):
     assert trigger.definition == body
 
 
-@pytest.mark.parametrize("dialect", ["mysql", "mariadb", "postgresql"])
+@pytest.mark.parametrize("dialect", ["mysql", "mariadb"])
 def test_trigger_on_qualified_table_still_parses(dialect):
-    body = "EXECUTE FUNCTION audit()" if dialect == "postgresql" else "SET NEW.a = 3"
+    body = "SET NEW.a = 3"
     result = (
         SqlParserFactory(dialect)
         .get_parser()
@@ -204,14 +188,3 @@ def test_trigger_keeps_entire_compound_body(dialect):
     )
     assert result.triggers[0].definition == body
     assert result.tables[0].name == "following"
-
-
-def test_postgresql_trigger_body_keeps_semicolon_in_argument():
-    result = (
-        SqlParserFactory("postgresql")
-        .get_parser()
-        .parse_sql(
-            "CREATE TRIGGER trg BEFORE INSERT ON s.t FOR EACH ROW EXECUTE FUNCTION audit('a;b');"
-        )
-    )
-    assert result.triggers[0].definition == "EXECUTE FUNCTION audit('a;b')"
