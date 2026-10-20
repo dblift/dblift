@@ -642,9 +642,16 @@ class SqlAnalyzer:
                 elif isinstance(result, dict):
                     # Parsers answer {"valid": bool, "errors": [str, ...]}; the legacy
                     # {"is_valid", "error_message"} spelling is still read.
-                    is_valid = bool(result.get("valid", result.get("is_valid", True)))
+                    # An answer carrying no verdict is not a pass.
+                    verdict = next(
+                        (result[k] for k in ("valid", "is_valid", "success") if k in result),
+                        None,
+                    )
+                    is_valid = bool(verdict)
                     errors = result.get("errors")
                     raw_error_message = errors[0] if errors else result.get("error_message", None)
+                    if verdict is None:
+                        raw_error_message = raw_error_message or "the parser returned no verdict"
                     error_message = (
                         str(raw_error_message) if raw_error_message is not None else None
                     )
