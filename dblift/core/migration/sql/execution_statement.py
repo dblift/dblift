@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import re
-import warnings
 from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any, List, Optional
@@ -46,22 +45,6 @@ def _comment_only(sql: str, *, nested_block_comments: bool = False) -> bool:
     return not code
 
 
-def is_comment_only_statement(sql: str, *, nested_block_comments: bool = False) -> bool:
-    """Deprecated: True if *sql* has no executable tokens after removing comments.
-
-    Use ``StatementSplitter(dialect).split()``, whose records carry ``kind`` and never include
-    a statement that is empty or only comments. Pass ``nested_block_comments=True`` for a
-    dialect whose block comments nest.
-    """
-    warnings.warn(
-        "is_comment_only_statement is deprecated and will be removed in the next major "
-        "release; use StatementSplitter(dialect).split(), whose records carry kind.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    return _comment_only(sql, nested_block_comments=nested_block_comments)
-
-
 @lru_cache(maxsize=None)
 def _script_parser(dialect: str) -> Any:
     """The dialect parser that owns execution and analysis script boundaries."""
@@ -82,8 +65,7 @@ def _statements_of(sql: str, dialect: str) -> List[str]:
 def execution_units(sql: str, dialect: str) -> Optional[List[str]]:
     """The scanner's executable units once each, omitting skipped client batches.
 
-    ``None`` means the dialect has no parser. A parser that returns strings only is read through
-    the splitter's adapter. A scanner refusal propagates.
+    ``None`` means the dialect has no parser. A scanner refusal propagates.
     """
     from dblift.core.migration.sql.statement_splitter import StatementSplitter
 

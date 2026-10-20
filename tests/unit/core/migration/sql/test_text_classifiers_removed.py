@@ -7,7 +7,6 @@ from pathlib import Path
 
 import pytest
 
-from dblift.core.migration import sql as migration_sql
 
 pytestmark = pytest.mark.unit
 
@@ -20,11 +19,10 @@ CLASSIFIERS = {
     "is_batch_separator",
 }
 # (path under dblift/, enclosing function, classifier): the only calls left, all of them for a
-# parser that returns strings and not records, plus the deprecated public helper's own body.
+# parser that returns strings and not records.
 ADAPTER = {
     ("core/migration/sql/statement_splitter.py", "_records_of_strings", "_comment_only"),
     ("core/migration/sql/statement_splitter.py", "_records_of_strings", "is_batch_separator"),
-    ("core/migration/sql/execution_statement.py", "is_comment_only_statement", "_comment_only"),
 }
 
 
@@ -113,15 +111,3 @@ def test_an_allowed_call_is_allowed_only_at_its_own_path(tmp_path):
     assert classifier_calls(tmp_path) - ADAPTER != set()
 
 
-def test_the_helper_is_deprecated_and_still_answers():
-    with pytest.warns(DeprecationWarning, match="StatementSplitter"):
-        assert migration_sql.is_comment_only_statement("-- x") is True
-    with pytest.warns(DeprecationWarning):
-        assert migration_sql.is_comment_only_statement("SELECT 1") is False
-
-
-def test_the_helper_takes_no_blanks_or_hash_keyword():
-    with pytest.raises(TypeError):
-        migration_sql.is_comment_only_statement("-- x", blanks=" ")  # type: ignore[call-arg]
-    with pytest.raises(TypeError):
-        migration_sql.is_comment_only_statement("# x", hash_comments=True)  # type: ignore[call-arg]
