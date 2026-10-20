@@ -135,6 +135,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **DuckDB splits adjacent strings at the engine's boundaries.** An `E'...'`
+  string carries its backslash escape mode into the next literal only across a
+  CR or LF; a literal on the same line is plain. A non-ASCII digit before `E`
+  remains part of a name, so it does not open an escape string. Statement cuts
+  and literal masking now follow those rules.
+
 - **A NUL byte in a PostgreSQL-family script is refused instead of silently cutting the statement
   (PostgreSQL, CockroachDB, YugabyteDB and the other engines of the family; Redshift as a precaution).** Everything
   after a NUL byte was silently ignored: `CREATE TABLE a (i int);<NUL>DROP TABLE a;` ran only the

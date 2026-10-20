@@ -17,7 +17,7 @@ from tests.support.splitter_spec.splitting import split_script
 SPEC_DIR = Path(__file__).resolve().parents[4] / "docs" / "sql-parsing"
 ROWS = [row for row in load_conformance_rows(SPEC_DIR) if row.dialect == "duckdb"]
 
-KNOWN_GAPS: frozenset[str] = frozenset({"74", "75"})
+KNOWN_GAPS: frozenset[str] = frozenset()
 
 
 def test_spec_compiles_to_at_least_the_rows_it_had_on_2026_10_12() -> None:
