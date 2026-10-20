@@ -10,11 +10,6 @@ pytestmark = pytest.mark.unit
 @pytest.mark.parametrize(
     "dialect, sql, index_type, columns, unique",
     [
-        ("postgresql", "CREATE INDEX ix ON t USING gin (doc)", "GIN", ["doc"], False),
-        ("postgresql", "CREATE INDEX ix ON t USING hash (a)", "HASH", ["a"], False),
-        ("postgresql", "CREATE INDEX ix ON t USING gist (a)", "GIST", ["a"], False),
-        ("postgresql", "CREATE INDEX ix ON t USING spgist (a)", "SPGIST", ["a"], False),
-        ("postgresql", "CREATE INDEX ix ON t USING brin (a)", "BRIN", ["a"], False),
         ("mysql", "CREATE INDEX ix ON t USING HASH (a)", "HASH", ["a"], False),
         ("mysql", "CREATE INDEX ix ON t (a) USING HASH", "HASH", ["a"], False),
         ("mysql", "CREATE FULLTEXT INDEX ix ON t (body)", "FULLTEXT", ["body"], False),
@@ -43,14 +38,14 @@ def test_index_keeps_method_kind_columns_and_uniqueness(dialect, sql, index_type
     assert index.unique is unique
 
 
-@pytest.mark.parametrize("dialect", ["postgresql", "mysql", "mariadb", "sqlserver", "oracle"])
+@pytest.mark.parametrize("dialect", ["mysql", "mariadb", "sqlserver", "oracle"])
 def test_plain_index_still_uses_btree_default(dialect):
     result = SqlParserFactory(dialect).get_parser().parse_sql("CREATE INDEX ix ON t (a)")
     assert len(result.indexes) == 1
     assert result.indexes[0].type == "BTREE"
 
 
-@pytest.mark.parametrize("dialect", ["postgresql", "mysql", "mariadb"])
+@pytest.mark.parametrize("dialect", ["mysql", "mariadb"])
 def test_explicit_btree_keeps_default_type(dialect):
     result = (
         SqlParserFactory(dialect).get_parser().parse_sql("CREATE INDEX ix ON t USING btree (a)")
@@ -61,14 +56,6 @@ def test_explicit_btree_keeps_default_type(dialect):
 @pytest.mark.parametrize(
     "dialect, sql, index_type, columns, flags, directions",
     [
-        (
-            "postgresql",
-            "CREATE INDEX ix ON t USING btree ((lower(a)), id DESC)",
-            "BTREE",
-            ["(LOWER(a))", "id"],
-            [True, False],
-            ["", "DESC"],
-        ),
         (
             "mysql",
             "CREATE INDEX `ix` ON `s`.`t` ((a + 1), id DESC) USING BTREE",

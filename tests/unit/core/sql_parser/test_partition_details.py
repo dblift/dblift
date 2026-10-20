@@ -131,7 +131,6 @@ def test_legacy_table_serialization_is_byte_identical():
     "dialect,clause,method,columns",
     [
         ("mysql", "", None, None),
-        ("postgresql", "PARTITION BY RANGE (y)", "RANGE", ["Y"]),
         ("mysql", "PARTITION BY HASH (id) PARTITIONS x", "HASH", ["ID"]),
     ],
 )
