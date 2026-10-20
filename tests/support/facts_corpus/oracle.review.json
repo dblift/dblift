@@ -834,6 +834,33 @@
   },
   "sql": "DROP STOGROUP my_sg"
  },
+ "0ef3fd1508d76335": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "oracle TruncateTable has no statement facts mapping",
+   "kind": "UNKNOWN",
+   "operation": "TRUNCATE"
+  },
+  "issue": "by design: docs/sql-parsing/oracle.md section 13",
+  "old": {
+   "analyzer": [
+    [
+     "TABLE",
+     "default_schema.users"
+    ]
+   ],
+   "hybrid": [
+    [
+     "TABLE",
+     "users",
+     null
+    ]
+   ]
+  },
+  "path": "both",
+  "reason": "[gap made explicit] ; the reader leaves it unread (oracle TruncateTable has no statement facts mapping) and names nothing, where the extraction named table users.",
+  "sql": "TRUNCATE users"
+ },
  "0f8277b1e650e6c5/analyzer": {
   "class": "facts-fewer",
   "facts": {

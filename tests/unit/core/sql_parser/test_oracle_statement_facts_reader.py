@@ -347,3 +347,65 @@ def test_an_oracle_comment_ends_at_the_first_closer():
     facts = _ora("/* a /* b */ CREATE MATERIALIZED VIEW LOG ON x")
 
     assert facts.objects == () and facts.opaque
+
+
+@pytest.mark.parametrize(
+    "sql,table",
+    [
+        ("comment on table hr.t is 'x'", "T"),
+        ("Comment On Column t.c Is 'x'", "T"),
+        ("comment on materialized view mv is 'x'", "MV"),
+    ],
+)
+def test_comment_on_is_read_whatever_the_case_of_its_keywords(sql, table):
+    assert [o.name for o in _ora(sql).objects] == [table]
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "TRUNCATE t",  # ORA-03290
+        "TRUNCATE TABLE x PARTITION (p)",
+        "TRUNCATE TABLE a.b.c",
+        "TRUNCATE TABLE t@lnk",
+    ],
+)
+def test_truncate_forms_oracle_rejects_name_nothing(sql):
+    facts = _ora(sql)
+
+    assert facts.objects == ()
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "DELETE FROM emp@lnk WHERE a = 1",
+        "SELECT * FROM hr.t@lnk",
+        "INSERT INTO t@lnk VALUES (1)",
+    ],
+)
+def test_an_object_reached_through_a_database_link_is_not_named_locally(sql):
+    facts = _ora(sql)
+
+    assert facts.objects == () and facts.target is None
+    assert facts.opaque
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "create materialized view log$x as select 1 a from dual",
+        "create materialized view log#1 as select 1 a from dual",
+    ],
+)
+def test_a_view_whose_name_starts_with_log_is_a_view(sql):
+    assert _objects(sql)[0][1] == T.MATERIALIZED_VIEW
+
+
+def test_a_bitmap_join_index_does_not_claim_one_table():
+    facts = _ora(
+        "CREATE BITMAP INDEX ix ON sales (c.name) FROM sales s, customers c WHERE s.id = c.id"
+    )
+
+    assert facts.indexed_table is None
+    assert [o.type for o in facts.objects] == [T.INDEX]

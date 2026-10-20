@@ -75,9 +75,17 @@ def test_postgres_truncate_facts_preserve_other_dialect_mappings(dialect):
     facts = SqlglotStatementFactsReader(dialect).read("TRUNCATE TABLE public.items")
 
     assert facts.operation == "TRUNCATE"
-    assert facts.kind == "UNKNOWN"
-    assert facts.objects == ()
-    assert facts.opaque
+    if dialect == "tsql":
+        assert facts.kind == "DDL"
+        assert [(obj.name, obj.schema, obj.role) for obj in facts.objects] == [
+            ("items", "public", "altered")
+        ]
+        assert not facts.opaque
+        assert facts.diagnostic is None
+    else:
+        assert facts.kind == "UNKNOWN"
+        assert facts.objects == ()
+        assert facts.opaque
 
 
 def test_postgres_statement_facts_hook_is_active():

@@ -11,6 +11,7 @@ from unittest.mock import patch
 
 from dblift.core.sql_parser.hybrid_parser import HybridParser
 from dblift.db.plugins.oracle.quirks import OracleQuirks
+from tests.support.legacy_sqlserver_parsers import legacy_sqlserver_hybrid
 
 
 @contextmanager
@@ -27,5 +28,10 @@ def legacy_oracle_hybrid() -> HybridParser:
 
 
 def hybrid_for(dialect: str) -> HybridParser:
-    """``HybridParser(dialect)``, with Oracle served as it was before statement facts."""
-    return legacy_oracle_hybrid() if dialect == "oracle" else HybridParser(dialect)
+    """``HybridParser(dialect)``, with Oracle and SQL Server served as they were before statement
+    facts."""
+    if dialect == "oracle":
+        return legacy_oracle_hybrid()
+    if dialect == "sqlserver":
+        return legacy_sqlserver_hybrid()
+    return HybridParser(dialect)

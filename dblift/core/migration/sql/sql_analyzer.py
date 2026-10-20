@@ -543,13 +543,18 @@ class SqlAnalyzer:
             or self.dialect != "duckdb"  # lint: allow-dialect-string: existing facts modes
         ):
             facts = quirks.statement_facts(sql)
-            return [
+            objects = [
                 {
                     "object_type": obj.type.value,
                     "object_name": f"{obj.schema or DEFAULT_SCHEMA_PLACEHOLDER}.{obj.name}",
                 }
                 for obj in facts.affected_objects
             ]
+            if quirks.is_sqlserver_family and facts.indexed_table:
+                for obj in objects:
+                    if obj["object_type"] == "INDEX":
+                        obj["on_object"] = facts.indexed_table
+            return objects
         objects = self._extract_objects_regex(sql)
         names = [obj["object_name"] for obj in objects if obj.get("object_name")]
         if names_unreadable(sql, get_sqlglot_dialect(self.dialect), names):

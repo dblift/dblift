@@ -10,6 +10,7 @@ from dblift.core.sql_model.base import (
 )
 from dblift.core.sql_parser.parser_factory import SqlParserFactory
 from dblift.core.sql_parser.sqlglot_parser import SqlGlotParser
+from tests.support.legacy_sqlserver_parsers import legacy_sqlserver_sqlglot
 
 
 def test_snowflake_qualified_drop_index_on_relation_stays_unread():
@@ -42,11 +43,9 @@ class TestSqlGlotParser:
         assert parser.sqlglot_dialect == "snowflake"
 
     def test_parser_creation_sqlserver(self):
-        """Test parser can be created for SQL Server."""
-        parser = SqlGlotParser(dialect="sqlserver")
-        assert parser is not None
-        assert parser.dialect_name == "sqlserver"
-        assert parser.sqlglot_dialect == "tsql"
+        """The SQL Server plugin serves statement facts publicly."""
+        with pytest.raises(ValueError, match="StatementFactsParser"):
+            SqlGlotParser(dialect="sqlserver")
 
     # ==================== Snowflake Tests ====================
 
@@ -139,7 +138,7 @@ class TestSqlGlotParser:
 
     def test_parse_sqlserver_insert(self):
         """Test parsing SQL Server INSERT."""
-        parser = SqlGlotParser(dialect="sqlserver")
+        parser = legacy_sqlserver_sqlglot()
         sql = "INSERT INTO users (id, name) VALUES (1, 'John')"
 
         result = parser.parse_sql(sql)
@@ -187,7 +186,7 @@ class TestSqlGlotParser:
 
     def test_parse_sqlserver_create_table(self):
         """Test parsing SQL Server CREATE TABLE."""
-        parser = SqlGlotParser(dialect="sqlserver")
+        parser = legacy_sqlserver_sqlglot()
         sql = "CREATE TABLE users (id INT PRIMARY KEY, name NVARCHAR(100))"
 
         result = parser.parse_sql(sql)
@@ -198,7 +197,7 @@ class TestSqlGlotParser:
 
     def test_parse_sqlserver_inline_primary_key_clustered(self):
         """SQL Server inline PRIMARY KEY with CLUSTERED should parse."""
-        parser = SqlGlotParser(dialect="sqlserver")
+        parser = legacy_sqlserver_sqlglot()
         sql = "CREATE TABLE orders (order_id INT NOT NULL PRIMARY KEY CLUSTERED, status NVARCHAR(20));"
 
         result = parser.parse_sql(sql)
@@ -212,7 +211,7 @@ class TestSqlGlotParser:
 
     def test_parse_sqlserver_select_top(self):
         """Test parsing SQL Server SELECT TOP."""
-        parser = SqlGlotParser(dialect="sqlserver")
+        parser = legacy_sqlserver_sqlglot()
         sql = "SELECT TOP 10 * FROM users"
 
         result = parser.parse_sql(sql)
@@ -348,7 +347,7 @@ class TestSqlGlotParser:
         configuration surfaces, so the degradation to "no objects here" left
         no trace an operator would see. It must log at WARNING or above.
         """
-        parser = SqlGlotParser(dialect="sqlserver")
+        parser = legacy_sqlserver_sqlglot()
         sql = "DROP INDEX a.idx1, b.idx2;"
 
         with caplog.at_level("WARNING", logger="dblift.core.sql_parser.sqlglot_parser"):
@@ -425,7 +424,7 @@ class TestSqlGlotParser:
         separate from the one ``extract_objects`` uses, and covering one does
         not exercise the other — this is that path's own default_schema,
         distinct from any schema embedded in the SQL."""
-        parser = SqlGlotParser(dialect="sqlserver")
+        parser = legacy_sqlserver_sqlglot()
         sql = "DROP INDEX real_one.idx1;"
 
         result = parser.parse_sql(sql, default_schema="unrelated_default")
@@ -441,7 +440,7 @@ class TestSqlGlotParser:
         """Same path, three-part ``owner.table.index_name`` form: the owner
         sqlglot parses into ``Table.catalog`` must survive here too, not
         just through ``extract_objects``."""
-        parser = SqlGlotParser(dialect="sqlserver")
+        parser = legacy_sqlserver_sqlglot()
         sql = "DROP INDEX dbo.real_one.idx1;"
 
         result = parser.parse_sql(sql, default_schema="unrelated_default")
@@ -487,7 +486,7 @@ class TestSqlGlotParser:
 
     def test_sqlserver_identity(self):
         """Test parsing SQL Server IDENTITY."""
-        parser = SqlGlotParser(dialect="sqlserver")
+        parser = legacy_sqlserver_sqlglot()
         sql = "CREATE TABLE users (id INT IDENTITY(1,1) PRIMARY KEY)"
 
         result = parser.parse_sql(sql)

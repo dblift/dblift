@@ -55,12 +55,15 @@ def test_duckdb_facts_activate_parser_consumers():
 def test_merge_facts_remain_opaque_for_other_dialects(dialect):
     facts = read_statement_facts(CASES[0]["sql"], dialect=dialect)
 
-    assert facts.kind == "UNKNOWN"
+    assert facts.kind == ("DML" if dialect == "tsql" else "UNKNOWN")
     assert facts.target is None
     assert facts.objects == ()
     assert facts.events is None
     assert facts.affected_columns == ()
     assert facts.opaque
+    if dialect == "tsql":
+        assert facts.operation == "MERGE"
+        assert facts.diagnostic
 
 
 @pytest.mark.parametrize("dialect", ["sqlite", "oracle", "snowflake", "tsql"])

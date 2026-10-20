@@ -55,7 +55,16 @@ preserve statement text and showed no separate execution loss.
 | Block | `/*` | the first `*/` | **no** | "Begin the comment with a slash and an asterisk (/\*). … End the comment with an asterisk and a slash (\*/)." The Oracle manual does not say so explicitly; Snowflake's SnowConvert documentation does, in comparing engines: `/*/` "can start a nesting inside the block comment, or finish the whole block … the comment behaves differently in Teradata and SQL Server than in Oracle and Snowflake", i.e. Oracle finishes the block. |
 | Hint | `/*+` … `*/`, `--+` | as above | — | a comment to the splitter; kept in the statement text |
 
-**Stray `*/` after `;`.** Oracle comments do not nest, so in
+**Stray `*/` after `;`.** A table reached through a database link (`emp@lnk`) is not named: no local object has that name,
+so the statement is opaque. Declared column names and constraint names keep the spelling the
+statement writes (only table, index and schema names are folded); the folding of a non-ASCII
+letter is Python's `str.upper` and is verified against Oracle only for `é` (`tété` is `TÉTÉ`).
+
+`is_full_table_dml` reads no predicate from a statement the grammar cannot parse (a bind variable
+`:1`, `LOG ERRORS`, a partition clause), so it reports such an `UPDATE` or `DELETE` as a full-table
+change: the safe direction, but a false positive for a valid statement.
+
+Oracle comments do not nest, so in
 `/* a /* b */ DROP TABLE t; */` the `DROP` is outside the comment and the `;`
 is not the last text on its line. Under the §4 rule that `;` is not a
 terminator; the splitter rejects the line. SQL\*Plus itself keeps the text in

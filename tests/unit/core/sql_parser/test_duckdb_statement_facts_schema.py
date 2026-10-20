@@ -66,7 +66,10 @@ def test_duckdb_schema_and_metadata_mappings_preserve_other_dialects(
     facts = read_statement_facts(sql, dialect=dialect)
     assert facts.operation == operation
     assert facts.kind == kind
-    assert facts.objects == ()
+    if dialect == "tsql" and sql == "DROP SCHEMA s CASCADE":
+        assert facts.objects == (NamedObject("s", SqlObjectType.SCHEMA, "dropped"),)
+    else:
+        assert facts.objects == ()
     assert facts.opaque is opaque
 
 
@@ -93,7 +96,7 @@ def test_duckdb_metadata_mappings_preserve_postgres(dialect, sql, operation, kin
         ("postgres", "child"),
         ("oracle", "child c"),
         ("mysql", "child"),
-        ("tsql", "child AS c"),
+        ("tsql", "child"),
     ],
 )
 def test_target_alias_normalization_preserves_each_dialect_contract(dialect, expected):

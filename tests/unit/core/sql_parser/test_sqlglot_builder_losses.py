@@ -3,8 +3,8 @@
 import pytest
 
 from dblift.core.sql_model.base import ConstraintType
-from dblift.core.sql_parser import SqlParserFactory
 from tests.support.legacy_oracle_hybrid import hybrid_for
+from tests.support.legacy_sqlserver_parsers import legacy_sqlserver_hybrid
 
 pytestmark = pytest.mark.unit
 DIALECTS = ("oracle", "sqlserver")
@@ -99,7 +99,7 @@ def test_foreign_key_without_actions_keeps_none(dialect):
 @pytest.mark.parametrize("quote_left, quote_right", [("`", "`"), ('"', '"'), ("[", "]")])
 @pytest.mark.parametrize("qualified", [False, True])
 def test_trigger_header_accepts_quoted_identifiers(quote_left, quote_right, qualified):
-    parser = SqlParserFactory("sqlserver").get_parser()
+    parser = legacy_sqlserver_hybrid()
     table = f"{quote_left}t{quote_right}"
     if qualified:
         table = f"{quote_left}s{quote_right}.{table}"

@@ -41,20 +41,20 @@ class TestCreateIndexBracketDoubling(unittest.TestCase):
     def test_plain_bracketed_name_is_unescaped(self):
         # The exact statement from the issue report.
         obj = _only(self.analyzer, "CREATE INDEX [idx_users_email] ON [dbo].[users]([email]);")
-        self.assertEqual(obj["object_name"], "idx_users_email")
+        self.assertEqual(obj["object_name"], "dbo.idx_users_email")
         self.assertEqual(obj["on_object"], "dbo.users")
 
     def test_trailing_doubled_bracket(self):
         obj = _only(self.analyzer, "CREATE INDEX [name]]] ON [dbo].[t]([c]);")
-        self.assertEqual(obj["object_name"], "name]")
+        self.assertEqual(obj["object_name"], "dbo.name]")
 
     def test_doubled_bracket_at_start(self):
         obj = _only(self.analyzer, "CREATE INDEX []]abc] ON [dbo].[t]([c]);")
-        self.assertEqual(obj["object_name"], "]abc")
+        self.assertEqual(obj["object_name"], "dbo.]abc")
 
     def test_two_doubled_brackets_in_one_identifier(self):
         obj = _only(self.analyzer, "CREATE INDEX [a]]b]]c] ON [dbo].[t]([c]);")
-        self.assertEqual(obj["object_name"], "a]b]c")
+        self.assertEqual(obj["object_name"], "dbo.a]b]c")
 
     def test_adjacent_bracketed_identifiers_on_target(self):
         obj = _only(self.analyzer, "CREATE INDEX [idx] ON [a]]b].[c]]d]([col]);")
@@ -62,11 +62,11 @@ class TestCreateIndexBracketDoubling(unittest.TestCase):
 
     def test_three_part_on_target_still_works(self):
         obj = _only(self.analyzer, "CREATE INDEX [idx] ON [mydb].[dbo].[mytable]([col]);")
-        self.assertEqual(obj["on_object"], "dbo.mytable")
+        self.assertEqual(obj["on_object"], "mydb.dbo.mytable")
 
     def test_double_quoted_spelling(self):
         obj = _only(self.analyzer, 'CREATE INDEX "real""one" ON "dbo"."users"("email");')
-        self.assertEqual(obj["object_name"], 'real"one')
+        self.assertEqual(obj["object_name"], 'dbo.real"one')
         self.assertEqual(obj["on_object"], "dbo.users")
 
 
@@ -99,8 +99,7 @@ class TestGenericDdlBracketDoubling(unittest.TestCase):
         self.assertEqual(obj["object_name"], "default_schema.idx_users_email")
 
     def test_drop_index_plain_bracket_is_unescaped(self):
-        obj = _only(self.analyzer, "DROP INDEX [idx_users_email];")
-        self.assertEqual(obj["object_name"], "default_schema.idx_users_email")
+        self.assertEqual(self.analyzer.extract_objects("DROP INDEX [idx_users_email];"), [])
 
 
 class TestUndoScriptEndToEnd(unittest.TestCase):

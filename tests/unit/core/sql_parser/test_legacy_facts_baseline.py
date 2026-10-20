@@ -110,6 +110,23 @@ def test_legacy_facts_corpus(case):
             assert new["type"] == kind
             assert new["objects"] == new["affected_objects"]
             assert new["objects"] == [{"type": object_type, "name": name, "schema": None}]
+    if case["dialect"] == "sqlserver":
+        # The facts path keeps the five executed statements and names proven DML targets.
+        # It does not invent dbo for unqualified names.
+        assert observed["success"] == case["legacy_observed"]["success"]
+        assert observed["errors"] == case["legacy_observed"]["errors"]
+        assert len(observed["statements"]) == 5
+        for index, (old, new) in enumerate(
+            zip(case["legacy_observed"]["statements"], observed["statements"])
+        ):
+            assert (new["sql"], new["type"]) == (old["sql"], old["type"])
+            if index in (2, 3):
+                assert old["objects"] == old["affected_objects"] == []
+                expected = [{"type": "TABLE", "name": "child", "schema": None}]
+            else:
+                assert all(obj["schema"] == "dbo" for obj in old["objects"])
+                expected = [{**obj, "schema": None} for obj in old["objects"]]
+            assert new["objects"] == new["affected_objects"] == expected
         return
     if case["dialect"] in ACCEPTED_DIFFERENCES:
         assert observed["success"] == case["legacy_observed"]["success"]

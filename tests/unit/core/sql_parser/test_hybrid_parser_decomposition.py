@@ -15,10 +15,11 @@ from dblift.core.sql_model.base import (
 )
 from dblift.core.sql_model.table import Table
 from dblift.core.sql_parser.hybrid_parser import HybridParser
+from tests.support.legacy_sqlserver_parsers import legacy_sqlserver_hybrid
 
 
 def _make_parser(dialect: str = "sqlserver") -> HybridParser:
-    return HybridParser(dialect)
+    return legacy_sqlserver_hybrid() if dialect == "sqlserver" else HybridParser(dialect)
 
 
 # ────────────────────────────────────────────────────────────
