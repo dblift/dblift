@@ -503,6 +503,10 @@ class BaseTokenizer:
 
         return Token(TokenType.SYMBOL, char, start_pos, start_line, start_col, self.parens_depth)
 
+    def _is_word_char(self, char: str) -> bool:
+        """Whether ``char`` continues a keyword or identifier."""
+        return char.isalnum() or char in ("_", "$", "#")
+
     def _handle_keyword(self) -> Token:
         """Handle keyword/identifier tokens.
 
@@ -516,8 +520,7 @@ class BaseTokenizer:
         # Read the keyword/identifier
         text = ""
         while self.pos < len(self.sql):
-            char = self.peek()
-            if char.isalnum() or char in ("_", "$", "#"):
+            if self._is_word_char(self.peek()):
                 text += self.read()
             else:
                 break
