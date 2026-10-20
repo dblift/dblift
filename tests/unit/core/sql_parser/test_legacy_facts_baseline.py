@@ -157,7 +157,6 @@ def test_sqlite_statement_facts_snapshot():
 
 
 @pytest.mark.unit
-@pytest.mark.xfail(strict=True, reason="Known legacy target loss: dblift/dblift#560")
 def test_cte_delete_names_affected_target():
     script = CORPUS_DATA["known_gap_inputs"]["cte_delete_target"]
     observed = _observe("postgresql", script)
