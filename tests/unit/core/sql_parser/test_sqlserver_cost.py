@@ -8,7 +8,9 @@ steps remain outside the counter.
 import ast
 import inspect
 import re
+import shutil
 import textwrap
+from pathlib import Path
 from unittest import mock
 
 import pytest
@@ -169,6 +171,169 @@ def test_sqlserver_source_guard_sees_the_divide_rescan_the_meter_cannot(monkeypa
     small, large = counted(make(SMALL)), counted(make(LARGE))
     assert large <= BOUND * small  # the plain-string helper hides this scan from the meter
     assert loop_findings(ast.parse(mutant), plain_source=True) != []
+
+
+@pytest.mark.parametrize(
+    "function",
+    (batch_commands.find_lone_cr, batch_commands.refuse_variable_in_code),
+    ids=lambda function: function.__name__,
+)
+def test_sqlserver_cost_detects_a_whole_source_scan_outside_a_loop(function, monkeypatch):
+    source = textwrap.dedent(inspect.getsource(function))
+    anchor = "    match = _patterns(rules)."
+    assert source.count(anchor) == 1
+    mutant = source.replace(
+        anchor, "    source.count('\\n')\n    visits.append(1)\n" + anchor, 1
+    )
+    namespace = {**vars(batch_commands), "visits": []}
+    exec(mutant, namespace)  # noqa: S102 - test-owned mutation
+    monkeypatch.setattr(tokenizer_module, function.__name__, namespace[function.__name__])
+    make = SHAPES["many GO batches"]
+    small, large = counted(make(SMALL)), counted(make(LARGE))
+    assert namespace["visits"]  # the injected scan ran through the public split path
+    assert large <= BOUND * small  # today's slice charge misses the whole-source work
+    assert loop_findings(ast.parse(mutant), plain_source=True) != [], (
+        function.__name__, small, large
+    )
+
+
+def test_sqlserver_source_guard_accepts_renamed_advancing_line_search():
+    source = textwrap.dedent(inspect.getsource(batch_division._events))
+    renamed = source.replace("cursor", "scan_position").replace("offset", "word_position")
+    assert renamed != source
+    assert loop_findings(ast.parse(renamed), plain_source=True) == []
+
+
+@pytest.mark.parametrize(
+    "scan",
+    (
+        "source.count('\\n', 0, len(source))",
+        "source.count('\\n', 0, offset)",
+    ),
+)
+def test_sqlserver_source_guard_rejects_full_or_prefix_counts_in_a_loop(scan):
+    source = f"def helper(source):\n    for offset in range(len(source)):\n        {scan}\n"
+    assert loop_findings(ast.parse(source), plain_source=True) != []
+
+
+def test_sqlserver_source_guard_rejects_explicit_whole_source_bounds_outside_a_loop():
+    source = "def helper(source):\n    source.count('\\n', 0, len(source))\n"
+    assert loop_findings(ast.parse(source), plain_source=True) != []
+
+
+def _batch_functions(root: Path) -> dict[str, dict[str, ast.AST]]:
+    inventory = {}
+    for path in root.glob("batch_*.py"):
+        functions = {}
+
+        def visit(node, parents=()):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                parents += (node.name,)
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    functions[".".join(parents)] = node
+            for child in ast.iter_child_nodes(node):
+                visit(child, parents)
+
+        visit(ast.parse(path.read_text(encoding="utf-8")))
+        inventory[path.name] = functions
+    return inventory
+
+
+def _batch_inventory(root: Path) -> dict[str, set[str]]:
+    return {name: set(functions) for name, functions in _batch_functions(root).items()}
+
+
+# Every batch module and callable needs a cost decision when added or removed.
+BATCH_COST_DECISIONS = {
+    "batch_cache.py": {
+        "RulesCache.__init__": "no script input: rules cache setup",
+        "RulesCache.get": "no script input: rules lookup",
+    },
+    "batch_commands.py": {
+        "_patterns": "no script input: rules cache lookup",
+        "_compile": "no script input: compile rules patterns",
+        "read_command": "plain source: line scan charged by wrapper",
+        "_command_message": "no script input: format scalar values",
+        "_tail_message": "no script input: format scalar values",
+        "find_lone_cr": "plain source: bounded regex charged by wrapper",
+        "refuse_lone_cr": "no script input: raise from scalar values",
+        "refuse_variable_in_code": "plain source: bounded regex charged by wrapper",
+        "refuse_variable_in_lexeme": "plain source: bounded regex charged by wrapper",
+        "_variable_message": "no script input: format scalar values",
+    },
+    "batch_division.py": {
+        "code_spans": "counted source: receives CountingText",
+        "code_positions": "plain source: bounded spans charged by wrapper",
+        "has_code": "no script input: positions only",
+        "_events": "plain source: batch span charged by divide wrapper",
+        "divide": "plain source: batch span charged by wrapper",
+    },
+    "batch_script.py": {
+        "BatchScript.__init__": "counted source: stores CountingText",
+        "BatchScript.split": "counted source: reads CountingText",
+        "BatchScript._add": "counted source: reads CountingText",
+        "BatchScript._comment_nests": "counted source: reads CountingText",
+        "BatchScript._server_has_code": "counted source: reads CountingText",
+    },
+}
+BATCH_INVENTORY = {name: set(decisions) for name, decisions in BATCH_COST_DECISIONS.items()}
+
+
+def test_sqlserver_batch_helper_inventory_is_explicit():
+    root = Path(batch_commands.__file__).parent
+    assert _batch_inventory(root) == BATCH_INVENTORY
+
+
+def test_sqlserver_all_classified_plain_source_helpers_are_guarded():
+    root = Path(batch_commands.__file__).parent
+    functions = _batch_functions(root)
+    for filename, decisions in BATCH_COST_DECISIONS.items():
+        for name, decision in decisions.items():
+            if decision.startswith("plain source:"):
+                assert loop_findings(functions[filename][name], plain_source=True) == [], name
+
+
+def test_sqlserver_no_script_classification_does_not_read_the_script():
+    root = Path(batch_commands.__file__).parent
+    functions = _batch_functions(root)
+    for filename, decisions in BATCH_COST_DECISIONS.items():
+        for name, decision in decisions.items():
+            if decision.startswith("no script input:"):
+                assert not any(
+                    isinstance(node, ast.Name) and node.id in {"source", "sql", "script"}
+                    or isinstance(node, ast.Attribute)
+                    and isinstance(node.value, ast.Name)
+                    and node.value.id == "self"
+                    and node.attr in {"source", "sql", "script"}
+                    for node in ast.walk(functions[filename][name])
+                ), name
+
+
+def test_sqlserver_batch_helper_inventory_rejects_new_helper_and_module(tmp_path):
+    root = Path(batch_commands.__file__).parent
+    for name in BATCH_INVENTORY:
+        shutil.copyfile(root / name, tmp_path / name)
+    assert _batch_inventory(tmp_path) == BATCH_INVENTORY
+    with (tmp_path / "batch_commands.py").open("a", encoding="utf-8") as source:
+        source.write("\ndef new_helper(source):\n    return source.count('\\n')\n")
+    assert _batch_inventory(tmp_path) != BATCH_INVENTORY
+    shutil.copyfile(root / "batch_commands.py", tmp_path / "batch_commands.py")
+    with (tmp_path / "batch_commands.py").open("a", encoding="utf-8") as source:
+        source.write("\nclass NewBatch:\n    def helper(self, source):\n        return source.count('\\n')\n")
+    assert "NewBatch.helper" in _batch_inventory(tmp_path)["batch_commands.py"]
+    assert _batch_inventory(tmp_path) != BATCH_INVENTORY
+    shutil.copyfile(root / "batch_commands.py", tmp_path / "batch_commands.py")
+    path = tmp_path / "batch_commands.py"
+    code = path.read_text(encoding="utf-8")
+    anchor = "    match = _patterns(rules).lone_cr.search(source, start, end)"
+    assert code.count(anchor) == 1
+    code = code.replace(anchor, "    def hidden_helper():\n        return source.count('\\n')\n" + anchor)
+    path.write_text(code, encoding="utf-8")
+    assert "find_lone_cr.hidden_helper" in _batch_inventory(tmp_path)["batch_commands.py"]
+    assert _batch_inventory(tmp_path) != BATCH_INVENTORY
+    shutil.copyfile(root / "batch_commands.py", path)
+    (tmp_path / "batch_new.py").write_text("def new_helper(source):\n    return source.count('\\n')\n")
+    assert _batch_inventory(tmp_path) != BATCH_INVENTORY
 
 
 @pytest.mark.parametrize(
