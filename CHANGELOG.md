@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Splitting a large script uses less memory.** Tokens no longer carry a per-instance
+  dictionary. Peak memory when splitting a 3 MiB INSERT script falls from 201 MB to 157 MB
+  on DuckDB, 197 MB to 152 MB on MySQL, 276 MB to 213 MB on Db2 and 200 MB to 155 MB on
+  PostgreSQL (about 22%), with no change in splitting time or results.
 - **Transactional provider health is provider-owned.** Custom transactional
   providers must implement `check_transaction_state()`. The engine calls it
   immediately before each executed SQL statement; the provider sends its
