@@ -188,6 +188,7 @@ class LexicalTokenizer(BaseTokenizer):
         self.origin = 0
         self._seg_pending = False
         self._seg_escape = False
+        self._seg_escape_newline = False
         if self._segment is not None:
             self._init_segment_script(self._segment)
 
@@ -304,6 +305,8 @@ class LexicalTokenizer(BaseTokenizer):
         sql, pos = self.sql, self.pos
         char = sql[pos]
         if char in self._seg_blanks and not (char in self._seg_wide and self._kept_until(pos)):
+            if char in "\r\n" and self._seg_escape:
+                self._seg_escape_newline = True
             self.read()
             return None
         if self._at_command_line(rules, pos):
@@ -374,9 +377,12 @@ class LexicalTokenizer(BaseTokenizer):
         return self._segment_token(TokenType.COMMENT, start, line, col)
 
     def _segment_string(self) -> Token:
-        """A string; an escape string while the escape mode continues. A string keeps the mode."""
+        """A prefix or a line break may carry escape mode into this string."""
         self._seg_pending = True
-        read = self._handle_escape_string if self._seg_escape else self._handle_standard_string
+        escape = self._seg_escape and self._seg_escape_newline
+        read = self._handle_escape_string if escape else self._handle_standard_string
+        self._seg_escape = escape
+        self._seg_escape_newline = False
         return self._segment_lexeme(TokenType.STRING, read)
 
     def _segment_identifier(self) -> Token:
@@ -424,6 +430,7 @@ class LexicalTokenizer(BaseTokenizer):
             self.read()
             return self._segment_token(TokenType.SYMBOL, start, line, col)
         self._seg_escape = self._opens_escape_string(self.sql[start:end], end)
+        self._seg_escape_newline = self._seg_escape
         self.read(end - start)
         return self._segment_token(kind, start, line, col)
 
@@ -453,12 +460,12 @@ class LexicalTokenizer(BaseTokenizer):
         return end
 
     def _opens_escape_string(self, word: str, end: int) -> bool:
-        """Whether ``word``, with a quote at ``end``, is an escape prefix (alone or after digits)."""
+        """Whether ``word``, with a quote at ``end``, is an escape prefix."""
         assert self._segment is not None
         return (
             self.sql.startswith("'", end)
             and word[-1] in self._segment.escape_letters
-            and (len(word) == 1 or word[:-1].isdigit())
+            and len(word) == 1
         )
 
     def assemble(self, tokens: List[Token]) -> List[Statement]:

@@ -462,8 +462,8 @@ def test_dollar_tags():
         ("1E'b\\';c'", [ident("1"), kw("E"), st("'b\\';c'")]),
         ("12e'b\\';c'", [ident("12"), kw("e"), st("'b\\';c'")]),
         ("1xE'b\\';c'", [ident("1"), kw("xE"), st("'b\\'"), dl(), kw("c"), st("'")]),
-        (SQUARED + "E'b\\';c'", [kw(SQUARED + "E"), st("'b\\';c'")]),
-        (ARABIC_THREE + "E'b\\';c'", [kw(ARABIC_THREE + "E"), st("'b\\';c'")]),
+        (SQUARED + "E'b\\';c'", [kw(SQUARED + "E"), st("'b\\'"), dl(), kw("c"), st("'")]),
+        (ARABIC_THREE + "E'b\\';c'", [kw(ARABIC_THREE + "E"), st("'b\\'"), dl(), kw("c"), st("'")]),
         ("E 'a\\';b'", [kw("E"), st("'a\\'"), dl(), kw("b"), st("'")]),
         ("$$q$$E'a\\';b'", [st("$$q$$"), kw("E"), st("'a\\';b'")]),
         ("$1E'a\\';b'", [sym("$1"), kw("E"), st("'a\\';b'")]),
@@ -483,11 +483,26 @@ CONTINUED = [kw("SELECT"), kw("E"), st("'a'")]
 ESCAPE_THEN = "SELECT E'a'{gap}'b\\'; SELECT 2;"
 
 
-@pytest.mark.parametrize("gap", [" ", "\n", "\r", "\r\n", " -- c\n", "\t", NBSP, "  -- c\n  "])
-def test_escape_mode_continues_across_blanks_and_line_comments(gap):
+@pytest.mark.parametrize(
+    "gap,continued",
+    [
+        (" ", False),
+        ("\n", True),
+        ("\r", True),
+        ("\r\n", True),
+        (" -- c\n", True),
+        ("\t", False),
+        (NBSP, False),
+        ("  -- c\n  ", True),
+    ],
+)
+def test_escape_mode_continues_only_across_line_breaks(gap, continued):
     items = shape(ESCAPE_THEN.format(gap=gap))
-    assert [i for i in items if i[0] == "STRING"] == [st("'a'"), st("'b\\'; SELECT 2;")]
-    assert dl() not in items
+    assert [i for i in items if i[0] == "STRING"] == [
+        st("'a'"),
+        st("'b\\'; SELECT 2;") if continued else st("'b\\'"),
+    ]
+    assert (dl() not in items) == continued
 
 
 @pytest.mark.parametrize(
@@ -501,13 +516,28 @@ def test_escape_mode_ends_at_any_other_token(gap):
 
 def test_escape_mode_in_the_reference_cases():
     same_line = shape("SELECT E'a' 'b\\'; SELECT 1 AS y; SELECT 'z';")
-    assert same_line == CONTINUED + [st("'b\\'; SELECT 1 AS y; SELECT '"), kw("z"), st("';")]
-    assert shape("SELECT E'a'\n'b\\'; SELECT 1 AS y; SELECT 'z';") == same_line
+    assert same_line == CONTINUED + [
+        st("'b\\'"),
+        dl(),
+        kw("SELECT"),
+        ident("1"),
+        kw("AS"),
+        kw("y"),
+        dl(),
+        kw("SELECT"),
+        st("'z'"),
+        dl(),
+    ]
+    assert shape("SELECT E'a'\n'b\\'; SELECT 1 AS y; SELECT 'z';") == CONTINUED + [
+        st("'b\\'; SELECT 1 AS y; SELECT '"),
+        kw("z"),
+        st("';"),
+    ]
     assert shape("SELECT E'a' /* c */\n'b\\'' AS x; SELECT 2 AS y;")[3:] == [
         cm("/* c */"),
         st("'b\\'' AS x; SELECT 2 AS y;"),
     ]
-    assert shape("SELECT E'a' 'p' 'b\\'' AS x;")[2:5] == [st("'a'"), st("'p'"), st("'b\\''")]
+    assert shape("SELECT E'a' 'p' 'b\\'' AS x;")[2:5] == [st("'a'"), st("'p'"), st("'b\\'' AS x;")]
 
 
 def test_refusals_of_the_refused_character():
