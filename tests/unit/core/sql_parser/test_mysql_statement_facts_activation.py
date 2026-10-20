@@ -104,7 +104,9 @@ def test_script_analysis_reads_facts(dialect):
     analysis = analyse_script("UPDATE t SET a = 1;\nTRUNCATE t;\nDROP TABLE s.t;", dialect)
 
     assert analysis.errors == ()
-    assert [(s.operation, s.kind, [(o.name, o.schema) for o in s.objects]) for s in analysis.statements] == [
+    assert [
+        (s.operation, s.kind, [(o.name, o.schema) for o in s.objects]) for s in analysis.statements
+    ] == [
         ("UPDATE", "DML", [("t", None)]),
         ("TRUNCATE", "DDL", [("t", None)]),
         ("DROP", "DDL", [("t", "s")]),
@@ -127,13 +129,17 @@ def test_the_mariadb_executable_comment_is_read_by_the_mariadb_plugin_only():
     through_mariadb = analyse_script(MARIA_EXECUTABLE, "mariadb")
     through_mysql = analyse_script(MARIA_EXECUTABLE, "mysql")
 
-    assert [(s.operation, s.names_unread) for s in through_mariadb.statements] == [("UNKNOWN", True)]
+    assert [(s.operation, s.names_unread) for s in through_mariadb.statements] == [
+        ("UNKNOWN", True)
+    ]
     assert through_mysql.statements == ()
     assert through_mysql.errors == () == through_mariadb.errors
 
 
 @pytest.mark.parametrize("dialect", DIALECTS)
-@pytest.mark.parametrize("script", ["source other.sql\nCREATE TABLE a (id INT);\n", "CREATE TABLE a (id INT);\nexit\n"])
+@pytest.mark.parametrize(
+    "script", ["source other.sql\nCREATE TABLE a (id INT);\n", "CREATE TABLE a (id INT);\nexit\n"]
+)
 def test_a_client_command_refuses_the_whole_script_on_every_path(dialect, script):
     analysis = analyse_script(script, dialect)
     assert analysis.statements == ()
@@ -162,7 +168,7 @@ def test_execution_tracking_records_the_facts_object(dialect):
     service.execute_statement("UPDATE s.t SET a = 1")
 
     objects = journal.record_object_changes.call_args.args[2]
-    assert [(obj["object_name"], obj["schema_name"]) for obj in objects] == [("t", "s")]
+    assert [(obj["object_name"], obj["schema"]) for obj in objects] == [("t", "s")]
 
 
 @pytest.mark.parametrize("dialect", DIALECTS)
@@ -193,7 +199,10 @@ def test_dml_analysis_reads_the_modifier_bearing_target_through_facts(dialect):
     quirks = _quirks(dialect)
 
     assert analyze_dml("UPDATE LOW_PRIORITY t SET a = 1", quirks=quirks).table == "t"
-    assert statement_dml_table("DELETE QUICK FROM `Cap Probe` WHERE id = 1", quirks=quirks) == "`Cap Probe`"
+    assert (
+        statement_dml_table("DELETE QUICK FROM `Cap Probe` WHERE id = 1", quirks=quirks)
+        == "`Cap Probe`"
+    )
 
 
 @pytest.mark.parametrize("dialect", DIALECTS)
