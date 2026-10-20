@@ -153,6 +153,10 @@ def test_a_fulltext_index_without_a_name_names_nothing():
     [
         ("UPDATE LOW_PRIORITY t SET a = 1", "UPDATE", "t", "t"),
         ("UPDATE /* c */ LOW_PRIORITY t SET a = 1", "UPDATE", "t", "t"),
+        ("UPDATE -- c\n LOW_PRIORITY t SET a = 1", "UPDATE", "t", "t"),
+        ("UPDATE # c\n LOW_PRIORITY t SET a = 1", "UPDATE", "t", "t"),
+        ("UPDATE LOW_PRIORITY -- c\n IGNORE t SET a = 1", "UPDATE", "t", "t"),
+        ("DELETE -- c\n QUICK FROM t", "DELETE", "t", "t"),
         ("UPDATE IGNORE `Cap Probe` SET b = 1", "UPDATE", "Cap Probe", "`Cap Probe`"),
         ("UPDATE LOW_PRIORITY IGNORE `s`.`t` SET b = 1", "UPDATE", "s.t", "`s`.`t`"),
         (
@@ -216,6 +220,11 @@ def test_modifier_elision_keeps_the_predicate_and_the_assignments():
         ("DELETE FROM `ignore` WHERE a = 1", "ignore"),
         ("INSERT INTO ignore$x (a) VALUES (1)", "ignore$x"),
         ("INSERT INTO `delayed` (a) VALUES (1)", "delayed"),
+        ("UPDATE low_priority_x SET a = 1", "low_priority_x"),
+        ("UPDATE ignore$x SET a = 1", "ignore$x"),
+        ("UPDATE quick t SET a = 1", "quick"),
+        ("UPDATE quick, u SET quick.a = u.a", "quick"),
+        ("INSERT INTO quick (a) VALUES (1)", "quick"),
     ],
 )
 def test_a_table_named_like_a_modifier_is_the_target(sql, target):
@@ -252,11 +261,11 @@ def test_modifier_words_elsewhere_in_the_statement_are_untouched():
 
 def test_the_modifier_table_has_one_definition():
     assert dml_analysis._DML_MODIFIER_WORDS is sqlglot_statement_facts.MYSQL_DML_MODIFIER_WORDS
-    assert set(sqlglot_statement_facts.MYSQL_DML_MODIFIER_WORDS) == {
-        "UPDATE",
-        "DELETE",
-        "INSERT",
-        "REPLACE",
+    assert sqlglot_statement_facts.MYSQL_DML_MODIFIER_WORDS == {
+        "UPDATE": "LOW_PRIORITY|IGNORE",
+        "DELETE": "LOW_PRIORITY|QUICK|IGNORE",
+        "INSERT": "LOW_PRIORITY|HIGH_PRIORITY|DELAYED|IGNORE",
+        "REPLACE": "LOW_PRIORITY|DELAYED",
     }
 
 
@@ -275,6 +284,11 @@ def test_the_modifier_table_has_one_definition():
         f"CREATE TABLE e (c{EMOJI} INT)",
         f"ALTER TABLE e ADD COLUMN `d{EMOJI}` INT",
         f"CREATE INDEX ix ON t (c{EMOJI})",
+        f"RENAME TABLE `t{EMOJI}` TO b",
+        f"RENAME TABLE t{EMOJI} TO b",
+        f"RENAME TABLE a TO `b{EMOJI}`",
+        f"CREATE FULLTEXT INDEX `f{EMOJI}` ON ft (txt)",
+        f"TRUNCATE `t{EMOJI}`",
     ],
 )
 def test_a_name_holding_a_supplementary_character_is_not_reported(sql):
@@ -332,7 +346,7 @@ def _plain(facts):
 @pytest.mark.parametrize(
     ("dialect", "sql"), [(d, s) for d in sorted(OTHER) for s in sorted(OTHER[d])]
 )
-def test_other_dialects_read_the_lot_inputs_as_before(dialect, sql):
+def test_other_dialects_read_the_same_inputs_as_before(dialect, sql):
     assert _plain(read_statement_facts(sql, dialect=dialect)) == OTHER[dialect][sql]
 
 
