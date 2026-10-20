@@ -212,3 +212,29 @@ def test_a_non_ascii_blank_beside_a_name_proves_no_object_through_the_plugin(dia
 
     assert facts.indexed_table is None
     assert all(obj.type.value != "TABLE" for obj in facts.objects)
+
+
+@pytest.mark.parametrize("dialect", DIALECTS)
+@pytest.mark.parametrize(
+    ("sql", "target", "predicate"),
+    [
+        ("UPDATE ignore.t SET a = 1 WHERE id = 1", "ignore.t", "id = 1"),
+        ("DELETE FROM ignore.t WHERE id = 1", "ignore.t", "id = 1"),
+        ("UPDATE ignore.t SET a = 1", "ignore.t", None),
+    ],
+)
+def test_a_schema_named_like_a_keyword_keeps_its_target_and_predicate(
+    dialect, sql, target, predicate
+):
+    # Both engines run these (the schema `ignore` exists in the probe); sqlglot's grammar does not,
+    # so the reader proves the single target and the WHERE from the text instead of guessing nothing.
+    quirks = _quirks(dialect)
+    facts = quirks.statement_facts(sql)
+
+    assert facts.target == target
+    assert facts.predicate == predicate
+    assert quirks.statement_dml_table(sql) == target
+    assert quirks.is_full_table_dml(sql) is (predicate is None)
+    analysis = analyse_script(sql + ";", dialect)
+    assert analysis.statements[0].full_table is (predicate is None)
+    assert [c.code for c in analysis.cautions] == (["dml-no-where"] if predicate is None else [])

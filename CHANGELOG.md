@@ -16,7 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   since whether they run depends on the server version; a statement whose objects cannot be
   established is reported as unread instead of guessed.
 - **Undo generation for MySQL and MariaDB writes a manual-review placeholder** for every
-  statement that changes the schema or data; read-only statements produce no undo.
+  statement except a `SELECT`, which produces no undo.
 - **Splitting a large script uses less memory.** Tokens no longer carry a per-instance
   dictionary. Peak memory when splitting a 3 MiB INSERT script falls from 201 MB to 157 MB
   on DuckDB, 197 MB to 152 MB on MySQL, 276 MB to 213 MB on Db2 and 200 MB to 155 MB on

@@ -4,6 +4,9 @@ Checked on MySQL 8.4.11 and MariaDB 11.8.8: every statement below is accepted by
 (a missing table or a missing DETERMINISTIC clause is a later error, not a parse error).
 """
 
+import json
+from pathlib import Path
+
 import pytest
 
 from dblift.core.sql_model.base import SqlObjectType
@@ -132,6 +135,20 @@ def test_the_word_after_create_index_is_the_index_name():
     assert facts.indexed_table == "orders"
 
 
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "CREATE INDEX CONCURRENTLY ix ON t (c)",
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS ix ON t (c)",
+    ],
+)
+def test_a_name_after_concurrently_is_not_an_index(sql):
+    # The engine reads CONCURRENTLY as the index name and rejects what follows (error 1064).
+    facts = mysql(sql)
+
+    assert all(obj.name != "ix" for obj in facts.objects)
+
+
 def test_a_nameless_create_index_names_no_index():
     # ``CREATE INDEX ON orders (email)`` is rejected by MySQL (error 1064): ``ON`` is not a name.
     facts = mysql("CREATE INDEX ON orders (email)")
@@ -139,18 +156,21 @@ def test_a_nameless_create_index_names_no_index():
     assert all(obj.type != SqlObjectType.INDEX for obj in facts.objects)
 
 
-@pytest.mark.parametrize("dialect", ["postgres", "duckdb", "sqlite", "tsql", "oracle"])
-def test_other_dialects_keep_their_reading_of_the_same_forms(dialect):
-    before = {
-        sql: read_statement_facts(sql, dialect=dialect)
-        for sql in (
-            "CREATE FUNCTION f() RETURNS INT BEGIN RETURN 1; END",
-            "CREATE INDEX CONCURRENTLY ON orders (email)",
-            "CREATE TRIGGER users_bi BEFORE INSERT ON users FOR EACH ROW EXECUTE FUNCTION f()",
-        )
-    }
-    # The mysql arms must not leak: ``CONCURRENTLY`` is a PostgreSQL keyword, not a name, there.
-    assert all(
-        obj.name != "CONCURRENTLY"
-        for obj in before["CREATE INDEX CONCURRENTLY ON orders (email)"].objects
-    )
+OTHER = json.loads(
+    Path(__file__).with_name("mysql_facts_programs_other_dialects.json").read_text(encoding="utf-8")
+)
+
+
+@pytest.mark.parametrize(
+    ("dialect", "sql"), [(d, s) for d in sorted(OTHER) for s in sorted(OTHER[d])]
+)
+def test_other_dialects_keep_their_reading_of_the_same_forms(dialect, sql):
+    facts = read_statement_facts(sql, dialect=dialect)
+    assert {
+        "operation": facts.operation,
+        "kind": facts.kind,
+        "opaque": facts.opaque,
+        "objects": [[o.name, o.type.value, o.role, o.schema] for o in facts.objects],
+        "indexed_table": facts.indexed_table,
+        "diagnostic": facts.diagnostic,
+    } == OTHER[dialect][sql]

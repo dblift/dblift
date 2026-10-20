@@ -2541,7 +2541,7 @@
       ]
     },
     "path": "hybrid",
-    "reason": "Runs on both engines (1146: table missing). DESCRIBE is a metadata query the reader does not map; it names nothing, the hybrid extraction named the table. No consumer reads it.",
+    "reason": "Runs on both engines (1146: table missing). DESCRIBE is a metadata query the reader does not map; `info` lists it with no object where the hybrid extraction named the table. Nothing is written, so no caution is lost.",
     "sql": "DESCRIBE t"
   },
   "416027f2c751fce5/hybrid": {
@@ -3424,7 +3424,7 @@
       ]
     },
     "path": "hybrid",
-    "reason": "Runs on both engines (1146: table missing). DESCRIBE is a metadata query the reader does not map; it names nothing, the hybrid extraction named the table. No consumer reads it.",
+    "reason": "Runs on both engines (1146: table missing). DESCRIBE is a metadata query the reader does not map; `info` lists it with no object where the hybrid extraction named the table. Nothing is written, so no caution is lost.",
     "sql": "DESCRIBE t1"
   },
   "5cc7ddb6c37225a1/hybrid": {
@@ -6925,7 +6925,7 @@
       ]
     },
     "path": "hybrid",
-    "reason": "Runs on both engines (1146: table missing). DESCRIBE is a metadata query the reader does not map; it names nothing, the hybrid extraction named the table. No consumer reads it.",
+    "reason": "Runs on both engines (1146: table missing). DESCRIBE is a metadata query the reader does not map; `info` lists it with no object where the hybrid extraction named the table. Nothing is written, so no caution is lost.",
     "sql": "DESCRIBE child"
   },
   "b8a98133b12db722/hybrid": {
@@ -7307,7 +7307,7 @@
       "kind": "UNKNOWN",
       "operation": "UNKNOWN"
     },
-    "issue": "dblift/dblift#587",
+    "issue": "dblift/dblift#670",
     "old": {
       "hybrid": [
         [
