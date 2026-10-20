@@ -182,9 +182,7 @@ def test_sqlserver_cost_detects_a_whole_source_scan_outside_a_loop(function, mon
     source = textwrap.dedent(inspect.getsource(function))
     anchor = "    match = _patterns(rules)."
     assert source.count(anchor) == 1
-    mutant = source.replace(
-        anchor, "    source.count('\\n')\n    visits.append(1)\n" + anchor, 1
-    )
+    mutant = source.replace(anchor, "    source.count('\\n')\n    visits.append(1)\n" + anchor, 1)
     namespace = {**vars(batch_commands), "visits": []}
     exec(mutant, namespace)  # noqa: S102 - test-owned mutation
     monkeypatch.setattr(tokenizer_module, function.__name__, namespace[function.__name__])
@@ -193,7 +191,9 @@ def test_sqlserver_cost_detects_a_whole_source_scan_outside_a_loop(function, mon
     assert namespace["visits"]  # the injected scan ran through the public split path
     assert large <= BOUND * small  # today's slice charge misses the whole-source work
     assert loop_findings(ast.parse(mutant), plain_source=True) != [], (
-        function.__name__, small, large
+        function.__name__,
+        small,
+        large,
     )
 
 
@@ -300,7 +300,8 @@ def test_sqlserver_no_script_classification_does_not_read_the_script():
         for name, decision in decisions.items():
             if decision.startswith("no script input:"):
                 assert not any(
-                    isinstance(node, ast.Name) and node.id in {"source", "sql", "script"}
+                    isinstance(node, ast.Name)
+                    and node.id in {"source", "sql", "script"}
                     or isinstance(node, ast.Attribute)
                     and isinstance(node.value, ast.Name)
                     and node.value.id == "self"
@@ -319,7 +320,9 @@ def test_sqlserver_batch_helper_inventory_rejects_new_helper_and_module(tmp_path
     assert _batch_inventory(tmp_path) != BATCH_INVENTORY
     shutil.copyfile(root / "batch_commands.py", tmp_path / "batch_commands.py")
     with (tmp_path / "batch_commands.py").open("a", encoding="utf-8") as source:
-        source.write("\nclass NewBatch:\n    def helper(self, source):\n        return source.count('\\n')\n")
+        source.write(
+            "\nclass NewBatch:\n    def helper(self, source):\n        return source.count('\\n')\n"
+        )
     assert "NewBatch.helper" in _batch_inventory(tmp_path)["batch_commands.py"]
     assert _batch_inventory(tmp_path) != BATCH_INVENTORY
     shutil.copyfile(root / "batch_commands.py", tmp_path / "batch_commands.py")
@@ -327,12 +330,16 @@ def test_sqlserver_batch_helper_inventory_rejects_new_helper_and_module(tmp_path
     code = path.read_text(encoding="utf-8")
     anchor = "    match = _patterns(rules).lone_cr.search(source, start, end)"
     assert code.count(anchor) == 1
-    code = code.replace(anchor, "    def hidden_helper():\n        return source.count('\\n')\n" + anchor)
+    code = code.replace(
+        anchor, "    def hidden_helper():\n        return source.count('\\n')\n" + anchor
+    )
     path.write_text(code, encoding="utf-8")
     assert "find_lone_cr.hidden_helper" in _batch_inventory(tmp_path)["batch_commands.py"]
     assert _batch_inventory(tmp_path) != BATCH_INVENTORY
     shutil.copyfile(root / "batch_commands.py", path)
-    (tmp_path / "batch_new.py").write_text("def new_helper(source):\n    return source.count('\\n')\n")
+    (tmp_path / "batch_new.py").write_text(
+        "def new_helper(source):\n    return source.count('\\n')\n"
+    )
     assert _batch_inventory(tmp_path) != BATCH_INVENTORY
 
 
