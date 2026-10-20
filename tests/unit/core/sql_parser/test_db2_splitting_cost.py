@@ -28,6 +28,7 @@ from typing import Any, Dict, Iterator, Optional, Tuple
 import pytest
 
 from dblift.core.sql_parser.lexical_tokenizer import LexicalTokenizer
+from dblift.core.sql_parser.lexical_engine import LexicalEngine
 from dblift.core.sql_parser.terminator_lines import read_lines
 from dblift.db.plugins.db2.parser.lexical_spec import DB2_RULES, DB2_SPEC
 from tests.support.splitting_cost import (
@@ -131,6 +132,21 @@ SHAPES = {
 def test_db2_splitting_cost_grows_linearly(shape):
     small, large = counted(SHAPES[shape](SMALL)), counted(SHAPES[shape](LARGE))
     assert large <= BOUND * small, (shape, small, large)
+
+
+def test_db2_public_split_counts_repeated_record_prefixes(monkeypatch):
+    original = LexicalEngine.split
+
+    def rescanning_split(self, source):
+        records = original(self, source)
+        for record in records:
+            source[: record.source_start].count("\n")
+        return records
+
+    monkeypatch.setattr(LexicalEngine, "split", rescanning_split)
+    shape = SHAPES["one statement per line"]
+    small, large = counted(shape(SMALL)), counted(shape(LARGE))
+    assert large > BOUND * small, (small, large)
 
 
 def test_the_counters_count_what_a_rescan_would_cost():

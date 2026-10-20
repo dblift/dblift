@@ -24,6 +24,7 @@ import pytest
 from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
 from dblift.core.sql_parser import blank_pass
 from dblift.core.sql_parser import segment_script as segment_module
+from dblift.core.sql_parser import lexical_engine as engine_module
 from dblift.core.sql_parser.lexical_engine import LexicalEngine
 from dblift.core.sql_parser.lexical_tokenizer import LexicalTokenizer
 from dblift.core.sql_parser.segment_script import SegmentScript
@@ -130,6 +131,21 @@ def test_duckdb_splitting_cost_grows_linearly(shape):
     refusal = shape in REFUSAL_SHAPES
     small, large = counted(SHAPES[shape](SMALL), refusal), counted(SHAPES[shape](LARGE), refusal)
     assert small > 0 and large <= BOUND * small, (shape, small, large)
+
+
+def test_duckdb_public_split_counts_repeated_record_prefixes(monkeypatch):
+    original = LexicalEngine.split
+
+    def rescanning_split(self, source):
+        records = original(self, source)
+        for record in records:
+            source[: record.source_start].count("\n")
+        return records
+
+    monkeypatch.setattr(LexicalEngine, "split", rescanning_split)
+    shape = SHAPES["statements and comment lines"]
+    small, large = counted(shape(SMALL)), counted(shape(LARGE))
+    assert large > BOUND * small, (small, large)
 
 
 def test_the_pattern_counter_charges_the_span_a_search_scans():

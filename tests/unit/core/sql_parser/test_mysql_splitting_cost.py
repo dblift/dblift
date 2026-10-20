@@ -13,6 +13,7 @@ import pytest
 
 from dblift.core.sql_parser.lexical_spec import LexicalSpec
 from dblift.core.sql_parser.lexical_tokenizer import LexicalTokenizer
+from dblift.core.sql_parser.lexical_engine import LexicalEngine
 from dblift.db.plugins.mysql.parser.lexical_spec import MYSQL_SPEC
 
 MAX_RATIO = 5.0
@@ -99,6 +100,21 @@ def test_mysql_splitting_cost_grows_linearly(shape: str) -> None:
     make, size = SHAPES[shape]
     small, large = work(make(size), MYSQL_SPEC), work(make(4 * size), MYSQL_SPEC)
     assert large / small <= MAX_RATIO, (shape, small, large)
+
+
+def test_mysql_public_split_counts_repeated_record_prefixes(monkeypatch) -> None:
+    original = LexicalEngine.split
+
+    def rescanning_split(self, source):  # type: ignore[no-untyped-def]
+        records = original(self, source)
+        for record in records:
+            source[: record.source_start].count("\n")
+        return records
+
+    monkeypatch.setattr(LexicalEngine, "split", rescanning_split)
+    shape, size = SHAPES["crlf-statements"]
+    small, large = work(shape(size), MYSQL_SPEC), work(shape(4 * size), MYSQL_SPEC)
+    assert large > MAX_RATIO * small, (small, large)
 
 
 def test_the_counting_text_counts_what_a_per_token_search_would_cost() -> None:
