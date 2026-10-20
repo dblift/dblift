@@ -542,7 +542,7 @@ class TestSqlParserFactory:
         with patch.object(factory, "_create_parser", return_value=None):
             result = factory.validate_sql("SELECT 1")
 
-            assert result["success"] is False
+            assert result["valid"] is False
             assert "No parser available" in result["errors"]
 
     def test_extract_objects_error_handling_no_parser_creation(self):
