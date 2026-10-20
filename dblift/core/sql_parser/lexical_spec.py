@@ -133,7 +133,7 @@ class ProgramRules:
 class DelimiterScriptRules:
     """A client that reads a script line by line and ends a statement at a delimiter the script changes.
 
-    It reads a CRLF pair as LF and refuses a NUL byte (not fields: every such client does). ``initial`` is read for
+    It reads a CRLF pair as LF. ``initial`` is read for
     the starting delimiter and for every place a plain ``;`` is meant: the terminator run of a command line, fragments,
     and the stored-program condition (the extension runs only under the initial delimiter).
     """

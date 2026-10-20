@@ -329,16 +329,16 @@ def test_unterminated_lexemes_at_eof(spec, script, expected):
 
 @BOTH
 @pytest.mark.parametrize(
-    "script, line",
+    "script, line, column",
     [
-        ("SELECT 1\x00;", 1),
-        ("SELECT 'abc\x00", 1),
-        ("a\nb\r\nSELECT 'x\x00", 3),
-        ("SELECT /* x\x00", 1),
+        ("SELECT 1\x00;", 1, 9),
+        ("SELECT 'abc\x00", 1, 12),
+        ("a\nb\r\nSELECT 'x\x00", 3, 10),
+        ("SELECT /* x\x00", 1, 12),
     ],
 )
-def test_nul_is_refused_before_anything(spec, script, line):
-    expected = f"NUL byte on line {line}: the {spec.client_name} client refuses it unless --binary-mode is set"
+def test_nul_is_refused_before_anything(spec, script, line, column):
+    expected = f"a NUL character on line {line}, column {column}: the {spec.client_name} client refuses it unless --binary-mode is set"
     assert refusal(script, spec) == expected
 
 
@@ -428,7 +428,7 @@ def test_a_backslash_after_a_closed_hint_is_not_in_the_hint():
 
 
 def test_the_nul_line_ignores_lone_carriage_returns():
-    expected = "NUL byte on line 1: the mysql client refuses it unless --binary-mode is set"
+    expected = "a NUL character on line 1, column 19: the mysql client refuses it unless --binary-mode is set"
     assert refusal("SELECT 1;\rSELECT 2\x00;", MYSQL_SPEC) == expected
 
 

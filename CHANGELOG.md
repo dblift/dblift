@@ -161,6 +161,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `CREATE`, so a migration could run partly and report success. The script is now refused whole,
   naming the line and column of the NUL, and nothing runs. Remove the NUL byte; it often comes from
   a file saved in another encoding such as UTF-16.
+- **The refusal of a NUL character in a MySQL or MariaDB script names its column as well as
+  its line.** The script is still refused whole, as the `mysql` and `mariadb` clients refuse it.
 
 - **MySQL and MariaDB statement facts read more of the grammar.** `TRUNCATE` names its table,
   `CREATE SCHEMA` / `DROP SCHEMA` name the schema, `RENAME TABLE` names each source table,
