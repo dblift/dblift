@@ -88,7 +88,9 @@ def test_the_dialect_name_of_each_regex_parser_is_its_engine() -> None:
 
 
 def test_parse_sql_reports_client_scanner_refusal_without_partial_objects() -> None:
-    result = SqlParserFactory("mysql", "hybrid").parse_sql("SOURCE other.sql\nCREATE TABLE a (id INT);\n")
+    result = SqlParserFactory("mysql", "hybrid").parse_sql(
+        "SOURCE other.sql\nCREATE TABLE a (id INT);\n"
+    )
     assert not result.success
     assert result.statements == []
     assert "client command 'SOURCE'" in " ".join(result.errors or [])
