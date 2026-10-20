@@ -127,6 +127,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A NUL byte in a PostgreSQL-family script is refused instead of silently cutting the statement
+  (PostgreSQL, CockroachDB, YugabyteDB, Redshift and the other engines reached through the same
+  client).** The client sends a statement to the server as a C string, so everything from the NUL
+  on was dropped without an error: `CREATE TABLE a (i int);<NUL>DROP TABLE a;` ran only the
+  `CREATE`, and a migration holding a NUL could run partially and report success. The script is
+  now refused as a whole with the line and column of the NUL, and nothing runs.
+
 - **Statements are split correctly after a name that holds a non-ASCII space or symbol (PostgreSQL,
   CockroachDB, YugabyteDB, Redshift).** These engines read every character above U+007F, such as a
   no-break space, as part of a name, so `SELECT 1 AS a<NBSP>$x$` is one alias. dblift opened a dollar

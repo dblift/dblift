@@ -193,6 +193,8 @@ class LexicalTokenizer(BaseTokenizer):
 
     def tokenize(self) -> List[Token]:
         """Read every token; a delimiter script then refuses what it left open."""
+        if self.spec.refused_character:
+            self._refuse_character()
         if self.spec.terminator_script is not None:
             return self._tokenize_terminator_script()
         if self._segment is not None:
@@ -201,6 +203,17 @@ class LexicalTokenizer(BaseTokenizer):
         if self.delimiter_script is not None:
             self.delimiter_script.finish()
         return tokens
+
+    def _refuse_character(self) -> None:
+        """Refuse the script when it holds the specification's ``refused_character``."""
+        spec, sql = self.spec, self.sql
+        bad = sql.find(spec.refused_character)
+        if bad >= 0:
+            line_start = sql.rfind("\n", 0, bad) + 1
+            raise UnsafeStatementSplitError(
+                f"a {spec.refused_character_name} character on line {sql.count(chr(10), 0, bad) + 1}, "
+                f"column {bad - line_start + 1}: {spec.refused_reason}"
+            )
 
     def _tokenize_terminator_script(self) -> List[Token]:
         """Lexemes of a terminator script, read from the text with its terminators blanked.

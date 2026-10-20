@@ -25,4 +25,10 @@ POSTGRESQL_SPEC = LexicalSpec(
     block_opener=("BEGIN", "ATOMIC"),
     nested_block_keywords=frozenset({"CASE"}),
     block_closer="END",
+    # The client sends a query to the server as a C string (libpq), so a NUL cuts it there and the rest is dropped
+    # without an error. psql, psycopg 3 and the CockroachDB, YugabyteDB and Redshift servers behave alike
+    # (docs/sql-parsing/postgresql.md, rows 31 to 31e). Every other family member reaches its server through libpq.
+    refused_character="\x00",
+    refused_character_name="NUL",
+    refused_reason="the client sends the query as a C string, so the server never sees the rest",
 )

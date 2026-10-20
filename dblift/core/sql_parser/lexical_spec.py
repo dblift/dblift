@@ -281,6 +281,8 @@ class LexicalSpec:
     character ``str.isspace`` accepts is code, so a piece made of it is a statement and is sent.
     ``non_ascii_names`` makes the word reader begin and continue a name at every character above
     U+007F, as the engine's own scanner does: no lexeme opens inside a name.
+    ``refused_character`` (with its name and the reason) is refused anywhere in a script, before any other
+    reading, with its line and column; a segment script carries its own in ``SegmentScriptRules``.
     """
 
     name: str
@@ -325,6 +327,9 @@ class LexicalSpec:
     segment_script: Optional[SegmentScriptRules] = None
     unread_blanks_are_code: bool = False
     non_ascii_names: bool = False
+    refused_character: str = ""
+    refused_character_name: str = ""
+    refused_reason: str = ""
 
     @property
     def trailing_edge_blanks(self) -> str:
@@ -349,3 +354,5 @@ class LexicalSpec:
             )
         if self.segment_script is not None and self.sqlite_shell:
             raise ValueError("segment_script and sqlite_shell are mutually exclusive")
+        if self.refused_character and not (self.refused_character_name and self.refused_reason):
+            raise ValueError("refused_character needs refused_character_name and refused_reason")

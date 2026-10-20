@@ -37,8 +37,8 @@ CASES = [
     ("SELECT 1;\n-- a\x00b\nSELECT 2;", 2, 5),
     ("SELECT 1;\r\n\x00", 2, 1),
     ("/* a\n\x00 */ SELECT 1;", 2, 1),
-    ('SELECT "a\x00b";', 1, 11),
-    ("SELECT $$a\x00b$$;", 1, 12),
+    ('SELECT "a\x00b";', 1, 10),
+    ("SELECT $$a\x00b$$;", 1, 11),
     ("\x00", 1, 1),
 ]
 

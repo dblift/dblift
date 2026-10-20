@@ -7,7 +7,7 @@
 | Covers | PostgreSQL 12+; AlloyDB, Aurora PostgreSQL, Citus, CockroachDB, Neon, Supabase, TimescaleDB, YugabyteDB (all inherit this spec unchanged, see §13) |
 | Code facts taken from | OSS `develop` `61b1d83f`; the pieces without code and the statement records at OSS `develop` `48051ff` (2026-10-19); the kept-character rows (30d to 30i) rest on the change that makes the PostgreSQL family send a statement holding a character the engine does not read as blank |
 | Vendor references, fetched 2026-10-10 | *PostgreSQL 18 documentation*, §4.1.1 Identifiers, §4.1.2.1–4.1.2.5 Constants, §4.1.5 Comments; *psql* reference, "Meta-Commands" and `\;` |
-| Live verification | psql against PostgreSQL 15 and 16, 2026-10-10 (rows 16, 21, 25); psql 16.14 and psycopg 3.3.5 against PostgreSQL 16.14, and ysqlsh, cockroach sql and psycopg 3 against YugabyteDB 2026.1.2.0 and CockroachDB v24.3.18, 2026-10-19, and psql and psycopg 3.3.5 against Redshift Serverless 1.0.477953, 2026-10-20 (rows 30j to 30p: every character above U+007F continues and begins a name on PostgreSQL 16.14, CockroachDB v24.3.18, YugabyteDB 2026.1.2.0 and Redshift, measured 2026-10-19 with psql 16.14, ysqlsh, cockroach sql and psycopg 3.3.5; rows 30d to 30f: U+00A0, U+3000 and U+001C are rejected with SQLSTATE 42601 everywhere, U+0020 and U+0009 are accepted; rows 30d to 30i hold on Redshift too; a Unicode space at the end of a statement, before its terminator, is accepted there, see section 13) |
+| Live verification | psql against PostgreSQL 15 and 16, 2026-10-10 (rows 16, 21, 25); psql 16.14 and psycopg 3.3.5 against PostgreSQL 16.14, and ysqlsh, cockroach sql and psycopg 3 against YugabyteDB 2026.1.2.0 and CockroachDB v24.3.18, 2026-10-19, and psql and psycopg 3.3.5 against Redshift Serverless 1.0.477953, 2026-10-20 (rows 31 to 31e: a NUL cuts the query at the client on PostgreSQL 16.14, CockroachDB v24.3.18, YugabyteDB 2026.1.2.0 and Redshift Serverless 1.0.477953, measured 2026-10-20 with psql 16.14, ysqlsh, cockroach sql and psycopg 3.3.5; PostgreSQL's server log with `log_statement=all` and CockroachDB's `crdb_internal.node_statement_statistics` held the statement before the NUL and nothing after it; rows 30j to 30p: every character above U+007F continues and begins a name on PostgreSQL 16.14, CockroachDB v24.3.18, YugabyteDB 2026.1.2.0 and Redshift, measured 2026-10-19 with psql 16.14, ysqlsh, cockroach sql and psycopg 3.3.5; rows 30d to 30f: U+00A0, U+3000 and U+001C are rejected with SQLSTATE 42601 everywhere, U+0020 and U+0009 are accepted; rows 30d to 30i hold on Redshift too; a Unicode space at the end of a statement, before its terminator, is accepted there, see section 13) |
 | Engine subclass | none; tagged strings use the shared lexical primitive (§9) |
 
 ## 1. String literals
@@ -176,7 +176,7 @@ DuckDB retains its existing scanner until it is migrated.
 | 31b | `SELECT 'a\x00b';` | `UnsafeStatementSplitError` (line 1, column 10: the text is cut inside the literal and the server answers `unterminated quoted string at or near "'a"`; the same on CockroachDB v24.3.18 and YugabyteDB 2026.1.2.0; a literal that the cut leaves closed would run silently altered, so the NUL is refused wherever it stands) |
 | 31c | `CREATE TABLE c\x00d (x int);` | `UnsafeStatementSplitError` (line 1, column 15: the server reads `CREATE TABLE c` and answers `syntax error at end of input`; a prefix that is a complete statement would run instead) |
 | 31d | `SELECT 1;\n-- a\x00b\nSELECT 2;` | `UnsafeStatementSplitError` (line 2, column 5: a NUL in a comment cuts the statement that carries the comment; psycopg returned one result set, and psql 16.14 -f ran `SELECT 1` and dropped `SELECT 2`, exit 0, the server log held `statement: SELECT 1; -- a`) |
-| 31e | `SELECT 1;\r\n\x00` | `UnsafeStatementSplitError` (line 2, column 1: a NUL alone after the last terminator is refused too) |
+| 31e | `SELECT 1;␍\n\x00` | `UnsafeStatementSplitError` (line 2, column 1: a NUL alone after the last terminator is refused too) |
 
 ## 11. Not handled
 
@@ -200,8 +200,10 @@ text without its terminator, line, terminator, kind, and scanner-derived analysi
 table in section 10 is compiled into
 `tests/unit/core/sql_parser/test_postgresql_spec_conformance.py`.
 
-Unterminated lexemes (comment, string, quoted identifier, dollar quote) and
-unsupported meta-commands are refusals, not input to a fallback.
+Unterminated lexemes (comment, string, quoted identifier, dollar quote),
+unsupported meta-commands and a NUL byte anywhere (rows 31 to 31e; the
+specification's `refused_character`, reported with its line and column) are
+refusals, not input to a fallback.
 
 The shared engine checks COPY terminators at their source position without
 copying the remainder of the script for each block; repeated COPY units have
@@ -218,3 +220,4 @@ The string projection `split_statements()` keeps the trailing `;`; the
 | YugabyteDB | none | `yugabytedb/plugin.py:31-39` records a live check that block comments nest |
 | CockroachDB | none | `cockroachdb/quirks.py:24-32` records a live check that block comments nest |
 | Redshift | plugin spec derives from PostgreSQL with nonnested block comments, backslash escapes in plain strings and the form feed among its blanks | measured 2026-10-20 on Redshift Serverless 1.0.477953 (reports `PostgreSQL 8.0.2`) with psycopg 3.3.5 (autocommit, simple protocol) and psql: space, tab, line feed, carriage return and form feed are blanks alone, before, after and between tokens; the vertical tab, C0 controls U+0001 and U+001C to U+001F and DEL are rejected with SQLSTATE 42601 everywhere; the no-break space, U+0085, U+1680, U+2000 to U+200B, U+2028, U+2029, U+202F, U+205F, U+3000 and U+FEFF are rejected with 42601 alone, before a statement, between tokens and as a piece of its own (rows 30d to 30f and 30h are measured; 30g and 30i follow from the lone-piece and leading shapes, not measured in their own form). Unlike PostgreSQL 16, Redshift accepts these Unicode spaces at the end of a statement (`SELECT 1\xa0` and `SELECT 1\xa0;` run). dblift sends them and does not trim them, so there is no difference to correct |
+| NUL byte (every member above) | refused for the whole family through the specification's `refused_character` | PostgreSQL 16.14, CockroachDB v24.3.18, YugabyteDB 2026.1.2.0 (`SELECT 1;` NUL `SELECT 2;` returns one result set, a table created before the NUL remains and the statement after it never runs; psql, ysqlsh and `cockroach sql` exit 0) and Redshift Serverless 1.0.477953 (psycopg 3.3.5, one result set of two) all drop the query from the NUL on, measured 2026-10-20. AlloyDB, Aurora PostgreSQL, Citus, Neon, Supabase and TimescaleDB are PostgreSQL servers reached through the same libpq, which cuts the query at the NUL before it leaves the client, so they were not measured separately; a driver that sent the length-prefixed text could behave differently, but dblift executes through libpq (psycopg) |

@@ -7306,7 +7306,7 @@
 "sha256": "d33767030fb567ebf4699543cf51a835e6b5eced5e52adf95a4e7fbfd5c4910d"
 },
 "spec_rows": {
-"count": 731,
+"count": 755,
 "observed": [
 [
 "db2",
@@ -15225,6 +15225,132 @@
 }
 ],
 [
+"postgresql",
+"CREATE TABLE a(i int);\u0000DROP TABLE a;",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 23: the client sends the query as a C string, so the server never sees the rest"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 23: the client sends the query as a C string, so the server never sees the rest"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 23: the client sends the query as a C string, so the server never sees the rest"
+]
+}
+],
+[
+"postgresql",
+"SELECT 1;\u0000SELECT 2;",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 10: the client sends the query as a C string, so the server never sees the rest"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 10: the client sends the query as a C string, so the server never sees the rest"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 10: the client sends the query as a C string, so the server never sees the rest"
+]
+}
+],
+[
+"postgresql",
+"SELECT 'a\u0000b';",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 10: the client sends the query as a C string, so the server never sees the rest"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 10: the client sends the query as a C string, so the server never sees the rest"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 10: the client sends the query as a C string, so the server never sees the rest"
+]
+}
+],
+[
+"postgresql",
+"CREATE TABLE c\u0000d (x int);",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 15: the client sends the query as a C string, so the server never sees the rest"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 15: the client sends the query as a C string, so the server never sees the rest"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 15: the client sends the query as a C string, so the server never sees the rest"
+]
+}
+],
+[
+"postgresql",
+"SELECT 1;\n-- a\u0000b\nSELECT 2;",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 2, column 5: the client sends the query as a C string, so the server never sees the rest"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 2, column 5: the client sends the query as a C string, so the server never sees the rest"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 2, column 5: the client sends the query as a C string, so the server never sees the rest"
+]
+}
+],
+[
+"postgresql",
+"SELECT 1;\r\n\u0000",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 2, column 1: the client sends the query as a C string, so the server never sees the rest"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 2, column 1: the client sends the query as a C string, so the server never sees the rest"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 2, column 1: the client sends the query as a C string, so the server never sees the rest"
+]
+}
+],
+[
 "sqlite",
 "CREATE TABLE t(a); INSERT INTO t VALUES(1);",
 {
@@ -20655,8 +20781,386 @@
 "Unsupported psql meta-command '\\\\.' at line 3; dblift does not run it (column 1)"
 ]
 }
+],
+[
+"cockroachdb",
+"CREATE TABLE a(i int);\u0000DROP TABLE a;",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 23: the client sends the query as a C string, so the server never sees the rest"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 23: the client sends the query as a C string, so the server never sees the rest"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 23: the client sends the query as a C string, so the server never sees the rest"
+]
+}
+],
+[
+"yugabytedb",
+"CREATE TABLE a(i int);\u0000DROP TABLE a;",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 23: the client sends the query as a C string, so the server never sees the rest"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 23: the client sends the query as a C string, so the server never sees the rest"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 23: the client sends the query as a C string, so the server never sees the rest"
+]
+}
+],
+[
+"redshift",
+"CREATE TABLE a(i int);\u0000DROP TABLE a;",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 23: the client sends the query as a C string, so the server never sees the rest"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 23: the client sends the query as a C string, so the server never sees the rest"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 23: the client sends the query as a C string, so the server never sees the rest"
+]
+}
+],
+[
+"cockroachdb",
+"SELECT 1;\u0000SELECT 2;",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 10: the client sends the query as a C string, so the server never sees the rest"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 10: the client sends the query as a C string, so the server never sees the rest"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 10: the client sends the query as a C string, so the server never sees the rest"
+]
+}
+],
+[
+"yugabytedb",
+"SELECT 1;\u0000SELECT 2;",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 10: the client sends the query as a C string, so the server never sees the rest"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 10: the client sends the query as a C string, so the server never sees the rest"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 10: the client sends the query as a C string, so the server never sees the rest"
+]
+}
+],
+[
+"redshift",
+"SELECT 1;\u0000SELECT 2;",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 10: the client sends the query as a C string, so the server never sees the rest"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 10: the client sends the query as a C string, so the server never sees the rest"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 10: the client sends the query as a C string, so the server never sees the rest"
+]
+}
+],
+[
+"cockroachdb",
+"SELECT 'a\u0000b';",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 10: the client sends the query as a C string, so the server never sees the rest"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 10: the client sends the query as a C string, so the server never sees the rest"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 10: the client sends the query as a C string, so the server never sees the rest"
+]
+}
+],
+[
+"yugabytedb",
+"SELECT 'a\u0000b';",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 10: the client sends the query as a C string, so the server never sees the rest"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 10: the client sends the query as a C string, so the server never sees the rest"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 10: the client sends the query as a C string, so the server never sees the rest"
+]
+}
+],
+[
+"redshift",
+"SELECT 'a\u0000b';",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 10: the client sends the query as a C string, so the server never sees the rest"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 10: the client sends the query as a C string, so the server never sees the rest"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 10: the client sends the query as a C string, so the server never sees the rest"
+]
+}
+],
+[
+"cockroachdb",
+"CREATE TABLE c\u0000d (x int);",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 15: the client sends the query as a C string, so the server never sees the rest"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 15: the client sends the query as a C string, so the server never sees the rest"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 15: the client sends the query as a C string, so the server never sees the rest"
+]
+}
+],
+[
+"yugabytedb",
+"CREATE TABLE c\u0000d (x int);",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 15: the client sends the query as a C string, so the server never sees the rest"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 15: the client sends the query as a C string, so the server never sees the rest"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 15: the client sends the query as a C string, so the server never sees the rest"
+]
+}
+],
+[
+"redshift",
+"CREATE TABLE c\u0000d (x int);",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 15: the client sends the query as a C string, so the server never sees the rest"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 15: the client sends the query as a C string, so the server never sees the rest"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 15: the client sends the query as a C string, so the server never sees the rest"
+]
+}
+],
+[
+"cockroachdb",
+"SELECT 1;\n-- a\u0000b\nSELECT 2;",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 2, column 5: the client sends the query as a C string, so the server never sees the rest"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 2, column 5: the client sends the query as a C string, so the server never sees the rest"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 2, column 5: the client sends the query as a C string, so the server never sees the rest"
+]
+}
+],
+[
+"yugabytedb",
+"SELECT 1;\n-- a\u0000b\nSELECT 2;",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 2, column 5: the client sends the query as a C string, so the server never sees the rest"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 2, column 5: the client sends the query as a C string, so the server never sees the rest"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 2, column 5: the client sends the query as a C string, so the server never sees the rest"
+]
+}
+],
+[
+"redshift",
+"SELECT 1;\n-- a\u0000b\nSELECT 2;",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 2, column 5: the client sends the query as a C string, so the server never sees the rest"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 2, column 5: the client sends the query as a C string, so the server never sees the rest"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 2, column 5: the client sends the query as a C string, so the server never sees the rest"
+]
+}
+],
+[
+"cockroachdb",
+"SELECT 1;\r\n\u0000",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 2, column 1: the client sends the query as a C string, so the server never sees the rest"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 2, column 1: the client sends the query as a C string, so the server never sees the rest"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 2, column 1: the client sends the query as a C string, so the server never sees the rest"
+]
+}
+],
+[
+"yugabytedb",
+"SELECT 1;\r\n\u0000",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 2, column 1: the client sends the query as a C string, so the server never sees the rest"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 2, column 1: the client sends the query as a C string, so the server never sees the rest"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 2, column 1: the client sends the query as a C string, so the server never sees the rest"
+]
+}
+],
+[
+"redshift",
+"SELECT 1;\r\n\u0000",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 2, column 1: the client sends the query as a C string, so the server never sees the rest"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 2, column 1: the client sends the query as a C string, so the server never sees the rest"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 2, column 1: the client sends the query as a C string, so the server never sees the rest"
+]
+}
 ]
 ],
-"sha256": "fad27b32da3b8760df10bf475ddcbaf32ab9d3aeb1f80c0a6accb59076faa299"
+"sha256": "0b3f9204528068f25f809041cf909cede878a7ca61d033b0267e838386e07768"
 }
 }
