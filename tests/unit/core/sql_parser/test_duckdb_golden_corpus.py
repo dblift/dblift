@@ -108,6 +108,36 @@ def test_historical_gap_entries_name_a_listed_row() -> None:
     assert {e["known_gap"] for e in marked} == HISTORICAL_GAP_ROWS
 
 
+@pytest.mark.parametrize(
+    "name,expected",
+    [
+        (
+            "escape_mode_carried_across_blanks_on_one_line",
+            [["SELECT E'?' '?'", "SELECT E"], ["SELECT 1", "SELECT 1"], ["SELECT '?'", "SELECT"]],
+        ),
+        (
+            "escape_mode_survives_a_plain_string_between",
+            [
+                ["SELECT E'?' '?' '?'", "SELECT E"],
+                ["SELECT 2", "SELECT 2"],
+                ["SELECT '?'", "SELECT"],
+            ],
+        ),
+        (
+            "superscript_two_before_e",
+            [["SELECT ²E'?'", "SELECT ²E"], ["c'?'", "c"]],
+        ),
+        (
+            "arabic_digit_before_e",
+            [["SELECT ٣E'?'", "SELECT ٣E"], ["c'?'", "c"]],
+        ),
+    ],
+)
+def test_current_masking_of_historical_boundary_cases(name, expected):
+    script = next(entry["script"] for entry in entries() if entry["name"] == name)
+    assert evaluate(script)["masking"] == expected
+
+
 def test_the_entries_duckdb_accepts_have_matching_cuts() -> None:
     """Every entry DuckDB's own parser accepts has matching statement cuts."""
     import re
