@@ -51,3 +51,9 @@ def test_a_name_touching_an_unread_character_is_not_named(template, char):
 )
 def test_an_unread_character_away_from_the_name_keeps_the_name(sql, names):
     assert [o.name for o in READ(sql).objects] == names
+
+
+def test_an_unread_character_after_the_name_inside_the_head_is_not_named():
+    facts = READ("CREATE TABLE t é (a INT)")
+    assert facts.objects == ()
+    assert facts.diagnostic == UNREAD_NAME.format(code=ord("é"))

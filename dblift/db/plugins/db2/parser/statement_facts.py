@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import FrozenSet, List, Optional, Tuple
+from typing import FrozenSet, Iterator, List, Optional, Tuple
 
-from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
 from dblift.core.sql_model.base import SqlObjectType
 from dblift.core.sql_parser.lexical_spec import LexicalSpec
 from dblift.core.sql_parser.lexical_tokenizer import LexicalTokenizer
@@ -33,6 +32,9 @@ STOP_WORDS: FrozenSet[str] = frozenset(
     """TO ON IS IN FOR AS LIKE WITH SET USING VALUES FROM WHERE INTO IF RESTRICT IMMEDIATE ONLY
     FOREIGN DATABASE DB CFG SELECT TABLE AUTHORIZATION""".split()
 )
+
+#: Words that follow CREATE / ALTER / DROP TABLE|VIEW|FUNCTION|INDEX in a different statement.
+SECOND_WORDS: FrozenSet[str] = frozenset({"HIERARCHY", "MAPPING", "EXTENSION"})
 
 _TYPES = {
     "TABLE": SqlObjectType.TABLE,
@@ -105,7 +107,7 @@ def _heads() -> Tuple[Head, ...]:
         heads.append(
             Head(("CREATE", word), "CREATE", "DDL", _TYPES[word], "created", (or_replace,))
         )
-    for word in ("TABLE", "VIEW", "SEQUENCE", "TRIGGER", "PROCEDURE", "FUNCTION"):
+    for word in ("TABLE", "VIEW", "SEQUENCE", "TRIGGER", "PROCEDURE", "FUNCTION", "SCHEMA"):
         heads.append(
             Head(
                 ("ALTER", word),
@@ -113,6 +115,7 @@ def _heads() -> Tuple[Head, ...]:
                 "DDL",
                 _TYPES[word],
                 "altered",
+                max_parts=1 if word == "SCHEMA" else 2,
                 column_facts=word == "TABLE",
             )
         )
@@ -142,30 +145,29 @@ def _heads() -> Tuple[Head, ...]:
             follow=("TO",),
         )
     )
-    for verb in ("COMMENT", "LABEL"):
-        for word, otype in _TYPES.items():
-            heads.append(
-                Head(
-                    (verb, "ON", word),
-                    verb,
-                    "DDL",
-                    otype,
-                    "altered",
-                    max_parts=1 if word == "SCHEMA" else 2,
-                    follow=("IS",),
-                )
-            )
+    for word, otype in _TYPES.items():
         heads.append(
             Head(
-                (verb, "ON", "COLUMN"),
-                verb,
+                ("COMMENT", "ON", word),
+                "COMMENT",
                 "DDL",
-                SqlObjectType.TABLE,
+                otype,
                 "altered",
-                max_parts=3,
+                max_parts=1 if word == "SCHEMA" else 2,
                 follow=("IS",),
             )
         )
+    heads.append(
+        Head(
+            ("COMMENT", "ON", "COLUMN"),
+            "COMMENT",
+            "DDL",
+            SqlObjectType.TABLE,
+            "altered",
+            max_parts=3,
+            follow=("IS",),
+        )
+    )
     heads.append(
         Head(("TRUNCATE",), "TRUNCATE", "DDL", SqlObjectType.TABLE, "altered", (("TABLE",),))
     )
@@ -182,10 +184,18 @@ HEADS = _heads()
 def fold_name(token_text: str) -> str:
     """Fold one name part as Db2 does: quoted exact, unquoted to the engine's case."""
     if token_text.startswith('"'):
-        return token_text[1:-1].replace('""', '"')
+        return _unquote(token_text)
     from dblift.db.plugins.db2.quirks import Db2Quirks
 
     return token_text.upper() if Db2Quirks.unquoted_identifier_case == "uppercase" else token_text
+
+
+def _unquote(text: str) -> str:
+    return text[1:-1].replace('""', '"') if text.startswith('"') else text
+
+
+def _opaque(operation: str, kind: str, diagnostic: str) -> StatementFacts:
+    return StatementFacts(operation, kind, diagnostic=diagnostic)
 
 
 def _kind(word: str) -> str:
@@ -194,10 +204,6 @@ def _kind(word: str) -> str:
     if word in _DML:
         return "DML"
     return "QUERY" if word in _QUERY else "UNKNOWN"
-
-
-def _opaque(operation: str, kind: str, diagnostic: str) -> StatementFacts:
-    return StatementFacts(operation, kind, diagnostic=diagnostic)
 
 
 def _words(tokens: List[Token]) -> List[Token]:
@@ -230,10 +236,6 @@ def _match(ups: List[str], head: Head) -> Optional[int]:
     return _skip_optional(ups, at, head.optional)
 
 
-def _is_dot(token: Token) -> bool:
-    return token.type is TokenType.SYMBOL and token.text == "."
-
-
 def _is_part(token: Token) -> bool:
     return token.type in (TokenType.KEYWORD, TokenType.IDENTIFIER)
 
@@ -245,7 +247,7 @@ def _name_run(words: List[Token], at: int) -> Tuple[List[Token], int]:
     while i < len(words) and _is_part(words[i]):
         run.append(words[i])
         i += 1
-        if i + 1 < len(words) and _is_dot(words[i]) and _is_part(words[i + 1]):
+        if i + 1 < len(words) and _is_symbol(words[i], ".") and _is_part(words[i + 1]):
             i += 1
         else:
             break
@@ -257,7 +259,7 @@ def _read_name(
 ) -> Optional[Tuple[Tuple[str, ...], int, int]]:
     """The folded parts of the name at ``at``, its source offset and the index after it."""
     run, i = _name_run(words, at)
-    if not run or len(run) > max_parts or (i < len(words) and _is_dot(words[i])):
+    if not run or len(run) > max_parts or (i < len(words) and _is_symbol(words[i], ".")):
         return None
     if any(t.type is TokenType.KEYWORD and t.text.upper() in STOP_WORDS for t in run):
         return None
@@ -266,13 +268,9 @@ def _read_name(
 
 def _skip_group(words: List[Token], at: int) -> int:
     """Skip one parenthesised group starting at ``at``, if any."""
-    if at < len(words) and words[at].type is TokenType.SYMBOL and words[at].text == "(":
-        depth = 0
-        for i in range(at, len(words)):
-            if words[i].type is TokenType.SYMBOL:
-                depth += words[i].text == "("
-                depth -= words[i].text == ")"
-            if depth == 0:
+    if at < len(words) and _is_symbol(words[at], "("):
+        for i, token, depth in _walk(words, at):
+            if depth == 0 and _is_symbol(token, ")"):
                 return i + 1
     return at
 
@@ -287,7 +285,7 @@ def _head_facts(
     """The facts of a DDL head and the index its name reading reached (None when unreadable)."""
     otype, grants = head.object_type, head.operation in ("GRANT", "REVOKE")
     if grants:
-        on = next((i for i, w in enumerate(ups) if w == "ON" and _depth(words, i) == 0), None)
+        on = _depth0(words, 0, "ON")
         if on is None:
             return None, at
         at = on + 1
@@ -297,6 +295,8 @@ def _head_facts(
     if name is None:
         return None, at
     parts, _, end = name
+    if head.operation in ("CREATE", "ALTER", "DROP") and _second_word_taken(words, ups, at, end):
+        return None, end
     if head.words[-1] == "COLUMN":
         parts = parts[:-1]
     if not parts:
@@ -330,35 +330,55 @@ def _head_facts(
     )
 
 
+def _second_word_taken(words: List[Token], ups: List[str], at: int, end: int) -> bool:
+    """Whether the name is HIERARCHY / MAPPING / EXTENSION followed by the real name."""
+    if ups[at] not in SECOND_WORDS or end >= len(words) or not _is_part(words[end]):
+        return False
+    return not (ups[0] == "DROP" and ups[end] in ("RESTRICT", "CASCADE"))
+
+
 def _is_symbol(token: Token, text: str) -> bool:
     return token.type is TokenType.SYMBOL and token.text == text
 
 
-def _depth0(words: List[Token], start: int, word: str) -> Optional[int]:
-    """Index of the first keyword ``word`` at parenthesis depth 0 from ``start``."""
+def _walk(words: List[Token], start: int) -> Iterator[Tuple[int, Token, int]]:
+    """Each token from ``start`` with the parenthesis depth it sits at (a group's own parentheses sit outside it)."""
     depth = 0
     for i in range(start, len(words)):
-        token = words[i]
-        if _is_symbol(token, "("):
-            depth += 1
-        elif _is_symbol(token, ")"):
+        if _is_symbol(words[i], ")"):
             depth -= 1
-        elif depth == 0 and token.type is TokenType.KEYWORD and token.text.upper() == word:
+        yield i, words[i], depth
+        if _is_symbol(words[i], "("):
+            depth += 1
+
+
+def _depth0(words: List[Token], start: int, word: str) -> Optional[int]:
+    """Index of the first keyword ``word`` at parenthesis depth 0 from ``start``."""
+    for i, token, depth in _walk(words, start):
+        if depth == 0 and token.type is TokenType.KEYWORD and token.text.upper() == word:
             return i
     return None
 
 
-def _predicate(sql: str, words: List[Token], start: int) -> Optional[str]:
-    """The source text after the first depth-0 WHERE, up to the last non-comment token."""
-    where = _depth0(words, start, "WHERE")
-    if where is None:
-        return None
+def _predicate(sql: str, words: List[Token], where: int) -> str:
+    """The source text after the WHERE at ``where``, up to the last non-comment token."""
     return sql[words[where + 1].pos : words[-1].pos + len(words[-1].text)].strip()
 
 
-def _unquote(token: Token) -> str:
-    text = token.text
-    return text[1:-1].replace('""', '"') if token.type is TokenType.IDENTIFIER else text
+def _value_end(words: List[Token], start: int) -> int:
+    """Index of the depth-0 comma, WHERE or WHEN (outside CASE ... END) that ends the value at ``start``."""
+    cases = 0
+    for i, token, depth in _walk(words, start):
+        up = token.text.upper() if token.type is TokenType.KEYWORD else ""
+        if depth:
+            continue
+        if up == "CASE":
+            cases += 1
+        elif up == "END":
+            cases -= 1
+        elif _is_symbol(token, ",") or (not cases and up in ("WHERE", "WHEN")):
+            return i
+    return len(words)
 
 
 def _assigned_columns(words: List[Token], start: int) -> Tuple[str, ...]:
@@ -371,7 +391,7 @@ def _assigned_columns(words: List[Token], start: int) -> Tuple[str, ...]:
         while i < n:
             run, i = _name_run(words, i)
             if run:
-                columns.append(_unquote(run[-1]))
+                columns.append(_unquote(run[-1].text))
             if not (grouped and i < n and _is_symbol(words[i], ",")):
                 break
             i += 1
@@ -379,16 +399,7 @@ def _assigned_columns(words: List[Token], start: int) -> Tuple[str, ...]:
             i += i < n and _is_symbol(words[i], ")")
         if not (i < n and _is_symbol(words[i], "=")):
             break
-        depth, i = 0, i + 1
-        while i < n:
-            token = words[i]
-            if _is_symbol(token, "("):
-                depth += 1
-            elif _is_symbol(token, ")"):
-                depth -= 1
-            elif depth == 0 and (_is_symbol(token, ",") or token.text.upper() in ("WHERE", "WHEN")):
-                break
-            i += 1
+        i = _value_end(words, i + 1)
         if i < n and _is_symbol(words[i], ","):
             i += 1
         else:
@@ -428,12 +439,12 @@ def _read_dml(sql: str, words: List[Token], ups: List[str], first: str) -> State
     parts, start, after = name
     n = len(words)
     if first != "INSERT":
-        if ups[after : after + 1] == ["AS"]:
-            after += 1
-            if not (after < n and _is_part(words[after])):
-                return unread
+        as_alias = ups[after : after + 1] == ["AS"]
+        after += as_alias
         if after < n and _is_part(words[after]) and ups[after] not in STOP_WORDS:
             after += 1
+        elif as_alias:
+            return unread
     word = ups[after] if after < n else ""
     allowed = {
         "INSERT": word in ("VALUES", "SELECT", "WITH")
@@ -452,7 +463,7 @@ def _read_dml(sql: str, words: List[Token], ups: List[str], first: str) -> State
         "DML",
         (_object(parts, SqlObjectType.TABLE, "altered"),),
         target=".".join(parts),
-        predicate=_predicate(sql, words, after) if where is not None else None,
+        predicate=_predicate(sql, words, where) if where is not None else None,
         affected_columns=(
             _assigned_columns(words, after + 1)
             if first == "UPDATE"
@@ -461,16 +472,6 @@ def _read_dml(sql: str, words: List[Token], ups: List[str], first: str) -> State
         events=_merge_events(words, after) if first == "MERGE" else frozenset({first}),
         target_sql=sql[start : last.pos + len(last.text)],
     )
-
-
-def _depth(words: List[Token], index: int) -> int:
-    """Parenthesis depth in front of ``words[index]``."""
-    depth = 0
-    for token in words[:index]:
-        if token.type is TokenType.SYMBOL:
-            depth += token.text == "("
-            depth -= token.text == ")"
-    return depth
 
 
 def _unread_character(sql: str, words: List[Token], head_end: int) -> Optional[int]:
@@ -512,14 +513,9 @@ class Db2StatementFactsReader:
 
     def read(self, sql: str) -> StatementFacts:
         """Read one already-split statement."""
-        try:
-            tokens = LexicalTokenizer(sql, spec=self.spec).tokenize()
-        except (UnsafeStatementSplitError, UnsupportedMetaCommandError) as exc:
-            first = sql.split()[0].upper() if sql.split() else "UNKNOWN"
-            return StatementFacts(
-                first, _kind(first), error=f"db2 statement could not be tokenized: {exc}"
-            )
-        words = _words(tokens)
+        # The tokenizer drops a leading BOM, which would shift every token offset.
+        sql = sql[1:] if sql.startswith("\ufeff") else sql
+        words = _words(LexicalTokenizer(sql, spec=self.spec).tokenize())
         if not words:
             return _opaque("UNKNOWN", "UNKNOWN", NOT_CLASSIFIED.format(word="UNKNOWN"))
         ups = [t.text.upper() if t.type is TokenType.KEYWORD else "" for t in words]

@@ -186,3 +186,41 @@ def test_a_dml_target_that_is_not_a_plain_name_is_opaque(sql, operation):
         None,
         NAME_NOT_READ.format(operation=operation, type="TABLE"),
     )
+
+
+@pytest.mark.parametrize(
+    ("sql", "columns"),
+    [
+        ("UPDATE t SET a = CASE WHEN b = 1 THEN 2 ELSE 3 END, c = 4", ("a", "c")),
+        ("UPDATE t SET a = CASE b WHEN 1 THEN 2 END, c = 4 WHERE id = 1", ("a", "c")),
+        (
+            "MERGE INTO t USING s ON t.id = s.id WHEN MATCHED THEN UPDATE SET a = CASE WHEN s.b = 1 THEN 2 ELSE 3 END, c = 4 WHEN NOT MATCHED THEN INSERT (id) VALUES (s.id)",
+            ("a", "c"),
+        ),
+        (
+            "MERGE INTO t USING s ON t.id = s.id WHEN MATCHED AND s.k = 1 THEN UPDATE SET a = 1 WHEN MATCHED THEN UPDATE SET b = 2",
+            ("a", "b"),
+        ),
+    ],
+)
+def test_a_case_expression_does_not_end_the_set_list(sql, columns):
+    assert READ(sql).affected_columns == columns
+
+
+def test_a_leading_byte_order_mark_does_not_shift_the_source_text():
+    facts = READ("\ufeffDELETE FROM t o WHERE o.x = 1")
+    assert (facts.target_sql, facts.predicate) == ("t o", "o.x = 1")
+
+
+@pytest.mark.parametrize(
+    ("sql", "operation"),
+    [
+        ("UPDATE t AS SET a = 1", "UPDATE"),
+        ("INSERT INTO t x VALUES (1)", "INSERT"),
+        ("INSERT INTO t AS x VALUES (1)", "INSERT"),
+    ],
+)
+def test_dml_target_followers_the_head_does_not_allow_are_opaque(sql, operation):
+    facts = READ(sql)
+    assert (facts.objects, facts.target) == ((), None)
+    assert facts.diagnostic == NAME_NOT_READ.format(operation=operation, type="TABLE")

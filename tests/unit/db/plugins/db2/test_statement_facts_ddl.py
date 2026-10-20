@@ -5,6 +5,7 @@ import pytest
 from dblift.db.plugins.db2.parser.statement_facts import (
     COLUMNS_UNAVAILABLE,
     NAME_NOT_READ,
+    NOT_CLASSIFIED,
     Db2StatementFactsReader,
     fold_name,
 )
@@ -145,10 +146,10 @@ READ = Db2StatementFactsReader(None).read
             [("ORDERS", "TABLE", "altered", None)],
         ),
         (
-            "LABEL ON TABLE app.orders IS 'Orders'",
-            "LABEL",
+            "ALTER SCHEMA app DATA CAPTURE NONE",
+            "ALTER",
             "DDL",
-            [("ORDERS", "TABLE", "altered", "APP")],
+            [("APP", "SCHEMA", "altered", None)],
         ),
         (
             "TRUNCATE TABLE app.orders IMMEDIATE",
@@ -268,3 +269,67 @@ def test_folding_reads_the_quirks_case():
         "Orders",
         'a"b',
     )
+
+
+@pytest.mark.parametrize(
+    "sql",
+    ["LABEL ON TABLE app.orders IS 'Orders'", "LABEL ON COLUMN app.orders.name IS 'The name'"],
+)
+def test_label_on_is_not_a_db2_statement_and_stays_opaque(sql):
+    facts = READ(sql)
+    assert (facts.operation, facts.objects) == ("LABEL", ())
+    assert facts.diagnostic == NOT_CLASSIFIED.format(word="LABEL")
+
+
+def test_alter_schema_names_one_part_only():
+    assert READ("ALTER SCHEMA a.b DATA CAPTURE NONE").objects == ()
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "DROP TABLE HIERARCHY root_t",
+        "DROP VIEW HIERARCHY v",
+        "DROP FUNCTION MAPPING fm",
+        "DROP INDEX EXTENSION ext RESTRICT",
+        "CREATE FUNCTION MAPPING fm FOR s.f",
+        "ALTER TABLE HIERARCHY t",
+        "CREATE INDEX EXTENSION ext (p INT)",
+    ],
+)
+def test_a_second_word_is_not_taken_for_the_name(sql):
+    facts = READ(sql)
+    assert facts.objects == () and facts.opaque
+    assert facts.diagnostic.startswith("db2 ") and "name not read" in facts.diagnostic
+
+
+@pytest.mark.parametrize(
+    ("sql", "name"),
+    [
+        ("CREATE TABLE mapping (id INT)", "MAPPING"),
+        ("DROP TABLE hierarchy", "HIERARCHY"),
+        ("DROP TABLE hierarchy CASCADE", "HIERARCHY"),
+        ("DROP TABLE extension RESTRICT", "EXTENSION"),
+        ('DROP TABLE "HIERARCHY"', "HIERARCHY"),
+    ],
+)
+def test_a_second_word_alone_is_still_a_name(sql, name):
+    assert [o.name for o in READ(sql).objects] == [name]
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "GRANT USAGE ON VARIABLE v TO u",
+        "GRANT SELECT ON TABLE t",
+        "GRANT SELECT TO u",
+        "GRANT ROLE_A TO u",
+        "RENAME TABLESPACE a TO b",
+        "COMMENT ON TABLE t",
+        "CREATE INDEX ix (a)",
+        "CREATE INDEX ix t (a)",
+    ],
+)
+def test_head_guards_leave_the_statement_opaque(sql):
+    facts = READ(sql)
+    assert facts.objects == () and facts.opaque
