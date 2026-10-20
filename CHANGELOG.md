@@ -109,6 +109,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   deprecation message asks it to implement `split()` and return `Statement` records; the
   skips end in the next major release.
 
+### Removed
+
+- **The public `is_comment_only_statement` helper is removed for 5.0.** Use
+  `StatementSplitter(dialect).split()` to inspect authoritative statement records.
+- **Five DML analysis entry points no longer accept legacy dialect arguments.**
+  `analyze_dml`, `dml_where_predicate`, `updates_restore_key` and
+  `is_full_table_dml` take `quirks=` instead of `sqlglot_dialect=`;
+  `statement_dml_table` takes `quirks=` instead of `dialect=`. The separate
+  dialect options on `insert_value_rows` and `cte_outer_statement_type` remain.
+- **`StatementSplitter` requires `Statement` records from custom parsers.**
+  A parser without `split()` or one returning strings is refused before execution.
+- **The root configuration key `migrations_dir` is removed for 5.0.** Any
+  occurrence raises an error; use `migrations.directory`. CLI and Python API
+  `migrations_dir` arguments remain available.
+
 ### Deprecated
 
 - **`sqlglot_dialect=` and `dialect=` in `dblift.db.dml_analysis`.** `analyze_dml`,
