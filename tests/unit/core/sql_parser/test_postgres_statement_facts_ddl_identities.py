@@ -203,9 +203,15 @@ HEAD_CASES = [
         NamedObject("m", T.TABLE, "created"),
     ),
     ("ALTER SCHEMA s RENAME TO t", "ALTER", NamedObject("s", T.SCHEMA, "altered")),
+    (
+        "CREATE UNLOGGED TABLE IF NOT EXISTS t (a int) TABLESPACE ts",
+        "CREATE",
+        NamedObject("t", T.TABLE, "created"),
+    ),
 ]
 HEAD_IDS = ["or_replace_function", "begin_atomic", "create_ext", "drop_ext", "alter_seq",
-            "type_from", "unlogged_table", "storage_params", "alter_schema"]  # fmt: skip
+            "type_from", "unlogged_table", "storage_params", "alter_schema",
+            "unlogged_if_not_exists"]  # fmt: skip
 
 
 @pytest.mark.parametrize("sql,operation,named", HEAD_CASES, ids=HEAD_IDS)
@@ -227,6 +233,22 @@ def test_head_classification_is_unchanged_for_other_dialects(dialect, sql, opera
     if named.type != T.TABLE:
         assert facts.objects == ()
     assert (facts.operation, facts.kind) == (operation, "DDL")
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "CREATE SCHEMA IF NOT EXISTS AUTHORIZATION joe",
+        "CREATE EXTENSION IF NOT EXISTS AUTHORIZATION",
+        "CREATE SEQUENCE IF NOT EXISTS",
+        "CREATE TABLE IF NOT EXISTS",
+    ],
+)
+def test_a_modifier_word_is_never_taken_for_the_name(sql):
+    facts = _pg(sql)
+
+    assert facts.objects == ()
+    assert (facts.operation, facts.kind) == ("CREATE", "DDL")
 
 
 def test_a_head_name_glued_to_a_no_break_space_stays_unnamed():
