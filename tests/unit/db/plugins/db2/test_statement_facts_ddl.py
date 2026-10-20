@@ -277,7 +277,7 @@ def test_folding_reads_the_quirks_case():
 )
 def test_label_on_is_not_a_db2_statement_and_stays_opaque(sql):
     facts = READ(sql)
-    assert (facts.operation, facts.objects) == ("LABEL", ())
+    assert (facts.operation, facts.kind, facts.objects) == ("LABEL", "UNKNOWN", ())
     assert facts.diagnostic == NOT_CLASSIFIED.format(word="LABEL")
 
 

@@ -21,7 +21,7 @@ NAME_NOT_READ = "db2 {operation} {type}: name not read"
 DATA_CHANGE_QUERY = "db2 data-change query: target not named"
 SET_INTEGRITY = "db2 SET INTEGRITY: tables not named"
 
-_DDL = frozenset("CREATE ALTER DROP RENAME COMMENT LABEL DECLARE GRANT REVOKE TRUNCATE".split())
+_DDL = frozenset("CREATE ALTER DROP RENAME COMMENT DECLARE GRANT REVOKE TRUNCATE".split())
 _DML = frozenset("INSERT UPDATE DELETE MERGE".split())
 _QUERY = frozenset("SELECT WITH VALUES".split())
 _TRANSACTION = frozenset("COMMIT ROLLBACK SAVEPOINT RELEASE".split())
