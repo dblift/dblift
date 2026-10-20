@@ -36,6 +36,7 @@ from dblift.db.plugins.duckdb.parser.lexical_spec import DUCKDB_RULES, DUCKDB_SP
 from tests.support.splitting_cost import (
     OUTSIDE_EXEMPT,
     PACKAGE,
+    CountingParserTokens,
     CountingPattern,
     CountingText,
     CountingTokens,
@@ -102,7 +103,7 @@ def counted(script: str, refusal: bool = False, meter: Optional[Meter] = None) -
     return meter.count
 
 
-def public_counted(script: str) -> tuple[int, List]:
+def public_counted(script: str, refusal: bool = False) -> tuple[int, List]:
     """Enter the public engine with counted source and tokenizer inputs."""
     meter = Meter()
     original = LexicalTokenizer
@@ -120,10 +121,16 @@ def public_counted(script: str) -> tuple[int, List]:
                     allow_empty=name in {"_seg_word_part", "_seg_kept_part"},
                 ),
             )
+        original_tokenize = wrapped.tokenize
+        wrapped.tokenize = lambda: CountingParserTokens(original_tokenize(), meter)
         return wrapped
 
     with mock.patch.object(engine_module, "LexicalTokenizer", tokenizer):
-        records = LexicalEngine(DUCKDB_SPEC).split(CountingText(script, meter))
+        try:
+            records = LexicalEngine(DUCKDB_SPEC).split(CountingText(script, meter))
+        except (UnsafeStatementSplitError, UnsupportedMetaCommandError):
+            assert refusal, "only a refusal shape may end the pass early"
+            return meter.count, []
     return meter.count, records
 
 
@@ -167,6 +174,14 @@ REFUSAL_SHAPES = {"a refusal after many statements"}
 def test_duckdb_splitting_cost_grows_linearly(shape):
     refusal = shape in REFUSAL_SHAPES
     small, large = counted(SHAPES[shape](SMALL), refusal), counted(SHAPES[shape](LARGE), refusal)
+    assert small > 0 and large <= BOUND * small, (shape, small, large)
+
+
+@pytest.mark.parametrize("shape", sorted(SHAPES))
+def test_duckdb_public_split_cost_grows_linearly(shape):
+    refusal = shape in REFUSAL_SHAPES
+    small, _ = public_counted(SHAPES[shape](SMALL), refusal)
+    large, _ = public_counted(SHAPES[shape](LARGE), refusal)
     assert small > 0 and large <= BOUND * small, (shape, small, large)
 
 
