@@ -89,6 +89,28 @@ def test_legacy_facts_corpus(case):
                 assert all(ob["schema"] == "SYSIBM" for ob in old["objects"])
             assert new["objects"] == new["affected_objects"] == expected
         return
+    if case["dialect"] == "oracle":
+        # Oracle reads statement facts: every statement has its kind and the object it acts on,
+        # named as Oracle stores it (unquoted names upper-cased); the legacy path read none.
+        assert observed["success"] == case["legacy_observed"]["success"]
+        assert observed["errors"] == case["legacy_observed"]["errors"]
+        expected = [
+            ("DDL", "TABLE", "CHILD"),
+            ("DDL", "INDEX", "IX_CHILD_PARENT"),
+            ("DML", "TABLE", "CHILD"),
+            ("DML", "TABLE", "CHILD"),
+            ("DDL", "TABLE", "CHILD"),
+        ]
+        legacy = case["legacy_observed"]["statements"]
+        assert len(observed["statements"]) == len(legacy) == len(expected)
+        for old, new, (kind, object_type, name) in zip(legacy, observed["statements"], expected):
+            assert old["type"] == "UNKNOWN"
+            assert old["objects"] == old["affected_objects"] == []
+            assert new["sql"] == old["sql"]
+            assert new["type"] == kind
+            assert new["objects"] == new["affected_objects"]
+            assert new["objects"] == [{"type": object_type, "name": name, "schema": None}]
+        return
     if case["dialect"] in ACCEPTED_DIFFERENCES:
         assert observed["success"] == case["legacy_observed"]["success"]
         assert observed["errors"] == case["legacy_observed"]["errors"]

@@ -4,26 +4,22 @@ import unittest
 
 
 class TestHybridParserInit(unittest.TestCase):
-    def _make(self, dialect="oracle"):
+    def _make(self, dialect="snowflake"):
         from dblift.core.sql_parser.hybrid_parser import HybridParser
 
         return HybridParser(dialect=dialect)
-
-    def test_oracle_dialect(self):
-        p = self._make("oracle")
-        self.assertEqual(p.dialect, "oracle")
 
     def test_db2_no_sqlglot(self):
         with self.assertRaises(ValueError):
             self._make("db2")
 
     def test_dialect_name_property(self):
-        p = self._make("oracle")
-        self.assertEqual(p.dialect_name, "oracle")
+        p = self._make("snowflake")
+        self.assertEqual(p.dialect_name, "snowflake")
 
 
 class TestHybridParserSplitStatements(unittest.TestCase):
-    def _make(self, dialect="oracle"):
+    def _make(self, dialect="snowflake"):
         from dblift.core.sql_parser.hybrid_parser import HybridParser
 
         return HybridParser(dialect=dialect)
@@ -53,7 +49,7 @@ class TestHybridParserSplitStatements(unittest.TestCase):
 
 
 class TestHybridParserValidateSql(unittest.TestCase):
-    def _make(self, dialect="oracle"):
+    def _make(self, dialect="snowflake"):
         from dblift.core.sql_parser.hybrid_parser import HybridParser
 
         return HybridParser(dialect=dialect)
@@ -70,7 +66,7 @@ class TestHybridParserValidateSql(unittest.TestCase):
 
 
 class TestHybridParserExtractObjects(unittest.TestCase):
-    def _make(self, dialect="oracle"):
+    def _make(self, dialect="snowflake"):
         from dblift.core.sql_parser.hybrid_parser import HybridParser
 
         return HybridParser(dialect=dialect)
@@ -92,7 +88,7 @@ class TestHybridParserExtractObjects(unittest.TestCase):
 
 
 class TestHybridParserExtractDependencies(unittest.TestCase):
-    def _make(self, dialect="oracle"):
+    def _make(self, dialect="snowflake"):
         from dblift.core.sql_parser.hybrid_parser import HybridParser
 
         return HybridParser(dialect=dialect)
@@ -107,15 +103,3 @@ class TestHybridParserExtractDependencies(unittest.TestCase):
         sql = "CREATE VIEW v AS SELECT * FROM users JOIN orders ON users.id = orders.user_id"
         result = p.extract_dependencies(sql)
         self.assertIsInstance(result, dict)
-
-
-class TestHybridParserOracle(unittest.TestCase):
-    def _make(self):
-        from dblift.core.sql_parser.hybrid_parser import HybridParser
-
-        return HybridParser(dialect="oracle")
-
-    def test_oracle_create_table(self):
-        p = self._make()
-        result = p.extract_objects('CREATE TABLE "USERS" (ID NUMBER PRIMARY KEY)')
-        self.assertIsNotNone(result)

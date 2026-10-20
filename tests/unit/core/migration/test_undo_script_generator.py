@@ -1160,7 +1160,7 @@ class TestUndoScriptGeneratorIntegration(unittest.TestCase):
 
     # generate_undo_script — happy path
     def test_generate_undo_script_creates_file(self):
-        gen = self._make_generator()
+        gen = self._make_generator("snowflake")
         with TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "V1__create_users.sql"
             path.write_text("CREATE TABLE users (id INT);")
@@ -1295,7 +1295,7 @@ class TestUndoScriptGeneratorIntegration(unittest.TestCase):
         self.assertEqual(len(index_stmts), 0)
 
     def test_generate_undo_statements_reverse_order(self):
-        gen = self._make_generator()
+        gen = self._make_generator("snowflake")
         migration = self._make_migration(
             "V1__test.sql",
             "CREATE TABLE a (id INT);\nCREATE TABLE b (id INT);",
@@ -1473,14 +1473,13 @@ class TestUndoScriptGeneratorDialects(unittest.TestCase):
                     self.assertNotIn("mysql", undo.sql.lower())
                     self.assertNotIn("dblift_test", undo.sql)
 
-    def test_oracle_table_drop_no_if_exists(self):
+    def test_oracle_table_undo_is_left_to_a_hand_written_script(self):
         gen = self._make_generator("oracle")
         migration = self._make_migration("CREATE TABLE t (id INT);")
-        results = gen._generate_undo_statements(migration)
-        drop_stmts = [s for s in results if "DROP TABLE" in s.sql]
-        self.assertTrue(len(drop_stmts) >= 1)
-        for stmt in drop_stmts:
-            self.assertNotIn("IF EXISTS", stmt.sql)
+        (undo,) = gen._generate_undo_statements(migration)
+        self.assertTrue(undo.requires_manual_review)
+        self.assertEqual(undo.original_statement.strip(), "CREATE TABLE t (id INT)")
+        self.assertNotIn("DROP", undo.sql)
 
     def test_sqlserver_dialect(self):
         gen = self._make_generator("sqlserver")

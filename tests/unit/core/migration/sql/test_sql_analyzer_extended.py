@@ -429,13 +429,13 @@ class TestAnalyzeStatement(unittest.TestCase):
         result = self.analyzer.analyze_statement(sql)
         self.assertEqual(result["parsed_with"], "facts")
         self.assertEqual(result["objects"], self.analyzer.extract_objects(sql))
-        text_analyzer = SqlAnalyzer(dialect="oracle")
+        text_analyzer = SqlAnalyzer(dialect="snowflake")
         text_result = text_analyzer.analyze_statement(sql)
         self.assertEqual(text_result["parsed_with"], "regex")
         self.assertEqual(text_result["objects"], text_analyzer.extract_objects(sql))
 
     def test_analyze_error_returns_invalid_result(self):
-        analyzer = SqlAnalyzer(dialect="oracle")
+        analyzer = SqlAnalyzer(dialect="snowflake")
         analyzer._extract_objects_regex = MagicMock(side_effect=Exception("regex fail"))
         sql = "SELECT 1"
         result = analyzer.analyze_statement(sql)

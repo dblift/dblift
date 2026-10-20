@@ -108,7 +108,7 @@ def _some_row(family: str) -> Tuple[str, str]:
 def test_a_wrong_or_orphaned_ledger_entry_fails_a_family_that_is_not_gated(
     kind: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    row_id, actual = _some_row("oracle")
+    row_id, actual = _some_row("snowflake")
     wrong = "disagree" if actual != "disagree" else "facts-fewer"
     key, entry_class = (
         (f"{row_id}/hybrid", wrong)
@@ -119,11 +119,11 @@ def test_a_wrong_or_orphaned_ledger_entry_fails_a_family_that_is_not_gated(
         )
     )
     entry = {"sql": "s", "path": "hybrid", "class": entry_class, "reason": "ok"}
-    _plant(monkeypatch, tmp_path, "oracle", {key: entry})
-    assert "oracle" not in gated_families()
-    assert differential.report_family("oracle", current_arm())["stale"] == [key]
-    assert differential.run(["oracle"]) == 1
-    assert differential.run(["oracle"], report_only=True) == 0
+    _plant(monkeypatch, tmp_path, "snowflake", {key: entry})
+    assert "snowflake" not in gated_families()
+    assert differential.report_family("snowflake", current_arm())["stale"] == [key]
+    assert differential.run(["snowflake"]) == 1
+    assert differential.run(["snowflake"], report_only=True) == 0
 
 
 def test_the_listed_families_have_no_unexplained_difference() -> None:
@@ -135,11 +135,11 @@ def test_the_listed_families_have_no_unexplained_difference() -> None:
 def test_a_family_planted_in_the_gate_fails_on_its_real_unexplained_rows(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(differential, "gated_families", lambda: ["oracle"])
-    report = differential.report_family("oracle", current_arm())
+    monkeypatch.setattr(differential, "gated_families", lambda: ["snowflake"])
+    report = differential.report_family("snowflake", current_arm())
     assert report["gated"] and report["unclassified"], "the corpus has rows no entry explains"
-    assert differential.run(["oracle"]) == 1
-    assert differential.run(["oracle"], report_only=True) == 0
+    assert differential.run(["snowflake"]) == 1
+    assert differential.run(["snowflake"], report_only=True) == 0
 
 
 @pytest.mark.parametrize("family", FAMILIES)

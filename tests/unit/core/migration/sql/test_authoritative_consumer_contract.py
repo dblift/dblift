@@ -20,6 +20,7 @@ from dblift.core.sql_model.base import ParseResult
 from dblift.core.sql_parser.parser_factory import SqlParserFactory
 from dblift.core.sql_parser.sqlglot_parser import SqlGlotParser
 from dblift.db.plugins.snowflake.statement_parser import SnowflakeStatementParser
+from tests.support.legacy_oracle_hybrid import oracle_facts_off
 from tests.unit._migration_factory import make_migration
 
 
@@ -133,7 +134,7 @@ def test_sqlglot_parser_never_resplits_a_scanner_refusal(monkeypatch) -> None:
         raise UnsafeStatementSplitError("scanner refused")
 
     monkeypatch.setattr(OracleParser, "split_statements", refuse)
-    with pytest.raises(UnsafeStatementSplitError, match="scanner refused"):
+    with oracle_facts_off(), pytest.raises(UnsafeStatementSplitError, match="scanner refused"):
         SqlGlotParser("oracle").split_statements("SELECT 1;\nSELECT 2;")
 
 
@@ -198,7 +199,8 @@ def test_hybrid_public_object_extraction_does_not_rescan_refused_script() -> Non
 
 
 def test_sqlglot_fragment_analysis_has_explicit_semantic_entry_point() -> None:
-    result = SqlGlotParser("oracle").parse_fragment("SELECT 1")
+    with oracle_facts_off():
+        result = SqlGlotParser("oracle").parse_fragment("SELECT 1")
     assert result.success
     assert len(result.statements) == 1
 

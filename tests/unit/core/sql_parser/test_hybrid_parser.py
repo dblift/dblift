@@ -31,10 +31,15 @@ class TestHybridParser:
 
     # ========== Parser Initialization ==========
 
-    def test_parser_creation_oracle(self):
-        """Test creating hybrid parser for Oracle."""
-        parser = HybridParser("oracle")
-        assert parser.dialect_name == "oracle"
+    def test_parser_creation_oracle_is_refused(self):
+        """Oracle reads statement facts: the generic parser is not built for it."""
+        with pytest.raises(ValueError, match="StatementFactsParser"):
+            HybridParser("oracle")
+
+    def test_parser_creation_snowflake(self):
+        """Test creating hybrid parser for a dialect that reads no statement facts."""
+        parser = HybridParser("snowflake")
+        assert parser.dialect_name == "snowflake"
         assert parser.regex_parser is not None
         assert parser.sqlglot_parser is not None
 
@@ -56,32 +61,6 @@ class TestHybridParser:
             HybridParser("db2")
 
     # ========== Statement Splitting (Regex-based) ==========
-
-    def test_split_oracle_procedural(self):
-        """Test splitting Oracle statements with PL/SQL procedure."""
-        parser = HybridParser("oracle")
-        sql = """
-        CREATE TABLE test_table (id NUMBER PRIMARY KEY);
-
-        CREATE OR REPLACE PROCEDURE test_proc IS
-        BEGIN
-            INSERT INTO test_table VALUES (1);
-            COMMIT;
-        END;
-        /
-
-        SELECT * FROM test_table;
-        """
-
-        statements = parser.split_statements(sql)
-        # Should split properly handling the / delimiter
-        assert len(statements) >= 3
-        assert "CREATE TABLE" in statements[0].upper()
-        # Procedure should be intact
-        assert (
-            "CREATE OR REPLACE PROCEDURE" in statements[1].upper()
-            or "CREATE PROCEDURE" in statements[1].upper()
-        )
 
     def test_split_sqlserver_go(self):
         """Test splitting SQL Server statements with GO."""
@@ -126,8 +105,8 @@ class TestHybridParser:
 
     def test_parse_pure_sql_create_table(self):
         """Test parsing CREATE TABLE with sqlglot enhancement."""
-        parser = HybridParser("oracle")
-        sql = "CREATE TABLE users (id SERIAL PRIMARY KEY, name VARCHAR(100));"
+        parser = HybridParser("snowflake")
+        sql = "CREATE TABLE users (id INT PRIMARY KEY, name VARCHAR(100));"
 
         result = parser.parse_sql(sql, "public")
         assert result.success
@@ -162,29 +141,6 @@ class TestHybridParser:
 
     # ========== Procedural Language Handling ==========
 
-    def test_parse_oracle_plsql_procedure(self):
-        """Test parsing Oracle PL/SQL procedure (uses regex, not sqlglot)."""
-        parser = HybridParser("oracle")
-        sql = """
-        CREATE OR REPLACE PROCEDURE update_salary(emp_id NUMBER, new_salary NUMBER) IS
-        BEGIN
-            UPDATE employees SET salary = new_salary WHERE id = emp_id;
-            COMMIT;
-        END;
-        /
-        """
-
-        result = parser.parse_sql(sql, "HR")
-        assert result.success
-        assert len(result.statements) >= 1
-        # Should identify as CREATE, DDL, or UNKNOWN (procedural language)
-        stmt = result.statements[0]
-        assert stmt.statement_type in [
-            SqlStatementType.CREATE,
-            SqlStatementType.DDL,
-            SqlStatementType.UNKNOWN,
-        ]
-
     def test_parse_sqlserver_tsql_procedure(self):
         """Test parsing SQL Server T-SQL procedure (uses regex, not sqlglot)."""
         parser = HybridParser("sqlserver")
@@ -207,7 +163,7 @@ class TestHybridParser:
 
     def test_extract_dependencies_select(self):
         """Test extracting dependencies from SELECT query."""
-        parser = HybridParser("oracle")
+        parser = HybridParser("snowflake")
         sql = """
         SELECT c.name, c.email, o.total, o.order_date
         FROM customers c
@@ -222,7 +178,7 @@ class TestHybridParser:
 
     def test_extract_dependencies_create_view(self):
         """Test extracting dependencies from CREATE VIEW."""
-        parser = HybridParser("oracle")
+        parser = HybridParser("snowflake")
         sql = """
         CREATE VIEW active_customers AS
         SELECT c.*, COUNT(o.id) as order_count
@@ -239,7 +195,7 @@ class TestHybridParser:
 
     def test_extract_dependencies_procedural_skipped(self):
         """Test that procedural SQL is skipped for dependency extraction."""
-        parser = HybridParser("oracle")
+        parser = HybridParser("snowflake")
         sql = """
         CREATE OR REPLACE FUNCTION complex_calculation() RETURNS INTEGER AS $$
         DECLARE
@@ -273,35 +229,18 @@ class TestHybridParser:
 
     def test_extract_objects_create_table(self):
         """Test extracting objects from CREATE TABLE."""
-        parser = HybridParser("oracle")
-        sql = (
-            "CREATE TABLE products (id SERIAL PRIMARY KEY, name VARCHAR(100), price DECIMAL(10,2));"
-        )
+        parser = HybridParser("snowflake")
+        sql = "CREATE TABLE products (id INT PRIMARY KEY, name VARCHAR(100), price DECIMAL(10,2));"
 
         objects = parser.extract_objects(sql, "public")
         assert len(objects) >= 1
         assert objects[0].name.lower() == "products"
 
-    def test_extract_objects_oracle_partition_by_reference(self):
-        """Test Oracle PARTITION BY REFERENCE - SqlGlot cannot parse, regex fallback used."""
-        parser = HybridParser("oracle")
-        sql = """
-        CREATE TABLE EXECUTION_STEPS_NEW (
-            ID NUMBER,
-            CONSTRAINT FK_EXEC_STEPS_NEW_EXEC
-                FOREIGN KEY (ID) REFERENCES EXECUTIONS(ID) ON DELETE CASCADE ENABLE
-        )
-        PARTITION BY REFERENCE (FK_EXEC_STEPS_NEW_EXEC);
-        """
-        objects = parser.extract_objects(sql)
-        assert len(objects) >= 1
-        assert any(o.name == "EXECUTION_STEPS_NEW" for o in objects)
-
     # ========== Validation ==========
 
     def test_validate_pure_sql_valid(self):
         """Test validating valid pure SQL."""
-        parser = HybridParser("oracle")
+        parser = HybridParser("snowflake")
         sql = "SELECT * FROM users WHERE id = 1;"
 
         result = parser.validate_sql(sql)
@@ -311,39 +250,14 @@ class TestHybridParser:
 
     def test_validate_pure_sql_invalid(self):
         """Test validating invalid pure SQL."""
-        parser = HybridParser("oracle")
+        parser = HybridParser("snowflake")
         sql = "SELECT * FORM users;"  # FORM instead of FROM
 
         result = parser.validate_sql(sql)
         # Should detect error
         assert not result["valid"] or len(result["errors"]) > 0
 
-    def test_validate_procedural_sql(self):
-        """Test validating procedural SQL."""
-        parser = HybridParser("oracle")
-        sql = """
-        CREATE OR REPLACE PROCEDURE test_proc IS
-        BEGIN
-            NULL;
-        END;
-        /
-        """
-
-        result = parser.validate_sql(sql)
-        # Regex parser should handle this
-        assert result["valid"] or len(result["errors"]) == 0
-
     # ========== Hybrid Behavior ==========
-
-    def test_hybrid_fallback_on_sqlglot_failure(self):
-        """Test graceful fallback when sqlglot fails."""
-        parser = HybridParser("oracle")
-        # Oracle Q-quote that sqlglot may struggle with
-        sql = "SELECT q'[It's a string with 'quotes']' FROM DUAL;"
-
-        result = parser.parse_sql(sql)
-        # Should still succeed using regex parser
-        assert result.success
 
     # ========== DB2 (Regex-Only) ==========
 
@@ -360,7 +274,7 @@ class TestHybridParser:
 
     def test_empty_sql(self):
         """Test parsing empty SQL."""
-        parser = HybridParser("oracle")
+        parser = HybridParser("snowflake")
         result = parser.parse_sql("")
         # Should handle gracefully
         assert result.success or len(result.errors) > 0
@@ -376,7 +290,7 @@ class TestHybridParser:
 
     def test_multiple_pure_sql_statements(self):
         """Test parsing multiple pure SQL statements."""
-        parser = HybridParser("oracle")
+        parser = HybridParser("snowflake")
         sql = """
         INSERT INTO users (name) VALUES ('Alice');
         INSERT INTO users (name) VALUES ('Bob');
@@ -472,9 +386,11 @@ class TestMergeObjectsReconcilesPerStatementPerType:
         schema after that resolution (e.g. one side reads an explicit
         qualifier the other does not).
         """
-        parser = HybridParser("oracle")
-        regex_objects = [SqlObject("foo", SqlObjectType.TABLE, schema="myschema", dialect="oracle")]
-        sqlglot_objects = [SqlObject("foo", SqlObjectType.TABLE, schema=None, dialect="oracle")]
+        parser = HybridParser("snowflake")
+        regex_objects = [
+            SqlObject("foo", SqlObjectType.TABLE, schema="myschema", dialect="snowflake")
+        ]
+        sqlglot_objects = [SqlObject("foo", SqlObjectType.TABLE, schema=None, dialect="snowflake")]
 
         merged = parser._merge_objects(regex_objects, sqlglot_objects)
 
@@ -485,12 +401,12 @@ class TestMergeObjectsReconcilesPerStatementPerType:
     def test_collision_schema_fill_prefers_sqlglot_when_both_present(self):
         """``schema = sqlglot.schema or regex.schema``: sqlglot's schema
         wins when both sides have one."""
-        parser = HybridParser("oracle")
+        parser = HybridParser("snowflake")
         regex_objects = [
-            SqlObject("foo", SqlObjectType.TABLE, schema="regexschema", dialect="oracle")
+            SqlObject("foo", SqlObjectType.TABLE, schema="regexschema", dialect="snowflake")
         ]
         sqlglot_objects = [
-            SqlObject("foo", SqlObjectType.TABLE, schema="sqlglotschema", dialect="oracle")
+            SqlObject("foo", SqlObjectType.TABLE, schema="sqlglotschema", dialect="snowflake")
         ]
 
         merged = parser._merge_objects(regex_objects, sqlglot_objects)
@@ -532,7 +448,7 @@ class TestMergeObjectsTypeMismatchPhantomOutOfScope:
     @pytest.mark.parametrize(
         "dialect,sql",
         [
-            ("oracle", "DROP TRIGGER my_trigger;"),
+            ("snowflake", "DROP TRIGGER my_trigger;"),
             ("sqlserver", "DROP TRIGGER my_trigger;"),
         ],
     )
@@ -579,9 +495,9 @@ class TestSqlGlotDropKindDispatchMapsKnownKinds:
     @pytest.mark.parametrize(
         "dialect,sql,expected_type",
         [
-            ("oracle", "DROP TRIGGER my_trigger;", SqlObjectType.TRIGGER),
-            ("oracle", "DROP FUNCTION my_func;", SqlObjectType.FUNCTION),
-            ("oracle", "DROP PROCEDURE my_proc;", SqlObjectType.PROCEDURE),
+            ("snowflake", "DROP TRIGGER my_trigger;", SqlObjectType.TRIGGER),
+            ("snowflake", "DROP FUNCTION my_func;", SqlObjectType.FUNCTION),
+            ("snowflake", "DROP PROCEDURE my_proc;", SqlObjectType.PROCEDURE),
             ("sqlserver", "DROP TRIGGER my_trigger;", SqlObjectType.TRIGGER),
             ("sqlserver", "DROP FUNCTION my_func;", SqlObjectType.FUNCTION),
             ("sqlserver", "DROP PROCEDURE my_proc;", SqlObjectType.PROCEDURE),
@@ -610,7 +526,7 @@ class TestSqlGlotDropKindDispatchMapsKnownKinds:
         them (INDEX has its own test below, since it carries a side effect)."""
         from dblift.core.sql_parser.sqlglot_parser import SqlGlotParser
 
-        parser = SqlGlotParser("oracle")
+        parser = SqlGlotParser("snowflake")
         objects = parser.extract_objects(sql, "public")
 
         assert len(objects) == 1
@@ -643,7 +559,7 @@ class TestSqlGlotDropKindDispatchMapsKnownKinds:
         stable object-shaped contract to assert against."""
         from dblift.core.sql_parser.sqlglot_parser import SqlGlotParser
 
-        parser = SqlGlotParser("oracle")
+        parser = SqlGlotParser("snowflake")
         objects = parser.extract_objects("DROP EXTENSION my_ext;", "public")
 
         assert objects == []
@@ -672,38 +588,6 @@ class TestExtractObjectsCrossDialectDropFunctionProcedure:
         assert len(objects) == 1
         assert objects[0].object_type == expected_type
         assert not any(o.object_type == SqlObjectType.TABLE for o in objects)
-
-    def test_oracle_no_phantom_table_but_merge_now_prefers_sqlglots_unfolded_case(self):
-        """Oracle is deliberately separate from the parametrized cases above.
-
-        The phantom TABLE is gone here too, but this exposes a pre-existing,
-        out-of-scope interaction with ``_merge_objects`` (#377, not touched
-        by this fix): the regex parser correctly upper-folds an unquoted
-        Oracle identifier ('MY_FUNC' / schema 'PUBLIC', matching Oracle's
-        real catalog behaviour), while sqlglot's answer does not fold it. Before
-        this fix, sqlglot's wrongly-typed TABLE answer never collided with
-        the regex parser's correctly-typed, correctly-folded FUNCTION answer
-        under `_merge_objects`'s ``(name, object_type)`` key, so both
-        survived and a caller filtering by the correct type got the right,
-        folded name. Now that sqlglot reports FUNCTION too, the key
-        collides, and per #377's existing, already-shipped rule ("prefer
-        sqlglot on a collision") sqlglot's unfolded name wins.
-
-        This is not a new class of problem: DROP TABLE/VIEW/SEQUENCE/INDEX
-        on Oracle already lose their folded casing this same way today,
-        unconditionally, on unmodified `develop` — this test only shows the
-        same pre-existing rule now also applies to DROP FUNCTION/PROCEDURE/
-        TRIGGER/TYPE/DATABASE, which is the direct, foreseeable consequence
-        of correcting their type rather than a regression this fix
-        introduces on its own."""
-        parser = HybridParser("oracle")
-        objects = parser.extract_objects("DROP FUNCTION my_func;", "public")
-
-        assert len(objects) == 1
-        assert objects[0].object_type == SqlObjectType.FUNCTION
-        # pinned: sqlglot's unfolded casing wins on collision, per #377
-        assert objects[0].name == "my_func"
-        assert objects[0].schema == "public"
 
 
 @pytest.mark.unit
@@ -781,47 +665,11 @@ class TestExtractObjectsQuietOnRoutineDropIndexOnQualifiedTable:
 
 
 @pytest.mark.unit
-class TestParseSqlQuietOnOracleListPartitionedTable:
-    """Oracle ``PARTITION BY LIST`` must not warn (dblift/dblift#379 follow-up).
-
-    This is textbook Oracle list partitioning, no rarer than ``PARTITION BY
-    RANGE`` — which Oracle's quirks already declare in
-    ``sqlglot_unsupported_sql_patterns``; ``PARTITION BY LIST`` was simply
-    missing from that list. Without it, every real list-partitioned Oracle
-    ``CREATE TABLE`` would warn via the extract_objects fallback in
-    ``HybridParser.parse_sql`` — the same alert-fatigue problem this PR
-    exists to remove, just on a third dialect/shape.
-    """
-
-    def test_list_partitioned_table_does_not_warn(self, caplog):
-        sql = """
-        CREATE TABLE employees (
-            emp_id NUMBER,
-            region VARCHAR2(50)
-        )
-        PARTITION BY LIST (region) (
-            PARTITION p_west VALUES ('CA', 'WA', 'OR'),
-            PARTITION p_east VALUES ('NY', 'MA', 'CT')
-        );
-        """
-        parser = HybridParser("oracle")
-
-        with caplog.at_level("WARNING"):
-            result = parser.parse_sql(sql, default_schema="test_schema")
-
-        assert not caplog.records, [r.message for r in caplog.records]
-        assert result.success
-        table = result.tables[0]
-        assert table.partition_method == "LIST"
-        assert table.partition_columns == ["REGION"]
-
-
-@pytest.mark.unit
 class TestCollectObjectsDispatch:
     """Tests for _collect_objects dispatch dict pattern (story 14-9)."""
 
     def _make_parser(self):
-        return HybridParser("oracle")
+        return HybridParser("snowflake")
 
     def test_collect_table_calls_add_table(self):
         """AC#3.1: TABLE dispatches to result.add_table."""

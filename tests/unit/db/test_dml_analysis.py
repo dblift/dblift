@@ -101,7 +101,14 @@ def test_statement_dml_table_prefers_sqlglot_when_dialect_known():
 def test_statement_dml_table_sqlglot_strips_merge_alias():
     # MERGE's table carries an alias in the AST; it must not leak into the name.
     stmt = 'MERGE INTO "S"."T" t USING x ON (t.id = x.id) WHEN MATCHED THEN UPDATE SET a = 1;'
-    assert statement_dml_table(stmt, quirks=_quirks("oracle")) == '"S"."T"'
+    assert statement_dml_table(stmt, quirks=_quirks("postgres")) == '"S"."T"'
+
+
+def test_statement_dml_table_of_an_oracle_merge_is_unread():
+    # Oracle MERGE is a named gap of the facts reader: no table is claimed.
+    stmt = 'MERGE INTO "S"."T" t USING x ON (t.id = x.id) WHEN MATCHED THEN UPDATE SET a = 1;'
+    assert statement_dml_table(stmt, quirks=_quirks("oracle")) == ""
+    assert analyze_dml(stmt, quirks=_quirks("oracle")).table == ""
 
 
 def test_analyze_dml_resolves_delete_alias_target_to_its_table():
@@ -717,6 +724,8 @@ def test_statement_dml_table_without_dialect_skips_target_modifiers(dialect, stm
 @pytest.mark.parametrize(("dialect", "stmt", "table"), _TARGET_MODIFIER_CASES)
 def test_analyze_dml_target_skips_modifiers(dialect, stmt, table):
     bare = re.sub(r'[`"\[\]]', "", table)
+    if dialect == "oracle" and '"' not in table:
+        bare = bare.upper()  # the facts name the table as Oracle stores it
     assert analyze_dml(stmt, quirks=_quirks(dialect)).table == bare
 
 
@@ -761,7 +770,8 @@ _MODIFIER_NAMED_TARGET_CASES = [
     ("mysql", "UPDATE delayed$jobs SET a = 1", "delayed$jobs"),
     ("tsql", "UPDATE ignore#x SET a = 1", "ignore#x"),
     ("oracle", "UPDATE ignore#x SET a = 1", "ignore#x"),
-    ("oracle", "DELETE t alias WHERE alias.a = 1", "t"),
+    # Oracle keeps the alias so that ``FROM <table> WHERE <predicate>`` resolves ``alias.a``.
+    ("oracle", "DELETE t alias WHERE alias.a = 1", "t alias"),
     ("mysql", "INSERT HIGH_PRIORITY INTO t (a) VALUES (1)", "t"),
     ("oracle", "UPDATE /*+ INDEX(t\n   i) */ t SET a = 1", "t"),
     ("oracle", "DELETE /*+ PARALLEL\n */ t WHERE a = 1", "t"),

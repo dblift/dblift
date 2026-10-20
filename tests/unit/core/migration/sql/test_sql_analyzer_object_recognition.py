@@ -30,6 +30,7 @@ import unittest
 
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.sql_model._base_sql_object import SqlObjectType
+from dblift.db.provider_registry import ProviderRegistry
 
 
 def _only(analyzer: SqlAnalyzer, sql: str) -> dict:
@@ -202,10 +203,10 @@ class TestMaterializedViewLogReportsTheTable(unittest.TestCase):
         self.oracle = SqlAnalyzer(dialect="oracle")
 
     def _log_on_table(self, analyzer: SqlAnalyzer, sql: str, expected_name: str) -> None:
-        obj = _only(analyzer, sql)
-        self.assertEqual(obj["object_type"], SqlObjectType.MATERIALIZED_VIEW_LOG.name)
-        self.assertEqual(obj["object_name"], expected_name)
-        self.assertNotEqual(obj["object_name"].rsplit(".", 1)[-1].upper(), "LOG")
+        # Oracle reads statement facts, which name no object for a log: it has no name of its own,
+        # and a view called LOG would be a guess.
+        self.assertEqual(analyzer.extract_objects(sql), [])
+        self.assertTrue(ProviderRegistry.get_quirks(analyzer.dialect).statement_facts(sql).opaque)
 
     def test_create_log_on_unqualified_table(self):
         sql = "CREATE MATERIALIZED VIEW LOG ON orders"
@@ -227,7 +228,8 @@ class TestMaterializedViewLogReportsTheTable(unittest.TestCase):
             with self.subTest(dialect=analyzer.dialect):
                 obj = _only(analyzer, sql)
                 self.assertEqual(obj["object_type"], SqlObjectType.MATERIALIZED_VIEW.name)
-                self.assertEqual(obj["object_name"], "default_schema.mv")
+                expected = "default_schema.MV" if analyzer is self.oracle else "default_schema.mv"
+                self.assertEqual(obj["object_name"], expected)
                 self.assertNotEqual(obj["object_type"], SqlObjectType.MATERIALIZED_VIEW_LOG.name)
                 self.assertNotEqual(obj["object_name"].rsplit(".", 1)[-1].upper(), "LOG")
                 self.assertNotEqual(obj["object_name"].rsplit(".", 1)[-1].upper(), "ORDERS")
@@ -242,11 +244,11 @@ class TestMaterializedViewLogReportsTheTable(unittest.TestCase):
         # LOG is a legal view name. Without ON, this is not a log statement
         # and must not be absorbed by the three-word type.
         sql = "CREATE MATERIALIZED VIEW LOG AS SELECT 1 FROM orders"
-        for analyzer in (self.postgresql, self.oracle):
-            with self.subTest(dialect=analyzer.dialect):
-                obj = _only(analyzer, sql)
-                self.assertEqual(obj["object_type"], SqlObjectType.MATERIALIZED_VIEW.name)
-                self.assertEqual(obj["object_name"], "default_schema.LOG")
+        obj = _only(self.postgresql, sql)
+        self.assertEqual(obj["object_type"], SqlObjectType.MATERIALIZED_VIEW.name)
+        self.assertEqual(obj["object_name"], "default_schema.LOG")
+        # Oracle 23.26 reads LOG as the log keyword and rejects this (ORA-00969): no view is named.
+        self.assertEqual(self.oracle.extract_objects(sql), [])
 
 
 class TestAlterAndDropRecognition(unittest.TestCase):
@@ -331,13 +333,18 @@ class TestIndexTypeModifiers(unittest.TestCase):
     """
 
     def setUp(self):
-        self.analyzer = SqlAnalyzer(dialect="oracle")
+        self.analyzer = SqlAnalyzer(dialect="snowflake")
 
     def test_bitmap_index(self):
-        obj = _only(self.analyzer, "CREATE BITMAP INDEX bx ON orders (status)")
-        self.assertEqual(obj["object_type"], "INDEX")
-        self.assertIn("bx", obj["object_name"])
-        self.assertIn("orders", obj["on_object"])
+        # Oracle reads statement facts: the index and the table it scans, folded as Oracle stores them.
+        facts = ProviderRegistry.get_quirks("oracle").statement_facts(
+            "CREATE BITMAP INDEX bx ON orders (status)"
+        )
+        self.assertEqual(
+            [(o.type.value, o.name, o.role) for o in facts.objects],
+            [("INDEX", "BX", "created"), ("TABLE", "ORDERS", "referenced")],
+        )
+        self.assertEqual(facts.indexed_table, "ORDERS")
 
     def test_fulltext_index(self):
         obj = _only(self.analyzer, "CREATE FULLTEXT INDEX ftx ON orders (note)")
@@ -362,7 +369,7 @@ class TestPublicModifier(unittest.TestCase):
     def test_create_public_synonym(self):
         obj = _only(self.analyzer, "CREATE PUBLIC SYNONYM s FOR app.orders")
         self.assertEqual(obj["object_type"], "SYNONYM")
-        self.assertIn("s", obj["object_name"].rsplit(".", 1)[-1])
+        self.assertIn("S", obj["object_name"].rsplit(".", 1)[-1])  # Oracle stores S
 
     def test_drop_public_synonym(self):
         obj = _only(self.analyzer, "DROP PUBLIC SYNONYM s")
@@ -371,7 +378,7 @@ class TestPublicModifier(unittest.TestCase):
     def test_create_public_database_link(self):
         obj = _only(self.analyzer, "CREATE PUBLIC DATABASE LINK dl CONNECT TO u IDENTIFIED BY p")
         self.assertEqual(obj["object_type"], "DATABASE_LINK")
-        self.assertIn("dl", obj["object_name"].rsplit(".", 1)[-1])
+        self.assertIn("DL", obj["object_name"].rsplit(".", 1)[-1])
 
 
 class TestUnmodelledObjectKeywords(unittest.TestCase):
@@ -504,11 +511,14 @@ class TestStatementsThatNameATargetTable(unittest.TestCase):
         self.assertIn("users", obj["object_name"])
 
     def test_merge_reports_the_target_table(self):
-        self.analyzer = SqlAnalyzer(dialect="oracle")  # the SET target is alias-qualified
-        sql = "MERGE INTO users u USING staged s ON (u.id = s.id) WHEN MATCHED THEN UPDATE SET u.email = s.email"
+        sql = "MERGE INTO users u USING staged s ON (u.id = s.id) WHEN MATCHED THEN UPDATE SET email = s.email"
         obj = _only(self.analyzer, sql)
         self.assertEqual(obj["object_type"], "TABLE")
         self.assertIn("users", obj["object_name"])
+
+    def test_oracle_merge_is_a_named_gap_of_the_facts_reader(self):
+        sql = "MERGE INTO users u USING staged s ON (u.id = s.id) WHEN MATCHED THEN UPDATE SET u.email = s.email"
+        self.assertEqual(SqlAnalyzer(dialect="oracle").extract_objects(sql), [])
 
 
 class TestNoFalsePositives(unittest.TestCase):

@@ -7,7 +7,7 @@ from typing import Any, Dict, List
 import pytest
 
 from dblift.core.sql_parser.statement_facts import SqlglotStatementFactsReader
-from dblift.db.plugins.oracle.quirks import OracleQuirks
+from dblift.db.plugins.snowflake.quirks import SnowflakeQuirks
 from dblift.db.plugins.postgresql.quirks import PostgresqlQuirks
 from tests.support.facts_corpus import FAMILIES
 from tests.support.facts_corpus import __main__ as cli
@@ -37,8 +37,8 @@ def test_record_floor_refuses_to_rewrite_the_extraction_of_an_activated_family(
 
 
 def test_is_frozen_reflects_the_plugin_hook(monkeypatch: pytest.MonkeyPatch) -> None:
-    assert OracleQuirks.statement_facts_class is None
-    assert not record.is_frozen("oracle")
+    assert SnowflakeQuirks.statement_facts_class is None
+    assert not record.is_frozen("snowflake")
     assert not record.is_frozen("sqlite")
     monkeypatch.setattr(PostgresqlQuirks, "statement_facts_class", SqlglotStatementFactsReader)
     assert record.is_frozen("postgresql")
@@ -55,7 +55,7 @@ def test_the_command_refuses_before_writing_any_file(
 
 def test_a_family_that_is_not_activated_cannot_be_recorded_as_frozen() -> None:
     with pytest.raises(RuntimeError, match="not activated"):
-        record_family("oracle", "floor", _inputs("SELECT 1"), [], frozen=True)
+        record_family("snowflake", "floor", _inputs("SELECT 1"), [], frozen=True)
 
 
 def test_frozen_recording_keeps_old_and_refreshes_facts(monkeypatch, activated: None) -> None:

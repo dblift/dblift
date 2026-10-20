@@ -507,14 +507,12 @@ class TestSqlParserFactory:
             factory.get_parser("unknown_dialect")
 
     def test_get_parser_normalises_dialect_to_lowercase(self):
-        """``get_parser("ORACLE")`` resolves the same plugin as
-        ``get_parser("oracle")``. Case-insensitive lookup happens
+        """``get_parser("SNOWFLAKE")`` resolves the same plugin as
+        ``get_parser("snowflake")``. Case-insensitive lookup happens
         inside ``ProviderRegistry.get_quirks``."""
-        from dblift.core.sql_parser.hybrid_parser import HybridParser
-
         factory = SqlParserFactory("postgresql")
-        parser = factory.get_parser("ORACLE")
-        assert isinstance(parser, HybridParser)
+        parser = factory.get_parser("SNOWFLAKE")
+        assert parser.dialect_name == "snowflake"
 
     def test_parse_sql_error_handling_no_parser_creation(self):
         """Test parse_sql when parser creation returns None."""

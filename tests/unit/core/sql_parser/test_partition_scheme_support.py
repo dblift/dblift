@@ -4,6 +4,7 @@ import pytest
 
 from dblift.core.sql_parser.hybrid_parser import HybridParser
 from tests.support.legacy_db2_hybrid import legacy_db2_hybrid
+from tests.support.legacy_oracle_hybrid import legacy_oracle_hybrid
 
 pytestmark = [pytest.mark.unit]
 
@@ -25,7 +26,7 @@ class TestPartitionSchemeOracle:
         );
         """
 
-        parser = HybridParser("oracle")
+        parser = legacy_oracle_hybrid()
         result = parser.parse_sql(sql, default_schema="test_schema")
 
         assert result.success
@@ -49,7 +50,7 @@ class TestPartitionSchemeOracle:
         );
         """
 
-        parser = HybridParser("oracle")
+        parser = legacy_oracle_hybrid()
         result = parser.parse_sql(sql, default_schema="test_schema")
 
         assert result.success
@@ -67,7 +68,7 @@ class TestPartitionSchemeOracle:
         PARTITION BY HASH (customer_id) PARTITIONS 4;
         """
 
-        parser = HybridParser("oracle")
+        parser = legacy_oracle_hybrid()
         result = parser.parse_sql(sql, default_schema="test_schema")
 
         assert result.success
@@ -89,7 +90,7 @@ class TestPartitionSchemeOracle:
         );
         """
 
-        parser = HybridParser("oracle")
+        parser = legacy_oracle_hybrid()
         result = parser.parse_sql(sql, default_schema="test_schema")
 
         assert result.success
@@ -159,7 +160,12 @@ class TestNonPartitionedTables:
         );
         """
 
-        parser = legacy_db2_hybrid() if dialect == "db2" else HybridParser(dialect)
+        if dialect == "db2":
+            parser = legacy_db2_hybrid()
+        elif dialect == "oracle":
+            parser = legacy_oracle_hybrid()
+        else:
+            parser = HybridParser(dialect)
         result = parser.parse_sql(sql, default_schema="test_schema")
 
         assert result.success

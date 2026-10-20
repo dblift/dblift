@@ -187,16 +187,16 @@ class TestDefaultSchemaPlaceholderNeverReachesGeneratedSql:
         assert "default_schema" not in result.sql
 
     def test_unqualified_name_drops_the_bare_object(self):
-        gen = make_generator(dialect="oracle")
+        gen = make_generator(dialect="snowflake")
         sql = "CREATE SEQUENCE users_seq START WITH 1"
         result = gen._reverse_create(sql, gen.sql_analyzer.analyze_statement(sql))
-        assert result.sql == 'DROP SEQUENCE "users_seq";'
+        assert result.sql == 'DROP SEQUENCE IF EXISTS "users_seq";'
 
     def test_a_real_schema_is_still_qualified(self):
-        gen = make_generator(dialect="oracle")
+        gen = make_generator(dialect="snowflake")
         sql = "CREATE TABLE app.orders (id INT)"
         result = gen._reverse_create(sql, gen.sql_analyzer.analyze_statement(sql))
-        assert result.sql == 'DROP TABLE "app"."orders";'
+        assert result.sql == 'DROP TABLE IF EXISTS "app"."orders";'
 
 
 # ---------------------------------------------------------------------------

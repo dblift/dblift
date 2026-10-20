@@ -4,6 +4,7 @@ import pytest
 
 from dblift.core.sql_model.base import ConstraintType
 from dblift.core.sql_parser import SqlParserFactory
+from tests.support.legacy_oracle_hybrid import hybrid_for
 
 pytestmark = pytest.mark.unit
 DIALECTS = ("oracle", "sqlserver")
@@ -17,10 +18,8 @@ DIALECTS = ("oracle", "sqlserver")
     ],
 )
 def test_generated_column_keeps_expression_and_storage(dialect, definition, stored):
-    result = (
-        SqlParserFactory(dialect)
-        .get_parser()
-        .parse_sql(f"CREATE TABLE t (id INT PRIMARY KEY, a INT, {definition})")
+    result = hybrid_for(dialect).parse_sql(
+        f"CREATE TABLE t (id INT PRIMARY KEY, a INT, {definition})"
     )
     assert result.success
     column = result.tables[0].columns[2]
@@ -31,7 +30,7 @@ def test_generated_column_keeps_expression_and_storage(dialect, definition, stor
 
 @pytest.mark.parametrize("dialect", DIALECTS)
 def test_plain_column_is_not_computed(dialect):
-    result = SqlParserFactory(dialect).get_parser().parse_sql("CREATE TABLE t (a INT)")
+    result = hybrid_for(dialect).parse_sql("CREATE TABLE t (a INT)")
     column = result.tables[0].columns[0]
     assert column.is_computed is False
     assert column.computed_expression is None
@@ -40,7 +39,7 @@ def test_plain_column_is_not_computed(dialect):
 
 @pytest.mark.parametrize("dialect", DIALECTS)
 def test_plain_index_key_is_not_an_expression(dialect):
-    result = SqlParserFactory(dialect).get_parser().parse_sql("CREATE INDEX ix ON t (a)")
+    result = hybrid_for(dialect).parse_sql("CREATE INDEX ix ON t (a)")
     assert result.indexes[0].columns == ["a"]
     assert result.indexes[0].expression_flags == [False]
 
@@ -58,7 +57,7 @@ def test_plain_index_key_is_not_an_expression(dialect):
     ],
 )
 def test_index_keeps_key_sort_directions(dialect, keys, directions):
-    result = SqlParserFactory(dialect).get_parser().parse_sql(f"CREATE INDEX ix ON t ({keys})")
+    result = hybrid_for(dialect).parse_sql(f"CREATE INDEX ix ON t ({keys})")
     assert result.indexes[0].sort_directions == directions
 
 
@@ -77,7 +76,7 @@ def test_foreign_key_keeps_referential_actions(dialect, inline, actions, on_dele
         if inline
         else f"pid INT, CONSTRAINT fk FOREIGN KEY (pid) REFERENCES p(id) {actions}"
     )
-    result = SqlParserFactory(dialect).get_parser().parse_sql(f"CREATE TABLE t ({definition})")
+    result = hybrid_for(dialect).parse_sql(f"CREATE TABLE t ({definition})")
     fk = next(
         c for c in result.tables[0].constraints if c.constraint_type == ConstraintType.FOREIGN_KEY
     )
@@ -87,10 +86,8 @@ def test_foreign_key_keeps_referential_actions(dialect, inline, actions, on_dele
 
 @pytest.mark.parametrize("dialect", DIALECTS)
 def test_foreign_key_without_actions_keeps_none(dialect):
-    result = (
-        SqlParserFactory(dialect)
-        .get_parser()
-        .parse_sql("CREATE TABLE t (pid INT, CONSTRAINT fk FOREIGN KEY (pid) REFERENCES p(id))")
+    result = hybrid_for(dialect).parse_sql(
+        "CREATE TABLE t (pid INT, CONSTRAINT fk FOREIGN KEY (pid) REFERENCES p(id))"
     )
     fk = next(
         c for c in result.tables[0].constraints if c.constraint_type == ConstraintType.FOREIGN_KEY
