@@ -188,16 +188,6 @@ class TestEnvelope:
         statements = ["/* COMMIT */ SELECT 'COMMIT'", "-- ROLLBACK\nSELECT 1"]
         assert _run(statements, dialect)[0] is statements
 
-    def test_an_envelope_around_a_statement_that_cannot_run_in_a_transaction_is_refused(
-        self, dialect
-    ):
-        if dialect == "duckdb":
-            pytest.skip("DuckDB has no non-transactional statement")
-        with pytest.raises(
-            TransactionStatementError, match="VACUUM cannot run inside a transaction"
-        ):
-            _run(["BEGIN", "VACUUM", "COMMIT"], dialect)
-
     def test_refusal_is_a_transaction_statement_error(self, dialect):
         with pytest.raises(TransactionStatementError) as raised:
             _run(["COMMIT"], dialect)
@@ -213,6 +203,41 @@ class TestEnvelope:
         out, log = _run(statements, dialect)
         assert out is statements
         log.warning.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "dialect, statement, reason",
+    [
+        ("sqlite", "VACUUM", "VACUUM cannot run inside a transaction"),
+        (
+            "duckdb",
+            "CHECKPOINT",
+            "DuckDB CHECKPOINT cannot run in a transaction with local changes",
+        ),
+        (
+            "duckdb",
+            "FORCE CHECKPOINT",
+            "DuckDB CHECKPOINT cannot run in a transaction with local changes",
+        ),
+    ],
+)
+def test_an_envelope_around_a_nontransactional_statement_is_refused(dialect, statement, reason):
+    with pytest.raises(TransactionStatementError) as raised:
+        _run(["BEGIN", statement, "COMMIT"], dialect)
+    assert f"{statement} cannot stay inside the envelope" in str(raised.value)
+    assert reason in str(raised.value)
+
+
+@pytest.mark.parametrize("statement", ["CHECKPOINT", "FORCE CHECKPOINT"])
+def test_duckdb_checkpoint_fails_with_local_changes(statement):
+    duckdb = pytest.importorskip("duckdb")
+    with duckdb.connect(":memory:") as connection:
+        connection.execute("CREATE TABLE t (a INT)")
+        connection.execute(statement)
+        connection.execute("BEGIN")
+        connection.execute("INSERT INTO t VALUES (1)")
+        with pytest.raises(duckdb.TransactionException):
+            connection.execute(statement)
 
 
 def _split(dialect, content):
