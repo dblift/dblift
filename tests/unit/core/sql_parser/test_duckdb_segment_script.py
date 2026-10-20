@@ -434,7 +434,7 @@ CASES = [
     ),
 ]
 IDS = [case[0] for case in CASES]
-KNOWN_GAPS = frozenset({"74", "75"})  # the splitter differs from DuckDB there (see the spec)
+KNOWN_GAPS = frozenset()
 
 
 def outcome(call, script):
