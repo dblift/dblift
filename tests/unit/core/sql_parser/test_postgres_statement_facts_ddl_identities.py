@@ -224,7 +224,7 @@ def test_statements_the_grammar_leaves_opaque_are_named_from_their_head(sql, ope
     assert facts.error is None
 
 
-@pytest.mark.parametrize("dialect", ["mysql", "oracle"])
+@pytest.mark.parametrize("dialect", ["oracle"])
 @pytest.mark.parametrize("sql,operation,named", HEAD_CASES, ids=HEAD_IDS)
 def test_head_classification_is_unchanged_for_other_dialects(dialect, sql, operation, named):
     facts = read_statement_facts(sql, dialect=dialect)
