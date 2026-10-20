@@ -1,64 +1,143 @@
-"""Splitting a SQL Server script costs time linear in its size, whatever its shape."""
+"""Count the work of splitting SQL Server scripts through the public lexical engine.
 
-import time
+Native-regex helpers are charged for their bounded input spans before receiving plain strings;
+their internal VM steps and extra scans inside those helpers are not counted.
+"""
+
+import re
+from unittest import mock
 
 import pytest
 
+from dblift.core.sql_parser import batch_script
+from dblift.core.sql_parser import lexical_engine as engine_module
+from dblift.core.sql_parser import lexical_tokenizer as tokenizer_module
 from dblift.core.sql_parser.lexical_engine import LexicalEngine
+from dblift.core.sql_parser.lexical_tokenizer import LexicalTokenizer
 from dblift.db.plugins.sqlserver.parser.lexical_spec import SQLSERVER_SPEC
+from tests.support.splitting_cost import CountingParserTokens, CountingPattern, CountingText, Meter
 
-# Wall-clock ratios over several sizes, best of N: under coverage on a CI runner the
-# largest shape takes about 40 s locally and over 120 s there, so the suite-wide
-# 120 s timeout cut it. The bound being tested is the growth ratio, not the time.
-pytestmark = pytest.mark.timeout(600)
+SMALL, LARGE, BOUND = 100, 400, 5
 
-#: shape name -> (script of n units, n for the small size). Each shape stresses one reader.
+#: shape name -> script of n units. Each shape stresses one reader.
 SHAPES = {
-    "one lexeme across many lines": (
-        lambda n: "SELECT '" + "line of text\n" * n + "'\nGO\n",
-        950000,
-    ),
-    "many GO batches": (lambda n: "SELECT 1\nGO\n" * n, 28000),
-    "many head lines": (
-        lambda n: "SELECT 'x'\n" * n + "/*" + "x" * (200 * n) + "*/\nGO\n",
-        10000,
-    ),
-    "one line of comments, words and semicolons": (
-        lambda n: "/**/ " * n + "/**/ SELECT 1 " * n + ";" * (n // 20) + "\r" * n + "x GO x\nGO\n",
-        24000,
+    "one lexeme across many lines": lambda n: "SELECT '" + "line of text\n" * n + "'\nGO\n",
+    "many GO batches": lambda n: "SELECT 1\nGO\n" * n,
+    "many head lines": lambda n: "SELECT 'x'\n" * n + "/*" + "x" * (200 * n) + "*/\nGO\n",
+    "one line of comments, words and semicolons": lambda n: (
+        "/**/ " * n + "/**/ SELECT 1 " * n + ";" * (n // 20) + "\r" * n + "x GO x\nGO\n"
     ),
 }
 
+IDENTIFIERS = {
+    "quoted identifier": lambda n: 'SELECT "' + "line of text\n" * n + '"\nGO\n',
+    "bracketed identifier": lambda n: "SELECT [" + "line of text\n" * n + "]\nGO\n",
+}
 
-def best_of(script, runs=3):
-    engine = LexicalEngine(SQLSERVER_SPEC)
-    times = []
-    for _ in range(runs):
-        start = time.perf_counter()
-        engine.split(script)
-        times.append(time.perf_counter() - start)
-    return min(times)
+
+def counted(script: str) -> int:
+    meter = Meter()
+    original_command = tokenizer_module.read_command
+    original_lone_cr = tokenizer_module.find_lone_cr
+    original_code = tokenizer_module.refuse_variable_in_code
+    original_lexeme = tokenizer_module.refuse_variable_in_lexeme
+    original_positions = batch_script.code_positions
+    original_divide = batch_script.divide
+
+    def read_command(rules, client_name, source, pos, line, commented):
+        newline = source.find("\n", pos)
+        meter.add((len(source) if newline < 0 else newline) - pos)
+        return original_command(rules, client_name, source._value, pos, line, commented)
+
+    def find_lone_cr(rules, source, start, end):
+        meter.add(end - start)
+        return original_lone_cr(rules, source._value, start, end)
+
+    def refuse_variable_in_code(rules, client_name, source, start, end, line):
+        meter.add(end - start)
+        return original_code(rules, client_name, source._value, start, end, line)
+
+    def refuse_variable_in_lexeme(rules, client_name, source, start, end, line):
+        meter.add(end - start)
+        return original_lexeme(rules, client_name, source._value, start, end, line)
+
+    def code_positions(rules, source, spans, lexeme_starts):
+        meter.add(sum(hi - lo for lo, hi in spans))
+        return original_positions(rules, source._value, spans, lexeme_starts)
+
+    def divide(rules, source, batch_start, batch_end, spans, positions, text_blanks):
+        meter.add(batch_end - batch_start)
+        return original_divide(
+            rules, source._value, batch_start, batch_end, spans, positions, text_blanks
+        )
+
+    def tokenizer(source, *, spec):
+        wrapped = LexicalTokenizer(source._value, spec=spec)
+        wrapped.sql = CountingText(wrapped.sql, meter)
+        wrapped._opener_re = CountingPattern(wrapped._opener_re, meter)
+        original_tokenize = wrapped.tokenize
+        wrapped.tokenize = lambda: CountingParserTokens(original_tokenize(), meter)
+        return wrapped
+
+    with (
+        mock.patch.object(engine_module, "LexicalTokenizer", tokenizer),
+        mock.patch.object(tokenizer_module, "read_command", read_command),
+        mock.patch.object(tokenizer_module, "find_lone_cr", find_lone_cr),
+        mock.patch.object(tokenizer_module, "refuse_variable_in_code", refuse_variable_in_code),
+        mock.patch.object(tokenizer_module, "refuse_variable_in_lexeme", refuse_variable_in_lexeme),
+        mock.patch.object(batch_script, "code_positions", code_positions),
+        mock.patch.object(batch_script, "divide", divide),
+    ):
+        LexicalEngine(SQLSERVER_SPEC).split(CountingText(script, meter))
+    return meter.count
 
 
 @pytest.mark.parametrize("shape", sorted(SHAPES))
 def test_sqlserver_cost_grows_linearly(shape):
-    """A 4x larger script takes about 4x as long: the ratio of the best times stays at or below 8."""
-    make, n = SHAPES[shape]
-    small = best_of(make(n))
-    large = best_of(make(4 * n))
-    assert large / small <= 8, f"{shape}: {small:.3f}s -> {large:.3f}s"
-
-
-IDENTIFIERS = {
-    "quoted identifier": (lambda n: 'SELECT "' + "line of text\n" * n + '"\nGO\n', 950000),
-    "bracketed identifier": (lambda n: "SELECT [" + "line of text\n" * n + "]\nGO\n", 950000),
-}
+    make = SHAPES[shape]
+    small, large = counted(make(SMALL)), counted(make(LARGE))
+    assert small > 0 and large <= BOUND * small, (shape, small, large)
 
 
 @pytest.mark.parametrize("shape", sorted(IDENTIFIERS))
 def test_sqlserver_identifier_cost_grows_linearly(shape):
-    """A quoted or bracketed name across many lines is read in time linear in its length."""
-    make, n = IDENTIFIERS[shape]
-    small = best_of(make(n))
-    large = best_of(make(4 * n))
-    assert large / small <= 8, f"{shape}: {small:.3f}s -> {large:.3f}s"
+    make = IDENTIFIERS[shape]
+    small, large = counted(make(SMALL)), counted(make(LARGE))
+    assert small > 0 and large <= BOUND * small, (shape, small, large)
+
+
+def test_sqlserver_cost_detects_a_prefix_rescan_per_comment(monkeypatch):
+    original = LexicalEngine._parser
+
+    def rescanning_parser(self, script):
+        parser = original(self, script)
+        for start, _ in parser._comments:
+            script[:start].count("\n")
+        return parser
+
+    monkeypatch.setattr(LexicalEngine, "_parser", rescanning_parser)
+    make = SHAPES["one line of comments, words and semicolons"]
+    small, large = counted(make(SMALL)), counted(make(LARGE))
+    assert large > BOUND * small, (small, large)
+
+
+def test_sqlserver_cost_detects_a_token_prefix_copy_in_the_parser(monkeypatch):
+    original = LexicalEngine._parser
+
+    def rescanning_parser(self, script):
+        parser = original(self, script)
+        for index in range(len(parser.tokens)):
+            parser.tokens[:index]
+        return parser
+
+    monkeypatch.setattr(LexicalEngine, "_parser", rescanning_parser)
+    make = SHAPES["many GO batches"]
+    small, large = counted(make(SMALL)), counted(make(LARGE))
+    assert large > BOUND * small, (small, large)
+
+
+@pytest.mark.parametrize("pattern", ("ab|ac|d", "a||b", "(?:a+)+|b"))
+def test_sqlserver_search_pattern_certificate_refuses_ambiguous_alternatives(pattern):
+    CountingPattern(LexicalTokenizer("", spec=SQLSERVER_SPEC)._opener_re, Meter())
+    with pytest.raises(AssertionError, match="uncertified regex"):
+        CountingPattern(re.compile(pattern), Meter())
