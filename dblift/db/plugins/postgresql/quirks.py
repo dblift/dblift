@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING, Any, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, List, Optional, Tuple, Type
 
 from dblift.core.sql_parser.statement_facts import SqlglotStatementFactsReader
 from dblift.db.base_quirks import BaseQuirks
@@ -38,6 +38,7 @@ _DROP_TRIGGER_ON_RE = re.compile(
 
 if TYPE_CHECKING:
     from dblift.core.sql_parser.lexical_spec import LexicalSpec
+    from dblift.core.sql_parser.statement_facts import StatementFactsReader
 
 
 class PostgresqlQuirks(BaseQuirks):
@@ -62,7 +63,7 @@ class PostgresqlQuirks(BaseQuirks):
     uppercase_identifiers = False
     clean_strategy = "introspector"
     sqlglot_dialect = "postgres"
-    statement_facts_class = SqlglotStatementFactsReader
+    statement_facts_class: Optional[Type["StatementFactsReader"]] = SqlglotStatementFactsReader
     # PostgreSQL's permissive grammar is the last-resort sqlglot read dialect
     # for dialects that declare none of their own (DB2, CosmosDB). See
     # ``dblift.core.migration.scripting.undo_script_generator._helpers``.
