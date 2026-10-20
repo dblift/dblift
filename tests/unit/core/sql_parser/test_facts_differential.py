@@ -61,8 +61,8 @@ def _results() -> Results:
 # which families are gated ------------------------------------------------------------------------
 
 
-def test_no_family_is_gated_until_its_differences_are_explained() -> None:
-    assert gated_families() == []
+def test_the_activated_families_are_gated() -> None:
+    assert gated_families() == ["postgresql"]
 
 
 def test_gated_families_are_known_families_with_a_reader() -> None:
@@ -119,7 +119,7 @@ def test_a_wrong_or_orphaned_ledger_entry_fails_a_family_that_is_not_gated(
     )
     entry = {"sql": "s", "path": "hybrid", "class": entry_class, "reason": "ok"}
     _plant(monkeypatch, tmp_path, "oracle", {key: entry})
-    assert gated_families() == []
+    assert gated_families() == ["postgresql"]
     assert differential.report_family("oracle", current_arm())["stale"] == [key]
     assert differential.run(["oracle"]) == 1
     assert differential.run(["oracle"], report_only=True) == 0
@@ -160,10 +160,10 @@ def test_a_family_whose_extraction_is_the_reader_has_nothing_to_compare() -> Non
 
 
 def test_default_schemas_are_the_ones_the_extraction_assigns() -> None:
-    from tests.support.facts_corpus.record import record_statement
+    from tests.support.facts_corpus.record import is_frozen, record_statement
 
     for family in FAMILIES:
-        if family in NO_OLD_FAMILIES or DIALECTS[family] is None:
+        if family in NO_OLD_FAMILIES or DIALECTS[family] is None or is_frozen(family):
             continue
         old = record_statement(family, "CREATE TABLE zz (a int)")["old"]
         assert old["hybrid"][0][2] == DEFAULT_SCHEMA.get(family), family
