@@ -806,7 +806,7 @@ def test_a_nul_is_refused_before_a_command_and_the_session_mode_waits_for_its_st
     assert observed(spec, "exit\nSELECT 1\x00;") == [
         "error",
         "UnsafeStatementSplitError",
-        f"NUL byte on line 2: the {spec.client_name} client refuses it unless --binary-mode is set",
+        f"a NUL character on line 2, column 9: the {spec.client_name} client refuses it unless --binary-mode is set",
     ]
     assert observed(spec, "SET sql_mode='NO_BACKSLASH_ESCAPES', @a = 1 \\G\n;") == [
         "error",
