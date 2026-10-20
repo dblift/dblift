@@ -5,19 +5,26 @@ searches and maps back are counted on counting copies of the text and of the off
 run at S and at 4S, and the count must grow about four times (clean runs give 4.0 to 4.2, a per-token
 search of a line or a per-statement scan from the start of the script gives about 16). A count does
 not depend on the machine, so S only has to be large enough for the quadratic terms to dominate.
+The public-path probe uses a non-string counting source after tokenizer construction. It bounds the
+line-classifier input and certifies the line and word regex shapes; native VM steps are not counted.
 """
 
 import re
+from dataclasses import replace
 from typing import Callable, Dict, List, Tuple
+from unittest import mock
 
 import pytest
 
+from dblift.core.sql_parser import delimiter_script as delimiter_module
+from dblift.core.sql_parser import lexical_engine as engine_module
+from dblift.core.sql_parser.lexical_engine import LexicalEngine
 from dblift.core.sql_parser.lexical_spec import LexicalSpec
 from dblift.core.sql_parser.lexical_tokenizer import LexicalTokenizer
-from dblift.core.sql_parser.lexical_engine import LexicalEngine
-from dblift.db.plugins.mysql.parser.lexical_spec import MYSQL_SPEC
-from dblift.db.plugins.mysql.parser.lexical_spec import MYSQL_RULES
-from tests.support.splitting_cost import CountingPattern, Meter
+from dblift.db.plugins.mysql.parser.lexical_spec import MYSQL_RULES, MYSQL_SPEC
+from tests.support.splitting_cost import CountingPattern
+from tests.support.splitting_cost import CountingText as GuardedText
+from tests.support.splitting_cost import Meter
 
 MAX_RATIO = 5.0
 COUNT = [0]
@@ -72,6 +79,9 @@ class CountingOffsets(list):  # type: ignore[type-arg]
 def work(script: str, spec: LexicalSpec) -> int:
     tokenizer = LexicalTokenizer(script, spec=spec)
     assert tokenizer.delimiter_script is not None
+    assert spec.delimiter_script is not None
+    CountingPattern(re.compile(spec.delimiter_script.line_word), Meter())
+    CountingPattern(tokenizer._word_re, Meter())
     tokenizer.sql = CountingText(tokenizer.sql)
     tokenizer.delimiter_script.text = tokenizer.sql
     tokenizer.delimiter_script.removed = CountingOffsets(tokenizer.delimiter_script.removed)
@@ -82,11 +92,29 @@ def work(script: str, spec: LexicalSpec) -> int:
     return COUNT[0]
 
 
-def public_work(script: str) -> Tuple[int, int]:
-    count = work(script, MYSQL_SPEC)
-    COUNT[0] = 0
-    records = LexicalEngine(MYSQL_SPEC).split(CountingText(script))
-    return count + COUNT[0], len(records)
+def public_work(script: str) -> Tuple[int, list]:
+    meter = Meter()
+    original_tokenizer = LexicalTokenizer
+    original_classify = delimiter_module.classify_line
+    CountingPattern(re.compile(MYSQL_RULES.line_word), meter)
+
+    def tokenizer(source, *, spec):  # type: ignore[no-untyped-def]
+        wrapped = original_tokenizer(source._value, spec=spec)
+        wrapped.sql = GuardedText(wrapped.sql, meter)
+        wrapped.delimiter_script.text = wrapped.sql
+        wrapped._word_re = CountingPattern(wrapped._word_re, meter)
+        return wrapped
+
+    def classify(rules, source, start, end, delimiter):  # type: ignore[no-untyped-def]
+        meter.add(end - start)  # the regex input is one bounded line
+        return original_classify(rules, source._value, start, end, delimiter)
+
+    with (
+        mock.patch.object(engine_module, "LexicalTokenizer", tokenizer),
+        mock.patch.object(delimiter_module, "classify_line", classify),
+    ):
+        records = LexicalEngine(MYSQL_SPEC).split(GuardedText(script, meter))
+    return meter.count, records
 
 
 #: shape -> (script of n repeats, S).
@@ -125,8 +153,18 @@ def test_mysql_public_split_counts_repeated_record_prefixes(monkeypatch) -> None
     shape, size = SHAPES["crlf-statements"]
     small, small_records = public_work(shape(size))
     large, large_records = public_work(shape(4 * size))
-    assert (small_records, large_records) == (size, 4 * size)
+    assert (len(small_records), len(large_records)) == (size, 4 * size)
     assert large > MAX_RATIO * small, (small, large)
+
+
+def test_mysql_public_split_has_bounded_cost_and_ordered_records() -> None:
+    shape, size = SHAPES["crlf-statements"]
+    small, first = public_work(shape(size))
+    large, records = public_work(shape(4 * size))
+    assert len(first) == size and len(records) == 4 * size
+    assert [r.source_start for r in records] == list(range(0, 4 * size * 11, 11))
+    assert all(r.text == "SELECT 1" for r in records)
+    assert small > 0 and large <= MAX_RATIO * small
 
 
 def test_the_counting_text_counts_what_a_per_token_search_would_cost() -> None:
@@ -147,4 +185,7 @@ def test_the_counting_text_counts_what_a_per_token_search_would_cost() -> None:
 def test_mysql_line_word_regex_rejects_unbounded_scanning(mutant: str) -> None:
     CountingPattern(re.compile(MYSQL_RULES.line_word), Meter())
     with pytest.raises(AssertionError, match="uncertified regex"):
-        CountingPattern(re.compile(mutant), Meter())
+        work(
+            "SELECT 1;\n",
+            replace(MYSQL_SPEC, delimiter_script=replace(MYSQL_RULES, line_word=mutant)),
+        )

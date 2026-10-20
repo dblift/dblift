@@ -17,8 +17,8 @@ of a refusal, which raises at once) is linear by construction and not measured.
 import ast
 import inspect
 import re
-from dataclasses import replace
 import textwrap
+from dataclasses import replace
 from pathlib import Path
 from typing import List, Optional
 from unittest import mock
@@ -27,8 +27,8 @@ import pytest
 
 from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
 from dblift.core.sql_parser import blank_pass
-from dblift.core.sql_parser import segment_script as segment_module
 from dblift.core.sql_parser import lexical_engine as engine_module
+from dblift.core.sql_parser import segment_script as segment_module
 from dblift.core.sql_parser.lexical_engine import LexicalEngine
 from dblift.core.sql_parser.lexical_tokenizer import LexicalTokenizer
 from dblift.core.sql_parser.segment_script import SegmentScript
@@ -75,7 +75,15 @@ def counted(script: str, refusal: bool = False, meter: Optional[Meter] = None) -
     tokenizer = LexicalTokenizer(script, spec=DUCKDB_SPEC)
     tokenizer.sql = CountingText(tokenizer.sql, meter)
     for name in PATTERNS:
-        setattr(tokenizer, name, CountingPattern(getattr(tokenizer, name), meter))
+        setattr(
+            tokenizer,
+            name,
+            CountingPattern(
+                getattr(tokenizer, name),
+                meter,
+                allow_empty=name in {"_seg_word_part", "_seg_kept_part"},
+            ),
+        )
     try:
         tokens = tokenizer.tokenize()
     except (UnsafeStatementSplitError, UnsupportedMetaCommandError):
@@ -103,7 +111,15 @@ def public_counted(script: str) -> tuple[int, List]:
         wrapped = original(source._value, spec=spec)
         wrapped.sql = CountingText(wrapped.sql, meter)
         for name in PATTERNS:
-            setattr(wrapped, name, CountingPattern(getattr(wrapped, name), meter))
+            setattr(
+                wrapped,
+                name,
+                CountingPattern(
+                    getattr(wrapped, name),
+                    meter,
+                    allow_empty=name in {"_seg_word_part", "_seg_kept_part"},
+                ),
+            )
         return wrapped
 
     with mock.patch.object(engine_module, "LexicalTokenizer", tokenizer):
@@ -199,9 +215,12 @@ def test_the_pattern_counter_charges_the_span_a_search_scans():
     (r"[\s\S]*?(?=\$)", r"(?![\s\S]*\$\$)", r"(?:[\s\S]*?)?"),
 )
 def test_duckdb_number_regex_rejects_unbounded_scanning(mutant, monkeypatch):
-    assert CountingPattern(re.compile(DUCKDB_RULES.number), Meter()).match(
-        CountingText("123", Meter()), 0
-    ) is not None
+    assert (
+        CountingPattern(re.compile(DUCKDB_RULES.number), Meter()).match(
+            CountingText("123", Meter()), 0
+        )
+        is not None
+    )
     monkeypatch.setattr(
         "tests.unit.core.sql_parser.test_duckdb_splitting_cost.DUCKDB_SPEC",
         replace(DUCKDB_SPEC, segment_script=replace(DUCKDB_RULES, number=mutant)),
