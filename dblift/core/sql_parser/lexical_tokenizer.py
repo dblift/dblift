@@ -193,6 +193,8 @@ class LexicalTokenizer(BaseTokenizer):
 
     def tokenize(self) -> List[Token]:
         """Read every token; a delimiter script then refuses what it left open."""
+        if self.spec.refused_character:
+            self._refuse_character()
         if self.spec.terminator_script is not None:
             return self._tokenize_terminator_script()
         if self._segment is not None:
@@ -201,6 +203,22 @@ class LexicalTokenizer(BaseTokenizer):
         if self.delimiter_script is not None:
             self.delimiter_script.finish()
         return tokens
+
+    def _refuse_character(self) -> None:
+        """Refuse the script when it holds the specification's ``refused_character``.
+
+        A leading byte order mark that the specification reads as a blank is not counted.
+        """
+        spec, sql = self.spec, self.sql
+        origin = 1 if spec.leading_bom_is_blank and sql.startswith(BOM) else 0
+        bad = sql.find(spec.refused_character, origin)
+        if bad >= 0:
+            line = sql.count("\n", origin, bad) + 1
+            column = bad - max(sql.rfind("\n", origin, bad) + 1, origin) + 1
+            raise UnsafeStatementSplitError(
+                f"a {spec.refused_character_name} character on line {line}, column {column}: "
+                f"{spec.refused_reason}"
+            )
 
     def _tokenize_terminator_script(self) -> List[Token]:
         """Lexemes of a terminator script, read from the text with its terminators blanked.
@@ -278,12 +296,6 @@ class LexicalTokenizer(BaseTokenizer):
         """
         sql = self.sql
         self.origin = origin = 1 if self.spec.leading_bom_is_blank and sql.startswith(BOM) else 0
-        bad = sql.find(rules.refused_character, origin)
-        if bad >= 0:
-            raise UnsafeStatementSplitError(
-                f"a {rules.refused_character_name} character on line "
-                f"{sql.count(chr(10), origin, bad) + 1}: {rules.refused_reason}"
-            )
         self.pos = origin
         tokens: List[Token] = []
         size = len(sql)
@@ -989,6 +1001,17 @@ class LexicalTokenizer(BaseTokenizer):
             elif char not in blanks:
                 self._line_head = False
             self.read()
+
+    def _is_keyword_start(self) -> bool:
+        """A name also begins at a non-ASCII character when the spec says the engine reads it so."""
+        return super()._is_keyword_start() or self._is_non_ascii_name_char(self.peek())
+
+    def _is_word_char(self, char: str) -> bool:
+        """A name also goes on through a non-ASCII character when the spec says so."""
+        return super()._is_word_char(char) or self._is_non_ascii_name_char(char)
+
+    def _is_non_ascii_name_char(self, char: str) -> bool:
+        return self.spec.non_ascii_names and char >= "\x80"
 
     def _is_lexeme(self, token: Token) -> bool:
         """Whether a token is a string or a quoted or bracketed name."""

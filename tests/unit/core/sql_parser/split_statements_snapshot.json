@@ -62,7 +62,7 @@
 "golden": {
 "count": 811,
 "observed": null,
-"sha256": "2795664701e81accc23496b8bbba9b212bb698ea15e6e012e1a779e1df0aff8b"
+"sha256": "4e2afd462f1b95d6ce26b493a63e36a697a5213f4f3c85bed2b0182ed177fabc"
 },
 "postgres_family": {
 "count": 68,
@@ -7306,7 +7306,7 @@
 "sha256": "d33767030fb567ebf4699543cf51a835e6b5eced5e52adf95a4e7fbfd5c4910d"
 },
 "spec_rows": {
-"count": 703,
+"count": 755,
 "observed": [
 [
 "db2",
@@ -15090,6 +15090,267 @@
 }
 ],
 [
+"postgresql",
+"SELECT 1 AS a\u00a0$x$;\nSELECT 2 AS $x$;",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated dollar-quoted string opened at line 2, column 13"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated dollar-quoted string opened at line 2, column 13"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated dollar-quoted string opened at line 2, column 13"
+]
+}
+],
+[
+"postgresql",
+"SELECT 1 AS a\u2003E'\\';\nSELECT 2;",
+{
+"analysis": [
+"SELECT 1 AS a\u2003E'\\'",
+"SELECT 2"
+],
+"engine": [
+"SELECT 1 AS a\u2003E'\\';",
+"SELECT 2;"
+],
+"splitter": [
+"SELECT 1 AS a\u2003E'\\';",
+"SELECT 2;"
+]
+}
+],
+[
+"postgresql",
+"CREATE TABLE t\u3000$$ (x INT);\nSELECT 1;",
+{
+"analysis": [
+"CREATE TABLE t\u3000$$ (x INT)",
+"SELECT 1"
+],
+"engine": [
+"CREATE TABLE t\u3000$$ (x INT);",
+"SELECT 1;"
+],
+"splitter": [
+"CREATE TABLE t\u3000$$ (x INT);",
+"SELECT 1;"
+]
+}
+],
+[
+"postgresql",
+"SELECT 1 AS \u0085$x$;\nSELECT 2 AS $x$;",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated dollar-quoted string opened at line 2, column 13"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated dollar-quoted string opened at line 2, column 13"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated dollar-quoted string opened at line 2, column 13"
+]
+}
+],
+[
+"postgresql",
+"SELECT 1 AS a\u20ac$x$;\nSELECT 2 AS $x$;",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated dollar-quoted string opened at line 2, column 13"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated dollar-quoted string opened at line 2, column 13"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated dollar-quoted string opened at line 2, column 13"
+]
+}
+],
+[
+"postgresql",
+"SELECT 1 AS a\u001c$x$;\nSELECT 2 AS $x$;",
+{
+"analysis": [
+"SELECT 1 AS a\u001c$x$;\nSELECT 2 AS $x$"
+],
+"engine": [
+"SELECT 1 AS a\u001c$x$;\nSELECT 2 AS $x$;"
+],
+"splitter": [
+"SELECT 1 AS a\u001c$x$;\nSELECT 2 AS $x$;"
+]
+}
+],
+[
+"postgresql",
+"COPY t (a) FROM STDIN\u00a0;\n1\n\\.",
+{
+"analysis": [
+"error",
+"UnsupportedMetaCommandError",
+"Unsupported psql meta-command '\\\\.' at line 3; dblift does not run it (column 1)"
+],
+"engine": [
+"error",
+"UnsupportedMetaCommandError",
+"Unsupported psql meta-command '\\\\.' at line 3; dblift does not run it (column 1)"
+],
+"splitter": [
+"error",
+"UnsupportedMetaCommandError",
+"Unsupported psql meta-command '\\\\.' at line 3; dblift does not run it (column 1)"
+]
+}
+],
+[
+"postgresql",
+"CREATE TABLE a(i int);\u0000DROP TABLE a;",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 23: the client sends the query as a C string, so the server never sees the rest"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 23: the client sends the query as a C string, so the server never sees the rest"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 23: the client sends the query as a C string, so the server never sees the rest"
+]
+}
+],
+[
+"postgresql",
+"SELECT 1;\u0000SELECT 2;",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 10: the client sends the query as a C string, so the server never sees the rest"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 10: the client sends the query as a C string, so the server never sees the rest"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 10: the client sends the query as a C string, so the server never sees the rest"
+]
+}
+],
+[
+"postgresql",
+"SELECT 'a\u0000b';",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 10: the client sends the query as a C string, so the server never sees the rest"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 10: the client sends the query as a C string, so the server never sees the rest"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 10: the client sends the query as a C string, so the server never sees the rest"
+]
+}
+],
+[
+"postgresql",
+"CREATE TABLE c\u0000d (x int);",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 15: the client sends the query as a C string, so the server never sees the rest"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 15: the client sends the query as a C string, so the server never sees the rest"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 15: the client sends the query as a C string, so the server never sees the rest"
+]
+}
+],
+[
+"postgresql",
+"SELECT 1;\n-- a\u0000b\nSELECT 2;",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 2, column 5: the client sends the query as a C string, so the server never sees the rest"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 2, column 5: the client sends the query as a C string, so the server never sees the rest"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 2, column 5: the client sends the query as a C string, so the server never sees the rest"
+]
+}
+],
+[
+"postgresql",
+"SELECT 1;\r\n\u0000",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 2, column 1: the client sends the query as a C string, so the server never sees the rest"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 2, column 1: the client sends the query as a C string, so the server never sees the rest"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 2, column 1: the client sends the query as a C string, so the server never sees the rest"
+]
+}
+],
+[
 "sqlite",
 "CREATE TABLE t(a); INSERT INTO t VALUES(1);",
 {
@@ -20112,8 +20373,794 @@
 "\u00a0"
 ]
 }
+],
+[
+"cockroachdb",
+"SELECT 1 AS a\u00a0$x$;\nSELECT 2 AS $x$;",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated dollar-quoted string opened at line 2, column 13"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated dollar-quoted string opened at line 2, column 13"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated dollar-quoted string opened at line 2, column 13"
+]
+}
+],
+[
+"yugabytedb",
+"SELECT 1 AS a\u00a0$x$;\nSELECT 2 AS $x$;",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated dollar-quoted string opened at line 2, column 13"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated dollar-quoted string opened at line 2, column 13"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated dollar-quoted string opened at line 2, column 13"
+]
+}
+],
+[
+"redshift",
+"SELECT 1 AS a\u00a0$x$;\nSELECT 2 AS $x$;",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated dollar-quoted string opened at line 2, column 13"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated dollar-quoted string opened at line 2, column 13"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated dollar-quoted string opened at line 2, column 13"
+]
+}
+],
+[
+"cockroachdb",
+"SELECT 1 AS a\u2003E'\\';\nSELECT 2;",
+{
+"analysis": [
+"SELECT 1 AS a\u2003E'\\'",
+"SELECT 2"
+],
+"engine": [
+"SELECT 1 AS a\u2003E'\\';",
+"SELECT 2;"
+],
+"splitter": [
+"SELECT 1 AS a\u2003E'\\';",
+"SELECT 2;"
+]
+}
+],
+[
+"yugabytedb",
+"SELECT 1 AS a\u2003E'\\';\nSELECT 2;",
+{
+"analysis": [
+"SELECT 1 AS a\u2003E'\\'",
+"SELECT 2"
+],
+"engine": [
+"SELECT 1 AS a\u2003E'\\';",
+"SELECT 2;"
+],
+"splitter": [
+"SELECT 1 AS a\u2003E'\\';",
+"SELECT 2;"
+]
+}
+],
+[
+"redshift",
+"SELECT 1 AS a\u2003E'\\';\nSELECT 2;",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated string opened at line 1, column 16"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated string opened at line 1, column 16"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated string opened at line 1, column 16"
+]
+}
+],
+[
+"cockroachdb",
+"CREATE TABLE t\u3000$$ (x INT);\nSELECT 1;",
+{
+"analysis": [
+"CREATE TABLE t\u3000$$ (x INT)",
+"SELECT 1"
+],
+"engine": [
+"CREATE TABLE t\u3000$$ (x INT);",
+"SELECT 1;"
+],
+"splitter": [
+"CREATE TABLE t\u3000$$ (x INT);",
+"SELECT 1;"
+]
+}
+],
+[
+"yugabytedb",
+"CREATE TABLE t\u3000$$ (x INT);\nSELECT 1;",
+{
+"analysis": [
+"CREATE TABLE t\u3000$$ (x INT)",
+"SELECT 1"
+],
+"engine": [
+"CREATE TABLE t\u3000$$ (x INT);",
+"SELECT 1;"
+],
+"splitter": [
+"CREATE TABLE t\u3000$$ (x INT);",
+"SELECT 1;"
+]
+}
+],
+[
+"redshift",
+"CREATE TABLE t\u3000$$ (x INT);\nSELECT 1;",
+{
+"analysis": [
+"CREATE TABLE t\u3000$$ (x INT)",
+"SELECT 1"
+],
+"engine": [
+"CREATE TABLE t\u3000$$ (x INT);",
+"SELECT 1;"
+],
+"splitter": [
+"CREATE TABLE t\u3000$$ (x INT);",
+"SELECT 1;"
+]
+}
+],
+[
+"cockroachdb",
+"SELECT 1 AS \u0085$x$;\nSELECT 2 AS $x$;",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated dollar-quoted string opened at line 2, column 13"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated dollar-quoted string opened at line 2, column 13"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated dollar-quoted string opened at line 2, column 13"
+]
+}
+],
+[
+"yugabytedb",
+"SELECT 1 AS \u0085$x$;\nSELECT 2 AS $x$;",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated dollar-quoted string opened at line 2, column 13"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated dollar-quoted string opened at line 2, column 13"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated dollar-quoted string opened at line 2, column 13"
+]
+}
+],
+[
+"redshift",
+"SELECT 1 AS \u0085$x$;\nSELECT 2 AS $x$;",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated dollar-quoted string opened at line 2, column 13"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated dollar-quoted string opened at line 2, column 13"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated dollar-quoted string opened at line 2, column 13"
+]
+}
+],
+[
+"cockroachdb",
+"SELECT 1 AS a\u20ac$x$;\nSELECT 2 AS $x$;",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated dollar-quoted string opened at line 2, column 13"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated dollar-quoted string opened at line 2, column 13"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated dollar-quoted string opened at line 2, column 13"
+]
+}
+],
+[
+"yugabytedb",
+"SELECT 1 AS a\u20ac$x$;\nSELECT 2 AS $x$;",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated dollar-quoted string opened at line 2, column 13"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated dollar-quoted string opened at line 2, column 13"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated dollar-quoted string opened at line 2, column 13"
+]
+}
+],
+[
+"redshift",
+"SELECT 1 AS a\u20ac$x$;\nSELECT 2 AS $x$;",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated dollar-quoted string opened at line 2, column 13"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated dollar-quoted string opened at line 2, column 13"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated dollar-quoted string opened at line 2, column 13"
+]
+}
+],
+[
+"cockroachdb",
+"SELECT 1 AS a\u001c$x$;\nSELECT 2 AS $x$;",
+{
+"analysis": [
+"SELECT 1 AS a\u001c$x$;\nSELECT 2 AS $x$"
+],
+"engine": [
+"SELECT 1 AS a\u001c$x$;\nSELECT 2 AS $x$;"
+],
+"splitter": [
+"SELECT 1 AS a\u001c$x$;\nSELECT 2 AS $x$;"
+]
+}
+],
+[
+"yugabytedb",
+"SELECT 1 AS a\u001c$x$;\nSELECT 2 AS $x$;",
+{
+"analysis": [
+"SELECT 1 AS a\u001c$x$;\nSELECT 2 AS $x$"
+],
+"engine": [
+"SELECT 1 AS a\u001c$x$;\nSELECT 2 AS $x$;"
+],
+"splitter": [
+"SELECT 1 AS a\u001c$x$;\nSELECT 2 AS $x$;"
+]
+}
+],
+[
+"redshift",
+"SELECT 1 AS a\u001c$x$;\nSELECT 2 AS $x$;",
+{
+"analysis": [
+"SELECT 1 AS a\u001c$x$;\nSELECT 2 AS $x$"
+],
+"engine": [
+"SELECT 1 AS a\u001c$x$;\nSELECT 2 AS $x$;"
+],
+"splitter": [
+"SELECT 1 AS a\u001c$x$;\nSELECT 2 AS $x$;"
+]
+}
+],
+[
+"cockroachdb",
+"COPY t (a) FROM STDIN\u00a0;\n1\n\\.",
+{
+"analysis": [
+"error",
+"UnsupportedMetaCommandError",
+"Unsupported psql meta-command '\\\\.' at line 3; dblift does not run it (column 1)"
+],
+"engine": [
+"error",
+"UnsupportedMetaCommandError",
+"Unsupported psql meta-command '\\\\.' at line 3; dblift does not run it (column 1)"
+],
+"splitter": [
+"error",
+"UnsupportedMetaCommandError",
+"Unsupported psql meta-command '\\\\.' at line 3; dblift does not run it (column 1)"
+]
+}
+],
+[
+"yugabytedb",
+"COPY t (a) FROM STDIN\u00a0;\n1\n\\.",
+{
+"analysis": [
+"error",
+"UnsupportedMetaCommandError",
+"Unsupported psql meta-command '\\\\.' at line 3; dblift does not run it (column 1)"
+],
+"engine": [
+"error",
+"UnsupportedMetaCommandError",
+"Unsupported psql meta-command '\\\\.' at line 3; dblift does not run it (column 1)"
+],
+"splitter": [
+"error",
+"UnsupportedMetaCommandError",
+"Unsupported psql meta-command '\\\\.' at line 3; dblift does not run it (column 1)"
+]
+}
+],
+[
+"redshift",
+"COPY t (a) FROM STDIN\u00a0;\n1\n\\.",
+{
+"analysis": [
+"error",
+"UnsupportedMetaCommandError",
+"Unsupported psql meta-command '\\\\.' at line 3; dblift does not run it (column 1)"
+],
+"engine": [
+"error",
+"UnsupportedMetaCommandError",
+"Unsupported psql meta-command '\\\\.' at line 3; dblift does not run it (column 1)"
+],
+"splitter": [
+"error",
+"UnsupportedMetaCommandError",
+"Unsupported psql meta-command '\\\\.' at line 3; dblift does not run it (column 1)"
+]
+}
+],
+[
+"cockroachdb",
+"CREATE TABLE a(i int);\u0000DROP TABLE a;",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 23: the client sends the query as a C string, so the server never sees the rest"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 23: the client sends the query as a C string, so the server never sees the rest"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 23: the client sends the query as a C string, so the server never sees the rest"
+]
+}
+],
+[
+"yugabytedb",
+"CREATE TABLE a(i int);\u0000DROP TABLE a;",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 23: the client sends the query as a C string, so the server never sees the rest"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 23: the client sends the query as a C string, so the server never sees the rest"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 23: the client sends the query as a C string, so the server never sees the rest"
+]
+}
+],
+[
+"redshift",
+"CREATE TABLE a(i int);\u0000DROP TABLE a;",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 23: the client sends the query as a C string, so the server never sees the rest"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 23: the client sends the query as a C string, so the server never sees the rest"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 23: the client sends the query as a C string, so the server never sees the rest"
+]
+}
+],
+[
+"cockroachdb",
+"SELECT 1;\u0000SELECT 2;",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 10: the client sends the query as a C string, so the server never sees the rest"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 10: the client sends the query as a C string, so the server never sees the rest"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 10: the client sends the query as a C string, so the server never sees the rest"
+]
+}
+],
+[
+"yugabytedb",
+"SELECT 1;\u0000SELECT 2;",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 10: the client sends the query as a C string, so the server never sees the rest"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 10: the client sends the query as a C string, so the server never sees the rest"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 10: the client sends the query as a C string, so the server never sees the rest"
+]
+}
+],
+[
+"redshift",
+"SELECT 1;\u0000SELECT 2;",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 10: the client sends the query as a C string, so the server never sees the rest"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 10: the client sends the query as a C string, so the server never sees the rest"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 10: the client sends the query as a C string, so the server never sees the rest"
+]
+}
+],
+[
+"cockroachdb",
+"SELECT 'a\u0000b';",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 10: the client sends the query as a C string, so the server never sees the rest"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 10: the client sends the query as a C string, so the server never sees the rest"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 10: the client sends the query as a C string, so the server never sees the rest"
+]
+}
+],
+[
+"yugabytedb",
+"SELECT 'a\u0000b';",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 10: the client sends the query as a C string, so the server never sees the rest"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 10: the client sends the query as a C string, so the server never sees the rest"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 10: the client sends the query as a C string, so the server never sees the rest"
+]
+}
+],
+[
+"redshift",
+"SELECT 'a\u0000b';",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 10: the client sends the query as a C string, so the server never sees the rest"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 10: the client sends the query as a C string, so the server never sees the rest"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 10: the client sends the query as a C string, so the server never sees the rest"
+]
+}
+],
+[
+"cockroachdb",
+"CREATE TABLE c\u0000d (x int);",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 15: the client sends the query as a C string, so the server never sees the rest"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 15: the client sends the query as a C string, so the server never sees the rest"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 15: the client sends the query as a C string, so the server never sees the rest"
+]
+}
+],
+[
+"yugabytedb",
+"CREATE TABLE c\u0000d (x int);",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 15: the client sends the query as a C string, so the server never sees the rest"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 15: the client sends the query as a C string, so the server never sees the rest"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 15: the client sends the query as a C string, so the server never sees the rest"
+]
+}
+],
+[
+"redshift",
+"CREATE TABLE c\u0000d (x int);",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 15: the client sends the query as a C string, so the server never sees the rest"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 15: the client sends the query as a C string, so the server never sees the rest"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 1, column 15: the client sends the query as a C string, so the server never sees the rest"
+]
+}
+],
+[
+"cockroachdb",
+"SELECT 1;\n-- a\u0000b\nSELECT 2;",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 2, column 5: the client sends the query as a C string, so the server never sees the rest"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 2, column 5: the client sends the query as a C string, so the server never sees the rest"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 2, column 5: the client sends the query as a C string, so the server never sees the rest"
+]
+}
+],
+[
+"yugabytedb",
+"SELECT 1;\n-- a\u0000b\nSELECT 2;",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 2, column 5: the client sends the query as a C string, so the server never sees the rest"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 2, column 5: the client sends the query as a C string, so the server never sees the rest"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 2, column 5: the client sends the query as a C string, so the server never sees the rest"
+]
+}
+],
+[
+"redshift",
+"SELECT 1;\n-- a\u0000b\nSELECT 2;",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 2, column 5: the client sends the query as a C string, so the server never sees the rest"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 2, column 5: the client sends the query as a C string, so the server never sees the rest"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 2, column 5: the client sends the query as a C string, so the server never sees the rest"
+]
+}
+],
+[
+"cockroachdb",
+"SELECT 1;\r\n\u0000",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 2, column 1: the client sends the query as a C string, so the server never sees the rest"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 2, column 1: the client sends the query as a C string, so the server never sees the rest"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 2, column 1: the client sends the query as a C string, so the server never sees the rest"
+]
+}
+],
+[
+"yugabytedb",
+"SELECT 1;\r\n\u0000",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 2, column 1: the client sends the query as a C string, so the server never sees the rest"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 2, column 1: the client sends the query as a C string, so the server never sees the rest"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 2, column 1: the client sends the query as a C string, so the server never sees the rest"
+]
+}
+],
+[
+"redshift",
+"SELECT 1;\r\n\u0000",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 2, column 1: the client sends the query as a C string, so the server never sees the rest"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 2, column 1: the client sends the query as a C string, so the server never sees the rest"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"a NUL character on line 2, column 1: the client sends the query as a C string, so the server never sees the rest"
+]
+}
 ]
 ],
-"sha256": "6b0503d6635c509901dac70267912812007a224a4c22df7992cc0f95bf3e1269"
+"sha256": "0b3f9204528068f25f809041cf909cede878a7ca61d033b0267e838386e07768"
 }
 }

@@ -13,7 +13,7 @@ from typing import Dict, List, Optional
 
 import pytest
 
-from dblift.core.exceptions import UnsafeStatementSplitError
+from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.sql_parser.lexical_spec import LexicalSpec
 from dblift.db.provider_registry import ProviderRegistry
@@ -221,11 +221,12 @@ def test_the_parts_of_a_psql_combined_statement_keep_a_character_outside_the_bla
 
 
 @pytest.mark.parametrize("dialect", PSQL_LIKE)
-def test_a_copy_header_keeps_a_character_outside_the_blanks(dialect: str) -> None:
+def test_a_copy_header_whose_stdin_ends_in_a_name_character_is_no_copy_header(
+    dialect: str,
+) -> None:
     script = f"COPY t (a) FROM STDIN{chr(0xA0)};\n1\n\\.\n"
-    assert SqlAnalyzer(dialect).split_statements_for_analysis(script) == [
-        f"COPY t (a) FROM STDIN{chr(0xA0)}"
-    ]
+    with pytest.raises(UnsupportedMetaCommandError, match=r"\\\."):
+        SqlAnalyzer(dialect).split_statements_for_analysis(script)
 
 
 def test_a_routine_batch_keeps_a_character_outside_the_blanks_when_analysis_divides_it() -> None:

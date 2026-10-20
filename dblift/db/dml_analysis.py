@@ -16,6 +16,8 @@ import warnings
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Set, Tuple
 
+from dblift.core.sql_parser.dml_modifiers import MYSQL_DML_MODIFIER, MYSQL_DML_MODIFIER_WORDS
+
 if TYPE_CHECKING:
     from sqlglot import exp
 
@@ -40,21 +42,8 @@ _IDENTIFIER = (
 )
 
 _DML_VERB = re.compile(r"(?:UPDATE|DELETE|INSERT)\b", re.IGNORECASE)
-# MySQL words valid after each verb, and Oracle optimizer hints, before the target.
-# A word that continues an identifier (``quick.t``, ``ignore$x``) or is followed by
-# the next clause keyword is the table itself, not a modifier.
-_DML_MODIFIER_WORDS = {
-    "UPDATE": "LOW_PRIORITY|IGNORE",
-    "DELETE": "LOW_PRIORITY|QUICK|IGNORE",
-    "INSERT": "LOW_PRIORITY|HIGH_PRIORITY|DELAYED|IGNORE",
-}
-_DML_MODIFIER = {
-    verb: re.compile(
-        rf"\s*(?:/\*.*?\*/|(?:{words})(?![\w$#])(?!\s*(?:\.|SET\b|WHERE\b|VALUES\b|\(|;|$)))",
-        re.IGNORECASE | re.DOTALL,
-    )
-    for verb, words in _DML_MODIFIER_WORDS.items()
-}
+_DML_MODIFIER_WORDS = MYSQL_DML_MODIFIER_WORDS
+_DML_MODIFIER = MYSQL_DML_MODIFIER
 # The ONLY keyword right after ``UPDATE`` / ``DELETE FROM``; ``only.t`` is a qualified name.
 _DML_ONLY = re.compile(
     r"(?:UPDATE|DELETE(?:\s|/\*.*?\*/)+FROM)(?:\s|/\*.*?\*/)*ONLY(?![\w$#]|\s*\.)",
