@@ -182,4 +182,4 @@ class PostgreSqlRegexParser(EnhancedRegexParser):
         except Exception as e:
             errors.append(f"Validation error: {str(e)}")
 
-        return {"success": len(errors) == 0, "errors": errors}
+        return {"valid": len(errors) == 0, "errors": errors}
