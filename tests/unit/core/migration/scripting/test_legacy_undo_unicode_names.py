@@ -20,7 +20,6 @@ from dblift.core.migration.sql.script_analysis import analyse_script
 from dblift.db.plugins.oracle.parser.lexical_spec import ORACLE_SPEC
 
 LEGACY = (
-    "postgresql",
     "mysql",
     "mariadb",
     "sqlserver",
@@ -28,8 +27,8 @@ LEGACY = (
     "db2",
     "snowflake",
     "redshift",
-    "cockroachdb",
 )
+FACTS = ("postgresql", "cockroachdb")
 
 # The 22 characters (sqlglot's non-ASCII blanks, plus the zero-width ones): a sample of each kind.
 BLANKS = [" ", " ", "　", "\u0085", " ", " "]
@@ -101,6 +100,13 @@ def test_undo_names_no_object_whose_name_holds_the_character(tmp_path, dialect, 
         assert all(char in line for line in _code_lines(script))
         return
     _assert_manual_review(script)
+
+
+@pytest.mark.parametrize("dialect", FACTS)
+@pytest.mark.parametrize("shape", sorted(SHAPES))
+@pytest.mark.parametrize("char", RULE + NAME_PARTS, ids=IDS.get)
+def test_undo_on_the_facts_path_asks_for_review_instead_of_naming(tmp_path, dialect, shape, char):
+    _assert_manual_review(_undo(tmp_path, dialect, SHAPES[shape].format(c=char)))
 
 
 @pytest.mark.parametrize("dialect", sorted(TRIGGERS))
@@ -226,11 +232,18 @@ def test_analysis_of_a_name_that_ends_its_statement_names_what_the_engine_reads(
     assert analysis.cautions, "the statement still deserves its caution"
 
 
-@pytest.mark.parametrize("dialect", ("postgresql", "mysql", "redshift"))
+@pytest.mark.parametrize("dialect", ("mysql", "redshift"))
 def test_analysis_respects_the_flag_the_parser_set_for_a_cut_name(dialect):
     analysis = analyse_script("DROP TABLE tété;", dialect)
     assert not [obj for stmt in analysis.statements for obj in stmt.objects]
     assert analysis.cautions and not any("tété" in c.reason for c in analysis.cautions)
+
+
+@pytest.mark.parametrize("dialect", FACTS)
+def test_the_facts_reader_names_a_non_ascii_identifier_whole(dialect):
+    # PostgreSQL reads every character above U+007F as part of an unquoted name.
+    analysis = analyse_script("DROP TABLE tété;", dialect)
+    assert [obj.name for stmt in analysis.statements for obj in stmt.objects] == ["tété"]
 
 
 @pytest.mark.parametrize("dialect", LEGACY)
@@ -240,14 +253,14 @@ def test_unreadable_delete_is_cautioned_as_an_unreadable_one(dialect):
 
 
 def test_the_unparsed_fallback_reads_the_blanks_the_split_trimmed():
-    generator = UndoScriptGenerator("postgresql")
+    generator = UndoScriptGenerator("redshift")
     undo = generator._reverse_statement("CREATE SEQUENCE q", "CREATE SEQUENCE q ")
     assert undo.requires_manual_review and "DROP" not in undo.sql
     assert generator._reverse_statement("CREATE SEQUENCE q", None).requires_manual_review
     assert "DROP" in generator._reverse_statement("CREATE SEQUENCE q").sql
 
 
-@pytest.mark.parametrize("dialect", ("postgresql", "mysql", "oracle"))
+@pytest.mark.parametrize("dialect", ("redshift", "mysql", "oracle"))
 def test_the_unparsed_fallback_of_a_script_reads_the_blanks_the_split_trimmed(dialect):
     from types import SimpleNamespace
 
@@ -301,9 +314,16 @@ def test_analysis_of_a_statement_whose_text_also_stands_in_a_comment(dialect, ch
     assert analysis.cautions and not any(" t " in f" {c.reason} " for c in analysis.cautions)
 
 
-def test_a_readable_statement_before_an_unreadable_one_is_still_reversed(tmp_path):
+def test_the_facts_path_reviews_every_statement_of_a_script_with_an_unreadable_one(tmp_path):
     script = f"CREATE SEQUENCE q;\nCREATE SEQUENCE q{chr(0xA0)};\n"
     text = _undo(tmp_path, "postgresql", script)
+    assert not _code_lines(text)
+    assert "WARNING: 2 statement(s) require manual review" in text
+
+
+def test_a_readable_statement_before_an_unreadable_one_is_still_reversed(tmp_path):
+    script = f"CREATE SEQUENCE q;\nCREATE SEQUENCE q{chr(0xA0)};\n"
+    text = _undo(tmp_path, "redshift", script)
     assert [line for line in _code_lines(text) if "DROP" in line] == [
         'DROP SEQUENCE IF EXISTS "q";'
     ]

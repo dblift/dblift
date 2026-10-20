@@ -18,7 +18,6 @@ _quirks = ProviderRegistry.get_quirks
 
 NBSP, ZWSP, ZWJ, ACCENT = " ", "​", "‍", "́"
 LEGACY = (
-    "postgresql",
     "mysql",
     "mariadb",
     "sqlserver",
@@ -26,7 +25,6 @@ LEGACY = (
     "db2",
     "snowflake",
     "redshift",
-    "cockroachdb",
 )
 
 
@@ -83,6 +81,22 @@ def test_parse_sql_names_nothing_and_says_so(dialect):
     assert statement.names_unread
 
 
+FACTS = ("postgresql", "cockroachdb")
+
+
+@pytest.mark.parametrize("dialect", FACTS)
+@pytest.mark.parametrize("char", (NBSP, ZWSP))
+def test_the_facts_reader_names_nothing_it_cannot_prove(dialect, char):
+    sql = f"CREATE TABLE t{char}(id INT)"
+    facts = _quirks(dialect).statement_facts(sql)
+    assert facts.objects == () and facts.opaque
+    (statement,) = SqlParserFactory(dialect).parse_sql(f"{sql};").statements
+    assert statement.objects == [] and statement.affected_objects == []
+    assert statement.names_unread
+    assert SqlAnalyzer(dialect).extract_objects(sql) == []
+    assert SqlAnalyzer(dialect).extract_objects("CREATE TABLE t (id INT)") != []
+
+
 @pytest.mark.parametrize("dialect", LEGACY)
 def test_parse_sql_keeps_naming_a_readable_statement(dialect):
     def read(sql):
@@ -127,7 +141,7 @@ def test_a_quoted_identifier_is_not_a_name_cut_short(dialect, sql):
 
 
 def test_the_analyzer_checks_the_names_it_extracted():
-    assert SqlAnalyzer("postgresql").extract_objects(f"CREATE TABLE t{ZWJ}(id INT)") == []
+    assert SqlAnalyzer("oracle").extract_objects(f"CREATE TABLE t{ZWJ}(id INT)") == []
 
 
 def test_the_schema_part_of_a_name_is_checked_too():
@@ -137,7 +151,7 @@ def test_the_schema_part_of_a_name_is_checked_too():
     source = "CREATE TABLE sch\u00e9.t (id INT)"
     cut = SqlObject(name="t", schema="sch", object_type=SqlObjectType.TABLE)
     whole = SqlObject(name="t", schema="sch\u00e9", object_type=SqlObjectType.TABLE)
-    for dialect in ("postgresql", "mysql"):
+    for dialect in ("oracle", "mysql"):
         parser = SqlParserFactory(dialect).get_parser()
         assert parser._names_unreadable(source, [cut])
         assert not parser._names_unreadable(source, [whole])
@@ -146,7 +160,7 @@ def test_the_schema_part_of_a_name_is_checked_too():
     assert not sqlglot_parser._names_unreadable(source, [whole])
 
 
-@pytest.mark.parametrize("dialect", ("postgresql", "mysql", "snowflake"))
+@pytest.mark.parametrize("dialect", ("oracle", "mysql", "snowflake"))
 def test_a_statement_that_cannot_be_located_in_its_script_is_withheld(dialect):
     parser = SqlParserFactory(dialect).get_parser()
     assert parser._names_unreadable(None, [])

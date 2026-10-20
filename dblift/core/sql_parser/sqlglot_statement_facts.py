@@ -178,6 +178,9 @@ def unread_name_character(sql: str, *, dialect: str) -> Optional[int]:
 def readable_dml_target(sql: str, *, dialect: str) -> Optional[str]:
     """The target of an INSERT, UPDATE or DELETE whose name is bounded by ASCII blanks, whatever
     else the statement holds; ``None`` when the name itself is not safely readable."""
+    ascii_trimmed = sql.rstrip(_ASCII_BLANKS)
+    if ascii_trimmed != ascii_trimmed.rstrip():
+        return None  # a non-ASCII blank ends the text: the engine may read it as part of the name
     return _head_facts(sql, "", dialect=dialect).target
 
 
