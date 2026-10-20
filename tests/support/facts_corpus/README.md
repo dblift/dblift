@@ -26,9 +26,9 @@ Families: `postgresql` (also covers the PostgreSQL derivatives), `mysql` (also M
 ## Row fields
 
 * `facts`: the reader's `StatementFacts`, `None` and empty fields dropped, enums by value,
-  `objects` as `[name, type, role, schema]` in reader order, `events` sorted. `null` for Db2, which has
-  no reader. Families whose plugin has no reader are read through `SqlglotStatementFactsReader`
-  for their sqlglot dialect.
+  `objects` as `[name, type, role, schema]` in reader order, `events` sorted. Every
+  family has facts: Db2 is read by its own head classifier, and a family whose plugin has no reader
+  is read through `SqlglotStatementFactsReader` for its sqlglot dialect.
 * `old.hybrid` / `old.analyzer`: `[type, name, schema]` / `[type, "schema.name"]` lists from the two
   extraction paths, frozen separately because they disagree on a quarter of the statements. A path
   that raises is recorded as `{"raised": ...}`. `old.dml` (DML statements only): `table`
@@ -77,7 +77,7 @@ in one class per path (`classes.py`, tried in this order: the first match wins):
 | Class | Meaning |
 | --- | --- |
 | `raised` | a path, the DML helpers or the reader raised |
-| `no-reader` | the family has no reader (Db2) |
+| `no-reader` | the family has no reader (none today; kept for a family added without one) |
 | `no-old-side` | the family's extraction already is the reader (SQLite, DuckDB): nothing to compare |
 | `no-old` | an activated family's row that has no recorded extraction |
 | `dml-differs` | target, predicate, events, updated columns or full-table flag differ |

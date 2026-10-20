@@ -121,7 +121,7 @@ def test_rows_follow_the_schema(
         assert isinstance(row["sql"], str) and row["sql"].strip()
         assert row["inputs"] == sorted(set(row["inputs"])) and set(row["inputs"]) <= known
         assert (row["old"] is None) == (family in NO_OLD)
-        assert (row["facts"] is None) == (family == "db2")
+        assert row["facts"] is not None
         if row["old"] is not None:
             assert {"hybrid", "analyzer"} <= set(row["old"]) <= {"hybrid", "analyzer", "dml"}
 
