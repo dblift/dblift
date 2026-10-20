@@ -48,6 +48,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Requires sqlglot 30.23 or later.** Oracle q-quoted strings no longer prevent source-table
   extraction, and MySQL named foreign keys in `ALTER TABLE` no longer report unmodelled grammar.
   The declared range is now `sqlglot>=30.23.0,<31`.
+- **Unmodelled `DROP INDEX … ON …` syntax remains unread.** Where that relation form is not
+  modelled for the selected dialect, statement facts retain a diagnostic instead of treating
+  sqlglot's permissive parse as proof of a valid index operation.
 - **MySQL and MariaDB splitting moved onto the shared lexical engine.**
   Splitting, analysis and extraction use the `mysql` and `mariadb` client rules
   (the `DELIMITER` command, client commands, executable comments, optimizer
