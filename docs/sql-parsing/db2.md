@@ -330,11 +330,13 @@ The statement facts of a Db2 script (the kind of a statement, the objects it nam
 | `MERGE INTO name [AS] [alias] USING …` | MERGE | DML | `TABLE` altered | `target`, `target_sql`, `events`, `affected_columns` |
 | `COMMIT`, `ROLLBACK`, `SAVEPOINT`, `RELEASE` | that word | UNKNOWN | none | not opaque |
 | `LOCK TABLE name` | LOCK | UNKNOWN | `TABLE` referenced | not opaque |
-| `CALL name` | CALL | UNKNOWN | `PROCEDURE` referenced | not opaque |
+| `CALL name` | CALL | UNKNOWN | `PROCEDURE` referenced | opaque (`db2 CALL: procedure effects are not read`) |
 | `SET …` | SET | UNKNOWN | none | not opaque; `SET INTEGRITY` is opaque (`db2 SET INTEGRITY: tables not named`) |
 | `SELECT`, `VALUES`, `WITH` | that word | QUERY | none | not opaque, unless the statement holds `FINAL TABLE`, `NEW TABLE` or `OLD TABLE` (a data change inside a query): then opaque (`db2 data-change query: target not named`) |
 
 `ALTER INDEX`, `ALTER ALIAS` and `LABEL ON` are not in the table: the server rejects them with SQL0104N, so they are opaque. `CREATE TABLE IF NOT EXISTS` and `DROP TABLE IF EXISTS` run on the server and are read. The first word decides the kind of an opaque statement: `CREATE`, `ALTER`, `DROP`, `RENAME`, `COMMENT`, `DECLARE`, `GRANT`, `REVOKE` and `TRUNCATE` are `DDL`; `INSERT`, `UPDATE`, `DELETE` and `MERGE` are `DML`; `SELECT`, `WITH` and `VALUES` are `QUERY`; any other word is `UNKNOWN`.
+
+A valid `CALL` head still names its referenced procedure. The procedure body may change other objects, so its effects remain unknown and the facts carry a diagnostic. An unreadable `CALL` head names no procedure.
 
 **Folding.** An unquoted name part is folded to upper case, as the catalog holds it (`Db2Quirks.unquoted_identifier_case` is `uppercase`): `create table app.Orders` names `APP.ORDERS`. A delimited part keeps the text between the quotes with `""` read as `"`. This differs from the readers of the other engines, which keep the spelling the statement uses.
 

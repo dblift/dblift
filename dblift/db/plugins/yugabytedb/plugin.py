@@ -13,6 +13,7 @@ from dblift.db.plugins._pg_compatible import make_pg_compatible_plugin
 from dblift.db.provider_registry import PluginInfo
 
 from .descriptor import DESCRIPTOR
+from .statement_facts import YugabyteStatementFactsReader
 
 PLUGIN: PluginInfo = make_pg_compatible_plugin(
     DESCRIPTOR.name,
@@ -25,6 +26,7 @@ PLUGIN: PluginInfo = make_pg_compatible_plugin(
         # Its own storage engine (DocDB): PostgreSQL's lock behaviour does
         # not transfer, so validate-sql skips the PostgreSQL lock rules.
         "postgresql_lock_rules": False,
+        "statement_facts_class": YugabyteStatementFactsReader,
     },
 )
 

@@ -80,12 +80,18 @@ ENTRY_POINTS = {
 def test_entry_points_reach_the_engine(monkeypatch, entry):
     seen = []
     tokenize = LexicalTokenizer.tokenize
+    scan_comments = LexicalTokenizer._scan_segment_comments
 
     def counting(self):
         seen.append(self.spec)
         return tokenize(self)
 
+    def counting_comments(self):
+        seen.append(self.spec)
+        return scan_comments(self)
+
     monkeypatch.setattr(LexicalTokenizer, "tokenize", counting)
+    monkeypatch.setattr(LexicalTokenizer, "_scan_segment_comments", counting_comments)
     ENTRY_POINTS[entry]()
     assert seen and all(spec is DUCKDB_SPEC for spec in seen)
 
