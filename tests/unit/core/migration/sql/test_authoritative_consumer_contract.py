@@ -127,14 +127,14 @@ def test_snowflake_scanner_failure_cannot_become_guessed_executable_sql(monkeypa
 
 
 def test_sqlglot_parser_never_resplits_a_scanner_refusal(monkeypatch) -> None:
-    from dblift.db.plugins.postgresql.parser.postgresql_regex_parser import PostgreSqlRegexParser
+    from dblift.db.plugins.oracle.parser.oracle_parser import OracleParser
 
     def refuse(self, sql_content: str, strict_tokenizer: bool = False) -> list[str]:
         raise UnsafeStatementSplitError("scanner refused")
 
-    monkeypatch.setattr(PostgreSqlRegexParser, "split_statements", refuse)
+    monkeypatch.setattr(OracleParser, "split_statements", refuse)
     with pytest.raises(UnsafeStatementSplitError, match="scanner refused"):
-        SqlGlotParser("postgresql").split_statements("SELECT 1; SELECT 2;")
+        SqlGlotParser("oracle").split_statements("SELECT 1;\nSELECT 2;")
 
 
 def test_snowflake_records_cover_original_statement_spans() -> None:
@@ -198,13 +198,13 @@ def test_hybrid_public_object_extraction_does_not_rescan_refused_script() -> Non
 
 
 def test_sqlglot_fragment_analysis_has_explicit_semantic_entry_point() -> None:
-    result = SqlGlotParser("postgresql").parse_fragment("SELECT 1")
+    result = SqlGlotParser("oracle").parse_fragment("SELECT 1")
     assert result.success
     assert len(result.statements) == 1
 
 
 def test_sqlglot_public_analysis_and_extraction_project_scanner_constituents() -> None:
-    parser = SqlGlotParser("postgresql")
+    parser = SqlParserFactory("postgresql").get_parser()
     sql = r"SELECT 1 \; DROP TABLE users;"
     assert parser.split_for_analysis(sql) == ["SELECT 1", "DROP TABLE users"]
     assert parser.split_for_extraction(sql) == ["SELECT 1", "DROP TABLE users"]

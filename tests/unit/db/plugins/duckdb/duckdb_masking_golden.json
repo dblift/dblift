@@ -466,8 +466,9 @@
   "script_03": {
    "input": "COPY \"Sales\".\"Order Items\" (id, \"Item Value\") TO '/tmp/items;out.parquet' (FORMAT PARQUET);;\nCOPY (SELECT id FROM items) TO '/tmp/items.csv';;\nCOPY FROM DATABASE source_db TO target_db;;",
    "output": {
-    "facts_objects": [],
-    "facts_parse": {
+    "regex_objects": [],
+    "regex_parse": {
+     "success": true,
      "errors": [],
      "statements": [
       {
@@ -477,7 +478,7 @@
        "objects": [],
        "schema": "main",
        "sql_text": "COPY \"Sales\".\"Order Items\" (id, \"Item Value\") TO '/tmp/items;out.parquet' (FORMAT PARQUET)",
-       "statement_type": "QUERY"
+       "statement_type": "DML"
       },
       {
        "affected_objects": [],
@@ -486,7 +487,7 @@
        "objects": [],
        "schema": "main",
        "sql_text": "COPY (SELECT id FROM items) TO '/tmp/items.csv'",
-       "statement_type": "QUERY"
+       "statement_type": "DML"
       },
       {
        "affected_objects": [],
@@ -495,23 +496,18 @@
        "objects": [],
        "schema": "main",
        "sql_text": "COPY FROM DATABASE source_db TO target_db",
-       "statement_type": "UNKNOWN"
+       "statement_type": "DML"
       }
-     ],
-     "success": true
-    },
-    "facts_validate": {
-     "errors": [],
-     "statements_found": 3,
-     "valid": true
+     ]
     },
     "regex_extraction": [
      "COPY \"Sales\".\"Order Items\" (id, \"Item Value\") TO '/tmp/items;out.parquet' (FORMAT PARQUET)",
      "COPY (SELECT id FROM items) TO '/tmp/items.csv'",
      "COPY FROM DATABASE source_db TO target_db"
     ],
-    "regex_objects": [],
-    "regex_parse": {
+    "facts_objects": [],
+    "facts_parse": {
+     "success": true,
      "errors": [],
      "statements": [
       {
@@ -521,7 +517,7 @@
        "objects": [],
        "schema": "main",
        "sql_text": "COPY \"Sales\".\"Order Items\" (id, \"Item Value\") TO '/tmp/items;out.parquet' (FORMAT PARQUET)",
-       "statement_type": "DML"
+       "statement_type": "QUERY"
       },
       {
        "affected_objects": [],
@@ -530,27 +526,32 @@
        "objects": [],
        "schema": "main",
        "sql_text": "COPY (SELECT id FROM items) TO '/tmp/items.csv'",
-       "statement_type": "DML"
+       "statement_type": "QUERY"
       },
       {
        "affected_objects": [],
        "dialect": "duckdb",
-       "names_unread": false,
+       "names_unread": true,
        "objects": [],
        "schema": "main",
        "sql_text": "COPY FROM DATABASE source_db TO target_db",
-       "statement_type": "DML"
+       "statement_type": "UNKNOWN"
       }
-     ],
-     "success": true
+     ]
+    },
+    "facts_validate": {
+     "valid": true,
+     "statements_found": 3,
+     "errors": []
     }
    }
   },
   "script_04": {
    "input": "COPY items FROM STDIN;;\nCOPY items TO STDOUT;;\nCOPY items FROM $path;;",
    "output": {
-    "facts_objects": [],
-    "facts_parse": {
+    "regex_objects": [],
+    "regex_parse": {
+     "success": true,
      "errors": [],
      "statements": [
       {
@@ -560,7 +561,7 @@
        "objects": [],
        "schema": "main",
        "sql_text": "COPY items FROM STDIN",
-       "statement_type": "UNKNOWN"
+       "statement_type": "DML"
       },
       {
        "affected_objects": [],
@@ -569,7 +570,7 @@
        "objects": [],
        "schema": "main",
        "sql_text": "COPY items TO STDOUT",
-       "statement_type": "UNKNOWN"
+       "statement_type": "DML"
       },
       {
        "affected_objects": [],
@@ -578,62 +579,62 @@
        "objects": [],
        "schema": "main",
        "sql_text": "COPY items FROM $path",
-       "statement_type": "UNKNOWN"
+       "statement_type": "DML"
       }
-     ],
-     "success": true
-    },
-    "facts_validate": {
-     "errors": [],
-     "statements_found": 3,
-     "valid": true
+     ]
     },
     "regex_extraction": [
      "COPY items FROM STDIN",
      "COPY items TO STDOUT",
      "COPY items FROM $path"
     ],
-    "regex_objects": [],
-    "regex_parse": {
+    "facts_objects": [],
+    "facts_parse": {
+     "success": true,
      "errors": [],
      "statements": [
       {
        "affected_objects": [],
        "dialect": "duckdb",
-       "names_unread": false,
+       "names_unread": true,
        "objects": [],
        "schema": "main",
        "sql_text": "COPY items FROM STDIN",
-       "statement_type": "DML"
+       "statement_type": "UNKNOWN"
       },
       {
        "affected_objects": [],
        "dialect": "duckdb",
-       "names_unread": false,
+       "names_unread": true,
        "objects": [],
        "schema": "main",
        "sql_text": "COPY items TO STDOUT",
-       "statement_type": "DML"
+       "statement_type": "UNKNOWN"
       },
       {
        "affected_objects": [],
        "dialect": "duckdb",
-       "names_unread": false,
+       "names_unread": true,
        "objects": [],
        "schema": "main",
        "sql_text": "COPY items FROM $path",
-       "statement_type": "DML"
+       "statement_type": "UNKNOWN"
       }
-     ],
-     "success": true
+     ]
+    },
+    "facts_validate": {
+     "valid": true,
+     "statements_found": 3,
+     "errors": []
     }
    }
   },
   "script_05": {
    "input": "COPY items TO ('/tmp/' || 'items.csv');;\nCOPY items FROM '/tmp/' || 'items.csv';;\nCOPY items FROM ('/tmp/items.csv');;",
    "output": {
-    "facts_objects": [],
-    "facts_parse": {
+    "regex_objects": [],
+    "regex_parse": {
+     "success": true,
      "errors": [],
      "statements": [
       {
@@ -643,7 +644,7 @@
        "objects": [],
        "schema": "main",
        "sql_text": "COPY items TO ('/tmp/' || 'items.csv')",
-       "statement_type": "UNKNOWN"
+       "statement_type": "DML"
       },
       {
        "affected_objects": [],
@@ -652,7 +653,7 @@
        "objects": [],
        "schema": "main",
        "sql_text": "COPY items FROM '/tmp/' || 'items.csv'",
-       "statement_type": "UNKNOWN"
+       "statement_type": "DML"
       },
       {
        "affected_objects": [],
@@ -661,62 +662,62 @@
        "objects": [],
        "schema": "main",
        "sql_text": "COPY items FROM ('/tmp/items.csv')",
-       "statement_type": "UNKNOWN"
+       "statement_type": "DML"
       }
-     ],
-     "success": true
-    },
-    "facts_validate": {
-     "errors": [],
-     "statements_found": 3,
-     "valid": true
+     ]
     },
     "regex_extraction": [
      "COPY items TO ('/tmp/' || 'items.csv')",
      "COPY items FROM '/tmp/' || 'items.csv'",
      "COPY items FROM ('/tmp/items.csv')"
     ],
-    "regex_objects": [],
-    "regex_parse": {
+    "facts_objects": [],
+    "facts_parse": {
+     "success": true,
      "errors": [],
      "statements": [
       {
        "affected_objects": [],
        "dialect": "duckdb",
-       "names_unread": false,
+       "names_unread": true,
        "objects": [],
        "schema": "main",
        "sql_text": "COPY items TO ('/tmp/' || 'items.csv')",
-       "statement_type": "DML"
+       "statement_type": "UNKNOWN"
       },
       {
        "affected_objects": [],
        "dialect": "duckdb",
-       "names_unread": false,
+       "names_unread": true,
        "objects": [],
        "schema": "main",
        "sql_text": "COPY items FROM '/tmp/' || 'items.csv'",
-       "statement_type": "DML"
+       "statement_type": "UNKNOWN"
       },
       {
        "affected_objects": [],
        "dialect": "duckdb",
-       "names_unread": false,
+       "names_unread": true,
        "objects": [],
        "schema": "main",
        "sql_text": "COPY items FROM ('/tmp/items.csv')",
-       "statement_type": "DML"
+       "statement_type": "UNKNOWN"
       }
-     ],
-     "success": true
+     ]
+    },
+    "facts_validate": {
+     "valid": true,
+     "statements_found": 3,
+     "errors": []
     }
    }
   },
   "script_06": {
    "input": "COPY items FROM 42;;\nCOPY items FROM 'a.csv', 'b.csv';;\nCOPY items FROM $$items.csv$$;;",
    "output": {
-    "facts_objects": [],
-    "facts_parse": {
+    "regex_objects": [],
+    "regex_parse": {
+     "success": true,
      "errors": [],
      "statements": [
       {
@@ -726,7 +727,7 @@
        "objects": [],
        "schema": "main",
        "sql_text": "COPY items FROM 42",
-       "statement_type": "UNKNOWN"
+       "statement_type": "DML"
       },
       {
        "affected_objects": [],
@@ -735,7 +736,7 @@
        "objects": [],
        "schema": "main",
        "sql_text": "COPY items FROM 'a.csv', 'b.csv'",
-       "statement_type": "UNKNOWN"
+       "statement_type": "DML"
       },
       {
        "affected_objects": [],
@@ -744,23 +745,62 @@
        "objects": [],
        "schema": "main",
        "sql_text": "COPY items FROM $$items.csv$$",
-       "statement_type": "UNKNOWN"
+       "statement_type": "DML"
       }
-     ],
-     "success": true
-    },
-    "facts_validate": {
-     "errors": [],
-     "statements_found": 3,
-     "valid": true
+     ]
     },
     "regex_extraction": [
      "COPY items FROM 42",
      "COPY items FROM 'a.csv', 'b.csv'",
      "COPY items FROM $$items.csv$$"
     ],
+    "facts_objects": [],
+    "facts_parse": {
+     "success": true,
+     "errors": [],
+     "statements": [
+      {
+       "affected_objects": [],
+       "dialect": "duckdb",
+       "names_unread": true,
+       "objects": [],
+       "schema": "main",
+       "sql_text": "COPY items FROM 42",
+       "statement_type": "UNKNOWN"
+      },
+      {
+       "affected_objects": [],
+       "dialect": "duckdb",
+       "names_unread": true,
+       "objects": [],
+       "schema": "main",
+       "sql_text": "COPY items FROM 'a.csv', 'b.csv'",
+       "statement_type": "UNKNOWN"
+      },
+      {
+       "affected_objects": [],
+       "dialect": "duckdb",
+       "names_unread": true,
+       "objects": [],
+       "schema": "main",
+       "sql_text": "COPY items FROM $$items.csv$$",
+       "statement_type": "UNKNOWN"
+      }
+     ]
+    },
+    "facts_validate": {
+     "valid": true,
+     "statements_found": 3,
+     "errors": []
+    }
+   }
+  },
+  "script_07": {
+   "input": "COPY items FROM E'items.csv';;\nINSERT INTO t VALUES (1) RETURNING a -- c;\n/* lead */ UPDATE t SET a = $$x;y$$ WHERE b = E'q\\'z';",
+   "output": {
     "regex_objects": [],
     "regex_parse": {
+     "success": true,
      "errors": [],
      "statements": [
       {
@@ -769,7 +809,7 @@
        "names_unread": false,
        "objects": [],
        "schema": "main",
-       "sql_text": "COPY items FROM 42",
+       "sql_text": "COPY items FROM E'items.csv'",
        "statement_type": "DML"
       },
       {
@@ -778,26 +818,15 @@
        "names_unread": false,
        "objects": [],
        "schema": "main",
-       "sql_text": "COPY items FROM 'a.csv', 'b.csv'",
-       "statement_type": "DML"
-      },
-      {
-       "affected_objects": [],
-       "dialect": "duckdb",
-       "names_unread": false,
-       "objects": [],
-       "schema": "main",
-       "sql_text": "COPY items FROM $$items.csv$$",
+       "sql_text": "INSERT INTO t VALUES (1) RETURNING a -- c;\n/* lead */ UPDATE t SET a = $$x;y$$ WHERE b = E'q\\'z'",
        "statement_type": "DML"
       }
-     ],
-     "success": true
-    }
-   }
-  },
-  "script_07": {
-   "input": "COPY items FROM E'items.csv';;\nINSERT INTO t VALUES (1) RETURNING a -- c;\n/* lead */ UPDATE t SET a = $$x;y$$ WHERE b = E'q\\'z';",
-   "output": {
+     ]
+    },
+    "regex_extraction": [
+     "COPY items FROM E'items.csv'",
+     "INSERT INTO t VALUES (1) RETURNING a -- c;\n/* lead */ UPDATE t SET a = $$x;y$$ WHERE b = E'q\\'z'"
+    ],
     "facts_objects": [
      {
       "dialect": "duckdb",
@@ -809,12 +838,13 @@
      }
     ],
     "facts_parse": {
+     "success": true,
      "errors": [],
      "statements": [
       {
        "affected_objects": [],
        "dialect": "duckdb",
-       "names_unread": false,
+       "names_unread": true,
        "objects": [],
        "schema": "main",
        "sql_text": "COPY items FROM E'items.csv'",
@@ -847,42 +877,12 @@
        "sql_text": "INSERT INTO t VALUES (1) RETURNING a -- c;\n/* lead */ UPDATE t SET a = $$x;y$$ WHERE b = E'q\\'z'",
        "statement_type": "DML"
       }
-     ],
-     "success": true
+     ]
     },
     "facts_validate": {
-     "errors": [],
+     "valid": true,
      "statements_found": 2,
-     "valid": true
-    },
-    "regex_extraction": [
-     "COPY items FROM E'items.csv'",
-     "INSERT INTO t VALUES (1) RETURNING a -- c;\n/* lead */ UPDATE t SET a = $$x;y$$ WHERE b = E'q\\'z'"
-    ],
-    "regex_objects": [],
-    "regex_parse": {
-     "errors": [],
-     "statements": [
-      {
-       "affected_objects": [],
-       "dialect": "duckdb",
-       "names_unread": false,
-       "objects": [],
-       "schema": "main",
-       "sql_text": "COPY items FROM E'items.csv'",
-       "statement_type": "DML"
-      },
-      {
-       "affected_objects": [],
-       "dialect": "duckdb",
-       "names_unread": false,
-       "objects": [],
-       "schema": "main",
-       "sql_text": "INSERT INTO t VALUES (1) RETURNING a -- c;\n/* lead */ UPDATE t SET a = $$x;y$$ WHERE b = E'q\\'z'",
-       "statement_type": "DML"
-      }
-     ],
-     "success": true
+     "errors": []
     }
    }
   },
@@ -1078,6 +1078,45 @@
   "script_09": {
    "input": "-- c\nINSERT INTO t SELECT * FROM s;\nCREATE MACRO m(a) AS a || ';';\nCOPY t TO 'f;x' (DELIMITER ';');",
    "output": {
+    "regex_objects": [],
+    "regex_parse": {
+     "success": true,
+     "errors": [],
+     "statements": [
+      {
+       "affected_objects": [],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [],
+       "schema": "main",
+       "sql_text": "-- c\nINSERT INTO t SELECT * FROM s",
+       "statement_type": "DML"
+      },
+      {
+       "affected_objects": [],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [],
+       "schema": "main",
+       "sql_text": "CREATE MACRO m(a) AS a || ';'",
+       "statement_type": "DDL"
+      },
+      {
+       "affected_objects": [],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [],
+       "schema": "main",
+       "sql_text": "COPY t TO 'f;x' (DELIMITER ';')",
+       "statement_type": "DML"
+      }
+     ]
+    },
+    "regex_extraction": [
+     "-- c\nINSERT INTO t SELECT * FROM s",
+     "CREATE MACRO m(a) AS a || ';'",
+     "COPY t TO 'f;x' (DELIMITER ';')"
+    ],
     "facts_objects": [
      {
       "dialect": "duckdb",
@@ -1089,6 +1128,7 @@
      }
     ],
     "facts_parse": {
+     "success": true,
      "errors": [],
      "statements": [
       {
@@ -1121,7 +1161,7 @@
       {
        "affected_objects": [],
        "dialect": "duckdb",
-       "names_unread": false,
+       "names_unread": true,
        "objects": [],
        "schema": "main",
        "sql_text": "CREATE MACRO m(a) AS a || ';'",
@@ -1136,52 +1176,12 @@
        "sql_text": "COPY t TO 'f;x' (DELIMITER ';')",
        "statement_type": "QUERY"
       }
-     ],
-     "success": true
+     ]
     },
     "facts_validate": {
-     "errors": [],
+     "valid": true,
      "statements_found": 3,
-     "valid": true
-    },
-    "regex_extraction": [
-     "-- c\nINSERT INTO t SELECT * FROM s",
-     "CREATE MACRO m(a) AS a || ';'",
-     "COPY t TO 'f;x' (DELIMITER ';')"
-    ],
-    "regex_objects": [],
-    "regex_parse": {
-     "errors": [],
-     "statements": [
-      {
-       "affected_objects": [],
-       "dialect": "duckdb",
-       "names_unread": false,
-       "objects": [],
-       "schema": "main",
-       "sql_text": "-- c\nINSERT INTO t SELECT * FROM s",
-       "statement_type": "DML"
-      },
-      {
-       "affected_objects": [],
-       "dialect": "duckdb",
-       "names_unread": false,
-       "objects": [],
-       "schema": "main",
-       "sql_text": "CREATE MACRO m(a) AS a || ';'",
-       "statement_type": "DDL"
-      },
-      {
-       "affected_objects": [],
-       "dialect": "duckdb",
-       "names_unread": false,
-       "objects": [],
-       "schema": "main",
-       "sql_text": "COPY t TO 'f;x' (DELIMITER ';')",
-       "statement_type": "DML"
-      }
-     ],
-     "success": true
+     "errors": []
     }
    }
   },
@@ -2081,30 +2081,6 @@
   "script_18": {
    "input": "CREATE TABLE t\u00a0(a INT)",
    "output": {
-    "facts_objects": [],
-    "facts_parse": {
-     "errors": [],
-     "statements": [
-      {
-       "affected_objects": [],
-       "dialect": "duckdb",
-       "names_unread": false,
-       "objects": [],
-       "schema": "main",
-       "sql_text": "CREATE TABLE t\u00a0(a INT)",
-       "statement_type": "DDL"
-      }
-     ],
-     "success": true
-    },
-    "facts_validate": {
-     "errors": [],
-     "statements_found": 1,
-     "valid": true
-    },
-    "regex_extraction": [
-     "CREATE TABLE t\u00a0(a INT)"
-    ],
     "regex_objects": [
      {
       "dialect": "duckdb",
@@ -2116,6 +2092,7 @@
      }
     ],
     "regex_parse": {
+     "success": true,
      "errors": [],
      "statements": [
       {
@@ -2145,38 +2122,37 @@
        "sql_text": "CREATE TABLE t\u00a0(a INT)",
        "statement_type": "DDL"
       }
-     ],
-     "success": true
+     ]
+    },
+    "regex_extraction": [
+     "CREATE TABLE t\u00a0(a INT)"
+    ],
+    "facts_objects": [],
+    "facts_parse": {
+     "success": true,
+     "errors": [],
+     "statements": [
+      {
+       "affected_objects": [],
+       "dialect": "duckdb",
+       "names_unread": true,
+       "objects": [],
+       "schema": "main",
+       "sql_text": "CREATE TABLE t\u00a0(a INT)",
+       "statement_type": "DDL"
+      }
+     ]
+    },
+    "facts_validate": {
+     "valid": true,
+     "statements_found": 1,
+     "errors": []
     }
    }
   },
   "script_19": {
    "input": "CREATE TABLE a\u3000b (x INT)",
    "output": {
-    "facts_objects": [],
-    "facts_parse": {
-     "errors": [],
-     "statements": [
-      {
-       "affected_objects": [],
-       "dialect": "duckdb",
-       "names_unread": false,
-       "objects": [],
-       "schema": "main",
-       "sql_text": "CREATE TABLE a\u3000b (x INT)",
-       "statement_type": "DDL"
-      }
-     ],
-     "success": true
-    },
-    "facts_validate": {
-     "errors": [],
-     "statements_found": 1,
-     "valid": true
-    },
-    "regex_extraction": [
-     "CREATE TABLE a\u3000b (x INT)"
-    ],
     "regex_objects": [
      {
       "dialect": "duckdb",
@@ -2188,6 +2164,7 @@
      }
     ],
     "regex_parse": {
+     "success": true,
      "errors": [],
      "statements": [
       {
@@ -2217,8 +2194,31 @@
        "sql_text": "CREATE TABLE a\u3000b (x INT)",
        "statement_type": "DDL"
       }
-     ],
-     "success": true
+     ]
+    },
+    "regex_extraction": [
+     "CREATE TABLE a\u3000b (x INT)"
+    ],
+    "facts_objects": [],
+    "facts_parse": {
+     "success": true,
+     "errors": [],
+     "statements": [
+      {
+       "affected_objects": [],
+       "dialect": "duckdb",
+       "names_unread": true,
+       "objects": [],
+       "schema": "main",
+       "sql_text": "CREATE TABLE a\u3000b (x INT)",
+       "statement_type": "DDL"
+      }
+     ]
+    },
+    "facts_validate": {
+     "valid": true,
+     "statements_found": 1,
+     "errors": []
     }
    }
   },
