@@ -120,6 +120,32 @@ def test_unread_update_top_does_not_invent_a_target():
     assert facts.diagnostic
 
 
+@pytest.mark.parametrize(
+    ("sql", "operation", "kind"),
+    [
+        ("DROP INDEX real_one.idx1;", "DROP", "DDL"),
+        ("DROP INDEX dbo.real_one.idx1;", "DROP", "DDL"),
+        ("CREATE XML INDEX idx1 ON real_one (xml_col);", "CREATE", "DDL"),
+        ("CREATE PRIMARY XML INDEX idx1 ON real_one (xml_col);", "CREATE", "DDL"),
+        ("DELETE TOP (5) [Cap Probe] WHERE id = 1", "DELETE", "DML"),
+        ("DELETE TOP (SELECT 5) PERCENT [s].[t] WHERE id = 1", "DELETE", "DML"),
+        ("UPDATE TOP (10) [Cap Probe] SET b = 1", "UPDATE", "DML"),
+        ("INSERT TOP (5) INTO [Cap Probe] (a) SELECT 1", "INSERT", "DML"),
+    ],
+)
+def test_legacy_unread_forms_keep_explicit_no_object_facts(sql, operation, kind):
+    """The old extractor named these forms, but the T-SQL facts reader cannot prove them."""
+    facts = read_statement_facts(sql, dialect="tsql")
+
+    assert (facts.operation, facts.kind) == (operation, kind)
+    assert facts.objects == ()
+    assert facts.target is None
+    assert facts.events is None
+    assert facts.opaque
+    assert facts.diagnostic
+    assert facts.error is None
+
+
 def test_unsupported_trigger_command_does_not_invent_an_object():
     facts = read_statement_facts(
         "CREATE TRIGGER [tr] ON [dbo].[t] AFTER INSERT AS SELECT 1", dialect="tsql"
