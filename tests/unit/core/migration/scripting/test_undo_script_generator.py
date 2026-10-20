@@ -2,6 +2,7 @@
 
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 import pytest
 
@@ -10,6 +11,7 @@ from dblift.core.migration.scripting.undo_script_generator import (
     UndoScriptGenerator,
     UndoStatement,
 )
+from dblift.db.plugins.redshift.quirks import RedshiftQuirks
 from tests.unit._migration_factory import make_migration
 
 
@@ -25,9 +27,11 @@ class TestUndoScriptGenerator:
 
     @pytest.fixture
     def generator(self):
-        """Create an undo script generator instance."""
+        """Create an undo script generator on Redshift's former text extraction (the facts path
+        asks for manual review instead of reversing a statement)."""
         logger = LogFactory.get_log("test")
-        return UndoScriptGenerator(dialect="oracle", logger=logger)
+        with patch.object(RedshiftQuirks, "statement_facts_class", None):
+            yield UndoScriptGenerator(dialect="redshift", logger=logger)
 
     def test_generate_undo_script_create_table(self, generator):
         """Test generating undo script for CREATE TABLE."""
