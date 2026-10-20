@@ -22,6 +22,10 @@ from dblift.core.sql_parser.dialects.identifier_tokens import (
     DOUBLE_QUOTED_IDENTIFIER,
     strip_identifier_quotes,
 )
+from dblift.core.sql_parser.dml_modifiers import (  # noqa: F401  (re-exported)
+    MYSQL_DML_MODIFIER,
+    MYSQL_DML_MODIFIER_WORDS,
+)
 from dblift.core.sql_parser.statement_facts import (
     DeclaredConstraint,
     NamedObject,
@@ -161,6 +165,22 @@ def unread_name_character(sql: str, *, dialect: str) -> Optional[int]:
                 return found
         position = token.end + 1
     return _first_unread_outside_comments(sql, position, len(sql), comments, nested)
+
+
+def _supplementary_name_character(sql: str) -> Optional[str]:
+    """First character outside the Basic Multilingual Plane in a MySQL name, or ``None``."""
+    if sql.isascii() or max(sql) <= "\uffff":
+        return None
+    try:
+        tokens = Dialect.get_or_raise("mysql").tokenize(sql)  # lint: allow-dialect-string: MySQL
+    except TokenError:
+        return None
+    for token in tokens:
+        if token.token_type in {TokenType.VAR, TokenType.IDENTIFIER}:
+            found = next((c for c in token.text if c > "\uffff"), None)
+            if found is not None:
+                return found
+    return None
 
 
 def readable_dml_target(sql: str, *, dialect: str) -> Optional[str]:
@@ -799,7 +819,9 @@ def _mysql_command_facts(sql: str) -> Optional[StatementFacts]:
         body = re.sub(r"^\s*RENAME\s+TABLE\s+", "", head, flags=re.IGNORECASE)
         sources = []
         for pair in _MYSQL_RENAME_SOURCE.finditer(body):
-            schema, name = (pair.group(1), pair.group(2)) if pair.group(2) else (None, pair.group(1))
+            schema, name = (
+                (pair.group(1), pair.group(2)) if pair.group(2) else (None, pair.group(1))
+            )
             sources.append(
                 NamedObject(
                     strip_identifier_quotes(name),
@@ -827,6 +849,26 @@ def _mysql_command_facts(sql: str) -> Optional[StatementFacts]:
     )
 
 
+_MYSQL_DML_VERB = re.compile(
+    r"^((?:\s|#[^\n]*\n|--\s[^\n]*\n|/\*.*?\*/)*(UPDATE|DELETE|INSERT|REPLACE))\b",
+    re.IGNORECASE | re.DOTALL,
+)
+
+
+def _without_mysql_dml_modifiers(sql: str) -> str:
+    """Drop the modifier words and comments between a DML verb and its target.
+
+    sqlglot's MySQL grammar does not read these modifiers.
+    """
+    verb = _MYSQL_DML_VERB.match(sql)
+    if verb is None:
+        return sql
+    pos = verb.end()
+    while modifier := MYSQL_DML_MODIFIER[verb.group(2).upper()].match(sql, pos):
+        pos = modifier.end()
+    return sql if pos == verb.end() else f"{sql[: verb.end()]} {sql[pos:].lstrip()}"
+
+
 def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
     """Read one already-split statement; never retry a second extractor.
 
@@ -848,6 +890,20 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
     unread = unread_name_character(sql, dialect=dialect)
     if unread is not None:
         return _unread_name_facts(sql, dialect, unread)
+    if dialect == "mysql" and (
+        wide := _supplementary_name_character(sql)
+    ):  # lint: allow-dialect-string: MySQL name characters
+        head = _head_facts(sql, "", dialect=dialect)
+        return StatementFacts(
+            head.operation,
+            head.kind,
+            diagnostic=(
+                f"mysql statement holds U+{ord(wide):04X} in a name, which MySQL stores as ? "
+                "and MariaDB rejects; its objects are not named"
+            ),
+        )
+    if dialect == "mysql":  # lint: allow-dialect-string: MySQL DML modifiers
+        sql = _without_mysql_dml_modifiers(sql)
     try:
         ast = parse_one(_UPDATE_OR.sub(r"\1", sql), read=dialect)
     except (ParseError, TokenError) as exc:
