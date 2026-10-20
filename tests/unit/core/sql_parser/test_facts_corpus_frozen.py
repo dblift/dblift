@@ -7,8 +7,8 @@ from typing import Any, Dict, List
 import pytest
 
 from dblift.core.sql_parser.statement_facts import SqlglotStatementFactsReader
-from dblift.db.plugins.snowflake.quirks import SnowflakeQuirks
 from dblift.db.plugins.postgresql.quirks import PostgresqlQuirks
+from dblift.db.plugins.snowflake.quirks import SnowflakeQuirks
 from tests.support.facts_corpus import FAMILIES
 from tests.support.facts_corpus import __main__ as cli
 from tests.support.facts_corpus import family_file, record

@@ -63,7 +63,7 @@ def _results() -> Results:
 
 
 def test_only_families_whose_differences_are_explained_are_gated() -> None:
-    assert gated_families() == ["db2", "mysql", "postgresql"]
+    assert gated_families() == ["db2", "mysql", "oracle", "postgresql"]
 
 
 def test_gated_families_are_known_families_with_a_reader() -> None:

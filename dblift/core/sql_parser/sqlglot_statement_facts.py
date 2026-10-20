@@ -1575,13 +1575,11 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
             else None
         )
         where = ast.args.get("where")
-        predicate = (
-            (_oracle_as_written(where.this) if dialect == "oracle" else where.this).sql(
-                dialect=dialect
-            )
-            if isinstance(where, exp.Where) and where.this is not None
-            else None
-        )
+        predicate_node = where.this if isinstance(where, exp.Where) else None
+        if predicate_node is not None:
+            if dialect == "oracle":  # lint: allow-dialect-string: Oracle spelling
+                predicate_node = _oracle_as_written(predicate_node)
+        predicate = predicate_node.sql(dialect=dialect) if predicate_node is not None else None
         events = _sqlglot_events(ast)
         columns = tuple(_sqlglot_updated_columns(ast))
         skipped_references: Tuple[exp.Expression, ...] = (table,) if table is not None else ()
