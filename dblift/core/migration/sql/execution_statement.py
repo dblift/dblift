@@ -8,7 +8,6 @@ from functools import lru_cache
 from typing import Any, List, Optional
 
 from dblift.core.exceptions import TransactionStatementError
-from dblift.core.sql_parser.common.comment_stripping import strip_comments_preserving_quotes
 from dblift.core.sql_parser.statement import Statement, executable_records, execution_strings
 from dblift.core.sql_parser.statement import execution_units as unit_texts
 from dblift.core.utils.row_access import strip_leading_comments
@@ -22,27 +21,6 @@ class ExecutionStatement:
     statement_type: str = "UNKNOWN"
     can_execute_in_transaction: bool = True
     transaction_reason: Optional[str] = None
-
-
-def _comment_only(sql: str, *, nested_block_comments: bool = False) -> bool:
-    """True if *sql* has no executable tokens after removing block and line comments.
-
-    MySQL/MariaDB executable comment directives (``/*!...*/``, ``/*M!...*/``) are not
-    comments the server skips, so they never count as "comment only".
-    """
-
-    body = sql.strip()
-    if not body:
-        return True
-    code = strip_comments_preserving_quotes(
-        body,
-        line_prefixes=["--"],
-        has_block_comments=True,
-        nested_block_comments=nested_block_comments,
-        keep_executable_comments=not nested_block_comments,
-        keep_unterminated_comment=True,
-    )
-    return not code
 
 
 @lru_cache(maxsize=None)

@@ -6,6 +6,7 @@ from dblift.core.migration.sql import statement_splitter as splitter_module
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.migration.sql.statement_splitter import StatementSplitter
 from dblift.core.sql_parser.parser_factory import SqlParserFactory
+from dblift.core.sql_parser.statement import Statement
 
 
 @pytest.mark.unit
@@ -22,8 +23,8 @@ def test_unmigrated_statement_splitter_uses_regex_parser_factory(monkeypatch):
     created_parser_types = []
 
     class FakeParser:
-        def split_statements(self, sql, strict_tokenizer=False):
-            return [sql.strip()]
+        def split(self, sql):
+            return [Statement(sql.strip(), 1, ";")]
 
     class FakeFactory:
         def __init__(self, dialect, parser_type="hybrid"):
