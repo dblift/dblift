@@ -82,8 +82,16 @@ CASES = [
     (
         "unclosed_comment_last",
         "SELECT 1; /* open\nSELECT 2;",
-        [("SELECT 1", 1, ";", 0, 9), ("/* open\nSELECT 2;", 1, None, 10, 27)],
-        ["SELECT 1", "/* open\nSELECT 2;"],
+        (
+            "error",
+            "UnsafeStatementSplitError",
+            "unterminated block comment opened at line 1, column 11",
+        ),
+        (
+            "error",
+            "UnsafeStatementSplitError",
+            "unterminated block comment opened at line 1, column 11",
+        ),
         "SELECT 1; /* open\nSELECT 2;",
     ),
     (

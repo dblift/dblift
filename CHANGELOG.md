@@ -123,6 +123,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **DuckDB refuses a script with an unclosed block comment.** A script holding a
+  `/*` that is never closed (nested comments count) is now refused before anything
+  runs, as on the other engines. The statements before the comment used to be executed
+  first and the migration then failed in the engine; now nothing runs.
 - **A plugin can declare `statement_facts_class` without a `parser_class` of its own.** The parser
   factory now serves such a plugin a parser built from its facts reader and `lexical_spec()`, instead
   of the hybrid parser, or a subclass of it, refusing it. Script analysis and undo generation no
