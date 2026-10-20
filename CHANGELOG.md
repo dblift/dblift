@@ -127,6 +127,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A NUL byte in a PostgreSQL-family script is refused instead of silently cutting the statement
+  (PostgreSQL, CockroachDB, YugabyteDB and the other engines of the family; Redshift as a precaution).** Everything
+  after a NUL byte was silently ignored: `CREATE TABLE a (i int);<NUL>DROP TABLE a;` ran only the
+  `CREATE`, so a migration could run partly and report success. The script is now refused whole,
+  naming the line and column of the NUL, and nothing runs. Remove the NUL byte; it often comes from
+  a file saved in another encoding such as UTF-16.
+
 - **MySQL and MariaDB statement facts read more of the grammar.** `TRUNCATE` names its table,
   `CREATE SCHEMA` / `DROP SCHEMA` name the schema, `RENAME TABLE` names each source table,
   `CREATE FULLTEXT INDEX` and `CREATE SPATIAL INDEX` name the index and its table, and a DML
