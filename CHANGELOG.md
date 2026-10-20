@@ -123,6 +123,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A plugin can declare `statement_facts_class` without a `parser_class` of its own.** The parser
+  factory now serves such a plugin a parser built from its facts reader and `lexical_spec()`, instead
+  of the hybrid parser, or a subclass of it, refusing it. Script analysis and undo generation no
+  longer raise for it. Script analysis reports a facts parser that cannot be built (a missing
+  `lexical_spec()`, or a reader that does not accept `(dialect, spec)`) as an error; a reader raising
+  while it reads a statement still propagates.
 - **Linting no longer skips cautions on a quoted name.** A table created earlier in a
   script or delta exempts later statements from the table-scoped cautions (`drop-table`,
   `truncate`, `drop-column`, ...) only when the names are the same table. A quoted name
