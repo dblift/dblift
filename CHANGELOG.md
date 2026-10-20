@@ -123,6 +123,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **DuckDB refuses a script with an unclosed block comment.** A script holding a
+  `/*` that is never closed (nested comments count) is now refused before anything
+  runs, as on the other engines, instead of being sent and failing on the server.
 - **Linting no longer skips cautions on a quoted name.** A table created earlier in a
   script or delta exempts later statements from the table-scoped cautions (`drop-table`,
   `truncate`, `drop-column`, ...) only when the names are the same table. A quoted name
