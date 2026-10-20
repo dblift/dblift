@@ -1,7 +1,7 @@
 """Shared lexical tokenization driven by immutable plugin facts."""
 
 import re
-from typing import Callable, Dict, FrozenSet, Iterable, List, NoReturn, Optional, Tuple
+from typing import Callable, Dict, FrozenSet, Iterable, Iterator, List, NoReturn, Optional, Tuple
 
 from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
 from dblift.core.sql_parser.base_tokenizer import BaseTokenizer
@@ -201,7 +201,7 @@ class LexicalTokenizer(BaseTokenizer):
         if self.spec.terminator_script is not None:
             return self._tokenize_terminator_script()
         if self._segment is not None:
-            return self._tokenize_segment_script(self._segment)
+            return list(self._iter_segment_tokens(self._segment))
         tokens = super().tokenize()
         if self.delimiter_script is not None:
             self.delimiter_script.finish()
@@ -291,7 +291,15 @@ class LexicalTokenizer(BaseTokenizer):
         self._seg_parameter = re.compile(rules.parameter)
         self._seg_comment = re.compile("--[^" + re.escape(rules.line_comment_ends) + "]*")
 
-    def _tokenize_segment_script(self, rules: SegmentScriptRules) -> List[Token]:
+    def _scan_segment_comments(self) -> None:
+        """Read segment comments and refusals without retaining the token stream."""
+        assert self._segment is not None
+        if self.spec.refused_character:
+            self._refuse_character()
+        for _ in self._iter_segment_tokens(self._segment):
+            pass
+
+    def _iter_segment_tokens(self, rules: SegmentScriptRules) -> Iterator[Token]:
         """Lexemes of a segment script in one pass, after the refused character check.
 
         An unterminated string, identifier, dollar-quoted string or comment runs to the end of the
@@ -300,7 +308,6 @@ class LexicalTokenizer(BaseTokenizer):
         sql = self.sql
         self.origin = origin = 1 if self.spec.leading_bom_is_blank and sql.startswith(BOM) else 0
         self.pos = origin
-        tokens: List[Token] = []
         size = len(sql)
         if rules.blank_pass is not None:
             last = max(sql.rfind(blank) for blank in rules.blanks)
@@ -311,8 +318,7 @@ class LexicalTokenizer(BaseTokenizer):
         while self.pos < size:
             token = self._next_segment_token(rules)
             if token is not None:
-                tokens.append(token)
-        return tokens
+                yield token
 
     def _next_segment_token(self, rules: SegmentScriptRules) -> Optional[Token]:
         """The lexeme at the cursor, or None for a blank."""
