@@ -7297,7 +7297,7 @@
 "sha256": "d33767030fb567ebf4699543cf51a835e6b5eced5e52adf95a4e7fbfd5c4910d"
 },
 "spec_rows": {
-"count": 699,
+"count": 727,
 "observed": [
 [
 "db2",
@@ -14997,6 +14997,141 @@
 }
 ],
 [
+"postgresql",
+"SELECT 1 AS a\u00a0$x$;\nSELECT 2 AS $x$;",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated dollar-quoted string opened at line 2, column 13"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated dollar-quoted string opened at line 2, column 13"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated dollar-quoted string opened at line 2, column 13"
+]
+}
+],
+[
+"postgresql",
+"SELECT 1 AS a\u2003E'\\';\nSELECT 2;",
+{
+"analysis": [
+"SELECT 1 AS a\u2003E'\\'",
+"SELECT 2"
+],
+"engine": [
+"SELECT 1 AS a\u2003E'\\';",
+"SELECT 2;"
+],
+"splitter": [
+"SELECT 1 AS a\u2003E'\\';",
+"SELECT 2;"
+]
+}
+],
+[
+"postgresql",
+"CREATE TABLE t\u3000$$ (x INT);\nSELECT 1;",
+{
+"analysis": [
+"CREATE TABLE t\u3000$$ (x INT)",
+"SELECT 1"
+],
+"engine": [
+"CREATE TABLE t\u3000$$ (x INT);",
+"SELECT 1;"
+],
+"splitter": [
+"CREATE TABLE t\u3000$$ (x INT);",
+"SELECT 1;"
+]
+}
+],
+[
+"postgresql",
+"SELECT 1 AS \u0085$x$;\nSELECT 2 AS $x$;",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated dollar-quoted string opened at line 2, column 13"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated dollar-quoted string opened at line 2, column 13"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated dollar-quoted string opened at line 2, column 13"
+]
+}
+],
+[
+"postgresql",
+"SELECT 1 AS a\u20ac$x$;\nSELECT 2 AS $x$;",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated dollar-quoted string opened at line 2, column 13"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated dollar-quoted string opened at line 2, column 13"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated dollar-quoted string opened at line 2, column 13"
+]
+}
+],
+[
+"postgresql",
+"SELECT 1 AS a\u001c$x$;\nSELECT 2 AS $x$;",
+{
+"analysis": [
+"SELECT 1 AS a\u001c$x$;\nSELECT 2 AS $x$"
+],
+"engine": [
+"SELECT 1 AS a\u001c$x$;\nSELECT 2 AS $x$;"
+],
+"splitter": [
+"SELECT 1 AS a\u001c$x$;\nSELECT 2 AS $x$;"
+]
+}
+],
+[
+"postgresql",
+"COPY t (a) FROM STDIN\u00a0;\n1\n\\.",
+{
+"analysis": [
+"error",
+"UnsupportedMetaCommandError",
+"Unsupported psql meta-command '\\\\.' at line 3; dblift does not run it (column 1)"
+],
+"engine": [
+"error",
+"UnsupportedMetaCommandError",
+"Unsupported psql meta-command '\\\\.' at line 3; dblift does not run it (column 1)"
+],
+"splitter": [
+"error",
+"UnsupportedMetaCommandError",
+"Unsupported psql meta-command '\\\\.' at line 3; dblift does not run it (column 1)"
+]
+}
+],
+[
 "sqlite",
 "CREATE TABLE t(a); INSERT INTO t VALUES(1);",
 {
@@ -20019,8 +20154,416 @@
 "\u00a0"
 ]
 }
+],
+[
+"cockroachdb",
+"SELECT 1 AS a\u00a0$x$;\nSELECT 2 AS $x$;",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated dollar-quoted string opened at line 2, column 13"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated dollar-quoted string opened at line 2, column 13"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated dollar-quoted string opened at line 2, column 13"
+]
+}
+],
+[
+"yugabytedb",
+"SELECT 1 AS a\u00a0$x$;\nSELECT 2 AS $x$;",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated dollar-quoted string opened at line 2, column 13"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated dollar-quoted string opened at line 2, column 13"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated dollar-quoted string opened at line 2, column 13"
+]
+}
+],
+[
+"redshift",
+"SELECT 1 AS a\u00a0$x$;\nSELECT 2 AS $x$;",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated dollar-quoted string opened at line 2, column 13"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated dollar-quoted string opened at line 2, column 13"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated dollar-quoted string opened at line 2, column 13"
+]
+}
+],
+[
+"cockroachdb",
+"SELECT 1 AS a\u2003E'\\';\nSELECT 2;",
+{
+"analysis": [
+"SELECT 1 AS a\u2003E'\\'",
+"SELECT 2"
+],
+"engine": [
+"SELECT 1 AS a\u2003E'\\';",
+"SELECT 2;"
+],
+"splitter": [
+"SELECT 1 AS a\u2003E'\\';",
+"SELECT 2;"
+]
+}
+],
+[
+"yugabytedb",
+"SELECT 1 AS a\u2003E'\\';\nSELECT 2;",
+{
+"analysis": [
+"SELECT 1 AS a\u2003E'\\'",
+"SELECT 2"
+],
+"engine": [
+"SELECT 1 AS a\u2003E'\\';",
+"SELECT 2;"
+],
+"splitter": [
+"SELECT 1 AS a\u2003E'\\';",
+"SELECT 2;"
+]
+}
+],
+[
+"redshift",
+"SELECT 1 AS a\u2003E'\\';\nSELECT 2;",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated string opened at line 1, column 16"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated string opened at line 1, column 16"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated string opened at line 1, column 16"
+]
+}
+],
+[
+"cockroachdb",
+"CREATE TABLE t\u3000$$ (x INT);\nSELECT 1;",
+{
+"analysis": [
+"CREATE TABLE t\u3000$$ (x INT)",
+"SELECT 1"
+],
+"engine": [
+"CREATE TABLE t\u3000$$ (x INT);",
+"SELECT 1;"
+],
+"splitter": [
+"CREATE TABLE t\u3000$$ (x INT);",
+"SELECT 1;"
+]
+}
+],
+[
+"yugabytedb",
+"CREATE TABLE t\u3000$$ (x INT);\nSELECT 1;",
+{
+"analysis": [
+"CREATE TABLE t\u3000$$ (x INT)",
+"SELECT 1"
+],
+"engine": [
+"CREATE TABLE t\u3000$$ (x INT);",
+"SELECT 1;"
+],
+"splitter": [
+"CREATE TABLE t\u3000$$ (x INT);",
+"SELECT 1;"
+]
+}
+],
+[
+"redshift",
+"CREATE TABLE t\u3000$$ (x INT);\nSELECT 1;",
+{
+"analysis": [
+"CREATE TABLE t\u3000$$ (x INT)",
+"SELECT 1"
+],
+"engine": [
+"CREATE TABLE t\u3000$$ (x INT);",
+"SELECT 1;"
+],
+"splitter": [
+"CREATE TABLE t\u3000$$ (x INT);",
+"SELECT 1;"
+]
+}
+],
+[
+"cockroachdb",
+"SELECT 1 AS \u0085$x$;\nSELECT 2 AS $x$;",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated dollar-quoted string opened at line 2, column 13"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated dollar-quoted string opened at line 2, column 13"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated dollar-quoted string opened at line 2, column 13"
+]
+}
+],
+[
+"yugabytedb",
+"SELECT 1 AS \u0085$x$;\nSELECT 2 AS $x$;",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated dollar-quoted string opened at line 2, column 13"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated dollar-quoted string opened at line 2, column 13"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated dollar-quoted string opened at line 2, column 13"
+]
+}
+],
+[
+"redshift",
+"SELECT 1 AS \u0085$x$;\nSELECT 2 AS $x$;",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated dollar-quoted string opened at line 2, column 13"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated dollar-quoted string opened at line 2, column 13"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated dollar-quoted string opened at line 2, column 13"
+]
+}
+],
+[
+"cockroachdb",
+"SELECT 1 AS a\u20ac$x$;\nSELECT 2 AS $x$;",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated dollar-quoted string opened at line 2, column 13"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated dollar-quoted string opened at line 2, column 13"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated dollar-quoted string opened at line 2, column 13"
+]
+}
+],
+[
+"yugabytedb",
+"SELECT 1 AS a\u20ac$x$;\nSELECT 2 AS $x$;",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated dollar-quoted string opened at line 2, column 13"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated dollar-quoted string opened at line 2, column 13"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated dollar-quoted string opened at line 2, column 13"
+]
+}
+],
+[
+"redshift",
+"SELECT 1 AS a\u20ac$x$;\nSELECT 2 AS $x$;",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated dollar-quoted string opened at line 2, column 13"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated dollar-quoted string opened at line 2, column 13"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated dollar-quoted string opened at line 2, column 13"
+]
+}
+],
+[
+"cockroachdb",
+"SELECT 1 AS a\u001c$x$;\nSELECT 2 AS $x$;",
+{
+"analysis": [
+"SELECT 1 AS a\u001c$x$;\nSELECT 2 AS $x$"
+],
+"engine": [
+"SELECT 1 AS a\u001c$x$;\nSELECT 2 AS $x$;"
+],
+"splitter": [
+"SELECT 1 AS a\u001c$x$;\nSELECT 2 AS $x$;"
+]
+}
+],
+[
+"yugabytedb",
+"SELECT 1 AS a\u001c$x$;\nSELECT 2 AS $x$;",
+{
+"analysis": [
+"SELECT 1 AS a\u001c$x$;\nSELECT 2 AS $x$"
+],
+"engine": [
+"SELECT 1 AS a\u001c$x$;\nSELECT 2 AS $x$;"
+],
+"splitter": [
+"SELECT 1 AS a\u001c$x$;\nSELECT 2 AS $x$;"
+]
+}
+],
+[
+"redshift",
+"SELECT 1 AS a\u001c$x$;\nSELECT 2 AS $x$;",
+{
+"analysis": [
+"SELECT 1 AS a\u001c$x$;\nSELECT 2 AS $x$"
+],
+"engine": [
+"SELECT 1 AS a\u001c$x$;\nSELECT 2 AS $x$;"
+],
+"splitter": [
+"SELECT 1 AS a\u001c$x$;\nSELECT 2 AS $x$;"
+]
+}
+],
+[
+"cockroachdb",
+"COPY t (a) FROM STDIN\u00a0;\n1\n\\.",
+{
+"analysis": [
+"error",
+"UnsupportedMetaCommandError",
+"Unsupported psql meta-command '\\\\.' at line 3; dblift does not run it (column 1)"
+],
+"engine": [
+"error",
+"UnsupportedMetaCommandError",
+"Unsupported psql meta-command '\\\\.' at line 3; dblift does not run it (column 1)"
+],
+"splitter": [
+"error",
+"UnsupportedMetaCommandError",
+"Unsupported psql meta-command '\\\\.' at line 3; dblift does not run it (column 1)"
+]
+}
+],
+[
+"yugabytedb",
+"COPY t (a) FROM STDIN\u00a0;\n1\n\\.",
+{
+"analysis": [
+"error",
+"UnsupportedMetaCommandError",
+"Unsupported psql meta-command '\\\\.' at line 3; dblift does not run it (column 1)"
+],
+"engine": [
+"error",
+"UnsupportedMetaCommandError",
+"Unsupported psql meta-command '\\\\.' at line 3; dblift does not run it (column 1)"
+],
+"splitter": [
+"error",
+"UnsupportedMetaCommandError",
+"Unsupported psql meta-command '\\\\.' at line 3; dblift does not run it (column 1)"
+]
+}
+],
+[
+"redshift",
+"COPY t (a) FROM STDIN\u00a0;\n1\n\\.",
+{
+"analysis": [
+"error",
+"UnsupportedMetaCommandError",
+"Unsupported psql meta-command '\\\\.' at line 3; dblift does not run it (column 1)"
+],
+"engine": [
+"error",
+"UnsupportedMetaCommandError",
+"Unsupported psql meta-command '\\\\.' at line 3; dblift does not run it (column 1)"
+],
+"splitter": [
+"error",
+"UnsupportedMetaCommandError",
+"Unsupported psql meta-command '\\\\.' at line 3; dblift does not run it (column 1)"
+]
+}
 ]
 ],
-"sha256": "6b9bd00bfed73f7859e36d9edf8e301c9d536f4cae38b5f8a64d75a4d8d22f3c"
+"sha256": "83f25f8a22ca130e346c29dec496272dc9970027cae0284850b420e9f8f5e3f9"
 }
 }

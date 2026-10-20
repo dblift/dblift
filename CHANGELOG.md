@@ -123,6 +123,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Statements are split correctly after a name that holds a non-ASCII space or symbol (PostgreSQL,
+  CockroachDB, YugabyteDB, Redshift).** These engines read every character above U+007F, such as a
+  no-break space, as part of a name, so `SELECT 1 AS a<NBSP>$x$` is one alias. dblift opened a dollar
+  quote or an escape string there and could run a different set of statements than the engine
+  reads. The name now continues through the character, and a script such as `COPY ... FROM
+  STDIN<NBSP>;` is refused instead of read as a COPY header.
 - **A plugin can declare `statement_facts_class` without a `parser_class` of its own.** The parser
   factory now serves such a plugin a parser built from its facts reader and `lexical_spec()`, instead
   of the hybrid parser, or a subclass of it, refusing it. Script analysis and undo generation no

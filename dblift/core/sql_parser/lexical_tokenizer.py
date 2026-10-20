@@ -987,6 +987,17 @@ class LexicalTokenizer(BaseTokenizer):
                 self._line_head = False
             self.read()
 
+    def _is_keyword_start(self) -> bool:
+        """A name also begins at a non-ASCII character when the spec says the engine reads it so."""
+        return super()._is_keyword_start() or self._is_non_ascii_name_char(self.peek())
+
+    def _is_word_char(self, char: str) -> bool:
+        """A name also goes on through a non-ASCII character when the spec says so."""
+        return super()._is_word_char(char) or self._is_non_ascii_name_char(char)
+
+    def _is_non_ascii_name_char(self, char: str) -> bool:
+        return self.spec.non_ascii_names and char >= "\x80"
+
     def _is_lexeme(self, token: Token) -> bool:
         """Whether a token is a string or a quoted or bracketed name."""
         return token.type == TokenType.STRING or (
