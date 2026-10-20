@@ -168,19 +168,21 @@ def unread_name_character(sql: str, *, dialect: str) -> Optional[int]:
 
 
 def _supplementary_name_character(sql: str) -> Optional[str]:
-    """First character outside the Basic Multilingual Plane in a MySQL name, or ``None``."""
+    """First character outside the Basic Multilingual Plane in a MySQL name, or ``None``.
+
+    Scans the text outside string literals and comments, because sqlglot reads statements such
+    as ``RENAME TABLE`` as a command whose names are not tokens.
+    """
     if sql.isascii() or max(sql) <= "\uffff":
         return None
-    try:
-        tokens = Dialect.get_or_raise("mysql").tokenize(sql)  # lint: allow-dialect-string: MySQL
-    except TokenError:
-        return None
-    for token in tokens:
-        if token.token_type in {TokenType.VAR, TokenType.IDENTIFIER}:
-            for character in token.text:
-                if character > "\uffff":
-                    return str(character)
-    return None
+    at = 0
+    for span in _MYSQL_QUOTES_AND_COMMENTS.finditer(sql):
+        end = span.end() if span.group().startswith("`") else span.start()
+        wide = next((c for c in sql[at:end] if c > "\uffff"), None)
+        if wide:
+            return str(wide)
+        at = span.end()
+    return next((str(c) for c in sql[at:] if c > "\uffff"), None)
 
 
 def readable_dml_target(sql: str, *, dialect: str) -> Optional[str]:
@@ -855,6 +857,18 @@ _MYSQL_DML_VERB = re.compile(
 )
 
 
+# The shared pattern skips only block comments (``#`` starts a T-SQL temporary table elsewhere);
+# MySQL also ends a modifier gap with ``# ...`` and ``-- ...`` line comments.
+_MYSQL_MODIFIER_GAP = {
+    verb: re.compile(
+        rf"\s*(?:#[^\n]*(?:\n|$)|--(?=[\x00-\x20\x7f])[^\n]*(?:\n|$)|"
+        + pattern.pattern.removeprefix(r"\s*(?:"),
+        pattern.flags,
+    )
+    for verb, pattern in MYSQL_DML_MODIFIER.items()
+}
+
+
 def _without_mysql_dml_modifiers(sql: str) -> str:
     """Drop the modifier words and comments between a DML verb and its target.
 
@@ -864,7 +878,7 @@ def _without_mysql_dml_modifiers(sql: str) -> str:
     if verb is None:
         return sql
     pos = verb.end()
-    while modifier := MYSQL_DML_MODIFIER[verb.group(2).upper()].match(sql, pos):
+    while modifier := _MYSQL_MODIFIER_GAP[verb.group(2).upper()].match(sql, pos):
         pos = modifier.end()
     return sql if pos == verb.end() else f"{sql[: verb.end()]} {sql[pos:].lstrip()}"
 
