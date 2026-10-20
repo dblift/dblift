@@ -237,10 +237,8 @@ def _is_part(token: Token) -> bool:
     return token.type in (TokenType.KEYWORD, TokenType.IDENTIFIER)
 
 
-def _read_name(
-    words: List[Token], at: int, max_parts: int
-) -> Optional[Tuple[Tuple[str, ...], int, int]]:
-    """The folded parts of the name at ``at``, its source offset and the index after it."""
+def _name_run(words: List[Token], at: int) -> Tuple[List[Token], int]:
+    """The word and quoted-identifier tokens joined by dots from ``at``, and the index after them."""
     i = at
     run: List[Token] = []
     while i < len(words) and _is_part(words[i]):
@@ -250,6 +248,14 @@ def _read_name(
             i += 1
         else:
             break
+    return run, i
+
+
+def _read_name(
+    words: List[Token], at: int, max_parts: int
+) -> Optional[Tuple[Tuple[str, ...], int, int]]:
+    """The folded parts of the name at ``at``, its source offset and the index after it."""
+    run, i = _name_run(words, at)
     if not run or len(run) > max_parts or (i < len(words) and _is_dot(words[i])):
         return None
     if any(t.type is TokenType.KEYWORD and t.text.upper() in STOP_WORDS for t in run):
@@ -320,6 +326,139 @@ def _head_facts(
             diagnostic=diagnostic,
         ),
         end,
+    )
+
+
+def _is_symbol(token: Token, text: str) -> bool:
+    return token.type is TokenType.SYMBOL and token.text == text
+
+
+def _depth0(words: List[Token], start: int, word: str) -> Optional[int]:
+    """Index of the first keyword ``word`` at parenthesis depth 0 from ``start``."""
+    depth = 0
+    for i in range(start, len(words)):
+        token = words[i]
+        if _is_symbol(token, "("):
+            depth += 1
+        elif _is_symbol(token, ")"):
+            depth -= 1
+        elif depth == 0 and token.type is TokenType.KEYWORD and token.text.upper() == word:
+            return i
+    return None
+
+
+def _predicate(sql: str, words: List[Token], start: int) -> Optional[str]:
+    """The source text after the first depth-0 WHERE, up to the last non-comment token."""
+    where = _depth0(words, start, "WHERE")
+    if where is None:
+        return None
+    return sql[words[where + 1].pos : words[-1].pos + len(words[-1].text)].strip()
+
+
+def _unquote(token: Token) -> str:
+    text = token.text
+    return text[1:-1].replace('""', '"') if token.type is TokenType.IDENTIFIER else text
+
+
+def _assigned_columns(words: List[Token], start: int) -> Tuple[str, ...]:
+    """The columns on the left of each depth-0 assignment of a SET list starting at ``start``."""
+    columns: List[str] = []
+    i, n = start, len(words)
+    while i < n:
+        grouped = _is_symbol(words[i], "(")
+        i += grouped
+        while i < n:
+            run, i = _name_run(words, i)
+            if run:
+                columns.append(_unquote(run[-1]))
+            if not (grouped and i < n and _is_symbol(words[i], ",")):
+                break
+            i += 1
+        if grouped:
+            i += i < n and _is_symbol(words[i], ")")
+        if not (i < n and _is_symbol(words[i], "=")):
+            break
+        depth, i = 0, i + 1
+        while i < n:
+            token = words[i]
+            if _is_symbol(token, "("):
+                depth += 1
+            elif _is_symbol(token, ")"):
+                depth -= 1
+            elif depth == 0 and (_is_symbol(token, ",") or token.text.upper() in ("WHERE", "WHEN")):
+                break
+            i += 1
+        if i < n and _is_symbol(words[i], ","):
+            i += 1
+        else:
+            break
+    return tuple(columns)
+
+
+def _merge_events(words: List[Token], start: int) -> frozenset:
+    """The UPDATE / INSERT / DELETE words that follow a depth-0 THEN."""
+    events = set()
+    at = _depth0(words, start, "THEN")
+    while at is not None:
+        following = words[at + 1].text.upper() if at + 1 < len(words) else ""
+        if following in ("UPDATE", "INSERT", "DELETE"):
+            events.add(following)
+        at = _depth0(words, at + 1, "THEN")
+    return frozenset(events)
+
+
+def _merge_columns(words: List[Token], start: int) -> Tuple[str, ...]:
+    columns: Tuple[str, ...] = ()
+    at = _depth0(words, start, "UPDATE")
+    while at is not None:
+        if at + 1 < len(words) and words[at + 1].text.upper() == "SET":
+            columns += _assigned_columns(words, at + 2)
+        at = _depth0(words, at + 1, "UPDATE")
+    return columns
+
+
+def _read_dml(sql: str, words: List[Token], ups: List[str], first: str) -> StatementFacts:
+    """Facts of INSERT / UPDATE / DELETE / MERGE with a plain table name, else opaque."""
+    unread = _opaque(first, "DML", NAME_NOT_READ.format(operation=first, type="TABLE"))
+    prefix = _DML_PREFIX[first]
+    name = _read_name(words, len(prefix), 2) if tuple(ups[: len(prefix)]) == prefix else None
+    if name is None:
+        return unread
+    parts, start, after = name
+    n = len(words)
+    if first != "INSERT":
+        if ups[after : after + 1] == ["AS"]:
+            after += 1
+            if not (after < n and _is_part(words[after])):
+                return unread
+        if after < n and _is_part(words[after]) and ups[after] not in STOP_WORDS:
+            after += 1
+    word = ups[after] if after < n else ""
+    allowed = {
+        "INSERT": word in ("VALUES", "SELECT", "WITH")
+        or after == n
+        or _is_symbol(words[after], "("),
+        "UPDATE": word == "SET",
+        "DELETE": after == n or word in ("WHERE", "WITH"),
+        "MERGE": word == "USING",
+    }
+    where = _depth0(words, after, "WHERE") if first in ("UPDATE", "DELETE") else None
+    if not allowed[first] or (where is not None and where + 1 >= n):
+        return unread
+    last = words[after - 1]
+    return StatementFacts(
+        first,
+        "DML",
+        (_object(parts, SqlObjectType.TABLE, "altered"),),
+        target=".".join(parts),
+        predicate=_predicate(sql, words, after) if where is not None else None,
+        affected_columns=(
+            _assigned_columns(words, after + 1)
+            if first == "UPDATE"
+            else _merge_columns(words, after) if first == "MERGE" else ()
+        ),
+        events=_merge_events(words, after) if first == "MERGE" else frozenset({first}),
+        target_sql=sql[start : last.pos + len(last.text)],
     )
 
 
@@ -418,4 +557,5 @@ class Db2StatementFactsReader:
             char = _unread_character(sql, words, _head_end(words, len(prefix)))
             if char is not None:
                 return _opaque(first, kind, UNREAD_NAME.format(code=ord(sql[char])))
+            return _read_dml(sql, words, ups, first)
         return _opaque(first, kind, NOT_CLASSIFIED.format(word=first))
