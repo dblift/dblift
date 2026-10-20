@@ -217,6 +217,19 @@ def _analyse(text: str, dialect: str) -> ScriptAnalysis:
             )
             fact_statements.append(analysed)
             caution = _caution_for(analysed, body, quirks.sqlglot_dialect if facts.opaque else None)
+            if caution is None and facts.opaque and facts.kind == "DML" and facts.target is None:
+                # A data-changing CTE leaves no readable target; its outer table still changes.
+                altered = tuple(
+                    AnalysedObject(o.type.value, o.name, o.schema)
+                    for o in facts.affected_objects
+                    if o.type == SqlObjectType.TABLE and o.role == "altered"
+                )
+                if altered:
+                    caution = Caution(
+                        CHANGES_ROWS,
+                        analysed.index,
+                        f"{operation} changes rows of {_names(altered)}",
+                    )
             if caution is not None:
                 fact_cautions.append(caution)
             if facts.error:

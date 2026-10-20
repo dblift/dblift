@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from dblift.core.migration.scripting.undo_script_generator import UndoScriptGenerator
-from dblift.core.migration.sql.script_analysis import analyse_script
+from dblift.core.migration.sql.script_analysis import CHANGES_ROWS, analyse_script
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.migration.sql.sql_execution_service import SqlExecutionService
 from dblift.core.sql_parser import SqlParserFactory
@@ -194,3 +194,16 @@ def test_undo_of_a_read_or_a_comment_is_empty(sql):
 )
 def test_undo_never_emits_a_drop_trigger_without_its_table(sql):
     assert not [s for s in _undo(sql) if s.sql.startswith("DROP TRIGGER")]
+
+
+def test_data_changing_cte_keeps_the_changes_rows_caution_for_its_outer_target():
+    script = (
+        "WITH d AS (DELETE FROM src WHERE id = 1 RETURNING id) "
+        "INSERT INTO log(msg) SELECT id FROM d"
+    )
+    cautions = analyse_script(script, "postgresql").cautions
+    assert [(c.level, "log" in c.reason) for c in cautions] == [(CHANGES_ROWS, True)]
+
+
+def test_read_only_cte_raises_no_caution():
+    assert analyse_script("WITH x AS (SELECT 1) SELECT * FROM x", "postgresql").cautions == ()
