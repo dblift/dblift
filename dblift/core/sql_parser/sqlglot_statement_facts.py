@@ -684,8 +684,10 @@ _MYSQL_SINGLE_TARGET = re.compile(
 
 def _mysql_single_target(sql: str, head: str) -> bool:
     """The head text proves one target and every quote in it closes; a non-ASCII statement may
-    hide a name character that comment stripping trimmed, so it proves nothing."""
-    if not sql.isascii() or not _MYSQL_SINGLE_TARGET.match(head):
+    hide a name character that comment stripping trimmed, so it proves nothing. ``#`` opens a MySQL
+    comment and a backslash escapes a quote; the head blanking knows neither, so either proves
+    nothing."""
+    if not sql.isascii() or "#" in sql or "\\" in sql or not _MYSQL_SINGLE_TARGET.match(head):
         return False
     try:
         Dialect.get_or_raise("mysql").tokenize(head)  # lint: allow-dialect-string: MySQL tokens
