@@ -17,12 +17,14 @@ def _matches(typed: str, full: str, minimum: int) -> bool:
     return len(typed) >= minimum and full.startswith(typed)
 
 
-def _words(line: str) -> List[str]:
+def _words(line: str, text_blanks: Optional[str]) -> List[str]:
     """Upper-cased leading words of ``line``."""
     out: List[str] = []
     pos = 0
     while True:
-        while pos < len(line) and line[pos].isspace():
+        while pos < len(line) and (
+            line[pos] in text_blanks if text_blanks is not None else line[pos].isspace()
+        ):
             pos += 1
         match = _WORD.match(line, pos)
         if not match:
@@ -32,18 +34,18 @@ def _words(line: str) -> List[str]:
 
 
 def classify_directive(
-    rules: ClientScriptRules, line: str
+    rules: ClientScriptRules, line: str, *, text_blanks: Optional[str] = None
 ) -> Optional[Tuple[str, DirectiveAction]]:
     """The directive ``line`` holds as (name, action), or None for SQL.
 
     ``line`` starts where a statement can begin. A command followed by one of
     the rules' follow words, and ``SET`` followed by a SQL word, are SQL.
     """
-    text = line.strip()
+    text = line.strip(text_blanks)
     for prefix, name in rules.prefix_directives:
         if text.startswith(prefix):
             return name, DirectiveAction.REJECT
-    words = _words(text)
+    words = _words(text, text_blanks)
     if not words:
         return None
     first = words[0]
