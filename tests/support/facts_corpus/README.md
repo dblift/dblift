@@ -104,11 +104,18 @@ was harvested from.
 `opaque-reader-gap`, `facts-fewer`, `facts-adds-acted`, `disagree`, `dml-differs`, `role-differs`,
 `no-old` and `no-reader` need a reason. Reasons live in `<family>.review.json`, keyed by the statement id
 (`<id>` for both paths, `<id>/hybrid` or `<id>/analyzer` for one) with `path`, `class`, `reason`
-and, for a reader gap, an `issue`. `class` is one string, or `{"floor": ..., "newest": ...}` for a
+and, for a reader gap, an `issue` (or `rejected_by`, below). `class` is one string, or `{"floor": ..., "newest": ...}` for a
 row whose class depends on the sqlglot release (`same` is allowed there for the arm that agrees,
 never on every arm). An entry whose row is gone, whose class is no longer the row's class on the arm
 being run (an entry without a key for that arm included), or that explains nothing is stale. A
 stale entry fails `diff` and the test module in every family, gated or not.
+
+A reader gap the engine never runs has nothing to fix, so instead of an `issue` its entry may carry
+`rejected_by`: a mapping from an engine and its version to the error identifier with which that
+engine's grammar rejected the statement (`{"postgresql 16.14": "42601"}`; MySQL answers with
+numbers such as `"1064"`). It is a human assertion, and `diff` checks only its shape (a non-empty
+mapping of non-empty strings). The evidence, which engines and versions and how the statement was
+run, belongs in the pull request that adds the entries.
 
 `gated.json` lists the families whose differences must all be classified or explained: `diff` exits 1
 and `tests/unit/core/sql_parser/test_facts_differential.py` fails on a row with neither, in a listed
