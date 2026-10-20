@@ -6,10 +6,13 @@ error: ``CREATE TABLE a(i int);<NUL>DROP TABLE a;`` runs only the CREATE and rep
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+from dblift.core.sql_parser.lexical_spec import SegmentScriptRules
 from dblift.core.sql_parser.lexical_tokenizer import LexicalTokenizer
 from dblift.db.plugins.duckdb.parser.lexical_spec import DUCKDB_SPEC
 from dblift.db.plugins.postgresql.parser.lexical_spec import POSTGRESQL_SPEC
@@ -70,6 +73,15 @@ def test_a_script_without_a_nul_still_splits(dialect: str):
     assert [text.rstrip(";") for text in statements] == ["CREATE TABLE a(i int)", "DROP TABLE a"]
 
 
-def test_the_refusal_is_not_a_property_of_the_shared_tokenizer_alone():
-    assert DUCKDB_SPEC.refused_character == ""
+def test_one_refusal_field_set_serves_every_specification():
+    assert DUCKDB_SPEC.refused_character == "\x00"
     assert POSTGRESQL_SPEC.refused_character == "\x00"
+    assert not any(field.startswith("refused") for field in SegmentScriptRules.__dataclass_fields__)
+
+
+@pytest.mark.parametrize(
+    "fields", [{"refused_character_name": "NUL"}, {"refused_reason": "r"}, {}]
+)
+def test_a_refused_character_needs_its_name_and_reason(fields):
+    with pytest.raises(ValueError, match="refused_character needs"):
+        replace(POSTGRESQL_SPEC, **{"refused_character_name": "", "refused_reason": "", **fields})
