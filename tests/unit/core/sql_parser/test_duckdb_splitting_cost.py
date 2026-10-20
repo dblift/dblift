@@ -289,7 +289,8 @@ def test_uncertified_regex_shapes_are_refused(mutant):
 SEGMENT_METHODS = {
     "_kept_until",
     "_kept_word",
-    "_tokenize_segment_script",
+    "_scan_segment_comments",
+    "_iter_segment_tokens",
     "_next_segment_token",
     "_at_command_line",
     "_refuse_command_line",
