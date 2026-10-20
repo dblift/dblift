@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Splitting a large script uses less memory.** Tokens no longer carry a per-instance
+  dictionary. Peak memory when splitting a 3 MiB INSERT script falls from 201 MB to 157 MB
+  on DuckDB, 197 MB to 152 MB on MySQL, 276 MB to 213 MB on Db2 and 200 MB to 155 MB on
+  PostgreSQL (about 22%), with no change in splitting time or results.
 - **Transactional provider health is provider-owned.** Custom transactional
   providers must implement `check_transaction_state()`. The engine calls it
   immediately before each executed SQL statement; the provider sends its
@@ -129,6 +133,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   quote there (and, except on Redshift, an escape string) and could run a different set of statements than the engine
   reads. The name now continues through the character, and a script such as `COPY ... FROM
   STDIN<NBSP>;` is refused instead of read as a COPY header.
+- **`SqlAnalyzer.validate_sql` and the parsers' `validate_sql` report the parser's verdict.**
+  The Python API now returns the dialect parser's verdict with its first error message; a
+  parser answer with no verdict is reported invalid. PostgreSQL-family parser results
+  previously always read as valid. Their result key is renamed from `success` to `valid`,
+  like every other parser. CLI commands are unchanged.
 - **DuckDB refuses a script with an unclosed block comment.** A script holding a
   `/*` that is never closed (nested comments count) is now refused before anything
   runs, as on the other engines. The statements before the comment used to be executed
