@@ -281,8 +281,9 @@ class LexicalSpec:
     character ``str.isspace`` accepts is code, so a piece made of it is a statement and is sent.
     ``non_ascii_names`` makes the word reader begin and continue a name at every character above
     U+007F, as the engine's own scanner does: no lexeme opens inside a name.
-    ``refused_character`` (with its name and the reason) is refused anywhere in a script, before any other
-    reading, with its line and column; a segment script carries its own in ``SegmentScriptRules``.
+    ``refused_character`` (with its name and the reason) is refused anywhere in a script, before any
+    other reading, with its line and column; a segment script carries its own in
+    ``SegmentScriptRules``.
     """
 
     name: str

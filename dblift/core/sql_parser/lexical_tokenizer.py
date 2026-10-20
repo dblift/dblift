@@ -209,10 +209,11 @@ class LexicalTokenizer(BaseTokenizer):
         spec, sql = self.spec, self.sql
         bad = sql.find(spec.refused_character)
         if bad >= 0:
-            line_start = sql.rfind("\n", 0, bad) + 1
+            line = sql.count("\n", 0, bad) + 1
+            column = bad - sql.rfind("\n", 0, bad)
             raise UnsafeStatementSplitError(
-                f"a {spec.refused_character_name} character on line {sql.count(chr(10), 0, bad) + 1}, "
-                f"column {bad - line_start + 1}: {spec.refused_reason}"
+                f"a {spec.refused_character_name} character on line {line}, column {column}: "
+                f"{spec.refused_reason}"
             )
 
     def _tokenize_terminator_script(self) -> List[Token]:
