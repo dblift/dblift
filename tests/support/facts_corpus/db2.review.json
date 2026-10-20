@@ -1,9 +1,9 @@
 {
  "0045e62c2056542e/hybrid": {
   "class": "opaque-reader-gap",
-  "issue": "not Db2 SQL: no reader gap, the statement is another engine's or a client command",
+  "issue": "by design: the reader states what it cannot read as unavailable (docs/sql-parsing/db2.md section 13)",
   "path": "hybrid",
-  "reason": "not a Db2 statement: CREATE ... IF NOT EXISTS is not Db2 syntax, so the reader leaves the name unread rather than take `IF` for it; the old extraction named `IF`",
+  "reason": "CREATE TABLE IF NOT EXISTS runs on Db2 12.1 and the head table skips it, but this row ends after IF NOT EXISTS, so no name follows and the reader leaves the name unread; the old extraction named `IF`",
   "sql": "CREATE TABLE IF NOT EXISTS"
  },
  "00dbee79c218edea/analyzer": {
@@ -57,9 +57,9 @@
  },
  "0275bef458b82d10/analyzer": {
   "class": "opaque-reader-gap",
-  "issue": "not Db2 SQL: no reader gap, the statement is another engine's or a client command",
+  "issue": "by design: the reader states what it cannot read as unavailable (docs/sql-parsing/db2.md section 13)",
   "path": "analyzer",
-  "reason": "not a Db2 statement: GLOBAL TEMPORARY TABLE is Oracle's (Db2 declares DECLARE GLOBAL TEMPORARY TABLE); the reader names `T` as created but states column facts unavailable, and agrees with the extraction on the name",
+  "reason": "CREATE GLOBAL TEMPORARY TABLE parses on Db2 and the reader names `T` as created; the row differs only in that the reader states column facts (columns, constraints, indexed columns) unavailable",
   "sql": "CREATE GLOBAL TEMPORARY TABLE t (id NUMBER)"
  },
  "02fb6add86534a8f/analyzer": {
@@ -120,9 +120,9 @@
  },
  "06c17bf92030b519/analyzer": {
   "class": "opaque-reader-gap",
-  "issue": "not Db2 SQL: no reader gap, the statement is another engine's or a client command",
+  "issue": "by design: the reader states what it cannot read as unavailable (docs/sql-parsing/db2.md section 13)",
   "path": "analyzer",
-  "reason": "not a Db2 statement: CREATE ... IF NOT EXISTS is not Db2 syntax, so the reader leaves the name unread rather than take `IF` for it; the old extraction named `default_schema.APP`",
+  "reason": "form not in the head table; `IF NOT EXISTS` is skipped only for TABLE, not measured for this object type, so the reader leaves the name unread rather than take `IF` for it; the old extraction named `default_schema.APP`",
   "sql": "CREATE SCHEMA IF NOT EXISTS \"APP\""
  },
  "07881f5d5d92d13f/analyzer": {
@@ -321,9 +321,9 @@
  },
  "0da0f768cbf48469": {
   "class": "opaque-reader-gap",
-  "issue": "not Db2 SQL: no reader gap, the statement is another engine's or a client command",
+  "issue": "by design: the reader states what it cannot read as unavailable (docs/sql-parsing/db2.md section 13)",
   "path": "both",
-  "reason": "not a Db2 statement: CREATE ... IF NOT EXISTS is not Db2 syntax, so the reader leaves the name unread rather than take `IF` for it; the old extraction named `TR` / `s.tr`",
+  "reason": "form not in the head table; `IF NOT EXISTS` is skipped only for TABLE, not measured for this object type, so the reader leaves the name unread rather than take `IF` for it; the old extraction named `TR` / `s.tr`",
   "sql": "CREATE TRIGGER IF NOT EXISTS s.tr AFTER INSERT ON t BEGIN SELECT 1; END"
  },
  "0dda86ae795a3e7e/analyzer": {
@@ -342,7 +342,7 @@
  },
  "0eda0ed3096df4f6": {
   "class": "opaque-reader-gap",
-  "issue": "by design: the reader states what it cannot read as unavailable (docs/sql-parsing/db2.md section 13)",
+  "issue": "#661",
   "path": "both",
   "reason": "DROP STOGROUP is a Db2 statement outside the head table: the reader states it not classified rather than name it; the old extraction named `MY_SG` / `default_schema.my_sg` (the hybrid path typed a tablespace as a table)",
   "sql": "DROP STOGROUP my_sg"
@@ -377,7 +377,7 @@
  },
  "100d168fc3181176": {
   "class": "opaque-reader-gap",
-  "issue": "by design: the reader states what it cannot read as unavailable (docs/sql-parsing/db2.md section 13)",
+  "issue": "#661",
   "path": "both",
   "reason": "CREATE TABLESPACE is a Db2 statement outside the head table: the reader states it not classified rather than name it; the old extraction named `TEST_TS` / `default_schema.test_ts` (the hybrid path typed a tablespace as a table)",
   "sql": "CREATE TABLESPACE test_ts MANAGED BY SYSTEM"
@@ -446,7 +446,7 @@
  },
  "11eb9fbf56d96d6e": {
   "class": "opaque-reader-gap",
-  "issue": "by design: the reader states what it cannot read as unavailable (docs/sql-parsing/db2.md section 13)",
+  "issue": "#661",
   "path": "both",
   "reason": "CREATE TYPE is outside the head table, so the reader states it not classified; the old extraction named `REAL_TYPE` / `default_schema.real_type` (this FROM form is SQL Server's)",
   "sql": "CREATE TYPE real_type FROM int"
@@ -747,14 +747,14 @@
  },
  "1cc707a61359c460": {
   "class": "opaque-reader-gap",
-  "issue": "by design: the reader states what it cannot read as unavailable (docs/sql-parsing/db2.md section 13)",
+  "issue": "#661",
   "path": "both",
   "reason": "CREATE STOGROUP is a Db2 statement outside the head table: the reader states it not classified rather than name it; the old extraction named `SG1` / `default_schema.sg1` (the hybrid path typed a tablespace as a table)",
   "sql": "CREATE STOGROUP sg1 VOLUMES ('vol1')"
  },
  "1cc781c9df6120d5/analyzer": {
   "class": "opaque-reader-gap",
-  "issue": "by design: the reader states what it cannot read as unavailable (docs/sql-parsing/db2.md section 13)",
+  "issue": "#661",
   "path": "analyzer",
   "reason": "ALTER MODULE is a Db2 statement outside the head table: the reader states it not classified; the old extraction named `default_schema.m`",
   "sql": "ALTER MODULE m ADD PROCEDURE p() BEGIN SELECT 1; END"
@@ -1025,7 +1025,7 @@
  },
  "299bff6e3da82932": {
   "class": "opaque-reader-gap",
-  "issue": "by design: the reader states what it cannot read as unavailable (docs/sql-parsing/db2.md section 13)",
+  "issue": "#661",
   "path": "both",
   "reason": "CREATE SYNONYM is outside the head table (it names ALIAS), so the reader states it not classified; the old extraction named `REAL_SYN` / `default_schema.real_syn` and the hybrid path typed it UNKNOWN",
   "sql": "CREATE SYNONYM real_syn FOR dbo.real_one"
@@ -1150,9 +1150,9 @@
  },
  "2dc171b33208f754": {
   "class": "opaque-reader-gap",
-  "issue": "not Db2 SQL: no reader gap, the statement is another engine's or a client command",
+  "issue": "by design: the reader states what it cannot read as unavailable (docs/sql-parsing/db2.md section 13)",
   "path": "both",
-  "reason": "not a Db2 statement: CREATE ... IF NOT EXISTS is not Db2 syntax, so the reader leaves the name unread rather than take `IF` for it; the old extraction named `S` / `default_schema.s`",
+  "reason": "form not in the head table; `IF NOT EXISTS` is skipped only for TABLE, not measured for this object type, so the reader leaves the name unread rather than take `IF` for it; the old extraction named `S` / `default_schema.s`",
   "sql": "CREATE SEQUENCE IF NOT EXISTS s START WITH 1"
  },
  "2e8dfaa46133b649": {
@@ -1255,7 +1255,7 @@
  },
  "31d54561b6af3b00/hybrid": {
   "class": "opaque-reader-gap",
-  "issue": "by design: the reader states what it cannot read as unavailable (docs/sql-parsing/db2.md section 13)",
+  "issue": "#661",
   "path": "hybrid",
   "reason": "EXECUTE IMMEDIATE is outside the head table, so the reader states it not classified and names nothing; the old extraction took the DROP inside the string literal for a statement of its own (`TEMP`)",
   "sql": "EXECUTE IMMEDIATE 'DROP TABLE temp'"
@@ -1360,7 +1360,7 @@
  },
  "350dbf9c8990d3b8": {
   "class": "opaque-reader-gap",
-  "issue": "by design: the reader states what it cannot read as unavailable (docs/sql-parsing/db2.md section 13)",
+  "issue": "#661",
   "path": "both",
   "reason": "DROP TABLESPACE is a Db2 statement outside the head table: the reader states it not classified rather than name it; the old extraction named `TS` / `default_schema.ts` (the hybrid path typed a tablespace as a table)",
   "sql": "DROP TABLESPACE ts"
@@ -1374,7 +1374,7 @@
  },
  "352cb192f9746748/analyzer": {
   "class": "opaque-reader-gap",
-  "issue": "by design: the reader states what it cannot read as unavailable (docs/sql-parsing/db2.md section 13)",
+  "issue": "#661",
   "path": "analyzer",
   "reason": "CREATE SYNONYM is outside the head table (it names ALIAS), so the reader states it not classified; the old extraction named `default_schema.s` and the hybrid path typed it UNKNOWN",
   "sql": "CREATE PUBLIC SYNONYM s FOR app.orders"
@@ -1652,7 +1652,7 @@
  },
  "3d175a34b02a4f64/analyzer": {
   "class": "opaque-reader-gap",
-  "issue": "by design: the reader states what it cannot read as unavailable (docs/sql-parsing/db2.md section 13)",
+  "issue": "#661",
   "path": "analyzer",
   "reason": "CREATE SYNONYM is outside the head table (it names ALIAS), so the reader states it not classified; the old extraction named `default_schema.emp` and the hybrid path typed it UNKNOWN",
   "sql": "CREATE OR REPLACE PUBLIC SYNONYM emp FOR employees"
@@ -1736,7 +1736,7 @@
  },
  "3f95346c24ab5e73": {
   "class": "opaque-reader-gap",
-  "issue": "by design: the reader states what it cannot read as unavailable (docs/sql-parsing/db2.md section 13)",
+  "issue": "#661",
   "path": "both",
   "reason": "CREATE TABLESPACE is a Db2 statement outside the head table: the reader states it not classified rather than name it; the old extraction named `my_ts` / `default_schema.my_ts` (the hybrid path typed a tablespace as a table)",
   "sql": "CREATE TABLESPACE \"my_ts\" MANAGED BY SYSTEM"
@@ -1841,9 +1841,9 @@
  },
  "469f0b3b3931ea66": {
   "class": "opaque-reader-gap",
-  "issue": "not Db2 SQL: no reader gap, the statement is another engine's or a client command",
+  "issue": "by design: the reader states what it cannot read as unavailable (docs/sql-parsing/db2.md section 13)",
   "path": "both",
-  "reason": "not a Db2 statement: CREATE ... IF NOT EXISTS is not Db2 syntax, so the reader leaves the name unread rather than take `IF` for it; the old extraction named `CONCURRENTLY` / `idx`",
+  "reason": "form not in the head table; `IF NOT EXISTS` is skipped only for TABLE, not measured for this object type, so the reader leaves the name unread rather than take `IF` for it; the old extraction named `CONCURRENTLY` / `idx`",
   "sql": "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx ON orders (email)"
  },
  "46b033c5d4c811cf/hybrid": {
@@ -1981,7 +1981,7 @@
  },
  "4f2806a8ee627b36": {
   "class": "opaque-reader-gap",
-  "issue": "by design: the reader states what it cannot read as unavailable (docs/sql-parsing/db2.md section 13)",
+  "issue": "#661",
   "path": "both",
   "reason": "DROP DATABASE is a Db2 CLP command, not an SQL statement; the reader states it not classified and names nothing, the old extraction named `MY_DB` / `default_schema.my_db`",
   "sql": "DROP DATABASE my_db"
@@ -2288,7 +2288,7 @@
  },
  "5a55d5c483c0bdbf": {
   "class": "opaque-reader-gap",
-  "issue": "by design: the reader states what it cannot read as unavailable (docs/sql-parsing/db2.md section 13)",
+  "issue": "#661",
   "path": "both",
   "reason": "CREATE TABLESPACE is a Db2 statement outside the head table: the reader states it not classified rather than name it; the old extraction named `TS1` / `default_schema.ts1` (the hybrid path typed a tablespace as a table)",
   "sql": "CREATE TABLESPACE ts1 IN STOGROUP sg1"
@@ -2344,9 +2344,9 @@
  },
  "5df10ced768fce58/analyzer": {
   "class": "opaque-reader-gap",
-  "issue": "not Db2 SQL: no reader gap, the statement is another engine's or a client command",
+  "issue": "by design: the reader states what it cannot read as unavailable (docs/sql-parsing/db2.md section 13)",
   "path": "analyzer",
-  "reason": "not a Db2 statement: GLOBAL TEMPORARY TABLE is Oracle's (Db2 declares DECLARE GLOBAL TEMPORARY TABLE); the reader names `MY_TEMP` as created but states column facts unavailable, and agrees with the extraction on the name",
+  "reason": "CREATE GLOBAL TEMPORARY TABLE parses on Db2 and the reader names `MY_TEMP` as created; the row differs only in that the reader states column facts (columns, constraints, indexed columns) unavailable",
   "sql": "CREATE GLOBAL TEMPORARY TABLE sch.my_temp (id NUMBER)"
  },
  "5df9f890e1300a71/analyzer": {
@@ -2442,9 +2442,9 @@
  },
  "609f752ba4c88825/analyzer": {
   "class": "opaque-reader-gap",
-  "issue": "not Db2 SQL: no reader gap, the statement is another engine's or a client command",
+  "issue": "by design: the reader states what it cannot read as unavailable (docs/sql-parsing/db2.md section 13)",
   "path": "analyzer",
-  "reason": "not a Db2 statement: CREATE ... IF NOT EXISTS is not Db2 syntax, so the reader leaves the name unread rather than take `IF` for it; the old extraction named `default_schema.s`",
+  "reason": "form not in the head table; `IF NOT EXISTS` is skipped only for TABLE, not measured for this object type, so the reader leaves the name unread rather than take `IF` for it; the old extraction named `default_schema.s`",
   "sql": "CREATE SCHEMA IF NOT EXISTS s"
  },
  "60a873cc5786cb93/hybrid": {
@@ -2631,9 +2631,9 @@
  },
  "6975d4957bc3d3a9/analyzer": {
   "class": "opaque-reader-gap",
-  "issue": "not Db2 SQL: no reader gap, the statement is another engine's or a client command",
+  "issue": "by design: the reader states what it cannot read as unavailable (docs/sql-parsing/db2.md section 13)",
   "path": "analyzer",
-  "reason": "not a Db2 statement: CREATE ... IF NOT EXISTS is not Db2 syntax, so the reader leaves the name unread rather than take `IF` for it; the old extraction named `default_schema.mixed\"schema`",
+  "reason": "form not in the head table; `IF NOT EXISTS` is skipped only for TABLE, not measured for this object type, so the reader leaves the name unread rather than take `IF` for it; the old extraction named `default_schema.mixed\"schema`",
   "sql": "CREATE SCHEMA IF NOT EXISTS \"mixed\"\"schema\""
  },
  "697e2039bafcd4a2/analyzer": {
@@ -2652,7 +2652,7 @@
  },
  "6a82a117cbce309d": {
   "class": "opaque-reader-gap",
-  "issue": "by design: the reader states what it cannot read as unavailable (docs/sql-parsing/db2.md section 13)",
+  "issue": "#661",
   "path": "both",
   "reason": "ALTER STOGROUP is a Db2 statement outside the head table: the reader states it not classified rather than name it; the old extraction named `MY_SG` / `default_schema.my_sg` (the hybrid path typed a tablespace as a table)",
   "sql": "ALTER STOGROUP my_sg ADD VOLUMES ('vol2')"
@@ -2666,7 +2666,7 @@
  },
  "6b10c74a6de18c65": {
   "class": "opaque-reader-gap",
-  "issue": "by design: the reader states what it cannot read as unavailable (docs/sql-parsing/db2.md section 13)",
+  "issue": "#661",
   "path": "both",
   "reason": "CREATE LOB TABLESPACE is a Db2 statement outside the head table: the reader states it not classified rather than name it; the old extraction named `MY_LOB_TS` / `default_schema.TABLESPACE` (the hybrid path typed a tablespace as a table)",
   "sql": "CREATE LOB TABLESPACE my_lob_ts MANAGED BY SYSTEM"
@@ -2694,7 +2694,7 @@
  },
  "6bebf2f1649906e4/analyzer": {
   "class": "opaque-reader-gap",
-  "issue": "by design: the reader states what it cannot read as unavailable (docs/sql-parsing/db2.md section 13)",
+  "issue": "#661",
   "path": "analyzer",
   "reason": "CREATE MODULE is a Db2 statement outside the head table: the reader states it not classified; the old extraction named `default_schema.m`",
   "sql": "CREATE MODULE m\n PUBLISH FUNCTION f() RETURNS INT"
@@ -2715,9 +2715,9 @@
  },
  "6c41d4bc8ad8f79e": {
   "class": "opaque-reader-gap",
-  "issue": "not Db2 SQL: no reader gap, the statement is another engine's or a client command",
+  "issue": "by design: the reader states what it cannot read as unavailable (docs/sql-parsing/db2.md section 13)",
   "path": "both",
-  "reason": "not a Db2 statement: CREATE ... IF NOT EXISTS is not Db2 syntax, so the reader leaves the name unread rather than take `IF` for it; the old extraction named `IX` / `s.ix`",
+  "reason": "form not in the head table; `IF NOT EXISTS` is skipped only for TABLE, not measured for this object type, so the reader leaves the name unread rather than take `IF` for it; the old extraction named `IX` / `s.ix`",
   "sql": "CREATE UNIQUE INDEX IF NOT EXISTS s.ix ON t(c)"
  },
  "6c4b56f38feca014/analyzer": {
@@ -3000,9 +3000,9 @@
  },
  "75d4fd764fb1454a/analyzer": {
   "class": "opaque-reader-gap",
-  "issue": "not Db2 SQL: no reader gap, the statement is another engine's or a client command",
+  "issue": "by design: the reader states what it cannot read as unavailable (docs/sql-parsing/db2.md section 13)",
   "path": "analyzer",
-  "reason": "not a Db2 statement: GLOBAL TEMPORARY TABLE is Oracle's (Db2 declares DECLARE GLOBAL TEMPORARY TABLE); the reader names `TEMP_T` as created but states column facts unavailable, and agrees with the extraction on the name",
+  "reason": "CREATE GLOBAL TEMPORARY TABLE parses on Db2 and the reader names `TEMP_T` as created; the row differs only in that the reader states column facts (columns, constraints, indexed columns) unavailable",
   "sql": "CREATE GLOBAL TEMPORARY TABLE temp_t (id NUMBER, name VARCHAR2(100))"
  },
  "76021c84a7b4509b/analyzer": {
@@ -3056,7 +3056,7 @@
  },
  "7950a208d273b4a4": {
   "class": "opaque-reader-gap",
-  "issue": "by design: the reader states what it cannot read as unavailable (docs/sql-parsing/db2.md section 13)",
+  "issue": "#661",
   "path": "both",
   "reason": "CREATE TABLESPACE is a Db2 statement outside the head table: the reader states it not classified rather than name it; the old extraction named `TS1` / `default_schema.ts1` (the hybrid path typed a tablespace as a table)",
   "sql": "CREATE TABLESPACE ts1 MANAGED BY SYSTEM USING ('path')"
@@ -3648,7 +3648,7 @@
  },
  "925e4a95674e8e49": {
   "class": "opaque-reader-gap",
-  "issue": "by design: the reader states what it cannot read as unavailable (docs/sql-parsing/db2.md section 13)",
+  "issue": "#661",
   "path": "both",
   "reason": "DROP TYPE is a Db2 statement outside the head table: the reader states it not classified; the old extraction named `MY_TYPE` / `default_schema.my_type`",
   "sql": "DROP TYPE my_type"
@@ -3850,9 +3850,9 @@
  },
  "997a408f631c3307/analyzer": {
   "class": "opaque-reader-gap",
-  "issue": "not Db2 SQL: no reader gap, the statement is another engine's or a client command",
+  "issue": "by design: the reader states what it cannot read as unavailable (docs/sql-parsing/db2.md section 13)",
   "path": "analyzer",
-  "reason": "not a Db2 statement: GLOBAL TEMPORARY TABLE is Oracle's (Db2 declares DECLARE GLOBAL TEMPORARY TABLE); the reader names `TEMP_EMPLOYEES` as created but states column facts unavailable, and agrees with the extraction on the name",
+  "reason": "CREATE GLOBAL TEMPORARY TABLE parses on Db2 and the reader names `TEMP_EMPLOYEES` as created; the row differs only in that the reader states column facts (columns, constraints, indexed columns) unavailable",
   "sql": "CREATE GLOBAL TEMPORARY TABLE temp_employees (\n            id NUMBER,\n            name VARCHAR2(100)\n        )"
  },
  "99b248eb4d837733/analyzer": {
@@ -3899,16 +3899,16 @@
  },
  "9be5302963c469ce": {
   "class": "opaque-reader-gap",
-  "issue": "by design: the reader states what it cannot read as unavailable (docs/sql-parsing/db2.md section 13)",
+  "issue": "#661",
   "path": "both",
   "reason": "CREATE TABLESPACE is a Db2 statement outside the head table: the reader states it not classified rather than name it; the old extraction named `MYTS` / `default_schema.myts` (the hybrid path typed a tablespace as a table)",
   "sql": "CREATE TABLESPACE myts IN STOGROUP mysg"
  },
  "9be911a8083a027d": {
   "class": "opaque-reader-gap",
-  "issue": "not Db2 SQL: no reader gap, the statement is another engine's or a client command",
+  "issue": "by design: the reader states what it cannot read as unavailable (docs/sql-parsing/db2.md section 13)",
   "path": "both",
-  "reason": "not a Db2 statement: CREATE ... IF NOT EXISTS is not Db2 syntax, so the reader leaves the name unread rather than take `IF` for it; the old extraction named `IDX_USERS_EMAIL` / `idx_users_email`",
+  "reason": "form not in the head table; `IF NOT EXISTS` is skipped only for TABLE, not measured for this object type, so the reader leaves the name unread rather than take `IF` for it; the old extraction named `IDX_USERS_EMAIL` / `idx_users_email`",
   "sql": "CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)"
  },
  "9c3ce07109aa5f8f/analyzer": {
@@ -4109,7 +4109,7 @@
  },
  "a6cbb05f14de55ca": {
   "class": "opaque-reader-gap",
-  "issue": "by design: the reader states what it cannot read as unavailable (docs/sql-parsing/db2.md section 13)",
+  "issue": "#661",
   "path": "both",
   "reason": "CREATE TABLESPACE is a Db2 statement outside the head table: the reader states it not classified rather than name it; the old extraction named `MY_TS` / `default_schema.my_ts` (the hybrid path typed a tablespace as a table)",
   "sql": "CREATE TABLESPACE my_ts MANAGED BY SYSTEM"
@@ -4164,7 +4164,7 @@
  },
  "a8edea352ce75337": {
   "class": "opaque-reader-gap",
-  "issue": "by design: the reader states what it cannot read as unavailable (docs/sql-parsing/db2.md section 13)",
+  "issue": "#661",
   "path": "both",
   "reason": "CREATE SYNONYM is outside the head table (it names ALIAS), so the reader states it not classified; the old extraction named `SYN1` / `default_schema.syn1` and the hybrid path typed it UNKNOWN",
   "sql": "/* c */ CREATE SYNONYM syn1 FOR real_one"
@@ -4185,9 +4185,9 @@
  },
  "a9676781330fe0a5": {
   "class": "opaque-reader-gap",
-  "issue": "not Db2 SQL: no reader gap, the statement is another engine's or a client command",
+  "issue": "by design: the reader states what it cannot read as unavailable (docs/sql-parsing/db2.md section 13)",
   "path": "both",
-  "reason": "not a Db2 statement: CREATE ... IF NOT EXISTS is not Db2 syntax, so the reader leaves the name unread rather than take `IF` for it; the old extraction named `MY_PROC` / `default_schema.my_proc`",
+  "reason": "form not in the head table; `IF NOT EXISTS` is skipped only for TABLE, not measured for this object type, so the reader leaves the name unread rather than take `IF` for it; the old extraction named `MY_PROC` / `default_schema.my_proc`",
   "sql": "CREATE PROCEDURE IF NOT EXISTS my_proc() BEGIN SELECT 1; END"
  },
  "a97bb5b98e74856a/analyzer": {
@@ -4213,9 +4213,9 @@
  },
  "aa2def2ae6b9bb99/analyzer": {
   "class": "opaque-reader-gap",
-  "issue": "not Db2 SQL: no reader gap, the statement is another engine's or a client command",
+  "issue": "by design: the reader states what it cannot read as unavailable (docs/sql-parsing/db2.md section 13)",
   "path": "analyzer",
-  "reason": "not a Db2 statement: CREATE ... IF NOT EXISTS is not Db2 syntax, so the reader leaves the name unread rather than take `IF` for it; the old extraction named `default_schema.app`",
+  "reason": "form not in the head table; `IF NOT EXISTS` is skipped only for TABLE, not measured for this object type, so the reader leaves the name unread rather than take `IF` for it; the old extraction named `default_schema.app`",
   "sql": "CREATE SCHEMA IF NOT EXISTS \"app\""
  },
  "aa83ca0d774251c0/analyzer": {
@@ -4526,7 +4526,7 @@
  },
  "b36df5fa20ff108d": {
   "class": "opaque-reader-gap",
-  "issue": "by design: the reader states what it cannot read as unavailable (docs/sql-parsing/db2.md section 13)",
+  "issue": "#661",
   "path": "both",
   "reason": "CREATE STOGROUP is a Db2 statement outside the head table: the reader states it not classified rather than name it; the old extraction named `MYSG` / `default_schema.mysg` (the hybrid path typed a tablespace as a table)",
   "sql": "CREATE STOGROUP mysg VOLUMES ('vol1', 'vol2')"
@@ -4652,7 +4652,7 @@
  },
  "b9714f9c7de896b8": {
   "class": "opaque-reader-gap",
-  "issue": "by design: the reader states what it cannot read as unavailable (docs/sql-parsing/db2.md section 13)",
+  "issue": "#661",
   "path": "both",
   "reason": "CREATE TABLESPACE is a Db2 statement outside the head table: the reader states it not classified rather than name it; the old extraction named `TS1` / `default_schema.ts1` (the hybrid path typed a tablespace as a table)",
   "sql": "CREATE TABLESPACE ts1 MANAGED BY SYSTEM"
@@ -4911,7 +4911,7 @@
  },
  "c53c47271effe67e": {
   "class": "opaque-reader-gap",
-  "issue": "by design: the reader states what it cannot read as unavailable (docs/sql-parsing/db2.md section 13)",
+  "issue": "#661",
   "path": "both",
   "reason": "DROP TABLESPACE is a Db2 statement outside the head table: the reader states it not classified rather than name it; the old extraction named `MY_TS` / `default_schema.my_ts` (the hybrid path typed a tablespace as a table)",
   "sql": "DROP TABLESPACE my_ts"
@@ -4946,9 +4946,9 @@
  },
  "c68cb5281b63ed01": {
   "class": "opaque-reader-gap",
-  "issue": "not Db2 SQL: no reader gap, the statement is another engine's or a client command",
+  "issue": "by design: the reader states what it cannot read as unavailable (docs/sql-parsing/db2.md section 13)",
   "path": "both",
-  "reason": "not a Db2 statement: CREATE ... IF NOT EXISTS is not Db2 syntax, so the reader leaves the name unread rather than take `IF` for it; the old extraction named `TR` / `s.tr`",
+  "reason": "form not in the head table; `IF NOT EXISTS` is skipped only for TABLE, not measured for this object type, so the reader leaves the name unread rather than take `IF` for it; the old extraction named `TR` / `s.tr`",
   "sql": "CREATE TRIGGER IF NOT EXISTS s.tr AFTER DELETE ON t BEGIN DELETE FROM u; END"
  },
  "c6a88a9c73d2a94d/analyzer": {
@@ -5113,7 +5113,7 @@
  },
  "cacc1b18818225a3": {
   "class": "opaque-reader-gap",
-  "issue": "by design: the reader states what it cannot read as unavailable (docs/sql-parsing/db2.md section 13)",
+  "issue": "#661",
   "path": "both",
   "reason": "CREATE STOGROUP is a Db2 statement outside the head table: the reader states it not classified rather than name it; the old extraction named `my_sg` / `default_schema.my_sg` (the hybrid path typed a tablespace as a table)",
   "sql": "CREATE STOGROUP \"my_sg\" VOLUMES ('vol1')"
@@ -5211,7 +5211,7 @@
  },
  "cedb7d775b37e0d7": {
   "class": "opaque-reader-gap",
-  "issue": "by design: the reader states what it cannot read as unavailable (docs/sql-parsing/db2.md section 13)",
+  "issue": "#661",
   "path": "both",
   "reason": "DROP TYPE is a Db2 statement outside the head table: the reader states it not classified; the old extraction named `MOOD` / `default_schema.mood`",
   "sql": "DROP TYPE mood"
@@ -5330,7 +5330,7 @@
  },
  "d37d4b0f0ffa9b1f": {
   "class": "opaque-reader-gap",
-  "issue": "by design: the reader states what it cannot read as unavailable (docs/sql-parsing/db2.md section 13)",
+  "issue": "#661",
   "path": "both",
   "reason": "ALTER TABLESPACE is a Db2 statement outside the head table: the reader states it not classified rather than name it; the old extraction named `MY_TS` / `default_schema.my_ts` (the hybrid path typed a tablespace as a table)",
   "sql": "ALTER TABLESPACE my_ts ADD FILE 1000"
@@ -5371,7 +5371,7 @@
  },
  "d50eb5a997e44a82": {
   "class": "opaque-reader-gap",
-  "issue": "by design: the reader states what it cannot read as unavailable (docs/sql-parsing/db2.md section 13)",
+  "issue": "#661",
   "path": "both",
   "reason": "CREATE STOGROUP is a Db2 statement outside the head table: the reader states it not classified rather than name it; the old extraction named `TEST_SG` / `default_schema.test_sg` (the hybrid path typed a tablespace as a table)",
   "sql": "CREATE STOGROUP test_sg VOLUMES ('vol1')"
@@ -5480,7 +5480,7 @@
  },
  "d830f197d0ad9af7": {
   "class": "opaque-reader-gap",
-  "issue": "by design: the reader states what it cannot read as unavailable (docs/sql-parsing/db2.md section 13)",
+  "issue": "#661",
   "path": "both",
   "reason": "CREATE LOB TABLESPACE is a Db2 statement outside the head table: the reader states it not classified rather than name it; the old extraction named `TEST_LOB_TS` / `default_schema.TABLESPACE` (the hybrid path typed a tablespace as a table)",
   "sql": "CREATE LOB TABLESPACE test_lob_ts MANAGED BY SYSTEM"
@@ -5647,7 +5647,7 @@
  },
  "dec1cb69096a2501": {
   "class": "opaque-reader-gap",
-  "issue": "by design: the reader states what it cannot read as unavailable (docs/sql-parsing/db2.md section 13)",
+  "issue": "#661",
   "path": "both",
   "reason": "CREATE STOGROUP is a Db2 statement outside the head table: the reader states it not classified rather than name it; the old extraction named `MY_SG` / `default_schema.my_sg` (the hybrid path typed a tablespace as a table)",
   "sql": "CREATE STOGROUP my_sg VOLUMES ('vol1')"
@@ -5898,7 +5898,7 @@
  },
  "ea2bdfa416ad69ca": {
   "class": "opaque-reader-gap",
-  "issue": "by design: the reader states what it cannot read as unavailable (docs/sql-parsing/db2.md section 13)",
+  "issue": "#661",
   "path": "both",
   "reason": "CREATE SYNONYM is outside the head table (it names ALIAS), so the reader states it not classified; the old extraction named `S` / `default_schema.s` and the hybrid path typed it UNKNOWN",
   "sql": "CREATE SYNONYM s FOR orders"

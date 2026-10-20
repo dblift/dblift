@@ -123,7 +123,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   deprecation message asks it to implement `split()` and return `Statement` records; the
   skips end in the next major release.
 - **Db2 analysis kinds and DML targets.** `migrate --dry-run` reports CALL, COMMIT and SET as
-  `UNKNOWN` (CALL and SET were `DML`); DML targets are reported schema-qualified and folded
+  `UNKNOWN` (CALL and SET were `DML`); DML targets are reported folded, with the schema when the statement gives one
   (`APP.ORDERS`). Undo generation for Db2 (deprecated) now marks every statement other than a
   query for manual review instead of building a model from the text.
 

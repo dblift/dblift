@@ -389,3 +389,9 @@ def test_a_name_followed_by_what_the_form_does_not_allow_is_not_named(sql, opera
 )
 def test_a_name_followed_by_what_the_form_allows_is_named(sql, name):
     assert [o.name for o in READ(sql).objects] == [name]
+
+
+def test_an_empty_delimited_identifier_is_not_a_name():
+    facts = READ('CREATE TABLE "" (x INT)')
+    assert facts.objects == ()
+    assert facts.diagnostic == NAME_NOT_READ.format(operation="CREATE", type="TABLE")

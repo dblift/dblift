@@ -268,6 +268,8 @@ def _read_name(
     run, i = _name_run(words, at)
     if not run or len(run) > max_parts or (i < len(words) and _is_symbol(words[i], ".")):
         return None
+    if any(t.text == '""' for t in run):
+        return None
     if any(t.type is TokenType.KEYWORD and t.text.upper() in STOP_WORDS for t in run):
         return None
     return tuple(fold_name(t.text) for t in run), run[0].pos, i
@@ -525,6 +527,11 @@ def _head_end(words: List[Token], at: int) -> int:
     return end
 
 
+def _holds_data_change(ups: List[str]) -> bool:
+    """Whether the tokens hold FINAL TABLE, NEW TABLE or OLD TABLE."""
+    return any(a in _DATA_CHANGE and b == "TABLE" for a, b in zip(ups, ups[1:]))
+
+
 def _is_client_command(ups: List[str]) -> bool:
     if ups[0] in DB2_RULES.command_words:
         return True
@@ -558,7 +565,7 @@ class Db2StatementFactsReader:
                 return _opaque(first, "UNKNOWN", SET_INTEGRITY)
             return StatementFacts(first, "UNKNOWN")
         if first in _QUERY:
-            if any(a in _DATA_CHANGE and b == "TABLE" for a, b in zip(ups, ups[1:])):
+            if _holds_data_change(ups):
                 return _opaque(first, kind, DATA_CHANGE_QUERY)
             return StatementFacts(first, kind)
         for head in HEADS:
@@ -587,6 +594,8 @@ class Db2StatementFactsReader:
             char = _unread_character(sql, words, window)
             if char is not None:
                 return _opaque(first, kind, UNREAD_NAME.format(code=ord(sql[char])))
+            if _holds_data_change(ups):
+                return _opaque(first, kind, DATA_CHANGE_QUERY)
             return _read_dml(sql, words, ups, first)
         return _opaque(first, kind, NOT_CLASSIFIED.format(word=first))
 

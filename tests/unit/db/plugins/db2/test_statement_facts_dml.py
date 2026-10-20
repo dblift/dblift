@@ -2,7 +2,11 @@
 
 import pytest
 
-from dblift.db.plugins.db2.parser.statement_facts import NAME_NOT_READ, Db2StatementFactsReader
+from dblift.db.plugins.db2.parser.statement_facts import (
+    DATA_CHANGE_QUERY,
+    NAME_NOT_READ,
+    Db2StatementFactsReader,
+)
 
 READ = Db2StatementFactsReader(None).read
 
@@ -174,7 +178,6 @@ def test_dml_targets(sql, operation, target, target_sql, events, predicate, colu
         ("DELETE FROM (SELECT * FROM t) WHERE 1 = 1", "DELETE"),
         ("UPDATE (SELECT * FROM t) SET a = 1", "UPDATE"),
         ("UPDATE t WHERE id = 1", "UPDATE"),
-        ("INSERT INTO FINAL TABLE (x) VALUES (1)", "INSERT"),
         ("DELETE FROM t USING s WHERE t.id = s.id", "DELETE"),
         ("DELETE FROM t WHERE", "DELETE"),
     ],
@@ -224,3 +227,32 @@ def test_dml_target_followers_the_head_does_not_allow_are_opaque(sql, operation)
     facts = READ(sql)
     assert (facts.objects, facts.target) == ((), None)
     assert facts.diagnostic == NAME_NOT_READ.format(operation=operation, type="TABLE")
+
+
+def test_an_empty_delimited_identifier_is_not_a_dml_target():
+    facts = READ('INSERT INTO "" VALUES (1)')
+    assert (facts.objects, facts.target) == ((), None)
+    assert facts.diagnostic == NAME_NOT_READ.format(operation="INSERT", type="TABLE")
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "INSERT INTO FINAL TABLE (x) VALUES (1)",
+        "INSERT INTO t (a) SELECT * FROM FINAL TABLE (INSERT INTO u VALUES (1))",
+        "INSERT INTO t SELECT * FROM NEW TABLE (UPDATE u SET a = 1)",
+        "INSERT INTO t SELECT * FROM OLD TABLE (DELETE FROM u)",
+        "UPDATE t SET a = (SELECT a FROM FINAL TABLE (INSERT INTO u VALUES (1)))",
+        "DELETE FROM t WHERE a IN (SELECT a FROM OLD TABLE (DELETE FROM u))",
+        "MERGE INTO t USING (SELECT * FROM NEW TABLE (UPDATE u SET a = 1)) s ON t.a = s.a WHEN MATCHED THEN DELETE",
+    ],
+)
+def test_a_dml_holding_a_data_change_table_is_opaque(sql):
+    facts = READ(sql)
+    assert (facts.objects, facts.target, facts.diagnostic) == ((), None, DATA_CHANGE_QUERY)
+
+
+def test_a_plain_insert_select_still_names_its_target():
+    facts = READ("INSERT INTO t SELECT * FROM u")
+    assert facts.target == "T"
+    assert facts.diagnostic is None

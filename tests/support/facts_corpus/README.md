@@ -104,7 +104,7 @@ was harvested from.
 `opaque-reader-gap`, `facts-fewer`, `facts-adds-acted`, `disagree`, `dml-differs`, `role-differs`,
 `no-old` and `no-reader` need a reason. Reasons live in `<family>.review.json`, keyed by the statement id
 (`<id>` for both paths, `<id>/hybrid` or `<id>/analyzer` for one) with `path`, `class`, `reason`
-and, for a reader gap, an `issue`. `class` is one string, or `{"floor": ..., "newest": ...}` for a
+and, for a reader gap, an `issue`: the OSS issue number (`#N`) for a gap still to be closed, or `by design: <doc section>` for an outcome the reader's documentation states. `class` is one string, or `{"floor": ..., "newest": ...}` for a
 row whose class depends on the sqlglot release (`same` is allowed there for the arm that agrees,
 never on every arm). An entry whose row is gone, whose class is no longer the row's class on the arm
 being run (an entry without a key for that arm included), or that explains nothing is stale. A
