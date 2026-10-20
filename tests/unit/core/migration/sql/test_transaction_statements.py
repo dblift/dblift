@@ -221,7 +221,9 @@ class TestEnvelope:
         ),
     ],
 )
-def test_an_envelope_around_a_nontransactional_statement_is_refused(dialect, statement, reason):
+def test_envelope_policy_refuses_statements_that_can_fail_in_a_transaction(
+    dialect, statement, reason
+):
     with pytest.raises(TransactionStatementError) as raised:
         _run(["BEGIN", statement, "COMMIT"], dialect)
     assert f"{statement} cannot stay inside the envelope" in str(raised.value)
@@ -229,11 +231,14 @@ def test_an_envelope_around_a_nontransactional_statement_is_refused(dialect, sta
 
 
 @pytest.mark.parametrize("statement", ["CHECKPOINT", "FORCE CHECKPOINT"])
-def test_duckdb_checkpoint_fails_with_local_changes(statement):
+def test_duckdb_checkpoint_succeeds_clean_and_fails_with_local_changes(statement):
     duckdb = pytest.importorskip("duckdb")
     with duckdb.connect(":memory:") as connection:
         connection.execute("CREATE TABLE t (a INT)")
         connection.execute(statement)
+        connection.execute("BEGIN")
+        connection.execute(statement)
+        connection.execute("COMMIT")
         connection.execute("BEGIN")
         connection.execute("INSERT INTO t VALUES (1)")
         with pytest.raises(duckdb.TransactionException):
