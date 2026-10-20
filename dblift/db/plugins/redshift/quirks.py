@@ -24,6 +24,9 @@ class RedshiftQuirks(PostgresqlQuirks):
     # PostgreSQL's ``sqlglot_dialect = "postgres"`` parses that divergent
     # syntax but then fails to render it back out.
     sqlglot_dialect = "redshift"
+    # Redshift keeps text extraction: the reader's branches are PostgreSQL's and no Redshift
+    # corpus is recorded yet.
+    statement_facts_class = None
 
     # Opt out of PostgreSQL's feature gates: Redshift's engine diverged long
     # ago (its version() banner even reports PostgreSQL 8.0.x), so PG

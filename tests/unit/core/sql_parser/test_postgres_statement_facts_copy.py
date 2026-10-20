@@ -116,8 +116,8 @@ def test_postgres_copy_facts_preserve_other_dialect_mappings(dialect):
     assert facts.opaque
 
 
-def test_postgres_copy_preparation_does_not_activate_statement_facts():
-    assert not PostgresqlQuirks().supports_statement_facts
+def test_postgres_copy_facts_are_read_by_the_plugin():
+    assert PostgresqlQuirks().supports_statement_facts
 
 
 @pytest.mark.parametrize(

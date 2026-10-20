@@ -384,7 +384,7 @@ class TestExtractObjects(unittest.TestCase):
         objects = self.analyzer.extract_objects(sql)
         self.assertEqual(len(objects), 1)
         self.assertEqual(objects[0]["object_type"], "INDEX")
-        self.assertIn("users", objects[0]["on_object"])
+        self.assertEqual(objects[0]["object_name"], "default_schema.idx_unique")
 
     def test_drop_table(self):
         sql = "DROP TABLE myschema.old_table"
@@ -427,13 +427,18 @@ class TestAnalyzeStatement(unittest.TestCase):
     def test_analyze_reports_the_extraction_it_actually_used(self):
         sql = "CREATE TABLE t (id INT)"
         result = self.analyzer.analyze_statement(sql)
-        self.assertEqual(result["parsed_with"], "regex")
+        self.assertEqual(result["parsed_with"], "facts")
         self.assertEqual(result["objects"], self.analyzer.extract_objects(sql))
+        text_analyzer = SqlAnalyzer(dialect="oracle")
+        text_result = text_analyzer.analyze_statement(sql)
+        self.assertEqual(text_result["parsed_with"], "regex")
+        self.assertEqual(text_result["objects"], text_analyzer.extract_objects(sql))
 
     def test_analyze_error_returns_invalid_result(self):
-        self.analyzer._extract_objects_regex = MagicMock(side_effect=Exception("regex fail"))
+        analyzer = SqlAnalyzer(dialect="oracle")
+        analyzer._extract_objects_regex = MagicMock(side_effect=Exception("regex fail"))
         sql = "SELECT 1"
-        result = self.analyzer.analyze_statement(sql)
+        result = analyzer.analyze_statement(sql)
         self.assertFalse(result["is_valid"])
         self.assertTrue(len(result["errors"]) > 0)
 

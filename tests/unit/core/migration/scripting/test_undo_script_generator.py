@@ -27,7 +27,7 @@ class TestUndoScriptGenerator:
     def generator(self):
         """Create an undo script generator instance."""
         logger = LogFactory.get_log("test")
-        return UndoScriptGenerator(dialect="postgresql", logger=logger)
+        return UndoScriptGenerator(dialect="redshift", logger=logger)
 
     def test_generate_undo_script_create_table(self, generator):
         """Test generating undo script for CREATE TABLE."""

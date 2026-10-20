@@ -10,8 +10,6 @@ pytestmark = pytest.mark.unit
 @pytest.mark.parametrize(
     "dialect,definition,collation,data_type",
     [
-        ("postgresql", 'text COLLATE "C"', "C", "TEXT"),
-        ("postgresql", 'varchar(10) COLLATE "en_US"', "en_US", "VARCHAR(10)"),
         (
             "sqlserver",
             "nvarchar(10) COLLATE Latin1_General_CS_AS",

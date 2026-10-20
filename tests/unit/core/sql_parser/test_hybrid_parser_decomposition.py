@@ -31,43 +31,43 @@ class TestExtractTableConstraintsFromSqlglot:
     """Tests for the constraint dispatcher (AC#6.2)."""
 
     def test_dispatches_check_constraint(self):
-        parser = _make_parser("postgresql")
+        parser = _make_parser("oracle")
         sql = "CREATE TABLE t (id INT, CONSTRAINT chk CHECK (id > 0))"
-        ast = parse_one(sql, read="postgres")
+        ast = parse_one(sql, read="oracle")
         schema_expr = ast.this  # Schema node
         constraints = parser._extract_table_constraints_from_sqlglot(schema_expr)
         check_constraints = [c for c in constraints if c.constraint_type == ConstraintType.CHECK]
         assert len(check_constraints) >= 1
 
     def test_dispatches_primary_key(self):
-        parser = _make_parser("postgresql")
+        parser = _make_parser("oracle")
         sql = "CREATE TABLE t (id INT, CONSTRAINT pk PRIMARY KEY (id))"
-        ast = parse_one(sql, read="postgres")
+        ast = parse_one(sql, read="oracle")
         schema_expr = ast.this
         constraints = parser._extract_table_constraints_from_sqlglot(schema_expr)
         pk_constraints = [c for c in constraints if c.constraint_type == ConstraintType.PRIMARY_KEY]
         assert len(pk_constraints) >= 1
 
     def test_dispatches_foreign_key(self):
-        parser = _make_parser("postgresql")
+        parser = _make_parser("oracle")
         sql = "CREATE TABLE t (id INT, parent_id INT, CONSTRAINT fk FOREIGN KEY (parent_id) REFERENCES parent(id))"
-        ast = parse_one(sql, read="postgres")
+        ast = parse_one(sql, read="oracle")
         schema_expr = ast.this
         constraints = parser._extract_table_constraints_from_sqlglot(schema_expr)
         fk_constraints = [c for c in constraints if c.constraint_type == ConstraintType.FOREIGN_KEY]
         assert len(fk_constraints) >= 1
 
     def test_dispatches_unique_constraint(self):
-        parser = _make_parser("postgresql")
+        parser = _make_parser("oracle")
         sql = "CREATE TABLE t (id INT, email TEXT, CONSTRAINT uq UNIQUE (email))"
-        ast = parse_one(sql, read="postgres")
+        ast = parse_one(sql, read="oracle")
         schema_expr = ast.this
         constraints = parser._extract_table_constraints_from_sqlglot(schema_expr)
         uq_constraints = [c for c in constraints if c.constraint_type == ConstraintType.UNIQUE]
         assert len(uq_constraints) >= 1
 
     def test_unknown_expression_skipped(self):
-        parser = _make_parser("postgresql")
+        parser = _make_parser("oracle")
         # A bare column definition is not a constraint type → no constraint emitted
         col_expr = exp.ColumnDef(this=exp.to_identifier("col1"))
         constraints = parser._extract_table_constraints_from_sqlglot(col_expr)
@@ -89,9 +89,9 @@ class TestExtractCheckConstraintFromSqlglot:
     """Tests for _extract_check_constraint_from_sqlglot (AC#6.3)."""
 
     def test_extracts_check_constraint_name_and_expression(self):
-        parser = _make_parser("postgresql")
+        parser = _make_parser("oracle")
         sql = "CREATE TABLE t (id INT, CONSTRAINT chk_positive CHECK (id > 0))"
-        ast = parse_one(sql, read="postgres")
+        ast = parse_one(sql, read="oracle")
         schema_expr = ast.this
         constraints = parser._extract_table_constraints_from_sqlglot(schema_expr)
         checks = [c for c in constraints if c.constraint_type == ConstraintType.CHECK]
@@ -100,9 +100,9 @@ class TestExtractCheckConstraintFromSqlglot:
         assert checks[0].check_expression is not None
 
     def test_check_constraint_without_name_uses_default(self):
-        parser = _make_parser("postgresql")
+        parser = _make_parser("oracle")
         sql = "CREATE TABLE t (id INT, CHECK (id > 0))"
-        ast = parse_one(sql, read="postgres")
+        ast = parse_one(sql, read="oracle")
         schema_expr = ast.this
         constraints = parser._extract_table_constraints_from_sqlglot(schema_expr)
         checks = [c for c in constraints if c.constraint_type == ConstraintType.CHECK]
@@ -117,9 +117,9 @@ class TestExtractPkFromSqlglot:
     """Tests for _extract_pk_from_sqlglot (AC#6.4)."""
 
     def test_extracts_pk_columns(self):
-        parser = _make_parser("postgresql")
+        parser = _make_parser("oracle")
         sql = "CREATE TABLE t (id INT, name TEXT, PRIMARY KEY (id))"
-        ast = parse_one(sql, read="postgres")
+        ast = parse_one(sql, read="oracle")
         schema_expr = ast.this
         constraints = parser._extract_table_constraints_from_sqlglot(schema_expr)
         pks = [c for c in constraints if c.constraint_type == ConstraintType.PRIMARY_KEY]
@@ -127,9 +127,9 @@ class TestExtractPkFromSqlglot:
         assert "id" in [col.lower() for col in pks[0].column_names]
 
     def test_pk_with_constraint_name(self):
-        parser = _make_parser("postgresql")
+        parser = _make_parser("oracle")
         sql = "CREATE TABLE t (id INT, CONSTRAINT pk_t PRIMARY KEY (id))"
-        ast = parse_one(sql, read="postgres")
+        ast = parse_one(sql, read="oracle")
         schema_expr = ast.this
         constraints = parser._extract_table_constraints_from_sqlglot(schema_expr)
         pks = [c for c in constraints if c.constraint_type == ConstraintType.PRIMARY_KEY]
@@ -147,7 +147,7 @@ class TestShouldSkipDependencyStatement:
     """Tests for _should_skip_dependency_statement (AC#6.5)."""
 
     def test_skip_procedural(self):
-        parser = _make_parser("postgresql")
+        parser = _make_parser("oracle")
         stmt = "BEGIN\n  INSERT INTO t VALUES (1);\nEND;"
         assert parser._should_skip_dependency_statement(stmt) is True
 
@@ -157,12 +157,12 @@ class TestShouldSkipDependencyStatement:
         assert parser._should_skip_dependency_statement(stmt) is True
 
     def test_no_skip_pure_sql_select(self):
-        parser = _make_parser("postgresql")
+        parser = _make_parser("oracle")
         stmt = "SELECT * FROM users WHERE id = 1"
         assert parser._should_skip_dependency_statement(stmt) is False
 
     def test_no_skip_create_table(self):
-        parser = _make_parser("postgresql")
+        parser = _make_parser("oracle")
         stmt = "CREATE TABLE users (id INT PRIMARY KEY)"
         assert parser._should_skip_dependency_statement(stmt) is False
 
@@ -172,18 +172,18 @@ class TestExtractTableDepsFromAst:
     """Tests for _extract_table_deps_from_ast (AC#6.6)."""
 
     def test_extracts_table_and_schema(self):
-        parser = _make_parser("postgresql")
+        parser = _make_parser("oracle")
         sql = "SELECT * FROM myschema.orders"
-        ast = parse_one(sql, read="postgres")
+        ast = parse_one(sql, read="oracle")
         deps = {"tables": [], "views": [], "schemas": []}
         parser._extract_table_deps_from_ast(ast, deps)
         assert any("orders" == t.lower() for t in deps["tables"])
         assert "myschema" in deps["schemas"]
 
     def test_skips_created_table(self):
-        parser = _make_parser("postgresql")
+        parser = _make_parser("oracle")
         sql = "CREATE TABLE new_table AS SELECT * FROM source_table"
-        ast = parse_one(sql, read="postgres")
+        ast = parse_one(sql, read="oracle")
         deps = {"tables": [], "views": [], "schemas": []}
         parser._extract_table_deps_from_ast(ast, deps)
         # new_table should NOT appear in deps (it's being created)
@@ -197,14 +197,14 @@ class TestExtractViewDepsFromObjects:
     """Tests for _extract_view_deps_from_objects (AC#2 helper, L3 coverage)."""
 
     def test_adds_view_name_to_deps(self):
-        parser = _make_parser("postgresql")
+        parser = _make_parser("oracle")
         sql = "CREATE VIEW my_view AS SELECT 1"
         deps = {"tables": [], "views": [], "schemas": []}
         parser._extract_view_deps_from_objects(sql, None, deps)
         assert "my_view" in deps["views"]
 
     def test_adds_schema_to_deps(self):
-        parser = _make_parser("postgresql")
+        parser = _make_parser("oracle")
         sql = "CREATE VIEW myschema.v AS SELECT 1"
         deps = {"tables": [], "views": [], "schemas": []}
         parser._extract_view_deps_from_objects(sql, None, deps)
@@ -243,7 +243,7 @@ class TestExtractTriggerDefiner:
     """Tests for _extract_trigger_definer (AC#6.8)."""
 
     def test_returns_none_for_non_mysql_dialect(self):
-        parser = _make_parser("postgresql")
+        parser = _make_parser("oracle")
         sql = "CREATE DEFINER=root@localhost TRIGGER trg AFTER INSERT ON s.t FOR EACH ROW SET NEW.x = 1"
         definer = parser._extract_trigger_definer(sql)
         assert definer is None

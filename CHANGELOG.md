@@ -66,6 +66,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   machine, a 3 MiB script of `INSERT` statements went from 0.95 s and a 19 MB
   peak to 2.9 s and a 176 MB peak, and a 132-byte migration from 42 to 81
   microseconds.
+- **MySQL and MariaDB delimiter scripts use less memory while splitting.**
+  The engine scans without keeping a token list; the client still assembles the
+  same statement records. For one 3 MiB `INSERT` script on one machine, peak memory
+  fell from about 210 MiB to 70 MiB on MySQL and 70 MiB on MariaDB.
 - **Db2 splitting moved onto the shared lexical engine.** Splitting, analysis and
   extraction use the command line processor's rules (the end-of-line terminator,
   `--#SET TERMINATOR`, the client command list, the routine-body rule) as
@@ -134,6 +138,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `UNKNOWN` (CALL and SET were `DML`); DML targets are reported folded, with the schema when the statement gives one
   (`APP.ORDERS`). Undo generation for Db2 (deprecated) now marks every statement other than a
   query for manual review instead of building a model from the text.
+
+- **PostgreSQL and its compatible engines read statement facts from the SQL grammar.**
+  PostgreSQL, CockroachDB, YugabyteDB, Aurora PostgreSQL, AlloyDB, Citus, Neon, Supabase and
+  TimescaleDB now take the objects, targets and predicates of each statement from the sqlglot
+  AST instead of regular expressions, in `info --format json`, `migrate --dry-run`, object
+  tracking during execution, `SqlAnalyzer.extract_objects` and the DML analysis functions
+  (`analyze_dml`, `statement_dml_table`, `dml_where_predicate`, `is_full_table_dml`). `COMMENT ON`
+  targets, the trigger of `CREATE TRIGGER`, `DROP SCHEMA`, the table created by `SELECT … INTO`,
+  `CREATE FUNCTION/PROCEDURE … $$ … $$`, `CREATE EXTENSION`, `ALTER SEQUENCE`, `CREATE TYPE`
+  and `CREATE TABLE … TABLESPACE` are now named, and a DML caution no longer names a table
+  whose name ends in a non-ASCII blank. Redshift is unchanged. Known gaps: #666, #667, #668
+  and #669.
+- **Parsers for the PostgreSQL family are built from the facts reader.** Constructing
+  `HybridParser` or `SqlGlotParser` for a PostgreSQL-family dialect, or asking the parser
+  factory for the `sqlglot` type, now raises `ValueError` naming `StatementFactsParser`; the
+  `hybrid` type returns the facts parser, and the `regex` type still returns the regex parser,
+  whose splitting is unchanged.
+- **Undo generation for the PostgreSQL family asks for a hand-written undo.** The generator
+  marks every data or schema change for manual review instead of generating a reversal. Undo
+  scripts you write are unaffected. The generator is deprecated and removed in 5.0 (#649).
 
 ### Deprecated
 

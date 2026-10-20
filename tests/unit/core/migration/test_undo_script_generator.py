@@ -817,7 +817,7 @@ class TestUndoStatementEmitterValueToString(unittest.TestCase):
 class TestUndoReversersMixin(unittest.TestCase):
     """Tests for _UndoReversersMixin (_reversers.py)."""
 
-    def _make_generator(self, dialect="postgresql"):
+    def _make_generator(self, dialect="oracle"):
         from dblift.core.migration.scripting.undo_script_generator import UndoScriptGenerator
 
         return UndoScriptGenerator(dialect=dialect)
@@ -1117,7 +1117,7 @@ class TestUndoReversersMixin(unittest.TestCase):
 class TestUndoScriptGeneratorIntegration(unittest.TestCase):
     """Integration tests for UndoScriptGenerator._generator.py methods."""
 
-    def _make_generator(self, dialect="postgresql"):
+    def _make_generator(self, dialect="oracle"):
         from dblift.core.migration.scripting.undo_script_generator import UndoScriptGenerator
 
         return UndoScriptGenerator(dialect=dialect)

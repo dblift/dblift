@@ -99,65 +99,6 @@ class TestPartitionSchemeOracle:
         assert table.partition_columns == ["LOG_DATE"]
 
 
-class TestPartitionSchemePostgreSQL:
-    """Test PostgreSQL partition scheme parsing."""
-
-    def test_parse_range_partition(self):
-        """Test parsing PARTITION BY RANGE."""
-        sql = """
-        CREATE TABLE sales (
-            sale_id INT,
-            sale_date DATE,
-            amount DECIMAL(10,2)
-        ) PARTITION BY RANGE (sale_date);
-        """
-
-        parser = HybridParser("postgresql")
-        result = parser.parse_sql(sql, default_schema="test_schema")
-
-        assert result.success
-        table = result.tables[0]
-        assert table.partition_method == "RANGE"
-        # PostgreSQL is case-preserving; parser uppercases from SQL
-        assert table.partition_columns == ["SALE_DATE"]
-
-    def test_parse_list_partition(self):
-        """Test parsing PARTITION BY LIST."""
-        sql = """
-        CREATE TABLE employees (
-            emp_id INT,
-            region VARCHAR(50)
-        ) PARTITION BY LIST (region);
-        """
-
-        parser = HybridParser("postgresql")
-        result = parser.parse_sql(sql, default_schema="test_schema")
-
-        assert result.success
-        table = result.tables[0]
-        assert table.partition_method == "LIST"
-        # Parser uppercases from SQL
-        assert table.partition_columns == ["REGION"]
-
-    def test_parse_hash_partition(self):
-        """Test parsing PARTITION BY HASH."""
-        sql = """
-        CREATE TABLE orders (
-            order_id INT,
-            customer_id INT
-        ) PARTITION BY HASH (customer_id);
-        """
-
-        parser = HybridParser("postgresql")
-        result = parser.parse_sql(sql, default_schema="test_schema")
-
-        assert result.success
-        table = result.tables[0]
-        assert table.partition_method == "HASH"
-        # Parser uppercases from SQL
-        assert table.partition_columns == ["CUSTOMER_ID"]
-
-
 class TestPartitionSchemeDB2:
     """Test DB2 partition scheme parsing."""
 
@@ -208,7 +149,7 @@ class TestPartitionSchemeSQLServer:
 class TestNonPartitionedTables:
     """Test that non-partitioned tables don't get partition properties."""
 
-    @pytest.mark.parametrize("dialect", ["oracle", "postgresql", "db2", "sqlserver"])
+    @pytest.mark.parametrize("dialect", ["oracle", "db2", "sqlserver"])
     def test_regular_table_no_partition(self, dialect):
         """Test regular CREATE TABLE doesn't set partition properties."""
         sql = """

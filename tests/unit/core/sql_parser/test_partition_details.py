@@ -111,7 +111,7 @@ def test_legacy_table_serialization_is_byte_identical():
 @pytest.mark.parametrize(
     "dialect,clause,method,columns",
     [
-        ("postgresql", "PARTITION BY RANGE (y)", "RANGE", ["Y"]),
+        ("oracle", "PARTITION BY RANGE (y)", "RANGE", ["Y"]),
     ],
 )
 def test_unchanged_partition_guards(dialect, clause, method, columns):

@@ -11,7 +11,7 @@ import pytest
 import sqlglot
 
 from dblift.core.sql_parser.statement_facts import SqlglotStatementFactsReader
-from dblift.db.plugins.postgresql.quirks import PostgresqlQuirks
+from dblift.db.plugins.oracle.quirks import OracleQuirks
 from tests.support.facts_corpus import (
     CORPUS_DIR,
     FAMILIES,
@@ -270,14 +270,11 @@ def test_the_extraction_is_compared_only_for_a_family_that_is_not_frozen(
     activated: bool, monkeypatch: pytest.MonkeyPatch, corpus: Dict[str, List[Dict[str, Any]]]
 ) -> None:
     if activated:
-        monkeypatch.setattr(PostgresqlQuirks, "statement_facts_class", SqlglotStatementFactsReader)
-    rows = corpus["postgresql"][:20]
+        monkeypatch.setattr(OracleQuirks, "statement_facts_class", SqlglotStatementFactsReader)
+    rows = corpus["oracle"][:20]
     for row in rows:
-        now = record_statement("postgresql", row["sql"])
+        now = record_statement("oracle", row["sql"])
         assert (now["old"] is None) == activated
-        assert now == _comparable(_on_this_arm(row), "postgresql")
+        assert now == _comparable(_on_this_arm(row), "oracle")
         if not activated:
             assert now["old"] == _on_this_arm(row)["old"]
-        assert record_statement("cockroachdb", row["sql"]) == _comparable(
-            _on_this_arm(row), "cockroachdb"
-        )

@@ -63,7 +63,7 @@ def _results() -> Results:
 
 
 def test_only_families_whose_differences_are_explained_are_gated() -> None:
-    assert gated_families() == ["db2", "mysql"]
+    assert gated_families() == ["db2", "mysql", "postgresql"]
 
 
 def test_gated_families_are_known_families_with_a_reader() -> None:
@@ -156,7 +156,7 @@ def test_a_family_whose_extraction_is_the_reader_has_nothing_to_compare() -> Non
 
 
 def test_default_schemas_are_the_ones_the_extraction_assigns() -> None:
-    from tests.support.facts_corpus.record import record_statement
+    from tests.support.facts_corpus.record import is_frozen, record_statement
 
     for family in FAMILIES:
         if family in NO_OLD_FAMILIES or DIALECTS[family] is None or is_frozen(family):

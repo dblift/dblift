@@ -57,10 +57,10 @@ def test_schema_identity_projection_does_not_expand_to_other_dialects(dialect):
     assert facts.objects == ()
 
 
-def test_schema_facts_do_not_activate_postgresql_parser_consumers():
+def test_schema_facts_leave_the_postgresql_parser_classes_unchanged():
     quirks = PostgresqlQuirks()
 
-    assert not quirks.supports_statement_facts
+    assert quirks.supports_statement_facts
     assert quirks.parser_class("regex") is PostgreSqlRegexParser
     assert quirks.parser_class("hybrid") is HybridParser
     assert quirks.parser_class("sqlglot") is SqlGlotParser

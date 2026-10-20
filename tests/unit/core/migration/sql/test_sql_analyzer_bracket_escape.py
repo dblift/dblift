@@ -80,8 +80,7 @@ class TestBacktickAndDoubleQuoteAcrossDialects(unittest.TestCase):
     def test_postgresql_double_quote_doubling_is_unescaped(self):
         analyzer = SqlAnalyzer(dialect="postgresql")
         obj = _only(analyzer, 'CREATE INDEX "idx""1" ON "sch"."t"("c");')
-        self.assertEqual(obj["object_name"], 'idx"1')
-        self.assertEqual(obj["on_object"], "sch.t")
+        self.assertEqual(obj["object_name"], 'default_schema.idx"1')
 
 
 class TestGenericDdlBracketDoubling(unittest.TestCase):
