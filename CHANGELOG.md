@@ -127,6 +127,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **MySQL and MariaDB statement facts read more of the grammar.** `TRUNCATE` names its table,
+  `CREATE SCHEMA` / `DROP SCHEMA` name the schema, `RENAME TABLE` names each source table,
+  `CREATE FULLTEXT INDEX` and `CREATE SPATIAL INDEX` name the index and its table, and a DML
+  statement that starts with `LOW_PRIORITY`, `HIGH_PRIORITY`, `DELAYED`, `QUICK` or `IGNORE`
+  names its target table instead of the modifier. A name holding a character outside the Basic
+  Multilingual Plane is no longer reported (MySQL stores it as `?`, MariaDB rejects it).
 - **`SqlAnalyzer.validate_sql` and the parsers' `validate_sql` report the parser's verdict.**
   The Python API now returns the dialect parser's verdict with its first error message; a
   parser answer with no verdict is reported invalid. PostgreSQL-family parser results
