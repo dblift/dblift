@@ -750,7 +750,16 @@ def _head_object(match: "re.Match[str]") -> NamedObject:
 
 def _head_facts(sql: str, diagnostic: str, *, dialect: str = "") -> StatementFacts:
     """Classify a statement from its leading words when sqlglot cannot represent the body."""
-    head = _blanked(sql)
+    head = (
+        strip_comments_preserving_quotes(
+            sql,
+            line_prefixes=["--"],
+            has_block_comments=True,
+            nested_block_comments=Dialect.get_or_raise(dialect).tokenizer_class.NESTED_COMMENTS,
+        )
+        if dialect == "tsql"  # lint: allow-dialect-string: T-SQL block comments nest
+        else _blanked(sql)
+    )
     first = _FIRST_WORD.match(head)
     if first and first.group(1).upper() == "WITH":
         head = _main_statement(head)
@@ -1029,16 +1038,6 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
     Text that does not tokenize is reported as an error. A statement the grammar does not
     model is classified from its leading words with an informational diagnostic.
     """
-    if dialect == "tsql":  # lint: allow-dialect-string: server comments nest, sqlglot's do not
-        server_text = strip_comments_preserving_quotes(
-            sql, line_prefixes=["--"], has_block_comments=True, nested_block_comments=True
-        )
-        if server_text != _blanked(sql):
-            return _head_facts(
-                server_text,
-                "tsql nested block comments are opaque to statement facts",
-                dialect=dialect,
-            )
     # MariaDB shares this grammar; without engine/version context both markers are opaque.
     if (
         dialect == "mysql"  # lint: allow-dialect-string: MySQL-family executable comments

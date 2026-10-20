@@ -345,7 +345,7 @@ The reader reports an informational diagnostic and no object or DML target
 when SQLGlot cannot establish the identity: this includes unsupported
 `Command` and `Block` forms, unmodelled procedure/function/trigger bodies,
 unparsed `TOP` or `OUTPUT INTO` mutations, XML index forms, temporary table
-prefixes, nested block comments whose server and SQLGlot readings differ,
+prefixes,
 CTE write aliases that are not resolved to a base table, CTE bodies with
 unmodelled write effects, omitted schema parts, `SELECT INTO` with a temporary
 scope modifier, materialized-view modifiers, and four-part references whose
@@ -362,6 +362,11 @@ Parsed but unmapped `COPY`, privilege, `COMMENT ON`, `DESCRIBE` and `USE`
 forms also report unread facts; old text-extracted names are not carried forward. The
 corpus contains cross-dialect and truncated SQL, so a diagnostic is not a
 native SQL Server grammar verdict.
+
+SQLGlot's T-SQL tokenizer reads nested block comments. The facts reader uses
+that same nesting rule when it classifies an unread statement's leading word.
+An unterminated nested comment reports a tokenization error and names no
+object; text still inside the comment does not establish an operation.
 
 A narrow SQL Server 2022 CU25 probe confirmed stored mixed-case spelling,
 `[a]]b]`, two-, three- and local four-part lookups, `UPDATE TOP ... OUTPUT`

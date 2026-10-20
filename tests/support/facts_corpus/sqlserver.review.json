@@ -627,27 +627,6 @@
   "reason": "The table DDL falls back to Command around backtick quoting that the T-SQL reader did not resolve; the reader cannot establish the full target identity and mutation from this AST. Old hybrid extracted [TABLE/t/dbo]; these object assertions are now omitted.",
   "sql": "CREATE TABLE t (y INT) PARTITION BY RANGE (y) SUBPARTITION BY HASH (y) SUBPARTITIONS 2 (PARTITION `p.0` values  less than (2020) (SUBPARTITION sp0, SUBPARTITION sp1), PARTITION p1 VALUES LESS THAN MAXVALUE)"
  },
- "0c8011f8a5aee553/hybrid": {
-  "class": "opaque-reader-gap",
-  "facts": {
-   "diagnostic": "tsql nested block comments are opaque to statement facts",
-   "kind": "QUERY",
-   "operation": "SELECT"
-  },
-  "issue": "by design: docs/sql-parsing/sqlserver.md#13-statement-facts",
-  "old": {
-   "hybrid": [
-    [
-     "TABLE",
-     "t",
-     "dbo"
-    ]
-   ]
-  },
-  "path": "hybrid",
-  "reason": "Nested block-comment boundaries are guarded in T-SQL facts. The comment eventually closes, but the reader does not trust AST/object boundaries across nested comments. Old hybrid extracted [TABLE/t/dbo]; these object assertions are now omitted.",
-  "sql": "SELECT 1 /* a /* b */ c */ FROM t"
- },
  "0c887c99274d0efa/analyzer": {
   "class": "opaque-reader-gap",
   "facts": {
@@ -1288,7 +1267,7 @@
  "19b9fb152eed381b/hybrid": {
   "class": "opaque-reader-gap",
   "facts": {
-   "diagnostic": "tsql nested block comments are opaque to statement facts",
+   "diagnostic": "tsql Copy has no statement facts mapping",
    "kind": "UNKNOWN",
    "operation": "COPY"
   },
@@ -1303,7 +1282,7 @@
    ]
   },
   "path": "hybrid",
-  "reason": "Nested block-comment boundaries are guarded in T-SQL facts. The comment eventually closes, but the reader does not trust AST/object boundaries across nested comments. Old hybrid extracted [TABLE/items/dbo]; these object assertions are now omitted.",
+  "reason": "The nested block comment closes before COPY. SQLGlot exposes a Copy AST, but the T-SQL facts reader has no COPY effect mapping, so it classifies COPY and withholds an object. Old hybrid extracted [TABLE/items/dbo] from this cross-dialect statement.",
   "sql": "/* outer /* inner */ tail */ COPY /* target */ items (id) FROM '/tmp/items;--/*quoted*/.csv';"
  },
  "1a369d2eda18706f/analyzer": {
@@ -3470,25 +3449,29 @@
   "reason": "MERGE may mix INSERT, UPDATE and DELETE branches; this reader has no complete T-SQL MERGE effect mapping. Facts retain DML classification but no guessed target, event or table; the old text helper supplied partial names/events.",
   "sql": "MERGE INTO test USING other ON (test.id = other.id)"
  },
- "3651bdea74b914a2/hybrid": {
-  "class": "opaque-reader-gap",
+ "3651bdea74b914a2/analyzer": {
+  "class": "facts-adds-acted",
   "facts": {
-   "diagnostic": "tsql nested block comments are opaque to statement facts",
+   "action": "add-column",
+   "declared_columns": [
+    "x"
+   ],
    "kind": "DDL",
-   "operation": "ALTER"
-  },
-  "issue": "by design: docs/sql-parsing/sqlserver.md#13-statement-facts",
-  "old": {
-   "hybrid": [
+   "objects": [
     [
-     "TABLE",
      "orders",
+     "TABLE",
+     "altered",
      "s"
     ]
-   ]
+   ],
+   "operation": "ALTER"
   },
-  "path": "hybrid",
-  "reason": "Nested block-comment boundaries are guarded in T-SQL facts. The comment eventually closes, but the reader does not trust AST/object boundaries across nested comments. Old hybrid extracted [TABLE/orders/s]; these object assertions are now omitted.",
+  "old": {
+   "analyzer": []
+  },
+  "path": "analyzer",
+  "reason": "The nested comment closes before the qualified table. SQLGlot's T-SQL AST identifies ALTER TABLE s.orders ADD COLUMN x; facts report the altered table and new column, while the old analyzer missed the object.",
   "sql": "ALTER TABLE ONLY /* a /* b */ c */ \"s\".\"orders\" ADD COLUMN x INT;"
  },
  "36811bf386b16aec/analyzer": {
@@ -5281,47 +5264,6 @@
   "path": "analyzer",
   "reason": "SQLGlot's T-SQL parser could not construct a statement AST around a dollar-quoted, language-tagged routine body; the reader reports the grammar gap without reviving text-derived objects. Old analyzer extracted [FUNCTION/default_schema.greet]; these object assertions are now omitted.",
   "sql": "CREATE OR REPLACE FUNCTION greet()\nRETURNS TEXT AS $$\nBEGIN\n    RETURN 'Hello';\nEND;\n$$ LANGUAGE plpgsql;"
- },
- "5040f8b6dd8808ae/analyzer": {
-  "class": "opaque-reader-gap",
-  "facts": {
-   "diagnostic": "tsql nested block comments are opaque to statement facts",
-   "kind": "DDL",
-   "operation": "CREATE"
-  },
-  "issue": "by design: docs/sql-parsing/sqlserver.md#13-statement-facts",
-  "old": {
-   "analyzer": [
-    [
-     "TABLE",
-     "default_schema.t"
-    ]
-   ]
-  },
-  "path": "analyzer",
-  "reason": "Nested block-comment boundaries are guarded in T-SQL facts. The comment eventually closes, but the reader does not trust AST/object boundaries across nested comments. Old analyzer extracted [TABLE/default_schema.t]; these object assertions are now omitted.",
-  "sql": "CREATE TABLE t (id INT) /* a /* b */ x{c}y */"
- },
- "5040f8b6dd8808ae/hybrid": {
-  "class": "opaque-reader-gap",
-  "facts": {
-   "diagnostic": "tsql nested block comments are opaque to statement facts",
-   "kind": "DDL",
-   "operation": "CREATE"
-  },
-  "issue": "by design: docs/sql-parsing/sqlserver.md#13-statement-facts",
-  "old": {
-   "hybrid": [
-    [
-     "TABLE",
-     "t",
-     "dbo"
-    ]
-   ]
-  },
-  "path": "hybrid",
-  "reason": "Nested block-comment boundaries are guarded in T-SQL facts. The comment eventually closes, but the reader does not trust AST/object boundaries across nested comments. Old hybrid extracted [TABLE/t/dbo]; these object assertions are now omitted.",
-  "sql": "CREATE TABLE t (id INT) /* a /* b */ x{c}y */"
  },
  "50c3f023839381e5/hybrid": {
   "class": "opaque-reader-gap",
@@ -11728,7 +11670,7 @@
  "aa18ce880e8948bc/analyzer": {
   "class": "opaque-reader-gap",
   "facts": {
-   "diagnostic": "tsql nested block comments are opaque to statement facts",
+   "error": "tsql statement could not be tokenized (unterminated quote or comment)",
    "kind": "UNKNOWN",
    "operation": "UNKNOWN"
   },
@@ -11742,7 +11684,7 @@
    ]
   },
   "path": "analyzer",
-  "reason": "Nested block-comment boundaries are guarded in T-SQL facts. The comment remains open under SQL Server's nested-comment rule; a name after the inner close is still comment text. Old analyzer extracted [TABLE/default_schema.victim]; these object assertions are now omitted.",
+  "reason": "The T-SQL nested block comment never closes, and SQLGlot reports a tokenization error. The apparent table victim remains inside comment text, so no executable object is named. Old analyzer extracted [TABLE/default_schema.victim] from that text.",
   "sql": "/* outer /* inner */ DROP TABLE victim;"
  },
  "aa2def2ae6b9bb99/hybrid": {
@@ -12126,7 +12068,7 @@
  "b312e88f93ecc9f8/analyzer": {
   "class": "opaque-reader-gap",
   "facts": {
-   "diagnostic": "tsql nested block comments are opaque to statement facts",
+   "error": "tsql statement could not be tokenized (unterminated quote or comment)",
    "kind": "UNKNOWN",
    "operation": "UNKNOWN"
   },
@@ -12140,7 +12082,7 @@
    ]
   },
   "path": "analyzer",
-  "reason": "Nested block-comment boundaries are guarded in T-SQL facts. The comment remains open under SQL Server's nested-comment rule; a name after the inner close is still comment text. Old analyzer extracted [TABLE/default_schema.t_keep]; these object assertions are now omitted.",
+  "reason": "The T-SQL nested block comment never closes, and SQLGlot reports a tokenization error. The apparent table t_keep remains inside comment text, so no executable object is named. Old analyzer extracted [TABLE/default_schema.t_keep] from that text.",
   "sql": "/* x /* y */ DROP TABLE t_keep;"
  },
  "b32bad6ef14eb555": {
@@ -13142,9 +13084,21 @@
  "c0eacdd82645e9f8": {
   "class": "dml-differs",
   "facts": {
-   "diagnostic": "tsql nested block comments are opaque to statement facts",
+   "events": [
+    "DELETE"
+   ],
    "kind": "DML",
-   "operation": "DELETE"
+   "objects": [
+    [
+     "t",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "operation": "DELETE",
+   "target": "t",
+   "target_sql": "t /* a / * b * /{c}WHERE a = 1 */"
   },
   "old": {
    "analyzer": [
@@ -13162,7 +13116,7 @@
    ]
   },
   "path": "both",
-  "reason": "Nested block comments have a different server lexical boundary from SQLGlot. Facts keep DELETE classification and withhold names/events; the old text path inferred a target from the ambiguous remainder.",
+  "reason": "SQLGlot's T-SQL tokenizer keeps the nested comment after the DELETE target. The facts reader reports altered table t and DELETE event without a predicate; the old DML helper kept comment text in its table string. No effect or name is taken from inside the comment.",
   "sql": "DELETE FROM t /* a /* b */{c}WHERE a = 1 */"
  },
  "c101b59cf8af704b/analyzer": {
@@ -14574,7 +14528,7 @@
    "kind": "DDL",
    "objects": [
     [
-     "cafe\u0301",
+     "café",
      "TABLE",
      "created",
      null
@@ -14587,7 +14541,7 @@
   },
   "path": "analyzer",
   "reason": "The CREATE TABLE AST retains the written decomposed-Unicode name; old analyzer text matching returned no table.",
-  "sql": "CREATE TABLE cafe\u0301 (id INT)"
+  "sql": "CREATE TABLE café (id INT)"
  },
  "d9abe28ab7fcbedd/hybrid": {
   "class": "opaque-reader-gap",
@@ -14755,7 +14709,7 @@
  "db7843f1be998b21/analyzer": {
   "class": "opaque-reader-gap",
   "facts": {
-   "diagnostic": "tsql nested block comments are opaque to statement facts",
+   "error": "tsql statement could not be tokenized (unterminated quote or comment)",
    "kind": "UNKNOWN",
    "operation": "UNKNOWN"
   },
@@ -14769,28 +14723,32 @@
    ]
   },
   "path": "analyzer",
-  "reason": "Nested block-comment boundaries are guarded in T-SQL facts. The comment remains open under SQL Server's nested-comment rule; a name after the inner close is still comment text. Old analyzer extracted [TABLE/default_schema.victim]; these object assertions are now omitted.",
+  "reason": "The T-SQL nested block comment never closes, and SQLGlot reports a tokenization error. The apparent table victim remains inside comment text, so no executable object is named. Old analyzer extracted [TABLE/default_schema.victim] from that text.",
   "sql": "/* L1 /* L2 /* L3 */ DROP TABLE victim;"
  },
- "dba866a0b2c59401/hybrid": {
-  "class": "opaque-reader-gap",
+ "dba866a0b2c59401/analyzer": {
+  "class": "facts-adds-acted",
   "facts": {
-   "diagnostic": "tsql nested block comments are opaque to statement facts",
+   "action": "add-column",
+   "declared_columns": [
+    "c"
+   ],
    "kind": "DDL",
-   "operation": "ALTER"
-  },
-  "issue": "by design: docs/sql-parsing/sqlserver.md#13-statement-facts",
-  "old": {
-   "hybrid": [
+   "objects": [
     [
-     "TABLE",
      "orders",
+     "TABLE",
+     "altered",
      "s"
     ]
-   ]
+   ],
+   "operation": "ALTER"
   },
-  "path": "hybrid",
-  "reason": "Nested block-comment boundaries are guarded in T-SQL facts. The comment eventually closes, but the reader does not trust AST/object boundaries across nested comments. Old hybrid extracted [TABLE/orders/s]; these object assertions are now omitted.",
+  "old": {
+   "analyzer": []
+  },
+  "path": "analyzer",
+  "reason": "The nested comment closes before the qualified table. SQLGlot's T-SQL AST identifies ALTER TABLE s.orders ADD COLUMN c; facts report the altered table and new column, while the old analyzer missed the object.",
   "sql": "ALTER TABLE /* outer /* inner */ x */ \"s\".\"orders\" ADD COLUMN c INT;"
  },
  "dc45fd5a8a55ba47/analyzer": {
@@ -14920,7 +14878,7 @@
  "e0086494b3932c9b/analyzer": {
   "class": "opaque-reader-gap",
   "facts": {
-   "diagnostic": "tsql nested block comments are opaque to statement facts",
+   "error": "tsql statement could not be tokenized (unterminated quote or comment)",
    "kind": "UNKNOWN",
    "operation": "UNKNOWN"
   },
@@ -14934,7 +14892,7 @@
    ]
   },
   "path": "analyzer",
-  "reason": "Nested block-comment boundaries are guarded in T-SQL facts. The comment remains open under SQL Server's nested-comment rule; a name after the inner close is still comment text. Old analyzer extracted [TABLE/default_schema.victim]; these object assertions are now omitted.",
+  "reason": "The T-SQL nested block comment never closes, and SQLGlot reports a tokenization error. The apparent table victim remains inside comment text, so no executable object is named. Old analyzer extracted [TABLE/default_schema.victim] from that text.",
   "sql": "/* outer /* inner */ CREATE TABLE victim (id INT);"
  },
  "e07fc09ef4350d3e/analyzer": {
@@ -15603,7 +15561,7 @@
   },
   "path": "both",
   "reason": "Backtick quoting in the SELECT source is not modelled by the T-SQL parser. Facts keep INSERT classification without asserting a target/event; the old analyzer inferred table t from the leading text.",
-  "sql": "INSERT INTO t SELECT `t\u00e9` FROM u"
+  "sql": "INSERT INTO t SELECT `té` FROM u"
  },
  "e9f67572b6d16505/analyzer": {
   "class": "opaque-reader-gap",
@@ -16154,7 +16112,7 @@
  "f1ba6b5c1250d6fd/analyzer": {
   "class": "opaque-reader-gap",
   "facts": {
-   "diagnostic": "tsql nested block comments are opaque to statement facts",
+   "error": "tsql statement could not be tokenized (unterminated quote or comment)",
    "kind": "UNKNOWN",
    "operation": "UNKNOWN"
   },
@@ -16168,7 +16126,7 @@
    ]
   },
   "path": "analyzer",
-  "reason": "Nested block-comment boundaries are guarded in T-SQL facts. The comment remains open under SQL Server's nested-comment rule; a name after the inner close is still comment text. Old analyzer extracted [TABLE/default_schema.t_keep]; these object assertions are now omitted.",
+  "reason": "The T-SQL nested block comment never closes, and SQLGlot reports a tokenization error. The apparent table t_keep remains inside comment text, so no executable object is named. Old analyzer extracted [TABLE/default_schema.t_keep] from that text.",
   "sql": "/* a /* b */ DROP TABLE t_keep;"
  },
  "f2463fb35b1639b1/analyzer": {

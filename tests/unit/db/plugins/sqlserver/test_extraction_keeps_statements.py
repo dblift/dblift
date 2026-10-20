@@ -1,6 +1,5 @@
 """Execution runs batches; extraction and reporting still read one statement at a time."""
 
-from dblift.core.sql_parser.hybrid_parser import HybridParser
 from dblift.core.sql_parser.parser_factory import SqlParserFactory
 from dblift.db.plugins.sqlserver.parser.sqlserver_regex_parser import SqlServerRegexParser
 
@@ -31,7 +30,7 @@ def test_parse_sql_reports_one_statement_per_semicolon():
 
 
 def test_hybrid_extraction_of_a_batch_equals_extraction_statement_by_statement():
-    parser = HybridParser("sqlserver")
+    parser = SqlParserFactory("sqlserver", parser_type="hybrid").get_parser()
 
     def names(objects):
         return sorted((o.object_type.name, o.name) for o in objects)

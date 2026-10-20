@@ -160,17 +160,56 @@ OTHER = json.loads(
     Path(__file__).with_name("mysql_facts_programs_other_dialects.json").read_text(encoding="utf-8")
 )
 
+TSQL_CHANGES = {
+    "CREATE INDEX CONCURRENTLY ON orders (email)": {
+        "opaque": True,
+        "objects": [],
+        "indexed_table": None,
+        "diagnostic": "tsql index relation is opaque",
+    },
+    "CREATE INDEX ON orders (email)": {
+        "opaque": True,
+        "objects": [],
+        "indexed_table": None,
+        "diagnostic": "tsql index relation is opaque",
+    },
+    "CREATE TRIGGER tr BEFORE INSERT ON t FOR EACH ROW SET NEW.a = 1": {
+        "objects": [],
+        "diagnostic": "tsql Command is opaque to statement facts",
+    },
+    "CREATE TRIGGER trg BEFORE INSERT ON s.t FOR EACH ROW EXECUTE FUNCTION audit('a;b')": {
+        "opaque": True,
+        "objects": [],
+        "diagnostic": "tsql program body effects are opaque",
+    },
+    "CREATE TRIGGER users_bi BEFORE INSERT ON users FOR EACH ROW EXECUTE FUNCTION f()": {
+        "opaque": True,
+        "objects": [],
+        "diagnostic": "tsql program body effects are opaque",
+    },
+    "CREATE UNIQUE INDEX CONCURRENTLY ON t (c)": {
+        "opaque": True,
+        "objects": [],
+        "indexed_table": None,
+        "diagnostic": "tsql index relation is opaque",
+    },
+}
+
 
 @pytest.mark.parametrize(
     ("dialect", "sql"), [(d, s) for d in sorted(OTHER) for s in sorted(OTHER[d])]
 )
 def test_other_dialects_keep_their_reading_of_the_same_forms(dialect, sql):
     facts = read_statement_facts(sql, dialect=dialect)
-    assert {
+    observed = {
         "operation": facts.operation,
         "kind": facts.kind,
         "opaque": facts.opaque,
         "objects": [[o.name, o.type.value, o.role, o.schema] for o in facts.objects],
         "indexed_table": facts.indexed_table,
         "diagnostic": facts.diagnostic,
-    } == OTHER[dialect][sql]
+    }
+    expected = OTHER[dialect][sql]
+    if dialect == "tsql":
+        expected = {**expected, **TSQL_CHANGES.get(sql, {})}
+    assert observed == expected

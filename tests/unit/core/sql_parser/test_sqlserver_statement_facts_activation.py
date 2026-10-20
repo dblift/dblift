@@ -301,15 +301,35 @@ def test_foreign_dml_modifier_does_not_create_a_tsql_target(sql):
     assert facts.diagnostic
 
 
-def test_nested_block_comment_does_not_supply_an_unproven_target():
+def test_nested_block_comment_keeps_the_ast_proven_target():
     facts = read_statement_facts(
         'ALTER TABLE /* outer /* inner */ x */ "s"."orders" ADD COLUMN c INT',
         dialect="tsql",
     )
 
     assert (facts.operation, facts.kind) == ("ALTER", "DDL")
-    assert facts.objects == ()
-    assert facts.diagnostic
+    assert [(obj.name, obj.schema, obj.role) for obj in facts.affected_objects] == [
+        ("orders", "s", "altered")
+    ]
+    assert facts.action == "add-column"
+    assert facts.declared_columns == ("c",)
+    assert facts.diagnostic is None
+
+
+def test_nested_comment_head_ignores_words_inside_the_comment():
+    facts = read_statement_facts(
+        "/* outer /* inner */ tail */ COPY items (id) FROM 'input.csv'", dialect="tsql"
+    )
+    assert (facts.operation, facts.kind) == ("COPY", "UNKNOWN")
+    assert facts.objects == () and facts.target is None and facts.events is None
+    assert facts.diagnostic == "tsql Copy has no statement facts mapping"
+
+
+def test_unterminated_nested_comment_has_no_executable_head_or_object():
+    facts = read_statement_facts("/* outer /* inner */ DROP TABLE victim", dialect="tsql")
+    assert (facts.operation, facts.kind) == ("UNKNOWN", "UNKNOWN")
+    assert facts.objects == () and facts.target is None and facts.events is None
+    assert facts.error and "unterminated" in facts.error
 
 
 @pytest.mark.parametrize(

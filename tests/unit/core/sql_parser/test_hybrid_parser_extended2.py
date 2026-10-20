@@ -22,6 +22,7 @@ from dblift.core.sql_model.table import Table
 from dblift.core.sql_model.view import View
 from dblift.core.sql_parser.hybrid_parser import HybridParser
 from tests.support.legacy_db2_hybrid import legacy_db2_hybrid
+from tests.support.legacy_sqlserver_parsers import legacy_sqlserver_hybrid
 
 pytestmark = [pytest.mark.unit]
 
@@ -489,7 +490,7 @@ class TestEnsureIndexMetadata:
 
 class TestEnsureTriggerMetadata:
     def test_non_create_returns_early(self):
-        parser = HybridParser("sqlserver")
+        parser = legacy_sqlserver_hybrid()
         result = ParseResult(success=True, statements=[])
         stmt = SqlStatement(
             sql_text="SELECT 1",
@@ -503,7 +504,7 @@ class TestEnsureTriggerMetadata:
         assert result.triggers == []
 
     def test_create_trigger_builds_trigger(self):
-        parser = HybridParser("sqlserver")
+        parser = legacy_sqlserver_hybrid()
         result = ParseResult(success=True, statements=[])
         sql = "CREATE TRIGGER trg1 BEFORE INSERT ON app.orders FOR EACH ROW SET NEW.created_at = NOW();"
         stmt = SqlStatement(

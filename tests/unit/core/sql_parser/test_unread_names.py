@@ -150,10 +150,14 @@ def test_the_schema_part_of_a_name_is_checked_too():
     source = "CREATE TABLE sch\u00e9.t (id INT)"
     cut = SqlObject(name="t", schema="sch", object_type=SqlObjectType.TABLE)
     whole = SqlObject(name="t", schema="sch\u00e9", object_type=SqlObjectType.TABLE)
-    for dialect in ("oracle", "sqlserver"):
-        parser = SqlParserFactory(dialect).get_parser()
-        assert parser._names_unreadable(source, [cut])
-        assert not parser._names_unreadable(source, [whole])
+    parser = SqlParserFactory("oracle").get_parser()
+    assert parser._names_unreadable(source, [cut])
+    assert not parser._names_unreadable(source, [whole])
+    assert names_unreadable(source, "tsql", [cut.name, cut.schema])
+    assert not names_unreadable(source, "tsql", [whole.name, whole.schema])
+    assert [
+        (obj.name, obj.schema) for obj in SqlParserFactory("sqlserver").extract_objects(source)
+    ] == [("t", "sché")]
     sqlglot_parser = SqlParserFactory("snowflake").get_parser()
     assert sqlglot_parser._names_unreadable(source, [cut])
     assert not sqlglot_parser._names_unreadable(source, [whole])
@@ -162,7 +166,12 @@ def test_the_schema_part_of_a_name_is_checked_too():
 @pytest.mark.parametrize("dialect", ("oracle", "sqlserver", "snowflake"))
 def test_a_statement_that_cannot_be_located_in_its_script_is_withheld(dialect):
     parser = SqlParserFactory(dialect).get_parser()
-    assert parser._names_unreadable(None, [])
+    if dialect == "sqlserver":
+        scanner = SqlParserFactory(dialect, "regex").get_parser()
+        assert statement_sources(scanner, "caf\u00e9; SELECT 1;", ["SELECT 2"]) == [None]
+        assert parser.extract_objects("CREATE TABLE ghost(id INT);\nGO 0") == []
+    else:
+        assert parser._names_unreadable(None, [])
     scanner = SqlParserFactory("postgresql", "regex").get_parser()
     script = "caf\u00e9; SELECT 1;"
     assert statement_sources(scanner, script, ["SELECT 2"]) == [None]
