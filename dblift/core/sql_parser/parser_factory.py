@@ -200,13 +200,12 @@ class SqlParserFactory:
                 f"No {parser_type} parser available for dialect {dialect}"
             ) from exc
         if quirks.supports_statement_facts and parser_type in ("hybrid", "regex"):
-            from dblift.core.sql_parser.hybrid_parser import HybridParser
-            from dblift.core.sql_parser.sqlglot_parser import SqlGlotParser
             from dblift.core.sql_parser.statement_facts_parser import StatementFactsParser
 
-            # Those two refuse a plugin that reads statement facts; with no
-            # parser class of its own, its reader is the parser.
-            if cls is None or issubclass(cls, (HybridParser, SqlGlotParser)):
+            # The hybrid and sqlglot parsers refuse a plugin that reads statement
+            # facts (matched by name so as not to import sqlglot); with no parser
+            # class of its own, its reader is the parser.
+            if cls is None or cls.__name__ in ("SqlGlotParser", "HybridParser"):
                 return StatementFactsParser(quirks)
         if cls is None:
             raise UnsupportedDialectError(f"Unsupported dialect: {dialect}")
