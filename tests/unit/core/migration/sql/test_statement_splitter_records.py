@@ -99,6 +99,16 @@ def test_a_parser_returning_strings_from_split_refuses(method):
         getattr(_with_parser(InvalidParser()), method)("SELECT 1")
 
 
+@pytest.mark.parametrize("returned", ["", b""])
+def test_an_empty_raw_string_result_does_not_discard_sql(returned):
+    class InvalidParser:
+        def split(self, sql):
+            return returned
+
+    with pytest.raises(UnsafeStatementSplitError, match="postgresql.*Statement records"):
+        _with_parser(InvalidParser()).split("SELECT 1")
+
+
 def test_record_parser_preserves_source_metadata():
     records = [
         Statement("SELECT 1", 3, "GO", repeat=0, source_start=5, source_end=17),
