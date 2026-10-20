@@ -1968,34 +1968,9 @@
   "name": "dot_inside_an_unclosed_comment",
   "script": "SELECT 1 /* open\n.print x",
   "views": {
-   "analysis": [
-    "SELECT 1 /* open\n.print x"
-   ],
-   "blanked": "SELECT 1 /* open\n.print x",
-   "extraction": [
-    "SELECT 1 /* open\n.print x"
-   ],
-   "masking": [
-    [
-     "SELECT 1 '?'",
-     "SELECT 1"
-    ]
-   ],
-   "records": [
-    {
-     "analysis_statements": null,
-     "kind": "sql",
-     "line": 1,
-     "multi": false,
-     "repeat": 1,
-     "source_end": 25,
-     "source_start": 0,
-     "terminator": null,
-     "text": "SELECT 1 /* open\n.print x"
-    }
-   ],
-   "strings": [
-    "SELECT 1 /* open\n.print x"
+   "error": [
+    "UnsafeStatementSplitError",
+    "unterminated block comment opened at line 1, column 10"
    ]
   }
  },
@@ -6096,52 +6071,9 @@
   "name": "unclosed_comment_last",
   "script": "SELECT 1; /* open",
   "views": {
-   "analysis": [
-    "SELECT 1",
-    "/* open"
-   ],
-   "blanked": "SELECT 1; /* open",
-   "extraction": [
-    "SELECT 1",
-    "/* open"
-   ],
-   "masking": [
-    [
-     "SELECT 1",
-     "SELECT 1"
-    ],
-    [
-     "'?'",
-     ""
-    ]
-   ],
-   "records": [
-    {
-     "analysis_statements": null,
-     "kind": "sql",
-     "line": 1,
-     "multi": false,
-     "repeat": 1,
-     "source_end": 9,
-     "source_start": 0,
-     "terminator": ";",
-     "text": "SELECT 1"
-    },
-    {
-     "analysis_statements": null,
-     "kind": "sql",
-     "line": 1,
-     "multi": false,
-     "repeat": 1,
-     "source_end": 17,
-     "source_start": 10,
-     "terminator": null,
-     "text": "/* open"
-    }
-   ],
-   "strings": [
-    "SELECT 1",
-    "/* open"
+   "error": [
+    "UnsafeStatementSplitError",
+    "unterminated block comment opened at line 1, column 11"
    ]
   }
  },
@@ -6149,52 +6081,9 @@
   "name": "unclosed_comment_swallows_the_rest",
   "script": "SELECT 1; /* never closed\nSELECT 2;",
   "views": {
-   "analysis": [
-    "SELECT 1",
-    "/* never closed\nSELECT 2;"
-   ],
-   "blanked": "SELECT 1; /* never closed\nSELECT 2;",
-   "extraction": [
-    "SELECT 1",
-    "/* never closed\nSELECT 2;"
-   ],
-   "masking": [
-    [
-     "SELECT 1",
-     "SELECT 1"
-    ],
-    [
-     "'?'",
-     ""
-    ]
-   ],
-   "records": [
-    {
-     "analysis_statements": null,
-     "kind": "sql",
-     "line": 1,
-     "multi": false,
-     "repeat": 1,
-     "source_end": 9,
-     "source_start": 0,
-     "terminator": ";",
-     "text": "SELECT 1"
-    },
-    {
-     "analysis_statements": null,
-     "kind": "sql",
-     "line": 1,
-     "multi": false,
-     "repeat": 1,
-     "source_end": 35,
-     "source_start": 10,
-     "terminator": null,
-     "text": "/* never closed\nSELECT 2;"
-    }
-   ],
-   "strings": [
-    "SELECT 1",
-    "/* never closed\nSELECT 2;"
+   "error": [
+    "UnsafeStatementSplitError",
+    "unterminated block comment opened at line 1, column 11"
    ]
   }
  },
@@ -6202,52 +6091,9 @@
   "name": "unclosed_nested_comment",
   "script": "SELECT 1; /* /* a */ b",
   "views": {
-   "analysis": [
-    "SELECT 1",
-    "/* /* a */ b"
-   ],
-   "blanked": "SELECT 1; /* /* a */ b",
-   "extraction": [
-    "SELECT 1",
-    "/* /* a */ b"
-   ],
-   "masking": [
-    [
-     "SELECT 1",
-     "SELECT 1"
-    ],
-    [
-     "'?'",
-     ""
-    ]
-   ],
-   "records": [
-    {
-     "analysis_statements": null,
-     "kind": "sql",
-     "line": 1,
-     "multi": false,
-     "repeat": 1,
-     "source_end": 9,
-     "source_start": 0,
-     "terminator": ";",
-     "text": "SELECT 1"
-    },
-    {
-     "analysis_statements": null,
-     "kind": "sql",
-     "line": 1,
-     "multi": false,
-     "repeat": 1,
-     "source_end": 22,
-     "source_start": 10,
-     "terminator": null,
-     "text": "/* /* a */ b"
-    }
-   ],
-   "strings": [
-    "SELECT 1",
-    "/* /* a */ b"
+   "error": [
+    "UnsafeStatementSplitError",
+    "unterminated block comment opened at line 1, column 11"
    ]
   }
  },

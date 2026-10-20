@@ -16,8 +16,9 @@ from dblift.db.provider_registry import ProviderRegistry
 from tests.support.splitter_spec.splitting import SplitOutcome, split_script
 from tests.support.statement_list_parity import DIALECTS, PSQL_WIRE
 
-#: no-break space, em space, ideographic space, next line, line separator, euro sign
-NAME_CHARACTERS = ("\xa0", "\u2003", "\u3000", "\x85", "\u2028", "\u20ac")
+#: C1 edges U+0080 and U+009F, no-break space, em space, ideographic space, next line,
+#: line separator, euro sign
+NAME_CHARACTERS = ("\x80", "\x9f", "\xa0", "\u2003", "\u3000", "\x85", "\u2028", "\u20ac")
 
 #: Each lexeme opener written directly after a name that ends in the character.
 AFTER_NAME = (
