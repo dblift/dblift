@@ -25,7 +25,7 @@ class TokenType(Enum):
     EOF = "EOF"
 
 
-@dataclass
+@dataclass(slots=True)
 class Token:
     """Represents a single token in SQL content.
 

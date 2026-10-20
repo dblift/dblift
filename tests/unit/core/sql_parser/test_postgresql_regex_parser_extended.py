@@ -303,31 +303,31 @@ class TestValidateSql(unittest.TestCase):
     def test_valid_simple_sql(self):
         sql = "CREATE TABLE t (id INT);"
         result = self.parser.validate_sql(sql)
-        self.assertIn("success", result)
-        self.assertTrue(result["success"])
+        self.assertIn("valid", result)
+        self.assertTrue(result["valid"])
         self.assertEqual(result["errors"], [])
 
     def test_unmatched_single_quote(self):
         sql = "SELECT 'unclosed string FROM t;"
         result = self.parser.validate_sql(sql)
-        self.assertIn("success", result)
+        self.assertIn("valid", result)
         # Should detect unmatched quote
-        self.assertFalse(result["success"])
+        self.assertFalse(result["valid"])
 
     def test_unmatched_parentheses(self):
         sql = "SELECT (1 + 2 FROM t;"
         result = self.parser.validate_sql(sql)
-        self.assertIn("success", result)
-        self.assertFalse(result["success"])
+        self.assertIn("valid", result)
+        self.assertFalse(result["valid"])
 
     def test_empty_sql_is_valid(self):
         result = self.parser.validate_sql("")
-        self.assertIn("success", result)
+        self.assertIn("valid", result)
 
     def test_valid_multistatement(self):
         sql = "CREATE TABLE a (id INT); INSERT INTO a VALUES (1);"
         result = self.parser.validate_sql(sql)
-        self.assertTrue(result["success"])
+        self.assertTrue(result["valid"])
 
 
 class TestIntegration(unittest.TestCase):

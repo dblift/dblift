@@ -72,7 +72,7 @@ class SqlParserFactory:
         if self._current_parser is None:
             self._current_parser = self._create_parser()
             if self._current_parser is None:
-                return {"success": False, "errors": ["No parser available"]}
+                return {"valid": False, "errors": ["No parser available"]}
         return self._current_parser.validate_sql(sql_content)
 
     def extract_objects(
