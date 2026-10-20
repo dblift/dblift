@@ -228,6 +228,7 @@ def test_a_failed_duckdb_tag_probe_charges_the_identifier_run():
         r"[A-Z_]*X",
         r"(?:[A-Z_]+)+",
         r"(?=[A-Z_]*X)",
+        r"[A-Z_]*",
     ),
 )
 def test_uncertified_regex_shapes_are_refused(mutant):
