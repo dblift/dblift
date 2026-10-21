@@ -3,6 +3,7 @@
 import pytest
 
 from dblift.core.sql_parser.parser_factory import SqlParserFactory
+from dblift.db.provider_registry import ProviderRegistry
 
 
 def _oracle_parser():
@@ -17,10 +18,10 @@ def _oracle_parser():
         ("CREATE TABLE t (id NUMBER); -- c", "TABLE", "T"),
     ],
 )
-def test_extract_objects_from_an_already_split_statement(sql, kind, name):
-    objects = _oracle_parser().extract_statement_objects(sql, "S")
+def test_the_facts_of_an_already_split_statement_name_its_object(sql, kind, name):
+    facts = ProviderRegistry.get_quirks("oracle").statement_facts(sql)
 
-    assert [(o.object_type.name, o.name.upper()) for o in objects] == [(kind, name)]
+    assert [(o.type.name, o.name) for o in facts.objects] == [(kind, name)]
 
 
 def test_parse_sql_reports_the_refusal_without_partial_statements():

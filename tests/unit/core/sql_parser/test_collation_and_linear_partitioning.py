@@ -2,8 +2,7 @@
 
 import pytest
 
-from dblift.core.sql_parser import SqlParserFactory
-from tests.support.legacy_sqlserver_parsers import legacy_sqlserver_hybrid
+from tests.support.legacy_oracle_hybrid import hybrid_for, legacy_oracle_hybrid
 
 pytestmark = pytest.mark.unit
 
@@ -23,11 +22,7 @@ pytestmark = pytest.mark.unit
     ],
 )
 def test_column_keeps_explicit_collation(dialect, definition, collation, data_type):
-    parser = (
-        legacy_sqlserver_hybrid()
-        if dialect == "sqlserver"
-        else SqlParserFactory(dialect).get_parser()
-    )
+    parser = hybrid_for(dialect)
     result = parser.parse_sql(f"CREATE TABLE t (c {definition}, d VARCHAR(10))")
     assert result.success
     column, plain_column = result.tables[0].columns
@@ -40,7 +35,7 @@ def test_column_keeps_explicit_collation(dialect, definition, collation, data_ty
 
 @pytest.mark.parametrize("collation", ["BINARY_CI", "binary_ci", '"BINARY_CI"'])
 def test_oracle_regex_column_keeps_collation_separate_from_type(collation):
-    parser = SqlParserFactory("oracle").get_parser()
+    parser = legacy_oracle_hybrid()
     parser.sqlglot_parser = None
     result = parser.parse_sql(f"CREATE TABLE t (c VARCHAR2(10) COLLATE {collation} NOT NULL)")
     assert result.success
@@ -51,7 +46,7 @@ def test_oracle_regex_column_keeps_collation_separate_from_type(collation):
 
 
 def test_oracle_default_text_does_not_declare_a_collation():
-    parser = SqlParserFactory("oracle").get_parser()
+    parser = legacy_oracle_hybrid()
     parser.sqlglot_parser = None
     result = parser.parse_sql("CREATE TABLE t (c VARCHAR2(30) DEFAULT 'COLLATE BINARY_CI')")
     assert result.success
@@ -61,10 +56,8 @@ def test_oracle_default_text_does_not_declare_a_collation():
 @pytest.mark.parametrize("dialect", ["oracle"])
 @pytest.mark.parametrize("count", ["0", "-1", "x"])
 def test_invalid_partition_count_is_unknown(dialect, count):
-    result = (
-        SqlParserFactory(dialect)
-        .get_parser()
-        .parse_sql(f"CREATE TABLE t (id INT) PARTITION BY HASH (id) PARTITIONS {count}")
+    result = hybrid_for(dialect).parse_sql(
+        f"CREATE TABLE t (id INT) PARTITION BY HASH (id) PARTITIONS {count}"
     )
     assert result.success
     table = result.tables[0]
@@ -75,13 +68,9 @@ def test_invalid_partition_count_is_unknown(dialect, count):
 
 @pytest.mark.parametrize("dialect", ["oracle"])
 def test_range_partition_list_is_unchanged(dialect):
-    result = (
-        SqlParserFactory(dialect)
-        .get_parser()
-        .parse_sql(
-            "CREATE TABLE t (id INT) PARTITION BY RANGE (id) "
-            "(PARTITION p0 VALUES LESS THAN (10), PARTITION p1 VALUES LESS THAN (MAXVALUE))"
-        )
+    result = hybrid_for(dialect).parse_sql(
+        "CREATE TABLE t (id INT) PARTITION BY RANGE (id) "
+        "(PARTITION p0 VALUES LESS THAN (10), PARTITION p1 VALUES LESS THAN (MAXVALUE))"
     )
     assert result.success
     table = result.tables[0]
@@ -96,7 +85,7 @@ def test_range_partition_list_is_unchanged(dialect):
 
 @pytest.mark.parametrize("dialect", ["oracle"])
 def test_unpartitioned_table_is_unchanged(dialect):
-    result = SqlParserFactory(dialect).get_parser().parse_sql("CREATE TABLE t (id INT)")
+    result = hybrid_for(dialect).parse_sql("CREATE TABLE t (id INT)")
     assert result.success
     table = result.tables[0]
     assert table.partition_method is None

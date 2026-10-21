@@ -506,6 +506,7 @@ class TestSqlParserFactory:
         with pytest.raises(UnsupportedDialectError, match="Unsupported dialect: unknown_dialect"):
             factory.get_parser("unknown_dialect")
 
+    @pytest.mark.usefixtures("legacy_oracle")
     def test_get_parser_normalises_dialect_to_lowercase(self):
         """``get_parser("ORACLE")`` resolves the same plugin as
         ``get_parser("oracle")``. Case-insensitive lookup happens

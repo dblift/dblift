@@ -185,8 +185,10 @@ def test_unread_character_inside_text_stays_named(dialect, shape, char):
     sql = template.format(c=char, q=quote)
     facts = read_statement_facts(sql, dialect=dialect)
     assert facts.diagnostic is None and facts.error is None, sql
+    if dialect == "oracle" and shape != "quoted-identifier":
+        expected = expected.upper()  # Oracle stores an unquoted name upper-cased
     assert [o.name for o in facts.objects] == [expected.format(c=char)] or (
-        facts.operation == "INSERT" and facts.target == "t"
+        facts.operation == "INSERT" and facts.target == expected
     )
 
 
@@ -195,6 +197,8 @@ def test_unread_character_inside_text_stays_named(dialect, shape, char):
 def test_letters_stay_named(dialect, shape):
     template, expected = NAMED[shape]
     facts = read_statement_facts(template, dialect=dialect)
+    if dialect == "oracle":
+        expected = expected.upper()  # Oracle stores an unquoted name upper-cased
     assert [o.name for o in facts.objects] == [expected]
     assert facts.diagnostic is None
 
@@ -262,7 +266,7 @@ def test_oracle_alternative_quoting_keeps_a_blank_inside_the_literal():
         "INSERT INTO t VALUES (q'[x" + chr(0xA0) + "y]')", dialect="oracle"
     )
 
-    assert facts.target == "t"
+    assert facts.target == "T"
 
 
 def test_the_reader_set_is_the_full_range_set():

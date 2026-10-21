@@ -9,6 +9,7 @@ import pytest
 
 from dblift.core.sql_model.base import SqlObjectType
 from dblift.core.sql_parser.statement_facts import NamedObject, StatementFacts
+from dblift.db.plugins.oracle.quirks import OracleQuirks
 from tests.support.facts_corpus import statement_id
 from tests.support.facts_corpus.canonical import compact_facts, dumps
 from tests.support.facts_corpus.measure import update_versions
@@ -21,6 +22,14 @@ from tests.support.facts_corpus.seed import (
     source_files,
     split,
 )
+
+
+@pytest.fixture(autouse=True)
+def _oracle_without_a_reader(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Oracle reads facts and its extraction is frozen; these tests record an extraction, so Oracle
+    stands in for a family with no reader."""
+    monkeypatch.setattr(OracleQuirks, "statement_facts_class", None)
+
 
 SELECT_FILE = """
 def test_a():
@@ -111,7 +120,7 @@ def test_split_uses_the_family_analysis_splitter() -> None:
 
 def test_record_statement_freezes_both_old_paths_and_dml() -> None:
     row = record_statement("oracle", "UPDATE s.t SET a = 1 WHERE b = 2")
-    assert row["facts"]["objects"] == [["t", "TABLE", "altered", "s"]]
+    assert row["facts"]["objects"] == [["T", "TABLE", "altered", "S"]]  # Oracle folds
     assert set(row["old"]) == {"hybrid", "analyzer", "dml"}
     assert row["old"]["dml"] == {
         "table": "s.t",
@@ -132,7 +141,7 @@ def test_record_statement_for_a_family_without_old_and_one_that_folds() -> None:
 
 def test_inactive_family_reads_facts_through_the_sqlglot_reader() -> None:
     row = record_statement("oracle", "CREATE TABLE t (a int)")
-    assert row["facts"]["objects"] == [["t", "TABLE", "created", None]]
+    assert row["facts"]["objects"] == [["T", "TABLE", "created", None]]  # Oracle folds
 
 
 def test_record_family_dedups_by_statement_text_sorted_with_input_ids() -> None:

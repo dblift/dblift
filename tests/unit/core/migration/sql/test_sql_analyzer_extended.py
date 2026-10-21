@@ -424,6 +424,7 @@ class TestAnalyzeStatement(unittest.TestCase):
         result = self.analyzer.analyze_statement(sql)
         self.assertEqual(result["type"], "QUERY")
 
+    @pytest.mark.usefixtures("legacy_oracle")
     def test_analyze_reports_the_extraction_it_actually_used(self):
         sql = "CREATE TABLE t (id INT)"
         result = self.analyzer.analyze_statement(sql)
@@ -434,6 +435,7 @@ class TestAnalyzeStatement(unittest.TestCase):
         self.assertEqual(text_result["parsed_with"], "regex")
         self.assertEqual(text_result["objects"], text_analyzer.extract_objects(sql))
 
+    @pytest.mark.usefixtures("legacy_oracle")
     def test_analyze_error_returns_invalid_result(self):
         analyzer = SqlAnalyzer(dialect="oracle")
         analyzer._extract_objects_regex = MagicMock(side_effect=Exception("regex fail"))

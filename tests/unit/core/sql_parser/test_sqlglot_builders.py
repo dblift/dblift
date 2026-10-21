@@ -29,6 +29,7 @@ from sqlglot import exp, parse_one
 from dblift.core.sql_model.base import ConstraintType
 from dblift.core.sql_model.trigger import Trigger
 from dblift.core.sql_parser._sqlglot_builders import _SqlglotBuildersMixin, _TriggerHeader
+from tests.support.legacy_oracle_hybrid import oracle_facts_off
 
 pytestmark = [pytest.mark.unit]
 
@@ -43,7 +44,8 @@ class _Harness(_SqlglotBuildersMixin):
         self.dialect = dialect
         self._quirks = ProviderRegistry.get_quirks(dialect)
         try:
-            self.sqlglot_parser: Any = SqlGlotParser(dialect)
+            with oracle_facts_off():
+                self.sqlglot_parser: Any = SqlGlotParser(dialect)
         except Exception:
             self.sqlglot_parser = None
 

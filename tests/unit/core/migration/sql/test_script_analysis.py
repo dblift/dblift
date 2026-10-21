@@ -186,6 +186,7 @@ def test_dialect_of_reads_the_configured_database_type():
     assert dialect_of(None) is None
 
 
+@pytest.mark.usefixtures("legacy_oracle")
 def test_parser_failure_yields_an_error_and_no_statements(monkeypatch):
     class Boom:
         def __init__(self, dialect):
@@ -200,6 +201,7 @@ def test_parser_failure_yields_an_error_and_no_statements(monkeypatch):
     assert analysis.errors == ("parser error: no parser",)
 
 
+@pytest.mark.usefixtures("legacy_oracle")
 def test_unknown_text_has_unknown_kind_and_is_listed_as_it_is(monkeypatch):
     parsed = SimpleNamespace(
         statements=[
@@ -241,6 +243,7 @@ def test_cte_delete_is_dml_and_names_its_table():
     assert [c.level for c in analysis.cautions] == [CHANGES_ROWS]
 
 
+@pytest.mark.usefixtures("legacy_oracle")
 def test_quirks_failures_never_raise(monkeypatch):
     real = script_analysis.ProviderRegistry.get_quirks("oracle")
 
@@ -263,6 +266,7 @@ def test_quirks_failures_never_raise(monkeypatch):
     assert [c.level for c in analysis.cautions] == [CHANGES_ROWS]
 
 
+@pytest.mark.usefixtures("legacy_oracle")
 def test_full_table_dml_respects_provider_quirks_override(monkeypatch):
     real = script_analysis.ProviderRegistry.get_quirks("oracle")
 

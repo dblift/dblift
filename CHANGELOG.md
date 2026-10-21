@@ -183,6 +183,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Undo generation for the PostgreSQL family asks for a hand-written undo.** The generator
   marks every data or schema change for manual review instead of generating a reversal. Undo
   scripts you write are unaffected. The generator is deprecated and removed in 5.0 (#649).
+- **Oracle reads statement facts from the SQL grammar.** `info --format json`,
+  `migrate --dry-run`, object tracking during execution, `SqlAnalyzer.extract_objects` and the
+  DML analysis functions (`analyze_dml`, `statement_dml_table`, `dml_where_predicate`,
+  `is_full_table_dml`) take the objects, targets and predicates of each statement from the
+  sqlglot AST instead of regular expressions. Unquoted names are reported upper-cased letter by
+  letter, as Oracle 23.26 stores them (`create table emp` names `EMP`, `ı` becomes `I`, `ß`
+  stays), and quoted names exactly; a name with a letter whose upper-case form is longer than one
+  character is reported unread; an object reached through a database link (`emp@lnk`, `emp @
+  lnk`) is never named as a local one. `target_sql` and `predicate` keep the spelling written. `COMMENT ON TABLE/COLUMN/MATERIALIZED VIEW`, `TRUNCATE
+  TABLE`, materialized views, `DROP MATERIALIZED VIEW`, and the name of every PL/SQL unit
+  (`CREATE [OR REPLACE] PROCEDURE/FUNCTION/PACKAGE [BODY]/TRIGGER/TYPE`), synonym and database
+  link are now named; a `CREATE INDEX` that sqlglot cannot parse still names its index and its
+  table. A PL/SQL body is never read for names, `MERGE`, `GRANT`/`REVOKE`, `TRUNCATE … CASCADE`,
+  materialized view logs and partitioned table clauses are reported as unread, and a statement
+  whose objects cannot be established names none. The gaps are listed in
+  `docs/sql-parsing/oracle.md` section 13.
+- **Parsers for Oracle are built from the facts reader.** Constructing `HybridParser` or
+  `SqlGlotParser` for `oracle`, or asking the parser factory for the `sqlglot` type, now raises
+  `ValueError` naming `StatementFactsParser`; the `hybrid` type returns the facts parser, and the
+  `regex` type still returns the Oracle regex parser, whose splitting is unchanged.
+- **Undo generation for Oracle asks for a hand-written undo.** The generator marks every data or
+  schema change for manual review instead of generating a reversal. Undo scripts you write are
+  unaffected. The generator is deprecated and removed in 5.0 (#649).
 
 ### Deprecated
 
