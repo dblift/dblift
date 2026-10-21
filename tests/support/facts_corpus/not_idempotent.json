@@ -54,13 +54,7 @@
   "19b445570f84e8bf",
   "952642e5d05b439c"
  ],
- "redshift": [
-  "6e340b9cffb37a98",
-  "6f3a2800a861699f",
-  "01a439f04d5d6afa",
-  "19b445570f84e8bf",
-  "952642e5d05b439c"
- ],
+ "redshift": [],
  "snowflake": [],
  "sqlite": [],
  "sqlserver": []

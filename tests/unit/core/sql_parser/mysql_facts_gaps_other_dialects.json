@@ -2638,7 +2638,14 @@
    "events": null,
    "indexed_table": null,
    "kind": "DDL",
-   "objects": [],
+   "objects": [
+    [
+     "s",
+     "SCHEMA",
+     "created",
+     null
+    ]
+   ],
    "opaque": false,
    "operation": "CREATE",
    "predicate": null,
@@ -2652,7 +2659,14 @@
    "events": null,
    "indexed_table": null,
    "kind": "DDL",
-   "objects": [],
+   "objects": [
+    [
+     "s",
+     "SCHEMA",
+     "created",
+     null
+    ]
+   ],
    "opaque": false,
    "operation": "CREATE",
    "predicate": null,
@@ -2846,7 +2860,14 @@
    "events": null,
    "indexed_table": null,
    "kind": "DDL",
-   "objects": [],
+   "objects": [
+    [
+     "s",
+     "SCHEMA",
+     "dropped",
+     null
+    ]
+   ],
    "opaque": false,
    "operation": "DROP",
    "predicate": null,
@@ -2860,7 +2881,14 @@
    "events": null,
    "indexed_table": null,
    "kind": "DDL",
-   "objects": [],
+   "objects": [
+    [
+     "s",
+     "SCHEMA",
+     "dropped",
+     null
+    ]
+   ],
    "opaque": false,
    "operation": "DROP",
    "predicate": null,
@@ -3048,13 +3076,20 @@
   },
   "TRUNCATE TABLE db.t": {
    "affected_columns": [],
-   "diagnostic": "redshift TruncateTable has no statement facts mapping",
+   "diagnostic": null,
    "error": null,
    "events": null,
    "indexed_table": null,
-   "kind": "UNKNOWN",
-   "objects": [],
-   "opaque": true,
+   "kind": "DDL",
+   "objects": [
+    [
+     "t",
+     "TABLE",
+     "altered",
+     "db"
+    ]
+   ],
+   "opaque": false,
    "operation": "TRUNCATE",
    "predicate": null,
    "target": null,
@@ -3062,13 +3097,20 @@
   },
   "TRUNCATE TABLE t": {
    "affected_columns": [],
-   "diagnostic": "redshift TruncateTable has no statement facts mapping",
+   "diagnostic": null,
    "error": null,
    "events": null,
    "indexed_table": null,
-   "kind": "UNKNOWN",
-   "objects": [],
-   "opaque": true,
+   "kind": "DDL",
+   "objects": [
+    [
+     "t",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
    "operation": "TRUNCATE",
    "predicate": null,
    "target": null,
@@ -3076,13 +3118,20 @@
   },
   "TRUNCATE t": {
    "affected_columns": [],
-   "diagnostic": "redshift TruncateTable has no statement facts mapping",
+   "diagnostic": null,
    "error": null,
    "events": null,
    "indexed_table": null,
-   "kind": "UNKNOWN",
-   "objects": [],
-   "opaque": true,
+   "kind": "DDL",
+   "objects": [
+    [
+     "t",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
    "operation": "TRUNCATE",
    "predicate": null,
    "target": null,
@@ -3090,11 +3139,11 @@
   },
   "TRUNCATE t1, t2": {
    "affected_columns": [],
-   "diagnostic": "redshift TruncateTable has no statement facts mapping",
+   "diagnostic": "redshift TRUNCATE target is not a single table",
    "error": null,
    "events": null,
    "indexed_table": null,
-   "kind": "UNKNOWN",
+   "kind": "DDL",
    "objects": [],
    "opaque": true,
    "operation": "TRUNCATE",
@@ -3125,7 +3174,7 @@
    "operation": "UPDATE",
    "predicate": null,
    "target": "LOW_PRIORITY",
-   "target_sql": "LOW_PRIORITY AS t"
+   "target_sql": "LOW_PRIORITY"
   },
   "UPDATE IGNORE t SET b = 1": {
    "affected_columns": [
@@ -3150,7 +3199,7 @@
    "operation": "UPDATE",
    "predicate": null,
    "target": "IGNORE",
-   "target_sql": "\"IGNORE\" AS t"
+   "target_sql": "\"IGNORE\""
   },
   "UPDATE LOW_PRIORITY IGNORE `s`.`t` SET b = 1": {
    "affected_columns": [],
@@ -3198,7 +3247,7 @@
    "operation": "UPDATE",
    "predicate": null,
    "target": "LOW_PRIORITY",
-   "target_sql": "LOW_PRIORITY AS t"
+   "target_sql": "LOW_PRIORITY"
   },
   "UPDATE `ignore` SET a = 1": {
    "affected_columns": [],
@@ -3246,7 +3295,7 @@
    "operation": "UPDATE",
    "predicate": null,
    "target": "delayed",
-   "target_sql": "delayed AS t"
+   "target_sql": "delayed"
   },
   "UPDATE ignore\n.t SET a = 1": {
    "affected_columns": [
@@ -3396,7 +3445,7 @@
    "operation": "UPDATE",
    "predicate": null,
    "target": "quick",
-   "target_sql": "quick AS t"
+   "target_sql": "quick"
   },
   "UPDATE t SET ignore = 1": {
    "affected_columns": [

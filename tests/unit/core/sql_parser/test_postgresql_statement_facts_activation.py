@@ -1,4 +1,4 @@
-"""PostgreSQL-family statement facts activate every consumer; Redshift keeps text extraction."""
+"""PostgreSQL-family statement facts activate every consumer."""
 
 from unittest.mock import MagicMock
 
@@ -53,10 +53,6 @@ def test_family_plugins_read_statement_facts(dialect):
 
     assert quirks.supports_statement_facts
     assert isinstance(quirks.statement_facts_reader(), SqlglotStatementFactsReader)
-
-
-def test_redshift_keeps_text_extraction():
-    assert not _quirks("redshift").supports_statement_facts
 
 
 @pytest.mark.parametrize("dialect", FAMILY)
@@ -212,3 +208,15 @@ def test_read_only_cte_raises_no_caution():
 @pytest.mark.parametrize("sql", ["REPLACE INTO t VALUES (1)", "INSERT INTO t VALUES (1)"])
 def test_an_opaque_dml_with_a_target_gets_no_second_caution(sql):
     assert analyse_script(sql, "postgresql").cautions == ()
+
+
+def test_the_opaque_cte_diagnostic_names_the_dialect_that_read_the_statement():
+    from dblift.core.sql_parser.sqlglot_statement_facts import read_statement_facts
+
+    sql = "WITH t AS (SELECT * FROM t) DELETE FROM u"
+
+    assert (
+        read_statement_facts(sql, dialect="postgres").diagnostic
+        == "postgres CTE source scopes or effects are opaque to statement facts"
+    )
+    assert read_statement_facts(sql, dialect="redshift").diagnostic.startswith("redshift CTE")

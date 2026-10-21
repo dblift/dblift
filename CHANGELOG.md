@@ -19,6 +19,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Redshift reads statement facts from the SQL grammar.** `info --format json`,
+  `migrate --dry-run`, object tracking during `migrate`, data-change analysis and lint read each
+  statement's kind, objects, target and predicate from the sqlglot AST after the shared lexical
+  splitter. `SELECT … INTO` is read as the table creation it is, `COPY … FROM` as a load into its
+  table, `TRUNCATE` as a single-table statement, `COMMENT ON TABLE`/`COLUMN`/`VIEW` as a change to
+  the commented relation, `CREATE`/`DROP SCHEMA` by a plain schema name, and `CREATE`/`DROP
+  MATERIALIZED VIEW` as a materialized view. Statements Redshift-only DDL cannot be proven for
+  (`CREATE EXTERNAL SCHEMA`, `CREATE LIBRARY`, `UNLOAD`, `GRANT`/`REVOKE` targets, a schema name
+  with a database part, a bracketed name) are reported as unread instead of guessed. Newly
+  activated Redshift statements require manual undo review instead of automatic text reversal.
 - **YugabyteDB index facts remain opaque when `NONCONCURRENTLY` follows `CREATE [UNIQUE] INDEX`.**
   Its reader no longer reports that modifier as an index name or guesses the affected table.
 - **Db2 CALL facts report unknown procedure effects.** The referenced routine remains named,
@@ -211,6 +221,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Redshift scripts are split the way Redshift reads them.** Block comments nest, so
+  `/* a /* b */ c */ SELECT 1` is one statement, and `/* a /* b */ x` is now refused as an
+  unterminated comment, as Redshift does; a script that relied on a comment ending at its first
+  `*/` must close every opened comment. `COPY … FROM STDIN` is a syntax error on Redshift, so its
+  data lines are no longer swallowed as data: the `\.` line that ends them now raises an
+  "unsupported meta-command" error instead of being sent. A function body `BEGIN ATOMIC … END` no
+  longer holds statements together, since Redshift rejects it. Each rule was measured on Redshift
+  Serverless 1.0.485645.
 - **Oracle scripts refuse an invalid blank before a client command.** A no-break
   space or U+001C before `EXIT`, `PROMPT` or `/` no longer makes the splitter
   recognize it as a client command; unsafe scripts are explicitly refused.
