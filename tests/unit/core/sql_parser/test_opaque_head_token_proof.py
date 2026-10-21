@@ -505,3 +505,72 @@ def test_mysql_rename_proof_tokenizes_a_long_command_a_bounded_number_of_times(m
 
     assert long_calls <= short_calls + 4
     assert long_chars <= short_chars * 5
+
+
+@pytest.mark.parametrize("route", ("common", "plugin"))
+@pytest.mark.parametrize(
+    "cte",
+    (
+        "WITH c(x, y) AS (SELECT 1, 2)",
+        "WITH a AS (SELECT * FROM shadow), b AS (SELECT * FROM a)",
+        "WITH RECURSIVE c AS (SELECT 1 UNION ALL SELECT x+1 FROM c)",
+        "WITH c AS MATERIALIZED (SELECT 1)",
+        "WITH c AS NOT MATERIALIZED (SELECT 1)",
+        "WITH c AS (SELECT (SELECT 1) AS x)",
+    ),
+    ids=("columns", "multiple", "recursive", "materialized", "not-materialized", "nested-body"),
+)
+def test_supported_cte_headers_preserve_only_proven_outer_opaque_target(cte, route):
+    sql = f"{cte} DELETE FROM live_t WHERE x=1 BOGUS ("
+    facts = _facts("postgresql", "postgres", sql, route)
+
+    assert (facts.operation, facts.kind) == ("DELETE", "DML")
+    assert facts.opaque
+    assert tuple((o.type.value, o.name, o.role) for o in facts.objects) == (
+        ("TABLE", "live_t", "altered"),
+    )
+    assert facts.target == "live_t"
+    assert facts.error is None
+
+
+@pytest.mark.parametrize("route", ("common", "plugin"))
+@pytest.mark.parametrize(
+    "sql",
+    (
+        "WITH c() AS (SELECT 1) DELETE FROM victim WHERE x=1 BOGUS (",
+        "WITH c(x,) AS (SELECT 1) DELETE FROM victim WHERE x=1 BOGUS (",
+        "WITH c(x y) AS (SELECT 1) DELETE FROM victim WHERE x=1 BOGUS (",
+        "WITH c AS NOT (SELECT 1) DELETE FROM victim WHERE x=1 BOGUS (",
+    ),
+    ids=("empty-columns", "trailing-comma", "missing-column-separator", "invalid-materialization"),
+)
+def test_malformed_cte_headers_do_not_attribute_outer_opaque_target(sql, route):
+    facts = _facts("postgresql", "postgres", sql, route)
+
+    assert facts.opaque
+    assert facts.objects == ()
+    assert facts.target is None
+    assert facts.error is None
+
+
+@pytest.mark.parametrize("route", ("common", "plugin"))
+def test_mysql_rename_keyword_cannot_be_invented_as_source_table(route):
+    facts = _facts("mysql", "mysql", "RENAME TABLE EXISTS TO b", route)
+
+    assert (facts.operation, facts.kind) == ("RENAME", "DDL")
+    assert facts.opaque
+    assert facts.objects == ()
+    assert facts.error is None
+
+
+@pytest.mark.parametrize("route", ("common", "plugin"))
+@pytest.mark.parametrize("header", ("/* header */ ", "-- header\n"))
+@pytest.mark.parametrize("tail,expected", (("BOGUS (", "t"), ("'", None)))
+def test_leading_comment_keeps_only_tokenizable_opaque_head(header, tail, expected, route):
+    facts = _facts("postgresql", "postgres", f"{header}DROP TABLE t {tail}", route)
+
+    assert (facts.operation, facts.kind) == ("DROP", "DDL")
+    assert facts.opaque
+    assert tuple(o.name for o in facts.objects) == ((expected,) if expected else ())
+    assert facts.target is None
+    assert (facts.error is None) == bool(expected)
