@@ -47,7 +47,7 @@
 {"facts":{"declared_columns":["id"],"kind":"DDL","objects":[["real_one","TABLE","created",null]],"operation":"CREATE"},"inputs":["3ec98a509522ed88"],"old":null,"sql":"/* CREATE TABLE commented_out (id int); */ CREATE TABLE real_one (id int)"}
 {"facts":{"kind":"QUERY","operation":"SELECT"},"inputs":["6c705e880892ddde"],"old":null,"sql":"/* DELIMITER // */\nSELECT 1"}
 {"facts":{"kind":"QUERY","operation":"SELECT"},"inputs":["aa68c3f4e26062de"],"old":null,"sql":"/* INTO */ SELECT 1 /* INTO t */"}
-{"facts":{"error":"duckdb statement could not be tokenized (unterminated quote or comment)","kind":"DDL","objects":[["victim","TABLE","dropped",null]],"operation":"DROP"},"inputs":["ed50c96789c7e2e1"],"old":null,"sql":"/* L1 /* L2 /* L3 */ DROP TABLE victim; still L3 */\nSELECT 1;"}
+{"facts":{"error":"duckdb statement could not be tokenized (unterminated quote or comment)","kind":"UNKNOWN","operation":"UNKNOWN"},"inputs":["ed50c96789c7e2e1"],"old":null,"sql":"/* L1 /* L2 /* L3 */ DROP TABLE victim; still L3 */\nSELECT 1;"}
 {"facts":{"kind":"QUERY","operation":"SELECT"},"inputs":["0a02fe56a518850c"],"old":null,"sql":"/* L1 /* L2 /* L3 */ DROP TABLE victim; still L3 */ still L2 */\nSELECT 1"}
 {"facts":{"events":["INSERT"],"kind":"DML","objects":[["test","TABLE","altered",null]],"operation":"INSERT","target":"test","target_sql":"test"},"inputs":["20d879370136f64c"],"old":null,"sql":"/* Multi-line\n           block comment */\n        INSERT INTO test VALUES (1, 'Test')"}
 {"facts":{"events":["INSERT"],"kind":"DML","objects":[["test","TABLE","altered",null]],"operation":"INSERT","target":"test","target_sql":"test"},"inputs":["418b19f8afa9c6c4"],"old":null,"sql":"/* Multi-line\n           comment */\n        INSERT INTO test VALUES (DEFAULT)"}
@@ -69,15 +69,15 @@
 {"facts":{"kind":"QUERY","operation":"SELECT"},"inputs":["51ac9c66dd7233b7"],"old":null,"sql":"/* first; comment */\nSELECT 1"}
 {"facts":{"declared_columns":["id"],"kind":"DDL","objects":[["t","TABLE","created",null]],"operation":"CREATE"},"inputs":["c40ba20515092899"],"old":null,"sql":"/* has a ; inside */ CREATE TABLE t (id int)"}
 {"facts":{"kind":"DDL","objects":[["orders","TABLE","dropped","s"]],"operation":"DROP"},"inputs":["94710a107ce3a543"],"old":null,"sql":"/* migration header */\nDROP TABLE IF EXISTS \"s\".\"orders\""}
-{"facts":{"kind":"UNKNOWN","operation":"UNKNOWN"},"inputs":["0747effbbab5f264","627b49562fce34df","79c36901349250ca"],"old":null,"sql":"/* open"}
-{"facts":{"error":"duckdb statement could not be tokenized (unterminated quote or comment)","kind":"QUERY","operation":"SELECT"},"inputs":["854e31288286b12e"],"old":null,"sql":"/* outer /* inner */\nSELECT 1;"}
-{"facts":{"error":"duckdb statement could not be tokenized (unterminated quote or comment)","kind":"DDL","objects":[["victim","TABLE","created",null]],"operation":"CREATE"},"inputs":["e0086494b3932c9b"],"old":null,"sql":"/* outer /* inner */ CREATE TABLE victim (id INT);"}
+{"facts":{"error":"duckdb statement could not be tokenized (unterminated quote or comment)","kind":"UNKNOWN","operation":"UNKNOWN"},"inputs":["0747effbbab5f264","627b49562fce34df","79c36901349250ca"],"old":null,"sql":"/* open"}
+{"facts":{"error":"duckdb statement could not be tokenized (unterminated quote or comment)","kind":"UNKNOWN","operation":"UNKNOWN"},"inputs":["854e31288286b12e"],"old":null,"sql":"/* outer /* inner */\nSELECT 1;"}
+{"facts":{"error":"duckdb statement could not be tokenized (unterminated quote or comment)","kind":"UNKNOWN","operation":"UNKNOWN"},"inputs":["e0086494b3932c9b"],"old":null,"sql":"/* outer /* inner */ CREATE TABLE victim (id INT);"}
 {"facts":{"kind":"QUERY","operation":"SELECT"},"inputs":["2525eb2147771477"],"old":null,"sql":"/* outer /* inner */ CREATE TABLE victim (id INT); still outer */\nSELECT 1"}
 {"facts":{"kind":"QUERY","operation":"SELECT"},"inputs":["dea95bef31aa7b5a"],"old":null,"sql":"/* outer /* inner */ DROP TABLE victim; still outer */\nSELECT 1"}
 {"facts":{"kind":"QUERY","operation":"SELECT"},"inputs":["8093f69be0b83fb5"],"old":null,"sql":"/* outer /* inner */ SELECT 1; */ SELECT 2"}
 {"facts":{"affected_columns":["id"],"events":["INSERT"],"kind":"DML","objects":[["items","TABLE","altered",null]],"operation":"COPY","target":"items","target_sql":"items"},"inputs":["19b9fb152eed381b"],"old":null,"sql":"/* outer /* inner */ tail */ COPY /* target */ items (id) FROM '/tmp/items;--/*quoted*/.csv'"}
 {"facts":{"indexed_columns":["id"],"indexed_table":"t","kind":"DDL","objects":[["idx_t","INDEX","created",null],["t","TABLE","referenced",null]],"operation":"CREATE"},"inputs":["d5f654e1582ba290"],"old":null,"sql":"/* trailing */\n/* block\n   comment */\nCREATE INDEX idx_t ON t(id)"}
-{"facts":{"kind":"UNKNOWN","operation":"UNKNOWN"},"inputs":["f2e1040a84e50e12"],"old":null,"sql":"/* unterminated"}
+{"facts":{"error":"duckdb statement could not be tokenized (unterminated quote or comment)","kind":"UNKNOWN","operation":"UNKNOWN"},"inputs":["f2e1040a84e50e12"],"old":null,"sql":"/* unterminated"}
 {"facts":{"declared_columns":["x"],"kind":"DDL","objects":[["t_after","TABLE","created",null]],"operation":"CREATE"},"inputs":["cf0e2fd94053d6ff"],"old":null,"sql":"/* x /* y */ DROP TABLE t_keep; */ CREATE TABLE t_after (x INT) /* tail */"}
 {"facts":{"declared_columns":["id"],"kind":"DDL","objects":[["t","TABLE","created",null]],"operation":"CREATE"},"inputs":["557b12bc4c6fd1ae"],"old":null,"sql":"/* x{c}y */ CREATE TABLE t (id INT)"}
 {"facts":{"diagnostic":"duckdb grammar is not modelled for this statement","kind":"UNKNOWN","operation":"UNKNOWN"},"inputs":["03d6a0b51826406d"],"old":null,"sql":"1\n\\."}
