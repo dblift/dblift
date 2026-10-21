@@ -120,13 +120,13 @@ The Snowflake plugin owns the spec and the common lexical engine supplies record
 
 Snowflake plugin: `statement_facts_class` is the shared reader, so object extraction, script analysis, the DML helpers and execution-time object tracking read facts; `HybridParser("snowflake")` and `SqlGlotParser("snowflake")` are refused like the other activated dialects, and undo asks for review. Statements are read by the shared sqlglot reader (`read_statement_facts(sql, dialect="snowflake")` in
 `dblift/core/sql_parser/sqlglot_statement_facts.py`) after the lexical splitter above. This section
-describes the reader. **No row below was observed on Snowflake**: the 10.38.100 campaigns behind this
-document measured splitting and refusals only and ran no DDL, so every reading is a structural
+describes the reader. **Only the identifier folding below was observed on Snowflake DDL**: the earlier
+10.38.100 campaigns measured splitting and refusals only, so every other reading is a structural
 contract of the parser, not a claim about what the engine accepts or does.
 
 | Form | Reading |
 | --- | --- |
-| `CREATE`/`ALTER`/`DROP` `TABLE`, `VIEW`, `SEQUENCE`, `FUNCTION`, `PROCEDURE`, `DATABASE`; `CREATE`/`DROP INDEX` | the object as written; function and procedure bodies are not read; a function or procedure name carries no argument signature |
+| `CREATE`/`ALTER`/`DROP` `TABLE`, `VIEW`, `SEQUENCE`, `FUNCTION`, `PROCEDURE`, `DATABASE`; `CREATE`/`DROP INDEX` | the object, an unquoted name in upper case and a quoted one as written; function and procedure bodies are not read; a function or procedure name carries no argument signature |
 | `CREATE`/`DROP SCHEMA s`, `db.s` | `SCHEMA s`, scoped to `db`; a three-part name, or `SCHEMA` with a qualifier the parser discards, is opaque |
 | `CREATE`/`DROP MATERIALIZED VIEW` | `MATERIALIZED_VIEW`, with the tables it reads; the `LOG ON` form is opaque |
 | `CREATE … CLONE src` | `src` is referenced with the type of the object it copies |
@@ -134,17 +134,39 @@ contract of the parser, not a claim about what the engine accepts or does.
 | `SELECT`, `WITH … SELECT` | the tables read are referenced |
 
 Opaque (a diagnostic, no object or only a head-proven name, never a guess): `CREATE`/`DROP` of `STAGE`, `FILE FORMAT`,
-`TAG`, `WAREHOUSE` and other kinds the object model has no type for; `CREATE TRIGGER`; `ALTER … RENAME TO` and
+`TAG`, `WAREHOUSE`, `ROLE`, `USER` and other kinds the object model has no type for; `CREATE LOCAL TEMP TABLE`;
+`CREATE TRIGGER`; a name computed at run time (`IDENTIFIER(...)`, a `$variable`, a string path); a keyword
+where a name belongs (`ALTER TABLE ADD COLUMN x`, `DROP TABLE IF`); a name continued by a `{…}` template brace; a name holding a letter whose upper-case form
+is not one character; `ALTER … RENAME TO` and
 `SWAP WITH` (they name a second object); a relation with four or more name parts; a `CTE` whose body writes;
 a `@stage` reference; `MERGE`, `TRUNCATE`, `COPY`, `INSERT ALL`, `GRANT`/`REVOKE`, `USE`, `SHOW`, `DESCRIBE`,
 `UNDROP`, `COMMENT ON` and every statement sqlglot cannot parse. A name kept on an opaque statement is checked
 against the source tokens of the statement head; it is never read from the body.
 
+Identifier case, measured on Snowflake 10.38.100 with `QUOTED_IDENTIFIERS_IGNORE_CASE = FALSE` (the default):
+`CREATE SCHEMA DBLIFT_QA.D2_QA_20261021_A8F3D2` and `CREATE SCHEMA DBLIFT_QA."d2_qa_20261021_a8f3d2"` made two
+schemas, catalogued as `D2_QA_20261021_A8F3D2` and `d2_qa_20261021_a8f3d2`; the materialized views `LOG` and `"log"`
+were two views; `CREATE`/`DROP SCHEMA`, `CREATE`/`DROP MATERIALIZED VIEW` and `CREATE`/`DROP TABLE` were accepted with
+those forms (query IDs `01c7e32f-3204-c9bb-0008-38020027f07a`, `01c7e32f-3204-ccd2-0008-380200281012`,
+`01c7e32f-3204-cd96-0008-380200282006`, `01c7e32f-3204-cd96-0008-38020028200a`). The reader therefore folds an unquoted
+name to upper case and keeps a quoted name exact, so `CREATE SCHEMA app` and `CREATE SCHEMA "app"` name different
+objects. Names are compared as stored only under that default: the reader does not read the session parameter. The
+fold is letter by letter, and a name with a letter whose upper-case form is not one character is left unread; that
+rule is borrowed from the Oracle reader and was not measured on Snowflake for non-ASCII letters.
+
 Known gaps, recorded rather than closed:
 
-- **Unquoted names keep their source spelling.** Snowflake folds an unquoted identifier to upper case, but the reader
-  reports `app` for `CREATE SCHEMA app`, `CREATE SCHEMA "app"` and `CREATE SCHEMA APP` alike (and the same for
-  tables), so a quoted lower-case name and an unquoted one are not told apart. No engine identity is claimed until
-  catalog results on disposable objects settle how each form is stored.
-- Native acceptance and effect of `CREATE`/`DROP SCHEMA` and `CREATE`/`DROP MATERIALIZED VIEW` are unmeasured, as are
+- A quoted name holding a dot, a three-part name and a two-part name with a dotted part collapse to the same
+  schema string: `CREATE TABLE "a.b"."c"`, `CREATE TABLE a.b.c` and `CREATE TABLE "a"."b"."c"` all read as table
+  `c` in schema `a.b` (modulo the case fold). The schema is one string, a design shared with the PostgreSQL and
+  Redshift readers.
+- `MERGE` is opaque, so its target is no longer named: the former extraction named it. A script that merges into a
+  table reports no changed object.
+- `ALTER TABLE … ADD CONSTRAINT … REFERENCES o (id)` names the altered table only; the referenced table `o` is not
+  reported (a `CREATE TABLE` reports it). The mapping is shared with the other readers.
+- An unterminated quote reports an error and no object; the splitter normally refuses such a script first.
+- `UPDATE t a SET … WHERE a.y = 1` names the bare table `t` as its target while the predicate keeps the alias `a`.
+- A `DROP` whose object kind or name is unread is reported by lint as `drop-unread-object` (review), except for
+  kinds that never hold rows (`INDEX`, `SEQUENCE`, routines, types, `ROLE`, `USER`).
+- Native acceptance and effect of the other DDL forms are unmeasured, as are
   `DYNAMIC` and `EXTERNAL` tables (read as `TABLE`) and `SELECT … INTO` (the target is read as referenced, not created).
