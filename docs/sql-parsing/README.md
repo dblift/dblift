@@ -42,6 +42,10 @@ bounded, have the expected identifier token kind for its quoting, and agree
 with the source spelling. A further qualifier, an unrecognized quote form,
 substitution text, or a client/script prefix cannot be silently cut away to
 invent a name. Comment boundaries are part of that proof.
+The same bound applies to parsed statements: if a relation has more qualifier
+parts than the facts can represent, no identity for that relation is published.
+Dependent effects remain opaque; an already opaque program body can still retain
+a separately proven outer program name.
 
 A proven head can retain its identity and diagnostic when the body remains
 unread; an unread or broken tail alone does not erase a bounded head. A stray

@@ -1,6 +1,6 @@
 {"facts":{"diagnostic":"snowflake Column has no statement facts mapping","kind":"UNKNOWN","operation":"UNKNOWN"},"inputs":["8ec21ca4206051d1"],"old":{"analyzer":[],"hybrid":[]},"sql":"\u0000"}
-{"facts":{"diagnostic":"table: snowflake grammar is not modelled for this statement","kind":"DDL","objects":[["b","TABLE","created",null]],"operation":"CREATE"},"inputs":["feb558a1d51bd455"],"old":{"analyzer":[],"hybrid":[]},"sql":"\u0000CREATE TABLE b(y)"}
-{"facts":{"diagnostic":"table: snowflake grammar is not modelled for this statement","kind":"DDL","objects":[["child","TABLE","dropped",null]],"operation":"DROP"},"inputs":["f1b7a00deaf66cba"],"old":{"analyzer":[],"hybrid":[]},"sql":"\u0000DROP TABLE child"}
+{"facts":{"diagnostic":"snowflake grammar is not modelled for this statement","kind":"DDL","operation":"CREATE"},"inputs":["feb558a1d51bd455"],"old":{"analyzer":[],"hybrid":[]},"sql":"\u0000CREATE TABLE b(y)"}
+{"facts":{"diagnostic":"snowflake grammar is not modelled for this statement","kind":"DDL","operation":"DROP"},"inputs":["f1b7a00deaf66cba"],"old":{"analyzer":[],"hybrid":[]},"sql":"\u0000DROP TABLE child"}
 {"facts":{"diagnostic":"snowflake grammar is not modelled for this statement","kind":"UNKNOWN","operation":"UNKNOWN"},"inputs":["dbcd0ba8348b2da4"],"old":{"analyzer":[],"hybrid":[]},"sql":"\u0000SELECT 2"}
 {"facts":{"diagnostic":"snowflake grammar is not modelled for this statement","kind":"UNKNOWN","operation":"UNKNOWN"},"inputs":["ef24b1a23d25accc"],"old":{"analyzer":[],"hybrid":[]},"sql":"# comment"}
 {"facts":{"diagnostic":"snowflake grammar is not modelled for this statement","kind":"UNKNOWN","operation":"UNKNOWN"},"inputs":["758d588c311de2a0"],"old":{"analyzer":[],"hybrid":[]},"sql":"# hash comment"}

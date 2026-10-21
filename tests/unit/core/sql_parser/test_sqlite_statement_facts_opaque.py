@@ -243,17 +243,24 @@ def test_extract_objects_does_not_recover_tables_from_a_refused_script(script):
 
 
 @pytest.mark.parametrize(
-    "script",
+    "script, expected",
     [
-        "CREATE TABLE a(x);\x00CREATE TABLE b(y);",
-        "CREATE TABLE a(x);\n/\nCREATE TABLE b(y);",
+        (
+            "CREATE TABLE a(x);\x00CREATE TABLE b(y);",
+            [(SqlObjectType.TABLE, "a", None)],
+        ),
+        (
+            "CREATE TABLE a(x);\n/\nCREATE TABLE b(y);",
+            [(SqlObjectType.TABLE, "a", None)],
+        ),
+        (
+            "CREATE TABLE a(x); CREATE TABLE b(y);",
+            [(SqlObjectType.TABLE, "a", None), (SqlObjectType.TABLE, "b", None)],
+        ),
     ],
 )
-def test_extract_objects_preserves_scanner_selected_tables(script):
-    expected = [(SqlObjectType.TABLE, "a", None)]
-    if "\x00" in script:
-        expected.append((SqlObjectType.TABLE, "b", None))
-    # A leading slash in the scanner's second SQLite unit is not a proven CREATE head.
+def test_extract_objects_preserves_scanner_selected_tables(script, expected):
+    # NUL and slash prefixes leave the scanner's second unit without a proven CREATE head.
     assert [(o.object_type, o.name, o.schema) for o in PARSER.extract_objects(script)] == expected
 
 
