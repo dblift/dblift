@@ -19,6 +19,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Snowflake reads statement facts from the SQL grammar.** `info --format json`,
+  `migrate --dry-run`, object tracking during `migrate`, data-change analysis and lint read each
+  statement's kind, objects, target and predicate from the sqlglot AST after the shared lexical
+  splitter. `CREATE`/`DROP SCHEMA` name the schema, `CREATE`/`DROP MATERIALIZED VIEW` the
+  materialized view, and a `CLONE` source takes the type of the object it copies. Statements the
+  object model cannot name (`STAGE`, `FILE FORMAT`, `TAG`, `WAREHOUSE`, `TRIGGER`, `ALTER … RENAME
+  TO` and `SWAP WITH`, a `@stage` reference, a data-changing CTE, a relation with four name
+  parts) and every statement the grammar cannot parse are reported as unread instead of guessed.
+  Unquoted names keep the spelling written in the script; Snowflake stores them in upper case.
+  Newly activated Snowflake statements require manual undo review instead of automatic text
+  reversal, and `validate-sql` no longer reports a script as invalid because the grammar cannot
+  parse a statement.
 - **Redshift reads statement facts from the SQL grammar.** `info --format json`,
   `migrate --dry-run`, object tracking during `migrate`, data-change analysis and lint read each
   statement's kind, objects, target and predicate from the sqlglot AST after the shared lexical

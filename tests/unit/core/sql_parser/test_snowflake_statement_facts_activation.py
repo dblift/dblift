@@ -199,3 +199,25 @@ def test_undo_asks_for_a_hand_written_reversal(sql):
 @pytest.mark.parametrize("sql", ["SELECT 1", "-- note\n/* more */"])
 def test_undo_of_a_read_or_a_comment_is_empty(sql):
     assert _undo(sql) == []
+
+
+@pytest.mark.parametrize(
+    "unquoted, quoted",
+    [
+        ("CREATE SCHEMA app", 'CREATE SCHEMA "app"'),
+        ("CREATE TABLE app.t (id INT)", 'CREATE TABLE "app"."t" (id INT)'),
+        ("DROP TABLE app.t", 'DROP TABLE "app"."t"'),
+    ],
+)
+def test_known_gap_unquoted_and_quoted_names_are_not_told_apart(unquoted, quoted):
+    """Snowflake stores an unquoted name in upper case, a quoted one as written, but the reader
+    keeps the source spelling for both. Until catalog results on disposable objects settle how
+    each form is stored, no engine identity is claimed: this pins the gap so that closing it
+    is a deliberate change."""
+    from dblift.core.sql_parser.sqlglot_statement_facts import read_statement_facts
+
+    first = read_statement_facts(unquoted, dialect="snowflake")
+    second = read_statement_facts(quoted, dialect="snowflake")
+
+    assert first.objects == second.objects
+    assert all(obj.name == obj.name.lower() for obj in first.objects)

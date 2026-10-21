@@ -1,1 +1,1 @@
-["db2", "mysql", "oracle", "postgresql", "redshift", "sqlserver"]
+["db2", "mysql", "oracle", "postgresql", "redshift", "snowflake", "sqlserver"]
