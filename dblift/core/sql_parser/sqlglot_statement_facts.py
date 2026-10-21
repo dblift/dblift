@@ -400,7 +400,12 @@ def _created_object_type(ast: exp.Create, dialect: str) -> SqlObjectType:
         object_type = SqlObjectType.VIRTUAL_TABLE
     if (
         dialect
-        in {"postgres", "oracle", "redshift"}  # lint: allow-dialect-string: materialized views
+        in {
+            "postgres",  # lint: allow-dialect-string: materialized views
+            "oracle",  # lint: allow-dialect-string: materialized views
+            "redshift",
+            "snowflake",  # lint: allow-dialect-string: materialized views
+        }
         and kind == "VIEW"
         and properties
         and properties.find(exp.MaterializedProperty)
@@ -1570,13 +1575,23 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
 
     if isinstance(ast, exp.Create):
         object_type = _created_object_type(ast, dialect)
+        if (
+            dialect == "snowflake"  # lint: allow-dialect-string: unmodelled Snowflake DDL
+            and object_type == SqlObjectType.UNKNOWN
+        ):
+            return StatementFacts(
+                "CREATE",
+                "DDL",
+                diagnostic=f"snowflake {ast.args.get('kind') or 'object'} identity is not modelled",
+            )
         schema_node = ast.this if isinstance(ast.this, exp.Schema) else None
         subject = schema_node.this if schema_node is not None else ast.this
         properties = ast.args.get("properties")
         virtual = bool(properties and properties.find(exp.VirtualProperty))
         identity = _named(subject, object_type, "created") if subject is not None else None
         if (
-            dialect == "duckdb"  # lint: allow-dialect-string: DuckDB schema identity projection
+            dialect
+            in {"duckdb", "snowflake"}  # lint: allow-dialect-string: schema identity projection
             and object_type == SqlObjectType.SCHEMA
             and isinstance(subject, exp.Table)
             and subject.db
@@ -1715,15 +1730,28 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
         kind = str(ast.args.get("kind") or "").upper()
         object_type = SqlObjectType.__members__.get(kind, SqlObjectType.UNKNOWN)
         if (
+            dialect == "snowflake"  # lint: allow-dialect-string: unmodelled Snowflake DDL
+            and object_type == SqlObjectType.UNKNOWN
+        ):
+            return StatementFacts(
+                "DROP", "DDL", diagnostic=f"snowflake {kind or 'object'} identity is not modelled"
+            )
+        if (
             dialect
-            in {"postgres", "oracle", "redshift"}  # lint: allow-dialect-string: materialized views
+            in {
+                "postgres",  # lint: allow-dialect-string: materialized views
+                "oracle",  # lint: allow-dialect-string: materialized views
+                "redshift",
+                "snowflake",  # lint: allow-dialect-string: materialized views
+            }
             and kind == "VIEW"
             and ast.args.get("materialized")
         ):
             object_type = SqlObjectType.MATERIALIZED_VIEW
         targets = ast.args.get("tables") or ast.args.get("expressions") or [ast.this]
         if (
-            dialect in {"duckdb", "postgres"}  # lint: allow-dialect-string: schema identity
+            dialect
+            in {"duckdb", "postgres", "snowflake"}  # lint: allow-dialect-string: schema identity
             and object_type == SqlObjectType.SCHEMA
         ):
             dropped_objects = tuple(
