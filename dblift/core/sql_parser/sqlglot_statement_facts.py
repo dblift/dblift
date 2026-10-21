@@ -285,6 +285,12 @@ def _head_tokens_prove_name(sql: str, dialect: str, prefix: str, names: Tuple[st
         proposed = tokenizer.tokenize(prefix)
     except TokenError:
         return False
+    if (
+        dialect == "snowflake"  # lint: allow-dialect-string: Snowflake opaque-head verb proof
+        and proposed
+        and proposed[0].token_type.name not in _KINDS
+    ):
+        return False  # a source name cannot prove a DDL/DML head without its verb token
     if any(
         first.token_type == TokenType.STAR
         and second.token_type == TokenType.SLASH
@@ -1717,6 +1723,20 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
             return program
         return _head_facts(
             sql, f"{dialect} {construct} is opaque to statement facts", dialect=dialect
+        )
+
+    if (
+        dialect == "snowflake"  # lint: allow-dialect-string: sqlglot keeps parts _named omits
+        and isinstance(
+            ast, (exp.Create, exp.Drop, exp.Alter, exp.Insert, exp.Update, exp.Delete, exp.Query)
+        )
+        and any(len(table.parts) > 3 for table in ast.find_all(exp.Table))
+    ):
+        operation = "SELECT" if isinstance(ast, exp.Query) else type(ast).__name__.upper()
+        return StatementFacts(
+            operation,
+            _KINDS.get(operation, "UNKNOWN"),
+            diagnostic="snowflake relation qualification is not fully read",
         )
 
     if dialect == "redshift":  # lint: allow-dialect-string: Redshift statement forms

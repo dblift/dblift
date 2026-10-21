@@ -8,6 +8,93 @@ from dblift.core.sql_parser.statement_facts import NamedObject
 
 
 @pytest.mark.parametrize(
+    "sql, operation, kind",
+    [
+        ("SELECT * FROM a.b.c.d", "SELECT", "QUERY"),
+        ("CREATE VIEW v AS SELECT * FROM a.b.c.d", "CREATE", "DDL"),
+        ("CREATE TABLE t AS SELECT * FROM a.b.c.d", "CREATE", "DDL"),
+    ],
+)
+def test_snowflake_discarded_source_qualifier_has_no_reference_or_effect(sql, operation, kind):
+    facts = read_statement_facts(sql, dialect="snowflake")
+
+    assert (facts.operation, facts.kind) == (operation, kind)
+    assert facts.objects == ()
+    assert facts.target is None
+    assert facts.opaque
+    assert facts.diagnostic and "qualification" in facts.diagnostic.lower()
+    assert facts.error is None
+
+
+@pytest.mark.parametrize(
+    "sql, operation, kind, objects",
+    [
+        (
+            "SELECT * FROM a.b.c",
+            "SELECT",
+            "QUERY",
+            (NamedObject("c", SqlObjectType.TABLE, "referenced", "a.b"),),
+        ),
+        (
+            "CREATE VIEW v AS SELECT * FROM a.b.c",
+            "CREATE",
+            "DDL",
+            (
+                NamedObject("v", SqlObjectType.VIEW, "created"),
+                NamedObject("c", SqlObjectType.TABLE, "referenced", "a.b"),
+            ),
+        ),
+        (
+            "CREATE TABLE t AS SELECT * FROM a.b.c",
+            "CREATE",
+            "DDL",
+            (
+                NamedObject("t", SqlObjectType.TABLE, "created"),
+                NamedObject("c", SqlObjectType.TABLE, "referenced", "a.b"),
+            ),
+        ),
+    ],
+)
+def test_snowflake_complete_three_part_reference_is_preserved(sql, operation, kind, objects):
+    facts = read_statement_facts(sql, dialect="snowflake")
+
+    assert (facts.operation, facts.kind) == (operation, kind)
+    assert facts.objects == objects
+    assert not facts.opaque
+
+
+@pytest.mark.parametrize(
+    "sql, operation",
+    [
+        ("WITH c AS (SELECT 1) UPDATE a.b.c SET x=1", "UPDATE"),
+        ("WITH c AS (SELECT 1) INSERT INTO a.b.c SELECT * FROM c", "INSERT"),
+        ("WITH c AS (SELECT 1) DELETE FROM a.b.c", "DELETE"),
+    ],
+)
+def test_snowflake_complete_three_part_cte_mutation_target_is_preserved(sql, operation):
+    facts = read_statement_facts(sql, dialect="snowflake")
+
+    assert (facts.operation, facts.kind) == (operation, "DML")
+    assert facts.affected_objects == (NamedObject("c", SqlObjectType.TABLE, "altered", "a.b"),)
+    assert facts.target == "a.b.c"
+    assert not facts.opaque
+
+
+@pytest.mark.parametrize(
+    "sql, operation",
+    [("\0CREATE TABLE b(y)", "CREATE"), ("\0DROP TABLE child", "DROP")],
+)
+def test_snowflake_head_requires_a_source_verb_token(sql, operation):
+    facts = read_statement_facts(sql, dialect="snowflake")
+
+    assert (facts.operation, facts.kind) == (operation, "DDL")
+    assert facts.objects == ()
+    assert facts.opaque
+    assert facts.diagnostic
+    assert facts.error is None
+
+
+@pytest.mark.parametrize(
     "template, operation, kind",
     [
         ("CREATE TABLE {} (x INT)", "CREATE", "DDL"),
