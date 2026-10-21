@@ -26,7 +26,6 @@ from dblift.core.migration.sql.sql_execution_service import SqlExecutionService
 from dblift.core.sql_model.base import ParseResult
 from dblift.core.sql_parser.lexical_engine import LexicalEngine
 from dblift.core.sql_parser.statement import Statement
-from dblift.db.plugins.snowflake.statement_parser import SnowflakeStatementParser
 from dblift.db.provider_registry import ProviderRegistry
 from tests.unit._migration_factory import make_migration
 
@@ -230,9 +229,8 @@ class Outcome:
 def records(dialect: str, script: str) -> List[Statement]:
     """The splitter's default records for *script*."""
     spec = ProviderRegistry.get_quirks(dialect).lexical_spec()
-    if spec is not None:
-        return LexicalEngine(spec).split(script)
-    return SnowflakeStatementParser().split(script)
+    assert spec is not None
+    return LexicalEngine(spec).split(script)
 
 
 def _constituents(record: Statement) -> Tuple[str, ...]:
