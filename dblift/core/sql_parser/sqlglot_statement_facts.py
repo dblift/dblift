@@ -705,9 +705,11 @@ def _copy_facts(node: exp.Copy, sql: str, *, dialect: str = "duckdb") -> Stateme
 
 def _nests_block_comments(dialect: str) -> bool:
     """Whether the engine nests ``/* /* */ */``: its lexical spec says so, or sqlglot's does."""
+    if not dialect:  # no engine named: sqlglot's base dialect nests, which no caller means
+        return False
     from dblift.db.provider_registry import ProviderRegistry
 
-    spec = ProviderRegistry.get_quirks(dialect).lexical_spec() if dialect else None
+    spec = ProviderRegistry.get_quirks(dialect).lexical_spec()
     return bool(spec and spec.nested_comments) or bool(
         Dialect.get_or_raise(dialect).tokenizer_class.NESTED_COMMENTS
     )
