@@ -467,6 +467,23 @@ def _snowflake_materialized_view_log_on(sql: str, ast: exp.Expr) -> bool:
     return False
 
 
+def _snowflake_unread_effect(ast: exp.Expr) -> Optional[str]:
+    """Name why a Snowflake statement writes or names an object the shared mappings drop."""
+    if any(not isinstance(cte.this, exp.Query) for cte in ast.find_all(exp.CTE)):
+        return "snowflake CTE body effects are opaque to statement facts"
+    if any(
+        isinstance(table.this, exp.Var) and table.name.startswith("@")
+        for table in ast.find_all(exp.Table)
+    ):
+        return "snowflake stage references are not modelled"
+    if isinstance(ast, exp.Alter) and any(
+        isinstance(action, (exp.AlterRename, exp.SwapTable))
+        for action in ast.args.get("actions") or ()
+    ):
+        return "snowflake ALTER names a second object that is not read"
+    return None
+
+
 def _mysql_identifier_is_proven(identifier: exp.Expression, sql: str) -> bool:
     """Accept only source tokens stable without knowing the server's SQL mode."""
     if not isinstance(identifier, exp.Identifier) or not identifier.name:
@@ -1739,6 +1756,11 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
             diagnostic=f"{dialect} relation qualification is not fully represented",
         )
 
+    if dialect == "snowflake":  # lint: allow-dialect-string: unread Snowflake effects
+        unread_effect = _snowflake_unread_effect(ast)
+        if unread_effect is not None:
+            return _head_facts(sql, unread_effect, dialect=dialect)
+
     if dialect == "redshift":  # lint: allow-dialect-string: Redshift statement forms
         redshift_facts = _redshift_facts(ast, sql, dialect)
         if redshift_facts is not None:
@@ -1995,6 +2017,16 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
             and _mysql_identifier_is_proven(subject, sql)
         ):
             identity = NamedObject(subject.name, object_type, "created")
+        if (
+            dialect == "snowflake"  # lint: allow-dialect-string: Snowflake object not read
+            and identity is None
+            and not isinstance(subject, exp.Index)
+        ):
+            return _head_facts(
+                sql,
+                f"snowflake {ast.args.get('kind') or 'object'} identity is not read",
+                dialect=dialect,
+            )
         objects: Tuple[NamedObject, ...] = (identity,) if identity else ()
         indexed_table = None
         indexed_columns = None
@@ -2069,6 +2101,15 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
                 indexed_columns = tuple(item.name for item in simple)
         if not isinstance(subject, exp.Index) and subject is not None:
             objects += _referenced(ast, tuple(subject.find_all(exp.Table)))
+        if (
+            dialect == "snowflake"  # lint: allow-dialect-string: CLONE source has the clone's type
+            and ast.args.get("clone") is not None
+            and object_type != SqlObjectType.TABLE
+        ):
+            objects = tuple(
+                replace(obj, type=object_type) if obj.role == "referenced" else obj
+                for obj in objects
+            )
         diagnostic = f"{dialect} virtual table module arguments are opaque" if virtual else None
         if isinstance(subject, exp.Index) and indexed_columns is None:
             diagnostic = f"{dialect} index expression columns are opaque"
@@ -2348,6 +2389,10 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
                 operation, "DML", diagnostic="mysql mutation has multiple or unproven targets"
             )
         table = _dml_target_table(ast)
+        if dialect == "snowflake" and table is None:  # lint: allow-dialect-string: unread target
+            return StatementFacts(
+                operation, "DML", diagnostic="snowflake mutation target is not read"
+            )
         if (
             dialect == "mysql"  # lint: allow-dialect-string: MySQL modifier words are not tables
             and not isinstance(ast, exp.Delete)  # DELETE's table follows FROM
