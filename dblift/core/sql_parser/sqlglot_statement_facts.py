@@ -285,6 +285,10 @@ def _head_tokens_prove_name(sql: str, dialect: str, prefix: str, names: Tuple[st
         proposed = tokenizer.tokenize(prefix)
     except TokenError:
         return False
+    if not proposed or (
+        proposed[0].token_type.name not in _KINDS and proposed[0].token_type != TokenType.RENAME
+    ):
+        return False  # a source fragment such as NUL+CREATE is not a proven statement verb
     if any(
         first.token_type == TokenType.STAR
         and second.token_type == TokenType.SLASH
@@ -1666,6 +1670,22 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
             return program
         return _head_facts(
             sql, f"{dialect} {construct} is opaque to statement facts", dialect=dialect
+        )
+
+    if (
+        dialect != "tsql"  # lint: allow-dialect-string: T-SQL has its own name guard
+        and not (
+            dialect == "oracle"  # lint: allow-dialect-string: Oracle program body is opaque
+            and isinstance(ast, exp.Create)
+            and str(ast.args.get("kind") or "").upper() in {"PROCEDURE", "FUNCTION", "TRIGGER"}
+        )
+        and any(len(table.parts) > 3 for table in ast.find_all(exp.Table))
+    ):
+        head = _head_facts(sql, "", dialect=dialect)
+        return StatementFacts(
+            head.operation,
+            head.kind,
+            diagnostic=f"{dialect} relation qualification is not fully represented",
         )
 
     if dialect == "redshift":  # lint: allow-dialect-string: Redshift statement forms

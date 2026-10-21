@@ -141,3 +141,40 @@ def test_three_part_cte_update_keeps_target_and_reference(provider, grammar, rou
     assert facts.target is not None
     assert facts.objects
     assert any(obj.name == ("C" if provider == "oracle" else "c") for obj in facts.objects)
+
+
+@pytest.mark.parametrize("route", ("common", "plugin"))
+@pytest.mark.parametrize(
+    "sql,name,kind",
+    (
+        (
+            "CREATE OR REPLACE PROCEDURE p AS BEGIN SELECT x INTO v FROM a.b.c.d; END;",
+            "P",
+            "PROCEDURE",
+        ),
+        (
+            "CREATE OR REPLACE FUNCTION f RETURN INT AS BEGIN SELECT x INTO v "
+            "FROM a.b.c.d; RETURN 1; END;",
+            "F",
+            "FUNCTION",
+        ),
+        (
+            "CREATE OR REPLACE TRIGGER tr BEFORE INSERT ON t BEGIN "
+            "SELECT x INTO v FROM a.b.c.d; END;",
+            "TR",
+            "TRIGGER",
+        ),
+    ),
+)
+def test_oracle_program_keeps_proven_outer_name_when_body_relation_is_unread(
+    sql, name, kind, route
+):
+    facts = _facts("oracle", "oracle", route, sql)
+
+    assert (facts.operation, facts.kind) == ("CREATE", "DDL")
+    assert [(obj.name, obj.type.value, obj.role) for obj in facts.objects] == [
+        (name, kind, "created")
+    ]
+    assert facts.target is None
+    assert facts.opaque
+    assert facts.diagnostic
