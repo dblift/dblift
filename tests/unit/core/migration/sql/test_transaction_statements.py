@@ -2,8 +2,8 @@
 
 dblift runs a migration in one transaction of its own. On SQLite and DuckDB a script that is
 exactly ``BEGIN; ...; COMMIT;`` is that transaction, so the envelope is dropped with a warning;
-any other BEGIN/COMMIT/END/ROLLBACK/ABORT is refused before anything runs. Every other dialect
-keeps an empty table and is returned untouched.
+any other BEGIN/COMMIT/END/ROLLBACK/ABORT is refused before anything runs. Snowflake refuses
+all matched transaction controls; the remaining dialects keep an empty table.
 """
 
 from __future__ import annotations
@@ -269,8 +269,8 @@ def _registered_dialects():
     return sorted({plugin.name for plugin in ProviderRegistry.list_plugins()})
 
 
-def test_every_other_dialect_has_no_patterns_and_is_untouched():
-    others = [d for d in _registered_dialects() if d not in ("sqlite", "duckdb")]
+def test_remaining_dialects_without_patterns_are_untouched():
+    others = [d for d in _registered_dialects() if d not in ("sqlite", "duckdb", "snowflake")]
     assert {"postgresql", "mysql", "oracle", "sqlserver"} <= set(others)
     statements = ["BEGIN", *BODY, "COMMIT", "ROLLBACK", "END"]
     for dialect in others:
