@@ -414,10 +414,10 @@ TSQL_CHANGES = {
 }
 
 SNOWFLAKE_CHANGES = {
-    "CREATE SCHEMA IF NOT EXISTS s": {"objects": [["s", "SCHEMA", "created", None]]},
-    "CREATE SCHEMA s": {"objects": [["s", "SCHEMA", "created", None]]},
-    "DROP SCHEMA IF EXISTS s": {"objects": [["s", "SCHEMA", "dropped", None]]},
-    "DROP SCHEMA s": {"objects": [["s", "SCHEMA", "dropped", None]]},
+    "CREATE SCHEMA IF NOT EXISTS s": {"objects": [["S", "SCHEMA", "created", None]]},
+    "CREATE SCHEMA s": {"objects": [["S", "SCHEMA", "created", None]]},
+    "DROP SCHEMA IF EXISTS s": {"objects": [["S", "SCHEMA", "dropped", None]]},
+    "DROP SCHEMA s": {"objects": [["S", "SCHEMA", "dropped", None]]},
     # The modifier word is read as the table and the table as its alias; the alias is dropped.
     "UPDATE -- c\n LOW_PRIORITY t SET a = 1": {"target_sql": "LOW_PRIORITY"},
     "UPDATE IGNORE t SET b = 1": {"target_sql": "IGNORE"},

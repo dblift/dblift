@@ -427,3 +427,36 @@ def test_a_doubled_quote_in_a_name_survives_the_hand_over():
     for other in ('DROP TABLE "a";', 'DROP TABLE "a""";', 'DROP TABLE "ab";'):
         got = lint_script(other, "postgresql", created_before=created)
         assert "drop-table" in [f.code for f in got.findings], other
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "DROP STAGE st;",
+        "DROP TAG t;",
+        "DROP FILE FORMAT ff;",
+    ],
+)
+def test_a_drop_of_an_object_that_could_not_be_read_asks_for_a_review(sql):
+    result = lint_script(sql, "snowflake")
+
+    assert [f.code for f in result.findings] == ["drop-unread-object"]
+    assert result.verdict == "REVIEW"
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "DROP SEQUENCE q;",
+        "DROP VIEW v;",
+        "DROP FUNCTION f(int);",
+        "DROP TRIGGER trg;",
+        "DROP USER u;",
+    ],
+)
+def test_a_drop_of_a_named_object_that_holds_no_rows_stays_safe(sql):
+    assert lint_script(sql, "snowflake").verdict == "SAFE"
+
+
+def test_the_unread_drop_rule_is_a_warning():
+    assert SEVERITY["drop-unread-object"] == WARNING

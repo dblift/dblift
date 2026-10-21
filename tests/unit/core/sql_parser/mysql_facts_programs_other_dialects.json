@@ -722,11 +722,11 @@
   },
   "CREATE INDEX CONCURRENTLY ON orders (email)": {
    "diagnostic": null,
-   "indexed_table": "orders",
+   "indexed_table": "ORDERS",
    "kind": "DDL",
    "objects": [
     [
-     "orders",
+     "ORDERS",
      "TABLE",
      "referenced",
      null
@@ -737,17 +737,17 @@
   },
   "CREATE INDEX CONCURRENTLY ix ON t (c)": {
    "diagnostic": null,
-   "indexed_table": "t",
+   "indexed_table": "T",
    "kind": "DDL",
    "objects": [
     [
-     "ix",
+     "IX",
      "INDEX",
      "created",
      null
     ],
     [
-     "t",
+     "T",
      "TABLE",
      "referenced",
      null
@@ -758,11 +758,11 @@
   },
   "CREATE INDEX ON orders (email)": {
    "diagnostic": null,
-   "indexed_table": "orders",
+   "indexed_table": "ORDERS",
    "kind": "DDL",
    "objects": [
     [
-     "orders",
+     "ORDERS",
      "TABLE",
      "referenced",
      null
@@ -793,7 +793,7 @@
    "kind": "DDL",
    "objects": [
     [
-     "tr",
+     "TR",
      "TRIGGER",
      "created",
      null
@@ -808,7 +808,7 @@
    "kind": "DDL",
    "objects": [
     [
-     "trg",
+     "TRG",
      "TRIGGER",
      "created",
      null
@@ -823,7 +823,7 @@
    "kind": "DDL",
    "objects": [
     [
-     "users_bi",
+     "USERS_BI",
      "TRIGGER",
      "created",
      null
@@ -834,11 +834,11 @@
   },
   "CREATE UNIQUE INDEX CONCURRENTLY ON t (c)": {
    "diagnostic": null,
-   "indexed_table": "t",
+   "indexed_table": "T",
    "kind": "DDL",
    "objects": [
     [
-     "t",
+     "T",
      "TABLE",
      "referenced",
      null
@@ -853,10 +853,10 @@
    "kind": "DML",
    "objects": [
     [
-     "t",
+     "T",
      "TABLE",
      "altered",
-     "ignore"
+     "IGNORE"
     ]
    ],
    "opaque": false,
@@ -884,10 +884,10 @@
    "kind": "DML",
    "objects": [
     [
-     "t",
+     "T",
      "TABLE",
      "altered",
-     "ignore"
+     "IGNORE"
     ]
    ],
    "opaque": false,

@@ -54,7 +54,7 @@ def test_hybrid_factory_serves_the_facts_parser():
 
     assert isinstance(parser, StatementFactsParser)
     assert parser.dialect_name == "snowflake"
-    assert [obj.name for obj in factory.extract_objects(CTE_UPDATE)] == ["child"]
+    assert [obj.name for obj in factory.extract_objects(CTE_UPDATE)] == ["CHILD"]
     assert factory.parse_sql(CTE_UPDATE).success
     assert factory.validate_sql(CTE_UPDATE)["valid"]
 
@@ -96,7 +96,7 @@ def test_script_analysis_goes_through_facts():
 
     drop = analyse_script("DROP SCHEMA s CASCADE", "snowflake")
     assert [caution.code for caution in drop.cautions] == ["drop-schema"]
-    assert [(obj.name, obj.type) for obj in drop.statements[0].objects] == [("s", "SCHEMA")]
+    assert [(obj.name, obj.type) for obj in drop.statements[0].objects] == [("S", "SCHEMA")]
 
     view = analyse_script(
         'CREATE MATERIALIZED VIEW "S"."MV" AS SELECT id FROM "S"."T"', "snowflake"
@@ -119,7 +119,7 @@ def test_analyzer_extracts_objects_from_facts_only(monkeypatch):
     monkeypatch.setattr(analyzer, "_extract_objects_regex", forbidden)
 
     assert [obj["object_name"] for obj in analyzer.extract_objects(CTE_UPDATE)] == [
-        "default_schema.child"
+        "default_schema.CHILD"
     ]
     assert analyzer.analyze_statement(CTE_UPDATE)["parsed_with"] == "facts"
 
@@ -127,7 +127,7 @@ def test_analyzer_extracts_objects_from_facts_only(monkeypatch):
 def test_dml_helpers_take_the_facts_path_through_the_plugin():
     quirks = _quirks("snowflake")
 
-    assert analyze_dml(UPDATE_ALIAS, quirks=quirks).table == "child"
+    assert analyze_dml(UPDATE_ALIAS, quirks=quirks).table == "CHILD"
     assert statement_dml_table(UPDATE_ALIAS, quirks=quirks) == "child"
     assert dml_where_predicate(UPDATE_ALIAS, quirks=quirks) == "c.id = 1"
     assert not is_full_table_dml(UPDATE_ALIAS, quirks=quirks)
@@ -138,9 +138,9 @@ def test_dml_helpers_take_the_facts_path_through_the_plugin():
     "sql, expected",
     [
         ('CREATE TABLE "S"."T" (a INT)', ("TABLE", "T")),
-        ("UPDATE child SET id = 2", ("TABLE", "child")),
-        ("CREATE SCHEMA app", ("SCHEMA", "app")),
-        ("DROP MATERIALIZED VIEW mv", ("MATERIALIZED_VIEW", "mv")),
+        ("UPDATE child SET id = 2", ("TABLE", "CHILD")),
+        ("CREATE SCHEMA app", ("SCHEMA", "APP")),
+        ("DROP MATERIALIZED VIEW mv", ("MATERIALIZED_VIEW", "MV")),
     ],
 )
 def test_execution_journal_receives_the_facts_objects(sql, expected):
@@ -207,17 +207,18 @@ def test_undo_of_a_read_or_a_comment_is_empty(sql):
         ("CREATE SCHEMA app", 'CREATE SCHEMA "app"'),
         ("CREATE TABLE app.t (id INT)", 'CREATE TABLE "app"."t" (id INT)'),
         ("DROP TABLE app.t", 'DROP TABLE "app"."t"'),
+        ("CREATE MATERIALIZED VIEW log AS SELECT 1", 'CREATE MATERIALIZED VIEW "log" AS SELECT 1'),
     ],
 )
-def test_known_gap_unquoted_and_quoted_names_are_not_told_apart(unquoted, quoted):
-    """Snowflake stores an unquoted name in upper case, a quoted one as written, but the reader
-    keeps the source spelling for both. Until catalog results on disposable objects settle how
-    each form is stored, no engine identity is claimed: this pins the gap so that closing it
-    is a deliberate change."""
+def test_unquoted_and_quoted_names_are_told_apart(unquoted, quoted):
+    """Measured on Snowflake 10.38.100 with QUOTED_IDENTIFIERS_IGNORE_CASE = FALSE: an unquoted
+    schema or materialized view is stored in upper case and a quoted one as written, so
+    ``DB.SCH`` and ``DB."sch"`` (or ``LOG`` and ``"log"``) are two objects."""
     from dblift.core.sql_parser.sqlglot_statement_facts import read_statement_facts
 
     first = read_statement_facts(unquoted, dialect="snowflake")
     second = read_statement_facts(quoted, dialect="snowflake")
 
-    assert first.objects == second.objects
-    assert all(obj.name == obj.name.lower() for obj in first.objects)
+    assert first.objects != second.objects
+    assert all(obj.name == obj.name.upper() for obj in first.objects)
+    assert all(obj.name == obj.name.lower() for obj in second.objects)

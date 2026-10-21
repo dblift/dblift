@@ -32,7 +32,7 @@ def test_unnamed_index_keeps_its_referenced_table():
     facts = _facts("CREATE INDEX ON orders (email)")
 
     assert not facts.opaque
-    assert facts.objects == (NamedObject("orders", SqlObjectType.TABLE, "referenced"),)
+    assert facts.objects == (NamedObject("ORDERS", SqlObjectType.TABLE, "referenced"),)
 
 
 @pytest.mark.parametrize(
@@ -72,7 +72,7 @@ def test_query_common_table_expression_is_still_read():
     facts = _facts("WITH c AS (SELECT * FROM users) SELECT * FROM c")
 
     assert not facts.opaque
-    assert facts.objects == (NamedObject("users", SqlObjectType.TABLE, "referenced"),)
+    assert facts.objects == (NamedObject("USERS", SqlObjectType.TABLE, "referenced"),)
 
 
 @pytest.mark.parametrize(
@@ -102,7 +102,7 @@ def test_alter_of_a_single_table_is_still_read(sql):
     facts = _facts(sql)
 
     assert not facts.opaque
-    assert facts.objects == (NamedObject("t", SqlObjectType.TABLE, "altered"),)
+    assert facts.objects == (NamedObject("T", SqlObjectType.TABLE, "altered"),)
 
 
 @pytest.mark.parametrize(
@@ -110,28 +110,28 @@ def test_alter_of_a_single_table_is_still_read(sql):
     [
         (
             "CREATE SCHEMA s2 CLONE s",
-            NamedObject("s2", SqlObjectType.SCHEMA, "created"),
-            NamedObject("s", SqlObjectType.SCHEMA, "referenced"),
+            NamedObject("S2", SqlObjectType.SCHEMA, "created"),
+            NamedObject("S", SqlObjectType.SCHEMA, "referenced"),
         ),
         (
             "CREATE OR REPLACE SCHEMA d.s2 CLONE d.s",
-            NamedObject("s2", SqlObjectType.SCHEMA, "created", "d"),
-            NamedObject("s", SqlObjectType.SCHEMA, "referenced", "d"),
+            NamedObject("S2", SqlObjectType.SCHEMA, "created", "D"),
+            NamedObject("S", SqlObjectType.SCHEMA, "referenced", "D"),
         ),
         (
             "CREATE DATABASE d2 CLONE d",
-            NamedObject("d2", SqlObjectType.DATABASE, "created"),
-            NamedObject("d", SqlObjectType.DATABASE, "referenced"),
+            NamedObject("D2", SqlObjectType.DATABASE, "created"),
+            NamedObject("D", SqlObjectType.DATABASE, "referenced"),
         ),
         (
             "CREATE SEQUENCE sq2 CLONE sq",
-            NamedObject("sq2", SqlObjectType.SEQUENCE, "created"),
-            NamedObject("sq", SqlObjectType.SEQUENCE, "referenced"),
+            NamedObject("SQ2", SqlObjectType.SEQUENCE, "created"),
+            NamedObject("SQ", SqlObjectType.SEQUENCE, "referenced"),
         ),
         (
             "CREATE TABLE t2 CLONE s.t",
-            NamedObject("t2", SqlObjectType.TABLE, "created"),
-            NamedObject("t", SqlObjectType.TABLE, "referenced", "s"),
+            NamedObject("T2", SqlObjectType.TABLE, "created"),
+            NamedObject("T", SqlObjectType.TABLE, "referenced", "S"),
         ),
     ],
 )
@@ -163,10 +163,10 @@ def test_stage_reference_is_not_a_table_reference(sql):
 @pytest.mark.parametrize(
     "sql, target, target_sql",
     [
-        ("UPDATE child AS c SET id = 2 WHERE c.id = 1", "child", "child"),
-        ("DELETE FROM child AS c WHERE c.id = 1", "child", "child"),
+        ("UPDATE child AS c SET id = 2 WHERE c.id = 1", "CHILD", "child"),
+        ("DELETE FROM child AS c WHERE c.id = 1", "CHILD", "child"),
         ('UPDATE "S"."T" AS c SET x = 1', "S.T", '"S"."T"'),
-        ("UPDATE t SET a = 1", "t", "t"),
+        ("UPDATE t SET a = 1", "T", "t"),
     ],
 )
 def test_mutation_target_sql_is_the_bare_table_reference(sql, target, target_sql):

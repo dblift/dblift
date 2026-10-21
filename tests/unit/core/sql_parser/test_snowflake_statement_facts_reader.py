@@ -33,15 +33,15 @@ def test_snowflake_discarded_source_qualifier_has_no_reference_or_effect(sql, op
             "SELECT * FROM a.b.c",
             "SELECT",
             "QUERY",
-            (NamedObject("c", SqlObjectType.TABLE, "referenced", "a.b"),),
+            (NamedObject("C", SqlObjectType.TABLE, "referenced", "A.B"),),
         ),
         (
             "CREATE VIEW v AS SELECT * FROM a.b.c",
             "CREATE",
             "DDL",
             (
-                NamedObject("v", SqlObjectType.VIEW, "created"),
-                NamedObject("c", SqlObjectType.TABLE, "referenced", "a.b"),
+                NamedObject("V", SqlObjectType.VIEW, "created"),
+                NamedObject("C", SqlObjectType.TABLE, "referenced", "A.B"),
             ),
         ),
         (
@@ -49,8 +49,8 @@ def test_snowflake_discarded_source_qualifier_has_no_reference_or_effect(sql, op
             "CREATE",
             "DDL",
             (
-                NamedObject("t", SqlObjectType.TABLE, "created"),
-                NamedObject("c", SqlObjectType.TABLE, "referenced", "a.b"),
+                NamedObject("T", SqlObjectType.TABLE, "created"),
+                NamedObject("C", SqlObjectType.TABLE, "referenced", "A.B"),
             ),
         ),
     ],
@@ -75,8 +75,8 @@ def test_snowflake_complete_three_part_cte_mutation_target_is_preserved(sql, ope
     facts = read_statement_facts(sql, dialect="snowflake")
 
     assert (facts.operation, facts.kind) == (operation, "DML")
-    assert facts.affected_objects == (NamedObject("c", SqlObjectType.TABLE, "altered", "a.b"),)
-    assert facts.target == "a.b.c"
+    assert facts.affected_objects == (NamedObject("C", SqlObjectType.TABLE, "altered", "A.B"),)
+    assert facts.target == "A.B.C"
     assert not facts.opaque
 
 
@@ -122,7 +122,10 @@ def test_snowflake_discarded_relation_qualifier_has_no_identity(template, operat
     assert facts.error is None
 
 
-@pytest.mark.parametrize("name", ["a.b.c", '"a"."b"/* qualifier */."c"'])
+@pytest.mark.parametrize(
+    "name, stored_name, stored_schema",
+    [("a.b.c", "C", "A.B"), ('"a"."b"/* qualifier */."c"', "c", "a.b")],
+)
 @pytest.mark.parametrize(
     "template, operation, role, object_type",
     [
@@ -142,12 +145,12 @@ def test_snowflake_discarded_relation_qualifier_has_no_identity(template, operat
     ],
 )
 def test_snowflake_complete_three_part_relation_is_preserved(
-    name, template, operation, role, object_type
+    name, stored_name, stored_schema, template, operation, role, object_type
 ):
     facts = read_statement_facts(template.format(name), dialect="snowflake")
 
     assert facts.operation == operation
-    assert facts.affected_objects == (NamedObject("c", object_type, role, "a.b"),)
+    assert facts.affected_objects == (NamedObject(stored_name, object_type, role, stored_schema),)
     assert not facts.opaque
 
 

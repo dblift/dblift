@@ -122,6 +122,7 @@ but nothing connects.
 | `drop-column` | `ALTER TABLE … DROP COLUMN` | error | all |
 | `truncate` | `TRUNCATE` | error | all |
 | `mixed-transaction-modes` | A statement that needs autocommit (for example `CREATE INDEX CONCURRENTLY`) in a script whose other statements run in a transaction: `migrate` refuses such a script | error | all |
+| `drop-unread-object` | A `DROP` whose object kind or name the SQL parser could not read, so it cannot be told whether rows are lost | warning | all |
 | `dml-no-where` | `UPDATE` or `DELETE` without `WHERE` | warning | all |
 | `add-not-null-no-default` | `ADD COLUMN … NOT NULL` without a `DEFAULT` | warning | all |
 | `rename-column` | A column rename (`RENAME COLUMN`, `sp_rename … 'COLUMN'`) | warning | all |

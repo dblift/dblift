@@ -44,6 +44,12 @@ _DROP_TARGET = re.compile(
 _DROP_KEYWORD = re.compile(
     r"^\s*DROP\s+(TABLE|MATERIALIZED\s+VIEW|VIEW|SCHEMA|DATABASE)\b", re.IGNORECASE
 )
+# Objects whose DROP never discards rows, even when the statement's name could not be read.
+_ROW_FREE_DROP = re.compile(
+    r"^\s*DROP\s+(?:INDEX|SEQUENCE|FUNCTION|PROCEDURE|ROUTINE|TRIGGER|TYPE|DOMAIN|EXTENSION"
+    r"|ROLE|USER)\b",
+    re.IGNORECASE,
+)
 # Objects whose DROP discards rows; dropping an index, a sequence or a routine does not.
 _DATA_HOLDERS = frozenset(
     {
@@ -382,7 +388,14 @@ def _unnamed_drop_caution(stmt: AnalysedStatement, body: str) -> Optional[Cautio
     """The caution of a DROP whose object could not be named, from its keyword alone."""
     match = _DROP_KEYWORD.match(strip_leading_sql_comments(body))
     if match is None:
-        return None
+        if _ROW_FREE_DROP.match(strip_leading_sql_comments(body)):
+            return None
+        return Caution(
+            DESTROYS,
+            stmt.index,
+            "DROP discards an object whose kind or name could not be read",
+            "drop-unread-object",
+        )
     kind = " ".join(match.group(1).upper().split())
     code = {"SCHEMA": "drop-schema", "DATABASE": "drop-schema", "VIEW": None}.get(
         kind, "drop-table"
