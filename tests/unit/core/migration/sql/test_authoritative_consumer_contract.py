@@ -16,9 +16,10 @@ from dblift.core.migration.sql.execution_statement import (
 from dblift.core.migration.sql.lint_rules import find_issues
 from dblift.core.migration.sql.script_analysis import analyse_script
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+from dblift.core.migration.sql.statement_splitter import StatementSplitter
+from dblift.core.sql_parser.lexical_engine import LexicalEngine
 from dblift.core.sql_parser.parser_factory import SqlParserFactory
 from dblift.core.sql_parser.sqlglot_parser import SqlGlotParser
-from dblift.db.plugins.snowflake.statement_parser import SnowflakeStatementParser
 from tests.support.legacy_oracle_hybrid import oracle_facts_off
 from tests.unit._migration_factory import make_migration
 
@@ -118,7 +119,7 @@ def test_snowflake_scanner_failure_cannot_become_guessed_executable_sql(monkeypa
     def fail(self, sql_content: str) -> list[str]:
         raise ValueError("scanner bug")
 
-    monkeypatch.setattr(SnowflakeStatementParser, "split", fail)
+    monkeypatch.setattr(LexicalEngine, "split", fail)
     with pytest.raises(UnsafeStatementSplitError, match="scanner bug"):
         SqlAnalyzer("snowflake").split_statements("SELECT 'a;b'; SELECT 2;")
 
@@ -136,7 +137,7 @@ def test_sqlglot_parser_never_resplits_a_scanner_refusal(monkeypatch) -> None:
 
 def test_snowflake_records_cover_original_statement_spans() -> None:
     sql = "\nSELECT 'a;b';\nSELECT 2;"
-    records = SnowflakeStatementParser().split(sql)
+    records = StatementSplitter("snowflake").split(sql)
     assert [sql[record.source_start : record.source_end] for record in records] == [
         "\nSELECT 'a;b';",
         "\nSELECT 2;",
@@ -209,7 +210,7 @@ def test_sqlglot_public_analysis_and_extraction_project_scanner_constituents() -
     assert parser.split_for_analysis(sql) == ["SELECT 1", "DROP TABLE users"]
     assert parser.split_for_extraction(sql) == ["SELECT 1", "DROP TABLE users"]
     assert SqlParserFactory("sqlserver").get_parser().split_for_analysis("SELECT 1;\nGO 0") == []
-    assert SnowflakeStatementParser().split_for_analysis("SELECT 1; SELECT 2;") == [
+    assert SqlParserFactory("snowflake").get_parser().split_for_analysis("SELECT 1; SELECT 2;") == [
         "SELECT 1",
         "SELECT 2",
     ]

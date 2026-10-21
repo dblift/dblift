@@ -163,6 +163,8 @@ class LexicalTokenizer(BaseTokenizer):
         self._delimiter = ""
         self._eol_cache = -1
         self._line_start = True
+        self._meta_scanned = 0
+        self._meta_line_has_code = False
         self._seen_from, self._seen_at = len(sql) + 1, -1
         if delimiter_rules is not None:
             origin = 1 if spec.leading_bom_is_blank and sql.startswith(BOM) else 0
@@ -565,8 +567,25 @@ class LexicalTokenizer(BaseTokenizer):
         # reaching here is unquoted. Not inside a COPY header (up to its ';'),
         # which stays one unit with its data block; the data block itself
         # (rows may start with \N) is read whole above.
-        if self.spec.meta_prefix and char == self.spec.meta_prefix and self._copy_header is None:
+        if (
+            self.spec.meta_prefix
+            and char == self.spec.meta_prefix
+            and self._copy_header is None
+            and (
+                not self.spec.meta_prefix_line_start
+                or (self.peek(2) != "!=" and self._meta_at_line_start())
+            )
+        ):
             return self._handle_meta_command()
+
+        if self.spec.slash_line_comments and self.peek(2) == "//":
+            return self._handle_comment()
+
+        if self.spec.dollar_quotes and not self.spec.dollar_quote_tags and char == "$":
+            if self._tagged_dollar_opener():
+                raise UnsafeStatementSplitError(
+                    f"unsupported tagged dollar quote at line {self.line}, column {self.col}"
+                )
 
         # Flyway / DBLift placeholders ${name} or ${name:default} — not PostgreSQL
         # dollar-quoting ($$…$$ / $tag$…$tag$). Treat as a single token so statement
@@ -597,6 +616,32 @@ class LexicalTokenizer(BaseTokenizer):
 
         # Delegate to base class for other token types
         return super()._next_token()
+
+    def _meta_at_line_start(self) -> bool:
+        """Check a candidate prefix using each intervening source character only once."""
+        for char in self.sql[self._meta_scanned : self.pos]:
+            if char in "\r\n":
+                self._meta_line_has_code = False
+            elif char not in self.spec.text_blanks:
+                self._meta_line_has_code = True
+        self._meta_scanned = self.pos
+        return not self._meta_line_has_code
+
+    def _tagged_dollar_opener(self) -> bool:
+        """A fixed-dollar dialect refuses only a complete, unquoted ``$tag$`` opener."""
+        first = self.pos + 1
+        if first >= len(self.sql) or not (
+            self.sql[first].isascii() and (self.sql[first].isalpha() or self.sql[first] == "_")
+        ):
+            return False
+        end = first + 1
+        while (
+            end < len(self.sql)
+            and self.sql[end].isascii()
+            and (self.sql[end].isalnum() or self.sql[end] == "_")
+        ):
+            end += 1
+        return end < len(self.sql) and self.sql[end] == "$"
 
     def _next_sqlite_token(self) -> Optional[Token]:
         """Read SQLite lexemes using the same token stream as other dialects."""
@@ -682,6 +727,8 @@ class LexicalTokenizer(BaseTokenizer):
         after = self.peek(2)[1:]
         if after == "$":
             return True  # empty tag
+        if not self.spec.dollar_quote_tags:
+            return False
         # A tag starts like an unquoted identifier; $1 is a parameter, ${ a placeholder.
         return bool(after) and (
             after.isalpha() or after == "_" or self._is_non_ascii_name_char(after)
@@ -1256,7 +1303,17 @@ class LexicalTokenizer(BaseTokenizer):
 
     def _handle_comment(self) -> Token:
         start = self.pos
-        token = super()._handle_comment()
+        opener = self.peek(2)
+        if (opener == "//" and self.spec.slash_line_comments) or (
+            opener == "--" and self.spec.line_comment_ends != "\n"
+        ):
+            line, col = self.line, self.col
+            self.read(2)
+            while self.pos < len(self.sql) and self.peek() not in self.spec.line_comment_ends:
+                self.read()
+            token = Token(TokenType.COMMENT, "", start, line, col, self.parens_depth)
+        else:
+            token = super()._handle_comment()
         self.comments.append((start, self.pos))
         self._comment_end_line = self.line
         if self.spec.sqlite_shell:

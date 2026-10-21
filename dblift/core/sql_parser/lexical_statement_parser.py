@@ -38,6 +38,7 @@ class LexicalStatementParser(BaseStatementParser):
         self._comments: Sequence[Tuple[int, int]] = comments or ()
         self._head: List[str] = []
         self._head_limit = max(map(len, spec.routine_heads), default=0)
+        self._raw_segment_start = 0
         self._previous: Optional[Token] = None
         self._sqlite_state = 1
         self._sqlite_code = False
@@ -189,6 +190,8 @@ class LexicalStatementParser(BaseStatementParser):
                 else any(t.type not in (TokenType.COMMENT, TokenType.DELIMITER) for t in current)
             )
             if current and has_code:
+                if self.spec.refuse_unquoted_scripting:
+                    self._check_unquoted_scripting(current)
                 text = self._render_statement(current, terminator, end_pos)
                 if text.strip(self.text_blanks):
                     first = next((t for t in current if t.type != TokenType.COMMENT), None)
@@ -205,6 +208,11 @@ class LexicalStatementParser(BaseStatementParser):
                                 terminator=terminator,
                             )
                     records.append(self._record(current, text, terminator, end_pos))
+            if self.spec.raw_segment_records:
+                if terminator is not None:
+                    self._raw_segment_start = terminator.pos + len(terminator.text)
+                elif end_pos is not None:
+                    self._raw_segment_start = end_pos
             current.clear()
             self.context.reset_for_new_statement()
             self._head.clear()
@@ -266,12 +274,69 @@ class LexicalStatementParser(BaseStatementParser):
         flush(None, None)
         return records
 
+    @staticmethod
+    def _unquoted_word(token: Token) -> str:
+        if token.type not in (TokenType.KEYWORD, TokenType.IDENTIFIER):
+            return ""
+        return token.text.upper() if token.text[:1] not in ('"', "'", "`") else ""
+
+    def _check_unquoted_scripting(self, tokens: List[Token]) -> None:
+        """Refuse unquoted scripting without splitting its body into executable SQL."""
+        code = [t for t in tokens if t.type not in (TokenType.COMMENT, TokenType.DELIMITER)]
+        if not code:
+            return
+        head = self._unquoted_word(code[0])
+        if head == "DECLARE":
+            raise UnsafeStatementSplitError(
+                f"Unquoted {self.spec.client_name} Scripting is not qualified"
+            )
+        if head == "BEGIN":
+            words = tuple(self._unquoted_word(t) for t in code)
+            if words not in (("BEGIN",), ("BEGIN", "WORK"), ("BEGIN", "TRANSACTION")):
+                raise UnsafeStatementSplitError(
+                    f"Unquoted {self.spec.client_name} Scripting is not qualified"
+                )
+        if (
+            head == "WITH"
+            and len(code) >= 4
+            and self._unquoted_word(code[2]) == "AS"
+            and self._unquoted_word(code[3]) == "PROCEDURE"
+            and any(self._unquoted_word(t) in ("BEGIN", "DECLARE") for t in code[4:])
+        ):
+            raise UnsafeStatementSplitError(
+                f"Unquoted {self.spec.client_name} procedure body is not qualified"
+            )
+        if head == "CREATE":
+            words = tuple(self._unquoted_word(t) for t in code)
+            kind_at = 3 if words[1:3] == ("OR", "REPLACE") else 1
+            while kind_at < len(words) and words[kind_at] in ("SECURE", "TEMP", "TEMPORARY"):
+                kind_at += 1
+            if (
+                len(words) > kind_at
+                and words[kind_at] in ("PROCEDURE", "FUNCTION")
+                and any(a == "AS" and b in ("BEGIN", "DECLARE") for a, b in zip(words, words[1:]))
+            ):
+                raise UnsafeStatementSplitError(
+                    f"Unquoted {self.spec.client_name} routine body is not qualified"
+                )
+
     def _render_statement(
         self,
         kept_tokens: List[Token],
         terminator: Optional[Token],
         dropped_terminator_pos: Optional[int],
     ) -> str:
+        if self.spec.raw_segment_records and self.source is not None:
+            end = (
+                dropped_terminator_pos
+                if dropped_terminator_pos is not None
+                else (
+                    terminator.pos + len(terminator.text)
+                    if terminator is not None
+                    else len(self.source)
+                )
+            )
+            return self.source[self._raw_segment_start : end].strip(self.text_blanks)
         if not self.spec.sqlite_shell or self.source is None:
             return super()._render_statement(kept_tokens, terminator, dropped_terminator_pos)
         start = kept_tokens[0].pos
@@ -339,7 +404,12 @@ class LexicalStatementParser(BaseStatementParser):
             if self.spec.sqlite_shell
             else next(t for t in tokens if t.type != TokenType.COMMENT)
         )
-        source_start = first.pos if self.source is not None else None
+        source_start = (
+            self._raw_segment_start
+            if self.spec.raw_segment_records and self.source is not None
+            else first.pos if self.source is not None else None
+        )
+        line = tokens[0].line if self.spec.raw_segment_records else first.line
         source_end = (
             terminator.pos + len(terminator.text)
             if terminator is not None
@@ -380,7 +450,7 @@ class LexicalStatementParser(BaseStatementParser):
         if terminator is None:
             return Statement(
                 text=rendered,
-                line=first.line,
+                line=line,
                 terminator=None,
                 multi=multi,
                 analysis_statements=analysis_statements,
@@ -417,9 +487,11 @@ class LexicalStatementParser(BaseStatementParser):
             self._script is not None and terminator.text == self._script.rules.line_terminator
         )
         sends_text = self.spec.sqlite_shell or ends_at_line
+        if self.spec.raw_segment_records:
+            sends_text = True
         return Statement(
             text=text,
-            line=first.line,
+            line=line,
             terminator=terminator.text,
             multi=multi,
             execution_text=None if sends_text or rendered == text else rendered,

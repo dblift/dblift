@@ -42,7 +42,7 @@
 "edge_snowflake": {
 "count": 341,
 "observed": null,
-"sha256": "a9562c08e30a9c0d2f2b6fc591aedebfe1a90f788d78f42cb77583aa2f8a5038"
+"sha256": "15018f4365a6db90f59ddf1afed41875638b627932dadd91033c3017c3accffd"
 },
 "edge_sqlite": {
 "count": 341,
@@ -6869,6 +6869,10 @@
 "SELECT 1",
 "SELECT 2"
 ],
+"engine": [
+"SELECT 1",
+"SELECT 2"
+],
 "splitter": [
 "SELECT 1",
 "SELECT 2"
@@ -6880,6 +6884,10 @@
 "SELECT 1;\n \t ;\nSELECT 2;",
 {
 "analysis": [
+"SELECT 1",
+"SELECT 2"
+],
+"engine": [
 "SELECT 1",
 "SELECT 2"
 ],
@@ -6895,10 +6903,17 @@
 {
 "analysis": [
 "SELECT 1",
+"\u00a0",
+"SELECT 2"
+],
+"engine": [
+"SELECT 1",
+"\u00a0",
 "SELECT 2"
 ],
 "splitter": [
 "SELECT 1",
+"\u00a0",
 "SELECT 2"
 ]
 }
@@ -6909,10 +6924,17 @@
 {
 "analysis": [
 "SELECT 1",
+"\u3000",
+"SELECT 2"
+],
+"engine": [
+"SELECT 1",
+"\u3000",
 "SELECT 2"
 ],
 "splitter": [
 "SELECT 1",
+"\u3000",
 "SELECT 2"
 ]
 }
@@ -6923,10 +6945,17 @@
 {
 "analysis": [
 "SELECT 1",
+"\u001c",
+"SELECT 2"
+],
+"engine": [
+"SELECT 1",
+"\u001c",
 "SELECT 2"
 ],
 "splitter": [
 "SELECT 1",
+"\u001c",
 "SELECT 2"
 ]
 }
@@ -6936,6 +6965,10 @@
 "SELECT 1;\n-- c\n;\nSELECT 2;",
 {
 "analysis": [
+"SELECT 1",
+"SELECT 2"
+],
+"engine": [
 "SELECT 1",
 "SELECT 2"
 ],
@@ -6953,6 +6986,10 @@
 "SELECT 1",
 "SELECT 2"
 ],
+"engine": [
+"SELECT 1",
+"SELECT 2"
+],
 "splitter": [
 "SELECT 1",
 "SELECT 2"
@@ -6965,10 +7002,17 @@
 {
 "analysis": [
 "SELECT 1",
+"/* a /* b */ c */",
+"SELECT 2"
+],
+"engine": [
+"SELECT 1",
+"/* a /* b */ c */",
 "SELECT 2"
 ],
 "splitter": [
 "SELECT 1",
+"/* a /* b */ c */",
 "SELECT 2"
 ]
 }
@@ -6978,6 +7022,11 @@
 "SELECT 1;\n# c\n;\nSELECT 2;",
 {
 "analysis": [
+"SELECT 1",
+"# c",
+"SELECT 2"
+],
+"engine": [
 "SELECT 1",
 "# c",
 "SELECT 2"
@@ -6998,6 +7047,11 @@
 "\u001c # c",
 "SELECT 2"
 ],
+"engine": [
+"SELECT 1",
+"\u001c # c",
+"SELECT 2"
+],
 "splitter": [
 "SELECT 1",
 "\u001c # c",
@@ -7011,10 +7065,17 @@
 {
 "analysis": [
 "SELECT 1",
+"\u00a0 -- c",
+"SELECT 2"
+],
+"engine": [
+"SELECT 1",
+"\u00a0 -- c",
 "SELECT 2"
 ],
 "splitter": [
 "SELECT 1",
+"\u00a0 -- c",
 "SELECT 2"
 ]
 }
@@ -7024,6 +7085,10 @@
 "SELECT 1;\n/*!40101 SET @a=1 */;\nSELECT 2;",
 {
 "analysis": [
+"SELECT 1",
+"SELECT 2"
+],
+"engine": [
 "SELECT 1",
 "SELECT 2"
 ],
@@ -7040,6 +7105,9 @@
 "analysis": [
 "-- see /* x\nCREATE TABLE t (a int)"
 ],
+"engine": [
+"-- see /* x\nCREATE TABLE t (a int)"
+],
 "splitter": [
 "-- see /* x\nCREATE TABLE t (a int)"
 ]
@@ -7052,12 +7120,17 @@
 "analysis": [
 "error",
 "UnsafeStatementSplitError",
-"Unterminated Snowflake string or comment"
+"unterminated block comment opened at line 2, column 1"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated block comment opened at line 2, column 1"
 ],
 "splitter": [
 "error",
 "UnsafeStatementSplitError",
-"Unterminated Snowflake string or comment"
+"unterminated block comment opened at line 2, column 1"
 ]
 }
 ],
@@ -7068,12 +7141,17 @@
 "analysis": [
 "error",
 "UnsafeStatementSplitError",
-"Unterminated Snowflake string or comment"
+"unterminated block comment opened at line 1, column 1"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated block comment opened at line 1, column 1"
 ],
 "splitter": [
 "error",
 "UnsafeStatementSplitError",
-"Unterminated Snowflake string or comment"
+"unterminated block comment opened at line 1, column 1"
 ]
 }
 ],
@@ -7082,6 +7160,9 @@
 "SELECT 1;\n  \n",
 {
 "analysis": [
+"SELECT 1"
+],
+"engine": [
 "SELECT 1"
 ],
 "splitter": [
@@ -7094,10 +7175,16 @@
 "SELECT 1;\n\u00a0",
 {
 "analysis": [
-"SELECT 1"
+"SELECT 1",
+"\u00a0"
+],
+"engine": [
+"SELECT 1",
+"\u00a0"
 ],
 "splitter": [
-"SELECT 1"
+"SELECT 1",
+"\u00a0"
 ]
 }
 ],
@@ -7106,10 +7193,16 @@
 "SELECT 1;\n\u3000",
 {
 "analysis": [
-"SELECT 1"
+"SELECT 1",
+"\u3000"
+],
+"engine": [
+"SELECT 1",
+"\u3000"
 ],
 "splitter": [
-"SELECT 1"
+"SELECT 1",
+"\u3000"
 ]
 }
 ],
@@ -7118,10 +7211,16 @@
 "SELECT 1;\n\u001c",
 {
 "analysis": [
-"SELECT 1"
+"SELECT 1",
+"\u001c"
+],
+"engine": [
+"SELECT 1",
+"\u001c"
 ],
 "splitter": [
-"SELECT 1"
+"SELECT 1",
+"\u001c"
 ]
 }
 ],
@@ -7130,6 +7229,9 @@
 "SELECT 1;\n-- tail",
 {
 "analysis": [
+"SELECT 1"
+],
+"engine": [
 "SELECT 1"
 ],
 "splitter": [
@@ -7142,6 +7244,9 @@
 "SELECT 1;\n/* tail */",
 {
 "analysis": [
+"SELECT 1"
+],
+"engine": [
 "SELECT 1"
 ],
 "splitter": [
@@ -7157,6 +7262,10 @@
 "SELECT 1",
 "# tail"
 ],
+"engine": [
+"SELECT 1",
+"# tail"
+],
 "splitter": [
 "SELECT 1",
 "# tail"
@@ -7168,10 +7277,16 @@
 "SELECT 1;\n/* a /* b */ c */",
 {
 "analysis": [
-"SELECT 1"
+"SELECT 1",
+"/* a /* b */ c */"
+],
+"engine": [
+"SELECT 1",
+"/* a /* b */ c */"
 ],
 "splitter": [
-"SELECT 1"
+"SELECT 1",
+"/* a /* b */ c */"
 ]
 }
 ],
@@ -7180,6 +7295,7 @@
 "-- only a comment\n",
 {
 "analysis": [],
+"engine": [],
 "splitter": []
 }
 ],
@@ -7188,6 +7304,7 @@
 "",
 {
 "analysis": [],
+"engine": [],
 "splitter": []
 }
 ],
@@ -7196,6 +7313,7 @@
 " \n\t\n",
 {
 "analysis": [],
+"engine": [],
 "splitter": []
 }
 ],
@@ -7205,18 +7323,20 @@
 {
 "analysis": [
 "SELECT 1",
-"// c",
+"SELECT 2"
+],
+"engine": [
+"SELECT 1",
 "SELECT 2"
 ],
 "splitter": [
 "SELECT 1",
-"// c",
 "SELECT 2"
 ]
 }
 ]
 ],
-"sha256": "cd972b6eeb039eb9c96d647052ef622465347e06346197cb0e5f69ff8c02b9b5"
+"sha256": "e63b02dc4729893be39ca89d9d67ac28cd8d1644bb400060fddba00bf0634c63"
 },
 "snowflake": {
 "count": 5,
@@ -7226,6 +7346,9 @@
 "SELECT 1;",
 {
 "analysis": [
+"SELECT 1"
+],
+"engine": [
 "SELECT 1"
 ],
 "splitter": [
@@ -7238,6 +7361,10 @@
 "SELECT 1;\nSELECT 2",
 {
 "analysis": [
+"SELECT 1",
+"SELECT 2"
+],
+"engine": [
 "SELECT 1",
 "SELECT 2"
 ],
@@ -7255,6 +7382,10 @@
 "CREATE PROCEDURE p() RETURNS int LANGUAGE sql AS $$ BEGIN RETURN 1; END; $$",
 "SELECT 2"
 ],
+"engine": [
+"CREATE PROCEDURE p() RETURNS int LANGUAGE sql AS $$ BEGIN RETURN 1; END; $$",
+"SELECT 2"
+],
 "splitter": [
 "CREATE PROCEDURE p() RETURNS int LANGUAGE sql AS $$ BEGIN RETURN 1; END; $$",
 "SELECT 2"
@@ -7266,6 +7397,10 @@
 "-- c\nSELECT 1; /* c */ SELECT 2;",
 {
 "analysis": [
+"-- c\nSELECT 1",
+"/* c */ SELECT 2"
+],
+"engine": [
 "-- c\nSELECT 1",
 "/* c */ SELECT 2"
 ],
@@ -7282,16 +7417,19 @@
 "analysis": [
 "SELECT 'a;b'"
 ],
+"engine": [
+"SELECT 'a;b'"
+],
 "splitter": [
 "SELECT 'a;b'"
 ]
 }
 ]
 ],
-"sha256": "d33767030fb567ebf4699543cf51a835e6b5eced5e52adf95a4e7fbfd5c4910d"
+"sha256": "235ed5bc6bc3581fe10f984ca5132ef0ad7b354ccb6413b897cdc4b2e3939811"
 },
 "spec_rows": {
-"count": 802,
+"count": 824,
 "observed": [
 [
 "db2",
@@ -16125,6 +16263,378 @@
 }
 ],
 [
+"snowflake",
+"SELECT 1; SELECT $$a;b$$;",
+{
+"analysis": [
+"SELECT 1",
+"SELECT $$a;b$$"
+],
+"engine": [
+"SELECT 1",
+"SELECT $$a;b$$"
+],
+"splitter": [
+"SELECT 1",
+"SELECT $$a;b$$"
+]
+}
+],
+[
+"snowflake",
+"SELECT 'it''s;ok'; SELECT 2;",
+{
+"analysis": [
+"SELECT 'it''s;ok'",
+"SELECT 2"
+],
+"engine": [
+"SELECT 'it''s;ok'",
+"SELECT 2"
+],
+"splitter": [
+"SELECT 'it''s;ok'",
+"SELECT 2"
+]
+}
+],
+[
+"snowflake",
+"SELECT 'it\\'s;ok'; SELECT 2;",
+{
+"analysis": [
+"SELECT 'it\\'s;ok'",
+"SELECT 2"
+],
+"engine": [
+"SELECT 'it\\'s;ok'",
+"SELECT 2"
+],
+"splitter": [
+"SELECT 'it\\'s;ok'",
+"SELECT 2"
+]
+}
+],
+[
+"snowflake",
+"SELECT 1 AS \"a\"\"b;c\"; SELECT 2;",
+{
+"analysis": [
+"SELECT 1 AS \"a\"\"b;c\"",
+"SELECT 2"
+],
+"engine": [
+"SELECT 1 AS \"a\"\"b;c\"",
+"SELECT 2"
+],
+"splitter": [
+"SELECT 1 AS \"a\"\"b;c\"",
+"SELECT 2"
+]
+}
+],
+[
+"snowflake",
+"SELECT 1 AS a$$b; SELECT 2;",
+{
+"analysis": [
+"SELECT 1 AS a$$b",
+"SELECT 2"
+],
+"engine": [
+"SELECT 1 AS a$$b",
+"SELECT 2"
+],
+"splitter": [
+"SELECT 1 AS a$$b",
+"SELECT 2"
+]
+}
+],
+[
+"snowflake",
+"SELECT 1 // comment\n + 2;",
+{
+"analysis": [
+"SELECT 1 // comment\n + 2"
+],
+"engine": [
+"SELECT 1 // comment\n + 2"
+],
+"splitter": [
+"SELECT 1 // comment\n + 2"
+]
+}
+],
+[
+"snowflake",
+"SELECT 1 -- comment\r + 2;",
+{
+"analysis": [
+"SELECT 1 -- comment\r + 2"
+],
+"engine": [
+"SELECT 1 -- comment\r + 2"
+],
+"splitter": [
+"SELECT 1 -- comment\r + 2"
+]
+}
+],
+[
+"snowflake",
+"SELECT 1 // comment\r\n + 2;",
+{
+"analysis": [
+"SELECT 1 // comment\r\n + 2"
+],
+"engine": [
+"SELECT 1 // comment\r\n + 2"
+],
+"splitter": [
+"SELECT 1 // comment\r\n + 2"
+]
+}
+],
+[
+"snowflake",
+"SELECT 1 /* outer /* inner */ + 2;",
+{
+"analysis": [
+"SELECT 1 /* outer /* inner */ + 2"
+],
+"engine": [
+"SELECT 1 /* outer /* inner */ + 2"
+],
+"splitter": [
+"SELECT 1 /* outer /* inner */ + 2"
+]
+}
+],
+[
+"snowflake",
+"SELECT 1 /* unclosed",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated block comment opened at line 1, column 10"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated block comment opened at line 1, column 10"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"unterminated block comment opened at line 1, column 10"
+]
+}
+],
+[
+"snowflake",
+"-- comment-only",
+{
+"analysis": [],
+"engine": [],
+"splitter": []
+}
+],
+[
+"snowflake",
+"SELECT\u20021;",
+{
+"analysis": [
+"SELECT\u20021"
+],
+"engine": [
+"SELECT\u20021"
+],
+"splitter": [
+"SELECT\u20021"
+]
+}
+],
+[
+"snowflake",
+"SELECT\u00a01;",
+{
+"analysis": [
+"SELECT\u00a01"
+],
+"engine": [
+"SELECT\u00a01"
+],
+"splitter": [
+"SELECT\u00a01"
+]
+}
+],
+[
+"snowflake",
+"SELECT $tag;",
+{
+"analysis": [
+"SELECT $tag"
+],
+"engine": [
+"SELECT $tag"
+],
+"splitter": [
+"SELECT $tag"
+]
+}
+],
+[
+"snowflake",
+"SELECT $tag$",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"unsupported tagged dollar quote at line 1, column 8"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"unsupported tagged dollar quote at line 1, column 8"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"unsupported tagged dollar quote at line 1, column 8"
+]
+}
+],
+[
+"snowflake",
+"BEGIN TRANSACTION; ROLLBACK;",
+{
+"analysis": [
+"BEGIN TRANSACTION",
+"ROLLBACK"
+],
+"engine": [
+"BEGIN TRANSACTION",
+"ROLLBACK"
+],
+"splitter": [
+"BEGIN TRANSACTION",
+"ROLLBACK"
+]
+}
+],
+[
+"snowflake",
+"BEGIN LET x INTEGER := 1; RETURN x; END;",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"Unquoted Snowflake Scripting is not qualified"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"Unquoted Snowflake Scripting is not qualified"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"Unquoted Snowflake Scripting is not qualified"
+]
+}
+],
+[
+"snowflake",
+"WITH p AS PROCEDURE () RETURNS INT LANGUAGE SQL AS $$BEGIN RETURN 1; END;$$ CALL p();",
+{
+"analysis": [
+"WITH p AS PROCEDURE () RETURNS INT LANGUAGE SQL AS $$BEGIN RETURN 1; END;$$ CALL p()"
+],
+"engine": [
+"WITH p AS PROCEDURE () RETURNS INT LANGUAGE SQL AS $$BEGIN RETURN 1; END;$$ CALL p()"
+],
+"splitter": [
+"WITH p AS PROCEDURE () RETURNS INT LANGUAGE SQL AS $$BEGIN RETURN 1; END;$$ CALL p()"
+]
+}
+],
+[
+"snowflake",
+"WITH p AS PROCEDURE () RETURNS INT LANGUAGE SQL AS 'BEGIN RETURN 1; END;' CALL p();",
+{
+"analysis": [
+"WITH p AS PROCEDURE () RETURNS INT LANGUAGE SQL AS 'BEGIN RETURN 1; END;' CALL p()"
+],
+"engine": [
+"WITH p AS PROCEDURE () RETURNS INT LANGUAGE SQL AS 'BEGIN RETURN 1; END;' CALL p()"
+],
+"splitter": [
+"WITH p AS PROCEDURE () RETURNS INT LANGUAGE SQL AS 'BEGIN RETURN 1; END;' CALL p()"
+]
+}
+],
+[
+"snowflake",
+"WITH p AS PROCEDURE () RETURNS INT LANGUAGE SQL AS BEGIN RETURN 1; END; CALL p()",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"Unquoted Snowflake procedure body is not qualified"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"Unquoted Snowflake procedure body is not qualified"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"Unquoted Snowflake procedure body is not qualified"
+]
+}
+],
+[
+"snowflake",
+"!source never-opened.sql",
+{
+"analysis": [
+"error",
+"UnsupportedMetaCommandError",
+"Unsupported Snowflake meta-command '!source' at line 1; dblift does not run it (column 1)"
+],
+"engine": [
+"error",
+"UnsupportedMetaCommandError",
+"Unsupported Snowflake meta-command '!source' at line 1; dblift does not run it (column 1)"
+],
+"splitter": [
+"error",
+"UnsupportedMetaCommandError",
+"Unsupported Snowflake meta-command '!source' at line 1; dblift does not run it (column 1)"
+]
+}
+],
+[
+"snowflake",
+"SELECT 1 != 2;",
+{
+"analysis": [
+"SELECT 1 != 2"
+],
+"engine": [
+"SELECT 1 != 2"
+],
+"splitter": [
+"SELECT 1 != 2"
+]
+}
+],
+[
 "sqlite",
 "CREATE TABLE t(a); INSERT INTO t VALUES(1);",
 {
@@ -22073,6 +22583,6 @@
 }
 ]
 ],
-"sha256": "4712446546d93ec5513f1c175ab415abea9994efd53452f7165e3d412357f0f3"
+"sha256": "a26257a4af1ec662ad357a91725c69e1f9112fc8e35f712280a132bb8652a240"
 }
 }
