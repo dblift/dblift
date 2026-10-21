@@ -62,8 +62,8 @@ _R = TypeVar("_R", bound=OperationResult)
 
 # Shared with ``AsyncDBLiftClient``, which warns from its own methods.
 _TEXT_UNDO_DEPRECATION_MESSAGE = (
-    "text-based undo script generation is deprecated and will be removed in "
-    "the next major release; see CHANGELOG"
+    "text-based undo script generation is deprecated and will be removed in 5.0; "
+    "write a matching U*__ undo script by hand"
 )
 
 

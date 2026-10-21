@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional
 
 from dblift.core.exceptions import ParserNotAvailableError, UnsupportedDialectError
 from dblift.core.sql_model.base import ParseResult, SqlObject, SqlStatement
+from dblift.core.sql_parser._deprecation import internal_parser_construction
 from dblift.core.sql_parser.parser_interface import SqlParserInterface
 
 # Setup logger
@@ -188,6 +189,7 @@ class SqlParserFactory:
         return False
 
     @staticmethod
+    @internal_parser_construction()
     def _resolve_parser(dialect: str, parser_type: str) -> SqlParserInterface:
         """Resolve and instantiate a parser via the plugin's quirks.
 

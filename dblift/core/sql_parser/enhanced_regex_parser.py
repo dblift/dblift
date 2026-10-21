@@ -15,6 +15,7 @@ from dblift.core.sql_model.base import (
     SqlStatement,
     SqlStatementType,
 )
+from dblift.core.sql_parser._deprecation import warn_direct_parser
 from dblift.core.sql_parser.base_tokenizer import BaseTokenizer
 from dblift.core.sql_parser.common.comment_stripping import (
     strip_comments_preserving_quotes,
@@ -52,6 +53,8 @@ class EnhancedRegexParser(RegexParser):
         Args:
             dialect_config: Dialect-specific configuration object
         """
+        if type(self) is EnhancedRegexParser:
+            warn_direct_parser("EnhancedRegexParser")
         super().__init__(dialect_config)
 
         # Enhanced patterns compiled for performance
