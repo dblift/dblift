@@ -574,3 +574,30 @@ def test_leading_comment_keeps_only_tokenizable_opaque_head(header, tail, expect
     assert tuple(o.name for o in facts.objects) == ((expected,) if expected else ())
     assert facts.target is None
     assert (facts.error is None) == bool(expected)
+
+
+@pytest.mark.parametrize("route", ("common", "plugin"))
+@pytest.mark.parametrize("provider,grammar", (("mysql", "mysql"), ("sqlite", "sqlite")))
+def test_replace_broken_quoted_tail_does_not_publish_opaque_target(provider, grammar, route):
+    facts = _facts(provider, grammar, "REPLACE INTO t VALUES ('", route)
+
+    assert (facts.operation, facts.kind) == ("REPLACE", "DML")
+    assert facts.opaque
+    assert facts.objects == ()
+    assert facts.target is None
+    assert facts.error is not None
+
+
+@pytest.mark.parametrize("route", ("common", "plugin"))
+@pytest.mark.parametrize("quote,expected", (("`", None), ('"', "live_t")))
+def test_cte_quote_rules_bound_only_the_proven_outer_opaque_target(quote, expected, route):
+    sql = (
+        f"WITH c AS (SELECT {quote}x) DELETE FROM victim {quote} ) " "UPDATE live_t SET a=1 BOGUS ("
+    )
+    facts = _facts("postgresql", "postgres", sql, route)
+
+    assert (facts.operation, facts.kind) == ("UPDATE", "DML")
+    assert facts.opaque
+    assert tuple(o.name for o in facts.objects) == ((expected,) if expected else ())
+    assert facts.target == expected
+    assert facts.error is None
