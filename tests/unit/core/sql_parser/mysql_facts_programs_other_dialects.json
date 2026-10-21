@@ -216,7 +216,7 @@
  },
  "oracle": {
   "CREATE DEFINER=`root`@`%` FUNCTION my_func() RETURNS INT BEGIN RETURN 1; END": {
-   "diagnostic": "oracle Block is opaque to statement facts",
+   "diagnostic": "oracle statement names an object through a database link",
    "indexed_table": null,
    "kind": "DDL",
    "objects": [],

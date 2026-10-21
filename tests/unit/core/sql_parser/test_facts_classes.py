@@ -390,10 +390,15 @@ def test_case_folded_when_the_facts_keep_the_spelling_and_the_extraction_folded(
     assert cls(SPELLED, facts(obj("Users")), old(("TABLE", folded)), family=family) == "case-folded"
 
 
-def test_case_folded_is_directional_the_facts_side_is_never_the_folded_one() -> None:
+def test_case_folded_is_directional_the_facts_side_is_never_the_folded_one(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Facts that fold the name themselves, or hold a spelling the statement does not, are
     reviewed: nothing proves the reader and the extraction mean the same object."""
-    for family, folded in (("postgresql", "users"), ("snowflake", "USERS")):
+    monkeypatch.setattr(
+        classes_module, "READER_FOLDS", frozenset({"db2"})
+    )  # oracle as a non-folder
+    for family, folded in (("postgresql", "users"), ("oracle", "USERS")):
         assert cls(SPELLED, facts(obj(folded)), old(("TABLE", "Users")), family=family) == (
             "disagree"
         )
@@ -409,12 +414,15 @@ def test_case_folded_never_accepts_the_extraction_as_the_unfolded_side() -> None
     )
 
 
-def test_case_folded_needs_the_facts_name_as_the_statement_spells_it() -> None:
+def test_case_folded_needs_the_facts_name_as_the_statement_spells_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        classes_module, "READER_FOLDS", frozenset({"db2"})
+    )  # oracle as a non-folder
     sql = "CREATE TABLE users (id int)"
-    assert cls(sql, facts(obj("Users")), old(("TABLE", "USERS")), family="snowflake") == "disagree"
-    assert (
-        cls(sql, facts(obj("users")), old(("TABLE", "USERS")), family="snowflake") == "case-folded"
-    )
+    assert cls(sql, facts(obj("Users")), old(("TABLE", "USERS")), family="oracle") == "disagree"
+    assert cls(sql, facts(obj("users")), old(("TABLE", "USERS")), family="oracle") == "case-folded"
 
 
 def test_case_folded_is_refused_when_the_reader_is_opaque() -> None:

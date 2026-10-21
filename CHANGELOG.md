@@ -177,9 +177,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `migrate --dry-run`, object tracking during execution, `SqlAnalyzer.extract_objects` and the
   DML analysis functions (`analyze_dml`, `statement_dml_table`, `dml_where_predicate`,
   `is_full_table_dml`) take the objects, targets and predicates of each statement from the
-  sqlglot AST instead of regular expressions. Unquoted names are reported upper-cased and
-  quoted names exactly, as Oracle stores them (`create table emp` names `EMP`); `target_sql` and
-  `predicate` keep the spelling written. `COMMENT ON TABLE/COLUMN/MATERIALIZED VIEW`, `TRUNCATE
+  sqlglot AST instead of regular expressions. Unquoted names are reported upper-cased letter by
+  letter, as Oracle 23.26 stores them (`create table emp` names `EMP`, `ı` becomes `I`, `ß`
+  stays), and quoted names exactly; a name with a letter whose upper-case form is longer than one
+  character is reported unread; an object reached through a database link (`emp@lnk`, `emp @
+  lnk`) is never named as a local one. `target_sql` and `predicate` keep the spelling written. `COMMENT ON TABLE/COLUMN/MATERIALIZED VIEW`, `TRUNCATE
   TABLE`, materialized views, `DROP MATERIALIZED VIEW`, and the name of every PL/SQL unit
   (`CREATE [OR REPLACE] PROCEDURE/FUNCTION/PACKAGE [BODY]/TRIGGER/TYPE`), synonym and database
   link are now named; a `CREATE INDEX` that sqlglot cannot parse still names its index and its

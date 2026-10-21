@@ -409,3 +409,85 @@ def test_a_bitmap_join_index_does_not_claim_one_table():
 
     assert facts.indexed_table is None
     assert [o.type for o in facts.objects] == [T.INDEX]
+
+
+# Oracle AI Database 26ai Free 23.26.3 accepted each of these as a call over a database link
+# (ORA-12154 raised at the connection, after the parse), 2026-10-21.
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "delete from emp @ lnk where a = 1",
+        "update emp @ lnk set a = 1",
+        "insert into emp @ lnk values (1)",
+        "select * from emp\n@lnk",
+        "select * from emp/*c*/@lnk",
+        "select * from emp -- c\n@lnk",
+        "insert into t select * from emp @ lnk",
+        "create table t2 as select * from emp @ lnk",
+        "select * from emp@ lnk",
+        'select * from emp @ "lnk"',
+        "select * from t where id in (select id from emp @ lnk)",
+    ],
+)
+def test_a_database_link_written_with_blanks_or_comments_is_not_a_local_object(sql):
+    facts = _ora(sql)
+
+    assert facts.objects == () and facts.target is None
+    assert facts.opaque
+
+
+@pytest.mark.parametrize(
+    "sql,names",
+    [
+        ("select '@lnk' from dual", ["DUAL"]),
+        ("insert into t values ('a@b')", ["T"]),
+        ("insert into t values (q'[x @ y]')", ["T"]),
+        ('create table "a@b" (a number)', ["a@b"]),
+        ("select 1 from dual -- @lnk", ["DUAL"]),
+        ("select /* @lnk */ 1 from dual", ["DUAL"]),
+    ],
+)
+def test_an_at_sign_in_a_string_comment_or_quoted_name_is_not_a_link(sql, names):
+    facts = _ora(sql)
+
+    assert [o.name for o in facts.objects] == names
+    assert not facts.opaque
+
+
+# Oracle 23.26.3 stores unquoted names with the one-character upper-case mapping of each letter:
+# ı is I, µ is the Greek capital MU, ÿ is Ÿ, σ and ς are Σ; ß, ﬁ and ŉ stay as they are, which the
+# multi-character mapping of Python's str.upper would not give (SS, FI, ʼN).
+@pytest.mark.parametrize(
+    "letter,stored",
+    [("ı", "I"), ("µ", "Μ"), ("ÿ", "Ÿ"), ("σ", "Σ"), ("ς", "Σ"), ("ø", "Ø"), ("д", "Д")],
+)
+def test_unquoted_names_fold_letter_by_letter_as_oracle_stores_them(letter, stored):
+    assert _ora(f"create table {letter}tab (a number)").objects[0].name == f"{stored}TAB"
+    assert _ora(f"create table {letter}tab (a number) tablespace users").objects[0].name == (
+        f"{stored}TAB"
+    )
+
+
+@pytest.mark.parametrize("letter", ["ß", "ﬁ", "ŉ"])
+@pytest.mark.parametrize(
+    "template",
+    [
+        "create table {l}tab (a number)",
+        "create table s.t{l} (a number)",
+        "create index {l}ix on t (a)",
+        "create or replace procedure {l}p as begin null; end;",
+        "create index {l}ix on t (a) tablespace users",
+        "delete from {l}t where a = 1",
+    ],
+)
+def test_a_name_whose_upper_case_form_is_not_one_character_per_letter_is_not_named(
+    letter, template
+):
+    facts = _ora(template.format(l=letter))
+
+    assert facts.objects == () and facts.target is None
+    assert facts.opaque
+
+
+def test_quoted_names_with_such_letters_stay_exact():
+    assert _ora('create table "ßtab" (a number)').objects[0].name == "ßtab"

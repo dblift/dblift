@@ -55,10 +55,14 @@ preserve statement text and showed no separate execution loss.
 | Block | `/*` | the first `*/` | **no** | "Begin the comment with a slash and an asterisk (/\*). … End the comment with an asterisk and a slash (\*/)." The Oracle manual does not say so explicitly; Snowflake's SnowConvert documentation does, in comparing engines: `/*/` "can start a nesting inside the block comment, or finish the whole block … the comment behaves differently in Teradata and SQL Server than in Oracle and Snowflake", i.e. Oracle finishes the block. |
 | Hint | `/*+` … `*/`, `--+` | as above | — | a comment to the splitter; kept in the statement text |
 
-**Stray `*/` after `;`.** A table reached through a database link (`emp@lnk`) is not named: no local object has that name,
-so the statement is opaque. Declared column names and constraint names keep the spelling the
-statement writes (only table, index and schema names are folded); the folding of a non-ASCII
-letter is Python's `str.upper` and is verified against Oracle only for `é` (`tété` is `TÉTÉ`).
+**Stray `*/` after `;`.** An object reached through a database link is not named: no local object has that name, so the
+statement is opaque. Oracle 23.26.3 accepts blanks, newlines and comments around the `@`
+(`delete from child @ lnk`, `select * from child` + newline + `@lnk` and `child/*c*/@lnk` all
+reach the link, ORA-12154 at the connection), and reads any `@` outside a string or quoted name as
+the start of a link name (`select child.id @ from dual` is ORA-01729): the reader refuses a
+statement whose tokens hold an `@` outside strings, quoted names and comments. Declared column
+names and constraint names keep the spelling the statement writes (only table, index and schema
+names are folded).
 
 `is_full_table_dml` reads no predicate from a statement the grammar cannot parse (a bind variable
 `:1`, `LOG ERRORS`, a partition clause), so it reports such an `UPDATE` or `DELETE` as a full-table
@@ -359,9 +363,13 @@ The corpus `tests/support/facts_corpus/oracle.jsonl` and the ledger `oracle.revi
 difference against the former text extraction, explained) are the evidence, and `gated.json` gates
 the family.
 
-**Names.** An unquoted name is stored upper-cased and a quoted name exactly as written (Oracle AI
-Database 26ai Free 23.26.3, `user_objects`: `create table mixedCase` is `MIXEDCASE`,
-`create table "mixedQ"` is `mixedQ`, `tété` is `TÉTÉ`, `a#b` is `A#B`). The facts hold the name as
+**Names.** An unquoted name is stored with each letter in its one-character upper-case form and a
+quoted name exactly as written (Oracle AI Database 26ai Free 23.26.3, `user_objects`:
+`create table mixedCase` is `MIXEDCASE`, `create table "mixedQ"` is `mixedQ`, `tété` is `TÉTÉ`,
+`a#b` is `A#B`, `ı` is `I`, `µ` is the Greek capital MU, `ÿ` is `Ÿ`, `ø` is `Ø`, `σ` and `ς` are `Σ`,
+`ſ` is `S`; `ß`, `ﬁ` and `ŉ` stay as they are, which Python's `str.upper` would turn into `SS`, `FI`
+and `ʼN`). A name that holds a letter whose Python upper-case form is longer than one character is
+not guessed: the statement is opaque and names nothing. The facts hold the name as
 Oracle stores it: `target` and `objects` are folded, `target_sql` and `predicate` keep the spelling
 written, so that `FROM <target_sql> WHERE <predicate>` is the text the statement wrote. A statement
 whose name holds a character the engine rejects (U+200D and U+00A0 in a name: ORA-00911) is read as

@@ -10615,6 +10615,32 @@
   },
   "sql": "DROP EVENT TABLE IF EXISTS \"S\".\"APP_EVENTS\""
  },
+ "b3bd989089e3d536/hybrid": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "oracle statement names an object through a database link",
+   "kind": "QUERY",
+   "operation": "SELECT"
+  },
+  "issue": "by design: docs/sql-parsing/oracle.md section 13",
+  "old": {
+   "hybrid": [
+    [
+     "TABLE",
+     "n",
+     null
+    ],
+    [
+     "TABLE",
+     "t",
+     null
+    ]
+   ]
+  },
+  "path": "hybrid",
+  "reason": "[gap made explicit] MySQL's user variable `@n`: Oracle reads an `@` as the start of a database link name (`select child.id @ from dual` is ORA-01729 on Oracle 23.26.3; this exact text was not run), so the reader names nothing, where the extraction named table n and table t.",
+  "sql": "SELECT COUNT(*) INTO @n FROM t"
+ },
  "b44a201e4c24a669": {
   "class": "disagree",
   "facts": {
@@ -14619,6 +14645,29 @@
    ]
   },
   "path": "analyzer",
+  "reason": "[engine rejects] oracle 23.26.3 rejects the text (ORA-00922: missing or invalid option); the statement never runs on Oracle, so the reader's opaque result costs nothing.",
+  "rejected_by": {
+   "oracle 23.26.3": "ORA-00922"
+  },
+  "sql": "CREATE TABLE test (id INTEGER)@\n        INSERT INTO test VALUES (1)@\n        --#SET TERMINATOR ;\n        SELECT * FROM t"
+ },
+ "f7c444d746e9cdd1/hybrid": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "oracle statement names an object through a database link",
+   "kind": "DDL",
+   "operation": "CREATE"
+  },
+  "old": {
+   "hybrid": [
+    [
+     "TABLE",
+     "TEST",
+     null
+    ]
+   ]
+  },
+  "path": "hybrid",
   "reason": "[engine rejects] oracle 23.26.3 rejects the text (ORA-00922: missing or invalid option); the statement never runs on Oracle, so the reader's opaque result costs nothing.",
   "rejected_by": {
    "oracle 23.26.3": "ORA-00922"

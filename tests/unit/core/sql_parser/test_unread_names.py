@@ -138,10 +138,12 @@ def test_a_quoted_identifier_is_not_a_name_cut_short(dialect, sql):
     assert not names_unreadable(sql, dialect, ["t"])
 
 
+@pytest.mark.usefixtures("legacy_oracle")
 def test_the_analyzer_checks_the_names_it_extracted():
-    assert SqlAnalyzer("snowflake").extract_objects(f"CREATE TABLE t{ZWJ}(id INT)") == []
+    assert SqlAnalyzer("oracle").extract_objects(f"CREATE TABLE t{ZWJ}(id INT)") == []
 
 
+@pytest.mark.usefixtures("legacy_oracle")
 def test_the_schema_part_of_a_name_is_checked_too():
     from dblift.core.sql_model.base import SqlObject, SqlObjectType
     from dblift.core.sql_parser.parser_factory import SqlParserFactory
@@ -149,6 +151,9 @@ def test_the_schema_part_of_a_name_is_checked_too():
     source = "CREATE TABLE sch\u00e9.t (id INT)"
     cut = SqlObject(name="t", schema="sch", object_type=SqlObjectType.TABLE)
     whole = SqlObject(name="t", schema="sch\u00e9", object_type=SqlObjectType.TABLE)
+    parser = SqlParserFactory("oracle").get_parser()
+    assert parser._names_unreadable(source, [cut])
+    assert not parser._names_unreadable(source, [whole])
     assert names_unreadable(source, "tsql", [cut.name, cut.schema])
     assert not names_unreadable(source, "tsql", [whole.name, whole.schema])
     assert [
@@ -159,7 +164,8 @@ def test_the_schema_part_of_a_name_is_checked_too():
     assert not sqlglot_parser._names_unreadable(source, [whole])
 
 
-@pytest.mark.parametrize("dialect", ("sqlserver", "snowflake"))
+@pytest.mark.usefixtures("legacy_oracle")
+@pytest.mark.parametrize("dialect", ("oracle", "sqlserver", "snowflake"))
 def test_a_statement_that_cannot_be_located_in_its_script_is_withheld(dialect):
     parser = SqlParserFactory(dialect).get_parser()
     if dialect == "sqlserver":

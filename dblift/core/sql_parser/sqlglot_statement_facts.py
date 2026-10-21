@@ -757,16 +757,32 @@ def _main_statement(head: str) -> str:
     return head[min(found) :] if found else head
 
 
-def _head_object(match: "re.Match[str]", *, fold: bool = False) -> NamedObject:
+def _oracle_fold_name(name: str) -> Optional[str]:
+    """The name Oracle stores for an unquoted one: each letter in its one-character upper-case
+    form (23.26.3: ``ı`` is ``I``, ``µ`` is the Greek capital MU; ``ß``, ``ﬁ`` and ``ŉ`` stay).
+    ``None`` when a letter's upper-case form is not one character: the probes covered only those
+    three, so the name is not guessed."""
+    if name.isascii():
+        return name.upper()
+    folded = [letter.upper() for letter in name]
+    return "".join(folded) if all(len(letter) == 1 for letter in folded) else None
+
+
+def _head_object(match: "re.Match[str]", *, fold: bool = False) -> Optional[NamedObject]:
     operation = match.group(1).upper()
     object_type = SqlObjectType["_".join(match.group(2).upper().split())]
     name = strip_identifier_quotes(match.group(4) or match.group(3))
     schema = strip_identifier_quotes(match.group(3)) if match.group(4) else None
     if fold:  # an unquoted name is stored upper-cased, a quoted one as written
+        folded_name: Optional[str] = name
+        folded_schema = schema
         if not (match.group(4) or match.group(3)).startswith('"'):
-            name = name.upper()
+            folded_name = _oracle_fold_name(name)
         if schema is not None and not match.group(3).startswith('"'):
-            schema = schema.upper()
+            folded_schema = _oracle_fold_name(schema)
+        if folded_name is None or (schema is not None and folded_schema is None):
+            return None
+        name, schema = folded_name, folded_schema
     role = {"CREATE": "created", "ALTER": "altered", "DROP": "dropped"}[operation]
     return NamedObject(name, object_type, role, schema)
 
@@ -785,7 +801,13 @@ def _oracle_index_table(head: str, created: "re.Match[str]") -> Optional[NamedOb
     if re.search(r"\bFROM\b", head[on.end() :], re.IGNORECASE):
         return None  # a bitmap join index also reads the tables of its FROM clause
     parts = [raw for raw in (on.group(1), on.group(2)) if raw]
-    names = [strip_identifier_quotes(raw) if raw.startswith('"') else raw.upper() for raw in parts]
+    folded = [
+        strip_identifier_quotes(raw) if raw.startswith('"') else _oracle_fold_name(raw)
+        for raw in parts
+    ]
+    if any(name is None for name in folded):
+        return None
+    names = [name for name in folded if name is not None]
     return NamedObject(
         names[-1], SqlObjectType.TABLE, "referenced", names[0] if len(names) > 1 else None
     )
@@ -850,8 +872,9 @@ def _head_facts(sql: str, diagnostic: str, *, dialect: str = "") -> StatementFac
         dml = None
     if match:
         found = _head_object(match, fold=oracle)
-        diagnostic = f"{found.type.value.lower().replace('_', ' ')}: {diagnostic}"
-        objects = (found,)
+        if found is not None:
+            diagnostic = f"{found.type.value.lower().replace('_', ' ')}: {diagnostic}"
+            objects = (found,)
     elif dml and _DML_FORM[operation].match(head) and dml.group(2).upper() not in _NOT_A_TABLE:
         schema = strip_identifier_quotes(dml.group(2)) if dml.group(3) else None
         name = strip_identifier_quotes(dml.group(3) or dml.group(2))
@@ -920,30 +943,40 @@ def _mysql_unresolved_mutation_target(ast: exp.Expression) -> bool:
     return False
 
 
-def _fold_oracle_names(ast: exp.Expr) -> None:
-    """Fold the unquoted table and index names of an Oracle statement to upper case, as Oracle
-    stores them; a quoted name keeps its spelling. Columns and aliases are left as written."""
-    oracle = Dialect.get_or_raise("oracle")  # lint: allow-dialect-string: Oracle folding
+def _fold_oracle_names(ast: exp.Expr) -> bool:
+    """Fold the unquoted table and index names of an Oracle statement as Oracle stores them; a
+    quoted name keeps its spelling. Columns and aliases are left as written. ``True`` when a name
+    holds a letter whose upper-case form is not one character: the statement is then unread."""
+    unsafe = False
+
+    def fold(part: object) -> None:
+        nonlocal unsafe
+        if isinstance(part, exp.Identifier) and not part.args.get("quoted"):
+            part.meta["written"] = part.name
+            folded = _oracle_fold_name(part.name)
+            if folded is None:
+                unsafe = True
+            else:
+                part.set("this", folded)
+
     for node in ast.find_all(exp.Table, exp.Index):
         for key in ("this", "db", "catalog") if isinstance(node, exp.Table) else ("this",):
-            part = node.args.get(key)
-            if isinstance(part, exp.Identifier):
-                part.meta["written"] = part.name
-                oracle.normalize_identifier(part)
+            fold(node.args.get(key))
     if isinstance(ast, exp.Comment) and isinstance(ast.this, exp.Column):
         for key in ("table", "db", "catalog"):  # COMMENT ON COLUMN s.t.c names its table
-            part = ast.this.args.get(key)
-            if isinstance(part, exp.Identifier):
-                oracle.normalize_identifier(part)
+            fold(ast.this.args.get(key))
+    return unsafe
 
 
-def _oracle_names_a_remote_object(ast: exp.Expr) -> bool:
-    """Whether a table is named through a database link (``emp@lnk``): no local object has that
-    name."""
-    return any(
-        isinstance(part, exp.Identifier) and not part.args.get("quoted") and "@" in part.name
-        for part in ast.find_all(exp.Identifier)
-    )
+def _oracle_names_a_remote_object(sql: str) -> bool:
+    """Whether the statement uses a database link (``emp@lnk``, ``emp @ lnk``, an ``@`` after a
+    comment): no local object has such a name. An ``@`` inside a string, a quoted name or a
+    comment is not one. Oracle 23.26.3 accepts blanks and comments around the ``@``."""
+    try:
+        tokens = Dialect.get_or_raise("oracle").tokenize(sql)  # lint: allow-dialect-string: links
+    except TokenError:
+        return False
+    return any(token.token_type not in _QUOTED_TOKENS and "@" in token.text for token in tokens)
 
 
 _Node = TypeVar("_Node", bound=exp.Expression)
@@ -1168,14 +1201,18 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
     try:
         ast = parse_one(_UPDATE_OR.sub(r"\1", sql), read=dialect)
         if dialect == "oracle" and ast is not None:  # lint: allow-dialect-string: Oracle folding
-            _fold_oracle_names(ast)
-            if _oracle_names_a_remote_object(ast):
-                head = _head_facts(sql, "", dialect=dialect)
-                return StatementFacts(
-                    head.operation,
-                    head.kind,
-                    diagnostic="oracle statement names an object through a database link",
+            unread_reason = (
+                "oracle name holds a letter whose upper-case form is not one character"
+                if _fold_oracle_names(ast)
+                else (
+                    "oracle statement names an object through a database link"
+                    if _oracle_names_a_remote_object(sql)
+                    else None
                 )
+            )
+            if unread_reason is not None:
+                head = _head_facts(sql, "", dialect=dialect)
+                return StatementFacts(head.operation, head.kind, diagnostic=unread_reason)
     except (ParseError, TokenError) as exc:
         if not _blanked(sql).strip():
             return StatementFacts("UNKNOWN", "UNKNOWN")

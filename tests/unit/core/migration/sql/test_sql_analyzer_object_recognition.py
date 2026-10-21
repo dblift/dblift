@@ -28,6 +28,8 @@ Two invariants this module pins:
 
 import unittest
 
+import pytest
+
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.sql_model._base_sql_object import SqlObjectType
 from dblift.db.provider_registry import ProviderRegistry
@@ -326,6 +328,7 @@ class TestIndexModifiers(unittest.TestCase):
         self.assertNotIn("EXISTS", obj["object_name"].upper())
 
 
+@pytest.mark.usefixtures("legacy_oracle")
 class TestIndexTypeModifiers(unittest.TestCase):
     """An index build is an INDEX whatever index *type* it declares.
 
@@ -337,18 +340,13 @@ class TestIndexTypeModifiers(unittest.TestCase):
     """
 
     def setUp(self):
-        self.analyzer = SqlAnalyzer(dialect="snowflake")
+        self.analyzer = SqlAnalyzer(dialect="oracle")
 
     def test_bitmap_index(self):
-        # Oracle reads statement facts: the index and the table it scans, folded as Oracle stores them.
-        facts = ProviderRegistry.get_quirks("oracle").statement_facts(
-            "CREATE BITMAP INDEX bx ON orders (status)"
-        )
-        self.assertEqual(
-            [(o.type.value, o.name, o.role) for o in facts.objects],
-            [("INDEX", "BX", "created"), ("TABLE", "ORDERS", "referenced")],
-        )
-        self.assertEqual(facts.indexed_table, "ORDERS")
+        obj = _only(self.analyzer, "CREATE BITMAP INDEX bx ON orders (status)")
+        self.assertEqual(obj["object_type"], "INDEX")
+        self.assertIn("bx", obj["object_name"])
+        self.assertIn("orders", obj["on_object"])
 
     def test_fulltext_index(self):
         obj = _only(self.analyzer, "CREATE FULLTEXT INDEX ftx ON orders (note)")
@@ -362,6 +360,21 @@ class TestIndexTypeModifiers(unittest.TestCase):
         obj = _only(self.analyzer, "CREATE CLUSTERED INDEX cx ON orders (id)")
         self.assertEqual(obj["object_type"], "INDEX")
         self.assertIn("orders", obj["on_object"])
+
+
+class TestOracleIndexTypeFacts(unittest.TestCase):
+    """Oracle reads statement facts: a ``BITMAP`` index is an INDEX and names the table it scans."""
+
+    def test_bitmap_index(self):
+        # Oracle reads statement facts: the index and the table it scans, folded as Oracle stores them.
+        facts = ProviderRegistry.get_quirks("oracle").statement_facts(
+            "CREATE BITMAP INDEX bx ON orders (status)"
+        )
+        self.assertEqual(
+            [(o.type.value, o.name, o.role) for o in facts.objects],
+            [("INDEX", "BX", "created"), ("TABLE", "ORDERS", "referenced")],
+        )
+        self.assertEqual(facts.indexed_table, "ORDERS")
 
 
 class TestPublicModifier(unittest.TestCase):

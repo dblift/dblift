@@ -11,7 +11,7 @@ import pytest
 import sqlglot
 
 from dblift.core.sql_parser.statement_facts import SqlglotStatementFactsReader
-from dblift.db.plugins.snowflake.quirks import SnowflakeQuirks
+from dblift.db.plugins.oracle.quirks import OracleQuirks
 from tests.support.facts_corpus import (
     CORPUS_DIR,
     FAMILIES,
@@ -273,12 +273,16 @@ def test_mariadb_records_the_facts_of_mysql_for_every_row(
 def test_the_extraction_is_compared_only_for_a_family_that_is_not_frozen(
     activated: bool, monkeypatch: pytest.MonkeyPatch, corpus: Dict[str, List[Dict[str, Any]]]
 ) -> None:
-    if activated:
-        monkeypatch.setattr(SnowflakeQuirks, "statement_facts_class", SqlglotStatementFactsReader)
-    rows = corpus["snowflake"][:20]
+    # Oracle reads facts and is frozen: the stand-in switches the hook both ways.
+    monkeypatch.setattr(
+        OracleQuirks,
+        "statement_facts_class",
+        SqlglotStatementFactsReader if activated else None,
+    )
+    rows = corpus["oracle"][:20]
     for row in rows:
-        now = record_statement("snowflake", row["sql"])
+        now = record_statement("oracle", row["sql"])
         assert (now["old"] is None) == activated
-        assert now == _comparable(_on_this_arm(row), "snowflake")
+        assert now == _comparable(_on_this_arm(row), "oracle")
         if not activated:
             assert now["old"] == _on_this_arm(row)["old"]

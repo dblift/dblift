@@ -70,7 +70,7 @@ def test_postgres_unmodelled_truncate_targets_and_clauses_stay_opaque(sql):
     assert facts.opaque
 
 
-@pytest.mark.parametrize("dialect", ["sqlite", "snowflake", "tsql"])
+@pytest.mark.parametrize("dialect", ["sqlite", "tsql"])
 def test_postgres_truncate_facts_preserve_other_dialect_mappings(dialect):
     facts = SqlglotStatementFactsReader(dialect).read("TRUNCATE TABLE public.items")
 

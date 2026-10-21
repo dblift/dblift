@@ -13,6 +13,8 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import MagicMock
 
+import pytest
+
 from tests.unit._migration_factory import make_migration
 
 
@@ -1161,8 +1163,9 @@ class TestUndoScriptGeneratorIntegration(unittest.TestCase):
                 gen.generate_undo_script(path)
 
     # generate_undo_script — happy path
+    @pytest.mark.usefixtures("legacy_oracle")
     def test_generate_undo_script_creates_file(self):
-        gen = self._make_generator("snowflake")
+        gen = self._make_generator()
         with TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "V1__create_users.sql"
             path.write_text("CREATE TABLE users (id INT);")
@@ -1296,8 +1299,9 @@ class TestUndoScriptGeneratorIntegration(unittest.TestCase):
         index_stmts = [s for s in results if "DROP INDEX" in s.sql]
         self.assertEqual(len(index_stmts), 0)
 
+    @pytest.mark.usefixtures("legacy_oracle")
     def test_generate_undo_statements_reverse_order(self):
-        gen = self._make_generator("snowflake")
+        gen = self._make_generator()
         migration = self._make_migration(
             "V1__test.sql",
             "CREATE TABLE a (id INT);\nCREATE TABLE b (id INT);",
@@ -1482,6 +1486,16 @@ class TestUndoScriptGeneratorDialects(unittest.TestCase):
         self.assertTrue(undo.requires_manual_review)
         self.assertEqual(undo.original_statement.strip(), "CREATE TABLE t (id INT)")
         self.assertNotIn("DROP", undo.sql)
+
+    @pytest.mark.usefixtures("legacy_oracle")
+    def test_oracle_table_drop_no_if_exists(self):
+        gen = self._make_generator("oracle")
+        migration = self._make_migration("CREATE TABLE t (id INT);")
+        results = gen._generate_undo_statements(migration)
+        drop_stmts = [s for s in results if "DROP TABLE" in s.sql]
+        self.assertTrue(len(drop_stmts) >= 1)
+        for stmt in drop_stmts:
+            self.assertNotIn("IF EXISTS", stmt.sql)
 
     def test_sqlserver_dialect(self):
         gen = self._make_generator("sqlserver")
