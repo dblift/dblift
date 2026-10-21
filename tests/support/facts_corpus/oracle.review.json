@@ -4551,6 +4551,27 @@
   },
   "sql": "CREATE TABLE t (id INT) /* a /* b */ x{c}y */"
  },
+ "5040f8b6dd8808ae/hybrid": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "oracle Command is opaque to statement facts",
+   "kind": "DDL",
+   "operation": "CREATE"
+  },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+  "old": {
+   "hybrid": [
+    [
+     "TABLE",
+     "T",
+     null
+    ]
+   ]
+  },
+  "path": "hybrid",
+  "reason": "The opening CREATE TABLE t / DELETE FROM t tokens name t, but the same unit has a nested-looking comment and a later unmatched */. The whole-unit safety guard therefore publishes no affected object or DML target; this does not assert native invalidity. Source head: 'CREATE TABLE t (id INT) /* a /* b */ x{c}y */'; dialect tokens: CREATE(CREATE) TABLE(TABLE) VAR(t) L_PAREN(() VAR(id) INT(INT) R_PAREN()) VAR(x).",
+  "sql": "CREATE TABLE t (id INT) /* a /* b */ x{c}y */"
+ },
  "506eea90c57defc3": {
   "class": "disagree",
   "facts": {
@@ -8617,26 +8638,25 @@
   "reason": "[engine rejects] oracle 23.26.3 rejects the text (ORA-03050: invalid identifier: \"COLUMN\" is a reserved word): the reader also names table parent (referenced). Unquoted names are held upper-cased, as Oracle stores them; the extraction kept the spelling written.",
   "sql": "ALTER TABLE t ADD COLUMN p INT REFERENCES parent(id)"
  },
- "9811ed52c07c19ba/analyzer": {
-  "class": "facts-adds-acted",
+ "9811ed52c07c19ba/hybrid": {
+  "class": "opaque-reader-gap",
   "facts": {
-   "diagnostic": "table: oracle Command is opaque to statement facts",
+   "diagnostic": "oracle Command is opaque to statement facts",
    "kind": "DDL",
-   "objects": [
-    [
-     "X",
-     "TABLE",
-     "altered",
-     null
-    ]
-   ],
    "operation": "ALTER"
   },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
   "old": {
-   "analyzer": []
+   "hybrid": [
+    [
+     "TABLE",
+     "X",
+     null
+    ]
+   ]
   },
-  "path": "analyzer",
-  "reason": "[engine rejects] oracle 23.26.3 rejects the text (ORA-01735: invalid ALTER TABLE option): the reader also names table x (altered).",
+  "path": "hybrid",
+  "reason": "Nested-looking /* markers and/or a later unmatched */ change where the dialect token stream places the proposed head or the rest of its unit. The whole-unit safety guard publishes no guessed effect. Initial visible name tokens, if any, are preserved in the token evidence; no native validity is inferred. Source head: 'ALTER TABLE /* outer /* inner */ x */ \"s\".\"orders\" ADD COLUMN c INT'; dialect tokens: ALTER(ALTER) TABLE(TABLE) VAR(x) STAR(*) SLASH(/) IDENTIFIER(s) DOT(.) IDENTIFIER(orders). Prior native observation for this exact SQL: [engine rejects] oracle 23.26.3 rejects the text (ORA-01735: invalid ALTER TABLE option)",
   "sql": "ALTER TABLE /* outer /* inner */ x */ \"s\".\"orders\" ADD COLUMN c INT"
  },
  "98ac224b307b2d1c": {
@@ -9768,26 +9788,25 @@
   "reason": "[engine rejects] oracle 23.26.3 rejects the text (ORA-02420: missing schema authorization clause): the extraction named schema app that the reader does not.",
   "sql": "CREATE SCHEMA IF NOT EXISTS \"app\""
  },
- "ab280641b39ea839/analyzer": {
-  "class": "facts-adds-acted",
+ "ab280641b39ea839/hybrid": {
+  "class": "opaque-reader-gap",
   "facts": {
-   "diagnostic": "table: oracle Command is opaque to statement facts",
+   "diagnostic": "oracle Command is opaque to statement facts",
    "kind": "DDL",
-   "objects": [
-    [
-     "ONLY",
-     "TABLE",
-     "altered",
-     null
-    ]
-   ],
    "operation": "ALTER"
   },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
   "old": {
-   "analyzer": []
+   "hybrid": [
+    [
+     "TABLE",
+     "ONLY",
+     null
+    ]
+   ]
   },
-  "path": "analyzer",
-  "reason": "[engine rejects] oracle 23.26.3 rejects the text (ORA-01735: invalid ALTER TABLE option): the reader also names table only (altered).",
+  "path": "hybrid",
+  "reason": "Nested-looking /* markers and/or a later unmatched */ change where the dialect token stream places the proposed head or the rest of its unit. The whole-unit safety guard publishes no guessed effect. Initial visible name tokens, if any, are preserved in the token evidence; no native validity is inferred. Source head: 'ALTER TABLE ONLY /* a /* b */ c */ \"s\".\"orders\" ADD COLUMN x INT'; dialect tokens: ALTER(ALTER) TABLE(TABLE) VAR(ONLY) VAR(c) STAR(*) SLASH(/) IDENTIFIER(s) DOT(.). Prior native observation for this exact SQL: [engine rejects] oracle 23.26.3 rejects the text (ORA-01735: invalid ALTER TABLE option)",
   "sql": "ALTER TABLE ONLY /* a /* b */ c */ \"s\".\"orders\" ADD COLUMN x INT"
  },
  "ab56e829bd7b839d/analyzer": {
@@ -11894,26 +11913,25 @@
   "reason": "[adopted] oracle 23.26.3 accepts the statement (it parses; ORA-00904 is raised afterwards): the reader also names table t (referenced). Unquoted names are held upper-cased, as Oracle stores them; the extraction kept the spelling written.",
   "sql": "CREATE INDEX idx_t ON t(id)"
  },
- "cc1e1356f50aa4e9/analyzer": {
-  "class": "facts-adds-acted",
+ "cc1e1356f50aa4e9/hybrid": {
+  "class": "opaque-reader-gap",
   "facts": {
-   "diagnostic": "table: oracle grammar is not modelled for this statement",
+   "diagnostic": "oracle grammar is not modelled for this statement",
    "kind": "DDL",
-   "objects": [
-    [
-     "A",
-     "TABLE",
-     "created",
-     null
-    ]
-   ],
    "operation": "CREATE"
   },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
   "old": {
-   "analyzer": []
+   "hybrid": [
+    [
+     "TABLE",
+     "A",
+     null
+    ]
+   ]
   },
-  "path": "analyzer",
-  "reason": "[engine rejects] oracle 23.26.3 rejects the text (ORA-00900: invalid SQL statement): the reader also names table a (created).",
+  "path": "hybrid",
+  "reason": "The original unit begins with .mode; the first source tokens are not the same verb/name sequence as a bare proposed DDL head. The reader cannot scan through that prefix and attribute its later name to this entire unit. Source head: '.mode csv\\\\nCREATE TABLE a(x)'; dialect tokens: DOT(.) VAR(mode) VAR(csv) CREATE(CREATE) TABLE(TABLE) VAR(a) L_PAREN(() VAR(x). Prior native observation for this exact SQL: [engine rejects] oracle 23.26.3 rejects the text (ORA-00900: invalid SQL statement)",
   "sql": ".mode csv\nCREATE TABLE a(x)"
  },
  "cc22ca3ab620a924/analyzer": {

@@ -1,26 +1,4 @@
 {
- "0045e62c2056542e/analyzer": {
-  "class": "facts-adds-acted",
-  "facts": {
-   "diagnostic": "table: redshift grammar is not modelled for this statement",
-   "kind": "DDL",
-   "objects": [
-    [
-     "EXISTS",
-     "TABLE",
-     "created",
-     null
-    ]
-   ],
-   "operation": "CREATE"
-  },
-  "old": {
-   "analyzer": []
-  },
-  "path": "analyzer",
-  "reason": "Redshift 1.0.485645 rejects this text with SQLSTATE 42601 (syntax error at end of input); it is another dialect's statement or an incomplete fragment harvested into the corpus and never runs on this family; the reader names TABLE EXISTS (created) from the head text with a diagnostic and the old extraction named nothing, a difference with no consequence because the engine never runs the text.",
-  "sql": "CREATE TABLE IF NOT EXISTS"
- },
  "0045e62c2056542e/hybrid": {
   "class": "opaque-reader-gap",
   "facts": {
@@ -856,26 +834,25 @@
   "reason": "Redshift 1.0.485645 rejects this text with SQLSTATE 42601 (syntax error at or near \".\"); it is another dialect's statement or an incomplete fragment harvested into the corpus and never runs on this family; the reader reads CREATE / DDL naming INDEX S.Ix (created), TABLE T (referenced) and the old extraction named INDEX S public, a difference with no consequence because the engine never runs the text.",
   "sql": "CREATE INDEX \"S\".\"Ix\" ON \"T\" (a)"
  },
- "18aa3cb71822143c/analyzer": {
-  "class": "facts-adds-acted",
+ "18aa3cb71822143c/hybrid": {
+  "class": "opaque-reader-gap",
   "facts": {
-   "diagnostic": "table: redshift grammar is not modelled for this statement",
+   "diagnostic": "redshift grammar is not modelled for this statement",
    "kind": "DDL",
-   "objects": [
-    [
-     "b",
-     "TABLE",
-     "created",
-     null
-    ]
-   ],
    "operation": "CREATE"
   },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
   "old": {
-   "analyzer": []
+   "hybrid": [
+    [
+     "TABLE",
+     "b",
+     "public"
+    ]
+   ]
   },
-  "path": "analyzer",
-  "reason": "Redshift 1.0.485645 rejects this text with SQLSTATE 42601 (syntax error at or near \"/\"); it is another dialect's statement or an incomplete fragment harvested into the corpus and never runs on this family; the reader names TABLE b (created) from the head text with a diagnostic and the old extraction named nothing, a difference with no consequence because the engine never runs the text.",
+  "path": "hybrid",
+  "reason": "The original unit begins with slash separator; the first source tokens are not the same verb/name sequence as a bare proposed DDL head. The reader cannot scan through that prefix and attribute its later name to this entire unit. Source head: '/\\\\nCREATE TABLE b(y)'; dialect tokens: SLASH(/) CREATE(CREATE) TABLE(TABLE) VAR(b) L_PAREN(() VAR(y) R_PAREN()). Prior native observation for this exact SQL: Redshift 1.0.485645 rejects this text with SQLSTATE 42601 (syntax error at or near \"/\")",
   "sql": "/\nCREATE TABLE b(y)"
  },
  "18d7fda21a41ed73": {
@@ -893,26 +870,25 @@
   "reason": "Redshift 1.0.485645 rejects this text with SQLSTATE 42601 (syntax error at or near \"BEGIN\"); it is another dialect's statement or an incomplete fragment harvested into the corpus and never runs on this family; the reader reads CREATE / DDL naming nothing and the old extraction named nothing, a difference with no consequence because the engine never runs the text.",
   "sql": "CREATE FUNCTION f() RETURNS int BEGIN ATOMIC SELECT CASE WHEN true THEN 1 END"
  },
- "1a2666af2d8f6fe4/analyzer": {
-  "class": "facts-adds-acted",
+ "1a2666af2d8f6fe4/hybrid": {
+  "class": "opaque-reader-gap",
   "facts": {
-   "diagnostic": "table: redshift grammar is not modelled for this statement",
+   "diagnostic": "redshift grammar is not modelled for this statement",
    "kind": "DDL",
-   "objects": [
-    [
-     "after_proc",
-     "TABLE",
-     "created",
-     null
-    ]
-   ],
    "operation": "CREATE"
   },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
   "old": {
-   "analyzer": []
+   "hybrid": [
+    [
+     "TABLE",
+     "after_proc",
+     "public"
+    ]
+   ]
   },
-  "path": "analyzer",
-  "reason": "Redshift 1.0.485645 rejects this text with SQLSTATE 42601 (syntax error at or near \"/\"); it is another dialect's statement or an incomplete fragment harvested into the corpus and never runs on this family; the reader names TABLE after_proc (created) from the head text with a diagnostic and the old extraction named nothing, a difference with no consequence because the engine never runs the text.",
+  "path": "hybrid",
+  "reason": "The original unit begins with slash separator; the first source tokens are not the same verb/name sequence as a bare proposed DDL head. The reader cannot scan through that prefix and attribute its later name to this entire unit. Source head: '/\\\\n\\\\n        CREATE TABLE after_proc (id NUMBER)'; dialect tokens: SLASH(/) CREATE(CREATE) TABLE(TABLE) VAR(after_proc) L_PAREN(() VAR(id) DECIMAL(NUMBER) R_PAREN()). Prior native observation for this exact SQL: Redshift 1.0.485645 rejects this text with SQLSTATE 42601 (syntax error at or near \"/\")",
   "sql": "/\n\n        CREATE TABLE after_proc (id NUMBER)"
  },
  "1b28c5958b826b63/analyzer": {
@@ -998,26 +974,24 @@
   "reason": "COPY loads the table the reader names (TABLE TO.FROM (altered)); the old analyzer path named nothing for COPY. Redshift answers SQLSTATE 3F000 (schema \"to\" does not exist), not a syntax error.",
   "sql": "COPY \"TO\".\"FROM\" (\"FROM\") FROM 'a.csv'"
  },
- "1b633645d4efb8b2/hybrid": {
-  "class": "facts-adds-acted",
+ "1b633645d4efb8b2/analyzer": {
+  "class": "opaque-reader-gap",
   "facts": {
-   "diagnostic": "index: redshift Command is opaque to statement facts",
+   "diagnostic": "redshift Command is opaque to statement facts",
    "kind": "DDL",
-   "objects": [
-    [
-     "idx 1",
-     "INDEX",
-     "created",
-     null
-    ]
-   ],
    "operation": "CREATE"
   },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
   "old": {
-   "hybrid": []
+   "analyzer": [
+    [
+     "INDEX",
+     "idx 1"
+    ]
+   ]
   },
-  "path": "hybrid",
-  "reason": "Redshift 1.0.485645 rejects this text with SQLSTATE 42601 (syntax error at or near \"`\"); it is another dialect's statement or an incomplete fragment harvested into the corpus and never runs on this family; the reader names INDEX idx 1 (created) from the head text with a diagnostic and the old extraction named nothing, a difference with no consequence because the engine never runs the text.",
+  "path": "analyzer",
+  "reason": "The proposed head takes a name from backticks, while redshift's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'CREATE INDEX `idx 1` ON `myschema`.`mytable` (col)'; dialect tokens: CREATE(CREATE) INDEX(INDEX) UNKNOWN(`) VAR(idx) NUMBER(1) UNKNOWN(`) ON(ON) UNKNOWN(`). Prior native observation for this exact SQL: Redshift 1.0.485645 rejects this text with SQLSTATE 42601 (syntax error at or near \"`\")",
   "sql": "CREATE INDEX `idx 1` ON `myschema`.`mytable` (col)"
  },
  "1c343bd96da6ccc1": {
@@ -1035,26 +1009,24 @@
   "reason": "Redshift 1.0.485645 rejects this text with SQLSTATE 42601 (syntax error at or near \"BEGIN\"); it is another dialect's statement or an incomplete fragment harvested into the corpus and never runs on this family; the reader reads CREATE / DDL naming nothing and the old extraction named nothing, a difference with no consequence because the engine never runs the text.",
   "sql": "CREATE FUNCTION f() RETURNS int BEGIN ATOMIC SELECT 1"
  },
- "1c8dd5d835288f79/hybrid": {
-  "class": "facts-adds-acted",
+ "1c8dd5d835288f79/analyzer": {
+  "class": "opaque-reader-gap",
   "facts": {
-   "diagnostic": "table: redshift Command is opaque to statement facts",
+   "diagnostic": "redshift Command is opaque to statement facts",
    "kind": "DDL",
-   "objects": [
-    [
-     "users",
-     "TABLE",
-     "created",
-     null
-    ]
-   ],
    "operation": "CREATE"
   },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
   "old": {
-   "hybrid": []
+   "analyzer": [
+    [
+     "TABLE",
+     "default_schema.users"
+    ]
+   ]
   },
-  "path": "hybrid",
-  "reason": "Redshift 1.0.485645 rejects this text with SQLSTATE 42601 (syntax error at or near \"`\"); it is another dialect's statement or an incomplete fragment harvested into the corpus and never runs on this family; the reader names TABLE users (created) from the head text with a diagnostic and the old extraction named nothing, a difference with no consequence because the engine never runs the text.",
+  "path": "analyzer",
+  "reason": "The proposed head takes a name from backticks, while redshift's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'CREATE TABLE `users` (`id` INT)'; dialect tokens: CREATE(CREATE) TABLE(TABLE) UNKNOWN(`) VAR(users) UNKNOWN(`) L_PAREN(() UNKNOWN(`) VAR(id). Prior native observation for this exact SQL: Redshift 1.0.485645 rejects this text with SQLSTATE 42601 (syntax error at or near \"`\")",
   "sql": "CREATE TABLE `users` (`id` INT)"
  },
  "1c93a7d7694ee2a7": {
@@ -2321,26 +2293,24 @@
   "reason": "Redshift drops the brackets around a name, so a bracketed name is valid there (Redshift runs it); the reader does not take the text between the brackets for the name and says so, where the old extraction named TABLE default_schema.\"a\"\"b\".",
   "sql": "CREATE TABLE [\"a\"\"b\"] (id int)"
  },
- "3bd75f9489caee5c/hybrid": {
-  "class": "facts-adds-acted",
+ "3bd75f9489caee5c/analyzer": {
+  "class": "opaque-reader-gap",
   "facts": {
-   "diagnostic": "table: redshift Command is opaque to statement facts",
+   "diagnostic": "redshift Command is opaque to statement facts",
    "kind": "DDL",
-   "objects": [
-    [
-     "my-table",
-     "TABLE",
-     "created",
-     null
-    ]
-   ],
    "operation": "CREATE"
   },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
   "old": {
-   "hybrid": []
+   "analyzer": [
+    [
+     "TABLE",
+     "default_schema.my-table"
+    ]
+   ]
   },
-  "path": "hybrid",
-  "reason": "Redshift 1.0.485645 rejects this text with SQLSTATE 42601 (syntax error at or near \"`\"); it is another dialect's statement or an incomplete fragment harvested into the corpus and never runs on this family; the reader names TABLE my-table (created) from the head text with a diagnostic and the old extraction named nothing, a difference with no consequence because the engine never runs the text.",
+  "path": "analyzer",
+  "reason": "The proposed head takes a name from backticks, while redshift's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'CREATE TABLE `my-table` (id INT)'; dialect tokens: CREATE(CREATE) TABLE(TABLE) UNKNOWN(`) VAR(my) DASH(-) TABLE(table) UNKNOWN(`) L_PAREN((). Prior native observation for this exact SQL: Redshift 1.0.485645 rejects this text with SQLSTATE 42601 (syntax error at or near \"`\")",
   "sql": "CREATE TABLE `my-table` (id INT)"
  },
  "3c188fc0a2909f33/analyzer": {
@@ -2407,26 +2377,24 @@
   },
   "sql": "CREATE OR REPLACE PUBLIC SYNONYM emp FOR employees"
  },
- "3d8a0c35988b7bc0/hybrid": {
-  "class": "facts-adds-acted",
+ "3d8a0c35988b7bc0/analyzer": {
+  "class": "opaque-reader-gap",
   "facts": {
    "error": "redshift statement could not be tokenized (unterminated quote or comment)",
    "kind": "DDL",
-   "objects": [
-    [
-     "$",
-     "TABLE",
-     "created",
-     null
-    ]
-   ],
    "operation": "CREATE"
   },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
   "old": {
-   "hybrid": []
+   "analyzer": [
+    [
+     "TABLE",
+     "default_schema.$"
+    ]
+   ]
   },
-  "path": "hybrid",
-  "reason": "Redshift 1.0.485645 rejects this text with SQLSTATE 42601 (syntax error at or near \"$\"); it is another dialect's statement or an incomplete fragment harvested into the corpus and never runs on this family; the reader names TABLE $ (created) from the head text with a diagnostic and the old extraction named nothing, a difference with no consequence because the engine never runs the text.",
+  "path": "analyzer",
+  "reason": "The head holds ${...} substitution text. Before substitution it does not supply the concrete source name token sequence required for an affected object. Source head: 'CREATE TABLE ${schema}.${table} (id INT)'; dialect tokens: . Prior native observation for this exact SQL: Redshift 1.0.485645 rejects this text with SQLSTATE 42601 (syntax error at or near \"$\")",
   "sql": "CREATE TABLE ${schema}.${table} (id INT)"
  },
  "3da5bee39f725087/analyzer": {
@@ -2560,26 +2528,24 @@
   },
   "sql": "CREATE TABLESPACE \"my_ts\" MANAGED BY SYSTEM"
  },
- "3f97612d0be4afcd/hybrid": {
-  "class": "facts-adds-acted",
+ "3f97612d0be4afcd/analyzer": {
+  "class": "opaque-reader-gap",
   "facts": {
-   "diagnostic": "table: redshift Command is opaque to statement facts",
+   "diagnostic": "redshift Command is opaque to statement facts",
    "kind": "DDL",
-   "objects": [
-    [
-     "real`one",
-     "TABLE",
-     "created",
-     null
-    ]
-   ],
    "operation": "CREATE"
   },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
   "old": {
-   "hybrid": []
+   "analyzer": [
+    [
+     "TABLE",
+     "default_schema.real`one"
+    ]
+   ]
   },
-  "path": "hybrid",
-  "reason": "Redshift 1.0.485645 rejects this text with SQLSTATE 42601 (syntax error at or near \"`\"); it is another dialect's statement or an incomplete fragment harvested into the corpus and never runs on this family; the reader names TABLE real`one (created) from the head text with a diagnostic and the old extraction named nothing, a difference with no consequence because the engine never runs the text.",
+  "path": "analyzer",
+  "reason": "The proposed head takes a name from backticks, while redshift's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'CREATE TABLE `real``one` (id int)'; dialect tokens: CREATE(CREATE) TABLE(TABLE) UNKNOWN(`) FLOAT(real) UNKNOWN(`) UNKNOWN(`) VAR(one) UNKNOWN(`). Prior native observation for this exact SQL: Redshift 1.0.485645 rejects this text with SQLSTATE 42601 (syntax error at or near \"`\")",
   "sql": "CREATE TABLE `real``one` (id int)"
  },
  "40bce787584769ce/hybrid": {
@@ -2699,26 +2665,24 @@
   "reason": "Redshift drops the brackets around a name, so a bracketed name is valid there (Redshift answers SQLSTATE 3F000 (schema \"rel470_ss\" does not exist), not a syntax error); the reader does not take the text between the brackets for the name and says so, where the old extraction named TABLE rel470_ss.ft_test.",
   "sql": "CREATE TABLE [rel470_ss].[ft_test] ([id] INT PRIMARY KEY, [body] NVARCHAR(MAX))"
  },
- "4592ae343005b4dc/hybrid": {
-  "class": "facts-adds-acted",
+ "4592ae343005b4dc/analyzer": {
+  "class": "opaque-reader-gap",
   "facts": {
-   "diagnostic": "index: redshift grammar is not modelled for this statement",
+   "diagnostic": "redshift grammar is not modelled for this statement",
    "kind": "DDL",
-   "objects": [
-    [
-     "idx_users_email",
-     "INDEX",
-     "dropped",
-     null
-    ]
-   ],
    "operation": "DROP"
   },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
   "old": {
-   "hybrid": []
+   "analyzer": [
+    [
+     "INDEX",
+     "default_schema.idx_users_email"
+    ]
+   ]
   },
-  "path": "hybrid",
-  "reason": "Redshift 1.0.485645 rejects this text with SQLSTATE 42601 (syntax error at or near \"`\"); it is another dialect's statement or an incomplete fragment harvested into the corpus and never runs on this family; the reader names INDEX idx_users_email (dropped) from the head text with a diagnostic and the old extraction named nothing, a difference with no consequence because the engine never runs the text.",
+  "path": "analyzer",
+  "reason": "The proposed head takes a name from backticks, while redshift's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'DROP INDEX `idx_users_email` ON `users`'; dialect tokens: DROP(DROP) INDEX(INDEX) UNKNOWN(`) VAR(idx_users_email) UNKNOWN(`) ON(ON) UNKNOWN(`) VAR(users). Prior native observation for this exact SQL: Redshift 1.0.485645 rejects this text with SQLSTATE 42601 (syntax error at or near \"`\")",
   "sql": "DROP INDEX `idx_users_email` ON `users`"
  },
  "4643a35794a39f42/analyzer": {
@@ -4906,26 +4870,24 @@
   },
   "sql": "COPY items 'a.csv' (FORMAT FROM)"
  },
- "853b5dfcecc0f0cb/hybrid": {
-  "class": "facts-adds-acted",
+ "853b5dfcecc0f0cb/analyzer": {
+  "class": "opaque-reader-gap",
   "facts": {
-   "diagnostic": "table: redshift Command is opaque to statement facts",
+   "diagnostic": "redshift Command is opaque to statement facts",
    "kind": "DDL",
-   "objects": [
-    [
-     "test-table",
-     "TABLE",
-     "created",
-     null
-    ]
-   ],
    "operation": "CREATE"
   },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
   "old": {
-   "hybrid": []
+   "analyzer": [
+    [
+     "TABLE",
+     "default_schema.test-table"
+    ]
+   ]
   },
-  "path": "hybrid",
-  "reason": "Redshift 1.0.485645 rejects this text with SQLSTATE 42601 (syntax error at or near \"`\"); it is another dialect's statement or an incomplete fragment harvested into the corpus and never runs on this family; the reader names TABLE test-table (created) from the head text with a diagnostic and the old extraction named nothing, a difference with no consequence because the engine never runs the text.",
+  "path": "analyzer",
+  "reason": "The proposed head takes a name from backticks, while redshift's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'CREATE TABLE `test-table` (`column-name` INT)'; dialect tokens: CREATE(CREATE) TABLE(TABLE) UNKNOWN(`) VAR(test) DASH(-) TABLE(table) UNKNOWN(`) L_PAREN((). Prior native observation for this exact SQL: Redshift 1.0.485645 rejects this text with SQLSTATE 42601 (syntax error at or near \"`\")",
   "sql": "CREATE TABLE `test-table` (`column-name` INT)"
  },
  "86e247c1bd33c62c": {
@@ -5278,26 +5240,24 @@
   },
   "sql": "CREATE CLUSTERED INDEX ix ON t (a)"
  },
- "9044bd95b55c7381/hybrid": {
-  "class": "facts-adds-acted",
+ "9044bd95b55c7381/analyzer": {
+  "class": "opaque-reader-gap",
   "facts": {
-   "diagnostic": "table: redshift Command is opaque to statement facts",
+   "diagnostic": "redshift Command is opaque to statement facts",
    "kind": "DDL",
-   "objects": [
-    [
-     "users",
-     "TABLE",
-     "created",
-     null
-    ]
-   ],
    "operation": "CREATE"
   },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
   "old": {
-   "hybrid": []
+   "analyzer": [
+    [
+     "TABLE",
+     "default_schema.users"
+    ]
+   ]
   },
-  "path": "hybrid",
-  "reason": "Redshift 1.0.485645 rejects this text with SQLSTATE 42601 (syntax error at or near \"`\"); it is another dialect's statement or an incomplete fragment harvested into the corpus and never runs on this family; the reader names TABLE users (created) from the head text with a diagnostic and the old extraction named nothing, a difference with no consequence because the engine never runs the text.",
+  "path": "analyzer",
+  "reason": "The proposed head takes a name from backticks, while redshift's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'CREATE TABLE `users` (`id` INT PRIMARY KEY)'; dialect tokens: CREATE(CREATE) TABLE(TABLE) UNKNOWN(`) VAR(users) UNKNOWN(`) L_PAREN(() UNKNOWN(`) VAR(id). Prior native observation for this exact SQL: Redshift 1.0.485645 rejects this text with SQLSTATE 42601 (syntax error at or near \"`\")",
   "sql": "CREATE TABLE `users` (`id` INT PRIMARY KEY)"
  },
  "925e4a95674e8e49/hybrid": {
@@ -5332,26 +5292,24 @@
   "reason": "The reader names TYPE my_type (dropped) once; the old extraction named it twice (UNKNOWN and TYPE). Redshift answers SQLSTATE XX000 (DROP TYPE is not supported), not a syntax error.",
   "sql": "DROP TYPE my_type"
  },
- "925ea0229c5e08c6/hybrid": {
-  "class": "facts-adds-acted",
+ "925ea0229c5e08c6/analyzer": {
+  "class": "opaque-reader-gap",
   "facts": {
-   "diagnostic": "table: redshift grammar is not modelled for this statement",
+   "diagnostic": "redshift grammar is not modelled for this statement",
    "kind": "DDL",
-   "objects": [
-    [
-     "$",
-     "TABLE",
-     "created",
-     null
-    ]
-   ],
    "operation": "CREATE"
   },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
   "old": {
-   "hybrid": []
+   "analyzer": [
+    [
+     "TABLE",
+     "default_schema.$"
+    ]
+   ]
   },
-  "path": "hybrid",
-  "reason": "Redshift 1.0.485645 rejects this text with SQLSTATE 42601 (syntax error at or near \"$\"); it is another dialect's statement or an incomplete fragment harvested into the corpus and never runs on this family; the reader names TABLE $ (created) from the head text with a diagnostic and the old extraction named nothing, a difference with no consequence because the engine never runs the text.",
+  "path": "analyzer",
+  "reason": "The head holds ${...} substitution text. Before substitution it does not supply the concrete source name token sequence required for an affected object. Source head: 'CREATE TABLE ${table_name} (id SERIAL PRIMARY KEY)'; dialect tokens: CREATE(CREATE) TABLE(TABLE) PARAMETER($) L_BRACE({) VAR(table_name) R_BRACE(}) L_PAREN(() VAR(id). Prior native observation for this exact SQL: Redshift 1.0.485645 rejects this text with SQLSTATE 42601 (syntax error at or near \"$\")",
   "sql": "CREATE TABLE ${table_name} (id SERIAL PRIMARY KEY)"
  },
  "92bd528af5aab376/hybrid": {
@@ -5824,6 +5782,47 @@
   "reason": "Redshift 1.0.485645 rejects this text with SQLSTATE 42601 (syntax error at or near \"INSERT\"); it is another dialect's statement or an incomplete fragment harvested into the corpus and never runs on this family; the reader names TABLE t (altered) from the head text with a diagnostic and the old extraction named nothing, a difference with no consequence because the engine never runs the text.",
   "sql": "WITH x AS (SELECT 1) INSERT INTO t SELECT * FROM x"
  },
+ "a401888eadfc386b/analyzer": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "redshift Command is opaque to statement facts",
+   "kind": "DDL",
+   "operation": "ALTER"
+  },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+  "old": {
+   "analyzer": [
+    [
+     "TABLE",
+     "default_schema.a`b"
+    ]
+   ]
+  },
+  "path": "analyzer",
+  "reason": "The proposed head takes a name from backticks, while redshift's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'ALTER TABLE `a``b` ADD COLUMN x INT'; dialect tokens: ALTER(ALTER) TABLE(TABLE) UNKNOWN(`) VAR(a) UNKNOWN(`) UNKNOWN(`) VAR(b) UNKNOWN(`).",
+  "sql": "ALTER TABLE `a``b` ADD COLUMN x INT"
+ },
+ "a401888eadfc386b/hybrid": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "redshift Command is opaque to statement facts",
+   "kind": "DDL",
+   "operation": "ALTER"
+  },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+  "old": {
+   "hybrid": [
+    [
+     "TABLE",
+     "a",
+     "public"
+    ]
+   ]
+  },
+  "path": "hybrid",
+  "reason": "The proposed head takes a name from backticks, while redshift's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'ALTER TABLE `a``b` ADD COLUMN x INT'; dialect tokens: ALTER(ALTER) TABLE(TABLE) UNKNOWN(`) VAR(a) UNKNOWN(`) UNKNOWN(`) VAR(b) UNKNOWN(`).",
+  "sql": "ALTER TABLE `a``b` ADD COLUMN x INT"
+ },
  "a50bc34cb52c502a/hybrid": {
   "class": "opaque-reader-gap",
   "facts": {
@@ -6255,6 +6254,47 @@
   "reason": "Redshift creates the table named after INTO (a SELECT \u2026 INTO TEMP was run and its table read back); the reader names TABLE #tmp (created), TABLE t (referenced), the old analyzer path read the statement as a query and named nothing. Redshift answers SQLSTATE 42P01 (relation \"t\" does not exist), not a syntax error.",
   "sql": "SELECT * INTO #tmp FROM t"
  },
+ "adfa881b55d4dbc2/analyzer": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "redshift grammar is not modelled for this statement",
+   "kind": "DDL",
+   "operation": "DROP"
+  },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+  "old": {
+   "analyzer": [
+    [
+     "TABLE",
+     "x.orders"
+    ]
+   ]
+  },
+  "path": "analyzer",
+  "reason": "The proposed head takes a name from backticks, while redshift's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'DROP TABLE IF EXISTS `x`.`orders`'; dialect tokens: DROP(DROP) TABLE(TABLE) VAR(IF) EXISTS(EXISTS) UNKNOWN(`) VAR(x) UNKNOWN(`) DOT(.).",
+  "sql": "DROP TABLE IF EXISTS `x`.`orders`"
+ },
+ "adfa881b55d4dbc2/hybrid": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "redshift grammar is not modelled for this statement",
+   "kind": "DDL",
+   "operation": "DROP"
+  },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+  "old": {
+   "hybrid": [
+    [
+     "TABLE",
+     "orders",
+     "x"
+    ]
+   ]
+  },
+  "path": "hybrid",
+  "reason": "The proposed head takes a name from backticks, while redshift's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'DROP TABLE IF EXISTS `x`.`orders`'; dialect tokens: DROP(DROP) TABLE(TABLE) VAR(IF) EXISTS(EXISTS) UNKNOWN(`) VAR(x) UNKNOWN(`) DOT(.).",
+  "sql": "DROP TABLE IF EXISTS `x`.`orders`"
+ },
  "aea134aa25298dd3/analyzer": {
   "class": "opaque-reader-gap",
   "facts": {
@@ -6318,26 +6358,25 @@
   },
   "sql": "CREATE OR REPLACE FORCE VIEW vw_test AS\n        SELECT * FROM nonexistent_table"
  },
- "b1302612249a68c8/analyzer": {
-  "class": "facts-adds-acted",
+ "b1302612249a68c8/hybrid": {
+  "class": "opaque-reader-gap",
   "facts": {
-   "diagnostic": "table: redshift grammar is not modelled for this statement",
+   "diagnostic": "redshift grammar is not modelled for this statement",
    "kind": "DDL",
-   "objects": [
-    [
-     "after_proc",
-     "TABLE",
-     "created",
-     null
-    ]
-   ],
    "operation": "CREATE"
   },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
   "old": {
-   "analyzer": []
+   "hybrid": [
+    [
+     "TABLE",
+     "after_proc",
+     "public"
+    ]
+   ]
   },
-  "path": "analyzer",
-  "reason": "Redshift 1.0.485645 rejects this text with SQLSTATE 42601 (syntax error at or near \"/\"); it is another dialect's statement or an incomplete fragment harvested into the corpus and never runs on this family; the reader names TABLE after_proc (created) from the head text with a diagnostic and the old extraction named nothing, a difference with no consequence because the engine never runs the text.",
+  "path": "hybrid",
+  "reason": "The original unit begins with slash separator; the first source tokens are not the same verb/name sequence as a bare proposed DDL head. The reader cannot scan through that prefix and attribute its later name to this entire unit. Source head: '/\\\\n\\\\nCREATE TABLE after_proc (id NUMBER)'; dialect tokens: SLASH(/) CREATE(CREATE) TABLE(TABLE) VAR(after_proc) L_PAREN(() VAR(id) DECIMAL(NUMBER) R_PAREN()). Prior native observation for this exact SQL: Redshift 1.0.485645 rejects this text with SQLSTATE 42601 (syntax error at or near \"/\")",
   "sql": "/\n\nCREATE TABLE after_proc (id NUMBER)"
  },
  "b171fa9efeec56a8/analyzer": {
@@ -7290,26 +7329,24 @@
   },
   "sql": "CREATE FULLTEXT INDEX idx1 ON myschema.mytable (col)"
  },
- "c1c8bad454ce3a74/hybrid": {
-  "class": "facts-adds-acted",
+ "c1c8bad454ce3a74/analyzer": {
+  "class": "opaque-reader-gap",
   "facts": {
-   "diagnostic": "index: redshift Command is opaque to statement facts",
+   "diagnostic": "redshift Command is opaque to statement facts",
    "kind": "DDL",
-   "objects": [
-    [
-     "idx`1",
-     "INDEX",
-     "created",
-     null
-    ]
-   ],
    "operation": "CREATE"
   },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
   "old": {
-   "hybrid": []
+   "analyzer": [
+    [
+     "INDEX",
+     "idx`1"
+    ]
+   ]
   },
-  "path": "hybrid",
-  "reason": "Redshift 1.0.485645 rejects this text with SQLSTATE 42601 (syntax error at or near \"`\"); it is another dialect's statement or an incomplete fragment harvested into the corpus and never runs on this family; the reader names INDEX idx`1 (created) from the head text with a diagnostic and the old extraction named nothing, a difference with no consequence because the engine never runs the text.",
+  "path": "analyzer",
+  "reason": "The proposed head takes a name from backticks, while redshift's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'CREATE INDEX `idx``1` ON `db`.`t`(`c`)'; dialect tokens: CREATE(CREATE) INDEX(INDEX) UNKNOWN(`) VAR(idx) UNKNOWN(`) UNKNOWN(`) NUMBER(1) UNKNOWN(`). Prior native observation for this exact SQL: Redshift 1.0.485645 rejects this text with SQLSTATE 42601 (syntax error at or near \"`\")",
   "sql": "CREATE INDEX `idx``1` ON `db`.`t`(`c`)"
  },
  "c2b012c3dcd07814/analyzer": {
@@ -7570,26 +7607,25 @@
   "reason": "Redshift 1.0.485645 rejects this text with SQLSTATE 42601 (syntax error at or near \".\"); it is another dialect's statement or an incomplete fragment harvested into the corpus and never runs on this family; the reader reads CREATE / DDL naming INDEX s.ix (created), TABLE t (referenced) and the old extraction named INDEX s public, a difference with no consequence because the engine never runs the text.",
   "sql": "CREATE INDEX \"s\".\"ix\" ON \"t\"(\"c\")"
  },
- "cc1e1356f50aa4e9/analyzer": {
-  "class": "facts-adds-acted",
+ "cc1e1356f50aa4e9/hybrid": {
+  "class": "opaque-reader-gap",
   "facts": {
-   "diagnostic": "table: redshift grammar is not modelled for this statement",
+   "diagnostic": "redshift grammar is not modelled for this statement",
    "kind": "DDL",
-   "objects": [
-    [
-     "a",
-     "TABLE",
-     "created",
-     null
-    ]
-   ],
    "operation": "CREATE"
   },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
   "old": {
-   "analyzer": []
+   "hybrid": [
+    [
+     "TABLE",
+     "a",
+     "public"
+    ]
+   ]
   },
-  "path": "analyzer",
-  "reason": "Redshift 1.0.485645 rejects this text with SQLSTATE 42601 (syntax error at or near \".\"); it is another dialect's statement or an incomplete fragment harvested into the corpus and never runs on this family; the reader names TABLE a (created) from the head text with a diagnostic and the old extraction named nothing, a difference with no consequence because the engine never runs the text.",
+  "path": "hybrid",
+  "reason": "The original unit begins with .mode; the first source tokens are not the same verb/name sequence as a bare proposed DDL head. The reader cannot scan through that prefix and attribute its later name to this entire unit. Source head: '.mode csv\\\\nCREATE TABLE a(x)'; dialect tokens: DOT(.) VAR(mode) VAR(csv) CREATE(CREATE) TABLE(TABLE) VAR(a) L_PAREN(() VAR(x). Prior native observation for this exact SQL: Redshift 1.0.485645 rejects this text with SQLSTATE 42601 (syntax error at or near \".\")",
   "sql": ".mode csv\nCREATE TABLE a(x)"
  },
  "cc22ca3ab620a924/analyzer": {
@@ -8475,26 +8511,24 @@
   "reason": "Redshift 1.0.485645 rejects this text with SQLSTATE 42601 (syntax error at or near \"FUNCTION\"); it is another dialect's statement or an incomplete fragment harvested into the corpus and never runs on this family; the reader reads CREATE / DDL naming TABLE users (referenced) and the old extraction named TRIGGER update_ts public; TRIGGER default_schema.update_ts, a difference with no consequence because the engine never runs the text.",
   "sql": "CREATE TRIGGER update_ts\nBEFORE UPDATE ON users\nFOR EACH ROW\nEXECUTE FUNCTION update_timestamp()"
  },
- "de50034c73fb7dc1/hybrid": {
-  "class": "facts-adds-acted",
+ "de50034c73fb7dc1/analyzer": {
+  "class": "opaque-reader-gap",
   "facts": {
-   "diagnostic": "table: redshift Command is opaque to statement facts",
+   "diagnostic": "redshift Command is opaque to statement facts",
    "kind": "DDL",
-   "objects": [
-    [
-     "test",
-     "TABLE",
-     "created",
-     null
-    ]
-   ],
    "operation": "CREATE"
   },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
   "old": {
-   "hybrid": []
+   "analyzer": [
+    [
+     "TABLE",
+     "default_schema.test"
+    ]
+   ]
   },
-  "path": "hybrid",
-  "reason": "Redshift 1.0.485645 rejects this text with SQLSTATE 42601 (syntax error at or near \"`\"); it is another dialect's statement or an incomplete fragment harvested into the corpus and never runs on this family; the reader names TABLE test (created) from the head text with a diagnostic and the old extraction named nothing, a difference with no consequence because the engine never runs the text.",
+  "path": "analyzer",
+  "reason": "The proposed head takes a name from backticks, while redshift's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'CREATE TABLE `test` (id INT)'; dialect tokens: CREATE(CREATE) TABLE(TABLE) UNKNOWN(`) VAR(test) UNKNOWN(`) L_PAREN(() VAR(id) INT(INT). Prior native observation for this exact SQL: Redshift 1.0.485645 rejects this text with SQLSTATE 42601 (syntax error at or near \"`\")",
   "sql": "CREATE TABLE `test` (id INT)"
  },
  "de9b4bcca3f6c7bf/hybrid": {
@@ -8672,28 +8706,6 @@
   },
   "sql": "CREATE XML INDEX idx1 ON real_one (xml_col)"
  },
- "e541f61bf68d8d6b/analyzer": {
-  "class": "facts-adds-acted",
-  "facts": {
-   "diagnostic": "index: redshift grammar is not modelled for this statement",
-   "kind": "DDL",
-   "objects": [
-    [
-     "EXISTS",
-     "INDEX",
-     "dropped",
-     null
-    ]
-   ],
-   "operation": "DROP"
-  },
-  "old": {
-   "analyzer": []
-  },
-  "path": "analyzer",
-  "reason": "Redshift 1.0.485645 rejects this text with SQLSTATE 42601 (syntax error at end of input); it is another dialect's statement or an incomplete fragment harvested into the corpus and never runs on this family; the reader names INDEX EXISTS (dropped) from the head text with a diagnostic and the old extraction named nothing, a difference with no consequence because the engine never runs the text.",
-  "sql": "DROP INDEX IF EXISTS"
- },
  "e541f61bf68d8d6b/hybrid": {
   "class": "opaque-reader-gap",
   "facts": {
@@ -8776,26 +8788,24 @@
   },
   "sql": "CREATE OR REPLACE PROCEDURE update_salary(emp_id NUMBER, new_salary NUMBER) IS\n        BEGIN\n            UPDATE employee"
  },
- "e6628ad04a71e570/hybrid": {
-  "class": "facts-adds-acted",
+ "e6628ad04a71e570/analyzer": {
+  "class": "opaque-reader-gap",
   "facts": {
-   "diagnostic": "index: redshift Command is opaque to statement facts",
+   "diagnostic": "redshift Command is opaque to statement facts",
    "kind": "DDL",
-   "objects": [
-    [
-     "ix",
-     "INDEX",
-     "created",
-     null
-    ]
-   ],
    "operation": "CREATE"
   },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
   "old": {
-   "hybrid": []
+   "analyzer": [
+    [
+     "INDEX",
+     "ix"
+    ]
+   ]
   },
-  "path": "hybrid",
-  "reason": "Redshift 1.0.485645 rejects this text with SQLSTATE 42601 (syntax error at or near \"`\"); it is another dialect's statement or an incomplete fragment harvested into the corpus and never runs on this family; the reader names INDEX ix (created) from the head text with a diagnostic and the old extraction named nothing, a difference with no consequence because the engine never runs the text.",
+  "path": "analyzer",
+  "reason": "The proposed head takes a name from backticks, while redshift's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'CREATE INDEX `ix` ON `s`.`t` ((a + 1), id DESC) USING BTREE'; dialect tokens: CREATE(CREATE) INDEX(INDEX) UNKNOWN(`) VAR(ix) UNKNOWN(`) ON(ON) UNKNOWN(`) VAR(s). Prior native observation for this exact SQL: Redshift 1.0.485645 rejects this text with SQLSTATE 42601 (syntax error at or near \"`\")",
   "sql": "CREATE INDEX `ix` ON `s`.`t` ((a + 1), id DESC) USING BTREE"
  },
  "e668b082ca202cf3/hybrid": {
@@ -9144,6 +9154,47 @@
   },
   "sql": "CREATE OR REPLACE PROCEDURE test_proc IS\n        BEGIN\n            NULL"
  },
+ "edb73950ead0e82e/analyzer": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "redshift Command is opaque to statement facts",
+   "kind": "DDL",
+   "operation": "ALTER"
+  },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+  "old": {
+   "analyzer": [
+    [
+     "TABLE",
+     "default_schema.a#b"
+    ]
+   ]
+  },
+  "path": "analyzer",
+  "reason": "The proposed head takes a name from backticks, while redshift's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'ALTER TABLE `a#b` ADD COLUMN x INT'; dialect tokens: ALTER(ALTER) TABLE(TABLE) UNKNOWN(`) VAR(a#b) UNKNOWN(`) VAR(ADD) COLUMN(COLUMN) VAR(x).",
+  "sql": "ALTER TABLE `a#b` ADD COLUMN x INT"
+ },
+ "edb73950ead0e82e/hybrid": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "redshift Command is opaque to statement facts",
+   "kind": "DDL",
+   "operation": "ALTER"
+  },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+  "old": {
+   "hybrid": [
+    [
+     "TABLE",
+     "a#b",
+     "public"
+    ]
+   ]
+  },
+  "path": "hybrid",
+  "reason": "The proposed head takes a name from backticks, while redshift's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'ALTER TABLE `a#b` ADD COLUMN x INT'; dialect tokens: ALTER(ALTER) TABLE(TABLE) UNKNOWN(`) VAR(a#b) UNKNOWN(`) VAR(ADD) COLUMN(COLUMN) VAR(x).",
+  "sql": "ALTER TABLE `a#b` ADD COLUMN x INT"
+ },
  "f24b2b5f77229e87/analyzer": {
   "class": "facts-adds-acted",
   "facts": {
@@ -9241,26 +9292,24 @@
   },
   "sql": "COPY items FROM E'items.csv'"
  },
- "f36de5bceaf04af3/hybrid": {
-  "class": "facts-adds-acted",
+ "f36de5bceaf04af3/analyzer": {
+  "class": "opaque-reader-gap",
   "facts": {
-   "diagnostic": "table: redshift Command is opaque to statement facts",
+   "diagnostic": "redshift Command is opaque to statement facts",
    "kind": "DDL",
-   "objects": [
-    [
-     "test_table",
-     "TABLE",
-     "created",
-     null
-    ]
-   ],
    "operation": "CREATE"
   },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
   "old": {
-   "hybrid": []
+   "analyzer": [
+    [
+     "TABLE",
+     "default_schema.test_table"
+    ]
+   ]
   },
-  "path": "hybrid",
-  "reason": "Redshift 1.0.485645 rejects this text with SQLSTATE 42601 (syntax error at or near \"`\"); it is another dialect's statement or an incomplete fragment harvested into the corpus and never runs on this family; the reader names TABLE test_table (created) from the head text with a diagnostic and the old extraction named nothing, a difference with no consequence because the engine never runs the text.",
+  "path": "analyzer",
+  "reason": "The proposed head takes a name from backticks, while redshift's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'CREATE TABLE `test_table` (id INT PRIMARY KEY, `column_name` VARCHAR(100))'; dialect tokens: CREATE(CREATE) TABLE(TABLE) UNKNOWN(`) VAR(test_table) UNKNOWN(`) L_PAREN(() VAR(id) INT(INT). Prior native observation for this exact SQL: Redshift 1.0.485645 rejects this text with SQLSTATE 42601 (syntax error at or near \"`\")",
   "sql": "CREATE TABLE `test_table` (id INT PRIMARY KEY, `column_name` VARCHAR(100))"
  },
  "f3844405031a2c84/analyzer": {
