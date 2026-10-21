@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Optional
 
+from dblift.core.sql_parser.statement_facts import SqlglotStatementFactsReader
 from dblift.db.base_quirks import BaseQuirks
 
 if TYPE_CHECKING:
@@ -19,6 +20,7 @@ class SnowflakeQuirks(BaseQuirks):
     uppercase_identifiers = True
     clean_strategy = "native"
     sqlglot_dialect = "snowflake"
+    statement_facts_class = SqlglotStatementFactsReader
     default_schema_name = "PUBLIC"
     drop_supports_if_exists = True
     unquoted_identifier_case = "uppercase"

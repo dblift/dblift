@@ -27,7 +27,6 @@ PARSER_REJECTS = {
             "supabase",
             "timescaledb",
             "yugabytedb",
-            "snowflake",
         ],
         UNBALANCED_PAREN,
     ),

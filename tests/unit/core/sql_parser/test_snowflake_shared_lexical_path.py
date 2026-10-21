@@ -1,4 +1,4 @@
-"""Activation contract for Snowflake's shared lexical path, before statement facts."""
+"""Snowflake's shared lexical path keeps its D1 contract once statement facts are read."""
 
 from __future__ import annotations
 
@@ -14,14 +14,13 @@ from dblift.db.plugins.snowflake import statement_parser
 from dblift.db.provider_registry import ProviderRegistry
 
 
-def test_snowflake_uses_a_lexical_spec_before_statement_facts() -> None:
+def test_snowflake_uses_a_lexical_spec_for_statement_facts() -> None:
     quirks = ProviderRegistry.get_quirks("snowflake")
     spec = quirks.lexical_spec()
 
     assert isinstance(spec, LexicalSpec)
     assert spec.name == "snowflake"
-    assert quirks.statement_facts_class is None
-    assert not quirks.supports_statement_facts
+    assert quirks.supports_statement_facts
 
     splitter = StatementSplitter("snowflake")
     assert isinstance(splitter._engine, LexicalEngine)
@@ -41,13 +40,14 @@ def test_snowflake_split_views_route_through_shared_records(monkeypatch) -> None
     monkeypatch.setattr(LexicalEngine, "split", split)
 
     assert StatementSplitter("snowflake").split(script) == [record]
-    for mode in ("regex", "hybrid", "sqlglot"):
+    for mode in ("regex", "hybrid"):
         parser = SqlParserFactory("snowflake", parser_type=mode).get_parser()
         assert parser.split_statements(script) == ["SELECT 7"]
         assert parser.split_for_analysis(script) == ["SELECT 7"]
         assert parser.split_for_extraction(script) == ["SELECT 7"]
 
-    assert calls == [("snowflake", script)] * 10
+    # split_statements takes the engine's execution view, the other views its records.
+    assert calls == [("snowflake", script)] * 5
 
 
 def test_snowflake_execution_never_uses_the_retained_legacy_scanner(monkeypatch) -> None:
@@ -59,7 +59,7 @@ def test_snowflake_execution_never_uses_the_retained_legacy_scanner(monkeypatch)
 
     script = "SELECT 1;"
     assert StatementSplitter("snowflake").split_statements(script) == ["SELECT 1"]
-    for mode in ("regex", "hybrid", "sqlglot"):
+    for mode in ("regex", "hybrid"):
         parser = SqlParserFactory("snowflake", parser_type=mode).get_parser()
         assert parser.split_statements(script) == ["SELECT 1"]
         assert parser.split_for_analysis(script) == ["SELECT 1"]
@@ -83,3 +83,13 @@ def test_snowflake_retains_current_execution_and_refusal_controls() -> None:
 
     with pytest.raises(UnsafeStatementSplitError):
         StatementSplitter("snowflake").split("BEGIN LET x INT := 1; RETURN x; END;")
+
+
+def test_snowflake_facts_parser_executes_what_the_splitter_executes() -> None:
+    script = '-- setup; comment\nCREATE TABLE "QA"."A;B" ("V" VARCHAR);\nSELECT \'a;b\';\nSELECT 2'
+    expected = StatementSplitter("snowflake").split_statements(script)
+
+    assert len(expected) == 3
+    for mode in ("regex", "hybrid"):
+        parser = SqlParserFactory("snowflake", parser_type=mode).get_parser()
+        assert parser.split_statements(script) == expected

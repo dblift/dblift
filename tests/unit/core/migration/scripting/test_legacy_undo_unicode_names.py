@@ -31,9 +31,9 @@ LEGACY = (
 )
 FACTS = ("postgresql", "cockroachdb", "oracle", "redshift")
 
-# MySQL, MariaDB, Db2, SQL Server and Oracle read statement facts: their undo is a review
-# placeholder, never a DROP.
-FACTS_DIALECTS = ("mysql", "mariadb", "db2", "sqlserver", "oracle")
+# MySQL, MariaDB, Db2, SQL Server, Oracle and Snowflake read statement facts: their undo is a
+# review placeholder, never a DROP.
+FACTS_DIALECTS = ("mysql", "mariadb", "db2", "sqlserver", "oracle", "snowflake")
 DROPPING = tuple(d for d in LEGACY if d not in FACTS_DIALECTS)
 
 # The 22 characters (sqlglot's non-ASCII blanks, plus the zero-width ones): a sample of each kind.

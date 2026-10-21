@@ -258,7 +258,7 @@ def test_canonical_snowflake_and_plugin_parser_construction_stay_silent(monkeypa
 
     with warnings.catch_warnings():
         warnings.simplefilter("error", DeprecationWarning)
-        assert type(SqlParserFactory("snowflake").get_parser()).__name__ == "SqlGlotParser"
+        assert type(SqlParserFactory("snowflake").get_parser()).__name__ == "StatementFactsParser"
         assert isinstance(SnowflakeLexicalParser(), SnowflakeLexicalParser)
         quirks = ProviderRegistry.get_quirks("snowflake")
         monkeypatch.setattr(type(quirks), "parser_class", lambda self, mode: CustomParser)
@@ -325,7 +325,7 @@ from dblift.db.plugins.snowflake.lexical_parser import SnowflakeLexicalParser
 
 with warnings.catch_warnings():
     warnings.simplefilter("error", DeprecationWarning)
-    assert type(SqlParserFactory("snowflake").get_parser()).__name__ == "SqlGlotParser"
+    assert type(SqlParserFactory("snowflake").get_parser()).__name__ == "StatementFactsParser"
     assert SnowflakeLexicalParser().dialect_name == "snowflake"
     for dialect in (
         "sqlite", "postgresql", "cockroachdb", "redshift", "mysql", "mariadb",
