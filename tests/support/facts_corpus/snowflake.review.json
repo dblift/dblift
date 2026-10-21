@@ -4320,6 +4320,33 @@
   "reason": "The reader reports the statement as opaque (snowflake Command is opaque to statement facts) rather than guess: the former analyzer path named TYPE default_schema.mood. This is a documented boundary, not a claim that Snowflake rejects the text.",
   "sql": "CREATE TYPE mood AS ENUM ('sad', 'happy')"
  },
+ "35c332f738c4a34c": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "snowflake unquoted name holds a non-ASCII letter (rejected natively)",
+   "kind": "DDL",
+   "operation": "CREATE"
+  },
+  "issue": "by design: docs/sql-parsing/snowflake.md \u00a713",
+  "old": {
+   "analyzer": [
+    [
+     "TABLE",
+     "default_schema.t\u00e9"
+    ]
+   ],
+   "hybrid": [
+    [
+     "TABLE",
+     "t\u00e9",
+     null
+    ]
+   ]
+  },
+  "path": "both",
+  "reason": "The reader leaves an unquoted name with a non-ASCII letter unread and names no object: the engine rejected the unquoted candidates \u00e9, a\u00e9 and a\u00a9b with 1003/42000 (docs/sql-parsing/snowflake.md section 2), and other non-ASCII letters are unmeasured. The former hybrid and analyzer path named the table. This is a documented boundary, not a claim about every non-ASCII letter.",
+  "sql": "CREATE TABLE t\u00e9 (id INT)"
+ },
  "35fa88b10f497bf0": {
   "class": "dml-differs",
   "facts": {
@@ -5321,6 +5348,33 @@
   "path": "analyzer",
   "reason": "The reader reports the statement as opaque (snowflake grammar is not modelled for this statement) rather than guess: the former analyzer path named TABLE rel470_ss.ft_test. This is a documented boundary, not a claim that Snowflake rejects the text.",
   "sql": "CREATE TABLE [rel470_ss].[ft_test] ([id] INT PRIMARY KEY, [body] NVARCHAR(MAX))"
+ },
+ "4574c7f00ac50847": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "snowflake unquoted name holds a non-ASCII letter (rejected natively)",
+   "kind": "DDL",
+   "operation": "CREATE"
+  },
+  "issue": "by design: docs/sql-parsing/snowflake.md \u00a713",
+  "old": {
+   "analyzer": [
+    [
+     "TABLE",
+     "sch\u00e9.t"
+    ]
+   ],
+   "hybrid": [
+    [
+     "TABLE",
+     "t",
+     "sch\u00e9"
+    ]
+   ]
+  },
+  "path": "both",
+  "reason": "The reader leaves an unquoted name with a non-ASCII letter unread and names no object: the engine rejected the unquoted candidates \u00e9, a\u00e9 and a\u00a9b with 1003/42000 (docs/sql-parsing/snowflake.md section 2), and other non-ASCII letters are unmeasured. The former hybrid and analyzer path named the table. This is a documented boundary, not a claim about every non-ASCII letter.",
+  "sql": "CREATE TABLE sch\u00e9.t (id INT)"
  },
  "4592ae343005b4dc/analyzer": {
   "class": "opaque-reader-gap",
@@ -16048,6 +16102,32 @@
   "reason": "The reader reports the statement as opaque (snowflake Command is opaque to statement facts) rather than guess: the former analyzer path named INDEX idx_users_email. This is a documented boundary, not a claim that Snowflake rejects the text.",
   "sql": "CREATE INDEX [idx_users_email] ON [dbo].[users]([email])"
  },
+ "ccccf913dec78565": {
+  "class": "dml-differs",
+  "facts": {
+   "diagnostic": "snowflake unquoted name holds a non-ASCII letter (rejected natively)",
+   "kind": "DML",
+   "operation": "UPDATE"
+  },
+  "old": {
+   "analyzer": [
+    [
+     "TABLE",
+     "default_schema.t\u00e9t\u00e9"
+    ]
+   ],
+   "hybrid": [
+    [
+     "TABLE",
+     "t\u00e9t\u00e9",
+     null
+    ]
+   ]
+  },
+  "path": "both",
+  "reason": "The reader leaves an unquoted name with a non-ASCII letter unread and names no object: the engine rejected the unquoted candidates \u00e9, a\u00e9 and a\u00a9b with 1003/42000 (docs/sql-parsing/snowflake.md section 2), and other non-ASCII letters are unmeasured. The former hybrid and analyzer path named the table as the DML target. This is a documented boundary, not a claim about every non-ASCII letter.",
+  "sql": "UPDATE t\u00e9t\u00e9 SET a = 1 WHERE b = 2"
+ },
  "cd2cfbff0e123b32": {
   "class": "disagree",
   "facts": {
@@ -17167,28 +17247,25 @@
   "reason": "The former hybrid path gave the routine an empty name; the reader names it from the grammar. The routine body is not read. The reader stores an unquoted name in upper case and a quoted one as written (docs/sql-parsing/snowflake.md \u00a713), so names it reads here can differ in case from the spelling quoted above.",
   "sql": "CREATE FUNCTION test_func() RETURNS INTEGER LANGUAGE SQL BEGIN RETURN 1"
  },
- "d8c3a02b8c2e3be9/analyzer": {
-  "class": "facts-adds-acted",
+ "d8c3a02b8c2e3be9/hybrid": {
+  "class": "opaque-reader-gap",
   "facts": {
-   "declared_columns": [
-    "id"
-   ],
+   "diagnostic": "snowflake unquoted name holds a non-ASCII letter (rejected natively)",
    "kind": "DDL",
-   "objects": [
-    [
-     "CAFE\u0301",
-     "TABLE",
-     "created",
-     null
-    ]
-   ],
    "operation": "CREATE"
   },
+  "issue": "by design: docs/sql-parsing/snowflake.md \u00a713",
   "old": {
-   "analyzer": []
+   "hybrid": [
+    [
+     "TABLE",
+     "cafe\u0301",
+     null
+    ]
+   ]
   },
-  "path": "analyzer",
-  "reason": "The former analyzer path named nothing; the reader names created TABLE cafe\u0301 from the grammar. Snowflake acceptance of this text is unmeasured. The reader stores an unquoted name in upper case and a quoted one as written (docs/sql-parsing/snowflake.md \u00a713), so names it reads here can differ in case from the spelling quoted above.",
+  "path": "hybrid",
+  "reason": "The reader leaves an unquoted name with a non-ASCII letter unread and names no object: the engine rejected the unquoted candidates \u00e9, a\u00e9 and a\u00a9b with 1003/42000 (docs/sql-parsing/snowflake.md section 2), and other non-ASCII letters are unmeasured. The former hybrid path named the table (with a combining accent). This is a documented boundary, not a claim about every non-ASCII letter.",
   "sql": "CREATE TABLE cafe\u0301 (id INT)"
  },
  "da3571ef320a0c63/analyzer": {
@@ -17240,6 +17317,33 @@
   "path": "hybrid",
   "reason": "The former hybrid path named nothing; the reader names dropped INDEX a.idx1 from the statement head and reports the statement as opaque (index: snowflake grammar is not modelled for this statement); the head's name is proven against the source tokens, the body is unread. Snowflake acceptance of this text is unmeasured. The reader stores an unquoted name in upper case and a quoted one as written (docs/sql-parsing/snowflake.md \u00a713), so names it reads here can differ in case from the spelling quoted above.",
   "sql": "DROP INDEX a.idx1, b.idx2"
+ },
+ "da909694e5e29123": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "snowflake unquoted name holds a non-ASCII letter (rejected natively)",
+   "kind": "DDL",
+   "operation": "CREATE"
+  },
+  "issue": "by design: docs/sql-parsing/snowflake.md \u00a713",
+  "old": {
+   "analyzer": [
+    [
+     "TABLE",
+     "default_schema.\u00e9t"
+    ]
+   ],
+   "hybrid": [
+    [
+     "TABLE",
+     "\u00e9t",
+     null
+    ]
+   ]
+  },
+  "path": "both",
+  "reason": "The reader leaves an unquoted name with a non-ASCII letter unread and names no object: the engine rejected the unquoted candidates \u00e9, a\u00e9 and a\u00a9b with 1003/42000 (docs/sql-parsing/snowflake.md section 2), and other non-ASCII letters are unmeasured. The former hybrid and analyzer path named the table. This is a documented boundary, not a claim about every non-ASCII letter.",
+  "sql": "CREATE TABLE \u00e9t (id INT)"
  },
  "dafa75924cf59151/analyzer": {
   "class": "opaque-reader-gap",
@@ -17567,6 +17671,33 @@
   "path": "both",
   "reason": "The statement is new to the corpus since the splitter was last recorded, so no extraction was recorded for it; the reader's result is structural only. Snowflake acceptance of this text is unmeasured.",
   "sql": "/* outer /* inner */ SELECT 1"
+ },
+ "df76eaa28946b5d5": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "snowflake unquoted name holds a non-ASCII letter (rejected natively)",
+   "kind": "DDL",
+   "operation": "CREATE"
+  },
+  "issue": "by design: docs/sql-parsing/snowflake.md \u00a713",
+  "old": {
+   "analyzer": [
+    [
+     "TABLE",
+     "default_schema.\u4e2d\u6587"
+    ]
+   ],
+   "hybrid": [
+    [
+     "TABLE",
+     "\u4e2d\u6587",
+     null
+    ]
+   ]
+  },
+  "path": "both",
+  "reason": "The reader leaves an unquoted name with a non-ASCII letter unread and names no object: the engine rejected the unquoted candidates \u00e9, a\u00e9 and a\u00a9b with 1003/42000 (docs/sql-parsing/snowflake.md section 2), and other non-ASCII letters are unmeasured. The former hybrid and analyzer path named the table. This is a documented boundary, not a claim about every non-ASCII letter.",
+  "sql": "CREATE TABLE \u4e2d\u6587 (id INT)"
  },
  "dfc14017af4622e1/hybrid": {
   "class": "opaque-reader-gap",
@@ -18485,6 +18616,33 @@
   "path": "analyzer",
   "reason": "The reader reports the statement as opaque (snowflake Command is opaque to statement facts) rather than guess: the former analyzer path named SYNONYM default_schema.s. This is a documented boundary, not a claim that Snowflake rejects the text.",
   "sql": "CREATE SYNONYM s FOR orders"
+ },
+ "ea3dbbd0487f19c8": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "snowflake unquoted name holds a non-ASCII letter (rejected natively)",
+   "kind": "DDL",
+   "operation": "CREATE"
+  },
+  "issue": "by design: docs/sql-parsing/snowflake.md \u00a713",
+  "old": {
+   "analyzer": [
+    [
+     "TABLE",
+     "default_schema.t\u00e9t\u00e9"
+    ]
+   ],
+   "hybrid": [
+    [
+     "TABLE",
+     "t\u00e9t\u00e9",
+     null
+    ]
+   ]
+  },
+  "path": "both",
+  "reason": "The reader leaves an unquoted name with a non-ASCII letter unread and names no object: the engine rejected the unquoted candidates \u00e9, a\u00e9 and a\u00a9b with 1003/42000 (docs/sql-parsing/snowflake.md section 2), and other non-ASCII letters are unmeasured. The former hybrid and analyzer path named the table. This is a documented boundary, not a claim about every non-ASCII letter.",
+  "sql": "CREATE TABLE t\u00e9t\u00e9 (id INT)"
  },
  "ec151b133d16684c": {
   "class": "dml-differs",
