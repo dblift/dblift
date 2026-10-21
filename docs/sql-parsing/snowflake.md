@@ -136,8 +136,7 @@ contract of the parser, not a claim about what the engine accepts or does.
 Opaque (a diagnostic, no object or only a head-proven name, never a guess): `CREATE`/`DROP` of `STAGE`, `FILE FORMAT`,
 `TAG`, `WAREHOUSE`, `ROLE`, `USER` and other kinds the object model has no type for; `CREATE LOCAL TEMP TABLE`;
 `CREATE TRIGGER`; a name computed at run time (`IDENTIFIER(...)`, a `$variable`, a string path); a keyword
-where a name belongs (`ALTER TABLE ADD COLUMN x`, `DROP TABLE IF`); a name continued by a `{…}` template brace; a name holding a letter whose upper-case form
-is not one character; `ALTER … RENAME TO` and
+where a name belongs (`ALTER TABLE ADD COLUMN x`, `DROP TABLE IF`); a name continued by a `{…}` template brace; an unquoted name holding a non-ASCII letter; `ALTER … RENAME TO` and
 `SWAP WITH` (they name a second object); a relation with four or more name parts; a `CTE` whose body writes;
 a `@stage` reference; `MERGE`, `TRUNCATE`, `COPY`, `INSERT ALL`, `GRANT`/`REVOKE`, `USE`, `SHOW`, `DESCRIBE`,
 `UNDROP`, `COMMENT ON` and every statement sqlglot cannot parse. A name kept on an opaque statement is checked
@@ -150,9 +149,10 @@ were two views; `CREATE`/`DROP SCHEMA`, `CREATE`/`DROP MATERIALIZED VIEW` and `C
 those forms (query IDs `01c7e32f-3204-c9bb-0008-38020027f07a`, `01c7e32f-3204-ccd2-0008-380200281012`,
 `01c7e32f-3204-cd96-0008-380200282006`, `01c7e32f-3204-cd96-0008-38020028200a`). The reader therefore folds an unquoted
 name to upper case and keeps a quoted name exact, so `CREATE SCHEMA app` and `CREATE SCHEMA "app"` name different
-objects. Names are compared as stored only under that default: the reader does not read the session parameter. The
-fold is letter by letter, and a name with a letter whose upper-case form is not one character is left unread; that
-rule is borrowed from the Oracle reader and was not measured on Snowflake for non-ASCII letters.
+objects. Names are compared as stored only under that default: the reader does not read the session parameter. Only an
+unquoted ASCII name is folded. An unquoted name with a non-ASCII letter is left unread, because the engine rejected the
+unquoted candidates `é`, `aé` and `a©b` (section 2, `1003/42000`) and other non-ASCII letters are unmeasured; a quoted
+name is read exactly, whatever it holds.
 
 Known gaps, recorded rather than closed:
 
@@ -166,7 +166,9 @@ Known gaps, recorded rather than closed:
   reported (a `CREATE TABLE` reports it). The mapping is shared with the other readers.
 - An unterminated quote reports an error and no object; the splitter normally refuses such a script first.
 - `UPDATE t a SET … WHERE a.y = 1` names the bare table `t` as its target while the predicate keeps the alias `a`.
-- A `DROP` whose object kind or name is unread is reported by lint as `drop-unread-object` (review), except for
-  kinds that never hold rows (`INDEX`, `SEQUENCE`, routines, types, `ROLE`, `USER`).
+- A `DROP` whose object kind or name is unread is reported by lint as `drop-unread-object` (review), except for kinds
+  whose vendor documentation says they remove a definition and not rows (listed in the lint rule), and always when the
+  statement holds `CASCADE` or `FORCE`. The kinds the vendors leave unclear (for example `SUBSCRIPTION`, `BUFFERPOOL`,
+  `CERTIFICATE`, `SECRET`) stay a review.
 - Native acceptance and effect of the other DDL forms are unmeasured, as are
   `DYNAMIC` and `EXTERNAL` tables (read as `TABLE`) and `SELECT … INTO` (the target is read as referenced, not created).
