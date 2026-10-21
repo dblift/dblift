@@ -81,9 +81,6 @@ _ORACLE_HEAD = re.compile(
 _ORACLE_MV_LOG = re.compile(
     r"\s*(?:CREATE|DROP|ALTER)\s+MATERIALIZED\s+VIEW\s+LOG(?![\w$#])", re.IGNORECASE
 )
-_SNOWFLAKE_MV_LOG_ON = re.compile(
-    r"^\s*(?:CREATE|DROP)\s+MATERIALIZED\s+VIEW\s+LOG\s+ON\b", re.IGNORECASE
-)
 _ORACLE_TRUNCATE_TABLE = re.compile(r"\s*TRUNCATE\s+TABLE\b", re.IGNORECASE)
 _DML_HEAD = re.compile(
     rf"^\s*(INSERT|REPLACE|UPDATE|DELETE)\s+(?:OR\s+\w+\s+)?(?:(?:INTO|FROM)\s+)?"
@@ -284,6 +281,38 @@ def _snowflake_schema_has_discarded_prefix(sql: str, table: exp.Table) -> bool:
     tokens = snowflake.tokenize(sql)
     index = next((i for i, token in enumerate(tokens) if token.start == start), None)
     return index is None or (index > 0 and tokens[index - 1].token_type == TokenType.DOT)
+
+
+def _snowflake_materialized_view_log_on(sql: str, ast: exp.Expr) -> bool:
+    """Recognize LOG ON at the materialized-view target, not in its query body."""
+    if not isinstance(ast, (exp.Create, exp.Drop)) or ast.args.get("kind") != "VIEW":
+        return False
+    if isinstance(ast, exp.Create):
+        properties = ast.args.get("properties")
+        if not properties or not properties.find(exp.MaterializedProperty):
+            return False
+        targets = (ast.this,)
+    else:
+        if not ast.args.get("materialized"):
+            return False
+        targets = ast.args.get("tables") or (ast.this,)
+    snowflake = Dialect.get_or_raise("snowflake")  # lint: allow-dialect-string: target proof
+    tokens = snowflake.tokenize(sql)
+    for target in targets:
+        if not isinstance(target, exp.Table) or not isinstance(target.this, exp.Identifier):
+            continue
+        identifier = target.this
+        start = identifier.meta.get("start")
+        if identifier.name.upper() != "LOG" or not isinstance(start, int):
+            continue
+        if any(
+            token.start == start
+            and token.text.upper() == "LOG"
+            and tokens[index + 1].token_type == TokenType.ON
+            for index, token in enumerate(tokens[:-1])
+        ):
+            return True
+    return False
 
 
 def _mysql_identifier_is_proven(identifier: exp.Expression, sql: str) -> bool:
@@ -1592,8 +1621,7 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
 
     if (
         dialect == "snowflake"  # lint: allow-dialect-string: unmodelled materialized view logs
-        and isinstance(ast, (exp.Create, exp.Drop))
-        and _SNOWFLAKE_MV_LOG_ON.match(_blanked(sql, dialect))
+        and _snowflake_materialized_view_log_on(sql, ast)
     ):
         return StatementFacts(
             type(ast).__name__.upper(),

@@ -104,6 +104,12 @@ def test_snowflake_three_part_schema_identity_is_opaque(sql, operation):
             NamedObject("LOG", SqlObjectType.MATERIALIZED_VIEW, "dropped"),
             id="drop-view-named-log",
         ),
+        pytest.param(
+            "CREATE MATERIALIZED VIEW LOG AS SELECT 1",
+            "CREATE",
+            NamedObject("LOG", SqlObjectType.MATERIALIZED_VIEW, "created"),
+            id="unquoted-log-is-a-view-name",
+        ),
     ],
 )
 def test_snowflake_materialized_view_identity_is_typed(sql, operation, identity):
@@ -122,6 +128,9 @@ def test_snowflake_materialized_view_identity_is_typed(sql, operation, identity)
         ("DROP MATERIALIZED VIEW LOG ON t", "DROP"),
         ("CREATE /* head */ MATERIALIZED VIEW /* gap */ LOG /* owner */ ON t", "CREATE"),
         ("DROP MATERIALIZED VIEW /* gap */ LOG /* owner */ ON t", "DROP"),
+        ("CREATE OR REPLACE MATERIALIZED VIEW LOG ON t", "CREATE"),
+        ("DROP MATERIALIZED VIEW IF EXISTS LOG ON t", "DROP"),
+        ("CREATE MATERIALIZED VIEW // comment\n LOG ON t", "CREATE"),
     ],
 )
 def test_snowflake_materialized_view_log_form_is_opaque(sql, operation):
