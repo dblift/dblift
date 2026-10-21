@@ -1157,25 +1157,37 @@ def _without_mysql_dml_modifiers(sql: str) -> str:
     return sql if pos == verb.end() else f"{sql[: verb.end()]} {sql[pos:].lstrip()}"
 
 
-_REDSHIFT_BRACKETED_HEAD = re.compile(
-    r"^\s*(?:(?:CREATE|ALTER|DROP)\b[^(\[]*\["
-    r"|(?:INSERT\s+INTO|UPDATE|DELETE(?:\s+FROM)?)\s+(?:[\w$\"]+\s*\.\s*)?\[)",
-    re.IGNORECASE,
+_REDSHIFT_NAME_LEADERS = frozenset(
+    {"TABLE", "VIEW", "INDEX", "EXISTS", "INTO", "FROM", "UPDATE", "ONLY", "ON", "JOIN", "SCHEMA"}
+)
+_REDSHIFT_NAMED_STATEMENTS = frozenset(
+    {"CREATE", "ALTER", "DROP", "INSERT", "UPDATE", "DELETE", "WITH", "TRUNCATE", "COMMENT", "COPY"}
 )
 
 
 def _redshift_bracketed_name(sql: str, dialect: str) -> Optional[StatementFacts]:
-    """A DDL head with ``[`` before its first parenthesis, or a DML target in brackets, or ``None``.
+    """A statement with ``[`` where a name belongs, or ``None``.
 
     Redshift drops the brackets around a name (``[t]`` is ``t``, ``["a""b"]`` is ``a"b``) and
-    rejects a space or ``;`` inside them, so the text between the brackets is not the name.
+    rejects a space or ``;`` inside them, so the text between the brackets is not the name. A
+    ``[`` after a name or a call is a SUPER subscript, and one inside a string or a quoted
+    identifier is no token at all: both are read normally.
     """
-    if _REDSHIFT_BRACKETED_HEAD.match(_blanked(sql)) is None:
+    try:
+        tokens = Dialect.get_or_raise(dialect).tokenize(sql)
+    except TokenError:
         return None
-    head = _head_facts(sql, "", dialect=dialect)
-    return StatementFacts(
-        head.operation, head.kind, diagnostic="redshift bracketed name is not modelled"
-    )
+    if not tokens or tokens[0].text.upper() not in _REDSHIFT_NAMED_STATEMENTS:
+        return None
+    for before, token in zip(tokens, tokens[1:]):
+        if token.token_type == TokenType.L_BRACKET and (
+            before.token_type == TokenType.DOT or before.token_type.name in _REDSHIFT_NAME_LEADERS
+        ):
+            head = _head_facts(sql, "", dialect=dialect)
+            return StatementFacts(
+                head.operation, head.kind, diagnostic="redshift bracketed name is not modelled"
+            )
+    return None
 
 
 def _redshift_facts(ast: exp.Expr, sql: str, dialect: str) -> Optional[StatementFacts]:

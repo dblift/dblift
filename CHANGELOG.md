@@ -222,10 +222,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **Redshift scripts are split the way Redshift reads them.** Block comments nest, so
-  `/* a /* b */ c */ SELECT 1` is one statement and an unterminated nested comment is refused;
-  a `COPY … FROM STDIN` line is no longer taken for the start of a data block and a function body
-  `BEGIN ATOMIC … END` no longer holds statements together, since Redshift rejects both forms.
-  Each rule was measured on Redshift Serverless 1.0.485645.
+  `/* a /* b */ c */ SELECT 1` is one statement, and `/* a /* b */ x` is now refused as an
+  unterminated comment, as Redshift does; a script that relied on a comment ending at its first
+  `*/` must close every opened comment. `COPY … FROM STDIN` is a syntax error on Redshift, so its
+  data lines are no longer swallowed as data: the `\.` line that ends them now raises an
+  "unsupported meta-command" error instead of being sent. A function body `BEGIN ATOMIC … END` no
+  longer holds statements together, since Redshift rejects it. Each rule was measured on Redshift
+  Serverless 1.0.485645.
 - **Oracle scripts refuse an invalid blank before a client command.** A no-break
   space or U+001C before `EXIT`, `PROMPT` or `/` no longer makes the splitter
   recognize it as a client command; unsafe scripts are explicitly refused.

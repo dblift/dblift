@@ -208,3 +208,15 @@ def test_read_only_cte_raises_no_caution():
 @pytest.mark.parametrize("sql", ["REPLACE INTO t VALUES (1)", "INSERT INTO t VALUES (1)"])
 def test_an_opaque_dml_with_a_target_gets_no_second_caution(sql):
     assert analyse_script(sql, "postgresql").cautions == ()
+
+
+def test_the_opaque_cte_diagnostic_names_the_dialect_that_read_the_statement():
+    from dblift.core.sql_parser.sqlglot_statement_facts import read_statement_facts
+
+    sql = "WITH t AS (SELECT * FROM t) DELETE FROM u"
+
+    assert (
+        read_statement_facts(sql, dialect="postgres").diagnostic
+        == "postgres CTE source scopes or effects are opaque to statement facts"
+    )
+    assert read_statement_facts(sql, dialect="redshift").diagnostic.startswith("redshift CTE")

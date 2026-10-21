@@ -378,6 +378,9 @@ def test_a_bracketed_name_is_not_read(sql, operation):
         'INSERT INTO s.["a""b"] VALUES (1)',
         'DELETE FROM ["a""b"]',
         'UPDATE ["a""b"] SET x = 1',
+        "WITH c AS (SELECT 1) DELETE FROM [t]",
+        'INSERT INTO "my s".["a""b"] VALUES (1)',
+        "INSERT INTO db.s.[t] VALUES (1)",
     ],
 )
 def test_a_bracketed_dml_target_is_not_read(sql):
@@ -400,3 +403,24 @@ def test_brackets_after_the_head_are_not_a_name():
     sql = "ALTER TABLE t ADD COLUMN c super DEFAULT json_parse('[1]')"
 
     assert names(sql) == (("t", "TABLE", "altered", None),)
+
+
+@pytest.mark.parametrize(
+    "sql, expected",
+    [
+        (
+            "CREATE VIEW v AS SELECT a.b[0] FROM t a",
+            (("v", "VIEW", "created", None), ("t", "TABLE", "referenced", None)),
+        ),
+        (
+            "CREATE TABLE t2 AS SELECT arr[1] AS x FROM src",
+            (("t2", "TABLE", "created", None),),
+        ),
+        ("CREATE TABLE t3 AS SELECT '[' AS x", (("t3", "TABLE", "created", None),)),
+        ('CREATE TABLE "a[b" (c int)', (("a[b", "TABLE", "created", None),)),
+        ('CREATE TABLE t4 AS SELECT 1 AS "["', (("t4", "TABLE", "created", None),)),
+    ],
+)
+def test_a_bracket_that_is_not_at_a_name_is_read_normally(sql, expected):
+    assert names(sql)[: len(expected)] == expected
+    assert not facts(sql).opaque

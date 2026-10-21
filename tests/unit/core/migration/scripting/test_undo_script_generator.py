@@ -27,8 +27,13 @@ class TestUndoScriptGenerator:
 
     @pytest.fixture
     def generator(self):
-        """Create an undo script generator on Redshift's former text extraction (the facts path
-        asks for manual review instead of reversing a statement)."""
+        """Create an undo script generator on Redshift's former text extraction.
+
+        The patch spans each test, because the generator reads ``supports_statement_facts`` when
+        it generates. No user reaches this path any more (the facts path asks for manual review
+        instead of reversing a statement); these tests stay as a bridge until the text undo
+        generator is removed.
+        """
         logger = LogFactory.get_log("test")
         with patch.object(RedshiftQuirks, "statement_facts_class", None):
             yield UndoScriptGenerator(dialect="redshift", logger=logger)

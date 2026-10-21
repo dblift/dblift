@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 import re
 import warnings
+from unittest.mock import patch
 
 import pytest
 
@@ -18,6 +19,7 @@ from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.core.migration.scripting.undo_script_generator._generator import UndoScriptGenerator
 from dblift.core.migration.sql.script_analysis import analyse_script
 from dblift.db.plugins.oracle.parser.lexical_spec import ORACLE_SPEC
+from dblift.db.plugins.redshift.quirks import RedshiftQuirks
 
 LEGACY = (
     "mysql",
@@ -260,9 +262,10 @@ def test_analysis_of_a_name_that_ends_its_statement_names_what_the_engine_reads(
     assert analysis.cautions, "the statement still deserves its caution"
 
 
-@pytest.mark.parametrize("dialect", ("db2",))
-def test_analysis_respects_the_flag_the_parser_set_for_a_cut_name(dialect):
-    analysis = analyse_script("DROP TABLE tété;", dialect)
+def test_analysis_respects_the_flag_the_parser_set_for_a_cut_name():
+    # Redshift's former text extraction cut the name; the facts reader names it whole.
+    with patch.object(RedshiftQuirks, "statement_facts_class", None):
+        analysis = analyse_script("DROP TABLE tété;", "redshift")
     assert not [obj for stmt in analysis.statements for obj in stmt.objects]
     assert analysis.cautions and not any("tété" in c.reason for c in analysis.cautions)
 
@@ -353,7 +356,8 @@ def test_the_facts_path_reviews_every_statement_of_a_script_with_an_unreadable_o
 
 def test_a_readable_statement_before_an_unreadable_one_is_still_reversed(tmp_path):
     script = f"CREATE SEQUENCE q;\nCREATE SEQUENCE q{chr(0xA0)};\n"
-    text = _undo(tmp_path, "snowflake", script)
+    with patch.object(RedshiftQuirks, "statement_facts_class", None):
+        text = _undo(tmp_path, "redshift", script)
     assert [line for line in _code_lines(text) if "DROP" in line] == [
         'DROP SEQUENCE IF EXISTS "q";'
     ]
