@@ -258,6 +258,154 @@ def _head_name_is_bounded(text: str, match: "re.Match[str]", groups: Tuple[int, 
     return not spans or spans[-1][1] >= len(text) or text[spans[-1][1]] != "."
 
 
+def _head_tokens_prove_name(sql: str, dialect: str, prefix: str, names: Tuple[str, ...]) -> bool:
+    """Check that a stripped head names the same source tokens, in the same order."""
+    if not dialect or any(
+        name[0] not in {'"', "`", "["} and name.upper() in {"IF", "NOT", "EXISTS", "ONLY"}
+        for name in names
+    ):
+        return False
+    original_sql, original_prefix = sql, prefix
+    tokenizer = Dialect.get_or_raise(dialect)
+    try:
+        source = tokenizer.tokenize(sql)
+    except TokenError:
+        leading = original_sql.lstrip(_ASCII_BLANKS)
+        if not leading.startswith(original_prefix):
+            return False
+        rest = _blanked(leading[len(original_prefix) :], dialect).lstrip(_ASCII_BLANKS)
+        if rest.startswith((".", "#", "//")):
+            return False  # a further name part, or an unhandled line comment, is not bounded
+        # A broken tail cannot disprove a name already bounded by the raw source head.
+        try:
+            source = tokenizer.tokenize(sql[: len(sql) - len(leading) + len(prefix)])
+        except TokenError:
+            return False
+    try:
+        proposed = tokenizer.tokenize(prefix)
+    except TokenError:
+        return False
+    if any(
+        first.token_type == TokenType.STAR
+        and second.token_type == TokenType.SLASH
+        and first.end + 1 == second.start
+        for first, second in zip(source, source[1:])
+    ):
+        return False  # an unmatched block-comment closer makes the head unreliable
+    if source and proposed and source[0].token_type == TokenType.WITH:
+        at = 1
+        if at < len(source) and source[at].text.upper() == "RECURSIVE":
+            at += 1
+        while at < len(source):
+            if source[at].token_type not in (TokenType.VAR, TokenType.IDENTIFIER):
+                return False
+            at += 1
+            if at < len(source) and source[at].token_type == TokenType.L_PAREN:
+                at += 1
+                if at >= len(source) or source[at].token_type not in (
+                    TokenType.VAR,
+                    TokenType.IDENTIFIER,
+                ):
+                    return False
+                at += 1
+                while at < len(source) and source[at].token_type == TokenType.COMMA:
+                    at += 1
+                    if at >= len(source) or source[at].token_type not in (
+                        TokenType.VAR,
+                        TokenType.IDENTIFIER,
+                    ):
+                        return False
+                    at += 1
+                if at >= len(source) or source[at].token_type != TokenType.R_PAREN:
+                    return False
+                at += 1
+            if at >= len(source) or source[at].token_type != TokenType.ALIAS:
+                return False
+            at += 1
+            if at < len(source) and source[at].text.upper() == "NOT":
+                at += 1
+                if at >= len(source) or source[at].text.upper() != "MATERIALIZED":
+                    return False
+                at += 1
+            elif at < len(source) and source[at].text.upper() == "MATERIALIZED":
+                at += 1
+            if at >= len(source) or source[at].token_type != TokenType.L_PAREN:
+                return False
+            depth = 1
+            at += 1
+            while at < len(source) and depth:
+                if source[at].token_type == TokenType.L_PAREN:
+                    depth += 1
+                elif source[at].token_type == TokenType.R_PAREN:
+                    depth -= 1
+                at += 1
+            if depth or at >= len(source):
+                return False
+            if source[at].token_type != TokenType.COMMA:
+                break
+            at += 1
+        if at >= len(source) or source[at].token_type.name not in _MAIN_KEYWORDS:
+            return False
+        token = source[at]
+        if token.token_type != proposed[0].token_type:
+            return False
+        sql = sql[token.start :]
+        try:
+            source = tokenizer.tokenize(sql)
+        except TokenError:
+            return False
+    if (
+        source
+        and proposed
+        and source[0].token_type == proposed[0].token_type
+        and source[0].token_type in (TokenType.REPLACE, TokenType.RENAME)
+    ):
+        # The MySQL lexer treats these command tails as one token. Re-tokenize the
+        # same source bytes under a same-width verb to compare the actual names.
+        first_source, first_proposed = source[0], proposed[0]
+        replacement = "UPDATE " if first_source.token_type == TokenType.REPLACE else "UPDATE"
+        if first_source.end - first_source.start + 1 != len(
+            replacement
+        ) or first_proposed.end - first_proposed.start + 1 != len(replacement):
+            return False
+        sql = f"{sql[:first_source.start]}{replacement}{sql[first_source.end + 1:]}"
+        prefix = f"{prefix[:first_proposed.start]}{replacement}{prefix[first_proposed.end + 1:]}"
+        try:
+            source = tokenizer.tokenize(sql)
+            proposed = tokenizer.tokenize(prefix)
+        except TokenError:
+            return False
+    if (
+        not proposed
+        or len(source) < len(proposed)
+        or any(
+            (actual.token_type, actual.text) != (expected.token_type, expected.text)
+            for actual, expected in zip(source, proposed)
+        )
+    ):
+        return False
+    if len(source) > len(proposed) and source[len(proposed)].token_type == TokenType.DOT:
+        return False  # a further name part means the proposed identity is incomplete
+    parts = proposed[-(2 * len(names) - 1) :]
+    if len(parts) != 2 * len(names) - 1:
+        return False
+    for index, name in enumerate(names):
+        token = parts[2 * index]
+        if token.text != strip_identifier_quotes(name):
+            return False
+        if name[0] in {'"', "`", "["}:
+            if token.token_type != TokenType.IDENTIFIER:
+                return False
+        elif token.token_type != TokenType.VAR and not (
+            dialect == "mysql"  # lint: allow-dialect-string: qualified MySQL IGNORE schema
+            and len(names) == 2
+            and index == 0
+            and token.token_type == TokenType.IGNORE
+        ):
+            return False
+    return all(token.token_type == TokenType.DOT for token in parts[1::2])
+
+
 def _named(node: exp.Expression, kind: SqlObjectType, role: str) -> Optional[NamedObject]:
     table = node if isinstance(node, exp.Table) else node.find(exp.Table)
     if isinstance(node, exp.Index):
@@ -861,11 +1009,20 @@ _ORACLE_INDEX_ON = re.compile(
 )
 
 
-def _oracle_index_table(head: str, created: "re.Match[str]") -> Optional[NamedObject]:
+def _oracle_index_table(sql: str, head: str, created: "re.Match[str]") -> Optional[NamedObject]:
     """The table of ``CREATE INDEX [s.]ix ON [s.]t (...)`` read after the index name, folded as
     Oracle stores it; ``None`` for a cluster index or a name the text does not bound."""
     on = _ORACLE_INDEX_ON.match(head, created.end())
-    if on is None or not _head_name_is_bounded(head, on, (1, 2)):
+    if (
+        on is None
+        or not _head_name_is_bounded(head, on, (1, 2))
+        or not _head_tokens_prove_name(
+            sql,
+            "oracle",  # lint: allow-dialect-string: Oracle index head proof
+            head[: on.end() - 1].rstrip(),
+            tuple(part for part in (on.group(1), on.group(2)) if part),
+        )
+    ):
         return None
     if re.search(r"\bFROM\b", head[on.end() :], re.IGNORECASE):
         return None  # a bitmap join index also reads the tables of its FROM clause
@@ -924,11 +1081,25 @@ def _head_facts(sql: str, diagnostic: str, *, dialect: str = "") -> StatementFac
             operation = match.group(1).upper()
             kind = _KINDS[operation]
     dml = _DML_HEAD.match(head)
-    if match and not _head_name_is_bounded(head, match, (3, 4)):
+    if match and (
+        match.start() != 0
+        or not _head_name_is_bounded(head, match, (3, 4))
+        or not _head_tokens_prove_name(
+            sql,
+            dialect,
+            head[: match.end()],
+            tuple(match.group(i) for i in (3, 4) if match.group(i)),
+        )
+    ):
         match = None
     if oracle and match and match.group(4) and match.group(2).upper().startswith("DATABASE"):
         match = None  # a link name is global: ``a.b`` is one name with a domain, not a schema
-    if dml and not _head_name_is_bounded(head, dml, (2, 3)):
+    if dml and (
+        not _head_name_is_bounded(head, dml, (2, 3))
+        or not _head_tokens_prove_name(
+            sql, dialect, head[: dml.end()], tuple(dml.group(i) for i in (2, 3) if dml.group(i))
+        )
+    ):
         dml = None
     if match:
         found = _head_object(match, fold=oracle)
@@ -960,7 +1131,7 @@ def _head_facts(sql: str, diagnostic: str, *, dialect: str = "") -> StatementFac
             target_sql=target,
         )
     if oracle and match and operation == "CREATE" and objects and objects[0].type.name == "INDEX":
-        table = _oracle_index_table(head, match)
+        table = _oracle_index_table(sql, head, match)
         if table is not None:
             return StatementFacts(
                 operation, kind, objects + (table,), diagnostic=diagnostic, indexed_table=table.name
@@ -1110,6 +1281,13 @@ def _mysql_program_facts(sql: str, diagnostic: str) -> Optional[StatementFacts]:
     parts = [match.group(i) for i in (5, 6)]
     if not _head_name_is_bounded(head, match, (5, 6, 7, 8)):
         return None
+    if not _head_tokens_prove_name(
+        sql,
+        "mysql",  # lint: allow-dialect-string: MySQL program head proof
+        head[: match.end(6 if match.group(6) else 5)],
+        tuple(part for part in parts if part),
+    ):
+        return StatementFacts(operation, "DDL", diagnostic=diagnostic)
     schema, name = (parts[0], parts[1]) if parts[1] else (None, parts[0])
     role = "created" if operation == "CREATE" else "dropped"
     objects = [
@@ -1120,7 +1298,12 @@ def _mysql_program_facts(sql: str, diagnostic: str) -> Optional[StatementFacts]:
             strip_identifier_quotes(schema) if schema else None,
         )
     ]
-    if match.group(7):
+    if match.group(7) and _head_tokens_prove_name(
+        sql,
+        "mysql",  # lint: allow-dialect-string: MySQL trigger ON relation proof
+        head[: match.end(8 if match.group(8) else 7)],
+        tuple(match.group(i) for i in (7, 8) if match.group(i)),
+    ):
         t_schema, t_name = (
             (match.group(7), match.group(8)) if match.group(8) else (None, match.group(7))
         )
@@ -1151,9 +1334,81 @@ def _mysql_command_facts(sql: str) -> Optional[StatementFacts]:
             return StatementFacts(
                 "RENAME", "DDL", diagnostic="mysql RENAME form is opaque to statement facts"
             )
-        body = re.sub(r"^\s*RENAME\s+TABLE\s+", "", head, flags=re.IGNORECASE)
+        pairs = tuple(_MYSQL_RENAME_SOURCE.finditer(head))
+        tokenizer = Dialect.get_or_raise("mysql")  # lint: allow-dialect-string: MySQL command
+        try:
+            source_command = tokenizer.tokenize(sql)
+            head_command = tokenizer.tokenize(head)
+        except TokenError:
+            return StatementFacts(
+                "RENAME", "DDL", diagnostic="mysql RENAME names are opaque to statement facts"
+            )
+        if (
+            not source_command
+            or not head_command
+            or source_command[0].token_type != TokenType.RENAME
+            or head_command[0].token_type != TokenType.RENAME
+        ):
+            return StatementFacts(
+                "RENAME", "DDL", diagnostic="mysql RENAME names are opaque to statement facts"
+            )
+        source_verb, head_verb = source_command[0], head_command[0]
+        try:
+            source = tokenizer.tokenize(
+                f"{sql[:source_verb.start]}UPDATE{sql[source_verb.end + 1:]}"
+            )
+            proposed = tokenizer.tokenize(
+                f"{head[:head_verb.start]}UPDATE{head[head_verb.end + 1:]}"
+            )
+        except TokenError:
+            return StatementFacts(
+                "RENAME", "DDL", diagnostic="mysql RENAME names are opaque to statement facts"
+            )
+        if (
+            len(source) != len(proposed)
+            or any(
+                (actual.token_type, actual.text) != (expected.token_type, expected.text)
+                for actual, expected in zip(source, proposed)
+            )
+            or any(
+                left.token_type == TokenType.STAR
+                and right.token_type == TokenType.SLASH
+                and left.end + 1 == right.start
+                for left, right in zip(source, source[1:])
+            )
+        ):
+            return StatementFacts(
+                "RENAME", "DDL", diagnostic="mysql RENAME names are opaque to statement facts"
+            )
+        head_tokens = {(token.start, token.end + 1): token for token in proposed}
         sources = []
-        for pair in _MYSQL_RENAME_SOURCE.finditer(body):
+        for pair in pairs:
+            for group in (1, 2, 3, 4):
+                name = pair.group(group)
+                if name is None:
+                    continue
+                token = head_tokens.get(pair.span(group))
+                quoted = name[0] in {'"', "`", "["}
+                if (
+                    token is None
+                    or token.text != strip_identifier_quotes(name)
+                    or (
+                        token.token_type != TokenType.IDENTIFIER
+                        if quoted
+                        else token.token_type != TokenType.VAR
+                        and not (
+                            group in (1, 3)
+                            and pair.group(group + 1)
+                            and token.token_type == TokenType.IGNORE
+                        )
+                    )
+                    or (not quoted and name.upper() in {"IF", "NOT", "EXISTS", "ONLY"})
+                ):
+                    return StatementFacts(
+                        "RENAME",
+                        "DDL",
+                        diagnostic="mysql RENAME names are opaque to statement facts",
+                    )
             schema, name = (
                 (pair.group(1), pair.group(2)) if pair.group(2) else (None, pair.group(1))
             )
@@ -1169,6 +1424,23 @@ def _mysql_command_facts(sql: str) -> Optional[StatementFacts]:
     match = _MYSQL_SPECIAL_INDEX.match(head)
     if match is None:
         return None
+    diagnostic = "mysql index columns are opaque to statement facts"
+    if not _head_tokens_prove_name(
+        sql,
+        "mysql",  # lint: allow-dialect-string: MySQL index head proof
+        head[: match.end(1)],
+        (match.group(1),),
+    ):
+        return StatementFacts("CREATE", "DDL", diagnostic=diagnostic)
+    index = NamedObject(strip_identifier_quotes(match.group(1)), SqlObjectType.INDEX, "created")
+    table_groups = (2, 3) if match.group(3) else (2,)
+    if not _head_tokens_prove_name(
+        sql,
+        "mysql",  # lint: allow-dialect-string: MySQL index ON relation proof
+        head[: match.end(3 if match.group(3) else 2)],
+        tuple(match.group(group) for group in table_groups),
+    ):
+        return StatementFacts("CREATE", "DDL", (index,), diagnostic=diagnostic)
     schema, name = (match.group(2), match.group(3)) if match.group(3) else (None, match.group(2))
     table = strip_identifier_quotes(name)
     schema = strip_identifier_quotes(schema) if schema else None
@@ -1176,11 +1448,11 @@ def _mysql_command_facts(sql: str) -> Optional[StatementFacts]:
         "CREATE",
         "DDL",
         (
-            NamedObject(strip_identifier_quotes(match.group(1)), SqlObjectType.INDEX, "created"),
+            index,
             NamedObject(table, SqlObjectType.TABLE, "referenced", schema),
         ),
         indexed_table=f"{schema}.{table}" if schema else table,
-        diagnostic="mysql index columns are opaque to statement facts",
+        diagnostic=diagnostic,
     )
 
 
