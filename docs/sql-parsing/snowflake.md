@@ -115,3 +115,36 @@ Native source mapping for these rows: the first 39-attempt slice supplied the fi
 ## 12. Current implementation
 
 The Snowflake plugin owns the spec and the common lexical engine supplies records to `StatementSplitter` and parser views. Tests prove that making the retained legacy parser's constructor and `split` fail does not affect those paths. The legacy class remains in source until its planned removal after the 5.0 alpha is published. The shared conformance rows, split/record controls, and observed Unicode/quote/comment cases guard this specification. No statement-facts reader or consumer is activated by this implementation.
+
+## 13. Statement facts
+
+Statements are read by the shared sqlglot reader (`read_statement_facts(sql, dialect="snowflake")` in
+`dblift/core/sql_parser/sqlglot_statement_facts.py`) after the lexical splitter above. This section
+describes the reader. **No row below was observed on Snowflake**: the 10.38.100 campaigns behind this
+document measured splitting and refusals only and ran no DDL, so every reading is a structural
+contract of the parser, not a claim about what the engine accepts or does.
+
+| Form | Reading |
+| --- | --- |
+| `CREATE`/`ALTER`/`DROP` `TABLE`, `VIEW`, `SEQUENCE`, `FUNCTION`, `PROCEDURE`, `DATABASE`; `CREATE`/`DROP INDEX` | the object as written; function and procedure bodies are not read; a function or procedure name carries no argument signature |
+| `CREATE`/`DROP SCHEMA s`, `db.s` | `SCHEMA s`, scoped to `db`; a three-part name, or `SCHEMA` with a qualifier the parser discards, is opaque |
+| `CREATE`/`DROP MATERIALIZED VIEW` | `MATERIALIZED_VIEW`, with the tables it reads; the `LOG ON` form is opaque |
+| `CREATE … CLONE src` | `src` is referenced with the type of the object it copies |
+| `INSERT`, `UPDATE`, `DELETE` | the target is altered, other tables are referenced, plus target, predicate, assigned columns and events; a target the reader cannot name is opaque |
+| `SELECT`, `WITH … SELECT` | the tables read are referenced |
+
+Opaque (a diagnostic, no object or only a head-proven name, never a guess): `CREATE`/`DROP` of `STAGE`, `FILE FORMAT`,
+`TAG`, `WAREHOUSE` and other kinds the object model has no type for; `CREATE TRIGGER`; `ALTER … RENAME TO` and
+`SWAP WITH` (they name a second object); a relation with four or more name parts; a `CTE` whose body writes;
+a `@stage` reference; `MERGE`, `TRUNCATE`, `COPY`, `INSERT ALL`, `GRANT`/`REVOKE`, `USE`, `SHOW`, `DESCRIBE`,
+`UNDROP`, `COMMENT ON` and every statement sqlglot cannot parse. A name kept on an opaque statement is checked
+against the source tokens of the statement head; it is never read from the body.
+
+Known gaps, recorded rather than closed:
+
+- **Unquoted names keep their source spelling.** Snowflake folds an unquoted identifier to upper case, but the reader
+  reports `app` for `CREATE SCHEMA app`, `CREATE SCHEMA "app"` and `CREATE SCHEMA APP` alike (and the same for
+  tables), so a quoted lower-case name and an unquoted one are not told apart. No engine identity is claimed until
+  catalog results on disposable objects settle how each form is stored.
+- Native acceptance and effect of `CREATE`/`DROP SCHEMA` and `CREATE`/`DROP MATERIALIZED VIEW` are unmeasured, as are
+  `DYNAMIC` and `EXTERNAL` tables (read as `TABLE`) and `SELECT … INTO` (the target is read as referenced, not created).

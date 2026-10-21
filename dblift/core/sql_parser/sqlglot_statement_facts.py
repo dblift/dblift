@@ -2444,6 +2444,7 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
                 "mysql",  # lint: allow-dialect-string: bare targets
                 "postgres",  # lint: allow-dialect-string: bare targets
                 "redshift",
+                "snowflake",  # lint: allow-dialect-string: bare targets
                 "tsql",
             }
             and table is not None

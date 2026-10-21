@@ -158,3 +158,18 @@ def test_stage_reference_is_not_a_table_reference(sql):
     assert facts.error is None
     assert not any(obj.name.startswith("@") for obj in facts.objects)
     assert "stage" in facts.diagnostic.lower()
+
+
+@pytest.mark.parametrize(
+    "sql, target, target_sql",
+    [
+        ("UPDATE child AS c SET id = 2 WHERE c.id = 1", "child", "child"),
+        ("DELETE FROM child AS c WHERE c.id = 1", "child", "child"),
+        ('UPDATE "S"."T" AS c SET x = 1', "S.T", '"S"."T"'),
+        ("UPDATE t SET a = 1", "t", "t"),
+    ],
+)
+def test_mutation_target_sql_is_the_bare_table_reference(sql, target, target_sql):
+    facts = _facts(sql)
+
+    assert (facts.target, facts.target_sql) == (target, target_sql)
