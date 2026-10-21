@@ -9,6 +9,7 @@ from dblift.core.sql_model.base import (
     SqlObjectType,
     SqlStatement,
 )
+from dblift.core.sql_parser._deprecation import warn_direct_parser
 from dblift.core.sql_parser.parser_interface import SqlParserInterface
 
 # SQL statement type constants
@@ -30,6 +31,8 @@ class RegexBasedParser(SqlParserInterface):
         Args:
             dialect: SQL dialect to use
         """
+        if type(self) is RegexBasedParser:
+            warn_direct_parser("RegexBasedParser")
         self._dialect: str = dialect
         self._last_statement: Optional[str] = None
         self._last_objects: List[Any] = []

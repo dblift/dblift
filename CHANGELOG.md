@@ -209,6 +209,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Deprecated
 
+- **Direct construction of legacy SQL parser roots.** `HybridParser`, `SqlGlotParser`,
+  `RegexBasedParser`, `RegexParser`, and `EnhancedRegexParser` now warn once per process when
+  constructed directly. Parsing behavior is unchanged. Use `StatementSplitter` for script
+  boundaries, `StatementFactsParser` for supported statement analysis, and live database
+  introspection for schema models. That replacement requires a live database, leaving a
+  migration gap for SQL-text-only rich model callers; see the
+  [v5 alpha deprecation inventory](docs/developer-guide/v5-alpha-deprecation-inventory.md).
+- **Automatic undo script generation.** Existing `DBLiftClient` and `AsyncDBLiftClient`
+  generation warnings now explicitly name removal in 5.0 and hand-written `U*__` scripts as
+  the replacement. Generating scripts still works, and executing hand-written undo scripts is
+  unchanged.
 - **`sqlglot_dialect=` and `dialect=` in `dblift.db.dml_analysis`.** `analyze_dml`,
   `dml_where_predicate`, `is_full_table_dml`, `statement_dml_table` and `updates_restore_key`
   take the plugin's `quirks=`; the `sqlglot_dialect=` and `dialect=` keywords still work, warn,

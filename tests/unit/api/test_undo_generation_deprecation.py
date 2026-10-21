@@ -30,8 +30,11 @@ def _engine(tmp_path: Path):
 
 def _assert_warned_once_at_caller(record) -> None:
     """One warning per call, attributed to this file, never to a worker thread frame."""
-    filenames = [w.filename for w in record if issubclass(w.category, DeprecationWarning)]
+    notices = [w for w in record if issubclass(w.category, DeprecationWarning)]
+    filenames = [w.filename for w in notices]
     assert filenames == [__file__]
+    assert "5.0" in str(notices[0].message)
+    assert "U*__" in str(notices[0].message)
 
 
 def _assert_undo_drops_table(path) -> None:

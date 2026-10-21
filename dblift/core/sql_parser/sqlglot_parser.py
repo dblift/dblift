@@ -25,6 +25,7 @@ from dblift.core.sql_model.base import (
 )
 from dblift.core.sql_model.dialect import SQLGLOT_DIALECT_MAP as _SQLGLOT_DIALECT_MAP
 from dblift.core.sql_model.dialect import _ensure_sqlglot_dialect_map
+from dblift.core.sql_parser._deprecation import internal_parser_construction, warn_direct_parser
 from dblift.core.sql_parser.parser_interface import SqlParserInterface
 from dblift.core.sql_parser.unread_names import names_unreadable, statement_sources
 
@@ -79,6 +80,8 @@ class SqlGlotParser(SqlParserInterface):
             raise ValueError(
                 f"Use the statement-facts parser for {self.dialect} (StatementFactsParser)"
             )
+        if type(self) is SqlGlotParser:
+            warn_direct_parser("SqlGlotParser")
         _ensure_sqlglot_dialect_map()
         self.sqlglot_dialect = _SQLGLOT_DIALECT_MAP.get(self.dialect) or self.dialect
         logger.debug(
@@ -176,6 +179,7 @@ class SqlGlotParser(SqlParserInterface):
         """Use the same executed constituents for object extraction."""
         return self.split_for_analysis(sql_content, strict_tokenizer=strict_tokenizer)
 
+    @internal_parser_construction()
     def _script_scanner(self) -> SqlParserInterface:
         """Resolve the dialect's authoritative scanner through its plugin."""
         from dblift.db.provider_registry import ProviderRegistry

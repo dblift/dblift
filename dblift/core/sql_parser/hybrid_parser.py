@@ -47,6 +47,7 @@ from dblift.core.sql_model.table import Table
 from dblift.core.sql_model.trigger import Trigger
 from dblift.core.sql_model.user_defined_type import UserDefinedType
 from dblift.core.sql_model.view import View
+from dblift.core.sql_parser._deprecation import internal_parser_construction, warn_direct_parser
 from dblift.core.sql_parser._sqlglot_builders import _SqlglotBuildersMixin
 from dblift.core.sql_parser.parser_interface import SqlParserInterface
 from dblift.core.sql_parser.sqlglot_parser import SqlGlotParser
@@ -154,15 +155,19 @@ class HybridParser(_SqlglotBuildersMixin, SqlParserInterface):
             raise ValueError(
                 f"Use the statement-facts parser for {self.dialect} (StatementFactsParser)"
             )
+        if type(self) is HybridParser:
+            warn_direct_parser("HybridParser")
 
         # Initialize regex parser for this dialect
-        self.regex_parser = self._get_regex_parser(dialect)
+        with internal_parser_construction():
+            self.regex_parser = self._get_regex_parser(dialect)
 
         # Initialize sqlglot parser (only when the plugin declares a sqlglot dialect).
         self.sqlglot_parser = None
         if self._quirks.sqlglot_dialect is not None:
             try:
-                self.sqlglot_parser = SqlGlotParser(dialect)
+                with internal_parser_construction():
+                    self.sqlglot_parser = SqlGlotParser(dialect)
                 logger.debug(f"Initialized HybridParser with sqlglot support for {dialect}")
             except Exception as e:
                 logger.debug(f"SqlGlot not available for {dialect}: {e}")
