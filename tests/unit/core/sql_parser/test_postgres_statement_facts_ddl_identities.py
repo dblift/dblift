@@ -55,7 +55,7 @@ def test_comment_on_an_object_that_cannot_be_named_is_still_ddl(sql):
     assert facts.error is None
 
 
-@pytest.mark.parametrize("dialect", ["mysql", "oracle", "tsql"])
+@pytest.mark.parametrize("dialect", ["mysql", "tsql"])
 def test_comment_on_is_unchanged_for_other_dialects(dialect):
     facts = read_statement_facts("COMMENT ON TABLE t IS 'x'", dialect=dialect)
 
@@ -222,17 +222,6 @@ def test_statements_the_grammar_leaves_opaque_are_named_from_their_head(sql, ope
     assert facts.opaque
     assert facts.diagnostic.startswith(named.type.value.lower().replace("_", " ") + ": ")
     assert facts.error is None
-
-
-@pytest.mark.parametrize("dialect", ["oracle"])
-@pytest.mark.parametrize("sql,operation,named", HEAD_CASES, ids=HEAD_IDS)
-def test_head_classification_is_unchanged_for_other_dialects(dialect, sql, operation, named):
-    facts = read_statement_facts(sql, dialect=dialect)
-
-    # Only table forms were named before, and which of them parse depends on the sqlglot version.
-    if named.type != T.TABLE:
-        assert facts.objects == ()
-    assert (facts.operation, facts.kind) == (operation, "DDL")
 
 
 @pytest.mark.parametrize(

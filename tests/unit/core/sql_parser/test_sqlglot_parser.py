@@ -12,6 +12,8 @@ from dblift.core.sql_parser.parser_factory import SqlParserFactory
 from dblift.core.sql_parser.sqlglot_parser import SqlGlotParser
 from tests.support.legacy_sqlserver_parsers import legacy_sqlserver_sqlglot
 
+pytestmark = pytest.mark.usefixtures("legacy_oracle")
+
 
 def test_snowflake_qualified_drop_index_on_relation_stays_unread():
     sql = "DROP INDEX idx1 ON dbo.mytable"

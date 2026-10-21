@@ -2,6 +2,10 @@
 
 import unittest
 
+import pytest
+
+pytestmark = pytest.mark.usefixtures("legacy_oracle")
+
 
 class TestHybridParserInit(unittest.TestCase):
     def _make(self, dialect="oracle"):

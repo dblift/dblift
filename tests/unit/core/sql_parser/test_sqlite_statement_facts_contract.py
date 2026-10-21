@@ -61,6 +61,7 @@ def test_direct_generic_parser_construction_rejects_sqlite(parser_class):
         parser_class("sqlite")
 
 
+@pytest.mark.usefixtures("legacy_oracle")
 @pytest.mark.parametrize("parser_class", [HybridParser, SqlGlotParser])
 def test_direct_generic_parser_remains_available_for_unmigrated_dialect(parser_class):
     assert parser_class("oracle").dialect_name == "oracle"

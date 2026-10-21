@@ -8,7 +8,7 @@ import pytest
 
 from dblift.core.sql_model.table import Table
 from dblift.core.sql_parser._partition_handler import apply_partition_metadata
-from dblift.core.sql_parser.hybrid_parser import HybridParser
+from tests.support.legacy_oracle_hybrid import hybrid_for
 
 pytestmark = pytest.mark.unit
 
@@ -20,7 +20,7 @@ pytestmark = pytest.mark.unit
     ],
 )
 def test_sql_partition_count(dialect, clause, count):
-    result = HybridParser(dialect).parse_sql(f"CREATE TABLE t (id INT) PARTITION BY {clause}")
+    result = hybrid_for(dialect).parse_sql(f"CREATE TABLE t (id INT) PARTITION BY {clause}")
     assert result.success
     table = result.tables[0]
     assert table.partition_count == count
@@ -55,7 +55,7 @@ def test_sql_partition_count(dialect, clause, count):
     ],
 )
 def test_sql_partition_list(dialect, clause, method, expression, expected):
-    result = HybridParser(dialect).parse_sql(
+    result = hybrid_for(dialect).parse_sql(
         f"CREATE TABLE t (id INT, y INT) PARTITION BY {clause}", default_schema="s"
     )
     assert result.success
@@ -115,7 +115,7 @@ def test_legacy_table_serialization_is_byte_identical():
     ],
 )
 def test_unchanged_partition_guards(dialect, clause, method, columns):
-    result = HybridParser(dialect).parse_sql(f"CREATE TABLE t (id INT, y INT) {clause}")
+    result = hybrid_for(dialect).parse_sql(f"CREATE TABLE t (id INT, y INT) {clause}")
     assert result.success
     table = result.tables[0]
     assert table.partition_method == method

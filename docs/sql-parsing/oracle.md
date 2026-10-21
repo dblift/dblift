@@ -7,7 +7,8 @@
 | Covers | Oracle Database 12c+ scripts written for SQL\*Plus / SQLcl |
 | Code facts taken from | OSS `develop` `61b1d83f` |
 | Vendor references, fetched 2026-10-10 | *SQL\*Plus User's Guide and Reference 19c*, ch. 4 "SQL\*Plus Basics": "Running SQL Commands", "Running PL/SQL Blocks", "Running SQL\*Plus Commands"; *SQL Language Reference 19c*, "Text Literals", "Comments" |
-| Live verification | sqlplus 23.x on Oracle Free 23ai, 2026-10-10 and 2026-10-20 (XE 21c runs in the maintainers' CI, not yet measured) |
+| Live verification | sqlplus 23.x on Oracle Free 23ai, 2026-10-10 and 2026-10-20 (XE 21c runs in the maintainers' CI, not yet measured); statement facts probed with python-oracledb against Oracle AI Database 26ai Free 23.26.3, 2026-10-20 (§13) |
+| Statement facts | active (§13) |
 | Engine subclass | alternative quoting `q'…'` |
 
 The central decision of this specification is that **a PL/SQL unit ends at
@@ -54,7 +55,20 @@ preserve statement text and showed no separate execution loss.
 | Block | `/*` | the first `*/` | **no** | "Begin the comment with a slash and an asterisk (/\*). … End the comment with an asterisk and a slash (\*/)." The Oracle manual does not say so explicitly; Snowflake's SnowConvert documentation does, in comparing engines: `/*/` "can start a nesting inside the block comment, or finish the whole block … the comment behaves differently in Teradata and SQL Server than in Oracle and Snowflake", i.e. Oracle finishes the block. |
 | Hint | `/*+` … `*/`, `--+` | as above | — | a comment to the splitter; kept in the statement text |
 
-**Stray `*/` after `;`.** Oracle comments do not nest, so in
+**Stray `*/` after `;`.** An object reached through a database link is not named: no local object has that name, so the
+statement is opaque. Oracle 23.26.3 accepts blanks, newlines and comments around the `@`
+(`delete from child @ lnk`, `select * from child` + newline + `@lnk` and `child/*c*/@lnk` all
+reach the link, ORA-12154 at the connection), and reads any `@` outside a string or quoted name as
+the start of a link name (`select child.id @ from dual` is ORA-01729): the reader refuses a
+statement whose tokens hold an `@` outside strings, quoted names and comments. Declared column
+names and constraint names keep the spelling the statement writes (only table, index and schema
+names are folded).
+
+`is_full_table_dml` reads no predicate from a statement the grammar cannot parse (a bind variable
+`:1`, `LOG ERRORS`, a partition clause), so it reports such an `UPDATE` or `DELETE` as a full-table
+change: the safe direction, but a false positive for a valid statement.
+
+Oracle comments do not nest, so in
 `/* a /* b */ DROP TABLE t; */` the `DROP` is outside the comment and the `;`
 is not the last text on its line. Under the §4 rule that `;` is not a
 terminator; the splitter rejects the line. SQL\*Plus itself keeps the text in
@@ -340,3 +354,61 @@ engine is a separate change with its own rows.
   alternative quotes are one literal, an identifier that holds a comment
   marker or an apostrophe is not a literal, and an unterminated alternative
   quote falls back to the first word of the statement.
+
+## 13. Statement facts
+
+The objects, targets and predicates of each statement are read from the sqlglot `oracle` AST by
+`dblift/core/sql_parser/sqlglot_statement_facts.py`, after the splitter above has cut the script.
+The corpus `tests/support/facts_corpus/oracle.jsonl` and the ledger `oracle.review.json` (every
+difference against the former text extraction, explained) are the evidence, and `gated.json` gates
+the family.
+
+**Names.** An unquoted name is stored with each letter in its one-character upper-case form and a
+quoted name exactly as written (Oracle AI Database 26ai Free 23.26.3, `user_objects`:
+`create table mixedCase` is `MIXEDCASE`, `create table "mixedQ"` is `mixedQ`, `tété` is `TÉTÉ`,
+`a#b` is `A#B`, `ı` is `I`, `µ` is the Greek capital MU, `ÿ` is `Ÿ`, `ø` is `Ø`, `σ` and `ς` are `Σ`,
+`ſ` is `S`; `ß`, `ﬁ` and `ŉ` stay as they are, which Python's `str.upper` would turn into `SS`, `FI`
+and `ʼN`). A name that holds a letter whose Python upper-case form is longer than one character is
+not guessed: the statement is opaque and names nothing. The facts hold the name as
+Oracle stores it: `target` and `objects` are folded, `target_sql` and `predicate` keep the spelling
+written, so that `FROM <target_sql> WHERE <predicate>` is the text the statement wrote. A statement
+whose name holds a character the engine rejects (U+200D and U+00A0 in a name: ORA-00911) is read as
+written and never reaches the engine.
+
+**Forms read from the grammar** (each checked against the engine): `CREATE`/`ALTER`/`DROP TABLE`,
+`VIEW`, `MATERIALIZED VIEW`, `INDEX`, `SEQUENCE`, `INSERT`/`UPDATE`/`DELETE` with a plain table
+target, `COMMENT ON TABLE`, `COLUMN` and `MATERIALIZED VIEW` (a column names its table; `VIEW`,
+`INDEX` and `SEQUENCE` are ORA-32594 and name nothing), and `TRUNCATE TABLE <one table>` (`TRUNCATE t`
+is ORA-03290 and a list is ORA-03291).
+
+**Forms read from the head of the statement** when sqlglot returns them as an opaque command or a
+block: `CREATE [OR REPLACE] [EDITIONABLE | NONEDITIONABLE] PROCEDURE | FUNCTION | PACKAGE [BODY] |
+TRIGGER | TYPE`, `SYNONYM` (also `PUBLIC`), `DATABASE LINK`, `SEQUENCE`, `INDEX`, `TABLE`, `VIEW`
+and `MATERIALIZED VIEW`, and the same for `DROP` and `ALTER`. The result names the unit and is
+opaque (`diagnostic`): its body is never read, so `EXECUTE IMMEDIATE 'DROP TABLE x'` names nothing.
+A `CREATE INDEX [s.]ix ON [s.]t (…)` that sqlglot cannot parse (a schema-qualified index, `BITMAP`,
+`TABLESPACE`) names the index and the table it is built on (`indexed_table`). A database link name
+is global (`dl2.example.com` is one name), so a dotted link name is not read.
+
+**Not read, by design** (`opaque`, nothing guessed): the body of a PL/SQL unit and every anonymous
+`BEGIN … END` / `DECLARE` block; `CREATE TYPE BODY`; `MERGE`; `GRANT` and `REVOKE`;
+`TRUNCATE TABLE … CASCADE`, `… DROP STORAGE`, `… PURGE MATERIALIZED VIEW LOG` and
+`TRUNCATE CLUSTER`; `CREATE`/`DROP MATERIALIZED VIEW LOG` (the log has no name of its own, and
+Oracle reads `LOG` as the keyword: `CREATE MATERIALIZED VIEW LOG AS SELECT` is ORA-00969);
+`CREATE SCHEMA AUTHORIZATION … CREATE TABLE …` (it creates the objects it holds); `INSERT ALL`;
+`DELETE`/`UPDATE` on `ONLY (…)`, `TABLE(…)`, a subquery, a partition or a sample;
+`CREATE`/`DROP TABLESPACE`, `USER`, `ROLE`; the partition and storage clauses of `CREATE TABLE`
+when sqlglot cannot parse the statement; expression indexes. A table named `ONLY` is read as the
+table (`DELETE FROM ONLY child` deletes from the table `ONLY` with the alias `child`: ORA-00942 on
+Oracle 23.26.3).
+
+Oracle comments do not nest (`/* a /* b */ x */ select 1 from dual` is ORA-00900); the reader and
+the splitter end a comment at the first `*/`.
+
+Statements that Oracle rejects (`WITH … UPDATE`/`DELETE`/`INSERT`, `DROP TABLE a, b`,
+`CREATE SCHEMA s`, three-part names, `UPDATE OR IGNORE`, `INSERT OR REPLACE`, and the statements
+of other engines harvested into the corpus) are read as far as the grammar allows; the ledger
+records the engine's answer for each one.
+
+Undo generation does not reverse Oracle statements from their facts: every data or schema change
+is a manual-review entry (`DROP … IF EXISTS` needs 23ai or its 19.28 backport).

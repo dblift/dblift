@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import replace
-from typing import Optional, Tuple
+from typing import Optional, Tuple, TypeVar
 
 from sqlglot import exp, parse_one
 from sqlglot.dialects import Dialect
@@ -64,6 +64,24 @@ _POSTGRES_HEAD = re.compile(
 _POSTGRES_HEAD_SCAN = re.compile(
     _POSTGRES_HEAD.pattern.replace(r"^\s*", r"(?:^|;)\s*", 1), re.IGNORECASE | re.MULTILINE
 )
+# Oracle names more kinds than the generic head, skips its creation modifiers and counts ``#``
+# as a name character. ``TYPE BODY`` is not listed (no object type), and the reserved words that
+# can follow a kind are never a name.
+_ORACLE_NAME = rf"(?:{DOUBLE_QUOTED_IDENTIFIER}|[\w$#]+)"
+_ORACLE_HEAD = re.compile(
+    rf"^\s*(CREATE|ALTER|DROP)\s+"
+    rf"(?:(?:OR\s+REPLACE|NOFORCE|FORCE|EDITIONABLE|NONEDITIONABLE|EDITIONING|NONEDITIONING"
+    rf"|PUBLIC|SHARED|UNIQUE|BITMAP|GLOBAL\s+TEMPORARY|PRIVATE\s+TEMPORARY|IF|NOT|EXISTS)\s+)*"
+    rf"(MATERIALIZED\s+VIEW(?!\s+LOG(?![\w$#]))|PACKAGE\s+BODY|TABLE|VIEW|INDEX|TRIGGER|FUNCTION|PROCEDURE|PACKAGE"
+    rf"|SEQUENCE|TYPE|SYNONYM|DATABASE\s+LINK)\s+(?:(?:IF|NOT|EXISTS)\s+)*"
+    rf"(?!(?:IF|NOT|EXISTS|OR|REPLACE|AS|IS|BODY|AUTHID|ACCESSIBLE)\b)"
+    rf"({_ORACLE_NAME})(?:\s*\.\s*({_ORACLE_NAME}))?",
+    re.IGNORECASE,
+)
+_ORACLE_MV_LOG = re.compile(
+    r"\s*(?:CREATE|DROP|ALTER)\s+MATERIALIZED\s+VIEW\s+LOG(?![\w$#])", re.IGNORECASE
+)
+_ORACLE_TRUNCATE_TABLE = re.compile(r"\s*TRUNCATE\s+TABLE\b", re.IGNORECASE)
 _DML_HEAD = re.compile(
     rf"^\s*(INSERT|REPLACE|UPDATE|DELETE)\s+(?:OR\s+\w+\s+)?(?:(?:INTO|FROM)\s+)?"
     rf"({_NAME})(?:\s*\.\s*({_NAME}))?",
@@ -381,7 +399,7 @@ def _created_object_type(ast: exp.Create, dialect: str) -> SqlObjectType:
     if properties and properties.find(exp.VirtualProperty):
         object_type = SqlObjectType.VIRTUAL_TABLE
     if (
-        dialect == "postgres"  # lint: allow-dialect-string: PostgreSQL materialized views
+        dialect in {"postgres", "oracle"}  # lint: allow-dialect-string: materialized views
         and kind == "VIEW"
         and properties
         and properties.find(exp.MaterializedProperty)
@@ -739,13 +757,60 @@ def _main_statement(head: str) -> str:
     return head[min(found) :] if found else head
 
 
-def _head_object(match: "re.Match[str]") -> NamedObject:
+def _oracle_fold_name(name: str) -> Optional[str]:
+    """The name Oracle stores for an unquoted one: each letter in its one-character upper-case
+    form (23.26.3: ``ı`` is ``I``, ``µ`` is the Greek capital MU; ``ß``, ``ﬁ`` and ``ŉ`` stay).
+    ``None`` when a letter's upper-case form is not one character: the probes covered only those
+    three, so the name is not guessed."""
+    if name.isascii():
+        return name.upper()
+    folded = [letter.upper() for letter in name]
+    return "".join(folded) if all(len(letter) == 1 for letter in folded) else None
+
+
+def _head_object(match: "re.Match[str]", *, fold: bool = False) -> Optional[NamedObject]:
     operation = match.group(1).upper()
     object_type = SqlObjectType["_".join(match.group(2).upper().split())]
     name = strip_identifier_quotes(match.group(4) or match.group(3))
     schema = strip_identifier_quotes(match.group(3)) if match.group(4) else None
+    if fold:  # an unquoted name is stored upper-cased, a quoted one as written
+        folded_name: Optional[str] = name
+        folded_schema = schema
+        if not (match.group(4) or match.group(3)).startswith('"'):
+            folded_name = _oracle_fold_name(name)
+        if schema is not None and not match.group(3).startswith('"'):
+            folded_schema = _oracle_fold_name(schema)
+        if folded_name is None or (schema is not None and folded_schema is None):
+            return None
+        name, schema = folded_name, folded_schema
     role = {"CREATE": "created", "ALTER": "altered", "DROP": "dropped"}[operation]
     return NamedObject(name, object_type, role, schema)
+
+
+_ORACLE_INDEX_ON = re.compile(
+    rf"\s+ON\s+(?!CLUSTER\b)({_ORACLE_NAME})(?:\s*\.\s*({_ORACLE_NAME}))?\s*\(", re.IGNORECASE
+)
+
+
+def _oracle_index_table(head: str, created: "re.Match[str]") -> Optional[NamedObject]:
+    """The table of ``CREATE INDEX [s.]ix ON [s.]t (...)`` read after the index name, folded as
+    Oracle stores it; ``None`` for a cluster index or a name the text does not bound."""
+    on = _ORACLE_INDEX_ON.match(head, created.end())
+    if on is None or not _head_name_is_bounded(head, on, (1, 2)):
+        return None
+    if re.search(r"\bFROM\b", head[on.end() :], re.IGNORECASE):
+        return None  # a bitmap join index also reads the tables of its FROM clause
+    parts = [raw for raw in (on.group(1), on.group(2)) if raw]
+    folded = [
+        strip_identifier_quotes(raw) if raw.startswith('"') else _oracle_fold_name(raw)
+        for raw in parts
+    ]
+    if any(name is None for name in folded):
+        return None
+    names = [name for name in folded if name is not None]
+    return NamedObject(
+        names[-1], SqlObjectType.TABLE, "referenced", names[0] if len(names) > 1 else None
+    )
 
 
 def _head_facts(sql: str, diagnostic: str, *, dialect: str = "") -> StatementFacts:
@@ -789,7 +854,8 @@ def _head_facts(sql: str, diagnostic: str, *, dialect: str = "") -> StatementFac
     if postgres:
         kind = "DDL" if operation == "COMMENT" else kind
     objects: Tuple[NamedObject, ...] = ()
-    match = (_POSTGRES_HEAD if postgres else _HEAD).match(head)
+    oracle = dialect == "oracle"  # lint: allow-dialect-string: Oracle head kinds and folding
+    match = (_ORACLE_HEAD if oracle else _POSTGRES_HEAD if postgres else _HEAD).match(head)
     if match is None and first is None:
         # Stray characters (a NUL, a lone ``/``) ahead of the statement; the engine reads past them.
         scan = _POSTGRES_HEAD_SCAN if postgres else _HEAD_SCAN
@@ -800,12 +866,15 @@ def _head_facts(sql: str, diagnostic: str, *, dialect: str = "") -> StatementFac
     dml = _DML_HEAD.match(head)
     if match and not _head_name_is_bounded(head, match, (3, 4)):
         match = None
+    if oracle and match and match.group(4) and match.group(2).upper().startswith("DATABASE"):
+        match = None  # a link name is global: ``a.b`` is one name with a domain, not a schema
     if dml and not _head_name_is_bounded(head, dml, (2, 3)):
         dml = None
     if match:
-        found = _head_object(match)
-        diagnostic = f"{found.type.value.lower().replace('_', ' ')}: {diagnostic}"
-        objects = (found,)
+        found = _head_object(match, fold=oracle)
+        if found is not None:
+            diagnostic = f"{found.type.value.lower().replace('_', ' ')}: {diagnostic}"
+            objects = (found,)
     elif dml and _DML_FORM[operation].match(head) and dml.group(2).upper() not in _NOT_A_TABLE:
         schema = strip_identifier_quotes(dml.group(2)) if dml.group(3) else None
         name = strip_identifier_quotes(dml.group(3) or dml.group(2))
@@ -830,6 +899,12 @@ def _head_facts(sql: str, diagnostic: str, *, dialect: str = "") -> StatementFac
             diagnostic=diagnostic,
             target_sql=target,
         )
+    if oracle and match and operation == "CREATE" and objects and objects[0].type.name == "INDEX":
+        table = _oracle_index_table(head, match)
+        if table is not None:
+            return StatementFacts(
+                operation, kind, objects + (table,), diagnostic=diagnostic, indexed_table=table.name
+            )
     return StatementFacts(operation, kind, objects, diagnostic=diagnostic)
 
 
@@ -866,6 +941,55 @@ def _mysql_unresolved_mutation_target(ast: exp.Expression) -> bool:
         ):
             return True
     return False
+
+
+def _fold_oracle_names(ast: exp.Expr) -> bool:
+    """Fold the unquoted table and index names of an Oracle statement as Oracle stores them; a
+    quoted name keeps its spelling. Columns and aliases are left as written. ``True`` when a name
+    holds a letter whose upper-case form is not one character: the statement is then unread."""
+    unsafe = False
+
+    def fold(part: object) -> None:
+        nonlocal unsafe
+        if isinstance(part, exp.Identifier) and not part.args.get("quoted"):
+            part.meta["written"] = part.name
+            folded = _oracle_fold_name(part.name)
+            if folded is None:
+                unsafe = True
+            else:
+                part.set("this", folded)
+
+    for node in ast.find_all(exp.Table, exp.Index):
+        for key in ("this", "db", "catalog") if isinstance(node, exp.Table) else ("this",):
+            fold(node.args.get(key))
+    if isinstance(ast, exp.Comment) and isinstance(ast.this, exp.Column):
+        for key in ("table", "db", "catalog"):  # COMMENT ON COLUMN s.t.c names its table
+            fold(ast.this.args.get(key))
+    return unsafe
+
+
+def _oracle_names_a_remote_object(sql: str) -> bool:
+    """Whether the statement uses a database link (``emp@lnk``, ``emp @ lnk``, an ``@`` after a
+    comment): no local object has such a name. An ``@`` inside a string, a quoted name or a
+    comment is not one. Oracle 23.26.3 accepts blanks and comments around the ``@``."""
+    try:
+        tokens = Dialect.get_or_raise("oracle").tokenize(sql)  # lint: allow-dialect-string: links
+    except TokenError:
+        return False
+    return any(token.token_type not in _QUOTED_TOKENS and "@" in token.text for token in tokens)
+
+
+_Node = TypeVar("_Node", bound=exp.Expression)
+
+
+def _oracle_as_written(node: _Node) -> _Node:
+    """The node with its table names spelled as the statement spells them: ``target_sql`` and
+    ``predicate`` are text a consumer sends back, where Oracle folds unquoted names itself."""
+    written = node.copy()
+    for part in written.find_all(exp.Identifier):
+        if "written" in part.meta:
+            part.set("this", part.meta["written"])
+    return written
 
 
 def _postgres_comment_identity(ast: exp.Comment) -> Optional[NamedObject]:
@@ -1076,6 +1200,19 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
         sql = _without_mysql_dml_modifiers(sql)
     try:
         ast = parse_one(_UPDATE_OR.sub(r"\1", sql), read=dialect)
+        if dialect == "oracle" and ast is not None:  # lint: allow-dialect-string: Oracle folding
+            unread_reason = (
+                "oracle name holds a letter whose upper-case form is not one character"
+                if _fold_oracle_names(ast)
+                else (
+                    "oracle statement names an object through a database link"
+                    if _oracle_names_a_remote_object(sql)
+                    else None
+                )
+            )
+            if unread_reason is not None:
+                head = _head_facts(sql, "", dialect=dialect)
+                return StatementFacts(head.operation, head.kind, diagnostic=unread_reason)
     except (ParseError, TokenError) as exc:
         if not _blanked(sql).strip():
             return StatementFacts("UNKNOWN", "UNKNOWN")
@@ -1234,6 +1371,36 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
         if identity is not None:
             return StatementFacts("COMMENT", "DDL", (identity,))
 
+    if (
+        dialect == "oracle"  # lint: allow-dialect-string: Oracle COMMENT ON TABLE, COLUMN, MV
+        and isinstance(ast, exp.Comment)
+        and (
+            str(ast.args.get("kind") or "").upper() in {"TABLE", "COLUMN"}
+            or (str(ast.args.get("kind") or "").upper() == "VIEW" and ast.args.get("materialized"))
+        )
+    ):
+        identity = _postgres_comment_identity(ast)
+        if identity is not None:
+            return StatementFacts("COMMENT", "DDL", (identity,))
+
+    if (
+        dialect == "oracle"  # lint: allow-dialect-string: Oracle TRUNCATE TABLE takes one table
+        and isinstance(ast, exp.TruncateTable)
+        and len(ast.expressions) == 1
+        and not ast.args.get("option")  # CASCADE also truncates child tables
+        and not ast.args.get("is_database")
+        and _ORACLE_TRUNCATE_TABLE.match(_blanked(sql))  # ``TRUNCATE t`` is ORA-03290
+    ):
+        target = ast.expressions[0]
+        if (
+            isinstance(target, exp.Table)
+            and isinstance(target.this, exp.Identifier)
+            and not any(v for k, v in target.args.items() if k not in {"this", "db"})
+        ):
+            identity = _named(target, SqlObjectType.TABLE, "altered")
+            if identity is not None:
+                return StatementFacts("TRUNCATE", "DDL", (identity,))
+
     if dialect == "duckdb":  # lint: allow-dialect-string: DuckDB metadata statement mappings
         if isinstance(ast, exp.Comment) and ast.args.get("kind") == "TABLE":
             identity = _named(ast.this, SqlObjectType.TABLE, "altered")
@@ -1241,6 +1408,17 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
         if isinstance(ast, (exp.Show, exp.Describe)):
             operation = "SHOW" if isinstance(ast, exp.Show) else "DESCRIBE"
             return StatementFacts(operation, "QUERY", _referenced(ast))
+
+    if dialect == "oracle" and (  # lint: allow-dialect-string: PL/SQL bodies are not read
+        (
+            isinstance(ast, exp.Create)
+            and str(ast.args.get("kind") or "").upper() in {"PROCEDURE", "FUNCTION", "TRIGGER"}
+        )
+        or _ORACLE_MV_LOG.match(_blanked(sql))  # sqlglot reads the log as a view named LOG
+    ):
+        return _head_facts(
+            sql, "oracle PL/SQL bodies and materialized view logs are not read", dialect=dialect
+        )
 
     if isinstance(ast, exp.Create):
         object_type = _created_object_type(ast, dialect)
@@ -1389,7 +1567,7 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
         kind = str(ast.args.get("kind") or "").upper()
         object_type = SqlObjectType.__members__.get(kind, SqlObjectType.UNKNOWN)
         if (
-            dialect == "postgres"  # lint: allow-dialect-string: PostgreSQL materialized views
+            dialect in {"postgres", "oracle"}  # lint: allow-dialect-string: materialized views
             and kind == "VIEW"
             and ast.args.get("materialized")
         ):
@@ -1644,11 +1822,11 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
             else None
         )
         where = ast.args.get("where")
-        predicate = (
-            where.this.sql(dialect=dialect)
-            if isinstance(where, exp.Where) and where.this is not None
-            else None
-        )
+        predicate_node = where.this if isinstance(where, exp.Where) else None
+        if predicate_node is not None:
+            if dialect == "oracle":  # lint: allow-dialect-string: Oracle spelling
+                predicate_node = _oracle_as_written(predicate_node)
+        predicate = predicate_node.sql(dialect=dialect) if predicate_node is not None else None
         events = _sqlglot_events(ast)
         columns = tuple(_sqlglot_updated_columns(ast))
         skipped_references: Tuple[exp.Expression, ...] = (table,) if table is not None else ()
@@ -1679,6 +1857,8 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
             target_table.set("alias", None)
             target_table.set("joins", None)
             target_table.set("only", None)
+        if dialect == "oracle" and target_table is not None:  # lint: allow-dialect-string: spelling
+            target_table = _oracle_as_written(target_table)
         return StatementFacts(
             operation,
             "DML",

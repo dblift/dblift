@@ -216,7 +216,7 @@
  },
  "oracle": {
   "CREATE DEFINER=`root`@`%` FUNCTION my_func() RETURNS INT BEGIN RETURN 1; END": {
-   "diagnostic": "oracle Block is opaque to statement facts",
+   "diagnostic": "oracle statement names an object through a database link",
    "indexed_table": null,
    "kind": "DDL",
    "objects": [],
@@ -240,28 +240,42 @@
    "operation": "CREATE"
   },
   "CREATE FUNCTION f() RETURNS INT BEGIN RETURN 1; END": {
-   "diagnostic": "oracle Block is opaque to statement facts",
+   "diagnostic": "function: oracle Block is opaque to statement facts",
    "indexed_table": null,
    "kind": "DDL",
-   "objects": [],
+   "objects": [
+    [
+     "F",
+     "FUNCTION",
+     "created",
+     null
+    ]
+   ],
    "opaque": true,
    "operation": "CREATE"
   },
   "CREATE FUNCTION mydb.test_func() RETURNS INT BEGIN RETURN 1; END": {
-   "diagnostic": "oracle Block is opaque to statement facts",
+   "diagnostic": "function: oracle Block is opaque to statement facts",
    "indexed_table": null,
    "kind": "DDL",
-   "objects": [],
+   "objects": [
+    [
+     "TEST_FUNC",
+     "FUNCTION",
+     "created",
+     "MYDB"
+    ]
+   ],
    "opaque": true,
    "operation": "CREATE"
   },
   "CREATE INDEX CONCURRENTLY ON orders (email)": {
    "diagnostic": null,
-   "indexed_table": "orders",
+   "indexed_table": "ORDERS",
    "kind": "DDL",
    "objects": [
     [
-     "orders",
+     "ORDERS",
      "TABLE",
      "referenced",
      null
@@ -272,17 +286,17 @@
   },
   "CREATE INDEX CONCURRENTLY ix ON t (c)": {
    "diagnostic": null,
-   "indexed_table": "t",
+   "indexed_table": "T",
    "kind": "DDL",
    "objects": [
     [
-     "ix",
+     "IX",
      "INDEX",
      "created",
      null
     ],
     [
-     "t",
+     "T",
      "TABLE",
      "referenced",
      null
@@ -293,11 +307,11 @@
   },
   "CREATE INDEX ON orders (email)": {
    "diagnostic": null,
-   "indexed_table": "orders",
+   "indexed_table": "ORDERS",
    "kind": "DDL",
    "objects": [
     [
-     "orders",
+     "ORDERS",
      "TABLE",
      "referenced",
      null
@@ -307,18 +321,32 @@
    "operation": "CREATE"
   },
   "CREATE OR REPLACE PROCEDURE p(OUT total INTEGER) LANGUAGE SQL BEGIN SELECT 1; END": {
-   "diagnostic": "oracle grammar is not modelled for this statement",
+   "diagnostic": "procedure: oracle grammar is not modelled for this statement",
    "indexed_table": null,
    "kind": "DDL",
-   "objects": [],
+   "objects": [
+    [
+     "P",
+     "PROCEDURE",
+     "created",
+     null
+    ]
+   ],
    "opaque": true,
    "operation": "CREATE"
   },
   "CREATE OR REPLACE TRIGGER my_trigger AFTER INSERT ON t FOR EACH ROW BEGIN END": {
-   "diagnostic": "oracle Command is opaque to statement facts",
+   "diagnostic": "trigger: oracle Command is opaque to statement facts",
    "indexed_table": null,
    "kind": "DDL",
-   "objects": [],
+   "objects": [
+    [
+     "MY_TRIGGER",
+     "TRIGGER",
+     "created",
+     null
+    ]
+   ],
    "opaque": true,
    "operation": "CREATE"
   },
@@ -328,7 +356,7 @@
    "kind": "DDL",
    "objects": [
     [
-     "tr",
+     "TR",
      "TRIGGER",
      "created",
      null
@@ -338,42 +366,42 @@
    "operation": "CREATE"
   },
   "CREATE TRIGGER trg BEFORE INSERT ON s.t FOR EACH ROW EXECUTE FUNCTION audit('a;b')": {
-   "diagnostic": null,
+   "diagnostic": "trigger: oracle PL/SQL bodies and materialized view logs are not read",
    "indexed_table": null,
    "kind": "DDL",
    "objects": [
     [
-     "t",
-     "TABLE",
-     "referenced",
-     "s"
-    ]
-   ],
-   "opaque": false,
-   "operation": "CREATE"
-  },
-  "CREATE TRIGGER users_bi BEFORE INSERT ON users FOR EACH ROW EXECUTE FUNCTION f()": {
-   "diagnostic": null,
-   "indexed_table": null,
-   "kind": "DDL",
-   "objects": [
-    [
-     "users",
-     "TABLE",
-     "referenced",
+     "TRG",
+     "TRIGGER",
+     "created",
      null
     ]
    ],
-   "opaque": false,
+   "opaque": true,
+   "operation": "CREATE"
+  },
+  "CREATE TRIGGER users_bi BEFORE INSERT ON users FOR EACH ROW EXECUTE FUNCTION f()": {
+   "diagnostic": "trigger: oracle PL/SQL bodies and materialized view logs are not read",
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [
+    [
+     "USERS_BI",
+     "TRIGGER",
+     "created",
+     null
+    ]
+   ],
+   "opaque": true,
    "operation": "CREATE"
   },
   "CREATE UNIQUE INDEX CONCURRENTLY ON t (c)": {
    "diagnostic": null,
-   "indexed_table": "t",
+   "indexed_table": "T",
    "kind": "DDL",
    "objects": [
     [
-     "t",
+     "T",
      "TABLE",
      "referenced",
      null
@@ -388,10 +416,10 @@
    "kind": "DML",
    "objects": [
     [
-     "t",
+     "T",
      "TABLE",
      "altered",
-     "ignore"
+     "IGNORE"
     ]
    ],
    "opaque": false,
@@ -419,10 +447,10 @@
    "kind": "DML",
    "objects": [
     [
-     "t",
+     "T",
      "TABLE",
      "altered",
-     "ignore"
+     "IGNORE"
     ]
    ],
    "opaque": false,

@@ -28,6 +28,8 @@ from tests.support.legacy_sqlserver_parsers import (
     legacy_sqlserver_sqlglot,
 )
 
+pytestmark = pytest.mark.usefixtures("legacy_oracle")
+
 
 @pytest.mark.unit
 class TestHybridParser:

@@ -28,10 +28,11 @@ LEGACY = (
     "snowflake",
     "redshift",
 )
-FACTS = ("postgresql", "cockroachdb")
+FACTS = ("postgresql", "cockroachdb", "oracle")
 
-# Activated facts readers leave reversal to manual review.
-FACTS_DIALECTS = ("mysql", "mariadb", "db2", "sqlserver")
+# MySQL, MariaDB, Db2, SQL Server and Oracle read statement facts: their undo is a review
+# placeholder, never a DROP.
+FACTS_DIALECTS = ("mysql", "mariadb", "db2", "sqlserver", "oracle")
 DROPPING = tuple(d for d in LEGACY if d not in FACTS_DIALECTS)
 
 # The 22 characters (sqlglot's non-ASCII blanks, plus the zero-width ones): a sample of each kind.
@@ -161,10 +162,9 @@ def test_undo_ignores_the_character_inside_strings_comments_and_quotes(tmp_path,
     assert len(drops) >= 2
 
 
-@pytest.mark.parametrize("dialect", ("oracle",))
-def test_non_ascii_letter_name_is_named_where_the_extractor_reads_it_whole(tmp_path, dialect):
-    script = _undo(tmp_path, dialect, "CREATE TABLE tété (id INT);")
-    assert any("é" in line.lower() for line in _code_lines(script))
+def test_oracle_non_ascii_letter_name_requires_manual_undo_review(tmp_path):
+    # The facts name TÉTÉ whole, but Oracle undo is a review entry, never a DROP.
+    _assert_manual_review(_undo(tmp_path, "oracle", "CREATE TABLE tété (id INT);"))
 
 
 def test_sqlserver_non_ascii_letter_name_requires_manual_undo_review(tmp_path):
@@ -231,7 +231,8 @@ def test_undo_of_a_name_that_ends_its_statement_follows_the_engine_reading(
             _undo(tmp_path, dialect, sql.format(c=char))
         return
     script = _undo(tmp_path, dialect, sql.format(c=char))
-    if read_as_blank(dialect, char):  # the engine reads the name before the blank: it is dropped
+    if read_as_blank(dialect, char) and dialect not in FACTS_DIALECTS + FACTS:
+        # the engine reads the name before the blank: it is dropped
         name = "q" if "SEQUENCE" in sql else "t"
         assert any(
             line.startswith("DROP") and re.search(rf"\b{name}\b", line, re.I)
@@ -269,9 +270,11 @@ def test_analysis_respects_the_flag_the_parser_set_for_a_cut_name(dialect):
 
 @pytest.mark.parametrize("dialect", FACTS)
 def test_the_facts_reader_names_a_non_ascii_identifier_whole(dialect):
-    # PostgreSQL reads every character above U+007F as part of an unquoted name.
+    # PostgreSQL and Oracle read every letter above U+007F as part of an unquoted name; Oracle
+    # stores it upper-cased.
     analysis = analyse_script("DROP TABLE tété;", dialect)
-    assert [obj.name for stmt in analysis.statements for obj in stmt.objects] == ["tété"]
+    expected = "TÉTÉ" if dialect == "oracle" else "tété"
+    assert [obj.name for stmt in analysis.statements for obj in stmt.objects] == [expected]
 
 
 @pytest.mark.parametrize("dialect", LEGACY)

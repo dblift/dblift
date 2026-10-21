@@ -106,7 +106,7 @@ def test_other_dialect_single_target_updates_keep_their_facts(dialect):
     facts = read_statement_facts("UPDATE t SET x=1 WHERE id=3", dialect=dialect)
 
     assert not facts.opaque
-    assert facts.target == "t"
+    assert facts.target == ("T" if dialect == "oracle" else "t")  # Oracle folds unquoted names
     assert facts.events == frozenset({"UPDATE"})
     assert facts.affected_columns == ("x",)
 

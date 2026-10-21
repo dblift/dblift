@@ -122,7 +122,7 @@ FOLD: Dict[str, Optional[str]] = {
 REFINEMENTS = {"VIEW": ("MATERIALIZED_VIEW",)}
 #: Families whose reader folds the name itself: the facts hold the folded name and the extraction the
 #: spelling written in the statement, the reverse of every other family.
-READER_FOLDS = frozenset({"db2"})
+READER_FOLDS = frozenset({"db2", "oracle"})
 ACTED_ROLES = ("created", "altered", "dropped")
 UNREAD_NAME_MARK = "may read as part of a name"
 _QUOTE_PAIRS = (('"', '"'), ("`", "`"), ("[", "]"))

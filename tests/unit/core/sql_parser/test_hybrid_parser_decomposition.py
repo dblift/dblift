@@ -17,6 +17,8 @@ from dblift.core.sql_model.table import Table
 from dblift.core.sql_parser.hybrid_parser import HybridParser
 from tests.support.legacy_sqlserver_parsers import legacy_sqlserver_hybrid
 
+pytestmark = pytest.mark.usefixtures("legacy_oracle")
+
 
 def _make_parser(dialect: str = "sqlserver") -> HybridParser:
     return legacy_sqlserver_hybrid() if dialect == "sqlserver" else HybridParser(dialect)
