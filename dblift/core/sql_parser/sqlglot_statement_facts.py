@@ -81,6 +81,9 @@ _ORACLE_HEAD = re.compile(
 _ORACLE_MV_LOG = re.compile(
     r"\s*(?:CREATE|DROP|ALTER)\s+MATERIALIZED\s+VIEW\s+LOG(?![\w$#])", re.IGNORECASE
 )
+_SNOWFLAKE_MV_LOG_ON = re.compile(
+    r"^\s*(?:CREATE|DROP)\s+MATERIALIZED\s+VIEW\s+LOG\s+ON\b", re.IGNORECASE
+)
 _ORACLE_TRUNCATE_TABLE = re.compile(r"\s*TRUNCATE\s+TABLE\b", re.IGNORECASE)
 _DML_HEAD = re.compile(
     rf"^\s*(INSERT|REPLACE|UPDATE|DELETE)\s+(?:OR\s+\w+\s+)?(?:(?:INTO|FROM)\s+)?"
@@ -267,6 +270,20 @@ def _named(node: exp.Expression, kind: SqlObjectType, role: str) -> Optional[Nam
         return None
     schema = ".".join(part for part in (table.catalog, table.db) if part) or None
     return NamedObject(table.name, kind, role, schema)
+
+
+def _snowflake_schema_has_discarded_prefix(sql: str, table: exp.Table) -> bool:
+    """Catch a source qualifier that sqlglot dropped before its first retained name part."""
+    first = table.args.get("catalog") or table.args.get("db")
+    if not isinstance(first, exp.Identifier):
+        return False
+    start = first.meta.get("start")
+    if not isinstance(start, int):
+        return True
+    snowflake = Dialect.get_or_raise("snowflake")  # lint: allow-dialect-string: schema proof
+    tokens = snowflake.tokenize(sql)
+    index = next((i for i, token in enumerate(tokens) if token.start == start), None)
+    return index is None or (index > 0 and tokens[index - 1].token_type == TokenType.DOT)
 
 
 def _mysql_identifier_is_proven(identifier: exp.Expression, sql: str) -> bool:
@@ -1573,6 +1590,17 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
             sql, "oracle PL/SQL bodies and materialized view logs are not read", dialect=dialect
         )
 
+    if (
+        dialect == "snowflake"  # lint: allow-dialect-string: unmodelled materialized view logs
+        and isinstance(ast, (exp.Create, exp.Drop))
+        and _SNOWFLAKE_MV_LOG_ON.match(_blanked(sql, dialect))
+    ):
+        return StatementFacts(
+            type(ast).__name__.upper(),
+            "DDL",
+            diagnostic="snowflake materialized view log identity is not modelled",
+        )
+
     if isinstance(ast, exp.Create):
         object_type = _created_object_type(ast, dialect)
         if (
@@ -1586,6 +1614,15 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
             )
         schema_node = ast.this if isinstance(ast.this, exp.Schema) else None
         subject = schema_node.this if schema_node is not None else ast.this
+        if (
+            dialect == "snowflake"  # lint: allow-dialect-string: Snowflake schema source proof
+            and object_type == SqlObjectType.SCHEMA
+            and isinstance(subject, exp.Table)
+            and _snowflake_schema_has_discarded_prefix(sql, subject)
+        ):
+            return StatementFacts(
+                "CREATE", "DDL", diagnostic="snowflake schema qualification is not fully read"
+            )
         properties = ast.args.get("properties")
         virtual = bool(properties and properties.find(exp.VirtualProperty))
         identity = _named(subject, object_type, "created") if subject is not None else None
@@ -1749,6 +1786,17 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
         ):
             object_type = SqlObjectType.MATERIALIZED_VIEW
         targets = ast.args.get("tables") or ast.args.get("expressions") or [ast.this]
+        if (
+            dialect == "snowflake"  # lint: allow-dialect-string: Snowflake schema source proof
+            and object_type == SqlObjectType.SCHEMA
+            and any(
+                isinstance(node, exp.Table) and _snowflake_schema_has_discarded_prefix(sql, node)
+                for node in targets
+            )
+        ):
+            return StatementFacts(
+                "DROP", "DDL", diagnostic="snowflake schema qualification is not fully read"
+            )
         if (
             dialect
             in {"duckdb", "postgres", "snowflake"}  # lint: allow-dialect-string: schema identity
