@@ -18,8 +18,9 @@ def test_direct_hybrid_parser_warns_once_per_process_and_preserves_parse_result(
     code = """
 import warnings
 from dblift.core.sql_parser.hybrid_parser import HybridParser
+from tests.support.legacy_snowflake_parsers import snowflake_facts_off
 
-with warnings.catch_warnings(record=True) as seen:
+with snowflake_facts_off(), warnings.catch_warnings(record=True) as seen:
     warnings.simplefilter("always", DeprecationWarning)
     first = HybridParser("snowflake")
     HybridParser("snowflake")
@@ -52,6 +53,7 @@ from dblift.core.sql_parser.enhanced_regex_parser import EnhancedRegexParser
 from dblift.core.sql_parser.sqlglot_parser import SqlGlotParser
 from dblift.core.sql_parser.unified_regex_parser import RegexParser
 from dblift.db.plugins.mysql.parser.parser_config import MySqlConfig
+from tests.support.legacy_snowflake_parsers import snowflake_facts_off
 
 construct = {{
     "SqlGlotParser": lambda: SqlGlotParser("snowflake"),
@@ -59,7 +61,7 @@ construct = {{
     "RegexParser": lambda: RegexParser(MySqlConfig()),
     "EnhancedRegexParser": lambda: EnhancedRegexParser(MySqlConfig()),
 }}["{constructor}"]
-with warnings.catch_warnings(record=True) as seen:
+with snowflake_facts_off(), warnings.catch_warnings(record=True) as seen:
     warnings.simplefilter("always", DeprecationWarning)
     first = construct()
     construct()
@@ -80,9 +82,10 @@ import warnings
 from concurrent.futures import ThreadPoolExecutor
 from dblift.core.sql_parser.hybrid_parser import HybridParser
 from dblift.db.provider_registry import ProviderRegistry
+from tests.support.legacy_snowflake_parsers import snowflake_facts_off
 
 ProviderRegistry.get_quirks("snowflake")
-with warnings.catch_warnings(record=True) as seen:
+with snowflake_facts_off(), warnings.catch_warnings(record=True) as seen:
     warnings.simplefilter("always", DeprecationWarning)
     with ThreadPoolExecutor(max_workers=8) as pool:
         list(pool.map(lambda _: HybridParser("snowflake"), range(16)))
@@ -101,6 +104,7 @@ from dblift.core.exceptions import ParserNotAvailableError
 from dblift.core.sql_parser.parser_factory import SqlParserFactory
 from dblift.core.sql_parser.sqlglot_parser import SqlGlotParser
 from dblift.db.provider_registry import ProviderRegistry
+from tests.support.legacy_snowflake_parsers import snowflake_facts_off
 
 quirks_class = type(ProviderRegistry.get_quirks("snowflake"))
 original = quirks_class.parser_class
@@ -108,16 +112,17 @@ def broken(self, parser_type):
     raise RuntimeError("plugin construction failed")
 quirks_class.parser_class = broken
 try:
-    try:
-        SqlParserFactory("snowflake").get_parser()
-    except ParserNotAvailableError:
-        pass
-    else:
-        raise AssertionError("factory should have failed")
+    with snowflake_facts_off():
+        try:
+            SqlParserFactory("snowflake").get_parser()
+        except ParserNotAvailableError:
+            pass
+        else:
+            raise AssertionError("factory should have failed")
 finally:
     quirks_class.parser_class = original
 
-with warnings.catch_warnings(record=True) as seen:
+with snowflake_facts_off(), warnings.catch_warnings(record=True) as seen:
     warnings.simplefilter("always", DeprecationWarning)
     parser = SqlGlotParser("snowflake")
 assert parser.dialect_name == "snowflake"
@@ -131,6 +136,7 @@ def test_invalid_direct_sqlglot_parser_keeps_facts_refusal_and_notice_state() ->
     code = """
 import warnings
 from dblift.core.sql_parser.sqlglot_parser import SqlGlotParser
+from tests.support.legacy_snowflake_parsers import snowflake_facts_off
 
 with warnings.catch_warnings():
     warnings.simplefilter("error", DeprecationWarning)
@@ -141,7 +147,7 @@ with warnings.catch_warnings():
     else:
         raise AssertionError("facts-enabled dialect should refuse this parser")
 
-with warnings.catch_warnings(record=True) as seen:
+with snowflake_facts_off(), warnings.catch_warnings(record=True) as seen:
     warnings.simplefilter("always", DeprecationWarning)
     assert SqlGlotParser("snowflake").dialect_name == "snowflake"
 assert len([item for item in seen if item.category is DeprecationWarning]) == 1
@@ -154,8 +160,9 @@ def test_warning_filter_error_does_not_consume_process_once_notice() -> None:
     code = """
 import warnings
 from dblift.core.sql_parser.hybrid_parser import HybridParser
+from tests.support.legacy_snowflake_parsers import snowflake_facts_off
 
-with warnings.catch_warnings():
+with snowflake_facts_off(), warnings.catch_warnings():
     warnings.simplefilter("error", DeprecationWarning)
     for _ in range(2):
         try:
@@ -165,7 +172,7 @@ with warnings.catch_warnings():
         else:
             raise AssertionError("each attempted notice must raise")
 
-with warnings.catch_warnings(record=True) as seen:
+with snowflake_facts_off(), warnings.catch_warnings(record=True) as seen:
     warnings.simplefilter("always", DeprecationWarning)
     HybridParser("snowflake")
     HybridParser("snowflake")
@@ -181,6 +188,7 @@ import warnings
 from dblift.core.sql_parser.hybrid_parser import HybridParser
 from dblift.core.sql_parser.unified_regex_parser import RegexParser
 from dblift.db.plugins.mysql.parser.parser_config import MySqlConfig
+from tests.support.legacy_snowflake_parsers import snowflake_facts_off
 
 messages = []
 def showwarning(message, category, filename, lineno, file=None, line=None):
@@ -190,7 +198,8 @@ def showwarning(message, category, filename, lineno, file=None, line=None):
 
 warnings.showwarning = showwarning
 warnings.simplefilter("always", DeprecationWarning)
-HybridParser("snowflake")
+with snowflake_facts_off():
+    HybridParser("snowflake")
 assert len(messages) == 2, messages
 assert messages[0].startswith("HybridParser is deprecated"), messages
 assert messages[1].startswith("RegexParser is deprecated"), messages
@@ -209,6 +218,7 @@ from dblift.core.sql_parser.unified_regex_parser import RegexParser
 from dblift.db.plugins.mysql.parser.parser_config import MySqlConfig
 from dblift.db.plugins.snowflake.lexical_parser import SnowflakeLexicalParser
 from dblift.db.provider_registry import ProviderRegistry
+from tests.support.legacy_snowflake_parsers import snowflake_facts_off
 
 quirks_class = type(ProviderRegistry.get_quirks("snowflake"))
 original = quirks_class.parser_class
@@ -219,7 +229,7 @@ def eager_scanner(self, parser_type):
 
 quirks_class.parser_class = eager_scanner
 try:
-    with warnings.catch_warnings(record=True) as seen:
+    with snowflake_facts_off(), warnings.catch_warnings(record=True) as seen:
         warnings.simplefilter("always", DeprecationWarning)
         parser = SqlGlotParser("snowflake")
         assert parser.split_statements("SELECT 1;") == ["SELECT 1"]

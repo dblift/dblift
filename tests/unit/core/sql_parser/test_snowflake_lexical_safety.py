@@ -10,6 +10,7 @@ from dblift.core.sql_parser.lexical_engine import LexicalEngine
 from dblift.core.sql_parser.statement import execution_strings
 from dblift.db.plugins.snowflake.lexical_spec import SNOWFLAKE_SPEC
 from dblift.db.plugins.snowflake.statement_parser import SnowflakeStatementParser
+from tests.support.legacy_snowflake_parsers import snowflake_facts_off
 from tests.support.splitting_cost import CountingText, Meter
 
 
@@ -248,5 +249,5 @@ def test_bang_within_sql_quote_or_comment_is_not_a_directive(sql: str) -> None:
     ],
 )
 def test_retained_legacy_scanner_already_refuses_unquoted_scripting(script: str) -> None:
-    with pytest.raises(UnsafeStatementSplitError):
+    with snowflake_facts_off(), pytest.raises(UnsafeStatementSplitError):
         SnowflakeStatementParser().split(script)
