@@ -116,7 +116,7 @@ def test_mysql_comment_guard_preserves_other_dialect_facts(dialect, marker):
     )
 
     assert not facts.opaque
-    assert facts.target == "items"
+    assert facts.target == ("ITEMS" if dialect == "oracle" else "items")  # Oracle folds
     assert facts.affected_columns == ("a",)
     assert facts.events == frozenset({"UPDATE"})
 

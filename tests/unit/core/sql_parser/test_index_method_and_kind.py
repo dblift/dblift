@@ -2,18 +2,9 @@
 
 import pytest
 
-from dblift.core.sql_parser import SqlParserFactory
-from tests.support.legacy_sqlserver_parsers import legacy_sqlserver_hybrid
+from tests.support.legacy_oracle_hybrid import hybrid_for
 
 pytestmark = pytest.mark.unit
-
-
-def _model_parser(dialect):
-    return (
-        legacy_sqlserver_hybrid()
-        if dialect == "sqlserver"
-        else SqlParserFactory(dialect).get_parser()
-    )
 
 
 @pytest.mark.parametrize(
@@ -26,7 +17,7 @@ def _model_parser(dialect):
     ],
 )
 def test_index_keeps_method_kind_columns_and_uniqueness(dialect, sql, index_type, columns, unique):
-    result = _model_parser(dialect).parse_sql(sql)
+    result = hybrid_for(dialect).parse_sql(sql)
     assert result.success
     assert len(result.indexes) == 1
     index = result.indexes[0]
@@ -39,7 +30,7 @@ def test_index_keeps_method_kind_columns_and_uniqueness(dialect, sql, index_type
 
 @pytest.mark.parametrize("dialect", ["sqlserver", "oracle"])
 def test_plain_index_still_uses_btree_default(dialect):
-    result = _model_parser(dialect).parse_sql("CREATE INDEX ix ON t (a)")
+    result = hybrid_for(dialect).parse_sql("CREATE INDEX ix ON t (a)")
     assert len(result.indexes) == 1
     assert result.indexes[0].type == "BTREE"
 
@@ -60,7 +51,7 @@ def test_plain_index_still_uses_btree_default(dialect):
 def test_index_method_preserves_expressions_and_directions(
     dialect, sql, index_type, columns, flags, directions
 ):
-    result = _model_parser(dialect).parse_sql(sql)
+    result = hybrid_for(dialect).parse_sql(sql)
     assert len(result.indexes) == 1
     index = result.indexes[0]
     assert index.type == index_type

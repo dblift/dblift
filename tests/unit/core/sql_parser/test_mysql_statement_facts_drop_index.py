@@ -139,8 +139,9 @@ def test_other_dialect_drop_indexes_do_not_gain_a_mysql_relation(dialect):
         assert facts.objects == () and facts.indexed_table is None
         assert facts.opaque and facts.diagnostic == "tsql index relation is opaque"
         return
+    name = "IDX" if dialect == "oracle" else "idx"  # Oracle folds unquoted names
     assert facts == StatementFacts(
-        "DROP", "DDL", (NamedObject("idx", SqlObjectType.INDEX, "dropped"),)
+        "DROP", "DDL", (NamedObject(name, SqlObjectType.INDEX, "dropped"),)
     )
 
 
@@ -168,8 +169,9 @@ def test_tsql_drop_index_on_relation_keeps_its_modelled_index(sql):
 def test_drop_index_on_relation_without_modelled_grammar_stays_opaque(dialect, sql):
     facts = read_statement_facts(sql, dialect=dialect)
 
+    name = "IDX" if dialect == "oracle" else "idx"  # Oracle folds unquoted names
     assert facts.opaque
-    assert facts.objects == (NamedObject("idx", SqlObjectType.INDEX, "dropped"),)
+    assert facts.objects == (NamedObject(name, SqlObjectType.INDEX, "dropped"),)
     assert facts.indexed_table is None
 
 

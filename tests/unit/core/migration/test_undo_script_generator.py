@@ -13,6 +13,8 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import MagicMock
 
+import pytest
+
 from tests.unit._migration_factory import make_migration
 
 
@@ -1161,6 +1163,7 @@ class TestUndoScriptGeneratorIntegration(unittest.TestCase):
                 gen.generate_undo_script(path)
 
     # generate_undo_script — happy path
+    @pytest.mark.usefixtures("legacy_oracle")
     def test_generate_undo_script_creates_file(self):
         gen = self._make_generator()
         with TemporaryDirectory() as tmpdir:
@@ -1296,6 +1299,7 @@ class TestUndoScriptGeneratorIntegration(unittest.TestCase):
         index_stmts = [s for s in results if "DROP INDEX" in s.sql]
         self.assertEqual(len(index_stmts), 0)
 
+    @pytest.mark.usefixtures("legacy_oracle")
     def test_generate_undo_statements_reverse_order(self):
         gen = self._make_generator()
         migration = self._make_migration(
@@ -1475,6 +1479,15 @@ class TestUndoScriptGeneratorDialects(unittest.TestCase):
                     self.assertNotIn("mysql", undo.sql.lower())
                     self.assertNotIn("dblift_test", undo.sql)
 
+    def test_oracle_table_undo_is_left_to_a_hand_written_script(self):
+        gen = self._make_generator("oracle")
+        migration = self._make_migration("CREATE TABLE t (id INT);")
+        (undo,) = gen._generate_undo_statements(migration)
+        self.assertTrue(undo.requires_manual_review)
+        self.assertEqual(undo.original_statement.strip(), "CREATE TABLE t (id INT)")
+        self.assertNotIn("DROP", undo.sql)
+
+    @pytest.mark.usefixtures("legacy_oracle")
     def test_oracle_table_drop_no_if_exists(self):
         gen = self._make_generator("oracle")
         migration = self._make_migration("CREATE TABLE t (id INT);")

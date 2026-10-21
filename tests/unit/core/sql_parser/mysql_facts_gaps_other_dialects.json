@@ -975,7 +975,7 @@
    "kind": "DDL",
    "objects": [
     [
-     "e",
+     "E",
      "TABLE",
      "created",
      null
@@ -996,7 +996,7 @@
    "kind": "DDL",
    "objects": [
     [
-     "t\ud83d\ude00",
+     "T\ud83d\ude00",
      "TABLE",
      "created",
      null
@@ -1019,7 +1019,7 @@
    "kind": "DML",
    "objects": [
     [
-     "t",
+     "T",
      "TABLE",
      "altered",
      null
@@ -1028,7 +1028,7 @@
    "opaque": false,
    "operation": "DELETE",
    "predicate": "quick = 1",
-   "target": "t",
+   "target": "T",
    "target_sql": "t"
   },
   "DELETE IGNORE FROM t": {
@@ -1175,7 +1175,7 @@
    "kind": "DML",
    "objects": [
     [
-     "delayed",
+     "DELAYED",
      "TABLE",
      "altered",
      null
@@ -1184,7 +1184,7 @@
    "opaque": false,
    "operation": "INSERT",
    "predicate": null,
-   "target": "delayed",
+   "target": "DELAYED",
    "target_sql": "delayed"
   },
   "INSERT INTO t VALUES ('\ud83d\ude00')": {
@@ -1198,7 +1198,7 @@
    "kind": "DML",
    "objects": [
     [
-     "t",
+     "T",
      "TABLE",
      "altered",
      null
@@ -1207,7 +1207,7 @@
    "opaque": false,
    "operation": "INSERT",
    "predicate": null,
-   "target": "t",
+   "target": "T",
    "target_sql": "t"
   },
   "INSERT LOW_PRIORITY INTO t (a) VALUES (1)": {
@@ -1296,13 +1296,20 @@
   },
   "TRUNCATE TABLE db.t": {
    "affected_columns": [],
-   "diagnostic": "oracle TruncateTable has no statement facts mapping",
+   "diagnostic": null,
    "error": null,
    "events": null,
    "indexed_table": null,
-   "kind": "UNKNOWN",
-   "objects": [],
-   "opaque": true,
+   "kind": "DDL",
+   "objects": [
+    [
+     "T",
+     "TABLE",
+     "altered",
+     "DB"
+    ]
+   ],
+   "opaque": false,
    "operation": "TRUNCATE",
    "predicate": null,
    "target": null,
@@ -1310,13 +1317,20 @@
   },
   "TRUNCATE TABLE t": {
    "affected_columns": [],
-   "diagnostic": "oracle TruncateTable has no statement facts mapping",
+   "diagnostic": null,
    "error": null,
    "events": null,
    "indexed_table": null,
-   "kind": "UNKNOWN",
-   "objects": [],
-   "opaque": true,
+   "kind": "DDL",
+   "objects": [
+    [
+     "T",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
    "operation": "TRUNCATE",
    "predicate": null,
    "target": null,
@@ -1466,7 +1480,7 @@
    "kind": "DML",
    "objects": [
     [
-     "delayed",
+     "DELAYED",
      "TABLE",
      "altered",
      null
@@ -1475,7 +1489,7 @@
    "opaque": false,
    "operation": "UPDATE",
    "predicate": null,
-   "target": "delayed",
+   "target": "DELAYED",
    "target_sql": "delayed t"
   },
   "UPDATE ignore\n.t SET a = 1": {
@@ -1491,16 +1505,16 @@
    "kind": "DML",
    "objects": [
     [
-     "t",
+     "T",
      "TABLE",
      "altered",
-     "ignore"
+     "IGNORE"
     ]
    ],
    "opaque": false,
    "operation": "UPDATE",
    "predicate": null,
-   "target": "ignore.t",
+   "target": "IGNORE.T",
    "target_sql": "ignore.t"
   },
   "UPDATE ignore SET a = 1": {
@@ -1516,7 +1530,7 @@
    "kind": "DML",
    "objects": [
     [
-     "ignore",
+     "IGNORE",
      "TABLE",
      "altered",
      null
@@ -1525,7 +1539,7 @@
    "opaque": false,
    "operation": "UPDATE",
    "predicate": null,
-   "target": "ignore",
+   "target": "IGNORE",
    "target_sql": "ignore"
   },
   "UPDATE ignore.t SET a = 1": {
@@ -1541,16 +1555,16 @@
    "kind": "DML",
    "objects": [
     [
-     "t",
+     "T",
      "TABLE",
      "altered",
-     "ignore"
+     "IGNORE"
     ]
    ],
    "opaque": false,
    "operation": "UPDATE",
    "predicate": null,
-   "target": "ignore.t",
+   "target": "IGNORE.T",
    "target_sql": "ignore.t"
   },
   "UPDATE low_priority_x SET a = 1": {
@@ -1566,7 +1580,7 @@
    "kind": "DML",
    "objects": [
     [
-     "low_priority_x",
+     "LOW_PRIORITY_X",
      "TABLE",
      "altered",
      null
@@ -1575,7 +1589,7 @@
    "opaque": false,
    "operation": "UPDATE",
    "predicate": null,
-   "target": "low_priority_x",
+   "target": "LOW_PRIORITY_X",
    "target_sql": "low_priority_x"
   },
   "UPDATE quick SET a = 1": {
@@ -1591,7 +1605,7 @@
    "kind": "DML",
    "objects": [
     [
-     "quick",
+     "QUICK",
      "TABLE",
      "altered",
      null
@@ -1600,7 +1614,7 @@
    "opaque": false,
    "operation": "UPDATE",
    "predicate": null,
-   "target": "quick",
+   "target": "QUICK",
    "target_sql": "quick"
   },
   "UPDATE quick t SET a = 1": {
@@ -1616,7 +1630,7 @@
    "kind": "DML",
    "objects": [
     [
-     "quick",
+     "QUICK",
      "TABLE",
      "altered",
      null
@@ -1625,7 +1639,7 @@
    "opaque": false,
    "operation": "UPDATE",
    "predicate": null,
-   "target": "quick",
+   "target": "QUICK",
    "target_sql": "quick t"
   },
   "UPDATE t SET ignore = 1": {
@@ -1641,7 +1655,7 @@
    "kind": "DML",
    "objects": [
     [
-     "t",
+     "T",
      "TABLE",
      "altered",
      null
@@ -1650,7 +1664,7 @@
    "opaque": false,
    "operation": "UPDATE",
    "predicate": null,
-   "target": "t",
+   "target": "T",
    "target_sql": "t"
   },
   "UPDATE t\ud83d\ude00 SET a = 1": {
@@ -1666,7 +1680,7 @@
    "kind": "DML",
    "objects": [
     [
-     "t\ud83d\ude00",
+     "T\ud83d\ude00",
      "TABLE",
      "altered",
      null
@@ -1675,7 +1689,7 @@
    "opaque": false,
    "operation": "UPDATE",
    "predicate": null,
-   "target": "t\ud83d\ude00",
+   "target": "T\ud83d\ude00",
    "target_sql": "t\ud83d\ude00"
   }
  },
@@ -2624,7 +2638,14 @@
    "events": null,
    "indexed_table": null,
    "kind": "DDL",
-   "objects": [],
+   "objects": [
+    [
+     "s",
+     "SCHEMA",
+     "created",
+     null
+    ]
+   ],
    "opaque": false,
    "operation": "CREATE",
    "predicate": null,
@@ -2638,7 +2659,14 @@
    "events": null,
    "indexed_table": null,
    "kind": "DDL",
-   "objects": [],
+   "objects": [
+    [
+     "s",
+     "SCHEMA",
+     "created",
+     null
+    ]
+   ],
    "opaque": false,
    "operation": "CREATE",
    "predicate": null,
@@ -2832,7 +2860,14 @@
    "events": null,
    "indexed_table": null,
    "kind": "DDL",
-   "objects": [],
+   "objects": [
+    [
+     "s",
+     "SCHEMA",
+     "dropped",
+     null
+    ]
+   ],
    "opaque": false,
    "operation": "DROP",
    "predicate": null,
@@ -2846,7 +2881,14 @@
    "events": null,
    "indexed_table": null,
    "kind": "DDL",
-   "objects": [],
+   "objects": [
+    [
+     "s",
+     "SCHEMA",
+     "dropped",
+     null
+    ]
+   ],
    "opaque": false,
    "operation": "DROP",
    "predicate": null,
@@ -3034,13 +3076,20 @@
   },
   "TRUNCATE TABLE db.t": {
    "affected_columns": [],
-   "diagnostic": "redshift TruncateTable has no statement facts mapping",
+   "diagnostic": null,
    "error": null,
    "events": null,
    "indexed_table": null,
-   "kind": "UNKNOWN",
-   "objects": [],
-   "opaque": true,
+   "kind": "DDL",
+   "objects": [
+    [
+     "t",
+     "TABLE",
+     "altered",
+     "db"
+    ]
+   ],
+   "opaque": false,
    "operation": "TRUNCATE",
    "predicate": null,
    "target": null,
@@ -3048,13 +3097,20 @@
   },
   "TRUNCATE TABLE t": {
    "affected_columns": [],
-   "diagnostic": "redshift TruncateTable has no statement facts mapping",
+   "diagnostic": null,
    "error": null,
    "events": null,
    "indexed_table": null,
-   "kind": "UNKNOWN",
-   "objects": [],
-   "opaque": true,
+   "kind": "DDL",
+   "objects": [
+    [
+     "t",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
    "operation": "TRUNCATE",
    "predicate": null,
    "target": null,
@@ -3062,13 +3118,20 @@
   },
   "TRUNCATE t": {
    "affected_columns": [],
-   "diagnostic": "redshift TruncateTable has no statement facts mapping",
+   "diagnostic": null,
    "error": null,
    "events": null,
    "indexed_table": null,
-   "kind": "UNKNOWN",
-   "objects": [],
-   "opaque": true,
+   "kind": "DDL",
+   "objects": [
+    [
+     "t",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
    "operation": "TRUNCATE",
    "predicate": null,
    "target": null,
@@ -3076,11 +3139,11 @@
   },
   "TRUNCATE t1, t2": {
    "affected_columns": [],
-   "diagnostic": "redshift TruncateTable has no statement facts mapping",
+   "diagnostic": "redshift TRUNCATE target is not a single table",
    "error": null,
    "events": null,
    "indexed_table": null,
-   "kind": "UNKNOWN",
+   "kind": "DDL",
    "objects": [],
    "opaque": true,
    "operation": "TRUNCATE",
@@ -3111,7 +3174,7 @@
    "operation": "UPDATE",
    "predicate": null,
    "target": "LOW_PRIORITY",
-   "target_sql": "LOW_PRIORITY AS t"
+   "target_sql": "LOW_PRIORITY"
   },
   "UPDATE IGNORE t SET b = 1": {
    "affected_columns": [
@@ -3136,7 +3199,7 @@
    "operation": "UPDATE",
    "predicate": null,
    "target": "IGNORE",
-   "target_sql": "\"IGNORE\" AS t"
+   "target_sql": "\"IGNORE\""
   },
   "UPDATE LOW_PRIORITY IGNORE `s`.`t` SET b = 1": {
    "affected_columns": [],
@@ -3184,7 +3247,7 @@
    "operation": "UPDATE",
    "predicate": null,
    "target": "LOW_PRIORITY",
-   "target_sql": "LOW_PRIORITY AS t"
+   "target_sql": "LOW_PRIORITY"
   },
   "UPDATE `ignore` SET a = 1": {
    "affected_columns": [],
@@ -3232,7 +3295,7 @@
    "operation": "UPDATE",
    "predicate": null,
    "target": "delayed",
-   "target_sql": "delayed AS t"
+   "target_sql": "delayed"
   },
   "UPDATE ignore\n.t SET a = 1": {
    "affected_columns": [
@@ -3382,7 +3445,7 @@
    "operation": "UPDATE",
    "predicate": null,
    "target": "quick",
-   "target_sql": "quick AS t"
+   "target_sql": "quick"
   },
   "UPDATE t SET ignore = 1": {
    "affected_columns": [

@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 import re
 import warnings
+from unittest.mock import patch
 
 import pytest
 
@@ -18,6 +19,7 @@ from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.core.migration.scripting.undo_script_generator._generator import UndoScriptGenerator
 from dblift.core.migration.sql.script_analysis import analyse_script
 from dblift.db.plugins.oracle.parser.lexical_spec import ORACLE_SPEC
+from dblift.db.plugins.redshift.quirks import RedshiftQuirks
 
 LEGACY = (
     "mysql",
@@ -26,12 +28,12 @@ LEGACY = (
     "oracle",
     "db2",
     "snowflake",
-    "redshift",
 )
-FACTS = ("postgresql", "cockroachdb")
+FACTS = ("postgresql", "cockroachdb", "oracle", "redshift")
 
-# Activated facts readers leave reversal to manual review.
-FACTS_DIALECTS = ("mysql", "mariadb", "db2", "sqlserver")
+# MySQL, MariaDB, Db2, SQL Server and Oracle read statement facts: their undo is a review
+# placeholder, never a DROP.
+FACTS_DIALECTS = ("mysql", "mariadb", "db2", "sqlserver", "oracle")
 DROPPING = tuple(d for d in LEGACY if d not in FACTS_DIALECTS)
 
 # The 22 characters (sqlglot's non-ASCII blanks, plus the zero-width ones): a sample of each kind.
@@ -161,10 +163,9 @@ def test_undo_ignores_the_character_inside_strings_comments_and_quotes(tmp_path,
     assert len(drops) >= 2
 
 
-@pytest.mark.parametrize("dialect", ("oracle",))
-def test_non_ascii_letter_name_is_named_where_the_extractor_reads_it_whole(tmp_path, dialect):
-    script = _undo(tmp_path, dialect, "CREATE TABLE tété (id INT);")
-    assert any("é" in line.lower() for line in _code_lines(script))
+def test_oracle_non_ascii_letter_name_requires_manual_undo_review(tmp_path):
+    # The facts name TÉTÉ whole, but Oracle undo is a review entry, never a DROP.
+    _assert_manual_review(_undo(tmp_path, "oracle", "CREATE TABLE tété (id INT);"))
 
 
 def test_sqlserver_non_ascii_letter_name_requires_manual_undo_review(tmp_path):
@@ -231,7 +232,8 @@ def test_undo_of_a_name_that_ends_its_statement_follows_the_engine_reading(
             _undo(tmp_path, dialect, sql.format(c=char))
         return
     script = _undo(tmp_path, dialect, sql.format(c=char))
-    if read_as_blank(dialect, char):  # the engine reads the name before the blank: it is dropped
+    if read_as_blank(dialect, char) and dialect not in FACTS_DIALECTS + FACTS:
+        # the engine reads the name before the blank: it is dropped
         name = "q" if "SEQUENCE" in sql else "t"
         assert any(
             line.startswith("DROP") and re.search(rf"\b{name}\b", line, re.I)
@@ -260,18 +262,21 @@ def test_analysis_of_a_name_that_ends_its_statement_names_what_the_engine_reads(
     assert analysis.cautions, "the statement still deserves its caution"
 
 
-@pytest.mark.parametrize("dialect", ("redshift",))
-def test_analysis_respects_the_flag_the_parser_set_for_a_cut_name(dialect):
-    analysis = analyse_script("DROP TABLE tété;", dialect)
+def test_analysis_respects_the_flag_the_parser_set_for_a_cut_name():
+    # Redshift's former text extraction cut the name; the facts reader names it whole.
+    with patch.object(RedshiftQuirks, "statement_facts_class", None):
+        analysis = analyse_script("DROP TABLE tété;", "redshift")
     assert not [obj for stmt in analysis.statements for obj in stmt.objects]
     assert analysis.cautions and not any("tété" in c.reason for c in analysis.cautions)
 
 
 @pytest.mark.parametrize("dialect", FACTS)
 def test_the_facts_reader_names_a_non_ascii_identifier_whole(dialect):
-    # PostgreSQL reads every character above U+007F as part of an unquoted name.
+    # PostgreSQL and Oracle read every letter above U+007F as part of an unquoted name; Oracle
+    # stores it upper-cased.
     analysis = analyse_script("DROP TABLE tété;", dialect)
-    assert [obj.name for stmt in analysis.statements for obj in stmt.objects] == ["tété"]
+    expected = "TÉTÉ" if dialect == "oracle" else "tété"
+    assert [obj.name for stmt in analysis.statements for obj in stmt.objects] == [expected]
 
 
 @pytest.mark.parametrize("dialect", LEGACY)
@@ -351,7 +356,8 @@ def test_the_facts_path_reviews_every_statement_of_a_script_with_an_unreadable_o
 
 def test_a_readable_statement_before_an_unreadable_one_is_still_reversed(tmp_path):
     script = f"CREATE SEQUENCE q;\nCREATE SEQUENCE q{chr(0xA0)};\n"
-    text = _undo(tmp_path, "redshift", script)
+    with patch.object(RedshiftQuirks, "statement_facts_class", None):
+        text = _undo(tmp_path, "redshift", script)
     assert [line for line in _code_lines(text) if "DROP" in line] == [
         'DROP SEQUENCE IF EXISTS "q";'
     ]

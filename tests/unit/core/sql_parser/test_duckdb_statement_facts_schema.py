@@ -50,7 +50,7 @@ def test_schema_facts_share_duckdb_parser_consumers():
     assert quirks.parser_class("sqlglot") is DuckDBFactsParser
 
 
-@pytest.mark.parametrize("dialect", ["sqlite", "oracle", "tsql"])
+@pytest.mark.parametrize("dialect", ["sqlite", "tsql"])
 @pytest.mark.parametrize(
     "sql,operation,kind,opaque",
     [

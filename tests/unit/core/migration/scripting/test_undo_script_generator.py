@@ -2,6 +2,7 @@
 
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 import pytest
 
@@ -10,6 +11,7 @@ from dblift.core.migration.scripting.undo_script_generator import (
     UndoScriptGenerator,
     UndoStatement,
 )
+from dblift.db.plugins.redshift.quirks import RedshiftQuirks
 from tests.unit._migration_factory import make_migration
 
 
@@ -25,9 +27,16 @@ class TestUndoScriptGenerator:
 
     @pytest.fixture
     def generator(self):
-        """Create an undo script generator instance."""
+        """Create an undo script generator on Redshift's former text extraction.
+
+        The patch spans each test, because the generator reads ``supports_statement_facts`` when
+        it generates. No user reaches this path any more (the facts path asks for manual review
+        instead of reversing a statement); these tests stay as a bridge until the text undo
+        generator is removed.
+        """
         logger = LogFactory.get_log("test")
-        return UndoScriptGenerator(dialect="redshift", logger=logger)
+        with patch.object(RedshiftQuirks, "statement_facts_class", None):
+            yield UndoScriptGenerator(dialect="redshift", logger=logger)
 
     def test_generate_undo_script_create_table(self, generator):
         """Test generating undo script for CREATE TABLE."""
@@ -533,11 +542,10 @@ def test_oracle_undo_keeps_statement_with_close_marker_in_string():
         logger=generator.logger,
     )
 
-    undo_sql = [stmt.sql for stmt in generator._generate_undo_statements(migration)]
+    undo = generator._generate_undo_statements(migration)
 
-    assert len(undo_sql) == 2
-    assert "UB" in undo_sql[0].upper() and "DROP TABLE" in undo_sql[0]
-    assert "UA" in undo_sql[1].upper() and "DROP TABLE" in undo_sql[1]
+    assert [u.original_statement.split()[2] for u in undo] == ["ub", "ua"]
+    assert all(u.requires_manual_review for u in undo)
 
 
 def _mysql_undo_statements(dialect, content):
@@ -614,16 +622,19 @@ _ORA_PKG_BODY = (
 @pytest.mark.parametrize(
     "content, expected",
     [
-        (_ORA_PROC + _ORA_PKG, ['DROP PACKAGE "PK"', 'DROP PROCEDURE "PP"']),
-        (_ORA_PROC + _ORA_PKG_BODY, ['DROP PACKAGE BODY "PK"', 'DROP PROCEDURE "PP"']),
-        (_ORA_FUNC + _ORA_PKG, ['DROP PACKAGE "PK"', '"FF"']),
-        (_ORA_PKG + _ORA_PROC, ['DROP PROCEDURE "PP"', 'DROP PACKAGE "PK"']),
-        (_ORA_TRIG + _ORA_PKG, ['DROP PACKAGE "PK"', "CREATE OR REPLACE TRIGGER tt"]),
+        (_ORA_PROC + _ORA_PKG, ["CREATE OR REPLACE PACKAGE pk", "CREATE OR REPLACE PROCEDURE pp"]),
+        (
+            _ORA_PROC + _ORA_PKG_BODY,
+            ["CREATE OR REPLACE PACKAGE BODY pk", "CREATE OR REPLACE PROCEDURE pp"],
+        ),
+        (_ORA_FUNC + _ORA_PKG, ["CREATE OR REPLACE PACKAGE pk", "CREATE OR REPLACE FUNCTION ff"]),
+        (_ORA_PKG + _ORA_PROC, ["CREATE OR REPLACE PROCEDURE pp", "CREATE OR REPLACE PACKAGE pk"]),
+        (_ORA_TRIG + _ORA_PKG, ["CREATE OR REPLACE PACKAGE pk", "CREATE OR REPLACE TRIGGER tt"]),
     ],
     ids=["proc-pkg", "proc-pkg-body", "func-pkg", "pkg-proc", "trigger-pkg"],
 )
-def test_oracle_undo_drops_package_next_to_other_plsql_block(content, expected):
-    """A block followed by a package yields one undo entry each, and the package is dropped."""
+def test_oracle_undo_reviews_package_next_to_other_plsql_block(content, expected):
+    """A block followed by a package yields one review entry each, last first."""
     generator = UndoScriptGenerator(dialect="oracle", logger=LogFactory.get_log("test"))
     migration = make_migration(
         script_name="V1__plsql.sql",
@@ -636,10 +647,9 @@ def test_oracle_undo_drops_package_next_to_other_plsql_block(content, expected):
     undo = generator._generate_undo_statements(migration)
 
     assert len(undo) == 2
+    assert all(u.requires_manual_review for u in undo)
     for stmt, fragment in zip(undo, expected):
-        assert fragment in stmt.sql or stmt.original_statement.startswith(fragment), [
-            u.sql for u in undo
-        ]
+        assert stmt.original_statement.startswith(fragment), [u.original_statement for u in undo]
 
 
 @pytest.mark.parametrize(
@@ -661,11 +671,10 @@ def test_oracle_undo_keeps_statements_after_comment_marker_in_string(literal):
         logger=generator.logger,
     )
 
-    undo_sql = [stmt.sql.upper() for stmt in generator._generate_undo_statements(migration)]
+    undo = generator._generate_undo_statements(migration)
 
-    assert len(undo_sql) == 3
-    for sql, table in zip(undo_sql, ("DC", "DB", "DA")):
-        assert "DROP TABLE" in sql and f'"{table}"' in sql
+    assert [u.original_statement.split()[2] for u in undo] == ["dc", "db", "da"]
+    assert all(u.requires_manual_review for u in undo)
 
 
 # The SQL*Plus directive-stripping script from the release test protocol,
@@ -721,14 +730,19 @@ def test_oracle_undo_with_apostrophes_in_sqlplus_directives():
         logger=generator.logger,
     )
 
-    undo_sql = [stmt.sql.upper() for stmt in generator._generate_undo_statements(migration)]
+    undo = generator._generate_undo_statements(migration)
 
-    assert len(undo_sql) == 4
-    for sql, table in zip(undo_sql, ("SP_LAST", "SP_Q", "SP_DASH", "SQLPLUS_TEST")):
-        assert "DROP TABLE" in sql and f'"{table}"' in sql
+    tables = [u.original_statement.split()[2] for u in undo]
+    assert tables == [
+        "DBLIFT_TEST.sp_last",
+        "DBLIFT_TEST.sp_q",
+        "DBLIFT_TEST.sp_dash",
+        "DBLIFT_TEST.sqlplus_test",
+    ]
+    assert all(u.requires_manual_review for u in undo)
 
 
-def _oracle_undo_sql(content):
+def _oracle_undo_originals(content):
     generator = UndoScriptGenerator(dialect="oracle", logger=LogFactory.get_log("test"))
     migration = make_migration(
         script_name="V1__directives.sql",
@@ -737,22 +751,22 @@ def _oracle_undo_sql(content):
         description="directives",
         logger=generator.logger,
     )
-    return [stmt.sql.upper() for stmt in generator._generate_undo_statements(migration)]
+    undo = generator._generate_undo_statements(migration)
+    assert all(u.requires_manual_review for u in undo)
+    return [u.original_statement for u in undo]
 
 
 @pytest.mark.parametrize(
     "directive",
     ["PROMPT Creating customer's table", "REM don't run twice", "REMARK it's fine"],
 )
-def test_oracle_undo_drops_every_table_around_directive_with_apostrophe(directive):
-    undo_sql = _oracle_undo_sql(
+def test_oracle_undo_reviews_every_table_around_directive_with_apostrophe(directive):
+    originals = _oracle_undo_originals(
         f"{directive}\nCREATE TABLE a (id NUMBER);\n{directive}\n"
         "CREATE TABLE b (id NUMBER);\n-- gone (spec §4 row 16a: no text after a ';')\nCREATE TABLE c (id NUMBER);\n"
     )
 
-    assert len(undo_sql) == 3
-    for sql, table in zip(undo_sql, ("C", "B", "A")):
-        assert "DROP TABLE" in sql and f'"{table}"' in sql
+    assert [o.split()[2] for o in originals] == ["c", "b", "a"]
 
 
 @pytest.mark.parametrize(
@@ -766,11 +780,10 @@ def test_oracle_undo_drops_every_table_around_directive_with_apostrophe(directiv
 )
 def test_oracle_undo_keeps_directive_lookalikes_inside_sql(block):
     """Directive-looking lines inside a block or a literal are SQL, not directives."""
-    undo_sql = _oracle_undo_sql(
+    originals = _oracle_undo_originals(
         f"PROMPT it's next\nCREATE TABLE a (id NUMBER);\n{block}"
         "REM don't\nCREATE TABLE b (id NUMBER);\n"
     )
 
-    drops = [sql for sql in undo_sql if "DROP TABLE" in sql]
-    assert len(drops) == 2
-    assert '"B"' in drops[0] and '"A"' in drops[1]
+    creates = [sql for sql in originals if sql.startswith("CREATE TABLE")]
+    assert [sql.split()[2] for sql in creates] == ["b", "a"]

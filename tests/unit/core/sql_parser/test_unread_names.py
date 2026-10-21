@@ -21,7 +21,6 @@ LEGACY = (
     "mysql",
     "mariadb",
     "sqlserver",
-    "oracle",
     "snowflake",
     "redshift",
 )
@@ -80,7 +79,7 @@ def test_parse_sql_names_nothing_and_says_so(dialect):
     assert statement.names_unread
 
 
-FACTS = ("postgresql", "cockroachdb")
+FACTS = ("postgresql", "cockroachdb", "oracle")
 
 
 @pytest.mark.parametrize("dialect", FACTS)
@@ -139,10 +138,12 @@ def test_a_quoted_identifier_is_not_a_name_cut_short(dialect, sql):
     assert not names_unreadable(sql, dialect, ["t"])
 
 
+@pytest.mark.usefixtures("legacy_oracle")
 def test_the_analyzer_checks_the_names_it_extracted():
     assert SqlAnalyzer("oracle").extract_objects(f"CREATE TABLE t{ZWJ}(id INT)") == []
 
 
+@pytest.mark.usefixtures("legacy_oracle")
 def test_the_schema_part_of_a_name_is_checked_too():
     from dblift.core.sql_model.base import SqlObject, SqlObjectType
     from dblift.core.sql_parser.parser_factory import SqlParserFactory
@@ -163,6 +164,7 @@ def test_the_schema_part_of_a_name_is_checked_too():
     assert not sqlglot_parser._names_unreadable(source, [whole])
 
 
+@pytest.mark.usefixtures("legacy_oracle")
 @pytest.mark.parametrize("dialect", ("oracle", "sqlserver", "snowflake"))
 def test_a_statement_that_cannot_be_located_in_its_script_is_withheld(dialect):
     parser = SqlParserFactory(dialect).get_parser()
@@ -182,7 +184,7 @@ def test_a_statement_that_cannot_be_located_in_its_script_is_withheld(dialect):
     ]
 
 
-@pytest.mark.parametrize("dialect", LEGACY)
+@pytest.mark.parametrize("dialect", LEGACY + ("oracle",))
 @pytest.mark.parametrize(
     "sql", ["CREATE SEQUENCE q{c};", "CREATE SEQUENCE q{c}", "DROP TABLE t{c};"]
 )

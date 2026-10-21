@@ -25,7 +25,7 @@ def _hybrid(dialect):
 def _regex(dialect):
     if dialect == "db2":
         return DB2RegexParser()
-    if dialect == "postgresql":
+    if dialect in ("postgresql", "redshift"):
         return SqlParserFactory(dialect, "regex").get_parser()
     return HybridParser(dialect).regex_parser
 

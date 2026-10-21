@@ -63,7 +63,7 @@ def _results() -> Results:
 
 
 def test_only_families_whose_differences_are_explained_are_gated() -> None:
-    assert gated_families() == ["db2", "mysql", "postgresql", "sqlserver"]
+    assert gated_families() == ["db2", "mysql", "oracle", "postgresql", "redshift", "sqlserver"]
 
 
 def test_gated_families_are_known_families_with_a_reader() -> None:
@@ -119,8 +119,9 @@ def test_a_wrong_or_orphaned_ledger_entry_fails_a_family_that_is_not_gated(
         )
     )
     entry = {"sql": "s", "path": "hybrid", "class": entry_class, "reason": "ok"}
+    monkeypatch.setattr(differential, "gated_families", lambda: [])  # a family that is not gated
     _plant(monkeypatch, tmp_path, "oracle", {key: entry})
-    assert "oracle" not in gated_families()
+    assert "oracle" not in differential.gated_families()
     assert differential.report_family("oracle", current_arm())["stale"] == [key]
     assert differential.run(["oracle"]) == 1
     assert differential.run(["oracle"], report_only=True) == 0
@@ -133,8 +134,11 @@ def test_the_listed_families_have_no_unexplained_difference() -> None:
 
 
 def test_a_family_planted_in_the_gate_fails_on_its_real_unexplained_rows(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    empty = tmp_path / "oracle.review.json"  # a ledger that explains nothing
+    empty.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(differential, "review_file", lambda name: empty)
     monkeypatch.setattr(differential, "gated_families", lambda: ["oracle"])
     report = differential.report_family("oracle", current_arm())
     assert report["gated"] and report["unclassified"], "the corpus has rows no entry explains"
