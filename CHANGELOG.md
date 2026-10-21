@@ -221,6 +221,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A name inside a nested block comment is no longer read as an object.** On PostgreSQL,
+  Redshift, DuckDB and Db2, `INSERT INTO /* a /* b */ c */ t ...` that the full grammar could not
+  parse was reported as writing to `c`; the comment is now skipped as the engine skips it, so the
+  target is `t`.
 - **Redshift scripts are split the way Redshift reads them.** Block comments nest, so
   `/* a /* b */ c */ SELECT 1` is one statement, and `/* a /* b */ x` is now refused as an
   unterminated comment, as Redshift does; a script that relied on a comment ending at its first

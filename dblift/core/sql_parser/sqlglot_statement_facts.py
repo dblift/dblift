@@ -703,9 +703,22 @@ def _copy_facts(node: exp.Copy, sql: str, *, dialect: str = "duckdb") -> Stateme
     )
 
 
-def _blanked(sql: str) -> str:
+def _nests_block_comments(dialect: str) -> bool:
+    """Whether the engine nests ``/* /* */ */``: its lexical spec says so, or sqlglot's does."""
+    from dblift.db.provider_registry import ProviderRegistry
+
+    spec = ProviderRegistry.get_quirks(dialect).lexical_spec() if dialect else None
+    return bool(spec and spec.nested_comments) or bool(
+        Dialect.get_or_raise(dialect).tokenizer_class.NESTED_COMMENTS
+    )
+
+
+def _blanked(sql: str, dialect: str = "") -> str:
     return strip_comments_preserving_quotes(
-        sql, line_prefixes=["--"], has_block_comments=True, nested_block_comments=False
+        sql,
+        line_prefixes=["--"],
+        has_block_comments=True,
+        nested_block_comments=_nests_block_comments(dialect),
     )
 
 
@@ -816,16 +829,7 @@ def _oracle_index_table(head: str, created: "re.Match[str]") -> Optional[NamedOb
 
 def _head_facts(sql: str, diagnostic: str, *, dialect: str = "") -> StatementFacts:
     """Classify a statement from its leading words when sqlglot cannot represent the body."""
-    head = (
-        strip_comments_preserving_quotes(
-            sql,
-            line_prefixes=["--"],
-            has_block_comments=True,
-            nested_block_comments=Dialect.get_or_raise(dialect).tokenizer_class.NESTED_COMMENTS,
-        )
-        if dialect == "tsql"  # lint: allow-dialect-string: T-SQL block comments nest
-        else _blanked(sql)
-    )
+    head = _blanked(sql, dialect)
     first = _FIRST_WORD.match(head)
     if first and first.group(1).upper() == "WITH":
         head = _main_statement(head)
@@ -1324,7 +1328,7 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
             ),
         )
     if dialect == "tsql" and re.match(  # lint: allow-dialect-string: foreign OR DML modifiers
-        r"^\s*(?:INSERT|UPDATE|DELETE)\s+OR\s+(?:IGNORE|REPLACE)\b", _blanked(sql), re.I
+        r"^\s*(?:INSERT|UPDATE|DELETE)\s+OR\s+(?:IGNORE|REPLACE)\b", _blanked(sql, dialect), re.I
     ):
         return _head_facts(sql, "tsql OR DML modifier is not modelled", dialect=dialect)
     if dialect == "mysql":  # lint: allow-dialect-string: MySQL DML modifiers
@@ -1349,7 +1353,7 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
                 head = _head_facts(sql, "", dialect=dialect)
                 return StatementFacts(head.operation, head.kind, diagnostic=unread_reason)
     except (ParseError, TokenError) as exc:
-        if not _blanked(sql).strip():
+        if not isinstance(exc, TokenError) and not _blanked(sql, dialect).strip():
             return StatementFacts("UNKNOWN", "UNKNOWN")
         if isinstance(exc, TokenError):
             facts = _head_facts(sql, "", dialect=dialect)
