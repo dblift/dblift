@@ -96,3 +96,48 @@ def test_unproven_source_verb_does_not_publish_a_table(provider, grammar, sql, o
     assert facts.opaque
     assert facts.diagnostic
     assert facts.error is None
+
+
+@pytest.mark.parametrize("route", ("common", "plugin"))
+@pytest.mark.parametrize("provider,grammar", ACTIVE)
+@pytest.mark.parametrize(
+    "sql,operation,kind",
+    (
+        ('CREATE TABLE "a"."b"."c"."d" (x INT)', "CREATE", "DDL"),
+        ('SELECT * FROM "a"."b" /* gap */ . "c"."d"', "SELECT", "QUERY"),
+        ("WITH q AS (SELECT * FROM a.b.c.d) UPDATE t SET x=1", "UPDATE", "DML"),
+        ("WITH q AS (SELECT 1) UPDATE a.b.c.d SET x=1", "UPDATE", "DML"),
+    ),
+)
+def test_quoted_or_cte_relation_does_not_publish_an_incomplete_identity(
+    provider, grammar, route, sql, operation, kind
+):
+    facts = _facts(provider, grammar, route, sql)
+
+    assert (facts.operation, facts.kind) == (operation, kind)
+    assert facts.objects == ()
+    assert facts.target is None
+    assert facts.target_sql is None
+    assert facts.predicate is None
+    assert facts.opaque
+    assert facts.diagnostic
+    assert facts.error is None
+
+
+@pytest.mark.parametrize("route", ("common", "plugin"))
+@pytest.mark.parametrize("provider,grammar", ACTIVE)
+@pytest.mark.parametrize(
+    "sql",
+    (
+        "WITH q AS (SELECT * FROM a.b.c) UPDATE t SET x=1",
+        "WITH q AS (SELECT 1) UPDATE a.b.c SET x=1",
+    ),
+)
+def test_three_part_cte_update_keeps_target_and_reference(provider, grammar, route, sql):
+    facts = _facts(provider, grammar, route, sql)
+
+    assert (facts.operation, facts.kind) == ("UPDATE", "DML")
+    assert not facts.opaque
+    assert facts.target is not None
+    assert facts.objects
+    assert any(obj.name == ("C" if provider == "oracle" else "c") for obj in facts.objects)
