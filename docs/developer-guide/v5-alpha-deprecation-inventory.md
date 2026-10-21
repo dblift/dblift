@@ -6,15 +6,21 @@ execution behavior. Internal paths below are not stable Python APIs under
 [`docs/semver-policy.md`](../semver-policy.md); documented examples and plugin
 hooks still need a migration path before removal.
 
-The [reference index](v5-alpha-deprecation-reference-index.json) lists every
-matching production, plugin, test, package and documentation file and line for
-the symbols below. It is a textual match index, so declarations, imports and
-comments are included; the tables here identify the actual runtime routes.
-Its 1,527 file/line references come from the exact base tree, not this
-mutable checkout. To reproduce them, run `git grep -n -I -F` for each literal
-symbol against `13cd540abe7ee0c18844588f4a46d519b8d28882` across
-`dblift`, `tests`, `docs`, `packages`, `README.md` and `pyproject.toml`, then
-retain lines matching the regular expressions recorded under `patterns`.
+To list textual references to the inventoried names from the exact base tree,
+run this command from the repository root:
+
+```sh
+git grep -n -I -w -E \
+  -e 'SqlParserFactory|parser_type|strict_tokenizer|SqlAnalyzer|HybridParser|SqlGlotParser' \
+  -e 'RegexBasedParser|RegexParser|EnhancedRegexParser|SnowflakeStatementParser|RedshiftRegexParser|_SqlglotBuildersMixin' \
+  -e 'sqlglot_unsupported_sql_patterns|sqlglot_unsupported_sql_regex_patterns|sqlglot_dialect|is_comment_only_statement' \
+  -e 'UndoScriptGenerator|generate_undo_script|generate_undo_scripts|_reverse_statement_facts|_review_statement_facts|undo_reverses_statement_facts' \
+  13cd540abe7ee0c18844588f4a46d519b8d28882 -- dblift tests docs packages README.md pyproject.toml
+```
+
+The output includes production, plugin, test, package and documentation lines,
+including declarations, imports and comments. It is broader than a runtime
+caller list; the tables below identify the active routes.
 
 ## Parsing and analysis
 
