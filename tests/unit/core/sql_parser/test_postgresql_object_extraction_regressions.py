@@ -25,7 +25,7 @@ class TestLeadingCommentObjectExtraction:
         self.parser = SqlParserFactory("postgresql")
 
     def test_leading_line_comment_mentioning_alter_table(self):
-        sql = "-- ALTER TABLE in a comment\nDROP TABLE IF EXISTS `x`.`orders`;"
+        sql = '-- ALTER TABLE in a comment\nDROP TABLE IF EXISTS "x"."orders";'
         objects = self.parser.get_affected_objects(sql)
 
         assert len(objects) == 1
@@ -107,8 +107,7 @@ class TestAlterTableOnly:
 
 @pytest.mark.unit
 class TestQuotingVariants:
-    """DROP TABLE must tolerate the quoting styles a migration may carry,
-    without losing the underlying object."""
+    """PostgreSQL names only identifiers quoted in its own syntax."""
 
     def setup_method(self):
         self.parser = SqlParserFactory("postgresql")
@@ -117,17 +116,13 @@ class TestQuotingVariants:
         sql = "DROP TABLE IF EXISTS `x`.`orders`;"
         objects = self.parser.get_affected_objects(sql)
 
-        assert len(objects) == 1
-        assert objects[0].name == "orders"
-        assert objects[0].schema == "x"
+        assert objects == []
 
     def test_bracket_quoting(self):
         sql = "DROP TABLE IF EXISTS [x].[orders];"
         objects = self.parser.get_affected_objects(sql)
 
-        assert len(objects) == 1
-        assert objects[0].name == "orders"
-        assert objects[0].schema == "x"
+        assert objects == []
 
     def test_double_quoted_schema_containing_a_dot(self):
         sql = 'DROP TABLE IF EXISTS "my.schema"."orders";'

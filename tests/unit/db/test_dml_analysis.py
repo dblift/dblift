@@ -743,10 +743,12 @@ def test_analyze_dml_target_skips_modifiers(dialect, stmt, table):
     [
         ("tsql", "DELETE top WHERE id = 1", "top"),
         ("postgres", "UPDATE only SET a = 1", "only"),
+        ("postgres", 'UPDATE "only" SET a = 1', '"only"'),
     ],
 )
 def test_statement_dml_table_keeps_a_table_named_like_a_modifier(dialect, stmt, table):
-    assert statement_dml_table(stmt, quirks=_quirks(dialect)) == table
+    expected = "" if dialect == "postgres" and stmt == "UPDATE only SET a = 1" else table
+    assert statement_dml_table(stmt, quirks=_quirks(dialect)) == expected
     assert statement_dml_table(stmt) == table
 
 

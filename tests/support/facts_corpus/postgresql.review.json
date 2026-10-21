@@ -136,6 +136,47 @@
   },
   "sql": "DROP SECRET IF EXISTS \"S\".\"API_KEY\""
  },
+ "04c35201a1436c8a/analyzer": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "postgres grammar is not modelled for this statement",
+   "kind": "DDL",
+   "operation": "DROP"
+  },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+  "old": {
+   "analyzer": [
+    [
+     "TABLE",
+     "x.orders"
+    ]
+   ]
+  },
+  "path": "analyzer",
+  "reason": "The proposed head takes a name from brackets, while postgresql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'DROP TABLE IF EXISTS [x].[orders]'; dialect tokens: DROP(DROP) TABLE(TABLE) VAR(IF) EXISTS(EXISTS) L_BRACKET([) VAR(x) R_BRACKET(]) DOT(.).",
+  "sql": "DROP TABLE IF EXISTS [x].[orders]"
+ },
+ "04c35201a1436c8a/hybrid": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "postgres grammar is not modelled for this statement",
+   "kind": "DDL",
+   "operation": "DROP"
+  },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+  "old": {
+   "hybrid": [
+    [
+     "TABLE",
+     "orders",
+     "x"
+    ]
+   ]
+  },
+  "path": "hybrid",
+  "reason": "The proposed head takes a name from brackets, while postgresql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'DROP TABLE IF EXISTS [x].[orders]'; dialect tokens: DROP(DROP) TABLE(TABLE) VAR(IF) EXISTS(EXISTS) L_BRACKET([) VAR(x) R_BRACKET(]) DOT(.).",
+  "sql": "DROP TABLE IF EXISTS [x].[orders]"
+ },
  "05c8af864ca64693/analyzer": {
   "class": "opaque-reader-gap",
   "facts": {
@@ -552,26 +593,24 @@
   },
   "sql": "CREATE PROCEDURE GetUserOrders @UserId INT\n        AS\n        BEGIN\n            SELECT o.*\n            FROM orders o\n   "
  },
- "13663b78bebc1876/hybrid": {
-  "class": "facts-adds-acted",
+ "13663b78bebc1876/analyzer": {
+  "class": "opaque-reader-gap",
   "facts": {
-   "diagnostic": "table: postgres grammar is not modelled for this statement",
+   "diagnostic": "postgres grammar is not modelled for this statement",
    "kind": "DDL",
-   "objects": [
-    [
-     "normal",
-     "TABLE",
-     "created",
-     null
-    ]
-   ],
    "operation": "CREATE"
   },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
   "old": {
-   "hybrid": []
+   "analyzer": [
+    [
+     "TABLE",
+     "default_schema.normal"
+    ]
+   ]
   },
-  "path": "hybrid",
-  "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"[\"); it is a T-SQL statement harvested into the corpus and never runs on this family; the reader names TABLE normal (created) where the old extraction named nothing, which costs nothing because the engine never runs the text. CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
+  "path": "analyzer",
+  "reason": "The proposed head takes a name from brackets, while postgresql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'CREATE TABLE [normal] (id int)'; dialect tokens: CREATE(CREATE) TABLE(TABLE) L_BRACKET([) VAR(normal) R_BRACKET(]) L_PAREN(() VAR(id) INT(int). Prior native observation for this exact SQL: PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"[\"); CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
   "sql": "CREATE TABLE [normal] (id int)"
  },
  "1487b9907d08380d/hybrid": {
@@ -655,6 +694,26 @@
   },
   "sql": "COPY items /* FROM */ 'a.csv'"
  },
+ "1763eea082fa91b2/analyzer": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "postgres grammar is not modelled for this statement",
+   "kind": "DDL",
+   "operation": "DROP"
+  },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+  "old": {
+   "analyzer": [
+    [
+     "INDEX",
+     "default_schema.ix1"
+    ]
+   ]
+  },
+  "path": "analyzer",
+  "reason": "The proposed head takes a name from brackets, while postgresql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'DROP INDEX IF EXISTS [ix1] ON [t1]'; dialect tokens: DROP(DROP) INDEX(INDEX) VAR(IF) EXISTS(EXISTS) L_BRACKET([) VAR(ix1) R_BRACKET(]) ON(ON).",
+  "sql": "DROP INDEX IF EXISTS [ix1] ON [t1]"
+ },
  "1763eea082fa91b2/hybrid": {
   "class": "opaque-reader-gap",
   "facts": {
@@ -725,48 +784,46 @@
   "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \".\"); it is a CREATE INDEX with a schema-qualified index name, which PostgreSQL does not accept harvested into the corpus and never runs on this family; the reader names INDEX Ix in S (created), TABLE T (referenced) and the old extraction named INDEX S, a difference with no consequence because the engine never runs the text. CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
   "sql": "CREATE INDEX \"S\".\"Ix\" ON \"T\" (a)"
  },
- "18aa3cb71822143c/analyzer": {
-  "class": "facts-adds-acted",
+ "18aa3cb71822143c/hybrid": {
+  "class": "opaque-reader-gap",
   "facts": {
-   "diagnostic": "table: postgres grammar is not modelled for this statement",
+   "diagnostic": "postgres grammar is not modelled for this statement",
    "kind": "DDL",
-   "objects": [
-    [
-     "b",
-     "TABLE",
-     "created",
-     null
-    ]
-   ],
    "operation": "CREATE"
   },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
   "old": {
-   "analyzer": []
+   "hybrid": [
+    [
+     "TABLE",
+     "b",
+     "public"
+    ]
+   ]
   },
-  "path": "analyzer",
-  "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"/\"); it is a script fragment with a client command or without statement terminators, as written for another dialect harvested into the corpus and never runs on this family; the reader names TABLE b (created) where the old extraction named nothing, which costs nothing because the engine never runs the text. CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
+  "path": "hybrid",
+  "reason": "The original unit begins with slash separator; the first source tokens are not the same verb/name sequence as a bare proposed DDL head. The reader cannot scan through that prefix and attribute its later name to this entire unit. Source head: '/\\\\nCREATE TABLE b(y)'; dialect tokens: SLASH(/) CREATE(CREATE) TABLE(TABLE) VAR(b) L_PAREN(() VAR(y) R_PAREN()). Prior native observation for this exact SQL: PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"/\"); CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
   "sql": "/\nCREATE TABLE b(y)"
  },
- "1a2666af2d8f6fe4/analyzer": {
-  "class": "facts-adds-acted",
+ "1a2666af2d8f6fe4/hybrid": {
+  "class": "opaque-reader-gap",
   "facts": {
-   "diagnostic": "table: postgres grammar is not modelled for this statement",
+   "diagnostic": "postgres grammar is not modelled for this statement",
    "kind": "DDL",
-   "objects": [
-    [
-     "after_proc",
-     "TABLE",
-     "created",
-     null
-    ]
-   ],
    "operation": "CREATE"
   },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
   "old": {
-   "analyzer": []
+   "hybrid": [
+    [
+     "TABLE",
+     "after_proc",
+     "public"
+    ]
+   ]
   },
-  "path": "analyzer",
-  "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"/\"); it is a script fragment with a client command or without statement terminators, as written for another dialect harvested into the corpus and never runs on this family; the reader names TABLE after_proc (created) where the old extraction named nothing, which costs nothing because the engine never runs the text. CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
+  "path": "hybrid",
+  "reason": "The original unit begins with slash separator; the first source tokens are not the same verb/name sequence as a bare proposed DDL head. The reader cannot scan through that prefix and attribute its later name to this entire unit. Source head: '/\\\\n\\\\n        CREATE TABLE after_proc (id NUMBER)'; dialect tokens: SLASH(/) CREATE(CREATE) TABLE(TABLE) VAR(after_proc) L_PAREN(() VAR(id) DECIMAL(NUMBER) R_PAREN()). Prior native observation for this exact SQL: PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"/\"); CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
   "sql": "/\n\n        CREATE TABLE after_proc (id NUMBER)"
  },
  "1ae5cceb20b25cbc/hybrid": {
@@ -873,70 +930,64 @@
   "reason": "The reader names TABLE FROM in TO (altered) for a plain COPY (rows are loaded into it); the old analyzer path named nothing. PostgreSQL 16.14 parses it (SQLSTATE 3F000 at run time).",
   "sql": "COPY \"TO\".\"FROM\" (\"FROM\") FROM 'a.csv'"
  },
- "1b633645d4efb8b2/hybrid": {
-  "class": "facts-adds-acted",
+ "1b633645d4efb8b2/analyzer": {
+  "class": "opaque-reader-gap",
   "facts": {
-   "diagnostic": "index: postgres Command is opaque to statement facts",
+   "diagnostic": "postgres Command is opaque to statement facts",
    "kind": "DDL",
-   "objects": [
-    [
-     "idx 1",
-     "INDEX",
-     "created",
-     null
-    ]
-   ],
    "operation": "CREATE"
   },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
   "old": {
-   "hybrid": []
+   "analyzer": [
+    [
+     "INDEX",
+     "idx 1"
+    ]
+   ]
   },
-  "path": "hybrid",
-  "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"`\"); it is a MySQL or SQLite statement harvested into the corpus and never runs on this family; the reader names INDEX idx 1 (created) where the old extraction named nothing, which costs nothing because the engine never runs the text. CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
+  "path": "analyzer",
+  "reason": "The proposed head takes a name from backticks, while postgresql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'CREATE INDEX `idx 1` ON `myschema`.`mytable` (col)'; dialect tokens: CREATE(CREATE) INDEX(INDEX) UNKNOWN(`) VAR(idx) NUMBER(1) UNKNOWN(`) ON(ON) UNKNOWN(`). Prior native observation for this exact SQL: PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"`\"); CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
   "sql": "CREATE INDEX `idx 1` ON `myschema`.`mytable` (col)"
  },
- "1c8dd5d835288f79/hybrid": {
-  "class": "facts-adds-acted",
+ "1c8dd5d835288f79/analyzer": {
+  "class": "opaque-reader-gap",
   "facts": {
-   "diagnostic": "table: postgres Command is opaque to statement facts",
+   "diagnostic": "postgres Command is opaque to statement facts",
    "kind": "DDL",
-   "objects": [
-    [
-     "users",
-     "TABLE",
-     "created",
-     null
-    ]
-   ],
    "operation": "CREATE"
   },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
   "old": {
-   "hybrid": []
+   "analyzer": [
+    [
+     "TABLE",
+     "default_schema.users"
+    ]
+   ]
   },
-  "path": "hybrid",
-  "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"`\"); it is a MySQL or SQLite statement harvested into the corpus and never runs on this family; the reader names TABLE users (created) where the old extraction named nothing, which costs nothing because the engine never runs the text. CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
+  "path": "analyzer",
+  "reason": "The proposed head takes a name from backticks, while postgresql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'CREATE TABLE `users` (`id` INT)'; dialect tokens: CREATE(CREATE) TABLE(TABLE) UNKNOWN(`) VAR(users) UNKNOWN(`) L_PAREN(() UNKNOWN(`) VAR(id). Prior native observation for this exact SQL: PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"`\"); CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
   "sql": "CREATE TABLE `users` (`id` INT)"
  },
- "1cb3ccce5a1d4991/hybrid": {
-  "class": "facts-adds-acted",
+ "1cb3ccce5a1d4991/analyzer": {
+  "class": "opaque-reader-gap",
   "facts": {
-   "diagnostic": "index: postgres Command is opaque to statement facts",
+   "diagnostic": "postgres Command is opaque to statement facts",
    "kind": "DDL",
-   "objects": [
-    [
-     "]abc",
-     "INDEX",
-     "created",
-     null
-    ]
-   ],
    "operation": "CREATE"
   },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
   "old": {
-   "hybrid": []
+   "analyzer": [
+    [
+     "INDEX",
+     "]abc"
+    ]
+   ]
   },
-  "path": "hybrid",
-  "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"[\"); it is a T-SQL statement harvested into the corpus and never runs on this family; the reader names INDEX ]abc (created) where the old extraction named nothing, which costs nothing because the engine never runs the text. CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
+  "path": "analyzer",
+  "reason": "The proposed head takes a name from brackets, while postgresql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'CREATE INDEX []]abc] ON [dbo].[t]([c])'; dialect tokens: CREATE(CREATE) INDEX(INDEX) L_BRACKET([) R_BRACKET(]) R_BRACKET(]) VAR(abc) R_BRACKET(]) ON(ON). Prior native observation for this exact SQL: PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"[\"); CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
   "sql": "CREATE INDEX []]abc] ON [dbo].[t]([c])"
  },
  "1cc707a61359c460/analyzer": {
@@ -1166,26 +1217,24 @@
   },
   "sql": "GO\nCREATE PROCEDURE dbo.p AS\nBEGIN\n  SELECT 1"
  },
- "24f03cbba5189976/hybrid": {
-  "class": "facts-adds-acted",
+ "24f03cbba5189976/analyzer": {
+  "class": "opaque-reader-gap",
   "facts": {
-   "diagnostic": "procedure: postgres Command is opaque to statement facts",
+   "diagnostic": "postgres Command is opaque to statement facts",
    "kind": "DDL",
-   "objects": [
-    [
-     "test_proc",
-     "PROCEDURE",
-     "created",
-     null
-    ]
-   ],
    "operation": "CREATE"
   },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
   "old": {
-   "hybrid": []
+   "analyzer": [
+    [
+     "PROCEDURE",
+     "default_schema.test_proc"
+    ]
+   ]
   },
-  "path": "hybrid",
-  "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"`\"); it is a MySQL or SQLite statement harvested into the corpus and never runs on this family; the reader names PROCEDURE test_proc (created) where the old extraction named nothing, which costs nothing because the engine never runs the text. CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
+  "path": "analyzer",
+  "reason": "The proposed head takes a name from backticks, while postgresql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'CREATE PROCEDURE `test_proc`() BEGIN SELECT 1'; dialect tokens: CREATE(CREATE) PROCEDURE(PROCEDURE) UNKNOWN(`) VAR(test_proc) UNKNOWN(`) L_PAREN(() R_PAREN()) BEGIN(BEGIN). Prior native observation for this exact SQL: PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"`\"); CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
   "sql": "CREATE PROCEDURE `test_proc`() BEGIN SELECT 1"
  },
  "252a7aed12f7c636/analyzer": {
@@ -1734,26 +1783,24 @@
   "reason": "The statement is led by a CTE and writes the table the reader names (TABLE t (altered)); the old analyzer path refused CTE-led statements and named nothing. PostgreSQL 16.14 parses it (SQLSTATE 42P01 at run time).",
   "sql": "WITH c AS (SELECT 1 AS id) MERGE INTO t USING c ON t.id = c.id WHEN MATCHED THEN DELETE"
  },
- "33628d124098678b/hybrid": {
-  "class": "facts-adds-acted",
+ "33628d124098678b/analyzer": {
+  "class": "opaque-reader-gap",
   "facts": {
-   "diagnostic": "function: postgres Command is opaque to statement facts",
+   "diagnostic": "postgres Command is opaque to statement facts",
    "kind": "DDL",
-   "objects": [
-    [
-     "test_func",
-     "FUNCTION",
-     "created",
-     null
-    ]
-   ],
    "operation": "CREATE"
   },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
   "old": {
-   "hybrid": []
+   "analyzer": [
+    [
+     "FUNCTION",
+     "default_schema.test_func"
+    ]
+   ]
   },
-  "path": "hybrid",
-  "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"`\"); it is a MySQL or SQLite statement harvested into the corpus and never runs on this family; the reader names FUNCTION test_func (created) where the old extraction named nothing, which costs nothing because the engine never runs the text. CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
+  "path": "analyzer",
+  "reason": "The proposed head takes a name from backticks, while postgresql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'CREATE FUNCTION `test_func`() RETURNS INT BEGIN RETURN 1'; dialect tokens: CREATE(CREATE) FUNCTION(FUNCTION) UNKNOWN(`) VAR(test_func) UNKNOWN(`) L_PAREN(() R_PAREN()) VAR(RETURNS). Prior native observation for this exact SQL: PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"`\"); CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
   "sql": "CREATE FUNCTION `test_func`() RETURNS INT BEGIN RETURN 1"
  },
  "337a428a7b4fc76a/hybrid": {
@@ -1798,26 +1845,24 @@
   "reason": "COPY is read as opaque: a COPY with options, a quoted or dollar-quoted file source, or a column list (not modelled, #667). The reader names no object where the old extraction named TABLE Order Items. PostgreSQL 16.14 parses it (SQLSTATE 3F000 at run time).",
   "sql": "COPY \"Sales\".\"Order Items\" (id, \"Item Value\") TO '/tmp/items;out.parquet' (FORMAT PARQUET)"
  },
- "345c8cdd8c4ca7d6/hybrid": {
-  "class": "facts-adds-acted",
+ "345c8cdd8c4ca7d6/analyzer": {
+  "class": "opaque-reader-gap",
   "facts": {
-   "diagnostic": "table: postgres grammar is not modelled for this statement",
+   "diagnostic": "postgres grammar is not modelled for this statement",
    "kind": "DDL",
-   "objects": [
-    [
-     "idx_users_email",
-     "TABLE",
-     "created",
-     null
-    ]
-   ],
    "operation": "CREATE"
   },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
   "old": {
-   "hybrid": []
+   "analyzer": [
+    [
+     "TABLE",
+     "default_schema.idx_users_email"
+    ]
+   ]
   },
-  "path": "hybrid",
-  "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"[\"); it is a T-SQL statement harvested into the corpus and never runs on this family; the reader names TABLE idx_users_email (created) where the old extraction named nothing, which costs nothing because the engine never runs the text. CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
+  "path": "analyzer",
+  "reason": "The proposed head takes a name from brackets, while postgresql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'CREATE TABLE [idx_users_email] (id int)'; dialect tokens: CREATE(CREATE) TABLE(TABLE) L_BRACKET([) VAR(idx_users_email) R_BRACKET(]) L_PAREN(() VAR(id) INT(int). Prior native observation for this exact SQL: PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"[\"); CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
   "sql": "CREATE TABLE [idx_users_email] (id int)"
  },
  "34673d8b12e02243/analyzer": {
@@ -2077,26 +2122,24 @@
   "reason": "A data-changing CTE makes the reader withhold the outer target and event (#584): it names app_logs as altered but not the rows written inside the CTE (src), and the 'changes rows' caution the old extraction gave is no longer raised for this script (tracked in #668). PostgreSQL 16.14 parses it (SQLSTATE 42P01 at run time).",
   "sql": "WITH deleted AS (DELETE FROM src WHERE id = 1 /* RETURNING trap */ RETURNING id) INSERT INTO app_logs(msg) SELECT 'remov"
  },
- "3a323accbe90ace0/hybrid": {
-  "class": "facts-adds-acted",
+ "3a323accbe90ace0/analyzer": {
+  "class": "opaque-reader-gap",
   "facts": {
-   "diagnostic": "table: postgres grammar is not modelled for this statement",
+   "diagnostic": "postgres grammar is not modelled for this statement",
    "kind": "DDL",
-   "objects": [
-    [
-     "]abc",
-     "TABLE",
-     "created",
-     null
-    ]
-   ],
    "operation": "CREATE"
   },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
   "old": {
-   "hybrid": []
+   "analyzer": [
+    [
+     "TABLE",
+     "default_schema.]abc"
+    ]
+   ]
   },
-  "path": "hybrid",
-  "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"[\"); it is a T-SQL statement harvested into the corpus and never runs on this family; the reader names TABLE ]abc (created) where the old extraction named nothing, which costs nothing because the engine never runs the text. CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
+  "path": "analyzer",
+  "reason": "The proposed head takes a name from brackets, while postgresql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'CREATE TABLE []]abc] (id int)'; dialect tokens: CREATE(CREATE) TABLE(TABLE) L_BRACKET([) R_BRACKET(]) R_BRACKET(]) VAR(abc) R_BRACKET(]) L_PAREN((). Prior native observation for this exact SQL: PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"[\"); CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
   "sql": "CREATE TABLE []]abc] (id int)"
  },
  "3a87d6e4f8982e1b/analyzer": {
@@ -2120,48 +2163,44 @@
   "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"{\"); it is a statement of another dialect or an incomplete fragment harvested into the corpus and never runs on this family; the reader names nothing and the old extraction named TABLE default_schema.t, a difference with no consequence because the engine never runs the text. CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
   "sql": "INSERT INTO t{c} VALUES (1)"
  },
- "3b0fee14e1bc819b/hybrid": {
-  "class": "facts-adds-acted",
+ "3b0fee14e1bc819b/analyzer": {
+  "class": "opaque-reader-gap",
   "facts": {
-   "diagnostic": "table: postgres grammar is not modelled for this statement",
+   "diagnostic": "postgres grammar is not modelled for this statement",
    "kind": "DDL",
-   "objects": [
-    [
-     "\"a\"\"b\"",
-     "TABLE",
-     "created",
-     null
-    ]
-   ],
    "operation": "CREATE"
   },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
   "old": {
-   "hybrid": []
+   "analyzer": [
+    [
+     "TABLE",
+     "default_schema.\"a\"\"b\""
+    ]
+   ]
   },
-  "path": "hybrid",
-  "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"[\"); it is a T-SQL statement harvested into the corpus and never runs on this family; the reader names TABLE \"a\"\"b\" (created) where the old extraction named nothing, which costs nothing because the engine never runs the text. CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
+  "path": "analyzer",
+  "reason": "The proposed head takes a name from brackets, while postgresql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'CREATE TABLE [\"a\"\"b\"] (id int)'; dialect tokens: CREATE(CREATE) TABLE(TABLE) L_BRACKET([) IDENTIFIER(a\"b) R_BRACKET(]) L_PAREN(() VAR(id) INT(int). Prior native observation for this exact SQL: PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"[\"); CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
   "sql": "CREATE TABLE [\"a\"\"b\"] (id int)"
  },
- "3bd75f9489caee5c/hybrid": {
-  "class": "facts-adds-acted",
+ "3bd75f9489caee5c/analyzer": {
+  "class": "opaque-reader-gap",
   "facts": {
-   "diagnostic": "table: postgres Command is opaque to statement facts",
+   "diagnostic": "postgres Command is opaque to statement facts",
    "kind": "DDL",
-   "objects": [
-    [
-     "my-table",
-     "TABLE",
-     "created",
-     null
-    ]
-   ],
    "operation": "CREATE"
   },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
   "old": {
-   "hybrid": []
+   "analyzer": [
+    [
+     "TABLE",
+     "default_schema.my-table"
+    ]
+   ]
   },
-  "path": "hybrid",
-  "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"`\"); it is a MySQL or SQLite statement harvested into the corpus and never runs on this family; the reader names TABLE my-table (created) where the old extraction named nothing, which costs nothing because the engine never runs the text. CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
+  "path": "analyzer",
+  "reason": "The proposed head takes a name from backticks, while postgresql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'CREATE TABLE `my-table` (id INT)'; dialect tokens: CREATE(CREATE) TABLE(TABLE) UNKNOWN(`) VAR(my) DASH(-) TABLE(table) UNKNOWN(`) L_PAREN((). Prior native observation for this exact SQL: PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"`\"); CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
   "sql": "CREATE TABLE `my-table` (id INT)"
  },
  "3c188fc0a2909f33/analyzer": {
@@ -2188,26 +2227,24 @@
   },
   "sql": "CREATE BITMAP INDEX bx ON orders (status)"
  },
- "3c763f26f5b14787/hybrid": {
-  "class": "facts-adds-acted",
+ "3c763f26f5b14787/analyzer": {
+  "class": "opaque-reader-gap",
   "facts": {
-   "diagnostic": "table: postgres grammar is not modelled for this statement",
+   "diagnostic": "postgres grammar is not modelled for this statement",
    "kind": "DDL",
-   "objects": [
-    [
-     "plainname",
-     "TABLE",
-     "created",
-     null
-    ]
-   ],
    "operation": "CREATE"
   },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
   "old": {
-   "hybrid": []
+   "analyzer": [
+    [
+     "TABLE",
+     "default_schema.plainname"
+    ]
+   ]
   },
-  "path": "hybrid",
-  "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"[\"); it is a T-SQL statement harvested into the corpus and never runs on this family; the reader names TABLE plainname (created) where the old extraction named nothing, which costs nothing because the engine never runs the text. CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
+  "path": "analyzer",
+  "reason": "The proposed head takes a name from brackets, while postgresql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'CREATE TABLE [plainname] (id int)'; dialect tokens: CREATE(CREATE) TABLE(TABLE) L_BRACKET([) VAR(plainname) R_BRACKET(]) L_PAREN(() VAR(id) INT(int). Prior native observation for this exact SQL: PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"[\"); CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
   "sql": "CREATE TABLE [plainname] (id int)"
  },
  "3d175a34b02a4f64/analyzer": {
@@ -2234,26 +2271,24 @@
   },
   "sql": "CREATE OR REPLACE PUBLIC SYNONYM emp FOR employees"
  },
- "3d8a0c35988b7bc0/hybrid": {
-  "class": "facts-adds-acted",
+ "3d8a0c35988b7bc0/analyzer": {
+  "class": "opaque-reader-gap",
   "facts": {
    "error": "postgres statement could not be tokenized (unterminated quote or comment)",
    "kind": "DDL",
-   "objects": [
-    [
-     "$",
-     "TABLE",
-     "created",
-     null
-    ]
-   ],
    "operation": "CREATE"
   },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
   "old": {
-   "hybrid": []
+   "analyzer": [
+    [
+     "TABLE",
+     "default_schema.$"
+    ]
+   ]
   },
-  "path": "hybrid",
-  "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"$\"); it is a statement holding an unresolved ${...} placeholder harvested into the corpus and never runs on this family; the reader names TABLE $ (created) where the old extraction named nothing, which costs nothing because the engine never runs the text. CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
+  "path": "analyzer",
+  "reason": "The head holds ${...} substitution text. Before substitution it does not supply the concrete source name token sequence required for an affected object. Source head: 'CREATE TABLE ${schema}.${table} (id INT)'; dialect tokens: . Prior native observation for this exact SQL: PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"$\"); CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
   "sql": "CREATE TABLE ${schema}.${table} (id INT)"
  },
  "3da5bee39f725087/analyzer": {
@@ -2366,26 +2401,24 @@
   "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"MANAGED\"); it is a Db2 or Oracle statement harvested into the corpus and never runs on this family, but CockroachDB answered 0A000 (not implemented, not a syntax error); a tablespace has no object type in the reader, so it is opaque and the old extraction's UNKNOWN name is lost (#669). YugabyteDB 2026.1.2: 42601.",
   "sql": "CREATE TABLESPACE \"my_ts\" MANAGED BY SYSTEM"
  },
- "3f97612d0be4afcd/hybrid": {
-  "class": "facts-adds-acted",
+ "3f97612d0be4afcd/analyzer": {
+  "class": "opaque-reader-gap",
   "facts": {
-   "diagnostic": "table: postgres Command is opaque to statement facts",
+   "diagnostic": "postgres Command is opaque to statement facts",
    "kind": "DDL",
-   "objects": [
-    [
-     "real`one",
-     "TABLE",
-     "created",
-     null
-    ]
-   ],
    "operation": "CREATE"
   },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
   "old": {
-   "hybrid": []
+   "analyzer": [
+    [
+     "TABLE",
+     "default_schema.real`one"
+    ]
+   ]
   },
-  "path": "hybrid",
-  "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"`\"); it is a MySQL or SQLite statement harvested into the corpus and never runs on this family; the reader names TABLE real`one (created) where the old extraction named nothing, which costs nothing because the engine never runs the text. CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
+  "path": "analyzer",
+  "reason": "The proposed head takes a name from backticks, while postgresql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'CREATE TABLE `real``one` (id int)'; dialect tokens: CREATE(CREATE) TABLE(TABLE) UNKNOWN(`) FLOAT(real) UNKNOWN(`) UNKNOWN(`) VAR(one) UNKNOWN(`). Prior native observation for this exact SQL: PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"`\"); CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
   "sql": "CREATE TABLE `real``one` (id int)"
  },
  "401e0a4750c29eba/hybrid": {
@@ -2458,6 +2491,26 @@
   },
   "sql": "CREATE OR REPLACE PACKAGE pkg1 IS END pkg1"
  },
+ "43a68d4181f3b64f/analyzer": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "postgres grammar is not modelled for this statement",
+   "kind": "DDL",
+   "operation": "DROP"
+  },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+  "old": {
+   "analyzer": [
+    [
+     "INDEX",
+     "default_schema.idx_users_email"
+    ]
+   ]
+  },
+  "path": "analyzer",
+  "reason": "The proposed head takes a name from brackets, while postgresql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'DROP INDEX IF EXISTS [idx_users_email] ON [users]'; dialect tokens: DROP(DROP) INDEX(INDEX) VAR(IF) EXISTS(EXISTS) L_BRACKET([) VAR(idx_users_email) R_BRACKET(]) ON(ON).",
+  "sql": "DROP INDEX IF EXISTS [idx_users_email] ON [users]"
+ },
  "43a68d4181f3b64f/hybrid": {
   "class": "opaque-reader-gap",
   "facts": {
@@ -2516,70 +2569,64 @@
   },
   "sql": "END#\n        --#SET TERMINATOR ;\n        CREATE PROCEDURE test4() LANGUAGE SQL BEGIN SELECT 4"
  },
- "4470919cf94692bc/hybrid": {
-  "class": "facts-adds-acted",
+ "4470919cf94692bc/analyzer": {
+  "class": "opaque-reader-gap",
   "facts": {
-   "diagnostic": "table: postgres grammar is not modelled for this statement",
+   "diagnostic": "postgres grammar is not modelled for this statement",
    "kind": "DDL",
-   "objects": [
-    [
-     "ft_test",
-     "TABLE",
-     "created",
-     "rel470_ss"
-    ]
-   ],
    "operation": "CREATE"
   },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
   "old": {
-   "hybrid": []
+   "analyzer": [
+    [
+     "TABLE",
+     "rel470_ss.ft_test"
+    ]
+   ]
   },
-  "path": "hybrid",
-  "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"[\"); it is a T-SQL statement harvested into the corpus and never runs on this family; the reader names TABLE ft_test in rel470_ss (created) where the old extraction named nothing, which costs nothing because the engine never runs the text. CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
+  "path": "analyzer",
+  "reason": "The proposed head takes a name from brackets, while postgresql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'CREATE TABLE [rel470_ss].[ft_test] ([id] INT PRIMARY KEY, [body] NVARCHAR(MAX))'; dialect tokens: CREATE(CREATE) TABLE(TABLE) L_BRACKET([) VAR(rel470_ss) R_BRACKET(]) DOT(.) L_BRACKET([) VAR(ft_test). Prior native observation for this exact SQL: PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"[\"); CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
   "sql": "CREATE TABLE [rel470_ss].[ft_test] ([id] INT PRIMARY KEY, [body] NVARCHAR(MAX))"
  },
- "4592ae343005b4dc/hybrid": {
-  "class": "facts-adds-acted",
+ "4592ae343005b4dc/analyzer": {
+  "class": "opaque-reader-gap",
   "facts": {
-   "diagnostic": "index: postgres grammar is not modelled for this statement",
+   "diagnostic": "postgres grammar is not modelled for this statement",
    "kind": "DDL",
-   "objects": [
-    [
-     "idx_users_email",
-     "INDEX",
-     "dropped",
-     null
-    ]
-   ],
    "operation": "DROP"
   },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
   "old": {
-   "hybrid": []
+   "analyzer": [
+    [
+     "INDEX",
+     "default_schema.idx_users_email"
+    ]
+   ]
   },
-  "path": "hybrid",
-  "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"`\"); it is a MySQL or SQLite statement harvested into the corpus and never runs on this family; the reader names INDEX idx_users_email (dropped) where the old extraction named nothing, which costs nothing because the engine never runs the text. CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
+  "path": "analyzer",
+  "reason": "The proposed head takes a name from backticks, while postgresql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'DROP INDEX `idx_users_email` ON `users`'; dialect tokens: DROP(DROP) INDEX(INDEX) UNKNOWN(`) VAR(idx_users_email) UNKNOWN(`) ON(ON) UNKNOWN(`) VAR(users). Prior native observation for this exact SQL: PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"`\"); CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
   "sql": "DROP INDEX `idx_users_email` ON `users`"
  },
- "4643a35794a39f42/hybrid": {
-  "class": "facts-adds-acted",
+ "4643a35794a39f42/analyzer": {
+  "class": "opaque-reader-gap",
   "facts": {
-   "diagnostic": "index: postgres Command is opaque to statement facts",
+   "diagnostic": "postgres Command is opaque to statement facts",
    "kind": "DDL",
-   "objects": [
-    [
-     "idx",
-     "INDEX",
-     "created",
-     null
-    ]
-   ],
    "operation": "CREATE"
   },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
   "old": {
-   "hybrid": []
+   "analyzer": [
+    [
+     "INDEX",
+     "idx"
+    ]
+   ]
   },
-  "path": "hybrid",
-  "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"[\"); it is a T-SQL statement harvested into the corpus and never runs on this family; the reader names INDEX idx (created) where the old extraction named nothing, which costs nothing because the engine never runs the text. CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
+  "path": "analyzer",
+  "reason": "The proposed head takes a name from brackets, while postgresql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'CREATE INDEX [idx] ON [mydb].[dbo].[mytable]([col])'; dialect tokens: CREATE(CREATE) INDEX(INDEX) L_BRACKET([) VAR(idx) R_BRACKET(]) ON(ON) L_BRACKET([) VAR(mydb). Prior native observation for this exact SQL: PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"[\"); CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
   "sql": "CREATE INDEX [idx] ON [mydb].[dbo].[mytable]([col])"
  },
  "48743a1003568b72/hybrid": {
@@ -3420,26 +3467,24 @@
   "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \",\"); it is a statement of another dialect or an incomplete fragment harvested into the corpus and never runs on this family, but CockroachDB answered 0A000 (feature not supported, not a syntax error); the reader keeps COPY with an unmodelled source or options opaque (#667). YugabyteDB 2026.1.2: 42601.",
   "sql": "COPY items FROM 'a.csv', 'b.csv'"
  },
- "64fcf8ca04f2dc02/hybrid": {
-  "class": "facts-adds-acted",
+ "64fcf8ca04f2dc02/analyzer": {
+  "class": "opaque-reader-gap",
   "facts": {
-   "diagnostic": "index: postgres Command is opaque to statement facts",
+   "diagnostic": "postgres Command is opaque to statement facts",
    "kind": "DDL",
-   "objects": [
-    [
-     "idx",
-     "INDEX",
-     "created",
-     null
-    ]
-   ],
    "operation": "CREATE"
   },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
   "old": {
-   "hybrid": []
+   "analyzer": [
+    [
+     "INDEX",
+     "idx"
+    ]
+   ]
   },
-  "path": "hybrid",
-  "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"[\"); it is a T-SQL statement harvested into the corpus and never runs on this family; the reader names INDEX idx (created) where the old extraction named nothing, which costs nothing because the engine never runs the text. CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
+  "path": "analyzer",
+  "reason": "The proposed head takes a name from brackets, while postgresql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'CREATE INDEX [idx] ON [a]]b].[c]]d]([col])'; dialect tokens: CREATE(CREATE) INDEX(INDEX) L_BRACKET([) VAR(idx) R_BRACKET(]) ON(ON) L_BRACKET([) VAR(a). Prior native observation for this exact SQL: PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"[\"); CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
   "sql": "CREATE INDEX [idx] ON [a]]b].[c]]d]([col])"
  },
  "65073fa8ad12ac9c/hybrid": {
@@ -3616,26 +3661,24 @@
   },
   "sql": "ALTER STOGROUP my_sg ADD VOLUMES ('vol2')"
  },
- "6ab6237211507715/hybrid": {
-  "class": "facts-adds-acted",
+ "6ab6237211507715/analyzer": {
+  "class": "opaque-reader-gap",
   "facts": {
-   "diagnostic": "procedure: postgres Command is opaque to statement facts",
+   "diagnostic": "postgres Command is opaque to statement facts",
    "kind": "DDL",
-   "objects": [
-    [
-     "my_proc",
-     "PROCEDURE",
-     "created",
-     null
-    ]
-   ],
    "operation": "CREATE"
   },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
   "old": {
-   "hybrid": []
+   "analyzer": [
+    [
+     "PROCEDURE",
+     "default_schema.my_proc"
+    ]
+   ]
   },
-  "path": "hybrid",
-  "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"`\"); it is a MySQL or SQLite statement harvested into the corpus and never runs on this family; the reader names PROCEDURE my_proc (created) where the old extraction named nothing, which costs nothing because the engine never runs the text. CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
+  "path": "analyzer",
+  "reason": "The proposed head takes a name from backticks, while postgresql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'CREATE PROCEDURE `my_proc`() BEGIN SELECT 1'; dialect tokens: CREATE(CREATE) PROCEDURE(PROCEDURE) UNKNOWN(`) VAR(my_proc) UNKNOWN(`) L_PAREN(() R_PAREN()) BEGIN(BEGIN). Prior native observation for this exact SQL: PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"`\"); CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
   "sql": "CREATE PROCEDURE `my_proc`() BEGIN SELECT 1"
  },
  "6b10c74a6de18c65/analyzer": {
@@ -4441,26 +4484,24 @@
   "reason": "A DROP TABLE lists several tables: the reader names all of them (TABLE users (dropped), TABLE orders (dropped)); the old analyzer path stopped at the first (TABLE default_schema.users). PostgreSQL 16.14 runs it.",
   "sql": "DROP TABLE IF EXISTS users, orders CASCADE"
  },
- "812682e5576d375d/hybrid": {
-  "class": "facts-adds-acted",
+ "812682e5576d375d/analyzer": {
+  "class": "opaque-reader-gap",
   "facts": {
-   "diagnostic": "table: postgres grammar is not modelled for this statement",
+   "diagnostic": "postgres grammar is not modelled for this statement",
    "kind": "DDL",
-   "objects": [
-    [
-     "name]",
-     "TABLE",
-     "created",
-     null
-    ]
-   ],
    "operation": "CREATE"
   },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
   "old": {
-   "hybrid": []
+   "analyzer": [
+    [
+     "TABLE",
+     "default_schema.name]"
+    ]
+   ]
   },
-  "path": "hybrid",
-  "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"[\"); it is a T-SQL statement harvested into the corpus and never runs on this family; the reader names TABLE name] (created) where the old extraction named nothing, which costs nothing because the engine never runs the text. CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
+  "path": "analyzer",
+  "reason": "The proposed head takes a name from brackets, while postgresql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'CREATE TABLE [name]]] (id int)'; dialect tokens: CREATE(CREATE) TABLE(TABLE) L_BRACKET([) NAME(name) R_BRACKET(]) R_BRACKET(]) R_BRACKET(]) L_PAREN((). Prior native observation for this exact SQL: PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"[\"); CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
   "sql": "CREATE TABLE [name]]] (id int)"
  },
  "84e53343f505c69f/hybrid": {
@@ -4513,26 +4554,24 @@
   },
   "sql": "COPY items 'a.csv' (FORMAT FROM)"
  },
- "853b5dfcecc0f0cb/hybrid": {
-  "class": "facts-adds-acted",
+ "853b5dfcecc0f0cb/analyzer": {
+  "class": "opaque-reader-gap",
   "facts": {
-   "diagnostic": "table: postgres Command is opaque to statement facts",
+   "diagnostic": "postgres Command is opaque to statement facts",
    "kind": "DDL",
-   "objects": [
-    [
-     "test-table",
-     "TABLE",
-     "created",
-     null
-    ]
-   ],
    "operation": "CREATE"
   },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
   "old": {
-   "hybrid": []
+   "analyzer": [
+    [
+     "TABLE",
+     "default_schema.test-table"
+    ]
+   ]
   },
-  "path": "hybrid",
-  "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"`\"); it is a MySQL or SQLite statement harvested into the corpus and never runs on this family; the reader names TABLE test-table (created) where the old extraction named nothing, which costs nothing because the engine never runs the text. CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
+  "path": "analyzer",
+  "reason": "The proposed head takes a name from backticks, while postgresql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'CREATE TABLE `test-table` (`column-name` INT)'; dialect tokens: CREATE(CREATE) TABLE(TABLE) UNKNOWN(`) VAR(test) DASH(-) TABLE(table) UNKNOWN(`) L_PAREN((). Prior native observation for this exact SQL: PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"`\"); CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
   "sql": "CREATE TABLE `test-table` (`column-name` INT)"
  },
  "86e247c1bd33c62c": {
@@ -4688,26 +4727,24 @@
   },
   "sql": "DROP PASSWORD POLICY IF EXISTS \"S\".\"STRONG_PW\""
  },
- "8a8aaf517308022e/hybrid": {
-  "class": "facts-adds-acted",
+ "8a8aaf517308022e/analyzer": {
+  "class": "opaque-reader-gap",
   "facts": {
-   "diagnostic": "table: postgres grammar is not modelled for this statement",
+   "diagnostic": "postgres grammar is not modelled for this statement",
    "kind": "DDL",
-   "objects": [
-    [
-     "a]b]c",
-     "TABLE",
-     "created",
-     null
-    ]
-   ],
    "operation": "CREATE"
   },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
   "old": {
-   "hybrid": []
+   "analyzer": [
+    [
+     "TABLE",
+     "default_schema.a]b]c"
+    ]
+   ]
   },
-  "path": "hybrid",
-  "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"[\"); it is a T-SQL statement harvested into the corpus and never runs on this family; the reader names TABLE a]b]c (created) where the old extraction named nothing, which costs nothing because the engine never runs the text. CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
+  "path": "analyzer",
+  "reason": "The proposed head takes a name from brackets, while postgresql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'CREATE TABLE [a]]b]]c] (id int)'; dialect tokens: CREATE(CREATE) TABLE(TABLE) L_BRACKET([) VAR(a) R_BRACKET(]) R_BRACKET(]) VAR(b) R_BRACKET(]). Prior native observation for this exact SQL: PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"[\"); CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
   "sql": "CREATE TABLE [a]]b]]c] (id int)"
  },
  "8cb881d12fef59a1/analyzer": {
@@ -4733,6 +4770,26 @@
    "yugabytedb 2026.1.2": "42601"
   },
   "sql": "DROP UNKNOWN_TYPE obj_name"
+ },
+ "8e88b0a40889c03f/analyzer": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "postgres grammar is not modelled for this statement",
+   "kind": "DDL",
+   "operation": "DROP"
+  },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+  "old": {
+   "analyzer": [
+    [
+     "INDEX",
+     "default_schema.idx_x"
+    ]
+   ]
+  },
+  "path": "analyzer",
+  "reason": "The proposed head takes a name from brackets, while postgresql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'DROP INDEX IF EXISTS [idx_x] ON [dbo].[foo]]bar]'; dialect tokens: DROP(DROP) INDEX(INDEX) VAR(IF) EXISTS(EXISTS) L_BRACKET([) VAR(idx_x) R_BRACKET(]) ON(ON).",
+  "sql": "DROP INDEX IF EXISTS [idx_x] ON [dbo].[foo]]bar]"
  },
  "8e88b0a40889c03f/hybrid": {
   "class": "opaque-reader-gap",
@@ -4825,6 +4882,26 @@
   },
   "sql": "EXEC SQL CREATE TABLE t (id INT) END-EXEC"
  },
+ "8f31fe8d20c41185/analyzer": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "postgres grammar is not modelled for this statement",
+   "kind": "DDL",
+   "operation": "DROP"
+  },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+  "old": {
+   "analyzer": [
+    [
+     "INDEX",
+     "default_schema.idx_users_email"
+    ]
+   ]
+  },
+  "path": "analyzer",
+  "reason": "The proposed head takes a name from brackets, while postgresql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'DROP INDEX IF EXISTS [idx_users_email] ON [sales].[users]'; dialect tokens: DROP(DROP) INDEX(INDEX) VAR(IF) EXISTS(EXISTS) L_BRACKET([) VAR(idx_users_email) R_BRACKET(]) ON(ON).",
+  "sql": "DROP INDEX IF EXISTS [idx_users_email] ON [sales].[users]"
+ },
  "8f31fe8d20c41185/hybrid": {
   "class": "opaque-reader-gap",
   "facts": {
@@ -4882,26 +4959,24 @@
   },
   "sql": "CREATE CLUSTERED INDEX ix ON t (a)"
  },
- "9044bd95b55c7381/hybrid": {
-  "class": "facts-adds-acted",
+ "9044bd95b55c7381/analyzer": {
+  "class": "opaque-reader-gap",
   "facts": {
-   "diagnostic": "table: postgres Command is opaque to statement facts",
+   "diagnostic": "postgres Command is opaque to statement facts",
    "kind": "DDL",
-   "objects": [
-    [
-     "users",
-     "TABLE",
-     "created",
-     null
-    ]
-   ],
    "operation": "CREATE"
   },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
   "old": {
-   "hybrid": []
+   "analyzer": [
+    [
+     "TABLE",
+     "default_schema.users"
+    ]
+   ]
   },
-  "path": "hybrid",
-  "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"`\"); it is a MySQL or SQLite statement harvested into the corpus and never runs on this family; the reader names TABLE users (created) where the old extraction named nothing, which costs nothing because the engine never runs the text. CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
+  "path": "analyzer",
+  "reason": "The proposed head takes a name from backticks, while postgresql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'CREATE TABLE `users` (`id` INT PRIMARY KEY)'; dialect tokens: CREATE(CREATE) TABLE(TABLE) UNKNOWN(`) VAR(users) UNKNOWN(`) L_PAREN(() UNKNOWN(`) VAR(id). Prior native observation for this exact SQL: PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"`\"); CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
   "sql": "CREATE TABLE `users` (`id` INT PRIMARY KEY)"
  },
  "925e4a95674e8e49/hybrid": {
@@ -4936,26 +5011,24 @@
   "reason": "The reader names only TYPE my_type (dropped); the old extraction added UNKNOWN my_type next to it. PostgreSQL 16.14 parses it (SQLSTATE 42704 at run time).",
   "sql": "DROP TYPE my_type"
  },
- "925ea0229c5e08c6/hybrid": {
-  "class": "facts-adds-acted",
+ "925ea0229c5e08c6/analyzer": {
+  "class": "opaque-reader-gap",
   "facts": {
-   "diagnostic": "table: postgres grammar is not modelled for this statement",
+   "diagnostic": "postgres grammar is not modelled for this statement",
    "kind": "DDL",
-   "objects": [
-    [
-     "$",
-     "TABLE",
-     "created",
-     null
-    ]
-   ],
    "operation": "CREATE"
   },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
   "old": {
-   "hybrid": []
+   "analyzer": [
+    [
+     "TABLE",
+     "default_schema.$"
+    ]
+   ]
   },
-  "path": "hybrid",
-  "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"$\"); it is a statement holding an unresolved ${...} placeholder harvested into the corpus and never runs on this family; the reader names TABLE $ (created) where the old extraction named nothing, which costs nothing because the engine never runs the text. CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
+  "path": "analyzer",
+  "reason": "The head holds ${...} substitution text. Before substitution it does not supply the concrete source name token sequence required for an affected object. Source head: 'CREATE TABLE ${table_name} (id SERIAL PRIMARY KEY)'; dialect tokens: CREATE(CREATE) TABLE(TABLE) PARAMETER($) L_BRACE({) VAR(table_name) R_BRACE(}) L_PAREN(() VAR(id). Prior native observation for this exact SQL: PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"$\"); CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
   "sql": "CREATE TABLE ${table_name} (id SERIAL PRIMARY KEY)"
  },
  "92bd528af5aab376/hybrid": {
@@ -5087,26 +5160,24 @@
   "reason": "The reader names TABLE orders in s (altered) past the nested block comment; the old analyzer path gave up on the comment and named nothing. PostgreSQL 16.14 parses it (SQLSTATE 3F000 at run time).",
   "sql": "ALTER TABLE /* outer /* inner */ x */ \"s\".\"orders\" ADD COLUMN c INT"
  },
- "99ee672ba37ba230/hybrid": {
-  "class": "facts-adds-acted",
+ "99ee672ba37ba230/analyzer": {
+  "class": "opaque-reader-gap",
   "facts": {
-   "diagnostic": "table: postgres grammar is not modelled for this statement",
+   "diagnostic": "postgres grammar is not modelled for this statement",
    "kind": "DDL",
-   "objects": [
-    [
-     "c]d",
-     "TABLE",
-     "created",
-     "a]b"
-    ]
-   ],
    "operation": "CREATE"
   },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
   "old": {
-   "hybrid": []
+   "analyzer": [
+    [
+     "TABLE",
+     "a]b.c]d"
+    ]
+   ]
   },
-  "path": "hybrid",
-  "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"[\"); it is a T-SQL statement harvested into the corpus and never runs on this family; the reader names TABLE c]d in a]b (created) where the old extraction named nothing, which costs nothing because the engine never runs the text. CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
+  "path": "analyzer",
+  "reason": "The proposed head takes a name from brackets, while postgresql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'CREATE TABLE [a]]b].[c]]d] (id int)'; dialect tokens: CREATE(CREATE) TABLE(TABLE) L_BRACKET([) VAR(a) R_BRACKET(]) R_BRACKET(]) VAR(b) R_BRACKET(]). Prior native observation for this exact SQL: PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"[\"); CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
   "sql": "CREATE TABLE [a]]b].[c]]d] (id int)"
  },
  "9b189fadcc0d5d47/hybrid": {
@@ -5300,48 +5371,44 @@
   },
   "sql": "CREATE TABLE a (id INT)\nCREATE TABLE b (id INT)"
  },
- "a317475667b0f836/hybrid": {
-  "class": "facts-adds-acted",
+ "a317475667b0f836/analyzer": {
+  "class": "opaque-reader-gap",
   "facts": {
-   "diagnostic": "function: postgres Command is opaque to statement facts",
+   "diagnostic": "postgres Command is opaque to statement facts",
    "kind": "DDL",
-   "objects": [
-    [
-     "my_func",
-     "FUNCTION",
-     "created",
-     null
-    ]
-   ],
    "operation": "CREATE"
   },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
   "old": {
-   "hybrid": []
+   "analyzer": [
+    [
+     "FUNCTION",
+     "default_schema.my_func"
+    ]
+   ]
   },
-  "path": "hybrid",
-  "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"`\"); it is a MySQL or SQLite statement harvested into the corpus and never runs on this family; the reader names FUNCTION my_func (created) where the old extraction named nothing, which costs nothing because the engine never runs the text. CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
+  "path": "analyzer",
+  "reason": "The proposed head takes a name from backticks, while postgresql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'CREATE FUNCTION `my_func`() RETURNS INT BEGIN RETURN 1'; dialect tokens: CREATE(CREATE) FUNCTION(FUNCTION) UNKNOWN(`) VAR(my_func) UNKNOWN(`) L_PAREN(() R_PAREN()) VAR(RETURNS). Prior native observation for this exact SQL: PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"`\"); CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
   "sql": "CREATE FUNCTION `my_func`() RETURNS INT BEGIN RETURN 1"
  },
- "a356d0d77d25af31/hybrid": {
-  "class": "facts-adds-acted",
+ "a356d0d77d25af31/analyzer": {
+  "class": "opaque-reader-gap",
   "facts": {
-   "diagnostic": "index: postgres Command is opaque to statement facts",
+   "diagnostic": "postgres Command is opaque to statement facts",
    "kind": "DDL",
-   "objects": [
-    [
-     "idx_users_email",
-     "INDEX",
-     "created",
-     null
-    ]
-   ],
    "operation": "CREATE"
   },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
   "old": {
-   "hybrid": []
+   "analyzer": [
+    [
+     "INDEX",
+     "idx_users_email"
+    ]
+   ]
   },
-  "path": "hybrid",
-  "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"[\"); it is a T-SQL statement harvested into the corpus and never runs on this family; the reader names INDEX idx_users_email (created) where the old extraction named nothing, which costs nothing because the engine never runs the text. CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
+  "path": "analyzer",
+  "reason": "The proposed head takes a name from brackets, while postgresql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'CREATE INDEX [idx_users_email] ON [users]([email])'; dialect tokens: CREATE(CREATE) INDEX(INDEX) L_BRACKET([) VAR(idx_users_email) R_BRACKET(]) ON(ON) L_BRACKET([) VAR(users). Prior native observation for this exact SQL: PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"[\"); CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
   "sql": "CREATE INDEX [idx_users_email] ON [users]([email])"
  },
  "a37fdb980cc80627/analyzer": {
@@ -5369,6 +5436,47 @@
   "path": "analyzer",
   "reason": "The statement is led by a CTE and writes the table the reader names (TABLE t (altered)); the old analyzer path refused CTE-led statements and named nothing. PostgreSQL 16.14 parses it (SQLSTATE 42P01 at run time).",
   "sql": "WITH x AS (SELECT 1) INSERT INTO t SELECT * FROM x"
+ },
+ "a401888eadfc386b/analyzer": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "postgres Command is opaque to statement facts",
+   "kind": "DDL",
+   "operation": "ALTER"
+  },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+  "old": {
+   "analyzer": [
+    [
+     "TABLE",
+     "default_schema.a`b"
+    ]
+   ]
+  },
+  "path": "analyzer",
+  "reason": "The proposed head takes a name from backticks, while postgresql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'ALTER TABLE `a``b` ADD COLUMN x INT'; dialect tokens: ALTER(ALTER) TABLE(TABLE) UNKNOWN(`) VAR(a) UNKNOWN(`) UNKNOWN(`) VAR(b) UNKNOWN(`).",
+  "sql": "ALTER TABLE `a``b` ADD COLUMN x INT"
+ },
+ "a401888eadfc386b/hybrid": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "postgres Command is opaque to statement facts",
+   "kind": "DDL",
+   "operation": "ALTER"
+  },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+  "old": {
+   "hybrid": [
+    [
+     "TABLE",
+     "a",
+     "public"
+    ]
+   ]
+  },
+  "path": "hybrid",
+  "reason": "The proposed head takes a name from backticks, while postgresql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'ALTER TABLE `a``b` ADD COLUMN x INT'; dialect tokens: ALTER(ALTER) TABLE(TABLE) UNKNOWN(`) VAR(a) UNKNOWN(`) UNKNOWN(`) VAR(b) UNKNOWN(`).",
+  "sql": "ALTER TABLE `a``b` ADD COLUMN x INT"
  },
  "a50bc34cb52c502a/hybrid": {
   "class": "opaque-reader-gap",
@@ -5403,26 +5511,24 @@
   },
   "sql": "CREATE TRIGGER IF NOT EXISTS s.tr AFTER INSERT ON t BEGIN SELECT 1"
  },
- "a53ed84f83784159/hybrid": {
-  "class": "facts-adds-acted",
+ "a53ed84f83784159/analyzer": {
+  "class": "opaque-reader-gap",
   "facts": {
-   "diagnostic": "table: postgres grammar is not modelled for this statement",
+   "diagnostic": "postgres grammar is not modelled for this statement",
    "kind": "DDL",
-   "objects": [
-    [
-     "a]/*b*/",
-     "TABLE",
-     "created",
-     null
-    ]
-   ],
    "operation": "CREATE"
   },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
   "old": {
-   "hybrid": []
+   "analyzer": [
+    [
+     "TABLE",
+     "default_schema.a]/*b*/"
+    ]
+   ]
   },
-  "path": "hybrid",
-  "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"[\"); it is a T-SQL statement harvested into the corpus and never runs on this family; the reader names TABLE a]/*b*/ (created) where the old extraction named nothing, which costs nothing because the engine never runs the text. CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
+  "path": "analyzer",
+  "reason": "Nested-looking /* markers and/or a later unmatched */ change where the dialect token stream places the proposed head or the rest of its unit. The whole-unit safety guard publishes no guessed effect. Initial visible name tokens, if any, are preserved in the token evidence; no native validity is inferred. Source head: 'CREATE TABLE [a]]/*b*/] (id INT) /* c */'; dialect tokens: CREATE(CREATE) TABLE(TABLE) L_BRACKET([) VAR(a) R_BRACKET(]) R_BRACKET(]) R_BRACKET(]) L_PAREN((). Prior native observation for this exact SQL: PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"[\"); CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
   "sql": "CREATE TABLE [a]]/*b*/] (id INT) /* c */"
  },
  "a577ed943b61b37f/analyzer": {
@@ -5520,6 +5626,26 @@
    "yugabytedb 2026.1.2": "42601"
   },
   "sql": "END@\n        CREATE PROCEDURE test2() LANGUAGE SQL BEGIN SELECT 2"
+ },
+ "a7eae99120881330/analyzer": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "postgres grammar is not modelled for this statement",
+   "kind": "DDL",
+   "operation": "DROP"
+  },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+  "old": {
+   "analyzer": [
+    [
+     "INDEX",
+     "default_schema.idx_users_email"
+    ]
+   ]
+  },
+  "path": "analyzer",
+  "reason": "The proposed head takes a name from brackets, while postgresql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'DROP INDEX IF EXISTS [idx_users_email] ON [dbo].[users]'; dialect tokens: DROP(DROP) INDEX(INDEX) VAR(IF) EXISTS(EXISTS) L_BRACKET([) VAR(idx_users_email) R_BRACKET(]) ON(ON).",
+  "sql": "DROP INDEX IF EXISTS [idx_users_email] ON [dbo].[users]"
  },
  "a7eae99120881330/hybrid": {
   "class": "opaque-reader-gap",
@@ -5739,6 +5865,47 @@
   "reason": "The table carries WITH (fillfactor=70) TABLESPACE ts, which sqlglot parses as a Command: the reader keeps the head identity only as opaque, and the declared columns are not read, where the old extraction named TABLE mixed (#666). PostgreSQL 16.14 parses it (SQLSTATE 42704 at run time).",
   "sql": "CREATE TABLE MiXed (a int) WITH (fillfactor=70) TABLESPACE ts"
  },
+ "adfa881b55d4dbc2/analyzer": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "postgres grammar is not modelled for this statement",
+   "kind": "DDL",
+   "operation": "DROP"
+  },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+  "old": {
+   "analyzer": [
+    [
+     "TABLE",
+     "x.orders"
+    ]
+   ]
+  },
+  "path": "analyzer",
+  "reason": "The proposed head takes a name from backticks, while postgresql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'DROP TABLE IF EXISTS `x`.`orders`'; dialect tokens: DROP(DROP) TABLE(TABLE) VAR(IF) EXISTS(EXISTS) UNKNOWN(`) VAR(x) UNKNOWN(`) DOT(.).",
+  "sql": "DROP TABLE IF EXISTS `x`.`orders`"
+ },
+ "adfa881b55d4dbc2/hybrid": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "postgres grammar is not modelled for this statement",
+   "kind": "DDL",
+   "operation": "DROP"
+  },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+  "old": {
+   "hybrid": [
+    [
+     "TABLE",
+     "orders",
+     "x"
+    ]
+   ]
+  },
+  "path": "hybrid",
+  "reason": "The proposed head takes a name from backticks, while postgresql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'DROP TABLE IF EXISTS `x`.`orders`'; dialect tokens: DROP(DROP) TABLE(TABLE) VAR(IF) EXISTS(EXISTS) UNKNOWN(`) VAR(x) UNKNOWN(`) DOT(.).",
+  "sql": "DROP TABLE IF EXISTS `x`.`orders`"
+ },
  "aea134aa25298dd3/analyzer": {
   "class": "opaque-reader-gap",
   "facts": {
@@ -5806,26 +5973,25 @@
   },
   "sql": "CREATE OR REPLACE FORCE VIEW vw_test AS\n        SELECT * FROM nonexistent_table"
  },
- "b1302612249a68c8/analyzer": {
-  "class": "facts-adds-acted",
+ "b1302612249a68c8/hybrid": {
+  "class": "opaque-reader-gap",
   "facts": {
-   "diagnostic": "table: postgres grammar is not modelled for this statement",
+   "diagnostic": "postgres grammar is not modelled for this statement",
    "kind": "DDL",
-   "objects": [
-    [
-     "after_proc",
-     "TABLE",
-     "created",
-     null
-    ]
-   ],
    "operation": "CREATE"
   },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
   "old": {
-   "analyzer": []
+   "hybrid": [
+    [
+     "TABLE",
+     "after_proc",
+     "public"
+    ]
+   ]
   },
-  "path": "analyzer",
-  "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"/\"); it is a script fragment with a client command or without statement terminators, as written for another dialect harvested into the corpus and never runs on this family; the reader names TABLE after_proc (created) where the old extraction named nothing, which costs nothing because the engine never runs the text. CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
+  "path": "hybrid",
+  "reason": "The original unit begins with slash separator; the first source tokens are not the same verb/name sequence as a bare proposed DDL head. The reader cannot scan through that prefix and attribute its later name to this entire unit. Source head: '/\\\\n\\\\nCREATE TABLE after_proc (id NUMBER)'; dialect tokens: SLASH(/) CREATE(CREATE) TABLE(TABLE) VAR(after_proc) L_PAREN(() VAR(id) DECIMAL(NUMBER) R_PAREN()). Prior native observation for this exact SQL: PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"/\"); CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
   "sql": "/\n\nCREATE TABLE after_proc (id NUMBER)"
  },
  "b171fa9efeec56a8/analyzer": {
@@ -5958,6 +6124,26 @@
   "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at end of input); it is a truncated statement harvested into the corpus and never runs on this family; the reader and the old extraction differ on updated_columns (facts [], extraction ['parent_id']), with no consequence because the engine never runs the text. CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
   "sql": "UPDATE child SET parent_id ="
  },
+ "b24b8641c2e26f7e/analyzer": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "postgres grammar is not modelled for this statement",
+   "kind": "DDL",
+   "operation": "DROP"
+  },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+  "old": {
+   "analyzer": [
+    [
+     "INDEX",
+     "default_schema.idx_u"
+    ]
+   ]
+  },
+  "path": "analyzer",
+  "reason": "The proposed head takes a name from brackets, while postgresql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'DROP INDEX IF EXISTS [idx_u] ON [sales].[orders]'; dialect tokens: DROP(DROP) INDEX(INDEX) VAR(IF) EXISTS(EXISTS) L_BRACKET([) VAR(idx_u) R_BRACKET(]) ON(ON).",
+  "sql": "DROP INDEX IF EXISTS [idx_u] ON [sales].[orders]"
+ },
  "b24b8641c2e26f7e/hybrid": {
   "class": "opaque-reader-gap",
   "facts": {
@@ -6011,26 +6197,24 @@
   "reason": "This kind of object has no SqlObjectType the reader can name (event trigger, foreign data wrapper, server, publication, operator class, text search dictionary, tablespace), so it is opaque where the old extraction named UNKNOWN default_schema.et (#669). PostgreSQL 16.14 parses it (SQLSTATE 42883 at run time).",
   "sql": "CREATE EVENT TRIGGER et ON ddl_command_end EXECUTE FUNCTION f()"
  },
- "b2c5fa1d0bef2104/hybrid": {
-  "class": "facts-adds-acted",
+ "b2c5fa1d0bef2104/analyzer": {
+  "class": "opaque-reader-gap",
   "facts": {
-   "diagnostic": "index: postgres grammar is not modelled for this statement",
+   "diagnostic": "postgres grammar is not modelled for this statement",
    "kind": "DDL",
-   "objects": [
-    [
-     "idx_users_email",
-     "INDEX",
-     "dropped",
-     null
-    ]
-   ],
    "operation": "DROP"
   },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
   "old": {
-   "hybrid": []
+   "analyzer": [
+    [
+     "INDEX",
+     "default_schema.idx_users_email"
+    ]
+   ]
   },
-  "path": "hybrid",
-  "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"[\"); it is a T-SQL statement harvested into the corpus and never runs on this family; the reader names INDEX idx_users_email (dropped) where the old extraction named nothing, which costs nothing because the engine never runs the text. CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
+  "path": "analyzer",
+  "reason": "The proposed head takes a name from brackets, while postgresql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'DROP INDEX [idx_users_email]'; dialect tokens: DROP(DROP) INDEX(INDEX) L_BRACKET([) VAR(idx_users_email) R_BRACKET(]). Prior native observation for this exact SQL: PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"[\"); CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
   "sql": "DROP INDEX [idx_users_email]"
  },
  "b3169339525bb2fd/analyzer": {
@@ -6719,26 +6903,24 @@
   },
   "sql": "CREATE FULLTEXT INDEX idx1 ON myschema.mytable (col)"
  },
- "c1c8bad454ce3a74/hybrid": {
-  "class": "facts-adds-acted",
+ "c1c8bad454ce3a74/analyzer": {
+  "class": "opaque-reader-gap",
   "facts": {
-   "diagnostic": "index: postgres Command is opaque to statement facts",
+   "diagnostic": "postgres Command is opaque to statement facts",
    "kind": "DDL",
-   "objects": [
-    [
-     "idx`1",
-     "INDEX",
-     "created",
-     null
-    ]
-   ],
    "operation": "CREATE"
   },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
   "old": {
-   "hybrid": []
+   "analyzer": [
+    [
+     "INDEX",
+     "idx`1"
+    ]
+   ]
   },
-  "path": "hybrid",
-  "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"`\"); it is a MySQL or SQLite statement harvested into the corpus and never runs on this family; the reader names INDEX idx`1 (created) where the old extraction named nothing, which costs nothing because the engine never runs the text. CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
+  "path": "analyzer",
+  "reason": "The proposed head takes a name from backticks, while postgresql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'CREATE INDEX `idx``1` ON `db`.`t`(`c`)'; dialect tokens: CREATE(CREATE) INDEX(INDEX) UNKNOWN(`) VAR(idx) UNKNOWN(`) UNKNOWN(`) NUMBER(1) UNKNOWN(`). Prior native observation for this exact SQL: PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"`\"); CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
   "sql": "CREATE INDEX `idx``1` ON `db`.`t`(`c`)"
  },
  "c2b012c3dcd07814/analyzer": {
@@ -7007,48 +7189,45 @@
   "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \".\"); it is a CREATE INDEX with a schema-qualified index name, which PostgreSQL does not accept harvested into the corpus and never runs on this family; the reader names INDEX ix in s (created), TABLE t (referenced) and the old extraction named INDEX s, a difference with no consequence because the engine never runs the text. CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
   "sql": "CREATE INDEX \"s\".\"ix\" ON \"t\"(\"c\")"
  },
- "cc1e1356f50aa4e9/analyzer": {
-  "class": "facts-adds-acted",
+ "cc1e1356f50aa4e9/hybrid": {
+  "class": "opaque-reader-gap",
   "facts": {
-   "diagnostic": "table: postgres grammar is not modelled for this statement",
+   "diagnostic": "postgres grammar is not modelled for this statement",
    "kind": "DDL",
-   "objects": [
+   "operation": "CREATE"
+  },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+  "old": {
+   "hybrid": [
     [
-     "a",
      "TABLE",
-     "created",
-     null
+     "a",
+     "public"
     ]
-   ],
-   "operation": "CREATE"
-  },
-  "old": {
-   "analyzer": []
-  },
-  "path": "analyzer",
-  "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \".\"); it is a script fragment with a client command or without statement terminators, as written for another dialect harvested into the corpus and never runs on this family; the reader names TABLE a (created) where the old extraction named nothing, which costs nothing because the engine never runs the text. CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
-  "sql": ".mode csv\nCREATE TABLE a(x)"
- },
- "cc22ca3ab620a924/hybrid": {
-  "class": "facts-adds-acted",
-  "facts": {
-   "diagnostic": "index: postgres Command is opaque to statement facts",
-   "kind": "DDL",
-   "objects": [
-    [
-     "idx_users_email",
-     "INDEX",
-     "created",
-     null
-    ]
-   ],
-   "operation": "CREATE"
-  },
-  "old": {
-   "hybrid": []
+   ]
   },
   "path": "hybrid",
-  "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"[\"); it is a T-SQL statement harvested into the corpus and never runs on this family; the reader names INDEX idx_users_email (created) where the old extraction named nothing, which costs nothing because the engine never runs the text. CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
+  "reason": "The original unit begins with .mode; the first source tokens are not the same verb/name sequence as a bare proposed DDL head. The reader cannot scan through that prefix and attribute its later name to this entire unit. Source head: '.mode csv\\\\nCREATE TABLE a(x)'; dialect tokens: DOT(.) VAR(mode) VAR(csv) CREATE(CREATE) TABLE(TABLE) VAR(a) L_PAREN(() VAR(x). Prior native observation for this exact SQL: PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \".\"); CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
+  "sql": ".mode csv\nCREATE TABLE a(x)"
+ },
+ "cc22ca3ab620a924/analyzer": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "postgres Command is opaque to statement facts",
+   "kind": "DDL",
+   "operation": "CREATE"
+  },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+  "old": {
+   "analyzer": [
+    [
+     "INDEX",
+     "idx_users_email"
+    ]
+   ]
+  },
+  "path": "analyzer",
+  "reason": "The proposed head takes a name from brackets, while postgresql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'CREATE INDEX [idx_users_email] ON [dbo].[users]([email])'; dialect tokens: CREATE(CREATE) INDEX(INDEX) L_BRACKET([) VAR(idx_users_email) R_BRACKET(]) ON(ON) L_BRACKET([) VAR(dbo). Prior native observation for this exact SQL: PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"[\"); CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
   "sql": "CREATE INDEX [idx_users_email] ON [dbo].[users]([email])"
  },
  "cc589bce9736f117/hybrid": {
@@ -7175,26 +7354,24 @@
   "reason": "The reader names only TYPE mood (dropped); the old extraction added UNKNOWN mood next to it. PostgreSQL 16.14 parses it (SQLSTATE 42704 at run time).",
   "sql": "DROP TYPE mood"
  },
- "cf86e8fe7dc96efd/hybrid": {
-  "class": "facts-adds-acted",
+ "cf86e8fe7dc96efd/analyzer": {
+  "class": "opaque-reader-gap",
   "facts": {
-   "diagnostic": "index: postgres Command is opaque to statement facts",
+   "diagnostic": "postgres Command is opaque to statement facts",
    "kind": "DDL",
-   "objects": [
-    [
-     "name]",
-     "INDEX",
-     "created",
-     null
-    ]
-   ],
    "operation": "CREATE"
   },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
   "old": {
-   "hybrid": []
+   "analyzer": [
+    [
+     "INDEX",
+     "name]"
+    ]
+   ]
   },
-  "path": "hybrid",
-  "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"[\"); it is a T-SQL statement harvested into the corpus and never runs on this family; the reader names INDEX name] (created) where the old extraction named nothing, which costs nothing because the engine never runs the text. CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
+  "path": "analyzer",
+  "reason": "The proposed head takes a name from brackets, while postgresql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'CREATE INDEX [name]]] ON [dbo].[t]([c])'; dialect tokens: CREATE(CREATE) INDEX(INDEX) L_BRACKET([) NAME(name) R_BRACKET(]) R_BRACKET(]) R_BRACKET(]) ON(ON). Prior native observation for this exact SQL: PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"[\"); CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
   "sql": "CREATE INDEX [name]]] ON [dbo].[t]([c])"
  },
  "d1133fdf5e505aee/analyzer": {
@@ -7410,6 +7587,47 @@
   "path": "hybrid",
   "reason": "fake_seq is text inside the string default, not an object: the reader names only TABLE audit (created); the old extraction invented SEQUENCE fake_seq from the string. PostgreSQL 16.14 runs it.",
   "sql": "CREATE TABLE audit (note VARCHAR(50) DEFAULT 'CREATE SEQUENCE fake_seq')"
+ },
+ "d288a209688cf83e/analyzer": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "postgres grammar is not modelled for this statement",
+   "kind": "DDL",
+   "operation": "ALTER"
+  },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+  "old": {
+   "analyzer": [
+    [
+     "TABLE",
+     "default_schema.a]b"
+    ]
+   ]
+  },
+  "path": "analyzer",
+  "reason": "The proposed head takes a name from brackets, while postgresql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'ALTER TABLE [a]]b] ADD COLUMN x INT'; dialect tokens: ALTER(ALTER) TABLE(TABLE) L_BRACKET([) VAR(a) R_BRACKET(]) R_BRACKET(]) VAR(b) R_BRACKET(]).",
+  "sql": "ALTER TABLE [a]]b] ADD COLUMN x INT"
+ },
+ "d288a209688cf83e/hybrid": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "postgres grammar is not modelled for this statement",
+   "kind": "DDL",
+   "operation": "ALTER"
+  },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+  "old": {
+   "hybrid": [
+    [
+     "TABLE",
+     "a",
+     "public"
+    ]
+   ]
+  },
+  "path": "hybrid",
+  "reason": "The proposed head takes a name from brackets, while postgresql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'ALTER TABLE [a]]b] ADD COLUMN x INT'; dialect tokens: ALTER(ALTER) TABLE(TABLE) L_BRACKET([) VAR(a) R_BRACKET(]) R_BRACKET(]) VAR(b) R_BRACKET(]).",
+  "sql": "ALTER TABLE [a]]b] ADD COLUMN x INT"
  },
  "d2c96402458af1ab/hybrid": {
   "class": "disagree",
@@ -7637,26 +7855,24 @@
   "reason": "The reader keeps the catalog of the three-part name: INDEX idx1 in dbo.real_one, as written; the old extraction dropped the first part and kept only the last schema (INDEX idx1 / INDEX real_one.idx1). PostgreSQL 16.14 parses it and rejects the cross-database reference at run time with SQLSTATE 0A000, so the catalog is information the reader must keep.",
   "sql": "DROP INDEX dbo.real_one.idx1"
  },
- "d782254ed5e71b58/hybrid": {
-  "class": "facts-adds-acted",
+ "d782254ed5e71b58/analyzer": {
+  "class": "opaque-reader-gap",
   "facts": {
-   "diagnostic": "index: postgres Command is opaque to statement facts",
+   "diagnostic": "postgres Command is opaque to statement facts",
    "kind": "DDL",
-   "objects": [
-    [
-     "a]b]c",
-     "INDEX",
-     "created",
-     null
-    ]
-   ],
    "operation": "CREATE"
   },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
   "old": {
-   "hybrid": []
+   "analyzer": [
+    [
+     "INDEX",
+     "a]b]c"
+    ]
+   ]
   },
-  "path": "hybrid",
-  "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"[\"); it is a T-SQL statement harvested into the corpus and never runs on this family; the reader names INDEX a]b]c (created) where the old extraction named nothing, which costs nothing because the engine never runs the text. CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
+  "path": "analyzer",
+  "reason": "The proposed head takes a name from brackets, while postgresql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'CREATE INDEX [a]]b]]c] ON [dbo].[t]([c])'; dialect tokens: CREATE(CREATE) INDEX(INDEX) L_BRACKET([) VAR(a) R_BRACKET(]) R_BRACKET(]) VAR(b) R_BRACKET(]). Prior native observation for this exact SQL: PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"[\"); CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
   "sql": "CREATE INDEX [a]]b]]c] ON [dbo].[t]([c])"
  },
  "d830f197d0ad9af7/analyzer": {
@@ -7798,26 +8014,24 @@
   "reason": "SELECT ... INTO at the top level creates a table in PostgreSQL: the reader names TABLE t (created); the old analyzer path named nothing. PostgreSQL 16.14 runs it.",
   "sql": "WITH c AS (SELECT 1 AS id) SELECT * INTO t FROM c"
  },
- "de50034c73fb7dc1/hybrid": {
-  "class": "facts-adds-acted",
+ "de50034c73fb7dc1/analyzer": {
+  "class": "opaque-reader-gap",
   "facts": {
-   "diagnostic": "table: postgres Command is opaque to statement facts",
+   "diagnostic": "postgres Command is opaque to statement facts",
    "kind": "DDL",
-   "objects": [
-    [
-     "test",
-     "TABLE",
-     "created",
-     null
-    ]
-   ],
    "operation": "CREATE"
   },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
   "old": {
-   "hybrid": []
+   "analyzer": [
+    [
+     "TABLE",
+     "default_schema.test"
+    ]
+   ]
   },
-  "path": "hybrid",
-  "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"`\"); it is a MySQL or SQLite statement harvested into the corpus and never runs on this family; the reader names TABLE test (created) where the old extraction named nothing, which costs nothing because the engine never runs the text. CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
+  "path": "analyzer",
+  "reason": "The proposed head takes a name from backticks, while postgresql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'CREATE TABLE `test` (id INT)'; dialect tokens: CREATE(CREATE) TABLE(TABLE) UNKNOWN(`) VAR(test) UNKNOWN(`) L_PAREN(() VAR(id) INT(INT). Prior native observation for this exact SQL: PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"`\"); CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
   "sql": "CREATE TABLE `test` (id INT)"
  },
  "de9b4bcca3f6c7bf/hybrid": {
@@ -7955,26 +8169,24 @@
   "reason": "GRANT and REVOKE are read as DDL whose privilege targets are not modelled, so the reader names no object where the old extraction named TABLE test / TABLE default_schema.test (#669). PostgreSQL 16.14 parses it (SQLSTATE 42P01 at run time).",
   "sql": "GRANT SELECT ON test TO user1"
  },
- "e0ca86d4ebc62716/hybrid": {
-  "class": "facts-adds-acted",
+ "e0ca86d4ebc62716/analyzer": {
+  "class": "opaque-reader-gap",
   "facts": {
-   "diagnostic": "index: postgres Command is opaque to statement facts",
+   "diagnostic": "postgres Command is opaque to statement facts",
    "kind": "DDL",
-   "objects": [
-    [
-     "idx 1",
-     "INDEX",
-     "created",
-     null
-    ]
-   ],
    "operation": "CREATE"
   },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
   "old": {
-   "hybrid": []
+   "analyzer": [
+    [
+     "INDEX",
+     "idx 1"
+    ]
+   ]
   },
-  "path": "hybrid",
-  "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"[\"); it is a T-SQL statement harvested into the corpus and never runs on this family; the reader names INDEX idx 1 (created) where the old extraction named nothing, which costs nothing because the engine never runs the text. CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
+  "path": "analyzer",
+  "reason": "The proposed head takes a name from brackets, while postgresql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'CREATE INDEX [idx 1] ON [real_one] (id)'; dialect tokens: CREATE(CREATE) INDEX(INDEX) L_BRACKET([) VAR(idx) NUMBER(1) R_BRACKET(]) ON(ON) L_BRACKET([). Prior native observation for this exact SQL: PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"[\"); CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
   "sql": "CREATE INDEX [idx 1] ON [real_one] (id)"
  },
  "e31aef3c0d53cfa9/analyzer": {
@@ -8050,26 +8262,24 @@
   },
   "sql": "CREATE OR REPLACE NOFORCE VIEW vw AS SELECT 1 FROM DUAL"
  },
- "e6628ad04a71e570/hybrid": {
-  "class": "facts-adds-acted",
+ "e6628ad04a71e570/analyzer": {
+  "class": "opaque-reader-gap",
   "facts": {
-   "diagnostic": "index: postgres Command is opaque to statement facts",
+   "diagnostic": "postgres Command is opaque to statement facts",
    "kind": "DDL",
-   "objects": [
-    [
-     "ix",
-     "INDEX",
-     "created",
-     null
-    ]
-   ],
    "operation": "CREATE"
   },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
   "old": {
-   "hybrid": []
+   "analyzer": [
+    [
+     "INDEX",
+     "ix"
+    ]
+   ]
   },
-  "path": "hybrid",
-  "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"`\"); it is a MySQL or SQLite statement harvested into the corpus and never runs on this family; the reader names INDEX ix (created) where the old extraction named nothing, which costs nothing because the engine never runs the text. CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
+  "path": "analyzer",
+  "reason": "The proposed head takes a name from backticks, while postgresql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'CREATE INDEX `ix` ON `s`.`t` ((a + 1), id DESC) USING BTREE'; dialect tokens: CREATE(CREATE) INDEX(INDEX) UNKNOWN(`) VAR(ix) UNKNOWN(`) ON(ON) UNKNOWN(`) VAR(s). Prior native observation for this exact SQL: PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"`\"); CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
   "sql": "CREATE INDEX `ix` ON `s`.`t` ((a + 1), id DESC) USING BTREE"
  },
  "e668b082ca202cf3/hybrid": {
@@ -8176,26 +8386,24 @@
   "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"FROM\"); it is a MySQL or SQLite statement harvested into the corpus and never runs on this family; the reader names TABLE t (altered) where the old extraction named nothing, which costs nothing because the engine never runs the text. CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
   "sql": "INSERT INTO t SELECT `t\u00e9` FROM u"
  },
- "e9a640da282f1565/hybrid": {
-  "class": "facts-adds-acted",
+ "e9a640da282f1565/analyzer": {
+  "class": "opaque-reader-gap",
   "facts": {
-   "diagnostic": "table: postgres grammar is not modelled for this statement",
+   "diagnostic": "postgres grammar is not modelled for this statement",
    "kind": "DDL",
-   "objects": [
-    [
-     "real]one",
-     "TABLE",
-     "created",
-     null
-    ]
-   ],
    "operation": "CREATE"
   },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
   "old": {
-   "hybrid": []
+   "analyzer": [
+    [
+     "TABLE",
+     "default_schema.real]one"
+    ]
+   ]
   },
-  "path": "hybrid",
-  "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"[\"); it is a T-SQL statement harvested into the corpus and never runs on this family; the reader names TABLE real]one (created) where the old extraction named nothing, which costs nothing because the engine never runs the text. CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
+  "path": "analyzer",
+  "reason": "The proposed head takes a name from brackets, while postgresql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'CREATE TABLE [real]]one] (id int)'; dialect tokens: CREATE(CREATE) TABLE(TABLE) L_BRACKET([) FLOAT(real) R_BRACKET(]) R_BRACKET(]) VAR(one) R_BRACKET(]). Prior native observation for this exact SQL: PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"[\"); CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
   "sql": "CREATE TABLE [real]]one] (id int)"
  },
  "ea22e8afbb098ab2": {
@@ -8323,6 +8531,47 @@
   "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"OR\"); it is a MySQL or SQLite statement harvested into the corpus and never runs on this family; the reader and the old extraction differ on table (facts 't', extraction ''), with no consequence because the engine never runs the text. CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
   "sql": "UPDATE OR IGNORE t SET a=1"
  },
+ "edb73950ead0e82e/analyzer": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "postgres Command is opaque to statement facts",
+   "kind": "DDL",
+   "operation": "ALTER"
+  },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+  "old": {
+   "analyzer": [
+    [
+     "TABLE",
+     "default_schema.a#b"
+    ]
+   ]
+  },
+  "path": "analyzer",
+  "reason": "The proposed head takes a name from backticks, while postgresql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'ALTER TABLE `a#b` ADD COLUMN x INT'; dialect tokens: ALTER(ALTER) TABLE(TABLE) UNKNOWN(`) VAR(a) HASH(#) VAR(b) UNKNOWN(`) VAR(ADD).",
+  "sql": "ALTER TABLE `a#b` ADD COLUMN x INT"
+ },
+ "edb73950ead0e82e/hybrid": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "postgres Command is opaque to statement facts",
+   "kind": "DDL",
+   "operation": "ALTER"
+  },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+  "old": {
+   "hybrid": [
+    [
+     "TABLE",
+     "a#b",
+     "public"
+    ]
+   ]
+  },
+  "path": "hybrid",
+  "reason": "The proposed head takes a name from backticks, while postgresql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'ALTER TABLE `a#b` ADD COLUMN x INT'; dialect tokens: ALTER(ALTER) TABLE(TABLE) UNKNOWN(`) VAR(a) HASH(#) VAR(b) UNKNOWN(`) VAR(ADD).",
+  "sql": "ALTER TABLE `a#b` ADD COLUMN x INT"
+ },
  "f24b2b5f77229e87/analyzer": {
   "class": "facts-adds-acted",
   "facts": {
@@ -8418,48 +8667,44 @@
   "reason": "COPY is read as opaque: a COPY with options, a quoted or dollar-quoted file source, or a column list (not modelled, #667). The reader names no object where the old extraction named TABLE items. PostgreSQL 16.14 parses it (SQLSTATE 42P01 at run time).",
   "sql": "COPY items FROM E'items.csv'"
  },
- "f36de5bceaf04af3/hybrid": {
-  "class": "facts-adds-acted",
+ "f36de5bceaf04af3/analyzer": {
+  "class": "opaque-reader-gap",
   "facts": {
-   "diagnostic": "table: postgres Command is opaque to statement facts",
+   "diagnostic": "postgres Command is opaque to statement facts",
    "kind": "DDL",
-   "objects": [
-    [
-     "test_table",
-     "TABLE",
-     "created",
-     null
-    ]
-   ],
    "operation": "CREATE"
   },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
   "old": {
-   "hybrid": []
+   "analyzer": [
+    [
+     "TABLE",
+     "default_schema.test_table"
+    ]
+   ]
   },
-  "path": "hybrid",
-  "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"`\"); it is a MySQL or SQLite statement harvested into the corpus and never runs on this family; the reader names TABLE test_table (created) where the old extraction named nothing, which costs nothing because the engine never runs the text. CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
+  "path": "analyzer",
+  "reason": "The proposed head takes a name from backticks, while postgresql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'CREATE TABLE `test_table` (id INT PRIMARY KEY, `column_name` VARCHAR(100))'; dialect tokens: CREATE(CREATE) TABLE(TABLE) UNKNOWN(`) VAR(test_table) UNKNOWN(`) L_PAREN(() VAR(id) INT(INT). Prior native observation for this exact SQL: PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"`\"); CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
   "sql": "CREATE TABLE `test_table` (id INT PRIMARY KEY, `column_name` VARCHAR(100))"
  },
- "f3844405031a2c84/hybrid": {
-  "class": "facts-adds-acted",
+ "f3844405031a2c84/analyzer": {
+  "class": "opaque-reader-gap",
   "facts": {
-   "diagnostic": "table: postgres grammar is not modelled for this statement",
+   "diagnostic": "postgres grammar is not modelled for this statement",
    "kind": "DDL",
-   "objects": [
-    [
-     "bracket_quoted",
-     "TABLE",
-     "created",
-     null
-    ]
-   ],
    "operation": "CREATE"
   },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
   "old": {
-   "hybrid": []
+   "analyzer": [
+    [
+     "TABLE",
+     "default_schema.bracket_quoted"
+    ]
+   ]
   },
-  "path": "hybrid",
-  "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"[\"); it is a T-SQL statement harvested into the corpus and never runs on this family; the reader names TABLE bracket_quoted (created) where the old extraction named nothing, which costs nothing because the engine never runs the text. CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
+  "path": "analyzer",
+  "reason": "The proposed head takes a name from brackets, while postgresql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'CREATE TABLE [bracket_quoted] (id INT)'; dialect tokens: CREATE(CREATE) TABLE(TABLE) L_BRACKET([) VAR(bracket_quoted) R_BRACKET(]) L_PAREN(() VAR(id) INT(INT). Prior native observation for this exact SQL: PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"[\"); CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
   "sql": "CREATE TABLE [bracket_quoted] (id INT)"
  },
  "f83f9b4f7e2ae3ab/analyzer": {
@@ -8602,26 +8847,24 @@
   },
   "sql": "CREATE INDEX idx_users ON users (email)\nCREATE INDEX idx_orders ON orders (user_id)"
  },
- "fbf36a32e75c480b/hybrid": {
-  "class": "facts-adds-acted",
+ "fbf36a32e75c480b/analyzer": {
+  "class": "opaque-reader-gap",
   "facts": {
-   "diagnostic": "table: postgres grammar is not modelled for this statement",
+   "diagnostic": "postgres grammar is not modelled for this statement",
    "kind": "DDL",
-   "objects": [
-    [
-     "my table",
-     "TABLE",
-     "created",
-     "dbo"
-    ]
-   ],
    "operation": "CREATE"
   },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
   "old": {
-   "hybrid": []
+   "analyzer": [
+    [
+     "TABLE",
+     "dbo.my table"
+    ]
+   ]
   },
-  "path": "hybrid",
-  "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"[\"); it is a T-SQL statement harvested into the corpus and never runs on this family; the reader names TABLE my table in dbo (created) where the old extraction named nothing, which costs nothing because the engine never runs the text. CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
+  "path": "analyzer",
+  "reason": "The proposed head takes a name from brackets, while postgresql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'CREATE TABLE [dbo].[my table] (id int)'; dialect tokens: CREATE(CREATE) TABLE(TABLE) L_BRACKET([) VAR(dbo) R_BRACKET(]) DOT(.) L_BRACKET([) VAR(my). Prior native observation for this exact SQL: PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"[\"); CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
   "sql": "CREATE TABLE [dbo].[my table] (id int)"
  },
  "fd28115beadcb81b/analyzer": {

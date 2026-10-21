@@ -250,10 +250,11 @@ def test_extract_objects_does_not_recover_tables_from_a_refused_script(script):
     ],
 )
 def test_extract_objects_preserves_scanner_selected_tables(script):
-    assert [(o.object_type, o.name, o.schema) for o in PARSER.extract_objects(script)] == [
-        (SqlObjectType.TABLE, "a", None),
-        (SqlObjectType.TABLE, "b", None),
-    ]
+    expected = [(SqlObjectType.TABLE, "a", None)]
+    if "\x00" in script:
+        expected.append((SqlObjectType.TABLE, "b", None))
+    # A leading slash in the scanner's second SQLite unit is not a proven CREATE head.
+    assert [(o.object_type, o.name, o.schema) for o in PARSER.extract_objects(script)] == expected
 
 
 # --- undo of a trigger -----------------------------------------------------------------

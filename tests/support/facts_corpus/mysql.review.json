@@ -1,26 +1,4 @@
 {
-  "0045e62c2056542e/analyzer": {
-    "class": "facts-adds-acted",
-    "facts": {
-      "diagnostic": "table: mysql grammar is not modelled for this statement",
-      "kind": "DDL",
-      "objects": [
-        [
-          "EXISTS",
-          "TABLE",
-          "created",
-          null
-        ]
-      ],
-      "operation": "CREATE"
-    },
-    "old": {
-      "analyzer": []
-    },
-    "path": "analyzer",
-    "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took nothing from its head; the reader names `EXISTS`.",
-    "sql": "CREATE TABLE IF NOT EXISTS"
-  },
   "0045e62c2056542e/hybrid": {
     "class": "opaque-reader-gap",
     "facts": {
@@ -163,26 +141,24 @@
     },
     "sql": "CREATE BITMAP INDEX idx_b ON t (id)"
   },
-  "040e5eb4d9f28887/hybrid": {
-    "class": "facts-adds-acted",
+  "040e5eb4d9f28887/analyzer": {
+    "class": "opaque-reader-gap",
     "facts": {
-      "diagnostic": "index: mysql Command is opaque to statement facts",
+      "diagnostic": "mysql Command is opaque to statement facts",
       "kind": "DDL",
-      "objects": [
-        [
-          "Ix",
-          "INDEX",
-          "created",
-          null
-        ]
-      ],
       "operation": "CREATE"
     },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
     "old": {
-      "hybrid": []
+      "analyzer": [
+        [
+          "INDEX",
+          "Ix"
+        ]
+      ]
     },
-    "path": "hybrid",
-    "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took nothing from its head; the reader names `Ix`.",
+    "path": "analyzer",
+    "reason": "The MySQL tokenizer reads the double-quoted proposed name as STRING, not IDENTIFIER. The connection's ANSI_QUOTES mode is unavailable, so the reader cannot publish its identity. Source head: 'CREATE INDEX \"Ix\" ON \"T\" (a) TABLESPACE ts'; dialect tokens: CREATE(CREATE) INDEX(INDEX) STRING(Ix) ON(ON) STRING(T) L_PAREN(() VAR(a) R_PAREN()). Prior native observation for this exact SQL: Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20).",
     "sql": "CREATE INDEX \"Ix\" ON \"T\" (a) TABLESPACE ts"
   },
   "041c72644271a79f/analyzer": {
@@ -207,6 +183,26 @@
       "MySQL 8.4.11": "1064"
     },
     "sql": "DROP SECRET IF EXISTS \"S\".\"API_KEY\""
+  },
+  "04c35201a1436c8a/analyzer": {
+    "class": "opaque-reader-gap",
+    "facts": {
+      "diagnostic": "mysql grammar is not modelled for this statement",
+      "kind": "DDL",
+      "operation": "DROP"
+    },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+    "old": {
+      "analyzer": [
+        [
+          "TABLE",
+          "x.orders"
+        ]
+      ]
+    },
+    "path": "analyzer",
+    "reason": "The proposed head takes a name from brackets, while mysql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'DROP TABLE IF EXISTS [x].[orders]'; dialect tokens: DROP(DROP) TABLE(TABLE) VAR(IF) EXISTS(EXISTS) L_BRACKET([) VAR(x) R_BRACKET(]) DOT(.).",
+    "sql": "DROP TABLE IF EXISTS [x].[orders]"
   },
   "04c35201a1436c8a/hybrid": {
     "class": "opaque-reader-gap",
@@ -493,6 +489,47 @@
     "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took nothing from its head; the reader names `t`.",
     "sql": "WITH s AS (SELECT 1 AS id, 'a' AS v) INSERT INTO t SELECT * FROM s"
   },
+  "0c2d4e0be1d346fe/analyzer": {
+    "class": "opaque-reader-gap",
+    "facts": {
+      "diagnostic": "mysql grammar is not modelled for this statement",
+      "kind": "DDL",
+      "operation": "CREATE"
+    },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+    "old": {
+      "analyzer": [
+        [
+          "TABLE",
+          "default_schema.test"
+        ]
+      ]
+    },
+    "path": "analyzer",
+    "reason": "The original unit begins with --#SET TERMINATOR; the first source tokens are not the same verb/name sequence as a bare proposed DDL head. The reader cannot scan through that prefix and attribute its later name to this entire unit. Source head: '--#SET TERMINATOR @\\\\n        CREATE TABLE test (id INTEGER)@\\\\n        INSERT INTO test VALUES (1)...'; dialect tokens: DASH(-) DASH(-) CREATE(CREATE) TABLE(TABLE) VAR(test) L_PAREN(() VAR(id) INT(INTEGER).",
+    "sql": "--#SET TERMINATOR @\n        CREATE TABLE test (id INTEGER)@\n        INSERT INTO test VALUES (1)@\n        --#SET TERMINATOR ;\n        SELECT * FROM test"
+  },
+  "0c2d4e0be1d346fe/hybrid": {
+    "class": "opaque-reader-gap",
+    "facts": {
+      "diagnostic": "mysql grammar is not modelled for this statement",
+      "kind": "DDL",
+      "operation": "CREATE"
+    },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+    "old": {
+      "hybrid": [
+        [
+          "TABLE",
+          "test",
+          null
+        ]
+      ]
+    },
+    "path": "hybrid",
+    "reason": "The original unit begins with --#SET TERMINATOR; the first source tokens are not the same verb/name sequence as a bare proposed DDL head. The reader cannot scan through that prefix and attribute its later name to this entire unit. Source head: '--#SET TERMINATOR @\\\\n        CREATE TABLE test (id INTEGER)@\\\\n        INSERT INTO test VALUES (1)...'; dialect tokens: DASH(-) DASH(-) CREATE(CREATE) TABLE(TABLE) VAR(test) L_PAREN(() VAR(id) INT(INTEGER).",
+    "sql": "--#SET TERMINATOR @\n        CREATE TABLE test (id INTEGER)@\n        INSERT INTO test VALUES (1)@\n        --#SET TERMINATOR ;\n        SELECT * FROM test"
+  },
   "0da049153f7bc0b3/analyzer": {
     "class": "opaque-reader-gap",
     "facts": {
@@ -702,26 +739,24 @@
     "reason": "A WHILE compound statement outside a stored program: MySQL 8.4.11 rejects it (1064), MariaDB 11.8.8 rejects it outside BEGIN NOT ATOMIC (1327). The reader leaves it unread rather than naming the table inside the loop body.",
     "sql": "WHILE v_counter < 100 DO\n                INSERT INTO test VALUES (v_counter, 'test_value_' || CAST(v_counter AS VARCHAR("
   },
-  "13663b78bebc1876/hybrid": {
-    "class": "facts-adds-acted",
+  "13663b78bebc1876/analyzer": {
+    "class": "opaque-reader-gap",
     "facts": {
-      "diagnostic": "table: mysql grammar is not modelled for this statement",
+      "diagnostic": "mysql grammar is not modelled for this statement",
       "kind": "DDL",
-      "objects": [
-        [
-          "normal",
-          "TABLE",
-          "created",
-          null
-        ]
-      ],
       "operation": "CREATE"
     },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
     "old": {
-      "hybrid": []
+      "analyzer": [
+        [
+          "TABLE",
+          "default_schema.normal"
+        ]
+      ]
     },
-    "path": "hybrid",
-    "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took nothing from its head; the reader names `normal`.",
+    "path": "analyzer",
+    "reason": "The proposed head takes a name from brackets, while mysql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'CREATE TABLE [normal] (id int)'; dialect tokens: CREATE(CREATE) TABLE(TABLE) L_BRACKET([) VAR(normal) R_BRACKET(]) L_PAREN(() VAR(id) INT(int). Prior native observation for this exact SQL: Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20).",
     "sql": "CREATE TABLE [normal] (id int)"
   },
   "1477517d17f901da/hybrid": {
@@ -840,6 +875,26 @@
     },
     "sql": "COMMENT ON TABLE public.orders IS 'x'"
   },
+  "1763eea082fa91b2/analyzer": {
+    "class": "opaque-reader-gap",
+    "facts": {
+      "diagnostic": "mysql grammar is not modelled for this statement",
+      "kind": "DDL",
+      "operation": "DROP"
+    },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+    "old": {
+      "analyzer": [
+        [
+          "INDEX",
+          "default_schema.ix1"
+        ]
+      ]
+    },
+    "path": "analyzer",
+    "reason": "The proposed head takes a name from brackets, while mysql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'DROP INDEX IF EXISTS [ix1] ON [t1]'; dialect tokens: DROP(DROP) INDEX(INDEX) VAR(IF) EXISTS(EXISTS) L_BRACKET([) VAR(ix1) R_BRACKET(]) ON(ON).",
+    "sql": "DROP INDEX IF EXISTS [ix1] ON [t1]"
+  },
   "1763eea082fa91b2/hybrid": {
     "class": "opaque-reader-gap",
     "facts": {
@@ -912,48 +967,45 @@
     "reason": "Both engines parse the trigger and reject its body (1422: implicit commit in a trigger). The reader names the trigger and does not read the body, so the index created inside it is not an object of its own; the hybrid extraction named it.",
     "sql": "CREATE TRIGGER tg AFTER INSERT ON u FOR EACH ROW BEGIN CREATE INDEX i ON u (c); END"
   },
-  "186aef3a2732455d/hybrid": {
-    "class": "facts-adds-acted",
+  "186aef3a2732455d/analyzer": {
+    "class": "opaque-reader-gap",
     "facts": {
-      "diagnostic": "index: mysql Command is opaque to statement facts",
+      "diagnostic": "mysql Command is opaque to statement facts",
       "kind": "DDL",
-      "objects": [
+      "operation": "CREATE"
+    },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+    "old": {
+      "analyzer": [
         [
-          "Ix",
           "INDEX",
-          "created",
-          "S"
+          "S.Ix"
         ]
-      ],
-      "operation": "CREATE"
-    },
-    "old": {
-      "hybrid": []
-    },
-    "path": "hybrid",
-    "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took nothing from its head; the reader names `Ix`.",
-    "sql": "CREATE INDEX \"S\".\"Ix\" ON \"T\" (a)"
-  },
-  "18aa3cb71822143c/analyzer": {
-    "class": "facts-adds-acted",
-    "facts": {
-      "diagnostic": "table: mysql grammar is not modelled for this statement",
-      "kind": "DDL",
-      "objects": [
-        [
-          "b",
-          "TABLE",
-          "created",
-          null
-        ]
-      ],
-      "operation": "CREATE"
-    },
-    "old": {
-      "analyzer": []
+      ]
     },
     "path": "analyzer",
-    "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took nothing from its head; the reader names `b`.",
+    "reason": "The MySQL tokenizer reads the double-quoted proposed name as STRING, not IDENTIFIER. The connection's ANSI_QUOTES mode is unavailable, so the reader cannot publish its identity. Source head: 'CREATE INDEX \"S\".\"Ix\" ON \"T\" (a)'; dialect tokens: CREATE(CREATE) INDEX(INDEX) STRING(S) DOT(.) STRING(Ix) ON(ON) STRING(T) L_PAREN((). Prior native observation for this exact SQL: Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20).",
+    "sql": "CREATE INDEX \"S\".\"Ix\" ON \"T\" (a)"
+  },
+  "18aa3cb71822143c/hybrid": {
+    "class": "opaque-reader-gap",
+    "facts": {
+      "diagnostic": "mysql grammar is not modelled for this statement",
+      "kind": "DDL",
+      "operation": "CREATE"
+    },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+    "old": {
+      "hybrid": [
+        [
+          "TABLE",
+          "b",
+          null
+        ]
+      ]
+    },
+    "path": "hybrid",
+    "reason": "The original unit begins with slash separator; the first source tokens are not the same verb/name sequence as a bare proposed DDL head. The reader cannot scan through that prefix and attribute its later name to this entire unit. Source head: '/\\\\nCREATE TABLE b(y)'; dialect tokens: SLASH(/) CREATE(CREATE) TABLE(TABLE) VAR(b) L_PAREN(() VAR(y) R_PAREN()). Prior native observation for this exact SQL: Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20).",
     "sql": "/\nCREATE TABLE b(y)"
   },
   "1956a8f604fa930e/hybrid": {
@@ -1010,26 +1062,25 @@
     },
     "sql": "CREATE INDEX s.ix ON t(c DESC)"
   },
-  "1a2666af2d8f6fe4/analyzer": {
-    "class": "facts-adds-acted",
+  "1a2666af2d8f6fe4/hybrid": {
+    "class": "opaque-reader-gap",
     "facts": {
-      "diagnostic": "table: mysql grammar is not modelled for this statement",
+      "diagnostic": "mysql grammar is not modelled for this statement",
       "kind": "DDL",
-      "objects": [
-        [
-          "after_proc",
-          "TABLE",
-          "created",
-          null
-        ]
-      ],
       "operation": "CREATE"
     },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
     "old": {
-      "analyzer": []
+      "hybrid": [
+        [
+          "TABLE",
+          "after_proc",
+          null
+        ]
+      ]
     },
-    "path": "analyzer",
-    "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took nothing from its head; the reader names `after_proc`.",
+    "path": "hybrid",
+    "reason": "The original unit begins with slash separator; the first source tokens are not the same verb/name sequence as a bare proposed DDL head. The reader cannot scan through that prefix and attribute its later name to this entire unit. Source head: '/\\\\n\\\\n        CREATE TABLE after_proc (id NUMBER)'; dialect tokens: SLASH(/) CREATE(CREATE) TABLE(TABLE) VAR(after_proc) L_PAREN(() VAR(id) DECIMAL(NUMBER) R_PAREN()). Prior native observation for this exact SQL: Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20).",
     "sql": "/\n\n        CREATE TABLE after_proc (id NUMBER)"
   },
   "1ae5cceb20b25cbc/hybrid": {
@@ -1114,26 +1165,24 @@
     },
     "sql": "COPY \"TO\".\"FROM\" (\"FROM\") FROM 'a.csv'"
   },
-  "1cb3ccce5a1d4991/hybrid": {
-    "class": "facts-adds-acted",
+  "1cb3ccce5a1d4991/analyzer": {
+    "class": "opaque-reader-gap",
     "facts": {
-      "diagnostic": "index: mysql Command is opaque to statement facts",
+      "diagnostic": "mysql Command is opaque to statement facts",
       "kind": "DDL",
-      "objects": [
-        [
-          "]abc",
-          "INDEX",
-          "created",
-          null
-        ]
-      ],
       "operation": "CREATE"
     },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
     "old": {
-      "hybrid": []
+      "analyzer": [
+        [
+          "INDEX",
+          "]abc"
+        ]
+      ]
     },
-    "path": "hybrid",
-    "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took nothing from its head; the reader names `]abc`.",
+    "path": "analyzer",
+    "reason": "The proposed head takes a name from brackets, while mysql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'CREATE INDEX []]abc] ON [dbo].[t]([c])'; dialect tokens: CREATE(CREATE) INDEX(INDEX) L_BRACKET([) R_BRACKET(]) R_BRACKET(]) VAR(abc) R_BRACKET(]) ON(ON). Prior native observation for this exact SQL: Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20).",
     "sql": "CREATE INDEX []]abc] ON [dbo].[t]([c])"
   },
   "1cc707a61359c460/analyzer": {
@@ -1199,6 +1248,47 @@
     "path": "both",
     "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took nothing from its head; the reader names nothing.",
     "sql": "insert"
+  },
+  "208163598dd3bfd3/analyzer": {
+    "class": "opaque-reader-gap",
+    "facts": {
+      "diagnostic": "mysql grammar is not modelled for this statement",
+      "kind": "DDL",
+      "operation": "CREATE"
+    },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+    "old": {
+      "analyzer": [
+        [
+          "PROCEDURE",
+          "default_schema.test1"
+        ]
+      ]
+    },
+    "path": "analyzer",
+    "reason": "The original unit begins with --#SET TERMINATOR; the first source tokens are not the same verb/name sequence as a bare proposed DDL head. The reader cannot scan through that prefix and attribute its later name to this entire unit. Source head: '--#SET TERMINATOR @\\\\n        CREATE PROCEDURE test1() LANGUAGE SQL BEGIN SELECT 1'; dialect tokens: DASH(-) DASH(-) CREATE(CREATE) PROCEDURE(PROCEDURE) VAR(test1) L_PAREN(() R_PAREN()) VAR(LANGUAGE).",
+    "sql": "--#SET TERMINATOR @\n        CREATE PROCEDURE test1() LANGUAGE SQL BEGIN SELECT 1"
+  },
+  "208163598dd3bfd3/hybrid": {
+    "class": "opaque-reader-gap",
+    "facts": {
+      "diagnostic": "mysql grammar is not modelled for this statement",
+      "kind": "DDL",
+      "operation": "CREATE"
+    },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+    "old": {
+      "hybrid": [
+        [
+          "PROCEDURE",
+          "test1",
+          null
+        ]
+      ]
+    },
+    "path": "hybrid",
+    "reason": "The original unit begins with --#SET TERMINATOR; the first source tokens are not the same verb/name sequence as a bare proposed DDL head. The reader cannot scan through that prefix and attribute its later name to this entire unit. Source head: '--#SET TERMINATOR @\\\\n        CREATE PROCEDURE test1() LANGUAGE SQL BEGIN SELECT 1'; dialect tokens: DASH(-) DASH(-) CREATE(CREATE) PROCEDURE(PROCEDURE) VAR(test1) L_PAREN(() R_PAREN()) VAR(LANGUAGE).",
+    "sql": "--#SET TERMINATOR @\n        CREATE PROCEDURE test1() LANGUAGE SQL BEGIN SELECT 1"
   },
   "21ab5a0a2958d239/hybrid": {
     "class": "opaque-reader-gap",
@@ -2019,26 +2109,24 @@
     },
     "sql": "COPY \"Sales\".\"Order Items\" (id, \"Item Value\") TO '/tmp/items;out.parquet' (FORMAT PARQUET)"
   },
-  "345c8cdd8c4ca7d6/hybrid": {
-    "class": "facts-adds-acted",
+  "345c8cdd8c4ca7d6/analyzer": {
+    "class": "opaque-reader-gap",
     "facts": {
-      "diagnostic": "table: mysql grammar is not modelled for this statement",
+      "diagnostic": "mysql grammar is not modelled for this statement",
       "kind": "DDL",
-      "objects": [
-        [
-          "idx_users_email",
-          "TABLE",
-          "created",
-          null
-        ]
-      ],
       "operation": "CREATE"
     },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
     "old": {
-      "hybrid": []
+      "analyzer": [
+        [
+          "TABLE",
+          "default_schema.idx_users_email"
+        ]
+      ]
     },
-    "path": "hybrid",
-    "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took nothing from its head; the reader names `idx_users_email`.",
+    "path": "analyzer",
+    "reason": "The proposed head takes a name from brackets, while mysql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'CREATE TABLE [idx_users_email] (id int)'; dialect tokens: CREATE(CREATE) TABLE(TABLE) L_BRACKET([) VAR(idx_users_email) R_BRACKET(]) L_PAREN(() VAR(id) INT(int). Prior native observation for this exact SQL: Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20).",
     "sql": "CREATE TABLE [idx_users_email] (id int)"
   },
   "34ca29defe8523d0/analyzer": {
@@ -2243,26 +2331,24 @@
     "reason": "MariaDB 11.8.8 accepts ALTER SEQUENCE (4091: the sequence is missing), MySQL 8.4.11 rejects it (1064). The reader has no mapping for it and names nothing.",
     "sql": "ALTER SEQUENCE users_seq RESTART WITH 100"
   },
-  "3a323accbe90ace0/hybrid": {
-    "class": "facts-adds-acted",
+  "3a323accbe90ace0/analyzer": {
+    "class": "opaque-reader-gap",
     "facts": {
-      "diagnostic": "table: mysql grammar is not modelled for this statement",
+      "diagnostic": "mysql grammar is not modelled for this statement",
       "kind": "DDL",
-      "objects": [
-        [
-          "]abc",
-          "TABLE",
-          "created",
-          null
-        ]
-      ],
       "operation": "CREATE"
     },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
     "old": {
-      "hybrid": []
+      "analyzer": [
+        [
+          "TABLE",
+          "default_schema.]abc"
+        ]
+      ]
     },
-    "path": "hybrid",
-    "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took nothing from its head; the reader names `]abc`.",
+    "path": "analyzer",
+    "reason": "The proposed head takes a name from brackets, while mysql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'CREATE TABLE []]abc] (id int)'; dialect tokens: CREATE(CREATE) TABLE(TABLE) L_BRACKET([) R_BRACKET(]) R_BRACKET(]) VAR(abc) R_BRACKET(]) L_PAREN((). Prior native observation for this exact SQL: Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20).",
     "sql": "CREATE TABLE []]abc] (id int)"
   },
   "3a87d6e4f8982e1b/analyzer": {
@@ -2307,26 +2393,24 @@
     "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took nothing from its head; the reader names `get_user`.",
     "sql": "CREATE PROCEDURE \"Schema\".\"get_user\" AS BEGIN NULL; END"
   },
-  "3b0fee14e1bc819b/hybrid": {
-    "class": "facts-adds-acted",
+  "3b0fee14e1bc819b/analyzer": {
+    "class": "opaque-reader-gap",
     "facts": {
-      "diagnostic": "table: mysql grammar is not modelled for this statement",
+      "diagnostic": "mysql grammar is not modelled for this statement",
       "kind": "DDL",
-      "objects": [
-        [
-          "\"a\"\"b\"",
-          "TABLE",
-          "created",
-          null
-        ]
-      ],
       "operation": "CREATE"
     },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
     "old": {
-      "hybrid": []
+      "analyzer": [
+        [
+          "TABLE",
+          "default_schema.\"a\"\"b\""
+        ]
+      ]
     },
-    "path": "hybrid",
-    "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took nothing from its head; the reader names `\"a\"\"b\"`.",
+    "path": "analyzer",
+    "reason": "The proposed head takes a name from brackets, while mysql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'CREATE TABLE [\"a\"\"b\"] (id int)'; dialect tokens: CREATE(CREATE) TABLE(TABLE) L_BRACKET([) STRING(a\"b) R_BRACKET(]) L_PAREN(() VAR(id) INT(int). Prior native observation for this exact SQL: Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20).",
     "sql": "CREATE TABLE [\"a\"\"b\"] (id int)"
   },
   "3c188fc0a2909f33/analyzer": {
@@ -2352,26 +2436,24 @@
     },
     "sql": "CREATE BITMAP INDEX bx ON orders (status)"
   },
-  "3c763f26f5b14787/hybrid": {
-    "class": "facts-adds-acted",
+  "3c763f26f5b14787/analyzer": {
+    "class": "opaque-reader-gap",
     "facts": {
-      "diagnostic": "table: mysql grammar is not modelled for this statement",
+      "diagnostic": "mysql grammar is not modelled for this statement",
       "kind": "DDL",
-      "objects": [
-        [
-          "plainname",
-          "TABLE",
-          "created",
-          null
-        ]
-      ],
       "operation": "CREATE"
     },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
     "old": {
-      "hybrid": []
+      "analyzer": [
+        [
+          "TABLE",
+          "default_schema.plainname"
+        ]
+      ]
     },
-    "path": "hybrid",
-    "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took nothing from its head; the reader names `plainname`.",
+    "path": "analyzer",
+    "reason": "The proposed head takes a name from brackets, while mysql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'CREATE TABLE [plainname] (id int)'; dialect tokens: CREATE(CREATE) TABLE(TABLE) L_BRACKET([) VAR(plainname) R_BRACKET(]) L_PAREN(() VAR(id) INT(int). Prior native observation for this exact SQL: Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20).",
     "sql": "CREATE TABLE [plainname] (id int)"
   },
   "3d175a34b02a4f64/analyzer": {
@@ -2534,32 +2616,24 @@
     },
     "sql": "COPY items TO '/tmp/items.csv' (FORMAT CSV, HEADER)"
   },
-  "4081e6eef15d8222/hybrid": {
-    "class": "facts-adds-acted",
+  "4081e6eef15d8222/analyzer": {
+    "class": "opaque-reader-gap",
     "facts": {
       "diagnostic": "mysql Block is opaque to statement facts",
       "kind": "DDL",
-      "objects": [
-        [
-          "my_trigger",
-          "TRIGGER",
-          "created",
-          null
-        ],
-        [
-          "t",
-          "TABLE",
-          "referenced",
-          null
-        ]
-      ],
       "operation": "CREATE"
     },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
     "old": {
-      "hybrid": []
+      "analyzer": [
+        [
+          "TRIGGER",
+          "default_schema.my_trigger"
+        ]
+      ]
     },
-    "path": "hybrid",
-    "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took nothing from its head; the reader names `my_trigger`, `t`.",
+    "path": "analyzer",
+    "reason": "The MySQL tokenizer reads the double-quoted proposed name as STRING, not IDENTIFIER. The connection's ANSI_QUOTES mode is unavailable, so the reader cannot publish its identity. Source head: 'CREATE TRIGGER \"my_trigger\" AFTER INSERT ON t FOR EACH ROW BEGIN SELECT 1; END'; dialect tokens: CREATE(CREATE) TRIGGER(TRIGGER) STRING(my_trigger) VAR(AFTER) INSERT(INSERT) ON(ON) VAR(t) FOR(FOR). Prior native observation for this exact SQL: Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20).",
     "sql": "CREATE TRIGGER \"my_trigger\" AFTER INSERT ON t FOR EACH ROW BEGIN SELECT 1; END"
   },
   "40bce787584769ce/hybrid": {
@@ -2628,6 +2702,26 @@
     },
     "sql": "CREATE OR REPLACE PACKAGE pkg1 IS END pkg1"
   },
+  "43a68d4181f3b64f/analyzer": {
+    "class": "opaque-reader-gap",
+    "facts": {
+      "diagnostic": "mysql grammar is not modelled for this statement",
+      "kind": "DDL",
+      "operation": "DROP"
+    },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+    "old": {
+      "analyzer": [
+        [
+          "INDEX",
+          "default_schema.idx_users_email"
+        ]
+      ]
+    },
+    "path": "analyzer",
+    "reason": "The proposed head takes a name from brackets, while mysql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'DROP INDEX IF EXISTS [idx_users_email] ON [users]'; dialect tokens: DROP(DROP) INDEX(INDEX) VAR(IF) EXISTS(EXISTS) L_BRACKET([) VAR(idx_users_email) R_BRACKET(]) ON(ON).",
+    "sql": "DROP INDEX IF EXISTS [idx_users_email] ON [users]"
+  },
   "43a68d4181f3b64f/hybrid": {
     "class": "opaque-reader-gap",
     "facts": {
@@ -2684,70 +2778,64 @@
     },
     "sql": "END#\n        --#SET TERMINATOR ;\n        CREATE PROCEDURE test4() LANGUAGE SQL BEGIN SELECT 4"
   },
-  "446d5241b46f44f1/hybrid": {
-    "class": "facts-adds-acted",
+  "446d5241b46f44f1/analyzer": {
+    "class": "opaque-reader-gap",
     "facts": {
-      "diagnostic": "table: mysql Command is opaque to statement facts",
+      "diagnostic": "mysql Command is opaque to statement facts",
       "kind": "DDL",
-      "objects": [
-        [
-          "Case",
-          "TABLE",
-          "created",
-          "S"
-        ]
-      ],
       "operation": "CREATE"
     },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
     "old": {
-      "hybrid": []
+      "analyzer": [
+        [
+          "TABLE",
+          "S.Case"
+        ]
+      ]
     },
-    "path": "hybrid",
-    "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took nothing from its head; the reader names `Case`.",
+    "path": "analyzer",
+    "reason": "The MySQL tokenizer reads the double-quoted proposed name as STRING, not IDENTIFIER. The connection's ANSI_QUOTES mode is unavailable, so the reader cannot publish its identity. Source head: 'CREATE TABLE \"S\".\"Case\" (a int) IN TS1'; dialect tokens: CREATE(CREATE) TABLE(TABLE) STRING(S) DOT(.) STRING(Case) L_PAREN(() VAR(a) INT(int). Prior native observation for this exact SQL: Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20).",
     "sql": "CREATE TABLE \"S\".\"Case\" (a int) IN TS1"
   },
-  "4470919cf94692bc/hybrid": {
-    "class": "facts-adds-acted",
+  "4470919cf94692bc/analyzer": {
+    "class": "opaque-reader-gap",
     "facts": {
-      "diagnostic": "table: mysql grammar is not modelled for this statement",
+      "diagnostic": "mysql grammar is not modelled for this statement",
       "kind": "DDL",
-      "objects": [
-        [
-          "ft_test",
-          "TABLE",
-          "created",
-          "rel470_ss"
-        ]
-      ],
       "operation": "CREATE"
     },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
     "old": {
-      "hybrid": []
+      "analyzer": [
+        [
+          "TABLE",
+          "rel470_ss.ft_test"
+        ]
+      ]
     },
-    "path": "hybrid",
-    "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took nothing from its head; the reader names `ft_test`.",
+    "path": "analyzer",
+    "reason": "The proposed head takes a name from brackets, while mysql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'CREATE TABLE [rel470_ss].[ft_test] ([id] INT PRIMARY KEY, [body] NVARCHAR(MAX))'; dialect tokens: CREATE(CREATE) TABLE(TABLE) L_BRACKET([) VAR(rel470_ss) R_BRACKET(]) DOT(.) L_BRACKET([) VAR(ft_test). Prior native observation for this exact SQL: Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20).",
     "sql": "CREATE TABLE [rel470_ss].[ft_test] ([id] INT PRIMARY KEY, [body] NVARCHAR(MAX))"
   },
-  "4643a35794a39f42/hybrid": {
-    "class": "facts-adds-acted",
+  "4643a35794a39f42/analyzer": {
+    "class": "opaque-reader-gap",
     "facts": {
-      "diagnostic": "index: mysql Command is opaque to statement facts",
+      "diagnostic": "mysql Command is opaque to statement facts",
       "kind": "DDL",
-      "objects": [
-        [
-          "idx",
-          "INDEX",
-          "created",
-          null
-        ]
-      ],
       "operation": "CREATE"
     },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
     "old": {
-      "hybrid": []
+      "analyzer": [
+        [
+          "INDEX",
+          "idx"
+        ]
+      ]
     },
-    "path": "hybrid",
-    "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took nothing from its head; the reader names `idx`.",
+    "path": "analyzer",
+    "reason": "The proposed head takes a name from brackets, while mysql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'CREATE INDEX [idx] ON [mydb].[dbo].[mytable]([col])'; dialect tokens: CREATE(CREATE) INDEX(INDEX) L_BRACKET([) VAR(idx) R_BRACKET(]) ON(ON) L_BRACKET([) VAR(mydb). Prior native observation for this exact SQL: Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20).",
     "sql": "CREATE INDEX [idx] ON [mydb].[dbo].[mytable]([col])"
   },
   "469f0b3b3931ea66": {
@@ -3026,26 +3114,24 @@
     "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took nothing from its head; the reader names `p`.",
     "sql": "CREATE OR REPLACE PROCEDURE p AS BEGIN NULL; END"
   },
-  "4dfdc6c6dd7532c3/hybrid": {
-    "class": "facts-adds-acted",
+  "4dfdc6c6dd7532c3/analyzer": {
+    "class": "opaque-reader-gap",
     "facts": {
-      "diagnostic": "table: mysql Command is opaque to statement facts",
+      "diagnostic": "mysql Command is opaque to statement facts",
       "kind": "DDL",
-      "objects": [
-        [
-          "a\"b",
-          "TABLE",
-          "created",
-          null
-        ]
-      ],
       "operation": "CREATE"
     },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
     "old": {
-      "hybrid": []
+      "analyzer": [
+        [
+          "TABLE",
+          "default_schema.a\"b"
+        ]
+      ]
     },
-    "path": "hybrid",
-    "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took nothing from its head; the reader names `a\"b`.",
+    "path": "analyzer",
+    "reason": "The MySQL tokenizer reads the double-quoted proposed name as STRING, not IDENTIFIER. The connection's ANSI_QUOTES mode is unavailable, so the reader cannot publish its identity. Source head: 'CREATE TABLE \"a\"\"b\" (a int) WITH (fillfactor=70) TABLESPACE ts'; dialect tokens: CREATE(CREATE) TABLE(TABLE) STRING(a\"b) L_PAREN(() VAR(a) INT(int) R_PAREN()) WITH(WITH). Prior native observation for this exact SQL: Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20).",
     "sql": "CREATE TABLE \"a\"\"b\" (a int) WITH (fillfactor=70) TABLESPACE ts"
   },
   "4eae005317dc7cb3/analyzer": {
@@ -3129,6 +3215,47 @@
       "MySQL 8.4.11": "1064"
     },
     "sql": "CREATE OR REPLACE NOFORCE VIEW vw_test AS\n        SELECT * FROM employees"
+  },
+  "5040f8b6dd8808ae/analyzer": {
+    "class": "opaque-reader-gap",
+    "facts": {
+      "diagnostic": "mysql Command is opaque to statement facts",
+      "kind": "DDL",
+      "operation": "CREATE"
+    },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+    "old": {
+      "analyzer": [
+        [
+          "TABLE",
+          "default_schema.t"
+        ]
+      ]
+    },
+    "path": "analyzer",
+    "reason": "The opening CREATE TABLE t / DELETE FROM t tokens name t, but the same unit has a nested-looking comment and a later unmatched */. The whole-unit safety guard therefore publishes no affected object or DML target; this does not assert native invalidity. Source head: 'CREATE TABLE t (id INT) /* a /* b */ x{c}y */'; dialect tokens: CREATE(CREATE) TABLE(TABLE) VAR(t) L_PAREN(() VAR(id) INT(INT) R_PAREN()) VAR(x).",
+    "sql": "CREATE TABLE t (id INT) /* a /* b */ x{c}y */"
+  },
+  "5040f8b6dd8808ae/hybrid": {
+    "class": "opaque-reader-gap",
+    "facts": {
+      "diagnostic": "mysql Command is opaque to statement facts",
+      "kind": "DDL",
+      "operation": "CREATE"
+    },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+    "old": {
+      "hybrid": [
+        [
+          "TABLE",
+          "t",
+          null
+        ]
+      ]
+    },
+    "path": "hybrid",
+    "reason": "The opening CREATE TABLE t / DELETE FROM t tokens name t, but the same unit has a nested-looking comment and a later unmatched */. The whole-unit safety guard therefore publishes no affected object or DML target; this does not assert native invalidity. Source head: 'CREATE TABLE t (id INT) /* a /* b */ x{c}y */'; dialect tokens: CREATE(CREATE) TABLE(TABLE) VAR(t) L_PAREN(() VAR(id) INT(INT) R_PAREN()) VAR(x).",
+    "sql": "CREATE TABLE t (id INT) /* a /* b */ x{c}y */"
   },
   "512e58226eff94d3/hybrid": {
     "class": "facts-adds-acted",
@@ -3623,6 +3750,26 @@
     },
     "sql": "DROP TASK IF EXISTS \"S\".\"NIGHTLY\""
   },
+  "607c660c33102b24/analyzer": {
+    "class": "opaque-reader-gap",
+    "facts": {
+      "diagnostic": "mysql Command is opaque to statement facts",
+      "kind": "DDL",
+      "operation": "CREATE"
+    },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+    "old": {
+      "analyzer": [
+        [
+          "TABLE",
+          "MySchema.Case"
+        ]
+      ]
+    },
+    "path": "analyzer",
+    "reason": "The MySQL tokenizer reads the double-quoted proposed name as STRING, not IDENTIFIER. The connection's ANSI_QUOTES mode is unavailable, so the reader cannot publish its identity. Source head: 'CREATE TABLE MySchema.\"Case\" (a int) WITH (fillfactor=70) TABLESPACE ts'; dialect tokens: CREATE(CREATE) TABLE(TABLE) VAR(MySchema) DOT(.) STRING(Case) L_PAREN(() VAR(a) INT(int).",
+    "sql": "CREATE TABLE MySchema.\"Case\" (a int) WITH (fillfactor=70) TABLESPACE ts"
+  },
   "607c660c33102b24/hybrid": {
     "class": "opaque-reader-gap",
     "facts": {
@@ -3808,26 +3955,24 @@
     },
     "sql": "COPY items FROM 'a.csv', 'b.csv'"
   },
-  "64fcf8ca04f2dc02/hybrid": {
-    "class": "facts-adds-acted",
+  "64fcf8ca04f2dc02/analyzer": {
+    "class": "opaque-reader-gap",
     "facts": {
-      "diagnostic": "index: mysql Command is opaque to statement facts",
+      "diagnostic": "mysql Command is opaque to statement facts",
       "kind": "DDL",
-      "objects": [
-        [
-          "idx",
-          "INDEX",
-          "created",
-          null
-        ]
-      ],
       "operation": "CREATE"
     },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
     "old": {
-      "hybrid": []
+      "analyzer": [
+        [
+          "INDEX",
+          "idx"
+        ]
+      ]
     },
-    "path": "hybrid",
-    "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took nothing from its head; the reader names `idx`.",
+    "path": "analyzer",
+    "reason": "The proposed head takes a name from brackets, while mysql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'CREATE INDEX [idx] ON [a]]b].[c]]d]([col])'; dialect tokens: CREATE(CREATE) INDEX(INDEX) L_BRACKET([) VAR(idx) R_BRACKET(]) ON(ON) L_BRACKET([) VAR(a). Prior native observation for this exact SQL: Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20).",
     "sql": "CREATE INDEX [idx] ON [a]]b].[c]]d]([col])"
   },
   "6527ffb7b577ee24/hybrid": {
@@ -4361,6 +4506,47 @@
     "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took nothing from its head; the reader names `t`.",
     "sql": "INSERT INTO t VALUES (X'00', ?1)"
   },
+  "7061617684823402/analyzer": {
+    "class": "opaque-reader-gap",
+    "facts": {
+      "diagnostic": "mysql grammar is not modelled for this statement",
+      "kind": "DDL",
+      "operation": "CREATE"
+    },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+    "old": {
+      "analyzer": [
+        [
+          "TABLE",
+          "default_schema.t"
+        ]
+      ]
+    },
+    "path": "analyzer",
+    "reason": "The original unit begins with --#SET TERMINATOR; the first source tokens are not the same verb/name sequence as a bare proposed DDL head. The reader cannot scan through that prefix and attribute its later name to this entire unit. Source head: '--#SET TERMINATOR @\\\\nCREATE TABLE t (id INTEGER)@'; dialect tokens: DASH(-) DASH(-) CREATE(CREATE) TABLE(TABLE) VAR(t) L_PAREN(() VAR(id) INT(INTEGER).",
+    "sql": "--#SET TERMINATOR @\nCREATE TABLE t (id INTEGER)@"
+  },
+  "7061617684823402/hybrid": {
+    "class": "opaque-reader-gap",
+    "facts": {
+      "diagnostic": "mysql grammar is not modelled for this statement",
+      "kind": "DDL",
+      "operation": "CREATE"
+    },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+    "old": {
+      "hybrid": [
+        [
+          "TABLE",
+          "t",
+          null
+        ]
+      ]
+    },
+    "path": "hybrid",
+    "reason": "The original unit begins with --#SET TERMINATOR; the first source tokens are not the same verb/name sequence as a bare proposed DDL head. The reader cannot scan through that prefix and attribute its later name to this entire unit. Source head: '--#SET TERMINATOR @\\\\nCREATE TABLE t (id INTEGER)@'; dialect tokens: DASH(-) DASH(-) CREATE(CREATE) TABLE(TABLE) VAR(t) L_PAREN(() VAR(id) INT(INTEGER).",
+    "sql": "--#SET TERMINATOR @\nCREATE TABLE t (id INTEGER)@"
+  },
   "727b1b986aade562/analyzer": {
     "class": "opaque-reader-gap",
     "facts": {
@@ -4383,6 +4569,26 @@
       "MySQL 8.4.11": "1064"
     },
     "sql": "CREATE MATERIALIZED VIEW LOG ON hr.employees"
+  },
+  "72c413940123217f/analyzer": {
+    "class": "opaque-reader-gap",
+    "facts": {
+      "diagnostic": "mysql Command is opaque to statement facts",
+      "kind": "DDL",
+      "operation": "CREATE"
+    },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+    "old": {
+      "analyzer": [
+        [
+          "TABLE",
+          "MySchema.Case"
+        ]
+      ]
+    },
+    "path": "analyzer",
+    "reason": "The MySQL tokenizer reads the double-quoted proposed name as STRING, not IDENTIFIER. The connection's ANSI_QUOTES mode is unavailable, so the reader cannot publish its identity. Source head: 'CREATE TABLE MySchema.\"Case\" (a int) IN TS1'; dialect tokens: CREATE(CREATE) TABLE(TABLE) VAR(MySchema) DOT(.) STRING(Case) L_PAREN(() VAR(a) INT(int).",
+    "sql": "CREATE TABLE MySchema.\"Case\" (a int) IN TS1"
   },
   "72c413940123217f/hybrid": {
     "class": "opaque-reader-gap",
@@ -4785,6 +4991,26 @@
     },
     "sql": "CREATE CLUSTERED INDEX idx_users_email ON users(email)"
   },
+  "7bc2b1d8bde89848/analyzer": {
+    "class": "opaque-reader-gap",
+    "facts": {
+      "diagnostic": "mysql grammar is not modelled for this statement",
+      "kind": "DDL",
+      "operation": "CREATE"
+    },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+    "old": {
+      "analyzer": [
+        [
+          "TABLE",
+          "default_schema.test1"
+        ]
+      ]
+    },
+    "path": "analyzer",
+    "reason": "The original unit begins with --#SET TERMINATOR; the first source tokens are not the same verb/name sequence as a bare proposed DDL head. The reader cannot scan through that prefix and attribute its later name to this entire unit. Source head: '--#SET TERMINATOR @\\\\nCREATE TABLE test1 (id INTEGER)@\\\\nCREATE TABLE test2 (id INTEGER)@\\\\n--#SET T...'; dialect tokens: DASH(-) DASH(-) CREATE(CREATE) TABLE(TABLE) VAR(test1) L_PAREN(() VAR(id) INT(INTEGER).",
+    "sql": "--#SET TERMINATOR @\nCREATE TABLE test1 (id INTEGER)@\nCREATE TABLE test2 (id INTEGER)@\n--#SET TERMINATOR ;\nINSERT INTO test1 VALUES (1)"
+  },
   "7bc2b1d8bde89848/hybrid": {
     "class": "opaque-reader-gap",
     "facts": {
@@ -4878,26 +5104,24 @@
     },
     "sql": "END@\n        --#SET TERMINATOR #\n        CREATE PROCEDURE test3() LANGUAGE SQL BEGIN SELECT 3"
   },
-  "7ef56a3e1b45a1a8/hybrid": {
-    "class": "facts-adds-acted",
+  "7ef56a3e1b45a1a8/analyzer": {
+    "class": "opaque-reader-gap",
     "facts": {
       "diagnostic": "mysql Block is opaque to statement facts",
       "kind": "DDL",
-      "objects": [
-        [
-          "test_func",
-          "FUNCTION",
-          "created",
-          null
-        ]
-      ],
       "operation": "CREATE"
     },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
     "old": {
-      "hybrid": []
+      "analyzer": [
+        [
+          "FUNCTION",
+          "default_schema.test_func"
+        ]
+      ]
     },
-    "path": "hybrid",
-    "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took nothing from its head; the reader names `test_func`.",
+    "path": "analyzer",
+    "reason": "The MySQL tokenizer reads the double-quoted proposed name as STRING, not IDENTIFIER. The connection's ANSI_QUOTES mode is unavailable, so the reader cannot publish its identity. Source head: 'CREATE FUNCTION \"test_func\"() RETURNS INTEGER LANGUAGE SQL BEGIN RETURN 1; END'; dialect tokens: CREATE(CREATE) FUNCTION(FUNCTION) STRING(test_func) L_PAREN(() R_PAREN()) VAR(RETURNS) INT(INTEGER) VAR(LANGUAGE). Prior native observation for this exact SQL: Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20).",
     "sql": "CREATE FUNCTION \"test_func\"() RETURNS INTEGER LANGUAGE SQL BEGIN RETURN 1; END"
   },
   "7f09a77434417b6e/hybrid": {
@@ -5066,48 +5290,44 @@
     "reason": "Runs on both engines: DROP TABLE with a list drops every table named. The reader names both; the analyzer stopped at the first.",
     "sql": "DROP TABLE IF EXISTS users, orders CASCADE"
   },
-  "812682e5576d375d/hybrid": {
-    "class": "facts-adds-acted",
+  "812682e5576d375d/analyzer": {
+    "class": "opaque-reader-gap",
     "facts": {
-      "diagnostic": "table: mysql grammar is not modelled for this statement",
+      "diagnostic": "mysql grammar is not modelled for this statement",
       "kind": "DDL",
-      "objects": [
-        [
-          "name]",
-          "TABLE",
-          "created",
-          null
-        ]
-      ],
       "operation": "CREATE"
     },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
     "old": {
-      "hybrid": []
+      "analyzer": [
+        [
+          "TABLE",
+          "default_schema.name]"
+        ]
+      ]
     },
-    "path": "hybrid",
-    "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took nothing from its head; the reader names `name]`.",
+    "path": "analyzer",
+    "reason": "The proposed head takes a name from brackets, while mysql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'CREATE TABLE [name]]] (id int)'; dialect tokens: CREATE(CREATE) TABLE(TABLE) L_BRACKET([) VAR(name) R_BRACKET(]) R_BRACKET(]) R_BRACKET(]) L_PAREN((). Prior native observation for this exact SQL: Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20).",
     "sql": "CREATE TABLE [name]]] (id int)"
   },
-  "81de440c56651c72/hybrid": {
-    "class": "facts-adds-acted",
+  "81de440c56651c72/analyzer": {
+    "class": "opaque-reader-gap",
     "facts": {
       "diagnostic": "mysql Block is opaque to statement facts",
       "kind": "DDL",
-      "objects": [
-        [
-          "my_func",
-          "FUNCTION",
-          "created",
-          null
-        ]
-      ],
       "operation": "CREATE"
     },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
     "old": {
-      "hybrid": []
+      "analyzer": [
+        [
+          "FUNCTION",
+          "default_schema.my_func"
+        ]
+      ]
     },
-    "path": "hybrid",
-    "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took nothing from its head; the reader names `my_func`.",
+    "path": "analyzer",
+    "reason": "The MySQL tokenizer reads the double-quoted proposed name as STRING, not IDENTIFIER. The connection's ANSI_QUOTES mode is unavailable, so the reader cannot publish its identity. Source head: 'CREATE FUNCTION \"my_func\"() RETURNS INTEGER LANGUAGE SQL BEGIN RETURN 1; END'; dialect tokens: CREATE(CREATE) FUNCTION(FUNCTION) STRING(my_func) L_PAREN(() R_PAREN()) VAR(RETURNS) INT(INTEGER) VAR(LANGUAGE). Prior native observation for this exact SQL: Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20).",
     "sql": "CREATE FUNCTION \"my_func\"() RETURNS INTEGER LANGUAGE SQL BEGIN RETURN 1; END"
   },
   "84e53343f505c69f/hybrid": {
@@ -5268,26 +5488,24 @@
     },
     "sql": "CREATE TABLE t1 (id INT)\nGO\nCREATE TABLE t2 (id INT)\nGO"
   },
-  "881e76933a0f9116/hybrid": {
-    "class": "facts-adds-acted",
+  "881e76933a0f9116/analyzer": {
+    "class": "opaque-reader-gap",
     "facts": {
-      "diagnostic": "view: mysql grammar is not modelled for this statement",
+      "diagnostic": "mysql grammar is not modelled for this statement",
       "kind": "DDL",
-      "objects": [
-        [
-          "Vw",
-          "VIEW",
-          "created",
-          "S"
-        ]
-      ],
       "operation": "CREATE"
     },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
     "old": {
-      "hybrid": []
+      "analyzer": [
+        [
+          "VIEW",
+          "S.Vw"
+        ]
+      ]
     },
-    "path": "hybrid",
-    "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took nothing from its head; the reader names `Vw`.",
+    "path": "analyzer",
+    "reason": "The MySQL tokenizer reads the double-quoted proposed name as STRING, not IDENTIFIER. The connection's ANSI_QUOTES mode is unavailable, so the reader cannot publish its identity. Source head: 'CREATE VIEW \"S\".\"Vw\" WITH (security_barrier) AS SELECT 1'; dialect tokens: CREATE(CREATE) VIEW(VIEW) STRING(S) DOT(.) STRING(Vw) WITH(WITH) L_PAREN(() VAR(security_barrier). Prior native observation for this exact SQL: Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20).",
     "sql": "CREATE VIEW \"S\".\"Vw\" WITH (security_barrier) AS SELECT 1"
   },
   "882b9eaf9e7f3c4e/analyzer": {
@@ -5354,26 +5572,24 @@
     },
     "sql": "DROP PASSWORD POLICY IF EXISTS \"S\".\"STRONG_PW\""
   },
-  "8a8aaf517308022e/hybrid": {
-    "class": "facts-adds-acted",
+  "8a8aaf517308022e/analyzer": {
+    "class": "opaque-reader-gap",
     "facts": {
-      "diagnostic": "table: mysql grammar is not modelled for this statement",
+      "diagnostic": "mysql grammar is not modelled for this statement",
       "kind": "DDL",
-      "objects": [
-        [
-          "a]b]c",
-          "TABLE",
-          "created",
-          null
-        ]
-      ],
       "operation": "CREATE"
     },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
     "old": {
-      "hybrid": []
+      "analyzer": [
+        [
+          "TABLE",
+          "default_schema.a]b]c"
+        ]
+      ]
     },
-    "path": "hybrid",
-    "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took nothing from its head; the reader names `a]b]c`.",
+    "path": "analyzer",
+    "reason": "The proposed head takes a name from brackets, while mysql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'CREATE TABLE [a]]b]]c] (id int)'; dialect tokens: CREATE(CREATE) TABLE(TABLE) L_BRACKET([) VAR(a) R_BRACKET(]) R_BRACKET(]) VAR(b) R_BRACKET(]). Prior native observation for this exact SQL: Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20).",
     "sql": "CREATE TABLE [a]]b]]c] (id int)"
   },
   "8cb881d12fef59a1/analyzer": {
@@ -5398,6 +5614,26 @@
       "MySQL 8.4.11": "1064"
     },
     "sql": "DROP UNKNOWN_TYPE obj_name"
+  },
+  "8e88b0a40889c03f/analyzer": {
+    "class": "opaque-reader-gap",
+    "facts": {
+      "diagnostic": "mysql grammar is not modelled for this statement",
+      "kind": "DDL",
+      "operation": "DROP"
+    },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+    "old": {
+      "analyzer": [
+        [
+          "INDEX",
+          "default_schema.idx_x"
+        ]
+      ]
+    },
+    "path": "analyzer",
+    "reason": "The proposed head takes a name from brackets, while mysql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'DROP INDEX IF EXISTS [idx_x] ON [dbo].[foo]]bar]'; dialect tokens: DROP(DROP) INDEX(INDEX) VAR(IF) EXISTS(EXISTS) L_BRACKET([) VAR(idx_x) R_BRACKET(]) ON(ON).",
+    "sql": "DROP INDEX IF EXISTS [idx_x] ON [dbo].[foo]]bar]"
   },
   "8e88b0a40889c03f/hybrid": {
     "class": "opaque-reader-gap",
@@ -5477,6 +5713,26 @@
       "MySQL 8.4.11": "1064"
     },
     "sql": "COMMENT ON TABLE y IS 'x'"
+  },
+  "8f31fe8d20c41185/analyzer": {
+    "class": "opaque-reader-gap",
+    "facts": {
+      "diagnostic": "mysql grammar is not modelled for this statement",
+      "kind": "DDL",
+      "operation": "DROP"
+    },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+    "old": {
+      "analyzer": [
+        [
+          "INDEX",
+          "default_schema.idx_users_email"
+        ]
+      ]
+    },
+    "path": "analyzer",
+    "reason": "The proposed head takes a name from brackets, while mysql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'DROP INDEX IF EXISTS [idx_users_email] ON [sales].[users]'; dialect tokens: DROP(DROP) INDEX(INDEX) VAR(IF) EXISTS(EXISTS) L_BRACKET([) VAR(idx_users_email) R_BRACKET(]) ON(ON).",
+    "sql": "DROP INDEX IF EXISTS [idx_users_email] ON [sales].[users]"
   },
   "8f31fe8d20c41185/hybrid": {
     "class": "opaque-reader-gap",
@@ -5756,32 +6012,24 @@
     },
     "sql": "CREATE SEQUENCE q{c}"
   },
-  "9462517480b95733/hybrid": {
-    "class": "facts-adds-acted",
+  "9462517480b95733/analyzer": {
+    "class": "opaque-reader-gap",
     "facts": {
       "diagnostic": "mysql Command is opaque to statement facts",
       "kind": "DDL",
-      "objects": [
-        [
-          "Tg",
-          "TRIGGER",
-          "created",
-          null
-        ],
-        [
-          "T",
-          "TABLE",
-          "referenced",
-          null
-        ]
-      ],
       "operation": "CREATE"
     },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
     "old": {
-      "hybrid": []
+      "analyzer": [
+        [
+          "TRIGGER",
+          "default_schema.Tg"
+        ]
+      ]
     },
-    "path": "hybrid",
-    "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took nothing from its head; the reader names `Tg`, `T`.",
+    "path": "analyzer",
+    "reason": "The MySQL tokenizer reads the double-quoted proposed name as STRING, not IDENTIFIER. The connection's ANSI_QUOTES mode is unavailable, so the reader cannot publish its identity. Source head: 'CREATE TRIGGER \"Tg\" AFTER INSERT ON \"T\" FOR EACH ROW BEGIN END'; dialect tokens: CREATE(CREATE) TRIGGER(TRIGGER) STRING(Tg) VAR(AFTER) INSERT(INSERT) ON(ON) STRING(T) FOR(FOR). Prior native observation for this exact SQL: Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20).",
     "sql": "CREATE TRIGGER \"Tg\" AFTER INSERT ON \"T\" FOR EACH ROW BEGIN END"
   },
   "94f533a537481e27/hybrid": {
@@ -5852,48 +6100,45 @@
     },
     "sql": "TRUNCATE TABLE ONLY users"
   },
-  "9811ed52c07c19ba/analyzer": {
-    "class": "facts-adds-acted",
+  "9811ed52c07c19ba/hybrid": {
+    "class": "opaque-reader-gap",
     "facts": {
-      "diagnostic": "table: mysql Command is opaque to statement facts",
+      "diagnostic": "mysql Command is opaque to statement facts",
       "kind": "DDL",
-      "objects": [
-        [
-          "x",
-          "TABLE",
-          "altered",
-          null
-        ]
-      ],
       "operation": "ALTER"
     },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
     "old": {
-      "analyzer": []
-    },
-    "path": "analyzer",
-    "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took nothing from its head; the reader names `x`.",
-    "sql": "ALTER TABLE /* outer /* inner */ x */ \"s\".\"orders\" ADD COLUMN c INT"
-  },
-  "99ee672ba37ba230/hybrid": {
-    "class": "facts-adds-acted",
-    "facts": {
-      "diagnostic": "table: mysql grammar is not modelled for this statement",
-      "kind": "DDL",
-      "objects": [
+      "hybrid": [
         [
-          "c]d",
           "TABLE",
-          "created",
-          "a]b"
+          "x",
+          null
         ]
-      ],
-      "operation": "CREATE"
-    },
-    "old": {
-      "hybrid": []
+      ]
     },
     "path": "hybrid",
-    "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took nothing from its head; the reader names `c]d`.",
+    "reason": "Nested-looking /* markers and/or a later unmatched */ change where the dialect token stream places the proposed head or the rest of its unit. The whole-unit safety guard publishes no guessed effect. Initial visible name tokens, if any, are preserved in the token evidence; no native validity is inferred. Source head: 'ALTER TABLE /* outer /* inner */ x */ \"s\".\"orders\" ADD COLUMN c INT'; dialect tokens: ALTER(ALTER) TABLE(TABLE) VAR(x) STAR(*) SLASH(/) STRING(s) DOT(.) STRING(orders). Prior native observation for this exact SQL: Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20).",
+    "sql": "ALTER TABLE /* outer /* inner */ x */ \"s\".\"orders\" ADD COLUMN c INT"
+  },
+  "99ee672ba37ba230/analyzer": {
+    "class": "opaque-reader-gap",
+    "facts": {
+      "diagnostic": "mysql grammar is not modelled for this statement",
+      "kind": "DDL",
+      "operation": "CREATE"
+    },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+    "old": {
+      "analyzer": [
+        [
+          "TABLE",
+          "a]b.c]d"
+        ]
+      ]
+    },
+    "path": "analyzer",
+    "reason": "The proposed head takes a name from brackets, while mysql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'CREATE TABLE [a]]b].[c]]d] (id int)'; dialect tokens: CREATE(CREATE) TABLE(TABLE) L_BRACKET([) VAR(a) R_BRACKET(]) R_BRACKET(]) VAR(b) R_BRACKET(]). Prior native observation for this exact SQL: Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20).",
     "sql": "CREATE TABLE [a]]b].[c]]d] (id int)"
   },
   "9be5302963c469ce/analyzer": {
@@ -5919,26 +6164,24 @@
     },
     "sql": "CREATE TABLESPACE myts IN STOGROUP mysg"
   },
-  "9ca7dd77f81f1a3e/hybrid": {
-    "class": "facts-adds-acted",
+  "9ca7dd77f81f1a3e/analyzer": {
+    "class": "opaque-reader-gap",
     "facts": {
-      "diagnostic": "table: mysql Command is opaque to statement facts",
+      "diagnostic": "mysql Command is opaque to statement facts",
       "kind": "DDL",
-      "objects": [
-        [
-          "Case",
-          "TABLE",
-          "created",
-          null
-        ]
-      ],
       "operation": "CREATE"
     },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
     "old": {
-      "hybrid": []
+      "analyzer": [
+        [
+          "TABLE",
+          "default_schema.Case"
+        ]
+      ]
     },
-    "path": "hybrid",
-    "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took nothing from its head; the reader names `Case`.",
+    "path": "analyzer",
+    "reason": "The MySQL tokenizer reads the double-quoted proposed name as STRING, not IDENTIFIER. The connection's ANSI_QUOTES mode is unavailable, so the reader cannot publish its identity. Source head: 'CREATE TABLE \"Case\" (a int) IN TS1'; dialect tokens: CREATE(CREATE) TABLE(TABLE) STRING(Case) L_PAREN(() VAR(a) INT(int) R_PAREN()) IN(IN). Prior native observation for this exact SQL: Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20).",
     "sql": "CREATE TABLE \"Case\" (a int) IN TS1"
   },
   "9e604e57b562b116": {
@@ -6061,32 +6304,24 @@
     },
     "sql": "COPY child(id) FROM 'x.csv'"
   },
-  "a2b9802352f92d98/hybrid": {
-    "class": "facts-adds-acted",
+  "a2b9802352f92d98/analyzer": {
+    "class": "opaque-reader-gap",
     "facts": {
       "diagnostic": "mysql Block is opaque to statement facts",
       "kind": "DDL",
-      "objects": [
-        [
-          "test_trigger",
-          "TRIGGER",
-          "created",
-          null
-        ],
-        [
-          "test",
-          "TABLE",
-          "referenced",
-          null
-        ]
-      ],
       "operation": "CREATE"
     },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
     "old": {
-      "hybrid": []
+      "analyzer": [
+        [
+          "TRIGGER",
+          "default_schema.test_trigger"
+        ]
+      ]
     },
-    "path": "hybrid",
-    "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took nothing from its head; the reader names `test_trigger`, `test`.",
+    "path": "analyzer",
+    "reason": "The MySQL tokenizer reads the double-quoted proposed name as STRING, not IDENTIFIER. The connection's ANSI_QUOTES mode is unavailable, so the reader cannot publish its identity. Source head: 'CREATE TRIGGER \"test_trigger\" AFTER INSERT ON test FOR EACH ROW BEGIN SELECT 1; END'; dialect tokens: CREATE(CREATE) TRIGGER(TRIGGER) STRING(test_trigger) VAR(AFTER) INSERT(INSERT) ON(ON) VAR(test) FOR(FOR). Prior native observation for this exact SQL: Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20).",
     "sql": "CREATE TRIGGER \"test_trigger\" AFTER INSERT ON test FOR EACH ROW BEGIN SELECT 1; END"
   },
   "a2cc86546adf99f2/hybrid": {
@@ -6126,26 +6361,24 @@
     },
     "sql": "CREATE TABLE a (id INT)\nCREATE TABLE b (id INT)"
   },
-  "a356d0d77d25af31/hybrid": {
-    "class": "facts-adds-acted",
+  "a356d0d77d25af31/analyzer": {
+    "class": "opaque-reader-gap",
     "facts": {
-      "diagnostic": "index: mysql Command is opaque to statement facts",
+      "diagnostic": "mysql Command is opaque to statement facts",
       "kind": "DDL",
-      "objects": [
-        [
-          "idx_users_email",
-          "INDEX",
-          "created",
-          null
-        ]
-      ],
       "operation": "CREATE"
     },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
     "old": {
-      "hybrid": []
+      "analyzer": [
+        [
+          "INDEX",
+          "idx_users_email"
+        ]
+      ]
     },
-    "path": "hybrid",
-    "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took nothing from its head; the reader names `idx_users_email`.",
+    "path": "analyzer",
+    "reason": "The proposed head takes a name from brackets, while mysql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'CREATE INDEX [idx_users_email] ON [users]([email])'; dialect tokens: CREATE(CREATE) INDEX(INDEX) L_BRACKET([) VAR(idx_users_email) R_BRACKET(]) ON(ON) L_BRACKET([) VAR(users). Prior native observation for this exact SQL: Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20).",
     "sql": "CREATE INDEX [idx_users_email] ON [users]([email])"
   },
   "a37fdb980cc80627/analyzer": {
@@ -6195,48 +6428,44 @@
     "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took nothing from its head; the reader names `test_proc`.",
     "sql": "CREATE OR REPLACE PROCEDURE test_proc AS\n        BEGIN\n            NULL;\n        END"
   },
-  "a53ed84f83784159/hybrid": {
-    "class": "facts-adds-acted",
+  "a53ed84f83784159/analyzer": {
+    "class": "opaque-reader-gap",
     "facts": {
-      "diagnostic": "table: mysql grammar is not modelled for this statement",
+      "diagnostic": "mysql grammar is not modelled for this statement",
       "kind": "DDL",
-      "objects": [
-        [
-          "a]/*b*/",
-          "TABLE",
-          "created",
-          null
-        ]
-      ],
       "operation": "CREATE"
     },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
     "old": {
-      "hybrid": []
+      "analyzer": [
+        [
+          "TABLE",
+          "default_schema.a]/*b*/"
+        ]
+      ]
     },
-    "path": "hybrid",
-    "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took nothing from its head; the reader names `a]/*b*/`.",
+    "path": "analyzer",
+    "reason": "Nested-looking /* markers and/or a later unmatched */ change where the dialect token stream places the proposed head or the rest of its unit. The whole-unit safety guard publishes no guessed effect. Initial visible name tokens, if any, are preserved in the token evidence; no native validity is inferred. Source head: 'CREATE TABLE [a]]/*b*/] (id INT) /* c */'; dialect tokens: CREATE(CREATE) TABLE(TABLE) L_BRACKET([) VAR(a) R_BRACKET(]) R_BRACKET(]) R_BRACKET(]) L_PAREN((). Prior native observation for this exact SQL: Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20).",
     "sql": "CREATE TABLE [a]]/*b*/] (id INT) /* c */"
   },
-  "a5a261ed63055c4e/hybrid": {
-    "class": "facts-adds-acted",
+  "a5a261ed63055c4e/analyzer": {
+    "class": "opaque-reader-gap",
     "facts": {
-      "diagnostic": "table: mysql Command is opaque to statement facts",
+      "diagnostic": "mysql Command is opaque to statement facts",
       "kind": "DDL",
-      "objects": [
-        [
-          "a\"b",
-          "TABLE",
-          "created",
-          null
-        ]
-      ],
       "operation": "CREATE"
     },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
     "old": {
-      "hybrid": []
+      "analyzer": [
+        [
+          "TABLE",
+          "default_schema.a\"b"
+        ]
+      ]
     },
-    "path": "hybrid",
-    "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took nothing from its head; the reader names `a\"b`.",
+    "path": "analyzer",
+    "reason": "The MySQL tokenizer reads the double-quoted proposed name as STRING, not IDENTIFIER. The connection's ANSI_QUOTES mode is unavailable, so the reader cannot publish its identity. Source head: 'CREATE TABLE \"a\"\"b\" (a int) IN TS1'; dialect tokens: CREATE(CREATE) TABLE(TABLE) STRING(a\"b) L_PAREN(() VAR(a) INT(int) R_PAREN()) IN(IN). Prior native observation for this exact SQL: Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20).",
     "sql": "CREATE TABLE \"a\"\"b\" (a int) IN TS1"
   },
   "a5dbd5bf120c1f7f/hybrid": {
@@ -6312,6 +6541,26 @@
       "MySQL 8.4.11": "1064"
     },
     "sql": "END@\n        CREATE PROCEDURE test2() LANGUAGE SQL BEGIN SELECT 2"
+  },
+  "a7eae99120881330/analyzer": {
+    "class": "opaque-reader-gap",
+    "facts": {
+      "diagnostic": "mysql grammar is not modelled for this statement",
+      "kind": "DDL",
+      "operation": "DROP"
+    },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+    "old": {
+      "analyzer": [
+        [
+          "INDEX",
+          "default_schema.idx_users_email"
+        ]
+      ]
+    },
+    "path": "analyzer",
+    "reason": "The proposed head takes a name from brackets, while mysql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'DROP INDEX IF EXISTS [idx_users_email] ON [dbo].[users]'; dialect tokens: DROP(DROP) INDEX(INDEX) VAR(IF) EXISTS(EXISTS) L_BRACKET([) VAR(idx_users_email) R_BRACKET(]) ON(ON).",
+    "sql": "DROP INDEX IF EXISTS [idx_users_email] ON [dbo].[users]"
   },
   "a7eae99120881330/hybrid": {
     "class": "opaque-reader-gap",
@@ -6481,26 +6730,25 @@
     "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took `IF` from its head; the reader names `app`.",
     "sql": "CREATE SCHEMA IF NOT EXISTS \"app\""
   },
-  "ab280641b39ea839/analyzer": {
-    "class": "facts-adds-acted",
+  "ab280641b39ea839/hybrid": {
+    "class": "opaque-reader-gap",
     "facts": {
-      "diagnostic": "table: mysql Command is opaque to statement facts",
+      "diagnostic": "mysql Command is opaque to statement facts",
       "kind": "DDL",
-      "objects": [
-        [
-          "ONLY",
-          "TABLE",
-          "altered",
-          null
-        ]
-      ],
       "operation": "ALTER"
     },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
     "old": {
-      "analyzer": []
+      "hybrid": [
+        [
+          "TABLE",
+          "ONLY",
+          null
+        ]
+      ]
     },
-    "path": "analyzer",
-    "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took nothing from its head; the reader names `ONLY`.",
+    "path": "hybrid",
+    "reason": "Nested-looking /* markers and/or a later unmatched */ change where the dialect token stream places the proposed head or the rest of its unit. The whole-unit safety guard publishes no guessed effect. Initial visible name tokens, if any, are preserved in the token evidence; no native validity is inferred. Source head: 'ALTER TABLE ONLY /* a /* b */ c */ \"s\".\"orders\" ADD COLUMN x INT'; dialect tokens: ALTER(ALTER) TABLE(TABLE) VAR(ONLY) VAR(c) STAR(*) SLASH(/) STRING(s) DOT(.). Prior native observation for this exact SQL: Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20).",
     "sql": "ALTER TABLE ONLY /* a /* b */ c */ \"s\".\"orders\" ADD COLUMN x INT"
   },
   "ab56e829bd7b839d/analyzer": {
@@ -6526,26 +6774,24 @@
     },
     "sql": "COMMENT ON INDEX idx IS 'note'"
   },
-  "abfba5d0ae2a96f9/hybrid": {
-    "class": "facts-adds-acted",
+  "abfba5d0ae2a96f9/analyzer": {
+    "class": "opaque-reader-gap",
     "facts": {
       "diagnostic": "mysql Command is opaque to statement facts",
       "kind": "DDL",
-      "objects": [
-        [
-          "Pr",
-          "PROCEDURE",
-          "created",
-          null
-        ]
-      ],
       "operation": "CREATE"
     },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
     "old": {
-      "hybrid": []
+      "analyzer": [
+        [
+          "PROCEDURE",
+          "default_schema.Pr"
+        ]
+      ]
     },
-    "path": "hybrid",
-    "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took nothing from its head; the reader names `Pr`.",
+    "path": "analyzer",
+    "reason": "The MySQL tokenizer reads the double-quoted proposed name as STRING, not IDENTIFIER. The connection's ANSI_QUOTES mode is unavailable, so the reader cannot publish its identity. Source head: 'CREATE PROCEDURE \"Pr\"() AS $$ BEGIN END $$ LANGUAGE plpgsql'; dialect tokens: CREATE(CREATE) PROCEDURE(PROCEDURE) STRING(Pr) L_PAREN(() R_PAREN()) ALIAS(AS) VAR($$) BEGIN(BEGIN). Prior native observation for this exact SQL: Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20).",
     "sql": "CREATE PROCEDURE \"Pr\"() AS $$ BEGIN END $$ LANGUAGE plpgsql"
   },
   "aea134aa25298dd3/analyzer": {
@@ -6571,26 +6817,24 @@
     },
     "sql": "DROP cannot be reversed"
   },
-  "afc454048e7de087/hybrid": {
-    "class": "facts-adds-acted",
+  "afc454048e7de087/analyzer": {
+    "class": "opaque-reader-gap",
     "facts": {
-      "diagnostic": "index: mysql Command is opaque to statement facts",
+      "diagnostic": "mysql Command is opaque to statement facts",
       "kind": "DDL",
-      "objects": [
-        [
-          "idx_users",
-          "INDEX",
-          "created",
-          "Schema"
-        ]
-      ],
       "operation": "CREATE"
     },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
     "old": {
-      "hybrid": []
+      "analyzer": [
+        [
+          "INDEX",
+          "Schema.idx_users"
+        ]
+      ]
     },
-    "path": "hybrid",
-    "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took nothing from its head; the reader names `idx_users`.",
+    "path": "analyzer",
+    "reason": "The MySQL tokenizer reads the double-quoted proposed name as STRING, not IDENTIFIER. The connection's ANSI_QUOTES mode is unavailable, so the reader cannot publish its identity. Source head: 'CREATE INDEX \"Schema\".\"idx_users\" ON \"Schema\".\"Users\"(id)'; dialect tokens: CREATE(CREATE) INDEX(INDEX) STRING(Schema) DOT(.) STRING(idx_users) ON(ON) STRING(Schema) DOT(.). Prior native observation for this exact SQL: Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20).",
     "sql": "CREATE INDEX \"Schema\".\"idx_users\" ON \"Schema\".\"Users\"(id)"
   },
   "b0e928033c05ce9b/hybrid": {
@@ -6636,26 +6880,25 @@
     },
     "sql": "CREATE OR REPLACE FORCE VIEW vw_test AS\n        SELECT * FROM nonexistent_table"
   },
-  "b1302612249a68c8/analyzer": {
-    "class": "facts-adds-acted",
+  "b1302612249a68c8/hybrid": {
+    "class": "opaque-reader-gap",
     "facts": {
-      "diagnostic": "table: mysql grammar is not modelled for this statement",
+      "diagnostic": "mysql grammar is not modelled for this statement",
       "kind": "DDL",
-      "objects": [
-        [
-          "after_proc",
-          "TABLE",
-          "created",
-          null
-        ]
-      ],
       "operation": "CREATE"
     },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
     "old": {
-      "analyzer": []
+      "hybrid": [
+        [
+          "TABLE",
+          "after_proc",
+          null
+        ]
+      ]
     },
-    "path": "analyzer",
-    "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took nothing from its head; the reader names `after_proc`.",
+    "path": "hybrid",
+    "reason": "The original unit begins with slash separator; the first source tokens are not the same verb/name sequence as a bare proposed DDL head. The reader cannot scan through that prefix and attribute its later name to this entire unit. Source head: '/\\\\n\\\\nCREATE TABLE after_proc (id NUMBER)'; dialect tokens: SLASH(/) CREATE(CREATE) TABLE(TABLE) VAR(after_proc) L_PAREN(() VAR(id) DECIMAL(NUMBER) R_PAREN()). Prior native observation for this exact SQL: Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20).",
     "sql": "/\n\nCREATE TABLE after_proc (id NUMBER)"
   },
   "b171fa9efeec56a8/analyzer": {
@@ -6771,6 +7014,26 @@
     "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took `child` from its head; the reader names `child`.",
     "sql": "UPDATE child SET parent_id ="
   },
+  "b24b8641c2e26f7e/analyzer": {
+    "class": "opaque-reader-gap",
+    "facts": {
+      "diagnostic": "mysql grammar is not modelled for this statement",
+      "kind": "DDL",
+      "operation": "DROP"
+    },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+    "old": {
+      "analyzer": [
+        [
+          "INDEX",
+          "default_schema.idx_u"
+        ]
+      ]
+    },
+    "path": "analyzer",
+    "reason": "The proposed head takes a name from brackets, while mysql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'DROP INDEX IF EXISTS [idx_u] ON [sales].[orders]'; dialect tokens: DROP(DROP) INDEX(INDEX) VAR(IF) EXISTS(EXISTS) L_BRACKET([) VAR(idx_u) R_BRACKET(]) ON(ON).",
+    "sql": "DROP INDEX IF EXISTS [idx_u] ON [sales].[orders]"
+  },
   "b24b8641c2e26f7e/hybrid": {
     "class": "opaque-reader-gap",
     "facts": {
@@ -6834,26 +7097,45 @@
     },
     "sql": "CREATE EVENT TRIGGER et ON ddl_command_end EXECUTE FUNCTION f()"
   },
-  "b2c5fa1d0bef2104/hybrid": {
-    "class": "facts-adds-acted",
+  "b29962c6a269b576/hybrid": {
+    "class": "opaque-reader-gap",
     "facts": {
-      "diagnostic": "index: mysql grammar is not modelled for this statement",
+      "diagnostic": "mysql Command is opaque to statement facts",
       "kind": "DDL",
-      "objects": [
+      "operation": "CREATE"
+    },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+    "old": {
+      "hybrid": [
         [
-          "idx_users_email",
-          "INDEX",
-          "dropped",
+          "UNKNOWN",
+          "TRIGGER",
           null
         ]
-      ],
-      "operation": "DROP"
-    },
-    "old": {
-      "hybrid": []
+      ]
     },
     "path": "hybrid",
-    "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took nothing from its head; the reader names `idx_users_email`.",
+    "reason": "The old object TRIGGER is a keyword token after EVENT, not a proven VAR/IDENTIFIER name. The guard publishes no object; this does not assert what the server accepts. Source head: 'CREATE EVENT TRIGGER et ON ddl_command_end EXECUTE FUNCTION f()'; dialect tokens: CREATE(CREATE) VAR(EVENT) TRIGGER(TRIGGER) VAR(et) ON(ON) VAR(ddl_command_end) EXECUTE(EXECUTE) FUNCTION(FUNCTION).",
+    "sql": "CREATE EVENT TRIGGER et ON ddl_command_end EXECUTE FUNCTION f()"
+  },
+  "b2c5fa1d0bef2104/analyzer": {
+    "class": "opaque-reader-gap",
+    "facts": {
+      "diagnostic": "mysql grammar is not modelled for this statement",
+      "kind": "DDL",
+      "operation": "DROP"
+    },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+    "old": {
+      "analyzer": [
+        [
+          "INDEX",
+          "default_schema.idx_users_email"
+        ]
+      ]
+    },
+    "path": "analyzer",
+    "reason": "The proposed head takes a name from brackets, while mysql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'DROP INDEX [idx_users_email]'; dialect tokens: DROP(DROP) INDEX(INDEX) L_BRACKET([) VAR(idx_users_email) R_BRACKET(]). Prior native observation for this exact SQL: Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20).",
     "sql": "DROP INDEX [idx_users_email]"
   },
   "b3169339525bb2fd/analyzer": {
@@ -6947,6 +7229,47 @@
     "path": "analyzer",
     "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took nothing from its head; the reader names `t`.",
     "sql": "WITH c AS (SELECT 1 AS id) INSERT INTO t SELECT * FROM c"
+  },
+  "b393108914212113/analyzer": {
+    "class": "opaque-reader-gap",
+    "facts": {
+      "diagnostic": "mysql Command is opaque to statement facts",
+      "kind": "DDL",
+      "operation": "DROP"
+    },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+    "old": {
+      "analyzer": [
+        [
+          "EVENT",
+          "default_schema.TABLE"
+        ]
+      ]
+    },
+    "path": "analyzer",
+    "reason": "The old object TABLE is a keyword token after EVENT, not a proven VAR/IDENTIFIER name. The guard publishes no object; this does not assert what the server accepts. Source head: 'DROP EVENT TABLE IF EXISTS \"S\".\"APP_EVENTS\"'; dialect tokens: DROP(DROP) VAR(EVENT) TABLE(TABLE) VAR(IF) EXISTS(EXISTS) STRING(S) DOT(.) STRING(APP_EVENTS).",
+    "sql": "DROP EVENT TABLE IF EXISTS \"S\".\"APP_EVENTS\""
+  },
+  "b393108914212113/hybrid": {
+    "class": "opaque-reader-gap",
+    "facts": {
+      "diagnostic": "mysql Command is opaque to statement facts",
+      "kind": "DDL",
+      "operation": "DROP"
+    },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+    "old": {
+      "hybrid": [
+        [
+          "UNKNOWN",
+          "TABLE",
+          null
+        ]
+      ]
+    },
+    "path": "hybrid",
+    "reason": "The old object TABLE is a keyword token after EVENT, not a proven VAR/IDENTIFIER name. The guard publishes no object; this does not assert what the server accepts. Source head: 'DROP EVENT TABLE IF EXISTS \"S\".\"APP_EVENTS\"'; dialect tokens: DROP(DROP) VAR(EVENT) TABLE(TABLE) VAR(IF) EXISTS(EXISTS) STRING(S) DOT(.) STRING(APP_EVENTS).",
+    "sql": "DROP EVENT TABLE IF EXISTS \"S\".\"APP_EVENTS\""
   },
   "b56ac7073e32f203/analyzer": {
     "class": "opaque-reader-gap",
@@ -7045,26 +7368,24 @@
     "reason": "Runs on both engines (1146: table missing). DESCRIBE is a metadata query the reader does not map; it names nothing, the hybrid extraction named the table. No consumer reads it.",
     "sql": "DESCRIBE child"
   },
-  "b8a98133b12db722/hybrid": {
-    "class": "facts-adds-acted",
+  "b8a98133b12db722/analyzer": {
+    "class": "opaque-reader-gap",
     "facts": {
-      "diagnostic": "table: mysql Command is opaque to statement facts",
+      "diagnostic": "mysql Command is opaque to statement facts",
       "kind": "DDL",
-      "objects": [
-        [
-          "Case",
-          "TABLE",
-          "created",
-          null
-        ]
-      ],
       "operation": "CREATE"
     },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
     "old": {
-      "hybrid": []
+      "analyzer": [
+        [
+          "TABLE",
+          "default_schema.Case"
+        ]
+      ]
     },
-    "path": "hybrid",
-    "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took nothing from its head; the reader names `Case`.",
+    "path": "analyzer",
+    "reason": "The MySQL tokenizer reads the double-quoted proposed name as STRING, not IDENTIFIER. The connection's ANSI_QUOTES mode is unavailable, so the reader cannot publish its identity. Source head: 'CREATE TABLE \"Case\" (a int) WITH (fillfactor=70) TABLESPACE ts'; dialect tokens: CREATE(CREATE) TABLE(TABLE) STRING(Case) L_PAREN(() VAR(a) INT(int) R_PAREN()) WITH(WITH). Prior native observation for this exact SQL: Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20).",
     "sql": "CREATE TABLE \"Case\" (a int) WITH (fillfactor=70) TABLESPACE ts"
   },
   "b9714f9c7de896b8/analyzer": {
@@ -7171,26 +7492,24 @@
     },
     "sql": "CREATE TYPE mood AS ENUM ('sad', 'ok')"
   },
-  "ba915bbccb2bfe7c/hybrid": {
-    "class": "facts-adds-acted",
+  "ba915bbccb2bfe7c/analyzer": {
+    "class": "opaque-reader-gap",
     "facts": {
-      "diagnostic": "table: mysql Command is opaque to statement facts",
+      "diagnostic": "mysql Command is opaque to statement facts",
       "kind": "DDL",
-      "objects": [
-        [
-          "Case",
-          "TABLE",
-          "created",
-          "S"
-        ]
-      ],
       "operation": "CREATE"
     },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
     "old": {
-      "hybrid": []
+      "analyzer": [
+        [
+          "TABLE",
+          "S.Case"
+        ]
+      ]
     },
-    "path": "hybrid",
-    "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took nothing from its head; the reader names `Case`.",
+    "path": "analyzer",
+    "reason": "The MySQL tokenizer reads the double-quoted proposed name as STRING, not IDENTIFIER. The connection's ANSI_QUOTES mode is unavailable, so the reader cannot publish its identity. Source head: 'CREATE TABLE \"S\".\"Case\" (a int) WITH (fillfactor=70) TABLESPACE ts'; dialect tokens: CREATE(CREATE) TABLE(TABLE) STRING(S) DOT(.) STRING(Case) L_PAREN(() VAR(a) INT(int). Prior native observation for this exact SQL: Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20).",
     "sql": "CREATE TABLE \"S\".\"Case\" (a int) WITH (fillfactor=70) TABLESPACE ts"
   },
   "bb7bc6f1a08c1a05/analyzer": {
@@ -7269,26 +7588,24 @@
     "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took nothing from its head; the reader names `t`.",
     "sql": "CREATE VIRTUAL TABLE IF NOT EXISTS s.t USING rtree(id,a,b)"
   },
-  "bc4a113a98d24f65/hybrid": {
-    "class": "facts-adds-acted",
+  "bc4a113a98d24f65/analyzer": {
+    "class": "opaque-reader-gap",
     "facts": {
-      "diagnostic": "table: mysql Command is opaque to statement facts",
+      "diagnostic": "mysql Command is opaque to statement facts",
       "kind": "DDL",
-      "objects": [
-        [
-          "MiXed",
-          "TABLE",
-          "created",
-          "S"
-        ]
-      ],
       "operation": "CREATE"
     },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
     "old": {
-      "hybrid": []
+      "analyzer": [
+        [
+          "TABLE",
+          "S.MiXed"
+        ]
+      ]
     },
-    "path": "hybrid",
-    "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took nothing from its head; the reader names `MiXed`.",
+    "path": "analyzer",
+    "reason": "The MySQL tokenizer reads the double-quoted proposed name as STRING, not IDENTIFIER. The connection's ANSI_QUOTES mode is unavailable, so the reader cannot publish its identity. Source head: 'CREATE TABLE \"S\".MiXed (a int) WITH (fillfactor=70) TABLESPACE ts'; dialect tokens: CREATE(CREATE) TABLE(TABLE) STRING(S) DOT(.) VAR(MiXed) L_PAREN(() VAR(a) INT(int). Prior native observation for this exact SQL: Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20).",
     "sql": "CREATE TABLE \"S\".MiXed (a int) WITH (fillfactor=70) TABLESPACE ts"
   },
   "bdcdeda065d02308": {
@@ -7725,26 +8042,24 @@
     },
     "sql": "ALTER PUBLICATION pub ADD TABLE t"
   },
-  "ca652ef4dcd8bb1b/hybrid": {
-    "class": "facts-adds-acted",
+  "ca652ef4dcd8bb1b/analyzer": {
+    "class": "opaque-reader-gap",
     "facts": {
       "diagnostic": "mysql Command is opaque to statement facts",
       "kind": "DDL",
-      "objects": [
-        [
-          "Fn",
-          "FUNCTION",
-          "created",
-          "S"
-        ]
-      ],
       "operation": "CREATE"
     },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
     "old": {
-      "hybrid": []
+      "analyzer": [
+        [
+          "FUNCTION",
+          "S.Fn"
+        ]
+      ]
     },
-    "path": "hybrid",
-    "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took nothing from its head; the reader names `Fn`.",
+    "path": "analyzer",
+    "reason": "The MySQL tokenizer reads the double-quoted proposed name as STRING, not IDENTIFIER. The connection's ANSI_QUOTES mode is unavailable, so the reader cannot publish its identity. Source head: 'CREATE FUNCTION \"S\".\"Fn\"() RETURNS int AS $$ SELECT 1 $$ LANGUAGE sql'; dialect tokens: CREATE(CREATE) FUNCTION(FUNCTION) STRING(S) DOT(.) STRING(Fn) L_PAREN(() R_PAREN()) VAR(RETURNS). Prior native observation for this exact SQL: Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20).",
     "sql": "CREATE FUNCTION \"S\".\"Fn\"() RETURNS int AS $$ SELECT 1 $$ LANGUAGE sql"
   },
   "caa27a626d331e07/analyzer": {
@@ -7793,70 +8108,65 @@
     },
     "sql": "CREATE STOGROUP \"my_sg\" VOLUMES ('vol1')"
   },
-  "cb089c0e59a938f2/hybrid": {
-    "class": "facts-adds-acted",
+  "cb089c0e59a938f2/analyzer": {
+    "class": "opaque-reader-gap",
     "facts": {
-      "diagnostic": "index: mysql Command is opaque to statement facts",
+      "diagnostic": "mysql Command is opaque to statement facts",
       "kind": "DDL",
-      "objects": [
+      "operation": "CREATE"
+    },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+    "old": {
+      "analyzer": [
         [
-          "ix",
           "INDEX",
-          "created",
-          "s"
+          "s.ix"
         ]
-      ],
-      "operation": "CREATE"
-    },
-    "old": {
-      "hybrid": []
-    },
-    "path": "hybrid",
-    "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took nothing from its head; the reader names `ix`.",
-    "sql": "CREATE INDEX \"s\".\"ix\" ON \"t\"(\"c\")"
-  },
-  "cc1e1356f50aa4e9/analyzer": {
-    "class": "facts-adds-acted",
-    "facts": {
-      "diagnostic": "table: mysql grammar is not modelled for this statement",
-      "kind": "DDL",
-      "objects": [
-        [
-          "a",
-          "TABLE",
-          "created",
-          null
-        ]
-      ],
-      "operation": "CREATE"
-    },
-    "old": {
-      "analyzer": []
+      ]
     },
     "path": "analyzer",
-    "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took nothing from its head; the reader names `a`.",
-    "sql": ".mode csv\nCREATE TABLE a(x)"
+    "reason": "The MySQL tokenizer reads the double-quoted proposed name as STRING, not IDENTIFIER. The connection's ANSI_QUOTES mode is unavailable, so the reader cannot publish its identity. Source head: 'CREATE INDEX \"s\".\"ix\" ON \"t\"(\"c\")'; dialect tokens: CREATE(CREATE) INDEX(INDEX) STRING(s) DOT(.) STRING(ix) ON(ON) STRING(t) L_PAREN((). Prior native observation for this exact SQL: Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20).",
+    "sql": "CREATE INDEX \"s\".\"ix\" ON \"t\"(\"c\")"
   },
-  "cc22ca3ab620a924/hybrid": {
-    "class": "facts-adds-acted",
+  "cc1e1356f50aa4e9/hybrid": {
+    "class": "opaque-reader-gap",
     "facts": {
-      "diagnostic": "index: mysql Command is opaque to statement facts",
+      "diagnostic": "mysql grammar is not modelled for this statement",
       "kind": "DDL",
-      "objects": [
-        [
-          "idx_users_email",
-          "INDEX",
-          "created",
-          null
-        ]
-      ],
       "operation": "CREATE"
     },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
     "old": {
-      "hybrid": []
+      "hybrid": [
+        [
+          "TABLE",
+          "a",
+          null
+        ]
+      ]
     },
     "path": "hybrid",
-    "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took nothing from its head; the reader names `idx_users_email`.",
+    "reason": "The original unit begins with .mode; the first source tokens are not the same verb/name sequence as a bare proposed DDL head. The reader cannot scan through that prefix and attribute its later name to this entire unit. Source head: '.mode csv\\\\nCREATE TABLE a(x)'; dialect tokens: DOT(.) VAR(mode) VAR(csv) CREATE(CREATE) TABLE(TABLE) VAR(a) L_PAREN(() VAR(x). Prior native observation for this exact SQL: Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20).",
+    "sql": ".mode csv\nCREATE TABLE a(x)"
+  },
+  "cc22ca3ab620a924/analyzer": {
+    "class": "opaque-reader-gap",
+    "facts": {
+      "diagnostic": "mysql Command is opaque to statement facts",
+      "kind": "DDL",
+      "operation": "CREATE"
+    },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+    "old": {
+      "analyzer": [
+        [
+          "INDEX",
+          "idx_users_email"
+        ]
+      ]
+    },
+    "path": "analyzer",
+    "reason": "The proposed head takes a name from brackets, while mysql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'CREATE INDEX [idx_users_email] ON [dbo].[users]([email])'; dialect tokens: CREATE(CREATE) INDEX(INDEX) L_BRACKET([) VAR(idx_users_email) R_BRACKET(]) ON(ON) L_BRACKET([) VAR(dbo). Prior native observation for this exact SQL: Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20).",
     "sql": "CREATE INDEX [idx_users_email] ON [dbo].[users]([email])"
   },
   "cc589bce9736f117/analyzer": {
@@ -7992,26 +8302,24 @@
     },
     "sql": "DROP TYPE mood"
   },
-  "cf86e8fe7dc96efd/hybrid": {
-    "class": "facts-adds-acted",
+  "cf86e8fe7dc96efd/analyzer": {
+    "class": "opaque-reader-gap",
     "facts": {
-      "diagnostic": "index: mysql Command is opaque to statement facts",
+      "diagnostic": "mysql Command is opaque to statement facts",
       "kind": "DDL",
-      "objects": [
-        [
-          "name]",
-          "INDEX",
-          "created",
-          null
-        ]
-      ],
       "operation": "CREATE"
     },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
     "old": {
-      "hybrid": []
+      "analyzer": [
+        [
+          "INDEX",
+          "name]"
+        ]
+      ]
     },
-    "path": "hybrid",
-    "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took nothing from its head; the reader names `name]`.",
+    "path": "analyzer",
+    "reason": "The proposed head takes a name from brackets, while mysql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'CREATE INDEX [name]]] ON [dbo].[t]([c])'; dialect tokens: CREATE(CREATE) INDEX(INDEX) L_BRACKET([) VAR(name) R_BRACKET(]) R_BRACKET(]) R_BRACKET(]) ON(ON). Prior native observation for this exact SQL: Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20).",
     "sql": "CREATE INDEX [name]]] ON [dbo].[t]([c])"
   },
   "d1133fdf5e505aee/analyzer": {
@@ -8178,26 +8486,24 @@
     "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took `app_logs`, `deleted`, `src` from its head; the reader names `app_logs`, `src`.",
     "sql": "WITH deleted AS (DELETE FROM src WHERE id = 1 RETURNING id) INSERT INTO app_logs(msg) SELECT 'removed ' || id FROM delet"
   },
-  "d288a209688cf83e/hybrid": {
-    "class": "facts-adds-acted",
+  "d288a209688cf83e/analyzer": {
+    "class": "opaque-reader-gap",
     "facts": {
-      "diagnostic": "table: mysql grammar is not modelled for this statement",
+      "diagnostic": "mysql grammar is not modelled for this statement",
       "kind": "DDL",
-      "objects": [
-        [
-          "a]b",
-          "TABLE",
-          "altered",
-          null
-        ]
-      ],
       "operation": "ALTER"
     },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
     "old": {
-      "hybrid": []
+      "analyzer": [
+        [
+          "TABLE",
+          "default_schema.a]b"
+        ]
+      ]
     },
-    "path": "hybrid",
-    "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took nothing from its head; the reader names `a]b`.",
+    "path": "analyzer",
+    "reason": "The proposed head takes a name from brackets, while mysql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'ALTER TABLE [a]]b] ADD COLUMN x INT'; dialect tokens: ALTER(ALTER) TABLE(TABLE) L_BRACKET([) VAR(a) R_BRACKET(]) R_BRACKET(]) VAR(b) R_BRACKET(]). Prior native observation for this exact SQL: Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20).",
     "sql": "ALTER TABLE [a]]b] ADD COLUMN x INT"
   },
   "d37d4b0f0ffa9b1f/analyzer": {
@@ -8396,26 +8702,24 @@
     },
     "sql": "DROP INDEX dbo.real_one.idx1"
   },
-  "d782254ed5e71b58/hybrid": {
-    "class": "facts-adds-acted",
+  "d782254ed5e71b58/analyzer": {
+    "class": "opaque-reader-gap",
     "facts": {
-      "diagnostic": "index: mysql Command is opaque to statement facts",
+      "diagnostic": "mysql Command is opaque to statement facts",
       "kind": "DDL",
-      "objects": [
-        [
-          "a]b]c",
-          "INDEX",
-          "created",
-          null
-        ]
-      ],
       "operation": "CREATE"
     },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
     "old": {
-      "hybrid": []
+      "analyzer": [
+        [
+          "INDEX",
+          "a]b]c"
+        ]
+      ]
     },
-    "path": "hybrid",
-    "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took nothing from its head; the reader names `a]b]c`.",
+    "path": "analyzer",
+    "reason": "The proposed head takes a name from brackets, while mysql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'CREATE INDEX [a]]b]]c] ON [dbo].[t]([c])'; dialect tokens: CREATE(CREATE) INDEX(INDEX) L_BRACKET([) VAR(a) R_BRACKET(]) R_BRACKET(]) VAR(b) R_BRACKET(]). Prior native observation for this exact SQL: Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20).",
     "sql": "CREATE INDEX [a]]b]]c] ON [dbo].[t]([c])"
   },
   "d830f197d0ad9af7/analyzer": {
@@ -8481,7 +8785,7 @@
       "kind": "DDL",
       "objects": [
         [
-          "café",
+          "cafe\u0301",
           "TABLE",
           "created",
           null
@@ -8494,8 +8798,8 @@
       "analyzer": []
     },
     "path": "analyzer",
-    "reason": "Runs on both engines: `café` is a valid name. The reader names it; the analyzer named nothing.",
-    "sql": "CREATE TABLE café (id INT)"
+    "reason": "Runs on both engines: `caf\u00e9` is a valid name. The reader names it; the analyzer named nothing.",
+    "sql": "CREATE TABLE cafe\u0301 (id INT)"
   },
   "da3571ef320a0c63/hybrid": {
     "class": "opaque-reader-gap",
@@ -8778,26 +9082,24 @@
     "reason": "Runs on both engines (error 1146 only because the table is missing). The reader has no mapping for GRANT/REVOKE/DESCRIBE and names nothing; the extraction took the table name from the text. No consumer reads privileges or metadata queries.",
     "sql": "GRANT SELECT ON test TO user1"
   },
-  "e0ca86d4ebc62716/hybrid": {
-    "class": "facts-adds-acted",
+  "e0ca86d4ebc62716/analyzer": {
+    "class": "opaque-reader-gap",
     "facts": {
-      "diagnostic": "index: mysql Command is opaque to statement facts",
+      "diagnostic": "mysql Command is opaque to statement facts",
       "kind": "DDL",
-      "objects": [
-        [
-          "idx 1",
-          "INDEX",
-          "created",
-          null
-        ]
-      ],
       "operation": "CREATE"
     },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
     "old": {
-      "hybrid": []
+      "analyzer": [
+        [
+          "INDEX",
+          "idx 1"
+        ]
+      ]
     },
-    "path": "hybrid",
-    "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took nothing from its head; the reader names `idx 1`.",
+    "path": "analyzer",
+    "reason": "The proposed head takes a name from brackets, while mysql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'CREATE INDEX [idx 1] ON [real_one] (id)'; dialect tokens: CREATE(CREATE) INDEX(INDEX) L_BRACKET([) VAR(idx) NUMBER(1) R_BRACKET(]) ON(ON) L_BRACKET([). Prior native observation for this exact SQL: Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20).",
     "sql": "CREATE INDEX [idx 1] ON [real_one] (id)"
   },
   "e1681220489dc183/analyzer": {
@@ -8868,28 +9170,6 @@
       "MySQL 8.4.11": "1064"
     },
     "sql": "COMMENT ON VIEW v IS 'note'"
-  },
-  "e541f61bf68d8d6b/analyzer": {
-    "class": "facts-adds-acted",
-    "facts": {
-      "diagnostic": "index: mysql grammar is not modelled for this statement",
-      "kind": "DDL",
-      "objects": [
-        [
-          "EXISTS",
-          "INDEX",
-          "dropped",
-          null
-        ]
-      ],
-      "operation": "DROP"
-    },
-    "old": {
-      "analyzer": []
-    },
-    "path": "analyzer",
-    "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took nothing from its head; the reader names `EXISTS`.",
-    "sql": "DROP INDEX IF EXISTS"
   },
   "e541f61bf68d8d6b/hybrid": {
     "class": "opaque-reader-gap",
@@ -9050,26 +9330,24 @@
     "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took `s`, `t` from its head; the reader names nothing.",
     "sql": "MERGE INTO t USING s ON t.id = s.id WHEN MATCHED THEN UPDATE SET val = s.val WHEN NOT MATCHED THEN INSERT (id, val) VALU"
   },
-  "e9a640da282f1565/hybrid": {
-    "class": "facts-adds-acted",
+  "e9a640da282f1565/analyzer": {
+    "class": "opaque-reader-gap",
     "facts": {
-      "diagnostic": "table: mysql grammar is not modelled for this statement",
+      "diagnostic": "mysql grammar is not modelled for this statement",
       "kind": "DDL",
-      "objects": [
-        [
-          "real]one",
-          "TABLE",
-          "created",
-          null
-        ]
-      ],
       "operation": "CREATE"
     },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
     "old": {
-      "hybrid": []
+      "analyzer": [
+        [
+          "TABLE",
+          "default_schema.real]one"
+        ]
+      ]
     },
-    "path": "hybrid",
-    "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took nothing from its head; the reader names `real]one`.",
+    "path": "analyzer",
+    "reason": "The proposed head takes a name from brackets, while mysql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'CREATE TABLE [real]]one] (id int)'; dialect tokens: CREATE(CREATE) TABLE(TABLE) L_BRACKET([) FLOAT(real) R_BRACKET(]) R_BRACKET(]) VAR(one) R_BRACKET(]). Prior native observation for this exact SQL: Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20).",
     "sql": "CREATE TABLE [real]]one] (id int)"
   },
   "ea22e8afbb098ab2": {
@@ -9317,26 +9595,24 @@
     },
     "sql": "COPY items FROM E'items.csv'"
   },
-  "f3844405031a2c84/hybrid": {
-    "class": "facts-adds-acted",
+  "f3844405031a2c84/analyzer": {
+    "class": "opaque-reader-gap",
     "facts": {
-      "diagnostic": "table: mysql grammar is not modelled for this statement",
+      "diagnostic": "mysql grammar is not modelled for this statement",
       "kind": "DDL",
-      "objects": [
-        [
-          "bracket_quoted",
-          "TABLE",
-          "created",
-          null
-        ]
-      ],
       "operation": "CREATE"
     },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
     "old": {
-      "hybrid": []
+      "analyzer": [
+        [
+          "TABLE",
+          "default_schema.bracket_quoted"
+        ]
+      ]
     },
-    "path": "hybrid",
-    "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took nothing from its head; the reader names `bracket_quoted`.",
+    "path": "analyzer",
+    "reason": "The proposed head takes a name from brackets, while mysql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'CREATE TABLE [bracket_quoted] (id INT)'; dialect tokens: CREATE(CREATE) TABLE(TABLE) L_BRACKET([) VAR(bracket_quoted) R_BRACKET(]) L_PAREN(() VAR(id) INT(INT). Prior native observation for this exact SQL: Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20).",
     "sql": "CREATE TABLE [bracket_quoted] (id INT)"
   },
   "f48e6a91ecfd351d/hybrid": {
@@ -9493,26 +9769,24 @@
     },
     "sql": "CREATE INDEX idx_users ON users (email)\nCREATE INDEX idx_orders ON orders (user_id)"
   },
-  "fbf36a32e75c480b/hybrid": {
-    "class": "facts-adds-acted",
+  "fbf36a32e75c480b/analyzer": {
+    "class": "opaque-reader-gap",
     "facts": {
-      "diagnostic": "table: mysql grammar is not modelled for this statement",
+      "diagnostic": "mysql grammar is not modelled for this statement",
       "kind": "DDL",
-      "objects": [
-        [
-          "my table",
-          "TABLE",
-          "created",
-          "dbo"
-        ]
-      ],
       "operation": "CREATE"
     },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
     "old": {
-      "hybrid": []
+      "analyzer": [
+        [
+          "TABLE",
+          "dbo.my table"
+        ]
+      ]
     },
-    "path": "hybrid",
-    "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took nothing from its head; the reader names `my table`.",
+    "path": "analyzer",
+    "reason": "The proposed head takes a name from brackets, while mysql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'CREATE TABLE [dbo].[my table] (id int)'; dialect tokens: CREATE(CREATE) TABLE(TABLE) L_BRACKET([) VAR(dbo) R_BRACKET(]) DOT(.) L_BRACKET([) VAR(my). Prior native observation for this exact SQL: Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20).",
     "sql": "CREATE TABLE [dbo].[my table] (id int)"
   },
   "fc19c26bccb7ee62/hybrid": {

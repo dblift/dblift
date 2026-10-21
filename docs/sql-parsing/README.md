@@ -32,6 +32,26 @@ A fact that is not in one of these sections is not a splitting fact and does
 not belong in the spec. Object extraction (what a `CREATE TABLE` declares) is
 the extractor's concern and is covered by the model snapshot tests, not here.
 
+## Statement facts identities
+
+When sqlglot cannot read a statement body, the shared statement-facts reader may
+still classify its operation and kind. It publishes an affected object, DML
+target or index relation from the head only when the original dialect token
+stream proves the same leading verb and complete name: each name part must be
+bounded, have the expected identifier token kind for its quoting, and agree
+with the source spelling. A further qualifier, an unrecognized quote form,
+substitution text, or a client/script prefix cannot be silently cut away to
+invent a name. Comment boundaries are part of that proof.
+
+A proven head can retain its identity and diagnostic when the body remains
+unread; an unread or broken tail alone does not erase a bounded head. A stray
+block-comment closer in the same unit is treated more conservatively: the
+reader publishes no affected identity or DML details even if an initial name
+lexeme is clear, because the whole unit's effect cannot be safely projected.
+An opaque result with no objects is a statement about the reader's evidence,
+not a claim that a database accepts or rejects the SQL or that execution has
+no effect.
+
 ## Rules every specification follows
 
 - **Facts cite the vendor.** A string, comment, terminator or block rule is

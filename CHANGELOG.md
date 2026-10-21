@@ -232,6 +232,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`info` and `migrate --dry-run` no longer guess affected objects from uncertain SQL names.**
+  Incomplete names, names joined across comments, and quotes that do not name identifiers in the
+  selected dialect leave the affected object unread. SQL execution is unchanged.
 - **A name inside a nested block comment is no longer read as an object.** On PostgreSQL,
   Redshift and DuckDB, a statement such as `INSERT INTO /* a /* b */ c */ t ...` that dblift
   could not fully read was reported as writing to `c`; the comment is now skipped as the engine
