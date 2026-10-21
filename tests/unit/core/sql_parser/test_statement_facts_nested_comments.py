@@ -1,6 +1,6 @@
 """A name inside a block comment is never read: the head reader blanks comments as the engine does.
 
-PostgreSQL, Redshift, DuckDB and Db2 nest block comments (``/* a /* b */ c */`` is one comment);
+PostgreSQL, Redshift and DuckDB nest block comments (``/* a /* b */ c */`` is one comment);
 MySQL, MariaDB and Oracle end one at the first ``*/``. The trailing ``BOGUS (`` keeps each
 statement out of the full grammar so the head reader is the one that names the target.
 """

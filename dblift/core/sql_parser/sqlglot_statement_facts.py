@@ -705,6 +705,8 @@ def _copy_facts(node: exp.Copy, sql: str, *, dialect: str = "duckdb") -> Stateme
 
 def _nests_block_comments(dialect: str) -> bool:
     """Whether the engine nests ``/* /* */ */``: its lexical spec says so, or sqlglot's does."""
+    # SQL Server nests on the server (docs/sql-parsing/sqlserver.md) while its lexical spec is flat,
+    # because the spec describes the sqlcmd client; the OR takes the server's reading.
     if not dialect:  # no engine named: sqlglot's base dialect nests, which no caller means
         return False
     from dblift.db.provider_registry import ProviderRegistry
