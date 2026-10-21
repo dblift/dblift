@@ -137,3 +137,22 @@ def test_a_mutation_whose_target_has_no_name_is_opaque(sql):
     assert facts.opaque
     assert facts.target in (None,)
     assert facts.affected_objects == ()
+
+
+@pytest.mark.parametrize(
+    "sql",
+    ['DELETE FROM ""', 'INSERT INTO "" VALUES (1)', 'UPDATE s."" SET a = 1', 'DELETE FROM ""."" '],
+)
+def test_a_mutation_whose_target_name_is_empty_is_opaque_with_no_target(sql):
+    facts = _facts(sql)
+
+    assert facts.opaque
+    assert facts.target is None
+    assert facts.objects == ()
+
+
+@pytest.mark.parametrize(
+    "sql", ["CREATE LOCAL TEMP TABLE $t (a int)", "ALTER TABLE ADD COLUMN $x int"]
+)
+def test_a_command_holding_a_run_time_name_says_so(sql):
+    assert "IDENTIFIER() names are not read" in _facts(sql).diagnostic

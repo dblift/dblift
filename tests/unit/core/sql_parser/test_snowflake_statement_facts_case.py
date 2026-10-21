@@ -70,14 +70,62 @@ def test_a_mutation_target_is_folded_but_its_text_stays_as_written():
     assert facts.target_sql == "app.users"
 
 
-@pytest.mark.parametrize("sql", ["CREATE TABLE straße (a int)", "DROP TABLE s.straße"])
-def test_a_letter_with_no_one_character_upper_case_form_leaves_the_name_unread(sql):
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "CREATE TABLE éclair (a int)",
+        "CREATE TABLE ıx (a int)",
+        "CREATE TABLE µt (a int)",
+        "CREATE TABLE aé.t (a int)",
+        "CREATE TABLE s.éclair (a int)",
+        "DROP TABLE éclair",
+        "ALTER TABLE éclair ADD COLUMN c int",
+        "UPDATE éclair SET a = 1 WHERE b = 2",
+        "INSERT INTO éclair VALUES (1)",
+        "CREATE SCHEMA aé",
+        "CREATE TABLE straße (a int)",
+        "DROP TABLE s.straße",
+    ],
+)
+def test_an_unquoted_name_with_a_non_ascii_letter_is_unread(sql):
+    """The engine rejects unquoted ``é``, ``aé`` and ``a©b`` (docs/sql-parsing/snowflake.md,
+    section 2), so a statement holding one names no object."""
     facts = _facts(sql)
 
     assert facts.opaque
     assert facts.objects == ()
-    assert "upper-case form" in facts.diagnostic
+    assert facts.target is None
+    assert facts.diagnostic
 
 
-def test_a_quoted_name_with_such_a_letter_is_read_as_written():
-    assert _objects('CREATE TABLE "straße" (a int)') == [("straße", "TABLE", "created", None)]
+@pytest.mark.parametrize(
+    "sql, expected",
+    [
+        ('CREATE TABLE "éclair" (a int)', [("éclair", "TABLE", "created", None)]),
+        ('CREATE TABLE "aé".t (a int)', [("T", "TABLE", "created", "aé")]),
+        ('CREATE TABLE "straße" (a int)', [("straße", "TABLE", "created", None)]),
+        ('DROP TABLE "ıx"', [("ıx", "TABLE", "dropped", None)]),
+    ],
+)
+def test_a_quoted_name_is_read_exactly_whatever_it_holds(sql, expected):
+    assert _objects(sql) == expected
+
+
+@pytest.mark.parametrize(
+    "sql, expected",
+    [
+        ("INSERT INTO app.t(a) VALUES (1) /*", [("T", "TABLE", "altered", "APP")]),
+        ("INSERT INTO app.t(", [("T", "TABLE", "altered", "APP")]),
+    ],
+)
+def test_the_head_of_an_unparsed_mutation_folds_its_target(sql, expected):
+    facts = _facts(sql)
+
+    assert facts.opaque
+    assert _objects(sql) == expected
+
+
+def test_a_subquery_table_in_a_predicate_keeps_the_written_spelling():
+    facts = _facts("DELETE FROM app.users WHERE id IN (SELECT id FROM Other)")
+
+    assert facts.predicate == "id IN (SELECT id FROM Other)"

@@ -197,8 +197,11 @@ def test_unread_character_inside_text_stays_named(dialect, shape, char):
 def test_letters_stay_named(dialect, shape):
     template, expected = NAMED[shape]
     facts = read_statement_facts(template, dialect=dialect)
-    if dialect in {"oracle", "snowflake"}:
-        expected = expected.upper()  # these engines store an unquoted name upper-cased
+    if dialect == "snowflake":  # the engine rejects an unquoted non-ASCII name
+        assert facts.opaque and facts.objects == () and facts.diagnostic
+        return
+    if dialect == "oracle":
+        expected = expected.upper()  # Oracle stores an unquoted name upper-cased
     assert [o.name for o in facts.objects] == [expected]
     assert facts.diagnostic is None
 

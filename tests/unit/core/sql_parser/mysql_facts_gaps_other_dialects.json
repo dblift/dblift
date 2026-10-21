@@ -3592,20 +3592,13 @@
   },
   "CREATE TABLE t\ud83d\ude00 (id INT)": {
    "affected_columns": [],
-   "diagnostic": null,
+   "diagnostic": "snowflake unquoted name holds a non-ASCII letter (rejected natively)",
    "error": null,
    "events": null,
    "indexed_table": null,
    "kind": "DDL",
-   "objects": [
-    [
-     "T\ud83d\ude00",
-     "TABLE",
-     "created",
-     null
-    ]
-   ],
-   "opaque": false,
+   "objects": [],
+   "opaque": true,
    "operation": "CREATE",
    "predicate": null,
    "target": null,
@@ -4320,29 +4313,18 @@
    "target_sql": "t"
   },
   "UPDATE t\ud83d\ude00 SET a = 1": {
-   "affected_columns": [
-    "a"
-   ],
-   "diagnostic": null,
+   "affected_columns": [],
+   "diagnostic": "snowflake unquoted name holds a non-ASCII letter (rejected natively)",
    "error": null,
-   "events": [
-    "UPDATE"
-   ],
+   "events": null,
    "indexed_table": null,
    "kind": "DML",
-   "objects": [
-    [
-     "T\ud83d\ude00",
-     "TABLE",
-     "altered",
-     null
-    ]
-   ],
-   "opaque": false,
+   "objects": [],
+   "opaque": true,
    "operation": "UPDATE",
    "predicate": null,
-   "target": "T\ud83d\ude00",
-   "target_sql": "t\ud83d\ude00"
+   "target": null,
+   "target_sql": null
   }
  },
  "sqlite": {

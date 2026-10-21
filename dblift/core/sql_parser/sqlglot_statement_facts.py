@@ -1055,18 +1055,23 @@ def _main_statement(head: str) -> str:
     return head[min(found) :] if found else head
 
 
-def _upper_case_name(name: str) -> Optional[str]:
+def _upper_case_name(name: str, *, ascii_only: bool = False) -> Optional[str]:
     """The name Oracle and Snowflake store for an unquoted one: each letter in its one-character
     upper-case form (Oracle 23.26.3: ``ı`` is ``I``, ``µ`` is the Greek capital MU; ``ß``, ``ﬁ``
     and ``ŉ`` stay; not measured on Snowflake). ``None`` when a letter's upper-case form is not
-    one character: the probes covered only those three, so the name is not guessed."""
+    one character: the probes covered only those three, so the name is not guessed. With
+    ``ascii_only`` (Snowflake rejects an unquoted non-ASCII name) any other name is unread."""
     if name.isascii():
         return name.upper()
+    if ascii_only:
+        return None
     folded = [letter.upper() for letter in name]
     return "".join(folded) if all(len(letter) == 1 for letter in folded) else None
 
 
-def _head_object(match: "re.Match[str]", *, fold: bool = False) -> Optional[NamedObject]:
+def _head_object(
+    match: "re.Match[str]", *, fold: bool = False, ascii_only: bool = False
+) -> Optional[NamedObject]:
     operation = match.group(1).upper()
     object_type = SqlObjectType["_".join(match.group(2).upper().split())]
     name = strip_identifier_quotes(match.group(4) or match.group(3))
@@ -1075,9 +1080,9 @@ def _head_object(match: "re.Match[str]", *, fold: bool = False) -> Optional[Name
         folded_name: Optional[str] = name
         folded_schema = schema
         if not (match.group(4) or match.group(3)).startswith('"'):
-            folded_name = _upper_case_name(name)
+            folded_name = _upper_case_name(name, ascii_only=ascii_only)
         if schema is not None and not match.group(3).startswith('"'):
-            folded_schema = _upper_case_name(schema)
+            folded_schema = _upper_case_name(schema, ascii_only=ascii_only)
         if folded_name is None or (schema is not None and folded_schema is None):
             return None
         name, schema = folded_name, folded_schema
@@ -1184,7 +1189,8 @@ def _head_facts(sql: str, diagnostic: str, *, dialect: str = "") -> StatementFac
     ):
         dml = None
     if match:
-        found = _head_object(match, fold=folds)
+        snowflake_head = dialect == "snowflake"  # lint: allow-dialect-string: ASCII-only names
+        found = _head_object(match, fold=folds, ascii_only=snowflake_head)
         if found is not None:
             diagnostic = f"{found.type.value.lower().replace('_', ' ')}: {diagnostic}"
             objects = (found,)
@@ -1198,12 +1204,12 @@ def _head_facts(sql: str, diagnostic: str, *, dialect: str = "") -> StatementFac
             schema = raw_schema and (
                 strip_identifier_quotes(raw_schema)
                 if raw_schema.startswith('"')
-                else _upper_case_name(raw_schema)
+                else _upper_case_name(raw_schema, ascii_only=True)
             )
             folded = (
                 strip_identifier_quotes(raw_name)
                 if raw_name.startswith('"')
-                else _upper_case_name(raw_name)
+                else _upper_case_name(raw_name, ascii_only=True)
             )
             if folded is None or (raw_schema and schema is None):
                 return StatementFacts(operation, kind, diagnostic=diagnostic)
@@ -1273,7 +1279,7 @@ def _mysql_unresolved_mutation_target(ast: exp.Expression) -> bool:
     return False
 
 
-def _fold_unquoted_names(ast: exp.Expr) -> bool:
+def _fold_unquoted_names(ast: exp.Expr, *, ascii_only: bool = False) -> bool:
     """Fold the unquoted table and index names of an Oracle or Snowflake statement as the engine
     stores them; a quoted name keeps its spelling. Columns and aliases are left as written.
     ``True`` when a name holds a letter whose upper-case form is not one character: the statement
@@ -1284,7 +1290,7 @@ def _fold_unquoted_names(ast: exp.Expr) -> bool:
         nonlocal unsafe
         if isinstance(part, exp.Identifier) and not part.args.get("quoted"):
             part.meta["written"] = part.name
-            folded = _upper_case_name(part.name)
+            folded = _upper_case_name(part.name, ascii_only=ascii_only)
             if folded is None:
                 unsafe = True
             else:
@@ -1782,13 +1788,13 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
         if (
             dialect == "snowflake"  # lint: allow-dialect-string: Snowflake stores upper case
             and ast is not None
-            and _fold_unquoted_names(ast)
+            and _fold_unquoted_names(ast, ascii_only=True)
         ):
             head = _head_facts(sql, "", dialect=dialect)
             return StatementFacts(
                 head.operation,
                 head.kind,
-                diagnostic="snowflake name holds a letter whose upper-case form is not one char",
+                diagnostic="snowflake unquoted name holds a non-ASCII letter (rejected natively)",
             )
     except (ParseError, TokenError) as exc:
         if not isinstance(exc, TokenError) and not _blanked(sql, dialect).strip():
