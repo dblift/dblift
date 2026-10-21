@@ -803,33 +803,33 @@
    "operation": "CREATE"
   },
   "CREATE TRIGGER trg BEFORE INSERT ON s.t FOR EACH ROW EXECUTE FUNCTION audit('a;b')": {
-   "diagnostic": null,
+   "diagnostic": "trigger: snowflake TRIGGER identity is not read",
    "indexed_table": null,
    "kind": "DDL",
    "objects": [
     [
-     "t",
-     "TABLE",
-     "referenced",
-     "s"
-    ]
-   ],
-   "opaque": false,
-   "operation": "CREATE"
-  },
-  "CREATE TRIGGER users_bi BEFORE INSERT ON users FOR EACH ROW EXECUTE FUNCTION f()": {
-   "diagnostic": null,
-   "indexed_table": null,
-   "kind": "DDL",
-   "objects": [
-    [
-     "users",
-     "TABLE",
-     "referenced",
+     "trg",
+     "TRIGGER",
+     "created",
      null
     ]
    ],
-   "opaque": false,
+   "opaque": true,
+   "operation": "CREATE"
+  },
+  "CREATE TRIGGER users_bi BEFORE INSERT ON users FOR EACH ROW EXECUTE FUNCTION f()": {
+   "diagnostic": "trigger: snowflake TRIGGER identity is not read",
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [
+    [
+     "users_bi",
+     "TRIGGER",
+     "created",
+     null
+    ]
+   ],
+   "opaque": true,
    "operation": "CREATE"
   },
   "CREATE UNIQUE INDEX CONCURRENTLY ON t (c)": {
