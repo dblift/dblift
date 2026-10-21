@@ -232,6 +232,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Statement facts no longer shorten four-part relation names.** When the parsed name has more
+  qualifiers than the facts can represent, that relation is left unnamed and dependent effects
+  remain opaque. A separately proven outer program name remains readable. A leading source
+  fragment such as a NUL before `CREATE` or `DROP` no longer proves an affected object.
+- **The DuckDB extra stays below 2.0.** Existing parser and driver tests fail with DuckDB 2.0;
+  the declared range is now `duckdb>=1.0,<2`.
 - **`info` and `migrate --dry-run` no longer guess affected objects from uncertain SQL names.**
   Incomplete names, names joined across comments, and quotes that do not name identifiers in the
   selected dialect leave the affected object unread. SQL execution is unchanged.

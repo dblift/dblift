@@ -66,28 +66,6 @@
   "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at end of input); it is a truncated statement harvested into the corpus and never runs on this family; the reader and the old extraction differ on events (facts None, extraction ['INSERT']), with no consequence because the engine never runs the text. CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
   "sql": "INSERT"
  },
- "01a439f04d5d6afa/analyzer": {
-  "class": "facts-adds-acted",
-  "facts": {
-   "diagnostic": "table: postgres grammar is not modelled for this statement",
-   "kind": "DDL",
-   "objects": [
-    [
-     "child",
-     "TABLE",
-     "dropped",
-     null
-    ]
-   ],
-   "operation": "DROP"
-  },
-  "old": {
-   "analyzer": []
-  },
-  "path": "analyzer",
-  "reason": "The statement starts with a NUL byte; PostgreSQL clients truncate the query at the NUL (#665), so this text is never executed as written; the reader names the table after the NUL (TABLE child (dropped)), the old extraction named nothing.",
-  "sql": "\u0000DROP TABLE child"
- },
  "032fc2cd04cf482e/analyzer": {
   "class": "opaque-reader-gap",
   "facts": {
@@ -3897,28 +3875,6 @@
    "yugabytedb 2026.1.2": "42601"
   },
   "sql": "CREATE PRIMARY XML INDEX idx_xml ON docs(xml_col)"
- },
- "6f3a2800a861699f/analyzer": {
-  "class": "facts-adds-acted",
-  "facts": {
-   "diagnostic": "table: postgres grammar is not modelled for this statement",
-   "kind": "DDL",
-   "objects": [
-    [
-     "b",
-     "TABLE",
-     "created",
-     null
-    ]
-   ],
-   "operation": "CREATE"
-  },
-  "old": {
-   "analyzer": []
-  },
-  "path": "analyzer",
-  "reason": "The statement starts with a NUL byte; PostgreSQL clients truncate the query at the NUL (#665), so this text is never executed as written; the reader names the table after the NUL (TABLE b (created)), the old extraction named nothing.",
-  "sql": "\u0000CREATE TABLE b(y)"
  },
  "6fbd20b947265821/hybrid": {
   "class": "facts-adds-acted",
