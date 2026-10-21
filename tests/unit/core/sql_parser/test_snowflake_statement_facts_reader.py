@@ -8,6 +8,63 @@ from dblift.core.sql_parser.statement_facts import NamedObject
 
 
 @pytest.mark.parametrize(
+    "template, operation, kind",
+    [
+        ("CREATE TABLE {} (x INT)", "CREATE", "DDL"),
+        ("DROP TABLE {}", "DROP", "DDL"),
+        ("ALTER TABLE {} ADD COLUMN y INT", "ALTER", "DDL"),
+        ("CREATE VIEW {} AS SELECT 1", "CREATE", "DDL"),
+        ("DROP VIEW {}", "DROP", "DDL"),
+        ("CREATE MATERIALIZED VIEW {} AS SELECT x FROM t", "CREATE", "DDL"),
+        ("DROP MATERIALIZED VIEW {}", "DROP", "DDL"),
+        ("UPDATE {} SET x = 1", "UPDATE", "DML"),
+    ],
+)
+@pytest.mark.parametrize("name", ["a.b.c.d", '"a"."b"/* qualifier */."c"."d"'])
+def test_snowflake_discarded_relation_qualifier_has_no_identity(template, operation, kind, name):
+    facts = read_statement_facts(template.format(name), dialect="snowflake")
+
+    assert (facts.operation, facts.kind) == (operation, kind)
+    assert facts.objects == ()
+    assert facts.target is None
+    assert facts.target_sql is None
+    assert facts.predicate is None
+    assert facts.opaque
+    assert facts.diagnostic
+    assert "qualification" in facts.diagnostic.lower()
+    assert facts.error is None
+
+
+@pytest.mark.parametrize("name", ["a.b.c", '"a"."b"/* qualifier */."c"'])
+@pytest.mark.parametrize(
+    "template, operation, role, object_type",
+    [
+        ("CREATE TABLE {} (x INT)", "CREATE", "created", SqlObjectType.TABLE),
+        ("DROP TABLE {}", "DROP", "dropped", SqlObjectType.TABLE),
+        ("ALTER TABLE {} ADD COLUMN y INT", "ALTER", "altered", SqlObjectType.TABLE),
+        ("CREATE VIEW {} AS SELECT 1", "CREATE", "created", SqlObjectType.VIEW),
+        ("DROP VIEW {}", "DROP", "dropped", SqlObjectType.VIEW),
+        (
+            "CREATE MATERIALIZED VIEW {} AS SELECT x FROM t",
+            "CREATE",
+            "created",
+            SqlObjectType.MATERIALIZED_VIEW,
+        ),
+        ("DROP MATERIALIZED VIEW {}", "DROP", "dropped", SqlObjectType.MATERIALIZED_VIEW),
+        ("UPDATE {} SET x = 1", "UPDATE", "altered", SqlObjectType.TABLE),
+    ],
+)
+def test_snowflake_complete_three_part_relation_is_preserved(
+    name, template, operation, role, object_type
+):
+    facts = read_statement_facts(template.format(name), dialect="snowflake")
+
+    assert facts.operation == operation
+    assert facts.affected_objects == (NamedObject("c", object_type, role, "a.b"),)
+    assert not facts.opaque
+
+
+@pytest.mark.parametrize(
     "sql, operation, identity",
     [
         pytest.param(
