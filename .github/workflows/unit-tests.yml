@@ -122,8 +122,7 @@ jobs:
       - name: Import the Python API from the base install
         run: '"$RUNNER_TEMP/base-venv/bin/python" -I -c "from dblift.api import DBLiftClient"'
 
-      - name: Migrate SQLite through the Python API in execution mode (non-blocking until the default logger no longer needs Rich)
-        continue-on-error: true
+      - name: Migrate SQLite through the Python API in execution mode
         run: |
           cd "$RUNNER_TEMP"
           mkdir -p base-migrations

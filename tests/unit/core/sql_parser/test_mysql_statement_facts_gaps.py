@@ -424,6 +424,26 @@ SNOWFLAKE_CHANGES = {
     "UPDATE LOW_PRIORITY t SET a = 1": {"target_sql": "LOW_PRIORITY"},
     "UPDATE delayed t SET a = 1": {"target_sql": "delayed"},
     "UPDATE quick t SET a = 1": {"target_sql": "quick"},
+    # A single plain table is read; a list of tables is not.
+    "TRUNCATE TABLE db.t": {
+        "kind": "DDL",
+        "opaque": False,
+        "objects": [["T", "TABLE", "altered", "DB"]],
+        "diagnostic": None,
+    },
+    "TRUNCATE TABLE t": {
+        "kind": "DDL",
+        "opaque": False,
+        "objects": [["T", "TABLE", "altered", None]],
+        "diagnostic": None,
+    },
+    "TRUNCATE t": {
+        "kind": "DDL",
+        "opaque": False,
+        "objects": [["T", "TABLE", "altered", None]],
+        "diagnostic": None,
+    },
+    "TRUNCATE t1, t2": {"diagnostic": "snowflake TRUNCATE target is not read"},
 }
 
 

@@ -19,6 +19,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **A plugin without a statement-facts reader is no longer analysed from text.** Lint and the
+  script analysis behind `validate-sql` now report "statement facts unavailable for dialect" for
+  such a plugin and mark its scripts for review, instead of reading them with the text parser, so
+  a script is no longer rated UNSAFE for a `DROP TABLE` or an unfiltered `DELETE` there. Every
+  bundled dialect reads statement facts and is unaffected.
+- **Snowflake `TRUNCATE`, `MERGE` and `COMMENT ON` are read.** `TRUNCATE [TABLE] [IF EXISTS] t`
+  names the table it empties; `MERGE INTO t USING ...` names its target and sources and reports
+  the `INSERT`, `UPDATE` and `DELETE` its actions perform, so data-change analysis and object
+  tracking no longer miss a merge; `COMMENT ON TABLE`, `VIEW`, `MATERIALIZED VIEW`, `SEQUENCE` and
+  `COLUMN` name the object changed. Names follow the Snowflake rules (an unquoted ASCII name in
+  upper case, a quoted one exactly); `IDENTIFIER()` and `$variable` names, a list of tables,
+  `CASCADE`, a `MERGE` with a CTE and every other `COMMENT ON` kind stay unread.
+
 - **DuckDB 2 is supported.** The `duckdb` extra now accepts DuckDB 2.x as well as 1.x. DuckDB 1.x
   and 2.x read one rare construct differently: a string on the line after an escape string
   (`E'a'` newline `'b\'...'`), where 1.x lets the backslash escape the quote and 2.x does not. dblift
@@ -38,6 +51,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `pip install "dblift[cli,postgresql]"`. The Python API on a base install runs silently in
   execution mode, without Rich or SQLGlot; full analysis needs `dblift[analysis]`.
 
+
+- **DML analysis no longer guesses from statement text.** `analyze_dml`, `statement_dml_table` and
+  the plugin quirks methods that call them read a plugin's statement facts or, for a dialect with no
+  reader, the sqlglot AST; a statement neither can read comes back unread (empty table,
+  `events=None`) instead of a table or events scanned out of the text. `extract_dml_table_name` is
+  removed. Signatures and return shapes are unchanged.
 - **Snowflake reads statement facts from the SQL grammar.** `info --format json`,
   `migrate --dry-run`, object tracking during `migrate`, data-change analysis and lint read each
   statement's kind, objects, target and predicate from the sqlglot AST after the shared lexical
@@ -280,6 +299,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`dblift --help` and `dblift --version` work without the presentation packages.** They
+  failed with `ModuleNotFoundError: rich` when Rich was not installed. The default console
+  logger now falls back to plain text, `migrate`, `undo`, `validate` and `clean` run without
+  Rich or Jinja2, and the commands that draw tables (`info` outside `--format json`,
+  `config`, `--show-query-results`) or write an HTML report (`--log-format html`) stop before
+  doing anything with "install dblift[cli]".
 - **A keyword is no longer reported as an object name on a malformed statement.** For every
   dialect whose statements are read from the grammar, `ALTER TABLE ADD COLUMN x int`,
   `DROP TABLE IF`, `DROP TABLE CASCADE` and `CREATE TABLE IF` no longer name `ADD`, `IF` or
