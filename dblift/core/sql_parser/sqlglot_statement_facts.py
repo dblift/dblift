@@ -2469,6 +2469,38 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
         )
         return StatementFacts("TRUNCATE", "DDL", identities)
 
+    if dialect == "snowflake" and isinstance(  # lint: allow-dialect-string: single-table TRUNCATE
+        ast, exp.TruncateTable
+    ):
+        target = ast.expressions[0] if len(ast.expressions) == 1 else None
+        if (
+            isinstance(target, exp.Table)
+            and isinstance(target.this, exp.Identifier)
+            and all(not v for k, v in ast.args.items() if k not in {"expressions", "exists"})
+            and all(not v for k, v in target.args.items() if k not in {"this", "db", "catalog"})
+            and not _snowflake_schema_has_discarded_prefix(sql, target)
+        ):
+            identity = _named(target, SqlObjectType.TABLE, "altered")
+            if identity is not None:
+                return StatementFacts("TRUNCATE", "DDL", (identity,))
+        return _head_facts(sql, "snowflake TRUNCATE target is not read", dialect=dialect)
+
+    if dialect == "snowflake" and isinstance(  # lint: allow-dialect-string: COMMENT ON a relation
+        ast, exp.Comment
+    ):
+        kind = str(ast.args.get("kind") or "").upper()
+        subject = ast.this
+        if (
+            kind in {"TABLE", "VIEW", "SEQUENCE"}
+            and isinstance(subject, exp.Table)
+            and isinstance(subject.this, exp.Identifier)
+            and not _snowflake_schema_has_discarded_prefix(sql, subject)
+        ) or (kind == "COLUMN" and isinstance(subject, exp.Column)):
+            identity = _postgres_comment_identity(ast)
+            if identity is not None:
+                return StatementFacts("COMMENT", "DDL", (identity,))
+        return _head_facts(sql, "snowflake COMMENT ON target is not read", dialect=dialect)
+
     if dialect == "tsql" and isinstance(  # lint: allow-dialect-string: T-SQL single-table TRUNCATE
         ast, exp.TruncateTable
     ):
@@ -2499,7 +2531,7 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
                 return StatementFacts("TRUNCATE", "DDL", (identity,))
 
     if isinstance(ast, (exp.Insert, exp.Update, exp.Delete)) or (
-        dialect == "duckdb"  # lint: allow-dialect-string: MERGE facts qualified for DuckDB only
+        dialect in {"duckdb", "snowflake"}  # lint: allow-dialect-string: qualified MERGE facts
         and isinstance(ast, exp.Merge)
     ):
         operation = type(ast).__name__.upper()
@@ -2552,6 +2584,14 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
         ):
             return StatementFacts(
                 operation, "DML", diagnostic="snowflake mutation target is not read"
+            )
+        if (
+            dialect == "snowflake"  # lint: allow-dialect-string: MERGE actions must be read
+            and isinstance(ast, exp.Merge)
+            and (not _sqlglot_events(ast) or ast.find(exp.With) is not None)
+        ):
+            return StatementFacts(
+                operation, "DML", diagnostic="snowflake MERGE actions or CTE scopes are not read"
             )
         if (
             dialect == "mysql"  # lint: allow-dialect-string: MySQL modifier words are not tables

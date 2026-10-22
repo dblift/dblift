@@ -51,7 +51,7 @@ def test_duckdb_facts_activate_parser_consumers():
     assert quirks.parser_class("sqlglot") is DuckDBFactsParser
 
 
-@pytest.mark.parametrize("dialect", ["sqlite", "oracle", "snowflake", "tsql"])
+@pytest.mark.parametrize("dialect", ["sqlite", "oracle", "tsql"])
 def test_merge_facts_remain_opaque_for_other_dialects(dialect):
     facts = read_statement_facts(CASES[0]["sql"], dialect=dialect)
 
