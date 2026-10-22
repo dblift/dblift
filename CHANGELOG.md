@@ -42,6 +42,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   facts cannot read names no object instead of a guessed one. A dialect without a statement-facts
   reader, and DuckDB's `analysis_mode="execution"` (which disables object extraction), report no
   objects and `analyze_statement` returns `parsed_with: "none"`. The public signatures are unchanged.
+
+- **Lightweight base install.** `pip install dblift` no longer pulls Rich, Jinja2 or SQLGlot.
+  Install `dblift[cli]` for the command line and `dblift[analysis]` for full SQL analysis;
+  `dblift[all]` is unchanged for users (it now names both extras explicitly), as are the `mcp`,
+  `django`, `flask` and `fastapi` extras. A database-only install such as
+  `pip install "dblift[postgresql]"` must add `cli` and `analysis` to keep the `dblift` command working:
+  `pip install "dblift[cli,analysis,postgresql]"`, because the command line and the Python API
+  analyse SQL with SQLGlot by default. The Python API runs on a base install, without Rich or
+  SQLGlot, with `analysis_mode="execution"`. `pytest-dblift` now depends on `dblift[analysis]`.
+
+
 - **DML analysis no longer guesses from statement text.** `analyze_dml`, `statement_dml_table` and
   the plugin quirks methods that call them read a plugin's statement facts or, for a dialect with no
   reader, the sqlglot AST; a statement neither can read comes back unread (empty table,
