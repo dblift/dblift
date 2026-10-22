@@ -188,23 +188,19 @@ def test_duckdb_extraction_refuses_shell_command() -> None:
         parser.split_for_extraction(".read other.sql\nSELECT 1;")
 
 
-def test_duckdb_continued_escape_string_keeps_embedded_semicolon() -> None:
+def test_duckdb_continued_escape_string_with_a_backslash_quote_is_refused() -> None:
     parser = DuckDBRegexParser()
     script = "SELECT E'a'\n'b\\'c;d'; SELECT 2;"
 
-    assert parser.split_statements(script) == ["SELECT E'a'\n'b\\'c;d'", "SELECT 2"]
-    assert parser.split_for_extraction(script) == ["SELECT E'a'\n'b\\'c;d'", "SELECT 2"]
+    for split in (parser.split_statements, parser.split_for_extraction):
+        with pytest.raises(UnsafeStatementSplitError, match="reads a backslash in it"):
+            split(script)
 
 
-def test_duckdb_line_comment_preserves_escape_string_continuation() -> None:
+def test_duckdb_line_comment_before_an_ambiguous_escape_string_continuation_is_refused() -> None:
+    """DuckDB 1.5.5 reads the backslash in the continuation as an escape, 2.0.0 as a character."""
     parser = DuckDBRegexParser()
     script = "SELECT E'a'\n-- hi\n'b\\'c;d'; SELECT 2;"
 
-    statements = parser.split_statements(script)
-    assert statements == ["SELECT E'a'\n-- hi\n'b\\'c;d'", "SELECT 2"]
-
-    duckdb = pytest.importorskip("duckdb")
-    assert [duckdb.sql(statement).fetchall() for statement in statements] == [
-        [("ab'c;d",)],
-        [(2,)],
-    ]
+    with pytest.raises(UnsafeStatementSplitError, match="reads a backslash in it"):
+        parser.split_statements(script)

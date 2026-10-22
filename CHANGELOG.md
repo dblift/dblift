@@ -24,6 +24,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   such a plugin and mark its scripts for review, instead of reading them with the text parser, so
   a script is no longer rated UNSAFE for a `DROP TABLE` or an unfiltered `DELETE` there. Every
   bundled dialect reads statement facts and is unaffected.
+- **DuckDB 2 is supported.** The `duckdb` extra now accepts DuckDB 2.x as well as 1.x. DuckDB 1.x
+  and 2.x read one rare construct differently: a string on the line after an escape string
+  (`E'a'` newline `'b\'...'`), where 1.x lets the backslash escape the quote and 2.x does not. dblift
+  cannot know which one will run the script, so it now refuses it with an error naming the line
+  and column; write the text as a single literal.
 - **The SQL analyzer reads objects from statement facts only.** `SqlAnalyzer.extract_objects` and
   `analyze_statement` no longer fall back to a regex scan of the statement text: a statement the
   facts cannot read names no object instead of a guessed one. A dialect without a statement-facts
@@ -270,6 +275,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   carry `kind`. It warns when called; its answers are unchanged.
 
 ### Fixed
+
+- **A keyword is no longer reported as an object name on a malformed statement.** For every
+  dialect whose statements are read from the grammar, `ALTER TABLE ADD COLUMN x int`,
+  `DROP TABLE IF`, `DROP TABLE CASCADE` and `CREATE TABLE IF` no longer name `ADD`, `IF` or
+  `CASCADE` as the object, and a name continued by a `{...}` template brace (`CREATE TABLE s{c}.t`)
+  is no longer cut at the brace; such a statement is reported as unread. The Db2 reader refuses the
+  same keywords. `UPDATE ONLY t` and `DELETE FROM ONLY t` are likewise reported as unread on
+  MySQL, MariaDB, Oracle and SQL Server.
 
 - **Statement facts no longer shorten four-part relation names.** When the parsed name has more
   qualifiers than the facts can represent, that relation is left unnamed and dependent effects
