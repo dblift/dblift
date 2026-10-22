@@ -4,7 +4,7 @@ import inspect
 
 import pytest
 
-from dblift.api import DBLiftClient
+from dblift.api import DBLiftClient, _client_factory
 from dblift.api.async_client import AsyncDBLiftClient
 from dblift.config import DbliftConfig
 from dblift.core.logger import NullLog
@@ -12,6 +12,9 @@ from dblift.core.migration.executor.migration_executor import MigrationExecutor
 from tests.unit.lightweight_core._support import run_python
 
 ENTRY_POINTS = [
+    _client_factory.client_from_config,
+    _client_factory.client_from_config_file,
+    _client_factory.client_from_sqlalchemy,
     DBLiftClient.__init__,
     DBLiftClient.from_config,
     DBLiftClient.from_config_file,
@@ -222,3 +225,93 @@ def test_explicit_logger_is_used(tmp_path):
         lambda m: DBLiftClient.from_config(_config(tmp_path), migrations_dir=m, logger=recorder),
     )
     assert recorder.messages
+
+
+def _spy_side_effects(monkeypatch):
+    """Record every side effect that must not happen before the sqlglot check."""
+    import sys
+
+    from dblift.api import client as client_module
+    from dblift.db.provider_registry import ProviderRegistry
+
+    calls = []
+    monkeypatch.setitem(sys.modules, "sqlglot", None)  # import sqlglot -> ImportError
+    for owner, name in (
+        (ProviderRegistry, "create_provider"),
+        (client_module, "load_feature_extensions"),
+        (MigrationExecutor, "_make_command_context"),
+    ):
+        original = getattr(owner, name)
+
+        def spy(*args, _name=name, _original=original, **kwargs):
+            calls.append(_name)
+            return _original(*args, **kwargs)
+
+        monkeypatch.setattr(owner, name, spy)
+    return calls
+
+
+def test_client_from_config_checks_sqlglot_before_building_a_provider(tmp_path, monkeypatch):
+    calls = _spy_side_effects(monkeypatch)
+    with pytest.raises(ModuleNotFoundError, match=r"dblift\[analysis\]"):
+        _client_factory.client_from_config(_config(tmp_path), analysis_mode="full")
+    assert calls == []
+
+
+def test_client_from_config_file_checks_sqlglot_before_reading_the_file(tmp_path, monkeypatch):
+    from dblift.config.config_builder import ConfigBuilder
+
+    calls = _spy_side_effects(monkeypatch)
+    monkeypatch.setattr(ConfigBuilder, "build", lambda *a, **k: calls.append("build"))
+    with pytest.raises(ModuleNotFoundError, match=r"dblift\[analysis\]"):
+        _client_factory.client_from_config_file(str(tmp_path / "x.yml"), analysis_mode="full")
+    assert calls == []
+
+
+def test_constructor_checks_sqlglot_before_loading_features(tmp_path, monkeypatch):
+    seed = DBLiftClient.from_config(_config(tmp_path), migrations_dir=_migrations(tmp_path))
+    calls = _spy_side_effects(monkeypatch)
+    with pytest.raises(ModuleNotFoundError, match=r"dblift\[analysis\]"):
+        DBLiftClient(
+            seed.provider,
+            seed.config.migrations.directory,
+            config=seed.config,
+            analysis_mode="full",
+        )
+    assert calls == []
+    seed.close()
+
+
+def test_executor_checks_sqlglot_before_building_components(tmp_path, monkeypatch):
+    from dblift.core.migration.sql import sql_analyzer
+
+    seed = DBLiftClient.from_config(_config(tmp_path), migrations_dir=_migrations(tmp_path))
+    built = []
+    original = sql_analyzer.SqlAnalyzer.__init__
+
+    def spy(self, *args, **kwargs):
+        built.append(1)
+        original(self, *args, **kwargs)
+
+    monkeypatch.setattr(sql_analyzer.SqlAnalyzer, "__init__", spy)
+    import sys
+
+    monkeypatch.setitem(sys.modules, "sqlglot", None)
+    with pytest.raises(ModuleNotFoundError, match=r"dblift\[analysis\]"):
+        MigrationExecutor(seed.provider, seed.config, NullLog(), analysis_mode="full")
+    assert built == []
+    seed.close()
+
+
+@pytest.mark.parametrize(("configured", "expected"), [("error", "ERROR"), ("debug", "DEBUG")])
+def test_config_logging_level_is_honoured(tmp_path, configured, expected):
+    from dblift.core.logger import LogLevel
+
+    config = DbliftConfig.from_dict(
+        {
+            "database": {"type": "sqlite", "path": str(tmp_path / "db.sqlite"), "schema": "main"},
+            "logging": {"level": configured},
+        }
+    )
+    with DBLiftClient.from_config(config, migrations_dir=_migrations(tmp_path)) as client:
+        assert client.logger.level == LogLevel[expected]

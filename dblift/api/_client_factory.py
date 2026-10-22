@@ -92,6 +92,12 @@ def resolve_config_or_raise(
     raise ConfigurationError("DBLiftClient requires an explicit config or a provider with config")
 
 
+def _section_level(config: DbliftConfig) -> Optional[str]:
+    """The ``logging.level`` of ``config``, or ``None`` when it has no logging section."""
+    level = getattr(getattr(config, "logging", None), "level", None)
+    return level if isinstance(level, str) else None
+
+
 def _logging_requested(
     config: DbliftConfig,
     log_level: Optional[str],
@@ -104,7 +110,7 @@ def _logging_requested(
         return True
     if _configured_log_directory(config) or effective_log_file_from_config(config):
         return True
-    section_level = getattr(getattr(config, "logging", None), "level", None)
+    section_level = _section_level(config)
     return section_level is not None and str(section_level).upper() != "INFO"
 
 
@@ -129,6 +135,8 @@ def build_default_logger(
     log_format_value = _resolve_enum_value(raw_fmt, LogFormat, LogFormat.TEXT)
 
     raw_lvl = log_level if log_level is not None else getattr(config, "log_level", None)
+    if raw_lvl is None:
+        raw_lvl = _section_level(config)
     log_level_value = _resolve_enum_value(raw_lvl, LogLevel, LogLevel.INFO)
 
     eff_log_file = log_file if log_file is not None else effective_log_file_from_config(config)
@@ -333,6 +341,7 @@ def client_from_config_file(
     Returns:
         An instance of ``client_cls`` (or ``DBLiftClient`` when ``client_cls`` is omitted)
     """
+    require_analysis_support(analysis_mode)
     config = ConfigBuilder.build(file_path=config_path, **overrides)
     if relative_to_config:
         anchor_config_paths(config, Path(config_path).expanduser().resolve().parent)

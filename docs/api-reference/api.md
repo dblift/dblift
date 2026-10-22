@@ -52,8 +52,15 @@ client = DBLiftClient.from_config_file("dblift.yaml")
 The client and its three factories accept `analysis_mode="execution"` (default)
 or `analysis_mode="full"`. The async factories forward the same choice. A client
 built without any logging argument is silent. Pass `logger`, `log_level`,
-`log_format` or `log_file` (or set a logging option in the config) to get
-output; without a log file it goes to stderr.
+`log_format` or `log_file`, or set a logging option in the config (`log_level`,
+`log_format`, `log_file`, `log_dir`, `logging.file`, `logging.directory`, or a
+`logging.level` other than `info`), to get output; without a log file it goes to
+stderr at the level you set. A config `logging.level` of `info` is the default
+and cannot be told from an unset one, so it does not turn logging on: pass
+`log_level="INFO"` instead. `from_sqlalchemy`'s `log_level` and `log_format`
+now default to `None` (they were `"INFO"` and `"text"`). The Flask and Django
+integrations and the pytest-dblift fixtures pass `analysis_mode="full"` and keep
+their previous behaviour.
 Execution mode keeps SQL dispatch, transactions, runtime checks, events, and
 statement timing/error journal entries while disabling object extraction. Its
 journal has `capture_objects=False`, and `info()`/dry-run results explicitly
