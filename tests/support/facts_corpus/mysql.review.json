@@ -530,6 +530,60 @@
     "reason": "The original unit begins with --#SET TERMINATOR; the first source tokens are not the same verb/name sequence as a bare proposed DDL head. The reader cannot scan through that prefix and attribute its later name to this entire unit. Source head: '--#SET TERMINATOR @\\\\n        CREATE TABLE test (id INTEGER)@\\\\n        INSERT INTO test VALUES (1)...'; dialect tokens: DASH(-) DASH(-) CREATE(CREATE) TABLE(TABLE) VAR(test) L_PAREN(() VAR(id) INT(INTEGER).",
     "sql": "--#SET TERMINATOR @\n        CREATE TABLE test (id INTEGER)@\n        INSERT INTO test VALUES (1)@\n        --#SET TERMINATOR ;\n        SELECT * FROM test"
   },
+  "0d48af6372707fc2": {
+    "class": "opaque-reader-gap",
+    "facts": {
+      "diagnostic": "mysql Command is opaque to statement facts",
+      "kind": "DDL",
+      "operation": "CREATE"
+    },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+    "old": {
+      "analyzer": [
+        [
+          "TABLE",
+          "default_schema.t"
+        ]
+      ],
+      "hybrid": [
+        [
+          "TABLE",
+          "t",
+          null
+        ]
+      ]
+    },
+    "path": "both",
+    "reason": "A `{...}` template brace continues the name with text the engine cannot resolve, so the reader names nothing; the former path named the text before the brace (for `${...}`, the `$`). This is a documented boundary, not a claim that MySQL rejects the text.",
+    "sql": "CREATE TABLE t{c}(id INT)"
+  },
+  "0d4e4d01e1c754a1": {
+    "class": "opaque-reader-gap",
+    "facts": {
+      "diagnostic": "mysql Block is opaque to statement facts",
+      "kind": "DDL",
+      "operation": "CREATE"
+    },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+    "old": {
+      "analyzer": [
+        [
+          "TRIGGER",
+          "default_schema.tr"
+        ]
+      ],
+      "hybrid": [
+        [
+          "TRIGGER",
+          "tr",
+          null
+        ]
+      ]
+    },
+    "path": "both",
+    "reason": "A `{...}` template brace continues the name with text the engine cannot resolve, so the reader names nothing; the former path named the text before the brace (for `${...}`, the `$`). This is a documented boundary, not a claim that MySQL rejects the text.",
+    "sql": "CREATE TRIGGER tr{c} AFTER INSERT ON t BEGIN SELECT 1; END"
+  },
   "0da049153f7bc0b3/analyzer": {
     "class": "opaque-reader-gap",
     "facts": {
@@ -1344,6 +1398,33 @@
       "MySQL 8.4.11": "1064"
     },
     "sql": "CREATE PACKAGE pkg AS PROCEDURE p()"
+  },
+  "22b9d3efc88e5bbb": {
+    "class": "opaque-reader-gap",
+    "facts": {
+      "diagnostic": "mysql grammar is not modelled for this statement",
+      "kind": "DDL",
+      "operation": "DROP"
+    },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+    "old": {
+      "analyzer": [
+        [
+          "TABLE",
+          "default_schema.t"
+        ]
+      ],
+      "hybrid": [
+        [
+          "TABLE",
+          "t",
+          null
+        ]
+      ]
+    },
+    "path": "both",
+    "reason": "A `{...}` template brace continues the name with text the engine cannot resolve, so the reader names nothing; the former path named the text before the brace (for `${...}`, the `$`). This is a documented boundary, not a claim that MySQL rejects the text.",
+    "sql": "DROP TABLE t{c}"
   },
   "23cac447fefb07bc/analyzer": {
     "class": "facts-adds-acted",
@@ -2501,26 +2582,24 @@
     "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took nothing from its head; the reader names `greet`.",
     "sql": "CREATE OR REPLACE FUNCTION greet()\nRETURNS TEXT AS $$\nBEGIN\n    RETURN 'Hello';\nEND"
   },
-  "3d8a0c35988b7bc0/hybrid": {
-    "class": "facts-adds-acted",
+  "3d8a0c35988b7bc0/analyzer": {
+    "class": "opaque-reader-gap",
     "facts": {
-      "diagnostic": "table: mysql Command is opaque to statement facts",
+      "diagnostic": "mysql Command is opaque to statement facts",
       "kind": "DDL",
-      "objects": [
-        [
-          "$",
-          "TABLE",
-          "created",
-          null
-        ]
-      ],
       "operation": "CREATE"
     },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
     "old": {
-      "hybrid": []
+      "analyzer": [
+        [
+          "TABLE",
+          "default_schema.$"
+        ]
+      ]
     },
-    "path": "hybrid",
-    "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took nothing from its head; the reader names `$`.",
+    "path": "analyzer",
+    "reason": "A `{...}` template brace continues the name with text the engine cannot resolve, so the reader names nothing; the former path named the text before the brace (for `${...}`, the `$`). This is a documented boundary, not a claim that MySQL rejects the text.",
     "sql": "CREATE TABLE ${schema}.${table} (id INT)"
   },
   "3da5bee39f725087/analyzer": {
@@ -4479,6 +4558,33 @@
     "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took `s`, `users` from its head; the reader names nothing.",
     "sql": "MERGE INTO users USING s ON s.id = users.id WHEN MATCHED AND s.expired THEN DELETE"
   },
+  "6f44db1be97a7ffa": {
+    "class": "opaque-reader-gap",
+    "facts": {
+      "diagnostic": "mysql Command is opaque to statement facts",
+      "kind": "DDL",
+      "operation": "CREATE"
+    },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+    "old": {
+      "analyzer": [
+        [
+          "TABLE",
+          "s.t"
+        ]
+      ],
+      "hybrid": [
+        [
+          "TABLE",
+          "t",
+          "s"
+        ]
+      ]
+    },
+    "path": "both",
+    "reason": "A `{...}` template brace continues the name with text the engine cannot resolve, so the reader names nothing; the former path named the text before the brace (for `${...}`, the `$`). This is a documented boundary, not a claim that MySQL rejects the text.",
+    "sql": "CREATE TABLE s.t{c}(id INT)"
+  },
   "6fbd20b947265821/hybrid": {
     "class": "facts-adds-acted",
     "facts": {
@@ -4546,6 +4652,33 @@
     "path": "hybrid",
     "reason": "The original unit begins with --#SET TERMINATOR; the first source tokens are not the same verb/name sequence as a bare proposed DDL head. The reader cannot scan through that prefix and attribute its later name to this entire unit. Source head: '--#SET TERMINATOR @\\\\nCREATE TABLE t (id INTEGER)@'; dialect tokens: DASH(-) DASH(-) CREATE(CREATE) TABLE(TABLE) VAR(t) L_PAREN(() VAR(id) INT(INTEGER).",
     "sql": "--#SET TERMINATOR @\nCREATE TABLE t (id INTEGER)@"
+  },
+  "7268421cc174659e": {
+    "class": "opaque-reader-gap",
+    "facts": {
+      "diagnostic": "mysql grammar is not modelled for this statement",
+      "kind": "DDL",
+      "operation": "CREATE"
+    },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+    "old": {
+      "analyzer": [
+        [
+          "TABLE",
+          "default_schema.s"
+        ]
+      ],
+      "hybrid": [
+        [
+          "TABLE",
+          "s",
+          null
+        ]
+      ]
+    },
+    "path": "both",
+    "reason": "A `{...}` template brace continues the name with text the engine cannot resolve, so the reader names nothing; the former path named the text before the brace (for `${...}`, the `$`). This is a documented boundary, not a claim that MySQL rejects the text.",
+    "sql": "CREATE TABLE s{c}.t(id INT)"
   },
   "727b1b986aade562/analyzer": {
     "class": "opaque-reader-gap",
@@ -4649,7 +4782,7 @@
     "sql": "DROP MATERIALIZED VIEW IF EXISTS \"S\".\"ORDER_COUNTS\""
   },
   "73eac041f8cc8224/analyzer": {
-    "class": "disagree",
+    "class": "dml-differs",
     "facts": {
       "events": [
         "DELETE"
@@ -4678,7 +4811,28 @@
       ]
     },
     "path": "analyzer",
-    "reason": "MySQL has no ONLY keyword: both engines read `ONLY` as the table and `child` as its alias (error 1146 \"Table 'ONLY' doesn't exist\"). The reader names ONLY, as the engine does; the analyzer named child.",
+    "reason": "MySQL reads `ONLY` as an ordinary table name and `child` as its alias (error 1146 \"Table 'ONLY' doesn't exist\"). The reader declines it because the same token is a clause keyword on other dialects, so it names no table and no target; the analyzer named child.",
+    "sql": "DELETE FROM ONLY child WHERE id = 1"
+  },
+  "73eac041f8cc8224/hybrid": {
+    "class": "dml-differs",
+    "facts": {
+      "diagnostic": "mysql keyword read where an object name belongs",
+      "kind": "DML",
+      "operation": "DELETE"
+    },
+    "issue": "",
+    "old": {
+      "hybrid": [
+        [
+          "TABLE",
+          "ONLY",
+          null
+        ]
+      ]
+    },
+    "path": "hybrid",
+    "reason": "MySQL reads `ONLY` as an ordinary table name (error 1146); the reader declines it because the same token is a clause keyword on other dialects, and reports the statement unread (keyword read where an object name belongs); the former hybrid path named a table `ONLY`.",
     "sql": "DELETE FROM ONLY child WHERE id = 1"
   },
   "74479a42ff691265": {
@@ -5864,26 +6018,24 @@
     },
     "sql": "DROP TYPE my_type"
   },
-  "925ea0229c5e08c6/hybrid": {
-    "class": "facts-adds-acted",
+  "925ea0229c5e08c6/analyzer": {
+    "class": "opaque-reader-gap",
     "facts": {
-      "diagnostic": "table: mysql Command is opaque to statement facts",
+      "diagnostic": "mysql Command is opaque to statement facts",
       "kind": "DDL",
-      "objects": [
-        [
-          "$",
-          "TABLE",
-          "created",
-          null
-        ]
-      ],
       "operation": "CREATE"
     },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
     "old": {
-      "hybrid": []
+      "analyzer": [
+        [
+          "TABLE",
+          "default_schema.$"
+        ]
+      ]
     },
-    "path": "hybrid",
-    "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took nothing from its head; the reader names `$`.",
+    "path": "analyzer",
+    "reason": "A `{...}` template brace continues the name with text the engine cannot resolve, so the reader names nothing; the former path named the text before the brace (for `${...}`, the `$`). This is a documented boundary, not a claim that MySQL rejects the text.",
     "sql": "CREATE TABLE ${table_name} (id SERIAL PRIMARY KEY)"
   },
   "92bd528af5aab376/hybrid": {
@@ -6880,6 +7032,33 @@
     },
     "sql": "CREATE OR REPLACE FORCE VIEW vw_test AS\n        SELECT * FROM nonexistent_table"
   },
+  "b12619922e3614e4": {
+    "class": "opaque-reader-gap",
+    "facts": {
+      "diagnostic": "mysql Command is opaque to statement facts",
+      "kind": "DDL",
+      "operation": "CREATE"
+    },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+    "old": {
+      "analyzer": [
+        [
+          "TABLE",
+          "default_schema.a"
+        ]
+      ],
+      "hybrid": [
+        [
+          "TABLE",
+          "a",
+          null
+        ]
+      ]
+    },
+    "path": "both",
+    "reason": "A `{...}` template brace continues the name with text the engine cannot resolve, so the reader names nothing; the former path named the text before the brace (for `${...}`, the `$`). This is a documented boundary, not a claim that MySQL rejects the text.",
+    "sql": "CREATE TABLE a{c}b(id INT)"
+  },
   "b1302612249a68c8/hybrid": {
     "class": "opaque-reader-gap",
     "facts": {
@@ -7700,7 +7879,7 @@
     "sql": "WITH x AS (INSERT INTO src VALUES (99) RETURNING id) SELECT * FROM x"
   },
   "bffeb0b5bc6f9581/analyzer": {
-    "class": "disagree",
+    "class": "dml-differs",
     "facts": {
       "affected_columns": [
         "id"
@@ -7731,7 +7910,28 @@
       ]
     },
     "path": "analyzer",
-    "reason": "MySQL has no ONLY keyword: both engines read `ONLY` as the table and `child` as its alias (error 1146 \"Table 'ONLY' doesn't exist\"). The reader names ONLY, as the engine does; the analyzer named child.",
+    "reason": "MySQL reads `ONLY` as an ordinary table name and `child` as its alias (error 1146 \"Table 'ONLY' doesn't exist\"). The reader declines it because the same token is a clause keyword on other dialects, so it names no table and no target; the analyzer named child.",
+    "sql": "UPDATE ONLY child SET id = 2"
+  },
+  "bffeb0b5bc6f9581/hybrid": {
+    "class": "dml-differs",
+    "facts": {
+      "diagnostic": "mysql keyword read where an object name belongs",
+      "kind": "DML",
+      "operation": "UPDATE"
+    },
+    "issue": "",
+    "old": {
+      "hybrid": [
+        [
+          "TABLE",
+          "ONLY",
+          null
+        ]
+      ]
+    },
+    "path": "hybrid",
+    "reason": "MySQL reads `ONLY` as an ordinary table name (error 1146); the reader declines it because the same token is a clause keyword on other dialects, and reports the statement unread (keyword read where an object name belongs); the former hybrid path named a table `ONLY`.",
     "sql": "UPDATE ONLY child SET id = 2"
   },
   "c097e0bcb00fc7ff/hybrid": {
@@ -7957,6 +8157,33 @@
     "path": "hybrid",
     "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took nothing from its head; the reader names `test_proc`.",
     "sql": "CREATE OR REPLACE PROCEDURE test_proc AS\nBEGIN\n    NULL;\nEND"
+  },
+  "c6a88a9c73d2a94d": {
+    "class": "opaque-reader-gap",
+    "facts": {
+      "diagnostic": "mysql Block is opaque to statement facts",
+      "kind": "DDL",
+      "operation": "CREATE"
+    },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+    "old": {
+      "analyzer": [
+        [
+          "FUNCTION",
+          "default_schema.add"
+        ]
+      ],
+      "hybrid": [
+        [
+          "FUNCTION",
+          "add",
+          null
+        ]
+      ]
+    },
+    "path": "both",
+    "reason": "`ADD` is a reserved word of MySQL (https://dev.mysql.com/doc/refman/8.0/en/keywords.html, Keywords and Reserved Words), so it is not a function name; the reader publishes no object; the former path named FUNCTION add. This is a documented boundary, not a claim that MySQL accepts the text.",
+    "sql": "CREATE FUNCTION add(a INT, b INT)\nRETURNS INT AS $func$\nBEGIN RETURN a + b; END"
   },
   "c6f2b03c49a2c380/hybrid": {
     "class": "facts-adds-acted",
