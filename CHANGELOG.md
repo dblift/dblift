@@ -266,6 +266,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`dblift --help` and `dblift --version` work without the presentation packages.** They
+  failed with `ModuleNotFoundError: rich` when Rich was not installed. The default console
+  logger now falls back to plain text, `migrate`, `undo`, `validate` and `clean` run without
+  Rich or Jinja2, and the commands that draw tables (`info` outside `--format json`,
+  `config`, `--show-query-results`) or write an HTML report (`--log-format html`) stop before
+  doing anything with "install dblift[cli]".
 - **A keyword is no longer reported as an object name on a malformed statement.** For every
   dialect whose statements are read from the grammar, `ALTER TABLE ADD COLUMN x int`,
   `DROP TABLE IF`, `DROP TABLE CASCADE` and `CREATE TABLE IF` no longer name `ADD`, `IF` or

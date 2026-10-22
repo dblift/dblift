@@ -401,6 +401,31 @@ def _apply_config_backed_defaults(args: Any, config: Optional[Any]) -> None:
         setattr(args, spec.name, value)
 
 
+def _require_presentation_extras(commands: List[str], args: Any) -> None:
+    """Exit before any side effect if the request needs a missing presentation extra.
+
+    The base install runs migrations without Rich or Jinja2; only output that is
+    drawn with them (tables, the HTML report) needs the ``cli`` extra.
+    """
+    from dblift.core.logger.console import PresentationUnavailableError, require_presentation_extras
+
+    tables = (
+        commands[0] == "config"
+        or ("info" in commands and not from_args(args).is_machine_format)
+        or bool(getattr(args, "show_query_results", False))
+    )
+    formats = [f.strip() for f in str(getattr(args, "log_format", None) or "").lower().split(",")]
+    html = "html" in formats
+    try:
+        if tables:
+            require_presentation_extras("This output", "rich")
+        if html:
+            require_presentation_extras("The HTML report", "jinja2")
+    except PresentationUnavailableError as exc:
+        CommandOutput("console").error(f"error: {exc}")
+        sys.exit(1)
+
+
 def _parse_argv_and_load_config(argv: List[str]) -> _CliContext:
     """Phase 1: extract commands, build args namespace, load config.
 
@@ -475,6 +500,8 @@ def _parse_argv_and_load_config(argv: List[str]) -> _CliContext:
         sys.exit(0)
     if not commands and hasattr(args, "command"):
         commands = [args.command]
+
+    _require_presentation_extras(commands, args)
 
     # `dblift config --list` is offline self-documentation: it reads only the
     # property registry, so it short-circuits here — before any config/db load —
@@ -822,9 +849,15 @@ if __name__ == "__main__":
         CommandOutput("console").error("\nOperation cancelled by user")
         sys.exit(130)
     except Exception as e:
-        from dblift.core.logger.console import get_stderr_console
+        from dblift.core.logger.console import get_stderr_console, rich_available
 
-        console = get_stderr_console()
-        console.print(f"Unexpected error: {e}", style="log.error")
-        console.print_exception(show_locals=False, word_wrap=False)
+        if rich_available():
+            console = get_stderr_console()
+            console.print(f"Unexpected error: {e}", style="log.error")
+            console.print_exception(show_locals=False, word_wrap=False)
+        else:
+            import traceback
+
+            print(f"Unexpected error: {e}", file=sys.stderr)  # lint: allow-print
+            traceback.print_exc()
         sys.exit(1)

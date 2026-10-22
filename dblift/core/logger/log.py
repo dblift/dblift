@@ -235,9 +235,10 @@ class ConsoleLog(AbstractLog):
         """Initialize a stderr Rich-Console logger with a plain TextFormatter."""
         super().__init__(name, enable_debug, log_level)
         self.formatter = TextFormatter()
-        from .console import get_stderr_console
+        from .console import get_stderr_console, rich_available
 
-        self._console = get_stderr_console()
+        # Without Rich (the optional ``cli`` extra) fall back to plain stderr.
+        self._console = get_stderr_console() if rich_available() else None
 
     def _write_log_event(self, event: LogEvent, console_only: bool = False) -> None:
         """Write a log event to the console.
@@ -248,7 +249,14 @@ class ConsoleLog(AbstractLog):
         """
         formatted_msg = self.formatter.format_event(event)
         style = self._LEVEL_STYLES.get(event.level)
-        self._console.print(formatted_msg, style=style, markup=False, highlight=False)
+        self._stderr_print(formatted_msg, style=style, markup=False, highlight=False)
+
+    def _stderr_print(self, renderable: Any, **kwargs: Any) -> None:
+        """Print to stderr through Rich, or as plain text when Rich is absent."""
+        if self._console is None:
+            print(renderable, file=sys.stderr)  # lint: allow-print  plain-text sink
+        else:
+            self._console.print(renderable, **kwargs)
 
     def console_print(
         self,
@@ -267,7 +275,7 @@ class ConsoleLog(AbstractLog):
             return
         kwargs.setdefault("markup", False)
         kwargs.setdefault("highlight", False)
-        self._console.print(renderable, **kwargs)
+        self._stderr_print(renderable, **kwargs)
 
     def set_command_completed(
         self,
@@ -392,7 +400,7 @@ class ConsoleLog(AbstractLog):
                 # command payloads.
                 if performance_lines:
                     for line in performance_lines:
-                        self._console.print(line, markup=False, highlight=False)
+                        self._stderr_print(line, markup=False, highlight=False)
 
         except Exception as e:
             # Don't let journal display errors break the console output
@@ -453,13 +461,14 @@ class FileLog(AbstractLog):
         # Create formatter based on format
         from typing import Union
 
-        from dblift.core.logger.formatters.htmlformatter import HtmlFormatter
         from dblift.core.logger.formatters.jsonformatter import JsonFormatter
 
         self.formatter: Union[TextFormatter, "HtmlFormatter", "JsonFormatter"]
         if self.log_format == LogFormat.JSON and JSON_AVAILABLE:
             self.formatter = JsonFormatter()
         elif self.log_format == LogFormat.HTML and JINJA_AVAILABLE:
+            from dblift.core.logger.formatters.htmlformatter import HtmlFormatter
+
             self.formatter = HtmlFormatter()
         else:
             self.formatter = TextFormatter()

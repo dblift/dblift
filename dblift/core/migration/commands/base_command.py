@@ -152,9 +152,10 @@ def _render_main_header_panel(raw_header: str) -> str:
     Shared by BaseCommand._print_main_header_once and higher-tier command
     modules so they render the same styled banner.
     """
+    from dblift.core.logger.console import rich_available
     from dblift.core.migration.ui.command_panels import render_main_header_panel
 
-    return render_main_header_panel(raw_header)
+    return render_main_header_panel(raw_header) if rich_available() else raw_header
 
 
 # Maps ``_execute_callbacks``' ``event_prefix`` argument to the matching
@@ -603,9 +604,12 @@ class BaseCommand:
             applied_scripts=applied_scripts,
         )
         if should_print_footer and not self._has_own_console_footer:
-            from dblift.core.logger.console import get_stdout_console
+            from dblift.core.logger.console import get_stdout_console, rich_available
 
-            get_stdout_console().print(self._build_footer_panel(**footer_args))
+            if rich_available():
+                get_stdout_console().print(self._build_footer_panel(**footer_args))
+            else:
+                sys.stdout.write(self._format_command_footer(**footer_args) + "\n")
         self._log_text_block(self._format_command_footer(**footer_args))
 
     def _build_footer_panel(
@@ -655,8 +659,18 @@ class BaseCommand:
         Returns:
             Formatted footer string (plain, for file logs).
         """
-        from dblift.core.logger.console import render_panel_to_str
+        from dblift.core.logger.console import render_panel_to_str, rich_available
 
+        if not rich_available():
+            lines = [
+                f"{command_name} {'completed successfully' if success else 'FAILED'}"
+                f" in {execution_time}"
+            ]
+            if schema_version:
+                lines.append(f"Schema Version: {schema_version}")
+            if error_message and not success:
+                lines.append(f"Error: {error_message}")
+            return "\n".join(lines)
         return render_panel_to_str(
             self._build_footer_panel(
                 command_name,
@@ -1057,8 +1071,16 @@ class BaseCommand:
             Formatted header string (plain, for file logs). Use
             ``_build_command_header_panel`` for the console-rendered version.
         """
-        from dblift.core.logger.console import render_panel_to_str
+        from dblift.core.logger.console import render_panel_to_str, rich_available
 
+        if not rich_available():
+            lines = [f"Command: {command_name}"]
+            lines.extend(filters or [])
+            if schema_version:
+                lines.append(f"Schema Version: {schema_version}")
+            if connection_info:
+                lines.append(f"Connection: {connection_info}")
+            return "\n".join(lines)
         return render_panel_to_str(
             self._build_command_header_panel(
                 command_name,
@@ -1302,17 +1324,29 @@ class BaseCommand:
             self._print_main_header_once()
 
         if should_print_header:
-            from dblift.core.logger.console import get_stdout_console
+            from dblift.core.logger.console import get_stdout_console, rich_available
 
-            get_stdout_console().print(
-                self._build_command_header_panel(
-                    command_name=command_name,
-                    filters=filters,
-                    schema_version=schema_version,
-                    database_url=database_url,
-                    connection_info=connection_info,
+            if rich_available():
+                get_stdout_console().print(
+                    self._build_command_header_panel(
+                        command_name=command_name,
+                        filters=filters,
+                        schema_version=schema_version,
+                        database_url=database_url,
+                        connection_info=connection_info,
+                    )
                 )
-            )
+            else:
+                sys.stdout.write(
+                    self._format_command_header(
+                        command_name=command_name,
+                        filters=filters,
+                        schema_version=schema_version,
+                        database_url=database_url,
+                        connection_info=connection_info,
+                    )
+                    + "\n"
+                )
         self._log_text_block(
             self._format_command_header(
                 command_name=command_name,
