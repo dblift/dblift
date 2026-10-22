@@ -231,9 +231,6 @@ class SqlExecutionService:
                                             statement, self.schema
                                         )
                                     )
-                                else:
-                                    # Fallback to analyzer method
-                                    objects_affected = self.sql_analyzer.extract_objects(statement)
 
                             # For DML statements (INSERT, UPDATE, DELETE), extract table name
                             elif statement_type == SqlStatementType.DML.value:
@@ -248,7 +245,7 @@ class SqlExecutionService:
                                     table_name = (
                                         self._extract_simple_table_name(table_ref)
                                         if table_ref
-                                        else self._extract_table_from_dml(statement)
+                                        else ""
                                     )
                                     qualifier = table_ref.rpartition(".")[0] if table_ref else ""
                                     if table_name:
@@ -411,47 +408,3 @@ class SqlExecutionService:
                 match.group(1) or match.group(2) or match.group(3) or match.group(4) or identifier
             )
         return identifier
-
-    def _extract_table_from_dml(self, statement: str) -> Optional[str]:
-        """Extract table name from DML statement (INSERT, UPDATE, DELETE).
-
-        Args:
-            statement: SQL DML statement
-
-        Returns:
-            Table name if found, None otherwise
-        """
-        if not statement:
-            return None
-
-        stmt_upper = statement.strip().upper()
-        stmt_original = statement.strip()
-
-        # INSERT INTO table_name ...
-        if stmt_upper.startswith("INSERT"):
-            match = re.search(r"INSERT\s+INTO\s+([^\s(]+)", stmt_original, re.IGNORECASE)
-            if match:
-                table_name = match.group(1).strip()
-                # Extract simple table name: handles qualified names (catalog.schema.table),
-                # quoted identifiers ("my.table"), and SQL Server brackets ([dbo].[table])
-                return self._extract_simple_table_name(table_name)
-
-        # UPDATE table_name ...
-        elif stmt_upper.startswith("UPDATE"):
-            match = re.search(r"UPDATE\s+([^\s]+)", stmt_original, re.IGNORECASE)
-            if match:
-                table_name = match.group(1).strip()
-                # Extract simple table name: handles qualified names (catalog.schema.table),
-                # quoted identifiers ("my.table"), and SQL Server brackets ([dbo].[table])
-                return self._extract_simple_table_name(table_name)
-
-        # DELETE FROM table_name ...
-        elif stmt_upper.startswith("DELETE"):
-            match = re.search(r"DELETE\s+FROM\s+([^\s]+)", stmt_original, re.IGNORECASE)
-            if match:
-                table_name = match.group(1).strip()
-                # Extract simple table name: handles qualified names (catalog.schema.table),
-                # quoted identifiers ("my.table"), and SQL Server brackets ([dbo].[table])
-                return self._extract_simple_table_name(table_name)
-
-        return None

@@ -147,10 +147,12 @@ def test_the_entries_duckdb_accepts_have_matching_cuts() -> None:
     from dblift.db.plugins.duckdb.parser.lexical_spec import DUCKDB_SPEC
 
     tail = re.compile(r"^(?:[\s;]|--[^\r\n]*|/\*.*?\*/)*$", re.S)
+    engine = LexicalEngine(DUCKDB_SPEC)
 
     def agrees(cut: List[str], theirs: List[str]) -> bool:
-        cut = [t.strip() for t in cut if not tail.match(t)]
-        theirs = [t.strip() for t in theirs if not tail.match(t)]
+        # DuckDB 2.0 drops the comments that lead a statement from its text; 1.x keeps them
+        cut = [engine.blank_comments(t).strip() for t in cut if not tail.match(t)]
+        theirs = [engine.blank_comments(t).strip() for t in theirs if not tail.match(t)]
 
         def same(a: str, b: str) -> bool:
             short, long_ = (a, b) if len(a) <= len(b) else (b, a)
@@ -158,7 +160,6 @@ def test_the_entries_duckdb_accepts_have_matching_cuts() -> None:
 
         return len(cut) == len(theirs) and all(same(a, b) for a, b in zip(cut, theirs))
 
-    engine = LexicalEngine(DUCKDB_SPEC)
     blanks = {ord(c): " " for c in "\xa0\u202f\u205f\u2060\u3000\ufeff"}
     blanks.update({c: " " for c in range(0x2000, 0x200C)})
     for entry in entries():

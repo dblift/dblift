@@ -497,12 +497,15 @@ ESCAPE_THEN = "SELECT E'a'{gap}'b\\'; SELECT 2;"
     ],
 )
 def test_escape_mode_continues_only_across_line_breaks(gap, continued):
-    items = shape(ESCAPE_THEN.format(gap=gap))
-    assert [i for i in items if i[0] == "STRING"] == [
-        st("'a'"),
-        st("'b\\'; SELECT 2;") if continued else st("'b\\'"),
-    ]
-    assert (dl() not in items) == continued
+    script = ESCAPE_THEN.format(gap=gap)
+    if continued:
+        # DuckDB 1.5.5 and 2.0.0 read the continuation two ways: the scanner reads neither
+        with pytest.raises(UnsafeStatementSplitError, match="reads a backslash in it"):
+            shape(script)
+        return
+    items = shape(script)
+    assert [i for i in items if i[0] == "STRING"] == [st("'a'"), st("'b\\'")]
+    assert dl() in items
 
 
 @pytest.mark.parametrize(
@@ -528,11 +531,8 @@ def test_escape_mode_in_the_reference_cases():
         st("'z'"),
         dl(),
     ]
-    assert shape("SELECT E'a'\n'b\\'; SELECT 1 AS y; SELECT 'z';") == CONTINUED + [
-        st("'b\\'; SELECT 1 AS y; SELECT '"),
-        kw("z"),
-        st("';"),
-    ]
+    with pytest.raises(UnsafeStatementSplitError, match="reads a backslash in it"):
+        shape("SELECT E'a'\n'b\\'; SELECT 1 AS y; SELECT 'z';")
     assert shape("SELECT E'a' /* c */\n'b\\'' AS x; SELECT 2 AS y;")[3:] == [
         cm("/* c */"),
         st("'b\\'' AS x; SELECT 2 AS y;"),
