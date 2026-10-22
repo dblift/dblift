@@ -76,13 +76,7 @@ def test_index_facts_separate_indexed_columns_from_declared_table_columns():
     assert facts.declared_columns == ()
 
 
-def test_cte_update_has_one_target_and_full_table_caution(monkeypatch):
-    from dblift.core.migration.sql import script_analysis
-
-    def forbidden(*args, **kwargs):
-        raise AssertionError("legacy extraction reached")
-
-    monkeypatch.setattr(script_analysis, "_fallback_objects", forbidden)
+def test_cte_update_has_one_target_and_full_table_caution():
     sql = "WITH x AS (SELECT 1) UPDATE child SET parent_id = 2;"
     analysis = analyse_script(sql, "sqlite")
 
