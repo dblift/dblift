@@ -34,13 +34,9 @@ logger = logging.getLogger(__name__)
 DEFAULT_SCHEMA_PLACEHOLDER = "default_schema"
 
 # A SQL identifier: quoted ("x", [x], `x`) or bare, optionally schema-qualified.
-# The three quoted alternatives come from dblift.core.sql_parser.dialects.
-# identifier_tokens -- the shared definition of "what a quoted SQL identifier
-# looks like" (escape-aware: a closing delimiter inside one is escaped by
-# doubling it, e.g. ``[real]]one]`` is ``real]one``) also used by
-# ``SqlServerConfig.object_patterns``'s ``id_token``
-# (dblift/db/plugins/sqlserver/parser/parser_config.py), so this is one
-# definition, not two that can drift apart (#375, #380).
+# The quoted alternatives come from dblift.core.sql_parser.dialects.identifier_tokens,
+# the shared (escape-aware) definition also used by ``SqlServerConfig.object_patterns``.
+# The undo script generator imports these two patterns to recognise object references.
 _IDENTIFIER = rf"(?:{DOUBLE_QUOTED_IDENTIFIER}|{BRACKET_IDENTIFIER}|{BACKTICK_IDENTIFIER}|[\w$#]+)"
 _QUALIFIED_NAME = rf"{_IDENTIFIER}(?:\s*\.\s*{_IDENTIFIER})*"
 
