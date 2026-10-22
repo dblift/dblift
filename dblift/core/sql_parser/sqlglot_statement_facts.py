@@ -245,8 +245,19 @@ def _unread_name_facts(sql: str, dialect: str, at: int) -> StatementFacts:
     return StatementFacts(head.operation, head.kind, diagnostic=reason)
 
 
-_HEAD_CLAUSE_WORDS = frozenset({"IF", "NOT", "EXISTS", "ONLY"})
-_SNOWFLAKE_CLAUSE_WORDS = _HEAD_CLAUSE_WORDS | {"ADD", "CLONE", "CASCADE", "RESTRICT", "IDENTIFIER"}
+_HEAD_CLAUSE_WORDS = frozenset(
+    {"IF", "NOT", "EXISTS", "ONLY", "ADD", "CLONE", "CASCADE", "RESTRICT"}
+)
+_SNOWFLAKE_CLAUSE_WORDS = _HEAD_CLAUSE_WORDS | {"IDENTIFIER"}
+
+
+def _clause_words(dialect: str) -> frozenset:
+    """Words that are clause keywords, not names, where a truncated statement ends early."""
+    return (
+        _SNOWFLAKE_CLAUSE_WORDS
+        if dialect == "snowflake"  # lint: allow-dialect-string: IDENTIFIER() names
+        else _HEAD_CLAUSE_WORDS
+    )
 
 
 def _head_name_is_bounded(text: str, match: "re.Match[str]", groups: Tuple[int, ...]) -> bool:
@@ -264,11 +275,7 @@ def _head_name_is_bounded(text: str, match: "re.Match[str]", groups: Tuple[int, 
 
 def _head_tokens_prove_name(sql: str, dialect: str, prefix: str, names: Tuple[str, ...]) -> bool:
     """Check that a stripped head names the same source tokens, in the same order."""
-    words = (
-        _SNOWFLAKE_CLAUSE_WORDS
-        if dialect == "snowflake"  # lint: allow-dialect-string: clause words
-        else _HEAD_CLAUSE_WORDS
-    )
+    words = _clause_words(dialect)
     if not dialect or any(
         name[0] not in {'"', "`", "["} and name.upper() in words for name in names
     ):
@@ -398,12 +405,11 @@ def _head_tokens_prove_name(sql: str, dialect: str, prefix: str, names: Tuple[st
         return False
     if len(source) > len(proposed) and source[len(proposed)].token_type == TokenType.DOT:
         return False  # a further name part means the proposed identity is incomplete
-    if (
-        dialect == "snowflake"  # lint: allow-dialect-string: template braces continue a name
-        and len(source) > len(proposed)
-        and source[len(proposed)].token_type in {TokenType.L_BRACE, TokenType.R_BRACE}
-    ):
-        return False
+    if len(source) > len(proposed) and source[len(proposed)].token_type in {
+        TokenType.L_BRACE,
+        TokenType.R_BRACE,
+    }:
+        return False  # a template brace continues the name
     parts = proposed[-(2 * len(names) - 1) :]
     if len(parts) != 2 * len(names) - 1:
         return False
@@ -484,23 +490,27 @@ def _snowflake_materialized_view_log_on(sql: str, ast: exp.Expr) -> bool:
 _SNOWFLAKE_DYNAMIC_NAMES = "snowflake IDENTIFIER() names are not read"
 
 
-def _snowflake_unread_names(ast: exp.Expr) -> Optional[str]:
-    """Name why a Snowflake relation is not an identifier written in the statement."""
+def _unread_names(ast: exp.Expr, dialect: str) -> Optional[str]:
+    """Name why a relation is not an identifier written in the statement."""
     if isinstance(ast, exp.Copy):
         return None  # a COPY file path is a string, and the statement is opaque already
-    if any(ast.find_all(exp.DynamicIdentifier)):
+    snowflake = dialect == "snowflake"  # lint: allow-dialect-string: IDENTIFIER() and $variables
+    if snowflake and any(ast.find_all(exp.DynamicIdentifier)):
         return _SNOWFLAKE_DYNAMIC_NAMES
+    words = _clause_words(dialect)
     for table in ast.find_all(exp.Table):
+        if isinstance(table.parent, exp.UserDefinedFunction) and not snowflake:
+            continue  # ``add`` is a legal function name; only a relation is checked for keywords
         parts = [table.args.get(key) for key in ("this", "db", "catalog")]
-        if any(isinstance(part, (exp.Parameter, exp.Literal)) for part in parts):
+        if snowflake and any(isinstance(part, (exp.Parameter, exp.Literal)) for part in parts):
             return _SNOWFLAKE_DYNAMIC_NAMES
         if any(
             isinstance(part, exp.Identifier)
             and not part.args.get("quoted")
-            and part.name.upper() in _SNOWFLAKE_CLAUSE_WORDS
+            and part.name.upper() in words
             for part in parts
         ):
-            return "snowflake keyword read where an object name belongs"
+            return f"{dialect} keyword read where an object name belongs"
     return None
 
 
@@ -1865,11 +1875,10 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
             diagnostic=f"{dialect} relation qualification is not fully represented",
         )
 
-    if dialect == "snowflake":  # lint: allow-dialect-string: unread Snowflake names
-        unread_names = _snowflake_unread_names(ast)
-        if unread_names is not None:
-            head = _head_facts(sql, "", dialect=dialect)
-            return StatementFacts(head.operation, head.kind, diagnostic=unread_names)
+    unread_names = _unread_names(ast, dialect)
+    if unread_names is not None:
+        head = _head_facts(sql, "", dialect=dialect)
+        return StatementFacts(head.operation, head.kind, diagnostic=unread_names)
 
     if dialect == "snowflake":  # lint: allow-dialect-string: unread Snowflake effects
         unread_effect = _snowflake_unread_effect(ast)
