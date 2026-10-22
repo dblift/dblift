@@ -8,6 +8,7 @@ from dblift.core.exceptions import ParserNotAvailableError
 from dblift.core.logger import Log
 from dblift.core.migration.sql.statement_splitter import StatementSplitter
 from dblift.core.sql_model.dialect import get_sqlglot_dialect
+from dblift.core.sql_parser._deprecation import internal_parser_construction, warn_direct_parser
 
 # Import parser system components
 from dblift.core.sql_parser.dialects.identifier_tokens import (
@@ -82,6 +83,7 @@ class SqlAnalyzer:
             logger: Optional logger to use
             parser_factory: Optional parser factory to use
         """
+        warn_direct_parser("SqlAnalyzer")
         self.dialect = dialect.lower()
         self.analysis_mode = analysis_mode
         self.logger = logger or logging.getLogger(__name__)
@@ -90,7 +92,8 @@ class SqlAnalyzer:
         # construction remains reserved for schema/object analysis paths.
         self._db_specific_parser = None
         try:
-            classification_factory = SqlParserFactory(self.dialect, parser_type="regex")
+            with internal_parser_construction():
+                classification_factory = SqlParserFactory(self.dialect, parser_type="regex")
             self._db_specific_parser = classification_factory.get_parser()
 
             self.logger.debug(
@@ -117,7 +120,8 @@ class SqlAnalyzer:
     def parser_factory(self) -> Any:
         """Return the rich parser factory, constructing it on first access."""
         if self._parser_factory is None:
-            self._parser_factory = SqlParserFactory(self.dialect)
+            with internal_parser_construction():
+                self._parser_factory = SqlParserFactory(self.dialect)
         return self._parser_factory
 
     @parser_factory.setter
@@ -407,7 +411,7 @@ class SqlAnalyzer:
         # If basic checks pass, assume SQL is valid
         return True, None
 
-    def split_statements(self, sql: str, strict_tokenizer: bool = False) -> List[str]:
+    def split_statements(self, sql: str, strict_tokenizer: Optional[bool] = None) -> List[str]:
         """Split SQL into individual statements.
 
         Args:
@@ -420,10 +424,13 @@ class SqlAnalyzer:
         """
         # Directive lines (``PROMPT``, ``SET``, ``DEFINE``, ``WHENEVER`` ...) and
         # SQL*Plus variables are the dialect splitter's, not a pre-pass.
-        statements = self.statement_splitter.split_statements(
-            sql,
-            strict_tokenizer=strict_tokenizer,
-        )
+        if strict_tokenizer is not None:
+            warn_direct_parser("strict_tokenizer")
+        with internal_parser_construction():
+            statements = self.statement_splitter.split_statements(
+                sql,
+                strict_tokenizer=bool(strict_tokenizer),
+            )
 
         # Log each statement for debugging
         for i, stmt in enumerate(statements):
@@ -433,13 +440,17 @@ class SqlAnalyzer:
 
         return list(statements)
 
-    def split_statements_for_analysis(self, sql: str, strict_tokenizer: bool = False) -> List[str]:
+    def split_statements_for_analysis(
+        self, sql: str, strict_tokenizer: Optional[bool] = None
+    ) -> List[str]:
         """The statements of ``sql`` for callers that read a script statement by statement.
 
         ``split_statements`` returns what the server receives, and a T-SQL batch holds several
         statements: a dialect that divides its batches does it here, after the same refusals.
         Every other dialect: the execution split.
         """
+        if strict_tokenizer is not None:
+            warn_direct_parser("strict_tokenizer")
         engine = self.statement_splitter._engine
         if engine is not None and engine.spec.sqlite_shell:
             return engine.split_for_analysis(sql)
@@ -448,5 +459,6 @@ class SqlAnalyzer:
             parser is not None
             and type(parser).split_for_analysis is not SqlParserInterface.split_for_analysis
         ):
-            return list(parser.split_for_analysis(sql, strict_tokenizer=strict_tokenizer))
-        return self.split_statements(sql, strict_tokenizer=strict_tokenizer)
+            return list(parser.split_for_analysis(sql, strict_tokenizer=bool(strict_tokenizer)))
+        with internal_parser_construction():
+            return self.split_statements(sql, strict_tokenizer=bool(strict_tokenizer))

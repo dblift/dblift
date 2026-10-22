@@ -23,6 +23,11 @@ def fresh_notices():
         _deprecation._warned.update(saved)
 
 
+def _silent(cls, *args):
+    with _deprecation.internal_parser_construction():
+        return cls(*args)
+
+
 def _notices(action):
     with warnings.catch_warnings(record=True) as seen:
         warnings.simplefilter("always")
@@ -42,21 +47,21 @@ def _notices(action):
         ),
         (
             "strict_tokenizer",
-            lambda: SqlAnalyzer.internal("sqlite").split_statements(
+            lambda: _silent(SqlAnalyzer, "sqlite").split_statements(
                 "SELECT 1;", strict_tokenizer=True
             ),
             "StatementSplitter",
         ),
         (
             "strict_tokenizer",
-            lambda: SqlAnalyzer.internal("sqlite").split_statements_for_analysis(
+            lambda: _silent(SqlAnalyzer, "sqlite").split_statements_for_analysis(
                 "SELECT 1;", strict_tokenizer=False
             ),
             "StatementSplitter",
         ),
         (
             "strict_tokenizer",
-            lambda: SqlParserFactory.internal("sqlite").split_statements(
+            lambda: _silent(SqlParserFactory, "sqlite").split_statements(
                 "SELECT 1;", strict_tokenizer=False
             ),
             "StatementSplitter",
@@ -101,7 +106,7 @@ def test_internal_bridges_are_silent_and_canonical_paths_do_not_warn():
         splitter = StatementSplitter("sqlite")
         splitter.split("SELECT 1;")
         splitter.split_statements("SELECT 1;")
-        analyzer = SqlAnalyzer.internal("sqlite")
+        analyzer = _silent(SqlAnalyzer, "sqlite")
         analyzer.split_statements("SELECT 1;")
         analyzer.split_statements_for_analysis("SELECT 1;")
         _ = analyzer.parser_factory

@@ -45,6 +45,7 @@ from dblift.core.migration.sql.migration_sql_parser import (
 )
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.migration.sql.sql_execution_service import SqlExecutionService
+from dblift.core.sql_parser._deprecation import internal_parser_construction
 from dblift.core.sql_parser.redaction import describe_statement
 from dblift.db.base_provider import BaseProvider
 from dblift.db.error import clean_driver_error_message, strip_sql_statement_block
@@ -360,11 +361,12 @@ class ExecutionEngine:
         analyzer = self.sql_analyzer
         if analyzer.dialect != dialect_key:
             try:
-                analyzer = SqlAnalyzer(
-                    dialect=dialect_key,
-                    logger=self.log,
-                    analysis_mode=getattr(self.sql_analyzer, "analysis_mode", "full"),
-                )
+                with internal_parser_construction():
+                    analyzer = SqlAnalyzer(
+                        dialect=dialect_key,
+                        logger=self.log,
+                        analysis_mode=getattr(self.sql_analyzer, "analysis_mode", "full"),
+                    )
             except Exception as exc:
                 raise UnsafeStatementSplitError(f"statement splitter failed: {exc}") from exc
         statements = parse_migration_sql(analyzer, content, self.log, dialect=dialect_key)

@@ -20,6 +20,7 @@ from dblift.core.exceptions import (
     UnsupportedMetaCommandError,
 )
 from dblift.core.sql_model.base import SqlObject, SqlObjectType, SqlStatement
+from dblift.core.sql_parser._deprecation import internal_parser_construction
 from dblift.core.sql_parser.parser_factory import SqlParserFactory
 from dblift.core.sql_parser.unread_names import names_unreadable
 from dblift.db.base_quirks import BaseQuirks
@@ -200,7 +201,9 @@ def _analyse(text: str, dialect: str) -> ScriptAnalysis:
         fact_cautions: List[Caution] = []
         errors: List[str] = []
         try:
-            bodies = SqlParserFactory(dialect).get_parser().split_for_analysis(text)
+            with internal_parser_construction():
+                factory = SqlParserFactory(dialect)
+            bodies = factory.get_parser().split_for_analysis(text)
         except (UnsafeStatementSplitError, UnsupportedMetaCommandError) as error:
             return ScriptAnalysis((), (), (f"Error splitting SQL: {error}",))
         except (ParserError, ValueError, TypeError) as error:
@@ -254,7 +257,9 @@ def _analyse(text: str, dialect: str) -> ScriptAnalysis:
         return ScriptAnalysis(tuple(fact_statements), tuple(fact_cautions), tuple(errors))
 
     try:
-        parsed = SqlParserFactory(dialect).parse_sql(text)
+        with internal_parser_construction():
+            factory = SqlParserFactory(dialect)
+        parsed = factory.parse_sql(text)
         quirks = ProviderRegistry.get_quirks(dialect)
     except Exception as error:  # the parser is not supposed to raise; the command must go on
         return ScriptAnalysis((), (), (f"parser error: {error}",))
