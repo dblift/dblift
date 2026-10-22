@@ -19,6 +19,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **DuckDB 2 is supported.** The `duckdb` extra now accepts DuckDB 2.x as well as 1.x. DuckDB 1.x
+  and 2.x read one rare construct differently: a string on the line after an escape string
+  (`E'a'` newline `'b\'...'`), where 1.x lets the backslash escape the quote and 2.x does not. dblift
+  cannot know which one will run the script, so it now refuses it with an error naming the line
+  and column; write the text as a single literal.
 - **The SQL analyzer reads objects from statement facts only.** `SqlAnalyzer.extract_objects` and
   `analyze_statement` no longer fall back to a regex scan of the statement text: a statement the
   facts cannot read names no object instead of a guessed one. A dialect without a statement-facts

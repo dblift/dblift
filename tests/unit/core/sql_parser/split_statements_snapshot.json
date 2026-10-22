@@ -62,7 +62,7 @@
 "golden": {
 "count": 811,
 "observed": null,
-"sha256": "95cd188e8cb48483b03689c838c2dee0e8d11331792625b6d4f9bd05c026604a"
+"sha256": "52ce15f9ea31af98668551aded652479a235d2bee59c6395eb14c323eb7cf0dc"
 },
 "postgres_family": {
 "count": 68,
@@ -7429,7 +7429,7 @@
 "sha256": "235ed5bc6bc3581fe10f984ca5132ef0ad7b354ccb6413b897cdc4b2e3939811"
 },
 "spec_rows": {
-"count": 824,
+"count": 825,
 "observed": [
 [
 "db2",
@@ -11094,6 +11094,27 @@
 "SELECT '/* x' AS a",
 "SELECT 1 AS \"/* y\"",
 "SELECT 2 -- /* z"
+]
+}
+],
+[
+"duckdb",
+"SELECT E'a'\n'b\\'; SELECT 2;",
+{
+"analysis": [
+"error",
+"UnsafeStatementSplitError",
+"string continuing an escape string at line 2, column 1: DuckDB 1.x reads a backslash in it as an escape and 2.x as a character, so the statement ends in different places; write the text as one literal"
+],
+"engine": [
+"error",
+"UnsafeStatementSplitError",
+"string continuing an escape string at line 2, column 1: DuckDB 1.x reads a backslash in it as an escape and 2.x as a character, so the statement ends in different places; write the text as one literal"
+],
+"splitter": [
+"error",
+"UnsafeStatementSplitError",
+"string continuing an escape string at line 2, column 1: DuckDB 1.x reads a backslash in it as an escape and 2.x as a character, so the statement ends in different places; write the text as one literal"
 ]
 }
 ],
@@ -22583,6 +22604,6 @@
 }
 ]
 ],
-"sha256": "a26257a4af1ec662ad357a91725c69e1f9112fc8e35f712280a132bb8652a240"
+"sha256": "e83706a94c52dd450bb2d1069a89934b9272740e517a443693d6cd9d3198f625"
 }
 }
