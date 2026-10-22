@@ -22,10 +22,10 @@ from dblift.core.logger.console import (
     PresentationUnavailableError,
     get_stderr_console,
     install_rich_traceback,
+    module_available,
     require_presentation_extras,
     rich_available,
 )
-from dblift.core.utils.module_check import module_available
 from dblift.core.utils.url_masking import mask_database_url
 
 # Backward compatibility alias (used by tests and re-exports)
