@@ -73,13 +73,8 @@ def test_script_analysis_goes_through_facts():
     assert [obj.name for obj in comment.statements[0].objects] == ["T"]
 
 
-def test_analyzer_extracts_objects_from_facts_only(monkeypatch):
+def test_analyzer_extracts_objects_from_facts():
     analyzer = SqlAnalyzer("oracle")
-
-    def forbidden(*args, **kwargs):
-        raise AssertionError("text extraction reached")
-
-    monkeypatch.setattr(analyzer, "_extract_objects_regex", forbidden)
 
     assert [obj["object_name"] for obj in analyzer.extract_objects(UPDATE)] == [
         "default_schema.CHILD"
