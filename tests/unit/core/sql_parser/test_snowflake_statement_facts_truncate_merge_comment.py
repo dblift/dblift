@@ -110,6 +110,7 @@ def test_a_merge_with_an_unread_name_or_no_action_stays_unread(sql):
         ("COMMENT ON MATERIALIZED VIEW m IS 'x'", [("M", "MATERIALIZED_VIEW", "altered", None)]),
         ("COMMENT ON SEQUENCE q IS 'x'", [("Q", "SEQUENCE", "altered", None)]),
         ("COMMENT ON COLUMN s.t.c IS 'x'", [("T", "TABLE", "altered", "S")]),
+        ("COMMENT ON COLUMN db.s.t.c IS 'x'", [("T", "TABLE", "altered", "DB.S")]),
         ("COMMENT ON TABLE \"a b\" IS 'x'", [("a b", "TABLE", "altered", None)]),
     ],
 )
@@ -127,6 +128,7 @@ def test_a_plain_comment_on_names_the_object_it_changes(sql, objects):
         "COMMENT ON TABLE IDENTIFIER($t) IS 'x'",
         "COMMENT ON TABLE IDENTIFIER('t') IS 'x'",
         "COMMENT ON COLUMN t.c{c} IS 'x'",
+        "COMMENT ON COLUMN a.b.c.d.e IS 'x'",
         "COMMENT ON FUNCTION f(int) IS 'x'",
         "COMMENT ON DATABASE d IS 'x'",
         "COMMENT ON SCHEMA s IS 'x'",

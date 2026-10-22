@@ -2490,18 +2490,12 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
     ):
         kind = str(ast.args.get("kind") or "").upper()
         subject = ast.this
-        if kind == "COLUMN" and isinstance(subject, exp.Column):
-            subject = exp.Table(
-                this=subject.args.get("table"),
-                db=subject.args.get("db"),
-                catalog=subject.args.get("catalog"),
-            )
         if (
-            kind in {"TABLE", "VIEW", "SEQUENCE", "COLUMN"}
+            kind in {"TABLE", "VIEW", "SEQUENCE"}
             and isinstance(subject, exp.Table)
             and isinstance(subject.this, exp.Identifier)
             and not _snowflake_schema_has_discarded_prefix(sql, subject)
-        ):
+        ) or (kind == "COLUMN" and isinstance(subject, exp.Column)):
             identity = _postgres_comment_identity(ast)
             if identity is not None:
                 return StatementFacts("COMMENT", "DDL", (identity,))
