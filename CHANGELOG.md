@@ -24,6 +24,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   facts cannot read names no object instead of a guessed one. A dialect without a statement-facts
   reader, and DuckDB's `analysis_mode="execution"` (which disables object extraction), report no
   objects and `analyze_statement` returns `parsed_with: "none"`. The public signatures are unchanged.
+
+- **Lightweight base install.** `pip install dblift` no longer pulls Rich, Jinja2 or SQLGlot.
+  Install `dblift[cli]` for the command line and report rendering and `dblift[analysis]` for full
+  SQL analysis; `dblift[all]` is unchanged for users (it now names both extras explicitly), as are
+  the `mcp`, `django`, `flask` and `fastapi` extras. A database-only install such as
+  `pip install "dblift[postgresql]"` must add `cli` to keep the `dblift` command working:
+  `pip install "dblift[cli,postgresql]"`. Release tooling accepts pre-release versions
+  (`5.0.0a1`, `b2`, `rc1`).
+
 - **Snowflake reads statement facts from the SQL grammar.** `info --format json`,
   `migrate --dry-run`, object tracking during `migrate`, data-change analysis and lint read each
   statement's kind, objects, target and predicate from the sqlglot AST after the shared lexical

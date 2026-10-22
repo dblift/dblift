@@ -75,6 +75,54 @@ jobs:
           name: lightweight-core-${{ matrix.python-version }}
           path: ${{ env.E4_EVIDENCE_DIR }}
 
+  base-install:
+    # The wheel installed with no extras is the lightweight library install:
+    # PyYAML and SQLAlchemy only. This job builds the wheel, installs it into a
+    # fresh virtual environment (its own pip, never the runner's), and checks
+    # that the environment is consistent and the package imports.
+    name: base-install (no extras)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Build the wheel
+        run: |
+          python -m pip install build
+          python -m build --wheel --outdir dist-base .
+
+      - name: Install the wheel into a fresh virtual environment
+        run: |
+          python -m venv "$RUNNER_TEMP/base-venv"
+          "$RUNNER_TEMP/base-venv/bin/python" -m pip install dist-base/dblift-*.whl
+
+      - name: Base install declares no presentation or analysis dependency
+        run: |
+          "$RUNNER_TEMP/base-venv/bin/python" -I - <<'PY'
+          import re
+          from importlib.metadata import requires
+          base = sorted(
+              re.match(r"[A-Za-z0-9_.-]+", r).group().lower()
+              for r in requires("dblift")
+              if ";" not in r
+          )
+          assert base == ["pyyaml", "sqlalchemy"], base
+          PY
+
+      - name: pip check
+        run: '"$RUNNER_TEMP/base-venv/bin/python" -m pip check'
+
+      - name: Import dblift from the base install
+        run: '"$RUNNER_TEMP/base-venv/bin/python" -I -c "import dblift"'
+
+      - name: Run the dblift command from the base install (non-blocking until the CLI no longer needs Rich at import time)
+        continue-on-error: true
+        run: '"$RUNNER_TEMP/base-venv/bin/dblift" --version'
+
   sqlglot-floor:
     # The main job installs constraints-ci.txt, which pins sqlglot at the declared
     # minimum, so it runs the statement-facts corpus on that release. This job

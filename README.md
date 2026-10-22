@@ -32,7 +32,7 @@ DBLift applies versioned `.sql` files to your database and remembers what ran. S
 No database server needed — this runs against a local SQLite file.
 
 ```bash
-pip install dblift
+pip install "dblift[cli]"
 
 mkdir migrations
 echo "CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT NOT NULL UNIQUE);" > migrations/V1__create_users.sql
@@ -46,10 +46,10 @@ dblift info                           # what ran, when, by whom, and whether it 
 dblift undo                           # runs U1, rolls the last migration back
 ```
 
-For a real database, install the driver extra and point the URL at it:
+For a real database, install the driver extra next to `cli` and point the URL at it:
 
 ```bash
-pip install "dblift[postgresql]"
+pip install "dblift[cli,postgresql]"
 export DBLIFT_DB_URL="postgresql+psycopg://user@localhost:5432/mydb"
 export DBLIFT_DB_PASSWORD="..."
 ```
@@ -131,7 +131,9 @@ Alembic is the right choice when your schema is driven by SQLAlchemy models and 
 
 ## Databases
 
-20 engines. SQLite works with a bare `pip install dblift`; every other engine has its own install extra, e.g. `pip install "dblift[postgresql]"`.
+20 engines. SQLite needs no driver extra; every other engine has its own, e.g. `pip install "dblift[cli,postgresql]"`.
+
+A bare `pip install dblift` is the lightweight library install (PyYAML and SQLAlchemy only). `dblift[cli]` adds the command line (Rich, Jinja2), `dblift[analysis]` adds full SQL analysis (SQLGlot), and `dblift[all]` installs both plus every database driver.
 
 PostgreSQL · MySQL · MariaDB · SQL Server · Oracle · DB2 · SQLite · DuckDB · CockroachDB · Redshift · Snowflake · Neon · Supabase · Aurora PostgreSQL · AlloyDB · YugabyteDB · TimescaleDB · Citus · Azure Cosmos DB · MongoDB
 
