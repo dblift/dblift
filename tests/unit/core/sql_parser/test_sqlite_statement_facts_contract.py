@@ -37,11 +37,7 @@ def test_update_target_is_reported_in_the_existing_parse_result_shape():
     ]
 
 
-def test_sql_analyzer_objects_do_not_use_the_regex_extractor(monkeypatch):
-    def forbidden(*args, **kwargs):
-        raise AssertionError("legacy regex extraction reached")
-
-    monkeypatch.setattr(SqlAnalyzer, "_extract_objects_regex", forbidden)
+def test_sql_analyzer_objects_come_from_facts():
     assert SqlAnalyzer("sqlite").extract_objects(UPDATE) == [
         {"object_type": "TABLE", "object_name": "default_schema.child"}
     ]

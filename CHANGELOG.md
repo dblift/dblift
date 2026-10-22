@@ -24,6 +24,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   such a plugin and mark its scripts for review, instead of reading them with the text parser, so
   a script is no longer rated UNSAFE for a `DROP TABLE` or an unfiltered `DELETE` there. Every
   bundled dialect reads statement facts and is unaffected.
+- **The SQL analyzer reads objects from statement facts only.** `SqlAnalyzer.extract_objects` and
+  `analyze_statement` no longer fall back to a regex scan of the statement text: a statement the
+  facts cannot read names no object instead of a guessed one. A dialect without a statement-facts
+  reader, and DuckDB's `analysis_mode="execution"` (which disables object extraction), report no
+  objects and `analyze_statement` returns `parsed_with: "none"`. The public signatures are unchanged.
 - **Snowflake reads statement facts from the SQL grammar.** `info --format json`,
   `migrate --dry-run`, object tracking during `migrate`, data-change analysis and lint read each
   statement's kind, objects, target and predicate from the sqlglot AST after the shared lexical
