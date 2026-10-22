@@ -24,8 +24,8 @@ inventing a SQL-looking syntax for either store. Install the matching extra so
 the SDK is present:
 
 ```bash
-pip install "dblift[cli,cosmosdb]"   # Azure Cosmos DB
-pip install "dblift[cli,mongodb]"    # MongoDB
+pip install "dblift[cli,analysis,cosmosdb]"   # Azure Cosmos DB
+pip install "dblift[cli,analysis,mongodb]"    # MongoDB
 ```
 
 Two guards apply across both targets:
@@ -96,7 +96,7 @@ Cosmos DB migrations call `azure-cosmos` through `context.db` and
 `context.raw_client`. Install the extra first:
 
 ```bash
-pip install "dblift[cli,cosmosdb]"
+pip install "dblift[cli,analysis,cosmosdb]"
 ```
 
 !!! warning "Breaking change"
@@ -284,7 +284,7 @@ MongoDB migrations call `pymongo` through `context.db` and
 `context.raw_client`. Install the extra first:
 
 ```bash
-pip install "dblift[cli,mongodb]"
+pip install "dblift[cli,analysis,mongodb]"
 ```
 
 | Attribute | Type |

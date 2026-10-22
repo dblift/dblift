@@ -4,7 +4,7 @@ dblift can emit OpenTelemetry **spans** for its operations, driven off the event
 bus. Install the extra and bring your own OTel SDK + exporter:
 
 ```bash
-pip install "dblift[cli,otel]"
+pip install "dblift[cli,analysis,otel]"
 ```
 
 ```python

@@ -11,11 +11,13 @@ DBLift is a Python-native migration toolkit. This guide takes you from install t
 ## Step 1: Install
 
 ```bash
-pip install "dblift[cli,postgresql]"
+pip install "dblift[cli,analysis,postgresql]"
 dblift --version
 ```
 
-`cli` provides the command line (Rich, Jinja2); the database extra provides the driver. Other supported driver extras: `oracle`, `mysql`, `sqlserver`. Add `analysis` (SQLGlot) for full SQL analysis, or use `dblift[all]` for everything.
+`cli` provides the command line (Rich, Jinja2), `analysis` provides SQLGlot, which the commands use by default to read your SQL, and the database extra provides the driver. Other supported driver extras: `oracle`, `mysql`, `sqlserver`. Use `dblift[all]` for everything.
+
+For a lightweight install without SQLGlot, drop `analysis` and use the Python API in execution-only mode (`analysis_mode="execution"`).
 
 ## Step 2: Configure
 

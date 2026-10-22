@@ -236,6 +236,6 @@ See the runnable example above for a complete migrate + undo round-trip.
 - Undo is not part of the versioned script: the `U*.py` companion file is a separate
   migration script and receives its own `MigrationContext` when `client.undo()` runs it.
 - See `docs/examples/sqlalchemy-integration.md` for wiring `from_sqlalchemy` into app startup, pytest, scripts, and framework lifespans.
-- All of the above is OSS and works with `pip install "dblift[cli]"` (SQLite needs no driver extra; add the matching extra, e.g. `dblift[cli,postgresql]`, for your DB).
+- All of the above is OSS and works with `pip install "dblift[cli,analysis]"` (SQLite needs no driver extra; add the matching extra, e.g. `dblift[cli,analysis,postgresql]`, for your DB).
 
 These examples were validated against the current `MigrationContext` implementation (properties + shims + `from_sqlalchemy` engine hand-off) and the public `api` export.
