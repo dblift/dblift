@@ -136,7 +136,7 @@ def test_inprocess_async_factories_forward_selected_mode(tmp_path):
 
 
 @pytest.mark.parametrize("factory", ["from_config", "from_sqlalchemy"])
-def test_default_full_preserves_strict_legacy_subclass_constructor(factory, tmp_path):
+def test_default_preserves_strict_legacy_subclass_constructor(factory, tmp_path):
     from sqlalchemy import create_engine
 
     from dblift.api import DBLiftClient
@@ -163,9 +163,9 @@ def test_default_full_preserves_strict_legacy_subclass_constructor(factory, tmp_
             )
 
         with create() as client:
-            assert client.analysis_mode == "full"
+            assert client.analysis_mode == "execution"
         with pytest.raises(TypeError, match="analysis_mode"):
-            create(analysis_mode="execution")
+            create(analysis_mode="full")
     finally:
         engine.dispose()
 

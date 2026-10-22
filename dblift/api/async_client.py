@@ -56,7 +56,7 @@ class AsyncDBLiftClient:
         cls,
         engine: Any = None,
         *,
-        analysis_mode: Literal["full", "execution"] = "full",
+        analysis_mode: Literal["full", "execution"] = "execution",
         **kwargs: Any,
     ) -> "AsyncDBLiftClient":
         """Create an async client from a SQLAlchemy engine or connection."""
@@ -64,7 +64,11 @@ class AsyncDBLiftClient:
 
     @classmethod
     def from_config(
-        cls, config: Any, *, analysis_mode: Literal["full", "execution"] = "full", **kwargs: Any
+        cls,
+        config: Any,
+        *,
+        analysis_mode: Literal["full", "execution"] = "execution",
+        **kwargs: Any,
     ) -> "AsyncDBLiftClient":
         """Create an async client from a DBLift config object."""
         return cls(DBLiftClient.from_config(config, analysis_mode=analysis_mode, **kwargs))
@@ -74,7 +78,7 @@ class AsyncDBLiftClient:
         cls,
         config_path: str,
         *,
-        analysis_mode: Literal["full", "execution"] = "full",
+        analysis_mode: Literal["full", "execution"] = "execution",
         **kwargs: Any,
     ) -> "AsyncDBLiftClient":
         """Create an async client from a DBLift config file path."""

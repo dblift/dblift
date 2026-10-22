@@ -47,7 +47,10 @@ from dblift.core.logger.results import (
     ValidateResult,
 )
 from dblift.core.migration.commands.base_command import PreflightConnectionError
-from dblift.core.migration.executor.migration_executor import MigrationExecutor
+from dblift.core.migration.executor.migration_executor import (
+    MigrationExecutor,
+    require_analysis_support,
+)
 from dblift.core.premium_manifest import PREMIUM_COMMANDS, UPGRADE_URL, render_upsell
 from dblift.core.seams.capabilities import CapabilityDeniedError
 from dblift.core.seams.event_listeners import attach_registered_listeners
@@ -274,7 +277,7 @@ class DBLiftClient:
         log_level: Optional[str] = None,
         log_format: Optional[str] = None,
         log_file: Optional[str] = None,
-        analysis_mode: Literal["full", "execution"] = "full",
+        analysis_mode: Literal["full", "execution"] = "execution",
         **kwargs: Any,
     ):
         """Initialize DBLift client.
@@ -283,7 +286,8 @@ class DBLiftClient:
             provider: Database provider instance (e.g., PostgreSqlProvider)
             migrations_dir: Path(s) to migration scripts directory
             config: Optional configuration object (defaults to provider's config)
-            logger: Optional logger instance (if None, creates one)
+            logger: Optional logger instance (if None, the client is silent
+                unless a log file is configured)
             log_level: Log level (DEBUG, INFO, WARN, ERROR); omit to keep ``config`` values
             log_format: Log format (text, json, html); omit to keep ``config`` values
             log_file: Optional log file path; omit to keep ``config`` values
@@ -291,6 +295,7 @@ class DBLiftClient:
         """
         if analysis_mode not in ("full", "execution"):
             raise ValueError("analysis_mode must be 'full' or 'execution'")
+        require_analysis_support(analysis_mode)
         self.analysis_mode = analysis_mode
 
         # Feature registrations from installed add-on packages must load for
@@ -1218,15 +1223,16 @@ class DBLiftClient:
         config: "DbliftConfig",
         logger: Optional[Any] = None,
         migrations_dir: Optional[Union[str, Path, List[Union[str, Path]]]] = None,
-        analysis_mode: Literal["full", "execution"] = "full",
+        analysis_mode: Literal["full", "execution"] = "execution",
         **kwargs: Any,
     ) -> Self:
         """Create a client instance from existing configuration.
 
         Args:
             config: DbliftConfig instance.
-            logger: Optional logger. When ``None`` a DbliftLogger is built
-                from the config's log settings.
+            logger: Optional logger. When ``None`` the client is silent
+                unless the config names a log file, in which case a
+                DbliftLogger is built from the config's log settings.
             migrations_dir: Override for the migrations directory (or list of
                 directories). When omitted, falls back to
                 ``config.migrations.directory`` and
@@ -1260,7 +1266,7 @@ class DBLiftClient:
         environment: Optional[str] = None,
         *,
         relative_to_config: bool = False,
-        analysis_mode: Literal["full", "execution"] = "full",
+        analysis_mode: Literal["full", "execution"] = "execution",
         **overrides: Any,
     ) -> Self:
         """Create a client instance from config file path.
@@ -1305,7 +1311,7 @@ class DBLiftClient:
         *,
         connection: Any = None,
         config: Optional["DbliftConfig"] = None,
-        analysis_mode: Literal["full", "execution"] = "full",
+        analysis_mode: Literal["full", "execution"] = "execution",
         **kwargs: Any,
     ) -> Self:
         """Create DBLiftClient from an existing SQLAlchemy Engine (or Connection).

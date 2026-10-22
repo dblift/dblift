@@ -57,12 +57,19 @@ class TestBuildDefaultLogger(unittest.TestCase):
         cfg.logging = kwargs.get("logging")  # None or SimpleNamespace
         return cfg
 
+    def test_is_silent_without_a_log_file(self):
+        from dblift.api._client_factory import build_default_logger
+        from dblift.core.logger import NullLog
+
+        cfg = self._config(log_format="json", log_level="debug")
+        self.assertIsInstance(build_default_logger(cfg, "DEBUG", "json", None), NullLog)
+
     def test_returns_dbliftlogger_with_defaults(self):
         from dblift.api._client_factory import build_default_logger
         from dblift.core.logger import DbliftLogger, LogFormat, LogLevel
 
         cfg = self._config()
-        log = build_default_logger(cfg, None, None, None)
+        log = build_default_logger(cfg, None, None, "/tmp/dblift-default-logger.log")
 
         self.assertIsInstance(log, DbliftLogger)
         # Defaults — TEXT format and INFO level — when neither config nor ctor sets them.
@@ -75,7 +82,7 @@ class TestBuildDefaultLogger(unittest.TestCase):
 
         # Config says TEXT/INFO; ctor says JSON/DEBUG.
         cfg = self._config(log_format="text", log_level="info")
-        log = build_default_logger(cfg, "DEBUG", "json", None)
+        log = build_default_logger(cfg, "DEBUG", "json", "/tmp/dblift-default-logger.log")
 
         self.assertEqual(log.format, LogFormat.JSON)
         self.assertEqual(log.level, LogLevel.DEBUG)
@@ -84,7 +91,9 @@ class TestBuildDefaultLogger(unittest.TestCase):
         from dblift.api._client_factory import build_default_logger
         from dblift.core.logger import LogFormat, LogLevel
 
-        cfg = self._config(log_format="json", log_level="debug")
+        cfg = self._config(
+            log_format="json", log_level="debug", log_file="/tmp/dblift-default-logger.log"
+        )
         log = build_default_logger(cfg, None, None, None)
 
         self.assertEqual(log.format, LogFormat.JSON)

@@ -13,6 +13,7 @@ import pytest
 from sqlalchemy import create_engine
 
 from dblift.api import DBLiftClient
+from dblift.core.logger import DbliftLogger
 from dblift.core.migration.commands.base_command import BaseCommand
 from dblift.core.migration.commands.baseline_command import BaselineCommand
 from dblift.core.migration.commands.info_command import InfoCommand
@@ -32,7 +33,9 @@ def database_client(tmp_path):
     migrations.mkdir()
     database = tmp_path / "app.db"
     engine = create_engine(f"sqlite:///{database}")
-    client = DBLiftClient.from_sqlalchemy(engine, migrations_dir=str(migrations))
+    client = DBLiftClient.from_sqlalchemy(
+        engine, migrations_dir=str(migrations), logger=DbliftLogger(), analysis_mode="full"
+    )
     try:
         yield client, engine, migrations, database
     finally:
@@ -296,7 +299,12 @@ def test_lock_refresh_sees_other_client_apply_pending_migration(database_client)
 
     def another_client_applies_before_lock(*args, **kwargs):
         other_engine = create_engine(f"sqlite:///{database}")
-        other = DBLiftClient.from_sqlalchemy(other_engine, migrations_dir=str(migrations))
+        other = DBLiftClient.from_sqlalchemy(
+            other_engine,
+            migrations_dir=str(migrations),
+            logger=DbliftLogger(),
+            analysis_mode="full",
+        )
         try:
             result = other.migrate()
             assert result.success, result.error_message

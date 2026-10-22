@@ -588,7 +588,7 @@ def _build_command_client(ctx: "_CliContext") -> Any:
     )
     if config_only:
         return ConfigOnlyClient(config=ctx.config)
-    return resolve_client_class().from_config(ctx.config, logger=ctx.log)
+    return resolve_client_class().from_config(ctx.config, logger=ctx.log, analysis_mode="full")
 
 
 def _propagate_license_banner(log: Any, license_info: Optional[Any]) -> None:

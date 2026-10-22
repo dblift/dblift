@@ -7,6 +7,7 @@ to use specialized components for better separation of concerns.
 
 from __future__ import annotations
 
+import importlib
 import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional
@@ -41,6 +42,20 @@ from .migration_helpers import MigrationHelpers
 from .placeholder_manager import PlaceholderManager
 
 
+def require_analysis_support(analysis_mode: str) -> None:
+    """Fail clearly when ``analysis_mode="full"`` is asked for without SQLGlot."""
+    if analysis_mode != "full":
+        return
+    try:
+        importlib.import_module("sqlglot")
+    except ImportError as exc:
+        raise ModuleNotFoundError(
+            "analysis_mode='full' needs SQLGlot: install it with `pip install dblift[analysis]`, "
+            "or use analysis_mode='execution'",
+            name="sqlglot",
+        ) from exc
+
+
 class MigrationExecutor:
     """Main executor class that orchestrates the migration process.
 
@@ -54,7 +69,7 @@ class MigrationExecutor:
         provider: "BaseProvider",
         config: DbliftConfig,
         log: Log,
-        analysis_mode: Literal["full", "execution"] = "full",
+        analysis_mode: Literal["full", "execution"] = "execution",
     ):
         """Initialize the executor with injected provider.
 
@@ -69,6 +84,7 @@ class MigrationExecutor:
             raise ValueError("config and log are required")
         if analysis_mode not in ("full", "execution"):
             raise ValueError("analysis_mode must be 'full' or 'execution'")
+        require_analysis_support(analysis_mode)
         self.analysis_mode = analysis_mode
 
         # Store injected provider
