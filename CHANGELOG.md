@@ -19,6 +19,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **A plugin without a statement-facts reader is no longer analysed from text.** Lint and the
+  script analysis behind `validate-sql` now report "statement facts unavailable for dialect" for
+  such a plugin and mark its scripts for review, instead of reading them with the text parser, so
+  a script is no longer rated UNSAFE for a `DROP TABLE` or an unfiltered `DELETE` there. Every
+  bundled dialect reads statement facts and is unaffected.
 - **Snowflake reads statement facts from the SQL grammar.** `info --format json`,
   `migrate --dry-run`, object tracking during `migrate`, data-change analysis and lint read each
   statement's kind, objects, target and predicate from the sqlglot AST after the shared lexical
