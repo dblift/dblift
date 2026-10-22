@@ -152,8 +152,12 @@ def main() -> None:
     removed = ["Jinja2", "rich"] if profile == "presentation" else ["sqlglot"]
     uninstall = _run([sys.executable, "-m", "pip", "uninstall", "-y", *removed])
     assert uninstall.returncode == 0
+    # Rich, Jinja2 and SQLGlot are optional extras, not base requirements, so
+    # removing them leaves a consistent environment. What matters is that the
+    # execution path below works without them, through the plain-text logger
+    # fallback and the execution-mode client.
     pip_check = _run([sys.executable, "-m", "pip", "check"])
-    assert pip_check.returncode != 0
+    assert pip_check.returncode == 0, pip_check.stdout
     sqlglot_evidence = None
     if profile == "presentation":
         presentation_verified = _presentation()

@@ -9,11 +9,10 @@ description = "Flyway-style raw-SQL migrations for Python teams. No JVM, and you
 keywords = ["flyway", "migrations", "python", "sql", "postgresql", "mysql"]
 readme = "README.md"
 requires-python = ">=3.11"
+# The base install is the execution path only. Presentation (Rich, Jinja2) and
+# full SQL analysis (SQLGlot) are the ``cli`` and ``analysis`` extras below.
 dependencies = [
     "PyYAML>=6.0.1",
-    "rich>=13.3.0",
-    "Jinja2>=3.1.0",
-    "sqlglot>=30.23.0,<31",
     # Security floor: Python 3.11 minimum (see CHANGELOG).
     "SQLAlchemy>=2.0.0",
 ]
@@ -111,6 +110,8 @@ snowflake = "dblift.db.plugins.snowflake.descriptor:DESCRIPTOR"
 
 [project.optional-dependencies]
 dev = [
+    # The test suite exercises the command line and full analysis.
+    "dblift[cli,analysis]",
     "pytest>=7.3.1",
     "packaging>=23.0",
     "pytest-cov>=4.1.0",
@@ -152,6 +153,10 @@ dev = [
     # specifier as the ``mcp`` extra so the two cannot drift.
     "mcp>=2.2,<3",
 ]
+# Command line: terminal rendering (Rich) and report templates (Jinja2).
+cli = ["rich>=13.3.0", "Jinja2>=3.1.0"]
+# Full SQL analysis: statement facts, lint and undo generation read SQLGlot.
+analysis = ["sqlglot>=30.23.0,<31"]
 postgresql = ["psycopg[binary]>=3.1"]
 mysql = ["PyMySQL>=1.1"]
 mariadb = ["PyMySQL>=1.1"]
@@ -181,13 +186,13 @@ citus = ["psycopg[binary]>=3.1"]
 cockroachdb = ["psycopg[binary]>=3.1"]
 redshift = ["sqlalchemy-redshift>=1.0.0", "redshift-connector>=2.1.0"]
 snowflake = ["snowflake-sqlalchemy>=1.11.0,<2", "SQLAlchemy>=2.0,<2.1"]
-fastapi = ["fastapi>=0.100"]
-flask = ["flask>=2.3"]
-django = ["Django>=4.2"]
+fastapi = ["fastapi>=0.100", "dblift[cli,analysis]"]
+flask = ["flask>=2.3", "dblift[cli,analysis]"]
+django = ["Django>=4.2", "dblift[cli,analysis]"]
 otel = ["opentelemetry-api>=1.20"]
 # Capped below the next major: the server targets ``mcp.server.mcpserver``, an
 # API surface introduced in 2.x, so a major bump would break only at runtime.
-mcp = ["mcp>=2.2,<3"]
+mcp = ["mcp>=2.2,<3", "dblift[cli,analysis]"]
 # ``all`` must name *every* engine extra, not a hand-picked subset: users read
 # it as "whatever dblift can talk to". Enforced by
 # ``tests/unit/test_oss_public_surface.py::
@@ -201,6 +206,7 @@ mcp = ["mcp>=2.2,<3"]
 # needs its own package (as redshift and snowflake already do); naming them
 # keeps the coverage claim mechanically checkable instead of argued.
 all = [
+    "dblift[cli,analysis]",
     "dblift[postgresql,mysql,mariadb,oracle,sqlserver,db2,duckdb,cosmosdb,mongodb]",
     "dblift[redshift,snowflake]",
     "dblift[neon,supabase,aurora-postgresql,alloydb]",

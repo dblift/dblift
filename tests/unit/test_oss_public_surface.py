@@ -383,6 +383,8 @@ NON_ENGINE_EXTRAS = frozenset(
     {
         "all",  # the meta-extra itself
         "dev",  # test / lint toolchain
+        "cli",  # Rich + Jinja2: command-line presentation, no database client
+        "analysis",  # SQLGlot: full SQL analysis, no database client
         "django",  # web framework integrations
         "fastapi",
         "flask",
@@ -461,7 +463,9 @@ def test_all_extra_only_names_declared_engine_extras():
     named = _extras_reachable_from("all", table)
 
     undeclared = sorted(named - set(table))
-    non_engine = sorted(named & (NON_ENGINE_EXTRAS - {"all"}))
+    # ``all`` is "everything dblift can use", so it also names the two
+    # capability extras that the base install no longer carries.
+    non_engine = sorted(named & (NON_ENGINE_EXTRAS - {"all", "cli", "analysis"}))
 
     assert undeclared == [], (
         f"pyproject.toml 'all' extra names extras that do not exist: {undeclared}. "
