@@ -447,9 +447,6 @@ KNOWN_GAPS = frozenset()
     "script",
     [
         "SELECT E'a'\t'b\\'; SELECT 2;",
-        "SELECT E'a'\n'b\\';c'; SELECT 2;",
-        "SELECT E'a'\r\n'b\\';c'; SELECT 2;",
-        "SELECT E'a' -- note\n'b\\';c'; SELECT 2;",
         "SELECT E'a' /* note\n */ 'b\\';c'; SELECT 2;",
         "SELECT E'a' 'p' 'b\\'; SELECT 2; SELECT 'z';",
         "SELECT E'a' 'b\\'",
@@ -471,6 +468,36 @@ def test_string_boundary_delimiters_match_duckdb_tokens(script):
         if token.type == TokenType.DELIMITER
     ]
     assert ours == native
+
+
+@pytest.mark.parametrize(
+    "script",
+    [
+        "SELECT E'a'\n'b\\';c'; SELECT 2;",
+        "SELECT E'a'\r\n'b\\';c'; SELECT 2;",
+        "SELECT E'a' -- note\n'b\\';c'; SELECT 2;",
+        "SELECT E'a'\n'p'\n'b\\'; SELECT 2;",
+    ],
+)
+def test_a_line_continuation_of_an_escape_string_that_the_engines_read_two_ways_is_refused(script):
+    """DuckDB 1.5.5 reads the backslash in the continuation as an escape, 2.0.0 as a character."""
+    with pytest.raises(UnsafeStatementSplitError, match="reads a backslash in it"):
+        LexicalTokenizer(script, spec=DUCKDB_SPEC).tokenize()
+
+
+@pytest.mark.parametrize(
+    "script",
+    ["SELECT E'a'\n'b\\\\'; SELECT 2;", "SELECT E'a'\n'b'; SELECT 2;"],
+)
+def test_a_line_continuation_both_engines_close_in_the_same_place_is_cut_where_they_cut(script):
+    """No backslash-quote in the continuation: both readings end the string at the same quote."""
+    import duckdb
+
+    theirs = [q.query for q in duckdb.extract_statements(script)]
+    assert len(theirs) == 2
+    assert [t.strip() for t in ENGINE.split_statements(script)] == [
+        t.strip().rstrip(";") for t in theirs
+    ]
 
 
 def outcome(call, script):
@@ -630,7 +657,13 @@ def test_a_dollar_tag_that_the_driver_reads_as_a_string_stays_one_statement(gap)
     import duckdb
 
     script = f"SELECT 1 AS a{gap}$$t$x; DROP TABLE t; SELECT 3;"
-    with pytest.raises(duckdb.ParserException, match="unterminated dollar-quoted"):
+    with pytest.raises(
+        duckdb.ParserException,
+        match=(
+            "unterminated dollar-quoted string at or near|"  # 1.5.5
+            'syntax error at or near "\\$'  # 2.0.0
+        ),
+    ):
         duckdb.extract_statements(script)
     assert ENGINE.split_statements(script) == [script]
 
@@ -639,7 +672,13 @@ def test_a_dollar_followed_by_a_digit_leaves_the_blank_after_it_a_blank():
     import duckdb
 
     script = f"SELECT 1 AS a$1{NBSP}$t$x; DROP TABLE t; SELECT 3;"
-    with pytest.raises(duckdb.ParserException, match="unterminated dollar-quoted"):
+    with pytest.raises(
+        duckdb.ParserException,
+        match=(
+            "unterminated dollar-quoted string at or near|"  # 1.5.5
+            'syntax error at or near "\\$'  # 2.0.0
+        ),
+    ):
         duckdb.extract_statements(script)
     assert ENGINE.split_statements(script) == [script]
 
