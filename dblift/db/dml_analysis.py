@@ -1,12 +1,11 @@
-"""Dialect-agnostic SQL scanning for data undo-safety analysis.
+"""Dialect-agnostic DML analysis for data undo-safety.
 
-Pure mechanics only — quote/comment/parenthesis tracking and DML
-classification from a plugin's statement facts or the sqlglot AST. No dialect names or vendor SQL
-literals live here: the dialect-specific markers (upsert clauses,
-identifier quoting) are owned by the plugin's
-:class:`~db.base_quirks.BaseQuirks` and passed in by the caller. This
-keeps the paid data layer free of per-database
-knowledge while the scanning algorithm stays in one shared place.
+Classifies a DML statement (table, events, updated columns, WHERE predicate) from a plugin's
+statement facts or, for a plugin with no reader, the sqlglot AST. A statement neither can read
+comes back unread; nothing is guessed from the text. Quote/comment/parenthesis scanning helpers
+live here too. No dialect names or vendor SQL literals: the plugin's
+:class:`~db.base_quirks.BaseQuirks` owns the dialect knowledge. The upsert-marker parameters and
+quirks attributes are kept for signature compatibility; nothing consumes them any more.
 """
 
 from __future__ import annotations
@@ -402,18 +401,23 @@ def updates_restore_key(
     quote_pairs: Dict[str, str] = DEFAULT_QUOTE_PAIRS,
     upsert_set_markers: Sequence[str] = DEFAULT_UPSERT_SET_MARKERS,
 ) -> bool:
-    """Whether the statement assigns any of ``restore_key_columns``."""
+    """Whether the statement may assign any of ``restore_key_columns``.
+
+    A statement that cannot be read (``events is None``) answers ``True``: unread is not untouched.
+    """
     keys = {str(column).strip().strip('"`[]').lower() for column in restore_key_columns}
     if not keys:
         return False
     quirks = _quirks_for(quirks, "sqlglot_dialect", sqlglot_dialect)
-    columns = analyze_dml(
+    mutation = analyze_dml(
         statement,
         quirks=quirks,
         quote_pairs=quote_pairs,
         upsert_set_markers=upsert_set_markers,
-    ).updated_columns
-    return any(column.lower() in keys for column in columns)
+    )
+    if mutation.events is None and statement.strip():
+        return True  # unread: assume the key may be assigned
+    return any(column.lower() in keys for column in mutation.updated_columns)
 
 
 def is_full_table_dml(

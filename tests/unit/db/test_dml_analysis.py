@@ -379,20 +379,11 @@ def test_analyze_dml_routes_by_sqlglot_dialect():
     assert updates_restore_key(mysql, _DEFAULT_KEYS, quirks=_quirks(dialect))
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="statement facts do not look inside a DO block: an UPDATE of a restore key goes unseen",
-)
-def test_analyze_dml_falls_back_to_regex_for_unparseable_sql():
-    # A procedural block sqlglot parses as an opaque Command falls back to the
-    # regex scanner, which still finds the restore-key assignment. Pins the
-    # scanner staying dollar-quote-blind here: the UPDATE/SET it must find
-    # are themselves textually inside the dollar-quoted DO $$ ... $$ body, so
-    # skipping over that body (as is_full_table_dml correctly does) would
-    # make this fail to find them.
-    dialect = "postgres"
+def test_updates_restore_key_fails_closed_for_a_procedural_block():
+    # Statement facts do not look inside a DO block, so the statement is unread: an unread
+    # statement is assumed to touch the restore key.
     procedural = "DO $$ BEGIN UPDATE users SET id = 1; END $$;"
-    assert updates_restore_key(procedural, _DEFAULT_KEYS, quirks=_quirks(dialect))
+    assert updates_restore_key(procedural, _DEFAULT_KEYS, quirks=_quirks("postgres"))
 
 
 def test_is_full_table_dml_flags_update_delete_without_top_level_where():

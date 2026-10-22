@@ -9,6 +9,7 @@ from dblift.db.dml_analysis import (
     analyze_dml,
     dml_where_predicate,
     statement_dml_table,
+    updates_restore_key,
 )
 from dblift.db.provider_registry import ProviderRegistry
 
@@ -71,3 +72,39 @@ def test_the_text_scanner_is_gone():
         "_is_upsert_with_update",
     ):
         assert not hasattr(dml_analysis, name), name
+
+
+UNREAD_KEY_UPDATE = "UPDATE [dbo].[t] SET [id] = 5 WHERE x = 1"
+
+
+@pytest.mark.parametrize(
+    "quirks",
+    [
+        pytest.param(None, id="no-quirks"),
+        pytest.param(_no_reader("mystery"), id="unknown-dialect"),
+        pytest.param(ProviderRegistry.get_quirks("mongodb"), id="mongodb"),
+        pytest.param(ProviderRegistry.get_quirks("cosmosdb"), id="cosmosdb"),
+    ],
+)
+def test_an_unread_statement_is_assumed_to_touch_the_restore_key(quirks):
+    """ "Could not read it" must never become "the key is untouched"."""
+    assert updates_restore_key(UNREAD_KEY_UPDATE, ["id"], quirks=quirks) is True
+    assert updates_restore_key("UPDATE child SET parent_id =", ["id"], quirks=quirks) is True
+
+
+def test_a_statement_the_reader_does_read_keeps_its_answer():
+    sqlserver = ProviderRegistry.get_quirks("sqlserver")
+    assert updates_restore_key(UNREAD_KEY_UPDATE, ["id"], quirks=sqlserver) is True
+    assert (
+        updates_restore_key("UPDATE t SET name = 'x' WHERE id = 1", ["id"], quirks=sqlserver)
+        is False
+    )
+    assert updates_restore_key("UPDATE t SET name = 'x'", [], quirks=sqlserver) is False
+
+
+@pytest.mark.parametrize("dialect", SQL_DIALECTS)
+def test_a_table_named_only_is_unread_not_guessed(dialect):
+    """A reader leaves ``DELETE FROM only`` unread (ONLY is a keyword there); only the AST seam names it."""
+    quirks = ProviderRegistry.get_quirks(dialect)
+    assert quirks.statement_dml_table("DELETE FROM only WHERE a = 1") == ""
+    assert statement_dml_table("DELETE FROM only WHERE a = 1", quirks=_no_reader(None)) == "only"
