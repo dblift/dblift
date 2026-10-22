@@ -72,11 +72,6 @@ def wheels(tmp_path_factory):
     return wheels
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="dblift.extensions.logging imports Jinja2 at module level, so a bare install cannot "
-    "import it; known until that import becomes lazy",
-)
 @pytest.mark.parametrize("order", [("provider", "listener"), ("listener", "provider")])
 def test_installed_extension_adds_provider_and_independent_listeners(wheels, tmp_path, order):
     environment = tmp_path / "env"
