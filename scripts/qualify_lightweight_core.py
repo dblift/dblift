@@ -115,8 +115,8 @@ def qualify(
             result["python"] = checked_run([str(python), "--version"], work).stdout.strip()
             # Installation output can contain index credentials; record only its status.
             try:
-                # The qualified profile carries the command-line and analysis extras;
-                # the diagnostic probes then remove each dependency set in turn.
+                # The qualified profile carries the command-line and analysis extras,
+                # so the installed probe finds Rich, Jinja2 and SQLGlot.
                 requirement = f"dblift[cli,analysis] @ {wheel.resolve().as_uri()}"
                 checked_run([str(python), "-m", "pip", "install", requirement], work)
                 checked_run([str(python), "-m", "pip", "check"], work)

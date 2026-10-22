@@ -108,7 +108,7 @@ jobs:
           base = sorted(
               re.match(r"[A-Za-z0-9_.-]+", r).group().lower()
               for r in requires("dblift")
-              if ";" not in r
+              if "extra ==" not in r
           )
           assert base == ["pyyaml", "sqlalchemy"], base
           PY
@@ -118,6 +118,26 @@ jobs:
 
       - name: Import dblift from the base install
         run: '"$RUNNER_TEMP/base-venv/bin/python" -I -c "import dblift"'
+
+      - name: Import the Python API from the base install
+        run: '"$RUNNER_TEMP/base-venv/bin/python" -I -c "from dblift.api import DBLiftClient"'
+
+      - name: Migrate SQLite through the Python API in execution mode (non-blocking until the default logger no longer needs Rich)
+        continue-on-error: true
+        run: |
+          cd "$RUNNER_TEMP"
+          mkdir -p base-migrations
+          echo "CREATE TABLE t (id INTEGER PRIMARY KEY);" > base-migrations/V1__t.sql
+          "$RUNNER_TEMP/base-venv/bin/python" -I - <<'PY'
+          from sqlalchemy import create_engine
+          from dblift.api import DBLiftClient
+          client = DBLiftClient.from_sqlalchemy(
+              create_engine("sqlite:///base.db"),
+              migrations_dir="base-migrations",
+              analysis_mode="execution",
+          )
+          assert client.migrate().success
+          PY
 
       - name: Run the dblift command from the base install (non-blocking until the CLI no longer needs Rich at import time)
         continue-on-error: true

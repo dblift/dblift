@@ -214,7 +214,7 @@ export DBLIFT_DB_PATH="/path/to/database.db"
 Cosmos DB needs the Azure SDK, which ships in its own extra:
 
 ```bash
-pip install "dblift[cosmosdb]"
+pip install "dblift[cli,cosmosdb]"
 ```
 
 Azure Cosmos DB uses a different configuration format through the Azure SDK:
@@ -269,7 +269,7 @@ pseudo-SQL statements (`DROP CONTAINER`, `SET THROUGHPUT`, `CREATE INDEX`,
 MongoDB needs `pymongo`, which ships in its own extra:
 
 ```bash
-pip install "dblift[mongodb]"
+pip install "dblift[cli,mongodb]"
 ```
 
 Two input shapes are accepted; `url` wins when both are present:
