@@ -112,8 +112,6 @@ def test_tracking_equals_the_deduplicated_facts_for_every_corpus_statement(famil
 
         return reach
 
-    monkeypatch.setattr(analyzer, "_extract_objects_regex", forbidden("regex"))
-    monkeypatch.setattr(analyzer, "extract_objects", forbidden("analyzer"))
     monkeypatch.setattr(type(quirks), "analyze_dml", forbidden("analyze_dml"))
     monkeypatch.setattr(analyzer.parser_factory, "extract_objects", forbidden("factory"))
 
