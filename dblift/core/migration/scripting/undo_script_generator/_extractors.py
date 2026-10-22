@@ -26,9 +26,8 @@ from dblift.db.base_quirks import BaseQuirks
 from dblift.db.provider_registry import ProviderRegistry
 
 # Reused rather than redefined: _IDENTIFIER/_QUALIFIED_NAME are the same
-# bracket/double-quote/backtick/bare token the rest of the undo generator's
-# regex-fallback analysis (sql_analyzer.py) already uses to recognize an
-# object reference of one or more dot-separated parts, and
+# bracket/double-quote/backtick/bare token the SQL analyzer (sql_analyzer.py)
+# defines to recognize an object reference of one or more dot-separated parts, and
 # _strip_identifier_quotes is the matching unescaper both share
 # (dblift.core.sql_parser.dialects.identifier_tokens). A second, independent
 # copy of this is how an identifier-parsing fix lands in one and not the
