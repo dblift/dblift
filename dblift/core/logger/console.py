@@ -9,7 +9,6 @@ goes to stderr.
 from __future__ import annotations
 
 import contextlib
-import importlib.util
 import sys
 from typing import (
     TYPE_CHECKING,
@@ -25,6 +24,7 @@ from typing import (
 
 from dblift.core.constants import ENV_PREFIX
 from dblift.core.logger.tabular_data import rows_to_columns_and_values  # noqa: F401 - re-export
+from dblift.core.utils.module_check import module_available
 
 if TYPE_CHECKING:
     from rich.console import Console, RenderableType
@@ -49,14 +49,6 @@ _LOG_STYLES: Dict[str, str] = {
 
 class PresentationUnavailableError(ImportError):
     """A presentation dependency (Rich, Jinja2) is not installed."""
-
-
-def module_available(module: str) -> bool:
-    """Return True when ``module`` can be imported (without importing it)."""
-    try:
-        return importlib.util.find_spec(module) is not None
-    except (ImportError, ValueError):
-        return False
 
 
 def rich_available() -> bool:

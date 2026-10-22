@@ -45,8 +45,8 @@ from dblift.core.logger._levels import (  # noqa: F401  re-export
 )
 from dblift.core.logger._multi import MultiLog  # noqa: F401  re-export
 from dblift.core.logger._null import NullLog  # noqa: F401  re-export
-from dblift.core.logger.console import module_available
 from dblift.core.logger.formatters.jsonformatter import JsonFormatter  # noqa: F401  re-export
+from dblift.core.utils.module_check import module_available
 
 if TYPE_CHECKING:
     from rich.console import Console
