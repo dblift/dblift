@@ -19,6 +19,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **DML analysis no longer guesses from statement text.** `analyze_dml`, `statement_dml_table` and
+  the plugin quirks methods that call them read a plugin's statement facts or, for a dialect with no
+  reader, the sqlglot AST; a statement neither can read comes back unread (empty table,
+  `events=None`) instead of a table or events scanned out of the text. `extract_dml_table_name` is
+  removed. Signatures and return shapes are unchanged.
 - **Snowflake reads statement facts from the SQL grammar.** `info --format json`,
   `migrate --dry-run`, object tracking during `migrate`, data-change analysis and lint read each
   statement's kind, objects, target and predicate from the sqlglot AST after the shared lexical
