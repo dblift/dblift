@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import sys
+import types
 from unittest.mock import MagicMock
 
 import pytest
@@ -10,10 +12,27 @@ from sqlalchemy import create_engine
 pytestmark = [pytest.mark.unit]
 
 
-def test_flask_integration_asks_for_full_analysis(monkeypatch, tmp_path):
-    pytest.importorskip("flask")
-    import dblift.integrations.flask as flask_integration
+@pytest.fixture
+def flask_integration(monkeypatch):
+    """Import ``dblift.integrations.flask`` against a minimal stand-in for Flask.
 
+    CI does not install Flask, and the integration only needs ``flask.cli.with_appcontext``
+    at import time, so the test must not depend on the real package.
+    """
+    flask = types.ModuleType("flask")
+    flask_cli = types.ModuleType("flask.cli")
+    flask_cli.with_appcontext = lambda f: f
+    flask.cli = flask_cli
+    monkeypatch.setitem(sys.modules, "flask", flask)
+    monkeypatch.setitem(sys.modules, "flask.cli", flask_cli)
+    monkeypatch.delitem(sys.modules, "dblift.integrations.flask", raising=False)
+    import dblift.integrations.flask as module
+
+    yield module
+    sys.modules.pop("dblift.integrations.flask", None)
+
+
+def test_flask_integration_asks_for_full_analysis(monkeypatch, flask_integration, tmp_path):
     calls = []
     monkeypatch.setattr(
         flask_integration.DBLiftClient,
