@@ -1,24 +1,13 @@
-"""Snowflake SQLGlot analysis with shared lexical statement boundaries."""
+"""Snowflake statement facts projected through the shared lexical engine."""
 
-from typing import List
-
-from dblift.core.sql_parser.lexical_engine import LexicalEngine
-from dblift.core.sql_parser.sqlglot_parser import SqlGlotParser
-from dblift.core.sql_parser.statement import Statement, execution_strings
-from dblift.db.plugins.snowflake.lexical_spec import SNOWFLAKE_SPEC
+from dblift.core.sql_parser.statement_facts_parser import StatementFactsParser
 
 
-class SnowflakeLexicalParser(SqlGlotParser):
-    """Keep SQLGlot analysis while the plugin's lexical spec selects its SQL units."""
+class SnowflakeLexicalParser(StatementFactsParser):
+    """The generic statement-facts parser, bound to the Snowflake plugin."""
 
     def __init__(self) -> None:
-        """Bind SQLGlot analysis to the Snowflake dialect."""
-        super().__init__("snowflake")
+        """Bind the Snowflake plugin's spec and facts reader."""
+        from dblift.db.provider_registry import ProviderRegistry
 
-    def split(self, sql_content: str) -> List[Statement]:
-        """Return the Snowflake lexical engine's source-positioned records."""
-        return LexicalEngine(SNOWFLAKE_SPEC).split(sql_content)
-
-    def split_statements(self, sql_content: str, strict_tokenizer: bool = False) -> List[str]:
-        """Project executable SQL strings from the lexical records."""
-        return execution_strings(self.split(sql_content))
+        super().__init__(ProviderRegistry.get_quirks("snowflake"))

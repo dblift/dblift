@@ -89,7 +89,7 @@ in one class per path (`classes.py`, tried in this order: the first match wins):
 | `old-keyword` | the extraction took a word the engine reserves, unquoted and not after a dot, for an object; it is not written to and the reader names everything else |
 | `type-refined` | same name, the type moves to a strict subtype (`UNKNOWN` to any, `VIEW` to `MATERIALIZED_VIEW`) |
 | `quote-decoded` | the extraction cut the name at an escaped quote |
-| `case-folded` | the reader keeps an unquoted name as the statement spells it, the extraction holds the engine's folding of it (PostgreSQL, Redshift: lower; Oracle, Snowflake: upper; never MySQL or SQL Server), and the reader is not opaque; never the reverse direction |
+| `case-folded` | the reader keeps an unquoted name as the statement spells it, the extraction holds the engine's folding of it (PostgreSQL, Redshift: lower; never MySQL or SQL Server), and the reader is not opaque; for Db2, Oracle and Snowflake, whose readers fold the name themselves, the reverse: the facts hold the folded name and the extraction the spelling |
 | `facts-adds-referenced` | the reader names extra objects that are only read |
 | `opaque-safety` | the reader names nothing because a name holds a character the engine may read as part of it |
 | `opaque-both-empty` | the reader is opaque and the extraction names nothing |

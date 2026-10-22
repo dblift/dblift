@@ -382,7 +382,7 @@ SPELLED = "CREATE TABLE Users (id int)"
 
 @pytest.mark.parametrize(
     "family,folded",
-    [("postgresql", "users"), ("redshift", "users"), ("snowflake", "USERS")],
+    [("postgresql", "users"), ("redshift", "users")],
 )
 def test_case_folded_when_the_facts_keep_the_spelling_and_the_extraction_folded(
     family: str, folded: str
@@ -439,10 +439,11 @@ def test_a_quoted_name_is_never_case_folded() -> None:
 
 def test_a_reader_that_folds_is_case_folded_in_the_reverse_direction() -> None:
     """Db2's reader holds ``T`` for ``t``; the extraction holds the spelling."""
-    assert READER_FOLDS == {"db2", "oracle"} and DEFAULT_SCHEMA["db2"] == "SYSIBM"
+    assert READER_FOLDS == {"db2", "oracle", "snowflake"} and DEFAULT_SCHEMA["db2"] == "SYSIBM"
     sql = "CREATE TABLE t (id int)"
     assert cls(sql, facts(obj("T")), old(("TABLE", "t")), family="db2") == "case-folded"
     assert cls(sql, facts(obj("T")), old(("TABLE", "t")), family="oracle") == "case-folded"
+    assert cls(sql, facts(obj("T")), old(("TABLE", "t")), family="snowflake") == "case-folded"
     assert cls(sql, facts(obj("T")), old(("TABLE", "T")), family="oracle") == "same"
 
 

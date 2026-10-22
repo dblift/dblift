@@ -10,6 +10,7 @@ from dblift.core.sql_model.base import (
 )
 from dblift.core.sql_parser.parser_factory import SqlParserFactory
 from dblift.core.sql_parser.sqlglot_parser import SqlGlotParser
+from tests.support.legacy_snowflake_parsers import snowflake_facts_off
 from tests.support.legacy_sqlserver_parsers import legacy_sqlserver_sqlglot
 
 pytestmark = pytest.mark.usefixtures("legacy_oracle")
@@ -17,12 +18,13 @@ pytestmark = pytest.mark.usefixtures("legacy_oracle")
 
 def test_snowflake_qualified_drop_index_on_relation_stays_unread():
     sql = "DROP INDEX idx1 ON dbo.mytable"
-    parser = SqlParserFactory("snowflake")
+    with snowflake_facts_off():
+        parser = SqlParserFactory("snowflake")
 
-    with pytest.raises(ValueError, match="Failed to parse SQL"):
-        parser.parse(sql)
-    assert not parser.validate_sql(sql)["valid"]
-    assert parser.extract_objects(sql) == []
+        with pytest.raises(ValueError, match="Failed to parse SQL"):
+            parser.parse(sql)
+        assert not parser.validate_sql(sql)["valid"]
+        assert parser.extract_objects(sql) == []
 
 
 @pytest.mark.unit

@@ -6,7 +6,7 @@
 | --- | --- |
 | Covers | Snowflake SQL scripts sent through the Python connector; SnowSQL and other client-side preprocessing were not measured. |
 | Native verification | Snowflake 10.38.100 with `snowflake-connector-python` 5.0.0 on 2026-10-20. Three bounded serial campaigns attempted 39, 113 and 20 fixed SQL sources: 172 attempts and 171 distinct recorded query IDs. All three final statuses were incomplete for a client/unattributed failure or non-grammar errors; the individual attributed observations below remain usable. Query-history text and query IDs matched the 19 prior statements of the third session byte for byte. |
-| Splitter implementation | A Snowflake-owned `LexicalSpec` drives the common tokenizer and `LexicalEngine` for execution and parser split views. `SnowflakeStatementParser` remains in the source tree but is disconnected from every default execution, analysis and extraction path. Statement facts remain inactive. This document describes the candidate implementation, not a published release. |
+| Splitter implementation | A Snowflake-owned `LexicalSpec` drives the common tokenizer and `LexicalEngine` for execution and parser split views. `SnowflakeStatementParser` remains in the source tree but is disconnected from every default execution, analysis and extraction path. Statement facts are read by the shared sqlglot reader (section 13). This document describes the candidate implementation, not a published release. |
 | Vendor references | Snowflake [string constants](https://docs.snowflake.com/en/sql-reference/data-types-text), [identifier requirements](https://docs.snowflake.com/en/sql-reference/identifiers-syntax), [SQL variables](https://docs.snowflake.com/en/sql-reference/session-variables), [transaction `BEGIN`](https://docs.snowflake.com/en/sql-reference/sql/begin), [Scripting blocks](https://docs.snowflake.com/en/sql-reference/snowflake-scripting/begin), [anonymous `WITH … CALL`](https://docs.snowflake.com/en/sql-reference/sql/call-with), and [EXPLAIN](https://docs.snowflake.com/en/sql-reference/sql/explain). Native results below are narrower than the general vendor descriptions. |
 | Evidence limits | The campaigns used the connector, not a command-line client. An input without a query ID is unattributed; it does not prove that no bytes reached the server. Stored `CREATE PROCEDURE` and `CREATE FUNCTION` body grammar is unqualified because both quoted and unquoted `EXPLAIN` controls failed before body compilation: first with no current schema, then with missing schema access. |
 | Cost | Actual total credits and monetary cost are unknown. One session's query history reported **0.000187000 cloud-services credits for 19 rows only**; it excluded the final warehouse-state query and the other sessions, and it is not warehouse-compute billing. The account-usage metering query was denied. A post-run warehouse-state observation was `STARTED`, so an idle auto-suspend tail is also possible. |
@@ -114,4 +114,61 @@ Native source mapping for these rows: the first 39-attempt slice supplied the fi
 
 ## 12. Current implementation
 
-The Snowflake plugin owns the spec and the common lexical engine supplies records to `StatementSplitter` and parser views. Tests prove that making the retained legacy parser's constructor and `split` fail does not affect those paths. The legacy class remains in source until its planned removal after the 5.0 alpha is published. The shared conformance rows, split/record controls, and observed Unicode/quote/comment cases guard this specification. No statement-facts reader or consumer is activated by this implementation.
+The Snowflake plugin owns the spec and the common lexical engine supplies records to `StatementSplitter` and parser views. Tests prove that making the retained legacy parser's constructor and `split` fail does not affect those paths. The legacy class remains in source until its planned removal after the 5.0 alpha is published. The shared conformance rows, split/record controls, and observed Unicode/quote/comment cases guard this specification.
+
+## 13. Statement facts
+
+Snowflake plugin: `statement_facts_class` is the shared reader, so object extraction, script analysis, the DML helpers and execution-time object tracking read facts; `HybridParser("snowflake")` and `SqlGlotParser("snowflake")` are refused like the other activated dialects, and undo asks for review. Statements are read by the shared sqlglot reader (`read_statement_facts(sql, dialect="snowflake")` in
+`dblift/core/sql_parser/sqlglot_statement_facts.py`) after the lexical splitter above. This section
+describes the reader. **Only the identifier folding below was observed on Snowflake DDL**: the earlier
+10.38.100 campaigns measured splitting and refusals only, so every other reading is a structural
+contract of the parser, not a claim about what the engine accepts or does.
+
+| Form | Reading |
+| --- | --- |
+| `CREATE`/`ALTER`/`DROP` `TABLE`, `VIEW`, `SEQUENCE`, `FUNCTION`, `PROCEDURE`, `DATABASE`; `CREATE`/`DROP INDEX` | the object, an unquoted name in upper case and a quoted one as written; function and procedure bodies are not read; a function or procedure name carries no argument signature |
+| `CREATE`/`DROP SCHEMA s`, `db.s` | `SCHEMA s`, scoped to `db`; a three-part name, or `SCHEMA` with a qualifier the parser discards, is opaque |
+| `CREATE`/`DROP MATERIALIZED VIEW` | `MATERIALIZED_VIEW`, with the tables it reads; the `LOG ON` form is opaque |
+| `CREATE … CLONE src` | `src` is referenced with the type of the object it copies |
+| `INSERT`, `UPDATE`, `DELETE` | the target is altered, other tables are referenced, plus target, predicate, assigned columns and events; a target the reader cannot name is opaque |
+| `SELECT`, `WITH … SELECT` | the tables read are referenced |
+
+Opaque (a diagnostic, no object or only a head-proven name, never a guess): `CREATE`/`DROP` of `STAGE`, `FILE FORMAT`,
+`TAG`, `WAREHOUSE`, `ROLE`, `USER` and other kinds the object model has no type for; `CREATE LOCAL TEMP TABLE`;
+`CREATE TRIGGER`; a name computed at run time (`IDENTIFIER(...)`, a `$variable`, a string path); a keyword
+where a name belongs (`ALTER TABLE ADD COLUMN x`, `DROP TABLE IF`); a name continued by a `{…}` template brace; an unquoted name holding a non-ASCII letter; `ALTER … RENAME TO` and
+`SWAP WITH` (they name a second object); a relation with four or more name parts; a `CTE` whose body writes;
+a `@stage` reference; `MERGE`, `TRUNCATE`, `COPY`, `INSERT ALL`, `GRANT`/`REVOKE`, `USE`, `SHOW`, `DESCRIBE`,
+`UNDROP`, `COMMENT ON` and every statement sqlglot cannot parse. A name kept on an opaque statement is checked
+against the source tokens of the statement head; it is never read from the body.
+
+Identifier case, measured on Snowflake 10.38.100 with `QUOTED_IDENTIFIERS_IGNORE_CASE = FALSE` (the default):
+`CREATE SCHEMA DBLIFT_QA.D2_QA_20261021_A8F3D2` and `CREATE SCHEMA DBLIFT_QA."d2_qa_20261021_a8f3d2"` made two
+schemas, catalogued as `D2_QA_20261021_A8F3D2` and `d2_qa_20261021_a8f3d2`; the materialized views `LOG` and `"log"`
+were two views; `CREATE`/`DROP SCHEMA`, `CREATE`/`DROP MATERIALIZED VIEW` and `CREATE`/`DROP TABLE` were accepted with
+those forms (query IDs `01c7e32f-3204-c9bb-0008-38020027f07a`, `01c7e32f-3204-ccd2-0008-380200281012`,
+`01c7e32f-3204-cd96-0008-380200282006`, `01c7e32f-3204-cd96-0008-38020028200a`). The reader therefore folds an unquoted
+name to upper case and keeps a quoted name exact, so `CREATE SCHEMA app` and `CREATE SCHEMA "app"` name different
+objects. Names are compared as stored only under that default: the reader does not read the session parameter. Only an
+unquoted ASCII name is folded. An unquoted name with a non-ASCII letter is left unread, because the engine rejected the
+unquoted candidates `é`, `aé` and `a©b` (section 2, `1003/42000`) and other non-ASCII letters are unmeasured; a quoted
+name is read exactly, whatever it holds.
+
+Known gaps, recorded rather than closed:
+
+- A quoted name holding a dot, a three-part name and a two-part name with a dotted part collapse to the same
+  schema string: `CREATE TABLE "a.b"."c"`, `CREATE TABLE a.b.c` and `CREATE TABLE "a"."b"."c"` all read as table
+  `c` in schema `a.b` (modulo the case fold). The schema is one string, a design shared with the PostgreSQL and
+  Redshift readers.
+- `MERGE` is opaque, so its target is no longer named: the former extraction named it. A script that merges into a
+  table reports no changed object.
+- `ALTER TABLE … ADD CONSTRAINT … REFERENCES o (id)` names the altered table only; the referenced table `o` is not
+  reported (a `CREATE TABLE` reports it). The mapping is shared with the other readers.
+- An unterminated quote reports an error and no object; the splitter normally refuses such a script first.
+- `UPDATE t a SET … WHERE a.y = 1` names the bare table `t` as its target while the predicate keeps the alias `a`.
+- A `DROP` whose object kind or name is unread is reported by lint as `drop-unread-object` (review), except for kinds
+  whose vendor documentation says they remove a definition and not rows (listed in the lint rule), and, when the name is unread, always when
+  the statement holds `CASCADE` or `FORCE` (a named `DROP ... CASCADE` is unchanged). The kinds the vendors leave unclear (for example `SUBSCRIPTION`, `BUFFERPOOL`,
+  `CERTIFICATE`, `SECRET`) stay a review.
+- Native acceptance and effect of the other DDL forms are unmeasured, as are
+  `DYNAMIC` and `EXTERNAL` tables (read as `TABLE`) and `SELECT … INTO` (the target is read as referenced, not created).

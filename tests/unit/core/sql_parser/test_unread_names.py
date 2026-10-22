@@ -13,6 +13,7 @@ from dblift.core.sql_parser.parser_factory import SqlParserFactory
 from dblift.core.sql_parser.unread_names import names_unreadable, statement_sources
 from dblift.db.dml_analysis import analyze_dml, statement_dml_table
 from dblift.db.provider_registry import ProviderRegistry
+from tests.support.legacy_snowflake_parsers import legacy_snowflake_sqlglot
 
 _quirks = ProviderRegistry.get_quirks
 
@@ -159,7 +160,7 @@ def test_the_schema_part_of_a_name_is_checked_too():
     assert [
         (obj.name, obj.schema) for obj in SqlParserFactory("sqlserver").extract_objects(source)
     ] == [("t", "sché")]
-    sqlglot_parser = SqlParserFactory("snowflake").get_parser()
+    sqlglot_parser = legacy_snowflake_sqlglot()
     assert sqlglot_parser._names_unreadable(source, [cut])
     assert not sqlglot_parser._names_unreadable(source, [whole])
 
@@ -167,7 +168,11 @@ def test_the_schema_part_of_a_name_is_checked_too():
 @pytest.mark.usefixtures("legacy_oracle")
 @pytest.mark.parametrize("dialect", ("oracle", "sqlserver", "snowflake"))
 def test_a_statement_that_cannot_be_located_in_its_script_is_withheld(dialect):
-    parser = SqlParserFactory(dialect).get_parser()
+    parser = (
+        legacy_snowflake_sqlglot()
+        if dialect == "snowflake"
+        else SqlParserFactory(dialect).get_parser()
+    )
     if dialect == "sqlserver":
         scanner = SqlParserFactory(dialect, "regex").get_parser()
         assert statement_sources(scanner, "caf\u00e9; SELECT 1;", ["SELECT 2"]) == [None]

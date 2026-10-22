@@ -19,6 +19,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Snowflake reads statement facts from the SQL grammar.** `info --format json`,
+  `migrate --dry-run`, object tracking during `migrate`, data-change analysis and lint read each
+  statement's kind, objects, target and predicate from the sqlglot AST after the shared lexical
+  splitter. `CREATE`/`DROP SCHEMA` name the schema, `CREATE`/`DROP MATERIALIZED VIEW` the
+  materialized view, and a `CLONE` source takes the type of the object it copies. Statements the
+  object model cannot name (`STAGE`, `FILE FORMAT`, `TAG`, `WAREHOUSE`, `TRIGGER`, `ALTER … RENAME
+  TO` and `SWAP WITH`, a `@stage` reference, a data-changing CTE, a relation with four name
+  parts) and every statement the grammar cannot parse are reported as unread instead of guessed.
+  An unquoted ASCII name is read in upper case, as Snowflake stores it, and a quoted name exactly
+  as written, so `CREATE SCHEMA app` and `CREATE SCHEMA "app"` name different objects (measured on
+  Snowflake 10.38.100 with `QUOTED_IDENTIFIERS_IGNORE_CASE = FALSE`, the default); an unquoted
+  name with a non-ASCII letter, which the engine rejects, a name
+  computed at run time (`IDENTIFIER(...)`, a `$variable`) or holding a keyword where a name belongs
+  is reported as unread. `MERGE` is unread, so its target is no longer named.
+  `validate-sql` changes its Snowflake verdicts accordingly: a script is no longer sent to review
+  only because the grammar could not parse a statement; `DROP FUNCTION`, `DROP PROCEDURE` and
+  `DROP TRIGGER` (Snowflake has no triggers) are no longer reported as `drop-table`, since they
+  hold no rows; and a `DROP` of an object the reader cannot name (`STAGE`, `TAG`, `FILE FORMAT`,
+  `PIPE`, `TASK`, `STREAM`, a policy, a `DYNAMIC`, `EXTERNAL` or `EVENT` table) is reported as the
+  new `drop-unread-object` warning, a review rather than a pass. That warning applies to every
+  dialect whose statements are read from the grammar, except for kinds that only remove a
+  definition (index, sequence, routine, trigger, type, role, user, and for example policy, rule,
+  publication, server, collation, cast, aggregate, language, event, synonym, package, directory,
+  profile, login, default, assembly, macro, nickname, library, group); when the statement's name
+  could not be read, one holding `CASCADE` or `FORCE` is always a review (a named `DROP ... CASCADE`
+  is judged as before).
+  Newly activated Snowflake statements require manual undo review instead of automatic text
+  reversal, and `validate-sql` no longer reports a script as invalid because the grammar cannot
+  parse a statement.
 - **Redshift reads statement facts from the SQL grammar.** `info --format json`,
   `migrate --dry-run`, object tracking during `migrate`, data-change analysis and lint read each
   statement's kind, objects, target and predicate from the sqlglot AST after the shared lexical

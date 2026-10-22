@@ -245,6 +245,10 @@ def _unread_name_facts(sql: str, dialect: str, at: int) -> StatementFacts:
     return StatementFacts(head.operation, head.kind, diagnostic=reason)
 
 
+_HEAD_CLAUSE_WORDS = frozenset({"IF", "NOT", "EXISTS", "ONLY"})
+_SNOWFLAKE_CLAUSE_WORDS = _HEAD_CLAUSE_WORDS | {"ADD", "CLONE", "CASCADE", "RESTRICT", "IDENTIFIER"}
+
+
 def _head_name_is_bounded(text: str, match: "re.Match[str]", groups: Tuple[int, ...]) -> bool:
     """Each name part starts after an ASCII blank, ``.`` or ``(`` and ends before a character
     that cannot continue a name; an engine may read anything else as part of the name."""
@@ -260,9 +264,13 @@ def _head_name_is_bounded(text: str, match: "re.Match[str]", groups: Tuple[int, 
 
 def _head_tokens_prove_name(sql: str, dialect: str, prefix: str, names: Tuple[str, ...]) -> bool:
     """Check that a stripped head names the same source tokens, in the same order."""
+    words = (
+        _SNOWFLAKE_CLAUSE_WORDS
+        if dialect == "snowflake"  # lint: allow-dialect-string: clause words
+        else _HEAD_CLAUSE_WORDS
+    )
     if not dialect or any(
-        name[0] not in {'"', "`", "["} and name.upper() in {"IF", "NOT", "EXISTS", "ONLY"}
-        for name in names
+        name[0] not in {'"', "`", "["} and name.upper() in words for name in names
     ):
         return False
     original_sql, original_prefix = sql, prefix
@@ -390,6 +398,12 @@ def _head_tokens_prove_name(sql: str, dialect: str, prefix: str, names: Tuple[st
         return False
     if len(source) > len(proposed) and source[len(proposed)].token_type == TokenType.DOT:
         return False  # a further name part means the proposed identity is incomplete
+    if (
+        dialect == "snowflake"  # lint: allow-dialect-string: template braces continue a name
+        and len(source) > len(proposed)
+        and source[len(proposed)].token_type in {TokenType.L_BRACE, TokenType.R_BRACE}
+    ):
+        return False
     parts = proposed[-(2 * len(names) - 1) :]
     if len(parts) != 2 * len(names) - 1:
         return False
@@ -419,6 +433,115 @@ def _named(node: exp.Expression, kind: SqlObjectType, role: str) -> Optional[Nam
         return None
     schema = ".".join(part for part in (table.catalog, table.db) if part) or None
     return NamedObject(table.name, kind, role, schema)
+
+
+def _snowflake_schema_has_discarded_prefix(sql: str, table: exp.Table) -> bool:
+    """Catch a source qualifier that sqlglot dropped before its first retained name part."""
+    first = table.args.get("catalog") or table.args.get("db")
+    if not isinstance(first, exp.Identifier):
+        return False
+    start = first.meta.get("start")
+    if not isinstance(start, int):
+        return True
+    snowflake = Dialect.get_or_raise("snowflake")  # lint: allow-dialect-string: schema proof
+    tokens = snowflake.tokenize(sql)
+    index = next((i for i, token in enumerate(tokens) if token.start == start), None)
+    return index is None or (index > 0 and tokens[index - 1].token_type == TokenType.DOT)
+
+
+def _snowflake_materialized_view_log_on(sql: str, ast: exp.Expr) -> bool:
+    """Recognize LOG ON at the materialized-view target, not in its query body."""
+    if not isinstance(ast, (exp.Create, exp.Drop)) or ast.args.get("kind") != "VIEW":
+        return False
+    if isinstance(ast, exp.Create):
+        properties = ast.args.get("properties")
+        if not properties or not properties.find(exp.MaterializedProperty):
+            return False
+        targets = (ast.this,)
+    else:
+        if not ast.args.get("materialized"):
+            return False
+        targets = ast.args.get("tables") or (ast.this,)
+    snowflake = Dialect.get_or_raise("snowflake")  # lint: allow-dialect-string: target proof
+    tokens = snowflake.tokenize(sql)
+    for target in targets:
+        if not isinstance(target, exp.Table) or not isinstance(target.this, exp.Identifier):
+            continue
+        identifier = target.this
+        start = identifier.meta.get("start")
+        if identifier.name.upper() != "LOG" or not isinstance(start, int):
+            continue
+        if any(
+            token.start == start
+            and token.text.upper() == "LOG"
+            and tokens[index + 1].token_type == TokenType.ON
+            for index, token in enumerate(tokens[:-1])
+        ):
+            return True
+    return False
+
+
+_SNOWFLAKE_DYNAMIC_NAMES = "snowflake IDENTIFIER() names are not read"
+
+
+def _snowflake_unread_names(ast: exp.Expr) -> Optional[str]:
+    """Name why a Snowflake relation is not an identifier written in the statement."""
+    if isinstance(ast, exp.Copy):
+        return None  # a COPY file path is a string, and the statement is opaque already
+    if any(ast.find_all(exp.DynamicIdentifier)):
+        return _SNOWFLAKE_DYNAMIC_NAMES
+    for table in ast.find_all(exp.Table):
+        parts = [table.args.get(key) for key in ("this", "db", "catalog")]
+        if any(isinstance(part, (exp.Parameter, exp.Literal)) for part in parts):
+            return _SNOWFLAKE_DYNAMIC_NAMES
+        if any(
+            isinstance(part, exp.Identifier)
+            and not part.args.get("quoted")
+            and part.name.upper() in _SNOWFLAKE_CLAUSE_WORDS
+            for part in parts
+        ):
+            return "snowflake keyword read where an object name belongs"
+    return None
+
+
+def _snowflake_tokens_hold_dynamic_name(sql: str) -> bool:
+    """A ``$variable`` or ``IDENTIFIER(`` in a DDL or DML statement the grammar did not model."""
+    if _head_facts(sql, "", dialect="snowflake").kind not in {  # lint: allow-dialect-string: head
+        "DDL",
+        "DML",
+    }:
+        return False
+    try:
+        snowflake = Dialect.get_or_raise("snowflake")  # lint: allow-dialect-string: tokens
+        tokens = snowflake.tokenize(sql)
+    except TokenError:
+        return False
+    return any(
+        (token.token_type == TokenType.PARAMETER and token.text == "$")
+        or (
+            token.text.upper() == "IDENTIFIER"
+            and index + 1 < len(tokens)
+            and tokens[index + 1].token_type == TokenType.L_PAREN
+        )
+        for index, token in enumerate(tokens)
+    )
+
+
+def _snowflake_unread_effect(ast: exp.Expr) -> Optional[str]:
+    """Name why a Snowflake statement writes or names an object the shared mappings drop."""
+    if any(not isinstance(cte.this, exp.Query) for cte in ast.find_all(exp.CTE)):
+        return "snowflake CTE body effects are opaque to statement facts"
+    if any(
+        isinstance(table.this, exp.Var) and table.name.startswith("@")
+        for table in ast.find_all(exp.Table)
+    ):
+        return "snowflake stage references are not modelled"
+    if isinstance(ast, exp.Alter) and any(
+        isinstance(action, (exp.AlterRename, exp.SwapTable))
+        for action in ast.args.get("actions") or ()
+    ):
+        return "snowflake ALTER names a second object that is not read"
+    return None
 
 
 def _mysql_identifier_is_proven(identifier: exp.Expression, sql: str) -> bool:
@@ -552,7 +675,12 @@ def _created_object_type(ast: exp.Create, dialect: str) -> SqlObjectType:
         object_type = SqlObjectType.VIRTUAL_TABLE
     if (
         dialect
-        in {"postgres", "oracle", "redshift"}  # lint: allow-dialect-string: materialized views
+        in {
+            "postgres",  # lint: allow-dialect-string: materialized views
+            "oracle",  # lint: allow-dialect-string: materialized views
+            "redshift",
+            "snowflake",  # lint: allow-dialect-string: materialized views
+        }
         and kind == "VIEW"
         and properties
         and properties.find(exp.MaterializedProperty)
@@ -927,18 +1055,23 @@ def _main_statement(head: str) -> str:
     return head[min(found) :] if found else head
 
 
-def _oracle_fold_name(name: str) -> Optional[str]:
-    """The name Oracle stores for an unquoted one: each letter in its one-character upper-case
-    form (23.26.3: ``ı`` is ``I``, ``µ`` is the Greek capital MU; ``ß``, ``ﬁ`` and ``ŉ`` stay).
-    ``None`` when a letter's upper-case form is not one character: the probes covered only those
-    three, so the name is not guessed."""
+def _upper_case_name(name: str, *, ascii_only: bool = False) -> Optional[str]:
+    """The name Oracle and Snowflake store for an unquoted one: each letter in its one-character
+    upper-case form (Oracle 23.26.3: ``ı`` is ``I``, ``µ`` is the Greek capital MU; ``ß``, ``ﬁ``
+    and ``ŉ`` stay; not measured on Snowflake). ``None`` when a letter's upper-case form is not
+    one character: the probes covered only those three, so the name is not guessed. With
+    ``ascii_only`` (Snowflake rejects an unquoted non-ASCII name) any other name is unread."""
     if name.isascii():
         return name.upper()
+    if ascii_only:
+        return None
     folded = [letter.upper() for letter in name]
     return "".join(folded) if all(len(letter) == 1 for letter in folded) else None
 
 
-def _head_object(match: "re.Match[str]", *, fold: bool = False) -> Optional[NamedObject]:
+def _head_object(
+    match: "re.Match[str]", *, fold: bool = False, ascii_only: bool = False
+) -> Optional[NamedObject]:
     operation = match.group(1).upper()
     object_type = SqlObjectType["_".join(match.group(2).upper().split())]
     name = strip_identifier_quotes(match.group(4) or match.group(3))
@@ -947,9 +1080,9 @@ def _head_object(match: "re.Match[str]", *, fold: bool = False) -> Optional[Name
         folded_name: Optional[str] = name
         folded_schema = schema
         if not (match.group(4) or match.group(3)).startswith('"'):
-            folded_name = _oracle_fold_name(name)
+            folded_name = _upper_case_name(name, ascii_only=ascii_only)
         if schema is not None and not match.group(3).startswith('"'):
-            folded_schema = _oracle_fold_name(schema)
+            folded_schema = _upper_case_name(schema, ascii_only=ascii_only)
         if folded_name is None or (schema is not None and folded_schema is None):
             return None
         name, schema = folded_name, folded_schema
@@ -981,7 +1114,7 @@ def _oracle_index_table(sql: str, head: str, created: "re.Match[str]") -> Option
         return None  # a bitmap join index also reads the tables of its FROM clause
     parts = [raw for raw in (on.group(1), on.group(2)) if raw]
     folded = [
-        strip_identifier_quotes(raw) if raw.startswith('"') else _oracle_fold_name(raw)
+        strip_identifier_quotes(raw) if raw.startswith('"') else _upper_case_name(raw)
         for raw in parts
     ]
     if any(name is None for name in folded):
@@ -1025,6 +1158,7 @@ def _head_facts(sql: str, diagnostic: str, *, dialect: str = "") -> StatementFac
         kind = "DDL" if operation == "COMMENT" else kind
     objects: Tuple[NamedObject, ...] = ()
     oracle = dialect == "oracle"  # lint: allow-dialect-string: Oracle head kinds and folding
+    folds = oracle or dialect == "snowflake"  # lint: allow-dialect-string: upper-case names
     match = (_ORACLE_HEAD if oracle else _POSTGRES_HEAD if postgres else _HEAD).match(head)
     if match is None and first is None:
         # Stray characters (a NUL, a lone ``/``) ahead of the statement; the engine reads past them.
@@ -1055,13 +1189,31 @@ def _head_facts(sql: str, diagnostic: str, *, dialect: str = "") -> StatementFac
     ):
         dml = None
     if match:
-        found = _head_object(match, fold=oracle)
+        snowflake_head = dialect == "snowflake"  # lint: allow-dialect-string: ASCII-only names
+        found = _head_object(match, fold=folds, ascii_only=snowflake_head)
         if found is not None:
             diagnostic = f"{found.type.value.lower().replace('_', ' ')}: {diagnostic}"
             objects = (found,)
     elif dml and _DML_FORM[operation].match(head) and dml.group(2).upper() not in _NOT_A_TABLE:
         schema = strip_identifier_quotes(dml.group(2)) if dml.group(3) else None
         name = strip_identifier_quotes(dml.group(3) or dml.group(2))
+        if dialect == "snowflake":  # lint: allow-dialect-string: upper-case DML target
+            raw_schema, raw_name = dml.group(2) if dml.group(3) else None, dml.group(
+                3
+            ) or dml.group(2)
+            schema = raw_schema and (
+                strip_identifier_quotes(raw_schema)
+                if raw_schema.startswith('"')
+                else _upper_case_name(raw_schema, ascii_only=True)
+            )
+            folded = (
+                strip_identifier_quotes(raw_name)
+                if raw_name.startswith('"')
+                else _upper_case_name(raw_name, ascii_only=True)
+            )
+            if folded is None or (raw_schema and schema is None):
+                return StatementFacts(operation, kind, diagnostic=diagnostic)
+            name = folded
         objects = (NamedObject(name, SqlObjectType.TABLE, "altered", schema),)
         target = f"{schema}.{name}" if schema else name
         where = _top_level_where(head)
@@ -1127,17 +1279,18 @@ def _mysql_unresolved_mutation_target(ast: exp.Expression) -> bool:
     return False
 
 
-def _fold_oracle_names(ast: exp.Expr) -> bool:
-    """Fold the unquoted table and index names of an Oracle statement as Oracle stores them; a
-    quoted name keeps its spelling. Columns and aliases are left as written. ``True`` when a name
-    holds a letter whose upper-case form is not one character: the statement is then unread."""
+def _fold_unquoted_names(ast: exp.Expr, *, ascii_only: bool = False) -> bool:
+    """Fold the unquoted table and index names of an Oracle or Snowflake statement as the engine
+    stores them; a quoted name keeps its spelling. Columns and aliases are left as written.
+    ``True`` when a name holds a letter whose upper-case form is not one character: the statement
+    is then unread."""
     unsafe = False
 
     def fold(part: object) -> None:
         nonlocal unsafe
         if isinstance(part, exp.Identifier) and not part.args.get("quoted"):
             part.meta["written"] = part.name
-            folded = _oracle_fold_name(part.name)
+            folded = _upper_case_name(part.name, ascii_only=ascii_only)
             if folded is None:
                 unsafe = True
             else:
@@ -1622,7 +1775,7 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
         if dialect == "oracle" and ast is not None:  # lint: allow-dialect-string: Oracle folding
             unread_reason = (
                 "oracle name holds a letter whose upper-case form is not one character"
-                if _fold_oracle_names(ast)
+                if _fold_unquoted_names(ast)
                 else (
                     "oracle statement names an object through a database link"
                     if _oracle_names_a_remote_object(sql)
@@ -1632,6 +1785,17 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
             if unread_reason is not None:
                 head = _head_facts(sql, "", dialect=dialect)
                 return StatementFacts(head.operation, head.kind, diagnostic=unread_reason)
+        if (
+            dialect == "snowflake"  # lint: allow-dialect-string: Snowflake stores upper case
+            and ast is not None
+            and _fold_unquoted_names(ast, ascii_only=True)
+        ):
+            head = _head_facts(sql, "", dialect=dialect)
+            return StatementFacts(
+                head.operation,
+                head.kind,
+                diagnostic="snowflake unquoted name holds a non-ASCII letter (rejected natively)",
+            )
     except (ParseError, TokenError) as exc:
         if not isinstance(exc, TokenError) and not _blanked(sql, dialect).strip():
             return StatementFacts("UNKNOWN", "UNKNOWN")
@@ -1644,6 +1808,12 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
             )
         reason = f"{dialect} grammar is not modelled for this statement"
         if (
+            dialect == "snowflake"  # lint: allow-dialect-string: unread names
+            and _snowflake_tokens_hold_dynamic_name(sql)
+        ):
+            head = _head_facts(sql, "", dialect=dialect)
+            return StatementFacts(head.operation, head.kind, diagnostic=_SNOWFLAKE_DYNAMIC_NAMES)
+        if (
             dialect == "mysql"  # lint: allow-dialect-string: MySQL stored programs and events
             and (program := _mysql_program_facts(sql, reason)) is not None
         ):
@@ -1655,6 +1825,13 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
         and (command := _mysql_command_facts(sql)) is not None
     ):
         return command
+    if (
+        dialect == "snowflake"  # lint: allow-dialect-string: unread names in a Command
+        and isinstance(ast, exp.Command)
+        and _snowflake_tokens_hold_dynamic_name(sql)
+    ):
+        head = _head_facts(sql, "", dialect=dialect)
+        return StatementFacts(head.operation, head.kind, diagnostic=_SNOWFLAKE_DYNAMIC_NAMES)
     if ast is None or isinstance(ast, (exp.Command, exp.Block)):
         construct = type(ast).__name__ if ast is not None else "empty statement"
         if (
@@ -1687,6 +1864,17 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
             head.kind,
             diagnostic=f"{dialect} relation qualification is not fully represented",
         )
+
+    if dialect == "snowflake":  # lint: allow-dialect-string: unread Snowflake names
+        unread_names = _snowflake_unread_names(ast)
+        if unread_names is not None:
+            head = _head_facts(sql, "", dialect=dialect)
+            return StatementFacts(head.operation, head.kind, diagnostic=unread_names)
+
+    if dialect == "snowflake":  # lint: allow-dialect-string: unread Snowflake effects
+        unread_effect = _snowflake_unread_effect(ast)
+        if unread_effect is not None:
+            return _head_facts(sql, unread_effect, dialect=dialect)
 
     if dialect == "redshift":  # lint: allow-dialect-string: Redshift statement forms
         redshift_facts = _redshift_facts(ast, sql, dialect)
@@ -1860,15 +2048,44 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
             sql, "oracle PL/SQL bodies and materialized view logs are not read", dialect=dialect
         )
 
+    if (
+        dialect == "snowflake"  # lint: allow-dialect-string: unmodelled materialized view logs
+        and _snowflake_materialized_view_log_on(sql, ast)
+    ):
+        return StatementFacts(
+            type(ast).__name__.upper(),
+            "DDL",
+            diagnostic="snowflake materialized view log identity is not modelled",
+        )
+
     if isinstance(ast, exp.Create):
         object_type = _created_object_type(ast, dialect)
+        if (
+            dialect == "snowflake"  # lint: allow-dialect-string: unmodelled Snowflake DDL
+            and object_type == SqlObjectType.UNKNOWN
+        ):
+            return StatementFacts(
+                "CREATE",
+                "DDL",
+                diagnostic=f"snowflake {ast.args.get('kind') or 'object'} identity is not modelled",
+            )
         schema_node = ast.this if isinstance(ast.this, exp.Schema) else None
         subject = schema_node.this if schema_node is not None else ast.this
+        if (
+            dialect == "snowflake"  # lint: allow-dialect-string: Snowflake schema source proof
+            and object_type == SqlObjectType.SCHEMA
+            and isinstance(subject, exp.Table)
+            and _snowflake_schema_has_discarded_prefix(sql, subject)
+        ):
+            return StatementFacts(
+                "CREATE", "DDL", diagnostic="snowflake schema qualification is not fully read"
+            )
         properties = ast.args.get("properties")
         virtual = bool(properties and properties.find(exp.VirtualProperty))
         identity = _named(subject, object_type, "created") if subject is not None else None
         if (
-            dialect == "duckdb"  # lint: allow-dialect-string: DuckDB schema identity projection
+            dialect
+            in {"duckdb", "snowflake"}  # lint: allow-dialect-string: schema identity projection
             and object_type == SqlObjectType.SCHEMA
             and isinstance(subject, exp.Table)
             and subject.db
@@ -1915,6 +2132,16 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
             and _mysql_identifier_is_proven(subject, sql)
         ):
             identity = NamedObject(subject.name, object_type, "created")
+        if (
+            dialect == "snowflake"  # lint: allow-dialect-string: Snowflake object not read
+            and identity is None
+            and not isinstance(subject, exp.Index)
+        ):
+            return _head_facts(
+                sql,
+                f"snowflake {ast.args.get('kind') or 'object'} identity is not read",
+                dialect=dialect,
+            )
         objects: Tuple[NamedObject, ...] = (identity,) if identity else ()
         indexed_table = None
         indexed_columns = None
@@ -1989,6 +2216,15 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
                 indexed_columns = tuple(item.name for item in simple)
         if not isinstance(subject, exp.Index) and subject is not None:
             objects += _referenced(ast, tuple(subject.find_all(exp.Table)))
+        if (
+            dialect == "snowflake"  # lint: allow-dialect-string: CLONE source has the clone's type
+            and ast.args.get("clone") is not None
+            and object_type != SqlObjectType.TABLE
+        ):
+            objects = tuple(
+                replace(obj, type=object_type) if obj.role == "referenced" else obj
+                for obj in objects
+            )
         diagnostic = f"{dialect} virtual table module arguments are opaque" if virtual else None
         if isinstance(subject, exp.Index) and indexed_columns is None:
             diagnostic = f"{dialect} index expression columns are opaque"
@@ -2006,16 +2242,39 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
     if isinstance(ast, exp.Drop):
         kind = str(ast.args.get("kind") or "").upper()
         object_type = SqlObjectType.__members__.get(kind, SqlObjectType.UNKNOWN)
+        if dialect == "snowflake" and (  # lint: allow-dialect-string: unmodelled Snowflake DDL
+            object_type == SqlObjectType.UNKNOWN or kind == "ROLE"
+        ):
+            return StatementFacts(
+                "DROP", "DDL", diagnostic=f"snowflake {kind or 'object'} identity is not modelled"
+            )
         if (
             dialect
-            in {"postgres", "oracle", "redshift"}  # lint: allow-dialect-string: materialized views
+            in {
+                "postgres",  # lint: allow-dialect-string: materialized views
+                "oracle",  # lint: allow-dialect-string: materialized views
+                "redshift",
+                "snowflake",  # lint: allow-dialect-string: materialized views
+            }
             and kind == "VIEW"
             and ast.args.get("materialized")
         ):
             object_type = SqlObjectType.MATERIALIZED_VIEW
         targets = ast.args.get("tables") or ast.args.get("expressions") or [ast.this]
         if (
-            dialect in {"duckdb", "postgres"}  # lint: allow-dialect-string: schema identity
+            dialect == "snowflake"  # lint: allow-dialect-string: Snowflake schema source proof
+            and object_type == SqlObjectType.SCHEMA
+            and any(
+                isinstance(node, exp.Table) and _snowflake_schema_has_discarded_prefix(sql, node)
+                for node in targets
+            )
+        ):
+            return StatementFacts(
+                "DROP", "DDL", diagnostic="snowflake schema qualification is not fully read"
+            )
+        if (
+            dialect
+            in {"duckdb", "postgres", "snowflake"}  # lint: allow-dialect-string: schema identity
             and object_type == SqlObjectType.SCHEMA
         ):
             dropped_objects = tuple(
@@ -2244,6 +2503,12 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
                 operation, "DML", diagnostic="mysql mutation has multiple or unproven targets"
             )
         table = _dml_target_table(ast)
+        if dialect == "snowflake" and (  # lint: allow-dialect-string: unread target
+            table is None or not table.name
+        ):
+            return StatementFacts(
+                operation, "DML", diagnostic="snowflake mutation target is not read"
+            )
         if (
             dialect == "mysql"  # lint: allow-dialect-string: MySQL modifier words are not tables
             and not isinstance(ast, exp.Delete)  # DELETE's table follows FROM
@@ -2265,7 +2530,7 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
         where = ast.args.get("where")
         predicate_node = where.this if isinstance(where, exp.Where) else None
         if predicate_node is not None:
-            if dialect == "oracle":  # lint: allow-dialect-string: Oracle spelling
+            if dialect in {"oracle", "snowflake"}:  # lint: allow-dialect-string: as written
                 predicate_node = _oracle_as_written(predicate_node)
         predicate = predicate_node.sql(dialect=dialect) if predicate_node is not None else None
         events = _sqlglot_events(ast)
@@ -2295,6 +2560,7 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
                 "mysql",  # lint: allow-dialect-string: bare targets
                 "postgres",  # lint: allow-dialect-string: bare targets
                 "redshift",
+                "snowflake",  # lint: allow-dialect-string: bare targets
                 "tsql",
             }
             and table is not None
@@ -2304,7 +2570,10 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
             target_table.set("alias", None)
             target_table.set("joins", None)
             target_table.set("only", None)
-        if dialect == "oracle" and target_table is not None:  # lint: allow-dialect-string: spelling
+        if (
+            dialect in {"oracle", "snowflake"}  # lint: allow-dialect-string: spelling
+            and target_table is not None
+        ):
             target_table = _oracle_as_written(target_table)
         return StatementFacts(
             operation,

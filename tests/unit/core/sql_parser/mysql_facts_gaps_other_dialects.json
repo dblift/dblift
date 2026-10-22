@@ -3578,7 +3578,7 @@
    "kind": "DDL",
    "objects": [
     [
-     "e",
+     "E",
      "TABLE",
      "created",
      null
@@ -3592,20 +3592,13 @@
   },
   "CREATE TABLE t\ud83d\ude00 (id INT)": {
    "affected_columns": [],
-   "diagnostic": null,
+   "diagnostic": "snowflake unquoted name holds a non-ASCII letter (rejected natively)",
    "error": null,
    "events": null,
    "indexed_table": null,
    "kind": "DDL",
-   "objects": [
-    [
-     "t\ud83d\ude00",
-     "TABLE",
-     "created",
-     null
-    ]
-   ],
-   "opaque": false,
+   "objects": [],
+   "opaque": true,
    "operation": "CREATE",
    "predicate": null,
    "target": null,
@@ -3622,7 +3615,7 @@
    "kind": "DML",
    "objects": [
     [
-     "t",
+     "T",
      "TABLE",
      "altered",
      null
@@ -3631,7 +3624,7 @@
    "opaque": false,
    "operation": "DELETE",
    "predicate": "quick = 1",
-   "target": "t",
+   "target": "T",
    "target_sql": "t"
   },
   "DELETE IGNORE FROM t": {
@@ -3645,7 +3638,7 @@
    "kind": "DML",
    "objects": [
     [
-     "t",
+     "T",
      "TABLE",
      "altered",
      null
@@ -3660,7 +3653,7 @@
    "opaque": false,
    "operation": "DELETE",
    "predicate": null,
-   "target": "t",
+   "target": "T",
    "target_sql": "t"
   },
   "DELETE LOW_PRIORITY QUICK IGNORE FROM t WHERE id = 1": {
@@ -3688,7 +3681,7 @@
    "kind": "DML",
    "objects": [
     [
-     "t",
+     "T",
      "TABLE",
      "altered",
      null
@@ -3703,7 +3696,7 @@
    "opaque": false,
    "operation": "DELETE",
    "predicate": null,
-   "target": "t",
+   "target": "T",
    "target_sql": "t"
   },
   "DELETE quick FROM quick": {
@@ -3717,13 +3710,13 @@
    "kind": "DML",
    "objects": [
     [
-     "quick",
+     "QUICK",
      "TABLE",
      "altered",
      null
     ],
     [
-     "quick",
+     "QUICK",
      "TABLE",
      "referenced",
      null
@@ -3732,7 +3725,7 @@
    "opaque": false,
    "operation": "DELETE",
    "predicate": null,
-   "target": "quick",
+   "target": "QUICK",
    "target_sql": "quick"
   },
   "DROP SCHEMA IF EXISTS s": {
@@ -3823,7 +3816,7 @@
    "kind": "DML",
    "objects": [
     [
-     "delayed",
+     "DELAYED",
      "TABLE",
      "altered",
      null
@@ -3832,7 +3825,7 @@
    "opaque": false,
    "operation": "INSERT",
    "predicate": null,
-   "target": "delayed",
+   "target": "DELAYED",
    "target_sql": "delayed"
   },
   "INSERT INTO t VALUES ('\ud83d\ude00')": {
@@ -3846,7 +3839,7 @@
    "kind": "DML",
    "objects": [
     [
-     "t",
+     "T",
      "TABLE",
      "altered",
      null
@@ -3855,7 +3848,7 @@
    "opaque": false,
    "operation": "INSERT",
    "predicate": null,
-   "target": "t",
+   "target": "T",
    "target_sql": "t"
   },
   "INSERT LOW_PRIORITY INTO t (a) VALUES (1)": {
@@ -4132,7 +4125,7 @@
    "kind": "DML",
    "objects": [
     [
-     "delayed",
+     "DELAYED",
      "TABLE",
      "altered",
      null
@@ -4141,7 +4134,7 @@
    "opaque": false,
    "operation": "UPDATE",
    "predicate": null,
-   "target": "delayed",
+   "target": "DELAYED",
    "target_sql": "delayed AS t"
   },
   "UPDATE ignore\n.t SET a = 1": {
@@ -4157,16 +4150,16 @@
    "kind": "DML",
    "objects": [
     [
-     "t",
+     "T",
      "TABLE",
      "altered",
-     "ignore"
+     "IGNORE"
     ]
    ],
    "opaque": false,
    "operation": "UPDATE",
    "predicate": null,
-   "target": "ignore.t",
+   "target": "IGNORE.T",
    "target_sql": "ignore.t"
   },
   "UPDATE ignore SET a = 1": {
@@ -4182,7 +4175,7 @@
    "kind": "DML",
    "objects": [
     [
-     "ignore",
+     "IGNORE",
      "TABLE",
      "altered",
      null
@@ -4191,7 +4184,7 @@
    "opaque": false,
    "operation": "UPDATE",
    "predicate": null,
-   "target": "ignore",
+   "target": "IGNORE",
    "target_sql": "ignore"
   },
   "UPDATE ignore.t SET a = 1": {
@@ -4207,16 +4200,16 @@
    "kind": "DML",
    "objects": [
     [
-     "t",
+     "T",
      "TABLE",
      "altered",
-     "ignore"
+     "IGNORE"
     ]
    ],
    "opaque": false,
    "operation": "UPDATE",
    "predicate": null,
-   "target": "ignore.t",
+   "target": "IGNORE.T",
    "target_sql": "ignore.t"
   },
   "UPDATE low_priority_x SET a = 1": {
@@ -4232,7 +4225,7 @@
    "kind": "DML",
    "objects": [
     [
-     "low_priority_x",
+     "LOW_PRIORITY_X",
      "TABLE",
      "altered",
      null
@@ -4241,7 +4234,7 @@
    "opaque": false,
    "operation": "UPDATE",
    "predicate": null,
-   "target": "low_priority_x",
+   "target": "LOW_PRIORITY_X",
    "target_sql": "low_priority_x"
   },
   "UPDATE quick SET a = 1": {
@@ -4257,7 +4250,7 @@
    "kind": "DML",
    "objects": [
     [
-     "quick",
+     "QUICK",
      "TABLE",
      "altered",
      null
@@ -4266,7 +4259,7 @@
    "opaque": false,
    "operation": "UPDATE",
    "predicate": null,
-   "target": "quick",
+   "target": "QUICK",
    "target_sql": "quick"
   },
   "UPDATE quick t SET a = 1": {
@@ -4282,7 +4275,7 @@
    "kind": "DML",
    "objects": [
     [
-     "quick",
+     "QUICK",
      "TABLE",
      "altered",
      null
@@ -4291,7 +4284,7 @@
    "opaque": false,
    "operation": "UPDATE",
    "predicate": null,
-   "target": "quick",
+   "target": "QUICK",
    "target_sql": "quick AS t"
   },
   "UPDATE t SET ignore = 1": {
@@ -4307,7 +4300,7 @@
    "kind": "DML",
    "objects": [
     [
-     "t",
+     "T",
      "TABLE",
      "altered",
      null
@@ -4316,33 +4309,22 @@
    "opaque": false,
    "operation": "UPDATE",
    "predicate": null,
-   "target": "t",
+   "target": "T",
    "target_sql": "t"
   },
   "UPDATE t\ud83d\ude00 SET a = 1": {
-   "affected_columns": [
-    "a"
-   ],
-   "diagnostic": null,
+   "affected_columns": [],
+   "diagnostic": "snowflake unquoted name holds a non-ASCII letter (rejected natively)",
    "error": null,
-   "events": [
-    "UPDATE"
-   ],
+   "events": null,
    "indexed_table": null,
    "kind": "DML",
-   "objects": [
-    [
-     "t\ud83d\ude00",
-     "TABLE",
-     "altered",
-     null
-    ]
-   ],
-   "opaque": false,
+   "objects": [],
+   "opaque": true,
    "operation": "UPDATE",
    "predicate": null,
-   "target": "t\ud83d\ude00",
-   "target_sql": "t\ud83d\ude00"
+   "target": null,
+   "target_sql": null
   }
  },
  "sqlite": {

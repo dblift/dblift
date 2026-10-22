@@ -427,3 +427,100 @@ def test_a_doubled_quote_in_a_name_survives_the_hand_over():
     for other in ('DROP TABLE "a";', 'DROP TABLE "a""";', 'DROP TABLE "ab";'):
         got = lint_script(other, "postgresql", created_before=created)
         assert "drop-table" in [f.code for f in got.findings], other
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "DROP STAGE st;",
+        "DROP TAG t;",
+        "DROP FILE FORMAT ff;",
+    ],
+)
+def test_a_drop_of_an_object_that_could_not_be_read_asks_for_a_review(sql):
+    result = lint_script(sql, "snowflake")
+
+    assert [f.code for f in result.findings] == ["drop-unread-object"]
+    assert result.verdict == "REVIEW"
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "DROP SEQUENCE q;",
+        "DROP VIEW v;",
+        "DROP FUNCTION f(int);",
+        "DROP TRIGGER trg;",
+        "DROP USER u;",
+    ],
+)
+def test_a_drop_of_a_named_object_that_holds_no_rows_stays_safe(sql):
+    assert lint_script(sql, "snowflake").verdict == "SAFE"
+
+
+def test_the_unread_drop_rule_is_a_warning():
+    assert SEVERITY["drop-unread-object"] == WARNING
+
+
+# Each kind below is documented by its vendor as removing a definition, not rows: PostgreSQL
+# sql-drop{policy,rule,publication,server,collation,cast,aggregate,language}, MySQL drop-event and
+# drop-server, Oracle DROP SYNONYM / PACKAGE / DIRECTORY / PROFILE, SQL Server DROP LOGIN /
+# SYNONYM / DEFAULT / RULE / ASSEMBLY, DuckDB DROP (macro), Db2 DROP (nickname: "the data source
+# table ... is not affected"), Redshift DROP LIBRARY / GROUP.
+@pytest.mark.parametrize(
+    "dialect, sql",
+    [
+        ("postgresql", "DROP POLICY p ON t;"),
+        ("postgresql", "DROP RULE r ON t;"),
+        ("postgresql", "DROP PUBLICATION pub;"),
+        ("postgresql", "DROP SERVER s;"),
+        ("postgresql", "DROP COLLATION c;"),
+        ("postgresql", "DROP CAST (int AS text);"),
+        ("postgresql", "DROP AGGREGATE a(int);"),
+        ("postgresql", "DROP LANGUAGE plx;"),
+        ("mysql", "DROP EVENT e;"),
+        ("mysql", "DROP SERVER s;"),
+        ("oracle", "DROP SYNONYM s;"),
+        ("oracle", "DROP PUBLIC SYNONYM s;"),
+        ("oracle", "DROP PACKAGE p;"),
+        ("oracle", "DROP PACKAGE BODY p;"),
+        ("oracle", "DROP DIRECTORY d;"),
+        ("oracle", "DROP PROFILE p;"),
+        ("sqlserver", "DROP LOGIN l;"),
+        ("sqlserver", "DROP SYNONYM s;"),
+        ("sqlserver", "DROP DEFAULT d;"),
+        ("sqlserver", "DROP RULE r;"),
+        ("sqlserver", "DROP ASSEMBLY a;"),
+        ("duckdb", "DROP MACRO m;"),
+        ("db2", "DROP NICKNAME n;"),
+        ("redshift", "DROP LIBRARY l;"),
+        ("redshift", "DROP GROUP g;"),
+    ],
+)
+def test_a_drop_of_a_kind_that_holds_no_rows_stays_safe_when_unread(dialect, sql):
+    assert lint_script(sql, dialect).verdict == "SAFE"
+
+
+@pytest.mark.parametrize(
+    "dialect, sql",
+    [
+        ("postgresql", "DROP SUBSCRIPTION sub;"),
+        ("postgresql", "DROP TABLESPACE ts;"),
+        ("postgresql", "DROP COLLATION c CASCADE;"),
+        ("oracle", "DROP SYNONYM s FORCE;"),
+        ("sqlserver", "DROP CERTIFICATE c;"),
+        ("duckdb", "DROP SECRET s;"),
+        ("db2", "DROP BUFFERPOOL b;"),
+        ("db2", "DROP MODULE m;"),
+        ("snowflake", "DROP STAGE st;"),
+        ("postgresql", "DROP;"),
+        ("snowflake", "DROP EVENT TABLE e;"),
+        ("snowflake", 'DROP EVENT TABLE IF EXISTS "S"."APP_EVENTS";'),
+        ("postgresql", "DROP EXTENSION pg_cron;"),
+    ],
+)
+def test_a_drop_that_may_lose_data_or_cannot_be_classified_asks_for_a_review(dialect, sql):
+    result = lint_script(sql, dialect)
+
+    assert result.verdict == "REVIEW"
+    assert [f.code for f in result.findings] == ["drop-unread-object"]

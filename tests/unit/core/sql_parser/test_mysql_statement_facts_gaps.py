@@ -413,6 +413,19 @@ TSQL_CHANGES = {
     "UPDATE quick t SET a = 1": {"target_sql": "quick"},
 }
 
+SNOWFLAKE_CHANGES = {
+    "CREATE SCHEMA IF NOT EXISTS s": {"objects": [["S", "SCHEMA", "created", None]]},
+    "CREATE SCHEMA s": {"objects": [["S", "SCHEMA", "created", None]]},
+    "DROP SCHEMA IF EXISTS s": {"objects": [["S", "SCHEMA", "dropped", None]]},
+    "DROP SCHEMA s": {"objects": [["S", "SCHEMA", "dropped", None]]},
+    # The modifier word is read as the table and the table as its alias; the alias is dropped.
+    "UPDATE -- c\n LOW_PRIORITY t SET a = 1": {"target_sql": "LOW_PRIORITY"},
+    "UPDATE IGNORE t SET b = 1": {"target_sql": "IGNORE"},
+    "UPDATE LOW_PRIORITY t SET a = 1": {"target_sql": "LOW_PRIORITY"},
+    "UPDATE delayed t SET a = 1": {"target_sql": "delayed"},
+    "UPDATE quick t SET a = 1": {"target_sql": "quick"},
+}
+
 
 @pytest.mark.parametrize(
     ("dialect", "sql"), [(d, s) for d in sorted(OTHER) for s in sorted(OTHER[d])]
@@ -421,6 +434,8 @@ def test_other_dialects_read_the_same_inputs_as_before(dialect, sql):
     expected = OTHER[dialect][sql]
     if dialect == "tsql":
         expected = {**expected, **TSQL_CHANGES.get(sql, {})}
+    if dialect == "snowflake":
+        expected = {**expected, **SNOWFLAKE_CHANGES.get(sql, {})}
     if (
         dialect in {"duckdb", "postgres", "redshift", "snowflake"}
         and sql == "UPDATE `ignore` SET a = 1"
