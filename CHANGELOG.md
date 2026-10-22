@@ -27,7 +27,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   upper case, a quoted one exactly); `IDENTIFIER()` and `$variable` names, a list of tables,
   `CASCADE`, a `MERGE` with a CTE and every other `COMMENT ON` kind stay unread.
 
-
 - **The SQL analyzer reads objects from statement facts only.** `SqlAnalyzer.extract_objects` and
   `analyze_statement` no longer fall back to a regex scan of the statement text: a statement the
   facts cannot read names no object instead of a guessed one. A dialect without a statement-facts
