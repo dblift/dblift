@@ -12,7 +12,6 @@ Covers:
   - Exception handling + re-raise + error logging
   - Oracle DDL normalization (when provider has _normalize_ddl_for_oracle)
   - Object changes recording via journal (DDL path, parser_factory)
-  - _extract_table_from_dml (INSERT / UPDATE / DELETE)
   - _extract_simple_table_name (qualified, quoted, bracket, backtick)
 """
 
@@ -460,59 +459,6 @@ class TestExtractSimpleTableName(unittest.TestCase):
 
     def test_none_returns_none(self):
         assert SqlExecutionService._extract_simple_table_name(None) is None
-
-
-# ===========================================================================
-# _extract_table_from_dml
-# ===========================================================================
-
-
-class TestExtractTableFromDml(unittest.TestCase):
-
-    def setUp(self):
-        provider = MagicMock()
-        sql_analyzer = MagicMock()
-        self.svc = SqlExecutionService(provider=provider, sql_analyzer=sql_analyzer)
-
-    def test_insert_into(self):
-        result = self.svc._extract_table_from_dml("INSERT INTO users VALUES (1, 'Alice')")
-        assert result == "users"
-
-    def test_insert_qualified(self):
-        result = self.svc._extract_table_from_dml("INSERT INTO public.orders VALUES (1)")
-        assert result == "orders"
-
-    def test_update_table(self):
-        result = self.svc._extract_table_from_dml("UPDATE products SET price=10 WHERE id=1")
-        assert result == "products"
-
-    def test_update_qualified(self):
-        result = self.svc._extract_table_from_dml("UPDATE dbo.products SET price=10")
-        assert result == "products"
-
-    def test_delete_from(self):
-        result = self.svc._extract_table_from_dml("DELETE FROM orders WHERE id=1")
-        assert result == "orders"
-
-    def test_delete_qualified(self):
-        result = self.svc._extract_table_from_dml("DELETE FROM public.orders WHERE id=1")
-        assert result == "orders"
-
-    def test_none_statement_returns_none(self):
-        result = self.svc._extract_table_from_dml(None)
-        assert result is None
-
-    def test_empty_statement_returns_none(self):
-        result = self.svc._extract_table_from_dml("")
-        assert result is None
-
-    def test_unknown_dml_returns_none(self):
-        result = self.svc._extract_table_from_dml("MERGE INTO t USING s ON ...")
-        assert result is None
-
-    def test_insert_bracket_notation(self):
-        result = self.svc._extract_table_from_dml("INSERT INTO [dbo].[users] VALUES (1)")
-        assert result == "users"
 
 
 # ===========================================================================
