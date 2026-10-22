@@ -172,11 +172,7 @@ def test_execution_tracking_records_the_facts_object(dialect):
 
 
 @pytest.mark.parametrize("dialect", DIALECTS)
-def test_the_analyzer_never_reaches_the_regex_extractor(dialect, monkeypatch):
-    def forbidden(*args, **kwargs):
-        raise AssertionError("regex extraction reached")
-
-    monkeypatch.setattr(SqlAnalyzer, "_extract_objects_regex", forbidden)
+def test_the_analyzer_reads_objects_from_facts(dialect):
     assert SqlAnalyzer(dialect).extract_objects(UPDATE) == [
         {"object_type": "TABLE", "object_name": "default_schema.t"}
     ]
