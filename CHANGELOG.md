@@ -47,7 +47,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Install `dblift[cli]` for the command line and `dblift[analysis]` for full SQL analysis;
   `dblift[all]` is unchanged for users (it now names both extras explicitly), as are the `mcp`,
   `django`, `flask` and `fastapi` extras. A database-only install such as
-  `pip install "dblift[postgresql]"` must add `cli` to keep the `dblift` command working:
+  `pip install "dblift[postgresql]"` must add `cli` and `analysis` to keep the `dblift` command working:
   `pip install "dblift[cli,analysis,postgresql]"`, because the command line and the Python API
   analyse SQL with SQLGlot by default. The Python API runs on a base install, without Rich or
   SQLGlot, with `analysis_mode="execution"`. `pytest-dblift` now depends on `dblift[analysis]`.
