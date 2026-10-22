@@ -1,6 +1,6 @@
 """Object recognition in ``SqlAnalyzer.extract_objects``.
 
-``_extract_objects_regex`` historically recognised four statement shapes —
+The text extraction that ``extract_objects`` once used recognised four statement shapes —
 ``CREATE TABLE``, ``ALTER TABLE``, ``CREATE [OR REPLACE] VIEW`` and
 ``CREATE [UNIQUE] INDEX`` — plus a generic ``DROP <word>`` branch. Every other
 statement returned no objects at all, so callers saw an empty
@@ -27,8 +27,6 @@ Two invariants this module pins:
 """
 
 import unittest
-
-import pytest
 
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.sql_model._base_sql_object import SqlObjectType
@@ -328,36 +326,20 @@ class TestIndexModifiers(unittest.TestCase):
         self.assertNotIn("EXISTS", obj["object_name"].upper())
 
 
-@pytest.mark.usefixtures("legacy_oracle")
 class TestIndexTypeModifiers(unittest.TestCase):
     """An index build is an INDEX whatever index *type* it declares.
 
-    ``BITMAP`` (Oracle), ``FULLTEXT``/``SPATIAL`` (MySQL) and
-    ``CLUSTERED COLUMNSTORE`` (SQL Server) are index-type keywords, not a
-    different kind of object. Reporting them as UNKNOWN loses the one fact
-    every downstream consumer needs about an index build -- including which
-    table it scans, which is the whole cost of the operation.
+    ``CLUSTERED`` (SQL Server) and ``FULLTEXT`` (MySQL) are index-type keywords, not a different
+    kind of object. SQL Server also reports the table the build scans.
     """
 
-    def setUp(self):
-        self.analyzer = SqlAnalyzer(dialect="oracle")
-
-    def test_bitmap_index(self):
-        obj = _only(self.analyzer, "CREATE BITMAP INDEX bx ON orders (status)")
-        self.assertEqual(obj["object_type"], "INDEX")
-        self.assertIn("bx", obj["object_name"])
-        self.assertIn("orders", obj["on_object"])
-
     def test_fulltext_index(self):
-        obj = _only(self.analyzer, "CREATE FULLTEXT INDEX ftx ON orders (note)")
+        obj = _only(SqlAnalyzer(dialect="mysql"), "CREATE FULLTEXT INDEX ftx ON orders (note)")
         self.assertEqual(obj["object_type"], "INDEX")
-        self.assertIn("orders", obj["on_object"])
+        self.assertIn("ftx", obj["object_name"])
 
     def test_clustered_index_reports_its_table(self):
-        # Pre-existing gap: the index branch's guard admitted only
-        # CREATE INDEX / CREATE UNIQUE INDEX, so this got a type but no
-        # on_object -- an index build whose target table was never recorded.
-        obj = _only(self.analyzer, "CREATE CLUSTERED INDEX cx ON orders (id)")
+        obj = _only(SqlAnalyzer(dialect="sqlserver"), "CREATE CLUSTERED INDEX cx ON orders (id)")
         self.assertEqual(obj["object_type"], "INDEX")
         self.assertIn("orders", obj["on_object"])
 

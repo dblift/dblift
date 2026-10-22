@@ -269,20 +269,12 @@ def test_mariadb_records_the_facts_of_mysql_for_every_row(
     assert differing == []
 
 
-@pytest.mark.parametrize("activated", [False, True])
 def test_the_extraction_is_compared_only_for_a_family_that_is_not_frozen(
-    activated: bool, monkeypatch: pytest.MonkeyPatch, corpus: Dict[str, List[Dict[str, Any]]]
+    monkeypatch: pytest.MonkeyPatch, corpus: Dict[str, List[Dict[str, Any]]]
 ) -> None:
-    # Oracle reads facts and is frozen: the stand-in switches the hook both ways.
-    monkeypatch.setattr(
-        OracleQuirks,
-        "statement_facts_class",
-        SqlglotStatementFactsReader if activated else None,
-    )
-    rows = corpus["oracle"][:20]
-    for row in rows:
+    # Oracle reads facts and is frozen: its extraction is carried, never read again.
+    monkeypatch.setattr(OracleQuirks, "statement_facts_class", SqlglotStatementFactsReader)
+    for row in corpus["oracle"][:20]:
         now = record_statement("oracle", row["sql"])
-        assert (now["old"] is None) == activated
+        assert now["old"] is None
         assert now == _comparable(_on_this_arm(row), "oracle")
-        if not activated:
-            assert now["old"] == _on_this_arm(row)["old"]
