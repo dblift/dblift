@@ -120,8 +120,8 @@ def test_the_main_job_runs_the_corpus_on_the_arm_the_constraints_pin() -> None:
 def test_the_recorded_arms_lie_inside_the_supported_range() -> None:
     versions = json.loads(VERSIONS.read_text(encoding="utf-8"))
     dependencies = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"][
-        "dependencies"
-    ]
+        "optional-dependencies"
+    ]["analysis"]
     (spec,) = [Requirement(d).specifier for d in dependencies if d.startswith("sqlglot")]
     assert versions["floor"] in spec and versions["newest"] in spec
     assert f">={versions['floor']}" in str(spec)
