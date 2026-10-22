@@ -138,8 +138,7 @@ jobs:
           assert client.migrate().success
           PY
 
-      - name: Run the dblift command from the base install (non-blocking until the CLI no longer needs Rich at import time)
-        continue-on-error: true
+      - name: Run the dblift command from the base install
         run: '"$RUNNER_TEMP/base-venv/bin/dblift" --version'
 
   sqlglot-floor:

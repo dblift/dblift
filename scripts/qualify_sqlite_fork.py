@@ -220,7 +220,8 @@ def qualify(
             _run([sys.executable, "-m", "venv", str(venv)], work)
             python = venv / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
             # Installation logs can contain index credentials; never copy them into the report.
-            _run([str(python), "-m", "pip", "install", str(wheels[0])], work)
+            requirement = f"{FORK_NAME}[cli,analysis] @ {wheels[0].resolve().as_uri()}"
+            _run([str(python), "-m", "pip", "install", requirement], work)
             _run([str(python), "-m", "pip", "check"], work)
             probe = Path(__file__).with_name("sqlite_fork_installed_probe.py")
             if not probe.is_file():
