@@ -19,6 +19,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **A plugin without a statement-facts reader is no longer analysed from text.** Lint and the
+  script analysis behind `validate-sql` now report "statement facts unavailable for dialect" for
+  such a plugin and mark its scripts for review, instead of reading them with the text parser, so
+  a script is no longer rated UNSAFE for a `DROP TABLE` or an unfiltered `DELETE` there. Every
+  bundled dialect reads statement facts and is unaffected.
 - **Snowflake `TRUNCATE`, `MERGE` and `COMMENT ON` are read.** `TRUNCATE [TABLE] [IF EXISTS] t`
   names the table it empties; `MERGE INTO t USING ...` names its target and sources and reports
   the `INSERT`, `UPDATE` and `DELETE` its actions perform, so data-change analysis and object
