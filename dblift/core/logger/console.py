@@ -51,16 +51,17 @@ class PresentationUnavailableError(ImportError):
     """A presentation dependency (Rich, Jinja2) is not installed."""
 
 
-def _importable(module: str) -> bool:
+def module_available(module: str) -> bool:
+    """Return True when ``module`` can be imported (without importing it)."""
     try:
         return importlib.util.find_spec(module) is not None
-    except ImportError:
+    except (ImportError, ValueError):
         return False
 
 
 def rich_available() -> bool:
     """Return True when Rich (the ``cli`` extra) can be imported."""
-    return _importable("rich")
+    return module_available("rich")
 
 
 def require_presentation_extras(feature: str, *modules: str) -> None:
@@ -69,15 +70,20 @@ def require_presentation_extras(feature: str, *modules: str) -> None:
     Defaults to Rich. Call it before a side effect so a command that cannot
     render its output refuses up front instead of failing halfway.
     """
-    missing = [m for m in (modules or ("rich",)) if not _importable(m)]
+    missing = [m for m in (modules or ("rich",)) if not module_available(m)]
     if missing:
         raise PresentationUnavailableError(
             f"{feature} needs {', '.join(missing)}, which is not installed: {CLI_EXTRA_HINT}"
         )
 
 
-def __getattr__(name: str) -> Any:
-    if name == "DBLIFT_THEME":
+# The theme is a module attribute that is built on first access, so importing this
+# module never imports Rich.
+_THEME_ATTRIBUTE = ENV_PREFIX + "THEME"
+
+
+def __getattr__(name: str) -> "Theme":
+    if name == _THEME_ATTRIBUTE:
         return _build_theme()
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 

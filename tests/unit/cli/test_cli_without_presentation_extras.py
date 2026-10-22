@@ -4,9 +4,11 @@ Every case runs in a fresh interpreter: import-time behaviour cannot be
 observed from a process that already imported Rich.
 """
 
+import argparse
 import subprocess
 import sys
 import textwrap
+import time
 from pathlib import Path
 
 import pytest
@@ -120,3 +122,79 @@ def test_migrate_and_clean_run_without_presentation_extras(tmp_path):
         )
         assert proc.returncode == 0, proc.stderr
         assert "Traceback" not in proc.stderr
+
+
+def test_console_module_import_alone_loads_no_rich():
+    proc = _run(
+        """
+        import sys
+        import dblift.core.logger.console  # noqa: F401
+        bad = sorted(m for m in sys.modules if m.split(".")[0] in {"rich", "jinja2", "sqlglot"})
+        print("LOADED:", bad)
+        """,
+        hide="",
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert "LOADED: []" in proc.stdout, proc.stdout
+
+
+@pytest.mark.parametrize(
+    "commands, attrs",
+    [
+        (["config"], {}),
+        (["info"], {"format": "console"}),
+        (["migrate"], {"show_query_results": True}),
+        (["migrate"], {"log_format": "html"}),
+        (["migrate"], {"log_format": "json,html"}),
+    ],
+    ids=["config", "info-console", "show-query-results", "html", "json-and-html"],
+)
+def test_requests_that_draw_are_refused(monkeypatch, capsys, commands, attrs):
+    from dblift.cli import main as cli_main
+    from dblift.core.logger import console
+
+    monkeypatch.setattr(console, "module_available", lambda name: False)
+    with pytest.raises(SystemExit) as exc:
+        cli_main._require_presentation_extras(commands, argparse.Namespace(**attrs))
+    assert exc.value.code == 1
+    assert "install dblift[cli]" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "commands, attrs",
+    [
+        (["info"], {"format": "json"}),
+        (["migrate"], {}),
+        (["migrate"], {"show_query_results": False}),
+        (["migrate"], {"log_format": "json"}),
+        (["migrate"], {"log_format": "text,json"}),
+    ],
+    ids=["info-json", "migrate", "no-query-results", "json-log", "text-and-json-log"],
+)
+def test_requests_that_do_not_draw_are_not_refused(monkeypatch, commands, attrs):
+    from dblift.cli import main as cli_main
+    from dblift.core.logger import console
+
+    monkeypatch.setattr(console, "module_available", lambda name: False)
+    cli_main._require_presentation_extras(commands, argparse.Namespace(**attrs))
+
+
+def test_refusal_comes_before_the_config_file_is_read(tmp_path):
+    bad = tmp_path / "bad.yml"
+    bad.write_text("database: [unclosed\n")
+    proc = _run(_cli("--config", str(bad), "info"), cwd=tmp_path)
+    assert proc.returncode == 1
+    assert "install dblift[cli]" in proc.stderr
+    assert "Error loading config" not in proc.stderr
+
+
+def test_refusal_comes_before_any_connection_attempt(tmp_path):
+    started = time.monotonic()
+    proc = _run(
+        _cli("--db-url", "postgresql://u:p@203.0.113.1:5432/db", "info"),
+        cwd=tmp_path,
+    )
+    assert proc.returncode == 1
+    assert "install dblift[cli]" in proc.stderr
+    assert "connect" not in proc.stderr.lower()
+    assert time.monotonic() - started < 60

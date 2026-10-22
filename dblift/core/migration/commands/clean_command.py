@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional, cast
 
 from dblift.core.exceptions import FixedDboSchemaError
 from dblift.core.logger._null import NullLog
+from dblift.core.logger.console import rich_available
 from dblift.core.logger.results import CleanResult
 from dblift.db.provider_capabilities import get_clean_listing_warnings
 from dblift.db.provider_interfaces import CleanTargetProvider, TransactionalProvider
@@ -237,8 +238,6 @@ class CleanCommand(BaseCommand):
         """Log summary of cleaned objects grouped by type."""
         if isinstance(self.log, NullLog):
             return
-
-        from dblift.core.logger.console import rich_available
 
         objects_map = result.get_objects_by_type()
         total_objects = sum(len(names) for names in objects_map.values())

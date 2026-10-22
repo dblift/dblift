@@ -18,6 +18,13 @@ if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
 from dblift.core.logger import LogFactory
+from dblift.core.logger.console import (
+    PresentationUnavailableError,
+    get_stderr_console,
+    install_rich_traceback,
+    require_presentation_extras,
+    rich_available,
+)
 from dblift.core.utils.url_masking import mask_database_url
 
 # Backward compatibility alias (used by tests and re-exports)
@@ -347,8 +354,6 @@ def main() -> None:
     3. Dispatch the requested command(s) inside a try/except so any
        uncaught error gets logged and the logs are flushed.
     """
-    from dblift.core.logger.console import install_rich_traceback
-
     install_rich_traceback()
     load_feature_extensions()
 
@@ -401,20 +406,18 @@ def _apply_config_backed_defaults(args: Any, config: Optional[Any]) -> None:
         setattr(args, spec.name, value)
 
 
-def _require_presentation_extras(commands: List[str], args: Any) -> None:
+def _require_presentation_extras(commands: List[str], args: argparse.Namespace) -> None:
     """Exit before any side effect if the request needs a missing presentation extra.
 
     The base install runs migrations without Rich or Jinja2; only output that is
     drawn with them (tables, the HTML report) needs the ``cli`` extra.
     """
-    from dblift.core.logger.console import PresentationUnavailableError, require_presentation_extras
-
     tables = (
         commands[0] == "config"
         or ("info" in commands and not from_args(args).is_machine_format)
-        or bool(getattr(args, "show_query_results", False))
+        or bool(vars(args).get("show_query_results"))
     )
-    formats = [f.strip() for f in str(getattr(args, "log_format", None) or "").lower().split(",")]
+    formats = [f.strip() for f in str(vars(args).get("log_format") or "").lower().split(",")]
     html = "html" in formats
     try:
         if tables:
@@ -849,8 +852,6 @@ if __name__ == "__main__":
         CommandOutput("console").error("\nOperation cancelled by user")
         sys.exit(130)
     except Exception as e:
-        from dblift.core.logger.console import get_stderr_console, rich_available
-
         if rich_available():
             console = get_stderr_console()
             console.print(f"Unexpected error: {e}", style="log.error")

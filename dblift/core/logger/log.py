@@ -23,7 +23,7 @@ import traceback
 _logger = logging.getLogger(__name__)
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, Optional, Union
 from uuid import uuid4
 
 # Re-exports from the split submodules. Importing here ensures every
@@ -45,9 +45,13 @@ from dblift.core.logger._levels import (  # noqa: F401  re-export
 )
 from dblift.core.logger._multi import MultiLog  # noqa: F401  re-export
 from dblift.core.logger._null import NullLog  # noqa: F401  re-export
+from dblift.core.logger.console import module_available
 from dblift.core.logger.formatters.jsonformatter import JsonFormatter  # noqa: F401  re-export
 
-JINJA_AVAILABLE = True
+if TYPE_CHECKING:
+    from rich.console import Console
+
+JINJA_AVAILABLE = module_available("jinja2")
 JSON_AVAILABLE = True
 
 
@@ -214,6 +218,14 @@ class AbstractLog(Log):
         """Close the logger and perform cleanup."""
 
 
+class _PlainStderr:
+    """Stand-in for the Rich stderr console when Rich is not installed."""
+
+    def print(self, renderable: object, **_style: object) -> None:
+        """Write ``renderable`` as plain text; styling arguments are ignored."""
+        print(renderable, file=sys.stderr)  # lint: allow-print  plain-text sink
+
+
 # ConsoleLog implementation
 class ConsoleLog(AbstractLog):
     """Simple console-based logger implementation."""
@@ -238,7 +250,9 @@ class ConsoleLog(AbstractLog):
         from .console import get_stderr_console, rich_available
 
         # Without Rich (the optional ``cli`` extra) fall back to plain stderr.
-        self._console = get_stderr_console() if rich_available() else None
+        self._console: Union[Console, _PlainStderr] = (
+            get_stderr_console() if rich_available() else _PlainStderr()
+        )
 
     def _write_log_event(self, event: LogEvent, console_only: bool = False) -> None:
         """Write a log event to the console.
@@ -249,14 +263,7 @@ class ConsoleLog(AbstractLog):
         """
         formatted_msg = self.formatter.format_event(event)
         style = self._LEVEL_STYLES.get(event.level)
-        self._stderr_print(formatted_msg, style=style, markup=False, highlight=False)
-
-    def _stderr_print(self, renderable: Any, **kwargs: Any) -> None:
-        """Print to stderr through Rich, or as plain text when Rich is absent."""
-        if self._console is None:
-            print(renderable, file=sys.stderr)  # lint: allow-print  plain-text sink
-        else:
-            self._console.print(renderable, **kwargs)
+        self._console.print(formatted_msg, style=style, markup=False, highlight=False)
 
     def console_print(
         self,
@@ -275,7 +282,7 @@ class ConsoleLog(AbstractLog):
             return
         kwargs.setdefault("markup", False)
         kwargs.setdefault("highlight", False)
-        self._stderr_print(renderable, **kwargs)
+        self._console.print(renderable, **kwargs)
 
     def set_command_completed(
         self,
@@ -400,7 +407,7 @@ class ConsoleLog(AbstractLog):
                 # command payloads.
                 if performance_lines:
                     for line in performance_lines:
-                        self._stderr_print(line, markup=False, highlight=False)
+                        self._console.print(line, markup=False, highlight=False)
 
         except Exception as e:
             # Don't let journal display errors break the console output

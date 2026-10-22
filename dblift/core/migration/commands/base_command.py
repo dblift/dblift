@@ -25,6 +25,7 @@ if TYPE_CHECKING:
 
 from dblift.core.exceptions import CallbackExecutionError
 from dblift.core.logger import Log, NullLog
+from dblift.core.logger.console import rich_available
 from dblift.core.logger.log import LogFormat
 from dblift.core.logger.results import CallbackExecution
 from dblift.core.migration.executor.execution_engine import ExecutionEngine
@@ -152,7 +153,6 @@ def _render_main_header_panel(raw_header: str) -> str:
     Shared by BaseCommand._print_main_header_once and higher-tier command
     modules so they render the same styled banner.
     """
-    from dblift.core.logger.console import rich_available
     from dblift.core.migration.ui.command_panels import render_main_header_panel
 
     return render_main_header_panel(raw_header) if rich_available() else raw_header
@@ -604,7 +604,7 @@ class BaseCommand:
             applied_scripts=applied_scripts,
         )
         if should_print_footer and not self._has_own_console_footer:
-            from dblift.core.logger.console import get_stdout_console, rich_available
+            from dblift.core.logger.console import get_stdout_console
 
             if rich_available():
                 get_stdout_console().print(self._build_footer_panel(**footer_args))
@@ -659,7 +659,7 @@ class BaseCommand:
         Returns:
             Formatted footer string (plain, for file logs).
         """
-        from dblift.core.logger.console import render_panel_to_str, rich_available
+        from dblift.core.logger.console import render_panel_to_str
 
         if not rich_available():
             lines = [
@@ -1071,7 +1071,7 @@ class BaseCommand:
             Formatted header string (plain, for file logs). Use
             ``_build_command_header_panel`` for the console-rendered version.
         """
-        from dblift.core.logger.console import render_panel_to_str, rich_available
+        from dblift.core.logger.console import render_panel_to_str
 
         if not rich_available():
             lines = [f"Command: {command_name}"]
@@ -1324,7 +1324,7 @@ class BaseCommand:
             self._print_main_header_once()
 
         if should_print_header:
-            from dblift.core.logger.console import get_stdout_console, rich_available
+            from dblift.core.logger.console import get_stdout_console
 
             if rich_available():
                 get_stdout_console().print(
