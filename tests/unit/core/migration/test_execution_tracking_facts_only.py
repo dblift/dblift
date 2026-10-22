@@ -14,7 +14,7 @@ import pytest
 
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.migration.sql.sql_execution_service import SqlExecutionService
-from dblift.core.sql_model.base import SqlObject, SqlObjectType
+from dblift.core.sql_model.base import SqlObject, SqlObjectType, SqlStatementType
 from dblift.db.base_quirks import BaseQuirks
 from dblift.db.dml_analysis import DmlMutation
 from dblift.db.provider_registry import ProviderRegistry
@@ -83,26 +83,47 @@ def test_ddl_without_a_parser_factory_tracks_nothing():
     assert _tracked("postgresql", "CREATE TABLE t (id INT)", BaseQuirks(), analyzer) == []
 
 
+def test_ddl_objects_from_an_injected_parser_factory_are_tracked_without_a_facts_reader():
+    analyzer = MagicMock()
+    analyzer.get_statement_type.return_value = "DDL"
+    analyzer.parser_factory.extract_objects.return_value = [
+        SqlObject(name="t", object_type=SqlObjectType.TABLE, schema="app")
+    ]
+
+    (objects,) = _tracked("postgresql", "CREATE TABLE t (id INT)", BaseQuirks(), analyzer)
+    assert [(o["object_name"], o["schema"]) for o in objects] == [("t", "app")]
+    analyzer.parser_factory.extract_objects.assert_called_once_with(
+        "CREATE TABLE t (id INT)", "app"
+    )
+
+
 @pytest.mark.parametrize("family", sorted(FAMILY_DIALECTS))
 def test_tracking_equals_the_deduplicated_facts_for_every_corpus_statement(family, monkeypatch):
     dialect = FAMILY_DIALECTS[family]
     quirks = ProviderRegistry.get_quirks(dialect)
     analyzer = SqlAnalyzer(dialect)
+    # The service swallows exceptions while tracking, so a raise proves nothing: count the calls.
+    reached = []
 
-    def forbidden(*args, **kwargs):
-        raise AssertionError("text extraction reached")
+    def forbidden(name):
+        def reach(*args, **kwargs):
+            reached.append(name)
+            return []
 
-    monkeypatch.setattr(analyzer, "_extract_objects_regex", forbidden)
-    monkeypatch.setattr(type(quirks), "analyze_dml", forbidden)
-    monkeypatch.setattr(analyzer.parser_factory, "extract_objects", forbidden)
+        return reach
 
-    checked = 0
+    monkeypatch.setattr(analyzer, "_extract_objects_regex", forbidden("regex"))
+    monkeypatch.setattr(analyzer, "extract_objects", forbidden("analyzer"))
+    monkeypatch.setattr(type(quirks), "analyze_dml", forbidden("analyze_dml"))
+    monkeypatch.setattr(analyzer.parser_factory, "extract_objects", forbidden("factory"))
+
+    tracking_types = (SqlStatementType.DDL.value, SqlStatementType.DML.value)
+    expected_rows = 0
     for line in (CORPUS / f"{family}.jsonl").read_text(encoding="utf-8").splitlines():
         sql = json.loads(line)["sql"]
         tracked = _tracked(dialect, sql, quirks, analyzer)
-        facts = quirks.statement_facts(sql)
         seen = {}
-        for obj in facts.affected_objects:
+        for obj in quirks.statement_facts(sql).affected_objects:
             sql_object = obj.as_sql_object("app", quirks.dialect_name)
             key = (
                 sql_object.name.lower(),
@@ -110,11 +131,15 @@ def test_tracking_equals_the_deduplicated_facts_for_every_corpus_statement(famil
                 (sql_object.schema or "").lower(),
             )
             seen.setdefault(key, sql_object.name)
-        if tracked:
-            assert len(tracked) == 1
-            assert [
-                (o["object_name"].lower(), o["object_type"].upper(), (o["schema"] or "").lower())
-                for o in tracked[0]
-            ] == list(seen)
-            checked += 1
-    assert checked
+        if analyzer.get_statement_type(sql) not in tracking_types or not seen:
+            assert tracked == [], sql
+            continue
+        expected_rows += 1
+        assert len(tracked) == 1, sql
+        assert [
+            (o["object_name"].lower(), o["object_type"].upper(), (o["schema"] or "").lower())
+            for o in tracked[0]
+        ] == list(seen), sql
+
+    assert reached == []
+    assert expected_rows
