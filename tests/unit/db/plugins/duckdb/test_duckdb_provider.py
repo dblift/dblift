@@ -276,6 +276,8 @@ class TestDuckDBDmlRowcount:
         provider.execute_statement("INSERT INTO t VALUES (1, true), (2, false)")
         with pytest.raises(Exception):
             provider.execute_statement(statement)
+        # DuckDB 2.0 aborts the transaction on any error, a parser or binder error included
+        provider.rollback_transaction()
         conn = provider._ensure_connection()
         rows = conn.exec_driver_sql("SELECT a, x FROM t ORDER BY a").fetchall()
         assert [tuple(r) for r in rows] == [(1, True), (2, False)]
@@ -502,13 +504,20 @@ class TestDuckDBDmlKeepsLiterals:
         from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
 
         provider = self._table(tmp_path)
+        answered = []
         for sql in (".tables", "INSERT INTO t VALUES (1, 'a\x00b')"):
-            with pytest.raises(Exception) as caught:
+            try:
                 provider.execute_statement(sql)
-            assert not isinstance(
-                caught.value, (UnsafeStatementSplitError, UnsupportedMetaCommandError)
-            ), sql
-        assert self._values(provider) == []
+            except Exception as error:  # noqa: BLE001 - the engine's own answer
+                assert not isinstance(
+                    error, (UnsafeStatementSplitError, UnsupportedMetaCommandError)
+                ), sql
+                answered.append(sql)
+                # DuckDB 2.0 aborts the transaction on any error, a parser or binder error included
+                provider.rollback_transaction()
+        # the shell command is a parser error in both; DuckDB 2.0 stores the NUL where 1.x rejects it
+        assert answered[0] == ".tables"
+        assert self._values(provider) == ([] if len(answered) == 2 else ["a\x00b"])
 
 
 @pytest.mark.unit
@@ -603,6 +612,13 @@ class TestDuckDBAutocommit:
 
 NB = "\xa0"
 
+
+def _duckdb_major() -> int:
+    import duckdb
+
+    return int(duckdb.__version__.split(".")[0])
+
+
 #: scripts the driver rejects whole (a ParserException, the table kept) because a piece made of a
 #: character it does not count as blank is a statement of its own
 REJECTED_WHOLE = [
@@ -611,7 +627,13 @@ REJECTED_WHOLE = [
     "/* ' */ DROP TABLE t; /* c */" + NB,
     "/* ' */ DROP TABLE t; -- c\n" + NB,
     "/* $t$ */ DROP TABLE t;" + NB,
-    "DROP TABLE t;\x0b",
+    pytest.param(
+        "DROP TABLE t;\x0b",
+        marks=pytest.mark.skipif(
+            _duckdb_major() >= 2,
+            reason="measured with DuckDB 2.0.0: a vertical tab is a blank there, 1.5.5 rejects it",
+        ),
+    ),
     "DROP TABLE t;\x85",
     "DROP TABLE t;\x1f",
 ]
@@ -619,7 +641,9 @@ REJECTED_WHOLE = [
 
 @pytest.mark.unit
 class TestDuckDBMigrateFailsWhereTheDriverRejects:
-    @pytest.mark.parametrize("script", REJECTED_WHOLE, ids=[repr(s) for s in REJECTED_WHOLE])
+    @pytest.mark.parametrize(
+        "script", REJECTED_WHOLE, ids=[repr(getattr(s, "values", (s,))[0]) for s in REJECTED_WHOLE]
+    )
     def test_a_migration_does_not_succeed_after_skipping_a_statement_the_engine_rejects(
         self, duckdb_provider, script
     ) -> None:

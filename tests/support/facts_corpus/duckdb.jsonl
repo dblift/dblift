@@ -1403,8 +1403,6 @@
 {"facts":{"kind":"QUERY","objects":[["v_count","TABLE","referenced",null],["employees","TABLE","referenced",null]],"operation":"SELECT"},"inputs":["e1c8fa0be0d26378","f806c052e7a558fd"],"old":null,"sql":"SELECT COUNT(*) INTO v_count FROM employees"}
 {"facts":{"kind":"QUERY","operation":"SELECT"},"inputs":["816ae1953ad4255c"],"old":null,"sql":"SELECT CURRENT_DATABASE()"}
 {"facts":{"diagnostic":"duckdb grammar is not modelled for this statement","kind":"QUERY","operation":"SELECT"},"inputs":["bb472600d03b3d7e"],"old":null,"sql":"SELECT DELIMITER // FROM t"}
-{"facts":{"error":"duckdb statement could not be tokenized (unterminated quote or comment)","kind":"QUERY","operation":"SELECT"},"inputs":["46fc20eec2fb6414","7e5c1f973f30951b"],"old":null,"sql":"SELECT E'a'\n'b\\'c;d'"}
-{"facts":{"error":"duckdb statement could not be tokenized (unterminated quote or comment)","kind":"QUERY","operation":"SELECT"},"inputs":["0072352f7ecc77cc","9e60a12b3411d547"],"old":null,"sql":"SELECT E'a'\n-- hi\n'b\\'c;d'"}
 {"facts":{"kind":"QUERY","operation":"SELECT"},"inputs":["f4ed0995a56e1b68"],"old":null,"sql":"SELECT E'a\\'--b'"}
 {"facts":{"kind":"QUERY","operation":"SELECT"},"inputs":["4d7364b55d7a8dbe"],"old":null,"sql":"SELECT E'a\\'--b', $$/* literal */$$"}
 {"facts":{"kind":"QUERY","operation":"SELECT"},"inputs":["74eec96d054f57e5"],"old":null,"sql":"SELECT E'a\\'--b', $$/* literal */$$ /* outer /* inner */ end */"}

@@ -50,11 +50,16 @@ is `'ab'`); on one line they are a syntax error. The statement is cut at the sam
 rejected by the engine; `[…]` is a list and
 `{…}` a struct, never an identifier.
 
-An escape string's mode continues into the next string only across a line break: `SELECT E'a'` newline
-`'b\'` is one string, but on one line (`SELECT E'a' 'b\';`) the second string is a plain string
-that the backslash does not escape, and the engine rejects the first statement (row 74).
-The line break may be CR or LF and may follow a line comment. A block comment between the
-strings ends the escape mode, even when the block comment contains a line break.
+On one line the string after an escape string is a plain string that the backslash does not
+escape, and the engine rejects the first statement (row 74). Across a line break (CR or LF,
+possibly after a line comment) the engine generations differ, measured with the Python driver:
+DuckDB 1.5.5 carries the escape mode into the next string, so `SELECT E'a'` newline `'b\'c;d'` is one
+string; DuckDB 2.0.0 reads the next string as a plain one, so the backslash escapes nothing, the
+string closes after it and the `;` that follows cuts. The splitter cannot know which engine will run
+a script, so when the two readings close that string in different places it refuses the script
+(row 108); when they close it in the same place (no backslash before a quote) the cut is the same
+under both. A block comment between the strings ends the escape mode, even when the block comment
+contains a line break.
 
 An unterminated string, quoted identifier or dollar-quoted string at the end of a
 script is returned as the last statement and the engine rejects it loudly: there is nothing to refuse (row 29).
@@ -371,12 +376,13 @@ DuckDB specification; the shared tokenizer reads them and one core module assemb
 | 107a | `/* a /* b */` | `UnsafeStatementSplitError` (line 1, column 1; measured with the Python driver 1.5.5 on 2026-10-19: comments nest, the inner one closes and the outer one never does, and the driver raises `unterminated /* comment`) |
 | 107b | `/* a /* b */ */ SELECT 1;` | `/* a /* b */ */ SELECT 1` (measured with the Python driver 1.5.5 on 2026-10-19: a nested comment that closes is a comment and the driver runs the script; the comment stays in the statement text) |
 | 107c | `SELECT '/* x' AS a; SELECT 1 AS "/* y"; SELECT 2 -- /* z\n;` | `SELECT '/* x' AS a` · `SELECT 1 AS "/* y"` · `SELECT 2 -- /* z` (measured with the Python driver 1.5.5 on 2026-10-19: a comment opener inside a string, a quoted name or a line comment opens nothing and the driver runs every statement) |
+| 108 | `SELECT E'a'\n'b\'; SELECT 2;` | `UnsafeStatementSplitError` (line 2, column 1; measured with the Python driver on 2026-10-22: DuckDB 1.5.5 reads the backslash in the second string as an escape, so the string stays open and the driver rejects the script as an unterminated quoted string; DuckDB 2.0.0 reads it as a character, closes the string after it and runs two statements; the same after a line comment between the strings or with CR LF; the splitter reads neither) |
 
 ## 11. Not handled
 
 | Construct | Behaviour | Why |
 | --- | --- | --- |
-| a NUL character anywhere | rejected with `UnsafeStatementSplitError` | the driver hands the text to the engine as a C string: `SELECT 1;` NUL `SELECT 2;` runs only the first statement and reports success, and a NUL inside a literal reads as an unterminated string; the shell does the same |
+| a NUL character anywhere | rejected with `UnsafeStatementSplitError` | the driver hands the text to the engine as a C string: with DuckDB 1.5.5 `SELECT 1;` NUL `SELECT 2;` runs only the first statement and reports success (2.0.0 reports a syntax error at the NUL, so the refusal stands for both), and a NUL inside a literal reads as an unterminated string; the shell does the same |
 | shell dot-commands | rejected (§6) | not SQL |
 | a BOM in the middle of a script | kept as whitespace | the engine treats it as a blank |
 | a dollar-quote tag made of Unicode blanks (`$` U+00A0 `$`) | read as a parameter and blanks, so a `;` inside splits (three pieces where the engine reads two statements) and the pieces fail loudly | before it parses, DuckDB runs one pass over the whole text that replaces its 18 blanks with spaces; the pass skips single-quoted strings and quoted names (a backslash means nothing to it, so an escape string with a backslash before its quote leaves a quote open for it) and line comments, does not know block comments (an apostrophe, a double quote or a dollar tag inside one counts), and stops at the first dollar tag whose closing tag never appears (two dollars, a tag, or a tag made of blanks); from there every blank is kept and is an identifier character for the parser, whether or not any statement is valid; so a `$` inside a word continues the word, blanks included, and a dollar tag opens only at a lexeme boundary (rows 78 to 84); the splitter reproduces this pass (rows 78 to 89) |

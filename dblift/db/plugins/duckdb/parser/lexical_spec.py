@@ -50,5 +50,6 @@ DUCKDB_SPEC = LexicalSpec(
     segment_script=DUCKDB_RULES,
     refused_character="\x00",
     refused_character_name="NUL",
+    # DuckDB 1.x drops the rest of the script after a NUL; 2.x reports a syntax error. The refusal stands.
     refused_reason="the engine reads the script up to it and silently drops the rest",
 )

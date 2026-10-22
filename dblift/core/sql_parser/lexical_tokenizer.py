@@ -193,6 +193,7 @@ class LexicalTokenizer(BaseTokenizer):
         self._seg_pending = False
         self._seg_escape = False
         self._seg_escape_newline = False
+        self._seg_prefixed = False
         if self._segment is not None:
             self._init_segment_script(self._segment)
 
@@ -402,10 +403,36 @@ class LexicalTokenizer(BaseTokenizer):
         """A prefix or a line break may carry escape mode into this string."""
         self._seg_pending = True
         escape = self._seg_escape and self._seg_escape_newline
+        if escape and not self._seg_prefixed:
+            self._refuse_ambiguous_continuation()
+        self._seg_prefixed = False
         read = self._handle_escape_string if escape else self._handle_standard_string
         self._seg_escape = escape
         self._seg_escape_newline = False
         return self._segment_lexeme(TokenType.STRING, read)
+
+    def _refuse_ambiguous_continuation(self) -> None:
+        """Refuse a string on a later line of an escape string when the engines read it two ways.
+
+        DuckDB 1.x carries the escape mode into the continuation, 2.x reads it as a plain string
+        (docs/sql-parsing/duckdb.md). When both readings close the string at the same place the
+        text means the same in either; otherwise no reading is exact.
+        """
+        line, col, ends = self.line, self.col, []
+        for read in (self._handle_escape_string, self._handle_standard_string):
+            before = (self.pos, self.line, self.col)
+            try:
+                read()
+            except UnsafeStatementSplitError:
+                pass
+            ends.append(self.pos)
+            self.pos, self.line, self.col = before
+        if ends[0] != ends[1]:
+            raise UnsafeStatementSplitError(
+                f"string continuing an escape string at line {line}, column {col}: DuckDB 1.x "
+                "reads a backslash in it as an escape and 2.x as a character, so the statement "
+                "ends in different places; write the text as one literal"
+            )
 
     def _segment_identifier(self) -> Token:
         """A quoted identifier."""
@@ -452,7 +479,7 @@ class LexicalTokenizer(BaseTokenizer):
             self.read()
             return self._segment_token(TokenType.SYMBOL, start, line, col)
         self._seg_escape = self._opens_escape_string(self.sql[start:end], end)
-        self._seg_escape_newline = self._seg_escape
+        self._seg_escape_newline = self._seg_prefixed = self._seg_escape
         self.read(end - start)
         return self._segment_token(kind, start, line, col)
 
