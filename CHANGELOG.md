@@ -24,6 +24,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Snowflake `TRUNCATE`, `MERGE` and `COMMENT ON` are read.** `TRUNCATE [TABLE] [IF EXISTS] t`
+  names the table it empties; `MERGE INTO t USING ...` names its target and sources and reports
+  the `INSERT`, `UPDATE` and `DELETE` its actions perform, so data-change analysis and object
+  tracking no longer miss a merge; `COMMENT ON TABLE`, `VIEW`, `MATERIALIZED VIEW`, `SEQUENCE` and
+  `COLUMN` name the object changed. Names follow the Snowflake rules (an unquoted ASCII name in
+  upper case, a quoted one exactly); `IDENTIFIER()` and `$variable` names, a list of tables,
+  `CASCADE`, a `MERGE` with a CTE and every other `COMMENT ON` kind stay unread.
+
 - **DuckDB 2 is supported.** The `duckdb` extra now accepts DuckDB 2.x as well as 1.x. DuckDB 1.x
   and 2.x read one rare construct differently: a string on the line after an escape string
   (`E'a'` newline `'b\'...'`), where 1.x lets the backslash escape the quote and 2.x does not. dblift
@@ -34,6 +42,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   facts cannot read names no object instead of a guessed one. A dialect without a statement-facts
   reader, and DuckDB's `analysis_mode="execution"` (which disables object extraction), report no
   objects and `analyze_statement` returns `parsed_with: "none"`. The public signatures are unchanged.
+- **DML analysis no longer guesses from statement text.** `analyze_dml`, `statement_dml_table` and
+  the plugin quirks methods that call them read a plugin's statement facts or, for a dialect with no
+  reader, the sqlglot AST; a statement neither can read comes back unread (empty table,
+  `events=None`) instead of a table or events scanned out of the text. `extract_dml_table_name` is
+  removed. Signatures and return shapes are unchanged.
 - **Snowflake reads statement facts from the SQL grammar.** `info --format json`,
   `migrate --dry-run`, object tracking during `migrate`, data-change analysis and lint read each
   statement's kind, objects, target and predicate from the sqlglot AST after the shared lexical
