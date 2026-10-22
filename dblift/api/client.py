@@ -287,7 +287,7 @@ class DBLiftClient:
             migrations_dir: Path(s) to migration scripts directory
             config: Optional configuration object (defaults to provider's config)
             logger: Optional logger instance (if None, the client is silent
-                unless a log file is configured)
+                unless a ``log_*`` argument or a config logging setting asks for output)
             log_level: Log level (DEBUG, INFO, WARN, ERROR); omit to keep ``config`` values
             log_format: Log format (text, json, html); omit to keep ``config`` values
             log_file: Optional log file path; omit to keep ``config`` values
@@ -1231,7 +1231,7 @@ class DBLiftClient:
         Args:
             config: DbliftConfig instance.
             logger: Optional logger. When ``None`` the client is silent
-                unless the config names a log file, in which case a
+                unless the config has a logging setting, in which case a
                 DbliftLogger is built from the config's log settings.
             migrations_dir: Override for the migrations directory (or list of
                 directories). When omitted, falls back to
@@ -1305,8 +1305,8 @@ class DBLiftClient:
         migrations_dir: Optional[Union[str, Path, List[Union[str, Path]]]] = None,
         schema: Optional[str] = None,
         logger: Optional[Any] = None,
-        log_level: str = "INFO",
-        log_format: str = "text",
+        log_level: Optional[str] = None,
+        log_format: Optional[str] = None,
         log_file: Optional[str] = None,
         *,
         connection: Any = None,

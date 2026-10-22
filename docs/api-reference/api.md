@@ -51,8 +51,9 @@ client = DBLiftClient.from_config_file("dblift.yaml")
 
 The client and its three factories accept `analysis_mode="execution"` (default)
 or `analysis_mode="full"`. The async factories forward the same choice. A client
-built without a `logger` is silent; pass a logger, or name a log file in the
-config, to get output.
+built without any logging argument is silent. Pass `logger`, `log_level`,
+`log_format` or `log_file` (or set a logging option in the config) to get
+output; without a log file it goes to stderr.
 Execution mode keeps SQL dispatch, transactions, runtime checks, events, and
 statement timing/error journal entries while disabling object extraction. Its
 journal has `capture_objects=False`, and `info()`/dry-run results explicitly

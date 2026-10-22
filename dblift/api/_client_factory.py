@@ -92,6 +92,19 @@ def resolve_config_or_raise(
     raise ConfigurationError("DBLiftClient requires an explicit config or a provider with config")
 
 
+def _logging_requested(
+    config: Any, log_level: Optional[str], log_format: Optional[str], log_file: Optional[str]
+) -> bool:
+    if any(value is not None for value in (log_level, log_format, log_file)):
+        return True
+    if any(getattr(config, name, None) for name in ("log_level", "log_format", "log_file")):
+        return True
+    if _configured_log_directory(config) or effective_log_file_from_config(config):
+        return True
+    section_level = getattr(getattr(config, "logging", None), "level", None)
+    return section_level is not None and str(section_level).upper() != "INFO"
+
+
 def build_default_logger(
     config: Any,
     log_level: Optional[str],
@@ -100,11 +113,15 @@ def build_default_logger(
 ) -> Any:
     """Return the logger a client uses when the caller passes none.
 
-    Silent (``NullLog``) unless a log file is set by the ctor or ``config``;
-    then a ``DbliftLogger`` writes it. Ctor overrides (``log_level`` /
-    ``log_format`` / ``log_file``) take precedence over ``config``; ``None``
-    means "fall back to config".
+    Silent (``NullLog``) unless logging is asked for: a ``log_level`` /
+    ``log_format`` / ``log_file`` argument, or a logging setting in ``config``
+    (flat ``log_*``, ``logging.file``, ``logging.directory`` or a
+    ``logging.level`` other than the default). Then a ``DbliftLogger`` is
+    built, to stderr when no file is set. Ctor overrides take precedence over
+    ``config``; ``None`` means "fall back to config".
     """
+    if not _logging_requested(config, log_level, log_format, log_file):
+        return NullLog()
     raw_fmt = log_format if log_format is not None else getattr(config, "log_format", None)
     log_format_value = _resolve_enum_value(raw_fmt, LogFormat, LogFormat.TEXT)
 
@@ -112,8 +129,6 @@ def build_default_logger(
     log_level_value = _resolve_enum_value(raw_lvl, LogLevel, LogLevel.INFO)
 
     eff_log_file = log_file if log_file is not None else effective_log_file_from_config(config)
-    if not eff_log_file:
-        return NullLog()
     return DbliftLogger(
         format=log_format_value,
         level=log_level_value,
@@ -345,8 +360,8 @@ def client_from_sqlalchemy(
     migrations_dir: Optional[Union[str, Path, List[Union[str, Path]]]] = None,
     schema: Optional[str] = None,
     logger: Optional[Any] = None,
-    log_level: str = "INFO",
-    log_format: str = "text",
+    log_level: Optional[str] = None,
+    log_format: Optional[str] = None,
     log_file: Optional[str] = None,
     *,
     connection: Any = None,

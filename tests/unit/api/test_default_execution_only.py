@@ -7,6 +7,7 @@ import pytest
 from dblift.api import DBLiftClient
 from dblift.api.async_client import AsyncDBLiftClient
 from dblift.config import DbliftConfig
+from dblift.core.logger import NullLog
 from dblift.core.migration.executor.migration_executor import MigrationExecutor
 from tests.unit.lightweight_core._support import run_python
 
@@ -142,3 +143,82 @@ assert not connects, 'connection opened'
         cwd=tmp_path,
     )
     assert result.returncode == 0, result.stderr
+
+
+def _migrate_with(tmp_path, build):
+    migrations = _migrations(tmp_path)
+    with build(migrations) as client:
+        assert client.migrate().success
+
+
+@pytest.mark.parametrize("argument", ["log_level", "log_format"])
+def test_ctor_logging_argument_turns_logging_on(tmp_path, capfd, argument):
+    from sqlalchemy import create_engine
+
+    from dblift.core.logger import NullLog
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'e.db'}")
+    try:
+        seed = DBLiftClient.from_sqlalchemy(
+            engine, migrations_dir=_migrations(tmp_path), logger=NullLog()
+        )
+        value = {"log_level": "info", "log_format": "text"}[argument]
+        client = DBLiftClient(
+            seed.provider, seed.config.migrations.directory, config=seed.config, **{argument: value}
+        )
+        with client:
+            assert client.migrate().success
+    finally:
+        engine.dispose()
+    assert capfd.readouterr().err != ""
+
+
+@pytest.mark.parametrize("argument", ["log_level", "log_format"])
+def test_from_sqlalchemy_logging_argument_turns_logging_on(tmp_path, capfd, argument):
+    from sqlalchemy import create_engine
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'e.db'}")
+    value = {"log_level": "debug", "log_format": "text"}[argument]
+    try:
+        _migrate_with(
+            tmp_path,
+            lambda m: DBLiftClient.from_sqlalchemy(engine, migrations_dir=m, **{argument: value}),
+        )
+    finally:
+        engine.dispose()
+    assert capfd.readouterr().err != ""
+
+
+@pytest.mark.parametrize("key", ["log_level", "log_format"])
+def test_config_logging_setting_turns_logging_on(tmp_path, capfd, key):
+    config = _config(tmp_path)
+    setattr(config, key, {"log_level": "info", "log_format": "text"}[key])
+    _migrate_with(tmp_path, lambda m: DBLiftClient.from_config(config, migrations_dir=m))
+    assert capfd.readouterr().err != ""
+
+
+def test_config_logging_level_section_turns_logging_on(tmp_path, capfd):
+    config = DbliftConfig.from_dict(
+        {
+            "database": {"type": "sqlite", "path": str(tmp_path / "db.sqlite"), "schema": "main"},
+            "logging": {"level": "debug"},
+        }
+    )
+    _migrate_with(tmp_path, lambda m: DBLiftClient.from_config(config, migrations_dir=m))
+    assert capfd.readouterr().err != ""
+
+
+def test_explicit_logger_is_used(tmp_path):
+    class Recorder(NullLog):
+        def __init__(self):
+            self.messages = []
+
+        def info(self, message, *args, **kwargs):
+            self.messages.append(message)
+
+    recorder = Recorder()
+    _migrate_with(
+        tmp_path,
+        lambda m: DBLiftClient.from_config(_config(tmp_path), migrations_dir=m, logger=recorder),
+    )
+    assert recorder.messages

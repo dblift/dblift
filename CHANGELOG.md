@@ -22,8 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Breaking: the Python API runs in execution mode by default and is silent.** `DBLiftClient`
   (the constructor, `from_config`, `from_config_file`, `from_sqlalchemy`), `AsyncDBLiftClient`
   and `MigrationExecutor` now default to `analysis_mode="execution"`, and a client built without
-  a `logger` writes nothing to stderr or stdout (a log file named in the config or passed as
-  `log_file` is still written). Migrations still run, validate and undo as before; what changes is
+  a `logger` writes nothing to stderr or stdout (passing `logger`, `log_level`, `log_format` or
+  `log_file`, or setting any logging option in the config, turns logging on as before). Migrations still run, validate and undo as before; what changes is
   that `info()`/dry-run results report pending script analysis as disabled, the journal does not
   capture object operations, and a `WITH` statement that cannot be classified lexically is
   refused. Pass `analysis_mode="full"` to keep SQL analysis cautions and install

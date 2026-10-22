@@ -57,12 +57,20 @@ class TestBuildDefaultLogger(unittest.TestCase):
         cfg.logging = kwargs.get("logging")  # None or SimpleNamespace
         return cfg
 
-    def test_is_silent_without_a_log_file(self):
+    def test_is_silent_without_any_logging_argument(self):
         from dblift.api._client_factory import build_default_logger
         from dblift.core.logger import NullLog
 
-        cfg = self._config(log_format="json", log_level="debug")
-        self.assertIsInstance(build_default_logger(cfg, "DEBUG", "json", None), NullLog)
+        self.assertIsInstance(build_default_logger(self._config(), None, None, None), NullLog)
+
+    def test_a_logging_argument_without_a_file_builds_a_stderr_logger(self):
+        from dblift.api._client_factory import build_default_logger
+        from dblift.core.logger import DbliftLogger
+
+        cfg = self._config()
+        self.assertIsInstance(build_default_logger(cfg, "DEBUG", None, None), DbliftLogger)
+        cfg = self._config(log_format="json")
+        self.assertIsInstance(build_default_logger(cfg, None, None, None), DbliftLogger)
 
     def test_returns_dbliftlogger_with_defaults(self):
         from dblift.api._client_factory import build_default_logger
