@@ -66,3 +66,25 @@ def test_db2_does_not_read_a_keyword_as_an_object_name(sql):
     assert facts.objects == ()
     assert facts.target is None
     assert facts.diagnostic
+
+
+ROUTINES = [
+    "CREATE FUNCTION add(a INT) RETURNS INT RETURN 1",
+    "CREATE PROCEDURE cascade() BEGIN SELECT 1; END",
+    "DROP FUNCTION add",
+]
+
+
+@pytest.mark.parametrize("dialect", ["postgres", "mysql", "oracle", "redshift"])
+@pytest.mark.parametrize("sql", ROUTINES)
+def test_a_routine_may_be_named_with_a_clause_keyword(dialect, sql):
+    facts = read_statement_facts(sql, dialect=dialect)
+
+    assert [o.name.lower() for o in facts.objects] == ["add" if "add" in sql.lower() else "cascade"]
+
+
+@pytest.mark.parametrize("sql", ROUTINES)
+def test_db2_reads_a_routine_named_with_a_clause_keyword(sql):
+    facts = Db2StatementFactsReader(None).read(sql)
+
+    assert [o.name.lower() for o in facts.objects] == ["add" if "add" in sql.lower() else "cascade"]

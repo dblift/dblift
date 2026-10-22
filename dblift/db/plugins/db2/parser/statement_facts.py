@@ -36,6 +36,8 @@ STOP_WORDS: FrozenSet[str] = frozenset(
     """TO ON IS IN FOR AS LIKE WITH SET USING VALUES FROM WHERE INTO IF RESTRICT IMMEDIATE ONLY
     FOREIGN DATABASE DB CFG SELECT TABLE AUTHORIZATION NOT EXISTS ADD CLONE CASCADE""".split()
 )
+#: A routine name may be ``add``, ``clone`` or ``cascade``: only the clause openers are refused.
+_ROUTINE_STOP_WORDS: FrozenSet[str] = STOP_WORDS - {"ADD", "CLONE", "CASCADE"}
 
 #: Words that follow CREATE / ALTER / DROP TABLE|VIEW|FUNCTION|INDEX in a different statement.
 SECOND_WORDS: FrozenSet[str] = frozenset({"HIERARCHY", "MAPPING", "EXTENSION"})
@@ -263,7 +265,7 @@ def _name_run(words: List[Token], at: int) -> Tuple[List[Token], int]:
 
 
 def _read_name(
-    words: List[Token], at: int, max_parts: int
+    words: List[Token], at: int, max_parts: int, stop: FrozenSet[str] = STOP_WORDS
 ) -> Optional[Tuple[Tuple[str, ...], int, int]]:
     """The folded parts of the name at ``at``, its source offset and the index after it."""
     run, i = _name_run(words, at)
@@ -271,7 +273,7 @@ def _read_name(
         return None
     if any(t.text == '""' for t in run):
         return None
-    if any(t.type is TokenType.KEYWORD and t.text.upper() in STOP_WORDS for t in run):
+    if any(t.type is TokenType.KEYWORD and t.text.upper() in stop for t in run):
         return None
     return tuple(fold_name(t.text) for t in run), run[0].pos, i
 
@@ -301,7 +303,8 @@ def _head_facts(
         at = on + 1
         if ups[at : at + 1] and ups[at] in _GRANT_TYPES:
             otype, at = _TYPES[ups[at]], at + 1
-    name = _read_name(words, at, head.max_parts)
+    routine = head.object_type in (SqlObjectType.FUNCTION, SqlObjectType.PROCEDURE)
+    name = _read_name(words, at, head.max_parts, _ROUTINE_STOP_WORDS if routine else STOP_WORDS)
     if name is None:
         return None, at
     parts, _, end = name

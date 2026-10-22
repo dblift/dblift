@@ -4952,31 +4952,10 @@
   "sql": "CREATE TRIGGER IF NOT EXISTS s.tr AFTER DELETE ON t BEGIN DELETE FROM u; END"
  },
  "c6a88a9c73d2a94d/analyzer": {
-  "class": "opaque-reader-gap",
-  "issue": "by design: the reader states what it cannot read as unavailable (docs/sql-parsing/db2.md section 13)",
+  "class": "disagree",
+  "issue": "",
   "path": "analyzer",
-  "reason": "the analyzer path qualifies the unqualified `add` with a placeholder schema `default_schema` and keeps its spelling; the reader publishes no object because `ADD` is a clause keyword of the head grammar, not a proven name (the body is PostgreSQL dollar-quoted text)",
-  "sql": "CREATE FUNCTION add(a INT, b INT)\nRETURNS INT AS $func$\nBEGIN RETURN a + b; END"
- },
- "c6a88a9c73d2a94d/hybrid": {
-  "class": "opaque-reader-gap",
-  "facts": {
-   "diagnostic": "db2 CREATE FUNCTION: name not read",
-   "kind": "DDL",
-   "operation": "CREATE"
-  },
-  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
-  "old": {
-   "hybrid": [
-    [
-     "FUNCTION",
-     "ADD",
-     "SYSIBM"
-    ]
-   ]
-  },
-  "path": "hybrid",
-  "reason": "The function name `add` is a clause keyword of the statement head grammar, so the head's name is not proven and the reader publishes no object; the former path named FUNCTION add. This is a documented boundary, not a claim that Db2 rejects the text.",
+  "reason": "the analyzer path qualifies the unqualified `add` with a placeholder schema `default_schema` and keeps its spelling; the reader names `ADD` with no schema, folded to upper case as Db2 stores it (the body is PostgreSQL dollar-quoted text)",
   "sql": "CREATE FUNCTION add(a INT, b INT)\nRETURNS INT AS $func$\nBEGIN RETURN a + b; END"
  },
  "c6f2b03c49a2c380/analyzer": {

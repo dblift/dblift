@@ -251,13 +251,15 @@ _HEAD_CLAUSE_WORDS = frozenset(
 _SNOWFLAKE_CLAUSE_WORDS = _HEAD_CLAUSE_WORDS | {"IDENTIFIER"}
 
 
-def _clause_words(dialect: str) -> frozenset:
-    """Words that are clause keywords, not names, where a truncated statement ends early."""
-    return (
-        _SNOWFLAKE_CLAUSE_WORDS
-        if dialect == "snowflake"  # lint: allow-dialect-string: IDENTIFIER() names
-        else _HEAD_CLAUSE_WORDS
-    )
+_ROUTINE_CLAUSE_WORDS = frozenset({"IF", "NOT", "EXISTS"})
+
+
+def _clause_words(dialect: str, routine: bool = False) -> frozenset:
+    """Words that are clause keywords, not names, where a truncated statement ends early. A
+    routine name is only refused the words that open its own head (``add`` is a legal name)."""
+    if dialect == "snowflake":  # lint: allow-dialect-string: IDENTIFIER() names
+        return _SNOWFLAKE_CLAUSE_WORDS
+    return _ROUTINE_CLAUSE_WORDS if routine else _HEAD_CLAUSE_WORDS
 
 
 def _head_name_is_bounded(text: str, match: "re.Match[str]", groups: Tuple[int, ...]) -> bool:
@@ -273,9 +275,11 @@ def _head_name_is_bounded(text: str, match: "re.Match[str]", groups: Tuple[int, 
     return not spans or spans[-1][1] >= len(text) or text[spans[-1][1]] != "."
 
 
-def _head_tokens_prove_name(sql: str, dialect: str, prefix: str, names: Tuple[str, ...]) -> bool:
+def _head_tokens_prove_name(
+    sql: str, dialect: str, prefix: str, names: Tuple[str, ...], routine: bool = False
+) -> bool:
     """Check that a stripped head names the same source tokens, in the same order."""
-    words = _clause_words(dialect)
+    words = _clause_words(dialect, routine)
     if not dialect or any(
         name[0] not in {'"', "`", "["} and name.upper() in words for name in names
     ):
@@ -497,10 +501,14 @@ def _unread_names(ast: exp.Expr, dialect: str) -> Optional[str]:
     snowflake = dialect == "snowflake"  # lint: allow-dialect-string: IDENTIFIER() and $variables
     if snowflake and any(ast.find_all(exp.DynamicIdentifier)):
         return _SNOWFLAKE_DYNAMIC_NAMES
-    words = _clause_words(dialect)
+    routine = isinstance(ast, (exp.Create, exp.Drop)) and str(
+        ast.args.get("kind") or ""
+    ).upper() in {
+        "FUNCTION",
+        "PROCEDURE",
+    }
+    words = _clause_words(dialect, routine)
     for table in ast.find_all(exp.Table):
-        if isinstance(table.parent, exp.UserDefinedFunction) and not snowflake:
-            continue  # ``add`` is a legal function name; only a relation is checked for keywords
         parts = [table.args.get(key) for key in ("this", "db", "catalog")]
         if snowflake and any(isinstance(part, (exp.Parameter, exp.Literal)) for part in parts):
             return _SNOWFLAKE_DYNAMIC_NAMES
@@ -1186,6 +1194,7 @@ def _head_facts(sql: str, diagnostic: str, *, dialect: str = "") -> StatementFac
             dialect,
             head[: match.end()],
             tuple(match.group(i) for i in (3, 4) if match.group(i)),
+            routine=match.group(2).upper() in {"FUNCTION", "PROCEDURE"},
         )
     ):
         match = None
@@ -1402,6 +1411,7 @@ def _mysql_program_facts(sql: str, diagnostic: str) -> Optional[StatementFacts]:
         "mysql",  # lint: allow-dialect-string: MySQL program head proof
         head[: match.end(6 if match.group(6) else 5)],
         tuple(part for part in parts if part),
+        routine=kind in {SqlObjectType.FUNCTION, SqlObjectType.PROCEDURE},
     ):
         return StatementFacts(operation, "DDL", diagnostic=diagnostic)
     schema, name = (parts[0], parts[1]) if parts[1] else (None, parts[0])

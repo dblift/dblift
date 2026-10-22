@@ -8158,33 +8158,6 @@
     "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took nothing from its head; the reader names `test_proc`.",
     "sql": "CREATE OR REPLACE PROCEDURE test_proc AS\nBEGIN\n    NULL;\nEND"
   },
-  "c6a88a9c73d2a94d": {
-    "class": "opaque-reader-gap",
-    "facts": {
-      "diagnostic": "mysql Block is opaque to statement facts",
-      "kind": "DDL",
-      "operation": "CREATE"
-    },
-    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
-    "old": {
-      "analyzer": [
-        [
-          "FUNCTION",
-          "default_schema.add"
-        ]
-      ],
-      "hybrid": [
-        [
-          "FUNCTION",
-          "add",
-          null
-        ]
-      ]
-    },
-    "path": "both",
-    "reason": "The function name `add` is a clause keyword of the statement head grammar, so the head's name is not proven and the reader publishes no object; the former path named FUNCTION add. This is a documented boundary, not a claim that MySQL rejects the text.",
-    "sql": "CREATE FUNCTION add(a INT, b INT)\nRETURNS INT AS $func$\nBEGIN RETURN a + b; END"
-  },
   "c6f2b03c49a2c380/hybrid": {
     "class": "facts-adds-acted",
     "facts": {
