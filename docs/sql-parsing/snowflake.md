@@ -69,7 +69,7 @@ The `BEGIN` variants in §5 open a transaction; `ROLLBACK` closes it in the meas
 
 ## 9. Engine subclass
 
-No dialect-specific scanning loop is needed for this contract. The Snowflake-owned `LexicalSpec` supplies comment openers, fixed-dollar quoting, measured blanks, directive refusal and conservative procedural guards to the common lexical engine. A small plugin parser binds the existing SQLGlot analysis path to those lexical records. The legacy `SnowflakeStatementParser` class remains in source, but no default split, execution, analysis or extraction path constructs or calls it. Statement facts remain inactive; activating them requires a separate consumer and corpus review.
+No dialect-specific scanning loop is needed for this contract. The Snowflake-owned `LexicalSpec` supplies comment openers, fixed-dollar quoting, measured blanks, directive refusal and conservative procedural guards to the common lexical engine. A small plugin parser binds the existing SQLGlot analysis path to those lexical records. The legacy `SnowflakeStatementParser` class remains in source, but no default split, execution, analysis or extraction path constructs or calls it. Statement facts are read from the same SQLGlot analysis path; §13 describes what the reader publishes.
 
 ## 10. Conformance examples
 
@@ -131,6 +131,9 @@ contract of the parser, not a claim about what the engine accepts or does.
 | `CREATE`/`DROP MATERIALIZED VIEW` | `MATERIALIZED_VIEW`, with the tables it reads; the `LOG ON` form is opaque |
 | `CREATE … CLONE src` | `src` is referenced with the type of the object it copies |
 | `INSERT`, `UPDATE`, `DELETE` | the target is altered, other tables are referenced, plus target, predicate, assigned columns and events; a target the reader cannot name is opaque |
+| `TRUNCATE [TABLE] [IF EXISTS] t` | the table, altered (a data-changing statement, like the other readers); a list of tables, `CASCADE` and `TRUNCATE MATERIALIZED VIEW` are opaque |
+| `MERGE INTO t USING … ON … WHEN …` | the target is altered, the sources are referenced, plus target, assigned columns and the `INSERT`, `UPDATE` and `DELETE` events of its actions; a `MERGE` with no readable action is opaque |
+| `COMMENT [IF EXISTS] ON TABLE\|VIEW\|MATERIALIZED VIEW\|SEQUENCE\|COLUMN … IS '…'` | the object altered (`COLUMN` names its table); every other kind of `COMMENT ON` is opaque |
 | `SELECT`, `WITH … SELECT` | the tables read are referenced |
 
 Opaque (a diagnostic, no object or only a head-proven name, never a guess): `CREATE`/`DROP` of `STAGE`, `FILE FORMAT`,
@@ -138,8 +141,8 @@ Opaque (a diagnostic, no object or only a head-proven name, never a guess): `CRE
 `CREATE TRIGGER`; a name computed at run time (`IDENTIFIER(...)`, a `$variable`, a string path); a keyword
 where a name belongs (`ALTER TABLE ADD COLUMN x`, `DROP TABLE IF`); a name continued by a `{…}` template brace; an unquoted name holding a non-ASCII letter; `ALTER … RENAME TO` and
 `SWAP WITH` (they name a second object); a relation with four or more name parts; a `CTE` whose body writes;
-a `@stage` reference; `MERGE`, `TRUNCATE`, `COPY`, `INSERT ALL`, `GRANT`/`REVOKE`, `USE`, `SHOW`, `DESCRIBE`,
-`UNDROP`, `COMMENT ON` and every statement sqlglot cannot parse. A name kept on an opaque statement is checked
+a `@stage` reference; `COPY`, `INSERT ALL`, `GRANT`/`REVOKE`, `USE`, `SHOW`, `DESCRIBE`,
+`UNDROP`, `COMMENT ON` of any other kind and every statement sqlglot cannot parse. A name kept on an opaque statement is checked
 against the source tokens of the statement head; it is never read from the body.
 
 Identifier case, measured on Snowflake 10.38.100 with `QUOTED_IDENTIFIERS_IGNORE_CASE = FALSE` (the default):
@@ -160,8 +163,6 @@ Known gaps, recorded rather than closed:
   schema string: `CREATE TABLE "a.b"."c"`, `CREATE TABLE a.b.c` and `CREATE TABLE "a"."b"."c"` all read as table
   `c` in schema `a.b` (modulo the case fold). The schema is one string, a design shared with the PostgreSQL and
   Redshift readers.
-- `MERGE` is opaque, so its target is no longer named: the former extraction named it. A script that merges into a
-  table reports no changed object.
 - `ALTER TABLE … ADD CONSTRAINT … REFERENCES o (id)` names the altered table only; the referenced table `o` is not
   reported (a `CREATE TABLE` reports it). The mapping is shared with the other readers.
 - An unterminated quote reports an error and no object; the splitter normally refuses such a script first.

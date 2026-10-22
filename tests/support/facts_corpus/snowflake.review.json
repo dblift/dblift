@@ -968,33 +968,6 @@
   "reason": "The reader reports the statement as opaque (snowflake Command is opaque to statement facts) rather than guess: the former analyzer path named UNKNOWN default_schema.my_sg. This is a documented boundary, not a claim that Snowflake rejects the text.",
   "sql": "DROP STOGROUP my_sg"
  },
- "0ef3fd1508d76335": {
-  "class": "opaque-reader-gap",
-  "facts": {
-   "diagnostic": "snowflake TruncateTable has no statement facts mapping",
-   "kind": "UNKNOWN",
-   "operation": "TRUNCATE"
-  },
-  "issue": "by design: docs/sql-parsing/snowflake.md \u00a713",
-  "old": {
-   "analyzer": [
-    [
-     "TABLE",
-     "default_schema.users"
-    ]
-   ],
-   "hybrid": [
-    [
-     "TABLE",
-     "users",
-     null
-    ]
-   ]
-  },
-  "path": "both",
-  "reason": "The reader reports the statement as opaque (snowflake TruncateTable has no statement facts mapping) rather than guess: the former hybrid path named TABLE users; the former analyzer path named TABLE default_schema.users. This is a documented boundary, not a claim that Snowflake rejects the text.",
-  "sql": "TRUNCATE users"
- },
  "0f8277b1e650e6c5/hybrid": {
   "class": "facts-adds-acted",
   "facts": {
@@ -1693,24 +1666,25 @@
   "reason": "The reader reports the statement as opaque (snowflake Command is opaque to statement facts) rather than guess: the former analyzer path named FUNCTION default_schema.greet. This is a documented boundary, not a claim that Snowflake rejects the text.",
   "sql": "CREATE OR REPLACE FUNCTION greet()\nRETURNS TEXT AS $$\nBEGIN\n    RETURN 'Hello';\nEND;\n$$ LANGUAGE plpgsql"
  },
- "165bf6d3186a24ce/analyzer": {
-  "class": "opaque-reader-gap",
+ "165bf6d3186a24ce/hybrid": {
+  "class": "facts-adds-acted",
   "facts": {
-   "diagnostic": "snowflake Comment has no statement facts mapping",
-   "kind": "UNKNOWN",
+   "kind": "DDL",
+   "objects": [
+    [
+     "ORDERS",
+     "TABLE",
+     "altered",
+     "PUBLIC"
+    ]
+   ],
    "operation": "COMMENT"
   },
-  "issue": "by design: docs/sql-parsing/snowflake.md \u00a713",
   "old": {
-   "analyzer": [
-    [
-     "TABLE",
-     "public.orders"
-    ]
-   ]
+   "hybrid": []
   },
-  "path": "analyzer",
-  "reason": "The reader reports the statement as opaque (snowflake Comment has no statement facts mapping) rather than guess: the former analyzer path named TABLE public.orders. This is a documented boundary, not a claim that Snowflake rejects the text.",
+  "path": "hybrid",
+  "reason": "The former hybrid path named nothing; the reader names altered TABLE ORDERS in PUBLIC from the plain COMMENT ON statement (a column comment changes its table). Snowflake acceptance of this text is unmeasured. The reader stores an unquoted name in upper case and a quoted one as written (docs/sql-parsing/snowflake.md \u00a713), so names it reads here can differ in case from the spelling quoted above.",
   "sql": "COMMENT ON TABLE public.orders IS 'x'"
  },
  "167bb154bab713de/analyzer": {
@@ -3204,12 +3178,30 @@
   "reason": "The reader types the object MATERIALIZED_VIEW and references the tables it reads; the former hybrid path typed it VIEW and did not reference sources. The reader stores an unquoted name in upper case and a quoted one as written (docs/sql-parsing/snowflake.md \u00a713), so names it reads here can differ in case from the spelling quoted above.",
   "sql": "CREATE MATERIALIZED VIEW mv AS SELECT 1 FROM orders"
  },
- "28fb40fa4063f6c2": {
-  "class": "dml-differs",
+ "28fb40fa4063f6c2/analyzer": {
+  "class": "disagree",
   "facts": {
-   "diagnostic": "snowflake Merge has no statement facts mapping",
-   "kind": "UNKNOWN",
-   "operation": "MERGE"
+   "events": [
+    "DELETE"
+   ],
+   "kind": "DML",
+   "objects": [
+    [
+     "CHILD",
+     "TABLE",
+     "altered",
+     null
+    ],
+    [
+     "SOURCE",
+     "TABLE",
+     "referenced",
+     null
+    ]
+   ],
+   "operation": "MERGE",
+   "target": "CHILD",
+   "target_sql": "child"
   },
   "old": {
    "analyzer": [
@@ -3217,22 +3209,10 @@
      "TABLE",
      "default_schema.child"
     ]
-   ],
-   "hybrid": [
-    [
-     "TABLE",
-     "child",
-     null
-    ],
-    [
-     "TABLE",
-     "source",
-     null
-    ]
    ]
   },
-  "path": "both",
-  "reason": "MERGE has no facts mapping on Snowflake: the reader reports the statement as opaque instead of naming a target; the former hybrid path named TABLE child, TABLE source; the former analyzer path named TABLE default_schema.child.",
+  "path": "analyzer",
+  "reason": "The former analyzer path named only the target with a placeholder schema and the written spelling; the reader names altered TABLE CHILD, referenced TABLE SOURCE and the DELETE events of the merge actions. Snowflake acceptance of this text is unmeasured. Since the reader stores an unquoted name in upper case (docs/sql-parsing/snowflake.md \u00a713) and the former path keeps the written spelling, the row is classified disagree; apart from case it is facts-adds-referenced.",
   "sql": "MERGE INTO child AS c USING source AS s ON c.id = s.id WHEN MATCHED THEN DELETE"
  },
  "29014fab476be7cc": {
@@ -3278,24 +3258,25 @@
   "reason": "Apart from case this row is classified facts-adds-referenced for the former hybrid and former analyzer path (the reader also names tables the statement only reads). The former path keeps each name as written; the reader stores an unquoted name in upper case and a quoted one as written (docs/sql-parsing/snowflake.md \u00a713).",
   "sql": "CREATE INDEX idx1 ON mytable (col)"
  },
- "291da9c80e13e058/analyzer": {
-  "class": "opaque-reader-gap",
+ "291da9c80e13e058/hybrid": {
+  "class": "facts-adds-acted",
   "facts": {
-   "diagnostic": "snowflake Comment has no statement facts mapping",
-   "kind": "UNKNOWN",
+   "kind": "DDL",
+   "objects": [
+    [
+     "CHILD",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
    "operation": "COMMENT"
   },
-  "issue": "by design: docs/sql-parsing/snowflake.md \u00a713",
   "old": {
-   "analyzer": [
-    [
-     "TABLE",
-     "default_schema.child"
-    ]
-   ]
+   "hybrid": []
   },
-  "path": "analyzer",
-  "reason": "The reader reports the statement as opaque (snowflake Comment has no statement facts mapping) rather than guess: the former analyzer path named TABLE default_schema.child. This is a documented boundary, not a claim that Snowflake rejects the text.",
+  "path": "hybrid",
+  "reason": "The former hybrid path named nothing; the reader names altered TABLE CHILD from the plain COMMENT ON statement (a column comment changes its table). Snowflake acceptance of this text is unmeasured. The reader stores an unquoted name in upper case and a quoted one as written (docs/sql-parsing/snowflake.md \u00a713), so names it reads here can differ in case from the spelling quoted above.",
   "sql": "COMMENT ON TABLE child IS 'note'"
  },
  "2937013f21818106": {
@@ -3410,24 +3391,25 @@
   "reason": "The former hybrid path named nothing; the reader names created TABLE orders from the statement head and reports the statement as opaque (table: snowflake grammar is not modelled for this statement); the head's name is proven against the source tokens, the body is unread. Snowflake acceptance of this text is unmeasured. The reader stores an unquoted name in upper case and a quoted one as written (docs/sql-parsing/snowflake.md \u00a713), so names it reads here can differ in case from the spelling quoted above.",
   "sql": "CREATE TABLE orders (order_id INT NOT NULL PRIMARY KEY CLUSTERED, status NVARCHAR(20))"
  },
- "2b9b07300c97ad8a/analyzer": {
-  "class": "opaque-reader-gap",
+ "2b9b07300c97ad8a/hybrid": {
+  "class": "facts-adds-acted",
   "facts": {
-   "diagnostic": "snowflake Comment has no statement facts mapping",
-   "kind": "UNKNOWN",
+   "kind": "DDL",
+   "objects": [
+    [
+     "T",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
    "operation": "COMMENT"
   },
-  "issue": "by design: docs/sql-parsing/snowflake.md \u00a713",
   "old": {
-   "analyzer": [
-    [
-     "TABLE",
-     "default_schema.t"
-    ]
-   ]
+   "hybrid": []
   },
-  "path": "analyzer",
-  "reason": "The reader reports the statement as opaque (snowflake Comment has no statement facts mapping) rather than guess: the former analyzer path named TABLE default_schema.t. This is a documented boundary, not a claim that Snowflake rejects the text.",
+  "path": "hybrid",
+  "reason": "The former hybrid path named nothing; the reader names altered TABLE T from the plain COMMENT ON statement (a column comment changes its table). Snowflake acceptance of this text is unmeasured. The reader stores an unquoted name in upper case and a quoted one as written (docs/sql-parsing/snowflake.md \u00a713), so names it reads here can differ in case from the spelling quoted above.",
   "sql": "COMMENT ON TABLE t IS 'desc'"
  },
  "2bb609d438b07748": {
@@ -3749,33 +3731,6 @@
   "path": "analyzer",
   "reason": "The reader reports the statement as opaque (snowflake Command is opaque to statement facts) rather than guess: the former analyzer path named UNKNOWN default_schema.name. This is a documented boundary, not a claim that Snowflake rejects the text.",
   "sql": "ALTER COLUMN name VARCHAR(50)"
- },
- "2fc5d1bbcfd7cc90": {
-  "class": "opaque-reader-gap",
-  "facts": {
-   "diagnostic": "snowflake TruncateTable has no statement facts mapping",
-   "kind": "UNKNOWN",
-   "operation": "TRUNCATE"
-  },
-  "issue": "by design: docs/sql-parsing/snowflake.md \u00a713",
-  "old": {
-   "analyzer": [
-    [
-     "TABLE",
-     "default_schema.t"
-    ]
-   ],
-   "hybrid": [
-    [
-     "TABLE",
-     "t",
-     null
-    ]
-   ]
-  },
-  "path": "both",
-  "reason": "The reader reports the statement as opaque (snowflake TruncateTable has no statement facts mapping) rather than guess: the former hybrid path named TABLE t; the former analyzer path named TABLE default_schema.t. This is a documented boundary, not a claim that Snowflake rejects the text.",
-  "sql": "TRUNCATE TABLE t"
  },
  "3016c58f2e6e487a": {
   "class": "disagree",
@@ -4099,24 +4054,25 @@
   "reason": "The reader reports the statement as opaque (snowflake Command is opaque to statement facts) rather than guess: the former analyzer path named FUNCTION default_schema.get_user_count. This is a documented boundary, not a claim that Snowflake rejects the text.",
   "sql": "CREATE OR REPLACE FUNCTION get_user_count()\nRETURNS BIGINT AS $$\nBEGIN\n    RETURN (SELECT COUNT(*) FROM users);\nEND;\n$$ "
  },
- "34ca29defe8523d0/analyzer": {
-  "class": "opaque-reader-gap",
+ "34ca29defe8523d0/hybrid": {
+  "class": "facts-adds-acted",
   "facts": {
-   "diagnostic": "snowflake Comment has no statement facts mapping",
-   "kind": "UNKNOWN",
+   "kind": "DDL",
+   "objects": [
+    [
+     "X",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
    "operation": "COMMENT"
   },
-  "issue": "by design: docs/sql-parsing/snowflake.md \u00a713",
   "old": {
-   "analyzer": [
-    [
-     "TABLE",
-     "default_schema.x"
-    ]
-   ]
+   "hybrid": []
   },
-  "path": "analyzer",
-  "reason": "The reader reports the statement as opaque (snowflake Comment has no statement facts mapping) rather than guess: the former analyzer path named TABLE default_schema.x. This is a documented boundary, not a claim that Snowflake rejects the text.",
+  "path": "hybrid",
+  "reason": "The former hybrid path named nothing; the reader names altered TABLE X from the plain COMMENT ON statement (a column comment changes its table). Snowflake acceptance of this text is unmeasured. The reader stores an unquoted name in upper case and a quoted one as written (docs/sql-parsing/snowflake.md \u00a713), so names it reads here can differ in case from the spelling quoted above.",
   "sql": "COMMENT ON TABLE x IS 'desc'"
  },
  "3502ebdff2ba8590/hybrid": {
@@ -5136,24 +5092,25 @@
   "reason": "The former hybrid path named nothing; the reader names created TRIGGER s.tr from the statement head and reports the statement as opaque (trigger: snowflake Command is opaque to statement facts); the head's name is proven against the source tokens, the body is unread. Snowflake acceptance of this text is unmeasured. The reader stores an unquoted name in upper case and a quoted one as written (docs/sql-parsing/snowflake.md \u00a713), so names it reads here can differ in case from the spelling quoted above.",
   "sql": "CREATE TRIGGER IF NOT EXISTS s.tr AFTER DELETE ON t BEGIN DELETE FROM u"
  },
- "3f4f31194b81ce62/analyzer": {
-  "class": "opaque-reader-gap",
+ "3f4f31194b81ce62/hybrid": {
+  "class": "facts-adds-acted",
   "facts": {
-   "diagnostic": "snowflake Comment has no statement facts mapping",
-   "kind": "UNKNOWN",
+   "kind": "DDL",
+   "objects": [
+    [
+     "SEQ",
+     "SEQUENCE",
+     "altered",
+     null
+    ]
+   ],
    "operation": "COMMENT"
   },
-  "issue": "by design: docs/sql-parsing/snowflake.md \u00a713",
   "old": {
-   "analyzer": [
-    [
-     "SEQUENCE",
-     "default_schema.seq"
-    ]
-   ]
+   "hybrid": []
   },
-  "path": "analyzer",
-  "reason": "The reader reports the statement as opaque (snowflake Comment has no statement facts mapping) rather than guess: the former analyzer path named SEQUENCE default_schema.seq. This is a documented boundary, not a claim that Snowflake rejects the text.",
+  "path": "hybrid",
+  "reason": "The former hybrid path named nothing; the reader names altered SEQUENCE SEQ from the plain COMMENT ON statement (a column comment changes its table). Snowflake acceptance of this text is unmeasured. The reader stores an unquoted name in upper case and a quoted one as written (docs/sql-parsing/snowflake.md \u00a713), so names it reads here can differ in case from the spelling quoted above.",
   "sql": "COMMENT ON SEQUENCE seq IS 'note'"
  },
  "3f66791394274def": {
@@ -5587,33 +5544,6 @@
   "path": "hybrid",
   "reason": "The reader reports the statement as opaque (snowflake Copy has no statement facts mapping) rather than guess: the former hybrid path named TABLE items, TABLE a.csv. This is a documented boundary, not a claim that Snowflake rejects the text.",
   "sql": "COPY items 'a.csv'"
- },
- "48788b0dbb75abf0": {
-  "class": "opaque-reader-gap",
-  "facts": {
-   "diagnostic": "snowflake TruncateTable has no statement facts mapping",
-   "kind": "UNKNOWN",
-   "operation": "TRUNCATE"
-  },
-  "issue": "by design: docs/sql-parsing/snowflake.md \u00a713",
-  "old": {
-   "analyzer": [
-    [
-     "TABLE",
-     "default_schema.t1"
-    ]
-   ],
-   "hybrid": [
-    [
-     "TABLE",
-     "t1",
-     null
-    ]
-   ]
-  },
-  "path": "both",
-  "reason": "The reader reports the statement as opaque (snowflake TruncateTable has no statement facts mapping) rather than guess: the former hybrid path named TABLE t1; the former analyzer path named TABLE default_schema.t1. This is a documented boundary, not a claim that Snowflake rejects the text.",
-  "sql": "TRUNCATE TABLE t1"
  },
  "4879659f481de75c/analyzer": {
   "class": "opaque-reader-gap",
@@ -7365,24 +7295,25 @@
   "reason": "The former hybrid path named nothing; the reader names created SCHEMA s from the grammar. Snowflake acceptance of this text is unmeasured. The reader stores an unquoted name in upper case and a quoted one as written (docs/sql-parsing/snowflake.md \u00a713), so names it reads here can differ in case from the spelling quoted above.",
   "sql": "CREATE SCHEMA IF NOT EXISTS s"
  },
- "60a873cc5786cb93/analyzer": {
-  "class": "opaque-reader-gap",
+ "60a873cc5786cb93/hybrid": {
+  "class": "facts-adds-acted",
   "facts": {
-   "diagnostic": "snowflake Comment has no statement facts mapping",
-   "kind": "UNKNOWN",
+   "kind": "DDL",
+   "objects": [
+    [
+     "ORDERS",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
    "operation": "COMMENT"
   },
-  "issue": "by design: docs/sql-parsing/snowflake.md \u00a713",
   "old": {
-   "analyzer": [
-    [
-     "TABLE",
-     "default_schema.orders"
-    ]
-   ]
+   "hybrid": []
   },
-  "path": "analyzer",
-  "reason": "The reader reports the statement as opaque (snowflake Comment has no statement facts mapping) rather than guess: the former analyzer path named TABLE default_schema.orders. This is a documented boundary, not a claim that Snowflake rejects the text.",
+  "path": "hybrid",
+  "reason": "The former hybrid path named nothing; the reader names altered TABLE ORDERS from the plain COMMENT ON statement (a column comment changes its table). Snowflake acceptance of this text is unmeasured. The reader stores an unquoted name in upper case and a quoted one as written (docs/sql-parsing/snowflake.md \u00a713), so names it reads here can differ in case from the spelling quoted above.",
   "sql": "COMMENT ON TABLE orders IS 'desc'"
  },
  "60d386f35512ab8c/hybrid": {
@@ -8744,12 +8675,30 @@
   "reason": "MERGE has no facts mapping on Snowflake: the reader reports the statement as opaque instead of naming a target; the former hybrid path named TABLE t, TABLE s, TABLE z; the former analyzer path named TABLE default_schema.t.",
   "sql": "MERGE INTO t USING s ON t.id=s.id WHEN MATCHED THEN UPDATE SET val=(WITH s AS (SELECT val FROM z) SELECT val FROM s)"
  },
- "6ed060381e6a367c": {
-  "class": "dml-differs",
+ "6ed060381e6a367c/analyzer": {
+  "class": "disagree",
   "facts": {
-   "diagnostic": "snowflake Merge has no statement facts mapping",
-   "kind": "UNKNOWN",
-   "operation": "MERGE"
+   "events": [
+    "DELETE"
+   ],
+   "kind": "DML",
+   "objects": [
+    [
+     "USERS",
+     "TABLE",
+     "altered",
+     null
+    ],
+    [
+     "S",
+     "TABLE",
+     "referenced",
+     null
+    ]
+   ],
+   "operation": "MERGE",
+   "target": "USERS",
+   "target_sql": "users"
   },
   "old": {
    "analyzer": [
@@ -8757,22 +8706,10 @@
      "TABLE",
      "default_schema.users"
     ]
-   ],
-   "hybrid": [
-    [
-     "TABLE",
-     "users",
-     null
-    ],
-    [
-     "TABLE",
-     "s",
-     null
-    ]
    ]
   },
-  "path": "both",
-  "reason": "MERGE has no facts mapping on Snowflake: the reader reports the statement as opaque instead of naming a target; the former hybrid path named TABLE users, TABLE s; the former analyzer path named TABLE default_schema.users.",
+  "path": "analyzer",
+  "reason": "The former analyzer path named only the target with a placeholder schema and the written spelling; the reader names altered TABLE USERS, referenced TABLE S and the DELETE events of the merge actions. Snowflake acceptance of this text is unmeasured. Since the reader stores an unquoted name in upper case (docs/sql-parsing/snowflake.md \u00a713) and the former path keeps the written spelling, the row is classified disagree; apart from case it is facts-adds-referenced.",
   "sql": "MERGE INTO users USING s ON s.id = users.id WHEN MATCHED AND s.expired THEN DELETE"
  },
  "6f44db1be97a7ffa/analyzer": {
@@ -9259,12 +9196,33 @@
   "reason": "The reader reports the statement as opaque (snowflake CTE body effects are opaque to statement facts) rather than guess: the former hybrid path named TABLE d, TABLE t. This is a documented boundary, not a claim that Snowflake rejects the text.",
   "sql": "WITH d AS (INSERT INTO t VALUES (1) RETURNING id) SELECT * FROM d"
  },
- "7484ca522ba201fa": {
-  "class": "dml-differs",
+ "7484ca522ba201fa/analyzer": {
+  "class": "disagree",
   "facts": {
-   "diagnostic": "snowflake Merge has no statement facts mapping",
-   "kind": "UNKNOWN",
-   "operation": "MERGE"
+   "affected_columns": [
+    "email"
+   ],
+   "events": [
+    "UPDATE"
+   ],
+   "kind": "DML",
+   "objects": [
+    [
+     "USERS",
+     "TABLE",
+     "altered",
+     null
+    ],
+    [
+     "STAGED",
+     "TABLE",
+     "referenced",
+     null
+    ]
+   ],
+   "operation": "MERGE",
+   "target": "USERS",
+   "target_sql": "users"
   },
   "old": {
    "analyzer": [
@@ -9272,22 +9230,10 @@
      "TABLE",
      "default_schema.users"
     ]
-   ],
-   "hybrid": [
-    [
-     "TABLE",
-     "users",
-     null
-    ],
-    [
-     "TABLE",
-     "staged",
-     null
-    ]
    ]
   },
-  "path": "both",
-  "reason": "MERGE has no facts mapping on Snowflake: the reader reports the statement as opaque instead of naming a target; the former hybrid path named TABLE users, TABLE staged; the former analyzer path named TABLE default_schema.users.",
+  "path": "analyzer",
+  "reason": "The former analyzer path named only the target with a placeholder schema and the written spelling; the reader names altered TABLE USERS, referenced TABLE STAGED and the UPDATE events of the merge actions. Snowflake acceptance of this text is unmeasured. Since the reader stores an unquoted name in upper case (docs/sql-parsing/snowflake.md \u00a713) and the former path keeps the written spelling, the row is classified disagree; apart from case it is facts-adds-referenced.",
   "sql": "MERGE INTO users u USING staged s ON (u.id = s.id) WHEN MATCHED THEN UPDATE SET u.email = s.email"
  },
  "7571e1b8a50b7976": {
@@ -10699,24 +10645,25 @@
   "reason": "The former hybrid path named nothing; the reader names created VIEW S.Vw from the statement head and reports the statement as opaque (view: snowflake grammar is not modelled for this statement); the head's name is proven against the source tokens, the body is unread. Snowflake acceptance of this text is unmeasured.",
   "sql": "CREATE VIEW \"S\".\"Vw\" WITH (security_barrier) AS SELECT 1"
  },
- "882b9eaf9e7f3c4e/analyzer": {
-  "class": "opaque-reader-gap",
+ "882b9eaf9e7f3c4e/hybrid": {
+  "class": "facts-adds-acted",
   "facts": {
-   "diagnostic": "snowflake Comment has no statement facts mapping",
-   "kind": "UNKNOWN",
+   "kind": "DDL",
+   "objects": [
+    [
+     "USERS",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
    "operation": "COMMENT"
   },
-  "issue": "by design: docs/sql-parsing/snowflake.md \u00a713",
   "old": {
-   "analyzer": [
-    [
-     "TABLE",
-     "default_schema.users"
-    ]
-   ]
+   "hybrid": []
   },
-  "path": "analyzer",
-  "reason": "The reader reports the statement as opaque (snowflake Comment has no statement facts mapping) rather than guess: the former analyzer path named TABLE default_schema.users. This is a documented boundary, not a claim that Snowflake rejects the text.",
+  "path": "hybrid",
+  "reason": "The former hybrid path named nothing; the reader names altered TABLE USERS from the plain COMMENT ON statement (a column comment changes its table). Snowflake acceptance of this text is unmeasured. The reader stores an unquoted name in upper case and a quoted one as written (docs/sql-parsing/snowflake.md \u00a713), so names it reads here can differ in case from the spelling quoted above.",
   "sql": "COMMENT ON TABLE users IS 'people'"
  },
  "88e06c37c091bfbe/hybrid": {
@@ -11063,24 +11010,25 @@
   "reason": "The former hybrid path named nothing; the reader names created TABLE t from the statement head and reports the statement as opaque (table: snowflake Command is opaque to statement facts); the head's name is proven against the source tokens, the body is unread. Snowflake acceptance of this text is unmeasured. The reader stores an unquoted name in upper case and a quoted one as written (docs/sql-parsing/snowflake.md \u00a713), so names it reads here can differ in case from the spelling quoted above.",
   "sql": "CREATE TABLE t(a INT PRIMARY KEY) WITHOUT ROWID"
  },
- "8f16eefaa685e47c/analyzer": {
-  "class": "opaque-reader-gap",
+ "8f16eefaa685e47c/hybrid": {
+  "class": "facts-adds-acted",
   "facts": {
-   "diagnostic": "snowflake Comment has no statement facts mapping",
-   "kind": "UNKNOWN",
+   "kind": "DDL",
+   "objects": [
+    [
+     "Y",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
    "operation": "COMMENT"
   },
-  "issue": "by design: docs/sql-parsing/snowflake.md \u00a713",
   "old": {
-   "analyzer": [
-    [
-     "TABLE",
-     "default_schema.y"
-    ]
-   ]
+   "hybrid": []
   },
-  "path": "analyzer",
-  "reason": "The reader reports the statement as opaque (snowflake Comment has no statement facts mapping) rather than guess: the former analyzer path named TABLE default_schema.y. This is a documented boundary, not a claim that Snowflake rejects the text.",
+  "path": "hybrid",
+  "reason": "The former hybrid path named nothing; the reader names altered TABLE Y from the plain COMMENT ON statement (a column comment changes its table). Snowflake acceptance of this text is unmeasured. The reader stores an unquoted name in upper case and a quoted one as written (docs/sql-parsing/snowflake.md \u00a713), so names it reads here can differ in case from the spelling quoted above.",
   "sql": "COMMENT ON TABLE y IS 'x'"
  },
  "8f31fe8d20c41185/analyzer": {
@@ -12249,12 +12197,33 @@
   "reason": "The former hybrid path gave the routine an empty name; the reader names it from the grammar. The routine body is not read. The reader stores an unquoted name in upper case and a quoted one as written (docs/sql-parsing/snowflake.md \u00a713), so names it reads here can differ in case from the spelling quoted above.",
   "sql": "CREATE PROCEDURE p() BEGIN SELECT 1"
  },
- "9e604e57b562b116": {
-  "class": "dml-differs",
+ "9e604e57b562b116/analyzer": {
+  "class": "disagree",
   "facts": {
-   "diagnostic": "snowflake Merge has no statement facts mapping",
-   "kind": "UNKNOWN",
-   "operation": "MERGE"
+   "affected_columns": [
+    "x"
+   ],
+   "events": [
+    "UPDATE"
+   ],
+   "kind": "DML",
+   "objects": [
+    [
+     "T",
+     "TABLE",
+     "altered",
+     null
+    ],
+    [
+     "S",
+     "TABLE",
+     "referenced",
+     null
+    ]
+   ],
+   "operation": "MERGE",
+   "target": "T",
+   "target_sql": "t"
   },
   "old": {
    "analyzer": [
@@ -12262,22 +12231,10 @@
      "TABLE",
      "default_schema.t"
     ]
-   ],
-   "hybrid": [
-    [
-     "TABLE",
-     "t",
-     null
-    ],
-    [
-     "TABLE",
-     "s",
-     null
-    ]
    ]
   },
-  "path": "both",
-  "reason": "MERGE has no facts mapping on Snowflake: the reader reports the statement as opaque instead of naming a target; the former hybrid path named TABLE t, TABLE s; the former analyzer path named TABLE default_schema.t.",
+  "path": "analyzer",
+  "reason": "The former analyzer path named only the target with a placeholder schema and the written spelling; the reader names altered TABLE T, referenced TABLE S and the UPDATE events of the merge actions. Snowflake acceptance of this text is unmeasured. Since the reader stores an unquoted name in upper case (docs/sql-parsing/snowflake.md \u00a713) and the former path keeps the written spelling, the row is classified disagree; apart from case it is facts-adds-referenced.",
   "sql": "MERGE INTO t USING s ON t.id=s.id WHEN MATCHED THEN UPDATE SET t.x=s.x"
  },
  "9e891064e47f6dd5": {
@@ -15600,24 +15557,25 @@
   "reason": "The reader reports the statement as opaque (snowflake Command is opaque to statement facts) rather than guess: the former analyzer path named UNKNOWN default_schema.my_ts. This is a documented boundary, not a claim that Snowflake rejects the text.",
   "sql": "DROP TABLESPACE my_ts"
  },
- "c5ba7079eed5ad2a/analyzer": {
-  "class": "opaque-reader-gap",
+ "c5ba7079eed5ad2a/hybrid": {
+  "class": "facts-adds-acted",
   "facts": {
-   "diagnostic": "snowflake Comment has no statement facts mapping",
-   "kind": "UNKNOWN",
+   "kind": "DDL",
+   "objects": [
+    [
+     "USERS",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
    "operation": "COMMENT"
   },
-  "issue": "by design: docs/sql-parsing/snowflake.md \u00a713",
   "old": {
-   "analyzer": [
-    [
-     "TABLE",
-     "default_schema.users"
-    ]
-   ]
+   "hybrid": []
   },
-  "path": "analyzer",
-  "reason": "The reader reports the statement as opaque (snowflake Comment has no statement facts mapping) rather than guess: the former analyzer path named TABLE default_schema.users. This is a documented boundary, not a claim that Snowflake rejects the text.",
+  "path": "hybrid",
+  "reason": "The former hybrid path named nothing; the reader names altered TABLE USERS from the plain COMMENT ON statement (a column comment changes its table). Snowflake acceptance of this text is unmeasured. The reader stores an unquoted name in upper case and a quoted one as written (docs/sql-parsing/snowflake.md \u00a713), so names it reads here can differ in case from the spelling quoted above.",
   "sql": "COMMENT ON TABLE users IS 'x'"
  },
  "c7c95344df97c977/analyzer": {
@@ -17139,37 +17097,6 @@
   "reason": "The reader reports the statement as opaque (snowflake Command is opaque to statement facts) rather than guess: the former analyzer path named UNKNOWN default_schema.TABLESPACE. This is a documented boundary, not a claim that Snowflake rejects the text.",
   "sql": "CREATE LOB TABLESPACE test_lob_ts MANAGED BY SYSTEM"
  },
- "d851bccf97f30a0d": {
-  "class": "dml-differs",
-  "facts": {
-   "diagnostic": "snowflake Merge has no statement facts mapping",
-   "kind": "UNKNOWN",
-   "operation": "MERGE"
-  },
-  "old": {
-   "analyzer": [
-    [
-     "TABLE",
-     "Sales.Order Items"
-    ]
-   ],
-   "hybrid": [
-    [
-     "TABLE",
-     "Order Items",
-     "Sales"
-    ],
-    [
-     "TABLE",
-     "items",
-     "staging"
-    ]
-   ]
-  },
-  "path": "both",
-  "reason": "MERGE has no facts mapping on Snowflake: the reader reports the statement as opaque instead of naming a target; the former hybrid path named TABLE Sales.Order Items, TABLE staging.items; the former analyzer path named TABLE Sales.Order Items.",
-  "sql": "MERGE INTO \"Sales\".\"Order Items\" AS t USING staging.items AS s ON t.id = s.id WHEN MATCHED THEN UPDATE SET \"Item Value\" "
- },
  "d855323070188b02/analyzer": {
   "class": "opaque-reader-gap",
   "facts": {
@@ -17924,24 +17851,25 @@
   "reason": "Apart from case this row is classified facts-adds-referenced for the former hybrid and former analyzer path (the reader also names tables the statement only reads). The former path keeps each name as written; the reader stores an unquoted name in upper case and a quoted one as written (docs/sql-parsing/snowflake.md \u00a713).",
   "sql": "CREATE INDEX idx1 ON t1 (id)"
  },
- "e1681220489dc183/analyzer": {
-  "class": "opaque-reader-gap",
+ "e1681220489dc183/hybrid": {
+  "class": "facts-adds-acted",
   "facts": {
-   "diagnostic": "snowflake Comment has no statement facts mapping",
-   "kind": "UNKNOWN",
+   "kind": "DDL",
+   "objects": [
+    [
+     "Z",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
    "operation": "COMMENT"
   },
-  "issue": "by design: docs/sql-parsing/snowflake.md \u00a713",
   "old": {
-   "analyzer": [
-    [
-     "TABLE",
-     "default_schema.z"
-    ]
-   ]
+   "hybrid": []
   },
-  "path": "analyzer",
-  "reason": "The reader reports the statement as opaque (snowflake Comment has no statement facts mapping) rather than guess: the former analyzer path named TABLE default_schema.z. This is a documented boundary, not a claim that Snowflake rejects the text.",
+  "path": "hybrid",
+  "reason": "The former hybrid path named nothing; the reader names altered TABLE Z from the plain COMMENT ON statement (a column comment changes its table). Snowflake acceptance of this text is unmeasured. The reader stores an unquoted name in upper case and a quoted one as written (docs/sql-parsing/snowflake.md \u00a713), so names it reads here can differ in case from the spelling quoted above.",
   "sql": "COMMENT ON TABLE z IS 'x'"
  },
  "e16b87b6305a6baf/analyzer": {
@@ -18091,51 +18019,25 @@
   "reason": "The former hybrid path gave the routine an empty name; the reader names it from the grammar. The routine body is not read. The reader stores an unquoted name in upper case and a quoted one as written (docs/sql-parsing/snowflake.md \u00a713), so names it reads here can differ in case from the spelling quoted above.",
   "sql": "CREATE PROCEDURE p() LANGUAGE SQL\nBEGIN\n    SELECT 1"
  },
- "e40c213f199a97b3": {
-  "class": "opaque-reader-gap",
+ "e5131d0f67fcf2ae/hybrid": {
+  "class": "facts-adds-acted",
   "facts": {
-   "diagnostic": "snowflake TruncateTable has no statement facts mapping",
-   "kind": "UNKNOWN",
-   "operation": "TRUNCATE"
-  },
-  "issue": "by design: docs/sql-parsing/snowflake.md \u00a713",
-  "old": {
-   "analyzer": [
+   "kind": "DDL",
+   "objects": [
     [
-     "TABLE",
-     "default_schema.users"
-    ]
-   ],
-   "hybrid": [
-    [
-     "TABLE",
-     "users",
+     "V",
+     "VIEW",
+     "altered",
      null
     ]
-   ]
-  },
-  "path": "both",
-  "reason": "The reader reports the statement as opaque (snowflake TruncateTable has no statement facts mapping) rather than guess: the former hybrid path named TABLE users; the former analyzer path named TABLE default_schema.users. This is a documented boundary, not a claim that Snowflake rejects the text.",
-  "sql": "TRUNCATE TABLE users"
- },
- "e5131d0f67fcf2ae/analyzer": {
-  "class": "opaque-reader-gap",
-  "facts": {
-   "diagnostic": "snowflake Comment has no statement facts mapping",
-   "kind": "UNKNOWN",
+   ],
    "operation": "COMMENT"
   },
-  "issue": "by design: docs/sql-parsing/snowflake.md \u00a713",
   "old": {
-   "analyzer": [
-    [
-     "VIEW",
-     "default_schema.v"
-    ]
-   ]
+   "hybrid": []
   },
-  "path": "analyzer",
-  "reason": "The reader reports the statement as opaque (snowflake Comment has no statement facts mapping) rather than guess: the former analyzer path named VIEW default_schema.v. This is a documented boundary, not a claim that Snowflake rejects the text.",
+  "path": "hybrid",
+  "reason": "The former hybrid path named nothing; the reader names altered VIEW V from the plain COMMENT ON statement (a column comment changes its table). Snowflake acceptance of this text is unmeasured. The reader stores an unquoted name in upper case and a quoted one as written (docs/sql-parsing/snowflake.md \u00a713), so names it reads here can differ in case from the spelling quoted above.",
   "sql": "COMMENT ON VIEW v IS 'note'"
  },
  "e5b7cffd6b6dd9c5/analyzer": {
@@ -18219,13 +18121,19 @@
   "sql": "CREATE INDEX `ix` ON `s`.`t` ((a + 1), id DESC) USING BTREE"
  },
  "e668b082ca202cf3/analyzer": {
-  "class": "opaque-reader-gap",
+  "class": "disagree",
   "facts": {
-   "diagnostic": "snowflake Comment has no statement facts mapping",
-   "kind": "UNKNOWN",
+   "kind": "DDL",
+   "objects": [
+    [
+     "USERS",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
    "operation": "COMMENT"
   },
-  "issue": "by design: docs/sql-parsing/snowflake.md \u00a713",
   "old": {
    "analyzer": [
     [
@@ -18235,7 +18143,28 @@
    ]
   },
   "path": "analyzer",
-  "reason": "The reader reports the statement as opaque (snowflake Comment has no statement facts mapping) rather than guess: the former analyzer path named TABLE default_schema.users. This is a documented boundary, not a claim that Snowflake rejects the text.",
+  "reason": "The former analyzer path named the column's table with a placeholder schema and the written spelling; the reader names . Snowflake acceptance of this text is unmeasured. Since the reader stores an unquoted name in upper case (docs/sql-parsing/snowflake.md \u00a713) and the former path keeps the written spelling, the row is classified disagree; apart from case it is the same table.",
+  "sql": "COMMENT ON COLUMN users.email IS 'contact'"
+ },
+ "e668b082ca202cf3/hybrid": {
+  "class": "facts-adds-acted",
+  "facts": {
+   "kind": "DDL",
+   "objects": [
+    [
+     "USERS",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "operation": "COMMENT"
+  },
+  "old": {
+   "hybrid": []
+  },
+  "path": "hybrid",
+  "reason": "The former hybrid path named nothing; the reader names altered TABLE USERS from the plain COMMENT ON statement (a column comment changes its table). Snowflake acceptance of this text is unmeasured. The reader stores an unquoted name in upper case and a quoted one as written (docs/sql-parsing/snowflake.md \u00a713), so names it reads here can differ in case from the spelling quoted above.",
   "sql": "COMMENT ON COLUMN users.email IS 'contact'"
  },
  "e67446be205a534f/hybrid": {
@@ -18411,12 +18340,34 @@
   "reason": "The reader reports the statement as opaque (snowflake materialized view log identity is not modelled) rather than guess: the former hybrid path named VIEW LOG; the former analyzer path named MATERIALIZED_VIEW_LOG default_schema.t. This is a documented boundary, not a claim that Snowflake rejects the text.",
   "sql": "DROP MATERIALIZED VIEW LOG ON t"
  },
- "e8b8a20ae6fd14e8": {
-  "class": "dml-differs",
+ "e8b8a20ae6fd14e8/analyzer": {
+  "class": "disagree",
   "facts": {
-   "diagnostic": "snowflake Merge has no statement facts mapping",
-   "kind": "UNKNOWN",
-   "operation": "MERGE"
+   "affected_columns": [
+    "val"
+   ],
+   "events": [
+    "INSERT",
+    "UPDATE"
+   ],
+   "kind": "DML",
+   "objects": [
+    [
+     "T",
+     "TABLE",
+     "altered",
+     null
+    ],
+    [
+     "S",
+     "TABLE",
+     "referenced",
+     null
+    ]
+   ],
+   "operation": "MERGE",
+   "target": "T",
+   "target_sql": "t"
   },
   "old": {
    "analyzer": [
@@ -18424,22 +18375,10 @@
      "TABLE",
      "default_schema.t"
     ]
-   ],
-   "hybrid": [
-    [
-     "TABLE",
-     "t",
-     null
-    ],
-    [
-     "TABLE",
-     "s",
-     null
-    ]
    ]
   },
-  "path": "both",
-  "reason": "MERGE has no facts mapping on Snowflake: the reader reports the statement as opaque instead of naming a target; the former hybrid path named TABLE t, TABLE s; the former analyzer path named TABLE default_schema.t.",
+  "path": "analyzer",
+  "reason": "The former analyzer path named only the target with a placeholder schema and the written spelling; the reader names altered TABLE T, referenced TABLE S and the INSERT, UPDATE events of the merge actions. Snowflake acceptance of this text is unmeasured. Since the reader stores an unquoted name in upper case (docs/sql-parsing/snowflake.md \u00a713) and the former path keeps the written spelling, the row is classified disagree; apart from case it is facts-adds-referenced.",
   "sql": "MERGE INTO t USING s ON t.id = s.id WHEN MATCHED THEN UPDATE SET val = s.val WHEN NOT MATCHED THEN INSERT (id, val) VALU"
  },
  "e97b0aa12bf9efba/analyzer": {
@@ -19507,13 +19446,19 @@
   "sql": "CREATE MATERIALIZED VIEW LOG ON orders"
  },
  "f847ff82d64adf84/analyzer": {
-  "class": "opaque-reader-gap",
+  "class": "disagree",
   "facts": {
-   "diagnostic": "snowflake Comment has no statement facts mapping",
-   "kind": "UNKNOWN",
+   "kind": "DDL",
+   "objects": [
+    [
+     "CHILD",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
    "operation": "COMMENT"
   },
-  "issue": "by design: docs/sql-parsing/snowflake.md \u00a713",
   "old": {
    "analyzer": [
     [
@@ -19523,7 +19468,28 @@
    ]
   },
   "path": "analyzer",
-  "reason": "The reader reports the statement as opaque (snowflake Comment has no statement facts mapping) rather than guess: the former analyzer path named TABLE default_schema.child. This is a documented boundary, not a claim that Snowflake rejects the text.",
+  "reason": "The former analyzer path named the column's table with a placeholder schema and the written spelling; the reader names . Snowflake acceptance of this text is unmeasured. Since the reader stores an unquoted name in upper case (docs/sql-parsing/snowflake.md \u00a713) and the former path keeps the written spelling, the row is classified disagree; apart from case it is the same table.",
+  "sql": "COMMENT ON COLUMN child.id IS 'note'"
+ },
+ "f847ff82d64adf84/hybrid": {
+  "class": "facts-adds-acted",
+  "facts": {
+   "kind": "DDL",
+   "objects": [
+    [
+     "CHILD",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "operation": "COMMENT"
+  },
+  "old": {
+   "hybrid": []
+  },
+  "path": "hybrid",
+  "reason": "The former hybrid path named nothing; the reader names altered TABLE CHILD from the plain COMMENT ON statement (a column comment changes its table). Snowflake acceptance of this text is unmeasured. The reader stores an unquoted name in upper case and a quoted one as written (docs/sql-parsing/snowflake.md \u00a713), so names it reads here can differ in case from the spelling quoted above.",
   "sql": "COMMENT ON COLUMN child.id IS 'note'"
  },
  "f8eb84db9d18151f/hybrid": {

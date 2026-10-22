@@ -19,6 +19,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Snowflake `TRUNCATE`, `MERGE` and `COMMENT ON` are read.** `TRUNCATE [TABLE] [IF EXISTS] t`
+  names the table it empties; `MERGE INTO t USING ...` names its target and sources and reports
+  the `INSERT`, `UPDATE` and `DELETE` its actions perform, so data-change analysis and object
+  tracking no longer miss a merge; `COMMENT ON TABLE`, `VIEW`, `MATERIALIZED VIEW`, `SEQUENCE` and
+  `COLUMN` name the object changed. Names follow the Snowflake rules (an unquoted ASCII name in
+  upper case, a quoted one exactly); `IDENTIFIER()` and `$variable` names, a list of tables,
+  `CASCADE`, a `MERGE` with a CTE and every other `COMMENT ON` kind stay unread.
+
 - **Snowflake reads statement facts from the SQL grammar.** `info --format json`,
   `migrate --dry-run`, object tracking during `migrate`, data-change analysis and lint read each
   statement's kind, objects, target and predicate from the sqlglot AST after the shared lexical
