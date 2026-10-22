@@ -302,6 +302,33 @@
   "reason": "The statement is led by a CTE and writes the table the reader names (TABLE t (altered)); the old analyzer path refused CTE-led statements and named nothing. PostgreSQL 16.14 parses it (SQLSTATE 42P01 at run time).",
   "sql": "WITH s AS (SELECT 1 AS id, 'a' AS v) INSERT INTO t SELECT * FROM s"
  },
+ "0d48af6372707fc2": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "postgres Command is opaque to statement facts",
+   "kind": "DDL",
+   "operation": "CREATE"
+  },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+  "old": {
+   "analyzer": [
+    [
+     "TABLE",
+     "default_schema.t"
+    ]
+   ],
+   "hybrid": [
+    [
+     "TABLE",
+     "t",
+     "public"
+    ]
+   ]
+  },
+  "path": "both",
+  "reason": "A `{...}` template brace continues the name with text the engine cannot resolve, so the reader names nothing; the former path named the text before the brace (for `${...}`, the `$`). This is a documented boundary, not a claim that PostgreSQL rejects the text.",
+  "sql": "CREATE TABLE t{c}(id INT)"
+ },
  "0d70443377fbac9c/analyzer": {
   "class": "opaque-reader-gap",
   "facts": {
@@ -1169,6 +1196,33 @@
    "yugabytedb 2026.1.2": "42601"
   },
   "sql": "CREATE PACKAGE pkg AS PROCEDURE p()"
+ },
+ "22b9d3efc88e5bbb": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "postgres grammar is not modelled for this statement",
+   "kind": "DDL",
+   "operation": "DROP"
+  },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+  "old": {
+   "analyzer": [
+    [
+     "TABLE",
+     "default_schema.t"
+    ]
+   ],
+   "hybrid": [
+    [
+     "TABLE",
+     "t",
+     "public"
+    ]
+   ]
+  },
+  "path": "both",
+  "reason": "A `{...}` template brace continues the name with text the engine cannot resolve, so the reader names nothing; the former path named the text before the brace (for `${...}`, the `$`). This is a documented boundary, not a claim that PostgreSQL rejects the text.",
+  "sql": "DROP TABLE t{c}"
  },
  "2372b71d31f1c6c8/hybrid": {
   "class": "opaque-reader-gap",
@@ -3876,6 +3930,33 @@
   },
   "sql": "CREATE PRIMARY XML INDEX idx_xml ON docs(xml_col)"
  },
+ "6f44db1be97a7ffa": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "postgres Command is opaque to statement facts",
+   "kind": "DDL",
+   "operation": "CREATE"
+  },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+  "old": {
+   "analyzer": [
+    [
+     "TABLE",
+     "s.t"
+    ]
+   ],
+   "hybrid": [
+    [
+     "TABLE",
+     "t",
+     "s"
+    ]
+   ]
+  },
+  "path": "both",
+  "reason": "A `{...}` template brace continues the name with text the engine cannot resolve, so the reader names nothing; the former path named the text before the brace (for `${...}`, the `$`). This is a documented boundary, not a claim that PostgreSQL rejects the text.",
+  "sql": "CREATE TABLE s.t{c}(id INT)"
+ },
  "6fbd20b947265821/hybrid": {
   "class": "facts-adds-acted",
   "facts": {
@@ -3902,6 +3983,33 @@
   "path": "hybrid",
   "reason": "The reader names TABLE t (altered) for the INSERT (flagging that the rest of the grammar is not modelled); the old hybrid path named nothing for the X'..' bit-string literal and ?1 parameter. PostgreSQL 16.14 parses it (SQLSTATE 42P01 at run time).",
   "sql": "INSERT INTO t VALUES (X'00', ?1)"
+ },
+ "7268421cc174659e": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "postgres grammar is not modelled for this statement",
+   "kind": "DDL",
+   "operation": "CREATE"
+  },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+  "old": {
+   "analyzer": [
+    [
+     "TABLE",
+     "default_schema.s"
+    ]
+   ],
+   "hybrid": [
+    [
+     "TABLE",
+     "s",
+     "public"
+    ]
+   ]
+  },
+  "path": "both",
+  "reason": "A `{...}` template brace continues the name with text the engine cannot resolve, so the reader names nothing; the former path named the text before the brace (for `${...}`, the `$`). This is a documented boundary, not a claim that PostgreSQL rejects the text.",
+  "sql": "CREATE TABLE s{c}.t(id INT)"
  },
  "727b1b986aade562": {
   "class": "opaque-reader-gap",
@@ -5066,6 +5174,33 @@
   "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"VIRTUAL\"); it is a MySQL or SQLite statement harvested into the corpus and never runs on this family; the reader names VIRTUAL_TABLE docs (created) where the old extraction named nothing, which costs nothing because the engine never runs the text. CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
   "sql": "CREATE VIRTUAL TABLE IF NOT EXISTS docs USING fts5(title, body)"
  },
+ "93fc2da7a8f4c9fa": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "postgres Command is opaque to statement facts",
+   "kind": "DDL",
+   "operation": "CREATE"
+  },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+  "old": {
+   "analyzer": [
+    [
+     "SEQUENCE",
+     "default_schema.q"
+    ]
+   ],
+   "hybrid": [
+    [
+     "SEQUENCE",
+     "q",
+     "public"
+    ]
+   ]
+  },
+  "path": "both",
+  "reason": "A `{...}` template brace continues the name with text the engine cannot resolve, so the reader names nothing; the former path named the text before the brace (for `${...}`, the `$`). This is a documented boundary, not a claim that PostgreSQL rejects the text.",
+  "sql": "CREATE SEQUENCE q{c}"
+ },
  "94f533a537481e27/hybrid": {
   "class": "opaque-reader-gap",
   "facts": {
@@ -5928,6 +6063,33 @@
    "yugabytedb 2026.1.2": "42601"
   },
   "sql": "CREATE OR REPLACE FORCE VIEW vw_test AS\n        SELECT * FROM nonexistent_table"
+ },
+ "b12619922e3614e4": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "postgres Command is opaque to statement facts",
+   "kind": "DDL",
+   "operation": "CREATE"
+  },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+  "old": {
+   "analyzer": [
+    [
+     "TABLE",
+     "default_schema.a"
+    ]
+   ],
+   "hybrid": [
+    [
+     "TABLE",
+     "a",
+     "public"
+    ]
+   ]
+  },
+  "path": "both",
+  "reason": "A `{...}` template brace continues the name with text the engine cannot resolve, so the reader names nothing; the former path named the text before the brace (for `${...}`, the `$`). This is a documented boundary, not a claim that PostgreSQL rejects the text.",
+  "sql": "CREATE TABLE a{c}b(id INT)"
  },
  "b1302612249a68c8/hybrid": {
   "class": "opaque-reader-gap",
@@ -8601,6 +8763,33 @@
    "yugabytedb 2026.1.2": "42601"
   },
   "sql": "DROP STAGE IF EXISTS \"S\".\"LANDING\""
+ },
+ "f3194505eb505075": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "postgres Command is opaque to statement facts",
+   "kind": "DDL",
+   "operation": "CREATE"
+  },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+  "old": {
+   "analyzer": [
+    [
+     "TRIGGER",
+     "default_schema.tr"
+    ]
+   ],
+   "hybrid": [
+    [
+     "TRIGGER",
+     "tr",
+     "public"
+    ]
+   ]
+  },
+  "path": "both",
+  "reason": "A `{...}` template brace continues the name with text the engine cannot resolve, so the reader names nothing; the former path named the text before the brace (for `${...}`, the `$`). This is a documented boundary, not a claim that PostgreSQL rejects the text.",
+  "sql": "CREATE TRIGGER tr{c} AFTER INSERT ON t BEGIN SELECT 1"
  },
  "f368d68610a0cc28/hybrid": {
   "class": "opaque-reader-gap",

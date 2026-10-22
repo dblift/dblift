@@ -271,6 +271,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A keyword is no longer reported as an object name on a malformed statement.** For every
+  dialect whose statements are read from the grammar, `ALTER TABLE ADD COLUMN x int`,
+  `DROP TABLE IF`, `DROP TABLE CASCADE` and `CREATE TABLE IF` no longer name `ADD`, `IF` or
+  `CASCADE` as the object, and a name continued by a `{...}` template brace (`CREATE TABLE s{c}.t`)
+  is no longer cut at the brace; such a statement is reported as unread. The Db2 reader refuses the
+  same keywords. `UPDATE ONLY t` and `DELETE FROM ONLY t` are likewise reported as unread on
+  MySQL, MariaDB, Oracle and SQL Server.
+
 - **Statement facts no longer shorten four-part relation names.** When the parsed name has more
   qualifiers than the facts can represent, that relation is left unnamed and dependent effects
   remain opaque. A separately proven outer program name remains readable. A leading source

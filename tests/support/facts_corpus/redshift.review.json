@@ -309,6 +309,33 @@
   "reason": "Redshift 1.0.485645 rejects this text with SQLSTATE 42601 (syntax error at or near \"INSERT\"); it is another dialect's statement or an incomplete fragment harvested into the corpus and never runs on this family; the reader names TABLE t (altered) from the head text with a diagnostic and the old extraction named nothing, a difference with no consequence because the engine never runs the text.",
   "sql": "WITH s AS (SELECT 1 AS id, 'a' AS v) INSERT INTO t SELECT * FROM s"
  },
+ "0d48af6372707fc2": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "redshift Command is opaque to statement facts",
+   "kind": "DDL",
+   "operation": "CREATE"
+  },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+  "old": {
+   "analyzer": [
+    [
+     "TABLE",
+     "default_schema.t"
+    ]
+   ],
+   "hybrid": [
+    [
+     "TABLE",
+     "t",
+     "public"
+    ]
+   ]
+  },
+  "path": "both",
+  "reason": "A `{...}` template brace continues the name with text the engine cannot resolve, so the reader names nothing; the former path named the text before the brace (for `${...}`, the `$`). This is a documented boundary, not a claim that Redshift rejects the text.",
+  "sql": "CREATE TABLE t{c}(id INT)"
+ },
  "0d70443377fbac9c/analyzer": {
   "class": "opaque-reader-gap",
   "facts": {
@@ -1251,6 +1278,33 @@
    "redshift 1.0.485645": "42601"
   },
   "sql": "CREATE PACKAGE pkg AS PROCEDURE p()"
+ },
+ "22b9d3efc88e5bbb": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "redshift grammar is not modelled for this statement",
+   "kind": "DDL",
+   "operation": "DROP"
+  },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+  "old": {
+   "analyzer": [
+    [
+     "TABLE",
+     "default_schema.t"
+    ]
+   ],
+   "hybrid": [
+    [
+     "TABLE",
+     "t",
+     "public"
+    ]
+   ]
+  },
+  "path": "both",
+  "reason": "A `{...}` template brace continues the name with text the engine cannot resolve, so the reader names nothing; the former path named the text before the brace (for `${...}`, the `$`). This is a documented boundary, not a claim that Redshift rejects the text.",
+  "sql": "DROP TABLE t{c}"
  },
  "2372b71d31f1c6c8/hybrid": {
   "class": "opaque-reader-gap",
@@ -4144,6 +4198,33 @@
   "reason": "The reader names the MERGE target (TABLE users (altered)) and says the sources and actions are not read; it gives no events, columns or predicate, where the old extraction named the target and the sources. Redshift answers SQLSTATE 0A000 (MERGE statement with a single WHEN clause is not enabled.), not a syntax error.",
   "sql": "MERGE INTO users USING s ON s.id = users.id WHEN MATCHED AND s.expired THEN DELETE"
  },
+ "6f44db1be97a7ffa": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "redshift Command is opaque to statement facts",
+   "kind": "DDL",
+   "operation": "CREATE"
+  },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+  "old": {
+   "analyzer": [
+    [
+     "TABLE",
+     "s.t"
+    ]
+   ],
+   "hybrid": [
+    [
+     "TABLE",
+     "t",
+     "s"
+    ]
+   ]
+  },
+  "path": "both",
+  "reason": "A `{...}` template brace continues the name with text the engine cannot resolve, so the reader names nothing; the former path named the text before the brace (for `${...}`, the `$`). This is a documented boundary, not a claim that Redshift rejects the text.",
+  "sql": "CREATE TABLE s.t{c}(id INT)"
+ },
  "6f803bd442085206": {
   "class": "opaque-reader-gap",
   "facts": {
@@ -4199,6 +4280,33 @@
   "path": "hybrid",
   "reason": "The reader takes the target TABLE t (altered) from the head text of a statement its grammar does not model (diagnostic); the old extraction named nothing. Redshift answers SQLSTATE 42P01 (relation \"t\" does not exist), not a syntax error.",
   "sql": "INSERT INTO t VALUES (X'00', ?1)"
+ },
+ "7268421cc174659e": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "redshift grammar is not modelled for this statement",
+   "kind": "DDL",
+   "operation": "CREATE"
+  },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+  "old": {
+   "analyzer": [
+    [
+     "TABLE",
+     "default_schema.s"
+    ]
+   ],
+   "hybrid": [
+    [
+     "TABLE",
+     "s",
+     "public"
+    ]
+   ]
+  },
+  "path": "both",
+  "reason": "A `{...}` template brace continues the name with text the engine cannot resolve, so the reader names nothing; the former path named the text before the brace (for `${...}`, the `$`). This is a documented boundary, not a claim that Redshift rejects the text.",
+  "sql": "CREATE TABLE s{c}.t(id INT)"
  },
  "727b1b986aade562": {
   "class": "opaque-reader-gap",
@@ -6357,6 +6465,33 @@
    "redshift 1.0.485645": "42601"
   },
   "sql": "CREATE OR REPLACE FORCE VIEW vw_test AS\n        SELECT * FROM nonexistent_table"
+ },
+ "b12619922e3614e4": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "redshift Command is opaque to statement facts",
+   "kind": "DDL",
+   "operation": "CREATE"
+  },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+  "old": {
+   "analyzer": [
+    [
+     "TABLE",
+     "default_schema.a"
+    ]
+   ],
+   "hybrid": [
+    [
+     "TABLE",
+     "a",
+     "public"
+    ]
+   ]
+  },
+  "path": "both",
+  "reason": "A `{...}` template brace continues the name with text the engine cannot resolve, so the reader names nothing; the former path named the text before the brace (for `${...}`, the `$`). This is a documented boundary, not a claim that Redshift rejects the text.",
+  "sql": "CREATE TABLE a{c}b(id INT)"
  },
  "b1302612249a68c8/hybrid": {
   "class": "opaque-reader-gap",
@@ -9268,6 +9403,33 @@
    "redshift 1.0.485645": "42601"
   },
   "sql": "DROP STAGE IF EXISTS \"S\".\"LANDING\""
+ },
+ "f3194505eb505075": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "redshift Command is opaque to statement facts",
+   "kind": "DDL",
+   "operation": "CREATE"
+  },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+  "old": {
+   "analyzer": [
+    [
+     "TRIGGER",
+     "default_schema.tr"
+    ]
+   ],
+   "hybrid": [
+    [
+     "TRIGGER",
+     "tr",
+     "public"
+    ]
+   ]
+  },
+  "path": "both",
+  "reason": "A `{...}` template brace continues the name with text the engine cannot resolve, so the reader names nothing; the former path named the text before the brace (for `${...}`, the `$`). This is a documented boundary, not a claim that Redshift rejects the text.",
+  "sql": "CREATE TRIGGER tr{c} AFTER INSERT ON t BEGIN SELECT 1"
  },
  "f368d68610a0cc28/hybrid": {
   "class": "opaque-reader-gap",
