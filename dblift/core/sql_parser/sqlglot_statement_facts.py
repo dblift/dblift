@@ -252,14 +252,30 @@ _SNOWFLAKE_CLAUSE_WORDS = _HEAD_CLAUSE_WORDS | {"IDENTIFIER"}
 
 
 _ROUTINE_CLAUSE_WORDS = frozenset({"IF", "NOT", "EXISTS"})
+_PROGRAM_KINDS = frozenset({"FUNCTION", "PROCEDURE", "TRIGGER"})
+# The clause words each engine reserves (tests/support/facts_corpus/reserved, from the vendor's
+# list); a dialect missing here is not known to allow any of them as a program name.
+_RESERVED_ADD_CASCADE = frozenset({"ADD", "CASCADE", "IF", "RESTRICT"})
+_RESERVED_CLAUSE_WORDS = {
+    "mysql": _RESERVED_ADD_CASCADE,  # lint: allow-dialect-string: reserved words
+    "tsql": _RESERVED_ADD_CASCADE,  # lint: allow-dialect-string: reserved words
+    "oracle": frozenset({"ADD"}),  # lint: allow-dialect-string: reserved words
+    "postgres": frozenset({"ONLY"}),  # lint: allow-dialect-string: reserved words
+    "redshift": frozenset({"ONLY"}),  # lint: allow-dialect-string: reserved words
+    "duckdb": frozenset({"ONLY"}),  # lint: allow-dialect-string: reserved words
+}
+_PROGRAM_FOLLOWERS = frozenset({"BEFORE", "AFTER", "INSTEAD", "FOR"})
 
 
 def _clause_words(dialect: str, routine: bool = False) -> frozenset:
     """Words that are clause keywords, not names, where a truncated statement ends early. A
-    routine name is only refused the words that open its own head (``add`` is a legal name)."""
+    program name keeps the words its engine does not reserve, but only before ``(`` or a trigger
+    timing word: ``CREATE PROCEDURE cascade`` alone is a truncated statement."""
     if dialect == "snowflake":  # lint: allow-dialect-string: IDENTIFIER() names
         return _SNOWFLAKE_CLAUSE_WORDS
-    return _ROUTINE_CLAUSE_WORDS if routine else _HEAD_CLAUSE_WORDS
+    if routine and dialect in _RESERVED_CLAUSE_WORDS:
+        return _ROUTINE_CLAUSE_WORDS | (_HEAD_CLAUSE_WORDS & _RESERVED_CLAUSE_WORDS[dialect])
+    return _HEAD_CLAUSE_WORDS
 
 
 def _head_name_is_bounded(text: str, match: "re.Match[str]", groups: Tuple[int, ...]) -> bool:
@@ -284,6 +300,9 @@ def _head_tokens_prove_name(
         name[0] not in {'"', "`", "["} and name.upper() in words for name in names
     ):
         return False
+    follower_needed = routine and any(
+        name[0] not in {'"', "`", "["} and name.upper() in _HEAD_CLAUSE_WORDS for name in names
+    )
     original_sql, original_prefix = sql, prefix
     tokenizer = Dialect.get_or_raise(dialect)
     try:
@@ -414,6 +433,14 @@ def _head_tokens_prove_name(
         TokenType.R_BRACE,
     }:
         return False  # a template brace continues the name
+    if follower_needed and not (
+        len(source) > len(proposed)
+        and (
+            source[len(proposed)].token_type == TokenType.L_PAREN
+            or source[len(proposed)].text.upper() in _PROGRAM_FOLLOWERS
+        )
+    ):
+        return False
     parts = proposed[-(2 * len(names) - 1) :]
     if len(parts) != 2 * len(names) - 1:
         return False
@@ -501,12 +528,10 @@ def _unread_names(ast: exp.Expr, dialect: str) -> Optional[str]:
     snowflake = dialect == "snowflake"  # lint: allow-dialect-string: IDENTIFIER() and $variables
     if snowflake and any(ast.find_all(exp.DynamicIdentifier)):
         return _SNOWFLAKE_DYNAMIC_NAMES
-    routine = isinstance(ast, (exp.Create, exp.Drop)) and str(
-        ast.args.get("kind") or ""
-    ).upper() in {
-        "FUNCTION",
-        "PROCEDURE",
-    }
+    routine = (
+        isinstance(ast, (exp.Create, exp.Drop))
+        and str(ast.args.get("kind") or "").upper() in _PROGRAM_KINDS
+    )
     words = _clause_words(dialect, routine)
     for table in ast.find_all(exp.Table):
         parts = [table.args.get(key) for key in ("this", "db", "catalog")]
@@ -1194,7 +1219,7 @@ def _head_facts(sql: str, diagnostic: str, *, dialect: str = "") -> StatementFac
             dialect,
             head[: match.end()],
             tuple(match.group(i) for i in (3, 4) if match.group(i)),
-            routine=match.group(2).upper() in {"FUNCTION", "PROCEDURE"},
+            routine=match.group(2).upper() in _PROGRAM_KINDS,
         )
     ):
         match = None
@@ -1411,7 +1436,7 @@ def _mysql_program_facts(sql: str, diagnostic: str) -> Optional[StatementFacts]:
         "mysql",  # lint: allow-dialect-string: MySQL program head proof
         head[: match.end(6 if match.group(6) else 5)],
         tuple(part for part in parts if part),
-        routine=kind in {SqlObjectType.FUNCTION, SqlObjectType.PROCEDURE},
+        routine=kind.name in _PROGRAM_KINDS,
     ):
         return StatementFacts(operation, "DDL", diagnostic=diagnostic)
     schema, name = (parts[0], parts[1]) if parts[1] else (None, parts[0])

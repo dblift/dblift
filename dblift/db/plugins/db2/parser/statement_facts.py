@@ -36,8 +36,16 @@ STOP_WORDS: FrozenSet[str] = frozenset(
     """TO ON IS IN FOR AS LIKE WITH SET USING VALUES FROM WHERE INTO IF RESTRICT IMMEDIATE ONLY
     FOREIGN DATABASE DB CFG SELECT TABLE AUTHORIZATION NOT EXISTS ADD CLONE CASCADE""".split()
 )
-#: A routine name may be ``add``, ``clone`` or ``cascade``: only the clause openers are refused.
-_ROUTINE_STOP_WORDS: FrozenSet[str] = STOP_WORDS - {"ADD", "CLONE", "CASCADE"}
+#: ``clone`` is no Db2 keyword, so a program or index may carry it before ``(``, a trigger timing
+#: word or ``ON``; ``add`` and ``cascade`` stay refused (the reserved-word page is not in the repo).
+_PROGRAM_STOP_WORDS: FrozenSet[str] = STOP_WORDS - {"CLONE"}
+_PROGRAM_FOLLOWERS: FrozenSet[str] = frozenset({"(", "BEFORE", "AFTER", "INSTEAD", "ON"})
+_PROGRAM_TYPES = (
+    SqlObjectType.FUNCTION,
+    SqlObjectType.PROCEDURE,
+    SqlObjectType.TRIGGER,
+    SqlObjectType.INDEX,
+)
 
 #: Words that follow CREATE / ALTER / DROP TABLE|VIEW|FUNCTION|INDEX in a different statement.
 SECOND_WORDS: FrozenSet[str] = frozenset({"HIERARCHY", "MAPPING", "EXTENSION"})
@@ -303,8 +311,15 @@ def _head_facts(
         at = on + 1
         if ups[at : at + 1] and ups[at] in _GRANT_TYPES:
             otype, at = _TYPES[ups[at]], at + 1
-    routine = head.object_type in (SqlObjectType.FUNCTION, SqlObjectType.PROCEDURE)
-    name = _read_name(words, at, head.max_parts, _ROUTINE_STOP_WORDS if routine else STOP_WORDS)
+    name = _read_name(words, at, head.max_parts)
+    if name is None and otype in _PROGRAM_TYPES:
+        relaxed = _read_name(words, at, head.max_parts, _PROGRAM_STOP_WORDS)
+        if (
+            relaxed is not None
+            and relaxed[2] < len(words)
+            and words[relaxed[2]].text.upper() in _PROGRAM_FOLLOWERS
+        ):
+            name = relaxed
     if name is None:
         return None, at
     parts, _, end = name

@@ -68,23 +68,76 @@ def test_db2_does_not_read_a_keyword_as_an_object_name(sql):
     assert facts.diagnostic
 
 
-ROUTINES = [
-    "CREATE FUNCTION add(a INT) RETURNS INT RETURN 1",
-    "CREATE PROCEDURE cascade() BEGIN SELECT 1; END",
-    "DROP FUNCTION add",
+# A program name that is not a reserved word of its engine stays readable when a parameter list or
+# a trigger timing word follows it (reserved words per tests/support/facts_corpus/reserved).
+PROGRAMS = [
+    ("oracle", "CREATE OR REPLACE PROCEDURE restrict(a NUMBER) AS BEGIN NULL; END;", "RESTRICT"),
+    (
+        "oracle",
+        "CREATE OR REPLACE FUNCTION cascade(a NUMBER) RETURN NUMBER AS BEGIN RETURN 1; END;",
+        "CASCADE",
+    ),
+    ("oracle", "CREATE OR REPLACE PROCEDURE clone(a NUMBER) AS BEGIN NULL; END;", "CLONE"),
+    (
+        "oracle",
+        "CREATE TRIGGER restrict BEFORE INSERT ON t FOR EACH ROW BEGIN NULL; END;",
+        "RESTRICT",
+    ),
+    ("mysql", "CREATE PROCEDURE clone(a INT) BEGIN SELECT 1; END", "clone"),
+    ("mysql", "CREATE FUNCTION only(a INT) RETURNS INT RETURN 1", "only"),
+    ("mysql", "CREATE TRIGGER clone BEFORE INSERT ON t FOR EACH ROW SET NEW.a = 1", "clone"),
+    ("postgres", "CREATE PROCEDURE clone(a int) BEGIN SELECT 1; END", "clone"),
+    ("postgres", "CREATE FUNCTION restrict(a int) RETURNS int AS $$ SELECT 1 $$", "restrict"),
+    ("redshift", "CREATE PROCEDURE cascade(a int) BEGIN SELECT 1; END", "cascade"),
 ]
 
 
-@pytest.mark.parametrize("dialect", ["postgres", "mysql", "oracle", "redshift"])
-@pytest.mark.parametrize("sql", ROUTINES)
-def test_a_routine_may_be_named_with_a_clause_keyword(dialect, sql):
+@pytest.mark.parametrize(("dialect", "sql", "name"), PROGRAMS)
+def test_a_program_named_with_a_non_reserved_clause_word_is_read(dialect, sql, name):
     facts = read_statement_facts(sql, dialect=dialect)
 
-    assert [o.name.lower() for o in facts.objects] == ["add" if "add" in sql.lower() else "cascade"]
+    assert [o.name for o in facts.objects][:1] == [name]
 
 
-@pytest.mark.parametrize("sql", ROUTINES)
-def test_db2_reads_a_routine_named_with_a_clause_keyword(sql):
+UNREAD_PROGRAMS = [
+    ("oracle", "CREATE FUNCTION add(a NUMBER) RETURN NUMBER AS BEGIN RETURN 1; END;"),
+    ("oracle", "CREATE PROCEDURE cascade"),
+    ("mysql", "CREATE FUNCTION add(a INT) RETURNS INT RETURN 1"),
+    ("mysql", "CREATE PROCEDURE restrict(a INT) BEGIN SELECT 1; END"),
+    ("postgres", "CREATE FUNCTION only(a int) RETURNS int AS $$ SELECT 1 $$"),
+    ("postgres", "CREATE FUNCTION IF"),
+    ("oracle", "CREATE PROCEDURE clone"),
+]
+
+
+@pytest.mark.parametrize(("dialect", "sql"), UNREAD_PROGRAMS)
+def test_a_reserved_word_or_a_bare_clause_word_is_not_a_program_name(dialect, sql):
+    facts = read_statement_facts(sql, dialect=dialect)
+
+    assert facts.objects == ()
+
+
+DB2_PROGRAMS = [
+    ("CREATE PROCEDURE clone(a INT) BEGIN END", "CLONE"),
+    ("CREATE FUNCTION clone(a INT) RETURNS INT RETURN 1", "CLONE"),
+    ("CREATE TRIGGER clone BEFORE INSERT ON t FOR EACH ROW BEGIN END", "CLONE"),
+    ("CREATE INDEX clone ON t (a)", "CLONE"),
+]
+
+
+@pytest.mark.parametrize(("sql", "name"), DB2_PROGRAMS)
+def test_db2_reads_a_program_named_clone(sql, name):
     facts = Db2StatementFactsReader(None).read(sql)
 
-    assert [o.name.lower() for o in facts.objects] == ["add" if "add" in sql.lower() else "cascade"]
+    assert [o.name for o in facts.objects][:1] == [name]
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "CREATE FUNCTION add(a INT) RETURNS INT RETURN 1",
+        "CREATE PROCEDURE clone",
+    ],
+)
+def test_db2_refuses_a_reserved_or_bare_clause_word_as_a_program_name(sql):
+    assert Db2StatementFactsReader(None).read(sql).objects == ()

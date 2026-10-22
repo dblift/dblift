@@ -4811,7 +4811,7 @@
       ]
     },
     "path": "analyzer",
-    "reason": "MySQL has no ONLY keyword: both engines read `ONLY` as the table and `child` as its alias (error 1146 \"Table 'ONLY' doesn't exist\"). The reader treats `ONLY` as a clause keyword, not a name, and reports the statement unread (keyword read where an object name belongs), so it names no table and no target; the analyzer named child.",
+    "reason": "MySQL reads `ONLY` as an ordinary table name and `child` as its alias (error 1146 \"Table 'ONLY' doesn't exist\"). The reader declines it because the same token is a clause keyword on other dialects, so it names no table and no target; the analyzer named child.",
     "sql": "DELETE FROM ONLY child WHERE id = 1"
   },
   "73eac041f8cc8224/hybrid": {
@@ -4832,7 +4832,7 @@
       ]
     },
     "path": "hybrid",
-    "reason": "`ONLY` is a clause keyword, not a table name: the reader no longer publishes it as the target and reports the statement unread (keyword read where an object name belongs), so it names no object and no target; the former hybrid path named a table `ONLY`. Whether MySQL accepts an ONLY form is unmeasured.",
+    "reason": "MySQL reads `ONLY` as an ordinary table name (error 1146); the reader declines it because the same token is a clause keyword on other dialects, and reports the statement unread (keyword read where an object name belongs); the former hybrid path named a table `ONLY`.",
     "sql": "DELETE FROM ONLY child WHERE id = 1"
   },
   "74479a42ff691265": {
@@ -7910,7 +7910,7 @@
       ]
     },
     "path": "analyzer",
-    "reason": "MySQL has no ONLY keyword: both engines read `ONLY` as the table and `child` as its alias (error 1146 \"Table 'ONLY' doesn't exist\"). The reader treats `ONLY` as a clause keyword, not a name, and reports the statement unread (keyword read where an object name belongs), so it names no table and no target; the analyzer named child.",
+    "reason": "MySQL reads `ONLY` as an ordinary table name and `child` as its alias (error 1146 \"Table 'ONLY' doesn't exist\"). The reader declines it because the same token is a clause keyword on other dialects, so it names no table and no target; the analyzer named child.",
     "sql": "UPDATE ONLY child SET id = 2"
   },
   "bffeb0b5bc6f9581/hybrid": {
@@ -7931,7 +7931,7 @@
       ]
     },
     "path": "hybrid",
-    "reason": "`ONLY` is a clause keyword, not a table name: the reader no longer publishes it as the target and reports the statement unread (keyword read where an object name belongs), so it names no object and no target; the former hybrid path named a table `ONLY`. Whether MySQL accepts an ONLY form is unmeasured.",
+    "reason": "MySQL reads `ONLY` as an ordinary table name (error 1146); the reader declines it because the same token is a clause keyword on other dialects, and reports the statement unread (keyword read where an object name belongs); the former hybrid path named a table `ONLY`.",
     "sql": "UPDATE ONLY child SET id = 2"
   },
   "c097e0bcb00fc7ff/hybrid": {
@@ -8157,6 +8157,33 @@
     "path": "hybrid",
     "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took nothing from its head; the reader names `test_proc`.",
     "sql": "CREATE OR REPLACE PROCEDURE test_proc AS\nBEGIN\n    NULL;\nEND"
+  },
+  "c6a88a9c73d2a94d": {
+    "class": "opaque-reader-gap",
+    "facts": {
+      "diagnostic": "mysql Block is opaque to statement facts",
+      "kind": "DDL",
+      "operation": "CREATE"
+    },
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+    "old": {
+      "analyzer": [
+        [
+          "FUNCTION",
+          "default_schema.add"
+        ]
+      ],
+      "hybrid": [
+        [
+          "FUNCTION",
+          "add",
+          null
+        ]
+      ]
+    },
+    "path": "both",
+    "reason": "`ADD` is a reserved word of MySQL (https://dev.mysql.com/doc/refman/8.0/en/keywords.html, Keywords and Reserved Words), so it is not a function name; the reader publishes no object; the former path named FUNCTION add. This is a documented boundary, not a claim that MySQL accepts the text.",
+    "sql": "CREATE FUNCTION add(a INT, b INT)\nRETURNS INT AS $func$\nBEGIN RETURN a + b; END"
   },
   "c6f2b03c49a2c380/hybrid": {
     "class": "facts-adds-acted",
