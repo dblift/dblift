@@ -768,6 +768,27 @@
   },
   "sql": "CREATE TABLE t{c}(id INT)"
  },
+ "0d48af6372707fc2/hybrid": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "oracle Command is opaque to statement facts",
+   "kind": "DDL",
+   "operation": "CREATE"
+  },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+  "old": {
+   "hybrid": [
+    [
+     "TABLE",
+     "T",
+     null
+    ]
+   ]
+  },
+  "path": "hybrid",
+  "reason": "A `{...}` template brace continues the name with text the engine cannot resolve, so the reader names nothing; the former path named the text before the brace (for `${...}`, the `$`). This is a documented boundary, not a claim that Oracle rejects the text.",
+  "sql": "CREATE TABLE t{c}(id INT)"
+ },
  "0d70443377fbac9c/analyzer": {
   "class": "opaque-reader-gap",
   "facts": {
@@ -2047,6 +2068,27 @@
   "rejected_by": {
    "oracle 23.26.3": "ORA-03048"
   },
+  "sql": "DROP TABLE t{c}"
+ },
+ "22b9d3efc88e5bbb/hybrid": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "oracle grammar is not modelled for this statement",
+   "kind": "DDL",
+   "operation": "DROP"
+  },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+  "old": {
+   "hybrid": [
+    [
+     "TABLE",
+     "T",
+     null
+    ]
+   ]
+  },
+  "path": "hybrid",
+  "reason": "A `{...}` template brace continues the name with text the engine cannot resolve, so the reader names nothing; the former path named the text before the brace (for `${...}`, the `$`). This is a documented boundary, not a claim that Oracle rejects the text.",
   "sql": "DROP TABLE t{c}"
  },
  "232281a9e7ec7912": {
@@ -3753,6 +3795,33 @@
    "oracle 23.26.3": "ORA-00922"
   },
   "sql": "CREATE TABLE test (id INTEGER) IN myts.ts1"
+ },
+ "3d8a0c35988b7bc0": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "oracle Command is opaque to statement facts",
+   "kind": "DDL",
+   "operation": "CREATE"
+  },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+  "old": {
+   "analyzer": [
+    [
+     "TABLE",
+     "default_schema.$"
+    ]
+   ],
+   "hybrid": [
+    [
+     "TABLE",
+     "$",
+     null
+    ]
+   ]
+  },
+  "path": "both",
+  "reason": "A `{...}` template brace continues the name with text the engine cannot resolve, so the reader names nothing; the former path named the text before the brace (for `${...}`, the `$`). This is a documented boundary, not a claim that Oracle rejects the text.",
+  "sql": "CREATE TABLE ${schema}.${table} (id INT)"
  },
  "3da5bee39f725087/analyzer": {
   "class": "opaque-reader-gap",
@@ -6530,6 +6599,27 @@
   },
   "sql": "CREATE TABLE s.t{c}(id INT)"
  },
+ "6f44db1be97a7ffa/hybrid": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "oracle Command is opaque to statement facts",
+   "kind": "DDL",
+   "operation": "CREATE"
+  },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+  "old": {
+   "hybrid": [
+    [
+     "TABLE",
+     "T",
+     "S"
+    ]
+   ]
+  },
+  "path": "hybrid",
+  "reason": "A `{...}` template brace continues the name with text the engine cannot resolve, so the reader names nothing; the former path named the text before the brace (for `${...}`, the `$`). This is a documented boundary, not a claim that Oracle rejects the text.",
+  "sql": "CREATE TABLE s.t{c}(id INT)"
+ },
  "6fbd20b947265821": {
   "class": "dml-differs",
   "facts": {
@@ -6646,6 +6736,27 @@
   "rejected_by": {
    "oracle 23.26.3": "ORA-00922"
   },
+  "sql": "CREATE TABLE s{c}.t(id INT)"
+ },
+ "7268421cc174659e/hybrid": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "oracle grammar is not modelled for this statement",
+   "kind": "DDL",
+   "operation": "CREATE"
+  },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+  "old": {
+   "hybrid": [
+    [
+     "TABLE",
+     "S",
+     null
+    ]
+   ]
+  },
+  "path": "hybrid",
+  "reason": "A `{...}` template brace continues the name with text the engine cannot resolve, so the reader names nothing; the former path named the text before the brace (for `${...}`, the `$`). This is a documented boundary, not a claim that Oracle rejects the text.",
   "sql": "CREATE TABLE s{c}.t(id INT)"
  },
  "727b1b986aade562/analyzer": {
@@ -8221,6 +8332,33 @@
   "reason": "[adopted] oracle 23.26.3 accepts the statement (it parses; ORA-04043 is raised afterwards): the reader also names type my_type (dropped).",
   "sql": "DROP TYPE my_type"
  },
+ "925ea0229c5e08c6": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "oracle Command is opaque to statement facts",
+   "kind": "DDL",
+   "operation": "CREATE"
+  },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+  "old": {
+   "analyzer": [
+    [
+     "TABLE",
+     "default_schema.$"
+    ]
+   ],
+   "hybrid": [
+    [
+     "TABLE",
+     "$",
+     null
+    ]
+   ]
+  },
+  "path": "both",
+  "reason": "A `{...}` template brace continues the name with text the engine cannot resolve, so the reader names nothing; the former path named the text before the brace (for `${...}`, the `$`). This is a documented boundary, not a claim that Oracle rejects the text.",
+  "sql": "CREATE TABLE ${table_name} (id SERIAL PRIMARY KEY)"
+ },
  "92bd528af5aab376/hybrid": {
   "class": "opaque-reader-gap",
   "facts": {
@@ -8364,6 +8502,27 @@
   "rejected_by": {
    "oracle 23.26.3": "ORA-03048"
   },
+  "sql": "CREATE SEQUENCE q{c}"
+ },
+ "93fc2da7a8f4c9fa/hybrid": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "oracle Command is opaque to statement facts",
+   "kind": "DDL",
+   "operation": "CREATE"
+  },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+  "old": {
+   "hybrid": [
+    [
+     "SEQUENCE",
+     "Q",
+     null
+    ]
+   ]
+  },
+  "path": "hybrid",
+  "reason": "A `{...}` template brace continues the name with text the engine cannot resolve, so the reader names nothing; the former path named the text before the brace (for `${...}`, the `$`). This is a documented boundary, not a claim that Oracle rejects the text.",
   "sql": "CREATE SEQUENCE q{c}"
  },
  "94573b02cd64fcbe": {
@@ -10162,6 +10321,27 @@
   "rejected_by": {
    "oracle 23.26.3": "ORA-00922"
   },
+  "sql": "CREATE TABLE a{c}b(id INT)"
+ },
+ "b12619922e3614e4/hybrid": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "oracle Command is opaque to statement facts",
+   "kind": "DDL",
+   "operation": "CREATE"
+  },
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+  "old": {
+   "hybrid": [
+    [
+     "TABLE",
+     "A",
+     null
+    ]
+   ]
+  },
+  "path": "hybrid",
+  "reason": "A `{...}` template brace continues the name with text the engine cannot resolve, so the reader names nothing; the former path named the text before the brace (for `${...}`, the `$`). This is a documented boundary, not a claim that Oracle rejects the text.",
   "sql": "CREATE TABLE a{c}b(id INT)"
  },
  "b171fa9efeec56a8/analyzer": {

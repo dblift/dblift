@@ -7778,7 +7778,7 @@
   "sql": "CREATE PROCEDURE mydb.test_proc() BEGIN SELECT 1; END;"
  },
  "73eac041f8cc8224/analyzer": {
-  "class": "disagree",
+  "class": "dml-differs",
   "facts": {
    "events": [
     "DELETE"
@@ -7806,7 +7806,28 @@
    ]
   },
   "path": "analyzer",
-  "reason": "Under the T-SQL parse, ONLY is the table token and child is an alias; the old analyzer treated PostgreSQL ONLY as a modifier and reported child. This is a cross-dialect corpus form, and the review accepts the parsed T-SQL identity without asserting native execution.",
+  "reason": "Under the T-SQL parse, ONLY is the table token and child is an alias; the old analyzer treated PostgreSQL ONLY as a modifier and reported child. The reader treats `ONLY` as a clause keyword, not a name, and reports the statement unread (keyword read where an object name belongs), so it names no table and no target. This is a cross-dialect corpus form; native execution is not asserted.",
+  "sql": "DELETE FROM ONLY child WHERE id = 1"
+ },
+ "73eac041f8cc8224/hybrid": {
+  "class": "dml-differs",
+  "facts": {
+   "diagnostic": "tsql keyword read where an object name belongs",
+   "kind": "DML",
+   "operation": "DELETE"
+  },
+  "issue": "",
+  "old": {
+   "hybrid": [
+    [
+     "TABLE",
+     "ONLY",
+     "dbo"
+    ]
+   ]
+  },
+  "path": "hybrid",
+  "reason": "`ONLY` is a clause keyword, not a table name: the reader no longer publishes it as the target and reports the statement unread (keyword read where an object name belongs), so it names no object and no target; the former hybrid path named a table `ONLY`. Whether SQL Server accepts an ONLY form is unmeasured.",
   "sql": "DELETE FROM ONLY child WHERE id = 1"
  },
  "741ca7a86702f615": {
@@ -13027,7 +13048,7 @@
   "sql": "CREATE PROCEDURE GetUserOrders @UserId INT\n        AS\n        BEGIN\n            SELECT o.*\n            FROM orders o\n            WHERE o.user_id = @UserId\n            ORDER BY o.created_at DESC;\n        END;"
  },
  "bffeb0b5bc6f9581/analyzer": {
-  "class": "disagree",
+  "class": "dml-differs",
   "facts": {
    "affected_columns": [
     "id"
@@ -13057,7 +13078,28 @@
    ]
   },
   "path": "analyzer",
-  "reason": "Under the T-SQL parse, ONLY is the table token and child is an alias; the old analyzer treated PostgreSQL ONLY as a modifier and reported child. This is a cross-dialect corpus form, and the review accepts the parsed T-SQL identity without asserting native execution.",
+  "reason": "Under the T-SQL parse, ONLY is the table token and child is an alias; the old analyzer treated PostgreSQL ONLY as a modifier and reported child. The reader treats `ONLY` as a clause keyword, not a name, and reports the statement unread (keyword read where an object name belongs), so it names no table and no target. This is a cross-dialect corpus form; native execution is not asserted.",
+  "sql": "UPDATE ONLY child SET id = 2"
+ },
+ "bffeb0b5bc6f9581/hybrid": {
+  "class": "dml-differs",
+  "facts": {
+   "diagnostic": "tsql keyword read where an object name belongs",
+   "kind": "DML",
+   "operation": "UPDATE"
+  },
+  "issue": "",
+  "old": {
+   "hybrid": [
+    [
+     "TABLE",
+     "ONLY",
+     "dbo"
+    ]
+   ]
+  },
+  "path": "hybrid",
+  "reason": "`ONLY` is a clause keyword, not a table name: the reader no longer publishes it as the target and reports the statement unread (keyword read where an object name belongs), so it names no object and no target; the former hybrid path named a table `ONLY`. Whether SQL Server accepts an ONLY form is unmeasured.",
   "sql": "UPDATE ONLY child SET id = 2"
  },
  "c0bef8680c55004f/hybrid": {
