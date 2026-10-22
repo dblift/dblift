@@ -132,7 +132,7 @@ contract of the parser, not a claim about what the engine accepts or does.
 | `CREATE … CLONE src` | `src` is referenced with the type of the object it copies |
 | `INSERT`, `UPDATE`, `DELETE` | the target is altered, other tables are referenced, plus target, predicate, assigned columns and events; a target the reader cannot name is opaque |
 | `TRUNCATE [TABLE] [IF EXISTS] t` | the table, altered (a data-changing statement, like the other readers); a list of tables, `CASCADE` and `TRUNCATE MATERIALIZED VIEW` are opaque |
-| `MERGE INTO t USING … ON … WHEN …` | the target is altered, the sources are referenced, plus target, assigned columns and the `INSERT`, `UPDATE` and `DELETE` events of its actions; a `MERGE` with no readable action is opaque |
+| `MERGE INTO t USING … ON … WHEN …` | the target is altered, the sources are referenced, plus target, assigned columns and the `INSERT`, `UPDATE` and `DELETE` events of its actions; a `MERGE` with no readable action or with any CTE is unread |
 | `COMMENT [IF EXISTS] ON TABLE\|VIEW\|MATERIALIZED VIEW\|SEQUENCE\|COLUMN … IS '…'` | the object altered (`COLUMN` names its table); every other kind of `COMMENT ON` is opaque |
 | `SELECT`, `WITH … SELECT` | the tables read are referenced |
 

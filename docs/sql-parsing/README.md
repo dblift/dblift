@@ -41,7 +41,9 @@ stream proves the same leading verb and complete name: each name part must be
 bounded, have the expected identifier token kind for its quoting, and agree
 with the source spelling. A further qualifier, an unrecognized quote form,
 substitution text, or a client/script prefix cannot be silently cut away to
-invent a name. Comment boundaries are part of that proof.
+invent a name. A clause keyword (`IF`, `NOT`, `EXISTS`, `ONLY`, `ADD`, `CLONE`, `CASCADE`,
+`RESTRICT`) where a name belongs, and a name continued by a `{...}` template brace, are not
+names either: the statement is reported as unread. Comment boundaries are part of that proof.
 The same bound applies to parsed statements: if a relation has more qualifier
 parts than the facts can represent, no identity for that relation is published.
 Dependent effects remain opaque; an already opaque program body can still retain
