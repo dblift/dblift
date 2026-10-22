@@ -98,7 +98,8 @@ def test_execution_mode_without_sqlglot_is_not_blocked(monkeypatch):
 @pytest.mark.parametrize(
     "commands, attrs",
     [
-        (["info"], {"analysis_mode": "full"}),
+        (["info"], {"analysis_mode": "execution"}),
+        (["migrate"], {"analysis_mode": "full", "validate_only": True}),
         (["validate"], {}),
         (["clean"], {}),
         (["baseline"], {}),
@@ -117,6 +118,8 @@ def test_commands_that_never_reach_sqlglot_are_not_blocked(monkeypatch, commands
     [
         (["migrate"], {"analysis_mode": "full"}),
         (["undo"], {"analysis_mode": "full"}),
+        (["info"], {"analysis_mode": "full"}),
+        (["migrate"], {"analysis_mode": "full", "validate_only": False}),
         (["info", "migrate"], {"analysis_mode": "full"}),
         (["validate-sql"], {}),
     ],
@@ -223,3 +226,57 @@ def test_validate_sql_without_sqlglot_refuses_cleanly(tmp_path):
     assert "install dblift[analysis]" in proc.stderr
     assert "Traceback" not in proc.stderr
     assert "Unexpected error" not in proc.stderr
+
+
+def test_commands_without_the_option_do_not_pass_a_mode_to_the_client(monkeypatch):
+    from dblift.cli import main as cli_main
+    from dblift.core.seams import client_factory
+
+    seen = {}
+
+    class _Client:
+        @classmethod
+        def from_config(cls, config, logger=None, **kwargs):
+            seen.update(kwargs)
+            return cls()
+
+    monkeypatch.setattr(client_factory, "resolve_client_class", lambda: _Client)
+    ctx = SimpleNamespace(commands=["clean"], config=object(), log=object(), args=SimpleNamespace())
+    cli_main._build_command_client(ctx)
+    assert seen == {}
+
+
+def test_info_without_sqlglot_refuses_but_execution_mode_runs(tmp_path):
+    scripts, db = _project(tmp_path)
+    base = ("--db-url", f"sqlite:///{db}", "--scripts", str(scripts))
+    refused = _run(_hide_sqlglot(_cli(*base, "info", "--format", "json")), tmp_path)
+    assert refused.returncode != 0
+    assert "install dblift[analysis]" in refused.stderr
+    assert not db.exists()
+    ok = _run(
+        _hide_sqlglot(_cli(*base, "info", "--format", "json", "--analysis-mode", "execution")),
+        tmp_path,
+    )
+    assert ok.returncode == 0, ok.stderr
+    assert '"status": "disabled"' in ok.stdout.replace(
+        '"status":"disabled"', '"status": "disabled"'
+    )
+
+
+def test_migrate_validate_only_runs_without_sqlglot(tmp_path):
+    scripts, db = _project(tmp_path)
+    proc = _run(
+        _hide_sqlglot(
+            _cli(
+                "--db-url",
+                f"sqlite:///{db}",
+                "--scripts",
+                str(scripts),
+                "migrate",
+                "--validate-only",
+            )
+        ),
+        tmp_path,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert "install dblift[analysis]" not in proc.stderr

@@ -246,11 +246,13 @@ dblift migrate --analysis-mode execution
 
 - `full` (the default, and what you get today) reads each statement to track the objects it
   touches, classify it and keep the safeguards and enriched reports built on that. It needs
-  sqlglot for `migrate` and `undo`: install `dblift[analysis]`. Without it they stop before they
-  run a callback, write a file or connect to the database. `info` works without it.
+  sqlglot for `migrate`, `undo` and `info`: install `dblift[analysis]`. Without it they stop
+  before they run a callback, write a file or connect to the database (`migrate --validate-only`
+  parses nothing and is not affected).
 - `execution` only splits the script and runs the SQL. It skips object tracking and the checks
-  and report details that depend on it, so `info` and `migrate --dry-run` mark pending script
-  analysis as disabled. Use an explicit undo script with `undo`. A `WITH` statement that cannot
+  and report details that depend on it, so `info` reports pending script analysis as
+  `"status": "disabled"` and `migrate --dry-run` drops the verdict labels. It is the way to run
+  these commands without sqlglot. Use an explicit undo script with `undo`. A `WITH` statement that cannot
   be classified without that analysis stops the migration before it is applied; use `full` for
   that SQL.
 

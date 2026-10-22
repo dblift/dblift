@@ -434,16 +434,16 @@ def _sqlglot_available() -> bool:
     return module_available("sqlglot")
 
 
-# Commands that read statements with sqlglot: migrate and undo unless they run in
-# execution mode, validate-sql always (it has no execution mode). The other commands,
-# ``info`` included, work without it.
-_ANALYSING_COMMANDS = frozenset({"migrate", "undo"})
+# Commands that read statements with sqlglot: migrate, undo and info unless they run in
+# execution mode, validate-sql always (it has no execution mode). ``migrate --validate-only``
+# parses nothing, and the other commands never read statements.
+_ANALYSING_COMMANDS = frozenset({"migrate", "undo", "info"})
 
 
 def _require_analysis_extras(commands: List[str], args: argparse.Namespace) -> None:
     """Exit before any callback, file write or connection if a command needs sqlglot
     (the ``analysis`` extra) and it is missing."""
-    full = vars(args).get("analysis_mode") == "full"
+    full = vars(args).get("analysis_mode") == "full" and not vars(args).get("validate_only")
     lint = "validate-sql" in commands
     if not ((full and _ANALYSING_COMMANDS.intersection(commands)) or lint):
         return
@@ -651,9 +651,8 @@ def _build_command_client(ctx: "_CliContext") -> Any:
     )
     if config_only:
         return ConfigOnlyClient(config=ctx.config)
-    return resolve_client_class().from_config(
-        ctx.config, logger=ctx.log, analysis_mode=vars(ctx.args).get("analysis_mode", "full")
-    )
+    options = {k: v for k, v in vars(ctx.args).items() if k == "analysis_mode"}
+    return resolve_client_class().from_config(ctx.config, logger=ctx.log, **options)
 
 
 def _propagate_license_banner(log: Any, license_info: Optional[Any]) -> None:

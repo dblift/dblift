@@ -11,8 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **`--analysis-mode {full,execution}` on `migrate`, `undo` and `info`.** The default, `full`, is
   unchanged. `execution` only splits and runs the SQL and skips object tracking and the checks
-  and report details built on it, so it works without sqlglot. `migrate` and `undo` in `full`
-  mode, and `validate-sql`, now stop before any callback, file write or database connection
+  and report details built on it, so it works without sqlglot. `migrate`, `undo` and `info` in
+  `full` mode, and `validate-sql`, now stop before any callback, file write or database connection
   when sqlglot is not installed, and ask you to `install dblift[analysis]` (they used to fail
   part-way with `No module named 'sqlglot'`).
 - **Db2 statement facts.** `info --format json`, `migrate --dry-run`, execution-time object
