@@ -129,3 +129,20 @@ def test_a_subquery_table_in_a_predicate_keeps_the_written_spelling():
     facts = _facts("DELETE FROM app.users WHERE id IN (SELECT id FROM Other)")
 
     assert facts.predicate == "id IN (SELECT id FROM Other)"
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "CREATE TRIGGER trë BEFORE INSERT ON t FOR EACH ROW EXECUTE FUNCTION f()",
+        "INSERT INTO éx(",
+        "INSERT INTO sé.t(a) VALUES (1) /*",
+        "UPDATE sé.t SET a{c}b = 1",
+        "UPDATE éx SET a = 1 WHERE b",
+    ],
+)
+def test_the_head_of_an_unparsed_statement_never_folds_a_non_ascii_name(sql):
+    facts = _facts(sql)
+
+    assert facts.opaque
+    assert facts.objects == ()

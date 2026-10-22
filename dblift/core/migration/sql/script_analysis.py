@@ -46,10 +46,11 @@ _DROP_KEYWORD = re.compile(
 )
 # Objects whose DROP removes a definition, never rows, even when the statement's name could not be
 # read (each is documented so by its vendor; see the lint-rule tests). CASCADE or FORCE can drop or
-# disable dependent columns, so a statement holding either is not row-free.
+# disable dependent columns, so a statement holding either is not row-free. An extension owns
+# tables (pg_cron, postgis) and an event table holds rows, so neither is listed.
 _ROW_FREE_DROP = re.compile(
     r"^\s*DROP\s+(?:PUBLIC\s+)?(?:INDEX|SEQUENCE|FUNCTION|PROCEDURE|ROUTINE|TRIGGER|TYPE|DOMAIN"
-    r"|EXTENSION|ROLE|USER|POLICY|RULE|PUBLICATION|SERVER|COLLATION|CAST|AGGREGATE|LANGUAGE|EVENT"
+    r"|ROLE|USER|POLICY|RULE|PUBLICATION|SERVER|COLLATION|CAST|AGGREGATE|LANGUAGE|EVENT(?!\s+TABLE)"
     r"|SYNONYM|PACKAGE|DIRECTORY|PROFILE|LOGIN|DEFAULT|ASSEMBLY|MACRO|NICKNAME|LIBRARY|GROUP)\b",
     re.IGNORECASE,
 )

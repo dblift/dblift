@@ -167,8 +167,8 @@ Known gaps, recorded rather than closed:
 - An unterminated quote reports an error and no object; the splitter normally refuses such a script first.
 - `UPDATE t a SET … WHERE a.y = 1` names the bare table `t` as its target while the predicate keeps the alias `a`.
 - A `DROP` whose object kind or name is unread is reported by lint as `drop-unread-object` (review), except for kinds
-  whose vendor documentation says they remove a definition and not rows (listed in the lint rule), and always when the
-  statement holds `CASCADE` or `FORCE`. The kinds the vendors leave unclear (for example `SUBSCRIPTION`, `BUFFERPOOL`,
+  whose vendor documentation says they remove a definition and not rows (listed in the lint rule), and, when the name is unread, always when
+  the statement holds `CASCADE` or `FORCE` (a named `DROP ... CASCADE` is unchanged). The kinds the vendors leave unclear (for example `SUBSCRIPTION`, `BUFFERPOOL`,
   `CERTIFICATE`, `SECRET`) stay a review.
 - Native acceptance and effect of the other DDL forms are unmeasured, as are
   `DYNAMIC` and `EXTERNAL` tables (read as `TABLE`) and `SELECT … INTO` (the target is read as referenced, not created).

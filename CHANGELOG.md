@@ -42,8 +42,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   dialect whose statements are read from the grammar, except for kinds that only remove a
   definition (index, sequence, routine, trigger, type, role, user, and for example policy, rule,
   publication, server, collation, cast, aggregate, language, event, synonym, package, directory,
-  profile, login, default, assembly, macro, nickname, library, group); a `DROP` holding `CASCADE`
-  or `FORCE` is always a review.
+  profile, login, default, assembly, macro, nickname, library, group); when the statement's name
+  could not be read, one holding `CASCADE` or `FORCE` is always a review (a named `DROP ... CASCADE`
+  is judged as before).
   Newly activated Snowflake statements require manual undo review instead of automatic text
   reversal, and `validate-sql` no longer reports a script as invalid because the grammar cannot
   parse a statement.

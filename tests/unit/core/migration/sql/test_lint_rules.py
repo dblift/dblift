@@ -514,6 +514,9 @@ def test_a_drop_of_a_kind_that_holds_no_rows_stays_safe_when_unread(dialect, sql
         ("db2", "DROP MODULE m;"),
         ("snowflake", "DROP STAGE st;"),
         ("postgresql", "DROP;"),
+        ("snowflake", "DROP EVENT TABLE e;"),
+        ("snowflake", 'DROP EVENT TABLE IF EXISTS "S"."APP_EVENTS";'),
+        ("postgresql", "DROP EXTENSION pg_cron;"),
     ],
 )
 def test_a_drop_that_may_lose_data_or_cannot_be_classified_asks_for_a_review(dialect, sql):
