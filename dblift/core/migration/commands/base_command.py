@@ -25,6 +25,7 @@ if TYPE_CHECKING:
 
 from dblift.core.exceptions import CallbackExecutionError
 from dblift.core.logger import Log, NullLog
+from dblift.core.logger.console import rich_available
 from dblift.core.logger.log import LogFormat
 from dblift.core.logger.results import CallbackExecution
 from dblift.core.migration.executor.execution_engine import ExecutionEngine
@@ -154,7 +155,7 @@ def _render_main_header_panel(raw_header: str) -> str:
     """
     from dblift.core.migration.ui.command_panels import render_main_header_panel
 
-    return render_main_header_panel(raw_header)
+    return render_main_header_panel(raw_header) if rich_available() else raw_header
 
 
 # Maps ``_execute_callbacks``' ``event_prefix`` argument to the matching
@@ -605,7 +606,10 @@ class BaseCommand:
         if should_print_footer and not self._has_own_console_footer:
             from dblift.core.logger.console import get_stdout_console
 
-            get_stdout_console().print(self._build_footer_panel(**footer_args))
+            if rich_available():
+                get_stdout_console().print(self._build_footer_panel(**footer_args))
+            else:
+                sys.stdout.write(self._format_command_footer(**footer_args) + "\n")
         self._log_text_block(self._format_command_footer(**footer_args))
 
     def _build_footer_panel(
@@ -657,6 +661,16 @@ class BaseCommand:
         """
         from dblift.core.logger.console import render_panel_to_str
 
+        if not rich_available():
+            lines = [
+                f"{command_name} {'completed successfully' if success else 'FAILED'}"
+                f" in {execution_time}"
+            ]
+            if schema_version:
+                lines.append(f"Schema Version: {schema_version}")
+            if error_message and not success:
+                lines.append(f"Error: {error_message}")
+            return "\n".join(lines)
         return render_panel_to_str(
             self._build_footer_panel(
                 command_name,
@@ -1059,6 +1073,14 @@ class BaseCommand:
         """
         from dblift.core.logger.console import render_panel_to_str
 
+        if not rich_available():
+            lines = [f"Command: {command_name}"]
+            lines.extend(filters or [])
+            if schema_version:
+                lines.append(f"Schema Version: {schema_version}")
+            if connection_info:
+                lines.append(f"Connection: {connection_info}")
+            return "\n".join(lines)
         return render_panel_to_str(
             self._build_command_header_panel(
                 command_name,
@@ -1304,15 +1326,27 @@ class BaseCommand:
         if should_print_header:
             from dblift.core.logger.console import get_stdout_console
 
-            get_stdout_console().print(
-                self._build_command_header_panel(
-                    command_name=command_name,
-                    filters=filters,
-                    schema_version=schema_version,
-                    database_url=database_url,
-                    connection_info=connection_info,
+            if rich_available():
+                get_stdout_console().print(
+                    self._build_command_header_panel(
+                        command_name=command_name,
+                        filters=filters,
+                        schema_version=schema_version,
+                        database_url=database_url,
+                        connection_info=connection_info,
+                    )
                 )
-            )
+            else:
+                sys.stdout.write(
+                    self._format_command_header(
+                        command_name=command_name,
+                        filters=filters,
+                        schema_version=schema_version,
+                        database_url=database_url,
+                        connection_info=connection_info,
+                    )
+                    + "\n"
+                )
         self._log_text_block(
             self._format_command_header(
                 command_name=command_name,

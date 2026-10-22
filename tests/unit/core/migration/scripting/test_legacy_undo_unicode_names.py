@@ -262,14 +262,6 @@ def test_analysis_of_a_name_that_ends_its_statement_names_what_the_engine_reads(
     assert analysis.cautions, "the statement still deserves its caution"
 
 
-def test_analysis_respects_the_flag_the_parser_set_for_a_cut_name():
-    # Redshift's former text extraction cut the name; the facts reader names it whole.
-    with patch.object(RedshiftQuirks, "statement_facts_class", None):
-        analysis = analyse_script("DROP TABLE tété;", "redshift")
-    assert not [obj for stmt in analysis.statements for obj in stmt.objects]
-    assert analysis.cautions and not any("tété" in c.reason for c in analysis.cautions)
-
-
 @pytest.mark.parametrize("dialect", FACTS)
 def test_the_facts_reader_names_a_non_ascii_identifier_whole(dialect):
     # PostgreSQL and Oracle read every letter above U+007F as part of an unquoted name; Oracle

@@ -18,6 +18,13 @@ if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
 from dblift.core.logger import LogFactory
+from dblift.core.logger.console import (
+    PresentationUnavailableError,
+    get_stderr_console,
+    install_rich_traceback,
+    require_presentation_extras,
+    rich_available,
+)
 from dblift.core.utils.url_masking import mask_database_url
 
 # Backward compatibility alias (used by tests and re-exports)
@@ -347,8 +354,6 @@ def main() -> None:
     3. Dispatch the requested command(s) inside a try/except so any
        uncaught error gets logged and the logs are flushed.
     """
-    from dblift.core.logger.console import install_rich_traceback
-
     install_rich_traceback()
     load_feature_extensions()
 
@@ -399,6 +404,29 @@ def _apply_config_backed_defaults(args: Any, config: Optional[Any]) -> None:
         if value in (None, "", (), []) or value == spec.default:
             continue
         setattr(args, spec.name, value)
+
+
+def _require_presentation_extras(commands: List[str], args: argparse.Namespace) -> None:
+    """Exit before any side effect if the request needs a missing presentation extra.
+
+    The base install runs migrations without Rich or Jinja2; only output that is
+    drawn with them (tables, the HTML report) needs the ``cli`` extra.
+    """
+    tables = (
+        commands[0] == "config"
+        or ("info" in commands and not from_args(args).is_machine_format)
+        or bool(vars(args).get("show_query_results"))
+    )
+    formats = [f.strip() for f in str(vars(args).get("log_format") or "").lower().split(",")]
+    html = "html" in formats
+    try:
+        if tables:
+            require_presentation_extras("This output", "rich")
+        if html:
+            require_presentation_extras("The HTML report", "jinja2")
+    except PresentationUnavailableError as exc:
+        CommandOutput("console").error(f"error: {exc}")
+        sys.exit(1)
 
 
 def _parse_argv_and_load_config(argv: List[str]) -> _CliContext:
@@ -475,6 +503,8 @@ def _parse_argv_and_load_config(argv: List[str]) -> _CliContext:
         sys.exit(0)
     if not commands and hasattr(args, "command"):
         commands = [args.command]
+
+    _require_presentation_extras(commands, args)
 
     # `dblift config --list` is offline self-documentation: it reads only the
     # property registry, so it short-circuits here — before any config/db load —
@@ -822,9 +852,13 @@ if __name__ == "__main__":
         CommandOutput("console").error("\nOperation cancelled by user")
         sys.exit(130)
     except Exception as e:
-        from dblift.core.logger.console import get_stderr_console
+        if rich_available():
+            console = get_stderr_console()
+            console.print(f"Unexpected error: {e}", style="log.error")
+            console.print_exception(show_locals=False, word_wrap=False)
+        else:
+            import traceback
 
-        console = get_stderr_console()
-        console.print(f"Unexpected error: {e}", style="log.error")
-        console.print_exception(show_locals=False, word_wrap=False)
+            print(f"Unexpected error: {e}", file=sys.stderr)  # lint: allow-print
+            traceback.print_exc()
         sys.exit(1)
