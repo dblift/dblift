@@ -652,6 +652,9 @@ def _build_command_client(ctx: "_CliContext") -> Any:
     if config_only:
         return ConfigOnlyClient(config=ctx.config)
     options = {k: v for k, v in vars(ctx.args).items() if k == "analysis_mode"}
+    if vars(ctx.args).get("validate_only"):
+        # Validation reads no SQL analysis, so it must run without sqlglot (see the guard above).
+        options["analysis_mode"] = "execution"
     return resolve_client_class().from_config(ctx.config, logger=ctx.log, **options)
 
 
