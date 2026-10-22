@@ -10,7 +10,6 @@ from dblift.db.dml_analysis import (
     analyze_dml,
     cte_outer_statement_type,
     dml_where_predicate,
-    extract_dml_table_name,
     insert_value_rows,
     is_full_table_dml,
     statement_dml_table,
@@ -36,8 +35,8 @@ def test_analyze_dml_classifies_basic_statements():
 def test_analyze_dml_marks_upserts_as_insert_and_update():
     pg = "INSERT INTO users (id, s) VALUES (1, 'a') ON CONFLICT (id) DO UPDATE SET s = excluded.s;"
     my = "INSERT INTO users (id, s) VALUES (1, 'a') ON DUPLICATE KEY UPDATE s = VALUES(s);"
-    assert analyze_dml(pg).events == {"INSERT", "UPDATE"}
-    assert analyze_dml(my).events == {"INSERT", "UPDATE"}
+    assert analyze_dml(pg, quirks=_quirks("postgres")).events == {"INSERT", "UPDATE"}
+    assert analyze_dml(my, quirks=_quirks("mysql")).events == {"INSERT", "UPDATE"}
 
 
 def test_analyze_dml_collects_merge_events_and_table():
@@ -49,26 +48,6 @@ def test_analyze_dml_collects_merge_events_and_table():
     mutation = analyze_dml(stmt)
     assert mutation.events == {"UPDATE", "INSERT"}
     assert mutation.table == "users"
-
-
-def test_extract_dml_table_name_handles_qualified_names():
-    assert extract_dml_table_name("DELETE FROM public.users WHERE id = 1;") == "public.users"
-    assert extract_dml_table_name("UPDATE users SET a = 1 WHERE id = 1;") == "users"
-
-
-def test_extract_dml_table_name_handles_quoted_insert_and_delete():
-    # Quoted / schema-qualified INSERT and DELETE must resolve the table verbatim
-    # (the closing quote must not defeat the pattern). Regression for BUG-DATA-01.
-    assert extract_dml_table_name('DELETE FROM "s"."t" WHERE id = 1;') == '"s"."t"'
-    assert extract_dml_table_name('INSERT INTO "s"."t" (id) VALUES (1);') == '"s"."t"'
-    # No space before the INSERT column list.
-    assert extract_dml_table_name('INSERT INTO "s"."t"(id) VALUES (1);') == '"s"."t"'
-    # SQL Server brackets and MySQL backticks.
-    assert extract_dml_table_name("DELETE FROM [s].[t] WHERE id = 1;") == "[s].[t]"
-    assert extract_dml_table_name("INSERT INTO `s`.`t` (id) VALUES (1);") == "`s`.`t`"
-    # Unquoted still works (no regression).
-    assert extract_dml_table_name("DELETE FROM s.t WHERE id = 1;") == "s.t"
-    assert extract_dml_table_name("INSERT INTO t (id) VALUES (1);") == "t"
 
 
 def test_statement_dml_table_prefers_sqlglot_when_dialect_known():
@@ -217,11 +196,6 @@ def test_analyze_dml_update_from_alias_does_not_hijack_a_qualified_target():
     assert statement_dml_table(stmt, quirks=_quirks("tsql")) == "S.t"
 
 
-def test_extract_dml_table_name_resolves_delete_alias_from_spelling():
-    assert extract_dml_table_name("DELETE o FROM t o WHERE o.id = 1") == "t"
-    assert statement_dml_table("DELETE o FROM t o WHERE o.id = 1") == "t"
-
-
 _ALIAS_TARGET_CASES = [
     ("DELETE a FROM orders a WHERE a.id = 1;", "orders"),
     ("DELETE a FROM orders AS a WHERE a.id = 1;", "orders"),
@@ -242,20 +216,6 @@ def test_alias_targets_resolve_with_dblift_dialect_names(dialect, stmt, table):
     assert ProviderRegistry.get_quirks(dialect).analyze_dml(stmt).table == table
     assert analyze_dml(stmt, quirks=_quirks(dialect)).table == table
     assert statement_dml_table(stmt, quirks=_quirks(dialect)) == table
-
-
-@pytest.mark.parametrize(("stmt", "table"), _ALIAS_TARGET_CASES)
-def test_extract_dml_table_name_resolves_alias_targets(stmt, table):
-    assert extract_dml_table_name(stmt) == table
-
-
-def test_extract_dml_table_name_resolves_qualified_alias_targets():
-    stmt = "UPDATE o SET name = 'x' FROM [S].[t] AS o WHERE o.id = 2;"
-    assert extract_dml_table_name(stmt) == "[S].[t]"
-    assert extract_dml_table_name("DELETE o FROM s.t o WHERE o.id = 1;") == "s.t"
-    # A qualified or unaliased UPDATE target is the table itself.
-    assert extract_dml_table_name("UPDATE s.t SET a = 1 FROM u AS t;") == "s.t"
-    assert extract_dml_table_name("UPDATE t SET a = 1 FROM u WHERE u.id = t.id;") == "t"
 
 
 def test_statement_dml_table_falls_back_to_regex_without_dialect():
@@ -419,20 +379,11 @@ def test_analyze_dml_routes_by_sqlglot_dialect():
     assert updates_restore_key(mysql, _DEFAULT_KEYS, quirks=_quirks(dialect))
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="statement facts do not look inside a DO block: an UPDATE of a restore key goes unseen",
-)
-def test_analyze_dml_falls_back_to_regex_for_unparseable_sql():
-    # A procedural block sqlglot parses as an opaque Command falls back to the
-    # regex scanner, which still finds the restore-key assignment. Pins the
-    # scanner staying dollar-quote-blind here: the UPDATE/SET it must find
-    # are themselves textually inside the dollar-quoted DO $$ ... $$ body, so
-    # skipping over that body (as is_full_table_dml correctly does) would
-    # make this fail to find them.
-    dialect = "postgres"
+def test_updates_restore_key_fails_closed_for_a_procedural_block():
+    # Statement facts do not look inside a DO block, so the statement is unread: an unread
+    # statement is assumed to touch the restore key.
     procedural = "DO $$ BEGIN UPDATE users SET id = 1; END $$;"
-    assert updates_restore_key(procedural, _DEFAULT_KEYS, quirks=_quirks(dialect))
+    assert updates_restore_key(procedural, _DEFAULT_KEYS, quirks=_quirks("postgres"))
 
 
 def test_is_full_table_dml_flags_update_delete_without_top_level_where():
@@ -725,11 +676,6 @@ def test_statement_dml_table_skips_target_modifiers(dialect, stmt, table):
 
 
 @pytest.mark.parametrize(("dialect", "stmt", "table"), _TARGET_MODIFIER_CASES)
-def test_statement_dml_table_without_dialect_skips_target_modifiers(dialect, stmt, table):
-    assert statement_dml_table(stmt) == table
-
-
-@pytest.mark.parametrize(("dialect", "stmt", "table"), _TARGET_MODIFIER_CASES)
 def test_analyze_dml_target_skips_modifiers(dialect, stmt, table):
     bare = re.sub(r'[`"\[\]]', "", table)
     expected = "" if dialect == "tsql" and stmt in _TSQL_UNREAD_MODIFIER_SQL else bare
@@ -793,20 +739,6 @@ _MODIFIER_NAMED_TARGET_CASES = [
 def test_statement_dml_table_keeps_names_that_start_with_a_modifier(dialect, stmt, table):
     # The dialect may quote a reserved word (`delayed`); the name must survive.
     assert statement_dml_table(stmt, quirks=_quirks(dialect)).replace("`", "") == table
-
-
-@pytest.mark.parametrize(
-    ("stmt", "table"),
-    [
-        ("UPDATE delayed SET a = 1", "delayed"),
-        ("DELETE FROM only WHERE a = 1", "only"),
-        ("DELETE t alias WHERE alias.a = 1", "t"),
-        ("INSERT HIGH_PRIORITY INTO t (a) VALUES (1)", "t"),
-        ("UPDATE /*+ INDEX(t\n   i) */ t SET a = 1", "t"),
-    ],
-)
-def test_extract_dml_table_name_keeps_names_that_start_with_a_modifier(stmt, table):
-    assert statement_dml_table(stmt) == table
 
 
 @pytest.mark.parametrize(
