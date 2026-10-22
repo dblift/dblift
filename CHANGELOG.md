@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`--analysis-mode {full,execution}` on `migrate`, `undo` and `info`.** The default, `full`, is
+  unchanged. `execution` only splits and runs the SQL and skips object tracking and the checks
+  and report details built on it, so it works without sqlglot. `full` without sqlglot installed
+  stops before any callback, file write or database connection and asks you to
+  `install dblift[analysis]`.
 - **Db2 statement facts.** `info --format json`, `migrate --dry-run`, execution-time object
   tracking and the DML helpers read Db2 statements through a head classifier: the statement kind
   and the DDL or DML target are named for CREATE/ALTER/DROP TABLE, VIEW, INDEX, SEQUENCE, ALIAS,

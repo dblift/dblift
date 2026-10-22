@@ -401,6 +401,26 @@ def _apply_config_backed_defaults(args: Any, config: Optional[Any]) -> None:
         setattr(args, spec.name, value)
 
 
+def _sqlglot_available() -> bool:
+    import importlib.util
+
+    try:
+        return importlib.util.find_spec("sqlglot") is not None
+    except ImportError:
+        return False
+
+
+def _require_analysis_extras(args: argparse.Namespace) -> None:
+    """Exit before any callback, file write or connection if ``--analysis-mode full``
+    is requested (or defaulted) and sqlglot, the ``analysis`` extra, is missing."""
+    if vars(args).get("analysis_mode") == "full" and not _sqlglot_available():
+        CommandOutput("console").error(
+            "error: --analysis-mode full needs sqlglot, which is not installed: "
+            "install dblift[analysis], or pass --analysis-mode execution to skip the analysis."
+        )
+        sys.exit(1)
+
+
 def _parse_argv_and_load_config(argv: List[str]) -> _CliContext:
     """Phase 1: extract commands, build args namespace, load config.
 
@@ -475,6 +495,8 @@ def _parse_argv_and_load_config(argv: List[str]) -> _CliContext:
         sys.exit(0)
     if not commands and hasattr(args, "command"):
         commands = [args.command]
+
+    _require_analysis_extras(args)
 
     # `dblift config --list` is offline self-documentation: it reads only the
     # property registry, so it short-circuits here — before any config/db load —
@@ -588,7 +610,9 @@ def _build_command_client(ctx: "_CliContext") -> Any:
     )
     if config_only:
         return ConfigOnlyClient(config=ctx.config)
-    return resolve_client_class().from_config(ctx.config, logger=ctx.log)
+    return resolve_client_class().from_config(
+        ctx.config, logger=ctx.log, analysis_mode=vars(ctx.args).get("analysis_mode", "full")
+    )
 
 
 def _propagate_license_banner(log: Any, license_info: Optional[Any]) -> None:
