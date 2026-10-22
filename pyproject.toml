@@ -163,7 +163,7 @@ mariadb = ["PyMySQL>=1.1"]
 oracle = ["oracledb>=2.0"]
 sqlserver = ["pymssql>=2.3"]
 db2 = ["ibm_db>=3.2", "ibm_db_sa>=0.4"]
-duckdb = ["duckdb>=1.0,<2", "duckdb_engine>=0.13"]
+duckdb = ["duckdb>=1.0,<3", "duckdb_engine>=0.13"]
 # Cosmos DB talks to the account plane through the Azure SDK, not a DBAPI
 # driver. It is an optional extra like every other engine's driver: a bare
 # ``pip install dblift`` must not pull one engine's SDK for all 19 dialects.

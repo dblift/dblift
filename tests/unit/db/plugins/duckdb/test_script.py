@@ -85,6 +85,12 @@ def _fold(text: str) -> str:
     return "".join(" " if char in UNICODE_BLANKS else char for char in text).strip(" \t\r\n;")
 
 
+def _oracle(text: str) -> str:
+    """The engine's text with its comments blanked: 1.x hands a comment between two statements to the
+    next one and 2.x to the previous one, so the comments are left out of the comparison."""
+    return _fold(LexicalEngine(DUCKDB_SPEC).blank_comments(text))
+
+
 def test_the_scanner_cuts_where_the_engine_cuts() -> None:
     """The engine's own splitter is the oracle (2 000 derandomised scripts of valid SELECTs)."""
     duckdb = pytest.importorskip("duckdb")
@@ -101,11 +107,11 @@ def test_the_scanner_cuts_where_the_engine_cuts() -> None:
                 script += rng.choice(_GAPS)
 
         try:
-            oracle = [_fold(s.query) for s in duckdb.extract_statements(script)]
+            oracle = [_oracle(s.query) for s in duckdb.extract_statements(script)]
         except duckdb.Error:
             continue  # the engine rejects the text: no cut to compare
         evaluated += 1
-        ours = [_fold(text) for text in texts(script)]
+        ours = [_oracle(text) for text in texts(script)]
         assert ours == [text for text in oracle if text], script
     assert (
         evaluated > 1500

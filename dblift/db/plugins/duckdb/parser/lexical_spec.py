@@ -50,5 +50,7 @@ DUCKDB_SPEC = LexicalSpec(
     segment_script=DUCKDB_RULES,
     refused_character="\x00",
     refused_character_name="NUL",
+    # After a NUL, 1.5.5 drops the rest of the script or reads an unterminated string; 2.0.0 reports a
+    # syntax error outside literals and comments and accepts the NUL inside them. Refused on both.
     refused_reason="the engine reads the script up to it and silently drops the rest",
 )
