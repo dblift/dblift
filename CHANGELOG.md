@@ -19,6 +19,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The SQL analyzer reads objects from statement facts only.** `SqlAnalyzer.extract_objects` and
+  `analyze_statement` no longer fall back to a regex scan of the statement text: a statement the
+  facts cannot read names no object instead of a guessed one. A dialect without a statement-facts
+  reader, and DuckDB's `analysis_mode="execution"` (which disables object extraction), report no
+  objects and `analyze_statement` returns `parsed_with: "none"`. The public signatures are unchanged.
 - **DML analysis no longer guesses from statement text.** `analyze_dml`, `statement_dml_table` and
   the plugin quirks methods that call them read a plugin's statement facts or, for a dialect with no
   reader, the sqlglot AST; a statement neither can read comes back unread (empty table,

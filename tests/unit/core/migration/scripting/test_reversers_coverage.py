@@ -186,18 +186,18 @@ class TestDefaultSchemaPlaceholderNeverReachesGeneratedSql:
         result = gen._reverse_create(sql, gen.sql_analyzer.analyze_statement(sql))
         assert "default_schema" not in result.sql
 
-    @pytest.mark.usefixtures("legacy_oracle")
     def test_unqualified_name_drops_the_bare_object(self):
         gen = make_generator(dialect="oracle")
-        sql = "CREATE SEQUENCE users_seq START WITH 1"
-        result = gen._reverse_create(sql, gen.sql_analyzer.analyze_statement(sql))
+        analysis = {
+            "objects": [{"object_type": "SEQUENCE", "object_name": "default_schema.users_seq"}]
+        }
+        result = gen._reverse_create("CREATE SEQUENCE users_seq START WITH 1", analysis)
         assert result.sql == 'DROP SEQUENCE "users_seq";'
 
-    @pytest.mark.usefixtures("legacy_oracle")
     def test_a_real_schema_is_still_qualified(self):
         gen = make_generator(dialect="oracle")
-        sql = "CREATE TABLE app.orders (id INT)"
-        result = gen._reverse_create(sql, gen.sql_analyzer.analyze_statement(sql))
+        analysis = {"objects": [{"object_type": "TABLE", "object_name": "app.orders"}]}
+        result = gen._reverse_create("CREATE TABLE app.orders (id INT)", analysis)
         assert result.sql == 'DROP TABLE "app"."orders";'
 
 
