@@ -237,7 +237,8 @@ not allowed, without changing its exit code.
 
 ### Choosing How Much SQL Analysis Runs
 
-`migrate`, `undo` and `info` take `--analysis-mode {full,execution}`.
+`migrate`, `undo` and `info` take `--analysis-mode {full,execution}`. `validate-sql` always
+needs sqlglot.
 
 ```bash
 dblift migrate --analysis-mode execution
@@ -245,8 +246,8 @@ dblift migrate --analysis-mode execution
 
 - `full` (the default, and what you get today) reads each statement to track the objects it
   touches, classify it and keep the safeguards and enriched reports built on that. It needs
-  sqlglot: install `dblift[analysis]`. Without it the command stops before it runs a callback,
-  writes a file or connects to the database.
+  sqlglot for `migrate` and `undo`: install `dblift[analysis]`. Without it they stop before they
+  run a callback, write a file or connect to the database. `info` works without it.
 - `execution` only splits the script and runs the SQL. It skips object tracking and the checks
   and report details that depend on it, so `info` and `migrate --dry-run` mark pending script
   analysis as disabled. Use an explicit undo script with `undo`. A `WITH` statement that cannot

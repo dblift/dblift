@@ -410,15 +410,31 @@ def _sqlglot_available() -> bool:
         return False
 
 
-def _require_analysis_extras(args: argparse.Namespace) -> None:
-    """Exit before any callback, file write or connection if ``--analysis-mode full``
-    is requested (or defaulted) and sqlglot, the ``analysis`` extra, is missing."""
-    if vars(args).get("analysis_mode") == "full" and not _sqlglot_available():
-        CommandOutput("console").error(
-            "error: --analysis-mode full needs sqlglot, which is not installed: "
-            "install dblift[analysis], or pass --analysis-mode execution to skip the analysis."
-        )
-        sys.exit(1)
+# Commands that read statements with sqlglot: migrate and undo unless they run in
+# execution mode, validate-sql always (it has no execution mode). The other commands,
+# ``info`` included, work without it.
+_ANALYSING_COMMANDS = frozenset({"migrate", "undo"})
+
+
+def _require_analysis_extras(commands: List[str], args: argparse.Namespace) -> None:
+    """Exit before any callback, file write or connection if a command needs sqlglot
+    (the ``analysis`` extra) and it is missing."""
+    full = vars(args).get("analysis_mode") == "full"
+    lint = "validate-sql" in commands
+    if not ((full and _ANALYSING_COMMANDS.intersection(commands)) or lint):
+        return
+    if _sqlglot_available():
+        return
+    hint = (
+        "install dblift[analysis]"
+        if lint
+        else "install dblift[analysis], or pass --analysis-mode execution to skip the analysis"
+    )
+    CommandOutput("console").error(
+        f"error: {'validate-sql' if lint else '--analysis-mode full'} needs sqlglot, "
+        f"which is not installed: {hint}."
+    )
+    sys.exit(1)
 
 
 def _parse_argv_and_load_config(argv: List[str]) -> _CliContext:
@@ -496,7 +512,7 @@ def _parse_argv_and_load_config(argv: List[str]) -> _CliContext:
     if not commands and hasattr(args, "command"):
         commands = [args.command]
 
-    _require_analysis_extras(args)
+    _require_analysis_extras(commands, args)
 
     # `dblift config --list` is offline self-documentation: it reads only the
     # property registry, so it short-circuits here — before any config/db load —

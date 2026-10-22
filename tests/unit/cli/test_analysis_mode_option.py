@@ -1,5 +1,6 @@
 """``--analysis-mode {full,execution}`` on the commands that run or analyse migrations."""
 
+import argparse
 import subprocess
 import sys
 import textwrap
@@ -90,7 +91,44 @@ def test_execution_mode_without_sqlglot_is_not_blocked(monkeypatch):
     from dblift.cli import main as cli_main
 
     monkeypatch.setattr(cli_main, "_sqlglot_available", lambda: False)
-    cli_main._require_analysis_extras(SimpleNamespace(analysis_mode="execution"))
+    cli_main._require_analysis_extras(["migrate"], argparse.Namespace(analysis_mode="execution"))
+    cli_main._require_analysis_extras(["undo"], argparse.Namespace(analysis_mode="execution"))
+
+
+@pytest.mark.parametrize(
+    "commands, attrs",
+    [
+        (["info"], {"analysis_mode": "full"}),
+        (["validate"], {}),
+        (["clean"], {}),
+        (["baseline"], {}),
+        (["repair"], {}),
+    ],
+)
+def test_commands_that_never_reach_sqlglot_are_not_blocked(monkeypatch, commands, attrs):
+    from dblift.cli import main as cli_main
+
+    monkeypatch.setattr(cli_main, "_sqlglot_available", lambda: False)
+    cli_main._require_analysis_extras(commands, argparse.Namespace(**attrs))
+
+
+@pytest.mark.parametrize(
+    "commands, attrs",
+    [
+        (["migrate"], {"analysis_mode": "full"}),
+        (["undo"], {"analysis_mode": "full"}),
+        (["info", "migrate"], {"analysis_mode": "full"}),
+        (["validate-sql"], {}),
+    ],
+)
+def test_commands_that_need_sqlglot_are_blocked(monkeypatch, capsys, commands, attrs):
+    from dblift.cli import main as cli_main
+
+    monkeypatch.setattr(cli_main, "_sqlglot_available", lambda: False)
+    with pytest.raises(SystemExit) as exc:
+        cli_main._require_analysis_extras(commands, argparse.Namespace(**attrs))
+    assert exc.value.code == 1
+    assert "install dblift[analysis]" in capsys.readouterr().err
 
 
 def _hide_sqlglot(body: str) -> str:
@@ -161,3 +199,27 @@ def test_execution_mode_migrates_without_sqlglot(tmp_path):
         assert con.execute("select count(*) from a").fetchone() == (0,)
     finally:
         con.close()
+
+
+def test_undo_without_sqlglot_refuses_before_creating_the_database(tmp_path):
+    scripts, db = _project(tmp_path)
+    proc = _run(
+        _hide_sqlglot(_cli("--db-url", f"sqlite:///{db}", "--scripts", str(scripts), "undo")),
+        tmp_path,
+    )
+    assert proc.returncode != 0
+    assert "install dblift[analysis]" in proc.stderr
+    assert not db.exists()
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["migrations"]
+
+
+def test_validate_sql_without_sqlglot_refuses_cleanly(tmp_path):
+    scripts, _ = _project(tmp_path)
+    proc = _run(
+        _hide_sqlglot(_cli("--scripts", str(scripts), "validate-sql", "--dialect", "sqlite")),
+        tmp_path,
+    )
+    assert proc.returncode != 0
+    assert "install dblift[analysis]" in proc.stderr
+    assert "Traceback" not in proc.stderr
+    assert "Unexpected error" not in proc.stderr
