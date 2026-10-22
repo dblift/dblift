@@ -371,9 +371,8 @@ def test_installed_silent_api_without_presentation_dependencies(candidate_wheel,
     diagnostic = json.loads(output.read_text(encoding="utf-8"))["corpus"]
     assert diagnostic["status"] == "pass"
     assert diagnostic["missing"] == ["Jinja2", "rich"]
-    assert diagnostic["pip_check_returncode"] != 0
+    assert diagnostic["pip_check_returncode"] == 0
     assert diagnostic["venv_verified_before_uninstall"] is True
-    assert "rich" in diagnostic["pip_check_output"].lower()
     assert diagnostic["silent_sqlite"] is True
     assert diagnostic["no_implicit_report_files"] is True
 
@@ -404,7 +403,7 @@ def test_installed_low_level_sqlite_without_sqlglot(candidate_wheel, tmp_path):
     assert diagnostic["profile"] == "sqlglot"
     assert diagnostic["missing"] == ["sqlglot"]
     assert diagnostic["venv_verified_before_uninstall"] is True
-    assert "sqlglot" in diagnostic["pip_check_output"].lower()
+    assert diagnostic["pip_check_returncode"] == 0
     assert diagnostic["low_level_v_u"] is True
     assert diagnostic["standard_client_failed_before_mutation"] is True
     assert diagnostic["execution_cycle"] is True

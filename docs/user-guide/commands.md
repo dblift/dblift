@@ -235,6 +235,27 @@ the diff is empty, or add `--diff-filter=d` to `git diff` to leave deleted files
 `migrate --dry-run` shows the same verdict next to each pending script, with the findings
 not allowed, without changing its exit code.
 
+### Choosing How Much SQL Analysis Runs
+
+`migrate`, `undo` and `info` take `--analysis-mode {full,execution}`. `validate-sql` always
+needs sqlglot.
+
+```bash
+dblift migrate --analysis-mode execution
+```
+
+- `full` (the default, and what you get today) reads each statement to track the objects it
+  touches, classify it and keep the safeguards and enriched reports built on that. It needs
+  sqlglot for `migrate`, `undo` and `info`: install `dblift[analysis]`. Without it they stop
+  before they run a callback, write a file or connect to the database (`migrate --validate-only`
+  parses nothing and is not affected).
+- `execution` only splits the script and runs the SQL. It skips object tracking and the checks
+  and report details that depend on it, so `info` reports pending script analysis as
+  `"status": "disabled"` and `migrate --dry-run` drops the verdict labels. It is the way to run
+  these commands without sqlglot. Use an explicit undo script with `undo`. A `WITH` statement that cannot
+  be classified without that analysis stops the migration before it is applied; use `full` for
+  that SQL.
+
 ### Rolling Back Changes
 
 If you need to undo a migration:

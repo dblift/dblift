@@ -222,6 +222,19 @@ def _make_filter_parent() -> argparse.ArgumentParser:
     return p
 
 
+def _add_analysis_mode_option(p: argparse.ArgumentParser) -> None:
+    p.add_argument(
+        "--analysis-mode",
+        choices=["full", "execution"],
+        default="full",
+        help=(
+            "full (default) reads each statement to track objects, classify it and keep "
+            "its safeguards; execution only splits and runs the SQL and skips that "
+            "analysis. full needs sqlglot: install dblift[analysis]"
+        ),
+    )
+
+
 def _add_placeholders_option(p: argparse.ArgumentParser) -> None:
     """Add ``--placeholders``, shared by the filter parent and ``validate-sql``."""
     p.add_argument(
@@ -308,6 +321,8 @@ def _add_diff_and_target_options(
         action="store_true",
         help="Show rows returned by SELECT statements in command output and reports",
     )
+    for _analysing_parser in (migrate_parser, undo_parser, info_parser):
+        _add_analysis_mode_option(_analysing_parser)
     undo_parser.add_argument(
         "--show-sql",
         action="store_true",

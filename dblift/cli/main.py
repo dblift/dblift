@@ -22,6 +22,7 @@ from dblift.core.logger.console import (
     PresentationUnavailableError,
     get_stderr_console,
     install_rich_traceback,
+    module_available,
     require_presentation_extras,
     rich_available,
 )
@@ -429,6 +430,37 @@ def _require_presentation_extras(commands: List[str], args: argparse.Namespace) 
         sys.exit(1)
 
 
+def _sqlglot_available() -> bool:
+    return module_available("sqlglot")
+
+
+# Commands that read statements with sqlglot: migrate, undo and info unless they run in
+# execution mode, validate-sql always (it has no execution mode). ``migrate --validate-only``
+# parses nothing, and the other commands never read statements.
+_ANALYSING_COMMANDS = frozenset({"migrate", "undo", "info"})
+
+
+def _require_analysis_extras(commands: List[str], args: argparse.Namespace) -> None:
+    """Exit before any callback, file write or connection if a command needs sqlglot
+    (the ``analysis`` extra) and it is missing."""
+    full = vars(args).get("analysis_mode") == "full" and not vars(args).get("validate_only")
+    lint = "validate-sql" in commands
+    if not ((full and _ANALYSING_COMMANDS.intersection(commands)) or lint):
+        return
+    if _sqlglot_available():
+        return
+    hint = (
+        "install dblift[analysis]"
+        if lint
+        else "install dblift[analysis], or pass --analysis-mode execution to skip the analysis"
+    )
+    CommandOutput("console").error(
+        f"error: {'validate-sql' if lint else '--analysis-mode full'} needs sqlglot, "
+        f"which is not installed: {hint}."
+    )
+    sys.exit(1)
+
+
 def _parse_argv_and_load_config(argv: List[str]) -> _CliContext:
     """Phase 1: extract commands, build args namespace, load config.
 
@@ -505,6 +537,7 @@ def _parse_argv_and_load_config(argv: List[str]) -> _CliContext:
         commands = [args.command]
 
     _require_presentation_extras(commands, args)
+    _require_analysis_extras(commands, args)
 
     # `dblift config --list` is offline self-documentation: it reads only the
     # property registry, so it short-circuits here — before any config/db load —
@@ -618,7 +651,8 @@ def _build_command_client(ctx: "_CliContext") -> Any:
     )
     if config_only:
         return ConfigOnlyClient(config=ctx.config)
-    return resolve_client_class().from_config(ctx.config, logger=ctx.log, analysis_mode="full")
+    options = {k: v for k, v in vars(ctx.args).items() if k == "analysis_mode"}
+    return resolve_client_class().from_config(ctx.config, logger=ctx.log, **options)
 
 
 def _propagate_license_banner(log: Any, license_info: Optional[Any]) -> None:
