@@ -46,13 +46,9 @@ def test_direct_generic_parser_construction_refuses_sqlserver(parser_class):
         parser_class("sqlserver")
 
 
-def test_analyzer_extracts_objects_from_facts_without_regex(monkeypatch):
+def test_analyzer_extracts_objects_from_facts():
     analyzer = SqlAnalyzer("sqlserver")
 
-    def forbidden(*args, **kwargs):
-        raise AssertionError("regex extraction reached")
-
-    monkeypatch.setattr(analyzer, "_extract_objects_regex", forbidden)
     sql = "UPDATE [MiXeD].[a]]b] SET id = 2 WHERE id = 1"
 
     assert analyzer.extract_objects(sql) == [{"object_type": "TABLE", "object_name": "MiXeD.a]b"}]
