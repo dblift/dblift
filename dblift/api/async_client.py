@@ -25,6 +25,7 @@ from dblift.api.client import (
     _text_undo_deprecation_gate,
 )
 from dblift.api.events import EventEmitter
+from dblift.config import DbliftConfig
 
 _T = TypeVar("_T")
 
@@ -65,7 +66,7 @@ class AsyncDBLiftClient:
     @classmethod
     def from_config(
         cls,
-        config: Any,
+        config: DbliftConfig,
         *,
         analysis_mode: Literal["full", "execution"] = "execution",
         **kwargs: Any,

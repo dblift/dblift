@@ -16,7 +16,7 @@ from dblift.config.config_builder import ConfigBuilder
 from dblift.config.database_config import BaseDatabaseConfig
 from dblift.config.errors import ConfigurationError
 from dblift.config.path_anchoring import anchor_config_paths
-from dblift.core.logger import DbliftLogger, LogFormat, LogLevel, NullLog
+from dblift.core.logger import DbliftLogger, Log, LogFormat, LogLevel, NullLog
 from dblift.core.migration.executor.migration_executor import require_analysis_support
 from dblift.db.native_connection_manager import NativeConnectionManager
 from dblift.db.provider_registry import ProviderRegistry
@@ -93,7 +93,10 @@ def resolve_config_or_raise(
 
 
 def _logging_requested(
-    config: Any, log_level: Optional[str], log_format: Optional[str], log_file: Optional[str]
+    config: DbliftConfig,
+    log_level: Optional[str],
+    log_format: Optional[str],
+    log_file: Optional[str],
 ) -> bool:
     if any(value is not None for value in (log_level, log_format, log_file)):
         return True
@@ -110,7 +113,7 @@ def build_default_logger(
     log_level: Optional[str],
     log_format: Optional[str],
     log_file: Optional[str],
-) -> Any:
+) -> Log:
     """Return the logger a client uses when the caller passes none.
 
     Silent (``NullLog``) unless logging is asked for: a ``log_level`` /
