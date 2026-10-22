@@ -517,7 +517,12 @@ class TestDuckDBDmlKeepsLiterals:
                 provider.rollback_transaction()
         # the shell command is a parser error in both; DuckDB 2.0 stores the NUL where 1.x rejects it
         assert answered[0] == ".tables"
-        assert self._values(provider) == ([] if len(answered) == 2 else ["a\x00b"])
+        if _duckdb_major() >= 2:
+            assert answered == [".tables"]
+            assert self._values(provider) == ["a\x00b"]
+        else:
+            assert len(answered) == 2
+            assert self._values(provider) == []
 
 
 @pytest.mark.unit

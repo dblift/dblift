@@ -657,7 +657,13 @@ def test_a_dollar_tag_that_the_driver_reads_as_a_string_stays_one_statement(gap)
     import duckdb
 
     script = f"SELECT 1 AS a{gap}$$t$x; DROP TABLE t; SELECT 3;"
-    with pytest.raises(duckdb.ParserException, match="unterminated dollar-quoted|syntax error"):
+    with pytest.raises(
+        duckdb.ParserException,
+        match=(
+            "unterminated dollar-quoted string at or near|"  # 1.5.5
+            'syntax error at or near "\\$'  # 2.0.0
+        ),
+    ):
         duckdb.extract_statements(script)
     assert ENGINE.split_statements(script) == [script]
 
@@ -666,7 +672,13 @@ def test_a_dollar_followed_by_a_digit_leaves_the_blank_after_it_a_blank():
     import duckdb
 
     script = f"SELECT 1 AS a$1{NBSP}$t$x; DROP TABLE t; SELECT 3;"
-    with pytest.raises(duckdb.ParserException, match="unterminated dollar-quoted|syntax error"):
+    with pytest.raises(
+        duckdb.ParserException,
+        match=(
+            "unterminated dollar-quoted string at or near|"  # 1.5.5
+            'syntax error at or near "\\$'  # 2.0.0
+        ),
+    ):
         duckdb.extract_statements(script)
     assert ENGINE.split_statements(script) == [script]
 
