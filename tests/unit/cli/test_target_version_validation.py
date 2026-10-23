@@ -122,3 +122,38 @@ def test_target_version_from_config_is_refused_before_connecting(project, bad):
     assert proc.returncode == 2, proc.stdout + proc.stderr
     assert "Available versions: 1, 2, 3" in proc.stderr
     assert not (project / "tv.db").exists()
+
+
+_UNREACHABLE = "database:\n  url: postgresql://u:p@127.0.0.1:1/x\n  type: postgresql\n"
+
+
+@pytest.mark.parametrize("command", ["migrate", "validate", "info"])
+def test_refusal_precedes_an_unreachable_database(project, command):
+    (project / "c.yaml").write_text(_UNREACHABLE + "migrations:\n  directory: m\n")
+    proc = _run(project, command, "--target-version", "99")
+    assert proc.returncode == 2, proc.stdout + proc.stderr
+    assert "Available versions: 1, 2, 3" in proc.stderr
+
+
+def test_non_string_config_target_is_refused_by_the_cli_check(project, monkeypatch, capsys):
+    import argparse
+    from pathlib import Path
+
+    from dblift.cli._command_handlers import _validate_target_version_option
+
+    class Parser(argparse.ArgumentParser):
+        def error(self, message):
+            raise SystemExit(message)
+
+    with pytest.raises(SystemExit) as raised:
+        _validate_target_version_option(
+            "migrate",
+            argparse.Namespace(target_version=99),
+            Parser(),
+            None,
+            project / "m",
+            [],
+            True,
+            {},
+        )
+    assert "Available versions: 1, 2, 3" in str(raised.value)

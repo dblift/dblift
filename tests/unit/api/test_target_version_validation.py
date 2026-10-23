@@ -120,3 +120,19 @@ def test_refusal_emits_no_started_event(client):
     with pytest.raises(InvalidTargetVersionError):
         client.migrate(target_version="abc")
     assert seen == []
+
+
+@pytest.mark.parametrize("target", ["99", "1a", "1"])
+def test_undo_against_an_unreachable_database_returns_a_failed_result(tmp_path, target):
+    scripts = tmp_path / "m"
+    scripts.mkdir()
+    (scripts / "V1__t.sql").write_text("CREATE TABLE t1 (id INTEGER);\n")
+    (scripts / "U1__t.sql").write_text("DROP TABLE t1;\n")
+    config = DbliftConfig.from_dict(
+        {
+            "database": {"url": "postgresql://u:p@127.0.0.1:1/x", "type": "postgresql"},
+            "migrations": {"directory": str(scripts)},
+        }
+    )
+    result = DBLiftClient.from_config(config).undo(target_version=target)
+    assert result.success is False

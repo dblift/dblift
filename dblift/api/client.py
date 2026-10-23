@@ -20,6 +20,8 @@ from typing import (
     overload,
 )
 
+from sqlalchemy.exc import SQLAlchemyError
+
 from dblift.api._client_factory import (
     apply_ctor_overrides,
     build_default_logger,
@@ -387,11 +389,15 @@ class DBLiftClient:
         except InvalidTargetVersionError:
             if not allow_applied or not target_version.strip()[:1].isdigit():
                 raise
-            applied = [
-                str(record.version)
-                for record in self.executor.history_manager.get_applied_migration_records()
-                if record.version
-            ]
+            try:
+                records = self.executor.history_manager.get_applied_migration_records()
+            except (OSError, SQLAlchemyError) as exc:
+                from dblift.db.error import format_connection_error
+
+                raise PreflightConnectionError(
+                    format_connection_error(exc, self.config.database.type or "")
+                ) from exc
+            applied = [str(record.version) for record in records if record.version]
             try:
                 validate_target_version(target_version, applied)
             except InvalidTargetVersionError:
@@ -784,14 +790,17 @@ class DBLiftClient:
             UndoResult with details of rolled back migrations
         """
         self._guard_scripts_dir_kwarg(kwargs)
-        self._check_target_version(
-            target_version,
-            recursive,
-            additional_dirs,
-            kwargs.get("dir_recursive_map"),
-            allow_zero=True,
-            allow_applied=True,
-        )
+        try:
+            self._check_target_version(
+                target_version,
+                recursive,
+                additional_dirs,
+                kwargs.get("dir_recursive_map"),
+                allow_zero=True,
+                allow_applied=True,
+            )
+        except PreflightConnectionError as exc:
+            return _failed_preflight_result(exc, UndoResult, self.config.database.schema)
         self.events.emit(
             EventType.UNDO_STARTED,
             {
