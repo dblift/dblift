@@ -33,6 +33,7 @@ from tests.support.facts_corpus.differential import (
     reserved_words,
     skeleton,
 )
+from tests.support.facts_corpus.record import is_frozen
 
 Results = List[Tuple[str, Dict[str, Any], Dict[str, str]]]
 
@@ -61,14 +62,22 @@ def _results() -> Results:
 # which families are gated ------------------------------------------------------------------------
 
 
-def test_no_family_is_gated_until_its_differences_are_explained() -> None:
-    assert gated_families() == []
+def test_only_families_whose_differences_are_explained_are_gated() -> None:
+    assert gated_families() == [
+        "db2",
+        "mysql",
+        "oracle",
+        "postgresql",
+        "redshift",
+        "snowflake",
+        "sqlserver",
+    ]
 
 
 def test_gated_families_are_known_families_with_a_reader() -> None:
     gated = gated_families()
     assert gated == sorted(gated) and set(gated) <= set(FAMILIES)
-    assert not {f for f in gated if DIALECTS[f] is None}, "a family without a reader is not gated"
+    assert not set(gated) & set(NO_OLD_FAMILIES), "a family with nothing to compare is not gated"
 
 
 def test_every_family_has_a_review_file_of_entries_that_say_why() -> None:
@@ -107,7 +116,7 @@ def _some_row(family: str) -> Tuple[str, str]:
 def test_a_wrong_or_orphaned_ledger_entry_fails_a_family_that_is_not_gated(
     kind: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    row_id, actual = _some_row("postgresql")
+    row_id, actual = _some_row("oracle")
     wrong = "disagree" if actual != "disagree" else "facts-fewer"
     key, entry_class = (
         (f"{row_id}/hybrid", wrong)
@@ -118,11 +127,12 @@ def test_a_wrong_or_orphaned_ledger_entry_fails_a_family_that_is_not_gated(
         )
     )
     entry = {"sql": "s", "path": "hybrid", "class": entry_class, "reason": "ok"}
-    _plant(monkeypatch, tmp_path, "postgresql", {key: entry})
-    assert gated_families() == []
-    assert differential.report_family("postgresql", current_arm())["stale"] == [key]
-    assert differential.run(["postgresql"]) == 1
-    assert differential.run(["postgresql"], report_only=True) == 0
+    monkeypatch.setattr(differential, "gated_families", lambda: [])  # a family that is not gated
+    _plant(monkeypatch, tmp_path, "oracle", {key: entry})
+    assert "oracle" not in differential.gated_families()
+    assert differential.report_family("oracle", current_arm())["stale"] == [key]
+    assert differential.run(["oracle"]) == 1
+    assert differential.run(["oracle"], report_only=True) == 0
 
 
 def test_the_listed_families_have_no_unexplained_difference() -> None:
@@ -132,13 +142,16 @@ def test_the_listed_families_have_no_unexplained_difference() -> None:
 
 
 def test_a_family_planted_in_the_gate_fails_on_its_real_unexplained_rows(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    monkeypatch.setattr(differential, "gated_families", lambda: ["postgresql"])
-    report = differential.report_family("postgresql", current_arm())
+    empty = tmp_path / "oracle.review.json"  # a ledger that explains nothing
+    empty.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(differential, "review_file", lambda name: empty)
+    monkeypatch.setattr(differential, "gated_families", lambda: ["oracle"])
+    report = differential.report_family("oracle", current_arm())
     assert report["gated"] and report["unclassified"], "the corpus has rows no entry explains"
-    assert differential.run(["postgresql"]) == 1
-    assert differential.run(["postgresql"], report_only=True) == 0
+    assert differential.run(["oracle"]) == 1
+    assert differential.run(["oracle"], report_only=True) == 0
 
 
 @pytest.mark.parametrize("family", FAMILIES)
@@ -148,11 +161,6 @@ def test_every_row_of_every_family_is_classified_on_this_arm(family: str) -> Non
     assert {c for _, _, classes in results for c in classes.values()} <= set(ORDER)
 
 
-def test_a_family_without_a_reader_is_no_reader_everywhere() -> None:
-    seen = {c for _, _, classes in classify_family("db2", current_arm()) for c in classes.values()}
-    assert seen == {"no-reader"}
-
-
 def test_a_family_whose_extraction_is_the_reader_has_nothing_to_compare() -> None:
     for family in NO_OLD_FAMILIES:
         seen = {c for _, _, cl in classify_family(family, current_arm()) for c in cl.values()}
@@ -160,10 +168,10 @@ def test_a_family_whose_extraction_is_the_reader_has_nothing_to_compare() -> Non
 
 
 def test_default_schemas_are_the_ones_the_extraction_assigns() -> None:
-    from tests.support.facts_corpus.record import record_statement
+    from tests.support.facts_corpus.record import is_frozen, record_statement
 
     for family in FAMILIES:
-        if family in NO_OLD_FAMILIES or DIALECTS[family] is None:
+        if family in NO_OLD_FAMILIES or DIALECTS[family] is None or is_frozen(family):
             continue
         old = record_statement(family, "CREATE TABLE zz (a int)")["old"]
         assert old["hybrid"][0][2] == DEFAULT_SCHEMA.get(family), family
@@ -282,6 +290,46 @@ def test_a_reader_gap_names_an_issue() -> None:
         check_review(results, {"r/hybrid": {**entry, "issue": "#1"}}, "newest")["unclassified"]
         == []
     )
+
+
+GOOD_REJECTION = {"postgresql 16.14": "42601", "mysql 8.4": "1064"}
+
+
+def _gap_unclassified(entry: dict, cls: str = "opaque-reader-gap") -> list:
+    results: Results = [("r", _row("s", {}, {}), {"hybrid": cls, "analyzer": "same"})]
+    base = {"path": "hybrid", "class": cls, "reason": "the engine rejects it"}
+    return check_review(results, {"r/hybrid": {**base, **entry}}, "newest")["unclassified"]
+
+
+def test_a_reader_gap_the_engines_reject_is_explained_by_rejected_by() -> None:
+    assert _gap_unclassified({"rejected_by": GOOD_REJECTION}) == []
+
+
+@pytest.mark.parametrize(
+    "rejected_by",
+    [
+        {},
+        "42601",
+        ["42601"],
+        None,
+        {"postgresql 16.14": ""},
+        {"": "42601"},
+        {"postgresql 16.14": 42601},
+        {"postgresql 16.14": "42601", "mysql 8.4": " "},
+    ],
+)
+def test_a_malformed_rejected_by_does_not_explain_a_reader_gap(rejected_by: object) -> None:
+    assert _gap_unclassified({"rejected_by": rejected_by}) == ["r/hybrid"]
+
+
+def test_an_issue_still_explains_a_reader_gap_alone() -> None:
+    assert _gap_unclassified({"issue": "#1"}) == []
+    assert _gap_unclassified({"issue": "#1", "rejected_by": {}}) == []
+
+
+def test_rejected_by_is_ignored_for_a_class_that_is_not_a_reader_gap() -> None:
+    assert _gap_unclassified({"rejected_by": {}}, "disagree") == []
+    assert _gap_unclassified({"reason": " ", "rejected_by": GOOD_REJECTION}) == ["r/hybrid"]
 
 
 def test_an_entry_that_lacks_the_running_arm_is_stale_on_that_arm() -> None:

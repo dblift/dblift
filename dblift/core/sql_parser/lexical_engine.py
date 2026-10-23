@@ -3,6 +3,7 @@
 import logging
 from typing import List
 
+from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.core.sql_parser.lexical_spec import LexicalSpec
 from dblift.core.sql_parser.lexical_statement_parser import LexicalStatementParser
 from dblift.core.sql_parser.lexical_tokenizer import LexicalTokenizer
@@ -21,7 +22,20 @@ class LexicalEngine:
 
     def _parser(self, script: str) -> LexicalStatementParser:
         tokenizer = LexicalTokenizer(script, spec=self.spec)
-        tokens = tokenizer.tokenize()
+        if tokenizer.delimiter_script is not None:
+            if tokenizer.spec.refused_character:
+                tokenizer._refuse_character()
+            while tokenizer.pos < len(tokenizer.sql):
+                tokenizer._next_token()
+            tokenizer.delimiter_script.finish()
+            tokens = []
+        else:
+            tokens = tokenizer.tokenize()
+        if tokenizer.open_comment is not None:  # the engine rejects the whole script
+            line, col = tokenizer.open_comment
+            raise UnsafeStatementSplitError(
+                f"unterminated block comment opened at line {line}, column {col}"
+            )
         records = tokenizer.assemble(tokens) if self.spec.terminator_script is not None else None
         return LexicalStatementParser(
             tokens,
@@ -79,8 +93,10 @@ class LexicalEngine:
                 "comments of a terminator script are not blanked by the engine"
             )
         tokenizer = LexicalTokenizer(script, spec=self.spec)
-        tokens = tokenizer.tokenize()
-        if self.spec.segment_script is None:
+        if self.spec.segment_script is not None:
+            tokenizer._scan_segment_comments()
+        else:
+            tokens = tokenizer.tokenize()
             LexicalStatementParser(
                 tokens, source=script, spec=self.spec, comments=tokenizer.comments
             ).split()

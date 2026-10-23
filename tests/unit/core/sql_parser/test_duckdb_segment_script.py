@@ -10,6 +10,8 @@ import pytest
 
 from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
 from dblift.core.sql_parser.lexical_engine import LexicalEngine
+from dblift.core.sql_parser.lexical_tokenizer import LexicalTokenizer
+from dblift.core.sql_parser.tokens import TokenType
 from dblift.db.plugins.duckdb.parser.duckdb_facts_parser import DuckDBFactsParser
 from dblift.db.plugins.duckdb.parser.lexical_spec import DUCKDB_RULES, DUCKDB_SPEC
 from tests.support.splitter_spec.spec_tables import load_conformance_rows
@@ -82,8 +84,16 @@ CASES = [
     (
         "unclosed_comment_last",
         "SELECT 1; /* open\nSELECT 2;",
-        [("SELECT 1", 1, ";", 0, 9), ("/* open\nSELECT 2;", 1, None, 10, 27)],
-        ["SELECT 1", "/* open\nSELECT 2;"],
+        (
+            "error",
+            "UnsafeStatementSplitError",
+            "unterminated block comment opened at line 1, column 11",
+        ),
+        (
+            "error",
+            "UnsafeStatementSplitError",
+            "unterminated block comment opened at line 1, column 11",
+        ),
         "SELECT 1; /* open\nSELECT 2;",
     ),
     (
@@ -155,22 +165,26 @@ CASES = [
     (
         "escape_mode_across_a_blank",
         "SELECT E'a' 'b\\'; SELECT 1 AS y; SELECT 'z';",
-        [("SELECT E'a' 'b\\'; SELECT 1 AS y; SELECT 'z';", 1, None, 0, 44)],
-        ["SELECT E'a' 'b\\'; SELECT 1 AS y; SELECT 'z';"],
+        [
+            ("SELECT E'a' 'b\\'", 1, ";", 0, 17),
+            ("SELECT 1 AS y", 1, ";", 18, 32),
+            ("SELECT 'z'", 1, ";", 33, 44),
+        ],
+        ["SELECT E'a' 'b\\'", "SELECT 1 AS y", "SELECT 'z'"],
         "SELECT E'a' 'b\\'; SELECT 1 AS y; SELECT 'z';",
     ),
     (
         "digit_letter_before_e",
         "SELECT " + chr(0xB2) + "E'b\\';c' AS x; SELECT 2;",
-        [("SELECT \xb2E'b\\';c' AS x", 1, ";", 0, 22), ("SELECT 2", 1, ";", 23, 32)],
-        ["SELECT \xb2E'b\\';c' AS x", "SELECT 2"],
+        [("SELECT \xb2E'b\\'", 1, ";", 0, 14), ("c' AS x; SELECT 2;", 1, None, 14, 32)],
+        ["SELECT \xb2E'b\\'", "c' AS x; SELECT 2;"],
         "SELECT \xb2E'b\\';c' AS x; SELECT 2;",
     ),
     (
         "arabic_digit_before_e",
         "SELECT " + chr(0x663) + "E'b\\';c' AS x; SELECT 2;",
-        [("SELECT \u0663E'b\\';c' AS x", 1, ";", 0, 22), ("SELECT 2", 1, ";", 23, 32)],
-        ["SELECT \u0663E'b\\';c' AS x", "SELECT 2"],
+        [("SELECT \u0663E'b\\'", 1, ";", 0, 14), ("c' AS x; SELECT 2;", 1, None, 14, 32)],
+        ["SELECT \u0663E'b\\'", "c' AS x; SELECT 2;"],
         "SELECT \u0663E'b\\';c' AS x; SELECT 2;",
     ),
     (
@@ -219,17 +233,17 @@ CASES = [
         (
             "error",
             "UnsafeStatementSplitError",
-            "a NUL character on line 2: the engine reads the script up to it and silently drops the rest",
+            "a NUL character on line 2, column 1: the engine reads the script up to it and silently drops the rest",
         ),
         (
             "error",
             "UnsafeStatementSplitError",
-            "a NUL character on line 2: the engine reads the script up to it and silently drops the rest",
+            "a NUL character on line 2, column 1: the engine reads the script up to it and silently drops the rest",
         ),
         (
             "error",
             "UnsafeStatementSplitError",
-            "a NUL character on line 2: the engine reads the script up to it and silently drops the rest",
+            "a NUL character on line 2, column 1: the engine reads the script up to it and silently drops the rest",
         ),
     ),
     (
@@ -238,17 +252,17 @@ CASES = [
         (
             "error",
             "UnsafeStatementSplitError",
-            "a NUL character on line 2: the engine reads the script up to it and silently drops the rest",
+            "a NUL character on line 2, column 1: the engine reads the script up to it and silently drops the rest",
         ),
         (
             "error",
             "UnsafeStatementSplitError",
-            "a NUL character on line 2: the engine reads the script up to it and silently drops the rest",
+            "a NUL character on line 2, column 1: the engine reads the script up to it and silently drops the rest",
         ),
         (
             "error",
             "UnsafeStatementSplitError",
-            "a NUL character on line 2: the engine reads the script up to it and silently drops the rest",
+            "a NUL character on line 2, column 1: the engine reads the script up to it and silently drops the rest",
         ),
     ),
     (
@@ -257,17 +271,17 @@ CASES = [
         (
             "error",
             "UnsafeStatementSplitError",
-            "a NUL character on line 1: the engine reads the script up to it and silently drops the rest",
+            "a NUL character on line 1, column 1: the engine reads the script up to it and silently drops the rest",
         ),
         (
             "error",
             "UnsafeStatementSplitError",
-            "a NUL character on line 1: the engine reads the script up to it and silently drops the rest",
+            "a NUL character on line 1, column 1: the engine reads the script up to it and silently drops the rest",
         ),
         (
             "error",
             "UnsafeStatementSplitError",
-            "a NUL character on line 1: the engine reads the script up to it and silently drops the rest",
+            "a NUL character on line 1, column 1: the engine reads the script up to it and silently drops the rest",
         ),
     ),
     (
@@ -426,7 +440,64 @@ CASES = [
     ),
 ]
 IDS = [case[0] for case in CASES]
-KNOWN_GAPS = frozenset({"74", "75"})  # the splitter differs from DuckDB there (see the spec)
+KNOWN_GAPS = frozenset()
+
+
+@pytest.mark.parametrize(
+    "script",
+    [
+        "SELECT E'a'\t'b\\'; SELECT 2;",
+        "SELECT E'a' /* note\n */ 'b\\';c'; SELECT 2;",
+        "SELECT E'a' 'p' 'b\\'; SELECT 2; SELECT 'z';",
+        "SELECT E'a' 'b\\'",
+        "SELECT ٣E'b\\';c'; SELECT 2;",
+        "SELECT ３E'b\\';c'; SELECT 2;",
+    ],
+)
+def test_string_boundary_delimiters_match_duckdb_tokens(script):
+    import duckdb
+
+    native = [
+        len(script.encode()[:offset].decode())
+        for offset, _kind in duckdb.tokenize(script)
+        if script.encode()[offset : offset + 1] == b";"
+    ]
+    ours = [
+        token.pos
+        for token in LexicalTokenizer(script, spec=DUCKDB_SPEC).tokenize()
+        if token.type == TokenType.DELIMITER
+    ]
+    assert ours == native
+
+
+@pytest.mark.parametrize(
+    "script",
+    [
+        "SELECT E'a'\n'b\\';c'; SELECT 2;",
+        "SELECT E'a'\r\n'b\\';c'; SELECT 2;",
+        "SELECT E'a' -- note\n'b\\';c'; SELECT 2;",
+        "SELECT E'a'\n'p'\n'b\\'; SELECT 2;",
+    ],
+)
+def test_a_line_continuation_of_an_escape_string_that_the_engines_read_two_ways_is_refused(script):
+    """DuckDB 1.5.5 reads the backslash in the continuation as an escape, 2.0.0 as a character."""
+    with pytest.raises(UnsafeStatementSplitError, match="reads a backslash in it"):
+        LexicalTokenizer(script, spec=DUCKDB_SPEC).tokenize()
+
+
+@pytest.mark.parametrize(
+    "script",
+    ["SELECT E'a'\n'b\\\\'; SELECT 2;", "SELECT E'a'\n'b'; SELECT 2;"],
+)
+def test_a_line_continuation_both_engines_close_in_the_same_place_is_cut_where_they_cut(script):
+    """No backslash-quote in the continuation: both readings end the string at the same quote."""
+    import duckdb
+
+    theirs = [q.query for q in duckdb.extract_statements(script)]
+    assert len(theirs) == 2
+    assert [t.strip() for t in ENGINE.split_statements(script)] == [
+        t.strip().rstrip(";") for t in theirs
+    ]
 
 
 def outcome(call, script):
@@ -586,7 +657,13 @@ def test_a_dollar_tag_that_the_driver_reads_as_a_string_stays_one_statement(gap)
     import duckdb
 
     script = f"SELECT 1 AS a{gap}$$t$x; DROP TABLE t; SELECT 3;"
-    with pytest.raises(duckdb.ParserException, match="unterminated dollar-quoted"):
+    with pytest.raises(
+        duckdb.ParserException,
+        match=(
+            "unterminated dollar-quoted string at or near|"  # 1.5.5
+            'syntax error at or near "\\$'  # 2.0.0
+        ),
+    ):
         duckdb.extract_statements(script)
     assert ENGINE.split_statements(script) == [script]
 
@@ -595,7 +672,13 @@ def test_a_dollar_followed_by_a_digit_leaves_the_blank_after_it_a_blank():
     import duckdb
 
     script = f"SELECT 1 AS a$1{NBSP}$t$x; DROP TABLE t; SELECT 3;"
-    with pytest.raises(duckdb.ParserException, match="unterminated dollar-quoted"):
+    with pytest.raises(
+        duckdb.ParserException,
+        match=(
+            "unterminated dollar-quoted string at or near|"  # 1.5.5
+            'syntax error at or near "\\$'  # 2.0.0
+        ),
+    ):
         duckdb.extract_statements(script)
     assert ENGINE.split_statements(script) == [script]
 

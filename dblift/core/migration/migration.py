@@ -26,6 +26,7 @@ from dblift.core.migration.scripting.filename_parser import (  # noqa: F401 - co
 from dblift.core.migration.sql.migration_sql_parser import (  # noqa: F401 - compatibility re-export
     _default_splitter_dialect,
 )
+from dblift.core.sql_parser._deprecation import internal_parser_construction
 
 
 @dataclass(frozen=True)
@@ -487,7 +488,8 @@ class Migration:
         dialect = resolve_migration_sql_dialect(dialect or self.dialect, self.config, log)
 
         try:
-            sql_analyzer = SqlAnalyzer(dialect=dialect, logger=log)
+            with internal_parser_construction():
+                sql_analyzer = SqlAnalyzer(dialect=dialect, logger=log)
         except Exception as exc:
             raise UnsafeStatementSplitError(f"statement splitter failed: {exc}") from exc
         else:

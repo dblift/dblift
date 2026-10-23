@@ -1,4 +1,4 @@
-"""Dormant Oracle facts do not infer a write target from an expression's sources."""
+"""Oracle facts do not infer a write target from an expression's sources."""
 
 import pytest
 
@@ -50,12 +50,12 @@ def test_oracle_unproven_mutation_targets_have_no_mutation_payload(sql, operatio
 @pytest.mark.parametrize(
     "sql,operation,target,target_sql,predicate,columns",
     [
-        ("DELETE FROM t WHERE x=1", "DELETE", "t", "t", "x = 1", ()),
-        ("DELETE t WHERE x=1", "DELETE", "t", "t", "x = 1", ()),
-        ("DELETE FROM t a WHERE a.x=1", "DELETE", "t", "t a", "a.x = 1", ()),
-        ('DELETE FROM t "PARTITION" WHERE x=1', "DELETE", "t", 't "PARTITION"', "x = 1", ()),
-        ("UPDATE t a SET a.x=2 WHERE a.id=1", "UPDATE", "t", "t a", "a.id = 1", ("x",)),
-        ("INSERT INTO t (x) VALUES (1)", "INSERT", "t", "t", None, ()),
+        ("DELETE FROM t WHERE x=1", "DELETE", "T", "t", "x = 1", ()),
+        ("DELETE t WHERE x=1", "DELETE", "T", "t", "x = 1", ()),
+        ("DELETE FROM t a WHERE a.x=1", "DELETE", "T", "t a", "a.x = 1", ()),
+        ('DELETE FROM t "PARTITION" WHERE x=1', "DELETE", "T", 't "PARTITION"', "x = 1", ()),
+        ("UPDATE t a SET a.x=2 WHERE a.id=1", "UPDATE", "T", "t a", "a.id = 1", ("x",)),
+        ("INSERT INTO t (x) VALUES (1)", "INSERT", "T", "t", None, ()),
         (
             'UPDATE "Sales"."Order Items" SET "Value"=1 WHERE "Id"=2',
             "UPDATE",
@@ -83,13 +83,22 @@ def test_oracle_predicate_subquery_does_not_make_a_direct_target_opaque():
     facts = read_statement_facts("DELETE FROM t WHERE id IN (SELECT id FROM s)", dialect="oracle")
 
     assert not facts.opaque
-    assert facts.target == "t"
+    assert facts.target == "T"
     assert facts.predicate == "id IN (SELECT id FROM s)"
     assert facts.objects == (
-        NamedObject("t", SqlObjectType.TABLE, "altered"),
-        NamedObject("s", SqlObjectType.TABLE, "referenced"),
+        NamedObject("T", SqlObjectType.TABLE, "altered"),
+        NamedObject("S", SqlObjectType.TABLE, "referenced"),
     )
 
 
-def test_oracle_statement_facts_remain_dormant():
-    assert not OracleQuirks().supports_statement_facts
+def test_oracle_q_quoted_literal_keeps_the_source_table():
+    facts = read_statement_facts(
+        "SELECT q'[It's a string with 'quotes']' FROM DUAL", dialect="oracle"
+    )
+
+    assert facts.error is None
+    assert facts.objects == (NamedObject("DUAL", SqlObjectType.TABLE, "referenced"),)
+
+
+def test_oracle_statement_facts_are_active():
+    assert OracleQuirks().supports_statement_facts

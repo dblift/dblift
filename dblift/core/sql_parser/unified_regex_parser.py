@@ -16,6 +16,7 @@ from dblift.core.sql_model.base import (
     SqlStatement,
     SqlStatementType,
 )
+from dblift.core.sql_parser._deprecation import warn_direct_parser
 from dblift.core.sql_parser.parser_interface import SqlParserInterface
 
 logger = logging.getLogger(__name__)
@@ -92,6 +93,8 @@ class RegexParser(SqlParserInterface):
         Args:
             dialect_config: Dialect-specific configuration object
         """
+        if type(self) is RegexParser:
+            warn_direct_parser("RegexParser")
         self.config = dialect_config
         self._last_statement: Optional[str] = None
         self._last_objects: List[SqlObject] = []

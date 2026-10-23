@@ -7,7 +7,7 @@ Coverage focus:
 - split_statements: GO, block comment, identifier, string
 - analyze_statement: success and exception paths
 - validate_sql: db-specific parser (tuple, dict, bool result), basic structural checks
-- extract_objects / _extract_objects_regex: all branches
+- extract_objects: all branches
 - parse_sql, get_tables, get_views, get_indexes, get_functions, get_triggers
 - get_table, get_view, has_circular_dependencies, get_dependencies
 """
@@ -333,7 +333,7 @@ class TestSplitStatements(unittest.TestCase):
 
 
 class TestExtractObjects(unittest.TestCase):
-    """Tests for extract_objects() and _extract_objects_regex()."""
+    """Tests for extract_objects()."""
 
     def setUp(self):
         self.analyzer = SqlAnalyzer(dialect="postgresql")
@@ -384,7 +384,7 @@ class TestExtractObjects(unittest.TestCase):
         objects = self.analyzer.extract_objects(sql)
         self.assertEqual(len(objects), 1)
         self.assertEqual(objects[0]["object_type"], "INDEX")
-        self.assertIn("users", objects[0]["on_object"])
+        self.assertEqual(objects[0]["object_name"], "default_schema.idx_unique")
 
     def test_drop_table(self):
         sql = "DROP TABLE myschema.old_table"
@@ -427,15 +427,11 @@ class TestAnalyzeStatement(unittest.TestCase):
     def test_analyze_reports_the_extraction_it_actually_used(self):
         sql = "CREATE TABLE t (id INT)"
         result = self.analyzer.analyze_statement(sql)
-        self.assertEqual(result["parsed_with"], "regex")
+        self.assertEqual(result["parsed_with"], "facts")
         self.assertEqual(result["objects"], self.analyzer.extract_objects(sql))
-
-    def test_analyze_error_returns_invalid_result(self):
-        self.analyzer._extract_objects_regex = MagicMock(side_effect=Exception("regex fail"))
-        sql = "SELECT 1"
-        result = self.analyzer.analyze_statement(sql)
-        self.assertFalse(result["is_valid"])
-        self.assertTrue(len(result["errors"]) > 0)
+        unread = SqlAnalyzer(dialect="mongodb").analyze_statement(sql)
+        self.assertEqual(unread["parsed_with"], "none")
+        self.assertEqual(unread["objects"], [])
 
 
 class TestValidateSql(unittest.TestCase):

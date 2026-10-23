@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional, cast
 
 from dblift.core.exceptions import FixedDboSchemaError
 from dblift.core.logger._null import NullLog
+from dblift.core.logger.console import rich_available
 from dblift.core.logger.results import CleanResult
 from dblift.db.provider_capabilities import get_clean_listing_warnings
 from dblift.db.provider_interfaces import CleanTargetProvider, TransactionalProvider
@@ -238,10 +239,6 @@ class CleanCommand(BaseCommand):
         if isinstance(self.log, NullLog):
             return
 
-        from rich.tree import Tree
-
-        from dblift.core.logger.console import render_tree_to_str
-
         objects_map = result.get_objects_by_type()
         total_objects = sum(len(names) for names in objects_map.values())
 
@@ -282,10 +279,25 @@ class CleanCommand(BaseCommand):
                 return f"{label[:-1]}ies"
             return f"{label}s"
 
+        ordered = list(preferred_order) + sorted(t for t in objects_map if t not in preferred_order)
+
+        if not rich_available():
+            self.log.info(f"Cleaned {total_objects} object(s) from schema '{result.target_schema}'")
+            for object_type in ordered:
+                names = sorted(objects_map.get(object_type, []))
+                if names:
+                    self.log.info(f"  {_label(object_type, len(names))} ({len(names)})")
+                    for name in names:
+                        self.log.info(f"    {name}")
+            return
+
+        from rich.tree import Tree
+
+        from dblift.core.logger.console import render_tree_to_str
+
         root = Tree(f"Cleaned {total_objects} object(s) from schema '{result.target_schema}'")
 
         handled = set()
-        ordered = list(preferred_order) + sorted(t for t in objects_map if t not in preferred_order)
         for object_type in ordered:
             names = sorted(objects_map.get(object_type, []))
             if not names:

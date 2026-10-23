@@ -36,11 +36,7 @@ def test_update_target_is_reported_in_the_existing_parse_result_shape():
     ]
 
 
-def test_sql_analyzer_objects_do_not_use_the_regex_extractor(monkeypatch):
-    def forbidden(*args, **kwargs):
-        raise AssertionError("legacy regex extraction reached")
-
-    monkeypatch.setattr(SqlAnalyzer, "_extract_objects_regex", forbidden)
+def test_sql_analyzer_objects_come_from_facts():
     assert SqlAnalyzer("sqlite").extract_objects(UPDATE) == [
         {"object_type": "TABLE", "object_name": "default_schema.child"}
     ]
@@ -56,13 +52,14 @@ def test_sqlite_sqlglot_factory_type_remains_unsupported():
 
 @pytest.mark.parametrize("parser_class", [HybridParser, SqlGlotParser])
 def test_direct_generic_parser_construction_rejects_sqlite(parser_class):
-    with pytest.raises(ValueError, match="SQLiteFactsParser"):
+    with pytest.raises(ValueError, match="StatementFactsParser"):
         parser_class("sqlite")
 
 
+@pytest.mark.usefixtures("legacy_oracle")
 @pytest.mark.parametrize("parser_class", [HybridParser, SqlGlotParser])
 def test_direct_generic_parser_remains_available_for_unmigrated_dialect(parser_class):
-    assert parser_class("postgresql").dialect_name == "postgresql"
+    assert parser_class("oracle").dialect_name == "oracle"
 
 
 def test_index_facts_separate_indexed_columns_from_declared_table_columns():
@@ -74,13 +71,7 @@ def test_index_facts_separate_indexed_columns_from_declared_table_columns():
     assert facts.declared_columns == ()
 
 
-def test_cte_update_has_one_target_and_full_table_caution(monkeypatch):
-    from dblift.core.migration.sql import script_analysis
-
-    def forbidden(*args, **kwargs):
-        raise AssertionError("legacy extraction reached")
-
-    monkeypatch.setattr(script_analysis, "_fallback_objects", forbidden)
+def test_cte_update_has_one_target_and_full_table_caution():
     sql = "WITH x AS (SELECT 1) UPDATE child SET parent_id = 2;"
     analysis = analyse_script(sql, "sqlite")
 

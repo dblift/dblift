@@ -97,6 +97,28 @@ def test_transformation_keeps_only_sqlite_descriptor(tmp_path):
     assert list(project["project"]["entry-points"]["dblift.provider_descriptors"]) == ["sqlite"]
 
 
+def test_transformation_keeps_cli_and_analysis_in_all_under_the_fork_name(tmp_path):
+    revision = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True, text=True, check=True
+    ).stdout.strip()
+    source = tmp_path / "source"
+    source.mkdir()
+    archive = subprocess.run(
+        ["git", "archive", "--format=tar", revision], cwd=ROOT, capture_output=True, check=True
+    )
+    tar_path = tmp_path / "source.tar"
+    tar_path.write_bytes(archive.stdout)
+    with tarfile.open(tar_path) as tar:
+        tar.extractall(source, filter="data")
+    _transform(source)
+    extras = tomllib.loads((source / "pyproject.toml").read_text(encoding="utf-8"))["project"][
+        "optional-dependencies"
+    ]
+    assert extras["all"] == ["dblift-sqlite-fork-fixture[cli,analysis]"]
+    # A self-reference must name the fork, never the published dblift.
+    assert not [req for reqs in extras.values() for req in reqs if req.startswith("dblift[")]
+
+
 def test_transformation_accepts_revision_before_descriptors(tmp_path):
     revision = subprocess.run(
         ["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True, text=True, check=True

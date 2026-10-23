@@ -24,7 +24,6 @@ from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.migration.sql.sql_execution_service import SqlExecutionService
 from dblift.core.sql_parser.lexical_engine import LexicalEngine
 from dblift.core.sql_parser.statement import Statement
-from dblift.db.plugins.snowflake.statement_parser import SnowflakeStatementParser
 from dblift.db.provider_registry import ProviderRegistry
 from tests.unit._migration_factory import make_migration
 
@@ -139,7 +138,8 @@ SHAPES: Tuple[Shape, ...] = (
     Shape(
         "copy_stdin",
         f"COPY t FROM STDIN;\n1\t2\n\\.\n{S2};",
-        PSQL_WIRE,
+        # Redshift rejects COPY ... FROM STDIN (docs/sql-parsing/redshift.md): no data block.
+        tuple(d for d in PSQL_WIRE if d != "redshift"),
         execution=("COPY t FROM STDIN;\n1\t2\n", "SELECT 2;"),
     ),
     Shape(
@@ -228,9 +228,8 @@ class Outcome:
 def records(dialect: str, script: str) -> List[Statement]:
     """The splitter's default records for *script*."""
     spec = ProviderRegistry.get_quirks(dialect).lexical_spec()
-    if spec is not None:
-        return LexicalEngine(spec).split(script)
-    return SnowflakeStatementParser().split(script)
+    assert spec is not None
+    return LexicalEngine(spec).split(script)
 
 
 def _constituents(record: Statement) -> Tuple[str, ...]:

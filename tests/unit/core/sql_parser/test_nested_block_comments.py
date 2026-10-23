@@ -12,12 +12,8 @@ nesting is the same fact for them, not an inference. CockroachDB and
 YugabyteDB are separate implementations of the wire protocol, not
 PostgreSQL, so their nesting was checked directly against each engine
 rather than inferred — both nest the same way PostgreSQL does. Redshift is
-also a separate implementation, but has no local engine to check and no
-documentation addressing comment nesting in top-level SQL (its PL/pgSQL
-page says block comments don't nest inside a procedure's ``$$ ... $$``
-body, a different lexical context from the top-level SQL
-``split_statements`` scans, so it isn't evidence here) — it is kept
-non-nesting as the unverified, safer-by-default reading.
+also a separate implementation and was checked against Redshift Serverless
+1.0.485645 (docs/sql-parsing/redshift.md): it nests too.
 """
 
 import unittest
@@ -179,13 +175,13 @@ class TestDuckDBNestedBlockComments(unittest.TestCase):
         stmts = self.parser.split_statements(THREE_DEEP)
         self.assertEqual(stmts, [THREE_DEEP.removesuffix(";")])
 
-    def test_unterminated_inner_comment_swallows_rest_of_file(self):
-        stmts = self.parser.split_statements(UNTERMINATED_INNER)
-        self.assertEqual(stmts, [UNTERMINATED_INNER])
+    def test_unterminated_inner_comment_is_refused(self):
+        with self.assertRaises(UnsafeStatementSplitError):
+            self.parser.split_statements(UNTERMINATED_INNER)
 
-    def test_three_deep_with_unterminated_middle_swallows_rest_of_file(self):
-        stmts = self.parser.split_statements(THREE_DEEP_UNTERMINATED_MIDDLE)
-        self.assertEqual(stmts, [THREE_DEEP_UNTERMINATED_MIDDLE])
+    def test_three_deep_with_unterminated_middle_is_refused(self):
+        with self.assertRaises(UnsafeStatementSplitError):
+            self.parser.split_statements(THREE_DEEP_UNTERMINATED_MIDDLE)
 
 
 class TestNonNestingDialectsUnchanged(unittest.TestCase):
@@ -352,21 +348,14 @@ class TestCockroachdbYugabytedbNestBlockComments(unittest.TestCase):
         self._assert_nests("yugabytedb")
 
 
-class TestRedshiftDoesNotNestBlockComments(unittest.TestCase):
-    """Kept non-nesting, unverified: no local Redshift engine, and no
-    documentation found that addresses comment nesting in top-level SQL.
-    The AWS "Structure of PL/pgSQL" page states block comments don't nest,
-    but that sentence describes comments inside a PL/pgSQL procedure body's
-    ``$$ ... $$`` — a different lexical context from the top-level SQL
-    ``split_statements`` scans (``ISSUE_EXAMPLE`` below is plain SQL, never
-    inside ``$$ ... $$``) — so it is not evidence for this scanner. Redshift
-    keeps the pre-#333, non-nesting reader (first ``*/`` closes) as the
-    safer default rather than an inherited, unverified claim.
-    """
+class TestRedshiftNestsBlockComments(unittest.TestCase):
+    """Measured on Redshift Serverless 1.0.485645: ``/* a /* b */ c */ SELECT 1`` runs and
+    ``/* a /* b */ SELECT 1`` is rejected as an unterminated comment, so the first ``*/``
+    does not close an outer comment."""
 
-    def test_redshift_does_not_nest(self):
+    def test_redshift_nests(self):
         stmts = _regex_parser_for("redshift").split_statements(ISSUE_EXAMPLE)
-        self.assertTrue(any("DROP TABLE victim" in s for s in stmts))
+        self.assertEqual(stmts, ["SELECT 1;"], "redshift should nest like PostgreSQL")
 
 
 class TestBaseTokenizerNestingFlag(unittest.TestCase):

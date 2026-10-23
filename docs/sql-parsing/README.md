@@ -32,6 +32,32 @@ A fact that is not in one of these sections is not a splitting fact and does
 not belong in the spec. Object extraction (what a `CREATE TABLE` declares) is
 the extractor's concern and is covered by the model snapshot tests, not here.
 
+## Statement facts identities
+
+When sqlglot cannot read a statement body, the shared statement-facts reader may
+still classify its operation and kind. It publishes an affected object, DML
+target or index relation from the head only when the original dialect token
+stream proves the same leading verb and complete name: each name part must be
+bounded, have the expected identifier token kind for its quoting, and agree
+with the source spelling. A further qualifier, an unrecognized quote form,
+substitution text, or a client/script prefix cannot be silently cut away to
+invent a name. A clause keyword (`IF`, `NOT`, `EXISTS`, `ONLY`, `ADD`, `CLONE`, `CASCADE`,
+`RESTRICT`) where a name belongs, and a name continued by a `{...}` template brace, are not
+names either: the statement is reported as unread. Comment boundaries are part of that proof.
+The same bound applies to parsed statements: if a relation has more qualifier
+parts than the facts can represent, no identity for that relation is published.
+Dependent effects remain opaque; an already opaque program body can still retain
+a separately proven outer program name.
+
+A proven head can retain its identity and diagnostic when the body remains
+unread; an unread or broken tail alone does not erase a bounded head. A stray
+block-comment closer in the same unit is treated more conservatively: the
+reader publishes no affected identity or DML details even if an initial name
+lexeme is clear, because the whole unit's effect cannot be safely projected.
+An opaque result with no objects is a statement about the reader's evidence,
+not a claim that a database accepts or rejects the SQL or that execution has
+no effect.
+
 ## Rules every specification follows
 
 - **Facts cite the vendor.** A string, comment, terminator or block rule is
@@ -70,7 +96,10 @@ the extractor's concern and is covered by the model snapshot tests, not here.
 Section 10 of every spec is compiled into tests by
 `tests/support/splitter_spec/spec_tables.py` and run by
 `test_postgresql_spec_conformance.py`, `test_oracle_spec_conformance.py`,
-`test_sqlserver_spec_conformance.py`, `test_mysql_spec_conformance.py`, `test_db2_spec_conformance.py`, `test_sqlite_spec_conformance.py` and `test_duckdb_spec_conformance.py` in `tests/unit/core/sql_parser/`. A row that the compiler cannot read is
+`test_sqlserver_spec_conformance.py`, `test_mysql_spec_conformance.py`,
+`test_db2_spec_conformance.py`, `test_sqlite_spec_conformance.py`,
+`test_duckdb_spec_conformance.py`, `test_redshift_spec_conformance.py` and
+`test_snowflake_spec_conformance.py` in `tests/unit/core/sql_parser/`. A row that the compiler cannot read is
 a build error, so the tables keep this shape:
 
 | Column | Rule |
@@ -86,7 +115,10 @@ terminator (`;`) removed; everything else is compared verbatim. A row marked **e
 
 Each row runs through `SqlAnalyzer.split_statements`, the entry point `migrate`
 uses, in `test_postgresql_spec_conformance.py`, `test_oracle_spec_conformance.py`,
-`test_sqlserver_spec_conformance.py`, `test_mysql_spec_conformance.py`, `test_db2_spec_conformance.py`, `test_sqlite_spec_conformance.py` and `test_duckdb_spec_conformance.py` (all in `tests/unit/core/sql_parser/`; the mysql module runs `mysql.md` for both engines and `mariadb.md` for MariaDB). A row
+`test_sqlserver_spec_conformance.py`, `test_mysql_spec_conformance.py`,
+`test_db2_spec_conformance.py`, `test_sqlite_spec_conformance.py`,
+`test_duckdb_spec_conformance.py`, `test_redshift_spec_conformance.py` and
+`test_snowflake_spec_conformance.py` (all in `tests/unit/core/sql_parser/`; the mysql module runs `mysql.md` for both engines and `mariadb.md` for MariaDB). A row
 the current code gets wrong is listed by id in that module's list of known gaps and
 fails strictly (`xfail(strict=True)`): the list can only shrink honestly.
 
@@ -102,6 +134,8 @@ fails strictly (`xfail(strict=True)`): the list can only shrink honestly.
 | [db2.md](db2.md) | Db2 for Linux, UNIX and Windows (scripts written for the command line processor) | none: the command line processor rules are spec data of the shared tokenizer |
 | [sqlite.md](sqlite.md) | SQLite scripts written for the `sqlite3` shell: the library's own statement-completeness rule, trigger bodies, dot-commands, `go` and `/` lines | SQLite script scanner |
 | [duckdb.md](duckdb.md) | DuckDB scripts run through the Python driver and written for the `duckdb` shell: dollar-quoted strings, nested block comments, `E'…'` strings, dot-commands | none: the shell rules are spec data of the shared tokenizer |
+| [snowflake.md](snowflake.md) | Snowflake scripts run through the Python connector: fixed `$$` strings, first-close block comments, `//` comments and conservative scripting refusals | none: the rules are plugin data of the shared tokenizer |
+| [redshift.md](redshift.md) | Amazon Redshift, where it differs from PostgreSQL: nested block comments, backslash escapes, no `COPY … FROM STDIN` data block, no `BEGIN ATOMIC` body | none: the differences are spec data of the shared tokenizer |
 
 ## Verification sources
 

@@ -7,8 +7,151 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Breaking
+
+- **The Python API runs in execution mode by default and is silent.** `DBLiftClient`
+  (the constructor, `from_config`, `from_config_file`, `from_sqlalchemy`), `AsyncDBLiftClient`
+  and `MigrationExecutor` now default to `analysis_mode="execution"`, and a client built with no
+  logging argument writes nothing to stderr or stdout. `logger`, `log_level`, `log_format` or
+  `log_file`, or a logging option in the config (`log_level`, `log_format`, `log_file`,
+  `log_dir`, `logging.file`, `logging.directory`, or a `logging.level` other than `info`),
+  turns logging on; a config `logging.level` of `info` is the default and cannot be told from an
+  unset one, so pass `log_level="INFO"` to get output at that level. The `<config folder>/logs`
+  directory that `from_config_file(..., relative_to_config=True)` falls back to is a default, not
+  a logging option: it neither turns logging on nor creates the directory by itself. `from_sqlalchemy`'s
+  `log_level` and `log_format` now default to `None` (they were `"INFO"` and `"text"`).
+  Migrations still run, validate and undo as before; what changes is that `info()`/dry-run
+  results report pending script analysis as disabled, the journal does not capture object
+  operations, and a `WITH` statement that cannot be classified lexically is refused. Pass
+  `analysis_mode="full"` and install `dblift[analysis]` to keep SQL analysis cautions; an
+  explicit `"full"` without SQLGlot raises `ModuleNotFoundError` naming that extra before any
+  connection is opened or callback runs. The command line is unchanged and still analyses in
+  full, and the Flask and Django integrations and the pytest-dblift fixtures pass
+  `analysis_mode="full"` explicitly.
+- **Text-based undo generation is removed.** `generate_undo_script()` and `generate_undo_scripts()`
+  on `DBLiftClient` and `AsyncDBLiftClient`, and `GenerateUndoScriptResult`, no longer exist (they
+  have warned since 4.10). Write the matching `U*__.sql` or `U*__.py` undo script by hand; `undo`,
+  `info` and reapply run those files as before.
+
+### Added
+
+- **`--analysis-mode {full,execution}` on `migrate`, `undo` and `info`.** The default, `full`, is
+  unchanged. `execution` only splits and runs the SQL and skips object tracking and the checks
+  and report details built on it, so it works without sqlglot. `migrate`, `undo` and `info` in
+  `full` mode, and `validate-sql`, now stop before any callback, file write or database connection
+  when sqlglot is not installed, and ask you to `install dblift[analysis]` (they used to fail
+  part-way with `No module named 'sqlglot'`).
+- **Db2 statement facts.** `info --format json`, `migrate --dry-run`, execution-time object
+  tracking and the DML helpers read Db2 statements through a head classifier: the statement kind
+  and the DDL or DML target are named for CREATE/ALTER/DROP TABLE, VIEW, INDEX, SEQUENCE, ALIAS,
+  SCHEMA, TRIGGER, PROCEDURE and FUNCTION, RENAME, COMMENT ON, TRUNCATE, GRANT/REVOKE,
+  INSERT/UPDATE/DELETE/MERGE, transaction control, CALL and SET; unquoted names fold to upper
+  case as Db2 does; column-level facts (declared columns, constraints, indexed columns) are
+  reported as unavailable.
+
 ### Changed
 
+- **A plugin without a statement-facts reader is no longer analysed from text.** Lint and the
+  script analysis behind `validate-sql` now report "statement facts unavailable for dialect" for
+  such a plugin and mark its scripts for review, instead of reading them with the text parser, so
+  a script is no longer rated UNSAFE for a `DROP TABLE` or an unfiltered `DELETE` there. Every
+  bundled dialect reads statement facts and is unaffected.
+- **Snowflake `TRUNCATE`, `MERGE` and `COMMENT ON` are read.** `TRUNCATE [TABLE] [IF EXISTS] t`
+  names the table it empties; `MERGE INTO t USING ...` names its target and sources and reports
+  the `INSERT`, `UPDATE` and `DELETE` its actions perform, so data-change analysis and object
+  tracking no longer miss a merge; `COMMENT ON TABLE`, `VIEW`, `MATERIALIZED VIEW`, `SEQUENCE` and
+  `COLUMN` name the object changed. Names follow the Snowflake rules (an unquoted ASCII name in
+  upper case, a quoted one exactly); `IDENTIFIER()` and `$variable` names, a list of tables,
+  `CASCADE`, a `MERGE` with a CTE and every other `COMMENT ON` kind stay unread.
+
+- **DuckDB 2 is supported.** The `duckdb` extra now accepts DuckDB 2.x as well as 1.x. DuckDB 1.x
+  and 2.x read one rare construct differently: a string on the line after an escape string
+  (`E'a'` newline `'b\'...'`), where 1.x lets the backslash escape the quote and 2.x does not. dblift
+  cannot know which one will run the script, so it now refuses it with an error naming the line
+  and column; write the text as a single literal.
+- **The SQL analyzer reads objects from statement facts only.** `SqlAnalyzer.extract_objects` and
+  `analyze_statement` no longer fall back to a regex scan of the statement text: a statement the
+  facts cannot read names no object instead of a guessed one. A dialect without a statement-facts
+  reader, and DuckDB's `analysis_mode="execution"` (which disables object extraction), report no
+  objects and `analyze_statement` returns `parsed_with: "none"`. The public signatures are unchanged.
+
+- **Lightweight base install.** `pip install dblift` no longer pulls Rich, Jinja2 or SQLGlot.
+  Install `dblift[cli]` for the command line and `dblift[analysis]` for full SQL analysis;
+  `dblift[all]` is unchanged for users (it now names both extras explicitly), as are the `mcp`,
+  `django`, `flask` and `fastapi` extras. A database-only install such as
+  `pip install "dblift[postgresql]"` must add `cli` and `analysis` to keep the `dblift` command working:
+  `pip install "dblift[cli,analysis,postgresql]"`, because the command line analyses SQL with
+  SQLGlot by default (`analysis_mode="full"`). The Python API defaults to `analysis_mode="execution"`
+  and runs on a base install, without Rich or SQLGlot. `pytest-dblift` now depends on `dblift[analysis]`.
+
+
+- **DML analysis no longer guesses from statement text.** `analyze_dml`, `statement_dml_table` and
+  the plugin quirks methods that call them read a plugin's statement facts or, for a dialect with no
+  reader, the sqlglot AST; a statement neither can read comes back unread (empty table,
+  `events=None`) instead of a table or events scanned out of the text. `extract_dml_table_name` is
+  removed. Signatures and return shapes are unchanged.
+- **Snowflake reads statement facts from the SQL grammar.** `info --format json`,
+  `migrate --dry-run`, object tracking during `migrate`, data-change analysis and lint read each
+  statement's kind, objects, target and predicate from the sqlglot AST after the shared lexical
+  splitter. `CREATE`/`DROP SCHEMA` name the schema, `CREATE`/`DROP MATERIALIZED VIEW` the
+  materialized view, and a `CLONE` source takes the type of the object it copies. Statements the
+  object model cannot name (`STAGE`, `FILE FORMAT`, `TAG`, `WAREHOUSE`, `TRIGGER`, `ALTER … RENAME
+  TO` and `SWAP WITH`, a `@stage` reference, a data-changing CTE, a relation with four name
+  parts) and every statement the grammar cannot parse are reported as unread instead of guessed.
+  An unquoted ASCII name is read in upper case, as Snowflake stores it, and a quoted name exactly
+  as written, so `CREATE SCHEMA app` and `CREATE SCHEMA "app"` name different objects (measured on
+  Snowflake 10.38.100 with `QUOTED_IDENTIFIERS_IGNORE_CASE = FALSE`, the default); an unquoted
+  name with a non-ASCII letter, which the engine rejects, a name
+  computed at run time (`IDENTIFIER(...)`, a `$variable`) or holding a keyword where a name belongs
+  is reported as unread.
+  `validate-sql` changes its Snowflake verdicts accordingly: a script is no longer sent to review
+  only because the grammar could not parse a statement; `DROP FUNCTION`, `DROP PROCEDURE` and
+  `DROP TRIGGER` (Snowflake has no triggers) are no longer reported as `drop-table`, since they
+  hold no rows; and a `DROP` of an object the reader cannot name (`STAGE`, `TAG`, `FILE FORMAT`,
+  `PIPE`, `TASK`, `STREAM`, a policy, a `DYNAMIC`, `EXTERNAL` or `EVENT` table) is reported as the
+  new `drop-unread-object` warning, a review rather than a pass. That warning applies to every
+  dialect whose statements are read from the grammar, except for kinds that only remove a
+  definition (index, sequence, routine, trigger, type, role, user, and for example policy, rule,
+  publication, server, collation, cast, aggregate, language, event, synonym, package, directory,
+  profile, login, default, assembly, macro, nickname, library, group); when the statement's name
+  could not be read, one holding `CASCADE` or `FORCE` is always a review (a named `DROP ... CASCADE`
+  is judged as before).
+  Newly activated Snowflake statements require manual undo review instead of automatic text
+  reversal, and `validate-sql` no longer reports a script as invalid because the grammar cannot
+  parse a statement.
+- **Redshift reads statement facts from the SQL grammar.** `info --format json`,
+  `migrate --dry-run`, object tracking during `migrate`, data-change analysis and lint read each
+  statement's kind, objects, target and predicate from the sqlglot AST after the shared lexical
+  splitter. `SELECT … INTO` is read as the table creation it is, `COPY … FROM` as a load into its
+  table, `TRUNCATE` as a single-table statement, `COMMENT ON TABLE`/`COLUMN`/`VIEW` as a change to
+  the commented relation, `CREATE`/`DROP SCHEMA` by a plain schema name, and `CREATE`/`DROP
+  MATERIALIZED VIEW` as a materialized view. Statements Redshift-only DDL cannot be proven for
+  (`CREATE EXTERNAL SCHEMA`, `CREATE LIBRARY`, `UNLOAD`, `GRANT`/`REVOKE` targets, a schema name
+  with a database part, a bracketed name) are reported as unread instead of guessed. Newly
+  activated Redshift statements require manual undo review instead of automatic text reversal.
+- **YugabyteDB index facts remain opaque when `NONCONCURRENTLY` follows `CREATE [UNIQUE] INDEX`.**
+  Its reader no longer reports that modifier as an index name or guesses the affected table.
+- **Db2 CALL facts report unknown procedure effects.** The referenced routine remains named,
+  while a diagnostic marks the other effects as unread.
+- **DuckDB comment masking retains fewer tokens.** The shared segment scanner
+  records the same comment spans and refusals while `blank_comments()` drains
+  its tokens instead of keeping the full stream.
+- **SQL Server reads statement facts through the T-SQL grammar.** Object extraction, script
+  analysis and DML helpers use the plugin's facts reader after lexical `GO` batch splitting.
+  Unread names and effects are reported as opaque rather than guessed. Newly activated SQL
+  Server statements require manual undo review instead of automatic text reversal.
+- **MySQL and MariaDB read statement facts from the SQL grammar.** `info --format json`,
+  `migrate --dry-run`, object tracking during `migrate`, data-change analysis and lint read each
+  statement's kind, objects, target and predicate from the sqlglot AST after the client rules split
+  the script; executable comments (`/*! … */`, `/*M! … */`) are reported as unread statements,
+  since whether they run depends on the server version; a statement whose objects cannot be
+  established is reported as unread instead of guessed.
+- **Undo generation for MySQL and MariaDB writes a manual-review placeholder** for every
+  statement except a `SELECT`, which produces no undo.
+- **Splitting a large script uses less memory.** Tokens no longer carry a per-instance
+  dictionary. Peak memory when splitting a 3 MiB INSERT script falls from 201 MB to 157 MB
+  on DuckDB, 197 MB to 152 MB on MySQL, 276 MB to 213 MB on Db2 and 200 MB to 155 MB on
+  PostgreSQL (about 22%), with no change in splitting time or results.
 - **Transactional provider health is provider-owned.** Custom transactional
   providers must implement `check_transaction_state()`. The engine calls it
   immediately before each executed SQL statement; the provider sends its
@@ -23,8 +166,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Providers are discovered once per process.** A `dblift.providers` entry point that
   becomes installed after the first database lookup is no longer picked up until the
   process restarts; register it explicitly with `ProviderRegistry.register_plugin`.
-- **Requires sqlglot 30.18 or later.** Statement facts rely on grammar that arrived between
-  sqlglot 30.15 and 30.18; the declared range is now `sqlglot>=30.18.0,<31`.
+- **Requires sqlglot 30.23 or later.** Oracle q-quoted strings no longer prevent source-table
+  extraction, and MySQL named foreign keys in `ALTER TABLE` no longer report unmodelled grammar.
+  The declared range is now `sqlglot>=30.23.0,<31`.
+- **Unmodelled `DROP INDEX … ON …` syntax remains unread.** Where that relation form is not
+  modelled for the selected dialect, statement facts retain a diagnostic instead of treating
+  sqlglot's permissive parse as proof of a valid index operation.
 - **MySQL and MariaDB splitting moved onto the shared lexical engine.**
   Splitting, analysis and extraction use the `mysql` and `mariadb` client rules
   (the `DELIMITER` command, client commands, executable comments, optimizer
@@ -44,6 +191,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   machine, a 3 MiB script of `INSERT` statements went from 0.95 s and a 19 MB
   peak to 2.9 s and a 176 MB peak, and a 132-byte migration from 42 to 81
   microseconds.
+- **MySQL and MariaDB delimiter scripts use less memory while splitting.**
+  The engine scans without keeping a token list; the client still assembles the
+  same statement records. For one 3 MiB `INSERT` script on one machine, peak memory
+  fell from about 210 MiB to 70 MiB on MySQL and 70 MiB on MariaDB.
 - **Db2 splitting moved onto the shared lexical engine.** Splitting, analysis and
   extraction use the command line processor's rules (the end-of-line terminator,
   `--#SET TERMINATOR`, the client command list, the routine-body rule) as
@@ -108,9 +259,73 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   empty and comment-only pieces and batch separators are still skipped, and a one-time
   deprecation message asks it to implement `split()` and return `Statement` records; the
   skips end in the next major release.
+- **Db2 analysis kinds and DML targets.** `migrate --dry-run` reports CALL, COMMIT and SET as
+  `UNKNOWN` (CALL and SET were `DML`); DML targets are reported folded, with the schema when the statement gives one
+  (`APP.ORDERS`). Undo generation for Db2 (deprecated) now marks every statement other than a
+  query for manual review instead of building a model from the text.
+
+- **PostgreSQL and its compatible engines read statement facts from the SQL grammar.**
+  PostgreSQL, CockroachDB, YugabyteDB, Aurora PostgreSQL, AlloyDB, Citus, Neon, Supabase and
+  TimescaleDB now take the objects, targets and predicates of each statement from the sqlglot
+  AST instead of regular expressions, in `info --format json`, `migrate --dry-run`, object
+  tracking during execution, `SqlAnalyzer.extract_objects` and the DML analysis functions
+  (`analyze_dml`, `statement_dml_table`, `dml_where_predicate`, `is_full_table_dml`). `COMMENT ON`
+  targets, the trigger of `CREATE TRIGGER`, `DROP SCHEMA`, the table created by `SELECT … INTO`,
+  `CREATE FUNCTION/PROCEDURE … $$ … $$`, `CREATE EXTENSION`, `ALTER SEQUENCE`, `CREATE TYPE`
+  and `CREATE TABLE … TABLESPACE` are now named, and a DML caution no longer names a table
+  whose name ends in a non-ASCII blank. Redshift is unchanged. Known gaps: #666, #667, #668
+  and #669.
+- **Parsers for the PostgreSQL family are built from the facts reader.** Constructing
+  `HybridParser` or `SqlGlotParser` for a PostgreSQL-family dialect, or asking the parser
+  factory for the `sqlglot` type, now raises `ValueError` naming `StatementFactsParser`; the
+  `hybrid` type returns the facts parser, and the `regex` type still returns the regex parser,
+  whose splitting is unchanged.
+- **Undo generation for the PostgreSQL family asks for a hand-written undo.** The generator
+  marks every data or schema change for manual review instead of generating a reversal. Undo
+  scripts you write are unaffected. The generator is deprecated and removed in 5.0 (#649).
+- **Oracle reads statement facts from the SQL grammar.** `info --format json`,
+  `migrate --dry-run`, object tracking during execution, `SqlAnalyzer.extract_objects` and the
+  DML analysis functions (`analyze_dml`, `statement_dml_table`, `dml_where_predicate`,
+  `is_full_table_dml`) take the objects, targets and predicates of each statement from the
+  sqlglot AST instead of regular expressions. Unquoted names are reported upper-cased letter by
+  letter, as Oracle 23.26 stores them (`create table emp` names `EMP`, `ı` becomes `I`, `ß`
+  stays), and quoted names exactly; a name with a letter whose upper-case form is longer than one
+  character is reported unread; an object reached through a database link (`emp@lnk`, `emp @
+  lnk`) is never named as a local one. `target_sql` and `predicate` keep the spelling written. `COMMENT ON TABLE/COLUMN/MATERIALIZED VIEW`, `TRUNCATE
+  TABLE`, materialized views, `DROP MATERIALIZED VIEW`, and the name of every PL/SQL unit
+  (`CREATE [OR REPLACE] PROCEDURE/FUNCTION/PACKAGE [BODY]/TRIGGER/TYPE`), synonym and database
+  link are now named; a `CREATE INDEX` that sqlglot cannot parse still names its index and its
+  table. A PL/SQL body is never read for names, `MERGE`, `GRANT`/`REVOKE`, `TRUNCATE … CASCADE`,
+  materialized view logs and partitioned table clauses are reported as unread, and a statement
+  whose objects cannot be established names none. The gaps are listed in
+  `docs/sql-parsing/oracle.md` section 13.
+- **Parsers for Oracle are built from the facts reader.** Constructing `HybridParser` or
+  `SqlGlotParser` for `oracle`, or asking the parser factory for the `sqlglot` type, now raises
+  `ValueError` naming `StatementFactsParser`; the `hybrid` type returns the facts parser, and the
+  `regex` type still returns the Oracle regex parser, whose splitting is unchanged.
+- **Undo generation for Oracle asks for a hand-written undo.** The generator marks every data or
+  schema change for manual review instead of generating a reversal. Undo scripts you write are
+  unaffected. The generator is deprecated and removed in 5.0 (#649).
 
 ### Deprecated
 
+- **Direct use of `SqlParserFactory`, `SqlAnalyzer`, `parser_type=` and `strict_tokenizer=`.**
+  Each now warns once per process and names `StatementSplitter` and `read_statement_facts` as
+  the replacements (`strict_tokenizer` says to drop the argument); dblift's own construction sites (migration executor, execution engine,
+  undo generator, `Migration`, redaction) are silent. Behavior is unchanged. `HybridParser` and
+  `SqlGlotParser` keep refusing dialects that read statement facts with an error naming
+  `StatementFactsParser`.
+- **Direct construction of legacy SQL parser roots.** `HybridParser`, `SqlGlotParser`,
+  `RegexBasedParser`, `RegexParser`, and `EnhancedRegexParser` now warn once per process when
+  constructed directly. Parsing behavior is unchanged. Use `StatementSplitter` for script
+  boundaries, `StatementFactsParser` for supported statement analysis, and live database
+  introspection for schema models. That replacement requires a live database, leaving a
+  migration gap for SQL-text-only rich model callers; see the
+  [v5 alpha deprecation inventory](docs/developer-guide/v5-alpha-deprecation-inventory.md).
+- **Automatic undo script generation.** Existing `DBLiftClient` and `AsyncDBLiftClient`
+  generation warnings now explicitly name removal in 5.0 and hand-written `U*__` scripts as
+  the replacement. Generating scripts still works, and executing hand-written undo scripts is
+  unchanged.
 - **`sqlglot_dialect=` and `dialect=` in `dblift.db.dml_analysis`.** `analyze_dml`,
   `dml_where_predicate`, `is_full_table_dml`, `statement_dml_table` and `updates_restore_key`
   take the plugin's `quirks=`; the `sqlglot_dialect=` and `dialect=` keywords still work, warn,
@@ -123,6 +338,116 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A `--target-version` that is not a migration's version is now refused.** `migrate --target-version v1`,
+  `abc`, an empty value or `99` used to apply every pending migration and exit 0, and `-1` or `1a` applied
+  a prefix of them. `migrate`, `undo`, `validate` and `info` now exit 2 before connecting, listing the available
+  versions (`undo` with a value that starts with a digit is checked after connecting, against the
+  applied history too), unless the value is the version of a script (`1`, `1.0.0` and `1_0_0` are the same version; a `V`
+  prefix is not part of a version; `undo` also accepts `0` and an applied version whose script was deleted). The Python API also checks
+  the `target_version` set in the configuration, and raises
+  `dblift.core.exceptions.InvalidTargetVersionError` (a `ValueError`) from `migrate`, `undo`, `validate` and
+  `info`. A target at or below the current version applies nothing and says so.
+
+- **An explicit analysis mode is always honoured by registered client classes.** `from_config`,
+  `from_config_file` and `from_sqlalchemy` (and `dblift migrate --analysis-mode execution`) now
+  always pass `analysis_mode` to the client class, including `"execution"`. A registered class
+  whose own default is `"full"` used to run full analysis when `"execution"` was asked for. A
+  registered class must accept the `analysis_mode` keyword; one that does not now raises
+  `TypeError` instead of being built without it.
+- **`dblift --help` and `dblift --version` work without the presentation packages.** They
+  failed with `ModuleNotFoundError: rich` when Rich was not installed. The default console
+  logger now falls back to plain text, `migrate`, `undo`, `validate` and `clean` run without
+  Rich or Jinja2, and the commands that draw tables (`info` outside `--format json`,
+  `config`, `--show-query-results`) or write an HTML report (`--log-format html`) stop before
+  doing anything with "install dblift[cli]".
+- **A keyword is no longer reported as an object name on a malformed statement.** For every
+  dialect whose statements are read from the grammar, `ALTER TABLE ADD COLUMN x int`,
+  `DROP TABLE IF`, `DROP TABLE CASCADE` and `CREATE TABLE IF` no longer name `ADD`, `IF` or
+  `CASCADE` as the object, and a name continued by a `{...}` template brace (`CREATE TABLE s{c}.t`)
+  is no longer cut at the brace; such a statement is reported as unread. The Db2 reader refuses the
+  same keywords. `UPDATE ONLY t` and `DELETE FROM ONLY t` are likewise reported as unread on
+  MySQL, MariaDB, Oracle and SQL Server.
+
+- **Statement facts no longer shorten four-part relation names.** When the parsed name has more
+  qualifiers than the facts can represent, that relation is left unnamed and dependent effects
+  remain opaque. A separately proven outer program name remains readable. A leading source
+  fragment such as a NUL before `CREATE` or `DROP` no longer proves an affected object.
+- **`info` and `migrate --dry-run` no longer guess affected objects from uncertain SQL names.**
+  Incomplete names, names joined across comments, and quotes that do not name identifiers in the
+  selected dialect leave the affected object unread. SQL execution is unchanged.
+- **A name inside a nested block comment is no longer read as an object.** On PostgreSQL,
+  Redshift and DuckDB, a statement such as `INSERT INTO /* a /* b */ c */ t ...` that dblift
+  could not fully read was reported as writing to `c`; the comment is now skipped as the engine
+  skips it, so the target is `t`. A script that only opens a block comment is reported as an
+  unterminated comment instead of an empty statement.
+- **Redshift scripts are split the way Redshift reads them.** Block comments nest, so
+  `/* a /* b */ c */ SELECT 1` is one statement, and `/* a /* b */ x` is now refused as an
+  unterminated comment, as Redshift does; a script that relied on a comment ending at its first
+  `*/` must close every opened comment. `COPY … FROM STDIN` is a syntax error on Redshift, so its
+  data lines are no longer swallowed as data: the `\.` line that ends them now raises an
+  "unsupported meta-command" error instead of being sent. A function body `BEGIN ATOMIC … END` no
+  longer holds statements together, since Redshift rejects it. Each rule was measured on Redshift
+  Serverless 1.0.485645.
+- **Oracle scripts refuse an invalid blank before a client command.** A no-break
+  space or U+001C before `EXIT`, `PROMPT` or `/` no longer makes the splitter
+  recognize it as a client command; unsafe scripts are explicitly refused.
+
+- **DuckDB splits adjacent strings at the engine's boundaries.** An `E'...'`
+  string carries its backslash escape mode into the next literal only across a
+  CR or LF; a literal on the same line is plain. A non-ASCII digit before `E`
+  remains part of a name, so it does not open an escape string. Statement cuts
+  and literal masking now follow those rules.
+
+- **A NUL byte in a PostgreSQL-family script is refused instead of silently cutting the statement
+  (PostgreSQL, CockroachDB, YugabyteDB and the other engines of the family; Redshift as a precaution).** Everything
+  after a NUL byte was silently ignored: `CREATE TABLE a (i int);<NUL>DROP TABLE a;` ran only the
+  `CREATE`, so a migration could run partly and report success. The script is now refused whole,
+  naming the line and column of the NUL, and nothing runs. Remove the NUL byte; it often comes from
+  a file saved in another encoding such as UTF-16.
+- **The refusal of a NUL character in a MySQL or MariaDB script names its column as well as
+  its line.** The script is still refused whole, as the `mysql` and `mariadb` clients refuse it.
+
+- **MySQL and MariaDB statement facts read more of the grammar.** `TRUNCATE` names its table,
+  `CREATE SCHEMA` / `DROP SCHEMA` name the schema, `RENAME TABLE` names each source table,
+  `CREATE FULLTEXT INDEX` and `CREATE SPATIAL INDEX` name the index and its table, and a DML
+  statement that starts with `LOW_PRIORITY`, `HIGH_PRIORITY`, `DELAYED`, `QUICK` or `IGNORE`
+  names its target table instead of the modifier. An unquoted or backticked name holding a
+  character outside the Basic Multilingual Plane is no longer reported (MySQL stores it as `?`,
+  MariaDB rejects it); a double-quoted name is still read as a string, as it is without
+  `ANSI_QUOTES`.
+- **Statements are split correctly after a name that holds a non-ASCII space or symbol (PostgreSQL,
+  CockroachDB, YugabyteDB, Redshift).** These engines read every character above U+007F, such as a
+  no-break space, as part of a name, so `SELECT 1 AS a<NBSP>$x$` is one alias. dblift opened a dollar
+  quote there (and, except on Redshift, an escape string) and could run a different set of statements than the engine
+  reads. The name now continues through the character, and a script such as `COPY ... FROM
+  STDIN<NBSP>;` is refused instead of read as a COPY header.
+- **A dollar-quoted string whose tag holds a non-ASCII character is read as the engine reads it
+  (PostgreSQL, CockroachDB, YugabyteDB, Redshift).** A tag such as `$é$` or one holding a
+  no-break space was cut at the first character or refused as a malformed tag; the string is now
+  kept whole, so a `;` inside it no longer splits the statement. A tag holding a space, a hyphen,
+  a dot or a control character is still refused.
+- **`SqlAnalyzer.validate_sql` and the parsers' `validate_sql` report the parser's verdict.**
+  The Python API now returns the dialect parser's verdict with its first error message; a
+  parser answer with no verdict is reported invalid. PostgreSQL-family parser results
+  previously always read as valid. Their result key is renamed from `success` to `valid`,
+  like every other parser. CLI commands are unchanged.
+- **DuckDB refuses a script with an unclosed block comment.** A script holding a
+  `/*` that is never closed (nested comments count) is now refused before anything
+  runs, as on the other engines. The statements before the comment used to be executed
+  first and the migration then failed in the engine; now nothing runs.
+- **A plugin can declare `statement_facts_class` without a `parser_class` of its own.** The parser
+  factory now serves such a plugin a parser built from its facts reader and `lexical_spec()`, instead
+  of the hybrid parser, or a subclass of it, refusing it. Script analysis no
+  longer raises for it. Script analysis reports a facts parser that cannot be built (a missing
+  `lexical_spec()`, or a reader that does not accept `(dialect, spec)`) as an error; a reader raising
+  while it reads a statement still propagates.
+- **Linting no longer skips cautions on a quoted name.** A table created earlier in a
+  script or delta exempts later statements from the table-scoped cautions (`drop-table`,
+  `truncate`, `drop-column`, ...) only when the names are the same table. A quoted name
+  matches an unquoted one only when it is spelled the way the engine stores the unquoted
+  name (`"users"` on PostgreSQL, `"USERS"` on Oracle); `CREATE TABLE t; DROP TABLE "T";`
+  is now reported. Unquoted names equal ignoring case, and quoted names that are
+  byte-equal, still match.
 - **Redshift reads a form feed between statements as a blank.** A page break in a script no longer
   becomes a statement of its own, and a form feed at the start of a statement is no longer sent with it.
 - **`migrate` sends a statement that starts or ends with a character the engine does not read as a
@@ -309,10 +634,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
-- **5.0.0 breaking change:** Removed `DBLiftClient` and `AsyncDBLiftClient`
-  `generate_undo_script()` and `generate_undo_scripts()`, `GenerateUndoScriptResult`,
-  and the internal text-based undo-script generator package. Hand-written
-  `U*__.sql` and `U*__.py` files continue to execute through `undo()`.
 - The `blanks=` and `hash_comments=` keywords of `is_comment_only_statement`, the quirks hooks
   `empty_statement_blanks()` and `hash_line_comments()` and the `ExecutionEngine`
   `_is_comment_only_statement` alias (none was in a release). The migration layer decides nothing

@@ -7,7 +7,8 @@
 | Covers | Oracle Database 12c+ scripts written for SQL\*Plus / SQLcl |
 | Code facts taken from | OSS `develop` `61b1d83f` |
 | Vendor references, fetched 2026-10-10 | *SQL\*Plus User's Guide and Reference 19c*, ch. 4 "SQL\*Plus Basics": "Running SQL Commands", "Running PL/SQL Blocks", "Running SQL\*Plus Commands"; *SQL Language Reference 19c*, "Text Literals", "Comments" |
-| Live verification | sqlplus 23.x on Oracle Free 23ai, 2026-10-10 (XE 21c runs in the maintainers' CI, not yet measured) |
+| Live verification | sqlplus 23.x on Oracle Free 23ai, 2026-10-10 and 2026-10-20 (XE 21c runs in the maintainers' CI, not yet measured); statement facts probed with python-oracledb against Oracle AI Database 26ai Free 23.26.3, 2026-10-20 (§13) |
+| Statement facts | active (§13) |
 | Engine subclass | alternative quoting `q'…'` |
 
 The central decision of this specification is that **a PL/SQL unit ends at
@@ -35,7 +36,16 @@ An unterminated literal is an error, never "read to end of file".
 | Form | Opens | Closes | Escape inside |
 | --- | --- | --- | --- |
 | Quoted | `"` | `"` | none (a `"` cannot appear inside a quoted identifier) |
-| Regular | letter | end of `[A-Za-z0-9_$#]` | — |
+| Regular | letter | first character outside letters, digits, `_`, `$`, `#` | — |
+
+On Oracle Free 23.26.3 with AL32UTF8, unquoted names containing U+00E9,
+U+03B1, U+4E2D and combining U+0301 were accepted. ASCII space, tab and
+U+3000 separated tokens; U+00A0, U+0080, U+0085, U+2003, U+2028, U+001C,
+U+FEFF, U+200B and emoji were rejected as unquoted text with ORA-00911
+(sqlplus 23.26.3, 2026-10-20). These probes do not define a general Unicode
+name grammar. The tokenizer already reads the tested letters as name characters;
+it still emits U+0301 as an unclaimed symbol. The measured U+0301 alias cases
+preserve statement text and showed no separate execution loss.
 
 ## 3. Comments
 
@@ -65,7 +75,7 @@ input without running).
 | Terminator | Rule |
 | --- | --- |
 | `;` | ends a **SQL** statement (one that is not a PL/SQL unit, §5) at parenthesis depth 0 **when it is the last non-blank text on its line**. SQL\*Plus 5.3.4: "Do not put comments after statement terminators (period, semicolon or slash). … SQL\*Plus expects no text after a statement terminator and is unable to process the command." (ORA-00911). A `;` followed by more text on the same line is therefore not a terminator for SQL\*Plus; the splitter **rejects** it with an error naming the line, rather than silently running two statements the client would not, or one the client would reject. This subsumes the stray-`*/` rule below. Measured, the server error is ORA-03405 "End of query reached; no additional text should follow." for a trailing comment, a second statement and a directive after the `;` (sqlplus 23.x, Oracle Free 23ai, 2026-10-10: rows 16a, 16b, 19, each rc 1, ORA-03405; the documented ORA-00911 was not what the server returned). |
-| `/` | ends any statement, SQL or PL/SQL, **only when it is alone on its line** (SQL\*Plus accepts leading blanks per its reference; live verification measured only an unindented `/`). A `/` followed by other text is not a terminator and stays statement text in a buffer that holds statement text (a line starting with it where the buffer is complete is rejected, below): `/ 2; END;` inside a package body compiled VALID (sqlplus 23.x, Oracle Free 23ai, 2026-10-10: row 5, rc 0, `PACKAGE BODY` VALID with its source lines 3-6 intact); `/ -- done` after a statement without `;` was sent to the server with the statement and rejected (sqlplus 23.x, Oracle Free 23ai, 2026-10-10: row 25, rc 1, ORA-00922), and the splitter sends the same text, so the server rejects it for both. After a PL/SQL unit the `/` is **required**; after a SQL statement already ended by `;` a following `/` alone on its line is a SQL\*Plus re-execution of the buffer and is **rejected** with an error (it would run the statement twice; sqlplus 23.x, Oracle Free 23ai, 2026-10-10: row 22, "1 row created." twice, `T22` = 2 rows). A second `/` after a statement ended by `/` also re-executes the retained SQL\*Plus buffer and is refused at that line and column (row 22a). A `/` followed by a no-break space is read as a slash line; how SQL\*Plus reads that line is unmeasured. |
+| `/` | ends any statement, SQL or PL/SQL, **only when it is alone on its line** (SQL\*Plus accepts leading ASCII space, tab and U+3000; measured 2026-10-20). A `/` followed by other text is not a terminator and stays statement text in a buffer that holds statement text (a line starting with it where the buffer is complete is rejected, below): `/ 2; END;` inside a package body compiled VALID (sqlplus 23.x, Oracle Free 23ai, 2026-10-10: row 5, rc 0, `PACKAGE BODY` VALID with its source lines 3-6 intact); `/ -- done` after a statement without `;` was sent to the server with the statement and rejected (sqlplus 23.x, Oracle Free 23ai, 2026-10-10: row 25, rc 1, ORA-00922), and the splitter sends the same text, so the server rejects it for both. After a PL/SQL unit the `/` is **required**; after a SQL statement already ended by `;` a following `/` alone on its line is a SQL\*Plus re-execution of the buffer and is **rejected** with an error (it would run the statement twice; sqlplus 23.x, Oracle Free 23ai, 2026-10-10: row 22, "1 row created." twice, `T22` = 2 rows). A second `/` after a statement ended by `/` also re-executes the retained SQL\*Plus buffer and is refused at that line and column (row 22a). A U+00A0 or U+001C prefix does not make `/` a slash command (measured 2026-10-20); the effect of those characters after `/` depends on buffer state, below. |
 | blank line | **not** a terminator: the splitter behaves as `SET SQLBLANKLINES ON`. A script that relies on a blank line to end a statement is listed under *Not handled*. (sqlplus 23.x, Oracle Free 23ai, 2026-10-10: with the default `SQLBLANKLINES OFF`, sqlplus reports SP2-0042 and creates nothing; with `SET SQLBLANKLINES ON` the table is created) |
 | `.` alone on a line | ends a PL/SQL buffer without running it; **rejected**, because dropping the block silently would hide a statement the author wrote (sqlplus 23.x, Oracle Free 23ai, 2026-10-10: row 26, rc 0, the buffered `BEGIN … END;` was discarded without running and the script continued, `T26` created) |
 
@@ -82,6 +92,15 @@ before the text that follows it (`/x`) is reported by SQL\*Plus as an unknown
 command (SP2-0042) and is rejected too (row 40). In a buffer that holds
 statement text the same line is statement text (row 25), also with only a
 block comment before the `/` (sqlplus 23.x, Oracle Free 23ai, 2026-10-13: row 41).
+
+SQL\*Plus 23.26.3 also accepted `/` followed by U+00A0 or U+001C as a slash
+command when the buffer was empty or held a completed SQL statement: it reported
+SP2-0103 for the empty buffer or ran the completed statement a second time,
+then continued to the following SELECT. With an open PL/SQL unit, the same
+suffix did not run the unit or the following SELECT before end of input. The
+splitter refuses the empty/re-execution cases and treats the open unit as
+unterminated. ASCII space, tab and U+3000 after `/` ended the open unit in the
+same campaign (Oracle Free 23.26.3, 2026-10-20).
 
 End of input: a statement or unit that reaches the end of the script without
 its terminator is never run by SQL\*Plus. A unit is rejected (row 20); a SQL
@@ -141,6 +160,15 @@ unclosed quote on a line means neither a comment nor a continuation there. For
 `PROMPT`, `REM` and `REMARK` the whole rest of the line is the text, `--` and
 quotes included. A `--` in unquoted text of any other directive starts a
 comment (kept from the previous rule; not measured).
+
+The measured client blanks before a directive are ASCII space, tab and U+3000.
+U+00A0 and U+001C before `EXIT`, `QUIT`, `PROMPT`, `REM`, `SET`, `WHENEVER`,
+`@` or `EXEC` produced an unknown-command SP2 message instead; SQL\*Plus then
+ran the following `SELECT` (sqlplus 23.26.3, Oracle Free 23.26.3, 2026-10-20).
+The splitter does not treat those lines as directives. It refuses the script
+with `UnsafeStatementSplitError` because the driver would strip the invalid
+prefix before sending a different statement. It does not model SQL\*Plus's
+SP2 message or its continuation after that message.
 
 Substitution variables apply on the `DEFINE` line itself: `DEFINE b = &a`
 stores the value of `a` (sqlplus 23.x, Oracle Free 23ai, 2026-10-10: `DEFINE a
@@ -239,6 +267,13 @@ else in this spec is data.
 | 42d | `DROP TABLE t\u3000;` | `DROP TABLE t\u3000;` **exact text** (an ideographic space is a blank to Oracle) |
 | 42e | `\u2028SELECT 1 FROM dual;` | `UnsafeStatementSplitError` (leading edge: python-oracledb 26.0.1 strips both sides of a statement before sending, so the server would see a different text than the file holds; the server rejecting a leading line separator is inferred from a mid-text probe, not measured) |
 | 42f | `SELECT 1 FROM dual -- note\xa0` | `SELECT 1 FROM dual -- note\xa0` **exact text** (the no-break space is inside a trailing comment: the driver's strip only shortens the comment, the statement executed is unchanged, so the text is kept and not refused) |
+| 43 | `\u00a0EXIT\nSELECT 'FOLLOWUP_OK' FROM dual;` | `UnsafeStatementSplitError` (the invalid prefix is not an EXIT directive; sqlplus 23.26.3, 2026-10-20: unknown command, then FOLLOWUP_OK) |
+| 43a | `\u001cPROMPT PREFIX_OK\nSELECT 'FOLLOWUP_OK' FROM dual;` | `UnsafeStatementSplitError` (the invalid prefix is not a PROMPT directive; sqlplus 23.26.3, 2026-10-20: unknown command, then FOLLOWUP_OK) |
+| 43b | `\u00a0/\nSELECT 'FOLLOWUP_OK' FROM dual;` | `UnsafeStatementSplitError` (the prefixed slash is not a terminator; sqlplus 23.26.3, 2026-10-20: SP2-0042, then FOLLOWUP_OK) |
+| 43c | `BEGIN DBMS_OUTPUT.PUT_LINE('BLOCK_OK'); END;\n\u001c/\nSELECT 'FOLLOWUP_OK' FROM dual;` | `UnsafeStatementSplitError`: the prefixed slash does not terminate the open unit (sqlplus 23.26.3, 2026-10-20: neither marker ran before end of input) |
+| 43d | `/\u00a0\nSELECT 'FOLLOWUP_OK' FROM dual;` | `UnsafeStatementSplitError` (the slash reads an empty buffer; sqlplus 23.26.3, 2026-10-20: SP2-0103, then FOLLOWUP_OK) |
+| 43e | `SELECT 'FIRST_OK' FROM dual;\n/\u001c\nSELECT 'FOLLOWUP_OK' FROM dual;` | `UnsafeStatementSplitError` (the slash would re-execute the completed SELECT; sqlplus 23.26.3, 2026-10-20: FIRST_OK twice, then FOLLOWUP_OK) |
+| 43f | `BEGIN DBMS_OUTPUT.PUT_LINE('BLOCK_OK'); END;\n/\u00a0\nSELECT 'FOLLOWUP_OK' FROM dual;` | `UnsafeStatementSplitError` (open unit is not terminated; sqlplus 23.26.3, 2026-10-20: neither marker ran before end of input) |
 
 ## 11. Not handled
 
@@ -306,3 +341,74 @@ engine is a separate change with its own rows.
   alternative quotes are one literal, an identifier that holds a comment
   marker or an apostrophe is not a literal, and an unterminated alternative
   quote falls back to the first word of the statement.
+
+## 13. Statement facts
+
+The objects, targets and predicates of each statement are read from the sqlglot `oracle` AST by
+`dblift/core/sql_parser/sqlglot_statement_facts.py`, after the splitter above has cut the script.
+The corpus `tests/support/facts_corpus/oracle.jsonl` and the ledger `oracle.review.json` (every
+difference against the former text extraction, explained) are the evidence, and `gated.json` gates
+the family.
+
+**Names.** An unquoted name is stored with each letter in its one-character upper-case form and a
+quoted name exactly as written (Oracle AI Database 26ai Free 23.26.3, `user_objects`:
+`create table mixedCase` is `MIXEDCASE`, `create table "mixedQ"` is `mixedQ`, `tété` is `TÉTÉ`,
+`a#b` is `A#B`, `ı` is `I`, `µ` is the Greek capital MU, `ÿ` is `Ÿ`, `ø` is `Ø`, `σ` and `ς` are `Σ`,
+`ſ` is `S`; `ß`, `ﬁ` and `ŉ` stay as they are, which Python's `str.upper` would turn into `SS`, `FI`
+and `ʼN`). A name that holds a letter whose Python upper-case form is longer than one character is
+not guessed: the statement is opaque and names nothing. The facts hold the name as
+Oracle stores it: `target` and `objects` are folded, `target_sql` and `predicate` keep the spelling
+written, so that `FROM <target_sql> WHERE <predicate>` is the text the statement wrote. A statement
+whose name holds a character the engine rejects (U+200D and U+00A0 in a name: ORA-00911) is read as
+written and never reaches the engine.
+
+An object reached through a database link is not named: no local object has that name, so the
+statement is opaque. Oracle 23.26.3 accepts blanks, newlines and comments around the `@`
+(`delete from child @ lnk`, `select * from child` + newline + `@lnk` and `child/*c*/@lnk` all
+reach the link, ORA-12154 at the connection), and reads any `@` outside a string or quoted name as
+the start of a link name (`select child.id @ from dual` is ORA-01729): the reader refuses a
+statement whose tokens hold an `@` outside strings, quoted names and comments. Declared column
+names and constraint names keep the spelling the statement writes (only table, index and schema
+names are folded).
+
+**Forms read from the grammar** (each checked against the engine): `CREATE`/`ALTER`/`DROP TABLE`,
+`VIEW`, `MATERIALIZED VIEW`, `INDEX`, `SEQUENCE`, `INSERT`/`UPDATE`/`DELETE` with a plain table
+target, `COMMENT ON TABLE`, `COLUMN` and `MATERIALIZED VIEW` (a column names its table; `VIEW`,
+`INDEX` and `SEQUENCE` are ORA-32594 and name nothing), and `TRUNCATE TABLE <one table>` (`TRUNCATE t`
+is ORA-03290 and a list is ORA-03291).
+
+`is_full_table_dml` reads no predicate from a statement the grammar cannot parse (a bind variable
+`:1`, `LOG ERRORS`, a partition clause), so it reports such an `UPDATE` or `DELETE` as a full-table
+change: the safe direction, but a false positive for a valid statement.
+
+**Forms read from the head of the statement** when sqlglot returns them as an opaque command or a
+block: `CREATE [OR REPLACE] [EDITIONABLE | NONEDITIONABLE] PROCEDURE | FUNCTION | PACKAGE [BODY] |
+TRIGGER | TYPE`, `SYNONYM` (also `PUBLIC`), `DATABASE LINK`, `SEQUENCE`, `INDEX`, `TABLE`, `VIEW`
+and `MATERIALIZED VIEW`, and the same for `DROP` and `ALTER`. The result names the unit and is
+opaque (`diagnostic`): its body is never read, so `EXECUTE IMMEDIATE 'DROP TABLE x'` names nothing.
+A `CREATE INDEX [s.]ix ON [s.]t (…)` that sqlglot cannot parse (a schema-qualified index, `BITMAP`,
+`TABLESPACE`) names the index and the table it is built on (`indexed_table`). A database link name
+is global (`dl2.example.com` is one name), so a dotted link name is not read.
+
+**Not read, by design** (`opaque`, nothing guessed): the body of a PL/SQL unit and every anonymous
+`BEGIN … END` / `DECLARE` block; `CREATE TYPE BODY`; `MERGE`; `GRANT` and `REVOKE`;
+`TRUNCATE TABLE … CASCADE`, `… DROP STORAGE`, `… PURGE MATERIALIZED VIEW LOG` and
+`TRUNCATE CLUSTER`; `CREATE`/`DROP MATERIALIZED VIEW LOG` (the log has no name of its own, and
+Oracle reads `LOG` as the keyword: `CREATE MATERIALIZED VIEW LOG AS SELECT` is ORA-00969);
+`CREATE SCHEMA AUTHORIZATION … CREATE TABLE …` (it creates the objects it holds); `INSERT ALL`;
+`DELETE`/`UPDATE` on `ONLY (…)`, `TABLE(…)`, a subquery, a partition or a sample;
+`CREATE`/`DROP TABLESPACE`, `USER`, `ROLE`; the partition and storage clauses of `CREATE TABLE`
+when sqlglot cannot parse the statement; expression indexes. A table named `ONLY` is read as the
+table (`DELETE FROM ONLY child` deletes from the table `ONLY` with the alias `child`: ORA-00942 on
+Oracle 23.26.3).
+
+Oracle comments do not nest (`/* a /* b */ x */ select 1 from dual` is ORA-00900); the reader and
+the splitter end a comment at the first `*/`.
+
+Statements that Oracle rejects (`WITH … UPDATE`/`DELETE`/`INSERT`, `DROP TABLE a, b`,
+`CREATE SCHEMA s`, three-part names, `UPDATE OR IGNORE`, `INSERT OR REPLACE`, and the statements
+of other engines harvested into the corpus) are read as far as the grammar allows; the ledger
+records the engine's answer for each one.
+
+Undo generation does not reverse Oracle statements from their facts: every data or schema change
+is a manual-review entry (`DROP … IF EXISTS` needs 23ai or its 19.28 backport).

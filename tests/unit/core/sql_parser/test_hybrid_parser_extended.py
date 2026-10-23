@@ -2,28 +2,32 @@
 
 import unittest
 
+import pytest
+
+pytestmark = pytest.mark.usefixtures("legacy_oracle")
+
 
 class TestHybridParserInit(unittest.TestCase):
-    def _make(self, dialect="postgresql"):
+    def _make(self, dialect="oracle"):
         from dblift.core.sql_parser.hybrid_parser import HybridParser
 
         return HybridParser(dialect=dialect)
 
-    def test_postgresql_dialect(self):
-        p = self._make("postgresql")
-        self.assertEqual(p.dialect, "postgresql")
+    def test_oracle_dialect(self):
+        p = self._make("oracle")
+        self.assertEqual(p.dialect, "oracle")
 
     def test_db2_no_sqlglot(self):
-        p = self._make("db2")
-        self.assertIsNone(p.sqlglot_parser)
+        with self.assertRaises(ValueError):
+            self._make("db2")
 
     def test_dialect_name_property(self):
-        p = self._make("mysql")
-        self.assertEqual(p.dialect_name, "mysql")
+        p = self._make("oracle")
+        self.assertEqual(p.dialect_name, "oracle")
 
 
 class TestHybridParserSplitStatements(unittest.TestCase):
-    def _make(self, dialect="postgresql"):
+    def _make(self, dialect="oracle"):
         from dblift.core.sql_parser.hybrid_parser import HybridParser
 
         return HybridParser(dialect=dialect)
@@ -45,13 +49,15 @@ class TestHybridParserSplitStatements(unittest.TestCase):
         self.assertIsInstance(stmts, list)
 
     def test_db2_dialect(self):
-        p = self._make("db2")
+        from dblift.core.sql_parser import SqlParserFactory
+
+        p = SqlParserFactory("db2").get_parser()
         stmts = p.split_statements("SELECT 1 FROM SYSIBM.SYSDUMMY1")
         self.assertIsInstance(stmts, list)
 
 
 class TestHybridParserValidateSql(unittest.TestCase):
-    def _make(self, dialect="postgresql"):
+    def _make(self, dialect="oracle"):
         from dblift.core.sql_parser.hybrid_parser import HybridParser
 
         return HybridParser(dialect=dialect)
@@ -68,7 +74,7 @@ class TestHybridParserValidateSql(unittest.TestCase):
 
 
 class TestHybridParserExtractObjects(unittest.TestCase):
-    def _make(self, dialect="postgresql"):
+    def _make(self, dialect="oracle"):
         from dblift.core.sql_parser.hybrid_parser import HybridParser
 
         return HybridParser(dialect=dialect)
@@ -90,7 +96,7 @@ class TestHybridParserExtractObjects(unittest.TestCase):
 
 
 class TestHybridParserExtractDependencies(unittest.TestCase):
-    def _make(self, dialect="postgresql"):
+    def _make(self, dialect="oracle"):
         from dblift.core.sql_parser.hybrid_parser import HybridParser
 
         return HybridParser(dialect=dialect)
@@ -105,23 +111,6 @@ class TestHybridParserExtractDependencies(unittest.TestCase):
         sql = "CREATE VIEW v AS SELECT * FROM users JOIN orders ON users.id = orders.user_id"
         result = p.extract_dependencies(sql)
         self.assertIsInstance(result, dict)
-
-
-class TestHybridParserMysql(unittest.TestCase):
-    def _make(self):
-        from dblift.core.sql_parser.hybrid_parser import HybridParser
-
-        return HybridParser(dialect="mysql")
-
-    def test_mysql_create_table(self):
-        p = self._make()
-        result = p.extract_objects("CREATE TABLE `users` (`id` INT PRIMARY KEY)")
-        self.assertIsNotNone(result)
-
-    def test_mysql_split(self):
-        p = self._make()
-        stmts = p.split_statements("SELECT 1; SELECT 2;")
-        self.assertIsInstance(stmts, list)
 
 
 class TestHybridParserOracle(unittest.TestCase):

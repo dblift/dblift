@@ -327,3 +327,50 @@ Tests: `tests/unit/core/sql_parser/test_sqlserver_spec_conformance.py` compiles
 `test_sqlserver_commands.py` and `test_sqlserver_division.py` pin the rules;
 `tests/unit/db/plugins/sqlserver/test_extraction_view_unchanged.py` pins the
 secondary readers.
+
+## 13. Statement facts
+
+The default SQL Server parser now reads object and DML facts from one T-SQL
+SQLGlot AST per analysis statement. The lexical engine still owns batch
+splitting, including `GO`; SQLGlot never splits execution batches. The
+explicit regex parser remains available. Names keep their written case and
+decode doubled bracket or double-quote escapes. A `SELECT ... INTO` creates
+its target table, and an index records its owning table, including a written
+schema or database qualifier. Simple `CREATE SCHEMA`, `DROP SCHEMA` and
+single-table `TRUNCATE TABLE`
+statements report their named object. A partition-scoped truncate is opaque
+because its effect is narrower than a whole-table truncate.
+
+The reader reports an informational diagnostic and no object or DML target
+when SQLGlot cannot establish the identity: this includes unsupported
+`Command` and `Block` forms, unmodelled procedure/function/trigger bodies,
+unparsed `TOP` or `OUTPUT INTO` mutations, XML index forms, temporary table
+prefixes,
+CTE write aliases that are not resolved to a base table, CTE bodies with
+unmodelled write effects, omitted schema parts, `SELECT INTO` with a temporary
+scope modifier, materialized-view modifiers, and four-part references whose
+AST does not retain every part in its table identity. An index without a resolved owning
+table, or a qualified index name SQLGlot misreads as its owner, is also
+opaque. `MERGE` remains DML with unknown effects; `EXEC` has unknown effects.
+These are reader limits, not assertions
+that SQL Server rejects the statements. An unread statement still keeps a
+leading operation and kind where the text establishes them. Newly activated
+SQL Server statements require a manual undo review; the reader does not
+generate reverse SQL from text.
+
+Parsed but unmapped `COPY`, privilege, `COMMENT ON`, `DESCRIBE` and `USE`
+forms also report unread facts; old text-extracted names are not carried forward. The
+corpus contains cross-dialect and truncated SQL, so a diagnostic is not a
+native SQL Server grammar verdict.
+
+SQLGlot's T-SQL tokenizer reads nested block comments. The facts reader uses
+that same nesting rule when it classifies an unread statement's leading word.
+An unterminated nested comment reports a tokenization error and names no
+object; text still inside the comment does not establish an operation.
+
+A narrow SQL Server 2022 CU25 probe confirmed stored mixed-case spelling,
+`[a]]b]`, two-, three- and local four-part lookups, `UPDATE TOP ... OUTPUT`
+and `SELECT ... INTO` under the measured
+`SQL_Latin1_General_CP1_CI_AS` collation. It did not qualify other server
+versions, collations or the full grammar. The four-part AST limitation above
+therefore remains an explicit reader gap even though that native query ran.

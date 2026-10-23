@@ -7,6 +7,7 @@ the pass, so the pass can be read directly) and the shell, which agree.
 """
 
 import random
+import re
 
 import duckdb
 import pytest
@@ -54,12 +55,19 @@ def cut(statements):
     return [s.translate(FOLD).strip().rstrip(";").strip() for s in statements]
 
 
+def engine_cut(script):
+    """The engine's statements with the leading comment 2.0 drops from their text taken off too."""
+    return [
+        re.sub(r"^\s*/\*.*?\*/", "", q.query, flags=re.S) for q in duckdb.extract_statements(script)
+    ]
+
+
 @pytest.mark.parametrize("script,count", CUTS, ids=[str(i) for i in range(len(CUTS))])
 def test_the_splitter_cuts_where_duckdb_does(script, count):
     ours = ENGINE.split_statements(script)
-    theirs = [q.query for q in duckdb.extract_statements(script)]
+    theirs = engine_cut(script)
     assert len(theirs) == count
-    assert cut(ours) == cut(theirs)
+    assert cut([re.sub(r"^\s*/\*.*?\*/", "", o, flags=re.S) for o in ours]) == cut(theirs)
 
 
 @pytest.mark.parametrize("script", NO_STOP, ids=[str(i) for i in range(len(NO_STOP))])
@@ -114,7 +122,7 @@ def test_the_stretches_are_the_text_duckdb_keeps():
     compared = 0
     for _ in range(4000):
         body = "".join(rng.choice(pieces) for _ in range(rng.randint(1, 12)))
-        script = "/*" + body + "*/ SELECT 1 AS x   "
+        script = "SELECT 1 /*" + body + "*/ AS x   "
         try:
             theirs = ";".join(q.query for q in duckdb.extract_statements(script))
         except duckdb.Error:

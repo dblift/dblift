@@ -7,7 +7,6 @@ from unittest.mock import MagicMock
 import pytest
 
 import dblift
-from dblift.core.migration.sql.script_analysis import _fallback_objects
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.migration.sql.sql_execution_service import SqlExecutionService
 from dblift.core.sql_parser.statement_facts import StatementFacts
@@ -115,18 +114,6 @@ def test_execution_tracking_records_no_parent_target_after_opt_out(monkeypatch):
 
     objects = journal.record_object_changes.call_args.args[2]
     assert [obj["object_name"] for obj in objects] == ["zz"]
-
-
-@pytest.mark.parametrize("child", ["cockroachdb", "mariadb"])
-def test_dry_run_dml_target_after_opt_out_is_not_the_parents(monkeypatch, child):
-    child_quirks = ProviderRegistry.get_quirks(child)
-    parent = ProviderRegistry.get_quirks(child_quirks.sqlglot_dialect)
-    monkeypatch.setattr(type(parent), "statement_facts_class", reader_named("parent_reader"))
-    monkeypatch.setattr(type(child_quirks), "statement_facts_class", None)
-
-    objects = _fallback_objects("UPDATE", "DML", UPDATE, child_quirks)
-
-    assert [obj.name for obj in objects] == ["zz"]
 
 
 def test_deprecated_dialect_keyword_routes_through_the_named_plugin(monkeypatch):

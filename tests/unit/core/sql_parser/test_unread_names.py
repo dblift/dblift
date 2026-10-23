@@ -13,20 +13,17 @@ from dblift.core.sql_parser.parser_factory import SqlParserFactory
 from dblift.core.sql_parser.unread_names import names_unreadable, statement_sources
 from dblift.db.dml_analysis import analyze_dml, statement_dml_table
 from dblift.db.provider_registry import ProviderRegistry
+from tests.support.legacy_snowflake_parsers import legacy_snowflake_sqlglot
 
 _quirks = ProviderRegistry.get_quirks
 
 NBSP, ZWSP, ZWJ, ACCENT = " ", "​", "‍", "́"
 LEGACY = (
-    "postgresql",
     "mysql",
     "mariadb",
     "sqlserver",
-    "oracle",
-    "db2",
     "snowflake",
     "redshift",
-    "cockroachdb",
 )
 
 
@@ -83,6 +80,22 @@ def test_parse_sql_names_nothing_and_says_so(dialect):
     assert statement.names_unread
 
 
+FACTS = ("postgresql", "cockroachdb", "oracle")
+
+
+@pytest.mark.parametrize("dialect", FACTS)
+@pytest.mark.parametrize("char", (NBSP, ZWSP))
+def test_the_facts_reader_names_nothing_it_cannot_prove(dialect, char):
+    sql = f"CREATE TABLE t{char}(id INT)"
+    facts = _quirks(dialect).statement_facts(sql)
+    assert facts.objects == () and facts.opaque
+    (statement,) = SqlParserFactory(dialect).parse_sql(f"{sql};").statements
+    assert statement.objects == [] and statement.affected_objects == []
+    assert statement.names_unread
+    assert SqlAnalyzer(dialect).extract_objects(sql) == []
+    assert SqlAnalyzer(dialect).extract_objects("CREATE TABLE t (id INT)") != []
+
+
 @pytest.mark.parametrize("dialect", LEGACY)
 def test_parse_sql_keeps_naming_a_readable_statement(dialect):
     def read(sql):
@@ -126,10 +139,12 @@ def test_a_quoted_identifier_is_not_a_name_cut_short(dialect, sql):
     assert not names_unreadable(sql, dialect, ["t"])
 
 
+@pytest.mark.usefixtures("legacy_oracle")
 def test_the_analyzer_checks_the_names_it_extracted():
-    assert SqlAnalyzer("postgresql").extract_objects(f"CREATE TABLE t{ZWJ}(id INT)") == []
+    assert SqlAnalyzer("oracle").extract_objects(f"CREATE TABLE t{ZWJ}(id INT)") == []
 
 
+@pytest.mark.usefixtures("legacy_oracle")
 def test_the_schema_part_of_a_name_is_checked_too():
     from dblift.core.sql_model.base import SqlObject, SqlObjectType
     from dblift.core.sql_parser.parser_factory import SqlParserFactory
@@ -137,20 +152,34 @@ def test_the_schema_part_of_a_name_is_checked_too():
     source = "CREATE TABLE sch\u00e9.t (id INT)"
     cut = SqlObject(name="t", schema="sch", object_type=SqlObjectType.TABLE)
     whole = SqlObject(name="t", schema="sch\u00e9", object_type=SqlObjectType.TABLE)
-    for dialect in ("postgresql", "mysql"):
-        parser = SqlParserFactory(dialect).get_parser()
-        assert parser._names_unreadable(source, [cut])
-        assert not parser._names_unreadable(source, [whole])
-    sqlglot_parser = SqlParserFactory("snowflake").get_parser()
+    parser = SqlParserFactory("oracle").get_parser()
+    assert parser._names_unreadable(source, [cut])
+    assert not parser._names_unreadable(source, [whole])
+    assert names_unreadable(source, "tsql", [cut.name, cut.schema])
+    assert not names_unreadable(source, "tsql", [whole.name, whole.schema])
+    assert [
+        (obj.name, obj.schema) for obj in SqlParserFactory("sqlserver").extract_objects(source)
+    ] == [("t", "sché")]
+    sqlglot_parser = legacy_snowflake_sqlglot()
     assert sqlglot_parser._names_unreadable(source, [cut])
     assert not sqlglot_parser._names_unreadable(source, [whole])
 
 
-@pytest.mark.parametrize("dialect", ("postgresql", "mysql", "snowflake"))
+@pytest.mark.usefixtures("legacy_oracle")
+@pytest.mark.parametrize("dialect", ("oracle", "sqlserver", "snowflake"))
 def test_a_statement_that_cannot_be_located_in_its_script_is_withheld(dialect):
-    parser = SqlParserFactory(dialect).get_parser()
-    assert parser._names_unreadable(None, [])
-    scanner = SqlParserFactory("postgresql").get_parser().regex_parser
+    parser = (
+        legacy_snowflake_sqlglot()
+        if dialect == "snowflake"
+        else SqlParserFactory(dialect).get_parser()
+    )
+    if dialect == "sqlserver":
+        scanner = SqlParserFactory(dialect, "regex").get_parser()
+        assert statement_sources(scanner, "caf\u00e9; SELECT 1;", ["SELECT 2"]) == [None]
+        assert parser.extract_objects("CREATE TABLE ghost(id INT);\nGO 0") == []
+    else:
+        assert parser._names_unreadable(None, [])
+    scanner = SqlParserFactory("postgresql", "regex").get_parser()
     script = "caf\u00e9; SELECT 1;"
     assert statement_sources(scanner, script, ["SELECT 2"]) == [None]
     assert statement_sources(scanner, script, ["SELECT 1"]) == ["SELECT 1;"]
@@ -160,7 +189,7 @@ def test_a_statement_that_cannot_be_located_in_its_script_is_withheld(dialect):
     ]
 
 
-@pytest.mark.parametrize("dialect", LEGACY)
+@pytest.mark.parametrize("dialect", LEGACY + ("oracle",))
 @pytest.mark.parametrize(
     "sql", ["CREATE SEQUENCE q{c};", "CREATE SEQUENCE q{c}", "DROP TABLE t{c};"]
 )
@@ -190,7 +219,6 @@ SPAN_SCANNERS = (
     "cockroachdb",
     "mysql",
     "mariadb",
-    "db2",
     "oracle",
     "sqlserver",
 )
@@ -206,7 +234,7 @@ def _ending_blank(dialect):
 def test_the_scanner_span_of_a_name_that_ends_the_script_holds_the_blank_except_for_oracle(dialect):
     """Green pin: only Oracle's last record ends at its last token."""
     script = f"DROP TABLE t{_ending_blank(dialect)}"
-    records = SqlParserFactory(dialect).get_parser().regex_parser.split(script)
+    records = SqlParserFactory(dialect, "regex").get_parser().split(script)
     assert len(records) == 1
     span = script[records[0].source_start : records[0].source_end]
     assert span == ("DROP TABLE t" if dialect == "oracle" else script)
@@ -216,7 +244,7 @@ def test_the_scanner_span_of_a_name_that_ends_the_script_holds_the_blank_except_
 def test_statement_sources_returns_the_untrimmed_text_of_a_name_that_ends_the_script(dialect):
     """Green pin: the span is the whole script for every dialect that keeps the blank."""
     script = f"DROP TABLE t{_ending_blank(dialect)}"
-    scanner = SqlParserFactory(dialect).get_parser().regex_parser
+    scanner = SqlParserFactory(dialect, "regex").get_parser()
     statements = SqlAnalyzer(dialect).split_statements_for_analysis(script)
     # Oracle reads the ideographic space as a blank: its record, and so its span, ends at the name.
     assert statement_sources(scanner, script, statements) == [
@@ -224,7 +252,7 @@ def test_statement_sources_returns_the_untrimmed_text_of_a_name_that_ends_the_sc
     ]
 
 
-KEEPS_THE_BLANK = ("postgresql", "redshift", "cockroachdb", "mysql", "mariadb", "sqlserver", "db2")
+KEEPS_THE_BLANK = ("postgresql", "redshift", "cockroachdb", "mysql", "mariadb", "sqlserver")
 
 
 @pytest.mark.parametrize(
@@ -247,14 +275,14 @@ KEEPS_THE_BLANK = ("postgresql", "redshift", "cockroachdb", "mysql", "mariadb", 
 )
 def test_the_analysed_text_equals_its_span_once_the_record_keeps_the_blank(dialect):
     script = f"DROP TABLE t{_ending_blank(dialect)}"
-    scanner = SqlParserFactory(dialect).get_parser().regex_parser
+    scanner = SqlParserFactory(dialect, "regex").get_parser()
     statements = SqlAnalyzer(dialect).split_statements_for_analysis(script)
     assert statements == statement_sources(scanner, script, statements) == [script]
 
 
 @pytest.mark.parametrize("blank", ("\x0b", "\x0c", "\x0b　", "　\x0c "))
 def test_oracle_span_ends_at_the_name_before_blanks_and_a_terminator(blank):
-    scanner = SqlParserFactory("oracle").get_parser().regex_parser
+    scanner = SqlParserFactory("oracle", "regex").get_parser()
     script = f"DROP TABLE t　{blank};"
     assert statement_sources(scanner, script, ["DROP TABLE t"]) == ["DROP TABLE t;"]
     names = {
@@ -266,7 +294,27 @@ def test_oracle_span_ends_at_the_name_before_blanks_and_a_terminator(blank):
 
 
 def test_a_character_the_engine_keeps_stays_in_the_span_before_a_terminator():
-    scanner = SqlParserFactory("postgresql").get_parser().regex_parser
+    scanner = SqlParserFactory("postgresql", "regex").get_parser()
     script = "DROP TABLE t 　;"
     [text] = scanner.split_for_extraction(script)
     assert statement_sources(scanner, script, [text])[0].startswith("DROP TABLE t ")
+
+
+@pytest.mark.parametrize(
+    "sql",
+    ["CREATE TABLE t{c}(id INT);", "CREATE SEQUENCE q{c};", "DROP TABLE t{c};", "DROP TABLE t{c}"],
+)
+def test_db2_facts_name_nothing_for_a_name_the_engine_may_read_whole(sql):
+    """Db2 reads statement facts: the reader leaves the objects unnamed instead of flagging the parse."""
+    script = sql.format(c=NBSP)
+    assert SqlParserFactory("db2").extract_objects(script) == []
+    (statement,) = SqlParserFactory("db2").parse_sql(script).statements
+    assert statement.objects == [] and statement.affected_objects == []
+
+
+def test_the_facts_parser_marks_a_statement_whose_names_it_could_not_read():
+    parser = SqlParserFactory("sqlite")
+    (unread,) = parser.parse_sql("PRAGMA foreign_keys = ON").statements
+    assert unread.names_unread is True
+    (read,) = parser.parse_sql("CREATE TABLE t (a int)").statements
+    assert read.names_unread is False

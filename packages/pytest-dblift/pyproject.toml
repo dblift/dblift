@@ -11,7 +11,7 @@ requires-python = ">=3.11"
 license = { text = "Apache-2.0" }
 authors = [{ name = "DBLift" }]
 dependencies = [
-    "dblift>=4.9.0",
+    "dblift[analysis]>=4.9.0",
     "pytest>=7.3",
     "sqlalchemy>=2.0",
 ]

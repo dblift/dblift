@@ -50,17 +50,17 @@ def test_authorization_only_schema_facts_remain_opaque():
     assert facts.error is None
 
 
-@pytest.mark.parametrize("dialect", ["sqlite", "mysql", "oracle"])
+@pytest.mark.parametrize("dialect", ["sqlite", "oracle"])
 def test_schema_identity_projection_does_not_expand_to_other_dialects(dialect):
     facts = read_statement_facts("CREATE SCHEMA sales", dialect=dialect)
 
     assert facts.objects == ()
 
 
-def test_schema_facts_do_not_activate_postgresql_parser_consumers():
+def test_schema_facts_leave_the_postgresql_parser_classes_unchanged():
     quirks = PostgresqlQuirks()
 
-    assert not quirks.supports_statement_facts
+    assert quirks.supports_statement_facts
     assert quirks.parser_class("regex") is PostgreSqlRegexParser
     assert quirks.parser_class("hybrid") is HybridParser
     assert quirks.parser_class("sqlglot") is SqlGlotParser

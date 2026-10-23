@@ -83,5 +83,5 @@ def test_postgres_refresh_and_procedural_block_remain_opaque(sql, operation):
     assert facts.error is None
 
 
-def test_materialized_view_facts_do_not_activate_the_postgres_plugin():
-    assert not PostgresqlQuirks().supports_statement_facts
+def test_materialized_view_facts_are_read_by_the_postgres_plugin():
+    assert PostgresqlQuirks().supports_statement_facts

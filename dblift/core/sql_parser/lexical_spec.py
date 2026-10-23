@@ -133,7 +133,7 @@ class ProgramRules:
 class DelimiterScriptRules:
     """A client that reads a script line by line and ends a statement at a delimiter the script changes.
 
-    It reads a CRLF pair as LF and refuses a NUL byte (not fields: every such client does). ``initial`` is read for
+    It reads a CRLF pair as LF. ``initial`` is read for
     the starting delimiter and for every place a plain ``;`` is meant: the terminator run of a command line, fragments,
     and the stored-program condition (the extension runs only under the initial delimiter).
     """
@@ -247,9 +247,8 @@ class SegmentScriptRules:
 
     ``word``, ``number``, ``dollar_tag`` and ``parameter`` are regular expressions read at the
     cursor. ``blanks`` are skipped between tokens.
-    A word ending in an ``escape_letters`` character (alone, or after characters ``str.isdigit()``
-    accepts) that touches a quote opens an escape string. A line comment ends at the first of
-    ``line_comment_ends``. ``refused_character`` is refused anywhere, before any other reading.
+    An ``escape_letters`` character alone that touches a quote opens an escape string.
+    A line comment ends at the first of ``line_comment_ends``.
     """
 
     blanks: str
@@ -260,9 +259,6 @@ class SegmentScriptRules:
     parameter: str
     line_comment_ends: str
     command_prefix: str
-    refused_character: str
-    refused_character_name: str
-    refused_reason: str
     blank_pass: Optional[BlankPassRules] = None
 
 
@@ -279,6 +275,17 @@ class LexicalSpec:
     statement is not sent. It does not change the text of a statement that holds code.
     ``unread_blanks_are_code`` makes the scanner skip between tokens only ``text_blanks``: any other
     character ``str.isspace`` accepts is code, so a piece made of it is a statement and is sent.
+    ``non_ascii_names`` makes the word reader begin and continue a name at every character above
+    U+007F, as the engine's own scanner does: no lexeme opens inside a name.
+    ``dollar_quote_tags`` allows named dollar delimiters in addition to fixed ``$$``.
+    ``meta_prefix_line_start`` limits a meta-command prefix to a line's first code character.
+    ``slash_line_comments`` recognizes ``//`` as a comment opener, ending at a character in
+    ``line_comment_ends`` (default: LF).
+    ``raw_segment_records`` keeps source spans from one terminator to the next, including comments.
+    ``refuse_unquoted_scripting`` rejects unqualified procedural heads before emitting records.
+    ``refused_character`` (with its name and the reason) is refused anywhere in a script, before any
+    other reading, with its line and column; a segment script carries its own in
+    ``SegmentScriptRules``.
     """
 
     name: str
@@ -291,8 +298,12 @@ class LexicalSpec:
     escape_prefixes: Tuple[str, ...] = ()
     plain_string_escapes: bool = False
     dollar_quotes: bool = False
+    dollar_quote_tags: bool = True
     meta_prefix: str = ""
+    meta_prefix_line_start: bool = False
     safe_meta_commands: FrozenSet[str] = frozenset()
+    slash_line_comments: bool = False
+    line_comment_ends: str = "\n"
     combine_terminator: str = ""
     copy_from_stdin: bool = False
     terminator_respects_parens: bool = False
@@ -322,6 +333,12 @@ class LexicalSpec:
     terminator_script: Optional[TerminatorScriptRules] = None
     segment_script: Optional[SegmentScriptRules] = None
     unread_blanks_are_code: bool = False
+    non_ascii_names: bool = False
+    raw_segment_records: bool = False
+    refuse_unquoted_scripting: bool = False
+    refused_character: str = ""
+    refused_character_name: str = ""
+    refused_reason: str = ""
 
     @property
     def trailing_edge_blanks(self) -> str:
@@ -346,3 +363,5 @@ class LexicalSpec:
             )
         if self.segment_script is not None and self.sqlite_shell:
             raise ValueError("segment_script and sqlite_shell are mutually exclusive")
+        if self.refused_character and not (self.refused_character_name and self.refused_reason):
+            raise ValueError("refused_character needs refused_character_name and refused_reason")

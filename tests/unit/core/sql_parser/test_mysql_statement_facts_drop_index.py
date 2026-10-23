@@ -9,7 +9,11 @@ from dblift.core.sql_parser.sqlglot_statement_facts import (
     _mysql_on_table_name,
     read_statement_facts,
 )
-from dblift.core.sql_parser.statement_facts import NamedObject, StatementFacts
+from dblift.core.sql_parser.statement_facts import (
+    NamedObject,
+    SqlglotStatementFactsReader,
+    StatementFacts,
+)
 from dblift.db.plugins.mariadb.quirks import MariadbQuirks
 from dblift.db.plugins.mysql.quirks import MysqlQuirks
 
@@ -126,14 +130,49 @@ def test_mysql_drop_index_empty_qualifiers_remain_opaque(index):
 
 
 @pytest.mark.parametrize("dialect", ["sqlite", "duckdb", "postgres", "oracle", "tsql"])
-@pytest.mark.parametrize("sql", ["DROP INDEX idx", "DROP INDEX idx ON t"])
-def test_other_dialect_drop_indexes_do_not_gain_a_mysql_relation(dialect, sql):
-    """These dialects return exactly the single dropped index they returned before."""
+def test_other_dialect_drop_indexes_do_not_gain_a_mysql_relation(dialect):
+    """A bare T-SQL index has no proven owner; other dialects retain their reading."""
+    facts = read_statement_facts("DROP INDEX idx", dialect=dialect)
+
+    if dialect == "tsql":
+        assert (facts.operation, facts.kind) == ("DROP", "DDL")
+        assert facts.objects == () and facts.indexed_table is None
+        assert facts.opaque and facts.diagnostic == "tsql index relation is opaque"
+        return
+    name = "IDX" if dialect in {"oracle", "snowflake"} else "idx"  # these fold unquoted names
+    assert facts == StatementFacts(
+        "DROP", "DDL", (NamedObject(name, SqlObjectType.INDEX, "dropped"),)
+    )
+
+
+@pytest.mark.parametrize("sql", ["DROP INDEX idx ON t", "DROP INDEX idx ON s.t"])
+def test_tsql_drop_index_on_relation_keeps_its_modelled_index(sql):
+    facts = read_statement_facts(sql, dialect="tsql")
+
+    schema = "s" if sql.endswith("s.t") else None
+    table = "s.t" if schema else "t"
+    assert facts == StatementFacts(
+        "DROP",
+        "DDL",
+        (
+            NamedObject("idx", SqlObjectType.INDEX, "dropped", schema),
+            NamedObject("t", SqlObjectType.TABLE, "referenced", schema),
+        ),
+        indexed_table=table,
+    )
+
+
+@pytest.mark.parametrize(
+    "dialect", ["sqlite", "duckdb", "postgres", "oracle", "redshift", "snowflake"]
+)
+@pytest.mark.parametrize("sql", ["DROP INDEX idx ON t", "DROP INDEX idx ON s.t"])
+def test_drop_index_on_relation_without_modelled_grammar_stays_opaque(dialect, sql):
     facts = read_statement_facts(sql, dialect=dialect)
 
-    assert facts == StatementFacts(
-        "DROP", "DDL", (NamedObject("idx", SqlObjectType.INDEX, "dropped"),)
-    )
+    name = "IDX" if dialect in {"oracle", "snowflake"} else "idx"  # these fold unquoted names
+    assert facts.opaque
+    assert facts.objects == (NamedObject(name, SqlObjectType.INDEX, "dropped"),)
+    assert facts.indexed_table is None
 
 
 def test_mysql_drop_index_if_exists_keeps_the_on_table_relation():
@@ -148,8 +187,9 @@ def test_mysql_drop_index_if_exists_keeps_the_on_table_relation():
 
 
 @pytest.mark.parametrize("quirks_class", [MysqlQuirks, MariadbQuirks])
-def test_mysql_family_drop_index_preparation_keeps_facts_dormant(quirks_class):
-    assert not quirks_class().supports_statement_facts
+def test_mysql_family_drop_index_preparation_runs_with_facts_active(quirks_class):
+    assert quirks_class().supports_statement_facts
+    assert quirks_class().statement_facts_class is SqlglotStatementFactsReader
 
 
 def test_mysql_create_index_relation_is_unchanged():

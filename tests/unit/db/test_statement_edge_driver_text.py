@@ -20,7 +20,7 @@ from unittest import mock
 
 import pytest
 
-from dblift.core.exceptions import UnsafeStatementSplitError
+from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
 from dblift.core.migration.sql.migration_sql_parser import parse_migration_sql
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.db.plugins.cockroachdb.provider import CockroachdbProvider
@@ -197,19 +197,11 @@ def test_oracle_does_not_refuse_a_blank_the_driver_leaves_alone(script: str) -> 
     assert len(sent) == 1 and sent[0].startswith(("SELECT 1 FROM dual", "CREATE PROCEDURE p"))
 
 
-def test_copy_from_stdin_header_keeps_its_last_character() -> None:
+def test_copy_from_stdin_header_ending_in_a_name_character_is_refused() -> None:
+    """``STDIN`` and a no-break space are one name on the engine, so no COPY header opens."""
     script = f"COPY t (a) FROM STDIN{NBSP};\n1\n\\.\n"
-    statements = parse_migration_sql(SqlAnalyzer(dialect="postgresql"), script, mock.MagicMock())
-    provider = object.__new__(PostgreSqlProvider)
-    headers: List[Tuple[str, str]] = []
-    provider._lock = threading.RLock()
-    provider._tx = None
-    provider._ensure_connection = lambda: mock.MagicMock()
-    provider._ensure_schema_ready = lambda schema: None
-    provider._copy_from_stdin = lambda conn, header, data: headers.append((header, data)) or 1
-    for statement in statements:
-        provider.execute_statement(statement)
-    assert headers == [(f"COPY t (a) FROM STDIN{NBSP}", "1\n")]
+    with pytest.raises(UnsupportedMetaCommandError):
+        parse_migration_sql(SqlAnalyzer(dialect="postgresql"), script, mock.MagicMock())
 
 
 def test_duckdb_returning_rewrite_keeps_a_final_no_break_space() -> None:

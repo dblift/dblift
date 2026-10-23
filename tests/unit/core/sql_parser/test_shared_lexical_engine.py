@@ -63,7 +63,7 @@ def test_rules_change_boundaries_without_a_dialect_scanner():
     assert len(LexicalEngine(replace(POSTGRESQL_SPEC, routine_heads=())).split(routine)) == 3
 
 
-def test_redshift_preserves_backslash_strings_and_non_nested_comments():
+def test_redshift_preserves_backslash_strings_and_nested_comments():
     script = "SELECT 'a\\'b;c'; SELECT 2;"
     expected = ["SELECT 'a\\'b;c';", "SELECT 2;"]
     assert StatementSplitter("redshift").split_statements(script) == expected
@@ -72,8 +72,8 @@ def test_redshift_preserves_backslash_strings_and_non_nested_comments():
         == expected
     )
     script = "/* outer /* inner */ SELECT 1; */ SELECT 2;"
-    assert StatementSplitter("redshift").split_statements(script) == ["SELECT 1;", "*/ SELECT 2;"]
-    assert len(StatementSplitter("postgresql").split_statements(script)) == 1
+    assert StatementSplitter("redshift").split_statements(script) == ["SELECT 2;"]
+    assert StatementSplitter("postgresql").split_statements(script) == ["SELECT 2;"]
     assert ProviderRegistry.get_quirks("redshift").lexical_spec() == REDSHIFT_SPEC
 
 

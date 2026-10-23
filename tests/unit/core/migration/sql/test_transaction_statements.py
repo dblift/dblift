@@ -2,8 +2,8 @@
 
 dblift runs a migration in one transaction of its own. On SQLite and DuckDB a script that is
 exactly ``BEGIN; ...; COMMIT;`` is that transaction, so the envelope is dropped with a warning;
-any other BEGIN/COMMIT/END/ROLLBACK/ABORT is refused before anything runs. Every other dialect
-keeps an empty table and is returned untouched.
+any other BEGIN/COMMIT/END/ROLLBACK/ABORT is refused before anything runs. Snowflake refuses
+all matched transaction controls; the remaining dialects keep an empty table.
 """
 
 from __future__ import annotations
@@ -188,16 +188,6 @@ class TestEnvelope:
         statements = ["/* COMMIT */ SELECT 'COMMIT'", "-- ROLLBACK\nSELECT 1"]
         assert _run(statements, dialect)[0] is statements
 
-    def test_an_envelope_around_a_statement_that_cannot_run_in_a_transaction_is_refused(
-        self, dialect
-    ):
-        if dialect == "duckdb":
-            pytest.skip("DuckDB has no non-transactional statement")
-        with pytest.raises(
-            TransactionStatementError, match="VACUUM cannot run inside a transaction"
-        ):
-            _run(["BEGIN", "VACUUM", "COMMIT"], dialect)
-
     def test_refusal_is_a_transaction_statement_error(self, dialect):
         with pytest.raises(TransactionStatementError) as raised:
             _run(["COMMIT"], dialect)
@@ -213,6 +203,46 @@ class TestEnvelope:
         out, log = _run(statements, dialect)
         assert out is statements
         log.warning.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "dialect, statement, reason",
+    [
+        ("sqlite", "VACUUM", "VACUUM cannot run inside a transaction"),
+        (
+            "duckdb",
+            "CHECKPOINT",
+            "DuckDB CHECKPOINT cannot run in a transaction with local changes",
+        ),
+        (
+            "duckdb",
+            "FORCE CHECKPOINT",
+            "DuckDB CHECKPOINT cannot run in a transaction with local changes",
+        ),
+    ],
+)
+def test_envelope_policy_refuses_statements_that_can_fail_in_a_transaction(
+    dialect, statement, reason
+):
+    with pytest.raises(TransactionStatementError) as raised:
+        _run(["BEGIN", statement, "COMMIT"], dialect)
+    assert f"{statement} cannot stay inside the envelope" in str(raised.value)
+    assert reason in str(raised.value)
+
+
+@pytest.mark.parametrize("statement", ["CHECKPOINT", "FORCE CHECKPOINT"])
+def test_duckdb_checkpoint_succeeds_clean_and_fails_with_local_changes(statement):
+    duckdb = pytest.importorskip("duckdb")
+    with duckdb.connect(":memory:") as connection:
+        connection.execute("CREATE TABLE t (a INT)")
+        connection.execute(statement)
+        connection.execute("BEGIN")
+        connection.execute(statement)
+        connection.execute("COMMIT")
+        connection.execute("BEGIN")
+        connection.execute("INSERT INTO t VALUES (1)")
+        with pytest.raises(duckdb.TransactionException):
+            connection.execute(statement)
 
 
 def _split(dialect, content):
@@ -239,8 +269,8 @@ def _registered_dialects():
     return sorted({plugin.name for plugin in ProviderRegistry.list_plugins()})
 
 
-def test_every_other_dialect_has_no_patterns_and_is_untouched():
-    others = [d for d in _registered_dialects() if d not in ("sqlite", "duckdb")]
+def test_remaining_dialects_without_patterns_are_untouched():
+    others = [d for d in _registered_dialects() if d not in ("sqlite", "duckdb", "snowflake")]
     assert {"postgresql", "mysql", "oracle", "sqlserver"} <= set(others)
     statements = ["BEGIN", *BODY, "COMMIT", "ROLLBACK", "END"]
     for dialect in others:

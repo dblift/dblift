@@ -1,7 +1,9 @@
+# The full development set. In the published package rich and Jinja2 are the
+# ``cli`` extra and sqlglot is the ``analysis`` extra (see pyproject.toml).
 PyYAML>=6.0.1
 rich>=13.3.0
 Jinja2>=3.1.0
-sqlglot>=30.18.0,<31
+sqlglot>=30.23.0,<31
 SQLAlchemy>=2.0.0
 # Database drivers are NOT listed here. Every engine — Cosmos DB included —
 # ships its driver in the matching pyproject extra

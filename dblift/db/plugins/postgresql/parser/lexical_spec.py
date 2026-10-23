@@ -6,6 +6,7 @@ POSTGRESQL_SPEC = LexicalSpec(
     name="postgresql",
     text_blanks=" \t\n\r\f",
     unread_blanks_are_code=True,
+    non_ascii_names=True,
     client_name="psql",
     nested_comments=True,
     escape_prefixes=("E'", "e'"),
@@ -24,4 +25,12 @@ POSTGRESQL_SPEC = LexicalSpec(
     block_opener=("BEGIN", "ATOMIC"),
     nested_block_keywords=frozenset({"CASE"}),
     block_closer="END",
+    # libpq sends a query to the server as a C string, so a NUL cuts it there and the rest is
+    # dropped without an error: psql, psycopg 3 and the PostgreSQL, CockroachDB and YugabyteDB
+    # servers behave alike (docs/sql-parsing/postgresql.md, rows 31 to 31e). Redshift lost the rest
+    # through psycopg too, but dblift's redshift_connector driver was not measured; refusing is the
+    # safe answer there.
+    refused_character="\x00",
+    refused_character_name="NUL",
+    refused_reason="the client sends the query as a C string, so the server never sees the rest",
 )

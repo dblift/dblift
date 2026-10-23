@@ -19,6 +19,8 @@ from typing import (
     overload,
 )
 
+from sqlalchemy.exc import SQLAlchemyError
+
 from dblift.api._client_factory import (
     apply_ctor_overrides,
     build_default_logger,
@@ -30,6 +32,7 @@ from dblift.api._client_factory import (
 )
 from dblift.api.events import EventEmitter, EventType, use_client_emitter
 from dblift.config import DbliftConfig
+from dblift.core.exceptions import InvalidTargetVersionError
 from dblift.core.logger.results import (
     BaselineResult,
     CleanResult,
@@ -41,7 +44,15 @@ from dblift.core.logger.results import (
     ValidateResult,
 )
 from dblift.core.migration.commands.base_command import PreflightConnectionError
-from dblift.core.migration.executor.migration_executor import MigrationExecutor
+from dblift.core.migration.executor.migration_executor import (
+    MigrationExecutor,
+    require_analysis_support,
+)
+from dblift.core.migration.target_version import (
+    available_versions,
+    merge_versions,
+    validate_target_version,
+)
 from dblift.core.premium_manifest import PREMIUM_COMMANDS, UPGRADE_URL, render_upsell
 from dblift.core.seams.capabilities import CapabilityDeniedError
 from dblift.core.seams.event_listeners import attach_registered_listeners
@@ -246,7 +257,7 @@ class DBLiftClient:
         log_level: Optional[str] = None,
         log_format: Optional[str] = None,
         log_file: Optional[str] = None,
-        analysis_mode: Literal["full", "execution"] = "full",
+        analysis_mode: Literal["full", "execution"] = "execution",
         **kwargs: Any,
     ):
         """Initialize DBLift client.
@@ -255,7 +266,8 @@ class DBLiftClient:
             provider: Database provider instance (e.g., PostgreSqlProvider)
             migrations_dir: Path(s) to migration scripts directory
             config: Optional configuration object (defaults to provider's config)
-            logger: Optional logger instance (if None, creates one)
+            logger: Optional logger instance (if None, the client is silent
+                unless a ``log_*`` argument or a config logging setting asks for output)
             log_level: Log level (DEBUG, INFO, WARN, ERROR); omit to keep ``config`` values
             log_format: Log format (text, json, html); omit to keep ``config`` values
             log_file: Optional log file path; omit to keep ``config`` values
@@ -263,6 +275,7 @@ class DBLiftClient:
         """
         if analysis_mode not in ("full", "execution"):
             raise ValueError("analysis_mode must be 'full' or 'execution'")
+        require_analysis_support(analysis_mode)
         self.analysis_mode = analysis_mode
 
         # Feature registrations from installed add-on packages must load for
@@ -315,6 +328,54 @@ class DBLiftClient:
         # would silently route core-layer events to the process-wide default.
         self.events = EventEmitter()
         attach_registered_listeners(self.events)
+
+    def _check_target_version(
+        self,
+        target_version: Optional[str],
+        recursive: Optional[bool],
+        additional_dirs: Optional[List[Path]],
+        dir_recursive_map: Optional[Dict[Path, bool]],
+        *,
+        allow_zero: bool = False,
+        allow_applied: bool = False,
+    ) -> None:
+        """Raise ``InvalidTargetVersionError`` unless the target is a script's version.
+
+        With no argument the configured ``target_version`` is checked. With
+        ``allow_applied`` (undo) a version in the applied history also passes,
+        for a migration whose script has since been removed.
+        """
+        if target_version is None:
+            target_version = self.config.target_version
+        if target_version is None:
+            return
+        target_version = str(target_version)
+        recursive, additional_dirs, dir_recursive_map = self._resolve_script_options(
+            recursive, additional_dirs, dir_recursive_map
+        )
+        versions = available_versions(
+            self.logger, self._get_scripts_dir(), recursive, additional_dirs, dir_recursive_map
+        )
+        try:
+            validate_target_version(target_version, versions, allow_zero=allow_zero)
+        except InvalidTargetVersionError:
+            if not allow_applied or not target_version.strip()[:1].isdigit():
+                raise
+            try:
+                records = self.executor.history_manager.get_applied_migration_records()
+            except (OSError, SQLAlchemyError) as exc:
+                from dblift.db.error import format_connection_error
+
+                raise PreflightConnectionError(
+                    format_connection_error(exc, self.config.database.type or "")
+                ) from exc
+            applied = [str(record.version) for record in records if record.version]
+            try:
+                validate_target_version(target_version, applied)
+            except InvalidTargetVersionError:
+                raise InvalidTargetVersionError(
+                    target_version, merge_versions(versions, applied)
+                ) from None
 
     def _get_scripts_dir(self) -> Path:
         """Get primary scripts directory.
@@ -435,6 +496,9 @@ class DBLiftClient:
             MigrateResult with details of applied migrations
         """
         self._guard_scripts_dir_kwarg(kwargs)
+        self._check_target_version(
+            target_version, recursive, additional_dirs, kwargs.get("dir_recursive_map")
+        )
         self.events.emit(
             EventType.MIGRATION_STARTED,
             {
@@ -546,6 +610,9 @@ class DBLiftClient:
             InfoResult with migration status
         """
         self._guard_scripts_dir_kwarg(kwargs)
+        self._check_target_version(
+            target_version, recursive, additional_dirs, kwargs.get("dir_recursive_map")
+        )
         self.events.emit(
             EventType.INFO_STARTED,
             {
@@ -619,6 +686,9 @@ class DBLiftClient:
             emitted.
         """
         self._guard_scripts_dir_kwarg(kwargs)
+        self._check_target_version(
+            target_version, recursive, additional_dirs, kwargs.get("dir_recursive_map")
+        )
         self.events.emit(EventType.VALIDATION_STARTED, {"dialect": getattr(self, "dialect", None)})
 
         try:
@@ -692,6 +762,17 @@ class DBLiftClient:
             UndoResult with details of rolled back migrations
         """
         self._guard_scripts_dir_kwarg(kwargs)
+        try:
+            self._check_target_version(
+                target_version,
+                recursive,
+                additional_dirs,
+                kwargs.get("dir_recursive_map"),
+                allow_zero=True,
+                allow_applied=True,
+            )
+        except PreflightConnectionError as exc:
+            return _failed_preflight_result(exc, UndoResult, self.config.database.schema)
         self.events.emit(
             EventType.UNDO_STARTED,
             {
@@ -1084,15 +1165,16 @@ class DBLiftClient:
         config: "DbliftConfig",
         logger: Optional[Any] = None,
         migrations_dir: Optional[Union[str, Path, List[Union[str, Path]]]] = None,
-        analysis_mode: Literal["full", "execution"] = "full",
+        analysis_mode: Literal["full", "execution"] = "execution",
         **kwargs: Any,
     ) -> Self:
         """Create a client instance from existing configuration.
 
         Args:
             config: DbliftConfig instance.
-            logger: Optional logger. When ``None`` a DbliftLogger is built
-                from the config's log settings.
+            logger: Optional logger. When ``None`` the client is silent
+                unless the config has a logging setting, in which case a
+                DbliftLogger is built from the config's log settings.
             migrations_dir: Override for the migrations directory (or list of
                 directories). When omitted, falls back to
                 ``config.migrations.directory`` and
@@ -1126,7 +1208,7 @@ class DBLiftClient:
         environment: Optional[str] = None,
         *,
         relative_to_config: bool = False,
-        analysis_mode: Literal["full", "execution"] = "full",
+        analysis_mode: Literal["full", "execution"] = "execution",
         **overrides: Any,
     ) -> Self:
         """Create a client instance from config file path.
@@ -1165,13 +1247,13 @@ class DBLiftClient:
         migrations_dir: Optional[Union[str, Path, List[Union[str, Path]]]] = None,
         schema: Optional[str] = None,
         logger: Optional[Any] = None,
-        log_level: str = "INFO",
-        log_format: str = "text",
+        log_level: Optional[str] = None,
+        log_format: Optional[str] = None,
         log_file: Optional[str] = None,
         *,
         connection: Any = None,
         config: Optional["DbliftConfig"] = None,
-        analysis_mode: Literal["full", "execution"] = "full",
+        analysis_mode: Literal["full", "execution"] = "execution",
         **kwargs: Any,
     ) -> Self:
         """Create DBLiftClient from an existing SQLAlchemy Engine (or Connection).

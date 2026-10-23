@@ -8,7 +8,7 @@ import pytest
 
 from dblift.core.sql_model.table import Table
 from dblift.core.sql_parser._partition_handler import apply_partition_metadata
-from dblift.core.sql_parser.hybrid_parser import HybridParser
+from tests.support.legacy_oracle_hybrid import hybrid_for
 
 pytestmark = pytest.mark.unit
 
@@ -16,15 +16,11 @@ pytestmark = pytest.mark.unit
 @pytest.mark.parametrize(
     "dialect,clause,count",
     [
-        ("mysql", "HASH (id) PARTITIONS 4", 4),
-        ("mysql", "KEY (id) PARTITIONS 8", 8),
-        ("mariadb", "HASH (id) PARTITIONS 4", 4),
         ("oracle", "HASH (id) PARTITIONS 4 STORE IN (ts1, ts2)", 4),
-        ("mysql", "HASH (YEAR(id)) PARTITIONS 4", 4),
     ],
 )
 def test_sql_partition_count(dialect, clause, count):
-    result = HybridParser(dialect).parse_sql(f"CREATE TABLE t (id INT) PARTITION BY {clause}")
+    result = hybrid_for(dialect).parse_sql(f"CREATE TABLE t (id INT) PARTITION BY {clause}")
     assert result.success
     table = result.tables[0]
     assert table.partition_count == count
@@ -36,26 +32,11 @@ def test_sql_partition_count(dialect, clause, count):
     "dialect,clause,method,expression,expected",
     [
         (
-            "mysql",
-            "RANGE (y) (PARTITION p0 VALUES LESS THAN (2020), "
-            "PARTITION p1 VALUES LESS THAN MAXVALUE)",
-            "RANGE",
-            "y",
-            [("p0", "VALUES LESS THAN (2020)"), ("p1", "VALUES LESS THAN MAXVALUE")],
-        ),
-        (
             "oracle",
             "HASH (id) (PARTITION p1, PARTITION p2)",
             "HASH",
             "id",
             [("p1", None), ("p2", None)],
-        ),
-        (
-            "mysql",
-            "LIST (y) (PARTITION p0 VALUES IN (1, 2), PARTITION p1 VALUES IN (3))",
-            "LIST",
-            "y",
-            [("p0", "VALUES IN (1, 2)"), ("p1", "VALUES IN (3)")],
         ),
         (
             "oracle",
@@ -74,7 +55,7 @@ def test_sql_partition_count(dialect, clause, count):
     ],
 )
 def test_sql_partition_list(dialect, clause, method, expression, expected):
-    result = HybridParser(dialect).parse_sql(
+    result = hybrid_for(dialect).parse_sql(
         f"CREATE TABLE t (id INT, y INT) PARTITION BY {clause}", default_schema="s"
     )
     assert result.success
@@ -130,13 +111,11 @@ def test_legacy_table_serialization_is_byte_identical():
 @pytest.mark.parametrize(
     "dialect,clause,method,columns",
     [
-        ("mysql", "", None, None),
-        ("postgresql", "PARTITION BY RANGE (y)", "RANGE", ["Y"]),
-        ("mysql", "PARTITION BY HASH (id) PARTITIONS x", "HASH", ["ID"]),
+        ("oracle", "PARTITION BY RANGE (y)", "RANGE", ["Y"]),
     ],
 )
 def test_unchanged_partition_guards(dialect, clause, method, columns):
-    result = HybridParser(dialect).parse_sql(f"CREATE TABLE t (id INT, y INT) {clause}")
+    result = hybrid_for(dialect).parse_sql(f"CREATE TABLE t (id INT, y INT) {clause}")
     assert result.success
     table = result.tables[0]
     assert table.partition_method == method

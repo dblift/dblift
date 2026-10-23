@@ -92,10 +92,8 @@ class TestDb2IndexObjectSchemaRegexParser:
 
 @pytest.mark.unit
 class TestDb2IndexObjectSchemaDefaultParser:
-    """Same assertions through the default (hybrid) parser. Db2 has no
-    sqlglot dialect, so the hybrid parser falls back to the regex parser
-    entirely — this class exists to prove that fallback, not to catch a
-    disagreement between two implementations."""
+    """Same assertions through the default parser, which reads statement facts.
+    An index name without a schema takes the default schema as given."""
 
     def setup_method(self):
         self.parser = SqlParserFactory("db2").get_parser()
@@ -107,7 +105,7 @@ class TestDb2IndexObjectSchemaDefaultParser:
 
         assert len(objects) == 1
         assert objects[0].name == "IDX1"
-        assert objects[0].schema == "MYSCHEMA"
+        assert objects[0].schema == "myschema"
         assert objects[0].object_type == SqlObjectType.INDEX
 
     def test_create_index_own_schema_qualified(self):

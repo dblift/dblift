@@ -569,6 +569,8 @@ class DbliftConfig:
     log_format: Optional[str] = None
     log_level: Optional[str] = None
     log_dir: Optional[str] = None
+    # Set by path anchoring when it fills in ``log_dir``; a default, not a user setting.
+    derived_log_dir: Optional[str] = field(default=None, repr=False, compare=False)
 
     def merge(self, other_config: Dict[str, Any]) -> None:
         """Merge another configuration into this one.

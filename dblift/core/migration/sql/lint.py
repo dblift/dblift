@@ -65,7 +65,8 @@ class ScriptLint:
     findings: Tuple[Finding, ...]
     errors: Tuple[str, ...]
     # Tables the script creates, ``schema.name`` or ``name`` when it gives no schema,
-    # lower-cased: carried to the next script of a delta; not part of the JSON payload.
+    # an unquoted part lower-cased, a quoted one as written between double quotes: carried to
+    # the next script of a delta; not part of the JSON payload.
     created_tables: FrozenSet[str] = field(default=frozenset(), compare=False)
 
     def to_dict(self) -> Dict[str, Any]:

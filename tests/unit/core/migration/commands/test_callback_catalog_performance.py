@@ -20,9 +20,11 @@ pytestmark = [pytest.mark.unit, pytest.mark.sqlite]
 
 
 @contextmanager
-def _client(database: Path, migrations: Path) -> Iterator[DBLiftClient]:
+def _client(database: Path, migrations: Path, mode: str = "full") -> Iterator[DBLiftClient]:
     engine = create_engine(f"sqlite:///{database}")
-    client = DBLiftClient.from_sqlalchemy(engine, migrations_dir=str(migrations))
+    client = DBLiftClient.from_sqlalchemy(
+        engine, migrations_dir=str(migrations), analysis_mode=mode
+    )
     try:
         yield client
     finally:
@@ -30,7 +32,7 @@ def _client(database: Path, migrations: Path) -> Iterator[DBLiftClient]:
         engine.dispose()
 
 
-def _run_migration_batch(tmp_path: Path, migration_count: int) -> int:
+def _run_migration_batch(tmp_path: Path, migration_count: int, mode: str) -> int:
     migrations = tmp_path / "migrations"
     migrations.mkdir(parents=True)
     for index in range(1, migration_count + 1):
@@ -38,7 +40,7 @@ def _run_migration_batch(tmp_path: Path, migration_count: int) -> int:
             f"CREATE TABLE table_{index} (id INTEGER PRIMARY KEY);"
         )
 
-    with _client(tmp_path / "app.db", migrations) as client:
+    with _client(tmp_path / "app.db", migrations, mode) as client:
         manager = client.executor.script_manager
         with patch.object(
             manager, "load_migration_scripts", wraps=manager.load_migration_scripts
@@ -57,12 +59,16 @@ def _run_migration_batch(tmp_path: Path, migration_count: int) -> int:
     return load_count
 
 
-def test_callback_catalog_load_count_is_independent_of_migration_count(tmp_path: Path) -> None:
-    small_loads = _run_migration_batch(tmp_path / "small", 3)
-    large_loads = _run_migration_batch(tmp_path / "large", 12)
+# Execution mode adds one load: its SQL-callback preflight reads the catalog once.
+@pytest.mark.parametrize(("mode", "max_loads"), [("full", 3), ("execution", 4)])
+def test_callback_catalog_load_count_is_independent_of_migration_count(
+    tmp_path: Path, mode: str, max_loads: int
+) -> None:
+    small_loads = _run_migration_batch(tmp_path / "small", 3, mode)
+    large_loads = _run_migration_batch(tmp_path / "large", 12, mode)
 
     assert small_loads == large_loads
-    assert small_loads <= 3
+    assert small_loads <= max_loads
 
 
 def test_each_callbacks_execute_for_every_successful_migration(tmp_path: Path) -> None:

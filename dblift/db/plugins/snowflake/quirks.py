@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
+from dblift.core.sql_parser.statement_facts import SqlglotStatementFactsReader
 from dblift.db.base_quirks import BaseQuirks
+
+if TYPE_CHECKING:
+    from dblift.core.sql_parser.lexical_spec import LexicalSpec
 
 
 class SnowflakeQuirks(BaseQuirks):
@@ -16,6 +20,7 @@ class SnowflakeQuirks(BaseQuirks):
     uppercase_identifiers = True
     clean_strategy = "native"
     sqlglot_dialect = "snowflake"
+    statement_facts_class = SqlglotStatementFactsReader
     default_schema_name = "PUBLIC"
     drop_supports_if_exists = True
     unquoted_identifier_case = "uppercase"
@@ -28,6 +33,12 @@ class SnowflakeQuirks(BaseQuirks):
     native_url_schema_params = ("schema",)
     native_driver_display = "snowflake-connector-python"
     lint_placeholder_url = "snowflake://localhost/DBLIFT_VALIDATE_SQL/PUBLIC"
+    # D1 refuses every script-level control before execution; no begin/end envelope is qualified.
+    transaction_control_sql_patterns = (
+        (r"^BEGIN\b", "unsupported"),
+        (r"^START\s+TRANSACTION\b", "unsupported"),
+        (r"^(?:COMMIT|ROLLBACK)\b", "unsupported"),
+    )
 
     def __init__(self, dialect_name: str = "snowflake") -> None:
         super().__init__(dialect_name=dialect_name)
@@ -57,10 +68,22 @@ class SnowflakeQuirks(BaseQuirks):
 
             return SqlGlotParser
         if parser_type == "regex":
-            from dblift.db.plugins.snowflake.statement_parser import SnowflakeStatementParser
+            from dblift.db.plugins.snowflake.lexical_parser import SnowflakeLexicalParser
 
-            return SnowflakeStatementParser
+            return SnowflakeLexicalParser
         return None
+
+    def lexical_spec(self) -> "LexicalSpec":
+        """Rules shared by execution and SQL analysis."""
+        from dblift.db.plugins.snowflake.lexical_spec import SNOWFLAKE_SPEC
+
+        return SNOWFLAKE_SPEC
+
+    def blank_comments(self, sql: str) -> str:
+        """Mask comments with the same scanner used for Snowflake execution."""
+        from dblift.core.sql_parser.lexical_engine import LexicalEngine
+
+        return LexicalEngine(self.lexical_spec()).blank_comments(sql)
 
 
 __all__ = ["SnowflakeQuirks"]
