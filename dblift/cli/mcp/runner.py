@@ -202,7 +202,11 @@ def _run_command_locked(
 ) -> Dict[str, Any]:
     """Body of :func:`run_command`; the caller must hold :data:`_CALL_LOCK`."""
     from dblift.cli import main as cli_main
-    from dblift.cli._command_handlers import _COMMAND_HANDLERS, _validate_migrate_options
+    from dblift.cli._command_handlers import (
+        _COMMAND_HANDLERS,
+        _validate_migrate_options,
+        _validate_target_version_option,
+    )
 
     full_argv = [*global_argv, command, *argv, *(json_argv or ())]
     stdout_buf, stderr_buf = io.StringIO(), io.StringIO()
@@ -262,6 +266,17 @@ def _run_command_locked(
             )
             client = cli_main._build_command_client(ctx)
             placeholders = cli_main._collect_placeholders(ctx.args, ctx.config)
+            if command in ("migrate", "undo", "validate", "info"):
+                _validate_target_version_option(
+                    command,
+                    ctx.args,
+                    ctx.parser,
+                    ctx.log,
+                    scripts_dir,
+                    additional_dirs,
+                    recursive,
+                    dir_map,
+                )
             if command == "migrate":
                 _validate_migrate_options(ctx.args, ctx.parser)
             cli_main._ensure_connection(client, ctx.log, command)

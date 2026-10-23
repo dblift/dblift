@@ -20,6 +20,8 @@ from typing import (
     overload,
 )
 
+from sqlalchemy.exc import SQLAlchemyError
+
 from dblift.api._client_factory import (
     apply_ctor_overrides,
     build_default_logger,
@@ -35,6 +37,7 @@ from dblift.api._client_operations import (
 )
 from dblift.api.events import EventEmitter, EventType, use_client_emitter
 from dblift.config import DbliftConfig
+from dblift.core.exceptions import InvalidTargetVersionError
 from dblift.core.logger.results import (
     BaselineResult,
     CleanResult,
@@ -50,6 +53,11 @@ from dblift.core.migration.commands.base_command import PreflightConnectionError
 from dblift.core.migration.executor.migration_executor import (
     MigrationExecutor,
     require_analysis_support,
+)
+from dblift.core.migration.target_version import (
+    available_versions,
+    merge_versions,
+    validate_target_version,
 )
 from dblift.core.premium_manifest import PREMIUM_COMMANDS, UPGRADE_URL, render_upsell
 from dblift.core.seams.capabilities import CapabilityDeniedError
@@ -349,6 +357,54 @@ class DBLiftClient:
         self.events = EventEmitter()
         attach_registered_listeners(self.events)
 
+    def _check_target_version(
+        self,
+        target_version: Optional[str],
+        recursive: Optional[bool],
+        additional_dirs: Optional[List[Path]],
+        dir_recursive_map: Optional[Dict[Path, bool]],
+        *,
+        allow_zero: bool = False,
+        allow_applied: bool = False,
+    ) -> None:
+        """Raise ``InvalidTargetVersionError`` unless the target is a script's version.
+
+        With no argument the configured ``target_version`` is checked. With
+        ``allow_applied`` (undo) a version in the applied history also passes,
+        for a migration whose script has since been removed.
+        """
+        if target_version is None:
+            target_version = self.config.target_version
+        if target_version is None:
+            return
+        target_version = str(target_version)
+        recursive, additional_dirs, dir_recursive_map = self._resolve_script_options(
+            recursive, additional_dirs, dir_recursive_map
+        )
+        versions = available_versions(
+            self.logger, self._get_scripts_dir(), recursive, additional_dirs, dir_recursive_map
+        )
+        try:
+            validate_target_version(target_version, versions, allow_zero=allow_zero)
+        except InvalidTargetVersionError:
+            if not allow_applied or not target_version.strip()[:1].isdigit():
+                raise
+            try:
+                records = self.executor.history_manager.get_applied_migration_records()
+            except (OSError, SQLAlchemyError) as exc:
+                from dblift.db.error import format_connection_error
+
+                raise PreflightConnectionError(
+                    format_connection_error(exc, self.config.database.type or "")
+                ) from exc
+            applied = [str(record.version) for record in records if record.version]
+            try:
+                validate_target_version(target_version, applied)
+            except InvalidTargetVersionError:
+                raise InvalidTargetVersionError(
+                    target_version, merge_versions(versions, applied)
+                ) from None
+
     def _get_scripts_dir(self) -> Path:
         """Get primary scripts directory.
 
@@ -468,6 +524,9 @@ class DBLiftClient:
             MigrateResult with details of applied migrations
         """
         self._guard_scripts_dir_kwarg(kwargs)
+        self._check_target_version(
+            target_version, recursive, additional_dirs, kwargs.get("dir_recursive_map")
+        )
         self.events.emit(
             EventType.MIGRATION_STARTED,
             {
@@ -579,6 +638,9 @@ class DBLiftClient:
             InfoResult with migration status
         """
         self._guard_scripts_dir_kwarg(kwargs)
+        self._check_target_version(
+            target_version, recursive, additional_dirs, kwargs.get("dir_recursive_map")
+        )
         self.events.emit(
             EventType.INFO_STARTED,
             {
@@ -652,6 +714,9 @@ class DBLiftClient:
             emitted.
         """
         self._guard_scripts_dir_kwarg(kwargs)
+        self._check_target_version(
+            target_version, recursive, additional_dirs, kwargs.get("dir_recursive_map")
+        )
         self.events.emit(EventType.VALIDATION_STARTED, {"dialect": getattr(self, "dialect", None)})
 
         try:
@@ -725,6 +790,17 @@ class DBLiftClient:
             UndoResult with details of rolled back migrations
         """
         self._guard_scripts_dir_kwarg(kwargs)
+        try:
+            self._check_target_version(
+                target_version,
+                recursive,
+                additional_dirs,
+                kwargs.get("dir_recursive_map"),
+                allow_zero=True,
+                allow_applied=True,
+            )
+        except PreflightConnectionError as exc:
+            return _failed_preflight_result(exc, UndoResult, self.config.database.schema)
         self.events.emit(
             EventType.UNDO_STARTED,
             {
