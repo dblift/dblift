@@ -558,6 +558,22 @@ def test_dropping_a_database_or_a_materialized_view_stays_unsafe(sql, code):
     assert [f.code for f in result.findings] == [code]
 
 
+# Names that merely begin with LINK or LOG are not the LINK / LOG keywords. Db2 cannot name these
+# statements' objects, so the keyword match alone decides: a prefix test (`L`) would read them as links.
+@pytest.mark.parametrize(
+    "sql, code",
+    [
+        ("DROP DATABASE linkdb;", "drop-schema"),
+        ("DROP MATERIALIZED VIEW logx;", "drop-table"),
+    ],
+)
+def test_a_name_starting_with_link_or_log_is_still_a_database_or_materialized_view(sql, code):
+    result = lint_script(sql, "db2")
+
+    assert result.verdict == "UNSAFE"
+    assert [f.code for f in result.findings] == [code]
+
+
 # LOCK TABLE and VACUUM FULL take a lock on a table (PostgreSQL docs, explicit-locking and sql-vacuum:
 # the default LOCK mode and VACUUM FULL are ACCESS EXCLUSIVE). A waiting SHARE or stronger request
 # blocks later writes (ROW EXCLUSIVE conflicts with SHARE); ACCESS SHARE, ROW SHARE, ROW EXCLUSIVE
@@ -622,3 +638,46 @@ def test_the_lock_timeout_is_reported_once_across_lock_statements():
 
 def test_lock_statements_of_other_dialects_are_not_postgresql_lock_findings():
     assert _codes("LOCK TABLES a WRITE;", "mysql") == []
+
+
+# A table created earlier in the script has no readers or writers to queue behind, so locking it
+# (LOCK TABLE, VACUUM FULL) needs no lock_timeout, as for ALTER TABLE on it.
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "CREATE TABLE n (id int); LOCK TABLE n IN ACCESS EXCLUSIVE MODE;",
+        "CREATE TABLE n (id int); LOCK n;",
+        "CREATE TABLE n (id int); LOCK TABLE ONLY n;",
+        "CREATE TABLE n (id int); VACUUM FULL n;",
+        "CREATE TABLE n (id int); VACUUM (FULL) n;",
+        "CREATE TABLE n (id int); CREATE TABLE m (id int); LOCK TABLE n, m;",
+    ],
+)
+def test_locking_a_table_created_earlier_in_the_script_is_not_reported(sql):
+    assert "pg-missing-lock-timeout" not in _codes(sql, "postgresql")
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "CREATE TABLE n (id int); LOCK TABLE n, old_t;",
+        "CREATE TABLE n (id int); LOCK TABLE old_t;",
+        "CREATE TABLE n (id int); VACUUM FULL old_t;",
+        "CREATE TABLE n (id int); VACUUM FULL;",
+    ],
+)
+def test_locking_a_table_not_created_in_the_script_is_still_reported(sql):
+    # VACUUM cannot run in a transaction block, so it may add a mixed-mode finding.
+    assert "pg-missing-lock-timeout" in _codes(sql, "postgresql")
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "LOCK TABLE a IN ACCESS EXCLUSIVE MODE NOWAIT; -- x",
+        "LOCK TABLE a IN ACCESS EXCLUSIVE MODE NOWAIT /* c */;",
+        "LOCK TABLE a IN ACCESS EXCLUSIVE MODE NOWAIT -- x",
+    ],
+)
+def test_a_comment_after_nowait_does_not_hide_it(sql):
+    assert _codes(sql, "postgresql") == []
