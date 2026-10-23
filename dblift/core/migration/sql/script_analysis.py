@@ -56,15 +56,27 @@ _DATA_HOLDERS = frozenset(
         SqlObjectType.DATABASE.value,
     }
 )
-# Statements the reader leaves unclassified that change no data and no schema: the session or the
-# transaction around the statements, and the metadata listings SHOW and DESCRIBE. SET stops at
-# what changes the server or an account (MySQL SET GLOBAL / PERSIST / PASSWORD). A bare BEGIN is a
-# transaction start only when nothing but transaction modes follows it; BEGIN ... END,
-# BEGIN ATOMIC and DECLARE are procedural blocks and never match.
-_SESSION_ENVELOPE = re.compile(
+# The statements the facts reader may leave unread and ``statement-not-analysed`` still passes,
+# recognised by their head keyword. Each changes no row and no object definition:
+#   SET / USE / SAVEPOINT / RELEASE / ROLLBACK / COMMIT / START TRANSACTION, and a bare BEGIN or
+#     END carrying only transaction modes: session and transaction state. SET stops at what
+#     changes the server or an account (MySQL SET GLOBAL / PERSIST / PASSWORD). BEGIN ... END,
+#     BEGIN ATOMIC and DECLARE are procedural blocks and never match.
+#   SHOW / DESCRIBE / DESC: metadata listings.
+#   PRAGMA: SQLite connection and database settings, read or set.
+#   GRANT / REVOKE: privileges, not data or definitions.
+#   COMMENT ON: documentation text.
+#   ANALYZE / ANALYSE: refreshes optimiser statistics.
+#   EXPLAIN: shows a plan, except EXPLAIN ANALYZE, which runs the statement.
+#   VACUUM: reclaims space, except VACUUM FULL, which rewrites and locks the table.
+# REINDEX, CALL, EXEC, anything else unrecognised: not listed, so reported.
+_NON_DATA_HEAD = re.compile(
     r"^\s*(?:"
     r"SET\b(?!\s+(?:GLOBAL|PERSIST|PERSIST_ONLY|PASSWORD)\b)"
-    r"|USE\b|SHOW\b|DESC(?:RIBE)?\b|SAVEPOINT\b|RELEASE\b|ROLLBACK\b|COMMIT\b|START\s+TRANSACTION\b"
+    r"|USE\b|SHOW\b|DESC(?:RIBE)?\b|PRAGMA\b|GRANT\b|REVOKE\b|COMMENT\s+ON\b|ANALY[SZ]E\b"
+    r"|EXPLAIN\b(?!\s*(?:\(.*?\b)?ANALY[SZ]E\b)"
+    r"|VACUUM\b(?!\s*(?:\(.*?\b)?FULL\b)"
+    r"|SAVEPOINT\b|RELEASE\b|ROLLBACK\b|COMMIT\b|START\s+TRANSACTION\b"
     r"|(?:BEGIN|END)(?:\s+(?:TRAN(?:SACTION)?(?:\s+[\w@#$]+)?|WORK|DEFERRED|IMMEDIATE|EXCLUSIVE"
     r"|ISOLATION\s+LEVEL\s+[A-Za-z ]+?|READ\s+(?:ONLY|WRITE)|(?:NOT\s+)?DEFERRABLE))*"
     r"(?:\s|;|--[^\n]*|/\*.*?\*/)*$"
@@ -266,17 +278,16 @@ def _analyse(text: str, dialect: str) -> ScriptAnalysis:
 def _unread_reason(facts: StatementFacts, body: str) -> Optional[str]:
     """Why a statement the facts reader did not read needs a look, or None.
 
-    Unread is a statement of unknown kind or one that is opaque and names no object. Session and
-    transaction envelopes and comment-only text are exempt: they are not read, but they change
-    no data, and a DROP is judged by its keyword. A definition (``CREATE PROCEDURE``) that names its
-    object is read as a definition.
+    Unread is a statement of unknown kind or one that is opaque and names no object.
+    Comment-only text and the ``_NON_DATA_HEAD`` statements are exempt, and a DROP is judged by
+    its keyword. A definition (``CREATE PROCEDURE``) that names its object is read as one.
     """
     if not (facts.kind == "UNKNOWN" or (facts.opaque and not facts.affected_objects)):
         return None
     if facts.operation == "DROP":
         return None  # judged by its keyword (``_unnamed_drop_caution``): row-free kinds stay safe
     text = strip_leading_sql_comments(body)
-    if not text.strip(" \t\r\n;") or _SESSION_ENVELOPE.match(text):
+    if not text.strip(" \t\r\n;") or _NON_DATA_HEAD.match(text):
         return None
     detail = f" ({facts.diagnostic})" if facts.diagnostic else ""
     if facts.operation in _PROCEDURAL_OPERATIONS or re.match(

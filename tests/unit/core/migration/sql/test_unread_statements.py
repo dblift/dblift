@@ -133,3 +133,48 @@ def test_cli_dry_run_analysis_marks_unread_statement(tmp_path):
     analysis = json.loads(proc.stdout)["migrations"][0]["analysis"]
     assert analysis["verdict"] == "REVIEW", proc.stdout
     assert [f["code"] for f in analysis["findings"]] == ["statement-not-analysed"]
+
+
+NON_DATA = [
+    ("postgresql", "GRANT SELECT ON t TO u;"),
+    ("postgresql", "REVOKE SELECT ON t FROM u;"),
+    ("postgresql", "COMMENT ON TABLE t IS 'x';"),
+    ("postgresql", "EXPLAIN SELECT 1;"),
+    ("postgresql", "ANALYZE t;"),
+    ("postgresql", "VACUUM t;"),
+    ("mysql", "ANALYZE TABLE t;"),
+    ("mysql", "GRANT SELECT ON t TO u;"),
+    ("sqlite", "PRAGMA foreign_keys = ON;"),
+    ("sqlite", "PRAGMA table_info(t);"),
+    ("sqlite", "VACUUM;"),
+    ("sqlite", "EXPLAIN QUERY PLAN SELECT 1;"),
+    ("oracle", "GRANT SELECT ON t TO u;"),
+    ("oracle", "COMMENT ON TABLE t IS 'x';"),
+    ("db2", "COMMENT ON TABLE t IS 'x';"),
+    ("sqlserver", "GRANT SELECT ON t TO u;"),
+    ("mysql", "SHOW TABLES;"),
+    ("mysql", "DESC t;"),
+]
+
+STILL_UNREAD = [
+    ("postgresql", "EXPLAIN ANALYZE DELETE FROM t;"),
+    ("postgresql", "EXPLAIN (ANALYZE, VERBOSE) DELETE FROM t;"),
+    ("postgresql", "VACUUM FULL t;"),
+    ("postgresql", "REINDEX TABLE t;"),
+    ("mysql", "CALL p();"),
+]
+
+
+@pytest.mark.parametrize("dialect, sql", NON_DATA)
+def test_recognised_non_data_head_stays_safe_when_unread(dialect, sql):
+    result = lint_script(sql, dialect)
+
+    assert (result.verdict, result.findings) == ("SAFE", ()), result
+
+
+@pytest.mark.parametrize("dialect, sql", STILL_UNREAD)
+def test_statements_beside_the_allow_list_stay_review(dialect, sql):
+    result = lint_script(sql, dialect)
+
+    assert result.verdict == "REVIEW", result
+    assert [f.code for f in result.findings] == ["statement-not-analysed"]

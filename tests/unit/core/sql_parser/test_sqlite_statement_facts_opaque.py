@@ -165,8 +165,7 @@ def test_lint_still_refuses_a_script_mixing_transaction_modes(opener):
     lint = lint_script(f"{opener}; CREATE TABLE t(a);", "sqlite")
 
     assert lint.verdict == "UNSAFE"
-    # the opener is also a statement the facts reader leaves unread
-    assert [f.code for f in lint.findings] == ["mixed-transaction-modes", "statement-not-analysed"]
+    assert [f.code for f in lint.findings] == ["mixed-transaction-modes"]
     assert lint.errors == ()
 
 

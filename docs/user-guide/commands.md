@@ -132,7 +132,15 @@ but nothing connects.
 | `pg-constraint-not-valid` | `ADD CONSTRAINT … FOREIGN KEY` or `CHECK` without `NOT VALID` | warning | PostgreSQL family |
 | `pg-set-not-null` | `ALTER COLUMN … SET NOT NULL` | warning | PostgreSQL family |
 | `pg-missing-lock-timeout` | The first statement that locks a table (`ALTER TABLE`, `CREATE INDEX`, `DROP TABLE`, `TRUNCATE`) with no `SET lock_timeout` earlier in the script; reported once per script | warning | PostgreSQL family |
-| `statement-not-analysed` | A statement the SQL parser could not read (an unrecognised statement, a `CALL`, an anonymous `BEGIN … END` or `EXECUTE IMMEDIATE` block, an `ALTER` it could not structure), so no rule could check it; the message names why. Session and transaction statements (`SET`, `USE`, `BEGIN`, `COMMIT`, `ROLLBACK`, `SAVEPOINT`, `SHOW`, `DESCRIBE`) and comments are not reported | info | all |
+| `statement-not-analysed` | A statement the SQL parser could not read (an unrecognised statement, a `CALL`, an anonymous `BEGIN … END` or `EXECUTE IMMEDIATE` block, an `ALTER` it could not structure), so no rule could check it; the message names why | info | all |
+
+`statement-not-analysed` is not reported for statements that change no row and no object
+definition, recognised by their first keyword even when the parser does not read them:
+`SET` (except `SET GLOBAL`, `PERSIST` and `PASSWORD`), `USE`, `BEGIN`/`START TRANSACTION`,
+`COMMIT`, `ROLLBACK`, `SAVEPOINT`, `RELEASE`, `SHOW`, `DESCRIBE`/`DESC`, `PRAGMA`, `GRANT`,
+`REVOKE`, `COMMENT ON`, `ANALYZE`, `EXPLAIN` without `ANALYZE` (`EXPLAIN ANALYZE` runs the
+statement), `VACUUM` without `FULL`, comments, and the `DROP` of a kind that holds no rows.
+`REINDEX`, `CALL`, `EXEC` and anything unrecognised are reported.
 
 The PostgreSQL family is `postgresql`, `neon`, `supabase`, `aurora-postgresql`, `alloydb`,
 `timescaledb` and `citus`. Every rule except `drop-schema`, `mixed-transaction-modes` and
