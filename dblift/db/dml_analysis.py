@@ -58,6 +58,8 @@ class DmlMutation:
     table: str
     events: Optional[Set[str]]
     updated_columns: List[str]
+    #: The tables a statement also changes through writing CTEs, each with its own events.
+    cte_writes: Tuple["DmlMutation", ...] = ()
 
 
 def _quirks_for(
@@ -106,6 +108,10 @@ def analyze_dml(
             facts.target or "",
             set(facts.events) if facts.events else None,
             list(facts.affected_columns) if facts.events and "UPDATE" in facts.events else [],
+            tuple(
+                DmlMutation(w.target, set(w.events), list(w.affected_columns))
+                for w in facts.cte_writes
+            ),
         )
 
     from dblift.core.sql_parser.unread_names import names_unreadable

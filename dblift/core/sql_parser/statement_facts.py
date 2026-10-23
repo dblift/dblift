@@ -35,6 +35,21 @@ class DeclaredConstraint:
 
 
 @dataclass(frozen=True)
+class DmlEffect:
+    """A data change a statement makes besides its own: one writing CTE.
+
+    ``target`` is the table as written (``schema.table``), ``events`` the DML events it fires.
+    """
+
+    operation: str
+    target: str
+    target_sql: str
+    predicate: Optional[str]
+    events: frozenset[str]
+    affected_columns: Tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class StatementFacts:
     """Statement-level evidence.
 
@@ -58,6 +73,7 @@ class StatementFacts:
     diagnostic: Optional[str] = None
     error: Optional[str] = None
     target_sql: Optional[str] = None
+    cte_writes: Tuple[DmlEffect, ...] = ()
 
     @property
     def opaque(self) -> bool:

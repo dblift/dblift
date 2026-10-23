@@ -89,7 +89,7 @@ def test_merge_with_a_delete_action_and_a_subquery_source():
         "MERGE INTO t USING s ON t.id = s.id",
         "MERGE INTO t{c} USING s ON t.id = s.id WHEN MATCHED THEN DELETE",
         "MERGE INTO if USING s ON t.id = s.id WHEN MATCHED THEN DELETE",
-        "WITH c AS (SELECT 1 AS id) MERGE INTO t USING c ON t.id = c.id WHEN MATCHED THEN DELETE",
+        "WITH t AS (SELECT 1 AS id) MERGE INTO t USING s ON t.id = s.id WHEN MATCHED THEN DELETE",
     ],
 )
 def test_a_merge_with_an_unread_name_or_no_action_stays_unread(sql):
@@ -99,6 +99,17 @@ def test_a_merge_with_an_unread_name_or_no_action_stays_unread(sql):
     assert facts.objects == ()
     assert facts.target is None
     assert facts.diagnostic
+
+
+def test_a_merge_behind_a_cte_reads_the_target_and_the_sources_but_not_the_cte():
+    facts = _facts(
+        "WITH c AS (SELECT * FROM u) MERGE INTO t USING c ON t.id = c.id WHEN MATCHED THEN DELETE"
+    )
+
+    assert _objects(facts) == [("T", "TABLE", "altered", None), ("U", "TABLE", "referenced", None)]
+    assert facts.target == "T"
+    assert facts.events == frozenset({"DELETE"})
+    assert facts.diagnostic is None
 
 
 @pytest.mark.parametrize(

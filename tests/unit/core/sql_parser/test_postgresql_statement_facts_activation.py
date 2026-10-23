@@ -187,10 +187,19 @@ def test_undo_never_emits_a_drop_trigger_without_its_table(sql):
     assert not [s for s in _undo(sql) if s.sql.startswith("DROP TRIGGER")]
 
 
-def test_data_changing_cte_keeps_the_changes_rows_caution_for_its_outer_target():
+def test_data_changing_cte_reports_the_rows_it_changes_in_its_own_table():
     script = (
         "WITH d AS (DELETE FROM src WHERE id = 1 RETURNING id) "
         "INSERT INTO log(msg) SELECT id FROM d"
+    )
+    cautions = analyse_script(script, "postgresql").cautions
+    assert [(c.level, "src" in c.reason) for c in cautions] == [(CHANGES_ROWS, True)]
+
+
+def test_an_unreadable_data_changing_cte_keeps_the_caution_for_its_outer_target():
+    script = (
+        "WITH m AS (MERGE INTO src USING s ON src.id = s.id WHEN MATCHED THEN DELETE) "
+        "INSERT INTO log(msg) SELECT 1"
     )
     cautions = analyse_script(script, "postgresql").cautions
     assert [(c.level, "log" in c.reason) for c in cautions] == [(CHANGES_ROWS, True)]
@@ -211,7 +220,6 @@ def test_the_opaque_cte_diagnostic_names_the_dialect_that_read_the_statement():
     sql = "WITH t AS (SELECT * FROM t) DELETE FROM u"
 
     assert (
-        read_statement_facts(sql, dialect="postgres").diagnostic
-        == "postgres CTE source scopes or effects are opaque to statement facts"
-    )
+        read_statement_facts(sql, dialect="postgres").diagnostic is None
+    )  # an unqualified t in its own body is the table, not the CTE
     assert read_statement_facts(sql, dialect="redshift").diagnostic.startswith("redshift CTE")

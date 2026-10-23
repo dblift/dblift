@@ -35,31 +35,49 @@ def test_unproven_cte_sources_are_explicitly_opaque(query):
 
 
 @pytest.mark.parametrize(
-    "body",
+    "body,operation,event",
     [
-        "DELETE FROM items RETURNING *",
-        "UPDATE items SET id = 1 RETURNING *",
-        "INSERT INTO items VALUES (1) RETURNING *",
+        ("DELETE FROM items RETURNING *", "DELETE", "DELETE"),
+        ("UPDATE items SET id = 1 RETURNING *", "UPDATE", "UPDATE"),
+        ("INSERT INTO items VALUES (1) RETURNING *", "INSERT", "INSERT"),
     ],
     ids=["delete", "update", "insert"],
 )
-def test_mutating_cte_is_not_reported_as_a_read_only_query(body):
+def test_mutating_cte_is_not_reported_as_a_read_only_query(body, operation, event):
     facts = read_statement_facts(
         f"WITH changed AS ({body}) SELECT * FROM changed", dialect="postgres"
     )
 
-    assert facts.opaque
-    assert facts.diagnostic and "CTE" in facts.diagnostic
-    assert facts.error is None
-    assert facts.kind == "UNKNOWN"
-    assert facts.objects == ()
+    assert not facts.opaque
+    assert (facts.operation, facts.kind) == ("SELECT", "DML")
+    assert facts.objects == (NamedObject("items", SqlObjectType.TABLE, "altered"),)
     assert facts.events is None
+    assert [(w.operation, w.target, w.events) for w in facts.cte_writes] == [
+        (operation, "items", frozenset({event}))
+    ]
+
+
+def test_cte_write_keeps_the_outer_mutation_identity_and_adds_its_own():
+    facts = read_statement_facts(
+        "WITH removed AS (DELETE FROM old_items RETURNING *) "
+        "INSERT INTO reporting.items SELECT * FROM removed",
+        dialect="postgres",
+    )
+
+    assert not facts.opaque
+    assert facts.operation == "INSERT"
+    assert facts.kind == "DML"
+    assert facts.objects == (
+        NamedObject("items", SqlObjectType.TABLE, "altered", "reporting"),
+        NamedObject("old_items", SqlObjectType.TABLE, "altered"),
+    )
+    assert facts.events == frozenset({"INSERT"})
 
 
 def test_opaque_cte_preserves_only_the_reliable_outer_mutation_identity():
     facts = read_statement_facts(
-        "WITH removed AS (DELETE FROM old_items RETURNING *) "
-        "INSERT INTO reporting.items SELECT * FROM removed",
+        "WITH m AS (MERGE INTO t USING s ON t.id = s.id WHEN MATCHED THEN DELETE) "
+        "INSERT INTO reporting.items SELECT 1",
         dialect="postgres",
     )
 
