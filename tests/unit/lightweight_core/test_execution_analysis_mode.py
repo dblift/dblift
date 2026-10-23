@@ -807,38 +807,3 @@ with sqlite3.connect('db.sqlite') as connection:
         cwd=tmp_path,
     )
     assert result.returncode == 0, result.stderr
-
-
-def test_deprecated_text_undo_request_does_not_claim_success_without_sqlglot(tmp_path):
-    result = run_python(
-        """
-import warnings
-from pathlib import Path
-from dblift.api import DBLiftClient
-from dblift.config import DbliftConfig
-from dblift.core.logger import NullLog
-
-sql = Path('sql')
-sql.mkdir()
-script = sql / 'V1__create.sql'
-script.write_text('CREATE TABLE t (id INTEGER);')
-config = DbliftConfig.from_dict({'database': {
-    'type': 'sqlite', 'path': 'db.sqlite', 'schema': 'main'
-}})
-with DBLiftClient.from_config(config, migrations_dir=sql, logger=NullLog(), analysis_mode='execution') as client:
-    with warnings.catch_warnings(record=True) as recorded:
-        warnings.simplefilter('always', DeprecationWarning)
-        try:
-            generated = client.generate_undo_script(script)
-        except ModuleNotFoundError as exc:
-            assert exc.name == 'sqlglot'
-        else:
-            assert not generated.success
-            assert 'sqlglot' in (generated.error_message or '').lower()
-    assert any(issubclass(item.category, DeprecationWarning) for item in recorded)
-assert not (sql / 'U1__create.sql').exists()
-""",
-        blocked=("sqlglot", "rich", "jinja2"),
-        cwd=tmp_path,
-    )
-    assert result.returncode == 0, result.stderr

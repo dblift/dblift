@@ -4,7 +4,6 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from dblift.core.migration.scripting.undo_script_generator import UndoScriptGenerator
 from dblift.core.migration.sql.script_analysis import analyse_script
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.migration.sql.sql_execution_service import SqlExecutionService
@@ -22,7 +21,6 @@ from dblift.db.dml_analysis import (
 from dblift.db.plugins.postgresql.parser.postgresql_regex_parser import PostgreSqlRegexParser
 from dblift.db.plugins.redshift.parser.redshift_regex_parser import RedshiftRegexParser
 from dblift.db.provider_registry import ProviderRegistry
-from tests.unit._migration_factory import make_migration
 
 _quirks = ProviderRegistry.get_quirks
 
@@ -34,18 +32,12 @@ FUNCTION = (
 UPDATE_ALIAS = "UPDATE child AS c SET id = 2 WHERE c.id = 1"
 
 
-def _undo(sql):
-    migration = make_migration(script_name="V1__x.sql", content=sql)
-    return UndoScriptGenerator("redshift")._generate_undo_statements(migration)
-
-
 def test_redshift_reads_statement_facts():
     quirks = _quirks("redshift")
 
     assert quirks.supports_statement_facts
     assert isinstance(quirks.statement_facts_reader(), SqlglotStatementFactsReader)
     assert quirks.statement_facts_reader().dialect == "redshift"
-    assert not quirks.undo_reverses_statement_facts
 
 
 def test_hybrid_factory_serves_the_facts_parser():
@@ -135,27 +127,3 @@ def test_execution_journal_receives_the_facts_objects(sql, expected):
 
     objects = journal.record_object_changes.call_args.args[2]
     assert [(obj["object_type"], obj["object_name"]) for obj in objects] == [expected]
-
-
-@pytest.mark.parametrize(
-    "sql",
-    [
-        "CREATE TABLE s.t (a int)",
-        "ALTER TABLE t ADD COLUMN c INT",
-        "CREATE VIEW v AS SELECT 1",
-        "COMMENT ON TABLE t IS 'x'",
-        "INSERT INTO t VALUES (1)",
-        FUNCTION,
-    ],
-)
-def test_undo_asks_for_a_hand_written_reversal(sql):
-    undo = _undo(sql)
-
-    assert len(undo) == 1
-    assert undo[0].requires_manual_review
-    assert undo[0].sql.startswith("-- WARNING")
-
-
-@pytest.mark.parametrize("sql", ["SELECT 1", "-- note\n/* more */"])
-def test_undo_of_a_read_or_a_comment_is_empty(sql):
-    assert _undo(sql) == []

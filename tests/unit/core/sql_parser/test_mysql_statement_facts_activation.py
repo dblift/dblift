@@ -5,7 +5,6 @@ from unittest.mock import MagicMock
 import pytest
 
 from dblift.core.exceptions import UnsupportedMetaCommandError
-from dblift.core.migration.scripting.undo_script_generator import UndoScriptGenerator
 from dblift.core.migration.sql.script_analysis import analyse_script
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.migration.sql.sql_execution_service import SqlExecutionService
@@ -20,7 +19,6 @@ from dblift.db.plugins.mariadb.regex_parser import MariaDbRegexParser
 from dblift.db.plugins.mysql.parser.mysql_regex_parser import MySqlRegexParser
 from dblift.db.plugins.mysql.parser.mysql_tokenizer import MySQLTokenizer
 from dblift.db.provider_registry import ProviderRegistry
-from tests.unit._migration_factory import make_migration
 
 DIALECTS = ("mysql", "mariadb")
 MODES = ("regex", "hybrid", "sqlglot")
@@ -151,9 +149,6 @@ def test_a_client_command_refuses_the_whole_script_on_every_path(dialect, script
         parsed = factory.parse_sql(script)
         assert not parsed.success
         assert parsed.statements == []
-    migration = make_migration(script_name="V1__a.sql", content=script)
-    with pytest.raises(UnsupportedMetaCommandError):
-        UndoScriptGenerator(dialect)._generate_undo_statements(migration)
 
 
 @pytest.mark.parametrize("dialect", DIALECTS)
@@ -177,17 +172,6 @@ def test_the_analyzer_reads_objects_from_facts(dialect):
         {"object_type": "TABLE", "object_name": "default_schema.t"}
     ]
     assert SqlAnalyzer(dialect).analyze_statement(UPDATE)["parsed_with"] == "facts"
-
-
-@pytest.mark.parametrize("dialect", DIALECTS)
-def test_undo_requires_manual_review_for_schema_changes_and_none_for_queries(dialect):
-    migration = make_migration(script_name="V1__t.sql", content="CREATE TABLE t (id INT);")
-    (undo,) = UndoScriptGenerator(dialect)._generate_undo_statements(migration)
-    assert undo.requires_manual_review
-    assert undo.sql.startswith("-- WARNING:")
-
-    migration = make_migration(script_name="V2__q.sql", content="SELECT 1;")
-    assert UndoScriptGenerator(dialect)._generate_undo_statements(migration) == []
 
 
 @pytest.mark.parametrize("dialect", DIALECTS)

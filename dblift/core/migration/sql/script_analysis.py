@@ -269,11 +269,14 @@ def _cte_write_cautions(index: int, writes: Tuple[DmlEffect, ...]) -> List[Cauti
 
 def _opaque_dialect(dialect: str) -> str:
     """The sqlglot dialect an unreadable statement is cautioned in (Db2 declares none)."""
-    from dblift.core.migration.scripting.undo_script_generator._helpers import (
-        resolve_sqlglot_read_dialect,
-    )
-
-    return resolve_sqlglot_read_dialect(dialect) or ""
+    mapping = ProviderRegistry.get_quirks(dialect).sqlglot_dialect
+    if mapping:
+        return mapping
+    for name in sorted(plugin.name for plugin in ProviderRegistry.list_plugins()):
+        quirks = ProviderRegistry.get_quirks(name)
+        if quirks.is_default_sqlglot_read_fallback:
+            return quirks.sqlglot_dialect or ""
+    return ""
 
 
 def _snippet(body: str) -> str:

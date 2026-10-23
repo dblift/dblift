@@ -1,7 +1,6 @@
 """Main client for programmatic access to DBLift."""
 
 import threading
-import warnings
 from functools import wraps
 from pathlib import Path
 from types import TracebackType
@@ -31,17 +30,12 @@ from dblift.api._client_factory import (
     normalize_migrations_dirs,
     resolve_config_or_raise,
 )
-from dblift.api._client_operations import (
-    generate_undo_script_operation,
-    generate_undo_scripts_operation,
-)
 from dblift.api.events import EventEmitter, EventType, use_client_emitter
 from dblift.config import DbliftConfig
 from dblift.core.exceptions import InvalidTargetVersionError
 from dblift.core.logger.results import (
     BaselineResult,
     CleanResult,
-    GenerateUndoScriptResult,
     InfoResult,
     MigrateResult,
     OperationResult,
@@ -70,28 +64,6 @@ __all__ = ["DBLiftClient"]
 
 _F = TypeVar("_F", bound=Callable[..., Any])
 _R = TypeVar("_R", bound=OperationResult)
-
-# Shared with ``AsyncDBLiftClient``, which warns from its own methods.
-_TEXT_UNDO_DEPRECATION_MESSAGE = (
-    "text-based undo script generation is deprecated and will be removed in 5.0; "
-    "write a matching U*__ undo script by hand"
-)
-
-
-class _TextUndoDeprecationGate(threading.local):
-    """Per-thread switch that silences the sync methods' deprecation warning.
-
-    ``AsyncDBLiftClient`` warns at its caller's line, then runs the sync
-    method on its worker thread with ``silenced`` set, so one call warns once.
-    Thread-local because ``warnings.catch_warnings`` changes process-wide
-    filters and would also swallow other threads' warnings.
-    """
-
-    silenced = False
-
-
-_text_undo_deprecation_gate = _TextUndoDeprecationGate()
-
 
 # Paid-tier commands that have a corresponding OSS-visible DBLiftClient
 # method name (issue #753). Keyed by ``api_method`` so
@@ -863,112 +835,6 @@ class DBLiftClient:
             if preflight is not None:
                 return _failed_preflight_result(preflight, UndoResult, self.config.database.schema)
             raise
-
-    # Mutating on purpose: it emits MIGRATION_* events, so a listener
-    # nesting it would re-trigger itself.
-    @_with_client_emitter
-    def generate_undo_script(
-        self,
-        migration_path: Union[str, Path],
-        output_dir: Optional[Union[str, Path]] = None,
-        overwrite: bool = False,
-        **kwargs: Any,
-    ) -> "GenerateUndoScriptResult":
-        """Generate an undo script for a versioned migration.
-
-        Deprecated since v4.10: text-based undo script generation will be
-        removed in the next major release. It reverses the migration's SQL
-        text, so it cannot reverse changes whose prior state the file does
-        not hold (``DROP COLUMN``, ``DROP CONSTRAINT``, column modifications,
-        any ``DROP``). Emits ``DeprecationWarning``.
-
-        Args:
-            migration_path: Path to the versioned SQL migration file (V*__.sql)
-            output_dir: Directory to write undo script (default: same as migration file)
-            overwrite: Whether to overwrite existing undo script
-            **kwargs: Additional options
-
-        Returns:
-            GenerateUndoScriptResult with details of the generated undo script
-
-        Raises:
-            FileNotFoundError: If ``migration_path`` does not exist (after emitting
-                ``MIGRATION_FAILED``). Callers using try/except or batch flows rely on this.
-
-        Example:
-            >>> client = DBLiftClient.from_config_file("dblift.yaml")
-            >>> result = client.generate_undo_script(
-            ...     "migrations/V1_0_1__Create_table.sql",
-            ...     overwrite=True
-            ... )
-            >>> print(f"Generated: {result.undo_script_path}")
-        """
-        # stacklevel=3: this method, then the ``_with_client_emitter`` wrapper.
-        if not _text_undo_deprecation_gate.silenced:
-            warnings.warn(_TEXT_UNDO_DEPRECATION_MESSAGE, DeprecationWarning, stacklevel=3)
-        return generate_undo_script_operation(
-            self,
-            migration_path=migration_path,
-            output_dir=output_dir,
-            overwrite=overwrite,
-        )
-
-    # Mutating on purpose: it emits MIGRATION_* events, so a listener
-    # nesting it would re-trigger itself.
-    @_with_client_emitter
-    def generate_undo_scripts(
-        self,
-        migration_paths: Optional[List[Union[str, Path]]] = None,
-        migrations_dir: Optional[Union[str, Path]] = None,
-        overwrite: bool = False,
-        recursive: bool = True,
-        **kwargs: Any,
-    ) -> List["GenerateUndoScriptResult"]:
-        """Generate undo scripts for one or more versioned migrations.
-
-        Deprecated since v4.10: text-based undo script generation will be
-        removed in the next major release (see :meth:`generate_undo_script`).
-        Emits ``DeprecationWarning``.
-
-        Args:
-            migration_paths: List of paths to versioned SQL migration files (V*__.sql).
-                             If None, finds all versioned migrations in migrations_dir.
-                             Non-SQL migrations (e.g. Python) are included in the results
-                             with an error explaining why they were skipped, since automatic
-                             undo generation only supports SQL migrations.
-            migrations_dir: Directory to search for migrations (default: configured migrations dir)
-            overwrite: Whether to overwrite existing undo scripts
-            recursive: Search migrations directory recursively
-            **kwargs: Additional options
-
-        Returns:
-            List of GenerateUndoScriptResult, one for each migration processed
-
-        Example:
-            >>> client = DBLiftClient.from_config_file("dblift.yaml")
-            >>> # Generate undo scripts for specific migrations
-            >>> results = client.generate_undo_scripts(
-            ...     migration_paths=[
-            ...         "migrations/V1_0_1__Create_table.sql",
-            ...         "migrations/V1_0_2__Add_column.sql"
-            ...     ],
-            ...     overwrite=True
-            ... )
-            >>> # Or generate for all versioned migrations
-            >>> results = client.generate_undo_scripts(overwrite=True)
-            >>> print(f"Generated {len(results)} undo scripts")
-        """
-        # stacklevel=3: this method, then the ``_with_client_emitter`` wrapper.
-        if not _text_undo_deprecation_gate.silenced:
-            warnings.warn(_TEXT_UNDO_DEPRECATION_MESSAGE, DeprecationWarning, stacklevel=3)
-        return generate_undo_scripts_operation(
-            self,
-            migration_paths=migration_paths,
-            migrations_dir=migrations_dir,
-            overwrite=overwrite,
-            recursive=recursive,
-            **kwargs,
-        )
 
     @_with_client_emitter
     def clean(

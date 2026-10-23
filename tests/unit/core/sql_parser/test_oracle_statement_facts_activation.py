@@ -2,7 +2,6 @@
 
 import pytest
 
-from dblift.core.migration.scripting.undo_script_generator import UndoScriptGenerator
 from dblift.core.migration.sql.script_analysis import analyse_script
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.sql_parser import SqlParserFactory
@@ -18,17 +17,11 @@ from dblift.db.dml_analysis import (
 )
 from dblift.db.plugins.oracle.parser.oracle_parser import OracleParser
 from dblift.db.provider_registry import ProviderRegistry
-from tests.unit._migration_factory import make_migration
 
 _quirks = ProviderRegistry.get_quirks
 
 CTE_UPDATE = "WITH x AS (SELECT 1 a FROM dual) UPDATE child SET id = 2"
 UPDATE = "UPDATE child SET id = 2 WHERE id = 1"
-
-
-def _undo(sql):
-    migration = make_migration(script_name="V1__x.sql", content=sql)
-    return UndoScriptGenerator("oracle")._generate_undo_statements(migration)
 
 
 def test_oracle_plugin_reads_statement_facts():
@@ -90,20 +83,3 @@ def test_dml_helpers_take_the_facts_path_through_the_plugin():
     assert dml_where_predicate(UPDATE, quirks=quirks) == "id = 1"
     assert not is_full_table_dml(UPDATE, quirks=quirks)
     assert is_full_table_dml("DELETE FROM child", quirks=quirks)
-
-
-@pytest.mark.parametrize(
-    "sql",
-    ["CREATE TABLE s.t (a NUMBER)", "ALTER TABLE t ADD (c NUMBER)", "INSERT INTO t VALUES (1)"],
-)
-def test_undo_asks_for_a_hand_written_reversal(sql):
-    undo = _undo(sql)
-
-    assert len(undo) == 1
-    assert undo[0].requires_manual_review
-    assert undo[0].sql.startswith("-- WARNING")
-
-
-@pytest.mark.parametrize("sql", ["SELECT 1 FROM dual", "-- note\n/* more */"])
-def test_undo_of_a_read_or_a_comment_is_empty(sql):
-    assert _undo(sql) == []

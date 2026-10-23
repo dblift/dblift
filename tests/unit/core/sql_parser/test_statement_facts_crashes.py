@@ -18,18 +18,6 @@ def test_index_without_columns_is_read_as_opaque(dialect):
     assert facts.opaque
 
 
-@pytest.mark.parametrize("dialect", DIALECTS)
-def test_index_without_columns_does_not_stop_undo_generation(dialect):
-    from types import SimpleNamespace
-
-    from dblift.core.migration.scripting.undo_script_generator import UndoScriptGenerator
-
-    migration = SimpleNamespace(
-        content="CREATE INDEX ix ON t USING;", version="1", description="x", script_name="V1__x.sql"
-    )
-    UndoScriptGenerator(dialect)._generate_undo_statements(migration)
-
-
 def test_alter_session_is_read_as_opaque_on_snowflake():
     facts = read_statement_facts("ALTER SESSION SET LOCK_TIMEOUT = 0", dialect="snowflake")
 

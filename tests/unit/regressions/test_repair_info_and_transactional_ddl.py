@@ -6,11 +6,6 @@ These tests guard against re-introduction of the following bugs:
   → Fixed: now uses DELETE FROM ... WHERE success = FALSE
 - get_database_url missing on PostgreSQL/MySQL providers
   → Fixed: added delegation to connection_manager.get_database_url()
-- validate-sql must work without DB (config-only client)
-  → Fixed: ValidateSqlConfigClient when command is standalone validate-sql; full client otherwise
-- generate_undo_script error handling
-  → Fixed: ValueError/FileExistsError return result with success=False; FileNotFoundError
-    emits failure then re-raises for exception-based callers / batch flows
 - InfoCommand current_schema_version never populated
   → Fixed: populated from the built migration state
 - InfoCommand status normalized to "APPLIED" instead of "SUCCESS"
@@ -20,7 +15,7 @@ These tests guard against re-introduction of the following bugs:
 """
 
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 import pytest
 
@@ -136,101 +131,6 @@ class TestProviderGetDatabaseUrl:
 
         source = inspect.getsource(db_utils.check_connection)
         assert "get_provider_display_url" in source and "config.database.url" in source
-
-
-# ════════════════════════════════════════════════════════════
-# validate-sql must use config-only client (no DB connect)
-# ════════════════════════════════════════════════════════════
-class TestValidateSqlClientInit:
-    """Regression: standalone validate-sql uses ValidateSqlConfigClient, not full DBLiftClient."""
-
-    @staticmethod
-    def _make_mock_provider():
-        provider = Mock()
-        provider.config = Mock()
-        provider.config.log_format = "text"
-        provider.config.log_level = "INFO"
-        provider.config.log_file = None
-        provider.config.logging = None
-        return provider
-
-    @patch("dblift.api.client.MigrationExecutor")
-    @patch("dblift.api._client_factory.DbliftLogger")
-    def test_file_not_found_raises_after_event(self, mock_logger_class, mock_executor_class):
-        """Missing migration path: MIGRATION_FAILED then FileNotFoundError (for try/except flow)."""
-        from dblift.api.client import DBLiftClient
-
-        mock_logger_class.return_value = Mock()
-        mock_executor = Mock()
-        mock_executor.provider = Mock()
-        mock_executor.provider.dialect = "postgresql"
-        mock_executor.history_manager = Mock()
-        mock_executor.history_manager.provider = Mock()
-        mock_executor.sql_execution_service = Mock()
-        mock_executor.sql_execution_service.provider = Mock()
-        mock_executor_class.return_value = mock_executor
-
-        client = DBLiftClient(provider=self._make_mock_provider(), migrations_dir="/tmp")
-        with pytest.raises(FileNotFoundError):
-            client.generate_undo_script("/nonexistent/V1__test.sql")
-
-    @patch("dblift.api.client.MigrationExecutor")
-    @patch("dblift.api._client_factory.DbliftLogger")
-    def test_non_versioned_returns_result(self, mock_logger_class, mock_executor_class, tmp_path):
-        """ValueError for non-versioned files must return result, not raise."""
-        from dblift.api.client import DBLiftClient
-
-        mock_logger_class.return_value = Mock()
-        mock_executor = Mock()
-        mock_executor.provider = Mock()
-        mock_executor.provider.dialect = "postgresql"
-        mock_executor.history_manager = Mock()
-        mock_executor.history_manager.provider = Mock()
-        mock_executor.sql_execution_service = Mock()
-        mock_executor.sql_execution_service.provider = Mock()
-        mock_executor_class.return_value = mock_executor
-
-        non_versioned = tmp_path / "R__repeatable.sql"
-        non_versioned.write_text("SELECT 1;")
-
-        client = DBLiftClient(provider=self._make_mock_provider(), migrations_dir="/tmp")
-        result = client.generate_undo_script(str(non_versioned))
-        assert not result.success
-        assert "not a versioned migration" in result.error_message
-
-    @patch("dblift.api.client.MigrationExecutor")
-    @patch("dblift.api._client_factory.DbliftLogger")
-    @patch("dblift.core.migration.scripting.undo_script_generator.UndoScriptGenerator")
-    def test_file_exists_returns_result(
-        self, mock_gen_class, mock_logger_class, mock_executor_class, tmp_path
-    ):
-        """FileExistsError (overwrite=False) must return result, not raise."""
-        from dblift.api.client import DBLiftClient
-
-        mock_logger_class.return_value = Mock()
-        mock_executor = Mock()
-        mock_executor.provider = Mock()
-        mock_executor.provider.dialect = "postgresql"
-        mock_executor.history_manager = Mock()
-        mock_executor.history_manager.provider = Mock()
-        mock_executor.sql_execution_service = Mock()
-        mock_executor.sql_execution_service.provider = Mock()
-        mock_executor_class.return_value = mock_executor
-
-        migration = tmp_path / "V1_0_0__test.sql"
-        migration.write_text("CREATE TABLE t (id INT);")
-
-        # Make the generator raise FileExistsError
-        mock_gen = Mock()
-        mock_gen.generate_undo_script_for_migration.side_effect = FileExistsError(
-            "Undo script already exists"
-        )
-        mock_gen_class.return_value = mock_gen
-
-        client = DBLiftClient(provider=self._make_mock_provider(), migrations_dir="/tmp")
-        result = client.generate_undo_script(str(migration), overwrite=False)
-        assert not result.success
-        assert "already exists" in result.error_message
 
 
 # ════════════════════════════════════════════════════════════

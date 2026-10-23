@@ -1,4 +1,8 @@
-# Sources of the corpus inputs
+# Original sources of the corpus inputs
+
+This is the source inventory at the corpus freeze. Some source tests have since
+been removed; their SQL remains in `inputs.jsonl` and is exercised by
+`tests/unit/core/migration/sql/test_retained_script_analysis_inputs.py`.
 
 Test files calling `parse_sql(` or `extract_objects(`; their SQL string constants
 (under 4000 characters, starting with an SQL verb; docstrings, f-string parts and the text

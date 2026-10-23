@@ -118,7 +118,7 @@ The Snowflake plugin owns the spec and the common lexical engine supplies record
 
 ## 13. Statement facts
 
-Snowflake plugin: `statement_facts_class` is the shared reader, so object extraction, script analysis, the DML helpers and execution-time object tracking read facts; `HybridParser("snowflake")` and `SqlGlotParser("snowflake")` are refused like the other activated dialects, and undo asks for review. Statements are read by the shared sqlglot reader (`read_statement_facts(sql, dialect="snowflake")` in
+Snowflake plugin: `statement_facts_class` is the shared reader, so object extraction, script analysis, the DML helpers and execution-time object tracking read facts; `HybridParser("snowflake")` and `SqlGlotParser("snowflake")` are refused like the other activated dialects. Statements are read by the shared sqlglot reader (`read_statement_facts(sql, dialect="snowflake")` in
 `dblift/core/sql_parser/sqlglot_statement_facts.py`) after the lexical splitter above. This section
 describes the reader. **Only the identifier folding below was observed on Snowflake DDL**: the earlier
 10.38.100 campaigns measured splitting and refusals only, so every other reading is a structural

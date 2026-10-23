@@ -66,14 +66,13 @@ class PostgresqlQuirks(BaseQuirks):
     statement_facts_class: Optional[Type["StatementFactsReader"]] = SqlglotStatementFactsReader
     # PostgreSQL's permissive grammar is the last-resort sqlglot read dialect
     # for dialects that declare none of their own (DB2, CosmosDB). See
-    # ``dblift.core.migration.scripting.undo_script_generator._helpers``.
+    # ``dblift.core.migration.sql.script_analysis``.
     is_default_sqlglot_read_fallback = True
     # PostgreSQL is the ANSI/generic rendering reference when a model has no
     # dialect of its own, resolved via ProviderRegistry.reference_dialect_name.
     is_ansi_reference_dialect = True
     default_schema_name = "public"
     drop_supports_if_exists = True
-    drop_table_default_cascade = True
     # Index DDL.
     table_supports_inherits = True
     supports_virtual_computed_columns = False

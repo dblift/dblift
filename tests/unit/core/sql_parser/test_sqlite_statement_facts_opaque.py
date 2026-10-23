@@ -9,7 +9,6 @@ from unittest.mock import Mock
 import pytest
 
 from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
-from dblift.core.migration.scripting.undo_script_generator import UndoScriptGenerator
 from dblift.core.migration.sql.lint import lint_script
 from dblift.core.migration.sql.script_analysis import analyse_script
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
@@ -265,29 +264,6 @@ def test_extract_objects_preserves_scanner_selected_tables(script, expected):
 
 
 # --- undo of a trigger -----------------------------------------------------------------
-
-
-@pytest.mark.parametrize(
-    "create, undo",
-    [
-        (
-            "CREATE TRIGGER tr AFTER INSERT ON t BEGIN SELECT 1; END;",
-            'DROP TRIGGER IF EXISTS "tr";',
-        ),
-        (
-            "CREATE TRIGGER IF NOT EXISTS s.tr AFTER INSERT ON t BEGIN SELECT 1; END;",
-            'DROP TRIGGER IF EXISTS "s"."tr";',
-        ),
-    ],
-)
-def test_undo_of_a_trigger_drops_it(create, undo):
-    generator = UndoScriptGenerator("sqlite")
-
-    statements = generator._generate_undo_statements(
-        make_migration(script_name="V1__trigger.sql", content=create)
-    )
-
-    assert [(s.sql, s.requires_manual_review) for s in statements] == [(undo, False)]
 
 
 # --- DML ----------------------------------------------------------------------------

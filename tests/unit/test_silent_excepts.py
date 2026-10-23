@@ -71,22 +71,3 @@ class TestRemainingIntentionalExcepts:
                         f"Line {i + 1} has bare except without comment: {bare_line!r} "
                         f"followed by {next_lines}"
                     )
-
-    def test_undo_script_generator_regex_fallbacks_have_comments(self):
-        import inspect
-
-        from dblift.core.migration.scripting import undo_script_generator as mod
-
-        source = inspect.getsource(mod)
-        lines = source.splitlines()
-        for i, line in enumerate(lines):
-            if re.search(r"except Exception:\s*$", line):
-                next_lines = [lines[j].strip() for j in range(i + 1, min(i + 3, len(lines)))]
-                has_comment_or_log = any(
-                    l.startswith("# Intentional:") or "self.log" in l or "logger" in l
-                    for l in next_lines
-                )
-                if not has_comment_or_log:
-                    pytest.fail(
-                        f"Line {i + 1} has bare except without comment, followed by {next_lines}"
-                    )

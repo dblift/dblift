@@ -624,22 +624,3 @@ class UndoResult(OperationResult):
     def migrations(self) -> List[MigrationInfo]:
         """Undone migrations, then failed ones, for the log formatters."""
         return self.undone_migrations + self.failed_migrations
-
-
-class GenerateUndoScriptResult(OperationResult):
-    """Result of generating an undo script."""
-
-    def __init__(self) -> None:
-        """Initialize undo-script generation bookkeeping (paths, counts, review flag)."""
-        super().__init__()
-        self.migration_path: Optional[str] = None
-        self.undo_script_path: Optional[str] = None
-        self.overwritten: bool = False
-        self.statements_generated: int = 0
-        self.requires_manual_review: bool = False
-
-    def add_warning(self, warning: str) -> None:
-        """Add a warning to the result."""
-        super().add_warning(warning)
-        if "manual review" in warning.lower() or "warning" in warning.lower():
-            self.requires_manual_review = True

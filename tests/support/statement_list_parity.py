@@ -17,13 +17,11 @@ from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCom
 from dblift.core.logger import NullLog
 from dblift.core.migration.executor.execution_engine import ExecutionEngine
 from dblift.core.migration.placeholders.placeholder_service import PlaceholderService
-from dblift.core.migration.scripting.undo_script_generator import UndoScriptGenerator
 from dblift.core.migration.sql import lint_rules
 from dblift.core.migration.sql.execution_statement import _statements_of
 from dblift.core.migration.sql.script_analysis import analyse_script
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.migration.sql.sql_execution_service import SqlExecutionService
-from dblift.core.sql_model.base import ParseResult
 from dblift.core.sql_parser.lexical_engine import LexicalEngine
 from dblift.core.sql_parser.statement import Statement
 from dblift.db.provider_registry import ProviderRegistry
@@ -392,47 +390,6 @@ def view_analysis(dialect: str, script: str) -> List[str]:
     return [statement.sql for statement in analysis.statements]
 
 
-def _undo_input(dialect: str, script: str, *, parse_fails: bool) -> List[str]:
-    generator = UndoScriptGenerator(dialect, logger=NullLog())
-    migration = make_migration(
-        script_name="V1__t.sql", content=script, version="1", description="t", dialect=dialect
-    )
-    seen: List[str] = []
-
-    def facts(sql: str, _facts: Any) -> None:
-        seen.append(sql)
-
-    def parsed(stmt: Any) -> None:
-        seen.append(getattr(stmt, "sql_text", ""))
-
-    def text(sql: str, _source: Any = "") -> None:
-        seen.append(sql)
-
-    with (
-        patch.object(generator, "_reverse_statement_facts", facts),
-        patch.object(generator, "_review_statement_facts", facts),
-        patch.object(generator, "_reverse_statement_from_parsed", parsed),
-        patch.object(generator, "_reverse_statement", text),
-    ):
-        if parse_fails:
-            failed = ParseResult(success=False, statements=[], errors=["forced"])
-            with patch.object(generator.parser, "parse_sql", return_value=failed):
-                generator._generate_undo_statements(migration)
-        else:
-            generator._generate_undo_statements(migration)
-    return list(reversed(seen))
-
-
-def view_undo(dialect: str, script: str) -> List[str]:
-    """The undo input along the branch the dialect takes (facts, or ``parse_sql``)."""
-    return _undo_input(dialect, script, parse_fails=False)
-
-
-def view_undo_fallback(dialect: str, script: str) -> List[str]:
-    """The undo input when ``parse_sql`` fails and the splitter's list is used instead."""
-    return _undo_input(dialect, script, parse_fails=True)
-
-
 def _lint_units(dialect: str, script: str, *, from_script: bool) -> List[str]:
     analysis = analyse_script(script, dialect)
     if not from_script and not analysis.statements and analysis.errors:
@@ -469,9 +426,6 @@ class View:
     dialects: Tuple[str, ...] = DIALECTS
 
 
-_FACTS = ("sqlite", "duckdb")
-_PARSED = tuple(d for d in DIALECTS if d not in _FACTS)
-
 VIEWS: Tuple[View, ...] = (
     View("migrate_classified", view_classified, "executed"),
     View("migrate_executable", view_executable, "sent"),
@@ -479,9 +433,6 @@ VIEWS: Tuple[View, ...] = (
     View("migrate_callback", view_callback, "sent"),
     View("migrate_constituents", view_migrate_constituents, "constituents", ("sqlserver",)),
     View("analysis", view_analysis, "analysis"),
-    View("undo_facts", view_undo, "analysis", _FACTS),
-    View("undo_parse", view_undo, "analysis", _PARSED),
-    View("undo_fallback", view_undo_fallback, "analysis", _PARSED),
     View("lint", view_lint, "units"),
     View("lint_analysis", view_lint_analysis, "analysis"),
 )

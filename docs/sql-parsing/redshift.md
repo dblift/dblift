@@ -66,8 +66,7 @@ Redshift statements are read by `SqlglotStatementFactsReader("redshift")` (sqlgl
 after the shared lexical splitter above; `HybridParser("redshift")` and `SqlGlotParser("redshift")`
 are refused like the other activated dialects, and the `regex` parser type still splits and masks.
 The Redshift-specific readings are `_redshift_facts` in `dblift/core/sql_parser/sqlglot_statement_facts.py`;
-materialized views and bare DML targets share PostgreSQL's branches. `undo_reverses_statement_facts`
-stays false: undo asks for review.
+materialized views and bare DML targets share PostgreSQL's branches.
 
 | Form | Reading | Measured on Redshift Serverless 1.0.485645 (2026-10-20) |
 | --- | --- | --- |

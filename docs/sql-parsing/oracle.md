@@ -410,5 +410,4 @@ Statements that Oracle rejects (`WITH … UPDATE`/`DELETE`/`INSERT`, `DROP TABLE
 of other engines harvested into the corpus) are read as far as the grammar allows; the ledger
 records the engine's answer for each one.
 
-Undo generation does not reverse Oracle statements from their facts: every data or schema change
-is a manual-review entry (`DROP … IF EXISTS` needs 23ai or its 19.28 backport).
+`DROP … IF EXISTS` needs Oracle 23ai or its 19.28 backport.

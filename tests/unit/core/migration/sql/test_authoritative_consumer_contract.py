@@ -8,7 +8,6 @@ from dblift.core.exceptions import (
     UnsupportedMetaCommandError,
 )
 from dblift.core.logger import NullLog
-from dblift.core.migration.scripting.undo_script_generator import UndoScriptGenerator
 from dblift.core.migration.sql.execution_statement import (
     execution_units,
     neutralise_transaction_statements,
@@ -24,7 +23,7 @@ from tests.support.legacy_oracle_hybrid import oracle_facts_off
 from tests.unit._migration_factory import make_migration
 
 
-def test_go_zero_create_cannot_generate_a_drop_undo() -> None:
+def test_go_zero_skips_create_before_the_next_statement() -> None:
     sql = "CREATE TABLE users(id INT);\nGO 0\nSELECT 2;"
     migration = make_migration(
         script_name="V1__skip.sql",
@@ -35,8 +34,9 @@ def test_go_zero_create_cannot_generate_a_drop_undo() -> None:
     )
 
     assert migration.parse_sql_statements("sqlserver") == ["SELECT 2;"]
-    undo = UndoScriptGenerator("sqlserver", logger=NullLog())._generate_undo_statements(migration)
-    assert all("DROP TABLE" not in statement.sql.upper() for statement in undo)
+    assert [statement.operation for statement in analyse_script(sql, "sqlserver").statements] == [
+        "SELECT"
+    ]
 
 
 def test_go_zero_only_creates_no_analysis_or_schema_objects() -> None:
