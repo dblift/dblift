@@ -54,8 +54,7 @@ def _cli(tmp_path: Path, *, env=None, flags=(), yaml_extra="", failing=False):
 
 def _api(tmp_path: Path, level_literal: str, failing: bool = False):
     _project(tmp_path, failing=failing)
-    script = textwrap.dedent(
-        f"""
+    script = textwrap.dedent(f"""
         from dblift.api.client import DBLiftClient
         from dblift.config.dblift_config import DbliftConfig
         cfg = DbliftConfig.from_dict({{
@@ -65,8 +64,7 @@ def _api(tmp_path: Path, level_literal: str, failing: bool = False):
             {level_literal}
         }})
         DBLiftClient.from_config(cfg).migrate()
-        """
-    )
+        """)
     return subprocess.run(
         [sys.executable, "-c", script],
         cwd=tmp_path,
@@ -146,8 +144,7 @@ def test_api_info_level_shows_progress(tmp_path):
 
 def test_api_without_logging_settings_stays_silent(tmp_path):
     _project(tmp_path)
-    script = textwrap.dedent(
-        f"""
+    script = textwrap.dedent(f"""
         from dblift.api.client import DBLiftClient
         from dblift.config.dblift_config import DbliftConfig
         cfg = DbliftConfig.from_dict({{
@@ -155,8 +152,7 @@ def test_api_without_logging_settings_stays_silent(tmp_path):
             "migrations": {{"directory": "{tmp_path / 'mig'}"}},
         }})
         DBLiftClient.from_config(cfg).migrate()
-        """
-    )
+        """)
     out = subprocess.run(
         [sys.executable, "-c", script],
         cwd=tmp_path,
@@ -167,3 +163,76 @@ def test_api_without_logging_settings_stays_silent(tmp_path):
     )
     assert out.returncode == 0, out.stderr
     assert out.stdout + out.stderr == ""
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"env": {"DBLIFT_LOG_LEVEL": "loud"}},
+        {"yaml_extra": "log_level: loud\n"},
+    ],
+)
+def test_cli_invalid_level_from_environment_or_yaml_exits_2(tmp_path, kwargs):
+    out = _cli(tmp_path, **kwargs)
+    assert out.returncode == 2, out.stdout + out.stderr
+    assert "Invalid log level: loud" in out.stderr
+
+
+def test_cli_flag_accepts_warning_like_environment_and_yaml(tmp_path):
+    out = _cli(tmp_path, flags=("--log-level", "WARNING"))
+    assert out.returncode == 0, out.stderr
+    assert _PROGRESS not in out.stdout + out.stderr
+
+
+def test_cli_invalid_flag_still_exits_2(tmp_path):
+    out = _cli(tmp_path, flags=("--log-level", "loud"))
+    assert out.returncode == 2
+
+
+@pytest.mark.parametrize("level", ["ERROR", "WARNING"])
+def test_api_from_config_log_level_argument_is_honoured(tmp_path, level):
+    _project(tmp_path)
+    script = textwrap.dedent(f"""
+        from dblift.api.client import DBLiftClient
+        from dblift.config.dblift_config import DbliftConfig
+        cfg = DbliftConfig.from_dict({{
+            "database": {{"url": "sqlite:///{tmp_path / 't.db'}"}},
+            "migrations": {{"directory": "{tmp_path / 'mig'}"}},
+            "log_dir": "{tmp_path / 'apilogs'}",
+        }})
+        DBLiftClient.from_config(cfg, log_level="{level}").migrate()
+        """)
+    out = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=tmp_path,
+        env=_env(tmp_path),
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    assert out.returncode == 0, out.stderr
+    assert _PROGRESS not in out.stdout + out.stderr
+    assert (tmp_path / "apilogs").is_dir()  # logging was requested, not dropped
+    assert _PROGRESS not in _api_log_text(tmp_path)
+
+
+def test_api_from_config_log_level_info_argument_turns_logging_on(tmp_path):
+    _project(tmp_path)
+    script = textwrap.dedent(f"""
+        from dblift.api.client import DBLiftClient
+        from dblift.config.dblift_config import DbliftConfig
+        cfg = DbliftConfig.from_dict({{
+            "database": {{"url": "sqlite:///{tmp_path / 't.db'}"}},
+            "migrations": {{"directory": "{tmp_path / 'mig'}"}},
+        }})
+        DBLiftClient.from_config(cfg, log_level="INFO").migrate()
+        """)
+    out = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=tmp_path,
+        env=_env(tmp_path),
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    assert _PROGRESS in out.stdout + out.stderr

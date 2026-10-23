@@ -557,9 +557,9 @@ def create_parser(
         # DBLIFT_LOG_LEVEL / a config file's log_level. _configure_logging()
         # falls back to LogLevel.INFO when nothing sets a level.
         default=None,
-        type=str.lower,
+        type=lambda value: {"warning": "warn"}.get(value.lower(), value.lower()),
         choices=["debug", "info", "warn", "error"],
-        help="Log level (case-insensitive, default: info)",
+        help="Log level (case-insensitive, 'warning' means warn; default: info)",
     )
     parser.add_argument("--log-file", help="Log file name")
     parser.add_argument(

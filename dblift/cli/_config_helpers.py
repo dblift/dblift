@@ -9,7 +9,7 @@ from dblift.api._cli_support import ConnectionProvider
 from dblift.api._client_factory import apply_derived_schema
 from dblift.cli._parser_setup import create_parser, parse_with_selective_errors
 from dblift.config.config_builder import ConfigBuilder
-from dblift.config.dblift_config import _placeholder_tokens, load_config
+from dblift.config.dblift_config import DbliftConfig, _placeholder_tokens, load_config
 from dblift.config.errors import ConfigurationError
 from dblift.config.secrets._provider_base import SecretsResolutionError
 from dblift.core.logger import LogFactory, LogFormat, LogLevel
@@ -450,6 +450,39 @@ def _validate_db_config(
         args.baseline_version = "1"
 
 
+_LOG_LEVEL_MAP = {
+    "debug": LogLevel.DEBUG,
+    "warn": LogLevel.WARN,
+    "warning": LogLevel.WARN,
+    "error": LogLevel.ERROR,
+}
+_VALID_LOG_LEVELS = ("debug", "info", "warn", "warning", "error")
+
+
+def _effective_log_level_name(args: argparse.Namespace, config: "DbliftConfig") -> str:
+    """Lowercase level name after flag > environment > file > ``logging.level``.
+
+    ``config.log_level`` is the already-merged value (file -> env -> CLI precedence applied in
+    ``load_config``); the raw namespace only reflects an explicit ``--log-level``. INFO in the
+    ``logging.level`` section is the default, not a request.
+    """
+    name = getattr(config, "log_level", None) or args.log_level
+    if not name:
+        section_level = config.logging.level
+        if isinstance(section_level, str) and section_level.upper() != "INFO":
+            name = section_level
+    return str(name or "info").lower()
+
+
+def _validate_log_level_for_cli(
+    args: argparse.Namespace, config: "DbliftConfig", parser: argparse.ArgumentParser
+) -> None:
+    """Reject an unknown level from any source with the flag's exit code (2)."""
+    name = _effective_log_level_name(args, config)
+    if name not in _VALID_LOG_LEVELS:
+        parser.error(f"Invalid log level: {name}. Valid levels are: {', '.join(_VALID_LOG_LEVELS)}")
+
+
 def _configure_logging(
     args: argparse.Namespace, config: Any, parser: argparse.ArgumentParser
 ) -> Any:
@@ -464,25 +497,7 @@ def _configure_logging(
     except OSError as e:
         _exit_log_location_error(e)
 
-    _LOG_LEVEL_MAP = {
-        "debug": LogLevel.DEBUG,
-        "warn": LogLevel.WARN,
-        "warning": LogLevel.WARN,
-        "error": LogLevel.ERROR,
-    }
-    # ``config.log_level`` is the already-merged value (file -> env -> CLI
-    # precedence applied in config.dblift_config.load_config); prefer it over
-    # the raw CLI namespace, which only reflects an explicit --log-level and
-    # otherwise carries no signal about file/env config. Fall back to
-    # args.log_level when the merged config has none set, then to the YAML
-    # ``logging.level`` section (INFO there is the default, not a request).
-    effective_log_level = getattr(config, "log_level", None) or args.log_level
-    if not effective_log_level:
-        section_level = getattr(getattr(config, "logging", None), "level", None)
-        if isinstance(section_level, str) and section_level.upper() != "INFO":
-            effective_log_level = section_level
-    effective_log_level = str(effective_log_level).lower() if effective_log_level else None
-    log_level = _LOG_LEVEL_MAP.get(effective_log_level, LogLevel.INFO)
+    log_level = _LOG_LEVEL_MAP.get(_effective_log_level_name(args, config), LogLevel.INFO)
     # ``--quiet`` raises the *console* threshold to NOTICE so info/debug
     # lines disappear from the terminal while NOTICE (success
     # confirmations, "Command completed"), WARN, and ERROR still show
