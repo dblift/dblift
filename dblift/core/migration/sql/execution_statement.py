@@ -25,11 +25,12 @@ class ExecutionStatement:
 
 @lru_cache(maxsize=None)
 def _script_parser(dialect: str) -> Any:
-    """The dialect parser that owns execution and analysis script boundaries."""
+    """The dialect's lexical engine, which owns execution and analysis script boundaries."""
+    from dblift.core.sql_parser.lexical_engine import LexicalEngine
     from dblift.db.provider_registry import ProviderRegistry
 
-    parser_class = ProviderRegistry.get_quirks(dialect).parser_class("regex")
-    return parser_class() if parser_class is not None else None
+    spec = ProviderRegistry.get_quirks(dialect).lexical_spec()
+    return LexicalEngine(spec) if spec is not None else None
 
 
 def _statements_of(sql: str, dialect: str) -> List[str]:
@@ -197,12 +198,8 @@ def _without_comments(quirks: Any, statement: str) -> str:
 
 def _position(statements: List[str], index: int, dialect: str, content: str) -> str:
     """``line N`` of ``statements[index]``, from the splitter's own records; else ``statement N``."""
-    from dblift.db.provider_registry import ProviderRegistry
-
-    quirks = ProviderRegistry.get_quirks(dialect.lower())
-    parser_class = quirks.parser_class("regex")
     try:
-        records = parser_class().split(content)  # type: ignore[misc]
+        records = _script_parser(dialect.lower()).split(content)
     except Exception:  # noqa: BLE001 - the line is a courtesy; the refusal stands without it
         records = []
     # One entry per string execution sends, so a statement's index is its record's.

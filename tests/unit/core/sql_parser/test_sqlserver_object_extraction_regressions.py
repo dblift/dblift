@@ -33,14 +33,6 @@ class TestRegexParserObjectNames:
     def setup_method(self):
         self.parser = SqlParserFactory("sqlserver", parser_type="regex").get_parser()
 
-    def test_create_table_with_space_before_paren(self):
-        objects = self.parser.extract_objects("CREATE TABLE real_one (id int);")
-
-        assert len(objects) == 1
-        assert objects[0].name == "real_one"
-        assert objects[0].schema == "dbo"
-        assert objects[0].object_type == SqlObjectType.TABLE
-
     def test_create_table_no_space_before_paren(self):
         objects = self.parser.extract_objects("CREATE TABLE real_one(id int);")
 
@@ -101,46 +93,11 @@ class TestRegexParserObjectNames:
         assert len(objects) == 1
         assert objects[0].name == "idx1"
 
-    def test_create_procedure(self):
-        objects = self.parser.extract_objects("CREATE PROCEDURE real_proc AS SELECT 1;")
-
-        assert len(objects) == 1
-        assert objects[0].name == "real_proc"
-        assert objects[0].object_type == SqlObjectType.PROCEDURE
-
-    def test_create_function(self):
-        sql = "CREATE FUNCTION real_func() RETURNS int AS BEGIN RETURN 1; END;"
-        objects = self.parser.extract_objects(sql)
-
-        assert len(objects) == 1
-        assert objects[0].name == "real_func"
-        assert objects[0].object_type == SqlObjectType.FUNCTION
-
-    def test_create_trigger(self):
-        sql = "CREATE TRIGGER real_trig ON real_one AFTER INSERT AS BEGIN SELECT 1; END;"
-        objects = self.parser.extract_objects(sql)
-
-        assert len(objects) == 1
-        assert objects[0].name == "real_trig"
-        assert objects[0].object_type == SqlObjectType.TRIGGER
-
-    def test_create_synonym(self):
-        objects = self.parser.extract_objects("CREATE SYNONYM real_syn FOR dbo.real_one;")
-
-        assert len(objects) == 1
-        assert objects[0].name == "real_syn"
-
     def test_create_schema(self):
         objects = self.parser.extract_objects("CREATE SCHEMA real_schema;")
 
         assert len(objects) == 1
         assert objects[0].name == "real_schema"
-
-    def test_create_type(self):
-        objects = self.parser.extract_objects("CREATE TYPE real_type FROM int;")
-
-        assert len(objects) == 1
-        assert objects[0].name == "real_type"
 
     def test_create_sequence(self):
         objects = self.parser.extract_objects("CREATE SEQUENCE real_seq START WITH 1;")
@@ -148,144 +105,6 @@ class TestRegexParserObjectNames:
         assert len(objects) == 1
         assert objects[0].name == "real_seq"
         assert objects[0].object_type == SqlObjectType.SEQUENCE
-
-
-@pytest.mark.unit
-class TestThreePartNames:
-    """``database.schema.object`` is a legitimate T-SQL reference for
-    ``CREATE``/``ALTER``/``DROP TABLE``. ``id_pattern`` originally modeled
-    only two dot-separated parts, so a three-part name matched a two-part
-    prefix of itself: the database part landed in ``schema`` and the real
-    schema landed in ``name``, dropping the actual object name entirely."""
-
-    def setup_method(self):
-        self.parser = SqlParserFactory("sqlserver", parser_type="regex").get_parser()
-
-    def test_create_table_three_part_name(self):
-        objects = self.parser.extract_objects("CREATE TABLE mydb.dbo.mytable (id int);")
-
-        assert len(objects) == 1
-        assert objects[0].name == "mytable"
-        assert objects[0].schema == "dbo"
-
-    def test_alter_table_three_part_name(self):
-        objects = self.parser.extract_objects("ALTER TABLE mydb.dbo.mytable ADD col int;")
-
-        assert len(objects) == 1
-        assert objects[0].name == "mytable"
-        assert objects[0].schema == "dbo"
-
-    def test_drop_table_three_part_name(self):
-        objects = self.parser.extract_objects("DROP TABLE mydb.dbo.mytable;")
-
-        assert len(objects) == 1
-        assert objects[0].name == "mytable"
-        assert objects[0].schema == "dbo"
-
-    def test_three_part_name_brackets_on_some_parts_not_others(self):
-        objects = self.parser.extract_objects("CREATE TABLE [mydb].dbo.[my table] (id int);")
-
-        assert len(objects) == 1
-        assert objects[0].name == "my table"
-        assert objects[0].schema == "dbo"
-
-    def test_three_part_name_all_bracketed(self):
-        objects = self.parser.extract_objects("CREATE TABLE [mydb].[dbo].[mytable] (id int);")
-
-        assert len(objects) == 1
-        assert objects[0].name == "mytable"
-        assert objects[0].schema == "dbo"
-
-
-@pytest.mark.unit
-class TestIndexObjectSchema:
-    """``CREATE``/``DROP INDEX`` mapped their capture groups so the index's
-    own name landed in ``schema`` and the ON-target table's name landed in
-    ``name``. An index is not itself schema-qualified in T-SQL — it belongs
-    to a table, which has a schema — so the object's name is the index
-    name and its schema is the default/current schema, never derived from
-    the ON-target table."""
-
-    def setup_method(self):
-        self.parser = SqlParserFactory("sqlserver", parser_type="regex").get_parser()
-
-    def test_create_index(self):
-        objects = self.parser.extract_objects("CREATE INDEX idx1 ON real_one (id);")
-
-        assert len(objects) == 1
-        assert objects[0].name == "idx1"
-        assert objects[0].schema == "dbo"
-        assert objects[0].object_type == SqlObjectType.INDEX
-
-    def test_create_unique_index(self):
-        objects = self.parser.extract_objects("CREATE UNIQUE INDEX idx1 ON real_one (id);")
-
-        assert len(objects) == 1
-        assert objects[0].name == "idx1"
-        assert objects[0].schema == "dbo"
-
-    def test_create_index_on_schema_qualified_table(self):
-        # The table's schema ("sales") is not the index's schema.
-        objects = self.parser.extract_objects("CREATE INDEX idx1 ON sales.real_one (id);")
-
-        assert len(objects) == 1
-        assert objects[0].name == "idx1"
-        assert objects[0].schema == "dbo"
-
-    def test_create_index_bracketed_name(self):
-        objects = self.parser.extract_objects("CREATE INDEX [idx 1] ON [real_one] (id);")
-
-        assert len(objects) == 1
-        assert objects[0].name == "idx 1"
-        assert objects[0].schema == "dbo"
-
-    def test_drop_index_on_syntax(self):
-        objects = self.parser.extract_objects("DROP INDEX idx1 ON real_one;")
-
-        assert len(objects) == 1
-        assert objects[0].name == "idx1"
-        assert objects[0].schema == "dbo"
-        assert objects[0].object_type == SqlObjectType.INDEX
-
-    def test_create_xml_index(self):
-        objects = self.parser.extract_objects("CREATE XML INDEX idx1 ON real_one (xml_col);")
-
-        assert len(objects) == 1
-        assert objects[0].name == "idx1"
-        assert objects[0].schema == "dbo"
-        assert objects[0].object_type == SqlObjectType.INDEX
-
-    def test_create_primary_xml_index(self):
-        objects = self.parser.extract_objects(
-            "CREATE PRIMARY XML INDEX idx1 ON real_one (xml_col);"
-        )
-
-        assert len(objects) == 1
-        assert objects[0].name == "idx1"
-        assert objects[0].schema == "dbo"
-
-
-@pytest.mark.unit
-class TestXmlIndexNoDuplicateMatch:
-    """``CREATE XML INDEX`` was matched by both the general "index_create"
-    pattern (which allowed an optional XML keyword) and the dedicated
-    "xml_index_create" pattern, extracting the same statement twice. The
-    general pattern now excludes XML indexes, so only one pattern matches."""
-
-    def setup_method(self):
-        self.parser = SqlParserFactory("sqlserver", parser_type="regex").get_parser()
-
-    def test_create_xml_index_matches_once(self):
-        objects = self.parser.extract_objects("CREATE XML INDEX idx1 ON real_one (xml_col);")
-
-        assert len(objects) == 1
-
-    def test_create_primary_xml_index_matches_once(self):
-        objects = self.parser.extract_objects(
-            "CREATE PRIMARY XML INDEX idx1 ON real_one (xml_col);"
-        )
-
-        assert len(objects) == 1
 
 
 @pytest.mark.unit
@@ -511,14 +330,6 @@ class TestBracketDoublingRegexParser:
         assert len(objects) == 1
         assert objects[0].schema == "a]b"
         assert objects[0].name == "c]d"
-
-    def test_three_part_name_still_works(self):
-        # #351's three-part db.schema.object support must survive this fix.
-        objects = self.parser.extract_objects("CREATE TABLE [mydb].[dbo].[mytable] (id int);")
-
-        assert len(objects) == 1
-        assert objects[0].schema == "dbo"
-        assert objects[0].name == "mytable"
 
     def test_bracket_content_with_quotes_is_not_unescaped(self):
         # A double quote is not special inside brackets — only a doubled

@@ -40,54 +40,10 @@ def _notices(action):
     [
         ("SqlParserFactory", lambda: SqlParserFactory("sqlite"), "StatementSplitter"),
         ("SqlAnalyzer", lambda: SqlAnalyzer("sqlite"), "StatementSplitter"),
-        (
-            "strict_tokenizer",
-            lambda: StatementSplitter("sqlite").split("SELECT 1;", strict_tokenizer=False),
-            "drop strict_tokenizer",
-        ),
-        (
-            "strict_tokenizer",
-            lambda: StatementSplitter("sqlite").last_split("SELECT 1;", strict_tokenizer=True),
-            "drop strict_tokenizer",
-        ),
-        (
-            "strict_tokenizer",
-            lambda: StatementSplitter("sqlite").split_statements(
-                "SELECT 1;", strict_tokenizer=False
-            ),
-            "drop strict_tokenizer",
-        ),
-        (
-            "strict_tokenizer",
-            lambda: _silent(SqlAnalyzer, "sqlite").split_statements(
-                "SELECT 1;", strict_tokenizer=True
-            ),
-            "drop strict_tokenizer",
-        ),
-        (
-            "strict_tokenizer",
-            lambda: _silent(SqlAnalyzer, "sqlite").split_statements_for_analysis(
-                "SELECT 1;", strict_tokenizer=False
-            ),
-            "drop strict_tokenizer",
-        ),
-        (
-            "strict_tokenizer",
-            lambda: _silent(SqlParserFactory, "sqlite").split_statements(
-                "SELECT 1;", strict_tokenizer=False
-            ),
-            "drop strict_tokenizer",
-        ),
     ],
     ids=[
         "factory",
         "analyzer",
-        "splitter-strict",
-        "splitter-last-split",
-        "splitter-split-statements",
-        "analyzer-strict",
-        "analysis-strict",
-        "factory-strict",
     ],
 )
 def test_legacy_entry_point_warns_naming_its_replacement(name, action, replacement):
@@ -95,8 +51,7 @@ def test_legacy_entry_point_warns_naming_its_replacement(name, action, replaceme
     assert len(messages) == 1, messages
     assert name in messages[0]
     assert replacement in messages[0]
-    if name != "strict_tokenizer":
-        assert "read_statement_facts" in messages[0]
+    assert "read_statement_facts" in messages[0]
 
 
 def test_explicit_parser_type_has_its_own_notice():
@@ -127,15 +82,6 @@ def test_internal_bridges_are_silent_and_canonical_paths_do_not_warn():
         mask_string_literals("SELECT 'a'", "postgresql")
 
     assert _notices(canonical) == []
-
-
-def test_facts_dialects_keep_refusing_the_legacy_parsers():
-    from dblift.core.sql_parser.hybrid_parser import HybridParser
-    from dblift.core.sql_parser.sqlglot_parser import SqlGlotParser
-
-    for cls in (HybridParser, SqlGlotParser):
-        with pytest.raises(ValueError, match="StatementFactsParser"):
-            cls("postgresql")
 
 
 def test_silent_contexts_at_the_remaining_internal_construction_sites(tmp_path, monkeypatch):

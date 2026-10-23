@@ -10,7 +10,6 @@ from dblift.core.sql_parser.lexical_engine import LexicalEngine
 from dblift.core.sql_parser.lexical_spec import LexicalSpec
 from dblift.core.sql_parser.parser_factory import SqlParserFactory
 from dblift.core.sql_parser.statement import Statement, analysis_sql, execution_strings
-from dblift.db.plugins.snowflake import statement_parser
 from dblift.db.provider_registry import ProviderRegistry
 
 
@@ -47,22 +46,6 @@ def test_snowflake_split_views_route_through_shared_records(monkeypatch) -> None
 
     # split_statements takes the engine's execution view, the other views its records.
     assert calls == [("snowflake", script)] * 5
-
-
-def test_snowflake_execution_never_uses_the_retained_legacy_scanner(monkeypatch) -> None:
-    def fail_legacy(*_args, **_kwargs):
-        raise AssertionError("legacy Snowflake scanner reached")
-
-    monkeypatch.setattr(statement_parser.SnowflakeStatementParser, "__init__", fail_legacy)
-    monkeypatch.setattr(statement_parser.SnowflakeStatementParser, "split", fail_legacy)
-
-    script = "SELECT 1;"
-    assert StatementSplitter("snowflake").split_statements(script) == ["SELECT 1"]
-    for mode in ("regex", "hybrid"):
-        parser = SqlParserFactory("snowflake", parser_type=mode).get_parser()
-        assert parser.split_statements(script) == ["SELECT 1"]
-        assert parser.split_for_analysis(script) == ["SELECT 1"]
-        assert parser.split_for_extraction(script) == ["SELECT 1"]
 
 
 def test_snowflake_retains_current_execution_and_refusal_controls() -> None:

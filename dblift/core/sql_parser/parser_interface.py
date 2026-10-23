@@ -27,7 +27,7 @@ class SqlParserInterface(ABC):
         """
 
     @abstractmethod
-    def split_statements(self, sql_content: str, strict_tokenizer: bool = False) -> List[str]:
+    def split_statements(self, sql_content: str) -> List[str]:
         """Split SQL content into individual statements.
 
         Args:
@@ -37,14 +37,14 @@ class SqlParserInterface(ABC):
             List of SQL statement strings
         """
 
-    def split_for_extraction(self, sql_content: str, strict_tokenizer: bool = False) -> List[str]:
+    def split_for_extraction(self, sql_content: str) -> List[str]:
         """Executed SQL constituents for object extraction and reporting.
 
         Dialect scanners may keep several constituents in one execution unit
         (T-SQL batches or a client-combined command). Directives and skipped
         batches contribute none.
         """
-        return self.split_statements(sql_content, strict_tokenizer=strict_tokenizer)
+        return self.split_statements(sql_content)
 
     def statement_sources(self, script: str, statements: List[str]) -> List[Optional[str]]:
         """Each of ``statements`` as it stands in ``script``, blanks the split trimmed included.
@@ -53,14 +53,14 @@ class SqlParserInterface(ABC):
         """
         return list(statements)
 
-    def split_for_analysis(self, sql_content: str, strict_tokenizer: bool = False) -> List[str]:
+    def split_for_analysis(self, sql_content: str) -> List[str]:
         """Scanner-derived executed constituents, once per execution unit.
 
         A repeated batch is analyzed once, and a skipped batch contributes
         nothing. Concrete dialect parsers override this when execution units
         can contain more than one SQL statement.
         """
-        return self.split_statements(sql_content, strict_tokenizer=strict_tokenizer)
+        return self.split_statements(sql_content)
 
     @abstractmethod
     def validate_sql(self, sql_content: str) -> Dict[str, Any]:

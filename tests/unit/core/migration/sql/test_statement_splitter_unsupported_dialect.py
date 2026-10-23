@@ -16,4 +16,4 @@ def test_a_dialect_without_a_parser_refuses_execution() -> None:
 
 def test_a_dialect_without_a_parser_raises_under_strict_mode() -> None:
     with pytest.raises(UnsupportedDialectError):
-        SqlAnalyzer("firebird").split_statements("CREATE TABLE t (id int);", strict_tokenizer=True)
+        SqlAnalyzer("firebird").split_statements("CREATE TABLE t (id int);")

@@ -2,13 +2,10 @@
 
 import ast
 import pathlib
-from unittest.mock import MagicMock
 
 import pytest
 
 import dblift
-from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
-from dblift.core.migration.sql.sql_execution_service import SqlExecutionService
 from dblift.core.sql_parser.statement_facts import StatementFacts
 from dblift.db.dml_analysis import (
     analyze_dml,
@@ -18,7 +15,6 @@ from dblift.db.dml_analysis import (
     updates_restore_key,
 )
 from dblift.db.provider_registry import ProviderRegistry
-from tests.unit._migration_factory import make_migration
 
 UPDATE = "UPDATE zz SET a = 1 WHERE id = 1;"
 DELETE = "DELETE FROM zz WHERE id = 1;"
@@ -95,25 +91,6 @@ def test_opted_out_plugin_gets_no_parent_facts(monkeypatch, child):
     assert child_quirks.is_full_table_dml(DELETE) is False
     assert statement_dml_table(UPDATE, quirks=child_quirks) == "zz"
     assert dml_where_predicate(DELETE, quirks=child_quirks) == "id = 1"
-
-
-def test_execution_tracking_records_no_parent_target_after_opt_out(monkeypatch):
-    child = ProviderRegistry.get_quirks("cockroachdb")
-    parent = ProviderRegistry.get_quirks("postgres")
-    monkeypatch.setattr(type(parent), "statement_facts_class", reader_named("parent_reader"))
-    monkeypatch.setattr(type(child), "statement_facts_class", None)
-    assert type(parent) is not type(child)
-    provider = MagicMock(spec=["execute_statement"])
-    provider.execute_statement.return_value = 1
-    journal = MagicMock()
-    service = SqlExecutionService(
-        provider, SqlAnalyzer("cockroachdb"), journal=journal, quirks=child
-    )
-
-    service.execute_statement(UPDATE)
-
-    objects = journal.record_object_changes.call_args.args[2]
-    assert [obj["object_name"] for obj in objects] == ["zz"]
 
 
 FIVE = {

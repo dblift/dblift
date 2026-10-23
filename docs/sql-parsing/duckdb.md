@@ -398,7 +398,7 @@ pass with its string, escape-string, quoted-identifier and nested-comment reader
 `SegmentScript` (`dblift/core/sql_parser/segment_script.py`) cuts the tokens at each `;` into the
 records. `StatementSplitter` (and so `SqlAnalyzer.split_statements`) reaches the engine through the
 specification without constructing a parser; `SqlAnalyzer.split_statements_for_analysis` reaches it through
-`DuckDBFactsParser.split_for_analysis`, which delegates to it. `DuckDBRegexParser` and `DuckDBFactsParser` are thin delegates: `split()`
+`DuckDBFactsParser.split_for_analysis`, which delegates to it. `DuckDBFactsParser` is a thin delegate: `split()`
 returns `Statement` records, `split_statements()` their execution text, `split_for_analysis()`
 and `split_for_extraction()` the same statements (a segment of comments only is in none of them),
 and `parse_sql()` honours the refusals.
@@ -494,7 +494,7 @@ backslash are literals and become `'?'`. A quoted name or a block comment that i
 string that is never closed, run to the end of the text and are masked to the end, as the engine reads them.
 A shell command line (a line starting with `.`) is read as SQL text, not refused. Rows 74 and 75 apply to masking as well; both now use the engine's string boundaries. Object extraction strips
 comments with the DuckDB nesting tokenizer; it did not move with the splitter, and a parser object has no
-`lexical_spec` attribute, so extraction is not re-pointed. `strict_tokenizer` has no effect: the engine has no unknown
+`lexical_spec` attribute, so extraction is not re-pointed. The engine has no unknown
 characters, every character that is no other lexeme is one symbol. A split writes no log record (measured: 0 records for a split before and after the change; building a regex
 parser object writes one DEBUG record, before and after).
 

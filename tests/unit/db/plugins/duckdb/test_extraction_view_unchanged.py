@@ -14,16 +14,13 @@ blank, so the statement no longer carries it and its object is named. ``script_1
 
 import dataclasses
 import enum
-import hashlib
 import json
-import warnings
 from pathlib import Path
 from typing import Any, Dict, List
 from unittest.mock import patch
 
 import pytest
 
-from dblift.core.sql_parser.base_tokenizer import BaseTokenizer
 from dblift.core.sql_parser.lexical_spec import LexicalSpec
 from dblift.core.sql_parser.redaction import (
     describe_statement,
@@ -33,12 +30,10 @@ from dblift.db.plugins.duckdb.parser.duckdb_facts_parser import (
     DuckDBFactsParser,
     DuckDBStatementFactsReader,
 )
-from dblift.db.plugins.duckdb.parser.duckdb_regex_parser import DuckDBRegexParser
-from dblift.db.plugins.duckdb.parser.duckdb_tokenizer import DuckDBTokenizer
-from dblift.db.plugins.duckdb.parser.parser_config import DuckDBParserConfig
 from dblift.db.plugins.duckdb.provider import DuckDBProvider
 from dblift.db.provider_registry import ProviderRegistry
 from dblift.db.sqlalchemy_provider import SqlAlchemyProvider
+from tests.support.facts_parser import facts_parser
 
 GOLDEN_PATH = Path(__file__).with_name("duckdb_masking_golden.json")
 
@@ -83,20 +78,8 @@ def observe_masking(sql: str) -> List[str]:
     return [mask_string_literals(sql, "duckdb"), describe_statement(sql, "duckdb")]
 
 
-def observe_tokens(sql: str) -> Dict[str, Any]:
-    def stream(cls):
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            return [[t.type.name, t.text, t.pos, t.line, t.col] for t in cls(sql).tokenize()]
-
-    return {
-        "base": guard(lambda: stream(BaseTokenizer)),
-        "duckdb": guard(lambda: stream(DuckDBTokenizer)),
-    }
-
-
 def observe_extraction(script: str) -> Dict[str, Any]:
-    regex, facts = DuckDBRegexParser(), DuckDBFactsParser()
+    regex, facts = facts_parser("duckdb"), DuckDBFactsParser()
 
     def parsed(parser):
         result = parser.parse_sql(script, "main")
@@ -148,18 +131,6 @@ def observe_returning(sql: str) -> Any:
     return [count, sent]
 
 
-def config_digest() -> str:
-    """A digest of every compiled pattern the DuckDB parser configuration holds."""
-    items = []
-    for name, value in sorted(vars(DuckDBParserConfig()).items()):
-        group = list(value.values()) if isinstance(value, dict) else [value]
-        for part in group:
-            for item in part if isinstance(part, (list, tuple)) else [part]:
-                if hasattr(item, "pattern"):
-                    items.append([name, item.pattern, item.flags])
-    return hashlib.sha256(json.dumps(items, sort_keys=True).encode()).hexdigest()
-
-
 def _cases(section: str):
     return [pytest.param(name, case, id=name) for name, case in golden(section).items()]
 
@@ -174,16 +145,6 @@ def test_describe_unchanged(name, case):
     assert observe_masking(case["input"])[1] == case["output"][1]
 
 
-@pytest.mark.parametrize("name,case", _cases("tokens"))
-def test_comment_stripping_tokens_unchanged(name, case):
-    assert observe_tokens(case["input"]) == case["output"]
-
-
-@pytest.mark.parametrize("name,case", _cases("extraction"))
-def test_object_extraction_unchanged(name, case):
-    assert observe_extraction(case["input"]) == case["output"]
-
-
 @pytest.mark.parametrize("name,case", _cases("facts"))
 def test_facts_unchanged(name, case):
     assert observe_facts(case["input"]) == case["output"]
@@ -192,10 +153,6 @@ def test_facts_unchanged(name, case):
 @pytest.mark.parametrize("name,case", _cases("returning"))
 def test_returning_rewrite_decisions_unchanged(name, case):
     assert observe_returning(case["input"]) == case["output"]
-
-
-def test_parser_config_patterns_unchanged():
-    assert config_digest() == golden("config")["digest"]
 
 
 def test_the_former_leak_shapes_are_masked():
@@ -236,23 +193,10 @@ def test_the_facts_reader_does_not_read_the_spec():
         ]
 
 
-def test_extraction_comment_reading_is_not_re_pointed():
-    assert getattr(DuckDBRegexParser(), "lexical_spec", None) is None
-    assert DuckDBRegexParser.tokenizer_class is DuckDBTokenizer
-
-
 def test_masking_reads_the_duckdb_specification():
     module = pytest.importorskip("dblift.db.plugins.duckdb.parser.lexical_spec")
     assert module.DUCKDB_SPEC.redaction_reads_engine is True
     assert ProviderRegistry.get_quirks("duckdb").lexical_spec().redaction_reads_engine is True
-
-
-def test_strict_tokenizer_has_no_effect_for_duckdb():
-    parser = DuckDBFactsParser()
-    for script in ("SELECT @ # \\ ` ~ ^ % & | ? !;", "SELECT 1; SELECT $$a;b$$", "SELECT 'x"):
-        assert parser.split_statements(script, strict_tokenizer=True) == parser.split_statements(
-            script
-        )
 
 
 def test_placeholder_is_code_for_duckdb():

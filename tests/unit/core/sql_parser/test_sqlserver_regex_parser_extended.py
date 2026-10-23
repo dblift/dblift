@@ -2,12 +2,12 @@
 
 import unittest
 
-from dblift.db.plugins.sqlserver.parser.sqlserver_regex_parser import SqlServerRegexParser
+from tests.support.facts_parser import facts_parser
 
 
 class TestSplitStatements(unittest.TestCase):
     def setUp(self):
-        self.parser = SqlServerRegexParser()
+        self.parser = facts_parser("sqlserver")
 
     def test_empty_returns_empty(self):
         self.assertEqual(self.parser.split_statements(""), [])
@@ -59,7 +59,7 @@ class TestSplitStatements(unittest.TestCase):
 
 class TestSplitSqlServerWithGo(unittest.TestCase):
     def setUp(self):
-        self.parser = SqlServerRegexParser()
+        self.parser = facts_parser("sqlserver")
 
     def test_single_go_separator(self):
         sql = "SELECT 1\nGO\nSELECT 2"
@@ -98,7 +98,7 @@ class TestSplitSqlServerWithGo(unittest.TestCase):
 
 class TestSplitBatchIntelligently(unittest.TestCase):
     def setUp(self):
-        self.parser = SqlServerRegexParser()
+        self.parser = facts_parser("sqlserver")
 
     def test_empty_batch_returns_empty(self):
         stmts = self.parser.split_for_extraction("")
@@ -166,7 +166,7 @@ class TestSplitBatchIntelligently(unittest.TestCase):
 
 class TestSplitNonDdlStatements(unittest.TestCase):
     def setUp(self):
-        self.parser = SqlServerRegexParser()
+        self.parser = facts_parser("sqlserver")
 
     def test_empty_returns_empty(self):
         self.assertEqual(self.parser.split_for_extraction(""), [])
@@ -201,7 +201,7 @@ class TestSplitNonDdlStatements(unittest.TestCase):
 
 class TestParseSql(unittest.TestCase):
     def setUp(self):
-        self.parser = SqlServerRegexParser()
+        self.parser = facts_parser("sqlserver")
 
     def test_parse_simple_create_table(self):
         sql = "CREATE TABLE users (id INT PRIMARY KEY, name NVARCHAR(100));"
@@ -249,7 +249,7 @@ class TestParseSql(unittest.TestCase):
 
 class TestValidateSql(unittest.TestCase):
     def setUp(self):
-        self.parser = SqlServerRegexParser()
+        self.parser = facts_parser("sqlserver")
 
     def test_valid_sql(self):
         sql = "CREATE TABLE t (id INT PRIMARY KEY);"
@@ -291,13 +291,13 @@ class TestValidateSql(unittest.TestCase):
 
 class TestDialectName(unittest.TestCase):
     def test_dialect_name_is_sqlserver(self):
-        parser = SqlServerRegexParser()
+        parser = facts_parser("sqlserver")
         self.assertEqual(parser.dialect_name, "sqlserver")
 
 
 class TestIntegration(unittest.TestCase):
     def setUp(self):
-        self.parser = SqlServerRegexParser()
+        self.parser = facts_parser("sqlserver")
 
     def test_complete_script_with_go(self):
         sql = """

@@ -9,15 +9,12 @@ from dblift.core.migration.sql.script_analysis import analyse_script
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.migration.sql.sql_execution_service import SqlExecutionService
 from dblift.core.sql_model.base import SqlObjectType, SqlStatementType
-from dblift.core.sql_parser.hybrid_parser import HybridParser
 from dblift.core.sql_parser.parser_factory import SqlParserFactory
-from dblift.core.sql_parser.sqlglot_parser import SqlGlotParser
 from dblift.core.sql_parser.statement_facts import SqlglotStatementFactsReader
 from dblift.db.dml_analysis import analyze_dml, statement_dml_table
 from dblift.db.plugins.sqlite.parser.lexical_spec import SQLITE_SPEC
 from dblift.db.plugins.sqlite.quirks import SqliteQuirks
 from dblift.db.provider_registry import ProviderRegistry
-from tests.unit._migration_factory import make_migration
 
 _quirks = ProviderRegistry.get_quirks
 
@@ -44,22 +41,6 @@ def test_sql_analyzer_objects_come_from_facts():
 
 def test_sqlite_regex_extractor_module_is_removed():
     assert importlib.util.find_spec("dblift.db.plugins.sqlite.parser.sqlite_regex_parser") is None
-
-
-def test_sqlite_sqlglot_factory_type_remains_unsupported():
-    assert SqliteQuirks().parser_class("sqlglot") is None
-
-
-@pytest.mark.parametrize("parser_class", [HybridParser, SqlGlotParser])
-def test_direct_generic_parser_construction_rejects_sqlite(parser_class):
-    with pytest.raises(ValueError, match="StatementFactsParser"):
-        parser_class("sqlite")
-
-
-@pytest.mark.usefixtures("legacy_oracle")
-@pytest.mark.parametrize("parser_class", [HybridParser, SqlGlotParser])
-def test_direct_generic_parser_remains_available_for_unmigrated_dialect(parser_class):
-    assert parser_class("oracle").dialect_name == "oracle"
 
 
 def test_index_facts_separate_indexed_columns_from_declared_table_columns():

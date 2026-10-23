@@ -27,7 +27,6 @@ from dblift.db.plugins.snowflake.quirks import SnowflakeQuirks
 from dblift.db.provider_interfaces import DroppableObject
 from dblift.db.provider_registry import ProviderRegistry
 from dblift.db.sqlalchemy_provider import SqlAlchemyProvider
-from tests.support.legacy_snowflake_parsers import legacy_snowflake_hybrid
 
 
 def test_snowflake_extra_rejects_unqualified_sqlalchemy_21() -> None:
@@ -607,17 +606,6 @@ def test_snowflake_quoted_identifiers_keep_catalog_case() -> None:
     sql, params = provider.queries[-1]
     assert "UPPER(?)" not in sql
     assert params == ["MixedCase", "order"]
-
-
-def test_snowflake_sqlglot_parser_handles_ddl_for_lint_and_preflight() -> None:
-    result = legacy_snowflake_hybrid().parse_sql(
-        'CREATE TABLE "QA"."Orders" ("Amount" NUMBER(18,4))'
-    )
-
-    assert result.success
-    assert len(result.statements) == 1
-    assert result.statements[0].statement_type.value == "CREATE"
-    assert result.statements[0].objects
 
 
 def test_snowflake_facts_parser_handles_ddl_for_lint_and_preflight() -> None:

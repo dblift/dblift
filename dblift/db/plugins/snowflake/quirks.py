@@ -58,20 +58,10 @@ class SnowflakeQuirks(BaseQuirks):
         return bool(str(url or "").strip() or str(account or "").strip())
 
     def parser_class(self, parser_type: str) -> Optional[type]:
-        """Use Snowflake's sqlglot grammar for AST and current hybrid callers.
+        """The facts parser bound to Snowflake, whatever ``parser_type`` is asked."""
+        from dblift.db.plugins.snowflake.lexical_parser import SnowflakeLexicalParser
 
-        Migration splitting preserves Snowflake quoting and refuses unquoted
-        scripting blocks until their grammar is qualified.
-        """
-        if parser_type in {"hybrid", "sqlglot"}:
-            from dblift.core.sql_parser.sqlglot_parser import SqlGlotParser
-
-            return SqlGlotParser
-        if parser_type == "regex":
-            from dblift.db.plugins.snowflake.lexical_parser import SnowflakeLexicalParser
-
-            return SnowflakeLexicalParser
-        return None
+        return SnowflakeLexicalParser
 
     def lexical_spec(self) -> "LexicalSpec":
         """Rules shared by execution and SQL analysis."""

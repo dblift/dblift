@@ -10,11 +10,11 @@ import pytest
 
 from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.core.sql_model.base import SqlObjectType
+from dblift.core.sql_parser.common.comment_stripping import strip_comments_preserving_quotes
+from dblift.core.sql_parser.lexical_engine import LexicalEngine
 from dblift.core.sql_parser.parser_factory import SqlParserFactory
-from dblift.db.plugins.mysql.parser.mysql_regex_parser import MySqlRegexParser
-from dblift.db.plugins.postgresql.parser.postgresql_regex_parser import (
-    PostgreSqlRegexParser,
-)
+from dblift.db.provider_registry import ProviderRegistry
+from tests.support.facts_parser import facts_parser
 
 
 @pytest.mark.unit
@@ -149,8 +149,8 @@ class TestCommentStrippingIsQuoteAware:
     merges its correct result back in, masking a broken regex fallback."""
 
     def setup_method(self):
-        self.postgres = PostgreSqlRegexParser()
-        self.mysql = MySqlRegexParser()
+        self.postgres = facts_parser("postgresql")
+        self.mysql = facts_parser("mysql")
 
     def test_quoted_identifier_containing_double_dash(self):
         sql = 'ALTER TABLE "a--b" ADD COLUMN x INT;'
@@ -225,42 +225,43 @@ class TestCommentStrippingIsQuoteAware:
 
 @pytest.mark.unit
 class TestStripCommentsPreservingQuotesEscapes:
-    """Direct tests of ``_strip_comments_preserving_quotes``'s doubled-quote
+    """Direct tests of the dialect scanner's comment blanking: doubled-quote
     escape and bracket-quote branches. A comment marker must be present in
     each case, otherwise the early exit skips the scan (and these branches)
     entirely without needing to look at the quoting at all."""
 
     def setup_method(self):
-        self.postgres = PostgreSqlRegexParser()
-        self.mysql = MySqlRegexParser()
+        self.postgres = LexicalEngine(ProviderRegistry.get_quirks("postgresql").lexical_spec())
 
     def test_doubled_double_quote_escape(self):
         sql = 'ALTER TABLE "a""b" ADD COLUMN x INT; -- trailing'
-        stripped = self.postgres._strip_comments_preserving_quotes(sql)
+        stripped = self.postgres.blank_comments(sql).strip()
 
         assert stripped == 'ALTER TABLE "a""b" ADD COLUMN x INT;'
 
     def test_doubled_single_quote_escape(self):
         sql = "SELECT 'it''s fine' AS note; -- trailing"
-        stripped = self.postgres._strip_comments_preserving_quotes(sql)
+        stripped = self.postgres.blank_comments(sql).strip()
 
         assert stripped == "SELECT 'it''s fine' AS note;"
 
     def test_doubled_backtick_escape(self):
         sql = "ALTER TABLE `a``b` ADD COLUMN x INT; -- trailing"
-        stripped = self.mysql._strip_comments_preserving_quotes(sql)
+        stripped = strip_comments_preserving_quotes(
+            sql, line_prefixes=["--"], has_block_comments=True, nested_block_comments=False
+        )
 
         assert stripped == "ALTER TABLE `a``b` ADD COLUMN x INT;"
 
     def test_bracket_quoted_span(self):
         sql = "DROP TABLE IF EXISTS [x].[orders]; -- trailing comment"
-        stripped = self.postgres._strip_comments_preserving_quotes(sql)
+        stripped = self.postgres.blank_comments(sql).strip()
 
         assert stripped == "DROP TABLE IF EXISTS [x].[orders];"
 
     def test_doubled_bracket_escape(self):
         sql = "ALTER TABLE [a]]b] ADD COLUMN x INT; -- trailing"
-        stripped = self.postgres._strip_comments_preserving_quotes(sql)
+        stripped = self.postgres.blank_comments(sql).strip()
 
         assert stripped == "ALTER TABLE [a]]b] ADD COLUMN x INT;"
 
@@ -268,6 +269,6 @@ class TestStripCommentsPreservingQuotesEscapes:
         # "$" alone (not "$$" or "$tag$") must not start dollar-quote
         # tracking; it is ordinary text, e.g. a price symbol.
         sql = "SELECT price $ 2 AS x; -- trailing"
-        stripped = self.postgres._strip_comments_preserving_quotes(sql)
+        stripped = self.postgres.blank_comments(sql).strip()
 
         assert stripped == "SELECT price $ 2 AS x;"

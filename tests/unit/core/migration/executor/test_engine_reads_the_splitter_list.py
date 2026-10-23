@@ -89,8 +89,7 @@ def test_execute_statement_filters_nothing():
 ANALYSIS_LOOPS = [
     ("core/migration/sql/script_analysis.py", {"_analyse"}),
     ("core/migration/sql/lint_rules.py", {"_mixed_transaction_modes", "issues_and_created_tables"}),
-    ("core/sql_parser/unified_regex_parser.py", {"parse_sql"}),
-    ("core/sql_parser/hybrid_parser.py", {"parse_sql"}),
+    ("core/sql_parser/statement_facts_parser.py", {"parse_sql"}),
 ]
 
 

@@ -317,7 +317,7 @@ class TestPostgresMetaCommand:
         sql = "\\i other.sql\nSELECT 1;\n"
 
         with pytest.raises(UnsupportedMetaCommandError, match=r"\\i"):
-            StatementSplitter("postgresql").split_statements(sql, strict_tokenizer=True)
+            StatementSplitter("postgresql").split_statements(sql)
 
     def test_unsupported_meta_command_is_refused_through_sql_analyzer(self):
         """Same refusal, exercised through ``SqlAnalyzer`` — the entry point

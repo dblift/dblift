@@ -1,10 +1,8 @@
 """Tests for PostgreSQL SQL parser."""
 
-from unittest.mock import MagicMock, patch
-
 import pytest
 
-from dblift.db.plugins.postgresql.parser.postgresql_regex_parser import PostgreSqlRegexParser
+from tests.support.facts_parser import facts_parser
 
 
 @pytest.mark.unit
@@ -13,13 +11,13 @@ class TestPostgreSqlParser:
 
     def test_parser_creation(self):
         """Test parser can be created."""
-        parser = PostgreSqlRegexParser()
+        parser = facts_parser("postgresql")
         assert parser is not None
         assert parser._dialect == "postgresql"
 
     def test_parse_sql_simple(self):
         """Test parsing simple SQL."""
-        parser = PostgreSqlRegexParser()
+        parser = facts_parser("postgresql")
         sql = "CREATE TABLE test (id SERIAL PRIMARY KEY);"
 
         result = parser.parse_sql(sql)
@@ -30,7 +28,7 @@ class TestPostgreSqlParser:
 
     def test_parse_sql_multiple_statements(self):
         """Test parsing multiple SQL statements."""
-        parser = PostgreSqlRegexParser()
+        parser = facts_parser("postgresql")
         sql = """
         CREATE TABLE test1 (id SERIAL PRIMARY KEY);
         CREATE TABLE test2 (id SERIAL PRIMARY KEY);
@@ -44,7 +42,7 @@ class TestPostgreSqlParser:
 
     def test_parse_sql_postgresql_specific(self):
         """Test parsing PostgreSQL-specific syntax."""
-        parser = PostgreSqlRegexParser()
+        parser = facts_parser("postgresql")
         sql = """
         CREATE TABLE test (
             id SERIAL PRIMARY KEY,
@@ -61,7 +59,7 @@ class TestPostgreSqlParser:
 
     def test_parse_sql_plpgsql_function(self):
         """Test parsing PL/pgSQL function."""
-        parser = PostgreSqlRegexParser()
+        parser = facts_parser("postgresql")
         sql = """
         CREATE OR REPLACE FUNCTION test_func()
         RETURNS INTEGER AS $$
@@ -78,7 +76,7 @@ class TestPostgreSqlParser:
 
     def test_parse_sql_trigger(self):
         """Test parsing PostgreSQL trigger."""
-        parser = PostgreSqlRegexParser()
+        parser = facts_parser("postgresql")
         sql = """
         CREATE OR REPLACE FUNCTION test_trigger_func()
         RETURNS TRIGGER AS $$
@@ -101,7 +99,7 @@ class TestPostgreSqlParser:
 
     def test_parse_sql_with_arrays(self):
         """Test parsing PostgreSQL arrays."""
-        parser = PostgreSqlRegexParser()
+        parser = facts_parser("postgresql")
         sql = """
         CREATE TABLE test (
             tags TEXT[],
@@ -117,7 +115,7 @@ class TestPostgreSqlParser:
 
     def test_parse_sql_with_json(self):
         """Test parsing PostgreSQL JSON operations."""
-        parser = PostgreSqlRegexParser()
+        parser = facts_parser("postgresql")
         sql = """
         CREATE TABLE test (data JSONB);
         INSERT INTO test VALUES ('{"key": "value"}');
@@ -131,7 +129,7 @@ class TestPostgreSqlParser:
 
     def test_parse_sql_with_extensions(self):
         """Test parsing PostgreSQL extensions."""
-        parser = PostgreSqlRegexParser()
+        parser = facts_parser("postgresql")
         sql = """
         CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
         CREATE TABLE test (id UUID DEFAULT uuid_generate_v4());
@@ -144,7 +142,7 @@ class TestPostgreSqlParser:
 
     def test_parse_sql_with_comments(self):
         """Test parsing SQL with comments."""
-        parser = PostgreSqlRegexParser()
+        parser = facts_parser("postgresql")
         sql = """
         -- This is a comment
         CREATE TABLE test (id SERIAL PRIMARY KEY);
@@ -158,20 +156,9 @@ class TestPostgreSqlParser:
         assert result is not None
         assert result.success is True
 
-    def test_parse_sql_with_placeholders(self):
-        """Test parsing SQL with placeholders."""
-        parser = PostgreSqlRegexParser()
-        sql = "CREATE TABLE ${table_name} (id SERIAL PRIMARY KEY);"
-        placeholders = {"table_name": "test_table"}
-
-        result = parser.parse_sql(sql, placeholders=placeholders)
-
-        assert result is not None
-        assert result.success is True
-
     def test_parse_sql_empty(self):
         """Test parsing empty SQL."""
-        parser = PostgreSqlRegexParser()
+        parser = facts_parser("postgresql")
 
         result = parser.parse_sql("")
 
@@ -181,7 +168,7 @@ class TestPostgreSqlParser:
 
     def test_split_statements_postgresql_specific(self):
         """Test statement splitting with PostgreSQL-specific syntax."""
-        parser = PostgreSqlRegexParser()
+        parser = facts_parser("postgresql")
         sql = """
         CREATE TABLE test (id SERIAL PRIMARY KEY);
         INSERT INTO test VALUES (DEFAULT);
@@ -194,7 +181,7 @@ class TestPostgreSqlParser:
 
     def test_parse_sql_with_dollar_quoting(self):
         """Test parsing PostgreSQL dollar-quoted strings."""
-        parser = PostgreSqlRegexParser()
+        parser = facts_parser("postgresql")
         sql = """
         CREATE OR REPLACE FUNCTION test_func()
         RETURNS TEXT AS $function$
@@ -211,7 +198,7 @@ class TestPostgreSqlParser:
 
     def test_parse_sql_with_cte(self):
         """Test parsing PostgreSQL Common Table Expressions."""
-        parser = PostgreSqlRegexParser()
+        parser = facts_parser("postgresql")
         sql = """
         WITH recursive_cte AS (
             SELECT 1 as n
@@ -228,7 +215,7 @@ class TestPostgreSqlParser:
 
     def test_postgresql_parser_inheritance(self):
         """Test that PostgreSQL parser inherits from base parser correctly."""
-        parser = PostgreSqlRegexParser()
+        parser = facts_parser("postgresql")
 
         # Should have methods from base parser
         assert hasattr(parser, "parse_sql")
@@ -236,7 +223,7 @@ class TestPostgreSqlParser:
 
     def test_parser_configuration(self):
         """Test parser configuration and setup."""
-        parser = PostgreSqlRegexParser()
+        parser = facts_parser("postgresql")
 
         # Verify dialect is set correctly
         assert parser._dialect == "postgresql"

@@ -6,7 +6,6 @@ import pytest
 
 from dblift.core.exceptions import ParserError
 from dblift.core.sql_parser import SqlParserFactory
-from dblift.core.sql_parser.hybrid_parser import HybridParser
 from dblift.core.sql_parser.parser_factory import SqlParserFactory
 
 #: (dialect, a refused script without objects, the refusal message, a refused script with a table)

@@ -11,8 +11,8 @@ from pathlib import Path
 
 import pytest
 
-from dblift.db.plugins.postgresql.parser.postgresql_regex_parser import PostgreSqlRegexParser
 from dblift.db.plugins.postgresql.provider import _split_copy_from_stdin
+from tests.support.facts_parser import facts_parser
 from tests.support.splitter_spec.spec_tables import ConformanceRow, load_conformance_rows
 from tests.support.splitter_spec.splitting import SplitOutcome, split_script
 
@@ -40,7 +40,7 @@ def test_copy_header_conformance_row_excludes_comment_from_data() -> None:
     row = next(row for row in ROWS if row.row_id == "11b")
     statement = split_script("postgresql", row.script).statements[0]
     assert _split_copy_from_stdin(statement) == ("COPY t (a) FROM STDIN", "1\n\n")
-    records = PostgreSqlRegexParser().split(row.script)
+    records = facts_parser("postgresql").split(row.script)
     assert records[0].analysis_statements == ("COPY t (a) FROM STDIN",)
     assert records[0].text == statement
     assert records[0].source_start == 0
@@ -70,7 +70,7 @@ def test_spec_row(row: ConformanceRow, request: pytest.FixtureRequest) -> None:
 
 def test_begin_atomic_identifiers_do_not_open_a_routine_body() -> None:
     script = "CREATE TABLE t(begin int); SELECT begin atomic FROM t; SELECT 2;"
-    assert PostgreSqlRegexParser().split_for_analysis(script) == [
+    assert facts_parser("postgresql").split_for_analysis(script) == [
         "CREATE TABLE t(begin int)",
         "SELECT begin atomic FROM t",
         "SELECT 2",

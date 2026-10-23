@@ -13,9 +13,9 @@ from dblift.core.sql_parser.lexical_tokenizer import LexicalTokenizer
 from dblift.core.sql_parser.parser_factory import SqlParserFactory
 from dblift.core.sql_parser.tokens import TokenType
 from dblift.db.plugins.postgresql.parser.lexical_spec import POSTGRESQL_SPEC
-from dblift.db.plugins.postgresql.parser.postgresql_regex_parser import PostgreSqlRegexParser
 from dblift.db.plugins.redshift.parser.lexical_spec import REDSHIFT_SPEC
 from dblift.db.provider_registry import ProviderRegistry
+from tests.support.facts_parser import facts_parser
 
 
 @pytest.mark.parametrize(
@@ -102,7 +102,7 @@ def test_comment_masking_keeps_quoted_comment_markers():
 @pytest.mark.parametrize("strict", [False, True])
 def test_refusal_cannot_be_softened_at_legacy_entry_point(strict):
     with pytest.raises(UnsafeStatementSplitError, match="line 1, column 8"):
-        PostgreSqlRegexParser().split("SELECT $$open", strict_tokenizer=strict)
+        facts_parser("postgresql").split("SELECT $$open")
 
 
 @pytest.mark.parametrize(
@@ -130,7 +130,7 @@ def test_source_slicing_cost_is_bounded_for_repeated_units(unit):
 
 def test_extraction_does_not_lose_sql_after_a_comment_marker_in_an_escape_string():
     script = "SELECT E'a\\'--b'; DROP TABLE visible;"
-    objects = PostgreSqlRegexParser().extract_objects(script)
+    objects = facts_parser("postgresql").extract_objects(script)
     assert [obj.name for obj in objects] == ["visible"]
 
 

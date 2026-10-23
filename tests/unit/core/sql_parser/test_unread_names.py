@@ -13,7 +13,6 @@ from dblift.core.sql_parser.parser_factory import SqlParserFactory
 from dblift.core.sql_parser.unread_names import names_unreadable, statement_sources
 from dblift.db.dml_analysis import analyze_dml, statement_dml_table
 from dblift.db.provider_registry import ProviderRegistry
-from tests.support.legacy_snowflake_parsers import legacy_snowflake_sqlglot
 
 _quirks = ProviderRegistry.get_quirks
 
@@ -137,56 +136,6 @@ def test_dml_analysis_names_no_table_for_an_unreadable_statement(dialect):
 )
 def test_a_quoted_identifier_is_not_a_name_cut_short(dialect, sql):
     assert not names_unreadable(sql, dialect, ["t"])
-
-
-@pytest.mark.usefixtures("legacy_oracle")
-def test_the_analyzer_checks_the_names_it_extracted():
-    assert SqlAnalyzer("oracle").extract_objects(f"CREATE TABLE t{ZWJ}(id INT)") == []
-
-
-@pytest.mark.usefixtures("legacy_oracle")
-def test_the_schema_part_of_a_name_is_checked_too():
-    from dblift.core.sql_model.base import SqlObject, SqlObjectType
-    from dblift.core.sql_parser.parser_factory import SqlParserFactory
-
-    source = "CREATE TABLE sch\u00e9.t (id INT)"
-    cut = SqlObject(name="t", schema="sch", object_type=SqlObjectType.TABLE)
-    whole = SqlObject(name="t", schema="sch\u00e9", object_type=SqlObjectType.TABLE)
-    parser = SqlParserFactory("oracle").get_parser()
-    assert parser._names_unreadable(source, [cut])
-    assert not parser._names_unreadable(source, [whole])
-    assert names_unreadable(source, "tsql", [cut.name, cut.schema])
-    assert not names_unreadable(source, "tsql", [whole.name, whole.schema])
-    assert [
-        (obj.name, obj.schema) for obj in SqlParserFactory("sqlserver").extract_objects(source)
-    ] == [("t", "sché")]
-    sqlglot_parser = legacy_snowflake_sqlglot()
-    assert sqlglot_parser._names_unreadable(source, [cut])
-    assert not sqlglot_parser._names_unreadable(source, [whole])
-
-
-@pytest.mark.usefixtures("legacy_oracle")
-@pytest.mark.parametrize("dialect", ("oracle", "sqlserver", "snowflake"))
-def test_a_statement_that_cannot_be_located_in_its_script_is_withheld(dialect):
-    parser = (
-        legacy_snowflake_sqlglot()
-        if dialect == "snowflake"
-        else SqlParserFactory(dialect).get_parser()
-    )
-    if dialect == "sqlserver":
-        scanner = SqlParserFactory(dialect, "regex").get_parser()
-        assert statement_sources(scanner, "caf\u00e9; SELECT 1;", ["SELECT 2"]) == [None]
-        assert parser.extract_objects("CREATE TABLE ghost(id INT);\nGO 0") == []
-    else:
-        assert parser._names_unreadable(None, [])
-    scanner = SqlParserFactory("postgresql", "regex").get_parser()
-    script = "caf\u00e9; SELECT 1;"
-    assert statement_sources(scanner, script, ["SELECT 2"]) == [None]
-    assert statement_sources(scanner, script, ["SELECT 1"]) == ["SELECT 1;"]
-    assert statement_sources(scanner, "SELECT 1", ["SELECT 2"]) == ["SELECT 2"]
-    assert statement_sources(scanner, "-- SELECT 1\nSELECT 1\u00a0;", ["SELECT 1\xa0"]) == [
-        "SELECT 1\u00a0;"
-    ]
 
 
 @pytest.mark.parametrize("dialect", LEGACY + ("oracle",))

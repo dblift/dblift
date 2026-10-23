@@ -73,10 +73,10 @@ class DuckDBQuirks(BaseQuirks):
         super().__init__(dialect_name=dialect_name)
 
     def parser_class(self, parser_type: str) -> Optional[type]:
-        """Use scanner-backed facts for each supported analysis mode."""
+        """The facts parser bound to DuckDB, whatever ``parser_type`` is asked."""
         from dblift.db.plugins.duckdb.parser.duckdb_facts_parser import DuckDBFactsParser
 
-        return DuckDBFactsParser if parser_type in ("regex", "hybrid", "sqlglot") else None
+        return DuckDBFactsParser
 
     def type_equivalents(self) -> "dict[str, str]":
         """DuckDB alias → canonical type map."""

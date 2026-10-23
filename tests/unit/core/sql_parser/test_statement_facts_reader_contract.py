@@ -4,7 +4,6 @@ import pytest
 
 from dblift.core.sql_parser.statement_facts import SqlglotStatementFactsReader, StatementFacts
 from dblift.db.base_quirks import BaseQuirks
-from dblift.db.plugins.db2.parser.db2_regex_parser import DB2RegexParser
 from dblift.db.plugins.db2.parser.statement_facts import Db2FactsParser
 from dblift.db.plugins.db2.quirks import Db2Quirks
 from dblift.db.plugins.duckdb.quirks import DuckDBQuirks
@@ -57,13 +56,6 @@ def test_plugin_without_reader_refuses_facts():
     assert not quirks.supports_statement_facts
     with pytest.raises(NotImplementedError, match="no statement facts reader"):
         quirks.statement_facts("DROP TABLE t")
-
-
-def test_db2_parser_routes():
-    quirks = Db2Quirks()
-    assert quirks.parser_class("regex") is DB2RegexParser
-    assert quirks.parser_class("hybrid") is Db2FactsParser
-    assert quirks.parser_class("sqlglot") is None
 
 
 def _no_argument_reader_quirks():

@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 
 __all__ = ["SqlParserFactory", "Statement", "StatementKind"]
 
-# sqlglot logs a warning, quoting the statement, for each one it falls back on. A client with no
+# sqlglot logs a warning, quoting the statement, for each one it cannot parse. A client with no
 # logging configured must stay silent: without any handler Python prints those records to stderr.
 logging.getLogger("sqlglot").addHandler(logging.NullHandler())
 

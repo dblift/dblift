@@ -5,13 +5,12 @@ from __future__ import annotations
 import pytest
 
 from dblift.core.exceptions import UnsafeStatementSplitError
-from dblift.db.plugins.mariadb.regex_parser import MariaDbRegexParser
 from dblift.db.plugins.mysql.parser.lexical_spec import MYSQL_RULES
-from dblift.db.plugins.mysql.parser.mysql_regex_parser import MySqlRegexParser
+from tests.support.facts_parser import facts_factory
 
 
 def _split(script: str, *, mariadb: bool = False):  # type: ignore[no-untyped-def]
-    return (MariaDbRegexParser if mariadb else MySqlRegexParser)().split(script)
+    return (facts_factory("mariadb") if mariadb else facts_factory("mysql"))().split(script)
 
 
 def sql(script: str, *, mariadb: bool = False) -> list[str]:
@@ -169,9 +168,6 @@ def test_a_nul_byte_is_refused() -> None:
         _split("SELECT 1;\nSELECT 2\x00;")
 
 
-# --------------------------------------------------------------------------- comments and strings
-
-
 @pytest.mark.parametrize(
     "script,expected",
     [
@@ -281,9 +277,6 @@ def test_an_unterminated_lexeme_is_refused_with_its_position(script: str, messag
 )
 def test_strings_and_identifiers_as_the_client_reads_them(script: str, expected: list[str]) -> None:
     assert sql(script) == expected
-
-
-# --------------------------------------------------------------------------- stored programs
 
 
 PROGRAMS = [

@@ -1,22 +1,12 @@
 """SQL parser factory module."""
 
-import logging
 from typing import Any, Dict, List, Optional
 
-from dblift.core.exceptions import ParserNotAvailableError, UnsupportedDialectError
+from dblift.core.exceptions import UnsupportedDialectError
 from dblift.core.sql_model.base import ParseResult, SqlObject, SqlStatement
 from dblift.core.sql_parser._deprecation import internal_parser_construction, warn_direct_parser
 from dblift.core.sql_parser.parser_interface import SqlParserInterface
-
-# Setup logger
-logger = logging.getLogger(__name__)
-
-
-# Modules defining the parsers whose constructors refuse a plugin with a facts reader.
-_FACTS_REFUSING_MODULES = (
-    "dblift.core.sql_parser.hybrid_parser",
-    "dblift.core.sql_parser.sqlglot_parser",
-)
+from dblift.core.sql_parser.statement_facts_parser import StatementFactsParser
 
 
 class SqlParserFactory:
@@ -25,23 +15,16 @@ class SqlParserFactory:
     This factory creates parsers for different SQL dialects, managing shared resources
     and caching parser instances.
 
-    Parser Types:
-    - 'regex': Dialect scanner with lightweight statement analysis
-    - 'hybrid': Dialect scanner with SQLGlot analysis of selected statements
-    - 'sqlglot': Dialect scanner with SQLGlot AST parsing of selected statements
+    Every SQL dialect is served the same parser: its lexical spec splits, its statement facts
+    read. ``parser_type`` is accepted and ignored.
     """
-
-    # Parser classes are owned by the plugin via
-    # ``DialectQuirks.parser_class(parser_type)``. The three legacy
-    # ``*_PARSER_MAP`` dicts are gone — adding a new dialect = drop a
-    # plugin folder and override ``parser_class`` in its quirks.py.
 
     def __init__(self, dialect: str, parser_type: Optional[str] = None):
         """Initialize parser factory.
 
         Args:
             dialect: SQL dialect (oracle, mysql, postgresql, sqlserver, db2)
-            parser_type: Deprecated. Parser type ('regex', 'hybrid', 'sqlglot'); default 'hybrid'
+            parser_type: Deprecated and ignored
         """
         warn_direct_parser("parser_type" if parser_type is not None else "SqlParserFactory")
         self.dialect = dialect.lower()
@@ -61,12 +44,8 @@ class SqlParserFactory:
                 return ParseResult(success=False, statements=[], errors=["No parser available"])
         return self._current_parser.parse_sql(sql_content, default_schema)
 
-    def split_statements(
-        self, sql_content: str, strict_tokenizer: Optional[bool] = None
-    ) -> List[str]:
+    def split_statements(self, sql_content: str) -> List[str]:
         """Split SQL content into individual statements using the dialect parser."""
-        if strict_tokenizer is not None:
-            warn_direct_parser("strict_tokenizer")
         if self._current_parser is None:
             self._current_parser = self._create_parser()
             if self._current_parser is None:
@@ -196,40 +175,21 @@ class SqlParserFactory:
     @staticmethod
     @internal_parser_construction()
     def _resolve_parser(dialect: str, parser_type: str) -> SqlParserInterface:
-        """Resolve and instantiate a parser via the plugin's quirks.
+        """The facts parser of *dialect*; ``parser_type`` no longer selects anything.
 
-        Parser classes are owned by the plugin via this hook, not via
-        static ``PARSER_MAP`` / ``REGEX_PARSER_MAP`` / ``SQLGLOT_PARSER_MAP``
-        dicts. Adding a dialect = override ``parser_class`` in its plugin
-        quirks.py.
+        A plugin may name a facts-parser subclass through ``quirks.parser_class``; otherwise the
+        parser is built from its facts reader and lexical spec. A dialect that reads no statement
+        facts has no parser.
         """
         from dblift.db.provider_registry import ProviderRegistry
 
         quirks = ProviderRegistry.get_quirks((dialect or "").lower())
-        try:
-            cls = quirks.parser_class(parser_type)
-        except Exception as exc:
-            logger.error(f"Failed to load {parser_type} parser for {dialect}: {exc}")
-            raise ParserNotAvailableError(
-                f"No {parser_type} parser available for dialect {dialect}"
-            ) from exc
-        if quirks.supports_statement_facts and parser_type in ("hybrid", "regex"):
-            from dblift.core.sql_parser.statement_facts_parser import StatementFactsParser
-
-            # The hybrid and sqlglot parsers (and their subclasses) refuse a plugin
-            # that reads statement facts; with no parser class of its own, its
-            # reader is the parser.
-            if cls is None or any(
-                base.__module__ in _FACTS_REFUSING_MODULES for base in cls.__mro__
-            ):
-                return StatementFactsParser(quirks)
-        if cls is None:
+        if not quirks.supports_statement_facts:
             raise UnsupportedDialectError(f"Unsupported dialect: {dialect}")
-        # ``HybridParser`` and ``SqlGlotParser`` require a dialect arg;
-        # other parsers (regex parsers) take no args.
-        if cls.__name__ in ("SqlGlotParser", "HybridParser"):
-            return cls(dialect=(dialect or "").lower())  # type: ignore[no-any-return]
-        return cls()  # type: ignore[no-any-return]
+        cls = quirks.parser_class(parser_type)
+        if cls is not None and issubclass(cls, StatementFactsParser):
+            return cls()  # type: ignore[call-arg, no-any-return]
+        return StatementFactsParser(quirks)
 
     def _create_parser(self) -> SqlParserInterface:
         return self._resolve_parser(self.dialect, self.parser_type)

@@ -9,7 +9,7 @@ from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.sql_parser.lexical_engine import LexicalEngine
 from dblift.core.sql_parser.statement import Statement
 from dblift.db.plugins.sqlserver.parser.lexical_spec import SQLSERVER_SPEC
-from dblift.db.plugins.sqlserver.parser.sqlserver_regex_parser import SqlServerRegexParser
+from tests.support.facts_parser import facts_parser
 
 Batch = namedtuple("Batch", "text line repeat terminated")
 
@@ -139,7 +139,7 @@ def test_a_command_looking_word_in_the_middle_of_a_line_is_text():
 
 
 def test_split_returns_statement_records_with_the_terminator_that_ended_them():
-    records = SqlServerRegexParser().split("SELECT 1\nGO\nSELECT 2")
+    records = facts_parser("sqlserver").split("SELECT 1\nGO\nSELECT 2")
     assert records == [
         Statement(text="SELECT 1", line=1, terminator="GO"),
         Statement(text="SELECT 2", line=3, terminator=None),
@@ -147,7 +147,7 @@ def test_split_returns_statement_records_with_the_terminator_that_ended_them():
 
 
 def test_split_statements_is_the_projection_execution_receives():
-    parser = SqlServerRegexParser()
+    parser = facts_parser("sqlserver")
     assert parser.split_statements(
         "CREATE TABLE a (x INT);\nINSERT INTO a VALUES (1);\nGO\nSELECT 1;"
     ) == [

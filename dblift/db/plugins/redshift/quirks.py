@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from dblift.core.sql_parser.statement_facts import SqlglotStatementFactsReader
 from dblift.db.plugins.postgresql.quirks import PostgresqlQuirks
@@ -43,14 +43,6 @@ class RedshiftQuirks(PostgresqlQuirks):
         from dblift.db.plugins.redshift.parser.lexical_spec import REDSHIFT_SPEC
 
         return REDSHIFT_SPEC
-
-    def parser_class(self, parser_type: str) -> Optional[type]:
-        """The ``regex`` type splits with the Redshift specification (see ``lexical_spec``)."""
-        if parser_type == "regex":
-            from dblift.db.plugins.redshift.parser.redshift_regex_parser import RedshiftRegexParser
-
-            return RedshiftRegexParser
-        return super().parser_class(parser_type)
 
     def build_snapshot_table_ddl(
         self,

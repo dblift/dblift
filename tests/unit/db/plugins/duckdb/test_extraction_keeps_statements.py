@@ -7,9 +7,9 @@ import pytest
 from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.sql_parser.statement import Statement
-from dblift.db.plugins.duckdb.parser.duckdb_regex_parser import DuckDBRegexParser
+from tests.support.facts_parser import facts_parser
 
-PARSER = DuckDBRegexParser()
+PARSER = facts_parser("duckdb")
 
 
 def test_the_parser_is_authoritative_and_returns_statement_records() -> None:

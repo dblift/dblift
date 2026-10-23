@@ -11,7 +11,7 @@ These tests focus on challenging the parser with complex scenarios:
 
 import pytest
 
-from dblift.db.plugins.oracle.parser.oracle_parser import OracleParser
+from tests.support.facts_parser import facts_parser
 
 
 @pytest.mark.unit
@@ -24,7 +24,7 @@ class TestOracleParserEdgeCases:
         This is the bug found in Oracle introspection tests where CREATE TABLE + multiple
         CREATE INDEX statements were grouped together instead of being split.
         """
-        parser = OracleParser()
+        parser = facts_parser("oracle")
 
         sql = """
         CREATE TABLE products (
@@ -58,7 +58,7 @@ class TestOracleParserEdgeCases:
 
     def test_semicolons_in_string_literals(self):
         """Test that semicolons inside string literals don't split statements."""
-        parser = OracleParser()
+        parser = facts_parser("oracle")
 
         sql = """
         INSERT INTO messages VALUES (1, 'This has a semicolon; in the string');
@@ -73,7 +73,7 @@ class TestOracleParserEdgeCases:
 
     def test_semicolons_in_comments(self):
         """Test that semicolons in comments don't split statements."""
-        parser = OracleParser()
+        parser = facts_parser("oracle")
 
         sql = """
         -- This is a comment; with semicolons;
@@ -94,7 +94,7 @@ class TestOracleParserEdgeCases:
 
     def test_q_quote_literals(self):
         """Test Oracle Q-quote alternative quote delimiters."""
-        parser = OracleParser()
+        parser = facts_parser("oracle")
 
         sql = """
         INSERT INTO messages VALUES (1, Q'[This has 'quotes' and semicolons; no problem]');
@@ -113,7 +113,7 @@ class TestOracleParserEdgeCases:
 
     def test_slash_delimiter_with_regular_sql(self):
         """Test that slash delimiter only terminates PL/SQL, not regular SQL."""
-        parser = OracleParser()
+        parser = facts_parser("oracle")
 
         sql = """
         CREATE TABLE table1 (id NUMBER);
@@ -144,7 +144,7 @@ class TestOracleParserEdgeCases:
 
     def test_nested_begin_end_blocks(self):
         """Test nested BEGIN/END blocks are handled correctly."""
-        parser = OracleParser()
+        parser = facts_parser("oracle")
 
         sql = """
         CREATE OR REPLACE PROCEDURE nested_test AS
@@ -180,7 +180,7 @@ class TestOracleParserEdgeCases:
 
     def test_case_expression_with_end_keyword(self):
         """Test that END in CASE expressions doesn't break block parsing."""
-        parser = OracleParser()
+        parser = facts_parser("oracle")
 
         sql = """
         CREATE OR REPLACE PROCEDURE test_case AS
@@ -208,7 +208,7 @@ class TestOracleParserEdgeCases:
 
     def test_string_with_escaped_quotes(self):
         """Test strings with escaped quotes (doubled single quotes)."""
-        parser = OracleParser()
+        parser = facts_parser("oracle")
 
         sql = """
         INSERT INTO test VALUES (1, 'This is O''Reilly''s book');
@@ -226,7 +226,7 @@ class TestOracleParserEdgeCases:
 
     def test_multiline_string_literals(self):
         """Test multiline string literals."""
-        parser = OracleParser()
+        parser = facts_parser("oracle")
 
         sql = """
         INSERT INTO test VALUES (1, 'This is
@@ -241,7 +241,7 @@ class TestOracleParserEdgeCases:
 
     def test_mixed_slash_and_semicolon(self):
         """Test file with mix of slash and semicolon delimiters."""
-        parser = OracleParser()
+        parser = facts_parser("oracle")
 
         sql = """
         CREATE TABLE t1 (id NUMBER);
@@ -281,7 +281,7 @@ class TestOracleParserEdgeCases:
 
     def test_function_based_index(self):
         """Test function-based index with expressions."""
-        parser = OracleParser()
+        parser = facts_parser("oracle")
 
         sql = """
         CREATE TABLE orders (
@@ -302,7 +302,7 @@ class TestOracleParserEdgeCases:
 
     def test_complex_plsql_with_cursors(self):
         """Test PL/SQL with cursor declarations and loops."""
-        parser = OracleParser()
+        parser = facts_parser("oracle")
 
         sql = """
         CREATE OR REPLACE PROCEDURE process_data AS
@@ -337,7 +337,7 @@ class TestOracleParserEdgeCases:
 
     def test_exception_handling(self):
         """Test exception handling blocks."""
-        parser = OracleParser()
+        parser = facts_parser("oracle")
 
         sql = """
         CREATE OR REPLACE PROCEDURE safe_op AS
@@ -369,7 +369,7 @@ class TestOracleParserEdgeCases:
 
     def test_package_spec_and_body(self):
         """Test package specification and body are separate."""
-        parser = OracleParser()
+        parser = facts_parser("oracle")
 
         sql = """
         CREATE OR REPLACE PACKAGE test_pkg AS
@@ -402,7 +402,7 @@ class TestOracleParserEdgeCases:
 
     def test_comments_everywhere(self):
         """Test comments in various locations."""
-        parser = OracleParser()
+        parser = facts_parser("oracle")
 
         sql = """
         -- Leading comment
@@ -439,7 +439,7 @@ class TestOracleParserEdgeCases:
 
     def test_empty_statements_filtered(self):
         """Test that empty statements and whitespace are filtered out."""
-        parser = OracleParser()
+        parser = facts_parser("oracle")
 
         sql = """
 
@@ -470,7 +470,7 @@ class TestOracleParserEdgeCases:
 
     def test_trigger_with_when_clause(self):
         """Test trigger with WHEN clause."""
-        parser = OracleParser()
+        parser = facts_parser("oracle")
 
         sql = """
         CREATE OR REPLACE TRIGGER trg_test
@@ -500,7 +500,7 @@ class TestOracleParserEdgeCases:
         the safety check was counting total keywords instead of keywords checked,
         causing incorrect statement splitting for complex FOR loops.
         """
-        parser = OracleParser()
+        parser = facts_parser("oracle")
 
         sql = """
         CREATE OR REPLACE PROCEDURE process_data AS
@@ -541,7 +541,7 @@ class TestOracleParserEdgeCases:
         This ensures the fix handles multiple FOR...LOOP constructs
         with many keywords correctly.
         """
-        parser = OracleParser()
+        parser = facts_parser("oracle")
 
         sql = """
         CREATE OR REPLACE PROCEDURE nested_loop_test AS
