@@ -335,6 +335,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `docs/sql-parsing/oracle.md` section 13.
 ### Fixed
 
+- **`info` now lists a failed undo.** After an undo script failed, `dblift info` (console, `--format json`, the Python API and the MCP `info` tool) showed a clean schema while `validate`, `migrate` and `undo` refused to run because of the failed history row. The failed undo now appears as an `Undo` row in the `Failed` state and is counted in the summary's failed total. Completed undos are still not listed.
 - **An Oracle procedure, function, package, trigger, type or `FORCE` view that is still INVALID at the end of
   its migration now fails the migration.** Oracle reports a `CREATE [OR REPLACE]` or `ALTER ... COMPILE` with
   compile errors as a success (ORA-24344) and leaves the object INVALID, so `migrate` used to exit 0 with a
