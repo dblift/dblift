@@ -186,9 +186,18 @@ class StatementReader:
             # A data-modifying CTE (RETURNING) can feed an outer INSERT/UPDATE/
             # DELETE, which doesn't return rows even though the statement
             # starts with WITH.
-            outer_type = cte_outer_statement_type(
-                original_sql, sqlglot_dialect=get_sqlglot_dialect(self.dialect)
-            )
+            try:
+                outer_type = cte_outer_statement_type(
+                    original_sql, sqlglot_dialect=get_sqlglot_dialect(self.dialect)
+                )
+            except ModuleNotFoundError as exc:
+                if exc.name != "sqlglot":
+                    raise
+                raise ModuleNotFoundError(
+                    "classifying a WITH statement needs SQLGlot: install it with "
+                    "`pip install dblift[analysis]`, or use analysis_mode='execution'",
+                    name="sqlglot",
+                ) from exc
             return "DML" if outer_type == "DML" else "QUERY"
 
         query_keywords = ["SELECT", "SHOW", "DESCRIBE", "DESC", "EXPLAIN"]

@@ -65,3 +65,15 @@ def test_last_split_reuses_the_records_of_the_same_script_only():
 
     assert splitter.last_split("SELECT 1; SELECT 2;") == first
     assert [r.text for r in splitter.last_split("SELECT 3;")] == ["SELECT 3"]
+
+
+@pytest.mark.parametrize("dialect", ["postgresql", "oracle", "sqlite"])
+def test_classifying_a_with_statement_without_sqlglot_names_the_extra(monkeypatch, dialect):
+    monkeypatch.setitem(sys.modules, "sqlglot", None)
+    reader = StatementReader(dialect)
+
+    with pytest.raises(ModuleNotFoundError, match=r"pip install dblift\[analysis\]") as raised:
+        reader.get_statement_type("WITH x AS (SELECT 1) SELECT * FROM x")
+
+    assert raised.value.name == "sqlglot"
+    assert reader.get_statement_type("SELECT 1") == "QUERY"
