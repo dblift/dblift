@@ -51,7 +51,7 @@ def owner() -> Iterator[Tuple[Any, str]]:
     admin.execute_statement(f'ALTER USER "{schema}" QUOTA UNLIMITED ON USERS')
     admin.execute_statement(
         f"GRANT CREATE SESSION, CREATE TABLE, CREATE PROCEDURE, CREATE TRIGGER, "
-        f'CREATE SEQUENCE, CREATE TYPE TO "{schema}"'
+        f'CREATE SEQUENCE, CREATE TYPE, CREATE VIEW TO "{schema}"'
     )
     try:
         yield admin, schema
@@ -69,6 +69,11 @@ def _migrate(schema: str, migrations_dir: Path) -> Any:
         return client.migrate()
     finally:
         provider.close()
+
+
+def _rows(admin: Any, schema: str, table: str) -> int:
+    rows = admin.execute_query(f'SELECT COUNT(*) AS n FROM "{schema}".{table}')
+    return int(rows[0].get("n", rows[0].get("N")))
 
 
 def _status(admin: Any, schema: str, name: str) -> List[str]:
@@ -261,3 +266,90 @@ def test_alter_compile_that_fixes_a_unit_succeeds(owner, tmp_path) -> None:
     print("alter-fixes:", result.success, _history(admin, schema), _status(admin, schema, "AC"))
     assert result.success, result.error_message
     assert _status(admin, schema, "AC") == ["VALID"]
+
+
+# --- the end-of-migration check is not a commit, and covers what a later statement invalidates ------
+
+
+def test_a_failing_end_check_does_not_commit_the_migrations_dml(owner, tmp_path) -> None:
+    admin, schema = owner
+    _write(tmp_path, "1.0.0", "unit", TABLE + BAD_PROCEDURE + "INSERT INTO emp (id) VALUES (1);\n")
+
+    result = _migrate(schema, tmp_path)
+
+    rows = _rows(admin, schema, "emp")
+    print("dml-fails:", result.success, _history(admin, schema), "rows:", rows)
+    assert not result.success
+    assert rows == 0
+
+
+def test_a_passing_end_check_commits_the_migrations_dml(owner, tmp_path) -> None:
+    admin, schema = owner
+    _write(
+        tmp_path, "1.0.0", "unit", TABLE + FORWARD_REFERENCE + "INSERT INTO emp (id) VALUES (1);\n"
+    )
+
+    result = _migrate(schema, tmp_path)
+
+    rows = _rows(admin, schema, "emp")
+    print("dml-passes:", result.success, _history(admin, schema), "rows:", rows)
+    assert result.success, result.error_message
+    assert rows == 1
+
+
+def test_a_trigger_invalidated_by_a_later_statement_fails_the_migration(owner, tmp_path) -> None:
+    admin, schema = owner
+    sql = (
+        "CREATE TABLE e (id NUMBER, c NUMBER);\n"
+        "CREATE OR REPLACE TRIGGER tt BEFORE INSERT ON e FOR EACH ROW\n"
+        "BEGIN\n  :NEW.c := 1;\nEND;\n/\n"
+        "ALTER TABLE e DROP COLUMN c;\n"
+    )
+    _write(tmp_path, "1.0.0", "unit", sql)
+
+    result = _migrate(schema, tmp_path)
+
+    print("trigger:", result.success, _history(admin, schema), _status(admin, schema, "TT"))
+    print((result.error_message or "").splitlines()[:3])
+    assert not result.success
+    assert "TRIGGER TT" in (result.error_message or "")
+    assert _status(admin, schema, "TT") == ["INVALID"]
+
+
+def test_a_force_view_over_a_missing_table_fails_the_migration(owner, tmp_path) -> None:
+    admin, schema = owner
+    _write(tmp_path, "1.0.0", "unit", "CREATE OR REPLACE FORCE VIEW v AS SELECT * FROM missing;\n")
+
+    result = _migrate(schema, tmp_path)
+
+    print("view:", result.success, _history(admin, schema), _status(admin, schema, "V"))
+    print((result.error_message or "").splitlines()[:3])
+    assert not result.success
+    assert "VIEW V" in (result.error_message or "")
+    assert _history(admin, schema) == [("V1_0_0__unit.sql", False)]
+
+
+def test_an_error_of_the_end_check_itself_is_recorded_as_a_failed_migration(
+    owner, tmp_path
+) -> None:
+    admin, schema = owner
+    other = f"{schema}_O"
+    admin.execute_statement(f'CREATE USER "{other}" IDENTIFIED BY "{OWNER_PASSWORD}"')
+    admin.execute_statement(f'GRANT CREATE SESSION TO "{other}"')
+    admin.execute_statement(f'GRANT CREATE ANY PROCEDURE TO "{schema}"')
+    try:
+        _write(
+            tmp_path,
+            "1.0.0",
+            "unit",
+            f'CREATE OR REPLACE PROCEDURE "{other}".bad_o AS\nBEGIN\n  no_such_proc(1);\nEND;\n/\n',
+        )
+
+        result = _migrate(schema, tmp_path)
+
+        print("hook-error:", result.success, _history(admin, schema))
+        print((result.error_message or "").splitlines()[:3])
+        assert not result.success
+        assert _history(admin, schema) == [("V1_0_0__unit.sql", False)]
+    finally:
+        admin.execute_statement(f'DROP USER "{other}" CASCADE')

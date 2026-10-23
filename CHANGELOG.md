@@ -325,15 +325,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **An Oracle procedure, function, package, trigger or type that still has compile errors at the end of its
-  migration now fails the migration.** Oracle reports a `CREATE [OR REPLACE]` or `ALTER ... COMPILE` with
+- **An Oracle procedure, function, package, trigger, type or `FORCE` view that is still INVALID at the end of
+  its migration now fails the migration.** Oracle reports a `CREATE [OR REPLACE]` or `ALTER ... COMPILE` with
   compile errors as a success (ORA-24344) and leaves the object INVALID, so `migrate` used to exit 0 with a
-  successful history row, and an INVALID trigger then failed every INSERT/UPDATE/DELETE on its table. The errors
-  are checked once the last statement of the migration has run, after recompiling each such unit, so a unit may
-  reference one created later in the same file and packages may reference each other. `migrate` exits 1 and
-  records the migration as failed only for units that are still INVALID, listing each with its first `PLS-`
-  error, line and column. Oracle DDL auto-commits, so the unit stays created and INVALID until a corrected
-  `CREATE OR REPLACE` is applied.
+  successful history row, and an INVALID trigger then failed every INSERT/UPDATE/DELETE on its table. Each such
+  unit is checked once the last statement of the migration has run, and recompiled if it is INVALID, so a unit
+  may reference one created later in the same file, and packages may reference each other. `migrate` exits 1
+  and records the migration as failed only for units that are still INVALID, including ones a later statement
+  of the file invalidated, listing each with its first `PLS-` error, line and column. The migration's own DML
+  is rolled back, not committed by the check. Oracle DDL auto-commits, so the unit stays created and INVALID
+  until a corrected `CREATE OR REPLACE` is applied.
 
 - **`validate-sql` no longer calls dropping a database link or a materialized view log a destructive drop.**
   On Oracle, `DROP DATABASE LINK` was reported as `drop-schema` and `DROP MATERIALIZED VIEW LOG ON t` as

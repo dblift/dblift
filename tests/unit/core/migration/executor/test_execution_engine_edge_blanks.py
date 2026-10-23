@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from dblift.core.exceptions import ExecutionError
+from dblift.core.exceptions import ExecutionError, StatementVerdictError
 from dblift.core.migration.executor.execution_engine import ExecutionEngine
 from dblift.core.migration.formats import MigrationFormat
 from dblift.core.migration.sql.execution_statement import _position
@@ -159,17 +159,17 @@ def test_the_provider_gets_the_end_of_migration_hook_after_the_last_statement():
     migration, result = MagicMock(), MagicMock()
     result.has_error.return_value = False
     order = []
+    statements = ["SELECT 1 FROM dual", "SELECT 2 FROM dual"]
     engine.sql_execution_service.execute_statement.side_effect = lambda *a, **k: (
         order.append("statement"),
         (False, 0),
     )[1]
-    engine.provider.finish_migration_statements.side_effect = lambda: order.append("finish")
+    engine.provider.finish_migration_statements.side_effect = lambda *a: order.append("finish")
 
-    assert engine._execute_statements(
-        ["SELECT 1 FROM dual", "SELECT 2 FROM dual"], migration, result, 0.0
-    )
+    assert engine._execute_statements(statements, migration, result, 0.0)
 
     assert order == ["statement", "statement", "finish"]
+    engine.provider.finish_migration_statements.assert_called_once_with(statements)
 
 
 def test_a_failure_at_the_end_of_the_migration_fails_the_migration():
@@ -183,3 +183,44 @@ def test_a_failure_at_the_end_of_the_migration_fails_the_migration():
 
     assert ok is False
     assert "PROCEDURE A_P invalid" in str(result.set_error.call_args)
+
+
+def test_any_error_of_the_end_of_migration_hook_is_a_statement_failure():
+    engine = _engine("oracle")
+    migration, result = MagicMock(), MagicMock()
+    engine.provider.finish_migration_statements.side_effect = RuntimeError("ORA-01031: denied")
+
+    ok = engine._execute_statements(["SELECT 1 FROM dual"], migration, result, 0.0)
+
+    assert ok is False
+    assert "ORA-01031: denied" in str(result.set_error.call_args)
+
+
+def test_the_failure_names_the_statement_the_provider_points_at():
+    engine = _engine("oracle")
+    migration, result = MagicMock(), MagicMock()
+    engine.provider.finish_migration_statements.side_effect = StatementVerdictError("invalid", 1)
+
+    engine._execute_statements(["SELECT 1 FROM dual"] * 3, migration, result, 0.0)
+
+    assert "statement 2 " in str(result.set_error.call_args)
+
+
+def test_a_provider_without_the_hook_is_not_asked_for_a_verdict():
+    engine = _engine("oracle")
+    engine.provider = MagicMock(spec=["connection", "execute_statement"])
+    engine.provider.connection = None
+
+    assert engine._execute_statements(["SELECT 1 FROM dual"], MagicMock(), MagicMock(), 0.0)
+
+
+def test_a_callback_gets_the_end_of_migration_hook_after_its_last_statement():
+    engine = _engine("oracle")
+    statements = ["SELECT 1 FROM dual", "SELECT 2 FROM dual"]
+    engine._prepare_sql_statements = MagicMock(return_value=statements)
+    callback = MagicMock()
+    callback.format = MigrationFormat.SQL
+
+    engine.execute_callback(callback)
+
+    engine.provider.finish_migration_statements.assert_called_once_with(statements)

@@ -3,16 +3,12 @@
 import os
 import re
 import time
-from contextlib import contextmanager
-from typing import Any, Dict, Iterator, List, Optional, Protocol, Set, Tuple, Union
-
-from sqlalchemy import event
-from sqlalchemy.engine import Connection
+from typing import Any, Dict, List, Optional, Sequence, Set, Tuple, Union
 
 from dblift.config import DbliftConfig
 from dblift.core.constants import DEFAULT_HISTORY_TABLE
 from dblift.core.constants import MIGRATION_LOCK_TABLE as _MIGRATION_LOCK_TABLE
-from dblift.core.exceptions import ExecutionError
+from dblift.core.exceptions import ExecutionError, StatementVerdictError
 from dblift.core.logger import Log
 from dblift.core.migration.clean_summary import CleanExecutionSummary
 from dblift.core.migration.migration import success_to_bool
@@ -116,11 +112,6 @@ def _row_value(row: Dict[str, Any], *names: str, default: Any = None) -> Any:
 
 _OWNER_COLUMN = OWNER_COLUMN.upper()
 
-#: ORA-24344, "success with compilation error", is a warning on the cursor, not
-#: an exception. python-oracledb thin mode reports it as ``DPY-7000`` with
-#: ``code`` 0; thick mode passes the server's ``ORA-24344`` through.
-_COMPILE_WARNING_FULL_CODES = frozenset({"DPY-7000", "ORA-24344"})
-
 _IDENT = r'(?:"[^"]+"|[A-Za-z][\w$#]*)'
 _PLSQL_UNIT_RE = re.compile(
     r"^\s*CREATE\s+(?:OR\s+REPLACE\s+)?(?:(?:NON)?EDITIONABLE\s+)?"
@@ -136,6 +127,13 @@ def _dictionary_spelling(identifier: str) -> str:
         return identifier[1:-1].replace('""', '"')
     return identifier.upper()
 
+
+_FORCE_VIEW_RE = re.compile(
+    r"^\s*CREATE\s+(?:OR\s+REPLACE\s+)?(?:(?:NON)?EDITIONABLE\s+)?FORCE\s+"
+    r"(?:(?:NON)?EDITIONABLE\s+)?"
+    rf"VIEW\s+(?:({_IDENT})\s*\.\s*)?({_IDENT})",
+    re.IGNORECASE,
+)
 
 _Unit = Tuple[str, Optional[str], str]
 _Rows = List[Dict[str, object]]
@@ -157,6 +155,10 @@ def _plsql_units(statement: str) -> List[_Unit]:
         unit_type = " ".join(match.group(1).upper().split())
         owner = _dictionary_spelling(match.group(2)) if match.group(2) else None
         return [(unit_type, owner, _dictionary_spelling(match.group(3)))]
+    match = _FORCE_VIEW_RE.match(statement)
+    if match is not None:
+        owner = _dictionary_spelling(match.group(1)) if match.group(1) else None
+        return [("VIEW", owner, _dictionary_spelling(match.group(2)))]
     match = _ALTER_COMPILE_RE.match(statement)
     if match is None:
         return []
@@ -169,45 +171,29 @@ def _plsql_units(statement: str) -> List[_Unit]:
     return [(t, owner, name) for t in dict.fromkeys(types)]
 
 
+def _statement_index(statements: Sequence[str], unit: _Unit) -> int:
+    """Index of the first statement that created or recompiled *unit*, else the last one."""
+    for index, statement in enumerate(statements):
+        if unit in _plsql_units(statement.strip()):
+            return index
+    return max(len(statements) - 1, 0)
+
+
 def _recompile_statement(unit: _Unit) -> str:
     """The ``ALTER ... COMPILE`` that recompiles *unit*."""
     unit_type, owner, name = unit
     target = f'"{name}"' if owner is None else f'"{owner}"."{name}"'
     kind, _, part = unit_type.partition(" ")
-    return f"ALTER {kind} {target} COMPILE" + (" BODY" if part else "")
-
-
-class _DriverWarning(Protocol):
-    full_code: str
-
-
-class _OracleCursor(Protocol):
-    warning: Optional[_DriverWarning]
-
-
-def _note_compile_warning(compiled_with_errors: List[bool], cursor: _OracleCursor) -> None:
-    """Record that the driver reported ORA-24344 on *cursor*."""
-    warning = cursor.warning
-    if warning is not None and warning.full_code in _COMPILE_WARNING_FULL_CODES:
-        compiled_with_errors.append(True)
-
-
-@contextmanager
-def _watch_compile_warning(connection: object) -> Iterator[List[bool]]:
-    """Yield a list that is non-empty once a statement on *connection* warned ORA-24344."""
-    compiled_with_errors: List[bool] = []
-    if not isinstance(connection, Connection):
-        yield compiled_with_errors
-        return
-
-    def _listener(_conn: object, cursor: _OracleCursor, *_args: object) -> None:
-        _note_compile_warning(compiled_with_errors, cursor)
-
-    event.listen(connection, "after_cursor_execute", _listener)
-    try:
-        yield compiled_with_errors
-    finally:
-        event.remove(connection, "after_cursor_execute", _listener)
+    alter = f"ALTER {kind} {target} COMPILE" + (" BODY" if part else "")
+    # DDL commits. An autonomous transaction keeps that commit away from the
+    # migration's own, so a migration that then fails does not keep its DML.
+    # ORA-24344 (compiled with errors) is the answer being sought, not a failure.
+    return (
+        "DECLARE PROCEDURE recompile IS PRAGMA AUTONOMOUS_TRANSACTION; "
+        f"BEGIN EXECUTE IMMEDIATE '{alter.replace(chr(39), chr(39) * 2)}'; "
+        "EXCEPTION WHEN OTHERS THEN IF SQLCODE != -24344 THEN RAISE; END IF; END; "
+        "BEGIN recompile; END;"
+    )
 
 
 def _seconds_before(clock: str, seconds: str) -> str:
@@ -385,11 +371,9 @@ class OracleProvider(SqlLeaseLockingProvider):
         units = _plsql_units(stmt)
         if not units:
             return super().execute_statement(stmt, schema=schema, params=params)
-        with _watch_compile_warning(self._ensure_connection()) as compiled_with_errors:
-            rows_affected = super().execute_statement(stmt, schema=schema, params=params)
         for unit in units:
-            self._note_unit(unit, bool(compiled_with_errors))
-        return rows_affected
+            self._pending_units()[unit] = None
+        return super().execute_statement(stmt, schema=schema, params=params)
 
     def _unit_state(self, unit: _Unit) -> _Rows:
         """Dictionary rows for *unit*: its status, with one row per compile error."""
@@ -411,33 +395,25 @@ class OracleProvider(SqlLeaseLockingProvider):
             for r in rows
         )
 
-    def _note_unit(self, unit: _Unit, warned: bool) -> None:
-        """Remember *unit* when it was left INVALID; forget it when it is valid.
-
-        Oracle answers such a ``CREATE`` or ``ALTER ... COMPILE`` with success
-        (ORA-24344), so the driver warning is a signal, but the dictionary is
-        read either way. The verdict waits for :meth:`finish_migration_statements`:
-        a unit may reference one created further down the same migration.
-        """
-        pending = self._pending_units()
-        if warned or self._is_invalid(self._unit_state(unit)):
-            pending[unit] = None
-        else:
-            pending.pop(unit, None)
-
     def _pending_units(self) -> Dict[_Unit, None]:
         if self._pending_compile is None:
             self._pending_compile = {}
         return self._pending_compile
 
-    def finish_migration_statements(self) -> None:
-        """Recompile the units left INVALID by the migration and fail if any stays so."""
+    def finish_migration_statements(self, statements: Sequence[str] = ()) -> None:
+        """Recompile the units left INVALID by the migration and fail if any stays so.
+
+        Every unit the migration created or recompiled is checked, not only
+        those that were INVALID when created: a later statement can invalidate
+        one (``DROP COLUMN`` under a trigger). *statements* locates the failure.
+        """
         pending = list(self._pending_units())
         self._pending_compile = {}
         still_invalid: List[Tuple[_Unit, _Rows]] = []
         for unit in pending:
-            if not self._unit_state(unit):
-                continue  # dropped since
+            rows = self._unit_state(unit)
+            if not self._is_invalid(rows):
+                continue  # valid, or dropped since
             super().execute_statement(_recompile_statement(unit))
             rows = self._unit_state(unit)
             if self._is_invalid(rows):
@@ -457,7 +433,9 @@ class OracleProvider(SqlLeaseLockingProvider):
                 )
             else:
                 lines.append(f"{unit_type} {name}: INVALID, no compile errors reported")
-        raise ExecutionError("\n".join(lines))
+        raise StatementVerdictError(
+            "\n".join(lines), _statement_index(statements, still_invalid[0][0])
+        )
 
     def execute_query(self, sql: str, params: Optional[List[Any]] = None) -> List[Dict[str, Any]]:
         """Execute Oracle query SQL after stripping plain trailing semicolons."""
