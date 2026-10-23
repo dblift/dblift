@@ -108,6 +108,36 @@ _NOT_NULL_EXEMPT = (
 _RENAME_TABLE = re.compile(r"^\s*RENAME\s+TABLE\b", re.IGNORECASE)
 _SP_RENAME = re.compile(r"\bsp_rename\b(?P<rest>.*)", re.IGNORECASE | re.DOTALL)
 _LOCK_TIMEOUT = re.compile(r"^\s*SET\s+(?:LOCAL\s+|SESSION\s+)?lock_timeout\b", re.IGNORECASE)
+# sqlglot reads LOCK and VACUUM as opaque commands, so these are matched on the text.
+# LOCK TABLE queues behind conflicting locks unless NOWAIT; its default mode is ACCESS EXCLUSIVE,
+# and only SHARE and stronger make waiting writers queue behind it (ROW EXCLUSIVE conflicts with
+# SHARE).
+_LOCK_COMMAND = re.compile(r"^\s*LOCK\b(?P<rest>.*)$", re.IGNORECASE | re.DOTALL)
+_LOCK_MODE = re.compile(r"\bIN\s+(?P<mode>[A-Z ]+?)\s+MODE\b", re.IGNORECASE)
+_BLOCKING_LOCK_MODES = frozenset({"SHARE", "SHARE ROW EXCLUSIVE", "EXCLUSIVE", "ACCESS EXCLUSIVE"})
+_NOWAIT = re.compile(r"\bNOWAIT\s*$", re.IGNORECASE)
+# VACUUM FULL rewrites the table under an ACCESS EXCLUSIVE lock: ``VACUUM FULL``, or FULL among the
+# legacy leading keywords, or a FULL option of the parenthesised list not switched off.
+_VACUUM_FULL = re.compile(
+    r"^\s*VACUUM\s+(?:(?:FREEZE|VERBOSE|ANALYZE|ANALYSE)\s+)*FULL\b", re.IGNORECASE
+)
+_VACUUM_OPTIONS = re.compile(r"^\s*VACUUM\s*\((?P<options>[^)]*)\)", re.IGNORECASE)
+_FULL_OPTION = re.compile(r"(?:^|,)\s*FULL\b(?!\s+(?:FALSE|OFF|0)\b)", re.IGNORECASE)
+
+
+def _locks_table_by_text(body: str) -> bool:
+    """True for a LOCK TABLE that can queue behind writers, or a VACUUM FULL."""
+    lock = _LOCK_COMMAND.match(body)
+    if lock is not None:
+        rest = lock.group("rest").rstrip(" \t\r\n;")
+        mode = _LOCK_MODE.search(rest)
+        if _NOWAIT.search(rest):
+            return False
+        return mode is None or " ".join(mode.group("mode").upper().split()) in _BLOCKING_LOCK_MODES
+    options = _VACUUM_OPTIONS.match(body)
+    if options is not None:
+        return _FULL_OPTION.search(options.group("options")) is not None
+    return _VACUUM_FULL.match(body) is not None
 
 
 @dataclass(frozen=True)
@@ -210,7 +240,7 @@ def issues_and_created_tables(
         elif (
             not (lock_timeout_set or lock_timeout_reported)
             and stmt.index not in on_new_tables
-            and _locks_table(tree)
+            and (_locks_table(tree) or _locks_table_by_text(body))
         ):
             findings.append(_finding("pg-missing-lock-timeout", stmt))
             lock_timeout_reported = True
