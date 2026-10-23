@@ -337,9 +337,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Large migration scripts now run in time proportional to their size.** Recording each statement in the
   run journal re-scanned every statement already recorded, so a script's run time grew with the square of its
-  statement count: a SQLite script of 32 000 `INSERT` statements took about 90 seconds, and now takes about 17
-  (8 000 statements: 8 s to 4 s). The history rows and reported results are unchanged.
+  statement count; a script of 32 000 statements now runs roughly 5 times faster. The history rows and
 
+
+- **An Oracle procedure, function, package, trigger, type or `FORCE` view that is still INVALID at the end of
+  its migration now fails the migration.** Oracle reports a `CREATE [OR REPLACE]` or `ALTER ... COMPILE` with
+  compile errors as a success (ORA-24344) and leaves the object INVALID, so `migrate` used to exit 0 with a
+  successful history row, and an INVALID trigger then failed every INSERT/UPDATE/DELETE on its table. Each such
+  unit is checked once the last statement of the migration has run, and recompiled if it is INVALID, so a unit
+  may reference one created later in the same file, and packages may reference each other. `migrate` exits 1
+  and records the migration as failed only for units that are still INVALID, including ones a later statement
+  of the file invalidated, listing each with its first `PLS-` error, line and column. DML run after the migration's
+  last DDL statement is rolled back; DML before a DDL statement is already committed by Oracle's DDL
+  auto-commit. Oracle DDL auto-commits, so the unit stays created and INVALID
+  until a corrected `CREATE OR REPLACE` is applied.
 - **A PostgreSQL statement with a `WITH` now names every table it changes.** `WITH d AS (DELETE FROM src
   ...) INSERT INTO log SELECT * FROM d`, `INSERT INTO t WITH x AS (...) SELECT ...` and `WITH u AS (UPDATE a
   ...) DELETE FROM b ...` used to leave the outer target and its events unread behind a diagnostic. The statement

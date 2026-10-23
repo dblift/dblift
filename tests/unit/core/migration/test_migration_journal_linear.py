@@ -99,3 +99,10 @@ def test_migrate_journal_work_grows_linearly_with_statement_count(monkeypatch, t
     small = _migrate_reads(monkeypatch, tmp_path, 250)
     large = _migrate_reads(monkeypatch, tmp_path, 1_000)
     assert 0 < small and large <= small * 4.5, f"{small} -> {large} reads for 4x the statements"
+
+
+def test_returned_journal_is_a_copy():
+    journal = mj.MigrationJournal()
+    journal.start_migration("V1__a.sql")
+    journal.get_migration_journal("V1__a.sql").clear()
+    assert len(journal.get_migration_journal("V1__a.sql")) == 1

@@ -286,7 +286,7 @@ class MigrationJournal:
             return []
 
         # Return in-memory journal entries
-        return self.migration_journals.get(migration_id, [])
+        return list(self.migration_journals.get(migration_id, []))
 
     def record_object_changes(
         self, statement: str, statement_index: int, objects_affected: List[Dict[str, Any]]

@@ -139,6 +139,34 @@ more lenient than the client, deliberately.
 Inside a PL/SQL unit nothing is counted: `;`, `BEGIN`, `END`, `CASE`,
 `LOOP`, labels and nested blocks are text until the `/`.
 
+### Units that compile with errors
+
+Oracle answers a `CREATE [OR REPLACE]` or `ALTER ... COMPILE` of a procedure,
+function, package [body], trigger, type [body] or view whose body does not
+compile with success (ORA-24344, "success with compilation error"): no
+exception is raised, the object is left INVALID and the errors are written to
+`USER_ERRORS`. DBLift does not judge such a statement on its own, because a unit
+may call one that the same file creates further down, and two packages may
+call each other. It notes every such unit the migration creates or recompiles
+(and every `FORCE` view), and once the last statement of the migration has run
+it reads each one's status. A unit that is INVALID, including one that a later
+statement of the same file invalidated (for example a `DROP COLUMN` under a
+trigger), is recompiled with `ALTER ... COMPILE` and read again. A unit that is
+now valid is fine. If any unit is still INVALID the migration fails, the history
+row is recorded with `success = 0`, and the error message lists each unit with
+its first `PLS-` error, line and column; the statement number is that of the
+first such unit's `CREATE` or `ALTER`.
+
+The recompile runs in its own transaction, so it does not commit the DML the
+migration has already run: when the check fails, the DML run after the
+migration's last DDL statement is rolled back as for any other failing
+migration. DML before a DDL statement is already committed by Oracle's DDL
+auto-commit. The units themselves stay created (INVALID); fix the body and
+re-run `CREATE OR REPLACE`, or use
+`repair` as usual. `WHENEVER SQLERROR CONTINUE` does not excuse this failure: it
+applies to the statements of the script, and this check happens after the last
+one.
+
 ## 6. Client directives
 
 SQL\*Plus, "Running SQL\*Plus Commands": "You do not need to end a SQL\*Plus
