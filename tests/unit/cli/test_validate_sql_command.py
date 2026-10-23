@@ -285,6 +285,33 @@ SERVER_SIDE_COPY = {
 }
 
 
+@pytest.mark.parametrize("sql,reason", list(SERVER_SIDE_COPY.items()))
+def test_a_copy_that_runs_a_command_or_writes_a_server_file_is_for_review(tmp_path, sql, reason):
+    script = tmp_path / "v2.sql"
+    script.write_text(sql)
+
+    console = _run(tmp_path, "validate-sql", "--dialect", "postgresql", "--files", str(script))
+    as_json = _run(
+        tmp_path,
+        "validate-sql",
+        "--dialect",
+        "postgresql",
+        "--format",
+        "json",
+        "--files",
+        str(script),
+    )
+
+    report = console.stdout + console.stderr
+    assert "REVIEW" in report and "copy-server-side" in report, report
+    payload = json.loads(as_json.stdout)
+    assert [s["verdict"] for s in payload["scripts"]] == ["REVIEW"]
+    findings = payload["scripts"][0]["findings"]
+    assert [(f["code"], f["severity"], f["message"]) for f in findings] == [
+        ("copy-server-side", "warning", reason)
+    ]
+
+
 @pytest.mark.parametrize(
     "sql",
     [

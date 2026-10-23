@@ -50,3 +50,6 @@ The list of mysql.md §11 applies. MariaDB's Oracle-compatibility mode (`sql_mod
 ## 12. Current implementation
 
 The MariaDB rules apply to a `mariadb+pymysql://` URL; `mysql+pymysql://` selects the MySQL rules, also against a MariaDB server. Same code as mysql.md section 12: `dblift/db/plugins/mariadb/lexical_spec.py` holds `MARIADB_SPEC`, the MySQL rules with `/*M!` as a second executable opener and a hint read as a block comment, `MariadbQuirks.lexical_spec()` returns it. Statement facts are read by the same reader as MySQL, from the `mysql` grammar, after the MariaDB rules have split the script: through the `mariadb` plugin a `/*M! … */` comment is therefore a statement of its own, reported with no objects; through the `mysql` plugin it is a plain comment and no statement at all.
+
+
+CTE-led DML shares MySQL's reading. MariaDB 11 accepted `INSERT INTO t WITH … SELECT` and `INSERT INTO t (WITH … SELECT …)` and answered 1064 to `WITH … INSERT`, `WITH … UPDATE`, `WITH … DELETE` and to a CTE whose body is a `DELETE`; the reader still reads the rejected forms from the `mysql` grammar.

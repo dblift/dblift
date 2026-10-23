@@ -47,7 +47,12 @@ def plain(value: Any, depth: int = 0) -> Any:
     if depth > 6:
         return type(value).__name__
     if dataclasses.is_dataclass(value) and not isinstance(value, type):
-        return {f.name: plain(getattr(value, f.name), depth + 1) for f in dataclasses.fields(value)}
+        # ``cte_writes`` was added after the recording and is empty on every recorded input.
+        return {
+            f.name: plain(getattr(value, f.name), depth + 1)
+            for f in dataclasses.fields(value)
+            if f.name != "cte_writes" or getattr(value, f.name)
+        }
     if isinstance(value, enum.Enum):
         return value.name
     if isinstance(value, (list, tuple, set, frozenset)):

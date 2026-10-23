@@ -255,3 +255,6 @@ Current implementation gaps, kept as the old splitter had them (the clients diff
 - `use;` (the word `use` with a terminator and no database name): the clients run `USE` themselves and complain; dblift sends `use` to the server and gets error 1064.
 
 Tests: `tests/unit/core/sql_parser/test_mysql_spec_conformance.py` runs every row of section 10 through `SqlAnalyzer.split_statements` for both engines; `tests/unit/core/sql_parser/test_mysql_delimiter.py`, `test_mysql_client_commands.py`, `test_mysql_program_body.py` and `test_mysql_lexical_reading.py` cover the rules one by one, `test_mysql_splitting_cost.py` bounds the work, `tests/unit/db/plugins/mysql/test_extraction_view_unchanged.py` holds masking, tokens and comment stripping to their recorded output, and `tests/unit/core/sql_parser/test_mysql_statement_facts_activation.py` pins what the statement facts give each consumer.
+
+
+A CTE before `UPDATE` or `DELETE`, and `INSERT INTO t WITH … SELECT`, are read for their target, events and the tables the CTE reads (the CTE names are not tables). MySQL 8.4 accepted `WITH … UPDATE`, `WITH … DELETE`, `INSERT INTO t WITH … SELECT` and `INSERT INTO t (WITH … SELECT …)`, and answered 1064 to `WITH … INSERT`, `WITH … REPLACE` and a CTE whose body is a `DELETE`: no CTE writes, so no statement changes a second table.

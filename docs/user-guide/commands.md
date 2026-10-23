@@ -124,6 +124,7 @@ but nothing connects.
 | `mixed-transaction-modes` | A statement that needs autocommit (for example `CREATE INDEX CONCURRENTLY`) in a script whose other statements run in a transaction: `migrate` refuses such a script | error | all |
 | `drop-unread-object` | A `DROP` whose object kind or name the SQL parser could not read, so it cannot be told whether rows are lost | warning | all |
 | `dml-no-where` | `UPDATE` or `DELETE` without `WHERE` | warning | all |
+| `copy-server-side` | `COPY … TO PROGRAM`, `COPY … FROM PROGRAM` or `COPY … TO 'file'`: the database server runs the command or writes the file (a `COPY` from a query is not read) | warning | PostgreSQL family |
 | `add-not-null-no-default` | `ADD COLUMN … NOT NULL` without a `DEFAULT` | warning | all |
 | `rename-column` | A column rename (`RENAME COLUMN`, `sp_rename … 'COLUMN'`) | warning | all |
 | `rename-table` | A table rename (`RENAME TO`, `RENAME TABLE`, `sp_rename`) | warning | all |

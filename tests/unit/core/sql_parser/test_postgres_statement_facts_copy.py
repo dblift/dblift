@@ -1,4 +1,11 @@
-"""Preparatory PostgreSQL COPY facts cover only table transfers to literal files."""
+"""PostgreSQL COPY facts read a table transfer and ignore the options.
+
+``COPY t FROM`` loads ``t`` whatever follows the source (``FORMAT``, ``HEADER``, ``WITH (...)``,
+``CSV``); ``COPY t TO`` reads it. The source is a literal file, ``STDIN``, ``STDOUT`` (either word in
+either direction) or
+``PROGRAM '...'``. A query source, a path the grammar leaves to an expression and the old
+``COPY BINARY t`` spelling (which the grammar reads as a table named BINARY) stay unread.
+"""
 
 import pytest
 
@@ -26,10 +33,31 @@ from tests.support.facts_parser import facts_parser
         ("COPY t FROM 'STDIN'", "t", None, "t", ()),
         ("COPY t FROM 'STDOUT'", "t", None, "t", ()),
         ("/* import */ COPY t FROM /* path */ 'in.csv';", "t", None, "t", ()),
+        ("COPY t FROM 'file' (FORMAT CSV, HEADER)", "t", None, "t", ()),
+        ("COPY t FROM STDIN", "t", None, "t", ()),
+        # the grammar reads STDOUT after FROM as the same client stream (PostgreSQL 16.14 loads it)
+        ("COPY t FROM STDOUT", "t", None, "t", ()),
+        ("COPY t FROM stdin;", "t", None, "t", ()),
+        (
+            "COPY public.t (a, b) FROM STDIN WITH (FORMAT csv, HEADER true)",
+            "t",
+            "public",
+            "public.t",
+            ("a", "b"),
+        ),
+        ("COPY t FROM STDIN CSV HEADER DELIMITER ','", "t", None, "t", ()),
+        ("COPY t FROM 'in.csv' WITH (FORMAT CSV)", "t", None, "t", ()),
+        ("COPY t FROM 'in.csv' CSV", "t", None, "t", ()),
+        ("COPY t FROM PROGRAM 'echo 1'", "t", None, "t", ()),
+        # the file is any string literal PostgreSQL 16.14 accepts
+        ("COPY t FROM $$in.csv$$", "t", None, "t", ()),
+        ("COPY t FROM E'in.csv'", "t", None, "t", ()),
+        ("COPY t FROM U&'in.csv'", "t", None, "t", ()),
     ],
 )
 def test_postgres_copy_file_import_facts(sql, name, schema, target_sql, columns):
     facts = SqlglotStatementFactsReader("postgres").read(sql)
+    action = "copy-from-program" if "PROGRAM" in sql else None
 
     assert facts == StatementFacts(
         "COPY",
@@ -39,6 +67,7 @@ def test_postgres_copy_file_import_facts(sql, name, schema, target_sql, columns)
         affected_columns=columns,
         events=frozenset({"INSERT"}),
         target_sql=target_sql,
+        action=action,
     )
 
 
@@ -49,13 +78,27 @@ def test_postgres_copy_file_import_facts(sql, name, schema, target_sql, columns)
         ('COPY "Sales"."Order Items" ("Item ID") TO \'out.csv\'', "Order Items", "Sales"),
         ("COPY t TO 'STDOUT'", "t", None),
         ("COPY t TO 'STDIN'", "t", None),
+        ("COPY t TO STDOUT", "t", None),
+        ("COPY t TO STDIN", "t", None),
+        ("COPY t (a) TO STDOUT WITH (FORMAT csv, HEADER)", "t", None),
+        ("COPY t TO '/tmp/out.csv' CSV HEADER", "t", None),
+        ("COPY t TO PROGRAM 'cat'", "t", None),
     ],
 )
 def test_postgres_copy_file_export_is_read_only(sql, name, schema):
     facts = SqlglotStatementFactsReader("postgres").read(sql)
+    # the server runs the command or writes the file, which a review should see
+    action = (
+        "copy-to-program"
+        if "PROGRAM" in sql
+        else "copy-to-file" if "'" in sql and not sql.endswith("STDOUT") else None
+    )
 
     assert facts == StatementFacts(
-        "COPY", "QUERY", (NamedObject(name, SqlObjectType.TABLE, "referenced", schema),)
+        "COPY",
+        "QUERY",
+        (NamedObject(name, SqlObjectType.TABLE, "referenced", schema),),
+        action=action,
     )
     assert facts.affected_objects == ()
 
@@ -63,18 +106,14 @@ def test_postgres_copy_file_export_is_read_only(sql, name, schema):
 @pytest.mark.parametrize(
     "sql",
     [
-        "COPY t FROM STDIN",
-        "COPY t TO STDOUT",
-        "COPY t FROM STDIN;\n1\n\\.\n",
-        "COPY t FROM PROGRAM 'echo 1'",
-        "COPY t TO PROGRAM 'cat'",
         "COPY (SELECT * FROM t) TO 'out.csv'",
+        "COPY (SELECT * FROM t) TO STDOUT",
         "COPY (DELETE FROM t RETURNING *) TO 'out.csv'",
         "COPY (WITH a AS (SELECT * FROM t) SELECT * FROM a) TO 'out.csv'",
         "COPY (WITH a AS (DELETE FROM t RETURNING *) SELECT * FROM a) TO 'out.csv'",
-        "COPY t FROM 'in.csv' WITH (FORMAT CSV)",
-        "COPY t FROM 'in.csv' CSV",
-        "COPY t FROM 'in.csv' WHERE id > 0",
+        "COPY BINARY t FROM STDIN",
+        'COPY t FROM "STDIN"',
+        "COPY t FROM PROGRAM",
         "COPY t FROM 'in' || '.csv'",
         "COPY t FROM ('in' || '.csv')",
         "COPY t FROM 'a.csv', 'b.csv'",
@@ -88,8 +127,9 @@ def test_postgres_copy_file_export_is_read_only(sql, name, schema):
         "COPY \"\".t FROM 'in.csv'",
         "COPY t FROM 'in.csv'; DELETE FROM t",
         "COPY t FROM 'in.csv'; -- end",
-        "COPY t FROM 'in.csv' WITH ()",
         "COPY t WITH () FROM 'in.csv'",
+        "COPY t FROM 'in.csv' WHERE id > 0",
+        "COPY t FROM STDIN;\n1\n\\.\n",
     ],
 )
 def test_postgres_unsupported_copy_does_not_invent_effects(sql):
@@ -138,17 +178,18 @@ def test_copy_after_with_remains_opaque_without_guessed_effects(sql):
     assert facts.affected_columns == ()
 
 
-def test_copy_inline_payload_analysis_remains_opaque():
-    sql = "COPY t FROM STDIN;\n1\n\\.\n"
+def test_copy_inline_payload_is_read_from_its_header():
+    sql = "COPY t (a) FROM STDIN;\n1\n\\.\n"
     statements = facts_parser("postgresql").split_for_analysis(sql)
     assert len(statements) == 1
     facts = SqlglotStatementFactsReader("postgres").read(statements[0])
 
-    assert facts.operation == "COPY"
-    assert facts.kind == "UNKNOWN"
-    assert facts.opaque
-    assert facts.objects == ()
-    assert facts.target is None
-    assert facts.target_sql is None
-    assert facts.events is None
-    assert facts.affected_columns == ()
+    assert facts == StatementFacts(
+        "COPY",
+        "DML",
+        (NamedObject("t", SqlObjectType.TABLE, "altered"),),
+        "t",
+        affected_columns=("a",),
+        events=frozenset({"INSERT"}),
+        target_sql="t",
+    )
