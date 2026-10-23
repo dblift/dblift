@@ -11,6 +11,7 @@ from sqlalchemy import create_engine
 
 from dblift.api.client import DBLiftClient
 from dblift.core.migration.sql.statement_splitter import StatementSplitter
+from dblift.core.sql_parser._deprecation import internal_parser_construction
 from dblift.core.sql_parser.statement import execution_strings
 
 
@@ -258,11 +259,15 @@ def test_canonical_snowflake_and_plugin_parser_construction_stay_silent(monkeypa
 
     with warnings.catch_warnings():
         warnings.simplefilter("error", DeprecationWarning)
-        assert type(SqlParserFactory("snowflake").get_parser()).__name__ == "StatementFactsParser"
+        with internal_parser_construction():
+            factory = SqlParserFactory("snowflake")
+        assert type(factory.get_parser()).__name__ == "StatementFactsParser"
         assert isinstance(SnowflakeLexicalParser(), SnowflakeLexicalParser)
         quirks = ProviderRegistry.get_quirks("snowflake")
         monkeypatch.setattr(type(quirks), "parser_class", lambda self, mode: CustomParser)
-        assert type(SqlParserFactory("snowflake", "regex").get_parser()) is CustomParser
+        with internal_parser_construction():
+            factory = SqlParserFactory("snowflake", "regex")
+        assert type(factory.get_parser()) is CustomParser
 
 
 @pytest.mark.parametrize(
@@ -320,12 +325,15 @@ from pathlib import Path
 from sqlalchemy import create_engine, inspect
 from dblift.api.client import DBLiftClient
 from dblift.core.migration.sql.statement_splitter import StatementSplitter
+from dblift.core.sql_parser._deprecation import internal_parser_construction
 from dblift.core.sql_parser.parser_factory import SqlParserFactory
 from dblift.db.plugins.snowflake.lexical_parser import SnowflakeLexicalParser
 
 with warnings.catch_warnings():
     warnings.simplefilter("error", DeprecationWarning)
-    assert type(SqlParserFactory("snowflake").get_parser()).__name__ == "StatementFactsParser"
+    with internal_parser_construction():
+        factory = SqlParserFactory("snowflake")
+    assert type(factory.get_parser()).__name__ == "StatementFactsParser"
     assert SnowflakeLexicalParser().dialect_name == "snowflake"
     for dialect in (
         "sqlite", "postgresql", "cockroachdb", "redshift", "mysql", "mariadb",

@@ -82,7 +82,9 @@ def test_regex_roots_name_themselves_once_and_stay_silent_through_the_factory(na
     with warnings.catch_warnings():
         warnings.simplefilter("error", DeprecationWarning)
         for dialect in ("oracle", "mysql", "postgresql"):
-            SqlParserFactory(dialect).get_parser()
+            with _deprecation.internal_parser_construction():
+                factory = SqlParserFactory(dialect)
+            factory.get_parser()
 
     with warnings.catch_warnings(record=True) as seen:
         warnings.simplefilter("always", DeprecationWarning)

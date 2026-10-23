@@ -33,6 +33,7 @@ from dblift.core.migration.scripting.migration_script_manager import MigrationSc
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.migration.state.migration_state_manager import MigrationStateManager
 from dblift.core.migration.ui.migration_ui import MigrationUI
+from dblift.core.sql_parser._deprecation import internal_parser_construction
 from dblift.core.sql_validator.migration_validator import MigrationValidator
 from dblift.db.base_provider import BaseProvider
 
@@ -139,7 +140,10 @@ class MigrationExecutor:
         self.migration_ui = self.ui  # Alias for backward compatibility/consistency
 
         # Initialize SQL analyzer and execution engine
-        self.sql_analyzer = SqlAnalyzer(dialect=config.database.type, analysis_mode=analysis_mode)
+        with internal_parser_construction():
+            self.sql_analyzer = SqlAnalyzer(
+                dialect=config.database.type, analysis_mode=analysis_mode
+            )
         # In-process statement journal is always on (not user-configurable).
         self.journal = MigrationJournal(enabled=True, capture_objects=analysis_mode == "full")
 
