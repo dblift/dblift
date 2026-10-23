@@ -39,34 +39,9 @@
   "name": "escape_mode_carried_across_a_newline",
   "script": "SELECT E'a'\n'b\\'; SELECT 1; SELECT 'z';",
   "views": {
-   "analysis": [
-    "SELECT E'a'\n'b\\'; SELECT 1; SELECT 'z';"
-   ],
-   "blanked": "SELECT E'a'\n'b\\'; SELECT 1; SELECT 'z';",
-   "extraction": [
-    "SELECT E'a'\n'b\\'; SELECT 1; SELECT 'z';"
-   ],
-   "masking": [
-    [
-     "SELECT E'?'\n'?'z'?'",
-     "SELECT E"
-    ]
-   ],
-   "records": [
-    {
-     "analysis_statements": null,
-     "kind": "sql",
-     "line": 1,
-     "multi": false,
-     "repeat": 1,
-     "source_end": 39,
-     "source_start": 0,
-     "terminator": null,
-     "text": "SELECT E'a'\n'b\\'; SELECT 1; SELECT 'z';"
-    }
-   ],
-   "strings": [
-    "SELECT E'a'\n'b\\'; SELECT 1; SELECT 'z';"
+   "error": [
+    "UnsafeStatementSplitError",
+    "string continuing an escape string at line 2, column 1: DuckDB 1.x reads a backslash in it as an escape and 2.x as a character, so the statement ends in different places; write the text as one literal"
    ]
   }
  },
@@ -74,52 +49,9 @@
   "name": "escape_mode_carried_across_a_line_comment",
   "script": "SELECT E'a' -- c\n'b\\'' AS x; SELECT 2;",
   "views": {
-   "analysis": [
-    "SELECT E'a' -- c\n'b\\'' AS x",
-    "SELECT 2"
-   ],
-   "blanked": "SELECT E'a'  \n'b\\'' AS x; SELECT 2;",
-   "extraction": [
-    "SELECT E'a' -- c\n'b\\'' AS x",
-    "SELECT 2"
-   ],
-   "masking": [
-    [
-     "SELECT E'?' -- c\n'?' AS x",
-     "SELECT E"
-    ],
-    [
-     "SELECT 2",
-     "SELECT 2"
-    ]
-   ],
-   "records": [
-    {
-     "analysis_statements": null,
-     "kind": "sql",
-     "line": 1,
-     "multi": false,
-     "repeat": 1,
-     "source_end": 28,
-     "source_start": 0,
-     "terminator": ";",
-     "text": "SELECT E'a' -- c\n'b\\'' AS x"
-    },
-    {
-     "analysis_statements": null,
-     "kind": "sql",
-     "line": 2,
-     "multi": false,
-     "repeat": 1,
-     "source_end": 38,
-     "source_start": 29,
-     "terminator": ";",
-     "text": "SELECT 2"
-    }
-   ],
-   "strings": [
-    "SELECT E'a' -- c\n'b\\'' AS x",
-    "SELECT 2"
+   "error": [
+    "UnsafeStatementSplitError",
+    "string continuing an escape string at line 2, column 1: DuckDB 1.x reads a backslash in it as an escape and 2.x as a character, so the statement ends in different places; write the text as one literal"
    ]
   }
  },
@@ -2291,7 +2223,7 @@
   "views": {
    "error": [
     "UnsafeStatementSplitError",
-    "a NUL character on line 2: the engine reads the script up to it and silently drops the rest"
+    "a NUL character on line 2, column 1: the engine reads the script up to it and silently drops the rest"
    ]
   }
  },
@@ -2301,7 +2233,7 @@
   "views": {
    "error": [
     "UnsafeStatementSplitError",
-    "a NUL character on line 2: the engine reads the script up to it and silently drops the rest"
+    "a NUL character on line 2, column 1: the engine reads the script up to it and silently drops the rest"
    ]
   }
  },
@@ -2311,7 +2243,7 @@
   "views": {
    "error": [
     "UnsafeStatementSplitError",
-    "a NUL character on line 1: the engine reads the script up to it and silently drops the rest"
+    "a NUL character on line 1, column 1: the engine reads the script up to it and silently drops the rest"
    ]
   }
  },
@@ -2321,7 +2253,7 @@
   "views": {
    "error": [
     "UnsafeStatementSplitError",
-    "a NUL character on line 1: the engine reads the script up to it and silently drops the rest"
+    "a NUL character on line 1, column 10: the engine reads the script up to it and silently drops the rest"
    ]
   }
  },
@@ -2331,7 +2263,7 @@
   "views": {
    "error": [
     "UnsafeStatementSplitError",
-    "a NUL character on line 3: the engine reads the script up to it and silently drops the rest"
+    "a NUL character on line 3, column 1: the engine reads the script up to it and silently drops the rest"
    ]
   }
  },
@@ -2341,7 +2273,7 @@
   "views": {
    "error": [
     "UnsafeStatementSplitError",
-    "a NUL character on line 1: the engine reads the script up to it and silently drops the rest"
+    "a NUL character on line 1, column 11: the engine reads the script up to it and silently drops the rest"
    ]
   }
  },

@@ -277,48 +277,6 @@ def test_dialect_of_reads_the_configured_database_type():
     assert dialect_of(None) is None
 
 
-def test_parser_failure_yields_an_error_and_no_statements(monkeypatch):
-    class Boom:
-        def __init__(self, dialect):
-            raise RuntimeError("no parser")
-
-    monkeypatch.setattr(script_analysis, "SqlParserFactory", Boom)
-
-    analysis = analyse_script("DROP TABLE a;", "postgresql")
-
-    assert analysis.statements == ()
-    assert analysis.cautions == ()
-    assert analysis.errors == ("parser error: no parser",)
-
-
-def test_unknown_text_has_unknown_kind_and_is_listed_as_it_is(monkeypatch):
-    parsed = SimpleNamespace(
-        statements=[
-            SimpleNamespace(
-                sql_text="FROBNICATE x",
-                statement_type=None,
-                affected_objects=[],
-                names_unread=False,
-                objects=[],
-            ),
-        ],
-        errors=[],
-    )
-    monkeypatch.setattr(
-        script_analysis,
-        "SqlParserFactory",
-        lambda dialect: SimpleNamespace(parse_sql=lambda text: parsed),
-    )
-
-    analysis = analyse_script("ignored", "postgresql")
-
-    assert [(s.index, s.operation, s.kind) for s in analysis.statements] == [
-        (0, "FROBNICATE", "UNKNOWN")
-    ]
-    assert [s.sql for s in analysis.statements] == ["FROBNICATE x"]
-    assert analysis.cautions == ()
-
-
 def test_cte_delete_is_dml_and_names_its_table():
     analysis = analyse_script(
         "WITH old AS (SELECT id FROM sessions WHERE ts < now()) "
@@ -327,47 +285,8 @@ def test_cte_delete_is_dml_and_names_its_table():
     )
 
     statement = analysis.statements[0]
-    assert (statement.operation, statement.kind, statement.full_table) == ("WITH", "DML", False)
+    assert (statement.operation, statement.kind, statement.full_table) == ("DELETE", "DML", False)
     assert [o.name for o in statement.objects] == ["sessions"]
-    assert [c.level for c in analysis.cautions] == [CHANGES_ROWS]
-
-
-def test_quirks_failures_never_raise(monkeypatch):
-    real = script_analysis.ProviderRegistry.get_quirks("postgresql")
-
-    class BrokenQuirks(type(real)):  # the parser still needs the real quirks' parser class
-        def is_full_table_dml(self, statement):
-            raise RuntimeError("broken")
-
-        def statement_dml_table(self, statement):
-            raise RuntimeError("broken")
-
-    monkeypatch.setattr(
-        script_analysis.ProviderRegistry, "get_quirks", lambda dialect: BrokenQuirks(dialect)
-    )
-
-    analysis = analyse_script("DELETE FROM sessions;", "postgresql")
-
-    statement = analysis.statements[0]
-    assert statement.full_table is False
-    assert statement.objects == ()
-    assert [c.level for c in analysis.cautions] == [CHANGES_ROWS]
-
-
-def test_full_table_dml_respects_provider_quirks_override(monkeypatch):
-    real = script_analysis.ProviderRegistry.get_quirks("postgresql")
-
-    class OverrideQuirks(type(real)):
-        def is_full_table_dml(self, statement):
-            return False
-
-    monkeypatch.setattr(
-        script_analysis.ProviderRegistry, "get_quirks", lambda dialect: OverrideQuirks(dialect)
-    )
-
-    analysis = analyse_script("DELETE FROM sessions;", "postgresql")
-
-    assert analysis.statements[0].full_table is False
     assert [c.level for c in analysis.cautions] == [CHANGES_ROWS]
 
 

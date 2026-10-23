@@ -27,6 +27,7 @@ from dblift.db.plugins.snowflake.quirks import SnowflakeQuirks
 from dblift.db.provider_interfaces import DroppableObject
 from dblift.db.provider_registry import ProviderRegistry
 from dblift.db.sqlalchemy_provider import SqlAlchemyProvider
+from tests.support.legacy_snowflake_parsers import legacy_snowflake_hybrid
 
 
 def test_snowflake_extra_rejects_unqualified_sqlalchemy_21() -> None:
@@ -609,14 +610,25 @@ def test_snowflake_quoted_identifiers_keep_catalog_case() -> None:
 
 
 def test_snowflake_sqlglot_parser_handles_ddl_for_lint_and_preflight() -> None:
+    result = legacy_snowflake_hybrid().parse_sql(
+        'CREATE TABLE "QA"."Orders" ("Amount" NUMBER(18,4))'
+    )
+
+    assert result.success
+    assert len(result.statements) == 1
+    assert result.statements[0].statement_type.value == "CREATE"
+    assert result.statements[0].objects
+
+
+def test_snowflake_facts_parser_handles_ddl_for_lint_and_preflight() -> None:
     parser = SqlParserFactory("snowflake", parser_type="hybrid")
 
     result = parser.parse_sql('CREATE TABLE "QA"."Orders" ("Amount" NUMBER(18,4))')
 
     assert result.success
     assert len(result.statements) == 1
-    assert result.statements[0].statement_type.value == "CREATE"
-    assert result.statements[0].objects
+    assert result.statements[0].statement_type.value == "DDL"
+    assert [(o.name, o.schema) for o in result.statements[0].objects] == [("Orders", "QA")]
 
 
 def test_snowflake_migration_split_preserves_quoted_sql() -> None:

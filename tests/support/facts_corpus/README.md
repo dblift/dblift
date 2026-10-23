@@ -12,9 +12,9 @@ they are meant to replace. Real inputs only: no generated cases.
 | --- | --- |
 | `inputs.jsonl` | One row per input script: `id` (sha256 of the text, 16 hex), `sql`, `origins` (`file`, `dialects`; no line numbers, so reformatting a test file never changes the corpus). Append-only. Origins are provenance for the reader of a diff; nothing classifies by them. |
 | `<family>.jsonl` | One row per distinct statement after the family's `split_for_analysis`, sorted by `sql`: `inputs` (ids), `facts`, `old`, and `facts_newest` / `old_newest` only where the newest sqlglot differs. |
-| `VERSIONS.json` | The two recorded sqlglot versions, the size and input count measured at the first recording (write-once: `measure` never rewrites the size and refuses to lower the count), and the number of rows that differ between the arms. |
+| `VERSIONS.json` | The recorded sqlglot floor and newest arms (which may be the same release), the size and input count measured at the first recording (write-once: `measure` never rewrites the size and refuses to lower the count), and the number of rows that differ between the arms. |
 | `input_ids.txt` | The input ids of the first recording; the corpus test requires all of them to remain, so removing one input and adding another fails. |
-| `not_idempotent.json` | Statements that do not split back to themselves (the splitter refuses a lone PL/SQL unit, a client command, or drops a trailing comment). Listed so the idempotence test is exact. |
+| `not_idempotent.json` | Statements that do not split back to themselves (the splitter refuses a lone PL/SQL unit, a client command or a NUL byte, or drops a trailing comment). Listed so the idempotence test is exact. |
 | `reserved/<family>.txt` | The vendor's reserved words, with source URL, retrieval date, engine version and category in the header. SQLite (the vendor draws no reserved/non-reserved line) and Db2 (page not retrievable in a checkable form) have none. |
 | `gated.json` | The families whose differences between extraction and reader must all be classified or explained (see below). |
 | `<family>.review.json` | The reasons given for differences that need one, per statement id. |
@@ -26,9 +26,9 @@ Families: `postgresql` (also covers the PostgreSQL derivatives), `mysql` (also M
 ## Row fields
 
 * `facts`: the reader's `StatementFacts`, `None` and empty fields dropped, enums by value,
-  `objects` as `[name, type, role, schema]` in reader order, `events` sorted. `null` for Db2, which has
-  no reader. Families whose plugin has no reader are read through `SqlglotStatementFactsReader`
-  for their sqlglot dialect.
+  `objects` as `[name, type, role, schema]` in reader order, `events` sorted. Every
+  family has facts: Db2 is read by its own head classifier, and a family whose plugin has no reader
+  is read through `SqlglotStatementFactsReader` for its sqlglot dialect.
 * `old.hybrid` / `old.analyzer`: `[type, name, schema]` / `[type, "schema.name"]` lists from the two
   extraction paths, frozen separately because they disagree on a quarter of the statements. A path
   that raises is recorded as `{"raised": ...}`. `old.dml` (DML statements only): `table`
@@ -63,7 +63,9 @@ python -m tests.support.facts_corpus measure         # sizes, counts, not_idempo
 ```
 
 `record floor` recreates every row; `record newest` must follow it and only adds the
-`*_newest` fields. The recorder refuses any other sqlglot version.
+`*_newest` fields where the arms differ. When the floor catches up with newest,
+the arms have the same version and there are no `*_newest` fields. The recorder
+refuses any other sqlglot version.
 
 ## Comparing the extraction with the facts
 
@@ -77,7 +79,7 @@ in one class per path (`classes.py`, tried in this order: the first match wins):
 | Class | Meaning |
 | --- | --- |
 | `raised` | a path, the DML helpers or the reader raised |
-| `no-reader` | the family has no reader (Db2) |
+| `no-reader` | the family has no reader (none today; kept for a family added without one) |
 | `no-old-side` | the family's extraction already is the reader (SQLite, DuckDB): nothing to compare |
 | `no-old` | an activated family's row that has no recorded extraction |
 | `dml-differs` | target, predicate, events, updated columns or full-table flag differ |
@@ -87,7 +89,7 @@ in one class per path (`classes.py`, tried in this order: the first match wins):
 | `old-keyword` | the extraction took a word the engine reserves, unquoted and not after a dot, for an object; it is not written to and the reader names everything else |
 | `type-refined` | same name, the type moves to a strict subtype (`UNKNOWN` to any, `VIEW` to `MATERIALIZED_VIEW`) |
 | `quote-decoded` | the extraction cut the name at an escaped quote |
-| `case-folded` | the reader keeps an unquoted name as the statement spells it, the extraction holds the engine's folding of it (PostgreSQL, Redshift: lower; Oracle, Snowflake: upper; never MySQL or SQL Server), and the reader is not opaque; never the reverse direction |
+| `case-folded` | the reader keeps an unquoted name as the statement spells it, the extraction holds the engine's folding of it (PostgreSQL, Redshift: lower; never MySQL or SQL Server), and the reader is not opaque; for Db2, Oracle and Snowflake, whose readers fold the name themselves, the reverse: the facts hold the folded name and the extraction the spelling |
 | `facts-adds-referenced` | the reader names extra objects that are only read |
 | `opaque-safety` | the reader names nothing because a name holds a character the engine may read as part of it |
 | `opaque-both-empty` | the reader is opaque and the extraction names nothing |
@@ -104,11 +106,18 @@ was harvested from.
 `opaque-reader-gap`, `facts-fewer`, `facts-adds-acted`, `disagree`, `dml-differs`, `role-differs`,
 `no-old` and `no-reader` need a reason. Reasons live in `<family>.review.json`, keyed by the statement id
 (`<id>` for both paths, `<id>/hybrid` or `<id>/analyzer` for one) with `path`, `class`, `reason`
-and, for a reader gap, an `issue`. `class` is one string, or `{"floor": ..., "newest": ...}` for a
+and, for a reader gap, an `issue` (or `rejected_by`, below): the OSS issue number (`#N`) for a gap still to be closed, or `by design: <doc section>` for an outcome the reader's documentation states. `class` is one string, or `{"floor": ..., "newest": ...}` for a
 row whose class depends on the sqlglot release (`same` is allowed there for the arm that agrees,
 never on every arm). An entry whose row is gone, whose class is no longer the row's class on the arm
 being run (an entry without a key for that arm included), or that explains nothing is stale. A
 stale entry fails `diff` and the test module in every family, gated or not.
+
+A reader gap the engine never runs has nothing to fix, so instead of an `issue` its entry may carry
+`rejected_by`: a mapping from an engine and its version to the error identifier with which that
+engine's grammar rejected the statement (`{"postgresql 16.14": "42601"}`; MySQL answers with
+numbers such as `"1064"`). It is a human assertion, and `diff` checks only its shape (a non-empty
+mapping of non-empty strings). The evidence, which engines and versions and how the statement was
+run, belongs in the pull request that adds the entries.
 
 `gated.json` lists the families whose differences must all be classified or explained: `diff` exits 1
 and `tests/unit/core/sql_parser/test_facts_differential.py` fails on a row with neither, in a listed

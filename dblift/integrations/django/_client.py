@@ -51,4 +51,6 @@ def get_client() -> DBLiftClient:
         key = _database_cache_key(db, migrations_dir_str)
         engine = _engine_for_key(key, build_url(db))
 
-    return DBLiftClient.from_sqlalchemy(engine, migrations_dir=migrations_dir_str)
+    return DBLiftClient.from_sqlalchemy(
+        engine, migrations_dir=migrations_dir_str, analysis_mode="full"
+    )

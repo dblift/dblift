@@ -462,8 +462,8 @@ def test_dollar_tags():
         ("1E'b\\';c'", [ident("1"), kw("E"), st("'b\\';c'")]),
         ("12e'b\\';c'", [ident("12"), kw("e"), st("'b\\';c'")]),
         ("1xE'b\\';c'", [ident("1"), kw("xE"), st("'b\\'"), dl(), kw("c"), st("'")]),
-        (SQUARED + "E'b\\';c'", [kw(SQUARED + "E"), st("'b\\';c'")]),
-        (ARABIC_THREE + "E'b\\';c'", [kw(ARABIC_THREE + "E"), st("'b\\';c'")]),
+        (SQUARED + "E'b\\';c'", [kw(SQUARED + "E"), st("'b\\'"), dl(), kw("c"), st("'")]),
+        (ARABIC_THREE + "E'b\\';c'", [kw(ARABIC_THREE + "E"), st("'b\\'"), dl(), kw("c"), st("'")]),
         ("E 'a\\';b'", [kw("E"), st("'a\\'"), dl(), kw("b"), st("'")]),
         ("$$q$$E'a\\';b'", [st("$$q$$"), kw("E"), st("'a\\';b'")]),
         ("$1E'a\\';b'", [sym("$1"), kw("E"), st("'a\\';b'")]),
@@ -483,11 +483,29 @@ CONTINUED = [kw("SELECT"), kw("E"), st("'a'")]
 ESCAPE_THEN = "SELECT E'a'{gap}'b\\'; SELECT 2;"
 
 
-@pytest.mark.parametrize("gap", [" ", "\n", "\r", "\r\n", " -- c\n", "\t", NBSP, "  -- c\n  "])
-def test_escape_mode_continues_across_blanks_and_line_comments(gap):
-    items = shape(ESCAPE_THEN.format(gap=gap))
-    assert [i for i in items if i[0] == "STRING"] == [st("'a'"), st("'b\\'; SELECT 2;")]
-    assert dl() not in items
+@pytest.mark.parametrize(
+    "gap,continued",
+    [
+        (" ", False),
+        ("\n", True),
+        ("\r", True),
+        ("\r\n", True),
+        (" -- c\n", True),
+        ("\t", False),
+        (NBSP, False),
+        ("  -- c\n  ", True),
+    ],
+)
+def test_escape_mode_continues_only_across_line_breaks(gap, continued):
+    script = ESCAPE_THEN.format(gap=gap)
+    if continued:
+        # DuckDB 1.5.5 and 2.0.0 read the continuation two ways: the scanner reads neither
+        with pytest.raises(UnsafeStatementSplitError, match="reads a backslash in it"):
+            shape(script)
+        return
+    items = shape(script)
+    assert [i for i in items if i[0] == "STRING"] == [st("'a'"), st("'b\\'")]
+    assert dl() in items
 
 
 @pytest.mark.parametrize(
@@ -501,24 +519,39 @@ def test_escape_mode_ends_at_any_other_token(gap):
 
 def test_escape_mode_in_the_reference_cases():
     same_line = shape("SELECT E'a' 'b\\'; SELECT 1 AS y; SELECT 'z';")
-    assert same_line == CONTINUED + [st("'b\\'; SELECT 1 AS y; SELECT '"), kw("z"), st("';")]
-    assert shape("SELECT E'a'\n'b\\'; SELECT 1 AS y; SELECT 'z';") == same_line
+    assert same_line == CONTINUED + [
+        st("'b\\'"),
+        dl(),
+        kw("SELECT"),
+        ident("1"),
+        kw("AS"),
+        kw("y"),
+        dl(),
+        kw("SELECT"),
+        st("'z'"),
+        dl(),
+    ]
+    with pytest.raises(UnsafeStatementSplitError, match="reads a backslash in it"):
+        shape("SELECT E'a'\n'b\\'; SELECT 1 AS y; SELECT 'z';")
     assert shape("SELECT E'a' /* c */\n'b\\'' AS x; SELECT 2 AS y;")[3:] == [
         cm("/* c */"),
         st("'b\\'' AS x; SELECT 2 AS y;"),
     ]
-    assert shape("SELECT E'a' 'p' 'b\\'' AS x;")[2:5] == [st("'a'"), st("'p'"), st("'b\\''")]
+    assert shape("SELECT E'a' 'p' 'b\\'' AS x;")[2:5] == [st("'a'"), st("'p'"), st("'b\\'' AS x;")]
 
 
 def test_refusals_of_the_refused_character():
-    message = "a NUL character on line {}: the engine reads the script up to it and silently drops the rest"
-    assert refusal("SELECT 1;\n\x00SELECT 2;") == ("UnsafeStatementSplitError", message.format(2))
-    assert refusal(".mode csv\n\x00") == ("UnsafeStatementSplitError", message.format(2))
-    assert refusal(BOM + "\x00") == ("UnsafeStatementSplitError", message.format(1))
-    assert refusal("'a\x00b'")[1] == message.format(1)
-    assert refusal("/* a\n\n\x00 */")[1] == message.format(3)
-    assert refusal('"a\x00" $$\x00$$')[1] == message.format(1)
-    assert refusal("SELECT 1;\r\x00") == ("UnsafeStatementSplitError", message.format(1))
+    message = "a NUL character on line {}, column {}: the engine reads the script up to it and silently drops the rest"
+    assert refusal("SELECT 1;\n\x00SELECT 2;") == (
+        "UnsafeStatementSplitError",
+        message.format(2, 1),
+    )
+    assert refusal(".mode csv\n\x00") == ("UnsafeStatementSplitError", message.format(2, 1))
+    assert refusal(BOM + "\x00") == ("UnsafeStatementSplitError", message.format(1, 1))
+    assert refusal("'a\x00b'")[1] == message.format(1, 3)
+    assert refusal("/* a\n\n\x00 */")[1] == message.format(3, 1)
+    assert refusal('"a\x00" $$\x00$$')[1] == message.format(1, 3)
+    assert refusal("SELECT 1;\r\x00") == ("UnsafeStatementSplitError", message.format(1, 11))
 
 
 def test_refusals_of_shell_command_lines():
@@ -589,17 +622,20 @@ def test_command_message_and_refusal_are_read_from_the_spec():
     assert refusal(".mode\nSELECT 1;", renamed)[1].startswith("x shell command '.mode' on line 1:")
     bang = replace(
         DUCKDB_SPEC,
-        segment_script=replace(
-            DUCKDB_RULES, command_prefix="!", refused_character_name="X", refused_reason="r"
-        ),
+        segment_script=replace(DUCKDB_RULES, command_prefix="!"),
+        refused_character_name="X",
+        refused_reason="r",
     )
     assert refusal("!print\nSELECT 1;", bang)[1].startswith(
         "duckdb shell command '!print' on line 1:"
     )
     assert shape(".mode\nSELECT 1;", bang)[0] == sym(".")
-    assert refusal("a\x00", bang) == ("UnsafeStatementSplitError", "a X character on line 1: r")
-    other_char = replace(DUCKDB_SPEC, segment_script=replace(DUCKDB_RULES, refused_character="@"))
-    assert refusal("a\nb@", other_char)[1].startswith("a NUL character on line 2:")
+    assert refusal("a\x00", bang) == (
+        "UnsafeStatementSplitError",
+        "a X character on line 1, column 2: r",
+    )
+    other_char = replace(DUCKDB_SPEC, refused_character="@")
+    assert refusal("a\nb@", other_char)[1].startswith("a NUL character on line 2, column 2:")
     assert shape("a\x00b", other_char) == [kw("a"), sym("\x00"), kw("b")]
 
 

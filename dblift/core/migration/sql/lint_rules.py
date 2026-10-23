@@ -41,6 +41,7 @@ SEVERITY: Dict[str, str] = {
     "drop-schema": ERROR,
     "drop-column": ERROR,
     "truncate": ERROR,
+    "drop-unread-object": WARNING,
     "dml-no-where": WARNING,
     "add-not-null-no-default": WARNING,
     "rename-column": WARNING,
@@ -57,6 +58,8 @@ SEVERITY: Dict[str, str] = {
 _MESSAGES: Dict[str, str] = {
     "add-not-null-no-default": "adds a NOT NULL column without a DEFAULT: existing rows need a value"
     + SIZE_NOTE,
+    "drop-unread-object": "drops an object whose kind or name could not be read: check by hand "
+    "that it holds no rows",
     "rename-column": "renames a column: the application already deployed still uses the old name",
     "rename-table": "renames a table: the application already deployed still uses the old name",
     "alter-column-type": "changes a column's type: the engine may rewrite the table" + SIZE_NOTE,

@@ -1,5 +1,10 @@
 # SQL parsing
 
+Direct construction of the legacy parser classes is deprecated for v5.0.
+Canonical migration and analysis paths continue to use their plugin-owned
+readers. See the [v5 alpha deprecation inventory](../../../docs/developer-guide/v5-alpha-deprecation-inventory.md)
+for each class's current callers, replacement scope, and remaining gaps.
+
 A dialect's script scanner owns execution boundaries. Its `split(sql)` records
 contain the SQL sent to the server, client directives, and any scanner-derived
 `analysis_statements`. `split_statements(sql)` projects executable text;

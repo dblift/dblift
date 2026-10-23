@@ -121,3 +121,17 @@ class UnsupportedMigrationFormatError(ValidationError):
 
 class SchemaCreationError(ValidationError):
     """Raised when a test schema cannot be created."""
+
+
+class InvalidTargetVersionError(ValidationError, ValueError):
+    """Raised when ``target_version`` is not a version of any migration script."""
+
+    def __init__(self, target_version: str, available: "list[str]") -> None:
+        """Record the rejected value and the versions a caller could have used."""
+        self.target_version = target_version
+        self.available_versions = list(available)
+        listed = ", ".join(available) if available else "(no versioned migration scripts found)"
+        super().__init__(
+            f"Invalid target version {target_version!r}: it is not the version of a migration "
+            f"script. Available versions: {listed}"
+        )

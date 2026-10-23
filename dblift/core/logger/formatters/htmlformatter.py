@@ -8,9 +8,8 @@ _logger = logging.getLogger(__name__)
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-import jinja2
-
 from dblift.core.logger._formatters import _safe_name, resolve_dblift_package_version
+from dblift.core.logger.console import require_presentation_extras
 from dblift.core.logger.results import OperationResult
 
 
@@ -23,6 +22,9 @@ class HtmlFormatter:
         Args:
             template_dir: Optional custom directory containing Jinja2 templates
         """
+        require_presentation_extras("The HTML report", "jinja2")
+        import jinja2
+
         if template_dir is None:
             # Default to the templates directory in the parent logger directory
             template_dir = Path(__file__).parent.parent / "templates"

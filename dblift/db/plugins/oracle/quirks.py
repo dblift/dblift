@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING, Any, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, List, Optional, Tuple, Type
 
+from dblift.core.sql_parser.statement_facts import SqlglotStatementFactsReader
 from dblift.db.base_quirks import BaseQuirks
 from dblift.db.error import ErrorCategory
 from dblift.db.feature_gate import FeatureGate
 
 if TYPE_CHECKING:
     from dblift.core.sql_parser.lexical_spec import LexicalSpec
+    from dblift.core.sql_parser.statement_facts import StatementFactsReader
     from dblift.db.version import DatabaseVersion
 
 
@@ -71,6 +73,7 @@ class OracleQuirks(BaseQuirks):
     uppercase_identifiers = True
     clean_strategy = "native"
     sqlglot_dialect = "oracle"
+    statement_facts_class: Optional[Type["StatementFactsReader"]] = SqlglotStatementFactsReader
     # import-flyway reads the verbatim-cased Flyway source table directly,
     # because get_applied_migrations would uppercase the name and miss it.
     flyway_source_table_case_sensitive = True

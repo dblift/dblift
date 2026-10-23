@@ -20,7 +20,6 @@ from dblift.core.migration.sql import migration_sql_parser
 from dblift.core.migration.sql.statement_splitter import StatementSplitter
 from dblift.core.sql_parser.lexical_engine import LexicalEngine
 from dblift.core.sql_parser.statement import Statement
-from dblift.db.plugins.snowflake.statement_parser import SnowflakeStatementParser
 from tests.support import statement_list_parity as parity
 from tests.support.statement_list_parity import (
     CELLS,
@@ -147,10 +146,7 @@ def test_a_record_of_an_unknown_kind_is_no_statement_to_any_consumer(view, diale
         Statement("SELECT 1", 1, ";"),
         Statement("SELECT 99", 2, ";", kind="comment"),  # type: ignore[arg-type]
     ]
-    with (
-        patch.object(LexicalEngine, "split", lambda self, script, *a, **k: list(stub)),
-        patch.object(SnowflakeStatementParser, "split", lambda self, script: list(stub)),
-    ):
+    with patch.object(LexicalEngine, "split", lambda self, script, *a, **k: list(stub)):
         got = Outcome.of(lambda: view.run(dialect, "SELECT 1; SELECT 99;"))
     assert got.statements == ("SELECT 1",), got
 

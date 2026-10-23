@@ -29,6 +29,7 @@ from sqlglot import exp, parse_one
 from dblift.core.sql_model.base import ConstraintType
 from dblift.core.sql_model.trigger import Trigger
 from dblift.core.sql_parser._sqlglot_builders import _SqlglotBuildersMixin, _TriggerHeader
+from tests.support.legacy_oracle_hybrid import oracle_facts_off
 
 pytestmark = [pytest.mark.unit]
 
@@ -36,14 +37,15 @@ pytestmark = [pytest.mark.unit]
 class _Harness(_SqlglotBuildersMixin):
     """Minimal composing class so the mixin's ``self.*`` resolve correctly."""
 
-    def __init__(self, dialect: str = "postgresql") -> None:
+    def __init__(self, dialect: str = "oracle") -> None:
         from dblift.core.sql_parser.sqlglot_parser import SqlGlotParser
         from dblift.db.provider_registry import ProviderRegistry
 
         self.dialect = dialect
         self._quirks = ProviderRegistry.get_quirks(dialect)
         try:
-            self.sqlglot_parser: Any = SqlGlotParser(dialect)
+            with oracle_facts_off():
+                self.sqlglot_parser: Any = SqlGlotParser(dialect)
         except Exception:
             self.sqlglot_parser = None
 
@@ -150,7 +152,7 @@ class TestFindMatchingTrigger:
             events=[],
             orientation="ROW",
             definition=None,
-            dialect="postgresql",
+            dialect="oracle",
             definer=None,
         )
         defaults.update(kwargs)
@@ -195,7 +197,7 @@ class TestMergeTriggerMetadata:
             events=[],
             orientation="ROW",
             definition=None,
-            dialect="postgresql",
+            dialect="oracle",
             definer=None,
         )
         defaults.update(kwargs)
@@ -244,7 +246,7 @@ class TestBuildTriggerFromHeader:
         assert trigger.timing == "BEFORE"
         assert trigger.events == ["UPDATE"]
         assert trigger.definition == "BODY"
-        assert trigger.dialect == "postgresql"
+        assert trigger.dialect == "oracle"
         assert trigger.definer == "u@h"
 
     def test_no_event_yields_empty_events_list(self):
@@ -265,13 +267,13 @@ class TestBuildTableModelFromSqlglot:
     def test_extracts_columns_constraints_and_pk(self):
         ast = parse_one(
             "CREATE TABLE app.users (id INT PRIMARY KEY, email TEXT NOT NULL UNIQUE);",
-            read="postgres",
+            read="oracle",
         )
         assert isinstance(ast, exp.Create)
         # ``_build_table_model_from_sqlglot`` itself takes the SQL text
         # because it re-parses internally; mirroring the production call
         # path keeps the assertion grounded in real behavior.
-        table = _Harness("postgresql")._build_table_model_from_sqlglot(
+        table = _Harness("oracle")._build_table_model_from_sqlglot(
             "CREATE TABLE app.users (id INT PRIMARY KEY, email TEXT NOT NULL UNIQUE);",
             default_schema=None,
         )
@@ -283,13 +285,11 @@ class TestBuildTableModelFromSqlglot:
         assert any(c.constraint_type == ConstraintType.UNIQUE for c in table.constraints)
 
     def test_returns_none_for_non_create_table_statement(self):
-        table = _Harness("postgresql")._build_table_model_from_sqlglot(
-            "SELECT 1;", default_schema=None
-        )
+        table = _Harness("oracle")._build_table_model_from_sqlglot("SELECT 1;", default_schema=None)
         assert table is None
 
     def test_returns_none_when_sqlglot_parser_not_available(self):
-        h = _Harness("postgresql")
+        h = _Harness("oracle")
         h.sqlglot_parser = None  # simulate plugins without sqlglot_dialect
         assert (
             h._build_table_model_from_sqlglot("CREATE TABLE x (id INT);", default_schema=None)
@@ -299,7 +299,7 @@ class TestBuildTableModelFromSqlglot:
 
 class TestBuildViewFromSqlglot:
     def test_extracts_view_name_schema_and_query(self):
-        view = _Harness("postgresql")._build_view_from_sqlglot(
+        view = _Harness("oracle")._build_view_from_sqlglot(
             "CREATE VIEW app.active_users AS SELECT id FROM users WHERE active = TRUE;",
             default_schema=None,
         )
@@ -309,7 +309,7 @@ class TestBuildViewFromSqlglot:
         assert view.query is not None and "SELECT" in view.query.upper()
 
     def test_detects_materialized_view(self):
-        view = _Harness("postgresql")._build_view_from_sqlglot(
+        view = _Harness("oracle")._build_view_from_sqlglot(
             "CREATE MATERIALIZED VIEW app.totals AS SELECT count(*) FROM orders;",
             default_schema=None,
         )
@@ -317,7 +317,7 @@ class TestBuildViewFromSqlglot:
         assert view.materialized is True
 
     def test_default_schema_when_view_unqualified(self):
-        view = _Harness("postgresql")._build_view_from_sqlglot(
+        view = _Harness("oracle")._build_view_from_sqlglot(
             "CREATE VIEW v AS SELECT 1;", default_schema="public"
         )
         assert view is not None
@@ -326,7 +326,7 @@ class TestBuildViewFromSqlglot:
 
 class TestBuildIndexFromSqlglot:
     def test_extracts_unique_index_name_table_columns(self):
-        index = _Harness("postgresql")._build_index_from_sqlglot(
+        index = _Harness("oracle")._build_index_from_sqlglot(
             "CREATE UNIQUE INDEX idx_users_email ON app.users (email);",
             default_schema=None,
         )
@@ -338,14 +338,14 @@ class TestBuildIndexFromSqlglot:
         assert index.unique is True
 
     def test_non_unique_index(self):
-        index = _Harness("postgresql")._build_index_from_sqlglot(
+        index = _Harness("oracle")._build_index_from_sqlglot(
             "CREATE INDEX idx_t_x ON s.t (x);", default_schema=None
         )
         assert index is not None
         assert index.unique is False
 
     def test_returns_none_on_non_index_statement(self):
-        index = _Harness("postgresql")._build_index_from_sqlglot(
+        index = _Harness("oracle")._build_index_from_sqlglot(
             "CREATE TABLE t (id INT);", default_schema=None
         )
         assert index is None

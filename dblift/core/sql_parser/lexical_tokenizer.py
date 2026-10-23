@@ -1,7 +1,7 @@
 """Shared lexical tokenization driven by immutable plugin facts."""
 
 import re
-from typing import Callable, Dict, FrozenSet, Iterable, List, NoReturn, Optional, Tuple
+from typing import Callable, Dict, FrozenSet, Iterable, Iterator, List, NoReturn, Optional, Tuple
 
 from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
 from dblift.core.sql_parser.base_tokenizer import BaseTokenizer
@@ -42,7 +42,7 @@ def copy_header_reads(tokens: Iterable[Token], direction: str, stream: str) -> b
     return any(a == direction and b == stream for a, b in zip(words, words[1:]))
 
 
-def is_alone_on_line(sql: str, pos: int) -> bool:
+def is_alone_on_line(sql: str, pos: int, text_blanks: Optional[str] = None) -> bool:
     """Whether ``sql[pos]`` is the only non-blank text on its line.
 
     Looks only at the blanks adjacent to ``pos``, so the cost does not grow
@@ -50,12 +50,14 @@ def is_alone_on_line(sql: str, pos: int) -> bool:
     """
     i = pos - 1
     while i >= 0 and sql[i] != "\n":
-        if not sql[i].isspace():
+        blank = sql[i] in text_blanks if text_blanks is not None else sql[i].isspace()
+        if not blank:
             return False
         i -= 1
     i = pos + 1
     while i < len(sql) and sql[i] != "\n":
-        if not sql[i].isspace():
+        blank = sql[i] in text_blanks if text_blanks is not None else sql[i].isspace()
+        if not blank:
             return False
         i += 1
     return True
@@ -161,6 +163,8 @@ class LexicalTokenizer(BaseTokenizer):
         self._delimiter = ""
         self._eol_cache = -1
         self._line_start = True
+        self._meta_scanned = 0
+        self._meta_line_has_code = False
         self._seen_from, self._seen_at = len(sql) + 1, -1
         if delimiter_rules is not None:
             origin = 1 if spec.leading_bom_is_blank and sql.startswith(BOM) else 0
@@ -188,19 +192,39 @@ class LexicalTokenizer(BaseTokenizer):
         self.origin = 0
         self._seg_pending = False
         self._seg_escape = False
+        self._seg_escape_newline = False
+        self._seg_prefixed = False
         if self._segment is not None:
             self._init_segment_script(self._segment)
 
     def tokenize(self) -> List[Token]:
         """Read every token; a delimiter script then refuses what it left open."""
+        if self.spec.refused_character:
+            self._refuse_character()
         if self.spec.terminator_script is not None:
             return self._tokenize_terminator_script()
         if self._segment is not None:
-            return self._tokenize_segment_script(self._segment)
+            return list(self._iter_segment_tokens(self._segment))
         tokens = super().tokenize()
         if self.delimiter_script is not None:
             self.delimiter_script.finish()
         return tokens
+
+    def _refuse_character(self) -> None:
+        """Refuse the script when it holds the specification's ``refused_character``.
+
+        A leading byte order mark that the specification reads as a blank is not counted.
+        """
+        spec, sql = self.spec, self.sql
+        origin = 1 if spec.leading_bom_is_blank and sql.startswith(BOM) else 0
+        bad = sql.find(spec.refused_character, origin)
+        if bad >= 0:
+            line = sql.count("\n", origin, bad) + 1
+            column = bad - max(sql.rfind("\n", origin, bad) + 1, origin) + 1
+            raise UnsafeStatementSplitError(
+                f"a {spec.refused_character_name} character on line {line}, column {column}: "
+                f"{spec.refused_reason}"
+            )
 
     def _tokenize_terminator_script(self) -> List[Token]:
         """Lexemes of a terminator script, read from the text with its terminators blanked.
@@ -270,7 +294,15 @@ class LexicalTokenizer(BaseTokenizer):
         self._seg_parameter = re.compile(rules.parameter)
         self._seg_comment = re.compile("--[^" + re.escape(rules.line_comment_ends) + "]*")
 
-    def _tokenize_segment_script(self, rules: SegmentScriptRules) -> List[Token]:
+    def _scan_segment_comments(self) -> None:
+        """Read segment comments and refusals without retaining the token stream."""
+        assert self._segment is not None
+        if self.spec.refused_character:
+            self._refuse_character()
+        for _ in self._iter_segment_tokens(self._segment):
+            pass
+
+    def _iter_segment_tokens(self, rules: SegmentScriptRules) -> Iterator[Token]:
         """Lexemes of a segment script in one pass, after the refused character check.
 
         An unterminated string, identifier, dollar-quoted string or comment runs to the end of the
@@ -278,14 +310,7 @@ class LexicalTokenizer(BaseTokenizer):
         """
         sql = self.sql
         self.origin = origin = 1 if self.spec.leading_bom_is_blank and sql.startswith(BOM) else 0
-        bad = sql.find(rules.refused_character, origin)
-        if bad >= 0:
-            raise UnsafeStatementSplitError(
-                f"a {rules.refused_character_name} character on line "
-                f"{sql.count(chr(10), origin, bad) + 1}: {rules.refused_reason}"
-            )
         self.pos = origin
-        tokens: List[Token] = []
         size = len(sql)
         if rules.blank_pass is not None:
             last = max(sql.rfind(blank) for blank in rules.blanks)
@@ -296,14 +321,15 @@ class LexicalTokenizer(BaseTokenizer):
         while self.pos < size:
             token = self._next_segment_token(rules)
             if token is not None:
-                tokens.append(token)
-        return tokens
+                yield token
 
     def _next_segment_token(self, rules: SegmentScriptRules) -> Optional[Token]:
         """The lexeme at the cursor, or None for a blank."""
         sql, pos = self.sql, self.pos
         char = sql[pos]
         if char in self._seg_blanks and not (char in self._seg_wide and self._kept_until(pos)):
+            if char in "\r\n" and self._seg_escape:
+                self._seg_escape_newline = True
             self.read()
             return None
         if self._at_command_line(rules, pos):
@@ -374,10 +400,39 @@ class LexicalTokenizer(BaseTokenizer):
         return self._segment_token(TokenType.COMMENT, start, line, col)
 
     def _segment_string(self) -> Token:
-        """A string; an escape string while the escape mode continues. A string keeps the mode."""
+        """A prefix or a line break may carry escape mode into this string."""
         self._seg_pending = True
-        read = self._handle_escape_string if self._seg_escape else self._handle_standard_string
+        escape = self._seg_escape and self._seg_escape_newline
+        if escape and not self._seg_prefixed:
+            self._refuse_ambiguous_continuation()
+        self._seg_prefixed = False
+        read = self._handle_escape_string if escape else self._handle_standard_string
+        self._seg_escape = escape
+        self._seg_escape_newline = False
         return self._segment_lexeme(TokenType.STRING, read)
+
+    def _refuse_ambiguous_continuation(self) -> None:
+        """Refuse a string on a later line of an escape string when the engines read it two ways.
+
+        DuckDB 1.x carries the escape mode into the continuation, 2.x reads it as a plain string
+        (docs/sql-parsing/duckdb.md). When both readings close the string at the same place the
+        text means the same in either; otherwise no reading is exact.
+        """
+        line, col, ends = self.line, self.col, []
+        for read in (self._handle_escape_string, self._handle_standard_string):
+            before = (self.pos, self.line, self.col)
+            try:
+                read()
+            except UnsafeStatementSplitError:
+                pass
+            ends.append(self.pos)
+            self.pos, self.line, self.col = before
+        if ends[0] != ends[1]:
+            raise UnsafeStatementSplitError(
+                f"string continuing an escape string at line {line}, column {col}: DuckDB 1.x "
+                "reads a backslash in it as an escape and 2.x as a character, so the statement "
+                "ends in different places; write the text as one literal"
+            )
 
     def _segment_identifier(self) -> Token:
         """A quoted identifier."""
@@ -424,6 +479,7 @@ class LexicalTokenizer(BaseTokenizer):
             self.read()
             return self._segment_token(TokenType.SYMBOL, start, line, col)
         self._seg_escape = self._opens_escape_string(self.sql[start:end], end)
+        self._seg_escape_newline = self._seg_prefixed = self._seg_escape
         self.read(end - start)
         return self._segment_token(kind, start, line, col)
 
@@ -453,12 +509,12 @@ class LexicalTokenizer(BaseTokenizer):
         return end
 
     def _opens_escape_string(self, word: str, end: int) -> bool:
-        """Whether ``word``, with a quote at ``end``, is an escape prefix (alone or after digits)."""
+        """Whether ``word``, with a quote at ``end``, is an escape prefix."""
         assert self._segment is not None
         return (
             self.sql.startswith("'", end)
             and word[-1] in self._segment.escape_letters
-            and (len(word) == 1 or word[:-1].isdigit())
+            and len(word) == 1
         )
 
     def assemble(self, tokens: List[Token]) -> List[Statement]:
@@ -538,8 +594,25 @@ class LexicalTokenizer(BaseTokenizer):
         # reaching here is unquoted. Not inside a COPY header (up to its ';'),
         # which stays one unit with its data block; the data block itself
         # (rows may start with \N) is read whole above.
-        if self.spec.meta_prefix and char == self.spec.meta_prefix and self._copy_header is None:
+        if (
+            self.spec.meta_prefix
+            and char == self.spec.meta_prefix
+            and self._copy_header is None
+            and (
+                not self.spec.meta_prefix_line_start
+                or (self.peek(2) != "!=" and self._meta_at_line_start())
+            )
+        ):
             return self._handle_meta_command()
+
+        if self.spec.slash_line_comments and self.peek(2) == "//":
+            return self._handle_comment()
+
+        if self.spec.dollar_quotes and not self.spec.dollar_quote_tags and char == "$":
+            if self._tagged_dollar_opener():
+                raise UnsafeStatementSplitError(
+                    f"unsupported tagged dollar quote at line {self.line}, column {self.col}"
+                )
 
         # Flyway / DBLift placeholders ${name} or ${name:default} — not PostgreSQL
         # dollar-quoting ($$…$$ / $tag$…$tag$). Treat as a single token so statement
@@ -570,6 +643,32 @@ class LexicalTokenizer(BaseTokenizer):
 
         # Delegate to base class for other token types
         return super()._next_token()
+
+    def _meta_at_line_start(self) -> bool:
+        """Check a candidate prefix using each intervening source character only once."""
+        for char in self.sql[self._meta_scanned : self.pos]:
+            if char in "\r\n":
+                self._meta_line_has_code = False
+            elif char not in self.spec.text_blanks:
+                self._meta_line_has_code = True
+        self._meta_scanned = self.pos
+        return not self._meta_line_has_code
+
+    def _tagged_dollar_opener(self) -> bool:
+        """A fixed-dollar dialect refuses only a complete, unquoted ``$tag$`` opener."""
+        first = self.pos + 1
+        if first >= len(self.sql) or not (
+            self.sql[first].isascii() and (self.sql[first].isalpha() or self.sql[first] == "_")
+        ):
+            return False
+        end = first + 1
+        while (
+            end < len(self.sql)
+            and self.sql[end].isascii()
+            and (self.sql[end].isalnum() or self.sql[end] == "_")
+        ):
+            end += 1
+        return end < len(self.sql) and self.sql[end] == "$"
 
     def _next_sqlite_token(self) -> Optional[Token]:
         """Read SQLite lexemes using the same token stream as other dialects."""
@@ -655,8 +754,12 @@ class LexicalTokenizer(BaseTokenizer):
         after = self.peek(2)[1:]
         if after == "$":
             return True  # empty tag
+        if not self.spec.dollar_quote_tags:
+            return False
         # A tag starts like an unquoted identifier; $1 is a parameter, ${ a placeholder.
-        return bool(after) and (after.isalpha() or after == "_")
+        return bool(after) and (
+            after.isalpha() or after == "_" or self._is_non_ascii_name_char(after)
+        )
 
     def _track(self, token: Token) -> None:
         """Follow where statements end, as the statement parser does."""
@@ -690,8 +793,8 @@ class LexicalTokenizer(BaseTokenizer):
         assert rules is not None
         if not self._line_is_clear(self.pos):
             return None
-        first = self.sql[self.pos : self._eol(self.pos)].strip()
-        found = classify_directive(rules, first)
+        first = self.sql[self.pos : self._eol(self.pos)].strip(self.spec.text_blanks)
+        found = classify_directive(rules, first, text_blanks=self.spec.text_blanks)
         free_text = found is not None and is_free_text(rules, found[0])
         parts: List[str] = []
         cursor = self.pos
@@ -699,15 +802,15 @@ class LexicalTokenizer(BaseTokenizer):
             eol = self._eol(cursor)
             comment, closed = (-1, True) if free_text else _scan_line(self.sql, cursor, eol)
             end = comment if comment != -1 else eol
-            part = self.sql[cursor:end].strip()
+            part = self.sql[cursor:end].strip(self.spec.text_blanks)
             if comment == -1 and closed and part.endswith("-") and eol < len(self.sql):
-                parts.append(part[:-1].rstrip())
+                parts.append(part[:-1].rstrip(self.spec.text_blanks))
                 cursor = eol + 1
                 continue
             parts.append(part)
             break
         text = " ".join(p for p in parts if p)
-        directive = classify_directive(rules, text)
+        directive = classify_directive(rules, text, text_blanks=self.spec.text_blanks)
         if directive is None:
             return None
         token = Token(TokenType.DIRECTIVE, text, self.pos, self.line, self.col, self.parens_depth)
@@ -724,9 +827,11 @@ class LexicalTokenizer(BaseTokenizer):
     def _line_is_clear(self, pos: int) -> bool:
         """Whether only blanks and block comments precede ``pos`` on its line."""
         line_start = self.sql.rfind("\n", 0, pos) + 1
-        if not self.sql[line_start:pos].strip():
+        if not self.sql[line_start:pos].strip(self.spec.text_blanks):
             return True
-        return self._clear_from is not None and not self.sql[self._clear_from : pos].strip()
+        return self._clear_from is not None and not self.sql[self._clear_from : pos].strip(
+            self.spec.text_blanks
+        )
 
     def _is_delimiter_start(self) -> bool:
         """A ``;``, or a line terminator and discard line when alone on their line."""
@@ -735,7 +840,7 @@ class LexicalTokenizer(BaseTokenizer):
             return True
         rules = self.spec.client_script
         if rules is not None and char in (rules.line_terminator, rules.discard_line):
-            return is_alone_on_line(self.sql, self.pos)
+            return is_alone_on_line(self.sql, self.pos, self.spec.text_blanks)
         return False
 
     def _alternative_quote_opener(self) -> int:
@@ -879,9 +984,9 @@ class LexicalTokenizer(BaseTokenizer):
         tag = self.read()  # $
         string_text += tag
         while self.pos < len(self.sql) and self.peek() != "$":
-            # Tag can contain letters, numbers, underscore
+            # Tag can contain identifier characters except dollar signs.
             char = self.peek()
-            if char.isalnum() or char == "_":
+            if char.isalnum() or char == "_" or self._is_non_ascii_name_char(char):
                 tag += self.read()
                 string_text += char
             else:
@@ -989,6 +1094,17 @@ class LexicalTokenizer(BaseTokenizer):
             elif char not in blanks:
                 self._line_head = False
             self.read()
+
+    def _is_keyword_start(self) -> bool:
+        """A name also begins at a non-ASCII character when the spec says the engine reads it so."""
+        return super()._is_keyword_start() or self._is_non_ascii_name_char(self.peek())
+
+    def _is_word_char(self, char: str) -> bool:
+        """A name also goes on through a non-ASCII character when the spec says so."""
+        return super()._is_word_char(char) or self._is_non_ascii_name_char(char)
+
+    def _is_non_ascii_name_char(self, char: str) -> bool:
+        return self.spec.non_ascii_names and char >= "\x80"
 
     def _is_lexeme(self, token: Token) -> bool:
         """Whether a token is a string or a quoted or bracketed name."""
@@ -1214,7 +1330,17 @@ class LexicalTokenizer(BaseTokenizer):
 
     def _handle_comment(self) -> Token:
         start = self.pos
-        token = super()._handle_comment()
+        opener = self.peek(2)
+        if (opener == "//" and self.spec.slash_line_comments) or (
+            opener == "--" and self.spec.line_comment_ends != "\n"
+        ):
+            line, col = self.line, self.col
+            self.read(2)
+            while self.pos < len(self.sql) and self.peek() not in self.spec.line_comment_ends:
+                self.read()
+            token = Token(TokenType.COMMENT, "", start, line, col, self.parens_depth)
+        else:
+            token = super()._handle_comment()
         self.comments.append((start, self.pos))
         self._comment_end_line = self.line
         if self.spec.sqlite_shell:

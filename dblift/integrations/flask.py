@@ -51,7 +51,9 @@ def init_dblift(
     Thin: guard (if any) only inspects via client.info(). The caller / CLI command
     is responsible for calling migrate() explicitly when desired.
     """
-    client = DBLiftClient.from_sqlalchemy(engine, migrations_dir=migrations_dir)
+    client = DBLiftClient.from_sqlalchemy(
+        engine, migrations_dir=migrations_dir, analysis_mode="full"
+    )
 
     if guard:
         from .fastapi import migration_guard

@@ -116,7 +116,7 @@ class ClientScript:
         line_start = self.source.rfind("\n", 0, token.pos) + 1
         start = others[0].pos if others else line_start
         text = _COMMENT.sub(" ", self.source[start : token.pos])
-        return not text.rsplit("\n", 1)[-1].strip()
+        return not text.rsplit("\n", 1)[-1].strip(self.text_blanks)
 
     def _refuse_terminator_text(
         self, token: Token, following: Optional[Token], buffered: Sequence[Token]
@@ -186,7 +186,9 @@ class ClientScript:
         """A directive after a ``;`` on the same line: the client sends the line to the server."""
         eol = self.source.find("\n", following.pos)
         found = classify_directive(
-            self.rules, self.source[following.pos : eol if eol != -1 else len(self.source)]
+            self.rules,
+            self.source[following.pos : eol if eol != -1 else len(self.source)],
+            text_blanks=self.text_blanks,
         )
         if found is not None:
             raise UnsupportedMetaCommandError(
@@ -196,7 +198,7 @@ class ClientScript:
 
     def is_exit(self, token: Token) -> bool:
         """Whether a directive token stops the script."""
-        found = classify_directive(self.rules, token.text)
+        found = classify_directive(self.rules, token.text, text_blanks=self.text_blanks)
         return found is not None and found[1] is DirectiveAction.EXIT
 
     def directive_record(self, token: Token) -> Statement:
@@ -205,7 +207,7 @@ class ClientScript:
         Nothing is sent for it, except for a policy directive: execution reads
         that policy from the statement list, so it gets ``<line>;``.
         """
-        found = classify_directive(self.rules, token.text)
+        found = classify_directive(self.rules, token.text, text_blanks=self.text_blanks)
         assert found is not None  # the tokenizer only emits recognised directives
         name, action = found
         if action is DirectiveAction.EXEC:
@@ -266,9 +268,12 @@ class ClientScript:
             (
                 line
                 for line, text in enumerate(tail.splitlines(), start=exit_token.line + 1)
-                if text.strip()
-                and not text.lstrip().startswith("--")
-                and classify_directive(self.rules, text.strip()) is None
+                if text.strip(self.text_blanks)
+                and not text.lstrip(self.text_blanks).startswith("--")
+                and classify_directive(
+                    self.rules, text.strip(self.text_blanks), text_blanks=self.text_blanks
+                )
+                is None
             ),
             None,
         )

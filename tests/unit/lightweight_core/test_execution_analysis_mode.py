@@ -135,8 +135,42 @@ def test_inprocess_async_factories_forward_selected_mode(tmp_path):
         engine.dispose()
 
 
+@pytest.mark.parametrize("factory", ["from_config", "from_config_file", "from_sqlalchemy"])
+def test_explicit_mode_reaches_registered_class_with_different_default(factory, tmp_path):
+    from sqlalchemy import create_engine
+
+    from dblift.api import DBLiftClient
+    from dblift.config import DbliftConfig
+    from dblift.core.logger import NullLog
+
+    class FullByDefaultClient(DBLiftClient):
+        def __init__(self, *args, analysis_mode="full", **kwargs):
+            super().__init__(*args, analysis_mode=analysis_mode, **kwargs)
+
+    db = tmp_path / "reg.db"
+    config = DbliftConfig.from_dict(
+        {"database": {"type": "sqlite", "path": str(db), "schema": "main"}}
+    )
+    config_file = tmp_path / "dblift.yml"
+    config_file.write_text(f"database:\n  type: sqlite\n  path: {db}\n  schema: main\n")
+    engine = create_engine(f"sqlite:///{db}")
+    try:
+        common = {"migrations_dir": tmp_path, "logger": NullLog(), "analysis_mode": "execution"}
+        if factory == "from_config":
+            client = FullByDefaultClient.from_config(config, **common)
+        elif factory == "from_config_file":
+            client = FullByDefaultClient.from_config_file(str(config_file), **common)
+        else:
+            client = FullByDefaultClient.from_sqlalchemy(engine, **common)
+        with client:
+            assert client.analysis_mode == "execution"
+    finally:
+        engine.dispose()
+
+
 @pytest.mark.parametrize("factory", ["from_config", "from_sqlalchemy"])
-def test_default_full_preserves_strict_legacy_subclass_constructor(factory, tmp_path):
+def test_registered_class_must_accept_analysis_mode(factory, tmp_path):
+    """The keyword is always passed, so a constructor without it is rejected."""
     from sqlalchemy import create_engine
 
     from dblift.api import DBLiftClient
@@ -152,22 +186,49 @@ def test_default_full_preserves_strict_legacy_subclass_constructor(factory, tmp_
     )
     engine = create_engine(f"sqlite:///{tmp_path / 'legacy.db'}")
     try:
-
-        def create(**kwargs):
-            if factory == "from_config":
-                return LegacyClient.from_config(
-                    config, migrations_dir=tmp_path, logger=NullLog(), **kwargs
-                )
-            return LegacyClient.from_sqlalchemy(
-                engine, migrations_dir=tmp_path, logger=NullLog(), **kwargs
-            )
-
-        with create() as client:
-            assert client.analysis_mode == "full"
-        with pytest.raises(TypeError, match="analysis_mode"):
-            create(analysis_mode="execution")
+        for mode in ("execution", "full"):
+            with pytest.raises(TypeError, match="analysis_mode"):
+                if factory == "from_config":
+                    LegacyClient.from_config(
+                        config, migrations_dir=tmp_path, logger=NullLog(), analysis_mode=mode
+                    )
+                else:
+                    LegacyClient.from_sqlalchemy(
+                        engine, migrations_dir=tmp_path, logger=NullLog(), analysis_mode=mode
+                    )
     finally:
         engine.dispose()
+
+
+def test_cli_execution_mode_reaches_registered_class_with_different_default(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+
+    import dblift.cli.main as cli_main
+    from dblift.api import DBLiftClient
+    from dblift.config import DbliftConfig
+    from dblift.core.logger import NullLog
+    from dblift.core.seams import client_factory
+
+    class FullByDefaultClient(DBLiftClient):
+        def __init__(self, *args, analysis_mode="full", **kwargs):
+            super().__init__(*args, analysis_mode=analysis_mode, **kwargs)
+
+    config = DbliftConfig.from_dict(
+        {
+            "database": {"type": "sqlite", "path": str(tmp_path / "cli.db"), "schema": "main"},
+            "migrations": {"directory": str(tmp_path)},
+        }
+    )
+    monkeypatch.setattr(client_factory, "resolve_client_class", lambda: FullByDefaultClient)
+    monkeypatch.setattr(cli_main, "_COMMAND_HANDLERS", {"migrate": lambda ctx: None})
+    ctx = SimpleNamespace(
+        commands=["migrate"],
+        config=config,
+        log=NullLog(),
+        args=SimpleNamespace(analysis_mode="execution"),
+    )
+    with cli_main._build_command_client(ctx) as client:
+        assert client.analysis_mode == "execution"
 
 
 def test_sqlite_versioned_validate_and_undo_without_analysis_packages(tmp_path):

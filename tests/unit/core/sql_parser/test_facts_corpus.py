@@ -5,11 +5,13 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import pytest
 import sqlglot
 
+from dblift.core.sql_parser.statement_facts import SqlglotStatementFactsReader
+from dblift.db.plugins.oracle.quirks import OracleQuirks
 from tests.support.facts_corpus import (
     CORPUS_DIR,
     FAMILIES,
@@ -20,7 +22,7 @@ from tests.support.facts_corpus import (
     read_versions,
     statement_id,
 )
-from tests.support.facts_corpus.record import record_statement
+from tests.support.facts_corpus.record import is_frozen, record_statement
 from tests.support.facts_corpus.seed import split
 
 NO_OLD = ("sqlite", "duckdb")  # their text extraction already is the facts reader
@@ -73,16 +75,22 @@ SPOT_CHECKS: Dict[str, Dict[str, Any]] = {
 }
 
 
-def _on_this_arm(row: Dict[str, Any]) -> Dict[str, Any]:
+def _on_this_arm(row: Dict[str, Any], newest: Optional[bool] = None) -> Dict[str, Any]:
     """The row's ``facts`` and ``old`` as recorded for the installed sqlglot."""
     versions = read_versions()
-    newest = sqlglot.__version__ == versions["newest"] != versions["floor"]
+    if newest is None:
+        newest = sqlglot.__version__ == versions["newest"] != versions["floor"]
     if not newest:
         return {"facts": row["facts"], "old": row["old"]}
     return {
         "facts": row.get("facts_newest", row["facts"]),
         "old": row.get("old_newest", row["old"]),
     }
+
+
+def _comparable(recorded: Dict[str, Any], family: str) -> Dict[str, Any]:
+    """The recorded ``facts``, and ``old`` too unless the family is frozen (``old`` is then None)."""
+    return {"facts": recorded["facts"], "old": None if is_frozen(family) else recorded["old"]}
 
 
 @pytest.fixture(scope="module")
@@ -120,8 +128,9 @@ def test_rows_follow_the_schema(
         assert set(row) <= ROW_KEYS and {"sql", "inputs", "facts", "old"} <= set(row), row["sql"]
         assert isinstance(row["sql"], str) and row["sql"].strip()
         assert row["inputs"] == sorted(set(row["inputs"])) and set(row["inputs"]) <= known
-        assert (row["old"] is None) == (family in NO_OLD)
-        assert (row["facts"] is None) == (family == "db2")
+        if not is_frozen(family):  # a frozen family's new statement has no recorded extraction
+            assert (row["old"] is None) == (family in NO_OLD)
+        assert row["facts"] is not None
         if row["old"] is not None:
             assert {"hybrid", "analyzer"} <= set(row["old"]) <= {"hybrid", "analyzer", "dml"}
 
@@ -156,17 +165,21 @@ def test_corpus_size_stays_within_a_fifth_of_the_first_recording() -> None:
     assert 0 < versions["size_bytes"] and size <= 1.2 * versions["size_bytes"]
 
 
-def test_both_sqlglot_arms_are_recorded(corpus: Dict[str, List[Dict[str, Any]]]) -> None:
+def test_recorded_sqlglot_arms_match_the_declared_floor(
+    corpus: Dict[str, List[Dict[str, Any]]],
+) -> None:
     versions = read_versions()
     pyproject = (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
     assert f'"sqlglot>={versions["floor"]},<' in pyproject
-    assert versions["floor"] != versions["newest"]
     counts = {
         family: sum(1 for r in rows if "facts_newest" in r or "old_newest" in r)
         for family, rows in corpus.items()
     }
     assert counts == versions["newest_differing_rows"]
-    assert sum(counts.values()) > 0
+    if versions["floor"] == versions["newest"]:
+        assert sum(counts.values()) == 0
+    else:
+        assert sum(counts.values()) > 0
 
 
 @pytest.mark.parametrize("family", FAMILIES)
@@ -180,10 +193,8 @@ def test_rows_match_what_the_installed_sqlglot_reads_now(
     newest = installed == versions["newest"] and installed != versions["floor"]
     for row in corpus[family]:
         now = record_statement(family, row["sql"])
-        want_facts = row.get("facts_newest", row["facts"]) if newest else row["facts"]
-        want_old = row.get("old_newest", row["old"]) if newest else row["old"]
-        assert now["facts"] == want_facts, row["sql"]
-        assert now["old"] == want_old, row["sql"]
+        want = _comparable(_on_this_arm(row, newest), family)
+        assert now == want, row["sql"]
 
 
 def _reserved(family: str) -> Dict[str, Any]:
@@ -243,20 +254,27 @@ def test_postgresql_derivatives_record_exactly_what_postgresql_does(
     for derivative in POSTGRESQL_DERIVATIVES:
         for row in corpus["postgresql"]:
             now = record_statement(derivative, row["sql"])
-            assert now == _on_this_arm(row), (derivative, row["sql"])
+            assert now == _comparable(_on_this_arm(row), derivative), (derivative, row["sql"])
 
 
-def test_mariadb_differs_from_mysql_only_in_the_client_command_error_text(
+def test_mariadb_records_the_facts_of_mysql_for_every_row(
     corpus: Dict[str, List[Dict[str, Any]]],
 ) -> None:
-    differing = {}
-    for row in corpus["mysql"]:
-        now = record_statement("mariadb", row["sql"])
-        want = _on_this_arm(row)
-        if now != want:
-            differing[row["sql"]] = (want["old"]["hybrid"], now["old"]["hybrid"])
-            assert now["facts"] == want["facts"]
-            assert now["old"]["analyzer"] == want["old"]["analyzer"]
-    assert list(differing) == ["GO"]
-    mysql_error, mariadb_error = (v["raised"] for v in differing["GO"])
-    assert mysql_error.replace("mysql", "mariadb") == mariadb_error
+    """The extraction of MySQL is frozen, so MariaDB is compared on the facts alone."""
+    differing = [
+        row["sql"]
+        for row in corpus["mysql"]
+        if record_statement("mariadb", row["sql"]) != _comparable(_on_this_arm(row), "mariadb")
+    ]
+    assert differing == []
+
+
+def test_the_extraction_is_compared_only_for_a_family_that_is_not_frozen(
+    monkeypatch: pytest.MonkeyPatch, corpus: Dict[str, List[Dict[str, Any]]]
+) -> None:
+    # Oracle reads facts and is frozen: its extraction is carried, never read again.
+    monkeypatch.setattr(OracleQuirks, "statement_facts_class", SqlglotStatementFactsReader)
+    for row in corpus["oracle"][:20]:
+        now = record_statement("oracle", row["sql"])
+        assert now["old"] is None
+        assert now == _comparable(_on_this_arm(row), "oracle")

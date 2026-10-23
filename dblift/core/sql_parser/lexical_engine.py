@@ -22,7 +22,15 @@ class LexicalEngine:
 
     def _parser(self, script: str) -> LexicalStatementParser:
         tokenizer = LexicalTokenizer(script, spec=self.spec)
-        tokens = tokenizer.tokenize()
+        if tokenizer.delimiter_script is not None:
+            if tokenizer.spec.refused_character:
+                tokenizer._refuse_character()
+            while tokenizer.pos < len(tokenizer.sql):
+                tokenizer._next_token()
+            tokenizer.delimiter_script.finish()
+            tokens = []
+        else:
+            tokens = tokenizer.tokenize()
         if tokenizer.open_comment is not None:  # the engine rejects the whole script
             line, col = tokenizer.open_comment
             raise UnsafeStatementSplitError(
@@ -85,8 +93,10 @@ class LexicalEngine:
                 "comments of a terminator script are not blanked by the engine"
             )
         tokenizer = LexicalTokenizer(script, spec=self.spec)
-        tokens = tokenizer.tokenize()
-        if self.spec.segment_script is None:
+        if self.spec.segment_script is not None:
+            tokenizer._scan_segment_comments()
+        else:
+            tokens = tokenizer.tokenize()
             LexicalStatementParser(
                 tokens, source=script, spec=self.spec, comments=tokenizer.comments
             ).split()

@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING, Any, Optional
 
+from dblift.core.sql_parser.statement_facts import SqlglotStatementFactsReader
 from dblift.db.base_quirks import BaseQuirks
 from dblift.db.feature_gate import FeatureGate
 
@@ -34,6 +35,7 @@ class SqlserverQuirks(BaseQuirks):
     uppercase_identifiers = False
     clean_strategy = "introspector"
     sqlglot_dialect = "tsql"
+    statement_facts_class = SqlglotStatementFactsReader
     is_sqlserver_family = True
     # sqlglot's tsql grammar rejects DROP INDEX's modern form
     # ("DROP INDEX index ON table") when the table is schema-qualified —

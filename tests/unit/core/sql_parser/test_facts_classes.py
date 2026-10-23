@@ -19,6 +19,7 @@ from tests.support.facts_corpus.classes import (
     MECHANICAL,
     NO_OLD_FAMILIES,
     ORDER,
+    READER_FOLDS,
     REVIEW,
     classify,
     classify_row,
@@ -381,7 +382,7 @@ SPELLED = "CREATE TABLE Users (id int)"
 
 @pytest.mark.parametrize(
     "family,folded",
-    [("postgresql", "users"), ("redshift", "users"), ("oracle", "USERS"), ("snowflake", "USERS")],
+    [("postgresql", "users"), ("redshift", "users")],
 )
 def test_case_folded_when_the_facts_keep_the_spelling_and_the_extraction_folded(
     family: str, folded: str
@@ -389,9 +390,14 @@ def test_case_folded_when_the_facts_keep_the_spelling_and_the_extraction_folded(
     assert cls(SPELLED, facts(obj("Users")), old(("TABLE", folded)), family=family) == "case-folded"
 
 
-def test_case_folded_is_directional_the_facts_side_is_never_the_folded_one() -> None:
+def test_case_folded_is_directional_the_facts_side_is_never_the_folded_one(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Facts that fold the name themselves, or hold a spelling the statement does not, are
     reviewed: nothing proves the reader and the extraction mean the same object."""
+    monkeypatch.setattr(
+        classes_module, "READER_FOLDS", frozenset({"db2"})
+    )  # oracle as a non-folder
     for family, folded in (("postgresql", "users"), ("oracle", "USERS")):
         assert cls(SPELLED, facts(obj(folded)), old(("TABLE", "Users")), family=family) == (
             "disagree"
@@ -408,7 +414,12 @@ def test_case_folded_never_accepts_the_extraction_as_the_unfolded_side() -> None
     )
 
 
-def test_case_folded_needs_the_facts_name_as_the_statement_spells_it() -> None:
+def test_case_folded_needs_the_facts_name_as_the_statement_spells_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        classes_module, "READER_FOLDS", frozenset({"db2"})
+    )  # oracle as a non-folder
     sql = "CREATE TABLE users (id int)"
     assert cls(sql, facts(obj("Users")), old(("TABLE", "USERS")), family="oracle") == "disagree"
     assert cls(sql, facts(obj("users")), old(("TABLE", "USERS")), family="oracle") == "case-folded"
@@ -424,6 +435,25 @@ def test_a_quoted_name_is_never_case_folded() -> None:
     assert cls(sql, facts(obj("Users")), old(("TABLE", "users")), family="postgresql") == (
         "disagree"
     )
+
+
+def test_a_reader_that_folds_is_case_folded_in_the_reverse_direction() -> None:
+    """Db2's reader holds ``T`` for ``t``; the extraction holds the spelling."""
+    assert READER_FOLDS == {"db2", "oracle", "snowflake"} and DEFAULT_SCHEMA["db2"] == "SYSIBM"
+    sql = "CREATE TABLE t (id int)"
+    assert cls(sql, facts(obj("T")), old(("TABLE", "t")), family="db2") == "case-folded"
+    assert cls(sql, facts(obj("T")), old(("TABLE", "t")), family="oracle") == "case-folded"
+    assert cls(sql, facts(obj("T")), old(("TABLE", "t")), family="snowflake") == "case-folded"
+    assert cls(sql, facts(obj("T")), old(("TABLE", "T")), family="oracle") == "same"
+
+
+def test_a_reader_that_folds_never_folds_a_quoted_name_or_a_wrong_name() -> None:
+    quoted = 'CREATE TABLE "t" (id int)'
+    assert cls(quoted, facts(obj("T")), old(("TABLE", "t")), family="db2") == "disagree"
+    sql = "CREATE TABLE t (id int)"
+    assert cls(sql, facts(obj("U")), old(("TABLE", "t")), family="db2") == "disagree"
+    opaque = facts(obj("T"), diagnostic="db2 UPDATE TABLE: name not read")
+    assert cls(sql, opaque, old(("TABLE", "t")), family="db2") == "opaque-reader-gap"
 
 
 @pytest.mark.parametrize("family", ["mysql", "sqlserver"])

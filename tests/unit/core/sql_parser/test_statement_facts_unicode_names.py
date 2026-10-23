@@ -12,7 +12,6 @@ import sys
 import unicodedata
 
 import pytest
-import sqlglot
 from sqlglot.dialects import Dialect
 
 from dblift.core.sql_parser.sqlglot_statement_facts import read_statement_facts
@@ -186,8 +185,10 @@ def test_unread_character_inside_text_stays_named(dialect, shape, char):
     sql = template.format(c=char, q=quote)
     facts = read_statement_facts(sql, dialect=dialect)
     assert facts.diagnostic is None and facts.error is None, sql
+    if dialect in {"oracle", "snowflake"} and shape != "quoted-identifier":
+        expected = expected.upper()  # these engines store an unquoted name upper-cased
     assert [o.name for o in facts.objects] == [expected.format(c=char)] or (
-        facts.operation == "INSERT" and facts.target == "t"
+        facts.operation == "INSERT" and facts.target == expected
     )
 
 
@@ -196,6 +197,11 @@ def test_unread_character_inside_text_stays_named(dialect, shape, char):
 def test_letters_stay_named(dialect, shape):
     template, expected = NAMED[shape]
     facts = read_statement_facts(template, dialect=dialect)
+    if dialect == "snowflake":  # the engine rejects an unquoted non-ASCII name
+        assert facts.opaque and facts.objects == () and facts.diagnostic
+        return
+    if dialect == "oracle":
+        expected = expected.upper()  # Oracle stores an unquoted name upper-cased
     assert [o.name for o in facts.objects] == [expected]
     assert facts.diagnostic is None
 
@@ -263,12 +269,7 @@ def test_oracle_alternative_quoting_keeps_a_blank_inside_the_literal():
         "INSERT INTO t VALUES (q'[x" + chr(0xA0) + "y]')", dialect="oracle"
     )
 
-    # sqlglot 30.18 does not tokenize q'[...]' as one literal, so it reads the statement as
-    # unreadable there; from 30.23 on the literal is a string and the target is named.
-    if sqlglot.__version__ >= "30.23":
-        assert facts.target == "t"
-    else:
-        assert facts.target in (None, "t")
+    assert facts.target == "T"
 
 
 def test_the_reader_set_is_the_full_range_set():

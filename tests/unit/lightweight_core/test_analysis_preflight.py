@@ -200,16 +200,20 @@ migrations.mkdir()
 with sqlite3.connect(db_path) as observer:
     before = list(observer.execute("SELECT name FROM sqlite_master WHERE type='table'"))
 engine = create_engine(f'sqlite:///{{db_path}}')
-client = DBLiftClient.from_sqlalchemy(engine, migrations_dir=migrations, logger=NullLog())
+client = None
 try:
     try:
+        client = DBLiftClient.from_sqlalchemy(
+            engine, migrations_dir=migrations, logger=NullLog(), analysis_mode='full'
+        )
         {migrate_call}
     except ModuleNotFoundError as exc:
         assert exc.name == 'sqlglot'
     else:
         raise AssertionError('missing required analysis did not fail')
 finally:
-    client.close()
+    if client is not None:
+        client.close()
     engine.dispose()
 with sqlite3.connect(db_path) as observer:
     after = list(observer.execute("SELECT name FROM sqlite_master WHERE type='table'"))
@@ -266,16 +270,20 @@ db_path = Path('app.db')
 with sqlite3.connect(db_path) as observer:
     before = list(observer.execute("SELECT name FROM sqlite_master WHERE type='table'"))
 engine = create_engine(f'sqlite:///{{db_path}}')
-client = DBLiftClient.from_sqlalchemy(engine, migrations_dir=migrations, logger=NullLog())
+client = None
 try:
     try:
+        client = DBLiftClient.from_sqlalchemy(
+            engine, migrations_dir=migrations, logger=NullLog(), analysis_mode='full'
+        )
         {command}
     except ModuleNotFoundError as exc:
         assert exc.name == 'sqlglot'
     else:
         raise AssertionError('SQL callback dependency did not fail')
 finally:
-    client.close()
+    if client is not None:
+        client.close()
     engine.dispose()
 with sqlite3.connect(db_path) as observer:
     after = list(observer.execute("SELECT name FROM sqlite_master WHERE type='table'"))
@@ -320,16 +328,20 @@ migrations = Path('migrations')
 with sqlite3.connect('app.db') as observer:
     before = list(observer.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"))
 engine = create_engine('sqlite:///app.db')
-client = DBLiftClient.from_sqlalchemy(engine, migrations_dir=migrations, logger=NullLog())
+client = None
 try:
     try:
+        client = DBLiftClient.from_sqlalchemy(
+            engine, migrations_dir=migrations, logger=NullLog(), analysis_mode='full'
+        )
         client.undo()
     except ModuleNotFoundError as exc:
         assert exc.name == 'sqlglot'
     else:
         raise AssertionError('undo dependency did not fail')
 finally:
-    client.close()
+    if client is not None:
+        client.close()
     engine.dispose()
 with sqlite3.connect('app.db') as observer:
     after = list(observer.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"))

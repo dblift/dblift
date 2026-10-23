@@ -19,6 +19,16 @@ from dblift.db.plugins.oracle.parser.lexical_spec import ORACLE_SPEC
 RULES = ORACLE_SPEC.client_script
 assert RULES is not None
 ENGINE_LOGGER = "dblift.core.sql_parser.lexical_engine"
+INVALID_PREFIX_COMMANDS = [
+    "EXIT",
+    "QUIT",
+    "PROMPT PREFIX_OK",
+    "REM PREFIX_OK",
+    "SET FEEDBACK OFF",
+    "WHENEVER SQLERROR EXIT",
+    "@missing.sql",
+    "EXEC dbms_output.put_line('PREFIX_OK')",
+]
 
 
 def records(script):
@@ -85,6 +95,103 @@ def test_exit_with_nothing_to_ignore_does_not_warn(script, caplog):
 def test_row_17a_exit_ignores_a_malformed_tail():
     assert strings("SELECT 1 FROM dual;\nEXIT\nSELECT 'unterminated") == ["SELECT 1 FROM dual;"]
     assert strings("SELECT 1 FROM dual;\nEXIT\n@@never.sql\n") == ["SELECT 1 FROM dual;"]
+
+
+@pytest.mark.parametrize("prefix", ["\u00a0", "\x1c"])
+@pytest.mark.parametrize("command", INVALID_PREFIX_COMMANDS)
+def test_invalid_client_blank_prefix_is_refused_not_dropped(prefix, command):
+    script = f"{prefix}{command}\nSELECT 'FOLLOWUP_OK' AS MARKER FROM dual;\n"
+
+    with pytest.raises(UnsafeStatementSplitError) as raised:
+        strings(script)
+    assert f"U+{ord(prefix):04X} at line 1, column 1" in str(raised.value)
+
+
+@pytest.mark.parametrize("prefix", ["\u00a0", "\x1c"])
+@pytest.mark.parametrize("command", INVALID_PREFIX_COMMANDS)
+def test_invalid_client_blank_prefix_is_not_a_directive_token(prefix, command):
+    script = f"{prefix}{command}\nSELECT 'FOLLOWUP_OK' AS MARKER FROM dual;\n"
+
+    first_line_tokens = [
+        token for token in LexicalTokenizer(script, spec=ORACLE_SPEC).tokenize() if token.line == 1
+    ]
+    assert first_line_tokens
+    assert all(token.type is not TokenType.DIRECTIVE for token in first_line_tokens)
+
+
+@pytest.mark.parametrize("prefix", ["\u00a0", "\x1c"])
+@pytest.mark.parametrize("before", ["", "SELECT 'FIRST_OK' AS MARKER FROM dual;\n"])
+def test_invalid_client_blank_prefix_does_not_make_slash_a_terminator(prefix, before):
+    script = f"{before}{prefix}/\nSELECT 'FOLLOWUP_OK' AS MARKER FROM dual;"
+    line = 2 if before else 1
+    with pytest.raises(UnsafeStatementSplitError) as raised:
+        strings(script)
+    assert f"U+{ord(prefix):04X} at line {line}, column 1" in str(raised.value)
+
+
+@pytest.mark.parametrize("prefix", ["\u00a0", "\x1c"])
+def test_invalid_client_blank_prefix_slash_is_not_a_delimiter_token(prefix):
+    tokens = LexicalTokenizer(f"{prefix}/\n", spec=ORACLE_SPEC).tokenize()
+    slash = next(token for token in tokens if token.text == "/")
+    assert slash.type is TokenType.SYMBOL
+
+
+@pytest.mark.parametrize("prefix", ["\u00a0", "\x1c"])
+def test_invalid_client_blank_prefix_slash_does_not_end_a_plsql_unit(prefix):
+    script = (
+        "BEGIN dbms_output.put_line('BLOCK_OK'); END;\n"
+        f"{prefix}/\nSELECT 'FOLLOWUP_OK' AS MARKER FROM dual;"
+    )
+    with pytest.raises(UnsafeStatementSplitError, match="PL/SQL unit"):
+        strings(script)
+
+
+@pytest.mark.parametrize("suffix", ["\u00a0", "\x1c"])
+@pytest.mark.parametrize("before", ["", "SELECT 'FIRST_OK' AS MARKER FROM dual;\n"])
+def test_invalid_client_blank_after_slash_is_a_command_with_a_clear_buffer(suffix, before):
+    script = f"{before}/{suffix}\nSELECT 'FOLLOWUP_OK' AS MARKER FROM dual;"
+    with pytest.raises(UnsafeStatementSplitError) as raised:
+        strings(script)
+    assert ("re-execute the previous statement" if before else "run an empty buffer") in str(
+        raised.value
+    )
+
+
+@pytest.mark.parametrize("suffix", ["\u00a0", "\x1c"])
+def test_invalid_client_blank_after_slash_does_not_end_an_open_plsql_unit(suffix):
+    script = (
+        "BEGIN dbms_output.put_line('BLOCK_OK'); END;\n"
+        f"/{suffix}\nSELECT 'FOLLOWUP_OK' AS MARKER FROM dual;"
+    )
+    with pytest.raises(UnsafeStatementSplitError, match="PL/SQL unit"):
+        strings(script)
+
+
+@pytest.mark.parametrize("prefix", [" ", "\t", "\u3000"])
+def test_measured_client_blanks_still_make_slash_a_terminator(prefix):
+    script = f"BEGIN dbms_output.put_line('BLOCK_OK'); END;\n{prefix}/\n"
+    assert strings(script) == ["BEGIN dbms_output.put_line('BLOCK_OK'); END;"]
+
+
+@pytest.mark.parametrize("prefix", [" ", "\t", "\u3000"])
+def test_measured_client_blanks_still_allow_exit(prefix):
+    assert strings(f"{prefix}EXIT\nSELECT 'FOLLOWUP_OK' AS MARKER FROM dual;") == []
+
+
+def test_nonbreaking_space_in_quoted_or_commented_text_does_not_act_as_exit():
+    assert strings("SELECT '\u00a0EXIT' AS marker FROM dual;") == [
+        "SELECT '\u00a0EXIT' AS marker FROM dual;"
+    ]
+    assert strings("/* \u00a0EXIT */\nSELECT 'FOLLOWUP_OK' AS MARKER FROM dual;") == [
+        "SELECT 'FOLLOWUP_OK' AS MARKER FROM dual;"
+    ]
+
+
+@pytest.mark.parametrize("prefix", ["\u00a0", "\x1c"])
+def test_invalid_client_blank_prefix_after_block_comment_is_refused(prefix):
+    with pytest.raises(UnsafeStatementSplitError) as raised:
+        strings(f"/* note */{prefix}EXIT\nSELECT 'FOLLOWUP_OK' FROM dual;")
+    assert f"U+{ord(prefix):04X} at line 1, column 11" in str(raised.value)
 
 
 def test_row_18_include_is_refused_naming_the_directive_and_line():

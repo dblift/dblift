@@ -9,6 +9,7 @@ import pytest
 
 from dblift.core.sql_model.base import SqlObjectType
 from dblift.core.sql_parser.statement_facts import NamedObject, StatementFacts
+from dblift.db.plugins.oracle.quirks import OracleQuirks
 from tests.support.facts_corpus import statement_id
 from tests.support.facts_corpus.canonical import compact_facts, dumps
 from tests.support.facts_corpus.measure import update_versions
@@ -21,6 +22,14 @@ from tests.support.facts_corpus.seed import (
     source_files,
     split,
 )
+
+
+@pytest.fixture(autouse=True)
+def _oracle_without_a_reader(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Oracle reads facts and its extraction is frozen; these tests record an extraction, so Oracle
+    stands in for a family with no reader."""
+    monkeypatch.setattr(OracleQuirks, "statement_facts_class", None)
+
 
 SELECT_FILE = """
 def test_a():
@@ -110,8 +119,8 @@ def test_split_uses_the_family_analysis_splitter() -> None:
 
 
 def test_record_statement_freezes_both_old_paths_and_dml() -> None:
-    row = record_statement("postgresql", "UPDATE s.t SET a = 1 WHERE b = 2")
-    assert row["facts"]["objects"] == [["t", "TABLE", "altered", "s"]]
+    row = record_statement("oracle", "UPDATE s.t SET a = 1 WHERE b = 2")
+    assert row["facts"]["objects"] == [["T", "TABLE", "altered", "S"]]  # Oracle folds
     assert set(row["old"]) == {"hybrid", "analyzer", "dml"}
     assert row["old"]["dml"] == {
         "table": "s.t",
@@ -123,14 +132,16 @@ def test_record_statement_freezes_both_old_paths_and_dml() -> None:
     assert isinstance(row["old"]["hybrid"], list) and isinstance(row["old"]["analyzer"], list)
 
 
-def test_record_statement_for_families_without_old_or_without_reader() -> None:
+def test_record_statement_for_a_family_without_old_and_one_that_folds() -> None:
     assert record_statement("sqlite", "CREATE TABLE t (a int)")["old"] is None
-    assert record_statement("db2", "CREATE TABLE t (a int)")["facts"] is None
+    assert record_statement("db2", "CREATE TABLE t (a int)")["facts"]["objects"] == [
+        ["T", "TABLE", "created", None]
+    ]
 
 
 def test_inactive_family_reads_facts_through_the_sqlglot_reader() -> None:
-    row = record_statement("mysql", "CREATE TABLE t (a int)")
-    assert row["facts"]["objects"] == [["t", "TABLE", "created", None]]
+    row = record_statement("oracle", "CREATE TABLE t (a int)")
+    assert row["facts"]["objects"] == [["T", "TABLE", "created", None]]  # Oracle folds
 
 
 def test_record_family_dedups_by_statement_text_sorted_with_input_ids() -> None:
@@ -138,7 +149,7 @@ def test_record_family_dedups_by_statement_text_sorted_with_input_ids() -> None:
         {"id": "i1", "sql": "SELECT 1;\nSELECT 2;", "origins": []},
         {"id": "i2", "sql": "SELECT 2;", "origins": []},
     ]
-    rows = record_family("postgresql", "floor", inputs, [])
+    rows = record_family("oracle", "floor", inputs, [])
     assert [(r["sql"], r["inputs"]) for r in rows] == [
         ("SELECT 1", ["i1"]),
         ("SELECT 2", ["i1", "i2"]),
@@ -147,14 +158,14 @@ def test_record_family_dedups_by_statement_text_sorted_with_input_ids() -> None:
 
 def test_newest_arm_adds_only_differences_and_needs_the_floor_rows() -> None:
     inputs = [{"id": "i1", "sql": "SELECT 1", "origins": []}]
-    floor = record_family("postgresql", "floor", inputs, [])
-    again = record_family("postgresql", "newest", inputs, floor)
+    floor = record_family("oracle", "floor", inputs, [])
+    again = record_family("oracle", "newest", inputs, floor)
     assert [r for r in again if "facts_newest" in r or "old_newest" in r] == [
         r for r in floor if "facts_newest" in r or "old_newest" in r
     ]
     assert [r["sql"] for r in again] == [r["sql"] for r in floor]
     with pytest.raises(ValueError, match="floor"):
-        record_family("postgresql", "newest", inputs, [])
+        record_family("oracle", "newest", inputs, [])
 
 
 def test_recorder_refuses_a_sqlglot_that_is_neither_floor_nor_newest() -> None:

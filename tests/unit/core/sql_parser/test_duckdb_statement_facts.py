@@ -51,16 +51,19 @@ def test_duckdb_facts_activate_parser_consumers():
     assert quirks.parser_class("sqlglot") is DuckDBFactsParser
 
 
-@pytest.mark.parametrize("dialect", ["sqlite", "oracle", "snowflake", "tsql"])
+@pytest.mark.parametrize("dialect", ["sqlite", "oracle", "tsql"])
 def test_merge_facts_remain_opaque_for_other_dialects(dialect):
     facts = read_statement_facts(CASES[0]["sql"], dialect=dialect)
 
-    assert facts.kind == "UNKNOWN"
+    assert facts.kind == ("DML" if dialect == "tsql" else "UNKNOWN")
     assert facts.target is None
     assert facts.objects == ()
     assert facts.events is None
     assert facts.affected_columns == ()
     assert facts.opaque
+    if dialect == "tsql":
+        assert facts.operation == "MERGE"
+        assert facts.diagnostic
 
 
 @pytest.mark.parametrize("dialect", ["sqlite", "oracle", "snowflake", "tsql"])
@@ -154,7 +157,6 @@ def test_duckdb_truncate_non_table_targets_are_opaque(sql):
 def test_duckdb_truncate_facts_do_not_change_other_mappings():
     delete = read_statement_facts("DELETE FROM t WHERE id = 1", dialect="duckdb")
     drop = read_statement_facts("DROP TABLE t", dialect="duckdb")
-    oracle_truncate = read_statement_facts("TRUNCATE TABLE t", dialect="oracle")
 
     assert delete.operation == "DELETE"
     assert delete.kind == "DML"
@@ -162,7 +164,3 @@ def test_duckdb_truncate_facts_do_not_change_other_mappings():
     assert drop.operation == "DROP"
     assert drop.kind == "DDL"
     assert drop.objects == (NamedObject("t", SqlObjectType.TABLE, "dropped"),)
-    assert oracle_truncate.operation == "TRUNCATE"
-    assert oracle_truncate.kind == "UNKNOWN"
-    assert oracle_truncate.objects == ()
-    assert oracle_truncate.opaque

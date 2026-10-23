@@ -175,12 +175,13 @@ def neutralise_transaction_statements(
             "only a plain BEGIN [TRANSACTION] can open a script that is closed by COMMIT or END. "
             "None of its statements were executed.",
         )
-    raise refuse(
-        offender,
+    explanation = (
         "manages the transaction, which dblift already opens for each script, so none of its "
-        "statements were executed. Remove it; a script that is only BEGIN ... COMMIT around its "
-        "whole body is accepted.",
+        "statements were executed. Remove it"
     )
+    if any(kind == "begin" for _, kind in patterns) and any(kind == "end" for _, kind in patterns):
+        explanation += "; a script that is only BEGIN ... COMMIT around its whole body is accepted"
+    raise refuse(offender, explanation + ".")
 
 
 def _without_comments(quirks: Any, statement: str) -> str:

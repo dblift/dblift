@@ -122,6 +122,7 @@ but nothing connects.
 | `drop-column` | `ALTER TABLE … DROP COLUMN` | error | all |
 | `truncate` | `TRUNCATE` | error | all |
 | `mixed-transaction-modes` | A statement that needs autocommit (for example `CREATE INDEX CONCURRENTLY`) in a script whose other statements run in a transaction: `migrate` refuses such a script | error | all |
+| `drop-unread-object` | A `DROP` whose object kind or name the SQL parser could not read, so it cannot be told whether rows are lost | warning | all |
 | `dml-no-where` | `UPDATE` or `DELETE` without `WHERE` | warning | all |
 | `add-not-null-no-default` | `ADD COLUMN … NOT NULL` without a `DEFAULT` | warning | all |
 | `rename-column` | A column rename (`RENAME COLUMN`, `sp_rename … 'COLUMN'`) | warning | all |
@@ -234,6 +235,27 @@ the diff is empty, or add `--diff-filter=d` to `git diff` to leave deleted files
 `migrate --dry-run` shows the same verdict next to each pending script, with the findings
 not allowed, without changing its exit code.
 
+### Choosing How Much SQL Analysis Runs
+
+`migrate`, `undo` and `info` take `--analysis-mode {full,execution}`. `validate-sql` always
+needs sqlglot.
+
+```bash
+dblift migrate --analysis-mode execution
+```
+
+- `full` (the default, and what you get today) reads each statement to track the objects it
+  touches, classify it and keep the safeguards and enriched reports built on that. It needs
+  sqlglot for `migrate`, `undo` and `info`: install `dblift[analysis]`. Without it they stop
+  before they run a callback, write a file or connect to the database (`migrate --validate-only`
+  parses nothing and is not affected).
+- `execution` only splits the script and runs the SQL. It skips object tracking and the checks
+  and report details that depend on it, so `info` reports pending script analysis as
+  `"status": "disabled"` and `migrate --dry-run` drops the verdict labels. It is the way to run
+  these commands without sqlglot. Use an explicit undo script with `undo`. A `WITH` statement that cannot
+  be classified without that analysis stops the migration before it is applied; use `full` for
+  that SQL.
+
 ### Rolling Back Changes
 
 If you need to undo a migration:
@@ -253,6 +275,14 @@ dblift undo --target-version=1.0.0
 ```
 
 This will undo all migrations after version 1.0.0.
+
+`--target-version` (on `migrate`, `undo`, `validate` and `info`) must be the version of one of your
+scripts, written without the `V` prefix: `1.0.0` and `1_0_0` are the same version, and `1` equals
+`1.0.0`. Anything else, including an empty value or a version no script carries, exits with code 2
+and lists the available versions; for a value that is not a version at all this happens before
+DBLift connects. `undo` also accepts `0`, and an applied version whose script has since been
+deleted. The Python API raises `InvalidTargetVersionError` (a `ValueError`) and also checks the
+`target_version` set in the configuration.
 
 **Migrations written as one group:** if several migrations carry the same
 `dblift-group-...`-prefixed tag (see [Using Tags](#using-tags)) -- for

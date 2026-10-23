@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional
 
 from dblift.core.exceptions import ParserNotAvailableError, UnsupportedDialectError
 from dblift.core.sql_model.base import ParseResult, SqlObject, SqlStatement
+from dblift.core.sql_parser._deprecation import internal_parser_construction, warn_direct_parser
 from dblift.core.sql_parser.parser_interface import SqlParserInterface
 
 # Setup logger
@@ -35,15 +36,16 @@ class SqlParserFactory:
     # ``*_PARSER_MAP`` dicts are gone — adding a new dialect = drop a
     # plugin folder and override ``parser_class`` in its quirks.py.
 
-    def __init__(self, dialect: str, parser_type: str = "hybrid"):
+    def __init__(self, dialect: str, parser_type: Optional[str] = None):
         """Initialize parser factory.
 
         Args:
             dialect: SQL dialect (oracle, mysql, postgresql, sqlserver, db2)
-            parser_type: Parser type ('regex', 'hybrid', 'sqlglot')
+            parser_type: Deprecated. Parser type ('regex', 'hybrid', 'sqlglot'); default 'hybrid'
         """
+        warn_direct_parser("parser_type" if parser_type is not None else "SqlParserFactory")
         self.dialect = dialect.lower()
-        self.parser_type = parser_type.lower()
+        self.parser_type = (parser_type or "hybrid").lower()
         self._current_parser: Optional[SqlParserInterface] = None
 
     @property
@@ -59,8 +61,12 @@ class SqlParserFactory:
                 return ParseResult(success=False, statements=[], errors=["No parser available"])
         return self._current_parser.parse_sql(sql_content, default_schema)
 
-    def split_statements(self, sql_content: str, strict_tokenizer: bool = False) -> List[str]:
+    def split_statements(
+        self, sql_content: str, strict_tokenizer: Optional[bool] = None
+    ) -> List[str]:
         """Split SQL content into individual statements using the dialect parser."""
+        if strict_tokenizer is not None:
+            warn_direct_parser("strict_tokenizer")
         if self._current_parser is None:
             self._current_parser = self._create_parser()
             if self._current_parser is None:
@@ -72,7 +78,7 @@ class SqlParserFactory:
         if self._current_parser is None:
             self._current_parser = self._create_parser()
             if self._current_parser is None:
-                return {"success": False, "errors": ["No parser available"]}
+                return {"valid": False, "errors": ["No parser available"]}
         return self._current_parser.validate_sql(sql_content)
 
     def extract_objects(
@@ -188,6 +194,7 @@ class SqlParserFactory:
         return False
 
     @staticmethod
+    @internal_parser_construction()
     def _resolve_parser(dialect: str, parser_type: str) -> SqlParserInterface:
         """Resolve and instantiate a parser via the plugin's quirks.
 

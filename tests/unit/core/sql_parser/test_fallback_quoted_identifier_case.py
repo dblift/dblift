@@ -11,20 +11,39 @@ unquoted identifier still folds to the dialect's catalog case.
 import pytest
 
 from dblift.core.sql_model.base import SqlObjectType
+from dblift.core.sql_parser import SqlParserFactory
 from dblift.core.sql_parser.hybrid_parser import HybridParser
+from dblift.db.plugins.db2.parser.db2_regex_parser import DB2RegexParser
+from dblift.db.provider_registry import ProviderRegistry
+
+
+def _hybrid(dialect):
+    """Db2 reads statement facts and has no hybrid parser; it was regex-only before."""
+    return DB2RegexParser() if dialect == "db2" else HybridParser(dialect)
+
+
+def _regex(dialect):
+    if dialect == "db2":
+        return DB2RegexParser()
+    if dialect in ("postgresql", "redshift"):
+        return SqlParserFactory(dialect, "regex").get_parser()
+    return HybridParser(dialect).regex_parser
 
 
 def _extract(dialect, sql):
     return [
-        (obj.object_type, obj.schema, obj.name)
-        for obj in HybridParser(dialect).extract_objects(sql)
+        (obj.object_type, obj.schema, obj.name) for obj in _hybrid(dialect).extract_objects(sql)
     ]
 
 
 def _extract_regex(dialect, sql):
+    return [(obj.object_type, obj.schema, obj.name) for obj in _regex(dialect).extract_objects(sql)]
+
+
+def _created_by_facts(sql):
+    facts = ProviderRegistry.get_quirks("postgresql").statement_facts(sql)
     return [
-        (obj.object_type, obj.schema, obj.name)
-        for obj in HybridParser(dialect).regex_parser.extract_objects(sql)
+        (obj.type, obj.schema, obj.name) for obj in facts.affected_objects if obj.role == "created"
     ]
 
 
@@ -36,46 +55,6 @@ class TestHybridFallbackKeepsQuotedCase:
     @pytest.mark.parametrize(
         "dialect, sql, expected",
         [
-            (
-                "postgresql",
-                'CREATE TABLE "Case" (a int) WITH (fillfactor=70) TABLESPACE ts;',
-                (SqlObjectType.TABLE, "public", "Case"),
-            ),
-            (
-                "postgresql",
-                'CREATE TABLE "S"."Case" (a int) WITH (fillfactor=70) TABLESPACE ts;',
-                (SqlObjectType.TABLE, "S", "Case"),
-            ),
-            (
-                "postgresql",
-                'CREATE TABLE "a""b" (a int) WITH (fillfactor=70) TABLESPACE ts;',
-                (SqlObjectType.TABLE, "public", 'a"b'),
-            ),
-            (
-                "postgresql",
-                'CREATE VIEW "S"."Vw" WITH (security_barrier) AS SELECT 1;',
-                (SqlObjectType.VIEW, "S", "Vw"),
-            ),
-            (
-                "postgresql",
-                'CREATE INDEX "Ix" ON "T" (a) TABLESPACE ts;',
-                (SqlObjectType.INDEX, "public", "Ix"),
-            ),
-            (
-                "postgresql",
-                'CREATE FUNCTION "S"."Fn"() RETURNS int AS $$ SELECT 1 $$ LANGUAGE sql;',
-                (SqlObjectType.FUNCTION, "S", "Fn"),
-            ),
-            (
-                "postgresql",
-                'CREATE PROCEDURE "Pr"() AS $$ BEGIN END $$ LANGUAGE plpgsql;',
-                (SqlObjectType.PROCEDURE, "public", "Pr"),
-            ),
-            (
-                "postgresql",
-                'CREATE TRIGGER "Tg" AFTER INSERT ON "T" FOR EACH ROW EXECUTE FUNCTION f();',
-                (SqlObjectType.TRIGGER, "public", "Tg"),
-            ),
             (
                 "db2",
                 'CREATE TABLE "Case" (a int) IN TS1;',
@@ -130,21 +109,6 @@ class TestHybridFallbackKeepsQuotedCase:
         "dialect, sql, expected",
         [
             (
-                "postgresql",
-                "CREATE TABLE MiXed (a int) WITH (fillfactor=70) TABLESPACE ts;",
-                (SqlObjectType.TABLE, "public", "mixed"),
-            ),
-            (
-                "postgresql",
-                'CREATE TABLE "S".MiXed (a int) WITH (fillfactor=70) TABLESPACE ts;',
-                (SqlObjectType.TABLE, "S", "mixed"),
-            ),
-            (
-                "postgresql",
-                'CREATE TABLE MySchema."Case" (a int) WITH (fillfactor=70) TABLESPACE ts;',
-                (SqlObjectType.TABLE, "myschema", "Case"),
-            ),
-            (
                 "db2",
                 "CREATE TABLE MiXed (a int) IN TS1;",
                 (SqlObjectType.TABLE, "SYSIBM", "MIXED"),
@@ -159,11 +123,43 @@ class TestHybridFallbackKeepsQuotedCase:
     def test_unquoted_name_still_folds(self, dialect, sql, expected):
         assert _extract(dialect, sql) == [expected]
 
-    def test_sqlglot_parsed_statement_unchanged(self):
-        # sqlglot parses this one; the merge keeps a single object.
-        assert _extract("postgresql", 'CREATE TABLE "Case" (a int);') == [
-            (SqlObjectType.TABLE, "public", "Case")
-        ]
+    @pytest.mark.parametrize(
+        "sql, expected",
+        [
+            (
+                'CREATE TABLE "Case" (a int) WITH (fillfactor=70) TABLESPACE ts;',
+                (SqlObjectType.TABLE, None, "Case"),
+            ),
+            (
+                'CREATE TABLE "S"."Case" (a int) WITH (fillfactor=70) TABLESPACE ts;',
+                (SqlObjectType.TABLE, "S", "Case"),
+            ),
+            (
+                'CREATE TABLE "a""b" (a int) WITH (fillfactor=70) TABLESPACE ts;',
+                (SqlObjectType.TABLE, None, 'a"b'),
+            ),
+            (
+                'CREATE VIEW "S"."Vw" WITH (security_barrier) AS SELECT 1;',
+                (SqlObjectType.VIEW, "S", "Vw"),
+            ),
+            ('CREATE INDEX "Ix" ON "T" (a) TABLESPACE ts;', (SqlObjectType.INDEX, None, "Ix")),
+            (
+                'CREATE FUNCTION "S"."Fn"() RETURNS int AS $$ SELECT 1 $$ LANGUAGE sql;',
+                (SqlObjectType.FUNCTION, "S", "Fn"),
+            ),
+            (
+                'CREATE PROCEDURE "Pr"() AS $$ BEGIN END $$ LANGUAGE plpgsql;',
+                (SqlObjectType.PROCEDURE, None, "Pr"),
+            ),
+            (
+                'CREATE TRIGGER "Tg" AFTER INSERT ON "T" FOR EACH ROW EXECUTE FUNCTION f();',
+                (SqlObjectType.TRIGGER, None, "Tg"),
+            ),
+            ('CREATE TABLE "Case" (a int);', (SqlObjectType.TABLE, None, "Case")),
+        ],
+    )
+    def test_postgresql_statement_facts_keep_quoted_name_text(self, sql, expected):
+        assert _created_by_facts(sql) == [expected]
 
 
 @pytest.mark.unit
@@ -232,7 +228,7 @@ def _statement_for(key):
 
 
 def _pattern_cases(dialect, excluded=frozenset()):
-    config = HybridParser(dialect).regex_parser.config
+    config = _regex(dialect).config
     return [
         pytest.param(dialect, key, _statement_for(key), id=f"{dialect}-{key}")
         for key in config.object_patterns
@@ -247,7 +243,7 @@ def _pattern_cases(dialect, excluded=frozenset()):
 )
 def test_every_object_pattern_keeps_quoted_name(dialect, key, sql):
     """Each object pattern on its own captures the quoted name whole."""
-    config = HybridParser(dialect).regex_parser.config
+    config = _regex(dialect).config
     match = config.object_patterns[key].search(sql)
 
     assert match is not None, sql

@@ -290,16 +290,9 @@ class TestXmlIndexNoDuplicateMatch:
 
 @pytest.mark.unit
 class TestIndexObjectSchemaDefaultParser:
-    """Same assertions as ``TestIndexObjectSchema``, run through the default
-    (hybrid) parser rather than the regex parser in isolation. The hybrid
-    parser lets sqlglot's result override the regex one on a ``(name, type)``
-    collision, so a fix verified only on the regex parser can still be wrong
-    for every caller that uses the default — as the dotted "table.name"
-    ``DROP INDEX`` syntax was: sqlglot's own handling of it reports the
-    table as the schema, and the merge kept that over the regex result.
-    The dotted "table.name" ``DROP INDEX`` syntax itself is covered
-    separately, against both parser types, by
-    ``TestDropIndexLegacyTableDotName`` below — see #367."""
+    """The default facts parser reports proven index ownership and leaves
+    unsupported XML index forms unnamed. The explicit regex parser above
+    retains its own extraction contract."""
 
     def setup_method(self):
         self.parser = SqlParserFactory("sqlserver").get_parser()
@@ -330,7 +323,7 @@ class TestIndexObjectSchemaDefaultParser:
 
         assert len(objects) == 1
         assert objects[0].name == "idx1"
-        assert objects[0].schema == "dbo"
+        assert objects[0].schema == "sales"
 
     def test_create_index_bracketed_name(self):
         objects = self.parser.extract_objects(
@@ -354,19 +347,14 @@ class TestIndexObjectSchemaDefaultParser:
             "CREATE XML INDEX idx1 ON real_one (xml_col);", default_schema="dbo"
         )
 
-        assert len(objects) == 1
-        assert objects[0].name == "idx1"
-        assert objects[0].schema == "dbo"
-        assert objects[0].object_type == SqlObjectType.INDEX
+        assert objects == []
 
     def test_create_primary_xml_index(self):
         objects = self.parser.extract_objects(
             "CREATE PRIMARY XML INDEX idx1 ON real_one (xml_col);", default_schema="dbo"
         )
 
-        assert len(objects) == 1
-        assert objects[0].name == "idx1"
-        assert objects[0].schema == "dbo"
+        assert objects == []
 
 
 @pytest.mark.unit
@@ -407,9 +395,7 @@ class TestDropIndexLegacyTableDotName:
     @pytest.mark.parametrize(
         "parser_type, expected",
         [
-            pytest.param(
-                "hybrid", [("idx1", "unrelated_default", SqlObjectType.INDEX)], id="hybrid"
-            ),
+            pytest.param("hybrid", [], id="facts-opaque"),
             pytest.param("regex", [], id="regex-does-not-match-this-spelling"),
         ],
     )
@@ -429,7 +415,7 @@ class TestDropIndexLegacyTableDotName:
     @pytest.mark.parametrize(
         "parser_type, expected",
         [
-            pytest.param("hybrid", [("idx1", "dbo", SqlObjectType.INDEX)], id="hybrid"),
+            pytest.param("hybrid", [], id="facts-opaque"),
             pytest.param("regex", [], id="regex-does-not-match-this-spelling"),
         ],
     )
@@ -470,16 +456,10 @@ class TestHybridParserNoDuplicateOnFixedName:
 
         assert len(objects) == 1
 
-    def test_create_xml_index_no_near_duplicate(self):
-        # Regression for the general/xml index pattern overlap: since both
-        # now extract the same (name, schema), the merge's (name, type) key
-        # collapses them instead of the two differing enough to survive
-        # as a near-duplicate.
+    def test_create_xml_index_is_opaque(self):
         objects = self.parser.extract_objects("CREATE XML INDEX idx1 ON real_one (xml_col);")
 
-        assert len(objects) == 1
-        assert objects[0].name == "idx1"
-        assert objects[0].object_type == SqlObjectType.INDEX
+        assert objects == []
 
 
 @pytest.mark.unit

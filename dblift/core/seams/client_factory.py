@@ -7,6 +7,12 @@ instead of the built-in client, so the add-on's command handlers receive a
 client exposing their methods. Without a registration the built-in
 ``api.DBLiftClient`` is used — behaviour is unchanged for a plain install.
 
+The CLI calls ``from_config(config, logger=..., analysis_mode=...)`` for ``migrate``, ``undo``
+and ``info``, which take ``--analysis-mode``; for every other command it passes no
+``analysis_mode``. The factories always forward ``analysis_mode`` explicitly, even
+when it equals the core default, so a registered class must accept that keyword and
+honours the mode asked for whatever its own default is.
+
 At most one registration is honored (the first the interpreter yields);
 loading failures are logged and fall back to the built-in client, so a
 broken plugin can never take the CLI down.

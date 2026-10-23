@@ -4,6 +4,7 @@ from contextlib import contextmanager
 from typing import Iterator, Protocol
 
 from dblift.core.logger import Log, NullLog
+from dblift.core.logger.console import rich_available
 
 
 class ProgressSink(Protocol):
@@ -33,7 +34,7 @@ class NullProgress:
 @contextmanager
 def migration_progress(log: Log, total: int) -> Iterator[ProgressSink]:
     """Select silent or Rich progress for the existing logger."""
-    if isinstance(log, NullLog):
+    if isinstance(log, NullLog) or not rich_available():
         yield NullProgress()
     else:
         from .rich_progress import rich_migration_progress

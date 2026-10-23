@@ -6,30 +6,85 @@ into those sinks. ADR-0008: machine payloads go to stdout, human output
 goes to stderr.
 """
 
+from __future__ import annotations
+
 import contextlib
 import sys
-from typing import Any, ContextManager, Dict, List, Literal, Optional, Tuple, cast
-
-from rich import box
-from rich.console import Console, RenderableType
-from rich.panel import Panel
-from rich.table import Table
-from rich.text import Text
-from rich.theme import Theme
-from rich.tree import Tree
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    ContextManager,
+    Dict,
+    List,
+    Literal,
+    Optional,
+    Tuple,
+    cast,
+)
 
 from dblift.core.constants import ENV_PREFIX
 from dblift.core.logger.tabular_data import rows_to_columns_and_values  # noqa: F401 - re-export
+from dblift.core.utils.module_check import module_available
 
-DBLIFT_THEME = Theme(
-    {
-        "log.debug": "dim",
-        "log.info": "default",
-        "log.warn": "yellow",
-        "log.error": "bold red",
-        "log.notice": "bold green",
-    }
-)
+if TYPE_CHECKING:
+    from rich.console import Console, RenderableType
+    from rich.panel import Panel
+    from rich.table import Table
+    from rich.text import Text
+    from rich.theme import Theme
+    from rich.tree import Tree
+
+# Rich is the optional ``cli`` extra: nothing here imports it until a function
+# that draws something is called.
+CLI_EXTRA_HINT = "install dblift[cli]"
+
+_LOG_STYLES: Dict[str, str] = {
+    "log.debug": "dim",
+    "log.info": "default",
+    "log.warn": "yellow",
+    "log.error": "bold red",
+    "log.notice": "bold green",
+}
+
+
+class PresentationUnavailableError(ImportError):
+    """A presentation dependency (Rich, Jinja2) is not installed."""
+
+
+def rich_available() -> bool:
+    """Return True when Rich (the ``cli`` extra) can be imported."""
+    return module_available("rich")
+
+
+def require_presentation_extras(feature: str, *modules: str) -> None:
+    """Raise :class:`PresentationUnavailableError` if any of ``modules`` is missing.
+
+    Defaults to Rich. Call it before a side effect so a command that cannot
+    render its output refuses up front instead of failing halfway.
+    """
+    missing = [m for m in (modules or ("rich",)) if not module_available(m)]
+    if missing:
+        raise PresentationUnavailableError(
+            f"{feature} needs {', '.join(missing)}, which is not installed: {CLI_EXTRA_HINT}"
+        )
+
+
+# The theme is a module attribute that is built on first access, so importing this
+# module never imports Rich.
+_THEME_ATTRIBUTE = ENV_PREFIX + "THEME"
+
+
+def __getattr__(name: str) -> "Theme":
+    if name == _THEME_ATTRIBUTE:
+        return _build_theme()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def _build_theme() -> "Theme":
+    from rich.theme import Theme
+
+    return Theme(dict(_LOG_STYLES))
+
 
 ColumnJustify = Literal["default", "left", "center", "right", "full"]
 
@@ -53,7 +108,7 @@ _STATE_STYLE: Dict[str, str] = {
 }
 
 
-def state_text(state: str) -> Text:
+def state_text(state: str) -> "Text":
     """Return a rich ``Text`` for a state string, styled per the shared palette.
 
     Unknown states render unstyled. Callers pass the result as a table cell so
@@ -61,6 +116,8 @@ def state_text(state: str) -> Text:
     Lookup is case-insensitive; the original casing is preserved in the rendered
     text. An empty string is treated as unknown and renders unstyled.
     """
+    from rich.text import Text
+
     style = _STATE_STYLE.get(state.lower(), "")
     text = Text(state)
     if style:
@@ -109,7 +166,7 @@ def is_progress_disabled() -> bool:
         return True
 
 
-def get_stderr_console() -> Console:
+def get_stderr_console() -> "Console":
     """Return the shared Rich Console writing to stderr.
 
     Singleton — same Console instance across ConsoleLog, Progress,
@@ -121,9 +178,11 @@ def get_stderr_console() -> Console:
     """
     global _stderr_console
     if _stderr_console is None:
+        from rich.console import Console
+
         _stderr_console = Console(
             stderr=True,
-            theme=DBLIFT_THEME,
+            theme=_build_theme(),
             highlight=False,
             soft_wrap=True,
             emoji=False,
@@ -132,7 +191,7 @@ def get_stderr_console() -> Console:
     return _stderr_console
 
 
-def get_stdout_console() -> Console:
+def get_stdout_console() -> "Console":
     """Return the shared Rich Console writing to stdout.
 
     Used for command headers and footers (ADR-0008: machine payloads go to
@@ -141,9 +200,11 @@ def get_stdout_console() -> Console:
     """
     global _stdout_console
     if _stdout_console is None:
+        from rich.console import Console
+
         _stdout_console = Console(
             stderr=False,
-            theme=DBLIFT_THEME,
+            theme=_build_theme(),
             highlight=False,
             soft_wrap=True,
             emoji=False,
@@ -164,8 +225,10 @@ def reset_stderr_console() -> None:
     _stderr_console = None
 
 
-def _plain_renderer(width: int = 200) -> Console:
+def _plain_renderer(width: int = 200) -> "Console":
     """Build a Rich Console that emits plain text (no ANSI)."""
+    from rich.console import Console
+
     return Console(
         force_terminal=False,
         no_color=True,
@@ -176,7 +239,7 @@ def _plain_renderer(width: int = 200) -> Console:
     )
 
 
-def render_to_str(renderable: RenderableType, width: int = 200) -> str:
+def render_to_str(renderable: "RenderableType", width: int = 200) -> str:
     """Render any Rich renderable (Table, Tree, Panel, ...) to plain text.
 
     Used when the output must flow through the existing logger pipeline
@@ -191,17 +254,17 @@ def render_to_str(renderable: RenderableType, width: int = 200) -> str:
     return captured.rstrip("\n")
 
 
-def render_table_to_str(table: Table, width: int = 200) -> str:
+def render_table_to_str(table: "Table", width: int = 200) -> str:
     """Render a Rich Table to plain text. Backwards-compatible wrapper."""
     return render_to_str(table, width=width)
 
 
-def render_tree_to_str(tree: Tree, width: int = 200) -> str:
+def render_tree_to_str(tree: "Tree", width: int = 200) -> str:
     """Render a Rich Tree to plain text."""
     return render_to_str(tree, width=width)
 
 
-def render_panel_to_str(panel: Panel, width: int = 200) -> str:
+def render_panel_to_str(panel: "Panel", width: int = 200) -> str:
     """Render a Rich Panel to plain text."""
     return render_to_str(panel, width=width)
 
@@ -223,6 +286,11 @@ def render_records_table(
     When ``color=True`` the table is rendered through a tty-aware console so ANSI
     colors appear on a real terminal and are auto-stripped when piped/redirected.
     """
+    from rich import box
+    from rich.console import Console
+    from rich.table import Table
+    from rich.text import Text
+
     table = Table(box=box.ROUNDED, show_header=True, header_style="bold", title=title)
     for header, justify in columns:
         table.add_column(header, justify=cast(ColumnJustify, justify))
@@ -260,9 +328,13 @@ def console_status(message: str) -> "ContextManager[Any]":
 def install_rich_traceback(*, suppress: Any = ()) -> None:
     """Install Rich's pretty traceback handler for uncaught exceptions.
 
+    A no-op when Rich is not installed.
+
     Writes to stderr only (ADR-0008). ``suppress`` accepts modules whose
     frames should be hidden in the traceback (e.g. third-party glue).
     """
+    if not rich_available():
+        return
     from rich.traceback import install
 
     install(

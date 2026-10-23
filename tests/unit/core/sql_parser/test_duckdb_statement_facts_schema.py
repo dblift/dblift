@@ -50,7 +50,7 @@ def test_schema_facts_share_duckdb_parser_consumers():
     assert quirks.parser_class("sqlglot") is DuckDBFactsParser
 
 
-@pytest.mark.parametrize("dialect", ["sqlite", "postgres", "oracle", "mysql", "tsql"])
+@pytest.mark.parametrize("dialect", ["sqlite", "tsql"])
 @pytest.mark.parametrize(
     "sql,operation,kind,opaque",
     [
@@ -66,6 +66,25 @@ def test_duckdb_schema_and_metadata_mappings_preserve_other_dialects(
     facts = read_statement_facts(sql, dialect=dialect)
     assert facts.operation == operation
     assert facts.kind == kind
+    if dialect == "tsql" and sql == "DROP SCHEMA s CASCADE":
+        assert facts.objects == (NamedObject("s", SqlObjectType.SCHEMA, "dropped"),)
+    else:
+        assert facts.objects == ()
+    assert facts.opaque is opaque
+
+
+@pytest.mark.parametrize("dialect", ["postgres"])
+@pytest.mark.parametrize(
+    "sql,operation,kind,opaque",
+    [
+        ("SHOW TABLES", "SHOW", "UNKNOWN", True),
+        ("DESCRIBE child", "DESCRIBE", "UNKNOWN", True),
+    ],
+)
+def test_duckdb_metadata_mappings_preserve_postgres(dialect, sql, operation, kind, opaque):
+    facts = read_statement_facts(sql, dialect=dialect)
+    assert facts.operation == operation
+    assert facts.kind == kind
     assert facts.objects == ()
     assert facts.opaque is opaque
 
@@ -74,10 +93,10 @@ def test_duckdb_schema_and_metadata_mappings_preserve_other_dialects(
     "dialect,expected",
     [
         ("sqlite", "child AS c"),
-        ("postgres", "child AS c"),
+        ("postgres", "child"),
         ("oracle", "child c"),
         ("mysql", "child"),
-        ("tsql", "child AS c"),
+        ("tsql", "child"),
     ],
 )
 def test_target_alias_normalization_preserves_each_dialect_contract(dialect, expected):

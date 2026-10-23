@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING, Any, List, Optional, Tuple
 
+from dblift.core.sql_parser.statement_facts import SqlglotStatementFactsReader
 from dblift.core.utils.database_url_parser import DatabaseUrlParser
 from dblift.db.base_quirks import BaseQuirks
 from dblift.db.error import ErrorCategory
@@ -54,6 +55,8 @@ class MysqlQuirks(BaseQuirks):
         from dblift.db.plugins.mysql.parser.lexical_spec import MYSQL_SPEC
 
         return MYSQL_SPEC
+
+    statement_facts_class = SqlglotStatementFactsReader
 
     # Capability matrix (was ``_CAPABILITIES["mysql"]``).
     supports_transactions = True
@@ -132,16 +135,12 @@ class MysqlQuirks(BaseQuirks):
         }
 
     def parser_class(self, parser_type: str) -> Optional[type]:
-        """MySQL parser dispatch: hybrid → :class:`HybridParser`, sqlglot →
-        :class:`SqlGlotParser`, regex → :class:`MySqlRegexParser`."""
-        if parser_type == "hybrid":
-            from dblift.core.sql_parser.hybrid_parser import HybridParser
+        """MySQL parser dispatch: hybrid and sqlglot → :class:`MySqlFactsParser`,
+        regex → :class:`MySqlRegexParser`."""
+        if parser_type in ("hybrid", "sqlglot"):
+            from dblift.db.plugins.mysql.parser.mysql_facts_parser import MySqlFactsParser
 
-            return HybridParser
-        if parser_type == "sqlglot":
-            from dblift.core.sql_parser.sqlglot_parser import SqlGlotParser
-
-            return SqlGlotParser
+            return MySqlFactsParser
         if parser_type == "regex":
             from dblift.db.plugins.mysql.parser.mysql_regex_parser import MySqlRegexParser
 

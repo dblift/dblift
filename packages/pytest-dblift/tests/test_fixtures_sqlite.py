@@ -112,3 +112,18 @@ def test_dblift_validate_fixture_reports_history_table_failure(
 
     with pytest.raises(AssertionError, match="Could not create the schema-history table"):
         dblift_validate()
+
+
+def test_fixture_client_keeps_full_analysis(tmp_path: Path) -> None:
+    from pytest_dblift._client import create_dblift_client
+    from sqlalchemy import create_engine
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'full.db'}")
+    try:
+        client = create_dblift_client(engine, migrations_dir=str(tmp_path))
+        try:
+            assert client.analysis_mode == "full"
+        finally:
+            client.close()
+    finally:
+        engine.dispose()

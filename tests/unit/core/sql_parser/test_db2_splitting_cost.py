@@ -14,25 +14,32 @@ and sums count, and a source check refuses the copy forms in every module the te
 (subpackages included; imports from outside the package are listed with their reason).
 Not an evasion: reading the wrapper's ``_value`` attribute from engine code is a copy, and the source check
 refuses it by name. Known limits: arithmetic on a copied value that is first converted with ``int()`` is not counted; an accumulator
-re-joined or re-sliced per cut (the masked-text accumulator) is not seen.
+re-joined or re-sliced per cut (the masked-text accumulator) is not seen. Compiled word regexes are
+certified by shape; their native VM steps are not counted.
 """
 
 import ast
 import inspect
 import re
 from collections import abc
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Dict, Iterator, Optional, Tuple
+from unittest import mock
 
 import pytest
 
+from dblift.core.sql_parser import lexical_engine as engine_module
+from dblift.core.sql_parser.lexical_engine import LexicalEngine
 from dblift.core.sql_parser.lexical_tokenizer import LexicalTokenizer
 from dblift.core.sql_parser.terminator_lines import read_lines
+from dblift.core.sql_parser.terminator_script import TerminatorScript
 from dblift.db.plugins.db2.parser.lexical_spec import DB2_RULES, DB2_SPEC
 from tests.support.splitting_cost import (
     OUTSIDE_EXEMPT,
     PACKAGE,
+    CountingParserTokens,
     CountingPattern,
     CountingText,
     CountingTokens,
@@ -104,6 +111,34 @@ def counted(script: str) -> int:
     return meter.count
 
 
+def public_counted(script: str) -> Tuple[int, list]:
+    meter = Meter()
+
+    def tokenizer(source, *, spec):
+        wrapped = LexicalTokenizer(source._value, spec=spec)
+        ts = wrapped.terminator_script
+        assert ts is not None
+        ts.text = CountingText(ts.text, meter)
+        lines = CountingLines(ts.lines)
+        lines.meter = meter
+        ts.lines = lines
+        wrapped.sql = CountingText(wrapped.sql, meter)
+        wrapped._word_re = CountingPattern(wrapped._word_re, meter)
+        original_tokenize = wrapped.tokenize
+        wrapped.tokenize = lambda: CountingParserTokens(original_tokenize(), meter)
+        original_assemble = ts.assemble
+
+        def assemble(tokens, marks, open_lexeme):
+            return original_assemble(tokens, CountingMarks(marks, meter), open_lexeme)
+
+        ts.assemble = assemble
+        return wrapped
+
+    with mock.patch.object(engine_module, "LexicalTokenizer", tokenizer):
+        records = LexicalEngine(DB2_SPEC).split(CountingText(script, meter))
+    return meter.count, records
+
+
 SHAPES = {
     "one statement per line": lambda n: "INSERT INTO t VALUES (1, 'a;b');\n" * n,
     "block comment of terminator lines": lambda n: "/*\n"
@@ -131,6 +166,56 @@ SHAPES = {
 def test_db2_splitting_cost_grows_linearly(shape):
     small, large = counted(SHAPES[shape](SMALL)), counted(SHAPES[shape](LARGE))
     assert large <= BOUND * small, (shape, small, large)
+
+
+@pytest.mark.parametrize("shape", sorted(SHAPES))
+def test_db2_public_split_cost_grows_linearly(shape):
+    small, _ = public_counted(SHAPES[shape](SMALL))
+    large, _ = public_counted(SHAPES[shape](LARGE))
+    assert small > 0 and large <= BOUND * small, (shape, small, large)
+
+
+def test_db2_public_split_counts_repeated_record_prefixes(monkeypatch):
+    original = LexicalEngine.split
+
+    def rescanning_split(self, source):
+        records = original(self, source)
+        for record in records:
+            source[: record.source_start].count("\n")
+        return records
+
+    monkeypatch.setattr(LexicalEngine, "split", rescanning_split)
+    shape = SHAPES["one statement per line"]
+    small, small_records = public_counted(shape(SMALL))
+    large, large_records = public_counted(shape(LARGE))
+    assert (len(small_records), len(large_records)) == (SMALL, LARGE)
+    assert large > BOUND * small, (small, large)
+
+
+def test_db2_public_split_counts_assembly_prefix_rescans(monkeypatch):
+    original = TerminatorScript.assemble
+
+    def rescanning_assemble(self, tokens, marks, open_lexeme):
+        records = original(self, tokens, marks, open_lexeme)
+        for record in records:
+            self.text[: record.source_start].count("\n")
+        return records
+
+    monkeypatch.setattr(TerminatorScript, "assemble", rescanning_assemble)
+    shape = SHAPES["one statement per line"]
+    small, _ = public_counted(shape(SMALL))
+    large, records = public_counted(shape(LARGE))
+    assert len(records) == LARGE and large > BOUND * small
+
+
+def test_db2_public_split_has_bounded_cost_and_ordered_records():
+    shape = SHAPES["one statement per line"]
+    small, first = public_counted(shape(SMALL))
+    large, records = public_counted(shape(LARGE))
+    assert len(first) == SMALL and len(records) == LARGE
+    assert [r.source_start for r in records] == list(range(0, LARGE * 33, 33))
+    assert all(r.text == "INSERT INTO t VALUES (1, 'a;b')" for r in records)
+    assert small > 0 and large <= BOUND * small
 
 
 def test_the_counters_count_what_a_rescan_would_cost():
@@ -172,6 +257,25 @@ def test_the_counters_count_what_a_rescan_would_cost():
     assert list(lines) == [1, 2, 3] and lines[1] == 2 and meter.count == 4
     with pytest.raises(AssertionError):
         lines[0:2]
+
+
+@pytest.mark.parametrize(
+    "mutant",
+    (r"[\s\S]*?(?=\$)", r"(?![\s\S]*\$\$)", r"(?:[\s\S]*?)?"),
+)
+def test_db2_word_regex_rejects_unbounded_scanning(mutant, monkeypatch):
+    assert (
+        CountingPattern(re.compile(DB2_RULES.word), Meter()).match(
+            CountingText("VALUES", Meter()), 0
+        )
+        is not None
+    )
+    monkeypatch.setattr(
+        "tests.unit.core.sql_parser.test_db2_splitting_cost.DB2_SPEC",
+        replace(DB2_SPEC, terminator_script=replace(DB2_RULES, word=mutant)),
+    )
+    with pytest.raises(AssertionError, match="uncertified regex"):
+        counted("VALUES 1;\n")
 
 
 def test_the_counted_text_refuses_what_it_does_not_count():

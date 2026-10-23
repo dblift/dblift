@@ -88,7 +88,7 @@ The layout deliberately mirrors `db/plugins/postgresql/` (and siblings) so the s
 
    **File-based dialects need a config field.** The generated config stub only carries the base fields (`url`/`host`/`port`/`database`/`schema`). An embedded, file-path dialect (SQLite, DuckDB) must add its own `path` field and a `__post_init__` that resolves `path` from `url`/`database` and defaults the schema — copy SQLite's `config.py`.
 
-   **Provide a regex parser.** `quirks.parser_class("regex")` must return a parser class. Returning `None` makes the hybrid splitter log `"<dialect>-specific statement splitter failed: Unsupported dialect"` and fall back — and that fallback *raises* under `strict_tokenizer=True`. Ship a `parser/parser_config.py` (`DialectConfig` subclass) + a small `EnhancedRegexParser` subclass. For a non-procedural dialect the splitter only needs to respect string literals and comments around `;`.
+   **Provide SQL reading rules.** New SQL plugins should define a `LexicalSpec` through `quirks.lexical_spec()` for script boundaries and a `statement_facts_class` reader for supported statement analysis. The existing `quirks.parser_class("regex")` hook remains available where classification, extraction, or redaction still needs a parser. That path uses a `parser/parser_config.py` (`DialectConfig` subclass) and a small `EnhancedRegexParser` subclass; its direct construction is deprecated for v5.0. See the [deprecation inventory](v5-alpha-deprecation-inventory.md) for caller and replacement limits.
 
 5. Add a driver extra if desired:
 

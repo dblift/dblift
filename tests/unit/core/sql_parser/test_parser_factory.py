@@ -91,7 +91,7 @@ class TestSqlParserFactory:
         from dblift.core.sql_parser.hybrid_parser import HybridParser
         from dblift.db.provider_registry import ProviderRegistry
 
-        for dialect in ("oracle", "sqlserver", "db2", "postgresql", "mysql"):
+        for dialect in ("oracle", "sqlserver", "postgresql"):
             cls = ProviderRegistry.get_quirks(dialect).parser_class("hybrid")
             assert cls is HybridParser, f"{dialect}: expected HybridParser, got {cls!r}"
 
@@ -506,6 +506,7 @@ class TestSqlParserFactory:
         with pytest.raises(UnsupportedDialectError, match="Unsupported dialect: unknown_dialect"):
             factory.get_parser("unknown_dialect")
 
+    @pytest.mark.usefixtures("legacy_oracle")
     def test_get_parser_normalises_dialect_to_lowercase(self):
         """``get_parser("ORACLE")`` resolves the same plugin as
         ``get_parser("oracle")``. Case-insensitive lookup happens
@@ -542,7 +543,7 @@ class TestSqlParserFactory:
         with patch.object(factory, "_create_parser", return_value=None):
             result = factory.validate_sql("SELECT 1")
 
-            assert result["success"] is False
+            assert result["valid"] is False
             assert "No parser available" in result["errors"]
 
     def test_extract_objects_error_handling_no_parser_creation(self):

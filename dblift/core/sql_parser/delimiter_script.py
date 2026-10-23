@@ -53,12 +53,6 @@ class DelimiterScript:
         self.open_hint: Optional[Tuple[int, int]] = None
         self._line_comment_end = -1
         self._begin()
-        nul = text.find("\x00")
-        if nul >= 0:
-            raise UnsafeStatementSplitError(
-                f"NUL byte on line {text.count(chr(10), 0, nul) + 1}: the {client_name} client "
-                "refuses it unless --binary-mode is set"
-            )
 
     def _begin(self) -> None:
         """A new statement: nothing read yet."""

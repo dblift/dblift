@@ -7,6 +7,7 @@ from typing import Callable, List, Optional, Tuple, TypeVar, Union
 
 from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
 from dblift.core.logger import Log
+from dblift.core.sql_parser._deprecation import internal_parser_construction, warn_direct_parser
 from dblift.core.sql_parser.lexical_engine import LexicalEngine
 from dblift.core.sql_parser.parser_factory import SqlParserFactory
 from dblift.core.sql_parser.parser_interface import SqlParserInterface
@@ -29,9 +30,10 @@ class StatementSplitter:
         self.logger = logger
         spec = ProviderRegistry.get_quirks(self.dialect).lexical_spec()
         self._engine = LexicalEngine(spec) if spec is not None else None
-        self.parser_factory = (
-            SqlParserFactory(self.dialect, parser_type="regex") if self._engine is None else None
-        )
+        self.parser_factory = None
+        if self._engine is None:
+            with internal_parser_construction():
+                self.parser_factory = SqlParserFactory(self.dialect, parser_type="regex")
         self._parser: Optional[SqlParserInterface] = None
         self._last: Optional[Tuple[str, bool, List[Statement]]] = None
 
@@ -52,22 +54,29 @@ class StatementSplitter:
                 f"{self.dialect} statement splitter failed: {exc}"
             ) from exc
 
-    def split(self, sql: str, *, strict_tokenizer: bool = False) -> List[Statement]:
+    def split(self, sql: str, *, strict_tokenizer: Optional[bool] = None) -> List[Statement]:
         """The records of *sql* as the dialect's scanner cuts them, or its refusal."""
-        records = self._split(sql, strict_tokenizer)
-        self._last = (sql, strict_tokenizer, records)
+        if strict_tokenizer is not None:
+            warn_direct_parser("strict_tokenizer")
+        strict = bool(strict_tokenizer)
+        records = self._split(sql, strict)
+        self._last = (sql, strict, records)
         return list(records)
 
-    def last_split(self, sql: str, *, strict_tokenizer: bool = False) -> List[Statement]:
+    def last_split(self, sql: str, *, strict_tokenizer: Optional[bool] = None) -> List[Statement]:
         """The records of the last ``split`` when it was of *sql*, else a fresh split.
 
         A caller that needs the records of a script it has just split reads them here instead
         of splitting, and so logging the scanner's notices, a second time.
         """
+        if strict_tokenizer is not None:
+            warn_direct_parser("strict_tokenizer")
+        strict = bool(strict_tokenizer)
         last = self._last
-        if last is not None and last[0] == sql and last[1] == strict_tokenizer:
+        if last is not None and last[0] == sql and last[1] == strict:
             return list(last[2])
-        return self.split(sql, strict_tokenizer=strict_tokenizer)
+        with internal_parser_construction():
+            return self.split(sql, strict_tokenizer=strict)
 
     def _split(self, sql: str, strict_tokenizer: bool) -> List[Statement]:
         engine = self._engine
@@ -91,6 +100,9 @@ class StatementSplitter:
             )
         return records
 
-    def split_statements(self, sql: str, *, strict_tokenizer: bool = False) -> List[str]:
+    def split_statements(self, sql: str, *, strict_tokenizer: Optional[bool] = None) -> List[str]:
         """Return executable units or refuse; never guess a second split."""
-        return execution_strings(self.split(sql, strict_tokenizer=strict_tokenizer))
+        if strict_tokenizer is not None:
+            warn_direct_parser("strict_tokenizer")
+        with internal_parser_construction():
+            return execution_strings(self.split(sql, strict_tokenizer=bool(strict_tokenizer)))

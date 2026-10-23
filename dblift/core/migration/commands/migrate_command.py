@@ -30,6 +30,7 @@ from dblift.core.migration.state.migration_state import MigrationReadSnapshot, M
 from dblift.core.migration.state.migration_state_manager import MigrationStateManager
 from dblift.core.migration.ui.migration_ui import MigrationUI
 from dblift.core.migration.ui.progress import migration_progress
+from dblift.core.migration.version_utils import compare_versions
 from dblift.core.sql_validator.migration_validator import MigrationValidator
 from dblift.db.base_provider import BaseProvider
 
@@ -483,7 +484,17 @@ class MigrateCommand(BaseCommand):
                 return
 
             if not pending_migrations:
-                self.log.info("No pending migrations found")
+                if (
+                    target_version is not None
+                    and current_version
+                    and compare_versions(current_version, target_version) >= 0
+                ):
+                    self.log.info(
+                        f"No pending migrations found: the current version {current_version} "
+                        f"is at or above the target version {target_version}, nothing to apply"
+                    )
+                else:
+                    self.log.info("No pending migrations found")
                 return
 
             self.log.info(f"Found {len(pending_migrations)} pending migration(s)")

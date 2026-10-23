@@ -17,7 +17,16 @@ _project_root = _script_dir.parent.absolute()
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
+from dblift.core.exceptions import InvalidTargetVersionError
 from dblift.core.logger import LogFactory
+from dblift.core.logger.console import (
+    PresentationUnavailableError,
+    get_stderr_console,
+    install_rich_traceback,
+    module_available,
+    require_presentation_extras,
+    rich_available,
+)
 from dblift.core.utils.url_masking import mask_database_url
 
 # Backward compatibility alias (used by tests and re-exports)
@@ -29,6 +38,7 @@ from dblift.cli._command_handlers import (  # noqa: F401
     CliCommandContext,
     _extract_version_filters,
     _validate_migrate_options,
+    _validate_target_version_option,
     execute_single_command,
     exit_license_required,
 )
@@ -347,8 +357,6 @@ def main() -> None:
     3. Dispatch the requested command(s) inside a try/except so any
        uncaught error gets logged and the logs are flushed.
     """
-    from dblift.core.logger.console import install_rich_traceback
-
     install_rich_traceback()
     load_feature_extensions()
 
@@ -399,6 +407,60 @@ def _apply_config_backed_defaults(args: Any, config: Optional[Any]) -> None:
         if value in (None, "", (), []) or value == spec.default:
             continue
         setattr(args, spec.name, value)
+
+
+def _require_presentation_extras(commands: List[str], args: argparse.Namespace) -> None:
+    """Exit before any side effect if the request needs a missing presentation extra.
+
+    The base install runs migrations without Rich or Jinja2; only output that is
+    drawn with them (tables, the HTML report) needs the ``cli`` extra.
+    """
+    tables = (
+        commands[0] == "config"
+        or ("info" in commands and not from_args(args).is_machine_format)
+        or bool(vars(args).get("show_query_results"))
+    )
+    formats = [f.strip() for f in str(vars(args).get("log_format") or "").lower().split(",")]
+    html = "html" in formats
+    try:
+        if tables:
+            require_presentation_extras("This output", "rich")
+        if html:
+            require_presentation_extras("The HTML report", "jinja2")
+    except PresentationUnavailableError as exc:
+        CommandOutput("console").error(f"error: {exc}")
+        sys.exit(1)
+
+
+def _sqlglot_available() -> bool:
+    return module_available("sqlglot")
+
+
+# Commands that read statements with sqlglot: migrate, undo and info unless they run in
+# execution mode, validate-sql always (it has no execution mode). ``migrate --validate-only``
+# parses nothing, and the other commands never read statements.
+_ANALYSING_COMMANDS = frozenset({"migrate", "undo", "info"})
+
+
+def _require_analysis_extras(commands: List[str], args: argparse.Namespace) -> None:
+    """Exit before any callback, file write or connection if a command needs sqlglot
+    (the ``analysis`` extra) and it is missing."""
+    full = vars(args).get("analysis_mode") == "full" and not vars(args).get("validate_only")
+    lint = "validate-sql" in commands
+    if not ((full and _ANALYSING_COMMANDS.intersection(commands)) or lint):
+        return
+    if _sqlglot_available():
+        return
+    hint = (
+        "install dblift[analysis]"
+        if lint
+        else "install dblift[analysis], or pass --analysis-mode execution to skip the analysis"
+    )
+    CommandOutput("console").error(
+        f"error: {'validate-sql' if lint else '--analysis-mode full'} needs sqlglot, "
+        f"which is not installed: {hint}."
+    )
+    sys.exit(1)
 
 
 def _parse_argv_and_load_config(argv: List[str]) -> _CliContext:
@@ -475,6 +537,9 @@ def _parse_argv_and_load_config(argv: List[str]) -> _CliContext:
         sys.exit(0)
     if not commands and hasattr(args, "command"):
         commands = [args.command]
+
+    _require_presentation_extras(commands, args)
+    _require_analysis_extras(commands, args)
 
     # `dblift config --list` is offline self-documentation: it reads only the
     # property registry, so it short-circuits here — before any config/db load —
@@ -588,7 +653,11 @@ def _build_command_client(ctx: "_CliContext") -> Any:
     )
     if config_only:
         return ConfigOnlyClient(config=ctx.config)
-    return resolve_client_class().from_config(ctx.config, logger=ctx.log)
+    options = {k: v for k, v in vars(ctx.args).items() if k == "analysis_mode"}
+    if vars(ctx.args).get("validate_only"):
+        # Validation reads no SQL analysis, so it must run without sqlglot (see the guard above).
+        options["analysis_mode"] = "execution"
+    return resolve_client_class().from_config(ctx.config, logger=ctx.log, **options)
 
 
 def _propagate_license_banner(log: Any, license_info: Optional[Any]) -> None:
@@ -768,6 +837,17 @@ def _dispatch_command(ctx: _CliContext, command_output: CommandOutput) -> int:
             else:
                 cmd_args = ctx.args
 
+            if command in ("migrate", "undo", "validate", "info"):
+                _validate_target_version_option(
+                    command,
+                    cmd_args,
+                    ctx.parser,
+                    ctx.log,
+                    scripts_dir,
+                    additional_scripts_dirs,
+                    recursive,
+                    dir_recursive_map,
+                )
             _connect_if_needed(client, ctx.log, command, cmd_args)
             if command == "migrate":
                 _validate_migrate_options(cmd_args, ctx.parser)
@@ -797,6 +877,10 @@ def _dispatch_command(ctx: _CliContext, command_output: CommandOutput) -> int:
         # SystemExit with a dedicated code; flush logs then propagate.
         _close_logs(ctx.log)
         raise
+    except InvalidTargetVersionError as e:
+        ctx.log.error(str(e))
+        _close_logs(ctx.log)
+        return 2
     except ConnectionError as e:
         # A connection or schema-history preflight failure: report it as
         # ``ConnectionError: ...``, the text the JSON output and MCP use.
@@ -822,9 +906,13 @@ if __name__ == "__main__":
         CommandOutput("console").error("\nOperation cancelled by user")
         sys.exit(130)
     except Exception as e:
-        from dblift.core.logger.console import get_stderr_console
+        if rich_available():
+            console = get_stderr_console()
+            console.print(f"Unexpected error: {e}", style="log.error")
+            console.print_exception(show_locals=False, word_wrap=False)
+        else:
+            import traceback
 
-        console = get_stderr_console()
-        console.print(f"Unexpected error: {e}", style="log.error")
-        console.print_exception(show_locals=False, word_wrap=False)
+            print(f"Unexpected error: {e}", file=sys.stderr)  # lint: allow-print
+            traceback.print_exc()
         sys.exit(1)

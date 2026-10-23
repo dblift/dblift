@@ -9,7 +9,7 @@ from dblift.db.provider_registry import ProviderRegistry
 
 pytestmark = pytest.mark.unit
 
-DIALECTS = ["cockroachdb", "mariadb", "postgresql", "mysql"]
+DIALECTS = ["cockroachdb", "postgresql"]
 
 
 @pytest.fixture(params=DIALECTS)
