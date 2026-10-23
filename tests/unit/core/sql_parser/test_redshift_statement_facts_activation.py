@@ -127,4 +127,3 @@ def test_execution_journal_receives_the_facts_objects(sql, expected):
 
     objects = journal.record_object_changes.call_args.args[2]
     assert [(obj["object_type"], obj["object_name"]) for obj in objects] == [expected]
-

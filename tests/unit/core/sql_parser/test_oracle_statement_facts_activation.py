@@ -83,4 +83,3 @@ def test_dml_helpers_take_the_facts_path_through_the_plugin():
     assert dml_where_predicate(UPDATE, quirks=quirks) == "id = 1"
     assert not is_full_table_dml(UPDATE, quirks=quirks)
     assert is_full_table_dml("DELETE FROM child", quirks=quirks)
-
