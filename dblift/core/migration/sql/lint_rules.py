@@ -44,6 +44,7 @@ SEVERITY: Dict[str, str] = {
     "truncate": ERROR,
     "drop-unread-object": WARNING,
     "dml-no-where": WARNING,
+    "copy-server-side": WARNING,
     "add-not-null-no-default": WARNING,
     "rename-column": WARNING,
     "rename-table": WARNING,
@@ -383,13 +384,22 @@ def _table_of(tree: exp.Expression) -> Optional[_TableKey]:
 
 
 def _targets(tree: Optional[exp.Expression]) -> FrozenSet[_TableKey]:
-    """The tables a statement acts on: every table a DROP or TRUNCATE names, else its first.
+    """The tables a statement acts on: every table a DROP or TRUNCATE names, every table a CTE
+    or the statement writes when a CTE writes, else its first.
 
     Read from the sqlglot tree only: the analysed objects keep the first table of
     ``DROP TABLE a, b``. A statement sqlglot cannot structure has no targets.
     """
     if isinstance(tree, (exp.Drop, exp.TruncateTable)):
         return frozenset(_key_of(t) for t in tree.find_all(exp.Table) if t.name)
+    writers = (exp.Insert, exp.Update, exp.Delete)
+    if tree is not None and any(isinstance(cte.this, writers) for cte in tree.find_all(exp.CTE)):
+        # A CTE that writes changes its own table: every one of them must be new to exempt.
+        written = [tree] if isinstance(tree, writers) else []
+        written += [cte.this for cte in tree.find_all(exp.CTE) if isinstance(cte.this, writers)]
+        return frozenset(
+            _key_of(t) for node in written if (t := node.this.find(exp.Table)) and t.name
+        )
     table = _table_of(tree) if tree is not None else None
     return frozenset({table}) if table else frozenset()
 

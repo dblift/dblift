@@ -511,3 +511,6 @@ break but not across blanks on one line, and a non-ASCII digit before `E` remain
 A segment of only the engine's blanks between two `;` is nothing in both views
 (before the statement edges followed the engine, the analysis view returned it as a statement whose text was that blank). A byte order mark before a dot line on the first
 line is refused (§6).
+
+
+DuckDB 1.5 accepts `WITH … INSERT`, `WITH … UPDATE`, `WITH … DELETE` and `INSERT INTO t WITH … SELECT`, which are read for their target, events and CTE sources; a CTE whose body is an `INSERT`, `UPDATE` or `DELETE` is a parser error ("A CTE needs a SELECT"), so no statement changes a second table through a CTE.
