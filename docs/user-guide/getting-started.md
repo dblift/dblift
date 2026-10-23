@@ -15,7 +15,7 @@ pip install "dblift[cli,analysis,postgresql]"
 dblift --version
 ```
 
-`cli` provides the command line (Rich, Jinja2), `analysis` provides SQLGlot, which the commands use by default to read your SQL, and the database extra provides the driver. Other supported driver extras: `oracle`, `mysql`, `sqlserver`. Use `dblift[all]` for everything.
+`cli` provides the command line (Rich, Jinja2), `analysis` provides SQLGlot, which the command line uses by default to read your SQL, and the database extra provides the driver. Other supported driver extras: `oracle`, `mysql`, `sqlserver`. Use `dblift[all]` for everything.
 
 For a lightweight install without SQLGlot, drop `analysis` and use the Python API in execution-only mode (`analysis_mode="execution"`).
 
