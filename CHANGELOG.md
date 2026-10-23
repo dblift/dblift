@@ -116,8 +116,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   profile, login, default, assembly, macro, nickname, library, group); when the statement's name
   could not be read, one holding `CASCADE` or `FORCE` is always a review (a named `DROP ... CASCADE`
   is judged as before).
-  Newly activated Snowflake statements require manual undo review instead of automatic text
-  reversal, and `validate-sql` no longer reports a script as invalid because the grammar cannot
+  `validate-sql` no longer reports a script as invalid because the grammar cannot
   parse a statement.
 - **Redshift reads statement facts from the SQL grammar.** `info --format json`,
   `migrate --dry-run`, object tracking during `migrate`, data-change analysis and lint read each
@@ -127,8 +126,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the commented relation, `CREATE`/`DROP SCHEMA` by a plain schema name, and `CREATE`/`DROP
   MATERIALIZED VIEW` as a materialized view. Statements Redshift-only DDL cannot be proven for
   (`CREATE EXTERNAL SCHEMA`, `CREATE LIBRARY`, `UNLOAD`, `GRANT`/`REVOKE` targets, a schema name
-  with a database part, a bracketed name) are reported as unread instead of guessed. Newly
-  activated Redshift statements require manual undo review instead of automatic text reversal.
+  with a database part, a bracketed name) are reported as unread instead of guessed.
 - **YugabyteDB index facts remain opaque when `NONCONCURRENTLY` follows `CREATE [UNIQUE] INDEX`.**
   Its reader no longer reports that modifier as an index name or guesses the affected table.
 - **Db2 CALL facts report unknown procedure effects.** The referenced routine remains named,
@@ -138,16 +136,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   its tokens instead of keeping the full stream.
 - **SQL Server reads statement facts through the T-SQL grammar.** Object extraction, script
   analysis and DML helpers use the plugin's facts reader after lexical `GO` batch splitting.
-  Unread names and effects are reported as opaque rather than guessed. Newly activated SQL
-  Server statements require manual undo review instead of automatic text reversal.
+  Unread names and effects are reported as opaque rather than guessed.
 - **MySQL and MariaDB read statement facts from the SQL grammar.** `info --format json`,
   `migrate --dry-run`, object tracking during `migrate`, data-change analysis and lint read each
   statement's kind, objects, target and predicate from the sqlglot AST after the client rules split
   the script; executable comments (`/*! … */`, `/*M! … */`) are reported as unread statements,
   since whether they run depends on the server version; a statement whose objects cannot be
   established is reported as unread instead of guessed.
-- **Undo generation for MySQL and MariaDB writes a manual-review placeholder** for every
-  statement except a `SELECT`, which produces no undo.
 - **Splitting a large script uses less memory.** Tokens no longer carry a per-instance
   dictionary. Peak memory when splitting a 3 MiB INSERT script falls from 201 MB to 157 MB
   on DuckDB, 197 MB to 152 MB on MySQL, 276 MB to 213 MB on Db2 and 200 MB to 155 MB on
@@ -261,9 +256,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   skips end in the next major release.
 - **Db2 analysis kinds and DML targets.** `migrate --dry-run` reports CALL, COMMIT and SET as
   `UNKNOWN` (CALL and SET were `DML`); DML targets are reported folded, with the schema when the statement gives one
-  (`APP.ORDERS`). Undo generation for Db2 (deprecated) now marks every statement other than a
-  query for manual review instead of building a model from the text.
-
+  (`APP.ORDERS`).
 - **PostgreSQL and its compatible engines read statement facts from the SQL grammar.**
   PostgreSQL, CockroachDB, YugabyteDB, Aurora PostgreSQL, AlloyDB, Citus, Neon, Supabase and
   TimescaleDB now take the objects, targets and predicates of each statement from the sqlglot
@@ -280,9 +273,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   factory for the `sqlglot` type, now raises `ValueError` naming `StatementFactsParser`; the
   `hybrid` type returns the facts parser, and the `regex` type still returns the regex parser,
   whose splitting is unchanged.
-- **Undo generation for the PostgreSQL family asks for a hand-written undo.** The generator
-  marks every data or schema change for manual review instead of generating a reversal. Undo
-  scripts you write are unaffected. The generator is deprecated and removed in 5.0 (#649).
 - **Oracle reads statement facts from the SQL grammar.** `info --format json`,
   `migrate --dry-run`, object tracking during execution, `SqlAnalyzer.extract_objects` and the
   DML analysis functions (`analyze_dml`, `statement_dml_table`, `dml_where_predicate`,
@@ -303,16 +293,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `SqlGlotParser` for `oracle`, or asking the parser factory for the `sqlglot` type, now raises
   `ValueError` naming `StatementFactsParser`; the `hybrid` type returns the facts parser, and the
   `regex` type still returns the Oracle regex parser, whose splitting is unchanged.
-- **Undo generation for Oracle asks for a hand-written undo.** The generator marks every data or
-  schema change for manual review instead of generating a reversal. Undo scripts you write are
-  unaffected. The generator is deprecated and removed in 5.0 (#649).
 
 ### Deprecated
 
 - **Direct use of `SqlParserFactory`, `SqlAnalyzer`, `parser_type=` and `strict_tokenizer=`.**
   Each now warns once per process and names `StatementSplitter` and `read_statement_facts` as
   the replacements (`strict_tokenizer` says to drop the argument); dblift's own construction sites (migration executor, execution engine,
-  undo generator, `Migration`, redaction) are silent. Behavior is unchanged. `HybridParser` and
+  `Migration`, redaction) are silent. Behavior is unchanged. `HybridParser` and
   `SqlGlotParser` keep refusing dialects that read statement facts with an error naming
   `StatementFactsParser`.
 - **Direct construction of legacy SQL parser roots.** `HybridParser`, `SqlGlotParser`,
@@ -322,10 +309,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   introspection for schema models. That replacement requires a live database, leaving a
   migration gap for SQL-text-only rich model callers; see the
   [v5 alpha deprecation inventory](docs/developer-guide/v5-alpha-deprecation-inventory.md).
-- **Automatic undo script generation.** Existing `DBLiftClient` and `AsyncDBLiftClient`
-  generation warnings now explicitly name removal in 5.0 and hand-written `U*__` scripts as
-  the replacement. Generating scripts still works, and executing hand-written undo scripts is
-  unchanged.
 - **`sqlglot_dialect=` and `dialect=` in `dblift.db.dml_analysis`.** `analyze_dml`,
   `dml_where_predicate`, `is_full_table_dml`, `statement_dml_table` and `updates_restore_key`
   take the plugin's `quirks=`; the `sqlglot_dialect=` and `dialect=` keywords still work, warn,

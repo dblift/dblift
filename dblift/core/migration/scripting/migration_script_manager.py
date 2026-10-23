@@ -138,29 +138,18 @@ class MigrationScriptManager(MigrationMarkerMixin):
         script_path: Path,
         *,
         filename_metadata: Optional[Tuple[MigrationType, Optional[str], str, List[str]]] = None,
-        require_versioned: bool = False,
     ) -> Migration:
         """Read a resource and construct a migration from its resolved metadata.
 
-        ``require_versioned`` preserves undo input validation before reading: a
-        missing path raises FileNotFoundError, then invalid filenames raise ValueError.
-        Normal discovery retains the encoding reader's errors for vanished files.
+        A vanished file raises the encoding reader's error.
         """
         from dblift.core.migration.formats import MigrationFormat
-
-        if require_versioned and not script_path.exists():
-            raise FileNotFoundError(f"Migration file not found: {script_path}")
 
         metadata = (
             filename_metadata
             if filename_metadata is not None
             else self.parse_filename(script_path.name)
         )
-        if require_versioned and (metadata[0] != MigrationType.SQL or not metadata[1]):
-            raise ValueError(
-                f"File is not a versioned migration: {script_path.name}. "
-                "Expected a versioned migration filename (V*__description.<ext>)."
-            )
         content = read_migration_text(
             script_path,
             configured_encoding=self.script_encoding,
@@ -182,17 +171,6 @@ class MigrationScriptManager(MigrationMarkerMixin):
         ):
             migration.type = MigrationType.PYTHON
         return migration
-
-    def find_undo_candidates(self, scripts_directory: Path, recursive: bool = True) -> List[Path]:
-        """Discover the undo API's loose V* candidates in filesystem order."""
-        from dblift.core.migration.formats import MigrationFormatDetector
-
-        pattern = "**/V*" if recursive else "V*"
-        return [
-            path
-            for path in scripts_directory.glob(pattern)
-            if path.is_file() and MigrationFormatDetector.is_migration_file(path)
-        ]
 
     def is_versioned_script_name(self, filename: str) -> bool:
         """True if *filename* is a Flyway versioned migration (V*__), any registered extension.

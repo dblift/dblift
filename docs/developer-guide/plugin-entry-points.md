@@ -234,7 +234,7 @@ the corresponding native drivers or thin integration dependencies.
 | Extra | Installed dependencies | Effect |
 | --- | --- | --- |
 | `dblift[cli]` | `rich`, `Jinja2` | Command line and report rendering. |
-| `dblift[analysis]` | `sqlglot` | Full SQL analysis (statement facts, lint, undo generation). |
+| `dblift[analysis]` | `sqlglot` | Full SQL analysis (statement facts, lint). |
 | `dblift[postgresql]` | `psycopg[binary]` | Enables PostgreSQL connections. |
 | `dblift[oracle]` | `oracledb` | Enables Oracle connections. |
 | `dblift[mysql]` | `PyMySQL` | Enables MySQL and MariaDB connections. |

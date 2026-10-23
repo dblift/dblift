@@ -155,7 +155,7 @@ dev = [
 ]
 # Command line: terminal rendering (Rich) and report templates (Jinja2).
 cli = ["rich>=13.3.0", "Jinja2>=3.1.0"]
-# Full SQL analysis: statement facts, lint and undo generation read SQLGlot.
+# Full SQL analysis: statement facts and lint read SQLGlot.
 analysis = ["sqlglot>=30.23.0,<31"]
 postgresql = ["psycopg[binary]>=3.1"]
 mysql = ["PyMySQL>=1.1"]
