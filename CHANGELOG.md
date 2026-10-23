@@ -32,6 +32,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   on `DBLiftClient` and `AsyncDBLiftClient`, and `GenerateUndoScriptResult`, no longer exist (they
   have warned since 4.10). Write the matching `U*__.sql` or `U*__.py` undo script by hand; `undo`,
   `info` and reapply run those files as before.
+- **`is_comment_only_statement` is removed.** No tagged 4.x release deprecated it (its
+  warning exists only in the unreleased 4.12.0), so this removal skips the
+  deprecation overlap, as `docs/semver-policy.md` section 3 allows when stated. Callers: read the
+  `kind` of the records from `StatementSplitter(dialect).split()`.
+- **The dialect arguments of five DML analysis functions are removed.** `analyze_dml`,
+  `dml_where_predicate`, `updates_restore_key` and `is_full_table_dml` no longer take
+  `sqlglot_dialect=`, and `statement_dml_table` no longer takes `dialect=` (keyword or second
+  positional argument). Their warnings exist only in the unreleased 4.12.0, so the deprecation
+  overlap is skipped. Callers: pass `quirks=` (the database plugin's quirks, for example
+  `ProviderRegistry.get_quirks("postgresql")`). The dialect options of `insert_value_rows` and
+  `cte_outer_statement_type` are unchanged.
+- **A dialect is split by its `LexicalSpec` only.** `StatementSplitter` no longer uses the
+  dialect's `parser_class`, whether it returns strings or `Statement` records: a plugin without a
+  lexical spec raises `UnsupportedDialectError` when it splits a script (MongoDB and CosmosDB
+  already had none). Plugin authors: return a `LexicalSpec` from `quirks.lexical_spec()`.
+- **The root configuration key `migrations_dir` is rejected.** Any occurrence, including an empty
+  or null value, raises an error (it was deprecated in 2.0.2). Move it to `migrations.directory`.
+  The `migrations_dir` argument of the Python API and the CLI is unchanged.
 
 ### Added
 
@@ -56,8 +74,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with a `statement-not-analysed` finding naming the reason for any statement they could not
   read: an unrecognised statement, a `CALL`, or an anonymous block or `EXECUTE IMMEDIATE`
   ("procedural block: effects not modelled"). Before, only an unreadable `ALTER` was reported
-  and the rest came back `SAFE`. Statements that change no data (`SET`, transaction control, `GRANT`, `COMMENT ON`, `PRAGMA`, `SHOW`, …) and comments stay `SAFE`;
-  `-- dblift:allow statement-not-analysed` accepts the finding.
+  and the rest came back `SAFE`. Statements that change no data (`SET`, transaction control,
+  `GRANT`, `COMMENT ON`, `PRAGMA`, `SHOW`, …) stay `SAFE`, as does comment-only text; a MySQL
+  executable comment (`/*! … */`) is reported. `-- dblift:allow statement-not-analysed` accepts
+  the finding.
 
 - **A plugin without a statement-facts reader is no longer analysed from text.** Lint and the
   script analysis behind `validate-sql` now report "statement facts unavailable for dialect" for
@@ -256,12 +276,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and `executable_records`, `execution_strings`, `execution_units` and `analysis_sql` in
   `dblift.core.sql_parser.statement` select and project the records, positively on `kind`: a
   record of an unknown kind is no statement. `split_statements` is the execution projection and
-  returns the same strings as before. A parser that returns strings only is adapted to records
-  and told once to return records. The `GO 0` notice is logged where the record is cut.
-- **A custom dialect that only implements `split_statements` keeps working unchanged.** Its
-  empty and comment-only pieces and batch separators are still skipped, and a one-time
-  deprecation message asks it to implement `split()` and return `Statement` records; the
-  skips end in the next major release.
+  returns the same strings as before. The `GO 0` notice is logged where the record is cut.
 - **Db2 analysis kinds and DML targets.** `migrate --dry-run` reports CALL, COMMIT and SET as
   `UNKNOWN` (CALL and SET were `DML`); DML targets are reported folded, with the schema when the statement gives one
   (`APP.ORDERS`).
@@ -317,18 +332,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   introspection for schema models. That replacement requires a live database, leaving a
   migration gap for SQL-text-only rich model callers; see the
   [v5 alpha deprecation inventory](docs/developer-guide/v5-alpha-deprecation-inventory.md).
-- **`sqlglot_dialect=` and `dialect=` in `dblift.db.dml_analysis`.** `analyze_dml`,
-  `dml_where_predicate`, `is_full_table_dml`, `statement_dml_table` and `updates_restore_key`
-  take the plugin's `quirks=`; the `sqlglot_dialect=` and `dialect=` keywords still work, warn,
-  and will be removed in the next major release. When both are passed, `quirks=` wins. A
-  plugin name passed to `sqlglot_dialect=` now resolves to that plugin instead of being read as
-  an (invalid) sqlglot name.
-- **`dblift.core.migration.sql.is_comment_only_statement`.** It is deprecated and will be
-  removed in the next major release; use `StatementSplitter(dialect).split()`, whose records
-  carry `kind`. It warns when called; its answers are unchanged.
 
 ### Fixed
 
+- **`validate-sql` no longer calls dropping a database link or a materialized view log a destructive drop.**
+  On Oracle, `DROP DATABASE LINK` was reported as `drop-schema` and `DROP MATERIALIZED VIEW LOG ON t` as
+  `drop-table`, both UNSAFE. Both remove a definition, not rows, and now pass; `DROP DATABASE` and
+  `DROP MATERIALIZED VIEW` are reported as before.
+- **`validate-sql` now asks for a `lock_timeout` before `LOCK TABLE` and `VACUUM FULL` on PostgreSQL.**
+  `pg-missing-lock-timeout` covers `LOCK TABLE` in `SHARE` mode or stronger (the default mode is
+  `ACCESS EXCLUSIVE`; `NOWAIT` is exempt) and `VACUUM FULL`, in both its keyword and option-list forms.
+- **DuckDB `CREATE MACRO` is now tracked as a created object.** Dry-run and analysis reports named no
+  object for `CREATE MACRO name(...) AS ...` (or its `CREATE FUNCTION` alias); they now list the macro as
+  a function, with its schema when one is given.
+- **A Python API client in `analysis_mode="full"` no longer prints a sqlglot warning to stderr.**
+  A client built without logging arguments printed `... contains unsupported syntax. Falling back to
+  parsing as a 'Command'.` for statements such as `CREATE TRIGGER`; it now writes nothing, as in the
+  default mode. A logger or handler you configure still receives the message.
 - **A `--target-version` that is not a migration's version is now refused.** `migrate --target-version v1`,
   `abc`, an empty value or `99` used to apply every pending migration and exit 0, and `-1` or `1a` applied
   a prefix of them. `migrate`, `undo`, `validate` and `info` now exit 2 before connecting, listing the available
@@ -428,8 +448,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   first and the migration then failed in the engine; now nothing runs.
 - **A plugin can declare `statement_facts_class` without a `parser_class` of its own.** The parser
   factory now serves such a plugin a parser built from its facts reader and `lexical_spec()`, instead
-  of the hybrid parser, or a subclass of it, refusing it. Script analysis no
-  longer raises for it. Script analysis reports a facts parser that cannot be built (a missing
+  of the hybrid parser, or a subclass of it, refusing it. Script analysis no longer raises for
+  it. Script analysis reports a facts parser that cannot be built (a missing
   `lexical_spec()`, or a reader that does not accept `(dialect, spec)`) as an error; a reader raising
   while it reads a statement still propagates.
 - **Linting no longer skips cautions on a quoted name.** A table created earlier in a

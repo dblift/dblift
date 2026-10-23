@@ -39,6 +39,10 @@ a module-level `PLUGIN` constant.
 postgresql = "dblift.db.plugins.postgresql.plugin:PLUGIN"
 ```
 
+A SQL provider's quirks must return a `LexicalSpec` from `lexical_spec()`: it is the only way dblift
+splits a script, and a dialect without one raises `UnsupportedDialectError` at its first split (see
+[Creating a provider](creating-a-provider.md)).
+
 Third-party packages use the same pattern:
 
 ```toml

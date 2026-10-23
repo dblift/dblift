@@ -1078,45 +1078,6 @@
   "script_09": {
    "input": "-- c\nINSERT INTO t SELECT * FROM s;\nCREATE MACRO m(a) AS a || ';';\nCOPY t TO 'f;x' (DELIMITER ';');",
    "output": {
-    "regex_objects": [],
-    "regex_parse": {
-     "success": true,
-     "errors": [],
-     "statements": [
-      {
-       "affected_objects": [],
-       "dialect": "duckdb",
-       "names_unread": false,
-       "objects": [],
-       "schema": "main",
-       "sql_text": "-- c\nINSERT INTO t SELECT * FROM s",
-       "statement_type": "DML"
-      },
-      {
-       "affected_objects": [],
-       "dialect": "duckdb",
-       "names_unread": false,
-       "objects": [],
-       "schema": "main",
-       "sql_text": "CREATE MACRO m(a) AS a || ';'",
-       "statement_type": "DDL"
-      },
-      {
-       "affected_objects": [],
-       "dialect": "duckdb",
-       "names_unread": false,
-       "objects": [],
-       "schema": "main",
-       "sql_text": "COPY t TO 'f;x' (DELIMITER ';')",
-       "statement_type": "DML"
-      }
-     ]
-    },
-    "regex_extraction": [
-     "-- c\nINSERT INTO t SELECT * FROM s",
-     "CREATE MACRO m(a) AS a || ';'",
-     "COPY t TO 'f;x' (DELIMITER ';')"
-    ],
     "facts_objects": [
      {
       "dialect": "duckdb",
@@ -1125,10 +1086,17 @@
       "name": "t",
       "object_type": "TABLE",
       "schema": "main"
+     },
+     {
+      "dialect": "duckdb",
+      "dialect_options": {},
+      "explicit_properties": {},
+      "name": "m",
+      "object_type": "FUNCTION",
+      "schema": "main"
      }
     ],
     "facts_parse": {
-     "success": true,
      "errors": [],
      "statements": [
       {
@@ -1159,10 +1127,28 @@
        "statement_type": "DML"
       },
       {
-       "affected_objects": [],
+       "affected_objects": [
+        {
+         "dialect": "duckdb",
+         "dialect_options": {},
+         "explicit_properties": {},
+         "name": "m",
+         "object_type": "FUNCTION",
+         "schema": "main"
+        }
+       ],
        "dialect": "duckdb",
-       "names_unread": true,
-       "objects": [],
+       "names_unread": false,
+       "objects": [
+        {
+         "dialect": "duckdb",
+         "dialect_options": {},
+         "explicit_properties": {},
+         "name": "m",
+         "object_type": "FUNCTION",
+         "schema": "main"
+        }
+       ],
        "schema": "main",
        "sql_text": "CREATE MACRO m(a) AS a || ';'",
        "statement_type": "DDL"
@@ -1176,12 +1162,52 @@
        "sql_text": "COPY t TO 'f;x' (DELIMITER ';')",
        "statement_type": "QUERY"
       }
-     ]
+     ],
+     "success": true
     },
     "facts_validate": {
-     "valid": true,
+     "errors": [],
      "statements_found": 3,
-     "errors": []
+     "valid": true
+    },
+    "regex_extraction": [
+     "-- c\nINSERT INTO t SELECT * FROM s",
+     "CREATE MACRO m(a) AS a || ';'",
+     "COPY t TO 'f;x' (DELIMITER ';')"
+    ],
+    "regex_objects": [],
+    "regex_parse": {
+     "errors": [],
+     "statements": [
+      {
+       "affected_objects": [],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [],
+       "schema": "main",
+       "sql_text": "-- c\nINSERT INTO t SELECT * FROM s",
+       "statement_type": "DML"
+      },
+      {
+       "affected_objects": [],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [],
+       "schema": "main",
+       "sql_text": "CREATE MACRO m(a) AS a || ';'",
+       "statement_type": "DDL"
+      },
+      {
+       "affected_objects": [],
+       "dialect": "duckdb",
+       "names_unread": false,
+       "objects": [],
+       "schema": "main",
+       "sql_text": "COPY t TO 'f;x' (DELIMITER ';')",
+       "statement_type": "DML"
+      }
+     ],
+     "success": true
     }
    }
   },
@@ -3396,13 +3422,20 @@
      "declared_column_comments": null,
      "declared_columns": [],
      "declared_constraints": [],
-     "diagnostic": "duckdb macro identity and body are opaque to statement facts",
+     "diagnostic": null,
      "error": null,
      "events": null,
      "indexed_columns": null,
      "indexed_table": null,
      "kind": "DDL",
-     "objects": [],
+     "objects": [
+      {
+       "name": "m",
+       "role": "created",
+       "schema": null,
+       "type": "FUNCTION"
+      }
+     ],
      "operation": "CREATE",
      "predicate": null,
      "target": null,

@@ -21,6 +21,7 @@ from dblift.core.exceptions import (
 )
 from dblift.core.sql_model.base import SqlObjectType
 from dblift.core.sql_parser._deprecation import internal_parser_construction
+from dblift.core.sql_parser.common.comment_stripping import strip_comments_preserving_quotes
 from dblift.core.sql_parser.parser_factory import SqlParserFactory
 from dblift.core.sql_parser.statement_facts import StatementFacts
 from dblift.db.dml_analysis import strip_leading_sql_comments
@@ -32,7 +33,8 @@ SNIPPET = 120
 _FIRST_WORD = re.compile(r"^([A-Za-z]+)")
 _DROP_COLUMN = re.compile(r"\bDROP\s+COLUMN\b", re.IGNORECASE)
 _DROP_KEYWORD = re.compile(
-    r"^\s*DROP\s+(TABLE|MATERIALIZED\s+VIEW|VIEW|SCHEMA|DATABASE)\b", re.IGNORECASE
+    r"^\s*DROP\s+(TABLE|MATERIALIZED\s+VIEW(?!\s+LOG\b)|VIEW|SCHEMA|DATABASE(?!\s+LINK\b))\b",
+    re.IGNORECASE,
 )
 # Objects whose DROP removes a definition, never rows, even when the statement's name could not be
 # read (each is documented so by its vendor; see the lint-rule tests). CASCADE or FORCE can drop or
@@ -41,7 +43,8 @@ _DROP_KEYWORD = re.compile(
 _ROW_FREE_DROP = re.compile(
     r"^\s*DROP\s+(?:PUBLIC\s+)?(?:INDEX|SEQUENCE|FUNCTION|PROCEDURE|ROUTINE|TRIGGER|TYPE|DOMAIN"
     r"|ROLE|USER|POLICY|RULE|PUBLICATION|SERVER|COLLATION|CAST|AGGREGATE|LANGUAGE|EVENT(?!\s+TABLE)"
-    r"|SYNONYM|PACKAGE|DIRECTORY|PROFILE|LOGIN|DEFAULT|ASSEMBLY|MACRO|NICKNAME|LIBRARY|GROUP)\b",
+    r"|SYNONYM|PACKAGE|DIRECTORY|PROFILE|LOGIN|DEFAULT|ASSEMBLY|MACRO|NICKNAME|LIBRARY|GROUP"
+    r"|DATABASE\s+LINK|MATERIALIZED\s+VIEW\s+LOG)\b",
     re.IGNORECASE,
 )
 _DROP_DEPENDENTS = re.compile(r"\b(?:CASCADE|FORCE)\b", re.IGNORECASE)
@@ -60,22 +63,29 @@ _DATA_HOLDERS = frozenset(
 # recognised by their head keyword. Each changes no row and no object definition:
 #   SET / USE / SAVEPOINT / RELEASE / ROLLBACK / COMMIT / START TRANSACTION, and a bare BEGIN or
 #     END carrying only transaction modes: session and transaction state. SET stops at what
-#     changes the server or an account (MySQL SET GLOBAL / PERSIST / PASSWORD). BEGIN ... END,
+#     changes the server or an account (MySQL SET GLOBAL / PERSIST / PERSIST_ONLY / PASSWORD, in
+#     the keyword form, as @@GLOBAL.x, or after a comma). BEGIN ... END,
 #     BEGIN ATOMIC and DECLARE are procedural blocks and never match.
 #   SHOW / DESCRIBE / DESC: metadata listings.
 #   PRAGMA: SQLite connection and database settings, read or set.
-#   GRANT / REVOKE: privileges, not data or definitions.
+#   GRANT / REVOKE / DENY: privileges, not data or definitions.
 #   COMMENT ON: documentation text.
 #   ANALYZE / ANALYSE: refreshes optimiser statistics.
 #   EXPLAIN: shows a plan, except EXPLAIN ANALYZE, which runs the statement.
-#   VACUUM: reclaims space, except VACUUM FULL, which rewrites and locks the table.
+#   VACUUM: reclaims space, except VACUUM FULL (FULL not switched off), which rewrites the table.
+#   LOCK / UNLOCK: take or release locks and change nothing; the PostgreSQL lock rules judge them.
+# The head is matched on the statement without its comments, and a MySQL executable comment
+# (/*! ... */, which the server runs) disables the list altogether.
 # REINDEX, CALL, EXEC, anything else unrecognised: not listed, so reported.
 _NON_DATA_HEAD = re.compile(
-    r"^\s*(?:"
+    r"^(?:"
     r"SET\b(?!\s+(?:GLOBAL|PERSIST|PERSIST_ONLY|PASSWORD)\b)"
-    r"|USE\b|SHOW\b|DESC(?:RIBE)?\b|PRAGMA\b|GRANT\b|REVOKE\b|COMMENT\s+ON\b|ANALY[SZ]E\b"
+    r"(?!.*(?:@@\s*(?:GLOBAL|PERSIST|PERSIST_ONLY)\s*\.|,\s*(?:GLOBAL|PERSIST|PERSIST_ONLY)\b))"
+    r"|USE\b|SHOW\b|DESC(?:RIBE)?\b|PRAGMA\b|GRANT\b|REVOKE\b|DENY\b|COMMENT\s+ON\b"
+    r"|ANALY[SZ]E\b"
     r"|EXPLAIN\b(?!\s*(?:\(.*?\b)?ANALY[SZ]E\b)"
-    r"|VACUUM\b(?!\s*(?:\(.*?\b)?FULL\b)"
+    r"|VACUUM\b(?!\s*(?:\([^)]*?\b|(?:(?:FREEZE|VERBOSE|ANALY[SZ]E)\s+)*)FULL\b(?!\s+(?:FALSE|OFF|0)\b))"
+    r"|LOCK\b|UNLOCK\b"
     r"|SAVEPOINT\b|RELEASE\b|ROLLBACK\b|COMMIT\b|START\s+TRANSACTION\b"
     r"|(?:BEGIN|END)(?:\s+(?:TRAN(?:SACTION)?(?:\s+[\w@#$]+)?|WORK|DEFERRED|IMMEDIATE|EXCLUSIVE"
     r"|ISOLATION\s+LEVEL\s+[A-Za-z ]+?|READ\s+(?:ONLY|WRITE)|(?:NOT\s+)?DEFERRABLE))*"
@@ -275,6 +285,18 @@ def _analyse(text: str, dialect: str) -> ScriptAnalysis:
     return ScriptAnalysis(tuple(fact_statements), tuple(fact_cautions), tuple(errors))
 
 
+def without_comments(body: str) -> str:
+    """*body* without its comments (quoted text kept), the way the lock rules read a statement."""
+    return strip_comments_preserving_quotes(
+        body,
+        line_prefixes=["--"],
+        has_block_comments=True,
+        nested_block_comments=True,
+        supports_dollar_quoting=True,
+        block_comment_replacement=" ",
+    )
+
+
 def _unread_reason(facts: StatementFacts, body: str) -> Optional[str]:
     """Why a statement the facts reader did not read needs a look, or None.
 
@@ -286,8 +308,8 @@ def _unread_reason(facts: StatementFacts, body: str) -> Optional[str]:
         return None
     if facts.operation == "DROP":
         return None  # judged by its keyword (``_unnamed_drop_caution``): row-free kinds stay safe
-    text = strip_leading_sql_comments(body)
-    if not text.strip(" \t\r\n;") or _NON_DATA_HEAD.match(text):
+    text = without_comments(body)
+    if "/*!" not in body and (not text.strip(" \t\r\n;") or _NON_DATA_HEAD.match(text)):
         return None
     detail = f" ({facts.diagnostic})" if facts.diagnostic else ""
     if facts.operation in _PROCEDURAL_OPERATIONS or re.match(

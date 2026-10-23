@@ -159,7 +159,6 @@ NON_DATA = [
 STILL_UNREAD = [
     ("postgresql", "EXPLAIN ANALYZE DELETE FROM t;"),
     ("postgresql", "EXPLAIN (ANALYZE, VERBOSE) DELETE FROM t;"),
-    ("postgresql", "VACUUM FULL t;"),
     ("postgresql", "REINDEX TABLE t;"),
     ("mysql", "CALL p();"),
 ]
@@ -178,3 +177,115 @@ def test_statements_beside_the_allow_list_stay_review(dialect, sql):
 
     assert result.verdict == "REVIEW", result
     assert [f.code for f in result.findings] == ["statement-not-analysed"]
+
+
+# --- comments cannot hide the keyword that decides ------------------------------------------
+
+COMMENT_BYPASS = [
+    ("postgresql", "EXPLAIN /*x*/ ANALYZE DELETE FROM t;"),
+    ("postgresql", "EXPLAIN -- c\n ANALYZE DELETE FROM t;"),
+    ("mysql", "SET /*c*/ GLOBAL x = 1;"),
+    ("sqlite", "/* c */ SET GLOBAL x = 1;"),
+    ("mysql", "/* c */ SET GLOBAL x = 1;"),
+]
+
+EXECUTABLE_COMMENTS = [
+    ("mysql", "/*! DELETE FROM t */;"),
+    ("mysql", "/*!50000 DELETE FROM t */;"),
+    ("mariadb", "/*! DELETE FROM t */;"),
+    ("mariadb", "/*!50000 DELETE FROM t */;"),
+    ("mysql", "SET /*!50000 GLOBAL */ x = 1;"),
+]
+
+SET_ESCALATIONS = [
+    "SET GLOBAL x = 1;",
+    "SET PERSIST x = 1;",
+    "SET PERSIST_ONLY x = 1;",
+    "SET PASSWORD = 'x';",
+    "SET @@GLOBAL.x = 1;",
+    "SET @@global.sql_mode = '';",
+    "SET @@PERSIST.x = 1;",
+    "SET @@persist_only.x = 1;",
+    "SET @@session.a = 1, GLOBAL b = 2;",
+]
+
+
+@pytest.mark.parametrize("dialect, sql", COMMENT_BYPASS)
+def test_a_comment_between_head_keywords_does_not_exempt(dialect, sql):
+    result = lint_script(sql, dialect)
+
+    assert result.verdict == "REVIEW", result
+    assert [f.code for f in result.findings] == ["statement-not-analysed"]
+
+
+@pytest.mark.parametrize("dialect, sql", EXECUTABLE_COMMENTS)
+def test_a_mysql_executable_comment_is_not_comment_only(dialect, sql):
+    result = lint_script(sql, dialect)
+
+    assert result.verdict == "REVIEW", result
+    assert [f.code for f in result.findings] == ["statement-not-analysed"]
+
+
+@pytest.mark.parametrize("sql", SET_ESCALATIONS)
+def test_set_that_reaches_the_server_or_an_account_is_reported(sql):
+    result = lint_script(sql, "mysql")
+
+    assert result.verdict == "REVIEW", result
+    assert [f.code for f in result.findings] == ["statement-not-analysed"]
+
+
+@pytest.mark.parametrize(
+    "dialect, sql",
+    [
+        ("mysql", "SET SESSION sql_mode = '';"),
+        ("mysql", "SET @@session.sql_mode = '';"),
+        ("mysql", "COMMENT ON TABLE t IS 'x';"),
+        ("duckdb", "COMMENT ON TABLE t IS 'x';"),
+        ("sqlite", "/* c */ pragma foreign_keys = on;"),
+        ("sqlite", "-- c\nPRAGMA foreign_keys = on;"),
+        ("postgresql", "grant select on t to u;"),
+        ("postgresql", "ExPlAiN select 1;"),
+        ("postgresql", "VACUUM (VERBOSE) t;"),
+        ("sqlserver", "DENY SELECT ON t TO u;"),
+        ("postgresql", "VACUUM (FULL FALSE) t;"),
+        ("mysql", "LOCK TABLES t READ;\nUNLOCK TABLES;"),
+    ],
+)
+def test_more_non_data_heads_stay_safe(dialect, sql):
+    result = lint_script(sql, dialect)
+
+    assert (result.verdict, result.findings) == ("SAFE", ()), result
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "VACUUM FULL t;",
+        "VACUUM (FULL) t;",
+        "VACUUM FREEZE FULL t;",
+        "Vacuum Full t;",
+        "vacuum (full, verbose) t;",
+        "VACUUM /*x*/ FULL t;",
+        "explain (analyze) delete from t;",
+    ],
+)
+def test_vacuum_full_and_explain_analyze_are_reported_in_any_form(sql):
+    result = lint_script(sql, "postgresql")  # VACUUM FULL has its lock finding as well
+
+    assert result.verdict == "REVIEW", result
+    assert result.findings
+
+
+@pytest.mark.parametrize("dialect", ["oracle", "db2", "snowflake", "sqlserver"])
+def test_execute_immediate_is_a_procedural_block_in_any_case(dialect):
+    finding = lint_script("execute immediate 'drop table emp';\n", dialect).findings[0]
+
+    assert "procedural block: effects not modelled" in finding.message
+
+
+@pytest.mark.parametrize("sql", ["VACUUM FULL t;", "VACUUM (FULL) t;", "VACUUM FREEZE FULL t;"])
+@pytest.mark.parametrize("dialect", ["mysql", "duckdb"])
+def test_vacuum_full_is_reported_where_no_lock_rule_speaks_for_it(dialect, sql):
+    result = lint_script(sql, dialect)
+
+    assert [f.code for f in result.findings] == ["statement-not-analysed"], result

@@ -524,3 +524,160 @@ def test_a_drop_that_may_lose_data_or_cannot_be_classified_asks_for_a_review(dia
 
     assert result.verdict == "REVIEW"
     assert [f.code for f in result.findings] == ["drop-unread-object"]
+
+
+# A database link and a materialized view log are definitions: Oracle's DROP DATABASE LINK removes
+# the link, DROP MATERIALIZED VIEW LOG removes the change log of a master table, not its rows.
+# Neither is a DROP DATABASE / DROP MATERIALIZED VIEW, which the keyword match used to take them for.
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "DROP DATABASE LINK l1;",
+        "DROP PUBLIC DATABASE LINK l1;",
+        "DROP MATERIALIZED VIEW LOG ON emp;",
+    ],
+)
+def test_dropping_a_link_or_a_materialized_view_log_is_not_dropping_a_database_or_table(sql):
+    result = lint_script(sql, "oracle")
+
+    assert result.verdict == "SAFE"
+    assert not result.findings
+
+
+@pytest.mark.parametrize(
+    "sql, code",
+    [
+        ("DROP DATABASE d;", "drop-schema"),
+        ("DROP MATERIALIZED VIEW mv1;", "drop-table"),
+    ],
+)
+def test_dropping_a_database_or_a_materialized_view_stays_unsafe(sql, code):
+    result = lint_script(sql, "oracle")
+
+    assert result.verdict == "UNSAFE"
+    assert [f.code for f in result.findings] == [code]
+
+
+# Names that merely begin with LINK or LOG are not the LINK / LOG keywords. Db2 cannot name these
+# statements' objects, so the keyword match alone decides: a prefix test (`L`) would read them as links.
+@pytest.mark.parametrize(
+    "sql, code",
+    [
+        ("DROP DATABASE linkdb;", "drop-schema"),
+        ("DROP MATERIALIZED VIEW logx;", "drop-table"),
+    ],
+)
+def test_a_name_starting_with_link_or_log_is_still_a_database_or_materialized_view(sql, code):
+    result = lint_script(sql, "db2")
+
+    assert result.verdict == "UNSAFE"
+    assert [f.code for f in result.findings] == [code]
+
+
+# LOCK TABLE and VACUUM FULL take a lock on a table (PostgreSQL docs, explicit-locking and sql-vacuum:
+# the default LOCK mode and VACUUM FULL are ACCESS EXCLUSIVE). A waiting SHARE or stronger request
+# blocks later writes (ROW EXCLUSIVE conflicts with SHARE); ACCESS SHARE, ROW SHARE, ROW EXCLUSIVE
+# and SHARE UPDATE EXCLUSIVE leave ordinary reads and writes running, and NOWAIT never queues.
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "LOCK TABLE a IN ACCESS EXCLUSIVE MODE;",
+        "LOCK a;",
+        "LOCK TABLE a;",
+        "LOCK TABLE ONLY a, b;",
+        "lock table a in share mode;",
+        "LOCK TABLE a IN SHARE ROW EXCLUSIVE MODE;",
+        "LOCK TABLE a IN EXCLUSIVE MODE;",
+        "VACUUM FULL a;",
+        "VACUUM FULL;",
+        "VACUUM FULL VERBOSE a;",
+        "VACUUM VERBOSE FULL a;",
+        "VACUUM (FULL) a;",
+        "VACUUM (FULL, ANALYZE) a;",
+        "VACUUM (ANALYZE, FULL true) a;",
+        "VACUUM (FULL ON) a;",
+    ],
+)
+def test_lock_table_and_vacuum_full_need_a_lock_timeout(sql):
+    assert _codes(sql, "postgresql") == ["pg-missing-lock-timeout"]
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "LOCK TABLE a IN ACCESS SHARE MODE;",
+        "LOCK TABLE a IN ROW SHARE MODE;",
+        "LOCK TABLE a IN ROW EXCLUSIVE MODE;",
+        "LOCK TABLE a IN SHARE UPDATE EXCLUSIVE MODE;",
+        "LOCK TABLE a IN ACCESS EXCLUSIVE MODE NOWAIT;",
+        "VACUUM a;",
+        "VACUUM;",
+        "VACUUM ANALYZE a;",
+        "VACUUM (ANALYZE) a;",
+        "VACUUM (FULL false) a;",
+        "VACUUM (FULL off, ANALYZE) a;",
+        "SET lock_timeout = '5s';\nLOCK TABLE a IN ACCESS EXCLUSIVE MODE;",
+    ],
+)
+def test_weaker_locks_and_a_set_lock_timeout_are_not_reported(sql):
+    assert _codes(sql, "postgresql") == []
+
+
+def test_vacuum_full_after_a_set_lock_timeout_is_not_reported():
+    # VACUUM cannot run in a transaction block, so this script is also a mixed-mode script.
+    codes = _codes("SET lock_timeout = '5s';\nVACUUM FULL a;", "postgresql")
+
+    assert "pg-missing-lock-timeout" not in codes
+
+
+def test_the_lock_timeout_is_reported_once_across_lock_statements():
+    sql = "LOCK TABLE a;\nVACUUM FULL b;\nALTER TABLE c ADD COLUMN d INT;"
+
+    assert _codes(sql, "postgresql").count("pg-missing-lock-timeout") == 1
+
+
+def test_lock_statements_of_other_dialects_are_not_postgresql_lock_findings():
+    assert _codes("LOCK TABLES a WRITE;", "mysql") == []
+
+
+# A table created earlier in the script has no readers or writers to queue behind, so locking it
+# (LOCK TABLE, VACUUM FULL) needs no lock_timeout, as for ALTER TABLE on it.
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "CREATE TABLE n (id int); LOCK TABLE n IN ACCESS EXCLUSIVE MODE;",
+        "CREATE TABLE n (id int); LOCK n;",
+        "CREATE TABLE n (id int); LOCK TABLE ONLY n;",
+        "CREATE TABLE n (id int); VACUUM FULL n;",
+        "CREATE TABLE n (id int); VACUUM (FULL) n;",
+        "CREATE TABLE n (id int); CREATE TABLE m (id int); LOCK TABLE n, m;",
+    ],
+)
+def test_locking_a_table_created_earlier_in_the_script_is_not_reported(sql):
+    assert "pg-missing-lock-timeout" not in _codes(sql, "postgresql")
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "CREATE TABLE n (id int); LOCK TABLE n, old_t;",
+        "CREATE TABLE n (id int); LOCK TABLE old_t;",
+        "CREATE TABLE n (id int); VACUUM FULL old_t;",
+        "CREATE TABLE n (id int); VACUUM FULL;",
+    ],
+)
+def test_locking_a_table_not_created_in_the_script_is_still_reported(sql):
+    # VACUUM cannot run in a transaction block, so it may add a mixed-mode finding.
+    assert "pg-missing-lock-timeout" in _codes(sql, "postgresql")
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "LOCK TABLE a IN ACCESS EXCLUSIVE MODE NOWAIT; -- x",
+        "LOCK TABLE a IN ACCESS EXCLUSIVE MODE NOWAIT /* c */;",
+        "LOCK TABLE a IN ACCESS EXCLUSIVE MODE NOWAIT -- x",
+    ],
+)
+def test_a_comment_after_nowait_does_not_hide_it(sql):
+    assert _codes(sql, "postgresql") == []

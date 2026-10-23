@@ -3,13 +3,11 @@
 from __future__ import annotations
 
 import re
-import warnings
 from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any, List, Optional
 
 from dblift.core.exceptions import TransactionStatementError
-from dblift.core.sql_parser.common.comment_stripping import strip_comments_preserving_quotes
 from dblift.core.sql_parser.statement import Statement, executable_records, execution_strings
 from dblift.core.sql_parser.statement import execution_units as unit_texts
 from dblift.core.utils.row_access import strip_leading_comments
@@ -23,43 +21,6 @@ class ExecutionStatement:
     statement_type: str = "UNKNOWN"
     can_execute_in_transaction: bool = True
     transaction_reason: Optional[str] = None
-
-
-def _comment_only(sql: str, *, nested_block_comments: bool = False) -> bool:
-    """True if *sql* has no executable tokens after removing block and line comments.
-
-    MySQL/MariaDB executable comment directives (``/*!...*/``, ``/*M!...*/``) are not
-    comments the server skips, so they never count as "comment only".
-    """
-
-    body = sql.strip()
-    if not body:
-        return True
-    code = strip_comments_preserving_quotes(
-        body,
-        line_prefixes=["--"],
-        has_block_comments=True,
-        nested_block_comments=nested_block_comments,
-        keep_executable_comments=not nested_block_comments,
-        keep_unterminated_comment=True,
-    )
-    return not code
-
-
-def is_comment_only_statement(sql: str, *, nested_block_comments: bool = False) -> bool:
-    """Deprecated: True if *sql* has no executable tokens after removing comments.
-
-    Use ``StatementSplitter(dialect).split()``, whose records carry ``kind`` and never include
-    a statement that is empty or only comments. Pass ``nested_block_comments=True`` for a
-    dialect whose block comments nest.
-    """
-    warnings.warn(
-        "is_comment_only_statement is deprecated and will be removed in the next major "
-        "release; use StatementSplitter(dialect).split(), whose records carry kind.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    return _comment_only(sql, nested_block_comments=nested_block_comments)
 
 
 @lru_cache(maxsize=None)
@@ -82,8 +43,7 @@ def _statements_of(sql: str, dialect: str) -> List[str]:
 def execution_units(sql: str, dialect: str) -> Optional[List[str]]:
     """The scanner's executable units once each, omitting skipped client batches.
 
-    ``None`` means the dialect has no parser. A parser that returns strings only is read through
-    the splitter's adapter. A scanner refusal propagates.
+    ``None`` means the dialect has no parser. A scanner refusal propagates.
     """
     from dblift.core.migration.sql.statement_splitter import StatementSplitter
 
