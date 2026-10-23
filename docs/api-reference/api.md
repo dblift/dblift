@@ -159,6 +159,8 @@ result = client.baseline(
 
 > **Deprecated since v4.10.** Text-based undo script generation (`generate_undo_script()` and `generate_undo_scripts()`, on `DBLiftClient` and `AsyncDBLiftClient`) emits a `DeprecationWarning` and will be removed in the next major release. It reverses the migration's SQL text, so it cannot reverse changes whose prior state the file does not hold (`DROP COLUMN`, `DROP CONSTRAINT`, column modifications, any `DROP`); for those it returns a warning instead of SQL. Write the `U*__.sql` undo script by hand for such migrations.
 
+> Both methods read the SQL with SQLGlot and need `dblift[analysis]`, even though the client runs in `analysis_mode="execution"` by default; without it they stop and ask you to install it.
+
 Generate an undo script for a single versioned migration.
 
 ```python
