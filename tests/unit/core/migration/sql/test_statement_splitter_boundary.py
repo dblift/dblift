@@ -2,11 +2,9 @@ from __future__ import annotations
 
 import pytest
 
-from dblift.core.migration.sql import statement_splitter as splitter_module
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.migration.sql.statement_splitter import StatementSplitter
 from dblift.core.sql_parser.parser_factory import SqlParserFactory
-from dblift.core.sql_parser.statement import Statement
 
 
 @pytest.mark.unit
@@ -16,39 +14,6 @@ def test_statement_splitter_dialect_is_required():
     removed."""
     with pytest.raises(TypeError):
         StatementSplitter()
-
-
-@pytest.mark.unit
-def test_unmigrated_statement_splitter_uses_regex_parser_factory(monkeypatch):
-    created_parser_types = []
-
-    class FakeParser:
-        def split(self, sql):
-            return [Statement(sql.strip(), 1, ";")]
-
-    class FakeFactory:
-        def __init__(self, dialect, parser_type="hybrid"):
-            created_parser_types.append(parser_type)
-
-        def get_parser(self):
-            return FakeParser()
-
-    class UnmigratedQuirks:
-        def lexical_spec(self):
-            return None
-
-        def is_batch_separator(self, text):
-            return False
-
-    monkeypatch.setattr(splitter_module, "SqlParserFactory", FakeFactory)
-    monkeypatch.setattr(
-        splitter_module.ProviderRegistry, "get_quirks", lambda dialect: UnmigratedQuirks()
-    )
-
-    splitter = StatementSplitter("unmigrated")
-
-    assert splitter.split_statements("select 1;") == ["select 1;"]
-    assert created_parser_types == ["regex"]
 
 
 @pytest.mark.unit

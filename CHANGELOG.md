@@ -314,8 +314,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `is_full_table_dml` take `quirks=` instead of `sqlglot_dialect=`;
   `statement_dml_table` takes `quirks=` instead of `dialect=`. The separate
   dialect options on `insert_value_rows` and `cte_outer_statement_type` remain.
-- **`StatementSplitter` requires `Statement` records from custom parsers.**
-  A parser without `split()` or one returning strings is refused before execution.
+- **A dialect is split by its `LexicalSpec` only.** `StatementSplitter` no longer falls back to
+  the dialect's `parser_class`: a plugin without a lexical spec (MongoDB and CosmosDB already
+  had none) raises `UnsupportedDialectError` when it splits a script. Plugin authors: return a
+  `LexicalSpec` from `quirks.lexical_spec()` instead of a record-returning `parser_class`.
 - **The root configuration key `migrations_dir` is removed for 5.0.** Any
   occurrence raises an error; use `migrations.directory`. CLI and Python API
   `migrations_dir` arguments remain available.

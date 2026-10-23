@@ -138,19 +138,6 @@ class _StringsOnly:
         return ["SELECT 1", "", "  ", "-- c", "GO", "SELECT 2"]
 
 
-def test_a_strings_only_parser_is_refused_before_provider_execution():
-    engine = _engine("sqlserver")
-    splitter = engine.sql_analyzer.statement_splitter
-    splitter._engine = None
-    splitter._parser = _StringsOnly()
-    migration = make_migration(script_name="V1__x.sql", content="ignored", logger=engine.log)
-    result = MagicMock()
-    assert engine.get_executable_sql_statements(migration, result) == []
-    result.set_error.assert_called_once()
-    assert "Statement records" in result.set_error.call_args.args[0]
-    engine.provider.execute_statement.assert_not_called()
-
-
 def test_prepare_logs_the_go_0_notice_once(caplog):
     engine = _engine("sqlserver")
     migration = make_migration(

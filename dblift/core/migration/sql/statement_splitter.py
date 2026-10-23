@@ -5,12 +5,14 @@ from __future__ import annotations
 import logging as _logging
 from typing import Callable, List, Optional, Tuple, TypeVar, Union
 
-from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
+from dblift.core.exceptions import (
+    UnsafeStatementSplitError,
+    UnsupportedDialectError,
+    UnsupportedMetaCommandError,
+)
 from dblift.core.logger import Log
 from dblift.core.sql_parser._deprecation import internal_parser_construction, warn_direct_parser
 from dblift.core.sql_parser.lexical_engine import LexicalEngine
-from dblift.core.sql_parser.parser_factory import SqlParserFactory
-from dblift.core.sql_parser.parser_interface import SqlParserInterface
 from dblift.core.sql_parser.statement import Statement, execution_strings
 from dblift.db.provider_registry import ProviderRegistry
 
@@ -30,18 +32,7 @@ class StatementSplitter:
         self.logger = logger
         spec = ProviderRegistry.get_quirks(self.dialect).lexical_spec()
         self._engine = LexicalEngine(spec) if spec is not None else None
-        self.parser_factory = None
-        if self._engine is None:
-            with internal_parser_construction():
-                self.parser_factory = SqlParserFactory(self.dialect, parser_type="regex")
-        self._parser: Optional[SqlParserInterface] = None
         self._last: Optional[Tuple[str, bool, List[Statement]]] = None
-
-    def _record_parser(self) -> SqlParserInterface:
-        if self._parser is None:
-            assert self.parser_factory is not None
-            self._parser = self.parser_factory.get_parser()
-        return self._parser
 
     def _refusing(self, split: Callable[[], _T]) -> _T:
         """Run *split*; a refusal passes through, any other failure becomes one."""
@@ -82,23 +73,9 @@ class StatementSplitter:
         engine = self._engine
         if engine is not None:
             return self._refusing(lambda: engine.split(sql))
-        parser = self._record_parser()
-        split = getattr(parser, "split", None)
-        if not callable(split):
-            raise UnsafeStatementSplitError(
-                f"{self.dialect} statement parser must return Statement records from split()"
-            )
-        raw_records = self._refusing(lambda: split(sql))
-        if isinstance(raw_records, (str, bytes)):
-            raise UnsafeStatementSplitError(
-                f"{self.dialect} statement parser must return Statement records from split()"
-            )
-        records = self._refusing(lambda: list(raw_records))
-        if not all(isinstance(record, Statement) for record in records):
-            raise UnsafeStatementSplitError(
-                f"{self.dialect} statement parser must return Statement records from split()"
-            )
-        return records
+        raise UnsupportedDialectError(
+            f"{self.dialect} has no lexical spec: a dialect is split by its LexicalSpec only"
+        )
 
     def split_statements(self, sql: str, *, strict_tokenizer: Optional[bool] = None) -> List[str]:
         """Return executable units or refuse; never guess a second split."""
