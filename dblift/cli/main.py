@@ -583,6 +583,8 @@ def _parse_argv_and_load_config(argv: List[str]) -> _CliContext:
     args.commands_list = commands
     config = None if commands[0] == "db" else _load_and_merge_config(args, log)
     _apply_config_backed_defaults(args, config)
+    # The format may now come from the environment or the config file.
+    _validate_log_format_for_cli(args, parser)
     _validate_db_config(args, config, parser, commands)
 
     return _CliContext(

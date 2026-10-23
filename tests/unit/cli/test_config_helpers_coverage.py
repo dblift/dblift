@@ -125,7 +125,7 @@ class TestBuildArgsNamespace:
         assert args.command == "migrate"
         assert args.config is None
         assert args.dry_run is False
-        assert args.log_format == "text"
+        assert args.log_format is None
         assert unknown == ["--some-arg"]
 
     def test_multi_command_extracts_db_url_from_global_args(self):

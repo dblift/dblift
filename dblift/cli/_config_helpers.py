@@ -195,8 +195,8 @@ def _build_args_namespace(
             args.config = None
             args.scripts_list = None
             args.dry_run = False
-            args.log_dir = "logs"
-            args.log_format = "text"
+            args.log_dir = None
+            args.log_format = None
             args.log_level = None
             args.log_file = None
             args.database_url = None
@@ -458,7 +458,7 @@ def _configure_logging(
     Returns:
         Configured log instance
     """
-    log_dir_path = Path(args.log_dir if args.log_dir is not None else "logs")
+    log_dir_path = Path(args.log_dir or "logs")
     try:
         log_dir_path.mkdir(parents=True, exist_ok=True)
     except OSError as e:
@@ -497,7 +497,7 @@ def _configure_logging(
 
         set_progress_disabled(True)
 
-    format_strings = [f.strip().lower() for f in args.log_format.split(",")]
+    format_strings = [f.strip().lower() for f in (args.log_format or "text").split(",")]
 
     _LOG_FORMAT_MAP = {
         "html": LogFormat.HTML,
