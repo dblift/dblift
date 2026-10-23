@@ -11,6 +11,7 @@ from typing import Any, List, Optional, Union
 
 from dblift.api.events import EventType
 from dblift.core.logger.results import GenerateUndoScriptResult
+from dblift.core.migration.executor.migration_executor import require_analysis_support
 
 
 def _heuristic_statement_count_from_sql(sql_text: str) -> int:
@@ -58,6 +59,7 @@ def generate_undo_script_operation(
     overwrite: bool = False,
 ) -> GenerateUndoScriptResult:
     """Generate one undo script for ``DBLiftClient.generate_undo_script``."""
+    require_analysis_support("full", "generate_undo_script")
     result = GenerateUndoScriptResult()
     migration_path = Path(migration_path)
     result.migration_path = str(migration_path)
@@ -104,6 +106,7 @@ def generate_undo_scripts_operation(
     **kwargs: Any,
 ) -> List[GenerateUndoScriptResult]:
     """Generate many undo scripts for ``DBLiftClient.generate_undo_scripts``."""
+    require_analysis_support("full", "generate_undo_scripts")
     results: List[GenerateUndoScriptResult] = []
 
     if migration_paths is None:

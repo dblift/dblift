@@ -16,7 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `log_file`, or a logging option in the config (`log_level`, `log_format`, `log_file`,
   `log_dir`, `logging.file`, `logging.directory`, or a `logging.level` other than `info`),
   turns logging on; a config `logging.level` of `info` is the default and cannot be told from an
-  unset one, so pass `log_level="INFO"` to get output at that level. `from_sqlalchemy`'s
+  unset one, so pass `log_level="INFO"` to get output at that level. The `<config folder>/logs`
+  directory that `from_config_file(..., relative_to_config=True)` falls back to is a default, not
+  a logging option: it neither turns logging on nor creates the directory by itself. `from_sqlalchemy`'s
   `log_level` and `log_format` now default to `None` (they were `"INFO"` and `"text"`).
   Migrations still run, validate and undo as before; what changes is that `info()`/dry-run
   results report pending script analysis as disabled, the journal does not capture object
@@ -35,6 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `full` mode, and `validate-sql`, now stop before any callback, file write or database connection
   when sqlglot is not installed, and ask you to `install dblift[analysis]` (they used to fail
   part-way with `No module named 'sqlglot'`).
+  `generate_undo_script` and `generate_undo_scripts` on the Python API do the same.
 - **Db2 statement facts.** `info --format json`, `migrate --dry-run`, execution-time object
   tracking and the DML helpers read Db2 statements through a head classifier: the statement kind
   and the DDL or DML target are named for CREATE/ALTER/DROP TABLE, VIEW, INDEX, SEQUENCE, ALIAS,
@@ -97,7 +100,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Snowflake 10.38.100 with `QUOTED_IDENTIFIERS_IGNORE_CASE = FALSE`, the default); an unquoted
   name with a non-ASCII letter, which the engine rejects, a name
   computed at run time (`IDENTIFIER(...)`, a `$variable`) or holding a keyword where a name belongs
-  is reported as unread. `MERGE` is unread, so its target is no longer named.
+  is reported as unread.
   `validate-sql` changes its Snowflake verdicts accordingly: a script is no longer sent to review
   only because the grammar could not parse a statement; `DROP FUNCTION`, `DROP PROCEDURE` and
   `DROP TRIGGER` (Snowflake has no triggers) are no longer reported as `drop-table`, since they
@@ -350,8 +353,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   qualifiers than the facts can represent, that relation is left unnamed and dependent effects
   remain opaque. A separately proven outer program name remains readable. A leading source
   fragment such as a NUL before `CREATE` or `DROP` no longer proves an affected object.
-- **The DuckDB extra stays below 2.0.** Existing parser and driver tests fail with DuckDB 2.0;
-  the declared range is now `duckdb>=1.0,<2`.
 - **`info` and `migrate --dry-run` no longer guess affected objects from uncertain SQL names.**
   Incomplete names, names joined across comments, and quotes that do not name identifiers in the
   selected dialect leave the affected object unread. SQL execution is unchanged.

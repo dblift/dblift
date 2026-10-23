@@ -43,16 +43,20 @@ from .migration_helpers import MigrationHelpers
 from .placeholder_manager import PlaceholderManager
 
 
-def require_analysis_support(analysis_mode: str) -> None:
-    """Fail clearly when ``analysis_mode="full"`` is asked for without SQLGlot."""
+def require_analysis_support(analysis_mode: str, feature: Optional[str] = None) -> None:
+    """Fail clearly when ``analysis_mode="full"`` (or *feature*) needs SQLGlot and it is absent."""
     if analysis_mode != "full":
         return
     try:
         importlib.import_module("sqlglot")
     except ImportError as exc:
         raise ModuleNotFoundError(
-            "analysis_mode='full' needs SQLGlot: install it with `pip install dblift[analysis]`, "
-            "or use analysis_mode='execution'",
+            (
+                f"{feature} needs SQLGlot: install it with `pip install dblift[analysis]`"
+                if feature
+                else "analysis_mode='full' needs SQLGlot: install it with "
+                "`pip install dblift[analysis]`, or use analysis_mode='execution'"
+            ),
             name="sqlglot",
         ) from exc
 
