@@ -1212,51 +1212,6 @@
   },
   "sql": "CREATE EVENT e ON SCHEDULE EVERY 1 HOUR DO BEGIN SELECT 1"
  },
- "214217741946c154": {
-  "class": "dml-differs",
-  "facts": {
-   "diagnostic": "redshift CTE source scopes or effects are opaque to statement facts",
-   "kind": "DML",
-   "objects": [
-    [
-     "t",
-     "TABLE",
-     "altered",
-     null
-    ]
-   ],
-   "operation": "INSERT"
-  },
-  "issue": "#668",
-  "old": {
-   "analyzer": [
-    [
-     "TABLE",
-     "default_schema.t"
-    ]
-   ],
-   "hybrid": [
-    [
-     "TABLE",
-     "t",
-     "public"
-    ],
-    [
-     "TABLE",
-     "x",
-     "public"
-    ],
-    [
-     "TABLE",
-     "src",
-     "public"
-    ]
-   ]
-  },
-  "path": "both",
-  "reason": "The outer INSERT target t is named (altered) but the reader withholds the statement-level target and the INSERT event because the source is a CTE, so the 'changes rows' caution the old extraction gave is no longer raised for this script (tracked in #668). Redshift answers SQLSTATE 42P01 (relation \"t\" does not exist), not a syntax error.",
-  "sql": "INSERT INTO t WITH x AS (SELECT id FROM src) SELECT id FROM x"
- },
  "22441fa90173b63b/analyzer": {
   "class": "opaque-reader-gap",
   "facts": {
@@ -4126,7 +4081,6 @@
    "kind": "UNKNOWN",
    "operation": "MERGE"
   },
-  "issue": "#668",
   "old": {
    "analyzer": [
     [
@@ -4153,7 +4107,7 @@
    ]
   },
   "path": "both",
-  "reason": "A CTE inside the statement makes the reader withhold every fact (diagnostic) where the old extraction named the target; tracked in #668. Redshift answers SQLSTATE 0A000 (MERGE statement with a single WHEN clause is not enabled.), not a syntax error.",
+  "reason": "A CTE inside the statement makes the reader withhold every fact (diagnostic) where the old extraction named the target; Redshift's MERGE sources and actions are not read (docs/sql-parsing/redshift.md section 12). Redshift answers SQLSTATE 0A000 (MERGE statement with a single WHEN clause is not enabled.), not a syntax error.",
   "sql": "MERGE INTO t USING s ON t.id=s.id WHEN MATCHED THEN UPDATE SET val=(WITH s AS (SELECT val FROM z) SELECT val FROM s)"
  },
  "6ed060381e6a367c": {

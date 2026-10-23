@@ -50,7 +50,12 @@ def guard(fn: Callable[[], Any]) -> Any:
 
 def ser(value: Any) -> Any:
     if dataclasses.is_dataclass(value) and not isinstance(value, type):
-        return {f.name: ser(getattr(value, f.name)) for f in dataclasses.fields(value)}
+        # ``cte_writes`` was added after the recording and is empty on every recorded input.
+        return {
+            f.name: ser(getattr(value, f.name))
+            for f in dataclasses.fields(value)
+            if f.name != "cte_writes" or getattr(value, f.name)
+        }
     if isinstance(value, enum.Enum):
         return value.name
     if isinstance(value, (list, tuple, set, frozenset)):

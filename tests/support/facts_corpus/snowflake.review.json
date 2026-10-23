@@ -1569,15 +1569,70 @@
   "reason": "Apart from case this row is classified facts-adds-referenced for the former hybrid and former analyzer path (the reader also names tables the statement only reads). The former path keeps each name as written; the reader stores an unquoted name in upper case and a quoted one as written (docs/sql-parsing/snowflake.md \u00a713).",
   "sql": "CREATE INDEX idx_name ON test_table (id)"
  },
- "152a2895dd404c9b": {
-  "class": "dml-differs",
+ "152a2895dd404c9b/analyzer": {
+  "class": "facts-adds-acted",
   "facts": {
-   "diagnostic": "snowflake Merge has no statement facts mapping",
-   "kind": "UNKNOWN",
-   "operation": "MERGE"
+   "affected_columns": [
+    "val"
+   ],
+   "events": [
+    "UPDATE"
+   ],
+   "kind": "DML",
+   "objects": [
+    [
+     "ITEMS",
+     "TABLE",
+     "altered",
+     null
+    ],
+    [
+     "ITEMS",
+     "TABLE",
+     "referenced",
+     "STAGING"
+    ]
+   ],
+   "operation": "MERGE",
+   "target": "ITEMS",
+   "target_sql": "items"
   },
   "old": {
-   "analyzer": [],
+   "analyzer": []
+  },
+  "path": "analyzer",
+  "reason": "The old analyzer path named nothing for a MERGE behind a CTE; the reader names the target ITEMS (altered, UPDATE event) and STAGING.ITEMS (referenced, read by the CTE) and leaves out the CTE name `incoming`, which is no table. This is a structural reading: whether Snowflake accepts a WITH before MERGE was not measured (docs/sql-parsing/snowflake.md section 13).",
+  "sql": "WITH incoming AS (SELECT id, val FROM staging.items) MERGE INTO items AS t USING incoming AS s ON t.id = s.id WHEN MATCH"
+ },
+ "152a2895dd404c9b/hybrid": {
+  "class": "disagree",
+  "facts": {
+   "affected_columns": [
+    "val"
+   ],
+   "events": [
+    "UPDATE"
+   ],
+   "kind": "DML",
+   "objects": [
+    [
+     "ITEMS",
+     "TABLE",
+     "altered",
+     null
+    ],
+    [
+     "ITEMS",
+     "TABLE",
+     "referenced",
+     "STAGING"
+    ]
+   ],
+   "operation": "MERGE",
+   "target": "ITEMS",
+   "target_sql": "items"
+  },
+  "old": {
    "hybrid": [
     [
      "TABLE",
@@ -1596,8 +1651,8 @@
     ]
    ]
   },
-  "path": "both",
-  "reason": "MERGE has no facts mapping on Snowflake: the reader reports the statement as opaque instead of naming a target; the former hybrid path named TABLE items, TABLE incoming, TABLE staging.items; the former analyzer path named nothing.",
+  "path": "hybrid",
+  "reason": "The former hybrid path named TABLE items, TABLE incoming (the CTE) and TABLE staging.items; the reader leaves the CTE name out, since it is no table, and names the target and the table the CTE reads, folded to upper case as Snowflake stores an unquoted name. This is a structural reading: whether Snowflake accepts a WITH before MERGE was not measured (docs/sql-parsing/snowflake.md section 13).",
   "sql": "WITH incoming AS (SELECT id, val FROM staging.items) MERGE INTO items AS t USING incoming AS s ON t.id = s.id WHEN MATCH"
  },
  "155922cfd28936f5/hybrid": {
@@ -3891,15 +3946,52 @@
   "reason": "The reader reports the statement as opaque (snowflake Copy has no statement facts mapping) rather than guess: the former hybrid path named TABLE items, TABLE path. This is a documented boundary, not a claim that Snowflake rejects the text.",
   "sql": "COPY items FROM $path"
  },
- "333afab1e6c4b8ad": {
-  "class": "dml-differs",
+ "333afab1e6c4b8ad/analyzer": {
+  "class": "facts-adds-acted",
   "facts": {
-   "diagnostic": "snowflake Merge has no statement facts mapping",
-   "kind": "UNKNOWN",
-   "operation": "MERGE"
+   "events": [
+    "DELETE"
+   ],
+   "kind": "DML",
+   "objects": [
+    [
+     "T",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "operation": "MERGE",
+   "target": "T",
+   "target_sql": "t"
   },
   "old": {
-   "analyzer": [],
+   "analyzer": []
+  },
+  "path": "analyzer",
+  "reason": "The old analyzer path named nothing for a MERGE behind a CTE; the reader names the target T (altered, DELETE event) and leaves out the CTE `c`, which is no table. This is a structural reading: whether Snowflake accepts a WITH before MERGE was not measured (docs/sql-parsing/snowflake.md section 13).",
+  "sql": "WITH c AS (SELECT 1 AS id) MERGE INTO t USING c ON t.id = c.id WHEN MATCHED THEN DELETE"
+ },
+ "333afab1e6c4b8ad/hybrid": {
+  "class": "disagree",
+  "facts": {
+   "events": [
+    "DELETE"
+   ],
+   "kind": "DML",
+   "objects": [
+    [
+     "T",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "operation": "MERGE",
+   "target": "T",
+   "target_sql": "t"
+  },
+  "old": {
    "hybrid": [
     [
      "TABLE",
@@ -3913,8 +4005,8 @@
     ]
    ]
   },
-  "path": "both",
-  "reason": "MERGE has no facts mapping on Snowflake: the reader reports the statement as opaque instead of naming a target; the former hybrid path named TABLE t, TABLE c; the former analyzer path named nothing.",
+  "path": "hybrid",
+  "reason": "The former hybrid path named TABLE t and TABLE c (the CTE); the reader names t, folded to upper case, and leaves out the CTE name, which is no table. This is a structural reading: whether Snowflake accepts a WITH before MERGE was not measured (docs/sql-parsing/snowflake.md section 13).",
   "sql": "WITH c AS (SELECT 1 AS id) MERGE INTO t USING c ON t.id = c.id WHEN MATCHED THEN DELETE"
  },
  "33628d124098678b/analyzer": {
@@ -8639,12 +8731,39 @@
   "reason": "Apart from case this row is classified facts-adds-referenced for the former hybrid and former analyzer path (the reader also names tables the statement only reads). The former path keeps each name as written; the reader stores an unquoted name in upper case and a quoted one as written (docs/sql-parsing/snowflake.md \u00a713).",
   "sql": "CREATE INDEX ix ON t USING hash (a)"
  },
- "6e9b829e51f54862": {
-  "class": "dml-differs",
+ "6e9b829e51f54862/analyzer": {
+  "class": "disagree",
   "facts": {
-   "diagnostic": "snowflake Merge has no statement facts mapping",
-   "kind": "UNKNOWN",
-   "operation": "MERGE"
+   "affected_columns": [
+    "val"
+   ],
+   "events": [
+    "UPDATE"
+   ],
+   "kind": "DML",
+   "objects": [
+    [
+     "T",
+     "TABLE",
+     "altered",
+     null
+    ],
+    [
+     "S",
+     "TABLE",
+     "referenced",
+     null
+    ],
+    [
+     "Z",
+     "TABLE",
+     "referenced",
+     null
+    ]
+   ],
+   "operation": "MERGE",
+   "target": "T",
+   "target_sql": "t"
   },
   "old": {
    "analyzer": [
@@ -8652,27 +8771,10 @@
      "TABLE",
      "default_schema.t"
     ]
-   ],
-   "hybrid": [
-    [
-     "TABLE",
-     "t",
-     null
-    ],
-    [
-     "TABLE",
-     "s",
-     null
-    ],
-    [
-     "TABLE",
-     "z",
-     null
-    ]
    ]
   },
-  "path": "both",
-  "reason": "MERGE has no facts mapping on Snowflake: the reader reports the statement as opaque instead of naming a target; the former hybrid path named TABLE t, TABLE s, TABLE z; the former analyzer path named TABLE default_schema.t.",
+  "path": "analyzer",
+  "reason": "The old analyzer path named only TABLE default_schema.t; the reader names the target T (altered, UPDATE event of the action), S (the USING source) and Z (read by the WITH inside the SET expression, whose alias s shadows the source only inside that subquery), folded to upper case. This is a structural reading: whether Snowflake accepts a WITH before MERGE was not measured (docs/sql-parsing/snowflake.md section 13).",
   "sql": "MERGE INTO t USING s ON t.id=s.id WHEN MATCHED THEN UPDATE SET val=(WITH s AS (SELECT val FROM z) SELECT val FROM s)"
  },
  "6ed060381e6a367c/analyzer": {

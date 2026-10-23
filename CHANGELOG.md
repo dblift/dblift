@@ -335,6 +335,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A PostgreSQL statement with a `WITH` now names every table it changes.** `WITH d AS (DELETE FROM src
+  ...) INSERT INTO log SELECT * FROM d`, `INSERT INTO t WITH x AS (...) SELECT ...` and `WITH u AS (UPDATE a
+  ...) DELETE FROM b ...` used to leave the outer target and its events unread behind a diagnostic. The statement
+  now reports its own table, predicate and events, and each `INSERT`, `UPDATE` or `DELETE` inside a CTE adds the
+  table it changes with its own events (`StatementFacts.cte_writes`, `DmlMutation.cte_writes`); a `SELECT` led by
+  such a CTE is data-changing. A name in a CTE body is a CTE only where PostgreSQL's scoping says so
+  (`RECURSIVE`, shadowing, an inner `WITH`, quoted names). `validate-sql` reports `dml-no-where` for an `UPDATE` or
+  `DELETE` in a CTE that has no `WHERE`, and the check no longer treats the statement as safe when only the first of
+  its tables was created earlier in the script. A CTE `MERGE` body, `CREATE ... AS` with a CTE that writes, and a
+  data-modifying `WITH` below the top level (which PostgreSQL rejects) stay unread, each with a diagnostic that says
+  why. Redshift reads `INSERT INTO t WITH ... SELECT` too, and says that it rejects a CTE that writes.
+
+- **A Snowflake `MERGE` behind a `WITH` is read.** The target, the sources the CTEs read and the events of its actions
+  are reported, and the CTE names are not taken for tables. The statement stays unread when a CTE is named like the
+  target.
+
+- **PostgreSQL `COPY ... FROM` with options or `STDIN` is read as a load.** `COPY t FROM 'file' (FORMAT CSV, HEADER)`,
+  `COPY t (a, b) FROM STDIN`, `FROM PROGRAM '...'` and `FROM $$file$$` report `t` as changed by an `INSERT`, and
+  `COPY t TO ...` reports it as read; the options are ignored because none of them changes the table. `validate-sql` now asks
+  for review (`copy-server-side`) when such a `COPY` runs a command (`PROGRAM`) or writes a file on the database
+  server. A query source (`COPY (SELECT ...) TO ...`) and the old `COPY BINARY t` spelling stay unread, without a
+  caution.
+
+- **`CREATE TABLE ... TABLESPACE` on PostgreSQL says why it is unread.** The grammar has no `TABLESPACE` clause, so the
+  statement still names only the object from its first words, and the diagnostic now names the clause instead of
+  reporting an unreadable command.
+
 - **`validate-sql` no longer calls dropping a database link or a materialized view log a destructive drop.**
   On Oracle, `DROP DATABASE LINK` was reported as `drop-schema` and `DROP MATERIALIZED VIEW LOG ON t` as
   `drop-table`, both UNSAFE. Both remove a definition, not rows, and now pass; `DROP DATABASE` and

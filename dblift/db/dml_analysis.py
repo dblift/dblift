@@ -57,6 +57,8 @@ class DmlMutation:
     table: str
     events: Optional[Set[str]]
     updated_columns: List[str]
+    #: The tables a statement also changes through writing CTEs, each with its own events.
+    cte_writes: Tuple["DmlMutation", ...] = ()
 
 
 def analyze_dml(
@@ -80,6 +82,10 @@ def analyze_dml(
             facts.target or "",
             set(facts.events) if facts.events else None,
             list(facts.affected_columns) if facts.events and "UPDATE" in facts.events else [],
+            tuple(
+                DmlMutation(w.target, set(w.events), list(w.affected_columns))
+                for w in facts.cte_writes
+            ),
         )
 
     from dblift.core.sql_parser.unread_names import names_unreadable
@@ -406,7 +412,10 @@ def is_full_table_dml(
     """
     if quirks is not None and quirks.supports_statement_facts:
         facts = quirks.statement_facts(statement)
-        return facts.operation in ("UPDATE", "DELETE") and (not facts.predicate)
+        return (facts.operation in ("UPDATE", "DELETE") and (not facts.predicate)) or any(
+            write.operation in ("UPDATE", "DELETE") and not write.predicate
+            for write in facts.cte_writes
+        )
     dialect = quirks.sqlglot_dialect if quirks is not None else None
 
     text = strip_leading_sql_comments(statement).lstrip()

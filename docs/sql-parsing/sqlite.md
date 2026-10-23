@@ -373,3 +373,6 @@ the statements after it) and matched `END` by an `isalnum()` word boundary
 outside single quotes only; accepted an unterminated `/*`; glued dot-commands, `go` and `/` lines onto the next
 statement; returned `;;` and comment-only segments as statements; kept the byte
 order mark in the first statement.
+
+
+SQLite 3.51 accepts `WITH … INSERT`, `WITH … UPDATE`, `WITH … DELETE` and `INSERT INTO t WITH … SELECT`, which are read for their target, events and CTE sources; it answers a syntax error at `DELETE` to a CTE whose body is a `DELETE ... RETURNING`, so no statement changes a second table through a CTE.

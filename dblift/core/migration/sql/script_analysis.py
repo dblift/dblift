@@ -11,7 +11,7 @@ from __future__ import annotations
 import logging
 import re
 from contextlib import contextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 from dblift.core.exceptions import (
@@ -23,7 +23,7 @@ from dblift.core.sql_model.base import SqlObjectType
 from dblift.core.sql_parser._deprecation import internal_parser_construction
 from dblift.core.sql_parser.common.comment_stripping import strip_comments_preserving_quotes
 from dblift.core.sql_parser.parser_factory import SqlParserFactory
-from dblift.core.sql_parser.statement_facts import StatementFacts
+from dblift.core.sql_parser.statement_facts import DmlEffect, StatementFacts
 from dblift.db.dml_analysis import strip_leading_sql_comments
 from dblift.db.provider_registry import ProviderRegistry
 
@@ -249,9 +249,10 @@ def _analyse(text: str, dialect: str) -> ScriptAnalysis:
             AnalysedObject(obj.type.value, obj.name, obj.schema) for obj in facts.affected_objects
         )
         operation = facts.operation
-        full_table = facts.kind == "DML" and (
+        outer_full_table = facts.kind == "DML" and (
             facts.operation in ("UPDATE", "DELETE") and (not facts.predicate)
         )
+        full_table = outer_full_table or any(_rewrites_every_row(w) for w in facts.cte_writes)
         analysed = AnalysedStatement(
             len(fact_statements),
             operation,
@@ -265,7 +266,12 @@ def _analyse(text: str, dialect: str) -> ScriptAnalysis:
         )
         fact_statements.append(analysed)
         caution = _caution_for(
-            analysed,
+            replace(
+                analysed,
+                full_table=outer_full_table,
+                # a writing CTE's table is named by its own caution, not by the outer one
+                objects=analysed.objects[:1] if facts.cte_writes and facts.target else objects,
+            ),
             body,
             _opaque_dialect(dialect) if facts.opaque else None,
             # a plugin without a sqlglot dialect has no second reader to name an unread target
@@ -286,6 +292,16 @@ def _analyse(text: str, dialect: str) -> ScriptAnalysis:
                 )
         if caution is not None:
             fact_cautions.append(caution)
+        fact_cautions.extend(_cte_write_cautions(analysed.index, facts.cte_writes))
+        if facts.action in _SERVER_SIDE_COPY:
+            fact_cautions.append(
+                Caution(
+                    CHANGES_ROWS,
+                    analysed.index,
+                    _SERVER_SIDE_COPY[facts.action],
+                    "copy-server-side",
+                )
+            )
         if facts.error:
             errors.append(facts.error)
     return ScriptAnalysis(tuple(fact_statements), tuple(fact_cautions), tuple(errors))
@@ -329,6 +345,35 @@ def _unread_reason(
     ):
         return f"procedural block: effects not modelled{detail}; review it by hand"
     return f"{facts.operation} statement not analysed{detail}; review it by hand"
+
+
+_SERVER_SIDE_COPY = {
+    "copy-to-program": "COPY TO PROGRAM runs a shell command on the database server",
+    "copy-from-program": "COPY FROM PROGRAM runs a shell command on the database server",
+    "copy-to-file": "COPY TO a file writes a file on the database server",
+}
+
+
+def _rewrites_every_row(write: DmlEffect) -> bool:
+    return write.operation in ("UPDATE", "DELETE") and not write.predicate
+
+
+def _cte_write_cautions(index: int, writes: Tuple[DmlEffect, ...]) -> List[Caution]:
+    """One caution per UPDATE or DELETE a CTE performs, as for the statement written alone."""
+    return [
+        (
+            Caution(
+                DESTROYS,
+                index,
+                f"{write.operation} without WHERE rewrites every row of {write.target}",
+                "dml-no-where",
+            )
+            if _rewrites_every_row(write)
+            else Caution(CHANGES_ROWS, index, f"{write.operation} changes rows of {write.target}")
+        )
+        for write in writes
+        if write.operation in ("UPDATE", "DELETE")
+    ]
 
 
 def _opaque_dialect(dialect: str) -> str:

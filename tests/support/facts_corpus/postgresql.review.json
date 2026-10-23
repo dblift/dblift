@@ -401,27 +401,6 @@
   },
   "sql": "DROP STOGROUP my_sg"
  },
- "0fbd8305b46c7035/hybrid": {
-  "class": "opaque-reader-gap",
-  "facts": {
-   "diagnostic": "postgres COPY source or destination is opaque",
-   "kind": "UNKNOWN",
-   "operation": "COPY"
-  },
-  "issue": "#667",
-  "old": {
-   "hybrid": [
-    [
-     "TABLE",
-     "users",
-     "public"
-    ]
-   ]
-  },
-  "path": "hybrid",
-  "reason": "COPY is read as opaque: a COPY with options, a quoted or dollar-quoted file source, or a column list (not modelled, #667). The reader names no object where the old extraction named TABLE users. PostgreSQL 16.14 parses it (SQLSTATE 42P01 at run time).",
-  "sql": "COPY users TO '/tmp/users.csv' WITH (FORMAT CSV, HEADER)"
- },
  "100d168fc3181176/analyzer": {
   "class": "opaque-reader-gap",
   "facts": {
@@ -618,25 +597,33 @@
   "reason": "The proposed head takes a name from brackets, while postgresql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'CREATE TABLE [normal] (id int)'; dialect tokens: CREATE(CREATE) TABLE(TABLE) L_BRACKET([) VAR(normal) R_BRACKET(]) L_PAREN(() VAR(id) INT(int). Prior native observation for this exact SQL: PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"[\"); CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
   "sql": "CREATE TABLE [normal] (id int)"
  },
- "1487b9907d08380d/hybrid": {
-  "class": "opaque-reader-gap",
+ "1487b9907d08380d/analyzer": {
+  "class": "facts-adds-acted",
   "facts": {
-   "diagnostic": "postgres COPY source or destination is opaque",
-   "kind": "UNKNOWN",
-   "operation": "COPY"
-  },
-  "issue": "#589",
-  "old": {
-   "hybrid": [
+   "affected_columns": [
+    "a"
+   ],
+   "events": [
+    "INSERT"
+   ],
+   "kind": "DML",
+   "objects": [
     [
-     "TABLE",
      "t",
-     "public"
+     "TABLE",
+     "altered",
+     null
     ]
-   ]
+   ],
+   "operation": "COPY",
+   "target": "t",
+   "target_sql": "t"
   },
-  "path": "hybrid",
-  "reason": "COPY is read as opaque: the STDIN/STDOUT or query form (by design, #589). The reader names no object where the old extraction named TABLE t. PostgreSQL 16.14 parses it (SQLSTATE 42P01 at run time).",
+  "old": {
+   "analyzer": []
+  },
+  "path": "analyzer",
+  "reason": "The old analyzer path named nothing for a COPY that has options or reads STDIN; the reader now reads COPY ... FROM as a load into t (TABLE t altered, INSERT event) and ignores the options, which cannot change the table (dblift/dblift#667). PostgreSQL 16.14 loads the table with each such form.",
   "sql": "COPY t(a) FROM STDIN"
  },
  "152a2895dd404c9b/analyzer": {
@@ -1107,10 +1094,12 @@
   },
   "sql": "CREATE EVENT e ON SCHEDULE EVERY 1 HOUR DO BEGIN SELECT 1"
  },
- "214217741946c154": {
-  "class": "dml-differs",
+ "2179e05b8f4b7145/analyzer": {
+  "class": "facts-adds-acted",
   "facts": {
-   "diagnostic": "postgres CTE source scopes or effects are opaque to statement facts",
+   "events": [
+    "INSERT"
+   ],
    "kind": "DML",
    "objects": [
     [
@@ -1120,57 +1109,15 @@
      null
     ]
    ],
-   "operation": "INSERT"
+   "operation": "COPY",
+   "target": "t",
+   "target_sql": "t"
   },
-  "issue": "#668",
   "old": {
-   "analyzer": [
-    [
-     "TABLE",
-     "default_schema.t"
-    ]
-   ],
-   "hybrid": [
-    [
-     "TABLE",
-     "t",
-     "public"
-    ],
-    [
-     "TABLE",
-     "x",
-     "public"
-    ],
-    [
-     "TABLE",
-     "src",
-     "public"
-    ]
-   ]
+   "analyzer": []
   },
-  "path": "both",
-  "reason": "The outer INSERT target t is named (altered) but the reader withholds the statement-level target and the INSERT event because the source is a CTE (#584), so the 'changes rows' caution the old extraction gave is no longer raised for this script (tracked in #668). PostgreSQL 16.14 parses it (SQLSTATE 42P01 at run time).",
-  "sql": "INSERT INTO t WITH x AS (SELECT id FROM src) SELECT id FROM x"
- },
- "2179e05b8f4b7145/hybrid": {
-  "class": "opaque-reader-gap",
-  "facts": {
-   "diagnostic": "postgres COPY source or destination is opaque",
-   "kind": "UNKNOWN",
-   "operation": "COPY"
-  },
-  "issue": "#589",
-  "old": {
-   "hybrid": [
-    [
-     "TABLE",
-     "t",
-     "public"
-    ]
-   ]
-  },
-  "path": "hybrid",
-  "reason": "COPY is read as opaque: the STDIN/STDOUT or query form (by design, #589). The reader names no object where the old extraction named TABLE t. PostgreSQL 16.14 parses it (SQLSTATE 42P01 at run time).",
+  "path": "analyzer",
+  "reason": "The old analyzer path named nothing for a COPY that has options or reads STDIN; the reader now reads COPY ... FROM as a load into t (TABLE t altered, INSERT event) and ignores the options, which cannot change the table (dblift/dblift#667). PostgreSQL 16.14 loads the table with each such form.",
   "sql": "COPY t FROM STDIN"
  },
  "22441fa90173b63b/analyzer": {
@@ -1606,7 +1553,6 @@
    "kind": "UNKNOWN",
    "operation": "COPY"
   },
-  "issue": "#667",
   "old": {
    "hybrid": [
     [
@@ -1617,7 +1563,12 @@
    ]
   },
   "path": "hybrid",
-  "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"(\"); it is a statement of another dialect or an incomplete fragment harvested into the corpus and never runs on this family, but CockroachDB answered 0A000 (feature not supported, not a syntax error); the reader keeps COPY with an unmodelled source or options opaque (#667). YugabyteDB 2026.1.2: 42601.",
+  "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"(\"); it is a statement of another dialect or an incomplete fragment harvested into the corpus and never runs on this family, but CockroachDB answered 0A000 (feature not supported, not a syntax error); the reader keeps a COPY whose source is no literal, STDIN or PROGRAM string opaque. YugabyteDB 2026.1.2: 42601.",
+  "rejected_by": {
+   "cockroachdb 24.3.18": "0A000",
+   "postgresql 16.14": "42601",
+   "yugabytedb 2026.1.2": "42601"
+  },
   "sql": "COPY items TO ('/tmp/' || 'items.csv')"
  },
  "2f10eb4e88027b1d/hybrid": {
@@ -1835,47 +1786,31 @@
   "reason": "The proposed head takes a name from backticks, while postgresql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'CREATE FUNCTION `test_func`() RETURNS INT BEGIN RETURN 1'; dialect tokens: CREATE(CREATE) FUNCTION(FUNCTION) UNKNOWN(`) VAR(test_func) UNKNOWN(`) L_PAREN(() R_PAREN()) VAR(RETURNS). Prior native observation for this exact SQL: PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"`\"); CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
   "sql": "CREATE FUNCTION `test_func`() RETURNS INT BEGIN RETURN 1"
  },
- "337a428a7b4fc76a/hybrid": {
-  "class": "opaque-reader-gap",
+ "337a428a7b4fc76a/analyzer": {
+  "class": "facts-adds-acted",
   "facts": {
-   "diagnostic": "postgres COPY source or destination is opaque",
-   "kind": "UNKNOWN",
-   "operation": "COPY"
-  },
-  "issue": "#667",
-  "old": {
-   "hybrid": [
+   "events": [
+    "INSERT"
+   ],
+   "kind": "DML",
+   "objects": [
     [
-     "TABLE",
      "items",
-     "public"
-    ]
-   ]
-  },
-  "path": "hybrid",
-  "reason": "COPY is read as opaque: a COPY with options, a quoted or dollar-quoted file source, or a column list (not modelled, #667). The reader names no object where the old extraction named TABLE items. PostgreSQL 16.14 parses it (SQLSTATE 42P01 at run time).",
-  "sql": "COPY items FROM $$items.csv$$"
- },
- "337cdd5d72c08f1f/hybrid": {
-  "class": "opaque-reader-gap",
-  "facts": {
-   "diagnostic": "postgres COPY source or destination is opaque",
-   "kind": "UNKNOWN",
-   "operation": "COPY"
-  },
-  "issue": "#667",
-  "old": {
-   "hybrid": [
-    [
      "TABLE",
-     "Order Items",
-     "Sales"
+     "altered",
+     null
     ]
-   ]
+   ],
+   "operation": "COPY",
+   "target": "items",
+   "target_sql": "items"
   },
-  "path": "hybrid",
-  "reason": "COPY is read as opaque: a COPY with options, a quoted or dollar-quoted file source, or a column list (not modelled, #667). The reader names no object where the old extraction named TABLE Order Items. PostgreSQL 16.14 parses it (SQLSTATE 3F000 at run time).",
-  "sql": "COPY \"Sales\".\"Order Items\" (id, \"Item Value\") TO '/tmp/items;out.parquet' (FORMAT PARQUET)"
+  "old": {
+   "analyzer": []
+  },
+  "path": "analyzer",
+  "reason": "The old analyzer path named nothing for a COPY with a dollar-quoted source; the reader reads COPY ... FROM as a load into TABLE items (altered, INSERT event) and ignores the options (dblift/dblift#667). PostgreSQL 16.14 loads the table with this form (checked).",
+  "sql": "COPY items FROM $$items.csv$$"
  },
  "345c8cdd8c4ca7d6/analyzer": {
   "class": "opaque-reader-gap",
@@ -1931,7 +1866,6 @@
    "kind": "UNKNOWN",
    "operation": "COPY"
   },
-  "issue": "#667",
   "old": {
    "hybrid": [
     [
@@ -1942,7 +1876,12 @@
    ]
   },
   "path": "hybrid",
-  "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"||\"); it is a statement of another dialect or an incomplete fragment harvested into the corpus and never runs on this family, but CockroachDB answered 0A000 (feature not supported, not a syntax error); the reader keeps COPY with an unmodelled source or options opaque (#667). YugabyteDB 2026.1.2: 42601.",
+  "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"||\"); it is a statement of another dialect or an incomplete fragment harvested into the corpus and never runs on this family, but CockroachDB answered 0A000 (feature not supported, not a syntax error); the reader keeps a COPY whose source is no literal, STDIN or PROGRAM string opaque. YugabyteDB 2026.1.2: 42601.",
+  "rejected_by": {
+   "cockroachdb 24.3.18": "0A000",
+   "postgresql 16.14": "42601",
+   "yugabytedb 2026.1.2": "42601"
+  },
   "sql": "COPY items FROM '/tmp/' || 'items.csv'"
  },
  "350dbf9c8990d3b8/analyzer": {
@@ -2114,10 +2053,24 @@
   },
   "sql": "EXIT\nDROP TABLE users"
  },
- "3a233d627c0c1e06": {
-  "class": "dml-differs",
+ "3a233d627c0c1e06/analyzer": {
+  "class": "facts-adds-acted",
   "facts": {
-   "diagnostic": "postgres CTE source scopes or effects are opaque to statement facts",
+   "cte_writes": [
+    {
+     "affected_columns": [],
+     "events": [
+      "DELETE"
+     ],
+     "operation": "DELETE",
+     "predicate": "id = 1 /* RETURNING trap */",
+     "target": "src",
+     "target_sql": "src"
+    }
+   ],
+   "events": [
+    "INSERT"
+   ],
    "kind": "DML",
    "objects": [
     [
@@ -2125,33 +2078,23 @@
      "TABLE",
      "altered",
      null
+    ],
+    [
+     "src",
+     "TABLE",
+     "altered",
+     null
     ]
    ],
-   "operation": "INSERT"
+   "operation": "INSERT",
+   "target": "app_logs",
+   "target_sql": "app_logs"
   },
-  "issue": "#668",
   "old": {
-   "analyzer": [],
-   "hybrid": [
-    [
-     "TABLE",
-     "app_logs",
-     "public"
-    ],
-    [
-     "TABLE",
-     "deleted",
-     "public"
-    ],
-    [
-     "TABLE",
-     "src",
-     "public"
-    ]
-   ]
+   "analyzer": []
   },
-  "path": "both",
-  "reason": "A data-changing CTE makes the reader withhold the outer target and event (#584): it names app_logs as altered but not the rows written inside the CTE (src), and the 'changes rows' caution the old extraction gave is no longer raised for this script (tracked in #668). PostgreSQL 16.14 parses it (SQLSTATE 42P01 at run time).",
+  "path": "analyzer",
+  "reason": "The statement writes TABLE src through a CTE (DELETE, DELETE event in cte_writes) and feeds an INSERT into TABLE app_logs, which is the statement's own target; the old analyzer path refused CTE-led statements and named nothing. PostgreSQL 16.14 parses and runs it (42P01 here only because the tables do not exist), dblift/dblift#668.",
   "sql": "WITH deleted AS (DELETE FROM src WHERE id = 1 /* RETURNING trap */ RETURNING id) INSERT INTO app_logs(msg) SELECT 'remov"
  },
  "3a323accbe90ace0/analyzer": {
@@ -2453,27 +2396,6 @@
   "reason": "The proposed head takes a name from backticks, while postgresql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'CREATE TABLE `real``one` (id int)'; dialect tokens: CREATE(CREATE) TABLE(TABLE) UNKNOWN(`) FLOAT(real) UNKNOWN(`) UNKNOWN(`) VAR(one) UNKNOWN(`). Prior native observation for this exact SQL: PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"`\"); CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
   "sql": "CREATE TABLE `real``one` (id int)"
  },
- "401e0a4750c29eba/hybrid": {
-  "class": "opaque-reader-gap",
-  "facts": {
-   "diagnostic": "postgres COPY source or destination is opaque",
-   "kind": "UNKNOWN",
-   "operation": "COPY"
-  },
-  "issue": "#667",
-  "old": {
-   "hybrid": [
-    [
-     "TABLE",
-     "items",
-     "public"
-    ]
-   ]
-  },
-  "path": "hybrid",
-  "reason": "COPY is read as opaque: a COPY with options, a quoted or dollar-quoted file source, or a column list (not modelled, #667). The reader names no object where the old extraction named TABLE items. PostgreSQL 16.14 parses it (SQLSTATE 42P01 at run time).",
-  "sql": "COPY items TO '/tmp/items.csv' (FORMAT CSV, HEADER)"
- },
  "40bce787584769ce/hybrid": {
   "class": "opaque-reader-gap",
   "facts": {
@@ -2710,10 +2632,26 @@
   },
   "sql": "CREATE BITMAP INDEX ix ON t (a)"
  },
- "492a9a71d3dbaaef": {
-  "class": "dml-differs",
+ "492a9a71d3dbaaef/analyzer": {
+  "class": "facts-adds-acted",
   "facts": {
-   "diagnostic": "postgres CTE source scopes or effects are opaque to statement facts",
+   "cte_writes": [
+    {
+     "affected_columns": [
+      "id"
+     ],
+     "events": [
+      "UPDATE"
+     ],
+     "operation": "UPDATE",
+     "predicate": null,
+     "target": "src",
+     "target_sql": "src"
+    }
+   ],
+   "events": [
+    "INSERT"
+   ],
    "kind": "DML",
    "objects": [
     [
@@ -2721,33 +2659,23 @@
      "TABLE",
      "altered",
      null
+    ],
+    [
+     "src",
+     "TABLE",
+     "altered",
+     null
     ]
    ],
-   "operation": "INSERT"
+   "operation": "INSERT",
+   "target": "app_logs",
+   "target_sql": "app_logs"
   },
-  "issue": "#668",
   "old": {
-   "analyzer": [],
-   "hybrid": [
-    [
-     "TABLE",
-     "app_logs",
-     "public"
-    ],
-    [
-     "TABLE",
-     "x",
-     "public"
-    ],
-    [
-     "TABLE",
-     "src",
-     "public"
-    ]
-   ]
+   "analyzer": []
   },
-  "path": "both",
-  "reason": "A data-changing CTE makes the reader withhold the outer target and event (#584): it names app_logs as altered but not the rows written inside the CTE (src), and the 'changes rows' caution the old extraction gave is no longer raised for this script (tracked in #668). PostgreSQL 16.14 parses it (SQLSTATE 42P01 at run time).",
+  "path": "analyzer",
+  "reason": "The statement writes TABLE src through a CTE (UPDATE, UPDATE event in cte_writes) and feeds an INSERT into TABLE app_logs, which is the statement's own target; the old analyzer path refused CTE-led statements and named nothing. PostgreSQL 16.14 parses and runs it (42P01 here only because the tables do not exist), dblift/dblift#668.",
   "sql": "WITH x AS (UPDATE src SET id = id RETURNING id) INSERT INTO app_logs(msg) SELECT 'x' FROM x"
  },
  "49ce8e69af2d51a0/analyzer": {
@@ -3299,7 +3227,6 @@
    "kind": "UNKNOWN",
    "operation": "COPY"
   },
-  "issue": "#667",
   "old": {
    "hybrid": [
     [
@@ -3310,7 +3237,12 @@
    ]
   },
   "path": "hybrid",
-  "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"(\"); it is a statement of another dialect or an incomplete fragment harvested into the corpus and never runs on this family, but CockroachDB answered 0A000 (feature not supported, not a syntax error); the reader keeps COPY with an unmodelled source or options opaque (#667). YugabyteDB 2026.1.2: 42601.",
+  "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"(\"); it is a statement of another dialect or an incomplete fragment harvested into the corpus and never runs on this family, but CockroachDB answered 0A000 (feature not supported, not a syntax error); the reader keeps a COPY whose source is no literal, STDIN or PROGRAM string opaque. YugabyteDB 2026.1.2: 42601.",
+  "rejected_by": {
+   "cockroachdb 24.3.18": "0A000",
+   "postgresql 16.14": "42601",
+   "yugabytedb 2026.1.2": "42601"
+  },
   "sql": "COPY items FROM ('/tmp/items.csv')"
  },
  "601723f2c54f0a56/analyzer": {
@@ -3352,7 +3284,7 @@
    ],
    "operation": "CREATE"
   },
-  "issue": "#666",
+  "issue": "by design: sqlglot has no TABLESPACE clause; docs/sql-parsing/postgresql.md section 12",
   "old": {
    "hybrid": [
     [
@@ -3363,7 +3295,7 @@
    ]
   },
   "path": "hybrid",
-  "reason": "The table carries WITH (fillfactor=70) TABLESPACE ts, which sqlglot parses as a Command: the reader keeps the head identity only as opaque, and the declared columns are not read, where the old extraction named TABLE Case (#666). PostgreSQL 16.14 parses it (SQLSTATE 3F000 at run time).",
+  "reason": "The table carries WITH (fillfactor=70) TABLESPACE ts, which sqlglot parses as a Command: the reader keeps the head identity only as opaque, and the declared columns are not read, and the diagnostic names the TABLESPACE clause, where the old extraction named TABLE Case. PostgreSQL 16.14 parses it (SQLSTATE 3F000 at run time).",
   "sql": "CREATE TABLE MySchema.\"Case\" (a int) WITH (fillfactor=70) TABLESPACE ts"
  },
  "60946c9b564c1ad9": {
@@ -3485,7 +3417,6 @@
    "kind": "UNKNOWN",
    "operation": "COPY"
   },
-  "issue": "#667",
   "old": {
    "hybrid": [
     [
@@ -3496,7 +3427,12 @@
    ]
   },
   "path": "hybrid",
-  "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \",\"); it is a statement of another dialect or an incomplete fragment harvested into the corpus and never runs on this family, but CockroachDB answered 0A000 (feature not supported, not a syntax error); the reader keeps COPY with an unmodelled source or options opaque (#667). YugabyteDB 2026.1.2: 42601.",
+  "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \",\"); it is a statement of another dialect or an incomplete fragment harvested into the corpus and never runs on this family, but CockroachDB answered 0A000 (feature not supported, not a syntax error); the reader keeps a COPY whose source is no literal, STDIN or PROGRAM string opaque. YugabyteDB 2026.1.2: 42601.",
+  "rejected_by": {
+   "cockroachdb 24.3.18": "0A000",
+   "postgresql 16.14": "42601",
+   "yugabytedb 2026.1.2": "42601"
+  },
   "sql": "COPY items FROM 'a.csv', 'b.csv'"
  },
  "64fcf8ca04f2dc02/analyzer": {
@@ -3655,7 +3591,6 @@
    "kind": "UNKNOWN",
    "operation": "COPY"
   },
-  "issue": "#667",
   "old": {
    "hybrid": [
     [
@@ -3666,7 +3601,12 @@
    ]
   },
   "path": "hybrid",
-  "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"42\"); it is a statement of another dialect or an incomplete fragment harvested into the corpus and never runs on this family, but CockroachDB answered 0A000 (feature not supported, not a syntax error); the reader keeps COPY with an unmodelled source or options opaque (#667). YugabyteDB 2026.1.2: 42601.",
+  "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"42\"); it is a statement of another dialect or an incomplete fragment harvested into the corpus and never runs on this family, but CockroachDB answered 0A000 (feature not supported, not a syntax error); the reader keeps a COPY whose source is no literal, STDIN or PROGRAM string opaque. YugabyteDB 2026.1.2: 42601.",
+  "rejected_by": {
+   "cockroachdb 24.3.18": "0A000",
+   "postgresql 16.14": "42601",
+   "yugabytedb 2026.1.2": "42601"
+  },
   "sql": "COPY items FROM 42"
  },
  "6a82a117cbce309d/analyzer": {
@@ -4112,30 +4052,37 @@
   },
   "sql": "CREATE TABLE MySchema.\"Case\" (a int) IN TS1"
  },
- "74479a42ff691265/hybrid": {
-  "class": "opaque-reader-gap",
+ "74479a42ff691265/analyzer": {
+  "class": "facts-adds-acted",
   "facts": {
-   "diagnostic": "postgres CTE source scopes or effects are opaque to statement facts",
-   "kind": "UNKNOWN",
+   "cte_writes": [
+    {
+     "affected_columns": [],
+     "events": [
+      "INSERT"
+     ],
+     "operation": "INSERT",
+     "predicate": null,
+     "target": "t",
+     "target_sql": "t"
+    }
+   ],
+   "kind": "DML",
+   "objects": [
+    [
+     "t",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
    "operation": "SELECT"
   },
-  "issue": "#668",
   "old": {
-   "hybrid": [
-    [
-     "TABLE",
-     "d",
-     "public"
-    ],
-    [
-     "TABLE",
-     "t",
-     "public"
-    ]
-   ]
+   "analyzer": []
   },
-  "path": "hybrid",
-  "reason": "A data-changing CTE keeps the whole statement opaque (#584): the reader names nothing where the old extraction named TABLE d, TABLE t, and the 'changes rows' caution is lost (tracked in #668). PostgreSQL 16.14 parses it (SQLSTATE 42P01 at run time).",
+  "path": "analyzer",
+  "reason": "The statement writes TABLE t through a CTE (INSERT, INSERT event in cte_writes) under an outer SELECT, which makes the statement data-changing (kind DML); the old analyzer path refused CTE-led statements and named nothing. PostgreSQL 16.14 parses and runs it (42P01 here only because the tables do not exist), dblift/dblift#668.",
   "sql": "WITH d AS (INSERT INTO t VALUES (1) RETURNING id) SELECT * FROM d"
  },
  "7484ca522ba201fa": {
@@ -4145,7 +4092,6 @@
    "kind": "UNKNOWN",
    "operation": "MERGE"
   },
-  "issue": "#668",
   "old": {
    "analyzer": [
     [
@@ -4167,7 +4113,7 @@
    ]
   },
   "path": "both",
-  "reason": "The reader models MERGE only in some forms (#585) and keeps this one opaque: it withholds the target and the UPDATE event, so the 'changes rows' caution the old extraction gave is no longer raised for this script (tracked in #668; see also #585). PostgreSQL 16.14 parses it (SQLSTATE 42P01 at run time).",
+  "reason": "The reader models MERGE only in some forms (#585) and keeps this one opaque: it withholds the target and the UPDATE event, so the 'changes rows' caution the old extraction gave is no longer raised for this script (a qualified SET target such as u.email reads as a subfield of a column named u, so the assignment is not named; see also #585). PostgreSQL 16.14 parses it (SQLSTATE 42P01 at run time).",
   "sql": "MERGE INTO users u USING staged s ON (u.id = s.id) WHEN MATCHED THEN UPDATE SET u.email = s.email"
  },
  "754e60178f1b1190/hybrid": {
@@ -4466,7 +4412,6 @@
    "kind": "UNKNOWN",
    "operation": "COPY"
   },
-  "issue": "#667",
   "old": {
    "hybrid": [
     [
@@ -4482,7 +4427,12 @@
    ]
   },
   "path": "hybrid",
-  "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"SELECT\"); it is a statement of another dialect or an incomplete fragment harvested into the corpus and never runs on this family, but CockroachDB answered 0A000 (feature not supported, not a syntax error); the reader keeps COPY with an unmodelled source or options opaque (#667). YugabyteDB 2026.1.2: 42601.",
+  "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"SELECT\": an option takes no subquery), so it never runs on this family; the reader keeps a COPY whose tail holds a second FROM opaque rather than read a load the engine refuses. CockroachDB answered 0A000 (feature not supported), YugabyteDB 2026.1.2: 42601.",
+  "rejected_by": {
+   "cockroachdb 24.3.18": "0A000",
+   "postgresql 16.14": "42601",
+   "yugabytedb 2026.1.2": "42601"
+  },
   "sql": "COPY items FROM 'items.csv' (DELIMITER (SELECT ',' FROM source_table))"
  },
  "80f378d7c56003b4": {
@@ -5345,7 +5295,6 @@
    "kind": "UNKNOWN",
    "operation": "MERGE"
   },
-  "issue": "#668",
   "old": {
    "analyzer": [
     [
@@ -5367,7 +5316,7 @@
    ]
   },
   "path": "both",
-  "reason": "The reader models MERGE only in some forms (#585) and keeps this one opaque: it withholds the target and the UPDATE event, so the 'changes rows' caution the old extraction gave is no longer raised for this script (tracked in #668; see also #585). PostgreSQL 16.14 parses it (SQLSTATE 42P01 at run time).",
+  "reason": "The reader models MERGE only in some forms (#585) and keeps this one opaque: it withholds the target and the UPDATE event, so the 'changes rows' caution the old extraction gave is no longer raised for this script (a qualified SET target such as u.email reads as a subfield of a column named u, so the assignment is not named; see also #585). PostgreSQL 16.14 parses it (SQLSTATE 42P01 at run time).",
   "sql": "MERGE INTO t USING s ON t.id=s.id WHEN MATCHED THEN UPDATE SET t.x=s.x"
  },
  "9e891064e47f6dd5": {
@@ -5771,25 +5720,30 @@
   },
   "sql": "DROP INDEX IF EXISTS [idx_users_email] ON [dbo].[users]"
  },
- "a8002c57b55ef5d8/hybrid": {
-  "class": "opaque-reader-gap",
+ "a8002c57b55ef5d8/analyzer": {
+  "class": "facts-adds-acted",
   "facts": {
-   "diagnostic": "postgres COPY source or destination is opaque",
-   "kind": "UNKNOWN",
-   "operation": "COPY"
-  },
-  "issue": "#667",
-  "old": {
-   "hybrid": [
+   "events": [
+    "INSERT"
+   ],
+   "kind": "DML",
+   "objects": [
     [
-     "TABLE",
      "items",
-     "public"
+     "TABLE",
+     "altered",
+     null
     ]
-   ]
+   ],
+   "operation": "COPY",
+   "target": "items",
+   "target_sql": "items"
   },
-  "path": "hybrid",
-  "reason": "COPY is read as opaque: a COPY with options, a quoted or dollar-quoted file source, or a column list (not modelled, #667). The reader names no object where the old extraction named TABLE items. PostgreSQL 16.14 parses it (SQLSTATE 42P01 at run time).",
+  "old": {
+   "analyzer": []
+  },
+  "path": "analyzer",
+  "reason": "The old analyzer path named nothing for a COPY that has options or reads STDIN; the reader now reads COPY ... FROM as a load into items (TABLE items altered, INSERT event) and ignores the options, which cannot change the table (dblift/dblift#667). PostgreSQL 16.14 loads the table with each such form. The statements that name a missing table or schema answer 42P01 or 3F000 at run time, after the grammar accepted them.",
   "sql": "COPY items FROM '/tmp/items.csv' (FORMAT CSV, HEADER)"
  },
  "a833b2d10a7035e7/analyzer": {
@@ -5843,25 +5797,34 @@
   "reason": "This kind of object has no SqlObjectType the reader can name (event trigger, foreign data wrapper, server, publication, operator class, text search dictionary, tablespace), so it is opaque where the old extraction named FOREIGN_SERVER srv / UNKNOWN default_schema.srv (#669). PostgreSQL 16.14 parses it (SQLSTATE 42704 at run time).",
   "sql": "CREATE SERVER srv FOREIGN DATA WRAPPER fdw"
  },
- "a9f019ddf96516b9/hybrid": {
-  "class": "opaque-reader-gap",
+ "a9f019ddf96516b9/analyzer": {
+  "class": "facts-adds-acted",
   "facts": {
-   "diagnostic": "postgres COPY source or destination is opaque",
-   "kind": "UNKNOWN",
-   "operation": "COPY"
-  },
-  "issue": "#667",
-  "old": {
-   "hybrid": [
+   "affected_columns": [
+    "id",
+    "val"
+   ],
+   "events": [
+    "INSERT"
+   ],
+   "kind": "DML",
+   "objects": [
     [
-     "TABLE",
      "items",
-     "public"
+     "TABLE",
+     "altered",
+     null
     ]
-   ]
+   ],
+   "operation": "COPY",
+   "target": "items",
+   "target_sql": "items"
   },
-  "path": "hybrid",
-  "reason": "COPY is read as opaque: a COPY with options, a quoted or dollar-quoted file source, or a column list (not modelled, #667). The reader names no object where the old extraction named TABLE items. PostgreSQL 16.14 parses it (SQLSTATE 42P01 at run time).",
+  "old": {
+   "analyzer": []
+  },
+  "path": "analyzer",
+  "reason": "The old analyzer path named nothing for a COPY that has options or reads STDIN; the reader now reads COPY ... FROM as a load into items (TABLE items altered, INSERT event) and ignores the options, which cannot change the table (dblift/dblift#667). PostgreSQL 16.14 loads the table with each such form. The statements that name a missing table or schema answer 42P01 or 3F000 at run time, after the grammar accepted them.",
   "sql": "COPY items (id, val) FROM 'items.csv' (FORMAT CSV, HEADER TRUE, DELIMITER ',', FORCE_NOT_NULL (id, val))"
  },
  "ab280641b39ea839/analyzer": {
@@ -5942,7 +5905,7 @@
    ],
    "operation": "CREATE"
   },
-  "issue": "#666",
+  "issue": "by design: sqlglot has no TABLESPACE clause; docs/sql-parsing/postgresql.md section 12",
   "old": {
    "hybrid": [
     [
@@ -5953,7 +5916,7 @@
    ]
   },
   "path": "hybrid",
-  "reason": "The table carries WITH (fillfactor=70) TABLESPACE ts, which sqlglot parses as a Command: the reader keeps the head identity only as opaque, and the declared columns are not read, where the old extraction named TABLE mixed (#666). PostgreSQL 16.14 parses it (SQLSTATE 42704 at run time).",
+  "reason": "The table carries WITH (fillfactor=70) TABLESPACE ts, which sqlglot parses as a Command: the reader keeps the head identity only as opaque, and the declared columns are not read, and the diagnostic names the TABLESPACE clause, where the old extraction named TABLE mixed. PostgreSQL 16.14 parses it (SQLSTATE 42704 at run time).",
   "sql": "CREATE TABLE MiXed (a int) WITH (fillfactor=70) TABLESPACE ts"
  },
  "adfa881b55d4dbc2/analyzer": {
@@ -6768,7 +6731,7 @@
    ],
    "operation": "CREATE"
   },
-  "issue": "#666",
+  "issue": "by design: sqlglot has no TABLESPACE clause; docs/sql-parsing/postgresql.md section 12",
   "old": {
    "hybrid": [
     [
@@ -6779,7 +6742,7 @@
    ]
   },
   "path": "hybrid",
-  "reason": "The table carries WITH (fillfactor=70) TABLESPACE ts, which sqlglot parses as a Command: the reader keeps the head identity only as opaque, and the declared columns are not read, where the old extraction named TABLE mixed (#666). PostgreSQL 16.14 parses it (SQLSTATE 3F000 at run time).",
+  "reason": "The table carries WITH (fillfactor=70) TABLESPACE ts, which sqlglot parses as a Command: the reader keeps the head identity only as opaque, and the declared columns are not read, and the diagnostic names the TABLESPACE clause, where the old extraction named TABLE mixed. PostgreSQL 16.14 parses it (SQLSTATE 3F000 at run time).",
   "sql": "CREATE TABLE \"S\".MiXed (a int) WITH (fillfactor=70) TABLESPACE ts"
  },
  "bcdb4a2a108573f6/analyzer": {
@@ -6881,30 +6844,37 @@
   "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"SELECT\"); it is a statement of another dialect or an incomplete fragment harvested into the corpus and never runs on this family; the reader names PROCEDURE GetEmployeeCount (created), TABLE total (referenced), TABLE employees (referenced) and the old extraction named PROCEDURE getemployeecount, a difference with no consequence because the engine never runs the text. CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
   "sql": "CREATE OR REPLACE PROCEDURE GetEmployeeCount(OUT total INTEGER)\n        LANGUAGE SQL\n        BEGIN\n            SELECT CO"
  },
- "bf40b40690891551/hybrid": {
-  "class": "opaque-reader-gap",
+ "bf40b40690891551/analyzer": {
+  "class": "facts-adds-acted",
   "facts": {
-   "diagnostic": "postgres CTE source scopes or effects are opaque to statement facts",
-   "kind": "UNKNOWN",
+   "cte_writes": [
+    {
+     "affected_columns": [],
+     "events": [
+      "INSERT"
+     ],
+     "operation": "INSERT",
+     "predicate": null,
+     "target": "src",
+     "target_sql": "src"
+    }
+   ],
+   "kind": "DML",
+   "objects": [
+    [
+     "src",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
    "operation": "SELECT"
   },
-  "issue": "#668",
   "old": {
-   "hybrid": [
-    [
-     "TABLE",
-     "x",
-     "public"
-    ],
-    [
-     "TABLE",
-     "src",
-     "public"
-    ]
-   ]
+   "analyzer": []
   },
-  "path": "hybrid",
-  "reason": "A data-changing CTE keeps the whole statement opaque (#584): the reader names nothing where the old extraction named TABLE x, TABLE src, and the 'changes rows' caution is lost (tracked in #668). PostgreSQL 16.14 parses it (SQLSTATE 42P01 at run time).",
+  "path": "analyzer",
+  "reason": "The statement writes TABLE src through a CTE (INSERT, INSERT event in cte_writes) under an outer SELECT, which makes the statement data-changing (kind DML); the old analyzer path refused CTE-led statements and named nothing. PostgreSQL 16.14 parses and runs it (42P01 here only because the tables do not exist), dblift/dblift#668.",
   "sql": "WITH x AS (INSERT INTO src VALUES (99) RETURNING id) SELECT * FROM x"
  },
  "c054832f2f1c9c89/hybrid": {
@@ -7582,10 +7552,24 @@
   "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at end of input); it is a truncated statement harvested into the corpus and never runs on this family; the reader names TABLE test_table (altered) where the old extraction named nothing, which costs nothing because the engine never runs the text. CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
   "sql": "INSERT INTO test_table VALUES"
  },
- "d1bf1319e1501eaa": {
-  "class": "dml-differs",
+ "d1bf1319e1501eaa/analyzer": {
+  "class": "facts-adds-acted",
   "facts": {
-   "diagnostic": "postgres CTE source scopes or effects are opaque to statement facts",
+   "cte_writes": [
+    {
+     "affected_columns": [],
+     "events": [
+      "DELETE"
+     ],
+     "operation": "DELETE",
+     "predicate": "id = 1",
+     "target": "src",
+     "target_sql": "src"
+    }
+   ],
+   "events": [
+    "INSERT"
+   ],
    "kind": "DML",
    "objects": [
     [
@@ -7593,33 +7577,23 @@
      "TABLE",
      "altered",
      null
+    ],
+    [
+     "src",
+     "TABLE",
+     "altered",
+     null
     ]
    ],
-   "operation": "INSERT"
+   "operation": "INSERT",
+   "target": "app_logs",
+   "target_sql": "app_logs"
   },
-  "issue": "#668",
   "old": {
-   "analyzer": [],
-   "hybrid": [
-    [
-     "TABLE",
-     "app_logs",
-     "public"
-    ],
-    [
-     "TABLE",
-     "deleted",
-     "public"
-    ],
-    [
-     "TABLE",
-     "src",
-     "public"
-    ]
-   ]
+   "analyzer": []
   },
-  "path": "both",
-  "reason": "A data-changing CTE makes the reader withhold the outer target and event (#584): it names app_logs as altered but not the rows written inside the CTE (src), and the 'changes rows' caution the old extraction gave is no longer raised for this script (tracked in #668). PostgreSQL 16.14 parses it (SQLSTATE 42P01 at run time).",
+  "path": "analyzer",
+  "reason": "The statement writes TABLE src through a CTE (DELETE, DELETE event in cte_writes) and feeds an INSERT into TABLE app_logs, which is the statement's own target; the old analyzer path refused CTE-led statements and named nothing. PostgreSQL 16.14 parses and runs it (42P01 here only because the tables do not exist), dblift/dblift#668.",
   "sql": "WITH deleted AS (DELETE FROM src WHERE id = 1 RETURNING id) INSERT INTO app_logs(msg) SELECT 'removed ' || id FROM delet"
  },
  "d1d40f46504431ff/hybrid": {
@@ -8090,25 +8064,30 @@
   },
   "sql": "EXEC SQL CREATE TABLE t (id INTEGER)"
  },
- "dc02a1b38d550430/hybrid": {
-  "class": "opaque-reader-gap",
+ "dc02a1b38d550430/analyzer": {
+  "class": "facts-adds-acted",
   "facts": {
-   "diagnostic": "postgres COPY source or destination is opaque",
-   "kind": "UNKNOWN",
-   "operation": "COPY"
-  },
-  "issue": "#589",
-  "old": {
-   "hybrid": [
+   "events": [
+    "INSERT"
+   ],
+   "kind": "DML",
+   "objects": [
     [
-     "TABLE",
      "items",
-     "public"
+     "TABLE",
+     "altered",
+     null
     ]
-   ]
+   ],
+   "operation": "COPY",
+   "target": "items",
+   "target_sql": "items"
   },
-  "path": "hybrid",
-  "reason": "COPY is read as opaque: the STDIN/STDOUT or query form (by design, #589). The reader names no object where the old extraction named TABLE items. PostgreSQL 16.14 parses it (SQLSTATE 42P01 at run time).",
+  "old": {
+   "analyzer": []
+  },
+  "path": "analyzer",
+  "reason": "The old analyzer path named nothing for a COPY that has options or reads STDIN; the reader now reads COPY ... FROM as a load into items (TABLE items altered, INSERT event) and ignores the options, which cannot change the table (dblift/dblift#667). PostgreSQL 16.14 loads the table with each such form. The statements that name a missing table or schema answer 42P01 or 3F000 at run time, after the grammar accepted them.",
   "sql": "COPY items FROM STDIN"
  },
  "dc45fd5a8a55ba47/analyzer": {
@@ -8213,27 +8192,6 @@
    "yugabytedb 2026.1.2": "42601"
   },
   "sql": "CREATE STOGROUP my_sg VOLUMES ('vol1')"
- },
- "dfc14017af4622e1/hybrid": {
-  "class": "opaque-reader-gap",
-  "facts": {
-   "diagnostic": "postgres COPY source or destination is opaque",
-   "kind": "UNKNOWN",
-   "operation": "COPY"
-  },
-  "issue": "#589",
-  "old": {
-   "hybrid": [
-    [
-     "TABLE",
-     "items",
-     "public"
-    ]
-   ]
-  },
-  "path": "hybrid",
-  "reason": "COPY is read as opaque: the STDIN/STDOUT or query form (by design, #589). The reader names no object where the old extraction named TABLE items. PostgreSQL 16.14 parses it (SQLSTATE 42P01 at run time).",
-  "sql": "COPY items TO STDOUT"
  },
  "e06caee8548e27e8/hybrid": {
   "class": "opaque-reader-gap",
@@ -8791,25 +8749,30 @@
   "reason": "A `{...}` template brace continues the name with text the engine cannot resolve, so the reader names nothing; the former path named the text before the brace (for `${...}`, the `$`). This is a documented boundary, not a claim that PostgreSQL rejects the text.",
   "sql": "CREATE TRIGGER tr{c} AFTER INSERT ON t BEGIN SELECT 1"
  },
- "f368d68610a0cc28/hybrid": {
-  "class": "opaque-reader-gap",
+ "f368d68610a0cc28/analyzer": {
+  "class": "facts-adds-acted",
   "facts": {
-   "diagnostic": "postgres COPY source or destination is opaque",
-   "kind": "UNKNOWN",
-   "operation": "COPY"
-  },
-  "issue": "#667",
-  "old": {
-   "hybrid": [
+   "events": [
+    "INSERT"
+   ],
+   "kind": "DML",
+   "objects": [
     [
-     "TABLE",
      "items",
-     "public"
+     "TABLE",
+     "altered",
+     null
     ]
-   ]
+   ],
+   "operation": "COPY",
+   "target": "items",
+   "target_sql": "items"
   },
-  "path": "hybrid",
-  "reason": "COPY is read as opaque: a COPY with options, a quoted or dollar-quoted file source, or a column list (not modelled, #667). The reader names no object where the old extraction named TABLE items. PostgreSQL 16.14 parses it (SQLSTATE 42P01 at run time).",
+  "old": {
+   "analyzer": []
+  },
+  "path": "analyzer",
+  "reason": "The old analyzer path named nothing for a COPY with a E'...' source; the reader reads COPY ... FROM as a load into TABLE items (altered, INSERT event) and ignores the options (dblift/dblift#667). PostgreSQL 16.14 loads the table with this form (checked).",
   "sql": "COPY items FROM E'items.csv'"
  },
  "f36de5bceaf04af3/analyzer": {
@@ -9104,25 +9067,34 @@
   "reason": "This kind of object has no SqlObjectType the reader can name (event trigger, foreign data wrapper, server, publication, operator class, text search dictionary, tablespace), so it is opaque where the old extraction named UNKNOWN default_schema.d (#669). PostgreSQL 16.14 runs it.",
   "sql": "CREATE TEXT SEARCH DICTIONARY d (TEMPLATE = simple)"
  },
- "fe8abe980b4b9521/hybrid": {
-  "class": "opaque-reader-gap",
+ "fe8abe980b4b9521/analyzer": {
+  "class": "facts-adds-acted",
   "facts": {
-   "diagnostic": "postgres COPY source or destination is opaque",
-   "kind": "UNKNOWN",
-   "operation": "COPY"
-  },
-  "issue": "#667",
-  "old": {
-   "hybrid": [
+   "affected_columns": [
+    "id",
+    "Item Value"
+   ],
+   "events": [
+    "INSERT"
+   ],
+   "kind": "DML",
+   "objects": [
     [
-     "TABLE",
      "Order Items",
+     "TABLE",
+     "altered",
      "Sales"
     ]
-   ]
+   ],
+   "operation": "COPY",
+   "target": "Sales.Order Items",
+   "target_sql": "\"Sales\".\"Order Items\""
   },
-  "path": "hybrid",
-  "reason": "COPY is read as opaque: a COPY with options, a quoted or dollar-quoted file source, or a column list (not modelled, #667). The reader names no object where the old extraction named TABLE Order Items. PostgreSQL 16.14 parses it (SQLSTATE 3F000 at run time).",
+  "old": {
+   "analyzer": []
+  },
+  "path": "analyzer",
+  "reason": "The old analyzer path named nothing for a COPY that has options or reads STDIN; the reader now reads COPY ... FROM as a load into \"Sales\".\"Order Items\" (TABLE \"Sales\".\"Order Items\" altered, INSERT event) and ignores the options, which cannot change the table (dblift/dblift#667). PostgreSQL 16.14 loads the table with each such form. The statements that name a missing table or schema answer 42P01 or 3F000 at run time, after the grammar accepted them.",
   "sql": "COPY \"Sales\".\"Order Items\" (id, \"Item Value\") FROM '/tmp/items.csv' (FORMAT CSV, FORCE_NOT_NULL (id))"
  },
  "fe8bcbc91bd52360/analyzer": {
