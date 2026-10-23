@@ -116,24 +116,6 @@ def test_execution_tracking_records_no_parent_target_after_opt_out(monkeypatch):
     assert [obj["object_name"] for obj in objects] == ["zz"]
 
 
-def test_deprecated_dialect_keyword_routes_through_the_named_plugin(monkeypatch):
-    own_reader(monkeypatch, "cockroachdb")
-
-    with pytest.warns(DeprecationWarning, match="quirks="):
-        assert statement_dml_table(UPDATE, dialect="cockroachdb") == "from_reader"
-    with pytest.warns(DeprecationWarning, match="quirks="):
-        assert dml_where_predicate(DELETE, sqlglot_dialect="postgres") == "id = 1"
-
-
-def test_quirks_wins_over_a_deprecated_keyword(monkeypatch):
-    quirks = own_reader(monkeypatch, "cockroachdb")
-
-    with pytest.warns(DeprecationWarning, match="quirks="):
-        mutation = analyze_dml(UPDATE, quirks=quirks, sqlglot_dialect="mysql")
-
-    assert mutation.table == "from_reader"
-
-
 FIVE = {
     "analyze_dml",
     "dml_where_predicate",
@@ -199,7 +181,7 @@ def test_no_src_caller_routes_facts_by_name():
     assert offenders == []
 
 
-def test_dml_analysis_looks_a_plugin_up_by_name_only_for_the_deprecated_keywords():
+def test_dml_analysis_does_not_look_up_a_plugin_by_dialect_name():
     root = pathlib.Path(dblift.__file__).parent
     tree = ast.parse((root / "db" / "dml_analysis.py").read_text(encoding="utf-8"))
     lookups = []
@@ -207,16 +189,4 @@ def test_dml_analysis_looks_a_plugin_up_by_name_only_for_the_deprecated_keywords
         for node in ast.walk(func):
             if isinstance(node, ast.Call) and getattr(node.func, "attr", "") == "get_quirks":
                 lookups.append(func.name)
-    assert lookups == ["_quirks_for"]
-
-
-def test_deprecated_keyword_naming_no_plugin_keeps_the_sqlglot_grammar():
-    bigquery = "UPDATE `s`.`t` SET a = 1 WHERE b = 2"
-    with pytest.warns(DeprecationWarning):
-        assert analyze_dml(bigquery, sqlglot_dialect="bigquery").table == "s.t"
-    with pytest.warns(DeprecationWarning):
-        assert dml_where_predicate(bigquery, sqlglot_dialect="spark") == "b = 2"
-    with pytest.warns(DeprecationWarning):
-        assert (
-            statement_dml_table("WITH x AS (SELECT 1) UPDATE t SET a = 1", dialect="trino") == "t"
-        )
+    assert lookups == []

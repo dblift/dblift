@@ -7,8 +7,6 @@ from pathlib import Path
 
 import pytest
 
-from dblift.core.migration import sql as migration_sql
-
 pytestmark = pytest.mark.unit
 
 SRC = Path(__file__).resolve().parents[5] / "dblift"
@@ -18,13 +16,6 @@ CLASSIFIERS = {
     "_is_comment_only_statement",
     "_comment_only",
     "is_batch_separator",
-}
-# (path under dblift/, enclosing function, classifier): the only calls left, all of them for a
-# parser that returns strings and not records, plus the deprecated public helper's own body.
-ADAPTER = {
-    ("core/migration/sql/statement_splitter.py", "_records_of_strings", "_comment_only"),
-    ("core/migration/sql/statement_splitter.py", "_records_of_strings", "is_batch_separator"),
-    ("core/migration/sql/execution_statement.py", "is_comment_only_statement", "_comment_only"),
 }
 
 
@@ -80,10 +71,8 @@ def test_the_two_hooks_and_the_keywords_are_gone():
     assert removed_names_used(SRC) == []
 
 
-def test_only_the_adapter_calls_a_text_classifier():
-    outside = {c for c in classifier_calls(SRC) if c not in ADAPTER}
-    # A function nested in the adapter is reported under its own name; the set is the claim.
-    assert outside == set()
+def test_no_text_classifier_calls_remain():
+    assert classifier_calls(SRC) == set()
 
 
 def test_the_scans_see_a_planted_defect(tmp_path):
@@ -110,18 +99,4 @@ def test_an_allowed_call_is_allowed_only_at_its_own_path(tmp_path):
     (other / "statement_splitter.py").write_text(
         "def _records_of_strings(t):\n    return _comment_only(t)\n"
     )
-    assert classifier_calls(tmp_path) - ADAPTER != set()
-
-
-def test_the_helper_is_deprecated_and_still_answers():
-    with pytest.warns(DeprecationWarning, match="StatementSplitter"):
-        assert migration_sql.is_comment_only_statement("-- x") is True
-    with pytest.warns(DeprecationWarning):
-        assert migration_sql.is_comment_only_statement("SELECT 1") is False
-
-
-def test_the_helper_takes_no_blanks_or_hash_keyword():
-    with pytest.raises(TypeError):
-        migration_sql.is_comment_only_statement("-- x", blanks=" ")  # type: ignore[call-arg]
-    with pytest.raises(TypeError):
-        migration_sql.is_comment_only_statement("# x", hash_comments=True)  # type: ignore[call-arg]
+    assert classifier_calls(tmp_path) != set()

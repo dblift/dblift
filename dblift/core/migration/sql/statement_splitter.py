@@ -3,22 +3,20 @@
 from __future__ import annotations
 
 import logging as _logging
-from typing import Callable, List, Optional, Set, Tuple, TypeVar, Union
+from typing import Callable, List, Optional, Tuple, TypeVar, Union
 
-from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
+from dblift.core.exceptions import (
+    UnsafeStatementSplitError,
+    UnsupportedDialectError,
+    UnsupportedMetaCommandError,
+)
 from dblift.core.logger import Log
-from dblift.core.migration.sql.execution_statement import _comment_only
 from dblift.core.sql_parser._deprecation import internal_parser_construction, warn_direct_parser
 from dblift.core.sql_parser.lexical_engine import LexicalEngine
-from dblift.core.sql_parser.parser_factory import SqlParserFactory
-from dblift.core.sql_parser.parser_interface import SqlParserInterface
 from dblift.core.sql_parser.statement import Statement, execution_strings
 from dblift.db.provider_registry import ProviderRegistry
 
 _T = TypeVar("_T")
-
-# Dialects whose parser returns strings only, already told to return records.
-_ANNOUNCED: Set[str] = set()
 
 
 class StatementSplitter:
@@ -29,23 +27,12 @@ class StatementSplitter:
         dialect: str,
         logger: Optional[Union[Log, _logging.Logger]] = None,
     ):
-        """Resolve the dialect parser when the first script is split."""
+        """Bind the dialect's lexical spec; a dialect without one is refused when it splits."""
         self.dialect = dialect.lower()
         self.logger = logger
         spec = ProviderRegistry.get_quirks(self.dialect).lexical_spec()
         self._engine = LexicalEngine(spec) if spec is not None else None
-        self.parser_factory = None
-        if self._engine is None:
-            with internal_parser_construction():
-                self.parser_factory = SqlParserFactory(self.dialect, parser_type="regex")
-        self._parser: Optional[SqlParserInterface] = None
         self._last: Optional[Tuple[str, bool, List[Statement]]] = None
-
-    def _record_parser(self) -> SqlParserInterface:
-        if self._parser is None:
-            assert self.parser_factory is not None
-            self._parser = self.parser_factory.get_parser()
-        return self._parser
 
     def _refusing(self, split: Callable[[], _T]) -> _T:
         """Run *split*; a refusal passes through, any other failure becomes one."""
@@ -63,7 +50,7 @@ class StatementSplitter:
         if strict_tokenizer is not None:
             warn_direct_parser("strict_tokenizer")
         strict = bool(strict_tokenizer)
-        records = self._split(sql, strict)
+        records = self._split(sql)
         self._last = (sql, strict, records)
         return list(records)
 
@@ -82,17 +69,12 @@ class StatementSplitter:
         with internal_parser_construction():
             return self.split(sql, strict_tokenizer=strict)
 
-    def _split(self, sql: str, strict_tokenizer: bool) -> List[Statement]:
+    def _split(self, sql: str) -> List[Statement]:
         engine = self._engine
         if engine is not None:
             return self._refusing(lambda: engine.split(sql))
-        parser = self._record_parser()
-        if hasattr(parser, "split"):
-            return self._refusing(lambda: list(parser.split(sql)))
-        return self._refusing(
-            lambda: self._records_of_strings(
-                parser.split_statements(sql, strict_tokenizer=strict_tokenizer)
-            )
+        raise UnsupportedDialectError(
+            f"{self.dialect} has no lexical spec: a dialect is split by its LexicalSpec only"
         )
 
     def split_statements(self, sql: str, *, strict_tokenizer: Optional[bool] = None) -> List[str]:
@@ -101,25 +83,3 @@ class StatementSplitter:
             warn_direct_parser("strict_tokenizer")
         with internal_parser_construction():
             return execution_strings(self.split(sql, strict_tokenizer=bool(strict_tokenizer)))
-
-    def _records_of_strings(self, strings: List[str]) -> List[Statement]:
-        """Records for a parser that returns strings only, minus what execution used to skip.
-
-        A parser without records leaves the empty, comment-only and batch-separator strings to
-        the caller; they are dropped here so that every dialect hands over statements only.
-        """
-        if self.dialect not in _ANNOUNCED:
-            _ANNOUNCED.add(self.dialect)
-            _logging.getLogger(__name__).warning(
-                "The %s statement parser returns strings only; return Statement records from "
-                "split() so that dblift does not have to guess which strings are statements.",
-                self.dialect,
-            )
-        quirks = ProviderRegistry.get_quirks(self.dialect)
-        return [
-            Statement(text=text, line=1, terminator=None)
-            for text in strings
-            if text.strip()
-            and not quirks.is_batch_separator(text.strip())
-            and not _comment_only(text)
-        ]
