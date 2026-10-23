@@ -101,7 +101,7 @@ class TestGenericDdlBracketDoubling(unittest.TestCase):
 
     def test_escaped_bracket_in_index_target_is_unescaped(self):
         obj = _only(self.analyzer, "CREATE INDEX idx_x ON [dbo].[foo]]bar]([email]);")
-        self.assertEqual(obj["object_name"], "idx_x")
+        self.assertEqual(obj["object_name"], "dbo.idx_x")
         self.assertEqual(obj["on_object"], "dbo.foo]bar")
 
     def test_long_index_target_does_not_collapse_to_its_schema(self):

@@ -11,6 +11,7 @@ from unittest.mock import MagicMock
 import pytest
 
 import dblift.core.migration.sql.lint as lint
+import dblift.core.migration.sql.script_analysis as script_analysis
 from dblift.core.migration.migration_types import MigrationType
 from dblift.core.migration.sql.lint import lint_pending_scripts
 from dblift.core.migration.sql.script_analysis import (

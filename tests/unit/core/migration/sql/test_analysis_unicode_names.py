@@ -107,10 +107,9 @@ def test_analysis_of_a_name_that_ends_its_statement_names_what_the_engine_reads(
 
 
 @pytest.mark.parametrize("dialect", ("postgresql", "mysql", "redshift"))
-def test_analysis_respects_the_flag_the_parser_set_for_a_cut_name(dialect):
+def test_analysis_names_a_non_ascii_letter_name_whole(dialect):
     analysis = analyse_script("DROP TABLE tété;", dialect)
-    assert not [obj for stmt in analysis.statements for obj in stmt.objects]
-    assert analysis.cautions and not any("tété" in c.reason for c in analysis.cautions)
+    assert [obj.name for stmt in analysis.statements for obj in stmt.objects] == ["tété"]
 
 
 @pytest.mark.parametrize("dialect", LEGACY)
