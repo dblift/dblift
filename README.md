@@ -133,7 +133,7 @@ Alembic is the right choice when your schema is driven by SQLAlchemy models and 
 
 20 engines. SQLite needs no driver extra; every other engine has its own, e.g. `pip install "dblift[cli,analysis,postgresql]"`.
 
-A bare `pip install dblift` is the lightweight library install (PyYAML and SQLAlchemy only). `dblift[cli]` adds the command line (Rich, Jinja2), `dblift[analysis]` adds SQL analysis (SQLGlot, used by default by the command line and the Python API; the Python API can run without it in execution-only mode, `analysis_mode="execution"`), and `dblift[all]` installs both plus every database driver.
+A bare `pip install dblift` is the lightweight library install (PyYAML and SQLAlchemy only). `dblift[cli]` adds the command line (Rich, Jinja2), `dblift[analysis]` adds SQL analysis (SQLGlot, used by the command line; the Python API runs without it by default, in execution-only mode, and uses it when you pass `analysis_mode="full"`), and `dblift[all]` installs both plus every database driver.
 
 PostgreSQL · MySQL · MariaDB · SQL Server · Oracle · DB2 · SQLite · DuckDB · CockroachDB · Redshift · Snowflake · Neon · Supabase · Aurora PostgreSQL · AlloyDB · YugabyteDB · TimescaleDB · Citus · Azure Cosmos DB · MongoDB
 

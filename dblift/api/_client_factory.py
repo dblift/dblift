@@ -15,7 +15,7 @@ from dblift.config import DbliftConfig
 from dblift.config.config_builder import ConfigBuilder
 from dblift.config.database_config import BaseDatabaseConfig
 from dblift.config.errors import ConfigurationError
-from dblift.config.path_anchoring import anchor_config_paths
+from dblift.config.path_anchoring import anchor_config_paths, is_derived_log_dir
 from dblift.core.logger import DbliftLogger, Log, LogFormat, LogLevel, NullLog
 from dblift.core.migration.executor.migration_executor import require_analysis_support
 from dblift.db.native_connection_manager import NativeConnectionManager
@@ -108,7 +108,10 @@ def _logging_requested(
         return True
     if any(getattr(config, name, None) for name in ("log_level", "log_format", "log_file")):
         return True
-    if _configured_log_directory(config) or effective_log_file_from_config(config):
+    log_dir = _configured_log_directory(config)
+    if (log_dir and not is_derived_log_dir(config, log_dir)) or effective_log_file_from_config(
+        config
+    ):
         return True
     section_level = _section_level(config)
     return section_level is not None and str(section_level).upper() != "INFO"
