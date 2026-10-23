@@ -119,6 +119,17 @@ separators. `split_statements` is the list of strings execution sends, derived f
 The records come from the engine driven by the plugin's `LexicalSpec`; there is no other way to
 split a script (no string-returning or record-returning parser class is read).
 
+## Judging a migration at its end
+
+Some servers accept a statement now and report its failure later. `BaseProvider` has a no-op hook,
+`finish_migration_statements(statements)`, that the migration runner calls once after the last
+statement of every migration and callback, with the statements it just ran. A provider that needs
+a verdict at that point checks there and raises `ExecutionError` to fail the migration; raise
+`StatementVerdictError(message, statement_index)` to name the statement the failure belongs to. Any
+error the hook raises is recorded as a failed migration, as a statement failure is. The Oracle
+provider uses it for PL/SQL units that compile with errors. `reset_schema_cache()` runs at the start
+of each migration and callback, so state kept for the hook is cleared there.
+
 ## Step 3: Install & discover
 
 ```bash
