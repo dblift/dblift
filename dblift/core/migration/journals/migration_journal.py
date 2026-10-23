@@ -4,7 +4,7 @@ import re
 import threading
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 
 class EntryType(Enum):
@@ -17,6 +17,9 @@ class EntryType(Enum):
     MIGRATION_COMPLETE = "MIGRATION_COMPLETE"
     MIGRATION_FAILED = "MIGRATION_FAILED"
     OBJECT_CHANGE = "OBJECT_CHANGE"
+
+
+_END_TYPES = (EntryType.MIGRATION_COMPLETE, EntryType.MIGRATION_FAILED)
 
 
 class JournalEntry:
@@ -88,6 +91,10 @@ class MigrationJournal:
 
         # Map of migration_id to journal entries for quick lookup
         self.migration_journals: Dict[str, List[JournalEntry]] = {}
+
+        # Slots (see _slot) already held per migration, so _write_entry finds a
+        # repeated one without scanning the list.
+        self._journal_slots: Dict[str, Set[Tuple[object, ...]]] = {}
 
     def start_migration(self, migration_id: str, details: Optional[Dict[str, Any]] = None) -> None:
         """Start tracking a new migration
@@ -225,6 +232,15 @@ class MigrationJournal:
 
         self._write_entry(entry)
 
+    @staticmethod
+    def _slot(entry: JournalEntry) -> Optional[Tuple[object, ...]]:
+        """Key under which an entry replaces an earlier one, or None if it never does."""
+        if entry.entry_type in _END_TYPES:
+            return ("end",)
+        if entry.entry_type in (EntryType.STATEMENT_START, EntryType.STATEMENT_COMPLETE):
+            return (entry.entry_type, entry.statement_index)
+        return None
+
     def _write_entry(self, entry: JournalEntry) -> None:
         """Store entry in memory
 
@@ -242,28 +258,20 @@ class MigrationJournal:
             if entry.migration_id not in self.migration_journals:
                 self.migration_journals[entry.migration_id] = []
 
-            # If this is a migration end entry, remove any existing end entries
-            if entry.entry_type in [EntryType.MIGRATION_COMPLETE, EntryType.MIGRATION_FAILED]:
-                self.migration_journals[entry.migration_id] = [
-                    e
-                    for e in self.migration_journals[entry.migration_id]
-                    if e.entry_type
-                    not in [EntryType.MIGRATION_COMPLETE, EntryType.MIGRATION_FAILED]
-                ]
-            # For statement entries, ensure we don't have duplicates
-            elif entry.entry_type in [EntryType.STATEMENT_START, EntryType.STATEMENT_COMPLETE]:
-                # Remove any existing entries for this statement index
-                self.migration_journals[entry.migration_id] = [
-                    e
-                    for e in self.migration_journals[entry.migration_id]
-                    if not (
-                        e.entry_type == entry.entry_type
-                        and e.statement_index == entry.statement_index
-                    )
-                ]
+            journal = self.migration_journals[entry.migration_id]
+
+            # A migration keeps one end entry, a statement index one start and one
+            # complete entry. Scan the list only when the slot is already taken.
+            slot = self._slot(entry)
+            if slot is not None:
+                slots = self._journal_slots.setdefault(entry.migration_id, set())
+                if slot in slots:
+                    journal = [e for e in journal if self._slot(e) != slot]
+                    self.migration_journals[entry.migration_id] = journal
+                slots.add(slot)
 
             # Add new entry to migration journal
-            self.migration_journals[entry.migration_id].append(entry)
+            journal.append(entry)
 
     def get_migration_journal(self, migration_id: str) -> List[JournalEntry]:
         """Get all journal entries for a migration

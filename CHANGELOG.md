@@ -335,6 +335,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `docs/sql-parsing/oracle.md` section 13.
 ### Fixed
 
+- **Large migration scripts now run in time proportional to their size.** Recording each statement in the
+  run journal re-scanned every statement already recorded, so a script's run time grew with the square of its
+  statement count: a SQLite script of 32 000 `INSERT` statements took about 90 seconds, and now takes about 17
+  (8 000 statements: 8 s to 4 s). The history rows and reported results are unchanged.
+
 - **A PostgreSQL statement with a `WITH` now names every table it changes.** `WITH d AS (DELETE FROM src
   ...) INSERT INTO log SELECT * FROM d`, `INSERT INTO t WITH x AS (...) SELECT ...` and `WITH u AS (UPDATE a
   ...) DELETE FROM b ...` used to leave the outer target and its events unread behind a diagnostic. The statement
