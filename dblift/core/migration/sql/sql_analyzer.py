@@ -37,7 +37,6 @@ DEFAULT_SCHEMA_PLACEHOLDER = "default_schema"
 # A SQL identifier: quoted ("x", [x], `x`) or bare, optionally schema-qualified.
 # The quoted alternatives come from dblift.core.sql_parser.dialects.identifier_tokens,
 # the shared (escape-aware) definition also used by ``SqlServerConfig.object_patterns``.
-# The undo script generator imports these two patterns to recognise object references.
 _IDENTIFIER = rf"(?:{DOUBLE_QUOTED_IDENTIFIER}|{BRACKET_IDENTIFIER}|{BACKTICK_IDENTIFIER}|[\w$#]+)"
 _QUALIFIED_NAME = rf"{_IDENTIFIER}(?:\s*\.\s*{_IDENTIFIER})*"
 

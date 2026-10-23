@@ -116,8 +116,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   profile, login, default, assembly, macro, nickname, library, group); when the statement's name
   could not be read, one holding `CASCADE` or `FORCE` is always a review (a named `DROP ... CASCADE`
   is judged as before).
-  Newly activated Snowflake statements require manual undo review instead of automatic text
-  reversal, and `validate-sql` no longer reports a script as invalid because the grammar cannot
+  `validate-sql` no longer reports a script as invalid because the grammar cannot
   parse a statement.
 - **Redshift reads statement facts from the SQL grammar.** `info --format json`,
   `migrate --dry-run`, object tracking during `migrate`, data-change analysis and lint read each
@@ -127,8 +126,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the commented relation, `CREATE`/`DROP SCHEMA` by a plain schema name, and `CREATE`/`DROP
   MATERIALIZED VIEW` as a materialized view. Statements Redshift-only DDL cannot be proven for
   (`CREATE EXTERNAL SCHEMA`, `CREATE LIBRARY`, `UNLOAD`, `GRANT`/`REVOKE` targets, a schema name
-  with a database part, a bracketed name) are reported as unread instead of guessed. Newly
-  activated Redshift statements require manual undo review instead of automatic text reversal.
+  with a database part, a bracketed name) are reported as unread instead of guessed.
 - **YugabyteDB index facts remain opaque when `NONCONCURRENTLY` follows `CREATE [UNIQUE] INDEX`.**
   Its reader no longer reports that modifier as an index name or guesses the affected table.
 - **Db2 CALL facts report unknown procedure effects.** The referenced routine remains named,
@@ -138,8 +136,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   its tokens instead of keeping the full stream.
 - **SQL Server reads statement facts through the T-SQL grammar.** Object extraction, script
   analysis and DML helpers use the plugin's facts reader after lexical `GO` batch splitting.
-  Unread names and effects are reported as opaque rather than guessed. Newly activated SQL
-  Server statements require manual undo review instead of automatic text reversal.
+  Unread names and effects are reported as opaque rather than guessed.
 - **MySQL and MariaDB read statement facts from the SQL grammar.** `info --format json`,
   `migrate --dry-run`, object tracking during `migrate`, data-change analysis and lint read each
   statement's kind, objects, target and predicate from the sqlglot AST after the client rules split

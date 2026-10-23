@@ -1,7 +1,5 @@
 """Migration script resources are resolved by ScriptManager."""
 
-from pathlib import Path
-
 import pytest
 
 from dblift.core.logger import NullLog
@@ -37,7 +35,7 @@ def test_manager_reads_and_parses_tagged_resource_once_without_model_services(
     monkeypatch.setattr(Migration, "_parse_filename", forbidden)
 
     manager = manager_module.MigrationScriptManager(NullLog())
-    migration = manager.load_migration_script(source, require_versioned=True)
+    migration = manager.load_migration_script(source)
     assert migration.path == source
     assert migration.content == "CREATE TABLE example (id INT);"
     assert migration.version == "1.2"
@@ -51,14 +49,6 @@ def test_manager_uses_configured_encoding(tmp_path):
     sql = "CREATE TABLE example (value TEXT DEFAULT 'café');"
     source.write_bytes(sql.encode("latin-1"))
     manager = manager_module.MigrationScriptManager(NullLog(), script_encoding="latin-1")
-    migration = manager.load_migration_script(source, require_versioned=True)
+    migration = manager.load_migration_script(source)
     assert migration.path == source
     assert migration.content == sql
-
-
-def test_invalid_undo_candidate_is_rejected_before_reading(tmp_path):
-    source = tmp_path / "Vbad.sql"
-    source.write_bytes(b"\xff")
-    manager = manager_module.MigrationScriptManager(NullLog())
-    with pytest.raises(ValueError, match="File is not a versioned migration: Vbad.sql"):
-        manager.load_migration_script(source, require_versioned=True)

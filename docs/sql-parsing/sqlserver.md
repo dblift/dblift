@@ -354,9 +354,7 @@ table, or a qualified index name SQLGlot misreads as its owner, is also
 opaque. `MERGE` remains DML with unknown effects; `EXEC` has unknown effects.
 These are reader limits, not assertions
 that SQL Server rejects the statements. An unread statement still keeps a
-leading operation and kind where the text establishes them. Newly activated
-SQL Server statements require a manual undo review; the reader does not
-generate reverse SQL from text.
+leading operation and kind where the text establishes them.
 
 Parsed but unmapped `COPY`, privilege, `COMMENT ON`, `DESCRIBE` and `USE`
 forms also report unread facts; old text-extracted names are not carried forward. The

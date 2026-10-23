@@ -226,11 +226,6 @@ class BaseQuirks:
     #: ``DROP TABLE / VIEW / INDEX / ... IF EXISTS`` is supported.
     #: Oracle has no native ``IF EXISTS``; everyone else does.
     drop_supports_if_exists: bool = False
-    #: ``DROP TABLE`` defaults to ``CASCADE`` (drop dependents).
-    #: PostgreSQL is the historical only-True here. Most other
-    #: dialects either don't support CASCADE in DROP TABLE or default
-    #: to RESTRICT.
-    drop_table_default_cascade: bool = False
     #: ``TINYINT(1)`` is an alias for BOOLEAN (MySQL convention).
     tinyint1_is_boolean: bool = False
     #: SQL literal for ``False`` in DML predicates. Oracle (NUMBER(1)),
