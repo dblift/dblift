@@ -44,6 +44,7 @@ SEVERITY: Dict[str, str] = {
     "truncate": ERROR,
     "drop-unread-object": WARNING,
     "dml-no-where": WARNING,
+    "copy-server-side": WARNING,
     "add-not-null-no-default": WARNING,
     "rename-column": WARNING,
     "rename-table": WARNING,

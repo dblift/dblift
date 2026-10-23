@@ -468,3 +468,17 @@ def test_redshift_leaves_recursive_quoted_and_nested_scopes_unread(sql):
     facts = read_statement_facts(sql, dialect="redshift")
 
     assert facts.diagnostic is not None and facts.diagnostic.startswith("redshift CTE")
+
+
+def test_redshift_folds_case_when_it_checks_a_body_against_later_ctes():
+    sql = "WITH a AS (SELECT * FROM B), b AS (SELECT 1 AS v) INSERT INTO t SELECT * FROM a"
+
+    assert read_statement_facts(sql, dialect="redshift").diagnostic.startswith("redshift CTE")
+
+
+def test_redshift_reads_a_schema_qualified_body_table_named_like_a_later_cte():
+    sql = "WITH a AS (SELECT * FROM public.b), b AS (SELECT 1 AS v) INSERT INTO t SELECT * FROM a"
+
+    facts = read_statement_facts(sql, dialect="redshift")
+    assert facts.diagnostic is None
+    assert facts.objects == _altered("t") + (NamedObject("b", T.TABLE, "referenced", "public"),)

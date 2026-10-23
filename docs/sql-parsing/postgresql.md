@@ -219,7 +219,8 @@ nine family members in §13 (Redshift has its own, see [redshift.md](redshift.md
 the `postgres` branches of `dblift/core/sql_parser/sqlglot_statement_facts.py`. The
 corpus `tests/support/facts_corpus/postgresql.jsonl` and the ledger
 `postgresql.review.json` (every difference against the former extraction,
-explained) are the evidence, and `gated.json` gates the family. Known gaps: dblift/dblift#669 (event trigger, FDW, server, publication, operator class, text
+explained) are the evidence, and `gated.json` gates the family. Known gaps:
+dblift/dblift#669 (event trigger, FDW, server, publication, operator class, text
 search, tablespace objects and `GRANT`/`REVOKE` name nothing). sqlglot 30.23 has no `TABLESPACE`
 clause in its PostgreSQL grammar and returns `CREATE TABLE … TABLESPACE ts`, the same on an index
 and a materialized view, as a command: the object is named from the head and the diagnostic says
@@ -232,10 +233,16 @@ alters `t` with an `INSERT` event, `TO` references it, and every option after th
 table. The source is a literal file, `STDIN` or `STDOUT`, or `PROGRAM '…'`. PostgreSQL 16.14
 accepted each (`COPY ct FROM STDOUT` loads from the client stream and `COPY ct TO STDIN` writes to
 it, so the words are not tied to a direction), refused `FROM "STDIN"`, `FROM PROGRAM` without a
-string, `WITH ()`, a bare `()`, `OIDS`, a second direction and `'a' || '.csv'` with a syntax error (the reader leaves those unread; the rest of the option tail is not validated), and accepted `COPY BINARY t`, which the
-grammar misreads as a table named BINARY: that head is left unread. `COPY … TO PROGRAM`, `COPY … FROM PROGRAM` and `COPY … TO 'file'` run a command or write a file on the database server, which
-the facts mark (`action`) and `validate-sql` reports as a caution. A query source
-(`COPY (SELECT …) TO`) and `COPY … FROM … WHERE` (sqlglot fails to parse it) stay unread.
+string, `WITH ()`, a bare `()`, `OIDS`, a second direction and `'a' || '.csv'` with a syntax
+error (the reader leaves those unread; the rest of the option tail is not validated), and accepted
+`COPY BINARY t`, which the grammar misreads as a table named BINARY: that head is left unread.
+`COPY … TO PROGRAM`, `COPY … FROM PROGRAM` and `COPY … TO 'file'` run a command or write a file on
+the database server: the facts mark them (`action`) and `validate-sql` gives the script a REVIEW
+verdict with the `copy-server-side` finding. Reads through `STDIN`/`STDOUT` and `COPY … FROM 'file'`
+carry no finding.
+A query source
+(`COPY (SELECT …) TO`, with no finding even `TO PROGRAM`) and `COPY … FROM … WHERE` (sqlglot fails
+to parse it) stay unread.
 
 A statement that carries a `WITH` is read with its lexical scope (PostgreSQL 16.14, row counts
 checked): a CTE body sees the CTEs before it, all of them under `RECURSIVE`; a name in the rest of

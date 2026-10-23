@@ -249,7 +249,12 @@ def _analyse(text: str, dialect: str) -> ScriptAnalysis:
         fact_cautions.extend(_cte_write_cautions(analysed.index, facts.cte_writes))
         if facts.action in _SERVER_SIDE_COPY:
             fact_cautions.append(
-                Caution(CHANGES_ROWS, analysed.index, _SERVER_SIDE_COPY[facts.action])
+                Caution(
+                    CHANGES_ROWS,
+                    analysed.index,
+                    _SERVER_SIDE_COPY[facts.action],
+                    "copy-server-side",
+                )
             )
         if facts.error:
             errors.append(facts.error)
