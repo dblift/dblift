@@ -11,17 +11,18 @@ import pytest
 from sqlalchemy import create_engine
 
 from dblift.api import DBLiftClient
+from dblift.core.logger import DbliftLogger
 from tests.support.transaction_scenarios import SCENARIOS, SCRIPT, cases, database_url, read_state
 
 pytest.importorskip("duckdb_engine")
 
 
-def _migrate(engine_name, tmp_path, script):
+def _migrate(engine_name, tmp_path, script, logger=None):
     migrations = tmp_path / "m"
     migrations.mkdir()
     (migrations / SCRIPT).write_text(script)
     engine = create_engine(database_url(engine_name, tmp_path))
-    client = DBLiftClient.from_sqlalchemy(engine, migrations_dir=str(migrations))
+    client = DBLiftClient.from_sqlalchemy(engine, migrations_dir=str(migrations), logger=logger)
     try:
         return client.migrate()
     finally:
@@ -47,7 +48,7 @@ def test_scenario(engine_name, name, tmp_path, caplog):
 @pytest.mark.parametrize("engine_name", ["sqlite", "duckdb"])
 def test_envelope_is_dropped_with_a_warning(engine_name, tmp_path, caplog, capfd):
     with caplog.at_level(logging.INFO):
-        _migrate(engine_name, tmp_path, SCENARIOS["envelope"].script)
+        _migrate(engine_name, tmp_path, SCENARIOS["envelope"].script, logger=DbliftLogger())
     output = caplog.text + "".join(capfd.readouterr())
 
     assert "Dropped BEGIN and COMMIT from V1__x.sql" in output

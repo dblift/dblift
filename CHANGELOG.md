@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Breaking
+
+- **The Python API runs in execution mode by default and is silent.** `DBLiftClient`
+  (the constructor, `from_config`, `from_config_file`, `from_sqlalchemy`), `AsyncDBLiftClient`
+  and `MigrationExecutor` now default to `analysis_mode="execution"`, and a client built with no
+  logging argument writes nothing to stderr or stdout. `logger`, `log_level`, `log_format` or
+  `log_file`, or a logging option in the config (`log_level`, `log_format`, `log_file`,
+  `log_dir`, `logging.file`, `logging.directory`, or a `logging.level` other than `info`),
+  turns logging on; a config `logging.level` of `info` is the default and cannot be told from an
+  unset one, so pass `log_level="INFO"` to get output at that level. `from_sqlalchemy`'s
+  `log_level` and `log_format` now default to `None` (they were `"INFO"` and `"text"`).
+  Migrations still run, validate and undo as before; what changes is that `info()`/dry-run
+  results report pending script analysis as disabled, the journal does not capture object
+  operations, and a `WITH` statement that cannot be classified lexically is refused. Pass
+  `analysis_mode="full"` and install `dblift[analysis]` to keep SQL analysis cautions; an
+  explicit `"full"` without SQLGlot raises `ModuleNotFoundError` naming that extra before any
+  connection is opened or callback runs. The command line is unchanged and still analyses in
+  full, and the Flask and Django integrations and the pytest-dblift fixtures pass
+  `analysis_mode="full"` explicitly.
+
 ### Added
 
 - **`--analysis-mode {full,execution}` on `migrate`, `undo` and `info`.** The default, `full`, is

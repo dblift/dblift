@@ -16,7 +16,8 @@ from dblift.config.config_builder import ConfigBuilder
 from dblift.config.database_config import BaseDatabaseConfig
 from dblift.config.errors import ConfigurationError
 from dblift.config.path_anchoring import anchor_config_paths
-from dblift.core.logger import DbliftLogger, LogFormat, LogLevel
+from dblift.core.logger import DbliftLogger, Log, LogFormat, LogLevel, NullLog
+from dblift.core.migration.executor.migration_executor import require_analysis_support
 from dblift.db.native_connection_manager import NativeConnectionManager
 from dblift.db.provider_registry import ProviderRegistry
 
@@ -91,21 +92,51 @@ def resolve_config_or_raise(
     raise ConfigurationError("DBLiftClient requires an explicit config or a provider with config")
 
 
+def _section_level(config: DbliftConfig) -> Optional[str]:
+    """The ``logging.level`` of ``config``, or ``None`` when it has no logging section."""
+    level = getattr(getattr(config, "logging", None), "level", None)
+    return level if isinstance(level, str) else None
+
+
+def _logging_requested(
+    config: DbliftConfig,
+    log_level: Optional[str],
+    log_format: Optional[str],
+    log_file: Optional[str],
+) -> bool:
+    if any(value is not None for value in (log_level, log_format, log_file)):
+        return True
+    if any(getattr(config, name, None) for name in ("log_level", "log_format", "log_file")):
+        return True
+    if _configured_log_directory(config) or effective_log_file_from_config(config):
+        return True
+    section_level = _section_level(config)
+    return section_level is not None and str(section_level).upper() != "INFO"
+
+
 def build_default_logger(
     config: Any,
     log_level: Optional[str],
     log_format: Optional[str],
     log_file: Optional[str],
-) -> DbliftLogger:
-    """Construct a ``DbliftLogger`` mirroring ``DBLiftClient.__init__`` defaults.
+) -> Log:
+    """Return the logger a client uses when the caller passes none.
 
-    Ctor overrides (``log_level`` / ``log_format`` / ``log_file``) take
-    precedence over ``config``; ``None`` means "fall back to config".
+    Silent (``NullLog``) unless logging is asked for: a ``log_level`` /
+    ``log_format`` / ``log_file`` argument, or a logging setting in ``config``
+    (flat ``log_*``, ``logging.file``, ``logging.directory`` or a
+    ``logging.level`` other than the default). Then a ``DbliftLogger`` is
+    built, to stderr when no file is set. Ctor overrides take precedence over
+    ``config``; ``None`` means "fall back to config".
     """
+    if not _logging_requested(config, log_level, log_format, log_file):
+        return NullLog()
     raw_fmt = log_format if log_format is not None else getattr(config, "log_format", None)
     log_format_value = _resolve_enum_value(raw_fmt, LogFormat, LogFormat.TEXT)
 
     raw_lvl = log_level if log_level is not None else getattr(config, "log_level", None)
+    if raw_lvl is None:
+        raw_lvl = _section_level(config)
     log_level_value = _resolve_enum_value(raw_lvl, LogLevel, LogLevel.INFO)
 
     eff_log_file = log_file if log_file is not None else effective_log_file_from_config(config)
@@ -222,7 +253,7 @@ def client_from_config(
     logger: Optional[Any] = None,
     *,
     client_cls: Optional[type] = None,
-    analysis_mode: Literal["full", "execution"] = "full",
+    analysis_mode: Literal["full", "execution"] = "execution",
     **kwargs: Any,
 ) -> Any:
     """Create a client instance from existing configuration.
@@ -239,20 +270,12 @@ def client_from_config(
     Returns:
         An instance of ``client_cls`` (or ``DBLiftClient`` when ``client_cls`` is omitted)
     """
+    require_analysis_support(analysis_mode)
     client_config = deepcopy(config)
 
     # Create logger if not provided
     if logger is None:
-        raw_fmt = getattr(config, "log_format", None)
-        log_format_value = _resolve_enum_value(raw_fmt, LogFormat, LogFormat.TEXT)
-        raw_lvl = getattr(config, "log_level", None)
-        log_level = _resolve_enum_value(raw_lvl, LogLevel, LogLevel.INFO)
-        eff_log_file = effective_log_file_from_config(config)
-        logger = DbliftLogger(
-            format=log_format_value,
-            level=log_level,
-            logfile_dir=resolve_client_logfile_dir(config, eff_log_file),
-        )
+        logger = build_default_logger(config, None, None, None)
 
     apply_derived_schema(client_config.database)
     provider = ProviderRegistry.create_provider(client_config, logger)
@@ -290,7 +313,7 @@ def client_from_config(
         migrations_dir=migrations_dir,
         config=client_config,
         logger=logger,
-        **({} if analysis_mode == "full" else {"analysis_mode": analysis_mode}),
+        **({} if analysis_mode == "execution" else {"analysis_mode": analysis_mode}),
         **kwargs,
     )
 
@@ -301,7 +324,7 @@ def client_from_config_file(
     *,
     client_cls: Optional[type] = None,
     relative_to_config: bool = False,
-    analysis_mode: Literal["full", "execution"] = "full",
+    analysis_mode: Literal["full", "execution"] = "execution",
     **overrides: Any,
 ) -> Any:
     """Create a client instance from config file path.
@@ -318,6 +341,7 @@ def client_from_config_file(
     Returns:
         An instance of ``client_cls`` (or ``DBLiftClient`` when ``client_cls`` is omitted)
     """
+    require_analysis_support(analysis_mode)
     config = ConfigBuilder.build(file_path=config_path, **overrides)
     if relative_to_config:
         anchor_config_paths(config, Path(config_path).expanduser().resolve().parent)
@@ -348,14 +372,14 @@ def client_from_sqlalchemy(
     migrations_dir: Optional[Union[str, Path, List[Union[str, Path]]]] = None,
     schema: Optional[str] = None,
     logger: Optional[Any] = None,
-    log_level: str = "INFO",
-    log_format: str = "text",
+    log_level: Optional[str] = None,
+    log_format: Optional[str] = None,
     log_file: Optional[str] = None,
     *,
     connection: Any = None,
     config: Optional[DbliftConfig] = None,
     client_cls: Optional[type[Any]] = None,
-    analysis_mode: Literal["full", "execution"] = "full",
+    analysis_mode: Literal["full", "execution"] = "execution",
     **kwargs: Any,
 ) -> Any:
     """Create DBLiftClient from an existing SQLAlchemy Engine or Connection.
@@ -366,6 +390,7 @@ def client_from_sqlalchemy(
 
     Accepts either ``engine=`` or ``connection=`` (mutually exclusive).
     """
+    require_analysis_support(analysis_mode)
     if engine is not None and connection is not None:
         raise ConfigurationError("Pass engine or connection, not both")
     if connection is not None:
@@ -453,6 +478,6 @@ def client_from_sqlalchemy(
         migrations_dir=migrations_dir or getattr(derived.migrations, "directory", None),
         config=derived,
         logger=logger,
-        **({} if analysis_mode == "full" else {"analysis_mode": analysis_mode}),
+        **({} if analysis_mode == "execution" else {"analysis_mode": analysis_mode}),
         **kwargs,
     )
