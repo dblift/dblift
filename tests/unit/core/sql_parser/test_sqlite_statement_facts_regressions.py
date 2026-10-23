@@ -312,5 +312,5 @@ def test_cte_write_dml_analysis_reports_the_write_target(sql, operation):
 
     assert mutation.table == "t"
     assert mutation.events == {operation}
-    assert statement_dml_table(sql, "sqlite") == "t"
+    assert statement_dml_table(sql, quirks=_quirks("sqlite")) == "t"
     assert is_full_table_dml(sql, quirks=_quirks("sqlite")) is False

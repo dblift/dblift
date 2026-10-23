@@ -28,6 +28,7 @@ from dblift.core.migration.sql.script_analysis import (
     quiet_sqlglot,
 )
 from dblift.core.sql_model.dialect import get_sqlglot_dialect
+from dblift.core.sql_parser.common.comment_stripping import strip_comments_preserving_quotes
 from dblift.db.dml_analysis import strip_leading_sql_comments
 from dblift.db.provider_registry import ProviderRegistry
 
@@ -108,6 +109,74 @@ _NOT_NULL_EXEMPT = (
 _RENAME_TABLE = re.compile(r"^\s*RENAME\s+TABLE\b", re.IGNORECASE)
 _SP_RENAME = re.compile(r"\bsp_rename\b(?P<rest>.*)", re.IGNORECASE | re.DOTALL)
 _LOCK_TIMEOUT = re.compile(r"^\s*SET\s+(?:LOCAL\s+|SESSION\s+)?lock_timeout\b", re.IGNORECASE)
+# sqlglot reads LOCK and VACUUM as opaque commands, so these are matched on the text.
+# LOCK TABLE queues behind conflicting locks unless NOWAIT; its default mode is ACCESS EXCLUSIVE,
+# and only SHARE and stronger make waiting writers queue behind it (ROW EXCLUSIVE conflicts with
+# SHARE).
+_LOCK_COMMAND = re.compile(r"^\s*LOCK\b(?P<rest>.*)$", re.IGNORECASE | re.DOTALL)
+_LOCK_MODE = re.compile(r"\bIN\s+(?P<mode>[A-Z ]+?)\s+MODE\b", re.IGNORECASE)
+_BLOCKING_LOCK_MODES = frozenset({"SHARE", "SHARE ROW EXCLUSIVE", "EXCLUSIVE", "ACCESS EXCLUSIVE"})
+_NOWAIT = re.compile(r"\bNOWAIT\s*$", re.IGNORECASE)
+# VACUUM FULL rewrites the table under an ACCESS EXCLUSIVE lock: ``VACUUM FULL``, or FULL among the
+# legacy leading keywords, or a FULL option of the parenthesised list not switched off.
+_VACUUM_FULL = re.compile(
+    r"^\s*VACUUM\s+(?:(?:FREEZE|VERBOSE|ANALYZE|ANALYSE)\s+)*FULL\b", re.IGNORECASE
+)
+_VACUUM_OPTIONS = re.compile(r"^\s*VACUUM\s*\((?P<options>[^)]*)\)", re.IGNORECASE)
+_FULL_OPTION = re.compile(r"(?:^|,)\s*FULL\b(?!\s+(?:FALSE|OFF|0)\b)", re.IGNORECASE)
+
+
+def _without_comments(body: str) -> str:
+    return strip_comments_preserving_quotes(
+        body,
+        line_prefixes=["--"],
+        has_block_comments=True,
+        nested_block_comments=True,
+        supports_dollar_quoting=True,
+        block_comment_replacement=" ",
+    )
+
+
+def _locks_table_by_text(body: str) -> bool:
+    """True for a LOCK TABLE that can queue behind writers, or a VACUUM FULL."""
+    body = _without_comments(body)
+    lock = _LOCK_COMMAND.match(body)
+    if lock is not None:
+        rest = lock.group("rest").rstrip(" \t\r\n;")
+        mode = _LOCK_MODE.search(rest)
+        if _NOWAIT.search(rest):
+            return False
+        return mode is None or " ".join(mode.group("mode").upper().split()) in _BLOCKING_LOCK_MODES
+    options = _VACUUM_OPTIONS.match(body)
+    if options is not None:
+        return _FULL_OPTION.search(options.group("options")) is not None
+    return _VACUUM_FULL.match(body) is not None
+
+
+_LOCK_TARGETS = re.compile(
+    r"^\s*LOCK\s+(?:TABLE\s+)?(?:ONLY\s+)?(?P<names>.*?)"
+    r"(?:\s+IN\s+[A-Z ]+?\s+MODE\b.*|\s+NOWAIT\s*)?;?\s*$",
+    re.IGNORECASE | re.DOTALL,
+)
+_VACUUM_TARGETS = re.compile(
+    r"^\s*VACUUM\s*(?:\([^)]*\)|(?:(?:FULL|FREEZE|VERBOSE|ANALYZE|ANALYSE)\s+)*)"
+    r"(?P<names>.*?);?\s*$",
+    re.IGNORECASE | re.DOTALL,
+)
+
+
+def _text_targets(body: str) -> FrozenSet[_TableKey]:
+    """The tables a LOCK or VACUUM names; none when it names none (VACUUM FULL: every table)."""
+    body = _without_comments(body)
+    found = _LOCK_TARGETS.match(body) if _LOCK_COMMAND.match(body) else _VACUUM_TARGETS.match(body)
+    if found is None:
+        return frozenset()
+    names = re.sub(r"\([^)]*\)", "", found.group("names"))  # VACUUM a (col, ...)
+    return frozenset(
+        _key_from_text(name.strip().removesuffix("*").strip())
+        for name in names.split(",")
+        if name.strip().removesuffix("*").strip()
+    )
 
 
 @dataclass(frozen=True)
@@ -201,6 +270,10 @@ def issues_and_created_tables(
             and all(_matches(target, new, case) for target in targets)
         ):
             on_new_tables.add(stmt.index)
+        elif tree is None:
+            text_targets = _text_targets(body)
+            if text_targets and all(_matches(target, new, case) for target in text_targets):
+                on_new_tables.add(stmt.index)
         for code in _statement_codes(body, tree, pg_locks=pg_locks):
             findings.append(_finding(code, stmt))
         if stmt.operation == "ALTER" and tree is None:
@@ -210,7 +283,7 @@ def issues_and_created_tables(
         elif (
             not (lock_timeout_set or lock_timeout_reported)
             and stmt.index not in on_new_tables
-            and _locks_table(tree)
+            and (_locks_table(tree) or _locks_table_by_text(body))
         ):
             findings.append(_finding("pg-missing-lock-timeout", stmt))
             lock_timeout_reported = True

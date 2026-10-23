@@ -344,9 +344,9 @@ class TestUnrecognizedTopLevelKeys:
         d = {"environments": {}, "resolve": {}}
         assert unrecognized_top_level_keys(d) == []
 
-    def test_deprecated_migrations_dir_alias_not_flagged(self):
+    def test_removed_migrations_dir_alias_is_flagged(self):
         d = {"migrations_dir": "./migrations"}
-        assert unrecognized_top_level_keys(d) == []
+        assert unrecognized_top_level_keys(d) == ["migrations_dir"]
 
     def test_non_dict_input_returns_no_keys(self):
         assert unrecognized_top_level_keys(None) == []

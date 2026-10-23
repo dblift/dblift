@@ -223,12 +223,12 @@ def test_comment_on_table_preserves_script_ddl_classification():
     ],
 )
 def test_dml_target_sql_excludes_statement_local_modifiers(sql):
-    assert statement_dml_table(sql, "duckdb") == "child"
+    assert statement_dml_table(sql, quirks=_quirks("duckdb")) == "child"
 
 
 def test_dml_target_sql_preserves_qualified_quoted_identity_without_alias():
     sql = 'UPDATE "Warehouse"."Sales"."Order Items" AS c SET id = 2 WHERE c.id = 1'
-    assert statement_dml_table(sql, "duckdb") == '"Warehouse"."Sales"."Order Items"'
+    assert statement_dml_table(sql, quirks=_quirks("duckdb")) == '"Warehouse"."Sales"."Order Items"'
 
 
 @pytest.mark.parametrize(

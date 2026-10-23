@@ -122,10 +122,10 @@ def test_the_analyzer_names_nothing_for_an_unreadable_statement(dialect):
 @pytest.mark.parametrize("dialect", ("postgres", "mysql", "tsql", "oracle"))
 def test_dml_analysis_names_no_table_for_an_unreadable_statement(dialect):
     statement = f"DELETE FROM t{NBSP}WHERE a = 1"
-    assert statement_dml_table(statement, dialect) == ""
+    assert statement_dml_table(statement, quirks=_quirks(dialect)) == ""
     mutation = analyze_dml(statement, quirks=_quirks(dialect))
     assert mutation.table == "" and mutation.events is None and mutation.updated_columns == []
-    assert statement_dml_table("DELETE FROM t WHERE a = 1", dialect) == "t"
+    assert statement_dml_table("DELETE FROM t WHERE a = 1", quirks=_quirks(dialect)) == "t"
 
 
 @pytest.mark.parametrize(

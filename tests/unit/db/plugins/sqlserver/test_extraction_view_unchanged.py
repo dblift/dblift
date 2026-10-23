@@ -14,7 +14,7 @@ from typing import Any, Dict, List
 
 import pytest
 
-from dblift.core.migration.sql.execution_statement import is_comment_only_statement
+from dblift.core.sql_parser.common.comment_stripping import strip_comments_preserving_quotes
 from dblift.db.plugins.sqlserver.parser.sqlserver_regex_parser import SqlServerRegexParser
 from dblift.db.plugins.sqlserver.parser.sqlserver_tokenizer import SQLServerTokenizer
 
@@ -42,7 +42,13 @@ def stripped(script: str) -> Any:
 
 def comment_only(script: str) -> bool:
     """Whether the script holds nothing but comments, the server's way."""
-    return is_comment_only_statement(script, nested_block_comments=True)
+    return not strip_comments_preserving_quotes(
+        script.strip(),
+        line_prefixes=["--"],
+        has_block_comments=True,
+        nested_block_comments=True,
+        keep_unterminated_comment=True,
+    )
 
 
 def objects(script: str) -> Any:

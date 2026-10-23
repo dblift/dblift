@@ -1,5 +1,6 @@
 """SQL parser package."""
 
+import logging
 from importlib import import_module
 from typing import TYPE_CHECKING, Any
 
@@ -9,6 +10,10 @@ if TYPE_CHECKING:
     from dblift.core.sql_parser.parser_factory import SqlParserFactory
 
 __all__ = ["SqlParserFactory", "Statement", "StatementKind"]
+
+# sqlglot logs a warning, quoting the statement, for each one it falls back on. A client with no
+# logging configured must stay silent: without any handler Python prints those records to stderr.
+logging.getLogger("sqlglot").addHandler(logging.NullHandler())
 
 
 def __getattr__(name: str) -> Any:
