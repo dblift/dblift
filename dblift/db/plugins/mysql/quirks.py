@@ -134,12 +134,6 @@ class MysqlQuirks(BaseQuirks):
             "connect_args": {"client_flag": CLIENT.MULTI_STATEMENTS | CLIENT.FOUND_ROWS},
         }
 
-    def parser_class(self, parser_type: str) -> Optional[type]:
-        """The facts parser bound to MySQL, whatever ``parser_type`` is asked."""
-        from dblift.db.plugins.mysql.parser.mysql_facts_parser import MySqlFactsParser
-
-        return MySqlFactsParser
-
     def type_equivalents(self) -> "dict[str, str]":
         """MySQL alias → canonical type map.
 

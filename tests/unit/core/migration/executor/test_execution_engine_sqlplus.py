@@ -8,7 +8,7 @@ from dblift.core.exceptions import TransactionAbortedError
 from dblift.core.migration.executor.execution_engine import ExecutionEngine
 from dblift.core.migration.formats import MigrationFormat
 from dblift.core.migration.migration import Migration
-from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+from dblift.core.migration.sql.statement_reader import StatementReader
 from dblift.db.plugins.oracle.parser.sqlplus_context import SqlplusContext
 
 
@@ -120,7 +120,7 @@ CREATE TABLE DBLIFT_TEST.sp_b (v VARCHAR2(20) DEFAULT q'[--]');
 
 def _oracle_statements(content: str) -> list:
     engine = _make_engine("oracle")
-    engine.sql_analyzer = SqlAnalyzer(dialect="oracle", logger=engine.log)
+    engine.sql_analyzer = StatementReader(dialect="oracle", logger=engine.log)
     return engine._parse_sql_statements(_make_sql_migration(content), MagicMock())
 
 
@@ -194,7 +194,7 @@ class TestSqlplusDirectiveApostrophes:
             "PROMPT Loading -- don't\n"
             "SELECT * FROM &owner..t;\n"
         )
-        engine.sql_analyzer = SqlAnalyzer(dialect="oracle", logger=engine.log)
+        engine.sql_analyzer = StatementReader(dialect="oracle", logger=engine.log)
 
         statements = engine._parse_sql_statements(migration, MagicMock())
 
@@ -241,7 +241,7 @@ class TestDirectivesAreTheSplittersNotThePrePass:
     def test_include_directive_fails_the_migration_instead_of_being_dropped(self):
         """Section 6: `@@file` is rejected, naming the directive and line, never dropped."""
         engine = _make_engine("oracle")
-        engine.sql_analyzer = SqlAnalyzer(dialect="oracle", logger=engine.log)
+        engine.sql_analyzer = StatementReader(dialect="oracle", logger=engine.log)
         result = MagicMock()
 
         statements = engine._parse_sql_statements(
@@ -260,7 +260,7 @@ class TestDirectivesAreTheSplittersNotThePrePass:
     def test_serveroutput_still_read_from_the_context(self):
         """Section 6: `SET SERVEROUTPUT` (abbreviated as SQL*Plus allows) is recorded; execution reads it."""
         engine = _make_engine("oracle")
-        engine.sql_analyzer = SqlAnalyzer(dialect="oracle", logger=engine.log)
+        engine.sql_analyzer = StatementReader(dialect="oracle", logger=engine.log)
 
         engine._parse_sql_statements(
             _make_sql_migration("SET SERVEROUT ON\nSELECT 1 FROM DUAL;"), MagicMock()

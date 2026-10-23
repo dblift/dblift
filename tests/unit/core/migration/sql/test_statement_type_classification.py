@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+from dblift.core.migration.sql.statement_reader import StatementReader
 
 pytestmark = pytest.mark.unit
 
@@ -104,12 +104,12 @@ ORACLE_SHAPES = [
 @pytest.mark.parametrize("dialect", PG_FAMILY)
 @pytest.mark.parametrize(("sql", "expected"), PG_SHAPES)
 def test_postgresql_family_statement_types(dialect, sql, expected):
-    assert SqlAnalyzer(dialect).get_statement_type(sql) == expected
+    assert StatementReader(dialect).get_statement_type(sql) == expected
 
 
 @pytest.mark.parametrize(("sql", "expected"), ORACLE_SHAPES)
 def test_oracle_statement_types(sql, expected):
-    assert SqlAnalyzer("oracle").get_statement_type(sql) == expected
+    assert StatementReader("oracle").get_statement_type(sql) == expected
 
 
 FIXTURE = json.loads(
@@ -131,9 +131,9 @@ INPUTS = {
 @pytest.mark.parametrize("dialect", sorted(FIXTURE["expected"]))
 def test_the_facts_corpus_keeps_the_classification_of_the_release_before(dialect):
     wrong = {
-        input_id: (expected, SqlAnalyzer(dialect).get_statement_type(INPUTS[input_id]))
+        input_id: (expected, StatementReader(dialect).get_statement_type(INPUTS[input_id]))
         for input_id, expected in FIXTURE["expected"][dialect].items()
-        if SqlAnalyzer(dialect).get_statement_type(INPUTS[input_id]) != expected
+        if StatementReader(dialect).get_statement_type(INPUTS[input_id]) != expected
     }
     assert wrong == {}
 
@@ -141,14 +141,14 @@ def test_the_facts_corpus_keeps_the_classification_of_the_release_before(dialect
 def test_the_one_deliberate_difference_is_the_oracle_cte_with_a_write():
     for input_id, (before, now) in FIXTURE["improved"].items():
         assert (before, now) == ("QUERY", "DML")
-        assert SqlAnalyzer("oracle").get_statement_type(INPUTS[input_id]) == now
+        assert StatementReader("oracle").get_statement_type(INPUTS[input_id]) == now
 
 
 @pytest.mark.parametrize("dialect", PG_FAMILY)
 def test_a_command_word_alone_or_before_its_semicolon_is_classified(dialect):
     for input_id, (before, now) in FIXTURE["bare_words"].items():
         assert before == "UNKNOWN"
-        assert SqlAnalyzer(dialect).get_statement_type(INPUTS[input_id]) == now
+        assert StatementReader(dialect).get_statement_type(INPUTS[input_id]) == now
 
 
 @pytest.mark.parametrize(
@@ -171,7 +171,7 @@ def test_a_copy_into_a_table_is_tracked_by_the_journal(dialect, sql):
     journal.capture_objects = True
     service = SqlExecutionService(
         provider,
-        SqlAnalyzer(dialect),
+        StatementReader(dialect),
         journal=journal,
         schema="public",
         quirks=ProviderRegistry.get_quirks(dialect),

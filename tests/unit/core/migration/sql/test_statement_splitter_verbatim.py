@@ -320,15 +320,15 @@ class TestPostgresMetaCommand:
             StatementSplitter("postgresql").split_statements(sql)
 
     def test_unsupported_meta_command_is_refused_through_sql_analyzer(self):
-        """Same refusal, exercised through ``SqlAnalyzer`` — the entry point
+        """Same refusal, exercised through ``StatementReader`` — the entry point
         the migration execution engine actually calls — not only at the
         tokenizer or the dialect-specific regex parser directly."""
-        from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+        from dblift.core.migration.sql.statement_reader import StatementReader
 
         sql = "\\i other.sql\nSELECT 1;\n"
 
         with pytest.raises(UnsupportedMetaCommandError, match=r"\\i"):
-            SqlAnalyzer(dialect="postgresql").split_statements(sql)
+            StatementReader(dialect="postgresql").split_statements(sql)
 
     @pytest.mark.parametrize(
         "dialect",

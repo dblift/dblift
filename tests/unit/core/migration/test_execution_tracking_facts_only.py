@@ -12,9 +12,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.migration.sql.sql_execution_service import SqlExecutionService
-from dblift.core.sql_model.base import SqlObject, SqlObjectType, SqlStatementType
+from dblift.core.migration.sql.statement_reader import StatementReader
+from dblift.core.sql_model.base import SqlStatementType
 from dblift.db.base_quirks import BaseQuirks
 from dblift.db.dml_analysis import DmlMutation
 from dblift.db.provider_registry import ProviderRegistry
@@ -42,7 +42,7 @@ def _tracked(dialect: str, sql: str, quirks, analyzer=None):
     journal = MagicMock()
     service = SqlExecutionService(
         provider,
-        analyzer if analyzer is not None else SqlAnalyzer(dialect),
+        analyzer if analyzer is not None else StatementReader(dialect),
         logger=MagicMock(),
         journal=journal,
         schema="app",
@@ -71,37 +71,11 @@ def test_dml_target_named_by_analysis_is_tracked():
     assert [(o["object_name"], o["schema"]) for o in objects] == [("customers", "s")]
 
 
-def test_ddl_without_a_parser_factory_tracks_nothing():
-    analyzer = MagicMock()
-    analyzer.get_statement_type.return_value = "DDL"
-    del analyzer.parser_factory
-    # the analyzer's own extraction is a text model too; a raise would be swallowed, so offer an object
-    analyzer.extract_objects.return_value = [
-        SqlObject(name="t", object_type=SqlObjectType.TABLE, schema="app")
-    ]
-
-    assert _tracked("postgresql", "CREATE TABLE t (id INT)", BaseQuirks(), analyzer) == []
-
-
-def test_ddl_objects_from_an_injected_parser_factory_are_tracked_without_a_facts_reader():
-    analyzer = MagicMock()
-    analyzer.get_statement_type.return_value = "DDL"
-    analyzer.parser_factory.extract_objects.return_value = [
-        SqlObject(name="t", object_type=SqlObjectType.TABLE, schema="app")
-    ]
-
-    (objects,) = _tracked("postgresql", "CREATE TABLE t (id INT)", BaseQuirks(), analyzer)
-    assert [(o["object_name"], o["schema"]) for o in objects] == [("t", "app")]
-    analyzer.parser_factory.extract_objects.assert_called_once_with(
-        "CREATE TABLE t (id INT)", "app"
-    )
-
-
 @pytest.mark.parametrize("family", sorted(FAMILY_DIALECTS))
 def test_tracking_equals_the_deduplicated_facts_for_every_corpus_statement(family, monkeypatch):
     dialect = FAMILY_DIALECTS[family]
     quirks = ProviderRegistry.get_quirks(dialect)
-    analyzer = SqlAnalyzer(dialect)
+    analyzer = StatementReader(dialect)
     # The service swallows exceptions while tracking, so a raise proves nothing: count the calls.
     reached = []
 
@@ -113,7 +87,6 @@ def test_tracking_equals_the_deduplicated_facts_for_every_corpus_statement(famil
         return reach
 
     monkeypatch.setattr(type(quirks), "analyze_dml", forbidden("analyze_dml"))
-    monkeypatch.setattr(analyzer.parser_factory, "extract_objects", forbidden("factory"))
 
     tracking_types = (SqlStatementType.DDL.value, SqlStatementType.DML.value)
     expected_rows = 0

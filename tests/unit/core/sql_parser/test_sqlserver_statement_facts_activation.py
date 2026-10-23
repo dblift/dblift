@@ -2,12 +2,12 @@
 
 import pytest
 
-from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
-from dblift.core.sql_parser import SqlParserFactory
+from dblift.core.migration.sql.statement_reader import StatementReader
 from dblift.core.sql_parser.sqlglot_statement_facts import read_statement_facts
 from dblift.core.sql_parser.statement_facts import SqlglotStatementFactsReader
 from dblift.core.sql_parser.statement_facts_parser import StatementFactsParser
 from dblift.db.provider_registry import ProviderRegistry
+from tests.support.facts_parser import facts_parser
 
 
 def test_plugin_reads_statement_facts():
@@ -22,9 +22,9 @@ def test_plugin_reads_statement_facts():
     ]
 
 
-def test_default_factory_uses_facts_and_keeps_go_batches_lexical():
-    factory = SqlParserFactory("sqlserver")
-    parser = factory.get_parser()
+def test_the_facts_parser_keeps_go_batches_lexical():
+    factory = facts_parser("sqlserver")
+    parser = factory
 
     assert isinstance(parser, StatementFactsParser)
     script = "CREATE TABLE [MiXeD].[a]]b] (id INT)\nGO\nDROP TABLE [MiXeD].[a]]b]"
@@ -39,7 +39,7 @@ def test_default_factory_uses_facts_and_keeps_go_batches_lexical():
 
 
 def test_analyzer_extracts_objects_from_facts():
-    analyzer = SqlAnalyzer("sqlserver")
+    analyzer = StatementReader("sqlserver")
 
     sql = "UPDATE [MiXeD].[a]]b] SET id = 2 WHERE id = 1"
 

@@ -6,15 +6,15 @@ from unittest.mock import MagicMock
 import pytest
 
 from dblift.core.migration.sql.script_analysis import analyse_script
-from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.migration.sql.sql_execution_service import SqlExecutionService
+from dblift.core.migration.sql.statement_reader import StatementReader
 from dblift.core.sql_model.base import SqlObjectType, SqlStatementType
-from dblift.core.sql_parser.parser_factory import SqlParserFactory
 from dblift.core.sql_parser.statement_facts import SqlglotStatementFactsReader
 from dblift.db.dml_analysis import analyze_dml, statement_dml_table
 from dblift.db.plugins.sqlite.parser.lexical_spec import SQLITE_SPEC
 from dblift.db.plugins.sqlite.quirks import SqliteQuirks
 from dblift.db.provider_registry import ProviderRegistry
+from tests.support.facts_parser import facts_parser
 
 _quirks = ProviderRegistry.get_quirks
 
@@ -22,7 +22,7 @@ UPDATE = "UPDATE child SET parent_id = 2 WHERE id = 1;"
 
 
 def test_update_target_is_reported_in_the_existing_parse_result_shape():
-    result = SqlParserFactory("sqlite", parser_type="hybrid").parse_sql(UPDATE)
+    result = facts_parser("sqlite").parse_sql(UPDATE)
 
     assert result.success
     assert len(result.statements) == 1
@@ -34,7 +34,7 @@ def test_update_target_is_reported_in_the_existing_parse_result_shape():
 
 
 def test_sql_analyzer_objects_come_from_facts():
-    assert SqlAnalyzer("sqlite").extract_objects(UPDATE) == [
+    assert StatementReader("sqlite").extract_objects(UPDATE) == [
         {"object_type": "TABLE", "object_name": "default_schema.child"}
     ]
 
@@ -65,7 +65,7 @@ def test_cte_update_has_one_target_and_full_table_caution():
 
 def test_opaque_trigger_keeps_identity_without_an_error():
     sql = "CREATE TRIGGER trg AFTER INSERT ON child BEGIN UPDATE child SET id = 2; END;"
-    result = SqlParserFactory("sqlite").parse_sql(sql)
+    result = facts_parser("sqlite").parse_sql(sql)
 
     assert len(result.statements) == 1
     assert [(obj.object_type, obj.name) for obj in result.statements[0].affected_objects] == [
@@ -105,7 +105,7 @@ def test_cte_update_journal_records_the_ast_target():
     provider.execute_statement.return_value = 1
     journal = MagicMock()
     service = SqlExecutionService(
-        provider, SqlAnalyzer("sqlite"), journal=journal, quirks=SqliteQuirks()
+        provider, StatementReader("sqlite"), journal=journal, quirks=SqliteQuirks()
     )
 
     service.execute_statement("WITH x AS (SELECT 1) UPDATE child SET parent_id = 2")
@@ -116,7 +116,7 @@ def test_cte_update_journal_records_the_ast_target():
 
 @pytest.mark.parametrize("mode", ["full", "execution"])
 def test_sqlite_analyzer_modes_preserve_cte_mutation_target(mode):
-    analyzer = SqlAnalyzer("sqlite", analysis_mode=mode)
+    analyzer = StatementReader("sqlite", analysis_mode=mode)
     assert analyzer.extract_objects("WITH x AS (SELECT 1) UPDATE child SET parent_id = 2") == [
         {"object_type": "TABLE", "object_name": "default_schema.child"}
     ]
@@ -124,7 +124,9 @@ def test_sqlite_analyzer_modes_preserve_cte_mutation_target(mode):
 
 @pytest.mark.parametrize("mode", ["full", "execution"])
 def test_sqlite_analyzer_modes_preserve_statement_facts(mode):
-    result = SqlAnalyzer("sqlite", analysis_mode=mode).analyze_statement("CREATE TABLE t (x INT)")
+    result = StatementReader("sqlite", analysis_mode=mode).analyze_statement(
+        "CREATE TABLE t (x INT)"
+    )
     assert result == {
         "type": "DDL",
         "objects": [{"object_type": "TABLE", "object_name": "default_schema.t"}],

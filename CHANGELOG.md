@@ -56,23 +56,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Oracle) and `SnowflakeStatementParser` no longer exist. Scripts were already split by each
   dialect's lexical spec; what goes is the text-based reading. What the plugin's statement facts
   read is now the only reading: no model objects are built from text, no default schema is
-  invented, and the old bracket and quote validation heuristics are gone, so the analyzer's
-  `validate_sql` and `SqlParserFactory` judge a few scripts differently (the `validate-sql`
-  command, which lints through the script analysis, does not). **The remaining entry points now need
-  SQLGlot:** `SqlParserFactory`, including its former `regex` type, and `SqlAnalyzer.extract_objects`
-  raise a `ModuleNotFoundError` that says to `pip install dblift[analysis]` without it. Migration:
+  invented, and the old bracket and quote validation heuristics are gone (the `validate-sql`
+  command, which lints through the script analysis, is unaffected). Migration:
   split scripts with `StatementSplitter(dialect).split()`, read a statement with the plugin's
   `quirks.statement_facts(sql)` (or `read_statement_facts(sql, dialect=...)` from
   `dblift.core.sql_parser.sqlglot_statement_facts`, which takes a sqlglot dialect name such as
   `"postgres"`), and get schema models from live database introspection. A plugin that subclassed one
   of these parsers returns a `LexicalSpec` and a statement-facts reader instead, and a plugin that
   keeps its own tokenizer for masking overrides `quirks.redaction_tokenizer()`.
-- **`strict_tokenizer` is removed** from `StatementSplitter`, `SqlAnalyzer`, `SqlParserFactory` and
-  the parser interface. Drop the argument: the dialect's scanner decides how to read the script.
+- **`strict_tokenizer` is removed** from `StatementSplitter` and the
+  parser interface. Drop the argument: the dialect's scanner decides how to read the script.
 - **Plugin hooks for the removed parsers are removed.** `sqlglot_unsupported_sql_patterns`,
   `sqlglot_unsupported_sql_regex_patterns`, `preprocess_sql_for_sqlglot` and
   `is_sqlglot_opaque_valid_ddl` on the quirks no longer exist, and the PostgreSQL, Oracle, SQL Server
   and Redshift quirks no longer name a parser class. Delete overrides of them.
+- **`SqlParserFactory`, `SqlAnalyzer` and `parser_type` are removed.** `SqlParserFactory` (with its
+  `parse_sql`, `extract_objects`, `validate_sql`, `get_parser` and `parse` methods),
+  `SqlAnalyzer`, the `parser_type` argument, the `quirks.parser_class` hook of every plugin, the
+  MySQL, MariaDB, Db2, DuckDB, SQLite and Snowflake parser subclasses and their deprecation
+  notices no longer exist; nothing builds a parser by name any more. Migration: split a script with
+  `StatementSplitter(dialect).split_statements(sql)` (or `.split(sql)` for records), read a
+  statement with `read_statement_facts(sql, dialect=...)` from
+  `dblift.core.sql_parser.sqlglot_statement_facts` (`dialect` is a sqlglot dialect name) or the
+  plugin's `quirks.statement_facts(sql)`, and get
+  schema models from live database introspection. A plugin returns a `LexicalSpec` and a
+  statement-facts reader; it no longer defines `parser_class`. Reading statement facts without
+  SQLGlot raises a `ModuleNotFoundError` that names `pip install dblift[analysis]`.
 
 ### Added
 
@@ -120,12 +129,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`E'a'` newline `'b\'...'`), where 1.x lets the backslash escape the quote and 2.x does not. dblift
   cannot know which one will run the script, so it now refuses it with an error naming the line
   and column; write the text as a single literal.
-- **The SQL analyzer reads objects from statement facts only.** `SqlAnalyzer.extract_objects` and
-  `analyze_statement` no longer fall back to a regex scan of the statement text: a statement the
-  facts cannot read names no object instead of a guessed one. A dialect without a statement-facts
-  reader, and DuckDB's `analysis_mode="execution"` (which disables object extraction), report no
-  objects and `analyze_statement` returns `parsed_with: "none"`. The public signatures are unchanged.
-
 - **Lightweight base install.** `pip install dblift` no longer pulls Rich, Jinja2 or SQLGlot.
   Install `dblift[cli]` for the command line and `dblift[analysis]` for full SQL analysis;
   `dblift[all]` is unchanged for users (it now names both extras explicitly), as are the `mcp`,
@@ -307,7 +310,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   PostgreSQL, CockroachDB, YugabyteDB, Aurora PostgreSQL, AlloyDB, Citus, Neon, Supabase and
   TimescaleDB now take the objects, targets and predicates of each statement from the sqlglot
   AST instead of regular expressions, in `info --format json`, `migrate --dry-run`, object
-  tracking during execution, `SqlAnalyzer.extract_objects` and the DML analysis functions
+  tracking during execution, object extraction and the DML analysis functions
   (`analyze_dml`, `statement_dml_table`, `dml_where_predicate`, `is_full_table_dml`). `COMMENT ON`
   targets, the trigger of `CREATE TRIGGER`, `DROP SCHEMA`, the table created by `SELECT … INTO`,
   `CREATE FUNCTION/PROCEDURE … $$ … $$`, `CREATE EXTENSION`, `ALTER SEQUENCE`, `CREATE TYPE`
@@ -315,7 +318,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   whose name ends in a non-ASCII blank. Redshift is unchanged. Known gaps: #666, #667, #668
   and #669.
 - **Oracle reads statement facts from the SQL grammar.** `info --format json`,
-  `migrate --dry-run`, object tracking during execution, `SqlAnalyzer.extract_objects` and the
+  `migrate --dry-run`, object tracking during execution, object extraction and the
   DML analysis functions (`analyze_dml`, `statement_dml_table`, `dml_where_predicate`,
   `is_full_table_dml`) take the objects, targets and predicates of each statement from the
   sqlglot AST instead of regular expressions. Unquoted names are reported upper-cased letter by
@@ -330,13 +333,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   materialized view logs and partitioned table clauses are reported as unread, and a statement
   whose objects cannot be established names none. The gaps are listed in
   `docs/sql-parsing/oracle.md` section 13.
-### Deprecated
-
-- **Direct use of `SqlParserFactory`, `SqlAnalyzer` and `parser_type=`.** Each warns once per
-  process and names `StatementSplitter` and `read_statement_facts` as the replacements; dblift's own
-  construction sites (migration executor, execution engine, `Migration`, redaction) are silent. They
-  are removed in the next release of the 5.0 series.
-
 ### Fixed
 
 - **An Oracle procedure, function, package, trigger, type or `FORCE` view that is still INVALID at the end of
@@ -478,11 +474,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   no-break space was cut at the first character or refused as a malformed tag; the string is now
   kept whole, so a `;` inside it no longer splits the statement. A tag holding a space, a hyphen,
   a dot or a control character is still refused.
-- **`SqlAnalyzer.validate_sql` and the parsers' `validate_sql` report the parser's verdict.**
-  The Python API now returns the dialect parser's verdict with its first error message; a
-  parser answer with no verdict is reported invalid. PostgreSQL-family parser results
-  previously always read as valid. Their result key is renamed from `success` to `valid`,
-  like every other parser. CLI commands are unchanged.
 - **DuckDB refuses a script with an unclosed block comment.** A script holding a
   `/*` that is never closed (nested comments count) is now refused before anything
   runs, as on the other engines. The statements before the comment used to be executed

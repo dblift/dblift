@@ -9,8 +9,8 @@ from sqlglot import exp
 from dblift.core.sql_model.base import SqlObjectType
 from dblift.core.sql_parser.sqlglot_statement_facts import _copy_facts, read_statement_facts
 from dblift.core.sql_parser.statement_facts import NamedObject
-from dblift.db.plugins.duckdb.parser.duckdb_facts_parser import DuckDBFactsParser
 from dblift.db.plugins.duckdb.quirks import DuckDBQuirks
+from tests.support.facts_parser import facts_parser
 
 CASES = json.loads(
     Path(__file__).with_name("duckdb_statement_facts_corpus.json").read_text(encoding="utf-8")
@@ -19,7 +19,7 @@ CASES = json.loads(
 
 @pytest.mark.parametrize("case", CASES, ids=lambda case: case["id"])
 def test_duckdb_facts_keep_targets_references_and_effects(case):
-    statements = DuckDBFactsParser().split(case["sql"])
+    statements = facts_parser("duckdb").split(case["sql"])
     assert len(statements) == 1
     facts = read_statement_facts(statements[0].text, dialect="duckdb")
 
@@ -46,9 +46,6 @@ def test_duckdb_facts_keep_targets_references_and_effects(case):
 def test_duckdb_facts_activate_parser_consumers():
     quirks = DuckDBQuirks()
     assert quirks.supports_statement_facts
-    assert quirks.parser_class("regex") is DuckDBFactsParser
-    assert quirks.parser_class("hybrid") is DuckDBFactsParser
-    assert quirks.parser_class("sqlglot") is DuckDBFactsParser
 
 
 @pytest.mark.parametrize("dialect", ["sqlite", "oracle", "tsql"])

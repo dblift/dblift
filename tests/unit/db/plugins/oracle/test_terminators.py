@@ -3,11 +3,11 @@
 import pytest
 
 from dblift.core.exceptions import UnsafeStatementSplitError
-from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+from dblift.core.migration.sql.statement_reader import StatementReader
 
 
 def _split(script):
-    return SqlAnalyzer("oracle").split_statements(script)
+    return StatementReader("oracle").split_statements(script)
 
 
 @pytest.mark.parametrize(

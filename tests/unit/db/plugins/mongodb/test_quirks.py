@@ -42,9 +42,7 @@ def test_uses_ordinary_credentials():
 
 def test_no_parsers():
     quirks = MongodbQuirks()
-    assert quirks.parser_class("hybrid") is None
-    assert quirks.parser_class("regex") is None
-    assert quirks.parser_class("sqlglot") is None
+    assert not hasattr(quirks, "parser_class")
     assert not hasattr(quirks, "introspector_class")
 
 

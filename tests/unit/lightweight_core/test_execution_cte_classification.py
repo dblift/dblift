@@ -31,9 +31,9 @@ def test_scan_identifies_outer_verb_without_ast(sql, expected):
 
 
 def test_execution_analyzer_rejects_unbalanced_cte_select_into():
-    from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+    from dblift.core.migration.sql.statement_reader import StatementReader
 
-    analyzer = SqlAnalyzer("sqlite", analysis_mode="execution")
+    analyzer = StatementReader("sqlite", analysis_mode="execution")
     with pytest.raises(ValueError, match="analysis_mode='full'"):
         analyzer.get_statement_type("WITH x AS (SELECT 1) SELECT * INTO t FROM ('bad'")
 
@@ -54,11 +54,11 @@ def test_full_fallback_preserves_lexical_classification_for_unbalanced_tail(monk
 def test_execution_analyzer_classifies_bom_prefixed_cte_insert():
     from unittest.mock import patch
 
-    from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+    from dblift.core.migration.sql.statement_reader import StatementReader
 
-    analyzer = SqlAnalyzer("sqlite", analysis_mode="execution")
+    analyzer = StatementReader("sqlite", analysis_mode="execution")
     with patch(
-        "dblift.core.migration.sql.sql_analyzer.scan_cte_outer_statement_type",
+        "dblift.core.migration.sql.statement_reader.scan_cte_outer_statement_type",
         return_value="DML",
     ) as scan:
         assert (
@@ -69,9 +69,9 @@ def test_execution_analyzer_classifies_bom_prefixed_cte_insert():
 
 
 def test_execution_refuses_ambiguous_nested_leading_comment_before_with():
-    from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+    from dblift.core.migration.sql.statement_reader import StatementReader
 
-    analyzer = SqlAnalyzer("postgresql", analysis_mode="execution")
+    analyzer = StatementReader("postgresql", analysis_mode="execution")
     with pytest.raises(ValueError, match="analysis_mode='full'"):
         analyzer.get_statement_type(
             "/* outer /* inner */ trailing */ WITH x AS (SELECT 1) INSERT INTO t SELECT * FROM x"
@@ -102,11 +102,11 @@ def test_dialect_split_classification_and_transaction_policy_match_full_without_
     from dblift.config import DbliftConfig
     from dblift.core.migration.executor.transaction_policy import TransactionPolicy
     from dblift.core.migration.sql.execution_statement import classify_execution_statement
-    from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+    from dblift.core.migration.sql.statement_reader import StatementReader
     from dblift.db.plugins.sqlite.provider import SQLiteProvider
 
     def route(mode):
-        analyzer = SqlAnalyzer(dialect, analysis_mode=mode)
+        analyzer = StatementReader(dialect, analysis_mode=mode)
         statements = analyzer.split_statements(script)
         classified = [
             classify_execution_statement(
@@ -136,12 +136,12 @@ import json
 from dblift.config import DbliftConfig
 from dblift.core.migration.executor.transaction_policy import TransactionPolicy
 from dblift.core.migration.sql.execution_statement import classify_execution_statement
-from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+from dblift.core.migration.sql.statement_reader import StatementReader
 from dblift.db.plugins.sqlite.provider import SQLiteProvider
 
 dialect = {dialect!r}
 script = {script!r}
-analyzer = SqlAnalyzer(dialect, analysis_mode='execution')
+analyzer = StatementReader(dialect, analysis_mode='execution')
 statements = analyzer.split_statements(script)
 classified = [classify_execution_statement(
     statement, dialect=dialect, statement_type=analyzer.get_statement_type(statement)

@@ -8,7 +8,7 @@ from typing import List, get_type_hints
 
 import pytest
 
-from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+from dblift.core.migration.sql.statement_reader import StatementReader
 
 _ROWS = json.loads((Path(__file__).parent / "fixtures/splitting.json").read_text())
 
@@ -30,7 +30,7 @@ def test_execution_contract_has_the_expected_public_import_and_signatures():
 @pytest.mark.unit
 @pytest.mark.parametrize("row", _ROWS)
 def test_execution_splitting_stays_identical(row):
-    analyzer = SqlAnalyzer(row["dialect"])
+    analyzer = StatementReader(row["dialect"])
     if row["error_type"]:
         with pytest.raises(Exception) as captured:
             analyzer.split_statements(row["sql"])

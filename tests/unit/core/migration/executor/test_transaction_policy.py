@@ -13,7 +13,7 @@ from dblift.core.migration.sql.execution_statement import (
     ExecutionStatement,
     classify_execution_statement,
 )
-from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+from dblift.core.migration.sql.statement_reader import StatementReader
 from dblift.db.provider_interfaces import TransactionalProvider
 from tests.unit._migration_factory import make_migration
 
@@ -167,7 +167,7 @@ def test_execution_engine_runs_autocommit_only_statement_without_migration_trans
     history_manager = MagicMock()
     engine = ExecutionEngine(
         provider=provider,
-        sql_analyzer=SqlAnalyzer(dialect="postgresql"),
+        sql_analyzer=StatementReader(dialect="postgresql"),
         log=NullLog(),
         history_manager=history_manager,
     )
@@ -201,7 +201,7 @@ def test_execution_engine_runs_sqlserver_fulltext_catalog_without_migration_tran
     history_manager = MagicMock()
     engine = ExecutionEngine(
         provider=provider,
-        sql_analyzer=SqlAnalyzer(dialect="sqlserver"),
+        sql_analyzer=StatementReader(dialect="sqlserver"),
         log=NullLog(),
         history_manager=history_manager,
     )
@@ -232,7 +232,7 @@ def test_execution_engine_rejects_mixed_transaction_policy_before_execution():
     provider = RecordingTransactionalProvider()
     engine = ExecutionEngine(
         provider=provider,
-        sql_analyzer=SqlAnalyzer(dialect="postgresql"),
+        sql_analyzer=StatementReader(dialect="postgresql"),
         log=NullLog(),
     )
     migration = make_migration(
@@ -259,7 +259,7 @@ def test_get_executable_sql_statements_rejects_mixed_transaction_policy():
     provider = RecordingTransactionalProvider()
     engine = ExecutionEngine(
         provider=provider,
-        sql_analyzer=SqlAnalyzer(dialect="postgresql"),
+        sql_analyzer=StatementReader(dialect="postgresql"),
         log=NullLog(),
     )
     migration = make_migration(

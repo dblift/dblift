@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 from dblift.core.sql_parser.statement_facts import SqlglotStatementFactsReader
 from dblift.db.base_quirks import BaseQuirks
@@ -56,12 +56,6 @@ class SnowflakeQuirks(BaseQuirks):
                 database_config, "host", None
             )
         return bool(str(url or "").strip() or str(account or "").strip())
-
-    def parser_class(self, parser_type: str) -> Optional[type]:
-        """The facts parser bound to Snowflake, whatever ``parser_type`` is asked."""
-        from dblift.db.plugins.snowflake.lexical_parser import SnowflakeLexicalParser
-
-        return SnowflakeLexicalParser
 
     def lexical_spec(self) -> "LexicalSpec":
         """Rules shared by execution and SQL analysis."""

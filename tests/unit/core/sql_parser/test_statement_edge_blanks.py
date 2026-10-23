@@ -13,8 +13,8 @@ from typing import Dict, List, Optional
 
 import pytest
 
-from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
-from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+from dblift.core.exceptions import UnsupportedMetaCommandError
+from dblift.core.migration.sql.statement_reader import StatementReader
 from dblift.core.sql_parser.lexical_spec import LexicalSpec
 from dblift.db.provider_registry import ProviderRegistry
 from tests.support.statement_edge_corpus import record_script
@@ -214,7 +214,7 @@ def test_the_parts_of_a_psql_combined_statement_keep_a_character_outside_the_bla
 ) -> None:
     nbsp = chr(0xA0)
     script = f"SELECT 1{nbsp}\;SELECT 2{nbsp};"
-    assert SqlAnalyzer(dialect).split_statements_for_analysis(script) == [
+    assert StatementReader(dialect).split_statements_for_analysis(script) == [
         f"SELECT 1{nbsp}",
         f"SELECT 2{nbsp}",
     ]
@@ -226,12 +226,12 @@ def test_a_copy_header_whose_stdin_ends_in_a_name_character_is_no_copy_header(
 ) -> None:
     script = f"COPY t (a) FROM STDIN{chr(0xA0)};\n1\n\\.\n"
     with pytest.raises(UnsupportedMetaCommandError, match=r"\\\."):
-        SqlAnalyzer(dialect).split_statements_for_analysis(script)
+        StatementReader(dialect).split_statements_for_analysis(script)
 
 
 def test_a_routine_batch_keeps_a_character_outside_the_blanks_when_analysis_divides_it() -> None:
     text = f"CREATE PROCEDURE p AS SELECT 1{chr(0x2029)}"
-    assert SqlAnalyzer("sqlserver").split_statements_for_analysis(text) == [text]
+    assert StatementReader("sqlserver").split_statements_for_analysis(text) == [text]
 
 
 NBSP = chr(0xA0)

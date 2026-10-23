@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from dblift.db.base_quirks import BaseQuirks
 from dblift.db.plugins.duckdb.parser.duckdb_facts_parser import DuckDBStatementFactsReader
@@ -71,12 +71,6 @@ class DuckDBQuirks(BaseQuirks):
     def __init__(self, dialect_name: str = "duckdb") -> None:
         """Initialize DuckDB quirks with the dialect name."""
         super().__init__(dialect_name=dialect_name)
-
-    def parser_class(self, parser_type: str) -> Optional[type]:
-        """The facts parser bound to DuckDB, whatever ``parser_type`` is asked."""
-        from dblift.db.plugins.duckdb.parser.duckdb_facts_parser import DuckDBFactsParser
-
-        return DuckDBFactsParser
 
     def type_equivalents(self) -> "dict[str, str]":
         """DuckDB alias → canonical type map."""

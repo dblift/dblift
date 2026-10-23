@@ -26,10 +26,7 @@ from dblift.core.sql_parser.redaction import (
     describe_statement,
     mask_string_literals,
 )
-from dblift.db.plugins.duckdb.parser.duckdb_facts_parser import (
-    DuckDBFactsParser,
-    DuckDBStatementFactsReader,
-)
+from dblift.db.plugins.duckdb.parser.duckdb_facts_parser import DuckDBStatementFactsReader
 from dblift.db.plugins.duckdb.provider import DuckDBProvider
 from dblift.db.provider_registry import ProviderRegistry
 from dblift.db.sqlalchemy_provider import SqlAlchemyProvider
@@ -79,7 +76,7 @@ def observe_masking(sql: str) -> List[str]:
 
 
 def observe_extraction(script: str) -> Dict[str, Any]:
-    regex, facts = facts_parser("duckdb"), DuckDBFactsParser()
+    regex, facts = facts_parser("duckdb"), facts_parser("duckdb")
 
     def parsed(parser):
         result = parser.parse_sql(script, "main")
@@ -200,5 +197,5 @@ def test_masking_reads_the_duckdb_specification():
 
 
 def test_placeholder_is_code_for_duckdb():
-    parser = DuckDBFactsParser()
+    parser = facts_parser("duckdb")
     assert parser.split_statements("SELECT ${a;b};") == golden("placeholder")["split"]

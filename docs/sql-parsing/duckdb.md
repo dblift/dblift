@@ -7,7 +7,7 @@
 | Covers | DuckDB 1.x scripts run through the Python `duckdb` driver (the path dblift executes through) and written for the `duckdb` command-line shell. Measured: shell v1.5.6 (Variegata, Homebrew) and v1.5.5 (Variegata, the `duckdb-cli` wheel) and the Python driver 1.5.5 and 1.5.6 (`duckdb.connect()`, `execute`, `duckdb.extract_statements`) with `duckdb_engine` 0.17.0 on SQLAlchemy 2.0.52 |
 | Code facts taken from | the shared lexical engine with the DuckDB specification; §12 describes it. All 134 DuckDB conformance rows pass; the pieces without code and the statement records were recorded at OSS `develop` `48051ff` (2026-10-19) |
 | Vendor references, fetched 2026-10-12 from `duckdb.org/docs/current` | *Literal Types* (`sql/data_types/literal_types`: strings, escape strings, dollar-quoted strings); *Keywords and Identifiers* (`sql/dialect/keywords_and_identifiers`: quoted identifiers); *SQL Dialect, Overview* ("DuckDB's SQL dialect is based on PostgreSQL."); *Prepared Statements* (`sql/query_syntax/prepared_statements`: `?`, `$1`, `$name`); *CLI, Dot Commands* (`clients/cli/dot_commands`); *CLI, Overview* (`clients/cli/overview`: scripts from standard input, `.read`, multi-line statements). No page on comments could be found: block-comment nesting rests on measurement alone |
-| Live verification | `duckdb -init /dev/null -bail <db> < script.sql` against the Python driver dblift executes through (`SqlAnalyzer("duckdb").split_statements`, then one `execute` per statement through `duckdb_engine`); the resulting files are compared through the `duckdb_*()` catalogue functions and the table rows; `duckdb.extract_statements` is compared with the splitter on every script it accepts. |
+| Live verification | `duckdb -init /dev/null -bail <db> < script.sql` against the Python driver dblift executes through (`StatementReader("duckdb").split_statements`, then one `execute` per statement through `duckdb_engine`); the resulting files are compared through the `duckdb_*()` catalogue functions and the table rows; `duckdb.extract_statements` is compared with the splitter on every script it accepts. |
 | Second ground truth | the driver: `execute` takes **several** statements in one text, parses the whole text before it runs anything (a parse error in the last statement runs none of the first), and a runtime error leaves the statements before it done; dblift sends one statement per call, so the two stop at different places on a script with a parse error |
 | How the shell cuts | the shell reads the script line by line and sends the text so far to the engine when a line ends a statement: statements on one line are one chunk run as one text, like the driver (a parse error in the chunk runs none of it, a run-time error stops the rest of it), statements on later lines are separate chunks; its exit status is 0 when every statement ran and 1 when any failed, even if a later one succeeded; without `-bail` it goes on with the next line; standard input, `.read` and `-f` give the same result for every script tried |
 | Engine subclass | none: the lexeme rules and the shell's dot-command rule are data of the shared tokenizer (`SegmentScriptRules`) |
@@ -396,12 +396,10 @@ patterns, the escape letters, the characters that end a line comment, the comman
 the refused character are data. The shared tokenizer (`LexicalTokenizer`) reads a script in one
 pass with its string, escape-string, quoted-identifier and nested-comment readers, and
 `SegmentScript` (`dblift/core/sql_parser/segment_script.py`) cuts the tokens at each `;` into the
-records. `StatementSplitter` (and so `SqlAnalyzer.split_statements`) reaches the engine through the
-specification without constructing a parser; `SqlAnalyzer.split_statements_for_analysis` reaches it through
-`DuckDBFactsParser.split_for_analysis`, which delegates to it. `DuckDBFactsParser` is a thin delegate: `split()`
+records. `StatementSplitter` (and so `StatementReader.split_statements`) reaches the engine through the
+specification without constructing a parser; `StatementReader.split_statements_for_analysis` reaches it directly: `split()`
 returns `Statement` records, `split_statements()` their execution text, `split_for_analysis()`
-and `split_for_extraction()` the same statements (a segment of comments only is in none of them),
-and `parse_sql()` honours the refusals.
+the same statements (a segment of comments only is in none of them), and a refusal propagates.
 Statement facts, `DuckDBQuirks.blank_comments` and the provider's row-count rewrite blank
 comments through the same engine. There is no DuckDB subclass of the engine and no second
 scanner.

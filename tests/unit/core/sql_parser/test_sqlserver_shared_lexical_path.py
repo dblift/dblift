@@ -6,10 +6,9 @@ import logging
 import pytest
 
 from dblift.core.exceptions import UnsafeStatementSplitError
-from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+from dblift.core.migration.sql.statement_reader import StatementReader
 from dblift.core.migration.sql.statement_splitter import StatementSplitter
 from dblift.core.sql_parser.lexical_engine import LexicalEngine
-from dblift.core.sql_parser.parser_factory import SqlParserFactory
 from dblift.core.sql_parser.redaction import describe_statement, mask_string_literals
 from dblift.db.plugins.oracle.parser.lexical_spec import ORACLE_SPEC
 from dblift.db.plugins.postgresql.parser.lexical_spec import POSTGRESQL_SPEC
@@ -25,12 +24,7 @@ def test_the_quirks_hand_the_engine_its_spec():
     assert SqlserverQuirks().lexical_spec() is SQLSERVER_SPEC
 
 
-def test_execution_uses_the_spec_without_constructing_a_regex_parser(monkeypatch):
-    def forbidden(*args, **kwargs):
-        raise AssertionError("legacy parser construction reached")
-
-    monkeypatch.setattr(SqlParserFactory, "__init__", forbidden)
-    monkeypatch.setattr(SqlParserFactory, "get_parser", forbidden)
+def test_execution_uses_the_spec_from_the_spec():
     assert StatementSplitter("sqlserver").split_statements(SCRIPT) == [
         "CREATE TABLE a (x INT);\nSELECT 1;",
         "SELECT 2",
@@ -70,7 +64,7 @@ def test_analysis_and_extraction_project_the_execution_records():
     expected = ["CREATE TABLE a (x INT);", "SELECT 1;", "SELECT 2"]
     assert parser.split_for_analysis(SCRIPT) == expected
     assert parser.split_for_extraction(SCRIPT) == expected
-    assert SqlAnalyzer("sqlserver").split_statements_for_analysis(SCRIPT) == expected
+    assert StatementReader("sqlserver").split_statements_for_analysis(SCRIPT) == expected
 
 
 @pytest.mark.parametrize("strict", [False, True])
@@ -104,7 +98,9 @@ def test_other_dialect_specs_are_unchanged():
 
 def test_go_zero_is_logged_at_info(caplog):
     with caplog.at_level(logging.INFO, logger="dblift.core.sql_parser.lexical_engine"):
-        assert SqlAnalyzer("sqlserver").split_statements("SELECT 1\nGO 0\nSELECT 2") == ["SELECT 2"]
+        assert StatementReader("sqlserver").split_statements("SELECT 1\nGO 0\nSELECT 2") == [
+            "SELECT 2"
+        ]
     assert [(r.name, r.levelname) for r in caplog.records if "GO 0 follows" in r.getMessage()] == [
         ("dblift.core.sql_parser.lexical_engine", "INFO")
     ]

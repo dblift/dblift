@@ -13,12 +13,7 @@ import dataclasses
 import json
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Dict, List, Type
-
-import pytest
-
-from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
-from dblift.core.sql_parser.redaction import describe_statement, mask_string_literals
+from typing import Any, Dict, List
 
 
 def recorded(record):

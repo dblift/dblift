@@ -4,6 +4,6 @@
   "dblift/api": 1,
   "dblift/cli": 5,
   "dblift/config": 8,
-  "dblift/core": 129,
-  "dblift/db": 42
+  "dblift/core": 128,
+  "dblift/db": 41
 }

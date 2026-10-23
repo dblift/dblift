@@ -14,7 +14,6 @@ from dblift.config.database_config import BaseDatabaseConfig
 from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.core.logger import NullLog
 from dblift.core.migration.sql.statement_splitter import StatementSplitter
-from dblift.core.sql_parser.parser_factory import SqlParserFactory
 from dblift.db.plugins.snowflake.config import SnowflakeConfig
 from dblift.db.plugins.snowflake.plugin import PLUGIN as SNOWFLAKE_PLUGIN
 from dblift.db.plugins.snowflake.provider import (
@@ -27,6 +26,7 @@ from dblift.db.plugins.snowflake.quirks import SnowflakeQuirks
 from dblift.db.provider_interfaces import DroppableObject
 from dblift.db.provider_registry import ProviderRegistry
 from dblift.db.sqlalchemy_provider import SqlAlchemyProvider
+from tests.support.facts_parser import facts_parser
 
 
 def test_snowflake_extra_rejects_unqualified_sqlalchemy_21() -> None:
@@ -609,7 +609,7 @@ def test_snowflake_quoted_identifiers_keep_catalog_case() -> None:
 
 
 def test_snowflake_facts_parser_handles_ddl_for_lint_and_preflight() -> None:
-    parser = SqlParserFactory("snowflake", parser_type="hybrid")
+    parser = facts_parser("snowflake")
 
     result = parser.parse_sql('CREATE TABLE "QA"."Orders" ("Amount" NUMBER(18,4))')
 
@@ -1554,9 +1554,9 @@ def test_snowflake_statement_splitter_splits_without_a_fallback() -> None:
 
 
 def test_snowflake_sql_analyzer_splits_statements() -> None:
-    from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+    from dblift.core.migration.sql.statement_reader import StatementReader
 
-    statements = SqlAnalyzer(dialect="snowflake").split_statements("SELECT 1; SELECT 2;")
+    statements = StatementReader(dialect="snowflake").split_statements("SELECT 1; SELECT 2;")
 
     assert statements == ["SELECT 1", "SELECT 2"]
 
@@ -1567,10 +1567,10 @@ def test_snowflake_statement_splitter_fails_explicitly_on_unterminated_string() 
 
 
 def test_snowflake_sql_analyzer_fails_explicitly_on_unterminated_string() -> None:
-    from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+    from dblift.core.migration.sql.statement_reader import StatementReader
 
     with pytest.raises(UnsafeStatementSplitError):
-        SqlAnalyzer(dialect="snowflake").split_statements("SELECT 'open; SELECT 2;")
+        StatementReader(dialect="snowflake").split_statements("SELECT 'open; SELECT 2;")
 
 
 # ---------------------------------------------------------------------------

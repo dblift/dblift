@@ -1,4 +1,4 @@
-"""Object recognition in ``SqlAnalyzer.extract_objects``.
+"""Object recognition in ``StatementReader.extract_objects``.
 
 The text extraction that ``extract_objects`` once used recognised four statement shapes —
 ``CREATE TABLE``, ``ALTER TABLE``, ``CREATE [OR REPLACE] VIEW`` and
@@ -28,12 +28,12 @@ Two invariants this module pins:
 
 import unittest
 
-from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+from dblift.core.migration.sql.statement_reader import StatementReader
 from dblift.core.sql_model._base_sql_object import SqlObjectType
 from dblift.db.provider_registry import ProviderRegistry
 
 
-def _only(analyzer: SqlAnalyzer, sql: str) -> dict:
+def _only(analyzer: StatementReader, sql: str) -> dict:
     """Return the single object ``sql`` affects, failing if there is not one."""
     objects = analyzer.extract_objects(sql)
     assert len(objects) == 1, f"expected exactly one object for {sql!r}, got {objects!r}"
@@ -44,7 +44,7 @@ class TestObjectTypeVocabulary(unittest.TestCase):
     """Every reported ``object_type`` is a ``SqlObjectType`` member name."""
 
     def setUp(self):
-        self.analyzer = SqlAnalyzer(dialect="postgresql")
+        self.analyzer = StatementReader(dialect="postgresql")
 
     def test_every_recognised_statement_reports_a_known_object_type(self):
         known = {member.name for member in SqlObjectType}
@@ -80,7 +80,7 @@ class TestCreateObjectRecognition(unittest.TestCase):
     """``CREATE`` of the object types the four original branches missed."""
 
     def setUp(self):
-        self.analyzer = SqlAnalyzer(dialect="postgresql")
+        self.analyzer = StatementReader(dialect="postgresql")
 
     def test_create_sequence(self):
         obj = _only(self.analyzer, "CREATE SEQUENCE users_seq START WITH 1 INCREMENT BY 1")
@@ -127,12 +127,12 @@ class TestCreateObjectRecognition(unittest.TestCase):
         self.assertEqual(obj["object_type"], "EXTENSION")
 
     def test_create_synonym(self):
-        analyzer = SqlAnalyzer(dialect="oracle")
+        analyzer = StatementReader(dialect="oracle")
         obj = _only(analyzer, "CREATE SYNONYM s FOR orders")
         self.assertEqual(obj["object_type"], "SYNONYM")
 
     def test_create_package(self):
-        analyzer = SqlAnalyzer(dialect="oracle")
+        analyzer = StatementReader(dialect="oracle")
         obj = _only(analyzer, "CREATE OR REPLACE PACKAGE pkg AS PROCEDURE p; END pkg;")
         self.assertEqual(obj["object_type"], "PACKAGE")
 
@@ -147,7 +147,7 @@ class TestSqlServerCreateOrAlterRecognition(unittest.TestCase):
     """Only fully read SQL Server DDL identities reach the analyzer."""
 
     def setUp(self):
-        self.analyzer = SqlAnalyzer(dialect="sqlserver")
+        self.analyzer = StatementReader(dialect="sqlserver")
 
     def test_create_or_alter_program_bodies_stay_opaque(self):
         cases = [
@@ -185,7 +185,7 @@ class TestSqlServerCreateOrAlterRecognition(unittest.TestCase):
         for dialect, sql, object_type, object_name in cases:
             with self.subTest(dialect=dialect, sql=sql):
                 self.assertEqual(
-                    SqlAnalyzer(dialect=dialect).extract_objects(sql),
+                    StatementReader(dialect=dialect).extract_objects(sql),
                     [{"object_type": object_type, "object_name": object_name}],
                 )
 
@@ -203,10 +203,10 @@ class TestMaterializedViewLogReportsTheTable(unittest.TestCase):
     """
 
     def setUp(self):
-        self.postgresql = SqlAnalyzer(dialect="postgresql")
-        self.oracle = SqlAnalyzer(dialect="oracle")
+        self.postgresql = StatementReader(dialect="postgresql")
+        self.oracle = StatementReader(dialect="oracle")
 
-    def _log_on_table(self, analyzer: SqlAnalyzer, sql: str, expected_name: str) -> None:
+    def _log_on_table(self, analyzer: StatementReader, sql: str, expected_name: str) -> None:
         # Oracle reads statement facts, which name no object for a log: it has no name of its own,
         # and a view called LOG would be a guess.
         self.assertEqual(analyzer.extract_objects(sql), [])
@@ -259,7 +259,7 @@ class TestAlterAndDropRecognition(unittest.TestCase):
     """``ALTER``/``DROP`` beyond the table-and-index shapes."""
 
     def setUp(self):
-        self.analyzer = SqlAnalyzer(dialect="postgresql")
+        self.analyzer = StatementReader(dialect="postgresql")
 
     def test_alter_sequence(self):
         obj = _only(self.analyzer, "ALTER SEQUENCE users_seq RESTART WITH 100")
@@ -307,7 +307,7 @@ class TestIndexModifiers(unittest.TestCase):
     """
 
     def setUp(self):
-        self.analyzer = SqlAnalyzer(dialect="postgresql")
+        self.analyzer = StatementReader(dialect="postgresql")
 
     def test_create_index_concurrently(self):
         obj = _only(self.analyzer, "CREATE INDEX CONCURRENTLY idx ON orders (email)")
@@ -334,12 +334,14 @@ class TestIndexTypeModifiers(unittest.TestCase):
     """
 
     def test_fulltext_index(self):
-        obj = _only(SqlAnalyzer(dialect="mysql"), "CREATE FULLTEXT INDEX ftx ON orders (note)")
+        obj = _only(StatementReader(dialect="mysql"), "CREATE FULLTEXT INDEX ftx ON orders (note)")
         self.assertEqual(obj["object_type"], "INDEX")
         self.assertIn("ftx", obj["object_name"])
 
     def test_clustered_index_reports_its_table(self):
-        obj = _only(SqlAnalyzer(dialect="sqlserver"), "CREATE CLUSTERED INDEX cx ON orders (id)")
+        obj = _only(
+            StatementReader(dialect="sqlserver"), "CREATE CLUSTERED INDEX cx ON orders (id)"
+        )
         self.assertEqual(obj["object_type"], "INDEX")
         self.assertIn("orders", obj["on_object"])
 
@@ -363,7 +365,7 @@ class TestPublicModifier(unittest.TestCase):
     """``PUBLIC`` is an ordinary Oracle modifier, not part of the name."""
 
     def setUp(self):
-        self.analyzer = SqlAnalyzer(dialect="oracle")
+        self.analyzer = StatementReader(dialect="oracle")
 
     def test_create_public_synonym(self):
         obj = _only(self.analyzer, "CREATE PUBLIC SYNONYM s FOR app.orders")
@@ -392,7 +394,7 @@ class TestUnmodelledObjectKeywords(unittest.TestCase):
     """
 
     def setUp(self):
-        self.analyzer = SqlAnalyzer(dialect="postgresql")
+        self.analyzer = StatementReader(dialect="postgresql")
 
     @unittest.expectedFailure  # statement facts name no object for this PostgreSQL statement
     def test_drop_tablespace_still_names_the_object(self):
@@ -420,7 +422,7 @@ class TestMultiWordAndUnmodelledTypesNameTheRightObject(unittest.TestCase):
     """
 
     def setUp(self):
-        self.analyzer = SqlAnalyzer(dialect="postgresql")
+        self.analyzer = StatementReader(dialect="postgresql")
 
     @unittest.expectedFailure  # statement facts name no object for this PostgreSQL statement
     def test_multi_word_unmodelled_type_does_not_name_a_keyword(self):
@@ -466,7 +468,7 @@ class TestStatementsThatNameATargetTable(unittest.TestCase):
     """``TRUNCATE``/``COMMENT``/``GRANT``/DML all identify a table."""
 
     def setUp(self):
-        self.analyzer = SqlAnalyzer(dialect="postgresql")
+        self.analyzer = StatementReader(dialect="postgresql")
 
     def test_truncate_table(self):
         obj = _only(self.analyzer, "TRUNCATE TABLE users")
@@ -517,14 +519,14 @@ class TestStatementsThatNameATargetTable(unittest.TestCase):
 
     def test_oracle_merge_is_a_named_gap_of_the_facts_reader(self):
         sql = "MERGE INTO users u USING staged s ON (u.id = s.id) WHEN MATCHED THEN UPDATE SET u.email = s.email"
-        self.assertEqual(SqlAnalyzer(dialect="oracle").extract_objects(sql), [])
+        self.assertEqual(StatementReader(dialect="oracle").extract_objects(sql), [])
 
 
 class TestNoFalsePositives(unittest.TestCase):
     """Statements that genuinely name no object must stay empty."""
 
     def setUp(self):
-        self.analyzer = SqlAnalyzer(dialect="postgresql")
+        self.analyzer = StatementReader(dialect="postgresql")
 
     def test_empty_input(self):
         self.assertEqual(self.analyzer.extract_objects(""), [])
@@ -576,7 +578,7 @@ class TestAKeywordIsNeverTheObjectName(unittest.TestCase):
     """
 
     def setUp(self):
-        self.analyzer = SqlAnalyzer(dialect="postgresql")
+        self.analyzer = StatementReader(dialect="postgresql")
 
     def _name_of(self, sql: str):
         objects = self.analyzer.extract_objects(sql)
@@ -629,7 +631,7 @@ class TestClauseKeywordGuardDoesNotRejectRealObjects(unittest.TestCase):
     """
 
     def setUp(self):
-        self.analyzer = SqlAnalyzer(dialect="postgresql")
+        self.analyzer = StatementReader(dialect="postgresql")
 
     @unittest.expectedFailure  # statement facts name no object for this PostgreSQL statement
     def test_a_vouched_name_survives_the_guard(self):
@@ -652,7 +654,7 @@ class TestSchemaQualification(unittest.TestCase):
     """Schema handling matches the existing branches' convention."""
 
     def setUp(self):
-        self.analyzer = SqlAnalyzer(dialect="postgresql")
+        self.analyzer = StatementReader(dialect="postgresql")
 
     def test_qualified_name_keeps_its_schema(self):
         obj = _only(self.analyzer, "CREATE SEQUENCE app.users_seq START WITH 1")

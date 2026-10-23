@@ -56,9 +56,7 @@ class TestRepairDeletesFailedMigrations:
 
     def test_repair_failed_migration_calls_delete(self):
         """repair execute() must issue DELETE for failed migrations."""
-        from dblift.core.logger.results import RepairResult
         from dblift.core.migration.commands.repair_command import RepairCommand
-        from dblift.core.migration.migration import MigrationType
         from dblift.core.migration.state.migration_state import MigrationState
 
         config = Mock()
@@ -210,9 +208,9 @@ class TestSqliteCaseEndInTrigger:
 
     def test_trigger_with_case_expression(self):
         """Trigger containing CASE...END must be parsed as single statement."""
-        from dblift.db.plugins.sqlite.parser.sqlite_facts_parser import SQLiteFactsParser
+        from tests.support.facts_parser import facts_parser
 
-        parser = SQLiteFactsParser()
+        parser = facts_parser("sqlite")
 
         sql = """
         CREATE TRIGGER set_status
@@ -238,9 +236,9 @@ class TestSqliteCaseEndInTrigger:
 
     def test_trigger_with_nested_case(self):
         """Trigger with nested CASE expressions."""
-        from dblift.db.plugins.sqlite.parser.sqlite_facts_parser import SQLiteFactsParser
+        from tests.support.facts_parser import facts_parser
 
-        parser = SQLiteFactsParser()
+        parser = facts_parser("sqlite")
 
         sql = """
         CREATE TRIGGER complex_trigger
@@ -268,9 +266,9 @@ class TestSqliteCaseEndInTrigger:
 
     def test_trigger_with_multiple_case_expressions(self):
         """Trigger with multiple CASE expressions in same statement."""
-        from dblift.db.plugins.sqlite.parser.sqlite_facts_parser import SQLiteFactsParser
+        from tests.support.facts_parser import facts_parser
 
-        parser = SQLiteFactsParser()
+        parser = facts_parser("sqlite")
 
         sql = """
         CREATE TRIGGER multi_case
@@ -292,9 +290,9 @@ class TestSqliteCaseEndInTrigger:
 
     def test_case_outside_trigger_is_fine(self):
         """CASE...END outside trigger should not affect statement splitting."""
-        from dblift.db.plugins.sqlite.parser.sqlite_facts_parser import SQLiteFactsParser
+        from tests.support.facts_parser import facts_parser
 
-        parser = SQLiteFactsParser()
+        parser = facts_parser("sqlite")
 
         sql = """
         SELECT CASE WHEN x > 0 THEN 'pos' ELSE 'neg' END FROM t;

@@ -8,7 +8,7 @@ from dblift.core.exceptions import ExecutionError, StatementVerdictError
 from dblift.core.migration.executor.execution_engine import ExecutionEngine
 from dblift.core.migration.formats import MigrationFormat
 from dblift.core.migration.sql.execution_statement import _position
-from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+from dblift.core.migration.sql.statement_reader import StatementReader
 from dblift.core.migration.sql.statement_splitter import StatementSplitter
 
 pytestmark = pytest.mark.unit
@@ -84,7 +84,7 @@ def _engine(dialect: str) -> ExecutionEngine:
     provider.execute_statement.return_value = 0
     return ExecutionEngine(
         provider=provider,
-        sql_analyzer=SqlAnalyzer(dialect=dialect),
+        sql_analyzer=StatementReader(dialect=dialect),
         log=MagicMock(),
         sql_execution_service=_service(),
     )

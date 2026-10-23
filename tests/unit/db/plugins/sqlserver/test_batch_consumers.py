@@ -6,7 +6,7 @@ from dblift.core.logger import NullLog
 from dblift.core.logger.results import MigrateResult
 from dblift.core.migration.executor.execution_engine import ExecutionEngine
 from dblift.core.migration.migration import MigrationType
-from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+from dblift.core.migration.sql.statement_reader import StatementReader
 from tests.unit._migration_factory import make_migration
 
 SCRIPT = (
@@ -39,7 +39,7 @@ def _migration(content=SCRIPT):
 def test_the_executable_statement_list_is_the_batches_with_go_n_copies():
     # dry-run and plan listings call get_executable_sql_statements: the list is what a run sends
     engine = ExecutionEngine(
-        provider=MagicMock(), sql_analyzer=SqlAnalyzer(dialect="sqlserver"), log=NullLog()
+        provider=MagicMock(), sql_analyzer=StatementReader(dialect="sqlserver"), log=NullLog()
     )
     result = MigrateResult()
 
@@ -52,7 +52,7 @@ def test_a_batch_with_a_non_transactional_statement_after_the_first_is_not_liste
     # batch is one autocommit batch, not a "mixed" migration
     content = "CREATE TABLE a (id INT);\nCREATE FULLTEXT INDEX ON a (id) KEY INDEX pk_a;\nGO\n"
     engine = ExecutionEngine(
-        provider=MagicMock(), sql_analyzer=SqlAnalyzer(dialect="sqlserver"), log=NullLog()
+        provider=MagicMock(), sql_analyzer=StatementReader(dialect="sqlserver"), log=NullLog()
     )
     result = MigrateResult()
 
@@ -75,7 +75,7 @@ def test_parse_sql_statements_returns_batches_and_caches_only_canonical_content(
 
 def test_a_script_the_splitter_refuses_is_not_listed():
     engine = ExecutionEngine(
-        provider=MagicMock(), sql_analyzer=SqlAnalyzer(dialect="sqlserver"), log=NullLog()
+        provider=MagicMock(), sql_analyzer=StatementReader(dialect="sqlserver"), log=NullLog()
     )
     result = MigrateResult()
 

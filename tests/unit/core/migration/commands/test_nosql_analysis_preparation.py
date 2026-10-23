@@ -8,8 +8,8 @@ import pytest
 from dblift.core.migration.commands.base_command import BaseCommandContext
 from dblift.core.migration.commands.migrate_command import MigrateCommand
 from dblift.core.migration.commands.undo_command import UndoCommand
-from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.migration.sql.sql_execution_service import SqlExecutionService
+from dblift.core.migration.sql.statement_reader import StatementReader
 from dblift.db.plugins.cosmosdb.quirks import CosmosdbQuirks
 from dblift.db.plugins.mongodb.quirks import MongodbQuirks
 
@@ -24,7 +24,7 @@ def test_default_command_passes_analysis_preparation_without_sql_parser(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, quirks_class, command_class
 ) -> None:
     quirks = quirks_class()
-    analyzer = SqlAnalyzer(quirks.dialect_name)
+    analyzer = StatementReader(quirks.dialect_name)
     service = SqlExecutionService(
         Mock(quirks=quirks),
         analyzer,
@@ -61,4 +61,3 @@ def test_default_command_passes_analysis_preparation_without_sql_parser(
         command_class(context).execute(tmp_path)
 
     past_preparation.assert_called_once_with()
-    assert analyzer._parser_factory is None

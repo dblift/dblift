@@ -283,17 +283,17 @@ def test_constructor_checks_sqlglot_before_loading_features(tmp_path, monkeypatc
 
 
 def test_executor_checks_sqlglot_before_building_components(tmp_path, monkeypatch):
-    from dblift.core.migration.sql import sql_analyzer
+    from dblift.core.migration.sql import statement_reader as sql_analyzer
 
     seed = DBLiftClient.from_config(_config(tmp_path), migrations_dir=_migrations(tmp_path))
     built = []
-    original = sql_analyzer.SqlAnalyzer.__init__
+    original = sql_analyzer.StatementReader.__init__
 
     def spy(self, *args, **kwargs):
         built.append(1)
         original(self, *args, **kwargs)
 
-    monkeypatch.setattr(sql_analyzer.SqlAnalyzer, "__init__", spy)
+    monkeypatch.setattr(sql_analyzer.StatementReader, "__init__", spy)
     import sys
 
     monkeypatch.setitem(sys.modules, "sqlglot", None)

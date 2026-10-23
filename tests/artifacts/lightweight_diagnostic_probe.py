@@ -75,15 +75,15 @@ def _sqlglot() -> dict:
     from dblift.api import DBLiftClient
     from dblift.config import DbliftConfig
     from dblift.core.logger import NullLog
-    from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
     from dblift.core.migration.sql.sql_execution_service import SqlExecutionService
+    from dblift.core.migration.sql.statement_reader import StatementReader
     from dblift.db.plugins.sqlite.provider import SQLiteProvider
 
     config = DbliftConfig.from_dict({"database": {"type": "sqlite", "url": "sqlite:///:memory:"}})
     provider = SQLiteProvider(config, NullLog())
     provider.create_connection()
     try:
-        service = SqlExecutionService(provider, SqlAnalyzer("sqlite"), journal=None)
+        service = SqlExecutionService(provider, StatementReader("sqlite"), journal=None)
         assert service.execute_statement("CREATE TABLE t (id INTEGER)")[0] is False
         assert service.execute_statement("INSERT INTO t VALUES (?)", params=[7])[0] is False
         is_query, rows = service.execute_statement("SELECT id FROM t WHERE id = ?", params=[7])

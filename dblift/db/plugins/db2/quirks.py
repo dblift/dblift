@@ -123,12 +123,6 @@ class Db2Quirks(BaseQuirks):
         """DB2 SQLSTATE / errorcode error-classification patterns (ADR-26 A2)."""
         return _ERROR_PATTERNS
 
-    def parser_class(self, parser_type: str) -> Optional[type]:
-        """The facts parser bound to Db2, whatever ``parser_type`` is asked."""
-        from dblift.db.plugins.db2.parser.statement_facts import Db2FactsParser
-
-        return Db2FactsParser
-
     def type_equivalents(self) -> "dict[str, str]":
         """Db2 alias → canonical type map.
 

@@ -5,7 +5,7 @@ from collections import namedtuple
 import pytest
 
 from dblift.core.exceptions import UnsafeStatementSplitError
-from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+from dblift.core.migration.sql.statement_reader import StatementReader
 from dblift.core.sql_parser.lexical_engine import LexicalEngine
 from dblift.core.sql_parser.statement import Statement
 from dblift.db.plugins.sqlserver.parser.lexical_spec import SQLSERVER_SPEC
@@ -157,7 +157,7 @@ def test_split_statements_is_the_projection_execution_receives():
 
 
 def test_the_execution_entry_point_splits_by_batch():
-    statements = SqlAnalyzer("sqlserver").split_statements(
+    statements = StatementReader("sqlserver").split_statements(
         "DECLARE @x INT = 1;\nSELECT @x;\nGO\nSELECT 2;"
     )
     assert statements == ["DECLARE @x INT = 1;\nSELECT @x;", "SELECT 2;"]
@@ -169,4 +169,4 @@ def test_a_splitter_failure_is_a_refusal_and_never_a_guess(monkeypatch):
 
     monkeypatch.setattr(LexicalEngine, "split", broken)
     with pytest.raises(UnsafeStatementSplitError, match="sqlserver statement splitter failed"):
-        SqlAnalyzer("sqlserver").split_statements("SELECT 1;\nSELECT 2;")
+        StatementReader("sqlserver").split_statements("SELECT 1;\nSELECT 2;")

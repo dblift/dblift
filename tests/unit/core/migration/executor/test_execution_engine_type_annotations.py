@@ -11,8 +11,8 @@ from dblift.core.logger import Log
 from dblift.core.migration.executor.execution_engine import ExecutionEngine
 from dblift.core.migration.history.migration_history_manager import MigrationHistoryManager
 from dblift.core.migration.placeholders.placeholder_service import PlaceholderService
-from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.migration.sql.sql_execution_service import SqlExecutionService
+from dblift.core.migration.sql.statement_reader import StatementReader
 from dblift.db.base_provider import BaseProvider
 
 
@@ -40,7 +40,7 @@ class TestExecutionEngineTypeAnnotations:
         """AC#6: required params keep their existing annotations."""
         hints = typing.get_type_hints(ExecutionEngine.__init__)
         assert hints.get("provider") == BaseProvider
-        assert hints.get("sql_analyzer") == SqlAnalyzer
+        assert hints.get("sql_analyzer") == StatementReader
         assert hints.get("log") == Log
 
     def test_instantiation_with_none_optional_params(self):
@@ -48,7 +48,7 @@ class TestExecutionEngineTypeAnnotations:
         config_mock = MagicMock()
         engine = ExecutionEngine(
             provider=MagicMock(spec=BaseProvider),
-            sql_analyzer=MagicMock(spec=SqlAnalyzer),
+            sql_analyzer=MagicMock(spec=StatementReader),
             log=MagicMock(spec=Log),
             config=config_mock,
         )

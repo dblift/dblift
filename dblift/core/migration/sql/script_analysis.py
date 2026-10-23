@@ -20,10 +20,9 @@ from dblift.core.exceptions import (
     UnsupportedMetaCommandError,
 )
 from dblift.core.sql_model.base import SqlObjectType
-from dblift.core.sql_parser._deprecation import internal_parser_construction
 from dblift.core.sql_parser.common.comment_stripping import strip_comments_preserving_quotes
-from dblift.core.sql_parser.parser_factory import SqlParserFactory
 from dblift.core.sql_parser.statement_facts import DmlEffect, StatementFacts
+from dblift.core.sql_parser.statement_facts_parser import StatementFactsParser
 from dblift.db.dml_analysis import strip_leading_sql_comments
 from dblift.db.provider_registry import ProviderRegistry
 
@@ -235,9 +234,7 @@ def _analyse(text: str, dialect: str) -> ScriptAnalysis:
     fact_cautions: List[Caution] = []
     errors: List[str] = []
     try:
-        with internal_parser_construction():
-            factory = SqlParserFactory(dialect)
-        bodies = factory.get_parser().split_for_analysis(text)
+        bodies = StatementFactsParser(quirks).split_for_analysis(text)
     except (UnsafeStatementSplitError, UnsupportedMetaCommandError) as error:
         return ScriptAnalysis((), (), (f"Error splitting SQL: {error}",))
     except (ParserError, ValueError, TypeError) as error:
