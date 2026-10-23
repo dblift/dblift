@@ -321,6 +321,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **An Oracle procedure, function, package, trigger or type that compiles with errors now fails the migration.**
+  Oracle reports such a `CREATE [OR REPLACE]` as a success (ORA-24344) and leaves the object INVALID, so
+  `migrate` used to exit 0 with a successful history row, and an INVALID trigger then failed every
+  INSERT/UPDATE/DELETE on its table. `migrate` now exits 1, records the migration as failed and prints the
+  `PLS-` compile errors with their line and column. Oracle DDL auto-commits, so the unit stays created and
+  INVALID until a corrected `CREATE OR REPLACE` is applied.
+
 - **A `--target-version` that is not a migration's version is now refused.** `migrate --target-version v1`,
   `abc`, an empty value or `99` used to apply every pending migration and exit 0, and `-1` or `1a` applied
   a prefix of them. `migrate`, `undo`, `validate` and `info` now exit 2 before connecting, listing the available

@@ -3,7 +3,11 @@
 import os
 import re
 import time
-from typing import Any, Dict, List, Optional, Set, Union
+from contextlib import contextmanager
+from typing import Any, Dict, Iterator, List, Optional, Protocol, Set, Tuple, Union
+
+from sqlalchemy import event
+from sqlalchemy.engine import Connection
 
 from dblift.config import DbliftConfig
 from dblift.core.constants import DEFAULT_HISTORY_TABLE
@@ -111,6 +115,69 @@ def _row_value(row: Dict[str, Any], *names: str, default: Any = None) -> Any:
 
 
 _OWNER_COLUMN = OWNER_COLUMN.upper()
+
+#: ORA-24344, "success with compilation error", is a warning on the cursor, not
+#: an exception. python-oracledb thin mode reports it as ``DPY-7000`` with
+#: ``code`` 0; thick mode passes the server's ``ORA-24344`` through.
+_COMPILE_WARNING_FULL_CODES = frozenset({"DPY-7000", "ORA-24344"})
+
+_IDENT = r'(?:"[^"]+"|[A-Za-z][\w$#]*)'
+_PLSQL_UNIT_RE = re.compile(
+    r"^\s*CREATE\s+(?:OR\s+REPLACE\s+)?(?:(?:NON)?EDITIONABLE\s+)?"
+    r"(PACKAGE\s+BODY|PACKAGE|PROCEDURE|FUNCTION|TRIGGER|TYPE\s+BODY|TYPE)\s+"
+    rf"(?:IF\s+NOT\s+EXISTS\s+)?(?:({_IDENT})\s*\.\s*)?({_IDENT})",
+    re.IGNORECASE,
+)
+
+
+def _dictionary_spelling(identifier: str) -> str:
+    """Unquoted identifiers fold to upper case; quoted ones keep their spelling."""
+    if identifier.startswith('"'):
+        return identifier[1:-1].replace('""', '"')
+    return identifier.upper()
+
+
+def _plsql_unit(statement: str) -> Optional[Tuple[str, Optional[str], str]]:
+    """Return ``(type, owner, name)`` when *statement* creates a PL/SQL unit."""
+    match = _PLSQL_UNIT_RE.match(statement)
+    if match is None:
+        return None
+    unit_type = " ".join(match.group(1).upper().split())
+    owner = _dictionary_spelling(match.group(2)) if match.group(2) else None
+    return unit_type, owner, _dictionary_spelling(match.group(3))
+
+
+class _DriverWarning(Protocol):
+    full_code: str
+
+
+class _OracleCursor(Protocol):
+    warning: Optional[_DriverWarning]
+
+
+def _note_compile_warning(compiled_with_errors: List[bool], cursor: _OracleCursor) -> None:
+    """Record that the driver reported ORA-24344 on *cursor*."""
+    warning = cursor.warning
+    if warning is not None and warning.full_code in _COMPILE_WARNING_FULL_CODES:
+        compiled_with_errors.append(True)
+
+
+@contextmanager
+def _watch_compile_warning(connection: object) -> Iterator[List[bool]]:
+    """Yield a list that is non-empty once a statement on *connection* warned ORA-24344."""
+    compiled_with_errors: List[bool] = []
+    if not isinstance(connection, Connection):
+        yield compiled_with_errors
+        return
+
+    def _listener(_conn: object, cursor: _OracleCursor, *_args: object) -> None:
+        _note_compile_warning(compiled_with_errors, cursor)
+
+    event.listen(connection, "after_cursor_execute", _listener)
+    try:
+        yield compiled_with_errors
+    finally:
+        event.remove(connection, "after_cursor_execute", _listener)
 
 
 def _seconds_before(clock: str, seconds: str) -> str:
@@ -281,7 +348,37 @@ class OracleProvider(SqlLeaseLockingProvider):
         if not is_plsql_block and stmt.endswith(";"):
             stmt = stmt[:-1].rstrip(ORACLE_SPEC.text_blanks)
         stmt = _refuse_edges_the_driver_strips(stmt)
-        return super().execute_statement(stmt, schema=schema, params=params)
+        unit = _plsql_unit(stmt)
+        if unit is None:
+            return super().execute_statement(stmt, schema=schema, params=params)
+        with _watch_compile_warning(self._ensure_connection()) as compiled_with_errors:
+            rows_affected = super().execute_statement(stmt, schema=schema, params=params)
+        self._raise_on_compile_errors(unit, bool(compiled_with_errors))
+        return rows_affected
+
+    def _raise_on_compile_errors(self, unit: Tuple[str, Optional[str], str], warned: bool) -> None:
+        """Fail a statement that created *unit* but left it INVALID.
+
+        Oracle answers such a ``CREATE`` with success (ORA-24344), so the
+        driver warning is the signal; ``ALL_ERRORS`` is read either way, both
+        for the message and as a fallback when the driver reports no warning.
+        """
+        unit_type, owner, name = unit
+        rows = self.execute_query(
+            "SELECT line, position, text FROM all_errors "
+            "WHERE owner = NVL(?, SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA')) "
+            "AND name = ? AND type = ? AND attribute = 'ERROR' ORDER BY sequence",
+            [owner, name, unit_type],
+        )
+        if not rows and not warned:
+            return
+        details = [
+            f"line {_row_value(r, 'line')}, column {_row_value(r, 'position')}: "
+            f"{_row_value(r, 'text')}"
+            for r in rows
+        ]
+        message = f"{unit_type} {name} was created with compilation errors (ORA-24344)"
+        raise ExecutionError("\n".join([message + (":" if details else ""), *details]))
 
     def execute_query(self, sql: str, params: Optional[List[Any]] = None) -> List[Dict[str, Any]]:
         """Execute Oracle query SQL after stripping plain trailing semicolons."""
