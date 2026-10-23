@@ -47,6 +47,7 @@ def _make_client(undo_result):
         return "migrations"
 
     client._get_scripts_dir = _get_scripts_dir
+    client._check_target_version = lambda *args, **kwargs: None
     return client
 
 
@@ -107,6 +108,7 @@ class TestUndoEvents:
         client.executor = executor
         client.events = MagicMock()
         client._get_scripts_dir = lambda: "migrations"
+        client._check_target_version = lambda *args, **kwargs: None
 
         with pytest.raises(RuntimeError):
             client.undo(target_version="1")

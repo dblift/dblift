@@ -37,6 +37,7 @@ from dblift.cli._command_handlers import (  # noqa: F401
     CliCommandContext,
     _extract_version_filters,
     _validate_migrate_options,
+    _validate_target_version_option,
     execute_single_command,
     exit_license_required,
 )
@@ -835,6 +836,17 @@ def _dispatch_command(ctx: _CliContext, command_output: CommandOutput) -> int:
             else:
                 cmd_args = ctx.args
 
+            if command in ("migrate", "undo", "validate", "info"):
+                _validate_target_version_option(
+                    command,
+                    cmd_args,
+                    ctx.parser,
+                    ctx.log,
+                    scripts_dir,
+                    additional_scripts_dirs,
+                    recursive,
+                    dir_recursive_map,
+                )
             _connect_if_needed(client, ctx.log, command, cmd_args)
             if command == "migrate":
                 _validate_migrate_options(cmd_args, ctx.parser)
