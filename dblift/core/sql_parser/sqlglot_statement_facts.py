@@ -28,6 +28,7 @@ from dblift.core.sql_parser.dml_modifiers import (  # noqa: F401  (re-exported)
 )
 from dblift.core.sql_parser.statement_facts import (
     DeclaredConstraint,
+    DmlEffect,
     NamedObject,
     StatementFacts,
 )
@@ -732,13 +733,166 @@ def _created_object_type(ast: exp.Create, dialect: str) -> SqlObjectType:
     return object_type
 
 
+_CTE_WRITES = (exp.Insert, exp.Update, exp.Delete)
+
+
+def _cte_name(identifier: exp.Expr, upper: bool = False) -> str:
+    """The name an unquoted identifier folds to (lower case, upper for Snowflake); a quoted one
+    is exact."""
+    if identifier.args.get("quoted"):
+        return identifier.name
+    return identifier.name.upper() if upper else identifier.name.lower()
+
+
+def _names_a_visible_cte(table: exp.Table, upper: bool = False) -> bool:
+    """Whether an unqualified table name resolves to a CTE at its place in the text.
+
+    A body sees the CTEs before it (all of them under ``RECURSIVE``), the rest of the statement
+    sees every CTE of the nearest ``WITH`` that encloses it, and the innermost match wins.
+    """
+    if table.db or table.catalog or not isinstance(table.this, exp.Identifier):
+        return False
+    wanted = _cte_name(table.this, upper)
+    child: exp.Expr = table
+    parent = table.parent
+    while parent is not None:
+        if isinstance(parent, exp.CTE) and isinstance(parent.parent, exp.With):
+            siblings = parent.parent.expressions
+            visible = (
+                siblings
+                if parent.parent.args.get("recursive")
+                else siblings[: next(i for i, c in enumerate(siblings) if c is parent)]
+            )
+            if any(_cte_name(cte.args["alias"].this, upper) == wanted for cte in visible):
+                return True
+        else:
+            clause = parent.args.get("with_")
+            if clause is not None and child is not clause:
+                if any(
+                    _cte_name(cte.args["alias"].this, upper) == wanted for cte in clause.expressions
+                ):
+                    return True
+        child, parent = parent, parent.parent
+    return False
+
+
+def _write_effect(node: exp.Expression, dialect: str) -> Optional[DmlEffect]:
+    """The table, predicate, events and assigned columns of an INSERT, UPDATE or DELETE."""
+    table = _dml_target_table(node)
+    if not isinstance(table, exp.Table) or _named(table, SqlObjectType.TABLE, "altered") is None:
+        return None
+    bare = table.copy()
+    for key in ("alias", "joins", "only"):
+        bare.set(key, None)
+    where = node.args.get("where")
+    return DmlEffect(
+        type(node).__name__.upper(),
+        ".".join(part for part in (table.catalog, table.db, table.name) if part),
+        bare.sql(dialect=dialect),
+        where.this.sql(dialect=dialect) if isinstance(where, exp.Where) else None,
+        frozenset(_sqlglot_events(node) or ()),
+        tuple(_sqlglot_updated_columns(node)),
+    )
+
+
+def _unread_cte_reason(ast: exp.Expr, dialect: str) -> Optional[str]:
+    """Why the CTEs of a statement cannot be read, or ``None`` when they can."""
+    ctes = list(ast.find_all(exp.CTE))
+    for cte in ctes:
+        body = cte.this
+        if isinstance(body, exp.Merge):
+            return f"{dialect} CTE body is a MERGE, which is not read"
+        if not isinstance(body, (exp.Query, exp.Values) + _CTE_WRITES):
+            return f"{dialect} CTE body effects are not read"
+        if not isinstance(body, _CTE_WRITES):
+            continue
+        if dialect == "redshift":  # lint: allow-dialect-string: Redshift has no writing CTE
+            return "redshift rejects a data-modifying CTE"
+        if cte.parent is not ast.args.get("with_"):
+            return f"{dialect} reads a data-modifying WITH only at the top level of a statement"
+        if _write_effect(body, dialect) is None:
+            return f"{dialect} CTE write target is not a plain table"
+    if dialect == "redshift":  # lint: allow-dialect-string: Redshift scoping was not measured
+        # Only a scope that needs no rule of the engine is read: one flat, non-recursive WITH
+        # whose bodies name no CTE of their own position or after it.
+        clauses = list(ast.find_all(exp.With))
+        aliases = [cte.args["alias"].this for cte in ctes]
+        if (
+            len(clauses) != 1
+            or clauses[0].args.get("recursive")
+            or any(alias.args.get("quoted") for alias in aliases)
+            or any(
+                not table.db
+                and any(
+                    table.name.lower() == aliases[j].name.lower() for j in range(i, len(aliases))
+                )
+                for i, cte in enumerate(ctes)
+                for table in cte.this.find_all(exp.Table)
+            )
+        ):
+            return f"{dialect} CTE source scopes are opaque to statement facts"
+    return None
+
+
+def _cte_statement_facts(ast: exp.Expr, dialect: str) -> Optional[StatementFacts]:
+    """Read INSERT, UPDATE, DELETE or SELECT whose WITH names writing or shadowing CTEs.
+
+    The outer statement keeps its target, predicate and events; every writing CTE adds the table
+    it changes and its own events; a name inside a body is a CTE only where the scope says so.
+    """
+    top = ast.args.get("with_")
+    nodes = (
+        [cte.this for cte in top.expressions if isinstance(cte.this, _CTE_WRITES)] if top else []
+    )
+    if isinstance(ast, _CTE_WRITES):
+        nodes.insert(0, ast)
+    elif not isinstance(ast, exp.Query) or _select_into_table(ast) is not None:
+        return None
+    effects: list[DmlEffect] = []
+    targets: list[exp.Expr] = []
+    objects: list[NamedObject] = []
+    for node in nodes:
+        effect = _write_effect(node, dialect)
+        table = _dml_target_table(node)
+        altered = _named(table, SqlObjectType.TABLE, "altered") if table is not None else None
+        if effect is None or table is None or altered is None:
+            return None
+        effects.append(effect)
+        targets.append(table)
+        if altered not in objects:
+            objects.append(altered)
+    for table in ast.find_all(exp.Table):
+        if any(table is target for target in targets) or not table.name:
+            continue
+        reference = _named(table, SqlObjectType.TABLE, "referenced")
+        if reference is not None and reference not in objects and not _names_a_visible_cte(table):
+            objects.append(reference)
+    if not isinstance(ast, _CTE_WRITES):
+        return StatementFacts(
+            "SELECT", "DML" if effects else "QUERY", tuple(objects), cte_writes=tuple(effects)
+        )
+    outer = effects[0]
+    return StatementFacts(
+        outer.operation,
+        "DML",
+        tuple(objects),
+        outer.target,
+        outer.predicate,
+        affected_columns=outer.affected_columns,
+        events=outer.events or None,
+        target_sql=outer.target_sql,
+        cte_writes=tuple(effects[1:]),
+    )
+
+
 def _postgresql_opaque_cte(ast: exp.Expr, dialect: str) -> Optional[StatementFacts]:
-    """Retain outer identities when the flat CTE reference filter cannot prove the body."""
+    """Read a WITH the flat reference filter cannot prove, or retain the outer identity."""
     clauses = list(ast.find_all(exp.With))
     if not clauses:
         return None
     ctes = list(ast.find_all(exp.CTE))
     aliases = {cte.alias.lower() for cte in ctes}
+    writes = any(isinstance(cte.this, _CTE_WRITES) for cte in ctes)
     effects_unknown = any(not isinstance(cte.this, exp.Query) for cte in ctes)
     query = ast.args.get("expression") if isinstance(ast, exp.Create) else ast
     if not (
@@ -762,6 +916,23 @@ def _postgresql_opaque_cte(ast: exp.Expr, dialect: str) -> Optional[StatementFac
     ):
         return None
 
+    reason = _unread_cte_reason(ast, dialect)
+    if reason is None and not isinstance(ast, exp.Create):
+        facts = _cte_statement_facts(ast, dialect)
+        if facts is not None:
+            return facts
+        reason = (
+            f"{dialect} SELECT INTO behind a data-modifying CTE is not read"
+            if writes
+            else f"{dialect} CTE source scopes or effects are opaque to statement facts"
+        )
+    elif reason is None:
+        reason = (
+            f"{dialect} CREATE with a data-modifying CTE is not read"
+            if writes
+            else f"{dialect} CTE source scopes or effects are opaque to statement facts"
+        )
+
     operation = type(ast).__name__.upper()
     kind = "UNKNOWN"
     identity = None
@@ -779,18 +950,18 @@ def _postgresql_opaque_cte(ast: exp.Expr, dialect: str) -> Optional[StatementFac
         operation,
         kind,
         (identity,) if identity is not None else (),
-        diagnostic=f"{dialect} CTE source scopes or effects are opaque to statement facts",
+        diagnostic=reason,
     )
 
 
-def _merge_referenced(node: exp.Merge) -> Tuple[NamedObject, ...]:
+def _merge_referenced(node: exp.Merge, upper: bool = False) -> Tuple[NamedObject, ...]:
     """Resolve MERGE sources in their own scopes, excluding CTE aliases."""
     from sqlglot.optimizer.scope import traverse_scope
 
     found: list[NamedObject] = []
     for scope in traverse_scope(node):
         for source in scope.sources.values():
-            if isinstance(source, exp.Table):
+            if isinstance(source, exp.Table) and not _names_a_visible_cte(source, upper):
                 reference = _named(source, SqlObjectType.TABLE, "referenced")
                 if reference is not None and reference not in found:
                     found.append(reference)
@@ -951,7 +1122,7 @@ def _copy_query_referenced(query: exp.Subquery, sql: str) -> Optional[Tuple[Name
 
 
 def _copy_facts(node: exp.Copy, sql: str, *, dialect: str = "duckdb") -> StatementFacts:
-    """Read literal-file COPY; PostgreSQL permits only option-free table transfers."""
+    """Read literal-file COPY (DuckDB, Redshift)."""
     schema = node.this if isinstance(node.this, exp.Schema) else None
     table = schema.this if schema is not None else node.this
     direction = node.args.get("kind")
@@ -976,24 +1147,6 @@ def _copy_facts(node: exp.Copy, sql: str, *, dialect: str = "duckdb") -> Stateme
         and not any(parameter.find(exp.Query) for parameter in node.args.get("params") or [])
     ):
         return opaque
-    if dialect == "postgres":  # lint: allow-dialect-string: narrow PostgreSQL file COPY facts
-        if not (
-            isinstance(table, exp.Table)
-            and table.name
-            and table.args.get("catalog") is None
-            and (table.args.get("db") is None or table.db)
-            and not any(value for key, value in table.args.items() if key not in {"this", "db"})
-            and (schema is None or columns)
-            and all(column.name for column in columns)
-            and not node.args.get("params")
-            and not any(
-                value
-                for key, value in node.args.items()
-                if key not in {"this", "kind", "files", "params", "credentials"}
-            )
-            and not any((node.args.get("credentials") or exp.Credentials()).args.values())
-        ):
-            return opaque
     importing = direction is True
     # sqlglot defaults a missing direction to FROM; require the actual keyword before the path.
     tokens = Dialect.get_or_raise(dialect).tokenize(sql)
@@ -1006,10 +1159,6 @@ def _copy_facts(node: exp.Copy, sql: str, *, dialect: str = "duckdb") -> Stateme
         or (tokens[path_at - 1].token_type, tokens[path_at - 1].text.upper()) != expected
     ):
         return opaque
-    if dialect == "postgres":  # lint: allow-dialect-string: reject unmodelled COPY suffixes
-        suffix = tokens[path_at + 1 :]
-        if suffix and not (len(suffix) == 1 and suffix[0].token_type == TokenType.SEMICOLON):
-            return opaque
     if query is not None:
         references = _copy_query_referenced(query, sql)
         return StatementFacts("COPY", "QUERY", references) if references is not None else opaque
@@ -1023,6 +1172,143 @@ def _copy_facts(node: exp.Copy, sql: str, *, dialect: str = "duckdb") -> Stateme
         affected_columns=tuple(column.name for column in columns) if importing else (),
         events=frozenset({"INSERT"}) if importing else None,
         target_sql=table.sql(dialect=dialect) if importing else None,
+    )
+
+
+# ``'x'``, ``$$x$$``, ``E'x'`` and ``U&'x'`` all name a file in PostgreSQL 16.14.
+_STRING_LITERALS = frozenset(
+    {
+        TokenType.STRING,
+        TokenType.HEREDOC_STRING,
+        TokenType.BYTE_STRING,
+        TokenType.UNICODE_STRING,
+    }
+)
+
+
+def _postgres_copy_facts(node: exp.Copy, sql: str) -> StatementFacts:
+    """Read ``COPY t [(cols)] FROM|TO source [options]``: the options cannot change the table.
+
+    The source is a literal file, ``STDIN``/``STDOUT`` (either word, in either direction: both are
+    the client stream) or ``PROGRAM '...'``; the head is checked
+    against the tokens because the grammar reads the old ``COPY BINARY t`` as a table BINARY.
+    """
+    schema = node.this if isinstance(node.this, exp.Schema) else None
+    table = schema.this if schema is not None else node.this
+    columns = schema.expressions if schema is not None else []
+    opaque = StatementFacts(
+        "COPY", "UNKNOWN", diagnostic="postgres COPY source or destination is opaque"
+    )
+    if not (
+        isinstance(table, exp.Table)
+        and isinstance(table.this, exp.Identifier)
+        and table.name
+        and table.args.get("catalog") is None
+        and (table.args.get("db") is None or table.db)
+        and not any(value for key, value in table.args.items() if key not in {"this", "db"})
+        and (schema is None or columns)
+        and all(isinstance(column, exp.Identifier) and column.name for column in columns)
+        and len(node.args.get("files") or []) == 1
+        and not any(
+            value
+            for key, value in node.args.items()
+            if key not in {"this", "kind", "files", "params", "credentials"}
+        )
+        and not any((node.args.get("credentials") or exp.Credentials()).args.values())
+    ):
+        return opaque
+    grammar = "postgres"  # lint: allow-dialect-string: this reader is PostgreSQL's
+    tokens = Dialect.get_or_raise(grammar).tokenize(sql)
+    if tokens[0].token_type != TokenType.COPY:
+        return opaque
+    at = 1
+    names = 2 if table.db else 1
+    for position in range(names):
+        if at >= len(tokens) or tokens[at].token_type in {
+            TokenType.L_PAREN,
+            TokenType.DOT,
+            TokenType.FROM,
+            TokenType.SEMICOLON,
+        }:
+            return opaque
+        at += 1
+        if position + 1 < names:
+            if at >= len(tokens) or tokens[at].token_type != TokenType.DOT:
+                return opaque
+            at += 1
+    if schema is not None:
+        close = next(
+            (i for i in range(at, len(tokens)) if tokens[i].token_type == TokenType.R_PAREN), None
+        )
+        if at >= len(tokens) or tokens[at].token_type != TokenType.L_PAREN or close is None:
+            return opaque
+        at = close + 1
+    if at >= len(tokens):
+        return opaque
+    word = tokens[at].text.upper()
+    importing = tokens[at].token_type == TokenType.FROM
+    if not (importing or (tokens[at].token_type == TokenType.VAR and word == "TO")):
+        return opaque
+    if importing != (node.args.get("kind") is True):
+        return opaque
+    source = tokens[at + 1 :]
+    # The grammar reads STDIN and STDOUT as the same client stream in either direction.
+    program = False
+    if (
+        source
+        and source[0].token_type == TokenType.VAR
+        and source[0].text.upper() in {"STDIN", "STDOUT"}
+    ):
+        rest, stream = source[1:], True
+    elif source and source[0].token_type in _STRING_LITERALS:
+        rest, stream = source[1:], False
+    elif (
+        len(source) > 1
+        and source[0].token_type == TokenType.VAR
+        and source[0].text.upper() == "PROGRAM"
+        and source[1].token_type in _STRING_LITERALS
+    ):
+        rest, stream, program = source[2:], False, True
+    else:
+        return opaque
+    # The tail is not parsed, but what PostgreSQL 16.14 rejects outright is not read as a load:
+    # an empty list, a second direction, the removed OIDS.
+    for position, token in enumerate(rest):
+        following = rest[position + 1 : position + 2]
+        if (
+            token.token_type == TokenType.FROM
+            or (token.token_type == TokenType.VAR and token.text.upper() in {"TO", "OIDS"})
+            or (
+                token.token_type == TokenType.L_PAREN
+                and following
+                and following[0].token_type == TokenType.R_PAREN
+            )
+        ):
+            return opaque
+    # Options follow the source as words or a parenthesised list; an operator or a comma does not.
+    if rest and not (
+        rest[0].token_type in {TokenType.L_PAREN, TokenType.SEMICOLON}
+        or rest[0].text.replace("_", "").isalpha()
+    ):
+        return opaque
+    if any(token.token_type == TokenType.SEMICOLON for token in rest[:-1]):
+        return opaque
+    identity = _named(table, SqlObjectType.TABLE, "altered" if importing else "referenced")
+    target = ".".join(part for part in (table.catalog, table.db, table.name) if part)
+    return StatementFacts(
+        "COPY",
+        "DML" if importing else "QUERY",
+        (identity,) if identity else (),
+        target if importing else None,
+        affected_columns=tuple(column.name for column in columns) if importing else (),
+        events=frozenset({"INSERT"}) if importing else None,
+        target_sql=table.sql(dialect=grammar) if importing else None,
+        # The server runs the command or writes the file, whichever the table's direction.
+        action=(
+            f"copy-{'from' if importing else 'to'}-program"
+            if program
+            else None if stream or importing else "copy-to-file"
+        ),
     )
 
 
@@ -1286,6 +1572,50 @@ def _head_facts(sql: str, diagnostic: str, *, dialect: str = "") -> StatementFac
                 operation, kind, objects + (table,), diagnostic=diagnostic, indexed_table=table.name
             )
     return StatementFacts(operation, kind, objects, diagnostic=diagnostic)
+
+
+_CREATE_MODIFIERS = frozenset(
+    {"OR", "REPLACE", "UNLOGGED", "TEMP", "TEMPORARY", "GLOBAL", "LOCAL", "UNIQUE", "MATERIALIZED"}
+)
+
+
+def _postgres_tablespace_clause(sql: str) -> bool:
+    """Whether a CREATE TABLE, INDEX or MATERIALIZED VIEW carries a ``TABLESPACE`` clause.
+
+    The clause is a ``TABLESPACE`` outside any parenthesis after the object's name: ``CREATE
+    TABLESPACE`` names the kind of object, and a table named ``tablespace`` follows the kind word.
+    """
+    grammar = "postgres"  # lint: allow-dialect-string: this reader is PostgreSQL's
+    try:
+        tokens = Dialect.get_or_raise(grammar).tokenize(sql)
+    except TokenError:
+        return False
+    words = [token.text.upper() for token in tokens]
+    if not words or words[0] != "CREATE":
+        return False
+    kind = 1
+    while kind < len(words) and words[kind] in _CREATE_MODIFIERS:
+        kind += 1
+    if kind >= len(words) or words[kind] not in {"TABLE", "INDEX", "VIEW"}:
+        return False
+    name = kind + 1
+    if words[name : name + 1] == ["CONCURRENTLY"]:
+        name += 1
+    if words[name : name + 3] == ["IF", "NOT", "EXISTS"]:
+        name += 3
+    depth = 0
+    for at in range(name, len(tokens)):
+        depth += (tokens[at].token_type == TokenType.L_PAREN) - (
+            tokens[at].token_type == TokenType.R_PAREN
+        )
+        if (
+            depth == 0
+            and at > name
+            and tokens[at].token_type == TokenType.VAR
+            and words[at] == "TABLESPACE"
+        ):
+            return True
+    return False
 
 
 def _mysql_unresolved_mutation_target(ast: exp.Expression) -> bool:
@@ -1877,6 +2207,14 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
     ):
         head = _head_facts(sql, "", dialect=dialect)
         return StatementFacts(head.operation, head.kind, diagnostic=_SNOWFLAKE_DYNAMIC_NAMES)
+    if (
+        dialect == "postgres"  # lint: allow-dialect-string: sqlglot has no TABLESPACE clause
+        and isinstance(ast, exp.Command)
+        and _postgres_tablespace_clause(sql)
+    ):
+        return _head_facts(
+            sql, "postgres TABLESPACE clause is not modelled by the grammar", dialect=dialect
+        )
     if ast is None or isinstance(ast, (exp.Command, exp.Block)):
         construct = type(ast).__name__ if ast is not None else "empty statement"
         if (
@@ -2014,7 +2352,7 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
 
     if dialect == "postgres":  # lint: allow-dialect-string: PostgreSQL COPY and CTE boundaries
         if isinstance(ast, exp.Copy):
-            return _copy_facts(ast, sql, dialect=dialect)
+            return _postgres_copy_facts(ast, sql)
         opaque_cte = _postgresql_opaque_cte(ast, dialect)
         if opaque_cte is not None:
             return opaque_cte
@@ -2588,7 +2926,15 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
         if (
             dialect == "snowflake"  # lint: allow-dialect-string: MERGE actions must be read
             and isinstance(ast, exp.Merge)
-            and (not _sqlglot_events(ast) or ast.find(exp.With) is not None)
+            and (
+                not _sqlglot_events(ast)
+                # A CTE named like the target leaves it unsaid which of the two is written.
+                or any(
+                    cte.alias.lower() == table.name.lower()
+                    for cte in ast.find_all(exp.CTE)
+                    if table is not None and not table.db
+                )
+            )
         ):
             return StatementFacts(
                 operation, "DML", diagnostic="snowflake MERGE actions or CTE scopes are not read"
@@ -2632,7 +2978,7 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
             # DELETE's target list names write targets, not additional read sources.
             skipped_references += tuple(ast.args.get("tables") or [])
         references = (
-            _merge_referenced(ast)
+            _merge_referenced(ast, dialect == "snowflake")  # lint: allow-dialect-string: folding
             if isinstance(ast, exp.Merge)
             else _referenced(ast, skipped_references)
         )

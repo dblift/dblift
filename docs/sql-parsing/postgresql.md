@@ -220,11 +220,42 @@ the `postgres` branches of `dblift/core/sql_parser/sqlglot_statement_facts.py`. 
 corpus `tests/support/facts_corpus/postgresql.jsonl` and the ledger
 `postgresql.review.json` (every difference against the former extraction,
 explained) are the evidence, and `gated.json` gates the family. Known gaps:
-dblift/dblift#666 (`CREATE TABLE … TABLESPACE` and storage parameters read from
-the head only), #667 (`COPY` with options, `STDIN`/`STDOUT` or a query source
-stays opaque), #668 (`MERGE` forms and CTE-led DML keep the outer target opaque)
-and #669 (event trigger, FDW, server, publication, operator class, text search,
-tablespace objects and `GRANT`/`REVOKE` name nothing).
+dblift/dblift#669 (event trigger, FDW, server, publication, operator class, text
+search, tablespace objects and `GRANT`/`REVOKE` name nothing). sqlglot 30.23 has no `TABLESPACE`
+clause in its PostgreSQL grammar and returns `CREATE TABLE … TABLESPACE ts`, the same on an index
+and a materialized view, as a command: the object is named from the head and the diagnostic says
+`postgres TABLESPACE clause is not modelled by the grammar` (storage parameters alone,
+`WITH (fillfactor=70)`, parse normally).
+
+`COPY t [(cols)] FROM|TO source [options]` is read from the table and the direction alone: `FROM`
+alters `t` with an `INSERT` event, `TO` references it, and every option after the source
+(`(FORMAT CSV, HEADER)`, `WITH (...)`, `CSV`, `DELIMITER`) is ignored because none changes the
+table. The source is a literal file, `STDIN` or `STDOUT`, or `PROGRAM '…'`. PostgreSQL 16.14
+accepted each (`COPY ct FROM STDOUT` loads from the client stream and `COPY ct TO STDIN` writes to
+it, so the words are not tied to a direction), refused `FROM "STDIN"`, `FROM PROGRAM` without a
+string, `WITH ()`, a bare `()`, `OIDS`, a second direction and `'a' || '.csv'` with a syntax
+error (the reader leaves those unread; the rest of the option tail is not validated), and accepted
+`COPY BINARY t`, which the grammar misreads as a table named BINARY: that head is left unread.
+`COPY … TO PROGRAM`, `COPY … FROM PROGRAM` and `COPY … TO 'file'` run a command or write a file on
+the database server: the facts mark them (`action`) and `validate-sql` gives the script a REVIEW
+verdict with the `copy-server-side` finding. Reads through `STDIN`/`STDOUT` and `COPY … FROM 'file'`
+carry no finding.
+A query source
+(`COPY (SELECT …) TO`, with no finding even `TO PROGRAM`) and `COPY … FROM … WHERE` (sqlglot fails
+to parse it) stay unread.
+
+A statement that carries a `WITH` is read with its lexical scope (PostgreSQL 16.14, row counts
+checked): a CTE body sees the CTEs before it, all of them under `RECURSIVE`; a name in the rest of
+the statement sees every CTE of the nearest enclosing `WITH`; the innermost wins, so an inner `WITH`
+shadows an outer name and does not leak out; an unquoted name folds to lower case and a quoted one is
+exact; a schema-qualified name and a write target are never a CTE; `MATERIALIZED` and `VALUES`
+bodies are plain bodies. `INSERT`, `UPDATE` and `DELETE` are accepted as a CTE body only in the
+`WITH` of the statement itself (`INSERT INTO t WITH d AS (DELETE …) SELECT …` and the form inside a
+subquery answer "WITH clause containing a data-modifying statement must be at the top level").
+The outer statement keeps its own target, predicate and events; each writing CTE adds its table
+as altered and a `cte_writes` entry with its operation, predicate, events and assigned columns; a
+`SELECT` led by a writing CTE is `DML`. A `MERGE` body (PostgreSQL 17 grammar, a syntax error on 16)
+and `CREATE … AS` with a writing CTE stay unread, each with a diagnostic that says why.
 
 YugabyteDB uses its own facts reader for `CREATE [UNIQUE] INDEX NONCONCURRENTLY`.
 Its unquoted `NONCONCURRENTLY` is an index-head modifier that the PostgreSQL

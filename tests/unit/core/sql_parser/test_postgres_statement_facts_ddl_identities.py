@@ -297,3 +297,50 @@ def test_grant_and_revoke_keep_their_kind_on_other_dialects(sql, dialect):
 )
 def test_concurrently_is_an_ordinary_name_except_as_the_index_modifier(sql, named):
     assert _pg(sql).objects == (named,)
+
+
+@pytest.mark.parametrize(
+    "sql,obj",
+    [
+        ("CREATE TABLE m (a int) TABLESPACE ts", NamedObject("m", T.TABLE, "created")),
+        (
+            "CREATE TABLE m (a int) WITH (fillfactor=70) TABLESPACE ts",
+            NamedObject("m", T.TABLE, "created"),
+        ),
+        (
+            "CREATE UNLOGGED TABLE IF NOT EXISTS s.t (a int) TABLESPACE ts",
+            NamedObject("t", T.TABLE, "created", "s"),
+        ),
+        ("CREATE TABLE m TABLESPACE ts AS SELECT 1", NamedObject("m", T.TABLE, "created")),
+        ("CREATE INDEX i ON m (a) TABLESPACE ts", NamedObject("i", T.INDEX, "created")),
+        (
+            "CREATE MATERIALIZED VIEW mv TABLESPACE ts AS SELECT 1",
+            NamedObject("mv", T.MATERIALIZED_VIEW, "created"),
+        ),
+    ],
+)
+def test_a_tablespace_clause_is_named_in_the_diagnostic(sql, obj):
+    """sqlglot 30.23 has no TABLESPACE clause in its PostgreSQL grammar and returns the whole
+    statement as a command, so the object is named from the head and the clause is the reason."""
+    facts = _pg(sql)
+
+    assert facts.objects == (obj,)
+    assert facts.diagnostic.endswith("postgres TABLESPACE clause is not modelled by the grammar")
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "CREATE TABLESPACE ts LOCATION '/x'",
+        "CREATE TABLE m (a int) WITHOUT OIDS",
+        "CREATE TABLE tablespace (a int) WITHOUT OIDS",
+        "CREATE TABLE IF NOT EXISTS tablespace (a int) WITHOUT OIDS",
+        "CREATE LOB TABLESPACE ts MANAGED BY SYSTEM",
+    ],
+)
+def test_a_command_without_a_tablespace_clause_keeps_the_generic_diagnostic(sql):
+    assert "TABLESPACE clause" not in (_pg(sql).diagnostic or "")
+
+
+def test_a_column_named_tablespace_is_read_normally():
+    assert _pg("CREATE TABLE m (tablespace int)").diagnostic is None

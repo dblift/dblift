@@ -276,3 +276,65 @@ def test_configured_database_type_is_used_without_the_dialect_option(tmp_path):
     payload = json.loads(proc.stdout)
     assert payload["dialect"] == "mysql", proc.stderr
     assert payload["scripts"][0]["findings"] == []
+
+
+SERVER_SIDE_COPY = {
+    "COPY t TO PROGRAM 'rm -rf /';": "COPY TO PROGRAM runs a shell command on the database server",
+    "COPY t FROM PROGRAM 'curl x';": "COPY FROM PROGRAM runs a shell command on the database server",
+    "COPY t TO '/tmp/f';": "COPY TO a file writes a file on the database server",
+}
+
+
+@pytest.mark.parametrize("sql,reason", list(SERVER_SIDE_COPY.items()))
+def test_a_copy_that_runs_a_command_or_writes_a_server_file_is_for_review(tmp_path, sql, reason):
+    script = tmp_path / "v2.sql"
+    script.write_text(sql)
+
+    console = _run(tmp_path, "validate-sql", "--dialect", "postgresql", "--files", str(script))
+    as_json = _run(
+        tmp_path,
+        "validate-sql",
+        "--dialect",
+        "postgresql",
+        "--format",
+        "json",
+        "--files",
+        str(script),
+    )
+
+    report = console.stdout + console.stderr
+    assert "REVIEW" in report and "copy-server-side" in report, report
+    payload = json.loads(as_json.stdout)
+    assert [s["verdict"] for s in payload["scripts"]] == ["REVIEW"]
+    findings = payload["scripts"][0]["findings"]
+    assert [(f["code"], f["severity"], f["message"]) for f in findings] == [
+        ("copy-server-side", "warning", reason)
+    ]
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "COPY t FROM STDIN;",
+        "COPY t TO STDOUT;",
+        "COPY t FROM '/f';",
+        "COPY (SELECT * FROM t) TO PROGRAM 'x';",
+    ],
+)
+def test_a_copy_through_the_client_stream_a_read_file_or_a_query_source_stays_safe(tmp_path, sql):
+    script = tmp_path / "v2.sql"
+    script.write_text(sql)
+
+    proc = _run(
+        tmp_path,
+        "validate-sql",
+        "--dialect",
+        "postgresql",
+        "--format",
+        "json",
+        "--files",
+        str(script),
+    )
+
+    payload = json.loads(proc.stdout)
+    assert [(s["verdict"], s["findings"]) for s in payload["scripts"]] == [("SAFE", [])]
