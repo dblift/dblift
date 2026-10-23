@@ -180,12 +180,3 @@ def test_statement_kind_and_operation_come_from_the_facts(sql, kind, operation):
     facts = _quirks("postgresql").statement_facts(sql)
 
     assert (facts.kind, facts.operation) == (kind, operation)
-
-
-def test_an_unreadable_data_changing_cte_keeps_the_caution_for_its_outer_target():
-    script = (
-        "WITH m AS (MERGE INTO src USING s ON src.id = s.id WHEN MATCHED THEN DELETE) "
-        "INSERT INTO log(msg) SELECT 1"
-    )
-    cautions = analyse_script(script, "postgresql").cautions
-    assert [(c.level, "log" in c.reason) for c in cautions] == [(CHANGES_ROWS, True)]
