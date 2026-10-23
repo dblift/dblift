@@ -467,14 +467,21 @@ def _configure_logging(
     _LOG_LEVEL_MAP = {
         "debug": LogLevel.DEBUG,
         "warn": LogLevel.WARN,
+        "warning": LogLevel.WARN,
         "error": LogLevel.ERROR,
     }
     # ``config.log_level`` is the already-merged value (file -> env -> CLI
     # precedence applied in config.dblift_config.load_config); prefer it over
     # the raw CLI namespace, which only reflects an explicit --log-level and
     # otherwise carries no signal about file/env config. Fall back to
-    # args.log_level when the merged config has none set.
+    # args.log_level when the merged config has none set, then to the YAML
+    # ``logging.level`` section (INFO there is the default, not a request).
     effective_log_level = getattr(config, "log_level", None) or args.log_level
+    if not effective_log_level:
+        section_level = getattr(getattr(config, "logging", None), "level", None)
+        if isinstance(section_level, str) and section_level.upper() != "INFO":
+            effective_log_level = section_level
+    effective_log_level = str(effective_log_level).lower() if effective_log_level else None
     log_level = _LOG_LEVEL_MAP.get(effective_log_level, LogLevel.INFO)
     # ``--quiet`` raises the *console* threshold to NOTICE so info/debug
     # lines disappear from the terminal while NOTICE (success
