@@ -372,7 +372,7 @@ class TestExceptionHandling(unittest.TestCase):
         logged = " ".join(str(c) for c in logger.error.call_args_list)
         assert "SENTINEL-SECRET-42" not in logged
         assert "SQL: INSERT INTO t" in logged
-        logger.debug.assert_any_call(f"Failed statement: {statement}")
+        logger.debug.assert_any_call("Failed statement: INSERT INTO t VALUES ('?')")
 
     def test_sqlstate_included_in_error_when_available(self):
         svc, provider, _, logger, _ = _make_service(stmt_type=SqlStatementType.DDL.value)

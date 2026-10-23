@@ -102,6 +102,54 @@ def strip_sql_statement_block(message: str) -> str:
     return _SQL_STATEMENT_BLOCK_RE.sub("", message).strip()
 
 
+# Everything a driver may quote from the failing statement, removed by shape rather than by
+# matching the statement's own literals (which escapes, truncated excerpts and $$ bodies defeat).
+_DRIVER_BLOCK_RE = re.compile(r"\s*\[(?:SQL|parameters):.*", re.IGNORECASE | re.DOTALL)
+# A PostgreSQL field line starts the part that quotes statement text (DETAIL, HINT, QUERY,
+# CONTEXT and LINE n: with its caret line); the primary message precedes the first one.
+_DRIVER_FIELD_RE = re.compile(
+    r"^[ \t]*(?:DETAIL|HINT|QUERY|CONTEXT|STATEMENT|LINE\s+\d+)[ \t]*:", re.MULTILINE
+)
+# MySQL's syntax error quotes the rest of the statement and may itself contain quotes.
+_MYSQL_NEAR_RE = re.compile(r"\bnear '.*?' at line (\d+)|\bnear '.*", re.DOTALL)
+_VALUE_GROUP_RE = re.compile(r"=\(.*\)|\bvalue is \(.*\)", re.IGNORECASE)
+# PostgreSQL quotes values, not only names, in double quotes after a colon, after ``value`` and
+# after ``near``; names (relation "t", constraint "c") are not preceded by these.
+_DOUBLE_QUOTED_VALUE_RE = re.compile(r'(?:: |\bnear |\bvalue )"(?:[^"]|"")*"', re.IGNORECASE)
+
+
+def _mask_single_quoted(line: str) -> str:
+    # First quote to last: drivers do not escape an apostrophe inside the value they quote.
+    first, last = line.find("'"), line.rfind("'")
+    if first < 0:
+        return line
+    # A lone quote never closes: it runs to the end of the line.
+    return line[:first] + "?" + (line[last + 1 :] if last > first else "")
+
+
+def redact_driver_error_text(message: str) -> str:
+    """Remove what a driver error quotes from the failing statement.
+
+    Drops SQLAlchemy's ``[SQL: ...]`` and ``[parameters: ...]`` blocks and everything from
+    PostgreSQL's first ``DETAIL:`` / ``HINT:`` / ``QUERY:`` / ``CONTEXT:`` / ``LINE n:`` line, then
+    replaces MySQL's ``near '...'`` excerpt, every single-quoted string, every ``=(...)`` value
+    group and the double-quoted value after ``: ``, ``near`` or ``value`` with ``?``. Names in
+    double quotes, error classes and codes stay. Quoted constraint and key names in single quotes
+    (MySQL ``for key '...'``) are replaced too; that is the price of not telling them from values.
+    """
+    text = _DRIVER_BLOCK_RE.sub("", message)
+    field = _DRIVER_FIELD_RE.search(text)
+    if field:
+        text = text[: field.start()]
+    text = _MYSQL_NEAR_RE.sub(
+        lambda m: "near ?" + (f" at line {m.group(1)}" if m.group(1) else ""), text
+    )
+    text = "\n".join(_mask_single_quoted(line) for line in text.split("\n"))
+    text = _VALUE_GROUP_RE.sub(lambda m: m.group(0).split("(", 1)[0] + "(?)", text)
+    text = _DOUBLE_QUOTED_VALUE_RE.sub(lambda m: m.group(0).split('"', 1)[0] + "?", text)
+    return text.strip()
+
+
 # Generic fallback patterns (checked for all database types)
 _GENERIC_PATTERNS: List[Tuple[re.Pattern[str], ErrorCategory]] = [
     (

@@ -64,9 +64,9 @@ def test_failed_statement_literals_do_not_reach_info_output(tmp_path, caplog, ca
     assert "no such table" in failed.error_message
 
 
-def test_full_failed_statement_is_available_at_debug(tmp_path, capfd):
+def test_failed_statement_is_masked_at_debug_too(tmp_path, capfd):
     _, log_file_text = _run_failing_migration(tmp_path, "DEBUG")
     captured = capfd.readouterr()
 
-    assert SENTINEL in captured.out + captured.err
-    assert SENTINEL in log_file_text
+    assert SENTINEL not in captured.out + captured.err
+    assert SENTINEL not in log_file_text

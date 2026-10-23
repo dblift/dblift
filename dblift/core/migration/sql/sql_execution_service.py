@@ -17,6 +17,7 @@ from dblift.db.error import (
     clean_driver_error_message,
     extract_error_code,
     extract_sqlstate,
+    redact_driver_error_text,
     strip_sql_statement_block,
 )
 from dblift.db.provider_interfaces import TransactionalProvider
@@ -30,7 +31,9 @@ def _format_execution_error(exc: BaseException) -> str:
     expose them via attributes or getSQLState() / getErrorCode().
     """
     fragments: List[str] = []
-    base = strip_sql_statement_block(clean_driver_error_message(to_python_string(exc) or str(exc)))
+    base = redact_driver_error_text(
+        strip_sql_statement_block(clean_driver_error_message(to_python_string(exc) or str(exc)))
+    )
     if base:
         fragments.append(base)
     sqlstate = extract_sqlstate(exc)
@@ -147,13 +150,13 @@ class SqlExecutionService:
         """
         self.prepare_analysis()
 
-        # Log statement for debugging
+        # Log statement for debugging, with its string literals masked
+        masked = mask_string_literals(statement, self._dialect_name())
         if len(statement) > LOG_STATEMENT_PREVIEW_LENGTH:
-            self.log.debug(
-                f"Executing statement (preview): {truncate_sql_for_logging(statement, LOG_STATEMENT_PREVIEW_LENGTH)}"
-            )
+            preview = truncate_sql_for_logging(masked, LOG_STATEMENT_PREVIEW_LENGTH)
+            self.log.debug(f"Executing statement (preview): {preview}")
         else:
-            self.log.debug(f"Executing statement: {statement}")
+            self.log.debug(f"Executing statement: {masked}")
 
         # Record statement start in journal if enabled
         stmt_start_time = time.time()
@@ -341,8 +344,10 @@ class SqlExecutionService:
             # Record statement failure in journal if enabled
             if self.journal and hasattr(self.journal, "record_statement_failed"):
                 execution_time = int((time.time() - stmt_start_time) * SECONDS_TO_MILLISECONDS)
-                error_message = strip_sql_statement_block(
-                    clean_driver_error_message(to_python_string(e) or str(e))
+                error_message = redact_driver_error_text(
+                    strip_sql_statement_block(
+                        clean_driver_error_message(to_python_string(e) or str(e))
+                    )
                 )
                 self.journal.record_statement_failed(
                     mask_string_literals(statement, self._dialect_name()),
@@ -356,8 +361,10 @@ class SqlExecutionService:
             except Exception:
                 formatted = ""
             self.log.error(f"SQL: {describe_statement(statement, self._dialect_name())}")
-            self.log.debug(f"Failed statement: {statement}")
-            self.log.error(formatted or strip_sql_statement_block(str(e)))
+            self.log.debug(
+                f"Failed statement: {mask_string_literals(statement, self._dialect_name())}"
+            )
+            self.log.error(formatted or redact_driver_error_text(strip_sql_statement_block(str(e))))
 
             # Re-raise the exception
             raise
