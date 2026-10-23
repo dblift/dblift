@@ -342,8 +342,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   unit is checked once the last statement of the migration has run, and recompiled if it is INVALID, so a unit
   may reference one created later in the same file, and packages may reference each other. `migrate` exits 1
   and records the migration as failed only for units that are still INVALID, including ones a later statement
-  of the file invalidated, listing each with its first `PLS-` error, line and column. The migration's own DML
-  is rolled back, not committed by the check. Oracle DDL auto-commits, so the unit stays created and INVALID
+  of the file invalidated, listing each with its first `PLS-` error, line and column. DML run after the migration's
+  last DDL statement is rolled back; DML before a DDL statement is already committed by Oracle's DDL
+  auto-commit. Oracle DDL auto-commits, so the unit stays created and INVALID
   until a corrected `CREATE OR REPLACE` is applied.
 - **A PostgreSQL statement with a `WITH` now names every table it changes.** `WITH d AS (DELETE FROM src
   ...) INSERT INTO log SELECT * FROM d`, `INSERT INTO t WITH x AS (...) SELECT ...` and `WITH u AS (UPDATE a

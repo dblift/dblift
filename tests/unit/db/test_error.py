@@ -491,3 +491,21 @@ class TestExtractErrorCode:
 
     def test_none_when_absent(self):
         assert extract_error_code(Exception("driver error")) is None
+
+
+def test_consecutive_identical_lines_of_a_driver_message_print_once():
+    from dblift.db.error import clean_driver_error_message
+
+    message = "ORA-01031: insufficient privileges\nORA-06512: at line 1\nORA-06512: at line 1\nORA-06512: at line 1"
+
+    assert clean_driver_error_message(message) == (
+        "ORA-01031: insufficient privileges\nORA-06512: at line 1"
+    )
+
+
+def test_a_repeated_line_that_is_not_consecutive_is_kept():
+    from dblift.db.error import clean_driver_error_message
+
+    message = "ORA-06512: at line 1\nORA-00001: x\nORA-06512: at line 1"
+
+    assert clean_driver_error_message(message) == message

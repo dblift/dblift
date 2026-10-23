@@ -158,9 +158,11 @@ its first `PLS-` error, line and column; the statement number is that of the
 first such unit's `CREATE` or `ALTER`.
 
 The recompile runs in its own transaction, so it does not commit the DML the
-migration has already run: when the check fails, that DML is rolled back as for
-any other failing migration. The units themselves stay created (INVALID), as
-Oracle DDL auto-commits; fix the body and re-run `CREATE OR REPLACE`, or use
+migration has already run: when the check fails, the DML run after the
+migration's last DDL statement is rolled back as for any other failing
+migration. DML before a DDL statement is already committed by Oracle's DDL
+auto-commit. The units themselves stay created (INVALID); fix the body and
+re-run `CREATE OR REPLACE`, or use
 `repair` as usual. `WHENEVER SQLERROR CONTINUE` does not excuse this failure: it
 applies to the statements of the script, and this check happens after the last
 one.

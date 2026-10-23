@@ -427,10 +427,9 @@ class OracleProvider(SqlLeaseLockingProvider):
             if errors:
                 first = errors[0]
                 lines.append(f"{unit_type} {name}:")
-                lines.append(
-                    f"  line {_row_value(first, 'line')}, column {_row_value(first, 'position')}: "
-                    f"{_row_value(first, 'text')}"
-                )
+                line, position = _row_value(first, "line"), _row_value(first, "position")
+                where = f"line {line}, column {position}: " if line or position else ""
+                lines.append(f"  {where}{_row_value(first, 'text')}")
             else:
                 lines.append(f"{unit_type} {name}: INVALID, no compile errors reported")
         raise StatementVerdictError(

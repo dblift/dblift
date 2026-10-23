@@ -342,3 +342,20 @@ def test_other_alter_statements_are_not_tracked(run_unit) -> None:
 
     assert run_unit(provider, "ALTER TABLE t ADD (c NUMBER);") is None
     assert provider.queries == []
+
+
+@pytest.mark.parametrize(
+    ("line", "position", "shown"),
+    [(0, 0, "VIEW V:\n  ORA-00942: gone"), (3, 5, "VIEW V:\n  line 3, column 5: ORA-00942: gone")],
+)
+def test_an_error_without_a_position_prints_no_line_and_column(
+    run_unit, line, position, shown
+) -> None:
+    provider = _Provider(
+        [{"status": "INVALID", "line": line, "position": position, "text": "ORA-00942: gone"}]
+    )
+
+    with pytest.raises(ExecutionError) as caught:
+        run_unit(provider, "CREATE OR REPLACE FORCE VIEW v AS SELECT * FROM missing")
+
+    assert shown in str(caught.value)
