@@ -21,8 +21,9 @@ from dblift.core.exceptions import (
 )
 from dblift.core.sql_model.base import SqlObjectType
 from dblift.core.sql_parser._deprecation import internal_parser_construction
+from dblift.core.sql_parser.common.comment_stripping import strip_comments_preserving_quotes
 from dblift.core.sql_parser.parser_factory import SqlParserFactory
-from dblift.core.sql_parser.statement_facts import DmlEffect
+from dblift.core.sql_parser.statement_facts import DmlEffect, StatementFacts
 from dblift.db.dml_analysis import strip_leading_sql_comments
 from dblift.db.provider_registry import ProviderRegistry
 
@@ -58,6 +59,44 @@ _DATA_HOLDERS = frozenset(
         SqlObjectType.DATABASE.value,
     }
 )
+# The statements the facts reader may leave unread and ``statement-not-analysed`` still passes,
+# recognised by their head keyword. Each changes no row and no object definition:
+#   SET / USE / SAVEPOINT / RELEASE / ROLLBACK / COMMIT / START TRANSACTION, and a bare BEGIN or
+#     END carrying only transaction modes: session and transaction state. SET stops at what
+#     changes the server or an account (MySQL SET GLOBAL / PERSIST / PERSIST_ONLY / PASSWORD, in
+#     the keyword form, as @@GLOBAL.x, or after a comma). BEGIN ... END,
+#     BEGIN ATOMIC and DECLARE are procedural blocks and never match.
+#   SHOW / DESCRIBE / DESC: metadata listings.
+#   PRAGMA: SQLite connection and database settings, read or set.
+#   GRANT / REVOKE / DENY: privileges, not data or definitions.
+#   COMMENT ON: documentation text.
+#   ANALYZE / ANALYSE: refreshes optimiser statistics.
+#   EXPLAIN: shows a plan, except EXPLAIN ANALYZE, which runs the statement.
+#   VACUUM: reclaims space, except VACUUM FULL (FULL not switched off), which rewrites the table.
+#   LOCK / UNLOCK: take or release locks and change nothing; the PostgreSQL lock rules judge them.
+# The head is matched on the statement without its comments, and a MySQL or MariaDB executable
+# comment (/*! ... */, /*M! ... */, which the server runs) disables the list altogether.
+# REINDEX, CALL, EXEC, anything else unrecognised: not listed, so reported.
+_NON_DATA_HEAD = re.compile(
+    r"^(?:"
+    r"SET\b(?!\s+(?:GLOBAL|PERSIST|PERSIST_ONLY|PASSWORD)\b)"
+    r"(?!.*(?:@@\s*(?:GLOBAL|PERSIST|PERSIST_ONLY)\s*\.|,\s*(?:GLOBAL|PERSIST|PERSIST_ONLY)\b))"
+    r"|USE\b|SHOW\b|DESC(?:RIBE)?\b|PRAGMA\b|GRANT\b|REVOKE\b|DENY\b|COMMENT\s+ON\b"
+    r"|ANALY[SZ]E\b"
+    r"|EXPLAIN\b(?!\s*(?:\(.*?\b)?ANALY[SZ]E\b)"
+    r"|VACUUM\b(?!\s*(?:\([^)]*?\b|(?:(?:FREEZE|VERBOSE|ANALY[SZ]E)\s+)*)"
+    r"FULL\b(?!\s+(?:FALSE|OFF|0)\b))"
+    r"|LOCK\b|UNLOCK\b"
+    r"|SAVEPOINT\b|RELEASE\b|ROLLBACK\b|COMMIT\b|START\s+TRANSACTION\b"
+    r"|(?:BEGIN|END)(?:\s+(?:TRAN(?:SACTION)?(?:\s+[\w@#$]+)?|WORK|DEFERRED|IMMEDIATE|EXCLUSIVE"
+    r"|ISOLATION\s+LEVEL\s+[A-Za-z ]+?|READ\s+(?:ONLY|WRITE)|(?:NOT\s+)?DEFERRABLE))*"
+    r"(?:\s|;|--[^\n]*|/\*.*?\*/)*$"
+    r")",
+    re.IGNORECASE | re.DOTALL,
+)
+# MySQL (/*! ... */) and MariaDB (/*M! ... */) run the text of these comments.
+_EXECUTABLE_COMMENTS = ("/*!", "/*M!")
+_PROCEDURAL_OPERATIONS = frozenset({"BEGIN", "DECLARE", "DO"})
 _SCHEMA_HOLDERS = frozenset({SqlObjectType.SCHEMA.value, SqlObjectType.DATABASE.value})
 _ROW_HOLDERS = frozenset(
     {
@@ -98,6 +137,9 @@ class AnalysedStatement:
     # opaque with no affected object; otherwise the legacy unreadable-name check); not part of
     # the JSON payload.
     names_unread: bool = field(default=False, repr=False, compare=False)
+    # Why the facts reader left the statement unread (``statement-not-analysed``), or None when
+    # it read it or it is a session or transaction envelope; not part of the JSON payload.
+    unread: Optional[str] = field(default=None, repr=False, compare=False)
 
 
 @dataclass(frozen=True)
@@ -186,6 +228,9 @@ def _analyse(text: str, dialect: str) -> ScriptAnalysis:
     quirks = ProviderRegistry.get_quirks(dialect)
     if not quirks.supports_statement_facts:
         return ScriptAnalysis((), (), (f"statement facts unavailable for dialect '{dialect}'",))
+    spec = quirks.lexical_spec()
+    script_rules = spec.delimiter_script if spec else None
+    hash_comment = script_rules.hash_comment if script_rules else None
     fact_statements: List[AnalysedStatement] = []
     fact_cautions: List[Caution] = []
     errors: List[str] = []
@@ -217,6 +262,7 @@ def _analyse(text: str, dialect: str) -> ScriptAnalysis:
             _snippet(body),
             sql=body,
             names_unread=facts.opaque and not facts.affected_objects,
+            unread=_unread_reason(facts, body, hash_comment),
         )
         fact_statements.append(analysed)
         caution = _caution_for(
@@ -259,6 +305,46 @@ def _analyse(text: str, dialect: str) -> ScriptAnalysis:
         if facts.error:
             errors.append(facts.error)
     return ScriptAnalysis(tuple(fact_statements), tuple(fact_cautions), tuple(errors))
+
+
+def without_comments(body: str, hash_comment: Optional[str] = None) -> str:
+    """*body* without its comments (quoted text kept), the way the lock rules read a statement.
+
+    *hash_comment* is the dialect's extra line-comment prefix (``#`` for MySQL), if it has one.
+    """
+    return strip_comments_preserving_quotes(
+        body,
+        line_prefixes=["--", hash_comment] if hash_comment else ["--"],
+        has_block_comments=True,
+        nested_block_comments=True,
+        supports_dollar_quoting=True,
+        block_comment_replacement=" ",
+    )
+
+
+def _unread_reason(
+    facts: StatementFacts, body: str, hash_comment: Optional[str] = None
+) -> Optional[str]:
+    """Why a statement the facts reader did not read needs a look, or None.
+
+    Unread is a statement of unknown kind or one that is opaque and names no object.
+    The ``_NON_DATA_HEAD`` statements are exempt (the splitter drops comment-only text) and a
+    DROP is judged by its keyword. A definition (``CREATE PROCEDURE``) that names its object is
+    read as one.
+    """
+    if not (facts.kind == "UNKNOWN" or (facts.opaque and not facts.affected_objects)):
+        return None
+    if facts.operation == "DROP":
+        return None  # judged by its keyword (``_unnamed_drop_caution``): row-free kinds stay safe
+    text = without_comments(body, hash_comment)
+    if not any(opener in body for opener in _EXECUTABLE_COMMENTS) and _NON_DATA_HEAD.match(text):
+        return None
+    detail = f" ({facts.diagnostic})" if facts.diagnostic else ""
+    if facts.operation in _PROCEDURAL_OPERATIONS or re.match(
+        r"EXECUTE\s+IMMEDIATE\b", text, re.IGNORECASE
+    ):
+        return f"procedural block: effects not modelled{detail}; review it by hand"
+    return f"{facts.operation} statement not analysed{detail}; review it by hand"
 
 
 _SERVER_SIDE_COPY = {
