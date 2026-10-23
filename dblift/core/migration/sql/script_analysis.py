@@ -11,7 +11,7 @@ from __future__ import annotations
 import logging
 import re
 from contextlib import contextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 from dblift.core.exceptions import (
@@ -202,10 +202,10 @@ def _analyse(text: str, dialect: str) -> ScriptAnalysis:
             AnalysedObject(obj.type.value, obj.name, obj.schema) for obj in facts.affected_objects
         )
         operation = facts.operation
-        full_table = facts.kind == "DML" and (
-            (facts.operation in ("UPDATE", "DELETE") and (not facts.predicate))
-            or any(_rewrites_every_row(write) for write in facts.cte_writes)
+        outer_full_table = facts.kind == "DML" and (
+            facts.operation in ("UPDATE", "DELETE") and (not facts.predicate)
         )
+        full_table = outer_full_table or any(_rewrites_every_row(w) for w in facts.cte_writes)
         analysed = AnalysedStatement(
             len(fact_statements),
             operation,
@@ -218,7 +218,12 @@ def _analyse(text: str, dialect: str) -> ScriptAnalysis:
         )
         fact_statements.append(analysed)
         caution = _caution_for(
-            analysed,
+            replace(
+                analysed,
+                full_table=outer_full_table,
+                # a writing CTE's table is named by its own caution, not by the outer one
+                objects=analysed.objects[:1] if facts.cte_writes and facts.target else objects,
+            ),
             body,
             _opaque_dialect(dialect) if facts.opaque else None,
             # a plugin without a sqlglot dialect has no second reader to name an unread target
@@ -240,9 +245,20 @@ def _analyse(text: str, dialect: str) -> ScriptAnalysis:
         if caution is not None:
             fact_cautions.append(caution)
         fact_cautions.extend(_cte_write_cautions(analysed.index, facts.cte_writes))
+        if facts.action in _SERVER_SIDE_COPY:
+            fact_cautions.append(
+                Caution(CHANGES_ROWS, analysed.index, _SERVER_SIDE_COPY[facts.action])
+            )
         if facts.error:
             errors.append(facts.error)
     return ScriptAnalysis(tuple(fact_statements), tuple(fact_cautions), tuple(errors))
+
+
+_SERVER_SIDE_COPY = {
+    "copy-to-program": "COPY TO PROGRAM runs a shell command on the database server",
+    "copy-from-program": "COPY FROM PROGRAM runs a shell command on the database server",
+    "copy-to-file": "COPY TO a file writes a file on the database server",
+}
 
 
 def _rewrites_every_row(write: DmlEffect) -> bool:

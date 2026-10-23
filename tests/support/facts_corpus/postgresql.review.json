@@ -4405,34 +4405,8 @@
   },
   "sql": "CREATE OR REPLACE NONEDITIONABLE VIEW vw AS SELECT 1 FROM DUAL"
  },
- "7f8a3ff6fddfc355/analyzer": {
-  "class": "facts-adds-acted",
-  "facts": {
-   "events": [
-    "INSERT"
-   ],
-   "kind": "DML",
-   "objects": [
-    [
-     "items",
-     "TABLE",
-     "altered",
-     null
-    ]
-   ],
-   "operation": "COPY",
-   "target": "items",
-   "target_sql": "items"
-  },
-  "old": {
-   "analyzer": []
-  },
-  "path": "analyzer",
-  "reason": "The old analyzer path named nothing; the reader reads COPY ... FROM as a load into TABLE items (altered, INSERT event) from the head alone and ignores the options (dblift/dblift#667). PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"SELECT\": an option takes no subquery), so it never runs on this family.",
-  "sql": "COPY items FROM 'items.csv' (DELIMITER (SELECT ',' FROM source_table))"
- },
  "7f8a3ff6fddfc355/hybrid": {
-  "class": "facts-fewer",
+  "class": "opaque-reader-gap",
   "facts": {
    "diagnostic": "postgres COPY source or destination is opaque",
    "kind": "UNKNOWN",
@@ -4453,7 +4427,12 @@
    ]
   },
   "path": "hybrid",
-  "reason": "The former hybrid path named TABLE items and TABLE source_table, the table of a subquery written inside a COPY option; the reader names items only, because it ignores the options. PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"SELECT\"), so source_table is never read by an engine that runs it; CockroachDB answered 0A000 (feature not supported), YugabyteDB 2026.1.2: 42601.",
+  "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"SELECT\": an option takes no subquery), so it never runs on this family; the reader keeps a COPY whose tail holds a second FROM opaque rather than read a load the engine refuses. CockroachDB answered 0A000 (feature not supported), YugabyteDB 2026.1.2: 42601.",
+  "rejected_by": {
+   "cockroachdb 24.3.18": "0A000",
+   "postgresql 16.14": "42601",
+   "yugabytedb 2026.1.2": "42601"
+  },
   "sql": "COPY items FROM 'items.csv' (DELIMITER (SELECT ',' FROM source_table))"
  },
  "80f378d7c56003b4": {

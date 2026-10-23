@@ -1253,23 +1253,38 @@ def _postgres_copy_facts(node: exp.Copy, sql: str) -> StatementFacts:
         return opaque
     source = tokens[at + 1 :]
     # The grammar reads STDIN and STDOUT as the same client stream in either direction.
+    program = False
     if (
         source
         and source[0].token_type == TokenType.VAR
         and source[0].text.upper() in {"STDIN", "STDOUT"}
     ):
-        rest = source[1:]
+        rest, stream = source[1:], True
     elif source and source[0].token_type in _STRING_LITERALS:
-        rest = source[1:]
+        rest, stream = source[1:], False
     elif (
         len(source) > 1
         and source[0].token_type == TokenType.VAR
         and source[0].text.upper() == "PROGRAM"
         and source[1].token_type in _STRING_LITERALS
     ):
-        rest = source[2:]
+        rest, stream, program = source[2:], False, True
     else:
         return opaque
+    # The tail is not parsed, but what PostgreSQL 16.14 rejects outright is not read as a load:
+    # an empty list, a second direction, the removed OIDS.
+    for position, token in enumerate(rest):
+        following = rest[position + 1 : position + 2]
+        if (
+            token.token_type == TokenType.FROM
+            or (token.token_type == TokenType.VAR and token.text.upper() in {"TO", "OIDS"})
+            or (
+                token.token_type == TokenType.L_PAREN
+                and following
+                and following[0].token_type == TokenType.R_PAREN
+            )
+        ):
+            return opaque
     # Options follow the source as words or a parenthesised list; an operator or a comma does not.
     if rest and not (
         rest[0].token_type in {TokenType.L_PAREN, TokenType.SEMICOLON}
@@ -1288,6 +1303,12 @@ def _postgres_copy_facts(node: exp.Copy, sql: str) -> StatementFacts:
         affected_columns=tuple(column.name for column in columns) if importing else (),
         events=frozenset({"INSERT"}) if importing else None,
         target_sql=table.sql(dialect=grammar) if importing else None,
+        # The server runs the command or writes the file, whichever the table's direction.
+        action=(
+            f"copy-{'from' if importing else 'to'}-program"
+            if program
+            else None if stream or importing else "copy-to-file"
+        ),
     )
 
 

@@ -340,7 +340,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **PostgreSQL `COPY ... FROM` with options or `STDIN` is read as a load.** `COPY t FROM 'file' (FORMAT CSV, HEADER)`,
   `COPY t (a, b) FROM STDIN`, `FROM PROGRAM '...'` and `FROM $$file$$` report `t` as changed by an `INSERT`, and
   `COPY t TO ...` reports it as read; the options are ignored because none of them changes the table. A query source,
-  and the old `COPY BINARY t` spelling, stay unread.
+  and the old `COPY BINARY t` spelling, stay unread. `validate-sql` now warns when a `COPY` runs a command (`PROGRAM`)
+  or writes a file on the database server.
 
 - **`CREATE TABLE ... TABLESPACE` on PostgreSQL says why it is unread.** The grammar has no `TABLESPACE` clause, so the
   statement still names only the object from its first words, and the diagnostic now names the clause instead of

@@ -57,6 +57,7 @@ from dblift.db.plugins.postgresql.quirks import PostgresqlQuirks
 )
 def test_postgres_copy_file_import_facts(sql, name, schema, target_sql, columns):
     facts = SqlglotStatementFactsReader("postgres").read(sql)
+    action = "copy-from-program" if "PROGRAM" in sql else None
 
     assert facts == StatementFacts(
         "COPY",
@@ -66,6 +67,7 @@ def test_postgres_copy_file_import_facts(sql, name, schema, target_sql, columns)
         affected_columns=columns,
         events=frozenset({"INSERT"}),
         target_sql=target_sql,
+        action=action,
     )
 
 
@@ -85,9 +87,18 @@ def test_postgres_copy_file_import_facts(sql, name, schema, target_sql, columns)
 )
 def test_postgres_copy_file_export_is_read_only(sql, name, schema):
     facts = SqlglotStatementFactsReader("postgres").read(sql)
+    # the server runs the command or writes the file, which a review should see
+    action = (
+        "copy-to-program"
+        if "PROGRAM" in sql
+        else "copy-to-file" if "'" in sql and not sql.endswith("STDOUT") else None
+    )
 
     assert facts == StatementFacts(
-        "COPY", "QUERY", (NamedObject(name, SqlObjectType.TABLE, "referenced", schema),)
+        "COPY",
+        "QUERY",
+        (NamedObject(name, SqlObjectType.TABLE, "referenced", schema),),
+        action=action,
     )
     assert facts.affected_objects == ()
 

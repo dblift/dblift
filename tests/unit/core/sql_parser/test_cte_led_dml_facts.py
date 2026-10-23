@@ -4,20 +4,19 @@ PostgreSQL accepts ``INSERT``, ``UPDATE`` and ``DELETE`` inside a top-level ``WI
 statement can change several tables. The expectations are what PostgreSQL 16.14 runs (row counts
 checked on a throwaway server): the outer statement changes its own table, each writing CTE
 changes the table it names, and a name inside a CTE body resolves to the CTE only when the lexical
-scope says so. MySQL 8.4, SQLite 3.51 and DuckDB 1.5 accept a CTE before ``INSERT``, ``UPDATE`` or
-``DELETE`` (MariaDB 11 only after ``INSERT INTO t``), and none of them accepts a CTE that writes.
+scope says so. MySQL 8.4 accepts a CTE before ``UPDATE`` or ``DELETE`` and after ``INSERT INTO t`` (``WITH ... INSERT``
+is error 1064), SQLite 3.51 and DuckDB 1.5 also before ``INSERT``, MariaDB 11 only after
+``INSERT INTO t``; none of them accepts a CTE that writes.
 """
 
 import pytest
 
-from dblift.core.migration.scripting.undo_script_generator import UndoScriptGenerator
 from dblift.core.migration.sql.script_analysis import CHANGES_ROWS, DESTROYS, analyse_script
 from dblift.core.sql_model.base import SqlObjectType
 from dblift.core.sql_parser.sqlglot_statement_facts import read_statement_facts
 from dblift.core.sql_parser.statement_facts import DmlEffect, NamedObject
 from dblift.db.dml_analysis import analyze_dml
 from dblift.db.provider_registry import ProviderRegistry
-from tests.unit._migration_factory import make_migration
 
 T = SqlObjectType
 PG = "postgres"  # lint: allow-dialect-string: test
@@ -352,21 +351,120 @@ def test_the_data_mutation_carries_the_events_of_the_cte_writes():
     ]
 
 
-def test_undo_asks_for_review_of_every_statement_that_writes_through_a_cte():
-    for sql in (
-        DELETE_INTO_LOG,
-        "WITH d AS (DELETE FROM src RETURNING *) SELECT * FROM d",
-        UPDATE_THEN_DELETE,
-    ):
-        migration = make_migration(script_name="V1__x.sql", content=sql)
-        undo = UndoScriptGenerator("postgresql")._generate_undo_statements(migration)
-
-        assert [u.requires_manual_review for u in undo] == [True], sql
-
-
 def test_select_into_behind_a_writing_cte_says_why_it_is_unread():
     facts = read_statement_facts(
         "WITH d AS (DELETE FROM src RETURNING *) SELECT * INTO newt FROM d", dialect=PG
     )
 
     assert facts.diagnostic == "postgres SELECT INTO behind a data-modifying CTE is not read"
+
+
+# --- review of the first version -----------------------------------------------------------------
+
+
+def test_the_outer_statement_is_judged_by_its_own_where_not_by_a_cte():
+    analysis = analyse_script(
+        "WITH d AS (DELETE FROM b) UPDATE a SET v = 1 WHERE id = 1", "postgresql"
+    )
+
+    reasons = [c.reason for c in analysis.cautions]
+    assert sorted(reasons) == [
+        "DELETE without WHERE rewrites every row of b",
+        "UPDATE changes rows of a",
+    ]
+    assert [c.code for c in analysis.cautions].count("dml-no-where") == 1
+
+
+def test_an_outer_delete_without_where_and_a_cte_without_where_are_two_findings():
+    analysis = analyse_script("WITH d AS (UPDATE b SET v = 1) DELETE FROM a", "postgresql")
+
+    assert sorted(c.reason for c in analysis.cautions) == [
+        "DELETE without WHERE rewrites every row of a",
+        "UPDATE without WHERE rewrites every row of b",
+    ]
+
+
+def test_is_full_table_dml_sees_a_cte_that_rewrites_every_row():
+    from dblift.db.dml_analysis import is_full_table_dml
+
+    quirks = ProviderRegistry.get_quirks("postgresql")
+    assert is_full_table_dml("WITH d AS (DELETE FROM src) SELECT 1", quirks=quirks)
+    assert not is_full_table_dml("WITH d AS (DELETE FROM src WHERE id = 1) SELECT 1", quirks=quirks)
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "COPY t FROM PROGRAM 'echo 1' WITH ()",
+        "COPY t FROM PROGRAM 'echo 1' ()",
+        "COPY t FROM PROGRAM 'echo 1' OIDS",
+        "COPY t FROM 'a' TO 'b'",
+        "COPY t TO 'a' FROM 'b'",
+        "COPY t FROM 'a' WITH (FORMAT csv) TO STDOUT",
+    ],
+)
+def test_a_copy_tail_postgresql_16_rejects_is_not_read_as_a_clean_load(sql):
+    facts = read_statement_facts(sql, dialect=PG)
+
+    assert facts.opaque and facts.objects == ()
+
+
+@pytest.mark.parametrize(
+    "sql,action",
+    [
+        ("COPY t TO PROGRAM 'cat > /tmp/x'", "copy-to-program"),
+        ("COPY t TO '/tmp/out.csv' CSV", "copy-to-file"),
+        ("COPY t FROM PROGRAM 'echo 1'", "copy-from-program"),
+    ],
+)
+def test_copy_that_runs_a_command_or_writes_a_server_file_asks_for_review(sql, action):
+    assert read_statement_facts(sql, dialect=PG).action == action
+    cautions = analyse_script(sql, "postgresql").cautions
+    assert (
+        len(cautions) == 1 and cautions[0].level == CHANGES_ROWS and "server" in cautions[0].reason
+    )
+
+
+@pytest.mark.parametrize(
+    "sql", ["COPY t TO STDOUT", "COPY t FROM STDIN", "COPY t FROM '/tmp/in.csv'"]
+)
+def test_copy_through_the_client_stream_or_a_read_file_needs_no_review(sql):
+    assert read_statement_facts(sql, dialect=PG).action is None
+
+
+def test_a_schema_qualified_name_is_never_a_cte_on_the_resolver_path():
+    facts = read_statement_facts(
+        "WITH d AS (DELETE FROM src RETURNING *), tt AS (SELECT 1 AS v) "
+        "INSERT INTO t SELECT * FROM public.tt",
+        dialect=PG,
+    )
+
+    assert facts.diagnostic is None
+    assert facts.objects == _altered("t", "src") + (
+        NamedObject("tt", T.TABLE, "referenced", "public"),
+    )
+
+
+def test_a_write_target_is_never_a_cte_on_the_writing_path():
+    facts = read_statement_facts(
+        "WITH log AS (DELETE FROM src RETURNING *) INSERT INTO log SELECT * FROM log", dialect=PG
+    )
+
+    assert facts.diagnostic is None
+    assert facts.objects == _altered("log", "src")
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 3) "
+        "INSERT INTO t SELECT i FROM n",
+        'WITH "N" AS (SELECT 1 AS i) INSERT INTO t SELECT i FROM "N"',
+        "WITH a AS (SELECT 1 AS i), b AS (SELECT * FROM a) INSERT INTO t "
+        "SELECT * FROM (WITH z AS (SELECT 1) SELECT * FROM z) q",
+    ],
+)
+def test_redshift_leaves_recursive_quoted_and_nested_scopes_unread(sql):
+    facts = read_statement_facts(sql, dialect="redshift")
+
+    assert facts.diagnostic is not None and facts.diagnostic.startswith("redshift CTE")

@@ -98,7 +98,10 @@ class SqliteQuirks(BaseQuirks):
     def is_full_table_dml(self, statement: str) -> bool:
         """Treat an opaque mutation as potentially affecting every row."""
         facts = self.statement_facts(statement)
-        return facts.operation in ("UPDATE", "DELETE") and (not facts.predicate)
+        return (facts.operation in ("UPDATE", "DELETE") and (not facts.predicate)) or any(
+            write.operation in ("UPDATE", "DELETE") and not write.predicate
+            for write in facts.cte_writes
+        )
 
     def type_equivalents(self) -> "dict[str, str]":
         """SQLite alias → canonical type map.

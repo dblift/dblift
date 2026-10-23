@@ -232,8 +232,9 @@ alters `t` with an `INSERT` event, `TO` references it, and every option after th
 table. The source is a literal file, `STDIN` or `STDOUT`, or `PROGRAM '…'`. PostgreSQL 16.14
 accepted each (`COPY ct FROM STDOUT` loads from the client stream and `COPY ct TO STDIN` writes to
 it, so the words are not tied to a direction), refused `FROM "STDIN"`, `FROM PROGRAM` without a
-string, `WITH ()` and `'a' || '.csv'` with a syntax error, and accepted `COPY BINARY t`, which the
-grammar misreads as a table named BINARY: that head is left unread. A query source
+string, `WITH ()`, a bare `()`, `OIDS`, a second direction and `'a' || '.csv'` with a syntax error (the reader leaves those unread; the rest of the option tail is not validated), and accepted `COPY BINARY t`, which the
+grammar misreads as a table named BINARY: that head is left unread. `COPY … TO PROGRAM`, `COPY … FROM PROGRAM` and `COPY … TO 'file'` run a command or write a file on the database server, which
+the facts mark (`action`) and `validate-sql` reports as a caution. A query source
 (`COPY (SELECT …) TO`) and `COPY … FROM … WHERE` (sqlglot fails to parse it) stay unread.
 
 A statement that carries a `WITH` is read with its lexical scope (PostgreSQL 16.14, row counts
