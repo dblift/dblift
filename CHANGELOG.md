@@ -335,6 +335,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `docs/sql-parsing/oracle.md` section 13.
 ### Fixed
 
+- **`target_version` set in the configuration is applied by the Python API.** A client built with
+  `DBLiftClient.from_config_file` or `from_sqlalchemy(config=...)` validated the configured
+  `target_version` but then ran `migrate`, `info`, `validate` and `undo` as if none were set, so every
+  pending migration was applied. An explicit `target_version` argument still wins. On the CLI the flag
+  wins over `DBLIFT_TARGET_VERSION`, which wins over the YAML key, and `target_version: ''` in the YAML
+  is refused like `--target-version ""` instead of being read as unset.
+
 - **A PostgreSQL statement with a `WITH` now names every table it changes.** `WITH d AS (DELETE FROM src
   ...) INSERT INTO log SELECT * FROM d`, `INSERT INTO t WITH x AS (...) SELECT ...` and `WITH u AS (UPDATE a
   ...) DELETE FROM b ...` used to leave the outer target and its events unread behind a diagnostic. The statement

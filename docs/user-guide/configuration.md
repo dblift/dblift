@@ -363,6 +363,18 @@ export DBLIFT_ENV="prod"  # Optional: select the active environments: block (see
 !!! warning "Security Best Practice"
     Never commit passwords or sensitive credentials to version control. Always use environment variables for production deployments.
 
+## Target Version
+
+`target_version` (YAML), `DBLIFT_TARGET_VERSION` (environment) and `--target-version` (flag) all
+set the version `migrate`, `info`, `validate` and `undo` stop at. The flag wins over the
+environment variable, which wins over the YAML key. It must be the version of one of your
+scripts; an empty YAML value is refused with the same error as `--target-version ""`. The Python
+API applies the configured value when the call passes no `target_version`.
+
+```yaml
+target_version: 2
+```
+
 ## File Encoding
 
 If you're using special characters (é, ñ, ö, etc.) in your SQL files, specify the encoding:

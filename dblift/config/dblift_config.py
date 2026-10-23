@@ -413,6 +413,9 @@ def deep_merge_dicts(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str
             result[k] = deep_merge_dicts(result[k], v)
         elif v not in (None, ""):
             result[k] = v
+        elif v == "" and k == "target_version" and k not in result:
+            # An empty target is a mistake to refuse (as ``--target-version ""`` is), not "unset".
+            result[k] = v
         # else: skip empty/None override, keep base value
     return result
 
