@@ -5,6 +5,7 @@ import warnings
 from dataclasses import replace
 from typing import List, Optional, Tuple, Type
 
+from dblift.core.sql_parser._deprecation import internal_parser_construction
 from dblift.core.sql_parser.base_tokenizer import BaseTokenizer
 from dblift.core.sql_parser.tokens import Token, TokenType
 
@@ -92,7 +93,8 @@ def _dialect_tokenizer(dialect: Optional[str]) -> Type[BaseTokenizer]:
         try:
             from dblift.core.sql_parser.parser_factory import SqlParserFactory
 
-            parser = SqlParserFactory(dialect, parser_type="regex").get_parser()
+            with internal_parser_construction():
+                parser = SqlParserFactory(dialect, parser_type="regex").get_parser()
             tokenizer = getattr(parser, "tokenizer_class", None)
             if isinstance(tokenizer, type) and issubclass(tokenizer, BaseTokenizer):
                 return tokenizer

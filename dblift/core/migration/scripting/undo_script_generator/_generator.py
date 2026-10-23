@@ -17,6 +17,7 @@ from dblift.core.migration.scripting.undo_script_generator._models import UndoSt
 from dblift.core.migration.scripting.undo_script_generator._reversers import _UndoReversersMixin
 from dblift.core.migration.sql.migration_sql_parser import parse_migration_sql
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+from dblift.core.sql_parser._deprecation import internal_parser_construction
 from dblift.core.sql_parser.parser_factory import SqlParserFactory
 from dblift.core.sql_parser.statement_facts import StatementFacts
 
@@ -41,10 +42,12 @@ class UndoScriptGenerator(_UndoReversersMixin, _UndoExtractorsMixin):
         self.dialect = dialect
         self.logger = logger
         self.default_schema = default_schema
-        self.sql_analyzer = SqlAnalyzer(dialect=dialect, logger=logger)
+        with internal_parser_construction():
+            self.sql_analyzer = SqlAnalyzer(dialect=dialect, logger=logger)
         # Use parser factory to get the appropriate parser for this dialect
-        parser_factory = SqlParserFactory(dialect=dialect, parser_type="hybrid")
-        self.parser = parser_factory.get_parser(dialect)
+        with internal_parser_construction():
+            parser_factory = SqlParserFactory(dialect=dialect)
+            self.parser = parser_factory.get_parser(dialect)
 
     def generate_undo_script(
         self,
