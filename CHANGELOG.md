@@ -332,6 +332,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **An explicit analysis mode is always honoured by registered client classes.** `from_config`,
+  `from_config_file` and `from_sqlalchemy` (and `dblift migrate --analysis-mode execution`) now
+  always pass `analysis_mode` to the client class, including `"execution"`. A registered class
+  whose own default is `"full"` used to run full analysis when `"execution"` was asked for. A
+  registered class must accept the `analysis_mode` keyword; one that does not now raises
+  `TypeError` instead of being built without it.
 - **`dblift --help` and `dblift --version` work without the presentation packages.** They
   failed with `ModuleNotFoundError: rich` when Rich was not installed. The default console
   logger now falls back to plain text, `migrate`, `undo`, `validate` and `clean` run without
