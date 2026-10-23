@@ -77,6 +77,8 @@ Command info completed successfully in 128 ms
 ```
 The **Undoable** column tells you whether there's a matching undo migration ready to roll the change back.
 
+Completed undos are not listed, but an undo that failed is: it appears as an `Undo` row in the `Failed` state and counts in the summary's failed total. Until it is repaired, `validate`, `migrate` and `undo` refuse to run.
+
 !!! tip "Tip"
     Every CLI command now ends with a completion banner like the one above, including the total execution time. This makes automation logs much easier to scan.
 

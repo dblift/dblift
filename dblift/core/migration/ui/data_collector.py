@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
 from dblift.core.logger import Log, NullLog
+from dblift.core.logger.results import is_failed_migration_status
 from dblift.core.migration.migration import VERSIONED_SCRIPT_TYPES, Migration
 from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
 from dblift.core.migration.state.migration_display_state import MigrationDisplayState
@@ -204,8 +205,14 @@ class MigrationDataCollector:
             checksum = getattr(migration, "checksum", None)
             installed_by = getattr(migration, "installed_by", None)
 
-            # Flyway removeUndos: undo scripts are not table rows.
-            if self._is_migration_type_equal(migration_type, "UNDO_SQL"):
+            # Status is already computed by MigrationStateService (via build_state()).
+            state = applied_status_by_id.get(id(migration), MigrationDisplayState.UNKNOWN.value)
+
+            # Flyway removeUndos: completed undo scripts are not table rows. A
+            # failed one is kept: it blocks validate, migrate and undo.
+            if self._is_migration_type_equal(
+                migration_type, "UNDO_SQL"
+            ) and not is_failed_migration_status(state):
                 continue
 
             # Skip if this version should be excluded based on filters
@@ -218,9 +225,6 @@ class MigrationDataCollector:
                 exclude_versions or [],
             ):
                 continue
-
-            # Status is already computed by MigrationStateService (via build_state()).
-            state = applied_status_by_id.get(id(migration), MigrationDisplayState.UNKNOWN.value)
 
             migrations_data.append(
                 {
