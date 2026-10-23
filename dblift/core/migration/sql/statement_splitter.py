@@ -27,7 +27,7 @@ class StatementSplitter:
         dialect: str,
         logger: Optional[Union[Log, _logging.Logger]] = None,
     ):
-        """Resolve the dialect parser when the first script is split."""
+        """Bind the dialect's lexical spec; a dialect without one is refused when it splits."""
         self.dialect = dialect.lower()
         self.logger = logger
         spec = ProviderRegistry.get_quirks(self.dialect).lexical_spec()
@@ -50,7 +50,7 @@ class StatementSplitter:
         if strict_tokenizer is not None:
             warn_direct_parser("strict_tokenizer")
         strict = bool(strict_tokenizer)
-        records = self._split(sql, strict)
+        records = self._split(sql)
         self._last = (sql, strict, records)
         return list(records)
 
@@ -69,7 +69,7 @@ class StatementSplitter:
         with internal_parser_construction():
             return self.split(sql, strict_tokenizer=strict)
 
-    def _split(self, sql: str, strict_tokenizer: bool) -> List[Statement]:
+    def _split(self, sql: str) -> List[Statement]:
         engine = self._engine
         if engine is not None:
             return self._refusing(lambda: engine.split(sql))

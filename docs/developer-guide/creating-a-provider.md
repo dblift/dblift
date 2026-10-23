@@ -114,16 +114,10 @@ The layout deliberately mirrors `db/plugins/postgresql/` (and siblings) so the s
 | `analysis_statements` | the statements analysis reads from this record; `None` means the record is one analysis statement, `()` contributes none |
 | `source_start`, `source_end` | half-open offsets of the record in the original script, including a consumed client terminator such as `GO`; optional |
 
-A record is a statement: do not return empty pieces, comment-only pieces or batch separators.
-`split_statements` is the list of strings execution sends, derived from the records.
-
-A parser that implements only `split_statements` (strings) still works. dblift adapts its strings
-to records, skipping any piece that is empty after Python's `str.strip()` (a no-break space
-is whitespace there, so such a piece is lost), comment-only pieces and any piece the dialect's
-`is_batch_separator` accepts, and logs once per dialect and process a message asking the
-parser to implement `split()` and return `Statement` records. The adaptation, and so the
-skipping, ends in the next major release; return only statements from `split_statements`
-before then, or implement `split()`, whose records keep a piece of that kind.
+A record is a statement: the lexical engine returns no empty pieces, comment-only pieces or batch
+separators. `split_statements` is the list of strings execution sends, derived from the records.
+The records come from the engine driven by the plugin's `LexicalSpec`; there is no other way to
+split a script (no string-returning or record-returning parser class is read).
 
 ## Step 3: Install & discover
 

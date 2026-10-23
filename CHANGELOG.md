@@ -32,6 +32,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   on `DBLiftClient` and `AsyncDBLiftClient`, and `GenerateUndoScriptResult`, no longer exist (they
   have warned since 4.10). Write the matching `U*__.sql` or `U*__.py` undo script by hand; `undo`,
   `info` and reapply run those files as before.
+- **`is_comment_only_statement` is removed.** No tagged 4.x release deprecated it (its
+  warning exists only in the unreleased 4.12.0), so this removal skips the
+  deprecation overlap, as `docs/semver-policy.md` section 3 allows when stated. Callers: read the
+  `kind` of the records from `StatementSplitter(dialect).split()`.
+- **The dialect arguments of five DML analysis functions are removed.** `analyze_dml`,
+  `dml_where_predicate`, `updates_restore_key` and `is_full_table_dml` no longer take
+  `sqlglot_dialect=`, and `statement_dml_table` no longer takes `dialect=` (keyword or second
+  positional argument). Their warnings exist only in the unreleased 4.12.0, so the deprecation
+  overlap is skipped. Callers: pass `quirks=` (the database plugin's quirks, for example
+  `ProviderRegistry.get_quirks("postgresql")`). The dialect options of `insert_value_rows` and
+  `cte_outer_statement_type` are unchanged.
+- **A dialect is split by its `LexicalSpec` only.** `StatementSplitter` no longer uses the
+  dialect's `parser_class`, whether it returns strings or `Statement` records: a plugin without a
+  lexical spec raises `UnsupportedDialectError` when it splits a script (MongoDB and CosmosDB
+  already had none). Plugin authors: return a `LexicalSpec` from `quirks.lexical_spec()`.
+- **The root configuration key `migrations_dir` is rejected.** Any occurrence, including an empty
+  or null value, raises an error (it was deprecated in 2.0.2). Move it to `migrations.directory`.
+  The `migrations_dir` argument of the Python API and the CLI is unchanged.
 
 ### Added
 
@@ -289,7 +307,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `ValueError` naming `StatementFactsParser`; the `hybrid` type returns the facts parser, and the
   `regex` type still returns the Oracle regex parser, whose splitting is unchanged.
 
-### Removed
+### Deprecated
 
 - **Direct use of `SqlParserFactory`, `SqlAnalyzer`, `parser_type=` and `strict_tokenizer=`.**
   Each now warns once per process and names `StatementSplitter` and `read_statement_facts` as
@@ -304,23 +322,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   introspection for schema models. That replacement requires a live database, leaving a
   migration gap for SQL-text-only rich model callers; see the
   [v5 alpha deprecation inventory](docs/developer-guide/v5-alpha-deprecation-inventory.md).
-
-### Removed
-
-- **The public `is_comment_only_statement` helper is removed for 5.0.** Use
-  `StatementSplitter(dialect).split()` to inspect authoritative statement records.
-- **Five DML analysis entry points no longer accept legacy dialect arguments.**
-  `analyze_dml`, `dml_where_predicate`, `updates_restore_key` and
-  `is_full_table_dml` take `quirks=` instead of `sqlglot_dialect=`;
-  `statement_dml_table` takes `quirks=` instead of `dialect=`. The separate
-  dialect options on `insert_value_rows` and `cte_outer_statement_type` remain.
-- **A dialect is split by its `LexicalSpec` only.** `StatementSplitter` no longer falls back to
-  the dialect's `parser_class`: a plugin without a lexical spec (MongoDB and CosmosDB already
-  had none) raises `UnsupportedDialectError` when it splits a script. Plugin authors: return a
-  `LexicalSpec` from `quirks.lexical_spec()` instead of a record-returning `parser_class`.
-- **The root configuration key `migrations_dir` is removed for 5.0.** Any
-  occurrence raises an error; use `migrations.directory`. CLI and Python API
-  `migrations_dir` arguments remain available.
 
 ### Fixed
 

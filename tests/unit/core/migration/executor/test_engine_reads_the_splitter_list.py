@@ -131,13 +131,6 @@ def test_duckdb_sends_the_statement_after_a_comment_ended_by_a_carriage_return()
     ]
 
 
-class _StringsOnly:
-    """A custom dialect parser with no ``split``: strings, some of them no statement."""
-
-    def split_statements(self, sql_content, strict_tokenizer=False):
-        return ["SELECT 1", "", "  ", "-- c", "GO", "SELECT 2"]
-
-
 def test_prepare_logs_the_go_0_notice_once(caplog):
     engine = _engine("sqlserver")
     migration = make_migration(
