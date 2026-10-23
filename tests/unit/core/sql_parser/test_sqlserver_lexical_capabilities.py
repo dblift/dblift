@@ -13,7 +13,6 @@ from dblift.core.sql_parser.lexical_tokenizer import LexicalTokenizer
 from dblift.core.sql_parser.tokens import TokenType
 from dblift.db.plugins.oracle.parser.lexical_spec import ORACLE_SPEC
 from dblift.db.plugins.sqlserver.parser.lexical_spec import SQLSERVER_SPEC
-from tests.support.facts_parser import facts_parser
 
 
 def tokens(script, spec=SQLSERVER_SPEC):

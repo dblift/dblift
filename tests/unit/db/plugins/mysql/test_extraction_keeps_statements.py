@@ -8,11 +8,7 @@ from dblift.core.exceptions import UnsupportedMetaCommandError
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.sql_parser.parser_factory import SqlParserFactory
 from dblift.core.sql_parser.statement_facts_parser import StatementFactsParser
-from dblift.db.plugins.mariadb.facts_parser import MariaDbFactsParser
-from dblift.db.plugins.mariadb.quirks import MariadbQuirks
-from dblift.db.plugins.mysql.parser.mysql_facts_parser import MySqlFactsParser
-from dblift.db.plugins.mysql.quirks import MysqlQuirks
-from tests.support.facts_parser import facts_parser
+from tests.support.facts_parser import facts_factory, facts_parser
 
 SCRIPT = "source other.sql;\nCREATE TABLE a (id INT);\nSELECT 1\\G\nCREATE TABLE b (id INT);\n"
 
@@ -81,3 +77,11 @@ def test_extract_objects_refuses_script_when_scanner_refuses(
     monkeypatch.setattr(StatementFactsParser, "split_for_analysis", refuse)
     with pytest.raises(UnsupportedMetaCommandError, match="client command refused"):
         SqlParserFactory("mysql", "hybrid").extract_objects("CREATE TABLE a (id INT);\n")
+
+
+@pytest.mark.parametrize("parser_class", [facts_factory("mysql"), facts_factory("mariadb")])
+def test_each_engine_projects_analysis_from_its_client_records(parser_class: type) -> None:
+    parser = parser_class()
+    script = "DELIMITER //\nSELECT 1; DROP TABLE t//\nDELIMITER ;"
+    assert parser.split_statements(script) == ["SELECT 1; DROP TABLE t"]
+    assert parser.split_for_analysis(script) == ["SELECT 1", "DROP TABLE t"]

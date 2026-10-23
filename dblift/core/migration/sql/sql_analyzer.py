@@ -143,7 +143,7 @@ class SqlAnalyzer:
     def get_statement_type(self, sql: str) -> str:
         """Get the high-level type of SQL statement (DDL, DML, QUERY, UNKNOWN).
 
-        Uses database-specific regex parser, falling back to string analysis.
+        Reads the plugin's statement facts where they apply, else the statement's text.
         """
         sql = sql.strip()
 
@@ -185,28 +185,15 @@ class SqlAnalyzer:
             if quirks.supports_statement_facts:
                 return quirks.statement_facts(sql).kind
 
-        # Try database-specific parser classification first
-        if self.dialect and hasattr(self, "_db_specific_parser") and self._db_specific_parser:
-            try:
-                # Use database-specific parser's improved classification
-                pass
-
-                # Check if the parser has the method before calling it
-                if hasattr(self._db_specific_parser, "_identify_statement_type"):
-                    stmt_type = self._db_specific_parser._identify_statement_type(sql)
-
-                    # Convert SqlStatementType enum to string (not MigrationType).
-                    if hasattr(stmt_type, "value"):
-                        result = str(stmt_type.value)
-                    else:
-                        result = str(stmt_type)  # lint: allow-enum-str  SqlStatementType fallback
-
-                    # If we got a definitive result (not UNKNOWN), use it
-                    if result != "UNKNOWN":
-                        return result
-
-            except Exception as e:
-                logger.debug(f"Database-specific parser classification failed: {e}")
+        # Words the dialect's own rules classify and the generic ones do not.
+        first = strip_leading_sql_comments(sql).lstrip().split(None, 1)
+        if first:
+            word = re.match(r"[A-Za-z_]+", first[0])
+            for statement_type, words in ProviderRegistry.get_quirks(
+                self.dialect
+            ).leading_word_statement_types:
+                if word and word.group().upper() in words:
+                    return statement_type
 
         # Fallback to enhanced string-based classification
         return self._get_statement_type_string(sql)

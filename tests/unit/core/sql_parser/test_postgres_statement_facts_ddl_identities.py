@@ -297,3 +297,21 @@ def test_grant_and_revoke_keep_their_kind_on_other_dialects(sql, dialect):
 )
 def test_concurrently_is_an_ordinary_name_except_as_the_index_modifier(sql, named):
     assert _pg(sql).objects == (named,)
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "CREATE TABLESPACE ts LOCATION '/x'",
+        "CREATE TABLE m (a int) WITHOUT OIDS",
+        "CREATE TABLE tablespace (a int) WITHOUT OIDS",
+        "CREATE TABLE IF NOT EXISTS tablespace (a int) WITHOUT OIDS",
+        "CREATE LOB TABLESPACE ts MANAGED BY SYSTEM",
+    ],
+)
+def test_a_command_without_a_tablespace_clause_keeps_the_generic_diagnostic(sql):
+    assert "TABLESPACE clause" not in (_pg(sql).diagnostic or "")
+
+
+def test_a_column_named_tablespace_is_read_normally():
+    assert _pg("CREATE TABLE m (tablespace int)").diagnostic is None

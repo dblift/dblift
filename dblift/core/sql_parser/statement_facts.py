@@ -94,6 +94,15 @@ class SqlglotStatementFactsReader:
 
     def read(self, sql: str) -> StatementFacts:
         """Read one already-split statement."""
-        from dblift.core.sql_parser.sqlglot_statement_facts import read_statement_facts
+        try:
+            from dblift.core.sql_parser.sqlglot_statement_facts import read_statement_facts
+        except ModuleNotFoundError as exc:
+            if exc.name != "sqlglot":
+                raise
+            raise ModuleNotFoundError(
+                "reading statement facts needs SQLGlot: install it with "
+                "`pip install dblift[analysis]`",
+                name="sqlglot",
+            ) from exc
 
         return read_statement_facts(sql, dialect=self.dialect)

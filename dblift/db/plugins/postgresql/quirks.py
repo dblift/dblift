@@ -118,6 +118,29 @@ class PostgresqlQuirks(BaseQuirks):
 
         return LexicalEngine(self.lexical_spec()).blank_comments(sql)
 
+    # Maintenance commands are DDL; COPY, CALL, LOCK and prepared statements are DML; VALUES and
+    # TABLE return rows; transaction control is DDL.
+    leading_word_statement_types = (
+        ("DDL", ("VACUUM", "ANALYZE", "CLUSTER", "REINDEX")),
+        ("DML", ("COPY", "CALL", "EXECUTE", "PREPARE", "DEALLOCATE", "LOCK")),
+        ("QUERY", ("VALUES", "TABLE")),
+        (
+            "DDL",
+            (
+                "BEGIN",
+                "START",
+                "COMMIT",
+                "END",
+                "ROLLBACK",
+                "ABORT",
+                "SAVEPOINT",
+                "RELEASE",
+                "TRANSACTION",
+                "WORK",
+            ),
+        ),
+    )
+
     non_transactional_sql_patterns = (
         (
             r"^CREATE\s+(UNIQUE\s+)?INDEX\s+CONCURRENTLY\b",

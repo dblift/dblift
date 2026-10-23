@@ -659,3 +659,19 @@ def test_the_byte_order_mark_is_dropped_only_when_the_spec_says_so():
     assert refusal(script)[0] == "UnsupportedMetaCommandError"
     kept = replace(DUCKDB_SPEC, leading_bom_is_blank=False)
     assert shape(script, kept)[:2] == [sym("."), kw("print")]
+
+
+BOM, NBSP, LS, NEL, ZWNJ = chr(0xFEFF), chr(0xA0), chr(0x2028), chr(0x85), chr(0x200C)
+
+
+E_ACUTE, EURO, SQUARED, ARABIC_THREE = chr(0xE9), chr(0x20AC), chr(0xB2), chr(0x663)
+
+
+def test_strict_tokenizer_has_no_effect_for_duckdb():
+    script = "SELECT @ # \\ ` ~ ^ % & | ? !;"
+    tokenizer = LexicalTokenizer(script, spec=DUCKDB_SPEC)
+    tokenizer.strict_unknown_chars = True
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        tokens = tokenizer.tokenize()
+    assert [t.text for t in tokens if t.type.name == "SYMBOL"] == list("@#\\`~^%&|?!")

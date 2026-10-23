@@ -88,6 +88,10 @@ class OracleQuirks(BaseQuirks):
             return True
         return super().is_schema_history_race_error(error_message)
 
+    leading_word_statement_types = (
+        ("DDL", ("ANALYZE", "AUDIT", "NOAUDIT")),
+        ("DML", ("CALL",)),
+    )
     connection_probe_sql = "SELECT 1 FROM DUAL"
     boolean_false_literal = "0"
     unquoted_identifier_case = "uppercase"

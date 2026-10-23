@@ -276,3 +276,38 @@ def test_configured_database_type_is_used_without_the_dialect_option(tmp_path):
     payload = json.loads(proc.stdout)
     assert payload["dialect"] == "mysql", proc.stderr
     assert payload["scripts"][0]["findings"] == []
+
+
+SERVER_SIDE_COPY = {
+    "COPY t TO PROGRAM 'rm -rf /';": "COPY TO PROGRAM runs a shell command on the database server",
+    "COPY t FROM PROGRAM 'curl x';": "COPY FROM PROGRAM runs a shell command on the database server",
+    "COPY t TO '/tmp/f';": "COPY TO a file writes a file on the database server",
+}
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "COPY t FROM STDIN;",
+        "COPY t TO STDOUT;",
+        "COPY t FROM '/f';",
+        "COPY (SELECT * FROM t) TO PROGRAM 'x';",
+    ],
+)
+def test_a_copy_through_the_client_stream_a_read_file_or_a_query_source_stays_safe(tmp_path, sql):
+    script = tmp_path / "v2.sql"
+    script.write_text(sql)
+
+    proc = _run(
+        tmp_path,
+        "validate-sql",
+        "--dialect",
+        "postgresql",
+        "--format",
+        "json",
+        "--files",
+        str(script),
+    )
+
+    payload = json.loads(proc.stdout)
+    assert [(s["verdict"], s["findings"]) for s in payload["scripts"]] == [("SAFE", [])]

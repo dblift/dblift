@@ -54,14 +54,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `RegexBasedParser`, `RegexParser`, `EnhancedRegexParser` and `DialectConfig`, the per-dialect regex
   parsers and their pattern tables (PostgreSQL, Redshift, MySQL, MariaDB, SQL Server, Db2, DuckDB,
   Oracle) and `SnowflakeStatementParser` no longer exist. Scripts were already split by each
-  dialect's lexical spec; what goes is the text-based reading. `SqlParserFactory` still builds, but
-  it ignores `parser_type` and always returns the statement-facts parser, so `parse_sql`,
-  `extract_objects` and `validate_sql` now report what the plugin's facts reader reads: they build no
-  model objects from text, invent no default schema, and `validate_sql` no longer applies the old
-  bracket and quote heuristics. Migration: split scripts with
-  `StatementSplitter(dialect).split()`, read a statement with `read_statement_facts` (or the plugin's
-  `quirks.statement_facts(sql)`), and get schema models from live database introspection. A plugin
-  that subclassed one of these parsers returns a `LexicalSpec` and a statement-facts reader instead.
+  dialect's lexical spec; what goes is the text-based reading. What the plugin's statement facts
+  read is now the only reading: no model objects are built from text, no default schema is
+  invented, and the old bracket and quote validation heuristics are gone, so the analyzer's
+  `validate_sql` and `SqlParserFactory` judge a few scripts differently (the `validate-sql`
+  command, which lints through the script analysis, does not). **The remaining entry points now need
+  SQLGlot:** `SqlParserFactory`, including its former `regex` type, and `SqlAnalyzer.extract_objects`
+  raise a `ModuleNotFoundError` that says to `pip install dblift[analysis]` without it. Migration:
+  split scripts with `StatementSplitter(dialect).split()`, read a statement with the plugin's
+  `quirks.statement_facts(sql)` (or `read_statement_facts(sql, dialect=...)` from
+  `dblift.core.sql_parser.sqlglot_statement_facts`, which takes a sqlglot dialect name such as
+  `"postgres"`), and get schema models from live database introspection. A plugin that subclassed one
+  of these parsers returns a `LexicalSpec` and a statement-facts reader instead, and a plugin that
+  keeps its own tokenizer for masking overrides `quirks.redaction_tokenizer()`.
 - **`strict_tokenizer` is removed** from `StatementSplitter`, `SqlAnalyzer`, `SqlParserFactory` and
   the parser interface. Drop the argument: the dialect's scanner decides how to read the script.
 - **Plugin hooks for the removed parsers are removed.** `sqlglot_unsupported_sql_patterns`,

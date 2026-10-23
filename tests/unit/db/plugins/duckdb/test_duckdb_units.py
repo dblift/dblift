@@ -3,7 +3,12 @@ quirks, parser config/regex, and provider helper methods."""
 
 from __future__ import annotations
 
+import tempfile
+from pathlib import Path
+
 import pytest
+
+from tests.support.facts_parser import facts_parser
 
 pytest.importorskip("duckdb", reason="duckdb driver not installed")
 pytest.importorskip("duckdb_engine", reason="duckdb_engine dialect not installed")
@@ -102,3 +107,103 @@ class TestDuckDBQuirks:
         q = DuckDBQuirks()
         assert q.type_equivalents()["INT8"] == "BIGINT"
         assert q.type_equivalents()["BOOL"] == "BOOLEAN"
+
+
+pytest.importorskip("duckdb", reason="duckdb driver not installed")
+
+
+pytest.importorskip("duckdb_engine", reason="duckdb_engine dialect not installed")
+
+
+@pytest.mark.unit
+class TestRegexParser:
+    def test_split_empty_and_block_comment(self):
+
+        p = facts_parser("duckdb")
+        assert p.split_statements("") == []
+        stmts = p.split_statements("/* c; */ SELECT 1; SELECT 2;")
+        assert len(stmts) == 2
+
+    def test_split_respects_quoted_identifiers(self):
+
+        p = facts_parser("duckdb")
+        # ';' and '--' inside a double-quoted identifier are literal.
+        stmts = p.split_statements('CREATE TABLE "weird;name" (a INT); SELECT 1;')
+        assert len(stmts) == 2
+        assert '"weird;name"' in stmts[0]
+        stmts2 = p.split_statements('CREATE TABLE "a--b" (x INT);\nSELECT 2;')
+        assert len(stmts2) == 2
+
+    def test_extract_variants(self):
+
+        p = facts_parser("duckdb")
+        assert p.extract_objects("") == []
+        assert p.extract_objects("CREATE SEQUENCE s")[0].object_type.value == "SEQUENCE"
+        assert p.extract_objects("CREATE VIEW v AS SELECT 1")[0].name == "v"
+
+
+@pytest.fixture()
+def provider():
+    from dblift.config import DbliftConfig
+    from dblift.db.plugins.duckdb.config import DuckDBConfig
+    from dblift.db.plugins.duckdb.provider import DuckDBProvider
+
+    tmp = Path(tempfile.mkdtemp())
+    p = DuckDBProvider(
+        DbliftConfig(
+            database=DuckDBConfig(type="duckdb", path=str(tmp / "p.duckdb"), schema="main")
+        )
+    )
+    p.create_connection()
+    yield p
+    p.close()
+
+
+@pytest.mark.unit
+class TestProviderHelpers:
+    def test_version_schema_transactions(self, provider):
+        assert "duck" in provider.get_database_version().lower() or provider.get_database_version()
+        provider.create_schema_if_not_exists("main")  # idempotent, exists
+        provider.create_schema_if_not_exists("extra")
+        provider.set_current_schema("main")
+        provider.begin_transaction()
+        provider.execute_statement("CREATE TABLE t (a INTEGER)")
+        provider.commit_transaction()
+        assert provider.table_exists("main", "t")
+        provider.begin_transaction()
+        provider.execute_statement("CREATE TABLE t2 (a INTEGER)")
+        provider.rollback_transaction()
+        assert not provider.table_exists("main", "t2")
+
+    def test_lock_acquire_release(self, provider):
+        assert provider.acquire_migration_lock("main") is True
+        assert provider.release_migration_lock("main") is True
+
+    def test_record_undo_and_repair(self, provider):
+        provider.record_migration(
+            "main",
+            {
+                "version": "1",
+                "description": "d",
+                "script": "V1.sql",
+                "checksum": "abc",
+                "execution_time": 1,
+            },
+        )
+        assert provider.record_undo("main", "1", script_name="UNDO_1.sql") is True
+        assert provider.repair_migration_history("main", "V1.sql", "def") is True
+        assert (
+            provider.repair_migration_history("main", "missing.sql", "x", table_name="nope")
+            is False
+        )
+
+    def test_get_schema_qualified_name(self, provider):
+        assert provider.get_schema_qualified_name("main", "t") == '"main"."t"'
+
+
+@pytest.mark.parametrize("sql", ["\x0b", " ", "\x85"])
+def test_a_statement_of_white_space_alone_is_not_rewritten_with_returning(sql):
+    from dblift.db.plugins.duckdb.provider import DuckDBProvider
+
+    provider = object.__new__(DuckDBProvider)
+    assert provider._try_dml_rowcount_via_returning(sql) is None

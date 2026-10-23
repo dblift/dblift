@@ -86,3 +86,24 @@ def test_a_parser_answer_without_verdict_is_not_valid(answer):
     is_valid, message = _with_answer(answer)
     assert is_valid is False
     assert message and "verdict" in message
+
+
+PARSER_REJECTS = {
+    **dict.fromkeys(
+        [
+            "postgresql",
+            "alloydb",
+            "aurora-postgresql",
+            "citus",
+            "cockroachdb",
+            "neon",
+            "redshift",
+            "supabase",
+            "timescaledb",
+            "yugabytedb",
+        ],
+        UNBALANCED_PAREN,
+    ),
+    "mysql": UNBALANCED_BACKTICK,
+    "mariadb": UNBALANCED_BACKTICK,
+}

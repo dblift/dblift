@@ -15,6 +15,8 @@ from typing import Any
 
 import pytest
 
+from tests.support.facts_parser import facts_parser
+
 duckdb = pytest.importorskip("duckdb", reason="duckdb driver not installed")
 pytest.importorskip("duckdb_engine", reason="duckdb_engine dialect not installed")
 
@@ -641,3 +643,23 @@ class TestDuckDBMigrateFailsWhereTheDriverRejects:
         result = DBLiftClient(provider, migrations).migrate()
         assert not result.success
         assert provider.table_exists("main", "t") is True
+
+
+pytest.importorskip("duckdb_engine", reason="duckdb_engine dialect not installed")
+
+
+@pytest.mark.unit
+class TestDuckDBSplitter:
+    def test_splits_respecting_strings_and_comments(self) -> None:
+
+        parser = facts_parser("duckdb")
+        sql = "CREATE TABLE t (a INT); INSERT INTO t VALUES (';');\n-- c; still comment\nSELECT 1;"
+        stmts = parser.split_statements(sql)
+        assert len(stmts) == 3
+        assert stmts[1] == "INSERT INTO t VALUES (';')"
+
+    def test_extract_objects_from_create(self) -> None:
+
+        parser = facts_parser("duckdb")
+        objs = parser.extract_objects("CREATE TABLE main.foo (a int)")
+        assert [(o.object_type.value, o.name) for o in objs] == [("TABLE", "foo")]

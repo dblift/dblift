@@ -31,7 +31,7 @@ import warnings
 
 import pytest
 
-from tests.support.facts_parser import facts_parser
+from tests.support.facts_parser import facts_factory, facts_parser
 
 # Dialects whose splitting goes through a tokenizer. sqlite, duckdb and db2
 # split by regex over the original text and never reserialize a token stream.
@@ -164,3 +164,83 @@ STRICT_MODE_OPERATOR_CASES = [
     ("sqlserver", "SELECT a & b FROM t;"),
     ("sqlserver", "SELECT a ^ b FROM t;"),
 ]
+
+
+TOKENIZING_PARSERS = {
+    "postgresql": facts_factory("postgresql"),
+    "mysql": facts_factory("mysql"),
+    "sqlserver": facts_factory("sqlserver"),
+    "oracle": facts_factory("oracle"),
+}
+
+
+ALL_CASES = _cases(PORTABLE_CORPUS, sorted(TOKENIZING_PARSERS)) + _cases(
+    POSTGRESQL_CORPUS, ["postgresql"]
+)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("dialect,sql", ALL_CASES)
+def test_no_character_is_lost(dialect: str, sql: str) -> None:
+    """Every non-whitespace character of the input reaches the executed SQL."""
+    parser = TOKENIZING_PARSERS[dialect]()
+    out = "".join(_split(parser, sql))
+    assert _canonical(out) == _canonical(sql), (
+        f"{dialect}: statement splitting changed the SQL\n"
+        f"  input : {sql!r}\n"
+        f"  output: {out!r}"
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("dialect,sql", ALL_CASES)
+def test_splitting_is_a_fixpoint(dialect: str, sql: str) -> None:
+    """Feeding the output back in reproduces it.
+
+    A statement that lexes differently the second time around lexes differently
+    from what the author wrote -- e.g. ``a - -b`` rendered as ``a --b``, where
+    the remainder of the line has become a comment.
+    """
+    parser = TOKENIZING_PARSERS[dialect]()
+    once = _split(parser, sql)
+    twice = _split(parser, "".join(once))
+    assert twice == once, (
+        f"{dialect}: reserialized SQL does not lex back to itself\n"
+        f"  input : {sql!r}\n"
+        f"  once  : {once!r}\n"
+        f"  twice : {twice!r}"
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "char", ["%", "&", "#", "?", "^", "@", "+", "-", "*", "/", "<", ">", "=", "!", "|", "~"]
+)
+@pytest.mark.parametrize("dialect", sorted(TOKENIZING_PARSERS))
+def test_operator_character_survives(dialect: str, char: str) -> None:
+    """Diagnostic: name the operator character that got dropped."""
+    if dialect == "mysql" and char == "#":
+        pytest.skip("# opens a comment in MySQL; consuming the rest of the line is correct")
+    parser = TOKENIZING_PARSERS[dialect]()
+    sql = f"SELECT a {char} b FROM t;"
+    out = "".join(_split(parser, sql))
+    assert char in out, f"{dialect}: {char!r} deleted from {sql!r}, got {out!r}"
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("dialect", sorted(TOKENIZING_PARSERS))
+def test_percent_inside_string_literal_is_untouched(dialect: str) -> None:
+    """LIKE patterns are string content, not operators, and already worked."""
+    parser = TOKENIZING_PARSERS[dialect]()
+    sql = "SELECT * FROM t WHERE name LIKE 'a%b%';"
+    out = "".join(_split(parser, sql))
+    assert "'a%b%'" in out, f"{dialect}: literal mangled, got {out!r}"
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("dialect", ["postgresql", "mysql", "oracle"])
+def test_concatenation_and_regex_operators_stay_intact(dialect: str) -> None:
+    """``||`` and ``~`` were already claimed; they must not regress."""
+    parser = TOKENIZING_PARSERS[dialect]()
+    out = "".join(_split(parser, "SELECT a || b FROM t;"))
+    assert "||" in out, f"{dialect}: || broken, got {out!r}"

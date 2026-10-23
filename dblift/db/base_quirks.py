@@ -524,6 +524,12 @@ class BaseQuirks:
     #: Default: empty — no dialect-specific non-transactional statements.
     non_transactional_sql_patterns: "tuple[tuple[str, str], ...]" = ()
 
+    #: Leading words that fix a statement's type (``"DDL"``, ``"DML"`` or ``"QUERY"``) where the
+    #: generic keyword rules know none, as ordered ``(type, words)`` pairs: the first pair holding
+    #: the statement's first word (leading comments aside) decides. PostgreSQL and Oracle declare
+    #: theirs; the default is empty.
+    leading_word_statement_types: "tuple[tuple[str, tuple[str, ...]], ...]" = ()
+
     #: Statements that open (``"begin"``), end (``"end"``) or abandon (``"abort"``) the
     #: connection's transaction, as ``(regex, kind)`` matched like
     #: ``non_transactional_sql_patterns``. dblift runs each migration in a transaction of its
