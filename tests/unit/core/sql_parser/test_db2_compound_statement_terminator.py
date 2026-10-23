@@ -9,7 +9,7 @@ it at the first semicolon inside the body.
 import pytest
 
 from dblift.core.exceptions import UnsafeStatementSplitError
-from dblift.db.plugins.db2.parser.db2_regex_parser import DB2RegexParser
+from tests.support.facts_parser import facts_parser
 
 PRELUDE = "CREATE TABLE audit_log (id INTEGER, msg VARCHAR(100))"
 
@@ -49,7 +49,7 @@ class TestDB2CompoundStatementTerminator:
 
     @TERMINATORS
     def test_trigger_body_is_one_statement(self, terminator):
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
 
         statements = parser.split_statements(
             f"{PRELUDE};\n\n{declared(terminator)}{TRIGGER_BODY}{terminator}"
@@ -59,7 +59,7 @@ class TestDB2CompoundStatementTerminator:
 
     @TERMINATORS
     def test_procedure_body_is_one_statement(self, terminator):
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
 
         statements = parser.split_statements(
             f"{PRELUDE};\n\n{declared(terminator)}{PROCEDURE_BODY}{terminator}"
@@ -69,7 +69,7 @@ class TestDB2CompoundStatementTerminator:
 
     @TERMINATORS
     def test_compound_block_is_one_statement(self, terminator):
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
 
         statements = parser.split_statements(
             f"{PRELUDE};\n\n{declared(terminator)}{COMPOUND_BODY}{terminator}"
@@ -78,7 +78,7 @@ class TestDB2CompoundStatementTerminator:
         assert statements == [PRELUDE, COMPOUND_BODY]
 
     def test_unterminated_trigger_keeps_internal_semicolons(self):
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
 
         statements = parser.split_statements(TRIGGER_BODY)
 
@@ -86,7 +86,7 @@ class TestDB2CompoundStatementTerminator:
         assert statements[0].count(";") == 2
 
     def test_unterminated_procedure_keeps_internal_semicolons(self):
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
 
         statements = parser.split_statements(PROCEDURE_BODY)
 
@@ -103,7 +103,7 @@ class TestDB2CompoundBlockBoundaries:
     """
 
     def test_unterminated_compound_does_not_swallow_a_trailing_case_expression(self):
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
         compound = "BEGIN ATOMIC\n  INSERT INTO audit_log VALUES (1);\nEND"
         query = "SELECT CASE WHEN id = 1 THEN 'x' ELSE 'y' END"
 
@@ -112,7 +112,7 @@ class TestDB2CompoundBlockBoundaries:
         assert statements == [compound, query]
 
     def test_unterminated_compound_does_not_swallow_trailing_sql(self):
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
         compound = "BEGIN ATOMIC\n  INSERT INTO audit_log VALUES (1);\nEND"
         query = "SELECT * FROM audit_log"
 
@@ -121,7 +121,7 @@ class TestDB2CompoundBlockBoundaries:
         assert statements == [compound, query]
 
     def test_two_compounds_with_the_second_unterminated(self):
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
         first = "BEGIN ATOMIC\n  INSERT INTO audit_log VALUES (1);\nEND"
         second = "BEGIN ATOMIC\n  UPDATE counters SET c = c + 1;\nEND"
 
@@ -130,7 +130,7 @@ class TestDB2CompoundBlockBoundaries:
         assert statements == [first, second]
 
     def test_case_expression_inside_a_compound_does_not_close_it(self):
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
         compound = (
             "BEGIN ATOMIC\n"
             "  SET g = CASE WHEN s > 90 THEN 'A' ELSE 'B' END;\n"
@@ -141,7 +141,7 @@ class TestDB2CompoundBlockBoundaries:
         assert parser.split_statements(compound) == [compound]
 
     def test_nested_block_inside_a_compound_does_not_close_it(self):
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
         compound = (
             "BEGIN ATOMIC\n"
             "  BEGIN\n"
@@ -154,7 +154,7 @@ class TestDB2CompoundBlockBoundaries:
         assert parser.split_statements(compound) == [compound]
 
     def test_end_if_inside_a_compound_does_not_close_it(self):
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
         compound = (
             "BEGIN ATOMIC\n"
             "  IF s = 1 THEN\n"
@@ -166,7 +166,7 @@ class TestDB2CompoundBlockBoundaries:
         assert parser.split_statements(compound) == [compound]
 
     def test_end_while_inside_a_compound_does_not_close_it(self):
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
         compound = """BEGIN ATOMIC
   WHILE s < 10 DO
     SET s = s + 1;
@@ -187,7 +187,7 @@ class TestDB2CaseEndContinuations:
     """
 
     def test_case_end_into_inside_a_procedure_does_not_close_it(self):
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
         procedure = """CREATE PROCEDURE do_thing()
 LANGUAGE SQL
 BEGIN
@@ -199,7 +199,7 @@ END"""
         assert parser.split_statements(procedure) == [procedure]
 
     def test_case_end_as_inside_a_procedure_does_not_close_it(self):
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
         procedure = """CREATE PROCEDURE do_thing()
 LANGUAGE SQL
 BEGIN
@@ -211,7 +211,7 @@ END"""
         assert parser.split_statements(procedure) == [procedure]
 
     def test_case_end_from_inside_a_procedure_does_not_close_it(self):
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
         procedure = """CREATE PROCEDURE do_thing()
 LANGUAGE SQL
 BEGIN
@@ -232,7 +232,7 @@ END"""
         and making the block's own terminating ``END`` look like it belongs
         to a still-open CASE expression instead of closing the block.
         """
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
         procedure = """CREATE PROCEDURE classify(IN p_score INTEGER)
 LANGUAGE SQL
 BEGIN
@@ -257,7 +257,7 @@ END"""
         control-end poisons the scan here too, and the fix for the CASE
         self-poisoning regression above resolves it as a side effect.
         """
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
         procedure = """CREATE PROCEDURE classify(IN p_score INTEGER)
 LANGUAGE SQL
 BEGIN
@@ -279,12 +279,12 @@ class TestDB2EndControlKeywordSeparatorWhitespace:
     def test_end_case_separated_by_newline_is_still_recognised(self):
         sql = "CREATE PROCEDURE p() BEGIN CASE x WHEN 1 THEN SET y=1; END\nCASE; END"
 
-        assert DB2RegexParser().split_statements(sql) == [sql]
+        assert facts_parser("db2").split_statements(sql) == [sql]
 
     def test_end_case_separated_by_crlf_is_still_recognised(self):
         sql = "CREATE PROCEDURE p() BEGIN CASE x WHEN 1 THEN SET y=1; END\r\nCASE; END"
 
-        assert DB2RegexParser().split_statements(sql) == [sql]
+        assert facts_parser("db2").split_statements(sql) == [sql]
 
     SEPARATORS = pytest.mark.parametrize(
         "separator",
@@ -322,7 +322,7 @@ class TestDB2EndControlKeywordSeparatorWhitespace:
     @SEPARATORS
     @KEYWORDS
     def test_end_keyword_recognised_across_separators(self, separator, keyword, body):
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
         procedure = (
             f"CREATE PROCEDURE p(IN x INTEGER)\n"
             f"LANGUAGE SQL\n"
@@ -350,7 +350,7 @@ class TestDB2EndControlKeywordSeparatorWhitespace:
             "    INSERT INTO t VALUES (x);\n"
             "END"
         )
-        assert DB2RegexParser().split_statements(sql) == [sql]
+        assert facts_parser("db2").split_statements(sql) == [sql]
 
 
 @pytest.mark.unit
@@ -366,12 +366,12 @@ BEGIN
 END
 """
 
-        records = DB2RegexParser().split(sql)
+        records = facts_parser("db2").split(sql)
         assert [record.text for record in records] == [sql.strip()]
         assert records[0].source_end == len(sql)
 
     def test_variable_named_enddate_survives_split_statements(self):
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
         procedure = """CREATE PROCEDURE P1()
 BEGIN
   DECLARE ENDDATE DATE;
@@ -395,7 +395,7 @@ END"""
         ],
     )
     def test_identifier_starting_with_end_does_not_truncate_the_procedure(self, identifier):
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
         procedure = f"CREATE PROCEDURE p(IN v INTEGER)\nLANGUAGE SQL\nBEGIN\n    SET v = {identifier} + 1;\nEND"
 
         assert parser.split_statements(procedure) == [procedure]
@@ -412,12 +412,12 @@ class TestDB2ControlEndKeywordRequiresWordBoundary:
             "    SET x = x + 1;\nEND"
         )
 
-        assert DB2RegexParser().split_statements(sql) == [sql]
+        assert facts_parser("db2").split_statements(sql) == [sql]
 
     def test_case_expression_alias_starting_with_a_control_keyword_does_not_truncate_the_procedure(
         self,
     ):
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
         procedure = (
             "CREATE PROCEDURE p(IN x INTEGER)\nLANGUAGE SQL\nBEGIN\n"
             "    SET x = (SELECT CASE WHEN x = 1 THEN 1 END IF1 FROM t);\n"
@@ -454,7 +454,7 @@ class TestDB2ControlEndKeywordRequiresWordBoundary:
     def test_case_expression_alias_prefixed_by_a_control_keyword_does_not_truncate_the_procedure(
         self, alias
     ):
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
         procedure = (
             "CREATE PROCEDURE p(IN x INTEGER)\nLANGUAGE SQL\nBEGIN\n"
             f"    SET x = (SELECT CASE WHEN x = 1 THEN 1 END {alias} FROM t);\n"
@@ -472,7 +472,7 @@ class TestDB2ControlEndKeywordRequiresWordBoundary:
         few lines earlier in the same function and was never exercised by
         rounds 1-2, but it's the identical bug class.
         """
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
         procedure = f"CREATE PROCEDURE p(IN v INTEGER)\nLANGUAGE SQL\nBEGIN\n    SET v = {identifier} + 1;\nEND"
 
         assert parser.split_statements(procedure) == [procedure]
@@ -484,7 +484,7 @@ class TestDB2ControlEndKeywordRequiresWordBoundary:
         Same bug class as ``CASE_STATUS`` above, for the ``BEGIN``-open
         detector's word-boundary check.
         """
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
         procedure = f"CREATE PROCEDURE p(IN v INTEGER)\nLANGUAGE SQL\nBEGIN\n    SET v = {identifier} + 1;\nEND"
 
         assert parser.split_statements(procedure) == [procedure]
@@ -507,7 +507,7 @@ class TestDB2ControlEndKeywordsDoNotSelfPoison:
     """
 
     def test_end_if_does_not_poison_the_enclosing_end(self):
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
         procedure = """CREATE PROCEDURE p(IN x INTEGER)
 LANGUAGE SQL
 BEGIN
@@ -520,7 +520,7 @@ END"""
         assert parser.split_statements(procedure) == [procedure]
 
     def test_end_while_does_not_poison_the_enclosing_end(self):
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
         procedure = """CREATE PROCEDURE p(IN x INTEGER)
 LANGUAGE SQL
 BEGIN
@@ -533,7 +533,7 @@ END"""
         assert parser.split_statements(procedure) == [procedure]
 
     def test_end_loop_does_not_poison_the_enclosing_end(self):
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
         procedure = """CREATE PROCEDURE p(IN x INTEGER)
 LANGUAGE SQL
 BEGIN
@@ -549,7 +549,7 @@ END"""
         assert parser.split_statements(procedure) == [procedure]
 
     def test_end_for_does_not_poison_the_enclosing_end(self):
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
         procedure = """CREATE PROCEDURE p()
 LANGUAGE SQL
 BEGIN
@@ -562,7 +562,7 @@ END"""
         assert parser.split_statements(procedure) == [procedure]
 
     def test_end_repeat_does_not_poison_the_enclosing_end(self):
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
         procedure = """CREATE PROCEDURE p(IN x INTEGER)
 LANGUAGE SQL
 BEGIN
@@ -587,7 +587,7 @@ class TestDB2TriggerControlStructureLookahead:
     """
 
     def test_end_if_inside_a_trigger_does_not_close_it(self):
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
         trigger = """CREATE TRIGGER trg_audit
 AFTER INSERT ON employees
 REFERENCING NEW AS n
@@ -602,7 +602,7 @@ END"""
         assert parser.split_statements(trigger) == [trigger]
 
     def test_identical_if_end_if_body_works_in_both_procedure_and_trigger(self):
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
         procedure = """CREATE PROCEDURE do_thing()
 LANGUAGE SQL
 BEGIN
@@ -639,7 +639,7 @@ class TestDB2BlockDetectionGateAgreesWithExtractor:
         ],
     )
     def test_sqlpl_gate_agrees_with_extractor(self, sql):
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
         assert parser.split_for_extraction(sql) == [sql.rstrip(";")]
 
     @pytest.mark.parametrize(
@@ -651,7 +651,7 @@ class TestDB2BlockDetectionGateAgreesWithExtractor:
         ],
     )
     def test_compound_gate_agrees_with_extractor(self, sql):
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
         assert parser.split_for_extraction(sql) == [sql.rstrip(";")]
 
     @pytest.mark.parametrize(
@@ -668,7 +668,7 @@ class TestDB2BlockDetectionGateAgreesWithExtractor:
         ],
     )
     def test_trigger_gate_agrees_with_extractor(self, sql):
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
         assert parser.split_for_extraction(sql) == [sql.rstrip(";")]
 
 
@@ -677,19 +677,19 @@ class TestDB2CompoundDetectionStaysNarrow:
     """Ordinary statements ending in the word END must not be treated as blocks."""
 
     def test_insert_mentioning_end_is_not_a_block(self):
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
         sql = "INSERT INTO audit_log (id, msg) VALUES (1, 'the END')"
 
         assert parser.split_statements(sql) == [sql]
 
     def test_case_expression_ending_the_script_is_not_a_block(self):
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
         sql = "SELECT CASE WHEN id = 1 THEN 'x' ELSE 'y' END FROM audit_log"
 
         assert parser.split_statements(sql) == [sql]
 
     def test_external_procedure_followed_by_case_expression(self):
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
         external = "CREATE PROCEDURE ext_proc() LANGUAGE C EXTERNAL NAME 'lib!fn'"
         query = "SELECT CASE WHEN id = 1 THEN 'x' END FROM audit_log"
 
@@ -698,7 +698,7 @@ class TestDB2CompoundDetectionStaysNarrow:
         assert statements == [external, query]
 
     def test_end_inside_string_and_comment_does_not_close_the_block(self):
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
         trigger = """CREATE TRIGGER trg_quoted
 AFTER INSERT ON employees
 REFERENCING NEW AS n
@@ -734,7 +734,7 @@ class TestDB2CommentDetectorsRespectInComment:
     """
 
     def test_dashes_immediately_before_closing_marker_do_not_truncate(self):
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
         sql = """CREATE PROCEDURE P1()
 BEGIN
   /* --------------------------------------------------
@@ -749,7 +749,7 @@ END"""
         """The same class of bug, without the same-line jump-over: the ``--``
         content appears well before the ``*/`` that ends the comment, on a
         line of its own with ordinary prose after it."""
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
         sql = """CREATE PROCEDURE P1()
 BEGIN
   /* -- this dash marks a sub-heading, not a real line comment
@@ -770,7 +770,7 @@ END"""
         balances the outermost ``/*`` may close it - the first ``*/``
         encountered (which only balances the inner ``/*``) must not end the
         comment early."""
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
         sql = """CREATE PROCEDURE P1()
 BEGIN
   /* outer /* inner */ garbage_that_would_be_invalid_sql_if_exposed */
@@ -791,12 +791,12 @@ BEGIN
 END"""
 
         with pytest.raises(UnsafeStatementSplitError, match="block comment"):
-            DB2RegexParser().split_statements(sql)
+            facts_parser("db2").split_statements(sql)
 
     def test_standalone_line_comment_outside_a_block_comment_still_works(self):
         """Ordinary ``--`` line comments, entirely outside any block comment,
         must keep skipping to end-of-line as before."""
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
         sql = """CREATE PROCEDURE P1()
 BEGIN
   -- plain line comment, no block comment involved
@@ -821,7 +821,7 @@ class TestDB2TriggerCaseTracking:
     """
 
     def test_case_expression_inside_a_trigger_does_not_close_it(self):
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
         trigger = """CREATE TRIGGER trg_audit
 AFTER INSERT ON employees
 REFERENCING NEW AS n
@@ -851,7 +851,7 @@ class TestDB2TriggerPlainBeginIsExtracted:
 
     @TERMINATORS
     def test_plain_begin_trigger_is_one_statement(self, terminator):
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
         trigger = """CREATE TRIGGER trg_audit
 AFTER INSERT ON employees
 REFERENCING NEW AS n
@@ -868,7 +868,7 @@ END"""
         ``BEGIN ATOMIC`` triggers must hold for plain ``BEGIN`` too, since
         both now resolve their boundary through the same ``_find_block_end``
         scan once the extractor stops requiring ``ATOMIC``."""
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
         trigger = """CREATE TRIGGER trg_audit
 AFTER INSERT ON employees
 REFERENCING NEW AS n
@@ -900,25 +900,25 @@ class TestDB2TrailingCommentAfterEndDoesNotDefeatTheGate:
     """
 
     def test_line_comment_after_procedure_end_does_not_defeat_the_gate(self):
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
         sql = f"{PROCEDURE_BODY}\n-- done\n"
 
         assert parser.split_statements(sql) == [PROCEDURE_BODY]
 
     def test_block_comment_after_procedure_end_does_not_defeat_the_gate(self):
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
         sql = f"{PROCEDURE_BODY}\n/* done */\n"
 
         assert parser.split_statements(sql) == [PROCEDURE_BODY]
 
     def test_comment_with_no_trailing_newline_after_end_does_not_defeat_the_gate(self):
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
         sql = f"{PROCEDURE_BODY}\n-- done"
 
         assert parser.split_statements(sql) == [PROCEDURE_BODY]
 
     def test_line_comment_after_trigger_end_does_not_defeat_the_gate(self):
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
         sql = f"{TRIGGER_BODY}\n-- done\n"
 
         assert parser.split_statements(sql) == [TRIGGER_BODY]
@@ -927,7 +927,7 @@ class TestDB2TrailingCommentAfterEndDoesNotDefeatTheGate:
         """Not just an omitted delimiter followed by a comment - a real
         delimiter followed by a comment must keep working too, since the
         ``[@;]`` branch of the anchor was never the broken one."""
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
         sql = f"{PROCEDURE_BODY};\n-- done\n"
 
         assert parser.split_statements(sql) == [PROCEDURE_BODY]
@@ -959,7 +959,7 @@ class TestDB2PackageBodyGateExtractorMismatch:
 
     @TERMINATORS
     def test_package_body_with_one_procedure_is_one_statement(self, terminator):
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
         package_body = """CREATE OR REPLACE PACKAGE BODY pk1 AS
 PROCEDURE proc1(x INT) IS
 BEGIN
@@ -978,7 +978,7 @@ END pk1"""
         the real closing ``END pk1;``. The extractor must find the
         package's TRUE closing END via depth tracking, not the first
         nested one a non-greedy regex would land on."""
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
         package_body = """CREATE OR REPLACE PACKAGE BODY pk1 AS
 PROCEDURE proc1(x INT) IS
 BEGIN
@@ -1005,7 +1005,7 @@ END pk1"""
         extractor's ``;``-only regex returned zero matches for the ``@``
         form, the exact 'gate says yes, extractor says no' mismatch shape
         the original issue described."""
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
         package_decl = """CREATE OR REPLACE PACKAGE pk1 AS
 PROCEDURE proc1(x INT);
 END pk1"""
@@ -1028,7 +1028,7 @@ END pk1"""
         correctly via depth tracking when reached directly; only the gate
         was blind to it.
         """
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
         package_body = """CREATE PACKAGE BODY pk1 AS
 PROCEDURE p1(x INT)
 BEGIN
@@ -1087,7 +1087,7 @@ class TestDB2MixedCompoundBlocks:
     )
     @TERMINATORS
     def test_blocks_between_plain_ddl_stay_whole(self, blocks, terminator):
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
         parts = [PRELUDE, *blocks[:1], VIEW, *blocks[1:], INDEX]
         script = (
             "\n\n".join(f"{part};" for part in parts[:-1])
@@ -1098,7 +1098,7 @@ class TestDB2MixedCompoundBlocks:
 
     @TERMINATORS
     def test_trailing_block_without_ddl_after_it(self, terminator):
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
         script = f"{PRELUDE};\n{PROCEDURE_BODY};\n{declared(terminator)}{TRIGGER_BODY}{terminator}"
 
         assert parser.split_statements(script) == [PRELUDE, PROCEDURE_BODY, TRIGGER_BODY]

@@ -38,7 +38,7 @@ from __future__ import annotations
 import pytest
 
 from dblift.core.exceptions import UnsafeStatementSplitError
-from dblift.db.plugins.oracle.parser.oracle_parser import OracleParser
+from tests.support.facts_parser import facts_parser
 
 NESTED = (
     "CREATE TABLE keep_me (id NUMBER);\n"
@@ -154,7 +154,7 @@ REFUSED = {
 @pytest.mark.parametrize("name", sorted(set(ALL_CASES) - REFUSED))
 def test_tokenizer_split_matches_sqlplus(name):
     source, expected = ALL_CASES[name]
-    assert OracleParser().split_statements(source) == expected
+    assert facts_parser("oracle").split_statements(source) == expected
 
 
 @pytest.mark.unit
@@ -162,20 +162,20 @@ def test_tokenizer_split_matches_sqlplus(name):
 def test_tokenizer_split_refuses_text_after_a_semicolon(name):
     source, _ = ALL_CASES[name]
     with pytest.raises(UnsafeStatementSplitError, match="ORA-03405"):
-        OracleParser().split_statements(source)
+        facts_parser("oracle").split_statements(source)
 
 
 @pytest.mark.unit
 def test_nested_comment_never_yields_a_bare_drop():
     # The authoritative splitter refuses the unsafe line (spec §4, row 13).
     with pytest.raises(UnsafeStatementSplitError):
-        OracleParser().split_statements(NESTED)
+        facts_parser("oracle").split_statements(NESTED)
 
 
 @pytest.mark.unit
 def test_close_marker_inside_string_is_not_stray():
     source = "INSERT INTO t VALUES ('*/');\nCREATE TABLE z (id NUMBER);\n"
-    assert OracleParser().split_statements(source) == [
+    assert facts_parser("oracle").split_statements(source) == [
         "INSERT INTO t VALUES ('*/');",
         "CREATE TABLE z (id NUMBER);",
     ]

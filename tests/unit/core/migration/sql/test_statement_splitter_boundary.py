@@ -4,7 +4,7 @@ import pytest
 
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.migration.sql.statement_splitter import StatementSplitter
-from dblift.core.sql_parser.parser_factory import SqlParserFactory
+from dblift.core.sql_parser.common.comment_stripping import strip_comments_preserving_quotes
 
 
 @pytest.mark.unit
@@ -26,7 +26,7 @@ def test_sql_analyzer_split_statements_does_not_use_rich_parser_factory():
             raise AssertionError("rich object extraction should not split execution statements")
 
     class FakeStatementSplitter:
-        def split_statements(self, sql, *, strict_tokenizer=False):
+        def split_statements(self, sql):
             return ["select 1", "select 2"]
 
     analyzer = SqlAnalyzer(
@@ -36,15 +36,6 @@ def test_sql_analyzer_split_statements_does_not_use_rich_parser_factory():
     )
 
     assert analyzer.split_statements("select 1; select 2;") == ["select 1", "select 2"]
-
-
-@pytest.mark.unit
-def test_sql_parser_factory_get_parser_honors_regex_parser_type():
-    factory = SqlParserFactory("postgresql", parser_type="regex")
-
-    parser = factory.get_parser()
-
-    assert parser.__class__.__name__ == "PostgreSqlRegexParser"
 
 
 _ALL_SPLITTER_DIALECTS = [
@@ -137,6 +128,7 @@ def test_db2_nested_comment_text_is_never_executed(sql):
 
     assert len(statements) == 1, statements
     assert "CREATE TABLE t_after (x INT)" in statements[0], statements
-    live = SqlParserFactory("db2", parser_type="regex").get_parser()
-    stripped = live._strip_comments_preserving_quotes(statements[0])
+    stripped = strip_comments_preserving_quotes(
+        statements[0], line_prefixes=["--"], has_block_comments=True, nested_block_comments=True
+    )
     assert "t_in" not in stripped and "DROP" not in stripped, statements

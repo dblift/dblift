@@ -97,9 +97,9 @@ class TestTokenizerNoSilentDrop(unittest.TestCase):
         )
 
     def test_sqlserver_scanner_preserves_brackets_and_at_signs(self) -> None:
-        from dblift.db.plugins.sqlserver.parser.sqlserver_regex_parser import SqlServerRegexParser
+        from tests.support.facts_parser import facts_parser
 
-        parser = SqlServerRegexParser()
+        parser = facts_parser("sqlserver")
         for sql in (
             "SELECT [Order Date] FROM [dbo].[Orders];",
             "DECLARE @id INT = 1;\nSELECT @@ROWCOUNT;",

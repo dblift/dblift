@@ -59,9 +59,8 @@ class MongodbQuirks(BaseQuirks):
 
         Migrations are Python driving pymongo, and there is no read-side
         string language either: ``find()`` is a call, not a statement. Asking
-        for a parser is therefore an error, not a silent degradation, and
-        ``HybridParser`` cannot stand in because it falls back to a regex SQL
-        parser that would match nothing meaningful.
+        for a parser is therefore an error, not a silent degradation: no SQL
+        parser would match anything meaningful.
         """
         return None
 

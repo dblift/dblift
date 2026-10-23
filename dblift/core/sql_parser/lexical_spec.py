@@ -325,7 +325,8 @@ class LexicalSpec:
     batch_script: Optional[BatchScriptRules] = None
     #: Whether literal masking reads the text through this specification. False keeps the dialect's
     #: own tokenizer: SQL Server masking reads comments as the server does, which differs from
-    #: the client's batch reading.
+    #: the client's batch reading. A plugin that sets it False also overrides
+    #: ``quirks.redaction_tokenizer()`` to name that tokenizer class.
     redaction_reads_engine: bool = True
     delimiter_script: Optional[DelimiterScriptRules] = None
     #: False: a doubled string quote closes the literal and opens the next, as a client does.

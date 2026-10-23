@@ -8,8 +8,6 @@ from dblift.core.migration.sql.script_analysis import CHANGES_ROWS, analyse_scri
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.migration.sql.sql_execution_service import SqlExecutionService
 from dblift.core.sql_parser import SqlParserFactory
-from dblift.core.sql_parser.hybrid_parser import HybridParser
-from dblift.core.sql_parser.sqlglot_parser import SqlGlotParser
 from dblift.core.sql_parser.statement_facts import SqlglotStatementFactsReader
 from dblift.core.sql_parser.statement_facts_parser import StatementFactsParser
 from dblift.db.dml_analysis import (
@@ -18,7 +16,6 @@ from dblift.db.dml_analysis import (
     is_full_table_dml,
     statement_dml_table,
 )
-from dblift.db.plugins.postgresql.parser.postgresql_regex_parser import PostgreSqlRegexParser
 from dblift.db.provider_registry import ProviderRegistry
 
 _quirks = ProviderRegistry.get_quirks
@@ -59,23 +56,6 @@ def test_hybrid_factory_serves_the_facts_parser(dialect):
         assert [obj.name for obj in factory.extract_objects(sql)] == ["child"]
         assert factory.parse_sql(sql).success
         assert factory.validate_sql(sql)["valid"]
-
-
-@pytest.mark.parametrize("dialect", FAMILY)
-def test_regex_factory_type_keeps_the_regex_parser(dialect):
-    assert isinstance(SqlParserFactory(dialect, "regex").get_parser(), PostgreSqlRegexParser)
-
-
-@pytest.mark.parametrize("dialect", FAMILY)
-def test_sqlglot_factory_type_is_refused(dialect):
-    with pytest.raises(ValueError, match="StatementFactsParser"):
-        SqlParserFactory(dialect, "sqlglot").get_parser()
-
-
-@pytest.mark.parametrize("parser_class", [HybridParser, SqlGlotParser])
-def test_direct_generic_parser_construction_rejects_postgresql(parser_class):
-    with pytest.raises(ValueError, match="StatementFactsParser"):
-        parser_class("postgresql")
 
 
 @pytest.mark.parametrize("dialect", ["postgresql", "cockroachdb"])
@@ -175,3 +155,28 @@ def test_the_opaque_cte_diagnostic_names_the_dialect_that_read_the_statement():
         read_statement_facts(sql, dialect="postgres").diagnostic is None
     )  # an unqualified t in its own body is the table, not the CTE
     assert read_statement_facts(sql, dialect="redshift").diagnostic.startswith("redshift CTE")
+
+
+@pytest.mark.parametrize(
+    ("sql", "kind", "operation"),
+    [
+        ("ALTER TABLE t ADD c int", "DDL", "ALTER"),
+        ("CREATE INDEX i ON t (a)", "DDL", "CREATE"),
+        ("DROP TABLE t", "DDL", "DROP"),
+        ("DELETE FROM t", "DML", "DELETE"),
+        ("WITH x AS (SELECT 1) SELECT * FROM x", "QUERY", "SELECT"),
+        # A data-modifying CTE decides nothing: the outer verb does.
+        (
+            "WITH deleted AS (DELETE FROM src WHERE id = 1 RETURNING id) "
+            "INSERT INTO app_logs(msg) SELECT 'removed ' || id FROM deleted",
+            "DML",
+            "INSERT",
+        ),
+        # A CTE that writes under a SELECT is a write, whatever the outer verb.
+        ("WITH x AS (INSERT INTO src VALUES (99) RETURNING id) SELECT * FROM x", "DML", "SELECT"),
+    ],
+)
+def test_statement_kind_and_operation_come_from_the_facts(sql, kind, operation):
+    facts = _quirks("postgresql").statement_facts(sql)
+
+    assert (facts.kind, facts.operation) == (kind, operation)

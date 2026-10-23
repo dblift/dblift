@@ -3,11 +3,8 @@
 import pytest
 
 from dblift.core.sql_model.base import SqlObjectType
-from dblift.core.sql_parser.hybrid_parser import HybridParser
-from dblift.core.sql_parser.sqlglot_parser import SqlGlotParser
 from dblift.core.sql_parser.sqlglot_statement_facts import read_statement_facts
 from dblift.core.sql_parser.statement_facts import NamedObject, StatementFacts
-from dblift.db.plugins.postgresql.parser.postgresql_regex_parser import PostgreSqlRegexParser
 from dblift.db.plugins.postgresql.quirks import PostgresqlQuirks
 
 
@@ -55,12 +52,3 @@ def test_schema_identity_projection_does_not_expand_to_other_dialects(dialect):
     facts = read_statement_facts("CREATE SCHEMA sales", dialect=dialect)
 
     assert facts.objects == ()
-
-
-def test_schema_facts_leave_the_postgresql_parser_classes_unchanged():
-    quirks = PostgresqlQuirks()
-
-    assert quirks.supports_statement_facts
-    assert quirks.parser_class("regex") is PostgreSqlRegexParser
-    assert quirks.parser_class("hybrid") is HybridParser
-    assert quirks.parser_class("sqlglot") is SqlGlotParser

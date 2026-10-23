@@ -56,6 +56,12 @@ class Db2Quirks(BaseQuirks):
 
         return DB2_SPEC
 
+    def redaction_tokenizer(self) -> "Optional[type]":
+        """Db2 nests block comments; literal masking reads that flag."""
+        from dblift.db.plugins.db2.parser.db2_tokenizer import DB2NestingCommentTokenizer
+
+        return DB2NestingCommentTokenizer
+
     statement_facts_class = Db2StatementFactsReader
 
     # Capability matrix (was ``_CAPABILITIES["db2"]``).
@@ -118,23 +124,10 @@ class Db2Quirks(BaseQuirks):
         return _ERROR_PATTERNS
 
     def parser_class(self, parser_type: str) -> Optional[type]:
-        """Return the Db2 parser class for ``parser_type``, or ``None``.
+        """The facts parser bound to Db2, whatever ``parser_type`` is asked."""
+        from dblift.db.plugins.db2.parser.statement_facts import Db2FactsParser
 
-        ``"hybrid"`` → ``Db2FactsParser`` (statement facts read from the
-        statement head, since sqlglot has no Db2 dialect), ``"regex"`` →
-        ``DB2RegexParser``,
-        ``"sqlglot"`` → ``None`` (no Db2 sqlglot dialect — factory raises
-        ``UnsupportedDialectError``, matching the legacy ``SQLGLOT_PARSER_MAP``).
-        """
-        if parser_type == "hybrid":
-            from dblift.db.plugins.db2.parser.statement_facts import Db2FactsParser
-
-            return Db2FactsParser
-        if parser_type == "regex":
-            from dblift.db.plugins.db2.parser.db2_regex_parser import DB2RegexParser
-
-            return DB2RegexParser
-        return None
+        return Db2FactsParser
 
     def type_equivalents(self) -> "dict[str, str]":
         """Db2 alias → canonical type map.

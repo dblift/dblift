@@ -8,8 +8,6 @@ from dblift.core.migration.sql.script_analysis import analyse_script
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.migration.sql.sql_execution_service import SqlExecutionService
 from dblift.core.sql_parser import SqlParserFactory
-from dblift.core.sql_parser.hybrid_parser import HybridParser
-from dblift.core.sql_parser.sqlglot_parser import SqlGlotParser
 from dblift.core.sql_parser.statement_facts import SqlglotStatementFactsReader
 from dblift.core.sql_parser.statement_facts_parser import StatementFactsParser
 from dblift.db.dml_analysis import (
@@ -18,8 +16,6 @@ from dblift.db.dml_analysis import (
     is_full_table_dml,
     statement_dml_table,
 )
-from dblift.db.plugins.postgresql.parser.postgresql_regex_parser import PostgreSqlRegexParser
-from dblift.db.plugins.redshift.parser.redshift_regex_parser import RedshiftRegexParser
 from dblift.db.provider_registry import ProviderRegistry
 
 _quirks = ProviderRegistry.get_quirks
@@ -50,24 +46,6 @@ def test_hybrid_factory_serves_the_facts_parser():
         assert [obj.name for obj in factory.extract_objects(sql)] == ["child"]
         assert factory.parse_sql(sql).success
         assert factory.validate_sql(sql)["valid"]
-
-
-def test_regex_factory_type_keeps_the_regex_parser():
-    parser = SqlParserFactory("redshift", "regex").get_parser()
-
-    assert isinstance(parser, RedshiftRegexParser)
-    assert isinstance(parser, PostgreSqlRegexParser)
-
-
-def test_sqlglot_factory_type_is_refused():
-    with pytest.raises(ValueError, match="StatementFactsParser"):
-        SqlParserFactory("redshift", "sqlglot").get_parser()
-
-
-@pytest.mark.parametrize("parser_class", [HybridParser, SqlGlotParser])
-def test_direct_generic_parser_construction_rejects_redshift(parser_class):
-    with pytest.raises(ValueError, match="StatementFactsParser"):
-        parser_class("redshift")
 
 
 def test_script_analysis_goes_through_facts():

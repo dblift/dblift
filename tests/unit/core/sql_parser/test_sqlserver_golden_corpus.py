@@ -21,7 +21,7 @@ import pytest
 
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.sql_parser.redaction import describe_statement, mask_string_literals
-from dblift.db.plugins.sqlserver.parser.sqlserver_regex_parser import SqlServerRegexParser
+from tests.support.facts_parser import facts_parser
 
 
 def recorded(record):
@@ -35,7 +35,7 @@ CHUNK = 50
 
 def evaluate(script: str) -> Dict[str, Any]:
     """The recorded views of one script, or its refusal."""
-    parser = SqlServerRegexParser()
+    parser = facts_parser("sqlserver")
     try:
         records = parser.split(script)
         strings = parser.split_statements(script)

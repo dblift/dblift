@@ -1,6 +1,6 @@
 """Oracle parser conformance harness — Phase Oracle scoping (ADR-0012).
 
-This harness pins the *current* behaviour of ``OracleParser`` across
+This harness pins the *current* behaviour of ``facts_factory("oracle")`` across
 the five sub-responsibilities that will be extracted in Phase Oracle:
 
     1. Statement boundary detection (simple DDL, multi-statement scripts).
@@ -34,7 +34,7 @@ from typing import FrozenSet
 
 import pytest
 
-from dblift.db.plugins.oracle.parser.oracle_parser import OracleParser
+from tests.support.facts_parser import facts_factory, facts_parser
 
 
 @dataclass(frozen=True)
@@ -172,17 +172,19 @@ CASES: list[ConformanceCase] = [
 
 
 @pytest.fixture(scope="module")
-def parser() -> OracleParser:
+def parser() -> facts_factory("oracle"):
     """One parser for the module — stateless across calls in practice."""
-    return OracleParser()
+    return facts_parser("oracle")
 
 
 @pytest.mark.unit
 class TestOracleParserConformance:
-    """Contract assertions for the public OracleParser surface."""
+    """Contract assertions for the public facts_factory("oracle") surface."""
 
     @pytest.mark.parametrize("case", CASES, ids=lambda c: c.id)
-    def test_statement_count_and_success(self, parser: OracleParser, case: ConformanceCase) -> None:
+    def test_statement_count_and_success(
+        self, parser: facts_factory("oracle"), case: ConformanceCase
+    ) -> None:
         result = parser.parse_sql(case.sql)
         assert (
             result.success is case.expected_success
@@ -194,7 +196,9 @@ class TestOracleParserConformance:
         )
 
     @pytest.mark.parametrize("case", CASES, ids=lambda c: c.id)
-    def test_extracted_objects_match(self, parser: OracleParser, case: ConformanceCase) -> None:
+    def test_extracted_objects_match(
+        self, parser: facts_factory("oracle"), case: ConformanceCase
+    ) -> None:
         objects = parser.get_affected_objects(case.sql)
         actual = frozenset(f"{o.name}:{o.object_type.value}" for o in objects)
         assert actual == case.expected_objects, (
@@ -203,7 +207,9 @@ class TestOracleParserConformance:
             f"  expected: {sorted(case.expected_objects)}"
         )
 
-    def test_split_statements_strips_spool_absolute_path(self, parser: OracleParser) -> None:
+    def test_split_statements_strips_spool_absolute_path(
+        self, parser: facts_factory("oracle")
+    ) -> None:
         statements = parser.split_statements(
             "SPOOL /tmp/dblift_test.log;\nCREATE TABLE t (id NUMBER);"
         )
@@ -222,7 +228,6 @@ class TestOracleParserSubResponsibilitiesPresent:
         [
             "dblift.db.plugins.oracle.parser._comments",
             "dblift.db.plugins.oracle.parser._sqlplus",
-            "dblift.db.plugins.oracle.parser._object_extractor",
         ],
     )
     def test_module_importable(self, module_name: str) -> None:

@@ -9,15 +9,10 @@ from dblift.core.migration.sql.script_analysis import analyse_script
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.migration.sql.sql_execution_service import SqlExecutionService
 from dblift.core.sql_parser import redaction
-from dblift.core.sql_parser.hybrid_parser import HybridParser
 from dblift.core.sql_parser.parser_factory import SqlParserFactory
-from dblift.core.sql_parser.sqlglot_parser import SqlGlotParser
 from dblift.core.sql_parser.statement_facts import SqlglotStatementFactsReader
 from dblift.core.sql_parser.statement_facts_parser import StatementFactsParser
 from dblift.db.dml_analysis import analyze_dml, statement_dml_table
-from dblift.db.plugins.mariadb.regex_parser import MariaDbRegexParser
-from dblift.db.plugins.mysql.parser.mysql_regex_parser import MySqlRegexParser
-from dblift.db.plugins.mysql.parser.mysql_tokenizer import MySQLTokenizer
 from dblift.db.provider_registry import ProviderRegistry
 
 DIALECTS = ("mysql", "mariadb")
@@ -59,26 +54,6 @@ def test_the_factory_projects_facts_in_the_hybrid_and_sqlglot_modes(dialect, mod
     assert factory.validate_sql(UPDATE) == {"valid": True, "statements_found": 1, "errors": []}
 
 
-@pytest.mark.parametrize(
-    ("dialect", "parser_class"), [("mysql", MySqlRegexParser), ("mariadb", MariaDbRegexParser)]
-)
-def test_the_regex_mode_keeps_the_client_delegate_for_records_and_masking(dialect, parser_class):
-    parser = SqlParserFactory(dialect, "regex").get_parser()
-
-    assert type(parser) is parser_class
-    assert parser.tokenizer_class is MySQLTokenizer
-    assert redaction._dialect_tokenizer(dialect) is MySQLTokenizer
-    assert (
-        redaction.mask_string_literals("INSERT INTO t VALUES ('x', \"y\")", dialect)
-        == "INSERT INTO t VALUES ('?', '?')"
-    )
-    records = parser.split("SELECT 1;\nSELECT 2")
-    assert [(r.text, r.line, r.terminator) for r in records] == [
-        ("SELECT 1", 1, ";"),
-        ("SELECT 2", 2, None),
-    ]
-
-
 @pytest.mark.parametrize("dialect", DIALECTS)
 @pytest.mark.parametrize("mode", MODES)
 def test_the_delimiter_script_splits_the_same_in_every_mode(dialect, mode):
@@ -88,13 +63,6 @@ def test_the_delimiter_script_splits_the_same_in_every_mode(dialect, mode):
         "CREATE PROCEDURE p() BEGIN UPDATE t SET a = 1; END",
         "UPDATE t SET a = 2",
     ]
-
-
-@pytest.mark.parametrize("dialect", DIALECTS)
-@pytest.mark.parametrize("parser_class", [HybridParser, SqlGlotParser])
-def test_the_generic_text_parsers_refuse_the_plugin(dialect, parser_class):
-    with pytest.raises(ValueError, match="StatementFactsParser"):
-        parser_class(dialect)
 
 
 @pytest.mark.parametrize("dialect", DIALECTS)

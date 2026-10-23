@@ -8,7 +8,6 @@ from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.core.migration.sql.statement_splitter import StatementSplitter
 from dblift.core.sql_parser.lexical_spec import LexicalSpec
 from dblift.core.sql_parser.statement import analysis_sql, execution_strings
-from dblift.db.plugins.snowflake import statement_parser
 from dblift.db.provider_registry import ProviderRegistry
 
 
@@ -127,10 +126,3 @@ def test_snowflake_spec_uses_the_measured_blank_and_name_boundary() -> None:
     assert spec.text_blanks == " \t\n\r\u2002"
     assert spec.unread_blanks_are_code
     assert not spec.non_ascii_names
-
-
-def test_retained_legacy_class_remains_available_but_is_not_the_execution_route() -> None:
-    assert "split" in statement_parser.SnowflakeStatementParser.__dict__
-    assert ProviderRegistry.get_quirks("snowflake").parser_class("regex") is not (
-        statement_parser.SnowflakeStatementParser
-    )

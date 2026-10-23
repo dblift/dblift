@@ -20,18 +20,10 @@ import unittest
 
 from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.core.sql_parser.base_tokenizer import BaseTokenizer
-from dblift.db.plugins.db2.parser.db2_regex_parser import DB2RegexParser
-from dblift.db.plugins.duckdb.parser.duckdb_regex_parser import DuckDBRegexParser
-from dblift.db.plugins.mysql.parser.mysql_regex_parser import MySqlRegexParser
-from dblift.db.plugins.oracle.parser.oracle_parser import OracleParser
-from dblift.db.plugins.postgresql.parser.postgresql_regex_parser import (
-    PostgreSqlRegexParser,
-)
+from dblift.core.sql_parser.common.comment_stripping import strip_comments_preserving_quotes
 from dblift.db.plugins.sqlite.parser.sqlite_facts_parser import SQLiteFactsParser
-from dblift.db.plugins.sqlserver.parser.sqlserver_regex_parser import (
-    SqlServerRegexParser,
-)
 from dblift.db.provider_registry import ProviderRegistry
+from tests.support.facts_parser import facts_parser
 
 ISSUE_EXAMPLE = "/* outer /* inner */ DROP TABLE victim; still outer */\nSELECT 1;"
 
@@ -48,18 +40,15 @@ THREE_DEEP_UNTERMINATED_MIDDLE = "/* L1 /* L2 /* L3 */ DROP TABLE victim; still 
 
 
 def _regex_parser_for(dialect: str):
-    """Instantiate the dialect's registered regex parser via ProviderRegistry,
-    exactly as the runtime resolves it — not by importing a parser class
-    directly, so these tests catch a wrong quirks-level wiring too.
-    """
-    return ProviderRegistry.get_quirks(dialect).parser_class("regex")()
+    """The dialect's statement-facts parser, built from its registered plugin."""
+    return facts_parser(dialect)
 
 
 class TestPostgresNestedBlockComments(unittest.TestCase):
     """PostgreSQL nests block comments (documented explicitly)."""
 
     def setUp(self):
-        self.parser = PostgreSqlRegexParser()
+        self.parser = facts_parser("postgresql")
 
     def test_issue_example_keeps_drop_inside_the_comment(self):
         stmts = self.parser.split_statements(ISSUE_EXAMPLE)
@@ -131,7 +120,7 @@ class TestSqlServerNestedBlockComments(unittest.TestCase):
     """
 
     def setUp(self):
-        self.parser = SqlServerRegexParser()
+        self.parser = facts_parser("sqlserver")
 
     def test_issue_example_is_one_batch_the_server_reads_as_a_comment_and_a_select(self):
         self.assertEqual(self.parser.split_statements(ISSUE_EXAMPLE), [ISSUE_EXAMPLE])
@@ -165,7 +154,7 @@ class TestDuckDBNestedBlockComments(unittest.TestCase):
     """
 
     def setUp(self):
-        self.parser = DuckDBRegexParser()
+        self.parser = facts_parser("duckdb")
 
     def test_issue_example_keeps_drop_inside_the_comment(self):
         stmts = self.parser.split_statements(ISSUE_EXAMPLE)
@@ -192,7 +181,7 @@ class TestNonNestingDialectsUnchanged(unittest.TestCase):
     """
 
     def test_mysql_stops_at_first_close(self):
-        stmts = MySqlRegexParser().split_statements(ISSUE_EXAMPLE)
+        stmts = facts_parser("mysql").split_statements(ISSUE_EXAMPLE)
         self.assertTrue(any("DROP TABLE victim" in s for s in stmts))
 
     def test_oracle_stops_at_first_close(self):
@@ -200,7 +189,7 @@ class TestNonNestingDialectsUnchanged(unittest.TestCase):
         # last text on its line: spec §4 row 13 refuses it, so DROP TABLE victim
         # is never sent on its own.
         with self.assertRaises(UnsafeStatementSplitError):
-            OracleParser().split_statements(ISSUE_EXAMPLE)
+            facts_parser("oracle").split_statements(ISSUE_EXAMPLE)
 
     def test_sqlite_stops_at_first_close(self):
         stmts = SQLiteFactsParser().split_statements(ISSUE_EXAMPLE)
@@ -217,10 +206,15 @@ class TestDb2NestedBlockComments(unittest.TestCase):
     """
 
     def setUp(self):
-        self.parser = DB2RegexParser()
+        self.parser = facts_parser("db2")
+
+    def _live(self, statement):
+        return strip_comments_preserving_quotes(
+            statement, line_prefixes=["--"], has_block_comments=True, nested_block_comments=True
+        )
 
     def test_tokenizer_declares_nesting(self):
-        self.assertTrue(self.parser.tokenizer_class.NESTED_BLOCK_COMMENTS)
+        self.assertTrue(ProviderRegistry.get_quirks("db2").lexical_spec().nested_comments)
 
     def test_issue_example_keeps_drop_inside_the_comment(self):
         stmts = self.parser.split_statements(ISSUE_EXAMPLE)
@@ -249,7 +243,7 @@ class TestDb2NestedBlockComments(unittest.TestCase):
         self.assertEqual(len(stmts), 2, stmts)
         self.assertTrue(stmts[0].endswith("CREATE TABLE t_after (x INT)"), stmts)
         self.assertEqual(stmts[1], "CREATE TABLE t_after2 (x INT)")
-        live = [self.parser._strip_comments_preserving_quotes(s) for s in stmts]
+        live = [self._live(s) for s in stmts]
         self.assertFalse(any("t_in" in s or "DROP" in s for s in live), live)
 
     def test_statement_ending_in_a_comment_is_kept(self):
@@ -271,7 +265,7 @@ class TestDb2NestedBlockComments(unittest.TestCase):
             "CREATE TABLE t_after (x INT);"
         )
         stmts = self.parser.split_statements(sql)
-        live = [self.parser._strip_comments_preserving_quotes(s).strip() for s in stmts]
+        live = [self._live(s).strip() for s in stmts]
         self.assertEqual(
             live,
             [

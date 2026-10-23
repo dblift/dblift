@@ -1,11 +1,11 @@
+from tests.support.facts_parser import facts_parser
+
 """Comprehensive tests for MySQL END CASE fix.
 
 This module tests the fix for the bug where CASE in 'END CASE' incorrectly
 increased block depth because _last_token_is("END") was checking after the
 current CASE token was already added to context.tokens.
 """
-
-from dblift.db.plugins.mysql.parser.mysql_regex_parser import MySqlRegexParser
 
 
 class TestMySQLEndCaseFix:
@@ -20,7 +20,7 @@ BEGIN
   END CASE;
 END;"""
 
-        statements = MySqlRegexParser().split_statements(sql)
+        statements = facts_parser("mysql").split_statements(sql)
 
         # Should be one complete statement
         assert len(statements) == 1
@@ -40,7 +40,7 @@ BEGIN
   END CASE;
 END;"""
 
-        statements = MySqlRegexParser().split_statements(sql)
+        statements = facts_parser("mysql").split_statements(sql)
 
         # Should be one complete statement
         assert len(statements) == 1
@@ -59,7 +59,7 @@ BEGIN
   END CASE;
 END;"""
 
-        statements = MySqlRegexParser().split_statements(sql)
+        statements = facts_parser("mysql").split_statements(sql)
 
         # Should be one complete statement
         assert len(statements) == 1
@@ -77,7 +77,7 @@ BEGIN
   END CASE;
 END;"""
 
-        statements = MySqlRegexParser().split_statements(sql)
+        statements = facts_parser("mysql").split_statements(sql)
 
         assert len(statements) == 1
 
@@ -91,7 +91,7 @@ END;"""
   END AS result
 FROM table1;"""
 
-        statements = MySqlRegexParser().split_statements(sql)
+        statements = facts_parser("mysql").split_statements(sql)
 
         # Should be one statement
         assert len(statements) == 1
@@ -107,7 +107,7 @@ BEGIN
   END CASE;
 END;"""
 
-        statements = MySqlRegexParser().split_statements(sql)
+        statements = facts_parser("mysql").split_statements(sql)
 
         assert len(statements) == 1
 
@@ -122,7 +122,7 @@ BEGIN
 END //
 DELIMITER ;"""
 
-        statements = MySqlRegexParser().split_statements(sql)
+        statements = facts_parser("mysql").split_statements(sql)
 
         # Should have procedure statement
         proc_stmt = None
@@ -152,7 +152,7 @@ BEGIN
   END CASE;
 END;"""
 
-        statements = MySqlRegexParser().split_statements(sql)
+        statements = facts_parser("mysql").split_statements(sql)
 
         assert len(statements) == 1
 
@@ -165,7 +165,7 @@ BEGIN
   END /* comment */ CASE;
 END;"""
 
-        statements = MySqlRegexParser().split_statements(sql)
+        statements = facts_parser("mysql").split_statements(sql)
 
         # Should handle comments correctly
         assert len(statements) == 1

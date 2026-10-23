@@ -6,7 +6,7 @@
 | --- | --- |
 | Covers | Snowflake SQL scripts sent through the Python connector; SnowSQL and other client-side preprocessing were not measured. |
 | Native verification | Snowflake 10.38.100 with `snowflake-connector-python` 5.0.0 on 2026-10-20. Three bounded serial campaigns attempted 39, 113 and 20 fixed SQL sources: 172 attempts and 171 distinct recorded query IDs. All three final statuses were incomplete for a client/unattributed failure or non-grammar errors; the individual attributed observations below remain usable. Query-history text and query IDs matched the 19 prior statements of the third session byte for byte. |
-| Splitter implementation | A Snowflake-owned `LexicalSpec` drives the common tokenizer and `LexicalEngine` for execution and parser split views. `SnowflakeStatementParser` remains in the source tree but is disconnected from every default execution, analysis and extraction path. Statement facts are read by the shared sqlglot reader (section 13). This document describes the candidate implementation, not a published release. |
+| Splitter implementation | A Snowflake-owned `LexicalSpec` drives the common tokenizer and `LexicalEngine` for execution and parser split views. The former Snowflake statement parser class is removed. Statement facts are read by the shared sqlglot reader (section 13). This document describes the candidate implementation, not a published release. |
 | Vendor references | Snowflake [string constants](https://docs.snowflake.com/en/sql-reference/data-types-text), [identifier requirements](https://docs.snowflake.com/en/sql-reference/identifiers-syntax), [SQL variables](https://docs.snowflake.com/en/sql-reference/session-variables), [transaction `BEGIN`](https://docs.snowflake.com/en/sql-reference/sql/begin), [Scripting blocks](https://docs.snowflake.com/en/sql-reference/snowflake-scripting/begin), [anonymous `WITH … CALL`](https://docs.snowflake.com/en/sql-reference/sql/call-with), and [EXPLAIN](https://docs.snowflake.com/en/sql-reference/sql/explain). Native results below are narrower than the general vendor descriptions. |
 | Evidence limits | The campaigns used the connector, not a command-line client. An input without a query ID is unattributed; it does not prove that no bytes reached the server. Stored `CREATE PROCEDURE` and `CREATE FUNCTION` body grammar is unqualified because both quoted and unquoted `EXPLAIN` controls failed before body compilation: first with no current schema, then with missing schema access. |
 | Cost | Actual total credits and monetary cost are unknown. One session's query history reported **0.000187000 cloud-services credits for 19 rows only**; it excluded the final warehouse-state query and the other sessions, and it is not warehouse-compute billing. The account-usage metering query was denied. A post-run warehouse-state observation was `STARTED`, so an idle auto-suspend tail is also possible. |
@@ -69,7 +69,7 @@ The `BEGIN` variants in §5 open a transaction; `ROLLBACK` closes it in the meas
 
 ## 9. Engine subclass
 
-No dialect-specific scanning loop is needed for this contract. The Snowflake-owned `LexicalSpec` supplies comment openers, fixed-dollar quoting, measured blanks, directive refusal and conservative procedural guards to the common lexical engine. A small plugin parser binds the existing SQLGlot analysis path to those lexical records. The legacy `SnowflakeStatementParser` class remains in source, but no default split, execution, analysis or extraction path constructs or calls it. Statement facts are read from the same SQLGlot analysis path; §13 describes what the reader publishes.
+No dialect-specific scanning loop is needed for this contract. The Snowflake-owned `LexicalSpec` supplies comment openers, fixed-dollar quoting, measured blanks, directive refusal and conservative procedural guards to the common lexical engine. A small plugin parser binds the existing SQLGlot analysis path to those lexical records. Statement facts are read from the same SQLGlot analysis path; §13 describes what the reader publishes.
 
 ## 10. Conformance examples
 
@@ -118,7 +118,7 @@ The Snowflake plugin owns the spec and the common lexical engine supplies record
 
 ## 13. Statement facts
 
-Snowflake plugin: `statement_facts_class` is the shared reader, so object extraction, script analysis, the DML helpers and execution-time object tracking read facts; `HybridParser("snowflake")` and `SqlGlotParser("snowflake")` are refused like the other activated dialects. Statements are read by the shared sqlglot reader (`read_statement_facts(sql, dialect="snowflake")` in
+Snowflake plugin: `statement_facts_class` is the shared reader, so object extraction, script analysis, the DML helpers and execution-time object tracking read facts. Statements are read by the shared sqlglot reader (`read_statement_facts(sql, dialect="snowflake")` in
 `dblift/core/sql_parser/sqlglot_statement_facts.py`) after the lexical splitter above. This section
 describes the reader. **Only the identifier folding below was observed on Snowflake DDL**: the earlier
 10.38.100 campaigns measured splitting and refusals only, so every other reading is a structural

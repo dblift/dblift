@@ -388,9 +388,6 @@ strict_equality = true
 # Same flag set as the api/* carve-outs above.
 [[tool.mypy.overrides]]
 module = [
-    "dblift.core.sql_parser.hybrid_parser",
-    "dblift.core.sql_parser.enhanced_regex_parser",
-    "dblift.core.sql_parser.unified_regex_parser",
     "dblift.core.sql_parser.routine_body",
     "dblift.core.sql_parser.segment_script",
     "dblift.core.sql_parser.terminator_lines",
@@ -633,7 +630,6 @@ module = [
     "dblift.db.plugins.mariadb.plugin",
     "dblift.db.plugins.mariadb.provider",
     "dblift.db.plugins.mariadb.quirks",
-    "dblift.db.plugins.mariadb.regex_parser",
 ]
 disallow_any_generics = true
 disallow_subclassing_any = true
@@ -714,8 +710,6 @@ module = [
     "dblift.db.plugins.postgresql.postgresql",
     "dblift.db.plugins.postgresql.postgresql.schema_operations",
     "dblift.db.plugins.postgresql.postgresql._lock_key",
-    "dblift.db.plugins.postgresql.parser.parser_config",
-    "dblift.db.plugins.postgresql.parser.postgresql_regex_parser",
     "dblift.db.plugins.postgresql.parser.postgresql_statement_parser",
     "dblift.db.plugins.postgresql.parser.postgresql_tokenizer",
 ]
@@ -743,8 +737,6 @@ module = [
     "dblift.db.plugins.mysql.quirks",
     "dblift.db.plugins.mysql.mysql",
     "dblift.db.plugins.mysql.mysql.schema_operations",
-    "dblift.db.plugins.mysql.parser.parser_config",
-    "dblift.db.plugins.mysql.parser.mysql_regex_parser",
     "dblift.db.plugins.mysql.parser.mysql_statement_parser",
     "dblift.db.plugins.mysql.parser.mysql_tokenizer",
 ]
@@ -774,12 +766,10 @@ module = [
     "dblift.db.plugins.oracle.oracle",
     "dblift.db.plugins.oracle.oracle.dbms_output",
     "dblift.db.plugins.oracle.parser",
-    "dblift.db.plugins.oracle.parser.oracle_parser",
     "dblift.db.plugins.oracle.parser.oracle_tokenizer",
     "dblift.db.plugins.oracle.parser.sqlplus_context",
     "dblift.db.plugins.oracle.parser._comments",
     "dblift.db.plugins.oracle.parser._directives",
-    "dblift.db.plugins.oracle.parser._object_extractor",
     "dblift.db.plugins.oracle.parser._plsql_block",
     "dblift.db.plugins.oracle.parser._sqlplus",
     "dblift.db.plugins.oracle.parser._statement_splitter",
@@ -810,8 +800,6 @@ module = [
     "dblift.db.plugins.sqlserver.quirks",
     "dblift.db.plugins.sqlserver.sqlserver",
     "dblift.db.plugins.sqlserver.sqlserver.schema_operations",
-    "dblift.db.plugins.sqlserver.parser.parser_config",
-    "dblift.db.plugins.sqlserver.parser.sqlserver_regex_parser",
     "dblift.db.plugins.sqlserver.parser.sqlserver_statement_parser",
     "dblift.db.plugins.sqlserver.parser.sqlserver_tokenizer",
     "dblift.db.plugins.sqlserver.parser.tsql_batch_separator",
@@ -826,13 +814,9 @@ no_implicit_optional = true
 warn_unused_ignores = true
 strict_equality = true
 
-# PR-H9g: strict db/plugins/db2 — complete DB2 plugin (provider, quirks, plugin
-# entry, db2/ subsystem, regex-based parser, generator). DB2's parser is
-# regex-based and lacks a separate tokenizer/statement parser (unlike
-# PostgreSQL/MySQL/Oracle/SQL Server), but its parser_config.py is the largest
-# single parser config in the codebase at 1,147 LOC. Db2Quirks extends
-# BaseQuirks (strict via the dialect_boundary block above); the H8 manager bases
-# (BaseHistoryManager, BaseLockingManager, BaseQueryExecutor,
+# Strict db/plugins/db2: the complete Db2 plugin (provider, quirks, plugin entry, db2/ subsystem,
+# generator). Db2Quirks extends BaseQuirks (strict via the dialect_boundary block above); the
+# manager bases (BaseHistoryManager, BaseLockingManager, BaseQueryExecutor,
 # BaseSchemaOperations) are likewise strict, so the full strict flag set
 # including disallow_subclassing_any is safe here.
 [[tool.mypy.overrides]]
@@ -844,8 +828,6 @@ module = [
     "dblift.db.plugins.db2.quirks",
     "dblift.db.plugins.db2.db2",
     "dblift.db.plugins.db2.db2.schema_operations",
-    "dblift.db.plugins.db2.parser.parser_config",
-    "dblift.db.plugins.db2.parser.db2_regex_parser",
 ]
 disallow_any_generics = true
 disallow_subclassing_any = true

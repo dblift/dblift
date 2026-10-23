@@ -13,7 +13,6 @@ from dblift.core.sql_parser.lexical_tokenizer import LexicalTokenizer
 from dblift.core.sql_parser.tokens import TokenType
 from dblift.db.plugins.oracle.parser.lexical_spec import ORACLE_SPEC
 from dblift.db.plugins.sqlserver.parser.lexical_spec import SQLSERVER_SPEC
-from dblift.db.plugins.sqlserver.parser.sqlserver_regex_parser import SqlServerRegexParser
 
 
 def tokens(script, spec=SQLSERVER_SPEC):
@@ -121,14 +120,6 @@ def test_token_level_whitespace_is_str_isspace_as_before(blank):
 def test_unclaimed_character_warns_when_not_silent():
     _, warned = tokens_and_warnings("\xa35", replace(SQLSERVER_SPEC, silent_unclaimed=False))
     assert TokenizerWarning in warned
-
-
-@pytest.mark.parametrize("script", ["SELECT \xa35", "SELECT 1 \ufeff", "SELECT $action"])
-def test_strict_tokenizer_has_no_effect_for_sqlserver(script):
-    parser = SqlServerRegexParser()
-    assert parser.split_statements(script, strict_tokenizer=True) == parser.split_statements(
-        script, strict_tokenizer=False
-    )
 
 
 def test_placeholder_is_not_tokenised_for_sqlserver():

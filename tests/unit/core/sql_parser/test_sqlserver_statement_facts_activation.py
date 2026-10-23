@@ -4,8 +4,6 @@ import pytest
 
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.sql_parser import SqlParserFactory
-from dblift.core.sql_parser.hybrid_parser import HybridParser
-from dblift.core.sql_parser.sqlglot_parser import SqlGlotParser
 from dblift.core.sql_parser.sqlglot_statement_facts import read_statement_facts
 from dblift.core.sql_parser.statement_facts import SqlglotStatementFactsReader
 from dblift.core.sql_parser.statement_facts_parser import StatementFactsParser
@@ -38,12 +36,6 @@ def test_default_factory_uses_facts_and_keeps_go_batches_lexical():
         ("a]b", "MiXeD"),
         ("a]b", "MiXeD"),
     ]
-
-
-@pytest.mark.parametrize("parser_class", [HybridParser, SqlGlotParser])
-def test_direct_generic_parser_construction_refuses_sqlserver(parser_class):
-    with pytest.raises(ValueError, match="StatementFactsParser"):
-        parser_class("sqlserver")
 
 
 def test_analyzer_extracts_objects_from_facts():

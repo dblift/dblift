@@ -5,7 +5,6 @@ import warnings
 from dataclasses import replace
 from typing import List, Optional, Tuple, Type
 
-from dblift.core.sql_parser._deprecation import internal_parser_construction
 from dblift.core.sql_parser.base_tokenizer import BaseTokenizer
 from dblift.core.sql_parser.tokens import Token, TokenType
 
@@ -33,8 +32,8 @@ def _is_name_part(token: Token) -> bool:
 def describe_statement(sql: str, dialect: Optional[str] = None) -> str:
     """Leading verb words and the first object name of *sql*, nothing after it.
 
-    ``CREATE USER bob IDENTIFIED BY pw`` gives ``CREATE USER bob``. Falls back
-    to the first word when the text cannot be tokenized.
+    ``CREATE USER bob IDENTIFIED BY pw`` gives ``CREATE USER bob``. Gives only
+    the first word when the text cannot be tokenized.
     """
     try:
         tokens = _tokens(sql, dialect)
@@ -91,11 +90,9 @@ def _tokens(sql: str, dialect: Optional[str]) -> List[Token]:
 def _dialect_tokenizer(dialect: Optional[str]) -> Type[BaseTokenizer]:
     if dialect:
         try:
-            from dblift.core.sql_parser.parser_factory import SqlParserFactory
+            from dblift.db.provider_registry import ProviderRegistry
 
-            with internal_parser_construction():
-                parser = SqlParserFactory(dialect, parser_type="regex").get_parser()
-            tokenizer = getattr(parser, "tokenizer_class", None)
+            tokenizer = ProviderRegistry.get_quirks(dialect).redaction_tokenizer()
             if isinstance(tokenizer, type) and issubclass(tokenizer, BaseTokenizer):
                 return tokenizer
         except Exception:  # the generic tokenizer still masks
@@ -153,7 +150,7 @@ def _credential_span(
 def mask_string_literals(sql: str, dialect: Optional[str] = None) -> str:
     """Replace string literals and the value after ``IDENTIFIED BY`` / ``PASSWORD`` with ``?``.
 
-    Keeps the statement's shape. Falls back to :func:`describe_statement` when
+    Keeps the statement's shape. Gives :func:`describe_statement` instead when
     the text cannot be tokenized, so a failure to mask never leaks the values.
     """
     try:

@@ -5,12 +5,11 @@ from __future__ import annotations
 import pytest
 
 from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
-from dblift.db.plugins.mariadb.regex_parser import MariaDbRegexParser
-from dblift.db.plugins.mysql.parser.mysql_regex_parser import MySqlRegexParser
+from tests.support.facts_parser import facts_factory
 
 
 def _split(script: str, *, mariadb: bool = False):  # type: ignore[no-untyped-def]
-    return (MariaDbRegexParser if mariadb else MySqlRegexParser)().split(script)
+    return (facts_factory("mariadb") if mariadb else facts_factory("mysql"))().split(script)
 
 
 def sql(script: str, *, mariadb: bool = False) -> list[str]:
@@ -130,14 +129,6 @@ def test_other_statements_that_mention_the_mode_are_not_refused() -> None:
 
 
 SCRIPT = "source other.sql;\nCREATE TABLE a (id INT);\nSELECT 1\\G\nCREATE TABLE b (id INT);\n"
-
-
-def test_execution_and_extraction_refuse_the_same_client_command() -> None:
-    parser = MySqlRegexParser()
-    with pytest.raises(UnsupportedMetaCommandError, match="source"):
-        parser.split_statements(SCRIPT)
-    with pytest.raises(UnsupportedMetaCommandError, match="source"):
-        parser.split_for_extraction(SCRIPT)
 
 
 @pytest.mark.parametrize("line", ["exit", "exit;", "status", "source f", "use db"])

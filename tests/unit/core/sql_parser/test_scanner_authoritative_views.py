@@ -10,16 +10,11 @@ import pytest
 from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
 from dblift.core.migration.sql.script_analysis import analyse_script
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
-from dblift.db.plugins.db2.parser.db2_regex_parser import DB2RegexParser
-from dblift.db.plugins.db2.parser.parser_config import DB2Config
-from dblift.db.plugins.duckdb.parser.duckdb_regex_parser import DuckDBRegexParser
-from dblift.db.plugins.mariadb.regex_parser import MariaDbRegexParser
-from dblift.db.plugins.mysql.parser.mysql_regex_parser import MySqlRegexParser
-from dblift.db.plugins.mysql.parser.parser_config import MySqlConfig
 from dblift.db.plugins.sqlite.parser.sqlite_facts_parser import SQLiteFactsParser
+from tests.support.facts_parser import facts_factory, facts_parser
 
 
-@pytest.mark.parametrize("parser_class", [MySqlRegexParser, MariaDbRegexParser])
+@pytest.mark.parametrize("parser_class", [facts_factory("mysql"), facts_factory("mariadb")])
 def test_mysql_custom_delimiter_unit_exposes_each_plain_statement(parser_class: type) -> None:
     script = "DELIMITER //\nSELECT 1; DROP TABLE users; SELECT 2//\nDELIMITER ;"
     parser = parser_class()
@@ -55,8 +50,8 @@ def test_mysql_analysis_sees_drop_inside_custom_delimiter_unit(dialect: str) -> 
 
 def test_mysql_delimiter_command_suffix_has_bounded_cost() -> None:
     probe = (
-        "from dblift.db.plugins.mysql.parser.mysql_regex_parser import MySqlRegexParser\n"
-        "MySqlRegexParser().split_statements('DELIMITER ;;\\nSTATUS' + ';' * 45 + 'x')\n"
+        "from tests.support.facts_parser import facts_parser\n"
+        "facts_parser('mysql').split_statements('DELIMITER ;;\\nSTATUS' + ';' * 45 + 'x')\n"
     )
     try:
         subprocess.run([sys.executable, "-c", probe], check=True, timeout=8)
@@ -66,14 +61,14 @@ def test_mysql_delimiter_command_suffix_has_bounded_cost() -> None:
 
 @pytest.mark.parametrize("delimiter", [";$", ";x"])
 def test_mysql_command_suffix_prefers_the_full_active_delimiter(delimiter: str) -> None:
-    parser = MySqlRegexParser()
+    parser = facts_parser("mysql")
 
     with pytest.raises(UnsupportedMetaCommandError):
         parser.split_statements(f"DELIMITER {delimiter}\nSTATUS{delimiter}\n")
 
 
 def test_mysql_custom_delimiter_skips_comment_only_fragment() -> None:
-    parser = MySqlRegexParser()
+    parser = facts_parser("mysql")
     script = "DELIMITER //\nSELECT 1; /* comment */; DROP TABLE users; SELECT 2//\nDELIMITER ;"
 
     assert [
@@ -86,7 +81,7 @@ def test_mysql_custom_delimiter_skips_comment_only_fragment() -> None:
 
 
 def test_mysql_executable_comment_wrapper_stays_whole_in_analysis() -> None:
-    parser = MySqlRegexParser()
+    parser = facts_parser("mysql")
     script = (
         "DELIMITER //\n/*!50100 SELECT 1; DROP TABLE hidden */; "
         "DROP TABLE visible; SELECT 2//\nDELIMITER ;"
@@ -100,7 +95,7 @@ def test_mysql_executable_comment_wrapper_stays_whole_in_analysis() -> None:
 
 
 def test_mysql_multiline_executable_comment_wrapper_stays_whole_in_analysis() -> None:
-    parser = MySqlRegexParser()
+    parser = facts_parser("mysql")
     script = (
         "DELIMITER //\n/*!50100 SELECT 1;\nDROP TABLE hidden; SELECT 2 */; "
         "DROP TABLE visible//\nDELIMITER ;"
@@ -113,7 +108,7 @@ def test_mysql_multiline_executable_comment_wrapper_stays_whole_in_analysis() ->
 
 
 def test_mysql_custom_delimiter_preserves_stored_program_body_for_analysis() -> None:
-    parser = MySqlRegexParser()
+    parser = facts_parser("mysql")
     script = (
         "DELIMITER //\n"
         "CREATE PROCEDURE p() BEGIN SELECT 1; DROP TABLE users; END//\n"
@@ -126,21 +121,14 @@ def test_mysql_custom_delimiter_preserves_stored_program_body_for_analysis() -> 
 
 
 def test_db2_extraction_refuses_clp_statement_that_would_lose_sql() -> None:
-    parser = DB2RegexParser()
+    parser = facts_parser("db2")
     script = "SELECT 1; SELECT 2;"
 
     with pytest.raises(UnsafeStatementSplitError):
         parser.split_for_extraction(script)
 
 
-def test_dialect_configs_do_not_keep_alternate_script_splitters() -> None:
-    assert not hasattr(DB2Config, "split_statements")
-    assert not hasattr(DB2Config, "extract_sqlpl_blocks")
-    assert not hasattr(DB2Config, "extract_trigger_blocks")
-    assert not hasattr(MySqlConfig, "extract_delimiter_blocks")
-
-
-@pytest.mark.parametrize("parser_class", [MySqlRegexParser, MariaDbRegexParser])
+@pytest.mark.parametrize("parser_class", [facts_factory("mysql"), facts_factory("mariadb")])
 def test_mysql_source_spans_keep_original_delimiters_and_bom_crlf(parser_class: type) -> None:
     script = "\ufeffDELIMITER //\r\n  SELECT 1; DROP TABLE t//\r\nDELIMITER ;\r\n"
     records = parser_class().split(script)
@@ -154,7 +142,7 @@ def test_mysql_source_spans_keep_original_delimiters_and_bom_crlf(parser_class: 
 
 def test_db2_source_spans_keep_directive_and_terminated_lines() -> None:
     script = "\ufeff--#SET TERMINATOR @\r\n  SELECT 1@\r\nSELECT 2@\r\n"
-    records = DB2RegexParser().split(script)
+    records = facts_parser("db2").split(script)
 
     assert [script[record.source_start : record.source_end] for record in records] == [
         "--#SET TERMINATOR @\r\n",
@@ -163,7 +151,7 @@ def test_db2_source_spans_keep_directive_and_terminated_lines() -> None:
     ]
 
 
-@pytest.mark.parametrize("parser_class", [SQLiteFactsParser, DuckDBRegexParser])
+@pytest.mark.parametrize("parser_class", [SQLiteFactsParser, facts_factory("duckdb")])
 def test_engine_source_spans_keep_original_semicolons_and_bom_crlf(parser_class: type) -> None:
     script = "\ufeff  SELECT 1;\r\nSELECT 2;"
     records = parser_class().split(script)
@@ -182,14 +170,14 @@ def test_sqlite_extraction_refuses_shell_command() -> None:
 
 
 def test_duckdb_extraction_refuses_shell_command() -> None:
-    parser = DuckDBRegexParser()
+    parser = facts_parser("duckdb")
 
     with pytest.raises(UnsupportedMetaCommandError):
         parser.split_for_extraction(".read other.sql\nSELECT 1;")
 
 
 def test_duckdb_continued_escape_string_with_a_backslash_quote_is_refused() -> None:
-    parser = DuckDBRegexParser()
+    parser = facts_parser("duckdb")
     script = "SELECT E'a'\n'b\\'c;d'; SELECT 2;"
 
     for split in (parser.split_statements, parser.split_for_extraction):
@@ -199,7 +187,7 @@ def test_duckdb_continued_escape_string_with_a_backslash_quote_is_refused() -> N
 
 def test_duckdb_line_comment_before_an_ambiguous_escape_string_continuation_is_refused() -> None:
     """DuckDB 1.5.5 reads the backslash in the continuation as an escape, 2.0.0 as a character."""
-    parser = DuckDBRegexParser()
+    parser = facts_parser("duckdb")
     script = "SELECT E'a'\n-- hi\n'b\\'c;d'; SELECT 2;"
 
     with pytest.raises(UnsafeStatementSplitError, match="reads a backslash in it"):

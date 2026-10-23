@@ -47,10 +47,10 @@ class TestMySqlAtUserVariableTokenization(unittest.TestCase):
                 self.assertNotIn("@not_a_var", t.text)
 
     def test_statement_split_preserves_user_var(self) -> None:
-        from dblift.db.plugins.mysql.parser.mysql_regex_parser import MySqlRegexParser
+        from tests.support.facts_parser import facts_parser
 
         sql = "SET @stmt_count = 0;\nINSERT INTO logs (n) VALUES (@stmt_count);\n"
-        stmts = MySqlRegexParser().split_statements(sql)
+        stmts = facts_parser("mysql").split_statements(sql)
         self.assertTrue(any("@stmt_count" in s for s in stmts))
 
 

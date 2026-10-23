@@ -11,9 +11,9 @@ from dblift.core.sql_parser.lexical_statement_parser import (
     LexicalStatementParser,
 )
 from dblift.core.sql_parser.lexical_tokenizer import LexicalTokenizer
-from dblift.db.plugins.mysql.parser.mysql_regex_parser import MySqlRegexParser
 from dblift.db.plugins.mysql.parser.mysql_tokenizer import MySQLTokenizer
 from dblift.db.plugins.postgresql.parser.lexical_spec import POSTGRESQL_SPEC
+from tests.support.facts_parser import facts_parser
 
 
 class TestMySQLStringPreservation:
@@ -22,7 +22,7 @@ class TestMySQLStringPreservation:
     def test_single_quoted_string_preserved(self):
         """Test that single-quoted strings are preserved in reconstructed SQL."""
         sql = "SELECT 'hello' FROM users;"
-        statements = MySqlRegexParser().split_statements(sql)
+        statements = facts_parser("mysql").split_statements(sql)
 
         assert len(statements) == 1
         assert "'hello'" in statements[0]
@@ -31,7 +31,7 @@ class TestMySQLStringPreservation:
     def test_double_quoted_string_preserved(self):
         """Test that double-quoted strings are preserved in reconstructed SQL."""
         sql = 'SELECT "world" FROM users;'
-        statements = MySqlRegexParser().split_statements(sql)
+        statements = facts_parser("mysql").split_statements(sql)
 
         assert len(statements) == 1
         assert '"world"' in statements[0]
@@ -40,7 +40,7 @@ class TestMySQLStringPreservation:
     def test_string_with_escaped_quotes_preserved(self):
         """Test that strings with escaped quotes are preserved."""
         sql = "SELECT 'O''Reilly' FROM authors;"
-        statements = MySqlRegexParser().split_statements(sql)
+        statements = facts_parser("mysql").split_statements(sql)
 
         assert len(statements) == 1
         assert "'O''Reilly'" in statements[0]
@@ -49,7 +49,7 @@ class TestMySQLStringPreservation:
     def test_string_with_backslash_escapes_preserved(self):
         """Test that strings with backslash escapes are preserved."""
         sql = "SELECT 'Line1\\nLine2\\tTab' FROM dual;"
-        statements = MySqlRegexParser().split_statements(sql)
+        statements = facts_parser("mysql").split_statements(sql)
 
         assert len(statements) == 1
         assert "'Line1\\nLine2\\tTab'" in statements[0]
@@ -58,7 +58,7 @@ class TestMySQLStringPreservation:
     def test_insert_with_string_values_preserved(self):
         """Test that INSERT statements with string values are preserved."""
         sql = "INSERT INTO users (name, email) VALUES ('John Doe', 'john@example.com');"
-        statements = MySqlRegexParser().split_statements(sql)
+        statements = facts_parser("mysql").split_statements(sql)
 
         assert len(statements) == 1
         assert "'John Doe'" in statements[0]

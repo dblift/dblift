@@ -18,8 +18,6 @@ from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.migration.sql.statement_splitter import StatementSplitter
 from dblift.core.sql_parser.lexical_engine import LexicalEngine
 from dblift.core.sql_parser.parser_factory import SqlParserFactory
-from dblift.core.sql_parser.sqlglot_parser import SqlGlotParser
-from tests.support.legacy_oracle_hybrid import oracle_facts_off
 from tests.unit._migration_factory import make_migration
 
 
@@ -124,17 +122,6 @@ def test_snowflake_scanner_failure_cannot_become_guessed_executable_sql(monkeypa
         SqlAnalyzer("snowflake").split_statements("SELECT 'a;b'; SELECT 2;")
 
 
-def test_sqlglot_parser_never_resplits_a_scanner_refusal(monkeypatch) -> None:
-    from dblift.db.plugins.oracle.parser.oracle_parser import OracleParser
-
-    def refuse(self, sql_content: str, strict_tokenizer: bool = False) -> list[str]:
-        raise UnsafeStatementSplitError("scanner refused")
-
-    monkeypatch.setattr(OracleParser, "split_statements", refuse)
-    with oracle_facts_off(), pytest.raises(UnsafeStatementSplitError, match="scanner refused"):
-        SqlGlotParser("oracle").split_statements("SELECT 1;\nSELECT 2;")
-
-
 def test_snowflake_records_cover_original_statement_spans() -> None:
     sql = "\nSELECT 'a;b';\nSELECT 2;"
     records = StatementSplitter("snowflake").split(sql)
@@ -195,13 +182,6 @@ def test_hybrid_public_object_extraction_does_not_rescan_refused_script() -> Non
     parser = SqlParserFactory("sqlserver").get_parser()
     with pytest.raises(UnsupportedMetaCommandError, match=":setvar"):
         parser.extract_objects(":setvar schema dbo\nCREATE TABLE ghost(id INT);")
-
-
-def test_sqlglot_fragment_analysis_has_explicit_semantic_entry_point() -> None:
-    with oracle_facts_off():
-        result = SqlGlotParser("oracle").parse_fragment("SELECT 1")
-    assert result.success
-    assert len(result.statements) == 1
 
 
 def test_sqlglot_public_analysis_and_extraction_project_scanner_constituents() -> None:

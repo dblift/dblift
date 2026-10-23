@@ -11,7 +11,7 @@ from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.sql_parser.lexical_engine import LexicalEngine
 from dblift.core.sql_parser.statement import Statement
 from dblift.db.plugins.sqlserver.parser.lexical_spec import SQLSERVER_SPEC
-from dblift.db.plugins.sqlserver.parser.sqlserver_regex_parser import SqlServerRegexParser
+from tests.support.facts_parser import facts_parser
 
 Batch = namedtuple("Batch", "text line repeat terminated")
 
@@ -130,7 +130,7 @@ def test_a_go_that_follows_a_comment_on_its_line_is_refused(script):
 
 def test_go_n_is_one_record_with_repeat_and_n_strings():
     script = "INSERT INTO t VALUES (1)\nGO 3\n"
-    assert SqlServerRegexParser().split(script) == [
+    assert facts_parser("sqlserver").split(script) == [
         Statement(text="INSERT INTO t VALUES (1)", line=1, terminator="GO", repeat=3)
     ]
     assert _strings(script) == ["INSERT INTO t VALUES (1)"] * 3
@@ -138,7 +138,7 @@ def test_go_n_is_one_record_with_repeat_and_n_strings():
 
 def test_go_zero_runs_the_batch_never():
     script = "INSERT INTO t VALUES (1)\nGO 0\nSELECT 2"
-    assert SqlServerRegexParser().split(script)[0].repeat == 0
+    assert facts_parser("sqlserver").split(script)[0].repeat == 0
     assert _strings(script) == ["SELECT 2"]
 
 

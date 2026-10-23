@@ -41,7 +41,7 @@ silently gave up partway through the real identifier --
   long) table name.
 
 So the O(n^2) cost on a malformed, unterminated delimiter is an accepted
-trade-off, not a bug to keep chasing: dblift's regex-fallback path and
+trade-off, not a bug to keep chasing: dblift's regex paths and
 SQL Server's structured-parser id_token both run against migration SQL the
 person deploying it wrote (or a schema-diff tool generated, itself reading
 a real schema), not input from an untrusted, adversarial network caller --

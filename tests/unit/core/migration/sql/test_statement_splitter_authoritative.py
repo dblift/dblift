@@ -9,7 +9,6 @@ import pytest
 from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.migration.sql.statement_splitter import StatementSplitter
-from dblift.db.plugins.postgresql.parser.lexical_spec import POSTGRESQL_SPEC
 
 
 def test_directive_only_script_yields_nothing() -> None:
@@ -24,18 +23,7 @@ def test_analyzer_returns_nothing_for_a_directive_only_script() -> None:
 
 def test_a_refusal_is_not_softened_by_non_strict_mode() -> None:
     with pytest.raises(UnsafeStatementSplitError):
-        SqlAnalyzer("postgresql").split_statements("SELECT 'abc; SELECT 2;", strict_tokenizer=False)
-
-
-def test_the_postgresql_parser_has_no_regex_splitting_path() -> None:
-    from dblift.db.plugins.postgresql.parser import postgresql_regex_parser as module
-
-    # The dialect parser does not own a second semicolon splitter.
-    assert "_split_by_semicolon" not in vars(module.PostgreSqlRegexParser)
-    with open(module.__file__) as handle:
-        source = handle.read().lower()
-    allowed = source.replace("there is no fallback", "")
-    assert "fallback" not in allowed
+        SqlAnalyzer("postgresql").split_statements("SELECT 'abc; SELECT 2;")
 
 
 def _boom(self):

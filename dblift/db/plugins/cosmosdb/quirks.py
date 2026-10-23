@@ -61,9 +61,8 @@ class CosmosdbQuirks(BaseQuirks):
 
         The dedicated regex parser existed to read the pseudo-DDL
         (``CREATE CONTAINER``, ``SET THROUGHPUT``, …) that the SDK
-        translator executed; both are gone, and ``HybridParser`` cannot
-        stand in because it falls back to that same regex parser. Cosmos
-        migrations are Python, and read-side queries are native Cosmos SQL
+        translator executed; both are gone, and no other parser stands in
+        for it. Cosmos migrations are Python, and read-side queries are native Cosmos SQL
         executed verbatim — never parsed into a schema model. Asking for a
         parser is therefore an error, not a silent degradation.
         """

@@ -6,9 +6,9 @@ import pytest
 
 from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
 from dblift.core.sql_parser import SqlParserFactory
-from dblift.db.plugins.db2.parser.db2_regex_parser import DB2RegexParser
+from tests.support.facts_parser import facts_parser
 
-PARSER = DB2RegexParser()
+PARSER = facts_parser("db2")
 
 
 @pytest.mark.parametrize(

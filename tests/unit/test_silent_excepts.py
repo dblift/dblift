@@ -7,19 +7,6 @@ import pytest
 pytestmark = [pytest.mark.unit]
 
 
-class TestHybridParserSilentExceptions:
-    """hybrid_parser.py had 5 silent except blocks."""
-
-    def test_hybrid_parser_silent_excepts_replaced(self):
-        import inspect
-
-        from dblift.core.sql_parser import hybrid_parser as mod
-
-        source = inspect.getsource(mod)
-        silent_count = len(re.findall(r"except Exception:\s*\n\s*pass", source))
-        assert silent_count == 0, f"Found {silent_count} silent except blocks in hybrid_parser"
-
-
 class TestMigrationDataServiceSilentExceptions:
     """migration_data_service.py had 4 silent except blocks."""
 

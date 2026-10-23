@@ -143,7 +143,7 @@ class SqlAnalyzer:
     def get_statement_type(self, sql: str) -> str:
         """Get the high-level type of SQL statement (DDL, DML, QUERY, UNKNOWN).
 
-        Uses database-specific regex parser, falling back to string analysis.
+        Reads the plugin's statement facts where they apply, else the statement's text.
         """
         sql = sql.strip()
 
@@ -185,28 +185,15 @@ class SqlAnalyzer:
             if quirks.supports_statement_facts:
                 return quirks.statement_facts(sql).kind
 
-        # Try database-specific parser classification first
-        if self.dialect and hasattr(self, "_db_specific_parser") and self._db_specific_parser:
-            try:
-                # Use database-specific parser's improved classification
-                pass
-
-                # Check if the parser has the method before calling it
-                if hasattr(self._db_specific_parser, "_identify_statement_type"):
-                    stmt_type = self._db_specific_parser._identify_statement_type(sql)
-
-                    # Convert SqlStatementType enum to string (not MigrationType).
-                    if hasattr(stmt_type, "value"):
-                        result = str(stmt_type.value)
-                    else:
-                        result = str(stmt_type)  # lint: allow-enum-str  SqlStatementType fallback
-
-                    # If we got a definitive result (not UNKNOWN), use it
-                    if result != "UNKNOWN":
-                        return result
-
-            except Exception as e:
-                logger.debug(f"Database-specific parser classification failed: {e}")
+        # Words the dialect's own rules classify and the generic ones do not.
+        first = strip_leading_sql_comments(sql).lstrip().split(None, 1)
+        if first:
+            word = re.match(r"[A-Za-z_]+", first[0])
+            for statement_type, words in ProviderRegistry.get_quirks(
+                self.dialect
+            ).leading_word_statement_types:
+                if word and word.group().upper() in words:
+                    return statement_type
 
         # Fallback to enhanced string-based classification
         return self._get_statement_type_string(sql)
@@ -410,26 +397,19 @@ class SqlAnalyzer:
         # If basic checks pass, assume SQL is valid
         return True, None
 
-    def split_statements(self, sql: str, strict_tokenizer: Optional[bool] = None) -> List[str]:
+    def split_statements(self, sql: str) -> List[str]:
         """Split SQL into individual statements.
 
         Args:
             sql: SQL script containing multiple statements
-            strict_tokenizer: If True, dialect tokenizers fail on unknown
-                characters instead of falling back to permissive splitting.
 
         Returns:
             List of individual SQL statements
         """
         # Directive lines (``PROMPT``, ``SET``, ``DEFINE``, ``WHENEVER`` ...) and
         # SQL*Plus variables are the dialect splitter's, not a pre-pass.
-        if strict_tokenizer is not None:
-            warn_direct_parser("strict_tokenizer")
         with internal_parser_construction():
-            statements = self.statement_splitter.split_statements(
-                sql,
-                strict_tokenizer=bool(strict_tokenizer),
-            )
+            statements = self.statement_splitter.split_statements(sql)
 
         # Log each statement for debugging
         for i, stmt in enumerate(statements):
@@ -439,17 +419,13 @@ class SqlAnalyzer:
 
         return list(statements)
 
-    def split_statements_for_analysis(
-        self, sql: str, strict_tokenizer: Optional[bool] = None
-    ) -> List[str]:
+    def split_statements_for_analysis(self, sql: str) -> List[str]:
         """The statements of ``sql`` for callers that read a script statement by statement.
 
         ``split_statements`` returns what the server receives, and a T-SQL batch holds several
         statements: a dialect that divides its batches does it here, after the same refusals.
         Every other dialect: the execution split.
         """
-        if strict_tokenizer is not None:
-            warn_direct_parser("strict_tokenizer")
         engine = self.statement_splitter._engine
         if engine is not None and engine.spec.sqlite_shell:
             return engine.split_for_analysis(sql)
@@ -458,6 +434,6 @@ class SqlAnalyzer:
             parser is not None
             and type(parser).split_for_analysis is not SqlParserInterface.split_for_analysis
         ):
-            return list(parser.split_for_analysis(sql, strict_tokenizer=bool(strict_tokenizer)))
+            return list(parser.split_for_analysis(sql))
         with internal_parser_construction():
-            return self.split_statements(sql, strict_tokenizer=bool(strict_tokenizer))
+            return self.split_statements(sql)

@@ -8,8 +8,6 @@ from dblift.core.migration.sql.script_analysis import analyse_script
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.migration.sql.sql_execution_service import SqlExecutionService
 from dblift.core.sql_parser import SqlParserFactory
-from dblift.core.sql_parser.hybrid_parser import HybridParser
-from dblift.core.sql_parser.sqlglot_parser import SqlGlotParser
 from dblift.core.sql_parser.statement_facts import SqlglotStatementFactsReader
 from dblift.core.sql_parser.statement_facts_parser import StatementFactsParser
 from dblift.db.dml_analysis import (
@@ -19,11 +17,6 @@ from dblift.db.dml_analysis import (
     statement_dml_table,
 )
 from dblift.db.provider_registry import ProviderRegistry
-from tests.support.legacy_snowflake_parsers import (
-    legacy_snowflake_hybrid,
-    legacy_snowflake_sqlglot,
-    snowflake_facts_off,
-)
 
 _quirks = ProviderRegistry.get_quirks
 
@@ -60,26 +53,6 @@ def test_regex_factory_type_serves_the_facts_parser_on_the_lexical_spec():
         "SELECT 1",
         "SELECT 2",
     ]
-
-
-def test_sqlglot_factory_type_is_refused():
-    with pytest.raises(ValueError, match="StatementFactsParser"):
-        SqlParserFactory("snowflake", "sqlglot").get_parser()
-
-
-@pytest.mark.parametrize("parser_class", [HybridParser, SqlGlotParser])
-def test_direct_generic_parser_construction_rejects_snowflake(parser_class):
-    with pytest.raises(ValueError, match="StatementFactsParser"):
-        parser_class("snowflake")
-
-
-def test_same_snowflake_legacy_helpers_still_build_the_former_parsers():
-    assert legacy_snowflake_hybrid().dialect_name == "snowflake"
-    assert legacy_snowflake_sqlglot().dialect_name == "snowflake"
-    assert _quirks("snowflake").supports_statement_facts, "the patch must not leak"
-    with snowflake_facts_off():
-        assert not _quirks("snowflake").supports_statement_facts
-    assert _quirks("snowflake").supports_statement_facts
 
 
 def test_script_analysis_goes_through_facts():

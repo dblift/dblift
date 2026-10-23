@@ -1,9 +1,7 @@
 """Quote-aware comment stripping shared by every dialect's object extraction.
 
-Extracted from ``EnhancedRegexParser._strip_comments_preserving_quotes`` so a
-dialect that does not go through that base class (Oracle's regex parser,
-which needs its own splitting and object model) can strip comments the same
-way instead of re-deciding string/comment boundaries on its own.
+Shared by the statement-facts readers and the plugins that strip comments outside the
+lexical engine, so none of them re-decides string and comment boundaries on its own.
 
 The scan is a small state machine (``_Scanner``): one method per construct
 it can be inside (line comment, block comment, dollar-quoted body) or can

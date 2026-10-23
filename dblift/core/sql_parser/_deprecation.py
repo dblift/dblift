@@ -29,7 +29,6 @@ _ENTRY_POINT_NOTICES = {
     "SqlParserFactory": "SqlParserFactory is deprecated for direct construction",
     "SqlAnalyzer": "SqlAnalyzer is deprecated for direct construction",
     "parser_type": "The parser_type argument is deprecated",
-    "strict_tokenizer": "The strict_tokenizer argument is deprecated",
 }
 
 
@@ -42,12 +41,7 @@ def warn_direct_parser(name: str) -> None:
             return
         _warned.add(name)
     notice = _ENTRY_POINT_NOTICES.get(name)
-    if name == "strict_tokenizer":
-        message = (
-            f"{notice} and will be removed in 5.0; drop strict_tokenizer, the dialect scanner "
-            "decides how to read the script."
-        )
-    elif notice is not None:
+    if notice is not None:
         message = f"{notice} and will be removed in 5.0; {_FACTS_GUIDANCE}."
     else:
         message = (

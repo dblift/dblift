@@ -6,6 +6,12 @@ execution behavior. Internal paths below are not stable Python APIs under
 [`docs/semver-policy.md`](../semver-policy.md); documented examples and plugin
 hooks still need a migration path before removal.
 
+Everything listed here has since been removed in 5.0 (the parser stacks, `strict_tokenizer`, the
+quirks hooks that fed them and the undo generator), except `SqlParserFactory`, `SqlAnalyzer` and
+`parser_type`, which still exist as shims until the next release, and
+`insert_value_rows(sqlglot_dialect=)`, which is kept; the tables are kept as the historical record
+of what each name did and what replaced it.
+
 To list textual references to the inventoried names from the exact base tree,
 run this command from the repository root:
 

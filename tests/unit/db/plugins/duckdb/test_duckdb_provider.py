@@ -15,6 +15,8 @@ from typing import Any
 
 import pytest
 
+from tests.support.facts_parser import facts_parser
+
 duckdb = pytest.importorskip("duckdb", reason="duckdb driver not installed")
 pytest.importorskip("duckdb_engine", reason="duckdb_engine dialect not installed")
 
@@ -61,32 +63,6 @@ class TestDuckDBParamBinding:
         )
         assert sql == "SELECT * FROM t WHERE a = $1 AND b = $2"
         assert params == ("x", "y")
-
-
-@pytest.mark.unit
-class TestDuckDBSplitter:
-    def test_splits_respecting_strings_and_comments(self) -> None:
-        from dblift.db.plugins.duckdb.parser.duckdb_regex_parser import DuckDBRegexParser
-
-        parser = DuckDBRegexParser()
-        sql = "CREATE TABLE t (a INT); INSERT INTO t VALUES (';');\n-- c; still comment\nSELECT 1;"
-        stmts = parser.split_statements(sql)
-        assert len(stmts) == 3
-        assert stmts[1] == "INSERT INTO t VALUES (';')"
-
-    def test_strict_mode_does_not_raise(self) -> None:
-        from dblift.db.plugins.duckdb.parser.duckdb_regex_parser import DuckDBRegexParser
-
-        parser = DuckDBRegexParser()
-        stmts = parser.split_statements("CREATE TABLE t (a INT);", strict_tokenizer=True)
-        assert stmts == ["CREATE TABLE t (a INT)"]
-
-    def test_extract_objects_from_create(self) -> None:
-        from dblift.db.plugins.duckdb.parser.duckdb_regex_parser import DuckDBRegexParser
-
-        parser = DuckDBRegexParser()
-        objs = parser.extract_objects("CREATE TABLE main.foo (a int)")
-        assert [(o.object_type.value, o.name) for o in objs] == [("TABLE", "foo")]
 
 
 @pytest.fixture()
@@ -667,3 +643,23 @@ class TestDuckDBMigrateFailsWhereTheDriverRejects:
         result = DBLiftClient(provider, migrations).migrate()
         assert not result.success
         assert provider.table_exists("main", "t") is True
+
+
+pytest.importorskip("duckdb_engine", reason="duckdb_engine dialect not installed")
+
+
+@pytest.mark.unit
+class TestDuckDBSplitter:
+    def test_splits_respecting_strings_and_comments(self) -> None:
+
+        parser = facts_parser("duckdb")
+        sql = "CREATE TABLE t (a INT); INSERT INTO t VALUES (';');\n-- c; still comment\nSELECT 1;"
+        stmts = parser.split_statements(sql)
+        assert len(stmts) == 3
+        assert stmts[1] == "INSERT INTO t VALUES (';')"
+
+    def test_extract_objects_from_create(self) -> None:
+
+        parser = facts_parser("duckdb")
+        objs = parser.extract_objects("CREATE TABLE main.foo (a int)")
+        assert [(o.object_type.value, o.name) for o in objs] == [("TABLE", "foo")]

@@ -310,10 +310,9 @@ engine's logger (`dblift.core.sql_parser.lexical_engine`); its message is
 unchanged. Repeated record and string projections start with
 fresh SQL*Plus substitution state.
 
-`strict_tokenizer` has no effect for Oracle. A character no rule claims is
-passed through verbatim with a `TokenizerWarning` in both modes, so the
+A character no rule claims is passed through verbatim with a `TokenizerWarning`, so the
 statement text is never altered; the previous scanner raised `TokenizerError`
-in strict mode for such a character.
+in strict mode for such a character (the `strict_tokenizer` argument is removed).
 
 SQL\*Plus directive masking for comments (`strip_comments`,
 `strip_sql_comments`, `extract_sqlplus_context`) keeps its own scanner

@@ -1,7 +1,7 @@
 """Execution runs batches; extraction and reporting still read one statement at a time."""
 
 from dblift.core.sql_parser.parser_factory import SqlParserFactory
-from dblift.db.plugins.sqlserver.parser.sqlserver_regex_parser import SqlServerRegexParser
+from tests.support.facts_parser import facts_parser
 
 SCRIPT = (
     "CREATE TABLE a (id INT PRIMARY KEY);\n"
@@ -12,13 +12,13 @@ SCRIPT = (
 
 
 def test_execution_sees_one_batch_and_extraction_four_statements():
-    parser = SqlServerRegexParser()
+    parser = facts_parser("sqlserver")
     assert len(parser.split_statements(SCRIPT)) == 1
     assert len(parser.split_for_extraction(SCRIPT)) == 4
 
 
 def test_split_for_extraction_still_cuts_at_go():
-    parser = SqlServerRegexParser()
+    parser = facts_parser("sqlserver")
     assert parser.split_for_extraction("SELECT 1\nGO\nSELECT 2\nGO\n") == ["SELECT 1", "SELECT 2"]
 
 

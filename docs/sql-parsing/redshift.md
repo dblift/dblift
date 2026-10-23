@@ -63,8 +63,7 @@ rule is the PostgreSQL one.
 ## 12. Statement facts
 
 Redshift statements are read by `SqlglotStatementFactsReader("redshift")` (sqlglot's `redshift` grammar)
-after the shared lexical splitter above; `HybridParser("redshift")` and `SqlGlotParser("redshift")`
-are refused like the other activated dialects, and the `regex` parser type still splits and masks.
+after the shared lexical splitter above.
 The Redshift-specific readings are `_redshift_facts` in `dblift/core/sql_parser/sqlglot_statement_facts.py`;
 materialized views and bare DML targets share PostgreSQL's branches.
 

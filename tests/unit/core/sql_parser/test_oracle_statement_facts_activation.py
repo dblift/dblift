@@ -1,12 +1,8 @@
 """Oracle statement facts activate every consumer."""
 
-import pytest
-
 from dblift.core.migration.sql.script_analysis import analyse_script
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.sql_parser import SqlParserFactory
-from dblift.core.sql_parser.hybrid_parser import HybridParser
-from dblift.core.sql_parser.sqlglot_parser import SqlGlotParser
 from dblift.core.sql_parser.statement_facts import SqlglotStatementFactsReader
 from dblift.core.sql_parser.statement_facts_parser import StatementFactsParser
 from dblift.db.dml_analysis import (
@@ -15,7 +11,6 @@ from dblift.db.dml_analysis import (
     is_full_table_dml,
     statement_dml_table,
 )
-from dblift.db.plugins.oracle.parser.oracle_parser import OracleParser
 from dblift.db.provider_registry import ProviderRegistry
 
 _quirks = ProviderRegistry.get_quirks
@@ -40,21 +35,6 @@ def test_hybrid_factory_serves_the_facts_parser():
     assert parser.dialect_name == "oracle"
     assert [obj.name for obj in factory.extract_objects(UPDATE)] == ["CHILD"]
     assert factory.parse_sql(UPDATE).success
-
-
-def test_regex_factory_type_keeps_the_regex_parser():
-    assert isinstance(SqlParserFactory("oracle", "regex").get_parser(), OracleParser)
-
-
-def test_sqlglot_factory_type_is_refused():
-    with pytest.raises(ValueError, match="StatementFactsParser"):
-        SqlParserFactory("oracle", "sqlglot").get_parser()
-
-
-@pytest.mark.parametrize("parser_class", [HybridParser, SqlGlotParser])
-def test_direct_generic_parser_construction_rejects_oracle(parser_class):
-    with pytest.raises(ValueError, match="StatementFactsParser"):
-        parser_class("oracle")
 
 
 def test_script_analysis_goes_through_facts():
