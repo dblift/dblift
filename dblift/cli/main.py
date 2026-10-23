@@ -17,6 +17,7 @@ _project_root = _script_dir.parent.absolute()
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
+from dblift.core.exceptions import InvalidTargetVersionError
 from dblift.core.logger import LogFactory
 from dblift.core.logger.console import (
     PresentationUnavailableError,
@@ -876,6 +877,10 @@ def _dispatch_command(ctx: _CliContext, command_output: CommandOutput) -> int:
         # SystemExit with a dedicated code; flush logs then propagate.
         _close_logs(ctx.log)
         raise
+    except InvalidTargetVersionError as e:
+        ctx.log.error(str(e))
+        _close_logs(ctx.log)
+        return 2
     except ConnectionError as e:
         # A connection or schema-history preflight failure: report it as
         # ``ConnectionError: ...``, the text the JSON output and MCP use.

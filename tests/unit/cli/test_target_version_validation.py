@@ -56,7 +56,7 @@ def test_bad_target_version_is_refused_before_connecting(project, command, bad):
     assert not (project / "tv.db").exists(), "refused after connecting"
 
 
-@pytest.mark.parametrize("bad", ["v1", "abc", "", "99", "1a"])
+@pytest.mark.parametrize("bad", ["v1", "abc", ""])
 def test_bad_undo_target_version_is_refused_before_connecting(project, bad):
     proc = _run(project, "undo", "--target-version", bad)
     assert proc.returncode == 2, proc.stdout + proc.stderr
@@ -83,3 +83,42 @@ def test_undo_to_zero_and_to_a_known_version_still_work(project):
     assert _run(project, "migrate").returncode == 0
     assert _run(project, "undo", "--target-version", "2").returncode == 0
     assert _run(project, "undo", "--target-version", "0").returncode == 0
+
+
+@pytest.mark.parametrize("bad", ["99", "1a", "1.5"])
+def test_undo_target_unknown_to_disk_and_history_is_refused_with_both_listed(project, bad):
+    assert _run(project, "migrate").returncode == 0
+    (project / "m" / "V1__t.sql").unlink()
+    (project / "m" / "U1__t.sql").unlink()
+    proc = _run(project, "undo", "--target-version", bad)
+    assert proc.returncode == 2, proc.stdout + proc.stderr
+    assert "Available versions: 1, 2, 3" in proc.stderr
+    assert _applied(project) == ["1", "2", "3"]
+
+
+def test_undo_to_an_applied_version_whose_scripts_were_deleted(project):
+    assert _run(project, "migrate").returncode == 0
+    (project / "m" / "V1__t.sql").unlink()
+    (project / "m" / "U1__t.sql").unlink()
+    proc = _run(project, "undo", "--target-version", "1")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    with sqlite3.connect(project / "tv.db") as conn:
+        tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    assert "t1" in tables and not tables & {"t2", "t3"}
+
+
+def test_migrate_to_a_version_without_a_script_stays_refused(project):
+    assert _run(project, "migrate", "--target-version", "1").returncode == 0
+    (project / "m" / "V1__t.sql").unlink()
+    (project / "m" / "U1__t.sql").unlink()
+    assert _run(project, "migrate", "--target-version", "1").returncode == 2
+
+
+@pytest.mark.parametrize("bad", ["99", "zzz"])
+def test_target_version_from_config_is_refused_before_connecting(project, bad):
+    config = project / "c.yaml"
+    config.write_text(config.read_text() + f"target_version: {bad}\n")
+    proc = _run(project, "migrate")
+    assert proc.returncode == 2, proc.stdout + proc.stderr
+    assert "Available versions: 1, 2, 3" in proc.stderr
+    assert not (project / "tv.db").exists()

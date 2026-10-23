@@ -144,14 +144,19 @@ def _validate_target_version_option(
 ) -> None:
     """Refuse a ``--target-version`` that is no script's version, before connecting."""
     target_version = cmd_args.target_version
-    if not isinstance(target_version, str) or scripts_dir is None:
+    if target_version is None or scripts_dir is None:
         return
+    target_version = str(target_version)
     versions = available_versions(
         log, scripts_dir, recursive, additional_scripts_dirs, dir_recursive_map
     )
     try:
         validate_target_version(target_version, versions, allow_zero=command == "undo")
     except InvalidTargetVersionError as error:
+        # ``undo`` may also target an applied version whose script is gone; the
+        # client checks that against the history once it is connected.
+        if command == "undo" and target_version.strip()[:1].isdigit():
+            return
         parser.error(str(error))
 
 

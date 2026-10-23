@@ -279,8 +279,10 @@ This will undo all migrations after version 1.0.0.
 `--target-version` (on `migrate`, `undo`, `validate` and `info`) must be the version of one of your
 scripts, written without the `V` prefix: `1.0.0` and `1_0_0` are the same version, and `1` equals
 `1.0.0`. Anything else, including an empty value or a version no script carries, exits with code 2
-and lists the available versions before DBLift connects. `undo` also accepts `0`. The Python API
-raises `InvalidTargetVersionError` (a `ValueError`).
+and lists the available versions; for a value that is not a version at all this happens before
+DBLift connects. `undo` also accepts `0`, and an applied version whose script has since been
+deleted. The Python API raises `InvalidTargetVersionError` (a `ValueError`) and also checks the
+`target_version` set in the configuration.
 
 **Migrations written as one group:** if several migrations carry the same
 `dblift-group-...`-prefixed tag (see [Using Tags](#using-tags)) -- for

@@ -102,6 +102,8 @@ result = client.migrate(
 )
 ```
 
+`target_version` must be the version of a migration script; otherwise `migrate`, `undo`, `validate` and `info` raise `dblift.core.exceptions.InvalidTargetVersionError` (a `ValueError` whose `available_versions` lists the valid ones). `undo` also accepts `0` and an applied version whose script was deleted.
+
 For `migrate`, `info`, `validate`, `undo`, `clean`, and `repair`, omitted
 directory options use the client's configured migration directories. Set
 `recursive=True` or `False` to override recursion for all directories. An explicit

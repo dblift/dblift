@@ -35,6 +35,7 @@ from dblift.api._client_operations import (
 )
 from dblift.api.events import EventEmitter, EventType, use_client_emitter
 from dblift.config import DbliftConfig
+from dblift.core.exceptions import InvalidTargetVersionError
 from dblift.core.logger.results import (
     BaselineResult,
     CleanResult,
@@ -51,7 +52,11 @@ from dblift.core.migration.executor.migration_executor import (
     MigrationExecutor,
     require_analysis_support,
 )
-from dblift.core.migration.target_version import available_versions, validate_target_version
+from dblift.core.migration.target_version import (
+    available_versions,
+    merge_versions,
+    validate_target_version,
+)
 from dblift.core.premium_manifest import PREMIUM_COMMANDS, UPGRADE_URL, render_upsell
 from dblift.core.seams.capabilities import CapabilityDeniedError
 from dblift.core.seams.event_listeners import attach_registered_listeners
@@ -358,18 +363,41 @@ class DBLiftClient:
         dir_recursive_map: Optional[Dict[Path, bool]],
         *,
         allow_zero: bool = False,
+        allow_applied: bool = False,
     ) -> None:
-        """Raise ``InvalidTargetVersionError`` unless *target_version* is a script's version."""
+        """Raise ``InvalidTargetVersionError`` unless the target is a script's version.
+
+        With no argument the configured ``target_version`` is checked. With
+        ``allow_applied`` (undo) a version in the applied history also passes,
+        for a migration whose script has since been removed.
+        """
+        if target_version is None:
+            target_version = self.config.target_version
         if target_version is None:
             return
-        versions = available_versions(
-            self.logger,
-            self._get_scripts_dir(),
-            True if recursive is None else recursive,
-            additional_dirs,
-            dir_recursive_map,
+        target_version = str(target_version)
+        recursive, additional_dirs, dir_recursive_map = self._resolve_script_options(
+            recursive, additional_dirs, dir_recursive_map
         )
-        validate_target_version(target_version, versions, allow_zero=allow_zero)
+        versions = available_versions(
+            self.logger, self._get_scripts_dir(), recursive, additional_dirs, dir_recursive_map
+        )
+        try:
+            validate_target_version(target_version, versions, allow_zero=allow_zero)
+        except InvalidTargetVersionError:
+            if not allow_applied or not target_version.strip()[:1].isdigit():
+                raise
+            applied = [
+                str(record.version)
+                for record in self.executor.history_manager.get_applied_migration_records()
+                if record.version
+            ]
+            try:
+                validate_target_version(target_version, applied)
+            except InvalidTargetVersionError:
+                raise InvalidTargetVersionError(
+                    target_version, merge_versions(versions, applied)
+                ) from None
 
     def _get_scripts_dir(self) -> Path:
         """Get primary scripts directory.
@@ -490,6 +518,9 @@ class DBLiftClient:
             MigrateResult with details of applied migrations
         """
         self._guard_scripts_dir_kwarg(kwargs)
+        self._check_target_version(
+            target_version, recursive, additional_dirs, kwargs.get("dir_recursive_map")
+        )
         self.events.emit(
             EventType.MIGRATION_STARTED,
             {
@@ -508,9 +539,6 @@ class DBLiftClient:
             # process-wide default emitter shared by every client instance.
             recursive, additional_dirs, dir_recursive_map = self._resolve_script_options(
                 recursive, additional_dirs, kwargs.pop("dir_recursive_map", None)
-            )
-            self._check_target_version(
-                target_version, recursive, additional_dirs, dir_recursive_map
             )
             result = self.executor.migrate(
                 scripts_dir=self._get_scripts_dir(),
@@ -604,6 +632,9 @@ class DBLiftClient:
             InfoResult with migration status
         """
         self._guard_scripts_dir_kwarg(kwargs)
+        self._check_target_version(
+            target_version, recursive, additional_dirs, kwargs.get("dir_recursive_map")
+        )
         self.events.emit(
             EventType.INFO_STARTED,
             {
@@ -615,9 +646,6 @@ class DBLiftClient:
         try:
             recursive, additional_dirs, dir_recursive_map = self._resolve_script_options(
                 recursive, additional_dirs, kwargs.pop("dir_recursive_map", None)
-            )
-            self._check_target_version(
-                target_version, recursive, additional_dirs, dir_recursive_map
             )
             result = self.executor.info(
                 scripts_dir=self._get_scripts_dir(),
@@ -680,14 +708,14 @@ class DBLiftClient:
             emitted.
         """
         self._guard_scripts_dir_kwarg(kwargs)
+        self._check_target_version(
+            target_version, recursive, additional_dirs, kwargs.get("dir_recursive_map")
+        )
         self.events.emit(EventType.VALIDATION_STARTED, {"dialect": getattr(self, "dialect", None)})
 
         try:
             recursive, additional_dirs, dir_recursive_map = self._resolve_script_options(
                 recursive, additional_dirs, kwargs.pop("dir_recursive_map", None)
-            )
-            self._check_target_version(
-                target_version, recursive, additional_dirs, dir_recursive_map
             )
             result = self.executor.validate(
                 scripts_dir=self._get_scripts_dir(),
@@ -756,6 +784,14 @@ class DBLiftClient:
             UndoResult with details of rolled back migrations
         """
         self._guard_scripts_dir_kwarg(kwargs)
+        self._check_target_version(
+            target_version,
+            recursive,
+            additional_dirs,
+            kwargs.get("dir_recursive_map"),
+            allow_zero=True,
+            allow_applied=True,
+        )
         self.events.emit(
             EventType.UNDO_STARTED,
             {
@@ -770,9 +806,6 @@ class DBLiftClient:
             # ``self.events`` is bound by ``@_with_client_emitter``.
             recursive, additional_dirs, dir_recursive_map = self._resolve_script_options(
                 recursive, additional_dirs, kwargs.pop("dir_recursive_map", None)
-            )
-            self._check_target_version(
-                target_version, recursive, additional_dirs, dir_recursive_map, allow_zero=True
             )
             result = self.executor.undo(
                 scripts_dir=self._get_scripts_dir(),

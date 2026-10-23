@@ -13,6 +13,10 @@ pytestmark = [pytest.mark.unit]
 
 @pytest.fixture
 def client(tmp_path):
+    return _client(tmp_path)
+
+
+def _client(tmp_path, **extra):
     scripts = tmp_path / "m"
     scripts.mkdir()
     for version in (1, 2, 3):
@@ -22,6 +26,7 @@ def client(tmp_path):
         {
             "database": {"url": f"sqlite:///{tmp_path / 'tv.db'}", "type": "sqlite"},
             "migrations": {"directory": str(scripts)},
+            **extra,
         }
     )
     return DBLiftClient.from_config(config)
@@ -45,7 +50,8 @@ def test_bad_target_version_raises_typed_error(client, tmp_path, method, bad):
 def test_bad_undo_target_version_raises_typed_error(client, tmp_path, bad):
     with pytest.raises(InvalidTargetVersionError):
         client.undo(target_version=bad)
-    assert not (tmp_path / "tv.db").exists()
+    if not bad[:1].isdigit():
+        assert not (tmp_path / "tv.db").exists()
 
 
 def test_error_is_a_value_error(client):
@@ -70,3 +76,47 @@ def test_undo_accepts_zero_and_known_versions(client):
     client.migrate()
     assert client.undo(target_version="2").success
     assert client.undo(target_version="0").success
+
+
+@pytest.mark.parametrize("method", ["migrate", "validate", "info", "undo"])
+@pytest.mark.parametrize("bad", ["zzz", 99])
+def test_target_version_from_config_is_validated_when_no_argument(tmp_path, method, bad):
+    client = _client(tmp_path, target_version=bad)
+    with pytest.raises(InvalidTargetVersionError):
+        getattr(client, method)()
+    if method != "undo":
+        assert not (tmp_path / "tv.db").exists()
+
+
+def test_valid_config_target_version_is_accepted(tmp_path):
+    client = _client(tmp_path, target_version="2")
+    assert client.migrate().success
+
+
+def test_undo_accepts_an_applied_version_whose_scripts_are_gone(tmp_path):
+    client = _client(tmp_path)
+    client.migrate()
+    (tmp_path / "m" / "V1__t.sql").unlink()
+    (tmp_path / "m" / "U1__t.sql").unlink()
+    assert client.undo(target_version="1").success
+
+
+def test_undo_refusal_lists_disk_and_history_versions(tmp_path):
+    client = _client(tmp_path)
+    client.migrate()
+    (tmp_path / "m" / "V1__t.sql").unlink()
+    (tmp_path / "m" / "U1__t.sql").unlink()
+    with pytest.raises(InvalidTargetVersionError) as raised:
+        client.undo(target_version="99")
+    assert raised.value.available_versions == ["1", "2", "3"]
+
+
+def test_refusal_emits_no_started_event(client):
+    from dblift.api.events import EventType
+
+    seen = []
+    client.events.subscribe(EventType.MIGRATION_STARTED, seen.append)
+    client.events.subscribe(EventType.MIGRATION_FAILED, seen.append)
+    with pytest.raises(InvalidTargetVersionError):
+        client.migrate(target_version="abc")
+    assert seen == []

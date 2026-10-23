@@ -33,6 +33,15 @@ def available_versions(
     return sorted(versions, key=cmp_to_key(compare_versions))
 
 
+def merge_versions(*groups: List[str]) -> List[str]:
+    """Return the distinct versions of *groups* (equal versions counted once), lowest first."""
+    merged: List[str] = []
+    for version in (v for group in groups for v in group):
+        if not any(compare_versions(version, seen) == 0 for seen in merged):
+            merged.append(version)
+    return sorted(merged, key=cmp_to_key(compare_versions))
+
+
 def validate_target_version(
     target_version: Optional[str],
     versions: List[str],

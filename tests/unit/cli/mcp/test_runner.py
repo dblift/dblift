@@ -388,3 +388,19 @@ def test_a_call_asking_for_another_format_is_not_forced_onto_the_pinned_file(
 
     assert [path.name for path in logs.glob("*.log")] == [pinned.name]
     assert len(pinned.read_text()) > len(text_so_far)
+
+
+@pytest.mark.unit
+def test_bad_target_version_is_refused_before_the_handler_and_the_connection(
+    sqlite_project, monkeypatch, tmp_path
+):
+    called = []
+    _install_fake_handler(monkeypatch, "info", lambda ctx: called.append(ctx) or (True, None))
+
+    with pytest.raises(CommandInvocationError) as exc_info:
+        run_command(["--config", str(sqlite_project)], "info", ["--target-version", "v1"])
+
+    assert exc_info.value.exit_code == 2
+    assert "Available versions: 1" in str(exc_info.value)
+    assert not called
+    assert not (tmp_path / "t.sqlite").exists()

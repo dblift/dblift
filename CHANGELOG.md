@@ -339,7 +339,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `abc`, an empty value or `99` used to apply every pending migration and exit 0, and `-1` or `1a` applied
   a prefix of them. `migrate`, `undo`, `validate` and `info` now exit 2 before connecting, listing the available
   versions, unless the value is the version of a script (`1`, `1.0.0` and `1_0_0` are the same version; a `V`
-  prefix is not part of a version; `undo` also accepts `0`). The Python API raises
+  prefix is not part of a version; `undo` also accepts `0` and an applied version whose script was deleted). The Python API also checks
+  the `target_version` set in the configuration, and raises
   `dblift.core.exceptions.InvalidTargetVersionError` (a `ValueError`) from `migrate`, `undo`, `validate` and
   `info`. A target at or below the current version applies nothing and says so.
 
