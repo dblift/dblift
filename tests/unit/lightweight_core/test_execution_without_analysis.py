@@ -75,74 +75,15 @@ finally:
     assert result.returncode == 0, result.stderr
 
 
-def test_oracle_keeps_configured_logger_with_rich_available():
-    result = run_python("""
-from pathlib import Path
-from tempfile import TemporaryDirectory
-from dblift.core.logger.log import FileLog, LogFactory, LogLevel
-with TemporaryDirectory() as temp:
-    LogFactory.configure(Path(temp), log_level=LogLevel.DEBUG, use_console=False, use_file=True)
-    from dblift.db.plugins.oracle.parser.oracle_parser import OracleParser, logger
-    assert isinstance(logger, FileLog)
-    OracleParser().parse_sql('CREATE TABLE t (id NUMBER)')
-    logs = list(Path(temp).glob('*.log'))
-    assert len(logs) == 1
-    assert 'Oracle: Successfully parsed 1 statements' in logs[0].read_text()
-""")
-    assert result.returncode == 0, result.stderr
-
-
-def test_oracle_logger_does_not_mask_unrelated_missing_module():
-    result = run_python("""
-from dblift.core.logger.log import LogFactory
-def fail(_name):
-    raise ModuleNotFoundError('unrelated missing module', name='unrelated_module')
-LogFactory.get_log = fail
-try:
-    import dblift.db.plugins.oracle.parser.oracle_parser
-except ModuleNotFoundError as exc:
-    assert exc.name == 'unrelated_module'
-else:
-    raise AssertionError('unrelated failure was hidden')
-""")
-    assert result.returncode == 0, result.stderr
-
-
-def test_oracle_logger_fallback_branch_in_process(monkeypatch):
-    from dblift.core.logger.log import LogFactory
-    from dblift.db.plugins.oracle.parser import oracle_parser
-
-    def missing_rich(_name):
-        raise ModuleNotFoundError("missing rich", name="rich")
-
-    monkeypatch.setattr(LogFactory, "get_log", missing_rich)
-    namespace = runpy.run_path(oracle_parser.__file__)
-    assert isinstance(namespace["logger"], logging.Logger)
-
-
-def test_oracle_logger_unrelated_failure_branch_in_process(monkeypatch):
-    from dblift.core.logger.log import LogFactory
-    from dblift.db.plugins.oracle.parser import oracle_parser
-
-    def unrelated_failure(_name):
-        raise ModuleNotFoundError("unrelated missing module", name="unrelated_module")
-
-    monkeypatch.setattr(LogFactory, "get_log", unrelated_failure)
-    with pytest.raises(ModuleNotFoundError, match="unrelated missing module") as error:
-        runpy.run_path(oracle_parser.__file__)
-    assert error.value.name == "unrelated_module"
-
-
 def test_explicit_detailed_analysis_still_reports_missing_sqlglot():
     result = run_python(
         """
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
-from dblift.core.exceptions import ParserNotAvailableError
 analyzer = SqlAnalyzer('postgresql')
 try:
     analyzer.parser_factory.parse_sql('CREATE TABLE t (id INTEGER)')
-except ParserNotAvailableError:
-    pass
+except ModuleNotFoundError as error:
+    assert error.name == 'sqlglot', error.name
 else:
     raise AssertionError('detailed analysis unexpectedly succeeded')
 """,
@@ -201,18 +142,17 @@ def test_d1_dialect_corpus_without_detailed_analysis_dependencies(row):
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 analyzer = SqlAnalyzer({row['dialect']!r})
 sql = {row['sql']!r}
-strict = {row['strict']!r}
 expected = {row['statements']!r}
 error_type = {row['error_type']!r}
 if error_type:
     try:
-        analyzer.split_statements(sql, strict_tokenizer=strict)
+        analyzer.split_statements(sql)
     except Exception as exc:
         assert type(exc).__name__ == error_type, type(exc).__name__
     else:
         raise AssertionError('expected ' + error_type)
 else:
-    assert analyzer.split_statements(sql, strict_tokenizer=strict) == expected
+    assert analyzer.split_statements(sql) == expected
 """
     result = run_python(source, blocked=("rich", "jinja2", "sqlglot"))
     assert result.returncode == 0, result.stderr

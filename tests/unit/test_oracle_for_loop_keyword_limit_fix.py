@@ -7,7 +7,7 @@ causing FOR...LOOP detection to fail in statements with 16+ total keywords.
 
 import pytest
 
-from dblift.db.plugins.oracle.parser.oracle_parser import OracleParser
+from tests.support.facts_parser import facts_parser
 
 
 @pytest.mark.unit
@@ -19,7 +19,7 @@ class TestOracleForLoopKeywordLimitFix:
 
         This is the edge case where the old buggy code would start failing.
         """
-        parser = OracleParser()
+        parser = facts_parser("oracle")
 
         # Craft SQL with exactly 16 keywords before FOR keyword
         sql = """
@@ -53,7 +53,7 @@ class TestOracleForLoopKeywordLimitFix:
         With the bug, this would always fail because the total keyword count
         would exceed 15 on the first iteration and break immediately.
         """
-        parser = OracleParser()
+        parser = facts_parser("oracle")
 
         # SQL with many keywords before the FOR loop
         sql = """
@@ -96,7 +96,7 @@ class TestOracleForLoopKeywordLimitFix:
         This is the scenario mentioned in the bug report:
         FOR rec IN (SELECT ... UNION SELECT ...) LOOP
         """
-        parser = OracleParser()
+        parser = facts_parser("oracle")
 
         sql = """
         CREATE OR REPLACE PROCEDURE union_query_proc AS
@@ -132,7 +132,7 @@ class TestOracleForLoopKeywordLimitFix:
 
         The fix applies to both FOR and WHILE loops.
         """
-        parser = OracleParser()
+        parser = facts_parser("oracle")
 
         sql = """
         CREATE OR REPLACE PROCEDURE while_test AS
@@ -169,7 +169,7 @@ class TestOracleForLoopKeywordLimitFix:
         This ensures the fix doesn't break the existing logic that stops
         at END, BEGIN, THEN, ELSE keywords.
         """
-        parser = OracleParser()
+        parser = facts_parser("oracle")
 
         sql = """
         CREATE OR REPLACE PROCEDURE test_proc AS
@@ -201,7 +201,7 @@ class TestOracleForLoopKeywordLimitFix:
         This was a bug where FOR in regular SQL statements (not PL/SQL) was
         incorrectly increasing block depth, causing statement splitting to fail.
         """
-        parser = OracleParser()
+        parser = facts_parser("oracle")
 
         sql = """
         CREATE OR REPLACE SYNONYM servers FOR dbops_inventory.servers;
@@ -219,7 +219,7 @@ class TestOracleForLoopKeywordLimitFix:
 
     def test_select_for_update_not_interpreted_as_loop(self):
         """Test that SELECT ... FOR UPDATE is not interpreted as a FOR loop."""
-        parser = OracleParser()
+        parser = facts_parser("oracle")
 
         sql = """
         SELECT id, name FROM employees WHERE dept_id = 10 FOR UPDATE;
@@ -235,7 +235,7 @@ class TestOracleForLoopKeywordLimitFix:
 
     def test_mixed_synonym_and_plsql_with_for_loop(self):
         """Test that mixing regular SQL with FOR and PL/SQL FOR loops works correctly."""
-        parser = OracleParser()
+        parser = facts_parser("oracle")
 
         sql = """
         CREATE OR REPLACE SYNONYM emp FOR hr.employees;

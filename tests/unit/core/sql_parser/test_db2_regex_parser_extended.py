@@ -13,12 +13,12 @@ Covers:
 import unittest
 
 from dblift.core.sql_model.base import ParseResult, SqlStatementType
-from dblift.db.plugins.db2.parser.db2_regex_parser import DB2RegexParser
+from tests.support.facts_parser import facts_parser
 
 
 class TestSplitStatements(unittest.TestCase):
     def setUp(self):
-        self.parser = DB2RegexParser()
+        self.parser = facts_parser("db2")
 
     def test_empty_returns_empty(self):
         self.assertEqual(self.parser.split_statements(""), [])
@@ -54,7 +54,7 @@ class TestSplitStatements(unittest.TestCase):
 
 class TestClientScannerBehavior(unittest.TestCase):
     def setUp(self):
-        self.parser = DB2RegexParser()
+        self.parser = facts_parser("db2")
 
     def test_routines_packages_modules_and_compounds_stay_whole(self):
         scripts = (
@@ -106,130 +106,9 @@ class TestClientScannerBehavior(unittest.TestCase):
                     self.parser.split_for_extraction(script)
 
 
-class TestExtractNames(unittest.TestCase):
-    def setUp(self):
-        self.parser = DB2RegexParser()
-
-    def test_extract_procedure_name_simple(self):
-        sql = "CREATE PROCEDURE my_proc() LANGUAGE SQL BEGIN SELECT 1; END;"
-        self.assertEqual(self.parser._extract_sqlpl_procedure_name(sql), "my_proc")
-
-    def test_extract_procedure_name_quoted(self):
-        sql = 'CREATE PROCEDURE "my_proc"() LANGUAGE SQL BEGIN SELECT 1; END;'
-        self.assertEqual(self.parser._extract_sqlpl_procedure_name(sql), "my_proc")
-
-    def test_extract_procedure_name_or_replace(self):
-        sql = "CREATE OR REPLACE PROCEDURE my_proc() LANGUAGE SQL BEGIN SELECT 1; END;"
-        self.assertEqual(self.parser._extract_sqlpl_procedure_name(sql), "my_proc")
-
-    def test_extract_procedure_name_none(self):
-        sql = "SELECT 1;"
-        self.assertIsNone(self.parser._extract_sqlpl_procedure_name(sql))
-
-    def test_extract_function_name_simple(self):
-        sql = "CREATE FUNCTION my_func() RETURNS INTEGER LANGUAGE SQL BEGIN RETURN 1; END;"
-        self.assertEqual(self.parser._extract_sqlpl_function_name(sql), "my_func")
-
-    def test_extract_function_name_quoted(self):
-        sql = 'CREATE FUNCTION "my_func"() RETURNS INTEGER LANGUAGE SQL BEGIN RETURN 1; END;'
-        self.assertEqual(self.parser._extract_sqlpl_function_name(sql), "my_func")
-
-    def test_extract_function_name_or_replace(self):
-        sql = "CREATE OR REPLACE FUNCTION my_func() RETURNS INTEGER BEGIN RETURN 1; END;"
-        self.assertEqual(self.parser._extract_sqlpl_function_name(sql), "my_func")
-
-    def test_extract_function_name_none(self):
-        sql = "SELECT 1;"
-        self.assertIsNone(self.parser._extract_sqlpl_function_name(sql))
-
-    def test_extract_trigger_name_simple(self):
-        sql = "CREATE TRIGGER my_trigger AFTER INSERT ON t FOR EACH ROW BEGIN SELECT 1; END;"
-        self.assertEqual(self.parser._extract_trigger_name(sql), "my_trigger")
-
-    def test_extract_trigger_name_quoted(self):
-        sql = 'CREATE TRIGGER "my_trigger" AFTER INSERT ON t FOR EACH ROW BEGIN SELECT 1; END;'
-        self.assertEqual(self.parser._extract_trigger_name(sql), "my_trigger")
-
-    def test_extract_trigger_name_or_replace(self):
-        sql = "CREATE OR REPLACE TRIGGER my_trigger AFTER INSERT ON t FOR EACH ROW BEGIN END;"
-        self.assertEqual(self.parser._extract_trigger_name(sql), "my_trigger")
-
-    def test_extract_trigger_name_none(self):
-        sql = "SELECT 1;"
-        self.assertIsNone(self.parser._extract_trigger_name(sql))
-
-    def test_extract_tablespace_name_create(self):
-        sql = "CREATE TABLESPACE my_ts MANAGED BY SYSTEM;"
-        self.assertEqual(self.parser._extract_tablespace_name(sql), "my_ts")
-
-    def test_extract_tablespace_name_lob(self):
-        sql = "CREATE LOB TABLESPACE my_lob_ts MANAGED BY SYSTEM;"
-        self.assertEqual(self.parser._extract_tablespace_name(sql), "my_lob_ts")
-
-    def test_extract_tablespace_name_alter(self):
-        sql = "ALTER TABLESPACE my_ts ADD FILE 1000;"
-        self.assertEqual(self.parser._extract_tablespace_name(sql), "my_ts")
-
-    def test_extract_tablespace_name_drop(self):
-        sql = "DROP TABLESPACE my_ts;"
-        self.assertEqual(self.parser._extract_tablespace_name(sql), "my_ts")
-
-    def test_extract_tablespace_name_quoted(self):
-        sql = 'CREATE TABLESPACE "my_ts" MANAGED BY SYSTEM;'
-        self.assertEqual(self.parser._extract_tablespace_name(sql), "my_ts")
-
-    def test_extract_tablespace_name_none(self):
-        sql = "SELECT 1;"
-        self.assertIsNone(self.parser._extract_tablespace_name(sql))
-
-    def test_extract_stogroup_name_create(self):
-        sql = "CREATE STOGROUP my_sg VOLUMES ('vol1');"
-        self.assertEqual(self.parser._extract_stogroup_name(sql), "my_sg")
-
-    def test_extract_stogroup_name_alter(self):
-        sql = "ALTER STOGROUP my_sg ADD VOLUMES ('vol2');"
-        self.assertEqual(self.parser._extract_stogroup_name(sql), "my_sg")
-
-    def test_extract_stogroup_name_drop(self):
-        sql = "DROP STOGROUP my_sg;"
-        self.assertEqual(self.parser._extract_stogroup_name(sql), "my_sg")
-
-    def test_extract_stogroup_name_quoted(self):
-        sql = "CREATE STOGROUP \"my_sg\" VOLUMES ('vol1');"
-        self.assertEqual(self.parser._extract_stogroup_name(sql), "my_sg")
-
-    def test_extract_stogroup_name_none(self):
-        sql = "SELECT 1;"
-        self.assertIsNone(self.parser._extract_stogroup_name(sql))
-
-
-class TestCleanDb2Comments(unittest.TestCase):
-    def setUp(self):
-        self.parser = DB2RegexParser()
-
-    def test_removes_line_comment(self):
-        sql = "SELECT 1; -- line comment"
-        result = self.parser._clean_db2_comments(sql)
-        self.assertNotIn("line comment", result)
-        self.assertIn("SELECT 1", result)
-
-    def test_removes_block_comment(self):
-        sql = "SELECT /* block */ 1;"
-        result = self.parser._clean_db2_comments(sql)
-        self.assertNotIn("block", result)
-
-    def test_multiline_block_comment(self):
-        sql = "SELECT /*\n  multi\n  line\n*/ 1;"
-        result = self.parser._clean_db2_comments(sql)
-        self.assertNotIn("multi", result)
-
-    def test_empty_sql(self):
-        self.assertEqual(self.parser._clean_db2_comments(""), "")
-
-
 class TestParseSql(unittest.TestCase):
     def setUp(self):
-        self.parser = DB2RegexParser()
+        self.parser = facts_parser("db2")
 
     def test_parse_empty(self):
         result = self.parser.parse_sql("")
@@ -241,10 +120,6 @@ class TestParseSql(unittest.TestCase):
         self.assertIsInstance(result, ParseResult)
         self.assertTrue(result.success)
         self.assertGreaterEqual(len(result.statements), 1)
-
-    def test_parse_with_none_input(self):
-        result = self.parser.parse_sql(None)
-        self.assertIsInstance(result, ParseResult)
 
     def test_parse_with_default_schema(self):
         sql = "CREATE TABLE t (id INTEGER);"
@@ -289,7 +164,7 @@ class TestParseSql(unittest.TestCase):
 
 class TestValidateSql(unittest.TestCase):
     def setUp(self):
-        self.parser = DB2RegexParser()
+        self.parser = facts_parser("db2")
 
     def test_valid_simple_sql(self):
         sql = "CREATE TABLE t (id INTEGER PRIMARY KEY);"
@@ -308,92 +183,10 @@ class TestValidateSql(unittest.TestCase):
         self.assertFalse(result["valid"])
         self.assertIn("routine body", result["errors"][0])
 
-    def test_exec_sql_without_end_exec(self):
-        sql = "EXEC SQL CREATE TABLE t (id INTEGER);"
-        result = self.parser.validate_sql(sql)
-        self.assertFalse(result["valid"])
-        self.assertIn("END-EXEC", result["errors"][0])
-
-    def test_empty_sql_invalid(self):
-        result = self.parser.validate_sql("")
-        self.assertFalse(result["valid"])
-        self.assertIn("No valid statements found", result["errors"][0])
-
-    def test_statement_count_in_result(self):
-        sql = "CREATE TABLE a (id INTEGER);\nINSERT INTO a VALUES (1);"
-        result = self.parser.validate_sql(sql)
-        self.assertIn("statement_count", result)
-        self.assertGreaterEqual(result["statement_count"], 2)
-
-
-class TestValidateDb2Syntax(unittest.TestCase):
-    def setUp(self):
-        self.parser = DB2RegexParser()
-
-    def test_unmatched_quoted_identifier(self):
-        sql = 'CREATE TABLE "test (id INTEGER);'
-        errors = self.parser._validate_db2_syntax(sql)
-        self.assertGreater(len(errors), 0)
-        self.assertIn("Unmatched quoted identifier", errors[0])
-
-    def test_matched_identifier_no_error(self):
-        sql = 'CREATE TABLE "test" (id INTEGER);'
-        errors = self.parser._validate_db2_syntax(sql)
-        self.assertEqual(errors, [])
-
-    def test_unmatched_begin_end(self):
-        sql = "BEGIN ATOMIC INSERT INTO t VALUES (1);"
-        errors = self.parser._validate_db2_syntax(sql)
-        self.assertGreater(len(errors), 0)
-        self.assertIn("Unmatched BEGIN/END", errors[0])
-
-    def test_matched_begin_end(self):
-        sql = "BEGIN ATOMIC INSERT INTO t VALUES (1); END;"
-        errors = self.parser._validate_db2_syntax(sql)
-        begin_end_errors = [e for e in errors if "BEGIN/END" in e]
-        self.assertEqual(len(begin_end_errors), 0)
-
-    def test_exec_sql_without_end_exec(self):
-        sql = "EXEC SQL SELECT 1;"
-        errors = self.parser._validate_db2_syntax(sql)
-        self.assertGreater(len(errors), 0)
-        self.assertIn("END-EXEC", errors[0])
-
-    def test_exec_sql_with_end_exec_ok(self):
-        sql = "EXEC SQL SELECT 1 END-EXEC;"
-        errors = self.parser._validate_db2_syntax(sql)
-        exec_errors = [e for e in errors if "EXEC SQL" in e]
-        self.assertEqual(len(exec_errors), 0)
-
-
-class TestIsUtilityStatement(unittest.TestCase):
-    def setUp(self):
-        self.parser = DB2RegexParser()
-
-    def test_reorg_table(self):
-        result = self.parser.is_utility_statement("REORG TABLE employees")
-        self.assertIsInstance(result, bool)
-
-    def test_runstats(self):
-        result = self.parser.is_utility_statement("RUNSTATS ON TABLE employees")
-        self.assertIsInstance(result, bool)
-
-    def test_bind(self):
-        result = self.parser.is_utility_statement("BIND PACKAGE pkg1")
-        self.assertIsInstance(result, bool)
-
-    def test_rebind(self):
-        result = self.parser.is_utility_statement("REBIND PACKAGE pkg1")
-        self.assertIsInstance(result, bool)
-
-    def test_regular_select_is_not_utility(self):
-        result = self.parser.is_utility_statement("SELECT 1 FROM t;")
-        self.assertIsInstance(result, bool)
-
 
 class TestIntegration(unittest.TestCase):
     def setUp(self):
-        self.parser = DB2RegexParser()
+        self.parser = facts_parser("db2")
 
     def test_full_schema_creation(self):
         sql = """

@@ -42,9 +42,6 @@ class TestNoRemainingAsserts:
                     "must be replaced by explicit raise"
                 )
 
-    def test_hybrid_parser_no_assert(self):
-        self._assert_no_bare_assert("dblift/core/sql_parser/hybrid_parser.py")
-
     def test_python_executor_no_assert(self):
         self._assert_no_bare_assert("dblift/core/migration/executors/python_executor.py")
 
@@ -55,51 +52,6 @@ class TestNoRemainingAsserts:
 # ---------------------------------------------------------------------------
 # Behavioural: invalid state raises RuntimeError (not AssertionError)
 # ---------------------------------------------------------------------------
-
-
-class TestHybridParserSqlglotGuard:
-    """Verify RuntimeError (not AssertionError) when sqlglot_parser is None."""
-
-    def _make_parser_without_sqlglot(self):
-        from dblift.core.sql_parser.hybrid_parser import HybridParser
-
-        p = HybridParser.__new__(HybridParser)
-        p.dialect = "mysql"
-        p.sqlglot_parser = None
-        p.log = MagicMock()
-        return p
-
-    def test_extract_view_deps_raises_runtime_error(self):
-        p = self._make_parser_without_sqlglot()
-        with pytest.raises(RuntimeError, match="sqlglot_parser is not initialized"):
-            p._extract_view_deps_from_objects("SELECT 1", None, {})
-
-    def test_parse_alter_table_raises_runtime_error(self):
-        p = self._make_parser_without_sqlglot()
-        result = MagicMock()
-        with pytest.raises(RuntimeError, match="sqlglot_parser is not initialized"):
-            p._parse_alter_table_via_sqlglot("ALTER TABLE t ADD COLUMN x INT", None, result)
-
-    def test_extract_check_constraint_raises_runtime_error(self):
-        from sqlglot import exp
-
-        p = self._make_parser_without_sqlglot()
-        inner = MagicMock(spec=exp.Expression)
-        inner.this = None
-        with pytest.raises(RuntimeError, match="sqlglot_parser is not initialized"):
-            p._extract_check_constraint_from_sqlglot(inner, None)
-
-    def test_raises_runtime_error_not_assertion_error(self):
-        """Guard raises RuntimeError, never AssertionError."""
-        p = self._make_parser_without_sqlglot()
-        exc_type = None
-        try:
-            p._extract_view_deps_from_objects("SELECT 1", None, {})
-        except RuntimeError:
-            exc_type = RuntimeError
-        except AssertionError:
-            pytest.fail("Guard raised AssertionError instead of RuntimeError")
-        assert exc_type is RuntimeError
 
 
 class TestPythonExecutorSpecGuard:

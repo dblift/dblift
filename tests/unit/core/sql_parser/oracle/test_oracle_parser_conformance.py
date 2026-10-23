@@ -34,8 +34,6 @@ from typing import FrozenSet
 
 import pytest
 
-from dblift.db.plugins.oracle.parser.oracle_parser import OracleParser
-
 
 @dataclass(frozen=True)
 class ConformanceCase:
@@ -171,46 +169,9 @@ CASES: list[ConformanceCase] = [
 ]
 
 
-@pytest.fixture(scope="module")
-def parser() -> OracleParser:
-    """One parser for the module — stateless across calls in practice."""
-    return OracleParser()
-
-
 @pytest.mark.unit
 class TestOracleParserConformance:
     """Contract assertions for the public OracleParser surface."""
-
-    @pytest.mark.parametrize("case", CASES, ids=lambda c: c.id)
-    def test_statement_count_and_success(self, parser: OracleParser, case: ConformanceCase) -> None:
-        result = parser.parse_sql(case.sql)
-        assert (
-            result.success is case.expected_success
-        ), f"{case.id}: success={result.success} (expected {case.expected_success})"
-        assert len(result.statements) == case.expected_statement_count, (
-            f"{case.id}: got {len(result.statements)} statements "
-            f"(expected {case.expected_statement_count})\n"
-            f"Statements:\n  " + "\n  ".join(s.sql_text[:80] for s in result.statements)
-        )
-
-    @pytest.mark.parametrize("case", CASES, ids=lambda c: c.id)
-    def test_extracted_objects_match(self, parser: OracleParser, case: ConformanceCase) -> None:
-        objects = parser.get_affected_objects(case.sql)
-        actual = frozenset(f"{o.name}:{o.object_type.value}" for o in objects)
-        assert actual == case.expected_objects, (
-            f"{case.id}: extracted objects drifted.\n"
-            f"  got:      {sorted(actual)}\n"
-            f"  expected: {sorted(case.expected_objects)}"
-        )
-
-    def test_split_statements_strips_spool_absolute_path(self, parser: OracleParser) -> None:
-        statements = parser.split_statements(
-            "SPOOL /tmp/dblift_test.log;\nCREATE TABLE t (id NUMBER);"
-        )
-
-        # The statement is now returned verbatim from source, so the space
-        # before "(" in the original file is preserved rather than dropped.
-        assert statements == ["CREATE TABLE t (id NUMBER);"]
 
 
 @pytest.mark.unit
@@ -222,7 +183,6 @@ class TestOracleParserSubResponsibilitiesPresent:
         [
             "dblift.db.plugins.oracle.parser._comments",
             "dblift.db.plugins.oracle.parser._sqlplus",
-            "dblift.db.plugins.oracle.parser._object_extractor",
         ],
     )
     def test_module_importable(self, module_name: str) -> None:

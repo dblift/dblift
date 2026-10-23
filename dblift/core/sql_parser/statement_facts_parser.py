@@ -46,17 +46,17 @@ class StatementFactsParser(SqlParserInterface):
         """Return source-positioned lexical statement records."""
         return self._engine.split(sql_content)
 
-    def split_statements(self, sql_content: str, strict_tokenizer: bool = False) -> List[str]:
+    def split_statements(self, sql_content: str) -> List[str]:
         """Return execution text from the shared lexical engine."""
         return self._engine.split_statements(sql_content)
 
-    def split_for_analysis(self, sql_content: str, strict_tokenizer: bool = False) -> List[str]:
+    def split_for_analysis(self, sql_content: str) -> List[str]:
         """Return the analysis text of each statement the scanner finds."""
         return self._engine.split_for_analysis(sql_content)
 
-    def split_for_extraction(self, sql_content: str, strict_tokenizer: bool = False) -> List[str]:
+    def split_for_extraction(self, sql_content: str) -> List[str]:
         """Return the same scanner-selected constituents as analysis."""
-        return self.split_for_analysis(sql_content, strict_tokenizer)
+        return self.split_for_analysis(sql_content)
 
     def parse_sql(self, sql_content: str, default_schema: Optional[str] = None) -> ParseResult:
         """Project facts into statements, refusing an unsafe script as a whole."""

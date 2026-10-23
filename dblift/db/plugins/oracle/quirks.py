@@ -88,12 +88,6 @@ class OracleQuirks(BaseQuirks):
             return True
         return super().is_schema_history_race_error(error_message)
 
-    sqlglot_unsupported_sql_patterns = (
-        "PARTITION BY REFERENCE",
-        "PARTITION BY RANGE",
-        "PARTITION BY LIST",
-        "INTERVAL (",
-    )
     connection_probe_sql = "SELECT 1 FROM DUAL"
     boolean_false_literal = "0"
     unquoted_identifier_case = "uppercase"
@@ -182,23 +176,6 @@ class OracleQuirks(BaseQuirks):
         from dblift.db.plugins.oracle.oracle.dbms_output import read_dbms_output
 
         read_dbms_output(connection, log)
-
-    def parser_class(self, parser_type: str) -> Optional[type]:
-        """Oracle parser dispatch: hybrid → :class:`HybridParser`, sqlglot →
-        :class:`SqlGlotParser` (``oracle`` dialect), regex → :class:`OracleParser`."""
-        if parser_type == "hybrid":
-            from dblift.core.sql_parser.hybrid_parser import HybridParser
-
-            return HybridParser
-        if parser_type == "sqlglot":
-            from dblift.core.sql_parser.sqlglot_parser import SqlGlotParser
-
-            return SqlGlotParser
-        if parser_type == "regex":
-            from dblift.db.plugins.oracle.parser.oracle_parser import OracleParser
-
-            return OracleParser
-        return None
 
     def type_equivalents(self) -> "dict[str, str]":
         """Oracle alias → canonical type map.

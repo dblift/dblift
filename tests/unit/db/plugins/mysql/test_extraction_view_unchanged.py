@@ -7,7 +7,6 @@ that move (``extraction_golden.json``, recorded from the code as it was, not fro
 
 import dataclasses
 import enum
-import hashlib
 import json
 import re
 import warnings
@@ -16,23 +15,15 @@ from typing import Any, Callable, Dict
 
 import pytest
 
-from dblift.core.sql_parser.common.comment_stripping import strip_comments_preserving_quotes
 from dblift.core.sql_parser.redaction import describe_statement, mask_string_literals
-from dblift.core.sql_parser.sqlglot_statement_facts import (
-    _MYSQL_QUOTES_AND_COMMENTS,
-    read_statement_facts,
-)
-from dblift.db.plugins.mariadb.regex_parser import MariaDbRegexParser
-from dblift.db.plugins.mysql.parser.mysql_regex_parser import MySqlRegexParser
-from dblift.db.plugins.mysql.parser.mysql_tokenizer import MySQLTokenizer
-from dblift.db.plugins.mysql.parser.parser_config import MySqlConfig
 from dblift.db.provider_registry import ProviderRegistry
+from tests.support.facts_parser import facts_parser
 
 GOLDEN = json.loads((Path(__file__).parent / "extraction_golden.json").read_text())
 STATEMENTS = GOLDEN["statements"]
 IDS = [f"s{i}" for i in range(len(STATEMENTS))]
-MYSQL = MySqlRegexParser()
-MARIADB = MariaDbRegexParser()
+MYSQL = facts_parser("mysql")
+MARIADB = facts_parser("mariadb")
 #: the wording of an unterminated-lexeme refusal differs between the old scanner and the engine
 WORDING = re.compile(
     r"unterminated (?:string literal|string|quoted identifier|block comment) (?:starting|opened) at"
@@ -79,17 +70,6 @@ def parsed(parser: Any, sql: str, objects: bool) -> Any:
 
 
 @pytest.mark.parametrize("case", STATEMENTS, ids=IDS)
-def test_tokenizer_streams_unchanged(case: Dict[str, Any]) -> None:
-    sql = case["sql"]
-    tokens = guard(
-        lambda: [
-            [t.type.name, t.text, t.pos, t.line, t.col] for t in MySQLTokenizer(sql).tokenize()
-        ]
-    )
-    assert tokens == _normalised(case["tokens"])
-
-
-@pytest.mark.parametrize("case", STATEMENTS, ids=IDS)
 def test_masking_unchanged(case: Dict[str, Any]) -> None:
     sql = case["sql"]
     for dialect in ("mysql", "mariadb"):
@@ -97,63 +77,11 @@ def test_masking_unchanged(case: Dict[str, Any]) -> None:
         assert guard(lambda: describe_statement(sql, dialect)) == case["describe"][dialect]
 
 
-@pytest.mark.parametrize("case", STATEMENTS, ids=IDS)
-def test_object_extraction_unchanged(case: Dict[str, Any]) -> None:
-    sql = case["sql"]
-    assert (
-        guard(lambda: ser(MYSQL.extract_objects(MYSQL._clean_mysql_comments(sql))))
-        == case["objects"]
-    )
-    recorded = dict(case["parse"]) if isinstance(case["parse"], dict) else case["parse"]
-    assert parsed(MYSQL, sql, objects=True) == _normalised(recorded)
-    recorded_mariadb = case["parse_mariadb"]
-    assert parsed(MARIADB, sql, objects=False) == _normalised(recorded_mariadb)
-
-
 def _normalised(recorded: Any) -> Any:
     if isinstance(recorded, dict):
         errors = [WORDING.sub("unterminated LEXEME at", e) for e in recorded["errors"]]
         return {**recorded, "errors": errors}
     return [WORDING.sub("unterminated LEXEME at", x) if isinstance(x, str) else x for x in recorded]
-
-
-@pytest.mark.parametrize("case", STATEMENTS, ids=IDS)
-def test_comment_stripping_unchanged(case: Dict[str, Any]) -> None:
-    sql = case["sql"]
-    prefixes, block = MYSQL._comment_markers()
-    assert guard(lambda: MYSQL._clean_mysql_comments(sql)) == case["clean"]
-    assert guard(lambda: MYSQL._strip_comments_preserving_quotes(sql)) == case["strip"]
-    assert (
-        guard(
-            lambda: strip_comments_preserving_quotes(
-                sql,
-                line_prefixes=prefixes,
-                has_block_comments=block,
-                nested_block_comments=MySQLTokenizer.NESTED_BLOCK_COMMENTS,
-            )
-        )
-        == case["generic_strip"]
-    )
-    assert [m.group() for m in _MYSQL_QUOTES_AND_COMMENTS.finditer(sql)] == case[
-        "quotes_and_comments"
-    ]
-    if "facts" in case:
-        assert guard(lambda: ser(read_statement_facts(sql, dialect="mysql"))) == case["facts"]
-
-
-def test_the_object_patterns_of_the_mysql_config_are_unchanged() -> None:
-    config = MySqlConfig()
-    patterns = sorted(
-        [name, pattern.pattern, pattern.flags]
-        for group in (
-            config.ddl_patterns,
-            config.dml_patterns,
-            config.query_patterns,
-            config.object_patterns,
-        )
-        for name, pattern in group.items()
-    ) + sorted([p.pattern, p.flags] for p in config.comment_patterns)
-    assert hashlib.sha256(json.dumps(patterns).encode()).hexdigest() == GOLDEN["config_digest"]
 
 
 def test_extraction_comment_reading_is_not_re_pointed() -> None:
@@ -181,12 +109,6 @@ def test_redaction_keeps_the_mysql_tokenizer() -> None:
     assert mask_string_literals("SELECT 1 #\n'x'", "mysql") == "SELECT 1 #\n'?'"
     spec = ProviderRegistry.get_quirks("mysql").lexical_spec()
     assert spec is None or not spec.redaction_reads_engine
-
-
-def test_strict_tokenizer_has_no_effect_for_mysql() -> None:
-    for sql, expected in GOLDEN["strict_samples"]:
-        assert guard(lambda: MYSQL.split_statements(sql, strict_tokenizer=True)) == expected
-        assert MYSQL.split_statements(sql) == MYSQL.split_statements(sql, strict_tokenizer=True)
 
 
 def test_placeholder_is_code_for_mysql() -> None:

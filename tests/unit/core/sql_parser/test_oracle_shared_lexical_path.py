@@ -11,10 +11,10 @@ from dblift.core.sql_parser.lexical_engine import LexicalEngine
 from dblift.core.sql_parser.parser_factory import SqlParserFactory
 from dblift.core.sql_parser.redaction import describe_statement, mask_string_literals
 from dblift.db.plugins.oracle.parser.lexical_spec import ORACLE_SPEC
-from dblift.db.plugins.oracle.parser.oracle_parser import OracleParser
 from dblift.db.plugins.oracle.quirks import OracleQuirks
 from dblift.db.plugins.postgresql.parser.lexical_spec import POSTGRESQL_SPEC
 from dblift.db.plugins.sqlite.parser.lexical_spec import SQLITE_SPEC
+from tests.support.facts_parser import facts_parser
 
 SCRIPT = "CREATE TABLE a (x NUMBER);\nBEGIN NULL; END;\n/\nSELECT 1 FROM dual;"
 
@@ -61,12 +61,12 @@ def test_oracle_entry_points_reach_the_engine(monkeypatch, entry):
 
     monkeypatch.setattr(LexicalEngine, "split", counting_split)
     monkeypatch.setattr(LexicalEngine, "split_statements", counting_split_statements)
-    getattr(OracleParser(), entry)(SCRIPT)
+    getattr(facts_parser("oracle"), entry)(SCRIPT)
     assert seen
 
 
 def test_analysis_and_extraction_project_the_execution_records():
-    parser = OracleParser()
+    parser = facts_parser("oracle")
     expected = ["CREATE TABLE a (x NUMBER)", "BEGIN NULL; END;", "SELECT 1 FROM dual"]
     assert parser.split_for_analysis(SCRIPT) == expected
     assert parser.split_for_extraction(SCRIPT) == expected
@@ -76,11 +76,11 @@ def test_analysis_and_extraction_project_the_execution_records():
 @pytest.mark.parametrize("strict", [False, True])
 def test_refusal_cannot_be_softened_at_the_legacy_entry_point(strict):
     with pytest.raises(UnsafeStatementSplitError, match="line 1, column 8"):
-        OracleParser().split("SELECT q'[open", strict_tokenizer=strict)
+        facts_parser("oracle").split("SELECT q'[open")
 
 
 def test_blank_input_has_no_records():
-    parser = OracleParser()
+    parser = facts_parser("oracle")
     assert parser.split("") == [] and parser.split("  \n") == []
     assert parser.split_statements(" ") == []
 
@@ -101,7 +101,7 @@ def test_a_line_terminator_is_not_a_terminator_for_other_dialects():
 
 
 def test_row_37_the_public_route_names_the_line_of_the_reference():
-    for route in (OracleParser().split, SqlAnalyzer("oracle").split_statements):
+    for route in (facts_parser("oracle").split, SqlAnalyzer("oracle").split_statements):
         with pytest.raises(UnsafeStatementSplitError, match=r"&v on line 2 is undefined"):
             route("SELECT 1,\n&v FROM dual;")
 

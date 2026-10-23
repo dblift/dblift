@@ -16,8 +16,8 @@ from dblift.core.sql_parser.lexical_spec import SegmentScriptRules
 from dblift.core.sql_parser.lexical_tokenizer import LexicalTokenizer
 from dblift.db.plugins.duckdb.parser.lexical_spec import DUCKDB_SPEC
 from dblift.db.plugins.postgresql.parser.lexical_spec import POSTGRESQL_SPEC
-from dblift.db.plugins.postgresql.parser.postgresql_regex_parser import PostgreSqlRegexParser
 from dblift.db.plugins.redshift.parser.lexical_spec import REDSHIFT_SPEC
+from tests.support.facts_parser import facts_parser
 
 FAMILY = (
     "postgresql",
@@ -64,7 +64,7 @@ def test_the_refusal_is_spec_data_read_by_the_shared_tokenizer(spec):
 
 def test_the_analysis_projection_refuses_too():
     with pytest.raises(UnsafeStatementSplitError):
-        PostgreSqlRegexParser().split("CREATE TABLE a(i int);\x00DROP TABLE a;")
+        facts_parser("postgresql").split("CREATE TABLE a(i int);\x00DROP TABLE a;")
 
 
 @pytest.mark.parametrize("dialect", FAMILY)

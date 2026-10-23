@@ -23,8 +23,8 @@ import pytest
 
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.db.plugins.oracle.parser._comments import strip_comments, strip_sql_comments
-from dblift.db.plugins.oracle.parser.oracle_parser import OracleParser
 from dblift.db.plugins.oracle.parser.sqlplus_context import extract_sqlplus_context
+from tests.support.facts_parser import facts_parser
 
 
 def recorded(record):
@@ -53,7 +53,7 @@ def outcome(call):
 
 
 def observed(script):
-    parser, analyzer = OracleParser(), SqlAnalyzer("oracle")
+    parser, analyzer = facts_parser("oracle"), SqlAnalyzer("oracle")
 
     def context():
         found = extract_sqlplus_context(script)

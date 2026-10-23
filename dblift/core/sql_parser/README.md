@@ -1,9 +1,10 @@
 # SQL parsing
 
-Direct construction of the legacy parser classes is deprecated for v5.0.
-Canonical migration and analysis paths continue to use their plugin-owned
-readers. See the [v5 alpha deprecation inventory](../../../docs/developer-guide/v5-alpha-deprecation-inventory.md)
-for each class's current callers, replacement scope, and remaining gaps.
+Every SQL dialect is split by its `LexicalSpec` and read through its statement facts. The
+legacy regex, hybrid and SQLGlot parser classes are gone; `SqlParserFactory` and `parser_type`
+remain only as deprecated entry points that return the facts parser whatever type is asked.
+See the [v5 alpha deprecation inventory](../../../docs/developer-guide/v5-alpha-deprecation-inventory.md)
+for what is left and its replacements.
 
 A dialect's script scanner owns execution boundaries. Its `split(sql)` records
 contain the SQL sent to the server, client directives, and any scanner-derived
@@ -13,18 +14,11 @@ constituents once, even when a client repeats a batch. A `GO 0` batch contribute
 nothing to those projections. A scanner refusal is an error, never a request to
 try a different semicolon splitter.
 
-The dialect-specific implementations live under `dblift/db/plugins/*/parser`.
-The specification for each script language is in `docs/sql-parsing/`.
-`RegexBasedParser`, `RegexParser`, and `EnhancedRegexParser` provide reusable
-classification and object extraction. They do not split scripts; dialect
-subclasses must implement that method. This is an intentional source contract
-change for custom parser subclasses.
-
-`HybridParser` uses the dialect scanner for statement selection and SQLGlot for
-per-statement analysis where available. `SqlGlotParser` also delegates script
-splitting to the dialect scanner. Neither uses SQLGlot to decide execution
-boundaries. Tokenizers retained by some parsers also support quoted comment
-stripping or redaction; they do not provide an alternate script split.
+The dialect-specific lexical specs live under `dblift/db/plugins/*/parser`. The specification
+for each script language is in `docs/sql-parsing/`. `StatementFactsParser` splits with the
+spec's engine and reads each statement with the plugin's facts reader; it is not a second
+scanner. Tokenizers retained by some plugins support literal masking only; they do not provide
+an alternate script split.
 
 In a `Statement` record, `analysis_statements=None` means its execution text
 is one analyzable statement. An empty tuple means it contributes none. A

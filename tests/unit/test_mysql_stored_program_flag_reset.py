@@ -1,11 +1,11 @@
+from tests.support.facts_parser import facts_parser
+
 """Unit tests for MySQL stored program flag reset bug fix.
 
 Tests for the fix where in_stored_program flag was not reset between
 statements, causing subsequent BEGIN statements to be incorrectly treated
 as block starts.
 """
-
-from dblift.db.plugins.mysql.parser.mysql_regex_parser import MySqlRegexParser
 
 
 class TestMySQLStoredProgramFlagReset:
@@ -31,7 +31,7 @@ class TestMySQLStoredProgramFlagReset:
         COMMIT;
         """
 
-        statements = MySqlRegexParser().split_statements(sql)
+        statements = facts_parser("mysql").split_statements(sql)
 
         # Should have 4 statements:
         # 1. CREATE PROCEDURE (entire procedure)
@@ -76,7 +76,7 @@ class TestMySQLStoredProgramFlagReset:
         DELIMITER ;
         """
 
-        statements = MySqlRegexParser().split_statements(sql)
+        statements = facts_parser("mysql").split_statements(sql)
 
         # Should have 2 statements (one for each procedure)
         assert len(statements) == 2
@@ -103,7 +103,7 @@ class TestMySQLStoredProgramFlagReset:
         SELECT calc_sum(1, 2);
         """
 
-        statements = MySqlRegexParser().split_statements(sql)
+        statements = facts_parser("mysql").split_statements(sql)
 
         # Should have 2 statements: function and select
         assert len(statements) == 2
@@ -130,7 +130,7 @@ class TestMySQLStoredProgramFlagReset:
         INSERT INTO test_table (name) VALUES ('test');
         """
 
-        statements = MySqlRegexParser().split_statements(sql)
+        statements = facts_parser("mysql").split_statements(sql)
 
         # Should have 2 statements: trigger and insert
         assert len(statements) == 2
@@ -157,7 +157,7 @@ class TestMySQLStoredProgramFlagReset:
         SELECT * FROM logs;
         """
 
-        statements = MySqlRegexParser().split_statements(sql)
+        statements = facts_parser("mysql").split_statements(sql)
 
         # Should have 2 statements: event and select
         assert len(statements) == 2
@@ -181,7 +181,7 @@ class TestMySQLStoredProgramFlagReset:
         COMMIT;
         """
 
-        statements = MySqlRegexParser().split_statements(sql)
+        statements = facts_parser("mysql").split_statements(sql)
 
         # Should have 4 statements
         assert len(statements) == 4

@@ -111,20 +111,6 @@ class BaseQuirks:
         """Return plugin statement facts when ``supports_statement_facts`` is true."""
         return self.statement_facts_reader().read(statement)
 
-    #: Upper-cased SQL patterns that signal sqlglot can't parse the
-    #: statement faithfully. When *any* pattern appears in the
-    #: uppercased SQL text, ``HybridParser`` falls back to regex-only.
-    #: Plugins override to declare dialect-specific incompatibilities.
-    sqlglot_unsupported_sql_patterns: "tuple[str, ...]" = ()
-    #: Same purpose as ``sqlglot_unsupported_sql_patterns``, but each entry
-    #: is a regex matched against the upper-cased SQL text instead of a
-    #: fixed literal phrase — for an unsupported *shape* that spans a
-    #: variable identifier a literal substring can't express (e.g. "DROP
-    #: INDEX ... ON <schema>.<table>", where an arbitrary index name sits
-    #: between the two fixed keywords). When *any* pattern matches,
-    #: ``HybridParser`` falls back to regex-only, the same as above.
-    sqlglot_unsupported_sql_regex_patterns: "tuple[str, ...]" = ()
-
     # ------------------------------------------------------------------
     # DML undo-safety scanning (data corrections). The scanning mechanics
     # live dialect-free in ``dblift.db.dml_analysis``; these attributes carry the
@@ -168,21 +154,6 @@ class BaseQuirks:
     def statement_dml_table(self, statement: str) -> str:
         """Table a DML statement writes to, quoted as written (see ``dml_analysis``)."""
         return statement_dml_table(statement, quirks=self)
-
-    def is_sqlglot_opaque_valid_ddl(self, sql_content: str) -> bool:
-        """Return True if *sql_content* is valid DDL that sqlglot cannot parse
-        without raising, so a caller validating SQL can skip a
-        false-positive syntax error. Plugins override for dialect-specific
-        patterns (e.g. PostgreSQL ``DROP TRIGGER … ON table``, which sqlglot
-        rejects only when the table is schema-qualified — see the override
-        for exactly which forms that covers)."""
-        return False
-
-    def preprocess_sql_for_sqlglot(self, sql_content: str) -> str:
-        """Transform SQL before passing it to sqlglot. Default: pass-through.
-        Plugins override to normalize dialect-specific syntax that sqlglot
-        can't handle natively."""
-        return sql_content
 
     def derive_schema_name(self, database_config: Any) -> "Optional[str]":
         """Return a schema name derived from dialect defaults, or ``None``.
@@ -565,6 +536,14 @@ class BaseQuirks:
 
     def lexical_spec(self) -> "Optional[LexicalSpec]":
         """The plugin's shared-scanner rules, when migrated."""
+        return None
+
+    def redaction_tokenizer(self) -> "Optional[type]":
+        """The tokenizer class literal masking reads, when the spec does not (see ``LexicalSpec``).
+
+        Used only where the spec sets ``redaction_reads_engine=False``; ``None`` is the generic
+        tokenizer.
+        """
         return None
 
     def blank_comments(self, sql: str) -> str:

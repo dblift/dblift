@@ -410,26 +410,19 @@ class SqlAnalyzer:
         # If basic checks pass, assume SQL is valid
         return True, None
 
-    def split_statements(self, sql: str, strict_tokenizer: Optional[bool] = None) -> List[str]:
+    def split_statements(self, sql: str) -> List[str]:
         """Split SQL into individual statements.
 
         Args:
             sql: SQL script containing multiple statements
-            strict_tokenizer: If True, dialect tokenizers fail on unknown
-                characters instead of falling back to permissive splitting.
 
         Returns:
             List of individual SQL statements
         """
         # Directive lines (``PROMPT``, ``SET``, ``DEFINE``, ``WHENEVER`` ...) and
         # SQL*Plus variables are the dialect splitter's, not a pre-pass.
-        if strict_tokenizer is not None:
-            warn_direct_parser("strict_tokenizer")
         with internal_parser_construction():
-            statements = self.statement_splitter.split_statements(
-                sql,
-                strict_tokenizer=bool(strict_tokenizer),
-            )
+            statements = self.statement_splitter.split_statements(sql)
 
         # Log each statement for debugging
         for i, stmt in enumerate(statements):
@@ -439,17 +432,13 @@ class SqlAnalyzer:
 
         return list(statements)
 
-    def split_statements_for_analysis(
-        self, sql: str, strict_tokenizer: Optional[bool] = None
-    ) -> List[str]:
+    def split_statements_for_analysis(self, sql: str) -> List[str]:
         """The statements of ``sql`` for callers that read a script statement by statement.
 
         ``split_statements`` returns what the server receives, and a T-SQL batch holds several
         statements: a dialect that divides its batches does it here, after the same refusals.
         Every other dialect: the execution split.
         """
-        if strict_tokenizer is not None:
-            warn_direct_parser("strict_tokenizer")
         engine = self.statement_splitter._engine
         if engine is not None and engine.spec.sqlite_shell:
             return engine.split_for_analysis(sql)
@@ -458,6 +447,6 @@ class SqlAnalyzer:
             parser is not None
             and type(parser).split_for_analysis is not SqlParserInterface.split_for_analysis
         ):
-            return list(parser.split_for_analysis(sql, strict_tokenizer=bool(strict_tokenizer)))
+            return list(parser.split_for_analysis(sql))
         with internal_parser_construction():
-            return self.split_statements(sql, strict_tokenizer=bool(strict_tokenizer))
+            return self.split_statements(sql)

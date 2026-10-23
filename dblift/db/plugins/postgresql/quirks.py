@@ -27,15 +27,6 @@ _ERROR_PATTERNS: List[Tuple[re.Pattern[str], ErrorCategory]] = [
     (re.compile(r"SQLSTATE\s*57\w{3}", re.IGNORECASE), ErrorCategory.INTERNAL),
 ]
 
-_DROP_TRIGGER_ON_RE = re.compile(
-    r"^\s*DROP\s+TRIGGER\s+(?:IF\s+EXISTS\s+)?"
-    r'(?:(?:"[^"]+"|[a-zA-Z_][a-zA-Z0-9_$]*)\.)?'
-    r'(?:"[^"]+"|[a-zA-Z_][a-zA-Z0-9_$]*)'
-    r"\s+ON\s+",
-    re.IGNORECASE,
-)
-
-
 if TYPE_CHECKING:
     from dblift.core.sql_parser.lexical_spec import LexicalSpec
     from dblift.core.sql_parser.statement_facts import StatementFactsReader
@@ -127,25 +118,6 @@ class PostgresqlQuirks(BaseQuirks):
 
         return LexicalEngine(self.lexical_spec()).blank_comments(sql)
 
-    def parser_class(self, parser_type: str) -> Optional[type]:
-        """PostgreSQL parser dispatch: hybrid → :class:`HybridParser`, sqlglot →
-        :class:`SqlGlotParser` (``postgres`` dialect), regex → :class:`PostgreSqlRegexParser`."""
-        if parser_type == "hybrid":
-            from dblift.core.sql_parser.hybrid_parser import HybridParser
-
-            return HybridParser
-        if parser_type == "sqlglot":
-            from dblift.core.sql_parser.sqlglot_parser import SqlGlotParser
-
-            return SqlGlotParser
-        if parser_type == "regex":
-            from dblift.db.plugins.postgresql.parser.postgresql_regex_parser import (
-                PostgreSqlRegexParser,
-            )
-
-            return PostgreSqlRegexParser
-        return None
-
     non_transactional_sql_patterns = (
         (
             r"^CREATE\s+(UNIQUE\s+)?INDEX\s+CONCURRENTLY\b",
@@ -193,13 +165,6 @@ class PostgresqlQuirks(BaseQuirks):
             "PostgreSQL DROP INDEX CONCURRENTLY cannot run inside a transaction block",
         ),
     )
-
-    def is_sqlglot_opaque_valid_ddl(self, sql_content: str) -> bool:
-        """PG ``DROP TRIGGER name ON table`` — sqlglot rejects this valid DDL
-        only when the table is schema-qualified (``ON schema.table``).
-        Quoting alone — either identifier, or both — does not make sqlglot
-        raise; it parses those forms without error."""
-        return _DROP_TRIGGER_ON_RE.search(sql_content) is not None
 
     def type_equivalents(self) -> "dict[str, str]":
         """PostgreSQL alias → canonical type map.

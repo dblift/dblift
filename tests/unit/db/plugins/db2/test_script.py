@@ -6,11 +6,11 @@ import pytest
 
 from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
 from dblift.core.sql_parser.statement import Statement
-from dblift.db.plugins.db2.parser.db2_regex_parser import DB2RegexParser
+from tests.support.facts_parser import facts_parser
 
 
 def split(script: str) -> list[Statement]:
-    return DB2RegexParser().split(script)
+    return facts_parser("db2").split(script)
 
 
 def texts(script: str) -> list[str]:
@@ -527,7 +527,7 @@ def test_units_carry_line_terminator_and_kind() -> None:
 
 
 def test_the_parser_returns_statement_records_and_the_string_projection() -> None:
-    parser = DB2RegexParser()
+    parser = facts_parser("db2")
     script = "--#SET TERMINATOR @\nSELECT 1@\nSELECT 2"
     records = parser.split(script)
     assert [(r.kind, r.text, r.terminator, r.line) for r in records] == [
@@ -539,7 +539,7 @@ def test_the_parser_returns_statement_records_and_the_string_projection() -> Non
 
 
 def test_the_epilogue_is_a_directive_record_and_not_in_the_string_projection() -> None:
-    parser = DB2RegexParser()
+    parser = facts_parser("db2")
     script = "SELECT 1;\nCONNECT RESET;\nTERMINATE;"
     assert [(r.kind, r.text) for r in parser.split(script)] == [
         ("sql", "SELECT 1"),
@@ -610,7 +610,7 @@ def test_an_epilogue_command_without_a_terminator_does_not_swallow_the_next_stat
     ],
 )
 def test_the_accepted_epilogue_forms_are_recorded_and_dropped(script: str) -> None:
-    parser = DB2RegexParser()
+    parser = facts_parser("db2")
     assert [r.kind for r in parser.split(script)][-1] == "directive"
     assert parser.split_statements(script) == ["SELECT 1"]
 

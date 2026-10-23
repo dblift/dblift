@@ -50,6 +50,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The root configuration key `migrations_dir` is rejected.** Any occurrence, including an empty
   or null value, raises an error (it was deprecated in 2.0.2). Move it to `migrations.directory`.
   The `migrations_dir` argument of the Python API and the CLI is unchanged.
+- **The legacy regex, hybrid and SQLGlot parsers are removed.** `HybridParser`, `SqlGlotParser`,
+  `RegexBasedParser`, `RegexParser`, `EnhancedRegexParser` and `DialectConfig`, the per-dialect regex
+  parsers and their pattern tables (PostgreSQL, Redshift, MySQL, MariaDB, SQL Server, Db2, DuckDB,
+  Oracle) and `SnowflakeStatementParser` no longer exist. Scripts were already split by each
+  dialect's lexical spec; what goes is the text-based reading. `SqlParserFactory` still builds, but
+  it ignores `parser_type` and always returns the statement-facts parser, so `parse_sql`,
+  `extract_objects` and `validate_sql` now report what the plugin's facts reader reads: they build no
+  model objects from text, invent no default schema, and `validate_sql` no longer applies the old
+  bracket and quote heuristics. Migration: split scripts with
+  `StatementSplitter(dialect).split()`, read a statement with `read_statement_facts` (or the plugin's
+  `quirks.statement_facts(sql)`), and get schema models from live database introspection. A plugin
+  that subclassed one of these parsers returns a `LexicalSpec` and a statement-facts reader instead.
+- **`strict_tokenizer` is removed** from `StatementSplitter`, `SqlAnalyzer`, `SqlParserFactory` and
+  the parser interface. Drop the argument: the dialect's scanner decides how to read the script.
+- **Plugin hooks for the removed parsers are removed.** `sqlglot_unsupported_sql_patterns`,
+  `sqlglot_unsupported_sql_regex_patterns`, `preprocess_sql_for_sqlglot` and
+  `is_sqlglot_opaque_valid_ddl` on the quirks no longer exist, and the PostgreSQL, Oracle, SQL Server
+  and Redshift quirks no longer name a parser class. Delete overrides of them.
 
 ### Added
 
@@ -281,11 +299,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and `CREATE TABLE … TABLESPACE` are now named, and a DML caution no longer names a table
   whose name ends in a non-ASCII blank. Redshift is unchanged. Known gaps: #666, #667, #668
   and #669.
-- **Parsers for the PostgreSQL family are built from the facts reader.** Constructing
-  `HybridParser` or `SqlGlotParser` for a PostgreSQL-family dialect, or asking the parser
-  factory for the `sqlglot` type, now raises `ValueError` naming `StatementFactsParser`; the
-  `hybrid` type returns the facts parser, and the `regex` type still returns the regex parser,
-  whose splitting is unchanged.
 - **Oracle reads statement facts from the SQL grammar.** `info --format json`,
   `migrate --dry-run`, object tracking during execution, `SqlAnalyzer.extract_objects` and the
   DML analysis functions (`analyze_dml`, `statement_dml_table`, `dml_where_predicate`,
@@ -302,26 +315,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   materialized view logs and partitioned table clauses are reported as unread, and a statement
   whose objects cannot be established names none. The gaps are listed in
   `docs/sql-parsing/oracle.md` section 13.
-- **Parsers for Oracle are built from the facts reader.** Constructing `HybridParser` or
-  `SqlGlotParser` for `oracle`, or asking the parser factory for the `sqlglot` type, now raises
-  `ValueError` naming `StatementFactsParser`; the `hybrid` type returns the facts parser, and the
-  `regex` type still returns the Oracle regex parser, whose splitting is unchanged.
-
 ### Deprecated
 
-- **Direct use of `SqlParserFactory`, `SqlAnalyzer`, `parser_type=` and `strict_tokenizer=`.**
-  Each now warns once per process and names `StatementSplitter` and `read_statement_facts` as
-  the replacements (`strict_tokenizer` says to drop the argument); dblift's own construction sites (migration executor, execution engine,
-  `Migration`, redaction) are silent. Behavior is unchanged. `HybridParser` and
-  `SqlGlotParser` keep refusing dialects that read statement facts with an error naming
-  `StatementFactsParser`.
-- **Direct construction of legacy SQL parser roots.** `HybridParser`, `SqlGlotParser`,
-  `RegexBasedParser`, `RegexParser`, and `EnhancedRegexParser` now warn once per process when
-  constructed directly. Parsing behavior is unchanged. Use `StatementSplitter` for script
-  boundaries, `StatementFactsParser` for supported statement analysis, and live database
-  introspection for schema models. That replacement requires a live database, leaving a
-  migration gap for SQL-text-only rich model callers; see the
-  [v5 alpha deprecation inventory](docs/developer-guide/v5-alpha-deprecation-inventory.md).
+- **Direct use of `SqlParserFactory`, `SqlAnalyzer` and `parser_type=`.** Each warns once per
+  process and names `StatementSplitter` and `read_statement_facts` as the replacements; dblift's own
+  construction sites (migration executor, execution engine, `Migration`, redaction) are silent. They
+  are removed in the next release of the 5.0 series.
 
 ### Fixed
 

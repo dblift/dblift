@@ -56,6 +56,12 @@ class MysqlQuirks(BaseQuirks):
 
         return MYSQL_SPEC
 
+    def redaction_tokenizer(self) -> "Optional[type]":
+        """MySQL's tokenizer, which literal masking reads."""
+        from dblift.db.plugins.mysql.parser.mysql_tokenizer import MySQLTokenizer
+
+        return MySQLTokenizer
+
     statement_facts_class = SqlglotStatementFactsReader
 
     # Capability matrix (was ``_CAPABILITIES["mysql"]``).
@@ -80,12 +86,6 @@ class MysqlQuirks(BaseQuirks):
     # The unqualified form parses fine. The regex parser already extracts
     # this shape correctly (index name + schema), so skip sqlglot for it
     # entirely instead of letting it raise on a routine DROP INDEX (#379).
-    # The gap between INDEX and ON excludes ";" so the match cannot cross
-    # into a *different* statement in a multi-statement ``extract_objects``
-    # call and false-positive on an unrelated "... ON x.y" elsewhere in the
-    # batch (e.g. a JOIN clause) — this must describe the one DROP INDEX
-    # statement, not the whole blob it may be embedded in.
-    sqlglot_unsupported_sql_regex_patterns = (r"DROP\s+INDEX\s+[^;]+\bON\s+[^\s;,()]*\.",)
     # Trigger DDL.
     trigger_supports_definer_clause = True
     # Event scheduler timestamp-quoting.
@@ -135,17 +135,10 @@ class MysqlQuirks(BaseQuirks):
         }
 
     def parser_class(self, parser_type: str) -> Optional[type]:
-        """MySQL parser dispatch: hybrid and sqlglot → :class:`MySqlFactsParser`,
-        regex → :class:`MySqlRegexParser`."""
-        if parser_type in ("hybrid", "sqlglot"):
-            from dblift.db.plugins.mysql.parser.mysql_facts_parser import MySqlFactsParser
+        """The facts parser bound to MySQL, whatever ``parser_type`` is asked."""
+        from dblift.db.plugins.mysql.parser.mysql_facts_parser import MySqlFactsParser
 
-            return MySqlFactsParser
-        if parser_type == "regex":
-            from dblift.db.plugins.mysql.parser.mysql_regex_parser import MySqlRegexParser
-
-            return MySqlRegexParser
-        return None
+        return MySqlFactsParser
 
     def type_equivalents(self) -> "dict[str, str]":
         """MySQL alias → canonical type map.

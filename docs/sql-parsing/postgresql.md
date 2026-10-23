@@ -196,8 +196,7 @@ Code: the shared `dblift/core/sql_parser/lexical_engine.py`,
 `lexical_tokenizer.py` and `lexical_statement_parser.py`, driven by
 `dblift/db/plugins/postgresql/parser/lexical_spec.py`. The former dialect
 tokenizer and statement parser are removed. Execution resolves the specification
-from the plugin; `postgresql_regex_parser.py` serves splitting, masking and head
-classification, while analysis and extraction go through `StatementFactsParser`
+from the plugin; splitting goes through the lexical engine, while analysis and extraction go through `StatementFactsParser`
 over the lexical engine and the sqlglot `postgres` AST. Comment masking uses the
 same token scan. The
 splitter returns `Statement` records (`dblift/core/sql_parser/statement.py`):

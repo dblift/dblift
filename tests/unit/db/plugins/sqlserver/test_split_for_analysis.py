@@ -4,7 +4,7 @@ import pytest
 
 from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
-from dblift.db.plugins.sqlserver.parser.sqlserver_regex_parser import SqlServerRegexParser
+from tests.support.facts_parser import facts_parser
 
 SCRIPT = (
     "DECLARE @x INT = 1;\n"
@@ -68,7 +68,7 @@ def test_the_undo_fallback_reverses_each_statement_of_a_batch():
 
 
 def test_validate_sql_counts_statements_not_batches():
-    parser = SqlServerRegexParser()
+    parser = facts_parser("sqlserver")
     assert parser.validate_sql("SELECT 1; SELECT 2;") == {
         "valid": True,
         "statements_found": 2,

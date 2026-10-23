@@ -13,27 +13,6 @@ UNCLOSED_QUOTE = "SELECT 'abc;\nSELECT 2;"
 UNBALANCED_PAREN = "SELECT (1;\nSELECT 2;"  # refused by the parser, not the splitter
 UNBALANCED_BACKTICK = "SELECT `a FROM t;"
 
-# Dialects whose parser rejects the script although the splitter accepts it.
-PARSER_REJECTS = {
-    **dict.fromkeys(
-        [
-            "postgresql",
-            "alloydb",
-            "aurora-postgresql",
-            "citus",
-            "cockroachdb",
-            "neon",
-            "redshift",
-            "supabase",
-            "timescaledb",
-            "yugabytedb",
-        ],
-        UNBALANCED_PAREN,
-    ),
-    "mysql": UNBALANCED_BACKTICK,
-    "mariadb": UNBALANCED_BACKTICK,
-}
-
 
 def _analyzer(dialect):
     analyzer = SqlAnalyzer(dialect)
@@ -58,16 +37,6 @@ def test_script_the_splitter_refuses_is_invalid_with_its_message(dialect, sql):
     analyzer = _analyzer(dialect)
     expected_valid, expected_message = _parser_verdict(analyzer, sql)
     assert expected_valid is False and expected_message  # the parser does refuse it
-
-    assert analyzer.validate_sql(sql) == (False, expected_message)
-
-
-@pytest.mark.parametrize("dialect", sorted(PARSER_REJECTS))
-def test_script_the_parser_rejects_is_invalid_with_its_message(dialect):
-    analyzer = _analyzer(dialect)
-    sql = PARSER_REJECTS[dialect]
-    expected_valid, expected_message = _parser_verdict(analyzer, sql)
-    assert expected_valid is False and expected_message
 
     assert analyzer.validate_sql(sql) == (False, expected_message)
 

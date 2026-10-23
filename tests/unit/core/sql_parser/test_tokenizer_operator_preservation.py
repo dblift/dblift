@@ -31,19 +31,10 @@ import warnings
 
 import pytest
 
-from dblift.db.plugins.mysql.parser.mysql_regex_parser import MySqlRegexParser
-from dblift.db.plugins.oracle.parser.oracle_parser import OracleParser
-from dblift.db.plugins.postgresql.parser.postgresql_regex_parser import PostgreSqlRegexParser
-from dblift.db.plugins.sqlserver.parser.sqlserver_regex_parser import SqlServerRegexParser
+from tests.support.facts_parser import facts_parser
 
 # Dialects whose splitting goes through a tokenizer. sqlite, duckdb and db2
 # split by regex over the original text and never reserialize a token stream.
-TOKENIZING_PARSERS = {
-    "postgresql": PostgreSqlRegexParser,
-    "mysql": MySqlRegexParser,
-    "sqlserver": SqlServerRegexParser,
-    "oracle": OracleParser,
-}
 
 # Portable operator-bearing SQL: every statement below is valid in each dialect
 # under test, or at least lexically ordinary there. The point is the character
@@ -104,78 +95,6 @@ def _cases(corpus: list[str], dialects: list[str]) -> list[tuple[str, str]]:
     return [(dialect, sql) for dialect in dialects for sql in corpus]
 
 
-ALL_CASES = _cases(PORTABLE_CORPUS, sorted(TOKENIZING_PARSERS)) + _cases(
-    POSTGRESQL_CORPUS, ["postgresql"]
-)
-
-
-@pytest.mark.unit
-@pytest.mark.parametrize("dialect,sql", ALL_CASES)
-def test_no_character_is_lost(dialect: str, sql: str) -> None:
-    """Every non-whitespace character of the input reaches the executed SQL."""
-    parser = TOKENIZING_PARSERS[dialect]()
-    out = "".join(_split(parser, sql))
-    assert _canonical(out) == _canonical(sql), (
-        f"{dialect}: statement splitting changed the SQL\n"
-        f"  input : {sql!r}\n"
-        f"  output: {out!r}"
-    )
-
-
-@pytest.mark.unit
-@pytest.mark.parametrize("dialect,sql", ALL_CASES)
-def test_splitting_is_a_fixpoint(dialect: str, sql: str) -> None:
-    """Feeding the output back in reproduces it.
-
-    A statement that lexes differently the second time around lexes differently
-    from what the author wrote -- e.g. ``a - -b`` rendered as ``a --b``, where
-    the remainder of the line has become a comment.
-    """
-    parser = TOKENIZING_PARSERS[dialect]()
-    once = _split(parser, sql)
-    twice = _split(parser, "".join(once))
-    assert twice == once, (
-        f"{dialect}: reserialized SQL does not lex back to itself\n"
-        f"  input : {sql!r}\n"
-        f"  once  : {once!r}\n"
-        f"  twice : {twice!r}"
-    )
-
-
-@pytest.mark.unit
-@pytest.mark.parametrize(
-    "char", ["%", "&", "#", "?", "^", "@", "+", "-", "*", "/", "<", ">", "=", "!", "|", "~"]
-)
-@pytest.mark.parametrize("dialect", sorted(TOKENIZING_PARSERS))
-def test_operator_character_survives(dialect: str, char: str) -> None:
-    """Diagnostic: name the operator character that got dropped."""
-    if dialect == "mysql" and char == "#":
-        pytest.skip("# opens a comment in MySQL; consuming the rest of the line is correct")
-    parser = TOKENIZING_PARSERS[dialect]()
-    sql = f"SELECT a {char} b FROM t;"
-    out = "".join(_split(parser, sql))
-    assert char in out, f"{dialect}: {char!r} deleted from {sql!r}, got {out!r}"
-
-
-@pytest.mark.unit
-@pytest.mark.parametrize("dialect", sorted(TOKENIZING_PARSERS))
-def test_percent_inside_string_literal_is_untouched(dialect: str) -> None:
-    """LIKE patterns are string content, not operators, and already worked."""
-    parser = TOKENIZING_PARSERS[dialect]()
-    sql = "SELECT * FROM t WHERE name LIKE 'a%b%';"
-    out = "".join(_split(parser, sql))
-    assert "'a%b%'" in out, f"{dialect}: literal mangled, got {out!r}"
-
-
-@pytest.mark.unit
-@pytest.mark.parametrize("dialect", ["postgresql", "mysql", "oracle"])
-def test_concatenation_and_regex_operators_stay_intact(dialect: str) -> None:
-    """``||`` and ``~`` were already claimed; they must not regress."""
-    parser = TOKENIZING_PARSERS[dialect]()
-    out = "".join(_split(parser, "SELECT a || b FROM t;"))
-    assert "||" in out, f"{dialect}: || broken, got {out!r}"
-
-
 @pytest.mark.unit
 def test_postgresql_two_character_operators_are_not_split_apart() -> None:
     """``@>`` must reach the driver as ``@>``, not ``@ >``.
@@ -184,7 +103,7 @@ def test_postgresql_two_character_operators_are_not_split_apart() -> None:
     two characters turns containment into a prefix operator applied to a
     comparison, which is a different expression.
     """
-    parser = PostgreSqlRegexParser()
+    parser = facts_parser("postgresql")
     for operator in ("@>", "<@", "#>", "#>>", "?|", "?&", "&&", "||", "!~", "~*"):
         sql = f"SELECT id FROM t WHERE a {operator} b;"
         out = "".join(_split(parser, sql))
@@ -194,7 +113,7 @@ def test_postgresql_two_character_operators_are_not_split_apart() -> None:
 @pytest.mark.unit
 def test_author_separated_operators_are_not_merged() -> None:
     """``a - -b`` must not collapse into ``a --b``, which is a comment."""
-    parser = PostgreSqlRegexParser()
+    parser = facts_parser("postgresql")
     out = "".join(_split(parser, "SELECT a - -b FROM t;"))
     assert "--" not in out, f"unary minus merged into a comment marker: {out!r}"
 
@@ -245,29 +164,3 @@ STRICT_MODE_OPERATOR_CASES = [
     ("sqlserver", "SELECT a & b FROM t;"),
     ("sqlserver", "SELECT a ^ b FROM t;"),
 ]
-
-
-@pytest.mark.unit
-@pytest.mark.parametrize("dialect,sql", STRICT_MODE_OPERATOR_CASES)
-def test_strict_tokenizer_accepts_widened_operator_characters(dialect: str, sql: str) -> None:
-    """Strict tokenization must not choke on ordinary operator SQL.
-
-    ``strict_tokenizer=True`` sets the dialect tokenizer's
-    ``strict_unknown_chars=True``, where ``_handle_unknown_char`` raises
-    ``TokenizerError`` instead of warning. If ``SYMBOL_CHARS`` ever lost the
-    operator characters SQL engines build ``%``, ``&``, ``^`` and the jsonb
-    family (``@>``) from, ``_is_symbol`` would stop claiming them and strict
-    mode would start raising on ordinary SQL that uses them as operators --
-    exactly the statements in this corpus.
-    """
-    from dblift.core.sql_parser.base_tokenizer import TokenizerWarning
-
-    parser = TOKENIZING_PARSERS[dialect]()
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        statements = parser.split_statements(sql, strict_tokenizer=True)
-
-    assert statements, f"{dialect}: strict-tokenizer split produced no statements for {sql!r}"
-    assert not any(
-        issubclass(w.category, TokenizerWarning) for w in caught
-    ), f"{dialect}: strict-tokenizer split warned about an unclaimed character for {sql!r}"

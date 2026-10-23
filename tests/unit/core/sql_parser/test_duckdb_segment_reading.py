@@ -654,16 +654,6 @@ def test_nothing_is_refused_at_the_end_of_a_script():
         assert read(script)[1]
 
 
-def test_strict_tokenizer_has_no_effect_for_duckdb():
-    script = "SELECT @ # \\ ` ~ ^ % & | ? !;"
-    tokenizer = LexicalTokenizer(script, spec=DUCKDB_SPEC)
-    tokenizer.strict_unknown_chars = True
-    with warnings.catch_warnings():
-        warnings.simplefilter("error")
-        tokens = tokenizer.tokenize()
-    assert [t.text for t in tokens if t.type.name == "SYMBOL"] == list("@#\\`~^%&|?!")
-
-
 def test_the_byte_order_mark_is_dropped_only_when_the_spec_says_so():
     script = BOM + ".print x\nSELECT 1;"
     assert refusal(script)[0] == "UnsupportedMetaCommandError"

@@ -8,8 +8,8 @@ import pytest
 
 from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.core.sql_parser.tokens import TokenType
-from dblift.db.plugins.mysql.parser.mysql_regex_parser import MySqlRegexParser
 from dblift.db.plugins.mysql.parser.mysql_tokenizer import MySQLTokenizer
+from tests.support.facts_parser import facts_parser
 
 
 class TestMySQLEmptyDelimiterFix:
@@ -92,7 +92,7 @@ class TestMySQLEmptyDelimiterFix:
         """The client scanner refuses an empty delimiter before the following SQL."""
         sql = "DELIMITER\nCREATE TABLE test (id INT);"
         with pytest.raises(UnsafeStatementSplitError, match="no argument"):
-            MySqlRegexParser().split_statements(sql)
+            facts_parser("mysql").split_statements(sql)
 
     def test_delimiter_prevents_infinite_loop(self):
         """Test that empty delimiter doesn't cause infinite loop."""

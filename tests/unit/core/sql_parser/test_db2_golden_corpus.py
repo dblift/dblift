@@ -22,8 +22,8 @@ import pytest
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.sql_parser.lexical_engine import LexicalEngine
 from dblift.core.sql_parser.redaction import describe_statement, mask_string_literals
-from dblift.db.plugins.db2.parser.db2_regex_parser import DB2RegexParser
 from dblift.db.plugins.db2.parser.lexical_spec import DB2_SPEC
+from tests.support.facts_parser import facts_parser
 
 
 def recorded(record):
@@ -43,7 +43,7 @@ def entries() -> List[Dict[str, Any]]:
 
 def evaluate(script: str) -> Dict[str, Any]:
     """The recorded views of one script, or its refusal."""
-    parser = DB2RegexParser()
+    parser = facts_parser("db2")
     try:
         records = parser.split(script)
         views = {

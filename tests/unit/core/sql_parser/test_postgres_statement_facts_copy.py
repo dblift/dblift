@@ -8,8 +8,8 @@ from dblift.core.sql_parser.statement_facts import (
     SqlglotStatementFactsReader,
     StatementFacts,
 )
-from dblift.db.plugins.postgresql.parser.postgresql_regex_parser import PostgreSqlRegexParser
 from dblift.db.plugins.postgresql.quirks import PostgresqlQuirks
+from tests.support.facts_parser import facts_parser
 
 
 @pytest.mark.parametrize(
@@ -140,7 +140,7 @@ def test_copy_after_with_remains_opaque_without_guessed_effects(sql):
 
 def test_copy_inline_payload_analysis_remains_opaque():
     sql = "COPY t FROM STDIN;\n1\n\\.\n"
-    statements = PostgreSqlRegexParser().split_for_analysis(sql)
+    statements = facts_parser("postgresql").split_for_analysis(sql)
     assert len(statements) == 1
     facts = SqlglotStatementFactsReader("postgres").read(statements[0])
 

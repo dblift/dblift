@@ -81,10 +81,10 @@ class SqliteQuirks(BaseQuirks):
         super().__init__(dialect_name=dialect_name)
 
     def parser_class(self, parser_type: str) -> Optional[type]:
-        """Use statement facts for the supported SQLite parser projections."""
+        """The facts parser bound to SQLite, whatever ``parser_type`` is asked."""
         from dblift.db.plugins.sqlite.parser.sqlite_facts_parser import SQLiteFactsParser
 
-        return SQLiteFactsParser if parser_type in ("hybrid", "regex") else None
+        return SQLiteFactsParser
 
     def analyze_dml(self, statement: str) -> DmlMutation:
         """Project DML safety details from the SQLite statement facts."""

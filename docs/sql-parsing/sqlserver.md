@@ -286,19 +286,16 @@ Code in `dblift/core/sql_parser/` and `dblift/db/plugins/sqlserver/parser/`:
   records (`text`, `line`, terminator `GO`, `repeat`, offsets, analysis
   statements); it raises nothing. `batch_division.py` divides a batch into the
   statements analysis reads from the code outside lexemes and comments.
-- `sqlserver_regex_parser.py`: a delegate: `split`, `split_statements`,
-  `split_for_analysis`, `split_for_extraction` and `validate_sql` keep their
-  signatures and shapes; `SqlserverQuirks.lexical_spec()` returns the spec, so
-  `StatementSplitter("sqlserver")` skips the parser factory.
-- `sqlserver_tokenizer.py` and `EnhancedRegexParser._strip_comments_preserving_quotes`
+- `SqlserverQuirks.lexical_spec()` returns the spec; `StatementSplitter("sqlserver")` reads it
+  directly.
+- `sqlserver_tokenizer.py` and the shared comment stripper
   are unchanged. They read block comments the way the **server** does (they nest):
   object extraction, the comment-only check and literal masking ask what the server
   will see, not where the client cuts. SQL Server literal masking keeps this reader
   (`LexicalSpec.redaction_reads_engine` is false). Moving the extraction view and the
   masking onto the engine is a separate change.
 - The notice about `GO 0` is logged at INFO by `dblift.core.sql_parser.lexical_engine`
-  (it was `dblift.db.plugins.sqlserver.parser.sqlserver_regex_parser`).
-- `strict_tokenizer` has no effect: the engine has no unknown characters.
+  (it was logged by the removed SQL Server regex parser). The engine has no unknown characters.
 - The four unterminated-lexeme refusals read `unterminated string|bracketed
   identifier|quoted identifier|block comment opened at line L, column C` (they
   read `unterminated string literal|... starting at ...`); class, line and column

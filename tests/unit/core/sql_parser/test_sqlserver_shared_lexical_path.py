@@ -15,8 +15,8 @@ from dblift.db.plugins.oracle.parser.lexical_spec import ORACLE_SPEC
 from dblift.db.plugins.postgresql.parser.lexical_spec import POSTGRESQL_SPEC
 from dblift.db.plugins.sqlite.parser.lexical_spec import SQLITE_SPEC
 from dblift.db.plugins.sqlserver.parser.lexical_spec import SQLSERVER_SPEC
-from dblift.db.plugins.sqlserver.parser.sqlserver_regex_parser import SqlServerRegexParser
 from dblift.db.plugins.sqlserver.quirks import SqlserverQuirks
+from tests.support.facts_parser import facts_parser
 
 SCRIPT = "CREATE TABLE a (x INT);\nSELECT 1;\nGO\nSELECT 2\nGO 2\n"
 
@@ -61,12 +61,12 @@ def test_sqlserver_entry_points_reach_the_engine(monkeypatch, entry):
 
     monkeypatch.setattr(LexicalEngine, "split", counting_split)
     monkeypatch.setattr(LexicalEngine, "split_statements", counting_split_statements)
-    getattr(SqlServerRegexParser(), entry)(SCRIPT)
+    getattr(facts_parser("sqlserver"), entry)(SCRIPT)
     assert seen
 
 
 def test_analysis_and_extraction_project_the_execution_records():
-    parser = SqlServerRegexParser()
+    parser = facts_parser("sqlserver")
     expected = ["CREATE TABLE a (x INT);", "SELECT 1;", "SELECT 2"]
     assert parser.split_for_analysis(SCRIPT) == expected
     assert parser.split_for_extraction(SCRIPT) == expected
@@ -78,18 +78,18 @@ def test_refusal_cannot_be_softened_at_the_legacy_entry_point(strict):
     with pytest.raises(
         UnsafeStatementSplitError, match="unterminated string opened at line 1, column 8"
     ):
-        SqlServerRegexParser().split_statements("SELECT 'open", strict_tokenizer=strict)
+        facts_parser("sqlserver").split_statements("SELECT 'open")
 
 
 @pytest.mark.parametrize("script", ["\xa0", "\x0c"])
 def test_blank_but_not_empty_input_has_no_record(script):
-    parser = SqlServerRegexParser()
+    parser = facts_parser("sqlserver")
     assert parser.split(script) == []
     assert parser.split_statements(script) == []
 
 
 def test_empty_input_has_no_records():
-    parser = SqlServerRegexParser()
+    parser = facts_parser("sqlserver")
     assert parser.split("") == [] and parser.split("  \n") == []
 
 
@@ -236,7 +236,7 @@ def test_shared_analysis_projects_executed_batch_constituents(count):
     expected = ["SELECT 3;", "SELECT 4;"]
     if count:
         expected = ["SELECT 1;", "SELECT 2;"] + expected
-    assert SqlServerRegexParser().split_for_analysis(script) == expected
+    assert facts_parser("sqlserver").split_for_analysis(script) == expected
     assert LexicalEngine(SQLSERVER_SPEC).split_for_analysis(script) == expected
 
 

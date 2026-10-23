@@ -18,7 +18,7 @@ import pytest
 
 from dblift.core.sql_model.base import SqlObjectType
 from dblift.core.sql_parser.parser_factory import SqlParserFactory
-from dblift.db.plugins.mysql.parser.mysql_regex_parser import MySqlRegexParser
+from tests.support.facts_parser import facts_parser
 
 
 @pytest.mark.unit
@@ -26,7 +26,7 @@ class TestMySqlIndexObjectSchemaRegexParser:
     """Exercises ``MySqlRegexParser`` directly."""
 
     def setup_method(self):
-        self.parser = MySqlRegexParser()
+        self.parser = facts_parser("mysql")
 
     def test_create_index(self):
         objects = self.parser.extract_objects("CREATE INDEX idx1 ON myschema.mytable (col);")

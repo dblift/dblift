@@ -63,16 +63,10 @@ class MariadbQuirks(MysqlQuirks):
     }
 
     def parser_class(self, parser_type: str) -> Optional[type]:
-        """MariaDB reads ``/*M! ... */`` as code: its own splitter, for facts and for regex."""
-        if parser_type in ("hybrid", "sqlglot"):
-            from dblift.db.plugins.mariadb.facts_parser import MariaDbFactsParser
+        """MariaDB reads ``/*M! ... */`` as code: its own facts parser, whatever ``parser_type`` is asked."""
+        from dblift.db.plugins.mariadb.facts_parser import MariaDbFactsParser
 
-            return MariaDbFactsParser
-        if parser_type == "regex":
-            from dblift.db.plugins.mariadb.regex_parser import MariaDbRegexParser
-
-            return MariaDbRegexParser
-        return super().parser_class(parser_type)
+        return MariaDbFactsParser
 
     def __init__(self, dialect_name: str = "mariadb") -> None:
         """Initialize MariaDB quirks with the dialect name."""

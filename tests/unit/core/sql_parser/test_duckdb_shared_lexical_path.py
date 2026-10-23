@@ -9,7 +9,6 @@ import pytest
 from dblift.core.exceptions import UnsupportedMetaCommandError
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.migration.sql.statement_splitter import StatementSplitter
-from dblift.core.sql_parser.enhanced_regex_parser import EnhancedRegexParser
 from dblift.core.sql_parser.lexical_engine import LexicalEngine
 from dblift.core.sql_parser.lexical_tokenizer import LexicalTokenizer
 from dblift.core.sql_parser.parser_factory import SqlParserFactory
@@ -18,8 +17,6 @@ from dblift.db.plugins.duckdb.parser.duckdb_facts_parser import (
     DuckDBFactsParser,
     DuckDBStatementFactsReader,
 )
-from dblift.db.plugins.duckdb.parser.duckdb_regex_parser import DuckDBRegexParser
-from dblift.db.plugins.duckdb.parser.duckdb_tokenizer import DuckDBTokenizer
 from dblift.db.plugins.duckdb.parser.lexical_spec import DUCKDB_SPEC
 from dblift.db.plugins.duckdb.provider import DuckDBProvider
 from dblift.db.plugins.duckdb.quirks import DuckDBQuirks
@@ -31,6 +28,7 @@ from dblift.db.plugins.sqlite.parser.lexical_spec import SQLITE_SPEC
 from dblift.db.plugins.sqlserver.parser.lexical_spec import SQLSERVER_SPEC
 from dblift.db.provider_registry import ProviderRegistry
 from dblift.db.sqlalchemy_provider import SqlAlchemyProvider
+from tests.support.facts_parser import facts_parser
 
 SCRIPT = "CREATE TABLE a (x INT); -- c\nINSERT INTO a VALUES (1) /* n */;\n"
 STATEMENTS = ["CREATE TABLE a (x INT)", "-- c\nINSERT INTO a VALUES (1) /* n */"]
@@ -41,27 +39,17 @@ def test_the_quirks_hand_the_engine_its_spec():
     assert ProviderRegistry.get_quirks("duckdb").lexical_spec() is DUCKDB_SPEC
 
 
-def test_execution_uses_the_spec_without_constructing_a_regex_parser(monkeypatch):
-    def forbidden(*args, **kwargs):
-        raise AssertionError("legacy parser construction reached")
-
-    monkeypatch.setattr(SqlParserFactory, "__init__", forbidden)
-    monkeypatch.setattr(SqlParserFactory, "get_parser", forbidden)
-    monkeypatch.setattr(EnhancedRegexParser, "__init__", forbidden)
-    assert StatementSplitter("duckdb").split_statements(SCRIPT) == STATEMENTS
-
-
 def test_replaced_scanner_module_is_absent():
     scanner = "dblift.db.plugins.duckdb.parser." + "_script"
     assert importlib.util.find_spec(scanner) is None
 
 
 ENTRY_POINTS = {
-    "regex split": lambda: DuckDBRegexParser().split(SCRIPT),
-    "regex split_statements": lambda: DuckDBRegexParser().split_statements(SCRIPT),
-    "regex split_for_analysis": lambda: DuckDBRegexParser().split_for_analysis(SCRIPT),
-    "regex split_for_extraction": lambda: DuckDBRegexParser().split_for_extraction(SCRIPT),
-    "regex parse_sql": lambda: DuckDBRegexParser().parse_sql(SCRIPT),
+    "regex split": lambda: facts_parser("duckdb").split(SCRIPT),
+    "regex split_statements": lambda: facts_parser("duckdb").split_statements(SCRIPT),
+    "regex split_for_analysis": lambda: facts_parser("duckdb").split_for_analysis(SCRIPT),
+    "regex split_for_extraction": lambda: facts_parser("duckdb").split_for_extraction(SCRIPT),
+    "regex parse_sql": lambda: facts_parser("duckdb").parse_sql(SCRIPT),
     "facts split": lambda: DuckDBFactsParser().split(SCRIPT),
     "facts split_statements": lambda: DuckDBFactsParser().split_statements(SCRIPT),
     "facts split_for_analysis": lambda: DuckDBFactsParser().split_for_analysis(SCRIPT),
@@ -130,18 +118,16 @@ def test_placeholder_is_code_for_duckdb():
 
 
 def test_nothing_is_logged(caplog):
-    regex, facts, splitter = DuckDBRegexParser(), DuckDBFactsParser(), StatementSplitter("duckdb")
+    regex, facts, splitter = (
+        facts_parser("duckdb"),
+        DuckDBFactsParser(),
+        StatementSplitter("duckdb"),
+    )
     with caplog.at_level(logging.DEBUG):
         regex.split(SCRIPT)
         facts.split_statements(SCRIPT)
         splitter.split_statements(SCRIPT)
     assert [r for r in caplog.records if r.name.startswith("dblift")] == []
-
-
-def test_the_parser_keeps_the_nesting_tokenizer_for_extraction():
-    assert DuckDBRegexParser.tokenizer_class is DuckDBTokenizer
-    assert getattr(DuckDBRegexParser(), "lexical_spec", None) is None
-    assert getattr(DuckDBFactsParser(), "lexical_spec", None) is None
 
 
 def test_the_engine_is_the_one_the_quirks_name():
