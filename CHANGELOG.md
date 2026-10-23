@@ -321,12 +321,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **An Oracle procedure, function, package, trigger or type that compiles with errors now fails the migration.**
-  Oracle reports such a `CREATE [OR REPLACE]` as a success (ORA-24344) and leaves the object INVALID, so
-  `migrate` used to exit 0 with a successful history row, and an INVALID trigger then failed every
-  INSERT/UPDATE/DELETE on its table. `migrate` now exits 1, records the migration as failed and prints the
-  `PLS-` compile errors with their line and column. Oracle DDL auto-commits, so the unit stays created and
-  INVALID until a corrected `CREATE OR REPLACE` is applied.
+- **An Oracle procedure, function, package, trigger or type that still has compile errors at the end of its
+  migration now fails the migration.** Oracle reports a `CREATE [OR REPLACE]` or `ALTER ... COMPILE` with
+  compile errors as a success (ORA-24344) and leaves the object INVALID, so `migrate` used to exit 0 with a
+  successful history row, and an INVALID trigger then failed every INSERT/UPDATE/DELETE on its table. The errors
+  are checked once the last statement of the migration has run, after recompiling each such unit, so a unit may
+  reference one created later in the same file and packages may reference each other. `migrate` exits 1 and
+  records the migration as failed only for units that are still INVALID, listing each with its first `PLS-`
+  error, line and column. Oracle DDL auto-commits, so the unit stays created and INVALID until a corrected
+  `CREATE OR REPLACE` is applied.
 
 - **A `--target-version` that is not a migration's version is now refused.** `migrate --target-version v1`,
   `abc`, an empty value or `99` used to apply every pending migration and exit 0, and `-1` or `1a` applied

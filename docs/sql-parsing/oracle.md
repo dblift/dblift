@@ -141,18 +141,20 @@ Inside a PL/SQL unit nothing is counted: `;`, `BEGIN`, `END`, `CASE`,
 
 ### Units that compile with errors
 
-Oracle answers a `CREATE [OR REPLACE]` of a procedure, function, package
-[body], trigger or type [body] whose body does not compile with success
-(ORA-24344, "success with compilation error"): no exception is raised, the
-object is left INVALID and the errors are written to `USER_ERRORS`. DBLift
-treats that as a failed statement. After running such a statement it checks the
-driver's cursor warning and reads `ALL_ERRORS` for the object; if either reports
-a compile error the migration fails, the history row is recorded with
-`success = 0`, and the error message carries the `PLS-` text with line and
-column. Oracle DDL auto-commits, so the unit stays created (INVALID) as with
-any other failing DDL; fix the body and re-run `CREATE OR REPLACE`, or use
-`repair` as usual (python-oracledb 4.0 thin mode, Oracle Free 23ai, 2026-10-23:
-`DPY-7000: creation succeeded with compilation errors`).
+Oracle answers a `CREATE [OR REPLACE]` or `ALTER ... COMPILE` of a procedure,
+function, package [body], trigger, type [body] or view whose body does not
+compile with success (ORA-24344, "success with compilation error"): no
+exception is raised, the object is left INVALID and the errors are written to
+`USER_ERRORS`. DBLift does not judge such a statement on its own, because a unit
+may call one that the same file creates further down, and two packages may
+call each other. It notes the unit, and once the last statement of the
+migration has run it recompiles each noted unit with `ALTER ... COMPILE` and
+reads `ALL_ERRORS` again. A unit that is now valid is fine. If any unit is
+still INVALID the migration fails, the history row is recorded with
+`success = 0`, and the error message lists each unit with its first `PLS-`
+error, line and column. Oracle DDL auto-commits, so the unit stays created
+(INVALID) as with any other failing DDL; fix the body and re-run
+`CREATE OR REPLACE`, or use `repair` as usual.
 
 ## 6. Client directives
 

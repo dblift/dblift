@@ -18,6 +18,7 @@ from dblift.core.constants import (
 )
 from dblift.core.exceptions import (
     CallbackExecutionError,
+    ExecutionError,
     TransactionAbortedError,
     TransactionStatementError,
     UnsafeStatementSplitError,
@@ -696,7 +697,23 @@ class ExecutionEngine:
                 )
                 return False
 
+        try:
+            self._finish_statements()
+        except ExecutionError as end_error:
+            total_execution_time = int((time.time() - start_time) * SECONDS_TO_MILLISECONDS)
+            self._handle_statement_failure(
+                migration, end_error, len(statements) - 1, total_execution_time, result
+            )
+            return False
         return True
+
+    def _finish_statements(self) -> None:
+        """Let the provider give its verdict once the last statement of a unit has run."""
+        try:
+            finish = self.provider.finish_migration_statements
+        except AttributeError:  # a provider that predates the hook has nothing to settle
+            return
+        finish()
 
     def _handle_statement_failure(
         self,
@@ -1231,6 +1248,8 @@ class ExecutionEngine:
                         self.log.error(f"SQL: {describe_statement(statement)}")
                     self.log.debug(f"Failed statement: {statement}")
                     raise
+
+            self._finish_statements()
 
             if transaction_started and isinstance(self.provider, TransactionalProvider):
                 # Commit transaction for successful callback execution

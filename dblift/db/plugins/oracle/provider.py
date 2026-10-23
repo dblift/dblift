@@ -137,14 +137,44 @@ def _dictionary_spelling(identifier: str) -> str:
     return identifier.upper()
 
 
-def _plsql_unit(statement: str) -> Optional[Tuple[str, Optional[str], str]]:
-    """Return ``(type, owner, name)`` when *statement* creates a PL/SQL unit."""
+_Unit = Tuple[str, Optional[str], str]
+_Rows = List[Dict[str, object]]
+
+_ALTER_COMPILE_RE = re.compile(
+    r"^\s*ALTER\s+(PACKAGE|PROCEDURE|FUNCTION|TRIGGER|TYPE|VIEW)\s+"
+    rf"(?:({_IDENT})\s*\.\s*)?({_IDENT})\s+COMPILE\b(.*)$",
+    re.IGNORECASE | re.DOTALL,
+)
+
+#: What ``ALTER <type> ... COMPILE`` recompiles, by the keyword that follows COMPILE.
+_COMPILE_PARTS = {"PACKAGE": ("PACKAGE", "PACKAGE BODY"), "TYPE": ("TYPE", "TYPE BODY")}
+
+
+def _plsql_units(statement: str) -> List[_Unit]:
+    """Return the ``(type, owner, name)`` units *statement* creates or recompiles."""
     match = _PLSQL_UNIT_RE.match(statement)
+    if match is not None:
+        unit_type = " ".join(match.group(1).upper().split())
+        owner = _dictionary_spelling(match.group(2)) if match.group(2) else None
+        return [(unit_type, owner, _dictionary_spelling(match.group(3)))]
+    match = _ALTER_COMPILE_RE.match(statement)
     if match is None:
-        return None
-    unit_type = " ".join(match.group(1).upper().split())
+        return []
+    kind = match.group(1).upper()
+    tail = match.group(4).upper().split()
+    spec, body = _COMPILE_PARTS.get(kind, (kind, kind))
+    types = [body] if "BODY" in tail else [spec] if "SPECIFICATION" in tail else [spec, body]
     owner = _dictionary_spelling(match.group(2)) if match.group(2) else None
-    return unit_type, owner, _dictionary_spelling(match.group(3))
+    name = _dictionary_spelling(match.group(3))
+    return [(t, owner, name) for t in dict.fromkeys(types)]
+
+
+def _recompile_statement(unit: _Unit) -> str:
+    """The ``ALTER ... COMPILE`` that recompiles *unit*."""
+    unit_type, owner, name = unit
+    target = f'"{name}"' if owner is None else f'"{owner}"."{name}"'
+    kind, _, part = unit_type.partition(" ")
+    return f"ALTER {kind} {target} COMPILE" + (" BODY" if part else "")
 
 
 class _DriverWarning(Protocol):
@@ -227,6 +257,8 @@ class OracleProvider(SqlLeaseLockingProvider):
     #: ``ALL_USERS``. Instance-level; the class default stays ``None`` so
     #: providers built without ``__init__`` don't share one set.
     _legacy_schema_case_checked: Optional[Set[str]] = None
+    #: PL/SQL units the current migration left INVALID, rechecked at its end.
+    _pending_compile: Optional[Dict[_Unit, None]] = None
 
     def __init__(self, config: DbliftConfig, log: Optional[Log] = None) -> None:
         """Initialize the native Oracle provider."""
@@ -239,9 +271,11 @@ class OracleProvider(SqlLeaseLockingProvider):
 
         ``ExecutionEngine`` calls this at the start of every migration and
         callback — the unit boundary — so each one still starts from the
-        configured schema.
+        configured schema. It also drops the PL/SQL units a migration that failed
+        left to be recompiled, so they are not charged to the next one.
         """
         self._schema_applied_for = None
+        self._pending_compile = None
 
     @staticmethod
     def get_lock_name(schema: str) -> str:
@@ -348,37 +382,82 @@ class OracleProvider(SqlLeaseLockingProvider):
         if not is_plsql_block and stmt.endswith(";"):
             stmt = stmt[:-1].rstrip(ORACLE_SPEC.text_blanks)
         stmt = _refuse_edges_the_driver_strips(stmt)
-        unit = _plsql_unit(stmt)
-        if unit is None:
+        units = _plsql_units(stmt)
+        if not units:
             return super().execute_statement(stmt, schema=schema, params=params)
         with _watch_compile_warning(self._ensure_connection()) as compiled_with_errors:
             rows_affected = super().execute_statement(stmt, schema=schema, params=params)
-        self._raise_on_compile_errors(unit, bool(compiled_with_errors))
+        for unit in units:
+            self._note_unit(unit, bool(compiled_with_errors))
         return rows_affected
 
-    def _raise_on_compile_errors(self, unit: Tuple[str, Optional[str], str], warned: bool) -> None:
-        """Fail a statement that created *unit* but left it INVALID.
-
-        Oracle answers such a ``CREATE`` with success (ORA-24344), so the
-        driver warning is the signal; ``ALL_ERRORS`` is read either way, both
-        for the message and as a fallback when the driver reports no warning.
-        """
+    def _unit_state(self, unit: _Unit) -> _Rows:
+        """Dictionary rows for *unit*: its status, with one row per compile error."""
         unit_type, owner, name = unit
-        rows = self.execute_query(
-            "SELECT line, position, text FROM all_errors "
-            "WHERE owner = NVL(?, SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA')) "
-            "AND name = ? AND type = ? AND attribute = 'ERROR' ORDER BY sequence",
+        return self.execute_query(
+            "SELECT o.status, e.line, e.position, e.text FROM all_objects o "
+            "LEFT JOIN all_errors e ON e.owner = o.owner AND e.name = o.object_name "
+            "AND e.type = o.object_type AND e.attribute = 'ERROR' "
+            "WHERE o.owner = NVL(?, SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA')) "
+            "AND o.object_name = ? AND o.object_type = ? ORDER BY e.sequence",
             [owner, name, unit_type],
         )
-        if not rows and not warned:
-            return
-        details = [
-            f"line {_row_value(r, 'line')}, column {_row_value(r, 'position')}: "
-            f"{_row_value(r, 'text')}"
+
+    @staticmethod
+    def _is_invalid(rows: _Rows) -> bool:
+        return any(
+            str(_row_value(r, "status", default="")).upper() == "INVALID"
+            or _row_value(r, "text") is not None
             for r in rows
-        ]
-        message = f"{unit_type} {name} was created with compilation errors (ORA-24344)"
-        raise ExecutionError("\n".join([message + (":" if details else ""), *details]))
+        )
+
+    def _note_unit(self, unit: _Unit, warned: bool) -> None:
+        """Remember *unit* when it was left INVALID; forget it when it is valid.
+
+        Oracle answers such a ``CREATE`` or ``ALTER ... COMPILE`` with success
+        (ORA-24344), so the driver warning is a signal, but the dictionary is
+        read either way. The verdict waits for :meth:`finish_migration_statements`:
+        a unit may reference one created further down the same migration.
+        """
+        pending = self._pending_units()
+        if warned or self._is_invalid(self._unit_state(unit)):
+            pending[unit] = None
+        else:
+            pending.pop(unit, None)
+
+    def _pending_units(self) -> Dict[_Unit, None]:
+        if self._pending_compile is None:
+            self._pending_compile = {}
+        return self._pending_compile
+
+    def finish_migration_statements(self) -> None:
+        """Recompile the units left INVALID by the migration and fail if any stays so."""
+        pending = list(self._pending_units())
+        self._pending_compile = {}
+        still_invalid: List[Tuple[_Unit, _Rows]] = []
+        for unit in pending:
+            if not self._unit_state(unit):
+                continue  # dropped since
+            super().execute_statement(_recompile_statement(unit))
+            rows = self._unit_state(unit)
+            if self._is_invalid(rows):
+                still_invalid.append((unit, rows))
+        if not still_invalid:
+            return
+        count = len(still_invalid)
+        lines = [f"Compile errors remain in {count} PL/SQL unit{'s' * (count != 1)} (ORA-24344)"]
+        for (unit_type, _owner, name), rows in still_invalid:
+            errors = [r for r in rows if _row_value(r, "text") is not None]
+            if errors:
+                first = errors[0]
+                lines.append(f"{unit_type} {name}:")
+                lines.append(
+                    f"  line {_row_value(first, 'line')}, column {_row_value(first, 'position')}: "
+                    f"{_row_value(first, 'text')}"
+                )
+            else:
+                lines.append(f"{unit_type} {name}: INVALID, no compile errors reported")
+        raise ExecutionError("\n".join(lines))
 
     def execute_query(self, sql: str, params: Optional[List[Any]] = None) -> List[Dict[str, Any]]:
         """Execute Oracle query SQL after stripping plain trailing semicolons."""

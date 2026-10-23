@@ -145,3 +145,119 @@ def test_replacing_an_invalid_unit_with_a_fixed_body_succeeds(owner, tmp_path) -
 
     assert result.success, result.error_message
     assert _status(admin, schema, "BAD_P") == ["VALID"]
+
+
+# --- the verdict waits for the end of the migration ------------------------------------------------
+
+FORWARD_REFERENCE = (
+    "CREATE OR REPLACE PROCEDURE a_p AS\nBEGIN\n  b_p;\nEND;\n/\n"
+    "CREATE OR REPLACE PROCEDURE b_p AS\nBEGIN\n  NULL;\nEND;\n/\n"
+)
+
+MUTUAL_PACKAGES = (
+    "CREATE OR REPLACE PACKAGE pk_a AS\n  FUNCTION f RETURN NUMBER;\nEND;\n/\n"
+    "CREATE OR REPLACE PACKAGE pk_b AS\n  FUNCTION f RETURN NUMBER;\nEND;\n/\n"
+    "CREATE OR REPLACE PACKAGE BODY pk_a AS\n"
+    "  FUNCTION f RETURN NUMBER IS\n  BEGIN\n    RETURN 1;\n  END;\n"
+    "  PROCEDURE g IS\n    n NUMBER := pk_b.f;\n  BEGIN\n    NULL;\n  END;\nEND;\n/\n"
+    "CREATE OR REPLACE PACKAGE BODY pk_b AS\n"
+    "  FUNCTION f RETURN NUMBER IS\n  BEGIN\n    RETURN pk_a.f;\n  END;\nEND;\n/\n"
+)
+
+
+def test_forward_reference_inside_one_migration_succeeds(owner, tmp_path) -> None:
+    admin, schema = owner
+    _write(tmp_path, "1.0.0", "unit", FORWARD_REFERENCE)
+
+    result = _migrate(schema, tmp_path)
+
+    print(
+        "forward:",
+        result.success,
+        _history(admin, schema),
+        _status(admin, schema, "A_P"),
+        _status(admin, schema, "B_P"),
+    )
+    assert result.success, result.error_message
+    assert _history(admin, schema) == [("V1_0_0__unit.sql", True)]
+    assert _status(admin, schema, "A_P") == ["VALID"]
+    assert _status(admin, schema, "B_P") == ["VALID"]
+
+
+def test_mutually_dependent_package_bodies_succeed(owner, tmp_path) -> None:
+    admin, schema = owner
+    _write(tmp_path, "1.0.0", "pkgs", MUTUAL_PACKAGES)
+
+    result = _migrate(schema, tmp_path)
+
+    print(
+        "mutual:",
+        result.success,
+        _history(admin, schema),
+        _status(admin, schema, "PK_A"),
+        _status(admin, schema, "PK_B"),
+    )
+    assert result.success, result.error_message
+    assert _status(admin, schema, "PK_A") == ["VALID", "VALID"]
+    assert _status(admin, schema, "PK_B") == ["VALID", "VALID"]
+
+
+def test_unit_that_stays_broken_after_the_whole_file_names_the_unit(owner, tmp_path) -> None:
+    admin, schema = owner
+    _write(tmp_path, "1.0.0", "unit", FORWARD_REFERENCE + BAD_PROCEDURE)
+
+    result = _migrate(schema, tmp_path)
+
+    print(
+        "broken:",
+        result.success,
+        _history(admin, schema),
+        _status(admin, schema, "A_P"),
+        _status(admin, schema, "BAD_P"),
+    )
+    print((result.error_message or "").splitlines()[:4])
+    assert not result.success
+    message = result.error_message or ""
+    assert "BAD_P" in message.upper() and "PLS-" in message
+    assert "A_P" not in message.upper().replace("BAD_P", "")
+    assert _history(admin, schema) == [("V1_0_0__unit.sql", False)]
+    assert _status(admin, schema, "A_P") == ["VALID"]
+    assert _status(admin, schema, "BAD_P") == ["INVALID"]
+
+
+def test_alter_compile_with_errors_fails_the_migration(owner, tmp_path) -> None:
+    admin, schema = owner
+    _write(
+        tmp_path,
+        "1.0.0",
+        "unit",
+        TABLE
+        + "CREATE OR REPLACE PROCEDURE ac AS\nBEGIN\n  INSERT INTO emp (id) VALUES (1);\nEND;\n/\n",
+    )
+    _write(tmp_path, "2.0.0", "break", "DROP TABLE emp;\nALTER PROCEDURE ac COMPILE;\n")
+
+    result = _migrate(schema, tmp_path)
+
+    print("alter-fails:", result.success, _history(admin, schema), _status(admin, schema, "AC"))
+    print((result.error_message or "").splitlines()[:4])
+    assert not result.success
+    assert "AC" in (result.error_message or "").upper()
+    assert _history(admin, schema)[-1] == ("V2_0_0__break.sql", False)
+    assert _status(admin, schema, "AC") == ["INVALID"]
+
+
+def test_alter_compile_that_fixes_a_unit_succeeds(owner, tmp_path) -> None:
+    admin, schema = owner
+    # Left INVALID on purpose: its table does not exist yet.
+    SqlAlchemyProvider.execute_statement(
+        admin,
+        f'CREATE OR REPLACE PROCEDURE "{schema}".ac AS BEGIN INSERT INTO emp (id) VALUES (1); END;',
+    )
+    assert _status(admin, schema, "AC") == ["INVALID"]
+    _write(tmp_path, "1.0.0", "fix", TABLE + "ALTER PROCEDURE ac COMPILE;\n")
+
+    result = _migrate(schema, tmp_path)
+
+    print("alter-fixes:", result.success, _history(admin, schema), _status(admin, schema, "AC"))
+    assert result.success, result.error_message
+    assert _status(admin, schema, "AC") == ["VALID"]

@@ -250,6 +250,14 @@ class BaseProvider(
         """
         return False
 
+    def finish_migration_statements(self) -> None:
+        """Hook run after the last statement of a migration or callback.
+
+        Dialects whose server defers part of a statement's verdict (Oracle
+        reports a PL/SQL unit that does not compile as a success) check it
+        here and raise to fail the migration. The default does nothing.
+        """
+
     def close(self) -> None:
         """Close the database connection if it exists.
 

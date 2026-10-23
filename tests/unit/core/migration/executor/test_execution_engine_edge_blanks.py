@@ -4,6 +4,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from dblift.core.exceptions import ExecutionError
 from dblift.core.migration.executor.execution_engine import ExecutionEngine
 from dblift.core.migration.formats import MigrationFormat
 from dblift.core.migration.sql.execution_statement import _position
@@ -151,3 +152,34 @@ def test_the_line_of_a_statement_counts_the_record_of_kept_characters_before_it(
     statements = StatementSplitter("db2").split_statements(script)
     assert _position(statements, 1, "db2", script) == "line 2"
     assert _position(statements, 2, "db2", script) == "line 3"
+
+
+def test_the_provider_gets_the_end_of_migration_hook_after_the_last_statement():
+    engine = _engine("oracle")
+    migration, result = MagicMock(), MagicMock()
+    result.has_error.return_value = False
+    order = []
+    engine.sql_execution_service.execute_statement.side_effect = lambda *a, **k: (
+        order.append("statement"),
+        (False, 0),
+    )[1]
+    engine.provider.finish_migration_statements.side_effect = lambda: order.append("finish")
+
+    assert engine._execute_statements(
+        ["SELECT 1 FROM dual", "SELECT 2 FROM dual"], migration, result, 0.0
+    )
+
+    assert order == ["statement", "statement", "finish"]
+
+
+def test_a_failure_at_the_end_of_the_migration_fails_the_migration():
+    engine = _engine("oracle")
+    migration, result = MagicMock(), MagicMock()
+    engine.provider.finish_migration_statements.side_effect = ExecutionError(
+        "PROCEDURE A_P invalid"
+    )
+
+    ok = engine._execute_statements(["SELECT 1 FROM dual"], migration, result, 0.0)
+
+    assert ok is False
+    assert "PROCEDURE A_P invalid" in str(result.set_error.call_args)
