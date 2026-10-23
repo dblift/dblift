@@ -16,6 +16,7 @@ from dblift.db.dml_analysis import (
     statement_dml_table,
 )
 from dblift.db.provider_registry import ProviderRegistry
+from tests.support.facts_parser import facts_parser
 
 _quirks = ProviderRegistry.get_quirks
 

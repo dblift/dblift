@@ -21,7 +21,7 @@ from dblift.core.migration.sql.statement_reader import StatementReader, is_selec
 from dblift.core.sql_model.dialect import get_sqlglot_dialect
 
 
-class TestSqlAnalyzerDialectRequired(unittest.TestCase):
+class TestStatementReaderDialectRequired(unittest.TestCase):
     """ADR-26 E5: ``dialect`` is a required argument (no hidden default)."""
 
     def test_dialect_is_required(self):
@@ -434,7 +434,7 @@ class TestAnalyzeStatement(unittest.TestCase):
         self.assertEqual(unread["objects"], [])
 
 
-class TestSqlAnalyzerInit(unittest.TestCase):
+class TestStatementReaderInit(unittest.TestCase):
     """Tests for StatementReader initialization paths."""
 
     def test_dialect_normalized_to_lowercase(self):
