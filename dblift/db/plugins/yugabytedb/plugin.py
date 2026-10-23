@@ -37,5 +37,5 @@ PLUGIN: PluginInfo = make_pg_compatible_plugin(
 # still outer */ SELECT 1;` returned one `SELECT 1` row with no error and
 # left `victim` in place -- the whole span read as one comment. Block
 # comments nest here the same way they do in PostgreSQL, so this keeps
-# inheriting PostgresqlQuirks.parser_class unchanged (no quirks_overrides
+# inheriting PostgresqlQuirks' lexical spec unchanged (no quirks_overrides
 # entry for it).

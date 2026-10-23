@@ -5,9 +5,8 @@ from unittest.mock import MagicMock
 import pytest
 
 from dblift.core.migration.sql.script_analysis import analyse_script
-from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.migration.sql.sql_execution_service import SqlExecutionService
-from dblift.core.sql_parser import SqlParserFactory
+from dblift.core.migration.sql.statement_reader import StatementReader
 from dblift.core.sql_parser.statement_facts import SqlglotStatementFactsReader
 from dblift.core.sql_parser.statement_facts_parser import StatementFactsParser
 from dblift.db.dml_analysis import (
@@ -17,6 +16,7 @@ from dblift.db.dml_analysis import (
     statement_dml_table,
 )
 from dblift.db.provider_registry import ProviderRegistry
+from tests.support.facts_parser import facts_parser
 
 _quirks = ProviderRegistry.get_quirks
 
@@ -33,9 +33,9 @@ def test_snowflake_reads_statement_facts():
     assert quirks.statement_facts_reader().dialect == "snowflake"
 
 
-def test_hybrid_factory_serves_the_facts_parser():
-    factory = SqlParserFactory("snowflake", "hybrid")
-    parser = factory.get_parser()
+def test_the_facts_parser_reads_the_dialect():
+    factory = facts_parser("snowflake")
+    parser = factory
 
     assert isinstance(parser, StatementFactsParser)
     assert parser.dialect_name == "snowflake"
@@ -45,11 +45,11 @@ def test_hybrid_factory_serves_the_facts_parser():
 
 
 def test_regex_factory_type_serves_the_facts_parser_on_the_lexical_spec():
-    from dblift.db.plugins.snowflake.lexical_parser import SnowflakeLexicalParser
+    from tests.support.facts_parser import facts_parser
 
-    assert isinstance(SqlParserFactory("snowflake", "regex").get_parser(), StatementFactsParser)
-    assert isinstance(SnowflakeLexicalParser(), StatementFactsParser)
-    assert SnowflakeLexicalParser().split_statements("SELECT 1; SELECT 2;") == [
+    assert isinstance(facts_parser("snowflake"), StatementFactsParser)
+    assert isinstance(facts_parser("snowflake"), StatementFactsParser)
+    assert facts_parser("snowflake").split_statements("SELECT 1; SELECT 2;") == [
         "SELECT 1",
         "SELECT 2",
     ]
@@ -76,7 +76,7 @@ def test_script_analysis_goes_through_facts():
 
 
 def test_analyzer_extracts_objects_from_facts():
-    analyzer = SqlAnalyzer("snowflake")
+    analyzer = StatementReader("snowflake")
 
     assert [obj["object_name"] for obj in analyzer.extract_objects(CTE_UPDATE)] == [
         "default_schema.CHILD"
@@ -108,7 +108,7 @@ def test_execution_journal_receives_the_facts_objects(sql, expected):
     provider.execute_statement.return_value = 1
     journal = MagicMock()
     service = SqlExecutionService(
-        provider, SqlAnalyzer("snowflake"), journal=journal, quirks=_quirks("snowflake")
+        provider, StatementReader("snowflake"), journal=journal, quirks=_quirks("snowflake")
     )
 
     service.execute_statement(sql)
@@ -126,7 +126,7 @@ def test_unmodelled_object_kinds_reach_no_journal_object(sql):
     provider.execute_statement.return_value = 1
     journal = MagicMock()
     service = SqlExecutionService(
-        provider, SqlAnalyzer("snowflake"), journal=journal, quirks=_quirks("snowflake")
+        provider, StatementReader("snowflake"), journal=journal, quirks=_quirks("snowflake")
     )
 
     service.execute_statement(sql)

@@ -48,9 +48,9 @@ class SplitOutcome:
 
 @lru_cache(maxsize=None)
 def _analyzer(dialect: str):  # type: ignore[no-untyped-def]
-    from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+    from dblift.core.migration.sql.statement_reader import StatementReader
 
-    return SqlAnalyzer(dialect)
+    return StatementReader(dialect)
 
 
 def split_script(dialect: str, script: str) -> SplitOutcome:

@@ -10,7 +10,6 @@ from dblift.core.sql_parser.statement_facts import (
     SqlglotStatementFactsReader,
     StatementFacts,
 )
-from dblift.core.sql_parser.statement_facts_parser import StatementFactsParser
 from dblift.db.plugins.duckdb.parser.lexical_spec import DUCKDB_SPEC
 
 _IDENTIFIER = r'(?:"(?:[^"]|"")+"|[A-Za-z_][\w$]*)'
@@ -57,13 +56,3 @@ class DuckDBStatementFactsReader(SqlglotStatementFactsReader):
             if macro is not None:
                 return StatementFacts("CREATE", "DDL", (macro,))
         return facts
-
-
-class DuckDBFactsParser(StatementFactsParser):
-    """The generic statement-facts parser, bound to the DuckDB plugin."""
-
-    def __init__(self) -> None:
-        """Bind the DuckDB plugin's spec and facts reader."""
-        from dblift.db.provider_registry import ProviderRegistry
-
-        super().__init__(ProviderRegistry.get_quirks("duckdb"))

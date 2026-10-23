@@ -4,7 +4,6 @@ import pytest
 
 from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.core.sql_parser.lexical_engine import LexicalEngine
-from dblift.core.sql_parser.parser_context import ParserContext
 from dblift.core.sql_parser.tokens import TokenType
 from dblift.db.plugins.oracle.parser.lexical_spec import ORACLE_SPEC
 from dblift.db.plugins.oracle.parser.oracle_tokenizer import OracleTokenizer
@@ -126,10 +125,10 @@ END test_pkg;"""
 class TestOracleNationalQQuote:
     @pytest.mark.parametrize("prefix", ["nq", "NQ", "Nq", "nQ", "q"])
     def test_alternative_quote_literal_with_embedded_quote_splits_cleanly(self, prefix):
-        from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+        from dblift.core.migration.sql.statement_reader import StatementReader
 
         script = f"SELECT {prefix}'[it's]' FROM dual;\nSELECT 1 FROM dual;"
-        assert SqlAnalyzer("oracle").split_statements(script) == [
+        assert StatementReader("oracle").split_statements(script) == [
             f"SELECT {prefix}'[it's]' FROM dual;",
             "SELECT 1 FROM dual;",
         ]

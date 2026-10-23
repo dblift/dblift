@@ -184,7 +184,7 @@ class TestParseSqlStatementsMssqlAlias(unittest.TestCase):
         migration = _make_sql_migration(content="SELECT 1;")
         result = MagicMock()
 
-        with patch("dblift.core.migration.executor.execution_engine.SqlAnalyzer") as analyzer:
+        with patch("dblift.core.migration.executor.execution_engine.StatementReader") as analyzer:
             analyzer.return_value.split_statements.return_value = ["SELECT 1"]
             assert engine._parse_sql_statements(migration, result) == ["SELECT 1"]
         assert analyzer.call_args.kwargs["dialect"] == "sqlserver"
@@ -198,7 +198,7 @@ class TestParseSqlStatementsMssqlAlias(unittest.TestCase):
         migration = _make_sql_migration(content="SELECT 1;")
         result = MagicMock()
 
-        with patch("dblift.core.migration.executor.execution_engine.SqlAnalyzer") as analyzer:
+        with patch("dblift.core.migration.executor.execution_engine.StatementReader") as analyzer:
             analyzer.return_value.split_statements.return_value = ["SELECT 1"]
             assert engine._parse_sql_statements(migration, result) == ["SELECT 1"]
         assert analyzer.call_args.kwargs["dialect"] == "postgres"

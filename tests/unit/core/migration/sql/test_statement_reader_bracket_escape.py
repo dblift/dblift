@@ -18,10 +18,10 @@ silently drift apart again.
 
 import unittest
 
-from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+from dblift.core.migration.sql.statement_reader import StatementReader
 
 
-def _only(analyzer: SqlAnalyzer, sql: str) -> dict:
+def _only(analyzer: StatementReader, sql: str) -> dict:
     """Return the single object ``sql`` affects, failing if there is not one."""
     objects = analyzer.extract_objects(sql)
     assert len(objects) == 1, f"expected exactly one object for {sql!r}, got {objects!r}"
@@ -34,7 +34,7 @@ class TestCreateIndexBracketDoubling(unittest.TestCase):
     so a downstream re-quote does not double them up."""
 
     def setUp(self):
-        self.analyzer = SqlAnalyzer(dialect="sqlserver")
+        self.analyzer = StatementReader(dialect="sqlserver")
 
     def test_plain_bracketed_name_is_unescaped(self):
         # The exact statement from the issue report.
@@ -76,7 +76,7 @@ class TestBacktickAndDoubleQuoteAcrossDialects(unittest.TestCase):
     regex-fallback path, not just SQL Server's."""
 
     def test_postgresql_double_quote_doubling_is_unescaped(self):
-        analyzer = SqlAnalyzer(dialect="postgresql")
+        analyzer = StatementReader(dialect="postgresql")
         obj = _only(analyzer, 'CREATE INDEX "idx""1" ON "sch"."t"("c");')
         self.assertEqual(obj["object_name"], 'default_schema.idx"1')
 
@@ -86,7 +86,7 @@ class TestGenericDdlBracketDoubling(unittest.TestCase):
     branch, not just CREATE INDEX -- CREATE TABLE and DROP INDEX included."""
 
     def setUp(self):
-        self.analyzer = SqlAnalyzer(dialect="sqlserver")
+        self.analyzer = StatementReader(dialect="sqlserver")
 
     def test_create_table_doubled_bracket(self):
         obj = _only(self.analyzer, "CREATE TABLE [real]]one] (id int);")

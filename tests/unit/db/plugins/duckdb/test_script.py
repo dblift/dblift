@@ -14,13 +14,13 @@ import pytest
 from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
 from dblift.core.sql_parser.lexical_engine import LexicalEngine
 from dblift.core.sql_parser.statement import Statement
-from dblift.db.plugins.duckdb.parser.duckdb_facts_parser import DuckDBFactsParser
 from dblift.db.plugins.duckdb.parser.lexical_spec import DUCKDB_SPEC
+from tests.support.facts_parser import facts_parser
 
 
 def records(script: str) -> list[Statement]:
     """The records the shared engine cuts ``script`` into."""
-    return DuckDBFactsParser().split(script)
+    return facts_parser("duckdb").split(script)
 
 
 def texts(script: str) -> list[str]:

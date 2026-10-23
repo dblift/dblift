@@ -13,7 +13,7 @@ import pytest
 from dblift.core.exceptions import ParserError
 from dblift.core.migration.sql.lint import REVIEW, lint_script
 from dblift.core.migration.sql.script_analysis import analyse_script
-from dblift.core.sql_parser.parser_factory import SqlParserFactory
+from dblift.core.sql_parser.statement_facts_parser import StatementFactsParser
 from dblift.db.plugins.postgresql.quirks import PostgresqlQuirks
 from dblift.db.provider_registry import ProviderRegistry
 
@@ -48,7 +48,7 @@ def text_model_calls(monkeypatch):
         calls.append(args)
         return None
 
-    monkeypatch.setattr(SqlParserFactory, "parse_sql", spy)
+    monkeypatch.setattr(StatementFactsParser, "parse_sql", spy)
     return calls
 
 
@@ -65,10 +65,10 @@ def test_analysis_builds_no_text_model(dialect, script, text_model_calls):
 def test_a_parser_that_cannot_be_built_is_reported_not_replaced_by_a_text_model(
     monkeypatch, text_model_calls
 ):
-    def refuse(self):
+    def refuse(self, quirks):
         raise ParserError("no parser")
 
-    monkeypatch.setattr(SqlParserFactory, "get_parser", refuse)
+    monkeypatch.setattr(StatementFactsParser, "__init__", refuse)
     analysis = analyse_script(SCRIPT, "postgresql")
 
     assert analysis.errors == ("parser error: no parser",)

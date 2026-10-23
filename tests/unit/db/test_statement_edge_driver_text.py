@@ -15,14 +15,14 @@ for DuckDB before a terminator and a name character as the last character of the
 from __future__ import annotations
 
 import threading
-from typing import Callable, List, Optional, Tuple
+from typing import List, Optional
 from unittest import mock
 
 import pytest
 
 from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
 from dblift.core.migration.sql.migration_sql_parser import parse_migration_sql
-from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+from dblift.core.migration.sql.statement_reader import StatementReader
 from dblift.db.plugins.cockroachdb.provider import CockroachdbProvider
 from dblift.db.plugins.db2.provider import Db2Provider
 from dblift.db.plugins.duckdb.provider import DuckDBProvider
@@ -79,7 +79,7 @@ def provider_with_recorder(dialect: str):  # type: ignore[no-untyped-def]
 
 def drive(dialect: str, script: str) -> List[str]:
     """Split ``script`` as a migration is, run each statement through the provider, return what the driver got."""
-    statements = parse_migration_sql(SqlAnalyzer(dialect=dialect), script, mock.MagicMock())
+    statements = parse_migration_sql(StatementReader(dialect=dialect), script, mock.MagicMock())
     provider, sent = provider_with_recorder(dialect)
     for statement in statements:
         provider.execute_statement(statement)
@@ -201,7 +201,7 @@ def test_copy_from_stdin_header_ending_in_a_name_character_is_refused() -> None:
     """``STDIN`` and a no-break space are one name on the engine, so no COPY header opens."""
     script = f"COPY t (a) FROM STDIN{NBSP};\n1\n\\.\n"
     with pytest.raises(UnsupportedMetaCommandError):
-        parse_migration_sql(SqlAnalyzer(dialect="postgresql"), script, mock.MagicMock())
+        parse_migration_sql(StatementReader(dialect="postgresql"), script, mock.MagicMock())
 
 
 def test_duckdb_returning_rewrite_keeps_a_final_no_break_space() -> None:

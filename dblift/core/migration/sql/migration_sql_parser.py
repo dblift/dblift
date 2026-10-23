@@ -66,7 +66,7 @@ def parse_migration_sql(
             if for_analysis
             else analyzer.split_statements(content)
         )
-        log.debug(f"SqlAnalyzer split returned {len(statements)} statements")
+        log.debug(f"StatementReader split returned {len(statements)} statements")
         return statements
     except (UnsafeStatementSplitError, UnsupportedMetaCommandError):
         # Preserve the dialect scanner's deliberate refusal and its location.

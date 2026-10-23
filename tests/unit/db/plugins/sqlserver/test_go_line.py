@@ -7,7 +7,7 @@ from dataclasses import replace
 import pytest
 
 from dblift.core.exceptions import UnsafeStatementSplitError
-from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+from dblift.core.migration.sql.statement_reader import StatementReader
 from dblift.core.sql_parser.lexical_engine import LexicalEngine
 from dblift.core.sql_parser.statement import Statement
 from dblift.db.plugins.sqlserver.parser.lexical_spec import SQLSERVER_SPEC
@@ -25,7 +25,7 @@ def batches_of(script, spec=SQLSERVER_SPEC):
 
 
 def _strings(script):
-    return SqlAnalyzer("sqlserver").split_statements(script)
+    return StatementReader("sqlserver").split_statements(script)
 
 
 @pytest.mark.parametrize(

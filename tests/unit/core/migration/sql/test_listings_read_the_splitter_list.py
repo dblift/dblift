@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from dblift.core.migration.sql.script_analysis import analyse_script
-from dblift.core.sql_parser.parser_factory import SqlParserFactory
+from tests.support.facts_parser import facts_parser
 from tests.unit._migration_factory import make_migration
 
 pytestmark = pytest.mark.unit
@@ -29,7 +29,7 @@ def test_an_analysed_statement_is_the_text_that_is_sent(dialect):
 
 @pytest.mark.parametrize("dialect", FACT_DIALECTS)
 def test_validate_sql_counts_one_statement_for_a_trailing_comment(dialect):
-    parser = SqlParserFactory(dialect).get_parser()
+    parser = facts_parser(dialect)
     assert parser.validate_sql(TAIL)["statements_found"] == 1
     assert [s.sql_text for s in parser.parse_sql(TAIL).statements] == ["CREATE TABLE t(a int)"]
     assert len(parser.extract_objects(TAIL)) == 1

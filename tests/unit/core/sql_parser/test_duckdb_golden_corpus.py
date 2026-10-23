@@ -16,7 +16,7 @@ from typing import Any, Dict, List
 
 import pytest
 
-from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+from dblift.core.migration.sql.statement_reader import StatementReader
 from dblift.core.sql_parser.lexical_engine import LexicalEngine
 from dblift.core.sql_parser.redaction import describe_statement, mask_string_literals
 from dblift.db.plugins.duckdb.quirks import DuckDBQuirks
@@ -47,7 +47,7 @@ def evaluate(script: str) -> Dict[str, Any]:
             "records": [recorded(r) for r in records],
             "strings": parser.split_statements(script),
             "extraction": parser.split_for_extraction(script),
-            "analysis": SqlAnalyzer("duckdb").split_statements_for_analysis(script),
+            "analysis": StatementReader("duckdb").split_statements_for_analysis(script),
             "blanked": DuckDBQuirks().blank_comments(script),
             "masking": [
                 [mask_string_literals(r.text, "duckdb"), describe_statement(r.text, "duckdb")]

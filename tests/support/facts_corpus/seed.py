@@ -156,9 +156,9 @@ def assert_only_added(before: List[Dict[str, Any]], after: List[Dict[str, Any]])
 
 def split(family: str, sql: str) -> List[str]:
     """Split a script into statements with the family's analysis splitter."""
-    from dblift.core.sql_parser.parser_factory import SqlParserFactory
+    from tests.support.facts_parser import facts_parser
 
-    return list(SqlParserFactory(family).get_parser().split_for_analysis(sql))
+    return list(facts_parser(family).split_for_analysis(sql))
 
 
 def seed(root: Path, inputs_path: Path, sources_path: Path) -> int:

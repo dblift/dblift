@@ -1,7 +1,7 @@
 # Statement facts corpus
 
 A snapshot of what the statement-facts reader and the two text-extraction paths
-(`SqlParserFactory.extract_objects` and `SqlAnalyzer.extract_objects`) return today, for every
+(`SqlParserFactory.extract_objects` and `StatementReader.extract_objects`) return today, for every
 distinct statement the parser tests feed them, per dialect family. It exists so a reader change
 shows up as a diff against a frozen baseline and the readers can be compared with the extraction
 they are meant to replace. Real inputs only: no generated cases.
@@ -35,6 +35,8 @@ Families: `postgresql` (also covers the PostgreSQL derivatives), `mysql` (also M
   (`statement_dml_table`), `events` and `updated_columns` (`analyze_dml`), `predicate`
   (`dml_where_predicate`), `full_table` (`is_full_table_dml`), each called for the family's quirks.
   `old` is `null` for SQLite and DuckDB, whose extraction already is the facts reader.
+  The code that recorded these two paths (the parser factory and the statement reader's text
+  extraction) is removed: `old` is carried over, never recomputed, and a new recording writes `null`.
 * The parse models are not stored: they can be recomputed from the statement.
 
 ## Why JSONL

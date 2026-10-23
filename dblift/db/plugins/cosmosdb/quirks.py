@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Dict, Optional
+from typing import Dict
 
 from dblift.db.base_quirks import BaseQuirks
 
@@ -42,8 +42,7 @@ class CosmosdbQuirks(BaseQuirks):
     # Wave B hooks.
     native_driver_display = "Azure Cosmos DB SDK for Python"
     requires_credentials = False
-    # No validate-sql offline lint: ``parser_class()`` below returns None for
-    # every parser_type because Cosmos DB has no SQL for dblift to read, so a
+    # No validate-sql offline lint: Cosmos DB has no SQL for dblift to read, so a
     # placeholder connection would not unlock anything. ``lint_placeholder_url``
     # stays unset (``None``, from BaseQuirks).
     connection_identifier_attrs = ("url", "account_endpoint")
@@ -55,18 +54,6 @@ class CosmosdbQuirks(BaseQuirks):
     def __init__(self, dialect_name: str = "cosmosdb") -> None:
         """Initialize Cosmos DB quirks with the dialect name."""
         super().__init__(dialect_name=dialect_name)
-
-    def parser_class(self, parser_type: str) -> Optional[type]:
-        """No parser — Cosmos has no SQL for dblift to read.
-
-        The dedicated regex parser existed to read the pseudo-DDL
-        (``CREATE CONTAINER``, ``SET THROUGHPUT``, …) that the SDK
-        translator executed; both are gone, and no other parser stands in
-        for it. Cosmos migrations are Python, and read-side queries are native Cosmos SQL
-        executed verbatim — never parsed into a schema model. Asking for a
-        parser is therefore an error, not a silent degradation.
-        """
-        return None
 
     def type_equivalents(self) -> "Dict[str, str]":
         """CosmosDB has no relational type aliases — JSON documents store untyped values."""

@@ -1,4 +1,4 @@
-"""Every section 10 row of docs/sql-parsing/mysql.md and mariadb.md, run through SqlAnalyzer.split_statements.
+"""Every section 10 row of docs/sql-parsing/mysql.md and mariadb.md, run through StatementReader.split_statements.
 
 The mysql.md rows run for both engines (MariaDB reads a script the way MySQL does, except where
 mariadb.md says otherwise); the mariadb.md rows run for MariaDB only. Rows the splitter gets wrong

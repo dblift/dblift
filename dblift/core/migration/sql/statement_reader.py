@@ -1,23 +1,17 @@
-"""SQL analyzer — parses migration scripts to extract tables, views, indexes, and other objects."""
+"""Statement reader: splits migration SQL and reads each statement's kind and objects from facts."""
 
 import logging
 import re
-from typing import Any, Dict, List, Literal, Optional, Tuple
+from typing import Any, Dict, List, Literal, Optional
 
-from dblift.core.exceptions import ParserNotAvailableError
 from dblift.core.logger import Log
 from dblift.core.migration.sql.statement_splitter import StatementSplitter
 from dblift.core.sql_model.dialect import get_sqlglot_dialect
-from dblift.core.sql_parser._deprecation import internal_parser_construction, warn_direct_parser
-
-# Import parser system components
 from dblift.core.sql_parser.dialects.identifier_tokens import (
     BACKTICK_IDENTIFIER,
     BRACKET_IDENTIFIER,
     DOUBLE_QUOTED_IDENTIFIER,
 )
-from dblift.core.sql_parser.parser_factory import SqlParserFactory
-from dblift.core.sql_parser.parser_interface import SqlParserInterface
 from dblift.db.dml_analysis import (
     DEFAULT_QUOTE_PAIRS,
     _find_top_level_keyword,
@@ -63,82 +57,29 @@ def is_select_into(statement: str) -> bool:
     )
 
 
-class SqlAnalyzer:
-    """Analyzes SQL statements for type and affected objects."""
+class StatementReader:
+    """Splits SQL and reads each statement's kind and objects from the plugin's statement facts."""
 
     def __init__(
         self,
         dialect: str,
         logger: Optional[Log] = None,
-        parser_factory: Any = None,
         statement_splitter: Optional[StatementSplitter] = None,
         analysis_mode: Literal["full", "execution"] = "full",
     ):
-        """Initialize SQL analyzer.
-
-        Args:
-            dialect: SQL dialect to use (required — callers resolve it from
-                config/provider or the plugin registry; ADR-26 E5)
-            logger: Optional logger to use
-            parser_factory: Optional parser factory to use
-        """
-        warn_direct_parser("SqlAnalyzer")
+        """Bind *dialect*; the splitter is built from its lexical spec unless one is given."""
         self.dialect = dialect.lower()
         self.analysis_mode = analysis_mode
         self.logger = logger or logging.getLogger(__name__)
-
-        # Statement execution only needs regex/tokenizer splitting. Rich parser
-        # construction remains reserved for schema/object analysis paths.
-        self._db_specific_parser = None
-        try:
-            with internal_parser_construction():
-                classification_factory = SqlParserFactory(self.dialect, parser_type="regex")
-            self._db_specific_parser = classification_factory.get_parser()
-
-            self.logger.debug(
-                f"Initialized parser: {type(self._db_specific_parser).__name__} for dialect: {self.dialect}"
-            )
-        except Exception as e:
-            # Use a basic logger if the class logger isn't available yet
-            import logging as log_module
-
-            basic_logger = log_module.getLogger(__name__)
-            basic_logger.debug(
-                f"Failed to initialize database-specific parser for {self.dialect}: {e}"
-            )
-            self._db_specific_parser = None
-
         self.statement_splitter = statement_splitter or StatementSplitter(
             self.dialect, logger=self.logger
         )
 
-        # Rich parser construction is needed only by explicit analysis consumers.
-        self._parser_factory: Any = parser_factory
-
-    @property
-    def parser_factory(self) -> Any:
-        """Return the rich parser factory, constructing it on first access."""
-        if self._parser_factory is None:
-            with internal_parser_construction():
-                self._parser_factory = SqlParserFactory(self.dialect)
-        return self._parser_factory
-
-    @parser_factory.setter
-    def parser_factory(self, value: Any) -> None:
-        """Keep explicit parser factory replacements available to consumers."""
-        self._parser_factory = value
-
     def prepare_object_analysis(self) -> None:
-        """Load the parser selected for object extraction before SQL is applied."""
-        get_parser = getattr(self.parser_factory, "get_parser", None)
-        if get_parser is None:
-            return  # An injected factory without a preparation hook is opaque.
-        try:
-            get_parser()
-        except ParserNotAvailableError as exc:
-            if isinstance(exc.__cause__, ModuleNotFoundError):
-                raise exc.__cause__ from None
-            raise
+        """Fail before any SQL is applied when object analysis needs SQLGlot and it is missing."""
+        from dblift.core.migration.executor.migration_executor import require_analysis_support
+
+        require_analysis_support(self.analysis_mode)
 
     def get_statement_type(self, sql: str) -> str:
         """Get the high-level type of SQL statement (DDL, DML, QUERY, UNKNOWN).
@@ -327,76 +268,6 @@ class SqlAnalyzer:
             "parsed_with": "facts",
         }
 
-    def validate_sql(self, sql: str) -> Tuple[bool, Optional[str]]:
-        """Validate SQL syntax and return (is_valid, error_message)."""
-        # Try to use database-specific parser first if available
-        if self._db_specific_parser and hasattr(self._db_specific_parser, "validate_sql"):
-            try:
-                self.logger.debug(f"Using {self.dialect}-specific parser for SQL validation")
-                result = self._db_specific_parser.validate_sql(sql)
-
-                # Handle different return formats from database-specific parsers
-                if isinstance(result, tuple) and len(result) == 2:
-                    is_valid, error_message = result
-                elif isinstance(result, dict):
-                    # Parsers answer {"valid": bool, "errors": [str, ...]}; the legacy
-                    # {"is_valid", "error_message"} spelling is still read.
-                    # An answer carrying no verdict is not a pass.
-                    verdict = next(
-                        (result[k] for k in ("valid", "is_valid", "success") if k in result),
-                        None,
-                    )
-                    is_valid = bool(verdict)
-                    errors = result.get("errors")
-                    raw_error_message = errors[0] if errors else result.get("error_message", None)
-                    if verdict is None:
-                        raw_error_message = raw_error_message or "the parser returned no verdict"
-                    error_message = (
-                        str(raw_error_message) if raw_error_message is not None else None
-                    )
-                else:
-                    # If parser returns something else, assume it's a boolean
-                    is_valid = bool(result)
-                    error_message = None
-
-                self.logger.debug(
-                    f"Validated SQL using {self.dialect}-specific parser: valid={is_valid}"
-                )
-
-                # Log validation details for debugging
-                if hasattr(self.logger, "is_debug_enabled") and self.logger.is_debug_enabled():
-                    truncated_sql = sql[:100] + ("..." if len(sql) > 100 else "")
-                    if is_valid:
-                        self.logger.debug(f"Valid SQL ({self.dialect}): {truncated_sql}")
-                    else:
-                        self.logger.debug(f"Invalid SQL ({self.dialect}): {truncated_sql}")
-                        self.logger.debug(f"Error: {error_message}")
-
-                return is_valid, error_message
-            except Exception as e:
-                self.logger.warning(
-                    f"{self.dialect}-specific parser validation failed: {e}, assuming SQL is valid"
-                )
-
-        # Without database-specific parser validation, we use basic structural checks
-        # This provides minimal validation but avoids complex ANTLR-based parsing
-        self.logger.info("Using basic structural SQL validation")
-
-        # Basic checks for common syntax errors
-        sql_clean = sql.strip()
-        if not sql_clean:
-            return False, "Empty SQL statement"
-
-        # Check for obvious syntax errors
-        if sql_clean.count("(") != sql_clean.count(")"):
-            return False, "Unmatched parentheses"
-
-        if sql_clean.count("'") % 2 != 0:
-            return False, "Unmatched single quotes"
-
-        # If basic checks pass, assume SQL is valid
-        return True, None
-
     def split_statements(self, sql: str) -> List[str]:
         """Split SQL into individual statements.
 
@@ -408,8 +279,7 @@ class SqlAnalyzer:
         """
         # Directive lines (``PROMPT``, ``SET``, ``DEFINE``, ``WHENEVER`` ...) and
         # SQL*Plus variables are the dialect splitter's, not a pre-pass.
-        with internal_parser_construction():
-            statements = self.statement_splitter.split_statements(sql)
+        statements = self.statement_splitter.split_statements(sql)
 
         # Log each statement for debugging
         for i, stmt in enumerate(statements):
@@ -427,13 +297,6 @@ class SqlAnalyzer:
         Every other dialect: the execution split.
         """
         engine = self.statement_splitter._engine
-        if engine is not None and engine.spec.sqlite_shell:
+        if engine is not None:
             return engine.split_for_analysis(sql)
-        parser = self._db_specific_parser
-        if (
-            parser is not None
-            and type(parser).split_for_analysis is not SqlParserInterface.split_for_analysis
-        ):
-            return list(parser.split_for_analysis(sql))
-        with internal_parser_construction():
-            return self.split_statements(sql)
+        return self.split_statements(sql)

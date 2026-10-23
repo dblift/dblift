@@ -1,4 +1,4 @@
-"""Every §10 row of docs/sql-parsing/oracle.md, run through SqlAnalyzer.split_statements.
+"""Every §10 row of docs/sql-parsing/oracle.md, run through StatementReader.split_statements.
 
 Rows the splitter gets wrong today are listed in KNOWN_GAPS and fail strictly:
 an id that starts to pass must be removed, an id that fails differently is a

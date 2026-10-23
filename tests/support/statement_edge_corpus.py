@@ -18,9 +18,9 @@ from importlib.metadata import version
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 
-from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+from dblift.core.migration.sql.statement_reader import StatementReader
 from dblift.core.migration.sql.statement_splitter import StatementSplitter
-from dblift.core.sql_parser.parser_factory import SqlParserFactory
+from tests.support.facts_parser import facts_parser
 
 DIALECTS: Tuple[str, ...] = (
     "postgresql",
@@ -115,7 +115,7 @@ def _outcome(call: Any) -> Any:
 
 
 def _records(dialect: str, script: str) -> Any:
-    parser: Any = SqlParserFactory(dialect, parser_type="regex").get_parser()
+    parser: Any = facts_parser(dialect)
     return [dataclasses.asdict(r) for r in parser.split(script)]
 
 
@@ -130,7 +130,9 @@ def _record_script(dialect: str, script: str) -> Dict[str, Any]:
     views = {
         "script": script,
         "execution": _outcome(lambda: StatementSplitter(dialect).split_statements(script)),
-        "analysis": _outcome(lambda: SqlAnalyzer(dialect).split_statements_for_analysis(script)),
+        "analysis": _outcome(
+            lambda: StatementReader(dialect).split_statements_for_analysis(script)
+        ),
         "records": _outcome(lambda: _records(dialect, script)),
     }
     loaded: Dict[str, Any] = json.loads(json.dumps(views))

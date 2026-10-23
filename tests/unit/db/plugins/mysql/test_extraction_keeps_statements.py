@@ -5,8 +5,7 @@ from __future__ import annotations
 import pytest
 
 from dblift.core.exceptions import UnsupportedMetaCommandError
-from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
-from dblift.core.sql_parser.parser_factory import SqlParserFactory
+from dblift.core.migration.sql.statement_reader import StatementReader
 from dblift.core.sql_parser.statement_facts_parser import StatementFactsParser
 from tests.support.facts_parser import facts_factory, facts_parser
 
@@ -20,16 +19,16 @@ def test_parse_sql_reports_a_client_command_refusal() -> None:
     assert any("source" in error for error in result.errors)
 
 
-def test_the_hybrid_parser_refuses_the_same_client_command() -> None:
-    factory = SqlParserFactory("mysql", "hybrid")
+def test_the_facts_parser_refuses_the_same_client_command() -> None:
+    factory = facts_parser("mysql")
     with pytest.raises(UnsupportedMetaCommandError):
-        factory.get_parser().split_for_extraction(SCRIPT)
+        factory.split_for_extraction(SCRIPT)
     with pytest.raises(UnsupportedMetaCommandError):
         factory.extract_objects(SCRIPT)
 
 
 def test_statements_for_analysis_are_the_execution_statements() -> None:
-    analyzer = SqlAnalyzer("mysql")
+    analyzer = StatementReader("mysql")
     script = "DELIMITER //\nCREATE PROCEDURE p() BEGIN SELECT 1; END//\nDELIMITER ;\nSELECT 2;"
     assert analyzer.split_statements_for_analysis(script) == analyzer.split_statements(script)
     assert analyzer.split_statements(script) == [
@@ -40,13 +39,13 @@ def test_statements_for_analysis_are_the_execution_statements() -> None:
 
 @pytest.mark.parametrize("dialect", ["mysql", "mariadb"])
 def test_a_script_of_hash_comments_is_no_statement_and_is_not_split_again(dialect: str) -> None:
-    assert SqlAnalyzer(dialect).split_statements("# a\n# b ; c\n") == []
+    assert StatementReader(dialect).split_statements("# a\n# b ; c\n") == []
 
 
 def test_the_dialect_decides_what_the_maria_comment_is() -> None:
     script = "/*M!100500 SET @a = 1 */;\nSELECT 2;\n"
-    assert SqlAnalyzer("mysql").split_statements(script) == ["SELECT 2"]
-    assert SqlAnalyzer("mariadb").split_statements(script) == [
+    assert StatementReader("mysql").split_statements(script) == ["SELECT 2"]
+    assert StatementReader("mariadb").split_statements(script) == [
         "/*M!100500 SET @a = 1 */",
         "SELECT 2",
     ]
@@ -58,9 +57,7 @@ def test_the_dialect_name_of_each_regex_parser_is_its_engine() -> None:
 
 
 def test_parse_sql_reports_client_scanner_refusal_without_partial_objects() -> None:
-    result = SqlParserFactory("mysql", "hybrid").parse_sql(
-        "SOURCE other.sql\nCREATE TABLE a (id INT);\n"
-    )
+    result = facts_parser("mysql").parse_sql("SOURCE other.sql\nCREATE TABLE a (id INT);\n")
     assert not result.success
     assert result.statements == []
     assert "client command 'SOURCE'" in " ".join(result.errors or [])
@@ -76,7 +73,7 @@ def test_extract_objects_refuses_script_when_scanner_refuses(
 
     monkeypatch.setattr(StatementFactsParser, "split_for_analysis", refuse)
     with pytest.raises(UnsupportedMetaCommandError, match="client command refused"):
-        SqlParserFactory("mysql", "hybrid").extract_objects("CREATE TABLE a (id INT);\n")
+        facts_parser("mysql").extract_objects("CREATE TABLE a (id INT);\n")
 
 
 @pytest.mark.parametrize("parser_class", [facts_factory("mysql"), facts_factory("mariadb")])

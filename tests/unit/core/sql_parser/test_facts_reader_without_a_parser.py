@@ -3,9 +3,9 @@
 import pytest
 
 from dblift.core.migration.sql.script_analysis import analyse_script
-from dblift.core.sql_parser import SqlParserFactory
 from dblift.core.sql_parser.statement_facts import SqlglotStatementFactsReader
 from dblift.db.provider_registry import ProviderRegistry
+from tests.support.facts_parser import facts_parser
 
 pytestmark = pytest.mark.unit
 
@@ -22,7 +22,7 @@ def reader_dialect(request, monkeypatch):
 
 
 def test_factory_returns_a_facts_parser(reader_dialect):
-    parser = SqlParserFactory(reader_dialect).get_parser()
+    parser = facts_parser(reader_dialect)
 
     assert parser.dialect_name == reader_dialect
     assert parser.split_for_analysis("DROP TABLE t; SELECT 1;") == ["DROP TABLE t", "SELECT 1"]
@@ -30,18 +30,6 @@ def test_factory_returns_a_facts_parser(reader_dialect):
     assert result.success, result.errors
     assert [(o.name) for o in parser.extract_objects("DROP TABLE t;")] == ["t"]
     assert parser.validate_sql("DROP TABLE t;")["valid"]
-
-
-@pytest.mark.parametrize("mode", ["hybrid", "regex"])
-def test_factory_serves_a_plugin_whose_parser_class_is_the_default(mode, monkeypatch):
-    quirks = ProviderRegistry.get_quirks("cockroachdb")
-    monkeypatch.setattr(type(quirks), "statement_facts_class", SqlglotStatementFactsReader)
-    monkeypatch.setattr(type(quirks), "parser_class", lambda self, parser_type: None)
-
-    parser = SqlParserFactory("cockroachdb", mode).get_parser()
-
-    assert parser.dialect_name == "cockroachdb"
-    assert parser.split_for_analysis("DROP TABLE t;") == ["DROP TABLE t"]
 
 
 def test_analyse_script_analyses_instead_of_raising(reader_dialect):

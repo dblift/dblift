@@ -11,9 +11,7 @@ unquoted identifier still folds to the dialect's catalog case.
 import pytest
 
 from dblift.core.sql_model.base import SqlObjectType
-from dblift.core.sql_parser import SqlParserFactory
 from dblift.db.provider_registry import ProviderRegistry
-from tests.support.facts_parser import facts_parser
 
 
 def _created_by_facts(sql):

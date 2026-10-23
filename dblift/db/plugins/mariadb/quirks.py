@@ -8,7 +8,7 @@ modern versions) get added here as the epic touches each subsystem.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from dblift.db.feature_gate import FeatureGate
 from dblift.db.plugins.mysql.quirks import MysqlQuirks
@@ -61,12 +61,6 @@ class MariadbQuirks(MysqlQuirks):
             description="ALTER TABLE ... ADD COLUMN, ALGORITHM=INSTANT",
         ),
     }
-
-    def parser_class(self, parser_type: str) -> Optional[type]:
-        """MariaDB reads ``/*M! ... */`` as code: its own facts parser, whatever ``parser_type`` is asked."""
-        from dblift.db.plugins.mariadb.facts_parser import MariaDbFactsParser
-
-        return MariaDbFactsParser
 
     def __init__(self, dialect_name: str = "mariadb") -> None:
         """Initialize MariaDB quirks with the dialect name."""

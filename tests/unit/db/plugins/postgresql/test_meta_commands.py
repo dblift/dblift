@@ -5,12 +5,12 @@ from __future__ import annotations
 import pytest
 
 from dblift.core.exceptions import UnsupportedMetaCommandError
-from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+from dblift.core.migration.sql.statement_reader import StatementReader
 
 
 @pytest.fixture(scope="module")
 def split():
-    analyzer = SqlAnalyzer("postgresql")
+    analyzer = StatementReader("postgresql")
     return analyzer.split_statements
 
 

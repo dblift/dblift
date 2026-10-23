@@ -11,21 +11,20 @@ import pytest
 from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
 from dblift.core.migration.sql.lint import lint_script
 from dblift.core.migration.sql.script_analysis import analyse_script
-from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.migration.sql.sql_execution_service import SqlExecutionService
+from dblift.core.migration.sql.statement_reader import StatementReader
 from dblift.core.sql_model.base import SqlObjectType
 from dblift.core.sql_parser.statement_facts import SqlglotStatementFactsReader
 from dblift.db.dml_analysis import analyze_dml, is_full_table_dml
 from dblift.db.plugins.sqlite.parser.lexical_spec import SQLITE_SPEC
-from dblift.db.plugins.sqlite.parser.sqlite_facts_parser import SQLiteFactsParser
 from dblift.db.plugins.sqlite.quirks import SqliteQuirks
 from dblift.db.provider_registry import ProviderRegistry
-from tests.unit._migration_factory import make_migration
+from tests.support.facts_parser import facts_parser
 
 _quirks = ProviderRegistry.get_quirks
 
 READER = SqlglotStatementFactsReader("sqlite", SQLITE_SPEC)
-PARSER = SQLiteFactsParser()
+PARSER = facts_parser("sqlite")
 
 TRIGGER = "CREATE TRIGGER tr BEFORE INSERT ON t BEGIN SELECT RAISE(ABORT, 'x'); END"
 
@@ -309,7 +308,7 @@ def test_replace_into_keeps_its_kind_and_dml_result():
     assert (mutation.events, mutation.updated_columns) == (None, [])
     assert SqliteQuirks().is_full_table_dml(sql) is False
     assert analyse_script(sql, "sqlite").statements[0].kind == "DML"
-    assert SqlAnalyzer("sqlite").analyze_statement(sql)["type"] == "DML"
+    assert StatementReader("sqlite").analyze_statement(sql)["type"] == "DML"
 
 
 # --- execution does not warn about statements it ran ----------------------------------
@@ -322,7 +321,7 @@ def test_executing_a_trigger_does_not_log_a_warning():
         spec=["record_statement_start", "record_statement_complete", "record_object_changes"]
     )
     service = SqlExecutionService(
-        provider, SqlAnalyzer("sqlite"), journal=journal, quirks=SqliteQuirks()
+        provider, StatementReader("sqlite"), journal=journal, quirks=SqliteQuirks()
     )
     service.log = Mock()
 

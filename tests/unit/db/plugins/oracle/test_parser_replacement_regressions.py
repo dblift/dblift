@@ -1,6 +1,6 @@
 """Oracle parsing uses its executable SQL*Plus selection consistently."""
 
-from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+from dblift.core.migration.sql.statement_reader import StatementReader
 from dblift.core.sql_parser.lexical_engine import LexicalEngine
 from dblift.db.plugins.oracle.parser.lexical_spec import ORACLE_SPEC
 from tests.support.facts_parser import facts_parser
@@ -28,7 +28,7 @@ def test_parse_sql_selects_the_same_statements_as_execution() -> None:
 def test_public_analyzer_uses_oracle_execution_selection() -> None:
     script = "SELECT 1 FROM dual;\nEXIT\nDROP TABLE users;"
 
-    assert SqlAnalyzer(dialect="oracle").split_statements_for_analysis(script) == [
+    assert StatementReader(dialect="oracle").split_statements_for_analysis(script) == [
         "SELECT 1 FROM dual"
     ]
 

@@ -13,7 +13,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from dblift.core.migration.executor.execution_engine import ExecutionEngine
-from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+from dblift.core.migration.sql.statement_reader import StatementReader
 from tests.support.transaction_scenarios import database_url, read_state
 from tests.unit._migration_factory import make_migration
 
@@ -36,7 +36,7 @@ def _engine(dialect: str) -> ExecutionEngine:
     provider.connection = None
     provider.execute_statement.return_value = 0
     log = MagicMock()
-    return ExecutionEngine(provider, SqlAnalyzer(dialect=dialect, logger=log), log)
+    return ExecutionEngine(provider, StatementReader(dialect=dialect, logger=log), log)
 
 
 # --- no filter is left on a statement ------------------------------------------------------------

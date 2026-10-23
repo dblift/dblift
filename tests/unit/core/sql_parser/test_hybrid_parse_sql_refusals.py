@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from dblift.core.sql_parser import SqlParserFactory
+from tests.support.facts_parser import facts_parser
 
 SCRIPTS = [
     ("mysql", "UPDATE t SET a = 1;\nSELECT 1\\G\nUPDATE t SET a = 2;\n", "\\G"),
@@ -18,7 +18,7 @@ SCRIPTS = [
 def test_parse_sql_reports_a_refused_split_instead_of_failing(
     dialect: str, script: str, command: str
 ) -> None:
-    result = SqlParserFactory(dialect).get_parser().parse_sql(script)
+    result = facts_parser(dialect).parse_sql(script)
     assert not result.success
     assert result.statements == []
     assert result.tables == []

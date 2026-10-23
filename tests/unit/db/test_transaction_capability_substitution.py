@@ -17,7 +17,7 @@ from dblift.core.migration.history.migration_history_manager import MigrationHis
 from dblift.core.migration.migration import MigrationType
 from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
 from dblift.core.migration.sql.execution_statement import ExecutionStatement
-from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+from dblift.core.migration.sql.statement_reader import StatementReader
 from dblift.db.base_quirks import BaseQuirks
 from dblift.db.provider_interfaces import DroppableObject, TransactionalProvider
 from tests.unit._migration_factory import make_migration
@@ -203,7 +203,7 @@ def test_sql_execution_persists_history_without_transaction_methods(failure):
     history = MigrationHistoryManager(provider, "main", "tester", NullLog())
     engine = ExecutionEngine(
         provider=provider,
-        sql_analyzer=SqlAnalyzer(dialect="sqlite"),
+        sql_analyzer=StatementReader(dialect="sqlite"),
         log=NullLog(),
         history_manager=history,
     )
@@ -225,7 +225,7 @@ def test_python_execution_persists_history_without_transaction_methods(tmp_path,
     script.write_text(content)
     history = MigrationHistoryManager(provider, "main", "tester", NullLog())
     engine = ExecutionEngine(
-        provider, SqlAnalyzer(dialect="sqlite"), NullLog(), history_manager=history
+        provider, StatementReader(dialect="sqlite"), NullLog(), history_manager=history
     )
     result = MigrateResult()
     engine.execute_migration(make_migration(script_path=script), result)
@@ -242,7 +242,7 @@ def test_sql_callback_never_uses_missing_transaction_methods(failure):
     callback = make_migration(
         script_name="beforeMigrate__items.sql", content="CREATE TABLE items(id INT);"
     )
-    engine = ExecutionEngine(provider, SqlAnalyzer(dialect="sqlite"), NullLog())
+    engine = ExecutionEngine(provider, StatementReader(dialect="sqlite"), NullLog())
     if failure:
 
         def fail(*args, **kwargs):

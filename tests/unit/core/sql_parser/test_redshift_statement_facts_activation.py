@@ -5,9 +5,8 @@ from unittest.mock import MagicMock
 import pytest
 
 from dblift.core.migration.sql.script_analysis import analyse_script
-from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.migration.sql.sql_execution_service import SqlExecutionService
-from dblift.core.sql_parser import SqlParserFactory
+from dblift.core.migration.sql.statement_reader import StatementReader
 from dblift.core.sql_parser.statement_facts import SqlglotStatementFactsReader
 from dblift.core.sql_parser.statement_facts_parser import StatementFactsParser
 from dblift.db.dml_analysis import (
@@ -17,6 +16,7 @@ from dblift.db.dml_analysis import (
     statement_dml_table,
 )
 from dblift.db.provider_registry import ProviderRegistry
+from tests.support.facts_parser import facts_parser
 
 _quirks = ProviderRegistry.get_quirks
 
@@ -36,9 +36,9 @@ def test_redshift_reads_statement_facts():
     assert quirks.statement_facts_reader().dialect == "redshift"
 
 
-def test_hybrid_factory_serves_the_facts_parser():
-    factory = SqlParserFactory("redshift", "hybrid")
-    parser = factory.get_parser()
+def test_the_facts_parser_reads_the_dialect():
+    factory = facts_parser("redshift")
+    parser = factory
 
     assert isinstance(parser, StatementFactsParser)
     assert parser.dialect_name == "redshift"
@@ -67,7 +67,7 @@ def test_script_analysis_goes_through_facts():
 
 
 def test_analyzer_extracts_objects_from_facts():
-    analyzer = SqlAnalyzer("redshift")
+    analyzer = StatementReader("redshift")
 
     assert [obj["object_name"] for obj in analyzer.extract_objects(CTE_UPDATE)] == [
         "default_schema.child"
@@ -98,7 +98,7 @@ def test_execution_journal_receives_the_facts_objects(sql, expected):
     provider.execute_statement.return_value = 1
     journal = MagicMock()
     service = SqlExecutionService(
-        provider, SqlAnalyzer("redshift"), journal=journal, quirks=_quirks("redshift")
+        provider, StatementReader("redshift"), journal=journal, quirks=_quirks("redshift")
     )
 
     service.execute_statement(sql)

@@ -5,8 +5,8 @@ import pytest
 from dblift.core.sql_model.base import SqlObjectType
 from dblift.core.sql_parser.sqlglot_statement_facts import read_statement_facts
 from dblift.core.sql_parser.statement_facts import NamedObject, StatementFacts
-from dblift.db.plugins.duckdb.parser.duckdb_facts_parser import DuckDBFactsParser
 from dblift.db.plugins.duckdb.quirks import DuckDBQuirks
+from tests.support.facts_parser import facts_parser
 
 
 @pytest.mark.parametrize(
@@ -20,7 +20,7 @@ from dblift.db.plugins.duckdb.quirks import DuckDBQuirks
     ids=["unqualified", "if_not_exists", "catalog_qualified", "escaped_quote"],
 )
 def test_create_schema_facts_keep_the_created_identity(sql, name, qualification):
-    statements = DuckDBFactsParser().split(sql)
+    statements = facts_parser("duckdb").split(sql)
     assert len(statements) == 1
 
     facts = read_statement_facts(statements[0].text, dialect="duckdb")
@@ -45,9 +45,6 @@ def test_schema_facts_share_duckdb_parser_consumers():
     quirks = DuckDBQuirks()
 
     assert quirks.supports_statement_facts
-    assert quirks.parser_class("regex") is DuckDBFactsParser
-    assert quirks.parser_class("hybrid") is DuckDBFactsParser
-    assert quirks.parser_class("sqlglot") is DuckDBFactsParser
 
 
 @pytest.mark.parametrize("dialect", ["sqlite", "tsql"])

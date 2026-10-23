@@ -7,7 +7,7 @@ import pytest
 from dblift.core.logger.results import MigrateResult
 from dblift.core.migration.executor.execution_engine import ExecutionEngine
 from dblift.core.migration.placeholders.placeholder_service import PlaceholderService
-from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+from dblift.core.migration.sql.statement_reader import StatementReader
 from tests.unit._migration_factory import make_migration
 
 pytestmark = pytest.mark.unit
@@ -19,7 +19,7 @@ def _engine(dialect):
     log = MagicMock()
     return ExecutionEngine(
         provider,
-        SqlAnalyzer(dialect=dialect, logger=log),
+        StatementReader(dialect=dialect, logger=log),
         log,
         placeholder_service=PlaceholderService({"owner": "APP", "env": "dev"}, log),
     )

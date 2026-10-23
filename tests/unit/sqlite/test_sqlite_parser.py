@@ -10,9 +10,9 @@ class TestSQLiteFactsParser:
 
     def test_split_simple_statements(self):
         """Test splitting simple SQL statements."""
-        from dblift.db.plugins.sqlite.parser.sqlite_facts_parser import SQLiteFactsParser
+        from tests.support.facts_parser import facts_parser
 
-        parser = SQLiteFactsParser()
+        parser = facts_parser("sqlite")
 
         sql = """
         CREATE TABLE users (id INTEGER PRIMARY KEY);
@@ -28,9 +28,9 @@ class TestSQLiteFactsParser:
 
     def test_split_trigger_with_begin_end(self):
         """Test splitting trigger with BEGIN/END block."""
-        from dblift.db.plugins.sqlite.parser.sqlite_facts_parser import SQLiteFactsParser
+        from tests.support.facts_parser import facts_parser
 
-        parser = SQLiteFactsParser()
+        parser = facts_parser("sqlite")
 
         sql = """
         CREATE TRIGGER update_timestamp
@@ -51,9 +51,9 @@ class TestSQLiteFactsParser:
 
     def test_extract_table_from_create(self):
         """Test extracting table object from CREATE TABLE."""
-        from dblift.db.plugins.sqlite.parser.sqlite_facts_parser import SQLiteFactsParser
+        from tests.support.facts_parser import facts_parser
 
-        parser = SQLiteFactsParser()
+        parser = facts_parser("sqlite")
 
         stmt = "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)"
         objects = parser.extract_objects(stmt)
@@ -64,9 +64,9 @@ class TestSQLiteFactsParser:
 
     def test_extract_view_from_create(self):
         """Test extracting view object from CREATE VIEW."""
-        from dblift.db.plugins.sqlite.parser.sqlite_facts_parser import SQLiteFactsParser
+        from tests.support.facts_parser import facts_parser
 
-        parser = SQLiteFactsParser()
+        parser = facts_parser("sqlite")
 
         stmt = "CREATE VIEW active_users AS SELECT * FROM users WHERE active = 1"
         objects = parser.extract_objects(stmt)
@@ -77,9 +77,9 @@ class TestSQLiteFactsParser:
 
     def test_extract_index_from_create(self):
         """Test extracting index object from CREATE INDEX."""
-        from dblift.db.plugins.sqlite.parser.sqlite_facts_parser import SQLiteFactsParser
+        from tests.support.facts_parser import facts_parser
 
-        parser = SQLiteFactsParser()
+        parser = facts_parser("sqlite")
 
         stmt = "CREATE UNIQUE INDEX idx_users_email ON users(email)"
         objects = parser.extract_objects(stmt)
@@ -90,9 +90,9 @@ class TestSQLiteFactsParser:
 
     def test_extract_trigger_from_create(self):
         """Test extracting trigger object from CREATE TRIGGER."""
-        from dblift.db.plugins.sqlite.parser.sqlite_facts_parser import SQLiteFactsParser
+        from tests.support.facts_parser import facts_parser
 
-        parser = SQLiteFactsParser()
+        parser = facts_parser("sqlite")
 
         stmt = """CREATE TRIGGER update_timestamp AFTER UPDATE ON users 
                   BEGIN UPDATE users SET updated_at = datetime('now'); END"""
@@ -105,9 +105,9 @@ class TestSQLiteFactsParser:
     def test_extract_virtual_table_from_create(self):
         """CREATE VIRTUAL TABLE must keep VIRTUAL_TABLE type (not UNKNOWN)."""
         from dblift.core.sql_model.base import SqlObjectType
-        from dblift.db.plugins.sqlite.parser.sqlite_facts_parser import SQLiteFactsParser
+        from tests.support.facts_parser import facts_parser
 
-        parser = SQLiteFactsParser()
+        parser = facts_parser("sqlite")
 
         stmt = "CREATE VIRTUAL TABLE IF NOT EXISTS docs USING fts5(title, body);"
         objects = parser.extract_objects(stmt)
@@ -118,9 +118,9 @@ class TestSQLiteFactsParser:
 
     def test_handle_comments(self):
         """Test handling of SQL comments."""
-        from dblift.db.plugins.sqlite.parser.sqlite_facts_parser import SQLiteFactsParser
+        from tests.support.facts_parser import facts_parser
 
-        parser = SQLiteFactsParser()
+        parser = facts_parser("sqlite")
 
         sql = """
         -- This is a comment
@@ -135,9 +135,9 @@ class TestSQLiteFactsParser:
 
     def test_handle_quoted_semicolons(self):
         """Test handling semicolons inside strings."""
-        from dblift.db.plugins.sqlite.parser.sqlite_facts_parser import SQLiteFactsParser
+        from tests.support.facts_parser import facts_parser
 
-        parser = SQLiteFactsParser()
+        parser = facts_parser("sqlite")
 
         sql = """
         INSERT INTO logs (message) VALUES ('Error; please retry');
@@ -164,9 +164,9 @@ class TestSQLiteFactsReader:
         ],
     )
     def test_named_object(self, sql, expected_type, expected_name):
-        from dblift.db.plugins.sqlite.parser.sqlite_facts_parser import SQLiteFactsParser
+        from tests.support.facts_parser import facts_parser
 
-        objects = SQLiteFactsParser().extract_objects(sql)
+        objects = facts_parser("sqlite").extract_objects(sql)
         assert [(obj.object_type.value, obj.name) for obj in objects] == [
             (expected_type, expected_name)
         ]

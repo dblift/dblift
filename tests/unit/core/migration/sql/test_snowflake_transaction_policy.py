@@ -9,7 +9,7 @@ import pytest
 from dblift.core.exceptions import TransactionStatementError
 from dblift.core.migration.executor.execution_engine import ExecutionEngine
 from dblift.core.migration.sql.execution_statement import neutralise_transaction_statements
-from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+from dblift.core.migration.sql.statement_reader import StatementReader
 from dblift.core.migration.sql.statement_splitter import StatementSplitter
 from dblift.core.sql_parser.statement import execution_strings
 from dblift.db.provider_registry import ProviderRegistry
@@ -97,7 +97,7 @@ def test_execution_sends_zero_statements_when_a_control_is_present(control: str)
     provider = MagicMock()
     provider.execute_statement.return_value = 0
     log = MagicMock()
-    engine = ExecutionEngine(provider, SqlAnalyzer(dialect="snowflake", logger=log), log)
+    engine = ExecutionEngine(provider, StatementReader(dialect="snowflake", logger=log), log)
     migration = make_migration(
         script_name="V1__x.sql",
         content=f"SELECT 0; {control}; SELECT 2;",

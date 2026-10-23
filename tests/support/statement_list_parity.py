@@ -20,8 +20,8 @@ from dblift.core.migration.placeholders.placeholder_service import PlaceholderSe
 from dblift.core.migration.sql import lint_rules
 from dblift.core.migration.sql.execution_statement import _statements_of
 from dblift.core.migration.sql.script_analysis import analyse_script
-from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.migration.sql.sql_execution_service import SqlExecutionService
+from dblift.core.migration.sql.statement_reader import StatementReader
 from dblift.core.sql_parser.lexical_engine import LexicalEngine
 from dblift.core.sql_parser.statement import Statement
 from dblift.db.provider_registry import ProviderRegistry
@@ -295,7 +295,7 @@ class _RecordingProvider:
 
 def _engine(dialect: str) -> Tuple[ExecutionEngine, _RecordingProvider]:
     provider = _RecordingProvider()
-    analyzer = SqlAnalyzer(dialect=dialect)
+    analyzer = StatementReader(dialect=dialect)
     service = SqlExecutionService(
         provider, analyzer, quirks=ProviderRegistry.get_quirks(dialect), logger=NullLog()
     )

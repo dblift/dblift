@@ -22,7 +22,7 @@ name; see ``TestThreePartNames``.
 import pytest
 
 from dblift.core.sql_model.base import SqlObjectType
-from dblift.core.sql_parser.parser_factory import SqlParserFactory
+from tests.support.facts_parser import facts_parser
 
 
 @pytest.mark.unit
@@ -31,7 +31,7 @@ class TestRegexParserObjectNames:
     each object family is checked once to prove the fix is not table-only."""
 
     def setup_method(self):
-        self.parser = SqlParserFactory("sqlserver", parser_type="regex").get_parser()
+        self.parser = facts_parser("sqlserver")
 
     def test_create_table_no_space_before_paren(self):
         objects = self.parser.extract_objects("CREATE TABLE real_one(id int);")
@@ -114,7 +114,7 @@ class TestIndexObjectSchemaDefaultParser:
     retains its own extraction contract."""
 
     def setup_method(self):
-        self.parser = SqlParserFactory("sqlserver").get_parser()
+        self.parser = facts_parser("sqlserver")
 
     def test_create_index(self):
         objects = self.parser.extract_objects(
@@ -222,7 +222,7 @@ class TestDropIndexLegacyTableDotName:
         # Two-part form: "real_one" is the table, not a schema — there is no
         # embedded schema to read, so the correct answer is always whatever
         # default_schema was passed in.
-        parser = SqlParserFactory("sqlserver", parser_type=parser_type).get_parser()
+        parser = facts_parser("sqlserver")
 
         objects = parser.extract_objects(
             "DROP INDEX real_one.idx1;", default_schema="unrelated_default"
@@ -242,7 +242,7 @@ class TestDropIndexLegacyTableDotName:
         # "dbo" here is the table's *owner* (an explicit schema), not the
         # table's name — the default_schema below is deliberately a
         # different value so a fallback can't masquerade as a correct read.
-        parser = SqlParserFactory("sqlserver", parser_type=parser_type).get_parser()
+        parser = facts_parser("sqlserver")
 
         objects = parser.extract_objects(
             "DROP INDEX dbo.real_one.idx1;", default_schema="unrelated_default"
@@ -260,7 +260,7 @@ class TestHybridParserNoDuplicateOnFixedName:
     is needed."""
 
     def setup_method(self):
-        self.parser = SqlParserFactory("sqlserver")
+        self.parser = facts_parser("sqlserver")
 
     def test_create_table_reported_case(self):
         # The exact statement from the report.
@@ -291,7 +291,7 @@ class TestBracketDoublingRegexParser:
     it to everything before the first occurrence."""
 
     def setup_method(self):
-        self.parser = SqlParserFactory("sqlserver", parser_type="regex").get_parser()
+        self.parser = facts_parser("sqlserver")
 
     def test_plain_bracketed_name_unaffected(self):
         objects = self.parser.extract_objects("CREATE TABLE [normal] (id int);")
@@ -349,7 +349,7 @@ class TestDoubleQuoteDoublingRegexParser:
     """Same doubling rule, double-quoted spelling (``QUOTED_IDENTIFIER ON``)."""
 
     def setup_method(self):
-        self.parser = SqlParserFactory("sqlserver", parser_type="regex").get_parser()
+        self.parser = facts_parser("sqlserver")
 
     def test_plain_double_quoted_name_unaffected(self):
         objects = self.parser.extract_objects('CREATE TABLE "normal" (id int);')
@@ -399,7 +399,7 @@ class TestBracketAndQuoteDoublingHybridParser:
     parsers agree, so the merge collapses back to a single object."""
 
     def setup_method(self):
-        self.parser = SqlParserFactory("sqlserver").get_parser()
+        self.parser = facts_parser("sqlserver")
 
     def test_reported_case(self):
         objects = self.parser.extract_objects(

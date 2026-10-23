@@ -3,7 +3,7 @@
 import pytest
 
 from dblift.core.exceptions import UnsafeStatementSplitError
-from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+from dblift.core.migration.sql.statement_reader import StatementReader
 
 
 @pytest.mark.parametrize(
@@ -19,11 +19,11 @@ from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 )
 def test_unterminated_lexeme_is_refused_with_its_position(script: str, where: str) -> None:
     with pytest.raises(UnsafeStatementSplitError) as info:
-        SqlAnalyzer("postgresql").split_statements(script)
+        StatementReader("postgresql").split_statements(script)
     assert where in str(info.value)
 
 
 def test_unclosed_parenthesis_at_end_of_input_is_one_statement() -> None:
-    assert SqlAnalyzer("postgresql").split_statements("SELECT (1; SELECT 2;") == [
+    assert StatementReader("postgresql").split_statements("SELECT (1; SELECT 2;") == [
         "SELECT (1; SELECT 2;"
     ]

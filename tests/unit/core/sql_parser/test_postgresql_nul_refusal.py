@@ -11,7 +11,7 @@ from dataclasses import replace
 import pytest
 
 from dblift.core.exceptions import UnsafeStatementSplitError
-from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+from dblift.core.migration.sql.statement_reader import StatementReader
 from dblift.core.sql_parser.lexical_spec import SegmentScriptRules
 from dblift.core.sql_parser.lexical_tokenizer import LexicalTokenizer
 from dblift.db.plugins.duckdb.parser.lexical_spec import DUCKDB_SPEC
@@ -50,7 +50,7 @@ CASES = [
 @pytest.mark.parametrize("script, line, column", CASES)
 def test_split_refuses_a_nul_with_its_position(dialect: str, script: str, line: int, column: int):
     with pytest.raises(UnsafeStatementSplitError) as caught:
-        SqlAnalyzer(dialect).split_statements(script)
+        StatementReader(dialect).split_statements(script)
     message = str(caught.value)
     assert "NUL" in message
     assert f"line {line}, column {column}" in message
@@ -69,7 +69,7 @@ def test_the_analysis_projection_refuses_too():
 
 @pytest.mark.parametrize("dialect", FAMILY)
 def test_a_script_without_a_nul_still_splits(dialect: str):
-    statements = SqlAnalyzer(dialect).split_statements("CREATE TABLE a(i int);\nDROP TABLE a;")
+    statements = StatementReader(dialect).split_statements("CREATE TABLE a(i int);\nDROP TABLE a;")
     assert [text.rstrip(";") for text in statements] == ["CREATE TABLE a(i int)", "DROP TABLE a"]
 
 

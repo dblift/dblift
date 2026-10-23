@@ -5,11 +5,11 @@ from __future__ import annotations
 import pytest
 
 from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
-from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+from dblift.core.migration.sql.statement_reader import StatementReader
 from dblift.core.sql_parser.statement import Statement
-from dblift.db.plugins.sqlite.parser.sqlite_facts_parser import SQLiteFactsParser
+from tests.support.facts_parser import facts_parser
 
-PARSER = SQLiteFactsParser()
+PARSER = facts_parser("sqlite")
 
 
 def test_the_parser_is_authoritative_and_returns_statement_records() -> None:
@@ -70,9 +70,9 @@ def test_analysis_and_execution_drop_a_segment_of_comments_only() -> None:
     script = "CREATE TABLE t(a);\n-- SQLite cannot add this constraint; rebuild the table\n"
     assert PARSER.split_statements(script) == ["CREATE TABLE t(a)"]
     assert PARSER.split_for_analysis(script) == ["CREATE TABLE t(a)"]
-    assert SqlAnalyzer("sqlite").split_statements_for_analysis(script) == PARSER.split_for_analysis(
+    assert StatementReader("sqlite").split_statements_for_analysis(
         script
-    )
+    ) == PARSER.split_for_analysis(script)
 
 
 def test_analysis_is_the_execution_split() -> None:

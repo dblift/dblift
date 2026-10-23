@@ -1,4 +1,4 @@
-"""Every §10 row of docs/sql-parsing/redshift.md, run through SqlAnalyzer.split_statements.
+"""Every §10 row of docs/sql-parsing/redshift.md, run through StatementReader.split_statements.
 
 Each row was sent to Redshift Serverless 1.0.485645 (psycopg 3.3.5, 2026-10-20); the rows are the
 splitter's claim about what that engine does with the same text.

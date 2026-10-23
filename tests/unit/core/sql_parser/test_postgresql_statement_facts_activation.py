@@ -5,9 +5,8 @@ from unittest.mock import MagicMock
 import pytest
 
 from dblift.core.migration.sql.script_analysis import CHANGES_ROWS, analyse_script
-from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.migration.sql.sql_execution_service import SqlExecutionService
-from dblift.core.sql_parser import SqlParserFactory
+from dblift.core.migration.sql.statement_reader import StatementReader
 from dblift.core.sql_parser.statement_facts import SqlglotStatementFactsReader
 from dblift.core.sql_parser.statement_facts_parser import StatementFactsParser
 from dblift.db.dml_analysis import (
@@ -46,9 +45,9 @@ def test_family_plugins_read_statement_facts(dialect):
 
 
 @pytest.mark.parametrize("dialect", FAMILY)
-def test_hybrid_factory_serves_the_facts_parser(dialect):
-    factory = SqlParserFactory(dialect, "hybrid")
-    parser = factory.get_parser()
+def test_the_facts_parser_reads_the_dialect(dialect):
+    factory = facts_parser(dialect)
+    parser = factory
 
     assert isinstance(parser, StatementFactsParser)
     assert parser.dialect_name == dialect
@@ -79,7 +78,7 @@ def test_script_analysis_goes_through_facts(dialect):
 
 
 def test_analyzer_extracts_objects_from_facts():
-    analyzer = SqlAnalyzer("postgresql")
+    analyzer = StatementReader("postgresql")
 
     assert [obj["object_name"] for obj in analyzer.extract_objects(CTE_UPDATE)] == [
         "default_schema.child"
@@ -109,7 +108,7 @@ def test_execution_journal_receives_the_facts_objects(sql):
     provider.execute_statement.return_value = 1
     journal = MagicMock()
     service = SqlExecutionService(
-        provider, SqlAnalyzer("postgresql"), journal=journal, quirks=_quirks("postgresql")
+        provider, StatementReader("postgresql"), journal=journal, quirks=_quirks("postgresql")
     )
 
     service.execute_statement(sql)

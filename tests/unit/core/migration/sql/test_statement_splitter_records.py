@@ -9,7 +9,7 @@ from __future__ import annotations
 import pytest
 
 from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
-from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+from dblift.core.migration.sql.statement_reader import StatementReader
 from dblift.core.migration.sql.statement_splitter import StatementSplitter
 from dblift.core.sql_parser.lexical_engine import LexicalEngine
 from dblift.core.sql_parser.statement import Statement, analysis_sql
@@ -35,7 +35,7 @@ def test_split_returns_the_records_of_the_scanner(dialect, shape):
 
 @pytest.mark.parametrize("dialect, shape", CELL_PARAMS)
 def test_the_analysis_list_is_the_analysis_projection_of_the_records(dialect, shape):
-    analyzer = SqlAnalyzer(dialect)
+    analyzer = StatementReader(dialect)
     try:
         records = StatementSplitter(dialect).split(shape.script)
     except (UnsafeStatementSplitError, UnsupportedMetaCommandError) as refusal:

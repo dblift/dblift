@@ -435,25 +435,6 @@ class BaseQuirks:
         """Default: no dialect-specific engine/pool kwargs."""
         return {}
 
-    # ------------------------------------------------------------------
-    # ParserQuirks
-    # ------------------------------------------------------------------
-
-    def parser_class(self, parser_type: str) -> Optional[type]:
-        """Return the parser class for ``parser_type``, or ``None``.
-
-        ``parser_type`` is one of ``"hybrid"``, ``"regex"``, or
-        ``"sqlglot"``. Default returns None for every type. Plugins
-        override to return their own parser class via lazy import
-        (parser modules pull in heavy deps like ``sqlglot``, so we
-        avoid importing them at quirks-class load time).
-
-        Parser classes are owned by the plugin via this hook, not via
-        static ``PARSER_MAP`` / ``REGEX_PARSER_MAP`` / ``SQLGLOT_PARSER_MAP``
-        dicts in ``core/sql_parser/parser_factory.py``.
-        """
-        return None
-
     #: Vendor-specific table-name prefixes that identify objects
     #: created by the engine to support its own materialized-view
     #: machinery (Oracle: ``MLOG$``, ``MVIEW$_``, ``SNAP$``, ``AQ$``,
