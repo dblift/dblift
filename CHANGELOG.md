@@ -325,6 +325,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`validate-sql` no longer calls dropping a database link or a materialized view log a destructive drop.**
+  On Oracle, `DROP DATABASE LINK` was reported as `drop-schema` and `DROP MATERIALIZED VIEW LOG ON t` as
+  `drop-table`, both UNSAFE. Both remove a definition, not rows, and now pass; `DROP DATABASE` and
+  `DROP MATERIALIZED VIEW` are reported as before.
+- **`validate-sql` now asks for a `lock_timeout` before `LOCK TABLE` and `VACUUM FULL` on PostgreSQL.**
+  `pg-missing-lock-timeout` covers `LOCK TABLE` in `SHARE` mode or stronger (the default mode is
+  `ACCESS EXCLUSIVE`; `NOWAIT` is exempt) and `VACUUM FULL`, in both its keyword and option-list forms.
+- **DuckDB `CREATE MACRO` is now tracked as a created object.** Dry-run and analysis reports named no
+  object for `CREATE MACRO name(...) AS ...` (or its `CREATE FUNCTION` alias); they now list the macro as
+  a function, with its schema when one is given.
+- **A Python API client in `analysis_mode="full"` no longer prints a sqlglot warning to stderr.**
+  A client built without logging arguments printed `... contains unsupported syntax. Falling back to
+  parsing as a 'Command'.` for statements such as `CREATE TRIGGER`; it now writes nothing, as in the
+  default mode. A logger or handler you configure still receives the message.
 - **A `--target-version` that is not a migration's version is now refused.** `migrate --target-version v1`,
   `abc`, an empty value or `99` used to apply every pending migration and exit 0, and `-1` or `1a` applied
   a prefix of them. `migrate`, `undo`, `validate` and `info` now exit 2 before connecting, listing the available
