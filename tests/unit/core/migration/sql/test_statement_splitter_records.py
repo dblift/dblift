@@ -65,5 +65,3 @@ def test_an_engine_whose_records_never_set_execution_text_is_still_sent(monkeypa
 
     monkeypatch.setattr(LexicalEngine, "split", split)
     assert StatementSplitter("snowflake").split_statements("ignored") == ["SELECT 1", "SELECT 2"]
-
-
