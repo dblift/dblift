@@ -43,9 +43,7 @@ class SqlParserFactory:
             dialect: SQL dialect (oracle, mysql, postgresql, sqlserver, db2)
             parser_type: Deprecated. Parser type ('regex', 'hybrid', 'sqlglot'); default 'hybrid'
         """
-        warn_direct_parser("SqlParserFactory")
-        if parser_type is not None:
-            warn_direct_parser("parser_type")
+        warn_direct_parser("parser_type" if parser_type is not None else "SqlParserFactory")
         self.dialect = dialect.lower()
         self.parser_type = (parser_type or "hybrid").lower()
         self._current_parser: Optional[SqlParserInterface] = None

@@ -285,7 +285,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Direct use of `SqlParserFactory`, `SqlAnalyzer`, `parser_type=` and `strict_tokenizer=`.**
   Each now warns once per process and names `StatementSplitter` and `read_statement_facts` as
-  the replacements; dblift's own construction sites (migration executor, execution engine,
+  the replacements (`strict_tokenizer` says to drop the argument); dblift's own construction sites (migration executor, execution engine,
   undo generator, `Migration`, redaction) are silent. Behavior is unchanged. `HybridParser` and
   `SqlGlotParser` keep refusing dialects that read statement facts with an error naming
   `StatementFactsParser`.

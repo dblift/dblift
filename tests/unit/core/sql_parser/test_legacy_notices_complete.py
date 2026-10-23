@@ -43,34 +43,48 @@ def _notices(action):
         (
             "strict_tokenizer",
             lambda: StatementSplitter("sqlite").split("SELECT 1;", strict_tokenizer=False),
-            "StatementSplitter",
+            "drop strict_tokenizer",
+        ),
+        (
+            "strict_tokenizer",
+            lambda: StatementSplitter("sqlite").last_split("SELECT 1;", strict_tokenizer=True),
+            "drop strict_tokenizer",
+        ),
+        (
+            "strict_tokenizer",
+            lambda: StatementSplitter("sqlite").split_statements(
+                "SELECT 1;", strict_tokenizer=False
+            ),
+            "drop strict_tokenizer",
         ),
         (
             "strict_tokenizer",
             lambda: _silent(SqlAnalyzer, "sqlite").split_statements(
                 "SELECT 1;", strict_tokenizer=True
             ),
-            "StatementSplitter",
+            "drop strict_tokenizer",
         ),
         (
             "strict_tokenizer",
             lambda: _silent(SqlAnalyzer, "sqlite").split_statements_for_analysis(
                 "SELECT 1;", strict_tokenizer=False
             ),
-            "StatementSplitter",
+            "drop strict_tokenizer",
         ),
         (
             "strict_tokenizer",
             lambda: _silent(SqlParserFactory, "sqlite").split_statements(
                 "SELECT 1;", strict_tokenizer=False
             ),
-            "StatementSplitter",
+            "drop strict_tokenizer",
         ),
     ],
     ids=[
         "factory",
         "analyzer",
         "splitter-strict",
+        "splitter-last-split",
+        "splitter-split-statements",
         "analyzer-strict",
         "analysis-strict",
         "factory-strict",
@@ -81,16 +95,16 @@ def test_legacy_entry_point_warns_naming_its_replacement(name, action, replaceme
     assert len(messages) == 1, messages
     assert name in messages[0]
     assert replacement in messages[0]
-    assert "read_statement_facts" in messages[0]
+    if name != "strict_tokenizer":
+        assert "read_statement_facts" in messages[0]
 
 
 def test_explicit_parser_type_has_its_own_notice():
     messages = _notices(lambda: SqlParserFactory("sqlite", "regex"))
-    named = [m for m in messages if "parser_type" in m]
-    assert len(named) == 1, messages
-    assert "StatementSplitter" in named[0]
-    assert "read_statement_facts" in named[0]
-    assert _notices(lambda: SqlParserFactory("sqlite")) == []
+    assert len(messages) == 1, messages
+    assert "parser_type" in messages[0]
+    assert "StatementSplitter" in messages[0]
+    assert "read_statement_facts" in messages[0]
 
 
 def test_each_notice_is_once_per_process():
@@ -124,3 +138,40 @@ def test_facts_dialects_keep_refusing_the_legacy_parsers():
     for cls in (HybridParser, SqlGlotParser):
         with pytest.raises(ValueError, match="StatementFactsParser"):
             cls("postgresql")
+
+
+def test_silent_contexts_at_the_remaining_internal_construction_sites(tmp_path, monkeypatch):
+    from unittest.mock import MagicMock
+
+    from dblift.api import DBLiftClient
+    from dblift.config import DbliftConfig
+    from dblift.core.logger import NullLog
+    from dblift.db.provider_registry import ProviderRegistry
+    from tests.unit._migration_factory import make_migration
+
+    migrations = tmp_path / "m"
+    migrations.mkdir()
+    config = DbliftConfig.from_dict(
+        {"database": {"type": "sqlite", "path": str(tmp_path / "d.db"), "schema": "main"}}
+    )
+    with DBLiftClient.from_config(config, migrations_dir=migrations, logger=NullLog()) as client:
+        engine = client.executor.execution_engine
+        engine.sql_analyzer = _silent(SqlAnalyzer, "postgresql")  # forces the fallback analyzer
+        migration = make_migration(
+            script_name="V1__a.sql", content="SELECT 1;", config=client.config
+        )
+
+        def canonical():
+            engine._prepare_sql_statements(migration)  # execution-engine fallback
+
+            legacy = MagicMock()
+            legacy.database.type = "sqlite"
+            make_migration(
+                script_name="V1__b.sql", content="SELECT 1;", config=legacy
+            ).parse_sql_statements()  # Migration.parse_sql_statements
+
+            quirks = ProviderRegistry.get_quirks("sqlite")
+            monkeypatch.setattr(type(quirks), "lexical_spec", lambda self: None)
+            StatementSplitter("sqlite")  # the splitter's regex fallback factory
+
+        assert _notices(canonical) == []

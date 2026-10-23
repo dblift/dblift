@@ -42,7 +42,12 @@ def warn_direct_parser(name: str) -> None:
             return
         _warned.add(name)
     notice = _ENTRY_POINT_NOTICES.get(name)
-    if notice is not None:
+    if name == "strict_tokenizer":
+        message = (
+            f"{notice} and will be removed in 5.0; drop strict_tokenizer, the dialect scanner "
+            "decides how to read the script."
+        )
+    elif notice is not None:
         message = f"{notice} and will be removed in 5.0; {_FACTS_GUIDANCE}."
     else:
         message = (
