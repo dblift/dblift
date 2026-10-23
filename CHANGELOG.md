@@ -335,6 +335,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `docs/sql-parsing/oracle.md` section 13.
 ### Fixed
 
+- **`log_dir` and `log_format` from the config file and `DBLIFT_LOG_DIR` / `DBLIFT_LOG_FORMAT` now
+  take effect.** The CLI used to honour only `--log-dir` and `--log-format`; the parser's
+  `logs` and `text` defaults always won over the other sources. They now follow the usual
+  flag, environment, configuration file, default order, and an invalid format from the
+  environment or the file is rejected like an invalid flag.
+- **The log level is honoured wherever it is set.** `DBLIFT_LOG_LEVEL=ERROR` or `WARNING`,
+  `log_level: ERROR` and `logging.level: ERROR` in the CLI's configuration file used to fall back to
+  `info`, and the Python API's `log_level="ERROR"` still wrote every `info` line to the console
+  and the log file. `error` now shows only errors and `warn` warnings and errors; `warning` is
+  accepted as `warn`.
 - **`info` now lists a failed undo.** After an undo script failed, `dblift info` (console, `--format json`, the Python API and the MCP `info` tool) showed a clean schema while `validate`, `migrate` and `undo` refused to run because of the failed history row. The failed undo now appears as an `Undo` row in the `Failed` state and is counted in the summary's failed total. Completed undos are still not listed.
 - **An Oracle procedure, function, package, trigger, type or `FORCE` view that is still INVALID at the end of
   its migration now fails the migration.** Oracle reports a `CREATE [OR REPLACE]` or `ALTER ... COMPILE` with
