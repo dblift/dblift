@@ -19,7 +19,7 @@ from typing import Any, Dict, List
 
 import pytest
 
-from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+from dblift.core.migration.sql.statement_reader import StatementReader
 from dblift.core.sql_parser.redaction import describe_statement, mask_string_literals
 from tests.support.facts_parser import facts_parser
 
@@ -40,7 +40,7 @@ def evaluate(script: str) -> Dict[str, Any]:
         records = parser.split(script)
         strings = parser.split_statements(script)
         analysis = parser.split_for_analysis(script)
-        executed = SqlAnalyzer("sqlserver").split_statements_for_analysis(script)
+        executed = StatementReader("sqlserver").split_statements_for_analysis(script)
     except Exception as error:  # noqa: BLE001
         return {"error": [type(error).__name__, str(error)]}
     return json.loads(json.dumps(_views(records, strings, analysis, executed)))

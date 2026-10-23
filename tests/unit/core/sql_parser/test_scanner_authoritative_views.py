@@ -9,8 +9,7 @@ import pytest
 
 from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
 from dblift.core.migration.sql.script_analysis import analyse_script
-from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
-from dblift.db.plugins.sqlite.parser.sqlite_facts_parser import SQLiteFactsParser
+from dblift.core.migration.sql.statement_reader import StatementReader
 from tests.support.facts_parser import facts_factory, facts_parser
 
 
@@ -41,7 +40,7 @@ def test_mysql_analysis_sees_drop_inside_custom_delimiter_unit(dialect: str) -> 
         "SELECT",
     ]
     assert any(caution.level == "destroys" for caution in analysis.cautions)
-    assert SqlAnalyzer(dialect).split_statements_for_analysis(script) == [
+    assert StatementReader(dialect).split_statements_for_analysis(script) == [
         "SELECT 1",
         "DROP TABLE users",
         "SELECT 2",
@@ -151,7 +150,7 @@ def test_db2_source_spans_keep_directive_and_terminated_lines() -> None:
     ]
 
 
-@pytest.mark.parametrize("parser_class", [SQLiteFactsParser, facts_factory("duckdb")])
+@pytest.mark.parametrize("parser_class", [facts_factory("sqlite"), facts_factory("duckdb")])
 def test_engine_source_spans_keep_original_semicolons_and_bom_crlf(parser_class: type) -> None:
     script = "\ufeff  SELECT 1;\r\nSELECT 2;"
     records = parser_class().split(script)
@@ -163,7 +162,7 @@ def test_engine_source_spans_keep_original_semicolons_and_bom_crlf(parser_class:
 
 
 def test_sqlite_extraction_refuses_shell_command() -> None:
-    parser = SQLiteFactsParser()
+    parser = facts_parser("sqlite")
 
     with pytest.raises(UnsupportedMetaCommandError):
         parser.split_for_extraction(".read other.sql\nSELECT 1;")

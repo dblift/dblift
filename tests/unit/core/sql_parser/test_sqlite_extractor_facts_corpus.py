@@ -8,7 +8,7 @@ import pytest
 from dblift.core.sql_parser.lexical_engine import LexicalEngine
 from dblift.core.sql_parser.statement_facts import SqlglotStatementFactsReader
 from dblift.db.plugins.sqlite.parser.lexical_spec import SQLITE_SPEC
-from dblift.db.plugins.sqlite.parser.sqlite_facts_parser import SQLiteFactsParser
+from tests.support.facts_parser import facts_parser
 
 CASES = json.loads(
     Path(__file__).with_name("sqlite_extractor_facts_corpus.json").read_text(encoding="utf-8")
@@ -20,7 +20,7 @@ CASES = json.loads(
 def test_removed_extractor_inputs_have_reviewed_facts(case):
     assert case["source_tests"]
     assert case["reviewed_difference"] is None or case["reviewed_difference"]
-    parser = SQLiteFactsParser()
+    parser = facts_parser("sqlite")
     if "parse_expected" in case:
         result = parser.parse_sql(case["sql"])
         expected = case["parse_expected"]

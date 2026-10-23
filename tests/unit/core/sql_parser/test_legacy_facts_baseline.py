@@ -5,10 +5,10 @@ from pathlib import Path
 
 import pytest
 
-from dblift.core.sql_parser import SqlParserFactory
 from dblift.core.sql_parser.lexical_engine import LexicalEngine
 from dblift.core.sql_parser.statement_facts import SqlglotStatementFactsReader
 from dblift.db.plugins.sqlite.parser.lexical_spec import SQLITE_SPEC
+from tests.support.facts_parser import facts_parser
 
 CORPUS = Path(__file__).with_name("legacy_facts_baseline.json")
 CORPUS_DATA = json.loads(CORPUS.read_text(encoding="utf-8"))
@@ -22,7 +22,7 @@ def _object(ob):
 
 
 def _observe(dialect, script):
-    result = SqlParserFactory(dialect, parser_type="hybrid").parse_sql(script)
+    result = facts_parser(dialect).parse_sql(script)
     return {
         "success": result.success,
         "errors": result.errors,

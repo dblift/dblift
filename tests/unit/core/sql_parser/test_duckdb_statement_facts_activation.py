@@ -7,12 +7,11 @@ import pytest
 
 from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
 from dblift.core.migration.sql.script_analysis import analyse_script
-from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
-from dblift.core.sql_parser import SqlParserFactory
+from dblift.core.migration.sql.statement_reader import StatementReader
 from dblift.db.dml_analysis import analyze_dml, statement_dml_table, updates_restore_key
 from dblift.db.plugins.duckdb.quirks import DuckDBQuirks
 from dblift.db.provider_registry import ProviderRegistry
-from tests.unit._migration_factory import make_migration
+from tests.support.facts_parser import facts_parser
 
 _quirks = ProviderRegistry.get_quirks
 
@@ -41,7 +40,7 @@ def test_plugin_comment_only_facts_have_no_diagnostic():
 @pytest.mark.parametrize("mode", ["regex", "hybrid", "sqlglot"])
 @pytest.mark.parametrize("sql", [CTE_UPDATE, COPY_FROM])
 def test_factory_preserves_mutation_target_in_each_supported_mode(mode, sql):
-    result = SqlParserFactory("duckdb", mode).parse_sql(sql)
+    result = facts_parser("duckdb").parse_sql(sql)
 
     assert result.success, result.errors
     assert len(result.statements) == 1
@@ -75,7 +74,7 @@ def test_script_analysis_uses_facts_and_preserves_scanner_units(sql, operation, 
 
 @pytest.mark.parametrize("mode", ["regex", "hybrid", "sqlglot"])
 def test_comment_only_script_is_successful_and_has_no_statements(mode):
-    factory = SqlParserFactory("duckdb", mode)
+    factory = facts_parser("duckdb")
     result = factory.parse_sql("/* outer /* inner */ tail */")
 
     assert result.success, result.errors
@@ -95,7 +94,7 @@ def test_refused_script_has_no_partial_analysis(sql, error):
     assert analysis.statements == ()
     assert analysis.errors
     for mode in ("regex", "hybrid", "sqlglot"):
-        factory = SqlParserFactory("duckdb", mode)
+        factory = facts_parser("duckdb")
         with pytest.raises(error):
             factory.split_statements(sql)
         parsed = factory.parse_sql(sql)
@@ -115,7 +114,7 @@ def test_opaque_type_keeps_ddl_classification_without_guessing_an_object(sql):
 
 @pytest.mark.parametrize("sql", [CTE_UPDATE, COPY_FROM])
 def test_full_analyzer_classifies_mutations(sql):
-    assert SqlAnalyzer("duckdb", analysis_mode="full").get_statement_type(sql) == "DML"
+    assert StatementReader("duckdb", analysis_mode="full").get_statement_type(sql) == "DML"
 
 
 def test_execution_analyzer_does_not_import_sqlglot():
@@ -124,8 +123,8 @@ def test_execution_analyzer_does_not_import_sqlglot():
             sys.executable,
             "-c",
             "import sys; "
-            "from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer; "
-            "analyzer = SqlAnalyzer('duckdb', analysis_mode='execution'); "
+            "from dblift.core.migration.sql.statement_reader import StatementReader; "
+            "analyzer = StatementReader('duckdb', analysis_mode='execution'); "
             "assert analyzer.get_statement_type('UPDATE child SET id = 2') == 'DML'; "
             "analyzer.extract_objects('UPDATE child SET id = 2'); "
             "assert analyzer.analyze_statement('UPDATE child SET id = 2')['type'] == 'DML'; "
@@ -141,7 +140,7 @@ def test_execution_analyzer_does_not_import_sqlglot():
 @pytest.mark.parametrize("mode", ["regex", "hybrid", "sqlglot"])
 @pytest.mark.parametrize("sql", [CTE_UPDATE, COPY_FROM])
 def test_factory_affected_objects_projects_facts(mode, sql):
-    objects = SqlParserFactory("duckdb", mode).get_affected_objects(sql)
+    objects = facts_parser("duckdb").get_affected_objects(sql)
     assert [(obj.object_type.value, obj.name) for obj in objects] == [("TABLE", "child")]
 
 
@@ -172,7 +171,7 @@ def test_drop_schema_keeps_identity_and_destructive_caution(sql, name, schema):
     ],
 )
 def test_metadata_statements_keep_full_analyzer_classification(sql, kind):
-    assert SqlAnalyzer("duckdb", analysis_mode="full").get_statement_type(sql) == kind
+    assert StatementReader("duckdb", analysis_mode="full").get_statement_type(sql) == kind
 
 
 def test_comment_on_table_preserves_script_ddl_classification():
@@ -216,7 +215,7 @@ def test_opaque_metadata_preserves_high_level_classification(sql, kind):
     assert facts.kind == kind
     assert facts.opaque
     assert facts.objects == ()
-    assert SqlAnalyzer("duckdb").get_statement_type(sql) == kind
+    assert StatementReader("duckdb").get_statement_type(sql) == kind
 
 
 @pytest.mark.parametrize(
@@ -244,7 +243,7 @@ def test_prepared_execute_keeps_dml_classification():
     assert facts.kind == "DML"
     assert facts.opaque
     assert facts.objects == ()
-    assert SqlAnalyzer("duckdb").get_statement_type("EXECUTE stmt") == "DML"
+    assert StatementReader("duckdb").get_statement_type("EXECUTE stmt") == "DML"
 
 
 def test_copy_import_columns_do_not_count_as_restore_key_updates():

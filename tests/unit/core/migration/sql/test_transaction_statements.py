@@ -246,9 +246,9 @@ def test_duckdb_checkpoint_succeeds_clean_and_fails_with_local_changes(statement
 
 
 def _split(dialect, content):
-    from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+    from dblift.core.migration.sql.statement_reader import StatementReader
 
-    return SqlAnalyzer(dialect=dialect, logger=MagicMock()).split_statements(content)
+    return StatementReader(dialect=dialect, logger=MagicMock()).split_statements(content)
 
 
 @pytest.mark.parametrize("dialect", ["sqlite", "duckdb"])

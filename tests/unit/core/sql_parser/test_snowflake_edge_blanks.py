@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from dblift.core.sql_parser.parser_factory import SqlParserFactory
+from tests.support.facts_parser import facts_parser
 from tests.support.statement_edge_corpus import record_script
 
 EN_SPACE = chr(0x2002)
@@ -57,9 +57,9 @@ def test_a_leading_en_space_is_trimmed() -> None:
 
 @pytest.mark.parametrize("script", [f"DROP TABLE t{EN_SPACE};", f"DROP TABLE t{EN_SPACE}"])
 def test_the_name_before_a_trailing_en_space_is_read(script: str) -> None:
-    parsed = SqlParserFactory("snowflake").parse_sql(script)
+    parsed = facts_parser("snowflake").parse_sql(script)
     assert [s.names_unread for s in parsed.statements] == [False]
-    assert [o.name.lower() for o in SqlParserFactory("snowflake").extract_objects(script)] == ["t"]
+    assert [o.name.lower() for o in facts_parser("snowflake").extract_objects(script)] == ["t"]
 
 
 def test_an_en_space_between_tokens_is_left_alone() -> None:

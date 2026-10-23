@@ -12,7 +12,6 @@ from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.core.sql_model.base import SqlObjectType
 from dblift.core.sql_parser.common.comment_stripping import strip_comments_preserving_quotes
 from dblift.core.sql_parser.lexical_engine import LexicalEngine
-from dblift.core.sql_parser.parser_factory import SqlParserFactory
 from dblift.db.provider_registry import ProviderRegistry
 from tests.support.facts_parser import facts_parser
 
@@ -22,7 +21,7 @@ class TestLeadingCommentObjectExtraction:
     """A comment must never be mistaken for the statement it precedes."""
 
     def setup_method(self):
-        self.parser = SqlParserFactory("postgresql")
+        self.parser = facts_parser("postgresql")
 
     def test_leading_line_comment_mentioning_alter_table(self):
         sql = '-- ALTER TABLE in a comment\nDROP TABLE IF EXISTS "x"."orders";'
@@ -70,7 +69,7 @@ class TestAlterTableOnly:
     is not itself an object."""
 
     def setup_method(self):
-        self.parser = SqlParserFactory("postgresql")
+        self.parser = facts_parser("postgresql")
 
     def test_quoted_schema_qualified(self):
         sql = 'ALTER TABLE ONLY "s"."orders" DROP COLUMN "total";'
@@ -110,7 +109,7 @@ class TestQuotingVariants:
     """PostgreSQL names only identifiers quoted in its own syntax."""
 
     def setup_method(self):
-        self.parser = SqlParserFactory("postgresql")
+        self.parser = facts_parser("postgresql")
 
     def test_backtick_quoting(self):
         sql = "DROP TABLE IF EXISTS `x`.`orders`;"

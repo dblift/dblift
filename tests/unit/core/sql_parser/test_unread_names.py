@@ -8,11 +8,11 @@ import pytest
 
 from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.core.migration.sql.script_analysis import analyse_script
-from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
-from dblift.core.sql_parser.parser_factory import SqlParserFactory
+from dblift.core.migration.sql.statement_reader import StatementReader
 from dblift.core.sql_parser.unread_names import names_unreadable, statement_sources
 from dblift.db.dml_analysis import analyze_dml, statement_dml_table
 from dblift.db.provider_registry import ProviderRegistry
+from tests.support.facts_parser import facts_parser
 
 _quirks = ProviderRegistry.get_quirks
 
@@ -73,7 +73,7 @@ def test_an_unknown_dialect_name_is_tolerated():
 
 @pytest.mark.parametrize("dialect", LEGACY)
 def test_parse_sql_names_nothing_and_says_so(dialect):
-    result = SqlParserFactory(dialect).parse_sql(f"CREATE TABLE t{NBSP}(id INT);")
+    result = facts_parser(dialect).parse_sql(f"CREATE TABLE t{NBSP}(id INT);")
     (statement,) = result.statements
     assert statement.objects == [] and statement.affected_objects == []
     assert statement.names_unread
@@ -88,17 +88,17 @@ def test_the_facts_reader_names_nothing_it_cannot_prove(dialect, char):
     sql = f"CREATE TABLE t{char}(id INT)"
     facts = _quirks(dialect).statement_facts(sql)
     assert facts.objects == () and facts.opaque
-    (statement,) = SqlParserFactory(dialect).parse_sql(f"{sql};").statements
+    (statement,) = facts_parser(dialect).parse_sql(f"{sql};").statements
     assert statement.objects == [] and statement.affected_objects == []
     assert statement.names_unread
-    assert SqlAnalyzer(dialect).extract_objects(sql) == []
-    assert SqlAnalyzer(dialect).extract_objects("CREATE TABLE t (id INT)") != []
+    assert StatementReader(dialect).extract_objects(sql) == []
+    assert StatementReader(dialect).extract_objects("CREATE TABLE t (id INT)") != []
 
 
 @pytest.mark.parametrize("dialect", LEGACY)
 def test_parse_sql_keeps_naming_a_readable_statement(dialect):
     def read(sql):
-        (statement,) = SqlParserFactory(dialect).parse_sql(sql).statements
+        (statement,) = facts_parser(dialect).parse_sql(sql).statements
         return [(o.name, o.schema) for o in statement.objects + statement.affected_objects]
 
     assert read(f"CREATE TABLE t (id INT);\n-- a{NBSP}b") == read("CREATE TABLE t (id INT);")
@@ -107,13 +107,13 @@ def test_parse_sql_keeps_naming_a_readable_statement(dialect):
 
 @pytest.mark.parametrize("dialect", LEGACY)
 def test_extract_objects_names_nothing_for_an_unreadable_statement(dialect):
-    assert SqlParserFactory(dialect).extract_objects(f"CREATE TABLE t{NBSP}(id INT)") == []
-    assert SqlParserFactory(dialect).extract_objects("CREATE TABLE t(id INT)") != []
+    assert facts_parser(dialect).extract_objects(f"CREATE TABLE t{NBSP}(id INT)") == []
+    assert facts_parser(dialect).extract_objects("CREATE TABLE t(id INT)") != []
 
 
 @pytest.mark.parametrize("dialect", LEGACY)
 def test_the_analyzer_names_nothing_for_an_unreadable_statement(dialect):
-    analyzer = SqlAnalyzer(dialect)
+    analyzer = StatementReader(dialect)
     assert analyzer.extract_objects(f"CREATE TABLE t{NBSP}(id INT)") == []
     assert analyzer.extract_objects("CREATE TABLE t (id INT)") != []
 
@@ -146,18 +146,16 @@ def test_a_name_that_ends_its_statement_is_read_with_the_blank_the_split_trimmed
     script = sql.format(c=NBSP)
     if dialect == "oracle":  # the driver would strip it and the engine rejects it: refused
         with pytest.raises(UnsafeStatementSplitError):
-            SqlParserFactory(dialect).extract_objects(script)
+            facts_parser(dialect).extract_objects(script)
         return
     if dialect == "sqlserver" and sql == "CREATE SEQUENCE q{c}":
         # Measured (test_statement_edge_blanks.py SQLSERVER_UNICODE): U+00A0 is a blank to SQL Server,
         # so the record text drops it and the name ends the script as it does when terminated.
-        assert [o.name.lower() for o in SqlParserFactory(dialect).extract_objects(script)] == ["q"]
-        assert not any(
-            s.names_unread for s in SqlParserFactory(dialect).parse_sql(script).statements
-        )
+        assert [o.name.lower() for o in facts_parser(dialect).extract_objects(script)] == ["q"]
+        assert not any(s.names_unread for s in facts_parser(dialect).parse_sql(script).statements)
         return
-    assert SqlParserFactory(dialect).extract_objects(script) == []
-    assert all(s.names_unread for s in SqlParserFactory(dialect).parse_sql(script).statements)
+    assert facts_parser(dialect).extract_objects(script) == []
+    assert all(s.names_unread for s in facts_parser(dialect).parse_sql(script).statements)
 
 
 # The scanner's raw span for a name that ends the script. Oracle refuses a no-break space there, so
@@ -183,7 +181,7 @@ def _ending_blank(dialect):
 def test_the_scanner_span_of_a_name_that_ends_the_script_holds_the_blank_except_for_oracle(dialect):
     """Green pin: only Oracle's last record ends at its last token."""
     script = f"DROP TABLE t{_ending_blank(dialect)}"
-    records = SqlParserFactory(dialect, "regex").get_parser().split(script)
+    records = facts_parser(dialect).split(script)
     assert len(records) == 1
     span = script[records[0].source_start : records[0].source_end]
     assert span == ("DROP TABLE t" if dialect == "oracle" else script)
@@ -193,8 +191,8 @@ def test_the_scanner_span_of_a_name_that_ends_the_script_holds_the_blank_except_
 def test_statement_sources_returns_the_untrimmed_text_of_a_name_that_ends_the_script(dialect):
     """Green pin: the span is the whole script for every dialect that keeps the blank."""
     script = f"DROP TABLE t{_ending_blank(dialect)}"
-    scanner = SqlParserFactory(dialect, "regex").get_parser()
-    statements = SqlAnalyzer(dialect).split_statements_for_analysis(script)
+    scanner = facts_parser(dialect)
+    statements = StatementReader(dialect).split_statements_for_analysis(script)
     # Oracle reads the ideographic space as a blank: its record, and so its span, ends at the name.
     assert statement_sources(scanner, script, statements) == [
         "DROP TABLE t" if dialect == "oracle" else script
@@ -224,14 +222,14 @@ KEEPS_THE_BLANK = ("postgresql", "redshift", "cockroachdb", "mysql", "mariadb", 
 )
 def test_the_analysed_text_equals_its_span_once_the_record_keeps_the_blank(dialect):
     script = f"DROP TABLE t{_ending_blank(dialect)}"
-    scanner = SqlParserFactory(dialect, "regex").get_parser()
-    statements = SqlAnalyzer(dialect).split_statements_for_analysis(script)
+    scanner = facts_parser(dialect)
+    statements = StatementReader(dialect).split_statements_for_analysis(script)
     assert statements == statement_sources(scanner, script, statements) == [script]
 
 
 @pytest.mark.parametrize("blank", ("\x0b", "\x0c", "\x0b　", "　\x0c "))
 def test_oracle_span_ends_at_the_name_before_blanks_and_a_terminator(blank):
-    scanner = SqlParserFactory("oracle", "regex").get_parser()
+    scanner = facts_parser("oracle")
     script = f"DROP TABLE t　{blank};"
     assert statement_sources(scanner, script, ["DROP TABLE t"]) == ["DROP TABLE t;"]
     names = {
@@ -243,7 +241,7 @@ def test_oracle_span_ends_at_the_name_before_blanks_and_a_terminator(blank):
 
 
 def test_a_character_the_engine_keeps_stays_in_the_span_before_a_terminator():
-    scanner = SqlParserFactory("postgresql", "regex").get_parser()
+    scanner = facts_parser("postgresql")
     script = "DROP TABLE t 　;"
     [text] = scanner.split_for_extraction(script)
     assert statement_sources(scanner, script, [text])[0].startswith("DROP TABLE t ")
@@ -256,13 +254,13 @@ def test_a_character_the_engine_keeps_stays_in_the_span_before_a_terminator():
 def test_db2_facts_name_nothing_for_a_name_the_engine_may_read_whole(sql):
     """Db2 reads statement facts: the reader leaves the objects unnamed instead of flagging the parse."""
     script = sql.format(c=NBSP)
-    assert SqlParserFactory("db2").extract_objects(script) == []
-    (statement,) = SqlParserFactory("db2").parse_sql(script).statements
+    assert facts_parser("db2").extract_objects(script) == []
+    (statement,) = facts_parser("db2").parse_sql(script).statements
     assert statement.objects == [] and statement.affected_objects == []
 
 
 def test_the_facts_parser_marks_a_statement_whose_names_it_could_not_read():
-    parser = SqlParserFactory("sqlite")
+    parser = facts_parser("sqlite")
     (unread,) = parser.parse_sql("PRAGMA foreign_keys = ON").statements
     assert unread.names_unread is True
     (read,) = parser.parse_sql("CREATE TABLE t (a int)").statements

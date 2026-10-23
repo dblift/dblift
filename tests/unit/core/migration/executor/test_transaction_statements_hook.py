@@ -15,7 +15,7 @@ from dblift.core.logger.results import MigrateResult
 from dblift.core.migration.commands.base_command import BaseCommand
 from dblift.core.migration.executor import execution_engine
 from dblift.core.migration.executor.execution_engine import ExecutionEngine
-from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+from dblift.core.migration.sql.statement_reader import StatementReader
 from tests.unit._migration_factory import make_migration
 
 pytestmark = pytest.mark.unit
@@ -28,7 +28,7 @@ def _engine(dialect="sqlite"):
     provider = MagicMock()
     provider.execute_statement.return_value = 0
     log = MagicMock()
-    return ExecutionEngine(provider, SqlAnalyzer(dialect=dialect, logger=log), log)
+    return ExecutionEngine(provider, StatementReader(dialect=dialect, logger=log), log)
 
 
 def _script(engine, content, name="V1__x.sql"):

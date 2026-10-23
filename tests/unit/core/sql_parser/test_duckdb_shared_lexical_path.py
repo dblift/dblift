@@ -7,16 +7,12 @@ from unittest.mock import patch
 import pytest
 
 from dblift.core.exceptions import UnsupportedMetaCommandError
-from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+from dblift.core.migration.sql.statement_reader import StatementReader
 from dblift.core.migration.sql.statement_splitter import StatementSplitter
 from dblift.core.sql_parser.lexical_engine import LexicalEngine
 from dblift.core.sql_parser.lexical_tokenizer import LexicalTokenizer
-from dblift.core.sql_parser.parser_factory import SqlParserFactory
 from dblift.db.plugins.db2.parser.lexical_spec import DB2_SPEC
-from dblift.db.plugins.duckdb.parser.duckdb_facts_parser import (
-    DuckDBFactsParser,
-    DuckDBStatementFactsReader,
-)
+from dblift.db.plugins.duckdb.parser.duckdb_facts_parser import DuckDBStatementFactsReader
 from dblift.db.plugins.duckdb.parser.lexical_spec import DUCKDB_SPEC
 from dblift.db.plugins.duckdb.provider import DuckDBProvider
 from dblift.db.plugins.duckdb.quirks import DuckDBQuirks
@@ -50,16 +46,16 @@ ENTRY_POINTS = {
     "regex split_for_analysis": lambda: facts_parser("duckdb").split_for_analysis(SCRIPT),
     "regex split_for_extraction": lambda: facts_parser("duckdb").split_for_extraction(SCRIPT),
     "regex parse_sql": lambda: facts_parser("duckdb").parse_sql(SCRIPT),
-    "facts split": lambda: DuckDBFactsParser().split(SCRIPT),
-    "facts split_statements": lambda: DuckDBFactsParser().split_statements(SCRIPT),
-    "facts split_for_analysis": lambda: DuckDBFactsParser().split_for_analysis(SCRIPT),
-    "facts split_for_extraction": lambda: DuckDBFactsParser().split_for_extraction(SCRIPT),
-    "facts parse_sql": lambda: DuckDBFactsParser().parse_sql(SCRIPT),
-    "facts extract_objects": lambda: DuckDBFactsParser().extract_objects(SCRIPT),
-    "facts validate_sql": lambda: DuckDBFactsParser().validate_sql(SCRIPT),
+    "facts split": lambda: facts_parser("duckdb").split(SCRIPT),
+    "facts split_statements": lambda: facts_parser("duckdb").split_statements(SCRIPT),
+    "facts split_for_analysis": lambda: facts_parser("duckdb").split_for_analysis(SCRIPT),
+    "facts split_for_extraction": lambda: facts_parser("duckdb").split_for_extraction(SCRIPT),
+    "facts parse_sql": lambda: facts_parser("duckdb").parse_sql(SCRIPT),
+    "facts extract_objects": lambda: facts_parser("duckdb").extract_objects(SCRIPT),
+    "facts validate_sql": lambda: facts_parser("duckdb").validate_sql(SCRIPT),
     "facts reader": lambda: DuckDBStatementFactsReader("duckdb").read("SELECT 1 /* c */"),
     "quirks blank_comments": lambda: DuckDBQuirks().blank_comments("SELECT 1 /* c */"),
-    "analyzer": lambda: SqlAnalyzer("duckdb").split_statements_for_analysis(SCRIPT),
+    "analyzer": lambda: StatementReader("duckdb").split_statements_for_analysis(SCRIPT),
     "splitter": lambda: StatementSplitter("duckdb").split_statements(SCRIPT),
 }
 
@@ -114,13 +110,13 @@ def test_the_refusals_are_the_engine_s_and_not_softened_by_the_splitter():
 
 
 def test_placeholder_is_code_for_duckdb():
-    assert DuckDBFactsParser().split_statements("SELECT ${a;b};") == ["SELECT ${a", "b}"]
+    assert facts_parser("duckdb").split_statements("SELECT ${a;b};") == ["SELECT ${a", "b}"]
 
 
 def test_nothing_is_logged(caplog):
     regex, facts, splitter = (
         facts_parser("duckdb"),
-        DuckDBFactsParser(),
+        facts_parser("duckdb"),
         StatementSplitter("duckdb"),
     )
     with caplog.at_level(logging.DEBUG):

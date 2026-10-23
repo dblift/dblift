@@ -11,7 +11,7 @@ import pytest
 from dblift.core.migration.migration import MigrationType
 from dblift.core.migration.rules.migration_rules import MigrationRules
 from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
-from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+from dblift.core.migration.sql.statement_reader import StatementReader
 from dblift.core.migration.state.migration_state_manager import MigrationStateManager
 from dblift.core.sql_validator.migration_validator import MigrationValidator
 from dblift.db.base_quirks import BaseQuirks
@@ -211,9 +211,9 @@ def test_metadata_validation_does_not_construct_analyzer_or_read_sql(monkeypatch
             raise AssertionError("metadata validation must not read SQL content")
 
     def fail_analyzer_init(*_args, **_kwargs):
-        raise AssertionError("metadata validation must not construct SqlAnalyzer")
+        raise AssertionError("metadata validation must not construct StatementReader")
 
-    monkeypatch.setattr(SqlAnalyzer, "__init__", fail_analyzer_init)
+    monkeypatch.setattr(StatementReader, "__init__", fail_analyzer_init)
     history_manager = SimpleNamespace(
         has_history_table=False,
         provider=SimpleNamespace(

@@ -2,7 +2,7 @@ r"""psql's ``\;`` combines the statements around it into one request (spec §4, 
 
 from __future__ import annotations
 
-from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+from dblift.core.migration.sql.statement_reader import StatementReader
 from dblift.core.sql_parser import Statement
 from dblift.core.sql_parser.lexical_statement_parser import (
     LexicalStatementParser,
@@ -32,7 +32,7 @@ def test_backslash_semicolon_inside_literals_is_not_a_combinator() -> None:
 
 
 def test_split_statements_string_carries_the_substitution() -> None:
-    assert SqlAnalyzer("postgresql").split_statements(r"SELECT 1 \; SELECT 2; SELECT 3;") == [
+    assert StatementReader("postgresql").split_statements(r"SELECT 1 \; SELECT 2; SELECT 3;") == [
         r"SELECT 1 ; SELECT 2;",
         r"SELECT 3;",
     ]

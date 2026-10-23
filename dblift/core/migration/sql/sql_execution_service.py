@@ -115,7 +115,10 @@ class SqlExecutionService:
             self.quirks.supports_statement_facts
             or getattr(analyze_dml, "__func__", analyze_dml) is BaseQuirks.analyze_dml
         ):
-            import sqlglot  # noqa: F401 - fail before any user or history write
+            # Fail before any user or history write, naming the extra.
+            from dblift.core.migration.executor.migration_executor import require_analysis_support
+
+            require_analysis_support("full")
 
         self._analysis_prepared = True
 
@@ -221,16 +224,6 @@ class SqlExecutionService:
                                     self.log.warning(facts.error)
                                 elif facts.diagnostic:
                                     self.log.debug(facts.diagnostic)
-
-                            # For DDL statements, use parser to extract objects
-                            elif statement_type == SqlStatementType.DDL.value:
-                                # Use the parser factory directly to get proper schema handling
-                                if getattr(self.sql_analyzer, "parser_factory", None):
-                                    objects_affected = (
-                                        self.sql_analyzer.parser_factory.extract_objects(
-                                            statement, self.schema
-                                        )
-                                    )
 
                             # For DML statements (INSERT, UPDATE, DELETE), extract table name
                             elif statement_type == SqlStatementType.DML.value:

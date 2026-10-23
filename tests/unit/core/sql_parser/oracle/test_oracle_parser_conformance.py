@@ -34,7 +34,8 @@ from typing import FrozenSet
 
 import pytest
 
-from tests.support.facts_parser import facts_factory, facts_parser
+from dblift.core.sql_parser.statement_facts_parser import StatementFactsParser
+from tests.support.facts_parser import facts_parser
 
 
 @dataclass(frozen=True)
@@ -172,18 +173,18 @@ CASES: list[ConformanceCase] = [
 
 
 @pytest.fixture(scope="module")
-def parser() -> facts_factory("oracle"):
+def parser() -> StatementFactsParser:
     """One parser for the module — stateless across calls in practice."""
     return facts_parser("oracle")
 
 
 @pytest.mark.unit
 class TestOracleParserConformance:
-    """Contract assertions for the public facts_factory("oracle") surface."""
+    """Contract assertions for the public statement-facts parser surface."""
 
     @pytest.mark.parametrize("case", CASES, ids=lambda c: c.id)
     def test_statement_count_and_success(
-        self, parser: facts_factory("oracle"), case: ConformanceCase
+        self, parser: StatementFactsParser, case: ConformanceCase
     ) -> None:
         result = parser.parse_sql(case.sql)
         assert (
@@ -197,7 +198,7 @@ class TestOracleParserConformance:
 
     @pytest.mark.parametrize("case", CASES, ids=lambda c: c.id)
     def test_extracted_objects_match(
-        self, parser: facts_factory("oracle"), case: ConformanceCase
+        self, parser: StatementFactsParser, case: ConformanceCase
     ) -> None:
         objects = parser.get_affected_objects(case.sql)
         actual = frozenset(f"{o.name}:{o.object_type.value}" for o in objects)
@@ -208,7 +209,7 @@ class TestOracleParserConformance:
         )
 
     def test_split_statements_strips_spool_absolute_path(
-        self, parser: facts_factory("oracle")
+        self, parser: StatementFactsParser
     ) -> None:
         statements = parser.split_statements(
             "SPOOL /tmp/dblift_test.log;\nCREATE TABLE t (id NUMBER);"

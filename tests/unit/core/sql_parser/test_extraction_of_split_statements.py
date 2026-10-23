@@ -2,12 +2,12 @@
 
 import pytest
 
-from dblift.core.sql_parser.parser_factory import SqlParserFactory
 from dblift.db.provider_registry import ProviderRegistry
+from tests.support.facts_parser import facts_parser
 
 
 def _oracle_parser():
-    return SqlParserFactory("oracle").get_parser()
+    return facts_parser("oracle")
 
 
 @pytest.mark.parametrize(

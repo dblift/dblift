@@ -5,11 +5,10 @@ import logging
 
 import pytest
 
-from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
-from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+from dblift.core.exceptions import UnsafeStatementSplitError
+from dblift.core.migration.sql.statement_reader import StatementReader
 from dblift.core.migration.sql.statement_splitter import StatementSplitter
 from dblift.core.sql_parser.lexical_engine import LexicalEngine
-from dblift.core.sql_parser.parser_factory import SqlParserFactory
 from dblift.db.plugins.db2.parser.lexical_spec import DB2_SPEC
 from dblift.db.plugins.db2.quirks import Db2Quirks
 from dblift.db.plugins.mariadb.lexical_spec import MARIADB_SPEC
@@ -59,7 +58,7 @@ def test_entry_points_reach_the_engine(monkeypatch, entry):
 
 
 def test_the_analyzer_reaches_the_engine_and_leaves_directives_out(monkeypatch):
-    analyzer = SqlAnalyzer("db2")
+    analyzer = StatementReader("db2")
     assert analyzer.split_statements(SCRIPT) == STATEMENTS
     assert analyzer.split_statements_for_analysis(SCRIPT) == STATEMENTS
     assert facts_parser("db2").split_for_extraction(SCRIPT) == STATEMENTS

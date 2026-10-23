@@ -1,8 +1,7 @@
 """Oracle statement facts activate every consumer."""
 
 from dblift.core.migration.sql.script_analysis import analyse_script
-from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
-from dblift.core.sql_parser import SqlParserFactory
+from dblift.core.migration.sql.statement_reader import StatementReader
 from dblift.core.sql_parser.statement_facts import SqlglotStatementFactsReader
 from dblift.core.sql_parser.statement_facts_parser import StatementFactsParser
 from dblift.db.dml_analysis import (
@@ -12,6 +11,7 @@ from dblift.db.dml_analysis import (
     statement_dml_table,
 )
 from dblift.db.provider_registry import ProviderRegistry
+from tests.support.facts_parser import facts_parser
 
 _quirks = ProviderRegistry.get_quirks
 
@@ -27,9 +27,9 @@ def test_oracle_plugin_reads_statement_facts():
     assert isinstance(quirks.statement_facts_reader(), SqlglotStatementFactsReader)
 
 
-def test_hybrid_factory_serves_the_facts_parser():
-    factory = SqlParserFactory("oracle", "hybrid")
-    parser = factory.get_parser()
+def test_the_facts_parser_reads_the_dialect():
+    factory = facts_parser("oracle")
+    parser = factory
 
     assert isinstance(parser, StatementFactsParser)
     assert parser.dialect_name == "oracle"
@@ -47,7 +47,7 @@ def test_script_analysis_goes_through_facts():
 
 
 def test_analyzer_extracts_objects_from_facts():
-    analyzer = SqlAnalyzer("oracle")
+    analyzer = StatementReader("oracle")
 
     assert [obj["object_name"] for obj in analyzer.extract_objects(UPDATE)] == [
         "default_schema.CHILD"

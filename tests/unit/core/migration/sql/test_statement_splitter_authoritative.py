@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from dblift.core.exceptions import UnsafeStatementSplitError
-from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+from dblift.core.migration.sql.statement_reader import StatementReader
 from dblift.core.migration.sql.statement_splitter import StatementSplitter
 
 
@@ -18,12 +18,14 @@ def test_directive_only_script_yields_nothing() -> None:
 
 
 def test_analyzer_returns_nothing_for_a_directive_only_script() -> None:
-    assert SqlAnalyzer("postgresql").split_statements("\\restrict abc\n\\unrestrict abc\n") == []
+    assert (
+        StatementReader("postgresql").split_statements("\\restrict abc\n\\unrestrict abc\n") == []
+    )
 
 
 def test_a_refusal_is_not_softened_by_non_strict_mode() -> None:
     with pytest.raises(UnsafeStatementSplitError):
-        SqlAnalyzer("postgresql").split_statements("SELECT 'abc; SELECT 2;")
+        StatementReader("postgresql").split_statements("SELECT 'abc; SELECT 2;")
 
 
 def _boom(self):
@@ -39,9 +41,9 @@ def test_a_parser_bug_is_a_refusal_not_a_semicolon_split(monkeypatch) -> None:
     monkeypatch.setattr(LexicalStatementParser, "split", _boom)
     script = "SELECT 1; SELECT $$a;b$$;"
     with pytest.raises(UnsafeStatementSplitError):
-        SqlAnalyzer("postgresql").split_statements(script)
+        StatementReader("postgresql").split_statements(script)
     with pytest.raises(UnsafeStatementSplitError):
-        parse_migration_sql(SqlAnalyzer("postgresql"), script, MagicMock())
+        parse_migration_sql(StatementReader("postgresql"), script, MagicMock())
 
 
 def test_an_oracle_parser_bug_is_a_refusal_not_a_regex_split(monkeypatch) -> None:
@@ -51,6 +53,6 @@ def test_an_oracle_parser_bug_is_a_refusal_not_a_regex_split(monkeypatch) -> Non
     monkeypatch.setattr(LexicalStatementParser, "split", _boom)
     script = "SELECT 1 FROM dual;"
     with pytest.raises(UnsafeStatementSplitError):
-        SqlAnalyzer("oracle").split_statements(script)
+        StatementReader("oracle").split_statements(script)
     with pytest.raises(UnsafeStatementSplitError):
-        parse_migration_sql(SqlAnalyzer("oracle"), script, MagicMock())
+        parse_migration_sql(StatementReader("oracle"), script, MagicMock())

@@ -16,7 +16,7 @@ import warnings
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
-from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+from dblift.core.migration.sql.statement_reader import StatementReader
 from dblift.core.migration.sql.statement_splitter import StatementSplitter
 from dblift.core.sql_parser.lexical_engine import LexicalEngine
 from dblift.db.provider_registry import ProviderRegistry
@@ -113,7 +113,9 @@ def observe(dialect: str, script: str) -> Dict[str, Any]:
     seen: Dict[str, Any] = {
         "splitter": _outcome(lambda: StatementSplitter(dialect).split_statements(script))
     }
-    seen["analysis"] = _outcome(lambda: SqlAnalyzer(dialect).split_statements_for_analysis(script))
+    seen["analysis"] = _outcome(
+        lambda: StatementReader(dialect).split_statements_for_analysis(script)
+    )
     spec = ProviderRegistry.get_quirks(dialect).lexical_spec()
     if spec is not None:
         seen["engine"] = _outcome(lambda: LexicalEngine(spec).split_statements(script))

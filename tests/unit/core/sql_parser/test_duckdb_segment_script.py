@@ -12,8 +12,8 @@ from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCom
 from dblift.core.sql_parser.lexical_engine import LexicalEngine
 from dblift.core.sql_parser.lexical_tokenizer import LexicalTokenizer
 from dblift.core.sql_parser.tokens import TokenType
-from dblift.db.plugins.duckdb.parser.duckdb_facts_parser import DuckDBFactsParser
-from dblift.db.plugins.duckdb.parser.lexical_spec import DUCKDB_RULES, DUCKDB_SPEC
+from dblift.db.plugins.duckdb.parser.lexical_spec import DUCKDB_SPEC
+from tests.support.facts_parser import facts_parser
 from tests.support.splitter_spec.spec_tables import load_conformance_rows
 from tests.support.splitter_spec.splitting import SplitOutcome
 
@@ -535,7 +535,7 @@ def test_blank_comments(name, script, records, analysis, blanked):
 @pytest.mark.parametrize("name,script,records,analysis,blanked", CASES, ids=IDS)
 def test_engine_analysis_view_matches_the_parser(name, script, records, analysis, blanked):
     assert outcome(ENGINE.split_for_analysis, script) == outcome(
-        DuckDBFactsParser().split_for_analysis, script
+        facts_parser("duckdb").split_for_analysis, script
     )
 
 

@@ -1,6 +1,5 @@
 """Execution runs batches; extraction and reporting still read one statement at a time."""
 
-from dblift.core.sql_parser.parser_factory import SqlParserFactory
 from tests.support.facts_parser import facts_parser
 
 SCRIPT = (
@@ -24,13 +23,13 @@ def test_split_for_extraction_still_cuts_at_go():
 
 def test_parse_sql_reports_one_statement_per_semicolon():
     for parser_type in ("regex", "hybrid"):
-        parser = SqlParserFactory("sqlserver", parser_type=parser_type).get_parser()
+        parser = facts_parser("sqlserver")
         result = parser.parse_sql(SCRIPT)
         assert len(result.statements) == 4, parser_type
 
 
 def test_hybrid_extraction_of_a_batch_equals_extraction_statement_by_statement():
-    parser = SqlParserFactory("sqlserver", parser_type="hybrid").get_parser()
+    parser = facts_parser("sqlserver")
 
     def names(objects):
         return sorted((o.object_type.name, o.name) for o in objects)
@@ -41,7 +40,7 @@ def test_hybrid_extraction_of_a_batch_equals_extraction_statement_by_statement()
 
 
 def test_postgresql_extraction_uses_scanner_constituents():
-    parser = SqlParserFactory("postgresql", parser_type="regex").get_parser()
+    parser = facts_parser("postgresql")
     script = "CREATE TABLE a (x INT);\nCREATE TABLE b (y INT);\n"
     assert parser.split_for_extraction(script) == [
         "CREATE TABLE a (x INT)",

@@ -8,9 +8,9 @@ from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.core.migration.sql.statement_splitter import StatementSplitter
 from dblift.core.sql_parser.lexical_engine import LexicalEngine
 from dblift.core.sql_parser.lexical_spec import LexicalSpec
-from dblift.core.sql_parser.parser_factory import SqlParserFactory
 from dblift.core.sql_parser.statement import Statement, analysis_sql, execution_strings
 from dblift.db.provider_registry import ProviderRegistry
+from tests.support.facts_parser import facts_parser
 
 
 def test_snowflake_uses_a_lexical_spec_for_statement_facts() -> None:
@@ -39,7 +39,7 @@ def test_snowflake_split_views_route_through_shared_records(monkeypatch) -> None
 
     assert StatementSplitter("snowflake").split(script) == [record]
     for mode in ("regex", "hybrid"):
-        parser = SqlParserFactory("snowflake", parser_type=mode).get_parser()
+        parser = facts_parser("snowflake")
         assert parser.split_statements(script) == ["SELECT 7"]
         assert parser.split_for_analysis(script) == ["SELECT 7"]
         assert parser.split_for_extraction(script) == ["SELECT 7"]
@@ -73,5 +73,5 @@ def test_snowflake_facts_parser_executes_what_the_splitter_executes() -> None:
 
     assert len(expected) == 3
     for mode in ("regex", "hybrid"):
-        parser = SqlParserFactory("snowflake", parser_type=mode).get_parser()
+        parser = facts_parser("snowflake")
         assert parser.split_statements(script) == expected

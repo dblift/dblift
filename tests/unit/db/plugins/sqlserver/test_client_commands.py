@@ -5,7 +5,7 @@ from collections import namedtuple
 import pytest
 
 from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
-from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+from dblift.core.migration.sql.statement_reader import StatementReader
 from dblift.core.sql_parser.lexical_engine import LexicalEngine
 from dblift.db.plugins.sqlserver.parser.lexical_spec import SQLSERVER_SPEC
 
@@ -21,7 +21,7 @@ def batches_of(script, spec=SQLSERVER_SPEC):
 
 
 def _split(script):
-    return SqlAnalyzer("sqlserver").split_statements(script)
+    return StatementReader("sqlserver").split_statements(script)
 
 
 @pytest.mark.parametrize(

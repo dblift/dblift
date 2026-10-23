@@ -16,10 +16,9 @@ from sqlglot.dialects import Dialect
 
 from dblift.core.sql_parser.sqlglot_statement_facts import read_statement_facts
 from dblift.db.dml_analysis import analyze_dml
-from dblift.db.plugins.duckdb.parser.duckdb_facts_parser import DuckDBFactsParser
 from dblift.db.plugins.duckdb.parser.lexical_spec import DUCKDB_RULES
-from dblift.db.plugins.sqlite.parser.sqlite_facts_parser import SQLiteFactsParser
 from dblift.db.provider_registry import ProviderRegistry
+from tests.support.facts_parser import facts_factory
 
 _quirks = ProviderRegistry.get_quirks
 
@@ -102,10 +101,12 @@ def test_active_plugin_readers_name_nothing(dialect, char):
 
 
 @pytest.mark.parametrize("char", UNREAD, ids=IDS)
-@pytest.mark.parametrize("parser", (SQLiteFactsParser, DuckDBFactsParser), ids=("sqlite", "duckdb"))
+@pytest.mark.parametrize(
+    "parser", (facts_factory("sqlite"), facts_factory("duckdb")), ids=("sqlite", "duckdb")
+)
 def test_parser_projection_names_nothing(parser, char):
     sql = f"CREATE TABLE t{char}(id INT); DROP TABLE u{char}; UPDATE v{char} SET a = 1"
-    if parser is DuckDBFactsParser and char in DUCKDB_RULES.blanks:
+    if parser().dialect_name == "duckdb" and char in DUCKDB_RULES.blanks:
         # the engine reads the blank before the second `;` as a blank: that statement is DROP TABLE u
         assert [obj.name for obj in parser().extract_objects(sql)] == ["u"]
         return

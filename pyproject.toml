@@ -509,7 +509,7 @@ strict_equality = true
 # ``migration: Any`` annotations on duck-typed helper parameters, generic
 # parameters on ``List[Dict[str, Any]]`` / ``Dict[str, Any]``, ``Optional``
 # wrappers on default-``None`` params, return-type annotations on two
-# ``SqlAnalyzer`` methods, and explicit ``-> None`` / ``-> str`` on inner
+# ``StatementReader`` methods, and explicit ``-> None`` / ``-> str`` on inner
 # functions. Same flag set as the api/* carve-outs above.
 [[tool.mypy.overrides]]
 module = [
@@ -523,7 +523,7 @@ module = [
     "dblift.core.migration.scripting.migration_script_manager",
     "dblift.core.migration.sql",
     "dblift.core.migration.sql.execution_statement",
-    "dblift.core.migration.sql.sql_analyzer",
+    "dblift.core.migration.sql.statement_reader",
     "dblift.core.migration.sql.sql_execution_service",
 
     "dblift.core.migration.sql.statement_splitter",

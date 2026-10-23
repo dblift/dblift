@@ -5,7 +5,7 @@ import pytest
 
 from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.core.migration.sql.script_analysis import analyse_script
-from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+from dblift.core.migration.sql.statement_reader import StatementReader
 from tests.support.facts_parser import facts_parser
 
 
@@ -85,12 +85,12 @@ def test_alter_table_clause_on_next_line_stays_with_its_statement() -> None:
 )
 def test_multiline_alter_table_clauses_stay_whole(clause: str) -> None:
     sql = f"ALTER TABLE users\n{clause};"
-    assert SqlAnalyzer("sqlserver").split_statements_for_analysis(sql) == [sql]
+    assert StatementReader("sqlserver").split_statements_for_analysis(sql) == [sql]
 
 
 def test_standalone_drop_after_unterminated_alter_table_is_visible_to_analysis() -> None:
     sql = "ALTER TABLE users ADD display_name VARCHAR(50)\nDROP TABLE victims;"
-    assert SqlAnalyzer("sqlserver").split_statements_for_analysis(sql) == [
+    assert StatementReader("sqlserver").split_statements_for_analysis(sql) == [
         "ALTER TABLE users ADD display_name VARCHAR(50)",
         "DROP TABLE victims;",
     ]

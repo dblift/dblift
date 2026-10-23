@@ -3,14 +3,11 @@
 from __future__ import annotations
 
 import functools
-import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from tests.support.facts_corpus.canonical import compact_facts
 from tests.support.facts_corpus.classes import NO_OLD_FAMILIES
 from tests.support.facts_corpus.seed import split
-
-_DML_HEAD = re.compile(r"(INSERT|UPDATE|DELETE|MERGE|WITH|REPLACE)\b", re.IGNORECASE)
 
 
 def check_arm(arm: str, installed: str, versions: Dict[str, Any]) -> None:
@@ -28,20 +25,6 @@ def _quirks(family: str):
     from dblift.db.provider_registry import ProviderRegistry
 
     return ProviderRegistry.get_quirks(family)
-
-
-@functools.lru_cache(maxsize=None)
-def _factory(family: str):
-    from dblift.core.sql_parser.parser_factory import SqlParserFactory
-
-    return SqlParserFactory(family)
-
-
-@functools.lru_cache(maxsize=None)
-def _analyzer(family: str):
-    from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
-
-    return SqlAnalyzer(family)
 
 
 @functools.lru_cache(maxsize=None)
@@ -67,44 +50,13 @@ def _read_facts(family: str, sql: str) -> Any:
     return compact_facts(_reader(family).read(sql))
 
 
-def _dml(family: str, sql: str) -> Dict[str, Any]:
-    quirks = _quirks(family)
-    mutation = quirks.analyze_dml(sql)
-    return {
-        "table": quirks.statement_dml_table(sql),
-        "events": sorted(mutation.events) if mutation.events else None,
-        "updated_columns": list(mutation.updated_columns),
-        "predicate": quirks.dml_where_predicate(sql),
-        "full_table": quirks.is_full_table_dml(sql),
-    }
-
-
-def _read_old(family: str, sql: str) -> Optional[Dict[str, Any]]:
-    from dblift.db.dml_analysis import strip_leading_sql_comments
-
-    if _quirks(family).supports_statement_facts:
-        return None
-    old: Dict[str, Any] = {
-        "hybrid": _guarded(
-            lambda: [
-                [o.object_type.value, o.name, o.schema]
-                for o in _factory(family).extract_objects(sql)
-            ]
-        ),
-        "analyzer": _guarded(
-            lambda: [
-                [o["object_type"], o["object_name"]] for o in _analyzer(family).extract_objects(sql)
-            ]
-        ),
-    }
-    if _DML_HEAD.match(strip_leading_sql_comments(sql).lstrip()):
-        old["dml"] = _guarded(lambda: _dml(family, sql))
-    return old
-
-
 def record_statement(family: str, sql: str) -> Dict[str, Any]:
-    """Return ``facts`` and ``old`` for one statement on the running sqlglot."""
-    return {"facts": _guarded(lambda: _read_facts(family, sql)), "old": _read_old(family, sql)}
+    """Return ``facts`` for one statement on the running sqlglot; ``old`` is ``None``.
+
+    The text extraction paths that ``old`` once recorded are gone. A frozen family carries the
+    rows it recorded; a family that never had them (SQLite, DuckDB) has none.
+    """
+    return {"facts": _guarded(lambda: _read_facts(family, sql)), "old": None}
 
 
 def _statements(family: str, inputs: List[Dict[str, Any]]) -> Dict[str, List[str]]:
@@ -199,9 +151,5 @@ def record_family(
         facts = _guarded(lambda: _read_facts(family, row["sql"]))
         if facts != row["facts"]:
             row["facts_newest"] = facts
-        if not frozen:
-            old = _read_old(family, row["sql"])
-            if old != row["old"]:
-                row["old_newest"] = old
         rows.append(row)
     return rows

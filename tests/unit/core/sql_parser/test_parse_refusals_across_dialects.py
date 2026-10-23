@@ -5,8 +5,7 @@ from __future__ import annotations
 import pytest
 
 from dblift.core.exceptions import ParserError
-from dblift.core.sql_parser import SqlParserFactory
-from dblift.core.sql_parser.parser_factory import SqlParserFactory
+from tests.support.facts_parser import facts_parser
 
 #: (dialect, a refused script without objects, the refusal message, a refused script with a table)
 CASES = [
@@ -40,7 +39,7 @@ POSTGRESQL = (
 def test_parse_sql_reports_the_refusal_and_keeps_the_parse(
     dialect: str, script: str, message: str, with_table: str
 ) -> None:
-    parser = SqlParserFactory(dialect, "hybrid").get_parser()
+    parser = facts_parser(dialect)
     with pytest.raises(ParserError):
         parser.split_statements(script)
     result = parser.parse_sql(script)
@@ -54,7 +53,7 @@ def test_parse_sql_reports_the_refusal_and_keeps_the_parse(
 def test_parse_sql_reports_the_refusal_of_a_script_that_declares_objects(
     dialect: str, script: str, message: str, with_table: str
 ) -> None:
-    result = SqlParserFactory(dialect, "hybrid").get_parser().parse_sql(with_table)
+    result = facts_parser(dialect).parse_sql(with_table)
     assert not result.success
     assert any(message in error for error in result.errors)
     assert result.statements == []
@@ -65,7 +64,7 @@ def test_parse_sql_reports_the_refusal_of_a_script_that_declares_objects(
 def test_extract_objects_refuses_a_script_the_scanner_refuses(
     dialect: str, script: str, message: str, with_table: str
 ) -> None:
-    parser = SqlParserFactory(dialect, "hybrid").get_parser()
+    parser = facts_parser(dialect)
     with pytest.raises(ParserError):
         parser.extract_objects(script)
     with pytest.raises(ParserError):
@@ -74,7 +73,7 @@ def test_extract_objects_refuses_a_script_the_scanner_refuses(
 
 def test_postgresql_extraction_refuses_a_refused_script_and_parse_reports_it() -> None:
     script, message, with_table = POSTGRESQL
-    parser = SqlParserFactory("postgresql", "hybrid").get_parser()
+    parser = facts_parser("postgresql")
     with pytest.raises(ParserError):
         parser.split_statements(script)
     with pytest.raises(ParserError):

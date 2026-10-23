@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
-from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+from dblift.core.migration.sql.statement_reader import StatementReader
 from dblift.core.sql_parser.statement import Statement
 from tests.support.facts_parser import facts_parser
 
@@ -73,9 +73,9 @@ def test_analysis_and_execution_drop_a_segment_of_comments_only() -> None:
     script = "CREATE TABLE t(a INT);\n-- DuckDB cannot add this constraint; rebuild the table\n"
     assert PARSER.split_statements(script) == ["CREATE TABLE t(a INT)"]
     assert PARSER.split_for_analysis(script) == ["CREATE TABLE t(a INT)"]
-    assert SqlAnalyzer("duckdb").split_statements_for_analysis(script) == PARSER.split_for_analysis(
+    assert StatementReader("duckdb").split_statements_for_analysis(
         script
-    )
+    ) == PARSER.split_for_analysis(script)
 
 
 def test_analysis_is_the_execution_split() -> None:

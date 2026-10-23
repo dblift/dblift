@@ -20,7 +20,6 @@ stopped from being captured.
 import pytest
 
 from dblift.core.sql_model.base import SqlObjectType
-from dblift.core.sql_parser.parser_factory import SqlParserFactory
 from tests.support.facts_parser import facts_parser
 
 
@@ -58,7 +57,7 @@ class TestDb2IndexObjectSchemaDefaultParser:
     An index name without a schema takes the default schema as given."""
 
     def setup_method(self):
-        self.parser = SqlParserFactory("db2").get_parser()
+        self.parser = facts_parser("db2")
 
     def test_create_index(self):
         objects = self.parser.extract_objects(

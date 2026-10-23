@@ -113,7 +113,7 @@ compiled with status `to_verify` and skipped, not run. Comparison is on
 normalised statements: surrounding whitespace removed and one trailing
 terminator (`;`) removed; everything else is compared verbatim. A row marked **exact text** in the Statements cell compares decoded statement strings without normalisation, including terminators and final line endings.
 
-Each row runs through `SqlAnalyzer.split_statements`, the entry point `migrate`
+Each row runs through `StatementReader.split_statements`, the entry point `migrate`
 uses, in `test_postgresql_spec_conformance.py`, `test_oracle_spec_conformance.py`,
 `test_sqlserver_spec_conformance.py`, `test_mysql_spec_conformance.py`,
 `test_db2_spec_conformance.py`, `test_sqlite_spec_conformance.py`,

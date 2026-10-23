@@ -19,7 +19,7 @@ from typing import Any, Dict, List
 
 import pytest
 
-from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+from dblift.core.migration.sql.statement_reader import StatementReader
 from dblift.core.sql_parser.lexical_engine import LexicalEngine
 from dblift.core.sql_parser.redaction import describe_statement, mask_string_literals
 from dblift.db.plugins.db2.parser.lexical_spec import DB2_SPEC
@@ -50,7 +50,7 @@ def evaluate(script: str) -> Dict[str, Any]:
             "records": [recorded(r) for r in records],
             "strings": parser.split_statements(script),
             "analysis": parser.split_for_extraction(script),
-            "executed": SqlAnalyzer("db2").split_statements_for_analysis(script),
+            "executed": StatementReader("db2").split_statements_for_analysis(script),
             "masking": [
                 [mask_string_literals(r.text, "db2"), describe_statement(r.text, "db2")]
                 for r in records

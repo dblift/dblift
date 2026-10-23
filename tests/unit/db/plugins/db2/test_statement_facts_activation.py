@@ -3,13 +3,13 @@
 from unittest.mock import MagicMock
 
 from dblift.core.migration.sql.script_analysis import analyse_script
-from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.migration.sql.sql_execution_service import SqlExecutionService
-from dblift.core.sql_parser import SqlParserFactory
+from dblift.core.migration.sql.statement_reader import StatementReader
 from dblift.core.sql_parser.statement_facts_parser import StatementFactsParser
 from dblift.db.dml_analysis import DmlMutation, updates_restore_key
-from dblift.db.plugins.db2.parser.statement_facts import Db2FactsParser, Db2StatementFactsReader
+from dblift.db.plugins.db2.parser.statement_facts import Db2StatementFactsReader
 from dblift.db.provider_registry import ProviderRegistry
+from tests.support.facts_parser import facts_parser
 
 
 def test_db2_quirks_declare_the_head_reader():
@@ -18,14 +18,14 @@ def test_db2_quirks_declare_the_head_reader():
     assert isinstance(quirks.statement_facts_reader(), Db2StatementFactsReader)
 
 
-def test_hybrid_parser_type_serves_the_db2_facts_parser():
-    assert isinstance(SqlParserFactory("db2").get_parser(), Db2FactsParser)
-    parser_class = ProviderRegistry.get_quirks("db2").parser_class("hybrid")
-    assert isinstance(parser_class(), StatementFactsParser)
+def test_the_facts_parser_of_db2_is_built_from_its_plugin():
+    parser = facts_parser("db2")
+    assert isinstance(parser, StatementFactsParser)
+    assert parser.dialect_name == "db2"
 
 
 def test_facts_parser_extracts_the_folded_objects():
-    objects = SqlParserFactory("db2").extract_objects("CREATE TABLE app.t (id INT);\nDROP VIEW v;")
+    objects = facts_parser("db2").extract_objects("CREATE TABLE app.t (id INT);\nDROP VIEW v;")
     assert [(o.object_type.value, o.name, o.schema) for o in objects] == [
         ("TABLE", "T", "APP"),
         ("VIEW", "V", None),
@@ -51,7 +51,7 @@ def test_analyse_script_takes_the_facts_path():
 
 
 def test_sql_analyzer_extract_objects_reads_facts():
-    assert SqlAnalyzer("db2").extract_objects("DROP TABLE app.orders") == [
+    assert StatementReader("db2").extract_objects("DROP TABLE app.orders") == [
         {"object_type": "TABLE", "object_name": "APP.ORDERS"}
     ]
 
@@ -76,7 +76,7 @@ def test_execution_service_records_the_facts_objects():
     provider.execute_statement.return_value = 1
     journal = MagicMock()
     quirks = ProviderRegistry.get_quirks("db2")
-    service = SqlExecutionService(provider, SqlAnalyzer("db2"), journal=journal, quirks=quirks)
+    service = SqlExecutionService(provider, StatementReader("db2"), journal=journal, quirks=quirks)
 
     service.execute_statement("CREATE TABLE app.t (id INT)")
 

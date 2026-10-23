@@ -1,10 +1,11 @@
 # SQL parsing
 
-Every SQL dialect is split by its `LexicalSpec` and read through its statement facts. The
-legacy regex, hybrid and SQLGlot parser classes are gone; `SqlParserFactory` and `parser_type`
-remain only as deprecated entry points that return the facts parser whatever type is asked.
-See the [v5 alpha deprecation inventory](../../../docs/developer-guide/v5-alpha-deprecation-inventory.md)
-for what is left and its replacements.
+Every SQL dialect is split by its `LexicalSpec` and read through its statement facts
+(`StatementSplitter` to split, `read_statement_facts` or the plugin's `quirks.statement_facts` to
+read one statement). The regex, hybrid and SQLGlot parser classes, `SqlParserFactory`,
+`SqlAnalyzer` and `parser_type` are gone. See the
+[v5 alpha deprecation inventory](../../../docs/developer-guide/v5-alpha-deprecation-inventory.md)
+for the history.
 
 A dialect's script scanner owns execution boundaries. Its `split(sql)` records
 contain the SQL sent to the server, client directives, and any scanner-derived
@@ -25,15 +26,16 @@ is one analyzable statement. An empty tuple means it contributes none. A
 nonempty tuple lists the constituents found by the same dialect scan.
 
 ```python
-from dblift.core.sql_parser.parser_factory import SqlParserFactory
+from dblift.core.migration.sql.statement_splitter import StatementSplitter
+from dblift.db.provider_registry import ProviderRegistry
 
-parser = SqlParserFactory("postgresql").get_parser()
-execution_units = parser.split_statements("SELECT 1; SELECT 2;")
-result = parser.parse_sql("SELECT 1; SELECT 2;")
+splitter = StatementSplitter("postgresql")
+execution_units = splitter.split_statements("SELECT 1; SELECT 2;")
+facts = ProviderRegistry.get_quirks("postgresql").statement_facts("SELECT 1")
 ```
 
-For applications that need original script locations, concrete dialect parsers
-expose `split(sql)` records with half-open `source_start` and `source_end`
+For applications that need original script locations, `StatementSplitter.split(sql)`
+returns records with half-open `source_start` and `source_end`
 offsets into the original Python string. These include client terminators
 consumed with an execution unit. Analysis projects constituents once per
 executed unit and excludes directives and `GO 0` batches. The offsets are

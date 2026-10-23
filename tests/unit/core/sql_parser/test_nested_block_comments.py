@@ -21,7 +21,6 @@ import unittest
 from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.core.sql_parser.base_tokenizer import BaseTokenizer
 from dblift.core.sql_parser.common.comment_stripping import strip_comments_preserving_quotes
-from dblift.db.plugins.sqlite.parser.sqlite_facts_parser import SQLiteFactsParser
 from dblift.db.provider_registry import ProviderRegistry
 from tests.support.facts_parser import facts_parser
 
@@ -192,7 +191,7 @@ class TestNonNestingDialectsUnchanged(unittest.TestCase):
             facts_parser("oracle").split_statements(ISSUE_EXAMPLE)
 
     def test_sqlite_stops_at_first_close(self):
-        stmts = SQLiteFactsParser().split_statements(ISSUE_EXAMPLE)
+        stmts = facts_parser("sqlite").split_statements(ISSUE_EXAMPLE)
         self.assertTrue(any("DROP TABLE victim" in s for s in stmts))
 
 

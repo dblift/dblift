@@ -6,14 +6,13 @@ import pytest
 
 from dblift.core.exceptions import UnsupportedMetaCommandError
 from dblift.core.migration.sql.script_analysis import analyse_script
-from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.migration.sql.sql_execution_service import SqlExecutionService
-from dblift.core.sql_parser import redaction
-from dblift.core.sql_parser.parser_factory import SqlParserFactory
+from dblift.core.migration.sql.statement_reader import StatementReader
 from dblift.core.sql_parser.statement_facts import SqlglotStatementFactsReader
 from dblift.core.sql_parser.statement_facts_parser import StatementFactsParser
 from dblift.db.dml_analysis import analyze_dml, statement_dml_table
 from dblift.db.provider_registry import ProviderRegistry
+from tests.support.facts_parser import facts_parser
 
 DIALECTS = ("mysql", "mariadb")
 MODES = ("regex", "hybrid", "sqlglot")
@@ -40,9 +39,9 @@ def test_the_plugin_reads_facts_through_the_shared_reader(dialect):
 
 @pytest.mark.parametrize("dialect", DIALECTS)
 @pytest.mark.parametrize("mode", ("hybrid", "sqlglot"))
-def test_the_factory_projects_facts_in_the_hybrid_and_sqlglot_modes(dialect, mode):
-    factory = SqlParserFactory(dialect, mode)
-    parser = factory.get_parser()
+def test_the_facts_parser_projects_facts(dialect, mode):
+    factory = facts_parser(dialect)
+    parser = factory
 
     assert isinstance(parser, StatementFactsParser)
     assert parser.dialect_name == dialect
@@ -57,7 +56,7 @@ def test_the_factory_projects_facts_in_the_hybrid_and_sqlglot_modes(dialect, mod
 @pytest.mark.parametrize("dialect", DIALECTS)
 @pytest.mark.parametrize("mode", MODES)
 def test_the_delimiter_script_splits_the_same_in_every_mode(dialect, mode):
-    units = SqlParserFactory(dialect, mode).split_statements(DELIMITER_SCRIPT)
+    units = facts_parser(dialect).split_statements(DELIMITER_SCRIPT)
 
     assert units == [
         "CREATE PROCEDURE p() BEGIN UPDATE t SET a = 1; END",
@@ -111,7 +110,7 @@ def test_a_client_command_refuses_the_whole_script_on_every_path(dialect, script
     assert analysis.statements == ()
     assert len(analysis.errors) == 1
     for mode in MODES:
-        factory = SqlParserFactory(dialect, mode)
+        factory = facts_parser(dialect)
         with pytest.raises(UnsupportedMetaCommandError):
             factory.split_statements(script)
         parsed = factory.parse_sql(script)
@@ -125,7 +124,7 @@ def test_execution_tracking_records_the_facts_object(dialect):
     provider.execute_statement.return_value = 1
     journal = MagicMock()
     service = SqlExecutionService(
-        provider, SqlAnalyzer(dialect), journal=journal, quirks=_quirks(dialect)
+        provider, StatementReader(dialect), journal=journal, quirks=_quirks(dialect)
     )
 
     service.execute_statement("UPDATE s.t SET a = 1")
@@ -136,10 +135,10 @@ def test_execution_tracking_records_the_facts_object(dialect):
 
 @pytest.mark.parametrize("dialect", DIALECTS)
 def test_the_analyzer_reads_objects_from_facts(dialect):
-    assert SqlAnalyzer(dialect).extract_objects(UPDATE) == [
+    assert StatementReader(dialect).extract_objects(UPDATE) == [
         {"object_type": "TABLE", "object_name": "default_schema.t"}
     ]
-    assert SqlAnalyzer(dialect).analyze_statement(UPDATE)["parsed_with"] == "facts"
+    assert StatementReader(dialect).analyze_statement(UPDATE)["parsed_with"] == "facts"
 
 
 @pytest.mark.parametrize("dialect", DIALECTS)

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+from dblift.core.migration.sql.statement_reader import StatementReader
 from dblift.core.migration.sql.statement_splitter import StatementSplitter
 from dblift.core.sql_parser.common.comment_stripping import strip_comments_preserving_quotes
 
@@ -10,28 +10,20 @@ from dblift.core.sql_parser.common.comment_stripping import strip_comments_prese
 @pytest.mark.unit
 def test_statement_splitter_dialect_is_required():
     """ADR-26 E: ``dialect`` has no default — the sole production caller
-    (SqlAnalyzer) always passes ``self.dialect``, so the literal default was
+    (StatementReader) always passes ``self.dialect``, so the literal default was
     removed."""
     with pytest.raises(TypeError):
         StatementSplitter()
 
 
 @pytest.mark.unit
-def test_sql_analyzer_split_statements_does_not_use_rich_parser_factory():
-    class ExplodingAnalysisFactory:
-        def get_parser(self, dialect=None):
-            raise AssertionError("rich analysis parser should not split execution statements")
-
-        def extract_objects(self, statement, schema=None):
-            raise AssertionError("rich object extraction should not split execution statements")
-
+def test_statement_reader_splits_with_the_splitter_it_is_given():
     class FakeStatementSplitter:
         def split_statements(self, sql):
             return ["select 1", "select 2"]
 
-    analyzer = SqlAnalyzer(
+    analyzer = StatementReader(
         dialect="postgresql",
-        parser_factory=ExplodingAnalysisFactory(),
         statement_splitter=FakeStatementSplitter(),
     )
 
@@ -64,7 +56,7 @@ _ALL_SPLITTER_DIALECTS = [
 def test_comment_only_script_yields_no_executable_statement(dialect, sql):
     """A comment-only migration is a no-op: nothing handed to the engine may
     contain executable tokens (a stray ``*`` from ``*/`` used to reach the server)."""
-    statements = SqlAnalyzer(dialect=dialect).split_statements(sql)
+    statements = StatementReader(dialect=dialect).split_statements(sql)
 
     assert statements == []
 
@@ -72,7 +64,7 @@ def test_comment_only_script_yields_no_executable_statement(dialect, sql):
 @pytest.mark.unit
 @pytest.mark.parametrize("dialect", _ALL_SPLITTER_DIALECTS)
 def test_scanner_drops_comment_only_script_and_keeps_following_sql(dialect):
-    analyzer = SqlAnalyzer(dialect=dialect)
+    analyzer = StatementReader(dialect=dialect)
 
     assert analyzer.split_statements("/* just a comment */") == []
     assert len(analyzer.split_statements("/* c */ SELECT 1;")) == 1
@@ -86,7 +78,7 @@ _NESTED_COMMENT_ONLY = "/* outer /* nested */ still comment */"
 def test_nested_comment_only_script_is_a_no_op_where_comments_nest(dialect):
     """These engines nest block comments, so the whole text is one comment
     (psql/sqlcmd accept it); ``still comment */`` must not reach the server."""
-    statements = SqlAnalyzer(dialect=dialect).split_statements(_NESTED_COMMENT_ONLY)
+    statements = StatementReader(dialect=dialect).split_statements(_NESTED_COMMENT_ONLY)
 
     assert statements == []
 
@@ -96,7 +88,7 @@ def test_nested_comment_only_script_is_a_no_op_where_comments_nest(dialect):
 def test_nested_comment_text_still_reaches_engine_where_comments_do_not_nest(dialect):
     """The first ``*/`` closes the comment here, so ``still comment */`` is
     real (invalid) SQL that the engine itself rejects; it is not a no-op."""
-    statements = SqlAnalyzer(dialect=dialect).split_statements(_NESTED_COMMENT_ONLY)
+    statements = StatementReader(dialect=dialect).split_statements(_NESTED_COMMENT_ONLY)
 
     assert any("still comment" in stmt for stmt in statements), statements
 
@@ -104,7 +96,9 @@ def test_nested_comment_text_still_reaches_engine_where_comments_do_not_nest(dia
 @pytest.mark.unit
 @pytest.mark.parametrize("dialect", ["postgresql", "sqlserver", "duckdb", "db2"])
 def test_nested_comment_before_statement_keeps_the_statement(dialect):
-    statements = SqlAnalyzer(dialect=dialect).split_statements(_NESTED_COMMENT_ONLY + "\nSELECT 1;")
+    statements = StatementReader(dialect=dialect).split_statements(
+        _NESTED_COMMENT_ONLY + "\nSELECT 1;"
+    )
 
     assert len(statements) == 1, statements
     assert statements[0].rstrip(";").endswith("SELECT 1"), statements
@@ -124,7 +118,7 @@ def test_db2_nested_comment_text_is_never_executed(sql):
     """Db2 nests block comments (confirmed live with the CLP and the driver):
     the ``;``, ``CREATE TABLE`` and ``DROP`` inside the comment are comment
     text, and only the statement after it reaches the server."""
-    statements = SqlAnalyzer(dialect="db2").split_statements(sql)
+    statements = StatementReader(dialect="db2").split_statements(sql)
 
     assert len(statements) == 1, statements
     assert "CREATE TABLE t_after (x INT)" in statements[0], statements

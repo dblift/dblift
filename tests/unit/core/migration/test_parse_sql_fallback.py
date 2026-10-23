@@ -1,6 +1,5 @@
 """Migration script splitting fails closed when the dialect scanner fails."""
 
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -14,10 +13,10 @@ class TestParseSqlFallback:
     """No secondary semicolon splitter may guess execution units."""
 
     def _patch_sql_analyzer(self):
-        """Return a patch context manager for SqlAnalyzer (inline import)."""
-        import dblift.core.migration.sql.sql_analyzer as analyzer_module
+        """Return a patch context manager for StatementReader (inline import)."""
+        import dblift.core.migration.sql.statement_reader as analyzer_module
 
-        return patch.object(analyzer_module, "SqlAnalyzer")
+        return patch.object(analyzer_module, "StatementReader")
 
     def test_parse_sql_refuses_when_analyzer_fails(self):
         """A scanner failure does not return guessed statements."""
@@ -47,5 +46,5 @@ class TestParseSqlFallback:
             with pytest.raises(UnsafeStatementSplitError, match="parse error"):
                 migration.parse_sql_statements()
 
-            # SqlAnalyzer is instantiated only for the authoritative attempt.
+            # StatementReader is instantiated only for the authoritative attempt.
             assert mock_analyzer_cls.call_count == 1

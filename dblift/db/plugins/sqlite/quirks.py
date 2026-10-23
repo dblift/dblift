@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from dblift.core.sql_parser.statement_facts import SqlglotStatementFactsReader
 from dblift.db.base_quirks import BaseQuirks
@@ -79,12 +79,6 @@ class SqliteQuirks(BaseQuirks):
     def __init__(self, dialect_name: str = "sqlite") -> None:
         """Initialize SQLite quirks with the dialect name."""
         super().__init__(dialect_name=dialect_name)
-
-    def parser_class(self, parser_type: str) -> Optional[type]:
-        """The facts parser bound to SQLite, whatever ``parser_type`` is asked."""
-        from dblift.db.plugins.sqlite.parser.sqlite_facts_parser import SQLiteFactsParser
-
-        return SQLiteFactsParser
 
     def analyze_dml(self, statement: str) -> DmlMutation:
         """Project DML safety details from the SQLite statement facts."""

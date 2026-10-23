@@ -9,17 +9,16 @@ import pytest
 from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
 from dblift.core.migration.sql.script_analysis import analyse_script
 from dblift.core.sql_model.base import SqlObjectType
-from dblift.core.sql_parser.parser_factory import SqlParserFactory
 from dblift.core.sql_parser.statement_facts import SqlglotStatementFactsReader
 from dblift.db.dml_analysis import analyze_dml, is_full_table_dml, statement_dml_table
 from dblift.db.plugins.sqlite.parser.lexical_spec import SQLITE_SPEC
-from dblift.db.plugins.sqlite.parser.sqlite_facts_parser import SQLiteFactsParser
 from dblift.db.provider_registry import ProviderRegistry
+from tests.support.facts_parser import facts_parser
 
 _quirks = ProviderRegistry.get_quirks
 
 READER = SqlglotStatementFactsReader("sqlite", SQLITE_SPEC)
-PARSER = SQLiteFactsParser()
+PARSER = facts_parser("sqlite")
 
 
 def _objects(facts):
@@ -34,17 +33,15 @@ def test_execution_splitting_does_not_import_sqlglot():
         import sys
         import dblift.core.migration.executor.execution_engine
         from dblift.core.migration.sql.execution_statement import execution_units
-        from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
-        from dblift.core.sql_parser.parser_factory import SqlParserFactory
-        from dblift.db.plugins.sqlite.parser import SQLiteFactsParser
+        from dblift.core.migration.sql.statement_reader import StatementReader
+        from tests.support.facts_parser import facts_parser
         from dblift.db.provider_registry import ProviderRegistry
 
         script = "CREATE TABLE a(x); INSERT INTO a VALUES(1);"
         expected = ["CREATE TABLE a(x)", "INSERT INTO a VALUES(1)"]
         ProviderRegistry.get_quirks("sqlite")
-        assert SqlParserFactory("sqlite").split_statements(script) == expected
-        assert SQLiteFactsParser().split_statements(script) == expected
-        assert SqlAnalyzer("sqlite").split_statements(script) == expected
+        assert facts_parser("sqlite").split_statements(script) == expected
+        assert StatementReader("sqlite").split_statements(script) == expected
         assert len(execution_units(script, "sqlite")) == 2
         assert "sqlglot" not in sys.modules, "sqlglot imported while only splitting"
         """)
@@ -136,7 +133,7 @@ def test_extract_objects_propagates_the_refusal(script):
         PARSER.extract_objects(script)
 
 
-@pytest.mark.parametrize("parser_class", [SQLiteFactsParser, lambda: SqlParserFactory("sqlite")])
+@pytest.mark.parametrize("parser_class", [lambda: facts_parser("sqlite")])
 @pytest.mark.parametrize(
     "statement",
     [

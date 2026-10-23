@@ -14,10 +14,10 @@ from dblift.core.migration.sql.execution_statement import (
 )
 from dblift.core.migration.sql.lint_rules import find_issues
 from dblift.core.migration.sql.script_analysis import analyse_script
-from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+from dblift.core.migration.sql.statement_reader import StatementReader
 from dblift.core.migration.sql.statement_splitter import StatementSplitter
 from dblift.core.sql_parser.lexical_engine import LexicalEngine
-from dblift.core.sql_parser.parser_factory import SqlParserFactory
+from tests.support.facts_parser import facts_parser
 from tests.unit._migration_factory import make_migration
 
 
@@ -39,7 +39,7 @@ def test_go_zero_skips_create_before_the_next_statement() -> None:
 
 def test_go_zero_only_creates_no_analysis_or_schema_objects() -> None:
     sql = "CREATE TABLE ghost(id INT);\nGO 0"
-    parser = SqlParserFactory("sqlserver").get_parser()
+    parser = facts_parser("sqlserver")
 
     parsed = parser.parse_sql(sql)
 
@@ -51,7 +51,7 @@ def test_go_zero_only_creates_no_analysis_or_schema_objects() -> None:
 def test_facts_parser_does_not_extract_from_a_script_with_no_executed_statements(
     monkeypatch,
 ) -> None:
-    parser = SqlParserFactory("sqlserver").get_parser()
+    parser = facts_parser("sqlserver")
 
     def forbidden_extraction(*_args, **_kwargs):
         raise AssertionError("whole-script extraction was used")
@@ -110,7 +110,7 @@ def test_mysql_custom_delimiter_cannot_hide_drop_from_lint() -> None:
 def test_sqlserver_carriage_return_go_inside_literal_is_sql() -> None:
     sql = "SELECT 'a\rGO';\nGO\nSELECT 2;"
 
-    assert SqlParserFactory("sqlserver").split_statements(sql) == ["SELECT 'a\rGO';", "SELECT 2;"]
+    assert facts_parser("sqlserver").split_statements(sql) == ["SELECT 'a\rGO';", "SELECT 2;"]
 
 
 def test_snowflake_scanner_failure_cannot_become_guessed_executable_sql(monkeypatch) -> None:
@@ -119,7 +119,7 @@ def test_snowflake_scanner_failure_cannot_become_guessed_executable_sql(monkeypa
 
     monkeypatch.setattr(LexicalEngine, "split", fail)
     with pytest.raises(UnsafeStatementSplitError, match="scanner bug"):
-        SqlAnalyzer("snowflake").split_statements("SELECT 'a;b'; SELECT 2;")
+        StatementReader("snowflake").split_statements("SELECT 'a;b'; SELECT 2;")
 
 
 def test_snowflake_records_cover_original_statement_spans() -> None:
@@ -134,7 +134,7 @@ def test_snowflake_records_cover_original_statement_spans() -> None:
 
 def test_transaction_policy_sees_inner_commit_in_atomic_pg_unit() -> None:
     sql = r"SELECT 1 \; COMMIT;"
-    statements = SqlAnalyzer("postgresql").split_statements(sql)
+    statements = StatementReader("postgresql").split_statements(sql)
     assert len(statements) == 1
     with pytest.raises(TransactionStatementError, match="COMMIT manages the transaction"):
         neutralise_transaction_statements(
@@ -147,7 +147,7 @@ def test_transaction_policy_sees_inner_commit_in_atomic_pg_unit() -> None:
 
 def test_transaction_policy_preserves_sqlserver_procedural_begin_batch() -> None:
     sql = "BEGIN SELECT 1; END; SELECT 2;"
-    statements = SqlAnalyzer("sqlserver").split_statements(sql)
+    statements = StatementReader("sqlserver").split_statements(sql)
     assert (
         neutralise_transaction_statements(
             statements,
@@ -166,31 +166,29 @@ def test_execution_units_filter_go_zero_and_keep_psql_combination_atomic() -> No
 
 
 def test_sqlglot_public_object_extraction_omits_skipped_batch() -> None:
-    parser = SqlParserFactory("sqlserver").get_parser()
+    parser = facts_parser("sqlserver")
     assert parser.extract_objects("CREATE TABLE ghost(id INT);\nGO 0") == []
 
 
 def test_sqlglot_public_validation_reports_scanner_refusal() -> None:
-    result = (
-        SqlParserFactory("sqlserver").get_parser().validate_sql(":setvar schema dbo\nSELECT 1;\n")
-    )
+    result = facts_parser("sqlserver").validate_sql(":setvar schema dbo\nSELECT 1;\n")
     assert result["valid"] is False
     assert any(":setvar" in error for error in result["errors"])
 
 
 def test_hybrid_public_object_extraction_does_not_rescan_refused_script() -> None:
-    parser = SqlParserFactory("sqlserver").get_parser()
+    parser = facts_parser("sqlserver")
     with pytest.raises(UnsupportedMetaCommandError, match=":setvar"):
         parser.extract_objects(":setvar schema dbo\nCREATE TABLE ghost(id INT);")
 
 
 def test_sqlglot_public_analysis_and_extraction_project_scanner_constituents() -> None:
-    parser = SqlParserFactory("postgresql").get_parser()
+    parser = facts_parser("postgresql")
     sql = r"SELECT 1 \; DROP TABLE users;"
     assert parser.split_for_analysis(sql) == ["SELECT 1", "DROP TABLE users"]
     assert parser.split_for_extraction(sql) == ["SELECT 1", "DROP TABLE users"]
-    assert SqlParserFactory("sqlserver").get_parser().split_for_analysis("SELECT 1;\nGO 0") == []
-    assert SqlParserFactory("snowflake").get_parser().split_for_analysis("SELECT 1; SELECT 2;") == [
+    assert facts_parser("sqlserver").split_for_analysis("SELECT 1;\nGO 0") == []
+    assert facts_parser("snowflake").split_for_analysis("SELECT 1; SELECT 2;") == [
         "SELECT 1",
         "SELECT 2",
     ]

@@ -10,7 +10,6 @@ from dblift.core.migration.sql.statement_splitter import StatementSplitter
 from dblift.core.sql_parser.lexical_engine import LexicalEngine
 from dblift.core.sql_parser.lexical_spec import LexicalSpec
 from dblift.core.sql_parser.lexical_tokenizer import LexicalTokenizer
-from dblift.core.sql_parser.parser_factory import SqlParserFactory
 from dblift.core.sql_parser.tokens import TokenType
 from dblift.db.plugins.postgresql.parser.lexical_spec import POSTGRESQL_SPEC
 from dblift.db.plugins.redshift.parser.lexical_spec import REDSHIFT_SPEC
@@ -32,12 +31,7 @@ from tests.support.facts_parser import facts_parser
         "yugabytedb",
     ],
 )
-def test_execution_uses_plugin_rules_without_constructing_a_regex_parser(monkeypatch, dialect):
-    def forbidden(*args, **kwargs):
-        raise AssertionError("legacy parser construction reached")
-
-    monkeypatch.setattr(SqlParserFactory, "__init__", forbidden)
-    monkeypatch.setattr(SqlParserFactory, "get_parser", forbidden)
+def test_execution_uses_plugin_rules_from_the_spec(dialect):
     assert StatementSplitter(dialect).split_statements(
         "CREATE TABLE t(begin int); SELECT begin atomic FROM t; SELECT 2;"
     ) == ["CREATE TABLE t(begin int);", "SELECT begin atomic FROM t;", "SELECT 2;"]
@@ -67,10 +61,7 @@ def test_redshift_preserves_backslash_strings_and_nested_comments():
     script = "SELECT 'a\\'b;c'; SELECT 2;"
     expected = ["SELECT 'a\\'b;c';", "SELECT 2;"]
     assert StatementSplitter("redshift").split_statements(script) == expected
-    assert (
-        SqlParserFactory("redshift", parser_type="regex").get_parser().split_statements(script)
-        == expected
-    )
+    assert facts_parser("redshift").split_statements(script) == expected
     script = "/* outer /* inner */ SELECT 1; */ SELECT 2;"
     assert StatementSplitter("redshift").split_statements(script) == ["SELECT 2;"]
     assert StatementSplitter("postgresql").split_statements(script) == ["SELECT 2;"]

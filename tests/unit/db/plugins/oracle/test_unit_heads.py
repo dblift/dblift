@@ -3,7 +3,7 @@
 import pytest
 
 from dblift.core.exceptions import UnsafeStatementSplitError
-from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+from dblift.core.migration.sql.statement_reader import StatementReader
 from dblift.core.sql_parser.tokens import TokenType
 from dblift.db.plugins.oracle.parser._unit_heads import head_decided
 from dblift.db.plugins.oracle.parser.oracle_tokenizer import OracleTokenizer
@@ -66,7 +66,7 @@ def test_head_decided_is_undecided_on_a_short_prefix():
 
 
 def _split(script):
-    return SqlAnalyzer("oracle").split_statements(script)
+    return StatementReader("oracle").split_statements(script)
 
 
 def test_open_for_inside_a_block_is_one_unit_then_sql():  # row 4

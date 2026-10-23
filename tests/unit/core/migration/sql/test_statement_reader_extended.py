@@ -1,6 +1,6 @@
-"""Extended unit tests for SqlAnalyzer covering uncovered branches.
+"""Extended unit tests for StatementReader covering uncovered branches.
 
-Target file: core/migration/sql/sql_analyzer.py
+Target file: core/migration/sql/statement_reader.py
 Coverage focus:
 - get_statement_type: db-specific parser path (value, UNKNOWN fallback), exception path
 - _get_statement_type_string: each keyword branch, BOM handling, comment removal
@@ -17,19 +17,19 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer, is_select_into
+from dblift.core.migration.sql.statement_reader import StatementReader, is_select_into
 from dblift.core.sql_model.dialect import get_sqlglot_dialect
 
 
-class TestSqlAnalyzerDialectRequired(unittest.TestCase):
+class TestStatementReaderDialectRequired(unittest.TestCase):
     """ADR-26 E5: ``dialect`` is a required argument (no hidden default)."""
 
     def test_dialect_is_required(self):
         with self.assertRaises(TypeError):
-            SqlAnalyzer()  # type: ignore[call-arg]
+            StatementReader()  # type: ignore[call-arg]
 
     def test_explicit_dialect_is_lowercased_and_stored(self):
-        analyzer = SqlAnalyzer(dialect="PostgreSQL")
+        analyzer = StatementReader(dialect="PostgreSQL")
         self.assertEqual(analyzer.dialect, "postgresql")
 
 
@@ -37,7 +37,7 @@ class TestGetStatementTypeStringBranches(unittest.TestCase):
     """Test _get_statement_type_string for every keyword branch."""
 
     def setUp(self):
-        self.analyzer = SqlAnalyzer(dialect="postgresql")
+        self.analyzer = StatementReader(dialect="postgresql")
         # Disable db_specific_parser to test string fallback directly
         self.analyzer._db_specific_parser = None
 
@@ -117,7 +117,7 @@ class TestGetStatementTypeStringBranches(unittest.TestCase):
     def test_with_cte_feeding_delete_is_dml_via_dialect_mapping(self):
         # The dblift dialect name ("sqlserver") differs from sqlglot's own
         # ("tsql"); this dialect's classification must still come out DML.
-        analyzer = SqlAnalyzer(dialect="sqlserver")
+        analyzer = StatementReader(dialect="sqlserver")
         analyzer._db_specific_parser = None
         sql = "WITH c AS (SELECT 1) DELETE FROM t WHERE id IN (SELECT 1 FROM c)"
         self.assertEqual(analyzer.get_statement_type(sql), "DML")
@@ -130,11 +130,11 @@ class TestGetStatementTypeStringBranches(unittest.TestCase):
         # would pass just the same if the mapping call were dropped. Pin the
         # resolution itself: get_sqlglot_dialect must be called with the raw
         # dblift dialect name, not skipped.
-        analyzer = SqlAnalyzer(dialect="sqlserver")
+        analyzer = StatementReader(dialect="sqlserver")
         analyzer._db_specific_parser = None
         sql = "WITH c AS (SELECT 1) DELETE FROM t WHERE id IN (SELECT 1 FROM c)"
         with patch(
-            "dblift.core.migration.sql.sql_analyzer.get_sqlglot_dialect",
+            "dblift.core.migration.sql.statement_reader.get_sqlglot_dialect",
             wraps=get_sqlglot_dialect,
         ) as mock_get_dialect:
             result = analyzer.get_statement_type(sql)
@@ -177,7 +177,7 @@ class TestGetStatementTypeWithDbSpecificParser(unittest.TestCase):
     """Test the db-specific parser path in get_statement_type."""
 
     def setUp(self):
-        self.analyzer = SqlAnalyzer(dialect="postgresql")
+        self.analyzer = StatementReader(dialect="postgresql")
 
     def test_uses_db_specific_parser_when_available(self):
         mock_parser = MagicMock()
@@ -231,13 +231,13 @@ class TestSplitStatements(unittest.TestCase):
     """Tests for the public execution split."""
 
     def test_splits_semicolon_separated(self):
-        analyzer = SqlAnalyzer(dialect="postgresql")
+        analyzer = StatementReader(dialect="postgresql")
         sql = "SELECT 1;\nSELECT 2;"
         stmts = analyzer.split_statements(sql)
         self.assertGreaterEqual(len(stmts), 1)
 
     def test_sqlserver_go_splitting(self):
-        analyzer = SqlAnalyzer(dialect="sqlserver")
+        analyzer = StatementReader(dialect="sqlserver")
         sql = "SELECT 1\nGO\nSELECT 2"
         stmts = analyzer.split_statements(sql)
         self.assertEqual(len(stmts), 2)
@@ -246,7 +246,7 @@ class TestSplitStatements(unittest.TestCase):
         """PROMPT/REM lines (with apostrophes) must not merge with, or drop,
         the CREATE/ALTER statements around them (migrate already handles this
         via the same quirks hooks; split_statements must match)."""
-        analyzer = SqlAnalyzer(dialect="oracle")
+        analyzer = StatementReader(dialect="oracle")
         sql = (
             "PROMPT Creating the customer's table\n"
             "CREATE TABLE customers (id NUMBER PRIMARY KEY);\n"
@@ -264,61 +264,61 @@ class TestSplitStatements(unittest.TestCase):
         self.assertTrue(stmts[3].strip().startswith("ALTER TABLE customers"))
 
     def test_scanner_splits_semicolons(self):
-        analyzer = SqlAnalyzer(dialect="postgresql")
+        analyzer = StatementReader(dialect="postgresql")
         sql = "INSERT INTO t VALUES (1);\nINSERT INTO t VALUES (2);"
         stmts = analyzer.split_statements(sql)
         self.assertEqual(len(stmts), 2)
 
     def test_scanner_handles_string_literals(self):
-        analyzer = SqlAnalyzer(dialect="postgresql")
+        analyzer = StatementReader(dialect="postgresql")
         # semicolon inside a string should not split
         sql = "INSERT INTO t VALUES ('hello; world');"
         stmts = analyzer.split_statements(sql)
         self.assertEqual(len(stmts), 1)
 
     def test_scanner_handles_block_comment(self):
-        analyzer = SqlAnalyzer(dialect="postgresql")
+        analyzer = StatementReader(dialect="postgresql")
         sql = "/* first; comment */\nSELECT 1;"
         stmts = analyzer.split_statements(sql)
         self.assertEqual(len(stmts), 1)
 
     def test_scanner_handles_line_comment(self):
-        analyzer = SqlAnalyzer(dialect="postgresql")
+        analyzer = StatementReader(dialect="postgresql")
         sql = "-- this is a comment; not a separator\nSELECT 1;"
         stmts = analyzer.split_statements(sql)
         self.assertEqual(len(stmts), 1)
 
     def test_scanner_handles_quoted_identifiers(self):
-        analyzer = SqlAnalyzer(dialect="postgresql")
+        analyzer = StatementReader(dialect="postgresql")
         sql = 'SELECT "col;name" FROM t;'
         stmts = analyzer.split_statements(sql)
         self.assertEqual(len(stmts), 1)
 
     def test_empty_sql_returns_empty(self):
-        analyzer = SqlAnalyzer(dialect="postgresql")
+        analyzer = StatementReader(dialect="postgresql")
         stmts = analyzer.split_statements("")
         self.assertEqual(stmts, [])
 
     def test_sqlserver_go_with_comment(self):
-        analyzer = SqlAnalyzer(dialect="sqlserver")
+        analyzer = StatementReader(dialect="sqlserver")
         sql = "SELECT 1\nGO -- batch separator\nSELECT 2"
         stmts = analyzer.split_statements(sql)
         self.assertEqual(len(stmts), 2)
 
     def test_sqlserver_go_filters_empty_batches(self):
-        analyzer = SqlAnalyzer(dialect="sqlserver")
+        analyzer = StatementReader(dialect="sqlserver")
         sql = "\nGO\nSELECT 1\nGO\n"
         stmts = analyzer.split_statements(sql)
         self.assertEqual(len(stmts), 1)
 
     def test_sqlserver_go_case_insensitive(self):
-        analyzer = SqlAnalyzer(dialect="sqlserver")
+        analyzer = StatementReader(dialect="sqlserver")
         sql = "SELECT 1\ngo\nSELECT 2"
         stmts = analyzer.split_statements(sql)
         self.assertEqual(len(stmts), 2)
 
     def test_non_sqlserver_no_go_splitting(self):
-        analyzer = SqlAnalyzer(dialect="postgresql")
+        analyzer = StatementReader(dialect="postgresql")
         sql = "SELECT 1\nGO\nSELECT 2"
         # GO is an ordinary word outside the SQL Server dialect.
         stmts = analyzer.split_statements(sql)
@@ -326,7 +326,7 @@ class TestSplitStatements(unittest.TestCase):
         self.assertIsInstance(stmts, list)
 
     def test_escaped_quotes_in_string(self):
-        analyzer = SqlAnalyzer(dialect="postgresql")
+        analyzer = StatementReader(dialect="postgresql")
         sql = "INSERT INTO t VALUES ('it''s a test');"
         stmts = analyzer.split_statements(sql)
         self.assertEqual(len(stmts), 1)
@@ -336,7 +336,7 @@ class TestExtractObjects(unittest.TestCase):
     """Tests for extract_objects()."""
 
     def setUp(self):
-        self.analyzer = SqlAnalyzer(dialect="postgresql")
+        self.analyzer = StatementReader(dialect="postgresql")
 
     def test_empty_returns_empty(self):
         self.assertEqual(self.analyzer.extract_objects(""), [])
@@ -409,7 +409,7 @@ class TestAnalyzeStatement(unittest.TestCase):
     """Tests for analyze_statement()."""
 
     def setUp(self):
-        self.analyzer = SqlAnalyzer(dialect="postgresql")
+        self.analyzer = StatementReader(dialect="postgresql")
 
     def test_analyze_returns_type_and_objects(self):
         sql = "CREATE TABLE t (id INT)"
@@ -429,120 +429,24 @@ class TestAnalyzeStatement(unittest.TestCase):
         result = self.analyzer.analyze_statement(sql)
         self.assertEqual(result["parsed_with"], "facts")
         self.assertEqual(result["objects"], self.analyzer.extract_objects(sql))
-        unread = SqlAnalyzer(dialect="mongodb").analyze_statement(sql)
+        unread = StatementReader(dialect="mongodb").analyze_statement(sql)
         self.assertEqual(unread["parsed_with"], "none")
         self.assertEqual(unread["objects"], [])
 
 
-class TestValidateSql(unittest.TestCase):
-    """Tests for validate_sql()."""
-
-    def setUp(self):
-        self.analyzer = SqlAnalyzer(dialect="postgresql")
-        # Disable db-specific parser so basic structural checks are reached
-        self.analyzer._db_specific_parser = None
-
-    def test_empty_sql_is_invalid(self):
-        is_valid, error = self.analyzer.validate_sql("")
-        self.assertFalse(is_valid)
-        self.assertIsNotNone(error)
-
-    def test_unmatched_parentheses_is_invalid(self):
-        is_valid, error = self.analyzer.validate_sql("SELECT ( FROM t")
-        self.assertFalse(is_valid)
-        self.assertIn("parentheses", error.lower())
-
-    def test_unmatched_single_quotes_is_invalid(self):
-        is_valid, error = self.analyzer.validate_sql("SELECT 'unclosed FROM t")
-        self.assertFalse(is_valid)
-        self.assertIn("quote", error.lower())
-
-    def test_valid_sql_passes_basic_checks(self):
-        is_valid, error = self.analyzer.validate_sql("SELECT 1")
-        self.assertTrue(is_valid)
-        self.assertIsNone(error)
-
-    def test_db_specific_parser_tuple_result(self):
-        mock_parser = MagicMock()
-        mock_parser.validate_sql.return_value = (True, None)
-        self.analyzer._db_specific_parser = mock_parser
-
-        is_valid, error = self.analyzer.validate_sql("SELECT 1")
-        self.assertTrue(is_valid)
-        self.assertIsNone(error)
-
-    def test_db_specific_parser_dict_result(self):
-        mock_parser = MagicMock()
-        mock_parser.validate_sql.return_value = {"is_valid": False, "error_message": "syntax error"}
-        self.analyzer._db_specific_parser = mock_parser
-
-        is_valid, error = self.analyzer.validate_sql("SELECT @@@")
-        self.assertFalse(is_valid)
-        self.assertEqual(error, "syntax error")
-
-    def test_db_specific_parser_bool_result(self):
-        mock_parser = MagicMock()
-        mock_parser.validate_sql.return_value = True
-        self.analyzer._db_specific_parser = mock_parser
-
-        is_valid, error = self.analyzer.validate_sql("SELECT 1")
-        self.assertTrue(is_valid)
-
-    def test_db_specific_parser_exception_falls_back_to_basic(self):
-        mock_parser = MagicMock()
-        mock_parser.validate_sql.side_effect = Exception("parser crash")
-        self.analyzer._db_specific_parser = mock_parser
-
-        # Falls back to basic checks — valid SQL should pass
-        is_valid, error = self.analyzer.validate_sql("SELECT 1")
-        self.assertTrue(is_valid)
-        self.assertIsNone(error)
-
-    def test_db_specific_parser_dict_with_valid_key(self):
-        mock_parser = MagicMock()
-        mock_parser.validate_sql.return_value = {"valid": True}
-        self.analyzer._db_specific_parser = mock_parser
-
-        is_valid, error = self.analyzer.validate_sql("SELECT 1")
-        self.assertTrue(is_valid)
-
-    def test_db_specific_parser_dict_null_error_message(self):
-        mock_parser = MagicMock()
-        mock_parser.validate_sql.return_value = {"is_valid": True, "error_message": None}
-        self.analyzer._db_specific_parser = mock_parser
-
-        is_valid, error = self.analyzer.validate_sql("SELECT 1")
-        self.assertTrue(is_valid)
-        self.assertIsNone(error)
-
-
-class TestSqlAnalyzerInit(unittest.TestCase):
-    """Tests for SqlAnalyzer initialization paths."""
+class TestStatementReaderInit(unittest.TestCase):
+    """Tests for StatementReader initialization paths."""
 
     def test_dialect_normalized_to_lowercase(self):
-        analyzer = SqlAnalyzer(dialect="PostgreSQL")
+        analyzer = StatementReader(dialect="PostgreSQL")
         self.assertEqual(analyzer.dialect, "postgresql")
-
-    def test_custom_parser_factory_used(self):
-        mock_factory = MagicMock()
-        analyzer = SqlAnalyzer(dialect="postgresql", parser_factory=mock_factory)
-        self.assertIs(analyzer.parser_factory, mock_factory)
 
     def test_custom_statement_splitter_used(self):
         mock_splitter = MagicMock()
         mock_splitter.split_statements.return_value = ["SELECT 1"]
-        analyzer = SqlAnalyzer(dialect="postgresql", statement_splitter=mock_splitter)
+        analyzer = StatementReader(dialect="postgresql", statement_splitter=mock_splitter)
         stmts = analyzer.split_statements("SELECT 1")
         mock_splitter.split_statements.assert_called_once()
-
-    def test_parser_factory_init_failure_falls_back(self):
-        """When SqlParserFactory raises for regex parser, _db_specific_parser is None."""
-        with patch("dblift.core.migration.sql.sql_analyzer.SqlParserFactory") as mock_factory_cls:
-            instance = MagicMock()
-            instance.get_parser.side_effect = Exception("no regex parser")
-            mock_factory_cls.return_value = instance
-            analyzer = SqlAnalyzer(dialect="postgresql")
-        self.assertIsNone(analyzer._db_specific_parser)
 
 
 # ``SELECT ... INTO <target>`` writes its result (a new table on PostgreSQL /
@@ -562,12 +466,12 @@ _SELECT_INTO_CASES = [
 
 @pytest.mark.parametrize("dialect,sql", _SELECT_INTO_CASES)
 def test_select_into_is_not_a_query(dialect, sql):
-    assert SqlAnalyzer(dialect=dialect).get_statement_type(sql) == "DML"
+    assert StatementReader(dialect=dialect).get_statement_type(sql) == "DML"
 
 
 @pytest.mark.parametrize("dialect", ["postgresql", "sqlserver", "mysql", "mariadb", "oracle"])
 def test_plain_select_stays_a_query(dialect):
-    analyzer = SqlAnalyzer(dialect=dialect)
+    analyzer = StatementReader(dialect=dialect)
     assert analyzer.get_statement_type("SELECT 'INTO' AS w FROM t") == "QUERY"
     assert analyzer.get_statement_type("SELECT id FROM t WHERE id IN (SELECT 1)") == "QUERY"
     assert analyzer.get_statement_type('SELECT "into" FROM t -- INTO x') == "QUERY"
@@ -575,7 +479,7 @@ def test_plain_select_stays_a_query(dialect):
 
 
 def test_dollar_quoted_into_and_returning_cte_stay_queries():
-    analyzer = SqlAnalyzer(dialect="postgresql")
+    analyzer = StatementReader(dialect="postgresql")
     assert analyzer.get_statement_type("SELECT $$ INTO $$") == "QUERY"
     sql = "WITH d AS (INSERT INTO t VALUES (1) RETURNING id) SELECT * FROM d"
     assert analyzer.get_statement_type(sql) == "QUERY"
@@ -591,7 +495,7 @@ def test_outer_insert_or_merge_into_is_not_select_into():
 
 def test_select_into_inside_do_block_is_not_reclassified():
     sql = "DO $$ DECLARE v int; BEGIN SELECT 1 INTO v; END $$"
-    assert SqlAnalyzer(dialect="postgresql").get_statement_type(sql) != "QUERY"
+    assert StatementReader(dialect="postgresql").get_statement_type(sql) != "QUERY"
 
 
 if __name__ == "__main__":

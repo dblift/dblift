@@ -4,8 +4,6 @@ import pytest
 
 from dblift.core.sql_parser.statement_facts import SqlglotStatementFactsReader, StatementFacts
 from dblift.db.base_quirks import BaseQuirks
-from dblift.db.plugins.db2.parser.statement_facts import Db2FactsParser
-from dblift.db.plugins.db2.quirks import Db2Quirks
 from dblift.db.plugins.duckdb.quirks import DuckDBQuirks
 from dblift.db.plugins.sqlite.parser.lexical_spec import SQLITE_SPEC
 from dblift.db.plugins.sqlite.quirks import SqliteQuirks

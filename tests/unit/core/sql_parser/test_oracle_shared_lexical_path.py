@@ -5,10 +5,9 @@ import importlib.util
 import pytest
 
 from dblift.core.exceptions import UnsafeStatementSplitError
-from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+from dblift.core.migration.sql.statement_reader import StatementReader
 from dblift.core.migration.sql.statement_splitter import StatementSplitter
 from dblift.core.sql_parser.lexical_engine import LexicalEngine
-from dblift.core.sql_parser.parser_factory import SqlParserFactory
 from dblift.core.sql_parser.redaction import describe_statement, mask_string_literals
 from dblift.db.plugins.oracle.parser.lexical_spec import ORACLE_SPEC
 from dblift.db.plugins.oracle.quirks import OracleQuirks
@@ -23,12 +22,7 @@ def test_the_quirks_hand_the_engine_its_spec():
     assert OracleQuirks().lexical_spec() is ORACLE_SPEC
 
 
-def test_execution_uses_the_spec_without_constructing_a_regex_parser(monkeypatch):
-    def forbidden(*args, **kwargs):
-        raise AssertionError("legacy parser construction reached")
-
-    monkeypatch.setattr(SqlParserFactory, "__init__", forbidden)
-    monkeypatch.setattr(SqlParserFactory, "get_parser", forbidden)
+def test_execution_uses_the_spec_from_the_spec():
     assert StatementSplitter("oracle").split_statements(SCRIPT) == [
         "CREATE TABLE a (x NUMBER);",
         "BEGIN NULL; END;",
@@ -70,7 +64,7 @@ def test_analysis_and_extraction_project_the_execution_records():
     expected = ["CREATE TABLE a (x NUMBER)", "BEGIN NULL; END;", "SELECT 1 FROM dual"]
     assert parser.split_for_analysis(SCRIPT) == expected
     assert parser.split_for_extraction(SCRIPT) == expected
-    assert SqlAnalyzer("oracle").split_statements_for_analysis(SCRIPT) == expected
+    assert StatementReader("oracle").split_statements_for_analysis(SCRIPT) == expected
 
 
 @pytest.mark.parametrize("strict", [False, True])
@@ -101,7 +95,7 @@ def test_a_line_terminator_is_not_a_terminator_for_other_dialects():
 
 
 def test_row_37_the_public_route_names_the_line_of_the_reference():
-    for route in (facts_parser("oracle").split, SqlAnalyzer("oracle").split_statements):
+    for route in (facts_parser("oracle").split, StatementReader("oracle").split_statements):
         with pytest.raises(UnsafeStatementSplitError, match=r"&v on line 2 is undefined"):
             route("SELECT 1,\n&v FROM dual;")
 
