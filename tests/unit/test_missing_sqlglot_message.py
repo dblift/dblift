@@ -83,3 +83,43 @@ def test_reading_statement_facts_names_the_extra(tmp_path):
     assert result.returncode == 0, result.stderr
     assert HINT in result.stdout
     assert result.stdout.strip().endswith("sqlglot")
+
+
+def test_validate_sql_names_the_extra_without_a_traceback(tmp_path):
+    script = tmp_path / "V1__a.sql"
+    script.write_text("CREATE TABLE t (id INT);\n", encoding="utf-8")
+    result = _run(
+        f"""
+        sys.argv = ["dblift", "validate-sql", "--files", {str(script)!r}, "--dialect", "postgresql"]
+        from dblift.cli.main import main
+
+        main()
+        """,
+        tmp_path,
+    )
+    assert result.returncode not in (0, None)
+    assert "dblift[analysis]" in result.stderr
+    assert "Traceback" not in result.stderr
+
+
+def test_execution_mode_migrate_never_needs_sqlglot(tmp_path):
+    migrations = tmp_path / "migrations"
+    migrations.mkdir()
+    (migrations / "V1__a.sql").write_text("CREATE TABLE t (id INTEGER);\n", encoding="utf-8")
+    result = _run(
+        f"""
+        from sqlalchemy import create_engine
+        from dblift.api.client import DBLiftClient
+
+        engine = create_engine("sqlite:///" + {str(tmp_path / "x.db")!r})
+        client = DBLiftClient.from_sqlalchemy(
+            engine, migrations_dir={str(migrations)!r}, analysis_mode="execution"
+        )
+        outcome = client.migrate()
+        print(outcome.success, outcome.migrations_applied)
+        client.close()
+        """,
+        tmp_path,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "True ['1']"

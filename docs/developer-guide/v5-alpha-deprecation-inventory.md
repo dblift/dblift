@@ -7,7 +7,8 @@ execution behavior. Internal paths below are not stable Python APIs under
 hooks still need a migration path before removal.
 
 Everything listed here has since been removed in 5.0 (the parser stacks, `SqlParserFactory`,
-`SqlAnalyzer`, `parser_type`, `strict_tokenizer` and the undo generator); the tables are kept as the
+`SqlAnalyzer`, `parser_type`, `strict_tokenizer` and the undo generator), except
+`insert_value_rows(sqlglot_dialect=)`, which is kept; the tables are kept as the
 historical record of what each name did and what replaced it.
 
 To list textual references to the inventoried names from the exact base tree,

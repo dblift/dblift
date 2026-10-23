@@ -129,7 +129,7 @@ class TestMigrationConfigInjection:
 
     def test_no_dialect_path_passes_registry_default_not_hidden_literal(self):
         """The config=None/no-dialect path must pass an explicit registry-derived
-        dialect to StatementReader (ADR-26 E5).
+        dialect to StatementReader.
 
         Previously StatementReader had a hidden ``dialect="oracle"`` default and this
         path called ``StatementReader(logger=...)`` with no dialect. The dialect is

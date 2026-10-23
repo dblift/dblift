@@ -35,8 +35,8 @@ Families: `postgresql` (also covers the PostgreSQL derivatives), `mysql` (also M
   (`statement_dml_table`), `events` and `updated_columns` (`analyze_dml`), `predicate`
   (`dml_where_predicate`), `full_table` (`is_full_table_dml`), each called for the family's quirks.
   `old` is `null` for SQLite and DuckDB, whose extraction already is the facts reader.
-  The code that recorded these two paths (the parser factory and the statement reader's text
-  extraction) is removed: `old` is carried over, never recomputed, and a new recording writes `null`.
+  The two paths were the removed parser factory and the removed text extraction of the statement
+  analyzer, not the statement reader's output. The code that recorded them is removed: `old` is carried over, never recomputed, and a new recording writes `null`.
 * The parse models are not stored: they can be recomputed from the statement.
 
 ## Why JSONL

@@ -76,7 +76,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   MySQL, MariaDB, Db2, DuckDB, SQLite and Snowflake parser subclasses and their deprecation
   notices no longer exist; nothing builds a parser by name any more. Migration: split a script with
   `StatementSplitter(dialect).split_statements(sql)` (or `.split(sql)` for records), read a
-  statement with `read_statement_facts` or the plugin's `quirks.statement_facts(sql)`, and get
+  statement with `read_statement_facts(sql, dialect=...)` from
+  `dblift.core.sql_parser.sqlglot_statement_facts` (`dialect` is a sqlglot dialect name) or the
+  plugin's `quirks.statement_facts(sql)`, and get
   schema models from live database introspection. A plugin returns a `LexicalSpec` and a
   statement-facts reader; it no longer defines `parser_class`. Reading statement facts without
   SQLGlot raises a `ModuleNotFoundError` that names `pip install dblift[analysis]`.
