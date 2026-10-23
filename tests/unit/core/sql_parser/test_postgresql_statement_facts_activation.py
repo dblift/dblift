@@ -172,12 +172,8 @@ def test_the_opaque_cte_diagnostic_names_the_dialect_that_read_the_statement():
             "DML",
             "INSERT",
         ),
-        # A CTE that writes under a SELECT is not claimed to be a read.
-        (
-            "WITH x AS (INSERT INTO src VALUES (99) RETURNING id) SELECT * FROM x",
-            "UNKNOWN",
-            "SELECT",
-        ),
+        # A CTE that writes under a SELECT is a write, whatever the outer verb.
+        ("WITH x AS (INSERT INTO src VALUES (99) RETURNING id) SELECT * FROM x", "DML", "SELECT"),
     ],
 )
 def test_statement_kind_and_operation_come_from_the_facts(sql, kind, operation):
