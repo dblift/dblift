@@ -404,9 +404,7 @@ def _apply_config_backed_defaults(args: Any, config: Optional[Any]) -> None:
         if getattr(args, spec.name) != spec.default:
             continue
         value = getattr(config, spec.name, None)
-        # An empty ``target_version`` is kept so it is refused like ``--target-version ""``.
-        keep_empty = spec.name == "target_version" and value == ""
-        if (value in (None, "", (), []) and not keep_empty) or value == spec.default:
+        if value in (None, "", (), []) or value == spec.default:
             continue
         setattr(args, spec.name, value)
 

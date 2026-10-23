@@ -147,9 +147,22 @@ def test_empty_yaml_target_version_is_rejected_by_cli(tmp_path):
 
 def test_empty_yaml_target_version_is_rejected_by_api(tmp_path):
     config = _project(tmp_path, target="")
-    with DBLiftClient.from_config_file(str(config)) as client:
-        with pytest.raises(InvalidTargetVersionError):
-            client.migrate()
+    with pytest.raises(InvalidTargetVersionError):
+        DBLiftClient.from_config_file(str(config))
+    assert _tables(tmp_path) == set()
+
+
+def test_empty_target_version_in_an_environment_block_is_rejected(tmp_path, monkeypatch):
+    config = _project(tmp_path, target=1)
+    data = yaml.safe_load(config.read_text())
+    data["environments"] = {"dev": {"target_version": ""}}
+    config.write_text(yaml.safe_dump(data))
+    monkeypatch.setenv("DBLIFT_ENV", "dev")
+    with pytest.raises(InvalidTargetVersionError):
+        DBLiftClient.from_config_file(str(config))
+    result = _cli(tmp_path, config, "migrate", env={"DBLIFT_ENV": "dev"})
+    assert result.returncode != 0
+    assert "Invalid target version ''" in result.stdout + result.stderr
     assert _tables(tmp_path) == set()
 
 
@@ -189,3 +202,41 @@ def test_cli_validate_honours_yaml_target_version_like_the_flag(tmp_path):
     assert (
         _cli(tmp_path, _project(tmp_path, target=2, name="target.yaml"), "validate").returncode == 0
     )
+
+
+def _applied_client(tmp_path, target):
+    """Apply all three migrations, then return a client whose config carries *target*."""
+    with DBLiftClient.from_config_file(str(_project(tmp_path))) as client:
+        assert client.migrate().success
+    return DBLiftClient.from_config_file(str(_project(tmp_path, target=target, name="t.yaml")))
+
+
+def test_api_validate_honours_configured_target_version(tmp_path):
+    with _applied_client(tmp_path, 2) as client:
+        (tmp_path / "V3__t3.sql").write_text("CREATE TABLE t3(id INTEGER, extra TEXT);")
+        assert client.validate().success is True
+        assert client.validate(target_version="3").success is False
+
+
+def test_api_undo_honours_configured_target_version(tmp_path):
+    with _applied_client(tmp_path, 1) as client:
+        assert client.undo().success
+    assert _tables(tmp_path) == {"t1"}
+
+
+def test_api_info_honours_configured_target_version(tmp_path):
+    def statuses(result):
+        return [(str(m.version), str(m.status)) for m in result.migrations]
+
+    plain = DBLiftClient.from_config_file(str(_project(tmp_path)))
+    configured = DBLiftClient.from_config_file(str(_project(tmp_path, 1, name="t.yaml")))
+    with plain, configured:
+        flagged = statuses(plain.info(target_version="1"))
+        assert statuses(configured.info()) == flagged
+        assert flagged != statuses(plain.info())
+
+
+def test_api_info_refuses_an_unknown_configured_target_version(tmp_path):
+    with DBLiftClient.from_config_file(str(_project(tmp_path, 9))) as client:
+        with pytest.raises(InvalidTargetVersionError):
+            client.info()

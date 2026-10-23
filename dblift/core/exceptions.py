@@ -49,6 +49,15 @@ class ExecutionError(DbliftError):
     """Base exception for migration execution errors."""
 
 
+class StatementVerdictError(ExecutionError):
+    """A verdict the server deferred past its statement, attributed to a statement of the script."""
+
+    def __init__(self, message: str, statement_index: int) -> None:
+        """Keep the 0-based index of the statement the failure belongs to."""
+        super().__init__(message)
+        self.statement_index = statement_index
+
+
 class FixedDboSchemaError(ExecutionError):
     """A SQL Server login mapped to ``dbo`` cannot honor the configured schema.
 

@@ -19,6 +19,7 @@ from dblift.core.constants import (
     DEFAULT_HISTORY_TABLE,
     ENV_PREFIX,
 )
+from dblift.core.exceptions import InvalidTargetVersionError
 
 _log = logging.getLogger(__name__)
 
@@ -308,6 +309,21 @@ def apply_environment(config_data: Dict[str, Any], environment: Optional[str]) -
     return deep_merge_dicts(effective, block)
 
 
+def _refuse_empty_target_version(data: Mapping[str, object]) -> None:
+    """Refuse ``target_version: ''`` (root or any environment) as ``--target-version ""`` is.
+
+    The config merge drops empty values, so an empty target would otherwise read as unset.
+    """
+    environments = data.get("environments")
+    blocks = (
+        [data, *(b for b in environments.values() if isinstance(b, dict))]
+        if isinstance(environments, dict)
+        else [data]
+    )
+    if any(block.get("target_version") == "" for block in blocks):
+        raise InvalidTargetVersionError("", [])
+
+
 def _extract_paid_raw_config(data: Dict[str, Any]) -> Dict[str, Any]:
     paid_raw: Dict[str, Any] = {}
     for key in _PAID_RAW_CONFIG_KEYS:
@@ -338,6 +354,8 @@ def load_config(config_file_path: Optional[str], args: Optional[Any] = None) -> 
         try:
             file_data = DbliftConfig.load_config_data_from_yaml(config_file_path)
             config_data = DbliftConfig.merge_config_data(config_data, file_data)
+        except InvalidTargetVersionError:
+            raise
         except _CONFIG_LOAD_EXC as e:
             raise RuntimeError(f"Error loading config file {config_file_path}: {e}") from e
 
@@ -412,9 +430,6 @@ def deep_merge_dicts(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str
         if isinstance(v, dict) and k in result and isinstance(result[k], dict):
             result[k] = deep_merge_dicts(result[k], v)
         elif v not in (None, ""):
-            result[k] = v
-        elif v == "" and k == "target_version" and k not in result:
-            # An empty target is a mistake to refuse (as ``--target-version ""`` is), not "unset".
             result[k] = v
         # else: skip empty/None override, keep base value
     return result
@@ -1173,7 +1188,10 @@ class DbliftConfig:
         if not data:
             return {}
         resolved = _resolve_env_placeholders(data)
-        return resolved if isinstance(resolved, dict) else {}
+        if not isinstance(resolved, dict):
+            return {}
+        _refuse_empty_target_version(resolved)
+        return resolved
 
     def to_dict(self) -> Dict[str, Any]:
         result = {

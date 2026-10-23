@@ -3,12 +3,12 @@
 import os
 import re
 import time
-from typing import Any, Dict, List, Optional, Set, Union
+from typing import Any, Dict, List, Optional, Sequence, Set, Tuple, Union
 
 from dblift.config import DbliftConfig
 from dblift.core.constants import DEFAULT_HISTORY_TABLE
 from dblift.core.constants import MIGRATION_LOCK_TABLE as _MIGRATION_LOCK_TABLE
-from dblift.core.exceptions import ExecutionError
+from dblift.core.exceptions import ExecutionError, StatementVerdictError
 from dblift.core.logger import Log
 from dblift.core.migration.clean_summary import CleanExecutionSummary
 from dblift.core.migration.migration import success_to_bool
@@ -112,6 +112,89 @@ def _row_value(row: Dict[str, Any], *names: str, default: Any = None) -> Any:
 
 _OWNER_COLUMN = OWNER_COLUMN.upper()
 
+_IDENT = r'(?:"[^"]+"|[A-Za-z][\w$#]*)'
+_PLSQL_UNIT_RE = re.compile(
+    r"^\s*CREATE\s+(?:OR\s+REPLACE\s+)?(?:(?:NON)?EDITIONABLE\s+)?"
+    r"(PACKAGE\s+BODY|PACKAGE|PROCEDURE|FUNCTION|TRIGGER|TYPE\s+BODY|TYPE)\s+"
+    rf"(?:IF\s+NOT\s+EXISTS\s+)?(?:({_IDENT})\s*\.\s*)?({_IDENT})",
+    re.IGNORECASE,
+)
+
+
+def _dictionary_spelling(identifier: str) -> str:
+    """Unquoted identifiers fold to upper case; quoted ones keep their spelling."""
+    if identifier.startswith('"'):
+        return identifier[1:-1].replace('""', '"')
+    return identifier.upper()
+
+
+_FORCE_VIEW_RE = re.compile(
+    r"^\s*CREATE\s+(?:OR\s+REPLACE\s+)?(?:(?:NON)?EDITIONABLE\s+)?FORCE\s+"
+    r"(?:(?:NON)?EDITIONABLE\s+)?"
+    rf"VIEW\s+(?:({_IDENT})\s*\.\s*)?({_IDENT})",
+    re.IGNORECASE,
+)
+
+_Unit = Tuple[str, Optional[str], str]
+_Rows = List[Dict[str, object]]
+
+_ALTER_COMPILE_RE = re.compile(
+    r"^\s*ALTER\s+(PACKAGE|PROCEDURE|FUNCTION|TRIGGER|TYPE|VIEW)\s+"
+    rf"(?:({_IDENT})\s*\.\s*)?({_IDENT})\s+COMPILE\b(.*)$",
+    re.IGNORECASE | re.DOTALL,
+)
+
+#: What ``ALTER <type> ... COMPILE`` recompiles, by the keyword that follows COMPILE.
+_COMPILE_PARTS = {"PACKAGE": ("PACKAGE", "PACKAGE BODY"), "TYPE": ("TYPE", "TYPE BODY")}
+
+
+def _plsql_units(statement: str) -> List[_Unit]:
+    """Return the ``(type, owner, name)`` units *statement* creates or recompiles."""
+    match = _PLSQL_UNIT_RE.match(statement)
+    if match is not None:
+        unit_type = " ".join(match.group(1).upper().split())
+        owner = _dictionary_spelling(match.group(2)) if match.group(2) else None
+        return [(unit_type, owner, _dictionary_spelling(match.group(3)))]
+    match = _FORCE_VIEW_RE.match(statement)
+    if match is not None:
+        owner = _dictionary_spelling(match.group(1)) if match.group(1) else None
+        return [("VIEW", owner, _dictionary_spelling(match.group(2)))]
+    match = _ALTER_COMPILE_RE.match(statement)
+    if match is None:
+        return []
+    kind = match.group(1).upper()
+    tail = match.group(4).upper().split()
+    spec, body = _COMPILE_PARTS.get(kind, (kind, kind))
+    types = [body] if "BODY" in tail else [spec] if "SPECIFICATION" in tail else [spec, body]
+    owner = _dictionary_spelling(match.group(2)) if match.group(2) else None
+    name = _dictionary_spelling(match.group(3))
+    return [(t, owner, name) for t in dict.fromkeys(types)]
+
+
+def _statement_index(statements: Sequence[str], unit: _Unit) -> int:
+    """Index of the first statement that created or recompiled *unit*, else the last one."""
+    for index, statement in enumerate(statements):
+        if unit in _plsql_units(statement.strip()):
+            return index
+    return max(len(statements) - 1, 0)
+
+
+def _recompile_statement(unit: _Unit) -> str:
+    """The ``ALTER ... COMPILE`` that recompiles *unit*."""
+    unit_type, owner, name = unit
+    target = f'"{name}"' if owner is None else f'"{owner}"."{name}"'
+    kind, _, part = unit_type.partition(" ")
+    alter = f"ALTER {kind} {target} COMPILE" + (" BODY" if part else "")
+    # DDL commits. An autonomous transaction keeps that commit away from the
+    # migration's own, so a migration that then fails does not keep its DML.
+    # ORA-24344 (compiled with errors) is the answer being sought, not a failure.
+    return (
+        "DECLARE PROCEDURE recompile IS PRAGMA AUTONOMOUS_TRANSACTION; "
+        f"BEGIN EXECUTE IMMEDIATE '{alter.replace(chr(39), chr(39) * 2)}'; "
+        "EXCEPTION WHEN OTHERS THEN IF SQLCODE != -24344 THEN RAISE; END IF; END; "
+        "BEGIN recompile; END;"
+    )
+
 
 def _seconds_before(clock: str, seconds: str) -> str:
     return f"{clock} - NUMTODSINTERVAL({seconds}, 'SECOND')"
@@ -160,6 +243,8 @@ class OracleProvider(SqlLeaseLockingProvider):
     #: ``ALL_USERS``. Instance-level; the class default stays ``None`` so
     #: providers built without ``__init__`` don't share one set.
     _legacy_schema_case_checked: Optional[Set[str]] = None
+    #: PL/SQL units the current migration left INVALID, rechecked at its end.
+    _pending_compile: Optional[Dict[_Unit, None]] = None
 
     def __init__(self, config: DbliftConfig, log: Optional[Log] = None) -> None:
         """Initialize the native Oracle provider."""
@@ -172,9 +257,11 @@ class OracleProvider(SqlLeaseLockingProvider):
 
         ``ExecutionEngine`` calls this at the start of every migration and
         callback — the unit boundary — so each one still starts from the
-        configured schema.
+        configured schema. It also drops the PL/SQL units a migration that failed
+        left to be recompiled, so they are not charged to the next one.
         """
         self._schema_applied_for = None
+        self._pending_compile = None
 
     @staticmethod
     def get_lock_name(schema: str) -> str:
@@ -281,7 +368,73 @@ class OracleProvider(SqlLeaseLockingProvider):
         if not is_plsql_block and stmt.endswith(";"):
             stmt = stmt[:-1].rstrip(ORACLE_SPEC.text_blanks)
         stmt = _refuse_edges_the_driver_strips(stmt)
+        units = _plsql_units(stmt)
+        if not units:
+            return super().execute_statement(stmt, schema=schema, params=params)
+        for unit in units:
+            self._pending_units()[unit] = None
         return super().execute_statement(stmt, schema=schema, params=params)
+
+    def _unit_state(self, unit: _Unit) -> _Rows:
+        """Dictionary rows for *unit*: its status, with one row per compile error."""
+        unit_type, owner, name = unit
+        return self.execute_query(
+            "SELECT o.status, e.line, e.position, e.text FROM all_objects o "
+            "LEFT JOIN all_errors e ON e.owner = o.owner AND e.name = o.object_name "
+            "AND e.type = o.object_type AND e.attribute = 'ERROR' "
+            "WHERE o.owner = NVL(?, SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA')) "
+            "AND o.object_name = ? AND o.object_type = ? ORDER BY e.sequence",
+            [owner, name, unit_type],
+        )
+
+    @staticmethod
+    def _is_invalid(rows: _Rows) -> bool:
+        return any(
+            str(_row_value(r, "status", default="")).upper() == "INVALID"
+            or _row_value(r, "text") is not None
+            for r in rows
+        )
+
+    def _pending_units(self) -> Dict[_Unit, None]:
+        if self._pending_compile is None:
+            self._pending_compile = {}
+        return self._pending_compile
+
+    def finish_migration_statements(self, statements: Sequence[str] = ()) -> None:
+        """Recompile the units left INVALID by the migration and fail if any stays so.
+
+        Every unit the migration created or recompiled is checked, not only
+        those that were INVALID when created: a later statement can invalidate
+        one (``DROP COLUMN`` under a trigger). *statements* locates the failure.
+        """
+        pending = list(self._pending_units())
+        self._pending_compile = {}
+        still_invalid: List[Tuple[_Unit, _Rows]] = []
+        for unit in pending:
+            rows = self._unit_state(unit)
+            if not self._is_invalid(rows):
+                continue  # valid, or dropped since
+            super().execute_statement(_recompile_statement(unit))
+            rows = self._unit_state(unit)
+            if self._is_invalid(rows):
+                still_invalid.append((unit, rows))
+        if not still_invalid:
+            return
+        count = len(still_invalid)
+        lines = [f"Compile errors remain in {count} PL/SQL unit{'s' * (count != 1)} (ORA-24344)"]
+        for (unit_type, _owner, name), rows in still_invalid:
+            errors = [r for r in rows if _row_value(r, "text") is not None]
+            if errors:
+                first = errors[0]
+                lines.append(f"{unit_type} {name}:")
+                line, position = _row_value(first, "line"), _row_value(first, "position")
+                where = f"line {line}, column {position}: " if line or position else ""
+                lines.append(f"  {where}{_row_value(first, 'text')}")
+            else:
+                lines.append(f"{unit_type} {name}: INVALID, no compile errors reported")
+        raise StatementVerdictError(
+            "\n".join(lines), _statement_index(statements, still_invalid[0][0])
+        )
 
     def execute_query(self, sql: str, params: Optional[List[Any]] = None) -> List[Dict[str, Any]]:
         """Execute Oracle query SQL after stripping plain trailing semicolons."""

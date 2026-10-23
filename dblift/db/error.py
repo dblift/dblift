@@ -86,7 +86,11 @@ def clean_driver_error_message(message: str) -> str:
     errno_tuple = _DBAPI_ERROR_TUPLE_RE.match(text)
     if errno_tuple:
         text = (errno_tuple.group(2) + text[errno_tuple.end() :]).strip()
-    return text
+    lines: List[str] = []
+    for line in text.split("\n"):
+        if not (line.strip() and lines and line == lines[-1]):
+            lines.append(line)
+    return "\n".join(lines)
 
 
 def strip_sql_statement_block(message: str) -> str:
