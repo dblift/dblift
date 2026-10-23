@@ -338,7 +338,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Large migration scripts now run in time proportional to their size.** Recording each statement in the
   run journal re-scanned every statement already recorded, so a script's run time grew with the square of its
   statement count; a script of 32 000 statements now runs roughly 5 times faster. The history rows and
-
+  reported results are unchanged.
 
 - **An Oracle procedure, function, package, trigger, type or `FORCE` view that is still INVALID at the end of
   its migration now fails the migration.** Oracle reports a `CREATE [OR REPLACE]` or `ALTER ... COMPILE` with
