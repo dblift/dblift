@@ -120,12 +120,6 @@ def test_dml_helpers_take_the_facts_path_through_the_plugin():
     assert is_full_table_dml("UPDATE ONLY child SET id = 2", quirks=quirks)
 
 
-def test_dml_helpers_resolve_the_deprecated_dialect_keyword_to_the_plugin():
-    assert analyze_dml(UPDATE_ONLY, sqlglot_dialect="postgres").table == "child"
-    assert dml_where_predicate(UPDATE_ONLY, sqlglot_dialect="postgres") == "id = 1"
-    assert is_full_table_dml("DELETE FROM ONLY child", sqlglot_dialect="postgres")
-
-
 @pytest.mark.parametrize(
     "sql",
     ["CREATE TABLE s.t (a int)", "UPDATE child SET id = 2"],

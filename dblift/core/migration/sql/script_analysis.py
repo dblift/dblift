@@ -31,7 +31,8 @@ SNIPPET = 120
 _FIRST_WORD = re.compile(r"^([A-Za-z]+)")
 _DROP_COLUMN = re.compile(r"\bDROP\s+COLUMN\b", re.IGNORECASE)
 _DROP_KEYWORD = re.compile(
-    r"^\s*DROP\s+(TABLE|MATERIALIZED\s+VIEW|VIEW|SCHEMA|DATABASE)\b", re.IGNORECASE
+    r"^\s*DROP\s+(TABLE|MATERIALIZED\s+VIEW(?!\s+LOG\b)|VIEW|SCHEMA|DATABASE(?!\s+LINK\b))\b",
+    re.IGNORECASE,
 )
 # Objects whose DROP removes a definition, never rows, even when the statement's name could not be
 # read (each is documented so by its vendor; see the lint-rule tests). CASCADE or FORCE can drop or
@@ -40,7 +41,8 @@ _DROP_KEYWORD = re.compile(
 _ROW_FREE_DROP = re.compile(
     r"^\s*DROP\s+(?:PUBLIC\s+)?(?:INDEX|SEQUENCE|FUNCTION|PROCEDURE|ROUTINE|TRIGGER|TYPE|DOMAIN"
     r"|ROLE|USER|POLICY|RULE|PUBLICATION|SERVER|COLLATION|CAST|AGGREGATE|LANGUAGE|EVENT(?!\s+TABLE)"
-    r"|SYNONYM|PACKAGE|DIRECTORY|PROFILE|LOGIN|DEFAULT|ASSEMBLY|MACRO|NICKNAME|LIBRARY|GROUP)\b",
+    r"|SYNONYM|PACKAGE|DIRECTORY|PROFILE|LOGIN|DEFAULT|ASSEMBLY|MACRO|NICKNAME|LIBRARY|GROUP"
+    r"|DATABASE\s+LINK|MATERIALIZED\s+VIEW\s+LOG)\b",
     re.IGNORECASE,
 )
 _DROP_DEPENDENTS = re.compile(r"\b(?:CASCADE|FORCE)\b", re.IGNORECASE)

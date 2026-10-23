@@ -88,7 +88,7 @@ The layout deliberately mirrors `db/plugins/postgresql/` (and siblings) so the s
 
    **File-based dialects need a config field.** The generated config stub only carries the base fields (`url`/`host`/`port`/`database`/`schema`). An embedded, file-path dialect (SQLite, DuckDB) must add its own `path` field and a `__post_init__` that resolves `path` from `url`/`database` and defaults the schema — copy SQLite's `config.py`.
 
-   **Provide SQL reading rules.** New SQL plugins should define a `LexicalSpec` through `quirks.lexical_spec()` for script boundaries and a `statement_facts_class` reader for supported statement analysis. The existing `quirks.parser_class("regex")` hook remains available where classification, extraction, or redaction still needs a parser. That path uses a `parser/parser_config.py` (`DialectConfig` subclass) and a small `EnhancedRegexParser` subclass; its direct construction is deprecated for v5.0. See the [deprecation inventory](v5-alpha-deprecation-inventory.md) for caller and replacement limits.
+   **Provide SQL reading rules.** A SQL plugin must define a `LexicalSpec` through `quirks.lexical_spec()` for script boundaries: it is the only way dblift splits a script, and `StatementSplitter` raises `UnsupportedDialectError` for a dialect without one (a `parser_class` that returns `Statement` records is no longer a substitute). It should also provide a `statement_facts_class` reader for supported statement analysis. The existing `quirks.parser_class("regex")` hook remains available where classification, extraction, or redaction still needs a parser. That path uses a `parser/parser_config.py` (`DialectConfig` subclass) and a small `EnhancedRegexParser` subclass; its direct construction is deprecated for v5.0. See the [deprecation inventory](v5-alpha-deprecation-inventory.md) for caller and replacement limits.
 
 5. Add a driver extra if desired:
 
@@ -114,16 +114,10 @@ The layout deliberately mirrors `db/plugins/postgresql/` (and siblings) so the s
 | `analysis_statements` | the statements analysis reads from this record; `None` means the record is one analysis statement, `()` contributes none |
 | `source_start`, `source_end` | half-open offsets of the record in the original script, including a consumed client terminator such as `GO`; optional |
 
-A record is a statement: do not return empty pieces, comment-only pieces or batch separators.
-`split_statements` is the list of strings execution sends, derived from the records.
-
-A parser that implements only `split_statements` (strings) still works. dblift adapts its strings
-to records, skipping any piece that is empty after Python's `str.strip()` (a no-break space
-is whitespace there, so such a piece is lost), comment-only pieces and any piece the dialect's
-`is_batch_separator` accepts, and logs once per dialect and process a message asking the
-parser to implement `split()` and return `Statement` records. The adaptation, and so the
-skipping, ends in the next major release; return only statements from `split_statements`
-before then, or implement `split()`, whose records keep a piece of that kind.
+A record is a statement: the lexical engine returns no empty pieces, comment-only pieces or batch
+separators. `split_statements` is the list of strings execution sends, derived from the records.
+The records come from the engine driven by the plugin's `LexicalSpec`; there is no other way to
+split a script (no string-returning or record-returning parser class is read).
 
 ## Step 3: Install & discover
 

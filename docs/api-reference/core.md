@@ -88,12 +88,9 @@ deprecated compatibility API throughout 4.x; its removal is planned for a future
 major version. Calls without an override recompute and store canonical statements.
 Overrides, including an empty string, leave that cache untouched.
 
-`dblift.core.migration.sql.is_comment_only_statement` is deprecated and will be removed in
-the next major release. It warns when called. Use `StatementSplitter(dialect).split()`; its
-records are the statements, and each carries `kind`.
-
-Until it is removed the helper answers as before: it needs no provider, and it treats
-MySQL/MariaDB executable comment directives as statements, not comments.
+`StatementSplitter(dialect).split()` returns statement records with a `kind` field.
+Use it to identify executable statements, including MySQL/MariaDB executable
+comment directives.
 
 ::: dblift.core.sql_parser
     options:

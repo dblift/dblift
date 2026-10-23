@@ -25,7 +25,6 @@ def test_snowflake_uses_a_lexical_spec_for_statement_facts() -> None:
     splitter = StatementSplitter("snowflake")
     assert isinstance(splitter._engine, LexicalEngine)
     assert splitter._engine.spec == spec
-    assert splitter.parser_factory is None
 
 
 def test_snowflake_split_views_route_through_shared_records(monkeypatch) -> None:
