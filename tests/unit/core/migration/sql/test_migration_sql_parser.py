@@ -12,7 +12,6 @@ from dblift.core.logger.results import MigrateResult
 from dblift.core.migration.executor.execution_engine import ExecutionEngine
 from dblift.core.migration.migration import Migration
 from dblift.core.migration.placeholders.placeholder_service import PlaceholderService
-from dblift.core.migration.scripting.undo_script_generator import UndoScriptGenerator
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from tests.unit._migration_factory import make_migration
 
@@ -206,25 +205,6 @@ def test_sqlplus_order_and_context_reset_without_model_parsing(monkeypatch):
         make_migration(script_name="V2__x.sql", content="SELECT 2;")
     ) == ["SELECT 2"]
     assert engine._current_sqlplus_ctx is None
-
-
-@pytest.mark.parametrize("success", [False, True])
-def test_undo_fallback_does_not_call_model_sql_parser(success, monkeypatch):
-    generator = UndoScriptGenerator("sqlite", logger=NullLog())
-    generator.parser = SimpleNamespace(
-        parse_sql=lambda *args, **kwargs: SimpleNamespace(success=success, statements=[])
-    )
-    migration = make_migration(
-        script_name="V1__x.sql",
-        content="CREATE TABLE first (id INT); CREATE TABLE second (id INT);",
-    )
-    monkeypatch.setattr(
-        Migration, "parse_sql_statements", MagicMock(side_effect=AssertionError("model parser"))
-    )
-    statements = generator._generate_undo_statements(migration)
-    assert len(statements) == 2
-    assert "second" in statements[0].sql
-    assert "first" in statements[1].sql
 
 
 @pytest.mark.parametrize("dialect", [None, "sqlite"])

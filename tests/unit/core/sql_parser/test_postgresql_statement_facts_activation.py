@@ -4,7 +4,6 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from dblift.core.migration.scripting.undo_script_generator import UndoScriptGenerator
 from dblift.core.migration.sql.script_analysis import CHANGES_ROWS, analyse_script
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.migration.sql.sql_execution_service import SqlExecutionService
@@ -21,7 +20,6 @@ from dblift.db.dml_analysis import (
 )
 from dblift.db.plugins.postgresql.parser.postgresql_regex_parser import PostgreSqlRegexParser
 from dblift.db.provider_registry import ProviderRegistry
-from tests.unit._migration_factory import make_migration
 
 _quirks = ProviderRegistry.get_quirks
 
@@ -40,11 +38,6 @@ CTE_UPDATE = "WITH x AS (SELECT 1) UPDATE child SET id = 2"
 COPY_FROM = "COPY child FROM 'input.csv'"
 TRIGGER = "CREATE TRIGGER tg AFTER INSERT ON t FOR EACH ROW EXECUTE FUNCTION f()"
 FUNCTION = "CREATE OR REPLACE FUNCTION f() RETURNS int AS $$ SELECT 1 $$ LANGUAGE sql"
-
-
-def _undo(sql, dialect="postgresql"):
-    migration = make_migration(script_name="V1__x.sql", content=sql)
-    return UndoScriptGenerator(dialect)._generate_undo_statements(migration)
 
 
 @pytest.mark.parametrize("dialect", FAMILY)
@@ -150,41 +143,6 @@ def test_execution_journal_receives_the_facts_objects(sql):
     objects = journal.record_object_changes.call_args.args[2]
     expected = "t" if sql.startswith("CREATE") else "child"
     assert [(obj["object_type"], obj["object_name"]) for obj in objects] == [("TABLE", expected)]
-
-
-@pytest.mark.parametrize(
-    "sql",
-    [
-        "CREATE TABLE s.t (a int)",
-        "ALTER TABLE t ADD COLUMN c INT",
-        "ALTER TABLE t ADD CONSTRAINT uq UNIQUE (c)",
-        "CREATE INDEX ix ON t (c)",
-        "CREATE VIEW v AS SELECT 1",
-        "CREATE SEQUENCE q",
-        "COMMENT ON TABLE t IS 'x'",
-        "INSERT INTO t VALUES (1)",
-        TRIGGER,
-        FUNCTION,
-    ],
-)
-def test_undo_asks_for_a_hand_written_reversal(sql):
-    undo = _undo(sql)
-
-    assert len(undo) == 1
-    assert undo[0].requires_manual_review
-    assert undo[0].sql.startswith("-- WARNING")
-
-
-@pytest.mark.parametrize("sql", ["SELECT 1", "-- note\n/* more */"])
-def test_undo_of_a_read_or_a_comment_is_empty(sql):
-    assert _undo(sql) == []
-
-
-@pytest.mark.parametrize(
-    "sql", [TRIGGER, "CREATE TRIGGER tg BEFORE UPDATE ON t EXECUTE FUNCTION f()"]
-)
-def test_undo_never_emits_a_drop_trigger_without_its_table(sql):
-    assert not [s for s in _undo(sql) if s.sql.startswith("DROP TRIGGER")]
 
 
 def test_data_changing_cte_keeps_the_changes_rows_caution_for_its_outer_target():

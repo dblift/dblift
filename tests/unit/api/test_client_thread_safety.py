@@ -642,23 +642,3 @@ class TestSubclassSuperChainingVsReentrancy:
         result = client.undo()
         assert result.success, getattr(result, "error_message", None)
         client.close()
-
-    def test_listener_calling_generate_undo_script_during_migrate_is_refused(self, tmp_path):
-        """It emits MIGRATION_* events itself, so nesting it would re-trigger the listener."""
-        client = _client_with_undo_pair(DBLiftClient, tmp_path)
-        nested_error = {}
-
-        def on_started(event):
-            try:
-                client.generate_undo_script(
-                    client.config.migrations.directory + "/V1__init.sql", overwrite=True
-                )
-            except RuntimeError as e:
-                nested_error["error"] = e
-
-        client.events.on(EventType.MIGRATION_STARTED, on_started)
-        outer = client.migrate()
-
-        assert REFUSED in str(nested_error["error"])
-        assert outer.success
-        client.close()

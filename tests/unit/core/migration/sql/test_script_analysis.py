@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import logging
+import subprocess
+import sys
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
 
 import dblift.core.migration.sql.lint as lint
+import dblift.core.migration.sql.script_analysis as script_analysis
 from dblift.core.migration.migration_types import MigrationType
 from dblift.core.migration.sql.lint import lint_pending_scripts
 from dblift.core.migration.sql.script_analysis import (
@@ -113,6 +116,95 @@ def test_unreadable_text_never_raises():
 
     assert isinstance(analysis, ScriptAnalysis)
     assert analysis.cautions == ()
+
+
+def test_unreadable_delete_analysis_does_not_import_undo_generator():
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            """import builtins
+import sys
+from dblift.core.migration.sql.script_analysis import analyse_script
+real_import = builtins.__import__
+def guarded_import(name, *args, **kwargs):
+    if name.startswith('dblift.core.migration.scripting.undo_script_generator'):
+        raise AssertionError('legacy generator namespace imported')
+    return real_import(name, *args, **kwargs)
+builtins.__import__ = guarded_import
+analysis = analyse_script('DELETE FROM t\\u00a0 CASCADE;', 'postgresql')
+assert [statement.operation for statement in analysis.statements] == ['DELETE']
+assert len(analysis.cautions) == 1
+assert 'could not be read' in analysis.cautions[0].reason
+assert not any(name.startswith('dblift.core.migration.scripting.undo_script_generator') for name in sys.modules)
+""",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_opaque_dialect_uses_own_mapping_without_listing_plugins(monkeypatch):
+    monkeypatch.setattr(
+        script_analysis.ProviderRegistry,
+        "get_quirks",
+        lambda name: SimpleNamespace(sqlglot_dialect="tsql"),
+    )
+    monkeypatch.setattr(
+        script_analysis.ProviderRegistry,
+        "list_plugins",
+        lambda: (_ for _ in ()).throw(AssertionError("unexpected fallback")),
+    )
+    assert script_analysis._opaque_dialect("sqlserver") == "tsql"
+
+
+@pytest.mark.parametrize(
+    "dialect,expected", [("oracle", "oracle"), ("sqlserver", "tsql"), ("mysql", "mysql")]
+)
+def test_opaque_dialect_keeps_registered_mapping(dialect, expected):
+    assert script_analysis._opaque_dialect(dialect) == expected
+
+
+@pytest.mark.parametrize("dialect", ["", "unknown", "db2", "cosmosdb"])
+def test_opaque_dialect_keeps_registered_fallback(dialect):
+    assert script_analysis._opaque_dialect(dialect) == "postgres"
+
+
+@pytest.mark.parametrize("dialect", ["", "unknown", "db2"])
+def test_opaque_dialect_uses_sorted_marked_registry_fallback(monkeypatch, dialect):
+    mappings = {
+        "a": SimpleNamespace(sqlglot_dialect="first", is_default_sqlglot_read_fallback=True),
+        "z": SimpleNamespace(sqlglot_dialect="last", is_default_sqlglot_read_fallback=True),
+    }
+    monkeypatch.setattr(
+        script_analysis.ProviderRegistry,
+        "get_quirks",
+        lambda name: mappings.get(
+            name, SimpleNamespace(sqlglot_dialect=None, is_default_sqlglot_read_fallback=False)
+        ),
+    )
+    monkeypatch.setattr(
+        script_analysis.ProviderRegistry,
+        "list_plugins",
+        lambda: [SimpleNamespace(name="z"), SimpleNamespace(name="a")],
+    )
+    assert script_analysis._opaque_dialect(dialect) == "first"
+
+
+@pytest.mark.parametrize("marked", [True, False])
+def test_opaque_dialect_without_fallback_mapping_returns_empty(monkeypatch, marked):
+    monkeypatch.setattr(
+        script_analysis.ProviderRegistry,
+        "get_quirks",
+        lambda name: SimpleNamespace(sqlglot_dialect=None, is_default_sqlglot_read_fallback=marked),
+    )
+    monkeypatch.setattr(
+        script_analysis.ProviderRegistry,
+        "list_plugins",
+        lambda: [SimpleNamespace(name="candidate")],
+    )
+    assert script_analysis._opaque_dialect("unknown") == ""
 
 
 def test_to_dict_has_the_three_keys_and_plain_values():

@@ -5,7 +5,6 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from dblift.core.migration.scripting.undo_script_generator import UndoScriptGenerator
 from dblift.core.migration.sql.script_analysis import analyse_script
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.migration.sql.sql_execution_service import SqlExecutionService
@@ -132,36 +131,6 @@ def test_cte_update_journal_records_the_ast_target():
 
     objects = journal.record_object_changes.call_args.args[2]
     assert [(obj["object_type"], obj["object_name"]) for obj in objects] == [("TABLE", "child")]
-
-
-def test_sqlite_undo_add_column_uses_facts_instead_of_regex_extractor(monkeypatch):
-    generator = UndoScriptGenerator("sqlite")
-
-    def forbidden(*args, **kwargs):
-        raise AssertionError("legacy column extractor reached")
-
-    monkeypatch.setattr(generator, "_extract_column_name_from_add", forbidden)
-    migration = make_migration(
-        script_name="V1__alter.sql", content="ALTER TABLE child ADD COLUMN value INT;"
-    )
-
-    statements = generator._generate_undo_statements(migration)
-    assert len(statements) == 1
-    assert statements[0].sql == 'ALTER TABLE "child" DROP COLUMN "value";'
-    assert not statements[0].requires_manual_review
-
-
-def test_sqlite_undo_of_an_opaque_trigger_drops_it():
-    generator = UndoScriptGenerator("sqlite")
-    migration = make_migration(
-        script_name="V1__trigger.sql",
-        content="CREATE TRIGGER trg AFTER INSERT ON child BEGIN UPDATE child SET id = 2; END;",
-    )
-
-    statements = generator._generate_undo_statements(migration)
-    assert [(s.sql, s.requires_manual_review) for s in statements] == [
-        ('DROP TRIGGER IF EXISTS "trg";', False)
-    ]
 
 
 @pytest.mark.parametrize("mode", ["full", "execution"])

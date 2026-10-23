@@ -113,7 +113,6 @@ def test_each_notice_is_once_per_process():
 
 
 def test_internal_bridges_are_silent_and_canonical_paths_do_not_warn():
-    from dblift.core.migration.scripting.undo_script_generator import UndoScriptGenerator
     from dblift.core.sql_parser.redaction import _dialect_tokenizer, mask_string_literals
 
     def canonical():
@@ -124,7 +123,6 @@ def test_internal_bridges_are_silent_and_canonical_paths_do_not_warn():
         analyzer.split_statements("SELECT 1;")
         analyzer.split_statements_for_analysis("SELECT 1;")
         _ = analyzer.parser_factory
-        UndoScriptGenerator(dialect="sqlite")
         _dialect_tokenizer("mongodb")
         mask_string_literals("SELECT 'a'", "postgresql")
 

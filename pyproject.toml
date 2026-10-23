@@ -155,7 +155,7 @@ dev = [
 ]
 # Command line: terminal rendering (Rich) and report templates (Jinja2).
 cli = ["rich>=13.3.0", "Jinja2>=3.1.0"]
-# Full SQL analysis: statement facts, lint and undo generation read SQLGlot.
+# Full SQL analysis: statement facts and lint read SQLGlot.
 analysis = ["sqlglot>=30.23.0,<31"]
 postgresql = ["psycopg[binary]>=3.1"]
 mysql = ["PyMySQL>=1.1"]
@@ -336,15 +336,14 @@ no_implicit_reexport = true
 strict_equality = true
 
 # PR-F1: extend the strict zone to the rest of ``api/``. Same flag set as
-# above except ``no_implicit_reexport`` — enforcing it on these two
-# modules would require touching ``core.logger.results`` to add explicit
+# above except ``no_implicit_reexport`` — enforcing it on this
+# module would require touching ``core.logger.results`` to add explicit
 # ``__all__`` re-exports, which
 # is scope creep beyond the ``api/`` package. When Phase F+ extends the
 # strict zone into ``core/``, those re-exports become a one-shot fix and
 # this carve-out can be removed.
 [[tool.mypy.overrides]]
 module = [
-    "dblift.api._client_operations",
     "dblift.api.client",
 ]
 disallow_any_generics = true
@@ -372,8 +371,6 @@ module = [
     "dblift.core.migration.executor.transaction_policy",
     "dblift.core.migration.commands.validate_command",
 
-    "dblift.core.migration.scripting.undo_script_generator._extractors",
-    "dblift.core.migration.scripting.undo_script_generator._helpers",
     "dblift.core.migration.rules.migration_rules",
 ]
 disallow_any_generics = true
@@ -1016,10 +1013,6 @@ module = [
     "dblift.core.migration.journals.migration_journal",
     "dblift.core.migration.executor",
     "dblift.core.migration.executor.migration_executor",
-    "dblift.core.migration.scripting.undo_script_generator",
-    "dblift.core.migration.scripting.undo_script_generator._generator",
-    "dblift.core.migration.scripting.undo_script_generator._models",
-    "dblift.core.migration.scripting.undo_script_generator._reversers",
     "dblift.core.migration.executors",
     "dblift.core.migration.executors.base_executor",
     "dblift.core.migration.executors.executor_factory",

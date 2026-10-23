@@ -4,7 +4,6 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from dblift.core.migration.scripting.undo_script_generator import UndoScriptGenerator
 from dblift.core.migration.sql.script_analysis import analyse_script
 from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.migration.sql.sql_execution_service import SqlExecutionService
@@ -25,7 +24,6 @@ from tests.support.legacy_snowflake_parsers import (
     legacy_snowflake_sqlglot,
     snowflake_facts_off,
 )
-from tests.unit._migration_factory import make_migration
 
 _quirks = ProviderRegistry.get_quirks
 
@@ -34,18 +32,12 @@ CTE_UPDATE = "WITH x AS (SELECT 1 AS a) UPDATE child SET id = 2 FROM x WHERE chi
 FUNCTION = "CREATE OR REPLACE FUNCTION s.f(a INT) RETURNS INT LANGUAGE SQL AS 'a + 1'"
 
 
-def _undo(sql):
-    migration = make_migration(script_name="V1__x.sql", content=sql)
-    return UndoScriptGenerator("snowflake")._generate_undo_statements(migration)
-
-
 def test_snowflake_reads_statement_facts():
     quirks = _quirks("snowflake")
 
     assert quirks.supports_statement_facts
     assert isinstance(quirks.statement_facts_reader(), SqlglotStatementFactsReader)
     assert quirks.statement_facts_reader().dialect == "snowflake"
-    assert not quirks.undo_reverses_statement_facts
 
 
 def test_hybrid_factory_serves_the_facts_parser():
@@ -170,30 +162,6 @@ def test_unmodelled_object_kinds_reach_no_journal_object(sql):
     assert not journal.record_object_changes.called or not (
         journal.record_object_changes.call_args.args[2]
     )
-
-
-@pytest.mark.parametrize(
-    "sql",
-    [
-        "CREATE TABLE s.t (a INT)",
-        "ALTER TABLE t ADD COLUMN c INT",
-        "CREATE VIEW v AS SELECT 1",
-        "INSERT INTO t VALUES (1)",
-        "CREATE SCHEMA app",
-        FUNCTION,
-    ],
-)
-def test_undo_asks_for_a_hand_written_reversal(sql):
-    undo = _undo(sql)
-
-    assert len(undo) == 1
-    assert undo[0].requires_manual_review
-    assert undo[0].sql.startswith("-- WARNING")
-
-
-@pytest.mark.parametrize("sql", ["SELECT 1", "-- note\n/* more */"])
-def test_undo_of_a_read_or_a_comment_is_empty(sql):
-    assert _undo(sql) == []
 
 
 @pytest.mark.parametrize(

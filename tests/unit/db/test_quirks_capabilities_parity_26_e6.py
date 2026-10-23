@@ -6,7 +6,7 @@ remaining ``# lint: allow-dialect-string`` annotations:
 
 1. ``BaseQuirks.is_default_sqlglot_read_fallback`` — exactly one native
    plugin (PostgreSQL) flags itself as the permissive sqlglot read-dialect
-   fallback. The undo-script generators resolve their fallback from it
+   fallback. Script analysis cautions resolve their fallback from it
    instead of hardcoding ``"postgres"``. The resolved value must remain
    ``"postgres"`` (behaviour parity).
 2. ``BaseQuirks.is_sqlserver_family`` — only the SQL Server plugin (and its
@@ -149,29 +149,3 @@ class TestValidateCompleteDataCosmosAuthGate:
         # A postgres config without account_key must NOT raise the cosmos
         # auth error — it goes through the generic connection-identifier path.
         self._validate({"type": "postgresql", "url": "postgresql://u:p@localhost/db"})
-
-
-@pytest.mark.unit
-class TestUndoSqlglotFallbackParity:
-    """Site 1: undo-script fallback read-dialect stays ``postgres`` and is
-    derived from the registry capability, not a hardcoded literal."""
-
-    def test_unknown_dialect_falls_back_to_postgres(self):
-        from dblift.core.migration.scripting.undo_script_generator._helpers import (
-            resolve_sqlglot_read_dialect,
-        )
-
-        assert resolve_sqlglot_read_dialect("") == "postgres"
-        assert resolve_sqlglot_read_dialect("totally-unknown") == "postgres"
-        # db2/cosmosdb declare no sqlglot_dialect → they hit the same fallback.
-        assert resolve_sqlglot_read_dialect("db2") == "postgres"
-        assert resolve_sqlglot_read_dialect("cosmosdb") == "postgres"
-
-    def test_known_dialects_use_their_own(self):
-        from dblift.core.migration.scripting.undo_script_generator._helpers import (
-            resolve_sqlglot_read_dialect,
-        )
-
-        assert resolve_sqlglot_read_dialect("oracle") == "oracle"
-        assert resolve_sqlglot_read_dialect("sqlserver") == "tsql"
-        assert resolve_sqlglot_read_dialect("mysql") == "mysql"

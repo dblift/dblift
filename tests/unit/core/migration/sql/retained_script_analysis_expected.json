@@ -1,0 +1,2378 @@
+{
+  "001d20cdda8837d7-postgresql": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "ALTER",
+        "DDL",
+        [
+          [
+            "TABLE",
+            "z",
+            null
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "014413c294c5ac3b-postgresql": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "INSERT",
+        "DML",
+        [],
+        false
+      ]
+    ]
+  },
+  "0469a66ccd562235-postgresql": {
+    "cautions": [
+      [
+        "destroys",
+        0,
+        "drop-table"
+      ]
+    ],
+    "refused": false,
+    "statements": [
+      [
+        "DROP",
+        "DDL",
+        [
+          [
+            "TABLE",
+            "x",
+            null
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "099bf407f090a1f5-sqlserver": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "CREATE",
+        "DDL",
+        [
+          [
+            "INDEX",
+            "idx_users_email",
+            null
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "0adc598be1fecbb5-postgresql": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "CREATE",
+        "DDL",
+        [
+          [
+            "TABLE",
+            "users",
+            null
+          ]
+        ],
+        false
+      ],
+      [
+        "INSERT",
+        "DML",
+        [
+          [
+            "TABLE",
+            "users",
+            null
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "0b380ffbd9e17e13-postgresql": {
+    "cautions": [
+      [
+        "destroys",
+        0,
+        "drop-table"
+      ]
+    ],
+    "refused": false,
+    "statements": [
+      [
+        "DROP",
+        "DDL",
+        [
+          [
+            "TABLE",
+            "users",
+            null
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "0b8de5c58f36959e-postgresql": {
+    "cautions": [
+      [
+        "destroys",
+        0,
+        "drop-table"
+      ]
+    ],
+    "refused": false,
+    "statements": [
+      [
+        "DROP",
+        "DDL",
+        [
+          [
+            "TABLE",
+            "y",
+            null
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "0d799569cfcb17bc-postgresql": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "CREATE",
+        "DDL",
+        [
+          [
+            "TABLE",
+            "users",
+            null
+          ]
+        ],
+        false
+      ],
+      [
+        "CREATE",
+        "DDL",
+        [
+          [
+            "INDEX",
+            "idx_u",
+            null
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "10fa39bbb1af6368-postgresql": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "CREATE",
+        "DDL",
+        [
+          [
+            "VIEW",
+            "my_view",
+            null
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "1210e399aa55f464-postgresql": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "ALTER",
+        "DDL",
+        [
+          [
+            "TABLE",
+            "t",
+            null
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "17db4fd369edb924-postgresql": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "SELECT",
+        "QUERY",
+        [],
+        false
+      ]
+    ]
+  },
+  "19869f2afaf8a47f-postgresql": {
+    "cautions": [
+      [
+        "destroys",
+        0,
+        "drop-table"
+      ]
+    ],
+    "refused": false,
+    "statements": [
+      [
+        "DROP",
+        "DDL",
+        [
+          [
+            "TABLE",
+            "z",
+            null
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "1b7739e51830466f-sqlserver": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "CREATE",
+        "DDL",
+        [
+          [
+            "INDEX",
+            "idx_u",
+            "sales"
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "1cf113b68aa8a415-postgresql": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "INSERT",
+        "DML",
+        [
+          [
+            "TABLE",
+            "t",
+            null
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "25dbe681998eeb28-postgresql": {
+    "cautions": [
+      [
+        "destroys",
+        0,
+        "drop-table"
+      ]
+    ],
+    "refused": false,
+    "statements": [
+      [
+        "DROP",
+        "DDL",
+        [
+          [
+            "TABLE",
+            "t",
+            null
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "290d7fc16d5bd83c-postgresql": {
+    "cautions": [
+      [
+        "destroys",
+        0,
+        "drop-table"
+      ]
+    ],
+    "refused": false,
+    "statements": [
+      [
+        "DROP",
+        "DDL",
+        [
+          [
+            "TABLE",
+            "users",
+            null
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "2b23cce469d70a22-db2": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "DROP",
+        "DDL",
+        [
+          [
+            "INDEX",
+            "idx_users_email",
+            null
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "2da523abc44fe413-postgres": {
+    "cautions": [
+      [
+        "destroys",
+        0,
+        null
+      ]
+    ],
+    "refused": false,
+    "statements": [
+      [
+        "DROP",
+        "DDL",
+        [],
+        false
+      ]
+    ]
+  },
+  "2da523abc44fe413-postgresql": {
+    "cautions": [
+      [
+        "destroys",
+        0,
+        null
+      ]
+    ],
+    "refused": false,
+    "statements": [
+      [
+        "DROP",
+        "DDL",
+        [],
+        false
+      ]
+    ]
+  },
+  "343f43556ef22acf-postgresql": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "CREATE",
+        "DDL",
+        [],
+        false
+      ]
+    ]
+  },
+  "34b1d461019c3b97-postgresql": {
+    "cautions": [
+      [
+        "destroys",
+        0,
+        "dml-no-where"
+      ]
+    ],
+    "refused": false,
+    "statements": [
+      [
+        "UPDATE",
+        "DML",
+        [
+          [
+            "TABLE",
+            "y",
+            null
+          ]
+        ],
+        true
+      ]
+    ]
+  },
+  "40d07d8df578535c-sqlite": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "SELECT",
+        "QUERY",
+        [],
+        false
+      ]
+    ]
+  },
+  "46d75d7244d98073-postgresql": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "ALTER",
+        "DDL",
+        [
+          [
+            "TABLE",
+            "t",
+            null
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "47e1a1973e62cf30-postgresql": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "CREATE",
+        "DDL",
+        [
+          [
+            "INDEX",
+            "idx_users_email",
+            null
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "48360818774e014f-oracle": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "DROP",
+        "DDL",
+        [
+          [
+            "INDEX",
+            "idx_users_email",
+            null
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "48360818774e014f-postgres": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "DROP",
+        "DDL",
+        [
+          [
+            "INDEX",
+            "idx_users_email",
+            null
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "48360818774e014f-postgresql": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "DROP",
+        "DDL",
+        [
+          [
+            "INDEX",
+            "idx_users_email",
+            null
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "48360818774e014f-sqlite": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "DROP",
+        "DDL",
+        [
+          [
+            "INDEX",
+            "idx_users_email",
+            null
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "48c8bd634401c71d-postgresql": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "COMMENT",
+        "DDL",
+        [
+          [
+            "TABLE",
+            "orders",
+            null
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "498c71fc043f268b-postgresql": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "ALTER",
+        "DDL",
+        [
+          [
+            "TABLE",
+            "t",
+            null
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "4df51da110bcdcae-postgresql": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "CREATE",
+        "DDL",
+        [],
+        false
+      ]
+    ]
+  },
+  "5295799e265ab658-postgresql": {
+    "cautions": [
+      [
+        "destroys",
+        0,
+        "dml-no-where"
+      ]
+    ],
+    "refused": false,
+    "statements": [
+      [
+        "UPDATE",
+        "DML",
+        [
+          [
+            "TABLE",
+            "x",
+            null
+          ]
+        ],
+        true
+      ]
+    ]
+  },
+  "548802e66d90defb-postgresql": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "ALTER",
+        "DDL",
+        [
+          [
+            "TABLE",
+            "y",
+            null
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "554d1868ac29e0c0-postgresql": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "DROP",
+        "DDL",
+        [
+          [
+            "INDEX",
+            "idx_orders_total",
+            null
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "5589880f43778f48-postgresql": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "CREATE",
+        "DDL",
+        [
+          [
+            "FUNCTION",
+            "my_func",
+            null
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "5595bb259232ae79-postgresql": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "CREATE",
+        "DDL",
+        [
+          [
+            "SEQUENCE",
+            "user_seq",
+            null
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "55ec0b53a831f64d-postgresql": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "CREATE",
+        "DDL",
+        [
+          [
+            "TABLE",
+            "users",
+            null
+          ]
+        ],
+        false
+      ],
+      [
+        "COMMENT",
+        "DDL",
+        [
+          [
+            "TABLE",
+            "users",
+            null
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "5937453ab2571f9b-postgresql": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "CREATE",
+        "DDL",
+        [
+          [
+            "VIEW",
+            "v",
+            null
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "59b31d7e708a676e-postgresql": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "COMMENT",
+        "DDL",
+        [
+          [
+            "TABLE",
+            "orders",
+            "public"
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "5a32938c40bf385c-postgres": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "CREATE",
+        "DDL",
+        [
+          [
+            "TABLE",
+            "say \"hi\"",
+            null
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "5a32938c40bf385c-postgresql": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "CREATE",
+        "DDL",
+        [
+          [
+            "TABLE",
+            "say \"hi\"",
+            null
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "5a4137fc5b03de6b-postgresql": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "INSERT",
+        "DML",
+        [
+          [
+            "TABLE",
+            "t",
+            null
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "5da778fa3bc86d5b-postgres": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "INSERT",
+        "DML",
+        [
+          [
+            "TABLE",
+            "users",
+            null
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "5dce52e0ed9afe11-postgresql": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "GRANT",
+        "DDL",
+        [],
+        false
+      ]
+    ]
+  },
+  "5ea918fac5561634-postgresql": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "CREATE",
+        "DDL",
+        [
+          [
+            "TABLE",
+            "users",
+            null
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "626cc837389df02f-postgresql": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "CREATE",
+        "DDL",
+        [
+          [
+            "TABLE",
+            "z",
+            null
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "6283169e002fa4e2-postgres": {
+    "cautions": [
+      [
+        "destroys",
+        0,
+        "drop-table"
+      ]
+    ],
+    "refused": false,
+    "statements": [
+      [
+        "DROP",
+        "DDL",
+        [],
+        false
+      ]
+    ]
+  },
+  "6283169e002fa4e2-postgresql": {
+    "cautions": [
+      [
+        "destroys",
+        0,
+        "drop-table"
+      ]
+    ],
+    "refused": false,
+    "statements": [
+      [
+        "DROP",
+        "DDL",
+        [],
+        false
+      ]
+    ]
+  },
+  "64e6c8c22be88166-sqlserver": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "CREATE",
+        "DDL",
+        [
+          [
+            "INDEX",
+            "idx_users_email",
+            "dbo"
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "655fbee98511d033-postgresql": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "DROP",
+        "DDL",
+        [
+          [
+            "INDEX",
+            "idx_users",
+            null
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "6571ca92f9f431d9-postgresql": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "CREATE",
+        "DDL",
+        [
+          [
+            "TABLE",
+            "a",
+            null
+          ]
+        ],
+        false
+      ],
+      [
+        "CREATE",
+        "DDL",
+        [
+          [
+            "TABLE",
+            "b",
+            null
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "65de416a100cab24-postgresql": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "CREATE",
+        "DDL",
+        [],
+        false
+      ]
+    ]
+  },
+  "6974cf131f18738d-sqlite": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "INSERT",
+        "DML",
+        [
+          [
+            "TABLE",
+            "t",
+            null
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "6af17eb059e4b6da-postgresql": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "INSERT",
+        "DML",
+        [
+          [
+            "TABLE",
+            "products",
+            null
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "70141f171a839ded-postgresql": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "INSERT",
+        "DML",
+        [
+          [
+            "TABLE",
+            "x",
+            null
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "715c0f820287428b-mysql": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "DROP",
+        "DDL",
+        [
+          [
+            "INDEX",
+            "idx_users_email",
+            null
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "7255d04cb69e9d02-sqlite": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "CREATE",
+        "DDL",
+        [
+          [
+            "TRIGGER",
+            "cafe",
+            null
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "741ca7a86702f615-postgres": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "CREATE",
+        "DDL",
+        [
+          [
+            "INDEX",
+            "idx_users_email",
+            null
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "741ca7a86702f615-postgresql": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "CREATE",
+        "DDL",
+        [
+          [
+            "INDEX",
+            "idx_users_email",
+            null
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "741ca7a86702f615-sqlserver": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "CREATE",
+        "DDL",
+        [
+          [
+            "INDEX",
+            "idx_users_email",
+            "sales"
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "79374cbf6708b309-postgresql": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "INSERT",
+        "DML",
+        [
+          [
+            "TABLE",
+            "y",
+            null
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "7cb7817231e3fa62-sqlite": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "CREATE",
+        "DDL",
+        [
+          [
+            "TABLE",
+            "t",
+            null
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "7e0092110fb75b0d-postgresql": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "DROP",
+        "DDL",
+        [
+          [
+            "INDEX",
+            "idx_x",
+            null
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "881e06308a7694be-postgresql": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "CREATE",
+        "DDL",
+        [
+          [
+            "TABLE",
+            "fallback_test",
+            null
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "88b9e06a423f0c3b-sqlserver": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "CREATE",
+        "DDL",
+        [],
+        false
+      ]
+    ]
+  },
+  "8adb719d4513e86c-sqlserver": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "DROP",
+        "DDL",
+        [
+          [
+            "INDEX",
+            "idx_users_email",
+            null
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "9b5057f92016f6a1-mysql": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "INSERT",
+        "DML",
+        [
+          [
+            "TABLE",
+            "users",
+            null
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "9d4f55d2ea11e0b6-sqlserver": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "DROP",
+        "DDL",
+        [
+          [
+            "INDEX",
+            "idx_users_email",
+            "dbo"
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "9e05b3e0029bbb42-postgresql": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "ALTER",
+        "DDL",
+        [
+          [
+            "TABLE",
+            "x",
+            null
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "a1ad0d33b0fc3df6-postgres": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "DROP",
+        "DDL",
+        [],
+        false
+      ]
+    ]
+  },
+  "a1ad0d33b0fc3df6-postgresql": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "DROP",
+        "DDL",
+        [],
+        false
+      ]
+    ]
+  },
+  "a1ad0d33b0fc3df6-sqlserver": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "DROP",
+        "DDL",
+        [
+          [
+            "INDEX",
+            "idx_users_email",
+            "sales"
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "a23fa2e057dfe87c-sqlserver": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "CREATE",
+        "DDL",
+        [
+          [
+            "TABLE",
+            "ft_test",
+            "rel470_ss"
+          ]
+        ],
+        false
+      ],
+      [
+        "CREATE",
+        "DDL",
+        [],
+        false
+      ]
+    ]
+  },
+  "a759e67df556b944-sqlserver": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "DROP",
+        "DDL",
+        [
+          [
+            "INDEX",
+            "idx_u",
+            "sales"
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "a7686dce9a415a0c-postgresql": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "CREATE",
+        "DDL",
+        [
+          [
+            "INDEX",
+            "idx_u",
+            null
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "a870dfd685ac0645-postgresql": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "DROP",
+        "DDL",
+        [],
+        false
+      ]
+    ]
+  },
+  "ad3533f9bd2a0553-postgresql": {
+    "cautions": [
+      [
+        "changes_rows",
+        0,
+        null
+      ]
+    ],
+    "refused": false,
+    "statements": [
+      [
+        "DELETE",
+        "DML",
+        [
+          [
+            "TABLE",
+            "x",
+            null
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "aea134aa25298dd3-postgresql": {
+    "cautions": [
+      [
+        "destroys",
+        0,
+        "drop-unread-object"
+      ]
+    ],
+    "refused": false,
+    "statements": [
+      [
+        "DROP",
+        "DDL",
+        [],
+        false
+      ]
+    ]
+  },
+  "b225814832ee89b5-postgresql": {
+    "cautions": [
+      [
+        "destroys",
+        0,
+        "dml-no-where"
+      ]
+    ],
+    "refused": false,
+    "statements": [
+      [
+        "UPDATE",
+        "DML",
+        [
+          [
+            "TABLE",
+            "z",
+            null
+          ]
+        ],
+        true
+      ]
+    ]
+  },
+  "b2dc88972a6549b9-postgresql": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "INSERT",
+        "DML",
+        [
+          [
+            "TABLE",
+            "products",
+            "public"
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "b4a87d982f201356-postgresql": {
+    "cautions": [
+      [
+        "changes_rows",
+        0,
+        null
+      ]
+    ],
+    "refused": false,
+    "statements": [
+      [
+        "DELETE",
+        "DML",
+        [
+          [
+            "TABLE",
+            "users",
+            "public"
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "b4cb57f46d1f59c9-postgresql": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "CREATE",
+        "DDL",
+        [
+          [
+            "INDEX",
+            "idx_users",
+            null
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "b4dff9ad9a000402-postgresql": {
+    "cautions": [
+      [
+        "changes_rows",
+        0,
+        null
+      ]
+    ],
+    "refused": false,
+    "statements": [
+      [
+        "DELETE",
+        "DML",
+        [
+          [
+            "TABLE",
+            "users",
+            null
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "b61fc8819bfbd63c-postgresql": {
+    "cautions": [
+      [
+        "destroys",
+        0,
+        "drop-table"
+      ]
+    ],
+    "refused": false,
+    "statements": [
+      [
+        "DROP",
+        "DDL",
+        [
+          [
+            "TABLE",
+            "users",
+            null
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "b6d7940cd605f9e6-postgresql": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "COMMENT",
+        "DDL",
+        [
+          [
+            "TABLE",
+            "y",
+            null
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "b81f37a043a6f767-postgres": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "AUDIT",
+        "UNKNOWN",
+        [],
+        false
+      ]
+    ]
+  },
+  "b81f37a043a6f767-postgresql": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "AUDIT",
+        "UNKNOWN",
+        [],
+        false
+      ]
+    ]
+  },
+  "b81f37a043a6f767-sqlserver": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "AUDIT",
+        "UNKNOWN",
+        [],
+        false
+      ]
+    ]
+  },
+  "b994a5c3ee5d26c9-sqlserver": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "DROP",
+        "DDL",
+        [],
+        false
+      ]
+    ]
+  },
+  "c19cb8d6135a884d-postgresql": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "CREATE",
+        "DDL",
+        [],
+        false
+      ]
+    ]
+  },
+  "c6b2d420fbeab71b-postgresql": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "INSERT",
+        "DML",
+        [
+          [
+            "TABLE",
+            "z",
+            null
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "c8b0b466742512db-postgresql": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "CREATE",
+        "DDL",
+        [
+          [
+            "TABLE",
+            "y",
+            null
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "c94a55bb082ed121-sqlserver": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "CREATE",
+        "DDL",
+        [
+          [
+            "INDEX",
+            "idx_x",
+            "dbo"
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "c94edff5dc4ce840-postgres": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "DROP",
+        "DDL",
+        [
+          [
+            "INDEX",
+            "idx_users_email",
+            "audit"
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "c94edff5dc4ce840-postgresql": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "DROP",
+        "DDL",
+        [
+          [
+            "INDEX",
+            "idx_users_email",
+            "audit"
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "c94edff5dc4ce840-sqlserver": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "DROP",
+        "DDL",
+        [],
+        false
+      ]
+    ]
+  },
+  "cacf32c0cccb9f20-sqlserver": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "DROP",
+        "DDL",
+        [
+          [
+            "INDEX",
+            "ix1",
+            null
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "cf136e2ae5198649-sqlserver": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "DROP",
+        "DDL",
+        [
+          [
+            "INDEX",
+            "idx_x",
+            "dbo"
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "d33c53ece0b08dab-postgresql": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "ALTER",
+        "DDL",
+        [
+          [
+            "TABLE",
+            "t",
+            null
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "d37897238cd651ac-postgres": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "INSERT",
+        "DML",
+        [
+          [
+            "TABLE",
+            "users",
+            null
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "d500dfce64d7d1fe-sqlite": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "SELECT",
+        "QUERY",
+        [],
+        false
+      ]
+    ]
+  },
+  "e004ebd5b5532a4b-postgresql": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "SELECT",
+        "QUERY",
+        [],
+        false
+      ]
+    ]
+  },
+  "e335a81d5cd9ff68-postgresql": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "COMMENT",
+        "DDL",
+        [
+          [
+            "TABLE",
+            "z",
+            null
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "e541f61bf68d8d6b-sqlserver": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "DROP",
+        "DDL",
+        [],
+        false
+      ]
+    ]
+  },
+  "e59db9ae11733d49-postgresql": {
+    "cautions": [
+      [
+        "destroys",
+        0,
+        "dml-no-where"
+      ]
+    ],
+    "refused": false,
+    "statements": [
+      [
+        "DELETE",
+        "DML",
+        [
+          [
+            "TABLE",
+            "y",
+            null
+          ]
+        ],
+        true
+      ]
+    ]
+  },
+  "e873b48533515d3a-postgresql": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "ALTER",
+        "DDL",
+        [
+          [
+            "TABLE",
+            "t",
+            null
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "e9390d83e3bc40ec-mysql": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "CREATE",
+        "DDL",
+        [
+          [
+            "INDEX",
+            "idx_mystery",
+            null
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "e9390d83e3bc40ec-postgres": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "CREATE",
+        "DDL",
+        [
+          [
+            "INDEX",
+            "idx_mystery",
+            null
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "e9390d83e3bc40ec-postgresql": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "CREATE",
+        "DDL",
+        [
+          [
+            "INDEX",
+            "idx_mystery",
+            null
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "e9390d83e3bc40ec-sqlserver": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "CREATE",
+        "DDL",
+        [],
+        false
+      ]
+    ]
+  },
+  "e9f67572b6d16505-postgresql": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "DROP",
+        "DDL",
+        [
+          [
+            "INDEX",
+            "products_idx",
+            null
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "ea41cd910a3a02d4-postgres": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "DROP",
+        "DDL",
+        [
+          [
+            "INDEX",
+            "idx_mystery",
+            "public"
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "ea41cd910a3a02d4-postgresql": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "DROP",
+        "DDL",
+        [
+          [
+            "INDEX",
+            "idx_mystery",
+            "public"
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "eb03d878e729fd01-postgresql": {
+    "cautions": [
+      [
+        "destroys",
+        0,
+        "dml-no-where"
+      ]
+    ],
+    "refused": false,
+    "statements": [
+      [
+        "DELETE",
+        "DML",
+        [
+          [
+            "TABLE",
+            "z",
+            null
+          ]
+        ],
+        true
+      ]
+    ]
+  },
+  "ef69dcfde63f7bd9-sqlserver": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "CREATE",
+        "DDL",
+        [
+          [
+            "INDEX",
+            "idx_users_email",
+            "mydb.dbo"
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "ef71ac30af5caa56-postgresql": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "CREATE",
+        "DDL",
+        [],
+        false
+      ]
+    ]
+  },
+  "f0be2fd2572097a9-postgres": {
+    "cautions": [
+      [
+        "destroys",
+        0,
+        "drop-column"
+      ]
+    ],
+    "refused": false,
+    "statements": [
+      [
+        "ALTER",
+        "DDL",
+        [
+          [
+            "TABLE",
+            "users",
+            null
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "f0be2fd2572097a9-postgresql": {
+    "cautions": [
+      [
+        "destroys",
+        0,
+        "drop-column"
+      ]
+    ],
+    "refused": false,
+    "statements": [
+      [
+        "ALTER",
+        "DDL",
+        [
+          [
+            "TABLE",
+            "users",
+            null
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "f0d58ac77c9e3869-postgres": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "CREATE",
+        "DDL",
+        [
+          [
+            "TABLE",
+            "x",
+            null
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "f0d58ac77c9e3869-postgresql": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "CREATE",
+        "DDL",
+        [
+          [
+            "TABLE",
+            "x",
+            null
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "f2463fb35b1639b1-postgresql": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "COMMENT",
+        "DDL",
+        [
+          [
+            "TABLE",
+            "x",
+            null
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "f3062ed5516c2552-postgresql": {
+    "cautions": [
+      [
+        "destroys",
+        0,
+        "drop-unread-object"
+      ]
+    ],
+    "refused": false,
+    "statements": [
+      [
+        "DROP",
+        "DDL",
+        [],
+        false
+      ]
+    ]
+  },
+  "f39c1acfdcd16486-postgresql": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "CREATE",
+        "DDL",
+        [],
+        false
+      ]
+    ]
+  },
+  "f3aa367f11572a37-postgresql": {
+    "cautions": [
+      [
+        "destroys",
+        0,
+        "drop-table"
+      ]
+    ],
+    "refused": false,
+    "statements": [
+      [
+        "DROP",
+        "DDL",
+        [
+          [
+            "TABLE",
+            "users",
+            "public"
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "f423e61fbd021a13-mariadb": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "CREATE",
+        "DDL",
+        [
+          [
+            "TABLE",
+            "t",
+            null
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "f423e61fbd021a13-mysql": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "CREATE",
+        "DDL",
+        [
+          [
+            "TABLE",
+            "t",
+            null
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "f423e61fbd021a13-oracle": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "CREATE",
+        "DDL",
+        [
+          [
+            "TABLE",
+            "T",
+            null
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "f423e61fbd021a13-sqlserver": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "CREATE",
+        "DDL",
+        [
+          [
+            "TABLE",
+            "t",
+            null
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "f529e0e7709bf85e-sqlserver": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "CREATE",
+        "DDL",
+        [
+          [
+            "INDEX",
+            "ix1",
+            null
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "fd6875a4d1c85890-postgresql": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "CREATE",
+        "DDL",
+        [
+          [
+            "INDEX",
+            "idx_users_email",
+            null
+          ]
+        ],
+        false
+      ]
+    ]
+  },
+  "fde9c5013bf50610-postgresql": {
+    "cautions": [],
+    "refused": false,
+    "statements": [
+      [
+        "CREATE",
+        "DDL",
+        [],
+        false
+      ]
+    ]
+  }
+}

@@ -86,9 +86,6 @@ class BaseQuirks:
     sqlglot_dialect: Optional[str] = None
     #: Plugin-owned reader class for statement facts.
     statement_facts_class: Optional[Type["StatementFactsReader"]] = None
-    #: Whether undo generation reverses statements from their facts (rather than
-    #: asking for a hand-written undo).
-    undo_reverses_statement_facts: bool = False
 
     @property
     def supports_statement_facts(self) -> bool:
@@ -229,11 +226,6 @@ class BaseQuirks:
     #: ``DROP TABLE / VIEW / INDEX / ... IF EXISTS`` is supported.
     #: Oracle has no native ``IF EXISTS``; everyone else does.
     drop_supports_if_exists: bool = False
-    #: ``DROP TABLE`` defaults to ``CASCADE`` (drop dependents).
-    #: PostgreSQL is the historical only-True here. Most other
-    #: dialects either don't support CASCADE in DROP TABLE or default
-    #: to RESTRICT.
-    drop_table_default_cascade: bool = False
     #: ``TINYINT(1)`` is an alias for BOOLEAN (MySQL convention).
     tinyint1_is_boolean: bool = False
     #: SQL literal for ``False`` in DML predicates. Oracle (NUMBER(1)),
@@ -262,7 +254,7 @@ class BaseQuirks:
     #: the last-resort fallback when a dialect declares no ``sqlglot_dialect``
     #: of its own (e.g. DB2, CosmosDB). Exactly one native plugin (PostgreSQL,
     #: whose ``sqlglot_dialect`` is ``"postgres"``) advertises this so the
-    #: undo-script generators resolve the fallback from the registry rather
+    #: script analysis cautions resolve the fallback from the registry rather
     #: than hardcoding ``"postgres"``.
     is_default_sqlglot_read_fallback: bool = False
     #: This dialect is the ANSI/generic rendering reference when a model
