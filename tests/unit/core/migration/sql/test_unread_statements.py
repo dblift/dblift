@@ -289,3 +289,61 @@ def test_vacuum_full_is_reported_where_no_lock_rule_speaks_for_it(dialect, sql):
     result = lint_script(sql, dialect)
 
     assert [f.code for f in result.findings] == ["statement-not-analysed"], result
+
+
+@pytest.mark.parametrize(
+    "dialect, sql",
+    [
+        ("mariadb", "/*M!100100 DELETE FROM t */;"),
+        ("mariadb", "/*M!100100 DELETE FROM t */"),
+        ("mariadb", "SET /*M!100100 GLOBAL */ x = 1;"),
+        ("mysql", "SET /*M!100100 GLOBAL */ x = 1;"),
+    ],
+)
+def test_a_mariadb_executable_comment_is_reported(dialect, sql):
+    result = lint_script(sql, dialect)
+
+    assert result.verdict == "REVIEW", result
+    assert [f.code for f in result.findings] == ["statement-not-analysed"]
+
+
+def test_mysql_reads_a_mariadb_executable_comment_as_a_comment():
+    # MySQL skips /*M! ... */, so the script holds no statement (MariaDB runs it: see above).
+    result = lint_script("/*M!100100 DELETE FROM t */;", "mysql")
+
+    assert (result.verdict, result.findings) == ("SAFE", ())
+
+
+@pytest.mark.parametrize("dialect", ["mysql", "mariadb"])
+@pytest.mark.parametrize("sql", ["SET # c\n GLOBAL x = 1;", "# c\nSET GLOBAL x = 1;"])
+def test_a_hash_comment_does_not_hide_set_global_where_hash_is_a_comment(dialect, sql):
+    result = lint_script(sql, dialect)
+
+    assert result.verdict == "REVIEW", result
+    assert [f.code for f in result.findings] == ["statement-not-analysed"]
+
+
+def test_a_hash_comment_is_not_a_comment_where_the_dialect_has_none():
+    # PostgreSQL reads "# c" as text: the statement is unrecognised, so it is reported.
+    result = lint_script("# c\nSET search_path = a;", "postgresql")
+
+    assert result.verdict == "REVIEW", result
+
+
+@pytest.mark.parametrize(
+    "dialect", ["postgresql", "mysql", "mariadb", "oracle", "sqlserver", "db2"]
+)
+@pytest.mark.parametrize(
+    "sql", ["-- c\n", "/* c */", "/* c */;", "-- c\n;", ";", "/* a */ ; /* b */"]
+)
+def test_comment_only_text_never_reaches_the_statement_list(dialect, sql):
+    from dblift.core.migration.sql.script_analysis import analyse_script
+
+    assert analyse_script(sql, dialect).statements == ()
+
+
+@pytest.mark.parametrize("dialect", ["mysql", "mariadb"])
+def test_hash_comment_only_text_never_reaches_the_statement_list(dialect):
+    from dblift.core.migration.sql.script_analysis import analyse_script
+
+    assert analyse_script("# c\n", dialect).statements == ()

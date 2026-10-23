@@ -76,7 +76,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ("procedural block: effects not modelled"). Before, only an unreadable `ALTER` was reported
   and the rest came back `SAFE`. Statements that change no data (`SET`, transaction control,
   `GRANT`, `COMMENT ON`, `PRAGMA`, `SHOW`, …) stay `SAFE`, as does comment-only text; a MySQL
-  executable comment (`/*! … */`) is reported. `-- dblift:allow statement-not-analysed` accepts
+  executable comment (`/*! … */`, `/*M! … */`) is reported. `-- dblift:allow statement-not-analysed` accepts
   the finding.
 
 - **A plugin without a statement-facts reader is no longer analysed from text.** Lint and the

@@ -74,8 +74,8 @@ _DATA_HOLDERS = frozenset(
 #   EXPLAIN: shows a plan, except EXPLAIN ANALYZE, which runs the statement.
 #   VACUUM: reclaims space, except VACUUM FULL (FULL not switched off), which rewrites the table.
 #   LOCK / UNLOCK: take or release locks and change nothing; the PostgreSQL lock rules judge them.
-# The head is matched on the statement without its comments, and a MySQL executable comment
-# (/*! ... */, which the server runs) disables the list altogether.
+# The head is matched on the statement without its comments, and a MySQL or MariaDB executable
+# comment (/*! ... */, /*M! ... */, which the server runs) disables the list altogether.
 # REINDEX, CALL, EXEC, anything else unrecognised: not listed, so reported.
 _NON_DATA_HEAD = re.compile(
     r"^(?:"
@@ -94,6 +94,8 @@ _NON_DATA_HEAD = re.compile(
     r")",
     re.IGNORECASE | re.DOTALL,
 )
+# MySQL (/*! ... */) and MariaDB (/*M! ... */) run the text of these comments.
+_EXECUTABLE_COMMENTS = ("/*!", "/*M!")
 _PROCEDURAL_OPERATIONS = frozenset({"BEGIN", "DECLARE", "DO"})
 _SCHEMA_HOLDERS = frozenset({SqlObjectType.SCHEMA.value, SqlObjectType.DATABASE.value})
 _ROW_HOLDERS = frozenset(
@@ -226,6 +228,9 @@ def _analyse(text: str, dialect: str) -> ScriptAnalysis:
     quirks = ProviderRegistry.get_quirks(dialect)
     if not quirks.supports_statement_facts:
         return ScriptAnalysis((), (), (f"statement facts unavailable for dialect '{dialect}'",))
+    spec = quirks.lexical_spec()
+    script_rules = spec.delimiter_script if spec else None
+    hash_comment = script_rules.hash_comment if script_rules else None
     fact_statements: List[AnalysedStatement] = []
     fact_cautions: List[Caution] = []
     errors: List[str] = []
@@ -256,7 +261,7 @@ def _analyse(text: str, dialect: str) -> ScriptAnalysis:
             _snippet(body),
             sql=body,
             names_unread=facts.opaque and not facts.affected_objects,
-            unread=_unread_reason(facts, body),
+            unread=_unread_reason(facts, body, hash_comment),
         )
         fact_statements.append(analysed)
         caution = _caution_for(
@@ -286,11 +291,14 @@ def _analyse(text: str, dialect: str) -> ScriptAnalysis:
     return ScriptAnalysis(tuple(fact_statements), tuple(fact_cautions), tuple(errors))
 
 
-def without_comments(body: str) -> str:
-    """*body* without its comments (quoted text kept), the way the lock rules read a statement."""
+def without_comments(body: str, hash_comment: Optional[str] = None) -> str:
+    """*body* without its comments (quoted text kept), the way the lock rules read a statement.
+
+    *hash_comment* is the dialect's extra line-comment prefix (``#`` for MySQL), if it has one.
+    """
     return strip_comments_preserving_quotes(
         body,
-        line_prefixes=["--"],
+        line_prefixes=["--", hash_comment] if hash_comment else ["--"],
         has_block_comments=True,
         nested_block_comments=True,
         supports_dollar_quoting=True,
@@ -298,19 +306,22 @@ def without_comments(body: str) -> str:
     )
 
 
-def _unread_reason(facts: StatementFacts, body: str) -> Optional[str]:
+def _unread_reason(
+    facts: StatementFacts, body: str, hash_comment: Optional[str] = None
+) -> Optional[str]:
     """Why a statement the facts reader did not read needs a look, or None.
 
     Unread is a statement of unknown kind or one that is opaque and names no object.
-    Comment-only text and the ``_NON_DATA_HEAD`` statements are exempt, and a DROP is judged by
-    its keyword. A definition (``CREATE PROCEDURE``) that names its object is read as one.
+    The ``_NON_DATA_HEAD`` statements are exempt (the splitter drops comment-only text) and a
+    DROP is judged by its keyword. A definition (``CREATE PROCEDURE``) that names its object is
+    read as one.
     """
     if not (facts.kind == "UNKNOWN" or (facts.opaque and not facts.affected_objects)):
         return None
     if facts.operation == "DROP":
         return None  # judged by its keyword (``_unnamed_drop_caution``): row-free kinds stay safe
-    text = without_comments(body)
-    if "/*!" not in body and (not text.strip(" \t\r\n;") or _NON_DATA_HEAD.match(text)):
+    text = without_comments(body, hash_comment)
+    if not any(opener in body for opener in _EXECUTABLE_COMMENTS) and _NON_DATA_HEAD.match(text):
         return None
     detail = f" ({facts.diagnostic})" if facts.diagnostic else ""
     if facts.operation in _PROCEDURAL_OPERATIONS or re.match(

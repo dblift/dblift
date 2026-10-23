@@ -143,7 +143,7 @@ after a comma), `USE`, `BEGIN`/`END`/`START TRANSACTION`, `COMMIT`, `ROLLBACK`, 
 `ANALYZE`, `LOCK`/`UNLOCK` (the PostgreSQL lock rules judge those), `EXPLAIN` without
 `ANALYZE` (`EXPLAIN ANALYZE` runs the statement), `VACUUM` without `FULL`, and the `DROP` of
 a kind that holds no rows. Comment-only text is not a statement, but a MySQL or MariaDB
-executable comment (`/*! … */`) is: the server runs it, so it is reported.
+executable comment (`/*! … */`, `/*M! … */`) is: the server runs it, so it is reported.
 `REINDEX`, `CALL`, `EXEC` and anything unrecognised are reported.
 
 The PostgreSQL family is `postgresql`, `neon`, `supabase`, `aurora-postgresql`, `alloydb`,
