@@ -132,7 +132,7 @@ but nothing connects.
 | `pg-constraint-not-valid` | `ADD CONSTRAINT … FOREIGN KEY` or `CHECK` without `NOT VALID` | warning | PostgreSQL family |
 | `pg-set-not-null` | `ALTER COLUMN … SET NOT NULL` | warning | PostgreSQL family |
 | `pg-missing-lock-timeout` | The first statement that locks a table (`ALTER TABLE`, `CREATE INDEX`, `DROP TABLE`, `TRUNCATE`) with no `SET lock_timeout` earlier in the script; reported once per script | warning | PostgreSQL family |
-| `statement-not-analysed` | An `ALTER` statement the SQL parser could not structure, so no rule could check it | info | all |
+| `statement-not-analysed` | A statement the SQL parser could not read (an unrecognised statement, a `CALL`, an anonymous `BEGIN … END` or `EXECUTE IMMEDIATE` block, an `ALTER` it could not structure), so no rule could check it; the message names why. Session and transaction statements (`SET`, `USE`, `BEGIN`, `COMMIT`, `ROLLBACK`, `SAVEPOINT`, `SHOW`, `DESCRIBE`) and comments are not reported | info | all |
 
 The PostgreSQL family is `postgresql`, `neon`, `supabase`, `aurora-postgresql`, `alloydb`,
 `timescaledb` and `citus`. Every rule except `drop-schema`, `mixed-transaction-modes` and

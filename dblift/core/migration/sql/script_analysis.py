@@ -22,6 +22,7 @@ from dblift.core.exceptions import (
 from dblift.core.sql_model.base import SqlObjectType
 from dblift.core.sql_parser._deprecation import internal_parser_construction
 from dblift.core.sql_parser.parser_factory import SqlParserFactory
+from dblift.core.sql_parser.statement_facts import StatementFacts
 from dblift.db.dml_analysis import strip_leading_sql_comments
 from dblift.db.provider_registry import ProviderRegistry
 
@@ -55,6 +56,22 @@ _DATA_HOLDERS = frozenset(
         SqlObjectType.DATABASE.value,
     }
 )
+# Statements the reader leaves unclassified that change no data and no schema: the session or the
+# transaction around the statements, and the metadata listings SHOW and DESCRIBE. SET stops at
+# what changes the server or an account (MySQL SET GLOBAL / PERSIST / PASSWORD). A bare BEGIN is a
+# transaction start only when nothing but transaction modes follows it; BEGIN ... END,
+# BEGIN ATOMIC and DECLARE are procedural blocks and never match.
+_SESSION_ENVELOPE = re.compile(
+    r"^\s*(?:"
+    r"SET\b(?!\s+(?:GLOBAL|PERSIST|PERSIST_ONLY|PASSWORD)\b)"
+    r"|USE\b|SHOW\b|DESC(?:RIBE)?\b|SAVEPOINT\b|RELEASE\b|ROLLBACK\b|COMMIT\b|START\s+TRANSACTION\b"
+    r"|(?:BEGIN|END)(?:\s+(?:TRAN(?:SACTION)?(?:\s+[\w@#$]+)?|WORK|DEFERRED|IMMEDIATE|EXCLUSIVE"
+    r"|ISOLATION\s+LEVEL\s+[A-Za-z ]+?|READ\s+(?:ONLY|WRITE)|(?:NOT\s+)?DEFERRABLE))*"
+    r"(?:\s|;|--[^\n]*|/\*.*?\*/)*$"
+    r")",
+    re.IGNORECASE | re.DOTALL,
+)
+_PROCEDURAL_OPERATIONS = frozenset({"BEGIN", "DECLARE", "DO"})
 _SCHEMA_HOLDERS = frozenset({SqlObjectType.SCHEMA.value, SqlObjectType.DATABASE.value})
 _ROW_HOLDERS = frozenset(
     {
@@ -95,6 +112,9 @@ class AnalysedStatement:
     # opaque with no affected object; otherwise the legacy unreadable-name check); not part of
     # the JSON payload.
     names_unread: bool = field(default=False, repr=False, compare=False)
+    # Why the facts reader left the statement unread (``statement-not-analysed``), or None when
+    # it read it or it is a session or transaction envelope; not part of the JSON payload.
+    unread: Optional[str] = field(default=None, repr=False, compare=False)
 
 
 @dataclass(frozen=True)
@@ -213,6 +233,7 @@ def _analyse(text: str, dialect: str) -> ScriptAnalysis:
             _snippet(body),
             sql=body,
             names_unread=facts.opaque and not facts.affected_objects,
+            unread=_unread_reason(facts, body),
         )
         fact_statements.append(analysed)
         caution = _caution_for(
@@ -240,6 +261,29 @@ def _analyse(text: str, dialect: str) -> ScriptAnalysis:
         if facts.error:
             errors.append(facts.error)
     return ScriptAnalysis(tuple(fact_statements), tuple(fact_cautions), tuple(errors))
+
+
+def _unread_reason(facts: StatementFacts, body: str) -> Optional[str]:
+    """Why a statement the facts reader did not read needs a look, or None.
+
+    Unread is a statement of unknown kind or one that is opaque and names no object. Session and
+    transaction envelopes and comment-only text are exempt: they are not read, but they change
+    no data, and a DROP is judged by its keyword. A definition (``CREATE PROCEDURE``) that names its
+    object is read as a definition.
+    """
+    if not (facts.kind == "UNKNOWN" or (facts.opaque and not facts.affected_objects)):
+        return None
+    if facts.operation == "DROP":
+        return None  # judged by its keyword (``_unnamed_drop_caution``): row-free kinds stay safe
+    text = strip_leading_sql_comments(body)
+    if not text.strip(" \t\r\n;") or _SESSION_ENVELOPE.match(text):
+        return None
+    detail = f" ({facts.diagnostic})" if facts.diagnostic else ""
+    if facts.operation in _PROCEDURAL_OPERATIONS or re.match(
+        r"EXECUTE\s+IMMEDIATE\b", text, re.IGNORECASE
+    ):
+        return f"procedural block: effects not modelled{detail}; review it by hand"
+    return f"{facts.operation} statement not analysed{detail}; review it by hand"
 
 
 def _opaque_dialect(dialect: str) -> str:

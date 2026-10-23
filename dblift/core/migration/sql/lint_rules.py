@@ -205,6 +205,9 @@ def issues_and_created_tables(
             findings.append(_finding(code, stmt))
         if stmt.operation == "ALTER" and tree is None:
             findings.append(_finding("statement-not-analysed", stmt))
+        elif stmt.unread and not any(f.statement == stmt.index for f in findings):
+            # The facts reader left it unread and nothing else speaks for it: silence is not safety.
+            findings.append(_finding("statement-not-analysed", stmt, stmt.unread))
         if _LOCK_TIMEOUT.match(body):
             lock_timeout_set = True
         elif (
@@ -230,8 +233,8 @@ def issues_and_created_tables(
     )
 
 
-def _finding(code: str, stmt: AnalysedStatement) -> Finding:
-    return Finding(code, SEVERITY[code], stmt.index, _MESSAGES[code], stmt.snippet)
+def _finding(code: str, stmt: AnalysedStatement, message: Optional[str] = None) -> Finding:
+    return Finding(code, SEVERITY[code], stmt.index, message or _MESSAGES[code], stmt.snippet)
 
 
 def _parse(sql: str, sqlglot_dialect: Optional[str]) -> Optional[exp.Expression]:
