@@ -318,7 +318,6 @@ def test_a_copy_that_runs_a_command_or_writes_a_server_file_is_for_review(tmp_pa
         "COPY t FROM STDIN;",
         "COPY t TO STDOUT;",
         "COPY t FROM '/f';",
-        "COPY (SELECT * FROM t) TO PROGRAM 'x';",
     ],
 )
 def test_a_copy_through_the_client_stream_a_read_file_or_a_query_source_stays_safe(tmp_path, sql):
@@ -338,3 +337,24 @@ def test_a_copy_through_the_client_stream_a_read_file_or_a_query_source_stays_sa
 
     payload = json.loads(proc.stdout)
     assert [(s["verdict"], s["findings"]) for s in payload["scripts"]] == [("SAFE", [])]
+
+
+def test_a_copy_of_a_query_to_a_program_is_reviewed_as_unread(tmp_path):
+    """The reader leaves it opaque (no ``copy-server-side`` for a query source), so it is not SAFE."""
+    script = tmp_path / "v2.sql"
+    script.write_text("COPY (SELECT * FROM t) TO PROGRAM 'x';")
+
+    proc = _run(
+        tmp_path,
+        "validate-sql",
+        "--dialect",
+        "postgresql",
+        "--format",
+        "json",
+        "--files",
+        str(script),
+    )
+
+    scripts = json.loads(proc.stdout)["scripts"]
+    assert [s["verdict"] for s in scripts] == ["REVIEW"]
+    assert [f["code"] for f in scripts[0]["findings"]] == ["statement-not-analysed"]
