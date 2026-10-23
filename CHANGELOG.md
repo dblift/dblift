@@ -92,6 +92,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Statements the analyser cannot read are now marked for review instead of passing silently.**
+  `validate-sql`, `migrate --dry-run`, `info` and the MCP dry-run analysis rate a script `REVIEW`
+  with a `statement-not-analysed` finding naming the reason for any statement they could not
+  read: an unrecognised statement, a `CALL`, or an anonymous block or `EXECUTE IMMEDIATE`
+  ("procedural block: effects not modelled"). Before, only an unreadable `ALTER` was reported
+  and the rest came back `SAFE`. Statements that change no data (`SET`, transaction control,
+  `GRANT`, `COMMENT ON`, `PRAGMA`, `SHOW`, …) stay `SAFE`, as does comment-only text; a MySQL
+  executable comment (`/*! … */`, `/*M! … */`) is reported. `-- dblift:allow statement-not-analysed` accepts
+  the finding.
+
 - **A plugin without a statement-facts reader is no longer analysed from text.** Lint and the
   script analysis behind `validate-sql` now report "statement facts unavailable for dialect" for
   such a plugin and mark its scripts for review, instead of reading them with the text parser, so

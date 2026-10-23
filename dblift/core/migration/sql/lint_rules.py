@@ -27,8 +27,8 @@ from dblift.core.migration.sql.script_analysis import (
     ScriptAnalysis,
     quiet_sqlglot,
 )
+from dblift.core.migration.sql.script_analysis import without_comments as _without_comments
 from dblift.core.sql_model.dialect import get_sqlglot_dialect
-from dblift.core.sql_parser.common.comment_stripping import strip_comments_preserving_quotes
 from dblift.db.dml_analysis import strip_leading_sql_comments
 from dblift.db.provider_registry import ProviderRegistry
 
@@ -125,17 +125,6 @@ _VACUUM_FULL = re.compile(
 )
 _VACUUM_OPTIONS = re.compile(r"^\s*VACUUM\s*\((?P<options>[^)]*)\)", re.IGNORECASE)
 _FULL_OPTION = re.compile(r"(?:^|,)\s*FULL\b(?!\s+(?:FALSE|OFF|0)\b)", re.IGNORECASE)
-
-
-def _without_comments(body: str) -> str:
-    return strip_comments_preserving_quotes(
-        body,
-        line_prefixes=["--"],
-        has_block_comments=True,
-        nested_block_comments=True,
-        supports_dollar_quoting=True,
-        block_comment_replacement=" ",
-    )
 
 
 def _locks_table_by_text(body: str) -> bool:
@@ -288,6 +277,9 @@ def issues_and_created_tables(
         ):
             findings.append(_finding("pg-missing-lock-timeout", stmt))
             lock_timeout_reported = True
+        if stmt.unread and not any(f.statement == stmt.index for f in findings):
+            # The facts reader left it unread and nothing else speaks for it: silence is not safety.
+            findings.append(_finding("statement-not-analysed", stmt, stmt.unread))
         table = _created_table(tree)
         if table and not stmt.names_unread and not _matches(table, existing, None):
             created.add(table)
@@ -304,8 +296,8 @@ def issues_and_created_tables(
     )
 
 
-def _finding(code: str, stmt: AnalysedStatement) -> Finding:
-    return Finding(code, SEVERITY[code], stmt.index, _MESSAGES[code], stmt.snippet)
+def _finding(code: str, stmt: AnalysedStatement, message: Optional[str] = None) -> Finding:
+    return Finding(code, SEVERITY[code], stmt.index, message or _MESSAGES[code], stmt.snippet)
 
 
 def _parse(sql: str, sqlglot_dialect: Optional[str]) -> Optional[exp.Expression]:
