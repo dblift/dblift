@@ -170,9 +170,11 @@ class TestDryRunFooterMessage:
 
     def _run_log_completion(self, result):
         from dblift.core.migration.commands.base_command import BaseCommand
+        from dblift.core.migration.ui.command_presentation import CommandPresentation
 
         cmd = BaseCommand.__new__(BaseCommand)
         cmd.log = MagicMock()
+        cmd.execution_engine = SimpleNamespace(_presentation=CommandPresentation())
         cmd._log_command_header_update = MagicMock()
         cmd._has_own_console_footer = True  # suppress Rich panel output in unit tests
         cmd._log_text_block = MagicMock()
